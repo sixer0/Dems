@@ -57,6 +57,8 @@ import { EMPTY_DATABASE, SQLSTATE, expectRefused } from './support';
 const db = useTestDatabase({ template: EMPTY_DATABASE });
 
 const TAGS = ['0017_network_commissioning', '0018_network_commissioning_privileges'] as const;
+/** The files of the sets after set 9 (set 10, task 4 package X-C, and whatever follows it): pending on a database of set 9. */
+const LATER: readonly string[] = INITIAL_MIGRATION_TAGS.slice(19);
 const NETWORK = 'public.capture_network_config';
 const ALIASES = 'public.host_network_aliases';
 const INPUTS = 'public.capture_audio_inputs';
@@ -86,6 +88,16 @@ async function migrateShort(pool: Pool, count: number): Promise<void> {
   const error = await applyMigrations(pool, folderOf(count)).catch((thrown: unknown) => thrown);
   expect(error).toMatchObject({ code: 'SCHEMA_VERSION_MISMATCH' });
   expect(await readSchemaVersion(pool)).toEqual(SET_8);
+}
+
+/**
+ * Applies set 9 and stops there: the applier commits through 0018, then reports that the version
+ * is not this code's - the device of set8.db.test.ts, since set 10 exists.
+ */
+async function migrateSetNine(pool: Pool): Promise<void> {
+  const error = await applyMigrations(pool, folderOf(19)).catch((thrown: unknown) => thrown);
+  expect(error).toMatchObject({ code: 'SCHEMA_VERSION_MISMATCH' });
+  expect(await readSchemaVersion(pool)).toEqual(SET_9);
 }
 
 const outcome = (pending: Promise<{ rowCount: number | null }>): Promise<string> =>
@@ -190,13 +202,15 @@ describe('M9S-1: the pre-state, a (7, dbc-8) database that holds rows', () => {
     await seedSetEight(owner);
     const ledger = await inspectLedger(owner);
     expect(ledger.ok).toBe(true);
-    expect(ledger.pending).toEqual([...TAGS]);
+    expect(ledger.pending).toEqual([...TAGS, ...LATER]);
+    expect((await inspectLedger(owner, folderOf(19))).pending).toEqual([...TAGS]);
     expect(await tablesPresent(owner)).toEqual([{ network: false, aliases: false }]);
     expect(await inputColumns(owner)).toBe(0);
     const error = await checkSchemaVersion(db.appPool()).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(BootCheckError);
+    // The pair this code expects is read from its constants: it moves with every later set.
     expect((error as BootCheckError).message).toBe(
-      'B-3: the database is at schema version 7 (dbc-8); this server expects 8 (dbc-9). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>',
+      `B-3: the database is at schema version 7 (dbc-8); this server expects ${DB_SCHEMA_VERSION} (${DB_CONTRACT_REVISION}). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>`,
     );
     await expect(checkSchemaVersion(db.appPool(), SET_8)).resolves.toBeUndefined();
   });
@@ -236,17 +250,22 @@ describe('M9S-2: NEGATIVE CONTROL - without 0018 the runtime role holds nothing 
 });
 
 describe('M9S-3: set 9 applies its two files and rewrites no stored row', () => {
-  it('db:migrate applies exactly 0017 and 0018 and steps the version to (8, dbc-9); the ledger holds nineteen files; every stored row is what it was', async () => {
+  it('db:migrate applies exactly 0017 and 0018 and steps the version to (8, dbc-9); the ledger holds nineteen files (the set stops at 0018); every stored row is what it was', async () => {
     const owner = db.ownerPool();
     const rowsBefore = await storedBefore(owner);
     const objectsBefore = (await owner.query<{ objects: number }>(objects)).rows[0]?.objects ?? 0;
-    const result = await applyMigrations(owner);
-    expect(result.versionBefore).toEqual(SET_8);
-    expect(result.applied).toEqual([...TAGS]);
-    expect(result.versionAfter).toEqual(SET_9);
-    expect(result.versionAfter).toEqual({ schemaVersion: DB_SCHEMA_VERSION, contractRevision: DB_CONTRACT_REVISION });
-    expect(result.ledger.ok).toBe(true);
-    expect(result.ledger.pending).toEqual([]);
+    // The set stops at 0018: the applier commits the two files, then reports that the version is
+    // not this code's - the device of set8.db.test.ts, since set 10 exists.
+    const folder = folderOf(19);
+    expect(await readSchemaVersion(owner)).toEqual(SET_8);
+    expect((await inspectLedger(owner, folder)).pending).toEqual([...TAGS]);
+    const error = await applyMigrations(owner, folder).catch((thrown: unknown) => thrown);
+    expect(error).toMatchObject({ code: 'SCHEMA_VERSION_MISMATCH' });
+    expect(await readSchemaVersion(owner)).toEqual(SET_9);
+    expect({ schemaVersion: DB_SCHEMA_VERSION, contractRevision: DB_CONTRACT_REVISION }).not.toEqual(SET_9);
+    const ledger = await inspectLedger(owner, folder);
+    expect(ledger.ok).toBe(true);
+    expect(ledger.pending).toEqual([]);
     expect(await readAppliedMigrations(owner)).toHaveLength(19);
     // Exactly six new objects: two tables, the index of each primary key, and the two partial
     // unique indexes on an open alias.
@@ -276,10 +295,8 @@ describe('M9S-3: set 9 applies its two files and rewrites no stored row', () => 
     const before = await readAppliedMigrations(owner);
     const objectsBefore = await owner.query(objects);
     const matrixBefore = await storedMatrix(owner);
-    const result = await applyMigrations(owner);
-    expect(result.applied).toEqual([]);
-    expect(result.versionBefore).toEqual(SET_9);
-    expect(result.versionAfter).toEqual(SET_9);
+    await applyMigrations(owner, folderOf(19)).catch(() => undefined);
+    expect(await readSchemaVersion(owner)).toEqual(SET_9);
     expect(await readAppliedMigrations(owner)).toEqual(before);
     expect((await owner.query(objects)).rows).toEqual(objectsBefore.rows);
     expect(await storedMatrix(owner)).toEqual(matrixBefore);
@@ -336,8 +353,7 @@ describe('M9S-4 (d): the commissioning permission is stored data', () => {
 
   it('AN EMPTY DATABASE GETS NO ROW: the migrations hold no role, so the seed writes the whole matrix from the shared vocabulary as before (MG-8)', async () => {
     const other = await db.another({ template: EMPTY_DATABASE, slug: 'set9_empty' });
-    const result = await applyMigrations(other.ownerPool());
-    expect(result.versionAfter).toEqual(SET_9);
+    await migrateSetNine(other.ownerPool());
     expect(await storedMatrix(other.ownerPool())).toEqual({ permissions: [], grants: [] });
     expect((await other.ownerPool().query('SELECT count(*)::int AS roles FROM public.roles')).rows).toEqual([{ roles: 0 }]);
   });
@@ -493,7 +509,7 @@ describe('M9S-6 (b): host_network_aliases, the state of the one temporary addres
   it('EACH RULE ON ITS OWN: with the one-at-a-time index taken away, the same interface and address is still refused, by the per-address index; another address is then accepted', async () => {
     const other = await db.another({ template: EMPTY_DATABASE, slug: 'set9_address_rule' });
     const owner = other.ownerPool();
-    await applyMigrations(owner);
+    await migrateSetNine(owner);
     await insertRbac(owner);
     await owner.query('DROP INDEX public.host_network_aliases_one_open_key');
     await insertRow(other.appPool(), 'host_network_aliases', hostNetworkAlias());
@@ -647,11 +663,12 @@ describe('M9S-7 (c): capture_audio_inputs.usb_serial and usb_port, which unit on
 });
 
 describe('M9S-8: B-3 across the step, in both directions', () => {
-  it('the code of set 8 (7, dbc-8) on the migrated database is refused; this code passes', async () => {
+  it('the code of set 8 (7, dbc-8) on the migrated database is refused; the code of set 9 passes; this code (a later set) names db:migrate', async () => {
     const error = await checkSchemaVersion(db.appPool(), SET_8).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(BootCheckError);
     expect((error as BootCheckError).message).toContain('the database is at schema version 8 (dbc-9); this server expects 7 (dbc-8)');
-    await expect(checkSchemaVersion(db.appPool())).resolves.toBeUndefined();
+    await expect(checkSchemaVersion(db.appPool(), SET_9)).resolves.toBeUndefined();
+    await expect(checkSchemaVersion(db.appPool())).rejects.toBeInstanceOf(BootCheckError);
   });
 });
 
@@ -687,7 +704,7 @@ describe('M9S-9: rollback', () => {
     expect(await storedMatrix(owner)).toEqual(matrixBefore);
     expect(await readSchemaVersion(owner)).toEqual(SET_8);
     expect(await readAppliedMigrations(owner)).toEqual(ledgerBefore);
-    expect((await inspectLedger(owner)).pending).toEqual([...TAGS]);
+    expect((await inspectLedger(owner)).pending).toEqual([...TAGS, ...LATER]);
     await expect(checkSchemaVersion(other.appPool(), SET_8)).resolves.toBeUndefined();
   });
 
@@ -697,8 +714,7 @@ describe('M9S-9: rollback', () => {
     const catalogBefore = await catalogDigest(owner);
     const rowsBefore = await storedBefore(owner);
     const matrixBefore = await storedMatrix(owner);
-    await applyMigrations(owner);
-    expect(await readSchemaVersion(owner)).toEqual(SET_9);
+    await migrateSetNine(owner);
     expect((await catalogDigest(owner)).digest).not.toBe(catalogBefore.digest);
     // Rows the set made possible, written while it was applied: they are what an undo loses.
     await insertRow(other.appPool(), 'capture_network_config', captureNetworkConfig());
@@ -731,7 +747,7 @@ describe('M9S-9: rollback', () => {
   it('THE PRECONDITION OF THE UNDO: while an alias is open the undo is refused (55000) and changes nothing - the address would stay on the host with no record', async () => {
     const other = await seededSetEight('set9_rollback_open');
     const owner = other.ownerPool();
-    await applyMigrations(owner);
+    await migrateSetNine(owner);
     await insertRow(other.appPool(), 'host_network_aliases', hostNetworkAlias());
     const catalogApplied = await catalogDigest(owner);
     const client = await owner.connect();

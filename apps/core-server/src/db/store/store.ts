@@ -403,7 +403,7 @@ export async function applyChanges(executor: RowExecutor, changes: readonly RowC
 
 // ── Counts ─────────────────────────────────────────────────────────────────────────────────────
 
-/** The 47 tables of the typed schema (schema v8: v2 + R-8 + T-41 of dbc-4 + T-42 of PE-129b-01 + T-43 of PE-0013-01 + T-44 and T-45 of task 4 set A + T-46 and T-47 of task 4 set B): binding name and SQL name, sorted by SQL name. */
+/** The 48 tables of the typed schema (schema v11: v2 + R-8 + T-41 of dbc-4 + T-42 of PE-129b-01 + T-43 of PE-0013-01 + T-44 and T-45 of task 4 set A + T-46 and T-47 of task 4 set B + T-48 of task 4 set C): binding name and SQL name, sorted by SQL name. */
 export const ALL_TABLES: ReadonlyArray<{ readonly sqlName: string; readonly table: PgTable }> = [
   ['roles', schema.roles],
   ['permissions', schema.permissions],
@@ -465,11 +465,14 @@ export const ALL_TABLES: ReadonlyArray<{ readonly sqlName: string; readonly tabl
   // write-through never names them.
   ['capture_network_config', schema.captureNetworkConfig],
   ['host_network_aliases', schema.hostNetworkAliases],
+  // Schema v11 (task 4 schema set C; T-48): the record that an installation was accepted. Counted
+  // here only; the engine's write-through never names it (its writer is the acceptance operation).
+  ['installation_acceptances', schema.installationAcceptances],
 ]
   .map(([sqlName, table]) => ({ sqlName: sqlName as string, table: table as PgTable }))
   .sort((a, b) => (a.sqlName < b.sqlName ? -1 : 1));
 
-/** The row count of each of the 47 tables, by SQL name. */
+/** The row count of each of the 48 tables, by SQL name. */
 export async function countAllTables(executor: RowExecutor): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
   for (const { sqlName, table } of ALL_TABLES) {

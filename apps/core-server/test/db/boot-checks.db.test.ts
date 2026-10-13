@@ -107,36 +107,36 @@ describe('B-2: server version and encoding', () => {
 });
 
 describe('B-3: the schema version', () => {
-  it('passes when schema_meta holds the constants of the server code (8, dbc-9)', async () => {
-    expect({ DB_SCHEMA_VERSION, DB_CONTRACT_REVISION }).toEqual({ DB_SCHEMA_VERSION: 8, DB_CONTRACT_REVISION: 'dbc-9' });
+  it('passes when schema_meta holds the constants of the server code (13, dbc-14)', async () => {
+    expect({ DB_SCHEMA_VERSION, DB_CONTRACT_REVISION }).toEqual({ DB_SCHEMA_VERSION: 13, DB_CONTRACT_REVISION: 'dbc-14' });
     await checkSchemaVersion(app);
   });
 
   it('fails with both numbers and the migrate command when the code expects another version', async () => {
     const message = await failsAt('B-3', () => checkSchemaVersion(app, { schemaVersion: 1, contractRevision: 'dbc-2' }));
     expect(message).toBe(
-      'B-3: the database is at schema version 8 (dbc-9); this server expects 1 (dbc-2). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>',
+      'B-3: the database is at schema version 13 (dbc-14); this server expects 1 (dbc-2). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>',
     );
   });
 
   it('fails when the database is ahead of the code, and when it has no schema at all', async () => {
     const ahead = await db.another({ slug: 'boot_ahead' });
-    await ahead.ownerPool().query("UPDATE schema_meta SET schema_version = 9, contract_revision = 'dbc-10'");
+    await ahead.ownerPool().query("UPDATE schema_meta SET schema_version = 14, contract_revision = 'dbc-15'");
     expect(await failsAt('B-3', () => checkSchemaVersion(ahead.appPool()))).toContain(
-      'the database is at schema version 9 (dbc-10); this server expects 8 (dbc-9)',
+      'the database is at schema version 14 (dbc-15); this server expects 13 (dbc-14)',
     );
 
     const empty = await db.another({ template: EMPTY_DATABASE, slug: 'boot_empty' });
     expect(await failsAt('B-3', () => checkSchemaVersion(empty.appPool()))).toContain(
-      'the database has no schema (no table schema_meta); this server expects schema version 8 (dbc-9)',
+      'the database has no schema (no table schema_meta); this server expects schema version 13 (dbc-14)',
     );
   });
 
   it('the runtime role can read schema_meta and cannot change it', async () => {
     expect((await app.query('SELECT schema_version, contract_revision FROM schema_meta')).rows).toEqual([
-      { schema_version: 8, contract_revision: 'dbc-9' },
+      { schema_version: 13, contract_revision: 'dbc-14' },
     ]);
-    await expect(app.query('UPDATE schema_meta SET schema_version = 9')).rejects.toMatchObject({ code: '42501' });
+    await expect(app.query('UPDATE schema_meta SET schema_version = 14')).rejects.toMatchObject({ code: '42501' });
   });
 });
 

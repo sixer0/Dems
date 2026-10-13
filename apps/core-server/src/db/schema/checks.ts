@@ -61,6 +61,19 @@ export const noSecretKeys = (column: AnyPgColumn): SQL =>
   sql`NOT (${column} ?| ARRAY[${sql.raw(AUDIT_DETAIL_FORBIDDEN_KEYS.map(quoted).join(','))}])`;
 
 /**
+ * `NO_SECRET_KEYS_ANYWHERE(c)` (schema v11, set C of task 4; S13-13): no object AT ANY DEPTH of
+ * the document has a member named as one of the 28 denied key names. `noSecretKeys` above reads
+ * the top level only, which is all a flat map has; a document that is a list of objects, or an
+ * object that holds one, needs the walk. The path visits every value (`.**`), keeps the objects,
+ * lists their members (`.keyvalue()`) and asks each name. STRICT, so that nothing is unwrapped
+ * on the way. It is written in the form PostgreSQL prints a path back, so that the statement
+ * text of the migration and the catalog's text of the CHECK are one text; the names hold letters
+ * only, so the alternation needs no escape.
+ */
+export const noSecretKeysAnywhere = (column: AnyPgColumn): SQL =>
+  sql`NOT jsonb_path_exists(${column}, ${sql.raw(quoted(`strict $.**?(@.type() == "object").keyvalue()?(@."key" like_regex "^(${AUDIT_DETAIL_FORBIDDEN_KEYS.join('|')})$")`))})`;
+
+/**
  * The signature encoding each algorithm may hold (database contract dbc-3 §C.5, register W1-C10).
  * A real Ed25519 signature is 64 BYTES (128 lower-case hex characters), not 64 hex characters, so
  * the alternations count whole bytes. The `SIMULATED-SHA256` branch keeps every v1 row valid

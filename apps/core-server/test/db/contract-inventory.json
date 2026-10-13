@@ -1,5 +1,5 @@
 {
-  "source": "docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts; erratum PE-0013-01; delta module contract-v6-delta.ts; task 4 schema set A, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md sections 2.1 to 2.3 with 04_design_addendum.md sections 1.4 and 7.2; delta module contract-v7-delta.ts; task 4 schema set B, the same document sections 2.4 and 2.5; delta module contract-v8-delta.ts)",
+  "source": "docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts; erratum PE-0013-01; delta module contract-v6-delta.ts; task 4 schema set A, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md sections 2.1 to 2.3 with 04_design_addendum.md sections 1.4 and 7.2; delta module contract-v7-delta.ts; task 4 schema set B, the same document sections 2.4 and 2.5; delta module contract-v8-delta.ts; task 4 package X-C, docs/2026-10-12_input_av_core_adapter_plan/masterplan/05_design_x1_x2.md section 3.6; delta module contract-v9-delta.ts; task 4 requirement AD-06 (4), docs/2026-10-12_input_av_core_adapter_plan/verification/04_security_addendum.md; delta module contract-v10-delta.ts; task 4 schema set C, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md section 2.6; delta module contract-v11-delta.ts; task 4 honest removal reasons of a temporary host address, docs/2026-10-12_input_av_core_adapter_plan/decisions/decisions.md C74 D-2 and D-3; delta module contract-v12-delta.ts; task 4 further removal reason ADD_UNCONFIRMED, docs/2026-10-12_input_av_core_adapter_plan/verification/119_commissioning_security.md caution R119-05 answer (d) with decisions/decisions.md C94 (d); delta module contract-v13-delta.ts)",
   "valueSets": {
     "ROLE": [
       "INVESTIGATOR",
@@ -152,7 +152,8 @@
       "USER_DISABLED",
       "DEVICE_REVOKED",
       "DEVICE_UNPAIRED",
-      "TOKEN_REUSE"
+      "TOKEN_REUSE",
+      "CREDENTIAL_REPLACED"
     ],
     "DEVICE_STATE": [
       "PAIRED",
@@ -172,7 +173,8 @@
       "TOKEN_REUSE",
       "DEVICE_REVOKED",
       "DEVICE_UNPAIRED",
-      "USER_DISABLED"
+      "USER_DISABLED",
+      "CREDENTIAL_REPLACED"
     ],
     "EXPORT_SCOPE": [
       "EVIDENCE",
@@ -283,7 +285,10 @@
       "EXPIRED",
       "MANUAL",
       "JOB_DONE",
-      "BOOT_SWEEP"
+      "BOOT_SWEEP",
+      "SHUTDOWN",
+      "NOT_ADDED",
+      "ADD_UNCONFIRMED"
     ]
   },
   "formats": {
@@ -731,14 +736,14 @@
           "definition": "(ended_at IS NULL) = (end_reason IS NULL)"
         },
         {
-          "name": "auth_sessions_end_reason_check",
-          "kind": "CHECK",
-          "definition": "end_reason IS NULL OR end_reason IN ('SIGNED_OUT', 'IDLE_EXPIRED', 'ABSOLUTE_EXPIRED', 'ROTATED', 'USER_DISABLED', 'DEVICE_REVOKED', 'DEVICE_UNPAIRED', 'TOKEN_REUSE')"
-        },
-        {
           "name": "auth_sessions_token_reuse_check",
           "kind": "CHECK",
           "definition": "end_reason IS DISTINCT FROM 'TOKEN_REUSE' OR method = 'BIOMETRIC'"
+        },
+        {
+          "name": "auth_sessions_end_reason_check",
+          "kind": "CHECK",
+          "definition": "\"auth_sessions\".\"end_reason\" IS NULL OR \"auth_sessions\".\"end_reason\" IN ('SIGNED_OUT', 'IDLE_EXPIRED', 'ABSOLUTE_EXPIRED', 'ROTATED', 'USER_DISABLED', 'DEVICE_REVOKED', 'DEVICE_UNPAIRED', 'TOKEN_REUSE', 'CREDENTIAL_REPLACED')"
         }
       ]
     },
@@ -1151,7 +1156,7 @@
         {
           "name": "biometric_tokens_revoke_check",
           "kind": "CHECK",
-          "definition": "(revoked_at IS NULL) = (revoke_reason IS NULL) AND (revoke_reason IS NULL OR revoke_reason IN ('DISABLED', 'REENROLLED', 'TOKEN_REUSE', 'DEVICE_REVOKED', 'DEVICE_UNPAIRED', 'USER_DISABLED'))"
+          "definition": "(\"biometric_tokens\".\"revoked_at\" IS NULL) = (\"biometric_tokens\".\"revoke_reason\" IS NULL) AND (\"biometric_tokens\".\"revoke_reason\" IS NULL OR \"biometric_tokens\".\"revoke_reason\" IN ('DISABLED', 'REENROLLED', 'TOKEN_REUSE', 'DEVICE_REVOKED', 'DEVICE_UNPAIRED', 'USER_DISABLED', 'CREDENTIAL_REPLACED'))"
         }
       ]
     },
@@ -3590,6 +3595,11 @@
           "name": "capture_devices_adapter_pairing_check",
           "kind": "CHECK",
           "definition": "(\"capture_devices\".\"kind\" = 'CAMERA' AND \"capture_devices\".\"adapter_kind\" IN ('ONVIF_RTSP', 'FAKE', 'LOCAL_DEVICE')) OR (\"capture_devices\".\"kind\" = 'MIC' AND \"capture_devices\".\"adapter_kind\" IN ('USB_AUDIO', 'FAKE', 'LOCAL_DEVICE')) OR (\"capture_devices\".\"kind\" = 'POE' AND \"capture_devices\".\"adapter_kind\" IN ('SNMP_POE', 'FAKE'))"
+        },
+        {
+          "name": "capture_devices_profiles_code_check",
+          "kind": "CHECK",
+          "definition": "CASE WHEN jsonb_typeof(\"capture_devices\".\"profiles\") = 'array' THEN NOT jsonb_path_exists(\"capture_devices\".\"profiles\", 'strict $[*]?(@.type() != \"string\" || !(@ like_regex \"^[A-Z][A-Z0-9_]{0,63}$\"))') ELSE false END"
         }
       ]
     },
@@ -5342,11 +5352,6 @@
           "definition": "\"host_network_aliases\".\"removed_at\" IS NULL OR \"host_network_aliases\".\"removed_at\" >= \"host_network_aliases\".\"added_at\""
         },
         {
-          "name": "host_network_aliases_remove_reason_check",
-          "kind": "CHECK",
-          "definition": "((\"host_network_aliases\".\"remove_reason\" IS NULL) = (\"host_network_aliases\".\"removed_at\" IS NULL)) AND (\"host_network_aliases\".\"remove_reason\" IS NULL OR \"host_network_aliases\".\"remove_reason\" IN ('EXPIRED', 'MANUAL', 'JOB_DONE', 'BOOT_SWEEP'))"
-        },
-        {
           "name": "host_network_aliases_removed_by_check",
           "kind": "CHECK",
           "definition": "\"host_network_aliases\".\"removed_by\" IS NULL OR \"host_network_aliases\".\"removed_at\" IS NOT NULL"
@@ -5355,18 +5360,184 @@
           "name": "host_network_aliases_remove_error_check",
           "kind": "CHECK",
           "definition": "\"host_network_aliases\".\"remove_error\" IS NULL OR \"host_network_aliases\".\"remove_error\" ~ '^[A-Z][A-Z0-9_]{0,63}$'"
+        },
+        {
+          "name": "host_network_aliases_remove_reason_check",
+          "kind": "CHECK",
+          "definition": "((\"host_network_aliases\".\"remove_reason\" IS NULL) = (\"host_network_aliases\".\"removed_at\" IS NULL)) AND (\"host_network_aliases\".\"remove_reason\" IS NULL OR \"host_network_aliases\".\"remove_reason\" IN ('EXPIRED', 'MANUAL', 'JOB_DONE', 'BOOT_SWEEP', 'SHUTDOWN', 'NOT_ADDED', 'ADD_UNCONFIRMED'))"
+        }
+      ]
+    },
+    {
+      "id": "T-48",
+      "name": "installation_acceptances",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "accepted_at",
+          "type": "bigint",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "accepted_by",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "software_version",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "core_device_id",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "site_name",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "room",
+          "type": "text",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "site_address",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "steps",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "diagnostics",
+          "type": "jsonb",
+          "notNull": true,
+          "default": null
+        },
+        {
+          "name": "revoked_at",
+          "type": "bigint",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "revoked_by",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "revoke_reason",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "installation_acceptances_pkey",
+          "kind": "PRIMARY KEY",
+          "definition": "(id)"
+        },
+        {
+          "name": "installation_acceptances_accepted_by_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(accepted_by) REFERENCES operators (id)"
+        },
+        {
+          "name": "installation_acceptances_revoked_by_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(revoked_by) REFERENCES operators (id)"
+        },
+        {
+          "name": "installation_acceptances_in_force_key",
+          "kind": "UNIQUE INDEX",
+          "definition": "((revoked_at IS NULL)) WHERE revoked_at IS NULL"
+        },
+        {
+          "name": "installation_acceptances_software_version_check",
+          "kind": "CHECK",
+          "definition": "\"installation_acceptances\".\"software_version\" ~ '^[^[:cntrl:]]{1,64}$'"
+        },
+        {
+          "name": "installation_acceptances_site_check",
+          "kind": "CHECK",
+          "definition": "\"installation_acceptances\".\"core_device_id\" ~ '^[^[:cntrl:]]{1,200}$' AND \"installation_acceptances\".\"site_name\" ~ '^[^[:cntrl:]]{1,200}$' AND \"installation_acceptances\".\"room\" ~ '^[^[:cntrl:]]{1,200}$'"
+        },
+        {
+          "name": "installation_acceptances_site_address_check",
+          "kind": "CHECK",
+          "definition": "\"installation_acceptances\".\"site_address\" IS NULL OR char_length(\"installation_acceptances\".\"site_address\") BETWEEN 1 AND 500"
+        },
+        {
+          "name": "installation_acceptances_steps_check",
+          "kind": "CHECK",
+          "definition": "CASE WHEN jsonb_typeof(\"installation_acceptances\".\"steps\") = 'array' THEN jsonb_array_length(\"installation_acceptances\".\"steps\") <= 32 AND NOT jsonb_path_exists(\"installation_acceptances\".\"steps\", 'strict $[*]?(@.type() != \"object\")') AND NOT jsonb_path_exists(\"installation_acceptances\".\"steps\", 'strict $.**{3 to last}') ELSE false END"
+        },
+        {
+          "name": "installation_acceptances_steps_no_secret_keys_check",
+          "kind": "CHECK",
+          "definition": "NOT jsonb_path_exists(\"installation_acceptances\".\"steps\", 'strict $.**?(@.type() == \"object\").keyvalue()?(@.\"key\" like_regex \"^(password|passwordHash|salt|token|tokenHash|sessionToken|deviceCredential|credential|credentialHash|biometricToken|code|codeHash|pairingCode|qrPayload|username|cookie|authorization|secret|secretCiphertext|ciphertext|nonce|keyRef|onvifUuid|signedUrl|mediaUrl|credentialRef|credentialValue|apiKey)$\")')"
+        },
+        {
+          "name": "installation_acceptances_steps_bound_check",
+          "kind": "CHECK",
+          "definition": "octet_length(\"installation_acceptances\".\"steps\"::text) <= 8192 AND NOT jsonb_path_exists(\"installation_acceptances\".\"steps\", 'strict $.**?(@.type() == \"string\" && !(@ like_regex \"^[^[:cntrl:]]{0,200}$\"))')"
+        },
+        {
+          "name": "installation_acceptances_diagnostics_check",
+          "kind": "CHECK",
+          "definition": "CASE WHEN jsonb_typeof(\"installation_acceptances\".\"diagnostics\") = 'object' THEN NOT jsonb_path_exists(\"installation_acceptances\".\"diagnostics\", 'strict $.**{5 to last}') ELSE false END"
+        },
+        {
+          "name": "installation_acceptances_diagnostics_no_secret_keys_check",
+          "kind": "CHECK",
+          "definition": "NOT jsonb_path_exists(\"installation_acceptances\".\"diagnostics\", 'strict $.**?(@.type() == \"object\").keyvalue()?(@.\"key\" like_regex \"^(password|passwordHash|salt|token|tokenHash|sessionToken|deviceCredential|credential|credentialHash|biometricToken|code|codeHash|pairingCode|qrPayload|username|cookie|authorization|secret|secretCiphertext|ciphertext|nonce|keyRef|onvifUuid|signedUrl|mediaUrl|credentialRef|credentialValue|apiKey)$\")')"
+        },
+        {
+          "name": "installation_acceptances_diagnostics_bound_check",
+          "kind": "CHECK",
+          "definition": "octet_length(\"installation_acceptances\".\"diagnostics\"::text) <= 16384 AND NOT jsonb_path_exists(\"installation_acceptances\".\"diagnostics\", 'strict $.**?(@.type() == \"string\" && !(@ like_regex \"^[^[:cntrl:]]{0,200}$\"))')"
+        },
+        {
+          "name": "installation_acceptances_revoked_at_check",
+          "kind": "CHECK",
+          "definition": "\"installation_acceptances\".\"revoked_at\" IS NULL OR \"installation_acceptances\".\"revoked_at\" >= \"installation_acceptances\".\"accepted_at\""
+        },
+        {
+          "name": "installation_acceptances_revoke_check",
+          "kind": "CHECK",
+          "definition": "((\"installation_acceptances\".\"revoked_at\" IS NULL) = (\"installation_acceptances\".\"revoked_by\" IS NULL)) AND ((\"installation_acceptances\".\"revoked_at\" IS NULL) = (\"installation_acceptances\".\"revoke_reason\" IS NULL)) AND (\"installation_acceptances\".\"revoke_reason\" IS NULL OR char_length(\"installation_acceptances\".\"revoke_reason\") BETWEEN 5 AND 500)"
         }
       ]
     }
   ],
   "counts": {
-    "tables": 47,
-    "columns": 484,
-    "primaryKeys": 47,
-    "foreignKeys": 46,
+    "tables": 48,
+    "columns": 497,
+    "primaryKeys": 48,
+    "foreignKeys": 48,
     "uniques": 16,
-    "uniqueIndexes": 6,
+    "uniqueIndexes": 7,
     "indexes": 24,
-    "checks": 217
+    "checks": 229
   }
 }

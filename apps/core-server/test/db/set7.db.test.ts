@@ -55,7 +55,7 @@ const TABLE = 'public.core_media_store';
 const SET_6 = { schemaVersion: 5, contractRevision: 'dbc-6' } as const;
 const SET_7 = { schemaVersion: 6, contractRevision: 'dbc-7' } as const;
 /** The files of set 8 and of set 9 (task 4 schema sets A and B), pending on every database of this file. */
-const LATER = ['0015_capture_streams_audio_inputs', '0016_capture_streams_audio_inputs_privileges', '0017_network_commissioning', '0018_network_commissioning_privileges'] as const;
+const LATER: readonly string[] = INITIAL_MIGRATION_TAGS.slice(15);
 const PRODUCT_KEY = 'CORE-KEY-EVSIGN-01';
 const V1_KEY = 'DEMO-KEY-EVSIGN-01';
 const temporary: string[] = [];
@@ -121,8 +121,9 @@ describe('M7S-1: the pre-state, a (5, dbc-6) database that holds rows', () => {
     expect((await owner.query("SELECT count(*)::int AS n FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'alerts' AND column_name = 'reason'")).rows).toEqual([{ n: 0 }]);
     const error = await checkSchemaVersion(db.appPool()).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(BootCheckError);
+    // The pair this code expects is read from its constants: it moves with every later set.
     expect((error as BootCheckError).message).toBe(
-      'B-3: the database is at schema version 5 (dbc-6); this server expects 8 (dbc-9). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>',
+      `B-3: the database is at schema version 5 (dbc-6); this server expects ${DB_SCHEMA_VERSION} (${DB_CONTRACT_REVISION}). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>`,
     );
     await expect(checkSchemaVersion(db.appPool(), SET_6)).resolves.toBeUndefined();
   });
@@ -171,7 +172,7 @@ describe('M7S-3: set 7 applies its two files and rewrites no stored row', () => 
     const rowsBefore = await storedBefore(owner);
     const objectsBefore = (await owner.query<{ objects: number }>(objects)).rows[0]?.objects ?? 0;
     // The set stops at 0014: the applier commits the two files, then reports that the version is
-    // not this code's (8, 'dbc-9') - the device of set6.db.test.ts, since set 8 exists.
+    // not this code's (a later set's) - the device of set6.db.test.ts, since set 8 exists.
     const folder = folderOf(15);
     expect(await readSchemaVersion(owner)).toEqual(SET_6);
     expect((await inspectLedger(owner, folder)).pending).toEqual([...TAGS]);

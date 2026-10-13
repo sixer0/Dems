@@ -100,7 +100,15 @@ export const STORAGE_STATE = ['READY', 'LOW', 'FULL'] as const;
 export const SECURITY_STATE = ['READY', 'FAULT'] as const;
 /** The shared set also has `SECURITY_KEY`; no Live session can have it (spec §7.17 X-1). */
 export const AUTH_METHOD = ['PASSWORD', 'BIOMETRIC'] as const;
-/** Eight values. `TOKEN_REUSE` is part of schema version 1 (SD-10, D16). */
+/**
+ * Nine values. `TOKEN_REUSE` is part of schema version 1 (SD-10, D16).
+ *
+ * `CREDENTIAL_REPLACED` since schema version 9 (migration set 10, `0019` + `0020`; task 4 package
+ * X-C, design `docs/2026-10-12_input_av_core_adapter_plan/masterplan/05_design_x1_x2.md` section
+ * 3.6; security review SX-12): the password of the operator was replaced from the host, so every
+ * open session of that operator is ended. No earlier member says that: `SIGNED_OUT` would be a
+ * false statement in the session history. Added LAST, so that the order of the eight is kept.
+ */
 export const SESSION_END_REASON = [
   'SIGNED_OUT',
   'IDLE_EXPIRED',
@@ -110,9 +118,15 @@ export const SESSION_END_REASON = [
   'DEVICE_REVOKED',
   'DEVICE_UNPAIRED',
   'TOKEN_REUSE',
+  'CREDENTIAL_REPLACED',
 ] as const;
 export const DEVICE_STATE = ['PAIRED', 'REVOKED', 'UNPAIRED'] as const;
 export const CODE_STATE = ['ACTIVE', 'REDEEMED', 'CANCELLED', 'EXPIRED', 'EXHAUSTED'] as const;
+/**
+ * Seven values. `CREDENTIAL_REPLACED` since schema version 9 (the same step as the session-end
+ * reason above): the biometric tokens of an operator whose password was replaced from the host
+ * are revoked with it. Added LAST.
+ */
 export const BIO_REVOKE_REASON = [
   'DISABLED',
   'REENROLLED',
@@ -120,6 +134,7 @@ export const BIO_REVOKE_REASON = [
   'DEVICE_REVOKED',
   'DEVICE_UNPAIRED',
   'USER_DISABLED',
+  'CREDENTIAL_REPLACED',
 ] as const;
 export const EXPORT_SCOPE = ['EVIDENCE', 'AUDIT', 'LOGS'] as const;
 export const SNAPSHOT_CAUSE = ['INTERVAL', 'FAULT_RAISED', 'FAULT_CLEARED'] as const;
@@ -172,8 +187,19 @@ export const HOST_ALIAS_REASON = ['FACTORY_SCAN', 'SET_CAMERA_ADDRESS'] as const
  * How a temporary address ended (`host_network_aliases.remove_reason`, T-47). A CLOSED set:
  * its lifetime ran out, an operator removed it, the job that needed it finished, or the start-up
  * sweep found the row of an address that is no longer on the interface.
+ *
+ * Since schema v12 (decision C74 D-2 / D-3 of task 4) two more, LAST in the stored order:
+ * `SHUTDOWN` - the Core took the address away because it was shutting down, no job had finished;
+ * `NOT_ADDED` - the row was opened with the intent and the helper certainly added nothing, so the
+ * row closes without an address ever having been on the interface. Until then both were written
+ * `JOB_DONE`, which said a job was done when none was.
+ *
+ * Since schema v13 (caution R119-05 of the commissioning security review, decision C94 (d)) one
+ * more, LAST: `ADD_UNCONFIRMED` - the Core took the address away at once because the effect of its
+ * `add` was not known (the helper's answer was lost, its result is not on record, or the row could
+ * not be read back): the address may or may not have been on the interface, and no job ran.
  */
-export const HOST_ALIAS_REMOVE_REASON = ['EXPIRED', 'MANUAL', 'JOB_DONE', 'BOOT_SWEEP'] as const;
+export const HOST_ALIAS_REMOVE_REASON = ['EXPIRED', 'MANUAL', 'JOB_DONE', 'BOOT_SWEEP', 'SHUTDOWN', 'NOT_ADDED', 'ADD_UNCONFIRMED'] as const;
 /** The role of one mic inside `AUDIO-01` (T-34; OD-01/OD-09). */
 export const MIC_ROLE = ['PRIMARY', 'STANDBY'] as const;
 /** Why a `session_audio_intervals` row opened or closed (T-34; R-3). */

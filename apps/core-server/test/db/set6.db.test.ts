@@ -51,15 +51,11 @@ const TABLE = 'public.session_stt_config';
 const COLUMNS = ['session_id', 'enabled', 'backend', 'endpoint', 'model', 'language', 'diarization', 'credential_kind', 'config_revision', 'taken_at'] as const;
 const SET_5 = { schemaVersion: 4, contractRevision: 'dbc-5' } as const;
 const SET_6 = { schemaVersion: 5, contractRevision: 'dbc-6' } as const;
-/** The files of set 7, of set 8 and of set 9 (task 4 schema sets A and B), pending on every database of this file. */
-const LATER = [
-  '0013_key_id_fault_reason_media_root',
-  '0014_key_id_fault_reason_media_root_privileges',
-  '0015_capture_streams_audio_inputs',
-  '0016_capture_streams_audio_inputs_privileges',
-  '0017_network_commissioning',
-  '0018_network_commissioning_privileges',
-] as const;
+/**
+ * The files of set 7, of set 8, of set 9 (task 4 schema sets A and B) and of every set after
+ * them, pending on every database of this file: read from the tag list, which a later set extends.
+ */
+const LATER: readonly string[] = INITIAL_MIGRATION_TAGS.slice(13);
 const SESSION_A = 'SES-20261009-0001';
 const SESSION_B = 'SES-20261009-0002';
 const temporary: string[] = [];
@@ -128,8 +124,9 @@ describe('M6S-1: the pre-state, a (4, dbc-5) database that holds rows', () => {
     expect((await owner.query(`SELECT to_regclass('${TABLE}') IS NOT NULL AS present`)).rows).toEqual([{ present: false }]);
     const error = await checkSchemaVersion(db.appPool()).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(BootCheckError);
+    // The pair this code expects is read from its constants: it moves with every later set.
     expect((error as BootCheckError).message).toBe(
-      'B-3: the database is at schema version 4 (dbc-5); this server expects 8 (dbc-9). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>',
+      `B-3: the database is at schema version 4 (dbc-5); this server expects ${DB_SCHEMA_VERSION} (${DB_CONTRACT_REVISION}). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>`,
     );
     await expect(checkSchemaVersion(db.appPool(), SET_5)).resolves.toBeUndefined();
   });
@@ -162,7 +159,7 @@ describe('M6S-3: set 6 applies its two files and changes no stored row', () => {
     const rowsBefore = await storedBefore(owner);
     const objectsBefore = (await owner.query<{ objects: number }>(objects)).rows[0]?.objects ?? 0;
     // The set stops at 0012: the applier commits the two files, then reports that the version is
-    // not this code's (8, 'dbc-9').
+    // not this code's (a later set's).
     const folder = folderOf(13);
     expect(await readSchemaVersion(owner)).toEqual(SET_5);
     expect((await inspectLedger(owner, folder)).pending).toEqual([...TAGS]);

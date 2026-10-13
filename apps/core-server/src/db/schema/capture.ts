@@ -161,6 +161,19 @@ export const captureDevices = pgTable(
       sql`(${t.model} IS NULL OR char_length(${t.model}) BETWEEN 1 AND 120) AND (${t.firmware} IS NULL OR char_length(${t.firmware}) BETWEEN 1 AND 120) AND (${t.address} IS NULL OR char_length(${t.address}) BETWEEN 1 AND 120) AND (${t.onvifUuid} IS NULL OR char_length(${t.onvifUuid}) BETWEEN 1 AND 120) AND (${t.mac} IS NULL OR ${matches(t.mac, '^[0-9A-F:]{17}$')})`,
     ),
     check('capture_devices_profiles_check', sql`jsonb_typeof(${t.profiles}) = 'array'`),
+    // Schema v10 (migration set 11; requirement AD-06 (4), handed over by task 4 row 51): EVERY
+    // element of the list is a code of the Core - a text of the `CODE` form, the form adoption mints
+    // (`<codec>_<picture><rate>`, e.g. `HEVC_1080P`). Before row 51 adoption stored the camera's own
+    // ONVIF profile tokens here; a token is text a device chose and is no member of this list.
+    // CASE, not AND: the path over something that is no array is an error, and a CHECK must refuse
+    // it as a rule (23514). STRICT, not the default lax mode: lax unwraps a list inside the list
+    // before the filter sees it, so `[["HEVC_1080P"]]` would pass as if it were flat (measured by
+    // row 51 and again by `set11.db.test.ts`). The pattern is `CODE` of `./checks`, written out
+    // because it stands inside a JSON path literal.
+    check(
+      'capture_devices_profiles_code_check',
+      sql`CASE WHEN jsonb_typeof(${t.profiles}) = 'array' THEN NOT jsonb_path_exists(${t.profiles}, 'strict $[*]?(@.type() != "string" || !(@ like_regex "^[A-Z][A-Z0-9_]{0,63}$"))') ELSE false END`,
+    ),
     check('capture_devices_poe_port_check', sql`${t.poePort} IS NULL OR ${code(t.poePort)}`),
     check('capture_devices_adapter_kind_check', oneOf(t.adapterKind, CAPTURE_ADAPTER_KIND)),
     // The adapter kind is tied to the device class, as the id prefix is (dbc-4 §N.2).

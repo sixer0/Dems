@@ -1,5 +1,5 @@
 /**
- * The typed schema of the DEMS Core database: 47 tables in schema `public` (database contract
+ * The typed schema of the DEMS Core database: 48 tables in schema `public` (database contract
  * §3.3, §4, `dbc-3` §B and `dbc-4` §N; plan rows W17 and M2-W2; table 40 = T-40 `stt_config`,
  * row 112; table 41 = T-41 `session_capture_sources`, row 129). This
  * file is the entry `drizzle.config.ts` names, and what every later row imports.
@@ -24,6 +24,7 @@
  *   transcript T-36 transcript_chunks, T-37 transcripts, T-38 transcript_revisions
  *   stt        T-40 stt_config (R-8, D20; Q-STT-CFG confirmed (a) at D24),
  *              T-42 session_stt_config (erratum PE-129b-01; R-8 AC-4)
+ *   installation T-48 installation_acceptances (task 4 schema set C)
  *
  * ONE WRITER (P16, MG-1). Only the migration writer edits this folder and `../migrations`. A
  * change here without a new migration file is drift: `npm run db:generate -w @dems/core-server`
@@ -74,6 +75,36 @@
  * `0018_network_commissioning_privileges.sql` (the grants, the two stored rows of the
  * commissioning permission for a database that is already seeded, and the version step).
  *
+ * SCHEMA VERSION 9 (`dbc-10`; task 4 package X-C, `docs/2026-10-12_input_av_core_adapter_plan/
+ * masterplan/05_design_x1_x2.md` section 3.6; security review SX-12): the generated
+ * `0019_credential_replaced_reason.sql` (the value `CREDENTIAL_REPLACED` in `SESSION_END_REASON`
+ * and `BIO_REVOKE_REASON`: two CHECKs dropped and added again under their names) plus the
+ * hand-written `0020_credential_replaced_reason_privileges.sql` (no grant; the version step).
+ *
+ * SCHEMA VERSION 10 (`dbc-11`; requirement AD-06 (4), handed over by task 4 row 51): the
+ * hand-written `0021_profile_codes_data.sql` (a stored profile list that holds anything but codes
+ * becomes the empty list), the generated `0022_profile_codes.sql`
+ * (`capture_devices_profiles_code_check` in `./capture`) and the hand-written
+ * `0023_profile_codes_privileges.sql` (no grant; the version step). Three files, because the data
+ * step must run before the CHECK and a generated file is not edited by hand.
+ *
+ * SCHEMA VERSION 11 (`dbc-12`; schema set C of task 4, `docs/2026-10-12_input_av_core_adapter_plan/
+ * masterplan/03_db_schema_extension.md` section 2.6; decisions U11 (OQ-2), C2; finding S13-13): the
+ * generated `0024_installation_acceptance.sql` (T-48 `installation_acceptances` in
+ * `./installation`, with the partial unique index that holds one acceptance in force) plus the
+ * hand-written `0025_installation_acceptance_privileges.sql` (the grants and the version step).
+ *
+ * SCHEMA VERSION 12 (`dbc-13`; decisions C74 (D-2, D-3) and C83 of task 4; finding S13-10): the
+ * generated `0026_alias_removal_reasons.sql` (the values `SHUTDOWN` and `NOT_ADDED` in
+ * `HOST_ALIAS_REMOVE_REASON`: one CHECK dropped and added again under its name) plus the
+ * hand-written `0027_alias_removal_reasons_privileges.sql` (no grant; the version step).
+ *
+ * SCHEMA VERSION 13 (`dbc-14`; caution R119-05 (d) of the commissioning security review, decision
+ * C94 (d) of task 4; finding S13-10): the generated `0028_alias_removal_reason_unconfirmed.sql`
+ * (the value `ADD_UNCONFIRMED` in `HOST_ALIAS_REMOVE_REASON`: the same CHECK dropped and added
+ * again under its name) plus the hand-written
+ * `0029_alias_removal_reason_unconfirmed_privileges.sql` (no grant; the version step).
+ *
  * Not expressed here, because the tool cannot generate them: the function of `0000_prelude`,
  * the chain lock, the chain guard, the three triggers and the genesis row (`0002_audit_guards`),
  * and every privilege (`0003_privileges`, and `0005_capture_privileges` from row 46). The typed
@@ -98,3 +129,4 @@ export * from './capture';
 export * from './recording';
 export * from './transcript';
 export * from './stt';
+export * from './installation';

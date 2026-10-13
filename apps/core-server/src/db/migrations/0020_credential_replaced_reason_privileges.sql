@@ -1,0 +1,21 @@
+-- Custom SQL migration file, put your code below! --
+-- 0020_credential_replaced_reason_privileges (hand-written; task 4 package X-C, contract revision
+-- dbc-10; the 0010 / 0014 / 0016 / 0018 pattern; MG-2, MG-5). Design
+-- docs/2026-10-12_input_av_core_adapter_plan/masterplan/05_design_x1_x2.md section 3.6; security
+-- review SX-12; decision U19. Migration set 10: 0019 (generated) + this file.
+--
+-- No statement names the owner role or the provisioning superuser (MG-9, OW-9).
+--
+-- NO GRANT IS NEEDED, AND NONE IS WRITTEN. 0019 replaces two CHECK constraints under their own
+-- names (auth_sessions_end_reason_check, biometric_tokens_revoke_check): each now admits the
+-- value CREDENTIAL_REPLACED. A constraint carries no privilege. The runtime role already updates
+-- auth_sessions.end_reason and biometric_tokens.revoke_reason (0003), which is all the command
+-- that replaces an operator password needs to end the sessions and revoke the tokens (SX-03: it
+-- runs as the runtime role, never as the owner). No table, no column and no role is new.
+--
+-- MG-5: the last file of the set carries the version; DB_SCHEMA_VERSION / DB_CONTRACT_REVISION
+-- in src/db/schema/meta.ts change in the same commit (boot check B-3 compares them). The step is
+-- taken (SX-12, one path): code that writes the new reason answers 23514 on a database without
+-- 0019, so the command refuses a database that is not at this version, and code older than the
+-- set does not start on a database whose session history may hold a reason it does not know.
+UPDATE public.schema_meta SET schema_version = 9, contract_revision = 'dbc-10' WHERE singleton;

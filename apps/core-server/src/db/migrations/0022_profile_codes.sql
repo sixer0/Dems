@@ -1,0 +1,1 @@
+ALTER TABLE "capture_devices" ADD CONSTRAINT "capture_devices_profiles_code_check" CHECK (CASE WHEN jsonb_typeof("capture_devices"."profiles") = 'array' THEN NOT jsonb_path_exists("capture_devices"."profiles", 'strict $[*]?(@.type() != "string" || !(@ like_regex "^[A-Z][A-Z0-9_]{0,63}$"))') ELSE false END);

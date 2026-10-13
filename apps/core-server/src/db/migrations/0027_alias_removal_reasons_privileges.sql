@@ -1,0 +1,23 @@
+-- Custom SQL migration file, put your code below! --
+-- 0027_alias_removal_reasons_privileges (hand-written; task 4, the honest removal reasons of an
+-- alias address on the camera interface, contract revision dbc-13; the 0010 / 0014 / 0016 /
+-- 0018 / 0020 pattern; MG-2, MG-5). Decisions C74 (D-2, D-3) and C83 of
+-- docs/2026-10-12_input_av_core_adapter_plan/decisions/decisions.md; security finding S13-10.
+-- Migration set 13: 0026 (generated) + this file.
+--
+-- No statement names the owner role or the provisioning superuser (MG-9, OW-9).
+--
+-- NO GRANT IS NEEDED, AND NONE IS WRITTEN. 0026 replaces ONE CHECK constraint under its own name
+-- (host_network_aliases_remove_reason_check): it now admits the values SHUTDOWN and NOT_ADDED
+-- beside the four it had. A constraint carries no privilege. The runtime role already updates
+-- host_network_aliases.remove_reason with removed_at, removed_by and remove_error (0018), which
+-- is all the alias journal needs to close a row. No table, no column and no role is new, and no
+-- stored row is rewritten: a row closed JOB_DONE before this set keeps that word (it is history;
+-- decision C74 is its note).
+--
+-- MG-5: the last file of the set carries the version; DB_SCHEMA_VERSION / DB_CONTRACT_REVISION
+-- in src/db/schema/meta.ts change in the same commit (boot check B-3 compares them). The step is
+-- taken: code that closes a row with a new reason answers 23514 on a database without 0026, and
+-- code older than the set does not start on a database whose alias history may hold a reason it
+-- does not know.
+UPDATE public.schema_meta SET schema_version = 12, contract_revision = 'dbc-13' WHERE singleton;

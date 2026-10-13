@@ -54,10 +54,52 @@ import { boolean, check, integer, pgTable, text } from 'drizzle-orm/pg-core';
  * the commissioning permission. Code that reads the network settings or stores the port of a
  * sound card fails at its first statement on a database without the set, and older code refuses
  * a stored matrix that holds a permission it does not know, so B-3 refuses in both directions.
+ *
+ * 9 since migration set 10 (`0019_credential_replaced_reason.sql` +
+ * `0020_credential_replaced_reason_privileges.sql`; task 4 package X-C, design
+ * `docs/2026-10-12_input_av_core_adapter_plan/masterplan/05_design_x1_x2.md` section 3.6;
+ * security review SX-12; decision U19): the value `CREDENTIAL_REPLACED` in the session-end
+ * reasons (`auth_sessions_end_reason_check`) and in the biometric-revoke reasons
+ * (`biometric_tokens_revoke_check`). No table, no column, no grant. Code that ends a session with
+ * the new reason answers 23514 on a database without the set, and older code must not read a
+ * session history that may hold a reason it does not know, so B-3 refuses in both directions.
+ *
+ * 10 since migration set 11 (`0021_profile_codes_data.sql` + `0022_profile_codes.sql` +
+ * `0023_profile_codes_privileges.sql`; requirement AD-06 (4) of
+ * `docs/2026-10-12_input_av_core_adapter_plan/verification/04_security_addendum.md`, handed over
+ * by task 4 row 51; decisions C29 (2), C36): `capture_devices_profiles_code_check` holds every
+ * element of `capture_devices.profiles` to the code form of the Core. `0021` is a DATA STEP: a
+ * stored list that holds anything else (an ONVIF token list of an adoption before row 51) is set
+ * to the empty list, and that camera needs a connection test before it can be assigned. Code that
+ * reads the list as codes must not start on a database that does not keep that promise, and older
+ * code may write a token list the database now refuses, so B-3 refuses in both directions.
+ *
+ * 11 since migration set 12 (`0024_installation_acceptance.sql` +
+ * `0025_installation_acceptance_privileges.sql`; schema set C of task 4, design
+ * `docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md` section 2.6;
+ * decisions U11 (OQ-2), C2; security finding S13-13): T-48 `installation_acceptances`, the record
+ * that an installation was accepted, with at most one acceptance in force. Code that reads or
+ * writes an acceptance fails at its first statement on a database without the set, and the status
+ * command of older code would not count the table, so B-3 refuses in both directions.
+ *
+ * 12 since migration set 13 (`0026_alias_removal_reasons.sql` +
+ * `0027_alias_removal_reasons_privileges.sql`; decisions C74 (D-2, D-3) and C83 of
+ * `docs/2026-10-12_input_av_core_adapter_plan/decisions/decisions.md`; security finding S13-10):
+ * the values `SHUTDOWN` and `NOT_ADDED` in the removal reasons of a temporary host address
+ * (`host_network_aliases_remove_reason_check`). No table, no column, no grant. Code that closes a
+ * row with a new reason answers 23514 on a database without the set, and older code must not
+ * read an alias history that may hold a reason it does not know, so B-3 refuses in both directions.
+ *
+ * 13 since migration set 14 (`0028_alias_removal_reason_unconfirmed.sql` +
+ * `0029_alias_removal_reason_unconfirmed_privileges.sql`; caution R119-05, answer (d), of
+ * `docs/2026-10-12_input_av_core_adapter_plan/verification/119_commissioning_security.md`;
+ * decision C94 (d)): the value `ADD_UNCONFIRMED` in the same set, for the removal at once after
+ * an `add` whose effect is not known. No table, no column, no grant. B-3 refuses in both
+ * directions for the reasons of set 13.
  */
-export const DB_SCHEMA_VERSION = 8;
+export const DB_SCHEMA_VERSION = 13;
 /** The revision of the database contract the migration set was written from. */
-export const DB_CONTRACT_REVISION = 'dbc-9';
+export const DB_CONTRACT_REVISION = 'dbc-14';
 
 /** T-29. One row. */
 export const schemaMeta = pgTable(

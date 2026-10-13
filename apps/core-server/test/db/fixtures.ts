@@ -804,6 +804,39 @@ export function hostNetworkAlias(overrides: Row = {}): Row {
 /** The columns that close a `host_network_aliases` row: removed by hand, five seconds after it was added. */
 export const ALIAS_CLOSED: Row = { removed_at: T + 5_000, remove_reason: 'MANUAL' };
 
+/**
+ * One `installation_acceptances` row (T-48, task 4 schema set C): an acceptance IN FORCE. Two
+ * steps, each a flat object, and the diagnostics in the shape of the Core's own diagnostics run
+ * (the run, its checks, the flat `params` of a check). The id is the column's default. The step
+ * ids and the member names are fixture words: the contract of the acceptance operation (row 116)
+ * names the real ones.
+ */
+export function installationAcceptance(overrides: Row = {}): Row {
+  return {
+    accepted_at: T,
+    accepted_by: 'OPR-001',
+    software_version: '0.6.0',
+    core_device_id: 'DEMS-JKT-07',
+    site_name: 'Ruang Pemeriksaan 3',
+    room: 'R-3',
+    site_address: 'Jl. Contoh No. 1\nJakarta',
+    steps: json([
+      { id: 'CAMERAS_ASSIGNED', passed: true, detail: null },
+      { id: 'MICROPHONES_ASSIGNED', passed: true, detail: null },
+    ]),
+    diagnostics: json({
+      id: 'DIAG-000001',
+      startedAt: T - 60_000,
+      completedAt: T - 30_000,
+      checks: [{ id: 'CPU', label: 'Processor', status: 'PASS', detail: null, params: { cpuPercent: 12, cpuTempC: 48.5 } }],
+    }),
+    ...overrides,
+  };
+}
+
+/** The columns that revoke an `installation_acceptances` row: five seconds after it was accepted, with a reason. */
+export const ACCEPTANCE_REVOKED: Row = { revoked_at: T + 5_000, revoked_by: 'OPR-001', revoke_reason: 'The Core was moved to another room.' };
+
 /** The one `core_media_store` row (T-43, erratum PE-0013-01): the media store root of a Core. */
 export function mediaStore(overrides: Row = {}): Row {
   return { singleton: true, media_root: '/srv/dems/media/sessions', recorded_at: T, ...overrides };

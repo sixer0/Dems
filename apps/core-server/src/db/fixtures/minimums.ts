@@ -31,7 +31,7 @@ export interface TableMinimum {
   readonly mix: string;
 }
 
-/** The 47 tables in the order of the contract's table: §11 revision 2, revised by dbc-3 §G and dbc-4 §N.10; T-44 and T-45 of task 4 set A and T-46 and T-47 of task 4 set B appended. */
+/** The 48 tables in the order of the contract's table: §11 revision 2, revised by dbc-3 §G and dbc-4 §N.10; T-44 and T-45 of task 4 set A, T-46 and T-47 of task 4 set B and T-48 of task 4 set C appended. */
 export const BULK_MINIMUMS: readonly TableMinimum[] = Object.freeze([
   { table: 'roles', minimum: 3, mix: 'unchanged' },
   { table: 'permissions', minimum: 14, mix: 'the 14 seeded by schema v2 (dbc-3 §G revised): CAPTURE_CONFIG and TRANSCRIPT_REVISE joined the list' },
@@ -108,6 +108,9 @@ export const BULK_MINIMUMS: readonly TableMinimum[] = Object.freeze([
   // installation, written by a technician's action.
   { table: 'capture_network_config', minimum: 0, mix: 'task 4 set B: none built; one row, written at first use of the commissioning functions' },
   { table: 'host_network_aliases', minimum: 0, mix: 'task 4 set B: none built; one row per alias address the Core put on the camera interface' },
+  // Schema v11 (task 4 schema set C): the record that an installation was accepted (T-48). The
+  // fixture builds none: it is a fact of an installation, written by the acceptance operation.
+  { table: 'installation_acceptances', minimum: 0, mix: 'task 4 set C: none built; one row per acceptance, at most one in force' },
 ] as const);
 
 /** The required mix as numbers. Every value is a minimum, except `pairingCodes.activeAtMost`. */

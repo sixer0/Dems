@@ -1,0 +1,2 @@
+ALTER TABLE "host_network_aliases" DROP CONSTRAINT "host_network_aliases_remove_reason_check";--> statement-breakpoint
+ALTER TABLE "host_network_aliases" ADD CONSTRAINT "host_network_aliases_remove_reason_check" CHECK ((("host_network_aliases"."remove_reason" IS NULL) = ("host_network_aliases"."removed_at" IS NULL)) AND ("host_network_aliases"."remove_reason" IS NULL OR "host_network_aliases"."remove_reason" IN ('EXPIRED', 'MANUAL', 'JOB_DONE', 'BOOT_SWEEP', 'SHUTDOWN', 'NOT_ADDED', 'ADD_UNCONFIRMED')));

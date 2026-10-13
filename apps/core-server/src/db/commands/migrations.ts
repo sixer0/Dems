@@ -42,7 +42,17 @@ export const MIGRATIONS_TABLE = '__drizzle_migrations';
  * Files sixteen and seventeen are migration set 8 (schema set A of task 4, contract revision
  * `dbc-8`): `0015` generated, `0016` hand-written, schema version 7. Files eighteen and nineteen
  * are migration set 9 (schema set B of task 4, contract revision `dbc-9`): `0017` generated,
- * `0018` hand-written, schema version 8.
+ * `0018` hand-written, schema version 8. Files twenty and twenty-one are migration set 10 (task 4
+ * package X-C, contract revision `dbc-10`): `0019` generated, `0020` hand-written, schema version 9.
+ * Files twenty-two to twenty-four are migration set 11 (the element CHECK on
+ * `capture_devices.profiles`, contract revision `dbc-11`): `0021` hand-written (the data step,
+ * which must run before the CHECK), `0022` generated, `0023` hand-written, schema version 10.
+ * Files twenty-five and twenty-six are migration set 12 (schema set C of task 4, contract revision
+ * `dbc-12`): `0024` generated, `0025` hand-written, schema version 11. Files twenty-seven and
+ * twenty-eight are migration set 13 (the honest removal reasons of a temporary host address,
+ * contract revision `dbc-13`): `0026` generated, `0027` hand-written, schema version 12. Files
+ * twenty-nine and thirty are migration set 14 (the further removal reason `ADD_UNCONFIRMED`,
+ * contract revision `dbc-14`): `0028` generated, `0029` hand-written, schema version 13.
  */
 export const INITIAL_MIGRATION_TAGS = [
   '0000_prelude',
@@ -64,6 +74,17 @@ export const INITIAL_MIGRATION_TAGS = [
   '0016_capture_streams_audio_inputs_privileges',
   '0017_network_commissioning',
   '0018_network_commissioning_privileges',
+  '0019_credential_replaced_reason',
+  '0020_credential_replaced_reason_privileges',
+  '0021_profile_codes_data',
+  '0022_profile_codes',
+  '0023_profile_codes_privileges',
+  '0024_installation_acceptance',
+  '0025_installation_acceptance_privileges',
+  '0026_alias_removal_reasons',
+  '0027_alias_removal_reasons_privileges',
+  '0028_alias_removal_reason_unconfirmed',
+  '0029_alias_removal_reason_unconfirmed_privileges',
 ] as const;
 
 export interface MigrationFile {

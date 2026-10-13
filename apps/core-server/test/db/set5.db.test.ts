@@ -34,6 +34,7 @@ import {
   readSchemaVersion,
 } from '../../src/db/commands/migrations';
 import { BootCheckError, checkSchemaVersion } from '../../src/db/schema/boot-checks';
+import { DB_CONTRACT_REVISION, DB_SCHEMA_VERSION } from '../../src/db/schema/meta';
 import { useTestDatabase } from '../helpers/db';
 import { captureDevice, insertRow, sttConfig } from './fixtures';
 import { EMPTY_DATABASE, SQLSTATE, expectRefused } from './support';
@@ -100,12 +101,15 @@ describe('M4A-1: the defect on a (3, dbc-4) database', () => {
     await migrateToVersion3(owner);
     const ledger = await inspectLedger(owner);
     expect(ledger.ok).toBe(true);
-    expect(ledger.pending).toEqual([TAG, '0011_session_stt_config', '0012_session_stt_config_privileges', '0013_key_id_fault_reason_media_root', '0014_key_id_fault_reason_media_root_privileges', '0015_capture_streams_audio_inputs', '0016_capture_streams_audio_inputs_privileges', '0017_network_commissioning', '0018_network_commissioning_privileges']);
+    // Every file after 0010 is pending too; the list is read from the tag list, which every later set extends.
+    expect(INITIAL_MIGRATION_TAGS.slice(11, 19)).toEqual(['0011_session_stt_config', '0012_session_stt_config_privileges', '0013_key_id_fault_reason_media_root', '0014_key_id_fault_reason_media_root_privileges', '0015_capture_streams_audio_inputs', '0016_capture_streams_audio_inputs_privileges', '0017_network_commissioning', '0018_network_commissioning_privileges']);
+    expect(ledger.pending).toEqual([TAG, ...INITIAL_MIGRATION_TAGS.slice(11)]);
     expect((await inspectLedger(owner, folderOf(11))).pending).toEqual([TAG]);
     const error = await checkSchemaVersion(db.appPool()).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(BootCheckError);
+    // The pair this code expects is read from its constants: it moves with every later set.
     expect((error as BootCheckError).message).toBe(
-      'B-3: the database is at schema version 3 (dbc-4); this server expects 8 (dbc-9). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>',
+      `B-3: the database is at schema version 3 (dbc-4); this server expects ${DB_SCHEMA_VERSION} (${DB_CONTRACT_REVISION}). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>`,
     );
     await expect(checkSchemaVersion(db.appPool(), { schemaVersion: 3, contractRevision: 'dbc-4' })).resolves.toBeUndefined();
   });
@@ -129,7 +133,7 @@ describe('M4A-2: set 5 applies one file and changes neither an object nor a row'
     const catalogBefore = await owner.query(objects);
     const rowsBefore = await stored(owner);
     // The set stops at 0010, so the applier commits the file and then reports that the version
-    // is not this code's (8, 'dbc-9') - the same device as `migrateToVersion3`.
+    // is not this code's (a later set's) - the same device as `migrateToVersion3`.
     const folder = folderOf(11);
     expect(await readSchemaVersion(owner)).toEqual({ schemaVersion: 3, contractRevision: 'dbc-4' });
     const error = await applyMigrations(owner, folder).catch((thrown: unknown) => thrown);

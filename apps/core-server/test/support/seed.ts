@@ -97,6 +97,8 @@ export const EXPECTED_SEED_COUNTS: Readonly<Record<string, number>> = Object.fre
   // use, and the camera interface is never chosen for the technician) and no alias row.
   capture_network_config: 0,
   host_network_aliases: 0,
+  // Schema v11 (task 4 schema set C): the seed accepts no installation; the acceptance operation does.
+  installation_acceptances: 0,
 });
 
 // ── The wire form ──────────────────────────────────────────────────────────────────────────────

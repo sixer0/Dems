@@ -20,6 +20,7 @@ import {
   audioInterval,
   authSession,
   biometricToken,
+  ACCEPTANCE_REVOKED,
   ALIAS_CLOSED,
   captureAudioInput,
   captureConfig,
@@ -29,6 +30,7 @@ import {
   captureNetworkConfig,
   captureSource,
   hostNetworkAlias,
+  installationAcceptance,
   mediaStore,
   sessionSttSnapshot,
   consoleSettings,
@@ -183,6 +185,8 @@ const REFUSED_BY_CHECK: ReadonlyArray<readonly [string, string, Row]> = [
   ['capture_devices_transport_check', 'capture_devices', captureDevice('CAM-01', 'CAMERA', { transport: 'usb' })],
   ['capture_devices_text_check', 'capture_devices', captureDevice('CAM-01', 'CAMERA', { model: '' })],
   ['capture_devices_profiles_check', 'capture_devices', captureDevice('CAM-01', 'CAMERA', { profiles: json({}) })],
+  // schema v10 (AD-06 (4)): an element that is an ONVIF token, as adoption stored it before row 51.
+  ['capture_devices_profiles_code_check', 'capture_devices', captureDevice('CAM-01', 'CAMERA', { profiles: json(['profile_1']) })],
   ['capture_devices_poe_port_check', 'capture_devices', captureDevice('CAM-01', 'CAMERA', { poe_port: 'eth0' })],
   ['capture_config_singleton_check', 'capture_config', captureConfig({ singleton: false })],
   ['capture_config_profile_check', 'capture_config', captureConfig({ video_01_profile: 'uhd' })],
@@ -303,6 +307,19 @@ const REFUSED_BY_CHECK: ReadonlyArray<readonly [string, string, Row]> = [
   ['host_network_aliases_remove_error_check', 'host_network_aliases', hostNetworkAlias({ remove_error: 'del failed' })],
   ['capture_audio_inputs_usb_serial_check', 'capture_audio_inputs', captureAudioInput('MIC-01', { usb_serial: 'SN 0042' })],
   ['capture_audio_inputs_usb_port_check', 'capture_audio_inputs', captureAudioInput('MIC-01', { usb_port: '1-1.4/input0' })],
+  // ── schema v11 (task 4 schema set C): the eleven CHECKs of T-48. Each row breaks ONE rule, or
+  //    the rule it names comes first in name order (CHECKs are evaluated in name order). ──
+  ['installation_acceptances_software_version_check', 'installation_acceptances', installationAcceptance({ software_version: '' })],
+  ['installation_acceptances_site_check', 'installation_acceptances', installationAcceptance({ room: '' })],
+  ['installation_acceptances_site_address_check', 'installation_acceptances', installationAcceptance({ site_address: '' })],
+  ['installation_acceptances_steps_check', 'installation_acceptances', installationAcceptance({ steps: json({}) })],
+  ['installation_acceptances_steps_no_secret_keys_check', 'installation_acceptances', installationAcceptance({ steps: json([{ id: 'A', password: 'x' }]) })],
+  ['installation_acceptances_steps_bound_check', 'installation_acceptances', installationAcceptance({ steps: json([{ id: 'A', detail: 'x'.repeat(201) }]) })],
+  ['installation_acceptances_diagnostics_check', 'installation_acceptances', installationAcceptance({ diagnostics: json([]) })],
+  ['installation_acceptances_diagnostics_no_secret_keys_check', 'installation_acceptances', installationAcceptance({ diagnostics: json({ checks: [{ params: { token: 'x' } }] }) })],
+  ['installation_acceptances_diagnostics_bound_check', 'installation_acceptances', installationAcceptance({ diagnostics: json({ note: 'x'.repeat(201) }) })],
+  ['installation_acceptances_revoked_at_check', 'installation_acceptances', installationAcceptance({ ...ACCEPTANCE_REVOKED, revoked_at: T - 1 })],
+  ['installation_acceptances_revoke_check', 'installation_acceptances', installationAcceptance({ revoked_at: T + 5_000 })],
 ];
 
 /**
@@ -333,11 +350,11 @@ async function insert(table: string, row: Row): Promise<void> {
 }
 
 describe('CL-03: one refused row per named CHECK', () => {
-  it('the list covers all 217 CHECKs of the contract: 212 directly, 5 that another rule refuses first', () => {
+  it('the list covers all 229 CHECKs of the contract: 224 directly, 5 that another rule refuses first', () => {
     const named = inventory.tables.flatMap((table) => table.constraints.filter((constraint) => constraint.kind === 'CHECK').map((constraint) => constraint.name));
     const covered = [...REFUSED_BY_CHECK.map(([name]) => name), ...SHADOWED.map(([name]) => name)];
-    expect(named).toHaveLength(217);
-    expect(REFUSED_BY_CHECK).toHaveLength(212);
+    expect(named).toHaveLength(229);
+    expect(REFUSED_BY_CHECK).toHaveLength(224);
     expect([...covered].sort()).toEqual([...named].sort());
     for (const [name, table] of [...REFUSED_BY_CHECK, ...SHADOWED]) expect(name.startsWith(`${table}_`), name).toBe(true);
   });
@@ -363,7 +380,7 @@ describe('CL-03: one refused row per named CHECK', () => {
 });
 
 describe('the valid rows are accepted: no CHECK is stricter than the contract', () => {
-  it('one valid row in each of the 47 tables', async () => {
+  it('one valid row in each of the 48 tables', async () => {
     await insertRbac(owner);
     await insertDevice(owner, 'DEV-0001', 'PCD-000001');
     await insertRow(owner, 'pairing_codes', pairingCode('PCD-000050'));
@@ -444,6 +461,11 @@ describe('the valid rows are accepted: no CHECK is stricter than the contract', 
     await insertRow(owner, 'host_network_aliases', hostNetworkAlias({ ...ALIAS_CLOSED, removed_by: 'OPR-001' }));
     await insertRow(owner, 'host_network_aliases', hostNetworkAlias({ address: '10.20.30.254/24', reason: 'SET_CAMERA_ADDRESS', remove_error: 'DEL_FAILED' }));
     await owner.query("UPDATE public.capture_audio_inputs SET usb_serial = 'A1B2-C3.D4_E5:F6', usb_port = '1-1.4' WHERE device_id = 'MIC-01'");
+    // schema v11 (task 4 schema set C): an acceptance that was revoked, the one in force after it,
+    // and a revoked one with no site address, no step and empty diagnostics (the bounds are upper bounds).
+    await insertRow(owner, 'installation_acceptances', installationAcceptance({ ...ACCEPTANCE_REVOKED }));
+    await insertRow(owner, 'installation_acceptances', installationAcceptance({ accepted_at: T + 10_000 }));
+    await insertRow(owner, 'installation_acceptances', installationAcceptance({ ...ACCEPTANCE_REVOKED, site_address: null, steps: json([]), diagnostics: json({}) }));
 
     const { rows } = await owner.query<{ empty: string }>(
       inventory.tables.map((table) => `SELECT '${table.name}' AS empty WHERE NOT EXISTS (SELECT 1 FROM public.${table.name})`).join(' UNION ALL '),
@@ -538,11 +560,15 @@ describe('CL-02: every reference is a foreign key with ON DELETE RESTRICT', () =
     ['capture_network_config_updated_by_fkey', 'capture_network_config', captureNetworkConfig({ updated_by: 'OPR-777' })],
     ['host_network_aliases_added_by_fkey', 'host_network_aliases', hostNetworkAlias({ ...ALIAS_CLOSED, added_by: 'OPR-777' })],
     ['host_network_aliases_removed_by_fkey', 'host_network_aliases', hostNetworkAlias({ ...ALIAS_CLOSED, removed_by: 'OPR-777' })],
+    // schema v11 (task 4 schema set C): the two new foreign keys, each with an unknown operator.
+    // Both rows are REVOKED ones: a row in force would meet the one-in-force rule first.
+    ['installation_acceptances_accepted_by_fkey', 'installation_acceptances', installationAcceptance({ ...ACCEPTANCE_REVOKED, accepted_by: 'OPR-777' })],
+    ['installation_acceptances_revoked_by_fkey', 'installation_acceptances', installationAcceptance({ ...ACCEPTANCE_REVOKED, revoked_by: 'OPR-777' })],
   ];
 
-  it('the list covers all 46 foreign keys of the contract', () => {
+  it('the list covers all 48 foreign keys of the contract', () => {
     const named = inventory.tables.flatMap((table) => table.constraints.filter((constraint) => constraint.kind === 'FOREIGN KEY').map((constraint) => constraint.name));
-    expect(named).toHaveLength(46);
+    expect(named).toHaveLength(48);
     expect([...UNKNOWN_PARENT.map(([name]) => name), 'audit_log_actor_id_fkey'].sort()).toEqual([...named].sort());
   });
 
