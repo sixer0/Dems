@@ -106,11 +106,11 @@ afterEach(async () => {
 })
 
 describe('the role matrix (§6.1; FC-3; TS-8)', () => {
-  it('Live: the Core\'s fourteen permissions from operation 10, in its order, with its grants; one request; the cache entry is the runtime\'s key', async () => {
+  it('Live: the Core\'s fifteen permissions from operation 10, in its order, with its grants; one request; the cache entry is the runtime\'s key', async () => {
     const { mounted } = await live()
     const table = await screen.findByTestId('rbac-matrix')
     expect(table).toHaveAttribute('data-matrix-source', 'core')
-    expect(within(table).getAllByRole('row')).toHaveLength(15)
+    expect(within(table).getAllByRole('row')).toHaveLength(16)
     expect(matrixLabels(table)).toEqual(SEEDED.permissions.map((permission) => R.permissions[permission]))
     // The grants are the Core's: 18 checks in the seeded matrix; USER_ADMIN only for the Supervisor.
     expect(table.querySelectorAll('[data-granted="true"]')).toHaveLength(SEEDED.grants.length)
@@ -161,7 +161,7 @@ describe('the role matrix (§6.1; FC-3; TS-8)', () => {
     await waitFor(() => expect(screen.getByTestId('rbac-matrix-retry')).not.toBeDisabled(), { timeout: 6_000 })
     fireEvent.click(screen.getByTestId('rbac-matrix-retry'))
     const table = await screen.findByTestId('rbac-matrix')
-    expect(within(table).getAllByRole('row')).toHaveLength(15)
+    expect(within(table).getAllByRole('row')).toHaveLength(16)
     expect(requests('getRoleMatrix')).toHaveLength(3)
   })
 

@@ -92,6 +92,9 @@ const DUMP_ORDER: Readonly<Record<string, string>> = {
   // Schema v7 (task 4 schema set A): T-44, keyed by (device_id, profile); T-45, one row per microphone.
   capture_device_streams: 'device_id, profile',
   capture_audio_inputs: 'device_id',
+  // Schema v8 (task 4 schema set B): T-46, one row; T-47, one row per alias.
+  capture_network_config: 'singleton',
+  host_network_aliases: 'id',
 };
 
 /**

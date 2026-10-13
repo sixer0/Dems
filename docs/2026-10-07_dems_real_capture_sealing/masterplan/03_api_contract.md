@@ -226,6 +226,7 @@ or `EXPORT_DENIED` on the export command, `contract-model.ts:200-211`).
 | `EVIDENCE_EXPORT` (existing) | SUPERVISOR | `core-api.ts:872-877`; RB-5 | modified op 42 |
 | `DEVICE_MANAGE` (existing) | TECHNICIAN | `devices.ts:155`; predecessor `specs §4.4` | modified op 48 (PoE cycle) |
 | `AUTHENTICATED` (any role) | every role | `contract-model.ts:133` | captures, sealing progress, intervals |
+| `CAPTURE_COMMISSION` (new; added by task 4, blueprint row 100) | TECHNICIAN | task 4 decision U10; plan review P12-F07; `sim/auth.ts`; stored rows: migration `0018` | the commissioning functions of the camera network (alias address, factory-address scan, set camera address, network settings). **TECHNICIAN only.** No operation of this document names it: its operations are a later contract package of task 4 (blueprint row 102) |
 
 Role matrix source of truth: `packages/shared/src/sim/auth.ts` (`register SH-04`), verified by the
 `rbac.matrix` boot test (D88 equality; `specs C-N9`).

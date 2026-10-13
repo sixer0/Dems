@@ -6,6 +6,14 @@
  * vocabulary (`OperatorRole`, `Permission`, `ROLE_PERMISSIONS`), so the database can never hold
  * a matrix that differs from the one both clients and the simulator read. `sort_order` is the
  * place in the declaration (1-based). Pure: nothing here reads a clock or a database.
+ *
+ * ONE EXCEPTION since migration `0018` (task 4, plan review P12-F07): a database that was seeded
+ * BEFORE a permission existed has no seed run to write it, and the boot refuses a stored matrix
+ * that differs from the vocabulary. `0018` therefore writes the row of `CAPTURE_COMMISSION` (sort
+ * order 15) and its one grant (TECHNICIAN) - into a seeded database only; on an empty one it
+ * writes nothing and the rule above holds unchanged. The two must agree with what this file
+ * derives: `to-rows.test.ts` and `test/db/set9.db.test.ts` hold them equal. A permission added
+ * later travels the same way, in the migration set of its commit.
  */
 import { OperatorRole, Permission, ROLE_PERMISSIONS } from '@dems/shared/sim';
 import type { PermissionRow, RolePermissionRow, RoleRow } from '../schema';

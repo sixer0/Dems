@@ -44,10 +44,20 @@ import { boolean, check, integer, pgTable, text } from 'drizzle-orm/pg-core';
  * Code that writes a new table or the new column fails at its first statement on a database
  * without the set, and older code must not read a selector row that may hold an unassigned slot,
  * so B-3 refuses in both directions.
+ *
+ * 8 since migration set 9 (`0017_network_commissioning.sql` +
+ * `0018_network_commissioning_privileges.sql`; schema set B of task 4, design
+ * `docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md` sections 2.4
+ * and 2.5; decisions U10, U11; plan review P12-F07; findings of rows 67 and 156): T-46
+ * `capture_network_config`, T-47 `host_network_aliases`, the columns `usb_serial` and `usb_port`
+ * of `capture_audio_inputs`, and - on a database that is already seeded - the two stored rows of
+ * the commissioning permission. Code that reads the network settings or stores the port of a
+ * sound card fails at its first statement on a database without the set, and older code refuses
+ * a stored matrix that holds a permission it does not know, so B-3 refuses in both directions.
  */
-export const DB_SCHEMA_VERSION = 7;
+export const DB_SCHEMA_VERSION = 8;
 /** The revision of the database contract the migration set was written from. */
-export const DB_CONTRACT_REVISION = 'dbc-8';
+export const DB_CONTRACT_REVISION = 'dbc-9';
 
 /** T-29. One row. */
 export const schemaMeta = pgTable(

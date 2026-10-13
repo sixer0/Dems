@@ -66,9 +66,10 @@ export const EXPECTED_SEED_COUNTS: Readonly<Record<string, number>> = Object.fre
   operators: 3,
   paired_devices: 0,
   pairing_codes: 0,
-  permissions: 14,
+  // 15 and 23 since task 4 row 100: the commissioning permission and its one grant (TECHNICIAN).
+  permissions: 15,
   registry_counters: 2,
-  role_permissions: 22,
+  role_permissions: 23,
   roles: 3,
   schema_meta: 1,
   session_history: 13,
@@ -92,6 +93,10 @@ export const EXPECTED_SEED_COUNTS: Readonly<Record<string, number>> = Object.fre
   // connection test and a registration do.
   capture_device_streams: 0,
   capture_audio_inputs: 0,
+  // Schema v8 (task 4 schema set B): the seed writes no network settings (the row is made at first
+  // use, and the camera interface is never chosen for the technician) and no alias row.
+  capture_network_config: 0,
+  host_network_aliases: 0,
 });
 
 // ── The wire form ──────────────────────────────────────────────────────────────────────────────

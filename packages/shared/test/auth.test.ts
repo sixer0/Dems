@@ -243,7 +243,7 @@ describe('RBAC (demo roles, 01 G1)', () => {
 
   // Backend task W16 (GP-06; 2026-10-04 01_specs §4.3, §4.4, AC-B-17): the matrix the Core server
   // seeds and enforces. Three permissions and three SUPERVISOR grants were added; nothing else moved.
-  it('pins 14 permissions and 22 grants: INVESTIGATOR 5, SUPERVISOR 12, TECHNICIAN 5 (W16; M2-W6 SH-04)', () => {
+  it('pins 15 permissions and 23 grants: INVESTIGATOR 5, SUPERVISOR 12, TECHNICIAN 6 (W16; M2-W6 SH-04; task 4 row 100)', () => {
     expect(Object.values(Permission)).toEqual([
       'SESSION_START',
       'SESSION_NOTE',
@@ -260,6 +260,8 @@ describe('RBAC (demo roles, 01 G1)', () => {
       // Task 3 M2-W6 (register SH-03/SH-04; D4 OD-10 and OD-15).
       'CAPTURE_CONFIG',
       'TRANSCRIPT_REVISE',
+      // Task 4 row 100 (decision U10): declared last; place 15 is the stored sort order.
+      'CAPTURE_COMMISSION',
     ]);
     expect(Object.keys(Permission)).toEqual(Object.values(Permission));
     expect(ROLE_PERMISSIONS).toEqual({
@@ -278,12 +280,12 @@ describe('RBAC (demo roles, 01 G1)', () => {
         'DEMO_CONTROL',
         'CAPTURE_CONFIG',
       ],
-      TECHNICIAN: ['EVIDENCE_VIEW', 'DEVICE_MANAGE', 'DIAGNOSTICS_RUN', 'MAINTENANCE', 'CAPTURE_CONFIG'],
+      TECHNICIAN: ['EVIDENCE_VIEW', 'DEVICE_MANAGE', 'DIAGNOSTICS_RUN', 'MAINTENANCE', 'CAPTURE_CONFIG', 'CAPTURE_COMMISSION'],
     });
     const grants = Object.values(ROLE_PERMISSIONS).map((list) => list.length);
-    expect(grants).toEqual([5, 12, 5]);
-    // The same numbers the v2 seed writes (`dbc-3 §E.3`: 14 permissions, 22 grants; D88 equality).
-    expect(grants.reduce((sum, count) => sum + count, 0)).toBe(22);
+    expect(grants).toEqual([5, 12, 6]);
+    // The same numbers the seed writes (`dbc-3 §E.3` + task 4 row 100: 15 permissions, 23 grants; D88 equality).
+    expect(grants.reduce((sum, count) => sum + count, 0)).toBe(23);
     for (const list of Object.values(ROLE_PERMISSIONS)) {
       expect(new Set<string>(list).size).toBe(list.length);
     }
@@ -300,5 +302,10 @@ describe('RBAC (demo roles, 01 G1)', () => {
     expect(roleHas('INVESTIGATOR', Permission.TRANSCRIPT_REVISE)).toBe(true);
     expect(roleHas('SUPERVISOR', Permission.TRANSCRIPT_REVISE)).toBe(true);
     expect(roleHas('TECHNICIAN', Permission.TRANSCRIPT_REVISE)).toBe(false);
+    // Decision U10: the commissioning functions are the technician's alone - ONE role holds it.
+    expect(roleHas('TECHNICIAN', Permission.CAPTURE_COMMISSION)).toBe(true);
+    expect(roleHas('SUPERVISOR', Permission.CAPTURE_COMMISSION)).toBe(false);
+    expect(roleHas('INVESTIGATOR', Permission.CAPTURE_COMMISSION)).toBe(false);
+    expect(Object.entries(ROLE_PERMISSIONS).filter(([, list]) => (list as readonly string[]).includes(Permission.CAPTURE_COMMISSION)).map(([role]) => role)).toEqual(['TECHNICIAN']);
   });
 });

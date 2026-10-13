@@ -86,8 +86,8 @@ describe('M2-API-3 / M2-MT-7: the rbac.matrix boot passes with D88 equality on t
       // One statement, the guard's own matrix read, nothing else asked of the pool.
       expect(booted.queries).toEqual([READ_STORED_MATRIX]);
       expect(loaded.roles).toEqual(['INVESTIGATOR', 'SUPERVISOR', 'TECHNICIAN']);
-      expect(loaded.permissions).toHaveLength(14);
-      expect(loaded.grants).toHaveLength(22);
+      expect(loaded.permissions).toHaveLength(15);
+      expect(loaded.grants).toHaveLength(23);
 
       // THE COMPARISON, quoted for the artifact: stored grants vs the shared role table.
       const stored = grantNames(loaded.grants);
@@ -100,6 +100,9 @@ describe('M2-API-3 / M2-MT-7: the rbac.matrix boot passes with D88 equality on t
       expect(stored).toContain('TECHNICIAN: CAPTURE_CONFIG');
       expect(stored).toContain('INVESTIGATOR: TRANSCRIPT_REVISE');
       expect(stored).toContain('SUPERVISOR: TRANSCRIPT_REVISE');
+      // Task 4 row 100 (decision U10): the commissioning permission is inside the equality too, and
+      // ONE role holds it.
+      expect(stored.filter((grant) => grant.endsWith(': CAPTURE_COMMISSION'))).toEqual(['TECHNICIAN: CAPTURE_COMMISSION']);
       expect(guard.matrix()).not.toBeNull();
     } finally {
       await booted.close();
@@ -123,6 +126,29 @@ describe('M2-API-3 / M2-MT-7: the rbac.matrix boot passes with D88 equality on t
       expect(guard.matrix()).toBeNull();
     } finally {
       await booted.close();
+    }
+  });
+
+  it('P12-F07: a database that was seeded BEFORE the commissioning permission and holds no row of it is refused by the SAME boot - which is why migration 0018 writes the two rows', async () => {
+    const before = matrixAnswer({ role: 'TECHNICIAN', permission: 'CAPTURE_COMMISSION' }).rows[0] as { roles: string[]; permissions: string[]; grants: unknown[] };
+    const stale = { rows: [{ ...before, permissions: before.permissions.filter((permission) => permission !== 'CAPTURE_COMMISSION') }] };
+    const log = captureLog();
+    const pool = {
+      query: (text: string) => Promise.resolve(text.includes('public.role_permissions') ? stale : { rows: [] }),
+      on: () => pool,
+      end: () => Promise.resolve(),
+    };
+    const app = buildApp({ config: unitTestConfig({ logLevel: 'silent' }), createPool: () => pool as never, logStream: log.stream });
+    await app.ready();
+    try {
+      const guard = permissionGuard(app);
+      guard.checkRouter();
+      const refused = (await guard.reloadMatrix().catch((cause: unknown) => cause)) as AccessRuleError;
+      expect(refused.problems.map((problem) => problem.code)).toContain(AccessRuleErrorCode.STORED_MATRIX_MISMATCH);
+      expect(refused.problems.find((problem) => problem.code === AccessRuleErrorCode.STORED_MATRIX_MISMATCH)?.detail).toContain('CAPTURE_COMMISSION');
+      expect(guard.matrix()).toBeNull();
+    } finally {
+      await app.close();
     }
   });
 

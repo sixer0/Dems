@@ -63,14 +63,14 @@ function strings(value: unknown, out: string[] = []): string[] {
 }
 
 describe('the minimums of contract §11 as revised by dbc-3 §G', () => {
-  it('the table has 45 entries, one per table of the typed schema', () => {
-    expect(BULK_MINIMUMS).toHaveLength(45);
-    expect(new Set(BULK_MINIMUMS.map((entry) => entry.table)).size).toBe(45);
+  it('the table has 47 entries, one per table of the typed schema', () => {
+    expect(BULK_MINIMUMS).toHaveLength(47);
+    expect(new Set(BULK_MINIMUMS.map((entry) => entry.table)).size).toBe(47);
     // Schema v2 (CS-20 of the row-55 review): §G made the v2 minimums bulk-fixture deliverables.
     // The table now covers every table `base.counts` names - nothing counted is unasserted,
     // nothing asserted is unknown to the schema.
     const counted = Object.keys(base.counts);
-    expect(counted).toHaveLength(45);
+    expect(counted).toHaveLength(47);
     for (const entry of BULK_MINIMUMS) expect(counted).toContain(entry.table);
     expect(counted.filter((table) => !BULK_MINIMUMS.some((entry) => entry.table === table))).toEqual([]);
     expect(minimumOf('audit_log')).toBe(5_000);
@@ -93,6 +93,9 @@ describe('the minimums of contract §11 as revised by dbc-3 §G', () => {
     // Task 4 schema set A: T-44 and T-45 join with 0 - a connection test and a registration write them.
     expect(minimumOf('capture_device_streams')).toBe(0);
     expect(minimumOf('capture_audio_inputs')).toBe(0);
+    // Task 4 schema set B: T-46 and T-47 join with 0 - facts of an installation, written by a technician's action.
+    expect(minimumOf('capture_network_config')).toBe(0);
+    expect(minimumOf('host_network_aliases')).toBe(0);
     expect(minimumOf('capture_device_credentials')).toBe(2);
     expect(() => minimumOf('no_such_table')).toThrow(RangeError);
   });
@@ -100,7 +103,7 @@ describe('the minimums of contract §11 as revised by dbc-3 §G', () => {
   it('every table holds at least its minimum after the load (entity, minimum, loaded)', () => {
     const comparison = compareWithMinimums(fixture.expectedCounts);
     expect(comparison.filter((entry) => !entry.met)).toEqual([]);
-    expect(comparison).toHaveLength(45);
+    expect(comparison).toHaveLength(47);
     // The seed alone is far below: the comparison is able to fail.
     expect(compareWithMinimums(base.counts).filter((entry) => !entry.met).map((entry) => entry.table)).toContain('audit_log');
     // What the fixture adds is what its row lists hold.

@@ -112,7 +112,7 @@ describe('the boot step rbac.matrix on a seeded database', () => {
     expect(guard.log.lines().filter((line) => Number(line['level']) >= 50)).toEqual([]);
   });
 
-  it('loaded the stored matrix: 3 roles, 14 permissions and 22 grants, in the stored order, stamped by the server clock', () => {
+  it('loaded the stored matrix: 3 roles, 15 permissions and 23 grants, in the stored order, stamped by the server clock', () => {
     const loaded = permissionGuard(guard.app).matrix();
     expect(loaded?.roles).toEqual(ROLES);
     expect(loaded?.permissions).toEqual(PERMISSIONS);
@@ -235,9 +235,14 @@ describe('AC-B-16, unit form: the decision for all 99 operations with a principa
     expect(ROLES.map(denied)).toEqual(ROLES.map(deniedFromSource));
   });
 
-  it('every permission a registry rule names is stored, and every stored permission is named by at least one rule', () => {
+  it('every permission a registry rule names is stored, and every stored permission is named by at least one rule - but for the one that is stored before its operations exist', () => {
     const named = new Set(CORE_API_OPERATIONS.flatMap((operation) => ruleOf(operation.operationId).permissions));
-    expect([...named].sort()).toEqual([...stored.permissions].sort());
+    // Task 4 row 100 (decision U10, plan review P12-F07): the commissioning permission is stored
+    // and granted (TECHNICIAN) with schema set B; the contract package of its operations is
+    // blueprint row 102, which takes the name out of this list. A second name here is a finding.
+    const NOT_YET_ENFORCED = ['CAPTURE_COMMISSION'];
+    expect(stored.permissions.filter((permission) => !named.has(permission as never))).toEqual(NOT_YET_ENFORCED);
+    expect([...named, ...NOT_YET_ENFORCED].sort()).toEqual([...stored.permissions].sort());
   });
 });
 
@@ -437,7 +442,7 @@ describe('reloadMatrix: the stored matrix read again', () => {
     const restored = await control.reloadMatrix();
 
     // A permission the server does not know.
-    await owner.query("INSERT INTO public.permissions (id, sort_order) VALUES ('WARP_DRIVE', 15)");
+    await owner.query("INSERT INTO public.permissions (id, sort_order) VALUES ('WARP_DRIVE', 16)");
     try {
       const error = await control.reloadMatrix().then(
         () => null,

@@ -259,9 +259,9 @@ export const ADMINISTRATION_OPERATIONS = [
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
 /**
- * The seeded matrix (01_specs §4.4; task 3 M2-W6 SH-04): INVESTIGATOR 5, SUPERVISOR 12, TECHNICIAN 5
- * = 22 grants over 14 permissions. Equal to `sim/auth.ts` `ROLE_PERMISSIONS` by D88 (`specs C-N9`);
- * the v2 seed writes exactly these rows (`dbc-3 §E.3`).
+ * The seeded matrix (01_specs §4.4; task 3 M2-W6 SH-04; task 4 row 100): INVESTIGATOR 5,
+ * SUPERVISOR 12, TECHNICIAN 6 = 23 grants over 15 permissions. Equal to `sim/auth.ts`
+ * `ROLE_PERMISSIONS` by D88 (`specs C-N9`); the seed writes exactly these rows (`dbc-3 §E.3`).
  */
 const SEEDED_GRANTS = {
   INVESTIGATOR: ['SESSION_START', 'SESSION_NOTE', 'EVIDENCE_VIEW', 'DIAGNOSTICS_RUN', 'TRANSCRIPT_REVISE'],
@@ -279,7 +279,7 @@ const SEEDED_GRANTS = {
     'DEMO_CONTROL',
     'CAPTURE_CONFIG',
   ],
-  TECHNICIAN: ['EVIDENCE_VIEW', 'DEVICE_MANAGE', 'DIAGNOSTICS_RUN', 'MAINTENANCE', 'CAPTURE_CONFIG'],
+  TECHNICIAN: ['EVIDENCE_VIEW', 'DEVICE_MANAGE', 'DIAGNOSTICS_RUN', 'MAINTENANCE', 'CAPTURE_CONFIG', 'CAPTURE_COMMISSION'],
 } as const satisfies Record<OperatorRole, readonly Permission[]>;
 
 const ROLE_MATRIX: RoleMatrix = {
@@ -300,6 +300,8 @@ const ROLE_MATRIX: RoleMatrix = {
     // Task 3 M2-W6 (SH-04; D4 OD-10/OD-15).
     'CAPTURE_CONFIG',
     'TRANSCRIPT_REVISE',
+    // Task 4 row 100 (decision U10): the commissioning permission, held by TECHNICIAN only.
+    'CAPTURE_COMMISSION',
   ],
   grants: (['INVESTIGATOR', 'SUPERVISOR', 'TECHNICIAN'] as const).flatMap((role) =>
     SEEDED_GRANTS[role].map((permission) => ({ role, permission })),
@@ -357,7 +359,7 @@ const denied = (operationId: string) => ({
 export const ADMINISTRATION_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
   getRoleMatrix: {
     responses: {
-      200: { seeded: { summary: 'The seeded matrix: 3 roles, 14 permissions, 22 grants', value: ROLE_MATRIX } },
+      200: { seeded: { summary: 'The seeded matrix: 3 roles, 15 permissions, 23 grants', value: ROLE_MATRIX } },
       401: { notSignedIn: ERROR_EXAMPLES.notSignedIn },
       403: BASIC_403,
     },

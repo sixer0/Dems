@@ -20,12 +20,15 @@ import {
   audioInterval,
   authSession,
   biometricToken,
+  ALIAS_CLOSED,
   captureAudioInput,
   captureConfig,
   captureDevice,
   captureDeviceCredential,
   captureDeviceStream,
+  captureNetworkConfig,
   captureSource,
+  hostNetworkAlias,
   mediaStore,
   sessionSttSnapshot,
   consoleSettings,
@@ -280,6 +283,26 @@ const REFUSED_BY_CHECK: ReadonlyArray<readonly [string, string, Row]> = [
   ['session_capture_sources_source_facts_no_secret_keys_check', 'session_capture_sources', captureSource('VIDEO-01', { source_facts: json({ model: 'Fixture model', username: 'someone' }) })],
   ['session_capture_sources_source_facts_bound_check', 'session_capture_sources', captureSource('VIDEO-01', { source_facts: json({ model: 'm'.repeat(121) }) })],
   ['capture_config_slot_pair_check', 'capture_config', captureConfig({ video_01_profile: null })],
+  // ── schema v8 (task 4 schema set B): the eight CHECKs of T-46, the eight of T-47, and the two of
+  //    the USB serial and port of a sound card. Each row breaks its one rule and no other. ──
+  ['capture_network_config_singleton_check', 'capture_network_config', captureNetworkConfig({ singleton: false })],
+  ['capture_network_config_interface_name_check', 'capture_network_config', captureNetworkConfig({ interface_name: 'Ethernet 1' })],
+  ['capture_network_config_camera_subnet_check', 'capture_network_config', captureNetworkConfig({ camera_subnet: '192.168.1.0/8' })],
+  ['capture_network_config_factory_addresses_check', 'capture_network_config', captureNetworkConfig({ factory_addresses: json(['192.168.1.64', 'camera.local']) })],
+  ['capture_network_config_alias_host_check', 'capture_network_config', captureNetworkConfig({ alias_host: 255 })],
+  ['capture_network_config_alias_minutes_check', 'capture_network_config', captureNetworkConfig({ alias_minutes: 4 })],
+  ['capture_network_config_camera_ip_start_check', 'capture_network_config', captureNetworkConfig({ camera_ip_start: 251 })],
+  ['capture_network_config_revision_check', 'capture_network_config', captureNetworkConfig({ revision: 0 })],
+  ['host_network_aliases_interface_name_check', 'host_network_aliases', hostNetworkAlias({ interface_name: 'eth1;reboot' })],
+  ['host_network_aliases_address_check', 'host_network_aliases', hostNetworkAlias({ address: '8.8.8.8/24' })],
+  ['host_network_aliases_reason_check', 'host_network_aliases', hostNetworkAlias({ reason: 'TESTING' })],
+  ['host_network_aliases_expires_at_check', 'host_network_aliases', hostNetworkAlias({ expires_at: T })],
+  ['host_network_aliases_removed_at_check', 'host_network_aliases', hostNetworkAlias({ removed_at: T - 1, remove_reason: 'MANUAL' })],
+  ['host_network_aliases_remove_reason_check', 'host_network_aliases', hostNetworkAlias({ removed_at: T + 5_000 })],
+  ['host_network_aliases_removed_by_check', 'host_network_aliases', hostNetworkAlias({ removed_by: 'OPR-001' })],
+  ['host_network_aliases_remove_error_check', 'host_network_aliases', hostNetworkAlias({ remove_error: 'del failed' })],
+  ['capture_audio_inputs_usb_serial_check', 'capture_audio_inputs', captureAudioInput('MIC-01', { usb_serial: 'SN 0042' })],
+  ['capture_audio_inputs_usb_port_check', 'capture_audio_inputs', captureAudioInput('MIC-01', { usb_port: '1-1.4/input0' })],
 ];
 
 /**
@@ -310,11 +333,11 @@ async function insert(table: string, row: Row): Promise<void> {
 }
 
 describe('CL-03: one refused row per named CHECK', () => {
-  it('the list covers all 199 CHECKs of the contract: 194 directly, 5 that another rule refuses first', () => {
+  it('the list covers all 217 CHECKs of the contract: 212 directly, 5 that another rule refuses first', () => {
     const named = inventory.tables.flatMap((table) => table.constraints.filter((constraint) => constraint.kind === 'CHECK').map((constraint) => constraint.name));
     const covered = [...REFUSED_BY_CHECK.map(([name]) => name), ...SHADOWED.map(([name]) => name)];
-    expect(named).toHaveLength(199);
-    expect(REFUSED_BY_CHECK).toHaveLength(194);
+    expect(named).toHaveLength(217);
+    expect(REFUSED_BY_CHECK).toHaveLength(212);
     expect([...covered].sort()).toEqual([...named].sort());
     for (const [name, table] of [...REFUSED_BY_CHECK, ...SHADOWED]) expect(name.startsWith(`${table}_`), name).toBe(true);
   });
@@ -340,7 +363,7 @@ describe('CL-03: one refused row per named CHECK', () => {
 });
 
 describe('the valid rows are accepted: no CHECK is stricter than the contract', () => {
-  it('one valid row in each of the 45 tables', async () => {
+  it('one valid row in each of the 47 tables', async () => {
     await insertRbac(owner);
     await insertDevice(owner, 'DEV-0001', 'PCD-000001');
     await insertRow(owner, 'pairing_codes', pairingCode('PCD-000050'));
@@ -414,6 +437,13 @@ describe('the valid rows are accepted: no CHECK is stricter than the contract', 
     await insertRow(owner, 'capture_device_streams', captureDeviceStream('CAM-01', 'H264_1080P25', { codec: 'H264' }));
     await insertRow(owner, 'capture_device_streams', captureDeviceStream('CAM-02', 'H264_1080P25', { video_source_token: null, codec: null, width: null, height: null }));
     await insertRow(owner, 'capture_audio_inputs', captureAudioInput('MIC-01', { usb_id: null }));
+    // schema v8 (task 4 schema set B): the network settings with a list of two addresses; an
+    // alias that was removed, one whose removal failed and is therefore still open; the serial and
+    // the port of a sound card are NULL above (a card that states neither) - they are set here.
+    await insertRow(owner, 'capture_network_config', captureNetworkConfig({ factory_addresses: json(['192.168.1.64', '10.0.0.2']) }));
+    await insertRow(owner, 'host_network_aliases', hostNetworkAlias({ ...ALIAS_CLOSED, removed_by: 'OPR-001' }));
+    await insertRow(owner, 'host_network_aliases', hostNetworkAlias({ address: '10.20.30.254/24', reason: 'SET_CAMERA_ADDRESS', remove_error: 'DEL_FAILED' }));
+    await owner.query("UPDATE public.capture_audio_inputs SET usb_serial = 'A1B2-C3.D4_E5:F6', usb_port = '1-1.4' WHERE device_id = 'MIC-01'");
 
     const { rows } = await owner.query<{ empty: string }>(
       inventory.tables.map((table) => `SELECT '${table.name}' AS empty WHERE NOT EXISTS (SELECT 1 FROM public.${table.name})`).join(' UNION ALL '),
@@ -503,11 +533,16 @@ describe('CL-02: every reference is a foreign key with ON DELETE RESTRICT', () =
     ['capture_device_streams_device_id_fkey', 'capture_device_streams', captureDeviceStream('CAM-99', 'HEVC_1080P')],
     ['capture_audio_inputs_device_id_fkey', 'capture_audio_inputs', captureAudioInput('MIC-99', { input_number: 3 })],
     ['capture_audio_inputs_updated_by_fkey', 'capture_audio_inputs', captureAudioInput('MIC-02', { input_number: 2, updated_by: 'OPR-777' })],
+    // schema v8 (task 4 schema set B): the three new foreign keys, each with an unknown operator.
+    // The two alias rows are CLOSED ones: an open row would meet the one-open rule first.
+    ['capture_network_config_updated_by_fkey', 'capture_network_config', captureNetworkConfig({ updated_by: 'OPR-777' })],
+    ['host_network_aliases_added_by_fkey', 'host_network_aliases', hostNetworkAlias({ ...ALIAS_CLOSED, added_by: 'OPR-777' })],
+    ['host_network_aliases_removed_by_fkey', 'host_network_aliases', hostNetworkAlias({ ...ALIAS_CLOSED, removed_by: 'OPR-777' })],
   ];
 
-  it('the list covers all 43 foreign keys of the contract', () => {
+  it('the list covers all 46 foreign keys of the contract', () => {
     const named = inventory.tables.flatMap((table) => table.constraints.filter((constraint) => constraint.kind === 'FOREIGN KEY').map((constraint) => constraint.name));
-    expect(named).toHaveLength(43);
+    expect(named).toHaveLength(46);
     expect([...UNKNOWN_PARENT.map(([name]) => name), 'audit_log_actor_id_fkey'].sort()).toEqual([...named].sort());
   });
 
@@ -515,13 +550,15 @@ describe('CL-02: every reference is a foreign key with ON DELETE RESTRICT', () =
     // `active_session` holds its one row already; the foreign key is still what refuses first? No:
     // the primary key would. The test therefore removes that row for the two active_session cases.
     // Schema v2 adds the same single-row shape to `capture_config` and `stt_config`.
-    if (['active_session', 'capture_config', 'stt_config'].includes(table)) await owner.query(`DELETE FROM public.${table}`);
+    // Schema v8 adds it to `capture_network_config`.
+    if (['active_session', 'capture_config', 'stt_config', 'capture_network_config'].includes(table)) await owner.query(`DELETE FROM public.${table}`);
     try {
       await expectRefused(() => insert(table, row), SQLSTATE.foreignKeyViolation, name);
     } finally {
       if (table === 'active_session') await insertRow(owner, 'active_session', activeSession());
       if (table === 'capture_config') await insertRow(owner, 'capture_config', captureConfig());
       if (table === 'stt_config') await insertRow(owner, 'stt_config', sttConfig());
+      if (table === 'capture_network_config') await insertRow(owner, 'capture_network_config', captureNetworkConfig());
     }
   });
 

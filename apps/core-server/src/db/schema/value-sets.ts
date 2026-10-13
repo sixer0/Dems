@@ -163,6 +163,17 @@ export const CAPTURE_STREAM_ROLE = ['MAIN', 'SUB'] as const;
  * chose is ever a member, so an unknown codec is `OTHER` and never its name.
  */
 export const CAPTURE_STREAM_CODEC = ['H264', 'HEVC', 'OTHER'] as const;
+/**
+ * Why the Core put a temporary address on the camera interface (`host_network_aliases.reason`,
+ * T-47; schema v8, set B of task 4). A CLOSED set: input-av writes free text here, the Core a code.
+ */
+export const HOST_ALIAS_REASON = ['FACTORY_SCAN', 'SET_CAMERA_ADDRESS'] as const;
+/**
+ * How a temporary address ended (`host_network_aliases.remove_reason`, T-47). A CLOSED set:
+ * its lifetime ran out, an operator removed it, the job that needed it finished, or the start-up
+ * sweep found the row of an address that is no longer on the interface.
+ */
+export const HOST_ALIAS_REMOVE_REASON = ['EXPIRED', 'MANUAL', 'JOB_DONE', 'BOOT_SWEEP'] as const;
 /** The role of one mic inside `AUDIO-01` (T-34; OD-01/OD-09). */
 export const MIC_ROLE = ['PRIMARY', 'STANDBY'] as const;
 /** Why a `session_audio_intervals` row opened or closed (T-34; R-3). */
@@ -277,6 +288,8 @@ export type CaptureAdapterKindValue = (typeof CAPTURE_ADAPTER_KIND)[number];
 export type CaptureSourceSlotValue = (typeof CAPTURE_SOURCE_SLOT)[number];
 export type CaptureStreamRoleValue = (typeof CAPTURE_STREAM_ROLE)[number];
 export type CaptureStreamCodecValue = (typeof CAPTURE_STREAM_CODEC)[number];
+export type HostAliasReasonValue = (typeof HOST_ALIAS_REASON)[number];
+export type HostAliasRemoveReasonValue = (typeof HOST_ALIAS_REMOVE_REASON)[number];
 export type MicRoleValue = (typeof MIC_ROLE)[number];
 export type AudioIntervalReasonValue = (typeof AUDIO_INTERVAL_REASON)[number];
 export type SealingJobStatusValue = (typeof SEALING_JOB_STATUS)[number];

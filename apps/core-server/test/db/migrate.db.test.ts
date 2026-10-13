@@ -28,7 +28,7 @@ async function publicTables(): Promise<string[]> {
 }
 
 describe('AC-B-01: the migration set on an empty database', () => {
-  it('the set is the seventeen files of dbc-3 §A.1, §B.13, dbc-4 §N.8, errata PE-129a-01, PE-129b-01, PE-0013-01 and task 4 schema set A, in order, with rising journal times', () => {
+  it('the set is the nineteen files of dbc-3 §A.1, §B.13, dbc-4 §N.8, errata PE-129a-01, PE-129b-01, PE-0013-01 and task 4 schema sets A and B, in order, with rising journal times', () => {
     const files = readMigrationSet();
     expect(files.map((file) => file.tag)).toEqual([...INITIAL_MIGRATION_TAGS]);
     expect(files.map((file) => file.idx)).toEqual(Array.from({ length: INITIAL_MIGRATION_TAGS.length }, (_, index) => index));
@@ -51,7 +51,7 @@ describe('AC-B-01: the migration set on an empty database', () => {
     expect(ledger.ok).toBe(true);
   });
 
-  it('first run, as dems_owner: applies the seventeen files and sets schema version 7 (dbc-8)', async () => {
+  it('first run, as dems_owner: applies the nineteen files and sets schema version 8 (dbc-9)', async () => {
     const who = await db.ownerPool().query<{ role: string; superuser: boolean }>(
       'SELECT current_user::text AS role, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS superuser',
     );
@@ -64,15 +64,15 @@ describe('AC-B-01: the migration set on an empty database', () => {
     expect(result.versionBefore).toBeNull();
     expect(result.applied).toEqual([...INITIAL_MIGRATION_TAGS]);
     expect(result.versionAfter).toEqual({ schemaVersion: DB_SCHEMA_VERSION, contractRevision: DB_CONTRACT_REVISION });
-    expect(result.versionAfter).toEqual({ schemaVersion: 7, contractRevision: 'dbc-8' });
-    expect(await publicTables()).toHaveLength(45);
+    expect(result.versionAfter).toEqual({ schemaVersion: 8, contractRevision: 'dbc-9' });
+    expect(await publicTables()).toHaveLength(47);
 
     // The migrator stored each file's hash and journal time, in order.
     const files = readMigrationSet();
     const applied = await readAppliedMigrations(db.ownerPool());
     expect(applied?.map((row) => row.hash)).toEqual(files.map((file) => file.sha256));
     expect(applied?.map((row) => row.createdAt)).toEqual(files.map((file) => file.when));
-    console.info(`[w17] first migrate: applied ${result.applied.join(', ')} in ${ms.toFixed(1)} ms; 45 tables`);
+    console.info(`[w17] first migrate: applied ${result.applied.join(', ')} in ${ms.toFixed(1)} ms; 47 tables`);
   });
 
   it('second run: applies nothing and changes nothing (MG-10)', async () => {
@@ -87,8 +87,8 @@ describe('AC-B-01: the migration set on an empty database', () => {
     const ms = performance.now() - started;
 
     expect(result.applied).toEqual([]);
-    expect(result.versionBefore).toEqual({ schemaVersion: 7, contractRevision: 'dbc-8' });
-    expect(result.versionAfter).toEqual({ schemaVersion: 7, contractRevision: 'dbc-8' });
+    expect(result.versionBefore).toEqual({ schemaVersion: 8, contractRevision: 'dbc-9' });
+    expect(result.versionAfter).toEqual({ schemaVersion: 8, contractRevision: 'dbc-9' });
     expect(await readAppliedMigrations(pool)).toEqual(before);
     const catalogAfter = await pool.query(
       "SELECT count(*) AS objects, max(oid::bigint) AS newest FROM pg_class WHERE relnamespace = 'public'::regnamespace",
@@ -103,10 +103,13 @@ describe('AC-B-01: the migration set on an empty database', () => {
     const head = await pool.query('SELECT singleton, seq::int AS seq, hash FROM audit_chain_head');
     expect(head.rows).toEqual([{ singleton: true, seq: 0, hash: '0'.repeat(64) }]);
     const meta = await pool.query('SELECT singleton, schema_version, contract_revision FROM schema_meta');
-    expect(meta.rows).toEqual([{ singleton: true, schema_version: 7, contract_revision: 'dbc-8' }]);
+    expect(meta.rows).toEqual([{ singleton: true, schema_version: 8, contract_revision: 'dbc-9' }]);
 
+    // Since 0018 a hand-written file may also write the two rows of the commissioning permission -
+    // into a database that is ALREADY SEEDED only. On this empty one it writes nothing: `permissions`
+    // and `role_permissions` are among the 45 tables counted empty below.
     const tables = (await publicTables()).filter((table) => table !== 'audit_chain_head' && table !== 'schema_meta');
-    expect(tables).toHaveLength(43);
+    expect(tables).toHaveLength(45);
     for (const table of tables) {
       const { rows } = await pool.query<{ rows: string }>(`SELECT count(*) AS rows FROM public.${table}`);
       expect(rows[0]?.rows, table).toBe('0');

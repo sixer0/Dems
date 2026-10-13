@@ -40,7 +40,9 @@ export const MIGRATIONS_TABLE = '__drizzle_migrations';
  * `0012` hand-written, schema version 5. Files fourteen and fifteen are migration set 7 (erratum
  * PE-0013-01; rulings D146, D162, D166): `0013` generated, `0014` hand-written, schema version 6.
  * Files sixteen and seventeen are migration set 8 (schema set A of task 4, contract revision
- * `dbc-8`): `0015` generated, `0016` hand-written, schema version 7.
+ * `dbc-8`): `0015` generated, `0016` hand-written, schema version 7. Files eighteen and nineteen
+ * are migration set 9 (schema set B of task 4, contract revision `dbc-9`): `0017` generated,
+ * `0018` hand-written, schema version 8.
  */
 export const INITIAL_MIGRATION_TAGS = [
   '0000_prelude',
@@ -60,6 +62,8 @@ export const INITIAL_MIGRATION_TAGS = [
   '0014_key_id_fault_reason_media_root_privileges',
   '0015_capture_streams_audio_inputs',
   '0016_capture_streams_audio_inputs_privileges',
+  '0017_network_commissioning',
+  '0018_network_commissioning_privileges',
 ] as const;
 
 export interface MigrationFile {

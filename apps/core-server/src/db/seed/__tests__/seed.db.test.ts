@@ -51,17 +51,17 @@ describe('ST-1: row counts after a first seed at the fixed instant (contract §9
     expect(new Date(FIXED_NOW).toISOString()).toBe('2026-10-01T03:00:00.000Z');
   });
 
-  it('all 45 tables hold what the seed of the landed contract states: 24 with rows, 21 empty', async () => {
+  it('all 47 tables hold what the seed of the landed contract states: 24 with rows, 23 empty', async () => {
     const counts = await countAllTables(drizzle(db.ownerPool()));
     console.log(`[w20] ST-1 row counts of ${db.name}:\n${Object.entries(counts).map(([table, rows]) => `  ${table.padEnd(24)} ${rows}`).join('\n')}`);
     expect(counts).toEqual(EXPECTED_SEED_COUNTS);
-    expect(Object.keys(counts)).toHaveLength(45);
+    expect(Object.keys(counts)).toHaveLength(47);
     expect(Object.values(counts).filter((rows) => rows > 0)).toHaveLength(24);
-    expect(Object.values(counts).filter((rows) => rows === 0)).toHaveLength(21);
+    expect(Object.values(counts).filter((rows) => rows === 0)).toHaveLength(23);
   });
 
   // Fix wave J (truth rule 3a): 48 tracks - four for each of the 12 sealed items, none for the one item that was never sealed.
-  it('AC-B-02: 3 operators, 3 roles, 14 permissions, 22 grants, 1 Core device, 13 items with 48 tracks, 13 history entries', async () => {
+  it('AC-B-02: 3 operators, 3 roles, 15 permissions, 23 grants, 1 Core device, 13 items with 48 tracks, 13 history entries', async () => {
     const counts = await countAllTables(drizzle(db.ownerPool()));
     // R3 (D44): the vocabulary counts are recomputed FROM SOURCE, never hardcoded: the shared
     // permission enum and the shared role table (rows 47/49 grew them 12->14 and 18->22).
@@ -110,7 +110,7 @@ describe('ST-1: row counts after a first seed at the fixed instant (contract §9
   it('the two mechanism rows and the seed bookkeeping are as the contract says', async () => {
     const pool = db.ownerPool();
     const meta = await pool.query('SELECT schema_version, contract_revision FROM schema_meta');
-    expect(meta.rows).toEqual([{ schema_version: 7, contract_revision: 'dbc-8' }]);
+    expect(meta.rows).toEqual([{ schema_version: 8, contract_revision: 'dbc-9' }]);
     const state = await pool.query('SELECT seed, sim_schema_version, scenario, epoch, created_at, seeded_at, last_reset_at, last_sealed_session_id, last_sealed_acknowledged, updated_at FROM core_state');
     expect(state.rows).toEqual([
       {
@@ -211,7 +211,7 @@ describe('ST-3: what is stored equals what the shared builders made, member by m
 });
 
 describe('ST-4, AC-B-17: the seeded matrix equals the shared ROLE_PERMISSIONS', () => {
-  it('3 roles and 14 permissions in declaration order, 22 grants (5, 12, 5), role by role equal', async () => {
+  it('3 roles and 15 permissions in declaration order, 23 grants (5, 12, 6), role by role equal', async () => {
     const stored = await readRbacRows(drizzle(db.ownerPool()));
     expect(stored.roles.map((role) => role.id)).toEqual(Object.values(OperatorRole));
     expect(stored.permissions.map((permission) => permission.id)).toEqual(Object.values(Permission));

@@ -116,10 +116,11 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
   // is labelled in `securityAudit.rbac.permissions`, the map the clients read (the web matrix and the
   // mobile Profile sheet, which lists every grant of a role). `common.rbac.permissions` repeats the
   // three new ones; a value labelled in both maps must read the same in both.
-  it('Permission: 14 values, each labelled in securityAudit.rbac.permissions; common.rbac.permissions agrees (W16; M2-W6)', () => {
+  it('Permission: 15 values, each labelled in securityAudit.rbac.permissions; common.rbac.permissions agrees (W16; M2-W6; task 4 row 100)', () => {
     const all = values(V.Permission);
     // Task 3 M2-W6 (SH-04): +CAPTURE_CONFIG, +TRANSCRIPT_REVISE on top of the twelve of W16.
-    expect(all).toHaveLength(14);
+    // Task 4 row 100 (decision U10): +CAPTURE_COMMISSION, labelled in the map the clients read.
+    expect(all).toHaveLength(15);
     expectExactKeys('securityAudit.rbac.permissions', all);
     const page = at('securityAudit.rbac.permissions');
     const shared = at('common.rbac.permissions');

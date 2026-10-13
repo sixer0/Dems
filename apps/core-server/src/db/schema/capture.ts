@@ -26,6 +26,19 @@
  * it (schema design 3.3), but `db/reset/kept-tables.ts` carries a table by ONE key column and T-44
  * has two. Until that file learns it, a demo reset keeps a camera and empties its stream rows -
  * nothing writes either table before the rows that register a stream or a sound-card input.
+ *
+ * Schema v8 (migration set 9, `0017` + `0018`; task 4 schema set B, contract revision `dbc-9`)
+ * adds the two tables of the commissioning functions, declared last: T-46
+ * `capture_network_config` (one row: which host interface is the camera port, and the settings of
+ * the factory-address scan) and T-47 `host_network_aliases` (the state of the one temporary
+ * address the Core may put on that interface). The same set gives T-45 two columns, the USB
+ * serial number and the USB port path of a sound card, so that a card of the same product on
+ * another port can be told apart (findings of task 4 rows 67 and 156).
+ *
+ * NO ADDRESS TYPE: the design named `cidr` and `inet` and gave `text` with a CHECK as the
+ * fallback. The fallback is taken - the contract's column types are a closed list of nine
+ * (TY-1; `test/db/contract-inventory.test.ts`, `catalog.db.test.ts`), and an address stays text
+ * as `capture_devices.address` is. Every address column is held to a pattern written out here.
  */
 import { sql } from 'drizzle-orm';
 import {
@@ -42,6 +55,7 @@ import {
   text,
   unique,
   uniqueIndex,
+  uuid,
 } from 'drizzle-orm/pg-core';
 import { bytea } from './bytea';
 import { code, matches, oneOf } from './checks';
@@ -52,10 +66,14 @@ import {
   CAPTURE_DEVICE_KIND,
   CAPTURE_STREAM_CODEC,
   CAPTURE_STREAM_ROLE,
+  HOST_ALIAS_REASON,
+  HOST_ALIAS_REMOVE_REASON,
   type CaptureAdapterKindValue,
   type CaptureDeviceKindValue,
   type CaptureStreamCodecValue,
   type CaptureStreamRoleValue,
+  type HostAliasReasonValue,
+  type HostAliasRemoveReasonValue,
 } from './value-sets';
 
 /** The AES-256-GCM envelope v2 writes; the only value its CHECK admits (dbc-3 §B.3). */
@@ -66,6 +84,36 @@ const CREDENTIAL_ENCRYPTION = "'AES-256-GCM'";
  * A token names a profile on the camera; it is not a credential and not a locator.
  */
 const ONVIF_TOKEN = '^[A-Za-z0-9_.:-]{1,64}$';
+/**
+ * What the USB serial number and the USB port path of a sound card may be (schema v8): letters,
+ * digits and `: . _ -`, 1 to 64 characters - the rule the card listing already holds a port path
+ * to (`capture/adapters/audio/card-listing.ts`, `USB_PORT`). A serial number is a string the
+ * device chose; one that does not fit is not stored (NULL), never stored as it came (AD-07 (1)).
+ */
+const USB_PATH_OR_SERIAL = '^[A-Za-z0-9:._-]{1,64}$';
+/**
+ * The name of a host network interface (assumption AS-9 of the schema design): at most 15
+ * characters, the first a lower-case letter or a digit. The alias helper holds the name it reads
+ * from its own root-owned file to the same form.
+ */
+const INTERFACE_NAME = '^[a-z0-9][a-z0-9._-]{0,14}$';
+/** One number of a dotted IPv4 address, 0 to 255, without a leading zero. */
+const IPV4_OCTET = '(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])';
+/** The host part of an address inside a /24, 1 to 254 (never the network or the broadcast address). */
+const IPV4_HOST_PART = '(25[0-4]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?)';
+/** An IPv4 network as `a.b.c.d/n` with a prefix length of 16 to 30. `[.]` is a literal dot. */
+const CAMERA_SUBNET = `^${IPV4_OCTET}([.]${IPV4_OCTET}){3}/(1[6-9]|2[0-9]|30)$`;
+/**
+ * A temporary address as the alias helper takes it: `a.b.c.d/24`, inside 10.0.0.0/8,
+ * 172.16.0.0/12 or 192.168.0.0/16, host part 1 to 254 (the helper's own bound, S13-08 (2)).
+ */
+const PRIVATE_ALIAS_ADDRESS = `^(10[.]${IPV4_OCTET}[.]${IPV4_OCTET}|172[.](1[6-9]|2[0-9]|3[01])[.]${IPV4_OCTET}|192[.]168[.]${IPV4_OCTET})[.]${IPV4_HOST_PART}/24$`;
+/**
+ * The factory addresses input-av scans by default (`apps/input-av/nvr/settings.py`, member
+ * `factory_default_ips`): INPUT-AV'S DEFAULTS, carried as they are and tested by nothing in this
+ * task - no camera at a factory address was ever reached from the Core.
+ */
+const FACTORY_ADDRESSES_DEFAULT = ['192.168.1.64', '192.168.1.108', '192.168.0.90', '192.168.1.13'];
 
 /**
  * T-32. The real/fake capture-device registry — never the paired-client registry
@@ -324,6 +372,13 @@ export const captureAudioInputs = pgTable(
     sampleBits: smallint('sample_bits').notNull().default(24),
     updatedBy: text('updated_by'),
     updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
+    // ── schema v8 additions (set B of task 4; findings of rows 67 and 156). Declared LAST: `0017`
+    //    appends them (ALTER ADD COLUMN). Both NULL for every row that existed and for a card that
+    //    states neither: many cards carry no serial number, and a card that is not USB has no port.
+    //    With them a card of the same product on another port, or another unit of it, is no longer
+    //    the registered card. The runtime role updates both with the other card columns (`0018`). ──
+    usbSerial: text('usb_serial'),
+    usbPort: text('usb_port'),
   },
   (t) => [
     foreignKey({
@@ -355,6 +410,143 @@ export const captureAudioInputs = pgTable(
     ),
     check('capture_audio_inputs_sample_rate_check', sql`${t.sampleRate} = 48000`),
     check('capture_audio_inputs_sample_bits_check', sql`${t.sampleBits} IN (16, 24, 32)`),
+    // Schema v8. Declared LAST: `0017` adds them. A closed character set and a length, never the
+    // descriptor string as the device wrote it.
+    check('capture_audio_inputs_usb_serial_check', sql`${t.usbSerial} IS NULL OR ${matches(t.usbSerial, USB_PATH_OR_SERIAL)}`),
+    check('capture_audio_inputs_usb_port_check', sql`${t.usbPort} IS NULL OR ${matches(t.usbPort, USB_PATH_OR_SERIAL)}`),
+  ],
+);
+
+/**
+ * T-46 (schema v8, set B of task 4; schema design 2.4). The network settings of the commissioning
+ * functions, one row (N-2 singleton, the form of `capture_config`).
+ *
+ * `interface_name` is NULLABLE AND HAS NO DEFAULT: the Core never picks the camera interface
+ * itself (decision U11, OQ-4) - a function that adds an address to a host interface must be told
+ * which one, and a wrong automatic choice is the office network. No row, or a row without an
+ * interface, is "not configured". `camera_subnet` NULL = derived from the interface.
+ *
+ * THE DEFAULTS ARE INPUT-AV'S DEFAULTS (`apps/input-av/nvr/settings.py`: the factory address
+ * list, alias host 253, alias lifetime 30 minutes, first camera address 101, with its bounds).
+ * They are carried as they are and are NOT TESTED by this task against any camera. input-av's
+ * discovery scope and intervals are not stored: they are contract constants of the Core's search.
+ *
+ * `factory_addresses` is a list, never free JSON (S13-13): an array of at most 32 texts, each
+ * of the dotted form of an IPv4 address. Whether an address is a private one is the module's
+ * rule (it is the destination rule's too); the database holds the form and the size.
+ * Runtime role (`0018`): SELECT, INSERT (the default row at first use), UPDATE on every column
+ * but `singleton`, no DELETE.
+ */
+export const captureNetworkConfig = pgTable(
+  'capture_network_config',
+  {
+    singleton: boolean('singleton').primaryKey().default(true),
+    interfaceName: text('interface_name'),
+    cameraSubnet: text('camera_subnet'),
+    factoryAddresses: jsonb('factory_addresses').$type<string[]>().notNull().default(FACTORY_ADDRESSES_DEFAULT),
+    aliasHost: smallint('alias_host').notNull().default(253),
+    aliasMinutes: smallint('alias_minutes').notNull().default(30),
+    cameraIpStart: smallint('camera_ip_start').notNull().default(101),
+    revision: bigint('revision', { mode: 'number' }).notNull().default(1),
+    updatedBy: text('updated_by'),
+    updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'capture_network_config_updated_by_fkey',
+      columns: [t.updatedBy],
+      foreignColumns: [operators.id],
+    })
+      .onDelete('restrict')
+      .onUpdate('no action'),
+    check('capture_network_config_singleton_check', sql`${t.singleton}`),
+    check('capture_network_config_interface_name_check', sql`${t.interfaceName} IS NULL OR ${matches(t.interfaceName, INTERFACE_NAME)}`),
+    check('capture_network_config_camera_subnet_check', sql`${t.cameraSubnet} IS NULL OR ${matches(t.cameraSubnet, CAMERA_SUBNET)}`),
+    // CASE, not AND: the length of something that is no array is an error, and a CHECK must
+    // refuse it as a rule (23514). The path finds an element that is no text or not of the form.
+    // STRICT, not the default lax mode: lax unwraps a list inside the list before the filter sees
+    // it, so `[["192.168.1.64"]]` would pass as if it were flat (found by `set9.db.test.ts`).
+    check(
+      'capture_network_config_factory_addresses_check',
+      sql`CASE WHEN jsonb_typeof(${t.factoryAddresses}) = 'array' THEN jsonb_array_length(${t.factoryAddresses}) <= 32 AND NOT jsonb_path_exists(${t.factoryAddresses}, 'strict $[*]?(@.type() != "string" || !(@ like_regex "^[0-9]{1,3}([.][0-9]{1,3}){3}$"))') ELSE false END`,
+    ),
+    check('capture_network_config_alias_host_check', sql`${t.aliasHost} BETWEEN 2 AND 254`),
+    check('capture_network_config_alias_minutes_check', sql`${t.aliasMinutes} BETWEEN 5 AND 480`),
+    check('capture_network_config_camera_ip_start_check', sql`${t.cameraIpStart} BETWEEN 2 AND 250`),
+    check('capture_network_config_revision_check', sql`${t.revision} >= 1`),
+  ],
+);
+
+/**
+ * T-47 (schema v8, set B of task 4; schema design 2.5). The state of a temporary address the
+ * Core put on the camera interface through the alias helper; the audit entries are the trace of
+ * the actions. A row is opened when the address is added and closed (`removed_at`) when it is
+ * gone; it is never removed.
+ *
+ * ONE ALIAS AT A TIME. The helper as delivered holds one marked address
+ * (`scripts/host/netalias/dems-core-netalias`, `MAX_MARKED = 1`; task 4 row 104), and the
+ * database holds the same bound: `host_network_aliases_one_open_key` admits one open row, and
+ * `host_network_aliases_open_address_key` (the design's rule) one open row per interface and
+ * address. A second open alias is therefore refused by the database whatever the code does.
+ *
+ * `expires_at` is the lifetime the helper was given (5 to 480 minutes): the helper's timer is the
+ * kernel's, the Core's memory dies with the process, so the row is what a start-up sweep compares
+ * against. `remove_error` is the CODE of a removal that failed (the alias is then still open).
+ * `address` is text in the helper's own form, `a.b.c.d/24` in a private range.
+ * Runtime role (`0018`): SELECT, INSERT, UPDATE on `expires_at` and the four removal columns, no
+ * DELETE.
+ */
+export const hostNetworkAliases = pgTable(
+  'host_network_aliases',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    interfaceName: text('interface_name').notNull(),
+    address: text('address').notNull(),
+    reason: text('reason').$type<HostAliasReasonValue>().notNull(),
+    addedAt: bigint('added_at', { mode: 'number' }).notNull(),
+    addedBy: text('added_by').notNull(),
+    expiresAt: bigint('expires_at', { mode: 'number' }).notNull(),
+    removedAt: bigint('removed_at', { mode: 'number' }),
+    removeReason: text('remove_reason').$type<HostAliasRemoveReasonValue>(),
+    removedBy: text('removed_by'),
+    removeError: text('remove_error'),
+  },
+  (t) => [
+    foreignKey({
+      name: 'host_network_aliases_added_by_fkey',
+      columns: [t.addedBy],
+      foreignColumns: [operators.id],
+    })
+      .onDelete('restrict')
+      .onUpdate('no action'),
+    foreignKey({
+      name: 'host_network_aliases_removed_by_fkey',
+      columns: [t.removedBy],
+      foreignColumns: [operators.id],
+    })
+      .onDelete('restrict')
+      .onUpdate('no action'),
+    // One alias in place per interface and address (schema design 2.5); also "which are ours".
+    uniqueIndex('host_network_aliases_open_address_key')
+      .on(t.interfaceName, t.address)
+      .where(sql`${t.removedAt} IS NULL`),
+    // One alias in place at all: every open row has the same value of the indexed expression.
+    uniqueIndex('host_network_aliases_one_open_key')
+      .on(sql`(${t.removedAt} IS NULL)`)
+      .where(sql`${t.removedAt} IS NULL`),
+    check('host_network_aliases_interface_name_check', matches(t.interfaceName, INTERFACE_NAME)),
+    check('host_network_aliases_address_check', matches(t.address, PRIVATE_ALIAS_ADDRESS)),
+    check('host_network_aliases_reason_check', oneOf(t.reason, HOST_ALIAS_REASON)),
+    check('host_network_aliases_expires_at_check', sql`${t.expiresAt} > ${t.addedAt}`),
+    check('host_network_aliases_removed_at_check', sql`${t.removedAt} IS NULL OR ${t.removedAt} >= ${t.addedAt}`),
+    // The reason is set exactly when the alias is closed, and it is one of the closed set.
+    check(
+      'host_network_aliases_remove_reason_check',
+      sql`((${t.removeReason} IS NULL) = (${t.removedAt} IS NULL)) AND (${t.removeReason} IS NULL OR ${oneOf(t.removeReason, HOST_ALIAS_REMOVE_REASON)})`,
+    ),
+    // Who removed it is stated only for an alias that is removed; NULL then means the system.
+    check('host_network_aliases_removed_by_check', sql`${t.removedBy} IS NULL OR ${t.removedAt} IS NOT NULL`),
+    check('host_network_aliases_remove_error_check', sql`${t.removeError} IS NULL OR ${code(t.removeError)}`),
   ],
 );
 
@@ -369,3 +561,7 @@ export type CaptureDeviceStreamRow = typeof captureDeviceStreams.$inferSelect;
 export type NewCaptureDeviceStreamRow = typeof captureDeviceStreams.$inferInsert;
 export type CaptureAudioInputRow = typeof captureAudioInputs.$inferSelect;
 export type NewCaptureAudioInputRow = typeof captureAudioInputs.$inferInsert;
+export type CaptureNetworkConfigRow = typeof captureNetworkConfig.$inferSelect;
+export type NewCaptureNetworkConfigRow = typeof captureNetworkConfig.$inferInsert;
+export type HostNetworkAliasRow = typeof hostNetworkAliases.$inferSelect;
+export type NewHostNetworkAliasRow = typeof hostNetworkAliases.$inferInsert;

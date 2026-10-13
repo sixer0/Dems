@@ -1,6 +1,6 @@
 // The session STT snapshot in PostgreSQL (blueprint row 115, integration pass B; decision D112;
 // note 60b section 5; migrations 0011 and 0012), as `dems_app` on a throw-away clone of this run
-// (`useTestDatabase`): no live database is touched, schema version 7 / dbc-8.
+// (`useTestDatabase`): no live database is touched, schema version 8 / dbc-9.
 //
 //   1. THE STORE: write-once; "put then get returns the FIRST snapshot, always", also for puts at
 //      once (one row, every caller reads the same snapshot); a table CHECK refusing the row (23514)
@@ -55,9 +55,9 @@ beforeAll(() => {
 });
 
 describe('the database and the table', () => {
-  it('is at schema version 7 / dbc-8, and the table has the ten columns and no credential column', async () => {
+  it('is at schema version 8 / dbc-9, and the table has the ten columns and no credential column', async () => {
     const meta = await owner.query('SELECT schema_version, contract_revision FROM public.schema_meta');
-    expect(meta.rows).toEqual([{ schema_version: 7, contract_revision: 'dbc-8' }]);
+    expect(meta.rows).toEqual([{ schema_version: 8, contract_revision: 'dbc-9' }]);
     const columns = await owner.query<{ column_name: string }>("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'session_stt_config' ORDER BY ordinal_position");
     expect(columns.rows.map((row) => row.column_name)).toEqual(['session_id', 'enabled', 'backend', 'endpoint', 'model', 'language', 'diarization', 'credential_kind', 'config_revision', 'taken_at']);
     expect(columns.rows.some((row) => /credential_ref|secret|nonce/.test(row.column_name))).toBe(false);

@@ -177,6 +177,16 @@ function routedOperations(): CoreApiRegistryOperation[] {
 const DEFERRED_ROUTE: Readonly<Record<string, string>> = {};
 
 /**
+ * Permissions that are stored and granted while NO operation names them yet. Task 4 (blueprint
+ * row 100, decision U10, plan review P12-F07): the commissioning permission lands with schema set
+ * B, whose hand-written file carries its two stored rows; its operations are the contract package
+ * of blueprint row 102, which takes the entry out again. Until then no route can be reached with
+ * it and none is refused for the lack of it: the guard asks for a permission only where a rule
+ * names one.
+ */
+const NOT_YET_ENFORCED: readonly string[] = ['CAPTURE_COMMISSION'];
+
+/**
  * The answer the specification gives a caller on an operation: `expectationOf` with what it takes
  * from the document (what a retired device may call, the code of the operation's permission
  * refusal, the reason of "needs the device's own credential").
@@ -1039,7 +1049,7 @@ describe('the contract registry against the composed operation tables: all 99 ro
     // C3 §2.6: the five of 93 to 97 need CAPTURE_CONFIG too (52 -> 57); no new permission (R-9 AC-12).
     // Task 4 row 63: the two sound-card operations 98 and 99 need CAPTURE_CONFIG as well (57 -> 59).
     expect(registry).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 30, PERMISSION: 59, ANY_OF: 1 });
-    // Every permission a rule names is one of the fourteen of the composed matrix (C3 §2.1).
+    // Every permission a rule names is one of the fifteen of the composed matrix (C3 §2.1).
     for (const operation of CORE_API_OPERATIONS) {
       for (const permission of coreApiAccessPermissions(operation.access)) expect(spec.permissions, operation.operationId).toContain(permission);
     }
@@ -1052,8 +1062,12 @@ describe('the contract registry against the composed operation tables: all 99 ro
     }
     for (const numbers of Object.values(registry)) numbers.sort((a, b) => a - b);
     expect(registry).toEqual(spec.enforcedAt);
-    // Every permission has at least one enforcement point (spec §4.3).
-    expect(Object.values(registry).filter((numbers) => numbers.length === 0)).toEqual([]);
+    // Every permission has at least one enforcement point (spec §4.3) - with ONE named exception:
+    // the commissioning permission of task 4 (row 100, decision U10) is stored and granted before
+    // its operations exist, because a stored permission lands with the schema set that carries its
+    // rows (plan review P12-F07). The contract package of the commissioning operations (blueprint
+    // row 102) gives it its operations and EMPTIES this list; a second name here is a finding.
+    expect(Object.entries(registry).filter(([, numbers]) => numbers.length === 0).map(([permission]) => permission)).toEqual(NOT_YET_ENFORCED);
   });
 
   it('the denial row is EXPORT_DENIED on the three exports of RB-5 and nowhere else, and FORBIDDEN is the code of exportEvidence alone', () => {
@@ -1136,7 +1150,7 @@ describe('the contract registry against the composed operation tables: all 99 ro
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
 describe('the role matrix the server decides from (spec §4.4 composed with C3 §2.1)', () => {
-  it('the stored grants equal the composed table and the shared role table: 3 roles, 14 permissions, 22 grants', async () => {
+  it('the stored grants equal the composed table and the shared role table: 3 roles, 15 permissions, 23 grants', async () => {
     const { owner } = world.server;
     const roles = (await owner.query<{ id: string }>('SELECT id FROM public.roles ORDER BY sort_order')).rows.map((row) => row.id);
     const permissions = (await owner.query<{ id: string }>('SELECT id FROM public.permissions ORDER BY sort_order')).rows.map((row) => row.id);
@@ -1145,7 +1159,9 @@ describe('the role matrix the server decides from (spec §4.4 composed with C3 �
     expect(grantNames(world.stored)).toEqual(grantNames(spec.grants));
     const shared: Grant[] = Object.entries(ROLE_PERMISSIONS).flatMap(([role, held]) => held.map((permission) => ({ role, permission })));
     expect(grantNames(world.stored)).toEqual(grantNames(shared));
-    expect([spec.roles.length, spec.permissions.length, world.stored.length]).toEqual([3, 14, 22]);
+    expect([spec.roles.length, spec.permissions.length, world.stored.length]).toEqual([3, 15, 23]);
+    // Task 4 row 100 (decision U10): the commissioning permission is held by ONE role, the technician.
+    expect(world.stored.filter((grant) => grant.permission === 'CAPTURE_COMMISSION').map((grant) => grant.role)).toEqual(['TECHNICIAN']);
     // The count the document states under its table, per role.
     expect(Object.fromEntries(spec.roles.map((role) => [role, world.stored.filter((grant) => grant.role === role).length]))).toEqual(spec.statedGrantCounts);
   });

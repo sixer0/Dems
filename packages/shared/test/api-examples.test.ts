@@ -100,8 +100,8 @@ describe('the examples of the 89 operations that only the Core server answers', 
     const matrix = firstResponse<RoleMatrix>('getRoleMatrix', 200, 'seeded');
     expect(matrix.roles).toEqual(Object.values(OperatorRole));
     expect(matrix.permissions).toEqual(Object.values(Permission));
-    // Task 3 M2-W6 (SH-04; `dbc-3 §E.3`): 22 grants over 14 permissions.
-    expect(matrix.grants).toHaveLength(22);
+    // Task 3 M2-W6 (SH-04; `dbc-3 §E.3`): 22 grants over 14 permissions; task 4 row 100: 23 over 15.
+    expect(matrix.grants).toHaveLength(23);
     for (const role of Object.values(OperatorRole)) {
       expect(matrix.grants.filter((grant) => grant.role === role).map((grant) => grant.permission)).toEqual([...ROLE_PERMISSIONS[role]]);
     }

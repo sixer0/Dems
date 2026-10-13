@@ -378,7 +378,10 @@ function readContractTable(lines: readonly string[], heading: string, section: s
   }
 }
 
-/** The two new permissions of C3 §2.1 and the roles that hold them. */
+/**
+ * The new permissions of C3 §2.1 and the roles that hold them: the two of task 3
+ * (`CAPTURE_CONFIG`, `TRANSCRIPT_REVISE`) and, since task 4 row 100, `CAPTURE_COMMISSION`.
+ */
 function readNewPermissions(lines: readonly string[]): Pick<ApiContractDelta, 'newPermissions' | 'grants'> {
   const newPermissions: string[] = [];
   const grants: Grant[] = [];
@@ -393,7 +396,7 @@ function readNewPermissions(lines: readonly string[]): Pick<ApiContractDelta, 'n
       if (!grants.some((grant) => grant.role === role && grant.permission === permission)) grants.push({ role, permission });
     }
   }
-  if (newPermissions.length !== 2) unreadable(`the new permissions of C3 §2.1 (read ${newPermissions.join(', ')})`);
+  if (newPermissions.length !== 3) unreadable(`the new permissions of C3 §2.1 (read ${newPermissions.join(', ')})`);
   return { newPermissions, grants };
 }
 
@@ -434,6 +437,9 @@ export function readSpecification(): Specification {
       (enforcedAt[permission] ??= []).push(operation.number);
     }
   }
+  // A new permission no composed row names yet is enforced at no operation: it is in the map with
+  // an empty list, so that the registry's side and the document's side state the same thing.
+  for (const permission of delta.newPermissions) enforcedAt[permission] ??= [];
   return {
     revision: one(/^revision: (.+)$/m, 'the revision in the front matter')[1] ?? '',
     lines: lines.length,

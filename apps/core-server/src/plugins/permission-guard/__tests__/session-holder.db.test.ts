@@ -64,9 +64,9 @@ async function recordingCore(slug: string): Promise<{ server: SessionsApp; creat
 }
 
 describe('the schema this pass was written against', () => {
-  it('schema version 7, contract dbc-8: no migration', async () => {
+  it('schema version 8, contract dbc-9: no migration', async () => {
     const meta = (await db.ownerPool().query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([7, 'dbc-8']);
+    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([8, 'dbc-9']);
   });
 });
 

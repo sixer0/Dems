@@ -167,7 +167,7 @@ function difference(
 }
 
 describe('the live catalog equals the database contract (section 4)', () => {
-  it('45 tables, 461 columns, 199 named CHECKs, 43 foreign keys: the difference is empty', async () => {
+  it('47 tables, 484 columns, 217 named CHECKs, 46 foreign keys: the difference is empty', async () => {
     const live = await readCatalog();
     const lines = difference(inventory.tables, live);
     const count = (type: string): number => live.constraints.filter((constraint) => constraint.type === type).length;
@@ -197,7 +197,9 @@ describe('the live catalog equals the database contract (section 4)', () => {
     // PE-0013-01 (set 7): +1 table (T-43), +4 columns (3 of T-43, `alerts.reason`), +3 CHECKs.
     // Task 4 schema set A (set 8, dbc-8): +2 tables (T-44, T-45), +21 columns (10 + 10 +
     // `session_capture_sources.source_facts`), +17 CHECKs (7 + 6 + 3 + the slot-pair CHECK), +3 foreign keys.
-    expect(counts).toMatchObject({ tables: 45, columns: 461, checks: 199, foreignKeys: 43 });
+    // Task 4 schema set B (set 9, dbc-9): +2 tables (T-46, T-47), +23 columns (10 + 11 + the USB
+    // serial and port of `capture_audio_inputs`), +18 CHECKs (8 + 8 + 2), +3 foreign keys.
+    expect(counts).toMatchObject({ tables: 47, columns: 484, checks: 217, foreignKeys: 46 });
   });
 
   it('the comparison is not vacuous: a changed inventory produces a difference of each kind', async () => {
@@ -241,7 +243,7 @@ describe('the live catalog equals the database contract (section 4)', () => {
     );
     const byType = Object.fromEntries(rows.map((row) => [row.type, Number(row.total)]));
     const notNullColumns = inventory.tables.reduce((sum, table) => sum + table.columns.filter((column) => column.notNull).length, 0);
-    expect(byType).toEqual({ c: 199, f: 43, n: notNullColumns, p: 45, u: 16 });
+    expect(byType).toEqual({ c: 217, f: 46, n: notNullColumns, p: 47, u: 16 });
     console.info(`[w17] pg_constraint in public by contype: ${JSON.stringify(byType)} (n = NOT NULL constraints of PostgreSQL 18)`);
   });
 });
@@ -359,20 +361,22 @@ describe('what the schema must not contain (CL-01, CL-07, CL-09, N-1)', () => {
     // PE-0013-01: + T-43 and its primary key (i: 85, r: 43).
     // Task 4 schema set A: + T-44 and T-45, + their two primary keys, + the unique constraint on
     // a sound-card input, + the plain index on (device, lens, role).
-    expect(Object.fromEntries(rows.map((row) => [row.kind, Number(row.total)]))).toEqual({ i: 89, r: 45 });
+    // Task 4 schema set B: + T-46 and T-47, + their two primary keys, + the two partial unique
+    // indexes on an open alias (one per interface and address, one at all).
+    expect(Object.fromEntries(rows.map((row) => [row.kind, Number(row.total)]))).toEqual({ i: 93, r: 47 });
   });
 
   it('every table has exactly one primary key; a single-row table has the key singleton with default true and CHECK (singleton)', async () => {
     const singletons = inventory.tables.filter((table) => table.columns[0]?.name === 'singleton').map((table) => table.name);
     expect(singletons.sort()).toEqual(
       ['active_session', 'audit_chain_head', 'capture_config', 'console_settings', 'core_device', 'core_state',
-        'hardware_snapshot', 'schema_meta', 'storage_policy', 'stt_config', 'core_media_store'].sort(),
+        'hardware_snapshot', 'schema_meta', 'storage_policy', 'stt_config', 'core_media_store', 'capture_network_config'].sort(),
     );
     const { rows } = await db.ownerPool().query<{ table_name: string; definition: string }>(
       "SELECT conrelid::regclass::text AS table_name, pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE connamespace = 'public'::regnamespace AND contype = 'p' ORDER BY 1",
     );
-    expect(rows).toHaveLength(45);
-    expect(new Set(rows.map((row) => row.table_name)).size).toBe(45);
+    expect(rows).toHaveLength(47);
+    expect(new Set(rows.map((row) => row.table_name)).size).toBe(47);
     for (const name of singletons) {
       expect(rows.find((row) => row.table_name === name)?.definition, name).toBe('PRIMARY KEY (singleton)');
     }

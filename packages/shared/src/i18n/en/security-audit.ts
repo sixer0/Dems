@@ -322,6 +322,8 @@ export const securityAudit = {
       // Task 3 M2-W6 (SH-04, D4 OD-10/OD-15): the two capture-phase permissions.
       CAPTURE_CONFIG: 'Configure capture devices',
       TRANSCRIPT_REVISE: 'Revise transcripts',
+      // Task 4 row 100 (decision U10): the commissioning permission, held by TECHNICIAN only.
+      CAPTURE_COMMISSION: 'Commission the camera network',
     },
   },
 

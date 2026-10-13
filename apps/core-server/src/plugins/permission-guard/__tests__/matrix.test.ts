@@ -30,8 +30,8 @@ const book = createRuleBook();
 const RULES: AccessRule[] = book.operationIds.map((operationId) => book.ruleOf(operationId)).filter(isAccessRule);
 
 describe('the stored matrix that passes', () => {
-  it('is the shared vocabulary with exactly the 22 grants of the shared role table, for the rules of all 99 operations', () => {
-    expect(SHARED_GRANTS).toHaveLength(22);
+  it('is the shared vocabulary with exactly the 23 grants of the shared role table, for the rules of all 99 operations', () => {
+    expect(SHARED_GRANTS).toHaveLength(23);
     expect(RULES).toHaveLength(99);
     expect(checkStoredMatrix(matrix(), RULES)).toEqual([]);
     expect(firstGrantDifference(SHARED_GRANTS)).toBeNull();
@@ -87,7 +87,7 @@ describe('decision D88: the stored grants must be exactly the shared role table'
         expect(firstGrantDifference([...SHARED_GRANTS, { role, permission }])).toEqual({ direction: 'extra', role, permission });
       }
     }
-    expect(extras).toBe(3 * 14 - 22);
+    expect(extras).toBe(3 * 15 - 23);
   });
 
   it('a grant of a role or a permission the vocabulary does not hold is an extra one', () => {

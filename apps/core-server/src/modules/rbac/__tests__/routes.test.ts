@@ -194,7 +194,7 @@ describe('the boot step rbac.matrix on a database that does not hold the vocabul
     // and every other problem is a permission that a registered route names and that is not stored.
     expect(problems.filter((problem) => problem.code === 'STORED_MATRIX_MISMATCH').map((problem) => problem.detail)).toEqual([
       'roles not stored: INVESTIGATOR, SUPERVISOR, TECHNICIAN',
-      expect.stringMatching(/^permissions not stored: SESSION_START, .*DEMO_CONTROL, CAPTURE_CONFIG, TRANSCRIPT_REVISE$/),
+      expect.stringMatching(/^permissions not stored: SESSION_START, .*DEMO_CONTROL, CAPTURE_CONFIG, TRANSCRIPT_REVISE, CAPTURE_COMMISSION$/),
     ]);
     const named = guard.registeredRules().flatMap((rule) => rule.permissions.map((permission) => `${rule.operationId} ${permission}`));
     expect(

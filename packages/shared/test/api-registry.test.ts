@@ -504,7 +504,8 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
     // The vocabulary this file relies on (D37; task 3 M2-W7 adds nine types, 53 -> 62; M6 row 113
     // adds STT_CONFIG_CHANGED, 62 -> 63 — the C3 §2.5 total; R-9..R-11 add the four of C3 §5.2
     // (search, connection test, adoption, device unreachable), 63 -> 67 — the C3 §10.1 total).
-    expect(PERMISSIONS).toHaveLength(14);
+    // Task 4 blueprint row 100 (WP-23c): + the commissioning permission, 14 -> 15.
+    expect(PERMISSIONS).toHaveLength(15);
     // Task 4 blueprint row 19 (WP-23a): + the ten of the hardware-input port, 67 -> 77.
     expect(AUDIT_TYPES).toHaveLength(77);
   });
@@ -553,6 +554,11 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
       // of an input (99) take CAPTURE_CONFIG too; no new permission.
       ['CAPTURE_CONFIG', [78, 79, 80, 89, 91, 92, 93, 94, 95, 96, 97, 98, 99]],
       ['TRANSCRIPT_REVISE', [85]],
+      // Task 4 row 100 (WP-23c; decision U10): the commissioning permission is in the vocabulary and
+      // in the stored matrix BEFORE its operations exist - a stored permission must land with the
+      // schema set that carries its rows (plan review P12-F07). It is enforced NOWHERE yet: the
+      // contract package of the commissioning operations (blueprint row 102) fills this list.
+      ['CAPTURE_COMMISSION', []],
     ];
     expect(ENFORCED_AT.map(([permission]) => permission)).toEqual(PERMISSIONS);
     const numberOf = new Map<string, number>([

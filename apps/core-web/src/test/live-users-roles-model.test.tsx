@@ -51,7 +51,9 @@ describe('the model', () => {
       // SH-04 (row 47): INVESTIGATOR gained TRANSCRIPT_REVISE and TECHNICIAN gained CAPTURE_CONFIG,
       // so this transition now carries those two in the matrix's permission order.
       gains: [Permission.SESSION_START, Permission.SESSION_NOTE, Permission.TRANSCRIPT_REVISE],
-      loses: [Permission.DEVICE_MANAGE, Permission.MAINTENANCE, Permission.CAPTURE_CONFIG],
+      // Task 4 row 100 (decision U10): a technician also loses the commissioning permission, which
+      // no other role holds; it is the last of the matrix's permission order.
+      loses: [Permission.DEVICE_MANAGE, Permission.MAINTENANCE, Permission.CAPTURE_CONFIG, Permission.CAPTURE_COMMISSION],
     })
     expect(roleDiff(MATRIX, OperatorRole.SUPERVISOR, OperatorRole.SUPERVISOR)).toEqual({ gains: [], loses: [] })
     expect(roleDiff(MATRIX, OperatorRole.SUPERVISOR, OperatorRole.INVESTIGATOR).loses).toContain(Permission.USER_ADMIN)

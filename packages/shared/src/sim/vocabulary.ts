@@ -41,6 +41,14 @@ export const Permission = {
   // `TRANSCRIPT_REVISE` is INVESTIGATOR + SUPERVISOR (OD-15).
   CAPTURE_CONFIG: 'CAPTURE_CONFIG',
   TRANSCRIPT_REVISE: 'TRANSCRIPT_REVISE',
+  // Task 4 row 100 (WP-23c; decision U10; plan review P12-F07): additive, declared LAST - its
+  // place here (15) is the `sort_order` the seed and migration `0018` store. The commissioning
+  // functions of the camera network (the alias address, the factory-address scan, setting a
+  // camera's address, the network settings): TECHNICIAN ONLY, not SUPERVISOR, not INVESTIGATOR.
+  // A permission is stored data: the Core's boot compares the stored grants with `ROLE_PERMISSIONS`,
+  // so this member and the two rows of `0018` land in one commit. No operation names it yet (the
+  // contract package of the commissioning operations is a later row), and no simulator action does.
+  CAPTURE_COMMISSION: 'CAPTURE_COMMISSION',
 } as const;
 export type Permission = ValueOf<typeof Permission>;
 

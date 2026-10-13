@@ -120,6 +120,20 @@
       "when": 1791823666563,
       "tag": "0016_capture_streams_audio_inputs_privileges",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791856101325,
+      "tag": "0017_network_commissioning",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791856105393,
+      "tag": "0018_network_commissioning_privileges",
+      "breakpoints": true
     }
   ]
 }

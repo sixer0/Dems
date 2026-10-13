@@ -165,7 +165,7 @@ export const REALTIME_SERVER_EXAMPLES = {
         type: 'session.updated',
         v: 1,
         operator: { id: EXAMPLE_IDS.investigatorId, role: 'TECHNICIAN' },
-        permissions: ['EVIDENCE_VIEW', 'DEVICE_MANAGE', 'DIAGNOSTICS_RUN', 'MAINTENANCE', 'CAPTURE_CONFIG'],
+        permissions: ['EVIDENCE_VIEW', 'DEVICE_MANAGE', 'DIAGNOSTICS_RUN', 'MAINTENANCE', 'CAPTURE_CONFIG', 'CAPTURE_COMMISSION'],
         reason: 'ROLE_CHANGED',
       },
     },

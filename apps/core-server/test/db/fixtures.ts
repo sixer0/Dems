@@ -785,6 +785,25 @@ export function captureAudioInput(deviceId: string, overrides: Row = {}): Row {
   };
 }
 
+/**
+ * The one `capture_network_config` row (T-46, task 4 schema set B): the camera port chosen, the
+ * subnet stated, every other column left to its default unless a test names it.
+ */
+export function captureNetworkConfig(overrides: Row = {}): Row {
+  return { singleton: true, interface_name: 'eth1', camera_subnet: '192.168.1.0/24', updated_by: 'OPR-001', updated_at: T, ...overrides };
+}
+
+/**
+ * One `host_network_aliases` row (T-47, task 4 schema set B): an OPEN alias of a factory scan, 30
+ * minutes of lifetime, in the helper's own address form. The id is the column's default.
+ */
+export function hostNetworkAlias(overrides: Row = {}): Row {
+  return { interface_name: 'eth1', address: '192.168.1.253/24', reason: 'FACTORY_SCAN', added_at: T, added_by: 'OPR-001', expires_at: T + 30 * 60_000, ...overrides };
+}
+
+/** The columns that close a `host_network_aliases` row: removed by hand, five seconds after it was added. */
+export const ALIAS_CLOSED: Row = { removed_at: T + 5_000, remove_reason: 'MANUAL' };
+
 /** The one `core_media_store` row (T-43, erratum PE-0013-01): the media store root of a Core. */
 export function mediaStore(overrides: Row = {}): Row {
   return { singleton: true, media_root: '/srv/dems/media/sessions', recorded_at: T, ...overrides };

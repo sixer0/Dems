@@ -120,9 +120,9 @@ afterAll(async () => {
 });
 
 describe('A: the Core records its media store root at every start', () => {
-  it('schema version 7, contract dbc-8; a seeded database that no Core has started on stores no root', async () => {
+  it('schema version 8, contract dbc-9; a seeded database that no Core has started on stores no root', async () => {
     const meta = (await db.ownerPool().query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([7, 'dbc-8']);
+    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([8, 'dbc-9']);
     expect(await storedRoot(db.ownerPool())).toEqual([]);
   });
 

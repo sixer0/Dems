@@ -78,6 +78,9 @@ export const ROLE_PERMISSIONS = {
     Permission.MAINTENANCE,
     // OD-10: a technician configures the capture devices; it never starts a session.
     Permission.CAPTURE_CONFIG,
+    // Task 4 row 100 (decision U10): the commissioning functions of the camera network are the
+    // technician's alone. No other role holds this; the stored grant is the one row of `0018`.
+    Permission.CAPTURE_COMMISSION,
   ],
 } as const satisfies Record<OperatorRole, readonly Permission[]>;
 

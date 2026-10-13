@@ -55,10 +55,10 @@ async function dropWhenQuiet(database: TestDatabase): Promise<void> {
 }
 
 describe('the bulk template: the minimums of contract §11 as revised by dbc-3 §G', () => {
-  it('every one of the 45 tables holds at least its minimum (entity, minimum, loaded)', async () => {
+  it('every one of the 47 tables holds at least its minimum (entity, minimum, loaded)', async () => {
     const counts = await countAllTables(drizzle(db.ownerPool()));
     const comparison = compareWithMinimums(counts);
-    expect(comparison).toHaveLength(45);
+    expect(comparison).toHaveLength(47);
     expect(Object.keys(counts).sort()).toEqual(BULK_MINIMUMS.map((entry) => entry.table).sort());
     console.log(
       [
@@ -68,11 +68,12 @@ describe('the bulk template: the minimums of contract §11 as revised by dbc-3 �
     );
     expect(comparison.filter((entry) => !entry.met)).toEqual([]);
     // The tables the contract leaves as seeded hold exactly one row; the three RBAC tables are
-    // unchanged from the seed, which schema v2 grew to the 14/22 of dbc-3 §G.
+    // unchanged from the seed, which schema v2 grew to the 14/22 of dbc-3 §G and task 4 row 100
+    // to 15/23 (the commissioning permission and its one grant).
     for (const table of ['storage_policy', 'console_settings', 'core_device', 'core_state', 'hardware_snapshot', 'schema_meta', 'audit_chain_head', 'capture_config', 'stt_config']) {
       expect(counts[table], table).toBe(1);
     }
-    expect([counts['roles'], counts['permissions'], counts['role_permissions']]).toEqual([3, 14, 22]);
+    expect([counts['roles'], counts['permissions'], counts['role_permissions']]).toEqual([3, 15, 23]);
     expect(counts['active_session']).toBe(0);
   });
 
@@ -484,11 +485,11 @@ describe('the bulk template: every constraint holds, and nothing was switched of
         WHERE n.nspname = 'public' GROUP BY 1 ORDER BY 1`,
     );
     const byKind = Object.fromEntries(constraints.rows.map((row) => [row.kind, { rows: Number(row.rows), invalid: Number(row.invalid) }]));
-    // The contract's counts as landed: 199 named CHECKs, 43 foreign keys, 45 primary keys (the
+    // The contract's counts as landed: 217 named CHECKs, 46 foreign keys, 47 primary keys (the
     // composed inventory; dbc-3 §0.1 + §B.13 + dbc-4 §N.11). None invalid - the loader switched nothing off.
-    expect(byKind['c']).toEqual({ rows: 199, invalid: 0 });
-    expect(byKind['f']).toEqual({ rows: 43, invalid: 0 });
-    expect(byKind['p']).toEqual({ rows: 45, invalid: 0 });
+    expect(byKind['c']).toEqual({ rows: 217, invalid: 0 });
+    expect(byKind['f']).toEqual({ rows: 46, invalid: 0 });
+    expect(byKind['p']).toEqual({ rows: 47, invalid: 0 });
     expect(constraints.rows.reduce((sum, row) => sum + Number(row.invalid), 0)).toBe(0);
 
     const triggers = await pool.query<{ name: string; mode: string; internal: boolean }>(
@@ -572,7 +573,7 @@ describe('the bulk template: the audit chain verifies over all rows (BF-6)', () 
 
 describe('the loader', () => {
   it(
-    'is deterministic: a second load on a fresh seed clone gives equal rows in every one of the 45 tables, and the pure builder announces the same digest',
+    'is deterministic: a second load on a fresh seed clone gives equal rows in every one of the 47 tables, and the pure builder announces the same digest',
     async () => {
       const second = await db.another({ template: 'seed', slug: 'bulk_second_load' });
       const lines: string[] = [];
@@ -585,8 +586,8 @@ describe('the loader', () => {
       expect(report.database).toBe(second.name);
       expect(report.role).toBe('dems_owner');
       expect(lines).toEqual(formatBulkFixtureReport(report));
-      expect(lines).toHaveLength(48);
-      expect(lines[lines.length - 1]).toContain('every minimum of the 45 tables is met');
+      expect(lines).toHaveLength(50);
+      expect(lines[lines.length - 1]).toContain('every minimum of the 47 tables is met');
       console.log(lines.map((line) => `[test:db] ${line}`).join('\n'));
 
       // Equal rows, table by table, generated identifiers and hash columns included.
@@ -594,9 +595,9 @@ describe('the loader', () => {
       const again = await tableDigests(second.ownerPool());
       // The digest covers every table of the schema: 42 since PE-129b-01 (41 since dbc-4); since CS-20 (row 55) the
       // six pipeline tables digest with the rows their §G builders synthesised.
-      expect(Object.keys(first)).toHaveLength(45);
+      expect(Object.keys(first)).toHaveLength(47);
       expect(again).toEqual(first);
-      console.log(`[test:db] bulk fixture: digest over a stable ordered dump of all 45 tables, template clone and second load: ${overallDigest(first)} = ${overallDigest(again)}`);
+      console.log(`[test:db] bulk fixture: digest over a stable ordered dump of all 47 tables, template clone and second load: ${overallDigest(first)} = ${overallDigest(again)}`);
 
       // The rows are a function of the seed, the clock and the seeded dataset alone: the builder gives the same digest with no database.
       expect(report.digest).toBe(buildBulkFixture({ now: BULK_TEMPLATE_NOW, seed: BULK_TEMPLATE_SEED }, pureBase(BULK_TEMPLATE_NOW)).digest);
@@ -706,7 +707,7 @@ describe('a clone of the bulk template, read back as the runtime role', () => {
       [ALL_TABLES.map((entry) => entry.sqlName)],
     );
     const held = Object.fromEntries(privileges.rows.map((row) => [row.table_name, row.held]));
-    expect(Object.keys(held)).toHaveLength(45);
+    expect(Object.keys(held)).toHaveLength(47);
     // Read-only for the runtime role: the RBAC tables, the chain head, the lineage, the schema version.
     for (const table of ['roles', 'permissions', 'role_permissions', 'audit_chain_head', 'audit_chain_history', 'schema_meta']) expect(held[table], table).toBe('S');
     // Append-only by privilege: insert and read, nothing else.

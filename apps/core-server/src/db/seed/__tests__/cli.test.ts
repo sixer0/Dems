@@ -82,8 +82,8 @@ describe('the lines of a finished seed', () => {
     expect(lines.slice(0, 4)).toEqual([
       'db:seed: dems_demo on PostgreSQL 18.4 as dems_owner',
       'db:seed: dataset as of 2026-10-01T03:00:00.000Z (1790823600000); scenario idle; seed 20261001; epoch 0',
-      'db:seed: seeded in 105 ms (dataset and hashes 61 ms, transaction 38 ms); the database now holds 310 row(s) in 24 of 45 table(s)',
-      'row counts       45 table(s)',
+      'db:seed: seeded in 105 ms (dataset and hashes 61 ms, transaction 38 ms); the database now holds 312 row(s) in 24 of 47 table(s)',
+      'row counts       47 table(s)',
     ]);
     // Four header lines, one line per table in the counts map (30 in v1; the map now names all 42 - T-41 of dbc-4 and T-42 of PE-129b-01 joined with 0 rows:
     // dbc-3's three capture tables and the seven v2 data tables, the last holding the single
@@ -99,7 +99,8 @@ describe('the lines of a finished seed', () => {
     // suite measures exactly this total on a throw-away first build; 312 are written by the seed
     // and the rows of audit_chain_head and schema_meta come from the migrations.
     // Fix wave J (truth rule 3a): 310 - the seed's never-sealed item has no track row (4 fewer than 314).
-    expect(Object.values(EXPECTED_SEED_COUNTS).reduce((sum, rows) => sum + rows, 0)).toBe(310);
+    // Task 4 row 100: 312 - the commissioning permission and its one grant (+1 permission, +1 grant).
+    expect(Object.values(EXPECTED_SEED_COUNTS).reduce((sum, rows) => sum + rows, 0)).toBe(312);
   });
 });
 

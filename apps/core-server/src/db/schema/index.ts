@@ -1,5 +1,5 @@
 /**
- * The typed schema of the DEMS Core database: 45 tables in schema `public` (database contract
+ * The typed schema of the DEMS Core database: 47 tables in schema `public` (database contract
  * §3.3, §4, `dbc-3` §B and `dbc-4` §N; plan rows W17 and M2-W2; table 40 = T-40 `stt_config`,
  * row 112; table 41 = T-41 `session_capture_sources`, row 129). This
  * file is the entry `drizzle.config.ts` names, and what every later row imports.
@@ -17,7 +17,8 @@
  *              T-43 core_media_store (erratum PE-0013-01; ruling D166)
  *   meta       T-29 schema_meta
  *   capture    T-32 capture_devices, T-31 capture_config, T-33 capture_device_credentials,
- *              T-44 capture_device_streams, T-45 capture_audio_inputs (task 4 schema set A)
+ *              T-44 capture_device_streams, T-45 capture_audio_inputs (task 4 schema set A),
+ *              T-46 capture_network_config, T-47 host_network_aliases (task 4 schema set B)
  *   recording  T-34 session_audio_intervals, T-35 recording_fragments, T-39 sealing_jobs,
  *              T-41 session_capture_sources (dbc-4 §N.3; R-9..R-11)
  *   transcript T-36 transcript_chunks, T-37 transcripts, T-38 transcript_revisions
@@ -65,6 +66,13 @@
  * `capture_config` nullable with `capture_config_slot_pair_check`, the value sets
  * `CAPTURE_STREAM_ROLE` and `CAPTURE_STREAM_CODEC`) plus the hand-written
  * `0016_capture_streams_audio_inputs_privileges.sql` (the grants and the version step).
+ *
+ * SCHEMA VERSION 8 (`dbc-9`; schema set B of task 4, the same design document sections 2.4 and
+ * 2.5; plan review P12-F07): the generated `0017_network_commissioning.sql` (T-46 and T-47 in
+ * `./capture`, the columns `usb_serial` and `usb_port` of `capture_audio_inputs`, the value sets
+ * `HOST_ALIAS_REASON` and `HOST_ALIAS_REMOVE_REASON`) plus the hand-written
+ * `0018_network_commissioning_privileges.sql` (the grants, the two stored rows of the
+ * commissioning permission for a database that is already seeded, and the version step).
  *
  * Not expressed here, because the tool cannot generate them: the function of `0000_prelude`,
  * the chain lock, the chain guard, the three triggers and the genesis row (`0002_audit_guards`),
