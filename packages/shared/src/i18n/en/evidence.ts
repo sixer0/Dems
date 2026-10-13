@@ -628,6 +628,21 @@ export const evidence = {
     development: 'Signed with a DEVELOPMENT key — not a production signature',
     notEstablished: 'Signing key: not established — the signature or its certificate did not verify',
     noticesTitle: 'Not covered by the package signature',
+    /**
+     * Task 4 row V4 (decision C77; SX-09 (d)): the notice `SIGNED_BY_COMPROMISED_KEY` of a verify
+     * answer, in the clients' words - a STATE OF THE SIGNING KEY, shown beside the verdict and never
+     * under `noticesTitle` (it is not something the signature "does not cover"). One sentence per
+     * report line of the shared verifier (`SIGNED_BY_COMPROMISED_KEY_REPORT`): the Core held the
+     * package to its own record and it is that package (a pass, said so); it is not (a failure); a
+     * receiver's verifier, which has no record of the Core (the state alone - no verdict is worded).
+     */
+    compromisedKey: {
+      title: 'Signing key marked compromised',
+      storedDigest:
+        'This package was signed with a key that was later marked compromised, so the signature alone proves nothing any more. It passes because it is the package this Core recorded when it sealed the item.',
+      notStoredDigest: 'This package was signed with a key that was marked compromised, and it is not the package this Core recorded when it sealed the item. It is not verified.',
+      noRecord: 'This package was signed with a key that was marked compromised, so the signature alone proves nothing any more. This verifier has no record of the Core that sealed the item to compare the package with.',
+    },
   },
 
   /**

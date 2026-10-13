@@ -484,8 +484,8 @@ export function buildOperations(world: World, directory: OperatorDirectory, reco
  * The nine capture-phase types of task 3 (C3 §5.2; register CS-14). The fixture states ONE row of
  * each, with details exactly in the form of the audit writer's list (`SERVER_AUDIT_DETAIL_RULES`),
  * so that every gate over the allow-list - the writer's own `auditInputOf`, the key scan, the
- * table of printed references - covers all 77 types from the first load (the 63rd, STT_CONFIG_CHANGED
- * of row 113, the four of row 132 and the ten of task 4 blueprint row 19 are the last rows below). The modules that will
+ * table of printed references - covers all 82 types from the first load (the 63rd, STT_CONFIG_CHANGED
+ * of row 113, the four of row 132, the ten of task 4 blueprint row 19, the one of row 201 and the four of row V3 are the last rows below). The modules that will
  * write these rows on a live path land with their milestones (op 81 with row 71, the transcript
  * revisions with M7/M8, the credential paths with row 66): until then the fixture is the reference
  * holder, and each row names the actor whose permission owns the future operation. No credential,
@@ -734,6 +734,77 @@ function buildCaptureActivity(world: World, directory: OperatorDirectory): void 
       actorId: supervisor(at(23)),
       deviceId: null,
       details: { acceptanceId: ACCEPTANCE_ID },
+    },
+  });
+  // Task 4 (blueprint row 201, X-C; design 05 section 3.7; SX-14): ONE row of the host command that
+  // sets an operator's password, in the form of the audit writer's list, so that the fixture keeps
+  // covering every type (78). Its live writer is the command of row 215; until then the fixture is
+  // the reference holder. The actor is null (the command cannot know who sat at the terminal) and
+  // the severity is the type's fixed one. No password, length, salt, tag or hash parameter: no such key exists.
+  const passwordSetAt = at(24);
+  world.record(passwordSetAt, {
+    audit: {
+      type: 'OPERATOR_PASSWORD_SET',
+      message: 'Operator password set from the host',
+      actorId: null,
+      deviceId: null,
+      severity: 'WARNING',
+      details: { targetOperatorId: supervisor(passwordSetAt), method: 'HOST_COMMAND', sessionsEnded: 0, earlierWasDemo: true, invokerUid: 1000 },
+    },
+  });
+  // Task 4 (row V3, the third vocabulary step; decisions C53 (4d), C57, C58, C62): ONE row of each of
+  // the four types of that step, in the form of the audit writer's list, so that the fixture keeps
+  // covering every type (82). Their live writers land with row 106 (the two alias types), row 191b
+  // (the audio gap) and the route of operation 108 (the stored-credential test); until then the
+  // fixture is the reference holder. Ids, closed codes, counts and one address of a private range:
+  // no interface name, no credential, no locator, no device text.
+  world.record(at(25), {
+    audit: {
+      type: 'HOST_ALIAS_REQUESTED',
+      message: 'Time-limited host address requested',
+      actorId: technician(at(25)),
+      deviceId: null,
+      details: { action: 'ADD', address: '192.168.1.253', reason: 'FACTORY_SCAN', minutes: 30 },
+    },
+  });
+  world.record(at(26), {
+    audit: {
+      type: 'HOST_ALIAS_ADD_FAILED',
+      message: 'Time-limited host address could not be added',
+      actorId: technician(at(26)),
+      deviceId: null,
+      severity: 'WARNING',
+      details: { address: '192.168.1.253', reason: 'FACTORY_SCAN', failureReason: 'HELPER_ADDRESS_IN_USE' },
+    },
+  });
+  world.record(at(27), {
+    audit: {
+      type: 'CAPTURE_AUDIO_ABSENT_ON_RESTART',
+      message: 'Audio was not recorded while the capture worker was replaced',
+      actorId: null,
+      deviceId: null,
+      severity: 'WARNING',
+      details: { sessionId: 'SES-20261001-0001', earlierAttempt: 1, laterAttempt: 2, audioAbsentAtLeastMs: 287, audioAbsentAtMostMs: 624 },
+    },
+  });
+  world.record(at(28), {
+    audit: {
+      type: 'CAPTURE_DEVICE_CONNECTION_TESTED',
+      message: 'Registered camera connection tested',
+      actorId: technician(at(28)),
+      deviceId: null,
+      details: { deviceId: 'CAM-01', outcome: 'REACHABLE', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', operationId: 'testCaptureDeviceConnection', permission: 'CAPTURE_CONFIG' },
+    },
+  });
+  // Task 4 row R1b (decision C99): the one type of a camera absent inside a session; its live writer is the capture session.
+  world.record(at(29), {
+    audit: {
+      type: 'CAPTURE_VIDEO_ABSENT_IN_SESSION',
+      message: 'Video was not recorded while a camera of the session was absent',
+      actorId: null,
+      deviceId: null,
+      severity: 'WARNING',
+      details: { sessionId: 'SES-20261001-0001', deviceId: 'CAM-01', trackId: 'VIDEO-01', attempt: 1, loss: 1, tries: 1, videoAbsentAtLeastMs: 3048, videoAbsentAtMostMs: 8049, ended: 'RE_OPENED' },
     },
   });
 }

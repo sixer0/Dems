@@ -75,6 +75,30 @@ A camera, or whoever answers at its address, that tries to HOLD its client:
     flood-unmarked    after those pictures: video units of ONE time stamp and never the mark (a picture that
                       never ends: what a client collects must stay bounded)
 The camera states `hostile_start` (an event line) when the mode begins and counts `hostile_bytes_sent`.
+
+THE REDIRECT AND THE HOSTILE DESCRIPTIONS (row 152; security items S13-01 "never another host", AD-05, AD-06).
+Opt-in switches; without them nothing below exists. A camera, or whoever answers at its address, that tries to
+SEND ITS CLIENT SOMEWHERE ELSE, or to put its own text into what the client keeps:
+    --second-port N                 a SECOND loopback listener of this camera (127.0.0.1, the same port rule, not
+                                    the first port). It serves the same camera. Whoever arrives there FOLLOWED a
+                                    redirect or a foreign control address: the camera counts the connections
+                                    (`second_port_connections`), the requests (`second_port_requests`) and the
+                                    requests that carried an Authorization header (`second_port_authorized`).
+    --redirect first|authenticated  DESCRIBE on the first port is answered `302` with a Location on the second
+                                    port. `first`: at once, before any challenge. `authenticated`: the challenge
+                                    first, then the 302 to the DESCRIBE that carried the right Digest answer (the
+                                    client now holds an answer it could carry along). Needs --second-port.
+    --sdp-control other-port|other-host    the media control address of the description is an ABSOLUTE locator
+                                    of another place: `other-port` the second port of this camera (needs
+                                    --second-port); `other-host` the address 127.0.0.2 with this camera's port -
+                                    a host of the loopback net this program never binds, and never a name (no
+                                    look-up can leave this machine).
+    --sdp-codec lower|hostile       the codec name of the description (`a=rtpmap`): `lower` the real name in
+                                    lower-case letters; `hostile` a name of exactly 300 characters that begins
+                                    with the lower-case name and holds markup characters (< > & " ' and a
+                                    script tag). The stream itself stays the real codec.
+The counters `redirects_sent`, `foreign_control_descriptions` and `hostile_codec_descriptions` say how often each
+answer was given. No event line carries a locator or the hostile text: counts and codes only.
 """
 import argparse
 import base64
@@ -127,6 +151,17 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file_
 DEFAULT_CACHE = os.path.join(REPO_ROOT, ".cache", "rtsp-test-camera")
 
 EXIT_USAGE, EXIT_ENCODE, EXIT_BIND = 2, 3, 4
+
+# Row 152: the place a hostile description names instead of this camera, and the hostile codec name.
+OTHER_HOST = "127.0.0.2"  # the loopback net, an address this program never binds; never a name
+HOSTILE_CODEC_LENGTH = 300
+HOSTILE_CODEC_MARKUP = "<script>alert(1)</script>&\"'<b>"
+
+
+def hostile_codec_name(real_name):
+    """Exactly 300 characters: the real name in lower-case letters, markup characters, lower-case letters to the end."""
+    head = real_name.lower() + HOSTILE_CODEC_MARKUP
+    return head + "x" * (HOSTILE_CODEC_LENGTH - len(head))
 
 
 def port_refusal(port):
@@ -337,6 +372,8 @@ class Connection:
         self.streamer = None
         self.reset_on_close = False  # row 40, `--drop-style reset`: the socket is closed without an orderly end
         self.hostile_started = False  # row 186: the `hostile_start` event is stated once per connection
+        self.local_port = sock.getsockname()[1]
+        self.on_second_port = camera.second_port != 0 and self.local_port == camera.second_port  # row 152
 
     # -- bytes in
     def fill(self):
@@ -526,6 +563,10 @@ class Connection:
         auth = self.auth_class(method, headers)
         journal.count("requests")
         journal.count("auth_" + auth)
+        if self.on_second_port:  # row 152: whoever is here followed a redirect or a foreign control address
+            journal.count("second_port_requests")
+            if "authorization" in headers:
+                journal.count("second_port_authorized")
         status = self.answer(method, uri, headers, cseq, auth)
         journal.emit("request", conn=self.number, method=method if method in camera.METHODS else "OTHER", auth=auth, status=status)
         return method != "TEARDOWN" or status != 200
@@ -542,11 +583,17 @@ class Connection:
         if method == "OPTIONS":  # answered without an account, as common cameras do
             self.reply(cseq, 200, "OK", ["Public: " + ", ".join(camera.METHODS)])
             return 200
+        # Row 152: the redirect, on the first port only (the second port serves the camera to whoever followed).
+        redirecting = camera.redirect != "none" and method == "DESCRIBE" and not self.on_second_port
+        if redirecting and (camera.redirect == "first" or auth == "digest_ok"):
+            camera.journal.count("redirects_sent")
+            self.reply(cseq, 302, "Moved Temporarily", ["Location: rtsp://%s:%d%s" % (BIND_HOST, camera.second_port, camera.path)])
+            return 302
         if auth != "digest_ok":
             self.reply(cseq, 401, "Unauthorized", self.challenge())
             return 401
         path = re.sub(r"^rtsp://[^/]*", "", uri).split("?", 1)[0].rstrip("/")
-        base = "rtsp://%s:%d%s/" % (BIND_HOST, camera.port, camera.path)
+        base = "rtsp://%s:%d%s/" % (BIND_HOST, self.local_port, camera.path)
         if method == "SETUP":
             if path != camera.path + "/" + TRACK:
                 self.reply(cseq, 404, "Not Found")
@@ -566,6 +613,10 @@ class Connection:
             return 404
         if method == "DESCRIBE":
             body = camera.description().encode("ascii")
+            if camera.sdp_control != "track":  # row 152
+                camera.journal.count("foreign_control_descriptions")
+            if camera.sdp_codec == "hostile":
+                camera.journal.count("hostile_codec_descriptions")
             self.reply(cseq, 200, "OK", ["Content-Base: " + base, "Content-Type: application/sdp"], body)
             return 200
         if self.session is None or headers.get("session", "").split(";")[0] != self.session:
@@ -729,12 +780,30 @@ class Camera:
         self.fault_lock = threading.Lock()
         self.stop = threading.Event()
         self.connections = []
-        self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.listener.bind((BIND_HOST, args.port))  # the ONE bind of this program
-        self.listener.listen(8)
-        self.listener.settimeout(0.5)
+        # Row 152: the redirect and the hostile descriptions; off unless their switches were given.
+        self.redirect, self.sdp_control, self.sdp_codec = args.redirect, args.sdp_control, args.sdp_codec
+        self.second_port = 0
+        self.second_listener = None
+        self.listener = None
+        try:
+            # The first port, then (row 152, `--second-port`) the second: both through the one bind below.
+            for port in [args.port] + ([args.second_port] if args.second_port else []):
+                listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                listener.bind((BIND_HOST, port))  # the ONE bind of this program
+                listener.listen(8)
+                listener.settimeout(0.5)
+                if self.listener is None:
+                    self.listener = listener
+                else:
+                    self.second_listener = listener
+        except OSError:
+            if self.listener is not None:  # the second port could not be taken: no listener is left
+                self.listener.close()
+            raise
         self.port = self.listener.getsockname()[1]
+        if self.second_listener is not None:
+            self.second_port = self.second_listener.getsockname()[1]
 
     # -- row 40: the stream faults
     def fault_fields(self, origin):
@@ -758,13 +827,18 @@ class Camera:
             return True
 
     def description(self):
+        # Row 152: the codec name and the media control address as the switches say; the base camera's otherwise.
+        codec_name = {"real": self.codec.rtp_name, "lower": self.codec.rtp_name.lower(), "hostile": hostile_codec_name(self.codec.rtp_name)}[self.sdp_codec]
+        control = {"track": TRACK,
+                   "other-port": "rtsp://%s:%d%s/%s" % (BIND_HOST, self.second_port, self.path, TRACK),
+                   "other-host": "rtsp://%s:%d%s/%s" % (OTHER_HOST, self.port, self.path, TRACK)}[self.sdp_control]
         lines = ["v=0", "o=- %d 1 IN IP4 %s" % (self.ssrc, BIND_HOST), "s=DEMS test camera", "c=IN IP4 0.0.0.0", "t=0 0",
                  "a=control:*", "a=range:npt=0-", "m=video 0 RTP/AVP %d" % PAYLOAD_TYPE,
-                 "a=rtpmap:%d %s/%d" % (PAYLOAD_TYPE, self.codec.rtp_name, CLOCK)]
+                 "a=rtpmap:%d %s/%d" % (PAYLOAD_TYPE, codec_name, CLOCK)]
         fmtp = fmtp_line(self.codec, self.clip, self.param_sets)
         if fmtp:
             lines.append(fmtp)
-        lines += ["a=framerate:%d" % self.fps, "a=control:" + TRACK]
+        lines += ["a=framerate:%d" % self.fps, "a=control:" + control]
         return "\r\n".join(lines) + "\r\n"
 
     def serve(self, deadline):
@@ -774,7 +848,15 @@ class Camera:
                 self.journal.emit("deadline", level="warn")
                 break
             try:
-                sock, peer = self.listener.accept()
+                if self.second_listener is None:
+                    sock, peer = self.listener.accept()
+                else:  # row 152: whichever of the two listeners has a caller
+                    waiting, _, _ = select.select([self.listener, self.second_listener], [], [], 0.5)
+                    if not waiting:
+                        continue
+                    sock, peer = waiting[0].accept()
+                    if waiting[0] is self.second_listener:
+                        self.journal.count("second_port_connections")
             except socket.timeout:
                 continue
             except OSError as exc:
@@ -794,6 +876,8 @@ class Camera:
             threading.Thread(target=connection.run, daemon=True).start()
         self.stop.set()
         self.listener.close()
+        if self.second_listener is not None:
+            self.second_listener.close()
         for connection in self.connections:
             connection.close()
         for connection in self.connections:
@@ -838,6 +922,14 @@ def main():
     hostile.add_argument("--adversary-after-frames", dest="hostile_after_frames", type=int, default=0, help="pictures of a PLAY before a stream mode of --adversary begins")
     hostile.add_argument("--adversary-interval-ms", dest="hostile_interval_ms", type=int, default=99, help="the pause between two bytes of a trickle")
     hostile.add_argument("--adversary-delay-ms", dest="hostile_delay_ms", type=int, default=4500, help="how late every answer of slow-answers comes")
+    elsewhere = parser.add_argument_group("the redirect and the hostile descriptions (row 152); off by default")
+    elsewhere.add_argument("--second-port", type=int, default=0, help="a second loopback listener of this camera: whoever arrives there followed a redirect or a foreign control address")
+    elsewhere.add_argument("--redirect", choices=("none", "first", "authenticated"), default="none",
+                           help="DESCRIBE is answered 302 to the second port: at once, or after the right Digest answer")
+    elsewhere.add_argument("--sdp-control", choices=("track", "other-port", "other-host"), default="track",
+                           help="the media control address of the description: this camera's track, the second port, or the address 127.0.0.2")
+    elsewhere.add_argument("--sdp-codec", choices=("real", "lower", "hostile"), default="real",
+                           help="the codec name of the description: the real one, lower-case, or 300 characters with markup")
     args = parser.parse_args()
 
     def refuse(text):
@@ -867,6 +959,12 @@ def main():
         refuse("every drop must fall inside a group: k x --drop-after-frames must not be a multiple of --gop")
     if args.hostile_after_frames < 0 or not 1 <= args.hostile_interval_ms <= 10000 or not 1 <= args.hostile_delay_ms <= 60000:
         refuse("--adversary-after-frames, --adversary-interval-ms or --adversary-delay-ms out of range")
+    # Row 152: the second port is held to the same rule as the first, before any socket.
+    if args.second_port:
+        if not 1 <= args.second_port <= 65535 or args.second_port == args.port or port_refusal(args.second_port):
+            refuse("--second-port: " + (port_refusal(args.second_port) or "a loopback port of its own, 1 to 65535, not the first port"))
+    elif args.redirect != "none" or args.sdp_control == "other-port":
+        refuse("--redirect and --sdp-control other-port need --second-port")
 
     journal = Journal(args.event_log)
     codec = Codec(args.codec)
@@ -908,6 +1006,14 @@ def main():
         fault_state["account"] = args.account
     if args.hostile != "none":  # row 186
         fault_state.update(hostile=args.hostile, hostile_after_frames=args.hostile_after_frames)
+    if args.second_port:  # row 152
+        fault_state["second_port"] = camera.second_port
+    if args.redirect != "none":
+        fault_state["redirect"] = args.redirect
+    if args.sdp_control != "track":
+        fault_state["sdp_control"] = args.sdp_control
+    if args.sdp_codec != "real":
+        fault_state["sdp_codec"] = args.sdp_codec
     journal.emit("ready", pid=os.getpid(), host=BIND_HOST, port=camera.port, path=camera.path, codec=codec.name,
                  param_sets=args.param_sets, width=args.width, height=args.height, fps=args.fps, gop=args.gop,
                  clip_frames=args.clip_frames, frames_per_play=args.frames,

@@ -126,6 +126,26 @@ const OFFLINE_SCHEMA_NAMES = [
   'CaptureAudioCard',
   'CaptureAudioCardSearch',
   'CaptureAudioInputRegisterRequest',
+  // Task 4 (blueprint row 194): the body of op 100; its answer is sent by the Core server only (57 -> 58 components).
+  'CaptureDeviceAddressConfirmRequest',
+  // Task 4 (blueprint row 102): eight of the nine schemas of ops 101-107; the ninth, `CameraNetworkJob`,
+  // is the answer of the successes only the Core server sends (58 -> 66 components).
+  'CaptureNetworkConfig',
+  'CaptureNetworkConfigUpdateRequest',
+  'HostAlias',
+  'HostAliasState',
+  'CameraFactoryScanRequest',
+  'FactoryCamera',
+  'CameraFactoryScan',
+  'CameraNetworkSetRequest',
+  // Task 4 (row V3; blueprint row 146): the answer of op 108 stood here while the simulator sent a synthetic 200
+  // (66 -> 67 components). Row V4 (decision C75 (2)): the simulator answers the 503 of a Core in simulated
+  // capture, so `CaptureDeviceConnectionTest` is the Core server's alone and left the offline document (-1).
+  // Task 4 (blueprint row 116): three of the five schemas of ops 109-110 - a step and the two request
+  // bodies; the stored record and its diagnostics are the answer only the Core server sends (+3; 69 components since row V4).
+  'InstallationAcceptanceStep',
+  'InstallationAcceptRequest',
+  'InstallationAcceptanceRevokeRequest',
 ];
 
 /** The nine book §21.2 endpoints, verbatim (research/01_explore.md §21.2). */
@@ -179,9 +199,9 @@ describe('AC-56: the OpenAPI document', () => {
     expect((await validate(serializeOpenApiDocument(broken))).valid).toBe(false);
   });
 
-  it('has 33 operations: GET /api/v1/health LIVE and the 32 simulated endpoints (9 book §21.2 + 13 capture + 3 STT configuration + 5 camera search + 2 sound cards) SIMULATED', () => {
-    expect(operations).toHaveLength(33);
-    expect(new Set(operations.map((entry) => entry.operation.operationId)).size).toBe(33);
+  it('has 44 operations: GET /api/v1/health LIVE and the 43 simulated endpoints (9 book §21.2 + 13 capture + 3 STT configuration + 5 camera search + 2 sound cards + 1 re-address + 7 commissioning + 1 stored-credential connection test + 2 installation acceptance) SIMULATED', () => {
+    expect(operations).toHaveLength(44);
+    expect(new Set(operations.map((entry) => entry.operation.operationId)).size).toBe(44);
 
     const live = operations.filter((entry) => entry.operation['x-dems-mode'] === 'live');
     expect(live.map((entry) => `${entry.method} ${entry.path}`)).toEqual([`get ${HEALTH_PATH}`]);
@@ -195,7 +215,11 @@ describe('AC-56: the OpenAPI document', () => {
     // Task 3 M6 row 113 (C3 §2.5) adds the three STT configuration operations 90-92: 22 -> 25.
     // Task 3 R-9..R-11 (row 132, D106; C3 §2.6) add the five operations 93-97: 25 -> 30.
     // Task 4 row 63 (design addendum 4.2) adds the two sound-card operations 98-99: 30 -> 32.
-    expect(simulatedPaths.length).toBe(32);
+    // Task 4 row 194 adds the confirmed re-address, operation 100: 32 -> 33.
+    // Task 4 row 102 adds the seven commissioning operations 101-107: 33 -> 40.
+    // Task 4 row V3 adds the stored-credential connection test, operation 108: 40 -> 41.
+    // Task 4 row 116 adds the installation acceptance and its revocation, operations 109-110: 41 -> 43.
+    expect(simulatedPaths.length).toBe(43);
     for (const endpoint of BOOK_21_2) expect(simulatedPaths, endpoint).toContain(endpoint);
     for (const entry of simulated) {
       expect(badgeNames(entry.operation)).toContain(API_BADGES.SIMULATED.name);
@@ -203,7 +227,7 @@ describe('AC-56: the OpenAPI document', () => {
     }
     const badgeCount = (name: string) => operations.filter((entry) => badgeNames(entry.operation).includes(name)).length;
     expect(badgeCount('LIVE')).toBe(1);
-    expect(badgeCount('SIMULATED')).toBe(32);
+    expect(badgeCount('SIMULATED')).toBe(43);
   });
 
   it('marks only the export RBAC + AUDIT, and every x-dems-rbac lists exactly the roles holding its permission', () => {
@@ -225,13 +249,13 @@ describe('AC-56: the OpenAPI document', () => {
   });
 
   it('the committed openapi/openapi.json matches the builder byte for byte (no drift)', () => {
-    // Changed by design (W27; AC-B-11): the committed file holds the `all` scope, 99 operations (97 of C3 §10.1 + the two of task 4 row 63).
+    // Changed by design (W27; AC-B-11): the committed file holds the `all` scope, 110 operations (97 of C3 §10.1 + the two of task 4 row 63 + the one of row 194 + the seven of row 102 + the one of row V3 + the two of row 116).
     // The document this file describes is the offline one, which the generator still renders.
     const committed = readFileSync(OPENAPI_JSON_PATH, 'utf8');
     expect(OPENAPI_COMMITTED_SCOPE).toBe(CoreApiScope.ALL);
     expect(renderOpenApiJson()).toBe(serializeOpenApiDocument(createOpenApiDocument({ scope: OPENAPI_COMMITTED_SCOPE })));
     expect(committed).toBe(renderOpenApiJson());
-    expect(listOpenApiOperations(JSON.parse(committed) as typeof document)).toHaveLength(99);
+    expect(listOpenApiOperations(JSON.parse(committed) as typeof document)).toHaveLength(110);
     expect(renderOpenApiJson(CoreApiScope.OFFLINE)).toBe(serializeOpenApiDocument(document));
   });
 
@@ -421,7 +445,7 @@ async function rig(seen: Map<string, Set<number>>): Promise<SimRig> {
 const RECORDING_INPUT = CORE_API_EXAMPLES.createSession!.request!.recordingScenario!.value as Record<string, unknown>;
 
 describe('the contract matches the simulated handlers (sim/api.ts)', () => {
-  it("the simulator's route table lists exactly the simulated operations of the registry (32)", () => {
+  it("the simulator's route table lists exactly the simulated operations of the registry (43)", () => {
     const documented = CORE_API_OPERATIONS.filter((operation) => operation.mode === 'simulated').map(
       (operation) => `${operation.method.toUpperCase()} ${operation.path} ${operation.operationId}`,
     );
@@ -773,6 +797,159 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     expect(audioCalls(q)).toEqual([409, 409]);
     q.sim.stop();
 
+    // Flow 16 (task 4, blueprint row 194; WP-12): the confirmed re-address, operation 100. The
+    // simulator's cameras never move, so it produces every refusal the offline scope names and no success.
+    const CONFIRM_PATH = '/api/v1/capture/devices/address/confirm';
+    const CONFIRMATION = { deviceId: 'CAM-01', candidateId: 'CND-000000000002', address: '192.168.10.21' };
+    const r = await rig(seen);
+    expect(r.call('confirmCaptureDeviceAddress', 'POST', CONFIRM_PATH, CONFIRMATION).status).toBe(401);
+    r.sim.actions.signIn('budi.santoso', DEMO_OPERATOR_PASSWORD);
+    expect(r.call('confirmCaptureDeviceAddress', 'POST', CONFIRM_PATH, CONFIRMATION).status).toBe(403);
+    r.sim.stop();
+    const s = await rig(seen);
+    s.sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD);
+    const devicesBefore = JSON.stringify(s.sim.store.getState().captureDevices);
+    expect(s.call('confirmCaptureDeviceAddress', 'POST', CONFIRM_PATH, '[1]').status).toBe(400);
+    expect(s.call('confirmCaptureDeviceAddress', 'POST', CONFIRM_PATH, { ...CONFIRMATION, address: 'camera-1.local' }).status).toBe(422);
+    // No search yet: no candidate of this id (404). After a search: the registered candidate is the
+    // camera, but not at a new address (409); another device or candidate is 404.
+    expect(s.call('confirmCaptureDeviceAddress', 'POST', CONFIRM_PATH, CONFIRMATION).status).toBe(404);
+    expect(s.call('startCaptureDiscovery', 'POST', DISC_PATH).status).toBe(202);
+    const notMoved = s.call('confirmCaptureDeviceAddress', 'POST', CONFIRM_PATH, CONFIRMATION);
+    expect([notMoved.status, reasonOf(notMoved)]).toEqual([409, 'READDRESS_NOT_THE_REGISTERED_CAMERA']);
+    expect(s.call('confirmCaptureDeviceAddress', 'POST', CONFIRM_PATH, { ...CONFIRMATION, deviceId: 'CAM-77' }).status).toBe(404);
+    expect(JSON.stringify(s.sim.store.getState().captureDevices)).toBe(devicesBefore);
+    s.sim.stop();
+
+    // Flow 17 (task 4, blueprint row 102; WP-23b): the seven commissioning operations 101-107.
+    // Signed out: 401 on all seven. A SUPERVISOR lacks CAPTURE_COMMISSION (TECHNICIAN only, U10): 403 on all seven.
+    const NET = '/api/v1/capture/network';
+    const SET_BODY = { fromAddress: '192.168.1.64', scannedMac: 'AA:BB:CC:00:11:22', credential: { username: 'USERNAME', secret: 'SECRET' } };
+    const commissioningCalls = (target: SimRig): number[] => [
+      target.call('getCaptureNetworkConfig', 'GET', `${NET}/config`).status,
+      target.call('updateCaptureNetworkConfig', 'POST', `${NET}/config`, { revision: 1, aliasMinutes: 60 }).status,
+      target.call('scanFactoryCameras', 'POST', `${NET}/scan`).status,
+      target.call('getHostAlias', 'GET', `${NET}/alias`).status,
+      target.call('removeHostAlias', 'POST', `${NET}/alias/remove`).status,
+      target.call('setCameraNetwork', 'POST', `${NET}/cameras/address`, SET_BODY).status,
+      target.call('getCameraNetworkJob', 'GET', `${NET}/jobs/CNJ-000001`).status,
+    ];
+    const t = await rig(seen);
+    expect(commissioningCalls(t)).toEqual([401, 401, 401, 401, 401, 401, 401]);
+    t.sim.actions.signIn('andi.pratama', DEMO_OPERATOR_PASSWORD);
+    expect(commissioningCalls(t)).toEqual([403, 403, 403, 403, 403, 403, 403]);
+    t.sim.stop();
+    // A TECHNICIAN: the two reads and the scan answer synthetic values (200); every write refuses
+    // (409) and the job read is 404; a body that is no request is 400 / 422. NOTHING changes: the
+    // whole state is the same object before and after.
+    const u = await rig(seen);
+    u.sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD);
+    const stateBefore = u.sim.store.getState();
+    expect(commissioningCalls(u)).toEqual([200, 409, 200, 200, 409, 409, 404]);
+    expect(u.call('updateCaptureNetworkConfig', 'POST', `${NET}/config`, '[1]').status).toBe(400);
+    expect(u.call('updateCaptureNetworkConfig', 'POST', `${NET}/config`, { aliasMinutes: 60 }).status).toBe(422);
+    expect(u.call('scanFactoryCameras', 'POST', `${NET}/scan`, '[1]').status).toBe(400);
+    expect(u.call('scanFactoryCameras', 'POST', `${NET}/scan`, { address: '8.8.8.8' }).status).toBe(422);
+    expect(u.call('scanFactoryCameras', 'POST', `${NET}/scan`, { address: '192.168.1.200' }).status).toBe(200);
+    expect(u.call('setCameraNetwork', 'POST', `${NET}/cameras/address`, '[1]').status).toBe(400);
+    expect(u.call('setCameraNetwork', 'POST', `${NET}/cameras/address`, { fromAddress: '192.168.1.64' }).status).toBe(422);
+    const notAvailable = u.call('setCameraNetwork', 'POST', `${NET}/cameras/address`, SET_BODY);
+    expect([notAvailable.status, reasonOf(notAvailable)]).toEqual([409, 'COMMISSIONING_NOT_AVAILABLE']);
+    expect(JSON.stringify(notAvailable.body)).not.toContain('SECRET');
+    const noAlias = u.call('removeHostAlias', 'POST', `${NET}/alias/remove`);
+    expect([noAlias.status, reasonOf(noAlias)]).toEqual([409, 'HOST_ALIAS_NOT_PRESENT']);
+    expect(u.sim.store.getState()).toBe(stateBefore);
+    u.sim.stop();
+    // A TECHNICIAN with a session open: the four writes are idle only (409 CAPTURE_CONFIG_LOCKED); the three reads answer.
+    const v = await rig(seen);
+    const codeOfAnswer = (answer: { body: unknown }): unknown => (answer.body as { error?: { code?: string } }).error?.code;
+    // The SUPERVISOR opens the session and signs out; the TECHNICIAN then finds it open.
+    v.sim.actions.signIn('andi.pratama', DEMO_OPERATOR_PASSWORD);
+    v.sim.request({ method: 'POST', path: SBASE, body: RECORDING_INPUT });
+    v.sim.actions.signOut();
+    v.sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD);
+    expect(commissioningCalls(v)).toEqual([200, 409, 409, 200, 409, 409, 404]);
+    expect(codeOfAnswer(v.call('scanFactoryCameras', 'POST', `${NET}/scan`))).toBe('CAPTURE_CONFIG_LOCKED');
+    expect(codeOfAnswer(v.call('setCameraNetwork', 'POST', `${NET}/cameras/address`, SET_BODY))).toBe('CAPTURE_CONFIG_LOCKED');
+    // Flow 18, the locked half (task 4, row V3; operation 108): idle only, and the lock comes before the device.
+    expect(codeOfAnswer(v.call('testCaptureDeviceConnection', 'POST', '/api/v1/capture/devices/CAM-01/test'))).toBe('CAPTURE_CONFIG_LOCKED');
+    expect(codeOfAnswer(v.call('testCaptureDeviceConnection', 'POST', '/api/v1/capture/devices/CAM-77/test'))).toBe('CAPTURE_CONFIG_LOCKED');
+    v.sim.stop();
+
+    // Flow 18 (task 4, row V3 - the third contract step; blueprint row 146): the connection test of a
+    // registered camera with its stored credential, operation 108. The simulator contacts nothing and
+    // holds no credential. Row V4 (decision C75 (2)): it answers what a Core server in simulated
+    // capture answers - the envelope's `503 NOT_READY`, `DISCOVERY_NOT_READY`, for every id - never a
+    // synthetic 200, and the WHOLE state is the same object before and after - no audit row, no
+    // event, nothing stored.
+    const DEVICE_TEST = '/api/v1/capture/devices/CAM-01/test';
+    const w = await rig(seen);
+    expect(w.call('testCaptureDeviceConnection', 'POST', DEVICE_TEST).status).toBe(401);
+    w.sim.actions.signIn('budi.santoso', DEMO_OPERATOR_PASSWORD);
+    expect(w.call('testCaptureDeviceConnection', 'POST', DEVICE_TEST).status).toBe(403);
+    w.sim.stop();
+    const x = await rig(seen);
+    x.sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD);
+    const beforeDeviceTest = x.sim.store.getState();
+    const tested = x.call('testCaptureDeviceConnection', 'POST', DEVICE_TEST);
+    expect(tested.status).toBe(503);
+    expect(tested.body).toEqual({ error: { code: 'NOT_READY', message: 'The connection test of a registered camera is not ready.', details: { reason: 'DISCOVERY_NOT_READY' } } });
+    // A body is not read: no member of it can reach anything, and the answer does not echo it.
+    const withBody = x.call('testCaptureDeviceConnection', 'POST', DEVICE_TEST, { credential: { username: 'USERNAME', secret: 'SECRET' }, address: '192.168.10.21' });
+    expect([withBody.status, JSON.stringify(withBody.body).includes('SECRET'), JSON.stringify(withBody.body).includes('192.168')]).toEqual([503, false, false]);
+    // "Not ready" stands before the device is looked up, as on the Core server: a microphone, the PoE switch, an unknown camera and a candidate id get the same answer.
+    for (const id of ['MIC-01', 'POE-SWITCH', 'CAM-77', 'CND-000000000001']) expect(x.call('testCaptureDeviceConnection', 'POST', `/api/v1/capture/devices/${id}/test`).status, id).toBe(503);
+    expect(x.sim.store.getState()).toBe(beforeDeviceTest);
+    x.sim.stop();
+
+    // Flow 19 (task 4, blueprint row 116; WP-26b): the acceptance of the installation and its
+    // revocation, operations 109 and 110. The simulator keeps no installation record: signed out 401,
+    // a SUPERVISOR 403 (CAPTURE_COMMISSION is the TECHNICIAN's alone), and for a TECHNICIAN a body that
+    // is no request is 400 / 422 and a body of the right form is the stated refusal (409). The WHOLE
+    // state is the same object before and after - no audit row, no event, nothing stored.
+    const ACCEPT_PATH = '/api/v1/installation/acceptance';
+    const REVOKE_PATH = `${ACCEPT_PATH}/revoke`;
+    // Row V6 (R119-07): the steps are the contract's closed list - here the example request of the contract itself.
+    const ACCEPT_BODY = CORE_API_EXAMPLES['acceptInstallation']!.request!['accepted']!.value as Record<string, unknown>;
+    const REVOKE_BODY = { reason: 'The Core was moved to another room.' };
+    const acceptanceCalls = (target: SimRig): number[] => [
+      target.call('acceptInstallation', 'POST', ACCEPT_PATH, ACCEPT_BODY).status,
+      target.call('revokeInstallationAcceptance', 'POST', REVOKE_PATH, REVOKE_BODY).status,
+    ];
+    const y = await rig(seen);
+    expect(acceptanceCalls(y)).toEqual([401, 401]);
+    y.sim.actions.signIn('andi.pratama', DEMO_OPERATOR_PASSWORD);
+    expect(acceptanceCalls(y)).toEqual([403, 403]);
+    y.sim.stop();
+    const z = await rig(seen);
+    z.sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD);
+    const beforeAcceptance = z.sim.store.getState();
+    const notAccepted = z.call('acceptInstallation', 'POST', ACCEPT_PATH, ACCEPT_BODY);
+    expect([notAccepted.status, reasonOf(notAccepted)]).toEqual([409, 'INSTALLATION_ACCEPTANCE_NOT_AVAILABLE']);
+    const notRevoked = z.call('revokeInstallationAcceptance', 'POST', REVOKE_PATH, REVOKE_BODY);
+    expect([notRevoked.status, reasonOf(notRevoked)]).toEqual([409, 'INSTALLATION_ACCEPTANCE_NOT_IN_FORCE']);
+    expect(z.call('acceptInstallation', 'POST', ACCEPT_PATH, '[1]').status).toBe(400);
+    expect(z.call('revokeInstallationAcceptance', 'POST', REVOKE_PATH, '[1]').status).toBe(400);
+    // A member outside the key list (`code` is a denied name), a text of two lines, the Core's own facts, no reason.
+    for (const steps of [[{ id: 'A', passed: true, detail: null, code: 'X' }], [{ id: 'A', passed: true, detail: 'one\ntwo' }], [{ id: 'A', passed: true }]]) {
+      expect(z.call('acceptInstallation', 'POST', ACCEPT_PATH, { steps }).status, JSON.stringify(steps)).toBe(422);
+    }
+    expect(z.call('acceptInstallation', 'POST', ACCEPT_PATH, { ...ACCEPT_BODY, diagnostics: {} }).status).toBe(422);
+    expect(z.call('revokeInstallationAcceptance', 'POST', REVOKE_PATH, {}).status).toBe(422);
+    expect(z.call('revokeInstallationAcceptance', 'POST', REVOKE_PATH, { reason: 'four' }).status).toBe(422);
+    expect(z.sim.store.getState()).toBe(beforeAcceptance);
+    z.sim.stop();
+    // Idle only: with a session open both answer 409 CAPTURE_CONFIG_LOCKED before the body is looked at.
+    const locked = await rig(seen);
+    locked.sim.actions.signIn('andi.pratama', DEMO_OPERATOR_PASSWORD);
+    locked.sim.request({ method: 'POST', path: SBASE, body: RECORDING_INPUT });
+    locked.sim.actions.signOut();
+    locked.sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD);
+    const lockedCode = (answer: { body: unknown }): unknown => (answer.body as { error?: { code?: string } }).error?.code;
+    expect(lockedCode(locked.call('acceptInstallation', 'POST', ACCEPT_PATH, ACCEPT_BODY))).toBe('CAPTURE_CONFIG_LOCKED');
+    expect(lockedCode(locked.call('revokeInstallationAcceptance', 'POST', REVOKE_PATH, {}))).toBe('CAPTURE_CONFIG_LOCKED');
+    locked.sim.stop();
+
     // Every status of the simulated operations that the simulator can produce was produced by it.
     // Changed by design (W27; 01_specs §7.19): the five baseline reads document a 401 and a 403, and
     // `startSession` a 422, that only the Core server sends (`responses[status].services`). RECON-A adds
@@ -780,9 +957,18 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     // role can hit, and for the five capture reads/writes whose 422 is a path-parameter/query format check
     // the simulator answers with 404 instead (D-51a-6). The simulator is not rewritten, so the comparison
     // stays limited to the offline-scope statuses, and the simulator must never produce one of the others.
+    // Task 4 row V4 (decision C75 (2)): ONE envelope-level answer the simulator gives, named here. An
+    // envelope-level status (405, 413, 429, 500, 503) is documented on no operation (the registry
+    // test keeps that), so it is in no operation's status list; the simulator answers operation 108
+    // with the envelope's `503 NOT_READY`, `DISCOVERY_NOT_READY`, exactly as a Core server in
+    // simulated capture does. It must be produced, and no other operation may produce one.
+    const SIMULATOR_ENVELOPE_ANSWERS: Readonly<Record<string, readonly number[]>> = { testCaptureDeviceConnection: [503] };
     let coreServerOnly = 0;
     for (const operation of CORE_API_OPERATIONS.filter((o) => o.mode === 'simulated')) {
-      const produced = [...(seen.get(operation.operationId) ?? [])].sort((a, b) => a - b);
+      const envelope = SIMULATOR_ENVELOPE_ANSWERS[operation.operationId] ?? [];
+      const everyProduced = [...(seen.get(operation.operationId) ?? [])].sort((a, b) => a - b);
+      expect(everyProduced.filter((status) => envelope.includes(status)), `${operation.operationId}: its envelope-level answer`).toEqual([...envelope]);
+      const produced = everyProduced.filter((status) => !envelope.includes(status));
       expect(produced, operation.operationId).toEqual(listCoreApiResponseStatuses(operation, CoreApiScope.OFFLINE));
       const others = listCoreApiResponseStatuses(operation).filter((status) => !produced.includes(status));
       for (const status of others) expect(operation.responses[status]?.services, `${operation.operationId} ${status}`).toEqual(['dems-core-server']);
@@ -798,7 +984,16 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     // answered and it has one console = 2. Total 25.
     // Task 4 row 63 (design addendum 4.2, op 99): the 201 and the 200 of a registration - the
     // simulator captures from no sound card and registers nothing = 2. Total 27.
-    expect(coreServerOnly).toBe(27);
+    // Task 4 row 194 (op 100): the 200 of a confirmed re-address - the simulator's cameras never move = 1. Total 28.
+    // Task 4 row 102 (ops 101-107): the 200 of a stored configuration, the 200 of a removed address,
+    // the 202 and the 200 of a job, and the 422 of a job id of the wrong form (the simulator answers
+    // 404) - the simulator has no host and starts no job = 5. Total 33.
+    // Task 4 row V3 (op 108): the 422 of a device id of the wrong form (the simulator answers 404) = 1. Total 34.
+    // Task 4 row 116 (ops 109-110): the 200 of a stored acceptance and the 200 of a revoked one - the
+    // simulator keeps no installation record = 2. Total 36.
+    // Task 4 row V4 (op 108; decision C75 (2)): the 200 of an outcome and the 404 of an unknown camera -
+    // the simulator asks no camera and answers the envelope's 503 before a device is looked up = 2. Total 38.
+    expect(coreServerOnly).toBe(38);
   });
 });
 

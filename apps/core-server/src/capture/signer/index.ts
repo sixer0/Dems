@@ -14,17 +14,31 @@
  */
 export { buildSelfSignedCertificate, certificateDer, certificatePem, subjectText, utcFields, type CertificateRequest, type CertificateSubject } from './der';
 export {
+  ACTIVE_KEY_POINTER_NAME,
   SIGNING_CERTIFICATE_VALIDITY_DAYS,
+  activateSigningKey,
+  activeSigningKeyId,
   fileWrapSecrets,
   loadSoftwareSigner,
+  lookAtSigningKeyStore,
   markSigningKeyCompromised,
+  nextSigningKeyId,
+  signingKeySeriesNumber,
   provisionSigningKey,
+  readRetainedCertificates,
   readSigningCertificate,
   readStoredCertificate,
+  refuseHoldWithoutBootKey,
+  RetainedCertificateRefusal,
+  signerHeldToBoot,
   verifyEd25519,
   type KeyStoreOptions,
   type LoadedSigner,
+  type SignerHold,
+  type SigningKeyStoreLook,
   type ProvisionOptions,
+  type RetainedCertificate,
+  type RetainedCertificateSet,
 } from './host-key';
 export { signingKeyRecords, type SecurityKeyRecord } from './key-record';
 export {

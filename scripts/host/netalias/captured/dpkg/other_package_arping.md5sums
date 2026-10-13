@@ -1,0 +1,10 @@
+06520d60bf8d83809b21ce03108b3302  usr/include/arping.h
+7d66f745967881a0471081f5d40b917c  usr/sbin/arping
+646ba3b7e394893ca002c5db2695037d  usr/share/doc/arping/README.Debian
+02957017652b27d9d329e7be3656c5c2  usr/share/doc/arping/README.gz
+cd33bd67e9db9c01997985f3613392a3  usr/share/doc/arping/changelog.Debian.gz
+941ee323c7ca65107af09aaf8d4f194a  usr/share/doc/arping/copyright
+dd07f344143e4a72e369fa32e3bbf4cc  usr/share/doc/arping/examples/arping-scan-net.sh
+2752080fb4450f8beca13026e553ed04  usr/share/doc/arping/examples/arping.default
+77bbc654c9df088af1dc917ddcca819b  usr/share/doc/arping/examples/arping.if-up
+45f9e3b09ceb5b278e27023394c59d25  usr/share/man/man8/arping.8.gz

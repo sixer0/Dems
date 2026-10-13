@@ -1,0 +1,167 @@
+# DEMS capture programs on Ubuntu 24.04: the container of check T-4 (task 4 blueprint row 78, WP-14).
+#
+# WHAT IT IS. The items HOST-10 to HOST-15 of scripts/host/HOST-PROFILE-UBUNTU-24.04.md, made executable:
+# the build tools of the profile, FFmpeg 9.0.2 (libavformat 63.1.102) built from the official release
+# archive with the profile's configure line, the loader entry, and then the capture worker, the camera relay
+# and the capture guard built from THIS repository's sources by the worker's own build file.
+#
+# WHAT IT IS NOT. A container result is a container result: it settles nothing for the production host
+# (profile, section 5). This image is a development check. It is never installed, shipped or pushed.
+#
+# BUILD (from the repository root; the context is the root, cut down by /.dockerignore to
+# apps/capture-worker, scripts/host and scripts/hardware-acceptance):
+#   docker build -f scripts/host/container/Dockerfile.ubuntu-24.04 \
+#                -t dems/capture-linux-check:ubuntu-24.04-ffmpeg-9.0.2 .
+# It is written for the classic builder as well (no buildx on the development Mac): one stage, no mounts,
+# no here-documents.
+#
+# NETWORK USED BY THE BUILD, and nothing else:
+#   docker.io            the base image, pinned by digest below
+#   ports.ubuntu.com     Ubuntu packages on arm64 (archive.ubuntu.com / security.ubuntu.com on amd64);
+#                        package versions are NOT pinned - what was installed is written to
+#                        /opt/dems/container/packages.txt
+#   ffmpeg.org           https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz       (SHA-256 pinned below)
+#                        https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz.asc   (its detached signature)
+#                        https://ffmpeg.org/ffmpeg-devel.asc                   (the release key; its
+#                                                                               fingerprint is pinned below)
+# Nothing of the repository leaves the machine: the context goes to the local docker daemon only.
+
+# ubuntu:24.04 as pulled on 2026-10-13 (multi-architecture index digest; image created 2026-09-18).
+FROM ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+# The record folder of this image: what was installed, how FFmpeg was configured, what was sent as context,
+# and the log and exit code of the build of the three programs.
+RUN mkdir -p /opt/dems/container
+
+# HOST-10, the profile's package list WORD FOR WORD (recommended packages included, as on a host where the
+# installer types the profile's command). If this list is not enough for `make`, that is a finding against
+# the profile and is recorded - it is not papered over here.
+RUN apt-get update \
+ && apt-get install -y build-essential clang make pkg-config python3 nasm libasound2-dev
+
+# What Ubuntu 24.04 itself carries (profile section 5, open point 4; plan review finding F12), read from the
+# package index, nothing installed: the distribution's FFmpeg and the two packages named arping.
+RUN apt-cache policy ffmpeg libavformat-dev arping iputils-arping > /opt/dems/container/apt-candidates.txt \
+ && cat /opt/dems/container/apt-candidates.txt
+
+# Tools of THIS definition only (not items of the profile): fetching and verifying the FFmpeg archive.
+RUN apt-get install -y --no-install-recommends ca-certificates curl gnupg xz-utils
+
+# HOST-12: FFmpeg 9.0.2 from the release source, with the ALSA input, as shared libraries.
+# The archive is held to a pinned SHA-256 AND to a good signature of the pinned release key.
+# The SHA-256 was read twice on 2026-10-13 from independent places and agreed: computed over the archive
+# downloaded from ffmpeg.org, and the checksum the Homebrew formula of FFmpeg 9.0.2 states for the same URL.
+ARG FFMPEG_VERSION=9.0.2
+ARG FFMPEG_SHA256=8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e
+ARG FFMPEG_KEY_FINGERPRINT=FCF986EA15E6E293A5644F10B4322F04D67658D8
+ARG FFMPEG_PREFIX=/opt/dems/ffmpeg-9.0.2
+RUN set -eu \
+ && mkdir -p /usr/local/src/ffmpeg && cd /usr/local/src/ffmpeg \
+ && curl -fsSLO "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" \
+ && curl -fsSLO "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz.asc" \
+ && curl -fsSLO "https://ffmpeg.org/ffmpeg-devel.asc" \
+ && echo "${FFMPEG_SHA256}  ffmpeg-${FFMPEG_VERSION}.tar.xz" | sha256sum -c - \
+ && export GNUPGHOME="$(mktemp -d)" \
+ && gpg --batch --quiet --import ffmpeg-devel.asc \
+ && gpg --batch --status-fd 1 --verify "ffmpeg-${FFMPEG_VERSION}.tar.xz.asc" "ffmpeg-${FFMPEG_VERSION}.tar.xz" > verify.status 2>verify.err \
+ && grep -q "^\[GNUPG:\] VALIDSIG ${FFMPEG_KEY_FINGERPRINT} " verify.status \
+ && { gpgconf --kill all || true; } && rm -rf "$GNUPGHOME" \
+ && tar -xf "ffmpeg-${FFMPEG_VERSION}.tar.xz" \
+ && cd "ffmpeg-${FFMPEG_VERSION}" \
+ && ./configure --prefix="${FFMPEG_PREFIX}" --enable-shared --disable-static --disable-doc --enable-indev=alsa \
+ && make -j"$(nproc)" \
+ && make install \
+ && cp ffbuild/config.log /opt/dems/container/ffmpeg-config.log \
+ && cd .. && rm -rf "ffmpeg-${FFMPEG_VERSION}" \
+ && sha256sum "ffmpeg-${FFMPEG_VERSION}.tar.xz" ffmpeg-devel.asc > /opt/dems/container/ffmpeg-source.sha256 \
+ && cat verify.status >> /opt/dems/container/ffmpeg-source.sha256
+
+# HOST-13: the dynamic loader finds the pinned libraries (file A of the profile).
+RUN echo "${FFMPEG_PREFIX}/lib" > /etc/ld.so.conf.d/dems-ffmpeg.conf \
+ && ldconfig \
+ && ldconfig -p | grep -q "libavformat.so.63 .*=> ${FFMPEG_PREFIX}/lib/"
+
+# The took-effect checks of HOST-12, as the profile words them.
+RUN "${FFMPEG_PREFIX}/bin/ffmpeg" -hide_banner -version | head -n 1 | grep -q "ffmpeg version ${FFMPEG_VERSION} " \
+ && "${FFMPEG_PREFIX}/bin/ffmpeg" -hide_banner -version | grep -q "libavformat *63\. *1\.102" \
+ && "${FFMPEG_PREFIX}/bin/ffmpeg" -hide_banner -devices 2>/dev/null | grep -q "^ D. alsa "
+
+# Tools the later container rows need (rows 79 and 141), none of them an item the build depends on:
+#   procps, psmisc     the process table: short names, full paths, survivors after a killed parent (HA-11, HA-12)
+#   util-linux         prlimit, setpriv (in the base image; named here for the reader)
+#   iputils-arping     the conflict-check tool of HOST-18 (HA-13); iproute2 beside it
+#   alsa-utils         arecord / aplay and the `null` and `file` devices for the helper's argument list
+#   strace, file       what a process does at an instant; what a binary is
+# The sanitizer runtime of clang is NOT named here on purpose: whether HOST-10 brings it is part of the result.
+RUN apt-get install -y --no-install-recommends procps psmisc iproute2 iputils-arping alsa-utils strace file
+
+# HOST-11 and HOST-18 hold in this image: no FFmpeg development package of the distribution, and not the
+# other package named arping. Then the list of what is installed.
+RUN ! dpkg -s libavformat-dev >/dev/null 2>&1 \
+ && ! dpkg -s libavcodec-dev >/dev/null 2>&1 \
+ && ! dpkg -s ffmpeg >/dev/null 2>&1 \
+ && ! dpkg -s arping >/dev/null 2>&1 \
+ && dpkg -S "$(command -v arping)" \
+ && dpkg-query -W -f '${Package}\t${Version}\t${Architecture}\n' > /opt/dems/container/packages.txt
+
+# A plain account for the rows that must not run as root (a killed parent, a refused open).
+RUN useradd --create-home --shell /bin/bash dems-check
+
+# FOR THE WORKER'S TEST FIXTURES ONLY (task 4 blueprint row 141; what row 193 found missing). Not an item of the
+# host profile, not installed on a host, and NEVER what the worker, the relay or the guard link (BR-06):
+#   lsof                     the harness reads listeners and sockets with it (test/m3worker.py)
+#   libx264-dev, libx265-dev the encoders of the camera fixtures (the pinned FFmpeg above is configured without
+#                            an external codec library, so it cannot MAKE a camera stream)
+#   a SECOND build of the same verified FFmpeg 9.0.2 archive, with those two encoders, as STATIC libraries, of
+#   which only the two programs `ffmpeg` and `ffprobe` are kept: its libraries, headers and pkg-config files are
+#   removed in this same step, so nothing can be compiled or linked against it and the loader knows one
+#   libavformat only (checked below). The fixtures find the two programs on the search path and by
+#   DEMS_FFMPEG / DEMS_FFPROBE. No further download from ffmpeg.org: the archive of HOST-12 is still in the image
+#   and is held to the same SHA-256 again.
+ARG FIXTURE_FFMPEG_PREFIX=/opt/dems/fixtures-ffmpeg-9.0.2
+RUN set -eu \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends lsof libx264-dev libx265-dev \
+ && cd /usr/local/src/ffmpeg \
+ && echo "${FFMPEG_SHA256}  ffmpeg-${FFMPEG_VERSION}.tar.xz" | sha256sum -c - \
+ && tar -xf "ffmpeg-${FFMPEG_VERSION}.tar.xz" \
+ && cd "ffmpeg-${FFMPEG_VERSION}" \
+ && ./configure --prefix="${FIXTURE_FFMPEG_PREFIX}" --disable-shared --enable-static --disable-doc --disable-ffplay \
+                --enable-gpl --enable-libx264 --enable-libx265 \
+ && make -j"$(nproc)" \
+ && make install \
+ && cd .. && rm -rf "ffmpeg-${FFMPEG_VERSION}" \
+ && rm -rf "${FIXTURE_FFMPEG_PREFIX}/lib" "${FIXTURE_FFMPEG_PREFIX}/include" "${FIXTURE_FFMPEG_PREFIX}/share" \
+ && ln -s "${FIXTURE_FFMPEG_PREFIX}/bin/ffmpeg" /usr/local/bin/ffmpeg \
+ && ln -s "${FIXTURE_FFMPEG_PREFIX}/bin/ffprobe" /usr/local/bin/ffprobe \
+ && ffmpeg -hide_banner -encoders 2>/dev/null | grep -q " libx264 " \
+ && ffmpeg -hide_banner -encoders 2>/dev/null | grep -q " libx265 " \
+ && ! ldd "${FIXTURE_FFMPEG_PREFIX}/bin/ffmpeg" | grep -qE "libav|libsw" \
+ && ! ldconfig -p | grep 'libavformat\.so' | grep -qv "=> ${FFMPEG_PREFIX}/lib/" \
+ && ldconfig -p | grep -q "libavformat.so.63 .*=> ${FFMPEG_PREFIX}/lib/" \
+ && ! dpkg -s ffmpeg >/dev/null 2>&1 \
+ && ! dpkg -s libavformat-dev >/dev/null 2>&1 \
+ && dpkg-query -W -f '${Package}\t${Version}\t${Architecture}\n' > /opt/dems/container/packages-with-fixture-tools.txt
+ENV DEMS_FFMPEG=${FIXTURE_FFMPEG_PREFIX}/bin/ffmpeg
+ENV DEMS_FFPROBE=${FIXTURE_FFMPEG_PREFIX}/bin/ffprobe
+
+# THE SOURCES: the product tree at the profile's proposed <install-dir>, owned by root (HOST-05).
+# /.dockerignore decides what arrives; the manifest is the listing of what did.
+COPY . /opt/dems/core/
+RUN cd /opt/dems/core && find . -type f | LC_ALL=C sort > /opt/dems/container/context-manifest.txt \
+ && wc -l < /opt/dems/container/context-manifest.txt
+
+WORKDIR /opt/dems/core
+ENV DEMS_FFMPEG_PREFIX=${FFMPEG_PREFIX}
+
+# HOST-14 and HOST-15: the worker, the relay and the guard, by the worker's own build file, as root, from
+# <install-dir>. The step NEVER fails the image: its whole output and its exit code are the result, kept in
+# the image, so that a red build is a recorded finding and the tools stay usable for the rows after it.
+RUN timeout 2400 bash scripts/host/container/build-in-container.sh > /opt/dems/container/build.log 2>&1; \
+    echo "$?" > /opt/dems/container/build.rc; \
+    echo "build-in-container.sh: exit $(cat /opt/dems/container/build.rc)"; tail -n 40 /opt/dems/container/build.log; true
+
+# Default: show the recorded result. A fresh run of the build: `... bash scripts/host/container/build-in-container.sh`
+CMD ["sh", "-c", "cat /opt/dems/container/build.log; echo; echo \"recorded exit code: $(cat /opt/dems/container/build.rc)\""]

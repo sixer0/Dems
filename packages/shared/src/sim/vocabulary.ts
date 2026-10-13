@@ -455,6 +455,38 @@ export const AuditType = {
   CAPTURE_DEVICE_ADDRESS_CHANGED: 'CAPTURE_DEVICE_ADDRESS_CHANGED',
   INSTALLATION_ACCEPTED: 'INSTALLATION_ACCEPTED',
   INSTALLATION_ACCEPTANCE_REVOKED: 'INSTALLATION_ACCEPTANCE_REVOKED',
+  // Task 4 (blueprint row 201, X-C; design 05 section 3.7; security review 07, SX-14): the ONE type
+  // of the host command that sets an operator's password (77 -> 78). Written by that command only,
+  // with a null actor and severity WARNING; the simulator emits none. Its closed detail-key list is
+  // in `apps/core-server/src/core/audit-details.ts`: never the password, its length, a salt, a tag
+  // or a hash parameter. The name is fixed here.
+  OPERATOR_PASSWORD_SET: 'OPERATOR_PASSWORD_SET',
+  // Task 4 (row V3, the third contract-and-vocabulary step; decisions C53 (4d), C57, C58, C62): four
+  // types in ONE change set ahead of their writers (78 -> 82). Written by Core-server modules only;
+  // the simulator emits none. Each has an exact detail-key list in `apps/core-server/src/core/
+  // audit-details.ts`: ids, closed codes, counts and one IPv4 literal - never a credential, a
+  // locator, an interface name or text a device chose.
+  //   HOST_ALIAS_REQUESTED             the INTENT of a change of the host's own addresses, written
+  //                                    BEFORE the line is sent to the address helper (S13-10 (c));
+  //   HOST_ALIAS_ADD_FAILED            an `add` the helper refused or failed (the result that had no type);
+  //   CAPTURE_AUDIO_ABSENT_ON_RESTART  the capture worker was replaced inside a session and no audio
+  //                                    was recorded between the two workers: the measured bounds in ms;
+  //   CAPTURE_DEVICE_CONNECTION_TESTED the OUTCOME of a connection test of a REGISTERED camera made
+  //                                    with its STORED credential (operation 108). A type of its own:
+  //                                    `CAPTURE_CONNECTION_TESTED` names a candidate and a search.
+  HOST_ALIAS_REQUESTED: 'HOST_ALIAS_REQUESTED',
+  HOST_ALIAS_ADD_FAILED: 'HOST_ALIAS_ADD_FAILED',
+  CAPTURE_AUDIO_ABSENT_ON_RESTART: 'CAPTURE_AUDIO_ABSENT_ON_RESTART',
+  CAPTURE_DEVICE_CONNECTION_TESTED: 'CAPTURE_DEVICE_CONNECTION_TESTED',
+  // Task 4 (row R1b; decision C99, the video twin of `CAPTURE_AUDIO_ABSENT_ON_RESTART`): one type
+  // (82 -> 83). A camera of a session stopped delivering video INSIDE the session while its relay
+  // kept the push to the capture worker: the recording of that camera has a step in time as long
+  // as the absence. Written by the Core's capture session when the absence ENDS - the relay opened
+  // the camera again (`RE_OPENED`) or the capture ended with the camera still away
+  // (`NOT_RE_OPENED`); the simulator emits none. Its closed detail-key list is in
+  // `apps/core-server/src/core/audit-details.ts`: ids, numbers, the two measured bounds in ms and
+  // one closed word - never a locator, a credential or text a device chose.
+  CAPTURE_VIDEO_ABSENT_IN_SESSION: 'CAPTURE_VIDEO_ABSENT_IN_SESSION',
 } as const;
 export type AuditType = ValueOf<typeof AuditType>;
 
@@ -544,6 +576,19 @@ export const AUDIT_TYPE_CATEGORY = {
   CAPTURE_DEVICE_ADDRESS_CHANGED: 'DEVICE',
   INSTALLATION_ACCEPTED: 'SYSTEM',
   INSTALLATION_ACCEPTANCE_REVOKED: 'SYSTEM',
+  // Task 4 (blueprint row 201, X-C): one entry, in an EXISTING category - SECURITY, as `USER_ENABLED`.
+  OPERATOR_PASSWORD_SET: 'SECURITY',
+  // Task 4 (row V3): four entries, each in an EXISTING category. The two alias types as the three
+  // of row 19 (SECURITY); the audio gap as the capture-fault types `MIC_SILENT` and
+  // `CAPTURE_DEVICE_UNREACHABLE` (DEVICE); the stored-credential test as `CAPTURE_CONNECTION_TESTED`
+  // and `CAPTURE_CREDENTIAL_REVEALED` (SECURITY).
+  HOST_ALIAS_REQUESTED: 'SECURITY',
+  HOST_ALIAS_ADD_FAILED: 'SECURITY',
+  CAPTURE_AUDIO_ABSENT_ON_RESTART: 'DEVICE',
+  CAPTURE_DEVICE_CONNECTION_TESTED: 'SECURITY',
+  // Task 4 (row R1b): one entry, in an EXISTING category - DEVICE, as the audio gap and the capture
+  // device faults (`MIC_SILENT`, `CAPTURE_DEVICE_UNREACHABLE`).
+  CAPTURE_VIDEO_ABSENT_IN_SESSION: 'DEVICE',
 } as const satisfies Record<AuditType, AuditCategory>;
 
 // ── Operational events (Recent Events, bell, timeline sources) ──────────────────────────

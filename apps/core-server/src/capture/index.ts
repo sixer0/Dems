@@ -58,6 +58,14 @@ import { WORKER_LOG_NAME, captureWorkerArguments } from './worker-arguments';
 export { CAPTURE_MIC_RATE_LIMIT_PPM, CAPTURE_WARNING_CLEAR_HOLD_MS, CaptureNoticeCode, ForwarderReportCode, SUPERVISOR_REFUSAL_REASONS, forwardCaptureEvents, type CaptureEngine, type CaptureForwarderOptions, type CaptureNotice } from './forwarder';
 // The ONE version of the worker this Core drives (gate 64 C7): the boot and every HELLO hold a worker to it.
 export { CAPTURE_WORKER_VERSION } from './boot';
+// The door of the host facts and their maker (task 4 row 85, decision C46): the entry point hands the facts of its own
+// process to the boot checks through these two names. The two mount calls below keep their members (AD-08 (2)).
+export { captureBootControl, captureHostOfProcess } from './boot';
+// Task 4 row 106c (decision C82, named amendment SR-11): the entry point makes ONE more runner of the host's questions
+// with the maker its host facts are made with, and hands it to the composition for the single purpose of reading the
+// address helper's interface file by the FIXED row below. One export line: nothing is built here, the row itself stays
+// in `boot/program-checks.ts`, and the door behind the runner does not leave the unit.
+export { INTERFACE_FILE_COMMAND, captureHostRunnerOf, type HostCommandRunner } from './boot';
 export { createProcessLauncher, unconfiguredLauncher, type ProcessLauncherOptions } from './ipc';
 export { MAX_SESSION_ID_CHARS, OUTPUT_EXISTS, captureDownReasonOf, createCaptureSupervisor } from './supervisor';
 // The arguments of a worker process: one set for a session start and for the boot probe (wave H driver F; gate 64 C7).

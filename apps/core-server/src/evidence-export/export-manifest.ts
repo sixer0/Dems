@@ -49,6 +49,9 @@ export const EXPORT_SIGNATURE_FILE = 'export-manifest.sig';
 export const COMPOSITE_ENTRY = PackageFile.COMPOSITE_FILE;
 export const EXPORT_REPRESENTATION = 'DECRYPTED_COPY';
 export const EXPORT_PERMISSION = 'EVIDENCE_EXPORT';
+/** Row V5 (C84 R-3): the two fixed words of `sourceSigningKey`, the export's statement of a compromise mark. */
+export const EXPORT_SOURCE_KEY_STATE = 'MARKED_COMPROMISED';
+export const EXPORT_SOURCE_VERIFIED_AS = 'STORED_DIGEST';
 
 const text = z.string().min(1);
 const hex64 = z.string().regex(/^[0-9a-f]{64}$/);
@@ -126,6 +129,39 @@ export const ExportManifestSchema = z.strictObject({
         .refine((sources) => isSealedTrackList(sources), 'the sources of a composite: camera files of the package, each once, in file order'),
     })
     .nullable(),
+  /**
+   * Task 4 row V5 (decision C84, caution R-3 of security review 230; SX-09 (d)): THE EXPORT'S OWN
+   * STATEMENT THAT THE SOURCE IS UNDER A SIGNING KEY MARKED COMPROMISED. Present ONLY in an export
+   * of a package whose seal - or one of whose transcript revisions - is signed by a key that the
+   * exporting Core held as marked compromised when the export was made (`export.exportedAt`).
+   *
+   *   state              `MARKED_COMPROMISED`
+   *   certificateSha256  the fingerprints (SHA-256 of the DER of the PUBLIC certificate, the form of
+   *                      the hand-over record) of the marked certificates this package rests on,
+   *                      ascending, each once. Each lies in the archive: the seal's own
+   *                      `device-certificate.pem`, or a retained `certificates/<sha256>.pem`
+   *   verifiedAs         `STORED_DIGEST`: the exporting Core verified the source against the manifest
+   *                      digest (and the head of the transcript revisions) its database recorded at
+   *                      the seal - the only way such a package passes there. The signature of the
+   *                      marked key proves nothing any more; THIS manifest is signed by the Core's
+   *                      ACTIVE key, which is not the marked one (a marked key signs nothing)
+   *
+   * THE MANIFEST'S ONE OPTIONAL TOP-LEVEL MEMBER: absent in every export made before this step and
+   * in every export of a package no mark touches, so the canonical bytes, the digest and what such
+   * an export verifies as do not change. A receiver's verifier that predates the member refuses a
+   * manifest that CARRIES it (strict schema) - a failure, never a plain pass.
+   */
+  sourceSigningKey: z
+    .strictObject({
+      state: z.literal(EXPORT_SOURCE_KEY_STATE),
+      certificateSha256: z
+        .array(hex64)
+        .min(1)
+        .max(100)
+        .refine((digests) => digests.every((digest, index) => index === 0 || digest > (digests[index - 1] as string)), 'the marked fingerprints: ascending, each once'),
+      verifiedAs: z.literal(EXPORT_SOURCE_VERIFIED_AS),
+    })
+    .optional(),
 });
 export type ExportManifest = z.output<typeof ExportManifestSchema>;
 

@@ -12,9 +12,14 @@
  * It admits the loopback literal and nothing else. It is not a test file and imports nothing: no
  * production source may import it (the layer rules of `test/static` keep `src/` from `test/`).
  */
-export type TestStoredAddressDecision = { readonly allowed: true } | { readonly allowed: false; readonly refusal: string };
+export type TestStoredAddressDecision = { readonly allowed: true; readonly destination: { readonly address: string; readonly sourceAddress: string } } | { readonly allowed: false; readonly refusal: string };
 
-/** `127.0.0.1` with any port, or none. Every other host is refused by a code of this file. */
+/**
+ * `127.0.0.1` with any port, or none. Every other host is refused by a code of this file.
+ * Row 143b: an admission names the address the connection is made FROM, as the product's rule does
+ * (`destination.sourceAddress`); on loopback that is the loopback literal itself. Without it the
+ * judgement of a stored camera answers no source and nothing is dialled.
+ */
 export function loopbackStoredCameraAddress(host: string, _port: number | undefined): TestStoredAddressDecision {
-  return host === '127.0.0.1' ? { allowed: true } : { allowed: false, refusal: 'TEST_RULE_LOOPBACK_ONLY' };
+  return host === '127.0.0.1' ? { allowed: true, destination: { address: host, sourceAddress: '127.0.0.1' } } : { allowed: false, refusal: 'TEST_RULE_LOOPBACK_ONLY' };
 }

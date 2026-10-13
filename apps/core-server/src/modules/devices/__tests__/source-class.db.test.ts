@@ -20,8 +20,9 @@
 // `/bin/echo` (it prints no device list), the worker is row 61's stand-in script. The fixture
 // directory under `.data/` is left in place: this file deletes nothing there.
 import type { Pool } from 'pg';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
+import { provideTestCaptureHost, testHostPrograms } from '../../../../test/support/capture-host';
 import { captureLog, unitTestConfig } from '../../../../test/support/config';
 import { buildApp } from '../../../app';
 import { DEMO_OPERATOR_PASSWORD } from '@dems/shared/sim';
@@ -34,10 +35,14 @@ import { BootError } from '../../../plugins/readiness';
 import { SOURCE_FACTS_BOOT_STEP, audioStatusOf, deviceHealthOf, deviceInventoryOf, videoStatusOf } from '../index';
 
 const db = useTestDatabase({ template: 'seed' });
-const fixture = realBootFixture('row140d131');
+/** Task 4 row 228b: this suite's own synthetic installation (not a reserved id): its production boots are configured with it and its key names it. */
+const INSTALLATION = 'DEMS-TEST-D131';
+const fixture = realBootFixture('row140d131', INSTALLATION);
 fixture.provisionKey();
+afterAll(() => fixture.remove());
 const BUILT_INS = ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH'];
-const REAL = { captureMode: 'real', demoControls: false, dataDir: fixture.dataDir, mediaStoreDir: fixture.mediaStoreDir } as const;
+// Task 4 row 85 (C46): a production boot is held to its host - the two stand-in programs here, the explicit TEST host handed in before each boot.
+const REAL = { captureMode: 'real', demoControls: false, dataDir: fixture.dataDir, mediaStoreDir: fixture.mediaStoreDir, installationDeviceId: INSTALLATION, ...testHostPrograms(fixture.programsDir) } as const;
 
 async function booted(slug: string, overrides: Partial<ConfigInput>, prepare?: (owner: Pool) => Promise<unknown>) {
   const target = await db.another({ template: 'seed', slug });
@@ -48,6 +53,7 @@ async function booted(slug: string, overrides: Partial<ConfigInput>, prepare?: (
   const app = buildApp({ config: unitTestConfig({ database: target.runtime, dataDir: db.run.dataDir, logLevel: 'info', ...overrides }), logStream: log.stream });
   target.onCleanup(() => app.close());
   await app.ready();
+  provideTestCaptureHost(app);
   await app.readiness.boot();
   const state = app.engine.state();
   const marks = state.captureDevices.devices.map((device) => `${device.id} ${device.adapter ?? '-'} ${device.sourceClass ?? '-'}`);

@@ -17,12 +17,24 @@
  * The value needles of the scratch scans (database passwords read from the local data folder, the
  * published demo password) are NOT here: this file reads nothing but the files it is asked to scan.
  *
+ * Task 4 row 207 (security review SX-18 of the two provisioning commands) adds three FORM needles -
+ * a typed password cannot be a needle, a form can:
+ *   - private-key-pem: the opening line of a private key in PEM text, of any kind;
+ *   - database-password-line: one of the two password keys of the database connection files (the
+ *     runtime role's and the owner role's), an equals sign and a value after it;
+ *   - argon2-encoded: a password hash in its encoded text form (algorithm, parameters, salt, tag).
+ * and, for `--tracked` and `--staged` only, two rules on the NAME of a file, whatever it holds:
+ *   - key-file-name: a name that ends in `.p8` or `.wrap` (the signer store's key and wrap secret);
+ *   - connection-file-name: a file named `pg.env` or `pg.owner.env` (the two connection files).
+ * A name hit is printed as `NAME <file>: <rule>`; the `HIT` lines and `TOTAL` are the content
+ * needles', as before.
+ *
  * Usage, from the repository root:
  *   node scripts/secret-scan/count-only.mjs <file or folder> [...]     scan these (folders are walked)
  *   node scripts/secret-scan/count-only.mjs --ext=.log <folder>        only files with this ending
  *   node scripts/secret-scan/count-only.mjs --tracked                  every file git tracks
  *   node scripts/secret-scan/count-only.mjs --staged                   every file staged for the next commit
- * Exit code: 0 no hit, 1 at least one hit, 2 wrong usage.
+ * Exit code: 0 no hit, 1 at least one hit (content or name), 2 wrong usage.
  */
 import { spawnSync } from 'node:child_process';
 import { lstatSync, readFileSync, readdirSync } from 'node:fs';
@@ -42,7 +54,27 @@ export const NEEDLES = Object.freeze([
   { id: 'camera-credential', re: /\b(?:rtsps?|https?):\/\/[^\s/@:]+:[^\s/@]+@/g },
   // S13-16 (3), second needle: the ingest address with a long random path element (RC-2).
   { id: 'ingest-secret', re: new RegExp(`\\brtsp://127\\.0\\.0\\.1:\\d{2,5}/(?:${PATH_CHARACTER}+/)*(?!${UUID}(?!${PATH_CHARACTER}))[A-Za-z0-9_-]{22,}`, 'g') },
+  // SX-18, first needle: the opening line of a PEM private key - plain, encrypted, of a named algorithm, or a key block.
+  { id: 'private-key-pem', re: /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----/g },
+  // SX-18, second needle: a password key of a connection file with a value after its equals sign.
+  { id: 'database-password-line', re: /\bDEMS_PG_(?:APP|OWNER)_PASSWORD[ \t]*=[ \t]*\S/g },
+  // SX-18, third needle: an encoded Argon2 hash - variant, optional version, the three parameters, salt and tag.
+  { id: 'argon2-encoded', re: /\$argon2(?:id|i|d)\$(?:v=\d+\$)?m=\d+,t=\d+,p=\d+\$[A-Za-z0-9+/]{8,}\$[A-Za-z0-9+/]{16,}/g },
 ]);
+
+/**
+ * SX-18: the rules on a file's NAME, applied to the lists git gives (`--tracked`, `--staged`).
+ * `name` is a path with forward slashes, as git prints it.
+ */
+export const NAME_RULES = Object.freeze([
+  { id: 'key-file-name', matches: (name) => /\.(?:p8|wrap)$/.test(name) },
+  { id: 'connection-file-name', matches: (name) => /(?:^|\/)pg\.(?:owner\.)?env$/.test(name) },
+]);
+
+/** The ids of the name rules a file name meets (an empty list for most names). */
+export function nameRulesOf(name) {
+  return NAME_RULES.filter((rule) => rule.matches(name)).map((rule) => rule.id);
+}
 
 /** Files larger than this are not read; they are counted as skipped. */
 export const SIZE_LIMIT_BYTES = 64 * 1024 * 1024;
@@ -132,6 +164,8 @@ function main(argv) {
     return 2;
   }
   let files;
+  /** The files whose NAME meets a rule: only for the lists git gives, read or not, whatever they hold. */
+  let named = null;
   if (fromGit === null) {
     files = filesUnder(paths, root, ending);
   } else {
@@ -140,15 +174,20 @@ function main(argv) {
       console.error('count-only.mjs: the file list could not be read from git');
       return 2;
     }
-    files = filesUnder(names.filter((name) => ending === null || name.endsWith(ending)), root, null);
+    const listed = names.filter((name) => ending === null || name.endsWith(ending));
+    files = filesUnder(listed, root, null);
+    named = listed.map((name) => ({ name, rules: nameRulesOf(name) })).filter((entry) => entry.rules.length > 0);
   }
   const result = scan(files);
   const sum = Object.values(result.totals).reduce((all, count) => all + count, 0);
   console.log(`scanned ${result.scanned} file(s); skipped ${result.skipped} (not readable or above ${SIZE_LIMIT_BYTES} bytes)`);
   for (const needle of NEEDLES) console.log(`${needle.id}: ${result.totals[needle.id]}`);
+  if (named !== null) for (const rule of NAME_RULES) console.log(`${rule.id}: ${named.filter((entry) => entry.rules.includes(rule.id)).length}`);
   for (const file of result.withHits) console.log(`HIT ${relative(root, file.path)}: ${file.hits.map(([id, count]) => `${id}=${count}`).join(', ')}`);
+  for (const entry of named ?? []) console.log(`NAME ${entry.name}: ${entry.rules.join(', ')}`);
   console.log(`TOTAL: ${sum} in ${result.withHits.length} file(s)`);
-  return sum === 0 ? 0 : 1;
+  if (named !== null) console.log(`BY NAME: ${named.length} file(s)`);
+  return sum === 0 && (named === null || named.length === 0) ? 0 : 1;
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

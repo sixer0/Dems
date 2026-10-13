@@ -44,7 +44,12 @@ PKG_CONFIG ?= pkg-config
 LIBS_PC    := libavformat libavcodec libavfilter libswresample libavutil
 # NOT `?=` (review R63-06): a CFLAGS of the ENVIRONMENT must not reach the release build - it could carry a
 # proof switch. (A switch that arrives anyway, on the make command line, still marks the binary: worker.h.)
-CFLAGS     := -std=c11 -O2 -g -Wall -Wextra -Werror
+# -D_DEFAULT_SOURCE (task 4 row 193, finding L-1 of row 78): under -std=c11 the C library of Linux declares the
+# POSIX functions the worker uses (clock_gettime, nanosleep, sigaction, lstat, ftruncate, O_CLOEXEC, O_DIRECTORY)
+# only when a feature-test macro asks for them. This one is the relay's and the guard's (below), and it is the
+# one that HIDES NOTHING on macOS: Apple's headers do not read it. A _POSIX_C_SOURCE or _XOPEN_SOURCE in its place
+# would hide F_FULLFSYNC there and make the writer a weaker one without a word (test/writer_test.c holds that).
+CFLAGS     := -std=c11 -D_DEFAULT_SOURCE -O2 -g -Wall -Wextra -Werror
 CFLAGS     += $(shell $(PKG_CONFIG) --cflags $(LIBS_PC))
 LDLIBS     := $(shell $(PKG_CONFIG) --libs $(LIBS_PC)) -lm -lpthread
 
@@ -76,7 +81,8 @@ FIXTURES := $(BUILD)/fake_cam $(BUILD)/fake_mic $(BUILD)/capture-worker-skeleton
 #                      source with ONE bound removed each must make that build fail (one of them by a report of
 #                      the sanitizer itself). And build/capture-relay-san, the whole relay with the sanitizers,
 #                      for the fixture runs (test-fixtures/row186_bounds.py takes it with ROW186_RELAY).
-#   make relay-fuzz    the fuzz build (test/relay_fuzz.c: seven entry points, a deterministic mutation driver of
+#   make relay-fuzz    the fuzz build (test/relay_fuzz.c: eight entry points - the eighth, `report`, is row 42's: the
+#                      two report lines of standard output - and a deterministic mutation driver of
 #                      its own - the installed clang has no libFuzzer runtime) with the same sanitizers, run for
 #                      RELAY_FUZZ_SECONDS per entry point with the seed RELAY_FUZZ_SEED. A longer run:
 #                      make relay-fuzz RELAY_FUZZ_SECONDS=40
@@ -108,9 +114,32 @@ RELAY_UNIT_LIBS := $(shell $(PKG_CONFIG) --libs libavutil)
 RELAY_FUZZ_SECONDS ?= 2
 RELAY_FUZZ_SEED ?= 186
 
-.PHONY: all clean check selftest versions proof unit fixtures e2e relay relay-check relay-unit relay-asan relay-fuzz relay-fuzz-controls
+# THE CAPTURE GUARD (task 4 blueprint row 23, WP-02; needed by experiment E-7): a THIRD separate program, ONE source
+# file under src/guard/ (a folder neither check.sh nor relay-check.sh reads), no library but the system's. It
+# starts one helper, ends it when its own standard input ends or its parent goes away, reaps it and passes its
+# exit on (src/guard/guard.c has the whole picture).
+#   make guard         build/capture-guard and the double, then test/guard_test.py: the guard's static rules and
+#                      import net with their controls, and its behaviour measured on doubles (about 10 s; no port)
+# It is built with the relay's hardening flags; its binary is build/capture-guard - not a `capture-worker-<name>`.
+GUARD_BIN    := $(BUILD)/capture-guard
+GUARD_SRC    := src/guard/guard.c
+GUARD_CFLAGS := -std=c11 -D_DEFAULT_SOURCE -O2 -g -Wall -Wextra -Werror $(RELAY_HARDEN)
 
-all: check selftest unit $(BIN) relay
+.PHONY: all clean check selftest versions proof unit fixtures e2e relay relay-check relay-unit relay-asan relay-fuzz relay-fuzz-controls guard
+
+all: check selftest unit $(BIN) relay guard
+
+guard: $(GUARD_BIN) $(BUILD)/guard_double
+	@CC="$(CC)" python3 test/guard_test.py all
+
+$(GUARD_BIN): $(GUARD_SRC) Makefile
+	@mkdir -p $(BUILD)
+	$(CC) $(GUARD_CFLAGS) -o $@ $(GUARD_SRC) $(RELAY_HARDEN_LD)
+
+# The double of a helper for the guard's checks (test code; it never ends because its input ended).
+$(BUILD)/guard_double: test/guard_double.c Makefile
+	@mkdir -p $(BUILD)
+	$(CC) -std=c11 -D_DEFAULT_SOURCE -O2 -Wall -Wextra -Werror -o $@ $<
 
 relay: relay-check relay-unit relay-asan relay-fuzz $(RELAY_BIN)
 
@@ -148,7 +177,7 @@ relay-fuzz:
 	@$(CC) $(RELAY_TEST_CFLAGS) $(RELAY_SAN) -o $(BUILD)/relay_fuzz test/relay_fuzz.c src/relay/relay_core.c src/relay/relay_rtsp.c $(RELAY_UNIT_LIBS)
 	@$(BUILD)/relay_fuzz --seconds $(RELAY_FUZZ_SECONDS) --seed $(RELAY_FUZZ_SEED)
 
-# NOT part of `make` (16 sanitizer builds, about 2 minutes): does the fuzz build FIND a planted flaw? One bound
+# NOT part of `make` (22 sanitizer builds, about 3 minutes): does the fuzz build FIND a planted flaw? One bound
 # removed per copy of the sources; every one must be found (test/relay_fuzz_controls.sh).
 relay-fuzz-controls:
 	@CC="$(CC)" PKG_CONFIG="$(PKG_CONFIG)" sh test/relay_fuzz_controls.sh $(RELAY_FUZZ_CONTROL_SECONDS)
@@ -228,12 +257,12 @@ $(BUILD)/fake_cam: test-fixtures/fake_cam.c Makefile
 
 $(BUILD)/fake_mic: test-fixtures/fake_mic.c Makefile
 	@mkdir -p $(BUILD)
-	$(CC) -std=c11 -O2 -Wall -Wextra -Werror -o $@ $< -lm
+	$(CC) -std=c11 -D_DEFAULT_SOURCE -O2 -Wall -Wextra -Werror -o $@ $< -lm
 
 # Row 71: the scripted fake microphones of the warning checks (silence, no delivery). Source in test/ (a test tool of m5mic.py).
 $(BUILD)/m5_mic: test/m5_mic.c Makefile
 	@mkdir -p $(BUILD)
-	$(CC) -std=c11 -O2 -Wall -Wextra -Werror -o $@ $< -lm
+	$(CC) -std=c11 -D_DEFAULT_SOURCE -O2 -Wall -Wextra -Werror -o $@ $< -lm
 
 # Row 59: the bytes of a recorded camera file through the writer again (the chain-equality check of the e2e series).
 $(BUILD)/writer_replay: test/writer_replay.c src/sink.c $(HDR) Makefile
@@ -242,7 +271,7 @@ $(BUILD)/writer_replay: test/writer_replay.c src/sink.c $(HDR) Makefile
 
 $(BUILD)/capture-worker-skeleton111: test-fixtures/negative-control/skeleton111.c Makefile
 	@mkdir -p $(BUILD)
-	$(CC) -std=c11 -O2 -o $@ $< $(shell $(PKG_CONFIG) --cflags --libs libavformat libavcodec libavfilter libavutil) -lm -lpthread
+	$(CC) -std=c11 -D_DEFAULT_SOURCE -O2 -o $@ $< $(shell $(PKG_CONFIG) --cflags --libs libavformat libavcodec libavfilter libavutil) -lm -lpthread
 
 # THE capture end-to-end target: the whole series on the fixtures, every check and every negative
 # control twice, ONE aggregate exit code (0 only when every verdict is the expected one). It binds

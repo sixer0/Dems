@@ -40,7 +40,7 @@ interface Host {
   reads(): number;
 }
 
-function host(options: { readonly answers?: Readonly<Record<string, HostCommandResult>>; readonly platform?: string; readonly relayProgram?: string | null; readonly stored?: string | null | (() => Promise<string | null>) } = {}): Host {
+function host(options: { readonly answers?: Readonly<Record<string, HostCommandResult>>; readonly platform?: string; readonly relayProgram?: string | null; readonly stored?: string | null | (() => Promise<string | null>); readonly aliasSocket?: 'IN_PLACE' | 'ABSENT' | 'NOT_ASKED' } = {}): Host {
   const asked: string[] = [];
   let reads = 0;
   const deps: DeliveredProgramDeps = {
@@ -56,6 +56,8 @@ function host(options: { readonly answers?: Readonly<Record<string, HostCommandR
       reads += 1;
       return typeof options.stored === 'function' ? options.stored() : options.stored === undefined ? PREPARED_INTERFACE : options.stored;
     },
+    // Row HC: what the host checks found of the socket node. Left out by every case from before the row.
+    ...(options.aliasSocket === undefined ? {} : { aliasSocket: options.aliasSocket }),
   };
   return { deps, asked, reads: () => reads };
 }
@@ -108,7 +110,7 @@ describe('row 81 (1): the four checks, a passing and a failing fixture each', ()
     const prepared = host();
     expect(await statusOf(prepared.deps, CaptureProgramRefusal.PROGRAM_INTERFACE_FILE)).toEqual({ status: 'IN_PLACE', reason: null });
     expect(prepared.reads()).toBe(1);
-    await expect(deliveredProgramOutcomeOf(host().deps, usable)).resolves.toEqual({ failure: null, inPlace: 4, notAsked: 0 });
+    await expect(deliveredProgramOutcomeOf(host().deps, usable)).resolves.toEqual({ failure: null, inPlace: 4, notAsked: 0, aliasHelper: 'IN_PLACE' });
   });
 
   it('4 fail - A MISMATCH OF FILE AND ROW IS A NAMED REFUSAL: CAPTURE_HOST_INTERFACE_FILE_MISMATCH / INTERFACE_FILE_DIFFERS_FROM_ROW, and neither name is said', async () => {
@@ -176,7 +178,7 @@ describe('row 81 (3): the interface file is held against the stored row, and aga
     const fresh = host({ stored: null });
     expect(await statusOf(fresh.deps, CaptureProgramRefusal.PROGRAM_INTERFACE_FILE)).toEqual({ status: 'NOT_ASKED', reason: null });
     expect(fresh.asked.some((question) => question.startsWith('/usr/bin/cat'))).toBe(false);
-    await expect(deliveredProgramOutcomeOf(host({ stored: null }).deps, usable)).resolves.toEqual({ failure: null, inPlace: 3, notAsked: 1 });
+    await expect(deliveredProgramOutcomeOf(host({ stored: null }).deps, usable)).resolves.toEqual({ failure: null, inPlace: 3, notAsked: 1, aliasHelper: 'IN_PLACE' });
   });
 
   it('a stored row that cannot be read refuses the start (fail closed), and nothing of the reader\'s error is passed on', async () => {
@@ -193,13 +195,88 @@ describe('row 81 (3): the interface file is held against the stored row, and aga
 
 // ── 4. Another platform ───────────────────────────────────────────────────────────
 
+// Task 4 row HC (decision C94 (j), reversing C49 (1); review 119 R119-12). The runner is the double above: it starts nothing.
+describe('row HC: the address helper is ONE installation - nothing of it is a fact, a part of it or a wrong one is a refusal', () => {
+  const HELPER = CaptureProgramRefusal.PROGRAM_ALIAS_HELPER;
+  const GRANT = CaptureProgramRefusal.PROGRAM_ALIAS_GRANT;
+  const ran = (output: string, exitCode = 0): HostCommandResult => ({ outcome: 'RAN', exitCode, output });
+  /** What `stat` answers on a host WITHOUT the helper: the system's own directory alone, and nothing of the grant. */
+  const NO_FILE = ran('directory root root 755\n', 1);
+  const NO_GRANT = ran('', 1);
+  const SOCKET_REFUSAL = { code: 'CAPTURE_HOST_ALIAS_SOCKET', reason: 'SOCKET_ABSENT' };
+
+  it('ABSENT: no socket node, no helper file, no directory of the socket and no unit file - the start is NOT refused; checks 2 and 3 say ABSENT, the interface file is not asked, the stored row is not read', async () => {
+    const absent = host({ aliasSocket: 'ABSENT', answers: { [HELPER]: NO_FILE, [GRANT]: NO_GRANT } });
+    expect((await deliveredProgramResults(absent.deps, usable)).map((entry) => [entry.code, entry.status, entry.reason])).toEqual([
+      ['CAPTURE_HOST_RELAY_LIBRARY_UNVERIFIED', 'IN_PLACE', null],
+      ['CAPTURE_HOST_ALIAS_HELPER_UNSAFE', 'ABSENT', 'FILE_ABSENT'],
+      ['CAPTURE_HOST_ALIAS_GRANT_UNSAFE', 'ABSENT', 'FILE_ABSENT'],
+      ['CAPTURE_HOST_INTERFACE_FILE_MISMATCH', 'NOT_ASKED', null],
+    ]);
+    expect(absent.asked.some((question) => question.startsWith('/usr/bin/cat'))).toBe(false);
+    expect(absent.reads()).toBe(0);
+    await expect(deliveredProgramOutcomeOf(host({ aliasSocket: 'ABSENT', answers: { [HELPER]: NO_FILE, [GRANT]: NO_GRANT } }).deps, usable)).resolves.toEqual({ failure: null, inPlace: 1, notAsked: 1, aliasHelper: 'ABSENT' });
+    // The system's own directory missing as well: still nothing of the helper.
+    await expect(deliveredProgramOutcomeOf(host({ aliasSocket: 'ABSENT', answers: { [HELPER]: NO_GRANT, [GRANT]: NO_GRANT } }).deps, usable)).resolves.toMatchObject({ failure: null, aliasHelper: 'ABSENT' });
+  });
+
+  it('PARTIAL: the socket node is not there and something of the helper is - refused by the code of the socket, exactly as before the row', async () => {
+    const partial: ReadonlyArray<readonly [string, Readonly<Record<string, HostCommandResult>>]> = [
+      ['the helper file and the whole grant, as delivered', {}],
+      ['the helper file alone', { [GRANT]: NO_GRANT }],
+      ['the two unit files without the directory of the socket', { [HELPER]: NO_FILE, [GRANT]: ran('regular file root root 644\nregular file root root 644\n', 1) }],
+      ['one unit file', { [HELPER]: NO_FILE, [GRANT]: ran('regular file root root 644\n', 1) }],
+      ['the directory of the socket alone', { [HELPER]: NO_FILE, [GRANT]: ran('directory root root 755\n', 1) }],
+      ['the whole grant, no helper file', { [HELPER]: NO_FILE }],
+    ];
+    for (const [name, answers] of partial) {
+      const outcome = await deliveredProgramOutcomeOf(host({ aliasSocket: 'ABSENT', answers }).deps, usable);
+      expect(outcome.failure, name).toEqual(SOCKET_REFUSAL);
+      expect(outcome.aliasHelper, name).toBe('NOT_ASKED');
+    }
+    // Nothing is asked after the question that showed the part: the interface file is not read.
+    const stopped = host({ aliasSocket: 'ABSENT' });
+    await deliveredProgramOutcomeOf(stopped.deps, usable);
+    expect(stopped.asked).toHaveLength(2);
+    expect(stopped.reads()).toBe(0);
+  });
+
+  it('PARTIAL, the other way round: the socket node is there (or nothing is told about it) and a file is not - refused by the code of that file, as before', async () => {
+    for (const aliasSocket of ['IN_PLACE', 'NOT_ASKED', undefined] as const) {
+      const told = aliasSocket === undefined ? {} : { aliasSocket };
+      expect((await deliveredProgramOutcomeOf(host({ ...told, answers: { [HELPER]: NO_FILE, [GRANT]: NO_GRANT } }).deps, usable)).failure, String(aliasSocket)).toEqual({ code: HELPER, reason: 'FILE_ABSENT' });
+      expect((await deliveredProgramOutcomeOf(host({ ...told, answers: { [GRANT]: NO_GRANT } }).deps, usable)).failure, String(aliasSocket)).toEqual({ code: GRANT, reason: 'FILE_ABSENT' });
+    }
+  });
+
+  it('WRONG: what is there and is not as delivered, and what cannot be seen, is refused by its own code and reason although the socket node is not there', async () => {
+    for (const key of [HELPER, GRANT]) {
+      const others: Readonly<Record<string, HostCommandResult>> = key === GRANT ? { [HELPER]: NO_FILE } : {};
+      for (const entry of PROGRAM_ANSWERS[key]?.absent.filter((candidate) => candidate.reason !== 'FILE_ABSENT') ?? []) {
+        expect((await deliveredProgramOutcomeOf(host({ aliasSocket: 'ABSENT', answers: { ...others, [key]: entry.answer } }).deps, usable)).failure, `${key} ${entry.reason}`).toEqual({ code: key, reason: entry.reason });
+      }
+      for (const answer of [...(PROGRAM_ANSWERS[key]?.malformed ?? []), { outcome: 'NOT_STARTED' } as const, { outcome: 'TIMED_OUT' } as const]) {
+        const outcome = await deliveredProgramOutcomeOf(host({ aliasSocket: 'ABSENT', answers: { ...others, [key]: answer } }).deps, usable);
+        // A question that cannot be read never counts as "nothing is there": the start is refused by the code of that question.
+        expect(outcome.failure?.code, `${key} ${JSON.stringify(answer)}`).toBe(key);
+        expect(outcome.aliasHelper).toBe('NOT_ASKED');
+        expect(JSON.stringify(outcome)).not.toContain('CANARY');
+      }
+    }
+  });
+});
+
 describe('row 81 (4): off Linux the three questions to the host are not asked; the relay still is', () => {
   it('darwin: the relay is asked (its exit codes are its own), the helper, the grant and the interface file are NOT_ASKED, and the stored row is not read', async () => {
     const mac = host({ platform: 'darwin' });
     expect((await deliveredProgramResults(mac.deps, usable)).map((entry) => entry.status)).toEqual(['IN_PLACE', 'NOT_ASKED', 'NOT_ASKED', 'NOT_ASKED']);
     expect(mac.asked).toEqual([RELAY]);
     expect(mac.reads()).toBe(0);
-    await expect(deliveredProgramOutcomeOf(host({ platform: 'darwin' }).deps, usable)).resolves.toEqual({ failure: null, inPlace: 1, notAsked: 3 });
+    await expect(deliveredProgramOutcomeOf(host({ platform: 'darwin' }).deps, usable)).resolves.toEqual({ failure: null, inPlace: 1, notAsked: 3, aliasHelper: 'NOT_ASKED' });
+    // Row HC (row P1 kept): told that the socket is "absent", a host that is not Linux still asks NOTHING of the helper and states nothing of it.
+    const told = host({ platform: 'darwin', aliasSocket: 'ABSENT' });
+    await expect(deliveredProgramOutcomeOf(told.deps, usable)).resolves.toEqual({ failure: null, inPlace: 1, notAsked: 3, aliasHelper: 'NOT_ASKED' });
+    expect(told.asked).toEqual([RELAY]);
     // A relay on another library is refused on every platform.
     expect((await deliveredProgramOutcomeOf(host({ platform: 'darwin', answers: { RELAY: answerOf('RELAY') } }).deps, usable)).failure?.reason).toBe('RELAY_LIBRARY_VERSION_MISMATCH');
   });
@@ -243,7 +320,8 @@ describe('row 81 (5): what the checks ask and what the file may reach', () => {
   });
 
   it('the file imports types only: no process module, no file system, no socket, no timer, no environment; it logs nothing; no program that changes the host and no shell', () => {
-    expect(source.match(/^import .*$/gm)).toEqual(["import type { HostCommand, HostCommandResult, HostCommandRunner } from './host-checks';"]);
+    // Row HC: still ONE import, of types only - the finding of the socket question and the vocabulary its code is held to joined it.
+    expect(source.match(/^import .*$/gm)).toEqual(["import type { AliasSocketFinding, CaptureHostRefusal, HostCommand, HostCommandResult, HostCommandRunner } from './host-checks';"]);
     expect(source).not.toMatch(/\bprocess\s*\.|\brequire\(|\bimport\(|node:|\bsetTimeout\b|\bDate\b|\bMath\.random\b|\bconsole\b|\.(?:warn|info|error|debug)\s*\(/);
     expect([...new Set(source.match(/'\/(?:usr|bin|sbin)\/[^']*'/g) ?? [])].sort()).toEqual(["'/usr/bin/cat'", "'/usr/bin/stat'", "'/usr/local/sbin'", "'/usr/local/sbin/dems-core-netalias'"]);
     expect(source.match(/'(?:\/usr)?\/s?bin\/(?:sh|bash|env|sudo|nft|ufw|ip|usermod|install|tee|chmod|chown)'/g)).toBeNull();
@@ -256,7 +334,7 @@ describe('row 81 (5): what the checks ask and what the file may reach', () => {
     expect(Object.keys(PROGRAM_REFUSAL_TEXT).sort()).toEqual(Object.values(CaptureProgramRefusal).sort());
     for (const text of Object.values(PROGRAM_REFUSAL_TEXT)) expect(text).not.toMatch(/\/usr\/|\/run\/|\/etc\/|\/proc\//);
     for (const code of [CaptureProgramRefusal.PROGRAM_ALIAS_HELPER, CaptureProgramRefusal.PROGRAM_ALIAS_GRANT, CaptureProgramRefusal.PROGRAM_INTERFACE_FILE]) expect(PROGRAM_REFUSAL_TEXT[code]).toMatch(/HOST-4[456]/);
-    expect(Object.values(ProgramCheckStatus)).toEqual(['IN_PLACE', 'MISSING', 'NOT_ASKED']);
+    expect(Object.values(ProgramCheckStatus)).toEqual(['IN_PLACE', 'MISSING', 'NOT_ASKED', 'ABSENT']);
     for (const reason of Object.values(ProgramCheckReason)) expect(reason).toMatch(/^[A-Z][A-Z_]+$/);
   });
 });

@@ -25,6 +25,8 @@ import { captureAudioCardsModule } from './audio-cards';
 import { registerCaptureInputsRoutes } from './routes';
 
 export { CAPTURE_INPUTS_MODULE_OPERATIONS, CAPTURE_INPUTS_UNIT_LABEL, captureInputsOperation, type CaptureInputsModuleOperation, type CaptureInputsRouteSeams } from './routes';
+// The door of the card listing (task 4 row 85b, decision C55): the composing file above the modules hands the enumerator in through it.
+export { captureAudioCardsControl, type AudioCardEnumerator, type AudioCardListing, type CaptureAudioCardsControl } from './audio-cards';
 
 /**
  * The ID of a re-read for its audit row: `DSC-` and the Core clock in milliseconds. Thirteen

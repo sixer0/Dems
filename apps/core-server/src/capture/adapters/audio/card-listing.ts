@@ -82,6 +82,13 @@ export type CardSampleBits = 16 | 24 | 32;
 const MARKUP = /[<>]/;
 /** The port a USB card sits on, as the kernel writes it after `usb-`. */
 const USB_PORT = /^[A-Za-z0-9:._-]{1,64}$/;
+/**
+ * The serial number a USB card states (task 4 row 199). The SAME closed rule as the port: it is
+ * the rule the column `capture_audio_inputs.usb_serial` holds (row 192), so what passes here the
+ * table accepts. A serial outside it (a space, another script, over-long) is NO serial - never a
+ * cleaned or cut one, which would be a serial the device did not state.
+ */
+const USB_SERIAL = /^[A-Za-z0-9:._-]{1,64}$/;
 
 /**
  * What a string of a card listing IS (task 4 row 155; AD-07 (1)). A closed set: every string
@@ -97,6 +104,8 @@ export const CardStringKind = {
   CARD_ID: 'CARD_ID',
   /** The port a USB card sits on. */
   USB_PORT: 'USB_PORT',
+  /** The serial number a USB card states, where it states one (row 199). Text the device chose: held to the closed rule, compared, never shown as a name. */
+  USB_SERIAL: 'USB_SERIAL',
   /** A sample format: a word of this file's own closed list, never a format name of the device. */
   FORMAT: 'FORMAT',
   /** Where a channel count comes from: a word of this file's own closed list. */
@@ -128,7 +137,8 @@ interface CardStringRule {
  *   USB_ID        four lower-case hexadecimal digits, a colon, four more (9 characters); else `0000:0000`
  *   CARD_ID       letters, digits, the underscore, 1 to 32; else nothing
  *   USB_PORT      letters, digits and `: . _ -`, 1 to 64; else nothing
- *   FORMAT        one of the four words of `CARD_FORMAT_PREFERENCE`; else nothing
+ *   USB_SERIAL    letters, digits and `: . _ -`, 1 to 64; else nothing (the card then has no serial)
+ *   FORMAT       one of the four words of `CARD_FORMAT_PREFERENCE`; else nothing
  *   FACTS_SOURCE  one of the three words of `CardFactsSource`; else nothing
  */
 const CARD_STRING_RULES: Readonly<Record<CardStringKind, CardStringRule>> = Object.freeze({
@@ -136,6 +146,7 @@ const CARD_STRING_RULES: Readonly<Record<CardStringKind, CardStringRule>> = Obje
   USB_ID: Object.freeze({ passes: (text: string) => CAPTURE_AUDIO_USB_ID_PATTERN.test(text), dropsOuterSpaces: false, replacement: CARD_USB_ID_REPLACEMENT }),
   CARD_ID: Object.freeze({ passes: (text: string) => CAPTURE_AUDIO_CARD_ID_PATTERN.test(text), dropsOuterSpaces: false, replacement: null }),
   USB_PORT: Object.freeze({ passes: (text: string) => USB_PORT.test(text), dropsOuterSpaces: false, replacement: null }),
+  USB_SERIAL: Object.freeze({ passes: (text: string) => USB_SERIAL.test(text), dropsOuterSpaces: false, replacement: null }),
   FORMAT: Object.freeze({ passes: (text: string) => (CARD_FORMAT_PREFERENCE as readonly string[]).includes(text), dropsOuterSpaces: false, replacement: null }),
   FACTS_SOURCE: Object.freeze({ passes: (text: string) => (Object.values(CardFactsSource) as readonly string[]).includes(text), dropsOuterSpaces: false, replacement: null }),
 });
@@ -191,11 +202,12 @@ export type CardStringFieldsOf<Result> = { readonly [Member in TextMembersOf<Res
 export const CARD_LISTING_STRING_FIELDS = Object.freeze({
   ListedCaptureDevice: Object.freeze({ cardId: CardStringKind.CARD_ID, cardName: CardStringKind.NAME } as const satisfies CardStringFieldsOf<ListedCaptureDevice>),
   PresentCard: Object.freeze({ cardId: CardStringKind.CARD_ID, description: CardStringKind.NAME } as const satisfies CardStringFieldsOf<PresentCard>),
-  CardUsbIdentity: Object.freeze({ usbId: CardStringKind.USB_ID, usbPort: CardStringKind.USB_PORT, product: CardStringKind.NAME } as const satisfies CardStringFieldsOf<CardUsbIdentity>),
+  CardUsbIdentity: Object.freeze({ usbId: CardStringKind.USB_ID, usbPort: CardStringKind.USB_PORT, usbSerial: CardStringKind.USB_SERIAL, product: CardStringKind.NAME } as const satisfies CardStringFieldsOf<CardUsbIdentity>),
   CaptureCard: Object.freeze({
     cardId: CardStringKind.CARD_ID,
     usbId: CardStringKind.USB_ID,
     usbPort: CardStringKind.USB_PORT,
+    usbSerial: CardStringKind.USB_SERIAL,
     product: CardStringKind.NAME,
     factsSource: CardStringKind.FACTS_SOURCE,
     formats: CardStringKind.FORMAT,
@@ -207,7 +219,7 @@ export const CARD_LISTING_STRING_FIELDS = Object.freeze({
  * THE EXIT of a result: every string member named in `fields` is replaced by what the one function
  * answers for it, and the result is frozen. `null` in a member stays `null` (a card that is not
  * USB has no USB id). A text the function answers nothing for: a port becomes `null` (none
- * offered), a word of a list is dropped from its list, and for any other member the WHOLE result is
+ * offered) and so does a serial (none stated), a word of a list is dropped from its list, and for any other member the WHOLE result is
  * `null`: an entry without a valid card id, format or facts source is not listed.
  */
 function passCardStrings<Result extends object>(fields: CardStringFieldsOf<Result>, result: Result): Result | null {
@@ -220,7 +232,7 @@ function passCardStrings<Result extends object>(fields: CardStringFieldsOf<Resul
       continue;
     }
     const passed = cardListingText(kind, value);
-    if (passed === null && kind !== CardStringKind.USB_PORT) return null;
+    if (passed === null && kind !== CardStringKind.USB_PORT && kind !== CardStringKind.USB_SERIAL) return null;
     out[member] = passed;
   }
   return Object.freeze(out) as Result;
@@ -341,11 +353,17 @@ export interface CardUsbIdentity {
   readonly usbId: string | null;
   /** The port the card sits on (the kernel's text after `usb-`), or null. For the match of a stored row to a live card (AD-07 (4)). */
   readonly usbPort: string | null;
+  /**
+   * The serial number the USB device states, or null: the device states none (many sound cards do
+   * not), the host offers no source for it, or the text is outside the closed rule. For the match
+   * of a stored row to a live card (AD-07 (4); task 4 row 199). Never a name on a screen.
+   */
+  readonly usbSerial: string | null;
   /** The product name through `cardText`, or null for a card that is not USB. */
   readonly product: string | null;
 }
 
-const NOT_USB: CardUsbIdentity = Object.freeze({ usb: false, usbId: null, usbPort: null, product: null });
+const NOT_USB: CardUsbIdentity = Object.freeze({ usb: false, usbId: null, usbPort: null, usbSerial: null, product: null });
 const AT_PORT = ' at usb-';
 
 /**
@@ -353,17 +371,25 @@ const AT_PORT = ' at usb-';
  * `firstStreamText` is the card's first stream file, whose first line is
  * `<product> at usb-<port>, <speed> : <device name>`. The LAST ` at usb-` of that line is taken,
  * so that a product name carrying those words cannot state a port of its own.
+ *
+ * THE PORT PATH is that text as the kernel wrote it: the address of the USB controller and the
+ * chain of hub ports below it (`0000:00:14.0-3.1`), the TOPOLOGICAL place of the card. It is not
+ * the bus and device number, which the kernel counts up at every plug.
+ *
+ * `serialText` (row 199) is the kernel's `serial` attribute of the card's USB device: ONE line.
+ * Absent, empty, a cut line (no line end) or a text outside the closed rule: no serial.
  */
-export function parseUsbIdentity(usbIdText: string | null | undefined, firstStreamText: string | null | undefined): CardUsbIdentity {
+export function parseUsbIdentity(usbIdText: string | null | undefined, firstStreamText: string | null | undefined, serialText: string | null | undefined = null): CardUsbIdentity {
   if (typeof usbIdText !== 'string') return NOT_USB;
   const first = completeLines(firstStreamText)[0] ?? '';
   const at = first.lastIndexOf(AT_PORT);
   const port = at < 0 ? '' : (first.slice(at + AT_PORT.length).split(',')[0] ?? '');
-  // Raw text in, the one function at the exit: a USB id of another form gives the fixed id, a port of another form none.
+  // Raw text in, the one function at the exit: a USB id of another form gives the fixed id, a port of another form none, a serial of another form none.
   const identity = passCardStrings<CardUsbIdentity>(CARD_LISTING_STRING_FIELDS.CardUsbIdentity, {
     usb: true,
     usbId: completeLines(usbIdText)[0] ?? '',
     usbPort: port,
+    usbSerial: completeLines(serialText)[0] ?? '',
     product: at < 0 ? first : first.slice(0, at),
   });
   // No kind of an identity refuses the whole result; were one to, the card is not called a USB card.
@@ -462,7 +488,7 @@ export type CardFactsSource = (typeof CardFactsSource)[keyof typeof CardFactsSou
  * One capture device of one sound card.
  *
  * THE INTEGERS (`cardIndex`, `deviceIndex`, `channelCount`, the rates) are the only members a
- * helper argument may be built from. THE TEXT (`cardId`, `usbId`, `usbPort`, `product`) has
+ * helper argument may be built from. THE TEXT (`cardId`, `usbId`, `usbPort`, `usbSerial`, `product`) has
  * passed the rule above and is for the screen, the store and the match of a stored row; it
  * forms no part of an argument (AD-07 (2); static rule G-R12 as amended by SR-4).
  */
@@ -475,6 +501,8 @@ export interface CaptureCard {
   readonly usb: boolean;
   readonly usbId: string | null;
   readonly usbPort: string | null;
+  /** The serial number the USB device states, or null (see `CardUsbIdentity.usbSerial`). */
+  readonly usbSerial: string | null;
   readonly product: string;
   /** The native channel count: inputs are numbered 1 to this value. */
   readonly channelCount: number;
@@ -504,6 +532,7 @@ export function buildCaptureCard(listed: ListedCaptureDevice, identity: CardUsbI
     usb: identity.usb,
     usbId: identity.usbId,
     usbPort: identity.usbPort,
+    usbSerial: identity.usbSerial ?? null,
     product: identity.product === null || identity.product === CARD_TEXT_REPLACEMENT ? name : identity.product,
     channelCount,
     factsSource: stream !== null ? CardFactsSource.STREAM : hwParams !== null ? CardFactsSource.HW_PARAMS : CardFactsSource.ASSUMED,
@@ -532,6 +561,12 @@ export interface CardListingSource {
   presentCards(): Promise<string | null>;
   /** The USB id file of a card; null for a card that is not USB. */
   usbId(cardIndex: number): Promise<string | null>;
+  /**
+   * The serial number the USB device of a card states, as ONE line of text; null when the device
+   * states none (task 4 row 199). Optional: a source without it lists every card with no serial,
+   * and the match of a stored row then rests on the port path. Asked for a USB card only.
+   */
+  usbSerial?(cardIndex: number): Promise<string | null>;
   /** A stream file of a card. */
   stream(cardIndex: number, deviceIndex: number): Promise<string | null>;
   /** The hardware parameter dump of one device, for a card with no stream file. Optional: without it such a card is `ASSUMED`. */
@@ -574,7 +609,9 @@ export function createCardEnumerator(source: CardListingSource): CardEnumerator 
         let identity = identities.get(entry.cardIndex);
         if (identity === undefined) {
           const usbIdText = await source.usbId(entry.cardIndex);
-          identity = parseUsbIdentity(usbIdText, usbIdText === null ? null : await source.stream(entry.cardIndex, 0));
+          const firstStream = usbIdText === null ? null : await source.stream(entry.cardIndex, 0);
+          const serialText = usbIdText === null || source.usbSerial === undefined ? null : await source.usbSerial(entry.cardIndex);
+          identity = parseUsbIdentity(usbIdText, firstStream, serialText);
           identities.set(entry.cardIndex, identity);
         }
         const streamText = await source.stream(entry.cardIndex, entry.deviceIndex);

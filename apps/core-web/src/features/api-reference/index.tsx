@@ -115,7 +115,14 @@ function LiveApiReference() {
   const view = useMemo<ApiDocumentView>(() => ({ mode: 'live', identifiers }), [identifiers])
   const document = useMemo(() => buildApiDocumentFor(view), [view])
   const secretRefusal = t('apiReference.tryIt.secretDenied')
-  const customFetch = useMemo(() => createLiveTryItFetch({ secretRefusal, onExchange }), [secretRefusal, onExchange])
+  // Decision C67 (1): operation 108 carries no secret - its refusal says what is true of it.
+  const storedCredentialRefusal = t('web.tryIt.storedCredentialDenied')
+  // Row 116: operations 109 and 110 change the stored installation record of the Core - their own sentence too.
+  const storedRecordRefusal = t('web.tryIt.storedRecordDenied')
+  const customFetch = useMemo(
+    () => createLiveTryItFetch({ secretRefusal, storedCredentialRefusal, storedRecordRefusal, onExchange }),
+    [secretRefusal, storedCredentialRefusal, storedRecordRefusal, onExchange],
+  )
   const getDocumentJson = useCallback(() => apiDocumentJsonFor(view), [view])
   const address = new URL(coreHttpOrigin()).host
 

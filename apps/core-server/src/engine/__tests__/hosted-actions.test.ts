@@ -23,6 +23,8 @@ const NOT_HOSTED = [
   // The two INTERNAL actions a module runs inside its own unit (operation 96; task 4 row 185: operation 99).
   'registerCaptureDevice',
   'registerCaptureMicrophone',
+  // Task 4 row 195: the INTERNAL action of a confirmed re-address (operation 100; its engine door is row 196).
+  'readdressCaptureDevice',
 ];
 
 describe('the hosted actions', () => {
@@ -31,7 +33,8 @@ describe('the hosted actions', () => {
     // 47 until task 3 row 132 added the INTERNAL `registerCaptureDevice` (C3 §2.6: the adoption).
     // Pass D6 (CS-09): the INTERNAL `applyStorageVolume`, 48 -> 49; the hosted 33 are unchanged.
     // Task 4 row 185: the INTERNAL `registerCaptureMicrophone`, 49 -> 50; the hosted 33 are unchanged.
-    expect(Object.keys(SIM_ACTION_OPERATIONS)).toHaveLength(50);
+    // Task 4 row 195: the INTERNAL `readdressCaptureDevice`, 50 -> 51; the hosted 33 are unchanged.
+    expect(Object.keys(SIM_ACTION_OPERATIONS)).toHaveLength(51);
     const expected = Object.entries(SIM_ACTION_OPERATIONS)
       .filter(([, binding]) => binding.execution === 'hosted')
       .map(([name]) => name);

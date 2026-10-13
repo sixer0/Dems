@@ -17,11 +17,15 @@
  *      are two listings, nothing of a listing is kept for a later open;
  *   3. RE-IDENTIFIES the card by its stored identity and NEVER by a card index
  *      (`identifyRegisteredCard`). A card index is the number of one listing: it moves when cards
- *      are plugged in another order. A card that is not there is `AUDIO_CARD_ABSENT`; ANOTHER
- *      card under the registered card's name is `AUDIO_CARD_CHANGED`; two cards that both carry
- *      the stored USB id are `AUDIO_CARD_AMBIGUOUS`. No path of this file chooses "a" card: the
- *      generic source of input-av, which moved two microphones to a swapped sound card without
- *      a word, is not ported;
+ *      are plugged in another order. The identity is the USB id AND THE SERIAL the card stated
+ *      at its registration, ELSE THE USB PORT PATH it was registered on (task 4 rows 192, 199,
+ *      200): a card of the same model on another port, or with another serial, is NOT the
+ *      registered card. A card that is not there is `AUDIO_CARD_ABSENT`; ANOTHER card - under the
+ *      registered card's name, or of its model elsewhere - is `AUDIO_CARD_CHANGED`; a stored row
+ *      that holds neither a serial nor a port is `AUDIO_CARD_UNIDENTIFIED`; two cards that state
+ *      the stored serial, with no port to say which, are `AUDIO_CARD_AMBIGUOUS`. No path of this
+ *      file chooses "a" card: the generic source of input-av, which moved two microphones to a
+ *      swapped sound card without a word, is not ported;
  *   4. refuses an input beyond the card's channels by `AUDIO_INPUT_BEYOND_CARD`, a card whose
  *      channel count is a guess, and a card that cannot run at the transport's rate;
  *   5. generates the shared-capture configuration for the cards of every input it holds open
@@ -57,7 +61,7 @@
 import { CaptureMicInputKind } from '@dems/capture-protocol';
 import type { CaptureTimers } from '../../types';
 import { CaptureAdapterError, CaptureAdapterRefusal } from '../errors';
-import { CaptureAdapterKind } from '../kinds';
+import { CaptureAdapterKind, sourceClassOf } from '../kinds';
 import { FIRST_DELIVERY_MS, createDeliveryWatch } from '../local/camera-helper';
 import { helperProgramRefusal } from '../local/helper-program';
 import { linuxMicPrecheckArguments, linuxMicPushArguments } from '../local/mic-helper-args';
@@ -79,11 +83,19 @@ export const UsbAudioRefusal = {
   LISTING_FAILED: 'AUDIO_CARD_LISTING_FAILED',
   /** The registered card is not in the listing. No other card is taken in its place. */
   CARD_ABSENT: 'AUDIO_CARD_ABSENT',
-  /** Another card sits under the registered card's name. It is not recorded from. */
+  /**
+   * Another card sits where the registered one is looked for: under its kernel name with another
+   * USB id, or a card of the SAME MODEL that is not the registered unit - on another port, or with
+   * another serial (row 200). It is not recorded from. The detail word says which.
+   */
   CARD_CHANGED: 'AUDIO_CARD_CHANGED',
-  /** More than one card carries the stored USB id: the stored row cannot tell them apart. */
+  /** More than one connected card states the stored serial, and the stored port does not say which was registered. */
   CARD_AMBIGUOUS: 'AUDIO_CARD_AMBIGUOUS',
-  /** The stored USB id is the fixed word of an id that could not be read: there is nothing to re-find the card by. */
+  /**
+   * There is nothing to re-find the card by: the stored USB id is the fixed word of an id that
+   * could not be read, or the stored row of a USB card holds neither a serial nor a port path (a
+   * row written before those columns existed: it must be registered again).
+   */
   CARD_UNIDENTIFIED: 'AUDIO_CARD_UNIDENTIFIED',
   /** The channel count of the card is a guess: it is not opened with a guessed count. */
   CARD_FACTS_UNKNOWN: 'AUDIO_CARD_FACTS_UNKNOWN',
@@ -233,41 +245,87 @@ export interface RegisteredAudioInput {
   readonly inputNumber: number;
   /** The native channel count of the card at the registration. Compared, never used to open. */
   readonly nativeChannels: number;
+  /**
+   * The serial number the card stated at the registration (`capture_audio_inputs.usb_serial`; task
+   * 4 rows 192, 199), or null: it stated none. ABSENT is read as null - a reader that does not
+   * hand the column over yields a row with no serial.
+   */
+  readonly usbSerial?: string | null;
+  /**
+   * The USB port path the input was registered on (`capture_audio_inputs.usb_port`), or null.
+   * ABSENT is read as null. A row of a USB card with neither value identifies no card
+   * (`AUDIO_CARD_UNIDENTIFIED`): it is never matched by its USB id alone.
+   */
+  readonly usbPort?: string | null;
 }
 
 const MIC_ID = /^MIC-[0-9]{2,}$/;
 const USB_ID = /^[0-9a-f]{4}:[0-9a-f]{4}$/;
+/** The closed form of a stored serial and of a stored port path (the CHECKs of the two columns; the rule of the listing for both). */
+const IDENTITY_TEXT = /^[A-Za-z0-9:._-]{1,64}$/;
 const wholeIn = (value: unknown, min: number, max: number): value is number => typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max;
+const identityShape = (value: unknown): boolean => value === undefined || value === null || (typeof value === 'string' && IDENTITY_TEXT.test(value));
+/** A serial or a port path of either side: the text, or null for none (absent and null alike). */
+const identityText = (value: string | null | undefined): string | null => (typeof value === 'string' && value !== '' ? value : null);
 
 /** True for a stored row of its shape (the CHECKs of the table, held again here). */
 export function isRegisteredAudioInput(row: RegisteredAudioInput | null | undefined): row is RegisteredAudioInput {
   if (row === null || row === undefined || typeof row.deviceId !== 'string' || !MIC_ID.test(row.deviceId)) return false;
   if (row.usbId !== null && (typeof row.usbId !== 'string' || !USB_ID.test(row.usbId))) return false;
+  if (!identityShape(row.usbSerial) || !identityShape(row.usbPort)) return false;
   return isKernelCardId(row.cardId) && wholeIn(row.cardDevice, 0, 31) && wholeIn(row.inputNumber, 1, 64) && wholeIn(row.nativeChannels, 1, 64) && row.inputNumber <= row.nativeChannels;
 }
 
-export type CardIdentification =
-  | { readonly ok: true; readonly card: CaptureCard; /** True when the card was found by its USB id under another kernel name. */ readonly renamed: boolean }
-  | { readonly ok: false; readonly refusal: UsbAudioRefusal };
+/** Why a stored row matched no card, as a DETAIL WORD of the refusal: a code of the rule, never a serial, a port or a USB id. */
+export const CardMismatch = {
+  /** Another USB id under the registered card's kernel name. */
+  USB_ID_DIFFERS: 'USB_ID_DIFFERS',
+  /** The model is connected, and no unit of it states the stored serial - or the unit on the stored port states a serial where none was stored. */
+  SERIAL_DIFFERS: 'SERIAL_DIFFERS',
+  /** No serial was stored, the model is connected, and no unit of it sits on the stored port. */
+  PORT_DIFFERS: 'PORT_DIFFERS',
+  /** The stored row of a USB card holds neither a serial nor a port path. */
+  IDENTITY_NOT_STORED: 'IDENTITY_NOT_STORED',
+  /** Two connected units state the stored serial and the stored port names neither, or both. */
+  SERIAL_SHARED: 'SERIAL_SHARED',
+} as const;
+export type CardMismatch = (typeof CardMismatch)[keyof typeof CardMismatch];
 
-const notFound = (refusal: UsbAudioRefusal): CardIdentification => Object.freeze({ ok: false, refusal });
+export type CardIdentification =
+  | { readonly ok: true; readonly card: CaptureCard; /** True when the card was found by its identity under another kernel name. */ readonly renamed: boolean }
+  | { readonly ok: false; readonly refusal: UsbAudioRefusal; /** Why, where the rule has a word for it. */ readonly detail?: CardMismatch };
+
+const notFound = (refusal: UsbAudioRefusal, detail?: CardMismatch): CardIdentification => Object.freeze(detail === undefined ? { ok: false, refusal } : { ok: false, refusal, detail });
 
 /**
- * THE MATCH of a stored row to a card of ONE listing. It reads the TEXT of the listing (USB id,
- * card id) and the device index; it never reads a card index, so a card that came back at another
- * index is found, and a card that sits at the old index is not taken for it.
+ * THE MATCH of a stored row to a card of ONE listing (AD-07 (4); task 4 rows 67, 192, 199, 200).
+ * It reads the TEXT of the listing (USB id, serial, port path, card id) and the device index; it
+ * never reads a card index, so a card that came back at another index is found, and a card that
+ * sits at the old index is not taken for it. The same rule as the registration's
+ * (`modules/capture-inputs/audio-cards/service.ts`, `matchStoredCard`), which this layer does not
+ * import: BY THE SERIAL, ELSE BY THE PORT PATH, never by the USB id alone.
  *
- *   stored row of a USB card (a USB id)      the card is the ONE entry of the stored device index
- *                                            that carries the stored USB id. None: `CARD_CHANGED`
- *                                            when an entry carries the stored card id (another
- *                                            card under that name), else `CARD_ABSENT`. More than
- *                                            one: `CARD_AMBIGUOUS` (two units of one product; the
- *                                            stored row holds no port and no serial number).
  *   stored row of a card that is not USB     the one entry with the stored card id, and only if
  *                                            it is not a USB card; a USB card under that name is
  *                                            `CARD_CHANGED`.
  *   stored USB id is the fixed word          `CARD_UNIDENTIFIED`: two unreadable ids are not one
  *                                            identity.
+ *   stored: no serial AND no port path       `CARD_UNIDENTIFIED` (a row of before the columns):
+ *                                            the USB id alone finds no card, whatever is connected.
+ *   no connected card carries the USB id     `CARD_CHANGED` when an entry carries the stored card
+ *                                            id (another card under that name), else `CARD_ABSENT`.
+ *   a serial is stored                       the ONE connected unit of the model that states it,
+ *                                            on WHATEVER port (the card was moved). None states
+ *                                            it: `CARD_CHANGED` - a unit of the model is there and
+ *                                            it is not the registered one. Two state it: the one
+ *                                            on the stored port, else `CARD_AMBIGUOUS`.
+ *   no serial is stored                      the unit of the model ON THE STORED PORT. None there:
+ *                                            `CARD_CHANGED` (the same model elsewhere is never
+ *                                            opened in its place). The unit there states a serial:
+ *                                            `CARD_CHANGED` (the registered card stated none).
+ *
+ * NOT DETECTABLE, stated: two units of one model that state no serial, exchanged on the SAME
+ * socket, are one identity.
  */
 export function identifyRegisteredCard(listing: CardListing, stored: RegisteredAudioInput): CardIdentification {
   const entries = listing.cards.filter((card) => card.deviceIndex === stored.cardDevice);
@@ -278,11 +336,29 @@ export function identifyRegisteredCard(listing: CardListing, stored: RegisteredA
     return card.usb ? notFound(UsbAudioRefusal.CARD_CHANGED) : Object.freeze({ ok: true, card, renamed: false });
   }
   if (stored.usbId === CARD_USB_ID_REPLACEMENT) return notFound(UsbAudioRefusal.CARD_UNIDENTIFIED);
+  const storedSerial = identityText(stored.usbSerial);
+  const storedPort = identityText(stored.usbPort);
+  if (storedSerial === null && storedPort === null) return notFound(UsbAudioRefusal.CARD_UNIDENTIFIED, CardMismatch.IDENTITY_NOT_STORED);
   const same = entries.filter((card) => card.usb && card.usbId === stored.usbId);
-  const [card] = same;
-  if (card === undefined) return notFound(named.length > 0 ? UsbAudioRefusal.CARD_CHANGED : UsbAudioRefusal.CARD_ABSENT);
-  if (same.length > 1) return notFound(UsbAudioRefusal.CARD_AMBIGUOUS);
-  return Object.freeze({ ok: true, card, renamed: card.cardId !== stored.cardId });
+  if (same.length === 0) return named.length > 0 ? notFound(UsbAudioRefusal.CARD_CHANGED, CardMismatch.USB_ID_DIFFERS) : notFound(UsbAudioRefusal.CARD_ABSENT);
+  const found = (card: CaptureCard): CardIdentification => Object.freeze({ ok: true, card, renamed: card.cardId !== stored.cardId });
+  if (storedSerial !== null) {
+    const bySerial = same.filter((card) => identityText(card.usbSerial) === storedSerial);
+    const [only] = bySerial;
+    if (only === undefined) return notFound(UsbAudioRefusal.CARD_CHANGED, CardMismatch.SERIAL_DIFFERS);
+    if (bySerial.length === 1) return found(only);
+    // Two units state the stored serial (cheap cards share one): only the stored port can say which was registered.
+    const onPort = storedPort === null ? [] : bySerial.filter((card) => identityText(card.usbPort) === storedPort);
+    const [there] = onPort;
+    return there !== undefined && onPort.length === 1 ? found(there) : notFound(UsbAudioRefusal.CARD_AMBIGUOUS, CardMismatch.SERIAL_SHARED);
+  }
+  const onPort = same.filter((card) => identityText(card.usbPort) === storedPort);
+  const [there] = onPort;
+  if (there === undefined) return notFound(UsbAudioRefusal.CARD_CHANGED, CardMismatch.PORT_DIFFERS);
+  if (onPort.length > 1) return notFound(UsbAudioRefusal.CARD_AMBIGUOUS);
+  // The registered card stated no serial; the unit on its port states one: not known to be the registered card.
+  if (identityText(there.usbSerial) !== null) return notFound(UsbAudioRefusal.CARD_CHANGED, CardMismatch.SERIAL_DIFFERS);
+  return found(there);
 }
 
 // ── Options, limits, the handle ───────────────────────────────────────────────────────────────
@@ -344,16 +420,26 @@ export interface UsbAudioCardFacts {
   readonly sampleBits: number;
   readonly cardId: string;
   readonly usbId: string | null;
+  /** The serial the card that was OPENED states in the listing of the open, or null (row 200). The live value, not the stored one. */
+  readonly usbSerial: string | null;
+  /** The port path the card that was OPENED sits on in the listing of the open, or null (row 200). The live value, not the stored one. */
+  readonly usbPort: string | null;
   readonly product: string;
 }
 
 /**
  * What the adapter states of the card behind one OPEN input, for the session's source facts (row
  * 71; the shape of the fence's `AudioCardStatement`, which this layer does not import).
+ *
+ * `usbSerial` and `usbPort` (row 200) are the serial and the port path ACTUALLY USED: those of the
+ * card the open found, as its listing stated them. They are stated here; the session row holds
+ * them once the fence's closed key list has the two keys (requested: `capture/fence/sources.ts`).
  */
 export interface UsbAudioSourceStatement {
   readonly product: string;
   readonly usbId: string | null;
+  readonly usbSerial: string | null;
+  readonly usbPort: string | null;
   readonly cardId: string;
   readonly cardDevice: number;
   readonly inputNumber: number;
@@ -396,6 +482,24 @@ export interface UsbAudioProductionAdapter extends AudioInputAdapter {
   livePids(): ReadonlySet<number>;
   /** Stops every helper and removes every pipe: the shutdown hook. */
   closeAll(): Promise<void>;
+  /**
+   * THE DOOR OF A LATER DEVICE (task 4 row 85d; decision C63 (g); `LateDeviceAdapter` of the fence,
+   * by shape): a microphone registered on a RUNNING production Core is served from this call on
+   * exactly as one of the first list - by THIS adapter, so that there is still ONE configuration
+   * writer and one allocation per card. Every open, pre-check and listing of it then reads its
+   * STORED row and a fresh card listing and finds its card by serial or port, as for any other.
+   * NOTHING OF THE DEVICE IS READ OR KEPT HERE but its entry: an admission lists no card, writes no
+   * configuration, makes no pipe and starts no program.
+   *
+   * It takes the entry form of the first list. Refused, by a `CaptureAdapterError` and with nothing
+   * changed: what is no entry or names no id (`CAPTURE_DEVICE_UNKNOWN`), a device of another class
+   * or an id of another class (`CAPTURE_DEVICE_CLASS_MISMATCH`), an entry that states another
+   * adapter kind (`CAPTURE_ADAPTER_KIND_NOT_ALLOWED`) or another source class
+   * (`DEVELOPMENT_SOURCE_NOT_ALLOWED`). A microphone that is served already: nothing happens.
+   */
+  admitDevice(entry: CaptureDeviceEntry): void;
+  /** The microphones admitted after the build, in the order they came. `devices` stays the first list. */
+  admittedDevices(): readonly CaptureDeviceEntry[];
 }
 
 /** What the guard is started with: the helper program, then the helper's own list. The guard adds and reads nothing else. */
@@ -429,9 +533,33 @@ export function createUsbAudioProductionAdapter(options: UsbAudioProductionOptio
   const held = new Map<string, Held>();
   const processes = new Map<string, ProductionProcess>();
 
+  /** Row 85d: the microphones admitted after the build. */
+  const admittedLater: CaptureDeviceEntry[] = [];
+  /** Every microphone this adapter serves NOW: the first list, then the later ones. */
+  const servedDevices = (): readonly CaptureDeviceEntry[] => [...devices, ...admittedLater];
+
   const served = (inputId: string): void => {
-    if (!devices.some((entry) => entry.id === inputId)) throw new CaptureAdapterError(CaptureAdapterRefusal.DEVICE_UNKNOWN);
+    if (!servedDevices().some((entry) => entry.id === inputId)) throw new CaptureAdapterError(CaptureAdapterRefusal.DEVICE_UNKNOWN);
   };
+
+  /** Row 85d: see `UsbAudioProductionAdapter.admitDevice`. Every refusal stands before the one change. */
+  function admitDevice(entry: CaptureDeviceEntry): void {
+    const given = entry as unknown as Readonly<Record<string, unknown>> | null;
+    if (typeof given !== 'object' || given === null || typeof given['id'] !== 'string') throw new CaptureAdapterError(CaptureAdapterRefusal.DEVICE_UNKNOWN);
+    const id = given['id'];
+    if (given['deviceClass'] !== 'MIC' || !MIC_ID.test(id)) throw new CaptureAdapterError(CaptureAdapterRefusal.DEVICE_CLASS_MISMATCH);
+    // An entry states neither; a descriptor does. Either one that is not this adapter's is another device than the one it serves.
+    if (Object.hasOwn(given, 'adapterKind') && given['adapterKind'] !== CaptureAdapterKind.USB_AUDIO) throw new CaptureAdapterError(CaptureAdapterRefusal.ADAPTER_KIND_NOT_ALLOWED);
+    if (Object.hasOwn(given, 'sourceClass') && given['sourceClass'] !== sourceClassOf(CaptureAdapterKind.USB_AUDIO)) throw new CaptureAdapterError(CaptureAdapterRefusal.SOURCE_CLASS_NOT_ALLOWED);
+    const capabilities = given['capabilities'];
+    const profiles = given['profiles'];
+    // The entry of a microphone: one capability, no media profile (profiles are a camera's).
+    if (typeof given['label'] !== 'string' || !Array.isArray(capabilities) || capabilities.length !== 1 || capabilities[0] !== 'AUDIO' || !Array.isArray(profiles) || profiles.length !== 0) {
+      throw new CaptureAdapterError(CaptureAdapterRefusal.DEVICE_CLASS_MISMATCH);
+    }
+    if (servedDevices().some((known) => known.id === id)) return;
+    admittedLater.push(Object.freeze({ id, deviceClass: 'MIC' as const, label: given['label'], capabilities: Object.freeze(['AUDIO'] as const), profiles: Object.freeze([]) }));
+  }
 
   const notice = (code: UsbAudioNoticeCode, deviceId: string): void => {
     try {
@@ -471,7 +599,7 @@ export function createUsbAudioProductionAdapter(options: UsbAudioProductionOptio
   /** The stored row matched to a card of `listing`, with every refusal that needs no device. */
   function locateIn(listing: CardListing, stored: RegisteredAudioInput): Located {
     const found = identifyRegisteredCard(listing, stored);
-    if (!found.ok) throw new UsbAudioError(found.refusal, stored.deviceId);
+    if (!found.ok) throw new UsbAudioError(found.refusal, stored.deviceId, found.detail);
     const { card } = found;
     if (card.factsSource === CardFactsSource.ASSUMED) throw new UsbAudioError(UsbAudioRefusal.CARD_FACTS_UNKNOWN, stored.deviceId);
     if (stored.inputNumber > card.channelCount) throw new AudioInputBeyondCardError(stored.deviceId);
@@ -612,6 +740,8 @@ export function createUsbAudioProductionAdapter(options: UsbAudioProductionOptio
         sampleBits: Math.min(BITS_OF_FORMAT[opened.shared.format] ?? CAPTURE_BITS, CAPTURE_BITS),
         cardId: opened.card.cardId,
         usbId: opened.card.usbId,
+        usbSerial: identityText(opened.card.usbSerial),
+        usbPort: identityText(opened.card.usbPort),
         product: opened.card.product,
       }),
 
@@ -627,8 +757,11 @@ export function createUsbAudioProductionAdapter(options: UsbAudioProductionOptio
         if (launched) throw new UsbAudioError(UsbAudioRefusal.ALREADY_OPEN, inputId);
         launched = true;
         // The cards are listed again: time has passed since the open, and a card index is the number of one listing.
+        // The stored row is matched AGAIN by serial, else by port path (row 200): a card swapped since the open is refused here, before the door is called.
         const now = await locate(inputId);
         const same =
+          identityText(now.card.usbSerial) === identityText(opened.card.usbSerial) &&
+          identityText(now.card.usbPort) === identityText(opened.card.usbPort) &&
           now.card.cardIndex === opened.card.cardIndex &&
           now.card.deviceIndex === opened.card.deviceIndex &&
           now.card.channelCount === opened.card.channelCount &&
@@ -776,7 +909,7 @@ export function createUsbAudioProductionAdapter(options: UsbAudioProductionOptio
         if (!(error instanceof UsbAudioError)) throw error;
       }
       const answers: AudioInputDescriptor[] = [];
-      for (const entry of devices) {
+      for (const entry of servedDevices()) {
         let errorCode: AudioInputErrorCode | null = listing === null ? AudioInputErrorCode.OPEN_FAILED : null;
         if (listing !== null) {
           try {
@@ -808,6 +941,8 @@ export function createUsbAudioProductionAdapter(options: UsbAudioProductionOptio
       return Object.freeze({
         product: facts.product,
         usbId: facts.usbId,
+        usbSerial: facts.usbSerial,
+        usbPort: facts.usbPort,
         cardId: facts.cardId,
         cardDevice: facts.deviceIndex,
         inputNumber: facts.inputNumber,
@@ -822,5 +957,7 @@ export function createUsbAudioProductionAdapter(options: UsbAudioProductionOptio
     async closeAll() {
       await Promise.all([...held.values()].map((entry) => entry.stream?.close()));
     },
+    admitDevice,
+    admittedDevices: () => Object.freeze([...admittedLater]),
   };
 }

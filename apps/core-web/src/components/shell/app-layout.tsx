@@ -55,7 +55,7 @@ export function AppLayout() {
   useEffect(() => {
     const denied = takeDeniedPage()
     if (denied === null) return
-    const page = denied.pathname === '/admin/users' ? t('shell.nav.usersRoles') : denied.pathname === '/admin/devices' ? t('shell.nav.pairedDevices') : denied.pathname === '/session/new' ? t('common.actions.startNewSession') : denied.pathname
+    const page = denied.pathname === '/admin/users' ? t('shell.nav.usersRoles') : denied.pathname === '/admin/devices' ? t('shell.nav.pairedDevices') : denied.pathname === '/admin/commissioning' ? t('web.commissioning.nav') : denied.pathname === '/session/new' ? t('common.actions.startNewSession') : denied.pathname
     toast.warning(t('web.waveJ.rbac.pageTitle', { page }), { description: roleReasonText(t, denied.permission) })
   }, [href, t])
   const left = useRef(false)

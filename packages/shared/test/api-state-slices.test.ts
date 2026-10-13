@@ -787,11 +787,20 @@ describe('values: time, value sets, identifiers, hashes, levels, text', () => {
       expect(refuses('cameras', withFacts(facts)), JSON.stringify(facts)).toBe(false);
     }
     // The codec is a closed set: the stored code, another case, a codec outside it and device text are refused.
-    for (const codec of ['H264', 'h.264', 'hevc', 'H.265', 'AV1', '', '<b>H.264</b>', 'H.264 ', 'x'.repeat(300), null, 264]) {
+    // Row V6 (finding S-01; decision C36): NULL is "no stream statement is stored for the track" - the one way to say
+    // "not stated", for the picture and the codec as for the rate. Never a default, an invented word or an empty text.
+    for (const facts of [{ resolution: null }, { codec: null }, { resolution: null, fps: null, codec: null }]) {
+      expect(refuses('cameras', withFacts(facts)), JSON.stringify(facts)).toBe(false);
+    }
+    for (const facts of [{ codec: 'UNKNOWN' }, { resolution: 'unknown' }, { resolution: undefined }, { codec: undefined }]) {
+      expect(refuses('cameras', withFacts(facts)), JSON.stringify(facts)).toBe(true);
+    }
+    // The codec is a closed set: the stored code, another case, a codec outside it and device text are refused.
+    for (const codec of ['H264', 'h.264', 'hevc', 'H.265', 'AV1', '', '<b>H.264</b>', 'H.264 ', 'x'.repeat(300), 264]) {
       expect(refuses('cameras', withFacts({ codec })), String(codec)).toBe(true);
     }
     // The picture is `<height>p` or `<width>x<height>`, each number 100 to 9999.
-    for (const resolution of ['1080P', '1080', '1080i', '99p', '10800p', '0720p', '1920X1080', '1920x', 'x1080', '1920x1080p', ' 1080p', '1080p\n', '<1080p>', 'x'.repeat(300), '', null, 1080]) {
+    for (const resolution of ['1080P', '1080', '1080i', '99p', '10800p', '0720p', '1920X1080', '1920x', 'x1080', '1920x1080p', ' 1080p', '1080p\n', '<1080p>', 'x'.repeat(300), '', 1080]) {
       expect(refuses('cameras', withFacts({ resolution })), String(resolution)).toBe(true);
     }
     // The rate is a whole number from 1 to 240.

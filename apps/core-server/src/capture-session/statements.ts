@@ -48,5 +48,22 @@ export const CLOSE_OPEN_AUDIO_INTERVAL = `UPDATE public.session_audio_intervals 
 WHERE session_id = $1::text AND to_media_ms IS NULL AND from_media_ms <= $2::bigint
 RETURNING from_media_ms`;
 
+/**
+ * Task 4 row 191b (decision C57): THE EARLIER WORKER'S END. The capture worker of a session was
+ * replaced while nothing was durable; no file holds anything of the worker that went down. The
+ * interval that was open is closed WHERE IT BEGAN in media time (`to_media_ms = from_media_ms`:
+ * none of it is in any file - the least the table's `media_check` admits) and at the instant the
+ * earlier worker went down (`to_at`, the Core's clock). Parameters: session, that instant.
+ *
+ * NO NEW GRANT: these are the two columns the runtime role may update (0005), and each is written
+ * once - only a row that is still open is touched. The later worker's interval is then stated by
+ * a NEW row (`INSERT_AUDIO_INTERVAL`, the next number, reason START): the table's one-open index
+ * (`session_audio_intervals_one_open_key`) admits it only after this close. The gap of the audio
+ * is what the two rows state between them: `to_at` of this row, `from_at` of the next.
+ */
+export const CLOSE_SUPERSEDED_AUDIO_INTERVAL = `UPDATE public.session_audio_intervals SET to_media_ms = from_media_ms, to_at = $2::bigint
+WHERE session_id = $1::text AND to_media_ms IS NULL
+RETURNING seq`;
+
 /** The reasons an interval row is opened with (`session_audio_intervals_reason_check`). */
 export const AudioIntervalRowReason = { START: 'START', MANUAL: 'MANUAL' } as const;

@@ -69,7 +69,7 @@ describe('a prepared host: every prerequisite is in place (control)', () => {
     const results = await hostCheckResults(prepared.deps, usable);
     expect(results.map((entry) => entry.status)).toEqual(Array.from({ length: ALL_CHECKS }, () => HostCheckStatus.IN_PLACE));
     expect(prepared.asked).toHaveLength(HOST_COMMAND_CHECKS.length);
-    await expect(hostCheckOutcomeOf(host().deps, usable)).resolves.toEqual({ failure: null, commands: 'ASKED', inPlace: ALL_CHECKS });
+    await expect(hostCheckOutcomeOf(host().deps, usable)).resolves.toEqual({ failure: null, commands: 'ASKED', inPlace: ALL_CHECKS, aliasSocket: 'IN_PLACE' });
   });
 });
 
@@ -87,7 +87,9 @@ describe('each question of the host: present, absent, malformed, command not fou
     it(`${check.code}: absent - the boot names that prerequisite, by its own code and a fixed reason`, async () => {
       for (const { answer, reason } of answers.absent) {
         const outcome = await outcomeWith(answer);
-        expect(outcome.failure, reason).toEqual({ code: check.code, reason });
+        // Row HC (C94 (j)): the socket node that is NOT THERE is no refusal of the host checks - it is handed on as a finding.
+        if (reason === 'SOCKET_ABSENT') expect(outcome).toEqual({ failure: null, commands: 'ASKED', inPlace: ALL_CHECKS - 1, aliasSocket: 'ABSENT' });
+        else expect(outcome.failure, reason).toEqual({ code: check.code, reason });
       }
     });
 
@@ -120,6 +122,20 @@ describe('each question of the host: present, absent, malformed, command not fou
     await expect(hostCheckOutcomeOf(boot.deps, usable)).resolves.toMatchObject({ failure: { code: CaptureHostRefusal.HOST_FORWARDING } });
     expect(boot.asked).toHaveLength(HOST_COMMAND_CHECKS.findIndex((check) => check.code === CaptureHostRefusal.HOST_FORWARDING) + 1);
   });
+
+  it('row HC (C94 (j)): the diagnostics show an absent socket node as ABSENT with its reason - not MISSING, not in place - and every other check is still asked', async () => {
+    const answer = HOST_ANSWERS[CaptureHostRefusal.HOST_ALIAS_SOCKET]?.absent[0]?.answer ?? { outcome: 'NOT_STARTED' as const };
+    const without = host({ answers: { [CaptureHostRefusal.HOST_ALIAS_SOCKET]: answer } });
+    const results = await hostCheckResults(without.deps, usable, { stopAtFirstMissing: true });
+    expect(results).toHaveLength(ALL_CHECKS);
+    expect(results.at(-1)).toEqual({ code: 'CAPTURE_HOST_ALIAS_SOCKET', items: ['HOST-44'], status: 'ABSENT', reason: 'SOCKET_ABSENT' });
+    expect(results.filter((entry) => entry.status !== 'IN_PLACE')).toHaveLength(1);
+    expect(Object.values(HostCheckStatus)).toEqual(['IN_PLACE', 'MISSING', 'NOT_ASKED', 'ABSENT']);
+    // A node that is THERE and wrong stays a refusal (another kind, owner, group or mode).
+    for (const output of ['socket root dems-netalias 666\n', 'socket dems-core dems-netalias 660\n', 'regular file root dems-netalias 660\n', 'directory root root 755\n']) {
+      await expect(hostCheckOutcomeOf(host({ answers: { [CaptureHostRefusal.HOST_ALIAS_SOCKET]: { outcome: 'RAN', exitCode: 0, output } } }).deps, usable), output).resolves.toMatchObject({ failure: { code: 'CAPTURE_HOST_ALIAS_SOCKET', reason: 'SOCKET_OWNER_GROUP_OR_MODE' }, aliasSocket: 'NOT_ASKED' });
+    }
+  });
 });
 
 describe('the checks of the Core\'s own process and programs (no command; every platform)', () => {
@@ -151,7 +167,7 @@ describe('the checks of the Core\'s own process and programs (no command; every 
 
   it('on a host that is not Linux no question is asked and none is answered "in place": the own-process checks still run', async () => {
     const mac = host({ platform: 'darwin' });
-    await expect(hostCheckOutcomeOf(mac.deps, usable)).resolves.toEqual({ failure: null, commands: 'NOT_LINUX', inPlace: OWN_PROCESS_CHECKS });
+    await expect(hostCheckOutcomeOf(mac.deps, usable)).resolves.toEqual({ failure: null, commands: 'NOT_LINUX', inPlace: OWN_PROCESS_CHECKS, aliasSocket: 'NOT_ASKED' });
     expect(mac.asked).toEqual([]);
     const results = await hostCheckResults(mac.deps, usable);
     expect(results.slice(OWN_PROCESS_CHECKS).map((entry) => entry.status)).toEqual(HOST_COMMAND_CHECKS.map(() => 'NOT_ASKED'));

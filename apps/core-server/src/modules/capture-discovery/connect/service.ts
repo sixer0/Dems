@@ -39,12 +39,36 @@
  * an engine action the contract does not have yet (`DeviceRegistrar`; request filed with row
  * 132). While a seam is not provided the operation that needs it answers `503 NOT_READY` BEFORE
  * any request leaves - never a made-up result.
+ *
+ * WHERE A CANDIDATE'S TEST IS MADE FROM (task 4 row 143c; decision C65; S13-11 point 2). Under
+ * capture operation `REAL_PRODUCTION` the test of a candidate that is NOT STORED YET - both halves:
+ * the ONVIF requests, each locator read and each stream probe - leaves from the camera-interface
+ * address, as every dial to a stored camera does. The seam `candidateSource` says whether that is
+ * required and hands in the destination rule (the ONE binding of the production composition, the
+ * rule a stored camera is held to: an adopted candidate becomes exactly such a camera). When it is
+ * required, `testerOf` asks the rule about the candidate's own address BEFORE the bounds are asked
+ * and before anything is sent: no rule handed in -> `503 NOT_READY`; the rule refuses (no network
+ * configuration is `NOT_CONFIGURED`), or admits and names no source address -> `409
+ * CANDIDATE_NOT_TESTABLE`; a tester that cannot be bound -> `503`. There is no unbound test in
+ * production. In every other capture operation the seam says "not required" and the flow is
+ * exactly what it was: no rule is asked, the tester is called as it is.
+ *
+ * THE REASON OF THAT 409 IS THE TRUE CAUSE (row R2; review finding F3-06; decision C93). When the
+ * rule's word is `NOT_CONFIGURED` - this Core has no camera interface or no camera subnet chosen -
+ * the device is not at fault and the answer says so: `409 INVALID_STATE`, `details.reason:
+ * COMMISSIONING_NOT_CONFIGURED` (a reason the contract already has, `CaptureCommissioningReason`:
+ * the one the commissioning functions answer for this same state, which operation 102 ends), with
+ * its sentence. Every other refusal of the rule keeps `CANDIDATE_NOT_TESTABLE`: there the address
+ * of the device is the cause. The status, the code, the order (before the bounds, nothing sent,
+ * nothing spent, no audit row) and the log line are unchanged.
  */
 import {
   ApiErrorCode,
   CAPTURE_CONNECTION_TEST_TIMEOUT_MS,
   CAPTURE_CONNECTION_TEST_VALIDITY_MS,
+  CAPTURE_COMMISSIONING_REFUSAL_SENTENCES,
   CAPTURE_DEVICE_CHANGED_CAUSE,
+  CaptureCommissioningReason,
   CaptureConnectionOutcome,
   CaptureConnectionTestReason,
   CaptureDiscoveryReason,
@@ -57,7 +81,19 @@ import {
   type CaptureConnectionTest,
 } from '@dems/shared/api';
 import { AuditType, Permission, isSessionActive } from '@dems/shared/sim';
-import { CaptureAdapterError, CaptureAdapterKind, sourceClassOf, usingCredential, type CameraCandidate, type ConnectionTestResult, type JudgedStream, type SealedCredential } from '../../../capture/adapters';
+import {
+  CaptureAdapterError,
+  CaptureAdapterKind,
+  StoredCameraRefusal,
+  judgeStoredCamera,
+  sourceClassOf,
+  usingCredential,
+  type CameraCandidate,
+  type ConnectionTestResult,
+  type JudgedStream,
+  type SealedCredential,
+  type StoredCameraAddressRule,
+} from '../../../capture/adapters';
 import { SERVER_AUDIT_DETAIL_RULES, type AuditEntry, type UnitContext } from '../../../core';
 import type { DurableSlices } from '../../../db/mapping';
 import type { EngineOutcome, EngineUnit } from '../../../engine';
@@ -135,8 +171,25 @@ function reasonOf(attempt: ConnectionAttempt): { reason?: CaptureConnectionTestR
 
 /** THE SEAM TO THE DEVICE: the read-only test of `camera/onvif-session.ts`, or a camera adapter's `testConnection`. */
 export interface ConnectionTester {
-  test(candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal): Promise<ConnectionAttempt>;
+  /** `sourceAddress` (task 4 row 143b): the address of this host the test's connections leave from - handed in for a STORED camera (`adopted-test.ts`), left out for a candidate. */
+  test(candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal, sourceAddress?: string): Promise<ConnectionAttempt>;
+  /**
+   * THE SAME TESTER, BOUND (task 4 row 143c): every connection of every test the answer makes leaves
+   * from `fromAddress`. Throws a `CaptureAdapterError` for a text that is no source address. Optional
+   * in the type only: where a bound test is REQUIRED (`candidateSource`), a tester without this
+   * member makes no test at all.
+   */
+  boundTo?(fromAddress: string): { test(candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal): Promise<ConnectionAttempt> };
 }
+
+/**
+ * WHETHER THE TEST OF A CANDIDATE MUST BE BOUND TO THE CAMERA INTERFACE (task 4 row 143c; decision
+ * C65). `required: false`: any capture operation but `REAL_PRODUCTION` - the test is made as the
+ * host routes, as before. `required: true`: `REAL_PRODUCTION` - `rule` is the destination rule on a
+ * camera address bound to the host's network facts by the production composition, or null while
+ * nobody handed it in (then no test is made).
+ */
+export type CandidateSourceBinding = { readonly required: false } | { readonly required: true; readonly rule: StoredCameraAddressRule | null };
 
 /** A sealed secret as the table takes it. The shape of the Core credential store's envelope. */
 export interface SealedCameraSecret {
@@ -202,6 +255,13 @@ export interface ConnectSeams {
    */
   storeSealed(sealed: unknown): boolean;
   registrar(): DeviceRegistrar | null;
+  /**
+   * Row 143c (C65): asked once per attempt, before the bounds. The one maker of the seams of an app
+   * (`connect/index.ts`) ALWAYS states it, from the capture operation of that app. Optional in the
+   * type for the doubles of the flow's own tests, which state no capture operation: left out, it
+   * reads as `required: false`.
+   */
+  candidateSource?(): CandidateSourceBinding;
 }
 
 /** Who asked: the operator's session, never a request field (SR-65). */
@@ -230,7 +290,7 @@ type ContactPermit = { readonly kind: 'OPERATOR_CREDENTIAL'; readonly sealed: Se
 // ── Refusals: fixed texts that quote nothing of the request ────────────────────────────────────
 
 const SOURCE = 'captureConnect';
-const invalidState = (reason: CaptureDiscoveryReason, text: string, details: Readonly<Record<string, string>> = {}): ApiFailure => new ApiFailure(409, ApiErrorCode.INVALID_STATE, text, { details: { reason, ...details } });
+const invalidState = (reason: CaptureDiscoveryReason | typeof CaptureCommissioningReason.COMMISSIONING_NOT_CONFIGURED, text: string, details: Readonly<Record<string, string>> = {}): ApiFailure => new ApiFailure(409, ApiErrorCode.INVALID_STATE, text, { details: { reason, ...details } });
 const locked = (): ApiFailure => new ApiFailure(409, ApiErrorCode.CAPTURE_CONFIG_LOCKED, 'The capture configuration cannot be changed while a session is open.');
 const noCandidate = (): ApiFailure => new ApiFailure(404, ApiErrorCode.NOT_FOUND, 'No candidate has this ID.');
 const noDevice = (): ApiFailure => new ApiFailure(404, ApiErrorCode.NOT_FOUND, 'The capture registry has no such device.');
@@ -296,6 +356,44 @@ function permitFor(candidate: ConnectCandidate, credential: OperatorCredential |
   return { kind: 'DEVELOPMENT_SOURCE' };
 }
 
+/** The log code of a candidate whose test was refused by the destination rule (row 143c). A code and the rule's own word; never the address. */
+export const CANDIDATE_TEST_ADDRESS_REFUSED = 'CAPTURE_CANDIDATE_TEST_ADDRESS_REFUSED';
+const CANDIDATE_ADDRESS_REFUSED_TEXT = 'the address of a camera candidate is not one this Core connects to from its camera interface: its connection test was refused and nothing was sent';
+const NOT_REQUIRED: CandidateSourceBinding = Object.freeze({ required: false });
+/** The destination rule's own word for "no camera interface or no camera subnet is chosen" (`DestinationRefusal.NOT_CONFIGURED` of `capture/destination-rule.ts`). */
+const RULE_NOT_CONFIGURED = 'NOT_CONFIGURED';
+/** F3-06: what the operator is told when the Core, not the device, is why no test can be made. The second sentence is the contract's own for the reason. */
+const NETWORK_NOT_SET_UP_TEXT = `This device cannot be tested yet: the camera network of this Core is not set up. ${CAPTURE_COMMISSIONING_REFUSAL_SENTENCES[CaptureCommissioningReason.COMMISSIONING_NOT_CONFIGURED]}`;
+
+/**
+ * THE TESTER OF ONE ATTEMPT (task 4 row 143c; decision C65). Not required: the tester as it was
+ * provided. Required (`REAL_PRODUCTION`): the tester BOUND to the camera-interface address the
+ * destination rule names for the candidate's own address - or a refusal, before the bounds are
+ * asked and before any request. It sends nothing and spends nothing.
+ */
+function testerOf(seams: ConnectSeams, resolved: { readonly tester: ConnectionTester; readonly candidate: ConnectCandidate }, operationId: string): Pick<ConnectionTester, 'test'> {
+  const binding = seams.candidateSource?.() ?? NOT_REQUIRED;
+  if (!binding.required) return resolved.tester;
+  const given = resolved.tester;
+  if (binding.rule === null || typeof given.boundTo !== 'function') throw notReady(CaptureDiscoveryReason.DISCOVERY_NOT_READY, 'The connection test is not ready: the camera network of this Core is not set up.');
+  const judged = judgeStoredCamera(resolved.candidate.camera, binding.rule);
+  const fromAddress = !judged.allowed ? null : judged.sourceAddress;
+  if (!judged.allowed || fromAddress === null) {
+    const refusal = judged.allowed ? StoredCameraRefusal.SOURCE_ABSENT : judged.refusal;
+    seams.host.note({ code: CANDIDATE_TEST_ADDRESS_REFUSED, source: SOURCE, operationId, refusal }, CANDIDATE_ADDRESS_REFUSED_TEXT);
+    // F3-06 (C93): a Core without a camera network is the cause, not the device - the reason and the sentence say it.
+    if (refusal === RULE_NOT_CONFIGURED) throw invalidState(CaptureCommissioningReason.COMMISSIONING_NOT_CONFIGURED, NETWORK_NOT_SET_UP_TEXT);
+    throw invalidState(CaptureDiscoveryReason.CANDIDATE_NOT_TESTABLE, 'This device cannot be tested.');
+  }
+  try {
+    return given.boundTo(fromAddress);
+  } catch (error) {
+    // The adapter refused the address as a source before anything was sent: a state of this attempt, not a fault.
+    if (error instanceof CaptureAdapterError) throw invalidState(CaptureDiscoveryReason.CANDIDATE_NOT_TESTABLE, 'This device cannot be tested.');
+    throw error;
+  }
+}
+
 interface Attempt {
   readonly record: CandidateTestRecord;
   readonly verdict: GuardVerdict;
@@ -316,7 +414,9 @@ async function contact(
   operationId: 'testCaptureCandidateConnection' | 'adoptCaptureCandidate',
 ): Promise<Attempt> {
   const { host, limits } = seams;
-  const { candidate, directory, tester } = resolved;
+  const { candidate, directory } = resolved;
+  // Row 143c (C65): in production the tester of this attempt is bound to the camera interface, or the attempt is refused here.
+  const tester = testerOf(seams, resolved, operationId);
   const sessionId = caller.principal.sessionId;
   const refusal = limits.refusal(candidate.camera.host, sessionId);
   if (refusal !== null) throw limited(refusal);

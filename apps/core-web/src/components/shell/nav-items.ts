@@ -17,6 +17,7 @@ import {
   House,
   Monitor,
   Network,
+  Router,
   Settings,
   ShieldCheck,
   TabletSmartphone,
@@ -36,6 +37,7 @@ export type NavPath =
   | '/system'
   | '/admin/users'
   | '/admin/devices'
+  | '/admin/commissioning'
   | '/developer/api'
 
 export type NavLabelKey =
@@ -49,6 +51,8 @@ export type NavLabelKey =
   | 'shell.nav.system'
   | 'shell.nav.usersRoles'
   | 'shell.nav.pairedDevices'
+  // Task 4 row 112: a sentence of this console's own tree (`i18n-web.ts`), the shared tree being another writer's.
+  | 'web.commissioning.nav'
   | 'shell.nav.apiReference'
 
 export interface NavItem {
@@ -74,6 +78,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'system', to: '/system', icon: Settings, labelKey: 'shell.nav.system', group: 'main' },
   { id: 'users-roles', to: '/admin/users', icon: UsersRound, labelKey: 'shell.nav.usersRoles', group: 'admin', permission: Permission.USER_ADMIN, liveOnly: true },
   { id: 'paired-devices', to: '/admin/devices', icon: TabletSmartphone, labelKey: 'shell.nav.pairedDevices', group: 'admin', permission: Permission.PAIRING_MANAGE, liveOnly: true },
+  // Task 4 row 112 (decision U10): the commissioning screen, for the one role that holds `CAPTURE_COMMISSION` (TECHNICIAN).
+  { id: 'commissioning', to: '/admin/commissioning', icon: Router, labelKey: 'web.commissioning.nav', group: 'admin', permission: Permission.CAPTURE_COMMISSION, liveOnly: true },
   { id: 'api-reference', to: '/developer/api', icon: Braces, labelKey: 'shell.nav.apiReference', group: 'developer' },
 ]
 

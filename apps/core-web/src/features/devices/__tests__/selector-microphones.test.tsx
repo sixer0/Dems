@@ -33,7 +33,9 @@ import { resetCoreErrorPresenter } from '@/lib/core-errors'
 import { createAppRouter } from '@/router'
 import { createLiveTestBed, type LiveTestBed, SUPERVISOR_SESSION } from '@/runtime/testing/live-harness'
 import { stubMediaForJsdom } from '@/features/session-new/__tests__/live-session-new-bed'
+import { enWeb } from '@/i18n-web'
 import { micPairFor, selectorSlotRows } from '../capture-selector'
+import { slotRefusalWording, wordedSlotRefusalReasons } from '../slot-refusal'
 
 describe("the capture selector: every registered microphone and camera on its lines (G70-02)", () => {
   configure({ asyncUtilTimeout: 8_000 })
@@ -530,6 +532,72 @@ describe("the capture selector: every registered microphone and camera on its li
       await waitFor(async () => expect(await within(panel).findByTestId('selector-mic-message-PRIMARY')).toHaveTextContent(S.invalid))
       expect(rowOf(panel, 'PRIMARY')).toHaveAttribute('data-state', 'NOT_ASSIGNED')
       expect(within(panel).queryByTestId('selector-mic-MIC-03')).not.toBeInTheDocument()
+    })
+
+    // Task 4 row 234 (the user's run on real cameras; decision C60): the Core answered
+    // `422 INVALID_INPUT` with a word in `details.reason` and the console said "not accepted".
+    it('row 234: a refused camera assignment states the reason of EVERY word the Core answers - the production camera on a development Core, the camera no adapter serves, the class, the two profile words, an unworded code; the slot stays empty', async () => {
+      const { bed: created, panel } = await liveSlots(['VIDEO-02', 'PRIMARY', 'STANDBY'])
+      const R = enWeb.web.captureSlotRefusal
+      // Row V4 (decision C80) and its clean-up: ONE SOURCE - the sentences and the two nouns are the shared tree's, and this console's tree
+      // holds NO copy of them, not even by reference: what is left under `web.captureSlotRefusal` is the code sentence alone.
+      const shared = en.common.captureSlotRefusal
+      expect(Object.keys(R)).toEqual(['code'])
+      expect(Object.keys(en.common.captureSlotSource)).toEqual(['CAMERA', 'MIC'])
+      // THE PIN: what a production camera on a development Core reads, word for word (the user's run on real cameras; decision C60).
+      expect(shared.PRODUCTION_SOURCE_NOT_ALLOWED.replaceAll('{{source}}', en.common.captureSlotSource.CAMERA)).toBe(
+        'This camera was not assigned: it is a production device, and this Core runs in development capture operation. This camera can be assigned only on a Core running in production capture operation. Nothing was changed.',
+      )
+      const camera = (sentence: string) => sentence.replaceAll('{{source}}', en.common.captureSlotSource.CAMERA)
+      const expected: readonly (readonly [string, string])[] = [
+        ['PRODUCTION_SOURCE_NOT_ALLOWED', camera(shared.PRODUCTION_SOURCE_NOT_ALLOWED)],
+        ['CAPTURE_DEVICE_NOT_SERVED', camera(shared.CAPTURE_DEVICE_NOT_SERVED)],
+        ['CAPTURE_DEVICE_CLASS_MISMATCH', camera(shared.CAPTURE_DEVICE_CLASS_MISMATCH)],
+        ['CAMERA_PROFILE_NOT_STATED', en.common.captureSlotRefusal.CAMERA_PROFILE_NOT_STATED],
+        ['CAMERA_PROFILE_NOT_OF_DEVICE', en.common.captureSlotRefusal.CAMERA_PROFILE_NOT_OF_DEVICE],
+        ['DEVELOPMENT_SOURCE_NOT_ALLOWED', S.developmentOnly],
+        ['CAPTURE_ADAPTER_KIND_NOT_ALLOWED', `${S.invalid} ${R.code.replace('{{code}}', 'CAPTURE_ADAPTER_KIND_NOT_ALLOWED')}`],
+      ]
+      // The sentence the user's case reads, word for word: what is true of a production camera on a development Core.
+      expect(expected[0]![1]).toContain('This camera can be assigned only on a Core running in production capture operation.')
+      await pick(panel, 'VIDEO-01', /CAM-01/)
+      for (const [reason, sentence] of expected) {
+        created.fake.answerOnce('setCaptureCameraSource', refusal(422, 'INVALID_INPUT', 'This capture device cannot be assigned.', { in: 'body', reason, deviceId: 'CAM-01' }))
+        await waitFor(() => expect(saveOf(panel, 'VIDEO-01')).toBeEnabled())
+        fireEvent.click(saveOf(panel, 'VIDEO-01'))
+        await waitFor(async () => expect((await within(panel).findByTestId('selector-message-VIDEO-01')).textContent).toBe(sentence))
+        // Never the answer's own text, and never a bare word standing in for a sentence.
+        expect(within(panel).getByTestId('selector-message-VIDEO-01')).not.toHaveTextContent('This capture device cannot be assigned.')
+      }
+      expect(requests('setCaptureCameraSource')).toHaveLength(expected.length)
+      expect(rowOf(panel, 'VIDEO-01')).toHaveAttribute('data-state', 'NOT_ASSIGNED')
+      // A word that has not the form of a code is not drawn: the general sentence alone.
+      created.fake.answerOnce('setCaptureCameraSource', refusal(422, 'INVALID_INPUT', 'Refused.', { in: 'body', reason: '<b>not a code</b>' }))
+      await waitFor(() => expect(saveOf(panel, 'VIDEO-01')).toBeEnabled())
+      fireEvent.click(saveOf(panel, 'VIDEO-01'))
+      await waitFor(() => expect(within(panel).getByTestId('selector-message-VIDEO-01').textContent).toBe(S.invalid))
+      expect(getMissingI18nKeys()).toEqual([])
+    })
+
+    it('row 234: `slotRefusalWording` words every reason the capture-config routes name, the shared tree first; a microphone row names a microphone', async () => {
+      // The closed lists of `apps/core-server/src/modules/capture-config/routes.ts` (`CaptureAssignmentRefusal`, `CaptureProfileRefusal`) and the action's own word.
+      const named = ['DEVELOPMENT_SOURCE_NOT_ALLOWED', 'PRODUCTION_SOURCE_NOT_ALLOWED', 'CAPTURE_DEVICE_NOT_SERVED', 'CAPTURE_DEVICE_CLASS_MISMATCH', 'CAMERA_PROFILE_NOT_STATED', 'CAMERA_PROFILE_NOT_OF_DEVICE', 'SLOT_UNASSIGNED_AND_ASSIGNED']
+      for (const reason of named) expect(['DEVELOPMENT_ONLY', 'SHARED'], reason).toContain(slotRefusalWording(reason).kind)
+      expect([...wordedSlotRefusalReasons()].sort()).toEqual([...named].sort())
+      // The worded reasons are exactly the shared group's keys and the one development word: no table of this console adds one.
+      expect([...wordedSlotRefusalReasons()].sort()).toEqual(['DEVELOPMENT_SOURCE_NOT_ALLOWED', ...Object.keys(en.common.captureSlotRefusal)].sort())
+      expect(slotRefusalWording('CAMERA_PROFILE_NOT_STATED')).toEqual({ kind: 'SHARED', reason: 'CAMERA_PROFILE_NOT_STATED' })
+      expect(slotRefusalWording('PRODUCTION_SOURCE_NOT_ALLOWED')).toEqual({ kind: 'SHARED', reason: 'PRODUCTION_SOURCE_NOT_ALLOWED' })
+      expect(slotRefusalWording('CAPTURE_PROFILE_UNKNOWN')).toEqual({ kind: 'CODE', code: 'CAPTURE_PROFILE_UNKNOWN' })
+      expect(slotRefusalWording(null)).toEqual({ kind: 'PLAIN' })
+      expect(slotRefusalWording('lower case')).toEqual({ kind: 'PLAIN' })
+
+      const { bed: created, panel } = await liveSlots(['VIDEO-01', 'VIDEO-02', 'STANDBY'])
+      await pick(panel, 'PRIMARY', /MIC-03/)
+      created.fake.answerOnce('updateCaptureConfig', refusal(422, 'INVALID_INPUT', 'Refused.', { in: 'body', reason: 'CAPTURE_DEVICE_NOT_SERVED', deviceId: 'MIC-03' }))
+      fireEvent.click(saveOf(panel, 'PRIMARY'))
+      const message = await within(panel).findByTestId('selector-mic-message-PRIMARY')
+      expect(message.textContent).toBe(en.common.captureSlotRefusal.CAPTURE_DEVICE_NOT_SERVED.replaceAll('{{source}}', 'microphone'))
     })
 
     it('`micPairFor` builds a command for every slot state; `selectorSlotRows` finds a line by track and by role, never by position', () => {

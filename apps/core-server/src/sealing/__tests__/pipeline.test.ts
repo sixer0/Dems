@@ -20,7 +20,7 @@ import { DEMO_TAMPERED_FRAGMENT_SEQ, DEMO_TAMPERED_FRAGMENT_TRACK } from '@dems/
 import { createMemoryChunkMirror } from '@dems/transcriber';
 import { afterAll, describe, expect, it } from 'vitest';
 import { corePorts } from '../../evidence-verify';
-import { SEALING_HOOK_PHASES, SEALING_MAX_FRAGMENT_BYTES, SEALING_STEP_ORDER, SealingStop, createSealingController, createSealingPipeline, durableMediaOnDisk, sealEngineOf, sealOnCaptureHandOff, sealingFailureReason, type SealOutcome, type SealingHookPoint, type SealingStepId } from '../index';
+import { SEALING_HOOK_PHASES, SEALING_MAX_FRAGMENT_BYTES, SEALING_STEP_ORDER, SealingStop, createSealingController, createSealingPipeline, durableMediaOnDisk, sealEngineOf, sealOnCaptureHandOff, sealingFailureReason, type SealOutcome, type SealSessionFacts, type SealingHookPoint, type SealingStepId } from '../index';
 import { listPackageFiles } from '../pipeline/camera-files';
 import { removePackages, throwAwaySigner } from './package-support';
 import { CLOCK_START, TRACKS, harnessOf, recordSession, removeRecordings, sessionFacts, sha256Hex, type Harness, type Recording } from './pipeline-support';
@@ -150,6 +150,230 @@ describe('the first product-sealed package (M7-REF-1, function half)', () => {
     expect(result.transcriptState.code).toBe('READY');
     // Sealing asked the transcriber for nothing but the assembled transcript: no speech was decoded by the seal.
     expect(session.decoded.length).toBeGreaterThan(0);
+  });
+});
+
+describe('task 4 row 191c: audio absent across a worker restart is a SIGNED member of the manifest (fields 129-132; decisions C73, C83)', () => {
+  const RESTARTED = {
+    audioIntervals: [
+      { seq: 1, micDeviceId: 'MIC-01', role: 'PRIMARY', fromMs: 0, toMs: 0, reason: 'START', switchedBy: null },
+      { seq: 2, micDeviceId: 'MIC-01', role: 'PRIMARY', fromMs: 21, toMs: null, reason: 'START', switchedBy: null },
+    ],
+    audioRestartGaps: [
+      { earlierAttempt: 1, laterAttempt: 2, absentAtLeastMs: 336, absentAtMostMs: 715 },
+      { earlierAttempt: 2, laterAttempt: 3, absentAtLeastMs: null, absentAtMostMs: 640 },
+    ],
+  } as const;
+  const manifestBytes = (recording: Recording): Buffer => readFileSync(recording.path(PackageFile.MANIFEST));
+
+  it('a session with restarts seals `audio.absentOnRestart` - one record per restart, the attempts and both bounds - and the Core\'s verify passes all 15 checks; one changed number of the member is refused under the signature', async () => {
+    const recording = recordSession();
+    const h = harnessOf(recording, { facts: RESTARTED });
+    const outcome = sealedOf(await h.pipeline.run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
+    const manifest = manifestOf(recording);
+    expect(manifest.audio.absentOnRestart).toEqual(RESTARTED.audioRestartGaps);
+    expect(manifest.audio.sourceIntervals.map((interval) => [interval.seq, interval.reason, interval.fromMs, interval.toMs])).toEqual([[1, 'START', 0, 0], [2, 'START', 21, 10_000]]);
+    expect(outcome.manifestSha256).toBe(manifest.manifestSha256);
+    const result = await verify(h);
+    expect([result.ok, result.overall, passing(result)]).toEqual([true, 'PASS', ALL]);
+
+    // CONTROL: the member is inside the digest. 715 -> 716 in the file: the manifest no longer matches its digest and signature.
+    const file = recording.path(PackageFile.MANIFEST);
+    const text = readFileSync(file, 'utf8');
+    expect(text.split('"absentAtMostMs":715')).toHaveLength(2);
+    writeFileSync(file, text.replace('"absentAtMostMs":715', '"absentAtMostMs":716'));
+    const altered = await verify(h);
+    expect(altered.ok).toBe(false);
+    expect(passing(altered)).not.toContain('V-03');
+  });
+
+  it('NO RESTART = NO KEY: the same recording sealed with no gap record, with an empty list and with the member absent gives the SAME manifest bytes, and they do not name the member', async () => {
+    const original = recordSession();
+    const signer = throwAwaySigner();
+    const sealedBytes = async (facts: Parameters<typeof sessionFacts>[1] | undefined): Promise<Buffer> => {
+      const h = harnessOf(original.clone(), { signer, ...(facts === undefined ? {} : { facts }) });
+      sealedOf(await h.pipeline.run({ sessionId: original.sessionId, cause: 'STOPPED' }));
+      return manifestBytes(h.recording);
+    };
+    const absent = await sealedBytes(undefined);
+    const empty = await sealedBytes({ audioRestartGaps: [] });
+    expect(absent.toString('utf8')).not.toContain('absentOnRestart');
+    expect(empty.equals(absent)).toBe(true);
+    // The control of the comparison: one gap record changes the bytes.
+    const withGap = await sealedBytes({ audioRestartGaps: [{ earlierAttempt: 1, laterAttempt: 2, absentAtLeastMs: null, absentAtMostMs: null }] });
+    expect(withGap.equals(absent)).toBe(false);
+    expect(withGap.toString('utf8')).toContain('"absentOnRestart":[{"absentAtLeastMs":null,"absentAtMostMs":null,"earlierAttempt":1,"laterAttempt":2}]');
+  });
+
+  it('the member is FROZEN with the build: a run stopped after BUILD_MANIFEST resumes to the same digest although the session record no longer states the restart', async () => {
+    const original = recordSession();
+    const signer = throwAwaySigner();
+    const reference = harnessOf(original.clone(), { signer, facts: RESTARTED });
+    const clean = sealedOf(await reference.pipeline.run({ sessionId: original.sessionId, cause: 'STOPPED' }));
+
+    const h = harnessOf(original.clone(), { signer, facts: RESTARTED });
+    h.hook = stopAt('BUILD_MANIFEST', 'AFTER_WORK');
+    await expect(h.again().run({ sessionId: original.sessionId, cause: 'STOPPED' })).rejects.toBeInstanceOf(SealingStop);
+    h.facts = sessionFacts(original.sessionId);
+    h.hook = null;
+    const resumed = sealedOf(await h.again().run({ sessionId: original.sessionId, cause: 'STOPPED' }));
+    expect(resumed.manifestSha256).toBe(clean.manifestSha256);
+    expect(manifestOf(h.recording).audio.absentOnRestart).toEqual(RESTARTED.audioRestartGaps);
+  });
+
+  // ── Task 4 row P1 (decisions U21 (2), C66 (1), C71 C-7): field 133, `hostProfileNotAsked` ──
+  it('row P1: a session a production Core seals on macOS states `hostProfileNotAsked` under the signature and the Core\'s verify passes all 15 checks; the platform changed in the file is refused', async () => {
+    const recording = recordSession();
+    const h = harnessOf(recording, { facts: { hostProfileNotAsked: { platform: 'darwin' } } });
+    const outcome = sealedOf(await h.pipeline.run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
+    const manifest = manifestOf(recording);
+    expect(manifest.hostProfileNotAsked).toEqual({ platform: 'darwin' });
+    expect(outcome.manifestSha256).toBe(manifest.manifestSha256);
+    const result = await verify(h);
+    expect([result.ok, result.overall, passing(result)]).toEqual([true, 'PASS', ALL]);
+
+    // CONTROL 1: the member is inside the digest - taken out of the file, the manifest no longer matches its digest and signature.
+    const file = recording.path(PackageFile.MANIFEST);
+    const text = readFileSync(file, 'utf8');
+    expect(text.split('"hostProfileNotAsked":{"platform":"darwin"},')).toHaveLength(2);
+    writeFileSync(file, text.replace('"hostProfileNotAsked":{"platform":"darwin"},', ''));
+    const removed = await verify(h);
+    expect(removed.ok).toBe(false);
+    expect(passing(removed)).not.toContain('V-03');
+    // CONTROL 2: `linux` written in its place is no manifest at all (V-01): a Linux Core states no such member.
+    writeFileSync(file, text.replace('"platform":"darwin"', '"platform":"linux"'));
+    const forged = await verify(h);
+    expect(forged.ok).toBe(false);
+    expect(passing(forged)).not.toContain('V-01');
+  });
+
+  it('row P1: THE PROFILE WAS ASKED (Linux), or none is asked by design (development) = NO KEY: the same recording sealed with the member absent gives the SAME manifest bytes as before, and they do not name the member', async () => {
+    const original = recordSession();
+    const signer = throwAwaySigner();
+    const sealedBytes = async (facts: Parameters<typeof sessionFacts>[1] | undefined): Promise<Buffer> => {
+      const h = harnessOf(original.clone(), { signer, ...(facts === undefined ? {} : { facts }) });
+      sealedOf(await h.pipeline.run({ sessionId: original.sessionId, cause: 'STOPPED' }));
+      return manifestBytes(h.recording);
+    };
+    const absent = await sealedBytes(undefined);
+    const again = await sealedBytes({});
+    expect(absent.toString('utf8')).not.toContain('hostProfileNotAsked');
+    expect(again.equals(absent)).toBe(true);
+    // The control of the comparison: the member changes the bytes, by exactly its own text.
+    const onMac = await sealedBytes({ hostProfileNotAsked: { platform: 'darwin' } });
+    expect(onMac.equals(absent)).toBe(false);
+    expect(onMac.toString('utf8')).toContain('"hostProfileNotAsked":{"platform":"darwin"}');
+    expect(onMac.length - absent.length).toBe('"hostProfileNotAsked":{"platform":"darwin"},'.length);
+  });
+
+  it('row P1: the member is FROZEN with the build - a run stopped after BUILD_MANIFEST resumes to the same digest although the facts no longer state it', async () => {
+    const original = recordSession();
+    const signer = throwAwaySigner();
+    const ON_MAC = { hostProfileNotAsked: { platform: 'darwin' } } as const;
+    const clean = sealedOf(await harnessOf(original.clone(), { signer, facts: ON_MAC }).pipeline.run({ sessionId: original.sessionId, cause: 'STOPPED' }));
+
+    const h = harnessOf(original.clone(), { signer, facts: ON_MAC });
+    h.hook = stopAt('BUILD_MANIFEST', 'AFTER_WORK');
+    await expect(h.again().run({ sessionId: original.sessionId, cause: 'STOPPED' })).rejects.toBeInstanceOf(SealingStop);
+    h.facts = sessionFacts(original.sessionId);
+    h.hook = null;
+    const resumed = sealedOf(await h.again().run({ sessionId: original.sessionId, cause: 'STOPPED' }));
+    expect(resumed.manifestSha256).toBe(clean.manifestSha256);
+    expect(manifestOf(h.recording).hostProfileNotAsked).toEqual({ platform: 'darwin' });
+  });
+
+  it('records the manifest refuses are refused by the SEAL, nothing signed: a later attempt not above the earlier one', async () => {
+    const recording = recordSession();
+    const h = harnessOf(recording, { facts: { audioRestartGaps: [{ earlierAttempt: 2, laterAttempt: 2, absentAtLeastMs: 1, absentAtMostMs: 2 }] } });
+    failedOf(await h.pipeline.run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
+    expect(nothingSigned(recording)).toBe(true);
+  });
+
+  // ── Task 4 row R1b (decision C99; finding F3-01): fields 134-138, `tracks[].absentInSession` ──
+  const ABSENCES = [
+    { attempt: 1, loss: 1, absentAtLeastMs: 3048, absentAtMostMs: 8049, ended: 'RE_OPENED' },
+    { attempt: 1, loss: 2, absentAtLeastMs: null, absentAtMostMs: 46210, ended: 'NOT_RE_OPENED' },
+  ] as const;
+  /** The session facts with the absences of the given tracks (index 0 = VIDEO-01); every other fact is the fixture's. */
+  const withAbsences = (sessionId: string, first: unknown, second?: unknown): Pick<SealSessionFacts, 'tracks'> => {
+    const [one, two] = sessionFacts(sessionId).tracks;
+    return { tracks: [first === undefined ? one : { ...one, absentInSession: first as never }, second === undefined ? two : { ...two, absentInSession: second as never }] };
+  };
+
+  it('row R1b: a session with a camera that was absent seals `tracks[].absentInSession` on THAT track - one record per absence, the attempt, the relay\'s loss number, both bounds, how it ended - and the Core\'s verify passes all 15 checks and SAYS it; one changed number or word is refused under the signature', async () => {
+    const recording = recordSession();
+    const h = harnessOf(recording, { facts: withAbsences(recording.sessionId, ABSENCES) });
+    const outcome = sealedOf(await h.pipeline.run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
+    const manifest = manifestOf(recording);
+    expect(manifest.tracks.map((track) => [track.trackId, track.absentInSession ?? null])).toEqual([['VIDEO-01', ABSENCES], ['VIDEO-02', null]]);
+    expect('absentInSession' in (manifest.tracks[1] ?? {})).toBe(false);
+    expect(outcome.manifestSha256).toBe(manifest.manifestSha256);
+    const result = await verify(h);
+    expect([result.ok, result.overall, passing(result)]).toEqual([true, 'PASS', ALL]);
+    expect(result.notices.filter((notice) => notice.code === 'VIDEO_ABSENT_IN_SESSION')).toEqual([
+      { code: 'VIDEO_ABSENT_IN_SESSION', report: 'Video: CAMERA ABSENT INSIDE THE SESSION. VIDEO-01 2 times, at least not measured, at most 54259 ms, not re-opened. No picture was recorded in that time.' },
+    ]);
+
+    // CONTROL: the member is inside the digest. 3048 -> 3049, and RE_OPENED -> NOT_RE_OPENED..RE_OPENED swapped, in the file: no longer the signed manifest.
+    const file = recording.path(PackageFile.MANIFEST);
+    const text = readFileSync(file, 'utf8');
+    expect(text.split('"absentAtLeastMs":3048')).toHaveLength(2);
+    writeFileSync(file, text.replace('"absentAtLeastMs":3048', '"absentAtLeastMs":3049'));
+    const altered = await verify(h);
+    expect(altered.ok).toBe(false);
+    expect(passing(altered)).not.toContain('V-03');
+    writeFileSync(file, text.replace('"ended":"NOT_RE_OPENED"', '"ended":"RE_OPENED"'));
+    const reworded = await verify(h);
+    expect(reworded.ok).toBe(false);
+    expect(passing(reworded)).not.toContain('V-03');
+  });
+
+  it('row R1b: NO ABSENCE = NO KEY: the same recording sealed with the member absent, with `undefined` and with an empty list on both tracks gives the SAME manifest bytes, and they do not name the member; a session without one gets no notice', async () => {
+    const original = recordSession();
+    const signer = throwAwaySigner();
+    const sealedBytes = async (facts: Parameters<typeof sessionFacts>[1] | undefined): Promise<{ bytes: Buffer; notices: readonly string[] }> => {
+      const h = harnessOf(original.clone(), { signer, ...(facts === undefined ? {} : { facts }) });
+      sealedOf(await h.pipeline.run({ sessionId: original.sessionId, cause: 'STOPPED' }));
+      return { bytes: manifestBytes(h.recording), notices: (await verify(h)).notices.map((notice) => notice.code) };
+    };
+    const absent = await sealedBytes(undefined);
+    const [one, two] = sessionFacts(original.sessionId).tracks;
+    const handedUndefined = await sealedBytes({ tracks: [{ ...one, absentInSession: undefined }, { ...two, absentInSession: undefined }] } as never);
+    const empty = await sealedBytes(withAbsences(original.sessionId, [], []));
+    expect(absent.bytes.toString('utf8')).not.toContain('absentInSession');
+    expect(absent.notices).not.toContain('VIDEO_ABSENT_IN_SESSION');
+    expect([handedUndefined.bytes.equals(absent.bytes), empty.bytes.equals(absent.bytes)]).toEqual([true, true]);
+    // The control of the comparison: one absence on the second track changes the bytes, by exactly its own text.
+    const lost = await sealedBytes(withAbsences(original.sessionId, undefined, [ABSENCES[0]]));
+    expect(lost.bytes.equals(absent.bytes)).toBe(false);
+    const member = '"absentInSession":[{"absentAtLeastMs":3048,"absentAtMostMs":8049,"attempt":1,"ended":"RE_OPENED","loss":1}],';
+    expect(lost.bytes.toString('utf8')).toContain(member);
+    expect(lost.bytes.length - absent.bytes.length).toBe(member.length);
+    expect(lost.notices).toContain('VIDEO_ABSENT_IN_SESSION');
+  });
+
+  it('row R1b: the member is FROZEN with the build - a run stopped after BUILD_MANIFEST resumes to the same digest although the session record no longer states the absence; a record the manifest refuses fails the SEAL and nothing is signed', async () => {
+    const original = recordSession();
+    const signer = throwAwaySigner();
+    const facts = withAbsences(original.sessionId, ABSENCES);
+    const clean = sealedOf(await harnessOf(original.clone(), { signer, facts }).pipeline.run({ sessionId: original.sessionId, cause: 'STOPPED' }));
+
+    const h = harnessOf(original.clone(), { signer, facts });
+    h.hook = stopAt('BUILD_MANIFEST', 'AFTER_WORK');
+    await expect(h.again().run({ sessionId: original.sessionId, cause: 'STOPPED' })).rejects.toBeInstanceOf(SealingStop);
+    h.facts = sessionFacts(original.sessionId);
+    h.hook = null;
+    const resumed = sealedOf(await h.again().run({ sessionId: original.sessionId, cause: 'STOPPED' }));
+    expect(resumed.manifestSha256).toBe(clean.manifestSha256);
+    expect(manifestOf(h.recording).tracks[0]?.absentInSession).toEqual(ABSENCES);
+
+    // An absence that did not end before another one, and a least above the most: refused by the manifest, so by the seal.
+    for (const refused of [[{ ...ABSENCES[1], loss: 1 }, { ...ABSENCES[0], loss: 2 }], [{ ...ABSENCES[0], absentAtLeastMs: 9000 }]]) {
+      const recording = recordSession();
+      const failing = harnessOf(recording, { facts: withAbsences(recording.sessionId, refused) });
+      failedOf(await failing.pipeline.run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
+      expect(nothingSigned(recording)).toBe(true);
+    }
   });
 });
 

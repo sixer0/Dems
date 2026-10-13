@@ -4,7 +4,10 @@
  * types of `C3 §5.2` — register CS-14; task 3 M6 blueprint row 113 adds `STT_CONFIG_CHANGED` of
  * `C3 §2.5` — R-8; task 3 blueprint row 132 (decision D106) adds the four of the camera search,
  * the connection test, the adoption and the no-device warning of `C3 §5.2` — R-9, R-10). Task 4
- * blueprint row 19 (WP-23a) adds the ten of the hardware-input port: the list now holds thirty-three.
+ * blueprint row 19 (WP-23a) adds the ten of the hardware-input port, blueprint row 201 (X-C) the
+ * one of the password command, and row V3 (the third vocabulary step; decisions C53, C57, C58, C62)
+ * the four of the alias intent, the failed alias add, the audio gap of a worker restart and the
+ * stored-credential connection test: the list now holds thirty-eight.
  *
  * The types of this list are written by server-native modules only (the permission guard, pairing,
  * user administration, identity, and from task 3: the capture-config store, the mic switch, the
@@ -23,17 +26,21 @@
  * in the details as `deviceId`; the list allows that for the three types that name a device.
  */
 import {
+  CAPTURE_CAMERA_DEVICE_ID_PATTERN,
   CAPTURE_CANDIDATE_ID_PATTERN,
+  CAPTURE_DEVICE_TEST_AUDIT_PROFILES_MAX,
   CAPTURE_DEVICE_UNREACHABLE_REASONS,
   CAPTURE_HOST_LITERAL_PATTERN,
   CAPTURE_SEARCH_ID_PATTERN,
   CaptureConnectionOutcome,
   CaptureConnectionTestReason,
+  CaptureDeviceTestUnreachableReason,
   CaptureDiscoveryScope,
   CaptureDiscoveryTrigger,
   CaptureSourceClass,
   DEVICE_ID_PATTERN,
   HARDWARE_DEVICE_ID_PATTERN,
+  HOST_ALIAS_HELPER,
   MIC_INPUT_ID_PATTERN,
   OPERATOR_ID_PATTERN,
   PAIRING_CODE_ID_PATTERN,
@@ -43,7 +50,7 @@ import {
   STT_BACKENDS,
   STT_CONFIG_FIELDS,
 } from '@dems/shared/api';
-import { AuditType, OperatorRole, type DetailValue } from '@dems/shared/sim';
+import { AuditType, OperatorRole, Severity, type DetailValue } from '@dems/shared/sim';
 import { NATIVE_TEXT_MAX_LENGTH } from './limits';
 
 export interface DetailRule {
@@ -194,7 +201,7 @@ export const CAPTURE_AUDIO_INPUT_CHANGES = ['REGISTERED', 'CARD_CHANGED', 'REENA
 export const CAPTURE_NETWORK_CONFIG_FIELDS = ['interfaceName', 'cameraSubnet', 'factoryAddresses', 'aliasHost', 'aliasMinutes', 'cameraIpStart'] as const;
 /** Why a temporary host address was added, and how it left (schema extension 03 section 2.5: `HOST_ALIAS_REASON`, `HOST_ALIAS_REMOVE_REASON`). */
 export const HOST_ALIAS_AUDIT_REASONS = ['FACTORY_SCAN', 'SET_CAMERA_ADDRESS'] as const;
-export const HOST_ALIAS_AUDIT_REMOVE_REASONS = ['EXPIRED', 'MANUAL', 'JOB_DONE', 'BOOT_SWEEP'] as const;
+export const HOST_ALIAS_AUDIT_REMOVE_REASONS = ['EXPIRED', 'MANUAL', 'JOB_DONE', 'BOOT_SWEEP', 'SHUTDOWN', 'NOT_ADDED', 'ADD_UNCONFIRMED'] as const;
 /** `phase` of CAMERA_NETWORK_SET: written before the call as well as after it (schema extension 03 section 2.5, the recommendation to WP-23). */
 export const CAMERA_NETWORK_SET_PHASES = ['REQUESTED', 'COMPLETED', 'FAILED'] as const;
 
@@ -215,6 +222,75 @@ const networkFieldNames = (required: boolean): DetailRule => ({
     const names = value.split(',');
     return names.every((name) => NETWORK_FIELD_NAMES.has(name)) && new Set(names).size === names.length;
   },
+});
+
+// ── Task 4 (blueprint row 201, X-C; design 05 sections 2.7 and 3.7; SX-14): the forms of the one
+// type of the password command and of the two public members of the boot row.
+/** `method` of OPERATOR_PASSWORD_SET: how the password was set. One value today: the host command. */
+export const OPERATOR_PASSWORD_SET_METHODS = ['HOST_COMMAND'] as const;
+/** The numeric id of an OS user: a whole number of 0 to 4294967295. Never a user name. */
+const osUserId = (required: boolean): DetailRule => ({
+  required,
+  form: 'the numeric id of an OS user (a whole number of 0 to 4294967295)',
+  accepts: (value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 4_294_967_295,
+});
+/** The id of a signing key, in the form of every key-id column (`db/schema/checks.ts`, `keyId`). */
+const signingKeyId = matching(/^[A-Z0-9][A-Z0-9_-]{0,63}$/, 'a signing key id (upper-case letters, digits, _ and -; at most 64)');
+
+// ── Task 4 (row V3, the third vocabulary step; decisions C53 (4d), C57, C58, C62): the closed sets
+// and forms of the four types of that step. Exported where a writer states one of the values.
+/** `action` of HOST_ALIAS_REQUESTED: the two verbs of the address helper, as the intent names them. */
+export const HOST_ALIAS_REQUEST_ACTIONS = ['ADD', 'REMOVE'] as const;
+export type HostAliasRequestAction = (typeof HOST_ALIAS_REQUEST_ACTIONS)[number];
+/** `minutes` of HOST_ALIAS_REQUESTED: the lifetime asked of the helper, inside the helper's own bounds (the contract's `HOST_ALIAS_HELPER`). */
+const aliasMinutes = (required: boolean): DetailRule => ({
+  required,
+  form: `a whole number of ${String(HOST_ALIAS_HELPER.minutesMin)} to ${String(HOST_ALIAS_HELPER.minutesMax)} (minutes)`,
+  accepts: (value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= HOST_ALIAS_HELPER.minutesMin && value <= HOST_ALIAS_HELPER.minutesMax,
+});
+/** The number of a capture attempt inside one session: a whole number of 1 or more (the first worker is attempt 1). */
+const attemptNumber = (required: boolean): DetailRule => ({
+  required,
+  form: 'the number of a capture attempt (a whole number of 1 or more)',
+  accepts: (value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 1,
+});
+/** The longest gap a row of CAPTURE_AUDIO_ABSENT_ON_RESTART can state (ms): one day. A larger number is a clock fault, not a measurement. */
+export const CAPTURE_AUDIO_ABSENT_MAX_MS = 86_400_000;
+/** A measured bound of an audio gap in milliseconds: a whole number of 0 to `CAPTURE_AUDIO_ABSENT_MAX_MS`. */
+const gapMs = (required: boolean): DetailRule => ({
+  required,
+  form: `a whole number of 0 to ${String(CAPTURE_AUDIO_ABSENT_MAX_MS)} (milliseconds)`,
+  accepts: (value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= CAPTURE_AUDIO_ABSENT_MAX_MS,
+});
+// ── Task 4 (row R1b; decision C99): the closed sets and forms of CAPTURE_VIDEO_ABSENT_IN_SESSION.
+/** The longest absence a row of CAPTURE_VIDEO_ABSENT_IN_SESSION can state (ms): one day, as the audio gap. A larger number is a clock fault. */
+export const CAPTURE_VIDEO_ABSENT_MAX_MS = 86_400_000;
+/** `ended` of CAPTURE_VIDEO_ABSENT_IN_SESSION: the relay opened the camera again, or the capture ended with the camera still away. The manifest's own two words (held equal by a test). */
+export const CAPTURE_VIDEO_ABSENCE_ENDS = ['RE_OPENED', 'NOT_RE_OPENED'] as const;
+export type CaptureVideoAbsenceEnd = (typeof CAPTURE_VIDEO_ABSENCE_ENDS)[number];
+/** `trackId` of CAPTURE_VIDEO_ABSENT_IN_SESSION: the camera tracks of a sealed package (the manifest's closed list; held equal by a test). */
+export const CAPTURE_VIDEO_ABSENT_TRACK_IDS = ['VIDEO-01', 'VIDEO-02'] as const;
+/** A measured bound of a video absence in milliseconds: a whole number of 0 to `CAPTURE_VIDEO_ABSENT_MAX_MS`. */
+const videoAbsentMs = (required: boolean): DetailRule => ({
+  required,
+  form: `a whole number of 0 to ${String(CAPTURE_VIDEO_ABSENT_MAX_MS)} (milliseconds)`,
+  accepts: (value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= CAPTURE_VIDEO_ABSENT_MAX_MS,
+});
+/** A number the relay counts from 1 (its loss number; the tries of one re-open): a whole number of 1 to the relay's own largest number. */
+const relayCount = (required: boolean): DetailRule => ({
+  required,
+  form: 'a number a relay counts (a whole number of 1 to 999999999)',
+  accepts: (value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 1 && value <= 999_999_999,
+});
+/** `operationId` of CAPTURE_DEVICE_CONNECTION_TESTED: the one operation that tests a registered camera with its stored credential (operation 108). */
+export const CAPTURE_DEVICE_CONNECTION_TEST_OPERATIONS = ['testCaptureDeviceConnection'] as const;
+/** A registered CAMERA of the capture devices (`CAM-NN`, the contract's form of operation 108): never a microphone, a candidate id or an address. */
+const cameraDeviceId = matching(CAPTURE_CAMERA_DEVICE_ID_PATTERN, 'a registered camera id (CAM-01)');
+/** `usableProfileCount` of CAPTURE_DEVICE_CONNECTION_TESTED (row V4): a whole number of 0 to the contract's bound. */
+const profileCount = (required: boolean): DetailRule => ({
+  required,
+  form: `a whole number of 0 to ${String(CAPTURE_DEVICE_TEST_AUDIT_PROFILES_MAX)}`,
+  accepts: (value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= CAPTURE_DEVICE_TEST_AUDIT_PROFILES_MAX,
 });
 
 const REQUIRED = true;
@@ -450,7 +526,10 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     permission: code(OPTIONAL),
   },
   [AuditType.HOST_ALIAS_REMOVED]: {
-    aliasId: rowUuid(REQUIRED),
+    // Row V4 (decision C74): `aliasId` is OPTIONAL here and on the failed removal below. The boot
+    // sweep removes a marked address WITH OR WITHOUT a row (S13-10 (b)); a row-less removal has no
+    // row id, and its result entry was refused while the key was required.
+    aliasId: rowUuid(OPTIONAL),
     address: ipv4Literal(REQUIRED),
     removeReason: oneOf(HOST_ALIAS_AUDIT_REMOVE_REASONS, `one of ${HOST_ALIAS_AUDIT_REMOVE_REASONS.join(', ')}`)(REQUIRED),
     operationId: operationId(OPTIONAL),
@@ -458,10 +537,40 @@ export const SERVER_AUDIT_DETAIL_RULES = {
   },
   [AuditType.HOST_ALIAS_REMOVE_FAILED]: {
     // `failureReason` is the code stored as `remove_error`: a code, never the helper's error text.
-    aliasId: rowUuid(REQUIRED),
+    aliasId: rowUuid(OPTIONAL),
     address: ipv4Literal(REQUIRED),
     removeReason: oneOf(HOST_ALIAS_AUDIT_REMOVE_REASONS, `one of ${HOST_ALIAS_AUDIT_REMOVE_REASONS.join(', ')}`)(REQUIRED),
     failureReason: code(REQUIRED),
+    operationId: operationId(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
+  // ── Task 4 (row V3; decision C53 (4d); S13-10 (c): "1 intent and 1 result entry per action"): the
+  // two alias types the three above left open. The same forms as theirs: the row id, ONE IPv4
+  // literal (the address asked of the helper; the interface is not named, SEC35-30) and closed codes.
+  [AuditType.HOST_ALIAS_REQUESTED]: {
+    // THE INTENT, written BEFORE the line is sent to the address helper: a Core that dies between
+    // the line and its result leaves this row. `reason` and `minutes` belong to an ADD,
+    // `removeReason` to a REMOVE: the list holds the keys and their forms, the writer of the row
+    // (row 106) states the ones of its action. `aliasId` when the row of `host_network_aliases`
+    // already exists. `operationId` and `permission` are optional as on the three above: a removal
+    // by a timer or the boot sweep has neither.
+    action: oneOf(HOST_ALIAS_REQUEST_ACTIONS, `one of ${HOST_ALIAS_REQUEST_ACTIONS.join(', ')}`)(REQUIRED),
+    address: ipv4Literal(REQUIRED),
+    reason: oneOf(HOST_ALIAS_AUDIT_REASONS, `one of ${HOST_ALIAS_AUDIT_REASONS.join(', ')}`)(OPTIONAL),
+    removeReason: oneOf(HOST_ALIAS_AUDIT_REMOVE_REASONS, `one of ${HOST_ALIAS_AUDIT_REMOVE_REASONS.join(', ')}`)(OPTIONAL),
+    minutes: aliasMinutes(OPTIONAL),
+    aliasId: rowUuid(OPTIONAL),
+    operationId: operationId(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
+  [AuditType.HOST_ALIAS_ADD_FAILED]: {
+    // THE RESULT of an `add` that put no address in place. `failureReason` is a CODE: the Core's
+    // refusal name (e.g. HELPER_ADDRESS_IN_USE), never the helper's text. `aliasId` is optional: a
+    // refusal before the row was made has none.
+    address: ipv4Literal(REQUIRED),
+    reason: oneOf(HOST_ALIAS_AUDIT_REASONS, `one of ${HOST_ALIAS_AUDIT_REASONS.join(', ')}`)(REQUIRED),
+    failureReason: code(REQUIRED),
+    aliasId: rowUuid(OPTIONAL),
     operationId: operationId(OPTIONAL),
     permission: code(OPTIONAL),
   },
@@ -488,6 +597,9 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     deviceId: hardwareDeviceId(OPTIONAL),
     candidateId: candidateId(OPTIONAL),
     aliasId: rowUuid(OPTIONAL),
+    // What the last scan KNEW of the number of devices at `fromAddress` (row V6, caution R119-03): `NOT_KNOWN` says the
+    // count was not made and the job ran on the hardware-address checks alone. A word of the contract's closed set.
+    deviceCount: oneOf(['ONE', 'MORE_THAN_ONE', 'NOT_KNOWN'], 'one of ONE, MORE_THAN_ONE, NOT_KNOWN')(OPTIONAL),
     failureReason: code(OPTIONAL),
     guardTripped: flag(OPTIONAL),
     operationId: operationId(OPTIONAL),
@@ -516,15 +628,299 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     operationId: operationId(OPTIONAL),
     permission: code(OPTIONAL),
   },
+  // ── Task 4 (blueprint row 201, X-C; design 05 section 3.7; security review 07 finding F2-8,
+  // requirement SX-14): the ONE row of the host command that sets an operator's password. Exactly
+  // these five keys: WHOSE password, by which method, how many sessions it ended, whether the
+  // credential it replaced was the published demonstration one, and optionally the numeric id of
+  // the OS user that ran the command (a fact, not a proof). No `operationId` and no `permission`:
+  // no operation of the contract and no operator session stand behind the row (its actor is null).
+  // NEVER the password, its length, the salt, the tag or a hash parameter: no such key exists here.
+  [AuditType.OPERATOR_PASSWORD_SET]: {
+    targetOperatorId: operatorId(REQUIRED),
+    method: oneOf(OPERATOR_PASSWORD_SET_METHODS, `one of ${OPERATOR_PASSWORD_SET_METHODS.join(', ')}`)(REQUIRED),
+    sessionsEnded: count(REQUIRED),
+    earlierWasDemo: flag(REQUIRED),
+    invokerUid: osUserId(OPTIONAL),
+  },
+  // ── Task 4 (row V3; decision C57, row 191b is the writer): the capture worker of a session was
+  // replaced before anything was durable and NO AUDIO WAS RECORDED between the two workers. The
+  // session, the two attempt numbers and the two MEASURED bounds of the gap in milliseconds: at
+  // least (the earlier worker down until the microphones of the later one were started) and at
+  // most (until the later worker's audio was heard). A bound is absent only when the instant it
+  // is measured from is not known; a row then says that the gap exists and was not measured.
+  // Numbers and one id: no device, no card text, no file name. No `operationId` and no
+  // `permission`: no operation stands behind the row (its actor is null).
+  [AuditType.CAPTURE_AUDIO_ABSENT_ON_RESTART]: {
+    sessionId: sessionId(REQUIRED),
+    earlierAttempt: attemptNumber(REQUIRED),
+    laterAttempt: attemptNumber(REQUIRED),
+    audioAbsentAtLeastMs: gapMs(OPTIONAL),
+    audioAbsentAtMostMs: gapMs(OPTIONAL),
+  },
+  // ── Task 4 (row V3; decision C58, row 146): the OUTCOME of a connection test of a REGISTERED
+  // camera made with its STORED credential (operation 108). The reveal of that credential is the
+  // reader's own CAPTURE_CREDENTIAL_REVEALED row; this is the second entry of the same test: what
+  // the camera answered and whether the lock-out guard closed. A TYPE OF ITS OWN, not a member of
+  // CAPTURE_CONNECTION_TESTED: that list REQUIRES `candidateId` and `searchId`, which a registered
+  // camera has not, and a required key cannot be relaxed for one writer without relaxing it for
+  // all. The keys it shares keep their forms. NO `host`, NO `endpointRef` and no `authenticated`:
+  // the row names the device by its registry id only - never a credential, a locator or text a
+  // device announced - and a stored credential is always the one used.
+  [AuditType.CAPTURE_DEVICE_CONNECTION_TESTED]: {
+    deviceId: cameraDeviceId(REQUIRED),
+    outcome: oneOf(Object.values(CaptureConnectionOutcome), 'one of the five connection-test outcomes')(REQUIRED),
+    adapter: code(REQUIRED),
+    sourceClass: oneOf(Object.values(CaptureSourceClass), 'one of PRODUCTION, DEVELOPMENT')(REQUIRED),
+    operationId: oneOf(CAPTURE_DEVICE_CONNECTION_TEST_OPERATIONS, CAPTURE_DEVICE_CONNECTION_TEST_OPERATIONS.join(', '))(REQUIRED),
+    guardTripped: flag(OPTIONAL),
+    // Present only for a test that ended AUTHENTICATION_FAILED without the credential being sent (as on CAPTURE_CONNECTION_TESTED).
+    reason: oneOf(Object.values(CaptureConnectionTestReason), 'SCHEME_NOT_ALLOWED')(OPTIONAL),
+    // Row V4 (decision C75 (1); request of row 146b): a test that reached the reader of the stored
+    // credential and asked NO camera is written too, as UNREACHABLE with the closed reason why
+    // nothing was sent - so the reveal never stands without a result. Absent when a camera was
+    // asked and did not answer. The builder of the shared contract drops it for any other outcome;
+    // its writer is row 146c.
+    unreachableReason: oneOf(Object.values(CaptureDeviceTestUnreachableReason), `one of ${Object.values(CaptureDeviceTestUnreachableReason).join(', ')}`)(OPTIONAL),
+    // Row V4: the answer's own count of usable profiles (0 to 16) when a camera was asked. A count: no profile name, no codec text.
+    usableProfileCount: profileCount(OPTIONAL),
+    permission: code(OPTIONAL),
+  },
+  // ── Task 4 (row R1b; decision C99, finding F3-01; the capture session is the writer): a camera
+  // of a session stopped delivering video INSIDE the session while its relay kept the push to the
+  // capture worker, and NO PICTURE WAS RECORDED until it ended. Written ONCE per absence, when it
+  // ends: `RE_OPENED` (the relay opened the camera again) or `NOT_RE_OPENED` (the capture ended
+  // with the camera still away). The session, the camera (also the row's device), its track, the
+  // capture attempt the relay fed, the relay's own number of the loss, its tries of the re-open
+  // (only for RE_OPENED) and the two MEASURED bounds in milliseconds:
+  //   at least  RE_OPENED: the relay's own measure on its monotonic clock, from the instant it
+  //             called the camera lost to the first keyframe of the new leg (the last picture came
+  //             before that instant). NOT_RE_OPENED: the Core's clock, from the relay's word of the
+  //             loss to the instant the Core asked the capture to end;
+  //   at most   the Core's clock from the relay's word of the loss to its word of the re-open
+  //             (NOT_RE_OPENED: to the instant the capture had ended), never below the least, plus
+  //             the longest the relay lets a playing camera be silent before it calls it lost.
+  // A bound is absent only when the instant it is measured from is not known; a row then says
+  // that the absence exists and was not measured. Ids, numbers and one closed word: no address,
+  // no stream profile, no cause text, no file name. No `operationId` and no `permission`: no
+  // operation stands behind the row (its actor is null).
+  [AuditType.CAPTURE_VIDEO_ABSENT_IN_SESSION]: {
+    sessionId: sessionId(REQUIRED),
+    deviceId: cameraDeviceId(REQUIRED),
+    trackId: oneOf(CAPTURE_VIDEO_ABSENT_TRACK_IDS, `one of ${CAPTURE_VIDEO_ABSENT_TRACK_IDS.join(', ')}`)(REQUIRED),
+    attempt: attemptNumber(REQUIRED),
+    loss: relayCount(REQUIRED),
+    tries: relayCount(OPTIONAL),
+    videoAbsentAtLeastMs: videoAbsentMs(OPTIONAL),
+    videoAbsentAtMostMs: videoAbsentMs(OPTIONAL),
+    ended: oneOf(CAPTURE_VIDEO_ABSENCE_ENDS, `one of ${CAPTURE_VIDEO_ABSENCE_ENDS.join(', ')}`)(REQUIRED),
+  },
 } as const satisfies Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>;
 
 /**
- * The thirty-three types that have a list (nine of the backend task, nine of the capture phase, one
- * of R-8, four of R-9 / R-10, ten of task 4 blueprint row 19).
+ * The thirty-nine types that have a list (nine of the backend task, nine of the capture phase, one
+ * of R-8, four of R-9 / R-10, ten of task 4 blueprint row 19, one of task 4 blueprint row 201, four
+ * of task 4 row V3, one of task 4 row R1b).
  */
 export type ServerAuditType = keyof typeof SERVER_AUDIT_DETAIL_RULES;
 
-/** The list of `type`, or undefined for one of the simulator's 44 types (77 minus the 33 listed here). */
+/** The list of `type`, or undefined for one of the simulator's 44 types (83 minus the 39 listed here). */
 export function detailRulesOf(type: AuditType): Readonly<Record<string, DetailRule>> | undefined {
   return (SERVER_AUDIT_DETAIL_RULES as Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>)[type];
+}
+
+/**
+ * Task 4 (blueprint row 201, X-C; SX-14): the types whose severity is not the writer's choice.
+ * `OPERATOR_PASSWORD_SET` is WARNING, so that it stands out in the security view. A writer of such
+ * a row states THIS value (`fixedSeverityOf`). Since row V4 (decision C72, F-04) the audit writer
+ * COMPARES it (`audit-writer.ts`, `checkTypeRules`): a row of such a type with any other severity -
+ * or with none, which would be INFO - is refused before a statement is sent.
+ */
+export const SERVER_AUDIT_FIXED_SEVERITY = {
+  [AuditType.OPERATOR_PASSWORD_SET]: Severity.WARNING,
+} as const satisfies Partial<Record<AuditType, Severity>>;
+
+/** The one severity a row of `type` carries, or undefined where the writer of the row chooses. */
+export function fixedSeverityOf(type: AuditType): Severity | undefined {
+  return (SERVER_AUDIT_FIXED_SEVERITY as Partial<Record<AuditType, Severity>>)[type];
+}
+
+/**
+ * Task 4 (blueprint row 201, X-C; design 05 section 2.7 point 3): the two PUBLIC members a real boot
+ * adds to the details of `SYSTEM_BOOT`, beside `captureOperation`: the id of the signing key the Core
+ * started with and the SHA-256 of its certificate. `SYSTEM_BOOT` is one of the simulator's types and
+ * has NO closed list (the shared code writes it with its own keys), so these are not a list: they
+ * are the form of the two values, for the one writer of the boot row (`capture/fence`) to hold its
+ * values to before it appends. Both are optional: a boot that states no key writes neither. A key
+ * id is the form of every key-id column (`db/schema/checks.ts`, `keyId`); the digest is 64
+ * lower-case hex digits. Neither can hold key material: the names are fixed here.
+ */
+export const SYSTEM_BOOT_SIGNING_DETAIL_RULES = {
+  signingKeyId: signingKeyId(OPTIONAL),
+  signingCertificateSha256: sha256Hex(OPTIONAL),
+} as const satisfies Readonly<Record<string, DetailRule>>;
+
+/**
+ * Task 4 row V5 (decision C84, caution R-1 of security review 230): the codes of `signingStoreChange`
+ * of a `SYSTEM_BOOT` row - what the boot found changed in the signer store against the previous
+ * boot row of the same database. `NO_EARLIER_STATEMENT`, `NONE` and `NOT_READ` stand alone; the
+ * four change codes are joined with a comma, each at most once, in this order.
+ */
+export const SYSTEM_BOOT_SIGNING_STORE_CHANGES = ['NO_EARLIER_STATEMENT', 'NONE', 'NOT_READ', 'KEY_ROTATED', 'KEY_MARKED_COMPROMISED', 'KEY_MARK_REMOVED', 'RETAINED_SET_CHANGED'] as const;
+export type SystemBootSigningStoreChange = (typeof SYSTEM_BOOT_SIGNING_STORE_CHANGES)[number];
+const SIGNING_STORE_CHANGE_ALONE: readonly string[] = SYSTEM_BOOT_SIGNING_STORE_CHANGES.slice(0, 3);
+const SIGNING_STORE_CHANGE_JOINED: readonly string[] = SYSTEM_BOOT_SIGNING_STORE_CHANGES.slice(3);
+/** The last place of the signing key series (`CORE-KEY-EVSIGN-01` to `-99`): the most certificates a store retains. */
+export const SYSTEM_BOOT_SIGNING_KEYS_MAX = 99;
+
+/**
+ * Task 4 row V5 (C84 R-1): THE STATE OF THE SIGNER STORE a real boot states in its `SYSTEM_BOOT`
+ * row, beside the two members above - PUBLIC FACTS ONLY, so that a rotation, a compromise mark and
+ * a mark that disappeared are each in the audit chain although the two host commands write no row
+ * (they stay database-free, ruled):
+ *
+ *   signingKeysRetained        how many certificates the retained set holds (every key that is or was active)
+ *   signingKeysCompromised     the places in the key series (`01` to `99`, comma-joined, ascending) of the
+ *                              retained keys that carry the compromise mark; the empty text = none
+ *   signingCertificatesSha256  SHA-256 over the retained set: one line `<key id> <certificate SHA-256>` per
+ *                              certificate, in series order - a certificate added, removed or replaced changes it
+ *   signingStoreChange         what changed against the previous boot row of this database (the codes above)
+ *
+ * All optional: a simulated boot and a boot written before this step carry none. A list would not fit a
+ * detail value (500 characters), which is why the marked keys are stated by their two-digit places.
+ */
+export const SYSTEM_BOOT_SIGNING_STORE_DETAIL_RULES = {
+  signingKeysRetained: {
+    required: OPTIONAL,
+    form: `a whole number of 0 to ${SYSTEM_BOOT_SIGNING_KEYS_MAX}`,
+    accepts: (value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= SYSTEM_BOOT_SIGNING_KEYS_MAX,
+  },
+  signingKeysCompromised: {
+    required: OPTIONAL,
+    form: 'places of the signing key series (01 to 99), comma-joined, ascending, each once; or the empty text',
+    accepts: (value) => {
+      if (typeof value !== 'string') return false;
+      if (value === '') return true;
+      const places = value.split(',');
+      return places.every((place, index) => /^(?:0[1-9]|[1-9]\d)$/.test(place) && (index === 0 || place > (places[index - 1] as string)));
+    },
+  },
+  signingCertificatesSha256: sha256Hex(OPTIONAL),
+  signingStoreChange: {
+    required: OPTIONAL,
+    form: `one of ${SIGNING_STORE_CHANGE_ALONE.join(', ')}; or one or more of ${SIGNING_STORE_CHANGE_JOINED.join(', ')}, comma-joined, in this order, each once`,
+    accepts: (value) => {
+      if (typeof value !== 'string') return false;
+      if (SIGNING_STORE_CHANGE_ALONE.includes(value)) return true;
+      const codes = value.split(',');
+      return codes.every((name, index) => SIGNING_STORE_CHANGE_JOINED.includes(name) && (index === 0 || SIGNING_STORE_CHANGE_JOINED.indexOf(name) > SIGNING_STORE_CHANGE_JOINED.indexOf(codes[index - 1] as string)));
+    },
+  },
+} as const satisfies Readonly<Record<string, DetailRule>>;
+
+/** Row P1 (decision U21 (2)): the platforms a production Core starts on, as a `SYSTEM_BOOT` row states them. */
+export const SYSTEM_BOOT_HOST_PLATFORMS = ['linux', 'darwin'] as const;
+/** Row P1: the codes of `hostProfile` of a `SYSTEM_BOOT` row. */
+export const SYSTEM_BOOT_HOST_PROFILE_STATES = ['WILL_BE_ASKED', 'WILL_NOT_BE_ASKED', 'PLATFORM_NOT_SUPPORTED'] as const;
+export type SystemBootHostProfileState = (typeof SYSTEM_BOOT_HOST_PROFILE_STATES)[number];
+
+/**
+ * Task 4 row P1 (decisions U21 (2), C66 (1), C71 C-7): THE HOST A PRODUCTION BOOT STATES in its `SYSTEM_BOOT`
+ * row, beside the members above. A production Core is allowed on Linux, where the whole host profile is asked
+ * at every start, and on macOS, where NONE of it is asked; until this row the second fact was a warning in the
+ * log alone.
+ *
+ *   hostPlatform   the platform word the entry point handed to the boot checks, when it is one a production
+ *                  Core starts on (`linux`, `darwin`); null for any other word and when none was handed in
+ *   hostProfile    `WILL_BE_ASKED` (linux), `WILL_NOT_BE_ASKED` (darwin: the loopback owner rule, the crash
+ *                  collector, forwarding, the clock, sleep and the address helper's socket are unchecked),
+ *                  `PLATFORM_NOT_SUPPORTED` (any other platform, or none stated: the boot checks refuse the start)
+ *
+ * WRITTEN BEFORE THE BOOT CHECKS RUN (the fence step precedes them): the two members state what the platform
+ * MEANS for the checks that follow - a function of the platform word alone - and never that a check was run or
+ * passed. A row with `WILL_BE_ASKED` may be followed by a refused start; whether the boot was refused is in the
+ * error log. Both optional: only a `REAL_PRODUCTION` boot states them. A `REAL_DEVELOPMENT` boot asks no host
+ * profile by design and writes neither, as does a simulated boot and every row written before this step.
+ */
+export const SYSTEM_BOOT_HOST_DETAIL_RULES = {
+  hostPlatform: {
+    required: OPTIONAL,
+    form: `one of ${SYSTEM_BOOT_HOST_PLATFORMS.join(', ')}`,
+    accepts: (value) => typeof value === 'string' && (SYSTEM_BOOT_HOST_PLATFORMS as readonly string[]).includes(value),
+  },
+  hostProfile: {
+    required: OPTIONAL,
+    form: `one of ${SYSTEM_BOOT_HOST_PROFILE_STATES.join(', ')}`,
+    accepts: (value) => typeof value === 'string' && (SYSTEM_BOOT_HOST_PROFILE_STATES as readonly string[]).includes(value),
+  },
+} as const satisfies Readonly<Record<string, DetailRule>>;
+
+/** Row HC (decision C94 (j)): the codes of `addressHelperSocket` of a `SYSTEM_BOOT` row. */
+export const SYSTEM_BOOT_ADDRESS_HELPER_SOCKET_STATES = ['PRESENT', 'NOT_PRESENT'] as const;
+
+/**
+ * Task 4 row HC (decision C94 (j), reversing C49 (1); review 119 R119-12): THE ADDRESS HELPER A PRODUCTION BOOT ON
+ * LINUX STATES in its `SYSTEM_BOOT` row. The helper is not part of every production installation; a host without it
+ * starts, and its commissioning functions answer their own refusal.
+ *
+ *   addressHelperSocket   `PRESENT` or `NOT_PRESENT`: whether something lay at the ONE path the delivered socket unit
+ *                         of the helper installs, when the fence step looked
+ *
+ * WRITTEN BEFORE THE BOOT CHECKS RUN, from one look at one fixed path and no question to the host. `NOT_PRESENT` says
+ * that nothing was found there (or that the path could not be reached) - not that no part of the helper is installed;
+ * `PRESENT` says that something was there - not that it is a socket of root with the delivered group and mode. The
+ * boot checks judge both a moment later: a helper that is wrong, or of which only a part is there, is a REFUSED start
+ * (the error log names it), and a helper of which nothing is there is the log line `CAPTURE_HOST_ALIAS_HELPER_ABSENT`.
+ * Optional: only a `REAL_PRODUCTION` boot on `linux` states it; every other row carries no such member.
+ */
+export const SYSTEM_BOOT_ADDRESS_HELPER_DETAIL_RULES = {
+  addressHelperSocket: {
+    required: OPTIONAL,
+    form: `one of ${SYSTEM_BOOT_ADDRESS_HELPER_SOCKET_STATES.join(', ')}`,
+    accepts: (value) => typeof value === 'string' && (SYSTEM_BOOT_ADDRESS_HELPER_SOCKET_STATES as readonly string[]).includes(value),
+  },
+} as const satisfies Readonly<Record<string, DetailRule>>;
+
+/** `rule`, or JSON null: a member a writer states as "not known" instead of leaving it out. */
+const orNull = (rule: DetailRule): DetailRule => ({
+  required: false,
+  form: `${rule.form}, or null`,
+  accepts: (value) => value === null || rule.accepts(value),
+});
+
+/**
+ * Task 4 (row V4; decisions C71 (C-6), C72 (F-04), C76 (item 8); request line of row 209): THE
+ * DETAILS RULE OF `SYSTEM_BOOT`, the one the audit writer itself applies to EVERY writer of such a
+ * row (a native entry and a row the engine prepared alike), not only to the fence's.
+ *
+ * It is an OPEN rule: `SYSTEM_BOOT` stays one of the simulator's types, written by the shared code
+ * with its own keys, so the type gets no closed list (`detailRulesOf` still answers undefined and
+ * any other key is taken under the general rules). What the rule fixes is the form of the two
+ * NAMED members whenever a row carries them: each is of its form above OR JSON NULL - a real boot
+ * that cannot read a certificate writes both as null (SX-15; rows 201, 209), and the bare forms of
+ * `SYSTEM_BOOT_SIGNING_DETAIL_RULES` refuse null. Absent is accepted as before.
+ *
+ * NOT part of this rule: "both or neither". That half of a pair states no key is the rule of the
+ * boot entry's one writer (`bootSigningKeyProblemOf` of `capture/fence/boot-key.ts`); the writer
+ * here holds each value to its form.
+ */
+export const SERVER_AUDIT_OPEN_DETAIL_RULES = {
+  [AuditType.SYSTEM_BOOT]: {
+    signingKeyId: orNull(SYSTEM_BOOT_SIGNING_DETAIL_RULES.signingKeyId),
+    signingCertificateSha256: orNull(SYSTEM_BOOT_SIGNING_DETAIL_RULES.signingCertificateSha256),
+    // Row V5 (C84 R-1): the state of the signer store, each member of its form or null (the store could not be read).
+    signingKeysRetained: orNull(SYSTEM_BOOT_SIGNING_STORE_DETAIL_RULES.signingKeysRetained),
+    signingKeysCompromised: orNull(SYSTEM_BOOT_SIGNING_STORE_DETAIL_RULES.signingKeysCompromised),
+    signingCertificatesSha256: orNull(SYSTEM_BOOT_SIGNING_STORE_DETAIL_RULES.signingCertificatesSha256),
+    signingStoreChange: orNull(SYSTEM_BOOT_SIGNING_STORE_DETAIL_RULES.signingStoreChange),
+    // Row P1 (U21 (2)): the host of a production boot - the platform of its form or null (not one a production Core starts on), and the code.
+    hostPlatform: orNull(SYSTEM_BOOT_HOST_DETAIL_RULES.hostPlatform),
+    hostProfile: SYSTEM_BOOT_HOST_DETAIL_RULES.hostProfile,
+    // Row HC (C94 (j)): whether something lay at the installed socket path of the address helper - a code, never null (a boot that does not state it leaves it out).
+    addressHelperSocket: SYSTEM_BOOT_ADDRESS_HELPER_DETAIL_RULES.addressHelperSocket,
+  },
+} as const satisfies Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>;
+
+/** The open rule of `type` (named members held to a form, every other key free), or undefined. */
+export function openDetailRulesOf(type: AuditType): Readonly<Record<string, DetailRule>> | undefined {
+  return (SERVER_AUDIT_OPEN_DETAIL_RULES as Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>)[type];
 }

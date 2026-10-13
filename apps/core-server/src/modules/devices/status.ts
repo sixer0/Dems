@@ -160,12 +160,37 @@ export function cameraStreamFactsOf(profile: unknown): CameraStreamFacts | null 
  * whose slot holds a stream statement states that picture, rate and codec; every other track, and
  * every other member, is as it was. The SAME array when nothing differs, so that a caller can tell
  * "nothing to say" by identity (the shape a pure transition of the engine needs).
+ *
+ * A TRACK WITHOUT A STREAM STATEMENT (row B2; review follow-up S-01 of `060b`; decisions C36, C95):
+ * its slot is not assigned, or holds a code that is no statement. The slice it is read from then
+ * still holds the simulator's initial `1080p / 25 / H.264`, which no stream stated. What the
+ * contract lets this function say of it today, it says: `fps` is NULL ("the stream states no
+ * rate", `CameraStreamFactSchemas.fps`), never the simulator's 25. `resolution` and `codec` CANNOT
+ * say "not stated" (a pattern and a closed set of two, neither nullable nor optional, in a strict
+ * object): they stay as the slice has them, and NO other value is invented in their place. The two
+ * nullable members this needs are asked of contract step V6 (`file_requests.md`, row B2). What
+ * bounds the harm until then: a production camera is assigned only with a profile of its own
+ * stored list (row 187, `CAMERA_PROFILE_NOT_STATED` / `CAMERA_PROFILE_NOT_OF_DEVICE`), adoption
+ * writes into that list only the codes it minted from the judged streams (row 51), and the camera
+ * adapter opens no stream without its stored row (`PROFILE_UNKNOWN`) - so in production capture a
+ * track without a statement is, by the Core's own writers, an UNASSIGNED track: it names no source
+ * and records nothing. NOT held by a constraint: the database holds a stored code to the `CODE`
+ * form only, not to the statement form - a list written by another hand could hold a code that is
+ * no statement, and its track would read like an unassigned one here.
  */
 export function withCameraStreamFacts(cameras: CommittedState['cameras'], slots: Pick<CaptureSlots, 'cameras'>): CommittedState['cameras'] {
   let changed = false;
   const next = cameras.map((camera) => {
     const facts = cameraStreamFactsOf(slots.cameras.find((entry) => entry.trackId === camera.id)?.profile);
-    if (facts === null || (facts.resolution === camera.resolution && facts.fps === camera.fps && facts.codec === camera.codec)) return camera;
+    if (facts === null) {
+      // Rows B2 and V6 (S-01; decision C36): NO STREAM STATEMENT - the picture, the rate and the codec are each NOT STATED
+      // (null, which the contract lets all three say since row V6). The simulator's initial `1080p / 25 / H.264` of the
+      // slice is no fact of this track and is never handed on as one.
+      if (camera.resolution === null && camera.fps === null && camera.codec === null) return camera;
+      changed = true;
+      return { ...camera, resolution: null, fps: null, codec: null };
+    }
+    if (facts.resolution === camera.resolution && facts.fps === camera.fps && facts.codec === camera.codec) return camera;
     changed = true;
     return { ...camera, ...facts };
   });

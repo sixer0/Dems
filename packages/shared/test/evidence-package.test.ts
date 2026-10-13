@@ -9,8 +9,13 @@ import {
   EXAMPLE_SOURCE_ROWS,
   EvidencePackageError,
   FRAGMENT_CHAIN_GENESIS,
+  MANIFEST_AUDIO_ABSENT_MAX_MS,
+  MANIFEST_HOST_PROFILE_NOT_ASKED_PLATFORMS,
   MANIFEST_SIGNATURE_EXCLUSIONS,
+  MANIFEST_VIDEO_ABSENCE_ENDS,
+  MANIFEST_VIDEO_ABSENT_MAX_MS,
   MANIFEST_V2_FIELDS,
+  MANIFEST_V2_OPTIONAL_FIELDS,
   MANIFEST_V2_SCHEMA_ID,
   ManifestV2ExportBlockSchema,
   ManifestV2Schema,
@@ -42,6 +47,7 @@ import {
   type ManifestV2,
   type SessionCaptureSourceRow,
 } from '../src/evidence-package';
+import { VERIFY_NOTICE, audioAbsentOnRestartReport, videoAbsentInSessionReport, verifyPackageV2 } from '../src/evidence-verify';
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -588,5 +594,429 @@ describe('platform neutral, and v1 untouched', () => {
       expect(ManifestV2Schema.safeParse(manifest).success, folder).toBe(false);
     }
     expect(PackageFile.MANIFEST).not.toBe('manifest.json');
+  });
+});
+
+// Task 4 row V4 (decisions C73, C80; the finding of row 191b): the signed member for AUDIO ABSENT
+// ACROSS A WORKER RESTART, `audio.absentOnRestart` - the ONE optional member of the manifest. An
+// evidence form may not change what an existing sealed package verifies as, so the member is
+// optional and absent in every package sealed before it.
+describe('row V4: `audio.absentOnRestart`, the one optional member (fields 129-132)', () => {
+  const GAP = { earlierAttempt: 1, laterAttempt: 2, absentAtLeastMs: 336, absentAtMostMs: 715 };
+  const withGaps = (gaps: unknown): ManifestV2 => {
+    const input = exampleManifestInput();
+    return attachSignature(buildUnsignedManifest({ ...input, audio: { ...input.audio, absentOnRestart: gaps as never } }, EXAMPLE_SOURCE_ROWS), FILLER_SIGNATURE);
+  };
+  const refusedMembers = (gaps: unknown): readonly string[] => {
+    try {
+      withGaps(gaps);
+    } catch (error) {
+      expect(error).toBeInstanceOf(EvidencePackageError);
+      return (error as EvidencePackageError).members;
+    }
+    return ['accepted'];
+  };
+  /** A manifest-scope run of the verifier over a manifest text and nothing else: V-01 is the schema. */
+  const v01 = async (manifest: unknown): Promise<string | undefined> => {
+    const text = JSON.stringify(manifest);
+    const result = await verifyPackageV2(
+      {
+        reader: {
+          entry: async (path) => (path === PackageFile.MANIFEST ? { kind: 'FILE', size: text.length } : { kind: 'ABSENT' }),
+          readText: async (path) => (path === PackageFile.MANIFEST ? text : Promise.reject(new Error('absent'))),
+          readRange: async () => Promise.reject(new Error('absent')),
+          list: async () => [],
+        },
+        opener: null,
+        readCertificate: () => null,
+        verifySignature: () => false,
+      },
+      { scope: 'MANIFEST' },
+    );
+    return result.checks.find((check) => check.id === 'V-01')?.status;
+  };
+
+  it('the 128 required fields did not move; the four optional ones are numbered on from 129 and are in no required list', () => {
+    expect(MANIFEST_V2_FIELDS).toHaveLength(128);
+    expect(MANIFEST_V2_OPTIONAL_FIELDS.map((field) => [field.n, field.path, field.block])).toEqual([
+      [129, 'audio.absentOnRestart[].earlierAttempt', 'sealed'],
+      [130, 'audio.absentOnRestart[].laterAttempt', 'sealed'],
+      [131, 'audio.absentOnRestart[].absentAtLeastMs', 'sealed'],
+      [132, 'audio.absentOnRestart[].absentAtMostMs', 'sealed'],
+      // Task 4 row P1 (decision U21 (2)): + the second optional member, 4 -> 5 optional fields.
+      [133, 'hostProfileNotAsked.platform', 'sealed'],
+      // Task 4 row R1b (decision C99): + the third optional member, 5 -> 10 optional fields.
+      [134, 'tracks[].absentInSession[].attempt', 'sealed'],
+      [135, 'tracks[].absentInSession[].loss', 'sealed'],
+      [136, 'tracks[].absentInSession[].absentAtLeastMs', 'sealed'],
+      [137, 'tracks[].absentInSession[].absentAtMostMs', 'sealed'],
+      [138, 'tracks[].absentInSession[].ended', 'sealed'],
+    ]);
+    const required = new Set(MANIFEST_V2_FIELDS.map((field) => field.path));
+    for (const field of MANIFEST_V2_OPTIONAL_FIELDS) expect(required.has(field.path), field.path).toBe(false);
+    expect(MANIFEST_AUDIO_ABSENT_MAX_MS).toBe(86_400_000);
+  });
+
+  it('A PACKAGE SEALED BEFORE THE MEMBER IS UNCHANGED: the example has no such key, parses to itself, keeps its digest, its bytes and its V-01 verdict', async () => {
+    const sealed = sealedExample();
+    expect('absentOnRestart' in sealed.audio).toBe(false);
+    expect(Object.keys(sealed.audio)).toEqual(['trackId', 'codec', 'containsIn', 'sourceIntervals']);
+    const read = parseManifestV2(JSON.parse(decode(serializeManifest(sealed))));
+    expect(read).toEqual(sealed);
+    expect('absentOnRestart' in read.audio).toBe(false);
+    expect(decode(serializeManifest(read))).toBe(decode(serializeManifest(sealed)));
+    expect(manifestHashMatches(read)).toBe(true);
+    expect(decode(serializeManifest(sealed))).not.toContain('absentOnRestart');
+    // A caller that hands `undefined` for the member seals the SAME manifest as one that leaves it out.
+    expect(withGaps(undefined)).toEqual(sealed);
+    expect(await v01(sealed)).toBe('PASS');
+  });
+
+  it('pass I-9b: the verifier SAYS the member - ONE notice `AUDIO_ABSENT_ON_RESTART`; none for a manifest without the member, whose notices are the ones of before; the line fits the contract', async () => {
+    /** The notices of a manifest-scope run of the verifier over a manifest text and nothing else (the form of row R1b's case). */
+    const noticesOf = async (manifest: unknown): Promise<readonly { code: string; report: string }[]> => {
+      const text = JSON.stringify(manifest);
+      const result = await verifyPackageV2(
+        {
+          reader: {
+            entry: async (path) => (path === PackageFile.MANIFEST ? { kind: 'FILE', size: text.length } : { kind: 'ABSENT' }),
+            readText: async (path) => (path === PackageFile.MANIFEST ? text : Promise.reject(new Error('absent'))),
+            readRange: async () => Promise.reject(new Error('absent')),
+            list: async () => [],
+          },
+          opener: null,
+          readCertificate: () => null,
+          verifySignature: () => false,
+        },
+        { scope: 'MANIFEST' },
+      );
+      return result.notices;
+    };
+    const one = 'Audio: ABSENT ACROSS A RESTART OF THE CAPTURE. 1 time, at least 336 ms, at most 715 ms. No sound was recorded in that time.';
+    const without = await noticesOf(withGaps(undefined));
+    const withOne = await noticesOf(withGaps([GAP]));
+    // NOTHING CHANGES FOR A PACKAGE WITHOUT THE MEMBER; with it, exactly one line more, the last.
+    expect(without.map((notice) => notice.code)).not.toContain('AUDIO_ABSENT_ON_RESTART');
+    expect(withOne).toEqual([...without, { code: 'AUDIO_ABSENT_ON_RESTART', report: one }]);
+    expect(audioAbsentOnRestartReport([GAP])).toBe(one);
+    // Sums over the restarts; a bound one record does not state makes that sum "not measured".
+    expect(audioAbsentOnRestartReport([GAP, { absentAtLeastMs: 1000, absentAtMostMs: null }])).toBe(
+      'Audio: ABSENT ACROSS A RESTART OF THE CAPTURE. 2 times, at least 1336 ms, at most not measured. No sound was recorded in that time.',
+    );
+    expect(audioAbsentOnRestartReport([])).toBe('');
+    // The contract's bound of a report line (256), for a thousand restarts of the longest time a manifest can state.
+    const longest = audioAbsentOnRestartReport(Array.from({ length: 1000 }, () => ({ absentAtLeastMs: 86_400_000, absentAtMostMs: 86_400_000 })));
+    expect(longest.length).toBeLessThanOrEqual(256);
+    expect(longest).toContain('1000 times, at least 86400000000 ms, at most 86400000000 ms.');
+    // Both twins on one package: each its own line, the video line first (the order of the vocabulary).
+    const input = exampleManifestInput();
+    const both = attachSignature(
+      buildUnsignedManifest({ ...input, audio: { ...input.audio, absentOnRestart: [GAP] }, tracks: input.tracks.map((track, index) => (index === 0 ? { ...track, absentInSession: [{ attempt: 1, loss: 1, absentAtLeastMs: 3048, absentAtMostMs: 8049, ended: 'RE_OPENED' as const }] } : track)) }, EXAMPLE_SOURCE_ROWS),
+      FILLER_SIGNATURE,
+    );
+    expect((await noticesOf(both)).map((notice) => notice.code).slice(-2)).toEqual(['VIDEO_ABSENT_IN_SESSION', 'AUDIO_ABSENT_ON_RESTART']);
+  });
+
+  it('a manifest that states a restart gap is accepted by the schema and by the verifier (V-01); the member is the last of `audio`', async () => {
+    const sealed = withGaps([GAP]);
+    expect(sealed.audio.absentOnRestart).toEqual([GAP]);
+    expect(ManifestV2Schema.safeParse(sealed).success).toBe(true);
+    expect(parseManifestV2(JSON.parse(decode(serializeManifest(sealed))))).toEqual(sealed);
+    expect(await v01(sealed)).toBe('PASS');
+    // Two restarts, the second not measured: both bounds null says "a gap exists and was not measured".
+    const two = withGaps([GAP, { earlierAttempt: 2, laterAttempt: 3, absentAtLeastMs: null, absentAtMostMs: null }]);
+    expect(two.audio.absentOnRestart).toHaveLength(2);
+    expect(await v01(two)).toBe('PASS');
+    // The bounds themselves pass: 0 ms and one day; one bound alone may be known.
+    for (const gap of [{ ...GAP, absentAtLeastMs: 0, absentAtMostMs: 0 }, { ...GAP, absentAtLeastMs: 86_400_000, absentAtMostMs: 86_400_000 }, { ...GAP, absentAtLeastMs: null }, { ...GAP, absentAtMostMs: null }, { ...GAP, laterAttempt: 5 }]) {
+      expect(refusedMembers([gap]), JSON.stringify(gap)).toEqual(['accepted']);
+    }
+  });
+
+  it('THE MEMBER IS SIGNED: it is inside the digest - adding it, removing it or changing one number changes `manifestSha256`', async () => {
+    const without = sealedExample();
+    const sealed = withGaps([GAP]);
+    expect(sealed.manifestSha256).not.toBe(without.manifestSha256);
+    expect(manifestHashMatches(sealed)).toBe(true);
+    for (const key of Object.keys(GAP) as (keyof typeof GAP)[]) {
+      const changed = clone(sealed) as unknown as { audio: { absentOnRestart: Record<string, number>[] } };
+      (changed.audio.absentOnRestart[0] as Record<string, number>)[key] = GAP[key] + 1;
+      expect(computeManifestSha256(changed), key).not.toBe(sealed.manifestSha256);
+      expect(manifestHashMatches(changed), key).toBe(false);
+    }
+    // Taken out of a signed manifest, the recorded digest no longer fits: a gap cannot be removed unseen.
+    const removed = clone(sealed) as unknown as { audio: Record<string, unknown> };
+    delete removed.audio.absentOnRestart;
+    expect(ManifestV2Schema.safeParse(removed).success).toBe(true);
+    expect(manifestHashMatches(removed)).toBe(false);
+    // ... and added to a manifest sealed without one, the same.
+    const added = clone(without) as unknown as { audio: Record<string, unknown> };
+    added.audio.absentOnRestart = [GAP];
+    expect(manifestHashMatches(added)).toBe(false);
+    expect([...MANIFEST_SIGNATURE_EXCLUSIONS]).toEqual(['manifestSha256', 'signature.value']);
+  });
+
+  it('refuses what states nothing or cannot be: an empty list, null, a foreign key, a missing key, text, a fraction, a bound over one day, a record that goes backwards', async () => {
+    const at = (member: string): string[] => [`audio.absentOnRestart.0.${member}`];
+    expect(refusedMembers([])).toEqual(['audio.absentOnRestart']);
+    expect(refusedMembers(null)).toEqual(['audio.absentOnRestart']);
+    expect(refusedMembers(GAP)).toEqual(['audio.absentOnRestart']);
+    expect(refusedMembers([{ ...GAP, deviceId: 'MIC-01' }])).toEqual(['audio.absentOnRestart.0']);
+    for (const key of Object.keys(GAP)) {
+      const { [key]: _gone, ...rest } = GAP as Record<string, number>;
+      expect(refusedMembers([rest]), `without ${key}`).toEqual(at(key));
+    }
+    const invalid: readonly (readonly [string, unknown])[] = [
+      ['earlierAttempt', 0], ['earlierAttempt', 1.5], ['earlierAttempt', '1'], ['laterAttempt', null], ['laterAttempt', -2],
+      ['absentAtLeastMs', -1], ['absentAtLeastMs', 0.5], ['absentAtLeastMs', '336'], ['absentAtMostMs', 86_400_001], ['absentAtMostMs', 'unknown'],
+    ];
+    for (const [key, value] of invalid) expect(refusedMembers([{ ...GAP, [key]: value }]), `${key}=${String(value)}`).toEqual(at(key));
+    // Forward only: the later attempt after the earlier one, the least not above the most, restarts in order.
+    expect(refusedMembers([{ ...GAP, laterAttempt: 1 }])).toEqual(at('laterAttempt'));
+    expect(refusedMembers([{ ...GAP, earlierAttempt: 3 }])).toEqual(at('laterAttempt'));
+    expect(refusedMembers([{ ...GAP, absentAtLeastMs: 716 }])).toEqual(at('absentAtMostMs'));
+    expect(refusedMembers([GAP, { ...GAP }])).toEqual(['audio.absentOnRestart.1.earlierAttempt']);
+    // The verifier refuses the same manifests at V-01: an empty list written into a sealed manifest by hand.
+    const emptied = clone(withGaps([GAP])) as unknown as { audio: Record<string, unknown> };
+    emptied.audio.absentOnRestart = [];
+    expect(await v01(emptied)).toBe('FAIL');
+  });
+
+  // ── Task 4 row P1 (decisions U21 (2), C66 (1), C71 C-7): `hostProfileNotAsked`, the second optional member (field 133) ──
+  // A production Core is allowed on Linux (the whole host profile asked at every start) and on macOS (none of it asked).
+  // The second fact is signed: PRESENT with the platform when the profile was not asked, ABSENT when it was (Linux), so a
+  // Linux manifest - and every manifest sealed before - is byte for byte what it was.
+  const onPlatform = (member: unknown, more: Record<string, unknown> = {}): ManifestV2 =>
+    attachSignature(buildUnsignedManifest({ ...exampleManifestInput(), ...more, hostProfileNotAsked: member as never }, EXAMPLE_SOURCE_ROWS), FILLER_SIGNATURE);
+  const refusedHost = (member: unknown, more: Record<string, unknown> = {}): readonly string[] => {
+    try {
+      onPlatform(member, more);
+    } catch (error) {
+      expect(error).toBeInstanceOf(EvidencePackageError);
+      return (error as EvidencePackageError).members;
+    }
+    return ['accepted'];
+  };
+
+  it('row P1: ABSENT = nothing changes - the example has no such key, a caller that hands `undefined` seals the SAME bytes, digest and V-01 verdict as before', async () => {
+    const sealed = sealedExample();
+    expect('hostProfileNotAsked' in sealed).toBe(false);
+    expect(decode(serializeManifest(sealed))).not.toContain('hostProfileNotAsked');
+    expect(onPlatform(undefined)).toEqual(sealed);
+    expect(decode(serializeManifest(onPlatform(undefined)))).toBe(decode(serializeManifest(sealed)));
+    expect(onPlatform(undefined).manifestSha256).toBe(sealed.manifestSha256);
+    expect(await v01(sealed)).toBe('PASS');
+    expect([...MANIFEST_HOST_PROFILE_NOT_ASKED_PLATFORMS]).toEqual(['darwin']);
+  });
+
+  it('row P1: PRESENT = a production Core sealed on macOS without its host profile being asked - accepted by the schema and by the verifier (V-01), inside the digest, and not removable or addable unseen', async () => {
+    const without = sealedExample();
+    const sealed = onPlatform({ platform: 'darwin' });
+    expect(sealed.hostProfileNotAsked).toEqual({ platform: 'darwin' });
+    expect(ManifestV2Schema.safeParse(sealed).success).toBe(true);
+    expect(parseManifestV2(JSON.parse(decode(serializeManifest(sealed))))).toEqual(sealed);
+    expect(decode(serializeManifest(sealed))).toContain('"hostProfileNotAsked":{"platform":"darwin"}');
+    expect(await v01(sealed)).toBe('PASS');
+    // Every other member is what it was: the two manifests differ in this member, the digest and nothing else.
+    const { hostProfileNotAsked: _member, manifestSha256: _with, ...rest } = sealed;
+    const { manifestSha256: _without, ...before } = without;
+    expect(rest).toEqual(before);
+    // SIGNED: inside the digest.
+    expect(sealed.manifestSha256).not.toBe(without.manifestSha256);
+    expect(manifestHashMatches(sealed)).toBe(true);
+    const removed = clone(sealed) as unknown as Record<string, unknown>;
+    delete removed['hostProfileNotAsked'];
+    expect(ManifestV2Schema.safeParse(removed).success).toBe(true);
+    expect(manifestHashMatches(removed as never)).toBe(false);
+    const added = clone(without) as unknown as Record<string, unknown>;
+    added['hostProfileNotAsked'] = { platform: 'darwin' };
+    expect(manifestHashMatches(added as never)).toBe(false);
+    // Both optional members in one manifest.
+    const input = exampleManifestInput();
+    const both = attachSignature(buildUnsignedManifest({ ...input, audio: { ...input.audio, absentOnRestart: [GAP] }, hostProfileNotAsked: { platform: 'darwin' } }, EXAMPLE_SOURCE_ROWS), FILLER_SIGNATURE);
+    expect(await v01(both)).toBe('PASS');
+  });
+
+  it('row P1: refuses what cannot be - `linux` (its profile IS asked: the member is absent there), any other platform word, null, an empty or foreign record, text; and the member beside a demo package', async () => {
+    for (const platform of ['linux', 'win32', 'Darwin', 'macos', '', null, 7, true]) expect(refusedHost({ platform }), String(platform)).toEqual(['hostProfileNotAsked.platform']);
+    expect(refusedHost({})).toEqual(['hostProfileNotAsked.platform']);
+    expect(refusedHost({ platform: 'darwin', asked: false })).toEqual(['hostProfileNotAsked']);
+    for (const member of [null, 'darwin', ['darwin'], false]) expect(refusedHost(member), JSON.stringify(member)).toEqual(['hostProfileNotAsked']);
+    // The verifier refuses the same at V-01: `linux` written into a sealed manifest by hand.
+    const forged = clone(onPlatform({ platform: 'darwin' })) as unknown as { hostProfileNotAsked: { platform: string } };
+    forged.hostProfileNotAsked.platform = 'linux';
+    expect(await v01(forged)).toBe('FAIL');
+    // A demo package is never a production Core's: the two do not stand in one manifest.
+    const demoRows = EXAMPLE_SOURCE_ROWS.map((row) => ({ ...row, adapterKind: 'FAKE' }));
+    const demo = (member: unknown): readonly string[] => {
+      try {
+        buildUnsignedManifest({ ...exampleManifestInput(), integrity: 'DEMO_PACKAGE', demo: true, ...(member === undefined ? {} : { hostProfileNotAsked: member as never }) }, demoRows);
+      } catch (error) {
+        return (error as EvidencePackageError).members;
+      }
+      return ['accepted'];
+    };
+    expect(demo(undefined)).toEqual(['accepted']);
+    expect(demo({ platform: 'darwin' })).toEqual(['hostProfileNotAsked']);
+  });
+
+  // ── Task 4 row R1b (decision C99; finding F3-01): `tracks[].absentInSession`, the third optional member (fields 134-138) ──
+  // A camera of the session stopped delivering pictures inside it and its relay kept the push: the track's file has a step
+  // in time as long as the absence. The Core states it per track, under the signature. ABSENT on every track of a session
+  // without a loss, so such a manifest - and every manifest sealed before - is byte for byte what it was.
+  const ABSENCE = { attempt: 1, loss: 1, absentAtLeastMs: 3048, absentAtMostMs: 8049, ended: 'RE_OPENED' };
+  const withAbsences = (first: unknown, second?: unknown): ManifestV2 => {
+    const input = exampleManifestInput();
+    const tracks = input.tracks.map((track, index) => ({ ...track, ...(index === 0 ? { absentInSession: first as never } : second === undefined ? {} : { absentInSession: second as never }) }));
+    return attachSignature(buildUnsignedManifest({ ...input, tracks }, EXAMPLE_SOURCE_ROWS), FILLER_SIGNATURE);
+  };
+  const refusedAbsences = (first: unknown): readonly string[] => {
+    try {
+      withAbsences(first);
+    } catch (error) {
+      expect(error).toBeInstanceOf(EvidencePackageError);
+      return (error as EvidencePackageError).members;
+    }
+    return ['accepted'];
+  };
+
+  it('row R1b: ABSENT = nothing changes - the example has no such key on any track, a caller that hands `undefined` seals the SAME bytes, digest and V-01 verdict as before', async () => {
+    const sealed = sealedExample();
+    expect(sealed.tracks.length).toBeGreaterThanOrEqual(1);
+    for (const track of sealed.tracks) expect('absentInSession' in track).toBe(false);
+    expect(decode(serializeManifest(sealed))).not.toContain('absentInSession');
+    const handed = withAbsences(undefined);
+    expect(handed).toEqual(sealed);
+    for (const track of handed.tracks) expect('absentInSession' in track).toBe(false);
+    expect(decode(serializeManifest(handed))).toBe(decode(serializeManifest(sealed)));
+    expect(handed.manifestSha256).toBe(sealed.manifestSha256);
+    expect(await v01(sealed)).toBe('PASS');
+    expect([...MANIFEST_VIDEO_ABSENCE_ENDS]).toEqual(['RE_OPENED', 'NOT_RE_OPENED']);
+    expect(MANIFEST_VIDEO_ABSENT_MAX_MS).toBe(MANIFEST_AUDIO_ABSENT_MAX_MS);
+  });
+
+  it('row R1b: PRESENT = the absences of one track, in order - accepted by the schema and by the verifier (V-01), inside the digest, and not removable, addable or alterable unseen', async () => {
+    const without = sealedExample();
+    const sealed = withAbsences([ABSENCE]);
+    expect(sealed.tracks[0]?.absentInSession).toEqual([ABSENCE]);
+    expect(ManifestV2Schema.safeParse(sealed).success).toBe(true);
+    expect(parseManifestV2(JSON.parse(decode(serializeManifest(sealed))))).toEqual(sealed);
+    expect(decode(serializeManifest(sealed))).toContain('"absentInSession":[{"absentAtLeastMs":3048,"absentAtMostMs":8049,"attempt":1,"ended":"RE_OPENED","loss":1}]');
+    expect(await v01(sealed)).toBe('PASS');
+    // Every other member is what it was: the two manifests differ in this member of the first track, the digest and nothing else.
+    const stripped = clone(sealed) as unknown as { manifestSha256?: string; tracks: Record<string, unknown>[] };
+    delete (stripped.tracks[0] as Record<string, unknown>)['absentInSession'];
+    delete stripped.manifestSha256;
+    const { manifestSha256: _without, ...before } = without;
+    expect(stripped).toEqual(before);
+    // SIGNED: inside the digest.
+    expect(sealed.manifestSha256).not.toBe(without.manifestSha256);
+    expect(manifestHashMatches(sealed)).toBe(true);
+    const removed = clone(sealed) as unknown as { tracks: Record<string, unknown>[] };
+    delete (removed.tracks[0] as Record<string, unknown>)['absentInSession'];
+    expect(ManifestV2Schema.safeParse(removed).success).toBe(true);
+    expect(manifestHashMatches(removed as never)).toBe(false);
+    for (const key of ['attempt', 'loss', 'absentAtLeastMs', 'absentAtMostMs'] as const) {
+      const changed = clone(sealed) as unknown as { tracks: { absentInSession: Record<string, number>[] }[] };
+      ((changed.tracks[0] as { absentInSession: Record<string, number>[] }).absentInSession[0] as Record<string, number>)[key] = ABSENCE[key] + 1;
+      expect(manifestHashMatches(changed as never), key).toBe(false);
+    }
+    const reworded = clone(sealed) as unknown as { tracks: { absentInSession: Record<string, unknown>[] }[] };
+    ((reworded.tracks[0] as { absentInSession: Record<string, unknown>[] }).absentInSession[0] as Record<string, unknown>)['ended'] = 'NOT_RE_OPENED';
+    expect(ManifestV2Schema.safeParse(reworded).success).toBe(true);
+    expect(manifestHashMatches(reworded as never)).toBe(false);
+    // Three in order, the last one never ended, bounds not measured; and an absence on the second track too (when the example has one).
+    const three = withAbsences([ABSENCE, { ...ABSENCE, loss: 2, absentAtLeastMs: null }, { attempt: 2, loss: 1, absentAtLeastMs: 12, absentAtMostMs: null, ended: 'NOT_RE_OPENED' }], sealed.tracks.length > 1 ? [ABSENCE] : undefined);
+    expect(three.tracks[0]?.absentInSession).toHaveLength(3);
+    expect(await v01(three)).toBe('PASS');
+    // The three optional members in one manifest.
+    const input = exampleManifestInput();
+    const all = attachSignature(
+      buildUnsignedManifest({ ...input, tracks: input.tracks.map((track) => ({ ...track, absentInSession: [ABSENCE] as never })), audio: { ...input.audio, absentOnRestart: [GAP] }, hostProfileNotAsked: { platform: 'darwin' } }, EXAMPLE_SOURCE_ROWS),
+      FILLER_SIGNATURE,
+    );
+    expect(await v01(all)).toBe('PASS');
+  });
+
+  it('row R1b: refuses what cannot be - an empty list, null, a bare record, a foreign member, a missing member, a number out of form, the least above the most, records out of order, an absence that did not end before another one', async () => {
+    const at = (member: string): string[] => [`tracks.0.absentInSession.0.${member}`];
+    expect(refusedAbsences([])).toEqual(['tracks.0.absentInSession']);
+    expect(refusedAbsences(null)).toEqual(['tracks.0.absentInSession']);
+    expect(refusedAbsences(ABSENCE)).toEqual(['tracks.0.absentInSession']);
+    expect(refusedAbsences([{ ...ABSENCE, deviceId: 'CAM-01' }])).toEqual(['tracks.0.absentInSession.0']);
+    expect(refusedAbsences([{ ...ABSENCE, profile: 'H264_1080P' }])).toEqual(['tracks.0.absentInSession.0']);
+    for (const key of ['attempt', 'loss', 'absentAtLeastMs', 'absentAtMostMs', 'ended'] as const) {
+      const { [key]: _left, ...rest } = ABSENCE;
+      expect(refusedAbsences([rest]), key).toEqual(at(key));
+    }
+    for (const value of [0, -1, 1.5, '1', null]) expect(refusedAbsences([{ ...ABSENCE, attempt: value }]), `attempt ${String(value)}`).toEqual(at('attempt'));
+    for (const value of [0, -1, 1.5, '1', null]) expect(refusedAbsences([{ ...ABSENCE, loss: value }]), `loss ${String(value)}`).toEqual(at('loss'));
+    for (const value of [-1, 1.5, '12', MANIFEST_VIDEO_ABSENT_MAX_MS + 1]) {
+      expect(refusedAbsences([{ ...ABSENCE, absentAtLeastMs: value, absentAtMostMs: null }]), `least ${String(value)}`).toEqual(at('absentAtLeastMs'));
+      expect(refusedAbsences([{ ...ABSENCE, absentAtLeastMs: null, absentAtMostMs: value }]), `most ${String(value)}`).toEqual(at('absentAtMostMs'));
+    }
+    expect(refusedAbsences([{ ...ABSENCE, absentAtLeastMs: 0, absentAtMostMs: MANIFEST_VIDEO_ABSENT_MAX_MS }])).toEqual(['accepted']);
+    for (const value of ['REOPENED', 're_opened', 'RE-OPENED', '', null, true]) expect(refusedAbsences([{ ...ABSENCE, ended: value }]), `ended ${String(value)}`).toEqual(at('ended'));
+    expect(refusedAbsences([{ ...ABSENCE, absentAtLeastMs: 8050 }])).toEqual(at('absentAtMostMs'));
+    // Order: the same loss twice, a lower loss, an earlier attempt; a later attempt may count its losses anew.
+    expect(refusedAbsences([ABSENCE, { ...ABSENCE }])).toEqual(['tracks.0.absentInSession.1.loss']);
+    expect(refusedAbsences([{ ...ABSENCE, loss: 2 }, ABSENCE])).toEqual(['tracks.0.absentInSession.1.loss']);
+    expect(refusedAbsences([{ ...ABSENCE, attempt: 2 }, { ...ABSENCE, loss: 9 }])).toEqual(['tracks.0.absentInSession.1.loss']);
+    expect(refusedAbsences([{ ...ABSENCE, loss: 7 }, { ...ABSENCE, attempt: 2 }])).toEqual(['accepted']);
+    // An absence that did not end is the last one of its track.
+    expect(refusedAbsences([{ ...ABSENCE, ended: 'NOT_RE_OPENED' }, { ...ABSENCE, loss: 2 }])).toEqual(['tracks.0.absentInSession.0.ended']);
+    // The verifier refuses the same manifests at V-01: an empty list, and a foreign word, written into a sealed manifest by hand.
+    const emptied = clone(withAbsences([ABSENCE])) as unknown as { tracks: Record<string, unknown>[] };
+    (emptied.tracks[0] as Record<string, unknown>)['absentInSession'] = [];
+    expect(await v01(emptied)).toBe('FAIL');
+    const forged = clone(withAbsences([ABSENCE])) as unknown as { tracks: { absentInSession: Record<string, unknown>[] }[] };
+    ((forged.tracks[0] as { absentInSession: Record<string, unknown>[] }).absentInSession[0] as Record<string, unknown>)['ended'] = 'NEVER_ABSENT';
+    expect(await v01(forged)).toBe('FAIL');
+  });
+
+  it('row R1b: the verifier SAYS the member - ONE notice `VIDEO_ABSENT_IN_SESSION` with the line of every track that has one; none for a manifest without the member; the line fits the contract for the largest numbers', async () => {
+    /** The notices of a manifest-scope run of the verifier over a manifest text and nothing else. */
+    const noticesOf = async (manifest: unknown): Promise<readonly { code: string; report: string }[]> => {
+      const text = JSON.stringify(manifest);
+      const result = await verifyPackageV2(
+        {
+          reader: {
+            entry: async (path) => (path === PackageFile.MANIFEST ? { kind: 'FILE', size: text.length } : { kind: 'ABSENT' }),
+            readText: async (path) => (path === PackageFile.MANIFEST ? text : Promise.reject(new Error('absent'))),
+            readRange: async () => Promise.reject(new Error('absent')),
+            list: async () => [],
+          },
+          opener: null,
+          readCertificate: () => null,
+          verifySignature: () => false,
+        },
+        { scope: 'MANIFEST' },
+      );
+      return result.notices.filter((notice) => notice.code === VERIFY_NOTICE.VIDEO_ABSENT_IN_SESSION);
+    };
+    expect(await noticesOf(sealedExample())).toEqual([]);
+    const one = 'Video: CAMERA ABSENT INSIDE THE SESSION. VIDEO-01 1 time, at least 3048 ms, at most 8049 ms. No picture was recorded in that time.';
+    expect(await noticesOf(withAbsences([ABSENCE]))).toEqual([{ code: 'VIDEO_ABSENT_IN_SESSION', report: one }]);
+    expect(videoAbsentInSessionReport([{ trackId: 'VIDEO-01', absences: [ABSENCE] }])).toBe(one);
+    // Sums per track; a bound one absence does not state makes the sum "not measured"; an absence that did not end is said.
+    expect(
+      videoAbsentInSessionReport([
+        { trackId: 'VIDEO-01', absences: [ABSENCE, { ...ABSENCE, loss: 2, absentAtLeastMs: 1000, absentAtMostMs: 6000 }] },
+        { trackId: 'VIDEO-02', absences: [{ ...ABSENCE, absentAtLeastMs: null, ended: 'NOT_RE_OPENED' }] },
+      ]),
+    ).toBe('Video: CAMERA ABSENT INSIDE THE SESSION. VIDEO-01 2 times, at least 4048 ms, at most 14049 ms; VIDEO-02 1 time, at least not measured, at most 8049 ms, not re-opened. No picture was recorded in that time.');
+    // No absence: no line. A track id that is not of the closed form is not printed.
+    expect(videoAbsentInSessionReport([])).toBe('');
+    expect(videoAbsentInSessionReport([{ trackId: 'VIDEO-01', absences: [] }])).toBe('');
+    expect(videoAbsentInSessionReport([{ trackId: '<b>VIDEO-01</b>', absences: [ABSENCE] }])).toBe('Video: CAMERA ABSENT INSIDE THE SESSION. a track 1 time, at least 3048 ms, at most 8049 ms. No picture was recorded in that time.');
+    // The contract's bound of a report line (256), with two tracks, a thousand absences each of the longest time a manifest can state, the last not ended.
+    const most = Array.from({ length: 1000 }, (_, index) => ({ absentAtLeastMs: MANIFEST_VIDEO_ABSENT_MAX_MS, absentAtMostMs: MANIFEST_VIDEO_ABSENT_MAX_MS, ended: index === 999 ? 'NOT_RE_OPENED' : 'RE_OPENED' }));
+    const longest = videoAbsentInSessionReport([{ trackId: 'VIDEO-01', absences: most }, { trackId: 'VIDEO-02', absences: most }]);
+    expect(longest.length).toBeLessThanOrEqual(256);
+    expect(longest).toContain('VIDEO-02 1000 times, at least 86400000000 ms, at most 86400000000 ms, not re-opened.');
+    // Beyond any real session: the closing sentence is given up before a number is.
+    const beyond = Array.from({ length: 100_000 }, () => ({ absentAtLeastMs: MANIFEST_VIDEO_ABSENT_MAX_MS, absentAtMostMs: MANIFEST_VIDEO_ABSENT_MAX_MS, ended: 'NOT_RE_OPENED' }));
+    const cut = videoAbsentInSessionReport([{ trackId: 'VIDEO-01', absences: beyond }, { trackId: 'VIDEO-02', absences: beyond }]);
+    expect([cut.length <= 256, cut.endsWith('not re-opened.'), cut.includes('No picture')]).toEqual([true, true, false]);
   });
 });

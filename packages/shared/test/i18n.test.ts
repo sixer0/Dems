@@ -260,8 +260,9 @@ describe('shared i18n resources: language and copy rules', () => {
   // `details.reason` when it refuses to assign a production camera (`CaptureProfileRefusal` of the
   // server's capture-config module: words of that module, no shared member, so they are literals here).
   it('words the two refusals of a production camera without a profile of its own (`common.captureSlotRefusal`): nothing was assigned, and no default is promised', () => {
-    expect(Object.keys(en.common.captureSlotRefusal)).toEqual(['CAMERA_PROFILE_NOT_STATED', 'CAMERA_PROFILE_NOT_OF_DEVICE']);
-    for (const sentence of Object.values(en.common.captureSlotRefusal)) {
+    // Row V4: the group also holds the four sentences moved from the web console (the case below); these two come first.
+    expect(Object.keys(en.common.captureSlotRefusal).slice(0, 2)).toEqual(['CAMERA_PROFILE_NOT_STATED', 'CAMERA_PROFILE_NOT_OF_DEVICE']);
+    for (const sentence of [en.common.captureSlotRefusal.CAMERA_PROFILE_NOT_STATED, en.common.captureSlotRefusal.CAMERA_PROFILE_NOT_OF_DEVICE]) {
       expect(sentence).toMatch(/^This camera was not assigned: /);
       // No placeholder: the screen that shows it already names the camera and the slot.
       expect(sentence).not.toContain('{{');
@@ -269,6 +270,35 @@ describe('shared i18n resources: language and copy rules', () => {
       expect(sentence).not.toMatch(/default|H\.?264|HEVC|1080|720/i);
     }
     expect(en.common.captureSlotRefusal.CAMERA_PROFILE_NOT_STATED).not.toBe(en.common.captureSlotRefusal.CAMERA_PROFILE_NOT_OF_DEVICE);
+  });
+
+  // Task 4 row V4 (decision C80): the four sentences the web console worded for a refused slot
+  // assignment are the shared tree's now, WORD FOR WORD (the web's wording is the wording). The
+  // words of `details.reason` are the server's (`CaptureAssignmentRefusal` of its capture-config
+  // module and the hosted action's own word): no shared member, so they are literals here.
+  it('row V4: `common.captureSlotRefusal` holds the four slot refusals of the web console word for word, six reasons in all; `{{source}}` is one of two nouns', () => {
+    expect(Object.keys(en.common.captureSlotRefusal)).toEqual([
+      'CAMERA_PROFILE_NOT_STATED',
+      'CAMERA_PROFILE_NOT_OF_DEVICE',
+      'PRODUCTION_SOURCE_NOT_ALLOWED',
+      'CAPTURE_DEVICE_NOT_SERVED',
+      'CAPTURE_DEVICE_CLASS_MISMATCH',
+      'SLOT_UNASSIGNED_AND_ASSIGNED',
+    ]);
+    const R = en.common.captureSlotRefusal;
+    expect(R.PRODUCTION_SOURCE_NOT_ALLOWED).toBe(
+      'This {{source}} was not assigned: it is a production device, and this Core runs in development capture operation. This {{source}} can be assigned only on a Core running in production capture operation. Nothing was changed.',
+    );
+    expect(R.CAPTURE_DEVICE_NOT_SERVED).toBe('This {{source}} was not assigned: it is registered, but no capture adapter of the running Core serves it, so this Core cannot record from it. Nothing was changed.');
+    expect(R.CAPTURE_DEVICE_CLASS_MISMATCH).toBe('This device was not assigned: the Core does not hold it as a {{source}}. Nothing was changed.');
+    expect(R.SLOT_UNASSIGNED_AND_ASSIGNED).toBe('This choice was not accepted: one request cleared a slot and filled the same slot. Nothing was changed.');
+    expect(en.common.captureSlotSource).toEqual({ CAMERA: 'camera', MIC: 'microphone' });
+    for (const sentence of [R.PRODUCTION_SOURCE_NOT_ALLOWED, R.CAPTURE_DEVICE_NOT_SERVED, R.CAPTURE_DEVICE_CLASS_MISMATCH, R.SLOT_UNASSIGNED_AND_ASSIGNED]) {
+      // A refusal: nothing changed, and the one placeholder a sentence may hold is the source noun.
+      expect(sentence.endsWith('Nothing was changed.')).toBe(true);
+      expect((sentence.match(/\{\{[^}]*\}\}/g) ?? []).every((placeholder) => placeholder === '{{source}}')).toBe(true);
+    }
+    expect(new Set(Object.values(R)).size).toBe(6);
   });
 });
 

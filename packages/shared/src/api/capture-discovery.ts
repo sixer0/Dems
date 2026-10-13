@@ -11,6 +11,7 @@
  * | 95 | `testCaptureCandidateConnection` | CAPTURE_CONFIG + WEB_CONSOLE_SESSION | CAPTURE_CONNECTION_TESTED, every outcome |
  * | 96 | `adoptCaptureCandidate` | CAPTURE_CONFIG + WEB_CONSOLE_SESSION | CAPTURE_CANDIDATE_ADOPTED (+ CAPTURE_CONNECTION_TESTED, + CAPTURE_CREDENTIAL_SET) |
  * | 97 | `rescanCaptureInputs` | CAPTURE_CONFIG (web, tablet, phone) | CAPTURE_DISCOVERY_SEARCHED with `scope: MIC_LOCAL` |
+ * | 100 | `confirmCaptureDeviceAddress` (task 4 row 194; the last section of this file) | CAPTURE_CONFIG + WEB_CONSOLE_SESSION | CAPTURE_DEVICE_ADDRESS_CHANGED |
  *
  * WHAT A CANDIDATE IS. A device that answered a search. It lives in the Core's memory as data of
  * ONE operator session, it is no capture device, and it is in no slice: only its owner session
@@ -1126,6 +1127,450 @@ export const CAPTURE_DISCOVERY_EXAMPLES: Readonly<Record<string, OperationExampl
       },
       401: SIGNED_OUT,
       403: deniedExamples('rescanCaptureInputs', 'CAPTURE_CONFIG', 'INVESTIGATOR'),
+    },
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// Operation 100 `confirmCaptureDeviceAddress`: the operator-confirmed re-address of a registered
+// camera (task 4, blueprint row 194, package WP-12; finding of rows 97 and 98; decisions U12 A7,
+// C47 (29) for the server's rules DD-1 to DD-7 of `implementation/097_confirmed_readdress.md`).
+//
+// THE CONTRACT ONLY. The server's rule is built behind seams (`apps/core-server/src/modules/
+// capture-discovery/readdress.ts`); no Core route exists yet (blueprint rows 196, 197) and no
+// dialog (row 198). The in-app simulator answers it (`sim/api.ts`) and changes nothing.
+//
+// NEVER AUTOMATIC. A search can list a candidate that IS a registered camera by its endpoint
+// reference and answers from another address than the stored one (`addressChanged`). The Core
+// never follows it by itself: a probe answer is forgeable, and re-pointing a camera silently
+// would send its stored credential to whoever answered. This operation is the one way the stored
+// address of a registered camera changes on an operator's word, and its body IS the confirmation:
+// which device, which candidate of the operator's own search, and the address the dialog showed.
+//
+// THE ADDRESS IS A CONFIRMATION, NOT A TARGET. The Core takes the new address from its own search
+// state; the member `address` must EQUAL it, so a list that changed under the dialog confirms
+// nothing. The schema holds the FORM only (the strict dotted quad of operation 93's typed address,
+// optionally `:port`); whether the address may be stored is the Core's destination rule for a
+// stored camera (`apps/core-server/src/capture/destination-rule.ts`, purpose `STORED_CAMERA`).
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+/** A registered camera of the capture devices: `CAM-` and two to eight digits. Never a microphone, never a candidate. */
+export const CAPTURE_CAMERA_DEVICE_ID_PATTERN = /^CAM-\d{2,8}$/;
+/**
+ * The form of the address an operator confirms for a registered camera: the strict dotted quad of
+ * `CAPTURE_DISCOVERY_TYPED_ADDRESS_PATTERN` (no name, no leading zero, no hexadecimal or octal
+ * part, no prefix, no IPv6), optionally followed by `:` and a port from 1 to 65535 without a
+ * leading zero - `host`, or `host:port`, exactly as adoption stores an address. No scheme, no
+ * path, no `user:password@`, no blank. A FORM ONLY: the destination rule decides.
+ */
+export const CAPTURE_DEVICE_CONFIRMED_ADDRESS_PATTERN =
+  /^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)){3}(?::(?:6553[0-5]|655[0-2]\d|65[0-4]\d\d|6[0-4]\d{3}|[1-5]\d{4}|[1-9]\d{0,3}))?$/;
+/** The longest text the pattern can match: `255.255.255.255:65535`. */
+export const CAPTURE_DEVICE_CONFIRMED_ADDRESS_MAX_LENGTH = 21;
+
+/**
+ * `details.reason` of the `409 INVALID_STATE` refusals of operation 100. Each value is the
+ * server's own refusal code (`ReaddressRefusal` of `readdress.ts`), so the route maps nothing.
+ * The other refusals reuse what exists: `404 NOT_FOUND` (the device, the candidate),
+ * `409 CAPTURE_CONFIG_LOCKED`, `422 INVALID_INPUT` with `DISCOVERY_ADDRESS_NOT_ALLOWED` (the
+ * destination rule, one reason for every rule, never the address) and `503 NOT_READY` with
+ * `DISCOVERY_NOT_READY`.
+ */
+export const CaptureReaddressReason = {
+  /** The candidate is not this device by its endpoint reference with a changed address. */
+  READDRESS_NOT_THE_REGISTERED_CAMERA: 'READDRESS_NOT_THE_REGISTERED_CAMERA',
+  /** Two devices announce this identity: neither is followed (SEC35-28). */
+  READDRESS_IDENTITY_CONFLICT: 'READDRESS_IDENTITY_CONFLICT',
+  /** The confirmed address is not the one the candidate holds now: the list changed under the dialog. */
+  READDRESS_CONFIRMATION_MISMATCH: 'READDRESS_CONFIRMATION_MISMATCH',
+  /** The stored address already is the confirmed one. */
+  READDRESS_ADDRESS_UNCHANGED: 'READDRESS_ADDRESS_UNCHANGED',
+  /** Another registered device holds the confirmed address. */
+  READDRESS_ADDRESS_TAKEN: 'READDRESS_ADDRESS_TAKEN',
+  /** The stored address is no IP literal: the audit row could not state it. */
+  READDRESS_STORED_ADDRESS_UNREADABLE: 'READDRESS_STORED_ADDRESS_UNREADABLE',
+} as const;
+export type CaptureReaddressReason = (typeof CaptureReaddressReason)[keyof typeof CaptureReaddressReason];
+
+/** The sentence of each refusal reason of operation 100: the `message` of the envelope. It never quotes an address. */
+export const CAPTURE_READDRESS_REFUSAL_SENTENCES: Readonly<Record<CaptureReaddressReason, string>> = Object.freeze({
+  [CaptureReaddressReason.READDRESS_NOT_THE_REGISTERED_CAMERA]: 'The search did not find this camera at a new address.',
+  [CaptureReaddressReason.READDRESS_IDENTITY_CONFLICT]: 'Two devices answer as this camera. Neither address is accepted.',
+  [CaptureReaddressReason.READDRESS_CONFIRMATION_MISMATCH]: 'The search result changed. Search again and confirm the address shown.',
+  [CaptureReaddressReason.READDRESS_ADDRESS_UNCHANGED]: 'The camera already has this address.',
+  [CaptureReaddressReason.READDRESS_ADDRESS_TAKEN]: 'Another capture device has this address.',
+  [CaptureReaddressReason.READDRESS_STORED_ADDRESS_UNREADABLE]: 'The stored address of this camera cannot be replaced this way.',
+});
+/** The sentence of the destination-rule refusal of operation 100 (`422`, `DISCOVERY_ADDRESS_NOT_ALLOWED`). */
+export const CAPTURE_READDRESS_ADDRESS_NOT_ALLOWED_SENTENCE = 'This address is not allowed for a camera.';
+
+/**
+ * Request body of operation 100: the operator's confirmation. Three members, all required: the
+ * registered camera, the candidate of the caller's own live search that answers for it, and the
+ * address the dialog showed. No credential, no URL, no port list, no reason text.
+ */
+export const CaptureDeviceAddressConfirmRequestSchema = z
+  .strictObject({
+    deviceId: z.string().regex(CAPTURE_CAMERA_DEVICE_ID_PATTERN).describe('The registered camera whose stored address is replaced, e.g. `CAM-01`.'),
+    candidateId: candidateId().describe('The candidate of the caller\'s own live search that is this camera by its endpoint reference (`status: REGISTERED`, `addressChanged: true`).'),
+    address: z
+      .string()
+      .max(CAPTURE_DEVICE_CONFIRMED_ADDRESS_MAX_LENGTH)
+      .regex(CAPTURE_DEVICE_CONFIRMED_ADDRESS_PATTERN)
+      .describe('The address the operator saw and confirmed: one dotted IPv4 literal, or that and `:port`. It must equal the address the candidate holds now; the Core takes the address from its own search state, never from here.'),
+  })
+  .describe('Request body of `POST /api/v1/capture/devices/address/confirm` (task 4, operation 100): the confirmation of an operator. No member carries a credential.');
+export type CaptureDeviceAddressConfirmRequest = z.output<typeof CaptureDeviceAddressConfirmRequestSchema>;
+
+/** Operation 100's answer: the camera as slice 30 holds it now. Its `host` is the confirmed address. */
+export const CaptureDeviceAddressConfirmationSchema = z
+  .strictObject({
+    deviceId: z.string().regex(CAPTURE_CAMERA_DEVICE_ID_PATTERN).describe('The registered camera.'),
+    device: CaptureDeviceStatusSchema,
+  })
+  .describe('The registered camera after an operator confirmed its new address (task 4, operation 100). The stored credential stays with the device and is never returned.');
+export type CaptureDeviceAddressConfirmation = z.output<typeof CaptureDeviceAddressConfirmationSchema>;
+
+/** The schemas operation 100 adds (merged into `CORE_API_SCHEMAS`). */
+export const CAPTURE_READDRESS_SCHEMAS = {
+  CaptureDeviceAddressConfirmRequest: CaptureDeviceAddressConfirmRequestSchema,
+  CaptureDeviceAddressConfirmation: CaptureDeviceAddressConfirmationSchema,
+} as const;
+
+/** The code of `details.reason` in the audit row of a confirmed re-address (the server's `READDRESS_AUDIT_REASON`). */
+export const CAPTURE_READDRESS_AUDIT_REASON = 'OPERATOR_CONFIRMED';
+
+export const CAPTURE_DEVICE_ADDRESS_CONFIRM_PATH = `${API_BASE_PATH}/capture/devices/address/confirm`;
+
+const READDRESS_409_REASONS = Object.values(CaptureReaddressReason).join(', ');
+
+export const CAPTURE_READDRESS_OPERATIONS = [
+  {
+    operationId: 'confirmCaptureDeviceAddress',
+    method: 'post',
+    path: CAPTURE_DEVICE_ADDRESS_CONFIRM_PATH,
+    tag: CoreApiTag.DEVICE,
+    mode: CoreApiMode.SIMULATED,
+    summary: 'Confirm the new address of a registered camera',
+    description: [
+      'Stores the new address of a **registered** camera after an operator confirmed it. A camera search (operation 93) can list a candidate that is a registered camera by its endpoint reference and answers from another address than the stored one (`addressChanged: true`). **The Core never follows such a camera by itself.** This operation is the operator\'s confirmation: the body names the device, the candidate of the caller\'s own live search and the address the dialog showed.',
+      '**Web console only**, as operation 96 (`WEB_CONSOLE_SESSION`), and idle only (`409 CAPTURE_CONFIG_LOCKED`, no audit row).',
+      '**The address in the body is a confirmation, not a target.** The Core takes the new address from its own search state and compares: when the two differ the answer is `409 INVALID_STATE` with `details.reason: READDRESS_CONFIRMATION_MISMATCH` and nothing is stored. A typed address without such a candidate cannot re-address a camera. The stored credential stays with the device (the operator confirmed it is the same camera); nothing is sent to the new address by this operation, and no credential is in the body.',
+      'The new address must pass the Core\'s destination rule for a stored camera: a private IPv4 address the camera interface reaches, never loopback, never the Core\'s own, never the subnet of another interface. A refusal of that rule is `422 INVALID_INPUT` with `details.reason: DISCOVERY_ADDRESS_NOT_ALLOWED` - one reason for every rule, never the address.',
+      `Other refusals, each storing nothing: \`404 NOT_FOUND\` for a device that is no registered camera and for a candidate that is unknown, expired or of another session's search (one answer); \`409 INVALID_STATE\` with \`details.reason\` ${READDRESS_409_REASONS}.`,
+      `In ONE unit the Core writes the device's address and one CAPTURE_DEVICE_ADDRESS_CHANGED row: the device id, the two IP literals, \`reason: ${CAPTURE_READDRESS_AUDIT_REASON}\`. No port, no endpoint reference and no announced text is in the row. Either both are written or neither. Publishes the \`captureDevices\` slice; \`captureConfig\` is not changed: a track that names the device keeps naming it.`,
+      '`503 NOT_READY` with `details.reason: DISCOVERY_NOT_READY` when the Core has no camera search (no adapter, or the candidate state is not available). A Core that runs with development sources registers its candidates by their whole address, so none of them has a changed address: it answers `409` with `READDRESS_NOT_THE_REGISTERED_CAMERA` and stores nothing.',
+      `${SIM_V2_NOTE} The simulator's cameras never move: it stores nothing, writes no audit row and changes no state. For a registered camera and a candidate of its fixed search it answers \`409 INVALID_STATE\` with \`details.reason: READDRESS_NOT_THE_REGISTERED_CAMERA\`; \`404\` for any other device or candidate.`,
+    ].join('\n\n'),
+    source: 'Task 4, blueprint row 194 (WP-12; finding of rows 97 and 98), operation 100; decisions U12 A7, C47 (29); security findings SEC35-28, S13-11, AD-02 (not in the design book)',
+    requestBody: { schema: 'CaptureDeviceAddressConfirmRequest', required: true },
+    responses: {
+      200: { description: 'The camera with its new address. The credential is not returned.', schema: 'CaptureDeviceAddressConfirmation', services: CORE_SERVER_ONLY },
+      400: INVALID_JSON,
+      401: NOT_SIGNED_IN,
+      403: notPermitted(Permission.CAPTURE_CONFIG, WEB_CONSOLE_ONLY_REFUSED),
+      404: {
+        description: 'The device is no registered camera, or the candidate is unknown, expired, or belongs to another session\'s search (NOT_FOUND; one answer). Nothing is stored.',
+        schema: 'ApiError',
+      },
+      409: {
+        description: `A session is open (CAPTURE_CONFIG_LOCKED; no audit row), or the confirmation cannot be accepted (INVALID_STATE, \`details.reason\`: ${READDRESS_409_REASONS}). Nothing is stored.`,
+        schema: 'ApiError',
+      },
+      422: {
+        description:
+          'The body does not match its schema, or the Core\'s destination rule refuses the address (INVALID_INPUT, `details.reason: DISCOVERY_ADDRESS_NOT_ALLOWED`). The refusal never quotes the input. Nothing is stored.',
+        schema: 'ApiError',
+      },
+    },
+    access: CAPTURE_CREDENTIAL_ACCESS,
+    audit: { success: AuditType.CAPTURE_DEVICE_ADDRESS_CHANGED, ...DENIED },
+    services: CORE_SERVER_ONLY,
+  },
+] as const satisfies readonly CoreApiRegistryOperation[];
+
+/** The address of the examples of operation 100: a private one, as the rule asks. */
+export const CAPTURE_READDRESS_EXAMPLE_ADDRESS = '192.168.10.21';
+const EXAMPLE_READDRESS_REQUEST = {
+  deviceId: 'CAM-01',
+  candidateId: 'CND-4F2A91C0D377',
+  address: CAPTURE_READDRESS_EXAMPLE_ADDRESS,
+} as const satisfies CaptureDeviceAddressConfirmRequest;
+const readdressRefusal = (summary: string, reason: CaptureReaddressReason) => refusal(summary, 'INVALID_STATE', CAPTURE_READDRESS_REFUSAL_SENTENCES[reason], { reason });
+
+export const CAPTURE_READDRESS_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
+  confirmCaptureDeviceAddress: {
+    request: {
+      confirmed: { summary: 'The operator confirms the address the dialog showed', value: EXAMPLE_READDRESS_REQUEST },
+    },
+    responses: {
+      200: {
+        readdressed: {
+          summary: 'A production camera with its new address',
+          description: 'Only the Core server answers this: the in-app simulator stores nothing.',
+          value: {
+            deviceId: 'CAM-01',
+            device: {
+              id: 'CAM-01',
+              kind: 'CAMERA',
+              model: 'Example camera',
+              firmware: null,
+              host: CAPTURE_READDRESS_EXAMPLE_ADDRESS,
+              poePort: null,
+              online: true,
+              streamState: null,
+              capabilities: ['VIDEO'],
+              adapter: 'ONVIF_RTSP',
+              sourceClass: CaptureSourceClass.PRODUCTION,
+            },
+          } satisfies CaptureDeviceAddressConfirmation,
+        },
+      },
+      400: { invalidJson: ERROR_EXAMPLES.invalidJson },
+      401: SIGNED_OUT,
+      403: { ...deniedExamples('confirmCaptureDeviceAddress', 'CAPTURE_CONFIG', 'INVESTIGATOR'), webConsoleOnly: webConsoleOnly('confirmCaptureDeviceAddress') },
+      404: { notFound: refusal('No such registered camera, or no such candidate in this session\'s search', 'NOT_FOUND', 'No camera or candidate has this ID.', { simCode: 'NOT_FOUND' }) },
+      409: {
+        locked: LOCKED,
+        notTheRegisteredCamera: readdressRefusal('The candidate is not this camera at a new address (the simulator\'s answer)', CaptureReaddressReason.READDRESS_NOT_THE_REGISTERED_CAMERA),
+        identityConflict: readdressRefusal('Two devices announce this camera\'s identity', CaptureReaddressReason.READDRESS_IDENTITY_CONFLICT),
+        confirmationMismatch: readdressRefusal('The candidate holds another address than the one confirmed', CaptureReaddressReason.READDRESS_CONFIRMATION_MISMATCH),
+        addressUnchanged: readdressRefusal('The stored address already is this one', CaptureReaddressReason.READDRESS_ADDRESS_UNCHANGED),
+        addressTaken: readdressRefusal('Another registered device holds this address', CaptureReaddressReason.READDRESS_ADDRESS_TAKEN),
+        storedAddressUnreadable: readdressRefusal('The stored address is no IP literal', CaptureReaddressReason.READDRESS_STORED_ADDRESS_UNREADABLE),
+      },
+      422: {
+        invalidInput: ERROR_EXAMPLES.invalidInput,
+        addressNotAllowed: refusal('The destination rule refuses the address', 'INVALID_INPUT', CAPTURE_READDRESS_ADDRESS_NOT_ALLOWED_SENTENCE, {
+          in: 'body',
+          reason: CaptureDiscoveryReason.DISCOVERY_ADDRESS_NOT_ALLOWED,
+        }),
+      },
+    },
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// Operation 108 `testCaptureDeviceConnection`: the connection test of a REGISTERED camera with
+// its STORED credential (task 4, row V3 - the third contract step; blueprint row 146; decisions
+// C58, C62; security addendum 04 item 4.2 weakness W-6, requirements AD-03 point 5, AD-12
+// "S13-04 (d)", AD-02 point 1 for the stored address).
+//
+// THE CONTRACT. The server's function is `testAdoptedCamera` (`apps/core-server/src/modules/
+// capture-discovery/adopted-test.ts`) and its route `adopted-test-route.ts` (row 146b). Since row
+// V4 (decision C75 (2)) the in-app simulator (`sim/api.ts`) answers what a Core server in
+// simulated capture answers: `503 NOT_READY`, `DISCOVERY_NOT_READY` - nothing can be tested without
+// a camera, and a simulator that asked none does not say that one answered. It changes nothing.
+//
+// NO BODY, BY DESIGN. Operation 95 tests a CANDIDATE with a credential the operator types; this
+// operation tests a camera that is already registered with the credential the Core holds for it.
+// So no member can exist for a credential, an address, a port, a path or a profile: the device is
+// the id in the path, the address is the stored one under the Core's destination rule, and the
+// credential is read by the one reader bound to the reason `CONNECTION_TEST`. It is NOT one of
+// the credential-carrying operations (`CREDENTIAL_CARRYING_OPERATIONS`): nothing is carried.
+//
+// TWO AUDIT ROWS PER TEST THAT REACHED THE READER: the reader's `CAPTURE_CREDENTIAL_REVEALED`
+// (the device, reason `CONNECTION_TEST`) and the outcome, `CAPTURE_DEVICE_CONNECTION_TESTED`. A
+// refused test - the lock, a missing device, the bounds, the lock-out guard - reads nothing, sends
+// nothing and writes neither. THE READER AUDITS EVERY CALL OF IT, so a test that reached the
+// reader and found nothing stored (`409 CREDENTIAL_REQUIRED`) or could not read the store (`503
+// CREDENTIAL_STORE_NOT_READY`) HAS the reader's row. Row V4 (decision C75 (1)): such a test, and
+// one the adapter refused before a request, is not left as half a record - the outcome row can say
+// `UNREACHABLE` with `unreachableReason` (`CaptureDeviceTestUnreachableReason`): no camera was
+// asked, and why. Its writer is row 146c.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+/** Operation 108's answer: the outcome of operation 95 for a registered camera. `deviceId` stands where `candidateId` stood; `authenticated` is always true. */
+export const CaptureDeviceConnectionTestSchema = z
+  .strictObject({
+    deviceId: z.string().regex(CAPTURE_CAMERA_DEVICE_ID_PATTERN).describe('The registered camera that was tested, e.g. `CAM-01`.'),
+    outcome: z.enum(CaptureConnectionOutcome),
+    authenticated: z.literal(true).describe('Always true: the stored credential was read for this test. A fact, never a value.'),
+    testedAt: epochMs(),
+    usableProfileCount: count().describe('Usable media profiles the test read: profiles whose stream is H.264 or HEVC, as the Core judged it. A count: no profile name and no codec text.'),
+    failedAttemptsRemaining: count().describe('Refused credentials this host may still see before the lock-out guard closes. The guard is the one of operation 95: a typed and a stored credential count together.'),
+    reason: z.enum(CaptureConnectionTestReason).optional().describe('Present only for an AUTHENTICATION_FAILED test in which the credential was NOT sent (see `CaptureConnectionTestReason`).'),
+  })
+  .describe('The outcome of one connection test of a registered camera with its stored credential (task 4, operation 108). No address, no device error text, no URL, no credential member.');
+export type CaptureDeviceConnectionTest = z.output<typeof CaptureDeviceConnectionTestSchema>;
+
+/** The schema operation 108 adds (merged into `CORE_API_SCHEMAS`). It has no request schema: the operation has no body. */
+export const CAPTURE_DEVICE_TEST_SCHEMAS = {
+  CaptureDeviceConnectionTest: CaptureDeviceConnectionTestSchema,
+} as const;
+
+/**
+ * Row V4 (decision C75 (1); request of row 146b): WHY the outcome row of a stored-credential test
+ * says `UNREACHABLE` although NO REQUEST LEFT THE CORE. A test that reached the reader of the
+ * stored credential is audited by that reader; without a second row the audit would hold the
+ * reveal and no result. These are the two ways such a test ends before a camera is asked:
+ *   CREDENTIAL_NOT_READ  the reader was called and handed nothing on: nothing is stored for the
+ *                        camera, or the credential store could not be read.
+ *   NOT_SENT             the credential was read and the adapter refused the camera before a
+ *                        request (a locator it does not take, a scheme it does not speak).
+ * AUDIT ONLY: it is no member of the operation's answer (those tests are answered `409` / `503`),
+ * and it is ABSENT when a camera was asked and did not answer - a plain `UNREACHABLE`.
+ */
+export const CaptureDeviceTestUnreachableReason = {
+  CREDENTIAL_NOT_READ: 'CREDENTIAL_NOT_READ',
+  NOT_SENT: 'NOT_SENT',
+} as const;
+export type CaptureDeviceTestUnreachableReason = (typeof CaptureDeviceTestUnreachableReason)[keyof typeof CaptureDeviceTestUnreachableReason];
+
+/** The most `usableProfileCount` of CAPTURE_DEVICE_CONNECTION_TESTED can state: a count of judged profiles, never more than a camera's profile list is read to. */
+export const CAPTURE_DEVICE_TEST_AUDIT_PROFILES_MAX = 16;
+
+export interface CaptureDeviceConnectionTestedFacts {
+  deviceId: string;
+  outcome: CaptureConnectionOutcome;
+  adapter: string;
+  sourceClass: CaptureSourceClass;
+  guardTripped?: boolean;
+  /** As on CAPTURE_CONNECTION_TESTED: only for an AUTHENTICATION_FAILED test in which the credential was not sent. */
+  reason?: CaptureConnectionTestReason | null;
+  /** Row V4: only for an UNREACHABLE outcome of a test in which no request left the Core. Dropped for any other outcome. */
+  unreachableReason?: CaptureDeviceTestUnreachableReason | null;
+  /** Row V4: the answer's own `usableProfileCount` (a whole number of 0 to 16), when a camera was asked. A count: no profile name, no codec text. */
+  usableProfileCount?: number | null;
+  permission?: string | null;
+}
+
+/**
+ * `details` of CAPTURE_DEVICE_CONNECTION_TESTED: five required keys and five optional ones (the
+ * closed list of the Core server's `core/audit-details.ts`). A registry id, closed codes, a flag
+ * and one count. NEVER a credential, an address, an endpoint reference or text a device announced:
+ * the function takes none of them, so no caller can hand one in.
+ */
+export function captureDeviceConnectionTestedDetails(facts: CaptureDeviceConnectionTestedFacts): AuditDetails {
+  const notAsked = facts.outcome === CaptureConnectionOutcome.UNREACHABLE && facts.unreachableReason ? facts.unreachableReason : null;
+  const profiles = facts.usableProfileCount;
+  return {
+    deviceId: facts.deviceId,
+    outcome: facts.outcome,
+    adapter: facts.adapter,
+    sourceClass: facts.sourceClass,
+    operationId: 'testCaptureDeviceConnection',
+    ...(facts.guardTripped === true ? { guardTripped: true } : {}),
+    ...(facts.reason ? { reason: facts.reason } : {}),
+    ...(notAsked ? { unreachableReason: notAsked } : {}),
+    // No camera was asked: there is no count to state, not a count of zero.
+    ...(notAsked === null && typeof profiles === 'number' && Number.isSafeInteger(profiles) && profiles >= 0 && profiles <= CAPTURE_DEVICE_TEST_AUDIT_PROFILES_MAX ? { usableProfileCount: profiles } : {}),
+    ...(facts.permission ? { permission: facts.permission } : {}),
+  };
+}
+
+export const CAPTURE_DEVICE_TEST_PATH = `${API_BASE_PATH}/capture/devices/{id}/test`;
+
+/** The sentence of each `409 INVALID_STATE` refusal of operation 108 (the `message` of the envelope; the server's own words). */
+export const CAPTURE_DEVICE_TEST_REFUSAL_SENTENCES = Object.freeze({
+  [CaptureDiscoveryReason.CANDIDATE_NOT_TESTABLE]: 'This device cannot be tested.',
+  [CaptureDiscoveryReason.CREDENTIAL_REQUIRED]: 'No password is stored for this camera. Set one first.',
+  [CaptureDiscoveryReason.CONNECTION_TEST_IN_PROGRESS]: 'Another connection test is running. Try again shortly.',
+} as const);
+export type CaptureDeviceTestRefusalReason = keyof typeof CAPTURE_DEVICE_TEST_REFUSAL_SENTENCES;
+/**
+ * The sentence of operation 108's `503 NOT_READY` with `details.reason: DISCOVERY_NOT_READY` (row
+ * V4, decision C75 (2)): the words a Core server without a production composition answers, and so
+ * the words of the in-app simulator, which is in that state by construction.
+ */
+export const CAPTURE_DEVICE_TEST_NOT_READY_SENTENCE = 'The connection test of a registered camera is not ready.';
+
+const DEVICE_TEST_409_REASONS = Object.keys(CAPTURE_DEVICE_TEST_REFUSAL_SENTENCES).join(', ');
+const CAMERA_DEVICE_PARAM = {
+  name: 'id',
+  description: 'A registered camera of the capture devices, e.g. `CAM-01`. Never a candidate id of a camera search and never an address.',
+  pattern: HARDWARE_DEVICE_ID_PATTERN,
+} as const;
+
+export const CAPTURE_DEVICE_TEST_OPERATIONS = [
+  {
+    operationId: 'testCaptureDeviceConnection',
+    method: 'post',
+    path: CAPTURE_DEVICE_TEST_PATH,
+    tag: CoreApiTag.DEVICE,
+    mode: CoreApiMode.SIMULATED,
+    summary: 'Test the connection to a registered camera with its stored credential',
+    description: [
+      'One read-only connection attempt against the **registered** camera in the path, with the credential the Core holds for it, inside the time limit of operation 95: authenticate, list the media profiles, look for a usable profile, then probe the stream. It changes no setting of the camera and nothing that is stored, and is never repeated without a new operator action.',
+      '**Web console only**, as operation 95 (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row. Idle only: with a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.',
+      '**No body.** No credential, address, host, port, URL, path or profile member exists: the device is the id in the path, the credential is the stored one, and the address is the stored one **under the Core\'s destination rule for a stored camera** - a stored value is not trusted either. An address the rule refuses answers `409 INVALID_STATE` with `details.reason: CANDIDATE_NOT_TESTABLE`, before anything is read or sent.',
+      '**The stored credential is read once, for this one test, by the Core itself.** It is never returned, logged, put into an error or kept after the test. The read is audited by its reader: one CAPTURE_CREDENTIAL_REVEALED row (the device, `reason: CONNECTION_TEST`, the operator). The outcome is a second row, CAPTURE_DEVICE_CONNECTION_TESTED: the device id, the outcome, the adapter and its class, the count of usable profiles, and whether the lock-out guard closed - never the username, the secret, an address or a URL.',
+      '**A failed test is a `200` result, not an HTTP error**: the five outcomes of operation 95. `authenticated` is always true. The answer holds no device error text, no address and no credential member.',
+      `Refusals **before the credential is read** and before any request leaves the Core, with no audit row: \`404 NOT_FOUND\` for a device that is no registered camera; \`409 INVALID_STATE\` with \`details.reason\` \`CANDIDATE_NOT_TESTABLE\` (a development source, which has no stored credential, or a stored address the Core does not connect to) or \`CONNECTION_TEST_IN_PROGRESS\`; the bounds below.`,
+      '**Refusals after the reader of the stored credential was called.** The reader audits every call, so each of these has one CAPTURE_CREDENTIAL_REVEALED row although nothing was sent to the camera: `409 INVALID_STATE` with `details.reason: CREDENTIAL_REQUIRED` (no credential is stored for this camera - store one with operation 89) and `503 NOT_READY` with `details.reason: CREDENTIAL_STORE_NOT_READY` (the stored credential cannot be read). The outcome row then says `UNREACHABLE` with `unreachableReason: CREDENTIAL_NOT_READ`; a test the adapter refused before a request says `unreachableReason: NOT_SENT`. Without that member an `UNREACHABLE` row means that the camera was asked and did not answer.',
+      RATE_AND_READY(
+        '`CONNECTION_TEST_RATE_LIMITED` or `CONNECTION_TEST_LOCKOUT_GUARD`. **The lock-out guard is the one of operation 95**: refused credentials are counted per camera address, a typed and a stored one together, so a camera whose stored credential was refused is not asked again by this test or by a typed one until the window has passed',
+        '`DISCOVERY_NOT_READY` when the Core has no production camera adapter or the reader of the stored credential was not provided - **a Core whose capture is simulated, or that runs with development sources, always answers this**, after the idle lock and before the device is looked up, with no audit row - or `CREDENTIAL_STORE_NOT_READY` when the stored credential cannot be read',
+      ),
+      `${SIM_V2_NOTE} The simulator contacts nothing and holds no credential, so nothing can be tested: it answers what a Core server in simulated capture answers, \`503 NOT_READY\` with \`details.reason: DISCOVERY_NOT_READY\`, for every id - never a synthetic \`REACHABLE\`. It writes no audit row and changes no state. With a session open it answers \`409 CAPTURE_CONFIG_LOCKED\` first; on a tablet or phone it refuses with the same \`403\`.`,
+    ].join('\n\n'),
+    source: 'Task 4, blueprint row 146 (landed by row V3, the third contract step), operation 108; decisions C58, C62; security addendum 04 (W-6, AD-03 point 5, AD-12, AD-02 point 1) (not in the design book)',
+    pathParam: CAMERA_DEVICE_PARAM,
+    responses: {
+      200: { description: 'The outcome of the test. A failed test is a result, not an error. Never the credential, never an address.', schema: 'CaptureDeviceConnectionTest', services: CORE_SERVER_ONLY },
+      401: NOT_SIGNED_IN,
+      403: notPermitted(Permission.CAPTURE_CONFIG, WEB_CONSOLE_ONLY_REFUSED),
+      404: { description: 'The id names no registered camera (NOT_FOUND). Nothing is read and no request is sent to any device.', schema: 'ApiError', services: CORE_SERVER_ONLY },
+      409: {
+        description: `A session is open (CAPTURE_CONFIG_LOCKED; no audit row), or the camera cannot be tested (INVALID_STATE, \`details.reason\`: ${DEVICE_TEST_409_REASONS}). No request is sent to any device. For \`CREDENTIAL_REQUIRED\` the reader of the stored credential was called and found nothing: that call is audited (one CAPTURE_CREDENTIAL_REVEALED row). For every other reason the stored credential is not read.`,
+        schema: 'ApiError',
+      },
+      422: { description: 'The path parameter does not match its form (INVALID_INPUT). The refusal never quotes the input.', schema: 'ApiError', services: CORE_SERVER_ONLY },
+    },
+    access: CAPTURE_CREDENTIAL_ACCESS,
+    audit: { success: AuditType.CAPTURE_DEVICE_CONNECTION_TESTED, ...DENIED, also: [AuditType.CAPTURE_CREDENTIAL_REVEALED] },
+    services: CORE_SERVER_ONLY,
+  },
+] as const satisfies readonly CoreApiRegistryOperation[];
+
+const deviceTestRefusal = (summary: string, reason: CaptureDeviceTestRefusalReason) => refusal(summary, 'INVALID_STATE', CAPTURE_DEVICE_TEST_REFUSAL_SENTENCES[reason], { reason });
+
+export const CAPTURE_DEVICE_TEST_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
+  testCaptureDeviceConnection: {
+    pathParams: { id: 'CAM-01' },
+    responses: {
+      200: {
+        reachable: {
+          summary: 'The camera answered with its stored credential and has a usable profile',
+          description: 'Only the Core server answers this: the in-app simulator asks no camera and never says that one answered.',
+          value: {
+            deviceId: 'CAM-01',
+            outcome: CaptureConnectionOutcome.REACHABLE,
+            authenticated: true,
+            testedAt: EXAMPLE_INSTANT_MS,
+            usableProfileCount: 1,
+            failedAttemptsRemaining: 2,
+          } satisfies CaptureDeviceConnectionTest,
+        },
+        authenticationFailed: {
+          summary: 'The camera refused the stored credential: a result, not an error',
+          description: 'Only the Core server answers this: the in-app simulator holds no credential.',
+          value: {
+            deviceId: 'CAM-01',
+            outcome: CaptureConnectionOutcome.AUTHENTICATION_FAILED,
+            authenticated: true,
+            testedAt: EXAMPLE_INSTANT_MS,
+            usableProfileCount: 0,
+            failedAttemptsRemaining: 1,
+          } satisfies CaptureDeviceConnectionTest,
+        },
+      },
+      401: SIGNED_OUT,
+      403: { ...deniedExamples('testCaptureDeviceConnection', 'CAPTURE_CONFIG', 'INVESTIGATOR'), webConsoleOnly: webConsoleOnly('testCaptureDeviceConnection') },
+      404: {
+        notFound: {
+          summary: 'No such registered camera',
+          description: 'Only the Core server answers this: the in-app simulator answers `503 NOT_READY` before a device is looked up.',
+          value: apiErrorExample('NOT_FOUND', 'The capture registry has no such device.'),
+        },
+      },
+      409: {
+        locked: LOCKED,
+        nothingStored: deviceTestRefusal('No credential is stored for this camera', CaptureDiscoveryReason.CREDENTIAL_REQUIRED),
+        notTestable: deviceTestRefusal('A development source, or a stored address the Core does not connect to', CaptureDiscoveryReason.CANDIDATE_NOT_TESTABLE),
+        inProgress: deviceTestRefusal('Another connection test is running', CaptureDiscoveryReason.CONNECTION_TEST_IN_PROGRESS),
+      },
+      422: { invalidPathParameter: ERROR_EXAMPLES.invalidPathParameter },
     },
   },
 };

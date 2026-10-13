@@ -20,6 +20,7 @@ import { Route as AppSecurityAuditRouteImport } from './routes/_app/security-aud
 import { Route as AppStackCheckRouteImport } from './routes/_app/stack-check'
 import { Route as AppStorageRouteImport } from './routes/_app/storage'
 import { Route as AppSystemRouteImport } from './routes/_app/system'
+import { Route as AppAdminCommissioningRouteImport } from './routes/_app/admin/commissioning'
 import { Route as AppAdminDevicesRouteImport } from './routes/_app/admin/devices'
 import { Route as AppAdminUsersRouteImport } from './routes/_app/admin/users'
 import { Route as AppDeveloperApiRouteImport } from './routes/_app/developer/api'
@@ -83,6 +84,11 @@ const AppSystemRoute = AppSystemRouteImport.update({
   path: '/system',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAdminCommissioningRoute = AppAdminCommissioningRouteImport.update({
+  id: '/admin/commissioning',
+  path: '/admin/commissioning',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppAdminDevicesRoute = AppAdminDevicesRouteImport.update({
   id: '/admin/devices',
   path: '/admin/devices',
@@ -135,6 +141,7 @@ export interface FileRoutesByFullPath {
   '/stack-check': typeof AppStackCheckRoute
   '/storage': typeof AppStorageRoute
   '/system': typeof AppSystemRoute
+  '/admin/commissioning': typeof AppAdminCommissioningRoute
   '/admin/devices': typeof AppAdminDevicesRoute
   '/admin/users': typeof AppAdminUsersRoute
   '/developer/api': typeof AppDeveloperApiRoute
@@ -155,6 +162,7 @@ export interface FileRoutesByTo {
   '/storage': typeof AppStorageRoute
   '/system': typeof AppSystemRoute
   '/': typeof AppIndexRoute
+  '/admin/commissioning': typeof AppAdminCommissioningRoute
   '/admin/devices': typeof AppAdminDevicesRoute
   '/admin/users': typeof AppAdminUsersRoute
   '/developer/api': typeof AppDeveloperApiRoute
@@ -177,6 +185,7 @@ export interface FileRoutesById {
   '/_app/storage': typeof AppStorageRoute
   '/_app/system': typeof AppSystemRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/admin/commissioning': typeof AppAdminCommissioningRoute
   '/_app/admin/devices': typeof AppAdminDevicesRoute
   '/_app/admin/users': typeof AppAdminUsersRoute
   '/_app/developer/api': typeof AppDeveloperApiRoute
@@ -199,6 +208,7 @@ export interface FileRouteTypes {
     | '/stack-check'
     | '/storage'
     | '/system'
+    | '/admin/commissioning'
     | '/admin/devices'
     | '/admin/users'
     | '/developer/api'
@@ -219,6 +229,7 @@ export interface FileRouteTypes {
     | '/storage'
     | '/system'
     | '/'
+    | '/admin/commissioning'
     | '/admin/devices'
     | '/admin/users'
     | '/developer/api'
@@ -240,6 +251,7 @@ export interface FileRouteTypes {
     | '/_app/storage'
     | '/_app/system'
     | '/_app/'
+    | '/_app/admin/commissioning'
     | '/_app/admin/devices'
     | '/_app/admin/users'
     | '/_app/developer/api'
@@ -334,6 +346,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSystemRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/admin/commissioning': {
+      id: '/_app/admin/commissioning'
+      path: '/admin/commissioning'
+      fullPath: '/admin/commissioning'
+      preLoaderRoute: typeof AppAdminCommissioningRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/admin/devices': {
       id: '/_app/admin/devices'
       path: '/admin/devices'
@@ -403,6 +422,7 @@ interface AppRouteChildren {
   AppStorageRoute: typeof AppStorageRoute
   AppSystemRoute: typeof AppSystemRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppAdminCommissioningRoute: typeof AppAdminCommissioningRoute
   AppAdminDevicesRoute: typeof AppAdminDevicesRoute
   AppAdminUsersRoute: typeof AppAdminUsersRoute
   AppDeveloperApiRoute: typeof AppDeveloperApiRoute
@@ -423,6 +443,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppStorageRoute: AppStorageRoute,
   AppSystemRoute: AppSystemRoute,
   AppIndexRoute: AppIndexRoute,
+  AppAdminCommissioningRoute: AppAdminCommissioningRoute,
   AppAdminDevicesRoute: AppAdminDevicesRoute,
   AppAdminUsersRoute: AppAdminUsersRoute,
   AppDeveloperApiRoute: AppDeveloperApiRoute,

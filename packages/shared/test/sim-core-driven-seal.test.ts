@@ -14,6 +14,8 @@ import {
   FINALIZATION_ORDER,
   isCoreDrivenSeal,
   recordEvidenceVerificationTransition,
+  EVIDENCE_VERDICT_COMPROMISED_KEY_CUSTODY,
+  EVIDENCE_VERDICT_COMPROMISED_KEY_NOTICE,
   type CompleteSealInput,
   type SealingStepReport,
   type SessionCreateInput,
@@ -29,6 +31,7 @@ import {
 } from '../src/sim';
 import { EVIDENCE_SESSION_ANNOTATIONS_EXAMPLE } from '../src/api';
 import { EvidenceItemSchema, SessionNoteSchema } from '../src/api/state-slices';
+import { VERIFY_NOTICE } from '../src/evidence-verify';
 import { en } from '../src/i18n';
 import * as sessionFaultBed from './support/session-fault-bed';
 
@@ -341,6 +344,38 @@ describe('recordEvidenceVerification: a verdict the Core computed (D107 (1))', (
     expect(item?.verification).toEqual({ status: 'FAIL', at: at + 5 });
     expect(item?.custody.at(-1)).toMatchObject({ action: 'VERIFY_FAILED', detail: 'Mismatch: VIDEO-02 fragment 3' });
     expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'EVIDENCE_VERIFY_FAILED', details: { failedTracks: 'VIDEO-02', eventKind: 'TAMPER' } });
+  });
+
+  it('task 4 row V5 (C84 R-1; SX-09 (d)): a verdict formed under a signing key MARKED COMPROMISED is recorded AS SUCH - the pass is a WARNING row with the notice and a custody text, never a plain pass; the failure names the mark too; any other value of `notice` records nothing', () => {
+    const { h, evidenceId } = sealed();
+    const at = h.clock.now() + 1_000;
+    expect(EVIDENCE_VERDICT_COMPROMISED_KEY_NOTICE).toBe(VERIFY_NOTICE.SIGNED_BY_COMPROMISED_KEY);
+    const pass = { evidenceId, ok: true, at, manifestOk: true, signatureOk: true, failedTracks: [], detail: null, actorId: 'OPR-001', operationId: 'verifyEvidence' };
+    h.apply(recordEvidenceVerificationTransition(h.state(), at, { ...pass, notice: 'SIGNED_BY_COMPROMISED_KEY' }));
+    let item = h.state().evidence.find((entry) => entry.id === evidenceId);
+    expect(item?.verification).toEqual({ status: 'PASS', at });
+    expect(item?.custody.at(-1)).toEqual({ at, action: 'VERIFIED', actorId: 'OPR-001', detail: EVIDENCE_VERDICT_COMPROMISED_KEY_CUSTODY });
+    const row = h.state().audit.rows.at(-1);
+    expect(row).toMatchObject({ type: 'EVIDENCE_VERIFIED', severity: 'WARNING', evidenceId, details: { manifestOk: true, signatureOk: true, failedTracks: '', operationId: 'verifyEvidence', notice: 'SIGNED_BY_COMPROMISED_KEY' } });
+    expect(row?.message).toBe(`Evidence ${evidenceId} verified as the digest recorded at the seal: its signing key is marked compromised`);
+    expect(row?.message).not.toContain('every hash matches');
+    expect(h.state().events.at(-1)).toMatchObject({ type: 'EVIDENCE_VERIFIED', severity: 'WARNING', params: { evidenceId, notice: 'SIGNED_BY_COMPROMISED_KEY' } });
+
+    // The failure under the mark: a failure as every other, and the row names the mark.
+    h.apply(recordEvidenceVerificationTransition(h.state(), at + 5, { ...pass, ok: false, at: at + 5, manifestOk: false, detail: 'Mismatch: V-03', notice: 'SIGNED_BY_COMPROMISED_KEY' }));
+    item = h.state().evidence.find((entry) => entry.id === evidenceId);
+    expect(item?.custody.at(-1)).toEqual({ at: at + 5, action: 'VERIFY_FAILED', actorId: 'OPR-001', detail: 'Mismatch: V-03' });
+    expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'EVIDENCE_VERIFY_FAILED', severity: 'CRITICAL', details: { eventKind: 'TAMPER', notice: 'SIGNED_BY_COMPROMISED_KEY' } });
+
+    // CONTROLS: without the member, and with a value that is not the one code, the row is the plain one of before - byte for byte the same members.
+    for (const notice of [undefined, 'AUDIT_EXTRACT_NOT_SIGNED', '', 'signed_by_compromised_key']) {
+      h.apply(recordEvidenceVerificationTransition(h.state(), at + 10, { ...pass, at: at + 10, ...(notice === undefined ? {} : { notice }) }));
+      const plain = h.state().audit.rows.at(-1);
+      expect(plain?.details, String(notice)).toEqual({ manifestOk: true, signatureOk: true, failedTracks: '', operationId: 'verifyEvidence' });
+      expect([plain?.severity, plain?.message], String(notice)).toEqual(['INFO', `Evidence ${evidenceId} verified: every hash matches`]);
+      expect(h.state().evidence.find((entry) => entry.id === evidenceId)?.custody.at(-1)?.detail, String(notice)).toBeNull();
+      expect(h.state().events.at(-1), String(notice)).toMatchObject({ severity: 'SUCCESS', params: { evidenceId, failedTracks: '' } });
+    }
   });
 
   it('refuses an item that is not REAL (its verdict is the hosted action\'s) and an unknown item', () => {

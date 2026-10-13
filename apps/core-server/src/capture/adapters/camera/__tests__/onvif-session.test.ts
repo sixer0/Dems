@@ -14,6 +14,7 @@
 // 127.0.0.1, and a candidate with another host is only ever REFUSED before a request.
 // Fixture credentials are drawn at run time. EVERY RULE HAS ITS CONTROL.
 import { randomUUID } from 'node:crypto';
+import { Agent as HttpAgent } from 'node:http';
 import { inspect } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FAKE_ONVIF_ALLOWED_OPERATIONS, FAKE_ONVIF_HOST, FAKE_ONVIF_ODD_PROFILE_TOKEN, FAKE_ONVIF_TWO_SOURCE_PROFILES, createFakeOnvifStub, fakeOnvifProfileStreamUri, freeFakeOnvifPorts, type FakeOnvifStub, type FakeOnvifStubOptions } from '../../../../../test/support/fake-onvif-stub';
@@ -42,6 +43,8 @@ import { CaptureAdapterKind } from '../../kinds';
 import { ConnectionTestOutcome, type CameraCandidate } from '../../types';
 import { ONVIF_SESSION_LIMITS, ONVIF_SESSION_READS, OnvifTestReason, OnvifTestWarning, createOnvifConnectionTester, createOnvifStreamLocator, createOnvifTimeReader, type OnvifLocatorResult, type OnvifSessionResult } from '../onvif-session';
 import { connectionTargetOf } from '../connection-target';
+import { CameraPresence, createCameraWatch, type CameraWatchReport } from '../camera-watch';
+import type { StoredCameraAddressRule } from '../stored-address';
 
 // Two canaries, as the credential of the fixture account: neither is a word of any message.
 const ACCOUNT = { username: `cnryU${randomUUID().replaceAll('-', '')}`, secret: `cnryS${randomUUID().replaceAll('-', '')}` };
@@ -437,11 +440,28 @@ describe('M4-SEC-CONN-3 (SEC35-32, SEC35-33): a hostile device ends in a named o
       // (c) 3,000 nested elements where the clock answer should be.
       const deep = await startOdd(() => ({ kind: 'ANSWER', status: 200, body: soapEnvelope(`${'<a>'.repeat(3_000)}${'</a>'.repeat(3_000)}`) }));
       const third = await tester().test(candidateAt(deep.serviceUrl), sealCredential(ACCOUNT), never());
-      expect([ConnectionTestOutcome.UNREACHABLE, ConnectionTestOutcome.WRONG_PROFILE]).toContain(third.outcome);
-      expect(third.reason).not.toBeNull();
-      expect(third.credentialRequests).toBe(0);
+      // Review 060b note M-10 / section 7.4 (5), row T2: ONE outcome with ONE reason, not "any refusal". A clock
+      // answer that is no answer is "not an ONVIF device", the test ends at that first read (nothing further is
+      // asked of the device, by any read), and nothing of the account was sent or kept.
+      expect(third).toMatchObject({ outcome: ConnectionTestOutcome.UNREACHABLE, reason: OnvifTestReason.NOT_ONVIF, credentialRequests: 0, rejectedCredentialRequests: 0, profiles: [], usableProfiles: [] });
+      expect(third.reads).toEqual(['GetSystemDateAndTime']);
+      expect(deep.requests().map((request) => request.operation)).toEqual(['GetSystemDateAndTime']);
+      expect(deep.requests().filter((request) => request.authorization !== '' || request.token)).toEqual([]);
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 30));
       expect(uncaught).toEqual([]);
+      await deep.stop();
+      // CONTROLS of the name. (1) A small, shallow, well-formed body that holds no clock is named the same way: the
+      // name is "this read got no answer", whatever made the body useless. (2) The 3,000 elements side by side are
+      // the SAME bytes, not nested: longer than a clock answer may be, they end as the byte cap - so the nested body
+      // above was refused for its depth BEFORE its length was reached (were it not, it would read BYTE_CAP too).
+      const shallow = await startOdd(() => ({ kind: 'ANSWER', status: 200, body: soapEnvelope('<a></a>'.repeat(30)) }));
+      expect(await tester().test(candidateAt(shallow.serviceUrl), sealCredential(ACCOUNT), never())).toMatchObject({ outcome: ConnectionTestOutcome.UNREACHABLE, reason: OnvifTestReason.NOT_ONVIF, credentialRequests: 0 });
+      expect(shallow.requests().map((request) => request.operation)).toEqual(['GetSystemDateAndTime']);
+      await shallow.stop();
+      const flat = await startOdd(() => ({ kind: 'ANSWER', status: 200, body: soapEnvelope('<a></a>'.repeat(3_000)) }));
+      expect(await tester().test(candidateAt(flat.serviceUrl), sealCredential(ACCOUNT), never())).toMatchObject({ outcome: ConnectionTestOutcome.UNREACHABLE, reason: OnvifTestReason.BYTE_CAP, credentialRequests: 0 });
+      expect(flat.requests().map((request) => request.operation)).toEqual(['GetSystemDateAndTime']);
+      await flat.stop();
     } finally {
       process.off('uncaughtException', onUncaught);
     }
@@ -1075,10 +1095,393 @@ describe('task 4 integration pass I-7: the time read of a camera, without a cred
     expect(stub.requestLog()).toHaveLength(1);
   });
 
-  it('no credential is in its reach: the call takes a candidate and a signal, and the facade is the one frozen call', () => {
+  it('no credential is in its reach: the call takes a candidate, a signal and (row 143b) the address to connect from, and the facade is the one frozen call', () => {
     const facade = reader();
     expect(Object.keys(facade)).toEqual(['read']);
     expect(Object.isFrozen(facade)).toBe(true);
-    expect(facade.read).toHaveLength(2);
+    // Three parameters since row 143b: the third is the source address, a dotted literal - a credential still has no way in.
+    expect(facade.read).toHaveLength(3);
+  });
+});
+
+// Task 4 row 143b (S13-11 point 2; the SOURCE half of the destination rule): every request of the ONVIF session to a
+// STORED camera leaves from the camera-interface address the rule named. The three calls take it last.
+//
+// WHAT LOOPBACK SHOWS: (1) with the address this host holds on the fixture's network (127.0.0.1) every read works as
+// before; (2) with an address this host does NOT hold (192.0.2.1, a documentation address) NOTHING reaches the device -
+// 0 requests in the stub's log - and each call ends in its named "no answer"; (3) a text that is no source address is
+// refused before any request. WHAT IT CANNOT SHOW: that the address of a SECOND interface is the one a camera sees, and
+// that a camera reachable only through the other interface is not reached: this Mac's doubles have one network.
+describe('row 143b: the requests of the session leave from the source address handed in, or do not leave', () => {
+  const NOT_THIS_HOSTS = '192.0.2.1';
+  const reader = (timers: CaptureTimers = manualTimers()) => createOnvifTimeReader({ timers });
+  const locator = (timers: CaptureTimers = manualTimers()) => createOnvifStreamLocator({ timers });
+
+  // Review 060b section 7.4 (3), row T2: on loopback a connection that was never given a local address arrives from
+  // 127.0.0.1 as well, so "it answered" passes with the source address dropped. What is asked here instead is THE
+  // CONNECTION REQUEST ITSELF: every connection an HTTP agent of this process makes while `run` runs is written down
+  // with the local address and the family it was asked with (the agent's own maker is wrapped and put back; the
+  // connection is then made as always). That the system honours a local address is the next case: 192.0.2.1 gets none.
+  const dialsOf = async (run: () => Promise<void>): Promise<Array<{ localAddress: unknown; family: unknown; port: unknown }>> => {
+    const dials: Array<{ localAddress: unknown; family: unknown; port: unknown }> = [];
+    const made = Reflect.get(HttpAgent.prototype, 'createConnection') as (this: unknown, options: Record<string, unknown>, callback?: unknown) => unknown;
+    expect(typeof made).toBe('function');
+    Reflect.set(HttpAgent.prototype, 'createConnection', function wrapped(this: unknown, options: Record<string, unknown>, callback?: unknown): unknown {
+      dials.push({ localAddress: 'localAddress' in options ? options.localAddress : 'NOT STATED', family: 'family' in options ? options.family : 'NOT STATED', port: Number(options.port) });
+      return made.call(this, options, callback);
+    });
+    try {
+      await run();
+    } finally {
+      Reflect.set(HttpAgent.prototype, 'createConnection', made);
+    }
+    return dials;
+  };
+
+  it('the address this host holds: the test, the locator read and the time read answer as they do without one (control)', async () => {
+    const stub = await startStub();
+    const candidate = candidateAt(stub.addresses().deviceServiceUrl);
+    const port = Number(new URL(stub.addresses().deviceServiceUrl).port);
+    const dials = await dialsOf(async () => {
+      expect(await tester().test(candidate, sealCredential(ACCOUNT), never(), FAKE_ONVIF_HOST)).toMatchObject({ outcome: ConnectionTestOutcome.REACHABLE, reason: null, rejectedCredentialRequests: 0 });
+      expect(await locator().locate(candidate, sealCredential(ACCOUNT), 'profile_1', never(), FAKE_ONVIF_HOST)).toMatchObject({ outcome: ConnectionTestOutcome.REACHABLE, locator: stub.addresses().streamUri });
+      expect(await reader().read(candidate, never(), FAKE_ONVIF_HOST)).toMatchObject({ answered: true });
+    });
+    // Every one of them reached the device: the stub saw the reads of all three.
+    expect(deviceRequests(stub).map((request) => request.operation).filter((operation) => operation === 'GetSystemDateAndTime')).toHaveLength(3);
+    expect(stub.violations()).toEqual([]);
+    // FROM THAT ADDRESS: one connection for every request the stub saw, and EVERY one was asked with the source
+    // address handed in as its local address, family 4. A session that drops the address states none: this fails.
+    expect(dials.length).toBeGreaterThanOrEqual(3);
+    expect(dials.length).toBe(stub.requestLog().length);
+    expect(dials.filter((dial) => dial.localAddress !== FAKE_ONVIF_HOST || dial.family !== 4 || dial.port !== port)).toEqual([]);
+    // CONTROL of the record: the same read with NO source address states no local address - so the one stated
+    // above is the session's own doing, and the record tells the two apart.
+    const plain = await dialsOf(async () => {
+      expect(await reader().read(candidate, never())).toMatchObject({ answered: true });
+    });
+    expect(plain).toEqual([{ localAddress: 'NOT STATED', family: 'NOT STATED', port }]);
+  });
+
+  it('an address this host does not hold: 0 requests reach the device - the test and the locator read are UNREACHABLE (NO_ANSWER), the time read is not answered; no credential travelled', async () => {
+    const stub = await startStub();
+    const candidate = candidateAt(stub.addresses().deviceServiceUrl);
+    const timers = manualTimers();
+    expect(await tester(timers).test(candidate, sealCredential(ACCOUNT), never(), NOT_THIS_HOSTS)).toMatchObject({ outcome: ConnectionTestOutcome.UNREACHABLE, reason: OnvifTestReason.NO_ANSWER, credentialRequests: 0, rejectedCredentialRequests: 0, profiles: [], usableProfiles: [] });
+    expect(await locator(timers).locate(candidate, sealCredential(ACCOUNT), 'profile_1', never(), NOT_THIS_HOSTS)).toMatchObject({ outcome: ConnectionTestOutcome.UNREACHABLE, reason: OnvifTestReason.NO_ANSWER, locator: null, credentialRequests: 0 });
+    expect(await reader(timers).read(candidate, never(), NOT_THIS_HOSTS)).toEqual({ answered: false, cameraUtcMs: null });
+    expect(stub.requestLog()).toEqual([]);
+    expect(timers.pending()).toBe(0);
+    // Control: the SAME stub, the same candidate, with no source address handed in: it is reached.
+    expect(await reader().read(candidate, never())).toMatchObject({ answered: true });
+    expect(stub.requestLog()).toHaveLength(1);
+  });
+
+  it('a text that is no source address is refused before any request by all three calls: never a dial without it', async () => {
+    const stub = await startStub();
+    const candidate = candidateAt(stub.addresses().deviceServiceUrl);
+    for (const notASource of ['', '0.0.0.0', 'localhost', 'camera-interface', '192.168.050.1', '127.0.0.1:0', ' 127.0.0.1', '224.0.0.1', '255.255.255.255', '::1', '3232248321']) {
+      await expect(tester().test(candidate, sealCredential(ACCOUNT), never(), notASource), notASource).rejects.toMatchObject({ code: CaptureAdapterRefusal.LOCATOR_INVALID });
+      await expect(locator().locate(candidate, sealCredential(ACCOUNT), 'profile_1', never(), notASource), notASource).rejects.toMatchObject({ code: CaptureAdapterRefusal.LOCATOR_INVALID });
+      await expect(reader().read(candidate, never(), notASource), notASource).rejects.toMatchObject({ code: CaptureAdapterRefusal.LOCATOR_INVALID });
+    }
+    for (const notAText of [null, 0, 2130706433, ['127.0.0.1'], { address: '127.0.0.1' }]) {
+      await expect(reader().read(candidate, never(), notAText as unknown as string)).rejects.toMatchObject({ code: CaptureAdapterRefusal.LOCATOR_INVALID });
+    }
+    expect(stub.requestLog()).toEqual([]);
+  });
+});
+
+// Task 4 row 143c (decision C65): THE THIRD DIAL of a stored camera - the camera watch's time read - through the REAL
+// time reader of this file against the fake stub. The rule of each case is a rule of THIS test (the stub lives on
+// loopback): it admits the stub's address and names the source address under test. The stub's per-request record is
+// the proof: a refusal is 0 requests.
+describe('row 143c: the camera watch reads the time from the source address its rule names, or sends nothing', () => {
+  const NOT_THIS_HOSTS = '192.0.2.1';
+  const admitFrom = (source: unknown): StoredCameraAddressRule => ((host: string) => (host === FAKE_ONVIF_HOST ? { allowed: true, destination: source === undefined ? { address: host } : { address: host, sourceAddress: source } } : { allowed: false, refusal: 'TEST_RULE_LOOPBACK_ONLY' })) as StoredCameraAddressRule;
+  const watchOf = (candidate: CameraCandidate, rule: StoredCameraAddressRule | undefined) => {
+    const reports: CameraWatchReport[] = [];
+    const timers = manualTimers();
+    const watch = createCameraWatch({ timers, now: () => Date.now(), reader: createOnvifTimeReader({ timers: manualTimers() }), candidate: async () => candidate, ...(rule === undefined ? {} : { storedAddress: rule }), report: (report) => reports.push(report) });
+    return { watch, reports, timers };
+  };
+  const outcomeOf = async (pending: Promise<unknown>): Promise<unknown> => pending.then((value) => value, (error: unknown) => error);
+
+  it('the address this host holds: `check`, `clockOffsetMs` and a heartbeat each reach the device with ONE clock read and no credential (control)', async () => {
+    const stub = await startStub();
+    const { watch, reports } = watchOf(candidateAt(stub.addresses().deviceServiceUrl), admitFrom(FAKE_ONVIF_HOST));
+    expect(await watch.check('CAM-01', never())).toMatchObject({ present: true });
+    expect(Math.abs(await watch.clockOffsetMs('CAM-01'))).toBeLessThan(5_000);
+    watch.watch('CAM-01');
+    await expect.poll(() => watch.presence('CAM-01')).toBe(CameraPresence.PRESENT);
+    watch.close();
+    expect(deviceRequests(stub).map((request) => request.operation)).toEqual(['GetSystemDateAndTime', 'GetSystemDateAndTime', 'GetSystemDateAndTime']);
+    expect(stub.requestLog().filter((request) => request.authPresent)).toEqual([]);
+    expect(stub.violations()).toEqual([]);
+    expect(reports).toEqual([]);
+  });
+
+  it('an address this host does not hold: 0 requests reach the device - `check` answers absent, the clock read is not answered, the heartbeat counts no answer', async () => {
+    const stub = await startStub();
+    const { watch, timers } = watchOf(candidateAt(stub.addresses().deviceServiceUrl), admitFrom(NOT_THIS_HOSTS));
+    expect(await watch.check('CAM-01', never())).toEqual({ present: false, clockOffsetMs: null, clockWithinBound: false });
+    expect(await outcomeOf(watch.clockOffsetMs('CAM-01'))).toMatchObject({ code: 'CAPTURE_CAMERA_CLOCK_NOT_ANSWERED' });
+    watch.watch('CAM-01');
+    // Two beats without an answer: the second is asked for by the interval timer of the first (the manual timers are fired here).
+    await expect
+      .poll(() => {
+        timers.fireAll();
+        return watch.presence('CAM-01');
+      })
+      .toBe(CameraPresence.ABSENT);
+    watch.close();
+    expect(stub.requestLog()).toEqual([]);
+  });
+
+  it('a rule that admits and names no source address, a source that is no address, and no rule at all: the read is refused by the named code and 0 requests are sent', async () => {
+    const stub = await startStub();
+    const candidate = candidateAt(stub.addresses().deviceServiceUrl);
+    for (const source of [undefined, null, '', '0.0.0.0', 'localhost', '127.0.0.1:0', '::1', 2130706433]) {
+      const { watch, reports } = watchOf(candidate, admitFrom(source));
+      expect(await outcomeOf(watch.check('CAM-01', never())), String(source)).toMatchObject({ name: 'CameraClockError', code: 'CAPTURE_CAMERA_CLOCK_ADDRESS_REFUSED' });
+      expect(await outcomeOf(watch.clockOffsetMs('CAM-01')), String(source)).toMatchObject({ code: 'CAPTURE_CAMERA_CLOCK_ADDRESS_REFUSED' });
+      watch.watch('CAM-01');
+      await expect.poll(() => reports.length).toBe(3);
+      expect(new Set(reports.map((report) => report.code))).toEqual(new Set(['CAMERA_WATCH_ADDRESS_REFUSED']));
+      expect(watch.presence('CAM-01')).not.toBe(CameraPresence.PRESENT);
+      watch.close();
+    }
+    const none = watchOf(candidate, undefined);
+    expect(await outcomeOf(none.watch.check('CAM-01', never()))).toMatchObject({ code: 'CAPTURE_CAMERA_CLOCK_ADDRESS_REFUSED' });
+    expect(stub.requestLog()).toEqual([]);
+    // Control: the same stub and candidate ARE reached by a watch whose rule names the held address.
+    const reached = watchOf(candidate, admitFrom(FAKE_ONVIF_HOST));
+    expect(await reached.watch.check('CAM-01', never())).toMatchObject({ present: true });
+    expect(stub.requestLog()).toHaveLength(1);
+  });
+});
+
+// ── Row B1 (decision C95; blocking finding B-01 of `verification/060b_m3_review_second_pass.md`) ──────────────
+// ONE reply inside the old 1 MiB cap held the event loop for 41.9 s: the package's namespace replacement is quadratic
+// for the five letters of a declaration repeated without an equals sign, and it is synchronous. Every reply is now
+// capped per read and scanned BEFORE the package is handed it (`../onvif-reply-guard.ts`; the scan's own cases stand
+// in `onvif-reply-guard.test.ts`). HERE: the review's reproducer as the reply of a device on loopback, through the
+// real package, with the wall time held.
+describe('row B1 / B-01: a hostile reply never reaches the package - the review\'s reproducer on loopback, in bounded time', () => {
+  const KIB = 1024;
+  /** The review's reproducer: the five letters and nothing else. */
+  const hostile = (kib: number): OddDeviceReply => ({ kind: 'ANSWER', status: 200, body: 'xmlns'.repeat((kib * KIB) / 5) });
+  /** The review measured 41.9 s at 1,000 KiB and 2.8 s at 256 KiB on this Mac. A bound the old behaviour cannot meet and a loaded host does not miss. */
+  const BOUND_MS = 5_000;
+  const timed = async <Result>(pending: Promise<Result>): Promise<{ readonly result: Result; readonly elapsedMs: number }> => {
+    const from = performance.now();
+    const result = await pending;
+    return { result, elapsedMs: performance.now() - from };
+  };
+  const locator = () => createOnvifStreamLocator({ timers: manualTimers() });
+  const reader = () => createOnvifTimeReader({ timers: manualTimers() });
+  const padded = (reply: OddDeviceReply, bytes: number): OddDeviceReply => (reply.kind === 'ANSWER' ? { ...reply, body: reply.body.replace('</s:Body>', `<!--${'x'.repeat(Math.max(0, bytes - Buffer.byteLength(reply.body) - 7))}--></s:Body>`) } : reply);
+
+  it('the reproducer as the FIRST reply, at the size of the old cap and at the size of the new one: all three facades end by name within the bound, after ONE request', async () => {
+    for (const kib of [1_000, 256, 15]) {
+      const device = await startOdd(() => hostile(kib));
+      const candidate = candidateAt(device.serviceUrl);
+
+      const tested = await timed(tester().test(candidate, sealCredential(ACCOUNT), never()));
+      expect(tested.result, `${kib} KiB`).toEqual({
+        outcome: ConnectionTestOutcome.UNREACHABLE,
+        authenticated: true,
+        usableProfiles: [],
+        profiles: [],
+        reason: OnvifTestReason.NOT_ONVIF,
+        warnings: [],
+        reads: ['GetSystemDateAndTime'],
+        credentialRequests: 0,
+        rejectedCredentialRequests: 0,
+      });
+      expect(tested.elapsedMs, `${kib} KiB, the connection test`).toBeLessThan(BOUND_MS);
+      // Nothing further was sent: not the package's own second clock read, not the service read.
+      expect(device.requests().map((request) => request.operation)).toEqual(['GetSystemDateAndTime']);
+
+      device.reset();
+      const located = await timed(locator().locate(candidate, sealCredential(ACCOUNT), 'profile_1', never()));
+      expect(located.result, `${kib} KiB`).toMatchObject({ outcome: ConnectionTestOutcome.UNREACHABLE, reason: OnvifTestReason.NOT_ONVIF, locator: null, reads: ['GetSystemDateAndTime'], credentialRequests: 0 });
+      expect(located.elapsedMs, `${kib} KiB, the locator read`).toBeLessThan(BOUND_MS);
+
+      const read = await timed(reader().read(candidate, never()));
+      expect(read.result, `${kib} KiB`).toEqual({ answered: false, cameraUtcMs: null });
+      expect(read.elapsedMs, `${kib} KiB, the time read`).toBeLessThan(BOUND_MS);
+      expect(device.requests().map((request) => request.operation)).toEqual(['GetSystemDateAndTime', 'GetSystemDateAndTime']);
+      await device.stop();
+    }
+  });
+
+  it('the reproducer as a LATER reply: the read it answers ends as a reply that is no answer does, and no further read is sent (control: a reply that is merely cut IS followed by the next read)', async () => {
+    const scripted = (hostileAt: string, reply: OddDeviceReply = hostile(60)) =>
+      startOdd((request, _index, base) => {
+        if (request.operation === hostileAt) return reply;
+        if (request.operation === 'GetSystemDateAndTime') return dateAnswer();
+        if (request.operation === 'GetServices') return servicesAnswer(base);
+        if (request.operation === 'GetCapabilities') return capabilitiesAnswer(base);
+        if (request.operation === 'GetProfiles') return profilesAnswer([{ token: 'main', encoding: 'H264' }]);
+        return streamAnswer(`rtsp://${ODD_DEVICE_HOST}:554/main`);
+      });
+    const cases: readonly [string, Partial<OnvifSessionResult>, readonly string[]][] = [
+      ['GetServices', { outcome: ConnectionTestOutcome.UNREACHABLE, reason: OnvifTestReason.NOT_ONVIF }, ['GetSystemDateAndTime', 'GetServices']],
+      ['GetProfiles', { outcome: ConnectionTestOutcome.WRONG_PROFILE, reason: OnvifTestReason.PROFILE_ANSWER_INVALID }, ['GetSystemDateAndTime', 'GetServices', 'GetProfiles']],
+      ['GetStreamUri', { outcome: ConnectionTestOutcome.WRONG_PROFILE, reason: OnvifTestReason.STREAM_ADDRESS_MISSING }, ['GetSystemDateAndTime', 'GetServices', 'GetProfiles', 'GetStreamUri']],
+    ];
+    for (const [hostileAt, expected, sent] of cases) {
+      const device = await scripted(hostileAt);
+      const tested = await timed(tester().test(candidateAt(device.serviceUrl), sealCredential(ACCOUNT), never()));
+      expect(tested.result, hostileAt).toMatchObject({ ...expected, usableProfiles: [], profiles: [], reads: sent });
+      expect(tested.elapsedMs, hostileAt).toBeLessThan(BOUND_MS);
+      expect(device.requests().map((request) => request.operation), hostileAt).toEqual(sent);
+      await device.stop();
+    }
+    // Control: the whole course on this device, and the fall-back read after a service answer that is only cut in the middle.
+    const whole = await scripted('-');
+    expect(await tester().test(candidateAt(whole.serviceUrl), sealCredential(ACCOUNT), never())).toMatchObject({ outcome: ConnectionTestOutcome.REACHABLE, usableProfiles: ['main'] });
+    await whole.stop();
+    const cutShort = await scripted('GetServices', { kind: 'ANSWER', status: 200, body: soapEnvelope('<tds:GetServicesResponse><tds:Service><tds:Name').slice(0, -24) });
+    expect(await tester().test(candidateAt(cutShort.serviceUrl), sealCredential(ACCOUNT), never())).toMatchObject({ outcome: ConnectionTestOutcome.REACHABLE });
+    expect(cutShort.requests().map((request) => request.operation)).toContain('GetCapabilities');
+  });
+
+  it('the other refused shapes end the same way: a document type with an entity, nesting above the bound, a second processing instruction; nothing of the reply is in the result', async () => {
+    const canary = `cnryR${randomUUID().replaceAll('-', '')}`;
+    const bodies = [
+      `<?xml version="1.0"?><!DOCTYPE a [<!ENTITY e "${canary}">]>${soapEnvelope(`<a>&e;${canary}</a>`).replace(/^<\?xml[^>]*\?>/, '')}`,
+      soapEnvelope(`${`<${canary}>`.repeat(40)}${`</${canary}>`.repeat(40)}`),
+      soapEnvelope(`<?${canary} x?><a/>`),
+      `${canary}${'xmlns'.repeat(200)}`,
+    ];
+    for (const body of bodies) {
+      const device = await startOdd(() => ({ kind: 'ANSWER', status: 200, body }));
+      const result = await tester().test(candidateAt(device.serviceUrl), sealCredential(ACCOUNT), never());
+      expect(result).toMatchObject({ outcome: ConnectionTestOutcome.UNREACHABLE, reason: OnvifTestReason.NOT_ONVIF, reads: ['GetSystemDateAndTime'] });
+      expect(`${JSON.stringify(result)}\n${inspect(result, { depth: 8, showHidden: true, getters: true })}`).not.toContain(canary);
+      expect(device.requests()).toHaveLength(1);
+      await device.stop();
+    }
+  });
+
+  it('the cap of a reply is its read\'s: a well-formed clock answer above 16 KiB and a profile list above 128 KiB end as the byte cap does (control: each just under its cap is read)', async () => {
+    const overClock = await startOdd(() => padded(dateAnswer(), 17 * KIB));
+    expect(await tester().test(candidateAt(overClock.serviceUrl), sealCredential(ACCOUNT), never())).toMatchObject({ outcome: ConnectionTestOutcome.UNREACHABLE, reason: OnvifTestReason.BYTE_CAP, reads: ['GetSystemDateAndTime'] });
+    expect(await reader().read(candidateAt(overClock.serviceUrl), never())).toEqual({ answered: false, cameraUtcMs: null });
+    await overClock.stop();
+    const underClock = await startOdd(() => padded(dateAnswer(new Date(Date.UTC(2026, 9, 13, 1, 2, 3))), 15 * KIB));
+    expect(await reader().read(candidateAt(underClock.serviceUrl), never())).toEqual({ answered: true, cameraUtcMs: Date.UTC(2026, 9, 13, 1, 2, 3) });
+    await underClock.stop();
+
+    const profilesOf = (bytes: number) =>
+      startOdd((request, _index, base) => {
+        if (request.operation === 'GetSystemDateAndTime') return dateAnswer();
+        if (request.operation === 'GetServices') return servicesAnswer(base);
+        if (request.operation === 'GetProfiles') return padded(profilesAnswer([{ token: 'main', encoding: 'H264' }]), bytes);
+        return streamAnswer(`rtsp://${ODD_DEVICE_HOST}:554/main`);
+      });
+    const over = await profilesOf(129 * KIB);
+    expect(await tester().test(candidateAt(over.serviceUrl), sealCredential(ACCOUNT), never())).toMatchObject({ outcome: ConnectionTestOutcome.UNREACHABLE, reason: OnvifTestReason.BYTE_CAP, reads: ['GetSystemDateAndTime', 'GetServices', 'GetProfiles'] });
+    await over.stop();
+    // 127 KiB: above the cap of every other read, under its own.
+    const under = await profilesOf(127 * KIB);
+    expect(await tester().test(candidateAt(under.serviceUrl), sealCredential(ACCOUNT), never())).toMatchObject({ outcome: ConnectionTestOutcome.REACHABLE, usableProfiles: ['main'], reason: null });
+  });
+
+  it('the sweep, through the real package: a profile answer the scan ADMITS costs a bounded time at every size up to its cap - the whole test of three requests stays inside the budget', async () => {
+    /** The budget of one whole connection test here (three requests on loopback and the parse of the admitted reply). Measured: 6 to 40 ms at 127 KiB on a host at load 13 to 18. */
+    const BUDGET_MS = 1_000;
+    const fill = (unit: string, length: number): string => unit.repeat(Math.ceil(length / unit.length)).slice(0, length);
+    const shapes: Readonly<Record<string, (bytes: number) => string>> = {
+      // The most the bounds leave the replacement: nine occurrences share one equals sign and the value runs to its line end.
+      'the worst admitted namespace shape': (bytes) => fill(`${'xmlns'.repeat(9)}aaa="${'b'.repeat(511)}\n`, bytes),
+      'elements up to the element bound': (bytes) => soapEnvelope(`<trt:GetProfilesResponse>${fill('<tt:a><tt:b>1</tt:b><tt:c>x</tt:c></tt:a>', Math.min(bytes - 600, 2_500 * 41)).replace(/<[^>]*$/, '')}</trt:GetProfilesResponse>`),
+      'entities and text': (bytes) => soapEnvelope(`<trt:GetProfilesResponse><trt:Profiles token="main"><tt:Name>${fill('&amp;&lt;1 ', bytes - 600).replace(/&[a-z]*$/, '')}</tt:Name></trt:Profiles></trt:GetProfilesResponse>`),
+    };
+    for (const [name, make] of Object.entries(shapes)) {
+      for (const kib of [16, 32, 64, 127]) {
+        const body = make(kib * KIB);
+        const device = await startOdd((request, _index, base) => {
+          if (request.operation === 'GetSystemDateAndTime') return dateAnswer();
+          if (request.operation === 'GetServices') return servicesAnswer(base);
+          return { kind: 'ANSWER', status: 200, body };
+        });
+        const tested = await timed(tester().test(candidateAt(device.serviceUrl), sealCredential(ACCOUNT), never()));
+        // Admitted (not the byte cap, three reads made), and judged by the package: no profile of it is usable.
+        expect(tested.result, `${name}, ${kib} KiB`).toMatchObject({ outcome: ConnectionTestOutcome.WRONG_PROFILE, reads: ['GetSystemDateAndTime', 'GetServices', 'GetProfiles'] });
+        expect([OnvifTestReason.PROFILE_ANSWER_INVALID, OnvifTestReason.NO_USABLE_PROFILE]).toContain(tested.result.reason);
+        expect(tested.elapsedMs, `${name}, ${kib} KiB`).toBeLessThan(BUDGET_MS);
+        await device.stop();
+      }
+    }
+  });
+});
+
+// ── Row T3 (decision C100 (2): "the package's `WWW-Authenticate` parse was NOT measured for the same quadratic shape -
+// a header a device controls") ─────────────────────────────────────────────────────────────────────────────────────
+// MEASURED (`.cache/task4-t3/header_parse.cjs`, the package's own functions called as this file's wrapper calls them;
+// record `docs/.../test/t3_mutation_and_ports.md`): the package's parse of one challenge is linear for commas, quotes,
+// an unterminated quote, repeated `nonce=` and repeated scheme words, and QUADRATIC for one shape - a run of spaces
+// before a quoted value with a tail (its part expression walks back): 0.86 ms at 2,048 characters, 53.8 ms at 16,000,
+// the largest value Node's HTTP parser lets through (the whole head is held to `http.maxHeaderSize`, 16,384 bytes).
+// THE BOUND EXISTS ALREADY: `digestChallengeAllowed` of the connection file hands the package no challenge above 2,048
+// characters, so the worst a device can cause is under 1.1 ms a challenge. NO TEST HELD THAT BOUND: this file passed 62
+// of 62 with ` || challenge.length > 2_048` deleted. The case below fails without it. No product line was added.
+describe('row T3 / C100 (2): a Digest challenge above 2,048 characters never reaches the package\'s parse', () => {
+  it('2,049 characters: `SCHEME_NOT_ALLOWED`, 0 requests carried the credential, the package\'s digest function was not reached; 2,048 is answered (control); the quadratic shape at the largest head Node admits is refused the same way, in the time of a refusal', async () => {
+    const challenge = { text: '' };
+    const device = await startOdd((request, _index, base) => {
+      if (request.operation === 'GetSystemDateAndTime') return dateAnswer();
+      if (request.operation === 'GetServices') return servicesAnswer(base);
+      return notAuthorizedFault(401, { 'WWW-Authenticate': challenge.text });
+    });
+    const candidate = candidateAt(device.serviceUrl);
+    const carried = (): string[] => device.requests().map((request) => (request.authorization === '' ? 'none' : (request.authorization.split(' ')[0] ?? '?')));
+    // How often the PACKAGE'S own answer to a challenge - the function that parses it - was reached. The connection
+    // file reads it from the package's prototype at each exchange; it is wrapped here and put back.
+    const { default: cam } = await import('onvif/lib/cam.js');
+    const methods = cam.Cam.prototype as unknown as Record<string, (this: unknown, ...parts: unknown[]) => unknown>;
+    const packageDigest = methods['digestAuth'];
+    if (packageDigest === undefined) throw new Error('fixture: the package has no digest method');
+    let parsed = 0;
+    methods['digestAuth'] = function counted(this: unknown, ...parts: unknown[]): unknown {
+      parsed += 1;
+      return packageDigest.apply(this, parts);
+    };
+    try {
+      /** A well-formed challenge of exactly `length` characters: its opaque value is the filler. */
+      const wellFormed = (length: number): string => {
+        const head = 'Digest realm="odd", nonce="00112233445566778899aabbccddeeff", qop="auth", opaque="';
+        return `${head}${'o'.repeat(length - head.length - 1)}"`;
+      };
+      // CONTROL: at the bound the challenge is answered - ONE request carried the credential, and the device refused it.
+      challenge.text = wellFormed(2_048);
+      expect(challenge.text.length).toBe(2_048);
+      expect(await tester().test(candidate, sealCredential(ACCOUNT), never())).toMatchObject({ outcome: ConnectionTestOutcome.AUTHENTICATION_FAILED, credentialRequests: 1, rejectedCredentialRequests: 1 });
+      expect(carried().filter((scheme) => scheme !== 'none')).toEqual(['Digest']);
+      expect(parsed).toBe(1);
+
+      // One character more: not answered, and the package's parse is not reached.
+      device.reset();
+      challenge.text = wellFormed(2_049);
+      expect(await tester().test(candidate, sealCredential(ACCOUNT), never())).toMatchObject({ outcome: ConnectionTestOutcome.AUTHENTICATION_FAILED, reason: OnvifTestReason.SCHEME_NOT_ALLOWED, credentialRequests: 0, rejectedCredentialRequests: 0 });
+      expect(carried().filter((scheme) => scheme !== 'none')).toEqual([]);
+      expect(parsed).toBe(1);
+
+      // THE QUADRATIC SHAPE at the largest size the HTTP parser lets through: refused the same way. The time is that
+      // of a refusal (the three reads of a test on loopback), far from the 53.8 ms the package alone takes over it.
+      device.reset();
+      challenge.text = `Digest a=${' '.repeat(16_000 - 13)}"x"y`;
+      expect(challenge.text.length).toBe(16_000);
+      const from = performance.now();
+      expect(await tester().test(candidate, sealCredential(ACCOUNT), never())).toMatchObject({ outcome: ConnectionTestOutcome.AUTHENTICATION_FAILED, reason: OnvifTestReason.SCHEME_NOT_ALLOWED, credentialRequests: 0 });
+      expect(performance.now() - from).toBeLessThan(2_000);
+      expect(carried().filter((scheme) => scheme !== 'none')).toEqual([]);
+      expect(parsed).toBe(1);
+    } finally {
+      methods['digestAuth'] = packageDigest;
+    }
   });
 });

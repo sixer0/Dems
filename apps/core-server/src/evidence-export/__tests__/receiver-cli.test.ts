@@ -14,7 +14,7 @@ import { buildPackage, removeScratch, scratch, type BuiltPackage } from '../../e
 import { parseExportManifest } from '../export-manifest';
 import { exportPackage, type ExportOutcome } from '../package-export';
 import { systemUnzip } from '../../../cli/verify-export';
-import { RECEIVER_EXIT, RECEIVER_USAGE, readReceiverArguments, runReceiverCommand } from '../receiver-cli';
+import { RECEIVER_EXIT, RECEIVER_RESULT_KEY_REPORTED, RECEIVER_USAGE, readReceiverArguments, runReceiverCommand } from '../receiver-cli';
 import { portsOf, requestFacts } from './support';
 
 afterEach(removeScratch);
@@ -132,5 +132,66 @@ describe('G94-03: the download is ONE self-contained archive, and the receiver c
     expect(noArchive.status).toBe(RECEIVER_EXIT.FAILED);
     expect(noArchive.out.at(-1)).toBe('RESULT: FAIL');
     expect(existsSync(join(folder, 'text.zip'))).toBe(true);
+  });
+});
+
+// Task 4 row V5 (decision C84, caution R-2 of security review 230; SX-09 (d)): A RECEIVER CAN LEARN OF A MARK. The
+// fingerprints of certificates whose key was marked compromised are handed to the command out of band, as
+// `--compromised <certificate sha256>` (repeatable). The key of these cases is the builder's throw-away key, made in
+// memory; a fingerprint is the SHA-256 of a PUBLIC certificate. Nothing is written outside the scratch folders.
+describe('row V5: the receiver\'s command is told the marked fingerprints (`--compromised`)', () => {
+  it('the option is read beside the others; without it the parsed command is the one of before, member for member', () => {
+    const A = 'ab'.repeat(32);
+    const B = 'cd'.repeat(32);
+    expect(readReceiverArguments(['a.zip', '--trust', A])).toEqual({ archive: 'a.zip', sha256: null, trusted: [A] });
+    expect(readReceiverArguments(['a.zip', '--compromised', A.toUpperCase(), '--trust', B, '--compromised', B])).toEqual({ archive: 'a.zip', sha256: null, trusted: [B], compromised: [A, B] });
+    for (const argv of [['a.zip', '--compromised'], ['a.zip', '--compromised', 'xyz'], ['a.zip', '--compromised', A.slice(2)]]) expect(readReceiverArguments(argv)).toBeNull();
+    expect(RECEIVER_USAGE).toContain('[--compromised <certificate sha256>]...');
+    expect(RECEIVER_EXIT).toEqual({ OK: 0, FAILED: 1, NOT_RUN: 2, KEY_REPORTED_COMPROMISED: 3 });
+  });
+
+  it('an export under a listed certificate: every check but X-05 passes, the verdict is NOT A PASS in the words of the state, exit 3 - never "PASS", never a tamper finding; a list that names another certificate changes nothing', async () => {
+    const { archive, built } = await download();
+    const fingerprint = built.signer.certificate.sha256;
+    // CONTROL - the same archive without the option: the output of before.
+    const plain = await run([archive, '--trust', fingerprint], '/');
+    expect([plain.status, plain.out.at(-1)]).toEqual([RECEIVER_EXIT.OK, 'RESULT: PASS']);
+    expect(plain.out.some((line) => /compromised/i.test(line))).toBe(false);
+
+    // The download's ONE key signed the seal, the revision AND the export: with it in the list nothing attests anything.
+    const told = await run([archive, '--trust', fingerprint, '--compromised', fingerprint], '/');
+    expect(told.err).toEqual([]);
+    expect(told.status).toBe(RECEIVER_EXIT.KEY_REPORTED_COMPROMISED);
+    expect(told.out.at(-1)).toBe(RECEIVER_RESULT_KEY_REPORTED);
+    expect(told.out.at(-1)).toBe('RESULT: NOT A PASS - signature valid, key reported compromised by the list supplied');
+    expect(told.out.filter((line) => /^RESULT: PASS/.test(line))).toEqual([]);
+    expect(checks(told.out).filter((line) => line.endsWith('FAIL'))).toEqual(['X-02  FAIL', 'X-05  FAIL']);
+    expect(told.out.find((line) => line.startsWith('X-02'))).toBe('X-02  FAIL  Export signature: EXPORT_CERTIFICATE_KEY_COMPROMISED');
+    expect(told.out.find((line) => line.startsWith('X-05'))).toBe('X-05  FAIL  Sealed manifest, seal and transcript: V-11:FAIL:REVISION_CERTIFICATE_KEY_COMPROMISED, V-13:FAIL:CERTIFICATE_KEY_COMPROMISED');
+    expect(told.out.find((line) => line.startsWith('marked fingerprints supplied'))).toContain('a certificate this export rests on is in the list');
+    // A receiver who ALSO took the fingerprint out of his trust list (the advice until this option existed): the same state, the mark named.
+    const removed = await run([archive, '--trust', '0'.repeat(64), '--compromised', fingerprint], '/');
+    expect(removed.status).toBe(RECEIVER_EXIT.FAILED);
+    expect(removed.out.find((line) => line.startsWith('X-05'))).toContain('V-13:FAIL:CERTIFICATE_KEY_COMPROMISED');
+    expect(removed.out.find((line) => line.startsWith('X-02'))).toContain('EXPORT_CERTIFICATE_NOT_TRUSTED');
+    expect(removed.out.at(-1)).toBe('RESULT: FAIL');
+
+    // A list that names ANOTHER certificate: a plain pass, and the run says that the list reported nothing.
+    const other = await run([archive, '--trust', fingerprint, '--compromised', 'ab'.repeat(32)], '/');
+    expect([other.status, other.out.at(-1)]).toEqual([RECEIVER_EXIT.OK, 'RESULT: PASS']);
+    expect(other.out.filter((line) => line.startsWith('X-0'))).toEqual(plain.out.filter((line) => line.startsWith('X-0')));
+    expect(other.out.find((line) => line.startsWith('marked fingerprints supplied'))).toContain('no certificate this export rests on is reported by the list');
+  });
+
+  it('a TAMPERED export under a listed certificate is a FAILURE (exit 1), not the state: the mark never hides a tamper finding', async () => {
+    const { archive, built } = await download();
+    const bytes = readFileSync(archive);
+    const at = bytes.indexOf(Buffer.from('fragments/VIDEO-02.mp4')) + 22 + 20 + built.fragment('VIDEO-02', 2).byteOffset + 9;
+    bytes[at] = (bytes[at] ?? 0) ^ 0x01;
+    writeFileSync(archive, bytes);
+    const result = await run([archive, '--compromised', built.signer.certificate.sha256], '/');
+    expect(result.status).toBe(RECEIVER_EXIT.FAILED);
+    expect(result.out.at(-1)).toBe('RESULT: FAIL');
+    expect(result.out.find((line) => line.startsWith('X-06'))).toContain('PLAINTEXT_HASH_MISMATCH:VIDEO-02');
   });
 });

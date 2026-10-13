@@ -54,6 +54,7 @@ import {
 import { DeviceSourceMarks } from './source-badge'
 import { useRealCaptureCore } from './source-class'
 import { StatusChip, StatusDot } from './status-chip'
+import { useStatedFormat } from './stream-facts'
 
 type DrawerTab = 'overview' | 'health' | 'log'
 
@@ -225,6 +226,10 @@ function CameraOverview({ deviceId }: { deviceId: 'CAM-01' | 'CAM-02' }) {
   // the format, the bitrate and the PoE port are the simulator's camera record - the source behind the track may be a generated one.
   const realCapture = useRealCaptureCore()
   const notReported = t('common.platformNotReported.value')
+  // Task 4 row W4 (review 060c R-04): on a Core in real capture the format is the stored stream statement of the track's
+  // selector line - "Not stated" where it names none - or the camera's fault where the Core reports one (`stream-facts.ts`).
+  // The model, the firmware, the bitrate and the PoE port have no statement of the Core: "Not reported", as before.
+  const stated = useStatedFormat(trackId, 'line')
   if (!camera) return null
   return (
     <Facts
@@ -237,13 +242,19 @@ function CameraOverview({ deviceId }: { deviceId: 'CAM-01' | 'CAM-02' }) {
         // A stream that states no rate (`fps` null) reads its picture and codec without one (task 4 row 54 / I-3, P12-F08).
         [
           label('format'),
-          realCapture
+          stated !== null
+            ? stated.text
+            : realCapture
             ? notReported
-            : camera.fps === null
+            : // Row V6 (S-01): no stored stream statement - "Not stated", never a default.
+              camera.resolution === null || camera.codec === null
+              ? t('common.devices.cameraFormatNotStated')
+              : camera.fps === null
               ? t('common.devices.cameraFormatCodecNoRate', { resolution: camera.resolution, codec: camera.codec })
               : t('common.devices.cameraFormatCodec', { resolution: camera.resolution, fps: camera.fps, codec: camera.codec }),
         ],
-        [label('bitrate'), realCapture ? notReported : t('common.units.mbps', { value: camera.bitrateMbps })],
+        // Pass I-9b: null = no telemetry states a bitrate - "Not reported", never a figure.
+        [label('bitrate'), realCapture || camera.bitrateMbps === null ? notReported : t('common.units.mbps', { value: camera.bitrateMbps })],
         [label('port'), realCapture ? notReported : labels.port(CAMERA_POE_PORT)],
         [label('recState'), camera.recState ? t(`common.enums.trackRecState.${camera.recState}`) : EMPTY_DATE_TEXT],
       ]}

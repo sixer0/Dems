@@ -192,24 +192,36 @@ export const MIC_HELPER_TABLE = Object.freeze({
 //   2. the channel selection, `pan=mono|c0=c<k>`: made by ONE function from ONE INTEGER, 0 to 63
 //      (`linuxChannelSelection`). It is the only argument of any helper that holds a vertical bar;
 //   3. the pipe path, as in the lists above.
-// The channel count is NOT computed text: it is one of the 64 words of `LINUX_CHANNEL_COUNTS`,
-// taken by its number. The integers are read from the LIVE card listing at the open; no value of
-// the database and no text of the listing reaches an argument.
+// The channel count is NOT computed text: it is one of the 64 words of `LINUX_CHANNEL_LAYOUTS`
+// (`1C` to `64C`), taken by its number. The integers are read from the LIVE card listing at the
+// open; no value of the database and no text of the listing reaches an argument.
 //
-// NOT PROVEN ON THIS HOST (no ALSA on macOS): that the program accepts these options for the
-// device layer, that the shared capture opens, and that the selected input is the one that is
-// heard. Container check of row 79 (option parsing); hardware checks `9A/H-07`, `9A/H-08`.
+// The lists differ from input-av's in ONE place since row 79b: the channel option (see the row).
+//
+// PROVEN IN A CONTAINER ONLY (no ALSA on macOS; rows 79 and 79b, Ubuntu 24.04, the pinned
+// program, ALSA `null` and `file` devices): that the program accepts these options for the device
+// layer. NOT PROVEN: that the shared capture of a real card opens with this layout, and that the
+// selected input is the one that is heard. Hardware checks `9A/H-07`, `9A/H-08`.
 
 /** The most channels a card can be opened with, and the highest channel a microphone can take (index 0 to 63). */
 export const LINUX_MIC_CHANNELS_MAX = 64;
 export const LINUX_MIC_CHANNEL_INDEX_MAX = 63;
 const LINUX_INDEX_MAX = 31;
 
-const LINUX_INPUT_HEAD = ['-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-channels'] as const;
+// Task 4 row 79b (decision C89). The channel option of this row was `-channels <n>`, the word of
+// input-av's older program. The pinned FFmpeg 9.0.2 has no option of that name on any platform
+// (`Option channels not found`, 18 of 18 runs in the Ubuntu 24.04 container of row 79; the same
+// refusal on macOS with the raw PCM input): its sound-device input has exactly two options of its
+// own, `-sample_rate` and `-ch_layout`. The row therefore states the count as a channel LAYOUT,
+// `-ch_layout <n>C`: n channels in the card's own order with no speaker position claimed (a
+// capital C; a small c would name the DEFAULT layout of that count, which exists for a few counts
+// only and is refused for the others). The selection after it names its source channel by INDEX
+// (`c<k>`), which is what an unpositioned layout offers.
+const LINUX_INPUT_HEAD = ['-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-ch_layout'] as const;
 const LINUX_INPUT_TAIL = ['-sample_rate', '48000', '-i'] as const;
 const LINUX_SELECT = ['-af'] as const;
-/** The channel count as a word of the table: `LINUX_CHANNEL_COUNTS[n - 1]` is the decimal text of n, 1 to 64. */
-const LINUX_CHANNEL_COUNTS: readonly string[] = Object.freeze(Array.from({ length: LINUX_MIC_CHANNELS_MAX }, (_unused, index) => String(index + 1)));
+/** The channel count as a word of the table: `LINUX_CHANNEL_LAYOUTS[n - 1]` is the layout of n unpositioned channels, `<n>C`, 1 to 64. */
+const LINUX_CHANNEL_LAYOUTS: readonly string[] = Object.freeze(Array.from({ length: LINUX_MIC_CHANNELS_MAX }, (_unused, index) => `${String(index + 1)}C`));
 
 export const LINUX_MIC_ARGUMENT_REFUSED = 'LINUX_MIC_ARGUMENT_REFUSED';
 export type LinuxMicArgumentRefusal = 'PIPE' | 'CARD_INDEX' | 'DEVICE_INDEX' | 'CHANNEL_COUNT' | 'INPUT_NUMBER' | 'CHANNEL_INDEX';
@@ -263,9 +275,9 @@ export interface LinuxMicCard {
 
 function linuxInputArguments(card: LinuxMicCard): string[] {
   const device = linuxMicDeviceArgument(card.cardIndex, card.deviceIndex);
-  const channels = isWholeIn(card.channelCount, 1, LINUX_MIC_CHANNELS_MAX) ? LINUX_CHANNEL_COUNTS[card.channelCount - 1] : undefined;
-  if (channels === undefined) throw new LinuxMicArgumentError('CHANNEL_COUNT');
-  return [...LINUX_INPUT_HEAD, channels, ...LINUX_INPUT_TAIL, device];
+  const layout = isWholeIn(card.channelCount, 1, LINUX_MIC_CHANNELS_MAX) ? LINUX_CHANNEL_LAYOUTS[card.channelCount - 1] : undefined;
+  if (layout === undefined) throw new LinuxMicArgumentError('CHANNEL_COUNT');
+  return [...LINUX_INPUT_HEAD, layout, ...LINUX_INPUT_TAIL, device];
 }
 
 export interface LinuxMicPushArguments extends LinuxMicCard {
@@ -303,11 +315,122 @@ export function linuxMicPrecheckArguments(card: LinuxMicCard): readonly string[]
  * device argument.
  */
 export const MIC_LINUX_HELPER_TABLE = Object.freeze({
-  literals: Object.freeze([...new Set<string>([...QUIET, ...PROGRESS, ...LINUX_INPUT_HEAD, ...LINUX_INPUT_TAIL, ...LINUX_SELECT, ...LINUX_CHANNEL_COUNTS, ...OUTPUT, ...PRECHECK_OUTPUT])]),
+  literals: Object.freeze([...new Set<string>([...QUIET, ...PROGRESS, ...LINUX_INPUT_HEAD, ...LINUX_INPUT_TAIL, ...LINUX_SELECT, ...LINUX_CHANNEL_LAYOUTS, ...OUTPUT, ...PRECHECK_OUTPUT])]),
+  /** The 64 words that may follow `-ch_layout`, in order: `channelLayouts[n - 1]` opens n channels (row 79b). */
+  channelLayouts: Object.freeze([...LINUX_CHANNEL_LAYOUTS]) as readonly string[],
   channelSelections: Object.freeze(Array.from({ length: LINUX_MIC_CHANNEL_INDEX_MAX + 1 }, (_unused, index) => linuxChannelSelection(index))),
   deviceArgument: /^dems_(?:[0-9]|[12][0-9]|3[01])_(?:[0-9]|[12][0-9]|3[01])$/,
   quietLength: QUIET.length + PROGRESS.length,
   inputLength: LINUX_INPUT_HEAD.length + 1 + LINUX_INPUT_TAIL.length + 1,
   selectLength: LINUX_SELECT.length + 1,
   outputLength: OUTPUT.length,
+});
+
+// ── The card listing row (task 4 row 85c; decision C60 (3); static rule G-R12 as amended by SR-4) ──
+//
+// The list of the capture hardware of a Linux host is the text of ONE program (`card-listing.ts`
+// parses it; input-av asked the same program, `nvr/audio.py:29-32`). Its row of this table is
+// FIXED: one program, one argument, both literals. It has NO parameter - no card index, no name,
+// no value of the database, of the configuration or of a listing can reach the program or its
+// argument list. It is started through the PRODUCTION door with an empty environment (so the
+// wording of the list is the untranslated one) and without a start message.
+//
+// NOT PROVEN ON THIS HOST (no ALSA on macOS): that the program is at this path on the target
+// host, what it prints and with which exit code when no card is there. Hardware check `9A/H-07`.
+
+/** The program that lists the capture hardware (the sound utilities of the target host). A literal: no key of the configuration names it. */
+export const LINUX_CARD_LISTING_PROGRAM = '/usr/bin/arecord';
+const LINUX_CARD_LISTING = ['-l'] as const;
+
+/** THE argument list of the card listing program: the one literal of its row. It takes nothing. */
+export function linuxCardListingArguments(): readonly string[] {
+  return Object.freeze([...LINUX_CARD_LISTING]);
+}
+
+/** For the static argument test (G-R12): the program and the literals of the card listing row. */
+export const CARD_LISTING_HELPER_TABLE = Object.freeze({
+  program: LINUX_CARD_LISTING_PROGRAM,
+  literals: Object.freeze<string[]>([...LINUX_CARD_LISTING]) as readonly string[],
+});
+
+// ── The two commissioning rows (task 4 row 111b; decisions C78, C87; static rule G-R12 / SR-4) ──
+//
+// The host's own observations of the commissioning functions (the set-IP job and the factory
+// scan) are the answers of TWO programs of a Linux host, each a row of this table started through
+// the PRODUCTION door with an empty environment and without a start message:
+//
+//   the neighbour row   `/usr/sbin/ip -4 neigh show to <a.b.c.d>`    reads the kernel's neighbour
+//                       table for ONE address. It sends nothing and changes nothing.
+//   the echo row        `/usr/bin/ping -n -q -c 1 -W 1 <a.b.c.d>`    ONE echo request, one second
+//                       of waiting, no name lookup (`-n`).
+//
+// Every argument is a literal of its row, except ONE value: THE ADDRESS, the last argument of each
+// row. It is made by ONE function of this table (`commissioningAddressArgument`) from FOUR
+// INTEGERS 0 to 255 - the form the address helper's request line is made in
+// (`host-alias/protocol.ts`): the text handed in is read as one strict dotted quad, held to the
+// three private ranges and to a host part of 1 to 254, and the argument is REBUILT from the four
+// numbers. It is never the caller's text; it can neither start with a dash nor carry a separator,
+// a prefix, a port or a name. The caller hands in only an address the destination rule admitted.
+//
+// NOT AN ARGUMENT: the camera interface. No row names an interface, so no name of the database
+// or of a file reaches a program; the reader of the neighbour row COMPARES the interface the
+// kernel prints with the stored one. The echo row therefore leaves by the route the kernel
+// chooses for an address the rule admitted from a camera-interface source.
+//
+// NOT IN THIS TABLE: the duplicate-address tool of the host profile (HOST-18). It opens a packet
+// socket, which the Core's unit cannot (HOST-38, HOST-39: no new privileges, no capability); the
+// address helper runs it, as root, at every `add`.
+//
+// NOT PROVEN ON THIS HOST (macOS): the two paths, what each program prints and with which exit
+// code, and that the echo program may open its socket as the service user. `9A/H-13`, `9A/H-14`.
+
+/** The program that reads the neighbour table (the network utilities of the target host; the address helper names the same path). A literal. */
+export const LINUX_NEIGHBOUR_PROGRAM = '/usr/sbin/ip';
+const LINUX_NEIGHBOUR = ['-4', 'neigh', 'show', 'to'] as const;
+/** The program that sends one echo request. A literal. */
+export const LINUX_ECHO_PROGRAM = '/usr/bin/ping';
+const LINUX_ECHO = ['-n', '-q', '-c', '1', '-W', '1'] as const;
+
+/** An address the commissioning rows do not take. Fixed text: the value itself is never put into the message. */
+export class CommissioningArgumentError extends Error {
+  readonly code = 'COMMISSIONING_ARGUMENT_REFUSED' as const;
+  constructor() {
+    super('an address of a commissioning row is not of its shape');
+    this.name = 'CommissioningArgumentError';
+  }
+}
+
+const COMMISSIONING_QUAD = /^(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})$/;
+const COMMISSIONING_QUAD_MAX_LENGTH = 15;
+
+/**
+ * THE address argument: four integers 0 to 255 of one strict dotted quad, inside 10.0.0.0/8,
+ * 172.16.0.0/12 or 192.168.0.0/16, host part 1 to 254, written again from the four numbers.
+ * Anything else is refused and nothing is made.
+ */
+export function commissioningAddressArgument(address: string): string {
+  const match = typeof address === 'string' && address.length <= COMMISSIONING_QUAD_MAX_LENGTH ? COMMISSIONING_QUAD.exec(address) : null;
+  if (match === null) throw new CommissioningArgumentError();
+  const [a, b, c, d] = [Number(match[1]), Number(match[2]), Number(match[3]), Number(match[4])];
+  if (a === undefined || b === undefined || c === undefined || d === undefined || a > 255 || b > 255 || c > 255 || d > 255) throw new CommissioningArgumentError();
+  const isPrivate = a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+  if (!isPrivate || d < 1 || d > 254) throw new CommissioningArgumentError();
+  return `${String(a)}.${String(b)}.${String(c)}.${String(d)}`;
+}
+
+/** THE argument list of the neighbour row: its four literals, then the one address. */
+export function linuxNeighbourArguments(address: string): readonly string[] {
+  return Object.freeze([...LINUX_NEIGHBOUR, commissioningAddressArgument(address)]);
+}
+
+/** THE argument list of the echo row: its six literals, then the one address. */
+export function linuxEchoArguments(address: string): readonly string[] {
+  return Object.freeze([...LINUX_ECHO, commissioningAddressArgument(address)]);
+}
+
+/** For the static argument test (G-R12): the programs, the literals of the two rows and the shape of the one computed argument. */
+export const COMMISSIONING_HELPER_TABLE = Object.freeze({
+  neighbour: Object.freeze({ program: LINUX_NEIGHBOUR_PROGRAM, literals: Object.freeze<string[]>([...LINUX_NEIGHBOUR]) as readonly string[] }),
+  echo: Object.freeze({ program: LINUX_ECHO_PROGRAM, literals: Object.freeze<string[]>([...LINUX_ECHO]) as readonly string[] }),
+  addressArgument: /^(?:10\.(?:0|[1-9]\d{0,2})|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.(?:0|[1-9]\d{0,2})\.(?:[1-9]\d{0,2})$/,
 });

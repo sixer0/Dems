@@ -29,7 +29,7 @@ import { describe, expect, it } from 'vitest';
 import { DURABLE_SLICE_KEYS, UNMAPPED_SLICES } from '../../../db/mapping';
 import { SCENARIOS, createHost } from '../../../../test/support/seed';
 import { streamProfileOf } from '../../../sealing-host';
-import { activeInputOf, audioStatusOf, cameraStreamFactsOf, deviceHealthOf, deviceInventoryOf, stateLevelsOf, storageStatusOf, videoStatusOf, withCameraStreamFacts, type CommittedState } from '../index';
+import { activeInputOf, audioStatusOf, cameraStreamFactsOf, captureSlotsOf, deviceHealthOf, deviceInventoryOf, stateLevelsOf, storageStatusOf, videoStatusOf, withCameraStreamFacts, type CommittedState } from '../index';
 import { AUDIO, FIXED_NOW, HEALTH, VIDEO, committedOf, scenarioState } from './support';
 
 /** The read is a little later than the state: `serverTime` is the clock's, not the state's. */
@@ -607,7 +607,7 @@ describe('row 53: the camera facts of a real capture operation are the stored st
     ...state,
     captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.map((camera) => ({ ...camera, profile: camera.trackId === 'VIDEO-01' ? video01 : video02 })) },
   });
-  const factsOf = (answer: { readonly tracks: readonly { readonly trackId: string; readonly resolution: string; readonly fps: number | null; readonly codec: string }[] }): unknown[] =>
+  const factsOf = (answer: { readonly tracks: readonly { readonly trackId: string; readonly resolution: string | null; readonly fps: number | null; readonly codec: string | null }[] }): unknown[] =>
     answer.tracks.map((track) => [track.trackId, track.resolution, track.fps, track.codec]);
 
   it('an HEVC camera is stated HEVC with NO rate; an H.264 one as before - on the three reads that name a camera, valid against the contract', () => {
@@ -670,7 +670,9 @@ describe('row 53: the camera facts of a real capture operation are the stored st
     const silent: readonly unknown[] = ['MAIN', 'STANDARD_1080P25', 'profile_1', 'h264_1080p25', 'OTHER_1080P25', 'AV1_1080P', 'H265_1080P', 'H264_1080', 'H264_1080P25X', 'H264_1080P0', 'H264_1080P241', 'H264_50P25', 'H264_10000P25', 'HEVC_99X99P', 'H264_1920X1080P25', 'H264_1080P25<script>', '', null, undefined, 7, ['HEVC_1080P']];
     expect(silent.map(cameraStreamFactsOf)).toEqual(silent.map(() => null));
     const kept = videoStatusOf(slotted('profile_1', 'H264_1080P25<script>'), undefined, true);
-    expect(factsOf(kept)).toEqual(factsOf(videoStatusOf(state)));
+    // Rows B2 and V6 (S-01): the picture, the rate and the codec are each NOT STATED (null) - never the simulator's `1080p / 25 / H.264`.
+    expect(factsOf(kept)).toEqual(factsOf(videoStatusOf(state)).map((track) => [(track as unknown[])[0], null, null, null]));
+    expect(state.cameras.map((camera) => camera.fps)).toEqual([25, 25]);
     expect(JSON.stringify(kept.tracks.map(({ resolution, fps, codec }) => [resolution, fps, codec]))).not.toMatch(/script|profile_1/);
   });
 
@@ -678,8 +680,67 @@ describe('row 53: the camera facts of a real capture operation are the stored st
     const only02: CommittedState = { ...state, captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.filter((camera) => camera.trackId === 'VIDEO-02').map((camera) => ({ ...camera, profile: 'HEVC_1080P' })) } };
     const answer = videoStatusOf(only02, undefined, true);
     expect(answer.tracks.map((track) => [track.trackId, track.sourceDeviceId === null, track.resolution, track.fps, track.codec])).toEqual([
-      ['VIDEO-01', true, state.cameras[0]?.resolution, state.cameras[0]?.fps, state.cameras[0]?.codec],
+      // Rows B2 and V6 (S-01): a track without a statement states nothing - null, not the slice's `1080p / 25 / H.264`.
+      ['VIDEO-01', true, null, null, null],
       ['VIDEO-02', false, '1080p', null, 'HEVC'],
     ]);
+  });
+
+  // Row B2 (review follow-up S-01 of `verification/060b`; decisions C36, C95). The double is the committed state of the
+  // seed; no device and no database.
+  describe('row B2 (S-01): a track WITHOUT a stream statement - what the contract lets the Core say of it, and what it does not', () => {
+    const unassigned: CommittedState = { ...state, captureConfig: { ...state.captureConfig, cameras: [] } };
+
+    it('on the three reads of a real capture operation its rate is NOT STATED (null): the simulator\'s 25 is answered for no track that has no statement - unassigned, a development name, a code of the stored form that is no statement', () => {
+      // `HEVC_2160P25_MAIN` is of the form the database admits in a stored list and is no statement (an HEVC code states no rate).
+      for (const real of [unassigned, slotted('MAIN', 'STANDARD_1080P25'), slotted('HEVC_2160P25_MAIN', 'H264_1080P25_SUB')]) {
+        const video = videoStatusOf(real, captureSlotsOf(real), true);
+        const health = deviceHealthOf(real, NOW, null, captureSlotsOf(real), true);
+        const inventory = deviceInventoryOf(real, undefined, true);
+        expect([video.tracks.map((track) => track.fps), health.cameras.map((camera) => camera.fps), inventory.cameras.map((camera) => camera.fps)]).toEqual([[null, null], [null, null], [null, null]]);
+        expect(VideoStatusResponseSchema.safeParse(video).success).toBe(true);
+        expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
+        expect(DeviceInventorySchema.safeParse(inventory).success).toBe(true);
+      }
+      // One track with a statement beside one without: each says its own.
+      const mixed = videoStatusOf(slotted('H264_720P30', 'MAIN'), undefined, true);
+      expect(factsOf(mixed)).toEqual([['VIDEO-01', '720p', 30, 'H.264'], ['VIDEO-02', null, null, null]]);
+    });
+
+    it('the state is not written, and a track whose rate is null already is the SAME object (identity kept)', () => {
+      const frozen = deepFreeze(unassigned);
+      const once = withCameraStreamFacts(frozen.cameras, frozen.captureConfig);
+      expect(once).not.toBe(frozen.cameras);
+      expect(frozen.cameras.map((camera) => camera.fps)).toEqual([25, 25]);
+      expect(withCameraStreamFacts(once, frozen.captureConfig)).toBe(once);
+    });
+
+    it('CONTROL: a SIMULATED Core (no flag) answers its slice for the same state - 25 stays, as the simulator answers', () => {
+      expect(videoStatusOf(unassigned, captureSlotsOf(unassigned)).tracks.map((track) => track.fps)).toEqual([25, 25]);
+      expect(deviceInventoryOf(unassigned).cameras).toBe(unassigned.cameras);
+    });
+
+    // THE CASE THAT TURNED (row V6, contract step for S-01): until then the contract had no "not stated" for the picture
+    // and the codec, and the slice's `1080p` and `H.264` were still answered for such a track.
+    it('THE GAP IS CLOSED (row V6): a track without a stream statement answers the picture, the rate AND the codec as NOT STATED (null) - the slice\'s `1080p / 25 / H.264` is never handed on; the contract takes null for each, and still refuses an absent member, an invented word and an empty text', () => {
+      const video = videoStatusOf(unassigned, captureSlotsOf(unassigned), true);
+      expect(state.cameras.map((camera) => [camera.resolution, camera.fps, camera.codec])).toEqual([['1080p', 25, 'H.264'], ['1080p', 25, 'H.264']]);
+      expect(video.tracks.map((track) => [track.sourceDeviceId, track.resolution, track.fps, track.codec])).toEqual([[null, null, null, null], [null, null, null, null]]);
+      expect(VideoStatusResponseSchema.safeParse(video).success).toBe(true);
+      expect(withCameraStreamFacts(unassigned.cameras, captureSlotsOf(unassigned)).map((camera) => [camera.resolution, camera.fps, camera.codec])).toEqual([[null, null, null], [null, null, null]]);
+      // Said once: a slice that already says "not stated" is the SAME array (nothing to say).
+      const stated = withCameraStreamFacts(unassigned.cameras, captureSlotsOf(unassigned));
+      expect(withCameraStreamFacts(stated, captureSlotsOf(unassigned))).toBe(stated);
+      const track = video.tracks[0]!;
+      const { resolution: _resolution, ...withoutResolution } = track;
+      const { codec: _codec, ...withoutCodec } = track;
+      // "Not stated" is NULL and nothing else: no absent member, no invented word, no empty text, no default.
+      for (const candidate of [withoutResolution, withoutCodec, { ...track, codec: 'UNKNOWN' }, { ...track, resolution: '' }, { ...track, resolution: 'unknown' }, { ...track, codec: '' }]) {
+        expect(VideoStatusResponseSchema.safeParse({ tracks: [candidate, video.tracks[1]] }).success).toBe(false);
+      }
+      for (const candidate of [{ ...track, resolution: '1080p', codec: null }, { ...track, resolution: null, codec: 'HEVC' }, { ...track, resolution: '720p', fps: 25, codec: 'H.264' }]) {
+        expect(VideoStatusResponseSchema.safeParse({ tracks: [candidate, video.tracks[1]] }).success).toBe(true);
+      }
+    });
   });
 });

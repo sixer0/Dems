@@ -23,11 +23,16 @@
  * THE RELAY'S REPORTS. The relay writes to its standard output only the fixed report lines of its
  * contract. `createRelayReportReader` turns the chunks the door observes into those reports:
  * bounded, whole lines only, a line that is not one of the fixed forms is counted and dropped -
- * never kept, never handed on.
+ * never kept, never handed on. THREE forms in record mode (finding F3-01 of the M3 review): the
+ * established push, and since row 43 the loss of the camera leg inside a session and its re-open.
+ * The reader judges the FORM of one line; which report may follow which, and whose attempt is in
+ * force, is the adapter's (`onvif-relay.ts`).
  */
 import type { CaptureTimers } from '../../types';
 import { credentialAtInjection, type SealedCredential, type StartMessage } from '../credential';
+import { CaptureAdapterError, CaptureAdapterRefusal } from '../errors';
 import type { ProductionDoor, ProductionProcess } from '../production-door';
+import { isSourceAddress } from './stored-address';
 
 /** What a start of the relay needs. Nothing of it is kept after the call. */
 export interface CameraRelayStart {
@@ -44,6 +49,15 @@ export interface CameraRelayStart {
   readonly ingest: string;
   /** The attempt of the worker the relay pushes to: named again in the relay's report. */
   readonly attempt: number;
+  /**
+   * THE SOURCE ADDRESS (task 4 row 143b; S13-11 point 2): the address of this host the relay's
+   * connection to the camera must leave from - the camera-interface address the judgement of the
+   * stored camera names (`storedCameraSourceOf`). It becomes the member `source` of the start
+   * message; the relay gives it to its one socket before it connects, at the first open and at
+   * every re-open, and refuses a record message without it. A RECORD START WITHOUT IT IS REFUSED
+   * HERE, before the injection point is called: no start message is made.
+   */
+  readonly source: string;
   /** Told every chunk of the relay's standard output (its report lines). */
   readonly onOutput: (chunk: Buffer) => void;
 }
@@ -54,6 +68,8 @@ export interface CameraRelayStart {
  * `ProductionProcess.started`, as a code.
  */
 export function startCameraRelay(start: CameraRelayStart): ProductionProcess {
+  // Row 143b: a recording is of a stored camera, and its dial is never made without the source address the rule named.
+  if (!isSourceAddress(start.source)) throw new CaptureAdapterError(CaptureAdapterRefusal.START_MESSAGE_INVALID);
   return launch(start, {
     mode: 'record',
     ingest: start.ingest,
@@ -65,24 +81,32 @@ export function startCameraRelay(start: CameraRelayStart): ProductionProcess {
  * test; the relay's contract: `implementation/042_relay_probe_mode.md` section 2). The parts of a
  * record start WITHOUT the address of a session: a probe pushes nothing and is given none, and the
  * relay refuses a probe message that carries one.
+ *
+ * `source` (row 143b) is OPTIONAL here and only here: the probe of a STORED camera states it (the
+ * connection test of an adopted camera hands in the address its judgement names), the probe of a
+ * camera that is not stored yet has no judged source and states none. A source that is handed in
+ * and is not a source address is refused as in a record start - never dropped.
  */
-export type CameraProbeStart = Pick<CameraRelayStart, 'door' | 'program' | 'timers' | 'locator' | 'sealed' | 'attempt' | 'onOutput'>;
+export type CameraProbeStart = Pick<CameraRelayStart, 'door' | 'program' | 'timers' | 'locator' | 'sealed' | 'attempt' | 'onOutput'> & { readonly source?: string };
 
 /**
  * Starts the relay to PROBE one stream: it opens the camera as a recording does, reports the
  * stream's facts in one line at the first keyframe and ends. Refusals as `startCameraRelay`.
  */
 export function startCameraProbe(start: CameraProbeStart): ProductionProcess {
+  if (start.source !== undefined && !isSourceAddress(start.source)) throw new CaptureAdapterError(CaptureAdapterRefusal.START_MESSAGE_INVALID);
   return launch(start, { mode: 'probe' });
 }
 
 /** The one start of the relay, for both modes: ONE call of the injection point, one door line. `mode`: the members a mode adds, in their place. */
 function launch(start: CameraProbeStart, mode: Readonly<Record<string, string>>): ProductionProcess {
   // The member names and their order are the relay's contract: a closed set per mode, an unknown member is refused there.
+  // `source` (row 143b) stands before the access when it is stated: the address the relay's camera socket is given before it connects.
   const message: StartMessage = {
     type: 'start',
     ...mode,
     attempt: start.attempt,
+    ...(start.source === undefined ? {} : { source: start.source }),
     access: credentialAtInjection(start.locator, start.sealed),
   };
   return start.door({ command: start.program, args: [], env: {}, message, timers: start.timers, onOutput: start.onOutput });
@@ -95,14 +119,43 @@ export const RELAY_REPORT_LINE_MAX_BYTES = 512;
 export const RelayReportKind = {
   /** The worker answered the relay's record request with success: the push is established (RC-3 (i)). */
   PUSH_ESTABLISHED: 'PUSH_ESTABLISHED',
+  /** The camera leg ended inside a session while the push stands; the relay opens it again (row 43; finding F3-01). */
+  CAMERA_LOST: 'CAMERA_LOST',
+  /** The first keyframe of the leg that was opened again is about to be forwarded: the loss of that number is over. */
+  CAMERA_REOPENED: 'CAMERA_REOPENED',
 } as const;
 export type RelayReportKind = (typeof RelayReportKind)[keyof typeof RelayReportKind];
 
-export interface RelayReport {
-  readonly kind: RelayReportKind;
-  /** The attempt the relay names: the one of its start message. */
-  readonly attempt: number;
-}
+/** The causes a `camera_lost` line can name: the relay's exit-code numbers of the ends it opens again (`relay_loss_kind`). */
+export const RELAY_LOSS_CAUSES: readonly number[] = Object.freeze([20, 23, 31, 32]);
+/** The tries of one loss (`RELAY_RETRY_TRIES` of the relay's header). */
+export const RELAY_RETRY_TRIES = 6;
+/** The largest number a line of the re-open states (`RELAY_COUNT_MAX` of the relay's header). */
+export const RELAY_COUNT_MAX = 999_999_999;
+
+/** Every report names the attempt of the relay's own start message. Numbers only: no address, no path, no text. */
+export type RelayReport =
+  | { readonly kind: typeof RelayReportKind.PUSH_ESTABLISHED; readonly attempt: number }
+  | {
+      readonly kind: typeof RelayReportKind.CAMERA_LOST;
+      readonly attempt: number;
+      /** The number of the loss in the relay's life: 1, 2, 3, ... */
+      readonly loss: number;
+      /** One of `RELAY_LOSS_CAUSES`. */
+      readonly cause: number;
+    }
+  | {
+      readonly kind: typeof RelayReportKind.CAMERA_REOPENED;
+      readonly attempt: number;
+      /** The loss that is over. */
+      readonly loss: number;
+      /** The tries the re-open took: 1 to `RELAY_RETRY_TRIES`. */
+      readonly tries: number;
+      /** Pictures of the new leg that were held back before its first keyframe. */
+      readonly heldBack: number;
+      /** The relay's own measure of the gap, loss to first forwarded keyframe, in ms. */
+      readonly gapMs: number;
+    };
 
 export interface RelayReportReader {
   /** Takes a chunk of the relay's standard output; calls `onReport` once per whole, well-formed report line. */
@@ -121,6 +174,29 @@ const LINE_FEED = 0x0a;
 const PUSH_ESTABLISHED_LINE = /^\{"report":"push_established","v":1,"attempt":([1-9][0-9]{0,8})\}$/;
 /** The largest attempt the relay takes in a start message (`RELAY_ATTEMPT_MAX` of its header). */
 export const RELAY_ATTEMPT_MAX = 999_999_999;
+/**
+ * The two lines of the re-open (task 4 row 43; `relay_loss_line` and `relay_reopened_line` of
+ * `relay_core.c`), read with the strictness of the established line: the members in the relay's
+ * order and no other, version 1, every number in the relay's own form (no sign, no leading zero,
+ * at most 9 digits) and inside the relay's own bounds - `attempt` and `loss` from 1, `cause` one of
+ * the four codes the relay opens again, `tries` 1 to 6, `held_back` and `gap_ms` from 0. A line
+ * that differs by a byte is no report: counted and dropped, as every unknown line.
+ */
+const CAMERA_LOST_LINE = /^\{"report":"camera_lost","v":1,"attempt":([1-9][0-9]{0,8}),"loss":([1-9][0-9]{0,8}),"cause":(20|23|31|32)\}$/;
+const CAMERA_REOPENED_LINE = /^\{"report":"camera_reopened","v":1,"attempt":([1-9][0-9]{0,8}),"loss":([1-9][0-9]{0,8}),"tries":([1-6]),"held_back":(0|[1-9][0-9]{0,8}),"gap_ms":(0|[1-9][0-9]{0,8})\}$/;
+
+/** A whole line as the report it is, or null. Every pattern is anchored at both ends and holds no nested repeat. */
+function reportOf(text: string): RelayReport | null {
+  const established = PUSH_ESTABLISHED_LINE.exec(text);
+  if (established !== null) return { kind: RelayReportKind.PUSH_ESTABLISHED, attempt: Number(established[1]) };
+  const lost = CAMERA_LOST_LINE.exec(text);
+  if (lost !== null) return { kind: RelayReportKind.CAMERA_LOST, attempt: Number(lost[1]), loss: Number(lost[2]), cause: Number(lost[3]) };
+  const reopened = CAMERA_REOPENED_LINE.exec(text);
+  if (reopened !== null) {
+    return { kind: RelayReportKind.CAMERA_REOPENED, attempt: Number(reopened[1]), loss: Number(reopened[2]), tries: Number(reopened[3]), heldBack: Number(reopened[4]), gapMs: Number(reopened[5]) };
+  }
+  return null;
+}
 
 /** A reader of the relay's report lines. It keeps at most one unfinished line of the bound and no finished one. */
 export function createRelayReportReader(onReport: (report: RelayReport) => void): RelayReportReader {
@@ -130,12 +206,12 @@ export function createRelayReportReader(onReport: (report: RelayReport) => void)
 
   const line = (bytes: Buffer): void => {
     // The fixed forms are ASCII; `latin1` maps every byte to one character, so no other byte can pass the pattern.
-    const attempt = PUSH_ESTABLISHED_LINE.exec(bytes.toString('latin1'))?.[1];
-    if (attempt === undefined) {
+    const report = reportOf(bytes.toString('latin1'));
+    if (report === null) {
       rejected += 1;
       return;
     }
-    onReport({ kind: RelayReportKind.PUSH_ESTABLISHED, attempt: Number(attempt) });
+    onReport(Object.freeze(report));
   };
 
   return {

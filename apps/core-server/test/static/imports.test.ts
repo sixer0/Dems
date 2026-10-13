@@ -118,7 +118,10 @@ const CLOSED_UNITS: readonly string[] = [
  *                                    (integration pass C1, decision D115 (3)): the capture unit
  *                                    cannot hand the registry over itself without a unit cycle.
  */
-const EXPOSED: readonly string[] = ['src/modules/identity/password-hash', 'src/modules/identity/biometric', 'src/db/schema/boot-checks', 'src/capture/adapters', 'src/capture/fence'];
+// Task 4 row 85b (decision C55, entry SR-7 (b); the line row 144 named): `modules/capture-config/credential-holders`, the
+// wiring of the two credential readers. The module's index must NOT hand it on (rule R-6 of that module); its one importer
+// is the composition of production capture, `src/capture-composition.ts`, a file of no unit above the modules.
+const EXPOSED: readonly string[] = ['src/modules/identity/password-hash', 'src/modules/identity/biometric', 'src/db/schema/boot-checks', 'src/capture/adapters', 'src/capture/fence', 'src/modules/capture-config/credential-holders'];
 
 /** The folders whose units are BELOW the modules: none of them imports a value of a module. */
 const BELOW_THE_MODULES: readonly string[] = ['src/core', 'src/engine', 'src/realtime', 'src/plugins/'];

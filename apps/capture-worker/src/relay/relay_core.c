@@ -46,6 +46,7 @@ const char *relay_code_name(RelayCode code) {
     case RELAY_INGEST_REFUSED: return "INGEST_REFUSED";
     case RELAY_INGEST_LOST: return "INGEST_LOST";
     case RELAY_SOCKET_RULE: return "SOCKET_RULE";
+    case RELAY_REPORT_NOT_WRITTEN: return "REPORT_NOT_WRITTEN";
     case RELAY_INTERNAL: break;
     }
     return "INTERNAL";
@@ -196,9 +197,47 @@ static int locator_ok(RelayStart *s) {
     return printable(q);
 }
 
+/* THE SOURCE ADDRESS of the camera leg (row 143b; relay.h "THE SOURCE ADDRESS"): a dotted IPv4 literal in its ONE
+ * canonical form - four numbers 0 to 255 in decimal digits, no leading 0, a point between them, nothing before,
+ * between or after - that a socket of this host can leave from: the first number 1 to 223. So 0.0.0.0 is refused
+ * (it would mean "any address": no source at all), and so is everything from 224 up (multicast, reserved, the
+ * broadcast address). No name: nothing is looked up. The library's reader is asked last, and must agree. */
+static int source_ok(const char *s) {
+    const char *q = s;
+    int first = 0;
+    struct in_addr address;
+    for (int i = 0; i < 4; i++) {
+        int v = 0, digits = 0;
+        if (*q < '0' || *q > '9') return 0;
+        if (*q == '0' && q[1] >= '0' && q[1] <= '9') return 0;
+        while (*q >= '0' && *q <= '9' && digits < 4) { v = v * 10 + (*q - '0'); q++; digits++; }
+        if (digits > 3 || v > 255) return 0;
+        if (i == 0) first = v;
+        if (i < 3) { if (*q != '.') return 0; q++; }
+    }
+    if (*q) return 0;
+    return first >= 1 && first <= 223 && inet_pton(AF_INET, s, &address) == 1;
+}
+
+/* One JSON number that is an attempt: digits only, no sign, no leading 0, no fraction, no exponent, 1 to
+ * RELAY_ATTEMPT_MAX (at most 9 digits: it cannot leave a long). -1 otherwise. */
+static long attempt_of(Cursor *c) {
+    long v = 0;
+    int digits = 0;
+    blank(c);
+    if (c->p >= c->end || *c->p < '1' || *c->p > '9') return -1;
+    while (c->p < c->end && *c->p >= '0' && *c->p <= '9') {
+        if (++digits > 9) return -1;
+        v = v * 10 + (*c->p++ - '0');
+    }
+    /* What follows a number of this message is a comma, the closing brace or a blank: `1.5`, `1e3`, `12x` are refused. */
+    if (c->p < c->end && *c->p != ',' && *c->p != '}' && *c->p != ' ' && *c->p != '\t' && *c->p != '\r') return -1;
+    return v >= 1 && v <= RELAY_ATTEMPT_MAX ? v : -1;
+}
+
 RelayCode relay_start_parse(const char *line, size_t length, RelayStart *out) {
     char key[16], word[16];
-    int seen = 0, inner = 0;
+    int seen = 0, inner = 0, with_source = 0;
     memset(out, 0, sizeof *out);
     if (!line || length < 2 || length > RELAY_LINE_MAX || line[length - 1] != '\n') return RELAY_START_MESSAGE_INVALID;
     Cursor c = { line, line + length - 1 };
@@ -207,8 +246,16 @@ RelayCode relay_start_parse(const char *line, size_t length, RelayStart *out) {
         int bit;
         if (text(&c, key, sizeof key) < 0 || !sign(&c, ':')) goto refused;
         if (!strcmp(key, "type")) { bit = 1; if (text(&c, word, sizeof word) < 0 || strcmp(word, "start")) goto refused; }
-        else if (!strcmp(key, "mode")) { bit = 2; if (text(&c, word, sizeof word) < 0 || strcmp(word, "record")) goto refused; }
+        else if (!strcmp(key, "mode")) {
+            bit = 2;
+            if (text(&c, word, sizeof word) < 0) goto refused;
+            if (!strcmp(word, "record")) out->mode = RELAY_MODE_RECORD;
+            else if (!strcmp(word, "probe")) out->mode = RELAY_MODE_PROBE;
+            else goto refused;
+        }
+        else if (!strcmp(key, "attempt")) { bit = 16; if ((out->attempt = attempt_of(&c)) < 0) goto refused; }
         else if (!strcmp(key, "ingest")) { bit = 4; if (text(&c, out->ingest, sizeof out->ingest) < 0) goto refused; }
+        else if (!strcmp(key, "source")) { bit = 32; if (text(&c, out->source, sizeof out->source) < 1) goto refused; }
         else if (!strcmp(key, "access")) {
             bit = 8;
             if (!sign(&c, '{')) goto refused;
@@ -234,8 +281,17 @@ RelayCode relay_start_parse(const char *line, size_t length, RelayStart *out) {
         goto refused;
     }
     blank(&c);
-    if (c.p != c.end || seen != 15 || inner != 7) goto refused;
-    if (!ingest_ok(out) || !locator_ok(out)) goto refused;
+    /* The closed set of each mode (row 42): record = type, mode, ingest, access; probe = type, mode, access - a
+     * probe pushes nothing, so it is given no ingest address and one that comes with it is refused. `attempt`
+     * may stand in both and is the one member that may be absent (then 0: "not stated").
+     * Row 143b: `source`, the address the camera leg leaves from. Record mode MUST state it (a recording is of a
+     * stored camera, and its dial is never made without the source the Core's rule named); probe mode may. */
+    with_source = seen & 32;
+    seen &= ~(16 | 32);
+    if (c.p != c.end || inner != 7 || seen != (out->mode == RELAY_MODE_PROBE ? 11 : 15)) goto refused;
+    if (out->mode == RELAY_MODE_RECORD && !with_source) goto refused;
+    if (with_source && !source_ok(out->source)) goto refused;
+    if ((out->mode == RELAY_MODE_RECORD && !ingest_ok(out)) || !locator_ok(out)) goto refused;
     /* The account name is written into a header: no control character may be in it. The password is only hashed. */
     for (const char *a = out->account; *a; a++) if ((unsigned char)*a < 0x20 || *a == 0x7F) goto refused;
     relay_wipe(key, sizeof key);
@@ -542,12 +598,34 @@ static int sets_of_fmtp(RelayCodec codec, const char *p, size_t n, ParamSets *se
     return 0;
 }
 
+/* The value of an `a=framerate:` line in thousandths (row 42): one to four digits, then at most a point and one to
+ * three digits, then nothing but blanks; 1 to RELAY_RATE_MILLI_MAX. -1 for anything else: the rate is then "not
+ * stated", it is never guessed from a part of the value. No library conversion on camera text (review L-3). */
+static long rate_of(const char *p, size_t n) {
+    const char *end = p + n;
+    long whole = 0, part = 0;
+    int digits = 0, places = 0;
+    while (p < end && *p >= '0' && *p <= '9') { if (++digits > 4) return -1; whole = whole * 10 + (*p++ - '0'); }
+    if (!digits) return -1;
+    if (p < end && *p == '.') {
+        p++;
+        while (p < end && *p >= '0' && *p <= '9') { if (++places > 3) return -1; part = part * 10 + (*p++ - '0'); }
+        if (!places) return -1;
+        for (; places < 3; places++) part *= 10;
+    }
+    while (p < end && (*p == ' ' || *p == '\t')) p++;
+    if (p != end) return -1;
+    long milli = whole * 1000 + part;
+    return milli >= 1 && milli <= RELAY_RATE_MILLI_MAX ? milli : -1;
+}
+
 RelayCode relay_description_parse(const char *textp, size_t length, RelayDescription *out) {
     /* Beyond either bound the description is REFUSED, not cut (review M-6): a cut one would be read differently
      * here and by whoever reads it whole. */
     enum { LINES = RELAY_SDP_LINES, TYPES = RELAY_SDP_TYPES };
     Line video[LINES];
-    int types[TYPES], n_types = 0, n_video = 0, section = 0;
+    int types[TYPES], n_types = 0, n_video = 0, section = 0, rates = 0;
+    long rate = -1;
     memset(out, 0, sizeof *out);
     if (!textp || !length || length > RELAY_SDP_MAX || memchr(textp, 0, length)) return RELAY_DESCRIPTION_INVALID;
     for (const char *p = textp, *end = textp + length; p < end;) {
@@ -607,9 +685,129 @@ RelayCode relay_description_parse(const char *textp, size_t length, RelayDescrip
                 memcpy(out->control, video[i].p + 10, c);
                 out->control[c] = 0;
             }
+            else if (begins(video[i], "a=framerate:")) { rates++; rate = rate_of(video[i].p + 12, video[i].n - 12); }
         }
     }
+    /* Stated once and readable, or not stated: of two statements another reader could take the other. */
+    out->rate_milli = rates == 1 && rate > 0 ? rate : 0;
     return RELAY_STOPPED;
+}
+
+/* ================================================================ the report lines (row 42) */
+typedef struct Out { char *p; size_t cap, n; int bad; } Out;
+
+static void put(Out *o, const char *word) {
+    size_t k = strlen(word);
+    if (o->bad || o->n + k >= o->cap) { o->bad = 1; return; }
+    memcpy(o->p + o->n, word, k);
+    o->n += k;
+}
+static void put_number(Out *o, long v) {
+    char digits[24];
+    int k = 0;
+    if (v < 0) { o->bad = 1; return; }
+    do { digits[k++] = (char)('0' + v % 10); v /= 10; } while (v && k < (int)sizeof digits - 1);
+    if (o->bad || o->n + (size_t)k >= o->cap) { o->bad = 1; return; }
+    while (k) o->p[o->n++] = digits[--k];
+}
+static void put_hex(Out *o, const uint8_t *bytes, int length) {
+    static const char hex[] = "0123456789abcdef";
+    if (o->bad || length < 0 || length > RELAY_PSET_MAX || o->n + 2 * (size_t)length >= o->cap) { o->bad = 1; return; }
+    for (int i = 0; i < length; i++) { o->p[o->n++] = hex[bytes[i] >> 4]; o->p[o->n++] = hex[bytes[i] & 15]; }
+}
+/* The line is whole (its line feed and a 0 after it) or there is none. */
+static int put_end(Out *o) {
+    put(o, "\n");
+    if (o->bad || o->n >= o->cap || o->n > RELAY_REPORT_MAX) { if (o->p && o->cap) o->p[0] = 0; return -1; }
+    o->p[o->n] = 0;
+    return (int)o->n;
+}
+
+int relay_established_line(long attempt, char *out, size_t cap) {
+    Out o = { out, cap, 0, !out || !cap || attempt < 0 || attempt > RELAY_ATTEMPT_MAX };
+    put(&o, "{\"report\":\"push_established\",\"v\":1,\"attempt\":");
+    put_number(&o, attempt);
+    put(&o, "}");
+    return put_end(&o);
+}
+
+int relay_probe_line(const RelayProbe *probe, char *out, size_t cap) {
+    Out o = { out, cap, 0, !out || !cap || !probe || !probe->sets };
+    if (o.bad) { if (out && cap) out[0] = 0; return -1; }
+    /* Every value inside its bound, and the sets valid ones of the codec, before a byte is written. */
+    if (probe->attempt < 0 || probe->attempt > RELAY_ATTEMPT_MAX || (probe->codec != RELAY_CODEC_H264 && probe->codec != RELAY_CODEC_HEVC)
+        || probe->width < 1 || probe->width > RELAY_SIDE_MAX || probe->height < 1 || probe->height > RELAY_SIDE_MAX
+        || probe->rate_milli < 0 || probe->rate_milli > RELAY_RATE_MILLI_MAX || !relay_sets_valid(probe->codec, probe->sets)) o.bad = 1;
+    put(&o, "{\"report\":\"probe\",\"v\":1,\"attempt\":");
+    put_number(&o, probe->attempt);
+    put(&o, probe->codec == RELAY_CODEC_H264 ? ",\"codec\":\"H264\",\"width\":" : ",\"codec\":\"HEVC\",\"width\":");
+    put_number(&o, probe->width);
+    put(&o, ",\"height\":");
+    put_number(&o, probe->height);
+    put(&o, ",\"rate_milli\":");
+    put_number(&o, probe->rate_milli);
+    put(&o, probe->sets_in_description ? ",\"sets_in_description\":true" : ",\"sets_in_description\":false");
+    put(&o, probe->sets_in_stream ? ",\"sets_in_stream\":true,\"vps\":\"" : ",\"sets_in_stream\":false,\"vps\":\"");
+    put_hex(&o, probe->sets->vps, probe->codec == RELAY_CODEC_HEVC ? probe->sets->vps_len : 0);
+    put(&o, "\",\"sps\":\"");
+    put_hex(&o, probe->sets->sps, probe->sets->sps_len);
+    put(&o, "\",\"pps\":\"");
+    put_hex(&o, probe->sets->pps, probe->sets->pps_len);
+    put(&o, "\"}");
+    return put_end(&o);
+}
+
+/* ================================================================ the re-open (row 43): the rule and its two lines */
+int relay_loss_kind(RelayCode code) {
+    if (code == RELAY_CAMERA_UNREACHABLE || code == RELAY_CAMERA_STALLED || code == RELAY_CAMERA_LOST) return RELAY_LOSS_RETRIED;
+    if (code == RELAY_AUTH_REFUSED) return RELAY_LOSS_REFUSAL;
+    return RELAY_LOSS_ENDS;
+}
+
+int64_t relay_retry_wait_us(int tries_made) {
+    /* input-av's rule (research TS-5; specification S1-8): 2 s, then 2, 4, 8, 16, 30 s. */
+    static const int seconds[RELAY_RETRY_TRIES] = { 2, 2, 4, 8, 16, 30 };
+    if (tries_made < 0 || tries_made >= RELAY_RETRY_TRIES) return 0;
+    return (int64_t)seconds[tries_made] * 1000000LL;
+}
+
+static int same_set(const uint8_t *a, int a_len, const uint8_t *b, int b_len) {
+    return a_len > 0 && a_len <= RELAY_PSET_MAX && a_len == b_len && !memcmp(a, b, (size_t)a_len);
+}
+
+int relay_same_stream(RelayCodec announced, const ParamSets *x, RelayCodec now, const ParamSets *y) {
+    if (!x || !y || announced != now || (now != RELAY_CODEC_H264 && now != RELAY_CODEC_HEVC)) return 0;
+    if (now == RELAY_CODEC_HEVC && !same_set(x->vps, x->vps_len, y->vps, y->vps_len)) return 0;
+    return same_set(x->sps, x->sps_len, y->sps, y->sps_len) && same_set(x->pps, x->pps_len, y->pps, y->pps_len);
+}
+
+int relay_loss_line(long attempt, long loss, RelayCode cause, char *out, size_t cap) {
+    Out o = { out, cap, 0, !out || !cap || attempt < 0 || attempt > RELAY_ATTEMPT_MAX || loss < 1 || loss > RELAY_COUNT_MAX || relay_loss_kind(cause) == RELAY_LOSS_ENDS };
+    put(&o, "{\"report\":\"camera_lost\",\"v\":1,\"attempt\":");
+    put_number(&o, attempt);
+    put(&o, ",\"loss\":");
+    put_number(&o, loss);
+    put(&o, ",\"cause\":");
+    put_number(&o, (long)cause);
+    put(&o, "}");
+    return put_end(&o);
+}
+
+int relay_reopened_line(long attempt, long loss, long tries, long held_back, long gap_ms, char *out, size_t cap) {
+    Out o = { out, cap, 0, !out || !cap || attempt < 0 || attempt > RELAY_ATTEMPT_MAX || loss < 1 || loss > RELAY_COUNT_MAX || tries < 1 || tries > RELAY_RETRY_TRIES
+                               || held_back < 0 || held_back > RELAY_COUNT_MAX || gap_ms < 0 || gap_ms > RELAY_COUNT_MAX };
+    put(&o, "{\"report\":\"camera_reopened\",\"v\":1,\"attempt\":");
+    put_number(&o, attempt);
+    put(&o, ",\"loss\":");
+    put_number(&o, loss);
+    put(&o, ",\"tries\":");
+    put_number(&o, tries);
+    put(&o, ",\"held_back\":");
+    put_number(&o, held_back);
+    put(&o, ",\"gap_ms\":");
+    put_number(&o, gap_ms);
+    put(&o, "}");
+    return put_end(&o);
 }
 
 /* ================================================================ pictures out of RTP (RFC 6184, RFC 7798) */

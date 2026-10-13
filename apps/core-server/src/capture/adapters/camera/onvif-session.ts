@@ -77,6 +77,14 @@
  * and the instant it names. It is one of the five reads (no sixth call exists), it runs through
  * the same exchange, and it is wired nowhere by this file: the composition hands it to the camera
  * watch (row 85).
+ *
+ * TASK 4 ROW 143b (S13-11 point 2; the source half of the destination rule). Each of the three
+ * calls takes, last, the address of this host its connections must leave from. The exchange gives
+ * it to EVERY socket of its one agent as the local address (IPv4), so the clock read, the service
+ * read, the profile read and the stream-address read of a stored camera all leave from the
+ * camera-interface address the rule named - or do not leave: an address the host does not hold
+ * makes the connection fail before a byte is sent. The address is a parameter of the one call and
+ * is kept nowhere. This file decides nothing about it beyond its form.
  */
 import { Agent as HttpAgent } from 'node:http';
 import { Agent as HttpsAgent } from 'node:https';
@@ -88,6 +96,10 @@ import { ConnectionTestOutcome, type CameraCandidate, type ConnectionTestResult 
 // The target of a test is worked out in a sibling file that holds no client (pass F-Y): the
 // confirmation text of the connect dialog is built there from the SAME function this file dials with.
 import { targetOf, type ConnectionTarget } from './connection-target';
+// Row B1 (decision C95; review 060b B-01): a reply is capped per read and scanned in one pass BEFORE the package is handed any of it.
+import { OnvifReplyRefusal, guardOnvifReplies, onvifReplyMaxBytes } from './onvif-reply-guard';
+// Row 143b: the one form of a source address (pure; the judgement of a stored camera names it, the relay holds its start message to the same).
+import { isSourceAddress } from './stored-address';
 
 /** The bounds of one test (capture spec §A.6.2 CT-4; SEC35-33). The whole-test deadline is the caller's signal. */
 export const ONVIF_SESSION_LIMITS: OnvifSessionLimits = Object.freeze({
@@ -188,8 +200,15 @@ export interface OnvifConnectionTester {
    * that is already aborted and with `CAPTURE_LOCATOR_INVALID` for a candidate that may not be
    * contacted (not testable, or a service address that is not on the candidate's own address).
    * Otherwise it RESOLVES, whatever the device does.
+   *
+   * `sourceAddress` (task 4 row 143b; S13-11 point 2): the address of THIS host every connection
+   * of the test leaves from - for a STORED camera the camera-interface address its judgement
+   * names (`storedCameraSourceOf`). Handed in, it is the local address of every request; a text
+   * that is no source address rejects with `CAPTURE_LOCATOR_INVALID` before any request, and an
+   * address the host does not hold gets no connection (`UNREACHABLE`, `NO_ANSWER`; 0 requests).
+   * Left out - a camera that is not stored yet - the host's own routing chooses, as before.
    */
-  test(candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal): Promise<OnvifSessionResult>;
+  test(candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal, sourceAddress?: string): Promise<OnvifSessionResult>;
 }
 
 /** What one `locate` answers. The locator is the one piece of device text: checked, bounded, without a credential. */
@@ -213,8 +232,9 @@ export interface OnvifStreamLocator {
    * aborted signal and for a candidate that may not be contacted. Otherwise it RESOLVES. At most
    * one request carries the credential, and a refusal of it is final (the lock-out bound of `test`).
    * Nothing keeps the answer: a caller resolves again at each start of a source.
+   * `sourceAddress`: as `test` takes it (row 143b) - the local address of every request of the read.
    */
-  locate(candidate: CameraCandidate, credential: SealedCredential | null, profileToken: string, signal: AbortSignal): Promise<OnvifLocatorResult>;
+  locate(candidate: CameraCandidate, credential: SealedCredential | null, profileToken: string, signal: AbortSignal, sourceAddress?: string): Promise<OnvifLocatorResult>;
 }
 
 const PROFILE_TOKEN = /^[A-Za-z0-9_.:-]{1,64}$/;
@@ -498,6 +518,7 @@ function exchange<Result>(
   credential: SealedCredential | null,
   signal: AbortSignal,
   course: Course<Result>,
+  sourceAddress?: string,
 ): Promise<Result> {
     if (signal.aborted) return Promise.reject(new CaptureAdapterError(CaptureAdapterRefusal.ABORTED));
     let target: ConnectionTarget;
@@ -506,6 +527,8 @@ function exchange<Result>(
     } catch (error) {
       return Promise.reject(error);
     }
+    // Row 143b: a source address that was handed in and is not one is a refusal BEFORE any request - never a dial without it.
+    if (sourceAddress !== undefined && !isSourceAddress(sourceAddress)) return Promise.reject(new CaptureAdapterError(CaptureAdapterRefusal.LOCATOR_INVALID));
     const authenticated = credential !== null;
 
     return new Promise<Result>((resolveExchange) => {
@@ -526,9 +549,13 @@ function exchange<Result>(
       const connect = Reflect.get(agent, 'createConnection') as CreateConnection;
       Object.assign(agent, {
         createConnection(connectionOptions: object, callback?: (error: Error | null, stream: never) => void): unknown {
-          const socket = connect.call(agent, connectionOptions, callback) as WatchedSocket | null | undefined;
+          // Row 143b: EVERY connection of this exchange leaves from the source address handed in (the camera-interface
+          // address the destination rule named). A host that does not hold it gets no connection: the read has no answer.
+          const bound = sourceAddress === undefined ? connectionOptions : { ...connectionOptions, localAddress: sourceAddress, family: 4 };
+          const socket = connect.call(agent, bound, callback) as WatchedSocket | null | undefined;
           if (socket === null || socket === undefined) return socket;
-          if (settled) {
+          // Row B1: after a refused reply no connection is kept either - whatever the package would still ask goes nowhere.
+          if (settled || replyRefused) {
             socket.destroy();
             return socket;
           }
@@ -554,6 +581,28 @@ function exchange<Result>(
           return socket;
         },
       });
+
+      // ── Row B1 (C95; B-01): every reply is judged before the package reads it. The package's namespace replacement is
+      // quadratic for one shape of text and synchronous, so no deadline can end it: a body above what its read needs ends the
+      // exchange as the byte cap does; a body of a refused shape is the answer `INVALID_ANSWER` of the read that was asked -
+      // what a reply that is no answer always was - and NOTHING FURTHER IS SENT: every later read of the exchange answers the
+      // same without a request. Only the code of the refusal is known here; nothing of the reply is kept or passed on (AD-06).
+      let asking: OnvifSessionRead | null = null;
+      let refuseAnswer: (() => void) | null = null;
+      let replyRefused = false;
+      guardOnvifReplies(
+        agent,
+        () => onvifReplyMaxBytes(asking, limits.maxReceivedBytes),
+        (refusal) => {
+          if (refusal === OnvifReplyRefusal.OVERSIZED) {
+            cut('BYTE_CAP');
+            return;
+          }
+          replyRefused = true;
+          for (const socket of sockets) socket.destroy();
+          refuseAnswer?.();
+        },
+      );
 
       // ── The client of the package. It never leaves this function. ──
       const client = new cam.Cam({
@@ -632,6 +681,13 @@ function exchange<Result>(
             once(new Stop('TRANSPORT'));
             return;
           }
+          // Row B1: after a refused reply no request leaves; the read that was being asked is answered by the guard, through this callback.
+          if (replyRefused) {
+            once(new Stop('INVALID_ANSWER'));
+            return;
+          }
+          asking = read;
+          refuseAnswer = () => once(new Stop('INVALID_ANSWER'));
           reads.push(read);
           try {
             invoke(once);
@@ -704,7 +760,7 @@ export function createOnvifConnectionTester(options: OnvifConnectionTesterOption
       rejectedCredentialRequests: session.rejectedCredentialRequests(),
     });
 
-  const test = (candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal): Promise<OnvifSessionResult> =>
+  const test = (candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal, sourceAddress?: string): Promise<OnvifSessionResult> =>
     exchange<OnvifSessionResult>(limits, timers, candidate, credential, signal, {
       cut: (session, cause) => ended(session, ConnectionTestOutcome.UNREACHABLE, cutReason(cause)),
       steps: async (session) => {
@@ -743,7 +799,7 @@ export function createOnvifConnectionTester(options: OnvifConnectionTesterOption
         // Task 4 row 26: the stream of each video source, from every usable profile, the larger picture first.
         return ended(session, ConnectionTestOutcome.REACHABLE, null, h264, mainProfilesOf(usable));
       },
-    });
+    }, sourceAddress);
 
   return Object.freeze({ test });
 }
@@ -768,7 +824,7 @@ export function createOnvifStreamLocator(options: OnvifConnectionTesterOptions):
       rejectedCredentialRequests: session.rejectedCredentialRequests(),
     });
 
-  const locate = (candidate: CameraCandidate, credential: SealedCredential | null, profileToken: string, signal: AbortSignal): Promise<OnvifLocatorResult> => {
+  const locate = (candidate: CameraCandidate, credential: SealedCredential | null, profileToken: string, signal: AbortSignal, sourceAddress?: string): Promise<OnvifLocatorResult> => {
     // The token goes into a request body as it is: nothing but the token form is ever sent.
     if (typeof profileToken !== 'string' || !PROFILE_TOKEN.test(profileToken)) return Promise.reject(new CaptureAdapterError(CaptureAdapterRefusal.PROFILE_UNKNOWN));
     return exchange<OnvifLocatorResult>(limits, timers, candidate, credential, signal, {
@@ -782,7 +838,7 @@ export function createOnvifStreamLocator(options: OnvifConnectionTesterOptions):
         if ('reason' in read) return answered(session, ConnectionTestOutcome.WRONG_PROFILE, read.reason);
         return answered(session, ConnectionTestOutcome.REACHABLE, null, read.locator);
       },
-    });
+    }, sourceAddress);
   };
 
   return Object.freeze({ locate });
@@ -807,6 +863,12 @@ export interface OnvifTimeReader {
    * answer carries whole seconds, so the value is exact to one second and no finer.
    */
   read(candidate: CameraCandidate, signal: AbortSignal): Promise<{ readonly answered: boolean; readonly cameraUtcMs: number | null }>;
+  /**
+   * The same read, made FROM `fromAddress` (task 4 row 143b): the source address, as `test` takes
+   * it - the local address of the one request. The read of a STORED camera is this form. Still no
+   * credential: the third parameter is a dotted address literal, held to its form before any request.
+   */
+  read(candidate: CameraCandidate, signal: AbortSignal, fromAddress: string): Promise<{ readonly answered: boolean; readonly cameraUtcMs: number | null }>;
 }
 
 /** The element of the answer that states the instant as UTC, with whatever namespace prefix the device writes. */
@@ -832,7 +894,7 @@ export function createOnvifTimeReader(options: OnvifConnectionTesterOptions): On
   const limits: OnvifSessionLimits = { ...ONVIF_SESSION_LIMITS, ...options.limits };
   const { timers } = options;
 
-  const read = (candidate: CameraCandidate, signal: AbortSignal): Promise<{ readonly answered: boolean; readonly cameraUtcMs: number | null }> =>
+  const read = (candidate: CameraCandidate, signal: AbortSignal, sourceAddress?: string): Promise<{ readonly answered: boolean; readonly cameraUtcMs: number | null }> =>
     exchange<{ readonly answered: boolean; readonly cameraUtcMs: number | null }>(limits, timers, candidate, null, signal, {
       cut: () => TIME_NOT_ANSWERED,
       steps: async ({ client, ask }) => {
@@ -851,7 +913,7 @@ export function createOnvifTimeReader(options: OnvifConnectionTesterOptions): On
         const utcMs = member(clock.value, 'statesUtc') === true && instant instanceof Date ? instant.getTime() : Number.NaN;
         return Object.freeze({ answered: true, cameraUtcMs: Number.isSafeInteger(utcMs) ? utcMs : null });
       },
-    });
+    }, sourceAddress);
 
   return Object.freeze({ read });
 }

@@ -12,9 +12,10 @@
  *
  * NEVER AUTOMATIC, and how that is held:
  *   1. the function takes an `OperatorReaddressConfirmation`, which only
- *      `operatorReaddressConfirmation` makes (a private brand) - and that maker has NO production
- *      caller until an operation of the contract calls it at its route edge (static rule 6 of this
- *      folder: the list of callers is closed and empty today);
+ *      `operatorReaddressConfirmation` makes (a private brand) - and that maker has ONE production
+ *      caller: the route edge of operation 100, which makes it from the body of the request it
+ *      answers (`readdress-route.ts`, row 197; static rule 6 of this folder: the list of callers
+ *      is closed and holds that one file);
  *   2. the caller is an OPERATOR session (`ReaddressCaller`), never the search, a timer or a tick;
  *   3. the confirmation names the address the operator SAW: it must equal the address the
  *      candidate holds NOW, so a list that changed under the dialog confirms nothing;
@@ -35,10 +36,11 @@
  * the audit entry. Either both or neither. The stored credential stays with the device: the
  * operator confirmed that the camera is the same one.
  *
- * NOT WIRED TODAY. The contract registry has no operation for a re-address and the engine has no
- * door that changes the address of a registered device (requests of row 97 in
- * `file_requests.md`). Until both exist no route calls this file, `readdresser` is not provided
- * and the function answers `NOT_READY` - which is "never automatic" in its plainest form.
+ * WIRED BY ROW 197 (`readdress-route.ts`): operation 100 `confirmCaptureDeviceAddress` of the
+ * contract (row 194) calls this file with its three seams - the caller's own candidate directory,
+ * the fence's binding of the destination rule on the injected network facts, and the engine's
+ * door `readdressCaptureDeviceIn` (row 196). A seam that is absent answers `NOT_READY`; a rule
+ * without facts refuses every address.
  *
  * Nothing here reads or holds a credential. No log line carries an address or an endpoint
  * reference: the audit entry carries the two IP literals, as its closed detail rule states.
@@ -83,6 +85,8 @@ export type ReaddressRefusal = (typeof ReaddressRefusal)[keyof typeof ReaddressR
 
 /** The reason code of the audit entry: an operator confirmed the target. The set-IP job writes its own (`SET_CAMERA_ADDRESS`). */
 export const READDRESS_AUDIT_REASON = 'OPERATOR_CONFIRMED';
+/** The operation of the contract an operator confirms through (row 194, operation 100): the `operationId` of the audit entry, as the sibling entries of this module carry theirs. */
+export const READDRESS_OPERATION_ID = 'confirmCaptureDeviceAddress';
 /** The label of the engine unit. */
 export const READDRESS_UNIT_LABEL = 'captureReaddress.confirm';
 const SOURCE = 'captureReaddress';
@@ -288,7 +292,7 @@ export async function confirmCameraReaddress(seams: ReaddressSeams, caller: Read
       actorId: caller.principal.operatorId,
       deviceId,
       // The two IP literals and the code for why: no port, no endpoint reference, no announced text.
-      details: { deviceId, fromAddress: fromLiteral, toAddress: toLiteral, reason: READDRESS_AUDIT_REASON, permission: Permission.CAPTURE_CONFIG },
+      details: { deviceId, fromAddress: fromLiteral, toAddress: toLiteral, reason: READDRESS_AUDIT_REASON, operationId: READDRESS_OPERATION_ID, permission: Permission.CAPTURE_CONFIG },
     };
     await scope.unit.audit.append(entry);
     return { deviceId, fromAddress, toAddress: target.address };

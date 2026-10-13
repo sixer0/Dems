@@ -57,7 +57,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import { auditRowToRow } from '../db/mapping';
 import { auditLog, type AuditLogRow } from '../db/schema';
 import { describeError, type ErrorLog } from '../plugins/logger';
-import { detailRulesOf } from './audit-details';
+import { detailRulesOf, fixedSeverityOf, openDetailRulesOf } from './audit-details';
 import { stampOf, type Clock } from './clock';
 import { CoreError, PipelineFailure, PipelineRefusal, SqlState, driverErrorOf, sqlStateOf } from './errors';
 import { checkMessage, checkPayload, checkReference, type PayloadCodes, type RowOrigin } from './payload-rules';
@@ -145,6 +145,31 @@ function checkAllowList(type: AuditType, details: Readonly<Record<string, string
   }
 }
 
+/**
+ * What holds for a row of `type` WHOEVER wrote it (task 4 row V4; decisions C71 C-6, C72 F-04, C76
+ * item 8): the open rule of the type - named members held to their form while every other key
+ * stays free, today the two signing members of `SYSTEM_BOOT`, each of its form or JSON null - and
+ * the fixed severity of the type, today WARNING for `OPERATOR_PASSWORD_SET`. Asked for a native
+ * entry (`auditInputOf`) and for every row before it is stored (`checkAuditRow`, native and
+ * prepared), so no writer of such a row is outside it. The refusal names the type and the key,
+ * never the value.
+ */
+function checkTypeRules(type: AuditType, severity: Severity, details: Readonly<Record<string, string | number | boolean | null>>): void {
+  const fixed = fixedSeverityOf(type);
+  if (fixed !== undefined && severity !== fixed) {
+    throw new CoreError('AUDIT_SEVERITY_INVALID', `the severity of ${type} is fixed: ${fixed}`);
+  }
+  const rules = openDetailRulesOf(type);
+  if (rules === undefined) return;
+  for (const [key, rule] of Object.entries(rules)) {
+    const value = details[key];
+    if (value === undefined) continue;
+    if (!rule.accepts(value)) {
+      throw new CoreError('AUDIT_DETAIL_VALUE_INVALID', `${key} in the details of ${type} must be ${rule.form}`);
+    }
+  }
+}
+
 /** An entry of a server-native module, as the shared input the row is built from. */
 export function auditInputOf(entry: AuditEntry): AuditInput {
   if (typeof entry !== 'object' || entry === null) {
@@ -166,10 +191,12 @@ export function auditInputOf(entry: AuditEntry): AuditInput {
   }
   const details = checkPayload(members['details'], 'native', CODES);
   checkAllowList(type, details);
+  const severity = members['severity'] === undefined ? Severity.INFO : checkSeverity(members['severity']);
+  checkTypeRules(type, severity, details);
   return {
     type,
     message: checkMessage(members['message'], 'native', CODES),
-    severity: members['severity'] === undefined ? Severity.INFO : checkSeverity(members['severity']),
+    severity,
     actorId: checkActor(members['actorId']),
     sessionId: checkReference(members['sessionId'], CODES),
     evidenceId: checkReference(members['evidenceId'], CODES),
@@ -197,13 +224,13 @@ export function checkAuditRow(row: AuditRow, origin: RowOrigin): AuditLogRow {
   if (!(row.at >= 0)) throw invalidRow('its time is before the epoch');
   if (!isAuditType(row.type)) throw new CoreError('AUDIT_TYPE_UNKNOWN', 'the type of an audit row is one of the shared audit types');
   if (row.category !== AUDIT_TYPE_CATEGORY[row.type]) throw invalidRow('its category is not the one the shared map gives its type');
-  checkSeverity(row.severity);
+  const severity = checkSeverity(row.severity);
   checkActor(row.actorId);
   checkMessage(row.message, origin, CODES);
   checkReference(row.sessionId, CODES);
   checkReference(row.evidenceId, CODES);
   checkReference(row.deviceId, CODES);
-  checkPayload(row.details, origin, CODES);
+  checkTypeRules(row.type, severity, checkPayload(row.details, origin, CODES));
   if (typeof row.prevHash !== 'string' || !SHA256_HEX_PATTERN.test(row.prevHash)) throw invalidRow('its previous hash is not 64 hexadecimal digits');
   if (typeof row.hash !== 'string' || !SHA256_HEX_PATTERN.test(row.hash) || row.hash === row.prevHash) {
     throw invalidRow('its hash is not 64 hexadecimal digits, or equals its previous hash');

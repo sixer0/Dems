@@ -168,8 +168,11 @@ export type BiometricRevocation =
     }
   /** The live tokens of a device that was revoked or unpaired (SR-34). For the pairing module. */
   | { readonly scope: 'DEVICE'; readonly deviceId: string; readonly reason: Extract<BioRevokeReason, 'DEVICE_REVOKED' | 'DEVICE_UNPAIRED'> }
-  /** The live tokens of an operator who was disabled (AT-C5). For the administration module. */
-  | { readonly scope: 'OPERATOR'; readonly operatorId: string; readonly reason: Extract<BioRevokeReason, 'USER_DISABLED'> };
+  /**
+   * The live tokens of an operator who was disabled (AT-C5; the administration module), or whose
+   * password was replaced from the host (task 4 row 215; the command `operator:set-password`).
+   */
+  | { readonly scope: 'OPERATOR'; readonly operatorId: string; readonly reason: Extract<BioRevokeReason, 'USER_DISABLED' | 'CREDENTIAL_REPLACED'> };
 
 export type BiometricRevocationScope = BiometricRevocation['scope'];
 

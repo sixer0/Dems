@@ -18,7 +18,7 @@ import type { Permission, Sim } from '@dems/shared/sim'
 import { noteDeniedPage } from '@/lib/denied-page'
 
 /** The route each permission of this guard opens: what the shell names when it says why the operator is on the Dashboard. */
-const PAGE_OF: Partial<Record<Permission, string>> = { USER_ADMIN: '/admin/users', PAIRING_MANAGE: '/admin/devices' }
+const PAGE_OF: Partial<Record<Permission, string>> = { USER_ADMIN: '/admin/users', PAIRING_MANAGE: '/admin/devices', CAPTURE_COMMISSION: '/admin/commissioning' }
 
 export function requireCorePermission(sim: Sim, permission: Permission): void {
   if (coreModeOf(sim) === CoreMode.LIVE && !corePermissionOf(sim, permission)) {

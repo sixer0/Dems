@@ -17,8 +17,9 @@
 // the stop and must be empty both times. Loopback only: the worker listens on the Core's two
 // ingest ports 127.0.0.1:8554 and 8556. The clock and the timers are the system's.
 //
-// The fixture directory (`.data/test-row61-row140e2e-<pid>-<n>`: generated test picture, sealed)
-// is LEFT in place: this file deletes nothing under `.data/`.
+// The fixture directory (generated test picture, sealed; a development signing key) is a TEMPORARY
+// directory of the operating system since task 4 row 228b and is REMOVED when its case ends, also
+// after a failure: no key of a test lies below the repository. This file deletes nothing under `.data/`.
 //
 // ── THE ATTENDED RUN (THE USER'S; NEVER AN AGENT'S) ───────────────────────────────────────────────
 // The same steps with THIS MAC'S CAMERA AND MICROPHONE in slot 1 (`CAM-03`, `MIC-03`) and the test
@@ -33,8 +34,8 @@
 // MICROPHONE IS OPENED TOO, for the same time (its helper is started when the worker accepted the
 // plan; macOS asks for that permission as well). Known state D128: this microphone delivered 8/9 of
 // its declared rate - the run prints the microphone warnings it saw and judges none of them. The
-// recording is sealed (encrypted) below `.data/test-row61-row140local-<pid>-<n>/media/` and nowhere
-// else; numbers only are printed and written to `row140-result.json` there; nothing is played.
+// recording is sealed (encrypted) below the fixture's temporary directory and nowhere else, and is
+// removed with it when the case ends (row 228b); numbers only are PRINTED; nothing is played.
 //
 // ── THE SPEECH RUN (fix wave H, driver E; ruling D198 on gate 81, condition C1) ───────────────────
 // The GENERATED run with `DEMS_CAPTURE_DEV_FAKE_MIC=speech` and STT ENABLED on `cpu-local`: the
@@ -54,7 +55,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFile
 import { resolve } from 'node:path';
 import { OPERATORS } from '@dems/shared/sim';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import { useTestDatabase } from '../../../../../test/helpers/db';
 import { captureLog, unitTestConfig } from '../../../../../test/support/config';
 import { WEB_ORIGIN, cookieValue, webSignIn } from '../../../../../test/support/identity';
@@ -171,6 +172,8 @@ async function developmentSession(mode: Mode): Promise<void> {
   {
     const expected = MODES[mode];
     const fixture = realBootFixture(expected.label);
+    // Row 228b: the temporary directory (its development key, the sealed recording) goes when this case ends, passed or failed.
+    onTestFinished(() => fixture.remove());
     provisionDevelopmentSigningKey({ dataDir: fixture.dataDir, now: Date.now() });
     const target = await db.another({ template: 'seed', slug: expected.slug });
     const owner = target.ownerPool();
@@ -260,7 +263,7 @@ async function developmentSession(mode: Mode): Promise<void> {
     const result = (facts: Record<string, unknown>): void => {
       // Numbers, identifiers and codes only: nothing of the picture or the sound.
       writeFileSync(`${fixture.dataDir}/row140-result.json`, `${JSON.stringify({ check: 'M5-LOCAL-E2E-1', mode, sessionId, ...facts }, null, 1)}\n`);
-      console.info(`[row140 e2e ${mode}] ${JSON.stringify({ sessionId, ...facts })}; left at ${fixture.dataDir.replace(REPOSITORY, '.')}`);
+      console.info(`[row140 e2e ${mode}] ${JSON.stringify({ sessionId, ...facts })}; written to row140-result.json of the fixture's temporary directory, which is removed when the case ends`);
     };
     if (mode === 'LOCAL') {
       // A local camera that could not be opened (no permission yet, in use, not found) is the USER's to

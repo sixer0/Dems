@@ -2,6 +2,8 @@
 // database contract §C.4, §C.5). Real Ed25519 keys and signatures, made in a throw-away directory.
 import { X509Certificate, createPrivateKey, createPublicKey, generateKeyPairSync, sign as nodeSign, verify as nodeVerify, webcrypto } from 'node:crypto';
 import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+// Row 210, for the cases of the read path at the end of this file.
+import { mkdirSync, renameSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
@@ -431,6 +433,162 @@ describe('CS-13: the real key record', () => {
     expect(records[1].fingerprint).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
     expect(records[1].fingerprint).not.toBe(records[0].fingerprint);
     expect(records[1].expiresAt).toBe(loaded.certificate.notAfter);
+  });
+});
+
+// Task 4 row 210 (package X1-3; S99-06; SX-16 first half): the read path of the store. Every key here is
+// made by `provisioned()` in a directory of the temporary folder that `afterAll` removes.
+describe('the read path of the store (row 210; S99-06)', () => {
+  const KEY = 'CORE-KEY-EVSIGN-01';
+  const uid = typeof process.getuid === 'function' ? process.getuid() : -1;
+  const at = (dir: string, extension: string): string => join(dir, `${KEY}.${extension}`);
+  /** Puts a link in the place of a stored file; the link leads to the file's own bytes, with the file's own mode. */
+  function linked(dir: string, extension: string): void {
+    const moved = join(dir, '..', `moved-${extension}`);
+    renameSync(at(dir, extension), moved);
+    symlinkSync(moved, at(dir, extension));
+  }
+
+  it('no link is followed: a key file, a secret file, a certificate or the store directory that is a link is refused', () => {
+    for (const [extension, expected] of [
+      ['p8', 'KEY_UNREADABLE'],
+      ['wrap', 'KEY_UNREADABLE'],
+      ['crt', 'CERTIFICATE_INVALID'],
+    ] as const) {
+      const { dir } = provisioned();
+      linked(dir, extension);
+      // The target is the very file that loaded a moment ago: only the link is the difference.
+      expect(mode(at(dir, extension)), extension).toBe(extension === 'crt' ? 0o644 : 0o600);
+      expect(codeOf(() => loadSoftwareSigner({ dir, now: NOW + 1_000 })), extension).toBe(expected);
+    }
+    const certificateLink = provisioned().dir;
+    linked(certificateLink, 'crt');
+    expect(codeOf(() => readStoredCertificate({ dir: certificateLink }))).toBe('CERTIFICATE_INVALID');
+    expect(codeOf(() => fileWrapSecrets(provisionedWith('wrap')).get(KEY))).toBe('KEY_UNREADABLE');
+
+    // The directory itself: a link to a store that loads.
+    const { dir } = provisioned();
+    const alias = join(dir, '..', 'alias');
+    symlinkSync(dir, alias);
+    expect(codeOf(() => loadSoftwareSigner({ dir, now: NOW + 1_000 }))).toBe('no error');
+    expect(codeOf(() => loadSoftwareSigner({ dir: alias, now: NOW + 1_000 }))).toBe('KEY_UNREADABLE');
+    expect(codeOf(() => readStoredCertificate({ dir: alias }))).toBe('CERTIFICATE_INVALID');
+    expect(codeOf(() => fileWrapSecrets(alias).get(KEY))).toBe('KEY_UNREADABLE');
+
+    // Provisioning does not write through a link either: the directory behind it stays empty.
+    const root = join(store(), '..');
+    mkdirSync(join(root, 'elsewhere'), { mode: 0o700 });
+    symlinkSync(join(root, 'elsewhere'), join(root, 'signer'));
+    expect(codeOf(() => provisionSigningKey({ dir: join(root, 'signer'), now: NOW }))).toBe('KEY_UNREADABLE');
+    expect(readdirSync(join(root, 'elsewhere'))).toEqual([]);
+
+    // A name that is taken by a link that leads nowhere is taken: never provisioned over, and a mark of that kind is a mark.
+    const dangling = store();
+    mkdirSync(dangling, { mode: 0o700 });
+    symlinkSync('/nonexistent/dems-row210', at(dangling, 'p8'));
+    expect(codeOf(() => provisionSigningKey({ dir: dangling, now: NOW }))).toBe('KEY_EXISTS');
+    expect(readdirSync(dangling)).toEqual([`${KEY}.p8`]);
+    const marked = provisioned().dir;
+    symlinkSync('/nonexistent/dems-row210', at(marked, 'compromised'));
+    expect(codeOf(() => loadSoftwareSigner({ dir: marked }))).toBe('KEY_COMPROMISED');
+  });
+  /** A provisioned store whose file of that extension is a link; returns the directory. */
+  function provisionedWith(extension: string): string {
+    const { dir } = provisioned();
+    linked(dir, extension);
+    return dir;
+  }
+
+  it('the owner is checked: a store that belongs to another user is refused (the expected owner is stated), and it is the process user by default', () => {
+    const { dir } = provisioned();
+    expect(codeOf(() => loadSoftwareSigner({ dir, now: NOW + 1_000, ownerUid: uid }))).toBe('no error');
+    expect(codeOf(() => loadSoftwareSigner({ dir, now: NOW + 1_000, ownerUid: uid + 1 }))).toBe('KEY_MODE');
+    expect(codeOf(() => loadSoftwareSigner({ dir, now: NOW + 1_000, ownerUid: 0 }))).toBe('KEY_MODE');
+    expect(codeOf(() => fileWrapSecrets(dir, uid + 1).get(KEY))).toBe('KEY_MODE');
+    expect(codeOf(() => readStoredCertificate({ dir, ownerUid: uid + 1 }))).toBe('CERTIFICATE_INVALID');
+    expect(codeOf(() => provisionSigningKey({ dir: store(), now: NOW, ownerUid: uid + 1 }))).toBe('KEY_MODE');
+    // CONTROL: the default is the user of this process - the very same store loads without the option.
+    expect(statSync(dir).uid).toBe(uid);
+    expect(codeOf(() => loadSoftwareSigner({ dir, now: NOW + 1_000 }))).toBe('no error');
+  });
+
+  it("the directory's mode is checked at load: 0755, 0750 and 0701 are refused, 0700 loads", () => {
+    const { dir } = provisioned();
+    for (const bits of [0o755, 0o750, 0o701, 0o710]) {
+      chmodSync(dir, bits);
+      expect(codeOf(() => loadSoftwareSigner({ dir, now: NOW + 1_000 })), bits.toString(8)).toBe('KEY_MODE');
+      expect(codeOf(() => readStoredCertificate({ dir })), bits.toString(8)).toBe('CERTIFICATE_INVALID');
+    }
+    chmodSync(dir, 0o700);
+    expect(codeOf(() => loadSoftwareSigner({ dir, now: NOW + 1_000 }))).toBe('no error');
+    // No store at all is still "absent", and nothing is created by asking.
+    const absent = store();
+    expect(codeOf(() => loadSoftwareSigner({ dir: absent }))).toBe('KEY_ABSENT');
+    expect(() => readdirSync(absent)).toThrow();
+  });
+
+  it('a file is read with a bound, from the handle that was checked: too large, not a regular file, or a certificate others may write is refused', () => {
+    const tooLarge = Buffer.alloc(16 * 1024 + 1, 0x41);
+    const largeKey = provisioned().dir;
+    writeFileSync(at(largeKey, 'p8'), tooLarge, { mode: 0o600 });
+    expect(codeOf(() => loadSoftwareSigner({ dir: largeKey }))).toBe('KEY_UNREADABLE');
+    const largeSecret = provisioned().dir;
+    writeFileSync(at(largeSecret, 'wrap'), tooLarge, { mode: 0o600 });
+    expect(codeOf(() => loadSoftwareSigner({ dir: largeSecret }))).toBe('KEY_UNREADABLE');
+    const largeCertificate = provisioned().dir;
+    writeFileSync(at(largeCertificate, 'crt'), tooLarge);
+    expect(codeOf(() => loadSoftwareSigner({ dir: largeCertificate }))).toBe('CERTIFICATE_INVALID');
+    // CONTROL of the bound, on the reader itself (the secret source hands back what it read): EXACTLY the bound is read whole; one byte more is refused.
+    const atBound = provisioned().dir;
+    writeFileSync(at(atBound, 'wrap'), Buffer.alloc(16 * 1024, 0x42), { mode: 0o600 });
+    const whole = fileWrapSecrets(atBound).get(KEY);
+    expect([whole?.length, whole?.every((byte) => byte === 0x42)]).toEqual([16 * 1024, true]);
+    writeFileSync(at(atBound, 'wrap'), tooLarge, { mode: 0o600 });
+    expect(codeOf(() => fileWrapSecrets(atBound).get(KEY))).toBe('KEY_UNREADABLE');
+
+    const folder = provisioned().dir;
+    rmSync(at(folder, 'p8'));
+    mkdirSync(at(folder, 'p8'), { mode: 0o700 });
+    expect(codeOf(() => loadSoftwareSigner({ dir: folder }))).toBe('KEY_UNREADABLE');
+
+    const writable = provisioned().dir;
+    for (const bits of [0o664, 0o646, 0o666]) {
+      chmodSync(at(writable, 'crt'), bits);
+      expect(codeOf(() => loadSoftwareSigner({ dir: writable, now: NOW + 1_000 })), bits.toString(8)).toBe('CERTIFICATE_INVALID');
+    }
+    chmodSync(at(writable, 'crt'), 0o644);
+    expect(codeOf(() => loadSoftwareSigner({ dir: writable, now: NOW + 1_000 }))).toBe('no error');
+  });
+
+  it('every refusal of the read path is an existing code, and no error names a place', () => {
+    const errors: unknown[] = [];
+    const collect = (run: () => unknown): void => {
+      try {
+        run();
+      } catch (error) {
+        errors.push(error);
+      }
+    };
+    const { dir } = provisioned();
+    const alias = join(dir, '..', 'alias');
+    symlinkSync(dir, alias);
+    collect(() => loadSoftwareSigner({ dir: alias }));
+    collect(() => loadSoftwareSigner({ dir, ownerUid: uid + 1 }));
+    collect(() => readStoredCertificate({ dir: alias }));
+    chmodSync(dir, 0o755);
+    collect(() => loadSoftwareSigner({ dir }));
+    chmodSync(dir, 0o700);
+    linked(dir, 'p8');
+    collect(() => loadSoftwareSigner({ dir }));
+    expect(errors).toHaveLength(5);
+    const known = ['KEY_ABSENT', 'KEY_MODE', 'KEY_UNREADABLE', 'KEY_COMPROMISED', 'KEY_EXISTS', 'CERTIFICATE_INVALID', 'CERTIFICATE_NOT_VALID_NOW', 'KEY_ID_INVALID', 'SIGNER_MISMATCH', 'SIGNATURE_FAILED'];
+    for (const error of errors) {
+      expect(error).toBeInstanceOf(SignerError);
+      expect(known).toContain((error as SignerError).code);
+      const text = `${(error as Error).message}\n${inspect(error, { depth: 6 })}\n${JSON.stringify(error)}`;
+      for (const place of [tmpdir(), dir, 'alias', 'moved-', '.p8', '.wrap', '.crt', 'ELOOP', 'ENOENT', 'EACCES']) expect(text, place).not.toContain(place);
+      expect((error as Error).cause).toBeUndefined();
+    }
   });
 });
 

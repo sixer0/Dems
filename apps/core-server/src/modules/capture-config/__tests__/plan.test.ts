@@ -296,8 +296,25 @@ describe('what is no plan: CAPTURE_PLAN_INVALID', () => {
       ],
       mics: SEEDED.mics,
     };
-    expect(refusalOf(() => assertRecordableSelector(selector, fake.registry))).toBe('no refusal');
-    expect(refusalOf(() => buildCapturePlan({ selector, registry: fake.registry, cameras: CAMERA_SOURCES, mics: pipeInputs(fake.mics), pcmTapPath: null }))).toEqual({ code: 'CAPTURE_PLAN_INVALID', reason: 'PROTOCOL_SHAPE', deviceId: null });
+    // Row R2 (ruling C93 on review finding F3-11): THE TWO EXPECTATIONS OF THIS CASE MOVED. Until that row the start rule admitted the
+    // selector ('no refusal') and only the built plan was refused, after the sources were opened, with no device named (`deviceId: null`).
+    // Now the start rule itself refuses it, under the same existing reason, naming the device - the second line of defence behind the
+    // selector's own refusal (`routes.ts`, `CAMERA_ON_BOTH_TRACKS`).
+    const refused = { code: 'CAPTURE_PLAN_INVALID', reason: 'PROTOCOL_SHAPE', deviceId: 'CAM-01' };
+    expect(refusalOf(() => assertRecordableSelector(selector, fake.registry))).toEqual(refused);
+    expect(refusalOf(() => buildCapturePlan({ selector, registry: fake.registry, cameras: CAMERA_SOURCES, mics: pipeInputs(fake.mics), pcmTapPath: null }))).toEqual(refused);
+    // Before the registry is asked, in every capture operation, and whatever the two profiles are.
+    const asked: string[] = [];
+    for (const operation of [CaptureOperation.SIMULATED, CaptureOperation.REAL_DEVELOPMENT, CaptureOperation.REAL_PRODUCTION]) {
+      const untouched: CapturePlanRegistry = { operation, assertRecordable: (deviceId) => (asked.push(deviceId), fake.registry.assertRecordable(deviceId)) };
+      for (const profile of ['H264_720P25', 'H264_1080P25']) {
+        const cameras = [selector.cameras[0]!, { ...selector.cameras[1]!, profile }];
+        expect(refusalOf(() => assertRecordableSelector({ ...selector, cameras }, untouched)), `${operation} ${profile}`).toEqual(refused);
+      }
+    }
+    expect(asked).toEqual([]);
+    // CONTROL: two cameras on the two tracks are not refused by this rule (the seeded selector on the standard topology).
+    expect(refusalOf(() => assertRecordableSelector(SEEDED, createFakeRegistry({ runDir: RUN_DIR }).registry))).toBe('no refusal');
   });
 });
 

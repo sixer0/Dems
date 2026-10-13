@@ -11,10 +11,22 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { CARD_LISTING_LIMITS, createCardEnumerator } from '../card-listing';
-import { CARD_LISTING_READ_FAILED, CARD_LISTING_ROOT, CardListingReadError, createCardListingReader } from '../card-listing-reader';
+import { CARD_DEVICES_ROOT, CARD_LISTING_READ_FAILED, CARD_LISTING_ROOT, CardListingReadError, createCardListingReader } from '../card-listing-reader';
 
 const root = mkdtempSync(join(tmpdir(), 'dems-card-listing-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
+// Row 199: the kernel's list of sound cards AS DEVICES, as a directory of fixed files. On a real
+// host `card<N>/device` is a link to the USB interface and the directory above THAT is the USB
+// device with its `serial`; here `device` is a plain directory, so the directory above it is
+// `card<N>` itself and the fixture's serial lies there. The path the reader builds is the same.
+const devices = mkdtempSync(join(tmpdir(), 'dems-card-devices-'));
+afterAll(() => rmSync(devices, { recursive: true, force: true }));
+mkdirSync(join(devices, 'card1', 'device'), { recursive: true });
+writeFileSync(join(devices, 'card1', 'serial'), 'DEMS-SN-000123\n');
+// Card 3: a USB device that states no serial (the attribute is absent). Card 4: a serial that cannot be read.
+mkdirSync(join(devices, 'card3', 'device'), { recursive: true });
+mkdirSync(join(devices, 'card4', 'device'), { recursive: true });
+mkdirSync(join(devices, 'card4', 'serial'));
 
 const LIST =
   '**** List of CAPTURE Hardware Devices ****\n' +
@@ -83,8 +95,30 @@ describe('the reader of the card listing', () => {
     expect(JSON.stringify({ ...error, message: error.message }).includes(root)).toBe(false);
   });
 
+  it('row 199: the serial of the USB device behind a card - ONE more file, read only, by the card index; absent is null, unreadable is the named error', async () => {
+    const reader = createCardListingReader(programs, root, devices);
+    expect(await reader.usbSerial?.(1)).toBe('DEMS-SN-000123\n');
+    // A device that states no serial, and a card the device list does not have at all.
+    expect(await reader.usbSerial?.(3)).toBeNull();
+    expect(await reader.usbSerial?.(9)).toBeNull();
+    // A host without the device list (no such directory): every card is listed with no serial.
+    expect(await createCardListingReader(programs, root, join(devices, 'nothing-here')).usbSerial?.(1)).toBeNull();
+    for (const value of [-1, 32, 1.5, Number.NaN, '1' as unknown as number, '../card1' as unknown as number]) await expect(reader.usbSerial?.(value), String(value)).rejects.toBeInstanceOf(RangeError);
+    // A serial that exists and cannot be read is NOT "no serial": the listing fails by the named error, with no path.
+    const raised = await reader.usbSerial?.(4).then(() => null, (error: unknown) => error);
+    expect(raised).toBeInstanceOf(CardListingReadError);
+    expect([(raised as CardListingReadError).reason, JSON.stringify({ ...(raised as CardListingReadError) }).includes(devices)]).toEqual(['EISDIR', false]);
+    expect(CARD_DEVICES_ROOT).toBe('/sys/class/sound');
+    // Reader and parser together: the serial reaches the card, and only the card that has one.
+    const result = await createCardEnumerator(createCardListingReader({ ...programs, hwParams: async () => 'FORMAT:  S16_LE\nCHANNELS: 2\nRATE: [44100 48000]\n' }, root, devices)).list();
+    expect(result.cards.map((card) => [card.cardId, card.usbSerial, card.usbPort])).toEqual([
+      ['Onboard', null, null],
+      ['Duo', 'DEMS-SN-000123', '0000:00:14.0-2'],
+    ]);
+  });
+
   it('reader and parser together: the cards of the directory', async () => {
-    const result = await createCardEnumerator(createCardListingReader({ ...programs, hwParams: async (cardIndex, deviceIndex) => (cardIndex === 0 && deviceIndex === 0 ? 'FORMAT:  S16_LE\nCHANNELS: 2\nRATE: [44100 48000]\n' : null) }, root)).list();
+    const result = await createCardEnumerator(createCardListingReader({ ...programs, hwParams: async (cardIndex, deviceIndex) => (cardIndex === 0 && deviceIndex === 0 ? 'FORMAT:  S16_LE\nCHANNELS: 2\nRATE: [44100 48000]\n' : null) }, root, join(devices, 'nothing-here'))).list();
     expect(result.skipped).toBe(0);
     expect(result.cards.map((card) => [card.cardIndex, card.deviceIndex, card.cardId, card.usbId, card.usbPort, card.product, card.channelCount, card.factsSource, card.nativeFormat])).toEqual([
       [0, 0, 'Onboard', null, null, 'DEMS Onboard Analog', 2, 'HW_PARAMS', 'S16_LE'],

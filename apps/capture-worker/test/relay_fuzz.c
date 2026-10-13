@@ -10,7 +10,10 @@
  *   rtp          RTP packets, H.264 or HEVC           relay_picture_add (header, fragments, aggregates, reassembly)
  *   client       everything a camera sends, through THE REAL CAMERA LEG (src/relay/relay_rtsp.c, on a socket
  *                pair: relay_camera_adopt, test builds only): open, Digest, play, the read loop, the pictures
- *   start        the start message (the Core's, not the camera's)   relay_start_parse
+ *   start        the start message (the Core's, not the camera's)   relay_start_parse (row 42: the modes, the attempt)
+ *   report       ROW 42, an OUTPUT path: the two report lines from values of any size into a room of any size
+ *                relay_probe_line, relay_established_line (and `description` checks the stated rate and the
+ *                probe line of every description with complete sets)
  * Each entry hands the reader a heap copy of EXACTLY the input's length and then checks what came back against
  * the bounds of relay.h (`must`): with AddressSanitizer and UndefinedBehaviorSanitizer (`make relay-fuzz`) a read
  * or write one byte outside, an overflow of a signed number, or a broken bound ends the run with a report.
@@ -48,7 +51,9 @@
 
 /* Written in pieces: the repository's secret scan counts the FORM of an ingest address. */
 #define INGEST "rtsp://127.0.0.1:8559/S-1/video-01/AbCdEfGhIjK" "lMnOpQrStUv"
-#define GOOD "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10:8554/media/video1\",\"username\":\"unit\",\"secret\":\"unit-placeholder\"}}\n"
+/* Row 143b: the source address of the camera leg, a member record mode must state (a documentation address). */
+#define SOURCE "\"source\":\"192.0.2.1\","
+#define GOOD "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10:8554/media/video1\",\"username\":\"unit\",\"secret\":\"unit-placeholder\"}}\n"
 
 /* ---------------------------------------------------------------- what is known about the input being run */
 static const char *g_entry = "-";
@@ -95,6 +100,14 @@ static void *exact(const void *data, size_t n) {
 }
 
 static int ends_inside(const char *text, size_t cap) { return memchr(text, 0, cap) != NULL; }
+
+/* Row 42: a report line is of ONE shape - an object on one line, its bytes of a fixed set, ONE line feed last and a
+ * 0 after it, at most RELAY_REPORT_MAX bytes. */
+static int fixed_shape(const char *line, int n) {
+    if (n < 2 || n > RELAY_REPORT_MAX || line[n - 1] != '\n' || line[n] != 0 || line[0] != '{' || line[n - 2] != '}') return 0;
+    for (int i = 0; i < n - 1; i++) if (!strchr("{}\":,_0123456789abcdefghijklmnopqrstuvwxyzHEVC", line[i])) return 0;
+    return 1;
+}
 
 /* ---------------------------------------------------------------- the entry points */
 static void check_answer(const RelayAnswer *a, long body) {
@@ -214,7 +227,15 @@ static int fuzz_description(const uint8_t *data, size_t n) {
         char out[RELAY_LOCATOR_CHARS + 1];
         must(d.codec == RELAY_CODEC_H264 || d.codec == RELAY_CODEC_HEVC, "a description that is read names H.264 or HEVC");
         must(d.payload_type >= 0 && d.payload_type <= 127 && ends_inside(d.control, sizeof d.control), "payload type 0 to 127, control inside its array");
+        must(d.rate_milli >= 0 && d.rate_milli <= RELAY_RATE_MILLI_MAX, "a stated rate is 0 (none) or inside its bound");
         check_sets(d.codec, &d.sets);
+        if (relay_sets_complete(d.codec, &d.sets)) {
+            /* What a probe would report of this description (row 42): always a line of the fixed shape. */
+            char line[RELAY_REPORT_MAX + 1];
+            RelayProbe probe = { 1, d.codec, 1 + (int)(n % RELAY_SIDE_MAX), 1 + (int)(n * 7 % RELAY_SIDE_MAX), d.rate_milli, 1, 0, &d.sets };
+            int k = relay_probe_line(&probe, line, sizeof line);
+            must(k > 0 && fixed_shape(line, k), "complete sets of a description make a probe line of the fixed shape");
+        }
         start_again();
         RelayCode c = relay_control_address(&g_start, "", d.control, out, sizeof out);
         must(c == RELAY_STOPPED || c == RELAY_CONTROL_ADDRESS_REFUSED, "a control address is made or refused");
@@ -320,14 +341,102 @@ static int fuzz_start(const uint8_t *data, size_t n) {
     RelayCode r = relay_start_parse(copy, n, &s);
     must(r == RELAY_STOPPED || r == RELAY_START_MESSAGE_INVALID, "a start message is taken or invalid");
     if (r == RELAY_STOPPED) {
+        char line[RELAY_REPORT_MAX + 1];
         must(ends_inside(s.ingest, sizeof s.ingest) && ends_inside(s.locator, sizeof s.locator) && ends_inside(s.host, sizeof s.host) && ends_inside(s.account, sizeof s.account) && ends_inside(s.secret, sizeof s.secret), "every member ends inside its array");
-        must(s.port >= 1 && s.port <= 65535 && s.ingest_port >= RELAY_INGEST_PORT_MIN && s.ingest_port <= RELAY_INGEST_PORT_MAX, "ports inside their ranges");
+        must(s.mode == RELAY_MODE_RECORD || s.mode == RELAY_MODE_PROBE, "a start message that is taken names one of the two modes");
+        must(s.port >= 1 && s.port <= 65535, "the camera's port inside its range");
+        if (s.mode == RELAY_MODE_RECORD) must(s.ingest_port >= RELAY_INGEST_PORT_MIN && s.ingest_port <= RELAY_INGEST_PORT_MAX, "record mode: the ingest port inside its range");
+        else must(!s.ingest[0] && s.ingest_port == 0, "probe mode: no ingest address is taken");
+        must(s.attempt >= 0 && s.attempt <= RELAY_ATTEMPT_MAX, "the attempt is 0 (not stated) or inside its bound");
+        /* Row 143b: the source address. Record mode always holds one; one that is held is the canonical dotted
+         * literal of four numbers, the first 1 to 223 - written again from its numbers it is the same text. */
+        must(ends_inside(s.source, sizeof s.source), "the source address ends inside its array");
+        must(s.mode != RELAY_MODE_RECORD || s.source[0], "record mode: a source address is held");
+        if (s.source[0]) {
+            unsigned a = 999, b = 999, c = 999, d = 999;
+            char again[32], tail = 0;
+            must(sscanf(s.source, "%3u.%3u.%3u.%3u%c", &a, &b, &c, &d, &tail) == 4 && a >= 1 && a <= 223 && b <= 255 && c <= 255 && d <= 255, "a source address that is taken is four numbers, the first 1 to 223");
+            snprintf(again, sizeof again, "%u.%u.%u.%u", a, b, c, d);
+            must(!strcmp(again, s.source), "a source address that is taken is in its one canonical form");
+        }
         must(relay_same_authority(s.locator, s.host, s.port) != NULL, "the locator names its own host and port");
+        int k = relay_established_line(s.attempt, line, sizeof line);
+        must(k > 0 && fixed_shape(line, k), "the attempt of a start message that is taken makes an established line of the fixed shape");
     } else {
         static const RelayStart empty;
         must(!memcmp(&s, &empty, sizeof s), "of a refused start message nothing is kept");
     }
     free(copy);
+    return 0;
+}
+
+/* Row 42: the two report lines, from values of ANY size (the input chooses every number, the lengths of the sets,
+ * their bytes and the room the line gets). The line goes into a heap block of exactly that room. Either there is
+ * no line (-1, and the first byte of the room is 0) or a line of the fixed shape that says exactly the values it
+ * was given; values inside their bounds with enough room always make a line. Input: codec, flags, then 4 bytes
+ * each for attempt, width, height, rate, the three lengths, 2 for the room; the rest is the bytes of the sets. */
+static long quad(const uint8_t **p, const uint8_t *end) {
+    uint32_t v = 0;
+    for (int i = 0; i < 4; i++) v = (v << 8) | (*p < end ? *(*p)++ : 0);
+    return (long)(int32_t)v;
+}
+static int hex_is(const char *at, const uint8_t *bytes, int n) {
+    static const char hex[] = "0123456789abcdef";
+    for (int i = 0; i < n; i++) if (at[2 * i] != hex[bytes[i] >> 4] || at[2 * i + 1] != hex[bytes[i] & 15]) return 0;
+    return at[2 * n] == '"';
+}
+static int fuzz_report(const uint8_t *data, size_t n) {
+    static ParamSets sets;
+    const uint8_t *p = data, *end = data + n;
+    int codec = p < end ? *p++ % 4 : 1, flags = p < end ? *p++ : 0;
+    RelayProbe probe = { quad(&p, end), (RelayCodec)codec, 0, 0, 0, flags & 1, (flags >> 1) & 1, &sets };
+    probe.width = (int)quad(&p, end);
+    probe.height = (int)quad(&p, end);
+    probe.rate_milli = quad(&p, end);
+    memset(&sets, 0, sizeof sets);
+    sets.vps_len = (int)quad(&p, end);
+    sets.sps_len = (int)quad(&p, end);
+    sets.pps_len = (int)quad(&p, end);
+    size_t room = (size_t)(p < end ? *p++ : 0) << 8;
+    room |= p < end ? *p++ : 0;
+    if (flags & 4) room = RELAY_REPORT_MAX + 1;
+    if (flags & 8) { sets.vps_len &= 1023; sets.sps_len &= 1023; sets.pps_len &= 1023; }
+    if (flags & 16) { probe.attempt &= 0xFFFFFF; probe.width = 1 + (probe.width & 8191); probe.height = 1 + (probe.height & 8191); probe.rate_milli &= 0xFFFFF; }
+    uint8_t *to[3] = { sets.vps, sets.sps, sets.pps };
+    for (int i = 0; i < 3; i++) for (int k = 0; k < RELAY_PSET_MAX && p < end; k++) to[i][k] = *p++;
+    if (flags & 32) {       /* headers of valid sets of the codec, so that lines are made and not only refused */
+        if (codec == RELAY_CODEC_H264) { sets.sps[0] = 0x67; sets.pps[0] = 0x68; }
+        else { sets.vps[0] = 0x40; sets.vps[1] |= 1; sets.sps[0] = 0x42; sets.sps[1] |= 1; sets.pps[0] = 0x44; sets.pps[1] |= 1; }
+    }
+    int in_bounds = probe.attempt >= 0 && probe.attempt <= RELAY_ATTEMPT_MAX && (codec == RELAY_CODEC_H264 || codec == RELAY_CODEC_HEVC) && probe.width >= 1 && probe.width <= RELAY_SIDE_MAX
+                    && probe.height >= 1 && probe.height <= RELAY_SIDE_MAX && probe.rate_milli >= 0 && probe.rate_milli <= RELAY_RATE_MILLI_MAX && relay_sets_valid(probe.codec, &sets);
+    char *line = malloc(room ? room : 1);
+    if (!line) abort();
+    line[0] = 'x';
+    int k = relay_probe_line(&probe, line, room);
+    if (k < 0) {
+        must(k == -1 && (!room || line[0] == 0), "no probe line: -1, and nothing of a line in the room");
+        must(!in_bounds || room <= RELAY_REPORT_MAX, "values inside their bounds, with room for the largest line, make a probe line");
+    } else {
+        char head[256];
+        must(in_bounds, "a probe line is made only of values inside their bounds and of valid sets");
+        must((size_t)k < room && fixed_shape(line, k), "a probe line fits its room and is of the fixed shape");
+        int h = snprintf(head, sizeof head, "{\"report\":\"probe\",\"v\":1,\"attempt\":%ld,\"codec\":\"%s\",\"width\":%d,\"height\":%d,\"rate_milli\":%ld,\"sets_in_description\":%s,\"sets_in_stream\":%s,\"vps\":\"",
+                         probe.attempt, codec == RELAY_CODEC_H264 ? "H264" : "HEVC", probe.width, probe.height, probe.rate_milli, probe.sets_in_description ? "true" : "false", probe.sets_in_stream ? "true" : "false");
+        int vps = codec == RELAY_CODEC_HEVC ? sets.vps_len : 0;
+        must(h > 0 && h < (int)sizeof head && k == h + 2 * vps + 9 + 2 * sets.sps_len + 9 + 2 * sets.pps_len + 3 && !memcmp(line, head, (size_t)h), "a probe line says the numbers it was given, in the fixed order");
+        must(hex_is(line + h, sets.vps, vps) && !memcmp(line + h + 2 * vps, "\",\"sps\":\"", 9) && hex_is(line + h + 2 * vps + 9, sets.sps, sets.sps_len)
+             && !memcmp(line + h + 2 * vps + 9 + 2 * sets.sps_len, "\",\"pps\":\"", 9) && hex_is(line + h + 2 * vps + 18 + 2 * sets.sps_len, sets.pps, sets.pps_len), "a probe line holds the bytes of the sets it was given, in hexadecimal");
+    }
+    line[0] = 'x';
+    k = relay_established_line(probe.attempt, line, room);
+    if (k < 0) must(k == -1 && (!room || line[0] == 0) && (probe.attempt < 0 || probe.attempt > RELAY_ATTEMPT_MAX || room < 64), "no established line: -1, nothing in the room, and a reason for it");
+    else {
+        char whole[64];
+        int h = snprintf(whole, sizeof whole, "{\"report\":\"push_established\",\"v\":1,\"attempt\":%ld}\n", probe.attempt);
+        must(probe.attempt >= 0 && probe.attempt <= RELAY_ATTEMPT_MAX && k == h && (size_t)k < room && !strcmp(line, whole) && fixed_shape(line, k), "an established line says the attempt it was given and nothing else");
+    }
+    free(line);
     return 0;
 }
 
@@ -387,14 +496,34 @@ static const Seed seed_challenge[] = {
 };
 static const Seed seed_description[] = {
     S(SDP_H264), S(SDP_HEVC), S(SDP_BARE),
+    S("v=0\r\nm=video 0 RTP/AVP 96\r\na=framerate:29.97\r\na=rtpmap:96 H264/90000\r\na=fmtp:96 sprop-parameter-sets=Z0LAHw==,aM4PyA==\r\na=framerate:1000.000 \r\n"),
     S("v=0\r\nm=video 0 RTP/AVP 26\r\na=rtpmap:26 JPEG/90000\r\n"), S("v=0\r\nm=audio 0 RTP/AVP 0\r\n"),
     S("m=video 0 RTP/AVP 96\r\na=rtpmap:96 H264/90000\r\na=fmtp:96 sprop-parameter-sets=,Z0LAHw==,,aM4PyA==,ZQAAAA==;packetization-mode=1\r\na=control:../x\r\n"),
     S("m=video 0 RTP/AVP 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 96\r\na=rtpmap:96 H265/90000\r\na=fmtp:96 sprop-pps=RAHA8vA8kA==,x; sprop-sps=; sprop-vps\r\n"),
 };
 static const Seed seed_start[] = {
     S(GOOD),
-    S("{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"a \\\"b\\\\ \\u00e9\",\"secret\":\"p\\u0009q\\ud83d\\ude00\"}}\n"),
-    S("{ \"access\" : { \"secret\" : \"\" , \"username\" : \"u\" , \"locator\" : \"rtsp://10.0.0.1:554/s\" } , \"ingest\" : \"" INGEST "\" , \"mode\" : \"record\" , \"type\" : \"start\" }\n"),
+    S("{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"a \\\"b\\\\ \\u00e9\",\"secret\":\"p\\u0009q\\ud83d\\ude00\"}}\n"),
+    S("{ \"access\" : { \"secret\" : \"\" , \"username\" : \"u\" , \"locator\" : \"rtsp://10.0.0.1:554/s\" } , \"ingest\" : \"" INGEST "\" , \"source\" : \"10.0.0.2\" , \"mode\" : \"record\" , \"type\" : \"start\" }\n"),
+    /* row 143b: the source address - the largest literal, probe mode with one, and forms that are refused */
+    S("{\"type\":\"start\",\"mode\":\"record\",\"source\":\"223.255.255.255\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n"),
+    S("{\"type\":\"start\",\"mode\":\"probe\",\"source\":\"192.168.50.1\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n"),
+    S("{\"type\":\"start\",\"mode\":\"record\",\"source\":\"0.0.0.0\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n"),
+    S("{\"type\":\"start\",\"mode\":\"record\",\"source\":\"192.168.050.1\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n"),
+    S("{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n"),
+    /* row 42: the attempt, and probe mode (no ingest address) */
+    S("{\"type\":\"start\",\"mode\":\"record\",\"attempt\":3," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10:8554/media/video1\",\"username\":\"unit\",\"secret\":\"unit-placeholder\"}}\n"),
+    S("{\"type\":\"start\",\"mode\":\"probe\",\"attempt\":999999999,\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"\"}}\n"),
+    S("{\"type\":\"start\",\"mode\":\"probe\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"},\"attempt\" : 12 }\n"),
+};
+/* row 42, entry `report`: codec, flags, attempt, width, height, rate, three lengths (4 bytes each), the room (2). */
+static const Seed seed_report[] = {
+    S("\x01\x3C" "\x00\x00\x00\x05" "\x00\x00\x07\x80" "\x00\x00\x04\x38" "\x00\x00\x61\xA8" "\x00\x00\x00\x00" "\x00\x00\x00\x04" "\x00\x00\x00\x02" "\x00\x00"),
+    S("\x02\x3D" "\x00\x00\x00\x00" "\x00\x00\x0F\x00" "\x00\x00\x08\x70" "\x00\x00\x00\x00" "\x00\x00\x00\x03" "\x00\x00\x00\x06" "\x00\x00\x00\x03" "\x00\x00" "\x40\x01\x0C"),
+    S("\x02\x3A" "\x00\x98\x96\x7F" "\x00\x00\x3F\xFF" "\x00\x00\x3F\xFF" "\x00\x0F\x42\x40" "\x00\x00\x03\xFF" "\x00\x00\x03\xFF" "\x00\x00\x03\xFF" "\x00\x40"),
+    S("\x01\x38" "\x00\x00\x00\x07" "\x00\x00\x02\x80" "\x00\x00\x01\xE0" "\x00\x00\x75\x30" "\x00\x00\x00\x00" "\x00\x00\x00\x10" "\x00\x00\x00\x08" "\x00\xC8"),
+    S("\x01\x00" "\xFF\xFF\xFF\xFF" "\x7F\xFF\xFF\xFF" "\x80\x00\x00\x00" "\x00\x0F\x42\x41" "\xFF\xFF\xFF\xFF" "\x00\x00\x04\x01" "\x7F\xFF\xFF\xFF" "\x19\x01"),
+    S("\x03\x24" "\x00\x00\x00\x01"),
 };
 static const Seed seed_client[] = {
     S(DIALOGUE_H264 FRAMES FRAMES), S(DIALOGUE_HEVC F_REPORT), S(DIALOGUE_STALE FRAMES KEEPALIVE_ANSWER F_SLICE), S(DIALOGUE_OPEN F_EMPTY F_OTHER FRAMES CAMERA_REQUEST FRAMES),
@@ -664,6 +793,7 @@ static const Entry entries[] = {
     { "rtp", fuzz_rtp, seed_rtp, COUNT(seed_rtp), gen_rtp, INPUT_MAX },
     { "client", fuzz_client, seed_client, COUNT(seed_client), gen_client, INPUT_MAX },
     { "start", fuzz_start, seed_start, COUNT(seed_start), NULL, RELAY_LINE_MAX + 512 },
+    { "report", fuzz_report, seed_report, COUNT(seed_report), NULL, 32 + 3 * RELAY_PSET_MAX + 64 },
 };
 
 static void run_one(const Entry *e, const uint8_t *data, size_t n) {

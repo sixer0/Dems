@@ -37,6 +37,7 @@ import { PrecheckSearchActions } from '@/features/devices/precheck-search'
 import { isGeneratedSource } from '@/features/devices/own-core-words'
 import { PrecheckSourceMarks } from '@/features/devices/source-badge'
 import { useMicInputName } from '@/features/devices/source-class'
+import { formatChipText, useTrackFacts } from '@/features/devices/stream-facts'
 import { activeCaptureNotices, captureNoticeText, unassignedPrecheckText, unreachablePrecheckOf, unreachablePrecheckText } from '@/lib/capture-notices'
 import { DbfsMeter } from '@/components/composed/dbfs-meter'
 import { usePlatformNotReported, useSelfCaptureCore } from '@/lib/own-capture'
@@ -458,12 +459,16 @@ function PreviewTile({ cameraId }: { cameraId: VideoTrackId }) {
     return !camera || !camera.online || camera.lens === 'FAULT'
   })
   const label = t(`common.tracks.${cameraId}`)
+  // Task 4 row W4 (review finding F3-07): the chip is what the camera slice states, as every other reader - it was the
+  // literal `1080p / 25`, so a track with another picture, no rate or no statement read `1080p • 25 fps` here. On a Core
+  // in real capture the "No preview" tile states the stored stream statement itself (`camera-preview.tsx`).
+  const facts = useTrackFacts(cameraId)
   return (
     <CameraPreview
       cameraId={cameraId}
       variant="tile"
       label={label}
-      formatLabel={t('common.devices.cameraFormat', { resolution: '1080p', fps: 25 })}
+      formatLabel={facts.known ? formatChipText(t, facts) : null}
       noSignal={noSignal}
       ariaLabel={label}
       className="sn-preview-feed"

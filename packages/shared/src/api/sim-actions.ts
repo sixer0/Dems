@@ -106,6 +106,9 @@ export const SIM_ACTION_OPERATIONS = {
   // The registration of a `USB_AUDIO` microphone (task 4 row 185; design addendum 04 section 4.2): run by the
   // server inside operation 99's unit, never by a client. One more member and one more `internal` than the header counts.
   registerCaptureMicrophone: { operations: [], execution: SimActionExecution.INTERNAL },
+  // The re-address of a registered camera (task 4 row 195, WP-12): run by the server inside operation 100's
+  // unit through the engine's door, never by a client. One more member and one more `internal` again.
+  readdressCaptureDevice: { operations: [], execution: SimActionExecution.INTERNAL },
 } as const satisfies Record<keyof SimActions, SimActionBinding>;
 
 export type SimActionName = keyof typeof SIM_ACTION_OPERATIONS;

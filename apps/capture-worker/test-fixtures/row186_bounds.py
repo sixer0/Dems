@@ -166,6 +166,29 @@ def backlog_listener():
     return srv, [], True
 
 
+def queue_of(srv):
+    """Row T3 (review 060c X-06; survivor 16 of its section 6). The criterion `the_listener_took_no_connection` was the
+    literal True that `backlog_listener` returns: nothing calls `accept` during a run, so it could never fail - and it
+    did not show that the relay ever reached this listener. AFTER the relay is gone, the queue is read once: how many
+    connections the system had completed for a program that never took one, and the first word each had sent (the
+    request that was never answered). Returns (connections, [first word of each])."""
+    srv.setblocking(False)
+    first = []
+    while True:
+        try:
+            c, _ = srv.accept()
+        except OSError:
+            break
+        c.setblocking(False)
+        try:
+            got = c.recv(4096)
+        except OSError:
+            got = b""
+        first.append(got.split(b" ")[0].decode("latin1", "replace")[:16] if got else "")
+        c.close()
+    return len(first), first
+
+
 def bound_run(name, kind, expect_code, extra=(), bound=None, base="hostile_start", act=None, limit=None, wait=30, peak_most=None, backlog=False, slack=SLACK):
     """One relay against one camera, no worker. `bound`: seconds from the camera's event `base` to the relay being gone."""
     d = os.path.join(OUT, "runs", name)
@@ -185,6 +208,7 @@ def bound_run(name, kind, expect_code, extra=(), bound=None, base="hostile_start
     rc = relay.wait(wait)
     relay.close_input()
     camera = cam.end() if cam else {"counters": {}, "requests": []}
+    queued, first_words = queue_of(srv) if srv else (None, [])            # row T3 (X-06): read once, after the relay is gone
     for s in (held or []) + ([srv] if srv else []):
         s.close()
     exit_line = next((l for l in relay.lines() if l.get("relay") == "exit"), {})
@@ -206,7 +230,10 @@ def bound_run(name, kind, expect_code, extra=(), bound=None, base="hostile_start
     if peak_most is not None:
         crit["memory_stayed_bounded"] = relay.peak_bytes is not None and relay.peak_bytes <= peak_most
     if backlog:
-        crit["the_listener_took_no_connection"] = full
+        # Row T3 (X-06): not the literal True it was. The relay DID reach this listener - ONE connection stood in its
+        # queue, with a request in it - and the program never took it during the run, so that request was never answered.
+        r["listener_queue"] = {"connections": queued, "first_words": first_words}
+        crit["the_relay_made_ONE_connection_to_the_listener_and_its_request_was_never_answered"] = queued == 1 and first_words[0] in ("OPTIONS", "DESCRIBE")
     r["criteria"], r["verdict"] = crit, "PASS" if all(crit.values()) else "FAIL"
     json.dump(r, open(os.path.join(d, "result.json"), "w"), indent=1, default=str)
     return r
@@ -233,8 +260,15 @@ def session_case(name, how):
         cam = LAST_CAMERA["camera"]
         base_at = cam.when("hostile_start", 15)
         acted_at = order(how, 1.0)(relay, base_at) if how else None
+        # Row 43: with the push open a stalled camera no longer ENDS the relay. At its bound the relay says the loss
+        # (one line of standard output, cause 31) and would open the camera again 2 s later. The bound is measured
+        # at that line; the run then stops the relay by the order to stop, before the re-open.
+        lost_at = None if how else relay.saw(b'"report":"camera_lost"', 15)
+        if not how:
+            relay.close_input()
         relay.wait(15)
-        seen.update(from_base=round(relay.gone_at - base_at, 3) if base_at else None, from_act=round(relay.gone_at - acted_at, 3) if acted_at else None,
+        measured_at = relay.gone_at if how else lost_at
+        seen.update(from_base=round(measured_at - base_at, 3) if base_at and measured_at else None, from_act=round(relay.gone_at - acted_at, 3) if acted_at else None,
                     cpu=relay.cpu_s, peak=relay.peak_bytes, reports=relay.sanitizer_reports())
         return {"seconds_from_the_flood_to_gone": seen["from_base"], "seconds_from_the_order_to_gone": seen["from_act"], "relay_cpu_seconds": relay.cpu_s, "relay_peak_bytes": relay.peak_bytes}
 

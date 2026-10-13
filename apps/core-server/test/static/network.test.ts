@@ -40,7 +40,8 @@ const MOCK_CORE_IMPORT = new RegExp(
 );
 const GLOBAL_FETCH = /(?<![.\w$])fetch\s*\(/g;
 const OUTBOUND_MODULE = new RegExp(
-  `['"](?:node:)?(?:${['https', 'http2', 'dgram', 'tls', 'undici', 'axios', ['node', 'fetch'].join('-')].join('|')})['"]`,
+  // The last name is the stream-socket module (named entry SR-6, decision C53 (4a)): until then this rule did not look at it at all.
+  `['"](?:node:)?(?:${['https', 'http2', 'dgram', 'tls', 'undici', 'axios', ['node', 'fetch'].join('-'), ['n', 'et'].join('')].join('|')})['"]`,
   'g',
 );
 
@@ -154,6 +155,11 @@ describe('SR-03, P5, P21: nothing leaves the process, nothing comes from mock-co
     // outbound import this pattern sees; the ONVIF client package itself is pinned to the same file by rule G-R11
     // (`src/capture/__tests__/static.test.ts`).
     'src/capture/adapters/camera/onvif-session.ts': [['node:', 'ht', 'tps'].join('')],
+    // NAMED ENTRY SR-6 (decision C53 (4a); request line `row 105 (agent R7) | decisions/decisions.md`): `src/host-alias-socket.ts`,
+    // a file of no unit, is the ONE importer of the stream-socket module in the server's production sources, for
+    // `createConnection` with a PATH only; G-R1, G-R2 and G-R10 are unchanged (no socket module under the host units or
+    // under `capture/`); the transport is handed into `capture/host-alias/caller.ts`.
+    'src/host-alias-socket.ts': [['node:', 'n', 'et'].join('')],
   };
 
   it('the server runtime calls no global fetch and imports no outbound client, except from the pinned files', () => {

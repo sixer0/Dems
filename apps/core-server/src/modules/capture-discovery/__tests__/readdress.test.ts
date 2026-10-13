@@ -10,6 +10,7 @@
 // WHAT STAYS UNPROVEN HERE: the unit of the real engine with its durable mapping and audit chain
 // (the engine has no door for a re-address yet: request of row 97), and a real camera that moved
 // (`9A/H-12`).
+import { CAPTURE_READDRESS_ADDRESS_NOT_ALLOWED_SENTENCE, CAPTURE_READDRESS_REFUSAL_SENTENCES, CaptureReaddressReason } from '@dems/shared/api';
 import { AuditType, type CaptureDeviceStatus } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
 import { DestinationPurpose, decideDestination, type DestinationContext } from '../../../capture/destination-rule';
@@ -30,6 +31,7 @@ import {
   type ReaddressRule,
   type ReaddressSeams,
 } from '../readdress';
+import { engineDeviceReaddresser, readdressRefusedAnswer, readdressRuleOf } from '../readdress-route';
 
 const HOST: DestinationContext = {
   cameraSubnet: { network: '192.168.50.0', prefixLength: 24 },
@@ -167,7 +169,8 @@ describe('a confirmed re-address writes the address and ONE audit entry, in one 
       message: 'Camera address changed',
       actorId: 'OPR-003',
       deviceId: 'CAM-01',
-      details: { deviceId: 'CAM-01', fromAddress: '192.168.50.64', toAddress: '192.168.50.77', reason: READDRESS_AUDIT_REASON, permission: 'CAPTURE_CONFIG' },
+      // Row 197: the entry names the operation of the contract an operator confirms through.
+      details: { deviceId: 'CAM-01', fromAddress: '192.168.50.64', toAddress: '192.168.50.77', reason: READDRESS_AUDIT_REASON, operationId: 'confirmCaptureDeviceAddress', permission: 'CAPTURE_CONFIG' },
     });
     // The rule was asked once, with the host of the candidate and no port.
     expect(r.ruleCalls).toEqual([['192.168.50.77', undefined]]);
@@ -354,6 +357,112 @@ describe('the state of the Core and of the registry', () => {
     await confirmCameraReaddress(r.seams, OPERATOR, confirm());
     expect((await refusalOf(confirmCameraReaddress(r.seams, OPERATOR, confirm()))).code).toBe(ReaddressRefusal.ADDRESS_UNCHANGED);
     expect(r.entries).toHaveLength(1);
+  });
+});
+
+// ── Row 197: what the route file gives the function (`readdress-route.ts`) ───────────────────────
+
+describe('row 197: the destination rule on INJECTED network facts (fail-closed)', () => {
+  const GOOD = '192.168.50.77';
+
+  it('no reader, a reader that answers null, and a reader that throws each refuse an address the configured host admits', () => {
+    let told = 0;
+    const tell = (): void => {
+      told += 1;
+    };
+    expect(readdressRuleOf(() => () => HOST, tell)(GOOD, undefined)).toMatchObject({ allowed: true });
+    const absent = readdressRuleOf(() => null, tell)(GOOD, undefined);
+    expect(absent).toEqual({ allowed: false, refusal: 'NOT_CONFIGURED' });
+    expect(readdressRuleOf(() => () => null, tell)(GOOD, undefined)).toEqual({ allowed: false, refusal: 'NOT_CONFIGURED' });
+    expect(told).toBe(0);
+    const thrown = readdressRuleOf(
+      () => () => {
+        throw new Error('the interface listing failed at 192.168.50.1');
+      },
+      tell,
+    )(GOOD, 80);
+    expect(thrown).toEqual({ allowed: false, refusal: 'NOT_CONFIGURED' });
+    expect(told).toBe(1);
+    // Facts without a camera subnet, or without an address on the camera interface: nothing is admitted.
+    expect(readdressRuleOf(() => () => ({ ...HOST, cameraSubnet: null }), tell)(GOOD, undefined).allowed).toBe(false);
+    expect(readdressRuleOf(() => () => ({ ...HOST, cameraAddresses: [] }), tell)(GOOD, undefined).allowed).toBe(false);
+  });
+
+  it('on the host\'s facts it is the rule of a stored camera: the same answers as the binding the function was built against, and the reader is asked at EVERY judgement', () => {
+    let asked = 0;
+    let facts: DestinationContext | null = HOST;
+    const rule = readdressRuleOf(
+      () => () => {
+        asked += 1;
+        return facts;
+      },
+      () => undefined,
+    );
+    for (const address of [GOOD, '127.0.0.1', '8.8.8.8', '192.168.50.1', '10.20.3.4', '192.168.60.77', '192.168.50.255', '169.254.10.10']) {
+      const expected = realRule(address, undefined);
+      const answered = rule(address, undefined);
+      expect(answered.allowed, address).toBe(expected.allowed);
+      if (!answered.allowed && !expected.allowed) expect(answered.refusal, address).toBe(expected.refusal);
+    }
+    expect(asked).toBe(8);
+    // The facts go away (the interface lost its address): the next judgement refuses what the last admitted.
+    facts = null;
+    expect(rule(GOOD, undefined).allowed).toBe(false);
+    expect(asked).toBe(9);
+  });
+
+  it('through the function: with no reader a confirmed re-address is refused ADDRESS_NOT_ALLOWED before the unit - nothing written, no entry', async () => {
+    const r = rig({ rule: readdressRuleOf(() => null, () => undefined) });
+    const refused = await refusalOf(confirmCameraReaddress(r.seams, OPERATOR, confirm()));
+    expect([refused.code, refused.rule]).toEqual([ReaddressRefusal.ADDRESS_NOT_ALLOWED, 'NOT_CONFIGURED']);
+    untouched(r);
+    expect(r.doorCalls).toEqual([]);
+  });
+});
+
+describe('row 197: the contract\'s answer of every refusal', () => {
+  it('each code of `ReaddressRefusal` has its answer of operation 100; the six 409 reasons ARE the codes; `NOT_CONFIRMED` has none', () => {
+    const answers = Object.fromEntries(
+      Object.values(ReaddressRefusal).map((code) => {
+        const answer = readdressRefusedAnswer(new ReaddressRefused(code, code === ReaddressRefusal.ADDRESS_NOT_ALLOWED ? 'OUTSIDE_CAMERA_SUBNET' : null));
+        return [code, answer === null ? null : [answer.statusCode, answer.code, (answer.details as { reason?: string } | undefined)?.reason ?? null]];
+      }),
+    );
+    expect(answers).toEqual({
+      READDRESS_NOT_CONFIRMED: null,
+      READDRESS_NOT_READY: [503, 'NOT_READY', 'DISCOVERY_NOT_READY'],
+      READDRESS_CAPTURE_LOCKED: [409, 'CAPTURE_CONFIG_LOCKED', null],
+      READDRESS_CANDIDATE_UNKNOWN: [404, 'NOT_FOUND', null],
+      READDRESS_DEVICE_UNKNOWN: [404, 'NOT_FOUND', null],
+      READDRESS_NOT_THE_REGISTERED_CAMERA: [409, 'INVALID_STATE', 'READDRESS_NOT_THE_REGISTERED_CAMERA'],
+      READDRESS_IDENTITY_CONFLICT: [409, 'INVALID_STATE', 'READDRESS_IDENTITY_CONFLICT'],
+      READDRESS_CONFIRMATION_MISMATCH: [409, 'INVALID_STATE', 'READDRESS_CONFIRMATION_MISMATCH'],
+      READDRESS_ADDRESS_NOT_ALLOWED: [422, 'INVALID_INPUT', 'DISCOVERY_ADDRESS_NOT_ALLOWED'],
+      READDRESS_ADDRESS_UNCHANGED: [409, 'INVALID_STATE', 'READDRESS_ADDRESS_UNCHANGED'],
+      READDRESS_ADDRESS_TAKEN: [409, 'INVALID_STATE', 'READDRESS_ADDRESS_TAKEN'],
+      READDRESS_STORED_ADDRESS_UNREADABLE: [409, 'INVALID_STATE', 'READDRESS_STORED_ADDRESS_UNREADABLE'],
+    });
+    // The contract's set of 409 reasons is exactly the six codes above.
+    expect(Object.values(CaptureReaddressReason).sort()).toEqual(Object.values(answers).flatMap((answer) => (answer !== null && answer[1] === 'INVALID_STATE' ? [answer[2]] : [])).sort());
+  });
+
+  it('the sentences are the contract\'s; no answer carries an address, and the rule\'s own code never leaves the Core', () => {
+    for (const reason of Object.values(CaptureReaddressReason)) {
+      expect(readdressRefusedAnswer(new ReaddressRefused(reason))?.message).toBe(CAPTURE_READDRESS_REFUSAL_SENTENCES[reason]);
+    }
+    const ruled = readdressRefusedAnswer(new ReaddressRefused(ReaddressRefusal.ADDRESS_NOT_ALLOWED, 'OUTSIDE_CAMERA_SUBNET'));
+    expect(ruled?.message).toBe(CAPTURE_READDRESS_ADDRESS_NOT_ALLOWED_SENTENCE);
+    expect(ruled?.details).toEqual({ in: 'body', reason: 'DISCOVERY_ADDRESS_NOT_ALLOWED' });
+    for (const code of Object.values(ReaddressRefusal)) {
+      const answer = readdressRefusedAnswer(new ReaddressRefused(code, 'OUTSIDE_CAMERA_SUBNET'));
+      const text = JSON.stringify([answer?.message, answer?.details ?? null]);
+      expect(text, code).not.toMatch(/\d{1,3}(?:\.\d{1,3}){3}/);
+      expect(text, code).not.toContain('OUTSIDE_CAMERA_SUBNET');
+    }
+  });
+
+  it('the engine\'s door, as the seam takes it, is a function of the unit: a scope the host did not build is refused (the door is the engine\'s, not a statement)', async () => {
+    await expect(engineDeviceReaddresser({} as EngineUnit, { deviceId: 'CAM-01', address: '192.168.50.77', at: 1 })).rejects.toMatchObject({ code: 'ENGINE_ACTION_NOT_HOSTED' });
   });
 });
 

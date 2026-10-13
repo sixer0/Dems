@@ -26,6 +26,7 @@ import {
   CAPTURE_CREDENTIAL_SECRET_PATTERN,
   CAPTURE_CREDENTIAL_USERNAME_MAX_LENGTH,
   CAPTURE_CREDENTIAL_USERNAME_PATTERN,
+  CaptureCommissioningReason,
   CaptureConnectionOutcome,
   CaptureConnectionTestReason,
   CaptureDiscoveryReason,
@@ -196,6 +197,12 @@ export type ConnectRefusal =
   | 'RESULT_GONE'
   | 'ALREADY_REGISTERED'
   | 'NOT_TESTABLE'
+  /**
+   * `409 INVALID_STATE`, reason `COMMISSIONING_NOT_CONFIGURED` (task 4 rows R2 and W4; review finding F3-06): the
+   * camera cannot be tested because no camera interface or no camera subnet is chosen on this Core. The reason is
+   * the commissioning contract's own (`CaptureCommissioningReason`), answered by operations 95 and 96.
+   */
+  | 'NETWORK_NOT_CONFIGURED'
   | 'IN_PROGRESS'
   /** On Add: no fresh passing test. */
   | 'NOT_TESTED'
@@ -219,6 +226,7 @@ export function connectRefusal(failure: Pick<ConnectFailure, 'status' | 'code' |
   if (status === 409) {
     if (reason === CaptureDiscoveryReason.CANDIDATE_ALREADY_REGISTERED) return 'ALREADY_REGISTERED'
     if (reason === CaptureDiscoveryReason.CANDIDATE_NOT_TESTABLE) return 'NOT_TESTABLE'
+    if (reason === CaptureCommissioningReason.COMMISSIONING_NOT_CONFIGURED) return 'NETWORK_NOT_CONFIGURED'
     if (reason === CaptureDiscoveryReason.CONNECTION_TEST_IN_PROGRESS) return 'IN_PROGRESS'
     if (reason === CaptureDiscoveryReason.CANDIDATE_NOT_TESTED) return 'NOT_TESTED'
     if (reason === CaptureDiscoveryReason.CONNECTION_TEST_FAILED) return 'FINAL_CHECK_FAILED'

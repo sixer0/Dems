@@ -240,8 +240,29 @@ export interface MountTranscriptionDeps {
   readonly sessionStepIntervalMs?: number;
 }
 
-/** The audio-source intervals of a session, in media time, for its transcript document. */
-export const READ_SESSION_INTERVALS_FOR_TRANSCRIPT = 'SELECT mic_device_id, from_media_ms, to_media_ms FROM public.session_audio_intervals WHERE session_id = $1 ORDER BY seq';
+/** The audio-source intervals of a session, in media time, for its transcript document. `reason` since task 4 row 191c: see `transcriptIntervalsOf`. */
+export const READ_SESSION_INTERVALS_FOR_TRANSCRIPT = 'SELECT mic_device_id, from_media_ms, to_media_ms, reason FROM public.session_audio_intervals WHERE session_id = $1 ORDER BY seq';
+
+/**
+ * Task 4 row 191c (decision C73; row 191b's second remainder): THE INTERVAL ROWS AS THE TRANSCRIPT
+ * READS THEM. A capture worker that is replaced inside a session leaves its interval rows closed,
+ * and the later worker's audio is stated by a NEW row of reason START (`capture-session`,
+ * `recordAudioGap`). The media times of every row BEFORE the last START row count in a file - and
+ * in an audio tap - of a worker that was replaced: they are not times of the audio this transcript
+ * is made from. Read as stored, such a row that kept a span (a microphone switch before the
+ * restart, e.g. 21..1500) would name ITS microphone for speech of the later worker, or overlap the
+ * later row and take the source of those chunks away (`intervals_incomplete`).
+ *
+ * THE RULE IS THE SEAL'S (`sealing-host/session-reader.ts`, row 191b), so the transcript document
+ * and the signed manifest state the same intervals: every row before the last START row is stated
+ * with the span 0..0. It stays in the list (the source began more than once) and covers no instant,
+ * so no chunk is attributed to it. A session without a restart has ONE START row, the first: its
+ * rows are returned exactly as before.
+ */
+export function transcriptIntervalsOf(rows: readonly { mic_device_id: string; from_media_ms: string | number; to_media_ms: string | number | null; reason?: string | null }[]): DocumentInterval[] {
+  const lastStart = rows.reduce((last, row, index) => (row.reason === 'START' ? index : last), -1);
+  return rows.map((row, index) => (index < lastStart ? { source: row.mic_device_id, fromMs: 0, toMs: 0 } : { source: row.mic_device_id, fromMs: Number(row.from_media_ms), toMs: row.to_media_ms === null ? null : Number(row.to_media_ms) }));
+}
 
 /** The time limit of the one background check a session start makes. A bound, never a measurement. */
 export const SESSION_START_CHECK_TIMEOUT_MS = 3_000;
@@ -415,8 +436,8 @@ export function mountTranscription(app: TranscriptionHost, deps: MountTranscript
 
   /** The rows of `session_audio_intervals` of a session, in media time: for its runner (R80-02) and for its document. */
   const intervalsOf = async (sessionId: string): Promise<readonly DocumentInterval[]> => {
-    const { rows } = (await app.db.pool.query(READ_SESSION_INTERVALS_FOR_TRANSCRIPT, [sessionId])) as unknown as { rows: { mic_device_id: string; from_media_ms: string | number; to_media_ms: string | number | null }[] };
-    return rows.map((row) => ({ source: row.mic_device_id, fromMs: Number(row.from_media_ms), toMs: row.to_media_ms === null ? null : Number(row.to_media_ms) }));
+    const { rows } = (await app.db.pool.query(READ_SESSION_INTERVALS_FOR_TRANSCRIPT, [sessionId])) as unknown as { rows: { mic_device_id: string; from_media_ms: string | number; to_media_ms: string | number | null; reason?: string | null }[] };
+    return transcriptIntervalsOf(rows);
   };
 
   const openSession = (sessionId: string, options?: OpenSessionOptions): Promise<SessionTranscription> =>

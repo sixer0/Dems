@@ -78,7 +78,11 @@ function healthy(text: string): unknown[] | undefined {
 describe('the export', () => {
   it('is ONE function of the core, beside the registration of the boot steps', () => {
     expect(typeof core.runDatabaseBootChecks).toBe('function');
-    expect(Object.keys(core).filter((name) => /boot/i.test(name)).sort()).toEqual(['REPORTED_BOOT_CHECK', 'registerBootChecks', 'runDatabaseBootChecks']);
+    // `SYSTEM_BOOT_SIGNING_DETAIL_RULES` (pass I-9a item 7) is no boot function: it is the audit vocabulary's two
+    // forms of the `SYSTEM_BOOT` entry's signing members, exported for the capture fence's boot key, which holds
+    // its own table equal to it. The name carries the audit type's word, so the search finds it; it is listed.
+    expect(Object.keys(core).filter((name) => /boot/i.test(name)).sort()).toEqual(['REPORTED_BOOT_CHECK', 'SYSTEM_BOOT_SIGNING_DETAIL_RULES', 'registerBootChecks', 'runDatabaseBootChecks']);
+    expect(Object.keys(core).filter((name) => /boot/i.test(name) && typeof (core as Record<string, unknown>)[name] === 'function').sort()).toEqual(['registerBootChecks', 'runDatabaseBootChecks']);
     expect(BOOT_STEP_DATABASE_ANSWERS).toBe('B-1');
     expect([...BOOT_CHECK_IDS]).toEqual(['B-2', 'B-3', 'B-4', 'B-5', 'B-6', 'B-7', 'B-8', 'B-9']);
     expect(REPORTED_BOOT_CHECK).toBe('B-8');

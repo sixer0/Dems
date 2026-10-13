@@ -124,6 +124,14 @@ export function assertRecordableSelector(selector: CapturePlanSelector, registry
   if (selector.cameras.length !== 2 || first?.trackId !== 'VIDEO-01' || second?.trackId !== 'VIDEO-02' || selector.mics.length !== 2 || primary === undefined || standby === undefined) {
     throw new CapturePlanError(CapturePlanRefusal.PLAN_INVALID, CapturePlanReason.SELECTOR_SHAPE);
   }
+  // Row R2 (ruling C93 on review finding F3-11): ONE CAMERA ON BOTH VIDEO TRACKS IS NOT A PLAN. The selector's edit refuses that
+  // state on a Core in real capture (`routes.ts`, `CAMERA_ON_BOTH_TRACKS`); this is the second line of defence, for a selector that
+  // held it before that rule or was put in place otherwise. The protocol refuses a camera named twice, so `buildCapturePlan` below
+  // would refuse it too (`PROTOCOL_SHAPE`) - but only after the sources were opened. Here it is refused under the same existing
+  // reason BEFORE the registry is asked and before anything is opened, and the refusal names the device.
+  if (first.deviceId === second.deviceId) {
+    throw new CapturePlanError(CapturePlanRefusal.PLAN_INVALID, CapturePlanReason.PROTOCOL_SHAPE, first.deviceId);
+  }
   const assigned: readonly { readonly slot: RecordableSlot['slot']; readonly deviceId: string }[] = [
     { slot: 'VIDEO-01', deviceId: first.deviceId },
     { slot: 'VIDEO-02', deviceId: second.deviceId },

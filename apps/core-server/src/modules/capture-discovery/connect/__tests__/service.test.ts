@@ -35,7 +35,12 @@ import {
   type ConnectCandidate,
   type ConnectSeams,
   type ConnectionAttempt,
+  CANDIDATE_TEST_ADDRESS_REFUSED,
+  type CandidateSourceBinding,
+  type ConnectionTester,
 } from '../service';
+import type { DestinationContext } from '../../../../capture/destination-rule';
+import { storedCameraAddressRuleOf } from '../../../../capture/fence';
 import { AdoptionProfileInvalid, INSERT_ADOPTED_CAMERA_STREAM, assertAdoptedProfiles, writeAdoptedCameraStreams } from '../../adoption';
 import { READ_REGISTERED_CAMERAS } from '../../registered';
 import { createCredentialStore, isStoreSealedSecret } from '../../../../credential-store';
@@ -229,12 +234,21 @@ describe('M4-CONN-NOCRED-1: no connection test without an operator-entered crede
     expect(planted).toMatch(/\.\s*open\s*\(/);
   });
 
-  it('control: a flow that falls back to a stored credential DOES reach the tester - which is what the 422 above rules out', async () => {
+  // Row T3 (review 060c T-08; survivor 13 of its section 6). The control that stood here performed the fallback ITSELF
+  // (`testCandidate(..., null).catch(() => testCandidate(..., fallback))`): it passed whatever the product did, also
+  // with a product that fell back by itself. It calls only the product now, in ONE world: without a credential the
+  // product refuses and the tester double saw nothing; the SAME double then sees the SAME product's call that carries
+  // the body's credential - so the 0 is a count that can be 1, and the one credential it ever saw is the body's.
+  it('control of the count, in ONE world: the product without a credential reaches the tester 0 times (422); the same product with the body\'s credential is seen ONCE by the same tester, carrying exactly that credential', async () => {
     const w = world();
     w.add('CND-000000000001', camera());
-    const fallback = operatorCredential(sealCredential({ username: 'stored', secret: 'stored' }));
-    await testCandidate(w.seams, CALLER, 'CND-000000000001', null).catch(() => testCandidate(w.seams, CALLER, 'CND-000000000001', fallback));
+    expect(await refusal(testCandidate(w.seams, CALLER, 'CND-000000000001', null))).toEqual([422, 'INVALID_INPUT', 'CREDENTIAL_REQUIRED']);
+    expect(w.contacted).toEqual([]);
+    later(w);
+    const credential = typed();
+    expect(await testCandidate(w.seams, CALLER, 'CND-000000000001', credential)).toMatchObject({ outcome: 'REACHABLE', authenticated: true });
     expect(w.contacted).toHaveLength(1);
+    expect(w.contacted[0]?.credential).toBe(credential.sealed);
   });
 });
 
@@ -374,8 +388,16 @@ describe('pass D1a (D132, connect.db.test.ts:474): a short secret is not refused
       for (const offset of [0, 3, 40]) expect(holdsClearSecret(clearFrame(secret, offset), secret), `${String(secret.length)} at ${String(offset)}`).toBe(true);
     }
     // A long secret among random bytes (no zero padding) is found as well; a different one is not.
-    const mixed = Buffer.concat([randomBytes(20), Buffer.from(ACCOUNT.secret), randomBytes(20)]);
+    // Review 060b S-08 (row T2): the byte that FOLLOWS the secret decides the second answer, so it is stated, not
+    // drawn. It was the first of 20 random bytes: 1 run in 256 it was `x`, and the longer text was (rightly) found.
+    // The surroundings stay random: the secret cannot stand in them by chance (29 fixed bytes), and one more copy
+    // of it could only keep the first answer true.
+    const among = (next: string): Buffer => Buffer.concat([randomBytes(20), Buffer.from(ACCOUNT.secret), Buffer.from(next, 'latin1'), randomBytes(19)]);
+    const mixed = among('y');
+    expect(mixed.byteLength).toBe(20 + Buffer.byteLength(ACCOUNT.secret) + 20);
     expect([holdsClearSecret(mixed, ACCOUNT.secret), holdsClearSecret(mixed, `${ACCOUNT.secret}x`), holdsClearSecret(new Uint8Array(80), '')]).toEqual([true, false, false]);
+    // The former 1-in-256 case, on purpose: when the next byte IS `x` the longer text stands there and is found.
+    expect([holdsClearSecret(among('x'), ACCOUNT.secret), holdsClearSecret(among('x'), `${ACCOUNT.secret}x`), holdsClearSecret(among('x'), `${ACCOUNT.secret}y`)]).toEqual([true, true, false]);
   });
 });
 
@@ -634,5 +656,216 @@ describe('task 4 rows 50 and 51: the judged streams of an attempt, and the code 
     expect(sent).toEqual([]);
     await writeAdoptedCameraStreams({ query: async (text: string) => (sent.push(text), { rows: [], rowCount: 1 }) } as never, { id: 'CAM-03', profiles: ['HEVC_1080P', 'H264_720P30'], streams: [HEVC, AVC], at: 1 });
     expect(sent).toEqual([INSERT_ADOPTED_CAMERA_STREAM, INSERT_ADOPTED_CAMERA_STREAM]);
+  });
+});
+
+// Task 4 row 143c (decision C65; S13-11 point 2): under capture operation REAL_PRODUCTION the test of a candidate that is
+// NOT STORED YET is made from the camera-interface address, or is not made. THE RULE OF THESE CASES IS THE PRODUCT'S
+// (`storedCameraAddressRuleOf` of the fence: `decideDestination`, purpose STORED_CAMERA) on hand-written host facts: a
+// camera interface 192.168.50.1 in 192.168.50.0/24 and an office interface 10.20.0.5 in 10.20.0.0/24 (the facts of the
+// stored-address cases of the camera adapter). No address is contacted: the tester is a spy.
+describe('row 143c (C65): in production a candidate is tested from the camera interface, or not at all; elsewhere the flow is as it was', () => {
+  const CAMERA_INTERFACE = '192.168.50.1';
+  const OFFICE_ADDRESS = '10.20.0.5';
+  /** A candidate inside the camera subnet of these facts. */
+  const SUBNET_HOST = '192.168.50.20';
+  const subnetCamera = (overrides: Partial<CameraCandidate> = {}): CameraCandidate => camera({ host: SUBNET_HOST, serviceAddress: `http://${SUBNET_HOST}/onvif/device_service`, ...overrides });
+  const FACTS: DestinationContext = Object.freeze({
+    cameraSubnet: { network: '192.168.50.0', prefixLength: 24 },
+    cameraAddresses: [{ address: CAMERA_INTERFACE, alias: false }],
+    otherInterfaceSubnets: [{ network: '10.20.0.0', prefixLength: 24 }],
+    hostAddresses: [OFFICE_ADDRESS],
+  });
+  const CONFIGURED = storedCameraAddressRuleOf(() => FACTS);
+  /** A production Core whose network configuration is absent: the reader answers null. */
+  const NOT_CONFIGURED = storedCameraAddressRuleOf(() => null);
+
+  interface Bound {
+    readonly w: World;
+    readonly seams: ConnectSeams;
+    /** Every address the tester was bound to, in order. */
+    readonly boundTo: string[];
+    /** Calls of the UNBOUND `test` of the tester: must stay 0 where a bound test is required. */
+    readonly unboundCalls: { host: string }[];
+    /** Calls of a bound test: the host, the address it was bound to, and how many arguments the call carried. */
+    readonly boundCalls: { host: string; from: string; given: number }[];
+  }
+  /** A world whose seams state the binding, and whose tester records how it was reached. `bindable: false`: a tester without `boundTo`. */
+  function boundWorld(binding: CandidateSourceBinding | 'LEFT_OUT', bindable = true): Bound {
+    const w = world();
+    const boundTo: string[] = [];
+    const unboundCalls: Bound['unboundCalls'] = [];
+    const boundCalls: Bound['boundCalls'] = [];
+    const answer = (): Promise<ConnectionAttempt> => (w.answer instanceof Error ? Promise.reject(w.answer) : Promise.resolve(w.answer as ConnectionAttempt));
+    const tester: ConnectionTester = {
+      test: (device) => {
+        unboundCalls.push({ host: device.host });
+        return answer();
+      },
+      ...(bindable
+        ? {
+            boundTo: (fromAddress: string) => {
+              boundTo.push(fromAddress);
+              return {
+                test: (...given: [CameraCandidate, SealedCredential | null, AbortSignal]) => {
+                  boundCalls.push({ host: given[0].host, from: fromAddress, given: given.length });
+                  return answer();
+                },
+              };
+            },
+          }
+        : {}),
+    };
+    const seams: ConnectSeams = { ...w.seams, tester: () => tester, ...(binding === 'LEFT_OUT' ? {} : { candidateSource: () => binding }) };
+    return { w, seams, boundTo, unboundCalls, boundCalls };
+  }
+  const untouched = (b: Bound): void => {
+    expect([b.boundTo, b.unboundCalls, b.boundCalls, b.w.audit]).toEqual([[], [], [], []]);
+    expect(b.seams.limits.busy()).toBe(false);
+  };
+
+  it('REAL_PRODUCTION, the network configured: operation 95 and the re-verification of operation 96 each bind the tester to the camera-interface address and make ONE bound test; the unbound test is never called', async () => {
+    const b = boundWorld({ required: true, rule: CONFIGURED });
+    b.w.add('CND-000000000001', subnetCamera());
+    expect(await testCandidate(b.seams, CALLER, 'CND-000000000001', typed())).toMatchObject({ outcome: 'REACHABLE', authenticated: true });
+    later(b.w);
+    expect(await adoptCandidate(b.seams, CALLER, 'CND-000000000001', typed())).toMatchObject({ deviceId: 'CAM-03', credentialSet: true });
+    expect(b.boundTo).toEqual([CAMERA_INTERFACE, CAMERA_INTERFACE]);
+    expect(b.boundCalls).toEqual([
+      { host: SUBNET_HOST, from: CAMERA_INTERFACE, given: 3 },
+      { host: SUBNET_HOST, from: CAMERA_INTERFACE, given: 3 },
+    ]);
+    expect(b.unboundCalls).toEqual([]);
+    expect(b.w.audit.map((entry) => entry.type)).toEqual(['CAPTURE_CONNECTION_TESTED', 'CAPTURE_CONNECTION_TESTED', 'CAPTURE_CREDENTIAL_SET', 'CAPTURE_CANDIDATE_ADOPTED']);
+  });
+
+  // Row R2 (review finding F3-06; decision C93): the REASON of this refusal moved from `CANDIDATE_NOT_TESTABLE` to the contract's
+  // `COMMISSIONING_NOT_CONFIGURED` - three expectations below, by that delta. The status, the code, the order and the log line are as they were.
+  it('REAL_PRODUCTION, NO network configuration: the rule refuses (`NOT_CONFIGURED`) - 409 with the TRUE cause (COMMISSIONING_NOT_CONFIGURED and its sentence, never "this device cannot be tested") before the bounds, nothing bound, nothing sent, no audit row; the log names the rule\'s word and no address', async () => {
+    const b = boundWorld({ required: true, rule: NOT_CONFIGURED });
+    b.w.add('CND-000000000001', subnetCamera());
+    const told = await testCandidate(b.seams, CALLER, 'CND-000000000001', typed()).then(
+      () => null,
+      (caught: unknown) => caught,
+    );
+    expect(told).toBeInstanceOf(ApiFailure);
+    expect([(told as ApiFailure).statusCode, (told as ApiFailure).code, (told as ApiFailure).details]).toEqual([409, 'INVALID_STATE', { reason: 'COMMISSIONING_NOT_CONFIGURED' }]);
+    // The sentence names the Core's state and what ends it (the contract's own sentence of the reason); it does not blame the device and quotes no address.
+    expect((told as ApiFailure).message).toBe('This device cannot be tested yet: the camera network of this Core is not set up. Choose the camera interface and the camera subnet first.');
+    expect((told as ApiFailure).message.includes(SUBNET_HOST)).toBe(false);
+    untouched(b);
+    expect(b.w.notes).toEqual([{ code: CANDIDATE_TEST_ADDRESS_REFUSED, source: 'captureConnect', operationId: 'testCaptureCandidateConnection', refusal: 'NOT_CONFIGURED' }]);
+    expect(JSON.stringify(b.w.notes).includes(SUBNET_HOST)).toBe(false);
+    // The refusal spent nothing: a test straight after it is not "too soon", it is refused the same way.
+    expect(await refusal(testCandidate(b.seams, CALLER, 'CND-000000000001', typed()))).toEqual([409, 'INVALID_STATE', 'COMMISSIONING_NOT_CONFIGURED']);
+    // An adoption is refused at the same place: its re-verification is the same one function.
+    const adopting = boundWorld({ required: true, rule: NOT_CONFIGURED });
+    adopting.w.add('CND-000000000001', subnetCamera());
+    adopting.w.candidates.get('CND-000000000001')!.candidate.lastTest = { outcome: CaptureConnectionOutcome.REACHABLE, authenticated: true, testedAt: adopting.w.now, profiles: ['main'] };
+    expect(await refusal(adoptCandidate(adopting.seams, CALLER, 'CND-000000000001', typed()))).toEqual([409, 'INVALID_STATE', 'COMMISSIONING_NOT_CONFIGURED']);
+    untouched(adopting);
+    expect(adopting.w.notes.map((note) => `${String(note['operationId'])} ${String(note['refusal'])}`)).toEqual(['adoptCaptureCandidate NOT_CONFIGURED']);
+  });
+
+  it('REAL_PRODUCTION: every address the rule refuses is refused the same way - another interface\'s subnet, the host itself, outside the camera subnet, a port outside the list', async () => {
+    const cases: readonly [string, CameraCandidate, string][] = [
+      ['the office subnet', camera({ host: '10.20.0.77', serviceAddress: 'http://10.20.0.77/onvif/device_service' }), 'OTHER_INTERFACE_SUBNET'],
+      ['an address of the host', camera({ host: OFFICE_ADDRESS, serviceAddress: `http://${OFFICE_ADDRESS}/onvif/device_service` }), 'HOST_ADDRESS'],
+      ['a port that is not listed', subnetCamera({ serviceAddress: `http://${SUBNET_HOST}:8080/onvif/device_service` }), 'PORT_NOT_LISTED'],
+      ['a service address on another host', subnetCamera({ serviceAddress: 'http://192.168.50.21/onvif/device_service' }), 'STORED_ADDRESS_MALFORMED'],
+      ['a public address (the documentation range)', camera(), 'PUBLIC_ADDRESS'],
+    ];
+    for (const [label, device, word] of cases) {
+      const b = boundWorld({ required: true, rule: CONFIGURED });
+      b.w.add('CND-000000000001', device);
+      expect(await refusal(testCandidate(b.seams, CALLER, 'CND-000000000001', typed())), label).toEqual([409, 'INVALID_STATE', 'CANDIDATE_NOT_TESTABLE']);
+      untouched(b);
+      expect(b.w.notes.map((note) => note['refusal']), label).toEqual([word]);
+    }
+    // An address outside the camera subnet: refused by a word of the rule, whichever it is - never tested.
+    const outside = boundWorld({ required: true, rule: CONFIGURED });
+    outside.w.add('CND-000000000001', camera({ host: '198.51.100.9', serviceAddress: 'http://198.51.100.9/onvif/device_service' }));
+    expect(await refusal(testCandidate(outside.seams, CALLER, 'CND-000000000001', typed()))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_NOT_TESTABLE']);
+    untouched(outside);
+  });
+
+  it('REAL_PRODUCTION: an admission that names no source address, a rule that was never handed in, a tester that cannot be bound and a tester that refuses the address - each makes NO test', async () => {
+    const admitsWithoutSource = boundWorld({ required: true, rule: (host) => ({ allowed: true, destination: { address: host } }) });
+    admitsWithoutSource.w.add('CND-000000000001', subnetCamera());
+    expect(await refusal(testCandidate(admitsWithoutSource.seams, CALLER, 'CND-000000000001', typed()))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_NOT_TESTABLE']);
+    untouched(admitsWithoutSource);
+    expect(admitsWithoutSource.w.notes.map((note) => note['refusal'])).toEqual(['STORED_ADDRESS_SOURCE_ABSENT']);
+
+    const noRule = boundWorld({ required: true, rule: null });
+    noRule.w.add('CND-000000000001', subnetCamera());
+    expect(await refusal(testCandidate(noRule.seams, CALLER, 'CND-000000000001', typed()))).toEqual([503, 'NOT_READY', 'DISCOVERY_NOT_READY']);
+    untouched(noRule);
+
+    const cannotBind = boundWorld({ required: true, rule: CONFIGURED }, false);
+    cannotBind.w.add('CND-000000000001', subnetCamera());
+    expect(await refusal(testCandidate(cannotBind.seams, CALLER, 'CND-000000000001', typed()))).toEqual([503, 'NOT_READY', 'DISCOVERY_NOT_READY']);
+    untouched(cannotBind);
+
+    const refusesTheAddress = boundWorld({ required: true, rule: CONFIGURED });
+    const refusingTester: ConnectionTester = {
+      test: () => Promise.reject(new Error('the unbound test must not be called')),
+      boundTo: () => {
+        throw new CaptureAdapterError(CaptureAdapterRefusal.LOCATOR_INVALID);
+      },
+    };
+    refusesTheAddress.w.add('CND-000000000001', subnetCamera());
+    expect(await refusal(testCandidate({ ...refusesTheAddress.seams, tester: () => refusingTester }, CALLER, 'CND-000000000001', typed()))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_NOT_TESTABLE']);
+    untouched(refusesTheAddress);
+  });
+
+  it('REAL_PRODUCTION: the refusals of before still come first - a credential is required, the lock is held, the candidate is another session\'s - and the rule is not asked for them', async () => {
+    let asked = 0;
+    const b = boundWorld({
+      required: true,
+      rule: (host, port) => {
+        asked += 1;
+        return CONFIGURED(host, port);
+      },
+    });
+    b.w.add('CND-000000000001', subnetCamera());
+    expect(await refusal(testCandidate(b.seams, CALLER, 'CND-000000000001', null))).toEqual([422, 'INVALID_INPUT', 'CREDENTIAL_REQUIRED']);
+    expect(await refusal(testCandidate(b.seams, operator('SESSION-B'), 'CND-000000000001', typed()))).toEqual([404, 'NOT_FOUND', undefined]);
+    b.w.sessionOpen = true;
+    expect(await refusal(testCandidate(b.seams, CALLER, 'CND-000000000001', typed()))).toEqual([409, 'CAPTURE_CONFIG_LOCKED', undefined]);
+    expect(asked).toBe(0);
+    untouched(b);
+  });
+
+  it('any other capture operation (`required: false`), and seams that state nothing: the tester is called as it is, unbound, with exactly the three arguments of before - no rule is asked, no address is refused', async () => {
+    for (const binding of [{ required: false } as const, 'LEFT_OUT' as const]) {
+      const b = boundWorld(binding);
+      // A candidate no production rule would admit (loopback, a development source) and one on an office subnet: both tested, as before.
+      b.w.add('CND-000000000001', development());
+      b.w.add('CND-000000000002', camera({ host: '10.20.0.77', serviceAddress: 'http://10.20.0.77/onvif/device_service' }));
+      expect(await testCandidate(b.seams, CALLER, 'CND-000000000001', null)).toMatchObject({ outcome: 'REACHABLE', authenticated: false });
+      later(b.w);
+      expect(await testCandidate(b.seams, CALLER, 'CND-000000000002', typed())).toMatchObject({ outcome: 'REACHABLE', authenticated: true });
+      expect(b.unboundCalls).toEqual([{ host: '127.0.0.1' }, { host: '10.20.0.77' }]);
+      expect([b.boundTo, b.boundCalls]).toEqual([[], []]);
+      expect(b.w.notes.some((note) => note['code'] === CANDIDATE_TEST_ADDRESS_REFUSED)).toBe(false);
+    }
+  });
+
+  it('the static half: the one maker of the seams of an app ALWAYS states the binding, from the capture operation; the flow asks it once, before the bounds; the one call of the tester is unchanged', () => {
+    const folder = join(import.meta.dirname, '..');
+    const index = readFileSync(join(folder, 'index.ts'), 'utf8');
+    const service = readFileSync(join(folder, 'service.ts'), 'utf8');
+    expect(index).toContain('const production = isProductionCaptureOperation(captureOperationOf(app.config));');
+    expect(index.match(/\bcandidateSource\s*:/g)).toHaveLength(1);
+    expect(index).toContain('candidateSource: () => (production ? { required: true, rule: control.candidateRule } : { required: false }),');
+    // The rule has ONE way in (the composition's door); a test's `replaceForTest` cannot set it.
+    expect(index.match(/\.candidateRule\s*=(?![=>])/g)).toBeNull();
+    expect(index.match(/provide\('candidateRule', /g)).toHaveLength(1);
+    const contact = service.slice(service.indexOf('async function contact('), service.indexOf('/**\n * The endpoint reference'));
+    expect(contact.indexOf('const tester = testerOf(seams, resolved, operationId);')).toBeGreaterThan(0);
+    expect(contact.indexOf('const tester = testerOf(seams, resolved, operationId);')).toBeLessThan(contact.indexOf('limits.refusal('));
+    expect(service.match(/\btesterOf\s*\(/g)).toHaveLength(2); // the definition and the one call
+    expect(service.match(/\bseams\.candidateSource\b/g)).toHaveLength(1);
+    expect(contact).toContain('attempt = await tester.test(candidate.camera, sealed, deadline.signal);');
   });
 });

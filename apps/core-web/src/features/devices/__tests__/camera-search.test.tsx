@@ -9,13 +9,23 @@
 // | M4-CONN-LOCK-W (component half): with a session open Connect is disabled with its sentence, 0 toasts, and the search still works | "Simulated mode: gates" |
 // | S9, S10, S11, S14: what a refused search is | "the model" |
 // | Task 4 row 98 (WP-12): the typed address - an address outside the allowed form is refused in the form and nothing is sent; the Core's refusal has its sentence; no address is asked while a search runs; a search without the member is sent as before | "the typed address" |
-// | Task 4 row 98: a registered camera that answers from another address is said, never followed; NO control re-addresses it (the confirmation waits for its operation, `implementation/097`) | "the typed address" |
+// | Task 4 row 98: a registered camera that answers from another address is said, never followed by the search or the list | "the typed address" |
+// | Task 4 row 198: the confirmation dialog of a re-address (operation 100) - both addresses, no request before the explicit answer and none on a dismissal, every refusal with its sentence | "the confirmation of a camera re-address" |
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { CaptureCandidate, CaptureDiscoverySearch, CaptureDiscoveryStateBody } from '@dems/shared/api'
+import {
+  CAPTURE_READDRESS_ADDRESS_NOT_ALLOWED_SENTENCE,
+  CAPTURE_READDRESS_REFUSAL_SENTENCES,
+  CaptureReaddressReason,
+  type CaptureCandidate,
+  type CaptureDiscoverySearch,
+  type CaptureDiscoveryStateBody,
+} from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
 import { OPERATOR_IDS } from '@dems/shared/sim'
 import { getMissingI18nKeys } from '@/i18n'
+import { enWeb } from '@/i18n-web'
+import { CAPTURE_READDRESS_PATH, foundAddressOf, readdressBodyOf, readdressMayRepeat, readdressOffer, readdressRefusal } from '../camera-readdress'
 import {
   candidateGroups,
   candidateKind,
@@ -376,7 +386,7 @@ describe('the typed address (task 4 row 98; operation 93 `address`)', { timeout:
     expect(spy.mock.calls.filter(([call]) => call.path.startsWith(DISCOVERY))).toHaveLength(0)
   })
 
-  it('a registered camera that answers from another address is SAID, never followed: the row has no control that re-addresses it, and nothing but the search is sent', async () => {
+  it('a registered camera that answers from another address is SAID, never followed: the search and the list send nothing but the search; the row OFFERS the confirmation (row 198) and "View device" re-addresses nothing', async () => {
     const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
     const real = sim.request.bind(sim)
     const spy = vi.spyOn(sim, 'request').mockImplementation((call) => {
@@ -389,10 +399,9 @@ describe('the typed address (task 4 row 98; operation 93 `address`)', { timeout:
     const row = await screen.findByTestId('camera-search-row-CND-000000000002')
     expect(row).toHaveTextContent(S.addressChanged)
     expect(row).toHaveTextContent('CAM-01 · Camera 1')
-    // The one action of a registered row is "View device". No confirmation dialog exists: the contract has no operation for a re-address yet.
+    // Two actions since row 198: "View device", and the control that OPENS the confirmation dialog. Neither was pressed: no dialog.
     const actions = within(row).getAllByRole('button')
-    expect(actions).toHaveLength(1)
-    expect(actions[0]).toHaveTextContent(S.viewDevice)
+    expect(actions.map((action) => action.textContent)).toEqual([S.viewDevice, enWeb.web.readdress.action])
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     // The registry still holds the address it held: the search changed nothing.
     const before = sim.store.getState().captureDevices.devices.find((device) => device.id === 'CAM-01')
@@ -400,5 +409,181 @@ describe('the typed address (task 4 row 98; operation 93 `address`)', { timeout:
     expect(sim.store.getState().captureDevices.devices.find((device) => device.id === 'CAM-01')).toEqual(before)
     const sent = (spy.mock.calls as [Call][]).filter(([call]) => call.method === 'POST' && call.path.startsWith('/api/v1/capture/'))
     expect(sent.map(([call]) => call.path)).toEqual([DISCOVERY])
+  })
+})
+
+// Task 4, blueprint row 198 (WP-12; operation 100 `confirmCaptureDeviceAddress`; records 194, 197):
+// the confirmation dialog of a camera re-address.
+//
+// | Cell of the row | Where |
+// |-----------------|-------|
+// | offered when a search candidate matches a registered camera at another address | "the offer", "the dialog" |
+// | it states the registered and the found address | "the dialog" |
+// | the request is not sent before the dialog is answered and never on a dismissal | "the dialog" |
+// | a refusal code of row 197 is shown as its sentence | "every refusal" |
+//
+// SIMULATOR-ONLY ANSWER: the in-app simulator's cameras never move, so to a registered camera and a
+// candidate of its fixed search it answers `409 READDRESS_NOT_THE_REGISTERED_CAMERA` and to anything
+// else `404`. Every OTHER answer below (the 200 and the other refusals) is the Core's answer as the
+// contract states it (`CAPTURE_READDRESS_EXAMPLES`), handed in by the test in place of the simulator's.
+describe('the confirmation of a camera re-address (task 4 row 198; operation 100)', { timeout: 30_000 }, () => {
+  const R = enWeb.web.readdress
+  const DISCOVERY = '/api/v1/capture/discovery'
+  type Call = { method: string; path: string; body?: unknown }
+  type Answer = { status: number; body: unknown }
+  const refusalOf = (status: number, code: string, reason?: string): Answer => ({ status, body: { error: { code, message: 'The text of the answer is never drawn.', ...(reason === undefined ? {} : { details: { reason } }) } } })
+
+  /** Devices & Inputs after a search whose registered candidate answers from another address; `confirm` stands in for the Core's answer to operation 100. */
+  async function moved(scenario: 'idle' | 'recording' = 'idle', over: Partial<CaptureCandidate> = {}, confirm?: () => Answer) {
+    const { sim } = await mountDevices(scenario, OPERATOR_IDS.ANDI)
+    const real = sim.request.bind(sim)
+    const spy = vi.spyOn(sim, 'request').mockImplementation((call) => {
+      if (call.method === 'POST' && call.path === CAPTURE_READDRESS_PATH && confirm !== undefined) return { ...real({ method: 'GET', path: DISCOVERY }), ...confirm() }
+      const response = real(call)
+      if (call.method !== 'GET' || call.path !== DISCOVERY) return response
+      const body = response.body as CaptureDiscoveryStateBody
+      return { ...response, body: { ...body, candidates: body.candidates.map((entry) => (entry.status === 'REGISTERED' ? { ...entry, addressChanged: true, host: '192.168.10.77', ...over } : entry)) } }
+    })
+    const button = await screen.findByTestId('search-cameras-button-panel')
+    await waitFor(() => expect(button).toBeEnabled())
+    fireEvent.click(button)
+    const offer = await screen.findByTestId('camera-search-readdress-CND-000000000002')
+    const confirms = () => (spy.mock.calls as [Call][]).filter(([call]) => call.path === CAPTURE_READDRESS_PATH).map(([call]) => call)
+    return { sim, spy, offer, confirms }
+  }
+  const open = async (offer: HTMLElement) => {
+    fireEvent.click(offer)
+    return screen.findByTestId('camera-readdress-dialog')
+  }
+
+  it('the offer: exactly a REGISTERED camera at another address, never a conflict row or an address outside the form; the found address is `host`, or `host:port` for a port that is not the default', () => {
+    const registered = candidate({ status: 'REGISTERED', deviceId: 'CAM-04', addressChanged: true, host: '192.168.10.77', candidateId: 'CND-00000000000B' })
+    expect(readdressOffer(registered)).toEqual({ deviceId: 'CAM-04', candidateId: 'CND-00000000000B', foundAddress: '192.168.10.77' })
+    expect(readdressOffer({ ...registered, addressChanged: false })).toBeNull()
+    expect(readdressOffer({ ...registered, status: 'NEW', deviceId: null })).toBeNull()
+    expect(readdressOffer({ ...registered, conflict: true })).toBeNull()
+    expect(readdressOffer({ ...registered, deviceId: null })).toBeNull()
+    // A microphone is no camera, and an address that is no dotted IPv4 literal cannot be confirmed.
+    expect(readdressOffer({ ...registered, deviceId: 'MIC-01' })).toBeNull()
+    expect(readdressOffer({ ...registered, host: 'fe80::1' })).toBeNull()
+    // The form adoption stores (the Core's `adoptionAddressOf`): a default port is no part of the address.
+    expect(foundAddressOf({ host: '192.168.10.77', connectionTarget: 'http://192.168.10.77:80/onvif/device_service' })).toBe('192.168.10.77')
+    expect(foundAddressOf({ host: '192.168.10.77', connectionTarget: 'http://192.168.10.77:8080/onvif/device_service' })).toBe('192.168.10.77:8080')
+    expect(foundAddressOf({ host: '192.168.10.77', connectionTarget: 'https://192.168.10.77:443/onvif/device_service' })).toBe('192.168.10.77')
+    expect(readdressBodyOf(readdressOffer({ ...registered, connectionTarget: 'http://192.168.10.77:8080/onvif/device_service' })!)).toEqual({ deviceId: 'CAM-04', candidateId: 'CND-00000000000B', address: '192.168.10.77:8080' })
+  })
+
+  it('what a refusal is: the six reasons of the contract, the lock, the result that is gone, the address rule, the search that is not ready, the role, and the rest', () => {
+    for (const reason of Object.values(CaptureReaddressReason)) expect(readdressRefusal({ status: 409, code: 'INVALID_STATE', reason })).toEqual({ kind: 'REASON', reason })
+    expect(readdressRefusal({ status: 409, code: 'CAPTURE_CONFIG_LOCKED', reason: null })).toEqual({ kind: 'LOCKED' })
+    expect(readdressRefusal({ status: 404, code: 'NOT_FOUND', reason: null })).toEqual({ kind: 'RESULT_GONE' })
+    expect(readdressRefusal({ status: 422, code: 'INVALID_INPUT', reason: 'DISCOVERY_ADDRESS_NOT_ALLOWED' })).toEqual({ kind: 'ADDRESS_NOT_ALLOWED' })
+    expect(readdressRefusal({ status: 422, code: 'INVALID_INPUT', reason: null })).toEqual({ kind: 'INVALID_INPUT' })
+    expect(readdressRefusal({ status: 503, code: 'NOT_READY', reason: 'DISCOVERY_NOT_READY' })).toEqual({ kind: 'SEARCH_NOT_READY' })
+    expect(readdressRefusal({ status: 403, code: 'NOT_PERMITTED', reason: null })).toEqual({ kind: 'ROLE' })
+    for (const [status, code, reason] of [[409, 'INVALID_STATE', 'SOMETHING_ELSE'], [500, 'INTERNAL', null], [429, 'RATE_LIMITED', null], [null, 'CLIENT_ERROR', null]] as const) {
+      expect(readdressRefusal({ status, code, reason })).toEqual({ kind: 'OTHER' })
+    }
+    // Only a refusal that says nothing of the candidate leaves the same confirmation.
+    expect(readdressMayRepeat({ kind: 'LOCKED' })).toBe(true)
+    expect(readdressMayRepeat({ kind: 'OTHER' })).toBe(true)
+    expect(readdressMayRepeat({ kind: 'RESULT_GONE' })).toBe(false)
+    expect(readdressMayRepeat({ kind: 'REASON', reason: 'READDRESS_CONFIRMATION_MISMATCH' })).toBe(false)
+  })
+
+  it('the dialog: both addresses are drawn; nothing is sent by opening it, by Cancel or by the Escape key; ONE press of the confirming button sends ONE request with the address the dialog drew', async () => {
+    const { sim, offer, confirms } = await moved('idle', {}, () => ({ status: 200, body: { deviceId: 'CAM-01', device: {} } }))
+    const stored = sim.store.getState().captureDevices.devices.find((device) => device.id === 'CAM-01')!.host
+    let dialog = await open(offer)
+    expect(dialog).toHaveAttribute('role', 'alertdialog')
+    expect(dialog).toHaveAccessibleName(R.title.replace('{{device}}', 'CAM-01 · Camera 1'))
+    expect(within(dialog).getByText(R.registered)).toBeInTheDocument()
+    expect(within(dialog).getByTestId('camera-readdress-registered')).toHaveTextContent(stored ?? R.registeredUnknown)
+    expect(within(dialog).getByText(R.found)).toBeInTheDocument()
+    expect(within(dialog).getByTestId('camera-readdress-found').textContent).toBe('192.168.10.77')
+    expect(within(dialog).getByTestId('camera-readdress-consequence')).toHaveTextContent(R.consequence)
+    expect(confirms()).toHaveLength(0)
+
+    // Dismissal 1: Cancel.
+    fireEvent.click(within(dialog).getByTestId('camera-readdress-cancel'))
+    await waitFor(() => expect(screen.queryByTestId('camera-readdress-dialog')).not.toBeInTheDocument())
+    expect(confirms()).toHaveLength(0)
+    // Escape: the kit's alert dialog asks for an explicit answer - it neither closes nor confirms. Then Cancel again.
+    dialog = await open(offer)
+    fireEvent.keyDown(dialog, { key: 'Escape', code: 'Escape' })
+    fireEvent.keyUp(dialog, { key: 'Escape', code: 'Escape' })
+    expect(screen.getByTestId('camera-readdress-dialog')).toBeInTheDocument()
+    expect(confirms()).toHaveLength(0)
+    fireEvent.click(within(dialog).getByTestId('camera-readdress-cancel'))
+    await waitFor(() => expect(screen.queryByTestId('camera-readdress-dialog')).not.toBeInTheDocument())
+    expect(confirms()).toHaveLength(0)
+    expect(sim.store.getState().captureDevices.devices.find((device) => device.id === 'CAM-01')!.host).toBe(stored)
+
+    // The explicit answer.
+    dialog = await open(offer)
+    fireEvent.click(within(dialog).getByTestId('camera-readdress-confirm'))
+    await waitFor(() => expect(screen.queryByTestId('camera-readdress-dialog')).not.toBeInTheDocument())
+    expect(confirms()).toEqual([{ method: 'POST', path: CAPTURE_READDRESS_PATH, body: { deviceId: 'CAM-01', candidateId: 'CND-000000000002', address: '192.168.10.77' } }])
+    await waitFor(() => expect(toastTexts().join(' ')).toContain(R.done.replace('{{device}}', 'CAM-01 · Camera 1').replace('{{address}}', '192.168.10.77')))
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('SIMULATOR-ONLY: the in-app simulator refuses every confirmation with READDRESS_NOT_THE_REGISTERED_CAMERA (its cameras never move); the dialog says the sentence, stores nothing and offers "Search again"', async () => {
+    const { sim, offer, confirms } = await moved()
+    const before = sim.store.getState().captureDevices
+    const dialog = await open(offer)
+    fireEvent.click(within(dialog).getByTestId('camera-readdress-confirm'))
+    const refusal = await within(dialog).findByTestId('camera-readdress-refusal')
+    expect(refusal).toHaveAttribute('data-reason', 'READDRESS_NOT_THE_REGISTERED_CAMERA')
+    expect(refusal.textContent).toBe(`${CAPTURE_READDRESS_REFUSAL_SENTENCES.READDRESS_NOT_THE_REGISTERED_CAMERA} ${R.nothingChanged}`)
+    expect(confirms()).toHaveLength(1)
+    expect(sim.store.getState().captureDevices).toBe(before)
+    expect(sim.store.getState().audit.rows.filter((row) => row.type === 'CAPTURE_DEVICE_ADDRESS_CHANGED')).toHaveLength(0)
+    // The same confirmation is not offered again: a new search is.
+    expect(within(dialog).queryByTestId('camera-readdress-confirm')).not.toBeInTheDocument()
+    expect(within(dialog).getByTestId('camera-readdress-search-again')).toHaveTextContent(R.searchAgain)
+  })
+
+  it('every refusal with its sentence: the six reasons read the contract\'s own; the lock, a result that is gone, the address rule, a search that is not ready, the role, a body that was not accepted, and an unanswered request', async () => {
+    const cases: readonly (readonly [Answer, string, string, boolean])[] = [
+      ...Object.values(CaptureReaddressReason).map((reason) => [refusalOf(409, 'INVALID_STATE', reason), 'REASON', `${CAPTURE_READDRESS_REFUSAL_SENTENCES[reason]} ${R.nothingChanged}`, false] as const),
+      [refusalOf(409, 'CAPTURE_CONFIG_LOCKED'), 'LOCKED', R.refusal.LOCKED, true],
+      [refusalOf(404, 'NOT_FOUND'), 'RESULT_GONE', R.refusal.RESULT_GONE, false],
+      [refusalOf(422, 'INVALID_INPUT', 'DISCOVERY_ADDRESS_NOT_ALLOWED'), 'ADDRESS_NOT_ALLOWED', `${CAPTURE_READDRESS_ADDRESS_NOT_ALLOWED_SENTENCE} ${R.nothingChanged}`, false],
+      [refusalOf(422, 'INVALID_INPUT'), 'INVALID_INPUT', R.refusal.INVALID_INPUT, false],
+      [refusalOf(503, 'NOT_READY', 'DISCOVERY_NOT_READY'), 'SEARCH_NOT_READY', R.refusal.SEARCH_NOT_READY, true],
+      [refusalOf(403, 'NOT_PERMITTED'), 'ROLE', R.refusal.ROLE, false],
+      [refusalOf(500, 'INTERNAL'), 'OTHER', R.refusal.OTHER, true],
+    ]
+    expect(cases).toHaveLength(13)
+    let next: Answer = cases[0]![0]
+    const { offer, confirms } = await moved('idle', {}, () => next)
+    let sent = 0
+    for (const [answer, kind, sentence, repeat] of cases) {
+      next = answer
+      const dialog = await open(offer)
+      fireEvent.click(within(dialog).getByTestId('camera-readdress-confirm'))
+      const refusal = await within(dialog).findByTestId('camera-readdress-refusal')
+      expect(refusal, kind).toHaveAttribute('data-refusal', kind)
+      expect(refusal.textContent, kind).toBe(sentence)
+      // Never the answer's own text, and nothing is sent again by itself.
+      expect(dialog).not.toHaveTextContent('The text of the answer is never drawn.')
+      sent += 1
+      expect(confirms(), kind).toHaveLength(sent)
+      expect(within(dialog).queryByTestId('camera-readdress-confirm') !== null, kind).toBe(repeat)
+      fireEvent.click(within(dialog).getByTestId('camera-readdress-cancel'))
+      await waitFor(() => expect(screen.queryByTestId('camera-readdress-dialog')).not.toBeInTheDocument())
+    }
+    expect(confirms()).toHaveLength(13)
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('with a session open the offer is drawn disabled with its sentence, opens no dialog and sends nothing', async () => {
+    const { offer, confirms } = await moved('recording')
+    expect(offer).toBeDisabled()
+    expect(screen.getByTestId('camera-search-readdress-reason-CND-000000000002')).toHaveTextContent(C.locked)
+    fireEvent.click(offer)
+    expect(screen.queryByTestId('camera-readdress-dialog')).not.toBeInTheDocument()
+    expect(confirms()).toHaveLength(0)
   })
 })

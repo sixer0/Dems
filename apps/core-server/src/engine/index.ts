@@ -85,7 +85,7 @@ export {
   type HostedActionResult,
 } from './hosted-actions';
 export { createEngineHost, isEngineControl, type EngineControl, type EngineHostDependencies } from './host';
-export { markCaptureConnectingIn, registerCaptureDeviceIn, registerCaptureMicrophoneIn, switchCaptureAudioSourceIn, type InternalActions } from './internal-actions';
+export { markCaptureConnectingIn, readdressCaptureDeviceIn, registerCaptureDeviceIn, registerCaptureMicrophoneIn, switchCaptureAudioSourceIn, type InternalActions } from './internal-actions';
 // Seal block (blueprint row 82): the three INTERNAL sealing actions, beside the seam.
 export { sealDoorsOf } from './seal-doors';
 export { FACT_DOOR_LABEL, factDoorsOf, type EngineFactDoors } from './fact-doors';

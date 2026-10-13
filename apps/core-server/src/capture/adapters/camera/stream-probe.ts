@@ -67,11 +67,12 @@
  */
 import type { CaptureTimers } from '../../types';
 import type { SealedCredential } from '../credential';
-import { CaptureAdapterError } from '../errors';
+import { CaptureAdapterError, CaptureAdapterRefusal } from '../errors';
 import type { ProductionDoor, ProductionExit, ProductionProcess } from '../production-door';
 import { ConnectionTestOutcome, type CameraCandidate, type ConnectionTestResult } from '../types';
 import { OnvifTestReason, type OnvifConnectionTester, type OnvifStreamLocator, type OnvifStreamProfile } from './onvif-session';
 import { RELAY_ATTEMPT_MAX, startCameraProbe } from './relay-start';
+import { isSourceAddress } from './stored-address';
 
 /** The bound of ONE probe: the relay must have reported, or ended, inside it. */
 export const STREAM_PROBE_BOUND_MS = 8_000;
@@ -337,8 +338,24 @@ export interface StreamConnectionTesterOptions {
 
 /** THE FACADE: one call. The ONVIF half, then the stream half when it applies. */
 export interface StreamConnectionTester {
-  /** Rejects as the ONVIF half does, before any request. Otherwise it RESOLVES, whatever the camera or the relay does. */
-  test(candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal): Promise<StreamTestResult>;
+  /**
+   * Rejects as the ONVIF half does, before any request. Otherwise it RESOLVES, whatever the camera or the relay does.
+   *
+   * `sourceAddress` (task 4 row 143b; S13-11 point 2): the address of this host every connection
+   * of the test leaves from - for a STORED camera the camera-interface address its judgement
+   * names. Handed in, it goes to BOTH halves and to every dial of them: the ONVIF test, each
+   * locator read, and each probe (the member `source` of the relay's start message). Left out - a
+   * camera that is not stored yet - nothing of the test is bound, as before.
+   */
+  test(candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal, sourceAddress?: string): Promise<StreamTestResult>;
+  /**
+   * THE SAME TESTER, BOUND TO ONE SOURCE ADDRESS (task 4 row 143c; decision C65): every test of the
+   * answer is `test` with that address - both halves, every dial. For the test of a candidate that
+   * is not stored yet on a production Core, whose caller has ONE call of a tester and binds it
+   * before that call. Throws `CAPTURE_LOCATOR_INVALID` for a text that is no source address; it
+   * contacts nothing.
+   */
+  boundTo(fromAddress: string): Pick<StreamConnectionTester, 'test'>;
 }
 
 interface Failure {
@@ -406,7 +423,7 @@ export function createStreamConnectionTester(options: StreamConnectionTesterOpti
     });
 
   /** ONE probe of one stream: the relay start, its one line or its end, inside the bound and the caller's signal. */
-  async function probe(program: string, address: string, sealed: SealedCredential, signal: AbortSignal): Promise<Probed> {
+  async function probe(program: string, address: string, sealed: SealedCredential, signal: AbortSignal, sourceAddress?: string): Promise<Probed> {
     const failed = (failure: Failure, rejected = 0): Probed => ({ failure, rejected });
     if (signal.aborted) return failed({ outcome: ConnectionTestOutcome.UNREACHABLE, reason: StreamTestReason.DEADLINE });
     attempts = attempts >= RELAY_ATTEMPT_MAX ? 1 : attempts + 1;
@@ -414,7 +431,8 @@ export function createStreamConnectionTester(options: StreamConnectionTesterOpti
     const reader = createProbeReportReader();
     let process: ProductionProcess;
     try {
-      process = startCameraProbe({ door, program, timers, locator: address, sealed, attempt, onOutput: (chunk) => reader.push(chunk) });
+      // Row 143b: the source address of the test, when it has one, is the relay's too (the member `source` of its start message).
+      process = startCameraProbe({ door, program, timers, locator: address, sealed, attempt, ...(sourceAddress === undefined ? {} : { source: sourceAddress }), onOutput: (chunk) => reader.push(chunk) });
     } catch (error) {
       // The injection point refused the address before anything was started. Nothing of what it threw travels on.
       if (error instanceof CaptureAdapterError) return failed({ outcome: ConnectionTestOutcome.WRONG_PROFILE, reason: StreamTestReason.STREAM_LOCATOR_REFUSED });
@@ -480,8 +498,10 @@ export function createStreamConnectionTester(options: StreamConnectionTesterOpti
     return failed(known.failure, known.failure.reason === StreamTestReason.STREAM_CREDENTIAL_REFUSED ? 1 : 0);
   }
 
-  async function test(candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal): Promise<StreamTestResult> {
-    const first = await onvif.test(candidate, credential, signal);
+  async function test(candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal, sourceAddress?: string): Promise<StreamTestResult> {
+    // Row 143b: ONE source address for every dial of the test. A call without one hands none on (no trailing argument at all).
+    const from: readonly [] | readonly [string] = sourceAddress === undefined ? [] : [sourceAddress];
+    const first = await onvif.test(candidate, credential, signal, ...from);
     let rejected = first.rejectedCredentialRequests;
     const answered = (outcome: ConnectionTestOutcome, reason: string | null, streamTested: boolean, streams: readonly JudgedStream[] = [], duplicateCodes = 0): StreamTestResult =>
       Object.freeze({
@@ -515,7 +535,7 @@ export function createStreamConnectionTester(options: StreamConnectionTesterOpti
       // Where the stream is, now: one authenticated read. The address lives inside this turn of the loop.
       let address: string;
       try {
-        const located = await locator.locate(candidate, credential, profile.token, signal);
+        const located = await locator.locate(candidate, credential, profile.token, signal, ...from);
         rejected += located.rejectedCredentialRequests;
         if (located.outcome !== ConnectionTestOutcome.REACHABLE || located.locator === null) {
           fail({ outcome: located.outcome === ConnectionTestOutcome.REACHABLE ? ConnectionTestOutcome.WRONG_PROFILE : located.outcome, reason: located.reason ?? OnvifTestReason.STREAM_ADDRESS_MISSING });
@@ -530,7 +550,7 @@ export function createStreamConnectionTester(options: StreamConnectionTesterOpti
         continue;
       }
 
-      const probed = await probe(relayProgram, address, credential, signal);
+      const probed = await probe(relayProgram, address, credential, signal, sourceAddress);
       if ('failure' in probed) {
         rejected += probed.rejected;
         fail(probed.failure);
@@ -555,5 +575,14 @@ export function createStreamConnectionTester(options: StreamConnectionTesterOpti
     return answered(failure.outcome, failure.reason, true, [], duplicateCodes);
   }
 
-  return Object.freeze({ test });
+  /**
+   * Row 143c (decision C65): the same test, BOUND. The address is held to the form of a source address here, once,
+   * before any test; every test of the answer then hands it to both halves, as a stored camera's test does.
+   */
+  const boundTo = (fromAddress: string): Pick<StreamConnectionTester, 'test'> => {
+    if (!isSourceAddress(fromAddress)) throw new CaptureAdapterError(CaptureAdapterRefusal.LOCATOR_INVALID);
+    return Object.freeze({ test: (candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal) => test(candidate, credential, signal, fromAddress) });
+  };
+
+  return Object.freeze({ test, boundTo });
 }

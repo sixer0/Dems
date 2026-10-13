@@ -28,8 +28,66 @@
  * the relay. No erasure is claimed beyond these buffers (the kernel's pipe, a swapped page).
  *
  * It ends by itself when its standard input ends (the Core's order to stop, and the Core's death), when the
- * camera or the worker goes away, and on every failure, with ONE code of the list below. It writes nothing to
- * standard output and, to standard error, lines made of these fixed words and of numbers only.
+ * camera or the worker goes away, and on every failure, with ONE code of the list below. To standard error it
+ * writes lines made of these fixed words and of numbers only.
+ *
+ * THE TWO MODES AND THE ONE REPORT LINE (task 4 blueprint row 42, WP-03c; security addendum AD-06 (3); S13-06).
+ * The start message names the mode. In both the relay opens the camera in exactly the same way (the same
+ * client, Digest only) and waits, behind the same keyframe gate, for the parameter sets and a keyframe.
+ *   record  it then pushes (above). Once the worker has answered its record request with success it writes ONE
+ *           line to standard output, "push established": the half (i) of what the Core pairs with the worker's
+ *           own connect report (S13-06, RC-3). It says nothing about whether the worker's gate went on to take
+ *           the push: that is the worker's word.
+ *   probe   it pushes nothing and takes no ingest address. It writes ONE line to standard output, the stream's
+ *           own statement - the codec as one of two words of THIS program, the picture size, the rate when the
+ *           description states one, the parameter-set bytes in hexadecimal, and where the sets stood - and ends
+ *           with code 0. The relay reports facts; which profile that is, is decided by the Core from the
+ *           parameter-set bytes (AD-06 (1)): no text of the camera is in the line.
+ * A report line is of a fixed shape and at most RELAY_REPORT_MAX bytes; it carries the attempt the relay was
+ * started for (0: the start message stated none) and NEVER an address, a path, an account or any text that was
+ * read from outside. Both lines are made in relay_core.c (relay_established_line, relay_probe_line) and written
+ * by the one writer of standard output in relay.c.
+ *
+ * THE RE-OPEN (task 4 blueprint row 43, WP-03c; design addendum 2.4 and 5.1; review finding F10 a; experiment E-10).
+ * Record mode, once the push stands. When the camera leg ends - the camera closed it, it stalled, it cannot be
+ * reached - the relay does NOT end: it KEEPS its one connection to the worker (the worker takes one push per
+ * listener and session: a second one is refused at TCP, E-10) and opens the camera again, with what it holds:
+ * the locator and the Digest key of the realm. The password is long gone and is not needed.
+ *   when     RELAY_RETRY_TRIES tries per loss, the waits of relay_retry_wait_us before them (2, 2, 4, 8, 16, 30 s:
+ *            input-av's tested rule). The first picture the relay forwards after a loss ends the loss and the count
+ *            starts again. When the tries are used up the relay ends with the code of its last try.
+ *   refusals a camera that refuses the Digest answer is not hammered: the RELAY_AUTH_REFUSALS-th refusal of the
+ *            relay's life after the push stood ends it with AUTH_REFUSED, and no request leaves after it.
+ *   ends     at once, with its code, on everything else: no stream at the path (LOCATOR_NOT_FOUND), a challenge
+ *            that is not Digest, a redirect, a control address of another host, a description, codec or transport
+ *            that is not taken, an answer that is not RTSP - and STREAM_INVALID when the stream that comes back is
+ *            not the one that was announced to the worker (another codec, other parameter sets).
+ *   the gate after EVERY re-open nothing is forwarded before the parameter sets and a keyframe of the NEW leg are
+ *            held (E-10: a resume in the middle of a group is written by the worker as it comes, decodes without
+ *            a message and shows 30 of 30 wrong pictures). What is held back is counted.
+ *   time     the first picture after a re-open is placed by THIS host's clock (the camera's stamps begin anew
+ *            with a new leg): the gap is a step in time inside the one track.
+ *   reports  each loss and each re-open is ONE more line of standard output, made in relay_core.c from numbers:
+ *            {"report":"camera_lost","v":1,"attempt":<n>,"loss":<k>,"cause":<exit code number of the loss>}
+ *            {"report":"camera_reopened","v":1,"attempt":<n>,"loss":<k>,"tries":<1..6>,"held_back":<n>,"gap_ms":<n>}
+ *            `camera_reopened` is written when the first keyframe after the loss is about to be forwarded.
+ * Before the push stands nothing of this applies: a failure of the first open ends the relay as it always did.
+ *
+ * THE SOURCE ADDRESS (task 4 row 143b; security S13-11 point 2, AD-02; the Core's destination rule names it).
+ * The start message may carry the member `source`: the IPv4 address of THIS host the connection to the camera
+ * must leave from - the address of the camera interface. It is a dotted literal in its one canonical form (four
+ * numbers 0 to 255, no leading 0, nothing else), first number 1 to 223: never a name (nothing is looked up),
+ * never 0.0.0.0 (that would be no source at all). RECORD MODE MUST STATE IT - a record message without it is
+ * refused like any other invalid message; probe mode may (a camera that is not stored yet has no judged source).
+ *   when     the ONE socket of the camera leg is given that address, with no port of its own choosing, BEFORE it
+ *            is connected - on the first open and on EVERY re-open: both go through the one dial of relay_rtsp.c.
+ *   refusal  an address this host does not hold cannot be given: the leg ends with CAMERA_UNREACHABLE and NOTHING
+ *            was sent - no connection was asked for. There is no second try without it and no other route.
+ *   the rule the relay's own socket rule (relay.c), asked when each leg stands, also holds the camera socket to it:
+ *            its own end must be that address, or the relay ends with SOCKET_RULE.
+ * What this does NOT do: it does not choose the interface by name. Which interface a packet leaves by is the
+ * host's routing; the address makes the start fail when the host no longer holds it, and makes the camera see
+ * that address. The push to the worker is not touched: it is loopback to loopback.
  */
 #ifndef DEMS_CAPTURE_RELAY_H
 #define DEMS_CAPTURE_RELAY_H
@@ -57,6 +115,14 @@
 #define RELAY_SDP_LINES 96                  /* lines of the video section of a description */
 #define RELAY_SDP_TYPES 16                  /* payload types of the video section */
 #define RELAY_SKIPPED_MAX 8                 /* messages that are not the awaited answer, per answer */
+
+/* Row 42: the bounds of what a report line states (AD-06 (2), (3)). */
+#define RELAY_ATTEMPT_MAX 999999999L        /* the attempt of a start message: 1 to this; 0 = it stated none */
+#define RELAY_SIDE_MAX 16384                /* width and height of a picture, 1 to this */
+#define RELAY_RATE_MILLI_MAX 1000000L       /* a stated rate in thousandths of a picture a second; 0 = none stated */
+#define RELAY_REPORT_MAX 6400               /* one report line with its line feed: its fixed members and the three
+                                             * parameter sets in hexadecimal (2 characters a byte, RELAY_PSET_MAX
+                                             * bytes each at most) */
 
 /* THE TIME BOUNDS, microseconds (row 186, review finding H-2). Each is an ABSOLUTE point of the monotonic clock,
  * fixed when its phase begins and looked at on EVERY turn of every loop that reads the camera: bytes that keep
@@ -89,7 +155,8 @@ typedef enum RelayCode {
     RELAY_START_MESSAGE_TIMEOUT = 11,
     RELAY_LIBAVFORMAT_VERSION_MISMATCH = 12,
     RELAY_HYGIENE_FAILED = 13,              /* the core-file limit could not be set to 0 */
-    RELAY_CAMERA_UNREACHABLE = 20,          /* no TCP connection inside the bound */
+    RELAY_CAMERA_UNREACHABLE = 20,          /* no TCP connection inside the bound; or the source address of the
+                                             * start message is not this host's (row 143b): nothing was sent */
     RELAY_CAMERA_PROTOCOL = 21,             /* an answer that is not RTSP, too long, or a status not expected */
     RELAY_AUTH_SCHEME_NOT_ALLOWED = 22,     /* a challenge without a Digest scheme the relay answers (S13-01) */
     RELAY_AUTH_REFUSED = 23,                /* the camera refused the Digest answer */
@@ -106,6 +173,7 @@ typedef enum RelayCode {
     RELAY_INGEST_REFUSED = 40,              /* the worker did not take the push */
     RELAY_INGEST_LOST = 41,                 /* the worker went away */
     RELAY_SOCKET_RULE = 42,                 /* the relay found a socket it must not have (RC-6) */
+    RELAY_REPORT_NOT_WRITTEN = 43,          /* the report line could not be written to standard output in the bound */
     RELAY_INTERNAL = 70
 } RelayCode;
 const char *relay_code_name(RelayCode code);
@@ -114,12 +182,17 @@ const char *relay_code_name(RelayCode code);
 void relay_wipe(void *memory, size_t bytes);
 
 /* ---------------------------------------------------------------- the start message */
+typedef enum RelayMode { RELAY_MODE_NONE = 0, RELAY_MODE_RECORD = 1, RELAY_MODE_PROBE = 2 } RelayMode;
 typedef struct RelayStart {
-    char ingest[RELAY_INGEST_CHARS + 1];    /* announced unchanged */
+    RelayMode mode;                         /* "record" or "probe" */
+    long attempt;                           /* the member `attempt` (a number, 1 to RELAY_ATTEMPT_MAX); 0: not stated */
+    char ingest[RELAY_INGEST_CHARS + 1];    /* announced unchanged; record mode only (probe mode takes none) */
     int ingest_port;
     char locator[RELAY_LOCATOR_CHARS + 1];  /* rtsp://<IPv4>[:port]/path - never a user part */
     char host[16];
     int port;
+    char source[16];                        /* row 143b: the address of this host the camera leg leaves from, a
+                                             * canonical dotted IPv4 literal; empty: not stated (probe mode only) */
     char account[RELAY_ACCOUNT_CHARS + 1];
     char secret[RELAY_SECRET_CHARS + 1];    /* overwritten after the first challenge */
 } RelayStart;
@@ -167,8 +240,52 @@ typedef struct RelayDescription {
     int payload_type;
     char control[RELAY_LOCATOR_CHARS + 1];  /* of the video section; empty: none */
     ParamSets sets;                         /* what the description states; may be empty */
+    long rate_milli;                        /* `a=framerate` of the video section in thousandths, 1 to
+                                             * RELAY_RATE_MILLI_MAX; 0: not stated, stated twice, or not readable */
 } RelayDescription;
 RelayCode relay_description_parse(const char *text, size_t length, RelayDescription *out);
+
+/* ---------------------------------------------------------------- the report lines (row 42; AD-06 (3))
+ * Made HERE, from numbers and from bytes the relay validated, and from nothing else: no function below takes a
+ * text. Each writes one line with its line feed and a 0 after it and returns the line's length (at most
+ * RELAY_REPORT_MAX), or -1 when a value is outside its bound or the line does not fit `cap` (nothing usable is
+ * then in `out`: its first byte is 0).
+ *   {"report":"push_established","v":1,"attempt":<n>}
+ *   {"report":"probe","v":1,"attempt":<n>,"codec":"H264"|"HEVC","width":<n>,"height":<n>,"rate_milli":<n>,
+ *    "sets_in_description":true|false,"sets_in_stream":true|false,"vps":"<hex>","sps":"<hex>","pps":"<hex>"}
+ * (one line, no blank; `vps` is empty for H.264; hexadecimal in lower case). */
+typedef struct RelayProbe {
+    long attempt;
+    RelayCodec codec;
+    int width, height;
+    long rate_milli;                        /* 0: the description states none */
+    int sets_in_description, sets_in_stream;/* complete sets stood there (in the stream: before the first keyframe) */
+    const ParamSets *sets;                  /* the sets the picture size was read with: valid ones (relay_sets_valid) */
+} RelayProbe;
+int relay_established_line(long attempt, char *out, size_t cap);
+int relay_probe_line(const RelayProbe *probe, char *out, size_t cap);
+
+/* ---------------------------------------------------------------- the re-open (row 43; header text "THE RE-OPEN")
+ * Pure: the rule, and the two lines. No function below takes a text. */
+#define RELAY_RETRY_TRIES 6                 /* tries per loss */
+#define RELAY_AUTH_REFUSALS 2               /* refused Digest answers after the push stood: the second ends the relay */
+#define RELAY_COUNT_MAX 999999999L          /* the largest number a line of the re-open states */
+#define RELAY_LOSS_ENDS 0                   /* relay_loss_kind: the relay ends with this code */
+#define RELAY_LOSS_RETRIED 1                /* the camera leg is opened again */
+#define RELAY_LOSS_REFUSAL 2                /* opened again, and counted against RELAY_AUTH_REFUSALS */
+/* What the end of the camera leg means once the push stands. RETRIED: CAMERA_UNREACHABLE, CAMERA_STALLED,
+ * CAMERA_LOST. REFUSAL: AUTH_REFUSED. ENDS: every other code (the order to stop among them). */
+int relay_loss_kind(RelayCode code);
+/* The wait before try number `tries_made` + 1 of one loss, microseconds; 0: the tries are used up. */
+int64_t relay_retry_wait_us(int tries_made);
+/* Is the stream of a new leg the one that was announced to the worker? The same codec, and every parameter set
+ * the codec needs byte for byte the same. */
+int relay_same_stream(RelayCodec announced, const ParamSets *announced_sets, RelayCodec now, const ParamSets *now_sets);
+/* The two lines, as relay_established_line makes its own: the length, or -1 and nothing usable in `out`. `cause`
+ * must be a code of the kinds RETRIED or REFUSAL; `loss` 1 to RELAY_COUNT_MAX; `tries` 1 to RELAY_RETRY_TRIES;
+ * `held_back` and `gap_ms` 0 to RELAY_COUNT_MAX. */
+int relay_loss_line(long attempt, long loss, RelayCode cause, char *out, size_t cap);
+int relay_reopened_line(long attempt, long loss, long tries, long held_back, long gap_ms, char *out, size_t cap);
 
 /* ---------------------------------------------------------------- pictures out of RTP */
 typedef struct RelayPicture {
@@ -248,6 +365,12 @@ void relay_camera_limit(RelayCamera *camera, int64_t monotonic_us, RelayCode lat
  * descriptor the test made, so that the unit checks and the fuzz build drive the real client with chosen bytes. */
 void relay_camera_adopt(RelayCamera *camera, int descriptor);
 #endif
+/* Row 43: the connection is given up WITHOUT A WORD (no TEARDOWN: on a leg that ended there is no one to tell, and
+ * after a refused answer no request may leave), and the leg is as it was before its first open - except for the
+ * Digest key of the realm, which stays. relay_camera_open then dials again. A camera that asked for no answer on
+ * the first open and challenges on a later one is NOT answered (the password is gone): that open ends with
+ * AUTH_REFUSED and nothing was sent. */
+void relay_camera_drop(RelayCamera *camera);
 /* TEARDOWN (best effort, bounded) and close. */
 void relay_camera_close(RelayCamera *camera);
 int relay_camera_socket(const RelayCamera *camera);

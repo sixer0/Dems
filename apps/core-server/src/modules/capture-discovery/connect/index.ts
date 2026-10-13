@@ -51,7 +51,8 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { createSystemTimers } from '../../../capture';
-import { sealCredential } from '../../../capture/adapters';
+import { sealCredential, type StoredCameraAddressRule } from '../../../capture/adapters';
+import { captureOperationOf, isProductionCaptureOperation } from '../../../capture/fence';
 import { coreCredentialStore, isStoreSealedSecret } from '../../../credential-store';
 import { notSignedIn } from '../../../plugins/authenticate';
 import { ApiFailure } from '../../../plugins/error-envelope';
@@ -107,6 +108,14 @@ export interface CaptureConnectControl {
   provideTester(tester: ConnectionTester): void;
   provideSealer(sealer: CameraSecretSealer): void;
   provideRegistrar(registrar: DeviceRegistrar): void;
+  /**
+   * Task 4 row 143c (decision C65): the destination rule on a camera address, bound to the host's
+   * network facts - the ONE binding of the production composition, handed in ONCE. Under capture
+   * operation `REAL_PRODUCTION` the test of a candidate is bound to the camera-interface address
+   * this rule names, and WITHOUT the rule no candidate is tested (`503`). In any other capture
+   * operation the rule is never asked.
+   */
+  provideCandidateRule(rule: StoredCameraAddressRule): void;
   /** The bounds of the connection tests of this Core, the lock-out guard among them. In memory. */
   readonly limits: ConnectionTestLimits;
   /**
@@ -132,6 +141,7 @@ interface ControlState extends CaptureConnectControl {
   sealer: CameraSecretSealer | null;
   storeSealer: CameraSecretSealer | null;
   registrar: DeviceRegistrar | null;
+  candidateRule: StoredCameraAddressRule | null;
 }
 
 // Keyed by the app's stage registry: one object per app (the `sttConfigControl(app)` idiom).
@@ -199,7 +209,7 @@ export interface CaptureConnectOptions {
 
 /** Registers operations 95, 96 and 89 on the app. Called once, before `app.ready()`. */
 export function registerCaptureConnectRoutes(app: FastifyInstance, options: CaptureConnectOptions = {}): CaptureConnectControl {
-  const provide = <Key extends 'candidates' | 'tester' | 'sealer' | 'registrar'>(key: Key, value: NonNullable<ControlState[Key]>): void => {
+  const provide = <Key extends 'candidates' | 'tester' | 'sealer' | 'registrar' | 'candidateRule'>(key: Key, value: NonNullable<ControlState[Key]>): void => {
     if (control[key] !== null) throw new Error(`the ${key} seam of the connect flow was provided twice`);
     control[key] = value;
   };
@@ -209,11 +219,13 @@ export function registerCaptureConnectRoutes(app: FastifyInstance, options: Capt
     sealer: null,
     storeSealer: null,
     registrar: null,
+    candidateRule: null,
     limits: options.limits ?? createConnectionTestLimits({ now: () => app.clock.now() }),
     provideCandidates: (directory) => provide('candidates', directory),
     provideTester: (tester) => provide('tester', tester),
     provideSealer: (sealer) => provide('sealer', sealer),
     provideRegistrar: (registrar) => provide('registrar', registrar),
+    provideCandidateRule: (rule) => provide('candidateRule', rule),
     replaceForTest: (parts) => {
       if (parts.candidates !== undefined) control.candidates = parts.candidates;
       if (parts.tester !== undefined) control.tester = parts.tester;
@@ -237,6 +249,8 @@ export function registerCaptureConnectRoutes(app: FastifyInstance, options: Capt
   });
 
   const timers = createSystemTimers();
+  // The capture operation of this app, from its configuration (the fence's one decision): fixed for the app's life.
+  const production = isProductionCaptureOperation(captureOperationOf(app.config));
   const host: ConnectHost = {
     now: () => app.clock.now(),
     state: () => app.engine.state(),
@@ -257,6 +271,9 @@ export function registerCaptureConnectRoutes(app: FastifyInstance, options: Capt
     // Question 2 of review row 69: only the store's own answer is written, whoever the sealer is.
     storeSealed: isStoreSealedSecret,
     registrar: () => control.registrar,
+    // Task 4 row 143c (decision C65): ALWAYS stated. In production a candidate's test is bound to the camera interface
+    // by the rule the composition handed in, and is refused while there is none; in any other operation it is as it was.
+    candidateSource: () => (production ? { required: true, rule: control.candidateRule } : { required: false }),
   };
   const routes = app.withTypeProvider<ZodTypeProvider>();
 

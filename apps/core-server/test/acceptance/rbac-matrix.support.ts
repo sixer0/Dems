@@ -293,7 +293,11 @@ export const API_CONTRACT_SECTIONS: ReadonlyArray<{ readonly heading: string; re
   // adoption and the local-input re-read. The identity table of §2.6 has the columns of §2.2.
   // Task 4 (blueprint row 63, integration pass I-2): the same table gained the two sound-card
   // operations 98 and 99, in the form of its five rows; no new table, no new permission.
-  { heading: '### 2.6 ', section: 'C3 §2.6', rows: 7, what: 'the seven of operations 93 to 99' },
+  // Task 4 (blueprint row 194): and the row of operation 100, the operator-confirmed re-address.
+  // Task 4 (blueprint row 102): and the seven rows of the commissioning operations 101 to 107.
+  // Task 4 (row V3, the third contract step; blueprint row 146): and the row of operation 108, the stored-credential connection test.
+  // Task 4 (blueprint row 116, WP-26b): and the two rows of operations 109 and 110, the installation acceptance and its revocation.
+  { heading: '### 2.6 ', section: 'C3 §2.6', rows: 18, what: 'the eighteen of operations 93 to 110' },
 ];
 
 /** True for a row the composed table takes from C3, not from the closed task-2 base. */

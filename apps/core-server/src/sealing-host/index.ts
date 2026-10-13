@@ -48,6 +48,7 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
+import { captureBootControl, refuseHoldWithoutBootKey, signerHeldToBoot } from '../capture';
 import { CaptureOperation } from '../capture/adapters';
 import { captureOperationOf } from '../capture/fence';
 import { readSessionCaptureFacts, readSessionVideoFormat, readSessionVideoSampleEntry, removeSessionCaptureFacts, sessionCapture } from '../capture-session';
@@ -58,7 +59,7 @@ import { coreFragmentOpener, createRealEvidenceVerification, hasSealedPackageHer
 import { evidenceVerification } from '../modules/evidence';
 import { VIDEO_TRACK_IDS, createRecordingFragmentStore } from '../modules/recording-fragments';
 import { createTranscriptChunkStore } from '../modules/transcript-chunks';
-import { createTranscriptStore } from '../modules/transcripts';
+import { createTranscriptStore, provideRevisionSigner } from '../modules/transcripts';
 import type { Principal } from '../plugins/authenticate';
 import { ApiFailure } from '../plugins/error-envelope';
 import { describeError } from '../plugins/logger';
@@ -81,6 +82,7 @@ import {
   sealInputWithTranscriptSummary,
   sealBlockedRestoreHint,
   sealOnCaptureHandOff,
+  sealingVerifyTrust,
   sealingCauseCodeOf,
   sealingFailureReason,
   sweepSealedSession,
@@ -96,7 +98,7 @@ import {
 } from '../sealing';
 import { transcriptionControl } from '../transcription';
 import { coreFragmentSealer, sessionKeyStartRefusal, type SessionKeyStartRefusal } from './session-key';
-import { SEAL_NOTICE, createSealSessionReader } from './session-reader';
+import { SEAL_NOTICE, createSealSessionReader, hostProfileNotAskedOf } from './session-reader';
 // Closing pass Z1 (decision D207): the installation identity - manifest fields 20 / 21 and the boot rule.
 import { installationIdentityOf, runInstallationIdentityBoot } from './installation-identity';
 import { createSealTranscriptStep, type SealTranscriptRuns } from './transcript-step';
@@ -232,6 +234,9 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
   const mediaStoreDir = app.config.mediaStoreDir;
   // Closing pass Z1 (D207): the ONE read of the installation identity, at the mount.
   const installationIdentity = installationIdentityOf(app.config);
+  // Task 4 row 228 (X1-5, SX-10): boot check 4b-2 of the capture unit compares the active certificate with THIS id. The capture
+  // unit does not read the setting (one reader): the id is handed through its door, once, here. Null when none is configured.
+  captureBootControl(app).provideInstallationId(installationIdentity.deviceId);
   const packageDir = (sessionId: string): string => sessionPackageDir(mediaStoreDir, sessionId);
   const now = (): number => app.clock.now();
   let last: SealOutcome | null = null;
@@ -271,8 +276,46 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
 
   // The signer of `<dataDir>/signer`, loaded when a seal first reads it: a Core without a usable
   // key fails the step that needs it (`SIGNER_FAILED`), it does not fail to start.
+  // KEPT FOR THE LIFE OF THE PROCESS, and safe to keep (task 4 row 226b, decision C69 (1)): the signer
+  // of the store asks the compromise mark and the active pointer again before EACH signature, so a
+  // key marked compromised while this Core runs signs nothing (`KEY_COMPROMISED`), and after a
+  // rotation this Core signs nothing (`ACTIVE_KEY_CHANGED`) until it is started again - it never
+  // goes over to another key than the one its boot checks judged.
+  //
+  // HELD TO THE BOOT (task 4 row 226c; decision C81). That rule depended on the ORDER of load and rotation: a Core that had
+  // not yet loaded its signer loaded the NEW key after a rotation and signed with it, and a signer loaded while its
+  // certificate was valid signed after its end. So NOTHING takes the kept signer directly: every taker - the seal, the
+  // export jobs, the transcript revisions - gets it through the hold of the signer unit, each time it is taken:
+  //   - the key id is the one the boot checks of THIS process judged (the boot's door `judgedSigningKey`, beside
+  //     `provideInstallationId` above), else `ACTIVE_KEY_CHANGED` until the Core is started again - loaded before the
+  //     rotation or after it. A signer of a key the boot did not judge is not kept, and its certificate is handed to nobody;
+  //   - the certificate's validity covers the Core's clock (the clock of boot check 4) when the signer is taken and
+  //     before each signature, else `CERTIFICATE_NOT_VALID_NOW`.
+  // Both real operations load the store at boot check 4, so both are held; the clock rule holds wherever this unit is mounted.
+  //
+  // THE NULL DOOR REFUSES (task 4 row 226d; review 230 caution R-7; decisions C81, C84). Row 226c left one case unheld: a
+  // take while the door `judgedSigningKey` still answers null - the boot step has not passed yet, was refused, or loaded no
+  // key of the store (a test whose boot key is a seam) - got a signer bound to nothing but its own load. This unit is
+  // mounted ONLY in the two real operations (the first lines of `mountSealingHost`), and in both a boot judges a key. So
+  // here a null door is never "nothing to hold to": it is "no boot of this process judged a key", and the signer is
+  // REFUSED - `BOOT_KEY_NOT_JUDGED`, before anything of the store is loaded. Nothing is signed by a key no boot judged.
+  // LEFT AS REVIEW 230 ACCEPTED THEM (its items (d) and (f)), on purpose and not held by this door:
+  //   - capture mode `simulated`: this unit is not mounted (`INERT` above); the transcripts route loads the active key
+  //     itself there, and no boot of that operation judges a key;
+  //   - the seed command (`demo-seed/seed-hook.ts`, called by `db/seed/cli.ts` only): its own process, where no boot ran;
+  //     a development-marked key only, which a production Core never trusts. It stays a command.
   let signing: SealingPorts['signing'] | null = null;
-  const signingNow = (): SealingPorts['signing'] => (signing ??= loadSealingSigner({ dataDir: app.config.dataDir, now: now() }));
+  const signingNow = (): SealingPorts['signing'] => {
+    const hold = { bootKeyId: captureBootControl(app).judgedSigningKey(), now };
+    refuseHoldWithoutBootKey(hold);
+    try {
+      return signerHeldToBoot((signing ??= loadSealingSigner({ dataDir: app.config.dataDir, now: now() })), hold);
+    } catch (error) {
+      // A signer of another key than the boot's is dropped: this process keeps no key its boot did not judge.
+      if (signing !== null && hold.bootKeyId !== null && signing.signer.keyId !== hold.bootKeyId) signing = null;
+      throw error;
+    }
+  };
 
   /**
    * Fix wave K (G89b-01): the stream of a camera file is not what the selector configured. The manifest
@@ -441,6 +484,9 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
         timezone: TIMEZONE,
         // Closing pass Z1 (D207): manifest fields 20 / 21 are the configured installation identity, read once at the mount.
         identity: installationIdentity,
+        // Task 4 row P1 (U21 (2)): manifest field 133 - what THIS Core's boot checks found of its host profile, read at every seal
+        // (a production Core on macOS: not asked = the member; on Linux, and in development, none).
+        hostProfileNotAsked: () => hostProfileNotAskedOf(captureBootControl(app).outcome()?.hostProfile),
         onNoSttSnapshot: (sessionId) => app.log.warn({ code: 'SEALING_NO_STT_SNAPSHOT', source: SOURCE, sessionId }, 'the session has no STT snapshot: the manifest says that none was recorded'),
         onForeignCaptureFacts: (sessionId) => persist('warn', 'SEALING_CAPTURE_FACTS_FOREIGN', 'the capture facts kept under this session ID are of another session: they are not used', null, { sessionId }),
       }),
@@ -716,20 +762,22 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
         // A REAL seal, or a demo item the seed SEALED into this store (pass E3; decision D-82c-7): never a frozen v1 demo item, whatever version the mapping reads for it.
         if (item === undefined || !hasSealedPackageHere(item as Parameters<typeof hasSealedPackageHere>[0])) return null;
         const transcriptSha256 = item.transcriptSha256 ?? null;
-        const revisionCount = transcriptSha256 === null ? 0 : (await createTranscriptStore(app.db.pool).revisionHead(evidenceId)).revisionNo;
-        return { evidenceId, sessionId: item.sessionId, manifestSha256: item.manifestHash, transcriptSha256, revisionCount };
+        const head = transcriptSha256 === null ? null : await createTranscriptStore(app.db.pool).revisionHead(evidenceId);
+        const revisionCount = head === null ? 0 : head.revisionNo;
+        // Row 227: the hash of the last revision the database holds - the anchor of a package under a compromised key.
+        return { evidenceId, sessionId: item.sessionId, manifestSha256: item.manifestHash, transcriptSha256, revisionCount, revisionHeadSha256: head === null || head.revisionNo === 0 ? null : head.parentSha256 };
       },
       packageDirOf: packageDir,
       now,
       opener: coreFragmentOpener(app),
-      trustedCertificateSha256: () => {
-        try {
-          return [signingNow().certificate.sha256];
-        } catch {
-          // No usable signing key: no certificate is trusted, and V-02 fails closed.
-          return [];
-        }
-      },
+      // Task 4 row 227 (SX-09 (c), (d); Known limit 30): THE RETAINED CERTIFICATE SET of `<dataDir>/signer`, read at each run -
+      // every key that is or was the active one, each certificate parsed and self-verified by the store. A package sealed
+      // before a rotation verifies after it. A development-marked certificate is never trusted by a REAL_PRODUCTION Core.
+      // A store that cannot be taken trusts nothing, and V-13 fails closed. The key itself is not loaded for a verify.
+      trustedCertificateSha256: () => sealingVerifyTrust({ dataDir: app.config.dataDir, production: operation === CaptureOperation.REAL_PRODUCTION }).trusted,
+      // The certificates of keys MARKED COMPROMISED are never in the trusted list: `evidence-verify` passes a package under
+      // one of them only as the package the database recorded, with a named state, and fails every other.
+      compromisedCertificateSha256: () => sealingVerifyTrust({ dataDir: app.config.dataDir, production: operation === CaptureOperation.REAL_PRODUCTION }).compromised,
       record: async (principal, verdict) => {
         // Fix wave K, driver S2 (G89b-04, G94b-03; D216 (2), D222 (3)): the paired device that asked and the operation, on the row.
         await sealDoorsOf(app.engine).recordEvidenceVerification({
@@ -746,6 +794,11 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
 
   // OPERATIONS 42 / 87 for a sealed package (fix pass F-M8, R93-01): the export jobs, composed with this Core's evidence signer.
   provideCoreEvidenceExport(app, { signer: signingNow });
+
+  // OPERATION 85 (task 4 row 226c; decision C81, differences D-2 and D-4 of the rotation scenario): a transcript revision is
+  // signed by the SAME held signer as a seal and an export. Until this row the route loaded the active key at each
+  // request, so a Core that was not restarted after a rotation signed a revision with a key its boot never judged.
+  provideRevisionSigner(app, () => signingNow());
 
   return host;
 }

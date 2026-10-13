@@ -49,7 +49,7 @@ import type { Principal } from '../../../../plugins/authenticate';
 import { throttleControl } from '../../../../plugins/throttle';
 import { identityControl } from '../../../identity';
 import { AudioCardEnumeratorRefusedError, captureAudioCardsControl, createEngineMicrophoneRegistrar, createListingGate, createMicrophoneStore, type MicrophoneStore, type RegisteredMicrophone } from '../index';
-import { DUO, INTERFACE_REPLACED, NO_CARD, SIX, TWO_CARDS, fakeHost, type FakeHost } from './fixtures';
+import { DUO, DUO_PORT, INTERFACE_REPLACED, NO_CARD, OTHER_PORT, SIX, SIX_PORT, SIX_SERIAL, TWO_CARDS, TWO_CARDS_DUO_ELSEWHERE, TWO_CARDS_INTERFACE_MOVED, TWO_CARDS_ONE_SERIAL, fakeHost, type FakeHost } from './fixtures';
 
 const db = useTestDatabase({ template: 'seed', slug: 'row070' });
 const dataDir = mkdtempSync(join(tmpdir(), 'dems-row070-db-'));
@@ -63,7 +63,7 @@ const TABLET = 'DEV-0070';
 const SEARCH = '/api/v1/capture/audio-cards/search';
 const REGISTER = '/api/v1/capture/audio-cards/inputs';
 /** Every string a card of the fixtures announced: none may be in an audit row or a log line. */
-const DEVICE_TEXT = [DUO.cardId, DUO.product, DUO.usbId, SIX.cardId, SIX.product, SIX.usbId, 'fff0:0099'];
+const DEVICE_TEXT = [DUO.cardId, DUO.product, DUO.usbId, SIX.cardId, SIX.product, SIX.usbId, 'fff0:0099', SIX_SERIAL, SIX_PORT, DUO_PORT, OTHER_PORT];
 
 let guard: GuardApp;
 let owner: Pool;
@@ -154,9 +154,9 @@ beforeEach(() => {
 });
 
 describe('the database and the Core this file runs on', () => {
-  it(`the schema version of the code: [${DB_SCHEMA_VERSION}, '${DB_CONTRACT_REVISION}'] = [8, 'dbc-9'], read as dems_app; the capture operation is SIMULATED`, async () => {
+  it(`the schema version of the code: [${DB_SCHEMA_VERSION}, '${DB_CONTRACT_REVISION}'] = [13, 'dbc-14'], read as dems_app; the capture operation is SIMULATED`, async () => {
     const row = (await guard.app.db.pool.query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([row.schema_version, row.contract_revision]).toEqual([8, 'dbc-9']);
+    expect([row.schema_version, row.contract_revision]).toEqual([13, 'dbc-14']);
     expect(((await guard.app.db.pool.query('SELECT current_user AS role')).rows[0] as { role: string }).role).toBe('dems_app');
     expect(captureFenceControl(guard.app).operation).toBe('SIMULATED');
   });
@@ -319,6 +319,8 @@ describe('operation 99 registerCaptureAudioInput', () => {
     expect((await owner.query("SELECT device_id, usb_id, card_id, card_device, input_number, native_channels, sample_rate, sample_bits, updated_by FROM public.capture_audio_inputs WHERE device_id = 'MIC-03'")).rows).toEqual([
       { device_id: 'MIC-03', usb_id: SIX.usbId, card_id: SIX.cardId, card_device: 0, input_number: 4, native_channels: 6, sample_rate: 48000, sample_bits: 24, updated_by: TECHNICIAN.id },
     ]);
+    // Task 4 row 199: the identity of the card is stored with it - the port path of the listing, and NULL for a card that states no serial.
+    expect((await owner.query("SELECT usb_serial, usb_port FROM public.capture_audio_inputs WHERE device_id = 'MIC-03'")).rows).toEqual([{ usb_serial: null, usb_port: SIX_PORT }]);
     const rows = await since(from);
     expect(rows.map((row) => row.type)).toEqual(['CAPTURE_AUDIO_INPUT_CHANGED']);
     expect(rows[0]).toMatchObject({ actorId: TECHNICIAN.id, deviceId: 'MIC-03' });
@@ -433,6 +435,106 @@ describe('operation 99 registerCaptureAudioInput', () => {
   });
 });
 
+// Task 4 row 199 (follow-up of row 192; AD-07 (4)): the two columns of schema set B are WRITTEN by
+// a registration and READ by the match, as the runtime role, on this clone. THE DOUBLE: the host
+// is the table of fixed listing texts (`fixtures.ts`), a serial being the one line of the kernel's
+// attribute by card index. No Linux host, no sound card: `9A/H-07`. State this block starts from:
+// MIC-03 = input 4 of the interface (its stored USB id was changed above), MIC-04 = input 1 of the
+// card of two inputs, registered above with no serial on its port.
+// DECLARED here beside the registration cases it extends, and RUN after the admission block below
+// (`row199Cases()`): that block pins the four commits of the cases above, and these add commits.
+function row199Cases(): void {
+ describe('row 199: a registration stores the serial and the port path; a stored input matches a live card by serial, else by port path', () => {
+  const identityRow = async (deviceId: string): Promise<unknown> => (await owner.query('SELECT usb_id, usb_serial, usb_port FROM public.capture_audio_inputs WHERE device_id = $1', [deviceId])).rows[0];
+  const enabled = async (deviceId: string): Promise<unknown> => ((await owner.query('SELECT enabled FROM public.capture_devices WHERE id = $1', [deviceId])).rows[0] as { enabled?: boolean } | undefined)?.enabled;
+  const off = async (deviceId: string): Promise<void> => void (await owner.query('UPDATE public.capture_devices SET enabled = false WHERE id = $1', [deviceId]));
+  const enabledUsb = (): Promise<number> => count('capture_devices', "adapter_kind = 'USB_AUDIO' AND enabled");
+  const changesSince = async (from: number): Promise<unknown[]> => (await since(from)).filter((row) => row.type === 'CAPTURE_AUDIO_INPUT_CHANGED').map((row) => [row.deviceId, row.details?.['change']]);
+
+  it('a registration WRITES both values and they READ BACK, as dems_app: the serial where the card states one, NULL where it states none; the port path of both', async () => {
+    host.use(TWO_CARDS_ONE_SERIAL);
+    const response = await post(technician, REGISTER, body(SIX.cardId, 5));
+    expect([response.statusCode, response.json()]).toEqual([201, { deviceId: 'MIC-05', change: 'REGISTERED', inputNumber: 5, channelCount: 6 }]);
+    expect(await identityRow('MIC-05')).toEqual({ usb_id: SIX.usbId, usb_serial: SIX_SERIAL, usb_port: SIX_PORT });
+    // The card of two inputs states no serial: MIC-04, registered by the block above, holds its port and NULL.
+    expect(await identityRow('MIC-04')).toEqual({ usb_id: DUO.usbId, usb_serial: null, usb_port: DUO_PORT });
+    // Read back through the module's own statements, as the runtime role.
+    expect(await realStore.inputOf(guard.app.db.pool, { cardId: SIX.cardId, cardDevice: 0, inputNumber: 5 })).toEqual({ deviceId: 'MIC-05', usbId: SIX.usbId, usbSerial: SIX_SERIAL, usbPort: SIX_PORT, enabled: true });
+    expect((await realStore.registeredInputs(guard.app.db.pool)).filter((input) => input.deviceId !== 'MIC-03').map((input) => [input.deviceId, input.identity])).toEqual([
+      ['MIC-04', { usbId: DUO.usbId, usbSerial: null, usbPort: DUO_PORT }],
+      ['MIC-05', { usbId: SIX.usbId, usbSerial: SIX_SERIAL, usbPort: SIX_PORT }],
+    ]);
+    // Row V3's contract members (the request of rows 199 / 200): BOTH values are in the answer of the search, over HTTP and
+    // valid against the contract - the serial where the card states one and null where it states none, the port of both.
+    const search = await post(technician, SEARCH);
+    expect(validateCoreApiResponse('searchCaptureAudioCards', 200, search.json())).toMatchObject({ ok: true });
+    expect(search.json<{ cards: { cardId: string; usbSerial?: string | null; usbPort?: string | null }[] }>().cards.map((card) => [card.cardId, card.usbSerial, card.usbPort])).toEqual([
+      [DUO.cardId, null, DUO_PORT],
+      [SIX.cardId, SIX_SERIAL, SIX_PORT],
+    ]);
+  });
+
+  it('THE STORED SERIAL ON ANOTHER PORT matches (the card was moved): 200 REENABLED, the microphone on again, the stored port follows', async () => {
+    await off('MIC-05');
+    host.use(TWO_CARDS_INTERFACE_MOVED);
+    const from = (await trail()).length;
+    const response = await post(technician, REGISTER, body(SIX.cardId, 5));
+    expect([response.statusCode, response.json()]).toEqual([200, { deviceId: 'MIC-05', change: 'REENABLED', inputNumber: 5, channelCount: 6 }]);
+    expect([await enabled('MIC-05'), await identityRow('MIC-05'), await changesSince(from)]).toEqual([true, { usb_id: SIX.usbId, usb_serial: SIX_SERIAL, usb_port: OTHER_PORT }, [['MIC-05', 'REENABLED']]]);
+  });
+
+  it('A CARD WITHOUT A SERIAL ON ITS STORED PORT matches: 200 REENABLED, the microphone on again', async () => {
+    await off('MIC-04');
+    host.use(TWO_CARDS_ONE_SERIAL);
+    const response = await post(technician, REGISTER, body(DUO.cardId, 1));
+    expect([response.statusCode, response.json()]).toEqual([200, { deviceId: 'MIC-04', change: 'REENABLED', inputNumber: 1, channelCount: 2 }]);
+    expect([await enabled('MIC-04'), await identityRow('MIC-04')]).toEqual([true, { usb_id: DUO.usbId, usb_serial: null, usb_port: DUO_PORT }]);
+  });
+
+  it('A SAME-PRODUCT CARD WITH NO MATCHING SERIAL ON ANOTHER PORT: operation 98 offers it as a NEW card; operation 99 answers CARD_CHANGED with 1 audit entry and 0 re-enabled rows; registered, the same call again is REENABLED', async () => {
+    await off('MIC-04');
+    host.use(TWO_CARDS_DUO_ELSEWHERE);
+    // Offered as new: no registered input under the card, though a stored input holds its key.
+    const search = await post(technician, SEARCH);
+    expect((search.json() as { cards: { cardId: string; registered: unknown[] }[] }).cards.map((card) => [card.cardId, card.registered])).toEqual([
+      [DUO.cardId, []],
+      // MIC-05 is found by its serial; MIC-03 (another USB id stored behind this key) is not listed under this card.
+      [SIX.cardId, [{ inputNumber: 5, deviceId: 'MIC-05' }]],
+    ]);
+    const from = (await trail()).length;
+    const before = { stored: await stored(), usb: await usbMicrophones(), on: await enabledUsb() };
+    const changed = await post(technician, REGISTER, body(DUO.cardId, 1));
+    expect([changed.statusCode, changed.json()]).toEqual([200, { deviceId: 'MIC-04', change: 'CARD_CHANGED', inputNumber: 1, channelCount: 2 }]);
+    expect(validateCoreApiResponse('registerCaptureAudioInput', 200, changed.json())).toMatchObject({ ok: true });
+    // ONE entry; no row enabled again; no second device; the stored identity now names the card that was registered here.
+    expect(await changesSince(from)).toEqual([['MIC-04', 'CARD_CHANGED']]);
+    expect([await enabled('MIC-04'), await enabledUsb(), await stored(), await usbMicrophones()]).toEqual([false, before.on, before.stored, before.usb]);
+    expect(await identityRow('MIC-04')).toEqual({ usb_id: DUO.usbId, usb_serial: null, usb_port: OTHER_PORT });
+    // The technician registered it: the same call again is a plain re-enable.
+    const again = await post(technician, REGISTER, body(DUO.cardId, 1));
+    expect([again.statusCode, (again.json() as { change: string }).change, await enabled('MIC-04'), await enabledUsb()]).toEqual([200, 'REENABLED', true, before.on + 1]);
+  });
+
+  it('AN INPUT STORED BEFORE THE TWO COLUMNS EXISTED (both NULL) is never matched by its USB id alone: CARD_CHANGED, not enabled again, and the registration stores its identity', async () => {
+    // The row as schema set A left it: the columns of 0017 are NULL for every row that existed.
+    await owner.query("UPDATE public.capture_audio_inputs SET usb_serial = NULL, usb_port = NULL WHERE device_id = 'MIC-04'");
+    await off('MIC-04');
+    host.use(TWO_CARDS_DUO_ELSEWHERE);
+    const search = await post(technician, SEARCH);
+    expect((search.json() as { cards: { cardId: string; registered: unknown[] }[] }).cards.find((card) => card.cardId === DUO.cardId)?.registered).toEqual([]);
+    const from = (await trail()).length;
+    const changed = await post(supervisor, REGISTER, body(DUO.cardId, 1));
+    expect([changed.statusCode, (changed.json() as { change: string }).change]).toEqual([200, 'CARD_CHANGED']);
+    expect([await changesSince(from), await enabled('MIC-04'), await identityRow('MIC-04')]).toEqual([[['MIC-04', 'CARD_CHANGED']], false, { usb_id: DUO.usbId, usb_serial: null, usb_port: OTHER_PORT }]);
+    expect(((await post(supervisor, REGISTER, body(DUO.cardId, 1))).json() as { change: string }).change).toBe('REENABLED');
+    expect(await enabled('MIC-04')).toBe(true);
+    // The match is logged as a CODE of the rule, never a serial or a port.
+    const matches = guard.log.lines().filter((line) => line['source'] === 'captureAudioCards' && typeof line['match'] === 'string').map((line) => line['match']);
+    expect(matches).toEqual(expect.arrayContaining(['SAME_CARD', 'PORT_DIFFERS', 'IDENTITY_NOT_STORED', 'USB_ID_DIFFERS']));
+  });
+ });
+}
+
 describe('admission to the registry handed in: a DEVICE ROW, not a recordable source', () => {
   it('each committed unit was handed over once, after its commit; the registry lists the microphone as USB_AUDIO / PRODUCTION with NO opener, and `assertRecordable` REFUSES it', () => {
     // Four commits: MIC-03 registered, re-enabled, changed; MIC-04 registered. The unit that rolled back handed nothing over.
@@ -489,6 +591,8 @@ describe('admission to the registry handed in: a DEVICE ROW, not a recordable so
     );
   });
 });
+
+row199Cases();
 
 describe('a session is open: 409 CAPTURE_CONFIG_LOCKED for both operations (idle only)', () => {
   it('no audit row, the host is not read, nothing stored; with the session cancelled both are accepted again', async () => {

@@ -27,6 +27,19 @@
  *                          worker reaches the final name of a camera file by `link()`, D72(b),
  *                          D85 R-5: on a volume without hard links every session would end fatal)
  *                       4. the evidence signing key loads (fails closed, SEC35-07)
+ *                       4b-2. REAL_PRODUCTION only (task 4 row 228; X1-5, SX-10, UD-4): the WHOLE
+ *                          organisational unit of the ACTIVE certificate - the one checks 4 and 4b
+ *                          judged - is `Evidence signing <configured installation id>`. A key of
+ *                          another installation, a key with the default unit, with none or with
+ *                          several, and a Core whose installation id is not known are refused by
+ *                          `CAPTURE_SIGNING_KEY_INSTALLATION_MISMATCH`. A renamed installation
+ *                          rotates to a key that carries the new name (`evidence:rotate-key`)
+ *                       4b-3. REAL_PRODUCTION only (task 4 row 228b; review 230 R-4, decision C84): the
+ *                          configured installation id is NOT one of `ReservedInstallationId` - the ids
+ *                          the repository's own test fixtures, its published demonstration data and its
+ *                          documentation use. Such an id is refused by
+ *                          `CAPTURE_INSTALLATION_ID_RESERVED_FOR_TESTS` even when the key names it: a key
+ *                          a test fixture made can then never be the key of a real installation
  *                       4c. REAL_PRODUCTION only: NO operator's stored credential verifies against
  *                          the PUBLISHED demo password of the seed (batch N; security review S99-01,
  *                          ruling D241). The count of such operators is said; operators that cannot
@@ -39,12 +52,38 @@
  *                          (the loopback owner rule first: BR-12). The first prerequisite that is
  *                          missing is refused by ITS OWN code, with a reason of fixed words; on another
  *                          platform the questions are not asked and that is SAID (a warning)
+ *                       4d-2. REAL_PRODUCTION only, and only when the host facts are handed in (row P1; decision
+ *                          U21 (2), C66 (1)): THE PLATFORM of the host is one a production Core is allowed on -
+ *                          `linux` (the whole host profile was asked in 4d) or `darwin` (it was not asked, and
+ *                          the warning of 4d said so). Every other platform, and a platform that is not stated,
+ *                          is refused by `CAPTURE_HOST_PLATFORM_NOT_SUPPORTED` with a fixed word. Asked AFTER 4d,
+ *                          so a host that cannot be seen is still refused by 4d's own first code (C46). What was
+ *                          asked is a FACT OF THE OUTCOME (`hostProfile`), for the evidence: see below
  *                       4e. REAL_PRODUCTION only, and only when the composition hands them in (`deps.programs`;
  *                          task 4 row 81, WP-20): THE DELIVERED PROGRAMS of `program-checks.ts` - the relay's
  *                          stated media library, the file of the address helper, its grant (the socket's
  *                          directory and the two unit files), and the interface file against the stored row.
  *                          Each is refused by its own code; a file that names another interface than the
  *                          row is `CAPTURE_HOST_INTERFACE_FILE_MISMATCH`
+ *                       ROW HC (decisions C55 DD-2, C53 (4c), C49 (2), C94 (j)) - three additions around 4d and 4e,
+ *                       REAL_PRODUCTION only; no earlier check and no check of 4, 4b, 4b-2, 4b-3, 4c, 4d-2 is changed:
+ *                       4d-0. BEFORE 4d: a Core that was handed NO host facts (`deps.hostFactsHandedIn === false`: the
+ *                          mount says so when nothing came through its door) is refused by a code OF ITS OWN,
+ *                          `CAPTURE_HOST_FACTS_NOT_HANDED_IN` / `NO_HOST_FACTS`. Until this row that start was refused
+ *                          one line later by 4d's first code, `CAPTURE_HOST_CORE_FILE_LIMIT` / `LIMIT_UNREADABLE`,
+ *                          which named a limit nobody had read. Facts that WERE handed in and whose limit cannot be
+ *                          read keep that code (C46)
+ *                       4d-3. AFTER 4d-2: a configured socket path of the address helper (`DEMS_CAPTURE_ALIAS_SOCKET`)
+ *                          is THE path the delivered socket unit installs, or the start is refused by
+ *                          `CAPTURE_HOST_ALIAS_SOCKET_PATH` / `CONFIGURED_PATH_NOT_THE_INSTALLED_ONE` (R119-10): the
+ *                          boot asks the installed node, so the client may dial no other. Unset is not asked. A
+ *                          comparison of two texts: it asks the host nothing, on every platform
+ *                       4e, amended. THE ADDRESS HELPER IS NOT MANDATORY (C94 (j) reverses C49 (1)). On Linux, a host
+ *                          with NOTHING of the helper - no socket node (4d), no helper file, no directory of the
+ *                          socket and no unit file (4e) - is not refused: the fact is said in one line,
+ *                          `CAPTURE_HOST_ALIAS_HELPER_ABSENT` (a warning, with an error-log row), and the commissioning
+ *                          functions answer their own refusal. A helper that is there and wrong, and a helper of
+ *                          which only a part is there, are refused by the codes of before
  *                       5. the worker - started with the SAME arguments a session start passes -
  *                          answers `HELLO` with this protocol, NO proof-build mark (F-10) and THE
  *                          version this Core was built to drive (`CAPTURE_WORKER_VERSION`; gate 64
@@ -64,6 +103,8 @@ import { HelperProgramRefusal, helperProgramRefusal, type ProgramFacts, type Pro
 import type { CaptureOperationDecision } from '../fence/operation';
 import { CaptureHostRefusal, HOST_REFUSAL_TEXT, hostCheckOutcomeOf, type CaptureHostDeps } from './host-checks';
 import { CaptureProgramRefusal, PROGRAM_REFUSAL_TEXT, deliveredProgramOutcomeOf, type DeliveredProgramDeps } from './program-checks';
+// Row HC: the installed socket path (check 4d-3) and the finding of the socket question that 4d hands to 4e.
+import { ALIAS_SOCKET_INSTALLED_PATH, type AliasSocketFinding } from './host-checks';
 
 /** ID of the boot step. It appears in the log line of a boot that stops at it. */
 export const CAPTURE_BOOT_STEP = 'capture.boot';
@@ -82,6 +123,16 @@ export const CaptureBootRefusal = {
   /** The signing key of the store is a DEVELOPMENT key and the Core is REAL_PRODUCTION (fix pass F-M7, R88-08 (3); D178). */
   DEVELOPMENT_SIGNING_KEY: 'CAPTURE_DEVELOPMENT_SIGNING_KEY_IN_PRODUCTION',
   /**
+   * The active certificate of a REAL_PRODUCTION Core does not name THIS installation (task 4 row 228; X1-5, SX-10): its
+   * organisational unit is not, as a whole, `Evidence signing <configured installation id>`. The reason is a fixed word.
+   */
+  SIGNING_KEY_INSTALLATION_MISMATCH: 'CAPTURE_SIGNING_KEY_INSTALLATION_MISMATCH',
+  /**
+   * The installation id a REAL_PRODUCTION Core is configured with is one of the RESERVED ids of the repository's tests,
+   * demonstration data and documentation (task 4 row 228b; `ReservedInstallationId`). The reason is a fixed word.
+   */
+  INSTALLATION_ID_RESERVED: 'CAPTURE_INSTALLATION_ID_RESERVED_FOR_TESTS',
+  /**
    * At least one operator of a REAL_PRODUCTION Core still signs in with the published demo password of the seed, or the
    * operators could not be read (batch N; S99-01, D241). The reason is `operators=<count>` or `OPERATORS_UNREADABLE`.
    */
@@ -94,6 +145,21 @@ export const CaptureBootRefusal = {
   WORKER_VERSION_UNKNOWN: 'CAPTURE_WORKER_VERSION_UNKNOWN',
   /** The worker is a release build of ANOTHER version than this Core drives (wave H driver F; gate 64 C7, ruling D194). */
   WORKER_VERSION_MISMATCH: 'CAPTURE_WORKER_VERSION_MISMATCH',
+  /**
+   * The platform of a REAL_PRODUCTION Core is not one a production Core is allowed on (row P1; decision U21 (2):
+   * Linux and this Mac, `PRODUCTION_PLATFORMS`). The reason is a fixed word, never the platform's own text.
+   */
+  HOST_PLATFORM_NOT_SUPPORTED: 'CAPTURE_HOST_PLATFORM_NOT_SUPPORTED',
+  /**
+   * A REAL_PRODUCTION Core was handed NO host facts at all (row HC; decision C55 DD-2): nothing came through the door
+   * the entry point opens, so nothing of the host was seen. The reason is the fixed word `NO_HOST_FACTS`.
+   */
+  HOST_FACTS_NOT_HANDED_IN: 'CAPTURE_HOST_FACTS_NOT_HANDED_IN',
+  /**
+   * `DEMS_CAPTURE_ALIAS_SOCKET` is set and is not the path the delivered socket unit installs (row HC; decision
+   * C53 (4c), R119-10). The reason is a fixed word, never the configured path.
+   */
+  HOST_ALIAS_SOCKET_PATH: 'CAPTURE_HOST_ALIAS_SOCKET_PATH',
   /** The prerequisites of the production host, one code each (task 4 row 80; `host-checks.ts`). REAL_PRODUCTION only. */
   ...CaptureHostRefusal,
   /** The delivered programs of the production host, one code each (task 4 row 81; `program-checks.ts`). REAL_PRODUCTION only. */
@@ -110,6 +176,10 @@ const TEXT: Readonly<Record<CaptureBootRefusal, string>> = Object.freeze({
     'The evidence store (DEMS_MEDIA_DIR, default <data directory>/media/sessions) cannot be used: it must be a directory of the user of the server, owner-only (no permission for group or others: chmod 700), on a volume that supports exclusive create, sync and hard links. Recordings lie in this directory in PLAINTEXT from the start of a session until its seal completes (they are encrypted at seal time), recordings the Core could not seal stay in its .quarantine folder, a recording that is being sealed is staged in its .sealing folder and the audio tap of a running session lies in its .transcriber folder: nobody but the server may read the store or these folders, and none of them may be a link (chmod 700 each).',
   CAPTURE_DEVELOPMENT_SIGNING_KEY_IN_PRODUCTION:
     'The evidence signing key in <data directory>/signer is a DEVELOPMENT key (its certificate says "DEVELOPMENT KEY - NOT FOR PRODUCTION"): a production Core does not start with it, because every package it sealed would carry a development signature. Provision the production signing key, or run the Core in development capture mode.',
+  CAPTURE_SIGNING_KEY_INSTALLATION_MISMATCH:
+    'The certificate of the evidence signing key in <data directory>/signer does not name this installation: a production Core starts only with a key whose organisational unit is exactly "Evidence signing <installation device id>", with the installation device id this Core is configured with. A key copied from another installation, a key of a test and a key made before the installation was named are refused. If the installation was renamed, rotate to a key that carries the new name (npm run evidence:rotate-key -w @dems/core-server -- --data-dir <dir>), then start again.',
+  CAPTURE_INSTALLATION_ID_RESERVED_FOR_TESTS:
+    'The installation device id this Core is configured with is reserved: it is an id of the tests, of the published demonstration data or of the documentation of this software, and no installation may carry it, because a key made by a test could name it. A production Core does not start with it. Give the installation an id of its own, rotate the evidence signing key in <data directory>/signer to a key that carries that id (npm run evidence:rotate-key -w @dems/core-server -- --data-dir <dir>), then start again.',
   CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION:
     'An operator of this Core can still sign in with the published demonstration password of the seed (it is printed in the repository and on the sign-in cards of a demonstration): a production Core (DEMS_CAPTURE_MODE=real without DEMS_CAPTURE_DEV_SOURCES) does not start while that is so, or while its operators cannot be read. Give every operator a credential of their own, or run the Core in development capture mode.',
   CAPTURE_SIGNING_KEY_UNUSABLE: 'The evidence signing key cannot be loaded from <data directory>/signer: real capture does not start without the key that seals its packages. Provision the key once, then start again.',
@@ -121,12 +191,25 @@ const TEXT: Readonly<Record<CaptureBootRefusal, string>> = Object.freeze({
   CAPTURE_WORKER_VERSION_UNKNOWN: 'The capture worker names a version this server does not know as a release build. Only capture-worker/<major>.<minor>.<patch> is started.',
   CAPTURE_WORKER_VERSION_MISMATCH:
     'The program in DEMS_CAPTURE_WORKER is a capture worker of another version than the one this server was built to drive: the two are released together and neither is used with another. Build the worker of this repository state (make -C apps/capture-worker) and set the key to it.',
+  CAPTURE_HOST_PLATFORM_NOT_SUPPORTED:
+    'A production Core (DEMS_CAPTURE_MODE=real without DEMS_CAPTURE_DEV_SOURCES) runs on Linux, where the whole host profile (scripts/host/HOST-PROFILE-UBUNTU-24.04.md) is checked at every start, or on macOS, where the host profile is NOT checked and every start and every sealed package says so. The platform of this host is neither, or was not stated: the Core does not start here. Run the Core on a prepared Linux host, or in development capture mode.',
+  CAPTURE_HOST_FACTS_NOT_HANDED_IN:
+    'A production Core (DEMS_CAPTURE_MODE=real without DEMS_CAPTURE_DEV_SOURCES) was started without the facts of its host: nothing told it its platform, its core-file limit, its start arguments or how to ask the host a question, so no host check could be made and none is assumed to pass. The server entry of this software hands these facts in at every start; a Core started another way must hand them in through the same door (the host facts of the capture boot checks) before the boot steps run.',
+  CAPTURE_HOST_ALIAS_SOCKET_PATH:
+    'DEMS_CAPTURE_ALIAS_SOCKET is set to another path than the one the delivered socket unit of the address helper installs (item HOST-44; scripts/host/netalias/dems-core-netalias.socket): a production Core (DEMS_CAPTURE_MODE=real without DEMS_CAPTURE_DEV_SOURCES) checks the installed socket at every start and would then send its requests to one it never checked. Remove the key, or set it to the path of the delivered unit; then start again.',
   ...HOST_REFUSAL_TEXT,
   ...PROGRAM_REFUSAL_TEXT,
 });
 
 /** The reason of `DEMO_PASSWORD_IN_PRODUCTION` when the operators could not be read at all: the check fails closed. */
 export const OPERATORS_UNREADABLE = 'OPERATORS_UNREADABLE';
+
+/** Row HC: the reason of `HOST_FACTS_NOT_HANDED_IN` (check 4d-0). A fixed word. */
+export const NO_HOST_FACTS = 'NO_HOST_FACTS';
+/** Row HC: the reason of `HOST_ALIAS_SOCKET_PATH` (check 4d-3). A fixed word, never the configured path. */
+export const CONFIGURED_PATH_NOT_THE_INSTALLED_ONE = 'CONFIGURED_PATH_NOT_THE_INSTALLED_ONE';
+/** Row HC: the `code` of the one line a production boot on Linux says when nothing of the address helper is installed (C94 (j)). Not a refusal. */
+export const ALIAS_HELPER_ABSENT = 'CAPTURE_HOST_ALIAS_HELPER_ABSENT';
 
 /** A real start the boot checks refuse. `code` and `reason` are machine codes; the message names keys and the remedy. */
 export class CaptureBootError extends Error {
@@ -328,6 +411,67 @@ export function workerVersionMismatchReasonOf(found: string): string {
   return `expected ${CAPTURE_WORKER_VERSION}, found ${found}`;
 }
 
+// ── check 4b-3 (task 4 row 228b; review 230 R-4, decision C84): the reserved installation ids ──────────────────
+
+/**
+ * THE ONE CLOSED LIST of installation ids that no installation may carry: every id the repository's own test
+ * fixtures and test configuration, its published demonstration data and its documentation name. The fixtures
+ * IMPORT their id from here (a static test holds that no test support names another one), so an id a fixture
+ * makes a key for is always refused by a production Core. A test that boots `REAL_PRODUCTION` states a synthetic
+ * id of its own, which is not in this list, and makes its key for that id in a temporary directory.
+ */
+export const ReservedInstallationId = {
+  /** The id of the test configuration and of the key the boot fixture makes by default. */
+  TEST_CONFIGURATION: 'DEMS-TEST-01',
+  /** The Core of the published demonstration data and of the seed. */
+  DEMONSTRATION: 'DEMS-IR-01',
+  /** The example the installer's prompt, the configuration notes and the database fixtures print. */
+  DOCUMENTED_EXAMPLE: 'DEMS-JKT-07',
+} as const;
+export type ReservedInstallationId = (typeof ReservedInstallationId)[keyof typeof ReservedInstallationId];
+
+/** The reason of the refusal: a fixed word, never the id. */
+export const RESERVED_INSTALLATION_ID_REASON = 'RESERVED_INSTALLATION_ID';
+
+/** True when `installationId` is one of the reserved ids. An id that is not known is not reserved: check 4b-2 has refused it. */
+export function isReservedInstallationId(installationId: string | null | undefined): boolean {
+  return typeof installationId === 'string' && (Object.values(ReservedInstallationId) as readonly string[]).includes(installationId);
+}
+
+// ── check 4d-2 (row P1; decisions U21 (2), C66 (1), C71 C-7): the platforms of a production Core ──────────────
+
+/**
+ * THE ONE CLOSED LIST of platforms a `REAL_PRODUCTION` Core starts on, with what each means for the host profile:
+ * on `linux` every question of the profile is asked at every start (check 4d); on `darwin` NONE is asked - the
+ * loopback owner rule, the crash collector, forwarding, the clock, sleep and the address helper's socket are
+ * unchecked there, and the Core says so in its log, in its boot audit entry and in every manifest it seals.
+ */
+export const PRODUCTION_PLATFORMS = Object.freeze({ linux: 'ASKED', darwin: 'NOT_ASKED' } as const);
+export type ProductionPlatform = keyof typeof PRODUCTION_PLATFORMS;
+
+/** The reason of `HOST_PLATFORM_NOT_SUPPORTED`: a fixed word, never the platform's own text. */
+export const PLATFORM_NOT_LINUX_OR_DARWIN = 'PLATFORM_NOT_LINUX_OR_DARWIN';
+
+/** True when `platform` is one a production Core is allowed on. */
+export function isProductionPlatform(platform: unknown): platform is ProductionPlatform {
+  return typeof platform === 'string' && Object.prototype.hasOwnProperty.call(PRODUCTION_PLATFORMS, platform);
+}
+
+/**
+ * WHAT A PRODUCTION BOOT STATES ABOUT ITS HOST PROFILE (row P1): the platform, and whether the questions of the
+ * host profile are asked on it. Pure, and a function of the platform alone, so the fence can state it BEFORE the
+ * checks run (`willBeAsked`) and the outcome can state it after they passed (`asked`): the two cannot differ.
+ * Null for a platform no production Core starts on (check 4d-2 refuses it: there is no boot to state anything of).
+ */
+export interface HostProfileStatement {
+  readonly platform: ProductionPlatform;
+  /** True on `linux` (the whole profile); false on `darwin` (none of it). */
+  readonly asked: boolean;
+}
+export function hostProfileStatementOf(platform: unknown): HostProfileStatement | null {
+  return isProductionPlatform(platform) ? Object.freeze({ platform, asked: PRODUCTION_PLATFORMS[platform] === 'ASKED' }) : null;
+}
+
 // ── the step ──────────────────────────────────────────────────────────────────────────────────
 
 /** Log and error-log sinks: the capture unit's one logging file hands them in (static rule G-R4). */
@@ -354,6 +498,19 @@ export interface CaptureBootDeps {
    */
   signingKeyIsDevelopment(): boolean;
   /**
+   * Check 4b-2 (task 4 row 228): a fixed word when the organisational unit of the ACTIVE certificate - the
+   * certificate checks 4 and 4b judged - is not `Evidence signing <configured installation id>`, else null.
+   * Called in REAL_PRODUCTION only, after 4b. ABSENT: the question is not asked (a decision built by a test from
+   * before the check); THE MOUNT ALWAYS HANDS IT IN, and its reader answers a word when it cannot tell.
+   */
+  readonly signingKeyInstallationProblem?: () => string | null;
+  /**
+   * Check 4b-3 (task 4 row 228b): the installation id this Core is configured with, or null when none is known.
+   * Asked in REAL_PRODUCTION only, after 4b-2; a RESERVED id (`ReservedInstallationId`) is refused. ABSENT: the
+   * question is not asked (a decision built by a test from before the check); THE MOUNT ALWAYS HANDS IT IN.
+   */
+  readonly installationId?: () => string | null;
+  /**
    * HOW MANY operators have a stored credential that verifies against the published demo password of
    * the seed (S99-01), or null when the operators could not be read. Called in REAL_PRODUCTION only,
    * after the key checks and before any process is started. It returns a COUNT and nothing else: no
@@ -374,6 +531,18 @@ export interface CaptureBootDeps {
    * before the worker is started. ABSENT: no such check runs (the same rule as `host`).
    */
   readonly programs?: DeliveredProgramDeps;
+  /**
+   * Row HC (C55 DD-2): FALSE when the mount was handed NO host facts and `host` / `programs` above are the ones of a
+   * host that cannot be seen. A REAL_PRODUCTION start is then refused by `HOST_FACTS_NOT_HANDED_IN`, before 4d asks
+   * anything. ABSENT or true: facts were handed in (or the caller is a test from before this member) - nothing is refused here.
+   */
+  readonly hostFactsHandedIn?: boolean;
+  /**
+   * Row HC (C53 (4c)): `config.captureAliasSocketPath` - the socket path the Core's client of the address helper would
+   * dial, or null when the key is unset. Asked in REAL_PRODUCTION only (check 4d-3): a path that is set and is not the
+   * installed one is refused. ABSENT: not asked (a test from before this member); THE MOUNT ALWAYS HANDS IT IN.
+   */
+  readonly configuredAliasSocket?: string | null;
   readonly sinks: CaptureBootSinks;
 }
 
@@ -388,6 +557,12 @@ export interface CaptureBootOutcome {
   readonly workerVersion: string | null;
   /** The real figures of the evidence volume (CS-09), in a real operation; null in `SIMULATED`. */
   readonly evidenceVolume: { readonly totalBytes: number | null; readonly freeBytes: number | null } | null;
+  /**
+   * Row P1: the platform this `REAL_PRODUCTION` boot passed on and whether the host profile was asked there
+   * (check 4d-2). ABSENT in `SIMULATED` and `REAL_DEVELOPMENT` - no host profile is asked in either, by design,
+   * and nothing is stated - and for a decision built without host facts (a test from before check 4d).
+   */
+  readonly hostProfile?: HostProfileStatement;
 }
 
 const SOURCE = 'capture.boot';
@@ -396,6 +571,7 @@ const REFUSED = 'the capture boot checks refuse this start: the server does not 
 const WORKER_IGNORED = 'a capture worker program is configured and capture mode is simulated: it is never started';
 const HOST_PASSED = 'the host checks of a production Core passed';
 const PROGRAMS_PASSED = 'the checks of the delivered programs of a production Core passed';
+const HELPER_ABSENT = 'the address helper is not installed on this host (no socket, no helper file, no unit file): the commissioning functions that change an address are not available and answer their own refusal';
 const HOST_NOT_LINUX ='the questions of the Linux host profile were not asked: this host is not Linux, so the loopback rule and the other host prerequisites are unchecked';
 
 /**
@@ -442,6 +618,15 @@ export async function runCaptureBootChecks(deps: CaptureBootDeps): Promise<Captu
   if (signing !== null) return refuse(CaptureBootRefusal.SIGNING_KEY_UNUSABLE, signing);
   // 4b: a development key never signs for a production Core (R88-08 (3)). REAL_DEVELOPMENT accepts it.
   if (operation === CaptureOperation.REAL_PRODUCTION && deps.signingKeyIsDevelopment()) return refuse(CaptureBootRefusal.DEVELOPMENT_SIGNING_KEY, null);
+  // 4b-2: the active certificate names THIS installation (row 228; X1-5, SX-10). REAL_DEVELOPMENT and SIMULATED never ask.
+  if (operation === CaptureOperation.REAL_PRODUCTION && deps.signingKeyInstallationProblem !== undefined) {
+    const binding = deps.signingKeyInstallationProblem();
+    if (binding !== null) return refuse(CaptureBootRefusal.SIGNING_KEY_INSTALLATION_MISMATCH, binding);
+  }
+  // 4b-3: the configured installation id is not an id of the tests, the demonstration data or the documentation (row 228b; R-4).
+  if (operation === CaptureOperation.REAL_PRODUCTION && deps.installationId !== undefined && isReservedInstallationId(deps.installationId())) {
+    return refuse(CaptureBootRefusal.INSTALLATION_ID_RESERVED, RESERVED_INSTALLATION_ID_REASON);
+  }
 
   // 4c: the published demo password is no credential of a production Core (S99-01, D241). REAL_DEVELOPMENT and SIMULATED never ask.
   if (operation === CaptureOperation.REAL_PRODUCTION) {
@@ -451,11 +636,18 @@ export async function runCaptureBootChecks(deps: CaptureBootDeps): Promise<Captu
     if (operators > 0) return refuse(CaptureBootRefusal.DEMO_PASSWORD_IN_PRODUCTION, `operators=${operators}`, { operators });
   }
 
+  // 4d-0 (row HC; C55 DD-2): a Core that was handed NO host facts is refused by a code of its own, here - where 4d's first
+  // check refused it until now with the code of a limit nobody had read. REAL_DEVELOPMENT and SIMULATED never ask.
+  if (operation === CaptureOperation.REAL_PRODUCTION && deps.hostFactsHandedIn === false) return refuse(CaptureBootRefusal.HOST_FACTS_NOT_HANDED_IN, NO_HOST_FACTS);
+  // Row HC (C94 (j)): what 4d finds of the address helper's socket node, for 4e. Undefined: 4d did not run.
+  let aliasSocket: AliasSocketFinding | undefined;
+
   // 4d: the host of a production Core (task 4 row 80; BR-12, AD-09 (1), C19). REAL_DEVELOPMENT and SIMULATED never ask,
   // and neither does a composition that hands no host facts in. The relay and the guard are held to the rule of check 2.
   if (operation === CaptureOperation.REAL_PRODUCTION && deps.host !== undefined) {
     const host = await hostCheckOutcomeOf(deps.host, (candidate) => workerProgramProblemOf(candidate, deps.inspect));
     if (host.failure !== null) return refuse(host.failure.code, host.failure.reason);
+    aliasSocket = host.aliasSocket;
     if (host.commands === 'NOT_LINUX') {
       const context = { code: 'CAPTURE_HOST_PROFILE_NOT_ASKED', operation, hostChecks: host.inPlace };
       sinks.warn(context, HOST_NOT_LINUX);
@@ -463,12 +655,30 @@ export async function runCaptureBootChecks(deps: CaptureBootDeps): Promise<Captu
     } else sinks.info({ code: 'CAPTURE_HOST_CHECKS_PASSED', operation, hostChecks: host.inPlace }, HOST_PASSED);
   }
 
+  // 4d-2: the platform is one a production Core is allowed on (row P1; U21 (2)): `linux`, where 4d asked the whole host
+  // profile, or `darwin`, where 4d asked none of it and said so. Asked like 4d; REAL_DEVELOPMENT and SIMULATED never ask.
+  const hostProfile = operation === CaptureOperation.REAL_PRODUCTION && deps.host !== undefined ? hostProfileStatementOf(deps.host.platform) : undefined;
+  if (hostProfile === null) return refuse(CaptureBootRefusal.HOST_PLATFORM_NOT_SUPPORTED, PLATFORM_NOT_LINUX_OR_DARWIN);
+
+  // 4d-3 (row HC; C53 (4c), R119-10): a configured socket path of the address helper is the installed one. Two texts are
+  // compared and the host is asked nothing; unset (null) and not handed in (a test from before the member) are not asked.
+  if (operation === CaptureOperation.REAL_PRODUCTION && typeof deps.configuredAliasSocket === 'string' && deps.configuredAliasSocket !== ALIAS_SOCKET_INSTALLED_PATH) {
+    return refuse(CaptureBootRefusal.HOST_ALIAS_SOCKET_PATH, CONFIGURED_PATH_NOT_THE_INSTALLED_ONE);
+  }
+
   // 4e: the delivered programs of a production Core (task 4 row 81; F10 (d), C19, HOST-44 to HOST-46). Asked like 4d:
   // REAL_PRODUCTION only, and only when the composition hands them in. The relay is started once, with no start message.
+  // Row HC (C94 (j)): 4e is told what 4d found of the socket node, and judges the helper as ONE installation.
   if (operation === CaptureOperation.REAL_PRODUCTION && deps.programs !== undefined) {
-    const programs = await deliveredProgramOutcomeOf(deps.programs, (candidate) => workerProgramProblemOf(candidate, deps.inspect));
+    const programs = await deliveredProgramOutcomeOf(aliasSocket === undefined ? deps.programs : { ...deps.programs, aliasSocket }, (candidate) => workerProgramProblemOf(candidate, deps.inspect));
     if (programs.failure !== null) return refuse(programs.failure.code, programs.failure.reason);
     sinks.info({ code: 'CAPTURE_PROGRAM_CHECKS_PASSED', operation, programChecks: programs.inPlace, notAsked: programs.notAsked }, PROGRAMS_PASSED);
+    if (programs.aliasHelper === 'ABSENT') {
+      // NOT a refusal (C94 (j)): nothing of the helper is installed. Said once, as the host profile that was not asked is said.
+      const context = { code: ALIAS_HELPER_ABSENT, operation };
+      sinks.warn(context, HELPER_ABSENT);
+      sinks.persist({ level: 'warn', source: SOURCE, message: HELPER_ABSENT, code: context.code, context });
+    }
   }
 
   // 5: the worker itself, started once. Only now: nothing is started from a path that failed a rule above.
@@ -481,5 +691,5 @@ export async function runCaptureBootChecks(deps: CaptureBootDeps): Promise<Captu
 
   const evidenceVolume = Object.freeze({ totalBytes: volume.totalBytes, freeBytes: volume.freeBytes });
   sinks.info({ code: 'CAPTURE_BOOT_CHECKS_PASSED', operation, checks: 'real', workerVersion: hello.workerVersion, volumeTotalBytes: volume.totalBytes ?? -1, volumeFreeBytes: volume.freeBytes ?? -1 }, PASSED);
-  return Object.freeze({ operation, label: null, workerVersion: hello.workerVersion, evidenceVolume });
+  return Object.freeze({ operation, label: null, workerVersion: hello.workerVersion, evidenceVolume, ...(hostProfile === undefined ? {} : { hostProfile }) });
 }

@@ -76,9 +76,14 @@ import {
   REVISION_APPEND_PENDING_FILE,
   REVISION_APPEND_PENDING_REPORT,
   exportFolderNoticeReport,
+  audioAbsentOnRestartReport,
+  hostProfileNotAskedReport,
+  videoAbsentInSessionReport,
   VERIFY_NOTICE,
   VERIFY_RESULT_SCHEMA_ID,
   VERIFY_V2_CHECKS,
+  SIGNED_BY_COMPROMISED_KEY_REPORT,
+  VerifiedSigningKeyMark,
   VerifiedSourcesState,
   VerifiedTranscriptState,
   transcriptModelLineOf,
@@ -281,6 +286,9 @@ async function checkCertificate(ports: VerifyPorts, manifest: ManifestV2, option
   if (signedAt < facts.notBefore || signedAt > facts.notAfter) verdict.add('CERTIFICATE_NOT_VALID_AT_SIGNING', { file, member: 'signature.signedAt' });
   const trusted = options.expected?.trustedCertificateSha256;
   if (trusted !== undefined && !trusted.includes(digest)) verdict.add('CERTIFICATE_NOT_TRUSTED', { file });
+  // Row V5 (C84 R-2): a certificate the verifier was TOLD is marked compromised is not relied on - also when it is in the trusted list.
+  const marked = options.expected?.compromisedCertificateSha256;
+  if (marked !== undefined && marked.includes(digest)) verdict.add('CERTIFICATE_KEY_COMPROMISED', { file });
   // Fields 25 / 26 are texts the signer writes: they are held to the certificate itself (F-M7 R88-08).
   if (typeof facts.subject === 'string' && facts.subject !== manifest.device.certificate.subject) verdict.add('CERTIFICATE_SUBJECT_MISMATCH', { file, member: 'device.certificate.subject' });
   if (typeof facts.serialNumber === 'string' && facts.serialNumber !== manifest.device.certificate.serialNumber) verdict.add('CERTIFICATE_SUBJECT_MISMATCH', { file, member: 'device.certificate.serialNumber' });
@@ -663,6 +671,7 @@ async function checkRevisions(ports: VerifyPorts, manifest: ManifestV2, certific
   }
 
   const trusted = options.expected?.trustedCertificateSha256;
+  const marked = options.expected?.compromisedCertificateSha256;
   const known = new Map<string, CertificateFacts | null>();
   if (certificate.sha256 !== null) known.set(certificate.sha256, certificate.facts);
   /** SEC35-20: the certificate a revision names, out of the set the package retains. */
@@ -723,6 +732,8 @@ async function checkRevisions(ports: VerifyPorts, manifest: ManifestV2, certific
       continue;
     }
     if (trusted !== undefined && !trusted.includes(digest)) verdict.add('REVISION_CERTIFICATE_NOT_TRUSTED', { revisionNo });
+    // Row V5 (C84 R-2): a revision signed under a certificate the verifier was told is marked compromised.
+    if (marked !== undefined && marked.includes(digest)) verdict.add('REVISION_CERTIFICATE_KEY_COMPROMISED', { revisionNo });
     let verified = false;
     try {
       verified = (await ports.verifySignature(revision.signature.algorithm, facts.publicKey, hexToBytes(revision.sha256), hexToBytes(revision.signature.value))) === true;
@@ -1069,6 +1080,15 @@ export async function verifyPackageV2(ports: VerifyPorts, options: VerifyOptions
   // The state is repeated as fact only from a manifest that is the signed one (spec §D.1, the rule
   // of the source mark, applied to the transcript state).
   const trusted = manifest !== null && (['V-01', 'V-03', 'V-09', 'V-13'] as const).every((id) => statusOf(id) === 'PASS');
+  // Row V5 (C84 R-2): what the verifier says of the signing key's mark - ONLY when it was handed the list of marked
+  // fingerprints. Without the list nothing below adds a member, a finding or a notice: the result is the one of before.
+  // Row R1b (C99): the one line of the cameras that were absent inside the session, from the manifest as READ; '' = none stated.
+  const videoAbsent = videoAbsentInSessionReport((manifest?.tracks ?? []).map((track) => ({ trackId: track.trackId, absences: track.absentInSession ?? [] })));
+  // Pass I-9b: the one line of the sound that is absent across a worker restart, from the manifest as READ; '' = none stated.
+  const audioAbsent = audioAbsentOnRestartReport(manifest?.audio.absentOnRestart ?? []);
+  const toldOfMarks = expected.compromisedCertificateSha256 !== undefined;
+  const underMarkedKey = toldOfMarks && checks.some((check) => check.findings.some((finding) => finding.code === 'CERTIFICATE_KEY_COMPROMISED' || finding.code === 'REVISION_CERTIFICATE_KEY_COMPROMISED'));
+  const keyMark: VerifiedSigningKeyMark = underMarkedKey ? VerifiedSigningKeyMark.COMPROMISED : trusted ? VerifiedSigningKeyMark.NOT_MARKED : VerifiedSigningKeyMark.NOT_ESTABLISHED;
 
   return Object.freeze({
     schema: VERIFY_RESULT_SCHEMA_ID,
@@ -1089,6 +1109,7 @@ export async function verifyPackageV2(ports: VerifyPorts, options: VerifyOptions
       // FROM THE CERTIFICATE THAT VERIFIED THE SIGNATURE, and only when the manifest is the signed one
       // and its certificate holds (F-M7 R88-08): otherwise NOT ESTABLISHED - never `false` from unverified bytes.
       developmentKey: trusted && certificateSubject !== null ? isDevelopmentKeySubject(certificateSubject) : null,
+      ...(toldOfMarks ? { compromisedKey: keyMark } : {}),
       integrityCheckedWithoutKey: true as const,
     }),
     interrupted: manifest?.timeline.interrupted ?? false,
@@ -1097,6 +1118,14 @@ export async function verifyPackageV2(ports: VerifyPorts, options: VerifyOptions
       Object.freeze({ code: VERIFY_NOTICE.AUDIT_EXTRACT_NOT_SIGNED, report: auditExtractPresent ? AUDIT_EXTRACT_NOT_SIGNED_REPORT.PRESENT : AUDIT_EXTRACT_NOT_SIGNED_REPORT.MISSING }),
       ...(unexpectedExports.length === 0 ? [] : [Object.freeze({ code: VERIFY_NOTICE.EXPORT_FOLDER_UNEXPECTED_FILE, report: exportFolderNoticeReport(unexpectedExports) })]),
       ...(pending.revisionAppend ? [Object.freeze({ code: VERIFY_NOTICE.REVISION_APPEND_PENDING, report: REVISION_APPEND_PENDING_REPORT })] : []),
+      // Row V5: the state beside the verdict - this verifier holds no record of the Core to hold such a package to.
+      ...(underMarkedKey ? [Object.freeze({ code: VERIFY_NOTICE.SIGNED_BY_COMPROMISED_KEY, report: SIGNED_BY_COMPROMISED_KEY_REPORT.COMPROMISED_KEY_NO_RECORD })] : []),
+      // Row V6 (C97; row P1's request): the manifest's optional member `hostProfileNotAsked` is SAID in the verdict. It fails nothing.
+      ...(manifest?.hostProfileNotAsked === undefined ? [] : [Object.freeze({ code: VERIFY_NOTICE.HOST_PROFILE_NOT_ASKED, report: hostProfileNotAskedReport(manifest.hostProfileNotAsked.platform) })]),
+      // Row R1b (C99): the manifest's optional member `tracks[].absentInSession` is SAID in the verdict. It fails nothing.
+      ...(videoAbsent === '' ? [] : [Object.freeze({ code: VERIFY_NOTICE.VIDEO_ABSENT_IN_SESSION, report: videoAbsent })]),
+      // Pass I-9b: the manifest's optional member `audio.absentOnRestart` is SAID in the verdict. It fails nothing.
+      ...(audioAbsent === '' ? [] : [Object.freeze({ code: VERIFY_NOTICE.AUDIO_ABSENT_ON_RESTART, report: audioAbsent })]),
     ]),
   });
 }

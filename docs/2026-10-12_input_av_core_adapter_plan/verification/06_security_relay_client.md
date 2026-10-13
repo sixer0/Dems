@@ -187,5 +187,22 @@ Total: **M**. The fuzz build must exist before the first real camera, and stay.
 - Not examined: the worker's handling of what the relay pushes; the Core adapter (row 46); Linux behaviour of every line (rows 79, 141).
 - No file other than this one was changed. `masterplan/02_plan.md` was not updated, by the order of this review.
 
+## 12. Erratum of 2026-10-13: rule RC-6, the relay's one bind (decision C65; review finding F3-04)
+
+Appended by row R2 on the order of decision C93. Nothing above is changed; no line of `relay-check.sh` or of the relay's sources is changed by this erratum.
+
+**The original sentences, with their locations.**
+
+- The definition, `verification/02_security.md:160`: "The relay opens no listening socket and no datagram socket: RTSP over TCP is forced on the camera leg and the protocol list is TCP only [...]; it dials only the host of its locator and the loopback ingest port; it opens no file after start."
+- Restated at `verification/04_security_addendum.md:293` ("Dials only the host of its locator; opens no file after start (static check); gives up privileges and file-system access before the first camera byte") and `masterplan/04_design_addendum.md:636` ("socket snapshot of the relay: 0 listening, 0 datagram; run directory 0700, pipes 0600").
+- The source rule derived from it, `apps/capture-worker/relay-check.sh:42` as committed in `3b388746`: `none RC-6 '[^a-z_]bin[d](' "the relay binds nothing"`, with `bind` in the forbidden list of the binary's import net (line 134 of the same version). This document relies on that script as it then stood (its lines 28, 84 and 123 above: `relay-check.sh:16`, `:30-34`, `:103`).
+
+**The rule as it now stands.** RC-6 keeps every clause of its definition: no listening socket, no datagram socket, TCP only, one socket and one connect of the relay's own, addressed with the host and port of its locator, no file opened after start. The derived sentence "the relay binds nothing" is replaced by: **the relay binds exactly ONCE - its one camera socket, in `relay_rtsp.c`, on the pinned line `if (bind(c->fd, (struct sockaddr *)&from, sizeof from)) return RELAY_CAMERA_UNREACHABLE;`, to the source address of the start message and port 0, on a line before the one connect, at every re-open too; a failed bind ends the dial and no connect follows it; record mode is refused without the source address; the address is held to the relay's strict reader (`source_ok`); the relay's own socket rule holds the camera socket's own end to that address.** In the script these are the lines tagged `S13-11` (`relay-check.sh:42-57` of the working tree), with one planted line and seven mutations that each refuse. `bind` left the forbidden list of the import net; `listen`, `accept` and `accept4` stay in it and in the source rules, so a bound socket of the relay cannot become a listener.
+
+**Why, and by whose word.** S13-11 point 2 (a target no camera-interface address reaches is a refusal, never a fallback route) needs the camera socket to leave from the camera interface, which is a bind before the connect. Built by row 143b; accepted by decision **C65** ("`relay-check.sh` 'binds nothing' becomes ONE pinned bind (S13-11)"); found without its erratum by the phase-3 review (`verification/060_m3_review.md`, F3-04); ordered by decision C93. The security acceptance before the lift (row 86) confirms or re-words it. The three documents that define and restate RC-6 are not edited by this row: a request line of row R2 asks their writer for a one-line pointer to this section.
+
+**Unproven until hardware (unchanged from C65).** A real second interface; a running relay's re-open after its address is lost; an interface that is down with its address kept.
+
 ---
 *Generated: 2026-10-13 02:55*
+*Erratum appended: 2026-10-13 (row R2)*

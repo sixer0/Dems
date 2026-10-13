@@ -29,7 +29,7 @@ import type { Principal } from '../../plugins/authenticate';
 import { ApiFailure } from '../../plugins/error-envelope';
 import { sessionTapPath, transcriptionControl } from '../../transcription';
 import { FIRST_DELIVERY_MS } from '../../capture/adapters/local/camera-helper';
-import { CAMERA_CLOCK_OFFSET_ADVISORY_MS, CAPTURE_NOT_DURABLE, MIC_START_BOUND_MS, RELAY_REPORTS_NOT_WIRED,SESSION_LEFT_RECORDING, SOURCE_KIND_NOT_RECORDABLE, readSessionCaptureFacts, sessionCapture, type SessionCaptureEvent } from '../index';
+import { CAMERA_CLOCK_OFFSET_ADVISORY_MS, CAPTURE_NOT_DURABLE, MIC_START_BOUND_MS, RELAY_PLAYING_SILENCE_BOUND_MS, RELAY_REPORTS_NOT_WIRED,SESSION_LEFT_RECORDING, SOURCE_KIND_NOT_RECORDABLE, readSessionCaptureFacts, sessionCapture, type SessionCaptureEvent } from '../index';
 
 const db = useTestDatabase({ template: 'seed' });
 /** The rigs of the running case: closed by the `afterEach` below (see `fixRig`). */
@@ -1780,11 +1780,12 @@ describe('task 4 row 47: the cameras of a start - the address, the profile, the 
     const elements = [...Object.values(first), ...Object.values(second)].map(elementOf);
     expect(elements.map((element) => INGEST_ELEMENT.test(element))).toEqual([true, true, true, true]);
     expect(new Set(elements).size).toBe(4);
-    // The camera sources of the earlier worker were closed BEFORE the cameras were opened again; no microphone was touched.
+    // The camera sources of the earlier worker were closed BEFORE the cameras were opened again.
     const cameraSteps = of.order.filter((entry) => / CAM-/.test(entry));
     expect(cameraSteps.slice(0, 2).sort()).toEqual(['close CAM-01', 'close CAM-02']);
     expect(cameraSteps.slice(2).sort()).toEqual(['open CAM-01', 'open CAM-02']);
-    expect(of.order.filter((entry) => /close MIC-/.test(entry))).toEqual([]);
+    // Task 4 row 191 (this line read "no microphone was touched" until then): the microphones of the earlier worker are closed, both, and then opened again for the later one.
+    expect(of.order.filter((entry) => / MIC-/.test(entry))).toEqual(['close MIC-01', 'close MIC-02', 'open MIC-01', 'open MIC-02']);
     expect(of.log.lines().filter((line) => line.code === 'CAPTURE_CAMERA_NOT_OPENED' || line.code === 'CAPTURE_SOURCE_NOT_CLOSED')).toEqual([]);
     expect(of.events.filter((event) => event.type === 'STARTED')).toHaveLength(1);
     expect(sessionCapture(of.app).liveSessionId()).toBe(id);
@@ -1854,6 +1855,8 @@ describe('task 4 row 48 (SA-3; RC-3, AD-01 (4), BR-08): a camera counts as open 
     return {
       source: { subscribe: (listener: (report: { sessionId: string; deviceId: string; attempt: number }) => void) => (listeners.add(listener), () => void listeners.delete(listener)) },
       report: (sessionId: string, deviceId: string, attempt = 1) => listeners.forEach((listener) => listener({ sessionId, deviceId, attempt })),
+      // Finding F3-01: a relay's word about its camera leg, as the camera adapter tells it on the same source (the member `leg`).
+      leg: (sessionId: string, deviceId: string, attempt: number, leg: Record<string, unknown>) => listeners.forEach((listener) => listener({ sessionId, deviceId, attempt, leg } as never)),
       subscribed: () => listeners.size,
     };
   }
@@ -2057,6 +2060,159 @@ describe('task 4 row 48 (SA-3; RC-3, AD-01 (4), BR-08): a camera counts as open 
     expect(linesOf(of, 'CAPTURE_RELAY_REPORT_SUPERSEDED')).toHaveLength(2);
   });
 
+  // Finding F3-01 of the M3 review. THE WORKER'S SIDE OF A RELAY RE-OPEN (implementation/043, section 2 and the runs of
+  // `row043_reopen.py`): the relay keeps its ONE push while it opens the camera again - the worker sees one connection,
+  // says ONE `ingest_connected`, its gate sees no second announce and refuses nothing - so its telemetry keeps saying the
+  // level `CONNECTED` through the gap. The relay's side: `camera_lost`, then `camera_reopened`, as leg reports.
+  it('finding F3-01: a relay RE-OPEN inside a session is not a second arrival - the pairing is untouched (C35 (b)), the capture is NOT ended, and the absence is stated with both bounds; a leg report of another attempt is dropped (C37)', async () => {
+    const { of, id, relay } = await production('r1_leg_reopen');
+    const appended = vi.spyOn(of.app.errorLog, 'append');
+    const entries = (code: string): Array<Record<string, unknown>> => appended.mock.calls.map(([entry]) => entry as { code?: string; level?: string; context?: Record<string, unknown> }).filter((entry) => entry.code === code).map((entry) => ({ level: entry.level, ...entry.context }));
+    for (const camera of ['CAM-01', 'CAM-02']) {
+      relay.report(id, camera);
+      ingest(of, camera, 'CONNECTED');
+    }
+    await vi.waitFor(() => expect(paired(of).sort()).toEqual(['CAM-01@1', 'CAM-02@1']), { timeout: 5_000 });
+    const before = await faultRows(of);
+    // The bounds are instants of the Core's clock (the rig's manual clock).
+    const startedAt = of.app.clock.now();
+
+    // The loss: stated at once.
+    relay.leg(id, 'CAM-01', 1, { event: 'LOST', profile: 'HEVC_1080P', loss: 1, cause: 'CAMERA_LOST' });
+    expect(entries('CAPTURE_CAMERA_ABSENT_IN_SESSION')).toMatchObject([{ level: 'warn', sessionId: id, deviceId: 'CAM-01', profile: 'HEVC_1080P', attempt: 1, loss: 1, cause: 'CAMERA_LOST' }]);
+    const lostAt = entries('CAPTURE_CAMERA_ABSENT_IN_SESSION')[0]?.lostAt as number;
+    expect(lostAt).toBe(startedAt);
+    // Through the gap (3 s of the Core's clock) the worker's level stays what it was, for both cameras, frame after frame.
+    for (let frame = 0; frame < 3; frame += 1) {
+      ingest(of, 'CAM-01', 'CONNECTED');
+      ingest(of, 'CAM-02', 'CONNECTED');
+      await of.drive(1_000);
+    }
+    // Said again by the relay's source: the same absence, one entry.
+    relay.leg(id, 'CAM-01', 1, { event: 'LOST', profile: 'HEVC_1080P', loss: 1, cause: 'CAMERA_LOST' });
+    // A re-open of another number, of another stream, of another camera ends nothing.
+    relay.leg(id, 'CAM-01', 1, { event: 'REOPENED', profile: 'HEVC_1080P', loss: 2, tries: 1, heldBack: 0, gapMs: 1 });
+    relay.leg(id, 'CAM-01', 1, { event: 'REOPENED', profile: 'H264_720P', loss: 1, tries: 1, heldBack: 0, gapMs: 1 });
+    relay.leg(id, 'CAM-02', 1, { event: 'REOPENED', profile: 'HEVC_1080P', loss: 1, tries: 1, heldBack: 0, gapMs: 1 });
+    expect(entries('CAPTURE_CAMERA_BACK_IN_SESSION')).toEqual([]);
+    // The re-open: the first keyframe of the new leg is forwarded.
+    relay.leg(id, 'CAM-01', 1, { event: 'REOPENED', profile: 'HEVC_1080P', loss: 1, tries: 1, heldBack: 25, gapMs: 3_040 });
+    ingest(of, 'CAM-01', 'CONNECTED');
+    const back = entries('CAPTURE_CAMERA_BACK_IN_SESSION');
+    expect(back).toMatchObject([{ level: 'warn', sessionId: id, deviceId: 'CAM-01', profile: 'HEVC_1080P', attempt: 1, loss: 1, lostAt, relayGapMs: 3_040, heldBack: 25, tries: 1 }]);
+    expect([back[0]?.backAt, back[0]?.absentMs]).toEqual([lostAt + 3_000, 3_000]);
+    expect(entries('CAPTURE_CAMERA_ABSENT_IN_SESSION')).toHaveLength(1);
+    // Row R1b: THE AUDIT ENTRY, written when the absence ended - nothing while it was open. At least = the relay's own measure
+    // (3,040); at most = the Core's span (3,000), not below the relay's measure, plus the relay's silence bound (5,000).
+    await of.settled();
+    expect(await absenceRows(of, id)).toEqual([
+      {
+        category: 'DEVICE',
+        severity: 'WARNING',
+        actor_id: null,
+        device_id: 'CAM-01',
+        session_id: id,
+        message: 'Video was not recorded while a camera of the session was absent (CAM-01, VIDEO-01; attempt 1, loss 1): its relay opened it again',
+        details: { sessionId: id, deviceId: 'CAM-01', trackId: 'VIDEO-01', attempt: 1, loss: 1, tries: 1, videoAbsentAtLeastMs: 3_040, videoAbsentAtMostMs: 3_040 + RELAY_PLAYING_SILENCE_BOUND_MS, ended: 'RE_OPENED' },
+      },
+    ]);
+
+    // C37, and what is not this capture's: a later attempt, an earlier one, 0, another session, a device that is no camera of the plan - dropped, no entry.
+    relay.leg(id, 'CAM-01', 2, { event: 'LOST', profile: 'HEVC_1080P', loss: 2, cause: 'CAMERA_LOST' });
+    relay.leg(id, 'CAM-01', 0, { event: 'LOST', profile: 'HEVC_1080P', loss: 2, cause: 'CAMERA_LOST' });
+    relay.leg('S-OTHER-SESSION', 'CAM-01', 1, { event: 'LOST', profile: 'HEVC_1080P', loss: 2, cause: 'CAMERA_LOST' });
+    relay.leg(id, 'CAM-09', 1, { event: 'LOST', profile: 'HEVC_1080P', loss: 2, cause: 'CAMERA_LOST' });
+    // And what is no leg report of the form: no profile code, no loss number, an unknown event.
+    relay.leg(id, 'CAM-01', 1, { event: 'LOST', profile: 'not a code', loss: 2 });
+    relay.leg(id, 'CAM-01', 1, { event: 'LOST', profile: 'HEVC_1080P', loss: 0 });
+    relay.leg(id, 'CAM-01', 1, { event: 'GONE', profile: 'HEVC_1080P', loss: 2 });
+    expect(entries('CAPTURE_CAMERA_ABSENT_IN_SESSION')).toHaveLength(1);
+    expect(linesOf(of, 'CAPTURE_CAMERA_LEG_REPORT_SUPERSEDED')).toMatchObject([
+      { sessionId: id, deviceId: 'CAM-01', attempt: 2, attemptInForce: 1, dropped: 1 },
+      { sessionId: id, deviceId: 'CAM-01', attempt: 0, attemptInForce: 1, dropped: 2 },
+    ]);
+
+    // THE PAIRING RULE IS UNCHANGED: past twice the bound nothing faulted, nothing was ended, no row of the fault trail was written by this unit.
+    await wait(BOUND_MS * 2);
+    await of.settled();
+    expect([notPaired(of), await auditOfTheFault(of), await faultRows(of), sessionCapture(of.app).liveSessionId(), of.fake.last().commands('STOP').length]).toEqual([[], 0, before, id, 0]);
+    expect(paired(of).sort()).toEqual(['CAM-01@1', 'CAM-02@1']);
+    expect(of.app.engine.slice('session')).toMatchObject({ id, state: 'RECORDING' });
+    expect(of.order.filter((entry) => entry.startsWith('close'))).toEqual([]);
+
+    // CONTROL - the rule still bites: the SAME camera said by an established-push report (no member `leg`) a second time is the fault it always was.
+    // First: a second absence that is still open when the capture ends is closed with the end as its later bound.
+    relay.leg(id, 'CAM-02', 1, { event: 'LOST', profile: 'H264_1080P', loss: 1, cause: 'CAMERA_UNREACHABLE' });
+    relay.report(id, 'CAM-01');
+    await endedByThePairing(of, id, 'CAM-01@1 RELAY_REPORTED_TWICE');
+    expect(entries('CAPTURE_CAMERA_ABSENT_AT_END')).toMatchObject([{ level: 'warn', sessionId: id, deviceId: 'CAM-02', profile: 'H264_1080P', attempt: 1, loss: 1 }]);
+    const open = entries('CAPTURE_CAMERA_ABSENT_AT_END')[0];
+    expect(open?.absentAtLeastMs).toBe((open?.endedAt as number) - (open?.lostAt as number));
+    // Row R1b: the absence that did NOT end has its entry too, written at the end of the capture and stored BEFORE the capture
+    // was handed on (`endedByThePairing` returned): the second row, of CAM-02 on VIDEO-02, with no tries. The first row is unchanged.
+    // Nothing was written for the leg words that were dropped (another attempt, another session, no camera of the plan, no form).
+    const stored = await absenceRows(of, id);
+    expect(stored.map((row) => [row.device_id, row.details.trackId, row.details.loss, row.details.ended])).toEqual([
+      ['CAM-01', 'VIDEO-01', 1, 'RE_OPENED'],
+      ['CAM-02', 'VIDEO-02', 1, 'NOT_RE_OPENED'],
+    ]);
+    const notBack = stored[1]?.details as { videoAbsentAtLeastMs?: number; videoAbsentAtMostMs?: number; tries?: number };
+    expect(Object.keys(stored[1]?.details ?? {}).sort()).toEqual(['attempt', 'deviceId', 'ended', 'loss', 'sessionId', 'trackId', 'videoAbsentAtLeastMs', 'videoAbsentAtMostMs']);
+    expect(stored[1]?.message).toBe('Video was not recorded while a camera of the session was absent (CAM-02, VIDEO-02; attempt 1, loss 1): it had not come back when the capture ended');
+    // At least: to the instant the end was asked; at most: to the end of the capture, plus the relay's silence bound - never below the least.
+    const span = (open?.endedAt as number) - (open?.lostAt as number);
+    expect(notBack.videoAbsentAtLeastMs).toBeGreaterThanOrEqual(0);
+    expect(notBack.videoAbsentAtLeastMs).toBeLessThanOrEqual(span);
+    expect(notBack.videoAbsentAtMostMs).toBe(span + RELAY_PLAYING_SILENCE_BOUND_MS);
+    // No address and no text of a device is in any of the entries: identifiers, code words and numbers.
+    for (const entry of [...entries('CAPTURE_CAMERA_ABSENT_IN_SESSION'), ...entries('CAPTURE_CAMERA_BACK_IN_SESSION'), ...entries('CAPTURE_CAMERA_ABSENT_AT_END')]) {
+      for (const value of Object.values(entry)) expect(typeof value === 'number' || value === null || /^[A-Za-z0-9_-]{1,64}$/.test(String(value))).toBe(true);
+    }
+  });
+
+  it('finding F3-01: an absence that is open when the worker of the session is replaced ends when the camera counts as open for the LATER worker - the relay of the earlier attempt can no longer say so; its late word is dropped (C37)', async () => {
+    const relay = relays();
+    const of = await rig('r1_leg_restart', { limits: { backoffBaseMs: 20, backoffMaxMs: 40 } });
+    sessionCapture(of.app).replace({ operationOf: () => CaptureOperation.REAL_PRODUCTION, ingestPairingBoundMs: BOUND_MS, relayReports: relay.source });
+    const appended = vi.spyOn(of.app.errorLog, 'append');
+    const entries = (code: string): Array<Record<string, unknown>> => appended.mock.calls.map(([entry]) => entry as { code?: string; context?: Record<string, unknown> }).filter((entry) => entry.code === code).map((entry) => ({ ...entry.context }));
+    const id = await of.arm();
+    await of.start(id);
+    relay.report(id, 'CAM-01');
+    ingest(of, 'CAM-01', 'CONNECTED');
+    await vi.waitFor(() => expect(paired(of)).toEqual(['CAM-01@1']), { timeout: 5_000 });
+    relay.leg(id, 'CAM-01', 1, { event: 'LOST', profile: 'HEVC_1080P', loss: 1, cause: 'CAMERA_STALLED' });
+    const lostAt = entries('CAPTURE_CAMERA_ABSENT_IN_SESSION')[0]?.lostAt as number;
+    // The worker goes down before anything is durable; the Core issues attempt 2 and opens the cameras again.
+    of.fake.last().exit(1);
+    await vi.waitFor(() => expect(of.fake.workers).toHaveLength(2), { timeout: 5_000 });
+    await vi.waitFor(() => expect(of.fake.last().commands('START')).toMatchObject([{ attempt: 2 }]), { timeout: 5_000 });
+    await of.settled();
+    // The relay of attempt 1 is being ended and still says its re-open: not in force, dropped - the absence is NOT ended by it.
+    relay.leg(id, 'CAM-01', 1, { event: 'REOPENED', profile: 'HEVC_1080P', loss: 1, tries: 1, heldBack: 0, gapMs: 1 });
+    expect(entries('CAPTURE_CAMERA_BACK_IN_SESSION')).toEqual([]);
+    expect(linesOf(of, 'CAPTURE_CAMERA_LEG_REPORT_SUPERSEDED')).toMatchObject([{ sessionId: id, deviceId: 'CAM-01', attempt: 1, attemptInForce: 2, dropped: 1 }]);
+    // The camera counts as open for the later worker: the absence is over, by the pairing's word.
+    relay.report(id, 'CAM-01', 2);
+    ingest(of, 'CAM-01', 'CONNECTED');
+    await vi.waitFor(() => expect(paired(of)).toEqual(['CAM-01@1', 'CAM-01@2']), { timeout: 5_000 });
+    expect(entries('CAPTURE_CAMERA_BACK_IN_SESSION')).toMatchObject([{ sessionId: id, deviceId: 'CAM-01', profile: 'HEVC_1080P', attempt: 1, loss: 1, lostAt, laterAttempt: 2, relayGapMs: null, heldBack: null, tries: null }]);
+    await wait(BOUND_MS * 2);
+    await of.settled();
+    expect([notPaired(of), await auditOfTheFault(of), sessionCapture(of.app).liveSessionId()]).toEqual([[], 0, id]);
+    // Row R1b: a later absence, said in the attempt IN FORCE, beside one more word of the superseded attempt.
+    relay.leg(id, 'CAM-01', 2, { event: 'LOST', profile: 'HEVC_1080P', loss: 1, cause: 'CAMERA_STALLED' });
+    relay.leg(id, 'CAM-01', 1, { event: 'LOST', profile: 'HEVC_1080P', loss: 2, cause: 'CAMERA_STALLED' });
+    await sessionCapture(of.app).shutdown();
+    // The absence of attempt 2 was open at the end: stated once. The one of attempt 1 was over before.
+    expect(entries('CAPTURE_CAMERA_ABSENT_AT_END')).toMatchObject([{ sessionId: id, deviceId: 'CAM-01', attempt: 2, loss: 1 }]);
+    // Row R1b: A SUPERSEDED ATTEMPT WRITES NOTHING - the absence of attempt 1 (ended by the later worker's pairing) has no audit
+    // entry; the only entry is the absence of the attempt in force, which did not end. A shutdown asks no end first: its least is not measured.
+    const stored = await absenceRows(of, id);
+    expect(stored.map((row) => row.details)).toMatchObject([{ sessionId: id, deviceId: 'CAM-01', trackId: 'VIDEO-01', attempt: 2, loss: 1, ended: 'NOT_RE_OPENED' }]);
+    expect(Object.keys(stored[0]?.details ?? {}).sort()).toEqual(['attempt', 'deviceId', 'ended', 'loss', 'sessionId', 'trackId', 'videoAbsentAtMostMs']);
+  });
+
   it('C35 (b), a relay report for another attempt than the one in force - a later one, and an earlier one - is a capture fault', async () => {
     const later = await production('r48_later_attempt');
     later.relay.report(later.id, 'CAM-02', 2);
@@ -2233,3 +2389,340 @@ describe('task 4 row 71 (WP-07c; schema design 2.3; AD-07 (1), S13-13): the card
     await sessionCapture(of.app).shutdown();
   });
 });
+
+// Task 4 row 191 (the finding of row 184: a later worker of a session received 0 samples). WHAT IS REAL: the capture-session
+// unit, the real supervisor with the system timers, the plan builder, the registry. WHAT STANDS IN: the worker (the fake
+// worker process: it reads no pipe, so "the later worker hears both microphones" is NOT shown here - it is shown with the built
+// worker in the scenario of the row's record) and the microphones (the fake audio adapters, which refuse an input that is still
+// open, with a scripted `start` on their handles as the local and the production handles have one).
+describe('task 4 row 191: the microphones of a session are closed, opened and started again for a later worker', () => {
+  const FAST_RESTART = { backoffBaseMs: 20, backoffMaxMs: 40 };
+  const pause = (ms: number): Promise<void> => new Promise<void>((resolve) => setTimeout(resolve, ms));
+  interface Script {
+    /** How the n-th open of a microphone ends: at once, after a delay in ms, or refused. */
+    readonly open?: (deviceId: string, nth: number) => 'OK' | 'FAIL' | number;
+    /** How the start of the handle of the n-th open ends: it settles, it fails, or it has no outcome until the handle is closed. */
+    readonly start?: (deviceId: string, nth: number) => 'SETTLE' | 'FAIL' | 'UNTIL_CLOSED';
+  }
+  function microphones(script: Script = {}) {
+    /** `open MIC-01#2 w1`: the second open of MIC-01 ended while one worker had been started. `phase X` is the supervisor's. */
+    const log: string[] = [];
+    const opens = new Map<string, number>();
+    const watch = { workers: (): number => 0 };
+    const registry = (built: CaptureDeviceRegistry): CaptureDeviceRegistry => ({
+      ...built,
+      resolve: ((deviceClass: 'CAMERA' | 'MIC', deviceId: string) => {
+        if (deviceClass === 'CAMERA') {
+          const adapter = built.resolve('CAMERA', deviceId);
+          return { ...adapter, openSource: async (id: string, to: Parameters<typeof adapter.openSource>[1], signal: AbortSignal) => (log.push(`camera ${id}`), adapter.openSource(id, to, signal)) };
+        }
+        const adapter = built.resolve('MIC', deviceId);
+        return {
+          ...adapter,
+          open: async (inputId: string, to: Parameters<typeof adapter.open>[1]) => {
+            const nth = (opens.get(inputId) ?? 0) + 1;
+            opens.set(inputId, nth);
+            const how = script.open?.(inputId, nth) ?? 'OK';
+            if (typeof how === 'number') await pause(how);
+            if (how === 'FAIL') {
+              log.push(`open-refused ${inputId}#${nth}`);
+              throw new Error('the scripted microphone could not be opened');
+            }
+            const handle = await adapter.open(inputId, to);
+            log.push(`open ${inputId}#${nth} w${watch.workers()}`);
+            let closed: () => void = () => undefined;
+            const untilClosed = new Promise<void>((resolve) => (closed = resolve));
+            return {
+              ...handle,
+              start: (): Promise<void> => {
+                log.push(`start ${inputId}#${nth} w${watch.workers()}`);
+                const end = script.start?.(inputId, nth) ?? 'SETTLE';
+                if (end === 'SETTLE') return pause(10);
+                if (end === 'FAIL') return pause(10).then(() => Promise.reject(new Error('the scripted helper ended at once')));
+                return untilClosed.then(() => Promise.reject(new Error('the scripted helper was ended by the close of its handle')));
+              },
+              close: async (): Promise<void> => {
+                log.push(`close ${inputId}#${nth}`);
+                closed();
+                await handle.close();
+              },
+            };
+          },
+        };
+      }) as CaptureDeviceRegistry['resolve'],
+    });
+    const follow = (of: Rig): void => {
+      watch.workers = () => of.fake.workers.length;
+      of.supervisor.on('phase', (event) => void log.push(`phase ${event.phase}`));
+    };
+    return { log, registry, follow };
+  }
+  const micsOfWorker = (of: Rig, index: number): string[] => (of.fake.workers[index]?.commands('START')[0]?.plan.mics ?? []).map((mic) => `${mic.deviceId} ${mic.role}`);
+  const micEntries = (appended: { mock: { calls: Array<[{ code?: string; level: string; context?: Record<string, unknown> }]> } }, code: string) =>
+    appended.mock.calls.map(([entry]) => entry).filter((entry) => entry.code === code).map((entry) => [entry.level, entry.context?.['deviceId'], entry.context?.['role'], entry.context?.['attempt'] ?? null, entry.context?.['cause'] ?? null]);
+  const secondRecords = async (of: Rig): Promise<void> => {
+    await vi.waitFor(() => expect(of.fake.workers).toHaveLength(2), { timeout: 5_000 });
+    await vi.waitFor(() => expect(of.supervisor.status()).toMatchObject({ phase: 'RECORDING', attempt: 2 }), { timeout: 5_000 });
+    await pause(40);
+    await of.settled();
+  };
+
+  it('REAL_PRODUCTION, sources ready INSIDE the back-off: each microphone is started ONCE per attempt; the handles of attempt 1 are closed, both, before any is opened again; the pipes are made again before worker 2 exists; the starts follow its acknowledgement and precede its cameras; 0 handles left open', async () => {
+    const mics = microphones();
+    const of = await rig('r191_two_attempts', { registry: mics.registry, limits: FAST_RESTART });
+    mics.follow(of);
+    sessionCapture(of.app).replace({ operationOf: () => CaptureOperation.REAL_PRODUCTION, relayReports: SILENT_RELAYS });
+    const id = await of.arm();
+    await of.start(id);
+    const first = [...mics.log];
+    // Attempt 1, as before this row: opened before the worker, started after its acknowledgement, before the cameras.
+    expect(first.filter((entry) => !entry.startsWith('phase'))).toEqual(['open MIC-01#1 w0', 'open MIC-02#1 w0', 'start MIC-01#1 w1', 'start MIC-02#1 w1', 'camera CAM-01', 'camera CAM-02']);
+    mics.log.length = 0;
+
+    of.fake.last().exit(1);
+    await secondRecords(of);
+    await vi.waitFor(() => expect(mics.log.filter((entry) => entry.startsWith('camera'))).toHaveLength(2), { timeout: 5_000 });
+    expect(mics.log).toEqual([
+      'phase RESTARTING',
+      'close MIC-01#1',
+      'close MIC-02#1',
+      'open MIC-01#2 w1',
+      'open MIC-02#2 w1',
+      'phase RECORDING',
+      'start MIC-01#2 w2',
+      'start MIC-02#2 w2',
+      'camera CAM-01',
+      'camera CAM-02',
+    ]);
+    // The plan of the later worker names both microphones, with the pipes of the handles that were opened for it.
+    expect(micsOfWorker(of, 1)).toEqual(['MIC-01 PRIMARY', 'MIC-02 STANDBY']);
+    expect(of.fake.workers[1]?.commands('START')[0]?.plan.mics).toEqual(of.fake.workers[0]?.commands('START')[0]?.plan.mics);
+    expect(of.log.lines().filter((line) => ['CAPTURE_MIC_NOT_OPENED', 'CAPTURE_MIC_NOT_STARTED', 'CAPTURE_SOURCE_NOT_CLOSED', 'CAPTURE_MIC_REPORT_SUPERSEDED'].includes(String(line.code)))).toEqual([]);
+    expect(of.events.filter((event) => event.type === 'STARTED')).toHaveLength(1);
+    await sessionCapture(of.app).shutdown();
+    const all = [...first, ...mics.log];
+    for (const deviceId of ['MIC-01', 'MIC-02']) {
+      expect(all.filter((entry) => entry.startsWith(`start ${deviceId}#`))).toHaveLength(2);
+      expect([all.filter((entry) => entry.startsWith(`open ${deviceId}#`)).length, all.filter((entry) => entry.startsWith(`close ${deviceId}#`)).length]).toEqual([2, 2]);
+    }
+  });
+
+  it('REAL_DEVELOPMENT, sources ready AFTER the back-off (an open that needs 150 ms against a back-off of 20 ms): worker 2 is not started before the last pipe is made again; the starts follow its acknowledgement; the camera sources are left as they were (row 179)', async () => {
+    const mics = microphones({ open: (_deviceId, nth) => (nth === 2 ? 150 : 'OK') });
+    const of = await rig('r191_slow_open', { registry: mics.registry, limits: FAST_RESTART });
+    mics.follow(of);
+    const id = await of.arm();
+    await of.start(id);
+    mics.log.length = 0;
+    const downAt = performance.now();
+    of.fake.last().exit(1);
+    await pause(100);
+    // Past the back-off (20 ms) and before the opens: no later worker, phase RESTARTING, attempt 2 counted.
+    expect(of.fake.workers).toHaveLength(1);
+    expect(of.supervisor.status()).toMatchObject({ phase: 'RESTARTING', attempt: 2 });
+    await secondRecords(of);
+    expect(mics.log).toEqual(['phase RESTARTING', 'close MIC-01#1', 'close MIC-02#1', 'open MIC-01#2 w1', 'open MIC-02#2 w1', 'phase RECORDING', 'start MIC-01#2 w2', 'start MIC-02#2 w2']);
+    expect(performance.now() - downAt).toBeGreaterThanOrEqual(300);
+    expect(of.order.filter((entry) => / CAM-/.test(entry) && !entry.startsWith('open'))).toEqual([]);
+    expect(sessionCapture(of.app).liveSessionId()).toBe(id);
+    await sessionCapture(of.app).shutdown();
+    expect(mics.log.filter((entry) => entry.startsWith('close MIC-')).sort()).toEqual(['close MIC-01#1', 'close MIC-01#2', 'close MIC-02#1', 'close MIC-02#2']);
+  });
+
+  it('a microphone that cannot be OPENED again, as at a first start (D80(6)): the STANDBY - a warning with its role and attempt, the later worker gets a plan with the PRIMARY alone and records; the PRIMARY - an error, NO later worker, the capture ends as a failed start; neither is replaced by the other', async () => {
+    const standby = microphones({ open: (deviceId, nth) => (deviceId === 'MIC-02' && nth === 2 ? 'FAIL' : 'OK') });
+    const withPrimary = await rig('r191_standby_not_opened', { registry: standby.registry, limits: FAST_RESTART });
+    standby.follow(withPrimary);
+    const appended = vi.spyOn(withPrimary.app.errorLog, 'append');
+    const id = await withPrimary.arm();
+    await withPrimary.start(id);
+    withPrimary.fake.last().exit(1);
+    await secondRecords(withPrimary);
+    expect(micEntries(appended, 'CAPTURE_MIC_NOT_OPENED')).toEqual([['warn', 'MIC-02', 'STANDBY', 2, null]]);
+    expect(micsOfWorker(withPrimary, 1)).toEqual(['MIC-01 PRIMARY']);
+    expect(standby.log.filter((entry) => entry.startsWith('start') && entry.includes('#2'))).toEqual(['start MIC-01#2 w2']);
+    expect(withPrimary.fake.last().commands('SWITCH_AUDIO_SOURCE')).toEqual([]);
+    expect(sessionCapture(withPrimary.app).liveSessionId()).toBe(id);
+    await sessionCapture(withPrimary.app).shutdown();
+
+    const primary = microphones({ open: (deviceId, nth) => (deviceId === 'MIC-01' && nth === 2 ? 'FAIL' : 'OK') });
+    const without = await rig('r191_primary_not_opened', { registry: primary.registry, limits: FAST_RESTART });
+    primary.follow(without);
+    const said = vi.spyOn(without.app.errorLog, 'append');
+    const second = await without.arm();
+    await without.start(second);
+    without.fake.last().exit(1);
+    await vi.waitFor(() => expect(without.events.at(-1)?.type).toBe('FAILED_START'), { timeout: 5_000 });
+    await without.settled();
+    expect(micEntries(said, 'CAPTURE_MIC_NOT_OPENED')).toEqual([['error', 'MIC-01', 'PRIMARY', 2, null]]);
+    expect(without.fake.workers).toHaveLength(1);
+    expect(primary.log.filter((entry) => entry.startsWith('start') && entry.includes('#2'))).toEqual([]);
+    // The standby that WAS opened again is closed with the capture: nothing is left open.
+    expect(primary.log.filter((entry) => entry.startsWith('close MIC-')).sort()).toEqual(['close MIC-01#1', 'close MIC-02#1', 'close MIC-02#2']);
+    expect(sessionCapture(without.app).liveSessionId()).toBeNull();
+  });
+
+  it('a microphone that cannot be STARTED again is said with its role, as at a first start: the PRIMARY an error, the STANDBY a warning; the capture goes on and nothing is switched', async () => {
+    const mics = microphones({ start: (_deviceId, nth) => (nth === 2 ? 'FAIL' : 'SETTLE') });
+    const of = await rig('r191_not_started_again', { registry: mics.registry, limits: FAST_RESTART });
+    mics.follow(of);
+    const appended = vi.spyOn(of.app.errorLog, 'append');
+    const id = await of.arm();
+    await of.start(id);
+    of.fake.last().exit(1);
+    await secondRecords(of);
+    expect(micEntries(appended, 'CAPTURE_MIC_NOT_STARTED').sort()).toEqual([
+      ['error', 'MIC-01', 'PRIMARY', null, 'MIC_START_FAILED'],
+      ['warn', 'MIC-02', 'STANDBY', null, 'MIC_START_FAILED'],
+    ]);
+    expect(of.fake.last().commands('SWITCH_AUDIO_SOURCE')).toEqual([]);
+    expect(sessionCapture(of.app).liveSessionId()).toBe(id);
+    await sessionCapture(of.app).shutdown();
+  });
+
+  it('the reading of C37 for microphones: a start of attempt 1 that is still in flight when its worker is replaced ends with the close of its handle - NO failed microphone is said (0 entries), one counted log line per microphone; CONTROL: the same end without a restart IS said', async () => {
+    const mics = microphones({ start: (_deviceId, nth) => (nth === 1 ? 'UNTIL_CLOSED' : 'SETTLE') });
+    const of = await rig('r191_superseded_start', { registry: mics.registry, limits: FAST_RESTART });
+    mics.follow(of);
+    const appended = vi.spyOn(of.app.errorLog, 'append');
+    const id = await of.arm();
+    const capture = sessionCapture(of.app);
+    await capture.beforeStart();
+    await of.app.engine.run('sessions.startSession', async (scope) => {
+      await scope.command(of.investigator, 'startRecording');
+      await capture.recordingStartedIn(scope, id);
+    });
+    capture.afterStartCommitted(id);
+    await vi.waitFor(() => expect(mics.log.filter((entry) => entry.startsWith('start'))).toHaveLength(2), { timeout: 5_000 });
+    // The session has not said STARTED: it waits for the starts of the worker in force.
+    expect(of.events.map((event) => event.type)).toEqual(['CONNECTING']);
+    of.fake.last().exit(1);
+    await secondRecords(of);
+    await vi.waitFor(() => expect(of.events.map((event) => event.type)).toEqual(['CONNECTING', 'STARTED']), { timeout: 5_000 });
+    expect(micEntries(appended, 'CAPTURE_MIC_NOT_STARTED')).toEqual([]);
+    expect(of.log.lines().filter((line) => line.code === 'CAPTURE_MIC_REPORT_SUPERSEDED').map((line) => [line.deviceId, line.role, line.attempt, line.attemptInForce, line.dropped]).sort()).toEqual([
+      ['MIC-01', 'PRIMARY', 1, 2, expect.any(Number)],
+      ['MIC-02', 'STANDBY', 1, 2, expect.any(Number)],
+    ]);
+    // STARTED was said after the starts of attempt 2, not after those of the worker that was replaced.
+    expect(mics.log.filter((entry) => entry.startsWith('start'))).toEqual(['start MIC-01#1 w1', 'start MIC-02#1 w1', 'start MIC-01#2 w2', 'start MIC-02#2 w2']);
+    await capture.shutdown();
+
+    const control = microphones({ start: () => 'FAIL' });
+    const plain = await rig('r191_superseded_control', { registry: control.registry, limits: FAST_RESTART });
+    const said = vi.spyOn(plain.app.errorLog, 'append');
+    await plain.start(await plain.arm());
+    expect(micEntries(said, 'CAPTURE_MIC_NOT_STARTED').sort()).toEqual([
+      ['error', 'MIC-01', 'PRIMARY', null, 'MIC_START_FAILED'],
+      ['warn', 'MIC-02', 'STANDBY', null, 'MIC_START_FAILED'],
+    ]);
+    await sessionCapture(plain.app).shutdown();
+  });
+
+  it('WHAT THE RESTART COST THE AUDIO is on record, and no continuity is claimed: one entry with the instant the worker went down, the time without audio as two bounds on the Core\'s own clock (until the microphones were started again; until the later worker\'s record arrived), the worker\'s own word beside them, and the time the earlier worker heard that is not recorded; row 191b: the EARLIER worker\'s interval row is closed at the instant it went down and the later worker\'s is a NEW row, with ONE audit row of the gap; CONTROL: a session without a restart writes no such entry', async () => {
+    const of = await rig('r191_audio_gap', { limits: FAST_RESTART });
+    const appended = vi.spyOn(of.app.errorLog, 'append');
+    const id = await of.arm();
+    await of.start(id);
+    const firstAt = of.app.clock.now() - 400;
+    of.fake.last().record({ ...startInterval, capturedAtMs: firstAt, fromSample: 1_008 });
+    await of.settled();
+    expect(appended.mock.calls.map(([entry]) => entry).filter((entry) => entry.code === 'CAPTURE_AUDIO_BEGINS_AFTER_RESTART')).toEqual([]);
+    of.fake.last().exit(1);
+    await secondRecords(of);
+    const downAt = of.supervisor.status().lastCrash?.at ?? Number.NaN;
+    // The Core's clock is the case's: 900 ms pass between the start of the microphones and the arrival of the later worker's record.
+    await of.drive(900);
+    const heardAt = of.app.clock.now();
+    // The worker's own instant for its first sample lies BEFORE the earlier worker went down (as measured with the generated
+    // microphones, which deliver their first samples in a burst): it is stated as the worker's word and bounds nothing.
+    of.fake.last().record({ ...startInterval, capturedAtMs: downAt - 185, fromSample: 480 });
+    // Said once per later worker, whatever it repeats.
+    of.fake.last().record({ ...startInterval, capturedAtMs: downAt + 9_000, fromSample: 480 });
+    await of.settled();
+    const entries = appended.mock.calls.map(([entry]) => entry).filter((entry) => entry.code === 'CAPTURE_AUDIO_BEGINS_AFTER_RESTART');
+    expect(heardAt - downAt).toBe(900);
+    expect(entries.map((entry) => [entry.level, entry.context])).toEqual([
+      ['warn', { sessionId: id, attempt: 2, deviceId: 'MIC-01', role: 'PRIMARY', workerDownAt: downAt, microphonesStartedAt: downAt, audioHeardAt: heardAt, audioAbsentAtLeastMs: 0, audioAbsentAtMostMs: 900, workerAudioFromAt: downAt - 185, audioFromMediaMs: 31, intervalRowOf: 1, intervalRowFromAt: firstAt, earlierAudioNotRecordedMs: 400 }],
+    ]);
+    // Row 191b. The row of the start is written once and never rewritten: it still states the earlier worker's first sample (42 ms, its
+    // instant). It is CLOSED where it began, at the instant its worker went down; the later worker's interval is a NEW row (31 ms). Its
+    // instant is the worker's word held between the two bounds: 185 ms before the earlier worker went down is not stated by any row.
+    expect(await restartIntervals(of, id)).toEqual([
+      { seq: 1, mic_device_id: 'MIC-01', role: 'PRIMARY', reason: 'START', from_media_ms: '42', to_media_ms: '42', from_at: String(firstAt), to_at: String(downAt) },
+      { seq: 2, mic_device_id: 'MIC-01', role: 'PRIMARY', reason: 'START', from_media_ms: '31', to_media_ms: null, from_at: String(downAt), to_at: null },
+    ]);
+    // ONE audit row per restart, whatever the later worker repeats: the session, the attempts, both bounds; the microphones by the row's device and its message.
+    const gaps = await gapRows(of, id);
+    expect(gaps).toEqual([
+      { category: 'DEVICE', severity: 'WARNING', actor_id: null, device_id: 'MIC-01', session_id: id, message: expect.stringContaining('attempt 1 to 2; microphones: MIC-01 PRIMARY, MIC-02 STANDBY'), details: { sessionId: id, earlierAttempt: 1, laterAttempt: 2, audioAbsentAtLeastMs: 0, audioAbsentAtMostMs: 900 } },
+    ]);
+    await sessionCapture(of.app).shutdown();
+  });
+
+  it('row 191b, A SWITCH AFTER THE RESTART: the later worker numbers its records from 1 again - its switch record 2 is stored as row 3, closes the later worker\'s row (never the earlier one\'s) and its audit row states the later worker\'s media times; still ONE gap row. CONTROL in the same database: before the restart there is no gap row and one open interval', async () => {
+    const of = await rig('r191b_switch_after', { limits: FAST_RESTART });
+    const id = await of.arm();
+    await of.start(id);
+    of.fake.last().record({ ...startInterval, capturedAtMs: of.app.clock.now() - 400, fromSample: 1_008 });
+    await of.settled();
+    expect(await gapRows(of, id)).toEqual([]);
+    expect((await restartIntervals(of, id)).map((row) => [row.seq, row.to_at])).toEqual([[1, null]]);
+    of.fake.last().exit(1);
+    await secondRecords(of);
+    const downAt = of.supervisor.status().lastCrash?.at ?? Number.NaN;
+    const worker = of.fake.last();
+    worker.record({ ...startInterval, capturedAtMs: downAt + 5, fromSample: 480 });
+    await of.settled();
+    const switching = sessionCapture(of.app).switchAudioSource(of.investigator, id, 'MIC-02');
+    await flush();
+    const command = worker.commands('SWITCH_AUDIO_SOURCE')[0];
+    worker.record({ ...startInterval, deviceId: 'MIC-02', role: 'STANDBY', index: 2, fromSample: 240_000, capturedAtMs: downAt + 5_000, reason: 'OPERATOR_SWITCH', correlationId: command?.correlationId ?? null, appliedDelayUs: 9_000 });
+    worker.ack(true, undefined, command);
+    await expect(switching).resolves.toMatchObject({ activeInputId: 'MIC-02', intervalFromMs: 5_021 });
+    expect((await restartIntervals(of, id)).map((row) => [row.seq, row.mic_device_id, row.reason, row.from_media_ms, row.to_media_ms])).toEqual([
+      [1, 'MIC-01', 'START', '42', '42'],
+      [2, 'MIC-01', 'START', '31', '5021'],
+      [3, 'MIC-02', 'MANUAL', '5021', null],
+    ]);
+    expect((await switchRows(of)).map((row) => row.details)).toEqual([{ fromInput: 'MIC-01', toInput: 'MIC-02', fromMs: 31, toMs: 5_021 }]);
+    expect(await gapRows(of, id)).toHaveLength(1);
+    await sessionCapture(of.app).shutdown();
+  });
+
+  it('row 191b, THE EARLIER WORKER NEVER REPORTED AUDIO: the later worker\'s interval is row 1, nothing is closed, and the gap row is still written - from the instant the earlier worker went down, with both bounds', async () => {
+    const of = await rig('r191b_no_earlier_audio', { limits: FAST_RESTART });
+    const id = await of.arm();
+    await of.start(id);
+    of.fake.last().exit(1);
+    await secondRecords(of);
+    const downAt = of.supervisor.status().lastCrash?.at ?? Number.NaN;
+    await of.drive(300);
+    of.fake.last().record({ ...startInterval, capturedAtMs: downAt + 120, fromSample: 480 });
+    await of.settled();
+    expect(await restartIntervals(of, id)).toEqual([{ seq: 1, mic_device_id: 'MIC-01', role: 'PRIMARY', reason: 'START', from_media_ms: '31', to_media_ms: null, from_at: String(downAt + 120), to_at: null }]);
+    expect((await gapRows(of, id)).map((row) => row.details)).toEqual([{ sessionId: id, earlierAttempt: 1, laterAttempt: 2, audioAbsentAtLeastMs: 0, audioAbsentAtMostMs: 300 }]);
+    await sessionCapture(of.app).shutdown();
+  });
+});
+
+/** Row 191b: the interval rows of a session with both instants, as stored. */
+const restartIntervals = (of: Rig, id: string) =>
+  of.rows<{ seq: number; mic_device_id: string; role: string; reason: string; from_media_ms: string; to_media_ms: string | null; from_at: string; to_at: string | null }>(
+    'SELECT seq, mic_device_id, role, reason, from_media_ms, to_media_ms, from_at, to_at FROM public.session_audio_intervals WHERE session_id = $1 ORDER BY seq',
+    [id],
+  );
+
+/** Row R1b: the audit rows of the cameras that were absent inside a session - the rows the seal reads by `session_id`, in the order of the chain. */
+const absenceRows = (of: Rig, id: string) =>
+  of.rows<{ category: string; severity: string; actor_id: string | null; device_id: string | null; session_id: string | null; message: string; details: Record<string, unknown> }>(
+    "SELECT category, severity, actor_id, device_id, session_id, message, details FROM public.audit_log WHERE type = 'CAPTURE_VIDEO_ABSENT_IN_SESSION' AND session_id = $1 ORDER BY seq",
+    [id],
+  );
+
+/** Row 191b: the audit rows of the audio gap of a session - the rows the seal's extract reads by `session_id`. */
+const gapRows = (of: Rig, id: string) =>
+  of.rows<{ category: string; severity: string; actor_id: string | null; device_id: string | null; session_id: string | null; message: string; details: Record<string, unknown> }>(
+    "SELECT category, severity, actor_id, device_id, session_id, message, details FROM public.audit_log WHERE type = 'CAPTURE_AUDIO_ABSENT_ON_RESTART' AND session_id = $1 ORDER BY seq",
+    [id],
+  );

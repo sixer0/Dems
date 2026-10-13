@@ -209,10 +209,12 @@ describe('the words (PG-10)', () => {
     expect(en.shell.roleNotice.changed).toBe('Your role is now {{role}}. The available actions have changed.')
   })
 
-  it('the navigation table: two items of the group `admin`, Live only, each with its permission; the nine others carry neither', () => {
+  it('the navigation table: three items of the group `admin` (two until task 4 row 112 added the commissioning screen), Live only, each with its permission; the nine others carry neither', () => {
     expect(ADMIN_NAV_ITEMS.map(({ id, to, labelKey, permission, liveOnly }) => ({ id, to, labelKey, permission, liveOnly }))).toEqual([
       { id: 'users-roles', to: '/admin/users', labelKey: 'shell.nav.usersRoles', permission: Permission.USER_ADMIN, liveOnly: true },
       { id: 'paired-devices', to: '/admin/devices', labelKey: 'shell.nav.pairedDevices', permission: Permission.PAIRING_MANAGE, liveOnly: true },
+      // Task 4 row 112 (decision U10): TECHNICIAN only, by `CAPTURE_COMMISSION`.
+      { id: 'commissioning', to: '/admin/commissioning', labelKey: 'web.commissioning.nav', permission: Permission.CAPTURE_COMMISSION, liveOnly: true },
     ])
     const others = NAV_ITEMS.filter((item) => item.group !== 'admin')
     expect(others).toHaveLength(9)
@@ -221,14 +223,15 @@ describe('the words (PG-10)', () => {
       expect(item.liveOnly).toBeUndefined()
     }
     // The group stands between the product pages and DEVELOPER.
-    expect(NAV_ITEMS.map((item) => item.group)).toEqual([...Array<string>(8).fill('main'), 'admin', 'admin', 'developer'])
+    expect(NAV_ITEMS.map((item) => item.group)).toEqual([...Array<string>(8).fill('main'), 'admin', 'admin', 'admin', 'developer'])
   })
 
-  it('the map of routes whose guard needs a permission has three entries', () => {
+  it('the map of routes whose guard needs a permission has four entries (three until task 4 row 112)', () => {
     expect(ROUTE_PERMISSIONS).toEqual({
       '/session/new': Permission.SESSION_START,
       '/admin/users': Permission.USER_ADMIN,
       '/admin/devices': Permission.PAIRING_MANAGE,
+      '/admin/commissioning': Permission.CAPTURE_COMMISSION,
     })
     expect(routePermission('/admin/users')).toBe(Permission.USER_ADMIN)
     expect(routePermission('/evidence')).toBeNull()
@@ -473,6 +476,8 @@ describe('the two routes (PG-1, PG-2, PG-3)', () => {
     for (const [file, feature, permission] of [
       ['users.tsx', '@/features/users-roles', 'USER_ADMIN'],
       ['devices.tsx', '@/features/paired-devices', 'PAIRING_MANAGE'],
+      // Task 4 row 112: the commissioning screen, by the same guard.
+      ['commissioning.tsx', '@/features/commissioning', 'CAPTURE_COMMISSION'],
     ] as const) {
       const text = readFileSync(join(SRC_DIR, 'routes/_app/admin', file), 'utf8')
       const imports = [...text.matchAll(/from '([^']+)'/g)].map((match) => match[1])
@@ -480,7 +485,7 @@ describe('the two routes (PG-1, PG-2, PG-3)', () => {
       expect(text).toContain(`requireCorePermission(context.sim, Permission.${permission})`)
       expect(text).not.toMatch(/\buse[A-Z]\w*\(/) // no hook, no component body
     }
-    expect(readdirSync(join(SRC_DIR, 'routes/_app/admin')).sort()).toEqual(['-guard.ts', 'devices.tsx', 'users.tsx'])
+    expect(readdirSync(join(SRC_DIR, 'routes/_app/admin')).sort()).toEqual(['-guard.ts', 'commissioning.tsx', 'devices.tsx', 'users.tsx'])
   })
 })
 

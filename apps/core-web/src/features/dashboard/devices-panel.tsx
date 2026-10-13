@@ -321,7 +321,8 @@ function CameraTile({ cameraId, index, beatMs }: { cameraId: VideoTrackId; index
         cameraId={cameraId}
         variant="tile"
         // A stream that states no rate (`fps` null) reads its picture without one (task 4 row 54 / I-3, P12-F08): never nothing, never an empty rate.
-        label={camera.fps === null ? t('common.devices.cameraFormatNoRate', { resolution: camera.resolution }) : t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}
+        // Row V6 (S-01): a track with no stored stream statement (`resolution` null) reads "Not stated", never a default picture.
+        label={camera.resolution === null ? t('common.devices.cameraFormatNotStated') : camera.fps === null ? t('common.devices.cameraFormatNoRate', { resolution: camera.resolution }) : t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}
         noSignal={fault}
         ariaLabel={`${name} · ${state}`}
         className="aspect-auto min-h-0 flex-1"

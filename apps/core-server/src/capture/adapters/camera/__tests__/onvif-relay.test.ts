@@ -40,10 +40,14 @@ import {
   type StoredCameraStream,
 } from '../onvif-relay';
 import type { OnvifLocatorResult } from '../onvif-session';
-import { RELAY_REPORT_LINE_MAX_BYTES, RelayReportKind, createRelayReportReader, type RelayReport } from '../relay-start';
+import { RELAY_COUNT_MAX, RELAY_LOSS_CAUSES, RELAY_REPORT_LINE_MAX_BYTES, RELAY_RETRY_TRIES, RelayReportKind, createRelayReportReader, type RelayReport } from '../relay-start';
+import type { StoredCameraAddressRule } from '../stored-address';
+import { ADMITTED_HOST, GATE_CLASSES, REAL_RULE, REFUSED_STORED_ADDRESSES, storedCameraAt } from './stored-address-cases';
 
 const ACCOUNT = { username: ['row46', 'unit', 'account'].join('-'), secret: ['row46', 'unit', 'placeholder', 'Qx7Lm2'].join('-') } as const;
 const CAMERA_HOST = '192.0.2.46';
+/** Row 143b: the camera-interface address the rig's rule names as the source of every dial (a documentation address; nothing is dialled). */
+const SOURCE_ADDRESS = '192.0.2.1';
 const SCHEME = ['rt', 'sp'].join('');
 const LOCATOR = `${SCHEME}://${CAMERA_HOST}:554/stream/main?channel=1&subtype=0`;
 const SESSION = 'SES-20261013-0046';
@@ -61,6 +65,12 @@ const DEVICES: readonly CaptureDeviceEntry[] = [
 ];
 const CANDIDATE: CameraCandidate = { adapterKind: CaptureAdapterKind.ONVIF_RTSP, host: CAMERA_HOST, serviceAddress: `http://${CAMERA_HOST}/onvif/device_service`, endpointRef: null, vendor: null, model: null, name: null, testable: true, conflict: false };
 const TOKEN = 'Main.Stream:0-a';
+/**
+ * Row 143: the rule the rig hands in for the cases that are about something else. It admits the
+ * ONE documentation address of this file's camera and refuses every other, so no case passes by a
+ * rule that admits anything. The cases about the rule itself hand in the REAL one (`REAL_RULE`).
+ */
+const ADMIT_THE_TEST_CAMERA: StoredCameraAddressRule = (host) => (host === CAMERA_HOST ? { allowed: true, destination: { address: host, sourceAddress: SOURCE_ADDRESS } } : { allowed: false, refusal: 'OUTSIDE_CAMERA_SUBNET' });
 
 const flush = async (): Promise<void> => {
   for (let turn = 0; turn < 30; turn += 1) await Promise.resolve();
@@ -176,7 +186,7 @@ interface Rig {
   readonly reports: CameraRelayReport[];
   readonly ends: CameraRelayEnd[];
   readonly notes: CameraRelayNote[];
-  readonly locateCalls: { candidate: CameraCandidate; sealed: unknown; token: string; signal: AbortSignal }[];
+  readonly locateCalls: { candidate: CameraCandidate; sealed: unknown; token: string; signal: AbortSignal; sourceAddress: string | undefined }[];
   readonly readerCalls: { deviceId: string; sessionId: string }[];
   /** Replace a step of the next open. */
   stream: OnvifRelayCameraDependencies['stream'];
@@ -212,9 +222,9 @@ function rig(patch: Partial<OnvifRelayCameraDependencies> = {}): Rig {
       },
     },
     locator: {
-      locate: (candidate, sealed, token, signal) => {
+      locate: (candidate, sealed, token, signal, sourceAddress) => {
         calls.push('locate');
-        locateCalls.push({ candidate, sealed, token, signal });
+        locateCalls.push({ candidate, sealed, token, signal, sourceAddress });
         return state.locate(signal);
       },
     },
@@ -222,6 +232,7 @@ function rig(patch: Partial<OnvifRelayCameraDependencies> = {}): Rig {
       calls.push(`stream ${deviceId} ${profile}`);
       return state.stream(deviceId, profile);
     },
+    storedAddress: ADMIT_THE_TEST_CAMERA,
     relayEnded: (end) => ends.push(end),
     tell: (note) => notes.push(note),
     ...patch,
@@ -307,7 +318,7 @@ describe('T-1: the order of an open (addendum 2.3 step 3)', () => {
     expect(handle.deviceId).toBe('CAM-01');
     // The relay's side of the pairing: session, device and attempt, once, before the open resolved.
     expect(r.reports).toEqual([{ sessionId: SESSION, deviceId: 'CAM-01', attempt: 1 }]);
-    expect(r.adapter.counts()).toEqual({ live: 1, droppedReports: 0 });
+    expect(r.adapter.counts()).toEqual({ live: 1, droppedReports: 0, outOfOrderReports: 0 });
     // The bound of the open was asked for once, 25,000 ms, and is cancelled.
     expect(CAMERA_OPEN_BOUND_MS).toBe(25_000);
     expect(r.timers.asked).toEqual([25_000]);
@@ -324,7 +335,8 @@ describe('T-1: the order of an open (addendum 2.3 step 3)', () => {
     // The stream access of the message prints as the mark: the account and the locator can be read by the serialiser only.
     expect(leaks(everything(child.options.message)).filter((needle) => needle !== INGEST && needle !== INGEST_ELEMENT)).toEqual([]);
     const bytes = startMessageBytes(child.options.message ?? {});
-    const expected = `{"type":"start","mode":"record","ingest":"${INGEST}","attempt":3,"access":{"locator":"${LOCATOR}","username":"${ACCOUNT.username}","secret":"${ACCOUNT.secret}"}}\n`;
+    // Row 143b: the member `source` - the camera-interface address the rule named - stands before the access.
+    const expected = `{"type":"start","mode":"record","ingest":"${INGEST}","attempt":3,"source":"${SOURCE_ADDRESS}","access":{"locator":"${LOCATOR}","username":"${ACCOUNT.username}","secret":"${ACCOUNT.secret}"}}\n`;
     expect(bytes.equals(Buffer.from(expected, 'utf8'))).toBe(true);
     bytes.fill(0);
   });
@@ -398,6 +410,177 @@ describe('T-1: refusals before anything is asked', () => {
     const failed = await outcomeOf(r.adapter.openSource('CAM-02', target({ profile: 'H264_1080P' }), never));
     expect(failed).toMatchObject({ code: CameraOpenRefusal.STREAM_FACTS_NOT_READ });
     expect(leaks(everything(failed))).toEqual([]);
+  });
+});
+
+// Task 4 row 143 (AD-02 (1); GATE CONDITION AD-02): the stored address is untrusted - the runtime database role can
+// write it - so the destination rule is asked at EVERY open, about what is stored then, before the reader.
+describe('row 143: the destination rule on the STORED address, at every open, before the reveal (AD-02 (1))', () => {
+  /** A rig whose rule is the REAL one on hand-written host facts, with the rule's place in the order of an open recorded. */
+  const realRig = (): Rig & { readonly ruled: [string, number | undefined][] } => {
+    const ruled: [string, number | undefined][] = [];
+    const r = rig({
+      storedAddress: (host, port) => {
+        ruled.push([host, port]);
+        r.calls.push('rule');
+        return REAL_RULE(host, port);
+      },
+    });
+    return Object.assign(r, { ruled });
+  };
+
+  it('each of the five refused classes of the gate condition, and the further ones: the named code, 0 reveals, 0 locator reads, 0 relay starts', async () => {
+    for (const className of GATE_CLASSES) expect(REFUSED_STORED_ADDRESSES.some((entry) => entry.className === className), className).toBe(true);
+    for (const entry of REFUSED_STORED_ADDRESSES) {
+      const r = realRig();
+      r.stream = async () => ({ candidate: entry.candidate, onvifProfileToken: TOKEN });
+      const error = await outcomeOf(r.adapter.openSource('CAM-01', target(), never));
+      expect(error, entry.className).toBeInstanceOf(CameraOpenError);
+      expect(error, entry.className).toMatchObject({ code: 'CAPTURE_CAMERA_ADDRESS_REFUSED', deviceId: 'CAM-01', reason: entry.refusal });
+      // Nothing after the stored facts: no reveal (so no audit entry), no request to the camera, no process.
+      expect(r.calls.filter((call) => call !== 'rule'), entry.className).toEqual(['stream CAM-01 HEVC_1080P']);
+      expect(r.readerCalls, entry.className).toEqual([]);
+      expect(r.locateCalls, entry.className).toEqual([]);
+      expect(r.children, entry.className).toEqual([]);
+      expect(r.reports).toEqual([]);
+      expect(r.adapter.counts().live).toBe(0);
+      expect(r.timers.pending()).toBe(0);
+      // The refusal names the class by its code; the address is in nothing it carries.
+      if (entry.candidate.host !== '') expect(everything(error).includes(entry.candidate.host), entry.className).toBe(false);
+    }
+  });
+
+  it('an admitted address: the rule is asked once, after the stored facts and BEFORE the reader, about the stored host and the port of its service address', async () => {
+    const r = realRig();
+    r.stream = async () => ({ candidate: storedCameraAt(ADMITTED_HOST), onvifProfileToken: TOKEN });
+    const { handle } = await opened(r);
+    expect(r.calls).toEqual(['stream CAM-01 HEVC_1080P', 'rule', 'reader', 'locate', 'door']);
+    expect(r.ruled).toEqual([[ADMITTED_HOST, undefined]]);
+    // What is dialled is the candidate that was judged: the locator read got the same object.
+    expect(r.locateCalls[0]?.candidate.host).toBe(ADMITTED_HOST);
+    await handle.close();
+  });
+
+  it('EVERY open is judged anew: a row moved to loopback between two opens refuses the second (a re-open, a new relay), with no reveal for it', async () => {
+    const r = realRig();
+    let stored = storedCameraAt(ADMITTED_HOST);
+    r.stream = async () => ({ candidate: stored, onvifProfileToken: TOKEN });
+    const first = await opened(r);
+    await first.handle.close();
+    expect(r.readerCalls).toHaveLength(1);
+    // The runtime database role updates the address (the finding of the security check).
+    stored = storedCameraAt('127.0.0.1');
+    const second = await outcomeOf(r.adapter.openSource('CAM-01', target({ attempt: 2 }), never));
+    expect(second).toMatchObject({ code: CameraOpenRefusal.ADDRESS_REFUSED, reason: 'LOOPBACK' });
+    expect(r.readerCalls).toHaveLength(1);
+    expect(r.children).toHaveLength(1);
+    // And back: the third open is judged again and passes.
+    stored = storedCameraAt(ADMITTED_HOST);
+    const third = await opened(r, 'CAM-01', { attempt: 3 });
+    expect(r.ruled.map(([host]) => host)).toEqual([ADMITTED_HOST, '127.0.0.1', ADMITTED_HOST]);
+    expect(r.readerCalls).toHaveLength(2);
+    await third.handle.close();
+  });
+
+  it('no rule handed in: every open is refused `STORED_ADDRESS_RULE_ABSENT`; a rule that throws or answers no decision is refused too - nothing here is permissive', async () => {
+    const without = rig({ storedAddress: undefined });
+    expect(await outcomeOf(without.adapter.openSource('CAM-01', target(), never))).toMatchObject({ code: CameraOpenRefusal.ADDRESS_REFUSED, reason: 'STORED_ADDRESS_RULE_ABSENT' });
+    expect(without.calls).toEqual(['stream CAM-01 HEVC_1080P']);
+    for (const broken of [
+      (): never => {
+        throw new Error(`rule failed at ${CAMERA_HOST}`);
+      },
+      () => ({ allowed: 'yes' }),
+      () => ({ allowed: true, destination: { address: '127.0.0.1' } }),
+    ]) {
+      const r = rig({ storedAddress: broken as unknown as StoredCameraAddressRule });
+      const error = await outcomeOf(r.adapter.openSource('CAM-01', target(), never));
+      expect(error).toMatchObject({ code: CameraOpenRefusal.ADDRESS_REFUSED, reason: 'STORED_ADDRESS_RULE_FAILED' });
+      expect(r.readerCalls).toEqual([]);
+      expect(r.children).toEqual([]);
+      expect(leaks(everything(error))).toEqual([]);
+    }
+  });
+
+  // Task 4 row 143b (S13-11 point 2): the SOURCE half of the rule. The judgement names the camera-interface address a
+  // connection must be made FROM; every dial of an open - the locator read and the relay - is handed it, and none is made without.
+  it('row 143b: the source address the rule names goes to BOTH dials of the open - the locator read and the start message of the relay - and is asked anew at every open', async () => {
+    const r = realRig();
+    r.stream = async () => ({ candidate: storedCameraAt(ADMITTED_HOST), onvifProfileToken: TOKEN });
+    const first = await opened(r, 'CAM-01', { attempt: 4 });
+    // The hand-written host facts name ONE camera-interface address: that one, not the office interface's.
+    expect(r.locateCalls.map((call) => call.sourceAddress)).toEqual(['192.168.50.1']);
+    const bytes = startMessageBytes(first.child.options.message ?? {});
+    expect(bytes.toString('utf8').startsWith(`{"type":"start","mode":"record","ingest":"${INGEST}","attempt":4,"source":"192.168.50.1","access":{`)).toBe(true);
+    bytes.fill(0);
+    expect(first.child.options.args).toEqual([]);
+    expect(first.child.options.env).toEqual({});
+    await first.handle.close();
+    const second = await opened(r, 'CAM-01', { attempt: 5 });
+    expect(r.ruled).toHaveLength(2);
+    expect(r.locateCalls.map((call) => call.sourceAddress)).toEqual(['192.168.50.1', '192.168.50.1']);
+    await second.handle.close();
+  });
+
+  it('row 143b: an admission that names NO source address, or one that is not the strict form, is refused `STORED_ADDRESS_SOURCE_ABSENT` before the reveal - no dial is made as the host routes', async () => {
+    const admissions: unknown[] = [
+      { allowed: true },
+      { allowed: true, destination: { address: CAMERA_HOST } },
+      { allowed: true, destination: { address: CAMERA_HOST, sourceAddress: null } },
+      { allowed: true, destination: { address: CAMERA_HOST, sourceAddress: '' } },
+      { allowed: true, destination: { address: CAMERA_HOST, sourceAddress: '0.0.0.0' } },
+      { allowed: true, destination: { address: CAMERA_HOST, sourceAddress: 'camera-interface' } },
+      { allowed: true, destination: { address: CAMERA_HOST, sourceAddress: '192.168.050.1' } },
+      { allowed: true, destination: { address: CAMERA_HOST, sourceAddress: '192.168.50.1:0' } },
+      { allowed: true, destination: { address: CAMERA_HOST, sourceAddress: ' 192.168.50.1' } },
+      { allowed: true, destination: { address: CAMERA_HOST, sourceAddress: '224.0.0.1' } },
+      { allowed: true, destination: { address: CAMERA_HOST, sourceAddress: '255.255.255.255' } },
+      { allowed: true, destination: { address: CAMERA_HOST, sourceAddress: '::1' } },
+      { allowed: true, destination: { address: CAMERA_HOST, sourceAddress: 3232248321 } },
+      { allowed: true, destination: { address: CAMERA_HOST, sourceAddress: ['192.168.50.1'] } },
+    ];
+    for (const [index, admission] of admissions.entries()) {
+      const r = rig({ storedAddress: (() => admission) as unknown as StoredCameraAddressRule });
+      const error = await outcomeOf(r.adapter.openSource('CAM-01', target(), never));
+      expect(error, `admission ${index}`).toMatchObject({ name: 'CameraOpenError', code: CameraOpenRefusal.ADDRESS_REFUSED, deviceId: 'CAM-01', reason: 'STORED_ADDRESS_SOURCE_ABSENT' });
+      // Nothing after the stored facts: no reveal (so no audit entry), no request to the camera, no process.
+      expect(r.calls, `admission ${index}`).toEqual(['stream CAM-01 HEVC_1080P']);
+      expect(r.readerCalls, `admission ${index}`).toEqual([]);
+      expect(r.locateCalls, `admission ${index}`).toEqual([]);
+      expect(r.children, `admission ${index}`).toEqual([]);
+      expect(r.adapter.counts().live).toBe(0);
+      expect(r.timers.pending()).toBe(0);
+      expect(leaks(everything(error))).toEqual([]);
+    }
+  });
+
+  it('the sources: the judgement stands at ONE line of the adapter, between the stored facts and the one read of the credential; the adapter names no address class and no host fact', () => {
+    const lines = readFileSync(resolve(__dirname, '../onvif-relay.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n')
+      .map((line) => line.replace(/\/\/.*$/, '').trim())
+      .filter((line) => line !== '');
+    const judged = lines.findIndex((line) => line === 'const judged = judgeStoredCamera(stored.candidate, dependencies.storedAddress);');
+    const facts = lines.findIndex((line) => line === 'stored = await until(stream(deviceId, profile));');
+    const reveal = lines.findIndex((line) => line === 'sealed = await until(credentials.sessionOpen(deviceId, sessionId));');
+    expect(lines.filter((line) => /\bjudgeStoredCamera\s*\(/.test(line))).toHaveLength(1);
+    expect(facts).toBeGreaterThan(0);
+    expect(judged).toBeGreaterThan(facts);
+    expect(reveal).toBeGreaterThan(judged);
+    expect(lines[judged + 1]).toBe('if (!judged.allowed) throw new CameraOpenError(CameraOpenRefusal.ADDRESS_REFUSED, deviceId, judged.refusal);');
+    // The candidate the locator read is handed is the judged one, by name.
+    expect(lines.filter((line) => /\bstored\.candidate\b/.test(line))).toEqual([lines[judged], 'const located = await until(locator.locate(stored.candidate, sealed, stored.onvifProfileToken, inner.signal, from.sourceAddress));']);
+    // Row 143b: THE SOURCE HALF stands on the two lines after the refusal, before the reveal; it is taken from the judgement
+    // and from nothing else, and it goes to the locator read (above) and to the relay start - the two dials of an open.
+    expect(lines.slice(judged + 2, judged + 4)).toEqual(['const from = storedCameraSourceOf(judged);', "if ('refusal' in from) throw new CameraOpenError(CameraOpenRefusal.ADDRESS_REFUSED, deviceId, from.refusal);"]);
+    expect(reveal).toBeGreaterThan(judged + 3);
+    expect(lines.filter((line) => /\bfrom\.sourceAddress\b/.test(line))).toHaveLength(2);
+    expect(lines.filter((line) => /\bstartCameraRelay\s*\(/.test(line))).toHaveLength(1);
+    expect(lines.find((line) => /\bstartCameraRelay\s*\(/.test(line))).toContain('source: from.sourceAddress,');
+    expect(lines.filter((line) => /\bsourceAddress\b/.test(line) && !/\bfrom\.sourceAddress\b/.test(line))).toEqual([]);
+    // No rule of its own: no address literal, no range, no loopback word in the adapter or the judgement file.
+    const own = [lines.join('\n'), readFileSync(resolve(__dirname, '../stored-address.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')].join('\n');
+    expect(own).not.toMatch(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b|\blocalhost\b|\bloopback\b|decideDestination|DestinationPurpose|networkInterfaces/i);
   });
 });
 
@@ -596,7 +779,7 @@ describe('T-1: the bound of an open and an aborted open (addendum 3.2; AD-09 (3)
     child.exit(null, 'SIGKILL');
     expect(await pending).toMatchObject({ name: 'CaptureAdapterError', code: 'CAPTURE_ADAPTER_ABORTED', deviceId: 'CAM-01' });
     expect(r.reports).toEqual([]);
-    expect(r.adapter.counts()).toEqual({ live: 0, droppedReports: 1 });
+    expect(r.adapter.counts()).toEqual({ live: 0, droppedReports: 1, outOfOrderReports: 0 });
     expect(r.notes.map((note) => note.code)).toEqual(['CAPTURE_RELAY_REPORT_SUPERSEDED']);
     expect(r.ends).toEqual([]);
   });
@@ -863,6 +1046,265 @@ describe('T-1: the relay\'s reports (RC-3 (i); C37)', () => {
   });
 });
 
+// Finding F3-01 of the M3 review (verification/060_m3_review.md): since row 43 the relay says the loss of its camera
+// leg inside a session and its re-open; the reader dropped both lines, so the Core raised nothing until the relay had
+// used up its six tries (62 s of waits) and ended.
+const cameraLost = (attempt: number, loss: number, cause = 32): string => `{"report":"camera_lost","v":1,"attempt":${attempt},"loss":${loss},"cause":${cause}}\n`;
+const cameraReopened = (attempt: number, loss: number, tries = 1, heldBack = 25, gapMs = 3_040): string => `{"report":"camera_reopened","v":1,"attempt":${attempt},"loss":${loss},"tries":${tries},"held_back":${heldBack},"gap_ms":${gapMs}}\n`;
+
+describe('finding F3-01: the relay\'s `camera_lost` and `camera_reopened` (row 43) are read, and told at once', () => {
+  it('the reader: each of the two lines in the relay\'s own form, whole and split; the bounds of every number are the relay\'s', () => {
+    const seen: RelayReport[] = [];
+    const reader = createRelayReportReader((report) => seen.push(report));
+    reader.push(Buffer.from(cameraLost(7, 1)));
+    const whole = cameraReopened(7, 1, 3, 25, 8_103);
+    reader.push(Buffer.from(whole.slice(0, 31)));
+    reader.push(Buffer.from(whole.slice(31)));
+    for (const cause of RELAY_LOSS_CAUSES) reader.push(Buffer.from(cameraLost(RELAY_COUNT_MAX, RELAY_COUNT_MAX, cause)));
+    reader.push(Buffer.from(cameraReopened(1, 1, RELAY_RETRY_TRIES, 0, 0) + cameraReopened(1, 2, 1, RELAY_COUNT_MAX, RELAY_COUNT_MAX)));
+    expect(seen).toEqual([
+      { kind: RelayReportKind.CAMERA_LOST, attempt: 7, loss: 1, cause: 32 },
+      { kind: RelayReportKind.CAMERA_REOPENED, attempt: 7, loss: 1, tries: 3, heldBack: 25, gapMs: 8_103 },
+      ...[20, 23, 31, 32].map((cause) => ({ kind: RelayReportKind.CAMERA_LOST, attempt: 999_999_999, loss: 999_999_999, cause })),
+      { kind: RelayReportKind.CAMERA_REOPENED, attempt: 1, loss: 1, tries: 6, heldBack: 0, gapMs: 0 },
+      { kind: RelayReportKind.CAMERA_REOPENED, attempt: 1, loss: 2, tries: 1, heldBack: 999_999_999, gapMs: 999_999_999 },
+    ]);
+    expect(reader.rejected()).toBe(0);
+    expect(seen.every((report) => Object.isFrozen(report))).toBe(true);
+    // The longest line the relay can make is far inside the bound of one line.
+    expect(Buffer.byteLength(cameraReopened(RELAY_COUNT_MAX, RELAY_COUNT_MAX, 6, RELAY_COUNT_MAX, RELAY_COUNT_MAX))).toBeLessThan(RELAY_REPORT_LINE_MAX_BYTES / 2);
+  });
+
+  it('the reader: a line that differs from the form by a member, an order, a sign, a digit or a byte is counted and dropped - an unknown line is still refused', () => {
+    const seen: RelayReport[] = [];
+    const reader = createRelayReportReader((report) => seen.push(report));
+    const refused = [
+      // camera_lost: a member missing, one too many, another order, another version.
+      '{"report":"camera_lost","v":1,"attempt":1,"loss":1}',
+      '{"report":"camera_lost","v":1,"attempt":1,"cause":32}',
+      '{"report":"camera_lost","v":1,"attempt":1,"loss":1,"cause":32,"more":1}',
+      '{"report":"camera_lost","v":1,"loss":1,"attempt":1,"cause":32}',
+      '{"report":"camera_lost","v":2,"attempt":1,"loss":1,"cause":32}',
+      '{"report":"camera_lost","attempt":1,"loss":1,"cause":32}',
+      // Numbers outside the relay's own: no attempt, no loss, a cause the relay never opens again (24 ends it), ten digits, a sign, a leading zero, a fraction, a text.
+      '{"report":"camera_lost","v":1,"attempt":0,"loss":1,"cause":32}',
+      '{"report":"camera_lost","v":1,"attempt":1,"loss":0,"cause":32}',
+      '{"report":"camera_lost","v":1,"attempt":1,"loss":1,"cause":24}',
+      '{"report":"camera_lost","v":1,"attempt":1,"loss":1,"cause":0}',
+      '{"report":"camera_lost","v":1,"attempt":1,"loss":1,"cause":320}',
+      '{"report":"camera_lost","v":1,"attempt":1234567890,"loss":1,"cause":32}',
+      '{"report":"camera_lost","v":1,"attempt":1,"loss":1234567890,"cause":32}',
+      '{"report":"camera_lost","v":1,"attempt":1,"loss":-1,"cause":32}',
+      '{"report":"camera_lost","v":1,"attempt":1,"loss":01,"cause":32}',
+      '{"report":"camera_lost","v":1,"attempt":1,"loss":1.5,"cause":32}',
+      '{"report":"camera_lost","v":1,"attempt":1,"loss":"1","cause":32}',
+      '{"report":"camera_lost","v":1,"attempt":1,"loss":1,"cause":"CAMERA_LOST"}',
+      // A text where the relay has none: an address, a path.
+      `{"report":"camera_lost","v":1,"attempt":1,"loss":1,"cause":32,"camera":"${CAMERA_HOST}"}`,
+      // Spaces, another case, a second object on the line, a byte outside ASCII.
+      '{"report": "camera_lost","v":1,"attempt":1,"loss":1,"cause":32}',
+      '{"report":"CAMERA_LOST","v":1,"attempt":1,"loss":1,"cause":32}',
+      '{"report":"camera_lost","v":1,"attempt":1,"loss":1,"cause":32}{"report":"camera_lost","v":1,"attempt":1,"loss":2,"cause":32}',
+      '{"report":"camera_lost","v":1,"attempt":1,"loss":1,"cause":32}\r',
+      '{"report":"camera_lost","v":1,"attempt":1,"loss":1,"cause":32 }',
+      // camera_reopened: the same, and its own bounds - 0 tries, 7 tries, a member missing, the members in another order.
+      '{"report":"camera_reopened","v":1,"attempt":1,"loss":1,"tries":0,"held_back":0,"gap_ms":0}',
+      '{"report":"camera_reopened","v":1,"attempt":1,"loss":1,"tries":7,"held_back":0,"gap_ms":0}',
+      '{"report":"camera_reopened","v":1,"attempt":1,"loss":1,"tries":1,"held_back":0}',
+      '{"report":"camera_reopened","v":1,"attempt":1,"loss":1,"tries":1,"gap_ms":0,"held_back":0}',
+      '{"report":"camera_reopened","v":1,"attempt":1,"loss":1,"tries":1,"held_back":-1,"gap_ms":0}',
+      '{"report":"camera_reopened","v":1,"attempt":1,"loss":1,"tries":1,"held_back":00,"gap_ms":0}',
+      '{"report":"camera_reopened","v":1,"attempt":1,"loss":1,"tries":1,"held_back":0,"gap_ms":1234567890}',
+      '{"report":"camera_reopened","v":1,"attempt":1,"loss":0,"tries":1,"held_back":0,"gap_ms":0}',
+      '{"report":"camera_reopened","v":1,"attempt":0,"loss":1,"tries":1,"held_back":0,"gap_ms":0}',
+      '{"report":"camera_reopened","v":1,"attempt":1,"loss":1,"tries":1,"held_back":0,"gap_ms":0,"cause":32}',
+      // Words of the relay's STANDARD ERROR with the same names are no report, and a report word the Core does not know is none.
+      '{"relay":"camera_lost","code":"CAMERA_LOST","rc":32}',
+      '{"relay":"camera_reopened","code":"RUNNING","rc":0}',
+      '{"report":"camera_gone","v":1,"attempt":1,"loss":1,"cause":32}',
+      // Oversized: a line of the form's beginning that never ends inside the bound.
+      `{"report":"camera_lost","v":1,"attempt":1,"loss":1,"cause":32${' '.repeat(RELAY_REPORT_LINE_MAX_BYTES)}}`,
+    ];
+    for (const text of refused) reader.push(Buffer.from(`${text}\n`, 'latin1'));
+    expect(seen).toEqual([]);
+    expect(reader.rejected()).toBe(refused.length);
+    // An endless line that BEGINS as a loss is never kept and never a report; the line after it is read.
+    reader.push(Buffer.from('{"report":"camera_lost","v":1,"attempt":1,"loss":'));
+    for (let chunk = 0; chunk < 64; chunk += 1) reader.push(Buffer.alloc(1_024, 0x31));
+    reader.push(Buffer.from(`,"cause":32}\n${cameraLost(1, 1)}`));
+    expect(seen).toEqual([{ kind: RelayReportKind.CAMERA_LOST, attempt: 1, loss: 1, cause: 32 }]);
+    expect(reader.rejected()).toBe(refused.length + 1);
+  });
+
+  it('the forms and the bounds are the relay\'s own: its two line makers, its tries, its largest number and the codes it opens again, read from its sources', () => {
+    const core = readFileSync(resolve(__dirname, '../../../../../../capture-worker/src/relay/relay_core.c'), 'utf8');
+    const header = readFileSync(resolve(__dirname, '../../../../../../capture-worker/src/relay/relay.h'), 'utf8');
+    // The literal pieces of the two makers, in their order, are exactly the pieces of the lines this file writes.
+    const pieces = (maker: string): string[] => {
+      const body = core.slice(core.indexOf(`int ${maker}(`));
+      return [...body.slice(0, body.indexOf('return put_end')).matchAll(/put\(&o, "((?:[^"\\]|\\.)*)"\);/g)].map((match) => (match[1] ?? '').replace(/\\"/g, '"'));
+    };
+    expect(pieces('relay_loss_line').join('N')).toBe(cameraLost(7, 7, 7).trim().replace(/7/g, 'N'));
+    expect(pieces('relay_reopened_line').join('N')).toBe(cameraReopened(7, 7, 7, 7, 7).trim().replace(/7/g, 'N'));
+    expect(Number(/#define RELAY_RETRY_TRIES (\d+)/.exec(header)?.[1])).toBe(RELAY_RETRY_TRIES);
+    expect(Number(/#define RELAY_COUNT_MAX (\d+)L/.exec(header)?.[1])).toBe(RELAY_COUNT_MAX);
+    // The causes: the codes `relay_loss_kind` names as retried or as a refusal, by their numbers in the header.
+    const kinds = core.slice(core.indexOf('int relay_loss_kind('), core.indexOf('return RELAY_LOSS_ENDS;'));
+    const numbers = [...kinds.matchAll(/code == (RELAY_[A-Z_]+)/g)].map((match) => Number(new RegExp(`${match[1]} = (\\d+)`).exec(header)?.[1]));
+    expect(numbers.sort((a, b) => a - b)).toEqual([...RELAY_LOSS_CAUSES]);
+  });
+
+  it('a loss is told with the relay\'s FIRST line and a re-open with its line: on the report source, with the member `leg`, and the established push is told once only', async () => {
+    const r = rig();
+    const { handle, child } = await opened(r, 'CAM-02', { profile: 'H264_1080P', attempt: 7 });
+    expect(r.reports).toEqual([{ sessionId: SESSION, deviceId: 'CAM-02', attempt: 7 }]);
+    child.say(cameraLost(7, 1, 32));
+    // In the same turn: no timer, no wait for the relay's tries.
+    expect(r.reports).toHaveLength(2);
+    expect(r.reports[1]).toEqual({ sessionId: SESSION, deviceId: 'CAM-02', attempt: 7, leg: { event: 'LOST', profile: 'H264_1080P', loss: 1, cause: 'CAMERA_LOST' } });
+    child.say(cameraReopened(7, 1, 3, 25, 8_103));
+    expect(r.reports[2]).toEqual({ sessionId: SESSION, deviceId: 'CAM-02', attempt: 7, leg: { event: 'REOPENED', profile: 'H264_1080P', loss: 1, tries: 3, heldBack: 25, gapMs: 8_103 } });
+    // The second loss of the same relay, by each of its causes' words; the relay lives through all of it.
+    child.say(cameraLost(7, 2, 31) + cameraReopened(7, 2) + cameraLost(7, 3, 20) + cameraReopened(7, 3) + cameraLost(7, 4, 23));
+    expect(r.reports.slice(3).map((report) => [report.leg?.event, report.leg?.loss, report.leg?.event === 'LOST' ? report.leg.cause : null])).toEqual([
+      ['LOST', 2, 'CAMERA_STALLED'],
+      ['REOPENED', 2, null],
+      ['LOST', 3, 'CAMERA_UNREACHABLE'],
+      ['REOPENED', 3, null],
+      ['LOST', 4, 'AUTH_REFUSED'],
+    ]);
+    expect(r.reports.filter((report) => report.leg === undefined)).toHaveLength(1);
+    expect(r.adapter.counts()).toEqual({ live: 1, droppedReports: 0, outOfOrderReports: 0 });
+    expect([r.ends, r.notes, r.timers.pending()]).toEqual([[], [], 0]);
+    expect(leaks(everything(r.reports))).toEqual([]);
+    // The relay gives up (its tries are used up, the code of its last try): the end is said once, as before.
+    child.exit(20);
+    await flush();
+    expect(r.ends).toEqual([{ sessionId: SESSION, deviceId: 'CAM-02', attempt: 7, profile: 'H264_1080P', code: CameraOpenRefusal.UNREACHABLE, reason: 'CAMERA_UNREACHABLE' }]);
+    await handle.close();
+  });
+
+  it('out of order: a loss before the push is established, a loss number said already, a re-open of no open loss or of another number - dropped, counted, noted, never told', async () => {
+    const r = rig();
+    // Before the established push no loss is a loss inside a session, and it does not bring the open up.
+    const pendingOpen = await opening(r, 'CAM-01', { attempt: 3 });
+    pendingOpen.child.say(cameraLost(3, 1) + cameraReopened(3, 1));
+    await flush();
+    expect(r.reports).toEqual([]);
+    expect(r.adapter.counts().outOfOrderReports).toBe(2);
+    pendingOpen.child.say(established(3));
+    expect(await pendingOpen.pending).toMatchObject({ deviceId: 'CAM-01' });
+    const child = pendingOpen.child;
+    // A re-open with no loss open.
+    child.say(cameraReopened(3, 1));
+    expect(r.reports).toHaveLength(1);
+    // The first loss; said again, and a lower number: one absence, told once.
+    child.say(cameraLost(3, 1) + cameraLost(3, 1));
+    expect(r.reports.map((report) => report.leg?.event ?? 'ESTABLISHED')).toEqual(['ESTABLISHED', 'LOST']);
+    // A re-open of another number ends nothing: the loss that was told stays told.
+    child.say(cameraReopened(3, 2));
+    expect(r.reports).toHaveLength(2);
+    // A HIGHER loss while one is open (the re-open line between them was never seen): the camera is away either way - nothing told twice, noted.
+    child.say(cameraLost(3, 2));
+    expect(r.reports).toHaveLength(2);
+    // The re-open of the number that is open now ends the absence; the earlier number no longer does.
+    child.say(cameraReopened(3, 1));
+    expect(r.reports).toHaveLength(2);
+    child.say(cameraReopened(3, 2));
+    expect(r.reports.map((report) => report.leg?.event ?? 'ESTABLISHED')).toEqual(['ESTABLISHED', 'LOST', 'REOPENED']);
+    expect(r.reports[2]?.leg).toMatchObject({ loss: 2 });
+    // A loss that skips a number is taken (told) and noted.
+    child.say(cameraLost(3, 5));
+    expect(r.reports.at(-1)?.leg).toMatchObject({ event: 'LOST', loss: 5 });
+    expect(r.adapter.counts()).toEqual({ live: 1, droppedReports: 0, outOfOrderReports: 8 });
+    expect(new Set(r.notes.map((note) => note.code))).toEqual(new Set(['CAPTURE_RELAY_REPORT_OUT_OF_ORDER']));
+    expect(r.notes).toHaveLength(8);
+  });
+
+  it('C37: a leg report of a superseded attempt, of a relay that is being ended, or one that names another attempt than the relay\'s own, is dropped and counted - it reaches nobody', async () => {
+    const r = rig();
+    // Attempt 1 is established; then the worker is replaced: attempt 2 of the same session is opened for the other camera.
+    const old = await opened(r, 'CAM-01', { attempt: 1 });
+    const fresh = await opened(r, 'CAM-02', { profile: 'H264_1080P', attempt: 2 });
+    const before = r.reports.length;
+    old.child.say(cameraLost(1, 1) + cameraReopened(1, 1));
+    await flush();
+    expect(r.reports).toHaveLength(before);
+    expect(r.adapter.counts()).toEqual({ live: 2, droppedReports: 2, outOfOrderReports: 0 });
+    expect(r.notes.map((note) => [note.code, note.deviceId, note.attempt])).toEqual([
+      ['CAPTURE_RELAY_REPORT_SUPERSEDED', 'CAM-01', 1],
+      ['CAPTURE_RELAY_REPORT_SUPERSEDED', 'CAM-01', 1],
+    ]);
+    // The relay of the attempt in force names another attempt than its own start message: not this relay's word.
+    fresh.child.say(cameraLost(1, 1) + cameraLost(3, 1));
+    expect(r.reports).toHaveLength(before);
+    expect(r.notes.slice(2).map((note) => note.code)).toEqual(['CAPTURE_RELAY_REPORT_ATTEMPT_DIFFERS', 'CAPTURE_RELAY_REPORT_ATTEMPT_DIFFERS']);
+    // Its own word is told.
+    fresh.child.say(cameraLost(2, 1));
+    expect(r.reports.at(-1)).toMatchObject({ deviceId: 'CAM-02', attempt: 2, leg: { event: 'LOST', loss: 1 } });
+    // A source that is being closed: what its relay still says about its leg is dropped.
+    fresh.child.endsOnInputEnd = false;
+    const closing = fresh.handle.close();
+    fresh.child.say(cameraReopened(2, 1));
+    fresh.child.exit(0);
+    await closing;
+    expect(r.reports.at(-1)?.leg).toMatchObject({ event: 'LOST' });
+    expect(r.adapter.counts().droppedReports).toBe(5);
+    await old.handle.close();
+  });
+
+  it('with the camera watch as the composition wires it: the fault of THAT camera is raised by the first line of the loss and cleared by the re-open; the relay\'s later end adds no second fault', async () => {
+    const raised: unknown[] = [];
+    const cleared: unknown[] = [];
+    const changes: unknown[] = [];
+    const watch = createCameraWatch({
+      timers: manualTimers(),
+      now: () => 0,
+      reader: { read: async () => ({ answered: false, cameraUtcMs: null }) },
+      candidate: async () => CANDIDATE,
+      faults: { raise: (fault) => void raised.push(fault), clear: (fault) => void cleared.push(fault) },
+      onChange: (change) => changes.push(change),
+    });
+    const r = rig({ relayEnded: (end) => watch.relayEnded(end) });
+    r.adapter.relayReports.subscribe((report) => watch.pushEstablished(report));
+    const one = await opened(r, 'CAM-01', { attempt: 1 });
+    const two = await opened(r, 'CAM-02', { profile: 'H264_1080P', attempt: 1 });
+    expect([raised, cleared]).toEqual([[], []]);
+    // The loss: raised in the turn of the line. BEFORE this row nothing was raised here - only at the relay's end.
+    one.child.say(cameraLost(1, 1, 32));
+    expect(raised).toEqual([{ code: 'CAPTURE_FAULT', subject: 'CAM-01', reason: 'CAMERA_STREAM_ENDED' }]);
+    expect(watch.lost()).toEqual(['CAM-01']);
+    expect(r.timers.pending()).toBe(0);
+    // The re-open clears it - the watch's own raise, of that camera.
+    one.child.say(cameraReopened(1, 1, 1, 25, 3_040));
+    expect(cleared).toEqual([{ code: 'CAPTURE_FAULT', subject: 'CAM-01', reason: 'CAMERA_STREAM_ENDED' }]);
+    expect(watch.lost()).toEqual([]);
+    // A second absence that never ends: raised once; the relay's end (tries used up) is the same absence, not a second fault.
+    one.child.say(cameraLost(1, 2, 32));
+    one.child.exit(20);
+    await flush();
+    expect(raised).toHaveLength(2);
+    expect(cleared).toHaveLength(1);
+    expect(watch.lost()).toEqual(['CAM-01']);
+    // The other camera was never touched by any of it.
+    expect([...raised, ...cleared].every((fault) => (fault as { subject: string }).subject === 'CAM-01')).toBe(true);
+    // The camera is back for a later worker: the established push of the new relay ends the loss (row 49's rule, unchanged).
+    const again = await opened(r, 'CAM-01', { attempt: 2 });
+    expect(cleared).toHaveLength(2);
+    expect(watch.lost()).toEqual([]);
+    expect(changes).toEqual([
+      { deviceId: 'CAM-01', event: 'STREAM_LOST', cause: 'CAMERA_LOST' },
+      { deviceId: 'CAM-01', event: 'STREAM_RETURNED', cause: null },
+      { deviceId: 'CAM-01', event: 'STREAM_LOST', cause: 'CAMERA_LOST' },
+      { deviceId: 'CAM-01', event: 'STREAM_RETURNED', cause: null },
+    ]);
+    await again.handle.close();
+    await two.handle.close();
+    await flush();
+    expect([raised.length, cleared.length]).toEqual([2, 2]);
+  });
+});
+
 describe('T-1: what the adapter is and is not', () => {
   it('`pullUrl` refuses by a named code; the members of other rows refuse as class C; the adapter states an opener of the production kind', async () => {
     const { adapter } = rig();
@@ -910,13 +1352,15 @@ describe('T-1: what the adapter is and is not', () => {
     // AD-05 (1), BR-07 (4): the address of the target stands at ONE line, as an argument of the relay start.
     const naming = adapter.filter((line) => /\bingestUrl\b/.test(line));
     expect(naming).toHaveLength(1);
-    expect(naming[0]).toMatch(/^const process = startCameraRelay\(\{ door, program: relayProgram, timers, locator: located\.locator, sealed, ingest: target\.ingestUrl, attempt, onOutput: \(chunk\) => reader\.push\(chunk\) \}\);$/);
+    expect(naming[0]).toMatch(/^const process = startCameraRelay\(\{ door, program: relayProgram, timers, locator: located\.locator, sealed, ingest: target\.ingestUrl, attempt, source: from\.sourceAddress, onOutput: \(chunk\) => reader\.push\(chunk\) \}\);$/);
     expect(adapter.filter((line) => /\btarget\b/.test(line) && !line.startsWith('async function openSource(') && line !== 'const { profile, sessionId, attempt } = target;')).toEqual(naming);
     // In the relay start it is a member of the message and of the options type, and nothing else.
     expect(relayStart.filter((line) => /\bingest\b/.test(line))).toEqual(['readonly ingest: string;', 'ingest: start.ingest,']);
-    // The slot of a live relay holds identifiers and the process: no locator, no address, no credential member.
+    // The slot of a live relay holds identifiers, the process and (finding F3-01) one flag and two loss numbers of its camera leg: no locator, no address, no credential member.
     const slot = adapter.slice(adapter.indexOf('interface Slot {'), adapter.indexOf('}', adapter.indexOf('interface Slot {')) + 1).join(' ');
-    expect(slot).toBe('interface Slot { readonly deviceId: string; readonly profile: string; readonly sessionId: string; readonly attempt: number; process: ProductionProcess | null; ending: boolean; closed: Promise<void> | null; }');
+    expect(slot).toBe(
+      'interface Slot { readonly deviceId: string; readonly profile: string; readonly sessionId: string; readonly attempt: number; process: ProductionProcess | null; ending: boolean; closed: Promise<void> | null; established: boolean; lastLoss: number; lossOpen: number | null; }',
+    );
     // The locator and the credential are locals of the open: named in `openSource` only, never assigned to a slot or a map.
     for (const line of adapter.filter((text) => /\b(?:sealed|located)\b/.test(text))) expect(line, line).not.toMatch(/\bslot\.|\.set\(|\blive\b|\bthis\./);
     // The adapter opens no unit of work, so a read can never be moved inside one here; it logs nothing and reads no clock.
@@ -931,6 +1375,153 @@ describe('T-1: what the adapter is and is not', () => {
     expect(adapter.filter((line) => /\bcredentials\.\w+\(/.test(line))).toEqual(['sealed = await until(credentials.sessionOpen(deviceId, sessionId));']);
     // C36: no profile constant stands in for the plan's statement.
     expect(adapter.join('\n')).not.toMatch(/EMPTY_SLOT_PROFILE|H264_1080P25|DEFAULT_PROFILE/);
+  });
+});
+
+// Task 4 row 85d (decision C63 (g)): THE DOOR OF A LATER DEVICE. A camera adopted on a running production Core has its
+// stored row and stream facts (the rig's `stream` answers for any id, as the composition's read does) and no place in
+// the adapter's first list. `admitDevice` gives it one; from then on it is opened as any camera of that list.
+describe('row 85d: `admitDevice` - a camera adopted after the build is served by the same adapter, under the same rules of an open', () => {
+  const LATER: CaptureDeviceEntry = { id: 'CAM-03', deviceClass: 'CAMERA', label: 'Adopted later', capabilities: ['VIDEO'], profiles: ['HEVC_1080P'] };
+  const codeOfThrow = (act: () => void): unknown => {
+    try {
+      act();
+    } catch (error) {
+      return error instanceof CaptureAdapterError ? error.code : error;
+    }
+    return 'ADMITTED';
+  };
+
+  it('before the admission the camera is unknown and nothing is asked; the admission itself reads no stored fact, reveals nothing, dials nothing and starts nothing', async () => {
+    const r = rig({ clock: async () => 12 });
+    expect(await outcomeOf(r.adapter.openSource('CAM-03', target(), never))).toMatchObject({ name: 'CaptureAdapterError', code: 'CAPTURE_DEVICE_UNKNOWN' });
+    expect(await outcomeOf(r.adapter.ntpOffsetMs('CAM-03'))).toMatchObject({ code: 'CAPTURE_DEVICE_UNKNOWN' });
+    expect(r.adapter.admittedDevices()).toEqual([]);
+    r.adapter.admitDevice(LATER);
+    expect([r.calls, r.readerCalls, r.locateCalls, r.children, r.timers.pending(), r.adapter.counts()]).toEqual([[], [], [], [], 0, { live: 0, droppedReports: 0, outOfOrderReports: 0 }]);
+    expect(r.adapter.admittedDevices()).toEqual([LATER]);
+    expect(Object.isFrozen(r.adapter.admittedDevices()[0])).toBe(true);
+    // The first list is what it was: the registry takes the later camera as an entry of its own.
+    expect(r.adapter.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02']);
+    expect(await r.adapter.ntpOffsetMs('CAM-03')).toBe(12);
+  });
+
+  it('after it: the open of the admitted camera is the open of any camera - stored facts, the judgement of its STORED address, ONE reveal, the locator read and the relay FROM the rule\'s source address, the pairing report, the loss callback', async () => {
+    const r = rig();
+    r.adapter.admitDevice(LATER);
+    const { handle, child } = await opened(r, 'CAM-03', { attempt: 2 });
+    expect(r.calls).toEqual(['stream CAM-03 HEVC_1080P', 'reader', 'locate', 'door']);
+    expect(r.readerCalls).toEqual([{ deviceId: 'CAM-03', sessionId: SESSION }]);
+    expect(r.locateCalls[0]?.sourceAddress).toBe(SOURCE_ADDRESS);
+    expect((JSON.parse(startMessageBytes(child.options.message ?? {}).toString('utf8')) as Record<string, unknown>)['source']).toBe(SOURCE_ADDRESS);
+    expect(r.reports).toEqual([{ sessionId: SESSION, deviceId: 'CAM-03', attempt: 2 }]);
+    expect(handle.deviceId).toBe('CAM-03');
+    // It is keyed and counted like the others, beside a camera of the first list.
+    const first = await opened(r, 'CAM-01', { attempt: 2 });
+    expect(r.adapter.counts().live).toBe(2);
+    expect(await outcomeOf(r.adapter.openSource('CAM-03', target({ attempt: 2 }), never))).toMatchObject({ code: CameraOpenRefusal.ALREADY_OPEN, deviceId: 'CAM-03' });
+    // A relay of the admitted camera that ends by itself is told once, as any other.
+    child.exit(32);
+    await flush();
+    expect(r.ends).toMatchObject([{ deviceId: 'CAM-03', profile: 'HEVC_1080P', code: CameraOpenRefusal.STREAM_LOST, reason: 'CAMERA_LOST' }]);
+    await first.handle.close();
+    expect(r.adapter.counts().live).toBe(0);
+  });
+
+  it('the stored-address rule stands before the reveal for it too: each refused class of stored address, an admission without a source address, no stored stream of the profile - nothing read, nothing dialled, no relay', async () => {
+    for (const entry of REFUSED_STORED_ADDRESSES) {
+      const r = rig({ storedAddress: REAL_RULE });
+      r.stream = async () => ({ candidate: entry.candidate, onvifProfileToken: TOKEN });
+      r.adapter.admitDevice(LATER);
+      expect(await outcomeOf(r.adapter.openSource('CAM-03', target(), never)), entry.className).toMatchObject({ name: 'CameraOpenError', code: CameraOpenRefusal.ADDRESS_REFUSED, deviceId: 'CAM-03', reason: entry.refusal });
+      expect([r.readerCalls, r.locateCalls, r.children], entry.className).toEqual([[], [], []]);
+    }
+    const sourceless = rig({ storedAddress: (host) => ({ allowed: true, destination: { address: host } }) });
+    sourceless.adapter.admitDevice(LATER);
+    expect(await outcomeOf(sourceless.adapter.openSource('CAM-03', target(), never))).toMatchObject({ code: CameraOpenRefusal.ADDRESS_REFUSED, reason: 'STORED_ADDRESS_SOURCE_ABSENT' });
+    expect([sourceless.readerCalls, sourceless.children]).toEqual([[], []]);
+    const noStream = rig();
+    noStream.stream = async () => null;
+    noStream.adapter.admitDevice(LATER);
+    expect(await outcomeOf(noStream.adapter.openSource('CAM-03', target(), never))).toMatchObject({ name: 'CaptureAdapterError', code: 'CAPTURE_PROFILE_UNKNOWN' });
+    expect([noStream.readerCalls, noStream.children]).toEqual([[], []]);
+  });
+
+  it('idempotent: a second admission, and the admission of a camera of the first list, change nothing - a live relay of it stays', async () => {
+    const r = rig();
+    r.adapter.admitDevice(LATER);
+    const { handle, child } = await opened(r, 'CAM-03');
+    r.adapter.admitDevice(LATER);
+    r.adapter.admitDevice({ ...LATER, label: 'another label', profiles: [] });
+    r.adapter.admitDevice(DEVICES[0]!);
+    expect(r.adapter.admittedDevices()).toEqual([LATER]);
+    expect(r.adapter.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02']);
+    expect([child.alive, r.adapter.counts().live, r.children.length]).toEqual([true, 1, 1]);
+    await handle.close();
+  });
+
+  it('refused, each by its name and with nothing changed: no entry, another class, an id of another class, another adapter kind, another source class, a capability or a profile list that is not a camera\'s', async () => {
+    const r = rig();
+    const cases: readonly [string, unknown, string][] = [
+      ['null', null, 'CAPTURE_DEVICE_UNKNOWN'],
+      ['a text', 'CAM-03', 'CAPTURE_DEVICE_UNKNOWN'],
+      ['no id', { ...LATER, id: undefined }, 'CAPTURE_DEVICE_UNKNOWN'],
+      ['a microphone', { id: 'MIC-03', deviceClass: 'MIC', label: 'Microphone', capabilities: ['AUDIO'], profiles: [] }, 'CAPTURE_DEVICE_CLASS_MISMATCH'],
+      ['a switch', { id: 'POE-01', deviceClass: 'POE', label: 'Switch', capabilities: [], profiles: [] }, 'CAPTURE_DEVICE_CLASS_MISMATCH'],
+      ['a microphone id under the class CAMERA', { ...LATER, id: 'MIC-03' }, 'CAPTURE_DEVICE_CLASS_MISMATCH'],
+      ['an id that is no registry id', { ...LATER, id: `http://${CAMERA_HOST}/` }, 'CAPTURE_DEVICE_CLASS_MISMATCH'],
+      ['a camera id under the class MIC', { ...LATER, deviceClass: 'MIC' }, 'CAPTURE_DEVICE_CLASS_MISMATCH'],
+      ['the fake kind', { ...LATER, adapterKind: CaptureAdapterKind.FAKE }, 'CAPTURE_ADAPTER_KIND_NOT_ALLOWED'],
+      ['the development device kind', { ...LATER, adapterKind: CaptureAdapterKind.LOCAL_DEVICE }, 'CAPTURE_ADAPTER_KIND_NOT_ALLOWED'],
+      ['the development source class', { ...LATER, adapterKind: CaptureAdapterKind.ONVIF_RTSP, sourceClass: 'DEVELOPMENT' }, 'DEVELOPMENT_SOURCE_NOT_ALLOWED'],
+      ['an audio capability', { ...LATER, capabilities: ['VIDEO', 'AUDIO'] }, 'CAPTURE_DEVICE_CLASS_MISMATCH'],
+      ['no video capability', { ...LATER, capabilities: ['PULL'] }, 'CAPTURE_DEVICE_CLASS_MISMATCH'],
+      ['no label', { ...LATER, label: null }, 'CAPTURE_DEVICE_CLASS_MISMATCH'],
+      ['a profile that is no code', { ...LATER, profiles: ['main stream'] }, 'CAPTURE_PROFILE_UNKNOWN'],
+      ['a profile named twice', { ...LATER, profiles: ['HEVC_1080P', 'HEVC_1080P'] }, 'CAPTURE_PROFILE_UNKNOWN'],
+      ['17 profiles', { ...LATER, profiles: Array.from({ length: 17 }, (_unused, index) => `H264_${String(index)}`) }, 'CAPTURE_PROFILE_UNKNOWN'],
+      ['profiles that are no list', { ...LATER, profiles: 'HEVC_1080P' }, 'CAPTURE_PROFILE_UNKNOWN'],
+    ];
+    for (const [label, entry, code] of cases) expect(codeOfThrow(() => r.adapter.admitDevice(entry as CaptureDeviceEntry)), label).toBe(code);
+    expect(r.adapter.admittedDevices()).toEqual([]);
+    expect(await outcomeOf(r.adapter.openSource('CAM-03', target(), never))).toMatchObject({ code: 'CAPTURE_DEVICE_UNKNOWN' });
+    expect([r.calls, r.children]).toEqual([[], []]);
+    // No text of a refused entry is in its refusal.
+    const hostile = (() => {
+      try {
+        r.adapter.admitDevice({ ...LATER, id: `http://${CAMERA_HOST}/` });
+      } catch (error) {
+        return everything(error);
+      }
+      return '';
+    })();
+    expect(leaks(hostile)).toEqual([]);
+    // CONTROLS: a descriptor that states THIS adapter's kind and the production class is taken; so is a camera whose stored profile list is empty (C36: none is assumed).
+    expect(codeOfThrow(() => r.adapter.admitDevice({ ...LATER, adapterKind: CaptureAdapterKind.ONVIF_RTSP, sourceClass: 'PRODUCTION', hasOpener: true } as CaptureDeviceEntry))).toBe('ADMITTED');
+    expect(codeOfThrow(() => r.adapter.admitDevice({ ...LATER, id: 'CAM-04', profiles: [] }))).toBe('ADMITTED');
+    expect(r.adapter.admittedDevices().map((device) => [device.id, device.profiles])).toEqual([['CAM-03', ['HEVC_1080P']], ['CAM-04', []]]);
+  });
+
+  it('the fence\'s door finds the member, and its one-entry view of the adapter opens the later camera; BEFORE THE LIFT a registry still refuses that view (`CAPTURE_ADAPTER_INVALID`): the kind does not record', async () => {
+    const r = rig();
+    // What `buildProductionRegistryOf` does with a later device (`capture/fence/index.ts`, `lateDoorOf` and `admitLater`).
+    const member = (r.adapter as unknown as Record<string, unknown>)['admitDevice'];
+    expect(typeof member).toBe('function');
+    (member as (entry: CaptureDeviceEntry) => void).call(r.adapter, LATER);
+    const view = Object.freeze({ ...r.adapter, devices: Object.freeze([LATER]) });
+    expect([view.kind, view.hasOpener, view.devices.map((device) => device.id)]).toEqual([CaptureAdapterKind.ONVIF_RTSP, true, ['CAM-03']]);
+    const pending = outcomeOf(view.openSource('CAM-03', target(), never));
+    await flush();
+    r.children[0]?.take();
+    await flush();
+    r.children[0]?.say(established(1));
+    expect(await pending).toMatchObject({ deviceId: 'CAM-03' });
+    expect(r.adapter.counts().live).toBe(1);
+    for (const operation of [CaptureOperation.REAL_PRODUCTION, CaptureOperation.REAL_DEVELOPMENT]) {
+      const registry = createCaptureDeviceRegistry({ operation });
+      expect(codeOfThrow(() => registry.register(view)), operation).toBe('CAPTURE_ADAPTER_INVALID');
+      expect(registry.list()).toEqual([]);
+    }
   });
 });
 

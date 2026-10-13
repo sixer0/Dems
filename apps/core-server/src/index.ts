@@ -13,10 +13,18 @@
  * the units' `preClose` and `onClose` hooks: the pipeline is drained, the sockets are closed
  * and the pool is closed last.
  *
- * FROZEN after plan row W08 (P25): no later row edits this file.
+ * FROZEN after plan row W08 (P25): no later row edits this file. Edits since, each by a decision:
+ * the supervisor's two lifecycle calls (task 3, OD-14); the hand-over of this process's host facts
+ * to the capture boot checks (task 4 row 85, decision C46: one import line, one statement);
+ * the composition of production capture (task 4 row 85b, decision C55: one import line, one statement);
+ * the reader of the network facts as a member of that statement (row 108, pass I-9a: one import line);
+ * the runner of the host's questions as one more member of it (row 106c, decision C82, SR-11: one name of an import line).
  */
 import { buildApp } from './app';
+import { captureBootControl, captureHostOfProcess, captureHostRunnerOf, createSystemTimers } from './capture';
+import { composeProductionCaptureOf } from './capture-composition';
 import { ConfigError, LISTEN_HOST, type CoreServerConfig } from './config';
+import { captureNetworkFacts } from './modules/capture-config';
 import { loadConfig } from './plugins/config';
 import { removeDriverEnvironment } from './plugins/db';
 import { DEFAULT_ERROR_LOG_FILE, createErrorLog, describeError } from './plugins/logger';
@@ -103,6 +111,25 @@ try {
   app.log.info(
     { port: config.port, database: config.database.database, demoControls: config.demoControls },
     'configuration loaded',
+  );
+  // Task 4 row 85b, decision C55: the members of production capture are handed to their takers, once, before the boot
+  // steps run. Nothing is built in another operation. The reader of the network facts (row 108, integration pass I-9a) is
+  // handed in, NOT called: it is asked at each judgement and answers "not configured" until boot step `capture.config` loaded.
+  // Row 106c, decision C82 (SR-11): ONE more member - a runner of the host's questions, made with the maker of the host
+  // facts below; its single use is the fixed question of the address helper's interface file, on `linux` only.
+  composeProductionCaptureOf(app, { platform: process.platform, network: captureNetworkFacts(app), hostRunner: captureHostRunnerOf(createSystemTimers()) });
+  // Task 4 row 85, decision C46: the host facts of THIS process go to the capture boot checks before the boot steps
+  // run, so that a production start is always held to its host and its delivered programs. Asked in production only.
+  captureBootControl(app).provideHost(
+    captureHostOfProcess(
+      {
+        platform: process.platform,
+        startArguments: process.execArgv,
+        nodeOptionsSet: process.env['NODE_OPTIONS'] !== undefined,
+        userLimits: () => (process.report?.getReport() as { readonly userLimits?: unknown } | undefined)?.userLimits,
+      },
+      createSystemTimers(),
+    ),
   );
   await app.readiness.boot();
   await app.capture.boot();

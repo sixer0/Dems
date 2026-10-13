@@ -12,7 +12,7 @@ import { getPriority } from 'node:os';
 import { join } from 'node:path';
 import type { FetchLike, TranscriptModelProvenance } from '@dems/transcriber';
 import { afterAll, describe, expect, it } from 'vitest';
-import { ModelProvenanceCode, SessionRunCode, createMemorySnapshotStore, mountTranscription, sessionScratchDir, sessionTapPath, type StoredSttSelection, type SttSnapshotStore, type TranscriptionControl } from '../index';
+import { ModelProvenanceCode, READ_SESSION_INTERVALS_FOR_TRANSCRIPT, SessionRunCode, createMemorySnapshotStore, mountTranscription, sessionScratchDir, sessionTapPath, transcriptIntervalsOf, type StoredSttSelection, type SttSnapshotStore, type TranscriptionControl } from '../index';
 import { CPU_MODEL, SERVER_MODEL, answerer, cpuRow, fakeHost, fullHost, ggmlBytes, makeDataDir, serverRow, writeTap, type Answerer, type DataDir, type FakeHost, mediaOf } from './support';
 
 const dirs: string[] = [];
@@ -352,6 +352,56 @@ describe('R80-02 (code review row 80): the production runner is given the audio-
     const { chunks } = checkpointOf(m, id);
     expect(chunks.map((chunk) => chunk.audioSource)).toEqual(chunks.map((chunk) => (chunk.startMs < 15_000 ? 'MIC-01' : null)));
     expect(documentOf(answer.files.json).qa_flags).toContain('intervals_incomplete');
+  });
+
+  // Task 4 row 191c (decision C73; row 191b's second remainder): the rows of a capture worker that was replaced.
+  it('a worker restart after a microphone switch: no chunk is attributed to a superseded row - every chunk names the LATER worker\'s source, the superseded rows are in the document with the span 0..0, and no `intervals_incomplete`', async () => {
+    const m = mount('row191c-restart', serverRow(ENDPOINT));
+    const id = 'SES-20310101-0203';
+    // What row 191b stores: the earlier worker's START row kept its span up to the switch, the row of the switch was
+    // closed where it began when its worker went down, and the later worker's audio is a NEW row of reason START.
+    const stored = [
+      { mic_device_id: 'MIC-02', from_media_ms: 0, to_media_ms: 15_000, reason: 'START' },
+      { mic_device_id: 'MIC-01', from_media_ms: 15_000, to_media_ms: 15_000, reason: 'MANUAL' },
+      { mic_device_id: 'MIC-01', from_media_ms: 0, to_media_ms: null, reason: 'START' },
+    ];
+    m.host.intervalRows = stored;
+    // The rule alone, and its two controls: as stored when no row says START (a double of before), and when the only START row is the first.
+    expect(transcriptIntervalsOf(stored)).toEqual([
+      { source: 'MIC-02', fromMs: 0, toMs: 0 },
+      { source: 'MIC-01', fromMs: 0, toMs: 0 },
+      { source: 'MIC-01', fromMs: 0, toMs: null },
+    ]);
+    expect(transcriptIntervalsOf(stored.map(({ reason: _reason, ...row }) => row))).toEqual([
+      { source: 'MIC-02', fromMs: 0, toMs: 15_000 },
+      { source: 'MIC-01', fromMs: 15_000, toMs: 15_000 },
+      { source: 'MIC-01', fromMs: 0, toMs: null },
+    ]);
+    expect(transcriptIntervalsOf([{ mic_device_id: 'MIC-01', from_media_ms: '21', to_media_ms: '4021', reason: 'START' }, { mic_device_id: 'MIC-02', from_media_ms: '4021', to_media_ms: null, reason: 'MANUAL' }])).toEqual([
+      { source: 'MIC-01', fromMs: 21, toMs: 4_021 },
+      { source: 'MIC-02', fromMs: 4_021, toMs: null },
+    ]);
+
+    await recording(m, id, 70);
+    await m.control.runs.begin(id);
+    m.control.runs.end(id, { recorded: true });
+    await m.control.runs.idle();
+    const answer = await m.control.runs.assemble(id);
+    if (answer.kind !== 'ASSEMBLED') throw new Error(`the seal was answered ${answer.kind}`);
+    const { chunks, qaFlags } = checkpointOf(m, id);
+    expect(chunks.length).toBeGreaterThanOrEqual(2);
+    expect(chunks.some((chunk) => chunk.startMs < 15_000)).toBe(true);
+    // Read as stored, a chunk below 15 s was covered by MIC-02's superseded row AND the later row: no source, and the flag.
+    expect(chunks.map((chunk) => chunk.audioSource)).toEqual(chunks.map(() => 'MIC-01'));
+    expect(qaFlags).not.toContain('intervals_incomplete');
+    const document = documentOf(answer.files.json);
+    expect(document.qa_flags).not.toContain('intervals_incomplete');
+    expect(document.intervals).toEqual([
+      { source: 'MIC-02', from_ms: 0, to_ms: 0 },
+      { source: 'MIC-01', from_ms: 0, to_ms: 0 },
+      { source: 'MIC-01', from_ms: 0, to_ms: null },
+    ]);
+    expect(m.host.statements.some((text) => text === READ_SESSION_INTERVALS_FOR_TRANSCRIPT && text.includes('reason'))).toBe(true);
   });
 });
 

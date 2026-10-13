@@ -63,6 +63,23 @@
  * mode (no registry is provided), a development or fake source, a built-in device (their adapter
  * is another kind or none), a microphone.
  *
+ * ONE CAMERA FILLS ONE VIDEO SLOT ON A CORE IN REAL CAPTURE (row R2; ruling C93 on review finding
+ * F3-11). The simulator's rule admits one camera on both tracks when the two lines name two
+ * profiles (OD-05). The worker protocol does not: a plan that names one camera twice is refused
+ * (`packages/capture-protocol`), and the pairing, the telemetry and the fault key are per device.
+ * So that no start meets that refusal, an edit of operation 78 or 79 that would leave the SAME
+ * device on `VIDEO-01` and `VIDEO-02` is REFUSED BEFORE THE ACTION when a device registry is
+ * provided (a real capture operation, development or production): `422 INVALID_INPUT`,
+ * `details.reason: CAMERA_ON_BOTH_TRACKS` - the word the simulator already answers for one camera
+ * on both tracks (`CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS`), with `deviceId` and the `trackId` of
+ * the refused line. It is judged on the selector as the edit would leave it (`unassign` first,
+ * then the camera lines, as the action orders them), so a swap of the two cameras in one body and
+ * a move after a clear are not refused. Nothing changes on a refusal. NOT touched: Simulated mode
+ * (no registry is provided: no worker exists there, and the simulator's own rule stands); a
+ * selector that already held the state before this rule and is edited elsewhere (the plan
+ * builder's start rule refuses it, `assertRecordableSelector`). A camera that offers two streams
+ * as ONE device is an open question of the next blueprint refinement (C93), not built here.
+ *
  * `unassign` OF OPERATION 78 (task 4 row 29; decisions C14, C18, C25; security requirement AD-10).
  * The member names the slots the edit CLEARS (`VIDEO-01`, `VIDEO-02`, `PRIMARY`, `STANDBY`); the
  * route hands it to the hosted action unchanged and adds no rule of its own:
@@ -94,7 +111,7 @@ import {
   type CaptureDevicesSliceBody,
   type CoreApiRegistryOperation,
 } from '@dems/shared/api';
-import { isSessionActive, type CaptureConfigChange } from '@dems/shared/sim';
+import { CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS, isSessionActive, type CaptureConfigChange } from '@dems/shared/sim';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -172,6 +189,7 @@ export type CaptureProfileRefusal = (typeof CaptureProfileRefusal)[keyof typeof 
 
 const LOCKED_TEXT = 'The capture configuration cannot be changed while a session is open.';
 const OWN_PROFILE_TEXT = 'A production camera is assigned with a profile of its own: one of the profiles it was registered with.';
+const ONE_SLOT_TEXT = 'One camera fills one video slot: this camera is already assigned to the other video slot.';
 const UNKNOWN_DEVICE_TEXT = 'The capture registry has no such device.';
 const NOT_ASSIGNABLE_TEXT = 'This device cannot be assigned in the running capture operation.';
 const MIC_SLOT_TEXT = 'A microphone input holds the microphone of the same ID.';
@@ -273,6 +291,27 @@ function cameraLinesOf(change: CaptureConfigChange): readonly { readonly trackId
   return change.kind === 'UPDATE' ? (change.cameras ?? []) : [];
 }
 
+/**
+ * ONE CAMERA FILLS ONE VIDEO SLOT (see the header; ruling C93): refuses, before the hosted action
+ * and only when a device registry is provided, a camera line that would leave its device on both
+ * video slots. The selector is taken as the edit would leave it - the slots the edit clears first,
+ * then its camera lines, in the action's own order. Only a device the committed registry slice
+ * holds as a camera is judged: anything else is the action's own 404 or 422.
+ */
+function assertOneSlotPerCamera(registry: AssignmentRegistry | null, state: DurableSlices, change: CaptureConfigChange): void {
+  if (registry === null) return;
+  const lines = cameraLinesOf(change);
+  if (lines.length === 0) return;
+  const held = new Map<string, string>(state.captureConfig.cameras.map((camera) => [camera.trackId, camera.deviceId]));
+  if (change.kind === 'UPDATE') for (const slot of change.unassign ?? []) held.delete(slot);
+  for (const line of lines) held.set(line.trackId, line.deviceId);
+  for (const line of lines) {
+    if (!state.captureDevices.devices.some((device) => device.id === line.deviceId && device.kind === 'CAMERA')) continue;
+    const twice = [...held].some(([trackId, deviceId]) => trackId !== line.trackId && deviceId === line.deviceId);
+    if (twice) throw new ApiFailure(422, ApiErrorCode.INVALID_INPUT, ONE_SLOT_TEXT, { details: { in: 'body', reason: CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS, deviceId: line.deviceId, trackId: line.trackId } });
+  }
+}
+
 /** True for a camera of the committed registry slice whose adapter is the production camera kind. */
 const isProductionCamera = (state: Pick<DurableSlices, 'captureDevices'>, deviceId: string): boolean =>
   state.captureDevices.devices.some((device) => device.id === deviceId && device.kind === 'CAMERA' && device.adapter === CaptureAdapterKind.ONVIF_RTSP);
@@ -355,6 +394,8 @@ export function registerCaptureConfigRoutes(app: FastifyInstance, seams: Capture
       // OD-10 / M4-LOCK-1: left BEFORE the action - no state change, no CAPTURE_CONFIG_CHANGED row.
       if (isSessionActive(before.session)) throw captureConfigLocked();
       assertAssignable(seams.deviceRegistry(), before, change);
+      // Row R2 (C93): after the registry's own refusals, BEFORE the profile rule (no profile makes one camera two) and before the action.
+      assertOneSlotPerCamera(seams.deviceRegistry(), before, change);
       // Row 187 (C36 (1)): after the registry's own refusals (each keeps its reason), BEFORE the action - no default profile stands in.
       assertOwnProfile(seams.deviceRegistry(), before, change, ownProfiles);
       await scope.command(request.principal, 'setCaptureConfig', change);

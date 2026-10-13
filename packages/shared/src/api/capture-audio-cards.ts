@@ -56,6 +56,21 @@ import { epochMs } from './schema-parts';
 export const CAPTURE_AUDIO_CARD_ID_PATTERN = /^[A-Za-z0-9_]{1,32}$/;
 /** A USB id: vendor and product, four lower-case hexadecimal digits each. */
 export const CAPTURE_AUDIO_USB_ID_PATTERN = /^[0-9a-f]{4}:[0-9a-f]{4}$/;
+/**
+ * The serial number a USB card states (task 4 rows 199 / 200, decision C56; row V3): letters,
+ * digits and `: . _ -`, 1 to 64 characters. The SAME closed rule as the column
+ * `capture_audio_inputs.usb_serial` and as the listing's own rule (`CardStringKind.USB_SERIAL`): a
+ * serial outside it is NO serial (null), never a cleaned or cut one. Text the device chose: it
+ * tells two cards of one model apart and is drawn as text only.
+ */
+export const CAPTURE_AUDIO_USB_SERIAL_PATTERN = /^[A-Za-z0-9:._-]{1,64}$/;
+/**
+ * The port a USB card sits on, in the kernel's topological form as it is written after `usb-`
+ * (e.g. `0000:00:14.0-2.1`): letters, digits and `: . _ -`, 1 to 64 characters. The rule of the
+ * column `capture_audio_inputs.usb_port` and of the listing (`CardStringKind.USB_PORT`). The Core
+ * reads it from the kernel, never from the device's descriptor.
+ */
+export const CAPTURE_AUDIO_USB_PORT_PATTERN = /^[A-Za-z0-9:._-]{1,64}$/;
 /** The longest product name a card answer carries (characters). */
 export const CAPTURE_AUDIO_CARD_TEXT_MAX_LENGTH = 64;
 /**
@@ -112,6 +127,18 @@ export const CaptureAudioCardSchema = z
     cardId: cardId().describe('The card id in the kernel\'s own form. A request of operation 99 names a card by it.'),
     deviceIndex: deviceIndex().describe('The capture device of the card: 0 to 31.'),
     usbId: z.string().regex(CAPTURE_AUDIO_USB_ID_PATTERN).nullable().describe('Vendor and product id of a USB card, `vvvv:pppp` in lower-case hexadecimal; null for a card that is not USB.'),
+    usbSerial: z
+      .string()
+      .regex(CAPTURE_AUDIO_USB_SERIAL_PATTERN)
+      .nullable()
+      .optional()
+      .describe('The serial number a USB card states: letters, digits and `: . _ -`, 1 to 64 characters. Null when the card states none, or one outside this form. Untrusted device text: it tells two cards of one model apart; draw it as text only. Absent in an answer of the in-app simulator.'),
+    usbPort: z
+      .string()
+      .regex(CAPTURE_AUDIO_USB_PORT_PATTERN)
+      .nullable()
+      .optional()
+      .describe('The port a USB card sits on, in the kernel\'s own topological form (e.g. `0000:00:14.0-2.1`); null for a card that is not USB. Read by the Core from the kernel, never from the device. Absent in an answer of the in-app simulator.'),
     product: z
       .string()
       .regex(CAPTURE_AUDIO_CARD_TEXT_PATTERN)
@@ -259,7 +286,7 @@ export const CAPTURE_AUDIO_CARD_OPERATIONS = [
     description: [
       'Registers one input of one sound card as a microphone of the capture devices. The body names the card id, the device index and the input number, and nothing else. **The Core lists the cards again itself** and takes the channel count, the USB id and the product from that listing, never from the body. In one unit it writes the capture device (the next free `MIC-nn`) and its input row; a failure leaves nothing behind.',
       WEB_AND_IDLE,
-      'An input that already has a microphone is **re-enabled, not duplicated**: the answer is `200` with `change: REENABLED` and the existing id. A stored input found on a card at another place answers `200` with `change: CARD_CHANGED`: it is said, never matched silently. A new microphone answers `201` with `change: REGISTERED`. The registration decides no role: making the microphone primary or standby is operation 80.',
+      'An input that already has a microphone is **re-enabled, not duplicated**: the answer is `200` with `change: REENABLED` and the existing id. A stored input found on a card at another place answers `200` with `change: CARD_CHANGED`: it is said, never matched silently. **`CARD_CHANGED` stores the card\'s new identity and does not enable the microphone again**: the same call again answers `REENABLED`. A USB card is the stored one by its serial number where it states one (it is then found on any port) and by its port otherwise; a serial that appears or disappears is another card. A new microphone answers `201` with `change: REGISTERED`. The registration decides no role: making the microphone primary or standby is operation 80.',
       `Refusals, each storing nothing: \`404 NOT_FOUND\` when the Core's own listing has no such card and device; \`409 INVALID_STATE\` with \`details.reason: ${CaptureAudioCardReason.AUDIO_INPUT_BEYOND_CARD}\` when the card has no input of that number, or \`${CaptureAudioCardReason.AUDIO_CARD_SEARCH_IN_PROGRESS}\` while a listing runs. The refusal never quotes the input and carries no device text.`,
       'Writes one CAPTURE_AUDIO_INPUT_CHANGED row: the device id, the change code, the input number and the channel count. No product name, no USB id and no card id. Publishes the `captureDevices` slice; `captureConfig` is not changed. The new microphone is assignable at once, without a restart.',
       PRODUCTION_ONLY,
@@ -275,7 +302,7 @@ export const CAPTURE_AUDIO_CARD_OPERATIONS = [
       403: notPermitted(Permission.CAPTURE_CONFIG, WEB_ONLY_REFUSED),
       404: { description: 'The listing has no card of this id with this device index (NOT_FOUND). Nothing is stored.', schema: 'ApiError' },
       409: {
-        description: `A session is open (CAPTURE_CONFIG_LOCKED; no audit row), or the input cannot be registered (INVALID_STATE, \`details.reason\`: ${CaptureAudioCardReason.AUDIO_INPUT_BEYOND_CARD}, ${CaptureAudioCardReason.AUDIO_CARD_SEARCH_IN_PROGRESS}, or ${CaptureAudioCardReason.AUDIO_INPUT_NOT_REGISTRABLE} from an answerer that captures from no sound card). Nothing is stored.`,
+        description: `A session is open (CAPTURE_CONFIG_LOCKED; no audit row), or the input cannot be registered (INVALID_STATE, \`details.reason\`: ${CaptureAudioCardReason.AUDIO_INPUT_BEYOND_CARD}, ${CaptureAudioCardReason.AUDIO_CARD_SEARCH_IN_PROGRESS}, or ${CaptureAudioCardReason.AUDIO_INPUT_NOT_REGISTRABLE} from an answerer that captures from no sound card - also for a USB card that states neither a serial number nor a port: it could not be found again). Nothing is stored.`,
         schema: 'ApiError',
       },
       422: { description: 'The body does not match its schema (INVALID_INPUT). The refusal never quotes the input. Nothing is stored.', schema: 'ApiError' },

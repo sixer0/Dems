@@ -1004,3 +1004,205 @@ describe('task 4 row 179 (BR-07 (2)): a later worker of a session is sent ingest
     expect(addressesOf(second)).toEqual(session.told[0]!.addresses);
   });
 });
+
+describe('task 4 row 191: a later worker of a session waits for the session\'s audio sources, and the back-off is not moved', () => {
+  type Inputs = ReadonlyMap<string, { kind: 'PCM_FIFO'; path: string }>;
+  const chance = (): ((bytes: number) => Uint8Array) => {
+    let draws = 0;
+    return (bytes) => new Uint8Array(bytes).fill((draws += 1));
+  };
+  const inputsOf = (plan: ReturnType<typeof capturePlan>, suffix = ''): Map<string, { kind: 'PCM_FIFO'; path: string }> => new Map(plan.mics.map((mic) => [mic.deviceId, { kind: 'PCM_FIFO' as const, path: `${mic.input.path}${suffix}` }]));
+  /** The session's side as a double: asked per attempt, and settled by the test. */
+  const sources = () => {
+    const asked: Array<{ attempt: number; workersThen: number; resolve: (inputs: Inputs) => void; reject: (error: Error) => void }> = [];
+    return {
+      asked,
+      attempts: (fake: { workers: unknown[] }, how: 'PENDING' | Inputs = 'PENDING') => ({
+        chance: chance(),
+        renewed: () => undefined,
+        sources: (attempt: number): Promise<Inputs> => {
+          if (how !== 'PENDING') {
+            asked.push({ attempt, workersThen: fake.workers.length, resolve: () => undefined, reject: () => undefined });
+            return Promise.resolve(how);
+          }
+          return new Promise<Inputs>((resolve, reject) => asked.push({ attempt, workersThen: fake.workers.length, resolve, reject }));
+        },
+      }),
+    };
+  };
+  const startPlans = (fake: { workers: Array<{ commands(type: 'START'): Array<{ attempt: number; plan: ReturnType<typeof capturePlan> }> }> }) => fake.workers.map((worker) => worker.commands(SupervisorMessageType.START)[0]);
+
+  it('SOURCES READY AFTER THE BACK-OFF: no worker is started at the timer; the phase stays RESTARTING with attempt 2; the worker starts in the turn the session settles, with the inputs it gave; the first worker was not asked', async () => {
+    const context = await setup();
+    const session = sources();
+    const plan = capturePlan(SESSION);
+    await context.supervisor.start(SESSION, plan, session.attempts(context.fake));
+    expect(session.asked).toEqual([]);
+    context.fake.last().exit(1);
+    context.clock.advance(LIMITS.backoffBaseMs);
+    await flush();
+    // Asked once, at the timer, while only the first worker had existed; nothing was started.
+    expect(session.asked.map((ask) => [ask.attempt, ask.workersThen])).toEqual([[2, 1]]);
+    expect(context.fake.workers).toHaveLength(1);
+    expect(context.supervisor.status()).toMatchObject({ phase: CapturePhase.RESTARTING, attempt: 2, workerPid: null });
+    // However long the session needs: nothing is started, no further timer runs the restart, nothing gives up.
+    context.clock.advance(60_000);
+    await flush();
+    expect(context.fake.workers).toHaveLength(1);
+    expect(context.named('workerDown')).toHaveLength(1);
+    session.asked[0]!.resolve(inputsOf(plan, '.again'));
+    await flush();
+    expect(context.fake.workers).toHaveLength(2);
+    const second = startPlans(context.fake)[1]!;
+    expect(second.attempt).toBe(2);
+    expect(second.plan.mics).toEqual(plan.mics.map((mic) => ({ ...mic, input: { kind: 'PCM_FIFO', path: `${mic.input.path}.again` } })));
+    expect(context.supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, attempt: 2, restarts: 1 });
+    expect(context.reports).toEqual([]);
+  });
+
+  it('SOURCES READY INSIDE THE BACK-OFF (the session began at RESTARTING): the worker is not started one millisecond before the delay and is started in the turn of the timer - the delays of a row are exactly those of backoffDelayMs, as without the wait', async () => {
+    const context = await setup({ maxRestarts: 5 });
+    const session = sources();
+    const plan = capturePlan(SESSION);
+    await context.supervisor.start(SESSION, plan, session.attempts(context.fake, inputsOf(plan)));
+    for (let crash = 0; crash < 3; crash += 1) {
+      const delay = backoffDelayMs(crash, LIMITS);
+      const before = context.fake.workers.length;
+      context.fake.last().exit(1);
+      expect(context.named('workerDown').at(-1)?.restartInMs).toBe(delay);
+      context.clock.advance(delay - 1);
+      await flush();
+      expect(context.fake.workers).toHaveLength(before);
+      expect(session.asked).toHaveLength(crash);
+      context.clock.advance(1);
+      await flush();
+      expect(context.fake.workers).toHaveLength(before + 1);
+      expect(context.supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, attempt: crash + 2 });
+    }
+    expect(session.asked.map((ask) => ask.attempt)).toEqual([2, 3, 4]);
+    expect(startPlans(context.fake).map((start) => start?.plan.mics)).toEqual([plan.mics, plan.mics, plan.mics, plan.mics]);
+  });
+
+  // Task 4 row 191b (3). The microphone-loss watch is told `superseded` from this phase (row 85c: `capture-composition.ts`,
+  // `workerSuperseded` = the supervisor's phase is RESTARTING). Row 191 measured when a word about a handle of the earlier attempt can
+  // come: the session's close of the handle began 12 to 19 ms after the worker went down, the helper ended 33 to 46 ms after it.
+  it('row 191b, THE PHASE THE LOSS WATCH READS AS "superseded": RESTARTING in the turn the worker goes down, at 12, 19, 33 and 46 ms after it, through the whole back-off and for as long as the session\'s sources are waited for beyond it (every close of an earlier handle is inside that wait), until the later worker has acknowledged START; CONTROL: before the down and after the acknowledgement it is not RESTARTING', async () => {
+    const context = await setup();
+    const session = sources();
+    const plan = capturePlan(SESSION);
+    await context.supervisor.start(SESSION, plan, session.attempts(context.fake));
+    const superseded = (): boolean => context.supervisor.status().phase === CapturePhase.RESTARTING;
+    expect(superseded()).toBe(false);
+    context.fake.last().exit(1);
+    // The same turn: a word that arrives with the exit itself is already of a superseded attempt.
+    expect(superseded()).toBe(true);
+    let at = 0;
+    for (const ms of [12, 19, 33, 46, LIMITS.backoffBaseMs - 1, LIMITS.backoffBaseMs, LIMITS.backoffBaseMs + 16_000]) {
+      context.clock.advance(ms - at);
+      at = ms;
+      await flush();
+      expect(superseded(), `${String(ms)} ms after the worker went down`).toBe(true);
+    }
+    // Two closes held to 8 s each have passed and no later worker exists yet: the handles that are closed meanwhile are of attempt 1.
+    expect(context.fake.workers).toHaveLength(1);
+    session.asked[0]!.resolve(inputsOf(plan));
+    await flush();
+    expect(context.fake.workers).toHaveLength(2);
+    expect(context.supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, attempt: 2 });
+    expect(superseded()).toBe(false);
+    await context.supervisor.stop(SESSION, 'CRASH');
+  });
+
+  it('SOURCES NOT READY: a promise that rejects starts NO worker and is not tried again - FAULTED, one CAPTURE_FAULT, one report that names the cause and no path', async () => {
+    const context = await setup();
+    const session = sources();
+    const plan = capturePlan(SESSION);
+    await context.supervisor.start(SESSION, plan, session.attempts(context.fake));
+    context.fake.last().exit(1);
+    context.clock.advance(LIMITS.backoffBaseMs);
+    await flush();
+    session.asked[0]!.reject(new Error(`the pipe ${plan.mics[0]!.input.path} could not be made`));
+    await flush();
+    context.clock.advance(LIMITS.backoffMaxMs * 4);
+    await flush();
+    expect(context.fake.workers).toHaveLength(1);
+    expect(context.supervisor.status()).toMatchObject({ phase: CapturePhase.FAULTED, sessionId: SESSION, workerPid: null });
+    expect(context.named('warning')).toMatchObject([{ code: CaptureWarningCode.CAPTURE_FAULT, source: 'supervisor' }]);
+    expect(context.named('workerDown').map((event) => `${event.down.code} ${event.restartInMs}`)).toEqual(['EXITED 250', 'SPAWN_FAILED null']);
+    expect(context.reports.map((report) => [report.code, (report.err as CaptureSupervisorError).detail])).toEqual([['CAPTURE_SOURCES_NOT_READY', 'RECEIVER_FAILED']]);
+    expect(JSON.stringify(context.reports.map((report) => [report.code, (report.err as Error).message]))).not.toContain('.pcm');
+    await context.supervisor.stop(SESSION, 'CRASH');
+    expect(context.clock.armed()).toEqual([]);
+  });
+
+  it('WHICH MICROPHONES THE LATER PLAN HOLDS: the STANDBY not open - a plan with the PRIMARY alone, and a switch to the standby is refused; the microphone of the ACTIVE role not open - no plan, no worker (PLAN_INVALID); a device that is no microphone of the plan is ignored', async () => {
+    const plan = capturePlan(SESSION);
+    const primaryOnly = await setup();
+    const withStranger = new Map([...inputsOf(plan)].filter(([deviceId]) => deviceId === 'MIC-01'));
+    withStranger.set('MIC-09', { kind: 'PCM_FIFO', path: '/nonexistent/stranger.pcm' });
+    await primaryOnly.supervisor.start(SESSION, plan, sources().attempts(primaryOnly.fake, withStranger));
+    primaryOnly.fake.last().exit(1);
+    primaryOnly.clock.advance(LIMITS.backoffBaseMs);
+    await flush();
+    expect(startPlans(primaryOnly.fake)[1]?.plan.mics).toEqual([plan.mics[0]]);
+    expect(primaryOnly.supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, attempt: 2 });
+    expect(await refusalOf(primaryOnly.supervisor.switchAudioSource(SESSION, CaptureMicRole.STANDBY))).toBe(CaptureRefusal.PLAN_INVALID);
+
+    const noActive = await setup();
+    await noActive.supervisor.start(SESSION, plan, sources().attempts(noActive.fake, new Map([...inputsOf(plan)].filter(([deviceId]) => deviceId === 'MIC-02'))));
+    noActive.fake.last().exit(1);
+    noActive.clock.advance(LIMITS.backoffBaseMs);
+    await flush();
+    expect(noActive.fake.workers).toHaveLength(1);
+    expect(noActive.supervisor.status().phase).toBe(CapturePhase.FAULTED);
+    expect(noActive.reports.map((report) => [report.code, (report.err as CaptureSupervisorError).detail])).toEqual([['CAPTURE_SOURCES_NOT_READY', 'PLAN_INVALID']]);
+  });
+
+  it('WHILE IT WAITS nothing is held but the phase: a stop ends the session and the sources that become ready afterwards start no worker; a record that makes the session durable calls the restart off', async () => {
+    const stopped = await setup();
+    const first = sources();
+    const plan = capturePlan(SESSION);
+    await stopped.supervisor.start(SESSION, plan, first.attempts(stopped.fake));
+    stopped.fake.last().exit(1);
+    stopped.clock.advance(LIMITS.backoffBaseMs);
+    await flush();
+    await stopped.supervisor.stop(SESSION, 'STOPPED');
+    expect(stopped.supervisor.status().phase).toBe(CapturePhase.IDLE);
+    first.asked[0]!.resolve(inputsOf(plan));
+    await flush();
+    expect(stopped.fake.workers).toHaveLength(1);
+    expect(stopped.clock.armed()).toEqual([]);
+    // The next session is not served by the promise of the one before it.
+    await stopped.supervisor.start('S-TEST-0002', capturePlan('S-TEST-0002'));
+    expect(stopped.fake.workers).toHaveLength(2);
+    expect(stopped.fake.last().commands(SupervisorMessageType.START)).toMatchObject([{ attempt: 1 }]);
+
+    // A worker the supervisor itself ended (no heartbeat) is still read until its exit: its durable record calls the restart off
+    // BEFORE the sources are asked (a worker that has exited says nothing more, so with this double the record cannot arrive
+    // inside the wait; the guard of `awaitSources` for that order is read, not driven).
+    const durable = await setup({}, { exitOnKill: false });
+    const second = sources();
+    await durable.supervisor.start(SESSION, plan, second.attempts(durable.fake));
+    const dying = durable.fake.last();
+    durable.clock.advance(LIMITS.heartbeatTimeoutMs);
+    await flush();
+    dying.firstDurableFragment('CAM-01');
+    dying.exit(null, 'SIGKILL');
+    durable.clock.advance(LIMITS.backoffMaxMs * 4);
+    await flush();
+    expect(durable.supervisor.status()).toMatchObject({ phase: CapturePhase.FAULTED, durable: true });
+    expect(second.asked).toEqual([]);
+    expect(durable.fake.workers).toHaveLength(1);
+  });
+
+  it('CONTROL - a start whose receiver has no `sources` (every caller before this row): the later worker is started in the turn of the timer with the microphones of the plan as given', async () => {
+    const context = await setup();
+    const plan = capturePlan(SESSION);
+    await context.supervisor.start(SESSION, plan, { chance: chance(), renewed: () => undefined });
+    context.fake.last().exit(1);
+    context.clock.advance(LIMITS.backoffBaseMs);
+    expect(context.fake.workers).toHaveLength(2);
+    await flush();
+    expect(startPlans(context.fake)[1]?.plan.mics).toEqual(plan.mics);
+  });
+});

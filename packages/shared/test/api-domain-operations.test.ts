@@ -655,18 +655,18 @@ describe('the list queries (API-9; decision D51)', () => {
   });
 });
 
-describe('the 50 simulator actions and the operations they reach (01_specs §7.17; task 3 SH-18, R-9; pass D6 CS-09: applyStorageVolume, 48 -> 49; task 4 row 185: registerCaptureMicrophone, 49 -> 50)', () => {
+describe('the 51 simulator actions and the operations they reach (01_specs §7.17; task 3 SH-18, R-9; pass D6 CS-09: applyStorageVolume, 48 -> 49; task 4 row 185: registerCaptureMicrophone, 49 -> 50; row 195: readdressCaptureDevice, 50 -> 51)', () => {
   const names = Object.keys(SIM_ACTION_OPERATIONS) as (keyof typeof SIM_ACTION_OPERATIONS)[];
   const byExecution = (execution: string) => names.filter((name) => SIM_ACTION_OPERATIONS[name].execution === execution);
 
   it('names exactly the actions of the real simulator', () => {
     const { actions } = rig('idle');
     expect([...names].sort()).toEqual(Object.keys(actions).sort());
-    expect(names).toHaveLength(50);
+    expect(names).toHaveLength(51);
   });
 
-  it('33 are hosted, 9 server-native, 1 is not available and 7 are internal', () => {
-    expect([SimActionExecution.HOSTED, SimActionExecution.SERVER_NATIVE, SimActionExecution.NOT_AVAILABLE, SimActionExecution.INTERNAL].map((execution) => byExecution(execution).length)).toEqual([33, 9, 1, 7]);
+  it('33 are hosted, 9 server-native, 1 is not available and 8 are internal', () => {
+    expect([SimActionExecution.HOSTED, SimActionExecution.SERVER_NATIVE, SimActionExecution.NOT_AVAILABLE, SimActionExecution.INTERNAL].map((execution) => byExecution(execution).length)).toEqual([33, 9, 1, 8]);
     // Blueprint row 66 (SH-18, C3 §2.4): the hosted pair of the capture selector and the mic switch,
     // the last two members. One is three operations (78, 79, 80), as `deviceCommand` is.
     expect(byExecution('hosted').slice(-2)).toEqual(['setCaptureConfig', 'switchAudioSource']);
@@ -681,12 +681,13 @@ describe('the 50 simulator actions and the operations they reach (01_specs §7.1
     // R-9 (row 132; C3 §2.6): the adoption's `registerCaptureDevice` is the fifth - run by the Core inside
     // operation 96's unit, reached by no client and by no operation of its own.
     // Task 4 row 185: `registerCaptureMicrophone` is the seventh - run by the Core inside operation 99's unit.
-    expect(byExecution('internal')).toEqual(['setTabletLink', 'applyCaptureTelemetry', 'raiseCaptureWarning', 'clearCaptureWarning', 'applyStorageVolume', 'registerCaptureDevice', 'registerCaptureMicrophone']);
+    expect(byExecution('internal')).toEqual(['setTabletLink', 'applyCaptureTelemetry', 'raiseCaptureWarning', 'clearCaptureWarning', 'applyStorageVolume', 'registerCaptureDevice', 'registerCaptureMicrophone', 'readdressCaptureDevice']);
+    // Task 4 row 195: `readdressCaptureDevice` is the eighth - run by the Core inside operation 100's unit.
     for (const name of [...byExecution('not-available'), ...byExecution('internal')]) expect(SIM_ACTION_OPERATIONS[name].operations, name).toEqual([]);
     expect(CORE_API_OPERATIONS.filter((operation) => /tablet-?link|security-?key|telemetry|capture-?warning|register/i.test(operation.path))).toEqual([]);
   });
 
-  it('42 actions reach 45 operations, every one of them in the registry; the other 54 are reads and server functions', () => {
+  it('42 actions reach 45 operations, every one of them in the registry; the other 65 are reads and server functions', () => {
     const reaching = names.filter((name) => SIM_ACTION_OPERATIONS[name].operations.length > 0);
     expect(reaching).toHaveLength(42);
     const reached = [...new Set(reaching.flatMap((name) => [...SIM_ACTION_OPERATIONS[name].operations]))];
@@ -700,7 +701,11 @@ describe('the 50 simulator actions and the operations they reach (01_specs §7.1
     // Task 3 R-9..R-11 (row 132, D106) add the five operations 93-97, answered by the sim route table
     // and by server modules, reached by no simulator action: 97 - 45 = 52. Task 4 row 63 adds the two
     // sound-card operations 98-99, answered by the sim route table, reached by no action: 99 - 45 = 54.
-    expect(CORE_API_OPERATIONS.length - reached.length).toBe(54);
+    // Task 4 row 194 adds operation 100 (the confirmed re-address), reached by no action: 100 - 45 = 55.
+    // Task 4 row 102 adds the seven commissioning operations 101-107, reached by no action: 107 - 45 = 62.
+    // Task 4 row V3 adds operation 108 (the stored-credential connection test), reached by no action: 108 - 45 = 63.
+    // Task 4 row 116 adds operations 109-110 (the installation acceptance and its revocation), reached by no action: 110 - 45 = 65.
+    expect(CORE_API_OPERATIONS.length - reached.length).toBe(65);
     // `deviceCommand` is three operations with one permission each; two settings actions share one.
     expect(SIM_ACTION_OPERATIONS.deviceCommand.operations).toEqual(['restartDevice', 'testDeviceSignal', 'identifyDevice']);
     expect(simActionsOfOperation('updateSettings')).toEqual(['setPresentationMode', 'updateSettings']);
@@ -861,10 +866,10 @@ describe('the indexed view of the media session', () => {
       expect([Object.keys(valueOf('video01')).length > 0, MEMBER in valueOf('video01')]).toEqual([true, false]);
     });
 
-    it('the totals do not move with the indexed view: 99 operations (36 GET / 63 POST; 97 + the two of task 4 row 63), 77 audit types (67 + the ten of task 4 row 19)', () => {
+    it('the totals do not move with the indexed view: 110 operations (39 GET / 71 POST; 97 + the two of task 4 row 63 + the one of row 194 + the seven of row 102 + the one of row V3 + the two of row 116), 83 audit types (67 + the ten of task 4 row 19 + the one of row 201 + the four of row V3 + the one of row R1b)', () => {
       const methods = CORE_API_OPERATIONS.map((operation) => String(operation.method).toUpperCase());
-      expect([methods.length, methods.filter((method) => method === 'GET').length, methods.filter((method) => method === 'POST').length]).toEqual([99, 36, 63]);
-      expect(Object.keys(AuditType)).toHaveLength(77);
+      expect([methods.length, methods.filter((method) => method === 'GET').length, methods.filter((method) => method === 'POST').length]).toEqual([110, 39, 71]);
+      expect(Object.keys(AuditType)).toHaveLength(83);
     });
   });
 });

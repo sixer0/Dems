@@ -24,6 +24,25 @@
  * NOTHING HERE HAS RUN ON A LINUX HOST. The program paths, the output forms and the exit codes are
  * the ones the host profile states; they are proven by the hardware checks `9A/H-01`, `9A/H-04`
  * (a start with one prerequisite removed names exactly that one), `9A/H-05`, `9A/H-25`, `9A/H-27`.
+ *
+ * ROW HC (decision C94 (j)), one change of what the table means, and ROW HC3 (decision C103), one thing
+ * the table does NOT ask:
+ *
+ *   THE LOOPBACK RULE IS ASKED BY THE STATE OF ITS UNIT, AND THE RULE TABLE IS NOT READ. Row HC had
+ *   added a second question, the listing of the table itself (decision C49 (2)); row HC3 took it out
+ *   again. The unit of the Core has NO capability (HOST-39) and the kernel refuses the listing of a
+ *   packet-filter table to such a caller (measured: `test/hc2_nft_listing_unprivileged.md`, decision
+ *   C103) - with the same answer whether the table is there or not. Asked by the Core, that question
+ *   refuses EVERY start of a correctly prepared host and sees nothing. DO NOT ADD IT AGAIN. What
+ *   follows is a STATED LIMIT: a table deleted while its one-shot unit stays `active` is NOT seen at a
+ *   start (`9A/H-16` criterion 6).
+ *
+ *   AN ABSENT SOCKET OF THE ADDRESS HELPER IS NOT A REFUSAL OF ITS OWN ANY MORE. The helper is not
+ *   part of every production installation (C94 (j) reverses C49 (1)). The node not being there is the
+ *   status `ABSENT`, handed on (`HostCheckOutcome.aliasSocket`): the checks of the delivered programs
+ *   (`program-checks.ts`) decide - nothing of the helper installed is a stated fact, a helper of
+ *   which only a part is there is refused. A node of another kind, owner, group or mode is refused
+ *   here as before.
  */
 import type { HelperDoor } from '../adapters/local';
 import type { CaptureTimers } from '../types';
@@ -179,6 +198,8 @@ const SLEEP_TARGETS = ['sleep.target', 'suspend.target', 'hibernate.target', 'hy
 /** What the delivery of the address helper fixes (`scripts/host/netalias/dems-core-netalias.socket`). */
 const ALIAS_SOCKET = '/run/dems-core-netalias/socket';
 const ALIAS_SOCKET_STATE = 'socket root dems-netalias 660';
+/** Row HC (C53 (4c), C94 (j)): the ONE path the delivered socket unit installs. A configured path is held to it, and the boot entry states whether it is there. */
+export const ALIAS_SOCKET_INSTALLED_PATH = ALIAS_SOCKET;
 
 /**
  * THE QUESTIONS, in the order they are asked. Each repeats the took-effect check of its item of the
@@ -189,6 +210,10 @@ export const HOST_COMMAND_CHECKS: readonly HostCommandCheck[] = Object.freeze([
   {
     // HOST-25 asks the rule set itself, which a Core with an empty capability set cannot list (request of row 76):
     // the Core asks the state of the unit that loads the rule (HOST-41 makes the Core's unit require it).
+    // Row HC3 (decision C103; measured in `test/hc2_nft_listing_unprivileged.md`): THE TABLE ITSELF IS NOT READ, and no row
+    // for it belongs here. The Core's unit has no capability (HOST-39) and the kernel refuses the listing to such a caller,
+    // table present or not - a row that lists it refuses every start of a prepared host. So the unit's state is all the
+    // Core can know: a table deleted while this one-shot unit stays `active` is not seen at a start (a stated limit).
     code: CaptureHostRefusal.HOST_LOOPBACK_RULE,
     items: ['HOST-25', 'HOST-41'],
     command: { program: SERVICE_MANAGER, args: ['is-active', 'dems-loopback-rule.service'] },
@@ -308,7 +333,11 @@ export interface CaptureHostDeps {
   readonly run: HostCommandRunner;
 }
 
-export const HostCheckStatus = { IN_PLACE: 'IN_PLACE', MISSING: 'MISSING', NOT_ASKED: 'NOT_ASKED' } as const;
+/**
+ * `ABSENT` (row HC, C94 (j)): the socket node of the address helper is not there. Not a refusal of this file: the checks
+ * of the delivered programs decide whether the whole helper is absent (a stated fact) or a part of it (a refusal).
+ */
+export const HostCheckStatus = { IN_PLACE: 'IN_PLACE', MISSING: 'MISSING', NOT_ASKED: 'NOT_ASKED', ABSENT: 'ABSENT' } as const;
 export type HostCheckStatus = (typeof HostCheckStatus)[keyof typeof HostCheckStatus];
 
 /** One line of the diagnostics: fixed words only. */
@@ -327,7 +356,15 @@ export interface HostCheckOutcome {
   readonly commands: 'ASKED' | 'NOT_LINUX';
   /** How many checks were found in place. */
   readonly inPlace: number;
+  /**
+   * Row HC (C94 (j)): what the question of the address helper's socket found. `ABSENT`: the node is not there - no
+   * failure here, the checks of the delivered programs judge it. `NOT_ASKED`: another platform, or an earlier check
+   * was missing and the boot stopped before it.
+   */
+  readonly aliasSocket: AliasSocketFinding;
 }
+
+export type AliasSocketFinding = 'IN_PLACE' | 'ABSENT' | 'NOT_ASKED';
 
 /** The path rule of a program, handed in by the boot checks (ONE rule for the worker, the relay and the guard). Null: usable. */
 export type ProgramProblemOf = (program: string | null) => string | null;
@@ -390,7 +427,9 @@ export async function hostCheckResults(deps: CaptureHostDeps, programProblem: Pr
       continue;
     }
     const reason = await ask(check, deps.run);
-    results.push(Object.freeze({ code: check.code, items: check.items, status: reason === null ? HostCheckStatus.IN_PLACE : HostCheckStatus.MISSING, reason }));
+    // Row HC (C94 (j)): the socket node that is NOT THERE is `ABSENT`, never `MISSING` - every other answer of that question is judged as before.
+    const absent = check.code === CaptureHostRefusal.HOST_ALIAS_SOCKET && reason === HostCheckReason.SOCKET_ABSENT;
+    results.push(Object.freeze({ code: check.code, items: check.items, status: reason === null ? HostCheckStatus.IN_PLACE : absent ? HostCheckStatus.ABSENT : HostCheckStatus.MISSING, reason }));
   }
   return Object.freeze(results);
 }
@@ -403,5 +442,12 @@ export async function hostCheckOutcomeOf(deps: CaptureHostDeps, programProblem: 
     failure: missing === undefined ? null : Object.freeze({ code: missing.code, reason: missing.reason ?? HostCheckReason.ANSWER_NOT_UNDERSTOOD }),
     commands: deps.platform === 'linux' ? 'ASKED' : 'NOT_LINUX',
     inPlace: results.filter((entry) => entry.status === HostCheckStatus.IN_PLACE).length,
+    aliasSocket: aliasSocketFindingOf(results),
   });
+}
+
+/** Row HC: the finding of the socket question among the results of a run. */
+function aliasSocketFindingOf(results: readonly HostCheckResult[]): AliasSocketFinding {
+  const status = results.find((entry) => entry.code === CaptureHostRefusal.HOST_ALIAS_SOCKET)?.status;
+  return status === HostCheckStatus.IN_PLACE ? 'IN_PLACE' : status === HostCheckStatus.ABSENT ? 'ABSENT' : 'NOT_ASKED';
 }

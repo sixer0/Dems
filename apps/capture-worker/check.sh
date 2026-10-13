@@ -105,6 +105,47 @@ rules() {
   [ "$opts" = "flush_packets listen_timeout min_frag_duration movflags protocol_whitelist rtsp_flags" ] || say "SR-3: the options the worker sets are not the decided set: $opts"
   # F-2: the refusal of a non-TCP transport reads no message text of the library.
   [ "$(count 'not on whitelis[t]')" = "0" ] || say "F-2: the worker keys on a message text of libavformat"
+  # Task 4 rows 58 / 142 (verification/05_security_branch_b.md, BR-01; decision C26): THE GATE CANNOT BE BYPASSED.
+  # F-2 has ONE decided exception - the ANNOUNCE line of the library is read by announce.c, as a NECESSARY condition
+  # of an open only (a missing or another line refuses; none accepts). What holds the gate in its place:
+  #   - ONE open of an input and ONE probe of a stream in the whole worker, both in ingest.c, and the stream is read
+  #     (av_read_frame) in ONE place, after the probe: there is no second path to a camera's bytes;
+  #   - the gate's test stands exactly once, as written, after the open and before the probe; its refusal leaves;
+  #   - no line of the preprocessor and no jump stands between the open and the probe: no switch is around the gate;
+  #   - the one proof switch of the gate removes what the callback SEES (so that everything is refused), never the test.
+  open_at=$(grep -n 'avformat_open_inpu[t](' "$dir/ingest.c" 2>/dev/null | head -1 | cut -d: -f1)
+  gate_at=$(grep -n '^    if (!announce_gate_passed(&c->announce)) {$' "$dir/ingest.c" 2>/dev/null | head -1 | cut -d: -f1)
+  info_at=$(grep -n 'avformat_find_stream_inf[o](' "$dir/ingest.c" 2>/dev/null | head -1 | cut -d: -f1)
+  read_at=$(grep -n 'av_read_fram[e](' "$dir/ingest.c" 2>/dev/null | head -1 | cut -d: -f1)
+  [ "$(count 'avformat_open_inpu[t](')" = "1" ] && [ "$(files 'avformat_open_inpu[t](')" = "ingest.c" ] || say "BR-01: expected exactly 1 open of an input in the worker, in ingest.c (a second open is a path the gate does not stand on)"
+  [ "$(count 'avformat_find_stream_inf[o](')" = "1" ] && [ "$(files 'avformat_find_stream_inf[o](')" = "ingest.c" ] || say "BR-01: expected exactly 1 probe of a stream (avformat_find_stream_info) in the worker, in ingest.c (a second probe is a path the gate does not stand on)"
+  [ "$(count 'av_read_fram[e](')" = "1" ] && [ "$(files 'av_read_fram[e](')" = "ingest.c" ] || say "BR-01: a camera's stream is read (av_read_frame) in more than one place, or outside ingest.c"
+  [ "$(grep -c 'announce_gate_passe[d](' "$dir/ingest.c" 2>/dev/null)" = "1" ] && [ -n "$gate_at" ] || say "BR-01: the gate's test must stand exactly once in ingest.c, as written: if (!announce_gate_passed(&c->announce)) {"
+  if [ -n "$open_at" ] && [ -n "$gate_at" ] && [ -n "$info_at" ] && [ -n "$read_at" ]; then
+    [ "$open_at" -lt "$gate_at" ] && [ "$gate_at" -lt "$info_at" ] && [ "$info_at" -lt "$read_at" ] || say "BR-01: the gate does not stand after the open and before the probe and the first read of the stream"
+    [ "$(sed -n "${open_at},${info_at}p" "$dir/ingest.c" | grep -c '^[[:space:]]*#\|^[[:space:]]*%:\|[^a-z_]got[o] \|setjm[p]\|longjm[p]')" = "0" ] || say "BR-01: a preprocessor line or a jump between the open and the probe (a switch around the gate)"
+    [ "$(sed -n "$((gate_at + 1)),$((gate_at + 5))p" "$dir/ingest.c" | grep -c '^        return NULL;$')" = "1" ] && [ "$(sed -n "$((gate_at + 5))p" "$dir/ingest.c")" = "    }" ] || say "BR-01: the refusal of the gate does not end the ingest (its block must close the input and return)"
+  fi
+  [ "$(cat "$dir"/*.c "$dir"/*.h 2>/dev/null | grep -o 'DEMS_PROOF_ANNOUNC[E][A-Z_]*' | sort -u | tr '\n' ' ')" = "DEMS_PROOF_ANNOUNCE_UNSEEN " ] && [ "$(grep -c '^#ifndef DEMS_PROOF_ANNOUNCE_UNSEE[N]$' "$dir/ingest.c" 2>/dev/null)" = "1" ] || say "BR-01: a proof switch of the gate other than the one that makes the callback see nothing"
+  # BR-03: the early end of ONE camera's open goes through that camera's own flag (the interrupt callback's argument).
+  [ "$(count 'interrupt_callback.opaque = c;')" = "1" ] || say "BR-03: the interrupt callback of an ingest is not given its own camera"
+  # Task 4 rows 175 / 142 (BR-04 (1)): no log level is ever set. The compiler refuses a use of the name (the poison
+  # line of worker.h); this rule holds the line itself and finds the name wherever it is code.
+  [ "$(count 'av_log_set_leve[l](')" = "0" ] && [ "$(cat "$dir"/*.c "$dir"/*.h 2>/dev/null | grep 'av_log_set_leve[l]' | grep -vc '^[[:space:]]*/\{0,1\}\*')" = "1" ] || say "BR-04: av_log_set_level is named in the worker's code (no level is ever set: nothing above level 16 may reach the log)"
+  [ "$(grep -c '^#pragma GCC poison av_log_set_level$' "$dir/worker.h" 2>/dev/null)" = "1" ] || say "BR-04: the line of worker.h that makes av_log_set_level uncallable is missing"
+  # Task 4 row 178 (the requests of rows 175 and 182; BR-04 (2), (3)): THE WORDS OF A REFUSAL ARE FIXED. Each of the
+  # two log codes and of the two frame members of the gate is a literal on exactly ONE line of the worker, the body
+  # of its own function, in its order (no line seen / another line); CAMERA_NO_PICTURE is a literal once; and every
+  # caller of ingest_over_as hands it the gate's two functions or literals - a frame reason is never built from a text.
+  [ "$(count '"INGEST_ANNOUNCE_NOT_SEE[N]"')" = "1" ] && [ "$(count '"INGEST_ANNOUNCE_NOT_MATCHE[D]"')" = "1" ] \
+    && [ "$(grep -A1 '^static const char \*announce_refusal_code(const AnnounceGate \*g) {$' "$dir/ingest.c" 2>/dev/null | grep -c '^    return announce_gate_verdict(g) == ANNOUNCE_NOT_SEEN ? "INGEST_ANNOUNCE_NOT_SEEN" : "INGEST_ANNOUNCE_NOT_MATCHED";$')" = "1" ] || say "BR-04: the two log codes of the gate are not literals of exactly one line, the body of announce_refusal_code (each in its case)"
+  [ "$(count '"CAMERA_ANNOUNCE_NOT_SEE[N]"')" = "1" ] && [ "$(count '"CAMERA_ANNOUNCE_NOT_MATCHE[D]"')" = "1" ] \
+    && [ "$(grep -A1 '^static const char \*announce_refusal_reason(const AnnounceGate \*g) {$' "$dir/ingest.c" 2>/dev/null | grep -c '^    return announce_gate_verdict(g) == ANNOUNCE_NOT_SEEN ? "CAMERA_ANNOUNCE_NOT_SEEN" : "CAMERA_ANNOUNCE_NOT_MATCHED";$')" = "1" ] || say "BR-04: the two frame members of the gate are not literals of exactly one line, the body of announce_refusal_reason (each in its case)"
+  [ "$(count '"CAMERA_NO_PICTUR[E]"')" = "1" ] || say "BR-04: the frame member CAMERA_NO_PICTURE is not a literal of exactly one line"
+  [ "$(count 'ingest_over_a[s](')" = "5" ] && [ "$(files 'ingest_over_a[s](')" = "ingest.c" ] \
+    && [ "$(grep -c 'ingest_over_as(c, src, announce_refusal_code(&c->announce), announce_refusal_reason(&c->announce), ' "$dir/ingest.c" 2>/dev/null)" = "2" ] \
+    && [ "$(grep -c 'ingest_over_as(c, src, "INGEST_NO_PICTURE_SIZE", "CAMERA_NO_PICTURE", ' "$dir/ingest.c" 2>/dev/null)" = "1" ] \
+    && [ "$(grep -c 'ingest_over_as(c, source, code, !strcmp(code, "CAMERA_CLOCK_OUT_OF_BOUND") ? code : !strcmp(code, "INGEST_ENDED") ? "CAMERA_STREAM_ENDED" : "CAMERA_NOT_CONNECTED", averror);' "$dir/ingest.c" 2>/dev/null)" = "1" ] || say "BR-04: a caller of ingest_over_as hands it a frame reason that is neither the gate's function nor a literal (four callers, as written)"
 
   # W-4: nothing ends the process with a success code but main's return, and nothing is printed to
   # standard output but frames (one writer, in ipc.c).
@@ -191,7 +232,16 @@ if [ "${1:-}" = "--selftest" ]; then
                   'ingest.c~s/"protocol_whitelist", "tcp"/"protocol_whitelist", "tcp,udp"/~F-10~another value of a pinned option' \
                   'ingest.c~s/avformat_alloc_output_context2(&c->out, NULL, "mp4", NULL)/avformat_alloc_output_context2(\&c->out, NULL, "segment", NULL)/~F-10~another muxer name (review R63-08: it would open files of its own)' \
                   'sink.c~s/#ifdef DEMS_PROOF_SILENT_SYNC_FALLBACK/#ifdef DEMS_PROOF_PLANTED_SWITCH/~R63-06~a proof switch that is not in the list of worker.h' \
-                  'capture_worker.c~s/^    ingest_init();$/    ingest_init(); sink_full_sync_hook = NULL;/~R63-09~the sync seam assigned in the worker'; do
+                  'capture_worker.c~s/^    ingest_init();$/    ingest_init(); sink_full_sync_hook = NULL;/~R63-09~the sync seam assigned in the worker' \
+                  'ingest.c~s/^    if (!announce_gate_passed(&c->announce)) {$/    if (0 \&\& !announce_gate_passed(\&c->announce)) {/~BR-01~the test of the announce gate behind a constant' \
+                  'ingest.c~s/^    tls_opening = NULL;$/    tls_opening = NULL; if (r >= 0 \&\& avformat_find_stream_info(c->in, NULL) >= 0) av_dump_format(c->in, 0, "", 0);/~BR-01~the stream probed before the announce gate' \
+                  'ingest.c~/^    if (!announce_gate_passed(&c->announce)) {$/,/^    }$/s/^        return NULL;$/        ;/~BR-01~a refusal of the announce gate that goes on to the probe' \
+                  'ingest.c~s/^#ifndef DEMS_PROOF_ANNOUNCE_UNSEEN$/#ifndef DEMS_PROOF_ANNOUNCE_UNSEEN_TOO/~BR-01~another proof switch of the announce gate' \
+                  'ingest.c~s/^    c->in->interrupt_callback.opaque = c;$/    c->in->interrupt_callback.opaque = NULL;/~BR-03~an interrupt callback without its camera' \
+                  'worker.h~s/^#pragma GCC poison av_log_set_level$//~BR-04~the line that makes av_log_set_level uncallable removed' \
+                  'ingest.c~s/ANNOUNCE_NOT_SEEN ? "CAMERA_ANNOUNCE_NOT_SEEN" : "CAMERA_ANNOUNCE_NOT_MATCHED";/ANNOUNCE_NOT_SEEN ? "CAMERA_ANNOUNCE_NOT_MATCHED" : "CAMERA_ANNOUNCE_NOT_SEEN";/~BR-04~the two frame members of the gate swapped' \
+                  'ingest.c~s/ANNOUNCE_NOT_SEEN ? "INGEST_ANNOUNCE_NOT_SEEN" : "INGEST_ANNOUNCE_NOT_MATCHED";/ANNOUNCE_NOT_SEEN ? "INGEST_ANNOUNCE_NOT_MATCHED" : "INGEST_ANNOUNCE_NOT_SEEN";/~BR-04~the two log codes of the gate swapped' \
+                  'ingest.c~s/ingest_over_as(c, src, "INGEST_NO_PICTURE_SIZE", "CAMERA_NO_PICTURE", /ingest_over_as(c, src, "INGEST_NO_PICTURE_SIZE", src, /~BR-04~a frame reason taken from a variable'; do
     file=${mutation%%~*}; rest=${mutation#*~}; script=${rest%%~*}; rest=${rest#*~}; tag=${rest%%~*}; what=${rest#*~}
     n=$((n + 1)); dir="$work/mutated$n"; mkdir -p "$dir"; cp src/*.c src/*.h "$dir/"
     sed "$script" "src/$file" > "$dir/$file"
@@ -220,9 +270,13 @@ if [ "${1:-}" = "--selftest" ]; then
   proof_rule Makefile "$work/proof" 2>&1 | grep -q 'HELLO does not mark a proof build' && echo "check.sh selftest: refused as required (F-10): a HELLO without the proof mark" || { echo "check.sh selftest: a HELLO without the proof mark was NOT refused"; bad=1; }
   # Fix pass F-M3 (review R63-08): THE IMPORT NET on real binaries. A program that reaches creat() through an assembler
   # label (no rule that reads C sees a call of creat) is refused by what it IMPORTS; its control imports only pinned names.
+  # Task 4 row 193 (finding L-2 of row 78): the label is the name creat() has FOR THE LINKER of this platform - the
+  # compiler's own prefix of a C name (`_` in a Mach-O object, none in an ELF one) and then the name; the reader of
+  # the import net names a function under each spelling of the two object formats (its own check, silent when it holds).
+  python3 test/static/pinned_calls.py --reader-selftest >/dev/null 2>&1 || { echo "check.sh selftest: the reader of the import net does not name a function under every spelling of the two object formats: $(python3 test/static/pinned_calls.py --reader-selftest 2>&1 | head -1)"; bad=1; }
   if command -v "${CC:-clang}" >/dev/null 2>&1; then
     mkdir -p "$work/imports"
-    printf '%s\n' '#include <fcntl.h>' '#include <unistd.h>' 'static int quiet(const char *, int) __asm__("_creat");' 'int main(void) { int fd = quiet("/nonexistent/x", 0600); if (fd >= 0) close(fd); return unlink("/nonexistent/x") != 0; }' > "$work/imports/label.c"
+    printf '%s\n' '#include <fcntl.h>' '#include <unistd.h>' '#define LABEL_TEXT(prefix) #prefix "creat"' '#define LABEL(prefix) LABEL_TEXT(prefix)' 'static int quiet(const char *, int) __asm__(LABEL(__USER_LABEL_PREFIX__));' 'int main(void) { int fd = quiet("/nonexistent/x", 0600); if (fd >= 0) close(fd); return unlink("/nonexistent/x") != 0; }' > "$work/imports/label.c"
     printf '%s\n' '#include <fcntl.h>' '#include <stdio.h>' '#include <unistd.h>' 'int main(void) { int fd = open("/nonexistent/x", O_RDONLY); FILE *f = fopen("/nonexistent/y", "r"); if (fd >= 0) close(fd); if (f) fclose(f); return (ftruncate(-1, 0) != 0) + (rename("/nonexistent/a", "/nonexistent/b") != 0) + (link("/nonexistent/a", "/nonexistent/b") != 0) + (unlink("/nonexistent/x") != 0) == 0; }' > "$work/imports/control.c"
     if "${CC:-clang}" -o "$work/imports/label" "$work/imports/label.c" 2>/dev/null && "${CC:-clang}" -o "$work/imports/control" "$work/imports/control.c" 2>/dev/null; then
       python3 test/static/pinned_calls.py --imports "$work/imports/control" test/static/imports.pin >/dev/null 2>&1 || { echo "check.sh selftest: a program that imports exactly the pinned functions is refused by the import net"; bad=1; }
@@ -263,4 +317,4 @@ grep -q 'DEMS_PROOF_MUX_EXTRA=.*use_editlis[t]=1.*capture-worker-negctl' Makefil
 fixture_rules test-fixtures || exit 1
 proof_rule Makefile "$1" || exit 1
 version_rule test/static/libavformat.pin "$(${PKG_CONFIG:-pkg-config} --modversion libavformat 2>/dev/null)" || exit 1
-echo "check.sh: $1: static rules OK (AU2-07, N-10, C.4 forbidden options, W1-C1, SR-3 mux options, H-4 one encoder, W-1, W-4, B.2, D58-1/2 exclusive create, D59-2 sync, D59-3 one truncation, D59-4 fault seam, F-2, R-6 pinned file calls + no digraph / assembler name, F-10 pinned mux calls + one muxer name + proof builds marked, R63-06 every proof switch marks, R63-09 sync seam, D85 libavformat $(${PKG_CONFIG:-pkg-config} --modversion libavformat); fixtures: SEC35-23)"
+echo "check.sh: $1: static rules OK (AU2-07, N-10, C.4 forbidden options, W1-C1, SR-3 mux options, H-4 one encoder, W-1, W-4, B.2, D58-1/2 exclusive create, D59-2 sync, D59-3 one truncation, D59-4 fault seam, F-2, BR-01 one open + one probe + the announce gate between them and no switch around it, BR-03 per-camera interrupt, BR-04 no av_log_set_level + the words of a refusal fixed (each code and frame member a literal of one line, no frame reason from a text), R-6 pinned file calls + no digraph / assembler name, F-10 pinned mux calls + one muxer name + proof builds marked, R63-06 every proof switch marks, R63-09 sync seam, D85 libavformat $(${PKG_CONFIG:-pkg-config} --modversion libavformat); fixtures: SEC35-23)"

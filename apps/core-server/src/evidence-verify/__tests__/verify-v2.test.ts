@@ -818,6 +818,90 @@ describe('V-13 certificate', () => {
   });
 });
 
+// Task 4 row V5 (decision C84, caution R-2 of security review 230; SX-09 (d)). A RECEIVER'S VERIFIER CAN LEARN OF A MARK:
+// the list of marked certificate fingerprints, supplied out of band, as one optional input. The keys of these cases are
+// throw-away keys made in memory by the test support; nothing is written outside the scratch folder it removes.
+describe('row V5: a verifier that is told the marked fingerprints (`expected.compromisedCertificateSha256`)', () => {
+  const NOTICE = { code: 'SIGNED_BY_COMPROMISED_KEY', report: 'Signing key: MARKED COMPROMISED. The signature alone proves nothing any more, and this verifier holds no record of the Core that sealed the item to hold the package to.' };
+  /** The result without the one member the input adds: what must equal the result of a run without the input. */
+  const withoutMark = (result: PackageVerifyResult): unknown => {
+    const { compromisedKey: _mark, ...signature } = result.signature;
+    return { ...result, signature };
+  };
+
+  it('a package sealed under a listed certificate: SIGNATURE VALID, KEY REPORTED COMPROMISED BY THE LIST SUPPLIED - NOT A PASS. Exactly V-13 fails, by its own code; the state and the notice say why; the mark wins over the trust list', async () => {
+    const built = await buildPackage();
+    const fingerprint = built.signer.certificate.sha256;
+    const control = await verify(built);
+    expect(control.ok).toBe(true);
+    const marked = await verify(built, { expected: { compromisedCertificateSha256: [fingerprint] } });
+    expectFailed(marked, ['V-13']);
+    expect(check(marked, 'V-13').findings).toEqual([{ code: 'CERTIFICATE_KEY_COMPROMISED', failureClass: 'TAMPERED', file: PackageFile.CERTIFICATE }]);
+    // The signature itself verified: the state is of the KEY.
+    expect(check(marked, 'V-09').status).toBe('PASS');
+    expect(marked.signature).toMatchObject({ ok: true, compromisedKey: 'COMPROMISED' });
+    expect(marked.notices.at(-1)).toEqual(NOTICE);
+    // Everything else of the result is the result of the run without the list: the camera files, the transcript, the other checks.
+    expect(marked.checks.filter((entry) => entry.id !== 'V-13')).toEqual(control.checks.filter((entry) => entry.id !== 'V-13'));
+    expect(marked.files).toEqual(control.files);
+    // THE MARK WINS: the same fingerprint in the trusted list does not make it a pass.
+    const both = await verifyAnchored(built, built.item, [fingerprint]);
+    expect(both.ok).toBe(true);
+    const bothMarked = await verify(built, { plaintext: 'REQUIRED', expected: { ...built.item, trustedCertificateSha256: [fingerprint], compromisedCertificateSha256: [fingerprint] } });
+    expectFailed(bothMarked, ['V-13']);
+    expect(codes(bothMarked, 'V-13')).toEqual(['CERTIFICATE_KEY_COMPROMISED']);
+    // A receiver who took the fingerprint OUT of his trust list as well: both findings, the mark still named.
+    const removed = await verify(built, { expected: { trustedCertificateSha256: [], compromisedCertificateSha256: [fingerprint] } });
+    expect(codes(removed, 'V-13')).toEqual(['CERTIFICATE_NOT_TRUSTED', 'CERTIFICATE_KEY_COMPROMISED']);
+    expect(removed.signature.compromisedKey).toBe('COMPROMISED');
+    // A tampered copy under the marked key is a failure of its own checks AND carries the state: never "only the mark".
+    flipByte(built.path(cameraFilePath('VIDEO-01')), built.fragment('VIDEO-01', 2).byteOffset + 5);
+    const tampered = await verify(built, { expected: { compromisedCertificateSha256: [fingerprint] } });
+    expect(failing(tampered)).toEqual(expect.arrayContaining(['V-04', 'V-13']));
+    expect(tampered.signature.compromisedKey).toBe('COMPROMISED');
+  });
+
+  it('a list that does not name the package\'s certificate: the package verifies as before and the state is NOT_MARKED; WITHOUT the input the result is the one of before, member for member', async () => {
+    const built = await buildPackage({ revisions: 2 });
+    const plain = await verifyAnchored(built);
+    expect(plain.ok).toBe(true);
+    expect('compromisedKey' in plain.signature).toBe(false);
+    expect(plain.notices.map((notice) => notice.code)).toEqual(['AUDIT_EXTRACT_NOT_SIGNED']);
+    for (const list of [[], [sha256Hex(Buffer.from('another key that was marked'))]]) {
+      const told = await verify(built, { plaintext: 'REQUIRED', expected: { ...built.item, trustedCertificateSha256: [built.signer.certificate.sha256], compromisedCertificateSha256: list } });
+      expect(told.ok).toBe(true);
+      expect(told.signature.compromisedKey).toBe('NOT_MARKED');
+      expect(withoutMark(told)).toEqual(plain);
+    }
+    // NOT_MARKED is said only of a package that verified: one whose certificate does not hold states NOT_ESTABLISHED, never "not marked".
+    writeFileSync(built.path(PackageFile.CERTIFICATE), throwAwaySigner().certificate.pemText);
+    const unreliable = await verify(built, { expected: { compromisedCertificateSha256: [] } });
+    expect(unreliable.ok).toBe(false);
+    expect(unreliable.signature.compromisedKey).toBe('NOT_ESTABLISHED');
+  });
+
+  it('a transcript revision signed under a listed certificate after a rotation: exactly V-11 fails, by revision; the seal\'s own key is not the marked one', async () => {
+    const first = throwAwaySigner();
+    const second = throwAwaySigner('CORE-KEY-EVSIGN-02');
+    const built = await buildPackage({ signer: first, revisions: 1 });
+    const kept = (readJson(built.path(PackageFile.TRANSCRIPT_REVISIONS)).revisions as any[])[0];
+    writeRevisions(built.dir, built.manifest, [kept, revisionRecord(second, built.manifest, 2, kept.sha256 as string)]);
+    retainCertificate(built, second);
+    const item = { ...built.item, revisionCount: 2 };
+    const trusted = [first.certificate.sha256, second.certificate.sha256];
+    expect(failing(await verifyAnchored(built, item, trusted))).toEqual([]);
+    const marked = await verify(built, { plaintext: 'REQUIRED', expected: { ...item, trustedCertificateSha256: trusted, compromisedCertificateSha256: [second.certificate.sha256] } });
+    expectFailed(marked, ['V-11']);
+    expect(check(marked, 'V-11').findings).toEqual([{ code: 'REVISION_CERTIFICATE_KEY_COMPROMISED', failureClass: 'TAMPERED', revisionNo: 2 }]);
+    expect(marked.signature.compromisedKey).toBe('COMPROMISED');
+    expect(marked.notices.at(-1)).toEqual(NOTICE);
+    // The FIRST key marked instead: the seal and revision 1 rest on it.
+    const sealMarked = await verify(built, { plaintext: 'REQUIRED', expected: { ...item, trustedCertificateSha256: trusted, compromisedCertificateSha256: [first.certificate.sha256] } });
+    expectFailed(sealMarked, ['V-11', 'V-13']);
+    expect([codes(sealMarked, 'V-11'), codes(sealMarked, 'V-13')]).toEqual([['REVISION_CERTIFICATE_KEY_COMPROMISED'], ['CERTIFICATE_KEY_COMPROMISED']]);
+  });
+});
+
 describe('V-14 file completeness', () => {
   it('each declared file removed is named as MISSING', async () => {
     const built = await buildPackage();

@@ -22,12 +22,13 @@ import '@/navigation/testing/router-harness';
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { AUDIO_FRAME_NOT_MEASURED_EXAMPLE, DIAGNOSTIC_NOT_REPORTED_EXAMPLE } from '@dems/shared/api';
 import { en } from '@dems/shared/i18n';
-import { isLevelNotMeasured, type SimState } from '@dems/shared/sim';
+import { createSim, isLevelNotMeasured, type SimState } from '@dems/shared/sim';
 import { micRows, statedTransportOf } from '@/features/capture-selector/capture-selector-model';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { resetMotionStateForTests } from '@/motion';
 import { deviceMicLevelKind } from './device-mic-meter';
-import { detailFactsOf, relayWords } from './devices-model';
+import { cameraDetailFactsOf, detailFactsOf, relayWords } from './devices-model';
+import { STREAM_FACTS_NOT_STATED, statedTrackOf, storedStreamFactsOf } from './stream-facts';
 import { PLATFORM_CHECK_IDS, diagnosticNotReported, summaryOf } from './diagnostics-sheet';
 import { registeredStateTone } from './registered-device-rows';
 import { renderDevicesApp, settle, type DevicesHarness } from './testing/devices-harness';
@@ -81,6 +82,40 @@ describe('the two rules (pure)', () => {
     expect(detailFactsOf(false, null)).toBe('SIMULATED');
     expect(detailFactsOf(true, 'FAKE')).toBe('GENERATED');
     for (const adapter of ['ONVIF_RTSP', 'LOCAL_DEVICE', 'USB_AUDIO', null, undefined]) expect(detailFactsOf(true, adapter)).toBe('MODEL_VALUES');
+  });
+
+  // ── Task 4 row W4 (review 060c R-02, R-04; 060b S-01): a camera's own rule and the stored stream facts ──
+  it('W4 - `cameraDetailFactsOf`: SIMULATED off a real-capture Core; GENERATED for `adapter: FAKE`; STATED (never the model\'s values) for every other camera on such a Core', () => {
+    expect(cameraDetailFactsOf(false, 'ONVIF_RTSP')).toBe('SIMULATED');
+    expect(cameraDetailFactsOf(false, null)).toBe('SIMULATED');
+    expect(cameraDetailFactsOf(true, 'FAKE')).toBe('GENERATED');
+    for (const adapter of ['ONVIF_RTSP', 'LOCAL_DEVICE', null, undefined]) expect(cameraDetailFactsOf(true, adapter)).toBe('STATED');
+  });
+
+  it('W4 - `storedStreamFactsOf`: a stored profile code states its picture, rate and codec as the Core reads it; anything else states nothing', () => {
+    // The Core's own answers for the same codes (`cameraStreamFactsOf`, `apps/core-server/src/modules/devices/status.ts`); the web holds the same cases.
+    expect(storedStreamFactsOf('H264_1080P25')).toEqual({ resolution: '1080p', fps: 25, codec: 'H.264' });
+    expect(storedStreamFactsOf('H264_720P30')).toEqual({ resolution: '720p', fps: 30, codec: 'H.264' });
+    expect(storedStreamFactsOf('HEVC_2160P')).toEqual({ resolution: '2160p', fps: null, codec: 'HEVC' });
+    expect(storedStreamFactsOf('HEVC_2560X1920P')).toEqual({ resolution: '2560x1920', fps: null, codec: 'HEVC' });
+    expect(storedStreamFactsOf('H264_2560X1920P15')).toEqual({ resolution: '2560x1920', fps: 15, codec: 'H.264' });
+    for (const code of ['STANDARD_1080P25', 'HEVC_2160P25_MAIN', '', null, undefined, 7, 'h264_1080p25', 'H264_1920X1080P25', 'H264_50P25', 'H264_1080P999', 'AV1_1080P25']) {
+      expect(storedStreamFactsOf(code)).toEqual(STREAM_FACTS_NOT_STATED);
+    }
+  });
+
+  it('W4 - `statedTrackOf`: the line\'s stored statement and the fault the Core reports; no line states nothing', () => {
+    const idle = createSim({ scenario: 'idle', storage: null }).store.getState();
+    const first = (line: { readonly trackId?: unknown }): boolean => line.trackId === 'VIDEO-01';
+    const lines = (change: object): SimState => ({ ...idle, captureConfig: { ...idle.captureConfig, cameras: idle.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, ...change } : line)) } as SimState['captureConfig'] });
+    expect(statedTrackOf(lines({ profile: 'HEVC_2160P' }), first)).toEqual({ resolution: '2160p', fps: null, codec: 'HEVC', fault: null });
+    expect(statedTrackOf(lines({ profile: 'STANDARD' }), first)).toEqual({ ...STREAM_FACTS_NOT_STATED, fault: null });
+    expect(statedTrackOf({ ...idle, captureConfig: { ...idle.captureConfig, cameras: [] } }, first)).toEqual({ ...STREAM_FACTS_NOT_STATED, fault: null });
+    expect(statedTrackOf(lines({ streamState: 'LOST' }), first).fault).toBe('STREAM_LOST');
+    expect(statedTrackOf(lines({ online: false }), first).fault).toBe('NOT_REACHABLE');
+    expect(statedTrackOf({ ...idle, cameras: idle.cameras.map((camera) => (camera.id === 'VIDEO-01' ? { ...camera, lens: 'FAULT' as const } : camera)) }, first).fault).toBe('NO_SIGNAL');
+    // CONTROL: the other track is not touched by the first one's fault.
+    expect(statedTrackOf(lines({ streamState: 'LOST' }), (line) => line.trackId === 'VIDEO-02').fault).toBeNull();
   });
 
   it('`statedTransportOf`: no transport word for a generated source; every other line keeps what the selector states', () => {
@@ -162,15 +197,40 @@ describe.each(WINDOWS)('a Core in real capture on %s', (window) => {
     expect(screen.queryByTestId('synthetic-values-microphone')).toBeNull();
   });
 
-  it('blocks that keep model values carry the chip: a camera and a microphone of another adapter', async () => {
+  // Task 4 row W4 (review 060c R-02), PIN MOVED - the camera half of this case. It pinned, for a PRODUCTION camera
+  // (`ONVIF_RTSP`) on a Core in real capture, the chip "Synthetic demo values" over the simulator's record and the fact
+  // "PoE CAM 1": simulator values shown in LIVE mode. A production camera now draws only what the Core states - no model
+  // value, so no chip. The microphone half below is unchanged.
+  it('a production camera draws only what the Core states (no model value, no chip); a microphone of another adapter keeps its model values under the chip', async () => {
     live();
     const h = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/CAM-01' });
     mark(h, { ...ALL_FAKE, 'CAM-01': PRODUCTION, 'MIC-02': { sourceClass: 'PRODUCTION', adapter: 'USB_AUDIO' } });
+    profile(h, 'HEVC_2160P');
     await settle();
-    expect(screen.getByTestId('synthetic-values-camera')).toHaveTextContent(CHIP);
-    // The model values are still there - that is what the chip marks.
-    expect(within(screen.getByTestId('device-fact-port')).getByText('PoE CAM 1')).toBeTruthy();
+    expect(screen.queryByTestId('synthetic-values-camera')).toBeNull();
+    expect(screen.queryByTestId('device-fact-port')).toBeNull();
     expect(screen.queryByTestId('device-fact-source')).toBeNull();
+    // STATED FACTS: the stored stream statement of the camera's selector line, read as the Core reads it - no rate for a code that states none.
+    expect(within(screen.getByTestId('device-fact-format')).getByText('2160p • HEVC')).toBeTruthy();
+    expect(text('device-overview')).not.toMatch(MODEL_WORDS);
+    expect(text('device-overview')).not.toMatch(/25 fps|H\.264|9 Mbps/);
+    // The slice this screen was given still holds the simulator's record: it is what must not be read.
+    expect(h.sim.store.getState().cameras.find((camera) => camera.deviceId === 'CAM-01')).toMatchObject({ resolution: '1080p', fps: 25, codec: 'H.264', bitrateMbps: 9 });
+
+    // NULL FACTS: a line whose code is no stream statement - "Not stated", never the model's resolution and never the raw code.
+    profile(h, 'STANDARD');
+    await settle();
+    expect(within(screen.getByTestId('device-fact-format')).getByText(en.common.devices.cameraFormatNotStated)).toBeTruthy();
+    expect(text('device-overview')).not.toMatch(MODEL_WORDS);
+
+    // A FAULT the Core reports (the line's stream is lost): the fault stands in the place of the stored facts.
+    profile(h, 'H264_720P30');
+    await settle();
+    expect(within(screen.getByTestId('device-fact-format')).getByText('720p • 30 fps • H.264')).toBeTruthy();
+    act(() => h.sim.store.setState((s) => ({ captureConfig: { ...s.captureConfig, cameras: s.captureConfig.cameras.map((line) => (line.deviceId === 'CAM-01' ? { ...line, streamState: 'LOST' } : line)) } as SimState['captureConfig'] })));
+    await settle();
+    expect(within(screen.getByTestId('device-fact-format')).getByText(en.devices.selector.stream.LOST)).toBeTruthy();
+    expect(text('device-fact-format')).not.toMatch(/720p|30 fps/);
     h.app.unmount();
 
     live();

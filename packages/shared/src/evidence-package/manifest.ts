@@ -4,7 +4,11 @@
  * STRICT. Every object refuses a member it does not know and every field is required as a key
  * (a nullable field is present with `null`). There is no default and no optional member: a
  * manifest without a source class does not parse, so absence can never be read as PRODUCTION
- * (spec §B.12 "Compatibility").
+ * (spec §B.12 "Compatibility"). ONE EXCEPTION since task 4 row V4, named and reasoned at
+ * `MANIFEST_V2_OPTIONAL_FIELDS`: `audio.absentOnRestart` (fields 129-132), optional so that no
+ * package sealed before it verifies differently; since row P1 the same list holds a second member,
+ * `hostProfileNotAsked` (field 133), for the same reason; since row R1b a third,
+ * `tracks[].absentInSession` (fields 134-138).
  *
  * WHERE THE 128 LIVE. 119 fields are members of the sealed `session-manifest.json`; the 9 fields
  * of §B.11 (`export.*`) are "present only in an export" and live in the export manifest, because
@@ -137,6 +141,55 @@ const SubjectSchema = z.strictObject({
   authorization: text,
 });
 
+// ── Fields 134-138 (optional): a camera absent inside the session ─────────────────────────────
+/**
+ * The longest absence of a camera a manifest can state (ms): one day, the bound of the audit type
+ * `CAPTURE_VIDEO_ABSENT_IN_SESSION` (the Core's `CAPTURE_VIDEO_ABSENT_MAX_MS`; held equal by a test
+ * there). A larger number is a clock fault, not a measurement.
+ */
+export const MANIFEST_VIDEO_ABSENT_MAX_MS = 86_400_000;
+/** How an absence of a camera ended: the relay opened the camera again, or the capture ended with the camera still away. */
+export const MANIFEST_VIDEO_ABSENCE_ENDS = ['RE_OPENED', 'NOT_RE_OPENED'] as const;
+export type ManifestVideoAbsenceEnd = (typeof MANIFEST_VIDEO_ABSENCE_ENDS)[number];
+
+/**
+ * ONE ABSENCE OF A CAMERA INSIDE THE SESSION (task 4 row R1b; decision C99; finding F3-01 of the M3
+ * review; the video twin of `audio.absentOnRestart`). The camera of this track stopped delivering
+ * pictures while the session went on and its relay kept the push to the capture worker. The relay
+ * places the first picture after the absence as far after the last one before it as its own clock
+ * counted, so the FILE of the track has ONE STEP IN TIME as long as the absence: `durationMs` of
+ * the track spans the absence and holds no picture inside it. This record is how the Core accounts
+ * for that step, under the signature. For `NOT_RE_OPENED` there is no step: the track's pictures
+ * END at the loss, and the track is shorter than the session by about the stated time.
+ *
+ * Numbers and one closed word. `attempt`: the capture worker of the session the relay fed (the
+ * first is 1); `loss`: the relay's own number of the loss (it counts from 1). THE TWO BOUNDS are
+ * whole milliseconds, each measured differently because neither clock sees the last picture:
+ *   `absentAtLeastMs`  RE_OPENED: the RELAY's own measure, on its monotonic clock, from the
+ *                      instant it called the camera lost to the first keyframe of the new leg -
+ *                      the last picture was forwarded BEFORE that instant, so no shorter time is
+ *                      possible. NOT_RE_OPENED: the CORE's clock, from the relay's word of the
+ *                      loss to the instant the Core asked the capture to end.
+ *   `absentAtMostMs`   the CORE's clock from the relay's word of the loss to its word of the
+ *                      re-open (NOT_RE_OPENED: to the instant the capture had ended), never below
+ *                      the least, PLUS the longest the relay lets a playing camera be silent
+ *                      before it calls it lost (5 s) - the last picture came no earlier than that.
+ * A bound is null only when the instant it is measured from is not known: the record then says
+ * that the absence exists and was not measured. No address, no stream name, no file name.
+ */
+export const ManifestVideoAbsenceSchema = z.strictObject({
+  /** Field 134. */
+  attempt: positive,
+  /** Field 135. */
+  loss: positive,
+  /** Field 136: null = not measured. */
+  absentAtLeastMs: count.max(MANIFEST_VIDEO_ABSENT_MAX_MS).nullable(),
+  /** Field 137: null = not measured. */
+  absentAtMostMs: count.max(MANIFEST_VIDEO_ABSENT_MAX_MS).nullable(),
+  /** Field 138. */
+  ended: z.enum(MANIFEST_VIDEO_ABSENCE_ENDS),
+});
+
 // ── B.4 + B.12 track records (18 + 3 = 21) ───────────────────────────────────────────────────
 export const ManifestTrackSchema = z.strictObject({
   trackId: videoTrackId,
@@ -163,6 +216,13 @@ export const ManifestTrackSchema = z.strictObject({
   firstVideoSamplePts: count.nullable(),
   /** Field 128: ticks per second of the video track; null exactly when field 127 is null. */
   firstVideoSampleTimescale: positive.nullable(),
+  /**
+   * Fields 134-138, THE THIRD OPTIONAL MEMBER (see `MANIFEST_V2_OPTIONAL_FIELDS`). One record per
+   * absence of this track's camera inside the session, in the order they happened. ABSENT = the
+   * Core states no absence for this track; an EMPTY list is refused, so "none" has exactly one
+   * form and one digest. When present it is inside the digest and under the signature.
+   */
+  absentInSession: z.array(ManifestVideoAbsenceSchema).min(1).optional(),
 });
 
 // ── B.5 + B.12 session audio (10 + 1 = 11) ───────────────────────────────────────────────────
@@ -179,11 +239,75 @@ export const ManifestAudioIntervalSchema = z.strictObject({
   /** Field 125. */
   sourceClass,
 });
+/**
+ * The longest audio gap a manifest can state (ms): one day, the bound of the audit type
+ * `CAPTURE_AUDIO_ABSENT_ON_RESTART` (the Core's `CAPTURE_AUDIO_ABSENT_MAX_MS`; held equal by a test
+ * there). A larger number is a clock fault, not a measurement.
+ */
+export const MANIFEST_AUDIO_ABSENT_MAX_MS = 86_400_000;
+const gapMs = count.max(MANIFEST_AUDIO_ABSENT_MAX_MS);
+
+/**
+ * ONE WORKER RESTART DURING WHICH NO AUDIO WAS RECORDED (task 4 row V4; decision C73; the finding
+ * of row 191b): the capture worker of the session was replaced before anything was durable, and
+ * between the earlier worker and the later one the microphones delivered nothing. The camera files
+ * begin with the later worker, so `tracks[].durationMs` is SHORTER than `timeline.
+ * recordingDurationMs` - this record is how the Core accounts for the difference, under the
+ * signature. Numbers only: the two attempt numbers (the first worker of a session is attempt 1)
+ * and the two MEASURED bounds of the gap in whole milliseconds - at least (the earlier worker down
+ * until the microphones of the later one were started) and at most (until the later worker's audio
+ * was heard). A bound is null only when the instant it is measured from is not known: the record
+ * then says that the gap exists and was not measured. No device, no card text, no file name.
+ */
+export const ManifestAudioRestartGapSchema = z.strictObject({
+  /** Field 129. */
+  earlierAttempt: positive,
+  /** Field 130. */
+  laterAttempt: positive,
+  /** Field 131: null = not measured. */
+  absentAtLeastMs: gapMs.nullable(),
+  /** Field 132: null = not measured. */
+  absentAtMostMs: gapMs.nullable(),
+});
 const AudioSchema = z.strictObject({
   trackId: z.literal(SESSION_AUDIO_TRACK_ID),
   codec: text,
   containsIn: z.array(videoTrackId),
   sourceIntervals: z.array(ManifestAudioIntervalSchema),
+  /**
+   * Fields 129-132, THE ONE OPTIONAL MEMBER OF THE MANIFEST (see `MANIFEST_V2_OPTIONAL_FIELDS` for
+   * why it is optional). One record per restart, in the order they happened. ABSENT = the Core
+   * states no restart gap; an EMPTY list is refused, so "none" has exactly one form and one
+   * digest. When present it is inside the digest and under the signature like every other member.
+   */
+  absentOnRestart: z.array(ManifestAudioRestartGapSchema).min(1).optional(),
+});
+
+// ── Field 133 (optional): the host profile was not asked ──────────────────────────────────────
+/**
+ * The platforms a PRODUCTION Core is allowed on WITHOUT its host profile being asked (task 4 row P1;
+ * decision U21 (2): Linux and macOS). On Linux the Core asks the whole host profile at every start and
+ * its manifests carry no such member, so `linux` is not in this list and can never be stated here.
+ */
+export const MANIFEST_HOST_PROFILE_NOT_ASKED_PLATFORMS = ['darwin'] as const;
+
+/**
+ * THE CORE THAT SEALED THIS PACKAGE RAN AS A PRODUCTION CORE ON A PLATFORM WHERE ITS HOST PROFILE IS
+ * NOT ASKED (task 4 row P1; decisions U21 (2), C66 (1), C71 C-7). The host profile is what a production
+ * host must be - the loopback owner rule that keeps other accounts of the host away from the camera
+ * listeners, no crash collector that images the Core's memory, no packet forwarding, a synchronised
+ * clock, no sleep, the address helper's socket. On Linux the Core refuses to start unless every item is
+ * in place. On the platform named here it starts WITHOUT asking any of them: nothing of the above was
+ * checked for the Core that sealed this package. Until this member that was a warning in the Core's log
+ * alone; now it is inside the digest and under the signature.
+ *
+ * It is the statement of the boot of the Core that SEALED (built this manifest) - a function of that
+ * Core's platform alone. It does not say that anything was wrong with the host: it says that nobody
+ * checked. One member, the platform word, of a closed list.
+ */
+export const ManifestHostProfileNotAskedSchema = z.strictObject({
+  /** Field 133. */
+  platform: z.enum(MANIFEST_HOST_PROFILE_NOT_ASKED_PLATFORMS),
 });
 
 // ── B.6 fragment records (17) ────────────────────────────────────────────────────────────────
@@ -307,6 +431,15 @@ const bodyMembers = {
   transcript: TranscriptSchema,
   sealing: SealingSchema,
   manifestSha256: hex64,
+  /**
+   * Field 133, THE SECOND OPTIONAL MEMBER (see `MANIFEST_V2_OPTIONAL_FIELDS`). ABSENT = the manifest
+   * states nothing about the host profile: every package sealed before the member, every package of a
+   * development or simulated Core (no host profile is asked there, by design), and every package of a
+   * production Core on Linux, where the profile WAS asked - so a Linux manifest is byte for byte the
+   * manifest of before. PRESENT = a production Core sealed it on the named platform without its host
+   * profile being asked. When present it is inside the digest and under the signature.
+   */
+  hostProfileNotAsked: ManifestHostProfileNotAskedSchema.optional(),
 };
 
 type Issue = (path: readonly (string | number)[], message: string) => void;
@@ -324,6 +457,20 @@ function crossFieldRules(manifest: BodyShape, issue: Issue): void {
     if ((track.firstVideoSamplePts === null) !== (track.firstVideoSampleTimescale === null)) {
       issue(['tracks', index, 'firstVideoSampleTimescale'], 'null exactly when firstVideoSamplePts is null');
     }
+    // Fields 134-138 (row R1b, optional): the least an absence can be is not above the most; the
+    // records follow each other (a later attempt, or the next loss of the same attempt); and an
+    // absence that did not end can only be the last one of its track.
+    (track.absentInSession ?? []).forEach((absence, at, absences) => {
+      const path = ['tracks', index, 'absentInSession', at] as const;
+      if (absence.absentAtLeastMs !== null && absence.absentAtMostMs !== null && absence.absentAtLeastMs > absence.absentAtMostMs) {
+        issue([...path, 'absentAtMostMs'], 'the most an absence can be is not below the least');
+      }
+      const previous = at > 0 ? absences[at - 1] : undefined;
+      if (previous !== undefined && (absence.attempt < previous.attempt || (absence.attempt === previous.attempt && absence.loss <= previous.loss))) {
+        issue([...path, 'loss'], 'an absence follows the previous one: a later attempt, or a higher loss number of the same attempt');
+      }
+      if (absence.ended === 'NOT_RE_OPENED' && at !== absences.length - 1) issue([...path, 'ended'], 'only the last absence of a track may be one that did not end');
+    });
   });
   // §B.6: one fragment array per SEALED camera file, in the order of the track records.
   if (manifest.files.length !== manifest.tracks.length) issue(['files'], 'one file record per track record');
@@ -355,12 +502,30 @@ function crossFieldRules(manifest: BodyShape, issue: Issue): void {
     classOfMic.set(interval.micDeviceId, interval.sourceClass);
   });
 
+  // Fields 129-132 (row V4, optional): each record goes forward - a later attempt after the earlier
+  // one, the least gap not above the most - and the records follow each other in time.
+  (manifest.audio.absentOnRestart ?? []).forEach((gap, index, gaps) => {
+    const at = ['audio', 'absentOnRestart', index] as const;
+    if (gap.laterAttempt <= gap.earlierAttempt) issue([...at, 'laterAttempt'], 'the later attempt has a higher number than the earlier one');
+    if (gap.absentAtLeastMs !== null && gap.absentAtMostMs !== null && gap.absentAtLeastMs > gap.absentAtMostMs) {
+      issue([...at, 'absentAtMostMs'], 'the most a gap can be is not below the least');
+    }
+    const previous = index > 0 ? gaps[index - 1] : undefined;
+    if (previous !== undefined && gap.earlierAttempt < previous.laterAttempt) issue([...at, 'earlierAttempt'], 'a restart does not begin before the previous one ended');
+  });
+
   // §B.12 field 126 and rule 5: the flag is exactly the summary of fields 124 and 125.
   const classes = [...manifest.tracks.map((track) => track.sourceClass), ...intervals.map((interval) => interval.sourceClass)];
   if (manifest.developmentSources !== deriveDevelopmentSources(classes)) issue(['developmentSources'], 'equals "some source is not PRODUCTION"');
   // §B.12 rule 6: a demo package has FAKE on every source.
   if ((manifest.demo || manifest.integrity === 'DEMO_PACKAGE') && classes.some((value) => value !== ManifestSourceClass.FAKE)) {
     issue(['developmentSources'], 'a demo package has FAKE on every source');
+  }
+
+  // Field 133 (row P1, optional): the statement of a PRODUCTION Core. A demo package is sealed by the
+  // seed-time generator and never by a production Core, so the two do not stand in one manifest.
+  if (manifest.hostProfileNotAsked !== undefined && (manifest.demo || manifest.integrity !== 'REAL')) {
+    issue(['hostProfileNotAsked'], 'only in a package a production Core sealed: never beside demo or an integrity other than REAL');
   }
 
   // §B.2 field 12: `stoppedAt` is null only for an interrupted seal.
@@ -623,6 +788,49 @@ export const MANIFEST_V2_FIELDS: readonly ManifestFieldDefinition[] = Object.fre
   sealed(127, 'tracks[].firstVideoSamplePts'),
   sealed(128, 'tracks[].firstVideoSampleTimescale'),
 ]);
+
+/**
+ * THE OPTIONAL FIELDS OF THE SEALED MANIFEST (task 4 row V4; decisions C73, C80), numbered on from
+ * 128. They are NOT in `MANIFEST_V2_FIELDS`: that list is "every member a manifest must have", and
+ * a manifest without one of these parses.
+ *
+ * WHY OPTIONAL, AGAINST THE RULE OF THIS FILE'S HEADER ("no optional member"). The rule exists so
+ * that absence can never be read as a claim (a manifest without a source class must not read as
+ * PRODUCTION). Every member added before this one was added as a REQUIRED key - which is right
+ * only while no sealed package exists without it. Packages sealed before this step exist, and a
+ * required key would make each of them fail V-01: an evidence form may not change what an existing
+ * sealed package verifies as. So the member is optional and ABSENT in every package sealed before;
+ * such a package has the same parse, the same canonical body, the same digest and the same verdict
+ * as before. What absence means is stated and is no claim in the Core's favour: "this manifest
+ * states no restart gap" - never "the audio is complete" (a package sealed before the member
+ * existed could not state one; the unsigned audit extract is where its gap is). A verifier that
+ * predates the member refuses a manifest that CARRIES it (strict), which is the safe side.
+ */
+export const MANIFEST_V2_OPTIONAL_FIELDS: readonly ManifestFieldDefinition[] = Object.freeze([
+  sealed(129, 'audio.absentOnRestart[].earlierAttempt'),
+  sealed(130, 'audio.absentOnRestart[].laterAttempt'),
+  sealed(131, 'audio.absentOnRestart[].absentAtLeastMs'),
+  sealed(132, 'audio.absentOnRestart[].absentAtMostMs'),
+  // Task 4 row P1 (decision U21 (2)): optional for the SAME reason - no package sealed before it, and no
+  // package a Linux production Core seals after it, may verify or read differently. What absence means
+  // is stated at the member and is no claim in the Core's favour: "this manifest states nothing about
+  // the host profile" - never "the host profile was in place" (a development Core asks none, and a
+  // package sealed before the member could not state it).
+  sealed(133, 'hostProfileNotAsked.platform'),
+  // Task 4 row R1b (decision C99): optional for the SAME reason - no package sealed before it, and no
+  // package of a session without a camera loss sealed after it, may verify or read differently. What
+  // absence means is no claim in the Core's favour: "this manifest states no absence of this track's
+  // camera" - never "the video is complete" (a package sealed before the member could not state one;
+  // its `FAULT_RAISED` / `FAULT_CLEARED` rows in the unsigned audit extract are where it is).
+  sealed(134, 'tracks[].absentInSession[].attempt'),
+  sealed(135, 'tracks[].absentInSession[].loss'),
+  sealed(136, 'tracks[].absentInSession[].absentAtLeastMs'),
+  sealed(137, 'tracks[].absentInSession[].absentAtMostMs'),
+  sealed(138, 'tracks[].absentInSession[].ended'),
+]);
+export type ManifestVideoAbsence = z.output<typeof ManifestVideoAbsenceSchema>;
+export type ManifestAudioRestartGap = z.output<typeof ManifestAudioRestartGapSchema>;
+export type ManifestHostProfileNotAsked = z.output<typeof ManifestHostProfileNotAskedSchema>;
 
 /** The two members that the canonical body leaves out (spec §B.10). Nothing else is excluded. */
 export const MANIFEST_SIGNATURE_EXCLUSIONS = Object.freeze(['manifestSha256', 'signature.value'] as const);

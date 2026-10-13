@@ -268,21 +268,21 @@ describe('the Linux table: the shared capture of the card with all its channels,
     expect([...linuxMicPushArguments({ ...DUO, inputNumber: 2, pipePath: PIPE })]).toEqual([
       '-hide_banner', '-nostdin', '-nostats', '-loglevel', 'warning',
       '-progress', 'pipe:1',
-      // input: the tested list of input-av, the device named by two integers
-      '-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-channels', '2', '-sample_rate', '48000', '-i', 'dems_1_0',
+      // input: the tested list of input-av with the channel option of the pinned program (row 79b), the device named by two integers
+      '-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-ch_layout', '2C', '-sample_rate', '48000', '-i', 'dems_1_0',
       // the selection
       '-af', 'pan=mono|c0=c1',
       // output line, unchanged
       '-vn', '-ac', '1', '-ar', '48000', '-c:a', 'pcm_f32le', '-f', 'f32le', '-flush_packets', '1', '-y',
       PIPE,
     ]);
-    expect([...linuxMicPushArguments({ ...DUO, inputNumber: 1, pipePath: PIPE })].slice(7, 21)).toEqual(['-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-channels', '2', '-sample_rate', '48000', '-i', 'dems_1_0', '-af', 'pan=mono|c0=c0']);
+    expect([...linuxMicPushArguments({ ...DUO, inputNumber: 1, pipePath: PIPE })].slice(7, 21)).toEqual(['-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-ch_layout', '2C', '-sample_rate', '48000', '-i', 'dems_1_0', '-af', 'pan=mono|c0=c0']);
   });
 
   it('a multi-input interface, input 3 of 8: all 8 channels opened, channel 2 alone selected', () => {
     expect([...linuxMicPushArguments({ ...OCTO, inputNumber: 3, pipePath: PIPE })]).toEqual([
       ...QUIET_AND_PROGRESS,
-      '-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-channels', '8', '-sample_rate', '48000', '-i', 'dems_2_0',
+      '-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-ch_layout', '8C', '-sample_rate', '48000', '-i', 'dems_2_0',
       '-af', 'pan=mono|c0=c2',
       ...OUTPUT_LINE,
       PIPE,
@@ -290,7 +290,7 @@ describe('the Linux table: the shared capture of the card with all its channels,
     // Whichever input is taken, the device is opened with the card's count: never with the input's number.
     for (let inputNumber = 1; inputNumber <= 8; inputNumber += 1) {
       const list = [...linuxMicPushArguments({ ...OCTO, inputNumber, pipePath: PIPE })];
-      expect(list[list.indexOf('-channels') + 1], String(inputNumber)).toBe('8');
+      expect(list[list.indexOf('-ch_layout') + 1], String(inputNumber)).toBe('8C');
       expect(list[list.indexOf('-af') + 1], String(inputNumber)).toBe(`pan=mono|c0=c${String(inputNumber - 1)}`);
     }
   });
@@ -304,19 +304,49 @@ describe('the Linux table: the shared capture of the card with all its channels,
     expect(MIC_LINUX_HELPER_TABLE.deviceArgument.source).toBe(SHARED_PCM_NAME.source);
   });
 
-  it('equals the lists of the tested input-av scheme as text, with integers where it had the card name', () => {
+  it('equals the lists of the tested input-av scheme as text, with integers where it had the card name and ONE other difference: the channel option (row 79b, C89)', () => {
     // `recorder.py:212-215` (`_input_args`, format `alsa`, the defaults bits 24 and rate 48000) and
     // `recorder.py:115-116` (`audio_select_filter`, one input: layout `mono`, `c0=c<input - 1>`).
-    const inputAv = (channels: number, device: string): string => `-thread_queue_size 1024 -f alsa -c:a pcm_s24le -channels ${String(channels)} -sample_rate 48000 -i ${device}`;
+    // input-av wrote `-channels <n>`, an option of its older program. The pinned FFmpeg 9.0.2 refuses that word
+    // (`Option channels not found`, test/079 section 5); its sound-device input takes `-ch_layout <n>C`. The two words
+    // are replaced in input-av's text here, in ONE place, and nothing else of it.
+    const inputAvAsWritten = (channels: number, device: string): string => `-thread_queue_size 1024 -f alsa -c:a pcm_s24le -channels ${String(channels)} -sample_rate 48000 -i ${device}`;
+    const inputAv = (channels: number, device: string): string => inputAvAsWritten(channels, device).replace(`-channels ${String(channels)} `, `-ch_layout ${String(channels)}C `);
+    expect([inputAvAsWritten(6, 'dems_0_0').split(' ').length, inputAv(6, 'dems_0_0').split(' ').length]).toEqual([12, 12]);
+    expect(inputAv(6, 'dems_0_0').split(' ').filter((word, at) => word !== inputAvAsWritten(6, 'dems_0_0').split(' ')[at])).toEqual(['-ch_layout', '6C']);
     const select = (input: number): string => `pan=mono|${[input].map((x, i) => `c${String(i)}=c${String(x - 1)}`).join('|')}`;
     const ours = (list: readonly string[]): string => list.slice(QUIET_AND_PROGRESS.length, list.indexOf('-vn')).join(' ');
     // The derived examples of the research record (`research/01_explore_input_av.md`, section TS-8): 6 channels with
     // input 3, 2 channels with input 2; and the manual command of the hand-over document, device `dems_EVO8_0` there.
     expect(ours(linuxMicPushArguments({ cardIndex: 0, deviceIndex: 0, channelCount: 6, inputNumber: 3, pipePath: PIPE }))).toBe(`${inputAv(6, 'dems_0_0')} -af ${select(3)}`);
-    expect(ours(linuxMicPushArguments({ cardIndex: 0, deviceIndex: 0, channelCount: 6, inputNumber: 3, pipePath: PIPE }))).toBe('-thread_queue_size 1024 -f alsa -c:a pcm_s24le -channels 6 -sample_rate 48000 -i dems_0_0 -af pan=mono|c0=c2');
+    expect(ours(linuxMicPushArguments({ cardIndex: 0, deviceIndex: 0, channelCount: 6, inputNumber: 3, pipePath: PIPE }))).toBe('-thread_queue_size 1024 -f alsa -c:a pcm_s24le -ch_layout 6C -sample_rate 48000 -i dems_0_0 -af pan=mono|c0=c2');
     expect(ours(linuxMicPushArguments({ ...DUO, inputNumber: 2, pipePath: PIPE }))).toBe(`${inputAv(2, 'dems_1_0')} -af ${select(2)}`);
     expect(linuxChannelSelection(0)).toBe('pan=mono|c0=c0');
     expect(linuxChannelSelection(63)).toBe('pan=mono|c0=c63');
+  });
+
+  it('row 79b (C89): the channel count is one of 64 layout words, `<n>C`, after `-ch_layout`; the word `-channels` is in no list', () => {
+    // The closed set: 64 words in order, `1C` to `64C` - n channels in the card's own order, no speaker position
+    // claimed (the capital C; `<n>c` would name a default layout, which the pinned program has for 13 counts only).
+    expect(MIC_LINUX_HELPER_TABLE.channelLayouts).toHaveLength(64);
+    MIC_LINUX_HELPER_TABLE.channelLayouts.forEach((word, index) => expect(word).toBe(`${String(index + 1)}C`));
+    expect(MIC_LINUX_HELPER_TABLE.channelLayouts.every((word) => /^(?:[1-9]|[1-5][0-9]|6[0-4])C$/.test(word))).toBe(true);
+    expect(new Set(MIC_LINUX_HELPER_TABLE.channelLayouts).size).toBe(64);
+    expect(Object.isFrozen(MIC_LINUX_HELPER_TABLE.channelLayouts)).toBe(true);
+    // Every count 1 to 64, both lists: the word after the option is the one of that number, once, and it sits
+    // between the sample form and the rate. No list holds the refused word or a bare count in its place.
+    for (let channelCount = 1; channelCount <= 64; channelCount += 1) {
+      const card = { cardIndex: 0, deviceIndex: 0, channelCount };
+      for (const list of [[...linuxMicPushArguments({ ...card, inputNumber: channelCount, pipePath: PIPE })], [...linuxMicPrecheckArguments(card)]]) {
+        const at = list.indexOf('-ch_layout');
+        expect(list.slice(at - 1, at + 3), String(channelCount)).toEqual(['pcm_s24le', '-ch_layout', MIC_LINUX_HELPER_TABLE.channelLayouts[channelCount - 1], '-sample_rate']);
+        expect(list.filter((argument) => argument === '-ch_layout' || argument === '-channels' || /^\d+[Cc]$/.test(argument)), String(channelCount)).toEqual(['-ch_layout', `${String(channelCount)}C`]);
+        expect(list.slice(0, list.indexOf('-i')).filter((argument) => argument === '-ac'), String(channelCount)).toEqual([]);
+      }
+    }
+    expect(MIC_LINUX_HELPER_TABLE.literals).not.toContain('-channels');
+    // The lengths of a list are as they were: one option word and one value, in the same two places.
+    expect(MIC_LINUX_HELPER_TABLE.inputLength).toBe(12);
   });
 
   it('the selection SELECTS and never mixes: one output channel, one source channel, no sum and no gain, for all 64', () => {
@@ -347,7 +377,7 @@ describe('the Linux table: the shared capture of the card with all its channels,
   it('the pre-check opens the shared capture with all channels for a fraction of a second, selects and writes nothing', () => {
     expect([...linuxMicPrecheckArguments(OCTO)]).toEqual([
       '-hide_banner', '-nostdin', '-nostats', '-loglevel', 'warning',
-      '-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-channels', '8', '-sample_rate', '48000', '-i', 'dems_2_0',
+      '-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-ch_layout', '8C', '-sample_rate', '48000', '-i', 'dems_2_0',
       '-t', '0.2', '-vn', '-f', 'null', '-',
     ]);
   });
@@ -482,7 +512,10 @@ describe('G-R12 as amended by SR-4, AD-07 (2): the Linux lists are literals, one
     expect(linuxViolations(swap('pan=mono|c0=c2', 'pan=stereo|c0=c2|c1=c3'), PIPE).length).toBeGreaterThan(0);
     expect(linuxViolations([...good, 'pan=mono|c0=c1'], PIPE)).toEqual(['not of the table: pan=mono|c0=c1', 'a bar outside the selection: pan=mono|c0=c1', 'more than one argument with a bar']);
     expect(linuxViolations([...good, '-i', 'dems_1_0', '-shortest'], PIPE)).toEqual(['not of the table: -shortest', 'not exactly one input']);
-    expect(linuxViolations(swap('8', '8 -i /etc/shadow'), PIPE)).toEqual(['not of the table: 8 -i /etc/shadow']);
+    expect(linuxViolations(swap('8C', '8C -i /etc/shadow'), PIPE)).toEqual(['not of the table: 8C -i /etc/shadow']);
+    // Row 79b: the row as it was before decision C89 is seen as well - the refused word, and a bare count.
+    expect(linuxViolations(swap('-ch_layout', '-channels'), PIPE)).toEqual(['not of the table: -channels']);
+    expect(linuxViolations(swap('8C', '8'), PIPE)).toEqual(['not of the table: 8']);
     expect(linuxViolations(good, PIPE)).toEqual([]);
   });
 
@@ -507,9 +540,11 @@ describe('G-R12 as amended by SR-4, AD-07 (2): the Linux lists are literals, one
 
   it('the literals of the Linux table name no network, no screen and no other device layer; the macOS table is as it was', () => {
     for (const literal of MIC_LINUX_HELPER_TABLE.literals) expect(literal, literal).not.toMatch(/screen|desk|rtsp|tcp|udp|listen|0\.0\.0\.0|::|@|\||avfoundation|lavfi|pulse|hw:/i);
-    expect(MIC_LINUX_HELPER_TABLE.literals.filter((literal) => /^\d+$/.test(literal)).map(Number).sort((a, b) => a - b)).toEqual([...Array.from({ length: 64 }, (_unused, index) => index + 1), 1024, 48000]);
+    // Row 79b: the channel count is no bare number any more. The numbers left are the output line's `1`, the queue size and the rate.
+    expect(MIC_LINUX_HELPER_TABLE.literals.filter((literal) => /^\d+$/.test(literal)).map(Number).sort((a, b) => a - b)).toEqual([1, 1024, 48000]);
+    expect(MIC_LINUX_HELPER_TABLE.literals.filter((literal) => /^\d+C$/.test(literal))).toEqual([...MIC_LINUX_HELPER_TABLE.channelLayouts]);
     // 0 changed results on the macOS side: its table holds no word of the Linux one and no bar.
-    expect(MIC_HELPER_TABLE.literals.filter((literal) => /alsa|pcm_s24le|-channels|-sample_rate|-thread_queue_size|-af|\|/.test(literal))).toEqual([]);
+    expect(MIC_HELPER_TABLE.literals.filter((literal) => /alsa|pcm_s24le|-channels|-ch_layout|^\d+C$|-sample_rate|-thread_queue_size|-af|\|/.test(literal))).toEqual([]);
     expect([MIC_HELPER_TABLE.quietLength, MIC_HELPER_TABLE.deviceInputLength, MIC_HELPER_TABLE.generatedInputLength, MIC_HELPER_TABLE.fixtureInputLength, MIC_HELPER_TABLE.outputLength]).toEqual([7, 4, 5, 7, 12]);
   });
 });

@@ -77,6 +77,18 @@ export {
   type FailureOutcome,
   type LockRefusal,
 } from './lockout';
+// Task 4 row 212 (X2-1): the policy for a NEW password and the repeat helper of one run. Exported
+// here until the shared package's barrel carries the module (a request to its writer).
+export {
+  PASSWORD_POLICY,
+  PASSWORD_POLICY_REFUSAL,
+  RunRepeatGuardError,
+  checkNewPassword,
+  createRunRepeatGuard,
+  type PasswordPolicyRefusal,
+  type PasswordPolicyRefusalCode,
+  type RunRepeatGuard,
+} from './password-policy';
 export { IDENTITY_CORE_OPERATIONS, type IdentityCoreOperation } from './routes';
 export type { AuthSession, EndedSession, OperatorProfile, SessionTransport } from './session-store';
 export {

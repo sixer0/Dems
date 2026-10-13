@@ -7,6 +7,9 @@
  *                     | `REAL_DEVELOPMENT`) and the only reader of the development flag;
  *   - `boot.ts`       the boot step `capture.fence`: the refusals of the allowed-combinations
  *                     table, the helper-program rule, the boot audit row;
+ *   - `boot-key.ts`   which signing key the boot audit row states (task 4 row 209, SX-15): the two
+ *                     public members read from the stored CERTIFICATE alone, and their forms. The
+ *                     row is written BEFORE the boot checks judged the key: see that file's header;
  *   - `registration.ts`, `statements.ts`  this Mac's camera and microphone as NEW device rows of
  *                     kind `LOCAL_DEVICE`, in `REAL_DEVELOPMENT` only;
  *   - `generated-sources.ts`  the development test sources (kind `FAKE`) that feed the worker;
@@ -29,10 +32,11 @@
  */
 import type { FastifyInstance } from 'fastify';
 import type { CaptureTimers } from '../types';
+import { CaptureAdapterError, CaptureAdapterRefusal } from '../adapters/errors';
 import { CaptureAdapterKind, CaptureOperation } from '../adapters/kinds';
 import { createFakePoeController } from '../adapters/fake';
 import { createCaptureDeviceRegistry } from '../adapters/registry';
-import type { AudioInputAdapter, CameraAdapter, CaptureAdapter, CaptureDeviceRegistry } from '../adapters/types';
+import type { AudioInputAdapter, CameraAdapter, CaptureAdapter, CaptureDeviceEntry, CaptureDeviceRegistry } from '../adapters/types';
 import {
   LOCAL_CAMERA_DEVICE_NAME,
   LOCAL_MIC_DEVICE_NAME,
@@ -50,10 +54,13 @@ import {
   type LocalSourceError,
   type ProgramInspector,
 } from '../adapters/local';
+import { ALIAS_SOCKET_INSTALLED_PATH, bootHostPlatformOf } from '../boot';
 import { CAPTURE_FENCE_BOOT_STEP, runCaptureFenceBoot, type CaptureFenceOutcome, type CaptureFenceSinks } from './boot';
+import { READ_PREVIOUS_BOOT_STATEMENT, storedBootSigningKey, storedBootSigningStore, systemBootDetailsOf, systemBootSeverityOf } from './boot-key';
 import { createGeneratedCameraAdapter, createGeneratedMicAdapter } from './generated-sources';
 import { captureOperationDecisionOf, type CaptureOperationDecision } from './operation';
-import type { LocalDeviceClass, StoredCaptureDevice } from './registration';
+import { READ_STORED_DEVICE_PROFILES, READ_STORED_DEVICE_PROFILES_OF, productionDeviceEntryOf, tellQuietly } from './production-parts';
+import { readStoredDevices, type FenceExecutor, type LocalDeviceClass, type StoredCaptureDevice } from './registration';
 import { tellEach, whileShortOpen } from './sources';
 
 export {
@@ -72,6 +79,12 @@ export {
   type CaptureFenceSinks,
   type CaptureFenceUnit,
 } from './boot';
+// Task 4 row 209 (SX-15): which key the boot entry states, and the rule its writer holds the two members to.
+export { BOOT_SIGNING_KEY_NOT_READ, SYSTEM_BOOT_SIGNING_MEMBERS, SYSTEM_BOOT_SIGNING_MEMBER_INVALID, SystemBootSigningMemberError, bootSigningKeyProblemOf, isSystemBootSigningValue, storedBootSigningKey, systemBootDetailsOf, type BootSigningKey, type StoredCertificateReader, type SystemBootDetails, type SystemBootSigningMember } from './boot-key';
+export { BootSigningStoreChange, READ_PREVIOUS_BOOT_STATEMENT, SYSTEM_BOOT_SIGNING_STORE_MEMBERS, bootSigningStoreChangeOf, storedBootSigningStore, systemBootSeverityOf, type BootSigningStore, type BootSigningStoreStatement, type RetainedCertificateSetReader } from './boot-key';
+// Task 4 row P1 (U21 (2)): the host a production boot states - the platform and whether the host profile will be asked on it.
+export { BootHostProfile, SYSTEM_BOOT_HOST_MEMBERS, bootHostStatementOf, type BootHostStatement } from './boot-key';
+export { BootAddressHelperSocket, SYSTEM_BOOT_ADDRESS_HELPER_MEMBERS, bootAddressHelperStatementOf, type BootAddressHelperStatement } from './boot-key';
 export { GENERATED_SOURCE_SWITCHED_UNREACHABLE, GeneratedSourceUnreachableError, createGeneratedCameraAdapter, createGeneratedMicAdapter, type GeneratedCameraAdapter, type GeneratedCameraOptions, type GeneratedMicAdapter, type GeneratedMicOptions } from './generated-sources';
 export { FakeMicRefusal, FakeMicSource, SPEECH_FIXTURE_FORMAT, SPEECH_FIXTURE_HEAD_BYTES, SpeechFixtureProblem, fakeMicDecisionOf, speechFixtureFormatProblem, type FakeMicDecision, type FakeMicInput } from './fake-mic';
 export { CaptureFlagRefusal, captureOperationDecisionOf, captureOperationOf, type CaptureOperationDecision, type CaptureOperationInput } from './operation';
@@ -102,6 +115,8 @@ export {
   type SessionSourceFacts,
 } from './sources';
 export { CAPTURE_FENCE_WRITES, READ_ASSIGNED_SOURCES, READ_STORED_DEVICES, REGISTER_LOCAL_DEVICE } from './statements';
+// The capture unit's own parts of production capture (task 4 row 85b, decision C55), for the composition above the modules.
+export * from './production-parts';
 
 /**
  * The reader of what a helper program path IS (fix F-M4; review row 69, question 5): the door's
@@ -194,8 +209,12 @@ export interface BuiltCaptureRegistry {
  *   NOT_SERVED       no adapter of the running operation stands behind this kind of device: a
  *                    production kind (class C: no opener in this phase), a second local device,
  *                    or any device while the Core runs `SIMULATED` (no registry at all).
+ *   ADMITTING        (task 4 row 85c; the production registry only) the stored row of the device
+ *                    is being read and handed to its adapter: the registry serves it when that has
+ *                    settled (`BuiltProductionRegistry.admitted`), and says so through
+ *                    `onAdmission`. The answer of the call itself claims nothing more.
  */
-export const CaptureDeviceAdmission = { ADMITTED: 'ADMITTED', ALREADY_SERVED: 'ALREADY_SERVED', NOT_SERVED: 'NOT_SERVED' } as const;
+export const CaptureDeviceAdmission = { ADMITTED: 'ADMITTED', ALREADY_SERVED: 'ALREADY_SERVED', NOT_SERVED: 'NOT_SERVED', ADMITTING: 'ADMITTING' } as const;
 export type CaptureDeviceAdmission = (typeof CaptureDeviceAdmission)[keyof typeof CaptureDeviceAdmission];
 
 /**
@@ -335,6 +354,216 @@ export function buildDevelopmentRegistry(input: DevelopmentRegistryInput): Built
 export function buildProductionRegistry(locked?: () => boolean): BuiltCaptureRegistry {
   const registry = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION, ...(locked === undefined ? {} : { locked }) });
   return { registry, openSources: () => Object.freeze([]), probeAdapters: () => null, admit: () => CaptureDeviceAdmission.NOT_SERVED, closeAll: async () => {} };
+}
+
+/** The device classes and adapter kinds a production registry serves: the three production kinds, one per seam. */
+const PRODUCTION_KIND_OF_CLASS = Object.freeze({ CAMERA: CaptureAdapterKind.ONVIF_RTSP, MIC: CaptureAdapterKind.USB_AUDIO, POE: CaptureAdapterKind.SNMP_POE } as const);
+
+/** The three device lists the loader takes, and what it answers: the shapes of `../adapters/real.ts`, written here because rule A-1 lets no production file import the loader. */
+export interface ProductionRegistryDevices {
+  readonly cameras: readonly CaptureDeviceEntry[];
+  readonly mics: readonly CaptureDeviceEntry[];
+  readonly switches: readonly CaptureDeviceEntry[];
+}
+export interface ProductionRegistryAdapters {
+  readonly camera: CameraAdapter;
+  readonly audio: AudioInputAdapter;
+  readonly poe: CaptureAdapter;
+}
+/** `loadProductionAdapters` of `../adapters/real.ts`, by shape. */
+export type ProductionAdapterLoader<Camera, Audio> = (operation: CaptureOperation, devices: ProductionRegistryDevices, dependencies: { readonly camera: Camera; readonly audio: Audio }) => Promise<ProductionRegistryAdapters>;
+
+export interface ProductionRegistryInput<Camera, Audio, Cards = unknown> {
+  /** The capture operation of the Core. Anything but `REAL_PRODUCTION` is refused BEFORE anything is read, imported or built. */
+  readonly operation: CaptureOperation;
+  /** The read of the stored registry. The builder reads the devices ITSELF: the boot outcome of production carries no device list. */
+  readonly executor: FenceExecutor;
+  /** What the two production adapters are built from (`ProductionAdapterDependencies` of the loader), handed on unchanged. */
+  readonly dependencies: { readonly camera: Camera; readonly audio: Audio };
+  /**
+   * THE LOADER (`loadProductionAdapters`). Handed in by the one production file rule A-1 admits as its
+   * importer; until the lift (row 88) that is no file at all, so the builder has no caller in the product.
+   */
+  readonly load: ProductionAdapterLoader<Camera, Audio>;
+  /** The card listing of the host (the enumerator's `list`), for operations 98 and 99: read at every call. */
+  readonly audioCards: () => Promise<Cards>;
+  /** The read that asks one production camera at a pre-check (the camera watch's check). Default: its stored profiles through the adapter. */
+  readonly checkCamera?: (deviceId: string, signal: AbortSignal) => Promise<unknown>;
+  /** True while a session is open (OD-10). */
+  readonly locked?: () => boolean;
+  /**
+   * A read of the store that works AFTER the boot (task 4 row 85c): `executor` is the boot's unit and is
+   * over by then. The admission of a device registered after the boot reads its stored row with it.
+   * ABSENT: no device is admitted after the boot (`NOT_SERVED`, as before this row).
+   */
+  readonly reader?: FenceExecutor;
+  /** Told how the admission of a later device ended. Identifiers and code words only. Must not throw (a throw is dropped). */
+  readonly onAdmission?: (deviceId: string, outcome: CaptureDeviceAdmission | typeof ADMISSION_FAILED, code: string | null) => void;
+}
+
+/** The outcome of a later admission that could not be finished (the stored row could not be read, the adapter or the registry refused the device). */
+export const ADMISSION_FAILED = 'FAILED';
+
+/**
+ * THE DOOR OF A LATER DEVICE IN A BUILT ADAPTER (task 4 row 85c), by shape. Both built production
+ * adapters take a FIXED device list when they are built, so a device registered afterwards has no
+ * adapter. An adapter that can take one says so with this member: it serves `entry` from then on
+ * exactly as a device of its first list. NEITHER BUILT ADAPTER HAS IT YET (their files are not
+ * this row's: a request line) and the class-C stubs never will; without it the admission answers
+ * `NOT_SERVED`, as before.
+ */
+export interface LateDeviceAdapter {
+  admitDevice(entry: CaptureDeviceEntry): void;
+}
+
+export interface BuiltProductionRegistry<Cards = unknown> extends BuiltCaptureRegistry {
+  /** The stored devices of the three production kinds this registry serves, in the order of the stored registry, then those admitted later. */
+  devices(): readonly StoredCaptureDevice[];
+  /** The card listing of the host, read now. */
+  audioCards(): Promise<Cards>;
+  /** The cameras of the build whose stored profile list was not of its form: each has an EMPTY profile list (no profile is assumed). */
+  malformedProfiles(): readonly string[];
+  /** How the admission of a later device ends: the running one's outcome, else what the registry says now. Never rejects. */
+  admitted(deviceId: string): Promise<CaptureDeviceAdmission>;
+}
+
+/** A member a built adapter may have beside its seam (the production microphone adapter has both; the class-C stubs have neither). */
+const optionalCall = <Result>(adapter: object, name: 'openSources' | 'closeAll'): (() => Result) | null => {
+  const member = (adapter as Record<string, unknown>)[name];
+  return typeof member === 'function' ? () => (member as () => Result).call(adapter) : null;
+};
+
+/**
+ * THE PRODUCTION REGISTRY BUILDER (task 4 row 85, WP-13b; design addendum 6.1 facts 3 to 5, 6.4).
+ *
+ * In this order: (1) any operation but `REAL_PRODUCTION` is refused, before a read, an import or a
+ * build; (2) the stored registry is read and the rows of the three production kinds become the
+ * device entries; (3) the loader builds the three adapters from them and from the dependency bundle;
+ * (4) each is registered in a registry of the operation - whose rules are unchanged, so an adapter
+ * that states an opener for a kind without one is still REFUSED (`CAPTURE_ADAPTER_INVALID`) until
+ * the lift; a refused registration ends the build and closes what was built.
+ *
+ * NOT CALLED BY THE BOOT (row 88 switches the boot step from `buildProductionRegistry` to this).
+ * It takes no seam: every member of its input is a product dependency, and the one value a test may
+ * hand in that a product must not - a permissive destination rule - exists under `test/` only and
+ * travels inside `dependencies.camera` (AD-02 (2)).
+ *
+ * SINCE TASK 4 ROW 85c: a device entry carries its capability and - for a camera - its stored
+ * profile list (the wider read `READ_STORED_DEVICE_PROFILES`; a list not of its form is an empty
+ * list and is named by `malformedProfiles`). `admit` serves a device registered after the boot
+ * where a read of the store is handed in (`reader`) and the adapter of its class has the door of a
+ * later device (`LateDeviceAdapter`); NEITHER BUILT ADAPTER HAS THAT DOOR YET, so until their
+ * owners add it the answer stays `NOT_SERVED` and such a device needs a restart.
+ */
+export async function buildProductionRegistryOf<Camera, Audio, Cards = unknown>(input: ProductionRegistryInput<Camera, Audio, Cards>): Promise<BuiltProductionRegistry<Cards>> {
+  if (input.operation !== CaptureOperation.REAL_PRODUCTION) throw new CaptureAdapterError(CaptureAdapterRefusal.REAL_ADAPTERS_REFUSED);
+  const stored = (await readStoredDevices(input.executor)).filter((device) => device.adapterKind === PRODUCTION_KIND_OF_CLASS[device.kind]);
+  // THE WIDER READ (task 4 row 85c): the stored profile list of each device, beside the boot's own pinned read of the registry.
+  const storedProfiles = new Map<unknown, unknown>((await input.executor.query<Record<string, unknown>>(READ_STORED_DEVICE_PROFILES)).rows.map((row) => [row['id'], row['profiles']] as const));
+  const malformed: string[] = [];
+  const entryOf = (device: StoredCaptureDevice, profiles: unknown): CaptureDeviceEntry => {
+    const made = productionDeviceEntryOf(device, profiles);
+    if (made.malformed) malformed.push(device.id);
+    return made.entry;
+  };
+  const entriesOf = (kind: StoredCaptureDevice['kind']): readonly CaptureDeviceEntry[] => Object.freeze(stored.filter((device) => device.kind === kind).map((device) => entryOf(device, storedProfiles.get(device.id))));
+  const adapters = await input.load(input.operation, Object.freeze({ cameras: entriesOf('CAMERA'), mics: entriesOf('MIC'), switches: entriesOf('POE') }), input.dependencies);
+  const built: readonly CaptureAdapter[] = [adapters.camera, adapters.audio, adapters.poe];
+  const closeAll = async (): Promise<void> => {
+    await Promise.all(built.map((adapter) => optionalCall<Promise<void>>(adapter, 'closeAll')?.()));
+  };
+  const registry = createCaptureDeviceRegistry({ operation: input.operation, ...(input.locked === undefined ? {} : { locked: input.locked }) });
+  // Nothing of a refused build stays: the refusal of the registry goes to the caller as it is, no half registry is handed
+  // out, and what was built is closed first. (No error is handled here: this file answers no failure with another source.)
+  let registered = false;
+  try {
+    for (const adapter of built) registry.register(adapter);
+    registered = true;
+  } finally {
+    if (!registered) await closeAll();
+  }
+  const checkCamera = input.checkCamera;
+
+  // ── A device registered AFTER this build (task 4 row 85c) ──
+  const adapterOfClass: Readonly<Record<StoredCaptureDevice['kind'], CaptureAdapter>> = { CAMERA: adapters.camera, MIC: adapters.audio, POE: adapters.poe };
+  const lateDoorOf = (adapter: CaptureAdapter): ((entry: CaptureDeviceEntry) => void) | null => {
+    const member = (adapter as unknown as Record<string, unknown>)['admitDevice'];
+    return typeof member === 'function' ? (entry) => void (member as LateDeviceAdapter['admitDevice']).call(adapter, entry) : null;
+  };
+  const served = (deviceId: string): boolean => registry.list().some((device) => device.id === deviceId);
+  const admittedLater: StoredCaptureDevice[] = [];
+  const admitting = new Map<string, Promise<CaptureDeviceAdmission>>();
+  // An observer never changes what was admitted: what it throws is dropped (`tellQuietly`; this file has no error path of
+  // its own - static rule G-R14 - because it builds the development sources).
+  const tellAdmission = (deviceId: string, outcome: CaptureDeviceAdmission | typeof ADMISSION_FAILED, code: string | null): void => tellQuietly(() => input.onAdmission?.(deviceId, outcome, code));
+  /**
+   * THE STORED ROW DECIDES, read now: class, kind, label and profile list are the store's, never the caller's word. The
+   * adapter of that class takes the device through its own door, then the registry takes a view of that adapter with the
+   * ONE new entry - under the registry's own rules, unchanged (a duplicate, a wrong class, an opener for a kind without
+   * one are refused as at the build).
+   */
+  const admitLater = async (deviceId: string, reader: FenceExecutor): Promise<CaptureDeviceAdmission> => {
+    const row = (await reader.query<Record<string, unknown>>(READ_STORED_DEVICE_PROFILES_OF, [deviceId])).rows[0];
+    const kind = row?.['kind'];
+    if (row === undefined || row['id'] !== deviceId || (kind !== 'CAMERA' && kind !== 'MIC' && kind !== 'POE') || row['adapterKind'] !== PRODUCTION_KIND_OF_CLASS[kind]) return CaptureDeviceAdmission.NOT_SERVED;
+    if (served(deviceId)) return CaptureDeviceAdmission.ALREADY_SERVED;
+    const adapter = adapterOfClass[kind];
+    const take = lateDoorOf(adapter);
+    if (take === null) return CaptureDeviceAdmission.NOT_SERVED;
+    const device: StoredCaptureDevice = { id: deviceId, kind, adapterKind: PRODUCTION_KIND_OF_CLASS[kind], model: typeof row['model'] === 'string' ? row['model'] : null };
+    const entry = entryOf(device, row['profiles']);
+    take(entry);
+    registry.register(Object.freeze({ ...adapter, devices: Object.freeze([entry]) }) as CaptureAdapter);
+    admittedLater.push(device);
+    return CaptureDeviceAdmission.ADMITTED;
+  };
+  const codeOf = (error: unknown): string | null => {
+    const code = (error as { code?: unknown } | null)?.code;
+    return typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : null;
+  };
+
+  return {
+    registry,
+    devices: () => Object.freeze([...stored, ...admittedLater]),
+    malformedProfiles: () => Object.freeze([...new Set(malformed)].sort()),
+    admitted: (deviceId) => admitting.get(deviceId) ?? Promise.resolve(served(deviceId) ? CaptureDeviceAdmission.ALREADY_SERVED : CaptureDeviceAdmission.NOT_SERVED),
+    audioCards: () => input.audioCards(),
+    openSources: () => Object.freeze([...new Set(built.flatMap((adapter) => optionalCall<readonly string[]>(adapter, 'openSources')?.() ?? []))]),
+    probeAdapters: () =>
+      Object.freeze({
+        cameras: Object.freeze([adapters.camera]),
+        microphones: Object.freeze([adapters.audio]),
+        readCamera: (adapter: CameraAdapter, deviceId: string, signal: AbortSignal): Promise<unknown> => (checkCamera === undefined ? adapter.profiles(deviceId) : checkCamera(deviceId, signal)),
+      }),
+    // A device registered after this build (row 85c). The adapters took their devices when they were built: it is served only
+    // where a read of the store was handed in AND the adapter of its class has the door of a later device. Otherwise the
+    // answer is the one of before this row. The call answers at once; the admission itself reads the store and is told.
+    admit(device) {
+      if (served(device.id)) return CaptureDeviceAdmission.ALREADY_SERVED;
+      if (device.adapterKind !== PRODUCTION_KIND_OF_CLASS[device.kind]) return CaptureDeviceAdmission.NOT_SERVED;
+      const reader = input.reader;
+      if (reader === undefined || lateDoorOf(adapterOfClass[device.kind]) === null) return CaptureDeviceAdmission.NOT_SERVED;
+      if (!admitting.has(device.id)) {
+        const deviceId = device.id;
+        const work = admitLater(deviceId, reader).then(
+          (outcome) => {
+            tellAdmission(deviceId, outcome, null);
+            return outcome;
+          },
+          (error: unknown) => {
+            tellAdmission(deviceId, ADMISSION_FAILED, codeOf(error));
+            return served(deviceId) ? CaptureDeviceAdmission.ALREADY_SERVED : CaptureDeviceAdmission.NOT_SERVED;
+          },
+        );
+        admitting.set(deviceId, work);
+        void work.then(() => {
+          if (admitting.get(deviceId) === work) admitting.delete(deviceId);
+        });
+      }
+      return CaptureDeviceAdmission.ADMITTING;
+    },
+    closeAll,
+  };
 }
 
 /** What the fence offers after the boot: for the session wiring (row 71), the boot checks (row 61), the selector and the clients' device shapes. */
@@ -488,7 +717,19 @@ export function mountCaptureFence(app: FastifyInstance, mount: CaptureFenceMount
               query: (text, values) => unit.query(text, values),
               async appendBootAudit(operation) {
                 // SEC35-41 (b), C3 §5.2: one row per boot of a real operation, naming it (`BOOT_AUDIT_OPERATIONS`).
-                await unit.audit.append({ type: 'SYSTEM_BOOT', message: 'Core started', actorId: null, deviceId: null, details: { captureOperation: operation } });
+                // Task 4 row 209 (SX-15): the row also states WHICH KEY lay in the store, from the PUBLIC certificate alone -
+                // both members null when it could not be read. Written BEFORE the boot checks judged the key (`boot-key.ts`).
+                // Task 4 row V5 (C84 R-1): the row also states the signer store - how many certificates are retained, which keys
+                // carry the compromise mark - and names what changed against the previous boot row of this database (a rotation,
+                // a mark, a mark that disappeared): the two key commands write no audit row, so the next boot says it.
+                // Task 4 row P1 (U21 (2)): a PRODUCTION row also states its host - the platform word the entry point handed to the boot
+                // checks and what it means for them (`WILL_BE_ASKED` on Linux, `WILL_NOT_BE_ASKED` on macOS). The checks have not run yet.
+                const previous = await unit.query<{ details: unknown }>(READ_PREVIOUS_BOOT_STATEMENT);
+                // Task 4 row HC (C94 (j)): a PRODUCTION row on Linux also states whether something lies at the installed socket path of the address
+                // helper - ONE look at one fixed path through the inspector the fence already holds, made only when the member is stated.
+                const addressHelperSocketPresent = (): boolean => inspect(ALIAS_SOCKET_INSTALLED_PATH).exists;
+                const details = systemBootDetailsOf(operation, storedBootSigningKey(app.config.dataDir), { store: storedBootSigningStore(app.config.dataDir), previous: previous.rows[0]?.details, hostPlatform: bootHostPlatformOf(app), addressHelperSocketPresent });
+                await unit.audit.append({ type: 'SYSTEM_BOOT', message: 'Core started', severity: systemBootSeverityOf(details), actorId: null, deviceId: null, details });
               },
             }),
           ),

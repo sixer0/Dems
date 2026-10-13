@@ -2,7 +2,11 @@
  * THE PROCESS ENTRY of the receiver's command (task 3 wave H, driver C1; gate finding G94-03,
  * ruling D200):
  *
- *   npm run evidence:verify-export -- <archive.zip> [--sha256 <hex>] [--trust <certificate sha256>]...
+ *   npm run evidence:verify-export -- <archive.zip> [--sha256 <hex>] [--trust <certificate sha256>]... [--compromised <certificate sha256>]...
+ *
+ * `--compromised` (task 4 row V5; decision C84, caution R-2): the fingerprints of certificates whose
+ * key the receiver was told, out of band, is marked compromised. Optional; without it the command
+ * is the one of before. With it an export that rests on such a certificate is never a plain pass.
  *
  * What the command DOES is `src/evidence-export/receiver-cli.ts` (the arguments, the checks, the
  * report). This file is only what a process entry is: the arguments of the process, its two
@@ -15,7 +19,8 @@
  * paths (the archive the user named, a new private folder of the temporary directory). No secret
  * exists in this command, so none can become an argument.
  *
- * It needs no Core, no database and no key. Exit status: 0 PASS, 1 a check failed, 2 not run.
+ * It needs no Core, no database and no key. Exit status: 0 PASS, 1 a check failed, 2 not run,
+ * 3 not a pass: nothing failed but a signing key of the export is in the `--compromised` list.
  */
 import { spawnSync } from 'node:child_process';
 import { RECEIVER_EXIT, runReceiverCommand, type ArchiveUnpacker } from '../src/evidence-export/receiver-cli';

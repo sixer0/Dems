@@ -25,6 +25,12 @@ const FOLDER = 'src/credential-store/';
  * (rows 82, 87), the signer (row 83, if it keeps its key here).
  */
 const CREDENTIAL_STORE_USERS: readonly string[] = [
+  // Task 4 NAMED ENTRY SR-10 (decision C76; the composing file of row 85b, decisions C55 and C60): the ONE file above the
+  // modules that hands the store to the capture credential reader, for the ONE purpose `capture.open` (never `seal`, never
+  // a named secret, a session key or a fragment). PROVISIONAL: put by name to the security review of row 86, which
+  // confirms or reverses it before the lift. What the file does with the store is pinned line by line in the case
+  // 'SR-10' below (`COMPOSITION_STORE_LINES`): a second use from that file fails there.
+  'src/capture-composition.ts',
   // Integration pass A (D109), row 85's request: the fragment opener of verify v2 (`sessionKeys` + `openFragment`).
   'src/evidence-verify/fragment-opener.ts',
   // Row 90 (C3 §2.4, SEC35-12: the media-session signing key is "held in the Core credential store"): `namedSecrets` for
@@ -88,6 +94,42 @@ describe('rule 1: one store', () => {
     console.info(`[row84] credential-store users: ${files(imports).join(', ') || '(none)'}`);
     expect(files(imports)).toEqual([...CREDENTIAL_STORE_USERS]);
     expect(occurrences(outside, /from\s+['"](?:\.\.?\/)+(?:[\w-]+\/)*credential-store\/[\w./-]+['"]/g)).toEqual([]);
+  });
+
+  // Task 4 named entry SR-10 (decision C76), PROVISIONAL until the security review of row 86 confirms or reverses it.
+  // The entry of `CREDENTIAL_STORE_USERS` admits the FILE; this case holds the PURPOSE: the composing file imports the one
+  // name `coreCredentialStore`, asks the store in one place, reads its status and calls `capture.open` - nothing else.
+  // Every line of the file that touches the store is pinned; a second use (a seal, a named secret, a session key, the
+  // store handed on, a second import) is a line that is not of the list.
+  it('SR-10: the composing file of production capture uses the store for capture.open and for nothing else (control: a second use is seen)', () => {
+    const COMPOSITION = 'src/capture-composition.ts';
+    const STORE_TOUCH = /credential-store|\bcoreCredentialStore\b|\bopened\b|\bstore\s*\??\.|\.\s*store\b|\b(?:namedSecrets|sessionKeys|openFragment|createFragmentSealer)\b/;
+    const COMPOSITION_STORE_LINES: readonly string[] = [
+      "import { coreCredentialStore } from './credential-store';",
+      'const opened = coreCredentialStore(app);',
+      "if (opened.status !== 'READY') {",
+      "report('error', CaptureCompositionCode.CREDENTIAL_STORE_NOT_READY, { deviceId, store: opened.status });",
+      'return opened.store.capture.open(deviceId, sealed);',
+    ];
+    const storeLines = (text: string): string[] => text.split('\n').map((line) => line.trim()).filter((line) => STORE_TOUCH.test(line));
+    const second = (text: string): string[] => storeLines(text).filter((line) => !COMPOSITION_STORE_LINES.includes(line));
+    // Control: each planted second use is a line outside the list; the pinned lines alone are not.
+    expect(second(COMPOSITION_STORE_LINES.join('\n'))).toEqual([]);
+    const planted = [
+      'const again = opened.store.capture.seal(deviceId, secret);',
+      'const key = coreCredentialStore(app);',
+      'const { store } = coreCredentialStore(app);',
+      'return store.capture.open(otherDevice, sealed);',
+      'handOn(opened.store);',
+      'const secrets = held?.store.namedSecrets;',
+      "import { coreCredentialStore, CredentialPurpose } from './credential-store';",
+    ];
+    expect(second([...COMPOSITION_STORE_LINES, ...planted].join('\n'))).toEqual(planted);
+    const text = production.find((file) => file.path === COMPOSITION)?.text ?? '';
+    expect(storeLines(text)).toEqual([...COMPOSITION_STORE_LINES]);
+    // The one purpose, counted: one question to the store, one call on it, and that call is `capture.open`.
+    expect(text.match(/\bcoreCredentialStore\s*\(/g)).toHaveLength(1);
+    expect(text.match(/\.\s*store\s*\.\s*[\w.]+\s*\(/g)).toEqual(['.store.capture.open(']);
   });
 
   it('a key store is built in one place, and no other production source of the server builds one', () => {

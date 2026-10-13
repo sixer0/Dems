@@ -206,20 +206,31 @@ interface Rig {
   readonly children: FakeChild[];
   readonly notes: StreamTestNote[];
   readonly locateTokens: string[];
+  /** Row 143b: every dial of the ONVIF session the test asked for - which call, how many arguments it was handed, and the last one when it is the fourth or fifth. */
+  readonly dials: { call: 'test' | 'locate'; given: number; sourceAddress: unknown }[];
   onvif: OnvifSessionResult;
   locate: (token: string, signal: AbortSignal) => Promise<OnvifLocatorResult>;
-  test(credentialed?: boolean, signal?: AbortSignal): Promise<StreamTestResult>;
+  test(credentialed?: boolean, signal?: AbortSignal, sourceAddress?: string): Promise<StreamTestResult>;
+  /** Row 143c: the tester itself, for its member `boundTo`. */
+  readonly tester: ReturnType<typeof createStreamConnectionTester>;
 }
 function rig(patch: { relayProgram?: string | null; statement?: StreamStatement } = {}): Rig {
   const timers = manualTimers();
   const { door, children } = fakeDoor();
   const notes: StreamTestNote[] = [];
   const locateTokens: string[] = [];
+  const dials: Rig['dials'] = [];
   const state = { onvif: onvifAnswer('H264'), locate: async (): Promise<OnvifLocatorResult> => located() } as Pick<Rig, 'onvif' | 'locate'>;
   const tester = createStreamConnectionTester({
-    onvif: { test: async () => state.onvif },
+    onvif: {
+      test: async (...given: unknown[]) => {
+        dials.push({ call: 'test', given: given.length, sourceAddress: given[3] });
+        return state.onvif;
+      },
+    },
     locator: {
-      locate: (_candidate, _sealed, token, signal) => {
+      locate: (_candidate, _sealed, token, signal, ...more: unknown[]) => {
+        dials.push({ call: 'locate', given: 4 + more.length, sourceAddress: more[0] });
         locateTokens.push(token);
         return state.locate(token, signal);
       },
@@ -231,10 +242,12 @@ function rig(patch: { relayProgram?: string | null; statement?: StreamStatement 
     tell: (note) => notes.push(note),
   });
   return {
+    tester,
     timers,
     children,
     notes,
     locateTokens,
+    dials,
     get onvif() {
       return state.onvif;
     },
@@ -247,13 +260,14 @@ function rig(patch: { relayProgram?: string | null; statement?: StreamStatement 
     set locate(value) {
       state.locate = value;
     },
-    test: (credentialed = true, signal = new AbortController().signal) => tester.test(CANDIDATE, credentialed ? sealCredential(ACCOUNT) : null, signal),
+    test: (credentialed = true, signal = new AbortController().signal, sourceAddress?: string) =>
+      sourceAddress === undefined ? tester.test(CANDIDATE, credentialed ? sealCredential(ACCOUNT) : null, signal) : tester.test(CANDIDATE, credentialed ? sealCredential(ACCOUNT) : null, signal, sourceAddress),
   };
 }
 
 /** Runs a test whose every probe is answered by `answer(child, index)` as soon as the relay took its message. */
-async function run(r: Rig, answer: (child: FakeChild, index: number) => void, signal?: AbortSignal): Promise<StreamTestResult> {
-  const pending = r.test(true, signal);
+async function run(r: Rig, answer: (child: FakeChild, index: number) => void, signal?: AbortSignal, sourceAddress?: string): Promise<StreamTestResult> {
+  const pending = r.test(true, signal, sourceAddress);
   for (let index = 0; index < STREAM_TEST_MAX_STREAMS + 1; index += 1) {
     await flush();
     const child = r.children[index];
@@ -490,6 +504,89 @@ describe('the codec is judged from the stream, not from the ONVIF answer (amendm
     const other = rig();
     expect(await run(other, reportsAndEnds(probeLine({ attempt: 2 })))).toMatchObject({ outcome: 'WRONG_PROFILE', reason: StreamTestReason.PROBE_REPORT_INVALID, streams: [] });
     expect(other.notes).toEqual([{ code: 'CAPTURE_STREAM_TEST_REPORT_INVALID', reason: 'ATTEMPT_DIFFERS' }]);
+  });
+
+  // Task 4 row 143b (S13-11 point 2): the stream-level connection test of a STORED camera is made FROM the camera-interface
+  // address its judgement names. One source address for every dial of the test: the ONVIF half, each locator read, each probe.
+  it('row 143b: a source address handed in goes to EVERY dial - the ONVIF test, each locator read and the member `source` of each probe message; without one nothing is bound and no member is written', async () => {
+    const from = '192.168.50.1';
+    const bound = rig();
+    bound.onvif = onvifAnswer('H264', [MAIN, SECOND]);
+    await run(bound, (child) => child.exit(24), undefined, from);
+    expect(bound.dials).toEqual([
+      { call: 'test', given: 4, sourceAddress: from },
+      { call: 'locate', given: 5, sourceAddress: from },
+      { call: 'locate', given: 5, sourceAddress: from },
+    ]);
+    expect(bound.children).toHaveLength(2);
+    for (const [index, child] of bound.children.entries()) {
+      expect([child.options.command, child.options.args, child.options.env]).toEqual([PROGRAM, [], {}]);
+      const message = startMessageBytes(child.options.message!).toString('utf8');
+      const parsed = JSON.parse(message) as Record<string, unknown>;
+      expect(Object.keys(parsed)).toEqual(['type', 'mode', 'attempt', 'source', 'access']);
+      expect([parsed['type'], parsed['mode'], parsed['attempt'], parsed['source']]).toEqual(['start', 'probe', index + 1, from]);
+      expect(message.includes('ingest')).toBe(false);
+    }
+
+    // A camera that is not stored yet has no judged source: no trailing argument at all, and no member of the message.
+    const unbound = rig();
+    await run(unbound, reportsAndEnds(probeLine()));
+    expect(unbound.dials).toEqual([
+      { call: 'test', given: 3, sourceAddress: undefined },
+      { call: 'locate', given: 4, sourceAddress: undefined },
+    ]);
+    expect(Object.keys(JSON.parse(startMessageBytes(unbound.children[0]!.options.message!).toString('utf8')) as Record<string, unknown>)).toEqual(['type', 'mode', 'attempt', 'access']);
+  });
+
+  it('row 143b: a source handed in that is no source address starts NO relay - it is refused where the message is made, never dropped', async () => {
+    for (const notASource of ['0.0.0.0', '', 'camera-interface', '192.168.050.1', '192.168.50.1:0', '224.0.0.1']) {
+      const r = rig();
+      const result = await run(r, (child) => child.exit(0), undefined, notASource);
+      expect(result, notASource).toMatchObject({ outcome: 'WRONG_PROFILE', reason: StreamTestReason.STREAM_LOCATOR_REFUSED, streams: [], streamTested: true });
+      expect(r.children, notASource).toEqual([]);
+    }
+  });
+
+  // Task 4 row 143c (decision C65): the test of a candidate that is not stored yet, on a production Core. Its caller has ONE
+  // call of a tester with three arguments, so the tester is bound BEFORE that call.
+  it('row 143c: `boundTo` answers the same test with the address at EVERY dial of both halves; a text that is no source address is refused when it is bound, before any test', async () => {
+    const from = '192.168.50.1';
+    const r = rig();
+    r.onvif = onvifAnswer('H264', [MAIN, SECOND]);
+    const bound = r.tester.boundTo(from);
+    expect(Object.keys(bound)).toEqual(['test']);
+    expect(Object.isFrozen(bound)).toBe(true);
+    const pending = bound.test(CANDIDATE, sealCredential(ACCOUNT), new AbortController().signal);
+    for (let index = 0; index < 2; index += 1) {
+      await flush();
+      r.children[index]?.take();
+      await flush();
+      r.children[index]?.exit(24);
+      await flush();
+    }
+    await pending;
+    expect(r.dials).toEqual([
+      { call: 'test', given: 4, sourceAddress: from },
+      { call: 'locate', given: 5, sourceAddress: from },
+      { call: 'locate', given: 5, sourceAddress: from },
+    ]);
+    expect(r.children.map((child) => (JSON.parse(startMessageBytes(child.options.message!).toString('utf8')) as Record<string, unknown>)['source'])).toEqual([from, from]);
+    // A test without a credential is bound as well: the ONVIF half is the only dial, and it carries the address.
+    const plain = rig();
+    await plain.tester.boundTo(from).test(CANDIDATE, null, new AbortController().signal);
+    expect(plain.dials).toEqual([{ call: 'test', given: 4, sourceAddress: from }]);
+    // No source address, no bound tester: nothing was asked of anything.
+    for (const notASource of ['0.0.0.0', '', 'camera-interface', '192.168.050.1', '192.168.50.1:0', '224.0.0.1', '::1', undefined, null, 3232248321]) {
+      const refusing = rig();
+      let thrown: unknown = null;
+      try {
+        refusing.tester.boundTo(notASource as string);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, String(notASource)).toMatchObject({ name: 'CaptureAdapterError', code: 'CAPTURE_LOCATOR_INVALID' });
+      expect([refusing.dials, refusing.children], String(notASource)).toEqual([[], []]);
+    }
   });
 });
 

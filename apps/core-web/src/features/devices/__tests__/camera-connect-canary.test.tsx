@@ -19,6 +19,7 @@ import { toast } from '@heroui/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CaptureCandidate, CaptureDiscoverySearch } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
+import { enWeb } from '@/i18n-web'
 import { redactCredentials, webErrorSink } from '@/runtime'
 import { resetCoreErrorPresenter } from '@/lib/core-errors'
 import { createLiveTestBed, SUPERVISOR_SESSION, type LivePage, type LiveTestBed, type MountedPage } from '@/runtime/testing/live-harness'
@@ -251,6 +252,46 @@ describe('the typed camera user name and password (Live mode, fake transport)', 
     } finally {
       early.disconnect()
     }
+  })
+
+  // Task 4 row W4 (review finding F3-06, the operator's side; the Core's half is row R2): operations 95 / 96 answer
+  // `409 INVALID_STATE` with reason `COMMISSIONING_NOT_CONFIGURED` when no camera network is configured. The console
+  // drew it as "The request failed"; it now says the cause and where the technician sets it.
+  it('F3-06: a test refused because no camera network is configured says so and names the commissioning screen; not the general failure, no value reported', async () => {
+    const created = await openDialog()
+    fireEvent.change(username(), { target: { value: USER } })
+    fireEvent.change(password(), { target: { value: PASS } })
+    fireEvent.click(within(screen.getByTestId('camera-connect-confirm')).getByRole('checkbox'))
+    created.fake.answerOnce('testCaptureCandidateConnection', {
+      status: 409,
+      body: { error: { code: 'INVALID_STATE', message: 'Never drawn.', details: { reason: 'COMMISSIONING_NOT_CONFIGURED' } } },
+    })
+    fireEvent.click(screen.getByTestId('camera-connect-test'))
+    const refusal = await screen.findByTestId('camera-connect-refusal')
+    expect(refusal).toHaveAttribute('data-refusal', 'NETWORK_NOT_CONFIGURED')
+    expect(refusal).toHaveAttribute('role', 'alert')
+    expect(refusal).toHaveTextContent(enWeb.web.source.networkNotConfigured.title)
+    expect(refusal).toHaveTextContent(enWeb.web.source.networkNotConfigured.detail.replace('{{screen}}', enWeb.web.commissioning.title))
+    expect(refusal).toHaveTextContent('camera network of this Core is not configured')
+    expect(refusal).toHaveTextContent(`"${enWeb.web.commissioning.title}" screen`)
+    // Neither the general sentence, nor the Core's own message text, nor a toast.
+    expect(refusal).not.toHaveTextContent(en.devices.search.requestFailed)
+    expect(document.body).not.toHaveTextContent('Never drawn.')
+    expect(toastTexts()).toEqual([])
+    // The cause can be removed (the technician configures the network): the test can be pressed again.
+    expect(screen.getByTestId('camera-connect-test')).not.toBeDisabled()
+    expect(created.fake.log.requestsOf('testCaptureCandidateConnection')).toHaveLength(1)
+    expectNoCanary(reported(created))
+    // CONTROL: the refusal this one used to be told as (`CANDIDATE_NOT_TESTABLE`) keeps its own kind and sentence.
+    created.fake.answerOnce('testCaptureCandidateConnection', {
+      status: 409,
+      body: { error: { code: 'INVALID_STATE', message: 'Never drawn.', details: { reason: 'CANDIDATE_NOT_TESTABLE' } } },
+    })
+    fireEvent.change(username(), { target: { value: USER } })
+    fireEvent.change(password(), { target: { value: PASS } })
+    fireEvent.click(screen.getByTestId('camera-connect-test'))
+    await waitFor(() => expect(screen.getByTestId('camera-connect-refusal')).toHaveAttribute('data-refusal', 'NOT_TESTABLE'))
+    expect(screen.getByTestId('camera-connect-refusal')).not.toHaveTextContent(enWeb.web.source.networkNotConfigured.title)
   })
 
   it('sent as typed in operations 95 and 96, and reported nowhere: a refused password, the 503 before row 84, a 422, then close', async () => {

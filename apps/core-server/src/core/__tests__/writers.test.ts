@@ -6,7 +6,27 @@ import { AUDIT_TYPE_CATEGORY, AuditType, SIM_EVENT_CATEGORY, SimEventType, appen
 import { describe, expect, it } from 'vitest';
 import { MappingError, auditRowToRow, eventToRow } from '../../db/mapping';
 import { AUDIT_DETAIL_FORBIDDEN_KEYS, EVENT_CATEGORY } from '../../db/schema/value-sets';
-import { CAPTURE_CREDENTIAL_REVEAL_REASONS, CAPTURE_DISCOVERY_AUDIT_SCOPES, SERVER_AUDIT_DETAIL_RULES, detailRulesOf } from '../audit-details';
+import { MANIFEST_AUDIO_ABSENT_MAX_MS, MANIFEST_VIDEO_ABSENCE_ENDS, MANIFEST_VIDEO_ABSENT_MAX_MS, ManifestAudioRestartGapSchema, ManifestVideoAbsenceSchema, VIDEO_TRACK_IDS } from '@dems/shared/evidence-package';
+import { OPERATOR_PASSWORD_SET_DETAILS_EXAMPLE, SYSTEM_BOOT_DETAILS_EXAMPLE, SYSTEM_BOOT_HOST_DETAILS_EXAMPLE, SYSTEM_BOOT_SIGNING_DETAILS_EXAMPLE, SYSTEM_BOOT_SIGNING_STORE_DETAILS_EXAMPLE, captureDeviceConnectionTestedDetails } from '@dems/shared/api';
+import {
+  CAPTURE_AUDIO_ABSENT_MAX_MS,
+  CAPTURE_VIDEO_ABSENCE_ENDS,
+  CAPTURE_VIDEO_ABSENT_MAX_MS,
+  CAPTURE_VIDEO_ABSENT_TRACK_IDS,
+  CAPTURE_CREDENTIAL_REVEAL_REASONS,
+  CAPTURE_DEVICE_CONNECTION_TEST_OPERATIONS,
+  CAPTURE_DISCOVERY_AUDIT_SCOPES,
+  HOST_ALIAS_REQUEST_ACTIONS,
+  OPERATOR_PASSWORD_SET_METHODS,
+  SERVER_AUDIT_DETAIL_RULES,
+  SERVER_AUDIT_FIXED_SEVERITY,
+  SERVER_AUDIT_OPEN_DETAIL_RULES,
+  SYSTEM_BOOT_SIGNING_DETAIL_RULES,
+  detailRulesOf,
+  fixedSeverityOf,
+  openDetailRulesOf,
+  type DetailRule,
+} from '../audit-details';
 import { auditInputOf, checkAuditRow } from '../audit-writer';
 import { CoreError } from '../errors';
 import { checkEvent, eventInputOf } from '../event-writer';
@@ -47,12 +67,16 @@ const SECRET_FORMS = {
 };
 
 describe('the vocabulary', () => {
-  it('every one of the 77 shared audit types is accepted, with the category of the shared map', () => {
+  it('every one of the 83 shared audit types is accepted, with the category of the shared map', () => {
     const types = Object.values(AuditType);
     // C3 §2.5 (blueprint row 113): 62 + STT_CONFIG_CHANGED = 63. C3 §5.2, §10.1 (blueprint row 132,
     // decision D106): + the four of the camera search, the test, the adoption and the no-device warning = 67.
     // Task 4 blueprint row 19 (WP-23a): + the ten of the hardware-input port = 77.
-    expect(types).toHaveLength(77);
+    // Task 4 blueprint row 201 (X-C): + OPERATOR_PASSWORD_SET = 78.
+    // Task 4 row V3 (the third vocabulary step; C53, C57, C58, C62): + HOST_ALIAS_REQUESTED, HOST_ALIAS_ADD_FAILED,
+    // CAPTURE_AUDIO_ABSENT_ON_RESTART, CAPTURE_DEVICE_CONNECTION_TESTED = 82.
+    // Task 4 row R1b (decision C99): + CAPTURE_VIDEO_ABSENT_IN_SESSION = 83.
+    expect(types).toHaveLength(83);
     const typed = new Set<string>(Object.keys(SERVER_AUDIT_DETAIL_RULES));
     for (const type of types.filter((candidate) => !typed.has(candidate))) {
       const input = auditInputOf(audit({ type }));
@@ -228,7 +252,7 @@ describe('the payload map (database contract FLAT, NO_SECRET_KEYS; SR-54)', () =
   });
 });
 
-describe('the allow-list of the thirty-three server-written types (spec §13.1; C3 §5.2, §2.5; task 4 row 19)', () => {
+describe('the allow-list of the thirty-eight server-written types (spec §13.1; C3 §5.2, §2.5; task 4 rows 19, 201 and V3)', () => {
   const accepted: Record<string, AuditEntry[]> = {
     ACCESS_DENIED: [
       { type: 'ACCESS_DENIED', actorId: 'OPR-003', deviceId: null, message: 'Denied', details: { operationId: 'startSession', permission: 'SESSION_START', role: 'TECHNICIAN' } },
@@ -315,13 +339,51 @@ describe('the allow-list of the thirty-three server-written types (spec §13.1; 
     CAPTURE_DEVICE_ADDRESS_CHANGED: [{ type: 'CAPTURE_DEVICE_ADDRESS_CHANGED', actorId: 'OPR-003', deviceId: null, message: 'Camera address changed', details: { deviceId: 'CAM-01', fromAddress: '192.168.1.64', toAddress: '192.168.10.101', reason: 'SET_CAMERA_ADDRESS' } }],
     INSTALLATION_ACCEPTED: [{ type: 'INSTALLATION_ACCEPTED', actorId: 'OPR-002', deviceId: null, message: 'Installation accepted', details: { acceptanceId: '00000000-0000-4000-8000-0000000000c1', stepCount: 12, passedCount: 11 } }],
     INSTALLATION_ACCEPTANCE_REVOKED: [{ type: 'INSTALLATION_ACCEPTANCE_REVOKED', actorId: 'OPR-002', deviceId: null, message: 'Installation acceptance revoked', details: { acceptanceId: '00000000-0000-4000-8000-0000000000c1' } }],
+    // Task 4 blueprint row 201 (X-C; SX-14): the row of the host command. Actor null, severity the type's fixed one.
+    OPERATOR_PASSWORD_SET: [
+      { type: 'OPERATOR_PASSWORD_SET', actorId: null, deviceId: null, severity: 'WARNING', message: 'Operator password set from the host', details: { targetOperatorId: 'OPR-002', method: 'HOST_COMMAND', sessionsEnded: 0, earlierWasDemo: true } },
+      { type: 'OPERATOR_PASSWORD_SET', actorId: null, deviceId: null, severity: 'WARNING', message: 'Operator password set from the host', details: { targetOperatorId: 'OPR-001', method: 'HOST_COMMAND', sessionsEnded: 3, earlierWasDemo: false, invokerUid: 1000 } },
+    ],
+    // Task 4 row V3 (the third vocabulary step): the four types of that step.
+    // The INTENT of a change of the host's own addresses, before the line is sent: an add with its lifetime, a removal with its cause.
+    HOST_ALIAS_REQUESTED: [
+      { type: 'HOST_ALIAS_REQUESTED', actorId: 'OPR-003', deviceId: null, message: 'Temporary host address requested', details: { action: 'ADD', address: '192.168.1.253', reason: 'FACTORY_SCAN', minutes: 30, operationId: 'scanFactoryCameras', permission: 'CAPTURE_COMMISSION' } },
+      { type: 'HOST_ALIAS_REQUESTED', actorId: 'OPR-003', deviceId: null, message: 'Temporary host address requested', details: { action: 'ADD', address: '192.168.1.253', reason: 'SET_CAMERA_ADDRESS', minutes: 480, aliasId: '00000000-0000-4000-8000-0000000000a1' } },
+      { type: 'HOST_ALIAS_REQUESTED', actorId: null, deviceId: null, message: 'Temporary host address removal requested', details: { action: 'REMOVE', address: '192.168.1.253', removeReason: 'BOOT_SWEEP', aliasId: '00000000-0000-4000-8000-0000000000a1' } },
+      { type: 'HOST_ALIAS_REQUESTED', actorId: 'OPR-003', deviceId: null, message: 'Temporary host address removal requested', details: { action: 'REMOVE', address: '192.168.1.253', removeReason: 'MANUAL', operationId: 'removeHostAlias', permission: 'CAPTURE_COMMISSION' } },
+    ],
+    HOST_ALIAS_ADD_FAILED: [
+      { type: 'HOST_ALIAS_ADD_FAILED', actorId: 'OPR-003', deviceId: null, severity: 'WARNING', message: 'Temporary host address could not be added', details: { address: '192.168.1.253', reason: 'FACTORY_SCAN', failureReason: 'HELPER_ADDRESS_IN_USE' } },
+      { type: 'HOST_ALIAS_ADD_FAILED', actorId: 'OPR-003', deviceId: null, severity: 'WARNING', message: 'Temporary host address could not be added', details: { address: '192.168.1.253', reason: 'SET_CAMERA_ADDRESS', failureReason: 'HELPER_FAILED', aliasId: '00000000-0000-4000-8000-0000000000a1', operationId: 'setCameraNetwork', permission: 'CAPTURE_COMMISSION' } },
+    ],
+    // The capture worker was replaced inside a session: the session, the two attempts, the measured bounds of the gap (C57). No actor.
+    CAPTURE_AUDIO_ABSENT_ON_RESTART: [
+      { type: 'CAPTURE_AUDIO_ABSENT_ON_RESTART', actorId: null, deviceId: null, severity: 'WARNING', message: 'Audio was not recorded while the capture worker was replaced', details: { sessionId: 'SES-20261001-0024', earlierAttempt: 1, laterAttempt: 2, audioAbsentAtLeastMs: 275, audioAbsentAtMostMs: 637 } },
+      { type: 'CAPTURE_AUDIO_ABSENT_ON_RESTART', actorId: null, deviceId: null, severity: 'WARNING', message: 'Audio was not recorded while the capture worker was replaced', details: { sessionId: 'SES-20261001-0024', earlierAttempt: 2, laterAttempt: 3, audioAbsentAtMostMs: 612 } },
+      { type: 'CAPTURE_AUDIO_ABSENT_ON_RESTART', actorId: null, deviceId: null, severity: 'WARNING', message: 'Audio was not recorded while the capture worker was replaced', details: { sessionId: 'SES-20261001-0024', earlierAttempt: 1, laterAttempt: 2 } },
+    ],
+    // The OUTCOME of a connection test of a registered camera with its stored credential (C58): no candidate, no address.
+    CAPTURE_DEVICE_CONNECTION_TESTED: [
+      { type: 'CAPTURE_DEVICE_CONNECTION_TESTED', actorId: 'OPR-003', deviceId: null, message: 'Registered camera connection tested', details: { deviceId: 'CAM-01', outcome: 'REACHABLE', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', operationId: 'testCaptureDeviceConnection', permission: 'CAPTURE_CONFIG' } },
+      { type: 'CAPTURE_DEVICE_CONNECTION_TESTED', actorId: 'OPR-002', deviceId: null, message: 'Registered camera connection tested', details: { deviceId: 'CAM-03', outcome: 'AUTHENTICATION_FAILED', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', operationId: 'testCaptureDeviceConnection', guardTripped: true } },
+      { type: 'CAPTURE_DEVICE_CONNECTION_TESTED', actorId: 'OPR-002', deviceId: null, message: 'Registered camera connection tested', details: { deviceId: 'CAM-03', outcome: 'AUTHENTICATION_FAILED', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', operationId: 'testCaptureDeviceConnection', reason: 'SCHEME_NOT_ALLOWED' } },
+    ],
+    // Row R1b (C99): a camera absent inside a session - the session, the camera, its track, the attempt, the relay's loss number, both bounds, how it ended. No actor.
+    CAPTURE_VIDEO_ABSENT_IN_SESSION: [
+      { type: 'CAPTURE_VIDEO_ABSENT_IN_SESSION', actorId: null, deviceId: null, severity: 'WARNING', message: 'Video was not recorded while a camera of the session was absent', details: { sessionId: 'SES-20261001-0024', deviceId: 'CAM-01', trackId: 'VIDEO-01', attempt: 1, loss: 1, tries: 1, videoAbsentAtLeastMs: 3048, videoAbsentAtMostMs: 8049, ended: 'RE_OPENED' } },
+      { type: 'CAPTURE_VIDEO_ABSENT_IN_SESSION', actorId: null, deviceId: null, severity: 'WARNING', message: 'Video was not recorded while a camera of the session was absent', details: { sessionId: 'SES-20261001-0024', deviceId: 'CAM-02', trackId: 'VIDEO-02', attempt: 2, loss: 3, videoAbsentAtLeastMs: 41000, videoAbsentAtMostMs: 46210, ended: 'NOT_RE_OPENED' } },
+      { type: 'CAPTURE_VIDEO_ABSENT_IN_SESSION', actorId: null, deviceId: null, severity: 'WARNING', message: 'Video was not recorded while a camera of the session was absent', details: { sessionId: 'SES-20261001-0024', deviceId: 'CAM-01', trackId: 'VIDEO-01', attempt: 1, loss: 2, ended: 'NOT_RE_OPENED' } },
+    ],
   };
 
-  it('covers exactly the thirty-three types the server writes; the simulator\'s 44 have no list', () => {
+  it('covers exactly the thirty-nine types the server writes; the simulator\'s 44 have no list', () => {
     const typed = Object.keys(SERVER_AUDIT_DETAIL_RULES).sort();
     expect(typed).toEqual(Object.keys(accepted).sort());
     // Task 4 blueprint row 19: 23 + the ten of the hardware-input port = 33; the simulator's 44 do not move.
-    expect(typed).toHaveLength(33);
+    // Task 4 blueprint row 201 (X-C): + OPERATOR_PASSWORD_SET = 34; the 44 still do not move (SYSTEM_BOOT stays one of them).
+    // Task 4 row V3 (the third vocabulary step): + the four of that step = 38; the 44 still do not move.
+    // Task 4 row R1b (decision C99): + CAPTURE_VIDEO_ABSENT_IN_SESSION = 39; the 44 still do not move.
+    expect(typed).toHaveLength(39);
     expect(Object.values(AuditType).filter((type) => detailRulesOf(type) === undefined)).toHaveLength(44);
     for (const type of typed) expect(Object.values(AuditType)).toContain(type);
   });
@@ -364,10 +426,20 @@ describe('the allow-list of the thirty-three server-written types (spec §13.1; 
       HOST_ALIAS_REMOVED: ['aliasId', 'address', 'removeReason', 'operationId', 'permission'],
       HOST_ALIAS_REMOVE_FAILED: ['aliasId', 'address', 'removeReason', 'failureReason', 'operationId', 'permission'],
       CAMERA_FACTORY_SCANNED: ['outcome', 'addressCount', 'responderCount', 'searchId', 'aliasId', 'failureReason', 'operationId', 'permission'],
-      CAMERA_NETWORK_SET: ['phase', 'fromAddress', 'toAddress', 'mac', 'deviceId', 'candidateId', 'aliasId', 'failureReason', 'guardTripped', 'operationId', 'permission'],
+      CAMERA_NETWORK_SET: ['phase', 'fromAddress', 'toAddress', 'mac', 'deviceId', 'candidateId', 'aliasId', 'deviceCount', 'failureReason', 'guardTripped', 'operationId', 'permission'],
       CAPTURE_DEVICE_ADDRESS_CHANGED: ['deviceId', 'fromAddress', 'toAddress', 'reason', 'operationId', 'permission'],
       INSTALLATION_ACCEPTED: ['acceptanceId', 'stepCount', 'passedCount', 'operationId', 'permission'],
       INSTALLATION_ACCEPTANCE_REVOKED: ['acceptanceId', 'operationId', 'permission'],
+      // Task 4 blueprint row 201 (X-C; SX-14): the one closed list of the password command.
+      OPERATOR_PASSWORD_SET: ['targetOperatorId', 'method', 'sessionsEnded', 'earlierWasDemo', 'invokerUid'],
+      // Task 4 row V3 (the third vocabulary step): the four closed lists of that step.
+      HOST_ALIAS_REQUESTED: ['action', 'address', 'reason', 'removeReason', 'minutes', 'aliasId', 'operationId', 'permission'],
+      HOST_ALIAS_ADD_FAILED: ['address', 'reason', 'failureReason', 'aliasId', 'operationId', 'permission'],
+      CAPTURE_AUDIO_ABSENT_ON_RESTART: ['sessionId', 'earlierAttempt', 'laterAttempt', 'audioAbsentAtLeastMs', 'audioAbsentAtMostMs'],
+      // Row V4 (C75 (1)): + `unreachableReason` and `usableProfileCount`, both optional.
+      CAPTURE_DEVICE_CONNECTION_TESTED: ['deviceId', 'outcome', 'adapter', 'sourceClass', 'operationId', 'guardTripped', 'reason', 'unreachableReason', 'usableProfileCount', 'permission'],
+      // Task 4 row R1b (decision C99): the one closed list of a camera absent inside a session.
+      CAPTURE_VIDEO_ABSENT_IN_SESSION: ['sessionId', 'deviceId', 'trackId', 'attempt', 'loss', 'tries', 'videoAbsentAtLeastMs', 'videoAbsentAtMostMs', 'ended'],
     });
     expect(required).toEqual({
       ACCESS_DENIED: ['operationId'],
@@ -396,14 +468,359 @@ describe('the allow-list of the thirty-three server-written types (spec §13.1; 
       CAPTURE_AUDIO_INPUT_CHANGED: ['deviceId', 'change', 'inputNumber', 'channelCount'],
       CAPTURE_NETWORK_CONFIG_CHANGED: ['changedFields', 'revision'],
       HOST_ALIAS_ADDED: ['aliasId', 'address', 'reason', 'expiresAt'],
-      HOST_ALIAS_REMOVED: ['aliasId', 'address', 'removeReason'],
-      HOST_ALIAS_REMOVE_FAILED: ['aliasId', 'address', 'removeReason', 'failureReason'],
+      // Row V4 (C74): `aliasId` left the required keys of the two removal results (a row-less boot sweep has no row id).
+      HOST_ALIAS_REMOVED: ['address', 'removeReason'],
+      HOST_ALIAS_REMOVE_FAILED: ['address', 'removeReason', 'failureReason'],
       CAMERA_FACTORY_SCANNED: ['outcome', 'addressCount', 'responderCount'],
       CAMERA_NETWORK_SET: ['phase', 'fromAddress', 'toAddress'],
       CAPTURE_DEVICE_ADDRESS_CHANGED: ['deviceId', 'fromAddress', 'toAddress', 'reason'],
       INSTALLATION_ACCEPTED: ['acceptanceId', 'stepCount', 'passedCount'],
       INSTALLATION_ACCEPTANCE_REVOKED: ['acceptanceId'],
+      OPERATOR_PASSWORD_SET: ['targetOperatorId', 'method', 'sessionsEnded', 'earlierWasDemo'],
+      HOST_ALIAS_REQUESTED: ['action', 'address'],
+      HOST_ALIAS_ADD_FAILED: ['address', 'reason', 'failureReason'],
+      CAPTURE_AUDIO_ABSENT_ON_RESTART: ['sessionId', 'earlierAttempt', 'laterAttempt'],
+      CAPTURE_DEVICE_CONNECTION_TESTED: ['deviceId', 'outcome', 'adapter', 'sourceClass', 'operationId'],
+      CAPTURE_VIDEO_ABSENT_IN_SESSION: ['sessionId', 'deviceId', 'trackId', 'attempt', 'loss', 'ended'],
     });
+  });
+
+  it('task 4 row R1b (C99): CAPTURE_VIDEO_ABSENT_IN_SESSION is the last type, category DEVICE; accepted in its stated forms; refuses a foreign key, a locator, a profile, a cause, a value outside its form; its sets and bound are the manifest\'s', () => {
+    expect(Object.values(AuditType).at(-1)).toBe('CAPTURE_VIDEO_ABSENT_IN_SESSION');
+    expect([AUDIT_TYPE_CATEGORY.CAPTURE_VIDEO_ABSENT_IN_SESSION, AUDIT_TYPE_CATEGORY.CAPTURE_AUDIO_ABSENT_ON_RESTART, AUDIT_TYPE_CATEGORY.CAPTURE_DEVICE_UNREACHABLE]).toEqual(['DEVICE', 'DEVICE', 'DEVICE']);
+    const rows = accepted['CAPTURE_VIDEO_ABSENT_IN_SESSION'] as AuditEntry[];
+    const withDetail = (item: AuditEntry, key: string, value: unknown): AuditEntry => ({ ...item, details: { ...item.details, [key]: value } as AuditEntry['details'] });
+    const without = (item: AuditEntry, key: string): AuditEntry => ({ ...item, details: Object.fromEntries(Object.entries(item.details ?? {}).filter(([name]) => name !== key)) as AuditEntry['details'] });
+    const codeOf = (run: () => unknown): string => {
+      try {
+        run();
+      } catch (error) {
+        return (error as { code?: string }).code ?? 'threw';
+      }
+      return 'accepted';
+    };
+    for (const row of rows) expect(codeOf(() => auditInputOf(row))).toBe('accepted');
+    const full = rows[0] as AuditEntry;
+    for (const key of ['host', 'address', 'locator', 'profile', 'cause', 'heldBack', 'relayGapMs', 'lostAt', 'file', 'operationId', 'permission', 'earlierAttempt']) {
+      expect(codeOf(() => auditInputOf(withDetail(full, key, 'x'))), key).toBe('AUDIT_DETAIL_KEY_NOT_ALLOWED');
+    }
+    for (const key of ['sessionId', 'deviceId', 'trackId', 'attempt', 'loss', 'ended']) expect(codeOf(() => auditInputOf(without(full, key))), key).not.toBe('accepted');
+    for (const key of ['tries', 'videoAbsentAtLeastMs', 'videoAbsentAtMostMs']) expect(codeOf(() => auditInputOf(without(full, key))), key).toBe('accepted');
+    const refusedForms: ReadonlyArray<readonly [string, unknown]> = [
+      ['sessionId', 'session 24'],
+      ['deviceId', 'MIC-01'],
+      ['deviceId', '192.168.1.64'],
+      ['trackId', 'VIDEO-03'],
+      ['trackId', 'AUDIO-01'],
+      ['attempt', 0],
+      ['attempt', '1'],
+      ['loss', 0],
+      ['loss', 1.5],
+      ['loss', 1_000_000_000],
+      ['tries', 0],
+      ['videoAbsentAtLeastMs', -1],
+      ['videoAbsentAtLeastMs', 0.5],
+      ['videoAbsentAtMostMs', 86_400_001],
+      ['videoAbsentAtMostMs', 'without end'],
+      ['ended', 'REOPENED'],
+      ['ended', 'RE-OPENED'],
+      ['ended', true],
+    ];
+    for (const [key, value] of refusedForms) expect(codeOf(() => auditInputOf(withDetail(full, key, value))), `${key} ${String(value)}`).not.toBe('accepted');
+    expect(codeOf(() => auditInputOf(withDetail(withDetail(full, 'videoAbsentAtLeastMs', 0), 'videoAbsentAtMostMs', 86_400_000)))).toBe('accepted');
+    // `tracks[].absentInSession` of the manifest (fields 134-138) states what this type states: the same bound, the same two words, the same tracks.
+    expect(MANIFEST_VIDEO_ABSENT_MAX_MS).toBe(CAPTURE_VIDEO_ABSENT_MAX_MS);
+    expect([...MANIFEST_VIDEO_ABSENCE_ENDS]).toEqual([...CAPTURE_VIDEO_ABSENCE_ENDS]);
+    expect([...VIDEO_TRACK_IDS]).toEqual([...CAPTURE_VIDEO_ABSENT_TRACK_IDS]);
+    const absence = { attempt: 1, loss: 1, absentAtLeastMs: CAPTURE_VIDEO_ABSENT_MAX_MS, absentAtMostMs: CAPTURE_VIDEO_ABSENT_MAX_MS, ended: 'RE_OPENED' };
+    expect(ManifestVideoAbsenceSchema.safeParse(absence).success).toBe(true);
+    expect(ManifestVideoAbsenceSchema.safeParse({ ...absence, absentAtMostMs: CAPTURE_VIDEO_ABSENT_MAX_MS + 1 }).success).toBe(false);
+  });
+
+  it('task 4 row V3 (C53, C57, C58): the four types of the third vocabulary step are accepted in their stated forms and refuse a foreign key, a credential, a locator, device text and a value outside its form', () => {
+    const NEW_TYPES = ['HOST_ALIAS_REQUESTED', 'HOST_ALIAS_ADD_FAILED', 'CAPTURE_AUDIO_ABSENT_ON_RESTART', 'CAPTURE_DEVICE_CONNECTION_TESTED'] as const;
+    // The four are the last of the vocabulary, in this order (78 -> 82), each in an existing category.
+    // Row R1b: one type follows them (82 -> 83); the positions move by that delta of one.
+    expect(Object.values(AuditType).slice(-5, -1)).toEqual([...NEW_TYPES]);
+    expect(NEW_TYPES.map((type) => AUDIT_TYPE_CATEGORY[type])).toEqual(['SECURITY', 'SECURITY', 'DEVICE', 'SECURITY']);
+    // As the existing types of their kind: the three alias types, the capture-fault types, the candidate's test.
+    expect([AUDIT_TYPE_CATEGORY.HOST_ALIAS_ADDED, AUDIT_TYPE_CATEGORY.MIC_SILENT, AUDIT_TYPE_CATEGORY.CAPTURE_DEVICE_UNREACHABLE, AUDIT_TYPE_CATEGORY.CAPTURE_CONNECTION_TESTED]).toEqual(['SECURITY', 'DEVICE', 'DEVICE', 'SECURITY']);
+    expect([[...HOST_ALIAS_REQUEST_ACTIONS], [...CAPTURE_DEVICE_CONNECTION_TEST_OPERATIONS], CAPTURE_AUDIO_ABSENT_MAX_MS]).toEqual([['ADD', 'REMOVE'], ['testCaptureDeviceConnection'], 86_400_000]);
+    const withDetail = (item: AuditEntry, key: string, value: unknown): AuditEntry => ({ ...item, details: { ...item.details, [key]: value } as AuditEntry['details'] });
+    const first = (type: string): AuditEntry => accepted[type]?.[0] as AuditEntry;
+    for (const type of NEW_TYPES) {
+      // The writer accepts every stated row of the type, and stores it in the type's category ...
+      for (const item of accepted[type] ?? []) {
+        expect(codeOf(() => auditInputOf(item)), type).toBe('accepted');
+        const { row } = appendAudit({ rows: [], head: GENESIS, total: 0, dropped: 0 }, auditInputOf(item), 1);
+        expect([row.type, row.category], type).toEqual([type, AUDIT_TYPE_CATEGORY[type]]);
+        expect(Object.keys(row.details).sort(), type).toEqual(Object.keys(item.details ?? {}).sort());
+      }
+      // ... refuses a credential name by the key rule ...
+      for (const key of ['username', 'secret', 'password', 'credential', 'onvifUuid', 'token']) expect(codeOf(() => auditInputOf(withDetail(first(type), key, 'x'))), `${type}.${key}`).toBe('AUDIT_DETAIL_KEY_FORBIDDEN');
+      // ... and a locator, device text, a name of the host or free text by the list: no such key exists.
+      for (const key of ['url', 'uri', 'rtspUrl', 'port', 'path', 'interfaceName', 'interface', 'subnet', 'model', 'vendor', 'product', 'name', 'error', 'errorText', 'helperOutput', 'line', 'note', 'message']) {
+        expect(codeOf(() => auditInputOf(withDetail(first(type), key, 'x'))), `${type}.${key}`).toBe('AUDIT_DETAIL_KEY_NOT_ALLOWED');
+      }
+      // Each required key is required: a row without it is refused.
+      for (const key of Object.entries(SERVER_AUDIT_DETAIL_RULES[type]).filter(([, rule]) => (rule as DetailRule).required).map(([name]) => name)) {
+        const { [key]: _dropped, ...rest } = first(type).details as Record<string, unknown>;
+        expect(codeOf(() => auditInputOf({ ...first(type), details: rest as AuditEntry['details'] })), `${type} without ${key}`).not.toBe('accepted');
+      }
+    }
+    // The stored-credential test names its device by the registry id ONLY: the keys the candidate's row
+    // has for an address, an announced reference, a candidate and "was a credential supplied" do not exist here.
+    for (const key of ['host', 'endpointRef', 'address', 'candidateId', 'searchId', 'authenticated']) {
+      expect(codeOf(() => auditInputOf(withDetail(first('CAPTURE_DEVICE_CONNECTION_TESTED'), key, 'x'))), key).toBe('AUDIT_DETAIL_KEY_NOT_ALLOWED');
+    }
+    // The audio gap is numbers and one id: no device, no card, no file.
+    for (const key of ['deviceId', 'inputId', 'cardId', 'fileId', 'role', 'reason', 'operationId', 'permission']) {
+      expect(codeOf(() => auditInputOf(withDetail(first('CAPTURE_AUDIO_ABSENT_ON_RESTART'), key, 'MIC-01'))), key).toBe('AUDIT_DETAIL_KEY_NOT_ALLOWED');
+    }
+    // The contract's own builder gives a row the writer accepts, with and without its optional members.
+    const built = captureDeviceConnectionTestedDetails({ deviceId: 'CAM-01', outcome: 'AUTHENTICATION_FAILED', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', guardTripped: true, reason: 'SCHEME_NOT_ALLOWED', permission: 'CAPTURE_CONFIG' });
+    expect(codeOf(() => auditInputOf({ ...first('CAPTURE_DEVICE_CONNECTION_TESTED'), details: built as AuditEntry['details'] }))).toBe('accepted');
+    // Row V4 (C75 (1)): a test that reached the reader and asked NO camera has an outcome entry too - UNREACHABLE and
+    // the closed reason why nothing was sent; a camera that was asked states its count of usable profiles.
+    const testedBase = { deviceId: 'CAM-01', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION' } as const;
+    for (const unreachableReason of ['CREDENTIAL_NOT_READ', 'NOT_SENT'] as const) {
+      const notAsked = captureDeviceConnectionTestedDetails({ ...testedBase, outcome: 'UNREACHABLE', unreachableReason, usableProfileCount: 0 });
+      expect(notAsked).toEqual({ ...testedBase, outcome: 'UNREACHABLE', operationId: 'testCaptureDeviceConnection', unreachableReason });
+      expect(codeOf(() => auditInputOf({ ...first('CAPTURE_DEVICE_CONNECTION_TESTED'), details: notAsked as AuditEntry['details'] })), unreachableReason).toBe('accepted');
+    }
+    const asked = captureDeviceConnectionTestedDetails({ ...testedBase, outcome: 'REACHABLE', usableProfileCount: 2, unreachableReason: 'NOT_SENT' });
+    expect(asked).toEqual({ ...testedBase, outcome: 'REACHABLE', operationId: 'testCaptureDeviceConnection', usableProfileCount: 2 });
+    expect(codeOf(() => auditInputOf({ ...first('CAPTURE_DEVICE_CONNECTION_TESTED'), details: asked as AuditEntry['details'] }))).toBe('accepted');
+    for (const [key, value] of [['unreachableReason', 'TIMEOUT'], ['unreachableReason', 'no route to host'], ['unreachableReason', true], ['usableProfileCount', -1], ['usableProfileCount', 17], ['usableProfileCount', 1.5], ['usableProfileCount', '2'], ['usableProfileCount', 'H.264 main']] as const) {
+      expect(codeOf(() => auditInputOf(withDetail(first('CAPTURE_DEVICE_CONNECTION_TESTED'), key, value))), `${key}=${String(value)}`).toBe('AUDIT_DETAIL_VALUE_INVALID');
+    }
+    for (const count of [0, 16]) expect(codeOf(() => auditInputOf(withDetail(first('CAPTURE_DEVICE_CONNECTION_TESTED'), 'usableProfileCount', count))), String(count)).toBe('accepted');
+    const invalid: Array<[string, string, unknown]> = [
+      ['HOST_ALIAS_REQUESTED', 'action', 'add'],
+      ['HOST_ALIAS_REQUESTED', 'action', 'DEL'],
+      ['HOST_ALIAS_REQUESTED', 'address', '192.168.1.253/24'],
+      ['HOST_ALIAS_REQUESTED', 'address', 'camera-1.local'],
+      ['HOST_ALIAS_REQUESTED', 'address', 'add 192.168.1.253/24 30'],
+      ['HOST_ALIAS_REQUESTED', 'reason', 'because'],
+      ['HOST_ALIAS_REQUESTED', 'removeReason', 'FACTORY_SCAN'],
+      ['HOST_ALIAS_REQUESTED', 'minutes', 4],
+      ['HOST_ALIAS_REQUESTED', 'minutes', 481],
+      ['HOST_ALIAS_REQUESTED', 'minutes', 30.5],
+      ['HOST_ALIAS_REQUESTED', 'minutes', '30'],
+      ['HOST_ALIAS_REQUESTED', 'aliasId', 'eth1'],
+      ['HOST_ALIAS_ADD_FAILED', 'address', 'fe80::1'],
+      ['HOST_ALIAS_ADD_FAILED', 'reason', 'EXPIRED'],
+      ['HOST_ALIAS_ADD_FAILED', 'failureReason', 'RTNETLINK answers: File exists'],
+      ['HOST_ALIAS_ADD_FAILED', 'failureReason', 'helper_failed'],
+      ['HOST_ALIAS_ADD_FAILED', 'aliasId', '192.168.1.253'],
+      ['CAPTURE_AUDIO_ABSENT_ON_RESTART', 'sessionId', 'session 24'],
+      ['CAPTURE_AUDIO_ABSENT_ON_RESTART', 'earlierAttempt', 0],
+      ['CAPTURE_AUDIO_ABSENT_ON_RESTART', 'laterAttempt', 1.5],
+      ['CAPTURE_AUDIO_ABSENT_ON_RESTART', 'laterAttempt', '2'],
+      ['CAPTURE_AUDIO_ABSENT_ON_RESTART', 'audioAbsentAtLeastMs', -1],
+      ['CAPTURE_AUDIO_ABSENT_ON_RESTART', 'audioAbsentAtLeastMs', 0.5],
+      ['CAPTURE_AUDIO_ABSENT_ON_RESTART', 'audioAbsentAtMostMs', 86_400_001],
+      ['CAPTURE_AUDIO_ABSENT_ON_RESTART', 'audioAbsentAtMostMs', 'without end'],
+      ['CAPTURE_DEVICE_CONNECTION_TESTED', 'deviceId', '192.168.10.21'],
+      ['CAPTURE_DEVICE_CONNECTION_TESTED', 'deviceId', 'CND-4F2A91C0D377'],
+      ['CAPTURE_DEVICE_CONNECTION_TESTED', 'outcome', 'OK'],
+      ['CAPTURE_DEVICE_CONNECTION_TESTED', 'adapter', 'onvif rtsp'],
+      ['CAPTURE_DEVICE_CONNECTION_TESTED', 'sourceClass', 'REAL'],
+      ['CAPTURE_DEVICE_CONNECTION_TESTED', 'operationId', 'testCaptureCandidateConnection'],
+      ['CAPTURE_DEVICE_CONNECTION_TESTED', 'operationId', 'adoptCaptureCandidate'],
+      ['CAPTURE_DEVICE_CONNECTION_TESTED', 'guardTripped', 'yes'],
+      ['CAPTURE_DEVICE_CONNECTION_TESTED', 'reason', '401 Unauthorized'],
+    ];
+    for (const [type, key, value] of invalid) expect(codeOf(() => auditInputOf(withDetail(first(type), key, value))), `${type}.${key}=${String(value)}`).toBe('AUDIT_DETAIL_VALUE_INVALID');
+    // The bounds themselves pass: 0 ms, one day, the least and the most minutes of the helper.
+    expect(codeOf(() => auditInputOf(withDetail(withDetail(first('CAPTURE_AUDIO_ABSENT_ON_RESTART'), 'audioAbsentAtLeastMs', 0), 'audioAbsentAtMostMs', 86_400_000)))).toBe('accepted');
+    for (const minutes of [5, 480]) expect(codeOf(() => auditInputOf(withDetail(first('HOST_ALIAS_REQUESTED'), 'minutes', minutes))), String(minutes)).toBe('accepted');
+    // The candidate's test is what it was: its list still REQUIRES the candidate and the search, and still names two operations only.
+    expect(Object.entries(SERVER_AUDIT_DETAIL_RULES.CAPTURE_CONNECTION_TESTED).filter(([, rule]) => rule.required).map(([key]) => key)).toEqual(['candidateId', 'searchId', 'outcome', 'authenticated', 'adapter', 'sourceClass', 'operationId']);
+    expect(SERVER_AUDIT_DETAIL_RULES.CAPTURE_CONNECTION_TESTED.operationId.accepts('testCaptureDeviceConnection')).toBe(false);
+  });
+
+  it('task 4 row 201 (X-C; SX-14): OPERATOR_PASSWORD_SET is accepted and refuses every foreign key, among them each name of a password, a length, a salt, a tag or a hash parameter; its severity is fixed', () => {
+    // The one type follows the ten of row 19 (77 -> 78), category SECURITY; the four of row V3 follow it (78 -> 82).
+    expect(Object.values(AuditType).at(-6)).toBe('OPERATOR_PASSWORD_SET');
+    expect(AUDIT_TYPE_CATEGORY.OPERATOR_PASSWORD_SET).toBe('SECURITY');
+    expect(SERVER_AUDIT_FIXED_SEVERITY).toEqual({ OPERATOR_PASSWORD_SET: 'WARNING' });
+    expect(fixedSeverityOf(AuditType.OPERATOR_PASSWORD_SET)).toBe('WARNING');
+    expect(Object.values(AuditType).filter((type) => fixedSeverityOf(type) !== undefined)).toEqual(['OPERATOR_PASSWORD_SET']);
+    expect([...OPERATOR_PASSWORD_SET_METHODS]).toEqual(['HOST_COMMAND']);
+    const withDetail = (item: AuditEntry, key: string, value: unknown): AuditEntry => ({ ...item, details: { ...item.details, [key]: value } as AuditEntry['details'] });
+    const [first, second] = accepted['OPERATOR_PASSWORD_SET'] as [AuditEntry, AuditEntry];
+    for (const item of [first, second]) {
+      expect(codeOf(() => auditInputOf(item))).toBe('accepted');
+      const { row } = appendAudit({ rows: [], head: GENESIS, total: 0, dropped: 0 }, auditInputOf(item), 1);
+      expect([row.type, row.category, row.severity, row.actorId]).toEqual(['OPERATOR_PASSWORD_SET', 'SECURITY', 'WARNING', null]);
+    }
+    // The contract example is a row the writer accepts.
+    expect(codeOf(() => auditInputOf({ ...first, details: { ...OPERATOR_PASSWORD_SET_DETAILS_EXAMPLE } }))).toBe('accepted');
+    // A name the general key rule already forbids ...
+    for (const key of ['password', 'passwordHash', 'salt', 'secret', 'credential', 'credentialHash', 'token', 'username', 'nonce', 'keyRef']) {
+      expect(codeOf(() => auditInputOf(withDetail(first, key, 'x'))), key).toBe('AUDIT_DETAIL_KEY_FORBIDDEN');
+    }
+    // ... and every other name of a password, a length, a salt, a tag or a hash parameter: no such key is on the list.
+    const foreign = [
+      'newPassword', 'oldPassword', 'passwordLength', 'length', 'minLength', 'characters', 'codePoints',
+      'saltHex', 'saltLength', 'passwordSalt', 'tag', 'authTag', 'tagLength', 'hash', 'hashHex', 'digest', 'hashedAt',
+      'algorithm', 'hashAlgorithm', 'parameters', 'hashParameters', 'memoryCost', 'timeCost', 'parallelism', 'iterations', 'cost', 'keyLength', 'version',
+      'n', 'r', 'p', 'operationId', 'permission', 'reason', 'user', 'operatorName', 'terminal', 'hostname', 'biometricTokensRevoked',
+    ];
+    for (const key of foreign) expect(codeOf(() => auditInputOf(withDetail(first, key, 1))), key).toBe('AUDIT_DETAIL_KEY_NOT_ALLOWED');
+    const invalid: Array<[string, unknown]> = [
+      ['targetOperatorId', 'fixture.supervisor'],
+      ['targetOperatorId', 'OPR-2'],
+      ['method', 'CONSOLE'],
+      ['method', 'host command'],
+      ['sessionsEnded', -1],
+      ['sessionsEnded', '3'],
+      ['earlierWasDemo', 'yes'],
+      ['earlierWasDemo', 1],
+      ['invokerUid', 'root'],
+      ['invokerUid', -1],
+      ['invokerUid', 1.5],
+      ['invokerUid', 4_294_967_296],
+    ];
+    for (const [key, value] of invalid) expect(codeOf(() => auditInputOf(withDetail(first, key, value))), `${key}=${String(value)}`).toBe('AUDIT_DETAIL_VALUE_INVALID');
+  });
+
+  it('task 4 row 201 (X-C): a SYSTEM_BOOT row with and without `signingKeyId` and `signingCertificateSha256` is accepted; the two values have a stated form', () => {
+    expect(detailRulesOf(AuditType.SYSTEM_BOOT)).toBeUndefined();
+    expect(Object.keys(SYSTEM_BOOT_SIGNING_DETAIL_RULES)).toEqual(['signingKeyId', 'signingCertificateSha256']);
+    expect(Object.values(SYSTEM_BOOT_SIGNING_DETAIL_RULES).map((rule) => rule.required)).toEqual([false, false]);
+    const boot = (details: Record<string, unknown>): AuditEntry => ({ type: 'SYSTEM_BOOT', actorId: null, deviceId: null, message: 'Core started', details }) as AuditEntry;
+    for (const details of [SYSTEM_BOOT_DETAILS_EXAMPLE, SYSTEM_BOOT_SIGNING_DETAILS_EXAMPLE, { captureOperation: 'REAL_PRODUCTION', signingKeyId: 'CORE-KEY-EVSIGN-01' }, {}]) {
+      expect(codeOf(() => auditInputOf(boot({ ...details }))), JSON.stringify(Object.keys(details))).toBe('accepted');
+    }
+    const input = auditInputOf(boot({ ...SYSTEM_BOOT_SIGNING_DETAILS_EXAMPLE }));
+    expect(input.details).toEqual(SYSTEM_BOOT_SIGNING_DETAILS_EXAMPLE);
+    // The two names are not names of a secret, and the two example values pass their form.
+    for (const key of Object.keys(SYSTEM_BOOT_SIGNING_DETAIL_RULES)) expect(AUDIT_DETAIL_FORBIDDEN_KEYS.map((name) => name.toLowerCase())).not.toContain(key.toLowerCase());
+    const { signingKeyId, signingCertificateSha256 } = SYSTEM_BOOT_SIGNING_DETAIL_RULES;
+    for (const value of ['CORE-KEY-EVSIGN-01', 'CORE-KEY-EVSIGN-02', 'DEMO-KEY-EVSIGN-01']) expect(signingKeyId.accepts(value), value).toBe(true);
+    for (const value of ['core-key', '', 'CORE KEY', '-----BEGIN PRIVATE KEY-----', 'K'.repeat(65), 1, null]) expect(signingKeyId.accepts(value), String(value)).toBe(false);
+    expect(signingCertificateSha256.accepts(SYSTEM_BOOT_SIGNING_DETAILS_EXAMPLE.signingCertificateSha256)).toBe(true);
+    for (const value of ['5D'.repeat(32), '5d'.repeat(31), 'sha256:' + '5d'.repeat(32), '-----BEGIN CERTIFICATE-----', '', 7, null]) expect(signingCertificateSha256.accepts(value), String(value)).toBe(false);
+  });
+
+  it('task 4 row V4 (C71 C-6, C72 F-04, C76 item 8): the writer itself holds the two signing members of ANY SYSTEM_BOOT row to their form or null, and a fixed severity to its value - native and prepared', () => {
+    // An OPEN rule: the type keeps no closed list (any other key is free), two named members have a form.
+    expect(detailRulesOf(AuditType.SYSTEM_BOOT)).toBeUndefined();
+    expect(Object.keys(SERVER_AUDIT_OPEN_DETAIL_RULES)).toEqual(['SYSTEM_BOOT']);
+    // Task 4 row V5 (C84 R-1): + the four members of the signer store's state, 2 -> 6 named members; the type stays open.
+    // Task 4 row P1 (U21 (2)): + the two members of a production boot's host, 6 -> 8 named members; the type stays open.
+    expect(Object.keys(openDetailRulesOf(AuditType.SYSTEM_BOOT) ?? {})).toEqual([...Object.keys(SYSTEM_BOOT_SIGNING_DETAIL_RULES), 'signingKeysRetained', 'signingKeysCompromised', 'signingCertificatesSha256', 'signingStoreChange', 'hostPlatform', 'hostProfile', 'addressHelperSocket']);
+    expect(Object.values(AuditType).filter((type) => openDetailRulesOf(type) !== undefined)).toEqual(['SYSTEM_BOOT']);
+    const boot = (details: Record<string, unknown>): AuditEntry => ({ type: 'SYSTEM_BOOT', actorId: null, deviceId: null, message: 'Core started', details }) as AuditEntry;
+    const SHA = SYSTEM_BOOT_SIGNING_DETAILS_EXAMPLE.signingCertificateSha256;
+    // Accepted: no member, the pair, THE NULL PAIR of a boot that read no certificate (SX-15; rows 201, 209), one null, and any other key as before.
+    const admitted: Array<Record<string, unknown>> = [
+      {},
+      { ...SYSTEM_BOOT_DETAILS_EXAMPLE },
+      { ...SYSTEM_BOOT_SIGNING_DETAILS_EXAMPLE },
+      { captureOperation: 'REAL_PRODUCTION', signingKeyId: null, signingCertificateSha256: null },
+      { signingKeyId: null },
+      { signingCertificateSha256: null },
+      { captureOperation: 'REAL_DEVELOPMENT', note: 'a key of the simulator', count: 3 },
+      // Row V5 (C84 R-1): the state of the signer store - the contract's example, the four members null (the store was not read), none marked.
+      { ...SYSTEM_BOOT_SIGNING_STORE_DETAILS_EXAMPLE },
+      { ...SYSTEM_BOOT_SIGNING_DETAILS_EXAMPLE, signingKeysRetained: null, signingKeysCompromised: null, signingCertificatesSha256: null, signingStoreChange: 'NOT_READ' },
+      { ...SYSTEM_BOOT_SIGNING_DETAILS_EXAMPLE, signingKeysRetained: 1, signingKeysCompromised: '', signingCertificatesSha256: SHA, signingStoreChange: 'NO_EARLIER_STATEMENT' },
+    ];
+    for (const details of admitted) expect(codeOf(() => auditInputOf(boot(details))), JSON.stringify(details)).toBe('accepted');
+    // Row V5: a member of the store's state that is not of its form is refused for EVERY writer, by the code of a detail value.
+    for (const [key, value] of [['signingKeysRetained', 100], ['signingKeysRetained', '2'], ['signingKeysCompromised', 'CORE-KEY-EVSIGN-01'], ['signingKeysCompromised', '02,01'], ['signingCertificatesSha256', 'x'], ['signingStoreChange', 'ROTATED'], ['signingStoreChange', 'NONE,KEY_ROTATED']] as const) {
+      expect(codeOf(() => auditInputOf(boot({ ...SYSTEM_BOOT_SIGNING_STORE_DETAILS_EXAMPLE, [key]: value }))), `${key}: ${String(value)}`).toBe('AUDIT_DETAIL_VALUE_INVALID');
+    }
+    // Row P1 (U21 (2)): the host of a production boot. Accepted: Linux asked, macOS not asked, a platform no production Core starts on (null + its code).
+    for (const host of [{ hostPlatform: 'linux', hostProfile: 'WILL_BE_ASKED' }, { hostPlatform: 'darwin', hostProfile: 'WILL_NOT_BE_ASKED' }, { hostPlatform: null, hostProfile: 'PLATFORM_NOT_SUPPORTED' }]) {
+      expect(codeOf(() => auditInputOf(boot({ ...SYSTEM_BOOT_SIGNING_STORE_DETAILS_EXAMPLE, ...host }))), JSON.stringify(host)).toBe('accepted');
+    }
+    // The contract's own example of such a row is one the writer takes.
+    expect(codeOf(() => auditInputOf(boot({ ...SYSTEM_BOOT_HOST_DETAILS_EXAMPLE })))).toBe('accepted');
+    // Refused for EVERY writer: a platform word outside the closed list (the word of the host never reaches the trail), a code that is none, a null code.
+    for (const [key, value] of [['hostPlatform', 'win32'], ['hostPlatform', 'Darwin'], ['hostPlatform', ''], ['hostPlatform', 1], ['hostProfile', 'ASKED'], ['hostProfile', 'NOT_ASKED'], ['hostProfile', null], ['hostProfile', true]] as const) {
+      expect(codeOf(() => auditInputOf(boot({ ...SYSTEM_BOOT_SIGNING_STORE_DETAILS_EXAMPLE, [key]: value }))), `${key}: ${String(value)}`).toBe('AUDIT_DETAIL_VALUE_INVALID');
+    }
+    // Row HC (C94 (j)): the address helper's socket path of a production boot on Linux. Accepted: the two codes, and a row without the member.
+    for (const addressHelperSocket of ['PRESENT', 'NOT_PRESENT']) {
+      expect(codeOf(() => auditInputOf(boot({ ...SYSTEM_BOOT_HOST_DETAILS_EXAMPLE, hostPlatform: 'linux', hostProfile: 'WILL_BE_ASKED', addressHelperSocket }))), addressHelperSocket).toBe('accepted');
+    }
+    // Refused for EVERY writer: a code that is none, a path, a truth value and null (a boot that does not state the member leaves it out).
+    for (const value of ['ABSENT', 'present', '', '/run/dems-core-netalias/socket', true, 1, null]) {
+      expect(codeOf(() => auditInputOf(boot({ ...SYSTEM_BOOT_SIGNING_STORE_DETAILS_EXAMPLE, addressHelperSocket: value }))), `addressHelperSocket: ${String(value)}`).toBe('AUDIT_DETAIL_VALUE_INVALID');
+    }
+    expect(auditInputOf(boot({ captureOperation: 'REAL_PRODUCTION', signingKeyId: null, signingCertificateSha256: null })).details).toEqual({ captureOperation: 'REAL_PRODUCTION', signingKeyId: null, signingCertificateSha256: null });
+    // Refused, for a writer that is NOT the fence: a member that is neither null nor of its form.
+    const refused: Array<[string, unknown]> = [
+      ['signingKeyId', 'core-key'], ['signingKeyId', ''], ['signingKeyId', 'CORE KEY'], ['signingKeyId', 'K'.repeat(65)], ['signingKeyId', 1], ['signingKeyId', true], ['signingKeyId', SHA],
+      ['signingCertificateSha256', '5D'.repeat(32)], ['signingCertificateSha256', '5d'.repeat(31)], ['signingCertificateSha256', `sha256:${SHA}`], ['signingCertificateSha256', ''], ['signingCertificateSha256', 7], ['signingCertificateSha256', false], ['signingCertificateSha256', 'CORE-KEY-EVSIGN-01'],
+    ];
+    for (const [key, value] of refused) {
+      const entry = boot({ ...SYSTEM_BOOT_SIGNING_DETAILS_EXAMPLE, [key]: value });
+      expect(codeOf(() => auditInputOf(entry)), `${key}=${String(value)}`).toBe('AUDIT_DETAIL_VALUE_INVALID');
+      // The refusal names the key and the form, never the value.
+      const text = refusalOf(() => auditInputOf(entry)).message;
+      expect(text).toContain(key);
+      if (typeof value === 'string' && value.length > 3) expect(text.includes(value), `${key}: the value is quoted`).toBe(false);
+    }
+    // A PREPARED row (the engine's path, `appendPrepared`) is held to the same rule: the row is refused before it is stored.
+    const prepared = (details: AuditRow['details'], severity?: AuditRow['severity'], type: AuditRow['type'] = 'SYSTEM_BOOT'): AuditRow =>
+      appendAudit({ rows: [], head: GENESIS, total: 0, dropped: 0 }, { type, message: 'Prepared', ...(severity === undefined ? {} : { severity }), details }, 1).row;
+    expect(codeOf(() => checkAuditRow(prepared({ signingKeyId: null, signingCertificateSha256: null }), 'prepared'))).toBe('accepted');
+    expect(codeOf(() => checkAuditRow(prepared({ ...SYSTEM_BOOT_SIGNING_DETAILS_EXAMPLE }), 'prepared'))).toBe('accepted');
+    expect(codeOf(() => checkAuditRow(prepared({ reason: 'POWER_RESTORED' }, 'WARNING'), 'prepared'))).toBe('accepted');
+    expect(codeOf(() => checkAuditRow(prepared({ signingKeyId: 'core-key' }), 'prepared'))).toBe('AUDIT_DETAIL_VALUE_INVALID');
+    expect(codeOf(() => checkAuditRow(prepared({ signingCertificateSha256: 'not a digest' }), 'prepared'))).toBe('AUDIT_DETAIL_VALUE_INVALID');
+    // SYSTEM_BOOT has NO fixed severity (the shared code writes it INFO and, after a power failure, WARNING): every severity passes.
+    expect(fixedSeverityOf(AuditType.SYSTEM_BOOT)).toBeUndefined();
+    for (const severity of ['INFO', 'SUCCESS', 'WARNING', 'CRITICAL']) expect(codeOf(() => auditInputOf({ ...boot({}), severity } as AuditEntry)), severity).toBe('accepted');
+    // THE FIXED SEVERITY (F-04): a row of OPERATOR_PASSWORD_SET is WARNING or it is not written - stated otherwise, or not stated (INFO).
+    const [password] = accepted['OPERATOR_PASSWORD_SET'] as [AuditEntry];
+    expect(password.severity).toBe('WARNING');
+    expect(codeOf(() => auditInputOf(password))).toBe('accepted');
+    for (const severity of ['INFO', 'SUCCESS', 'CRITICAL']) expect(codeOf(() => auditInputOf({ ...password, severity } as AuditEntry)), severity).toBe('AUDIT_SEVERITY_INVALID');
+    const { severity: _stated, ...unstated } = password;
+    expect(codeOf(() => auditInputOf(unstated as AuditEntry))).toBe('AUDIT_SEVERITY_INVALID');
+    expect(refusalOf(() => auditInputOf(unstated as AuditEntry)).message).toBe('the severity of OPERATOR_PASSWORD_SET is fixed: WARNING');
+    const passwordDetails = password.details as AuditRow['details'];
+    expect(codeOf(() => checkAuditRow(prepared(passwordDetails, 'WARNING', 'OPERATOR_PASSWORD_SET'), 'prepared'))).toBe('accepted');
+    expect(codeOf(() => checkAuditRow(prepared(passwordDetails, 'INFO', 'OPERATOR_PASSWORD_SET'), 'prepared'))).toBe('AUDIT_SEVERITY_INVALID');
+  });
+
+  it('task 4 row V4 (C74): the result entry of a ROW-LESS alias removal is accepted - `aliasId` is optional on HOST_ALIAS_REMOVED and HOST_ALIAS_REMOVE_FAILED, and still a row id when stated', () => {
+    for (const type of ['HOST_ALIAS_REMOVED', 'HOST_ALIAS_REMOVE_FAILED'] as const) {
+      expect(SERVER_AUDIT_DETAIL_RULES[type].aliasId.required, type).toBe(false);
+      const [withRow] = accepted[type] as [AuditEntry];
+      expect(codeOf(() => auditInputOf(withRow)), type).toBe('accepted');
+      const { aliasId: _row, ...rowless } = withRow.details as Record<string, unknown>;
+      expect(codeOf(() => auditInputOf({ ...withRow, details: rowless } as AuditEntry)), `${type} without a row`).toBe('accepted');
+      for (const value of ['eth1', '192.168.1.253', '', null, 7]) {
+        expect(codeOf(() => auditInputOf({ ...withRow, details: { ...rowless, aliasId: value } } as AuditEntry)), `${type}.aliasId=${String(value)}`).toBe('AUDIT_DETAIL_VALUE_INVALID');
+      }
+      // The address and the reason stay required: a result entry still says what was removed and why.
+      for (const key of ['address', 'removeReason']) {
+        const { [key]: _gone, ...rest } = withRow.details as Record<string, unknown>;
+        expect(codeOf(() => auditInputOf({ ...withRow, details: rest } as AuditEntry)), `${type} without ${key}`).toBe('AUDIT_DETAIL_MISSING');
+      }
+    }
+    // The ADD result keeps its row: an address that is in place always has one.
+    expect(SERVER_AUDIT_DETAIL_RULES.HOST_ALIAS_ADDED.aliasId.required).toBe(true);
+  });
+
+  it('task 4 row V4 (C73): the audit row of an audio gap and the SIGNED manifest member for it have one bound and one meaning of a bound', () => {
+    // `audio.absentOnRestart` of the manifest (fields 129-132) states what CAPTURE_AUDIO_ABSENT_ON_RESTART states: one day at most.
+    expect(MANIFEST_AUDIO_ABSENT_MAX_MS).toBe(CAPTURE_AUDIO_ABSENT_MAX_MS);
+    const gap = { earlierAttempt: 1, laterAttempt: 2, absentAtLeastMs: CAPTURE_AUDIO_ABSENT_MAX_MS, absentAtMostMs: CAPTURE_AUDIO_ABSENT_MAX_MS };
+    expect(ManifestAudioRestartGapSchema.safeParse(gap).success).toBe(true);
+    expect(ManifestAudioRestartGapSchema.safeParse({ ...gap, absentAtMostMs: CAPTURE_AUDIO_ABSENT_MAX_MS + 1 }).success).toBe(false);
+    const { audioAbsentAtLeastMs, audioAbsentAtMostMs, earlierAttempt, laterAttempt } = SERVER_AUDIT_DETAIL_RULES.CAPTURE_AUDIO_ABSENT_ON_RESTART;
+    expect([audioAbsentAtLeastMs.accepts(CAPTURE_AUDIO_ABSENT_MAX_MS), audioAbsentAtMostMs.accepts(CAPTURE_AUDIO_ABSENT_MAX_MS + 1), earlierAttempt.accepts(0), laterAttempt.accepts(2)]).toEqual([true, false, false, true]);
+    // The manifest states a bound that was not measured as null; the audit row leaves the key out. Neither invents a number.
+    expect(ManifestAudioRestartGapSchema.safeParse({ ...gap, absentAtLeastMs: null, absentAtMostMs: null }).success).toBe(true);
+    expect([audioAbsentAtLeastMs.required, audioAbsentAtMostMs.required]).toEqual([false, false]);
   });
 
   it('task 4 row 19: the ten types of the hardware-input port refuse a foreign key, device text and a value outside their form; the reveal reason is one of three; the sound-card scope is accepted', () => {
@@ -419,8 +836,8 @@ describe('the allow-list of the thirty-three server-written types (spec §13.1; 
       'INSTALLATION_ACCEPTED',
       'INSTALLATION_ACCEPTANCE_REVOKED',
     ] as const;
-    // The ten are the last ten of the vocabulary, in this order (67 -> 77).
-    expect(Object.values(AuditType).slice(-10)).toEqual([...NEW_TYPES]);
+    // The ten are in this order (67 -> 77); the one type of row 201 follows them (77 -> 78), then the four of row V3 (78 -> 82).
+    expect(Object.values(AuditType).slice(-16, -6)).toEqual([...NEW_TYPES]);
     const withDetail = (item: AuditEntry, key: string, value: unknown): AuditEntry => ({ ...item, details: { ...item.details, [key]: value } as AuditEntry['details'] });
     const first = (type: string): AuditEntry => accepted[type]?.[0] as AuditEntry;
     for (const type of NEW_TYPES) {

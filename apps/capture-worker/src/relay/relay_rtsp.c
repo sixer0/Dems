@@ -294,8 +294,15 @@ static RelayCode exchange(RelayCamera *c, const char *method, const char *addres
     }
 }
 
+/* THE ONE DIAL of the camera leg: the first open and every re-open come through here (relay_camera_open), and
+ * nothing else of the relay makes a socket.
+ * Row 143b (relay.h "THE SOURCE ADDRESS"): when the start message states a source address - in record mode it
+ * always does - the socket is given THAT address of this host before it is connected, and no port (the system
+ * chooses one: this is the end of a client, never a place to be reached at). An address this host does not hold
+ * cannot be given: the leg ends here, with the code of a camera that cannot be reached, and nothing was sent -
+ * no connection was asked for. There is no second try without the address. */
 static RelayCode dial(RelayCamera *c) {
-    struct sockaddr_in to;
+    struct sockaddr_in to, from;
     int one = 1;
     memset(&to, 0, sizeof to);
     to.sin_family = AF_INET;
@@ -305,6 +312,13 @@ static RelayCode dial(RelayCamera *c) {
     if (c->fd < 0) return RELAY_INTERNAL;
     if (fcntl(c->fd, F_SETFD, FD_CLOEXEC) || fcntl(c->fd, F_SETFL, fcntl(c->fd, F_GETFL) | O_NONBLOCK)) return RELAY_INTERNAL;
     setsockopt(c->fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+    if (c->start->source[0]) {
+        memset(&from, 0, sizeof from);
+        from.sin_family = AF_INET;
+        from.sin_port = 0;
+        if (inet_pton(AF_INET, c->start->source, &from.sin_addr) != 1) return RELAY_INTERNAL;
+        if (bind(c->fd, (struct sockaddr *)&from, sizeof from)) return RELAY_CAMERA_UNREACHABLE;
+    }
     if (connect(c->fd, (struct sockaddr *)&to, sizeof to) == 0) return RELAY_STOPPED;
     if (errno != EINPROGRESS) return RELAY_CAMERA_UNREACHABLE;
     RelayCode r = wait_for(c, POLLOUT, mono_us() + RELAY_IO_BOUND_US, RELAY_CAMERA_UNREACHABLE);
@@ -416,6 +430,30 @@ RelayCode relay_camera_read(RelayCamera *c, const uint8_t **packet, size_t *leng
         }
         if ((r = fill(c, deadline, late))) return r;
     }
+}
+
+/* Row 43 (relay.h): the connection is closed without a request, and what belonged to it is forgotten - the bytes
+ * not yet read, the session, the challenge and its count, the control addresses, the bounds. What STAYS is the
+ * Digest key of the realm. Nothing derived from the password leaves on a new connection before the camera of that
+ * connection has challenged (the challenge of the old one is not carried over). */
+void relay_camera_drop(RelayCamera *c) {
+    if (!c) return;
+    if (c->fd >= 0) { shutdown(c->fd, SHUT_RDWR); close(c->fd); }
+    c->fd = -1;
+    UNGUARD(c);
+    relay_wipe(c->buffer, BUFFER_BYTES);
+    c->at = c->have = c->consume = 0;
+    GUARD(c);
+    relay_wipe(&c->challenge, sizeof c->challenge);
+    c->have_challenge = 0;
+    /* No key was made on the first open (the camera asked for no answer) and the password is gone: the key is
+     * marked as one that fits no challenge, so a camera that challenges now is not answered. */
+    if (!c->have_key) { relay_wipe(&c->key, sizeof c->key); c->have_key = 1; }
+    c->session[0] = c->aggregate[0] = c->track[0] = 0;
+    c->cseq = c->count = 0;
+    c->rtp_channel = c->playing = c->refusals = 0;
+    c->keepalive_us = RELAY_KEEPALIVE_US;
+    c->limit_us = 0;
 }
 
 void relay_camera_close(RelayCamera *c) {

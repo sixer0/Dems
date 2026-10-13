@@ -2,7 +2,9 @@
  * The capture relay: the program (relay.h has the whole picture; task 4 blueprint row 41, WP-03a).
  *
  *   standard input   ONE line, the start message, then nothing: its end is the order to stop
- *   standard output  nothing in record mode
+ *   standard output  at most ONE line, the report of the mode (row 42; relay.h "THE TWO MODES"): in record mode
+ *                    "push established" once the worker answered the record request, in probe mode the stream's
+ *                    own statement. Made in relay_core.c from numbers and validated bytes; written by `report`
  *   standard error   lines of fixed words and numbers (say); never a text of the library, of the camera, of
  *                    the start message, an address, a path or an account
  *   arguments        none: an argument is refused (nothing of a session may stand in a process listing)
@@ -20,6 +22,13 @@
  * THE KEYFRAME GATE (design addendum 5.1; review finding F10 a). Nothing is forwarded until the relay holds the
  * parameter sets and a picture that is a keyframe; after a gap in the camera's packet sequence nothing is
  * forwarded until the next keyframe. What is held back is counted.
+ *
+ * THE RE-OPEN (row 43; relay.h has the rule). Once the push stands, the end of the camera leg does not end the
+ * relay: `camera_again` gives the dead connection up, says the loss in ONE line of standard output, and opens the
+ * camera again by the retry rule while the push to the worker stays as it is - it is never announced a second
+ * time. The gate is closed for the whole of it and opens at the first keyframe of the new leg whose parameter
+ * sets are the ones that were announced; that moment is the second line. The first picture after it is placed by
+ * this host's clock.
  */
 #include "relay.h"
 
@@ -30,6 +39,7 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <signal.h>
@@ -82,6 +92,26 @@ static void say(const char *event, const char *word, RelayCode code, const Relay
     if (n > 0 && (size_t)n < sizeof line) { ssize_t w = write(STDERR_FILENO, line, (size_t)n); (void)w; }
 }
 
+/* THE ONE WRITER of standard output (row 42; AD-06 (3)): ONE report line, whole or not at all as far as this
+ * program can tell. `line` and `n` come straight from relay_established_line or relay_probe_line (relay_core.c):
+ * numbers and validated parameter-set bytes, never a text that was read from outside. The write is bounded
+ * (RELAY_IO_BOUND_US): a reader that does not take the line cannot hold the relay. */
+static RelayCode report(const char *line, int n) {
+    int64_t deadline = mono_us() + RELAY_IO_BOUND_US;
+    if (n <= 0 || n > RELAY_REPORT_MAX) return RELAY_INTERNAL;
+    int flags = fcntl(STDOUT_FILENO, F_GETFL);
+    if (flags < 0 || fcntl(STDOUT_FILENO, F_SETFL, flags | O_NONBLOCK) < 0) return RELAY_REPORT_NOT_WRITTEN;
+    for (int at = 0; at < n;) {
+        ssize_t w = write(STDOUT_FILENO, line + at, (size_t)(n - at));
+        if (w > 0) { at += (int)w; continue; }
+        if (w < 0 && errno != EAGAIN && errno != EINTR) return RELAY_REPORT_NOT_WRITTEN;
+        if (mono_us() > deadline) return RELAY_REPORT_NOT_WRITTEN;
+        struct pollfd p = { STDOUT_FILENO, POLLOUT, 0 };
+        poll(&p, 1, 20);
+    }
+    return RELAY_STOPPED;
+}
+
 static void on_signal(int number) { (void)number; g_signal = 1; }
 
 /* Has the Core ordered the stop? Standard input ended (the Core closed it, or the Core is gone), or a signal. */
@@ -116,6 +146,9 @@ static int interrupt(void *unused) {
 static int hygiene(void) {
     struct rlimit none = { 0, 0 }, now;
     if (setrlimit(RLIMIT_CORE, &none) || getrlimit(RLIMIT_CORE, &now) || now.rlim_cur != 0 || now.rlim_max != 0) return -1;
+    /* RC-6 (row 153), the portable part of the confinement: this process cannot make a regular file grow, whatever
+     * a descriptor of it is (its three streams are the door's pipes; SIGXFSZ is ignored, such a write just fails). */
+    if (setrlimit(RLIMIT_FSIZE, &none)) return -1;
 #ifdef __linux__
     if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) || prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) return -1;
 #endif
@@ -154,7 +187,8 @@ static RelayCode read_start(void) {
 }
 
 /* RC-6, checked by the relay itself once both legs stand: every internet socket of the process is a connected
- * stream socket to the camera of the locator or to the loopback ingest port, and none listens. */
+ * stream socket to the camera of the locator or to the loopback ingest port, and none listens. Row 143b: and the
+ * socket to the camera has, as its own end, the source address of the start message (relay.h "THE SOURCE ADDRESS"). */
 static int sockets_break_the_rule(void) {
     int max = getdtablesize();
     for (int fd = 3; fd < max; fd++) {
@@ -174,6 +208,12 @@ static int sockets_break_the_rule(void) {
         int to_camera = to->sin_addr.s_addr == camera.s_addr && ntohs(to->sin_port) == g_start.port;
         int to_ingest = to->sin_addr.s_addr == htonl(INADDR_LOOPBACK) && ntohs(to->sin_port) == g_start.ingest_port;
         if (!to_camera && !to_ingest) return 1;
+        /* Row 143b: the camera socket's OWN end is the source address of the start message, when it states one. */
+        if (to_camera && g_start.source[0]) {
+            struct in_addr source;
+            if (inet_pton(AF_INET, g_start.source, &source) != 1) return 1;
+            if (((const struct sockaddr_in *)&own)->sin_addr.s_addr != source.s_addr) return 1;
+        }
     }
     return 0;
 }
@@ -187,6 +227,9 @@ typedef struct Push {
     uint32_t last_stamp;
     int64_t ticks, last_ticks;
     int64_t first_us, last_us;              /* this host's monotonic clock at pts 0 and at the picture before */
+    RelayCodec codec;                       /* what was ANNOUNCED to the worker: a later leg must bring the same (row 43) */
+    ParamSets sets;
+    int placed_by_clock;                    /* the next picture is the first of a new leg (row 43, TIME) */
 } Push;
 
 /* The picture size, which the library's writer asks for before it announces. It is READ, by the library's stream
@@ -210,18 +253,40 @@ static int picture_size(enum AVCodecID id, const uint8_t *extra, int n, const Re
     return ok;
 }
 
-static RelayCode push_open(Push *p, RelayCodec codec, const ParamSets *sets, const RelayPicture *first) {
-    uint8_t extra[3 * (RELAY_PSET_MAX + 4)];
-    uint32_t first_stamp = first->stamp;
-    int width = 0, height = 0;
-    int n = relay_extradata(codec, sets, extra, sizeof extra);
-    if (n <= 0) return RELAY_INTERNAL;
+/* WHAT THE STREAM SAYS ABOUT ITSELF, read the same way in both modes (row 42): the parameter sets as the
+ * library's writer takes them (`extra`, `*n` bytes) and the picture size. */
+static RelayCode stream_facts(RelayCodec codec, const ParamSets *sets, const RelayPicture *first, uint8_t *extra, size_t cap, int *n, int *width, int *height) {
+    *n = relay_extradata(codec, sets, extra, cap);
+    if (*n <= 0) return RELAY_INTERNAL;
     /* What the library's stream parser is about to read came from the camera (review M-1). Each parameter set is
      * held to its kind, its forbidden bit and a least length before that; the keyframe is units of the codec, each
      * after a start code of the relay's own and none inside (relay_core.c). What stays: the parser reads those
      * bytes, in this process, which holds the Digest key. */
     if (!relay_sets_valid(codec, sets)) return RELAY_STREAM_INVALID;
-    if (!picture_size(codec == RELAY_CODEC_H264 ? AV_CODEC_ID_H264 : AV_CODEC_ID_HEVC, extra, n, first, &width, &height)) return RELAY_STREAM_INVALID;
+    if (!picture_size(codec == RELAY_CODEC_H264 ? AV_CODEC_ID_H264 : AV_CODEC_ID_HEVC, extra, *n, first, width, height)) return RELAY_STREAM_INVALID;
+    return RELAY_STOPPED;
+}
+
+/* PROBE MODE (row 42): the camera was opened exactly as for a recording and the gate holds the parameter sets and
+ * a keyframe. Nothing is pushed: the stream's statement goes out as the one report line. */
+static RelayCode probe_report(const RelayDescription *description, const ParamSets *sets, const RelayPicture *first) {
+    static char line[RELAY_REPORT_MAX + 1];
+    uint8_t extra[3 * (RELAY_PSET_MAX + 4)];
+    RelayProbe probe = { g_start.attempt, description->codec, 0, 0, description->rate_milli,
+                         relay_sets_complete(description->codec, &description->sets), relay_sets_complete(description->codec, &first->seen), sets };
+    RelayCode code;
+    int n = 0;
+    if ((code = stream_facts(description->codec, sets, first, extra, sizeof extra, &n, &probe.width, &probe.height))) return code;
+    if (sockets_break_the_rule()) return RELAY_SOCKET_RULE;
+    return report(line, relay_probe_line(&probe, line, sizeof line));
+}
+
+static RelayCode push_open(Push *p, RelayCodec codec, const ParamSets *sets, const RelayPicture *first) {
+    uint8_t extra[3 * (RELAY_PSET_MAX + 4)];
+    uint32_t first_stamp = first->stamp;
+    int width = 0, height = 0, n = 0;
+    RelayCode facts = stream_facts(codec, sets, first, extra, sizeof extra, &n, &width, &height);
+    if (facts) return facts;
     if (avformat_alloc_output_context2(&p->out, NULL, "rtsp", g_start.ingest) < 0 || !p->out) return RELAY_INTERNAL;
     p->out->interrupt_callback.callback = interrupt;
     p->stream = avformat_new_stream(p->out, NULL);
@@ -248,6 +313,8 @@ static RelayCode push_open(Push *p, RelayCodec codec, const ParamSets *sets, con
     int unread = av_dict_count(options);
     av_dict_free(&options);
     if (r < 0) return g_stop ? RELAY_STOP_ASKED : RELAY_INGEST_REFUSED;
+    p->codec = codec;
+    p->sets = *sets;
     p->open = 1;
     return unread ? RELAY_INTERNAL : RELAY_STOPPED;
 }
@@ -255,6 +322,15 @@ static RelayCode push_open(Push *p, RelayCodec codec, const ParamSets *sets, con
 static RelayCode push_write(Push *p, const RelayPicture *picture) {
     AVPacket *k = p->packet;
     int64_t now = mono_us(), step = (int32_t)(picture->stamp - p->last_stamp);
+    /* Row 43: the first picture of a new leg. The camera's stamps began anew, so their distance to the picture
+     * before the loss says nothing: the picture is placed as far after that one as THIS host's clock counted
+     * (9 ticks in 100 microseconds) - the gap is a step in time inside the one track, as long as the gap was.
+     * Such a step is believable by construction (the rule below holds for it). */
+    if (p->placed_by_clock) {
+        step = (now - p->last_us) / 100 * 9;
+        if (step < 1) step = 1;
+        p->placed_by_clock = 0;
+    }
     /* Recorded time is the camera's stamps, so the camera may not run it ahead of this host's clock (review M-3):
      * one step by at most RELAY_STEP_TICKS more than the time that passed, the whole by that and a hundredth. */
     if (!relay_step_plausible(step, now - p->last_us, p->ticks + step, now - p->first_us)) return RELAY_STREAM_INVALID;
@@ -291,18 +367,70 @@ static void push_close(Push *p) {
     av_packet_free(&p->packet);
 }
 
+/* ---------------------------------------------------------------- the re-open (row 43; relay.h "THE RE-OPEN") */
+typedef struct Again {
+    long losses, refusals;                  /* of the relay's life, once the push stood */
+    int pending;                            /* a loss was said and no picture was forwarded since */
+    int tries;                              /* of the loss that is pending */
+    int64_t lost_us;
+    long held_at_loss;
+} Again;
+
+/* Waits, and sees the order to stop within a twentieth of a second. */
+static RelayCode pause_for(int64_t us) {
+    int64_t until = mono_us() + us;
+    while (mono_us() < until) {
+        if (stop_asked(NULL)) return RELAY_STOP_ASKED;
+        poll(NULL, 0, 50);
+    }
+    return RELAY_STOPPED;
+}
+
+/* The camera leg ended with `lost` while the push stands. Returns RELAY_STOPPED when a new leg plays (the caller
+ * closes the gate and waits for its keyframe); else the code the relay ends with. The push is not touched. */
+static RelayCode camera_again(RelayCamera *camera, RelayDescription *description, Again *a, RelayCode lost, const RelayPicture *picture) {
+    static char line[RELAY_REPORT_MAX + 1];
+    RelayCode code;
+    int kind = relay_loss_kind(lost);
+    if (kind == RELAY_LOSS_ENDS) return lost;
+    relay_camera_drop(camera);              /* at once: no TEARDOWN, and during the waits the push is the only socket */
+    if (!a->pending) {
+        a->pending = 1;
+        a->tries = 0;
+        a->lost_us = mono_us();
+        a->held_at_loss = g_held_back;
+        if (a->losses < RELAY_COUNT_MAX) a->losses++;
+        if ((code = report(line, relay_loss_line(g_start.attempt, a->losses, lost, line, sizeof line)))) return code;
+        say("camera_lost", relay_code_name(lost), lost, picture, relay_camera_counters(camera));
+    }
+    for (;;) {
+        /* A refused answer is counted for the relay's life: the camera is not hammered (design addendum 2.4). */
+        if (kind == RELAY_LOSS_REFUSAL && ++a->refusals >= RELAY_AUTH_REFUSALS) return RELAY_AUTH_REFUSED;
+        int64_t wait = relay_retry_wait_us(a->tries);
+        if (!wait) return lost;             /* the tries are used up: the code of the last one */
+        a->tries++;
+        if ((code = pause_for(wait))) return code;
+        lost = relay_camera_open(camera, description);
+        if (!lost) return sockets_break_the_rule() ? RELAY_SOCKET_RULE : RELAY_STOPPED;
+        relay_camera_drop(camera);
+        if ((kind = relay_loss_kind(lost)) == RELAY_LOSS_ENDS) return lost;
+    }
+}
+
 int main(int argc, char **argv) {
     RelayCamera *camera = NULL;
     RelayDescription description;
     RelayPicture picture;
     Push push;
+    Again again;
     RelayCode code;
-    int have_picture = 0, gate = 0;
+    int have_picture = 0, gate = 0, probed = 0, waiting = 1;
     long losses_seen = 0;
     struct sigaction ignore, stop;
     (void)argv;
     memset(&push, 0, sizeof push);
     memset(&picture, 0, sizeof picture);
+    memset(&again, 0, sizeof again);
     /* sigaction, not signal (review L-7): the same on every platform - the handler stays, and a wait that a
      * signal interrupts is NOT started again by the system, so the order to stop is seen at once. */
     memset(&ignore, 0, sizeof ignore);
@@ -312,6 +440,7 @@ int main(int argc, char **argv) {
     sigemptyset(&ignore.sa_mask);
     sigemptyset(&stop.sa_mask);
     sigaction(SIGPIPE, &ignore, NULL);
+    sigaction(SIGXFSZ, &ignore, NULL);
     sigaction(SIGTERM, &stop, NULL);
     sigaction(SIGINT, &stop, NULL);
 
@@ -330,8 +459,10 @@ int main(int argc, char **argv) {
     have_picture = 1;
     say("camera_playing", "RUNNING", RELAY_STOPPED, &picture, relay_camera_counters(camera));
 
-    /* The first keyframe has its bound from here. The camera leg asks for it on every turn of its read loop, so
-     * a camera that sends no video packet at all, or only what is dropped, meets it too (review H-2). */
+    /* ONE TURN OF THIS LOOP PER LEG of the camera: the first open, and every re-open while the push stands (row 43). */
+    for (;;) {
+    /* The first keyframe of a leg has its bound from here. The camera leg asks for it on every turn of its read
+     * loop, so a camera that sends no video packet at all, or only what is dropped, meets it too (review H-2). */
     int64_t keyframe_deadline = mono_us() + RELAY_KEYFRAME_BOUND_US;
     relay_camera_limit(camera, keyframe_deadline, RELAY_KEYFRAME_TIMEOUT);
     for (;;) {
@@ -348,13 +479,34 @@ int main(int argc, char **argv) {
             if (picture.gaps + picture.dropped != losses_seen) { losses_seen = picture.gaps + picture.dropped; gate = 0; }
             if (!gate) {
                 const ParamSets *sets = relay_sets_complete(description.codec, &picture.seen) ? &picture.seen : &description.sets;
-                if (picture.keyframe && (push.open || relay_sets_complete(description.codec, sets))) {
+                /* A keyframe opens the gate when the parameter sets are held: of the stream or its description on
+                 * the first leg and on EVERY later one (row 43); inside a leg, after a gap, the announced ones. */
+                if (picture.keyframe && ((push.open && !again.pending) || relay_sets_complete(description.codec, sets))) {
+                    if (g_start.mode == RELAY_MODE_PROBE) {
+                        /* The same open, the same gate, and here the two modes part: a probe reports and ends. */
+                        if (!(code = probe_report(&description, sets, &picture))) { probed = 1; say("probe_reported", "RUNNING", RELAY_STOPPED, &picture, relay_camera_counters(camera)); }
+                        break;
+                    }
                     if (!push.open) {
+                        static char line[RELAY_REPORT_MAX + 1];
                         if ((code = push_open(&push, description.codec, sets, &picture))) break;
                         if (sockets_break_the_rule()) { code = RELAY_SOCKET_RULE; break; }
+                        /* "Push established" (S13-06, RC-3 (i)): the worker answered the record request with success. */
+                        if ((code = report(line, relay_established_line(g_start.attempt, line, sizeof line)))) break;
                         say("push_open", "RUNNING", RELAY_STOPPED, &picture, relay_camera_counters(camera));
-                        relay_camera_limit(camera, 0, RELAY_STOPPED);       /* the keyframe came */
+                    } else if (again.pending) {
+                        /* THE GATE AFTER A RE-OPEN (row 43): the keyframe of the new leg, and its parameter sets are
+                         * the ones the worker was told when the push was announced - a stream that came back as
+                         * another one is not forwarded into the file of the first. The loss ends here. */
+                        static char line[RELAY_REPORT_MAX + 1];
+                        int64_t gap_ms = (mono_us() - again.lost_us) / 1000;
+                        if (!relay_same_stream(push.codec, &push.sets, description.codec, sets)) { code = RELAY_STREAM_INVALID; break; }
+                        if ((code = report(line, relay_reopened_line(g_start.attempt, again.losses, again.tries, g_held_back - again.held_at_loss, gap_ms > RELAY_COUNT_MAX ? RELAY_COUNT_MAX : gap_ms, line, sizeof line)))) break;
+                        say("camera_reopened", "RUNNING", RELAY_STOPPED, &picture, relay_camera_counters(camera));
+                        again.pending = again.tries = 0;
+                        push.placed_by_clock = 1;
                     }
+                    if (waiting) { relay_camera_limit(camera, 0, RELAY_STOPPED); waiting = 0; }     /* the keyframe came */
                     gate = 1;
                 }
             }
@@ -365,14 +517,33 @@ int main(int argc, char **argv) {
             relay_picture_taken(&picture);
             relay_camera_progress(camera);          /* a complete picture: the bound of a playing camera starts again */
         } while (r == 2);
-        if (code) break;
-        if (!push.open && mono_us() > keyframe_deadline) { code = RELAY_KEYFRAME_TIMEOUT; break; }
+        if (code || probed) break;
+        if (waiting && mono_us() > keyframe_deadline) { code = RELAY_KEYFRAME_TIMEOUT; break; }
+    }
+    /* THE LEG ENDED. Before the push stands, in probe mode, and with every code that is no loss of the camera, the
+     * relay ends as it always did. Else the camera is opened again and the push stays (row 43). */
+    if (probed || !push.open || g_start.mode != RELAY_MODE_RECORD) break;
+    if ((code = camera_again(camera, &description, &again, code, &picture))) break;
+    if (description.codec != push.codec) { code = RELAY_STREAM_INVALID; break; }
+    {
+        /* The collector begins anew with the new leg (nothing of a half picture of the old one is kept); what it
+         * counted goes on. The gate is closed. */
+        long gaps = picture.gaps, foreign = picture.foreign, unsupported = picture.unsupported, refused = picture.refused, dropped = picture.dropped;
+        relay_picture_free(&picture);
+        if (relay_picture_init(&picture, description.codec, description.payload_type)) { code = RELAY_INTERNAL; break; }
+        picture.gaps = gaps; picture.foreign = foreign; picture.unsupported = unsupported; picture.refused = refused; picture.dropped = dropped;
+        losses_seen = picture.gaps + picture.dropped;
+        gate = 0;
+        waiting = 1;
+    }
     }
 
 done:
     {
         RelayCounters counters = { 0, 0, 0, 0, 0, 0 };
         if (camera) counters = *relay_camera_counters(camera);
+        /* After a refused answer no request leaves, not even the TEARDOWN of the end (it would carry one). */
+        if (camera && code == RELAY_AUTH_REFUSED) relay_camera_drop(camera);
         push_close(&push);
         relay_camera_close(camera);
         relay_wipe(&g_start, sizeof g_start);

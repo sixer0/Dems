@@ -121,7 +121,11 @@ describe('MODG: the route list of the module equals the registry operations it o
     const posts = CORE_API_OPERATIONS.filter((operation) => operation.method === 'post').length;
     console.info(`[row113] registry totals | operations=${CORE_API_OPERATIONS.length} GET=${gets} POST=${posts}`);
     // 97, 36, 61 until task 4 blueprint row 63 added the two sound-card operations 98 and 99 (both POST).
-    expect([CORE_API_OPERATIONS.length, gets, posts]).toEqual([99, 36, 63]);
+    // 99, 36, 63 until task 4 blueprint row 194 added operation 100 (POST).
+    // 100, 36, 64 until task 4 blueprint row 102 added the seven commissioning operations 101-107 (three GET, four POST).
+    // 107, 39, 68 until task 4 row V3 added operation 108, the stored-credential connection test (POST).
+    // 108, 39, 69 until task 4 blueprint row 116 added operations 109 and 110, the installation acceptance and its revocation (both POST).
+    expect([CORE_API_OPERATIONS.length, gets, posts]).toEqual([110, 39, 71]);
   });
 
   it('the guard holds the registry rule for each: AUTHENTICATED for 90, CAPTURE_CONFIG for 91 and 92', async () => {

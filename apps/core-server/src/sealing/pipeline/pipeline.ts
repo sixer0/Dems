@@ -701,6 +701,10 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
       // prefix - the end of the last durable fragment counted from the start of the recording.
       const durableEndMs = !interrupted && session.stoppedAt !== null ? session.stoppedAt : session.startedAt + mediaEndMs;
       const intervals = session.audioIntervals.map((interval, index, all) => (interval.toMs === null && index === all.length - 1 ? { ...interval, toMs: Math.max(interval.fromMs, mediaEndMs) } : interval));
+      // Task 4 row 191c (C73, C83): fields 129-132, the manifest's ONE optional member. The records are the session's
+      // own (its reader states them from what the session stored); a session without a restart hands none, and then
+      // NO KEY is written - an empty list is refused by the manifest and "none" has one form and one digest.
+      const restartGaps = (session.audioRestartGaps ?? []).map((gap) => ({ earlierAttempt: gap.earlierAttempt, laterAttempt: gap.laterAttempt, absentAtLeastMs: gap.absentAtLeastMs, absentAtMostMs: gap.absentAtMostMs }));
       const input: ManifestV2Input = {
         schema: MANIFEST_V2_SCHEMA_ID,
         evidenceId: session.evidenceId,
@@ -727,8 +731,14 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
         subject: session.subject,
         tracks: sealedIds.map((trackId) => {
           const hashedTrack = hashedTracks.tracks.find((track) => track.trackId === trackId) as HashedTrack;
+          // Task 4 row R1b (C99): fields 134-138, the manifest's third optional member. The records are the session's own (its
+          // reader states them from the audit entries the session stored), each copied to its five keys. A track whose camera
+          // was not lost hands none, and then NO KEY is written: the track record is the one of before, byte for byte.
+          const { absentInSession: absences, ...facts } = session.tracks[VIDEO_TRACK_IDS.indexOf(trackId)] as SealSessionFacts['tracks'][number];
+          const absentInSession = (absences ?? []).map((absence) => ({ attempt: absence.attempt, loss: absence.loss, absentAtLeastMs: absence.absentAtLeastMs, absentAtMostMs: absence.absentAtMostMs, ended: absence.ended }));
           return {
-            ...(session.tracks[VIDEO_TRACK_IDS.indexOf(trackId)] as SealSessionFacts['tracks'][number]),
+            ...facts,
+            ...(absentInSession.length > 0 ? { absentInSession } : {}),
             trackId,
             file: cameraFileName(trackId),
             mediaType: CAMERA_FILE_MEDIA_TYPE,
@@ -742,10 +752,14 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
             keyframeAligned: (files.find((entry) => entry.trackId === trackId)?.fragments ?? []).every((fragment) => fragment.keyframe),
           };
         }),
-        audio: { trackId: SESSION_AUDIO_TRACK_ID, codec: session.audioCodec, containsIn: [...sealedIds], sourceIntervals: intervals },
+        audio: { trackId: SESSION_AUDIO_TRACK_ID, codec: session.audioCodec, containsIn: [...sealedIds], sourceIntervals: intervals, ...(restartGaps.length > 0 ? { absentOnRestart: restartGaps } : {}) },
         files,
         transcript: done.transcript.manifest,
         sealing: { steps: [...frozen.steps] },
+        // Task 4 row P1 (U21 (2)): field 133, the manifest's second optional member. Stated only when the session's facts hand it in
+        // (a production Core on a platform where its host profile is not asked); otherwise NO KEY is written and the manifest is the
+        // one of before. Copied to its one key; frozen with the rest of this input, so a resumed build signs the same statement.
+        ...(session.hostProfileNotAsked === undefined ? {} : { hostProfileNotAsked: { platform: session.hostProfileNotAsked.platform } }),
         signature: {
           algorithm: ports.signing.signer.algorithm as ManifestV2Input['signature']['algorithm'],
           keyId: ports.signing.signer.keyId,

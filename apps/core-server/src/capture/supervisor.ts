@@ -59,6 +59,18 @@
  * attempt. The addresses are in the plan frame and in that one call, and in no event, report,
  * status or message of this file. A `start` without that source sends the plan as given, as before.
  *
+ * A LATER WORKER OF A SESSION WAITS FOR THE SESSION'S AUDIO SOURCES (task 4 row 191; the finding of
+ * row 184: a later worker received 0 samples, because what feeds a microphone's pipe ends with the
+ * worker that read it and starts once). When the session handed in `CaptureAttemptIngest.sources`,
+ * `launch` asks it after the addresses are renewed and starts the worker in the turn that promise
+ * settles (`awaitSources`), with the microphone inputs it resolved with. THE BACK-OFF IS NOT MOVED:
+ * the timer, its delay and the count of restarts are as before, and a session that had its sources
+ * ready inside the back-off (it begins at `RESTARTING`) starts its worker one turn after the timer.
+ * While it waits the phase stays `RESTARTING` (or `STARTING`), no worker exists, a `stop` ends the
+ * session as during a back-off and a late durable record calls the restart off. Sources that are
+ * not ready (the promise rejected; no microphone in the active role) start NO worker and are not
+ * tried again. A `start` without `sources` starts every worker in the turn of its timer, as before.
+ *
  * THE SUPERVISOR'S OWN FAULT ENDS when a later session reaches `RECORDING`: the `CAPTURE_FAULT`
  * it raised is then said again with state `CLEARED`, so that the next failure is a new fault.
  * Each session that fails says its own `ACTIVE` with its own correlation ID, and the fault held is
@@ -296,6 +308,8 @@ interface Session {
   readonly ingest: CaptureAttemptIngest | null;
   /** Row 179: the last element of every ingest address a plan of this session held. None is used twice. */
   readonly ingestElements: Set<string>;
+  /** Row 191: the microphones of the plan the session was started with. A later worker's plan holds those of them that are open for it. */
+  readonly micsOfStart: CapturePlan['mics'];
 }
 
 interface DownCause {
@@ -330,6 +344,12 @@ export const CAPTURE_INGEST_NOT_RENEWED = 'CAPTURE_INGEST_NOT_RENEWED';
 /** Why (`detail` of that report's error): a closed list, never a text of the failure and never an address. */
 export const IngestRenewalFailure = { TRACK_UNKNOWN: 'TRACK_UNKNOWN', SOURCE_FAILED: 'SOURCE_FAILED', ELEMENT_REPEATED: 'ELEMENT_REPEATED', PLAN_INVALID: 'PLAN_INVALID', RECEIVER_FAILED: 'RECEIVER_FAILED' } as const;
 export type IngestRenewalFailure = (typeof IngestRenewalFailure)[keyof typeof IngestRenewalFailure];
+/**
+ * Row 191: the code of the report of a later worker that was not started because the session's audio sources were not
+ * ready for it. Its `detail` is `RECEIVER_FAILED` (the session's promise rejected) or `PLAN_INVALID` (what it gave makes
+ * no plan of the protocol), of the list above.
+ */
+export const CAPTURE_SOURCES_NOT_READY = 'CAPTURE_SOURCES_NOT_READY';
 /** The last path element of an ingest address: what a pusher must announce beyond what anyone can know. Read to compare, never to rebuild. */
 const ingestElementOf = (address: string): string => address.slice(address.lastIndexOf('/') + 1);
 const isIngestTrack = (trackId: string): trackId is CaptureIngestTrackId => Object.hasOwn(CAPTURE_INGEST_PORT, trackId);
@@ -1021,60 +1041,115 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
           afterDown(current.attempt, { code: WorkerDownCode.SPAWN_FAILED, retryable: false });
           return;
         }
+        // Row 191: the session makes its audio sources ready for this worker; the worker is started when it has.
+        if (current.ingest.sources !== undefined) {
+          awaitSources(current, current.ingest, current.attempt);
+          return;
+        }
       }
-      // A worker counts its own records from 1. A session gets a second worker only while it holds
-      // no durable fragment, so every record of a fragment of one session is in ONE sequence.
-      current.recordSeq = 0;
-      // What an earlier worker of this session said of its cameras is over with it: the new worker opens every camera again.
-      current.lastFragment.clear();
-      current.cameraEnds.clear();
-      const next: Worker = {
-        attempt: current.attempt,
-        of: current,
-        reported: new Set(),
-        sealed: false,
-        recordTimes: [],
-        channel: null,
-        hello: false,
-        started: false,
-        exited: false,
-        stopSent: false,
-        stopAcked: false,
-        timelineOpen: false,
-        timelineEnded: false,
-        lastCounter: -1,
-        lastHeartbeatAt: now(),
-        cancelHello: nothing,
-        cancelWatchdog: nothing,
-        cancelStable: nothing,
-        pending: new Map(),
-      };
-      try {
-        next.channel = launcher(
-          { sessionId: current.id, correlationId: current.correlationId, attempt: next.attempt },
-          {
-            message: (message) => step(() => onMessage(next, message)),
-            violation: (violation) => step(() => down(next, { code: WorkerDownCode.PROTOCOL_VIOLATION, detail: violation })),
-            exit: (exit) =>
-              step(() => {
-                next.exited = true;
-                if (reaping === next) {
-                  reaped(next);
-                  return;
-                }
-                down(next, { code: exit.spawnFailed ? WorkerDownCode.SPAWN_FAILED : WorkerDownCode.EXITED, exitCode: exit.exitCode, signal: exit.signal });
-              }),
-          },
-        );
-      } catch (err) {
-        const known = err instanceof WorkerLaunchError;
-        if (!known) report({ source: 'capture.supervisor.launch', code: WorkerDownCode.SPAWN_FAILED, sessionId: current.id, correlationId: current.correlationId, err });
-        afterDown(next.attempt, { code: known ? err.code : WorkerDownCode.SPAWN_FAILED, retryable: known ? err.retryable : true });
-        return;
-      }
-      worker = next;
-      next.cancelHello = timers.after(limits.helloTimeoutMs, () => down(next, { code: WorkerDownCode.HELLO_TIMEOUT }));
+      startWorker(current);
     });
+  }
+
+  /**
+   * Row 191: THE LATER WORKER WAITS FOR THE SESSION'S AUDIO SOURCES. The back-off has passed and the
+   * addresses are renewed; the session is asked for the microphones of this attempt and the worker
+   * is started in the turn its promise settles - at once when it was settled already (the session
+   * begins that work when it hears `RESTARTING`, a back-off earlier). Nothing is held meanwhile but
+   * the phase: no worker exists, a stop ends the session as during a back-off, and a record that
+   * makes the session durable calls the restart off - each is seen below before a worker is started.
+   */
+  function awaitSources(current: Session, source: CaptureAttemptIngest, attempt: number): void {
+    let asked: Promise<ReadonlyMap<string, CapturePlan['mics'][number]['input']>>;
+    try {
+      asked = Promise.resolve(source.sources?.(attempt) ?? new Map());
+    } catch (err) {
+      asked = Promise.reject(err);
+    }
+    const settle = (given: ReadonlyMap<string, CapturePlan['mics'][number]['input']> | null): void =>
+      step(() => {
+        // Stopped, ended, durable or served meanwhile: this attempt starts no worker (what ended it has said so).
+        if (session !== current || current.stopping !== null || worker !== null || current.attempt !== attempt || current.durable) return;
+        if (phase !== CapturePhase.RESTARTING && phase !== CapturePhase.STARTING) return;
+        let failure: IngestRenewalFailure | null = given === null ? IngestRenewalFailure.RECEIVER_FAILED : null;
+        if (given !== null) {
+          const mics = current.micsOfStart.flatMap((mic) => {
+            const input = given.get(mic.deviceId);
+            return input === undefined ? [] : [{ ...mic, input }];
+          });
+          // The same schema as the plan of the start: at least one microphone, and one in the role that feeds the track.
+          const next = CapturePlanSchema.safeParse({ ...current.plan, mics });
+          if (next.success) current.plan = next.data;
+          else failure = IngestRenewalFailure.PLAN_INVALID;
+        }
+        if (failure !== null) {
+          // A worker whose plan names a pipe that is not there refuses it for good: none is started, and another try has the same sources.
+          report({ source: 'capture.supervisor.launch', code: CAPTURE_SOURCES_NOT_READY, sessionId: current.id, correlationId: current.correlationId, err: new CaptureSupervisorError(CaptureRefusal.FAULT, 'the audio sources of a later capture worker were not ready: no worker was started', failure) });
+          afterDown(attempt, { code: WorkerDownCode.SPAWN_FAILED, retryable: false });
+          return;
+        }
+        startWorker(current);
+      });
+    asked.then(
+      (given) => settle(given),
+      () => settle(null),
+    );
+  }
+
+  /** Starts the worker of `current.attempt` (the body of `launch` until row 191, unchanged): the first of a session at once, a later one when its plan and its sources are ready. */
+  function startWorker(current: Session): void {
+    // A worker counts its own records from 1. A session gets a second worker only while it holds
+    // no durable fragment, so every record of a fragment of one session is in ONE sequence.
+    current.recordSeq = 0;
+    // What an earlier worker of this session said of its cameras is over with it: the new worker opens every camera again.
+    current.lastFragment.clear();
+    current.cameraEnds.clear();
+    const next: Worker = {
+      attempt: current.attempt,
+      of: current,
+      reported: new Set(),
+      sealed: false,
+      recordTimes: [],
+      channel: null,
+      hello: false,
+      started: false,
+      exited: false,
+      stopSent: false,
+      stopAcked: false,
+      timelineOpen: false,
+      timelineEnded: false,
+      lastCounter: -1,
+      lastHeartbeatAt: now(),
+      cancelHello: nothing,
+      cancelWatchdog: nothing,
+      cancelStable: nothing,
+      pending: new Map(),
+    };
+    try {
+      next.channel = launcher(
+        { sessionId: current.id, correlationId: current.correlationId, attempt: next.attempt },
+        {
+          message: (message) => step(() => onMessage(next, message)),
+          violation: (violation) => step(() => down(next, { code: WorkerDownCode.PROTOCOL_VIOLATION, detail: violation })),
+          exit: (exit) =>
+            step(() => {
+              next.exited = true;
+              if (reaping === next) {
+                reaped(next);
+                return;
+              }
+              down(next, { code: exit.spawnFailed ? WorkerDownCode.SPAWN_FAILED : WorkerDownCode.EXITED, exitCode: exit.exitCode, signal: exit.signal });
+            }),
+        },
+      );
+    } catch (err) {
+      const known = err instanceof WorkerLaunchError;
+      if (!known) report({ source: 'capture.supervisor.launch', code: WorkerDownCode.SPAWN_FAILED, sessionId: current.id, correlationId: current.correlationId, err });
+      afterDown(next.attempt, { code: known ? err.code : WorkerDownCode.SPAWN_FAILED, retryable: known ? err.retryable : true });
+      return;
+    }
+    worker = next;
+    next.cancelHello = timers.after(limits.helloTimeoutMs, () => down(next, { code: WorkerDownCode.HELLO_TIMEOUT }));
   }
 
   // ── The seam ────────────────────────────────────────────────────────────────────────────────
@@ -1183,6 +1258,7 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
         cameraEnds: new Map(),
         ingest,
         ingestElements: new Set(parsed.data.cameras.map((camera) => ingestElementOf(camera.ingestUrl))),
+        micsOfStart: parsed.data.mics,
       };
       setPhase(CapturePhase.STARTING);
       launch();

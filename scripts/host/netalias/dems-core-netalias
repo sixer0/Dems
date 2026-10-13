@@ -28,10 +28,17 @@
 #   2. accepts an RFC 1918 address with /24 only, host part 1 to 254;
 #   3. refuses "add" when another interface holds an address in that /24, and when its own limit
 #      of marked addresses is reached;
-#   4. always runs the conflict check and refuses when its tool is missing;
+#   4. always runs the conflict check and refuses when its tool is missing, when the file at the
+#      tool's path is not the one the package manager recorded for the package iputils-arping,
+#      when the camera port cannot be asked (loopback, no-ARP, no broadcast, down, no carrier, or
+#      a state it cannot read), and whenever the tool's printed result and its exit status do not
+#      together say "asked, nobody answered". An exit status alone is never read as "free";
 #   5. marks what it adds (a root-owned file under /run) and gives the address a kernel lifetime
 #      of 5 to 480 minutes;
-#   6. removes only an address it marked;
+#   6. removes only an address it marked: the mark must be younger than the lifetime it records
+#      and the kernel must still show the address with a lifetime no longer than that. Every
+#      "add", and every "del" of a marked address, first drops each mark that no longer stands
+#      for such an address, whichever way the address went;
 #   7. calls its tools by absolute path with a fixed search path and a fixed, two-entry
 #      environment, reads nothing from its own environment, evaluates no input, starts no shell;
 #   8. writes one journal line per call;
@@ -44,6 +51,7 @@
 # Python 3 standard library only (Ubuntu 24.04 ships /usr/bin/python3; no package is added).
 
 import errno
+import hashlib
 import json
 import os
 import re
@@ -65,6 +73,7 @@ ARPING_TOOL = "/usr/bin/arping"
 INTERFACE_FILE = "/etc/dems/netalias-interface"
 SYSFS_NET = "/sys/class/net"
 MARKS_DIR = "/run/dems-core-netalias/marks"
+DPKG_INFO_DIR = "/var/lib/dpkg/info"
 GROUP_FILE = "/etc/group"
 PASSWD_FILE = "/etc/passwd"
 TRUSTED_OWNER_UID = 0
@@ -82,6 +91,17 @@ TOOL_TIMEOUT_S = 5
 CONFLICT_PROBES = 2
 CONFLICT_WAIT_S = 3
 CONFLICT_TIMEOUT_S = 8
+# The ONE conflict-check program: the `arping` of the Ubuntu package iputils-arping, at ARPING_TOOL.
+# The other package named `arping` ships another program with other options and other exit codes.
+# The file at ARPING_TOOL is never started unless it is byte for byte the file the package
+# manager recorded for this package (its file list and its checksum list, read as text).
+CONFLICT_PACKAGE = "iputils-arping"
+CONFLICT_TOOL_MAX_BYTES = 4 << 20
+CONFLICT_OUTPUT_MAX_BYTES = 4096
+# A mark is honoured this long past the lifetime it records: the kernel removes an expired
+# address a moment after its lifetime, not at the same instant.
+MARK_GRACE_S = 60
+LIFETIME_FOREVER = 0xFFFFFFFF
 REQUEST_MAX_BYTES = 64
 REQUEST_TIMEOUT_S = 5
 MINUTES_MIN = 5
@@ -119,6 +139,7 @@ CODES = {
     "STATE_DIR_UNSAFE": 35,
     "TOOL_MISSING": 36,
     "CONFLICT_TOOL_MISSING": 37,
+    "CONFLICT_TOOL_NOT_EXPECTED": 38,
     # the host's state
     "OTHER_INTERFACE_HOLDS_SUBNET": 40,
     "ALIAS_LIMIT_REACHED": 41,
@@ -126,12 +147,16 @@ CODES = {
     "CAMERA_INTERFACE_HOLDS_SUBNET": 43,
     "ADDRESS_IN_USE": 44,
     "NOT_MARKED": 45,
+    "INTERFACE_NOT_ARPABLE": 46,
+    "INTERFACE_DOWN": 47,
+    "INTERFACE_STATE_UNKNOWN": 48,
     # a tool did not do its work
     "HOST_STATE_UNREADABLE": 50,
     "CONFLICT_CHECK_FAILED": 51,
     "ADD_FAILED": 52,
     "DEL_FAILED": 53,
     "MARK_WRITE_FAILED": 54,
+    "CONFLICT_RESULT_UNKNOWN": 55,
     "INTERNAL": 60,
 }
 
@@ -140,6 +165,16 @@ ACCOUNT_NAME = re.compile(r"\A[a-z_][a-z0-9_-]{0,31}\Z")
 ADDRESS_TOKEN = re.compile(r"\A([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})/([0-9]{1,2})\Z")
 QUAD = re.compile(r"\A([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\Z")
 MINUTES_TOKEN = re.compile(r"\A[1-9][0-9]{0,2}\Z")
+# What write_mark writes: the address, the interface, the second of the host's monotonic clock
+# at which the mark was written, the minutes asked.
+MARK_LINE = re.compile(r"\A([0-9.]{7,15})/24 ([A-Za-z0-9][A-Za-z0-9_.-]{0,14}) ([0-9]{1,12}) ([1-9][0-9]{0,2})\n\Z")
+LINK_FLAG = re.compile(r"\A[A-Z0-9_-]{1,24}\Z")
+CHECKSUM = re.compile(r"\A[0-9a-f]{32}\Z")
+# The three lines the conflict-check program prints in the C locale when it has asked. The first
+# names the address and the interface, the other two say how often it asked and what came back.
+CONFLICT_HEAD = r"\AARPING %s from [0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3} %s\Z"
+CONFLICT_SENT = re.compile(r"\ASent ([0-9]{1,4}) (?:probes|probe\(s\)|probe) \(([0-9]{1,4}) broadcast\(s\)\)\Z")
+CONFLICT_RECEIVED = re.compile(r"\AReceived ([0-9]{1,4}) response\(s\)( \([0-9a-z(), ]{1,60}\))?\Z")
 
 
 class Refusal(Exception):
@@ -202,6 +237,47 @@ def _read_small(path, limit):
     if len(data) > limit:
         raise ValueError("too large")
     return data
+
+
+def _read_program(path, limit):
+    """The bytes of a program file as the kernel will execute it (a link is followed, as by _safe_tool)."""
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        data = b""
+        while len(data) <= limit:
+            chunk = os.read(fd, 1 << 16)
+            if chunk == b"":
+                return data
+            data += chunk
+    finally:
+        os.close(fd)
+    raise ValueError("too large")
+
+
+def _expected_conflict_tool():
+    """True when the file at ARPING_TOOL is the one the package manager recorded for CONFLICT_PACKAGE.
+
+    Nothing is started to learn this. Two root-owned text files of the package manager are read:
+    the package's file list must name ARPING_TOOL, and its checksum list must hold exactly one
+    checksum for that path, equal to the checksum of the file that is there now. A file of the
+    other `arping` package, a file changed after installation, a missing or unsafe record: False.
+    """
+    listing = os.path.join(DPKG_INFO_DIR, CONFLICT_PACKAGE + ".list")
+    checksums = os.path.join(DPKG_INFO_DIR, CONFLICT_PACKAGE + ".md5sums")
+    try:
+        if not (_safe_directory(DPKG_INFO_DIR) and _safe_regular_file(listing) and _safe_regular_file(checksums)):
+            return False
+        if ARPING_TOOL not in _read_small(listing, 1 << 16).decode("ascii").split("\n"):
+            return False
+        wanted = "  " + ARPING_TOOL[1:]
+        recorded = [line[:32] for line in _read_small(checksums, 1 << 16).decode("ascii").split("\n") if line[32:] == wanted]
+        if len(recorded) != 1 or CHECKSUM.match(recorded[0]) is None:
+            return False
+        # Not a secret and not a defence against root: the package manager's own record format.
+        found = hashlib.md5(_read_program(ARPING_TOOL, CONFLICT_TOOL_MAX_BYTES), usedforsecurity=False).hexdigest()
+        return found == recorded[0]
+    except (OSError, ValueError, UnicodeError):
+        return False
 
 
 def service_user_id():
@@ -427,12 +503,24 @@ def default_route_interfaces():
     return names
 
 
-def host_addresses():
-    """Every IPv4 address of the host as (interface name, four numbers, prefix length)."""
+def host_state():
+    """One read of the host: (addresses, link flags).
+
+    addresses   every IPv4 address as (interface name, four numbers, prefix length, lifetime);
+                the lifetime is the kernel's remaining valid lifetime in seconds, LIFETIME_FOREVER
+                for an address without one, None when the listing does not state it.
+    link flags  {interface name: the kernel's flag words}; None in the place of the words when
+                they are not a list of flag words or the name is listed twice. An interface
+                without an IPv4 address is not in this listing at all.
+    """
     found = []
+    flags = {}
     for link in _json_list([IP_TOOL, "-json", "-4", "addr", "show"]):
         if not isinstance(link, dict) or not isinstance(link.get("ifname"), str):
             raise Refusal("HOST_STATE_UNREADABLE")
+        words = link.get("flags")
+        readable = isinstance(words, list) and all(isinstance(word, str) and LINK_FLAG.match(word) for word in words)
+        flags[link["ifname"]] = frozenset(words) if readable and link["ifname"] not in flags else None
         infos = link.get("addr_info", [])
         if not isinstance(infos, list):
             raise Refusal("HOST_STATE_UNREADABLE")
@@ -446,8 +534,65 @@ def host_addresses():
             quad = parse_quad(local) if isinstance(local, str) else None
             if quad is None or isinstance(length, bool) or not isinstance(length, int) or not 0 <= length <= 32:
                 raise Refusal("HOST_STATE_UNREADABLE")
-            found.append((link["ifname"], quad, length))
-    return found
+            lifetime = info.get("valid_life_time")
+            if isinstance(lifetime, bool) or not isinstance(lifetime, int) or not 0 <= lifetime <= LIFETIME_FOREVER:
+                lifetime = None
+            found.append((link["ifname"], quad, length, lifetime))
+    return found, flags
+
+
+def refuse_unless_askable(interface, flags):
+    """What the conflict check can KNOW before it is started: only a port that can be asked is asked.
+
+    The conflict-check program answers 0 without asking on a port that cannot carry the question.
+    The kernel's own flag words decide: a loopback or no-ARP port, or one without a broadcast
+    address, cannot be asked; a port that is not up or has no carrier reaches nobody. A port
+    whose words cannot be read is not asked either.
+    """
+    words = flags.get(interface)
+    if words is None:
+        raise Refusal("INTERFACE_STATE_UNKNOWN")
+    if "LOOPBACK" in words or "NOARP" in words or "BROADCAST" not in words:
+        raise Refusal("INTERFACE_NOT_ARPABLE")
+    if "UP" not in words or "LOWER_UP" not in words:
+        raise Refusal("INTERFACE_DOWN")
+
+
+def conflict_verdict(status, output, interface, quad):
+    """"FREE", or the name of the refusal. The printed result and the exit status must agree.
+
+    FREE              status 0, and the program's whole text is three lines: it asked for THIS
+                      address on THIS interface, sent at least CONFLICT_PROBES probes, at least one
+                      as a broadcast, and received 0 responses. Any further line is not this text.
+    ADDRESS_IN_USE    status 1, the same first line and last two lines, at least one response
+                      counted.
+    Everything else, an exit status of 0 with no such statement among it, is not a result.
+    """
+    if status not in (0, 1):
+        return "CONFLICT_CHECK_FAILED"
+    try:
+        if len(output) > CONFLICT_OUTPUT_MAX_BYTES:
+            raise ValueError("too large")
+        lines = output.decode("ascii").split("\n")
+    except (ValueError, UnicodeError):
+        return "CONFLICT_RESULT_UNKNOWN"
+    # The first line, the last two, and the empty text after the last line end. Between them
+    # stand the replies, one line each: a free address has none, so its text is three lines.
+    if len(lines) < 4 or lines[-1] != "":
+        return "CONFLICT_RESULT_UNKNOWN"
+    head = re.match(CONFLICT_HEAD % (re.escape(dotted(quad)), re.escape(interface)), lines[0])
+    asked = CONFLICT_SENT.match(lines[-3])
+    answer = CONFLICT_RECEIVED.match(lines[-2])
+    replies = lines[1:-3]
+    if head is None or asked is None or answer is None or "" in replies:
+        return "CONFLICT_RESULT_UNKNOWN"
+    responses = int(answer.group(1))
+    if status == 1 and responses >= 1:
+        return "ADDRESS_IN_USE"
+    if (status == 0 and responses == 0 and answer.group(2) is None and not replies
+            and int(asked.group(1)) >= CONFLICT_PROBES and int(asked.group(2)) >= 1):
+        return "FREE"
+    return "CONFLICT_RESULT_UNKNOWN"
 
 
 def overlaps_slash24(quad, other, other_length):
@@ -477,6 +622,8 @@ def marked_addresses():
 
 
 def write_mark(quad, interface, minutes):
+    # The clock is the host's monotonic one: it starts at boot, as the marks folder does, and a
+    # change of the wall clock cannot make a mark younger or older than it is.
     try:
         fd = os.open(
             os.path.join(MARKS_DIR, dotted(quad)),
@@ -484,7 +631,7 @@ def write_mark(quad, interface, minutes):
             0o644,
         )
         try:
-            os.write(fd, ("%s/24 %s %d %d\n" % (dotted(quad), interface, int(time.time()), minutes)).encode("ascii"))
+            os.write(fd, ("%s/24 %s %d %d\n" % (dotted(quad), interface, int(time.monotonic()), minutes)).encode("ascii"))
         finally:
             os.close(fd)
     except OSError:
@@ -499,7 +646,50 @@ def drop_mark(quad):
 
 
 def on_camera_interface(addresses, interface, quad):
-    return any(name == interface and held == quad and length == 24 for name, held, length in addresses)
+    return any(name == interface and held == quad and length == 24 for name, held, length, _ in addresses)
+
+
+def read_mark(quad):
+    """(interface, second of the monotonic clock, minutes) of a mark, or None when it is not what write_mark writes."""
+    try:
+        match = MARK_LINE.match(_read_small(os.path.join(MARKS_DIR, dotted(quad)), 64).decode("ascii"))
+    except (OSError, ValueError, UnicodeError):
+        return None
+    if match is None or match.group(1) != dotted(quad) or not MINUTES_MIN <= int(match.group(4)) <= MINUTES_MAX:
+        return None
+    return match.group(2), int(match.group(3)), int(match.group(4))
+
+
+def mark_stands(quad, interface, addresses):
+    """True when the mark of `quad` still stands for an address this helper added.
+
+    It does when the mark was written for this interface, is not older than the lifetime it
+    records (and not from before this boot's clock), and the kernel shows the address on the
+    camera interface with a remaining lifetime no longer than the one that was asked. An address
+    without a lifetime, or with a longer one, is somebody else's, whatever the mark says. When the
+    address is there and the listing does not state its lifetime, nothing can be decided: refusal.
+    """
+    mark = read_mark(quad)
+    if mark is None or mark[0] != interface:
+        return False
+    age = int(time.monotonic()) - mark[1]
+    if age < 0 or age > mark[2] * 60 + MARK_GRACE_S:
+        return False
+    lifetimes = [lifetime for name, held, length, lifetime in addresses if name == interface and held == quad and length == 24]
+    if None in lifetimes:
+        raise Refusal("HOST_STATE_UNREADABLE")
+    return len(lifetimes) == 1 and lifetimes[0] <= mark[2] * 60
+
+
+def standing_marks(interface, addresses):
+    """The marks that still stand. Every other mark is dropped here, whichever way its address went."""
+    standing = set()
+    for quad in marked_addresses():
+        if mark_stands(quad, interface, addresses):
+            standing.add(quad)
+        else:
+            drop_mark(quad)
+    return standing
 
 
 # --- The two verbs ---
@@ -510,8 +700,11 @@ def installation(need_conflict_tool):
     interface = configured_interface()
     if not _safe_tool(IP_TOOL):
         raise Refusal("TOOL_MISSING")
-    if need_conflict_tool and not _safe_tool(ARPING_TOOL):
-        raise Refusal("CONFLICT_TOOL_MISSING")
+    if need_conflict_tool:
+        if not _safe_tool(ARPING_TOOL):
+            raise Refusal("CONFLICT_TOOL_MISSING")
+        if not _expected_conflict_tool():
+            raise Refusal("CONFLICT_TOOL_NOT_EXPECTED")
     marked_addresses()
     if interface in default_route_interfaces():
         raise Refusal("INTERFACE_HAS_DEFAULT_ROUTE")
@@ -520,28 +713,28 @@ def installation(need_conflict_tool):
 
 def add(quad, minutes, call):
     interface = installation(need_conflict_tool=True)
-    addresses = host_addresses()
-    marks = marked_addresses()
-    # A mark whose address the kernel has already expired is no longer an address in place.
-    for stale in [mark for mark in marks if not on_camera_interface(addresses, interface, mark)]:
-        drop_mark(stale)
-        marks.discard(stale)
-    if any(held == quad for _, held, _ in addresses):
+    addresses, flags = host_state()
+    # A mark whose address is gone (expired by the kernel, removed by hand), or whose address is
+    # no longer the one this helper added, is dropped before anything is decided.
+    marks = standing_marks(interface, addresses)
+    if any(held == quad for _, held, _, _ in addresses):
         raise Refusal("ADDRESS_ALREADY_PRESENT")
-    if any(name != interface and overlaps_slash24(quad, held, length) for name, held, length in addresses):
+    if any(name != interface and overlaps_slash24(quad, held, length) for name, held, length, _ in addresses):
         raise Refusal("OTHER_INTERFACE_HOLDS_SUBNET")
     if len(marks) >= MAX_MARKED:
         raise Refusal("ALIAS_LIMIT_REACHED")
-    if any(name == interface and overlaps_slash24(quad, held, length) for name, held, length in addresses):
+    if any(name == interface and overlaps_slash24(quad, held, length) for name, held, length, _ in addresses):
         raise Refusal("CAMERA_INTERFACE_HOLDS_SUBNET")
-    status, _ = run_tool(
-        [ARPING_TOOL, "-D", "-q", "-c", str(CONFLICT_PROBES), "-w", str(CONFLICT_WAIT_S), "-I", interface, dotted(quad)],
+    refuse_unless_askable(interface, flags)
+    # The option set of the iputils program: duplicate address detection, a count, a deadline in
+    # seconds, the interface. Not quiet: its printed result is read together with its exit status.
+    status, output = run_tool(
+        [ARPING_TOOL, "-D", "-c", str(CONFLICT_PROBES), "-w", str(CONFLICT_WAIT_S), "-I", interface, dotted(quad)],
         CONFLICT_TIMEOUT_S,
     )
-    if status == 1:
-        raise Refusal("ADDRESS_IN_USE")
-    if status != 0:
-        raise Refusal("CONFLICT_CHECK_FAILED")
+    verdict = conflict_verdict(status, output, interface, quad)
+    if verdict != "FREE":
+        raise Refusal(verdict)
     seconds = str(minutes * 60)
     write_mark(quad, interface, minutes)
     status, _ = run_tool(
@@ -561,8 +754,13 @@ def delete(quad, call):
     interface = installation(need_conflict_tool=False)
     if quad not in marked_addresses():
         raise Refusal("NOT_MARKED")
-    if not on_camera_interface(host_addresses(), interface, quad):
-        drop_mark(quad)
+    addresses, _ = host_state()
+    if quad not in standing_marks(interface, addresses):
+        # The mark is dropped. An address that is there all the same is not the one this helper
+        # added (its mark is past its lifetime, or the kernel shows a longer lifetime or none):
+        # it is not removed. No address there: what was asked is already so.
+        if on_camera_interface(addresses, interface, quad):
+            raise Refusal("NOT_MARKED")
         call.note = "already-absent"
         return
     status, _ = run_tool([IP_TOOL, "addr", "del", dotted(quad) + "/24", "dev", interface], TOOL_TIMEOUT_S)

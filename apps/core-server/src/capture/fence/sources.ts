@@ -143,7 +143,9 @@ export function assertSessionSourcesOfOperation(rows: readonly Pick<SessionCaptu
 // a session start is not refused for a fact.
 
 /** The keys of a microphone slot's facts (schema design 2.3, plus the rate the card was registered at). CLOSED. */
-export const MIC_SOURCE_FACT_KEYS = ['model', 'usbId', 'cardId', 'cardDevice', 'inputNumber', 'nativeChannels', 'sampleRate', 'sampleBits'] as const;
+// Task 4 row 85b (row 200's request; decision C56): `usbSerial` and `usbPort` - the serial and the port path of the card
+// that was ACTUALLY opened, so that the stored row of a session says which of two same-model cards fed the slot.
+export const MIC_SOURCE_FACT_KEYS = ['model', 'usbId', 'cardId', 'cardDevice', 'inputNumber', 'nativeChannels', 'sampleRate', 'sampleBits', 'usbSerial', 'usbPort'] as const;
 export type MicSourceFactKey = (typeof MIC_SOURCE_FACT_KEYS)[number];
 
 /** THE TYPE of `source_facts` as the Core writes it (asked for by row 17): a flat map of the closed keys; `{}` says "nothing stated". */
@@ -169,6 +171,10 @@ export interface AudioCardStatement {
   readonly nativeChannels: unknown;
   readonly sampleRateHz: unknown;
   readonly sampleBits: unknown;
+  /** The serial number of the card that was opened (row 200); null or absent: it stated none. */
+  readonly usbSerial?: unknown;
+  /** The USB port path of the card that was opened (row 200); null or absent: none. */
+  readonly usbPort?: unknown;
 }
 
 /**
@@ -211,6 +217,9 @@ export function micSourceFactsOf(statement: AudioCardStatement | null | undefine
   put('nativeChannels', integerOf(statement.nativeChannels, 1, CARD_LISTING_LIMITS.channels));
   put('sampleRate', integerOf(statement.sampleRateHz, CARD_ASSUMED_RATE_RANGE.minHz, CARD_ASSUMED_RATE_RANGE.maxHz));
   put('sampleBits', typeof statement.sampleBits === 'number' && SAMPLE_BITS.includes(statement.sampleBits) ? statement.sampleBits : null);
+  // The identity of the card that was opened (row 200): each through the listing's rule for its kind; a text that fails has no word and the key is left out.
+  put('usbSerial', statement.usbSerial === null || statement.usbSerial === undefined ? null : cardListingText(CardStringKind.USB_SERIAL, statement.usbSerial));
+  put('usbPort', statement.usbPort === null || statement.usbPort === undefined ? null : cardListingText(CardStringKind.USB_PORT, statement.usbPort));
   // Unreachable with the bounds above (the largest map is under 200 bytes); held all the same, so the column's CHECK is never what refuses a start.
   if (Buffer.byteLength(JSON.stringify(facts), 'utf8') > SOURCE_FACTS_MAX_BYTES) return NO_SOURCE_FACTS;
   return Object.freeze(facts);

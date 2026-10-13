@@ -34,17 +34,42 @@
  * restart. A stored read that FAILS is the database's failure: the door logs and persists it and
  * the caller answers 503 `NOT_READY` - never "no such export".
  * `requestOf` / `failureOf` are the ring alone (synchronous); nothing that answers a caller uses them.
+ *
+ * THE TRUST LIST OF AN EXPORT IS THE RETAINED CERTIFICATE SET (task 4 row 227b; SX-09 (c), (d);
+ * decision C77). `exportTrustedCertificates` is what the export's own verification of its source
+ * holds the package's certificate to: the list the Core's own verify trusts
+ * (`sealingVerifyTrust(...).trusted`), read from the signer store when a job starts - never the
+ * ACTIVE certificate alone. So a package sealed under an EARLIER key is exported after a rotation,
+ * and its archive carries, as PUBLIC certificates only, what a receiver verifies it with: the
+ * package's own `device-certificate.pem` (the certificate that signed the seal, byte for byte),
+ * the retained certificates of its revisions, and the certificate of the export signature
+ * (`certificates/<sha256>.pem`, written by `package-export.ts`). Nothing sealed is rewritten and no
+ * manifest is signed again.
+ *
+ * A PACKAGE UNDER A KEY MARKED COMPROMISED IS EXPORTED WITH THE NOTICE (task 4 row V5; decision
+ * C84, caution R-3 of security review 230 - until then it was refused, `SOURCE_VERIFY_FAILED`).
+ * `exportVerifyTrust` hands a job BOTH lists of the one read of the store: the trusted
+ * certificates and the marked ones. The job verifies its source by the Core's own rule
+ * (`verifySealedPackageUnderCoreTrust` of `evidence-verify`, the function of operation 41): a
+ * package that rests on a marked certificate passes ONLY as the package the database recorded -
+ * its manifest digest and the head of its transcript revisions - and then the export manifest,
+ * signed by the ACTIVE key, STATES the mark (`sourceSigningKey`: the state, the marked
+ * fingerprints, `verifiedAs: STORED_DIGEST`); a receiver's verifier reads that statement and never
+ * shows a plain pass. A package under a marked key that is NOT the one of record still fails the
+ * job, by name: `SOURCE_SIGNED_BY_COMPROMISED_KEY`.
  */
 import type { FragmentOpener } from '@dems/shared/evidence-verify';
 import { AuditType, type AuditRow, type EvidenceItem } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
-import type { LoadedSigner } from '../capture';
+import { SignerError, type LoadedSigner } from '../capture';
+import { captureOperationOf } from '../capture/fence';
 import type { AuditEntry } from '../core';
 import { exportDoorsOf } from '../engine';
 import { coreFragmentOpener, hasSealedPackageHere, sessionPackageDir, type RealEvidenceItem } from '../evidence-verify';
 import { createTranscriptStore } from '../modules/transcripts';
 import type { ReadContext } from '../plugins/db';
+import { sealingVerifyTrust } from '../sealing';
 import { sweepExportPartials } from './boot-sweep';
 import { selectedCompositeEncoder, type CompositeEncoder } from './composite';
 import { evidenceExport } from './control';
@@ -173,6 +198,13 @@ export interface CoreExportWiring {
   /** The Core's evidence signer, or null while it cannot sign (then a job fails `SIGNER_UNAVAILABLE`). */
   signer(): LoadedSigner | null;
   trustedCertificateSha256(): readonly string[];
+  /**
+   * Row V5 (C84 R-3): BOTH lists of ONE read of the signer store - the trusted certificates and those of
+   * keys MARKED COMPROMISED. When the wiring gives it, a job takes its trust from this one snapshot (and
+   * `trustedCertificateSha256` is not asked); a wiring without it verifies its source as before, under
+   * the trusted list alone.
+   */
+  verifyTrust?(): { readonly trusted: readonly string[]; readonly compromised: readonly string[] };
   /** The opener over the Core credential store: `coreFragmentOpener(app)` of the verify unit. */
   opener(): FragmentOpener | null;
   /** `selectedCompositeEncoder()` - null while the licence decision is open. */
@@ -212,7 +244,17 @@ export function coreExportHost(app: ExportHostApp & { readonly engine: FastifyIn
     findItem: (evidenceId) => wiring.findItem(evidenceId),
     packageDirOf: (sessionId) => wiring.packageDirOf(sessionId),
     requestOf: (exportId) => directory.findRequest(exportId),
-    ports: () => ({ opener: wiring.opener(), signer: wiring.signer(), trustedCertificateSha256: wiring.trustedCertificateSha256(), composite: wiring.composite() }),
+    ports: () => {
+      // Row V5: one snapshot of the store's two lists per job, when the wiring has it; else the trusted list as before.
+      const trust = wiring.verifyTrust?.();
+      return {
+        opener: wiring.opener(),
+        signer: wiring.signer(),
+        trustedCertificateSha256: trust === undefined ? wiring.trustedCertificateSha256() : trust.trusted,
+        ...(trust === undefined ? {} : { compromisedCertificateSha256: trust.compromised }),
+        composite: wiring.composite(),
+      };
+    },
     recordFailure: async (failure) => {
       await app.pipeline.run(EXPORT_FAILED_UNIT_LABEL, async (unit) => {
         await unit.audit.append(exportFailedEntry(failure));
@@ -231,6 +273,89 @@ const SWEEP_SOURCE = 'evidence-export.bootSweep';
 /** What only the sealing composition holds: the Core's evidence signer (loaded when first read; it may throw). */
 export interface CoreExportComposition {
   signer(): LoadedSigner;
+}
+
+/** `source` of the line and of the error-log entry that name why the evidence signer refused an export job (row 226c). */
+export const EXPORT_SIGNER_REFUSAL_SOURCE = 'evidence-export.signer';
+
+/** Why the evidence signer refused: a code of the signer and the key id it names. Never a location, a secret or key material. */
+export interface ExportSignerRefusal {
+  readonly code: string;
+  readonly keyId: string | null;
+}
+
+/**
+ * THE SIGNER OF A JOB WITH ITS REFUSAL KEPT (task 4 row 226c; decision C81 (4); difference D-1 of the
+ * rotation scenario). A job that the signer refuses ends `SIGNER_UNAVAILABLE` (the signer could not
+ * be taken) or `SIGNATURE_FAILED` (it did not sign): the two codes of the job's closed list, and
+ * the job's own steps keep nothing else of the signer's error. So an operator read "the signature
+ * failed" and was not told that the key was rotated under the running Core (`ACTIVE_KEY_CHANGED`: a
+ * restart is the remedy), marked compromised (`KEY_COMPROMISED`) or past its certificate's validity
+ * (`CERTIFICATE_NOT_VALID_NOW`).
+ *
+ * `signer()` is what a job reads when it starts: it forgets the refusal of the job before, takes
+ * the signer and hands it on with its `sign` watched. `refusal()` is the NAMED refusal
+ * (`SignerError`) of that taking or of a signature since - null when the signer refused nothing
+ * or threw something without a name. Jobs run one after another, so the refusal read when a job
+ * fails is that job's. The watched signer signs exactly as the one handed in: the error is passed
+ * on as it was thrown.
+ */
+export function exportSignerWithRefusal(take: () => LoadedSigner): { signer(): LoadedSigner | null; refusal(): ExportSignerRefusal | null } {
+  let refusal: ExportSignerRefusal | null = null;
+  const keep = (error: unknown): void => {
+    if (error instanceof SignerError) refusal = Object.freeze({ code: error.code, keyId: error.keyId });
+  };
+  return {
+    signer() {
+      refusal = null;
+      let loaded: LoadedSigner;
+      try {
+        loaded = take();
+      } catch (error) {
+        keep(error);
+        // No usable signing key: a job then fails `SIGNER_UNAVAILABLE` before its source is verified.
+        return null;
+      }
+      const { signer, certificate } = loaded;
+      return Object.freeze({
+        certificate,
+        signer: Object.freeze({
+          algorithm: signer.algorithm,
+          keyId: signer.keyId,
+          sign: async (message: Uint8Array): Promise<Uint8Array> => {
+            try {
+              return await signer.sign(message);
+            } catch (error) {
+              keep(error);
+              throw error;
+            }
+          },
+          publicKey: (): Uint8Array => signer.publicKey(),
+        }),
+      });
+    },
+    refusal: () => refusal,
+  };
+}
+
+/**
+ * The signer's reason of a failed job, SAID (row 226c): one error line of the Core and one entry of
+ * the persistent error log, both under the job's own failure code, with the job, the item, the
+ * signer's code as `signerReason` and the key id the signer named. Only for the two codes a signer
+ * can be the cause of; the code of the job and its audit row are not changed (the row's details are
+ * the three keys of C3 §5.2, and the answer of operation 87 has one code: neither has a member for
+ * a second reason).
+ */
+export function reportExportSignerRefusal(
+  app: Pick<ExportHostApp, 'errorLog'> & { readonly log: { error(fields: Readonly<Record<string, unknown>>, message: string): void } },
+  failure: { readonly jobId: string; readonly evidenceId: string; readonly reason: string },
+  refusal: ExportSignerRefusal | null,
+): void {
+  if (refusal === null || (failure.reason !== ExportFailureCode.SIGNATURE_FAILED && failure.reason !== ExportFailureCode.SIGNER_UNAVAILABLE)) return;
+  const message = 'an export job was refused by the evidence signer of the Core';
+  const context = { jobId: failure.jobId, evidenceId: failure.evidenceId, signerReason: refusal.code, signingKeyId: refusal.keyId ?? '' };
+  app.log.error({ code: failure.reason, source: EXPORT_SIGNER_REFUSAL_SOURCE, ...context }, message);
+  app.errorLog.append({ level: 'error', source: EXPORT_SIGNER_REFUSAL_SOURCE, message, code: failure.reason, context });
 }
 
 /**
@@ -286,39 +411,78 @@ export async function sweepInterruptedExports(app: ExportHostApp & { readonly co
 }
 
 /**
+ * THE CERTIFICATES AN EXPORT TRUSTS ITS SOURCE UNDER (task 4 row 227b; SX-09 (c), (d)): SHA-256 of
+ * every retained certificate of `<dataDir>/signer` that the Core's own verify trusts - the ONE list
+ * of `sealingVerifyTrust`, so the export and operation 41 cannot disagree on a package:
+ *
+ *   - each certificate was parsed and its self-signature verified by the store before it is listed;
+ *   - only a key that is or was the ACTIVE one: a key provisioned and never active is not listed;
+ *   - `production: true` (a `REAL_PRODUCTION` Core): a DEVELOPMENT-marked certificate is never
+ *     listed, so a package under one is not exported by a production Core;
+ *   - the certificate of a key MARKED COMPROMISED is never listed here: it is in the OTHER list of
+ *     `exportVerifyTrust`, under which a package passes only as the one of record (the header);
+ *   - a store that cannot be taken lists nothing (fail closed).
+ *
+ * Reads public certificate files only: no key is opened, and what it returns are digests.
+ */
+export function exportTrustedCertificates(options: { readonly dataDir: string; readonly production: boolean }): readonly string[] {
+  return sealingVerifyTrust({ dataDir: options.dataDir, production: options.production }).trusted;
+}
+
+/**
+ * BOTH LISTS OF ONE READ OF THE STORE (task 4 row V5; C84 R-3): `trusted` as above, and `compromised`
+ * - the certificates of the retained keys that carry the compromise mark (never a development one
+ * on a production Core, never a key that was not active). One call, one snapshot: a mark set while
+ * a job starts is in both lists or in neither. Digests only.
+ */
+export function exportVerifyTrust(options: { readonly dataDir: string; readonly production: boolean }): { readonly trusted: readonly string[]; readonly compromised: readonly string[] } {
+  const trust = sealingVerifyTrust({ dataDir: options.dataDir, production: options.production });
+  return { trusted: trust.trusted, compromised: trust.compromised };
+}
+
+/**
  * Provides the export jobs of real packages to the app and registers the boot sweep. Called ONCE,
  * by the sealing composition of a real capture operation (one line there). Builds nothing that
  * opens a file, a key or a connection before the first job runs.
  */
 export function provideCoreEvidenceExport(app: FastifyInstance, composition: CoreExportComposition): void {
   const mediaStoreDir = app.config.mediaStoreDir;
-  const signer = (): LoadedSigner | null => {
-    try {
-      return composition.signer();
-    } catch {
-      // No usable signing key: a job then fails `SIGNER_UNAVAILABLE`, and no certificate is trusted.
-      return null;
-    }
-  };
+  // Row 226c: the signer of a job, and why it refused when it did (`exportSignerWithRefusal`).
+  const signing = exportSignerWithRefusal(() => composition.signer());
+  const signer = (): LoadedSigner | null => signing.signer();
+  // Row 227b: the operation of this Core, from the one definition - a production Core never trusts a development certificate.
+  // The word is the value of `CaptureOperation.REAL_PRODUCTION`, held to that type by the compiler: the export is no
+  // wiring unit of the adapter layer and does not import it (rule of `capture/adapters/__tests__/static.test.ts`).
+  const production = captureOperationOf(app.config) === 'REAL_PRODUCTION';
   const opener = coreFragmentOpener(app);
   const wiring: CoreExportWiring = {
     findItem: async (evidenceId) => {
       const item = app.engine.state().evidence.find((entry) => entry.id === evidenceId);
       if (item === undefined || !hasSealedPackageHere(item as Parameters<typeof hasSealedPackageHere>[0])) return null;
       const transcriptSha256 = item.transcriptSha256 ?? null;
-      const revisionCount = transcriptSha256 === null ? 0 : (await createTranscriptStore(app.db.pool).revisionHead(evidenceId)).revisionNo;
-      return { evidenceId, sessionId: item.sessionId, manifestSha256: item.manifestHash, transcriptSha256, revisionCount };
+      const head = transcriptSha256 === null ? null : await createTranscriptStore(app.db.pool).revisionHead(evidenceId);
+      const revisionCount = head === null ? 0 : head.revisionNo;
+      // Row V5: the hash of the last revision the database holds - the second anchor of a package under a marked key (as operation 41 hands it).
+      return { evidenceId, sessionId: item.sessionId, manifestSha256: item.manifestHash, transcriptSha256, revisionCount, revisionHeadSha256: head === null || head.revisionNo === 0 ? null : head.parentSha256 };
     },
     packageDirOf: (sessionId) => sessionPackageDir(mediaStoreDir, sessionId),
     signer,
-    trustedCertificateSha256: () => {
-      const loaded = signer();
-      return loaded === null ? [] : [loaded.certificate.sha256];
-    },
+    // Row 227b: the retained set of the store, read when a job starts - not the ACTIVE certificate alone.
+    trustedCertificateSha256: () => exportTrustedCertificates({ dataDir: app.config.dataDir, production }),
+    // Row V5 (C84 R-3): the same read with the marked certificates beside the trusted ones - what a job is handed.
+    verifyTrust: () => exportVerifyTrust({ dataDir: app.config.dataDir, production }),
     opener: () => opener,
     composite: () => selectedCompositeEncoder(),
   };
-  const runtime = createEvidenceExportRuntime(coreExportHost(app, wiring));
+  const host = coreExportHost(app, wiring);
+  const runtime = createEvidenceExportRuntime({
+    ...host,
+    // Row 226c (C81 (4)): a job the signer refused says WHY in the log and the error log, before its failure row is committed.
+    recordFailure: async (failure) => {
+      reportExportSignerRefusal(app, failure, signing.refusal());
+      await host.recordFailure(failure);
+    },
+  });
   evidenceExport(app).provide(runtime);
   // G94-12 (wave H C1): a Core that stops does not let an export run on. The job in flight is aborted
   // (its partial artefact is removed by its own failure path), queued jobs end without running, each

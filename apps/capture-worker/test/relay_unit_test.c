@@ -14,9 +14,18 @@
  * through a socket pair this test makes (relay_camera_adopt, test builds only): the bytes a camera would send
  * are written into one end, and the code the real client ends with is asserted. `--cases` prints the table.
  */
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE                                      /* row T2: RTLD_NEXT of <dlfcn.h> (the two calls of the dial are seen, see `dialled`) */
+#endif
 #include "../src/relay/relay.h"
 
+#include <arpa/inet.h>
+#include <dlfcn.h>
+#include <errno.h>
 #include <fcntl.h>
+#include <netinet/in.h>
+#include <poll.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,7 +57,9 @@ static RelayCode parse(const char *line, RelayStart *s) { return relay_start_par
 /* Written in pieces: the repository's secret scan counts the FORM of an ingest address and of an address with a user part. */
 #define INGEST "rtsp://127.0.0.1:8559/S-1/video-01/AbCdEfGhIjK" "lMnOpQrStUv"
 #define RTSP "rtsp:/" "/"
-#define GOOD "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10:8554/media/video1\",\"username\":\"unit\",\"secret\":\"unit-placeholder\"}}\n"
+/* Row 143b: the source address of the camera leg, a member record mode must state (a documentation address). */
+#define SOURCE "\"source\":\"192.0.2.1\","
+#define GOOD "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10:8554/media/video1\",\"username\":\"unit\",\"secret\":\"unit-placeholder\"}}\n"
 
 static void start_message(void) {
     RelayStart s;
@@ -56,29 +67,29 @@ static void start_message(void) {
     CHECK("ingest handed on unchanged", !strcmp(s.ingest, INGEST) && s.ingest_port == 8559);
     CHECK("locator, host and port", !strcmp(s.locator, "rtsp://192.0.2.10:8554/media/video1") && !strcmp(s.host, "192.0.2.10") && s.port == 8554);
     CHECK("account and secret", !strcmp(s.account, "unit") && !strcmp(s.secret, "unit-placeholder"));
-    CHECK("default port 554", parse("{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"\"}}\n", &s) == RELAY_STOPPED && s.port == 554);
-    CHECK("escapes of the serialiser are decoded", parse("{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"a \\\"b\\\\ \\u00e9\",\"secret\":\"p\\u0009q\\ud83d\\ude00\"}}\n", &s) == RELAY_STOPPED
+    CHECK("default port 554", parse("{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"\"}}\n", &s) == RELAY_STOPPED && s.port == 554);
+    CHECK("escapes of the serialiser are decoded", parse("{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"a \\\"b\\\\ \\u00e9\",\"secret\":\"p\\u0009q\\ud83d\\ude00\"}}\n", &s) == RELAY_STOPPED
           && !strcmp(s.account, "a \"b\\ \xc3\xa9") && !strcmp(s.secret, "p\tq\xf0\x9f\x98\x80"));
     static const char *const refused[] = {
-        "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}",      /* no line feed */
-        "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"slot\":1,\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n",
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}",      /* no line feed */
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"slot\":1,\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n",
         "{\"type\":\"start\",\"mode\":\"probe\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n",
-        "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"" RTSP "u:s@192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n",
-        "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://camera.example/a\",\"username\":\"u\",\"secret\":\"s\"}}\n",
-        "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsps://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n",
-        "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a b\",\"username\":\"u\",\"secret\":\"s\"}}\n",
-        "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10\",\"username\":\"u\",\"secret\":\"s\"}}\n",
-        "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "/\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n",
-        "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"rtsp://127.0.0.1:8565/x\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n",
-        "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"rtsp://192.0.2.1:8559/x\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n",
-        "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\\r\\nX: y\",\"secret\":\"s\"}}\n",
-        "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\\u0000t\"}}\n",
-        "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"\",\"secret\":\"s\"}}\n",
-        "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\"}}\n",
-        "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\",\"secret\":\"t\"}}\n",
-        "{\"type\":\"start\",\"mode\":\"record\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n",
-        "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":\"[credential]\"}\n",
-        "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}} x\n",
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"" RTSP "u:s@192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n",
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://camera.example/a\",\"username\":\"u\",\"secret\":\"s\"}}\n",
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsps://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n",
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a b\",\"username\":\"u\",\"secret\":\"s\"}}\n",
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10\",\"username\":\"u\",\"secret\":\"s\"}}\n",
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "/\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n",
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"rtsp://127.0.0.1:8565/x\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n",
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"rtsp://192.0.2.1:8559/x\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n",
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\\r\\nX: y\",\"secret\":\"s\"}}\n",
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\\u0000t\"}}\n",
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"\",\"secret\":\"s\"}}\n",
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\"}}\n",
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\",\"secret\":\"t\"}}\n",
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n",
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":\"[credential]\"}\n",
+        "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}} x\n",
         "[]\n", "\n",
     };
     for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
@@ -86,6 +97,369 @@ static void start_message(void) {
         static const RelayStart empty;
         checks++;
         if (r != RELAY_START_MESSAGE_INVALID || memcmp(&s, &empty, sizeof s)) { failed++; printf("relay_unit_test: FAILED: start message %zu is not refused, or something of it was kept\n", i); }
+    }
+}
+
+/* ROW 42: the two modes and the member `attempt` of the start message; the stated rate of a description; the two
+ * report lines. Each new reader and each new output path with its malformed-input rows, on heap copies of exact
+ * length (the sanitizer build guards their ends). */
+#define ACCESS "\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}"
+#define RECORD(more) "{\"type\":\"start\",\"mode\":\"record\"," SOURCE "\"ingest\":\"" INGEST "\"," more ACCESS "}\n"
+#define PROBE(more) "{\"type\":\"start\",\"mode\":\"probe\"," more ACCESS "}\n"
+
+static RelayCode parse_exact(const char *line, RelayStart *s) {
+    size_t n = strlen(line);
+    char *copy = exact(line, n);
+    RelayCode r = relay_start_parse(copy, n, s);
+    free(copy);
+    return r;
+}
+
+static void modes_and_attempt(void) {
+    RelayStart s;
+    static const RelayStart empty;
+    CHECK("record mode is named, no attempt stated is 0", parse(GOOD, &s) == RELAY_STOPPED && s.mode == RELAY_MODE_RECORD && s.attempt == 0);
+    CHECK("record mode with an attempt", parse_exact(RECORD("\"attempt\":7,"), &s) == RELAY_STOPPED && s.mode == RELAY_MODE_RECORD && s.attempt == 7 && s.ingest_port == 8559);
+    CHECK("the largest attempt", parse_exact(RECORD("\"attempt\":999999999,"), &s) == RELAY_STOPPED && s.attempt == RELAY_ATTEMPT_MAX);
+    CHECK("an attempt with blanks around it", parse_exact(RECORD("\"attempt\" : 12 ,"), &s) == RELAY_STOPPED && s.attempt == 12);
+    CHECK("the attempt as the last member", parse_exact("{\"type\":\"start\",\"mode\":\"probe\"," ACCESS ",\"attempt\":3}\n", &s) == RELAY_STOPPED && s.attempt == 3 && s.mode == RELAY_MODE_PROBE);
+    CHECK("probe mode: no ingest address is taken, none is kept", parse_exact(PROBE(""), &s) == RELAY_STOPPED && s.mode == RELAY_MODE_PROBE && !s.ingest[0] && s.ingest_port == 0 && s.attempt == 0
+          && !strcmp(s.host, "192.0.2.10") && s.port == 554 && !strcmp(s.account, "u"));
+    CHECK("probe mode with an attempt", parse_exact(PROBE("\"attempt\":41,"), &s) == RELAY_STOPPED && s.attempt == 41);
+    static const struct { const char *what, *line; } refused[] = {
+        { "probe mode with an ingest address", "{\"type\":\"start\",\"mode\":\"probe\",\"ingest\":\"" INGEST "\"," ACCESS "}\n" },
+        { "probe mode with an empty ingest address", "{\"type\":\"start\",\"mode\":\"probe\",\"ingest\":\"\"," ACCESS "}\n" },
+        { "probe mode without the access", "{\"type\":\"start\",\"mode\":\"probe\"}\n" },
+        { "a mode in another case", "{\"type\":\"start\",\"mode\":\"Probe\"," ACCESS "}\n" },
+        { "a mode with a blank after it", "{\"type\":\"start\",\"mode\":\"probe \"," ACCESS "}\n" },
+        { "a mode that is a number", "{\"type\":\"start\",\"mode\":2," ACCESS "}\n" },
+        { "the mode twice", "{\"type\":\"start\",\"mode\":\"probe\",\"mode\":\"record\"," ACCESS "}\n" },
+        { "no mode", "{\"type\":\"start\"," ACCESS "}\n" },
+        { "attempt 0", PROBE("\"attempt\":0,") },
+        { "a negative attempt", PROBE("\"attempt\":-1,") },
+        { "an attempt with a leading 0", PROBE("\"attempt\":07,") },
+        { "an attempt with a fraction", PROBE("\"attempt\":1.5,") },
+        { "an attempt with an exponent", PROBE("\"attempt\":1e3,") },
+        { "an attempt beyond the bound (10 digits)", PROBE("\"attempt\":1000000000,") },
+        { "an attempt too long for any integer", PROBE("\"attempt\":99999999999999999999999999999999999999,") },
+        { "an attempt with a letter after it", PROBE("\"attempt\":12x,") },
+        { "an attempt that is a string", PROBE("\"attempt\":\"3\",") },
+        { "an attempt that is a word", PROBE("\"attempt\":true,") },
+        { "an attempt that is null", PROBE("\"attempt\":null,") },
+        { "an attempt with no value", PROBE("\"attempt\":,") },
+        { "an attempt with a plus sign", PROBE("\"attempt\":+3,") },
+        { "an attempt in hexadecimal", PROBE("\"attempt\":0x10,") },
+        { "the attempt twice", PROBE("\"attempt\":3,\"attempt\":3,") },
+        { "the attempt twice, in record mode", RECORD("\"attempt\":3,\"attempt\":4,") },
+        { "an attempt as the last byte before the line feed", "{\"type\":\"start\",\"mode\":\"probe\"," ACCESS ",\"attempt\":3\n" },
+        { "an attempt as the last byte", "{\"type\":\"start\",\"mode\":\"probe\"," ACCESS ",\"attempt\":\n" },
+        { "an attempt inside the access", "{\"type\":\"start\",\"mode\":\"probe\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\",\"attempt\":3}}\n" },
+    };
+    for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
+        RelayCode r = parse_exact(refused[i].line, &s);
+        checks++;
+        if (r != RELAY_START_MESSAGE_INVALID || memcmp(&s, &empty, sizeof s)) { failed++; printf("relay_unit_test: FAILED: row 42, start message: %s is not refused, or something of it was kept\n", refused[i].what); }
+    }
+}
+
+/* ROW 143b: the member `source` of the start message - the address of this host the camera leg leaves from. Record
+ * mode must state it, probe mode may; it is a dotted IPv4 literal in its one canonical form, first number 1 to 223,
+ * and never a name. Every refused row on a heap copy of exact length; of a refused message nothing is kept. */
+#define RECORD_FROM(source) "{\"type\":\"start\",\"mode\":\"record\",\"source\":" source ",\"ingest\":\"" INGEST "\"," ACCESS "}\n"
+#define PROBE_FROM(source) "{\"type\":\"start\",\"mode\":\"probe\",\"source\":" source "," ACCESS "}\n"
+
+static void source_address(void) {
+    RelayStart s;
+    static const RelayStart empty;
+    CHECK("record mode: the source address is taken as written", parse_exact(RECORD_FROM("\"192.168.50.1\""), &s) == RELAY_STOPPED && !strcmp(s.source, "192.168.50.1") && s.mode == RELAY_MODE_RECORD && s.ingest_port == 8559);
+    CHECK("the door's line states it", parse(GOOD, &s) == RELAY_STOPPED && !strcmp(s.source, "192.0.2.1"));
+    CHECK("the source address as the last member", parse_exact("{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\"," ACCESS ",\"source\":\"10.0.0.7\"}\n", &s) == RELAY_STOPPED && !strcmp(s.source, "10.0.0.7"));
+    CHECK("the longest literal", parse_exact(RECORD_FROM("\"223.255.255.255\""), &s) == RELAY_STOPPED && !strcmp(s.source, "223.255.255.255"));
+    CHECK("the smallest first number", parse_exact(RECORD_FROM("\"1.0.0.0\""), &s) == RELAY_STOPPED && !strcmp(s.source, "1.0.0.0"));
+    CHECK("loopback is an address of this host", parse_exact(RECORD_FROM("\"127.0.0.1\""), &s) == RELAY_STOPPED && !strcmp(s.source, "127.0.0.1"));
+    CHECK("probe mode without a source address: none is kept", parse_exact(PROBE(""), &s) == RELAY_STOPPED && s.mode == RELAY_MODE_PROBE && !s.source[0]);
+    CHECK("probe mode with a source address", parse_exact(PROBE_FROM("\"192.168.50.1\""), &s) == RELAY_STOPPED && s.mode == RELAY_MODE_PROBE && !strcmp(s.source, "192.168.50.1") && !s.ingest[0]);
+    CHECK("the source address does not move the camera's", parse_exact(RECORD_FROM("\"192.168.50.1\""), &s) == RELAY_STOPPED && !strcmp(s.host, "192.0.2.10") && s.port == 554);
+    static const struct { const char *what, *line; } refused[] = {
+        { "record mode without a source address", "{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\"," ACCESS "}\n" },
+        { "record mode without one, with an attempt", "{\"type\":\"start\",\"mode\":\"record\",\"attempt\":4,\"ingest\":\"" INGEST "\"," ACCESS "}\n" },
+        { "an empty source address", RECORD_FROM("\"\"") },
+        { "an empty source address, probe mode", PROBE_FROM("\"\"") },
+        { "any address (0.0.0.0)", RECORD_FROM("\"0.0.0.0\"") },
+        { "first number 0", RECORD_FROM("\"0.1.2.3\"") },
+        { "multicast", RECORD_FROM("\"224.0.0.1\"") },
+        { "the broadcast address", RECORD_FROM("\"255.255.255.255\"") },
+        { "reserved (240)", RECORD_FROM("\"240.0.0.1\"") },
+        { "a name", RECORD_FROM("\"camera-if\"") },
+        { "a name with points", RECORD_FROM("\"a.b.c.d\"") },
+        { "the word localhost", RECORD_FROM("\"localhost\"") },
+        { "three numbers", RECORD_FROM("\"192.168.50\"") },
+        { "five numbers", RECORD_FROM("\"1.2.3.4.5\"") },
+        { "a leading 0", RECORD_FROM("\"192.168.050.1\"") },
+        { "a leading 0 in the first number", RECORD_FROM("\"010.0.0.1\"") },
+        { "a number above 255", RECORD_FROM("\"192.168.50.256\"") },
+        { "four digits", RECORD_FROM("\"192.168.50.0001\"") },
+        { "hexadecimal", RECORD_FROM("\"0xc0.0xa8.0x32.0x01\"") },
+        { "one number for the whole address", RECORD_FROM("\"3232248321\"") },
+        { "a point at the end", RECORD_FROM("\"192.168.50.1.\"") },
+        { "a point at the front", RECORD_FROM("\".192.168.50.1\"") },
+        { "two points in a row", RECORD_FROM("\"192..50.1\"") },
+        { "a blank before it", RECORD_FROM("\" 192.168.50.1\"") },
+        { "a blank after it", RECORD_FROM("\"192.168.50.1 \"") },
+        { "a port after it", RECORD_FROM("\"192.168.50.1:0\"") },
+        { "a prefix length after it", RECORD_FROM("\"192.168.50.1/24\"") },
+        { "a sign", RECORD_FROM("\"+192.168.50.1\"") },
+        { "an IPv6 literal", RECORD_FROM("\"::1\"") },
+        { "a mapped IPv6 literal", RECORD_FROM("\"::ffff:192.168.50.1\"") },
+        { "sixteen characters (one beyond the longest literal)", RECORD_FROM("\"192.168.150.1000\"") },
+        { "300 characters", RECORD_FROM("\"1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111" "1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111" "1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\"") },
+        { "an escaped digit that makes a valid text is still its text: an escaped 0 byte", RECORD_FROM("\"192.168.50.1\\u0000\"") },
+        { "a line feed inside", RECORD_FROM("\"192.168.50.1\\n\"") },
+        { "a number, not a string", RECORD_FROM("3232248321") },
+        { "null", RECORD_FROM("null") },
+        { "a word", RECORD_FROM("true") },
+        { "an object", RECORD_FROM("{\"address\":\"192.168.50.1\"}") },
+        { "a list", RECORD_FROM("[\"192.168.50.1\"]") },
+        { "no value", RECORD_FROM("") },
+        { "the source address twice", "{\"type\":\"start\",\"mode\":\"record\",\"source\":\"192.168.50.1\",\"source\":\"192.168.50.1\",\"ingest\":\"" INGEST "\"," ACCESS "}\n" },
+        { "the source address twice, the second another", "{\"type\":\"start\",\"mode\":\"probe\",\"source\":\"192.168.50.1\",\"source\":\"10.0.0.1\"," ACCESS "}\n" },
+        { "the source address inside the access", "{\"type\":\"start\",\"mode\":\"probe\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\",\"source\":\"192.168.50.1\"}}\n" },
+        { "the member in another case", "{\"type\":\"start\",\"mode\":\"record\",\"Source\":\"192.168.50.1\",\"ingest\":\"" INGEST "\"," ACCESS "}\n" },
+        { "a member of a like name", "{\"type\":\"start\",\"mode\":\"record\",\"source\":\"192.168.50.1\",\"sourcePort\":\"1\",\"ingest\":\"" INGEST "\"," ACCESS "}\n" },
+    };
+    for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
+        RelayCode r = parse_exact(refused[i].line, &s);
+        checks++;
+        if (r != RELAY_START_MESSAGE_INVALID || memcmp(&s, &empty, sizeof s)) { failed++; printf("relay_unit_test: FAILED: row 143b, source address: %s is not refused, or something of it was kept\n", refused[i].what); }
+    }
+}
+
+#define SDP_RATE(lines)"v=0\r\nm=video 0 RTP/AVP 96\r\na=rtpmap:96 H264/90000\r\n" lines "a=control:t\r\n"
+
+static long rate_stated(const char *text) {
+    size_t n = strlen(text);
+    char *copy = exact(text, n);
+    RelayDescription d;
+    RelayCode r = relay_description_parse(copy, n, &d);
+    free(copy);
+    return r == RELAY_STOPPED && d.codec == RELAY_CODEC_H264 ? d.rate_milli : -99;
+}
+
+static void stated_rate(void) {
+    static const struct { const char *what, *text; long milli; } rows[] = {
+        { "no rate line", SDP_RATE(""), 0 },
+        { "25", SDP_RATE("a=framerate:25\r\n"), 25000 },
+        { "29.97", SDP_RATE("a=framerate:29.97\r\n"), 29970 },
+        { "12.5", SDP_RATE("a=framerate:12.5\r\n"), 12500 },
+        { "0.001, the smallest", SDP_RATE("a=framerate:0.001\r\n"), 1 },
+        { "1000, the largest", SDP_RATE("a=framerate:1000\r\n"), RELAY_RATE_MILLI_MAX },
+        { "a blank after it", SDP_RATE("a=framerate:30 \r\n"), 30000 },
+        { "the name in another case", SDP_RATE("A=FrameRate:30\r\n"), 30000 },
+        { "0", SDP_RATE("a=framerate:0\r\n"), 0 },
+        { "0.000", SDP_RATE("a=framerate:0.000\r\n"), 0 },
+        { "1000.001, beyond the bound", SDP_RATE("a=framerate:1000.001\r\n"), 0 },
+        { "1001", SDP_RATE("a=framerate:1001\r\n"), 0 },
+        { "five digits", SDP_RATE("a=framerate:10000\r\n"), 0 },
+        { "a number too long for any integer", SDP_RATE("a=framerate:99999999999999999999999999999999\r\n"), 0 },
+        { "four places", SDP_RATE("a=framerate:25.0000\r\n"), 0 },
+        { "a point and nothing", SDP_RATE("a=framerate:25.\r\n"), 0 },
+        { "nothing before the point", SDP_RATE("a=framerate:.5\r\n"), 0 },
+        { "negative", SDP_RATE("a=framerate:-25\r\n"), 0 },
+        { "a unit after it", SDP_RATE("a=framerate:25fps\r\n"), 0 },
+        { "a blank before it", SDP_RATE("a=framerate: 25\r\n"), 0 },
+        { "empty", SDP_RATE("a=framerate:\r\n"), 0 },
+        { "two points", SDP_RATE("a=framerate:2.5.1\r\n"), 0 },
+        { "an exponent", SDP_RATE("a=framerate:2e1\r\n"), 0 },
+        { "markup and 300 characters", SDP_RATE("a=framerate:<b>" "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789" "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789" "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789" "</b>\r\n"), 0 },
+        { "stated twice, the same", SDP_RATE("a=framerate:25\r\na=framerate:25\r\n"), 0 },
+        { "stated twice, one not readable", SDP_RATE("a=framerate:25\r\na=framerate:x\r\n"), 0 },
+        { "stated before the video section only", "v=0\r\na=framerate:25\r\nm=video 0 RTP/AVP 96\r\na=rtpmap:96 H264/90000\r\n", 0 },
+        { "stated in a later section only", "v=0\r\nm=video 0 RTP/AVP 96\r\na=rtpmap:96 H264/90000\r\nm=audio 0 RTP/AVP 0\r\na=framerate:25\r\n", 0 },
+    };
+    for (size_t i = 0; i < sizeof rows / sizeof *rows; i++) {
+        long got = rate_stated(rows[i].text);
+        checks++;
+        if (got != rows[i].milli) { failed++; printf("relay_unit_test: FAILED: row 42, stated rate: %s gives %ld, expected %ld\n", rows[i].what, got, rows[i].milli); }
+    }
+    /* The last line of a description without a line end, cut at every length: the value is never read past its end. */
+    static const char tail[] = "v=0\r\nm=video 0 RTP/AVP 96\r\na=rtpmap:96 H264/90000\r\na=framerate:29.970";
+    for (size_t n = sizeof tail - 20; n < sizeof tail; n++) {
+        char *copy = exact(tail, n);
+        RelayDescription d;
+        RelayCode r = relay_description_parse(copy, n, &d);
+        free(copy);
+        checks++;
+        if (!(r == RELAY_STOPPED || r == RELAY_CODEC_NOT_SUPPORTED) || d.rate_milli < 0 || d.rate_milli > RELAY_RATE_MILLI_MAX) { failed++; printf("relay_unit_test: FAILED: row 42, a description cut at %zu bytes\n", n); }
+    }
+}
+
+/* Every byte of a report line is of this set, it ends with ONE line feed, and a 0 follows it. */
+static int fixed_shape(const char *line, int n) {
+    if (n < 2 || n > RELAY_REPORT_MAX || line[n - 1] != '\n' || line[n] != 0 || line[0] != '{' || line[n - 2] != '}') return 0;
+    for (int i = 0; i < n - 1; i++) if (!strchr("{}\":,_0123456789abcdefghijklmnopqrstuvwxyzHEVC", line[i])) return 0;
+    return 1;
+}
+
+static void report_lines(void) {
+    char line[RELAY_REPORT_MAX + 1], *small;
+    static ParamSets h264, hevc, big, bad;
+    int n;
+    /* the established line */
+    n = relay_established_line(0, line, sizeof line);
+    static const char none_stated[] = "{\"report\":\"push_established\",\"v\":1,\"attempt\":0}\n";
+    CHECK("established line, no attempt stated", n == (int)sizeof none_stated - 1 && !strcmp(line, none_stated) && fixed_shape(line, n));
+    n = relay_established_line(42, line, sizeof line);
+    CHECK("established line with its attempt", n == (int)sizeof none_stated && !strcmp(line, "{\"report\":\"push_established\",\"v\":1,\"attempt\":42}\n") && fixed_shape(line, n));
+    int longest = relay_established_line(RELAY_ATTEMPT_MAX, line, sizeof line);
+    CHECK("established line, the largest attempt", longest == (int)sizeof none_stated + 7 && !strcmp(line, "{\"report\":\"push_established\",\"v\":1,\"attempt\":999999999}\n") && fixed_shape(line, longest));
+    CHECK("established line: a negative attempt is no line", relay_established_line(-1, line, sizeof line) == -1 && line[0] == 0);
+    CHECK("established line: an attempt beyond the bound is no line", relay_established_line(RELAY_ATTEMPT_MAX + 1, line, sizeof line) == -1 && line[0] == 0);
+    CHECK("established line: no buffer is no line", relay_established_line(1, NULL, 64) == -1 && relay_established_line(1, line, 0) == -1);
+    for (int cap = 1; cap <= longest + 4; cap++) {
+        small = malloc((size_t)cap);
+        n = relay_established_line(RELAY_ATTEMPT_MAX, small, (size_t)cap);
+        checks++;
+        if (cap <= longest ? !(n == -1 && small[0] == 0) : !(n == longest && fixed_shape(small, n))) { failed++; printf("relay_unit_test: FAILED: row 42, established line into %d bytes gives %d\n", cap, n); }
+        free(small);
+    }
+    /* the probe line */
+    memcpy(h264.sps, "\x67\x42\xC0\x1F", 4); h264.sps_len = 4;
+    memcpy(h264.pps, "\x68\xCE", 2); h264.pps_len = 2;
+    memcpy(h264.vps, "\x40\x01\x0C", 3); h264.vps_len = 3;              /* a VPS has no place in H.264: it is not written */
+    RelayProbe p = { 5, RELAY_CODEC_H264, 1920, 1080, 25000, 1, 0, &h264 };
+    n = relay_probe_line(&p, line, sizeof line);
+    CHECK("probe line, H.264: the fixed members in their order, the sets in hexadecimal, no VPS",
+          n > 0 && fixed_shape(line, n) && !strcmp(line, "{\"report\":\"probe\",\"v\":1,\"attempt\":5,\"codec\":\"H264\",\"width\":1920,\"height\":1080,\"rate_milli\":25000,\"sets_in_description\":true,\"sets_in_stream\":false,\"vps\":\"\",\"sps\":\"6742c01f\",\"pps\":\"68ce\"}\n"));
+    memcpy(hevc.vps, "\x40\x01\x0C", 3); hevc.vps_len = 3;
+    memcpy(hevc.sps, "\x42\x01\x01\x00\x22\x0A", 6); hevc.sps_len = 6;  /* bytes that would be a quote and a line feed as text */
+    memcpy(hevc.pps, "\x44\x01\xC0", 3); hevc.pps_len = 3;
+    RelayProbe q = { 0, RELAY_CODEC_HEVC, 3840, 2160, 0, 0, 1, &hevc };
+    n = relay_probe_line(&q, line, sizeof line);
+    CHECK("probe line, HEVC: no rate stated is 0, bytes of the sets are never text",
+          n > 0 && fixed_shape(line, n) && !strcmp(line, "{\"report\":\"probe\",\"v\":1,\"attempt\":0,\"codec\":\"HEVC\",\"width\":3840,\"height\":2160,\"rate_milli\":0,\"sets_in_description\":false,\"sets_in_stream\":true,\"vps\":\"40010c\",\"sps\":\"42010100220a\",\"pps\":\"4401c0\"}\n"));
+    /* the largest line there can be: three sets at their bound, every number at its bound */
+    memset(&big, 0xFF, sizeof big);
+    big.vps[0] = 0x40; big.vps[1] = 0x01; big.sps[0] = 0x42; big.sps[1] = 0x01; big.pps[0] = 0x44; big.pps[1] = 0x01;
+    big.vps_len = big.sps_len = big.pps_len = RELAY_PSET_MAX;
+    RelayProbe most = { RELAY_ATTEMPT_MAX, RELAY_CODEC_HEVC, RELAY_SIDE_MAX, RELAY_SIDE_MAX, RELAY_RATE_MILLI_MAX, 0, 0, &big };
+    int largest = relay_probe_line(&most, line, sizeof line);
+    CHECK("probe line: the largest line there can be is inside RELAY_REPORT_MAX and of the fixed shape", largest > 6 * RELAY_PSET_MAX && largest <= RELAY_REPORT_MAX && fixed_shape(line, largest));
+    for (int cap = largest - 3; cap <= largest + 2; cap++) {
+        small = malloc((size_t)cap);
+        n = relay_probe_line(&most, small, (size_t)cap);
+        checks++;
+        if (cap <= largest ? !(n == -1 && small[0] == 0) : !(n == largest && fixed_shape(small, n))) { failed++; printf("relay_unit_test: FAILED: row 42, the largest probe line (%d bytes) into %d bytes gives %d\n", largest, cap, n); }
+        free(small);
+    }
+    for (size_t cap = 1; cap < 260; cap += 7) {
+        small = malloc(cap);
+        n = relay_probe_line(&p, small, cap);
+        checks++;
+        if (n != -1 && !(n > 0 && (size_t)n < cap && fixed_shape(small, n))) { failed++; printf("relay_unit_test: FAILED: row 42, probe line into %zu bytes gives %d\n", cap, n); }
+        if (n == -1 && small[0] != 0) { failed++; printf("relay_unit_test: FAILED: row 42, a probe line that does not fit %zu bytes left a part of itself\n", cap); }
+        free(small);
+    }
+    /* values outside their bounds: no line, and nothing of one in the buffer */
+#define NO_LINE(what, change) do { RelayProbe x = p; change; line[0] = 'x'; CHECK("probe line: " what " is no line", relay_probe_line(&x, line, sizeof line) == -1 && line[0] == 0); } while (0)
+    NO_LINE("no codec", x.codec = RELAY_CODEC_NONE);
+    NO_LINE("a codec of no name", x.codec = (RelayCodec)7);
+    NO_LINE("width 0", x.width = 0);
+    NO_LINE("a negative width", x.width = -1920);
+    NO_LINE("a width beyond the bound", x.width = RELAY_SIDE_MAX + 1);
+    NO_LINE("height 0", x.height = 0);
+    NO_LINE("a height beyond the bound", x.height = RELAY_SIDE_MAX + 1);
+    NO_LINE("a negative rate", x.rate_milli = -1);
+    NO_LINE("a rate beyond the bound", x.rate_milli = RELAY_RATE_MILLI_MAX + 1);
+    NO_LINE("a negative attempt", x.attempt = -1);
+    NO_LINE("an attempt beyond the bound", x.attempt = RELAY_ATTEMPT_MAX + 1);
+    NO_LINE("no sets", x.sets = NULL);
+    NO_LINE("HEVC named with the sets of H.264", x.codec = RELAY_CODEC_HEVC);
+    bad = h264; bad.sps[0] = 0x68;
+    NO_LINE("an SPS that is none", x.sets = &bad);
+    bad = h264; bad.sps[0] = 0xE7;
+    NO_LINE("an SPS with the forbidden bit", x.sets = &bad);
+    bad = h264; bad.pps_len = 0;
+    NO_LINE("sets that are not complete", x.sets = &bad);
+    bad = h264; bad.sps_len = RELAY_PSET_MAX + 1;
+    NO_LINE("a set beyond its bound", x.sets = &bad);
+    bad = h264; bad.pps_len = -1;
+    NO_LINE("a set of negative length", x.sets = &bad);
+#undef NO_LINE
+    CHECK("probe line: no report, no buffer", relay_probe_line(NULL, line, sizeof line) == -1 && relay_probe_line(&p, NULL, 64) == -1 && relay_probe_line(&p, line, 0) == -1);
+    CHECK("the code of a report that could not be written has its word", !strcmp(relay_code_name(RELAY_REPORT_NOT_WRITTEN), "REPORT_NOT_WRITTEN"));
+}
+
+/* ---------------------------------------------------------------- row 43: the re-open - its rule and its two lines */
+static void reopen_rule(void) {
+    char line[RELAY_REPORT_MAX + 1], *small;
+    static ParamSets a, b;
+    int n;
+    /* which end of the camera leg is opened again */
+    CHECK("re-open: a camera that is lost, stalled or not reachable is opened again", relay_loss_kind(RELAY_CAMERA_LOST) == RELAY_LOSS_RETRIED && relay_loss_kind(RELAY_CAMERA_STALLED) == RELAY_LOSS_RETRIED && relay_loss_kind(RELAY_CAMERA_UNREACHABLE) == RELAY_LOSS_RETRIED);
+    CHECK("re-open: a refused answer is opened again and counted", relay_loss_kind(RELAY_AUTH_REFUSED) == RELAY_LOSS_REFUSAL && RELAY_AUTH_REFUSALS == 2);
+    static const RelayCode ends[] = { RELAY_STOPPED, RELAY_STOP_ASKED, RELAY_CAMERA_PROTOCOL, RELAY_AUTH_SCHEME_NOT_ALLOWED, RELAY_LOCATOR_NOT_FOUND, RELAY_REDIRECT_REFUSED, RELAY_CONTROL_ADDRESS_REFUSED, RELAY_DESCRIPTION_INVALID,
+                                      RELAY_CODEC_NOT_SUPPORTED, RELAY_TRANSPORT_REFUSED, RELAY_KEYFRAME_TIMEOUT, RELAY_STREAM_INVALID, RELAY_INGEST_REFUSED, RELAY_INGEST_LOST, RELAY_SOCKET_RULE, RELAY_REPORT_NOT_WRITTEN, RELAY_INTERNAL, (RelayCode)999 };
+    for (size_t i = 0; i < sizeof ends / sizeof *ends; i++) { checks++; if (relay_loss_kind(ends[i]) != RELAY_LOSS_ENDS) { failed++; printf("relay_unit_test: FAILED: row 43, code %d does not end the relay\n", (int)ends[i]); } }
+    /* the waits: 2, 2, 4, 8, 16, 30 s, then no more */
+    static const int waits[] = { 2, 2, 4, 8, 16, 30 };
+    int64_t sum = 0;
+    for (int i = 0; i < 6; i++) { sum += relay_retry_wait_us(i); CHECK("re-open: the wait before each try", relay_retry_wait_us(i) == (int64_t)waits[i] * 1000000); }
+    CHECK("re-open: six tries, 62 s of waits, then the tries are used up", RELAY_RETRY_TRIES == 6 && sum == 62000000 && relay_retry_wait_us(6) == 0 && relay_retry_wait_us(7) == 0 && relay_retry_wait_us(-1) == 0 && relay_retry_wait_us(1 << 30) == 0);
+    /* the stream of a new leg is the announced one */
+    memcpy(a.sps, "\x67\x42\xC0\x1F", 4); a.sps_len = 4;
+    memcpy(a.pps, "\x68\xCE", 2); a.pps_len = 2;
+    b = a;
+    CHECK("re-open: the same codec and the same sets are the same stream", relay_same_stream(RELAY_CODEC_H264, &a, RELAY_CODEC_H264, &b));
+    b.vps_len = 3;
+    CHECK("re-open: a VPS has no say in H.264", relay_same_stream(RELAY_CODEC_H264, &a, RELAY_CODEC_H264, &b));
+    CHECK("re-open: HEVC with sets that lack the VPS is not the same stream", !relay_same_stream(RELAY_CODEC_HEVC, &a, RELAY_CODEC_HEVC, &a));
+    b = a; b.sps[3] = 0x1E;
+    CHECK("re-open: one byte of the SPS differs", !relay_same_stream(RELAY_CODEC_H264, &a, RELAY_CODEC_H264, &b));
+    b = a; b.pps_len = 1;
+    CHECK("re-open: a PPS of another length", !relay_same_stream(RELAY_CODEC_H264, &a, RELAY_CODEC_H264, &b));
+    b = a; b.pps_len = 0;
+    CHECK("re-open: a set that is missing", !relay_same_stream(RELAY_CODEC_H264, &a, RELAY_CODEC_H264, &b) && !relay_same_stream(RELAY_CODEC_H264, &b, RELAY_CODEC_H264, &b));
+    b = a; b.sps_len = RELAY_PSET_MAX + 1;
+    CHECK("re-open: a set beyond its bound is never compared", !relay_same_stream(RELAY_CODEC_H264, &b, RELAY_CODEC_H264, &b));
+    CHECK("re-open: another codec, no codec, no sets", !relay_same_stream(RELAY_CODEC_H264, &a, RELAY_CODEC_HEVC, &a) && !relay_same_stream(RELAY_CODEC_NONE, &a, RELAY_CODEC_NONE, &a) && !relay_same_stream(RELAY_CODEC_H264, NULL, RELAY_CODEC_H264, &a) && !relay_same_stream(RELAY_CODEC_H264, &a, RELAY_CODEC_H264, NULL));
+    /* the line of a loss */
+    n = relay_loss_line(7, 1, RELAY_CAMERA_LOST, line, sizeof line);
+    CHECK("loss line: the attempt, the number of the loss, the cause as the number of its code", n > 0 && fixed_shape(line, n) && !strcmp(line, "{\"report\":\"camera_lost\",\"v\":1,\"attempt\":7,\"loss\":1,\"cause\":32}\n"));
+    n = relay_loss_line(0, RELAY_COUNT_MAX, RELAY_AUTH_REFUSED, line, sizeof line);
+    CHECK("loss line: no attempt stated is 0; a refusal is a cause", n > 0 && fixed_shape(line, n) && !strcmp(line, "{\"report\":\"camera_lost\",\"v\":1,\"attempt\":0,\"loss\":999999999,\"cause\":23}\n"));
+    CHECK("loss line: the two other causes", relay_loss_line(1, 2, RELAY_CAMERA_STALLED, line, sizeof line) > 0 && strstr(line, "\"cause\":31}") && relay_loss_line(1, 2, RELAY_CAMERA_UNREACHABLE, line, sizeof line) > 0 && strstr(line, "\"cause\":20}"));
+#define NO_LOSS(what, call) do { line[0] = 'x'; CHECK("loss line: " what " is no line", (call) == -1 && line[0] == 0); } while (0)
+    NO_LOSS("a cause that ends the relay", relay_loss_line(1, 1, RELAY_LOCATOR_NOT_FOUND, line, sizeof line));
+    NO_LOSS("no cause", relay_loss_line(1, 1, RELAY_STOPPED, line, sizeof line));
+    NO_LOSS("loss 0", relay_loss_line(1, 0, RELAY_CAMERA_LOST, line, sizeof line));
+    NO_LOSS("a negative loss", relay_loss_line(1, -1, RELAY_CAMERA_LOST, line, sizeof line));
+    NO_LOSS("a loss beyond the bound", relay_loss_line(1, RELAY_COUNT_MAX + 1, RELAY_CAMERA_LOST, line, sizeof line));
+    NO_LOSS("a negative attempt", relay_loss_line(-1, 1, RELAY_CAMERA_LOST, line, sizeof line));
+    NO_LOSS("an attempt beyond the bound", relay_loss_line(RELAY_ATTEMPT_MAX + 1, 1, RELAY_CAMERA_LOST, line, sizeof line));
+    CHECK("loss line: no buffer is no line", relay_loss_line(1, 1, RELAY_CAMERA_LOST, NULL, 64) == -1 && relay_loss_line(1, 1, RELAY_CAMERA_LOST, line, 0) == -1);
+    /* the line of a re-open */
+    n = relay_reopened_line(7, 1, 3, 15, 8040, line, sizeof line);
+    CHECK("re-open line: the attempt, the loss it ends, the tries, what was held back, the gap", n > 0 && fixed_shape(line, n) && !strcmp(line, "{\"report\":\"camera_reopened\",\"v\":1,\"attempt\":7,\"loss\":1,\"tries\":3,\"held_back\":15,\"gap_ms\":8040}\n"));
+    int longest = relay_reopened_line(RELAY_ATTEMPT_MAX, RELAY_COUNT_MAX, RELAY_RETRY_TRIES, RELAY_COUNT_MAX, RELAY_COUNT_MAX, line, sizeof line);
+    CHECK("re-open line: every number at its bound", longest > 0 && longest < 160 && fixed_shape(line, longest) && !strcmp(line, "{\"report\":\"camera_reopened\",\"v\":1,\"attempt\":999999999,\"loss\":999999999,\"tries\":6,\"held_back\":999999999,\"gap_ms\":999999999}\n"));
+    NO_LOSS("re-open with 0 tries", relay_reopened_line(1, 1, 0, 0, 0, line, sizeof line));
+    NO_LOSS("re-open with seven tries", relay_reopened_line(1, 1, RELAY_RETRY_TRIES + 1, 0, 0, line, sizeof line));
+    NO_LOSS("re-open of loss 0", relay_reopened_line(1, 0, 1, 0, 0, line, sizeof line));
+    NO_LOSS("re-open with a negative count held back", relay_reopened_line(1, 1, 1, -1, 0, line, sizeof line));
+    NO_LOSS("re-open with a count held back beyond the bound", relay_reopened_line(1, 1, 1, RELAY_COUNT_MAX + 1, 0, line, sizeof line));
+    NO_LOSS("re-open with a negative gap", relay_reopened_line(1, 1, 1, 0, -1, line, sizeof line));
+    NO_LOSS("re-open with a gap beyond the bound", relay_reopened_line(1, 1, 1, 0, RELAY_COUNT_MAX + 1, line, sizeof line));
+    NO_LOSS("re-open with an attempt beyond the bound", relay_reopened_line(RELAY_ATTEMPT_MAX + 1, 1, 1, 0, 0, line, sizeof line));
+#undef NO_LOSS
+    for (int cap = 1; cap <= longest + 4; cap++) {
+        small = malloc((size_t)cap);
+        n = relay_reopened_line(RELAY_ATTEMPT_MAX, RELAY_COUNT_MAX, RELAY_RETRY_TRIES, RELAY_COUNT_MAX, RELAY_COUNT_MAX, small, (size_t)cap);
+        checks++;
+        if (cap <= longest ? !(n == -1 && small[0] == 0) : !(n == longest && fixed_shape(small, n))) { failed++; printf("relay_unit_test: FAILED: row 43, re-open line into %d bytes gives %d\n", cap, n); }
+        n = relay_loss_line(RELAY_ATTEMPT_MAX, RELAY_COUNT_MAX, RELAY_CAMERA_LOST, small, (size_t)cap);
+        checks++;
+        if (n != -1 ? !(n < cap && fixed_shape(small, n)) : small[0] != 0) { failed++; printf("relay_unit_test: FAILED: row 43, loss line into %d bytes gives %d\n", cap, n); }
+        free(small);
     }
 }
 
@@ -757,24 +1131,47 @@ static void depacketiser(void) {
 }
 
 /* ---------------------------------------------------------------- the camera leg itself, on a socket pair */
-typedef struct Wire { RelayCamera *camera; RelayStart start; int peer; } Wire;
+/* `rest`: what the socket pair did not take at once (task 4 row 193, finding L-5 of row 78). A system grants a pair
+ * the buffer it likes: this Mac holds the 600 KiB of the largest case, Linux caps an unprivileged buffer below
+ * that. The rest is then said by a thread of the test, in order, as the relay reads - the camera says the same
+ * bytes and ends the same way, on both systems. */
+typedef struct Wire { RelayCamera *camera; RelayStart start; int peer; const char *rest; size_t rest_n; pthread_t feeder; int fed; } Wire;
+
+static void *wire_feed(void *arg) {
+    Wire *w = arg;
+    for (size_t at = 0; at < w->rest_n;) {
+        struct pollfd p = { .fd = w->peer, .events = POLLOUT };
+        if (poll(&p, 1, 30000) <= 0) break;         /* nobody reads for 30 s: the check that waits for these bytes fails */
+        ssize_t k = write(w->peer, w->rest + at, w->rest_n - at);
+        if (k < 0 && (errno == EAGAIN || errno == EINTR)) continue;
+        if (k <= 0) break;                          /* the relay closed its end: it wants no more */
+        at += (size_t)k;
+    }
+    shutdown(w->peer, SHUT_WR);                     /* the camera has said everything: the relay then sees its end */
+    return NULL;
+}
 
 static void wire_open(Wire *w, const void *bytes, size_t n) {
     int fd[2], big = 1 << 20;
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, fd)) abort();
     for (int i = 0; i < 2; i++) { setsockopt(fd[i], SOL_SOCKET, SO_SNDBUF, &big, sizeof big); setsockopt(fd[i], SOL_SOCKET, SO_RCVBUF, &big, sizeof big); }
     fcntl(fd[1], F_SETFL, fcntl(fd[1], F_GETFL) | O_NONBLOCK);
-    for (size_t at = 0; at < n;) {
+    size_t at = 0;
+    while (at < n) {
         ssize_t k = write(fd[1], (const char *)bytes + at, n - at);
-        if (k <= 0) { printf("relay_unit_test: the socket pair does not hold %zu bytes\n", n); abort(); }
+        if (k < 0 && errno == EINTR) continue;
+        if (k < 0 && errno == EAGAIN) break;        /* the pair is full: the thread says the rest */
+        if (k <= 0) { printf("relay_unit_test: the socket pair does not take the camera's bytes (%zu of %zu)\n", at, n); fflush(stdout); abort(); }
         at += (size_t)k;
     }
-    shutdown(fd[1], SHUT_WR);                       /* the camera has said everything: the relay then sees its end */
+    w->peer = fd[1];
+    w->rest = (const char *)bytes + at; w->rest_n = n - at; w->fed = 0;
+    if (w->rest_n) { if (pthread_create(&w->feeder, NULL, wire_feed, w)) abort(); w->fed = 1; }
+    else shutdown(fd[1], SHUT_WR);                  /* the camera has said everything: the relay then sees its end */
     parse(GOOD, &w->start);
     w->camera = relay_camera_new(&w->start, NULL, NULL);
     if (!w->camera) abort();
     relay_camera_adopt(w->camera, fd[0]);
-    w->peer = fd[1];
 }
 
 /* What the relay sent to the camera so far, as a text. */
@@ -791,7 +1188,8 @@ static const char *wire_sent(Wire *w) {
 }
 
 static void wire_close(Wire *w) {
-    relay_camera_close(w->camera);
+    relay_camera_close(w->camera);                  /* the relay's end is closed first: a thread that still has bytes to say ends on it */
+    if (w->fed) { pthread_join(w->feeder, NULL); w->fed = 0; }
     close(w->peer);
 }
 
@@ -977,6 +1375,186 @@ static void client(void) {
     wire_close(&w);
 }
 
+/* ---------------------------------------------------------------- row 43: a leg given up, and the next one */
+/* The camera of `w` on a NEW connection that says `bytes`; what the relay said on the old one is not read here. */
+static void wire_again(Wire *w, const void *bytes, size_t n) {
+    int fd[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, fd)) abort();
+    fcntl(fd[1], F_SETFL, fcntl(fd[1], F_GETFL) | O_NONBLOCK);
+    if (write(fd[1], bytes, n) != (ssize_t)n) abort();
+    shutdown(fd[1], SHUT_WR);
+    if (w->fed) { pthread_join(w->feeder, NULL); w->fed = 0; }
+    close(w->peer);
+    relay_camera_adopt(w->camera, fd[0]);
+    w->peer = fd[1];
+}
+
+static int count_of(const char *text, const char *word) {
+    int k = 0;
+    for (const char *at = text; (at = strstr(at, word)); at += strlen(word)) k++;
+    return k;
+}
+
+#define OPEN_DESCRIBE "RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Base: rtsp://192.0.2.10:8554/media/video1/\r\nContent-Type: application/sdp\r\nContent-Length: 69\r\n\r\n" SDP
+#define OPEN_DIALOGUE OPEN_DESCRIBE "RTSP/1.0 200 OK\r\nCSeq: 2\r\nTransport: RTP/AVP/TCP;unicast;interleaved=0-1\r\nSession: 12345678;timeout=60\r\n\r\n" "RTSP/1.0 200 OK\r\nCSeq: 3\r\nSession: 12345678\r\n\r\n"
+static void reopened_leg(void) {
+    RelayDescription d;
+    Wire w;
+    const char *sent;
+    current_case = 0;
+    /* a camera with Digest: the key of the realm answers on the new connection, after ITS challenge and not before */
+    wire_open(&w, B(DIALOGUE));
+    CHECK("re-open: the first leg opens", relay_camera_open(w.camera, &d) == RELAY_STOPPED);
+    sent = wire_sent(&w);
+    CHECK("re-open: the first leg sent one request without an answer and three with one", count_of(sent, " RTSP/1.0\r\n") == 4 && count_of(sent, "Authorization: Digest ") == 3);
+    relay_camera_drop(w.camera);
+    CHECK("re-open: a leg that is given up has no socket", relay_camera_socket(w.camera) == -1);
+    CHECK("re-open: nothing was said to the camera when the leg was given up (no TEARDOWN)", count_of(wire_sent(&w), "TEARDOWN") == 0);
+    wire_again(&w, B(DIALOGUE));
+    CHECK("re-open: the second leg opens with the key of the realm (the password is long overwritten)", relay_camera_open(w.camera, &d) == RELAY_STOPPED && w.start.secret[0] == 0);
+    sent = wire_sent(&w);
+    CHECK("re-open: its first request carries NO answer - the challenge of the old connection is not carried over", !strncmp(sent, "DESCRIBE ", 9) && strstr(sent, "\r\n\r\n") && strstr(sent, "Authorization") > strstr(sent, "\r\n\r\n"));
+    CHECK("re-open: then three requests with a Digest answer, counted from 1 again", count_of(sent, " RTSP/1.0\r\n") == 4 && count_of(sent, "Authorization: Digest ") == 3 && count_of(sent, "CSeq: 1\r\n") == 1 && count_of(sent, "Session: 12345678") == 1);
+    /* the second leg is refused: nothing more leaves, and a third leg is asked again from nothing */
+    relay_camera_drop(w.camera);
+    wire_again(&w, B(ANSWER_401 "RTSP/1.0 401 U\r\nCSeq: 2\r\nWWW-Authenticate: Digest realm=\"unit\", nonce=\"m\"\r\n\r\n"));
+    CHECK("re-open: a leg whose answer is refused ends with AUTH_REFUSED", relay_camera_open(w.camera, &d) == RELAY_AUTH_REFUSED);
+    CHECK("re-open: ONE request carried an answer on that leg", count_of(wire_sent(&w), "Authorization: ") == 1);
+    wire_close(&w);
+    wire_open(&w, B(DIALOGUE));
+    CHECK("re-open: (another realm) the first leg opens", relay_camera_open(w.camera, &d) == RELAY_STOPPED);
+    relay_camera_drop(w.camera);
+    wire_again(&w, B("RTSP/1.0 401 U\r\nCSeq: 1\r\nWWW-Authenticate: Digest realm=\"other\", nonce=\"n\"\r\n\r\n"));
+    CHECK("re-open: a challenge of another realm ends with AUTH_REFUSED", relay_camera_open(w.camera, &d) == RELAY_AUTH_REFUSED);
+    CHECK("re-open: and NO request carried an answer to it", count_of(wire_sent(&w), "Authorization") == 0);
+    relay_camera_drop(w.camera);
+    wire_again(&w, B("RTSP/1.0 404 Not Found\r\nCSeq: 1\r\n\r\n"));
+    CHECK("re-open: a camera that has no stream at the path any more: LOCATOR_NOT_FOUND", relay_camera_open(w.camera, &d) == RELAY_LOCATOR_NOT_FOUND);
+    relay_camera_drop(w.camera);
+    wire_again(&w, B("RTSP/1.0 401 U\r\nCSeq: 1\r\nWWW-Authenticate: Basic realm=\"unit\"\r\n\r\n"));
+    CHECK("re-open: a camera that comes back with a Basic challenge only: AUTH_SCHEME_NOT_ALLOWED, nothing sent", relay_camera_open(w.camera, &d) == RELAY_AUTH_SCHEME_NOT_ALLOWED && count_of(wire_sent(&w), "Authorization") == 0);
+    wire_close(&w);
+    /* a camera that asked for no answer on the first leg and challenges on the second: the password is gone */
+    wire_open(&w, B(OPEN_DIALOGUE));
+    CHECK("re-open: a camera without a challenge opens", relay_camera_open(w.camera, &d) == RELAY_STOPPED && count_of(wire_sent(&w), "Authorization") == 0);
+    relay_wipe(w.start.secret, sizeof w.start.secret);          /* as relay.c does when the first open returned */
+    relay_camera_drop(w.camera);
+    wire_again(&w, B(OPEN_DIALOGUE));
+    CHECK("re-open: it opens again without a challenge", relay_camera_open(w.camera, &d) == RELAY_STOPPED && count_of(wire_sent(&w), "Authorization") == 0);
+    relay_camera_drop(w.camera);
+    wire_again(&w, B(DIALOGUE));
+    CHECK("re-open: when it challenges now it is NOT answered (no key was ever made, the password is overwritten)", relay_camera_open(w.camera, &d) == RELAY_AUTH_REFUSED);
+    CHECK("re-open: and no request carried an answer made from an overwritten password", count_of(wire_sent(&w), "Authorization") == 0);
+    wire_close(&w);
+}
+
+/* ROW 143b: THE ONE DIAL and the source address (relay_rtsp.c `dial`, through relay_camera_open as the relay calls
+ * it). No listener is made and no camera is contacted: the camera of these start messages is loopback, port 1,
+ * where nothing listens. What is looked at is the socket's OWN end after the dial (getsockname).
+ *   - a source address this host does not hold (192.0.2.1, a documentation address): the dial ends with
+ *     CAMERA_UNREACHABLE and the socket has no address and no port of its own - no connection was asked for;
+ *   - the same after the leg was given up (relay_camera_drop) and opened again: a re-open is the same dial;
+ *   - a source address this host holds (loopback): the socket's own end IS that address when the connection is
+ *     asked for (it is refused: nothing listens), so the address was given before.
+ * What this cannot show: an address of a second interface (hardware). */
+static int own_end(const RelayCamera *camera, char *address, size_t cap, int *port) {
+    struct sockaddr_in own;
+    socklen_t length = sizeof own;
+    memset(&own, 0, sizeof own);
+    if (relay_camera_socket(camera) < 0 || getsockname(relay_camera_socket(camera), (struct sockaddr *)&own, &length)) return -1;
+    *port = ntohs(own.sin_port);
+    return inet_ntop(AF_INET, &own.sin_addr, address, (socklen_t)cap) ? 0 : -1;
+}
+
+/* Review 060b section 7.4 (1) and note M-08 (row T2): THE TWO CALLS OF THE DIAL ARE SEEN, NOT INFERRED. On loopback a
+ * socket that was never given an address has the same own end as one that was, so `own_end` alone passes with the
+ * bind of `dial` removed. This test program therefore defines `bind` and `connect` itself: the calls of
+ * relay_rtsp.c (linked into this program) arrive here, are written down - how many, on which socket, with which
+ * address and port, and how many binds stood when the connect was asked - and are then passed to the system's own
+ * function, whose answer is returned unchanged. Nothing else of this file calls either (the wires are socket pairs).
+ * The relay itself is not built from this file: its two calls are the system's. */
+static struct { int binds, connects, bind_fd, connect_fd, binds_at_connect, bind_port, bind_family; char bind_address[32]; } dialled;
+static void dialled_reset(void) { memset(&dialled, 0, sizeof dialled); dialled.bind_fd = dialled.connect_fd = dialled.bind_port = -1; }
+int bind(int fd, const struct sockaddr *address, socklen_t length) {
+    static int (*real)(int, const struct sockaddr *, socklen_t);
+    if (!real) real = (int (*)(int, const struct sockaddr *, socklen_t))dlsym(RTLD_NEXT, "bind");
+    if (!real) abort();
+    dialled.binds++;
+    dialled.bind_fd = fd;
+    dialled.bind_family = address ? address->sa_family : -1;
+    dialled.bind_address[0] = 0;
+    if (address && address->sa_family == AF_INET && length >= (socklen_t)sizeof(struct sockaddr_in)) {
+        struct sockaddr_in in;
+        memcpy(&in, address, sizeof in);
+        dialled.bind_port = ntohs(in.sin_port);
+        if (!inet_ntop(AF_INET, &in.sin_addr, dialled.bind_address, sizeof dialled.bind_address)) dialled.bind_address[0] = 0;
+    }
+    return real(fd, address, length);
+}
+int connect(int fd, const struct sockaddr *address, socklen_t length) {
+    static int (*real)(int, const struct sockaddr *, socklen_t);
+    if (!real) real = (int (*)(int, const struct sockaddr *, socklen_t))dlsym(RTLD_NEXT, "connect");
+    if (!real) abort();
+    dialled.connects++;
+    dialled.connect_fd = fd;
+    dialled.binds_at_connect = dialled.binds;
+    return real(fd, address, length);
+}
+/* ONE bind of this socket with this address and no port, and it stood BEFORE the one connect of the same socket. */
+static int bound_then_connected(const RelayCamera *camera, const char *source) {
+    return dialled.binds == 1 && dialled.connects == 1 && dialled.binds_at_connect == 1 && dialled.bind_fd == relay_camera_socket(camera) && dialled.connect_fd == dialled.bind_fd
+        && dialled.bind_family == AF_INET && !strcmp(dialled.bind_address, source) && dialled.bind_port == 0;
+}
+
+static void source_dial(void) {
+    RelayStart s;
+    RelayDescription d;
+    char address[32] = "";
+    int port = -1;
+    CHECK("dial: a start message with a source address this host does not hold", parse_exact("{\"type\":\"start\",\"mode\":\"record\",\"source\":\"192.0.2.1\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://127.0.0.1:1/a\",\"username\":\"u\",\"secret\":\"s\"}}\n", &s) == RELAY_STOPPED);
+    RelayCamera *camera = relay_camera_new(&s, NULL, NULL);
+    if (!camera) abort();
+    dialled_reset();
+    CHECK("dial: an address this host does not hold ends the leg as a camera that cannot be reached", relay_camera_open(camera, &d) == RELAY_CAMERA_UNREACHABLE);
+    CHECK("dial: and no connection was asked for (the socket has no address and no port of its own)", own_end(camera, address, sizeof address, &port) == 0 && !strcmp(address, "0.0.0.0") && port == 0);
+    CHECK("dial: the calls - ONE bind of the camera socket with that address and no port, and connect was called 0 times", dialled.binds == 1 && dialled.connects == 0 && dialled.bind_fd == relay_camera_socket(camera) && !strcmp(dialled.bind_address, "192.0.2.1") && dialled.bind_port == 0);
+    CHECK("dial: nothing was sent, nothing was answered", relay_camera_counters(camera)->bytes == 0 && relay_camera_counters(camera)->auth_answers == 0 && relay_camera_counters(camera)->challenges == 0);
+    relay_camera_drop(camera);
+    CHECK("re-open: the leg that was given up has no socket", relay_camera_socket(camera) < 0);
+    address[0] = 0; port = -1;
+    dialled_reset();
+    CHECK("re-open: the same dial, the same refusal", relay_camera_open(camera, &d) == RELAY_CAMERA_UNREACHABLE);
+    CHECK("re-open: and again no connection was asked for", own_end(camera, address, sizeof address, &port) == 0 && !strcmp(address, "0.0.0.0") && port == 0);
+    CHECK("re-open: the calls - again ONE bind with that address, and connect was called 0 times", dialled.binds == 1 && dialled.connects == 0 && dialled.bind_fd == relay_camera_socket(camera) && !strcmp(dialled.bind_address, "192.0.2.1") && dialled.bind_port == 0);
+    relay_camera_close(camera);
+
+    CHECK("dial: a start message with a source address this host holds", parse_exact("{\"type\":\"start\",\"mode\":\"record\",\"source\":\"127.0.0.1\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://127.0.0.1:1/a\",\"username\":\"u\",\"secret\":\"s\"}}\n", &s) == RELAY_STOPPED);
+    camera = relay_camera_new(&s, NULL, NULL);
+    if (!camera) abort();
+    address[0] = 0; port = -1;
+    dialled_reset();
+    CHECK("dial: nothing listens there, so the camera cannot be reached", relay_camera_open(camera, &d) == RELAY_CAMERA_UNREACHABLE);
+    /* Review 060b 7.4 (1): the own end alone is the same for a socket that was never given an address (loopback).
+     * What fails without the bind of `dial`, with it after the connect, or with a second one: the calls themselves. */
+    CHECK("dial: the socket's own end is the source address of the start message", own_end(camera, address, sizeof address, &port) == 0 && !strcmp(address, "127.0.0.1") && bound_then_connected(camera, "127.0.0.1"));
+    CHECK("dial: the address was given by ONE bind with no port, BEFORE the one connect of the same socket", bound_then_connected(camera, "127.0.0.1"));
+    relay_camera_drop(camera);
+    address[0] = 0; port = -1;
+    dialled_reset();
+    CHECK("re-open: the same dial - nothing listens, and the address was given before the connect again", relay_camera_open(camera, &d) == RELAY_CAMERA_UNREACHABLE && own_end(camera, address, sizeof address, &port) == 0 && !strcmp(address, "127.0.0.1") && bound_then_connected(camera, "127.0.0.1"));
+    relay_camera_close(camera);
+
+    /* CONTROL of the counters: a probe that states NO source address. The same dial asks for the connection and
+     * gives the socket nothing - so a bind that is counted above is the product's, made because the address was stated. */
+    CHECK("dial (control): a probe without a source address", parse_exact("{\"type\":\"start\",\"mode\":\"probe\",\"access\":{\"locator\":\"rtsp://127.0.0.1:1/a\",\"username\":\"u\",\"secret\":\"s\"}}\n", &s) == RELAY_STOPPED && s.source[0] == 0);
+    camera = relay_camera_new(&s, NULL, NULL);
+    if (!camera) abort();
+    dialled_reset();
+    CHECK("dial (control): nothing listens there", relay_camera_open(camera, &d) == RELAY_CAMERA_UNREACHABLE);
+    CHECK("dial (control): the connection was asked for once and the socket was given NO address (0 binds)", dialled.connects == 1 && dialled.binds == 0 && dialled.connect_fd == relay_camera_socket(camera) && !bound_then_connected(camera, "127.0.0.1"));
+    relay_camera_close(camera);
+}
+
 int main(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN);
     start_message();
@@ -991,7 +1569,14 @@ int main(int argc, char **argv) {
     depacketiser();
     client();
     current_case = 0;
-    CHECK("every code has a name of its own word", !strcmp(relay_code_name(RELAY_AUTH_SCHEME_NOT_ALLOWED), "AUTH_SCHEME_NOT_ALLOWED") && !strcmp(relay_code_name((RelayCode)999), "INTERNAL"));
+    modes_and_attempt();
+    stated_rate();
+    report_lines();
+    reopen_rule();
+    reopened_leg();
+    source_address();
+    source_dial();
+    CHECK("every code has a name of its own word",!strcmp(relay_code_name(RELAY_AUTH_SCHEME_NOT_ALLOWED), "AUTH_SCHEME_NOT_ALLOWED") && !strcmp(relay_code_name((RelayCode)999), "INTERNAL"));
     int named = 0, passed = 0;
     for (int i = 1; i <= CASES; i++) {
         if (case_name[i] && case_checks[i]) named++;
@@ -1000,7 +1585,7 @@ int main(int argc, char **argv) {
     }
     if (named != CASES) { failed++; printf("relay_unit_test: FAILED: %d of the %d named malformed-input cases have a row\n", named, CASES); }
     if (failed) { printf("relay_unit_test: %d of %d checks FAILED\n", failed, checks); return 1; }
-    printf("relay_unit_test: %d checks passed; the %d named malformed-input cases of review 06: %d of %d pass (start message, address rules, Digest against RFC 2617 and RFC 7616, challenge reader, stream description, pictures out of RTP, answer heads, interleaved framing, the camera leg on a socket pair)\n",
+    printf("relay_unit_test: %d checks passed; the %d named malformed-input cases of review 06: %d of %d pass (start message, address rules, Digest against RFC 2617 and RFC 7616, challenge reader, stream description, pictures out of RTP, answer heads, interleaved framing, the camera leg on a socket pair; row 42: the two modes and the attempt of the start message, the stated rate, the two report lines; row 43: the retry rule, the announced stream, the lines of a loss and of a re-open, a leg given up and opened again)\n",
            checks, CASES, passed, CASES);
     return 0;
 }

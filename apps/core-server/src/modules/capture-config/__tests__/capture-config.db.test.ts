@@ -21,6 +21,7 @@ import { CONFIG, DEVICES, cameraSource, primaryMic } from './support';
 import { detailRulesOf, type DetailRule } from '../../../core/audit-details';
 import type { Principal } from '../../../plugins/authenticate';
 import type { Pool } from 'pg';
+import { provideTestCaptureHost, testHostPrograms } from '../../../../test/support/capture-host';
 import { captureLog, unitTestConfig } from '../../../../test/support/config';
 import { buildApp } from '../../../app';
 import { realBootFixture } from '../../../capture/boot/__tests__/support';
@@ -332,7 +333,7 @@ describe('D130 (integration C1): MIC-03 in the selector, and the adapter registr
   const HELPER = '/bin/echo';
   // A whole boot in capture mode real passes the boot checks of row 61 (`capture.boot`): a worker
   // program that passes the path rule and says HELLO, a private media root and a provisioned signing
-  // key. Row 61's fixture gives the three below `.data/`; the worker is a stand-in script and is
+  // key. Row 61's fixture gives the three (the key in a temporary directory, row 228b); the worker is a stand-in script and is
   // never asked to capture.
   const realBoot = realBootFixture('c1');
   realBoot.provisionKey();
@@ -528,7 +529,7 @@ describe('D133 (1) (integration D1b): operation 78 replaces the microphone pair'
   const HELPER = '/bin/echo';
   // A whole boot in capture mode real passes the boot checks of row 61 (`capture.boot`): a worker
   // program that passes the path rule and says HELLO, a private media root and a provisioned signing
-  // key. Row 61's fixture gives the three below `.data/`; the worker is a stand-in script and is
+  // key. Row 61's fixture gives the three (the key in a temporary directory, row 228b); the worker is a stand-in script and is
   // never asked to capture.
   const realBoot = realBootFixture('d1b');
   realBoot.provisionKey();
@@ -739,10 +740,12 @@ describe('D133 (1) (integration D1b): operation 78 replaces the microphone pair'
 // REAL_PRODUCTION).
 describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `unassign`, the lock', () => {
   const HELPER = '/bin/echo';
-  const realBoot = realBootFixture('row29');
+  // Task 4 row 228b: this block's own synthetic installation (not a reserved id) - its key names it and its production boots are configured with it.
+  const realBoot = realBootFixture('row29', 'DEMS-TEST-ROW29');
   realBoot.provisionKey();
   afterAll(() => realBoot.remove());
-  const PRODUCTION = { captureMode: 'real', demoControls: false, dataDir: realBoot.dataDir, captureWorkerPath: realBoot.worker('capture-worker', 'capture-worker/0.3.0') } as const;
+  // Task 4 row 85 (C46): a production boot is held to its host - the two stand-in programs here, the explicit TEST host handed in before each boot.
+  const PRODUCTION = { captureMode: 'real', demoControls: false, dataDir: realBoot.dataDir, installationDeviceId: realBoot.installationId, captureWorkerPath: realBoot.worker('capture-worker', 'capture-worker/0.3.0'), ...testHostPrograms(realBoot.programsDir) } as const;
   const DEVELOPMENT = { ...PRODUCTION, captureDevSources: true, captureHelperFfmpegPath: HELPER } as const;
   const SIMULATED = { demoControls: true } as const;
 
@@ -805,6 +808,7 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
     const app = buildApp({ config: unitTestConfig({ database: target.runtime, dataDir: db.run.dataDir, logLevel: 'info', ...overrides }), logStream: log.stream });
     target.onCleanup(() => app.close());
     await app.ready();
+    provideTestCaptureHost(app);
     engineControl(app).useTimer(manualTimer().timer);
     await app.readiness.boot();
     /** The boot steps that passed, in order. */
@@ -1415,6 +1419,7 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
       const app = buildApp({ config: unitTestConfig({ database: target.runtime, dataDir: db.run.dataDir, logLevel: 'info', ...(operation === 'REAL_PRODUCTION' ? PRODUCTION : SIMULATED) }), logStream: log.stream });
       target.onCleanup(() => app.close());
       await app.ready();
+      provideTestCaptureHost(app);
       engineControl(app).useTimer(manualTimer().timer);
       const asked: string[] = [];
       if (operation === 'REAL_PRODUCTION') {
@@ -1489,6 +1494,28 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
       expect([development.statusCode, error.code]).toEqual([422, 'INVALID_INPUT']);
       expect(String(error.details?.['reason'])).not.toMatch(/CAMERA_PROFILE/);
       expect((await core.stored())[0]).toEqual(rowWithout(SLOTS));
+    });
+
+    // Row R2 (ruling C93 on review finding F3-11): on a Core in real capture the SAME camera is refused on both video slots - by
+    // operation 78 and by 79, with its own profile or none - before the action and before the profile rule; the stored row and the
+    // trail are as they were. Moving it (its slot cleared in the same body) is no refusal.
+    it('REAL_PRODUCTION, C93: the camera that holds VIDEO-01 is refused for VIDEO-02 by a named code (CAMERA_ON_BOTH_TRACKS) - 0 audit rows, the stored slots unchanged; a move after a clear is stored', async () => {
+      const core = await productionCore('r2-one-slot-per-camera');
+      const [, rows] = await core.stored();
+      expect((await core.post(CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-11', profile: OWN }] })).statusCode).toBe(200);
+      const held = { ...rowWithout(SLOTS), video_01_device_id: 'CAM-11', video_01_profile: OWN };
+      expect(await core.stored()).toEqual([held, rows + 1]);
+
+      const byUpdate = await core.post(CONFIG, { cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-11', profile: OWN }] });
+      expect(reasonOf(byUpdate)).toEqual([422, 'INVALID_INPUT', 'CAMERA_ON_BOTH_TRACKS', 'CAM-11', 'VIDEO-02']);
+      // Operation 79 names no profile: without this rule it would read CAMERA_PROFILE_NOT_STATED, which choosing a profile cannot cure.
+      const bySource = await core.post(cameraSource('CAM-11'), { trackId: 'VIDEO-02' });
+      expect(reasonOf(bySource)).toEqual([422, 'INVALID_INPUT', 'CAMERA_ON_BOTH_TRACKS', 'CAM-11', 'VIDEO-02']);
+      expect(await core.stored()).toEqual([held, rows + 1]);
+
+      const moved = await core.post(CONFIG, { unassign: ['VIDEO-01'], cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-11', profile: OWN }] });
+      expect(moved.statusCode, moved.body).toBe(200);
+      expect(await core.stored()).toEqual([{ ...rowWithout(SLOTS), video_02_device_id: 'CAM-11', video_02_profile: OWN }, rows + 3]);
     });
 
     it('CONTROL, SIMULATED - as today: the same production camera row is assigned into an empty slot without a profile, and the simulator\'s hosted action gives it the simulator\'s default', async () => {

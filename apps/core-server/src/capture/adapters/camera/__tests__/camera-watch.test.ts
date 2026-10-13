@@ -25,8 +25,14 @@ import {
   type CameraWatchDependencies,
   type CameraWatchReport,
 } from '../camera-watch';
+import type { StoredCameraAddressRule } from '../stored-address';
+import { ADMITTED_HOST, REAL_RULE, REFUSED_STORED_ADDRESSES, storedCameraAt } from './stored-address-cases';
 
 const CAMERA_HOST = '192.0.2.49';
+/** Row 143: the rule the rig hands in for the cases about something else - it admits this file's ONE camera address and no other. */
+/** Row 143c: the address the rule of the rig names as the one a read is made FROM (a documentation address; nothing binds it here). */
+const CAMERA_INTERFACE = '192.0.2.1';
+const ADMIT_THE_TEST_CAMERA: StoredCameraAddressRule = (host) => (host === CAMERA_HOST ? { allowed: true, destination: { address: host, sourceAddress: CAMERA_INTERFACE } } : { allowed: false, refusal: 'OUTSIDE_CAMERA_SUBNET' });
 const CANDIDATE: CameraCandidate = { adapterKind: CaptureAdapterKind.ONVIF_RTSP, host: CAMERA_HOST, serviceAddress: `http://${CAMERA_HOST}/onvif/device_service`, endpointRef: null, vendor: null, model: null, name: null, testable: true, conflict: false };
 const CORE_START = 1_800_000_000_000;
 
@@ -73,7 +79,7 @@ type Script = CameraTimeAnswer | 'SILENT' | 'REFUSE';
 interface Rig {
   readonly watch: ReturnType<typeof createCameraWatch>;
   readonly timers: ManualTimers;
-  readonly reads: { candidate: CameraCandidate; signal: AbortSignal }[];
+  readonly reads: { candidate: CameraCandidate; signal: AbortSignal; from: unknown }[];
   readonly raised: CameraLossFault[];
   readonly cleared: CameraLossFault[];
   readonly changes: CameraWatchChange[];
@@ -91,8 +97,8 @@ function rig(patch: Partial<CameraWatchDependencies> = {}): Rig {
     timers,
     now: () => timers.now(),
     reader: {
-      read: (candidate, signal) => {
-        out.reads.push({ candidate, signal });
+      read: (candidate, signal, from) => {
+        out.reads.push({ candidate, signal, from });
         const next = out.script.length > 1 ? out.script.shift() : out.script[0];
         if (next === 'REFUSE') return Promise.reject(new Error('refused before any request'));
         if (next === 'SILENT' || next === undefined) return new Promise<CameraTimeAnswer>(() => {});
@@ -100,6 +106,7 @@ function rig(patch: Partial<CameraWatchDependencies> = {}): Rig {
       },
     },
     candidate: async (deviceId) => (deviceId === 'CAM-01' || deviceId === 'CAM-02' ? CANDIDATE : null),
+    storedAddress: ADMIT_THE_TEST_CAMERA,
     faults: { raise: (fault) => void out.raised.push(fault), clear: (fault) => void out.cleared.push(fault) },
     onChange: (change) => out.changes.push(change),
     report: (report) => out.reports.push(report),
@@ -166,10 +173,166 @@ describe('loss: a relay that ended by itself raises ONE fault, a returned push c
     r.watch.relayEnded({ deviceId: 'CAM-01', code: `http://${CAMERA_HOST}/` });
     r.watch.pushEstablished({ deviceId: 'CAM-01' });
     await flush();
-    expect(r.reports.map((report) => report.code)).toEqual(['CAMERA_WATCH_SINK_FAILED', 'CAMERA_WATCH_OBSERVER_FAILED', 'CAMERA_WATCH_OBSERVER_FAILED', 'CAMERA_WATCH_SINK_FAILED']);
+    // Task 4 row 85c (decision C60 (2)) RE-STATED this line: until then a clear followed the raise that had failed, and its own
+    // failure was the fourth report. A raise that failed raised nothing, so no clear is asked for and three reports are left.
+    expect(r.reports.map((report) => report.code)).toEqual(['CAMERA_WATCH_SINK_FAILED', 'CAMERA_WATCH_OBSERVER_FAILED', 'CAMERA_WATCH_OBSERVER_FAILED']);
+    // A clear that fails after a raise that succeeded is still reported by its code, and stops nothing.
+    const clearing = rig({ faults: { raise: () => {}, clear: () => Promise.reject(new Error('sink')) } });
+    clearing.watch.relayEnded({ deviceId: 'CAM-01', code: 'CAPTURE_CAMERA_STREAM_LOST' });
+    clearing.watch.pushEstablished({ deviceId: 'CAM-01' });
+    await flush();
+    expect(clearing.reports.map((report) => report.code)).toEqual(['CAMERA_WATCH_SINK_FAILED']);
+    expect(clearing.watch.lost()).toEqual([]);
     const plain = rig();
     plain.watch.relayEnded({ deviceId: 'CAM-01', code: `http://${CAMERA_HOST}/` });
     expect(plain.changes).toEqual([{ deviceId: 'CAM-01', event: 'STREAM_LOST', cause: null }]);
+  });
+
+  // Task 4 row 85c (decision C60 (2)): the watch clears ONLY the fault it raised itself, when it observes the source back.
+  it('row 85c: a raise that FAILED raised nothing - the returned push sends no clear; the change is still told. A raise that succeeded is cleared once, and a second push clears nothing', async () => {
+    const calls: string[] = [];
+    const state = { failing: 'SYNC' as 'SYNC' | 'ASYNC' | 'NO' };
+    const r = rig({
+      faults: {
+        raise: (fault) => {
+          if (state.failing === 'SYNC') throw new Error('sink');
+          if (state.failing === 'ASYNC') return Promise.reject(new Error('sink'));
+          calls.push(`raise ${fault.subject}`);
+        },
+        clear: (fault) => void calls.push(`clear ${fault.subject}`),
+      },
+    });
+    // The raise is refused in the turn it is asked: the fault of CAM-01 is not this watch's.
+    r.watch.relayEnded({ deviceId: 'CAM-01', code: 'CAPTURE_CAMERA_STREAM_LOST' });
+    r.watch.pushEstablished({ deviceId: 'CAM-01' });
+    expect(calls).toEqual([]);
+    // The raise is refused later (the engine answered no): the same.
+    state.failing = 'ASYNC';
+    r.watch.relayEnded({ deviceId: 'CAM-02', code: 'CAPTURE_CAMERA_STREAM_LOST' });
+    await flush();
+    r.watch.pushEstablished({ deviceId: 'CAM-02' });
+    await flush();
+    expect(calls).toEqual([]);
+    expect(r.reports.map((report) => `${report.code} ${report.deviceId}`)).toEqual(['CAMERA_WATCH_SINK_FAILED CAM-01', 'CAMERA_WATCH_SINK_FAILED CAM-02']);
+    // What the watch OBSERVED is told whatever the sink did: the loss and the return of both cameras.
+    expect(r.changes.map((change) => `${change.event} ${change.deviceId}`)).toEqual(['STREAM_LOST CAM-01', 'STREAM_RETURNED CAM-01', 'STREAM_LOST CAM-02', 'STREAM_RETURNED CAM-02']);
+    expect(r.watch.lost()).toEqual([]);
+    // A raise that succeeded: ONE clear when the push returns, none for a push after it.
+    state.failing = 'NO';
+    r.watch.relayEnded({ deviceId: 'CAM-01', code: 'CAPTURE_CAMERA_STREAM_LOST' });
+    r.watch.pushEstablished({ deviceId: 'CAM-01' });
+    r.watch.pushEstablished({ deviceId: 'CAM-01' });
+    expect(calls).toEqual(['raise CAM-01', 'clear CAM-01']);
+  });
+
+  it('row 85c: a clear names the camera and the cause the watch raised - never a fault without a cause, never another camera', () => {
+    const r = rig();
+    r.watch.relayEnded({ deviceId: 'CAM-01', code: 'CAPTURE_CAMERA_STREAM_LOST' });
+    r.watch.relayEnded({ deviceId: 'CAM-02', code: 'CAPTURE_CAMERA_STREAM_LOST' });
+    r.watch.pushEstablished({ deviceId: 'CAM-02' });
+    expect(r.cleared).toEqual([{ code: 'CAPTURE_FAULT', subject: 'CAM-02', reason: 'CAMERA_STREAM_ENDED' }]);
+    expect(r.watch.lost()).toEqual(['CAM-01']);
+    // `close` ends the heartbeats and clears nothing: a fault that is raised stays what it is.
+    r.watch.close();
+    expect(r.cleared).toHaveLength(1);
+  });
+});
+
+// Finding F3-01 of the M3 review: the relay's word about its camera leg inside a session, as the adapter tells it on
+// its report source (a report with the member `leg`).
+describe('finding F3-01: a camera leg lost inside a session raises the fault at once; its re-open clears the watch\'s own raise', () => {
+  const FAULT = { code: 'CAPTURE_FAULT', subject: 'CAM-01', reason: 'CAMERA_STREAM_ENDED' };
+  const lost = (deviceId: string, profile: string, attempt = 1, sessionId = 'SES-20261013-0001'): Parameters<Rig['watch']['pushEstablished']>[0] => ({ deviceId, sessionId, attempt, leg: { event: 'LOST', profile, cause: 'CAMERA_LOST' } });
+  const back = (deviceId: string, profile: string, attempt = 1, sessionId = 'SES-20261013-0001'): Parameters<Rig['watch']['pushEstablished']>[0] => ({ deviceId, sessionId, attempt, leg: { event: 'REOPENED', profile } });
+
+  it('LOST raises ONE fault of that camera with no timer and no read; REOPENED of that stream clears it; the cause is the relay\'s word', () => {
+    const r = rig();
+    r.watch.pushEstablished({ deviceId: 'CAM-01', sessionId: 'SES-20261013-0001', attempt: 1 });
+    r.watch.pushEstablished(lost('CAM-01', 'HEVC_1080P'));
+    expect(r.raised).toEqual([FAULT]);
+    expect(r.cleared).toEqual([]);
+    expect(r.watch.lost()).toEqual(['CAM-01']);
+    expect([r.timers.asked, r.reads]).toEqual([[], []]);
+    // Said again: nothing more.
+    r.watch.pushEstablished(lost('CAM-01', 'HEVC_1080P'));
+    expect(r.raised).toHaveLength(1);
+    r.watch.pushEstablished(back('CAM-01', 'HEVC_1080P'));
+    expect(r.cleared).toEqual([FAULT]);
+    expect(r.watch.lost()).toEqual([]);
+    // A second re-open ends nothing more.
+    r.watch.pushEstablished(back('CAM-01', 'HEVC_1080P'));
+    expect([r.raised.length, r.cleared.length]).toEqual([1, 1]);
+    expect(r.changes).toEqual([
+      { deviceId: 'CAM-01', event: 'STREAM_LOST', cause: 'CAMERA_LOST' },
+      { deviceId: 'CAM-01', event: 'STREAM_RETURNED', cause: null },
+    ]);
+  });
+
+  it('a leg report is never an established push: it clears no fault of an ended relay, and a re-open of a loss the watch was never told ends nothing', () => {
+    const r = rig();
+    // The relay of the camera ended by itself: the fault of row 49.
+    r.watch.relayEnded({ deviceId: 'CAM-01', code: 'CAPTURE_CAMERA_STREAM_LOST', profile: 'HEVC_1080P' });
+    expect(r.raised).toHaveLength(1);
+    // A re-open of another stream of that camera, of a loss never told: it is not "a push was established".
+    r.watch.pushEstablished(back('CAM-01', 'H264_720P'));
+    expect(r.cleared).toEqual([]);
+    expect(r.watch.lost()).toEqual(['CAM-01']);
+    // A loss of the second stream while the camera is lost already: no second fault; its re-open leaves the first loss standing.
+    r.watch.pushEstablished(lost('CAM-01', 'H264_720P'));
+    r.watch.pushEstablished(back('CAM-01', 'H264_720P'));
+    expect([r.raised.length, r.cleared.length]).toEqual([1, 0]);
+    // Only an established push ends the loss of the ended relay.
+    r.watch.pushEstablished({ deviceId: 'CAM-01', sessionId: 'SES-20261013-0001', attempt: 2 });
+    expect(r.cleared).toEqual([FAULT]);
+  });
+
+  it('the relay gives up: its end after a told loss is the SAME absence - no second fault - and the loss then ends as an ended relay\'s does, by the next established push', () => {
+    const r = rig();
+    r.watch.pushEstablished(lost('CAM-01', 'HEVC_1080P'));
+    r.watch.relayEnded({ deviceId: 'CAM-01', code: 'CAPTURE_CAMERA_UNREACHABLE', profile: 'HEVC_1080P' });
+    expect([r.raised.length, r.cleared.length]).toEqual([1, 0]);
+    // The relay is gone: a re-open in its name ends nothing.
+    r.watch.pushEstablished(back('CAM-01', 'HEVC_1080P'));
+    expect(r.cleared).toEqual([]);
+    r.watch.pushEstablished({ deviceId: 'CAM-01', sessionId: 'SES-20261013-0001', attempt: 2 });
+    expect(r.cleared).toEqual([FAULT]);
+    expect(r.watch.lost()).toEqual([]);
+    expect(r.changes.map((change) => change.event)).toEqual(['STREAM_LOST', 'STREAM_RETURNED']);
+  });
+
+  it('a re-open ends only the loss of ITS relay and stream; a relay that was closed with its loss open is ended by the push of a later relay, not by one of the same worker', () => {
+    const r = rig();
+    r.watch.pushEstablished(lost('CAM-01', 'HEVC_1080P', 1));
+    // Another attempt's, another session's, another stream's re-open: nothing.
+    r.watch.pushEstablished(back('CAM-01', 'HEVC_1080P', 2));
+    r.watch.pushEstablished(back('CAM-01', 'HEVC_1080P', 1, 'SES-20261013-0002'));
+    r.watch.pushEstablished(back('CAM-01', 'H264_720P', 1));
+    r.watch.pushEstablished(back('CAM-02', 'HEVC_1080P', 1));
+    expect(r.cleared).toEqual([]);
+    // The second stream of the SAME worker is established while the first is away: the camera is still lost.
+    r.watch.pushEstablished({ deviceId: 'CAM-01', sessionId: 'SES-20261013-0001', attempt: 1 });
+    expect(r.cleared).toEqual([]);
+    expect(r.watch.lost()).toEqual(['CAM-01']);
+    // The session closed that relay (a worker restart) and the camera is opened for the next worker: back.
+    r.watch.pushEstablished({ deviceId: 'CAM-01', sessionId: 'SES-20261013-0001', attempt: 2 });
+    expect(r.cleared).toEqual([FAULT]);
+    expect(r.watch.lost()).toEqual([]);
+  });
+
+  it('decision C60 (2): a raise that failed is no fault of this watch - the re-open sends no clear; words that are no leg report raise and clear nothing', async () => {
+    const r = rig({ faults: { raise: () => Promise.reject(new Error('sink')), clear: (fault) => void r.cleared.push(fault) } });
+    r.watch.pushEstablished(lost('CAM-01', 'HEVC_1080P'));
+    await flush();
+    r.watch.pushEstablished(back('CAM-01', 'HEVC_1080P'));
+    expect(r.cleared).toEqual([]);
+    expect(r.reports).toEqual([{ code: 'CAMERA_WATCH_SINK_FAILED', deviceId: 'CAM-01' }]);
+    const other = rig();
+    other.watch.pushEstablished({ deviceId: 'CAM-01', leg: { event: 'GONE', profile: 'HEVC_1080P' } });
+    other.watch.pushEstablished({ deviceId: 'CAM-01', leg: { event: 'LOST', profile: 7 as never } });
+    expect([other.raised, other.cleared, other.changes, other.watch.lost()]).toEqual([[], [], [], []]);
+    // A cause that is no code word is not passed on.
+    other.watch.pushEstablished({ deviceId: 'CAM-01', leg: { event: 'LOST', profile: 'HEVC_1080P', cause: 'rtsp://192.0.2.46/x' } });
+    expect(other.changes).toEqual([{ deviceId: 'CAM-01', event: 'STREAM_LOST', cause: null }]);
   });
 });
 
@@ -356,6 +519,126 @@ describe('the clock offset and the pre-check read', () => {
   });
 });
 
+// Task 4 row 143 (AD-02 (1)): the presence read and the clock read are requests the Core sends to a STORED address.
+describe('row 143: the destination rule stands before every presence read and every clock read (AD-02 (1))', () => {
+  const realRig = (stored: () => CameraCandidate): Rig => rig({ storedAddress: REAL_RULE, candidate: async () => stored() });
+
+  it('each refused class: `check` and `clockOffsetMs` refuse by the named code and NO time read is made', async () => {
+    for (const entry of REFUSED_STORED_ADDRESSES) {
+      const r = realRig(() => entry.candidate);
+      const checked = await outcomeOf(r.watch.check('CAM-01', new AbortController().signal));
+      expect(checked, entry.className).toMatchObject({ name: 'CameraClockError', code: 'CAPTURE_CAMERA_CLOCK_ADDRESS_REFUSED', deviceId: 'CAM-01' });
+      expect(await outcomeOf(r.watch.clockOffsetMs('CAM-01')), entry.className).toMatchObject({ code: 'CAPTURE_CAMERA_CLOCK_ADDRESS_REFUSED' });
+      expect(r.reads, entry.className).toEqual([]);
+      expect(r.reports.map((report) => report.code)).toEqual(['CAMERA_WATCH_ADDRESS_REFUSED', 'CAMERA_WATCH_ADDRESS_REFUSED']);
+      expect(r.timers.pending()).toBe(0);
+      if (entry.candidate.host !== '') expect(`${JSON.stringify(r.reports)}${inspect(checked, { depth: 8 })}`.includes(entry.candidate.host), entry.className).toBe(false);
+    }
+  });
+
+  it('the heartbeat of a refused address makes no read; the camera is not PRESENT and becomes ABSENT, told once; no fault is raised', async () => {
+    const r = realRig(() => storedCameraAt('127.0.0.1', 8557));
+    r.watch.watch('CAM-01');
+    for (let turn = 0; turn < 4; turn += 1) await beat(r);
+    expect(r.reads).toEqual([]);
+    expect(r.watch.presence('CAM-01')).toBe(CameraPresence.ABSENT);
+    expect(r.changes.map((change) => change.event)).toEqual(['UNREACHABLE']);
+    expect(r.raised).toEqual([]);
+    expect(new Set(r.reports.map((report) => report.code))).toEqual(new Set(['CAMERA_WATCH_ADDRESS_REFUSED']));
+    r.watch.close();
+  });
+
+  it('every read is judged anew: a PRESENT camera whose row is moved to a refused address is read no more; moved back, it is read again', async () => {
+    let stored = storedCameraAt(ADMITTED_HOST);
+    const r = realRig(() => stored);
+    r.watch.watch('CAM-01');
+    await beat(r);
+    expect(r.watch.presence('CAM-01')).toBe(CameraPresence.PRESENT);
+    const before = r.reads.length;
+    expect(before).toBeGreaterThan(0);
+    expect(r.reads.every((read) => read.candidate.host === ADMITTED_HOST)).toBe(true);
+    stored = storedCameraAt('169.254.10.20');
+    for (let turn = 0; turn < 3; turn += 1) await beat(r);
+    expect(r.reads.length).toBe(before);
+    expect(r.watch.presence('CAM-01')).toBe(CameraPresence.ABSENT);
+    stored = storedCameraAt(ADMITTED_HOST);
+    await beat(r);
+    await beat(r);
+    expect(r.reads.length).toBeGreaterThan(before);
+    expect(r.watch.presence('CAM-01')).toBe(CameraPresence.PRESENT);
+    r.watch.close();
+  });
+
+  it('no rule handed in: no read is ever made - the watch has no permissive value of its own', async () => {
+    const r = rig({ storedAddress: undefined });
+    expect(await outcomeOf(r.watch.clockOffsetMs('CAM-01'))).toMatchObject({ code: 'CAPTURE_CAMERA_CLOCK_ADDRESS_REFUSED' });
+    r.watch.watch('CAM-01');
+    for (let turn = 0; turn < 3; turn += 1) await beat(r);
+    expect(r.reads).toEqual([]);
+    expect(r.watch.presence('CAM-01')).not.toBe(CameraPresence.PRESENT);
+    r.watch.close();
+  });
+});
+
+// Task 4 row 143c (S13-11 point 2; decision C65): the time read is the THIRD dial of a stored camera. It is made FROM
+// the camera-interface address the rule names in the judgement of THAT read, or it is not made.
+describe('row 143c: every time read is made from the source address the rule names; an admission without one is a refused address', () => {
+  /** A rule that admits the test camera and names `source` as given: no destination, no member, or a value that is no source address. */
+  const admitNaming = (destination: unknown): StoredCameraAddressRule => ((host: string) => (host === CAMERA_HOST ? { allowed: true, ...(destination === undefined ? {} : { destination }) } : { allowed: false, refusal: 'OUTSIDE_CAMERA_SUBNET' })) as StoredCameraAddressRule;
+
+  it('the heartbeat, `check` and `clockOffsetMs` each hand the rule\'s source address to the reader with the candidate; the real rule names the camera interface', async () => {
+    const r = rig();
+    r.script = [answers(CORE_START)];
+    r.watch.watch('CAM-01');
+    await flush();
+    await r.watch.check('CAM-01', new AbortController().signal);
+    await r.watch.clockOffsetMs('CAM-01');
+    expect(r.reads.map((read) => read.from)).toEqual([CAMERA_INTERFACE, CAMERA_INTERFACE, CAMERA_INTERFACE]);
+    expect(r.reads.every((read) => read.candidate === CANDIDATE)).toBe(true);
+    r.watch.close();
+    // The product's rule on hand-written host facts: the source is the camera interface of those facts, never the office one.
+    const real = rig({ storedAddress: REAL_RULE, candidate: async () => storedCameraAt(ADMITTED_HOST) });
+    await real.watch.check('CAM-01', new AbortController().signal);
+    expect(real.reads.map((read) => read.from)).toEqual(['192.168.50.1']);
+  });
+
+  it('the source is the one of THAT read: a rule that names another address at the next judgement is followed at the next read', async () => {
+    let source = '192.0.2.1';
+    const r = rig({ storedAddress: (host) => (host === CAMERA_HOST ? { allowed: true, destination: { address: host, sourceAddress: source } } : { allowed: false, refusal: 'OUTSIDE_CAMERA_SUBNET' }) });
+    await r.watch.check('CAM-01', new AbortController().signal);
+    source = '192.0.2.2';
+    await r.watch.check('CAM-01', new AbortController().signal);
+    expect(r.reads.map((read) => read.from)).toEqual(['192.0.2.1', '192.0.2.2']);
+  });
+
+  it('an admission that names no source address, or one that is no source address: NO read - `check` and `clockOffsetMs` refuse by the existing code, the heartbeat counts no answer', async () => {
+    const notASource: unknown[] = [undefined, {}, { address: CAMERA_HOST }, { address: CAMERA_HOST, sourceAddress: null }];
+    for (const value of ['', '0.0.0.0', 'localhost', '192.0.2.01', '192.0.2.1:80', ' 192.0.2.1', '224.0.0.1', '255.255.255.255', '::1', 3221225985, ['192.0.2.1']]) notASource.push({ address: CAMERA_HOST, sourceAddress: value });
+    for (const destination of notASource) {
+      const r = rig({ storedAddress: admitNaming(destination) });
+      const label = JSON.stringify(destination);
+      expect(await outcomeOf(r.watch.check('CAM-01', new AbortController().signal)), label).toMatchObject({ name: 'CameraClockError', code: 'CAPTURE_CAMERA_CLOCK_ADDRESS_REFUSED', deviceId: 'CAM-01' });
+      expect(await outcomeOf(r.watch.clockOffsetMs('CAM-01')), label).toMatchObject({ code: 'CAPTURE_CAMERA_CLOCK_ADDRESS_REFUSED' });
+      r.watch.watch('CAM-01');
+      for (let turn = 0; turn < 3; turn += 1) await beat(r);
+      expect(r.reads, label).toEqual([]);
+      expect(r.watch.presence('CAM-01'), label).toBe(CameraPresence.ABSENT);
+      expect(new Set(r.reports.map((report) => report.code)), label).toEqual(new Set(['CAMERA_WATCH_ADDRESS_REFUSED']));
+      expect(r.raised, label).toEqual([]);
+      r.watch.close();
+      expect(r.timers.pending(), label).toBe(0);
+    }
+  });
+
+  it('the seam cannot be asked without a source: the one call of the file hands the judged candidate and its source, and the source is taken before it', () => {
+    const text = readFileSync(resolve(__dirname, '../camera-watch.ts'), 'utf8');
+    expect(text.match(/\breader\s*\.\s*read\s*\([^\n)]*\)/g)).toEqual(['reader.read(target.camera, bound.signal, target.from)']);
+    expect(text).toContain('read(candidate: CameraCandidate, signal: AbortSignal, fromAddress: string): Promise<CameraTimeAnswer>;');
+    expect(text.match(/\bstoredCameraSourceOf\s*\(/g)).toHaveLength(1);
+    expect(text).toContain('return Object.freeze({ camera: target, from: from.sourceAddress });');
+  });
+});
+
 describe('what the file is and is not', () => {
   const strip = (text: string): string =>
     text
@@ -367,7 +650,9 @@ describe('what the file is and is not', () => {
   const source = strip(readFileSync(resolve(__dirname, '../camera-watch.ts'), 'utf8'));
 
   it('reveal entries for presence: 0 by construction - the file imports no credential, no reader, no ONVIF package, no socket and no module of the host', () => {
-    expect(source.match(/from\s+'[^']+'/g)).toEqual(["from '@dems/capture-protocol'", "from '../../types'", "from '../errors'", "from '../types'"]);
+    // Row 143 added the fifth: the judgement of the stored address, a pure file that imports one type of the layer.
+    expect(source.match(/from\s+'[^']+'/g)).toEqual(["from '@dems/capture-protocol'", "from '../../types'", "from '../errors'", "from '../types'", "from './stored-address'"]);
+    expect(strip(readFileSync(resolve(__dirname, '../stored-address.ts'), 'utf8')).match(/from\s+'[^']+'/g)).toEqual(["from '../types'"]);
     expect(source).not.toMatch(/credential|sealed|reveal|password|secret|username/i);
     expect(source).not.toMatch(/['"](?:node:)?(?:net|dgram|tls|http|https|http2|child_process|fs)['"]/);
     // No stream port, no ping, no sweep: the one question is the seam's read.

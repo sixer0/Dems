@@ -529,7 +529,9 @@ export const CameraStreamFactSchemas = {
   resolution: z
     .string()
     .regex(CAMERA_RESOLUTION_PATTERN)
-    .describe('The picture the stream states: `<height>p` for a 16:9 picture (`1080p`, `720p`), else `<width>x<height>`; each number 100 to 9999.'),
+    // Null (row V6, finding S-01 of the second pass of the phase-3 review; decision C36: no default stands in for a fact).
+    .nullable()
+    .describe('The picture the stream states: `<height>p` for a 16:9 picture (`1080p`, `720p`), else `<width>x<height>`; each number 100 to 9999. Null when no stream statement is stored for the track. Never a default.'),
   // Null (integration pass I-1, the remainder of row 52): a stream whose rate is not stated.
   fps: z
     .int()
@@ -537,7 +539,7 @@ export const CameraStreamFactSchemas = {
     .max(CAMERA_FPS_MAX)
     .nullable()
     .describe('The whole-number nominal rate the stream declares, 1 to 240; null when the stream states no rate. Never a default.'),
-  codec: z.enum(CAMERA_STREAM_CODECS).describe('The codec of the stream, read from the stream itself: a closed set.'),
+  codec: z.enum(CAMERA_STREAM_CODECS).nullable().describe('The codec of the stream, read from the stream itself: a closed set. Null when no stream statement is stored for the track. Never a default.'),
 } as const;
 
 export const CamerasSliceSchema = z
@@ -553,7 +555,8 @@ export const CamerasSliceSchema = z
       resolution: CameraStreamFactSchemas.resolution,
       fps: CameraStreamFactSchemas.fps,
       codec: CameraStreamFactSchemas.codec,
-      bitrateMbps: amount(),
+      // Pass I-9b (request line of row W4; review 060c R-01; decision C36): nullable, the form of the three facts above.
+      bitrateMbps: amount().nullable().describe('Megabits per second; null when no telemetry states a bitrate for the track. Never a default.'),
       poePort: text(),
       model: text(),
       firmware: text(),

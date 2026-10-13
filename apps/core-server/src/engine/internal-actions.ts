@@ -18,7 +18,7 @@
  * The host binds what the function does when it builds a unit's scope (`bindInternalActions`).
  * A scope the host did not build - a test double - has no binding, and the call says so.
  */
-import type { CaptureDeviceStatus, RegisterCaptureDeviceInput, RegisterCaptureMicrophoneInput } from '@dems/shared/sim';
+import type { CaptureDeviceStatus, ReaddressCaptureDeviceInput, RegisterCaptureDeviceInput, RegisterCaptureMicrophoneInput } from '@dems/shared/sim';
 import type { AudioSourceSwitch, AudioSourceSwitched } from './capture-session';
 import { EngineError } from './errors';
 import type { EngineUnit } from './types';
@@ -27,6 +27,8 @@ export interface InternalActions {
   registerCaptureDevice(device: RegisterCaptureDeviceInput): Promise<CaptureDeviceStatus>;
   /** Task 4 rows 185 / 190 (operation 99): see `registerCaptureMicrophoneIn`. */
   registerCaptureMicrophone(microphone: RegisterCaptureMicrophoneInput): Promise<CaptureDeviceStatus>;
+  /** Task 4 rows 195 / 196 (operation 100): see `readdressCaptureDeviceIn`. */
+  readdressCaptureDevice(change: ReaddressCaptureDeviceInput): Promise<CaptureDeviceStatus>;
   /** Blueprint row 71 (capture session): see `markCaptureConnectingIn`. */
   markCaptureConnecting(sessionId: string): Promise<boolean>;
   /** Blueprint row 71 (capture session): see `switchCaptureAudioSourceIn`. */
@@ -72,6 +74,27 @@ export function registerCaptureMicrophoneIn(unit: EngineUnit, microphone: Regist
   const actions = bound.get(unit);
   if (actions === undefined) return Promise.reject(new EngineError('ENGINE_ACTION_NOT_HOSTED', NOT_A_HOST_UNIT));
   return actions.registerCaptureMicrophone(microphone);
+}
+
+/**
+ * Task 4 rows 195 / 196 (WP-12; operation 100 `confirmCaptureDeviceAddress`): THE ENGINE DOOR OF A
+ * RE-ADDRESS. Runs the INTERNAL action `readdressCaptureDevice` in `unit` and writes its effect
+ * through it: the `host` of ONE registered camera in slice `captureDevices` and the `address` of
+ * its `capture_devices` row change in the caller's unit - together with whatever else that unit
+ * writes (the audit entry of the operation), or not at all. The slice is published with the
+ * commit; a unit that throws after this call leaves the row and the running engine at the old
+ * address. Resolves with the registry entry as it stands in the unit.
+ *
+ * It checks no permission, asks no destination rule and writes no audit row: the operation that
+ * calls it has passed stage 6, holds the operator's confirmation and the rule's admission, and
+ * writes `CAPTURE_DEVICE_ADDRESS_CHANGED` in the same unit. The address is stored AS GIVEN. An
+ * address the camera already holds writes nothing. Rejects with the mapped `ApiFailure` when the
+ * action refuses the input (an unknown id, a microphone, the switch, an address not of the form).
+ */
+export function readdressCaptureDeviceIn(unit: EngineUnit, change: ReaddressCaptureDeviceInput): Promise<CaptureDeviceStatus> {
+  const actions = bound.get(unit);
+  if (actions === undefined) return Promise.reject(new EngineError('ENGINE_ACTION_NOT_HOSTED', NOT_A_HOST_UNIT));
+  return actions.readdressCaptureDevice(change);
 }
 
 /**

@@ -8,13 +8,15 @@
 // THE HELPER PROGRAM OF THESE TESTS is `/bin/echo`: a root-owned system program that passes the
 // path rule. It is never asked to capture anything; started for the device list it prints no list,
 // so both local devices read "not listed" (no device is listed, opened or asked for by a test).
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { OPERATORS, unassignedSlotOfPrecheckItem, type OperatorRole } from '@dems/shared/sim';
 import type { LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
 import { fakeLauncher, flush, type FakeLauncher } from '../../../../test/support/capture';
+import { TEST_CAPTURE_HOST, provideTestCaptureHost, testHostPrograms } from '../../../../test/support/capture-host';
 import { captureLog, unitTestConfig, type CapturedLog } from '../../../../test/support/config';
 import { FIXED_NOW, engineApp, type EngineApp } from '../../../../test/support/engine';
 import { WEB_ORIGIN, cookieValue, webSignIn } from '../../../../test/support/identity';
@@ -26,21 +28,26 @@ import { engineControl } from '../../../engine';
 import { hashPassword } from '../../../modules/identity/password-hash';
 import { BootError } from '../../../plugins/readiness';
 import { LIVING_PROGRESS, deviceListText, scriptedDoor } from '../../adapters/local/__tests__/mic-support';
-import { realBootFixture } from '../../boot/__tests__/support';
+import { CaptureBootError, captureBootControl, captureHostOfProcess, type CaptureBootHostFacts } from '../../boot';
+import { FIXTURE_NOW, realBootFixture } from '../../boot/__tests__/support';
 import { createCaptureSupervisor, createSystemTimers } from '../../index';
+import { activateSigningKey, markSigningKeyCompromised, provisionSigningKey } from '../../signer';
 import type { CaptureTimers } from '../../types';
-import { CAPTURE_FENCE_BOOT_STEP, CaptureFenceError, REGISTER_LOCAL_DEVICE, buildDevelopmentRegistry, captureFenceControl } from '../index';
+import type { AudioInputAdapter, CameraAdapter, CaptureAdapter } from '../../adapters/types';
+import { CAPTURE_FENCE_BOOT_STEP, CaptureFenceError, REGISTER_LOCAL_DEVICE, buildDevelopmentRegistry, buildProductionRegistryOf, captureFenceControl, type FenceExecutor, type ProductionAdapterLoader } from '../index';
 
 const db = useTestDatabase({ template: 'seed' });
 const HELPER = '/bin/echo';
 // A boot in capture mode real that the FENCE lets through then meets the boot checks of row 61
 // (`capture.boot`, mounted by row 71b; ruling D144): a worker program that says HELLO, a private
-// media root and a provisioned signing key. Row 61's fixture gives the three below `.data/`; the
+// media root and a provisioned signing key. Row 61's fixture gives the three (the key in a temporary directory, row 228b); the
 // worker is a stand-in script that records nothing, opens no port and reads no device.
-const realBoot = realBootFixture('fence');
+// Task 4 row 228b: this suite's own synthetic installation (not a reserved id) - its key names it and its production boots are configured with it.
+const realBoot = realBootFixture('fence', 'DEMS-TEST-FENCE');
 realBoot.provisionKey();
 afterAll(() => realBoot.remove());
-const REAL = { captureMode: 'real', demoControls: false, dataDir: realBoot.dataDir, captureWorkerPath: realBoot.worker('capture-worker', 'capture-worker/0.3.0') } as const;
+// Task 4 row 85 (C46): a production boot is held to its host - the two stand-in programs here, the explicit TEST host handed in before each boot.
+const REAL = { captureMode: 'real', demoControls: false, dataDir: realBoot.dataDir, installationDeviceId: realBoot.installationId, captureWorkerPath: realBoot.worker('capture-worker', 'capture-worker/0.3.0'), ...testHostPrograms(realBoot.programsDir) } as const;
 const DEVELOPMENT = { ...REAL, captureDevSources: true, captureHelperFfmpegPath: HELPER } as const;
 
 type Clone = Awaited<ReturnType<typeof db.another>>;
@@ -87,6 +94,7 @@ async function boot(target: Clone, overrides: Partial<ConfigInput>): Promise<Boo
   const app = buildApp({ config: unitTestConfig({ database: target.runtime, dataDir: db.run.dataDir, logLevel: 'info', ...overrides }), logStream: log.stream });
   target.onCleanup(() => app.close());
   await app.ready();
+  provideTestCaptureHost(app);
   try {
     await app.readiness.boot();
     return { app, log, failure: null };
@@ -99,6 +107,34 @@ async function boot(target: Clone, overrides: Partial<ConfigInput>): Promise<Boo
 const devicesOf = async (owner: Pool): Promise<Record<string, unknown>[]> => (await owner.query('SELECT id, kind, transport, model, firmware, address, mac, onvif_uuid, profiles, poe_port, enabled, last_seen_at::text AS last_seen_at, adapter_kind FROM public.capture_devices ORDER BY id')).rows;
 const kindsOf = async (owner: Pool): Promise<string[]> => (await devicesOf(owner)).map((row) => `${String(row['id'])}:${String(row['adapter_kind'])}`);
 const bootAuditsOf = async (owner: Pool): Promise<unknown[]> => (await owner.query("SELECT details FROM public.audit_log WHERE type = 'SYSTEM_BOOT' AND details ? 'captureOperation' ORDER BY seq")).rows.map((row: { details: unknown }) => row.details);
+/**
+ * Task 4 row 209 (SX-15): the two signing members a real boot of THIS file's fixture states. Computed HERE, from the
+ * bytes of the fixture's PUBLIC certificate file - the SHA-256 of its DER - and not by the product's reader, so that
+ * "the fingerprint equals the stored certificate's" is held by a second computation. The key id is the store's one id.
+ */
+const FIXTURE_KEY_ID = 'CORE-KEY-EVSIGN-01';
+const certificateSha256Of = (dataDir: string): string =>
+  createHash('sha256')
+    .update(Buffer.from(readFileSync(`${dataDir}/signer/${FIXTURE_KEY_ID}.crt`, 'utf8').replace(/-----[A-Z ]+-----/g, '').replace(/\s+/g, ''), 'base64'))
+    .digest('hex');
+/** The details of the boot row of a real operation on the fixture of this file: the operation and the key its store states. */
+const bootRowOf = (captureOperation: string, signingStoreChange = 'NO_EARLIER_STATEMENT'): Record<string, unknown> => {
+  const signingCertificateSha256 = certificateSha256Of(realBoot.dataDir);
+  // Task 4 row V5 (C84 R-1): the state of the fixture's store - ONE retained certificate, no mark - and what changed since the previous boot row.
+  // Task 4 row P1 (U21 (2)): a PRODUCTION boot row also states its host - the test host of this file is `darwin`, where the host profile
+  // is not asked. A REAL_DEVELOPMENT row states neither member: it is the row of before.
+  const host = captureOperation === 'REAL_PRODUCTION' ? { hostPlatform: 'darwin', hostProfile: 'WILL_NOT_BE_ASKED' } : {};
+  return { captureOperation, signingKeyId: FIXTURE_KEY_ID, signingCertificateSha256, ...storeMembersOf([[FIXTURE_KEY_ID, signingCertificateSha256]], '', signingStoreChange), ...host };
+};
+/** Row V5: the four members of the store's state, the digest of the retained set computed HERE (one line `<key id> <fingerprint>` per certificate). */
+const storeMembersOf = (retained: readonly (readonly [string, string])[], signingKeysCompromised: string, signingStoreChange: string): Record<string, unknown> => ({
+  signingKeysRetained: retained.length,
+  signingKeysCompromised,
+  signingCertificatesSha256: createHash('sha256').update(retained.map(([keyId, sha256]) => `${keyId} ${sha256}\n`).join(''), 'utf8').digest('hex'),
+  signingStoreChange,
+});
+/** How many audit rows of ANY type hold one of the two signing members. */
+const signingMemberRowsOf = async (owner: Pool): Promise<number> => Number((await owner.query("SELECT count(*)::int AS n FROM public.audit_log WHERE details ? 'signingKeyId' OR details ? 'signingCertificateSha256'")).rows[0]?.n);
 
 /**
  * What an adoption would leave (the owner writes it as a fixture): two production cameras, assigned
@@ -129,9 +165,9 @@ function expectRefused(booted: Booted, code: string, deviceIds: readonly string[
 }
 
 describe('the schema this row was written against', () => {
-  it('schema version 8, contract dbc-9', async () => {
+  it('schema version 13, contract dbc-14', async () => {
     const meta = (await db.ownerPool().query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([8, 'dbc-9']);
+    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([13, 'dbc-14']);
   });
 });
 
@@ -145,6 +181,16 @@ describe('SIMULATED: every stored kind is inert and the database keeps booting',
     expect(captureFenceControl(booted.app).registry()).toBeNull();
     expect(await devicesOf(target.ownerPool())).toEqual(before);
     expect(await bootAuditsOf(target.ownerPool())).toEqual([]);
+  });
+
+  it('task 4 row 209 (SX-15): a SIMULATED boot states no key - no audit row of any type holds either signing member, although the data directory holds a key store with a readable certificate', async () => {
+    const target = await clone('fence-sim-key');
+    expect(existsSync(`${realBoot.dataDir}/signer/${FIXTURE_KEY_ID}.crt`)).toBe(true);
+    const booted = await boot(target, { demoControls: true, dataDir: realBoot.dataDir });
+    expect(booted.failure).toBeNull();
+    expect(captureFenceControl(booted.app).operation).toBe('SIMULATED');
+    expect(await bootAuditsOf(target.ownerPool())).toEqual([]);
+    expect(await signingMemberRowsOf(target.ownerPool())).toBe(0);
   });
 
   it('a database that holds ASSIGNED local and production devices boots all the same (and its engine lists them)', async () => {
@@ -252,18 +298,130 @@ describe('REAL_DEVELOPMENT: the local devices are registered as rows of their ow
     expect(fence.registry()?.list().map((entry) => `${entry.id}:${entry.adapterKind}`)).toEqual(['CAM-01:FAKE', 'CAM-02:FAKE', 'CAM-03:LOCAL_DEVICE', 'MIC-01:FAKE', 'MIC-02:FAKE', 'MIC-03:LOCAL_DEVICE', 'POE-SWITCH:FAKE']);
     expect(fence.openSources()).toEqual([]);
     expect(await fence.leftoverHelpers()).toEqual([]);
-    expect(await bootAuditsOf(owner)).toEqual([{ captureOperation: 'REAL_DEVELOPMENT' }]);
+    expect(await bootAuditsOf(owner)).toEqual([bootRowOf('REAL_DEVELOPMENT')]);
     await first.app.close();
 
     const second = await boot(target, DEVELOPMENT);
     expect(second.failure).toBeNull();
     expect(captureFenceControl(second.app).outcome()).toMatchObject({ local: { cameraId: 'CAM-03', micId: 'MIC-03' }, inserted: [] });
     expect(await devicesOf(owner)).toEqual(after);
-    expect(await bootAuditsOf(owner)).toEqual([{ captureOperation: 'REAL_DEVELOPMENT' }, { captureOperation: 'REAL_DEVELOPMENT' }]);
+    expect(await bootAuditsOf(owner)).toEqual([bootRowOf('REAL_DEVELOPMENT'), bootRowOf('REAL_DEVELOPMENT', 'NONE')]);
     // Once registered they are development sources: taking the flag away without unassigning is fine (they are not assigned) ...
     await second.app.close();
     // ... but the seeded FAKE built-ins are still assigned, so a production boot of this database stays refused.
     expectRefused(await boot(target, REAL), 'DEV_SOURCE_WITHOUT_FLAG', ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02']);
+  });
+
+  // Task 4 row 209 (SX-15). THE ORDER: the step `capture.fence` writes and commits the boot row BEFORE the step `capture.boot`
+  // asks check 4. So the two members say which certificate LAY IN THE STORE, never that the key passed the checks: both cases
+  // below are boots that the checks REFUSE a moment later, and each leaves its boot row behind. Each case makes a data
+  // directory of its own (row 61's fixture: a private folder with a stand-in worker) and removes it, also on failure.
+  /** A whole development boot on a data directory of its own; what the fence and the boot checks did, and the boot rows. */
+  async function bootOnStore(slug: string, prepare: (dataDir: string) => void): Promise<{ readonly booted: Booted; readonly rows: unknown[]; readonly dataDir: string; readonly sha256: string | null }> {
+    const fixture = realBootFixture(slug);
+    try {
+      prepare(fixture.dataDir);
+      const target = await clone(slug);
+      const booted = await boot(target, { ...DEVELOPMENT, dataDir: fixture.dataDir, captureWorkerPath: fixture.worker('capture-worker'), ...testHostPrograms(fixture.programsDir) });
+      const sha256 = existsSync(`${fixture.dataDir}/signer/${FIXTURE_KEY_ID}.crt`) ? certificateSha256Of(fixture.dataDir) : null;
+      return { booted, rows: await bootAuditsOf(target.ownerPool()), dataDir: fixture.dataDir, sha256 };
+    } finally {
+      fixture.remove();
+    }
+  }
+  /** The fence step passed with its usual outcome, and the boot was then refused by the boot checks with this code and reason. */
+  function expectFencePassedThenRefused(booted: Booted, code: string, reason: string): void {
+    expect(booted.log.lines().filter((line) => line['msg'] === 'boot step passed').map((line) => line['step'])).toContain(CAPTURE_FENCE_BOOT_STEP);
+    expect(captureFenceControl(booted.app).outcome()).toMatchObject({ operation: 'REAL_DEVELOPMENT', local: { cameraId: 'CAM-03', micId: 'MIC-03' }, inserted: ['CAM-03', 'MIC-03'], helperProgram: HELPER });
+    expect(booted.failure?.stepId).toBe('capture.boot');
+    const cause = booted.failure?.cause;
+    expect(cause).toBeInstanceOf(CaptureBootError);
+    expect([(cause as CaptureBootError).code, (cause as CaptureBootError).reason]).toEqual([code, reason]);
+    // The read of the certificate added no line of its own: the fence said nothing but that it passed.
+    expect(booted.log.lines().filter((line) => typeof line['code'] === 'string' && /SIGNING|CERTIFICATE/.test(String(line['code']))).map((line) => line['code'])).toEqual([code]);
+  }
+
+  it('task 4 row 209 (SX-15): with no certificate to read both members are null, and the boot is the one of a Core without the read - the fence passes as always, check 4 refuses by its own code and reason', async () => {
+    const { booted, rows, dataDir, sha256 } = await bootOnStore('fence-dev-nokey', () => undefined);
+    expect(sha256).toBeNull();
+    // Row V5: a store that is not there is the EMPTY retained set - stated as such, never as "not read".
+    expect(rows).toEqual([{ captureOperation: 'REAL_DEVELOPMENT', signingKeyId: null, signingCertificateSha256: null, ...storeMembersOf([], '', 'NO_EARLIER_STATEMENT') }]);
+    expectFencePassedThenRefused(booted, 'CAPTURE_SIGNING_KEY_UNUSABLE', 'KEY_ABSENT');
+    expect(existsSync(dataDir)).toBe(false);
+  });
+
+  it('task 4 row 209 (SX-15): "the Core stated this key" is not "the key passed the checks" - a key marked compromised is STATED by the boot row (its certificate is public and readable) and REFUSED by check 4 a moment later', async () => {
+    const { booted, rows, dataDir, sha256 } = await bootOnStore('fence-dev-marked', (directory) => {
+      provisionSigningKey({ dir: `${directory}/signer`, now: FIXTURE_NOW });
+      markSigningKeyCompromised({ dir: `${directory}/signer`, at: FIXTURE_NOW });
+    });
+    expect(sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(sha256).not.toBe(certificateSha256Of(realBoot.dataDir));
+    // Row V5: the mark is STATED (place 01) and, with no earlier boot row of this database, it is named by the first statement that can name it.
+    expect(rows).toEqual([{ captureOperation: 'REAL_DEVELOPMENT', signingKeyId: FIXTURE_KEY_ID, signingCertificateSha256: sha256, ...storeMembersOf([[FIXTURE_KEY_ID, sha256 as string]], '01', 'NO_EARLIER_STATEMENT') }]);
+    expectFencePassedThenRefused(booted, 'CAPTURE_SIGNING_KEY_UNUSABLE', 'KEY_COMPROMISED');
+    expect(existsSync(dataDir)).toBe(false);
+  });
+
+  it('task 4 row V5 (C84 R-1): THE AUDIT CHAIN KNOWS OF A ROTATION AND OF A MARK - the two commands write no row, so the next boot row states the store and names what changed since the boot row before it: a rotation, a mark, a mark that disappeared; severity WARNING for a change', async () => {
+    const fixture = realBootFixture('fence-v5-store');
+    try {
+      const store = `${fixture.dataDir}/signer`;
+      const fingerprintOf = (keyId: string): string =>
+        createHash('sha256')
+          .update(Buffer.from(readFileSync(`${store}/${keyId}.crt`, 'utf8').replace(/-----[A-Z ]+-----/g, '').replace(/\s+/g, ''), 'base64'))
+          .digest('hex');
+      const KEY_2 = 'CORE-KEY-EVSIGN-02';
+      const target = await clone('fence-v5-store');
+      const owner = target.ownerPool();
+      const config = { ...DEVELOPMENT, dataDir: fixture.dataDir, captureWorkerPath: fixture.worker('capture-worker'), ...testHostPrograms(fixture.programsDir) };
+      const rowsOf = async (): Promise<{ severity: string; details: Record<string, unknown> }[]> =>
+        (await owner.query("SELECT severity, details FROM public.audit_log WHERE type = 'SYSTEM_BOOT' AND details ? 'captureOperation' ORDER BY seq")).rows;
+      /** One whole boot; whether the boot checks then pass or refuse is not this case's subject - the fence step wrote its row. */
+      const bootOnce = async (): Promise<void> => {
+        const booted = await boot(target, config);
+        expect(booted.log.lines().filter((line) => line['msg'] === 'boot step passed').map((line) => line['step'])).toContain(CAPTURE_FENCE_BOOT_STEP);
+        await booted.app.close();
+      };
+
+      // Boot 1: key 1, nothing marked. The first statement of this database.
+      provisionSigningKey({ dir: store, now: FIXTURE_NOW });
+      const first = fingerprintOf(FIXTURE_KEY_ID);
+      await bootOnce();
+      // A boot with nothing changed says so.
+      await bootOnce();
+      // Between two boots, at the host, with no database: the ROTATION to key 2 and the MARK on key 1 (the functions of the two commands).
+      provisionSigningKey({ dir: store, now: FIXTURE_NOW, keyId: KEY_2 });
+      activateSigningKey({ dir: store, keyId: KEY_2, now: FIXTURE_NOW });
+      markSigningKeyCompromised({ dir: store, keyId: FIXTURE_KEY_ID, at: FIXTURE_NOW });
+      const second = fingerprintOf(KEY_2);
+      await bootOnce();
+      // The mark file is taken away by hand (a 0644 file the Core's user can remove): the next boot NAMES that it is gone.
+      rmSync(`${store}/${FIXTURE_KEY_ID}.compromised`);
+      await bootOnce();
+      // A mark on the ACTIVE key: named, and the same boot is then refused by check 4 - the row stands.
+      markSigningKeyCompromised({ dir: store, keyId: KEY_2, at: FIXTURE_NOW });
+      await bootOnce();
+
+      const one = [[FIXTURE_KEY_ID, first]] as const;
+      const two = [[FIXTURE_KEY_ID, first], [KEY_2, second]] as const;
+      const rows = await rowsOf();
+      expect(rows.map((row) => row.details)).toEqual([
+        { captureOperation: 'REAL_DEVELOPMENT', signingKeyId: FIXTURE_KEY_ID, signingCertificateSha256: first, ...storeMembersOf(one, '', 'NO_EARLIER_STATEMENT') },
+        { captureOperation: 'REAL_DEVELOPMENT', signingKeyId: FIXTURE_KEY_ID, signingCertificateSha256: first, ...storeMembersOf(one, '', 'NONE') },
+        { captureOperation: 'REAL_DEVELOPMENT', signingKeyId: KEY_2, signingCertificateSha256: second, ...storeMembersOf(two, '01', 'KEY_ROTATED,KEY_MARKED_COMPROMISED,RETAINED_SET_CHANGED') },
+        { captureOperation: 'REAL_DEVELOPMENT', signingKeyId: KEY_2, signingCertificateSha256: second, ...storeMembersOf(two, '', 'KEY_MARK_REMOVED') },
+        { captureOperation: 'REAL_DEVELOPMENT', signingKeyId: KEY_2, signingCertificateSha256: second, ...storeMembersOf(two, '02', 'KEY_MARKED_COMPROMISED') },
+      ]);
+      expect(rows.map((row) => row.severity)).toEqual(['INFO', 'INFO', 'WARNING', 'WARNING', 'WARNING']);
+      // PUBLIC FACTS ONLY: each boot row holds exactly the seven members above (the comparison is exact), every value a key id, a
+      // certificate fingerprint, a count, places of the series or a code. No key file of the store is opened by this test.
+      for (const row of rows) expect(Object.keys(row.details).sort()).toEqual(['captureOperation', 'signingCertificateSha256', 'signingCertificatesSha256', 'signingKeyId', 'signingKeysCompromised', 'signingKeysRetained', 'signingStoreChange']);
+      expect(JSON.stringify((await owner.query("SELECT message, details FROM public.audit_log WHERE type = 'SYSTEM_BOOT'")).rows).includes('PRIVATE KEY')).toBe(false);
+    } finally {
+      fixture.remove();
+    }
+    expect(existsSync(fixture.dataDir)).toBe(false);
   });
 
   it('the statement by itself, as dems_app: idempotent, the next free id, and adapter_kind can be written at INSERT only', async () => {
@@ -490,9 +648,11 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
    * `startAt`: where the manual clock of this process start stands - a RESTART on a clone whose earlier Core moved its clock
    * names a later instant (a server clock never runs behind the stored state).
    */
-  async function coreOn(target: Clone, operation: Operation, startAt: number = FIXED_NOW + 60_000): Promise<Core> {
+  async function coreOn(target: Clone, operation: Operation, startAt: number = FIXED_NOW + 60_000, hostFacts: CaptureBootHostFacts | null = TEST_CAPTURE_HOST, config: Partial<ConfigInput> = CONFIG_OF[operation]): Promise<Core> {
     const owner = target.ownerPool();
-    const host = await engineApp(target, db.run.dataDir, { startAt, logLevel: 'info', config: CONFIG_OF[operation] });
+    const host = await engineApp(target, db.run.dataDir, { startAt, logLevel: 'info', config });
+    // Task 4 row 85 (C46): the explicit TEST host, through the entry point's door; null hands NOTHING in (the case of the mount as the capture unit makes it).
+    if (hostFacts !== null) captureBootControl(host.app).provideHost(hostFacts);
     let failure: BootError | null = null;
     try {
       await host.app.readiness.boot();
@@ -697,7 +857,7 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
       }
       // THE BOOT PASSES: the fence by name, the module's load by name (AD-04 (3)), the engine rehydration; ONE boot row in a real operation.
       expect(core.steps, label).toEqual(expect.arrayContaining(of.operation === 'SIMULATED' ? ['capture.config', 'engine.rehydrate'] : [CAPTURE_FENCE_BOOT_STEP, 'capture.boot', 'capture.config', 'engine.rehydrate']));
-      expect(await bootAuditsOf(owner), label).toEqual(of.operation === 'SIMULATED' ? [] : [{ captureOperation: of.operation }]);
+      expect(await bootAuditsOf(owner), label).toEqual(of.operation === 'SIMULATED' ? [] : [bootRowOf(of.operation)]);
       // The selector the Core holds is the stored one: a line per assigned slot and none for an empty one.
       expect(linesOf(core.host.engine.slice('captureConfig')), label).toEqual(heldOf(lines));
 
@@ -761,7 +921,7 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
     // 1. "Start once with the flag": the development boot passes.
     const development = await coreOn(target, 'REAL_DEVELOPMENT');
     expect(development.failure).toBeNull();
-    expect(await bootAuditsOf(owner)).toEqual([{ captureOperation: 'REAL_DEVELOPMENT' }]);
+    expect(await bootAuditsOf(owner)).toEqual([bootRowOf('REAL_DEVELOPMENT')]);
     // 2. "Unassign them": operation 78, by the TECHNICIAN on the web console - the product's own operation, one audit row per slot.
     const technician = await signIn(development.host, 'TECHNICIAN', undefined);
     const cleared = await post(development.host, technician, SELECTOR_URL, { unassign: [...SLOT_ORDER] });
@@ -780,7 +940,7 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
     try {
       expect(production.failure).toBeNull();
       expect(production.steps).toEqual(expect.arrayContaining([CAPTURE_FENCE_BOOT_STEP, 'capture.boot', 'capture.config', 'engine.rehydrate']));
-      expect(await bootAuditsOf(owner)).toEqual([{ captureOperation: 'REAL_DEVELOPMENT' }, { captureOperation: 'REAL_PRODUCTION' }]);
+      expect(await bootAuditsOf(owner)).toEqual([bootRowOf('REAL_DEVELOPMENT'), bootRowOf('REAL_PRODUCTION', 'NONE')]);
       expect(linesOf(production.host.engine.slice('captureConfig'))).toEqual([]);
 
       // 4. "Assign production devices": operation 78 on the production Core. WHERE IT STOPS TODAY: the registry of REAL_PRODUCTION
@@ -891,5 +1051,180 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
     } finally {
       await third.host.app.close();
     }
+  });
+
+  // Task 4 row 85 (decision C46; code review finding F-07; gate M2 decision C50). THE MOUNT OF THE CAPTURE UNIT
+  // (`src/capture/index.ts`, `mountCaptureBootChecks(app, { timers, sinks })`) on the real app and a real database: a
+  // REAL_PRODUCTION start through it ALWAYS runs steps 4d and 4e. Before row 85 the first Core below started unchecked.
+  it('C46 / F-07: a REAL_PRODUCTION start through the capture unit\'s own mount runs steps 4d and 4e - no host facts: refused; the entry point\'s facts without a relay program: refused CAPTURE_HOST_RELAY_PROGRAM_UNUSABLE; a prepared host: both steps pass, by their lines', async () => {
+    const target = await clone('r85-c46');
+    const owner = target.ownerPool();
+    await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, mic_primary_id = NULL, mic_standby_id = NULL');
+    await ownCredentials(owner);
+    const codesOf = (core: Core): unknown[] => core.host.log.lines().map((line) => line['code']).filter((code) => /^CAPTURE_(?:HOST|PROGRAM)_|^CAPTURE_BOOT_CHECKS_PASSED$/.test(String(code)));
+    const refusalOf = (core: Core): unknown => [core.failure?.stepId, (core.failure?.cause as { code?: unknown } | undefined)?.code, (core.failure?.cause as { reason?: unknown } | undefined)?.reason];
+
+    // 1. NOTHING handed in - what `buildApp` alone gives, and what every real start was before row 85: step 4d refuses.
+    const unseen = await coreOn(target, 'REAL_PRODUCTION', FIXED_NOW + 60_000, null);
+    try {
+      // RE-STATED by row HC (decision C55 DD-2): this start was refused `CAPTURE_HOST_CORE_FILE_LIMIT` / `LIMIT_UNREADABLE`, the code of a
+      // limit nobody had read. A Core that was handed no facts is now refused by a code of its own, at the same place of the boot.
+      expect(refusalOf(unseen)).toEqual(['capture.boot', 'CAPTURE_HOST_FACTS_NOT_HANDED_IN', 'NO_HOST_FACTS']);
+      // The fence passed first (the order of the boot steps is unchanged) and no boot step after `capture.boot` ran.
+      expect(unseen.steps).toContain(CAPTURE_FENCE_BOOT_STEP);
+      expect(unseen.steps).not.toContain('capture.boot');
+      expect(codesOf(unseen)).toEqual(['CAPTURE_HOST_FACTS_NOT_HANDED_IN']);
+    } finally {
+      await unseen.host.app.close();
+    }
+
+    // 2. THE ENTRY POINT'S FACTS (`captureHostOfProcess` of a clean process on Linux) and NO relay program configured.
+    const started: string[] = [];
+    const entry = captureHostOfProcess({ platform: 'linux', startArguments: [], nodeOptionsSet: false, userLimits: () => ({ core_file_size_blocks: { soft: 0 } }) }, createSystemTimers());
+    const { captureRelayPath: _relay, captureGuardPath: _guard, ...withoutPrograms } = REAL;
+    const noRelay = await coreOn(target, 'REAL_PRODUCTION', FIXED_NOW + 120_000, { ...entry, run: async (command) => (started.push(command.program), { outcome: 'NOT_STARTED' }) }, withoutPrograms);
+    try {
+      expect(refusalOf(noRelay)).toEqual(['capture.boot', 'CAPTURE_HOST_RELAY_PROGRAM_UNUSABLE', 'NOT_SET']);
+      expect(started).toEqual([]);
+      expect(codesOf(noRelay)).toEqual(['CAPTURE_HOST_RELAY_PROGRAM_UNUSABLE']);
+    } finally {
+      await noRelay.host.app.close();
+    }
+
+    // 3. A PREPARED HOST (the explicit test host) with both programs: step 4d, then step 4e, then the worker's handshake.
+    const prepared = await coreOn(target, 'REAL_PRODUCTION', FIXED_NOW + 180_000);
+    try {
+      expect(prepared.failure).toBeNull();
+      expect(codesOf(prepared)).toEqual(['CAPTURE_HOST_PROFILE_NOT_ASKED', 'CAPTURE_PROGRAM_CHECKS_PASSED', 'CAPTURE_BOOT_CHECKS_PASSED']);
+      expect(prepared.steps).toEqual(expect.arrayContaining([CAPTURE_FENCE_BOOT_STEP, 'capture.boot', 'capture.config', 'engine.rehydrate']));
+    } finally {
+      await prepared.host.app.close();
+    }
+  });
+
+  // Task 4 row P1 (decisions U21 (2), C66 (1), C71 C-7). A production Core is allowed on Linux and on macOS. Through the capture
+  // unit's own mount, the real app and a real database, with each platform handed in through the TEST HOST (the entry point's door):
+  // `darwin` passes with the warning, `linux` is ASKED the host profile, any other platform is refused by its own code - and each
+  // boot's SYSTEM_BOOT audit row states the platform and what it means, written by the fence BEFORE the boot checks ran.
+  it('row P1: REAL_PRODUCTION on `darwin` starts with the warning, on `linux` the host profile is asked, another platform is refused by CAPTURE_HOST_PLATFORM_NOT_SUPPORTED; each boot row states its host; a REAL_DEVELOPMENT boot row states none', async () => {
+    const target = await clone('rp1-platforms');
+    const owner = target.ownerPool();
+    const codesOf = (core: Core): unknown[] => core.host.log.lines().map((line) => line['code']).filter((code) => /^CAPTURE_(?:HOST|PROGRAM)_|^CAPTURE_BOOT_CHECKS_PASSED$/.test(String(code)));
+    const refusalOf = (core: Core): unknown => [core.failure?.stepId, (core.failure?.cause as { code?: unknown } | undefined)?.code, (core.failure?.cause as { reason?: unknown } | undefined)?.reason];
+    const lastBootRow = async (): Promise<Record<string, unknown>> => ((await owner.query("SELECT details FROM public.audit_log WHERE type = 'SYSTEM_BOOT' AND details ? 'captureOperation' ORDER BY seq DESC LIMIT 1")).rows[0] as { details: Record<string, unknown> }).details;
+    const bootRows = async (): Promise<number> => Number((await owner.query("SELECT count(*)::int AS n FROM public.audit_log WHERE type = 'SYSTEM_BOOT' AND details ? 'captureOperation'")).rows[0]?.n);
+
+    // 0. REAL_DEVELOPMENT, handed a platform no production Core starts on: no host profile is asked by design, nothing is refused and the row states NO host.
+    const development = await coreOn(target, 'REAL_DEVELOPMENT', FIXED_NOW + 30_000, { ...TEST_CAPTURE_HOST, platform: 'freebsd' });
+    try {
+      expect(development.failure).toBeNull();
+      expect(codesOf(development)).toEqual(['CAPTURE_BOOT_CHECKS_PASSED']);
+      expect(captureBootControl(development.host.app).outcome()).not.toHaveProperty('hostProfile');
+      const row = await lastBootRow();
+      expect(row['captureOperation']).toBe('REAL_DEVELOPMENT');
+      expect(['hostPlatform' in row, 'hostProfile' in row]).toEqual([false, false]);
+    } finally {
+      await development.host.app.close();
+    }
+    await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, mic_primary_id = NULL, mic_standby_id = NULL');
+    await ownCredentials(owner);
+    expect(await bootRows()).toBe(1);
+
+    // 1. `darwin` (THE TEST HOST as it is): the start passes, the host profile is NOT asked and that is said - in the log, in the outcome and in the audit row.
+    expect(TEST_CAPTURE_HOST.platform).toBe('darwin');
+    const mac = await coreOn(target, 'REAL_PRODUCTION', FIXED_NOW + 60_000);
+    try {
+      expect(mac.failure).toBeNull();
+      expect(codesOf(mac)).toEqual(['CAPTURE_HOST_PROFILE_NOT_ASKED', 'CAPTURE_PROGRAM_CHECKS_PASSED', 'CAPTURE_BOOT_CHECKS_PASSED']);
+      expect(captureBootControl(mac.host.app).outcome()?.hostProfile).toEqual({ platform: 'darwin', asked: false });
+      expect(await lastBootRow()).toMatchObject({ captureOperation: 'REAL_PRODUCTION', hostPlatform: 'darwin', hostProfile: 'WILL_NOT_BE_ASKED' });
+      // Row HC (row P1 kept): on darwin nothing of the Linux profile is asked or stated - the row carries no member of the address helper.
+      expect('addressHelperSocket' in (await lastBootRow())).toBe(false);
+    } finally {
+      await mac.host.app.close();
+    }
+
+    // 2. `linux` through the same test host, whose runner starts nothing: the profile IS asked - its first question (the loopback rule) has no
+    //    answer and refuses the start by its own code. The row was written before: it says the profile WILL be asked, not that it was in place.
+    const asked: string[] = [];
+    const linux = await coreOn(target, 'REAL_PRODUCTION', FIXED_NOW + 120_000, { ...TEST_CAPTURE_HOST, platform: 'linux', run: async (command) => (asked.push(`${command.program} ${command.args.join(' ')}`), { outcome: 'NOT_STARTED' }) });
+    try {
+      expect(refusalOf(linux)).toEqual(['capture.boot', 'CAPTURE_HOST_LOOPBACK_RULE_MISSING', 'HOST_COMMAND_NOT_STARTED']);
+      expect(asked).toEqual(['/usr/bin/systemctl is-active dems-loopback-rule.service']);
+      expect(codesOf(linux)).toEqual(['CAPTURE_HOST_LOOPBACK_RULE_MISSING']);
+      expect(await lastBootRow()).toMatchObject({ captureOperation: 'REAL_PRODUCTION', hostPlatform: 'linux', hostProfile: 'WILL_BE_ASKED' });
+      // Row HC (C94 (j)): a production row ON LINUX also states whether something lay at the installed socket path of the address helper -
+      // one look of the fence's own inspector at one fixed path of THIS machine (no helper is installed where this suite runs: NOT_PRESENT).
+      expect((await lastBootRow())['addressHelperSocket']).toBe(existsSync('/run/dems-core-netalias/socket') ? 'PRESENT' : 'NOT_PRESENT');
+    } finally {
+      await linux.host.app.close();
+    }
+
+    // 3. ANOTHER PLATFORM: refused by its own code after the Core's own-process checks passed; no question of the profile, no relay, no worker.
+    const started: string[] = [];
+    const other = await coreOn(target, 'REAL_PRODUCTION', FIXED_NOW + 180_000, { ...TEST_CAPTURE_HOST, platform: 'freebsd', run: async (command) => (started.push(command.program), { outcome: 'NOT_STARTED' }) });
+    try {
+      expect(refusalOf(other)).toEqual(['capture.boot', 'CAPTURE_HOST_PLATFORM_NOT_SUPPORTED', 'PLATFORM_NOT_LINUX_OR_DARWIN']);
+      expect(started).toEqual([]);
+      expect(codesOf(other)).toEqual(['CAPTURE_HOST_PROFILE_NOT_ASKED', 'CAPTURE_HOST_PLATFORM_NOT_SUPPORTED']);
+      expect(other.steps).toContain(CAPTURE_FENCE_BOOT_STEP);
+      expect(other.steps).not.toContain('capture.boot');
+      // The platform's own word is in neither the row nor the log: the row says null and the code.
+      const row = await lastBootRow();
+      expect([row['hostPlatform'], row['hostProfile']]).toEqual([null, 'PLATFORM_NOT_SUPPORTED']);
+      expect(JSON.stringify(row)).not.toContain('freebsd');
+      expect(JSON.stringify(other.host.log.lines().filter((line) => String(line['code']).startsWith('CAPTURE_HOST_')))).not.toContain('freebsd');
+    } finally {
+      await other.host.app.close();
+    }
+    // One row per boot of a real operation, refused or not: the fence wrote each before the boot checks ran.
+    expect(await bootRows()).toBe(4);
+  });
+});
+
+// Task 4 row 85 (WP-13b; design addendum 6.4 "one check"): the production registry builder against a clone with production
+// rows. The loader is a DOUBLE here - rule A-1 lets no test but the loader's own import it (`adapters/__tests__/real.test.ts`
+// runs the builder over the real loader) - and it builds what the class-C stubs are: adapters without an opener.
+describe('task 4 row 85: the production registry builder reads the stored registry of a clone', () => {
+  it('built against a clone with production rows it lists the expected devices, and no development row; another operation is refused before the clone is read', async () => {
+    const target = await clone('r85-builder');
+    const owner = target.ownerPool();
+    await owner.query("INSERT INTO public.capture_devices (id, kind, transport, model, enabled, adapter_kind) VALUES ('CAM-11', 'CAMERA', 'RTSP', 'Room camera A', true, 'ONVIF_RTSP'), ('CAM-12', 'CAMERA', 'RTSP', NULL, true, 'ONVIF_RTSP'), ('MIC-11', 'MIC', 'USB', 'Interface input 1', true, 'USB_AUDIO'), ('MIC-12', 'MIC', 'USB', 'Interface input 2', true, 'USB_AUDIO')");
+    await addLocalRows(owner);
+    let reads = 0;
+    const executor: FenceExecutor = {
+      async query<Row extends Record<string, unknown>>(text: string, values?: readonly unknown[]): Promise<{ rows: Row[] }> {
+        reads += 1;
+        return { rows: (await owner.query(text, values === undefined ? [] : [...values])).rows as Row[] };
+      },
+    };
+    const loaded: string[][] = [];
+    const load: ProductionAdapterLoader<null, null> = async (_operation, devices) => {
+      loaded.push([devices.cameras, devices.mics, devices.switches].map((entries) => entries.map((entry) => entry.id).join(',')));
+      const stub = { hasOpener: false } as const;
+      return {
+        camera: { ...stub, seam: 'CAMERA', kind: 'ONVIF_RTSP', devices: devices.cameras } as unknown as CameraAdapter,
+        audio: { ...stub, seam: 'AUDIO', kind: 'USB_AUDIO', devices: devices.mics } as unknown as AudioInputAdapter,
+        poe: { seam: 'POE', kind: 'SNMP_POE', devices: devices.switches } as unknown as CaptureAdapter,
+      };
+    };
+    const input = { executor, dependencies: { camera: null, audio: null }, load, audioCards: async () => null };
+    for (const operation of ['SIMULATED', 'REAL_DEVELOPMENT'] as const) await expect(buildProductionRegistryOf({ ...input, operation })).rejects.toMatchObject({ code: 'CAPTURE_REAL_ADAPTERS_REFUSED' });
+    expect([reads, loaded]).toEqual([0, []]);
+
+    const built = await buildProductionRegistryOf({ ...input, operation: 'REAL_PRODUCTION' });
+    // Task 4 row 85c moved this pin by delta (1 -> 2): the boot's own read of the registry and the wider read of the stored profile lists.
+    expect(reads).toBe(2);
+    expect(loaded).toEqual([['CAM-11,CAM-12', 'MIC-11,MIC-12', '']]);
+    expect(built.devices().map((device) => `${device.id}:${device.adapterKind}`)).toEqual(['CAM-11:ONVIF_RTSP', 'CAM-12:ONVIF_RTSP', 'MIC-11:USB_AUDIO', 'MIC-12:USB_AUDIO']);
+    expect(built.registry.list().map((device) => `${device.id} ${device.label} ${device.sourceClass} opener=${String(device.hasOpener)}`)).toEqual([
+      'CAM-11 Room camera A PRODUCTION opener=false',
+      'CAM-12 CAM-12 PRODUCTION opener=false',
+      'MIC-11 Interface input 1 PRODUCTION opener=false',
+      'MIC-12 Interface input 2 PRODUCTION opener=false',
+    ]);
+    // The seeded FAKE rows and the two local rows are in the clone and in no list of this registry.
+    expect((await kindsOf(owner)).filter((entry) => /FAKE|LOCAL_DEVICE/.test(entry)).length).toBeGreaterThan(4);
+    expect(() => built.registry.assertRecordable('CAM-11')).toThrow(expect.objectContaining({ code: 'SOURCE_KIND_NOT_RECORDABLE' }));
   });
 });

@@ -23,6 +23,7 @@ import {
   CORE_HTTP_ORIGIN,
   CORE_SERVER_HTTP_ORIGIN,
   CORE_SERVER_WS_URL,
+  CREDENTIAL_CARRYING_OPERATIONS,
   isOfflineCoreApiOperation,
   listOpenApiOperations,
   REPLICATED_SLICE_NAMES,
@@ -51,6 +52,8 @@ import {
   createLiveTryItFetch,
   deniedTryItOperation,
   TRY_IT_DENIED_OPERATIONS,
+  TRY_IT_STORED_CREDENTIAL_OPERATIONS,
+  TRY_IT_STORED_RECORD_OPERATIONS,
   TryItRefusedError,
 } from '@/features/api-reference/try-it'
 import { createLiveFrameTap, useLiveRealtimeFeed, type LiveFrameReading } from '@/features/api-reference/use-live-realtime-feed'
@@ -129,23 +132,30 @@ function assertLogDiscipline(): void {
 }
 
 describe('AR-2: the Simulated views (AC-C-100)', () => {
-  it('the default view is the document of before: 33 operations, byte-equal to `buildApiDocument(true)`', () => {
+  it('the default view is the document of before: 44 operations, byte-equal to `buildApiDocument(true)`', () => {
     const view = buildApiDocumentFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: false })
     // Task 3 M6 row 113 (C3 §2.5): the three simulated STT configuration operations 90-92 join the offline scope, 23 -> 26.
     // Task 3 R-9..R-11, row 132 (C3 §2.6, §10.1): the five simulated operations 93-97 join it, 26 -> 31.
     // Task 4 blueprint row 63 (design addendum 4.2): the two simulated sound-card operations 98-99 join it, 31 -> 33.
-    expect(countOperations(view)).toBe(33)
+    // Task 4 blueprint row 194: the simulated operation 100 (the confirmed re-address) joins it, 33 -> 34.
+    // Task 4 blueprint row 102: the seven simulated commissioning operations 101-107 join it, 34 -> 41.
+    // Task 4 row V3: the simulated operation 108 (the stored-credential connection test) joins it, 41 -> 42.
+    // Task 4 blueprint row 116: the two simulated operations 109-110 of the installation acceptance join it, 42 -> 44.
+    expect(countOperations(view)).toBe(44)
     expect(serializeOpenApiDocument(view)).toBe(serializeOpenApiDocument(buildApiDocument(true)))
     expect(apiDocumentJsonFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: false })).toBe(apiDocumentJson(true))
     expect(apiDocumentJsonFor({ mode: 'simulated', includeSimulated: false, includeCoreServer: false })).toBe(apiDocumentJson(false))
   })
 
-  it('"Show Core-server endpoints" lists 99: the 33 unchanged, the other 66 with CORE SERVER in place of LIVE', () => {
+  it('"Show Core-server endpoints" lists 110: the 44 unchanged, the other 66 with CORE SERVER in place of LIVE', () => {
     const plain = buildApiDocument(true)
     const view = buildApiDocumentFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: true })
     // The registry total of C3 §10.1 (89 + ops 90-92 + ops 93-97) + the two of task 4 row 63 (ops 98-99,
-    // both simulated); the Core-server-only count stays 66.
-    expect(countOperations(view)).toBe(99)
+    // both simulated) + the one of row 194 (op 100, simulated); the Core-server-only count stays 66.
+    // Task 4 row 102: + the seven commissioning operations 101-107 (all simulated); the 66 still do not move.
+    // Task 4 row V3: + operation 108 (simulated); the 66 still do not move.
+    // Task 4 blueprint row 116: + operations 109-110 (simulated); the 66 still do not move.
+    expect(countOperations(view)).toBe(110)
     expect(CORE_SERVER_ONLY_OPERATIONS).toHaveLength(66)
     const coreOnly = new Set(CORE_SERVER_ONLY_OPERATIONS.map((operation) => operation.operationId))
     for (const [operationId, badges] of badgesOf(view)) {
@@ -198,7 +208,7 @@ describe('AR-2: Try-it in Simulated mode (AC-C-100)', () => {
     },
   )
 
-  it('the 33 route as before with the switch on: health to the network, the 32 to the simulator', async () => {
+  it('the 43 route as before with the switch on: health to the network, the 42 to the simulator', async () => {
     const { request, networkFetch, fetch } = await harness(CORE_ONLY)
     await fetch(`${CORE_HTTP_ORIGIN}/api/v1/health`)
     expect(networkFetch).toHaveBeenCalledTimes(1)
@@ -208,7 +218,11 @@ describe('AR-2: Try-it in Simulated mode (AC-C-100)', () => {
     }
     // 25 until task 3 row 132 added the five simulated operations 93-97 (C3 §2.6).
     // 30 until task 4 row 63 added the two simulated sound-card operations 98-99 (design addendum 4.2).
-    expect(request).toHaveBeenCalledTimes(32)
+    // 32 until task 4 row 194 added the simulated operation 100.
+    // 33 until task 4 row 102 added the seven simulated commissioning operations 101-107.
+    // 40 until task 4 row V3 added the simulated operation 108.
+    // 41 until task 4 row 116 added the two simulated operations 109-110 of the installation acceptance.
+    expect(request).toHaveBeenCalledTimes(43)
   })
 
   it('without the switch nothing changes: a Core-server path is the simulator\'s answer, as before', async () => {
@@ -236,9 +250,9 @@ describe('AR-2: Try-it in Simulated mode (AC-C-100)', () => {
 describe('AR-3: the Live document (AC-C-100)', () => {
   beforeEach(() => setCoreEndpointMode('LIVE'))
 
-  it('99 operations, every one LIVE, served from the page\'s own origin and from nowhere else', () => {
+  it('110 operations, every one LIVE, served from the page\'s own origin and from nowhere else', () => {
     const document = buildLiveApiDocument(NO_REPLICA_IDENTIFIERS)
-    expect(countOperations(document)).toBe(99)
+    expect(countOperations(document)).toBe(110)
     for (const [operationId, badges] of badgesOf(document)) expect(badges[0], operationId).toBe('LIVE')
     expect(document.servers.map((server) => server.url)).toEqual([PAGE])
     expect(document.info.version).toBe('0.3.0')
@@ -332,18 +346,30 @@ describe('AR-3: Try-it in Live mode (AC-C-100)', () => {
     ])
   })
 
-  it('every one of the 89 operations that are not denied goes to the network (the simulated ones too)', async () => {
+  it('every one of the 97 operations that are not denied goes to the network (the simulated ones too)', async () => {
     const { fetch, networkFetch } = liveHarness()
     const allowed = CORE_API_OPERATIONS.filter((operation) => !(TRY_IT_DENIED_OPERATIONS as readonly string[]).includes(operation.operationId))
     // 97 of the registry (C3 §10.1) minus the ten of AR-3a (six of 01_specs §7.7, operations 89
     // and 91 of task 3: row 113 fix round 1, navigator finding N-2, and operations 95 and 96 of the
     // camera connect flow: row 132, C3 §2.6 "Web Try-it"). Task 4 row 63: 99 of the registry minus
     // the same ten - the two sound-card operations 98-99 carry no secret and are not denied.
-    expect(allowed).toHaveLength(89)
+    // Task 4 row 194: 100 minus the same ten - the body of operation 100 holds ids and an address, no secret.
+    // Task 4 row 102: 107 minus ELEVEN - six of the seven commissioning operations carry no secret;
+    // the seventh, `setCameraNetwork`, carries a camera credential and joined the deny list (10 -> 11).
+    // Task 4 row V3: 108 minus the same eleven - operation 108 has NO body and its answer holds no
+    // secret, so the rule AR-3a ("the body or the answer holds a secret") does not name it. Whether a
+    // test that makes the Core use a STORED credential should be offered for Try-it is put to the
+    // controller as a request of row V3; no product line of the web was changed by that row.
+    // Wave 11 (decision C67 (1)): the ruling is given - operation 108 is DENIED (11 -> 12), under a
+    // reason and a sentence of its own, so 108 minus twelve: 97 -> 96.
+    // Task 4 blueprint row 116: 110 minus FOURTEEN - operations 109 and 110 (the installation
+    // acceptance and its revocation) change a stored record and are denied (12 -> 14), so the
+    // count stays 96.
+    expect(allowed).toHaveLength(96)
     for (const operation of allowed) {
       await fetch(new Request(`${PAGE}${operation.path.replace('{id}', 'X-1')}`, { method: operation.method.toUpperCase() }))
     }
-    expect(networkFetch).toHaveBeenCalledTimes(89)
+    expect(networkFetch).toHaveBeenCalledTimes(96)
   })
 
   it.each([
@@ -397,9 +423,55 @@ describe('AR-3a: the ten operations are rejected before a request (AC-C-103)', (
     const fetch = createLiveTryItFetch({ secretRefusal: SECRET, networkFetch })
     const call = fetch(new Request(`${PAGE}${pathOf(operationId)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: markedBody }))
     await expect(call).rejects.toBeInstanceOf(TryItRefusedError)
-    await expect(call).rejects.toMatchObject({ message: SECRET, reason: 'SECRET', method: 'POST', path: pathOf(operationId) })
+    // Decision C67 (1): an operation that uses a STORED credential is refused under its own reason; without a sentence of its own it reads the sentence of AR-3a.
+    // Row 116: an operation that changes a stored record of the Core (109, 110) likewise.
+    const reason = (TRY_IT_STORED_CREDENTIAL_OPERATIONS as readonly string[]).includes(operationId) ? 'STORED_CREDENTIAL' : (TRY_IT_STORED_RECORD_OPERATIONS as readonly string[]).includes(operationId) ? 'STORED_RECORD' : 'SECRET'
+    await expect(call).rejects.toMatchObject({ message: SECRET, reason, method: 'POST', path: pathOf(operationId) })
     expect(networkFetch).not.toHaveBeenCalled()
     expect(webErrorSink.records().at(-1)).toMatchObject({ source: 'ApiReference.liveTryIt.denied', context: { method: 'POST', path: pathOf(operationId) } })
+    assertLogDiscipline()
+  })
+
+  // Decision C67 (1): operation 108 (`POST /api/v1/capture/devices/{id}/test`, no body) makes the Core
+  // use a STORED camera credential against a device on the network and counts towards the lock-out guard.
+  it('C67 (1): testCaptureDeviceConnection never reaches the network, in any spelling, and its refusal says what is true of it - not "carries a secret"', async () => {
+    expect(TRY_IT_STORED_CREDENTIAL_OPERATIONS).toEqual(['testCaptureDeviceConnection'])
+    expect(TRY_IT_DENIED_OPERATIONS as readonly string[]).toContain('testCaptureDeviceConnection')
+    const STORED = 'This operation makes the Core use a stored credential.'
+    const networkFetch = vi.fn<FetchLike>(async () => new Response('{}'))
+    const fetch = createLiveTryItFetch({ secretRefusal: SECRET, storedCredentialRefusal: STORED, networkFetch })
+    const path = '/api/v1/capture/devices/CAM-04/test'
+    for (const spelling of [path, `${path}/`, path.toUpperCase().replace('/API/V1', '/api/v1'), '/api/v1//capture/devices/CAM-04/test']) {
+      const call = fetch(new Request(`${PAGE}${spelling}`, { method: 'POST' }))
+      await expect(call, spelling).rejects.toBeInstanceOf(TryItRefusedError)
+      await expect(call, spelling).rejects.toMatchObject({ message: STORED, reason: 'STORED_CREDENTIAL', method: 'POST' })
+    }
+    expect(networkFetch).not.toHaveBeenCalled()
+    expect(webErrorSink.records().at(-1)).toMatchObject({ source: 'ApiReference.liveTryIt.denied', message: 'A Try-it request of an operation that uses a stored credential was refused.' })
+    // CONTROL: the read of the same camera's devices list is not denied.
+    await fetch(new Request(`${PAGE}/api/v1/capture/devices`))
+    expect(networkFetch).toHaveBeenCalledTimes(1)
+    assertLogDiscipline()
+  })
+
+  // Task 4 row 116 (request of agent A5): operations 109 and 110 write and revoke the stored
+  // installation acceptance of a Core. No secret, no stored credential: a reason and a sentence of their own.
+  it('row 116: acceptInstallation and revokeInstallationAcceptance never reach the network, in any spelling, and are refused as operations that change a stored record', async () => {
+    expect(TRY_IT_STORED_RECORD_OPERATIONS).toEqual(['acceptInstallation', 'revokeInstallationAcceptance'])
+    const RECORD = 'This operation changes the installation record of the Core.'
+    const networkFetch = vi.fn<FetchLike>(async () => new Response('{}'))
+    const fetch = createLiveTryItFetch({ secretRefusal: SECRET, storedRecordRefusal: RECORD, networkFetch })
+    for (const operationId of TRY_IT_STORED_RECORD_OPERATIONS) {
+      expect(TRY_IT_DENIED_OPERATIONS as readonly string[]).toContain(operationId)
+      const path = pathOf(operationId)
+      for (const spelling of [path, `${path}/`, path.toUpperCase().replace('/API/V1', '/api/v1')]) {
+        const call = fetch(new Request(`${PAGE}${spelling}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }))
+        await expect(call, spelling).rejects.toBeInstanceOf(TryItRefusedError)
+        await expect(call, spelling).rejects.toMatchObject({ message: RECORD, reason: 'STORED_RECORD', method: 'POST' })
+      }
+    }
+    expect(networkFetch).not.toHaveBeenCalled()
+    expect(webErrorSink.records().at(-1)).toMatchObject({ source: 'ApiReference.liveTryIt.denied', message: 'A Try-it request of an operation that changes a stored record of the Core was refused.' })
     assertLogDiscipline()
   })
 
@@ -411,6 +483,8 @@ describe('AR-3a: the ten operations are rejected before a request (AC-C-103)', (
     // Task 3 R-9 (row 132, D106; C3 §2.6 "Web Try-it"; AR-3a 8 -> 10): the two operations of the camera connect flow.
     ['testCaptureCandidateConnection', '/api/v1/capture/discovery/candidates/CND-4F2A91C0D377/test', { credential: { username: 'onvif', secret: MARKER_PASSWORD } }],
     ['adoptCaptureCandidate', '/api/v1/capture/discovery/candidates/CND-4F2A91C0D377/adopt', { credential: { username: 'onvif', secret: MARKER_PASSWORD } }],
+    // Task 4 row 102 (design F-4.2 DR-8; AR-3a 10 -> 11): the set-network job, the fourth operation whose body carries a camera credential.
+    ['setCameraNetwork', '/api/v1/capture/network/cameras/address', { fromAddress: '192.168.1.64', credential: { username: 'onvif', secret: MARKER_PASSWORD } }],
   ] as const)('N-2: %s (a credential in the body) never reaches the network', async (operationId, path, body) => {
     expect(TRY_IT_DENIED_OPERATIONS as readonly string[]).toContain(operationId)
     const networkFetch = vi.fn<FetchLike>(async () => new Response('{}'))
@@ -425,7 +499,11 @@ describe('AR-3a: the ten operations are rejected before a request (AC-C-103)', (
   })
 
   it('N-2: the deny list holds ten; the read and the test of the STT configuration and the camera search, its read and the microphone re-read, which carry no credential, still go to the network', async () => {
-    expect(TRY_IT_DENIED_OPERATIONS).toHaveLength(10)
+    // Eleven since task 4 row 102 (`setCameraNetwork`); they are the contract's four credential-carrying operations and the seven other secret-bearing ones.
+    // Twelve since wave 11 (decision C67 (1)): `testCaptureDeviceConnection`, which carries no secret and uses a stored one.
+    // Fourteen since row 116 (request of agent A5): `acceptInstallation` and `revokeInstallationAcceptance`, which change a stored record.
+    expect(TRY_IT_DENIED_OPERATIONS).toHaveLength(14)
+    for (const operationId of CREDENTIAL_CARRYING_OPERATIONS) expect(TRY_IT_DENIED_OPERATIONS as readonly string[]).toContain(operationId)
     const networkFetch = vi.fn<FetchLike>(async () => new Response('{}'))
     const fetch = createLiveTryItFetch({ secretRefusal: SECRET, networkFetch })
     await fetch(new Request(`${PAGE}/api/v1/transcription/config`))

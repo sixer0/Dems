@@ -18,7 +18,9 @@ import { SealingError } from '../../sealing';
 import { evidenceVerification } from '../../modules/evidence';
 import { NO_STT_SNAPSHOT_RECORDED, SEALING_RESUME_BOOT_STEP, STAND_INS, isSttSnapshotNotRecorded, sealingHost, sessionKeyIdOf } from '../index';
 import { coreFragmentSealer } from '../session-key';
-import { READ_SEAL_AUDIO_INTERVALS, READ_SEAL_AUDIT_ROWS, READ_SEAL_SOURCE_ROWS, SOURCE_WORDS, createSealSessionReader, type SealStateView, type SealCaptureFacts, CORE_TIME_SOURCE, NOT_CONFIGURED, NOT_REPORTED } from '../session-reader';
+import { MANIFEST_HOST_PROFILE_NOT_ASKED_PLATFORMS } from '@dems/shared/evidence-package';
+import { PRODUCTION_PLATFORMS, hostProfileStatementOf } from '../../capture/boot/checks';
+import { READ_SEAL_AUDIO_INTERVALS, READ_SEAL_AUDIT_ROWS, READ_SEAL_SOURCE_ROWS, SOURCE_WORDS, audioRestartGapsOf, hostProfileNotAskedOf, videoAbsencesOf, createSealSessionReader, type SealStateView, type SealCaptureFacts, CORE_TIME_SOURCE, NOT_CONFIGURED, NOT_REPORTED } from '../session-reader';
 import { CORE_SERVER_VERSION } from '../../version';
 import { verifyPackageV2 } from '@dems/shared/evidence-verify';
 import { removePackages } from '../../sealing/__tests__/package-support';
@@ -346,6 +348,51 @@ describe('the mount in a real capture mode (no database, nothing recorded)', () 
     // The journal cannot be read here (no database): the row is written all the same, without a cause - never skipped.
     expect(notes).toEqual([{ sessionId: 'SES-20261010-0008', actorId: 'OP-0003', cause: null, step: null }]);
   });
+
+  // Task 4 row 226c (decision C81): THE WIRING of the one held signer. The behaviour is proved where it can run - the hold in
+  // `capture/signer/__tests__/sign-time-guard.test.ts` (with the boot's door), the running Core in
+  // `evidence-export/__tests__/export-trust-list.db.test.ts`; this holds the composition to it: no taker gets the kept
+  // signer but through the hold, and the three takers are the seal, the export jobs and the transcript revisions.
+  it('row 226c: the kept signer is handed out ONLY through the hold of the boot`s key and the Core`s clock - to the seal, the export jobs and the transcript revisions', () => {
+    const source = readFileSync(join(__dirname, '..', 'index.ts'), 'utf8');
+    const code = source.replace(/^\s*\/\/.*$/gm, '');
+    // The one load, inside the one hold; the key id is the boot's door, the clock is the Core's.
+    expect(code).toContain('return signerHeldToBoot((signing ??= loadSealingSigner({ dataDir: app.config.dataDir, now: now() })), hold);');
+    expect(code).toContain('const hold = { bootKeyId: captureBootControl(app).judgedSigningKey(), now };');
+    expect(code.match(/\bloadSealingSigner\(/g)).toHaveLength(1);
+    expect(code.match(/\bsignerHeldToBoot\(/g)).toHaveLength(1);
+    // The kept signer itself is read in ONE more place: to drop a signer of a key the boot did not judge.
+    expect(code).toContain('if (signing !== null && hold.bootKeyId !== null && signing.signer.keyId !== hold.bootKeyId) signing = null;');
+    expect(code.match(/\bsigning\.(?:signer|certificate)\b/g)).toEqual(['signing.signer']);
+    // The three takers.
+    expect(code).toMatch(/get signing\(\) \{\n\s+return signingNow\(\);\n\s+\},/);
+    expect(code).toContain('provideCoreEvidenceExport(app, { signer: signingNow });');
+    expect(code).toContain('provideRevisionSigner(app, () => signingNow());');
+    expect(code.match(/\bsigningNow\(\)|\bsigningNow\b(?=\s*\}\))/g)).toHaveLength(3);
+  });
+
+  // Task 4 row 226d (review 230 caution R-7): THE WIRING of the null door. The behaviour - the real boot step's door, null before
+  // the pass, after a refused boot and on key seams - is proved in `capture/signer/__tests__/sign-time-guard.test.ts` with the
+  // function this unit calls; this holds the composition to it: the refusal comes BEFORE the one load and outside its `try`,
+  // and the unit is mounted in the two real operations only (where a boot judges a key).
+  it('row 226d (R-7): a null door refuses the signer BEFORE anything of the store is loaded, in the one place every taker goes through; SIMULATED is not mounted here', () => {
+    const source = readFileSync(join(__dirname, '..', 'index.ts'), 'utf8');
+    const code = source.replace(/^\s*\/\/.*$/gm, '');
+    const taker = code.slice(code.indexOf('const signingNow = '), code.indexOf('const profileDiffersTold'));
+    const at = (needle: string): number => taker.indexOf(needle);
+    const order = [at('const hold = { bootKeyId: captureBootControl(app).judgedSigningKey(), now };'), at('refuseHoldWithoutBootKey(hold);'), at('try {'), at('loadSealingSigner(')];
+    expect(order.every((place) => place >= 0)).toBe(true);
+    expect([...order].sort((left, right) => left - right)).toEqual(order);
+    expect(code.match(/\brefuseHoldWithoutBootKey\(/g)).toHaveLength(1);
+    // Where no boot judges a key this unit does not exist: the mount answers the inert host before anything else is built.
+    const mount = code.slice(code.indexOf('export function mountSealingHost'), code.indexOf('const signingNow = '));
+    expect(mount).toMatch(/const operation = captureOperationOf\(app\.config\);\n\s+if \(operation === CaptureOperation\.SIMULATED\) \{\n\s+hosts\.set\(app\.stages, INERT\);\n\s+return INERT;\n\s+\}/);
+    // SIMULATED and the seed command stay as review 230 accepted them, and the place says so.
+    const said = source.slice(source.indexOf('THE NULL DOOR REFUSES'), source.indexOf('const signingNow = '));
+    expect(said).toContain('LEFT AS REVIEW 230 ACCEPTED THEM');
+    expect(said).toContain('capture mode `simulated`');
+    expect(said).toContain('demo-seed/seed-hook.ts');
+  });
 });
 
 describe('gate 89 C3: the camera end in the package and in the reader (wave H, driver A)', () => {
@@ -490,8 +537,8 @@ describe('G89-01: the manifest of a real session states only facts (wave H, driv
     { slot: 'VIDEO-02', device_id: 'CAM-02', adapter_kind: video2 },
   ];
 
-  async function read(view: SealStateView, sourceRows: unknown[]) {
-    const rows: Record<string, unknown[]> = { [READ_SEAL_SOURCE_ROWS]: sourceRows, [READ_SEAL_AUDIO_INTERVALS]: [{ seq: 1, mic_device_id: 'MIC-01', role: 'PRIMARY', from_media_ms: '21', to_media_ms: null, reason: 'START', switched_by: null }], [READ_SEAL_AUDIT_ROWS]: [] };
+  async function read(view: SealStateView, sourceRows: unknown[], intervalRows: unknown[] = [{ seq: 1, mic_device_id: 'MIC-01', role: 'PRIMARY', from_media_ms: '21', to_media_ms: null, reason: 'START', switched_by: null }]) {
+    const rows: Record<string, unknown[]> = { [READ_SEAL_SOURCE_ROWS]: sourceRows, [READ_SEAL_AUDIO_INTERVALS]: intervalRows, [READ_SEAL_AUDIT_ROWS]: [] };
     const reader = createSealSessionReader({
       state: () => view,
       db: () => ({ query: async (text: string) => ({ rows: (rows[text] ?? []) as never[] }) }),
@@ -504,6 +551,209 @@ describe('G89-01: the manifest of a real session states only facts (wave H, driv
     if (facts === null) throw new Error('the session was not read');
     return facts;
   }
+
+  describe('task 4 row 191b: the interval rows of a capture worker that was replaced (decision C57)', () => {
+    const row = (seq: number, mic: string, role: string, from: string, to: string | null, reason: string, by: string | null = null) => ({ seq, mic_device_id: mic, role, from_media_ms: from, to_media_ms: to, reason, switched_by: by });
+    const spans = (facts: Awaited<ReturnType<typeof read>>) => facts.audioIntervals.map((interval) => [interval.seq, interval.micDeviceId, interval.reason, interval.fromMs, interval.toMs]);
+    /** The manifest's own rule of §B.5 (`manifest.ts`): no interval starts before the previous one ended, only the last is open. */
+    const forward = (facts: Awaited<ReturnType<typeof read>>) => facts.audioIntervals.every((interval, index, all) => (index === 0 || (all[index - 1]?.toMs ?? Number.NaN) <= interval.fromMs) && (interval.toMs !== null || index === all.length - 1));
+
+    it('BOTH rows are in what the seal reads - the audio source began twice, no continuity is claimed; the earlier worker\'s row claims no part of the file (0..0), also when the later worker\'s audio begins EARLIER in its file than the earlier worker\'s did in its own (31 < 42: stated as stored, the manifest would be refused)', async () => {
+      const facts = await read(viewOf(), sources('FAKE', 'FAKE'), [row(1, 'MIC-01', 'PRIMARY', '42', '42', 'START'), row(2, 'MIC-01', 'PRIMARY', '31', null, 'START')]);
+      expect(spans(facts)).toEqual([
+        [1, 'MIC-01', 'START', 0, 0],
+        [2, 'MIC-01', 'START', 31, null],
+      ]);
+      expect(forward(facts)).toBe(true);
+    });
+
+    it('a SWITCH made before the restart is of the earlier worker too: every row before the LAST start row is 0..0; the rows after it are as stored', async () => {
+      const facts = await read(viewOf(), sources('FAKE', 'FAKE'), [row(1, 'MIC-01', 'PRIMARY', '21', '1500', 'START'), row(2, 'MIC-02', 'STANDBY', '1500', '1500', 'MANUAL', 'OP-1'), row(3, 'MIC-01', 'PRIMARY', '21', '5021', 'START'), row(4, 'MIC-02', 'STANDBY', '5021', null, 'MANUAL', 'OP-1')]);
+      expect(spans(facts)).toEqual([
+        [1, 'MIC-01', 'START', 0, 0],
+        [2, 'MIC-02', 'MANUAL', 0, 0],
+        [3, 'MIC-01', 'START', 21, 5_021],
+        [4, 'MIC-02', 'MANUAL', 5_021, null],
+      ]);
+      expect(forward(facts)).toBe(true);
+    });
+
+    it('CONTROL: a session without a restart is read exactly as stored (one start row, a switch after it)', async () => {
+      const facts = await read(viewOf(), sources('FAKE', 'FAKE'), [row(1, 'MIC-01', 'PRIMARY', '21', '4021', 'START'), row(2, 'MIC-02', 'STANDBY', '4021', null, 'MANUAL', 'OP-1')]);
+      expect(spans(facts)).toEqual([
+        [1, 'MIC-01', 'START', 21, 4_021],
+        [2, 'MIC-02', 'MANUAL', 4_021, null],
+      ]);
+    });
+  });
+
+  describe('task 4 row 191c: the restarts that cost audio, out of the audit rows the reader already reads (decisions C73, C83)', () => {
+    const auditRow = (seq: number, type: string, details: Record<string, unknown>) => ({ seq, id: `AUD-${String(seq)}`, at: 1_791_529_000_000 + seq, type, category: 'DEVICE', severity: 'WARNING', actor_id: null, message: 'm', session_id: SESSION, evidence_id: null, device_id: 'MIC-01', details, prev_hash: 'a'.repeat(64), hash: 'b'.repeat(64) });
+    const gap = (seq: number, details: Record<string, unknown>) => auditRow(seq, 'CAPTURE_AUDIO_ABSENT_ON_RESTART', { sessionId: SESSION, ...details });
+    async function readWithAudit(auditRows: unknown[]) {
+      const statements: string[] = [];
+      const rows: Record<string, unknown[]> = {
+        [READ_SEAL_SOURCE_ROWS]: sources('FAKE', 'FAKE'),
+        [READ_SEAL_AUDIO_INTERVALS]: [{ seq: 1, mic_device_id: 'MIC-01', role: 'PRIMARY', from_media_ms: '21', to_media_ms: null, reason: 'START', switched_by: null }],
+        [READ_SEAL_AUDIT_ROWS]: auditRows,
+      };
+      const reader = createSealSessionReader({
+        state: () => viewOf(),
+        db: () => ({ query: async (text: string) => (statements.push(text), { rows: (rows[text] ?? []) as never[] }) }),
+        begin: async () => undefined,
+        sttSnapshot: async () => null,
+        notice: 'NOTICE',
+        timezone: '+07:00',
+      });
+      const facts = await reader.read(SESSION);
+      if (facts === null) throw new Error('the session was not read');
+      return { facts, statements };
+    }
+
+    it('one record per stored entry, in the order of the chain, with the attempts and BOTH bounds; a bound the entry leaves out is null; the numbers are the entry\'s own and the extract holds the same rows', async () => {
+      const { facts, statements } = await readWithAudit([
+        auditRow(88, 'RECORDING_STARTED', {}),
+        gap(89, { earlierAttempt: 1, laterAttempt: 2, audioAbsentAtLeastMs: 336, audioAbsentAtMostMs: 715 }),
+        gap(93, { earlierAttempt: 2, laterAttempt: 3, audioAbsentAtMostMs: 640 }),
+        gap(97, { earlierAttempt: 3, laterAttempt: 5 }),
+      ]);
+      expect(facts.audioRestartGaps).toEqual([
+        { earlierAttempt: 1, laterAttempt: 2, absentAtLeastMs: 336, absentAtMostMs: 715 },
+        { earlierAttempt: 2, laterAttempt: 3, absentAtLeastMs: null, absentAtMostMs: 640 },
+        { earlierAttempt: 3, laterAttempt: 5, absentAtLeastMs: null, absentAtMostMs: null },
+      ]);
+      // No second statement: the three reads of before, the audit rows once.
+      expect(statements.filter((text) => text === READ_SEAL_AUDIT_ROWS)).toHaveLength(1);
+      expect(statements.every((text) => [READ_SEAL_SOURCE_ROWS, READ_SEAL_AUDIO_INTERVALS, READ_SEAL_AUDIT_ROWS].includes(text))).toBe(true);
+      const extract = Buffer.from(facts.auditExtract).toString('utf8').trim().split('\n').map((line) => JSON.parse(line) as { type: string; details: Record<string, unknown> });
+      expect(extract.filter((line) => line.type === 'CAPTURE_AUDIO_ABSENT_ON_RESTART').map((line) => line.details.audioAbsentAtMostMs)).toEqual([715, 640, undefined]);
+    });
+
+    it('CONTROL: a session WITHOUT such an entry hands NO member at all (not an empty list): its facts have the keys of before', async () => {
+      const { facts } = await readWithAudit([auditRow(88, 'RECORDING_STARTED', {}), auditRow(89, 'CAPTURE_AUDIO_BEGINS_AFTER_RESTART', { earlierAttempt: 1, laterAttempt: 2 })]);
+      expect('audioRestartGaps' in facts).toBe(false);
+      expect(audioRestartGapsOf([])).toEqual([]);
+    });
+
+    it('an entry whose numbers are not of the form its writer enforces is neither skipped nor repaired: the read throws and no seal starts on it', async () => {
+      for (const details of [{ laterAttempt: 2 }, { earlierAttempt: 1, laterAttempt: 2.5 }, { earlierAttempt: 0, laterAttempt: 2 }, { earlierAttempt: 1, laterAttempt: 2, audioAbsentAtLeastMs: -1 }, { earlierAttempt: 1, laterAttempt: 2, audioAbsentAtMostMs: 86_400_001 }, { earlierAttempt: 1, laterAttempt: 2, audioAbsentAtMostMs: '715' }]) {
+        await expect(readWithAudit([gap(89, details)])).rejects.toThrow(/AUD-89 of a worker restart/);
+      }
+    });
+
+    // ── Task 4 row R1b (decision C99; finding F3-01): the absences of a camera inside the session, out of the SAME rows ──
+    const absence = (seq: number, camera: string, details: Record<string, unknown>) => ({ ...auditRow(seq, 'CAPTURE_VIDEO_ABSENT_IN_SESSION', { sessionId: SESSION, deviceId: camera, ...details }), device_id: camera });
+    const FULL = { trackId: 'VIDEO-01', attempt: 1, loss: 1, tries: 1, videoAbsentAtLeastMs: 3048, videoAbsentAtMostMs: 8049, ended: 'RE_OPENED' };
+
+    it('row R1b: one record per stored entry ON THE TRACK ITS ENTRY NAMES, in the order of the chain, with both bounds and how it ended; a bound the entry leaves out is null; the audit rows are read ONCE and the extract holds the same rows', async () => {
+      const second = sources('FAKE', 'FAKE').find((row) => row.slot === 'VIDEO-02')?.device_id as string;
+      const { facts, statements } = await readWithAudit([
+        auditRow(88, 'RECORDING_STARTED', {}),
+        absence(89, 'CAM-01', FULL),
+        absence(91, second, { trackId: 'VIDEO-02', attempt: 1, loss: 1, videoAbsentAtMostMs: 46210, ended: 'NOT_RE_OPENED' }),
+        absence(93, 'CAM-01', { trackId: 'VIDEO-01', attempt: 1, loss: 2, ended: 'NOT_RE_OPENED' }),
+      ]);
+      expect(facts.tracks.map((track) => [track.trackId, track.absentInSession])).toEqual([
+        ['VIDEO-01', [{ attempt: 1, loss: 1, absentAtLeastMs: 3048, absentAtMostMs: 8049, ended: 'RE_OPENED' }, { attempt: 1, loss: 2, absentAtLeastMs: null, absentAtMostMs: null, ended: 'NOT_RE_OPENED' }]],
+        ['VIDEO-02', [{ attempt: 1, loss: 1, absentAtLeastMs: null, absentAtMostMs: 46210, ended: 'NOT_RE_OPENED' }]],
+      ]);
+      // No second statement: the three reads of before, the audit rows once.
+      expect(statements.filter((text) => text === READ_SEAL_AUDIT_ROWS)).toHaveLength(1);
+      expect(statements.every((text) => [READ_SEAL_SOURCE_ROWS, READ_SEAL_AUDIO_INTERVALS, READ_SEAL_AUDIT_ROWS].includes(text))).toBe(true);
+      const extract = Buffer.from(facts.auditExtract).toString('utf8').trim().split('\n').map((line) => JSON.parse(line) as { type: string; details: Record<string, unknown> });
+      expect(extract.filter((line) => line.type === 'CAPTURE_VIDEO_ABSENT_IN_SESSION').map((line) => [line.details.trackId, line.details.loss, line.details.videoAbsentAtMostMs])).toEqual([['VIDEO-01', 1, 8049], ['VIDEO-02', 1, 46210], ['VIDEO-01', 2, undefined]]);
+    });
+
+    it('row R1b, CONTROL: a session WITHOUT such an entry hands NO member on either track (not an empty list): its track facts have the keys of before', async () => {
+      const { facts } = await readWithAudit([auditRow(88, 'RECORDING_STARTED', {}), auditRow(89, 'FAULT_RAISED', { kind: 'CAPTURE_FAULT', reason: 'CAMERA_STREAM_ENDED', target: 'CAM-01' })]);
+      for (const track of facts.tracks) expect('absentInSession' in track).toBe(false);
+      expect(videoAbsencesOf([])).toEqual([]);
+    });
+
+    it('row R1b: ONLY THE ATTEMPT WHOSE MEDIA IS IN THE FILES - an absence that ended inside an attempt a later worker superseded stays in the extract and is not stated; the last attempt is the highest the stored entries name', async () => {
+      // The absence of attempt 1 was written (the camera came back), then the worker was replaced: the files begin with attempt 2.
+      const superseded = await readWithAudit([absence(89, 'CAM-01', FULL), gap(93, { earlierAttempt: 1, laterAttempt: 2, audioAbsentAtMostMs: 640 })]);
+      for (const track of superseded.facts.tracks) expect('absentInSession' in track).toBe(false);
+      expect(superseded.facts.audioRestartGaps).toHaveLength(1);
+      expect(Buffer.from(superseded.facts.auditExtract).toString('utf8')).toContain('CAPTURE_VIDEO_ABSENT_IN_SESSION');
+      // Absences of two attempts: the later one is the files'.
+      const two = await readWithAudit([absence(89, 'CAM-01', FULL), absence(95, 'CAM-01', { ...FULL, attempt: 2, videoAbsentAtLeastMs: 12 })]);
+      expect(two.facts.tracks[0].absentInSession).toEqual([{ attempt: 2, loss: 1, absentAtLeastMs: 12, absentAtMostMs: 8049, ended: 'RE_OPENED' }]);
+      // An absence of the attempt the restart led to IS stated.
+      const later = await readWithAudit([gap(90, { earlierAttempt: 1, laterAttempt: 2 }), absence(95, 'CAM-01', { ...FULL, attempt: 2 })]);
+      expect(later.facts.tracks[0].absentInSession).toHaveLength(1);
+    });
+
+    it('row R1b: an entry that is not of the form its writer enforces - or that names another device than its row, or than the track\'s start record - is neither skipped nor repaired: the read throws and no seal starts on it', async () => {
+      const malformed: Record<string, unknown>[] = [
+        { ...FULL, trackId: 'VIDEO-03' },
+        { ...FULL, trackId: undefined },
+        { ...FULL, attempt: 0 },
+        { ...FULL, attempt: '1' },
+        { ...FULL, loss: 1.5 },
+        { ...FULL, loss: undefined },
+        { ...FULL, videoAbsentAtLeastMs: -1 },
+        { ...FULL, videoAbsentAtMostMs: 86_400_001 },
+        { ...FULL, videoAbsentAtMostMs: '8049' },
+        { ...FULL, ended: 'REOPENED' },
+        { ...FULL, ended: undefined },
+      ];
+      for (const details of malformed) await expect(readWithAudit([absence(89, 'CAM-01', details)]), JSON.stringify(details)).rejects.toThrow(/AUD-89 of a camera absent inside the session/);
+      // The row's device column and the details disagree.
+      await expect(readWithAudit([{ ...absence(89, 'CAM-01', FULL), device_id: 'CAM-02' }])).rejects.toThrow(/AUD-89 of a camera absent inside the session/);
+      await expect(readWithAudit([{ ...absence(89, 'CAM-01', FULL), details: null }])).rejects.toThrow(/AUD-89 of a camera absent inside the session/);
+      // Well formed, but VIDEO-02 of this session was started with another device than the entry names.
+      await expect(readWithAudit([absence(89, 'CAM-01', { ...FULL, trackId: 'VIDEO-02' })])).rejects.toThrow(/not the one the session started that track with/);
+    });
+  });
+
+  // Task 4 row P1 (decisions U21 (2), C66 (1), C71 C-7): manifest field 133 out of what the boot checks found of the host profile.
+  describe('task 4 row P1: the host profile of the Core that seals - stated only where a production Core did not ask it', () => {
+    async function readOn(hostProfileNotAsked?: () => { platform: 'darwin' } | null) {
+      const rows: Record<string, unknown[]> = {
+        [READ_SEAL_SOURCE_ROWS]: sources('FAKE', 'FAKE'),
+        [READ_SEAL_AUDIO_INTERVALS]: [{ seq: 1, mic_device_id: 'MIC-01', role: 'PRIMARY', from_media_ms: '21', to_media_ms: null, reason: 'START', switched_by: null }],
+      };
+      const reader = createSealSessionReader({
+        state: () => viewOf(),
+        db: () => ({ query: async (text: string) => ({ rows: (rows[text] ?? []) as never[] }) }),
+        begin: async () => undefined,
+        sttSnapshot: async () => null,
+        notice: 'NOTICE',
+        timezone: '+07:00',
+        ...(hostProfileNotAsked === undefined ? {} : { hostProfileNotAsked }),
+      });
+      const facts = await reader.read(SESSION);
+      if (facts === null) throw new Error('the session was not read');
+      return facts;
+    }
+
+    it('what the boot checks found becomes the member or nothing: asked (Linux) and never asked by design (development: no statement) = null; not asked on macOS = the platform; a platform the manifest has no word for throws', () => {
+      expect(hostProfileNotAskedOf(undefined)).toBeNull();
+      expect(hostProfileNotAskedOf(hostProfileStatementOf('linux') ?? undefined)).toBeNull();
+      expect(hostProfileNotAskedOf(hostProfileStatementOf('darwin') ?? undefined)).toEqual({ platform: 'darwin' });
+      // Fail closed: "not asked" on a platform the manifest cannot state never becomes "nothing to state".
+      expect(() => hostProfileNotAskedOf({ platform: 'freebsd', asked: false })).toThrow(/cannot state/);
+      expect(hostProfileNotAskedOf({ platform: 'freebsd', asked: true })).toBeNull();
+      // THE TWO LISTS AGREE: every platform a production Core starts on without its host profile has a word in the manifest, and no other has.
+      expect(Object.entries(PRODUCTION_PLATFORMS).filter(([, profile]) => profile === 'NOT_ASKED').map(([platform]) => platform)).toEqual([...MANIFEST_HOST_PROFILE_NOT_ASKED_PLATFORMS]);
+      // THE ONE HAND-OVER in the product: the sealing host asks the outcome of THIS Core's boot checks at every seal, through that function.
+      const host = readFileSync(join(import.meta.dirname, '..', 'index.ts'), 'utf8');
+      expect(host.match(/hostProfileNotAsked: .*$/gm)).toEqual(['hostProfileNotAsked: () => hostProfileNotAskedOf(captureBootControl(app).outcome()?.hostProfile),']);
+    });
+
+    it('the reader hands the member on only when there is one: no option, and an option that answers null, give the facts of before (NO key)', async () => {
+      const before = await readOn();
+      expect('hostProfileNotAsked' in before).toBe(false);
+      const asked = await readOn(() => null);
+      expect('hostProfileNotAsked' in asked).toBe(false);
+      expect(Object.keys(asked)).toEqual(Object.keys(before));
+      const onMac = await readOn(() => ({ platform: 'darwin' }));
+      expect(onMac.hostProfileNotAsked).toEqual({ platform: 'darwin' });
+      const { hostProfileNotAsked: _member, ...rest } = onMac;
+      expect(Object.keys(rest)).toEqual(Object.keys(before));
+    });
+  });
 
   describe('G89-01: what the session reader hands to the seal', () => {
     it('the dataset is in the state it reads (the test can fail): serial, UUID, 2.4.1, GNSS / locked, the camera model and firmware', () => {

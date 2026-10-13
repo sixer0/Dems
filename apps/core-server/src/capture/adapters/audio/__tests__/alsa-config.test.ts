@@ -200,6 +200,7 @@ describe('AD-07: no text a device announced can reach the configuration or its f
     usb: true,
     usbId: 'ffff:0666',
     usbPort: 'usb-0000:00:14.0-9',
+    usbSerial: null,
     product: 'Evil Interface }\npcm.!default { type hw card 9 }',
     channelCount: base.channelCount,
     factsSource: 'STREAM',

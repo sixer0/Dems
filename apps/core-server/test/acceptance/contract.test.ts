@@ -60,7 +60,7 @@ import {
   type CoreApiRegistryOperation,
   type OpenApiDocument,
 } from '@dems/shared/api';
-import { CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS, CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS } from '@dems/shared/api';
+import { CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS, CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS, INSTALLATION_ACCEPTANCE_STEP_IDS } from '@dems/shared/api';
 import { DEMO_OPERATOR_PASSWORD, OPERATORS, ROLE_PERMISSIONS, createManualClock, type ControllableClock, type OperatorRole } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
@@ -69,10 +69,17 @@ import { buildApp } from '../../src/app';
 import type { DatabaseConnection } from '../../src/config';
 import { BULK_TEMPLATE_NOW } from '../../src/db/fixtures/__tests__/template-hook.bulk';
 import { createSystemTimers } from '../../src/capture';
-import { createOnvifDiscoveryAdapter, type OnvifDiscoveryAdapter, type WsDiscoveryResult } from '../../src/capture/adapters';
+import { createOnvifDiscoveryAdapter, sealCredential, type OnvifDiscoveryAdapter, type WsDiscoveryResult } from '../../src/capture/adapters';
 import { delay, installLoopbackGuard, type LoopbackGuard } from '../../src/capture/adapters/camera/__tests__/support';
-import { engineControl } from '../../src/engine';
-import { captureDiscoveryControl } from '../../src/modules/capture-discovery';
+import { engineControl, readdressCaptureDeviceIn } from '../../src/engine';
+import { DestinationPurpose, decideDestination } from '../../src/capture/destination-rule';
+import { captureFactoryScanControl, captureNetworkConfigControl } from '../../src/modules/capture-config';
+import { captureHostAliasControl } from '../../src/modules/capture-config';
+import { captureCameraNetworkControl } from '../../src/modules/capture-config';
+import { decideNewCameraAddress } from '../../src/capture/destination-rule';
+import { createConnectionTestLimits } from '../../src/modules/capture-discovery/connect';
+import { createFactoryScanGate } from '../../src/modules/capture-config/factory-scan';
+import { adoptedCameraTestControl, captureDiscoveryControl, captureReaddressControl } from '../../src/modules/capture-discovery';
 import { captureAudioCardsControl } from '../../src/modules/capture-inputs/audio-cards';
 import { DUO, SIX, TWO_CARDS, fakeHost } from '../../src/modules/capture-inputs/audio-cards/__tests__/fixtures';
 import { testRoutine, useRoutine } from '../../src/modules/demo/__tests__/support';
@@ -86,7 +93,9 @@ import { captureLog, unitTestConfig } from '../support/config';
 import { FIXED_NOW, manualTimer } from '../support/engine';
 import { createFakeOnvifStub, freeFakeOnvifPorts, type FakeOnvifStub } from '../support/fake-onvif-stub';
 import { FOREIGN_ORIGIN, WEB_ORIGIN, cookieValue, type Headers } from '../support/identity';
+import { loopbackDestination } from '../support/loopback-destination';
 import { dropOwn, maintenancePool, resetApplicationName } from '../support/reset';
+import { loopbackStoredCameraAddress } from '../support/stored-camera-address';
 import { sealRealItemWithTranscript, type RealTranscriptItem } from './contract.transcripts';
 import {
   Ledger,
@@ -175,7 +184,51 @@ const EXTERNAL_ROUTES: readonly string[] = [CHANNEL_ROUTE, MEDIA_ROUTE, EXPORT_D
 // Task 4 row 70 (decision C31, the condition on DD-2 of pass I-2): both routes landed
 // (`modules/capture-inputs/audio-cards`) and both entries left the list. Nothing is unrouted: every
 // walk of this file calls all 99 operations, and the coverage block holds 98 and 99 like any other.
+// Task 4 (blueprint row 194, WP-12): the contract of operation 100 `confirmCaptureDeviceAddress`
+// landed before its route (the server's rule is built behind seams, row 97). Row 197 (the wiring of
+// the re-address: the route edge, the engine door of row 196) routes it and takes the entry out:
+//   100 confirmCaptureDeviceAddress                                task 4 row 197
+// `UNROUTED_UNTIL` names the row of every entry; the two lists are held equal in block 1.
+// Task 4 row 197: operation 100 is routed (`modules/capture-discovery/readdress-route.ts`, behind the
+// engine door of row 196) and its entry left both lists; the camera-search area of this file produces
+// its statuses with real requests against the fake ONVIF stub.
+// Task 4 (blueprint row 102, WP-23b): the contract of the seven commissioning operations 101 to 107
+// landed before their routes (CONTRACT ONLY: no Core route, no job, no screen). Each entry leaves
+// with the row that routes it, in the order `compareRoutes` reports (sorted):
+//   104 getHostAlias, 105 removeHostAlias                          task 4 row 106 (the alias lifecycle)
+//   101 getCaptureNetworkConfig, 102 updateCaptureNetworkConfig    task 4 row 108 (the configuration operations)
+//   107 getCameraNetworkJob, 106 setCameraNetwork                  task 4 row 111 (the set-IP job)
+//   103 scanFactoryCameras                                         task 4 row 107 (the commissioning scan)
+// Task 4 row 108 (WP-19d): the two configuration operations 101 and 102 are routed
+// (`modules/capture-config/network`) and their two entries left both lists; the area "the camera
+// network configuration" of this file produces their statuses with real requests.
+// Task 4 row V3 (the third contract step; blueprint row 146, decisions C58, C62): the contract of
+// operation 108 `testCaptureDeviceConnection` landed before its route. The server's function is built
+// and proven behind seams (`modules/capture-discovery/adopted-test.ts`); the route edge that calls
+// `adoptedCameraTestControl(app).test(...)` routes it and takes the entry out:
+//   108 testCaptureDeviceConnection                                task 4 row 146b (the route of the stored-credential connection test)
+// Task 4 row 146b: operation 108 is routed (`modules/capture-discovery/adopted-test-route.ts`, one handler that
+// calls `adoptedCameraTestControl(app).test(...)`) and its entry left both lists; the camera-search area of this
+// file produces its statuses with real requests against the fake ONVIF stub, and area 4 its idle lock.
+// Task 4 row 107 (WP-19c): operation 103 `scanFactoryCameras` is routed (`modules/capture-config/factory-scan`)
+// and its entry left both lists; the area "the commissioning scan" of this file produces its statuses with real
+// requests. The parts the composition will hand in (rule, temporary address, probe) are doubles of that area.
+// Task 4 (blueprint row 116, WP-26b): the contract of the installation acceptance and its revocation,
+// operations 109 and 110, landed before their routes (CONTRACT ONLY: no Core route, no screen). Both
+// entries leave with the row that routes them:
+//   109 acceptInstallation, 110 revokeInstallationAcceptance      task 4 row 117 (the acceptance routes)
+// Task 4 row 117 (WP-26b): operations 109 and 110 are routed (`modules/capture-config/installation-acceptance`)
+// and their two entries left both lists; the area "the installation acceptance" of this file produces their
+// statuses with real requests on the Core's own diagnostics run.
+// Task 4 row 106b (decision C74): operations 104 `getHostAlias` and 105 `removeHostAlias` are routed
+// (`modules/capture-config/host-alias`) and their two entries left both lists; the area "the alias state and its
+// removal" of this file produces their statuses with real requests. The lifecycle is a double of that area.
+// Task 4 row 111 (WP-22b): operations 106 `setCameraNetwork` and 107 `getCameraNetworkJob` are routed
+// (`modules/capture-config/camera-network`) and their two entries left both lists, which are EMPTY now; the area
+// "the set-IP job" of this file produces their statuses with real requests. The camera, the alias address and the
+// host's observations are doubles of that area.
 const LANDED_UNROUTED: readonly string[] = [];
+const UNROUTED_UNTIL: Readonly<Record<string, string>> = {};
 /**
  * The operations of `LANDED_UNROUTED` and the rest. A walk of this file that CALLS every operation
  * calls the routed ones: an unrouted path answers the router's 404, which is no answer of the
@@ -415,6 +468,8 @@ let retiredSession: Caller;
 let sealedEvidenceId = '';
 /** The job of the export area 5 makes (operation 87), for the walk of the reads. */
 let exportJobId = '';
+/** The set-IP job the area "the set-IP job" starts (operation 106; task 4 row 111), for the walk of the reads: a job is data of the TECHNICIAN's web session. */
+let cameraNetworkJobId = '';
 /** Integration pass D4: the REAL item with a sealed machine transcript (operations 84 to 86). */
 let transcriptItem: RealTranscriptItem | null = null;
 let unsealedEvidenceId = '';
@@ -460,7 +515,7 @@ afterAll(async () => {
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
 describe('AC-B-09: every registered route is an operation, every operation is registered', () => {
-  it('the registry holds exactly 99 operations, 36 GET and 63 POST, each with one access rule and one audit rule', () => {
+  it('the registry holds exactly 110 operations, 39 GET and 71 POST, each with one access rule and one audit rule', () => {
     // 75 in the closed task-2 contract; C3 grew the registry to 89 with schema v2 (ops 76 to 89:
     // the six capture-config and credential operations, the three audio-source and sealing ones,
     // the five transcript, media-session and export-job ones), and to 92 with the confirmed R-8
@@ -468,15 +523,34 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     // (C3 §2.6, §10.1: the camera search, the connection test, the adoption and the local-input
     // re-read, 93 to 97; task 3 row 132, decision D106). R1 (D44): acceptance reads the CURRENT
     // registry, the closed document never. Task 4 (blueprint row 63): the two sound-card operations
-    // 98 and 99, both POST: 97 + 2 = 99, 36 GET / 63 POST.
-    expect(CORE_API_OPERATION_TABLE).toHaveLength(99);
-    expect(OPERATIONS).toHaveLength(99);
-    expect(new Set(OPERATIONS.map((operation) => operation.operationId)).size).toBe(99);
-    expect(new Set(REGISTRY_ROUTES).size).toBe(99);
-    expect(OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(36);
-    expect(OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(63);
-    // Task 4 row 70: the named deferral of operations 98 and 99 is gone; no operation is unrouted.
+    // 98 and 99, both POST: 97 + 2 = 99, 36 GET / 63 POST. Task 4 (blueprint row 194): the confirmed
+    // re-address, operation 100, POST: 99 + 1 = 100, 36 GET / 64 POST.
+    // Task 4 (blueprint row 102): the seven commissioning operations 101 to 107, three GET and four
+    // POST: 100 + 7 = 107, 39 GET / 68 POST.
+    // Task 4 row V3 (blueprint row 146): the stored-credential connection test, operation 108, POST:
+    // 107 + 1 = 108, 39 GET / 69 POST.
+    // Task 4 (blueprint row 116): the installation acceptance and its revocation, operations 109 and
+    // 110, both POST: 108 + 2 = 110, 39 GET / 71 POST.
+    expect(CORE_API_OPERATION_TABLE).toHaveLength(110);
+    expect(OPERATIONS).toHaveLength(110);
+    expect(new Set(OPERATIONS.map((operation) => operation.operationId)).size).toBe(110);
+    expect(new Set(REGISTRY_ROUTES).size).toBe(110);
+    expect(OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(39);
+    expect(OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(71);
+    // Task 4 row 70: the named deferral of operations 98 and 99 is gone.
+    // Task 4 row 194: ONE named deferral, pinned by literal - operation 100 has no route until row 197.
+    // Task 4 row 102: SEVEN more, pinned by literal - operations 101 to 107 have no route until rows 106, 107, 108 and 111.
+    // Task 4 row 108: operations 101 and 102 are routed; their two entries left the literal.
+    // Task 4 row 197: operation 100 is routed; its entry left the literal.
+    // Task 4 row V3: ONE more, pinned by literal - operation 108 has no route until row 146b (the route edge of `adopted-test.ts`).
+    // Task 4 row 146b: operation 108 is routed; its entry left the literal.
+    // Task 4 row 107: operation 103 is routed; its entry left the literal.
+    // Task 4 row 116: TWO more, pinned by literal - operations 109 and 110 have no route until row 117 (the acceptance routes).
+    // Task 4 row 117: operations 109 and 110 are routed; their two entries left the literal.
+    // Task 4 row 106b: operations 104 and 105 are routed; their two entries left the literal.
+    // Task 4 row 111: operations 106 and 107 are routed; their two entries left the literal, which is empty.
     expect(UNROUTED_OPERATIONS.map((operation) => operation.operationId)).toEqual([]);
+    expect(Object.keys(UNROUTED_UNTIL)).toEqual([...LANDED_UNROUTED]);
     for (const operation of OPERATIONS) {
       expect(describeCoreApiAccess(operation.access), operation.operationId).not.toBe('');
       expect(operation.audit.success, operation.operationId).toBeDefined();
@@ -510,8 +584,17 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     expect(router).toHaveLength(REGISTRY_ROUTES.length - LANDED_UNROUTED.length + EXTERNAL_ROUTES.length);
     // Fix pass F-M8 (ruling D178): and the export download route - three routes outside the registry, 100 in all.
     // Task 4 row 70: the two sound-card routes landed, 100 + 2 = 102 (99 of the registry and the three outside it).
-    expect(router).toHaveLength(102);
-    expect(new Set(router).size).toBe(102);
+    // Task 4 row 194: the registry holds 100; its one unrouted operation is not in the router, so 102 stays.
+    // Task 4 row 102: the registry holds 107; its eight unrouted operations are not in the router, so 102 stays.
+    // Task 4 row 108: the two configuration routes landed, 102 + 2 = 104.
+    // Task 4 row 197: the route of operation 100 landed, 104 + 1 = 105.
+    // Task 4 row 146b: the route of operation 108 landed, 105 + 1 = 106.
+    // Task 4 row 107: the route of operation 103 landed, 106 + 1 = 107.
+    // Task 4 row 117: the two acceptance routes landed (operations 109 and 110), 107 + 2 = 109. (Both lines, by this row's delta only.)
+    // Task 4 row 106b: the two alias routes landed (operations 104 and 105), 109 + 2 = 111. (Both lines, by this row's delta only.)
+    // Task 4 row 111: the two routes of the set-IP job landed (operations 106 and 107), 111 + 2 = 113. (Both lines, by this row's delta only.)
+    expect(router).toHaveLength(113);
+    expect(new Set(router).size).toBe(113); // moved with the line above by row 116's pin pass: row 107's delta (106 -> 107) had reached one of the two lines only
     expect(router.filter((route) => !REGISTRY_ROUTES.includes(route)).sort()).toEqual([...EXTERNAL_ROUTES].sort());
     expect([...guarded].sort()).toEqual([...router].sort());
     expect(permissionGuard(main.app).routeProblems()).toEqual([]);
@@ -538,7 +621,7 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     expect(missing).toEqual(UNROUTED_OPERATIONS.map((operation) => operation.operationId));
   });
 
-  it('the committed openapi.json lists the same 99 operations with two security schemes, and equals what the generator produces now', () => {
+  it('the committed openapi.json lists the same 110 operations with two security schemes, and equals what the generator produces now', () => {
     const text = readFileSync(COMMITTED_OPENAPI, 'utf8');
     const committed = JSON.parse(text) as OpenApiDocument;
     const documented = listOpenApiOperations(committed).map((entry) => routeKey(entry.method, entry.path));
@@ -554,7 +637,7 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     // refused outright), and unregistered must be precisely the fourteen, so one more or one less
     // unrouted operation fails here. The calls themselves stay red as their own deferrals.
     expect(comparison).toEqual({ undocumented: [], unregistered: LANDED_UNROUTED });
-    expect(documented).toHaveLength(99);
+    expect(documented).toHaveLength(110);
     expect([...documented].sort()).toEqual([...REGISTRY_ROUTES].sort());
     // The same operation ID on the same method and path.
     for (const entry of listOpenApiOperations(committed)) {
@@ -952,6 +1035,97 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       // database test today, and by area 4 of this file once its route walk is whole again - the
       // same place the selector's 409 of operations 78 to 80 waits for.)
 
+      // 108 (task 4 rows 146, V3, 146b): the connection test of a REGISTERED camera with its STORED credential. NO BODY:
+      // the device is the id of the path and nothing else is read. This Core has no production composition, so no
+      // reader was handed in: the envelope's 503, before anything is read.
+      const storedTestNotReady = await expectCall(main, 'testCaptureDeviceConnection', technician, 'no reader of the stored credential was handed in', { id: 'CAM-03' }, 503, 'NOT_READY');
+      expect(detailsOf(storedTestNotReady)['reason']).toBe('DISCOVERY_NOT_READY');
+      // THE READER IS A DOUBLE OF THIS FILE (static rule R-6: only the tests of `modules/capture-config` import the wiring
+      // of the credential holders; the real reader, its reveal entry, the relay and the two audit entries of a test are
+      // proven in `modules/capture-config/__tests__/adopted-camera-test.db.test.ts`). It answers the stub's own account
+      // of this run as the opaque credential and counts its calls; the address rule is the test rule of `test/support`.
+      let storedReads = 0;
+      adoptedCameraTestControl(main.app).provide({
+        reader: {
+          connectionTest: async () => {
+            storedReads += 1;
+            return sealCredential(account);
+          },
+        },
+        storedAddress: loopbackStoredCameraAddress,
+      });
+      const requestsBeforeStoredTest = stub.requestLog().length;
+      await expectCall(main, 'testCaptureDeviceConnection', technician, 'a device the capture registry does not hold', { id: 'CAM-99' }, 404, 'NOT_FOUND');
+      await expectCall(main, 'testCaptureDeviceConnection', technician, 'a registered device that is no camera', { id: 'MIC-01' }, 404, 'NOT_FOUND');
+      await expectCall(main, 'testCaptureDeviceConnection', technician, 'a malformed {id}', { id: 'cam 03' }, 422, 'INVALID_INPUT');
+      // CAM-03 was adopted from the stub as a DEVELOPMENT source (adapter FAKE): it has no stored-credential test.
+      const developmentSource = await expectCall(main, 'testCaptureDeviceConnection', technician, 'a development source', { id: 'CAM-03' }, 409, 'INVALID_STATE');
+      expect(detailsOf(developmentSource)).toEqual({ reason: 'CANDIDATE_NOT_TESTABLE' });
+      // Every refusal stood before the read: the reader was not called and nothing was sent to the stub.
+      expect(storedReads).toBe(0);
+      expect(stub.requestLog().length).toBe(requestsBeforeStoredTest);
+      // AS A FIXTURE the stored row is given the production adapter kind for one call (the test reads the stored facts at
+      // EVERY call): the Core tests the stub at its STORED address with what the reader answered. A body is not read: a
+      // decoy address in it changes nothing. This Core has no relay program, so the answer is the ONVIF half's own.
+      await owner().query("UPDATE public.capture_devices SET adapter_kind = 'ONVIF_RTSP' WHERE id = 'CAM-03'");
+      let storedTest: Answer;
+      try {
+        main.clock.advance(30 * SECOND);
+        storedTest = await expectCall(main, 'testCaptureDeviceConnection', technician, 'the adopted camera, as a production camera at its stored address', { id: 'CAM-03', payload: { address: '192.168.50.99', credential: { username: 'decoy', secret: 'decoy' } } }, 200);
+      } finally {
+        await owner().query("UPDATE public.capture_devices SET adapter_kind = 'FAKE' WHERE id = 'CAM-03'");
+      }
+      expect(bodyOf<Record<string, unknown>>(storedTest)).toMatchObject({ deviceId: 'CAM-03', outcome: 'REACHABLE', authenticated: true });
+      expect(storedReads).toBe(1);
+      expect(stub.requestLog().length).toBeGreaterThan(requestsBeforeStoredTest);
+      console.info(`[w52] operation 108 on the stub: ${String(bodyOf<{ outcome: string }>(storedTest).outcome)}; reads of the stored credential ${storedReads}; requests at the stub +${stub.requestLog().length - requestsBeforeStoredTest}`);
+      await written();
+      main.clock.advance(30 * SECOND);
+
+      // 100 (task 4 rows 194, 196, 197): the operator-confirmed re-address of the adopted camera. The body is a
+      // confirmation, not a target: the Core takes the address from the caller's own search state. Nothing is sent
+      // to any device by this operation.
+      const shownAddress = String(adoption.device['host']);
+      const readdress = (candidate: string, deviceId = 'CAM-03', address = shownAddress): Options => ({ payload: { deviceId, candidateId: candidate, address } });
+      const sentBeforeReaddress = stub.requestLog().length;
+      const unmoved = await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'the registered camera answers from its stored address', readdress(candidateId), 409, 'INVALID_STATE');
+      expect(detailsOf(unmoved)).toEqual({ reason: 'READDRESS_NOT_THE_REGISTERED_CAMERA' });
+      await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'an id no search listed', readdress(unknownId), 404, 'NOT_FOUND');
+      await expectCall(main, 'confirmCaptureDeviceAddress', supervisor, 'the candidate of another session\'s search', readdress(candidateId), 404, 'NOT_FOUND');
+      await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'a device the capture registry does not hold', readdress(candidateId, 'CAM-99'), 404, 'NOT_FOUND');
+      await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'an address that is a name', readdress(candidateId, 'CAM-03', 'camera.example'), 422, 'INVALID_INPUT');
+      // THE CAMERA "MOVES" (fixture): its stored address becomes another one through the engine's own door, in the
+      // row and in the running engine together; the next search lists it as the registered camera at a changed address.
+      await main.app.engine.run('w52.fixture.cameraMoved', async (scope) => {
+        await readdressCaptureDeviceIn(scope, { deviceId: 'CAM-03', address: '192.168.50.20' });
+      });
+      await written();
+      main.clock.advance(130 * SECOND);
+      await expectCall(main, 'startCaptureDiscovery', technician, 'a search after the camera moved', {}, 202);
+      await delay(3_400);
+      await written();
+      const movedList = bodyOf<Discovery>(await expectCall(main, 'getCaptureDiscovery', technician, 'the registered camera at a changed address', {}, 200)).candidates;
+      expect(movedList.map((candidate) => [candidate.status, candidate.deviceId])).toEqual([['REGISTERED', 'CAM-03']]);
+      const movedId = movedList[0]?.candidateId ?? '';
+      const otherAddress = await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'another address than the one the search shows', readdress(movedId, 'CAM-03', '192.168.50.21'), 409, 'INVALID_STATE');
+      expect(detailsOf(otherAddress)).toEqual({ reason: 'READDRESS_CONFIRMATION_MISMATCH' });
+      // The destination rule of this Core (no network facts were handed in: it refuses every address): one sentence, never the address.
+      const ruledOut = await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'an address the destination rule refuses', readdress(movedId), 422, 'INVALID_INPUT');
+      expect(detailsOf(ruledOut)).toEqual({ in: 'body', reason: 'DISCOVERY_ADDRESS_NOT_ALLOWED' });
+      expect(JSON.stringify(ruledOut.body)).not.toContain('127.0.0.1');
+      // The stub lives on loopback, which the product's rule refuses on any facts: the permissive rule of a test (AD-02 (2)) for ONE call.
+      captureReaddressControl(main.app).replaceForTest({ addressRule: (host, port) => loopbackDestination(host, port ?? 80) });
+      const confirmed = await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'the operator confirms the address the search shows', readdress(movedId), 200);
+      expect(bodyOf<Record<string, unknown>>(confirmed)).toMatchObject({ deviceId: 'CAM-03', device: { id: 'CAM-03', kind: 'CAMERA', host: shownAddress } });
+      await written();
+      // (Still under the test's rule: the product's rule stands before the unit and would refuse first.)
+      const confirmedTwice = await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'the same confirmation again', readdress(movedId), 409, 'INVALID_STATE');
+      captureReaddressControl(main.app).replaceForTest({ addressRule: null });
+      expect(detailsOf(confirmedTwice)).toEqual({ reason: 'READDRESS_ADDRESS_UNCHANGED' });
+      await expectCall(main, 'confirmCaptureDeviceAddress', CONSOLE, 'the web console without a session', readdress(movedId), 401, 'NOT_SIGNED_IN');
+      // The second search probed; no request of operation 100 reached the device service.
+      expect(stub.requestLog().slice(sentBeforeReaddress).every((entry) => entry.channel === 'discovery')).toBe(true);
+
       // 97: the registered microphones re-read; no network is involved.
       for (const caller of [supervisor, technician]) {
         // One accepted re-read per interval of the Core (the server clock decides).
@@ -968,13 +1142,14 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       // Nothing but the stub was ever dialled: its log holds the probes and the device-service calls of the two tests.
       expect(stub.requestLog().some((entry) => entry.channel !== 'discovery')).toBe(true);
 
-      // Without a session: every one of the six.
+      // Without a session: every one of the seven (task 4 row 146b: operation 108 among them).
       for (const [operationId, options] of [
         ['startCaptureDiscovery', {}],
         ['getCaptureDiscovery', {}],
         ['testCaptureCandidateConnection', { id: candidateId, payload: { credential: account } }],
         ['adoptCaptureCandidate', { id: candidateId, payload: { credential: account } }],
         ['setCaptureDeviceCredential', { id: 'CAM-03', payload: account }],
+        ['testCaptureDeviceConnection', { id: 'CAM-03' }],
         ['rescanCaptureInputs', {}],
       ] as const) {
         await expectCall(main, operationId, CONSOLE, 'the web console without a session', options, 401, 'NOT_SIGNED_IN');
@@ -1049,6 +1224,297 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     // Without a session: both.
     await expectCall(main, 'searchCaptureAudioCards', CONSOLE, 'the web console without a session', {}, 401, 'NOT_SIGNED_IN');
     await expectCall(main, 'registerCaptureAudioInput', CONSOLE, 'the web console without a session', { payload }, 401, 'NOT_SIGNED_IN');
+    await main.app.pipeline.drain();
+    settle();
+  });
+
+  it('the camera network configuration (operations 101 and 102; task 4 row 108): the read, one change, its repeat and the refusals, on a table of interfaces of this file', async () => {
+    fresh(main);
+    const technician = web.TECHNICIAN;
+    interface Config { configured: boolean; interfaceName: string | null; cameraSubnet: string | null; revision: number; updatedAt: number | null }
+
+    // 101: nobody has written it - the defaults, no interface, no subnet. The Core chooses neither.
+    const unwritten = bodyOf<Config>(await expectCall(main, 'getCaptureNetworkConfig', technician, 'the configuration nobody has written yet', {}, 200));
+    expect(unwritten).toMatchObject({ configured: false, interfaceName: null, cameraSubnet: null, revision: 1, updatedAt: null });
+    // THIS CORE IS SIMULATED: of itself a change is refused (the Core cannot commission) and nothing is stored.
+    const notAvailable = await expectCall(main, 'updateCaptureNetworkConfig', technician, 'a change on a Core that is not in production capture', { payload: { revision: 1, interfaceName: 'eth1' } }, 409, 'INVALID_STATE');
+    expect(detailsOf(notAvailable)['reason']).toBe('COMMISSIONING_NOT_AVAILABLE');
+    // Its place is taken, once: this Core accepts a change, and the host is a table of this file (no
+    // interface of this machine is read). The roles, the rollback, the audit keys and the reader of
+    // the network facts are the folder's own tests.
+    captureNetworkConfigControl(main.app).replaceForTest({
+      available: true,
+      interfaces: () => [
+        { name: 'lo', internal: true, addresses: [{ address: '127.0.0.1', prefixLength: 8 }] },
+        { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24 }] },
+      ],
+    });
+
+    // 102: the refusals, each storing nothing.
+    const stale = await expectCall(main, 'updateCaptureNetworkConfig', technician, 'a stale revision', { payload: { revision: 9, interfaceName: 'eth1' } }, 409, 'INVALID_STATE');
+    expect(detailsOf(stale)['reason']).toBe('REVISION_CONFLICT');
+    const notAllowed = await expectCall(main, 'updateCaptureNetworkConfig', technician, 'an interface the host does not have', { payload: { revision: 1, interfaceName: 'eth9' } }, 422, 'INVALID_INPUT');
+    expect(detailsOf(notAllowed)['reason']).toBe('NETWORK_CONFIG_NOT_ALLOWED');
+    await expectCall(main, 'updateCaptureNetworkConfig', technician, 'a member the body does not have', { payload: { revision: 1, port: 80 } }, 422, 'INVALID_INPUT');
+    // 102: the change (200), and the same body again (200, the revision stays).
+    const changed = bodyOf<Config>(await expectCall(main, 'updateCaptureNetworkConfig', technician, 'the interface and the subnet are chosen', { payload: { revision: 1, interfaceName: 'eth1', cameraSubnet: '192.168.50.0/24' } }, 200));
+    expect(changed).toMatchObject({ configured: true, interfaceName: 'eth1', cameraSubnet: '192.168.50.0/24', revision: 2 });
+    const again = bodyOf<Config>(await expectCall(main, 'updateCaptureNetworkConfig', technician, 'the same settings again', { payload: { revision: 2, interfaceName: 'eth1', cameraSubnet: '192.168.50.0/24' } }, 200));
+    expect(again).toEqual(changed);
+    expect(bodyOf<Config>(await expectCall(main, 'getCaptureNetworkConfig', technician, 'the configuration after the change', {}, 200))).toEqual(changed);
+
+    // Without a session: both.
+    await expectCall(main, 'getCaptureNetworkConfig', CONSOLE, 'the web console without a session', {}, 401, 'NOT_SIGNED_IN');
+    await expectCall(main, 'updateCaptureNetworkConfig', CONSOLE, 'the web console without a session', { payload: { revision: 2 } }, 401, 'NOT_SIGNED_IN');
+    await main.app.pipeline.drain();
+    settle();
+  });
+
+  it('the commissioning scan (operation 103; task 4 row 107): refused on this Core of itself; with the parts of this file in the place of the composition, the refusals and one scan', async () => {
+    fresh(main);
+    const technician = web.TECHNICIAN;
+    const scanControl = captureFactoryScanControl(main.app);
+    interface Scan { addressCount: number; alias: unknown; synthetic: boolean; devices: { address: string; endpointCount: number | null; deviceCount: string }[] }
+
+    // THIS CORE IS SIMULATED and was handed no parts: of itself it scans nothing.
+    const notAvailable = await expectCall(main, 'scanFactoryCameras', technician, 'a scan on a Core that is not in production capture', {}, 409, 'INVALID_STATE');
+    expect(detailsOf(notAvailable)['reason']).toBe('COMMISSIONING_NOT_AVAILABLE');
+
+    // Its place is taken, once: this Core scans; the host is a table of this file; the temporary address is a
+    // recording double that puts the address on that table; the probe answers for ONE address. The rule is the
+    // capture unit's own. Nothing is sent anywhere. The order, the refusals before any packet, the device text
+    // and "not stored" are the folder's own tests.
+    let onPort: string | null = null;
+    const asked: string[] = [];
+    captureNetworkConfigControl(main.app).replaceForTest({
+      available: true,
+      interfaces: () => [
+        { name: 'lo', internal: true, addresses: [{ address: '127.0.0.1', prefixLength: 8 }] },
+        { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24 }, ...(onPort === null ? [] : [{ address: onPort, prefixLength: 24 }])] },
+      ],
+    });
+    scanControl.replaceForTest({
+      available: true,
+      gate: createFactoryScanGate(0),
+      parts: {
+        rule: (address, facts) => decideDestination({ purpose: DestinationPurpose.COMMISSIONING_SCAN, address }, facts),
+        alias: {
+          helper: async () => null,
+          add: async (request) => ((onPort = request.address), { refusal: null, effect: 'DONE' }),
+          remove: async () => ((onPort = null), { refusal: null, effect: 'DONE' }),
+        },
+        probe: async (destination) => (asked.push(`${destination.address} from ${destination.sourceAddress}`), { answered: destination.address === '192.168.7.9', onvifReachable: true }),
+      },
+    });
+    // The camera network is stated (by the area before this one, or here).
+    const config = bodyOf<{ configured: boolean; revision: number }>(await expectCall(main, 'getCaptureNetworkConfig', technician, 'the configuration the scan reads', {}, 200));
+    if (!config.configured) await expectCall(main, 'updateCaptureNetworkConfig', technician, 'the interface and the subnet are chosen for the scan', { payload: { revision: config.revision, interfaceName: 'eth1', cameraSubnet: '192.168.50.0/24' } }, 200);
+
+    // The refusals of the body, each asking nothing.
+    await expectCall(main, 'scanFactoryCameras', technician, 'a member the body does not have', { payload: { address: '192.168.1.64', port: 8080 } }, 422, 'INVALID_INPUT');
+    const refused = await expectCall(main, 'scanFactoryCameras', technician, 'a typed address the destination rule refuses: the Core\'s own', { payload: { address: '192.168.50.1' } }, 422, 'INVALID_INPUT');
+    expect(detailsOf(refused)['reason']).toBe('COMMISSIONING_ADDRESS_NOT_ALLOWED');
+    expect(asked).toEqual([]);
+
+    // The scan: the stored list and one typed address; the temporary address is gone when it answers.
+    const scan = bodyOf<Scan>(await expectCall(main, 'scanFactoryCameras', technician, 'the stored list and one typed address', { payload: { address: '192.168.7.9' } }, 200));
+    expect(scan).toMatchObject({ addressCount: 5, alias: null, synthetic: false, devices: [{ address: '192.168.7.9', endpointCount: null, deviceCount: 'NOT_KNOWN' }] });
+    // Row V6 (R119-03): the scan states what it KNOWS - the probe did not count, so no answer says "one" or "no conflict".
+    expect(JSON.stringify(scan)).not.toContain('"conflict"');
+    expect(asked).toContain('192.168.7.9 from 192.168.7.253');
+    expect(onPort).toBeNull();
+
+    // Without a session.
+    await expectCall(main, 'scanFactoryCameras', CONSOLE, 'the web console without a session', {}, 401, 'NOT_SIGNED_IN');
+    // The parts of this file are taken out again: the Core is as it booted.
+    scanControl.replaceForTest({ available: false, parts: null });
+    await main.app.pipeline.drain();
+    settle();
+  });
+
+  it('the alias state and its removal (operations 104 and 105; task 4 row 106b): the plain read; a removal refused on this Core of itself; with a lifecycle of this file in the place of the composition, the refusals and one removal', async () => {
+    fresh(main);
+    const technician = web.TECHNICIAN;
+    const aliasControl = captureHostAliasControl(main.app);
+
+    // 104: a plain read of the journal's one open row, on every Core. None is in place on this one.
+    expect(bodyOf<{ alias: unknown }>(await expectCall(main, 'getHostAlias', technician, 'no alias address is in place', {}, 200))).toEqual({ alias: null });
+    // THIS CORE IS SIMULATED and was handed no lifecycle: of itself it removes nothing.
+    const notAvailable = await expectCall(main, 'removeHostAlias', technician, 'a removal on a Core that is not in production capture', {}, 409, 'INVALID_STATE');
+    expect(detailsOf(notAvailable)['reason']).toBe('COMMISSIONING_NOT_AVAILABLE');
+
+    // Its place is taken, once: this Core removes, and the lifecycle is a double of this file that answers from a
+    // list. Nothing is asked of any helper. The lifecycle, its helper double, its two audit entries per action and the
+    // refusal while a session is open are the folder's own tests and the composition's (`capture-composition.db.test.ts`).
+    const answers: ({ ok: true; removed: boolean } | { ok: false; refusal: string; stillInPlace: boolean })[] = [
+      { ok: true, removed: false },
+      { ok: false, refusal: 'HELPER_TIMED_OUT', stillInPlace: true },
+      { ok: true, removed: true },
+    ];
+    const asked: unknown[] = [];
+    aliasControl.replaceForTest({
+      available: true,
+      remover: {
+        release: async (request) => (asked.push(request.removeReason), answers.shift() ?? { ok: true, removed: false }),
+        shutdown: async () => undefined,
+      },
+    });
+    const none = await expectCall(main, 'removeHostAlias', technician, 'none is in place', {}, 409, 'INVALID_STATE');
+    expect(detailsOf(none)['reason']).toBe('HOST_ALIAS_NOT_PRESENT');
+    const failed = await expectCall(main, 'removeHostAlias', technician, 'the helper did not remove it', {}, 409, 'INVALID_STATE');
+    expect([detailsOf(failed)['reason'], detailsOf(failed)['cause']]).toEqual(['HOST_ALIAS_REMOVE_FAILED', 'HELPER_TIMED_OUT']);
+    expect(bodyOf<{ alias: unknown }>(await expectCall(main, 'removeHostAlias', technician, 'the alias address is removed', {}, 200))).toEqual({ alias: null });
+    expect(asked).toEqual(['MANUAL', 'MANUAL', 'MANUAL']);
+
+    // Without a session: both.
+    await expectCall(main, 'getHostAlias', CONSOLE, 'the web console without a session', {}, 401, 'NOT_SIGNED_IN');
+    await expectCall(main, 'removeHostAlias', CONSOLE, 'the web console without a session', {}, 401, 'NOT_SIGNED_IN');
+    // The double is taken out again: the Core is as it booted.
+    aliasControl.replaceForTest({ available: false, remover: null });
+    await main.app.pipeline.drain();
+    settle();
+  });
+
+  it('the set-IP job (operations 106 and 107; task 4 row 111): refused on this Core of itself; with the parts of this file in the place of the composition, the refusals, one job and its read', async () => {
+    fresh(main);
+    const technician = web.TECHNICIAN;
+    const jobControl = captureCameraNetworkControl(main.app);
+    // What "the technician types" in this area: drawn at run time, written nowhere.
+    const typed = { username: `fixture${randomUUID().replaceAll('-', '').slice(0, 12)}`, secret: `fixture ${randomUUID()}` };
+    const FROM = '192.168.1.64';
+    const MAC = '02:00:5E:00:53:11';
+    interface Job { jobId: string; state: string; step: string; fromAddress: string; toAddress: string | null; neighbourMac: string | null; confirmedMac: string | null; deviceId: string | null; failure: string | null }
+
+    // THIS CORE IS SIMULATED and was handed no parts: of itself it changes no camera.
+    const notAvailable = await expectCall(main, 'setCameraNetwork', technician, 'a job on a Core that is not in production capture', { payload: { fromAddress: FROM, scannedMac: MAC, credential: typed } }, 409, 'INVALID_STATE');
+    expect(detailsOf(notAvailable)['reason']).toBe('COMMISSIONING_NOT_AVAILABLE');
+
+    // Its place is taken, once: this Core changes a camera address; the host is a table of this file; the camera, the
+    // alias address, the neighbour table and "does it answer" are doubles; the two rules are the capture unit's own and
+    // the guard is a limits object of the connection tests on the wall clock. Nothing is sent anywhere. The order, every
+    // way out, the guard and the count-only search for what was typed are the folder's own tests.
+    let onPort: string | null = null;
+    let moved = false;
+    const asked: string[] = [];
+    const guard = createConnectionTestLimits({ now: () => Date.now() });
+    captureNetworkConfigControl(main.app).replaceForTest({
+      available: true,
+      interfaces: () => [
+        { name: 'lo', internal: true, addresses: [{ address: '127.0.0.1', prefixLength: 8 }] },
+        { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24 }, ...(onPort === null ? [] : [{ address: onPort, prefixLength: 24 }])] },
+      ],
+    });
+    jobControl.replaceForTest({
+      available: true,
+      // Row V6 (R119-03): as the product's scan today, the count of the camera's address is NOT KNOWN; the row showed its hardware address.
+      scan: {
+        claim: () => () => undefined,
+        // The scan is "just made" on the Core's own clock: the job holds its age to that clock (`CAMERA_SCAN_TOO_OLD`).
+        lastScanOf: (address) =>
+          address === FROM ? { deviceCount: 'NOT_KNOWN', mac: MAC, scannedAt: main.app.clock.now() } : address === '192.168.1.108' ? { deviceCount: 'MORE_THAN_ONE', mac: MAC, scannedAt: main.app.clock.now() } : null,
+      },
+      parts: {
+        camera: {
+          rule: (address, facts) => decideDestination({ purpose: DestinationPurpose.SET_IP, address }, facts),
+          newAddress: (request, context) => decideNewCameraAddress(request, context),
+          poll: async (destination) => (asked.push(`poll ${destination.address} from ${String(destination.sourceAddress)}`), { answered: destination.address === FROM ? !moved : moved }),
+          set: async (call) => {
+            asked.push(`set ${call.address} -> ${call.assignment.address}/${String(call.assignment.prefixLength)}`);
+            if (!call.admitHwAddress(MAC)) return { outcome: 'NOT_SET', reason: 'HW_ADDRESS_REFUSED', rejectedCredentialRequests: 0 };
+            moved = true;
+            return { outcome: 'SET', reason: null, rejectedCredentialRequests: 0 };
+          },
+        },
+        alias: {
+          helper: async () => null,
+          add: async (request) => ((onPort = request.address), { refusal: null, effect: 'DONE' }),
+          remove: async () => ((onPort = null), { refusal: null, effect: 'DONE' }),
+        },
+        guard: () => guard,
+        inputs: { neighbour: async () => MAC, answers: async (address) => address === FROM },
+      },
+    });
+    // The camera network is stated (by an area before this one, or here).
+    const config = bodyOf<{ configured: boolean; revision: number }>(await expectCall(main, 'getCaptureNetworkConfig', technician, 'the configuration the job reads', {}, 200));
+    if (!config.configured) await expectCall(main, 'updateCaptureNetworkConfig', technician, 'the interface and the subnet are chosen for the job', { payload: { revision: config.revision, interfaceName: 'eth1', cameraSubnet: '192.168.50.0/24' } }, 200);
+
+    // The refusals, each asking nothing of the camera.
+    await expectCall(main, 'setCameraNetwork', technician, 'a member the body does not have', { payload: { fromAddress: FROM, scannedMac: MAC, credential: typed, prefixLength: 16 } }, 422, 'INVALID_INPUT');
+    // Row V6 (R119-04): the hardware address of the scan row is a REQUIRED member; the body of the first contract is refused.
+    await expectCall(main, 'setCameraNetwork', technician, 'a body without the hardware address the technician saw', { payload: { fromAddress: FROM, credential: typed } }, 422, 'INVALID_INPUT');
+    const unbound = await expectCall(main, 'setCameraNetwork', technician, 'another hardware address than the scan row showed', { payload: { fromAddress: FROM, scannedMac: '02:00:5E:00:53:99', credential: typed } }, 409, 'INVALID_STATE');
+    expect(detailsOf(unbound)['reason']).toBe('CAMERA_HARDWARE_ADDRESS_NOT_BOUND');
+    const own = await expectCall(main, 'setCameraNetwork', technician, 'a present address the destination rule refuses: the Core\'s own', { payload: { fromAddress: '192.168.50.1', scannedMac: MAC, credential: typed } }, 422, 'INVALID_INPUT');
+    expect(detailsOf(own)['reason']).toBe('COMMISSIONING_ADDRESS_NOT_ALLOWED');
+    const conflict = await expectCall(main, 'setCameraNetwork', technician, 'the last scan saw more than one device at the present address', { payload: { fromAddress: '192.168.1.108', scannedMac: MAC, credential: typed } }, 409, 'INVALID_STATE');
+    expect(detailsOf(conflict)['reason']).toBe('CAMERA_ADDRESS_CONFLICT');
+    expect(asked).toEqual([]);
+
+    // The job: the next free address of the camera subnet; the alias address is gone when it has ended.
+    const started = bodyOf<Job>(await expectCall(main, 'setCameraNetwork', technician, 'the camera at a factory address, the next free address', { payload: { fromAddress: FROM, scannedMac: MAC, credential: typed } }, 202));
+    expect(started).toMatchObject({ state: 'RUNNING', fromAddress: FROM, scannedMac: MAC, deviceCount: 'NOT_KNOWN', deviceId: null, failure: null });
+    expect(JSON.stringify(started)).not.toContain(typed.secret);
+    await jobControl.idle();
+    cameraNetworkJobId = started.jobId;
+    const ended = bodyOf<Job>(await expectCall(main, 'getCameraNetworkJob', technician, 'the job, after it ended', { id: started.jobId }, 200));
+    expect(ended).toMatchObject({ jobId: started.jobId, state: 'COMPLETED', step: 'DONE', fromAddress: FROM, toAddress: started.toAddress, neighbourMac: MAC, confirmedMac: MAC, deviceId: null, failure: null });
+    expect(asked[0]).toBe(`poll ${FROM} from 192.168.1.253`);
+    expect(asked).toContain(`set ${FROM} -> ${String(started.toAddress)}/24`);
+    expect(onPort).toBeNull();
+
+    // The read: an id nobody was given, and an id that is none.
+    await expectCall(main, 'getCameraNetworkJob', technician, 'an id no job has', { id: started.jobId === 'CNJ-000000' ? 'CNJ-000001' : 'CNJ-000000' }, 404, 'NOT_FOUND');
+    await expectCall(main, 'getCameraNetworkJob', technician, 'a malformed {id}', { id: 'cnj-1' }, 422, 'INVALID_INPUT');
+    // Without a session: both.
+    await expectCall(main, 'setCameraNetwork', CONSOLE, 'the web console without a session', { payload: { fromAddress: FROM, scannedMac: MAC, credential: typed } }, 401, 'NOT_SIGNED_IN');
+    await expectCall(main, 'getCameraNetworkJob', CONSOLE, 'the web console without a session', { id: started.jobId }, 401, 'NOT_SIGNED_IN');
+    // The doubles are taken out again: the Core is as it booted.
+    jobControl.replaceForTest({ available: false, parts: null, scan: null });
+    await main.app.pipeline.drain();
+    settle();
+  });
+
+  it('the installation acceptance (operations 109 and 110; task 4 row 117): on the Core\'s own diagnostics run - the refusals, one acceptance, the second one the database refuses, its revocation', async () => {
+    fresh(main);
+    const technician = web.TECHNICIAN;
+    interface Acceptance { acceptanceId: string; acceptedBy: string; revokedAt: number | null; revokeReason: string | null; diagnostics: { completedAt: number } }
+    // Row V6 (R119-07): the steps are the contract's closed list, every check once with its result.
+    const steps = INSTALLATION_ACCEPTANCE_STEP_IDS.map((id) => ({ id, result: 'PASS', detail: null }));
+
+    // A run that has not ended is not recorded: the Core copies a run as it WAS, so one must have ended.
+    await expectCall(main, 'runDiagnostics', technician, 'a diagnostics run for the acceptance', {}, 202);
+    const notComplete = await expectCall(main, 'acceptInstallation', technician, 'an acceptance while the diagnostics run', { payload: { steps } }, 409, 'INVALID_STATE');
+    expect(detailsOf(notComplete)['reason']).toBe('INSTALLATION_DIAGNOSTICS_NOT_COMPLETE');
+    const nothing = await expectCall(main, 'revokeInstallationAcceptance', technician, 'a revocation with no acceptance in force', { payload: { reason: 'The Core was moved to another room.' } }, 409, 'INVALID_STATE');
+    expect(detailsOf(nothing)['reason']).toBe('INSTALLATION_ACCEPTANCE_NOT_IN_FORCE');
+    await main.drive(10 * SECOND);
+
+    // The refusals of the bodies (no free JSON: a member outside the closed key list), each storing nothing.
+    await expectCall(main, 'acceptInstallation', technician, 'a step with a member outside its key list', { payload: { steps: [{ ...steps[0], code: 'X1' }, ...steps.slice(1)] } }, 422, 'INVALID_INPUT');
+    // THE STEP LIST IS THE CONTRACT'S: an empty list, the steps of the first contract, a missing and an unknown check are each refused.
+    await expectCall(main, 'acceptInstallation', technician, 'an empty step list', { payload: { steps: [] } }, 422, 'INVALID_INPUT');
+    await expectCall(main, 'acceptInstallation', technician, 'a step a client chose', { payload: { steps: [{ id: 'CAMERAS_ASSIGNED', passed: true, detail: null }] } }, 422, 'INVALID_INPUT');
+    await expectCall(main, 'acceptInstallation', technician, 'a check of the list is missing', { payload: { steps: steps.slice(1) } }, 422, 'INVALID_INPUT');
+    await expectCall(main, 'acceptInstallation', technician, 'a check outside the list', { payload: { steps: [{ id: '9A/H-28', result: 'PASS', detail: null }, ...steps.slice(1)] } }, 422, 'INVALID_INPUT');
+    await expectCall(main, 'acceptInstallation', technician, 'the diagnostics sent by the client', { payload: { steps, diagnostics: {} } }, 422, 'INVALID_INPUT');
+    await expectCall(main, 'revokeInstallationAcceptance', technician, 'a reason of three characters', { payload: { reason: 'abc' } }, 422, 'INVALID_INPUT');
+
+    // The acceptance (200), and a second one, which the DATABASE refuses while the first is in force.
+    const accepted = bodyOf<Acceptance>(await expectCall(main, 'acceptInstallation', technician, 'the steps and the address of the site', { payload: { siteAddress: 'Example street 1\nExample city', steps } }, 200));
+    expect(accepted).toMatchObject({ acceptedBy: operatorIdOf('TECHNICIAN'), revokedAt: null, revokeReason: null });
+    expect(accepted.diagnostics.completedAt).toBeGreaterThan(0);
+    const inForce = await expectCall(main, 'acceptInstallation', technician, 'a second acceptance while one is in force', { payload: { steps } }, 409, 'INVALID_STATE');
+    expect(detailsOf(inForce)['reason']).toBe('INSTALLATION_ACCEPTANCE_IN_FORCE');
+
+    // The revocation (200): the same record, with who, when and why; then nothing is in force again.
+    const revoked = bodyOf<Acceptance>(await expectCall(main, 'revokeInstallationAcceptance', technician, 'the acceptance in force is revoked', { payload: { reason: 'The Core was moved to another room.' } }, 200));
+    expect(revoked).toMatchObject({ acceptanceId: accepted.acceptanceId, revokeReason: 'The Core was moved to another room.' });
+    expect(revoked.revokedAt).not.toBeNull();
+
+    // Without a session: both. (The idle lock of both is area 4, where a session is open; the roles,
+    // the rollback, two requests at the same moment and the audit rows are the folder's own tests.)
+    await expectCall(main, 'acceptInstallation', CONSOLE, 'the web console without a session', { payload: { steps } }, 401, 'NOT_SIGNED_IN');
+    await expectCall(main, 'revokeInstallationAcceptance', CONSOLE, 'the web console without a session', { payload: { reason: 'The Core was moved to another room.' } }, 401, 'NOT_SIGNED_IN');
     await main.app.pipeline.drain();
     settle();
   });
@@ -1179,6 +1645,11 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     await expectCall(main, 'setCaptureCameraSource', supervisor, 'a camera assignment during a session', { id: 'CAM-01', payload: { trackId: 'VIDEO-01' } }, 409, 'CAPTURE_CONFIG_LOCKED');
     await expectCall(main, 'setPrimaryMic', supervisor, 'a primary microphone change during a session', { id: 'MIC-01' }, 409, 'CAPTURE_CONFIG_LOCKED');
     await expectCall(main, 'setCaptureDeviceCredential', supervisor, 'a camera credential during a session', { id: 'CAM-03', payload: exampleBody(operationOf('setCaptureDeviceCredential')) }, 409, 'CAPTURE_CONFIG_LOCKED');
+    // Task 4 row 146b: and the stored-credential connection test (operation 108) - a second connection to a camera that may be recording.
+    await expectCall(main, 'testCaptureDeviceConnection', supervisor, 'a stored-credential connection test during a session', { id: 'CAM-03' }, 409, 'CAPTURE_CONFIG_LOCKED');
+    // Task 4 row 117: and the installation acceptance and its revocation (operations 109 and 110) - idle only.
+    await expectCall(main, 'acceptInstallation', web.TECHNICIAN, 'an installation acceptance during a session', { payload: { steps: INSTALLATION_ACCEPTANCE_STEP_IDS.map((id) => ({ id, result: 'PASS', detail: null })) } }, 409, 'CAPTURE_CONFIG_LOCKED');
+    await expectCall(main, 'revokeInstallationAcceptance', web.TECHNICIAN, 'a revocation of the acceptance during a session', { payload: { reason: 'The Core was moved to another room.' } }, 409, 'CAPTURE_CONFIG_LOCKED');
 
     // ── A power failure moves the recording to FAULT; the recovery closes it as incomplete.
     await expectCall(main, 'injectFault', supervisor, 'the power fails', { payload: { kind: 'POWER_FAIL' } }, 204);
@@ -1358,9 +1829,10 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
 describe('AC-B-14: the refusals of the stages, generated for every operation of the registry', () => {
   it('401 NOT_SIGNED_IN: every operation that is not PUBLIC, called without a credential', async () => {
     const guarded = OPERATIONS.filter((operation) => operation.access.kind !== CoreApiAccessKind.PUBLIC);
-    // 99 operations, four of them PUBLIC (the pin read 71 of the 75 of the base).
+    // 110 operations, four of them PUBLIC (the pin read 71 of the 75 of the base; 103 of 107 until task 4 row V3 added operation 108;
+    // 104 of 108 until task 4 row 116 added operations 109 and 110).
     expect(OPERATIONS.length - guarded.length).toBe(4);
-    expect(guarded).toHaveLength(95);
+    expect(guarded).toHaveLength(106);
     // The two unrouted operations (task 4 row 70) answer the router's 404: they are not called.
     for (const operation of guarded.filter((entry) => !UNROUTED_OPERATIONS.includes(entry))) {
       fresh(main);
@@ -1662,9 +2134,18 @@ describe('AC-B-09, SR-20: no GET handler writes', () => {
 
   it('every GET operation, as each kind of caller its rule lets through: the audit count, the event count and the digest of every table are equal before and after', async () => {
     fresh(main);
-    const reads = OPERATIONS.filter((operation) => operation.method === 'get');
-    // The 36 GET operations of the registry (the pin read 27, the base's; AC-B-09's first block holds 36 / 61).
-    expect(reads).toHaveLength(36);
+    // Task 4 row 102: the registry holds 39 GET operations; three of them (the configuration read, the
+    // alias state and the job state: operations 101, 104, 107) have no route yet (`LANDED_UNROUTED`,
+    // rows 108, 106 and 111) and answer the router's 404, which is no answer of a handler. The walk is
+    // over the ROUTED reads, and both counts are pinned: a read that gains its route joins the walk.
+    expect(OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(39);
+    // Task 4 row 108: the configuration read (operation 101) has its route and joined the walk: two unrouted reads, 37 walked.
+    // Task 4 row 106b: the alias state (operation 104) has its route and joined the walk: one unrouted read, 38 walked.
+    // Task 4 row 111: the job state (operation 107) has its route and joined the walk: no unrouted read, 39 walked.
+    expect(UNROUTED_OPERATIONS.filter((operation) => operation.method === 'get').map((operation) => operation.operationId)).toEqual([]);
+    const reads = ROUTED_OPERATIONS.filter((operation) => operation.method === 'get');
+    // The 39 routed GET operations (the pin read 27, the base's; AC-B-09's first block holds 39 / 68 for the registry).
+    expect(reads).toHaveLength(39);
     // Operations 82 and 83 read the OPEN session, and 83 one whose sealing has started: a session is
     // recorded and sealed for this walk (before the first reading) and its summary is acknowledged
     // after it. Operations 84 and 86 read the REAL item with a sealed transcript.
@@ -1678,7 +2159,7 @@ describe('AC-B-09, SR-20: no GET handler writes', () => {
     await main.drive(FINALIZE_MS);
     const transcriptEvidenceId = transcriptItem?.evidenceId ?? '';
     expect(transcriptEvidenceId).not.toBe('');
-    const ids: Readonly<Record<string, string>> = { getEvidence: sealedEvidenceId, listAudioSourceIntervals: openSessionId, getSealingProgress: openSessionId, getEvidenceExportJob: exportJobId, getTranscript: transcriptEvidenceId, listTranscriptRevisions: transcriptEvidenceId };
+    const ids: Readonly<Record<string, string>> = { getEvidence: sealedEvidenceId, listAudioSourceIntervals: openSessionId, getSealingProgress: openSessionId, getEvidenceExportJob: exportJobId, getTranscript: transcriptEvidenceId, listTranscriptRevisions: transcriptEvidenceId, getCameraNetworkJob: cameraNetworkJobId };
     const queries: Readonly<Record<string, string>> = { listSessionHistory: '?limit=200', listEvidence: '?limit=200&q=LP', listAuditRows: '?limit=200&order=DESC', listEvents: '?limit=200' };
     // Each caller has sent a request at this instant of the standing clock: what stage 4 writes
     // once a minute for a paired device (pairing row DN-8) is written before the first reading.
@@ -1819,7 +2300,19 @@ describe('AC-B-93, API-13: free text with U+0000 or an unpaired surrogate answer
     for (const role of ROLES) await expectCall(main, 'touchSession', web[role], 'activity, before the readings', {}, 200);
     await main.app.pipeline.drain();
 
-    const ordered = [...freeText].sort((a, b) => Number(['addSessionNote', 'revokeDevice', 'redeemPairingCode'].includes(b.operationId)) - Number(['addSessionNote', 'revokeDevice', 'redeemPairingCode'].includes(a.operationId)));
+    // Task 4 row 102 (NAMED DEFERRAL, pinned by literal): a free-text member of an operation that has
+    // no route yet cannot be refused by its route - the router answers 404. The members below are
+    // walked when their operation is routed (`setCameraNetwork`: task 4 row 111) and this list is
+    // then empty; a member that appears here or leaves it without that row fails the equality.
+    // Task 4 row 116 (NAMED DEFERRAL, pinned by literal): the three free-text members of operations 109
+    // and 110 - the site address, a step's note and the reason of a revocation - are walked when row
+    // 117 routes `acceptInstallation` and `revokeInstallationAcceptance`, and leave this list then.
+    // Task 4 row 117: both are routed; the three members left the literal and are walked below.
+    const unroutedFreeText = freeText.filter((member) => UNROUTED_OPERATIONS.some((operation) => operation.operationId === member.operationId));
+    // Task 4 row 111: `setCameraNetwork` is routed; its two members left the literal and are walked below.
+    expect(unroutedFreeText.map((member) => `${member.operationId} ${member.where}.${member.path.join('.')}`)).toEqual([]);
+    const walkedFreeText = freeText.filter((member) => !unroutedFreeText.includes(member));
+    const ordered = [...walkedFreeText].sort((a, b) => Number(['addSessionNote', 'revokeDevice', 'redeemPairingCode'].includes(b.operationId)) - Number(['addSessionNote', 'revokeDevice', 'redeemPairingCode'].includes(a.operationId)));
     const lines: string[] = [];
     let refused = 0;
     for (const member of ordered) {
@@ -1848,7 +2341,7 @@ describe('AC-B-93, API-13: free text with U+0000 or an unpaired surrogate answer
       }
     }
     console.info(`[w52] API-13: ${refused} refused requests, every table of schema public equal before and after each:\n${lines.map((line) => `[w52]   ${line}`).join('\n')}`);
-    expect(refused).toBe(freeText.filter((member) => member.where === 'body').length * 2 + freeText.filter((member) => member.where === 'query').length);
+    expect(refused).toBe(walkedFreeText.filter((member) => member.where === 'body').length * 2 + walkedFreeText.filter((member) => member.where === 'query').length);
     // Nothing of what could have been written was: the tablet is paired, the code is active and
     // unused, the session records without a note or a marker.
     await expectCall(main, 'getDeviceRegistration', tablet.credential, 'the tablet whose revocation was refused', {}, 200);
@@ -2044,7 +2537,9 @@ describe('operations 72 and 75: a scenario load and a reset, through the real ro
 const LANDED_UNANSWERED: Readonly<Record<string, string>> = {};
 const NOT_PRODUCED: Readonly<Record<string, string>> = {
   ...Object.fromEntries(
-    UNROUTED_OPERATIONS.flatMap((operation) => listCoreApiResponseStatuses(operation, 'all').map((status) => [`${operation.operationId} ${status}`, 'no route until task 4 row 70 (LANDED_UNROUTED)'])),
+    UNROUTED_OPERATIONS.flatMap((operation) =>
+      listCoreApiResponseStatuses(operation, 'all').map((status) => [`${operation.operationId} ${status}`, `no route until ${UNROUTED_UNTIL[routeKey(operation.method, operation.path)] ?? 'a row that is not named'} (LANDED_UNROUTED)`]),
+    ),
   ),
   ...LANDED_UNANSWERED,
 };

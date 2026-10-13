@@ -46,7 +46,9 @@ const CAPTURE_CREDENTIAL_READER_IMPORTERS: readonly string[] = [`${HOLDERS_MODUL
  * connection test (row 50) add their file here, each by a decision; never a file of the
  * commissioning set (decisions C1, C7) and never the module index.
  */
-const CAPTURE_CREDENTIAL_HOLDERS_IMPORTERS: readonly string[] = [];
+// Task 4 row 85b (decision C55, entry SR-7 (a)): ONE file, the composition of production capture. It stands above the
+// modules, in no unit; it calls the wiring once per app and in `REAL_PRODUCTION` only, and hands each reader to its holder.
+const CAPTURE_CREDENTIAL_HOLDERS_IMPORTERS: readonly string[] = ['src/capture-composition.ts'];
 /**
  * The production sources that write one of the three reveal reasons as a text (rule R-5): the
  * reader, which binds each to its holder; the audit writer's closed set; the audit fixture. A
@@ -175,7 +177,7 @@ describe('R-5, R-6: the holders (AD-03 (1), row 144)', () => {
     expect(occurrences(holders, REVEAL_REASON_TEXT)).toEqual([]);
   });
 
-  it('R-6: the wiring is the one file that takes a reader, twice; no production source imports it today, and the module index does not hand it on', () => {
+  it('R-6: the wiring is the one file that takes a reader, twice; its production importers are the pinned list (row 85b: the composition, one file), and the module index does not hand it on', () => {
     expect(holders).toHaveLength(1);
     expect(occurrences(productionCode, /\.take\s*\(\s*CaptureCredentialHolder\./g).map((place) => place.replace(/:\d+$/, ''))).toEqual([`${HOLDERS_MODULE}.ts`, `${HOLDERS_MODULE}.ts`]);
     expect(occurrences(holders, /\bcreateCaptureCredentialReaders\s*\(/g)).toHaveLength(1);
@@ -183,6 +185,9 @@ describe('R-5, R-6: the holders (AD-03 (1), row 144)', () => {
     console.info(`[row144] credential-holders importers: ${importers.length === 0 ? '(none: no boot path builds the readers)' : importers.join(', ')} | allowed: ${CAPTURE_CREDENTIAL_HOLDERS_IMPORTERS.join(', ') || '(none yet: rows 85, 50)'}`);
     expect(importers).toEqual([...CAPTURE_CREDENTIAL_HOLDERS_IMPORTERS]);
     expect(CAPTURE_CREDENTIAL_HOLDERS_IMPORTERS).not.toContain(`${FOLDER}index.ts`);
+    // Row 85b: exactly one importer, a file of no unit - never a module, never a file of the capture unit, never a commissioning file.
+    expect(CAPTURE_CREDENTIAL_HOLDERS_IMPORTERS).toHaveLength(1);
+    expect(CAPTURE_CREDENTIAL_HOLDERS_IMPORTERS.filter((path) => /^src\/(?:modules|capture|plugins|core|engine)\//.test(path))).toEqual([]);
     expect(importersOf(otherCode, HOLDERS_MODULE).filter((path) => !path.startsWith(`${FOLDER}__tests__/`))).toEqual([]);
     // Its one import is the reader; it logs nothing, reads no secret member and names one statement with one bind parameter.
     expect(relativeImports(holders).map((entry) => entry.target)).toEqual([READER_MODULE]);

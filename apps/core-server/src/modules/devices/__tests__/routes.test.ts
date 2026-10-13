@@ -110,7 +110,21 @@ describe('MODG: the route list of the module equals its registry operations', ()
     // Task 4 blueprint row 63 (design addendum 4.2): operations 98 and 99 carry the Device tag too.
     // The contract only: no module answers them yet (the microphone registration module is row 70).
     const AUDIO_CARD_AREA = ['searchCaptureAudioCards', 'registerCaptureAudioInput'];
-    expect(area.map((operation) => operation.operationId)).toEqual([...DEVICES_OPERATIONS, ...CAPTURE_CONFIG_AREA, ...STT_CONFIG_AREA, ...CAPTURE_DISCOVERY_AREA, ...AUDIO_CARD_AREA]);
+    // Task 4 blueprint row 194: operation 100 (the confirmed re-address) carries the Device tag too.
+    // The contract only: no module answers it yet (rows 196, 197).
+    const READDRESS_AREA = ['confirmCaptureDeviceAddress'];
+    // Task 4 blueprint row 102: operations 101 to 107 (the commissioning functions) carry the Device
+    // tag too. The contract only: no module answers them yet (rows 106 to 111).
+    const COMMISSIONING_AREA = ['getCaptureNetworkConfig', 'updateCaptureNetworkConfig', 'scanFactoryCameras', 'getHostAlias', 'removeHostAlias', 'setCameraNetwork', 'getCameraNetworkJob'];
+    // Task 4 row V3 (blueprint row 146): operation 108 (the connection test of a registered camera with
+    // its stored credential) carries the Device tag too. The contract only: no route answers it yet.
+    const DEVICE_TEST_AREA = ['testCaptureDeviceConnection'];
+    // Task 4 blueprint row 116: operations 109 and 110 (the acceptance of the installation and its
+    // revocation) carry the Device tag too. The contract only: no route answers them yet (row 117).
+    const ACCEPTANCE_AREA = ['acceptInstallation', 'revokeInstallationAcceptance'];
+    expect(area.map((operation) => operation.operationId)).toEqual([
+      ...DEVICES_OPERATIONS, ...CAPTURE_CONFIG_AREA, ...STT_CONFIG_AREA, ...CAPTURE_DISCOVERY_AREA, ...AUDIO_CARD_AREA, ...READDRESS_AREA, ...COMMISSIONING_AREA, ...DEVICE_TEST_AREA, ...ACCEPTANCE_AREA,
+    ]);
     expect(area.map(operationNumber).slice(0, DEVICES_OPERATIONS.length)).toEqual([null, null, null, 47, 48, 49, 50, 51, 52]);
     expect(area.slice(0, 3).map((operation) => operation.source)).toEqual(['Design book §21.2', 'Design book §21.2', 'Design book §21.2']);
     for (const operationId of DEVICES_OPERATIONS) expect(operationOf(operationId).operationId).toBe(operationId);
@@ -220,7 +234,7 @@ describe('row 53: operations 44, 46 and 47 of a Core in REAL capture state the s
   it('an HEVC slot is answered HEVC with no rate, an H.264 one as before, valid against the contract; a SIMULATED Core on the same state answers its slice', async () => {
     const seeded = committedOf(scenarioState('idle'));
     const state = { ...seeded, captureConfig: { ...seeded.captureConfig, cameras: seeded.captureConfig.cameras.map((camera) => ({ ...camera, profile: camera.trackId === 'VIDEO-01' ? 'HEVC_1080P' : 'H264_1080P25' })) } };
-    const facts = (cameras: readonly { readonly resolution: string; readonly fps: number | null; readonly codec: string }[]): unknown[] => cameras.map((camera) => [camera.resolution, camera.fps, camera.codec]);
+    const facts = (cameras: readonly { readonly resolution: string | null; readonly fps: number | null; readonly codec: string | null }[]): unknown[] => cameras.map((camera) => [camera.resolution, camera.fps, camera.codec]);
     const STREAM = [['1080p', null, 'HEVC'], ['1080p', 25, 'H.264']];
     const SLICE = facts(seeded.cameras);
     // A real capture operation (the demo controls off, as the one function of the flags requires); then a SIMULATED Core.

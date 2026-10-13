@@ -89,6 +89,8 @@ interface HostTexts {
   readonly streams?: Readonly<Record<string, string>>;
   /** Hardware parameter dumps by `card:device`; left out: the source has no such member. */
   readonly dumps?: Readonly<Record<string, string>>;
+  /** The serial text of the USB device of a card, by card index (row 199); left out: the source has no such member. */
+  readonly serials?: Readonly<Record<number, string>>;
 }
 
 function host(texts: HostTexts): { source: CardListingSource; calls: (readonly [string, ...unknown[]])[] } {
@@ -99,6 +101,7 @@ function host(texts: HostTexts): { source: CardListingSource; calls: (readonly [
     usbId: async (cardIndex) => (calls.push(['usbId', cardIndex]), texts.usbId?.[cardIndex] ?? null),
     stream: async (cardIndex, deviceIndex) => (calls.push(['stream', cardIndex, deviceIndex]), texts.streams?.[`${cardIndex}:${deviceIndex}`] ?? null),
     ...(texts.dumps === undefined ? {} : { hwParams: async (cardIndex: number, deviceIndex: number) => (calls.push(['hwParams', cardIndex, deviceIndex]), texts.dumps?.[`${cardIndex}:${deviceIndex}`] ?? null) }),
+    ...(texts.serials === undefined ? {} : { usbSerial: async (cardIndex: number) => (calls.push(['usbSerial', cardIndex]), texts.serials?.[cardIndex] ?? null) }),
   };
   return { source, calls };
 }
@@ -128,6 +131,7 @@ describe('fixed listings give the expected cards and inputs', () => {
           usb: true,
           usbId: 'fff0:0002',
           usbPort: '0000:00:14.0-2',
+          usbSerial: null,
           product: 'DEMS Test Duo',
           channelCount: 2,
           factsSource: CardFactsSource.STREAM,
@@ -198,7 +202,7 @@ describe('fixed listings give the expected cards and inputs', () => {
   it('an onboard card: no USB identity; facts from the dump, or marked ASSUMED when there is none or the device is busy', async () => {
     const list = HEADING + listed(0, 'Onboard', 'DEMS Onboard Analog', 0, 'Analog');
     const dumped = (await listing({ list, dumps: { '0:0': ONBOARD_DUMP } })).cards[0] as CaptureCard;
-    expect(dumped).toEqual({ cardIndex: 0, deviceIndex: 0, cardId: 'Onboard', usb: false, usbId: null, usbPort: null, product: 'DEMS Onboard Analog', channelCount: 2, factsSource: 'HW_PARAMS', formats: ['S32_LE', 'S16_LE'], nativeFormat: 'S32_LE', sampleBits: [16, 32], ratesHz: [], rateRangeHz: { minHz: 44_100, maxHz: 192_000 } });
+    expect(dumped).toEqual({ cardIndex: 0, deviceIndex: 0, cardId: 'Onboard', usb: false, usbId: null, usbPort: null, usbSerial: null, product: 'DEMS Onboard Analog', channelCount: 2, factsSource: 'HW_PARAMS', formats: ['S32_LE', 'S16_LE'], nativeFormat: 'S32_LE', sampleBits: [16, 32], ratesHz: [], rateRangeHz: { minHz: 44_100, maxHz: 192_000 } });
     const assumed = { channelCount: 2, factsSource: 'ASSUMED', formats: [], nativeFormat: 'S32_LE', sampleBits: [], ratesHz: [], rateRangeHz: null };
     expect((await listing({ list })).cards[0]).toMatchObject(assumed);
     expect((await listing({ list, dumps: { '0:0': 'arecord: main:831: audio open error: Device or resource busy\n' } })).cards[0]).toMatchObject(assumed);
@@ -285,7 +289,7 @@ describe('AD-07 (1): text a device announced is replaced when it fails the rule,
     expect(forgedPort.product).toBe('Evil at usb-9999:99:99.9-9, low speed : X');
     // A port of another form is not passed on.
     expect(parseUsbIdentity('fff0:0001\n', 'DEMS Test at usb-0000:00:14.0-2;rm, high speed : USB Audio\n')).toMatchObject({ usbPort: null, product: 'DEMS Test' });
-    expect(parseUsbIdentity('fff0:0001\n', 'DEMS Test Profile Name\n')).toEqual({ usb: true, usbId: 'fff0:0001', usbPort: null, product: 'DEMS Test Profile Name' });
+    expect(parseUsbIdentity('fff0:0001\n', 'DEMS Test Profile Name\n')).toEqual({ usb: true, usbId: 'fff0:0001', usbPort: null, usbSerial: null, product: 'DEMS Test Profile Name' });
     // A line break in the name breaks the entry of the list: it is refused, not half read.
     expect(await listing(oneUsbCard('DEMS Test', 'DEMS\nTest'))).toEqual({ cards: [], truncated: false, skipped: 1 });
   });
@@ -298,7 +302,66 @@ describe('AD-07 (1): text a device announced is replaced when it fails the rule,
     }
     expect(cardUsbId('fff0:0001')).toBe('fff0:0001');
     for (const value of [undefined, null, 0xfff0, 'fff0:0001\n']) expect(cardUsbId(value)).toBe(CARD_USB_ID_REPLACEMENT);
-    expect(parseUsbIdentity(null, DUO_STREAM)).toEqual({ usb: false, usbId: null, usbPort: null, product: null });
+    expect(parseUsbIdentity(null, DUO_STREAM)).toEqual({ usb: false, usbId: null, usbPort: null, usbSerial: null, product: null });
+  });
+
+  // Task 4 row 199 (AD-07 (4)): the listing states the serial of a USB card where the device has
+  // one, and the port path of every USB card. THE DOUBLE: a table of fixed serial texts by card
+  // index, in the form of the kernel's attribute (one line). No real host, no real card.
+  it('row 199: the serial of a USB card - stated where the device has one, null where it has none, where the source offers none and for a card that is not USB', async () => {
+    const texts: HostTexts = {
+      list: HEADING + listed(0, 'Onboard', 'DEMS Onboard Analog', 0, 'Analog') + listed(1, 'Duo', 'DEMS Test Duo') + listed(2, 'Six', 'DEMS Test Six'),
+      usbId: { 1: 'fff0:0002\n', 2: 'fff0:0006\n' },
+      streams: { '1:0': DUO_STREAM, '2:0': SIX_STREAM },
+      dumps: { '0:0': ONBOARD_DUMP },
+      // Card 1 states a serial; card 2 states none (its device has no such attribute).
+      serials: { 1: 'DEMS-SN-000123\n' },
+    };
+    const rig = host(texts);
+    const cards = (await createCardEnumerator(rig.source).list()).cards;
+    expect(cards.map((card) => [card.cardId, card.usbId, card.usbSerial, card.usbPort])).toEqual([
+      ['Onboard', null, null, null],
+      ['Duo', 'fff0:0002', 'DEMS-SN-000123', '0000:00:14.0-2'],
+      ['Six', 'fff0:0006', null, '0000:00:14.0-3.1'],
+    ]);
+    // The serial is asked ONCE per USB card, by the card INDEX, and never for a card that is not USB.
+    expect(rig.calls.filter(([name]) => name === 'usbSerial')).toEqual([['usbSerial', 1], ['usbSerial', 2]]);
+    // A source WITHOUT the member (the source of before this row): every card is listed, none with a serial.
+    const { serials: _none, ...without } = texts;
+    expect((await listing(without)).cards.map((card) => card.usbSerial)).toEqual([null, null, null]);
+  });
+
+  it('row 199: TWO CARDS OF ONE MODEL on two ports are two entries that differ in the port path - and in the serial, where they state one', async () => {
+    const twins = (serials: HostTexts['serials']): HostTexts => ({
+      list: HEADING + listed(1, 'Six', 'DEMS Test Six') + listed(2, 'Six_1', 'DEMS Test Six'),
+      usbId: { 1: 'fff0:0006\n', 2: 'fff0:0006\n' },
+      streams: { '1:0': SIX_STREAM, '2:0': SIX_STREAM.replace('0000:00:14.0-3.1', '0000:00:14.0-4') },
+      ...(serials === undefined ? {} : { serials }),
+    });
+    const identity = async (texts: HostTexts) => (await listing(texts)).cards.map((card) => [card.cardId, card.usbId, card.product, card.usbSerial, card.usbPort]);
+    expect(await identity(twins({ 1: 'A1B2C3\n', 2: 'A1B2C4\n' }))).toEqual([
+      ['Six', 'fff0:0006', 'DEMS Test Six', 'A1B2C3', '0000:00:14.0-3.1'],
+      ['Six_1', 'fff0:0006', 'DEMS Test Six', 'A1B2C4', '0000:00:14.0-4'],
+    ]);
+    // Without a serial NOTHING but the port path tells the two apart: USB id and product are equal.
+    expect(await identity(twins({}))).toEqual([
+      ['Six', 'fff0:0006', 'DEMS Test Six', null, '0000:00:14.0-3.1'],
+      ['Six_1', 'fff0:0006', 'DEMS Test Six', null, '0000:00:14.0-4'],
+    ]);
+  });
+
+  it('row 199: a serial is device text - one closed rule, never cleaned or cut; a text outside it, a cut line and an empty one are NO serial, and the card is still listed', async () => {
+    const serialOf = async (text: string) => ((await listing({ ...oneUsbCard('DEMS Test'), serials: { 1: text } })).cards[0] as CaptureCard).usbSerial;
+    for (const good of ['0123456789AB', 'DEMS-SN_01.02:03', 'S'.repeat(64)]) expect(await serialOf(`${good}\n`), good).toBe(good);
+    for (const bad of ['SN 0001\n', 'SN;reboot\n', '$(id)\n', '../../x\n', 'Série\n', '<b>1</b>\n', 'SN‮1\n', `${'S'.repeat(65)}\n`, '\n', '', 'CUT-LINE']) {
+      const card = (await listing({ ...oneUsbCard('DEMS Test'), serials: { 1: bad } })).cards[0] as CaptureCard;
+      expect([card.cardId, card.usbId, card.usbSerial, card.usbPort], JSON.stringify(bad)).toEqual(['TestCard', 'fff0:0001', null, '0000:00:14.0-2']);
+    }
+    // The parser alone, and the one function for the kind.
+    expect(parseUsbIdentity('fff0:0001\n', DUO_STREAM, 'A1B2C3\n')).toEqual({ usb: true, usbId: 'fff0:0001', usbPort: '0000:00:14.0-2', usbSerial: 'A1B2C3', product: 'DEMS Test Duo' });
+    expect(parseUsbIdentity(null, DUO_STREAM, 'A1B2C3\n').usbSerial).toBeNull();
+    expect(cardListingText(CardStringKind.USB_SERIAL, 'A1B2C3')).toBe('A1B2C3');
+    expect(cardListingText(CardStringKind.USB_SERIAL, 'A1 B2')).toBeNull();
   });
 
   it('a card id that is not of the kernel\'s form is not listed at all: it would be the key of a request', () => {
@@ -323,15 +386,17 @@ describe('row 155: every string of a card listing passes ONE function before it 
       USB_ID: ['fff0:0001', '0a1b:2c3d', CARD_USB_ID_REPLACEMENT],
       CARD_ID: ['Duo', 'DEMS_TEST_A', 'A'.repeat(32), '0'],
       USB_PORT: ['0000:00:14.0-2', '0000:00:14.0-3.1', 'xhci-hcd.0.auto-1'.replace('auto', 'port')],
+      USB_SERIAL: ['0123456789AB', 'DEMS-SN_01.02:03', 'S'.repeat(64)],
       FORMAT: ['S32_LE', 'S24_3LE', 'S24_LE', 'S16_LE'],
       FACTS_SOURCE: Object.values(CardFactsSource),
     };
-    const replacement: Record<CardStringKind, string | null> = { NAME: CARD_TEXT_REPLACEMENT, USB_ID: CARD_USB_ID_REPLACEMENT, CARD_ID: null, USB_PORT: null, FORMAT: null, FACTS_SOURCE: null };
+    const replacement: Record<CardStringKind, string | null> = { NAME: CARD_TEXT_REPLACEMENT, USB_ID: CARD_USB_ID_REPLACEMENT, CARD_ID: null, USB_PORT: null, USB_SERIAL: null, FORMAT: null, FACTS_SOURCE: null };
     const outsideOf: Record<CardStringKind, readonly string[]> = {
       NAME: ['a<b', 'a>b'],
       USB_ID: ['FFF0:0001', 'fff0:0001\n', 'fff00001', 'fff0:00011', ' fff0:0001'],
       CARD_ID: ['Bad-Id', 'a.b', 'A'.repeat(33), 'Duo ', 'Duo/..'],
       USB_PORT: ['0000:00:14.0-2;rm', 'a b', '../x', 'P'.repeat(65), '$(id)'],
+      USB_SERIAL: ['SN 0001', 'SN;rm', '../x', 'S'.repeat(65), '$(id)', 'SN\n'],
       FORMAT: ['s32_le', 'FLOAT_LE', 'S32_LE ', 'S32_BE'],
       FACTS_SOURCE: ['stream', 'DEVICE', 'ASSUMED '],
     };
@@ -365,8 +430,8 @@ describe('row 155: every string of a card listing passes ONE function before it 
     const table = /const CARD_STRING_RULES\b[\s\S]*?\n\}\);\n/.exec(code)?.[0] ?? '';
     const outside = code.replace(table, '');
     // Each pattern of a text rule is applied once, inside the table.
-    const RULE_USE = /\b(?:CAPTURE_AUDIO_CARD_TEXT_PATTERN|CAPTURE_AUDIO_USB_ID_PATTERN|CAPTURE_AUDIO_CARD_ID_PATTERN|MARKUP|USB_PORT)\.test\(/g;
-    expect((table.match(RULE_USE) ?? []).sort()).toEqual(['CAPTURE_AUDIO_CARD_ID_PATTERN.test(', 'CAPTURE_AUDIO_CARD_TEXT_PATTERN.test(', 'CAPTURE_AUDIO_USB_ID_PATTERN.test(', 'MARKUP.test(', 'USB_PORT.test('].sort());
+    const RULE_USE = /\b(?:CAPTURE_AUDIO_CARD_TEXT_PATTERN|CAPTURE_AUDIO_USB_ID_PATTERN|CAPTURE_AUDIO_CARD_ID_PATTERN|MARKUP|USB_PORT|USB_SERIAL)\.test\(/g;
+    expect((table.match(RULE_USE) ?? []).sort()).toEqual(['CAPTURE_AUDIO_CARD_ID_PATTERN.test(', 'CAPTURE_AUDIO_CARD_TEXT_PATTERN.test(', 'CAPTURE_AUDIO_USB_ID_PATTERN.test(', 'MARKUP.test(', 'USB_PORT.test(', 'USB_SERIAL.test('].sort());
     expect(outside.match(RULE_USE)).toBeNull();
     // The table is read by the one function only.
     expect(outside.match(/\bCARD_STRING_RULES\b/g)).toHaveLength(2);
@@ -404,7 +469,7 @@ describe('row 155: every string of a card listing passes ONE function before it 
     const surplus: CardStringFieldsOf<CaptureCard> = { ...CARD_LISTING_STRING_FIELDS.CaptureCard, channelCount: CardStringKind.NAME } as const;
     expect([listed, present, identity, card, text, optional, list, word, numbers].every((table) => typeof table === 'object')).toBe(true);
     expect(Object.keys(surplus)).toContain('channelCount');
-    expect(CARD_LISTING_STRING_FIELDS.CaptureCard).toEqual({ cardId: 'CARD_ID', usbId: 'USB_ID', usbPort: 'USB_PORT', product: 'NAME', factsSource: 'FACTS_SOURCE', formats: 'FORMAT', nativeFormat: 'FORMAT' });
+    expect(CARD_LISTING_STRING_FIELDS.CaptureCard).toEqual({ cardId: 'CARD_ID', usbId: 'USB_ID', usbPort: 'USB_PORT', usbSerial: 'USB_SERIAL', product: 'NAME', factsSource: 'FACTS_SOURCE', formats: 'FORMAT', nativeFormat: 'FORMAT' });
     for (const table of Object.values(CARD_LISTING_STRING_FIELDS)) expect(Object.isFrozen(table)).toBe(true);
   });
 
@@ -437,25 +502,28 @@ describe('row 155: every string of a card listing passes ONE function before it 
         table: tableRow(1, 'TestCard', 'USB-Audio', hostile),
         usbId: { 1: `${hostile}\n` },
         streams: { '1:0': `${hostile} at usb-${hostile}, high speed : USB Audio\n\nCapture:\n  Status: Stop\n  Interface 1\n    Altset 1\n    Format: ${hostile || 'x'}\n    Channels: 2\n    Rates: 48000\n    Bits: 24\n    Format: S24_3LE\n\n` },
+        // Row 199: the serial is device text too.
+        serials: { 1: `${hostile}\n` },
       };
       const result = await listing(texts);
+      expect(result.cards.map((card) => card.usbSerial), JSON.stringify(hostile)).toEqual(result.cards.map(() => null));
       for (const card of result.cards) check(CARD_LISTING_STRING_FIELDS.CaptureCard, card, `card / ${JSON.stringify(hostile)}`);
       // A hostile name does not remove the card: it is listed with the fixed word, its integers and the one format of this file's list.
       if (hostile.length <= 400) expect(result.cards.map((card) => [card.cardId, card.product, card.usbId, card.usbPort, card.formats]), JSON.stringify(hostile)).toEqual([['TestCard', CARD_TEXT_REPLACEMENT, CARD_USB_ID_REPLACEMENT, null, ['S24_3LE']]]);
       for (const entry of parseCaptureDeviceList(texts.list).entries) check(CARD_LISTING_STRING_FIELDS.ListedCaptureDevice, entry, 'listed');
       for (const present of parsePresentCards(texts.table).cards) check(CARD_LISTING_STRING_FIELDS.PresentCard, present, 'present');
-      check(CARD_LISTING_STRING_FIELDS.CardUsbIdentity, parseUsbIdentity(texts.usbId?.[1], texts.streams?.['1:0']), 'identity');
+      check(CARD_LISTING_STRING_FIELDS.CardUsbIdentity, parseUsbIdentity(texts.usbId?.[1], texts.streams?.['1:0'], texts.serials?.[1]), 'identity');
       // The exported composer too, handed raw text by a caller that skipped the parsers.
       const composed = buildCaptureCard(
         { cardIndex: 1, deviceIndex: 0, cardId: 'TestCard', cardName: hostile },
-        { usb: true, usbId: hostile, usbPort: hostile, product: hostile },
+        { usb: true, usbId: hostile, usbPort: hostile, usbSerial: hostile, product: hostile },
         { channelCount: 2, formats: ['S32_LE', hostile as never], sampleBits: [24], ratesHz: [48_000] },
         null,
       );
       check(CARD_LISTING_STRING_FIELDS.CaptureCard, composed, 'composed');
-      expect([composed?.product, composed?.usbId, composed?.usbPort, composed?.formats]).toEqual([CARD_TEXT_REPLACEMENT, CARD_USB_ID_REPLACEMENT, null, ['S32_LE']]);
+      expect([composed?.product, composed?.usbId, composed?.usbPort, composed?.usbSerial, composed?.formats]).toEqual([CARD_TEXT_REPLACEMENT, CARD_USB_ID_REPLACEMENT, null, null, ['S32_LE']]);
       // ... and a card id that is none is not listed, by the composer either.
-      expect(buildCaptureCard({ cardIndex: 1, deviceIndex: 0, cardId: hostile, cardName: 'X' }, { usb: false, usbId: null, usbPort: null, product: null }, null, null)).toBeNull();
+      expect(buildCaptureCard({ cardIndex: 1, deviceIndex: 0, cardId: hostile, cardName: 'X' }, { usb: false, usbId: null, usbPort: null, usbSerial: null, product: null }, null, null)).toBeNull();
     }
     expect(strings).toBeGreaterThan(200);
     // CONTROLS: the walk finds what it must find.

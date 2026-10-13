@@ -8,6 +8,8 @@ import { formatClock, useRetryCooldown } from '@dems/shared/realtime'
 import { useSim } from '@dems/shared/sim'
 import { OUTCOME_TONE } from './camera-connect'
 import { CameraConnectDialog, type ConnectDialogExit } from './camera-connect-dialog'
+import { readdressOffer, type ReaddressOffer } from './camera-readdress'
+import { CameraReaddressDialog } from './camera-readdress-dialog'
 import {
   CAMERA_SEARCH_ANCHOR,
   candidateGroups,
@@ -83,6 +85,8 @@ interface RowShared {
   registeredLabel: (deviceId: string) => string
   onConnect: (candidate: CaptureCandidate) => void
   onViewDevice: (deviceId: string) => void
+  /** Opens the confirmation dialog of a re-address (task 4 row 198). Sends nothing. */
+  onReaddress: (offer: ReaddressOffer) => void
   opening: string | null
 }
 
@@ -123,16 +127,39 @@ function CandidateStatus({ candidate, registeredLabel }: { candidate: CaptureCan
   )
 }
 
-function CandidateAction({ candidate, connectBlock, onConnect, onViewDevice, opening }: RowShared & { candidate: CaptureCandidate }) {
+function CandidateAction({ candidate, connectBlock, onConnect, onViewDevice, onReaddress, opening }: RowShared & { candidate: CaptureCandidate }) {
   const { t } = useTranslation()
   const reasonOf = useGateReason()
   const reasonId = useId()
   const kind = candidateKind(candidate)
   if (kind === 'REGISTERED') {
-    return candidate.deviceId === null ? null : (
-      <Button size="sm" variant="ghost" onPress={() => onViewDevice(candidate.deviceId!)} data-testid={`camera-search-view-${candidate.candidateId}`}>
-        {t('common.captureSearch.viewDevice')}
-      </Button>
+    if (candidate.deviceId === null) return null
+    // Task 4 row 198: a registered camera found at another address. The control only OPENS the dialog; it sends nothing.
+    const offer = readdressOffer(candidate)
+    const offerReason = offer === null ? null : reasonOf(connectBlock)
+    return (
+      <span className="dev-search-control" data-block={offer === null ? undefined : connectBlock?.kind}>
+        <Button size="sm" variant="ghost" onPress={() => onViewDevice(candidate.deviceId!)} data-testid={`camera-search-view-${candidate.candidateId}`}>
+          {t('common.captureSearch.viewDevice')}
+        </Button>
+        {offer === null ? null : (
+          <Button
+            size="sm"
+            variant="outline"
+            isDisabled={connectBlock !== null}
+            onPress={() => onReaddress(offer)}
+            aria-describedby={offerReason === null ? undefined : reasonId}
+            data-testid={`camera-search-readdress-${candidate.candidateId}`}
+          >
+            {t('web.readdress.action')}
+          </Button>
+        )}
+        {offerReason === null ? null : (
+          <span id={reasonId} className="dev-sel-reason" data-testid={`camera-search-readdress-reason-${candidate.candidateId}`}>
+            {offerReason}
+          </span>
+        )}
+      </span>
     )
   }
   // A device that cannot be connected is listed and has no Connect at all (D80(11), D86 SEC35-28).
@@ -411,6 +438,8 @@ export function CameraSearchPanel({ onViewDevice }: CameraSearchPanelProps) {
   /** The row whose Connect was pressed, as it was when the dialog opened. */
   const [dialog, setDialog] = useState<CaptureCandidate | null>(null)
   const [opening, setOpening] = useState<string | null>(null)
+  /** Task 4 row 198: the offer whose confirmation dialog is open, as the row showed it when it was pressed. */
+  const [readdress, setReaddress] = useState<ReaddressOffer | null>(null)
 
   // The System entry and the notifications link here (`/devices#camera-search`); the page is a lazy chunk.
   useEffect(() => {
@@ -440,7 +469,7 @@ export function CameraSearchPanel({ onViewDevice }: CameraSearchPanelProps) {
     if (exit.kind === 'VIEW_DEVICE') onViewDevice(exit.deviceId)
   }
 
-  const shared: RowShared = { connectBlock: search.connectBlock, registeredLabel, onConnect, onViewDevice, opening }
+  const shared: RowShared = { connectBlock: search.connectBlock, registeredLabel, onConnect, onViewDevice, onReaddress: setReaddress, opening }
 
   return (
     <>
@@ -468,6 +497,20 @@ export function CameraSearchPanel({ onViewDevice }: CameraSearchPanelProps) {
         deviceLabel={registeredLabel}
         onAnswered={() => void search.refresh()}
         onExit={onExit}
+      />
+      <CameraReaddressDialog
+        offer={readdress}
+        deviceLabel={registeredLabel}
+        onClose={() => setReaddress(null)}
+        onDone={() => {
+          // The Core stored the address; the candidate still reads "address changed" until the next search (record 197).
+          setReaddress(null)
+          void search.refresh()
+        }}
+        onSearchAgain={() => {
+          setReaddress(null)
+          void search.start()
+        }}
       />
     </>
   )

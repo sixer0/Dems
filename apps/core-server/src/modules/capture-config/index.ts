@@ -33,11 +33,34 @@
  * capture spec §I edits 1 and 5): its boot step runs at every start of the server, after the
  * steps of the units registered before it.
  *
+ * THE CAMERA NETWORK CONFIGURATION (task 4 row 108; `./network`): operations 101 and 102 and the
+ * reader of the network facts for the destination rule are a folder of this module, mounted here
+ * (the unit list of `app.ts` is frozen; a module imports no other module). The boot step below
+ * loads the stored row into that reader after the selector and the registry.
+ *
+ * THE COMMISSIONING SCAN (task 4 row 107; `./factory-scan`): operation 103 is a folder of this
+ * module for the same reason, mounted here after `network`, whose settings and facts it reads.
+ *
+ * THE ALIAS STATE AND ITS REMOVAL (task 4 row 106b; `./host-alias`): operations 104 and 105, the
+ * door of the alias lifecycle and its shutdown hook, mounted here after `factory-scan`.
+ *
+ * THE SET-IP JOB (task 4 row 111; `./camera-network`): operations 106 and 107, mounted here after
+ * `factory-scan` (whose gate and last answer it asks) and BEFORE `host-alias`, so that at the close
+ * of the app a running job ends and asks its alias address away before the lifecycle's own hook.
+ *
+ * THE INSTALLATION ACCEPTANCE (task 4 row 117; `./installation-acceptance`): operations 109 and
+ * 110 are a folder of this module for the same reason. It offers no reader: nothing gates on it.
+ *
  * The plugin function opens no database connection: `buildApp()` works without PostgreSQL.
  */
 import type { FastifyPluginAsync } from 'fastify';
 import { captureFenceControl } from '../../capture/fence';
 import { CAPTURE_CONFIG_BOOT_STEP, runCaptureConfigBoot } from './boot';
+import { mountCaptureCameraNetwork } from './camera-network';
+import { mountCaptureFactoryScan } from './factory-scan';
+import { mountCaptureHostAlias } from './host-alias';
+import { mountInstallationAcceptance } from './installation-acceptance';
+import { mountCaptureNetworkConfig } from './network';
 import { registerCaptureConfigRoutes, type AssignmentRegistry } from './routes';
 import { createCaptureConfigStore, type CaptureConfigStore, type CaptureSnapshot } from './store';
 
@@ -79,6 +102,16 @@ export {
   type CaptureConfigModuleOperation,
 } from './routes';
 export { createCaptureConfigStore, READ_CAPTURE_STATE, type CaptureConfigStore, type CaptureSnapshot, type CaptureStateRow, type CaptureStoreReader } from './store';
+// The camera network configuration (task 4 row 108): its control, and the reader the composition of production capture is handed.
+export { captureNetworkConfigControl, captureNetworkFacts, type CaptureNetworkConfigControl, type HostInterface, type HostInterfacesReader } from './network';
+// The commissioning scan (task 4 row 107): its control, with the door the composition of production capture hands the scan's parts through.
+export { captureFactoryScanControl, type CaptureFactoryScanControl, type FactoryScanAlias, type FactoryScanParts, type FactoryScanProbe, type FactoryScanRule } from './factory-scan';
+// The alias state and the technician's removal (task 4 row 106b, operations 104 and 105): its control, with the door the composition hands the alias lifecycle through.
+export { captureHostAliasControl, type CaptureHostAliasControl, type HostAliasRemover } from './host-alias';
+// The set-IP job (task 4 row 111, operations 106 and 107): its control, with the door the composition of production capture hands the job's parts through.
+export { captureCameraNetworkControl, type CameraNetworkParts, type CaptureCameraNetworkControl } from './camera-network';
+// The installation acceptance (task 4 row 117, operations 109 and 110): its control is a door for its tests only.
+export { installationAcceptanceControl, type InstallationAcceptanceControl } from './installation-acceptance';
 
 /** What this module offers beside its boot step: for its tests and for the rows that mount it. */
 export interface CaptureConfigControl {
@@ -123,6 +156,16 @@ export const captureConfigModule: FastifyPluginAsync = async (app) => {
 
   // Operations 76 to 80 (row 66). The registry is read at every edit: it is provided after `ready()`.
   registerCaptureConfigRoutes(app, { deviceRegistry: () => deviceRegistry });
+  // Operations 101 and 102 and the reader of the network facts (task 4 row 108).
+  const network = mountCaptureNetworkConfig(app);
+  // Operation 103, the commissioning scan (task 4 row 107). It reads the settings and the facts of the mount above.
+  mountCaptureFactoryScan(app);
+  // Operations 106 and 107, the set-IP job (task 4 row 111). It asks the gate and the last answer of the mount above; its closing hook runs before the alias lifecycle's.
+  mountCaptureCameraNetwork(app);
+  // Operations 104 and 105, the alias state and its removal by the technician, and the shutdown hook of the alias lifecycle (task 4 row 106b).
+  mountCaptureHostAlias(app);
+  // Operations 109 and 110, the installation acceptance and its revocation (task 4 row 117). It reads nothing of the mounts above and gates nothing.
+  mountInstallationAcceptance(app);
 
   app.readiness.addBootStep({
     id: CAPTURE_CONFIG_BOOT_STEP,
@@ -140,6 +183,9 @@ export const captureConfigModule: FastifyPluginAsync = async (app) => {
       // one. Null in SIMULATED (no adapter is registered): no assignment is refused by source class.
       const registry = captureFenceControl(app).registry();
       if (registry !== null && deviceRegistry === null) deviceRegistry = registry;
+      // The stored network choice into the reader of the network facts (row 108). It never rejects: a failed read is
+      // logged and persisted there, and every stored camera address stays refused.
+      await network.load();
     },
   });
 };

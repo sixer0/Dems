@@ -6,7 +6,21 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { PackageFile } from '../src/evidence-package';
-import { VERIFY_FAILURES, VERIFY_V2_CHECKS, pemCertificateSha256, verifyPackageV2, type PackageReader, type VerifyPorts } from '../src/evidence-verify';
+import {
+  SIGNED_BY_COMPROMISED_KEY_REPORT,
+  VERIFY_FAILURES,
+  VERIFY_NOTICE,
+  hostProfileNotAskedReport,
+  VERIFY_V2_CHECKS,
+  VerifiedSigningKeyMark,
+  pemCertificateSha256,
+  verifyPackageV2,
+  type PackageReader,
+  type PackageVerifyResult,
+  type VerifyNotice,
+  type VerifyPorts,
+} from '../src/evidence-verify';
+import { en } from '../src/i18n';
 import {
   CORE_API_EXAMPLES,
   EVIDENCE_TRANSCRIPT_MODEL_EXAMPLE,
@@ -60,6 +74,92 @@ describe('the check table', () => {
     expect(VERIFY_V2_CHECKS.map((check) => check.id)).toEqual(Array.from({ length: 15 }, (_, index) => `V-${String(index + 1).padStart(2, '0')}`));
     const used = new Set(Object.values(VERIFY_FAILURES).map((rule) => rule.check));
     expect([...used].sort()).toEqual(VERIFY_V2_CHECKS.map((check) => check.id));
+  });
+});
+
+// Task 4 row V4 (decision C77; SX-09 (d); rows 227, 227b): the notice of a package under a key that
+// was later marked compromised, and the state a receiver's verifier shows. The Core server sends
+// the notice since row 227 by a constant of its own; these are the shared members it sends.
+describe('row V4: `SIGNED_BY_COMPROMISED_KEY`, the notice and the state of the signing key', () => {
+  it('the vocabulary holds the member, last; the three earlier codes did not move', () => {
+    // Row V6 (decision C97; row P1's request): `HOST_PROFILE_NOT_ASKED` was ADDED after it; the four earlier codes did not move.
+    // Row R1b (decision C99): `VIDEO_ABSENT_IN_SESSION` was ADDED after it; the five earlier codes did not move.
+    // Pass I-9b: `AUDIO_ABSENT_ON_RESTART` was ADDED after it; the six earlier codes did not move.
+    expect(Object.values(VERIFY_NOTICE)).toEqual(['AUDIT_EXTRACT_NOT_SIGNED', 'EXPORT_FOLDER_UNEXPECTED_FILE', 'REVISION_APPEND_PENDING', 'SIGNED_BY_COMPROMISED_KEY', 'HOST_PROFILE_NOT_ASKED', 'VIDEO_ABSENT_IN_SESSION', 'AUDIO_ABSENT_ON_RESTART']);
+    // Its line: the manifest's platform word only when it is one lower-case word; anything else is stated without a name.
+    expect(hostProfileNotAskedReport('darwin')).toBe('Host profile: NOT ASKED. This package was sealed by a production Core on darwin, where the checks of the host profile are not run.');
+    for (const platform of ['<b>darwin</b>', 'Darwin', 'darwin linux', '', 'x'.repeat(17), null, undefined, 7]) {
+      expect(hostProfileNotAskedReport(platform)).toBe('Host profile: NOT ASKED. This package was sealed by a production Core, where the checks of the host profile are not run.');
+    }
+    expect(hostProfileNotAskedReport('darwin').length).toBeLessThanOrEqual(256);
+    expect(Object.entries(VERIFY_NOTICE).every(([key, value]) => key === value)).toBe(true);
+  });
+
+  it('the report lines are EXACTLY what the Core server sends for a pass on its stored digest and for a failure, plus the line of a receiver; each fits the contract', () => {
+    expect(Object.keys(SIGNED_BY_COMPROMISED_KEY_REPORT)).toEqual(['COMPROMISED_KEY_STORED_DIGEST', 'COMPROMISED_KEY_NOT_STORED_DIGEST', 'COMPROMISED_KEY_NO_RECORD']);
+    // Character for character the two strings of `COMPROMISED_KEY_NOTICE_REPORT` (apps/core-server/src/evidence-verify/index.ts, row 227).
+    expect(SIGNED_BY_COMPROMISED_KEY_REPORT.COMPROMISED_KEY_STORED_DIGEST).toBe(
+      'Signing key: MARKED COMPROMISED after this package was sealed. The signature alone proves nothing any more; the package passes because its manifest digest is the one this Core recorded when it sealed the item.',
+    );
+    expect(SIGNED_BY_COMPROMISED_KEY_REPORT.COMPROMISED_KEY_NOT_STORED_DIGEST).toBe('Signing key: MARKED COMPROMISED, and the package is not the one this Core recorded when it sealed the item: not verified.');
+    for (const [name, line] of Object.entries(SIGNED_BY_COMPROMISED_KEY_REPORT)) {
+      expect(line, name).toMatch(/^Signing key: MARKED COMPROMISED/);
+      // The contract of operation 41: a code of the open form and a trimmed line of at most 256 characters.
+      expect(line.length, name).toBeLessThanOrEqual(256);
+      expect(line.trim(), name).toBe(line);
+      const notice: VerifyNotice = { code: VERIFY_NOTICE.SIGNED_BY_COMPROMISED_KEY, report: line };
+      expect(notice.code).toMatch(/^[A-Z][A-Z0-9_]{2,63}$/);
+    }
+    // The receiver's line states the state and NO verdict word: since row V5 the verdict beside it is NOT A PASS (V-13 / V-11 fail by name), said by the checks.
+    expect(SIGNED_BY_COMPROMISED_KEY_REPORT.COMPROMISED_KEY_NO_RECORD).not.toMatch(/passes|not verified|verified|fail/i);
+    // Only a pass says "passes", only the failure says "not verified".
+    expect(SIGNED_BY_COMPROMISED_KEY_REPORT.COMPROMISED_KEY_STORED_DIGEST).toMatch(/passes because/);
+    expect(SIGNED_BY_COMPROMISED_KEY_REPORT.COMPROMISED_KEY_NOT_STORED_DIGEST).toMatch(/not verified\.$/);
+  });
+
+  it('the state of the mark is three values, and absent means NOT_ESTABLISHED: `verifyPackageV2` is told of no marked key, so no result of it carries the member or the notice', async () => {
+    expect(Object.values(VerifiedSigningKeyMark)).toEqual(['NOT_ESTABLISHED', 'NOT_MARKED', 'COMPROMISED']);
+    const absent: PackageReader = { entry: async () => ({ kind: 'ABSENT' }), readText: async () => Promise.reject(new Error('absent')), readRange: async () => Promise.reject(new Error('absent')), list: async () => [] };
+    const result = await verifyPackageV2({ reader: absent, opener: null, readCertificate: () => null, verifySignature: () => false });
+    expect('compromisedKey' in result.signature).toBe(false);
+    expect(result.notices.map((notice) => notice.code)).not.toContain(VERIFY_NOTICE.SIGNED_BY_COMPROMISED_KEY);
+    expect(Object.keys(result.signature)).toEqual(['ok', 'algorithm', 'keyId', 'simulated', 'developmentKey', 'integrityCheckedWithoutKey']);
+    // The member is optional in the type: a result without it is a whole result, one with it names one of the three.
+    const marked: PackageVerifyResult['signature'] = { ...result.signature, compromisedKey: VerifiedSigningKeyMark.COMPROMISED };
+    expect(marked.compromisedKey).toBe('COMPROMISED');
+  });
+
+  it('row V5 (C84 R-2): the verifier is TOLD the marked fingerprints through one optional input - handed the list (the empty one too) it states the mark, and of a package it could not rely on it states NOT_ESTABLISHED; the two failure codes exist for V-13 and V-11 and nothing else names a mark', async () => {
+    const absent: PackageReader = { entry: async () => ({ kind: 'ABSENT' }), readText: async () => Promise.reject(new Error('absent')), readRange: async () => Promise.reject(new Error('absent')), list: async () => [] };
+    const ports: VerifyPorts = { reader: absent, opener: null, readCertificate: () => null, verifySignature: () => false };
+    const before = await verifyPackageV2(ports, { expected: { trustedCertificateSha256: ['ab'.repeat(32)] } });
+    for (const compromisedCertificateSha256 of [[], ['ab'.repeat(32)]]) {
+      const told = await verifyPackageV2(ports, { expected: { trustedCertificateSha256: ['ab'.repeat(32)], compromisedCertificateSha256 } });
+      expect(Object.keys(told.signature)).toEqual(['ok', 'algorithm', 'keyId', 'simulated', 'developmentKey', 'compromisedKey', 'integrityCheckedWithoutKey']);
+      expect(told.signature.compromisedKey).toBe('NOT_ESTABLISHED');
+      // Nothing else of the result moves: the same verdict, checks and notices as without the list.
+      const { compromisedKey: _mark, ...signature } = told.signature;
+      expect({ ...told, signature }).toEqual(before);
+    }
+    expect('compromisedKey' in before.signature).toBe(false);
+    expect(VERIFY_FAILURES.CERTIFICATE_KEY_COMPROMISED).toEqual({ check: 'V-13', failureClass: 'TAMPERED' });
+    expect(VERIFY_FAILURES.REVISION_CERTIFICATE_KEY_COMPROMISED).toEqual({ check: 'V-11', failureClass: 'TAMPERED' });
+    expect(Object.keys(VERIFY_FAILURES).filter((name) => /COMPROMISED/.test(name))).toEqual(['REVISION_CERTIFICATE_KEY_COMPROMISED', 'CERTIFICATE_KEY_COMPROMISED']);
+    // The input is read in three places of the verifier and nowhere else: the seal's certificate, a revision's, the result.
+    expect(code('verify.ts').match(/compromisedCertificateSha256/g)).toHaveLength(3);
+  });
+
+  it('the clients word the notice as a state of the signing key: three sentences, none under the title of what the signature does not cover', () => {
+    const words = en.evidence.verifyV2Key.compromisedKey;
+    expect(Object.keys(words)).toEqual(['title', 'storedDigest', 'notStoredDigest', 'noRecord']);
+    expect(words.title).not.toBe(en.evidence.verifyV2Key.noticesTitle);
+    for (const sentence of [words.storedDigest, words.notStoredDigest, words.noRecord]) {
+      expect(sentence).toMatch(/marked compromised/);
+      expect(sentence).not.toContain('{{');
+    }
+    expect(words.storedDigest).toMatch(/It passes because/);
+    expect(words.notStoredDigest).toMatch(/It is not verified\.$/);
+    expect(words.noRecord).not.toMatch(/passes|not verified|fail/i);
   });
 });
 

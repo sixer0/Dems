@@ -35,7 +35,7 @@
  * a port: the `FragmentOpener` of verify v2 is what turns stored bytes into plaintext.
  */
 import type { FinalizationStep } from '@dems/shared/domain';
-import type { ManifestAudioIntervalInput, ManifestTrackInput, ManifestV2Input, SessionCaptureSourceRow } from '@dems/shared/evidence-package';
+import type { ManifestAudioIntervalInput, ManifestAudioRestartGap, ManifestHostProfileNotAsked, ManifestTrackInput, ManifestV2Input, SessionCaptureSourceRow } from '@dems/shared/evidence-package';
 import { VERIFY_MAX_OPEN_FRAGMENT_BYTES, type FragmentOpener } from '@dems/shared/evidence-verify';
 import type { CompleteSealInput, SealBlockedDetail, SealingProgressInput } from '@dems/shared/sim';
 import type { Signer, SigningCertificate } from '../../capture';
@@ -367,7 +367,17 @@ export interface FragmentRows {
   insertMissing(rows: readonly RecordingFragment[]): Promise<{ readonly inserted: number; readonly alreadyStored: number }>;
 }
 
-/** What the session record says of one camera file: the manifest members no byte of the file gives (ev §B.4, §B.12). */
+/**
+ * What the session record says of one camera file: the manifest members no byte of the file gives (ev §B.4, §B.12).
+ *
+ * Task 4 row R1b (decision C99; finding F3-01): among them the OPTIONAL `absentInSession` - the
+ * absences of this track's camera INSIDE the session, one record per absence in the order they
+ * happened, as the session STORED them (its audit entries `CAPTURE_VIDEO_ABSENT_IN_SESSION`). It
+ * becomes the signed manifest member `tracks[].absentInSession` (fields 134-138) when the track is
+ * SEALED; the facts of a track this package does not seal are not stated at all. ABSENT, or empty:
+ * the camera was not lost, and its track record carries NO such member - a session without a loss
+ * seals byte for byte the manifest of before this row.
+ */
 export type SealTrackFacts = Omit<ManifestTrackInput, 'file' | 'mediaType' | 'bytes' | 'durationMs' | 'sha256' | 'sha256Plain' | 'fragmentChainHead' | 'fragmentCount' | 'keyframeAligned'> & {
   /** Read by nobody: field 50 is what the box walk found of every sealed fragment (`files[].fragments[].keyframe`), never a statement of the session record. */
   readonly keyframeAligned?: boolean;
@@ -398,6 +408,23 @@ export interface SealSessionFacts {
   readonly audioCodec: string;
   /** The rows of `session_audio_intervals` in FILE time; the last may be open (`toMs` null). */
   readonly audioIntervals: readonly ManifestAudioIntervalInput[];
+  /**
+   * Task 4 row 191c (decisions C73, C83): the worker restarts of the session that cost audio, one
+   * record per restart in the order they happened, as the session STORED them (its audit entries
+   * `CAPTURE_AUDIO_ABSENT_ON_RESTART`). They become the signed manifest member
+   * `audio.absentOnRestart` (fields 129-132). ABSENT, or empty: the session had no such restart and
+   * its manifest carries NO such member - it is byte for byte the manifest of before this row.
+   */
+  readonly audioRestartGaps?: readonly ManifestAudioRestartGap[];
+  /**
+   * Task 4 row P1 (decisions U21 (2), C66 (1), C71 C-7): the Core that seals is a PRODUCTION Core on a
+   * platform where its host profile is NOT asked (macOS) - what its boot checks found
+   * (`CaptureBootOutcome.hostProfile`, `asked` false). It becomes the signed manifest member
+   * `hostProfileNotAsked` (field 133). ABSENT: the profile was asked (a production Core on Linux), or
+   * none is asked by design (a development Core) - the manifest then carries NO such member and is
+   * byte for byte the manifest of before this row.
+   */
+  readonly hostProfileNotAsked?: ManifestHostProfileNotAsked;
   /** The four rows of `session_capture_sources` (T-41). Fewer, or an unknown kind: BUILD_MANIFEST fails (ev §E.6). */
   readonly sourceRows: readonly SessionCaptureSourceRow[];
   /** The session's own STT snapshot (R-8). */

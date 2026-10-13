@@ -87,7 +87,8 @@ describe('row 47, BR-07 (1) and (3): the one function that builds the ingest add
     expect(session.filter((line) => /\brandomBytes\b/.test(line))).toEqual([
       "import { randomBytes } from 'node:crypto';",
       'cameras[trackId] = { ingestUrl: captureIngestAddress(sessionId, trackId, randomBytes), outputPath };',
-      'await supervisor.start(sessionId, plan, { chance: randomBytes, renewed: (_attempt, addresses) => addressesInForce(addresses) });',
+      // Task 4 row 191: the same line gained the member `sources` (the microphones of a later worker); it takes no address and no source of chance.
+      'await supervisor.start(sessionId, plan, { chance: randomBytes, renewed: (_attempt, addresses) => addressesInForce(addresses), sources: (attempt) => microphonesAgain(current, registry, ready, attempt) });',
     ]);
     // The supervisor draws nothing itself and imports no source: its one call takes the source it was handed with `start`.
     const supervisor = codeLines(read('capture/supervisor.ts')).map((line) => line.trim());
@@ -229,7 +230,7 @@ describe('row 47, AD-05 (1) and BR-07 (4): where an ingest address is built, and
       'const plan: CapturePlan = buildCapturePlan({ selector: ready.selector, registry, cameras, mics, pcmTapPath });',
       'addressesInForce(new Map(plan.cameras.map((camera) => [camera.deviceId, camera.ingestUrl])));',
       'if (event.phase === CapturePhase.RECORDING && event.previous === CapturePhase.RESTARTING) cameraRoundAgain(current, registry, plan);',
-      'await supervisor.start(sessionId, plan, { chance: randomBytes, renewed: (_attempt, addresses) => addressesInForce(addresses) });',
+      'await supervisor.start(sessionId, plan, { chance: randomBytes, renewed: (_attempt, addresses) => addressesInForce(addresses), sources: (attempt) => microphonesAgain(current, registry, ready, attempt) });',
       'void openCameras(current, registry, plan, first).then(first.settle);',
     ]);
     // The target: made at one line, used at one line.

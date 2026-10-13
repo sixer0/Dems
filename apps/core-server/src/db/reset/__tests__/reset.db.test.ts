@@ -244,7 +244,8 @@ describe('T-RS-1: two resets of a used database', () => {
     // that carries them with `capture_devices` takes them out of this list again).
     // 28 since task 4 schema set B: T-46 `capture_network_config` and T-47 `host_network_aliases`,
     // for the same reason - the design keeps both across a reset, the reset does not carry them yet.
-    expect(rebuilt).toHaveLength(28);
+    // 29 since task 4 schema set C: T-48 `installation_acceptances`, for the same reason again.
+    expect(rebuilt).toHaveLength(29);
     for (const table of rebuilt) expect(built[table], table).toBe(seeded[table]);
     const withoutSignIn = { without: { operators: ['last_sign_in_at'] } };
     expect((await digestAll(owner, withoutSignIn))['operators']).toBe((await digestAll(reference.ownerPool(), withoutSignIn))['operators']);

@@ -434,7 +434,9 @@ describe('row 80: the host checks run in REAL_PRODUCTION only, after the operato
   it('every prerequisite, removed one at a time, is the one the boot names; nothing of an output reaches the message, the log or the error log', async () => {
     for (const check of HOST_COMMAND_CHECKS) {
       const answers = HOST_ANSWERS[check.code];
-      for (const answer of [...(answers?.absent.map((entry) => entry.answer) ?? []), ...(answers?.malformed ?? []), { outcome: 'NOT_STARTED' } as const, { outcome: 'TIMED_OUT' } as const]) {
+      // Row HC (C94 (j)): the socket node that is NOT THERE is no refusal of step 4d any more - the block of row HC below holds what it is.
+      const refused = answers?.absent.filter((entry) => entry.reason !== 'SOCKET_ABSENT').map((entry) => entry.answer) ?? [];
+      for (const answer of [...refused, ...(answers?.malformed ?? []), { outcome: 'NOT_STARTED' } as const, { outcome: 'TIMED_OUT' } as const]) {
         const { deps, calls, recorded } = scene({ host: host({ answers: { [check.code]: answer } }).deps });
         const failure = await refusalOf(deps);
         expect(failure.code, JSON.stringify(answer)).toBe(check.code);
@@ -484,6 +486,62 @@ describe('row 80: the host checks run in REAL_PRODUCTION only, after the operato
     expect(recorded.lines.map((line) => [line.level, line.fields.code])).toEqual([['warn', 'CAPTURE_HOST_PROFILE_NOT_ASKED'], ['info', 'CAPTURE_BOOT_CHECKS_PASSED']]);
     expect(recorded.persisted).toEqual([{ level: 'warn', source: 'capture.boot', code: 'CAPTURE_HOST_PROFILE_NOT_ASKED' }]);
     expect(await refusalOf(scene({ host: host({ platform: 'darwin', startArguments: ['--heapsnapshot-signal=SIGUSR2'] }).deps }).deps)).toMatchObject({ code: 'CAPTURE_HOST_DIAGNOSTIC_SWITCH', reason: 'DIAGNOSTIC_SWITCH_SET' });
+  });
+
+  // ── Task 4 row P1 (decisions U21 (2), C66 (1), C71 C-7): check 4d-2, the platforms of a production Core ──
+  it('row P1, check 4d-2: REAL_PRODUCTION passes on `linux` (the whole profile asked) and on `darwin` (none asked, the warning said), and the outcome STATES which; every other platform is refused by its own code with a fixed word, after 4d and before 4e and the worker', async () => {
+    const linux = host();
+    const onLinux = scene({ host: linux.deps });
+    const asked = await runCaptureBootChecks(onLinux.deps);
+    expect(asked.hostProfile).toEqual({ platform: 'linux', asked: true });
+    expect(linux.asked).toHaveLength(HOST_COMMAND_CHECKS.length);
+    expect(onLinux.recorded.lines.map((line) => [line.level, line.fields.code])).toEqual([['info', 'CAPTURE_HOST_CHECKS_PASSED'], ['info', 'CAPTURE_BOOT_CHECKS_PASSED']]);
+
+    const mac = host({ platform: 'darwin' });
+    const onMac = scene({ host: mac.deps });
+    const notAsked = await runCaptureBootChecks(onMac.deps);
+    expect(notAsked.hostProfile).toEqual({ platform: 'darwin', asked: false });
+    expect(mac.asked).toEqual([]);
+    expect(onMac.recorded.lines.map((line) => [line.level, line.fields.code])).toEqual([['warn', 'CAPTURE_HOST_PROFILE_NOT_ASKED'], ['info', 'CAPTURE_BOOT_CHECKS_PASSED']]);
+    expect(Object.isFrozen(notAsked.hostProfile)).toBe(true);
+
+    for (const platform of ['win32', 'freebsd', 'openbsd', 'sunos', 'aix', 'android', 'test-host', 'not-stated', 'Linux', 'DARWIN', 'linux ', '__proto__', 'constructor', '']) {
+      const other = host({ platform });
+      const { deps, recorded, calls } = scene({ host: other.deps });
+      const failure = await refusalOf(deps);
+      expect(failure, platform).toMatchObject({ code: 'CAPTURE_HOST_PLATFORM_NOT_SUPPORTED', reason: 'PLATFORM_NOT_LINUX_OR_DARWIN' });
+      // No question of the profile was asked there, the worker was never started, and the refusal is in the log AND the error log.
+      expect(other.asked, platform).toEqual([]);
+      expect(calls, platform).not.toContain('handshake');
+      expect(recorded.lines.at(-1)?.fields, platform).toEqual({ code: 'CAPTURE_HOST_PLATFORM_NOT_SUPPORTED', operation: 'REAL_PRODUCTION', reason: 'PLATFORM_NOT_LINUX_OR_DARWIN' });
+      expect(recorded.persisted.at(-1), platform).toEqual({ level: 'error', source: 'capture.boot', code: 'CAPTURE_HOST_PLATFORM_NOT_SUPPORTED' });
+      // The platform's own word is in no text of the refusal (a fixed word and the fixed message).
+      if (platform.trim().length > 4 && !['linux ', 'Linux', 'DARWIN'].includes(platform)) expect(failure?.message ?? '', platform).not.toContain(platform);
+      expect(failure?.message ?? '').toMatch(/Linux.*macOS.*NOT checked/);
+    }
+    // The order of before is kept: on a platform that is refused, the Core's own-process checks of 4d still refuse FIRST, by their own code
+    // (so a host that cannot be seen - no limit, platform `not-stated` - is still `CAPTURE_HOST_CORE_FILE_LIMIT`, decision C46).
+    expect(await refusalOf(scene({ host: host({ platform: 'not-stated', coreFileLimit: () => null }).deps }).deps)).toMatchObject({ code: 'CAPTURE_HOST_CORE_FILE_LIMIT', reason: 'LIMIT_UNREADABLE' });
+    expect(await refusalOf(scene({ host: host({ platform: 'win32', startArguments: ['--inspect'] }).deps }).deps)).toMatchObject({ code: 'CAPTURE_HOST_DIAGNOSTIC_SWITCH' });
+    // ... and an earlier check (4c) refuses before the platform is judged at all.
+    expect(await refusalOf(scene({ host: host({ platform: 'win32' }).deps, demoPasswordOperators: async () => 1 }).deps)).toMatchObject({ code: 'CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION' });
+  });
+
+  it('row P1: REAL_DEVELOPMENT and SIMULATED are unchanged - no platform is judged or refused and the outcome states no host profile; neither does a production decision built without host facts', async () => {
+    for (const config of [{ captureDevSources: true }, { captureMode: 'simulated' as const, demoControls: true }, { captureMode: 'simulated' as const }]) {
+      for (const platform of ['win32', 'darwin', 'linux', 'not-stated']) {
+        const there = host({ platform });
+        const { deps, recorded } = scene({ config, host: there.deps });
+        const outcome = await runCaptureBootChecks(deps);
+        expect(outcome.operation, platform).not.toBe(CaptureOperation.REAL_PRODUCTION);
+        expect('hostProfile' in outcome, platform).toBe(false);
+        expect(there.asked, platform).toEqual([]);
+        expect(recorded.lines.filter((line) => /HOST|PLATFORM/.test(String(line.fields.code))), platform).toEqual([]);
+      }
+    }
+    const without = await runCaptureBootChecks(scene().deps);
+    expect(without.operation).toBe(CaptureOperation.REAL_PRODUCTION);
+    expect('hostProfile' in without).toBe(false);
   });
 
   it('an earlier refusal stays the one that is said: the host is not asked when the operators already refuse the start', async () => {
@@ -583,11 +641,13 @@ describe('row 81: the checks of the delivered programs run in REAL_PRODUCTION on
   });
 
   it('a host check that is missing is said first: the programs are not asked after it; off Linux the relay alone is asked and the count says what was not', async () => {
-    const answer = HOST_ANSWERS[CaptureHostRefusal.HOST_ALIAS_SOCKET]?.absent[0]?.answer;
+    // Re-stated by row HC: the missing host check of this case was the absent socket, which is no refusal of step 4d any more
+    // (C94 (j)). A socket node that is THERE and wrong is one, and so is every other host check: the programs are not asked after it.
+    const answer = HOST_ANSWERS[CaptureHostRefusal.HOST_ALIAS_SOCKET]?.absent[1]?.answer;
     if (answer === undefined) throw new Error('no answer');
     const host = fakeProductionHost({ codeOf: hostCodeOf, programKeyOf, answers: { [CaptureHostRefusal.HOST_ALIAS_SOCKET]: answer } });
     const first = scene({ host: host.deps, programs: { platform: 'linux', relayProgram: RELAY, run: host.deps.run, storedInterface: async () => PREPARED_INTERFACE } });
-    expect(await refusalOf(first.deps)).toMatchObject({ code: 'CAPTURE_HOST_ALIAS_SOCKET', reason: 'SOCKET_ABSENT' });
+    expect(await refusalOf(first.deps)).toMatchObject({ code: 'CAPTURE_HOST_ALIAS_SOCKET', reason: 'SOCKET_OWNER_GROUP_OR_MODE' });
     expect(host.asked.some((question) => question === RELAY)).toBe(false);
 
     const mac = production({ platform: 'darwin' });
@@ -596,5 +656,218 @@ describe('row 81: the checks of the delivered programs run in REAL_PRODUCTION on
     expect(mac.host.asked).toEqual([RELAY]);
     expect(recorded.lines.map((line) => [line.level, line.fields.code])).toEqual([['warn', 'CAPTURE_HOST_PROFILE_NOT_ASKED'], ['info', 'CAPTURE_PROGRAM_CHECKS_PASSED'], ['info', 'CAPTURE_BOOT_CHECKS_PASSED']]);
     expect(recorded.lines[1]?.fields).toEqual({ code: 'CAPTURE_PROGRAM_CHECKS_PASSED', operation: 'REAL_PRODUCTION', programChecks: 1, notAsked: 3 });
+  });
+});
+
+// ── Task 4 row 228 (X1-5; SX-10; UD-4): check 4b-2, the active certificate names THIS installation ──────────────
+describe('row 228, check 4b-2: a production Core starts only with a signing key that names its installation', () => {
+  /** A scene whose questions of the key and of the operators are recorded in the order they are asked. */
+  const ordered = (answer: string | null, extra: Parameters<typeof scene>[0] = {}): Scene => {
+    const made = scene({
+      signingKeyIsDevelopment: () => (made.calls.push('development?'), false),
+      signingKeyInstallationProblem: () => (made.calls.push('installation?'), answer),
+      demoPasswordOperators: async () => (made.calls.push('operators'), 0),
+      ...extra,
+    });
+    return made;
+  };
+
+  it('REAL_PRODUCTION and a word from the reader: refused by CAPTURE_SIGNING_KEY_INSTALLATION_MISMATCH with that word - after 4b, before the operators are read, and no worker is started', async () => {
+    const { deps, calls, recorded } = ordered('OTHER_INSTALLATION');
+    expect(deps.decision.operation).toBe('REAL_PRODUCTION');
+    const failure = await refusalOf(deps);
+    expect(CaptureBootRefusal.SIGNING_KEY_INSTALLATION_MISMATCH).toBe('CAPTURE_SIGNING_KEY_INSTALLATION_MISMATCH');
+    expect([failure.code, failure.reason]).toEqual(['CAPTURE_SIGNING_KEY_INSTALLATION_MISMATCH', 'OTHER_INSTALLATION']);
+    expect(calls).toEqual(['inspect', 'volume', 'key', 'development?', 'installation?']);
+    expect(recorded.lines.map((line) => [line.level, line.fields])).toEqual([['error', { code: 'CAPTURE_SIGNING_KEY_INSTALLATION_MISMATCH', operation: 'REAL_PRODUCTION', reason: 'OTHER_INSTALLATION' }]]);
+    expect(recorded.persisted).toEqual([{ level: 'error', source: 'capture.boot', code: 'CAPTURE_SIGNING_KEY_INSTALLATION_MISMATCH' }]);
+    // The sentence names the remedy (rotation) and the form; it names no key of the environment and no value.
+    expect(failure.message).toContain('Evidence signing <installation device id>');
+    expect(failure.message).toContain('evidence:rotate-key');
+    expect(failure.message).toContain('Reason: OTHER_INSTALLATION.');
+  });
+
+  it('CONTROL: REAL_PRODUCTION and no word (the certificate names this installation) - every check runs, in order, and the start passes', async () => {
+    const { deps, calls } = ordered(null);
+    await expect(runCaptureBootChecks(deps)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION' });
+    expect(calls).toEqual(['inspect', 'volume', 'key', 'development?', 'installation?', 'operators', 'handshake']);
+  });
+
+  it('the earlier checks refuse first, by their own codes: a key that does not load (4) and a development key (4b) never reach the question', async () => {
+    const unloadable = ordered('OTHER_INSTALLATION', { signingKeyProblem: () => 'KEY_ABSENT' });
+    expect((await refusalOf(unloadable.deps)).code).toBe(CaptureBootRefusal.SIGNING_KEY_UNUSABLE);
+    expect(unloadable.calls).not.toContain('installation?');
+    const development = ordered('OTHER_INSTALLATION', { signingKeyIsDevelopment: () => true });
+    expect((await refusalOf(development.deps)).code).toBe(CaptureBootRefusal.DEVELOPMENT_SIGNING_KEY);
+    expect(development.calls).not.toContain('installation?');
+  });
+
+  it('REAL_DEVELOPMENT and SIMULATED never ask: a reader that would refuse - or throw - is not called', async () => {
+    const never = (): string | null => {
+      throw new Error('check 4b-2 was asked outside REAL_PRODUCTION');
+    };
+    const development = scene({ config: { captureDevSources: true }, signingKeyInstallationProblem: never });
+    await expect(runCaptureBootChecks(development.deps)).resolves.toMatchObject({ operation: 'REAL_DEVELOPMENT' });
+    const simulated = scene({ config: { captureMode: 'simulated', demoControls: true }, signingKeyInstallationProblem: never });
+    await expect(runCaptureBootChecks(simulated.deps)).resolves.toMatchObject({ operation: 'SIMULATED' });
+    expect(simulated.calls).toEqual([]);
+  });
+
+  it('every word of the reader is a refusal by the ONE code; a decision built without the reader is not asked (the mount always hands one in: boot.test.ts)', async () => {
+    for (const word of ['INSTALLATION_ID_NOT_KNOWN', 'INSTALLATION_ID_FORM', 'SUBJECT_UNREADABLE', 'NO_ORGANISATIONAL_UNIT', 'SEVERAL_ORGANISATIONAL_UNITS', 'OTHER_INSTALLATION']) {
+      const failure = await refusalOf(ordered(word).deps);
+      expect([failure.code, failure.reason], word).toEqual(['CAPTURE_SIGNING_KEY_INSTALLATION_MISMATCH', word]);
+    }
+    const without = scene();
+    expect(without.deps.signingKeyInstallationProblem).toBeUndefined();
+    await expect(runCaptureBootChecks(without.deps)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION' });
+  });
+});
+
+// ── Task 4 row HC (decisions C94 (j), C53 (4c), C49 (2), C55 DD-2): the host-checks follow-up, at the boot ──────
+// The command runner is the double of `host-support.ts` in every case: no command of a host is started.
+describe('row HC: the helper absent is a stated fact, the helper wrong a refusal; a configured socket path is the installed one; no host facts has a code of its own', () => {
+  const hostCodeOf = (command: HostCommand): string | undefined => HOST_COMMAND_CHECKS.find((check) => check.command.program === command.program && check.command.args.join(' ') === command.args.join(' '))?.code;
+  const same = (a: HostCommand, b: HostCommand): boolean => a.program === b.program && a.args.join(' ') === b.args.join(' ');
+  const RELAY = '/srv/dems/relay';
+  const programKeyOf = (command: HostCommand): string | undefined => (command.program === RELAY && command.args.length === 0 ? 'RELAY' : same(command, INTERFACE_FILE_COMMAND) ? 'INTERFACE' : PROGRAM_OWNERSHIP_CHECKS.find((check) => same(check.command, command))?.code);
+  const ran = (output: string, exitCode = 0) => ({ outcome: 'RAN', exitCode, output }) as const;
+  const SOCKET = CaptureHostRefusal.HOST_ALIAS_SOCKET;
+  const NO_SOCKET = ran('', 1);
+  /** What `stat` answers on a host without the helper: the system's own directory alone; nothing of the grant. */
+  const NO_HELPER = { CAPTURE_HOST_ALIAS_HELPER_UNSAFE: ran('directory root root 755\n', 1), CAPTURE_HOST_ALIAS_GRANT_UNSAFE: ran('', 1) };
+  const production = (options: { readonly platform?: string; readonly answers?: FakeHostOptions['answers']; readonly programAnswers?: Parameters<typeof fakeProductionHost>[0]['programAnswers']; readonly stored?: () => Promise<string | null> } = {}) => {
+    const host = fakeProductionHost({ codeOf: hostCodeOf, programKeyOf, ...(options.platform === undefined ? {} : { platform: options.platform }), ...(options.answers === undefined ? {} : { answers: options.answers }), ...(options.programAnswers === undefined ? {} : { programAnswers: options.programAnswers }) });
+    let reads = 0;
+    const programs: DeliveredProgramDeps = { platform: host.deps.platform, relayProgram: host.deps.relayProgram, run: host.deps.run, storedInterface: options.stored ?? (async () => ((reads += 1), PREPARED_INTERFACE)) };
+    return { host, programs, reads: () => reads };
+  };
+
+  // ── item 1: C94 (j) ──
+  it('C94 (j): on Linux a host with NOTHING of the address helper starts - one warning line and one error-log row say so, the interface file is not asked, the worker is started', async () => {
+    const without = production({ answers: { [SOCKET]: NO_SOCKET }, programAnswers: NO_HELPER });
+    const { deps, calls, recorded } = scene({ host: without.host.deps, programs: without.programs });
+    await expect(runCaptureBootChecks(deps)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION', workerVersion: CAPTURE_WORKER_VERSION, hostProfile: { platform: 'linux', asked: true } });
+    expect(calls.at(-1)).toBe('handshake');
+    expect(recorded.lines.map((line) => [line.level, line.fields.code])).toEqual([
+      ['info', 'CAPTURE_HOST_CHECKS_PASSED'],
+      ['info', 'CAPTURE_PROGRAM_CHECKS_PASSED'],
+      ['warn', 'CAPTURE_HOST_ALIAS_HELPER_ABSENT'],
+      ['info', 'CAPTURE_BOOT_CHECKS_PASSED'],
+    ]);
+    // The socket is not counted "in place": 4 own-process checks and every question but the socket's.
+    expect(recorded.lines[0]?.fields).toEqual({ code: 'CAPTURE_HOST_CHECKS_PASSED', operation: 'REAL_PRODUCTION', hostChecks: 4 + HOST_COMMAND_CHECKS.length - 1 });
+    expect(recorded.lines[1]?.fields).toEqual({ code: 'CAPTURE_PROGRAM_CHECKS_PASSED', operation: 'REAL_PRODUCTION', programChecks: 1, notAsked: 1 });
+    expect(recorded.lines[2]).toEqual({ level: 'warn', fields: { code: 'CAPTURE_HOST_ALIAS_HELPER_ABSENT', operation: 'REAL_PRODUCTION' }, message: expect.stringMatching(/^the address helper is not installed on this host/) });
+    expect(recorded.persisted).toEqual([{ level: 'warn', source: 'capture.boot', code: 'CAPTURE_HOST_ALIAS_HELPER_ABSENT' }]);
+    expect(JSON.stringify(recorded.lines)).not.toMatch(/\/usr\/|\/run\/|\/etc\//);
+    expect(without.host.asked.some((question) => question.startsWith('/usr/bin/cat'))).toBe(false);
+    expect(without.reads()).toBe(0);
+  });
+
+  it('C94 (j): a helper that is PRESENT says nothing new - the lines of before the row, no warning, no error-log row', async () => {
+    const prepared = production();
+    const { deps, recorded } = scene({ host: prepared.host.deps, programs: prepared.programs });
+    await expect(runCaptureBootChecks(deps)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION' });
+    expect(recorded.lines.map((line) => [line.level, line.fields.code])).toEqual([['info', 'CAPTURE_HOST_CHECKS_PASSED'], ['info', 'CAPTURE_PROGRAM_CHECKS_PASSED'], ['info', 'CAPTURE_BOOT_CHECKS_PASSED']]);
+    expect(recorded.persisted).toEqual([]);
+  });
+
+  it('C94 (j): a helper that is PRESENT BUT WRONG is refused by the codes of before - a socket of another owner, group or mode; a path that is no socket; a partial installation', async () => {
+    const wrong: ReadonlyArray<readonly [string, Parameters<typeof production>[0], { readonly code: string; readonly reason: string }]> = [
+      ['a socket every account may write', { answers: { [SOCKET]: ran('socket root dems-netalias 666\n') } }, { code: 'CAPTURE_HOST_ALIAS_SOCKET', reason: 'SOCKET_OWNER_GROUP_OR_MODE' }],
+      ['a socket of the service user', { answers: { [SOCKET]: ran('socket dems-core dems-netalias 660\n') } }, { code: 'CAPTURE_HOST_ALIAS_SOCKET', reason: 'SOCKET_OWNER_GROUP_OR_MODE' }],
+      ['a socket of another group', { answers: { [SOCKET]: ran('socket root root 660\n') } }, { code: 'CAPTURE_HOST_ALIAS_SOCKET', reason: 'SOCKET_OWNER_GROUP_OR_MODE' }],
+      ['a path that is not a socket', { answers: { [SOCKET]: ran('regular file root dems-netalias 660\n') } }, { code: 'CAPTURE_HOST_ALIAS_SOCKET', reason: 'SOCKET_OWNER_GROUP_OR_MODE' }],
+      ['partial: no socket, the helper file and the units installed', { answers: { [SOCKET]: NO_SOCKET } }, { code: 'CAPTURE_HOST_ALIAS_SOCKET', reason: 'SOCKET_ABSENT' }],
+      ['partial: no socket, no helper file, the units installed', { answers: { [SOCKET]: NO_SOCKET }, programAnswers: { CAPTURE_HOST_ALIAS_HELPER_UNSAFE: NO_HELPER.CAPTURE_HOST_ALIAS_HELPER_UNSAFE } }, { code: 'CAPTURE_HOST_ALIAS_SOCKET', reason: 'SOCKET_ABSENT' }],
+      ['partial: no socket, no units, the helper file installed', { answers: { [SOCKET]: NO_SOCKET }, programAnswers: { CAPTURE_HOST_ALIAS_GRANT_UNSAFE: NO_HELPER.CAPTURE_HOST_ALIAS_GRANT_UNSAFE } }, { code: 'CAPTURE_HOST_ALIAS_SOCKET', reason: 'SOCKET_ABSENT' }],
+      ['partial: the socket, no helper file', { programAnswers: NO_HELPER }, { code: 'CAPTURE_HOST_ALIAS_HELPER_UNSAFE', reason: 'FILE_ABSENT' }],
+      ['partial: the socket and the helper file, no units', { programAnswers: { CAPTURE_HOST_ALIAS_GRANT_UNSAFE: NO_HELPER.CAPTURE_HOST_ALIAS_GRANT_UNSAFE } }, { code: 'CAPTURE_HOST_ALIAS_GRANT_UNSAFE', reason: 'FILE_ABSENT' }],
+      ['no socket, and a helper file the service user owns', { answers: { [SOCKET]: NO_SOCKET }, programAnswers: { CAPTURE_HOST_ALIAS_HELPER_UNSAFE: ran('regular file dems-core root 755\ndirectory root root 755\n') } }, { code: 'CAPTURE_HOST_ALIAS_HELPER_UNSAFE', reason: 'NOT_OWNED_BY_ROOT' }],
+      ['no socket, no helper file, and the question of the units cannot be asked', { answers: { [SOCKET]: NO_SOCKET }, programAnswers: { ...NO_HELPER, CAPTURE_HOST_ALIAS_GRANT_UNSAFE: { outcome: 'TIMED_OUT' } } }, { code: 'CAPTURE_HOST_ALIAS_GRANT_UNSAFE', reason: 'HOST_COMMAND_TIMED_OUT' }],
+    ];
+    for (const [name, options, expected] of wrong) {
+      const unprepared = production(options);
+      const { deps, calls, recorded } = scene({ host: unprepared.host.deps, programs: unprepared.programs });
+      const failure = await refusalOf(deps);
+      expect({ code: failure.code, reason: failure.reason }, name).toEqual(expected);
+      expect(calls, name).not.toContain('handshake');
+      expect(recorded.lines.at(-1), name).toEqual({ level: 'error', fields: { ...expected, operation: 'REAL_PRODUCTION' }, message: 'the capture boot checks refuse this start: the server does not start' });
+      expect(recorded.lines.some((line) => line.fields.code === 'CAPTURE_HOST_ALIAS_HELPER_ABSENT'), name).toBe(false);
+      expect(recorded.persisted, name).toEqual([{ level: 'error', source: 'capture.boot', code: expected.code }]);
+    }
+  });
+
+  it('row P1 kept: on darwin NOTHING of the helper is asked and nothing of it is said - no question of the Linux profile, no line "absent"', async () => {
+    const mac = production({ platform: 'darwin', answers: { [SOCKET]: NO_SOCKET }, programAnswers: NO_HELPER });
+    const { deps, recorded } = scene({ host: mac.host.deps, programs: mac.programs });
+    await expect(runCaptureBootChecks(deps)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION', hostProfile: { platform: 'darwin', asked: false } });
+    expect(mac.host.asked).toEqual([RELAY]);
+    expect(recorded.lines.map((line) => [line.level, line.fields.code])).toEqual([['warn', 'CAPTURE_HOST_PROFILE_NOT_ASKED'], ['info', 'CAPTURE_PROGRAM_CHECKS_PASSED'], ['info', 'CAPTURE_BOOT_CHECKS_PASSED']]);
+  });
+
+  // ── item 2: C53 (4c), R119-10 ──
+  it('C53 (4c): a configured socket path that is not the installed one is refused by its own code, on every platform, after the host checks and before the programs; unset and the installed path pass; the path is never repeated', async () => {
+    const INSTALLED = '/run/dems-core-netalias/socket';
+    for (const platform of ['linux', 'darwin']) {
+      for (const configuredAliasSocket of ['/run/dems-core-netalias/other', '/tmp/socket', `${INSTALLED}/`, '/run/dems-core-netalias/../dems-core-netalias/socket', '/RUN/dems-core-netalias/socket', '']) {
+        const other = production({ platform });
+        const { deps, calls, recorded } = scene({ host: other.host.deps, programs: other.programs, configuredAliasSocket });
+        const failure = await refusalOf(deps);
+        expect({ code: failure.code, reason: failure.reason }, configuredAliasSocket).toEqual({ code: 'CAPTURE_HOST_ALIAS_SOCKET_PATH', reason: 'CONFIGURED_PATH_NOT_THE_INSTALLED_ONE' });
+        expect(failure.code).toBe(CaptureBootRefusal.HOST_ALIAS_SOCKET_PATH);
+        expect(failure.message).toMatch(/DEMS_CAPTURE_ALIAS_SOCKET/);
+        expect(failure.message).toMatch(/HOST-44/);
+        expect(JSON.stringify([failure.message, recorded.lines, recorded.persisted])).not.toMatch(/\/run\/|\/tmp\/|\/RUN\//);
+        expect(calls).not.toContain('handshake');
+        // After 4d (the host was asked), before 4e (the relay was not).
+        expect(other.host.asked.includes(RELAY)).toBe(false);
+        // Off Linux the warning "the host profile was not asked" has its row first (step 4d said it before this check refused).
+        expect(recorded.persisted.filter((entry) => entry.level === 'error')).toEqual([{ level: 'error', source: 'capture.boot', code: 'CAPTURE_HOST_ALIAS_SOCKET_PATH' }]);
+        expect(recorded.persisted.at(-1)?.code).toBe('CAPTURE_HOST_ALIAS_SOCKET_PATH');
+      }
+      for (const configuredAliasSocket of [null, INSTALLED]) {
+        const same = production({ platform });
+        await expect(runCaptureBootChecks(scene({ host: same.host.deps, programs: same.programs, configuredAliasSocket }).deps), String(configuredAliasSocket)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION' });
+      }
+    }
+    // An earlier refusal is still the one said: a host check that is missing comes first.
+    const limited = scene({ host: fakeHost({ codeOf: hostCodeOf, coreFileLimit: () => 4096 }).deps, configuredAliasSocket: '/tmp/socket' });
+    expect(await refusalOf(limited.deps)).toMatchObject({ code: 'CAPTURE_HOST_CORE_FILE_LIMIT' });
+    // REAL_DEVELOPMENT and SIMULATED never ask.
+    for (const config of [{ captureDevSources: true }, { captureMode: 'simulated' as const, demoControls: true }]) {
+      await expect(runCaptureBootChecks(scene({ config, configuredAliasSocket: '/tmp/socket' }).deps)).resolves.not.toMatchObject({ operation: 'REAL_PRODUCTION' });
+    }
+  });
+
+  // ── item 3 (C49 (2), the listing of the rule table) was TAKEN OUT by row HC3 (decision C103): the Core's unit has no
+  //    capability and the kernel refuses the listing. The loopback rule is asked by the state of its unit (the block of row 80 above). ──
+
+  // ── item 4: C55 DD-2 ──
+  it('C55 DD-2: a Core that was handed NO host facts is refused by a code of its own, before any question; facts that were handed in keep the code of what could not be read (C46)', async () => {
+    // What the mount builds with nothing handed in: the host that cannot be seen, and the statement that none was handed in.
+    const asked: string[] = [];
+    const unseen = { platform: 'not-stated', coreFileLimit: () => null, startArguments: [], nodeOptionsSet: true, relayProgram: RELAY, guardProgram: '/srv/dems/guard', run: async (command: HostCommand) => (asked.push(command.program), { outcome: 'NOT_STARTED' } as const) };
+    const none = scene({ host: unseen, programs: { platform: 'not-stated', relayProgram: RELAY, run: unseen.run, storedInterface: async () => null }, hostFactsHandedIn: false });
+    const failure = await refusalOf(none.deps);
+    expect({ code: failure.code, reason: failure.reason }).toEqual({ code: 'CAPTURE_HOST_FACTS_NOT_HANDED_IN', reason: 'NO_HOST_FACTS' });
+    expect(failure.code).toBe(CaptureBootRefusal.HOST_FACTS_NOT_HANDED_IN);
+    expect(failure.message).toMatch(/without the facts of its host/);
+    expect(failure.message).toMatch(/ Reason: NO_HOST_FACTS\.$/);
+    expect(asked).toEqual([]);
+    // After checks 1 to 4c (the worker's path rule, the store, the key), before the relay and the guard are inspected, and the worker is not started.
+    expect(none.calls).toEqual(['inspect', 'volume', 'key']);
+    expect(none.recorded.lines).toEqual([{ level: 'error', fields: { code: 'CAPTURE_HOST_FACTS_NOT_HANDED_IN', operation: 'REAL_PRODUCTION', reason: 'NO_HOST_FACTS' }, message: 'the capture boot checks refuse this start: the server does not start' }]);
+    expect(none.recorded.persisted).toEqual([{ level: 'error', source: 'capture.boot', code: 'CAPTURE_HOST_FACTS_NOT_HANDED_IN' }]);
+    // An earlier refusal is still the one said (here: the operators), and the two other operations never ask.
+    expect(await refusalOf(scene({ hostFactsHandedIn: false, demoPasswordOperators: async () => 2 }).deps)).toMatchObject({ code: 'CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION' });
+    for (const config of [{ captureDevSources: true }, { captureMode: 'simulated' as const, demoControls: true }]) {
+      await expect(runCaptureBootChecks(scene({ config, host: unseen, hostFactsHandedIn: false }).deps)).resolves.not.toMatchObject({ operation: 'REAL_PRODUCTION' });
+    }
+    // Facts handed in whose limit cannot be read: the code of the limit, as before (C46) - with the member true and with it left out.
+    for (const handedIn of [{ hostFactsHandedIn: true }, {}]) {
+      expect(await refusalOf(scene({ host: unseen, ...handedIn }).deps)).toMatchObject({ code: 'CAPTURE_HOST_CORE_FILE_LIMIT', reason: 'LIMIT_UNREADABLE' });
+    }
   });
 });

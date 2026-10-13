@@ -20,6 +20,8 @@ export interface HostTexts {
   readonly usbId?: Readonly<Record<number, string>>;
   /** Stream files by `card:device`. */
   readonly streams?: Readonly<Record<string, string>>;
+  /** The serial of the USB device of a card, by card index, as the ONE line the kernel shows (task 4 row 199). A card left out states none. */
+  readonly serials?: Readonly<Record<number, string>>;
 }
 
 export const DUO = { cardId: 'DemsDuo', product: 'DEMS Test Duo', usbId: 'fff0:0002', channels: 2 } as const;
@@ -63,6 +65,31 @@ export const TWO_OF_ONE_PRODUCT_SWAPPED: HostTexts = {
   ...TWO_OF_ONE_PRODUCT,
   streams: { '2:0': usbStream(SIX.product, OTHER_PORT, capture('S32_LE', SIX.channels, 24)), '3:0': usbStream(SIX.product, SIX_PORT, capture('S32_LE', SIX.channels, 24)) },
 };
+// ── Task 4 row 199: the SERIAL of a card, and one model on two ports ───────────────────────────
+/** The port path of the card of two inputs in `TWO_CARDS`. */
+export const DUO_PORT = '0000:00:14.0-2';
+/** Synthetic serials, in the closed form a stored serial has. */
+export const SIX_SERIAL = 'DEMS-SN-0006A';
+export const OTHER_SERIAL = 'DEMS-SN-0006B';
+/** The multi-input interface WITH a serial, on its port. */
+export const INTERFACE_WITH_SERIAL: HostTexts = { ...ONE_INTERFACE, serials: { 2: `${SIX_SERIAL}\n` } };
+/** THE SAME UNIT moved to another socket: the serial is the stored one, the port path is another. */
+export const INTERFACE_WITH_SERIAL_MOVED: HostTexts = { ...INTERFACE_ON_ANOTHER_PORT, serials: { 2: `${SIX_SERIAL}\n` } };
+/** ANOTHER UNIT of the model on the SAME socket: USB id, product and port path are equal, the serial is another. */
+export const INTERFACE_OTHER_UNIT_SAME_PORT: HostTexts = { ...ONE_INTERFACE, serials: { 2: `${OTHER_SERIAL}\n` } };
+/** ANOTHER UNIT of the model on ANOTHER socket: nothing of the stored identity but the USB id. */
+export const INTERFACE_OTHER_UNIT_ELSEWHERE: HostTexts = { ...INTERFACE_ON_ANOTHER_PORT, serials: { 2: `${OTHER_SERIAL}\n` } };
+/** Two cards of one model that state the SAME serial (cheap cards do): the registered one on its port, a second on another. */
+export const TWO_SHARING_A_SERIAL: HostTexts = { ...TWO_OF_ONE_PRODUCT, serials: { 2: `${SIX_SERIAL}\n`, 3: `${SIX_SERIAL}\n` } };
+/** The same two with their ports exchanged. */
+export const TWO_SHARING_A_SERIAL_SWAPPED: HostTexts = { ...TWO_OF_ONE_PRODUCT_SWAPPED, serials: { 2: `${SIX_SERIAL}\n`, 3: `${SIX_SERIAL}\n` } };
+/** `TWO_CARDS` with a serial on the multi-input interface only: the card of two inputs states none. */
+export const TWO_CARDS_ONE_SERIAL: HostTexts = { ...TWO_CARDS, serials: { 2: `${SIX_SERIAL}\n` } };
+/** The same, the interface moved to another socket (its serial unchanged). */
+export const TWO_CARDS_INTERFACE_MOVED: HostTexts = { ...TWO_CARDS_ONE_SERIAL, streams: { ...TWO_CARDS.streams, '2:0': usbStream(SIX.product, OTHER_PORT, capture('S32_LE', SIX.channels, 24)) } };
+/** `TWO_CARDS` with the card of two inputs on ANOTHER socket: the same model, no serial, another port path. */
+export const TWO_CARDS_DUO_ELSEWHERE: HostTexts = { ...TWO_CARDS_ONE_SERIAL, streams: { ...TWO_CARDS.streams, '1:0': usbStream(DUO.product, OTHER_PORT, capture('S24_3LE', DUO.channels, 24)) } };
+
 /** A host without a sound card: the listing program prints its heading and nothing else. */
 export const NO_CARD: HostTexts = { list: HEADING };
 /** Text that is no listing at all, with a hostile entry line among it. */
@@ -105,6 +132,7 @@ export function fakeHost(initial: HostTexts): FakeHost {
     },
     presentCards: async () => null,
     usbId: async (cardIndex) => texts.usbId?.[cardIndex] ?? null,
+    usbSerial: async (cardIndex) => texts.serials?.[cardIndex] ?? null,
     stream: async (cardIndex, deviceIndex) => texts.streams?.[`${cardIndex}:${deviceIndex}`] ?? null,
   };
   return {

@@ -23,7 +23,8 @@ export default defineConfig({
     maxWorkers: 2,
     coverage: {
       provider: 'v8',
-      include: ['src/**/*.ts'],
+      // `cli/` since task 4 row X4 (review 222 F-06): the host commands are counted too. Pinned by `test/static/cli.test.ts`.
+      include: ['src/**/*.ts', 'cli/**/*.ts'],
       exclude: ['src/**/*.test.ts', 'src/**/__tests__/**', 'src/db/migrations/**'],
       reporter: ['text', 'json-summary'],
       reportsDirectory: 'coverage',

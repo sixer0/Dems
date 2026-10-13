@@ -306,8 +306,12 @@ describe('the model identifier: one shared pattern, used by operation 91', () =>
     // Task 4 blueprint row 63 (design addendum 4.2): the four schemas and the two operations of the
     // sound cards, 167 -> 171 and 97 -> 99. Nothing of the STT configuration moved.
     // Task 4 blueprint row 94: the optional body of op 93 is one more schema, 171 -> 172; the operations stay 99.
-    expect(Object.keys(document.components.schemas)).toHaveLength(172);
-    expect(CORE_API_OPERATIONS).toHaveLength(99);
+    // Task 4 blueprint row 194: the two schemas and the one operation of the confirmed re-address, 172 -> 174 and 99 -> 100.
+    // Task 4 blueprint row 102: the nine schemas and the seven operations of the commissioning functions, 174 -> 183 and 100 -> 107.
+    // Task 4 row V3: the one schema and the one operation of the stored-credential connection test, 183 -> 184 and 107 -> 108.
+    // Task 4 blueprint row 116: the five schemas and the two operations of the installation acceptance, 184 -> 189 and 108 -> 110.
+    expect(Object.keys(document.components.schemas)).toHaveLength(189);
+    expect(CORE_API_OPERATIONS).toHaveLength(110);
   });
 });
 

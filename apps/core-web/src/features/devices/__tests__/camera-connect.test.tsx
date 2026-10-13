@@ -47,6 +47,11 @@ describe('the model', () => {
     expect(of(404, 'NOT_FOUND')).toBe('RESULT_GONE')
     expect(of(409, 'INVALID_STATE', 'CANDIDATE_ALREADY_REGISTERED')).toBe('ALREADY_REGISTERED')
     expect(of(409, 'INVALID_STATE', 'CANDIDATE_NOT_TESTABLE')).toBe('NOT_TESTABLE')
+    // Task 4 rows R2 and W4 (F3-06): no camera network is configured on the Core - its own kind, never the general failure.
+    expect(of(409, 'INVALID_STATE', 'COMMISSIONING_NOT_CONFIGURED')).toBe('NETWORK_NOT_CONFIGURED')
+    // CONTROL: the same reason under another status, and another commissioning reason, are not that kind.
+    expect(of(503, 'NOT_READY', 'COMMISSIONING_NOT_CONFIGURED')).toBe('OTHER')
+    expect(of(409, 'INVALID_STATE', 'COMMISSIONING_JOB_IN_PROGRESS')).toBe('OTHER')
     expect(of(409, 'INVALID_STATE', 'CONNECTION_TEST_IN_PROGRESS')).toBe('IN_PROGRESS')
     expect(of(409, 'INVALID_STATE', 'CANDIDATE_NOT_TESTED')).toBe('NOT_TESTED')
     expect(of(409, 'INVALID_STATE', 'CONNECTION_TEST_FAILED')).toBe('FINAL_CHECK_FAILED')

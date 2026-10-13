@@ -38,7 +38,9 @@ RULES THAT DO NOT DEPEND ON THE TABLE (editing the table cannot make these pass)
 THE IMPORT NET (fix pass F-M3, review R63-08): `--imports <binary> <imports.pin>` reads what the
 LINKED worker imports (`nm -u`) and holds the file-making functions among them to the pinned
 list - whatever the spelling in the sources was. The Makefile runs it after every link of
-build/capture-worker. This is the net that does not depend on reading C.
+build/capture-worker. This is the net that does not depend on reading C. The binary is read by ITS
+object format (task 4 row 193): Mach-O on macOS, ELF on Linux, where one function has more linker
+names than its own (`plain_names` below); a file that is neither is refused, not passed.
 
 LIMITS (it is a tripwire, not a proof; the dynamic guards are sink_kill_test, writer_test, e2e):
   - a string built at run time (snprintf, strcat) is not read; it can reach the muxer only through
@@ -59,6 +61,7 @@ usage:  pinned_calls.py <source dir> <table.tsv>     exit 0 when every rule hold
                                                      per violation ("R-6: ..." / "F-10: ...")
         pinned_calls.py --print <source dir>         the table rows of the sources as they are
         pinned_calls.py --imports <binary> <pin>     the import net over one linked binary
+        pinned_calls.py --reader-selftest            the reader of the import net on spellings of both object formats
 """
 import os
 import re
@@ -76,6 +79,27 @@ FILE_MAKING = [
     'syscall', '__syscall', 'dlsym', 'dlopen', 'system', 'popen', 'fork', 'vfork',
     'execl', 'execlp', 'execle', 'execv', 'execvp', 'execve', 'posix_spawn', 'posix_spawnp',
 ]
+# THE CALLS LINUX ALONE OFFERS (task 4 row 141, decision C51 (3)): on the production platform the rule names what
+# that platform's C library exports. Derived in the Ubuntu 24.04 container (glibc 2.39): the import tables of the
+# worker, the relay and the guard hold none of them, and each function of this kind that glibc exports is watched:
+#   renameat2          a rename with flags (RENAME_EXCHANGE swaps two files in one step)
+#   memfd_create       a file that has no name; with fexecve / execveat it is a program that was never on a disk
+#   open_by_handle_at  opens a file without a path
+#   fallocate          removes a range from an open file (FALLOC_FL_PUNCH_HOLE, FALLOC_FL_COLLAPSE_RANGE): the
+#                      truncation by another name
+#   execveat, fexecve, execvpe, pidfd_spawn, pidfd_spawnp     the exec and spawn spellings macOS does not have
+#   clone, _Fork       the other spellings of fork
+#   dlmopen            the other spelling of dlopen
+# NOT watched, each with its reason (test/141_container_e11_relay_state.md, section 8): openat2, clone3 and
+# memfd_secret have no function in glibc 2.39 and are reached through `syscall` only, which is watched;
+# name_to_handle_at and copy_file_range / splice / posix_fallocate make and remove nothing by themselves (they need
+# a descriptor a watched function made); the large-file and checked spellings (`renameat264` does not exist;
+# `open64`, `__open_2`) are folded onto the watched name by `plain_names`.
+LINUX_ONLY = [
+    'renameat2', 'memfd_create', 'open_by_handle_at', 'fallocate',
+    'execveat', 'fexecve', 'execvpe', 'pidfd_spawn', 'pidfd_spawnp', 'clone', '_Fork', 'dlmopen',
+]
+FILE_MAKING += LINUX_ONLY
 # Used nowhere in the worker, whatever the table says.
 BANNED = set(FILE_MAKING) - {'open', 'fopen', 'ftruncate', 'rename', 'link', 'unlink'}
 MUX = [
@@ -317,18 +341,88 @@ def rows_of(calls, mentions):
     return rows
 
 
+MACHO_MAGIC = (b'\xcf\xfa\xed\xfe', b'\xce\xfa\xed\xfe', b'\xfe\xed\xfa\xcf', b'\xfe\xed\xfa\xce', b'\xca\xfe\xba\xbe', b'\xca\xfe\xba\xbf')
+
+
+def object_format(binary):
+    """'macho' or 'elf', read from the first four bytes of the file itself (not from the host's name); None: neither."""
+    try:
+        with open(binary, 'rb') as handle:
+            magic = handle.read(4)
+    except OSError:
+        return None
+    if magic == b'\x7fELF':
+        return 'elf'
+    return 'macho' if magic in MACHO_MAGIC else None
+
+
+def plain_names(symbol, fmt):
+    """Every plain C name ONE imported symbol stands for (task 4 row 193, finding L-3 of row 78).
+
+    Mach-O: the linker's name of a C function is `_name`, with a `$SUFFIX` for a variant of the same function
+    (`_open$NOCANCEL`): the one leading underscore and the suffix are cut. This is the reading the net had.
+    ELF (Linux): no underscore is added, so none is cut (`_exit` stays `_exit`); the symbol version is cut
+    (`open@GLIBC_2.17`). And the C library of Linux reaches ONE function under more linker names than its own:
+    the large-file spelling (`open64`, `fopen64`, `creat64`), the checked one a fortified build is given
+    (`__open_2`, `__open64_2`) and the bare internal one it still exports (`__open`). Each is the function
+    itself, so the symbol stands for BOTH names: a watched function cannot be imported under a spelling the net
+    does not read. A name that is no watched function after the cut (`fdelt` of `__fdelt_chk`) concerns no rule.
+    """
+    if fmt == 'macho':
+        if symbol.startswith('_'):
+            symbol = symbol[1:]
+        return {symbol.split('$')[0]}
+    name = symbol.split('@')[0]
+    core = name[2:] if name.startswith('__') else name
+    for tail in ('_2', '_chk'):
+        if core.endswith(tail):
+            core = core[:-len(tail)]
+    if core.endswith('64'):
+        core = core[:-2]
+    return {name, core}
+
+
 def imports_of(binary):
-    """The undefined symbols of a linked binary as plain C names: no leading underscore, no $SUFFIX of the platform."""
+    """The undefined symbols of a linked binary as plain C names, read by the object format of THAT file."""
+    fmt = object_format(binary)
+    if fmt is None:
+        return None
     listing = subprocess.run(['nm', '-u', binary], capture_output=True, text=True)
     if listing.returncode != 0:
         return None
     names = set()
     for line in listing.stdout.splitlines():
         symbol = line.split()[-1] if line.split() else ''
-        if symbol.startswith('_'):
-            symbol = symbol[1:]
-        names.add(symbol.split('$')[0])
+        names |= plain_names(symbol, fmt)
     return names
+
+
+def reader_selftest():
+    """The reader on spellings of both object formats, whatever the host: (format, symbol, a name it must give, a name it must not)."""
+    rows = [
+        ('macho', '_open', 'open', '_open'), ('macho', '_open$NOCANCEL', 'open', 'open$NOCANCEL'), ('macho', '_creat', 'creat', 'open'),
+        ('macho', '_fopen$DARWIN_EXTSN', 'fopen', 'open'), ('macho', '_opendir$INODE64', 'opendir', 'open'), ('macho', '__exit', '_exit', 'exit'),
+        ('elf', 'open@GLIBC_2.17', 'open', 'open@GLIBC_2.17'), ('elf', 'open@@GLIBC_2.17', 'open', 'creat'), ('elf', 'creat', 'creat', 'open'),
+        ('elf', 'open64@GLIBC_2.17', 'open', 'creat'), ('elf', 'creat64@GLIBC_2.17', 'creat', 'open'), ('elf', 'fopen64@GLIBC_2.17', 'fopen', 'open'),
+        ('elf', '__open_2@GLIBC_2.17', 'open', 'creat'), ('elf', '__open64_2@GLIBC_2.17', 'open', 'creat'), ('elf', '__openat_2@GLIBC_2.17', 'openat', 'open'),
+        ('elf', '__open@GLIBC_2.17', 'open', 'creat'), ('elf', 'ftruncate64@GLIBC_2.17', 'ftruncate', 'truncate'), ('elf', 'opendir@GLIBC_2.17', 'opendir', 'open'),
+        ('elf', '_exit@GLIBC_2.17', '_exit', 'exit'), ('elf', 'unlink@GLIBC_2.17', 'unlink', 'link'),
+        # Row 141: the Linux-only names are read as themselves (never onto a shorter watched name, never lost).
+        ('elf', 'renameat2@GLIBC_2.28', 'renameat2', 'renameat'), ('elf', 'memfd_create@GLIBC_2.27', 'memfd_create', 'creat'),
+        ('elf', 'execveat@GLIBC_2.34', 'execveat', 'execve'), ('elf', '_Fork@GLIBC_2.34', '_Fork', 'fork'),
+        ('elf', 'fallocate64@GLIBC_2.17', 'fallocate', 'truncate'), ('elf', 'clone@GLIBC_2.17', 'clone', 'fork'),
+    ]
+    bad = ['%s symbol %s: read as %s' % (fmt, symbol, sorted(plain_names(symbol, fmt))) for fmt, symbol, want, never in rows
+           if want not in plain_names(symbol, fmt) or never in plain_names(symbol, fmt)]
+    if object_format(os.path.abspath(__file__)) is not None or object_format(sys.executable) is None:
+        bad.append('the object format: a text file is read as a binary, or the running interpreter as none')
+    # Row 141: every Linux-only name is watched by the import net AND refused in the sources (never an allowed one).
+    bad += ['the Linux-only function %s is not watched and banned' % name for name in LINUX_ONLY if name not in FILE_MAKING or name not in BANNED]
+    for line in bad:
+        print('R-6: the reader of the import net: ' + line)
+    if not bad:
+        print('R-6: the reader of the import net names a function under each of %d spellings of the two object formats' % len(rows))
+    return 1 if bad else 0
 
 
 def check_imports(binary, pin):
@@ -357,6 +451,8 @@ def check_imports(binary, pin):
 def main(argv):
     if len(argv) == 4 and argv[1] == '--imports':
         return check_imports(argv[2], argv[3])
+    if len(argv) == 2 and argv[1] == '--reader-selftest':
+        return reader_selftest()
     if len(argv) == 3 and argv[1] == '--print':
         calls, mentions, _ = scan(argv[2])
         print('\n'.join(rows_of(calls, mentions)))

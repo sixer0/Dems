@@ -49,6 +49,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 APP = os.path.join(REPO, "apps", "capture-worker")
 HARNESS = os.path.join(HERE, "m3worker.py")
+BR09 = os.path.join(APP, "test-fixtures", "br09_gate.py")          # task 4 row 142: the checks of the worker's announce gate
+BR09_NEAR = ("last_character", "strict_prefix", "one_more_component", "letter_case", "trailing_slash", "query_string", "percent_encoded_character")
+BR09_METHODS = ("OPTIONS", "DESCRIBE", "ANNOUNCE", "SETUP", "PLAY", "PAUSE", "RECORD", "TEARDOWN", "GET_PARAMETER", "SET_PARAMETER", "REDIRECT")   # row 178
 HEAVY_LOCK = os.path.join(REPO, ".locks", "heavy-host.lock")       # one heavy job on this host at a time (all rows)
 LOCK_WAIT_S = 1800
 PORT_CANDIDATES = (8555, 8557, 8559, 8560, 8561, 8562, 8563, 8564)      # 8554 / 8556 / 8558: the Android emulators'
@@ -60,8 +63,8 @@ def series(runs):
     A check on a FINISHED run names that run instead of taking a name of its own (`@<check>`)."""
     S = []
 
-    def add(name, argv, expect="PASS", sensitive=True, on=None, kind="harness"):
-        S.append({"name": name, "argv": argv, "expect": expect, "sensitive": sensitive, "on": on, "kind": kind})
+    def add(name, argv, expect="PASS", sensitive=True, on=None, kind="harness", script=HARNESS):
+        S.append({"name": name, "argv": argv, "expect": expect, "sensitive": sensitive, "on": on, "kind": kind, "script": script})
 
     add("static_rules", ["check", "selftest"], sensitive=False, kind="make")
     for r in range(1, runs + 1):
@@ -167,6 +170,47 @@ def series(runs):
     add("r63_12_clock_floor_wiring", ["srcam", "--mode", "behind"])
     add("neg_r63_12_floor_not_acted_on", ["srcam", "--mode", "behind", "--variant", "nofloor", "--expect-fail", "--must-fail-on", "camera_3000ms_behind_is_given_up_by_the_clock_floor"], "FAIL")
     add("r63_11_moved_timestamp_is_said", ["srcam", "--mode", "retime"])
+    # Task 4 row 142 (AD-01; BR-09 of docs/2026-10-12_input_av_core_adapter_plan/verification/05_security_branch_b.md),
+    # once each (decision D122): THE ANNOUNCE GATE of the ingest (src/announce.c, src/ingest.c). Every check is one
+    # session with a live session-shaped address (128 random bits, new per run) in force; the camera under test gets
+    # the case and THE OTHER CAMERA of the same session is pushed to its right address at the same moment and must
+    # record (the right-path control in the same run). A refused case: no `ingest_connected`, 0 bytes in its file,
+    # the log code and the FRAME member of its case (CAMERA_ANNOUNCE_NOT_MATCHED / CAMERA_ANNOUNCE_NOT_SEEN, row
+    # 182) and never the other, 0 path text in the worker's log, output and frames. The checks are in
+    # test-fixtures/br09_gate.py (its header lists the cases); they print the same result form as the harness.
+    gate = lambda name, argv, expect="PASS": add(name, argv, expect, sensitive=False, script=BR09)
+    refusal = "no_ingest_connected_and_0_bytes,no_rtsp_ok_after_the_announce,refused_by_the_gate_code,refusal_frame_names_the_camera_and_its_member_only"
+    gate("br09_right_path_both_cameras_each_its_own_line", ["right"])
+    for kind in BR09_NEAR:
+        gate("br09_near_miss_%s" % kind, ["near", "--kind", kind])
+    gate("neg_br09_right_path_judged_as_a_near_miss", ["near", "--kind", "last_character", "--push-right", "--expect-fail", "--must-fail-on", refusal], "FAIL")
+    gate("br09_foreign_line_on_camera_1", ["foreign", "--camera", "1"])
+    gate("br09_foreign_line_on_camera_2", ["foreign", "--camera", "2"])
+    gate("br09_announce_line_absent_refused", ["absent"])
+    gate("neg_br09_line_absent_judged_on_the_release_worker", ["absent", "--release", "--expect-fail", "--must-fail-on",
+                                                               "both_cameras_refused_0_bytes,gate_code_for_both,session_ended_without_a_camera,frames_say_no_line_was_seen_for_both_cameras"], "FAIL")
+    gate("br09_second_announce_same_address", ["second", "--address", "same"])
+    gate("br09_second_announce_other_address", ["second", "--address", "other"])
+    gate("neg_br09_single_announce_judged_as_a_second", ["second", "--address", "none", "--expect-fail", "--must-fail-on",
+                                                         "no_rtsp_ok_after_the_announce,refused_by_the_gate_code,refusal_frame_names_the_camera_and_its_member_only,the_second_announce_got_no_answer"], "FAIL")
+    gate("br09_wrong_path_client_reads_no_secret", ["oracle"])
+    # Task 4 row 178 (BR-09, second half: the concurrency and leak cases; hypothesis HB-1). The same form: one session
+    # per check, the other camera of the session as the control. (1) right and wrong pushed at the same instant, the
+    # wrong path on camera 1 and on camera 2 (the two assignments), three times each - a timing case is not judged on
+    # one run; (2) a raw wrong-path client whose first request is each of the ELEVEN methods of RTSP: every byte it
+    # is answered with is searched for the session's addresses; (3) row 176's client (announce, set-up, record, no
+    # media) on the RIGHT path: that camera ends as its own fault and the other camera's file is complete.
+    for camera in ("1", "2"):
+        for n in ("1", "2", "3"):
+            gate("br09b_right_and_wrong_at_once_wrong_on_camera_%s_r%s" % (camera, n), ["assign", "--camera", camera])
+    gate("neg_br09b_both_right_judged_as_right_and_wrong", ["assign", "--camera", "1", "--push-right", "--expect-fail", "--must-fail-on",
+                                                            refusal + ",the_wrong_camera_recorded_nothing_and_only_it_was_refused"], "FAIL")
+    for method in BR09_METHODS:
+        gate("br09b_wrong_path_client_method_%s" % method.lower(), ["method", "--method", method])
+    gate("br09b_case_a_client_on_the_right_path_camera_1", ["case_a", "--camera", "1"])
+    gate("br09b_case_a_client_on_the_right_path_camera_2", ["case_a", "--camera", "2"])
+    gate("neg_br09b_push_with_media_judged_as_case_a", ["case_a", "--camera", "1", "--with-media", "--expect-fail", "--must-fail-on",
+                                                        "no_ingest_connected_and_0_bytes,that_camera_ended_as_its_own_fault_with_its_code_and_member"], "FAIL")
     # Row 59, M3-MG-1: after every capture session of the series, 0 media in git (its control is inside the check).
     add("mg1_no_media_in_git", ["mg1"], sensitive=False)
     # Row 62: only with M3_WORKER_PROPOSED=<a worker built OUTSIDE the tree from a proposed change> - the same four
@@ -375,7 +419,7 @@ def main():
         if c["kind"] == "make":
             cmd = ["make", "-C", APP] + c["argv"]
         else:
-            cmd = [sys.executable, HARNESS, c["argv"][0], run_name] + c["argv"][1:] + (extra[c["name"]].split() if c["name"] in extra else [])
+            cmd = [sys.executable, c["script"], c["argv"][0], run_name] + c["argv"][1:] + (extra[c["name"]].split() if c["name"] in extra else [])
         c["load_at_start"], c["heavy_at_start"], c["waited_s"] = wait_for_quiet(a.max_load, a.load_wait) if c["sensitive"] else (round(os.getloadavg()[0], 2), [], 0)
         t = time.monotonic()
         try:

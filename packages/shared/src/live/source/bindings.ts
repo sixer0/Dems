@@ -668,6 +668,14 @@ export const LIVE_BINDINGS: LiveBindings = {
     plan: () => resolve(undefined),
     result: nothing,
   },
+  readdressCaptureDevice: {
+    flow: LiveActionFlow.LOCAL,
+    // Task 4 row 195: no client changes the address of a camera through an action. The Core does it
+    // inside operation 100 (`confirmCaptureDeviceAddress`), which a client calls as a request; the
+    // device then arrives in the replicated `captureDevices` slice. One more `local` again.
+    plan: () => resolve(undefined),
+    result: nothing,
+  },
 };
 
 /** The names of the 47 bindings, in the order of `SimActions`. */

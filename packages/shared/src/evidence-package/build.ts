@@ -45,7 +45,9 @@ function members(error: z.ZodError): string[] {
 /** `BUILD_MANIFEST`: deterministic for the same input and the same source rows. */
 export function buildUnsignedManifest(input: ManifestV2Input, sourceRows: readonly SessionCaptureSourceRow[]): UnsignedManifestV2 {
   const classes = sessionSourceClasses(sourceRows);
-  const tracks = input.tracks.map((track) => ({ ...track, sourceClass: classes.video[track.trackId] }));
+  // Fields 134-138 (row R1b): the third optional member, by the rule of the two below - a track handed
+  // without an absence, or with `undefined`, has NO such key (`undefined` has no canonical form).
+  const tracks = input.tracks.map(({ absentInSession, ...track }) => ({ ...track, sourceClass: classes.video[track.trackId], ...(absentInSession === undefined ? {} : { absentInSession }) }));
   const sourceIntervals = input.audio.sourceIntervals.map((interval, index) => {
     const sourceClass = classes.micByDeviceId.get(interval.micDeviceId);
     // MR-S2: every interval's microphone is one of the session's two MIC rows.
@@ -54,7 +56,13 @@ export function buildUnsignedManifest(input: ManifestV2Input, sourceRows: readon
   });
   if (tracks.some((track) => track.sourceClass === undefined)) throw new EvidencePackageError(EvidencePackageRefusal.SOURCE_NOT_RECORDED, ['tracks']);
   const developmentSources = deriveDevelopmentSources([...tracks.map((track) => track.sourceClass), ...sourceIntervals.map((interval) => interval.sourceClass)]);
-  const draft = { ...input, developmentSources, tracks, audio: { ...input.audio, sourceIntervals } };
+  // Fields 129-132 (row V4): the one optional member. A caller with no restart gap leaves the key
+  // out or hands `undefined`; either way the manifest has NO such key (never `undefined`, which has
+  // no canonical form, and never an empty list, which the schema refuses).
+  const { absentOnRestart, ...audio } = input.audio;
+  // Field 133 (row P1): the second optional member, by the same rule - left out or `undefined` gives NO key.
+  const { hostProfileNotAsked, ...body } = input;
+  const draft = { ...body, developmentSources, tracks, audio: { ...audio, sourceIntervals, ...(absentOnRestart === undefined ? {} : { absentOnRestart }) }, ...(hostProfileNotAsked === undefined ? {} : { hostProfileNotAsked }) };
   // The digest is taken over the draft; the placeholder below is replaced, and the canonical body
   // sets the member to null in any case.
   const manifestSha256 = computeManifestSha256({ ...draft, manifestSha256: null });

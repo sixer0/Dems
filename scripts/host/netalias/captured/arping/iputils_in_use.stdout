@@ -1,0 +1,4 @@
+ARPING 172.31.203.50 from 0.0.0.0 eth0
+Unicast reply from 172.31.203.50 [26:26:D5:90:E5:6A]  0.529ms
+Sent 1 probes (1 broadcast(s))
+Received 1 response(s)

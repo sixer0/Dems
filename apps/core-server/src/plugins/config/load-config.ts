@@ -16,6 +16,8 @@ import {
   CONNECTION_FILE_KEYS,
   CONNECTION_FILE_NAME,
   ConfigError,
+  ENV_CAPTURE_ALIAS_SOCKET,
+  ENV_CAPTURE_AUDIO_HELPER,
   ENV_CAPTURE_DEV_FAKE_MIC,
   ENV_CAPTURE_DEV_SOURCES,
   ENV_CAPTURE_GUARD,
@@ -87,6 +89,12 @@ export function loadConfig(options: LoadConfigOptions): CoreServerConfig {
   // whether production capture may boot without them is the boot checks', not this file's.
   const captureRelayPath = parseCapturePath(ENV_CAPTURE_RELAY, options.env[ENV_CAPTURE_RELAY]);
   const captureGuardPath = parseCapturePath(ENV_CAPTURE_GUARD, options.env[ENV_CAPTURE_GUARD]);
+  // The socket of the capture host's address helper (task 4 row 105). Unset means null: the helper is "not configured".
+  // The same path rule (absolute, no NUL); what the node must be is checked by the one client before it dials.
+  const captureAliasSocketPath = parseCapturePath(ENV_CAPTURE_ALIAS_SOCKET, options.env[ENV_CAPTURE_ALIAS_SOCKET]);
+  // The audio helper of production capture (task 4 row 85c, decision C60 (3)). Unset means null: no production microphone
+  // can be opened. The same path rule as every program key above (absolute, no NUL); it is started by the guard only.
+  const captureAudioHelperPath = parseCapturePath(ENV_CAPTURE_AUDIO_HELPER, options.env[ENV_CAPTURE_AUDIO_HELPER]);
   // The installation identity (fix wave H closing pass Z1, decision D207). Parsed here; whether a start without it is refused is the sealing host's.
   const installationDeviceId = parseInstallationDeviceId(options.env[ENV_INSTALLATION_DEVICE_ID]);
   const installationName = parseInstallationName(options.env[ENV_INSTALLATION_NAME]);
@@ -125,6 +133,8 @@ export function loadConfig(options: LoadConfigOptions): CoreServerConfig {
     captureDevFakeMic,
     captureRelayPath,
     captureGuardPath,
+    captureAliasSocketPath,
+    captureAudioHelperPath,
     installationDeviceId,
     installationName,
   });

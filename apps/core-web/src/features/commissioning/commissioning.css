@@ -1,0 +1,177 @@
+/*
+ * Commissioning screen styles (task 4, blueprint row 112). Feature-scoped `com-*` classes only;
+ * colours, radii and type come from the theme tokens (@dems/shared/theme/heroui-web.css). The card
+ * is the house card of the administration pages (`features/paired-devices/paired-devices.css`).
+ * Nothing animates here.
+ */
+@layer components {
+  .com-page {
+    --com-gap: var(--shell-gutter, 16px);
+  }
+
+  .com-notices {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* The 12-column grid of every shell page: the settings 5 of 12, the scan and the address state 7 of 12 from 1280 px. */
+  .com-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: var(--com-gap);
+    align-items: start;
+  }
+
+  .com-grid > * {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  @media (min-width: 1280px) {
+    .com-grid > .com-panel-settings { grid-column: span 5 / span 5; grid-row: span 2; }
+    .com-grid > .com-panel-scan,
+    .com-grid > .com-panel-alias { grid-column: span 7 / span 7; }
+  }
+
+  .com-panel {
+    min-width: 0;
+    display: flex;
+  }
+
+  .com-card {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    padding: 14px 16px 16px;
+    gap: 12px;
+    border-radius: calc(var(--radius) * 1.5);
+    background: linear-gradient(180deg, rgb(37 28 20 / 0.72) 0%, rgb(21 14 7 / 0.92) 100%);
+    box-shadow: var(--shadow-glow-1);
+  }
+
+  .com-card-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    min-height: 28px;
+  }
+
+  .com-card-icon {
+    width: 20px;
+    height: 20px;
+    flex: none;
+    color: var(--accent);
+  }
+
+  .com-card-title {
+    margin: 0;
+    flex: 1 1 auto;
+    min-width: min-content;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--foreground);
+  }
+
+  .com-card-action {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+  }
+
+  .com-card-body,
+  .com-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .com-numbers {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+
+  .com-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px;
+  }
+
+  .com-row > :first-child {
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+
+  .com-text {
+    margin: 0;
+    font-size: var(--text-caption, 12px);
+    line-height: 1.5;
+    color: var(--muted);
+  }
+
+  .com-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 8px;
+    margin: 0;
+  }
+
+  .com-facts dt {
+    font-size: var(--text-caption, 12px);
+    color: var(--muted);
+  }
+
+  .com-facts dd {
+    margin: 0;
+  }
+
+  .com-fallback {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px;
+    border-radius: var(--radius);
+    background: rgb(239 68 68 / 0.08);
+  }
+
+  /* Rows 113 and 118: the heading of a form inside a panel, the step list of an acceptance, and a text an operator typed on several lines. */
+  .com-subtitle {
+    margin: 4px 0 0;
+    min-width: min-content;
+    font-size: 13px;
+    line-height: 20px;
+    font-weight: 600;
+    color: var(--foreground);
+  }
+
+  .com-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+
+  .com-step {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 8px 12px;
+    align-items: center;
+  }
+
+  .com-lines {
+    white-space: pre-line;
+  }
+}

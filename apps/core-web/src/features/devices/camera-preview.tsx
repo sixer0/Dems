@@ -1,6 +1,7 @@
-import { useImperativeHandle } from 'react'
+import { useId, useImperativeHandle } from 'react'
 import { VideoOff } from 'lucide-react'
 import { sourceDeviceText } from './own-core-words'
+import { useStatedFormat } from './stream-facts'
 import { checkedAtOf, sourceLineState } from './source-state'
 import { useTranslation } from 'react-i18next'
 import { selectIsRecording, useSim, cameraLinesInForce } from '@dems/shared/sim'
@@ -29,8 +30,24 @@ export function CameraPreview(props: CameraFeedProps) {
   return <NoPreviewTile {...props} />
 }
 
-function NoPreviewTile({ cameraId, variant = 'feed', recordingSince = null, actions, className, ref }: CameraFeedProps) {
+/**
+ * THE LABEL AND THE FORMAT ON A CORE IN REAL CAPTURE (task 4 row W4; review `verification/060c` finding R-03).
+ * `label` and `formatLabel` are the caller's words for the demo picture; they come from the `cameras` slice, which on
+ * a real Core still holds the simulator's record. The tile therefore takes neither and states the two itself:
+ *
+ * | What the caller's chip said | What the tile says, from the Core's own data |
+ * |---|---|
+ * | `label` (the camera's name and room) | the track and the device its selector line names (`name`, as before) |
+ * | `formatLabel` / the format in `label` | the STORED stream statement of that line (`useStatedFormat`): "Format: 1080p • 25 fps", "Format: Not stated" where the line names none. Not drawn where the Core reports the camera's fault - the state line says the fault, and a stored fact is not shown as if the stream were live |
+ *
+ * Not drawn twice: a caller that states the format beside the tile hands `formatLabel=""` (the Devices tile's fact
+ * row) and the thumb of the Session Monitor's input card has it on the card (`inputs-panel.tsx`).
+ */
+function NoPreviewTile({ cameraId, variant = 'feed', recordingSince = null, formatLabel, actions, className, ref }: CameraFeedProps) {
   const { t } = useTranslation()
+  const formatId = useId()
+  const stated = useStatedFormat(cameraId, 'chip')
+  const format = stated === null || stated.fault !== null || formatLabel === '' || variant === 'thumb' ? null : t('web.source.format', { format: stated.text })
   // No frame exists, so no snapshot does: the caller's "no image" path, never a made-up picture.
   useImperativeHandle(ref, () => ({ snapshot: () => null }), [])
   // The selector the OPEN session was created under, else the stored one (`selector-in-force.ts` of the shared package: a sealed session's snapshot names nothing).
@@ -69,6 +86,7 @@ function NoPreviewTile({ cameraId, variant = 'feed', recordingSince = null, acti
       <div
         role="img"
         aria-label={t('devices.noPreview.aria', { name, state })}
+        aria-describedby={format === null ? undefined : formatId}
         title={small ? t('devices.noPreview.aria', { name, state }) : undefined}
         data-testid="camera-no-preview"
         data-camera={cameraId}
@@ -89,6 +107,12 @@ function NoPreviewTile({ cameraId, variant = 'feed', recordingSince = null, acti
         </span>
         <span data-part="state" className={cn('text-[11px] leading-4 text-neutral-400', small && 'sr-only')}>
           {state}
+          {/* On the state's line, so that a Dashboard tile keeps its four lines (fix waves L and Q measured that box). */}
+          {format === null ? null : (
+            <span id={formatId} data-part="format" data-testid="camera-no-preview-format">
+              {` · ${format}`}
+            </span>
+          )}
         </span>
       </div>
       {recordingSince !== null ? <RecIndicator since={recordingSince} size={variant === 'feed' ? 'md' : 'sm'} className="absolute right-2 top-2" /> : null}

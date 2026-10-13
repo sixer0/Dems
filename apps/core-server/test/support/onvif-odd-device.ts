@@ -7,7 +7,7 @@
  * closed. This file is what it does not have: a device whose every answer the TEST writes - an
  * endless body, a body that drips, an answer that never comes, a redirect, a one-element service
  * list, a missing element, a device that takes the token form only. One HTTP listener on the
- * literal 127.0.0.1, on a port of the fixture range the test chooses.
+ * literal 127.0.0.1, on the port the test names: its file's own of the fixed list, or one the system handed out.
  *
  * UNLIKE THE STUB IT KEEPS WHAT IT RECEIVED: `requests()` holds every request with its
  * `Authorization` header and its whole body, so that a test can prove what did NOT travel (a
@@ -19,8 +19,25 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Socket } from 'node:net';
 
 export const ODD_DEVICE_HOST = '127.0.0.1';
-/** The fixture ports this device may take (D94: media fixtures stay on these); the stub looks from the top of the range, this from the middle. */
-export const ODD_DEVICE_PORTS: readonly number[] = [8561, 8560, 8559, 8557, 8555];
+/**
+ * THE FIXED PORTS this device may take: a closed list, ONE PORT PER TEST FILE that needs a fixed one (task 4 row T3;
+ * review 060c T-01; decisions C61 (4), C98). A database file writes its device's address into a row before anything
+ * listens, so it names its port as a constant; two files of the `db` project run side by side, so no two may name the
+ * same one:
+ *
+ *   8555  src/modules/capture-config/__tests__/adopted-camera-test.db.test.ts
+ *   8557  src/modules/capture-config/__tests__/camera-adapter-open.db.test.ts
+ *   8575  src/modules/capture-discovery/connect/__tests__/stream-test.db.test.ts
+ *   8576  src/modules/capture-discovery/connect/__tests__/minted-code.db.test.ts
+ *
+ * 8559, 8560 and 8561 WERE on this list and are off it: they are the capture worker's ingest listeners (8559-8564), and
+ * a unit file that took 8561 met a worker fixture (record of row T2, section 6). 8565-8574 are the test camera's
+ * (decision C33) and are not for this device either. A file that needs no fixed port asks `freeOddDevicePort()`.
+ */
+export const ODD_DEVICE_PORTS: readonly number[] = [8555, 8557, 8575, 8576];
+/** The floor of the ports the operating system hands out, as the fake ONVIF stub holds it (`fake-onvif-stub.ts`). */
+const ODD_DEVICE_EPHEMERAL_MIN = 32_768;
+const isOddDevicePort = (port: number): boolean => Number.isInteger(port) && (ODD_DEVICE_PORTS.includes(port) || (port >= ODD_DEVICE_EPHEMERAL_MIN && port <= 65_535));
 /** A documentation address (RFC 5737): the "other host" of a redirect or a stream address. Never contacted. */
 export const ODD_DEVICE_FOREIGN_HOST = '192.0.2.10';
 
@@ -58,17 +75,24 @@ export interface OddOnvifDevice {
   reset(): void;
 }
 
-/** One port of `ODD_DEVICE_PORTS` that is free on loopback right now. */
+/**
+ * A port of loopback that is free right now, HANDED OUT BY THE OPERATING SYSTEM (row T3): never one of the fixed
+ * list, never a port of the capture worker or the test camera. Before row T3 this walked the fixed list from 8561
+ * down, which put a unit file on the worker's listeners. Asked just before `start()`.
+ */
 export async function freeOddDevicePort(): Promise<number> {
-  for (const port of ODD_DEVICE_PORTS) {
-    const free = await new Promise<boolean>((resolvePromise) => {
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    const port = await new Promise<number>((resolvePromise, rejectPromise) => {
       const probe = createServer();
-      probe.once('error', () => resolvePromise(false));
-      probe.listen({ host: ODD_DEVICE_HOST, port, exclusive: true }, () => probe.close(() => resolvePromise(true)));
+      probe.once('error', rejectPromise);
+      probe.listen({ host: ODD_DEVICE_HOST, port: 0, exclusive: true }, () => {
+        const address = probe.address();
+        probe.close(() => resolvePromise(address !== null && typeof address !== 'string' ? address.port : 0));
+      });
     });
-    if (free) return port;
+    if (port >= ODD_DEVICE_EPHEMERAL_MIN && port <= 65_535) return port;
   }
-  throw new Error(`odd ONVIF device: no free port among ${ODD_DEVICE_PORTS.join(', ')} on ${ODD_DEVICE_HOST}`);
+  throw new Error(`odd ONVIF device: the operating system handed out no port of ${String(ODD_DEVICE_EPHEMERAL_MIN)}-65535 on ${ODD_DEVICE_HOST}`);
 }
 
 // ── Answers a script can use ─────────────────────────────────────────────────────────────────────
@@ -157,7 +181,7 @@ export function tokenHolds(request: OddDeviceRequest, account: { readonly userna
 // ── The device ───────────────────────────────────────────────────────────────────────────────────
 
 export function createOddOnvifDevice(port: number, script: (request: OddDeviceRequest, index: number) => OddDeviceReply): OddOnvifDevice {
-  if (!ODD_DEVICE_PORTS.includes(port)) throw new RangeError(`odd ONVIF device: the port must be one of ${ODD_DEVICE_PORTS.join(', ')}, got ${String(port)}`);
+  if (!isOddDevicePort(port)) throw new RangeError(`odd ONVIF device: the port must be one of ${ODD_DEVICE_PORTS.join(', ')} or a port the system handed out (${String(ODD_DEVICE_EPHEMERAL_MIN)}-65535), got ${String(port)}`);
   let received: OddDeviceRequest[] = [];
   let sent = 0;
   let server: Server | null = null;

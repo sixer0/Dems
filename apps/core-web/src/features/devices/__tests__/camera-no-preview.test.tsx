@@ -17,7 +17,7 @@
 // | Session New pre-check tiles | the same tile | (existing tests) |
 // | Dashboard device tiles | the same tile | (existing tests) |
 // | Session Monitor feed and input thumbs, during a recording | the same tile; the REC state stays | (existing tests) |
-import { cleanup, configure, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -170,6 +170,143 @@ describe('G70-03 Devices & Inputs', () => {
     const page = await screen.findByTestId('page-devices', undefined, { timeout: 8_000 })
     await waitFor(() => expect(feeds(within(page).getByTestId('camera-tile-VIDEO-01'))).toHaveLength(1))
     expect(tiles(page)).toHaveLength(0)
+  })
+})
+
+// ── Task 4 row W4 (review `verification/060c` R-01 to R-06, `060b` S-01; decisions C36, C98) ─────────────────────────
+// On a Core in real capture every reader states the STORED stream statement of the track's selector line - "Not
+// stated" where the line names none - and never the `cameras` slice, which still holds the simulator's
+// `1080p / 25 / H.264`, `9 Mbps` there. Where the Core reports the camera's fault, the fault is said in the place of
+// the facts. Simulated mode is unchanged (the cases above and `devices-page.test.tsx`; one control below).
+describe('row W4: the readers of a Core in real capture state the stored stream facts, never the slice', () => {
+  /** The selector lines as a real Core holds them: VIDEO-01 with a stored statement, VIDEO-02 with a code that is none. */
+  const profiles = (first: string, second: string) => (idle: SimState): SimState => {
+    const state = realCapture(idle)
+    const stated = <L extends { readonly trackId: string }>(lines: readonly L[]) => lines.map((line) => ({ ...line, profile: line.trackId === 'VIDEO-01' ? first : second }))
+    // The selector IN FORCE is the open session's snapshot (`selectorInForce`): a recording state carries its own lines.
+    const snapshot = (state.session as { readonly captureConfig?: { readonly cameras: readonly { readonly trackId: string }[] } } | null)?.captureConfig
+    return {
+      ...state,
+      captureConfig: { ...state.captureConfig, cameras: stated(state.captureConfig.cameras) } as SimState['captureConfig'],
+      session: state.session === null || snapshot === undefined ? state.session : ({ ...state.session, captureConfig: { ...snapshot, cameras: stated(snapshot.cameras) } } as SimState['session']),
+    }
+  }
+  const SLICE_WORDS = /1080p|25 fps|Mbps/
+  const format = (root: HTMLElement, track: string) => within(root).getByTestId(`camera-format-${track}`)
+
+  it('Devices: stated facts and "Not stated" in the fact row; no bitrate, no PoE port, nothing of the slice; the drawer says the same', async () => {
+    const page = await livePage('/devices', 'page-devices', profiles('HEVC_2560X1920P', 'STANDARD'))
+    const first = await within(page).findByTestId('camera-tile-VIDEO-01')
+    const second = within(page).getByTestId('camera-tile-VIDEO-02')
+    await waitFor(() => expect(format(first, 'VIDEO-01')).toHaveTextContent(/^Format\s*2560x1920 • HEVC$/))
+    expect(format(first, 'VIDEO-01')).toHaveAttribute('data-source', 'stored')
+    expect(format(second, 'VIDEO-02')).toHaveTextContent(new RegExp(`^Format\\s*${en.common.devices.cameraFormatNotStated}$`))
+    for (const [tile, track] of [[first, 'VIDEO-01'], [second, 'VIDEO-02']] as const) {
+      expect(within(tile).queryByTestId(`camera-bitrate-${track}`)).toBeNull()
+      expect(within(tile).queryByTestId(`camera-poe-${track}`)).toBeNull()
+      expect(tile).not.toHaveTextContent(SLICE_WORDS)
+      // The fact row states the format: the "No preview" tile does not say it a second time.
+      expect(within(tile).queryByTestId('camera-no-preview-format')).toBeNull()
+    }
+    // The slice the page was served still holds the simulator's record: it is what must not be read.
+    expect(bed!.core.served.cameras.map((camera) => [camera.resolution, camera.fps, camera.codec, camera.bitrateMbps])).toEqual([['1080p', 25, 'H.264', 9], ['1080p', 25, 'H.264', 9]])
+    // The drawer's Overview: the stored facts in the Format row; the bitrate, the model, the firmware and the port stay "Not reported".
+    fireEvent.click(first.querySelector<HTMLElement>('button.dev-cam-media')!)
+    const overview = within(await screen.findByTestId('device-drawer')).getByTestId('device-overview')
+    const fact = (name: string): string | null | undefined =>
+      [...overview.querySelectorAll('.dev-facts-row')].find((row) => row.querySelector('dt')?.textContent === name)?.querySelector('dd')?.textContent
+    await waitFor(() => expect(fact('Format')).toBe('2560x1920 • HEVC'))
+    expect(fact(en.devices.drawer.field.bitrate)).toBe(en.common.platformNotReported.value)
+    expect(overview).not.toHaveTextContent(SLICE_WORDS)
+  })
+
+  it('Devices, while a session RECORDS: still no bitrate (the figure was the simulator\'s 9) and the stored facts', async () => {
+    const recording = createSim({ scenario: 'recording', storage: null, authStorage: createMemoryAuthStorage(), visibility: ALWAYS_VISIBLE, scheduler: () => () => undefined })
+    sims.push(recording)
+    const page = await livePage('/devices', 'page-devices', () => profiles('H264_720P30', 'STANDARD')(recording.store.getState()))
+    const first = await within(page).findByTestId('camera-tile-VIDEO-01')
+    await waitFor(() => expect(format(first, 'VIDEO-01')).toHaveTextContent(/^Format\s*720p • 30 fps • H\.264$/))
+    expect(format(within(page).getByTestId('camera-tile-VIDEO-02'), 'VIDEO-02')).toHaveTextContent(en.common.devices.cameraFormatNotStated)
+    expect(page.querySelector('[data-testid^="camera-bitrate-"]')).toBeNull()
+    for (const track of ['VIDEO-01', 'VIDEO-02']) expect(within(page).getByTestId(`camera-tile-${track}`)).not.toHaveTextContent(/Mbps|1080p|25 fps/)
+  })
+
+  it('a camera in fault: the fault stands in the place of the facts - a lost stream, a source not reachable; the other track keeps its facts', async () => {
+    const page = await livePage('/devices', 'page-devices', (idle) => {
+      const state = profiles('H264_720P30', 'H264_720P30')(idle)
+      return { ...state, captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, streamState: 'LOST' } : line)) } as SimState['captureConfig'] }
+    })
+    const first = await within(page).findByTestId('camera-tile-VIDEO-01')
+    await waitFor(() => expect(format(first, 'VIDEO-01')).toHaveTextContent(new RegExp(`^Format\\s*${en.devices.selector.stream.LOST}$`)))
+    expect(format(first, 'VIDEO-01')).toHaveAttribute('data-fault', 'STREAM_LOST')
+    expect(first).not.toHaveTextContent(/720p|30 fps|H\.264/)
+    // CONTROL: the track whose camera is not in fault states its stored facts.
+    const second = within(page).getByTestId('camera-tile-VIDEO-02')
+    expect(format(second, 'VIDEO-02')).toHaveTextContent(/^Format\s*720p • 30 fps • H\.264$/)
+    expect(format(second, 'VIDEO-02')).not.toHaveAttribute('data-fault')
+  })
+
+  it('Dashboard: the "No preview" tile states the stored format on its state line, "Not stated" where null, and nothing while the camera is in fault', async () => {
+    const page = await livePage('/', 'page-dashboard', profiles('H264_720P30', 'STANDARD'))
+    const first = await within(page).findByTestId('device-tile-VIDEO-01')
+    await waitFor(() => expect(within(first).getByTestId('camera-no-preview-format')).toHaveTextContent('Format: 720p • 30 fps'))
+    expect(within(within(page).getByTestId('device-tile-VIDEO-02')).getByTestId('camera-no-preview-format')).toHaveTextContent(`Format: ${en.common.devices.cameraFormatNotStated}`)
+    for (const tile of tiles(page)) {
+      // On the state's own line (the box of fix waves L and Q keeps its four lines), and described for assistive technology.
+      const part = within(tile).getByTestId('camera-no-preview-format')
+      expect(part.parentElement).toHaveAttribute('data-part', 'state')
+      expect(tile).toHaveAttribute('aria-describedby', part.id)
+      expect(tile).not.toHaveTextContent(SLICE_WORDS)
+      expectNeutral(tile)
+    }
+  })
+
+  it('Dashboard, a camera in fault: the tile says the fault and no format', async () => {
+    const page = await livePage('/', 'page-dashboard', (idle) => {
+      const state = profiles('H264_720P30', 'H264_720P30')(idle)
+      return { ...state, captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, online: false } : line)) } as SimState['captureConfig'] }
+    })
+    const first = await within(page).findByTestId('device-tile-VIDEO-01')
+    await waitFor(() => expect(tiles(first)[0]).toHaveTextContent(en.common.developmentRoster.notReachable))
+    expect(within(first).queryByTestId('camera-no-preview-format')).toBeNull()
+    expect(tiles(first)[0]).not.toHaveAttribute('aria-describedby')
+    expect(first).not.toHaveTextContent(/720p|30 fps/)
+    // CONTROL: the other track.
+    expect(within(within(page).getByTestId('device-tile-VIDEO-02')).getByTestId('camera-no-preview-format')).toHaveTextContent('Format: 720p • 30 fps')
+  })
+
+  it('Session New pre-check and the Session Monitor: the stored format, never the literal "1080p • 25 fps"', async () => {
+    const core = coreWithSession(CORE_START_MS, 'ARMED')
+    const page = await livePage('/session/new?step=2', 'page-session-new', () => profiles('HEVC_2160P', 'STANDARD')(core.state()))
+    const step = await within(page).findByTestId('sn-step-devices')
+    await waitFor(() => expect(tiles(step)).toHaveLength(2))
+    await waitFor(() => expect(within(tiles(step)[0]!).getByTestId('camera-no-preview-format')).toHaveTextContent('Format: 2160p'))
+    expect(within(tiles(step)[1]!).getByTestId('camera-no-preview-format')).toHaveTextContent(`Format: ${en.common.devices.cameraFormatNotStated}`)
+    for (const tile of tiles(step)) expect(tile).not.toHaveTextContent(/1080p|25 fps/)
+    cleanup()
+    bed?.dispose()
+    bed = undefined
+
+    const recording = createSim({ scenario: 'recording', storage: null, authStorage: createMemoryAuthStorage(), visibility: ALWAYS_VISIBLE, scheduler: () => () => undefined })
+    sims.push(recording)
+    const monitor = await livePage('/session', 'page-session-monitor', () => profiles('H264_720P30', 'STANDARD')(recording.store.getState()))
+    // The input cards: the line beside the thumb (the thumb itself has no room for words).
+    await waitFor(() => expect(within(monitor).getByTestId('sm-input-format-VIDEO-01')).toHaveTextContent(/^720p • 30 fps$/))
+    expect(within(monitor).getByTestId('sm-input-format-VIDEO-02')).toHaveTextContent(new RegExp(`^${en.common.devices.cameraFormatNotStated}$`))
+    // The feed of the active track (VIDEO-01).
+    const feed = tiles(monitor).find((tile) => tile.parentElement?.getAttribute('data-variant') === 'feed')!
+    expect(within(feed).getByTestId('camera-no-preview-format')).toHaveTextContent('Format: 720p • 30 fps')
+    expect(within(monitor).getByTestId('sm-inputs')).not.toHaveTextContent(/1080p|25 fps/)
+  })
+
+  it('CONTROL - a Core in simulated capture (Live mode, no class stated) reads the slice as before: format, PoE port and bitrate', async () => {
+    const page = await livePage('/devices', 'page-devices')
+    const tile = await within(page).findByTestId('camera-tile-VIDEO-01')
+    await waitFor(() => expect(format(tile, 'VIDEO-01')).toHaveTextContent(/^Format\s*1080p • 25 fps • H\.264$/))
+    expect(format(tile, 'VIDEO-01')).not.toHaveAttribute('data-source')
+    expect(within(tile).getByTestId('camera-bitrate-VIDEO-01')).toHaveTextContent('9 Mbps')
+    expect(within(tile).getByTestId('camera-poe-VIDEO-01')).toBeInTheDocument()
+    expect(within(tile).queryByTestId('camera-no-preview-format')).toBeNull()
   })
 })
 

@@ -16,12 +16,12 @@
 // living helper from a script. NO CAMERA AND NO MICROPHONE IS LISTED, OPENED OR ASKED FOR: the
 // "device list" is a text of this file.
 //
-// The fixture directory (`.data/test-row61-row140-<pid>-<n>`: a stand-in worker script and a test
-// signing key) is LEFT in place: this file deletes nothing under `.data/`.
+// The fixture (a stand-in worker script and a test signing key) is a temporary directory since task 4
+// row 228b and is REMOVED when the file ends: this file writes and deletes nothing under `.data/`.
 import { CAPTURE_PROTOCOL_VERSION, type AudioSourceIntervalRecord } from '@dems/capture-protocol';
 import { createManualClock } from '@dems/shared/sim';
 import type { Pool } from 'pg';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
 import { fakeLauncher, flush, type FakeLauncher } from '../../../../test/support/capture';
 import { captureLog, unitTestConfig } from '../../../../test/support/config';
@@ -41,6 +41,8 @@ import { buildDevelopmentRegistry, captureFenceControl, type BuiltCaptureRegistr
 const db = useTestDatabase({ template: 'seed' });
 const fixture = realBootFixture('row140');
 fixture.provisionKey();
+// Task 4 row 228b: the fixture is a temporary directory and goes with the file, passed or failed.
+afterAll(() => fixture.remove());
 
 /** The program the boot fence vouches for in these tests: a root-owned system program. It is never started (the door is scripted). */
 const HELPER = '/bin/echo';
@@ -234,9 +236,9 @@ let micHelperStarts: string[] | null = null;
 let testSourceMarks: string[] | null = null;
 
 describe('the schema this row was written against', () => {
-  it('schema version 8, contract dbc-9', async () => {
+  it('schema version 13, contract dbc-14', async () => {
     const meta = (await db.ownerPool().query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([8, 'dbc-9']);
+    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([13, 'dbc-14']);
   });
 });
 

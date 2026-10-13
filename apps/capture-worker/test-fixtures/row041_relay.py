@@ -58,12 +58,25 @@ FRAMES = 150                                             # 6 s of the camera's c
 WRONG = "not-the-synthetic-password"
 CODES = {"STOPPED": 0, "USAGE": 2, "START_MESSAGE_INVALID": 10, "START_MESSAGE_TIMEOUT": 11, "CAMERA_UNREACHABLE": 20, "AUTH_SCHEME_NOT_ALLOWED": 22, "AUTH_REFUSED": 23,
          "REDIRECT_REFUSED": 25, "CONTROL_ADDRESS_REFUSED": 26, "CAMERA_LOST": 32, "INGEST_LOST": 41}
+# Row 43: the ends of the camera leg that the relay opens again once the push stands (the cause of a loss line), and
+# everything standard output may hold in record mode: "push established", then per loss one line and at most one re-open.
+LOSS_CAUSE = {"CAMERA_STALLED": 31, "CAMERA_LOST": 32}
+REPORT_LINES = (r'\{"report":"push_established","v":1,"attempt":\d+\}\n'
+                r'(\{"report":"camera_lost","v":1,"attempt":\d+,"loss":\d+,"cause":\d+\}\n(\{"report":"camera_reopened","v":1,"attempt":\d+,"loss":\d+,"tries":\d,"held_back":\d+,"gap_ms":\d+\}\n)?)*')
+
+
+# Row 143b: the source address a record message must state (relay.h "THE SOURCE ADDRESS"). Every double of this Mac
+# is on loopback, so the address of this host the camera leg leaves from is loopback too.
+SOURCE = "127.0.0.1"
 
 
 def start_message(ingest, locator, user, secret, **more):
-    """The door's bytes: `startMessageBytes` writes the members in order, compact, one line feed last."""
-    m = {"type": "start", "mode": "record", "ingest": ingest, "access": {"locator": locator, "username": user, "secret": secret}}
+    """The door's bytes: `startMessageBytes` writes the members in order, compact, one line feed last.
+    Row 143b: `source` is stated (SOURCE); `source=<text>` states another one, `source=None` states none."""
+    m = {"type": "start", "mode": "record", "ingest": ingest, "source": SOURCE, "access": {"locator": locator, "username": user, "secret": secret}}
     m.update(more)
+    if m.get("source") is None:
+        del m["source"]
     return (json.dumps(m, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")
 
 
@@ -85,8 +98,19 @@ class Relay:
                 pass
 
     def _read(self, name):
-        data = (self.p.stdout if name == "out" else self.p.stderr).read()
-        setattr(self, name, data or b"")
+        # Row 43: read as it comes (the relay now says a loss while it runs, and a run acts on that line).
+        stream = self.p.stdout if name == "out" else self.p.stderr
+        for chunk in iter(lambda: stream.read1(65536), b""):
+            setattr(self, name, getattr(self, name) + chunk)
+
+    def saw(self, text, timeout, stream="out"):
+        """Row 43: the monotonic time at which `text` stood in what the relay wrote so far, or None after `timeout`."""
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            if text in getattr(self, stream):
+                return time.monotonic()
+            time.sleep(0.005)
+        return None
 
     def close_input(self):
         try:
@@ -170,6 +194,25 @@ def decode_errors(path):
     return len([l for l in r.stderr.splitlines() if l.strip()]) if r.returncode == 0 else -1
 
 
+def listing_shows_an_environment():
+    """Row T3 (review 060c X-07): does the process listing `Relay.snapshot` reads display an environment on this host?
+    A control process with ONE marker variable; True when the marker is in the `ps eww` listing and not in the argument
+    list. The control is a program that is not the system's (this Python), as the relay is: on macOS 27 the listing
+    shows NO environment for a program of the system (`/bin/sleep` with a marker: its arguments and nothing else)."""
+    marker = "ROW_T3_MARKER_" + secrets.token_hex(8)
+    p = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(20)"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         env={"ROW_T3_CONTROL": marker}, close_fds=True)
+    try:
+        time.sleep(0.3)
+        pid = str(p.pid)
+        args = H.sh(["ps", "-o", "args=", "-ww", "-p", pid]).stdout
+        env = H.sh(["ps", "eww", "-o", "command=", "-p", pid]).stdout
+        return marker in env and marker not in args
+    finally:
+        p.kill()
+        p.wait()
+
+
 def ingest_names():
     """Two session-shaped paths: <session>/<track>/<128 bits, URL-safe base64>."""
     return tuple("S-ROW41/video-0%d/%s" % (i + 1, secrets.token_urlsafe(16)) for i in range(2))
@@ -186,31 +229,40 @@ def session_run(name, kind, codec="h264", sets="sdp", camera_extra=(), frames=FR
 
     def script(ctx):
         d = ctx["d"]
+        # Row T3 (review 060c X-01): WHEN each part of this script started, in seconds after the worker's START ack.
+        # The order is camera double, control push, relay - all inside the worker's listen window (12 s) and its
+        # give-up bound (listen window + 10 s). Measured, not changed: the record of row T3 has the numbers.
+        after = lambda: round(time.monotonic() - ctx["t0"], 2)
+        timeline = {"script_called": after(), "load_1m": round(os.getloadavg()[0], 1)}
         cam, log, path = camera_start(d, codec, sets, frames, camera_extra)
+        timeline["camera_ready"] = after()
         ctx["procs"].append(cam)
         locator = "rtsp://127.0.0.1:%d%s" % (CAMERA_PORT, path)
         texts = texts_of(ingest, locator, user, secret)
         control = E.Push(d, "control", cport, E.RIGHT[1], ctx["t0"], frames=FRAMES)
+        timeline["control_push_started"] = after()
         relay = Relay(d, start_message(ingest, locator, user, secret))
+        timeline["relay_started"] = after()
         ctx["procs"].append(relay.p)
         snap = None
         if kind in ("record", "ends"):
-            E.wait_connected(d, port, 10)
+            timeline["worker_connected"] = after() if E.wait_connected(d, port, 10) else None
             time.sleep(1.0)
             snap = relay.snapshot()
-        extra = act(ctx, relay) if act else {}
+        extra = act(ctx, relay) if act else (act_stop_at_the_loss(ctx, relay) if kind == "record" else {})
         rc = relay.wait(20)
         control.wait()
-        facts = {"rc": rc, "seconds": relay.took, "stdout_bytes": len(relay.out), "lines": relay.lines(),
+        facts = {"rc": rc, "seconds": relay.took, "stdout_bytes": len(relay.out), "stdout_text": relay.out.decode("utf-8", "replace"), "lines": relay.lines(),
                  "texts_in_relay_output": occurrences(texts, relay.out, relay.err)}
         if snap:
             facts["texts_in_argument_list"] = occurrences(texts, snap["args_text"])
             facts["texts_in_arguments_and_environment"] = occurrences(texts, snap["env_text"])
             facts["argument_words"] = len(snap["args_text"].split())
             facts["environment_shown"] = snap["env_text"].strip() != snap["args_text"].strip()
+            facts["listing_shows_an_environment"] = listing_shows_an_environment()     # row T3 (X-07): the control of the line above
             facts["sockets"] = snap["sockets"]
         keep.update(texts=texts, camera=camera_end(cam, log))
-        return {"case": kind, "relay": facts, "camera": keep["camera"], "observation": "ROW41", "port_under_test": port,
+        return {"case": kind, "relay": facts, "camera": keep["camera"], "observation": "ROW41", "port_under_test": port, "timeline_s_after_start_ack": timeline,
                 "control": {"port": cport, "path": "", "rc": control.rc, "rtsp_error_statuses": []}, "extra": extra, "paths_used": list(E.RIGHT)}
 
     r = E.session(name, script)
@@ -239,7 +291,12 @@ def session_run(name, kind, codec="h264", sets="sdp", camera_extra=(), frames=FR
         "session_texts_in_worker_output": sum(r["path_text_in_worker_output"].values()),
     }
     rel = r["relay"]
-    crit = {"relay_wrote_nothing_to_standard_output": rel["stdout_bytes"] == 0, "every_relay_line_is_fixed_shape": all("not_json" not in l for l in rel["lines"]),
+    # Row 42: standard output is the ONE report line "push established" when the push was opened, and nothing otherwise
+    # (the attempt is 0 when the start message states none; row042_probe.py runs with one and asserts its number).
+    # Row 43: after it, one line per loss of the camera and one per re-open (REPORT_LINES), and nothing else.
+    established = REPORT_LINES if any(l.get("relay") == "push_open" for l in rel["lines"]) else ""
+    fx["relay_losses"] = [int(c) for c in re.findall(r'"report":"camera_lost","v":1,"attempt":\d+,"loss":\d+,"cause":(\d+)\}', rel["stdout_text"])]
+    crit = {"standard_output_is_the_report_lines_of_the_contract_or_nothing": re.fullmatch(established, rel["stdout_text"]) is not None, "every_relay_line_is_fixed_shape": all("not_json" not in l for l in rel["lines"]),
             "no_session_text_in_relay_output": sum(rel["texts_in_relay_output"].values()) == 0, "no_leftover": fx["leftovers"] == 0}
     if kind != "worker_gone":
         crit["control_recorded"] = fx["control_recorded"]
@@ -255,11 +312,16 @@ def session_run(name, kind, codec="h264", sets="sdp", camera_extra=(), frames=FR
 
 
 def recorded(codec, expect_code="CAMERA_LOST", min_pictures=FRAMES - 30):
+    """`expect_code` CAMERA_LOST or CAMERA_STALLED (row 43): the camera leg ended after the push was opened. The relay
+    then does NOT end with that code: it says the loss in one line (the code's number is its cause) and the run
+    stops it by the order to stop, so it ends with STOPPED and exactly that one loss said."""
+    ended = "STOPPED" if expect_code in LOSS_CAUSE else expect_code
+
     def check(r, fx):
         rel = r["relay"]
         socks = rel.get("sockets") or []
         return {
-            "relay_exit_is_the_named_code": fx["relay_rc"] == CODES[expect_code] and fx["relay_code"] == expect_code,
+            "relay_exit_is_the_named_code": fx["relay_rc"] == CODES[ended] and fx["relay_code"] == ended and (expect_code not in LOSS_CAUSE or fx["relay_losses"] == [LOSS_CAUSE[expect_code]]),
             "worker_connected_once_no_gate_refusal": fx["ingest_connected_port1"] == 1 and fx["worker_gate_refusals"] == 0,
             "codec_is_the_cameras": fx["file_codec"] == codec and fx["worker_codec"] == codec,
             "pictures_forwarded": (fx["relay_pictures"] or 0) >= min_pictures and fx["relay_gaps"] == 0,
@@ -268,6 +330,11 @@ def recorded(codec, expect_code="CAMERA_LOST", min_pictures=FRAMES - 30):
             "zero_decode_errors": fx["decode_error_lines"] == 0,
             "no_basic_request_at_the_camera": fx["camera_requests"].get("basic", 0) == 0 and r["camera"]["counters"].get("auth_basic", 0) == 0,
             "no_argument_and_nothing_of_the_session_in_ps": rel.get("argument_words") == 1 and sum(rel["texts_in_argument_list"].values()) == 0 and sum(rel["texts_in_arguments_and_environment"].values()) == 0,
+            # Row T3 (review 060c X-07; survivor 17): the environment half of the line above read a listing that never
+            # differs from the argument list (the relay's environment is empty), and nothing showed that this `ps`
+            # displays an environment at all. The control process's marker variable must be in the same listing, and
+            # the relay's listing must be its arguments and NOTHING else.
+            "the_listing_shows_an_environment_and_the_relay_has_none": rel.get("listing_shows_an_environment") is True and rel.get("environment_shown") is False,
             "sockets_two_connected_streams_no_listener_no_datagram": len(socks) == 2 and all(s["type"] == "TCP" and "LISTEN" not in s["state"] and "->" in s["name"] for s in socks),
             "worker_clean_exit": fx["worker_rc"] == 0,
         }
@@ -283,6 +350,14 @@ def refused(code, digest_answers):
                 "nothing_recorded": fx["ingest_connected_port1"] == 0 and fx["file_bytes"] == 0 and fx["relay_pictures"] == 0,
                 "worker_clean_exit": fx["worker_rc"] == 0}
     return check
+
+
+def act_stop_at_the_loss(ctx, relay):
+    """Row 43: the camera ended its stream after the push was opened. The relay says the loss in one line and would
+    open the camera again 2 s later; the run ends here, by the order to stop, before that."""
+    seen = relay.saw(b'"report":"camera_lost"', 25)
+    relay.close_input()
+    return {"loss_line_seen": seen is not None}
 
 
 def act_close_input(ctx, relay):

@@ -16,6 +16,18 @@
  *      relay of the same device AND profile that is still alive;
  *   1. the stored facts of the stream: the camera's own address as a candidate and the ONVIF token
  *      of the plan's profile code (`stream`, handed in by the composition; none: profile unknown);
+ *  1b. THE DESTINATION RULE ON THAT STORED ADDRESS (row 143; AD-02 (1)): `judgeStoredCamera` with
+ *      the rule handed in (`storedAddress`). The stored value is untrusted - the runtime database
+ *      role can write it - so a loopback, unspecified, link-local, multicast, public or
+ *      out-of-subnet address, and an address of the Core host itself, is refused HERE by
+ *      `CAPTURE_CAMERA_ADDRESS_REFUSED` with the rule's own code as the reason: before the reader
+ *      is called (0 reveals, 0 audit entries), before any request and before any process. A rule
+ *      that was not handed in refuses every open: this file holds no permissive value;
+ *      THE SOURCE HALF (row 143b; S13-11 point 2): the same judgement names the camera-interface
+ *      address the connection must be made FROM (`storedCameraSourceOf`). An admission that names
+ *      none is refused here too (`STORED_ADDRESS_SOURCE_ABSENT`); the address goes to the locator
+ *      read of step 3 (its local address) and into the relay's start message of step 4 (`source`:
+ *      the relay gives it to its socket before it connects, at the first open and every re-open);
  *   2. the credential reader, ONCE: `credentials.sessionOpen(deviceId, sessionId)`. The reader
  *      reveals and audits in one unit of its own, and its device gate holds the stored address to
  *      the destination rule BEFORE the reveal (AD-02, AD-03 (4)). THIS ADAPTER OPENS NO UNIT OF
@@ -43,6 +55,11 @@
  *     the session unit, by shape). Successes only, each naming session, device and attempt. A
  *     report of a relay that is being ended, or of an attempt a later open of the same session
  *     superseded, is DROPPED and counted (C37): it never reaches the pairing;
+ *   - on the same source, with the member `leg` (finding F3-01 of the M3 review): the relay's word
+ *     that its camera leg was LOST inside a session and that it was REOPENED (row 43). Told with the
+ *     relay's first line of a loss, so that the camera's fault stands at once and not after the
+ *     relay's six tries (62 s of waits). The same C37 rule; the push stands through both, so they
+ *     are no report of the pairing;
  *   - `relayEnded`: a relay that ends by itself after its open is said ONCE, with its named cause;
  *   - a refusal of an open is a thrown error with a code: `CaptureAdapterError` for the layer's
  *     own (aborted, unknown device, unknown profile) and `CameraOpenError` for the camera path.
@@ -55,18 +72,21 @@
  * object lives inside one call of `openSource`.
  *
  * NOT BUILT HERE: the search and the connection test (the adapters of rows 131 and 142 serve
- * them; the stream-level half is row 50), presence and the clock offset (row 49), the destination
- * rule applied by the adapter itself beside the reader's gate (row 143). `pullUrl` refuses by a
- * named code: the locator of a production camera never crosses the adapter boundary (P12-F05 a).
+ * them; the stream-level half is row 50; the test of an ADOPTED camera with its stored credential
+ * is row 146, in the connect flow, behind the same judgement), presence and the clock offset (row
+ * 49: `camera-watch.ts`, which asks the same judgement before each of its reads - the adapter's
+ * `ntpOffsetMs` is that watch's read and holds no address itself). `pullUrl` refuses by a named
+ * code: the locator of a production camera never crosses the adapter boundary (P12-F05 a).
  */
 import type { CaptureTimers } from '../../types';
 import type { SealedCredential } from '../credential';
 import { CaptureAdapterError, CaptureAdapterRefusal } from '../errors';
-import { CaptureAdapterKind } from '../kinds';
+import { CaptureAdapterKind, sourceClassOf } from '../kinds';
 import type { ProductionDoor, ProductionExit, ProductionProcess } from '../production-door';
 import { ConnectionTestOutcome, type CameraAdapter, type CameraCandidate, type CameraSourceTarget, type CaptureDeviceEntry, type SourceHandle } from '../types';
 import type { OnvifStreamLocator } from './onvif-session';
 import { RELAY_ATTEMPT_MAX, RelayReportKind, createRelayReportReader, startCameraRelay, type RelayReport } from './relay-start';
+import { judgeStoredCamera, storedCameraSourceOf, type StoredCameraAddressRule } from './stored-address';
 
 /** The bound of one `openSource`: the production ingest window minus 5,000 ms (addendum 3.2). */
 export const CAMERA_OPEN_BOUND_MS = 25_000;
@@ -85,6 +105,8 @@ export const CameraOpenRefusal = {
   ALREADY_OPEN: 'CAPTURE_CAMERA_ALREADY_OPEN',
   /** The stored facts of the stream could not be read. */
   STREAM_FACTS_NOT_READ: 'CAPTURE_CAMERA_STREAM_FACTS_NOT_READ',
+  /** The STORED address of the camera is refused by the destination rule (its own code is the reason), or no rule was handed in (row 143; AD-02). Nothing was read, asked or started. */
+  ADDRESS_REFUSED: 'CAPTURE_CAMERA_ADDRESS_REFUSED',
   /** The credential reader answered no credential (its own code is the reason): a refused device or address, nothing stored, a reveal that was not audited. */
   CREDENTIAL_NOT_READ: 'CAPTURE_CAMERA_CREDENTIAL_NOT_READ',
   /** The camera did not answer: the ONVIF read, or the relay's connection. A camera that is absent (C35 a). */
@@ -123,6 +145,7 @@ const SENTENCE: Readonly<Record<CameraOpenRefusal, string>> = Object.freeze({
   CAPTURE_CAMERA_RELAY_NOT_CONFIGURED: 'no relay program is configured',
   CAPTURE_CAMERA_ALREADY_OPEN: 'a source of this camera and profile is open already',
   CAPTURE_CAMERA_STREAM_FACTS_NOT_READ: 'the stored facts of the camera stream could not be read',
+  CAPTURE_CAMERA_ADDRESS_REFUSED: 'the stored address of this camera is not one the Core connects to',
   CAPTURE_CAMERA_CREDENTIAL_NOT_READ: 'no stored credential was read for this camera',
   CAPTURE_CAMERA_UNREACHABLE: 'the camera did not answer',
   CAPTURE_CAMERA_AUTHENTICATION_REFUSED: 'the camera refused the stored credential',
@@ -207,11 +230,35 @@ export interface StoredCameraStream {
   readonly onvifProfileToken: string;
 }
 
+/**
+ * THE RELAY'S WORD ABOUT ITS CAMERA LEG INSIDE A SESSION (task 4 row 43; finding F3-01 of the M3
+ * review). The push to the worker STANDS through both: the worker sees one connection and writes
+ * one file, so neither is a report of the pairing.
+ *   LOST      the leg ended and the relay opens it again (up to 6 tries, 62 s of waits). `cause`
+ *             is the relay's own exit word for that end (`CAMERA_LOST`, `CAMERA_STALLED`,
+ *             `CAMERA_UNREACHABLE`, `AUTH_REFUSED`);
+ *   REOPENED  the first keyframe of the new leg is about to be forwarded: the loss `loss` is over.
+ *             `gapMs` is the relay's own measure from the loss to that keyframe, `heldBack` the
+ *             pictures it held back before it, `tries` the tries the re-open took.
+ * Numbers and code words only. A loss that is never followed by its `REOPENED` ends with the
+ * relay: `relayEnded` says it (codes 20 / 31 / 32 after the open: the tries are used up).
+ */
+export type CameraLegReport =
+  | { readonly event: 'LOST'; readonly profile: string; readonly loss: number; readonly cause: string }
+  | { readonly event: 'REOPENED'; readonly profile: string; readonly loss: number; readonly tries: number; readonly heldBack: number; readonly gapMs: number };
+
 /** The relay's side of the pairing SA-3: the shape of `RelayIngestReport` of the session unit. */
 export interface CameraRelayReport {
   readonly sessionId: string;
   readonly deviceId: string;
   readonly attempt: number;
+  /**
+   * ABSENT on the report of an established push - the one report the pairing counts. PRESENT on a
+   * word about the camera leg of a relay whose push is established already: such a report is NOT
+   * an established push, and a listener that pairs must not count it (the session and the camera
+   * watch each read this member first).
+   */
+  readonly leg?: CameraLegReport;
 }
 
 /** A relay that ended by itself after its source was open. */
@@ -224,7 +271,7 @@ export interface CameraRelayEnd extends CameraRelayReport {
 
 /** A fact the composition may log: a code and identifiers, never a value. */
 export interface CameraRelayNote extends CameraRelayReport {
-  readonly code: 'CAPTURE_RELAY_REPORT_SUPERSEDED' | 'CAPTURE_RELAY_REPORT_ATTEMPT_DIFFERS' | 'CAPTURE_RELAY_NOT_REAPED' | 'CAPTURE_RELAY_LISTENER_FAILED';
+  readonly code: 'CAPTURE_RELAY_REPORT_SUPERSEDED' | 'CAPTURE_RELAY_REPORT_ATTEMPT_DIFFERS' | 'CAPTURE_RELAY_REPORT_OUT_OF_ORDER' | 'CAPTURE_RELAY_NOT_REAPED' | 'CAPTURE_RELAY_LISTENER_FAILED';
 }
 
 /** The reader of the production camera adapter, by shape: the holder receives it as a parameter and imports nothing of its module (AD-03 (1)). */
@@ -244,6 +291,16 @@ export interface OnvifRelayCameraDependencies {
   readonly locator: OnvifStreamLocator;
   /** The stored facts of a stream, or null when the device has no stream of that profile code. */
   readonly stream: (deviceId: string, profile: string) => Promise<StoredCameraStream | null>;
+  /**
+   * THE DESTINATION RULE ON A STORED CAMERA ADDRESS (task 4 row 143; AD-02): `decideDestination`
+   * with the purpose `STORED_CAMERA`, bound to the host's facts (camera interface, camera subnet,
+   * the host's own addresses) by the composition - the SAME binding the credential wiring is given
+   * as its `storedAddress`. Asked at every open, about what `stream` answered, before the reader.
+   * Optional in the type only so that a composition without it still compiles: WITHOUT IT EVERY
+   * OPEN IS REFUSED (`CAPTURE_CAMERA_ADDRESS_REFUSED`, reason `STORED_ADDRESS_RULE_ABSENT`). There
+   * is no permissive value under `src/`; a loopback test hands in the rule of `test/support`.
+   */
+  readonly storedAddress?: StoredCameraAddressRule;
   /** Told once when a relay ends by itself after its open (the camera loss of row 49 hangs on it). Must not throw. */
   readonly relayEnded?: (end: CameraRelayEnd) => void;
   /** Told the facts this file cannot log itself. Must not throw. */
@@ -257,11 +314,38 @@ export interface OnvifRelayCameraDependencies {
 }
 
 export interface OnvifRelayCameraAdapter extends CameraAdapter {
-  /** The source of the relay reports, to be handed to the session (`sessionCapture(app).replace({ relayReports })`). */
+  /**
+   * The source of the relay reports, to be handed to the session (`sessionCapture(app).replace({ relayReports })`).
+   * TWO kinds travel on it: the established push (no member `leg`) and, since finding F3-01, the
+   * relay's word about its camera leg inside a session (member `leg`: `CameraLegReport`).
+   */
   readonly relayReports: { subscribe(listener: (report: CameraRelayReport) => void): () => void };
-  /** Counts for a check: live relays, and reports dropped as superseded (C37). */
-  counts(): { readonly live: number; readonly droppedReports: number };
+  /** Counts for a check: live relays, reports dropped as superseded (C37), and leg reports dropped because they followed nothing they could follow. */
+  counts(): { readonly live: number; readonly droppedReports: number; readonly outOfOrderReports: number };
+  /**
+   * THE DOOR OF A LATER DEVICE (task 4 row 85d; decision C63 (g); `LateDeviceAdapter` of the fence,
+   * by shape): a camera adopted on a RUNNING production Core is served from this call on exactly as
+   * a camera of the first list - the same `served` check, and at every open the same stored stream
+   * facts, the same judgement of its stored address (and its source address), the same reader.
+   * NOTHING OF THE DEVICE IS READ OR KEPT HERE but its registry id: an admission dials nothing,
+   * reveals nothing and trusts no address.
+   *
+   * It takes the entry form of the first list. Refused, by a `CaptureAdapterError` and with nothing
+   * changed: what is no entry or names no camera id (`CAPTURE_DEVICE_UNKNOWN`), a device of another
+   * class or an id of another class (`CAPTURE_DEVICE_CLASS_MISMATCH`), an entry that states another
+   * adapter kind (`CAPTURE_ADAPTER_KIND_NOT_ALLOWED`) or another source class
+   * (`DEVELOPMENT_SOURCE_NOT_ALLOWED`), a profile list not of the stored form
+   * (`CAPTURE_PROFILE_UNKNOWN`). A camera that is served already: nothing happens (idempotent).
+   */
+  admitDevice(entry: CaptureDeviceEntry): void;
+  /** The cameras admitted after the build, in the order they came. `devices` stays the first list. */
+  admittedDevices(): readonly CaptureDeviceEntry[];
 }
+
+/** The registry id of a camera (`CAM-NN`), as an adoption mints it. */
+const CAMERA_ID = /^CAM-[0-9]{2,}$/;
+/** The longest profile list of a stored camera (the bound of the stored form). */
+const ADMITTED_PROFILES_MAX = 16;
 
 type Stop = 'ABORTED' | 'BOUND';
 
@@ -274,6 +358,12 @@ interface Slot {
   /** True from the moment the source is being ended (a close, an aborted signal, a failed open): its reports are dropped. */
   ending: boolean;
   closed: Promise<void> | null;
+  /** True once this relay's established push was handed on: only then can its camera leg be lost inside a session. */
+  established: boolean;
+  /** The highest loss number this relay said (it counts from 1); 0: none yet. */
+  lastLoss: number;
+  /** The loss that was said and is not over: no `REOPENED` of that number came yet. Null: the leg plays. */
+  lossOpen: number | null;
 }
 
 const classC = (deviceId: string | null = null): never => {
@@ -292,6 +382,33 @@ export function createOnvifRelayCameraAdapter(devices: readonly CaptureDeviceEnt
   const attemptInForce = new Map<string, number>();
   const listeners = new Set<(report: CameraRelayReport) => void>();
   let droppedReports = 0;
+  /** Leg reports of a live relay of the attempt in force that followed nothing they could follow (finding F3-01). */
+  let outOfOrderReports = 0;
+  /** Row 85d: the cameras admitted after the build. */
+  const admittedLater: CaptureDeviceEntry[] = [];
+
+  /** Row 85d: see `OnvifRelayCameraAdapter.admitDevice`. Every refusal stands before the one change. */
+  function admitDevice(entry: CaptureDeviceEntry): void {
+    const given = entry as unknown as Readonly<Record<string, unknown>> | null;
+    if (typeof given !== 'object' || given === null || typeof given['id'] !== 'string') throw new CaptureAdapterError(CaptureAdapterRefusal.DEVICE_UNKNOWN);
+    const id = given['id'];
+    if (given['deviceClass'] !== 'CAMERA' || !CAMERA_ID.test(id)) throw new CaptureAdapterError(CaptureAdapterRefusal.DEVICE_CLASS_MISMATCH);
+    // An entry states neither; a descriptor does. Either one that is not this adapter's is another device than the one it serves.
+    if (Object.hasOwn(given, 'adapterKind') && given['adapterKind'] !== CaptureAdapterKind.ONVIF_RTSP) throw new CaptureAdapterError(CaptureAdapterRefusal.ADAPTER_KIND_NOT_ALLOWED);
+    if (Object.hasOwn(given, 'sourceClass') && given['sourceClass'] !== sourceClassOf(CaptureAdapterKind.ONVIF_RTSP)) throw new CaptureAdapterError(CaptureAdapterRefusal.SOURCE_CLASS_NOT_ALLOWED);
+    const profiles = given['profiles'];
+    if (!Array.isArray(profiles) || profiles.length > ADMITTED_PROFILES_MAX || profiles.some((code, index) => typeof code !== 'string' || !PROFILE_CODE.test(code) || profiles.indexOf(code) !== index)) {
+      throw new CaptureAdapterError(CaptureAdapterRefusal.PROFILE_UNKNOWN);
+    }
+    // What a camera can do: video, and nothing of a microphone or of a power controller.
+    const capabilities = given['capabilities'];
+    if (typeof given['label'] !== 'string' || !Array.isArray(capabilities) || !capabilities.includes('VIDEO') || capabilities.some((capability) => capability !== 'VIDEO' && capability !== 'PULL')) {
+      throw new CaptureAdapterError(CaptureAdapterRefusal.DEVICE_CLASS_MISMATCH);
+    }
+    if (served.has(id)) return;
+    served.add(id);
+    admittedLater.push(Object.freeze({ id, deviceClass: 'CAMERA' as const, label: given['label'], capabilities: Object.freeze([...(capabilities as CaptureDeviceEntry['capabilities'])]), profiles: Object.freeze([...(profiles as string[])]) }));
+  }
 
   const keyOf = (deviceId: string, profile: string): string => `${deviceId} ${profile}`;
   const facts = (slot: Slot): CameraRelayReport => ({ sessionId: slot.sessionId, deviceId: slot.deviceId, attempt: slot.attempt });
@@ -357,10 +474,10 @@ export function createOnvifRelayCameraAdapter(devices: readonly CaptureDeviceEnt
     return slot.closed;
   };
 
-  /** A report line of a relay: handed to the pairing, or dropped and counted (C37). */
-  const reported = (slot: Slot, report: RelayReport): boolean => {
-    const inForce = attemptInForce.get(slot.sessionId);
-    if (slot.ending || inForce === undefined || slot.attempt < inForce) {
+  /** C37, for EVERY report line of a relay: false when it is dropped and counted - a relay that is being ended, an attempt a later open superseded, an attempt that is not the relay's own. */
+  const inForce = (slot: Slot, report: RelayReport): boolean => {
+    const attempt = attemptInForce.get(slot.sessionId);
+    if (slot.ending || attempt === undefined || slot.attempt < attempt) {
       droppedReports += 1;
       tell('CAPTURE_RELAY_REPORT_SUPERSEDED', slot);
       return false;
@@ -371,14 +488,62 @@ export function createOnvifRelayCameraAdapter(devices: readonly CaptureDeviceEnt
       tell('CAPTURE_RELAY_REPORT_ATTEMPT_DIFFERS', slot);
       return false;
     }
+    return true;
+  };
+
+  const hand = (slot: Slot, report: CameraRelayReport): void => {
     for (const listener of listeners) {
       try {
-        listener(facts(slot));
+        listener(report);
       } catch {
         tell('CAPTURE_RELAY_LISTENER_FAILED', slot);
       }
     }
+  };
+
+  /** The established push of a relay: handed to the pairing, or dropped and counted (C37). */
+  const reported = (slot: Slot, report: RelayReport): boolean => {
+    if (!inForce(slot, report)) return false;
+    slot.established = true;
+    hand(slot, facts(slot));
     return true;
+  };
+
+  /**
+   * THE CAMERA LEG INSIDE A SESSION (finding F3-01): the relay's `camera_lost` and
+   * `camera_reopened`, told AT ONCE on the report source - the camera's fault is raised by the first
+   * line of a loss, not when the relay has used up its tries. C37 first, as for every line. Then the
+   * order, on the careful side of each doubt:
+   *   - a loss before the push is established is no loss inside a session: dropped;
+   *   - the relay counts its losses up: a loss whose number was said already is dropped; a HIGHER
+   *     number is taken also when it skips one or follows a loss that is still open (the camera is
+   *     away either way: the absence that was told goes on, nothing is told twice);
+   *   - a re-open ends ONLY the loss that is open, by its number: any other is dropped, and the
+   *     loss that was told stays told.
+   * What is dropped here is counted (`outOfOrderReports`) and noted, never handed on.
+   */
+  const legReported = (slot: Slot, report: Exclude<RelayReport, { readonly kind: typeof RelayReportKind.PUSH_ESTABLISHED }>): void => {
+    if (!inForce(slot, report)) return;
+    const outOfOrder = (): void => {
+      outOfOrderReports += 1;
+      tell('CAPTURE_RELAY_REPORT_OUT_OF_ORDER', slot);
+    };
+    if (report.kind === RelayReportKind.CAMERA_LOST) {
+      if (!slot.established || report.loss <= slot.lastLoss) return outOfOrder();
+      const expected = slot.lossOpen === null && report.loss === slot.lastLoss + 1;
+      const told = slot.lossOpen !== null;
+      slot.lastLoss = report.loss;
+      slot.lossOpen = report.loss;
+      if (!expected) outOfOrder();
+      if (told) return;
+      // The cause as the relay's own exit word; the reader admits the four codes the relay opens again, each of which has one.
+      const cause = (Object.hasOwn(RELAY_EXIT, report.cause) ? RELAY_EXIT[report.cause] : undefined)?.word ?? 'CAUSE_UNKNOWN';
+      hand(slot, { ...facts(slot), leg: Object.freeze({ event: 'LOST' as const, profile: slot.profile, loss: report.loss, cause }) });
+      return;
+    }
+    if (slot.lossOpen !== report.loss) return outOfOrder();
+    slot.lossOpen = null;
+    hand(slot, { ...facts(slot), leg: Object.freeze({ event: 'REOPENED' as const, profile: slot.profile, loss: report.loss, tries: report.tries, heldBack: report.heldBack, gapMs: report.gapMs }) });
   };
 
   async function openSource(deviceId: string, target: CameraSourceTarget, signal: AbortSignal): Promise<SourceHandle> {
@@ -392,7 +557,7 @@ export function createOnvifRelayCameraAdapter(devices: readonly CaptureDeviceEnt
     if (relayProgram === null) throw new CameraOpenError(CameraOpenRefusal.RELAY_NOT_CONFIGURED, deviceId);
     const key = keyOf(deviceId, profile);
     if (live.has(key)) throw new CameraOpenError(CameraOpenRefusal.ALREADY_OPEN, deviceId);
-    const slot: Slot = { deviceId, profile, sessionId, attempt, process: null, ending: false, closed: null };
+    const slot: Slot = { deviceId, profile, sessionId, attempt, process: null, ending: false, closed: null, established: false, lastLoss: 0, lossOpen: null };
     live.set(key, slot);
     if ((attemptInForce.get(sessionId) ?? 0) < attempt) attemptInForce.set(sessionId, attempt);
 
@@ -430,6 +595,14 @@ export function createOnvifRelayCameraAdapter(devices: readonly CaptureDeviceEnt
       }
       if (stored === null) throw new CaptureAdapterError(CaptureAdapterRefusal.PROFILE_UNKNOWN, deviceId);
 
+      // 1b. AD-02 (1): the STORED address under the destination rule. Before the reveal, before any request, before any process.
+      const judged = judgeStoredCamera(stored.candidate, dependencies.storedAddress);
+      if (!judged.allowed) throw new CameraOpenError(CameraOpenRefusal.ADDRESS_REFUSED, deviceId, judged.refusal);
+      // Row 143b (S13-11 point 2): the camera-interface address every dial of this open leaves FROM - the locator read and the
+      // relay. An admission that names none is a refusal here, before the reveal: nothing is dialled as the host happens to route.
+      const from = storedCameraSourceOf(judged);
+      if ('refusal' in from) throw new CameraOpenError(CameraOpenRefusal.ADDRESS_REFUSED, deviceId, from.refusal);
+
       // 2. The credential: one read, one audit entry (the reader's). Outside any unit of work.
       let sealed: SealedCredential;
       try {
@@ -440,7 +613,7 @@ export function createOnvifRelayCameraAdapter(devices: readonly CaptureDeviceEnt
       }
 
       // 3. ONE authenticated read of the stream address, now.
-      const located = await until(locator.locate(stored.candidate, sealed, stored.onvifProfileToken, inner.signal));
+      const located = await until(locator.locate(stored.candidate, sealed, stored.onvifProfileToken, inner.signal, from.sourceAddress));
       if (located.outcome !== ConnectionTestOutcome.REACHABLE || located.locator === null) {
         const refusal =
           located.outcome === ConnectionTestOutcome.AUTHENTICATION_FAILED
@@ -458,8 +631,9 @@ export function createOnvifRelayCameraAdapter(devices: readonly CaptureDeviceEnt
           if (report.kind === RelayReportKind.PUSH_ESTABLISHED && reported(slot, report)) resolve('ESTABLISHED');
         };
       });
-      const reader = createRelayReportReader((report) => established(report));
-      const process = startCameraRelay({ door, program: relayProgram, timers, locator: located.locator, sealed, ingest: target.ingestUrl, attempt, onOutput: (chunk) => reader.push(chunk) });
+      // The established push settles the open; the two lines of the camera leg (row 43) are told as they come, for as long as the relay lives.
+      const reader = createRelayReportReader((report) => (report.kind === RelayReportKind.PUSH_ESTABLISHED ? established(report) : legReported(slot, report)));
+      const process = startCameraRelay({ door, program: relayProgram, timers, locator: located.locator, sealed, ingest: target.ingestUrl, attempt, source: from.sourceAddress, onOutput: (chunk) => reader.push(chunk) });
       slot.process = process;
       try {
         await until(process.started);
@@ -540,6 +714,8 @@ export function createOnvifRelayCameraAdapter(devices: readonly CaptureDeviceEnt
         };
       },
     }),
-    counts: () => ({ live: live.size, droppedReports }),
+    counts: () => ({ live: live.size, droppedReports, outOfOrderReports }),
+    admitDevice,
+    admittedDevices: () => Object.freeze([...admittedLater]),
   });
 }

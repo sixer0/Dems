@@ -25,7 +25,8 @@ import { describe, expect, it } from 'vitest';
 import { logCalls } from '../../../test/static/log-calls';
 import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, under, type SourceFile } from '../../../test/static/scan';
 import { CAMERA_HELPER_TABLE, CameraHelperEncoder, LOCAL_CAMERA_DEVICE_NAME, LOCAL_MIC_DEVICE_NAME, MIC_HELPER_TABLE, MicGeneratedTone, cameraPrecheckArguments, cameraPushArguments, deviceListArguments, micPrecheckArguments, micPushArguments } from '../adapters/local';
-import { MIC_LINUX_HELPER_TABLE, linuxChannelSelection, linuxMicDeviceArgument, linuxMicPrecheckArguments, linuxMicPushArguments } from '../adapters/local/mic-helper-args';
+import { CARD_LISTING_HELPER_TABLE, MIC_LINUX_HELPER_TABLE, linuxCardListingArguments, linuxChannelSelection, linuxMicDeviceArgument, linuxMicPrecheckArguments, linuxMicPushArguments } from '../adapters/local/mic-helper-args';
+import { COMMISSIONING_HELPER_TABLE, commissioningAddressArgument, linuxEchoArguments, linuxNeighbourArguments } from '../adapters/local/mic-helper-args';
 
 const tree = readTree(WORKSPACE);
 const production = codeOnly(tree.filter((file) => isProductionSource(file.path) && file.path.endsWith('.ts')));
@@ -402,8 +403,67 @@ describe('G-R9: one datagram socket, in one file, closed on every way out, to on
     expect(discovery.indexOf('if (interfaces.length === 0 || !sourceHeld) {')).toBeLessThan(discovery.indexOf('let socket: Socket | null = null;'));
 
     // (2) An answer of the rule is MADE in the rule's file and nowhere else: no other production file writes its two source members.
-    const MAKES_AN_ANSWER = /\b(?:sourceAddress|viaAlias)\s*:\s*(?!string\b|boolean\b)/g;
-    expect(places(production, MAKES_AN_ANSWER)).toEqual([DESTINATION_RULE]);
+    //
+    // NAMED ENTRY SR-14 (decision C93; review `verification/060_m3_review.md` finding F3-02; request line `row 143b` (1)).
+    //   FILE     `src/capture/adapters/camera/stored-address.ts` - the ONE hand-on site of the rule's source address.
+    //   SYMBOLS  `admitted` (the judgement `{ allowed: true, sourceAddress }`) and `storedCameraSourceOf` (the dial's `{ sourceAddress }`).
+    //   ADMITTED the member `sourceAddress`, written by its own name alone (a shorthand member), in the three pinned lines of those two
+    //            places and in no other line: the value is the address the rule answered, read from the rule's decision, held to the
+    //            strict form (`isSourceAddress`) and handed on UNCHANGED. `viaAlias` is not admitted there, nor a member with a value.
+    //   WHY      until this entry the rule was green by the FORM of that file, not by what it does (C60 (1)): the pattern (a) took a
+    //            plainly typed member for a made answer - `sourceAddress: string` matched, because the blank after the colon was given
+    //            back and the look-ahead then stood before it - and (b) did not see a member written by its name alone, so an answer
+    //            composed as `{ sourceAddress, viaAlias }` in any file passed. Both are closed here: the look-ahead stands directly
+    //            behind the colon, and the pattern has a second form for the shorthand member (in an object, between two commas of a list,
+    //            or in a pattern that takes an object apart - it cannot tell them apart and refuses all three outside the pinned lines).
+    //   NOT CHANGED: the rule itself. An answer of the rule is made in the rule's file and nowhere else; every other production file fails.
+    const STORED_ADDRESS = 'src/capture/adapters/camera/stored-address.ts';
+    const MAKES_AN_ANSWER = /\b(?:sourceAddress|viaAlias)\s*:(?!\s*(?:string|boolean)\b)|(?<=[{,]\s*)(?:sourceAddress|viaAlias)(?=\s*[,}])/g;
+    /** SR-14: the three lines of the hand-on site, in file order - the judgement, the read of it, the dial's source. */
+    const HANDS_THE_SOURCE_ON = [
+      'return Object.freeze({ allowed: true, sourceAddress });',
+      'const { sourceAddress } = judgement;',
+      'return isSourceAddress(sourceAddress) ? { sourceAddress } : { refusal: StoredCameraRefusal.SOURCE_ABSENT };',
+    ];
+    const lineAt = (text: string, index: number): string => text.slice(text.lastIndexOf('\n', index - 1) + 1, (text.indexOf('\n', index) + 1 || text.length + 1) - 1).trim();
+    const answerLines = (file: SourceFile): string[] => [...file.text.matchAll(MAKES_AN_ANSWER)].map((match) => lineAt(file.text, match.index));
+    /** The rule as a function of a tree, so that the control can run it on planted files: every line that writes a source member outside the rule's file and outside the entry. */
+    const madeOutsideTheRule = (files: readonly SourceFile[]): string[] =>
+      files
+        .filter((file) => file.path !== DESTINATION_RULE)
+        .flatMap((file) => answerLines(file).filter((line) => !(file.path === STORED_ADDRESS && HANDS_THE_SOURCE_ON.includes(line))).map((line) => `${file.path} ${line}`));
+    expect(madeOutsideTheRule(production)).toEqual([]);
+    expect(places(production, MAKES_AN_ANSWER).sort()).toEqual([STORED_ADDRESS, DESTINATION_RULE].sort());
+    // The entry's lines stand once each, in this order (the second is the read of the judgement the third hands on), and the value they
+    // hand on has ONE origin: `admitted` is called once, with the decision's own source or null, and assigns it once.
+    const storedAddress = production.find((file) => file.path === STORED_ADDRESS) ?? { path: STORED_ADDRESS, text: '' };
+    expect(answerLines(storedAddress)).toEqual(HANDS_THE_SOURCE_ON);
+    expect(storedAddress.text.match(/\badmitted\([^\n]*\);/g)).toEqual(['admitted(isSourceAddress(source) ? source : null);']);
+    expect(storedAddress.text.match(/\bsourceAddress = [^;]*;/g)).toEqual(['sourceAddress = source;']);
+    expect(storedAddress.text).toContain('const source = destination === undefined || destination === null ? null : destination.sourceAddress;');
+    expect(storedAddress.text.match(/\bviaAlias\b/g)).toBeNull();
+    // SR-14 CONTROL: the entry admits nothing else. Seen: a composed answer by shorthand members in another file (the blind spot), a member
+    // with a value in the hand-on file, a fourth shorthand line there, and the entry's own lines in any other file. Not seen: a typed member,
+    // an optional parameter and a read of the member (the defect: honest code is no longer refused).
+    const sourcePlanted: SourceFile[] = [
+      { path: ROUTES, text: 'const found = await adapter.discover({ windowMs, signal, unicast: { address, port, sourceAddress, viaAlias } });' },
+      { path: STORED_ADDRESS, text: `${HANDS_THE_SOURCE_ON.join('\n')}\nreturn Object.freeze({ allowed: true, sourceAddress: camera.host });\nconst made = { sourceAddress,\n  viaAlias };` },
+      { path: 'src/capture/adapters/camera/onvif-session.ts', text: `${HANDS_THE_SOURCE_ON[0]}\nconst bound = dial(candidate,\n  sourceAddress, signal);` },
+      { path: SEARCH, text: 'interface Source { readonly sourceAddress: string; readonly viaAlias : boolean }\nfunction read(signal: AbortSignal, sourceAddress?: string): void {}\nconst from = decision.destination.sourceAddress;\nconst alias = destination.viaAlias === true;' },
+      { path: DESTINATION_RULE, text: 'return { address, port, sourceAddress: formatAddress(source.value), viaAlias: source.alias };' },
+    ];
+    expect(madeOutsideTheRule(sourcePlanted)).toEqual([
+      `${ROUTES} const found = await adapter.discover({ windowMs, signal, unicast: { address, port, sourceAddress, viaAlias } });`,
+      `${ROUTES} const found = await adapter.discover({ windowMs, signal, unicast: { address, port, sourceAddress, viaAlias } });`,
+      `${STORED_ADDRESS} return Object.freeze({ allowed: true, sourceAddress: camera.host });`,
+      `${STORED_ADDRESS} const made = { sourceAddress,`,
+      `${STORED_ADDRESS} viaAlias };`,
+      `src/capture/adapters/camera/onvif-session.ts ${HANDS_THE_SOURCE_ON[0]}`,
+      'src/capture/adapters/camera/onvif-session.ts sourceAddress, signal);',
+    ]);
+    // The pattern this entry replaces, kept as a text for the record of what it could not do: it refused the typed member and passed the composed answer.
+    const BEFORE_SR_14 = /\b(?:sourceAddress|viaAlias)\s*:\s*(?!string\b|boolean\b)/g;
+    expect(places(sourcePlanted, BEFORE_SR_14)).toEqual([STORED_ADDRESS, SEARCH, DESTINATION_RULE]);
     // (3) The one writer of `unicast` hands on what it was given; the one writer of `typed` hands on the rule's decision. No address text is in either.
     const WRITES_UNICAST = /\bunicast\s*:\s*(?!AllowedDestination\b)[^,;}]+/g;
     expect(places(production, WRITES_UNICAST)).toEqual([SEARCH]);
@@ -583,7 +643,11 @@ describe('G-R10 / G-R11: one importer of the ONVIF client, five reads, no stream
     expect(network).not.toMatch(/\breturn\s+client\b|\bexport\s+default\b|\bexport\s*\{/);
     expect(network).toContain('return Object.freeze({ setAddress });');
     // What it imports, exactly: the agent, the client's file, the destination rule's types, the timer seam, the opaque credential, the layer's errors and types, the target function.
-    expect(network.match(/from\s+'[^']+'/g)).toEqual(["from 'node:http'", `from '${FILE_OF_THE_CLIENT}'`, "from '../../destination-rule'", "from '../../types'", "from '../credential'", "from '../errors'", "from '../types'", "from './connection-target'"]);
+    // NAMED ENTRY (row B1; decision C95; review `verification/060b_m3_review_second_pass.md` finding B-01): + the reply guard, `./onvif-reply-guard` -
+    // the one-pass scan that caps and judges a device's reply BEFORE the package reads it (its namespace replacement is quadratic and synchronous).
+    // The guard itself imports NOTHING (checked on the next line), so the entry opens no door: no module, no socket, no file, no timer.
+    expect(network.match(/from\s+'[^']+'/g)).toEqual(["from 'node:http'", `from '${FILE_OF_THE_CLIENT}'`, "from '../../destination-rule'", "from '../../types'", "from '../credential'", "from '../errors'", "from '../types'", "from './connection-target'", "from './onvif-reply-guard'"]);
+    expect([capture.find((file) => file.path === 'src/capture/adapters/camera/onvif-reply-guard.ts')?.text.match(/\bfrom\s+['"]|\b(?:import|require)\s*\(/g) ?? 'no import', session.match(/from '\.\/onvif-reply-guard'/g)?.length]).toEqual(['no import', 1]);
     expect(network).toMatch(/^import \{ usingCredential, type SealedCredential \} from '\.\.\/credential';$/m);
     expect(network).not.toMatch(/credential-reader|credential-holders|\breveal\w*\s*\(|\bsessionOpen\b|\bconnectionTest\b|\brelayRestart\b/);
     expect(network.match(AGENT_IMPORT)).toEqual([`import { Agent as HttpAgent } from 'node:${join('ht', 'tp')}';`]);
@@ -616,6 +680,58 @@ describe('G-R10 / G-R11: one importer of the ONVIF client, five reads, no stream
     expect(session).toMatch(/^ {2}read\(candidate: CameraCandidate, signal: AbortSignal\): Promise</m);
   });
 
+  // NAMED ENTRY SR-5, entry 2 (decision C93; review `verification/060_m3_review.md` finding F3-03; request line `row 143b` (2);
+  // SR-5 is the amendment of C48 that admitted the time-read facade).
+  //   FILE     `src/capture/adapters/camera/onvif-session.ts`.
+  //   SYMBOL   `OnvifTimeReader.read`, the facade's one member.
+  //   ADMITTED a THIRD parameter of that member, `fromAddress: string` - the source address the one request is made FROM (S13-11
+  //            point 2; decision C65), a dotted address literal held to its form before any request. The bound signature is the
+  //            form a STORED camera is read by and MUST stand; the two-parameter signature may stand beside it or be deleted.
+  //   WHY      until this entry the pin above held the two-parameter line only, so the source address could reach the facade
+  //            in no other way than as a SECOND signature: the pin was green by that form, and it forced an overload no
+  //            production caller uses (C60 (1)). The entry names the bound signature instead of leaving it beside the pin.
+  //   NOT CHANGED: the facade carries no credential (the exchange is built with the literal `null`, pinned above), no third
+  //            signature, no fourth parameter, no other type of the third. Every production caller hands the address on.
+  const TIME_READ_UNBOUND = 'read(candidate: CameraCandidate, signal: AbortSignal): Promise<{ readonly answered: boolean; readonly cameraUtcMs: number | null }>;';
+  const TIME_READ_BOUND = 'read(candidate: CameraCandidate, signal: AbortSignal, fromAddress: string): Promise<{ readonly answered: boolean; readonly cameraUtcMs: number | null }>;';
+  /** The rule as a function of a text, so that the control can run it on planted interfaces. */
+  const timeReadViolations = (text: string): string[] => {
+    const start = text.indexOf('export interface OnvifTimeReader {');
+    const body = start < 0 ? '' : text.slice(start, text.indexOf('\n}', start));
+    // Every member line of the interface (the scan holds code only: no comment line is left in it).
+    const signatures = [...body.matchAll(/^ {2}\S[^\n]*$/gm)].map((match) => match[0].trim());
+    return [
+      ...signatures.filter((signature) => signature !== TIME_READ_UNBOUND && signature !== TIME_READ_BOUND).map((signature) => `not a signature of the entry: ${signature}`),
+      ...(signatures.filter((signature) => signature === TIME_READ_BOUND).length === 1 ? [] : ['the bound signature does not stand exactly once']),
+      ...(signatures.filter((signature) => signature === TIME_READ_UNBOUND).length <= 1 ? [] : ['the two-parameter signature stands more than once']),
+    ];
+  };
+
+  it('SR-5, entry 2: the time read takes the source address as its third parameter and nothing else - one bound signature, at most the two-parameter one beside it; every production caller is bound (control)', () => {
+    expect(timeReadViolations(session)).toEqual([]);
+    // Who reads a camera's clock in production: the watch (one call) and the two fence binders. Each hands a source on: no caller uses the two-parameter form.
+    const callers = production.flatMap((file) => [...file.text.matchAll(/\breader\.read\(([^()\n]*)\)/g)].map((match) => `${file.path} ${(match[1] ?? '').split(',').length}`));
+    expect(callers).toEqual(['src/capture/adapters/camera/camera-watch.ts 3', 'src/capture/fence/production-parts.ts 3', 'src/capture/fence/production-parts.ts 3']);
+    // The implementation: one function, its third parameter optional and of the one type; it is the facade's only member.
+    expect(session.match(/^ {2}const read = \([^\n]*\): Promise</gm)).toEqual(['  const read = (candidate: CameraCandidate, signal: AbortSignal, sourceAddress?: string): Promise<']);
+
+    // CONTROL: the entry admits nothing else.
+    const facade = (...members: string[]): string => `export interface OnvifTimeReader {\n${members.map((member) => `  ${member}`).join('\n')}\n}\n`;
+    expect(timeReadViolations(facade(TIME_READ_UNBOUND, TIME_READ_BOUND))).toEqual([]);
+    expect(timeReadViolations(facade(TIME_READ_BOUND))).toEqual([]);
+    const credential = 'read(candidate: CameraCandidate, signal: AbortSignal, fromAddress: string, credential: CameraCredential): Promise<{ readonly answered: boolean; readonly cameraUtcMs: number | null }>;';
+    const anyText = 'read(candidate: CameraCandidate, signal: AbortSignal, fromAddress: unknown): Promise<{ readonly answered: boolean; readonly cameraUtcMs: number | null }>;';
+    const optional = 'read(candidate: CameraCandidate, signal: AbortSignal, fromAddress?: string): Promise<{ readonly answered: boolean; readonly cameraUtcMs: number | null }>;';
+    expect(timeReadViolations(facade(TIME_READ_UNBOUND))).toEqual(['the bound signature does not stand exactly once']);
+    expect(timeReadViolations(facade(TIME_READ_UNBOUND, TIME_READ_BOUND, credential))).toEqual([`not a signature of the entry: ${credential}`]);
+    expect(timeReadViolations(facade(TIME_READ_UNBOUND, anyText))).toEqual([`not a signature of the entry: ${anyText}`, 'the bound signature does not stand exactly once']);
+    expect(timeReadViolations(facade(TIME_READ_BOUND, optional))).toEqual([`not a signature of the entry: ${optional}`]);
+    expect(timeReadViolations(facade(TIME_READ_BOUND, TIME_READ_BOUND))).toEqual(['the bound signature does not stand exactly once']);
+    expect(timeReadViolations(facade(TIME_READ_BOUND, 'setClock(candidate: CameraCandidate, at: number): Promise<void>;'))).toEqual(['not a signature of the entry: setClock(candidate: CameraCandidate, at: number): Promise<void>;']);
+    expect(timeReadViolations(facade(TIME_READ_BOUND, 'readonly client: unknown;'))).toEqual(['not a signature of the entry: readonly client: unknown;']);
+    expect(timeReadViolations('export interface Other {}')).toEqual(['the bound signature does not stand exactly once']);
+  });
+
   it('G-R10: an HTTP agent is imported in that one file, for the name Agent only; no socket, TLS or HTTP/2 module anywhere in the folder', () => {
     expect(session.match(AGENT_IMPORT)).toEqual([`import { Agent as HttpAgent } from 'node:${join('ht', 'tp')}';`, `import { Agent as HttpsAgent } from 'node:${join('ht', 'tps')}';`]);
     expect(occurrences(capture, STREAM_OR_SOCKET)).toEqual([]);
@@ -630,6 +746,8 @@ describe('G-R10 / G-R11: one importer of the ONVIF client, five reads, no stream
 describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I edits 1 to 14)', () => {
   const raw = (path: string): string[] => (tree.find((file) => file.path === path)?.text ?? '').split('\n');
   const mentions = (path: string): string[] => raw(path).filter((line) => /capture/i.test(line)).map((line) => line.trim());
+  /** THE ENTRY STATEMENT of the composition, as it stands since row 106c (decision C82, named amendment SR-11): three members. */
+  const ENTRY_COMPOSITION = 'composeProductionCaptureOf(app, { platform: process.platform, network: captureNetworkFacts(app), hostRunner: captureHostRunnerOf(createSystemTimers()) });';
 
   it('app.ts: the header records the waived edits (spec §I allows that and nothing else there); two imports, the seam in three places, two units, one decorator', () => {
     expect(mentions('src/app.ts')).toEqual([
@@ -730,8 +848,47 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
   });
 
   it('index.ts: the supervisor boots after the boot steps and before the listener, and is shut down before the app closes', () => {
-    expect(mentions('src/index.ts')).toEqual(["if (app.seams.has('capture')) await app.capture.shutdown();", 'await app.capture.boot();']);
+    // Task 4 row 85 (decision C46; review finding F-07; gate M2 decision C50): until row 85 the entry point named capture
+    // in two statements. It now also hands the host facts of its own process to the boot checks - one import line, one
+    // statement, two comment lines - and nothing else. Any further mention of capture in the entry point fails here.
+    // Task 4 row 85b (decision C55): the entry point also composes production capture - one more header line, one import
+    // line, one comment line that names capture, one statement (7 -> 11 lines; the first only changed its last character).
+    expect(mentions('src/index.ts')).toEqual([
+      '* to the capture boot checks (task 4 row 85, decision C46: one import line, one statement);',
+      '* the composition of production capture (task 4 row 85b, decision C55: one import line, one statement);',
+      // Task 4 row 106c (decision C82, NAMED AMENDMENT SR-11): the import line gained ONE name, the maker of the runner (the
+      // one the host facts are made with); the statement below gained ONE member. No line that names capture was added.
+      "import { captureBootControl, captureHostOfProcess, captureHostRunnerOf, createSystemTimers } from './capture';",
+      "import { composeProductionCaptureOf } from './capture-composition';",
+      // Integration pass I-9a (request line `row 108`; decisions C55, C60 (4)): the reader of the network facts is a member of
+      // the ONE statement - one import line, one comment line that names the boot step, and the statement's new text (11 -> 13 lines).
+      "import { captureNetworkFacts } from './modules/capture-config';",
+      "if (app.seams.has('capture')) await app.capture.shutdown();",
+      '// Task 4 row 85b, decision C55: the members of production capture are handed to their takers, once, before the boot',
+      '// handed in, NOT called: it is asked at each judgement and answers "not configured" until boot step `capture.config` loaded.',
+      // SR-11 (decision C82, row 106c): the runner of the host's questions is the third member, for the ONE purpose of
+      // reading the address helper's interface file by a fixed row. A fourth member, or another value of this one, fails here.
+      ENTRY_COMPOSITION,
+      '// Task 4 row 85, decision C46: the host facts of THIS process go to the capture boot checks before the boot steps',
+      'captureBootControl(app).provideHost(',
+      'captureHostOfProcess(',
+      'await app.capture.boot();',
+    ]);
     const entry = raw('src/index.ts').join('\n');
+    // C46: the facts are handed in after the app is ready and BEFORE the boot steps run; they are the process's own four facts.
+    expect(entry).toMatch(/\n {2}captureBootControl\(app\)\.provideHost\(\n {4}captureHostOfProcess\(\n {6}\{\n {8}platform: process\.platform,\n {8}startArguments: process\.execArgv,\n {8}nodeOptionsSet: process\.env\['NODE_OPTIONS'\] !== undefined,\n {8}userLimits: \(\) => \(process\.report\?\.getReport\(\) as \{ readonly userLimits\?: unknown \} \| undefined\)\?\.userLimits,\n {6}\},\n {6}createSystemTimers\(\),\n {4}\),\n {2}\);\n {2}await app\.readiness\.boot\(\);/);
+    expect(entry.indexOf('await app.ready();')).toBeGreaterThan(0);
+    expect(entry.indexOf('captureBootControl(app).provideHost(')).toBeGreaterThan(entry.indexOf('await app.ready();'));
+    // Row 85b: the composition is asked for once, by the entry point alone, after the app is ready and before the boot steps;
+    // it is handed the platform and - since integration pass I-9a - the reader of the network facts of the capture-config
+    // module, as a function it does not call (the facts are loaded later, in boot step `capture.config`). NOTHING ELSE, no seam.
+    expect(entry.match(/\bcomposeProductionCaptureOf\(/g)).toHaveLength(1);
+    expect(entry.match(/\bcaptureNetworkFacts\b/g)).toHaveLength(2);
+    expect(entry.indexOf(ENTRY_COMPOSITION)).toBeGreaterThan(entry.indexOf('await app.ready();'));
+    expect(entry.indexOf(ENTRY_COMPOSITION)).toBeLessThan(entry.indexOf('await app.readiness.boot();'));
+    expect(places(production, /\bcomposeProductionCaptureOf\s*\(/g)).toEqual(['src/capture-composition.ts', 'src/index.ts']);
+    // The composing file is above the modules and outside the capture unit: nothing under src/capture/ or src/modules/ names it.
+    expect(places(production.filter((file) => /^src\/(?:capture|modules|plugins|core|engine)\//.test(file.path)), /capture-composition/g)).toEqual([]);
     expect(entry).toMatch(/await app\.readiness\.boot\(\);\n {2}await app\.capture\.boot\(\);\n {2}await app\.listen\(\{ host: LISTEN_HOST, port: config\.port \}\);/);
     expect(entry).toMatch(/try \{\n {4}if \(app\.seams\.has\('capture'\)\) await app\.capture\.shutdown\(\);\n {4}await app\.close\(\);/);
   });
@@ -767,6 +924,14 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       ' * production capture. `DEMS_CAPTURE_RELAY` (the relay of a camera) and `DEMS_CAPTURE_GUARD` (the',
       ' * guard of a helper) are absolute paths, started by the production door only. Whether a start',
       " * without them is refused is the decision of the boot checks of production capture, not this file's.",
+      // Task 4 row 105 (WP-19b; the category of OD-14): the socket of the address helper - nine lines in five places, served by row 85 (the writer of this list in batch 9).
+      ' * WAIVED EDIT (task 4 row 105, work package WP-19b; the category of OD-14): the socket of the capture',
+      " * host's address helper. `DEMS_CAPTURE_ALIAS_SOCKET` is an absolute path; unset, the helper is \"not",
+      ' * configured" for the capture commissioning functions. It is dialled by the one local-socket client.',
+      // Task 4 row 85c (decision C60 (3); the category of OD-14): the audio helper of production capture - nine lines in five places.
+      ' * WAIVED EDIT (task 4 row 85c, decision C60 (3); the category of OD-14): the audio helper of production',
+      ' * capture. `DEMS_CAPTURE_AUDIO_HELPER` is an absolute path; unset, no production microphone can be',
+      ' * opened. It is started by the guard of production capture, never directly and never by a development door.',
       "export const ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE';",
       "export const ENV_CAPTURE_WORKER = 'DEMS_CAPTURE_WORKER';",
       "export const ENV_MEDIA_DIR = 'DEMS_MEDIA_DIR';",
@@ -777,6 +942,8 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       "export const ENV_INSTALLATION_NAME = 'DEMS_INSTALLATION_NAME';",
       "export const ENV_CAPTURE_RELAY = 'DEMS_CAPTURE_RELAY';",
       "export const ENV_CAPTURE_GUARD = 'DEMS_CAPTURE_GUARD';",
+      "export const ENV_CAPTURE_ALIAS_SOCKET = 'DEMS_CAPTURE_ALIAS_SOCKET';",
+      "export const ENV_CAPTURE_AUDIO_HELPER = 'DEMS_CAPTURE_AUDIO_HELPER';",
       "export const CAPTURE_MODES = ['simulated', 'real'] as const;",
       'export type CaptureMode = (typeof CAPTURE_MODES)[number];',
       "export const DEFAULT_CAPTURE_MODE: CaptureMode = 'simulated';",
@@ -805,6 +972,10 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '  readonly captureRelayPath: string | null;',
       '  /** Absolute path of the guard program of production capture, or null when none is configured. Started by the production door only. */',
       '  readonly captureGuardPath: string | null;',
+      "  /** Absolute path of the socket of the capture host's address helper, or null when none is configured. */",
+      '  readonly captureAliasSocketPath: string | null;',
+      '  /** Absolute path of the audio helper of production capture, or null when none is configured. Started by the guard of production capture only. */',
+      '  readonly captureAudioHelperPath: string | null;',
       '/** Unset means `simulated`. Any other value than the two modes stops the boot. */',
       'export function parseCaptureMode(raw: string | undefined): CaptureMode {',
       "  if (raw === undefined || raw === '') return DEFAULT_CAPTURE_MODE;",
@@ -869,6 +1040,10 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '  readonly captureRelayPath?: string | null;',
       '  /** Default: null (no guard program of production capture). */',
       '  readonly captureGuardPath?: string | null;',
+      "  /** Default: null (no socket of the capture host's address helper). */",
+      '  readonly captureAliasSocketPath?: string | null;',
+      '  /** Default: null (no audio helper of production capture). */',
+      '  readonly captureAudioHelperPath?: string | null;',
       '  const captureWorkerPath = parseCapturePath(ENV_CAPTURE_WORKER, input.captureWorkerPath ?? undefined);',
       '  const mediaStoreDir = parseCapturePath(ENV_MEDIA_DIR, input.mediaStoreDir ?? undefined) ?? `${input.dataDir}/${MEDIA_STORE_SUBPATH}`;',
       '  const captureHelperFfmpegPath = parseCapturePath(ENV_CAPTURE_HELPER_FFMPEG, input.captureHelperFfmpegPath ?? undefined);',
@@ -882,6 +1057,8 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '    installationName: parseInstallationName(input.installationName ?? undefined),',
       '    captureRelayPath: parseCapturePath(ENV_CAPTURE_RELAY, input.captureRelayPath ?? undefined),',
       '    captureGuardPath: parseCapturePath(ENV_CAPTURE_GUARD, input.captureGuardPath ?? undefined),',
+      '    captureAliasSocketPath: parseCapturePath(ENV_CAPTURE_ALIAS_SOCKET, input.captureAliasSocketPath ?? undefined),',
+      '    captureAudioHelperPath: parseCapturePath(ENV_CAPTURE_AUDIO_HELPER, input.captureAudioHelperPath ?? undefined),',
     ];
     const withoutWaived = (lines: readonly string[]): string | null => {
       const rest = [...lines];
@@ -900,7 +1077,7 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
     // Every line of the file that mentions capture or the media root is a waived one: nothing else names them.
     expect(current.filter((line) => /capture|media/i.test(line)).filter((line) => !WAIVED_CONFIG.includes(line))).toEqual([]);
     // The three keys, by name (edit 7), and the three fields of the configuration (edit 8).
-    expect(current.filter((line) => line.startsWith('export const ENV_')).slice(-10)).toEqual([
+    expect(current.filter((line) => line.startsWith('export const ENV_')).slice(-12)).toEqual([
       "export const ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE';",
       "export const ENV_CAPTURE_WORKER = 'DEMS_CAPTURE_WORKER';",
       "export const ENV_MEDIA_DIR = 'DEMS_MEDIA_DIR';",
@@ -913,6 +1090,10 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       // Task 4 row 21 (WP-02): the relay and guard paths of production capture (pin 8 -> 10).
       "export const ENV_CAPTURE_RELAY = 'DEMS_CAPTURE_RELAY';",
       "export const ENV_CAPTURE_GUARD = 'DEMS_CAPTURE_GUARD';",
+      // Task 4 row 105 (WP-19b): the socket of the address helper (pin 10 -> 11).
+      "export const ENV_CAPTURE_ALIAS_SOCKET = 'DEMS_CAPTURE_ALIAS_SOCKET';",
+      // Task 4 row 85c (decision C60 (3)): the audio helper of production capture (pin 11 -> 12).
+      "export const ENV_CAPTURE_AUDIO_HELPER = 'DEMS_CAPTURE_AUDIO_HELPER';",
     ]);
     expect(current.filter((line) => /^ {2}readonly (captureMode|captureWorkerPath|mediaStoreDir|captureDevSources|captureHelperFfmpegPath): /.test(line))).toHaveLength(5);
     // The development flag has NO default but "off": a line that turned it on by default is not a waived one.
@@ -1009,8 +1190,23 @@ describe('G-R12: helpers and mkfifo start through the pinned door; every argumen
   it('SR-4: the bar is admitted in the one channel selection of a Linux list and nowhere else; the Linux device is two integers; a card named by text is seen (control)', () => {
     const [duo, octo, precheck] = linuxLists;
     // (1) the format, (2) the one bar argument, (3) the device argument, as text.
-    expect((duo ?? []).slice((duo ?? []).indexOf('-thread_queue_size'), (duo ?? []).indexOf('-vn'))).toEqual(['-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-channels', '2', '-sample_rate', '48000', '-i', 'dems_1_0', '-af', 'pan=mono|c0=c1']);
-    expect((octo ?? []).slice((octo ?? []).indexOf('-thread_queue_size'), (octo ?? []).indexOf('-vn'))).toEqual(['-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-channels', '8', '-sample_rate', '48000', '-i', 'dems_2_0', '-af', 'pan=mono|c0=c2']);
+    // Task 4 row 79b (decision C89): this pin moves by TWO words per list and nothing else - `-channels <n>` is now
+    // `-ch_layout <n>C`. Reason: the pinned FFmpeg 9.0.2 has no option `channels` (refused 18 of 18 in the Ubuntu
+    // 24.04 container, test/079 section 5); its sound-device input takes the layout word. The rule is unchanged: the
+    // count is still no computed text but one of 64 words of the table, taken by its number (pinned below).
+    expect((duo ?? []).slice((duo ?? []).indexOf('-thread_queue_size'), (duo ?? []).indexOf('-vn'))).toEqual(['-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-ch_layout', '2C', '-sample_rate', '48000', '-i', 'dems_1_0', '-af', 'pan=mono|c0=c1']);
+    expect((octo ?? []).slice((octo ?? []).indexOf('-thread_queue_size'), (octo ?? []).indexOf('-vn'))).toEqual(['-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-ch_layout', '8C', '-sample_rate', '48000', '-i', 'dems_2_0', '-af', 'pan=mono|c0=c2']);
+    // Row 79b: the closed set the word comes from - 64 words, `1C` to `64C`, each the word after `-ch_layout` for
+    // its count and for no other; outside 1 to 64 nothing is made. No list of any table holds `-channels`.
+    expect(MIC_LINUX_HELPER_TABLE.channelLayouts).toEqual(Array.from({ length: 64 }, (_unused, index) => `${String(index + 1)}C`));
+    expect(MIC_LINUX_HELPER_TABLE.channelLayouts.filter((word) => !linuxLiterals.has(word) || literals.has(word))).toEqual([]);
+    for (let count = 1; count <= 64; count += 1) {
+      const list = linuxMicPrecheckArguments({ cardIndex: 0, deviceIndex: 0, channelCount: count });
+      expect(list[list.indexOf('-ch_layout') + 1], String(count)).toBe(MIC_LINUX_HELPER_TABLE.channelLayouts[count - 1]);
+      expect(violations(list, true), String(count)).toEqual([]);
+    }
+    for (const outside of [0, 65, -1, 1.5, Number.NaN, '8', '8C']) expect(() => linuxMicPrecheckArguments({ cardIndex: 0, deviceIndex: 0, channelCount: outside as number })).toThrow('a value of the Linux microphone helper is not of its shape');
+    expect([...lists, ...linuxLists].filter((args) => args.includes('-channels'))).toEqual([]);
     expect(linuxLists.map((args) => args.filter((arg) => arg.includes('|')))).toEqual([['pan=mono|c0=c1'], ['pan=mono|c0=c2'], []]);
     expect((precheck ?? []).filter((arg) => arg === '-af')).toEqual([]);
     // The selection is of an integer 0 to 63; outside it nothing is made.
@@ -1036,12 +1232,19 @@ describe('G-R12: helpers and mkfifo start through the pinned door; every argumen
     expect(violations(swap(good, 'dems_2_0', 'dems_EVO8_0'), true)).toEqual(['not of the table: dems_EVO8_0']);
     expect(violations(swap(good, 'dems_2_0', 'hw:CARD=EVO8,DEV=0'), true)).toEqual(['not of the table: hw:CARD=EVO8,DEV=0']);
     expect(violations(swap(good, 'dems_2_0', 'dems_2_0|x'), true)).toEqual(['not of the table: dems_2_0|x', 'forbidden: dems_2_0|x', 'more than one argument holds a bar']);
-    expect(violations(swap(good, '8', '65'), true)).toEqual(['not of the table: 65']);
+    expect(violations(swap(good, '8C', '65C'), true)).toEqual(['not of the table: 65C']);
+    // Row 79b (controls): the refused word of the row before C89, a bare count in the layout's place, the small-c
+    // spelling (a default layout: another meaning, and no word for most counts) and a named layout are each seen.
+    expect(violations(swap(good, '-ch_layout', '-channels'), true)).toEqual(['not of the table: -channels']);
+    expect(violations(swap(good, '8C', '8'), true)).toEqual(['not of the table: 8']);
+    expect(violations(swap(good, '8C', '8c'), true)).toEqual(['not of the table: 8c']);
+    expect(violations(swap(good, '8C', '7.1'), true)).toEqual(['not of the table: 7.1']);
     // Every other mark stays forbidden in a Linux list too, and a format outside the six is seen.
     expect(violations([...good, 'x; rm -rf /'], true)).toEqual(['not of the table: x; rm -rf /', 'forbidden: x; rm -rf /']);
     expect(violations(swap(good, 'alsa', 'pulse'), true)).toEqual(['not of the table: pulse', 'format: pulse']);
-    // The 64 channel counts of the Linux table are not literals of the other lists.
+    // The 64 channel counts of the Linux table are not literals of the other lists (row 79b: nor are its 64 layout words).
     expect(violations([...(lists[0] ?? []), '64'])).toEqual(['not of the table: 64']);
+    expect(violations([...(lists[0] ?? []), '64C'])).toEqual(['not of the table: 64C']);
     // The Linux table lives in the file of the microphone tables, and `alsa` is named by no other file of the folder.
     expect(places(capture, /'alsa'/g)).toEqual([`${LOCAL}mic-helper-args.ts`]);
   });
@@ -1072,6 +1275,134 @@ describe('G-R12: helpers and mkfifo start through the pinned door; every argumen
     const planted = 'helperArguments = linuxMicPushArguments({ cardIndex: located.card.cardIndex, deviceIndex: located.card.deviceIndex, channelCount: located.card.channelCount, inputNumber: located.stored.inputNumber, pipePath, deviceId: located.card.cardId, }); door({ command: guardProgram, args: [helperProgram, ...helperArguments, located.card.name], env: environment, message: null, timers })';
     expect(/\blinuxMicPushArguments\(\{([^}]*)\}\)/.exec(planted)?.[1]).toContain('deviceId: located.card.cardId');
     expect(planted.match(/\bdoor\(\{[^}]*\}\)/g)).toEqual(['door({ command: guardProgram, args: [helperProgram, ...helperArguments, located.card.name], env: environment, message: null, timers })']);
+  });
+
+  // Task 4 row 85c (decision C60 (3)): the runner of the card listing program. G-R12 / SR-4 "no argument from data", held at the row of
+  // the table and at its ONE caller. Additive: no rule above is changed; the count of all lists moves by this delta (13 -> 14).
+  it('row 85c: the card listing row is FIXED - one program literal, one argument literal, no parameter; its one caller hands it to the production door unchanged, with an empty environment and no start message', () => {
+    const TABLE_FILE = `${LOCAL}mic-helper-args.ts`;
+    const PARTS = 'src/capture/fence/production-parts.ts';
+    const flat = (path: string): string => (production.find((file) => file.path === path)?.text ?? '').replace(/\s+/g, ' ');
+    const row = linuxCardListingArguments();
+    expect([...lists, ...linuxLists, row]).toHaveLength(14);
+    // (a) The row: a literal of its own table, nothing forbidden, no address, no bar; the program an absolute literal.
+    expect(row).toEqual(['-l']);
+    expect([...CARD_LISTING_HELPER_TABLE.literals]).toEqual(['-l']);
+    expect(row.filter((arg) => !CARD_LISTING_HELPER_TABLE.literals.includes(arg) || FORBIDDEN.test(arg) || arg.includes('://'))).toEqual([]);
+    expect(CARD_LISTING_HELPER_TABLE.program).toBe('/usr/bin/arecord');
+    expect(places(capture, /'\/usr\/bin\/arecord'/g)).toEqual([TABLE_FILE]);
+    // (b) The table function has NO parameter and builds nothing: it answers the literals.
+    expect(flat(TABLE_FILE)).toContain("const LINUX_CARD_LISTING = ['-l'] as const;");
+    expect(flat(TABLE_FILE)).toContain('export function linuxCardListingArguments(): readonly string[] { return Object.freeze([...LINUX_CARD_LISTING]); }');
+    expect(linuxCardListingArguments.length).toBe(0);
+    // (c) ONE caller in the product, and its one door call: the program, the table's row as it is, an empty environment, no message.
+    expect(places(production, /\blinuxCardListingArguments\s*\(/g)).toEqual([TABLE_FILE, PARTS]);
+    expect(flat(PARTS).match(/\blinuxCardListingArguments\s*\([^)]*\)/g)).toEqual(['linuxCardListingArguments()']);
+    expect(flat(PARTS).match(/\bparts\.door\([^;]*;/g)).toEqual(['parts.door({ command: program, args: linuxCardListingArguments(), env: {}, message: null, timers: parts.timers });']);
+    expect(flat(PARTS)).toContain('const program = parts.program ?? LINUX_CARD_LISTING_PROGRAM;');
+    // (d) No production file hands the runner another program: the override is a test's. The composition names the platform, the door and the timers.
+    expect(places(production, /\b(?:cardListingProgramsOf|hostCardEnumeratorOf)\s*\(/g)).toEqual(['src/capture-composition.ts', PARTS]);
+    expect(flat('src/capture-composition.ts').match(/\b(?:cardListingProgramsOf|hostCardEnumeratorOf)\s*\([^)]*\)/g)).toEqual(['hostCardEnumeratorOf({ platform: input.platform, door, timers })']);
+    expect(flat(PARTS).match(/\bcardListingProgramsOf\s*\([^)]*\)/g)).toEqual(['cardListingProgramsOf(parts: CardListingRunnerParts)', 'cardListingProgramsOf(host)']);
+    // The fence file starts nothing itself and imports no process module (G-R2 and G-R8 are unchanged: their lists did not grow).
+    expect([...flat(PARTS).matchAll(PROCESS_START)]).toEqual([]);
+    expect([...flat(PARTS).matchAll(PROCESS_MODULE)]).toEqual([]);
+    // Controls: an argument from data, a second argument, and a program handed in by a product file are seen by the same patterns.
+    const planted = 'parts.door({ command: program, args: [...linuxCardListingArguments(), String(cardIndex)], env: {}, message: null, timers: parts.timers }); hostCardEnumeratorOf({ platform: input.platform, door, timers, program: config.captureHelperFfmpegPath })';
+    expect(planted.match(/\bparts\.door\([^;]*;/g)).not.toEqual(['parts.door({ command: program, args: linuxCardListingArguments(), env: {}, message: null, timers: parts.timers });']);
+    expect(planted.match(/\b(?:cardListingProgramsOf|hostCardEnumeratorOf)\s*\([^)]*\)/g)).toEqual(['hostCardEnumeratorOf({ platform: input.platform, door, timers, program: config.captureHelperFfmpegPath })']);
+    expect(['-l', 'hw:CARD=EVO8'].filter((arg) => !CARD_LISTING_HELPER_TABLE.literals.includes(arg))).toEqual(['hw:CARD=EVO8']);
+  });
+
+  // Task 4 row 111b (decisions C78, C87): the two commissioning rows - the neighbour table and the echo. G-R12 / SR-4 "no argument from
+  // data" is held as for the Linux microphone table: every argument is a literal of its row, except ONE value made by ONE table function
+  // from INTEGERS - here THE ADDRESS, four integers 0 to 255 of a private range with a host part 1 to 254, the form the address helper's
+  // request line is made in. This is a NEW PLACE of the rule (a network address that is not the loopback listener becomes an argument):
+  // PROPOSED NAMED AMENDMENT SR-12, put to the controller by the row's record. Additive: no rule above is changed; the count of all
+  // lists moves by this delta (14 -> 16).
+  it('row 111b: the two commissioning rows are FIXED but for ONE address made from four integers by the table; no row names an interface; their one caller hands each to the production door unchanged, with the address THE DESTINATION RULE returned, on linux only', () => {
+    const TABLE_FILE = `${LOCAL}mic-helper-args.ts`;
+    const PARTS = 'src/capture/fence/production-parts.ts';
+    const COMPOSING = 'src/capture-composition.ts';
+    const flat = (path: string): string => (production.find((file) => file.path === path)?.text ?? '').replace(/\s+/g, ' ');
+    const ADDRESS = '192.168.50.21';
+    const neighbour = linuxNeighbourArguments(ADDRESS);
+    const echo = linuxEchoArguments(ADDRESS);
+    expect([...lists, ...linuxLists, linuxCardListingArguments(), neighbour, echo]).toHaveLength(16);
+    /** The rule over one commissioning row: its literals in their order, then exactly ONE argument, of the address shape of the table; nothing forbidden. */
+    const rowViolations = (args: readonly string[], literals: readonly string[]): string[] => [
+      ...(args.length === literals.length + 1 ? [] : [`${String(args.length)} arguments for a row of ${String(literals.length)} literals and one address`]),
+      ...args.slice(0, literals.length).filter((arg, index) => arg !== literals[index]).map((arg) => `not the literal of its place: ${arg}`),
+      ...args.slice(literals.length).filter((arg) => !COMMISSIONING_HELPER_TABLE.addressArgument.test(arg)).map((arg) => `not an address of the table: ${arg}`),
+      ...args.filter((arg) => FORBIDDEN.test(arg) || arg.includes('://') || arg.includes('/')).map((arg) => `forbidden: ${arg}`),
+    ];
+    // (a) The rows, verbatim; each program an absolute literal, named by the table file alone.
+    expect([COMMISSIONING_HELPER_TABLE.neighbour.program, ...neighbour]).toEqual(['/usr/sbin/ip', '-4', 'neigh', 'show', 'to', ADDRESS]);
+    expect([COMMISSIONING_HELPER_TABLE.echo.program, ...echo]).toEqual(['/usr/bin/ping', '-n', '-q', '-c', '1', '-W', '1', ADDRESS]);
+    expect(rowViolations(neighbour, COMMISSIONING_HELPER_TABLE.neighbour.literals)).toEqual([]);
+    expect(rowViolations(echo, COMMISSIONING_HELPER_TABLE.echo.literals)).toEqual([]);
+    expect(places(capture, /'\/usr\/sbin\/ip'/g)).toEqual([TABLE_FILE]);
+    expect(places(capture, /'\/usr\/bin\/ping'/g)).toEqual([TABLE_FILE]);
+    // No row names an interface, a source, a count from data or a second address: the literals are these and no other.
+    expect(flat(TABLE_FILE)).toContain("const LINUX_NEIGHBOUR = ['-4', 'neigh', 'show', 'to'] as const;");
+    expect(flat(TABLE_FILE)).toContain("const LINUX_ECHO = ['-n', '-q', '-c', '1', '-W', '1'] as const;");
+    expect([...COMMISSIONING_HELPER_TABLE.neighbour.literals, ...COMMISSIONING_HELPER_TABLE.echo.literals].filter((literal) => /^(?:dev|-I|-S|-s|-p|-f|-i|-b|-B|-m|-t|-M|flush|add|del|replace|change)$/.test(literal))).toEqual([]);
+    // (b) Each table function takes ONE parameter and joins nothing: its literals, then what the ONE address function made.
+    expect(flat(TABLE_FILE)).toContain('export function linuxNeighbourArguments(address: string): readonly string[] { return Object.freeze([...LINUX_NEIGHBOUR, commissioningAddressArgument(address)]); }');
+    expect(flat(TABLE_FILE)).toContain('export function linuxEchoArguments(address: string): readonly string[] { return Object.freeze([...LINUX_ECHO, commissioningAddressArgument(address)]); }');
+    expect([linuxNeighbourArguments.length, linuxEchoArguments.length, commissioningAddressArgument.length]).toEqual([1, 1, 1]);
+    // The address function answers a text it WROTE from four numbers - never its parameter.
+    expect(flat(TABLE_FILE)).toContain('return `${String(a)}.${String(b)}.${String(c)}.${String(d)}`; }');
+    expect(flat(TABLE_FILE).match(/\bcommissioningAddressArgument\s*\(/g)).toHaveLength(3);
+    for (const outside of ['8.8.8.8', '127.0.0.1', '192.168.50.0', '192.168.50.255', '192.168.050.21', '192.168.50.21/24', '-I', 'eth1', 'camera.local', '192.168.50.21 -f']) {
+      expect(() => linuxNeighbourArguments(outside), outside).toThrow('an address of a commissioning row is not of its shape');
+      expect(() => linuxEchoArguments(outside), outside).toThrow('an address of a commissioning row is not of its shape');
+    }
+    // (c) ONE caller in the product, and its two door calls: the program, the table's row made from `target`, an empty environment, no message.
+    expect(places(production, /\b(?:linuxNeighbourArguments|linuxEchoArguments|commissioningAddressArgument)\b/g).sort()).toEqual([TABLE_FILE, PARTS].sort());
+    expect(flat(PARTS).match(/(?<![.\w])door\(\{[^;]*;/g)).toEqual([
+      'door({ command: neighbourProgram, args: argumentsOf(linuxNeighbourArguments, target), env: {}, message: null, timers: host.timers });',
+      'door({ command: echoProgram, args: argumentsOf(linuxEchoArguments, target), env: {}, message: null, timers: host.timers });',
+    ]);
+    expect(flat(PARTS)).toContain('const neighbourProgram = host.neighbourProgram ?? LINUX_NEIGHBOUR_PROGRAM;');
+    expect(flat(PARTS)).toContain('const echoProgram = host.echoProgram ?? LINUX_ECHO_PROGRAM;');
+    expect(flat(PARTS)).toContain('const argumentsOf = (make: (address: string) => readonly string[], target: string): readonly string[] => { try { return make(target); } catch { throw new CommissioningInputError(CommissioningInputFailure.ADDRESS_REFUSED); } };');
+    // `target` is, at each of its two origins, the address the destination rule RETURNED on the facts of the host now; a refusal throws before the door.
+    expect(flat(PARTS).match(/\bconst target = [^;]*;/g)).toEqual(['const target = admitted(purpose, address, signal);', 'const target = admitted(DestinationPurpose.SET_IP, address, signal);']);
+    expect(flat(PARTS)).toContain('const decision = decideDestination({ purpose, address }, facts ?? HOST_NOT_CONFIGURED); if (!decision.allowed) throw new CommissioningInputError(CommissioningInputFailure.ADDRESS_REFUSED); return decision.destination.address;');
+    expect(flat(PARTS).match(/\b(?:readNeighbour|echoed)\((?!target\b)[^)]*\)/g)).toBeNull();
+    // The platform seam: off linux the function answers null before it reads a door, a program or a bound.
+    expect(flat(PARTS)).toContain("export const COMMISSIONING_INPUTS_PLATFORM = 'linux';");
+    expect(flat(PARTS)).toContain('export function hostCommissioningInputsOf(host: CommissioningHostParts): CommissioningHostInputs | null { if (host.platform !== COMMISSIONING_INPUTS_PLATFORM) return null; const door = host.door ?? startProductionProcess;');
+    // (d) No production file hands the function a door, a program or a bound: those members are a test's. The composition names the
+    // platform, the timers, the facts reader and the stored interface; its seam member is named by the composing file alone.
+    expect(places(production, /\bhostCommissioningInputsOf\s*\(/g).sort()).toEqual([COMPOSING, PARTS].sort());
+    expect(flat(COMPOSING).match(/\bhostCommissioningInputsOf\s*\(\{[^}]*\}\)/g)).toEqual(['hostCommissioningInputsOf({ platform: input.platform, timers, network, cameraInterface: () => stored.storedInterface() })']);
+    expect(places(production, /\bcommissioningInputs\b/g)).toEqual([COMPOSING]);
+    expect(places(production, /\b(?:neighbourProgram|echoProgram|neighbourBoundMs|echoBoundMs)\b/g)).toEqual([PARTS]);
+    // The fence file starts nothing itself and imports no process module (G-R2 and G-R8 are unchanged: their lists did not grow).
+    expect([...flat(PARTS).matchAll(PROCESS_START)]).toEqual([]);
+    expect([...flat(PARTS).matchAll(PROCESS_MODULE)]).toEqual([]);
+
+    // Controls: each is seen by the same rule or pattern.
+    // An interface, a second address, a text in the place of the address, a prefix, an option after the address, a public address.
+    expect(rowViolations(['-4', 'neigh', 'show', 'to', ADDRESS, 'dev', 'eth1'], COMMISSIONING_HELPER_TABLE.neighbour.literals)).toEqual(['7 arguments for a row of 4 literals and one address', 'not an address of the table: dev', 'not an address of the table: eth1']);
+    expect(rowViolations(['-n', '-q', '-c', '1', '-W', '1', '-I', 'eth1', ADDRESS], COMMISSIONING_HELPER_TABLE.echo.literals)).toEqual(['9 arguments for a row of 6 literals and one address', 'not an address of the table: -I', 'not an address of the table: eth1']);
+    expect(rowViolations(['-n', '-q', '-c', '5', '-W', '1', ADDRESS], COMMISSIONING_HELPER_TABLE.echo.literals)).toEqual(['not the literal of its place: 5']);
+    expect(rowViolations(['-4', 'neigh', 'show', 'to', 'camera.local'], COMMISSIONING_HELPER_TABLE.neighbour.literals)).toEqual(['not an address of the table: camera.local']);
+    expect(rowViolations(['-4', 'neigh', 'show', 'to', `${ADDRESS}/24`], COMMISSIONING_HELPER_TABLE.neighbour.literals)).toEqual([`not an address of the table: ${ADDRESS}/24`, `forbidden: ${ADDRESS}/24`]);
+    expect(rowViolations(['-4', 'neigh', 'show', 'to', '8.8.8.8'], COMMISSIONING_HELPER_TABLE.neighbour.literals)).toEqual(['not an address of the table: 8.8.8.8']);
+    expect(rowViolations(['-4', 'neigh', 'show', 'to', '127.0.0.1'], COMMISSIONING_HELPER_TABLE.neighbour.literals)).toEqual(['not an address of the table: 127.0.0.1']);
+    expect(rowViolations(['-4', 'neigh', 'flush', 'to', ADDRESS], COMMISSIONING_HELPER_TABLE.neighbour.literals)).toEqual(['not the literal of its place: flush']);
+    // A door call whose argument is the caller's text, one with an added argument, and a composition that hands in a program, are not the pinned texts.
+    const planted = 'const running = door({ command: neighbourProgram, args: [...linuxNeighbourArguments(target), "dev", cameraInterface], env: {}, message: null, timers: host.timers }); const other = door({ command: echoProgram, args: argumentsOf(linuxEchoArguments, address), env: {}, message: null, timers: host.timers }); const target = address; hostCommissioningInputsOf({ platform: input.platform, timers, network, cameraInterface: () => stored.storedInterface(), echoProgram: app.config.captureHelperFfmpegPath })';
+    expect(planted.match(/(?<![.\w])door\(\{[^;]*;/g)).toEqual([
+      'door({ command: neighbourProgram, args: [...linuxNeighbourArguments(target), "dev", cameraInterface], env: {}, message: null, timers: host.timers });',
+      'door({ command: echoProgram, args: argumentsOf(linuxEchoArguments, address), env: {}, message: null, timers: host.timers });',
+    ]);
+    expect(planted.match(/\bconst target = [^;]*;/g)).toEqual(['const target = address;']);
+    expect(planted.match(/\bhostCommissioningInputsOf\s*\(\{[^}]*\}\)/g)).toEqual(['hostCommissioningInputsOf({ platform: input.platform, timers, network, cameraInterface: () => stored.storedInterface(), echoProgram: app.config.captureHelperFfmpegPath })']);
+    expect('await readNeighbour(address, cameraInterface, signal); await echoed(typed, signal);'.match(/\b(?:readNeighbour|echoed)\((?!target\b)[^)]*\)/g)).toEqual(['readNeighbour(address, cameraInterface, signal)', 'echoed(typed, signal)']);
   });
 
   it('the door is the one file under adapters/local that starts a process: one spawn, no shell, the caller\'s environment only, nothing inherited', () => {
@@ -1309,6 +1640,8 @@ describe('G-R16: the capture mode and the demo flag are related in one function;
 // runner is INJECTED. So no list above gained an entry for the host checks; this block holds the route instead.
 describe('row 80: the host checks ask the host through an injected runner; no list of G-R2 or G-R8 grew for them', () => {
   const HOST_CHECKS = 'src/capture/boot/host-checks.ts';
+  /** Task 4 row 85 (C46): the maker of the host facts the entry point hands in, and the one caller of the runner over a door. */
+  const HOST_FACTS = 'src/capture/boot/host-facts.ts';
   const CHECKS = 'src/capture/boot/checks.ts';
   const text = (path: string): string => capture.find((file) => file.path === path)?.text ?? '';
 
@@ -1323,6 +1656,9 @@ describe('row 80: the host checks ask the host through an injected runner; no li
   it('every question is a row of the one table: an absolute program as a literal, and the runner is called in one place with a row of it', () => {
     const file = text(HOST_CHECKS);
     expect([...file.matchAll(/\brun\(([^)]*)\)/g)].map((match) => match[1])).toEqual(['check.command']);
+    // Task 4 row HC3 (decision C103): the named entry row HC had here for the packet filter's tool (the listing of the loopback
+    // table) is GONE with its row. The Core's unit has no capability and the kernel refuses that listing, so the tool has no
+    // admitted use: it is in the refused list below like every program that can change the host, and the literals are eight again.
     expect([...new Set(file.match(/'\/(?:usr|bin|sbin)\/[^']*'/g) ?? [])].sort()).toEqual(["'/usr/bin/arping'", "'/usr/bin/dpkg'", "'/usr/bin/grep'", "'/usr/bin/id'", "'/usr/bin/stat'", "'/usr/bin/systemctl'", "'/usr/bin/timedatectl'", "'/usr/sbin/sysctl'"]);
     // No program that changes the host, and no shell.
     expect(file.match(/'(?:\/usr)?\/s?bin\/(?:sh|bash|env|sudo|nft|ufw|ip|usermod|install|tee)'|\bdaemon-reload\b|'(?:enable|disable|start|stop|restart|mask|-w|--write)'/g)).toBeNull();
@@ -1338,8 +1674,438 @@ describe('row 80: the host checks ask the host through an injected runner; no li
     expect(checks.indexOf(asked)).toBeGreaterThan(checks.indexOf('const operators = await deps.demoPasswordOperators().catch(() => null);'));
     expect(checks.indexOf('hostCheckOutcomeOf(deps.host', checks.indexOf(asked))).toBeGreaterThan(checks.indexOf(asked));
     expect(checks.lastIndexOf('await deps.handshake()')).toBeGreaterThan(checks.indexOf('hostCheckOutcomeOf(deps.host'));
-    // Who hands a door to the host runner is a decision of the composition (the local door, as the process listing uses it):
-    // when it is wired, this list becomes exactly that one file.
-    expect(places(production, /\bhostCommandRunnerOver\s*\(/g)).toEqual([HOST_CHECKS]);
+    // Who hands a door to the host runner is a decision of the composition (the local door, as the process listing uses it).
+    // Task 4 row 85 (C46) wired it: beside the declaration, the ONE caller is the maker of the entry point's host facts.
+    expect(places(production, /\bhostCommandRunnerOver\s*\(/g)).toEqual([HOST_CHECKS, HOST_FACTS]);
+    expect(text(HOST_FACTS).match(/\bhostCommandRunnerOver\s*\([^)]*\)/g)).toEqual(['hostCommandRunnerOver(startHelperProcess, timers)']);
+    // Task 4 row 106c (decision C82, NAMED AMENDMENT SR-11): WHO GETS A RUNNER moved by exactly one caller. The ONE call
+    // above now stands in a maker of its own (`captureHostRunnerOf`), which the host facts use and which the entry point
+    // calls ONCE MORE, as a member of the composition's statement, for the single purpose of reading the address helper's
+    // interface file. The door did not leave the capture unit (rule A-5 of the adapter layer is untouched): the entry
+    // gets a runner, never the means to start a program. A third caller of the maker fails here.
+    const MAKER_CALL = /\bcaptureHostRunnerOf\s*\([^)]*\)/g;
+    expect(places(production, /\bcaptureHostRunnerOf\s*\(/g)).toEqual([HOST_FACTS, 'src/index.ts']);
+    expect(text(HOST_FACTS).match(MAKER_CALL)).toEqual(['captureHostRunnerOf(timers: CaptureTimers)', 'captureHostRunnerOf(timers)']);
+    expect(text(HOST_FACTS)).toMatch(/export function captureHostRunnerOf\(timers: CaptureTimers\): OwnHostFacts\['run'\] \{\n {2}return hostCommandRunnerOver\(startHelperProcess, timers\);\n\}/);
+    expect(text(HOST_FACTS)).toContain('    run: captureHostRunnerOf(timers),');
+    const entry = production.find((file) => file.path === 'src/index.ts')?.text ?? '';
+    expect(entry.match(MAKER_CALL)).toEqual(['captureHostRunnerOf(createSystemTimers()']);
+    expect(entry.match(/\bcaptureHostRunnerOf\b/g)).toHaveLength(2);
+    // The runner over a door and the door itself are named by no production source outside the capture unit.
+    expect(places(production.filter((file) => !file.path.startsWith('src/capture/')), /\b(?:hostCommandRunnerOver|startHelperProcess)\b/g)).toEqual([]);
+  });
+
+  // Task 4 row 106c (decision C82, NAMED AMENDMENT SR-11). The runner the entry hands to the composing file has ONE use
+  // there: it goes, unchanged, to the source of the interface file together with the FIXED row of the program checks
+  // (`/usr/bin/cat` and the one path: no argument from data, rules G-R12 / SR-4), on `linux` only. Every line of the
+  // composing file that names the runner, its type, its maker, the door or the row is pinned; a second use is a new line.
+  const COMPOSING = 'src/capture-composition.ts';
+  const RUNNER_NAMES = /\b(?:hostRunner|HostCommandRunner|HostCommand|hostCommandRunnerOver|captureHostRunnerOf|startHelperProcess|INTERFACE_FILE_COMMAND)\b/;
+  const RUNNER_LINES: readonly string[] = [
+    "import { CapturePhase, INTERFACE_FILE_COMMAND, createSystemTimers, type CaptureTimers, type HostCommandRunner } from './capture';",
+    'readonly hostRunner?: HostCommandRunner;',
+    "return input.aliasInterfaceFile ?? hostAliasInterfaceFileSourceOf(input.platform === 'linux' ? (input.hostRunner ?? null) : null, INTERFACE_FILE_COMMAND);",
+  ];
+  const runnerViolations = (files: readonly SourceFile[]): string[] =>
+    files
+      .filter((file) => file.path === COMPOSING)
+      .flatMap((file) => {
+        const lines = file.text.split('\n').map((line) => line.trim());
+        const named = lines.filter((line) => RUNNER_NAMES.test(line));
+        return [
+          ...named.filter((line) => !RUNNER_LINES.includes(line)).map((line) => `${COMPOSING} uses the host runner a second time: ${line}`),
+          ...RUNNER_LINES.filter((pinned) => named.filter((line) => line === pinned).length !== 1).map((pinned) => `${COMPOSING} does not hold once: ${pinned}`),
+          // The whole input is never spread or taken apart: the runner would travel under another name.
+          ...lines.filter((line) => /\.\.\.\s*input\b(?!\s*\.)|\}\s*=\s*input\b(?!\s*\.)/.test(line)).map((line) => `${COMPOSING} takes the input apart: ${line}`),
+        ];
+      });
+
+  it('SR-11 control: a second use of the runner from the composing file is seen - another question, the runner handed on, a second runner made, the input taken apart, the one use taken away', () => {
+    const composing = RUNNER_LINES.join('\n');
+    const planted = (body: string): SourceFile[] => [{ path: COMPOSING, text: body }];
+    expect(runnerViolations(planted(composing))).toEqual([]);
+    const second = "const table = await input.hostRunner?.({ program: '/usr/sbin/ip', args: ['addr', 'show'] });";
+    expect(runnerViolations(planted(`${composing}\n${second}`))).toEqual([`${COMPOSING} uses the host runner a second time: ${second}`]);
+    expect(runnerViolations(planted(`${composing}\ncaptureFactoryScanControl(app).provide({ run: input.hostRunner });`))).toEqual([`${COMPOSING} uses the host runner a second time: captureFactoryScanControl(app).provide({ run: input.hostRunner });`]);
+    expect(runnerViolations(planted(`${composing}\nconst other = hostCommandRunnerOver(door, timers);`))).toEqual([`${COMPOSING} uses the host runner a second time: const other = hostCommandRunnerOver(door, timers);`]);
+    expect(runnerViolations(planted(`${composing}\nconst own = captureHostRunnerOf(timers);`))).toEqual([`${COMPOSING} uses the host runner a second time: const own = captureHostRunnerOf(timers);`]);
+    expect(runnerViolations(planted(`${composing}\nconst asked = await run(INTERFACE_FILE_COMMAND);`))).toEqual([`${COMPOSING} uses the host runner a second time: const asked = await run(INTERFACE_FILE_COMMAND);`]);
+    expect(runnerViolations(planted(`${composing}\nconst { platform, ...rest } = input;`))).toEqual([`${COMPOSING} takes the input apart: const { platform, ...rest } = input;`]);
+    expect(runnerViolations(planted(`${composing}\nmount({ ...input });`))).toEqual([`${COMPOSING} takes the input apart: mount({ ...input });`]);
+    // The one use twice, and the one use on every platform (the `linux` condition taken away), are not the pinned line.
+    expect(runnerViolations(planted(`${composing}\n${RUNNER_LINES[2] ?? ''}`))).toEqual([`${COMPOSING} does not hold once: ${RUNNER_LINES[2] ?? ''}`]);
+    const everywhere = 'return input.aliasInterfaceFile ?? hostAliasInterfaceFileSourceOf(input.hostRunner ?? null, INTERFACE_FILE_COMMAND);';
+    expect(runnerViolations(planted(composing.replace(RUNNER_LINES[2] ?? '', everywhere)))).toEqual([`${COMPOSING} uses the host runner a second time: ${everywhere}`, `${COMPOSING} does not hold once: ${RUNNER_LINES[2] ?? ''}`]);
+  });
+
+  it('SR-11: the composing file names the runner in three lines - its import, its member, its ONE use with the fixed row on linux; the row is one program and one path; no other production source is handed the runner', () => {
+    expect(runnerViolations(production)).toEqual([]);
+    // The member is named by the entry (once, in the statement) and the composing file (the two lines above), and by no other source.
+    expect(places(production, /\bhostRunner\b/g)).toEqual([COMPOSING, 'src/index.ts']);
+    expect((production.find((file) => file.path === 'src/index.ts')?.text ?? '').match(/\bhostRunner\b/g)).toHaveLength(1);
+    // THE FIXED ROW: declared once, in the program checks of the boot; a literal program, a literal path, no parameter.
+    const PROGRAM_CHECKS = 'src/capture/boot/program-checks.ts';
+    expect(text(PROGRAM_CHECKS)).toContain("export const INTERFACE_FILE_COMMAND: HostCommand = Object.freeze({ program: '/usr/bin/cat', args: Object.freeze([INTERFACE_FILE]) });");
+    expect(text(PROGRAM_CHECKS)).toContain("const INTERFACE_FILE = '/etc/dems/netalias-interface';");
+    // Who names the row under src/: its declaration, the two barrels it leaves the unit through, and the composing file.
+    expect(places(production, /\bINTERFACE_FILE_COMMAND\b/g).sort()).toEqual([PROGRAM_CHECKS, 'src/capture/boot/index.ts', 'src/capture/index.ts', COMPOSING].sort());
+  });
+
+  // Task 4 row 85 (WP-13b; design addendum 1.6 #2, 6.4; AD-02 (2), AD-08). The production registry builder takes product
+  // dependencies only. A production source that calls it hands in members of the closed list below and nothing else: no
+  // door, no inspector, no clock, no "permissive" anything. Until the lift (row 88) NO production source calls it at all.
+  it('row 85: the production registry builder is called by no production source before the lift, and never with a seam argument; the boot still builds the empty production registry', () => {
+    const BUILDER_CALL = /\bbuildProductionRegistryOf\s*(?:<[^(]*>)?\(\s*\{([^}]*)\}/g;
+    const MEMBERS = ['operation', 'executor', 'dependencies', 'load', 'audioCards', 'checkCamera', 'locked'];
+    const violations = (files: readonly SourceFile[]): string[] =>
+      files.flatMap((file) =>
+        [...file.text.matchAll(BUILDER_CALL)].flatMap((match) =>
+          [...(match[1] ?? '').matchAll(/(?:^|[,{\n])\s*(?:\.\.\.)?([A-Za-z_$][\w$]*)/g)]
+            .map((member) => member[1] ?? '')
+            .filter((member) => !MEMBERS.includes(member))
+            .map((member) => `${file.path} hands the builder the member ${member}`),
+        ),
+      );
+    // Control: a seam, a permissive rule and a spread of anything are each seen; the product's own members are not.
+    expect(violations([
+      { path: 'src/capture/fence/index.ts', text: 'built = await buildProductionRegistryOf({ operation, executor, dependencies, load, audioCards, locked: mount.locked });' },
+      { path: 'src/capture/x.ts', text: 'await buildProductionRegistryOf({ operation, executor, dependencies, load, audioCards, door: mount.door });' },
+      { path: 'src/capture/y.ts', text: 'await buildProductionRegistryOf<Camera, Audio>({\n  operation,\n  permissiveAddressRule,\n  ...mount,\n});' },
+    ])).toEqual(['src/capture/x.ts hands the builder the member door', 'src/capture/y.ts hands the builder the member permissiveAddressRule', 'src/capture/y.ts hands the builder the member mount']);
+    expect(violations(production)).toEqual([]);
+    // Before the lift: the one occurrence in the product is the declaration; the boot step calls the empty registry of this phase.
+    const FENCE_INDEX = 'src/capture/fence/index.ts';
+    expect(places(production, /\bbuildProductionRegistryOf\b/g)).toEqual([FENCE_INDEX]);
+    expect(text(FENCE_INDEX).match(/\bbuildProductionRegistryOf\b/g)).toHaveLength(1);
+    expect(text(FENCE_INDEX)).toMatch(/\} else if \(passed\.operation === CaptureOperation\.REAL_PRODUCTION\) \{\n {8}built = buildProductionRegistry\(mount\.locked\);/);
+    // The builder refuses another operation before it reads the stored registry or asks the loader.
+    const builder = text(FENCE_INDEX).slice(text(FENCE_INDEX).indexOf('export async function buildProductionRegistryOf'));
+    const refusal = builder.indexOf('if (input.operation !== CaptureOperation.REAL_PRODUCTION) throw new CaptureAdapterError(CaptureAdapterRefusal.REAL_ADAPTERS_REFUSED);');
+    expect(refusal).toBeGreaterThan(0);
+    expect(refusal).toBeLessThan(builder.indexOf('readStoredDevices('));
+    expect(builder.indexOf('readStoredDevices(')).toBeLessThan(builder.indexOf('input.load('));
+    // No file under src/ states a destination rule that admits loopback: the permissive rule of a test lives under test/ (AD-02 (2)).
+    expect(tree.filter((file) => file.path.startsWith('src/') && isProductionSource(file.path) && /\bloopback-destination\b|\bpermissive[A-Z]\w*Rule\b/.test(file.text)).map((file) => file.path)).toEqual([]);
+    expect(tree.some((file) => file.path === 'test/support/loopback-destination.ts')).toBe(true);
+  });
+
+  // Task 4 row 85 (decision C46; code review finding F-07; gate M2, decision C50). Before: the capture unit mounted the
+  // boot checks without host facts, `checks.ts` then ran neither step 4d nor 4e, and no real start was held to its host.
+  // After: the mount ALWAYS hands both steps their dependencies; the facts come through one door that only the entry
+  // point opens; with none handed in the host is one that cannot be seen, and a production start is refused.
+  it('C46: steps 4d and 4e always get their dependencies; the facts come through ONE door, opened by the entry point alone; nothing under src/ states a host that passes; the two mount calls keep their members', () => {
+    const mount = text('src/capture/boot/index.ts');
+    // The step builds the host dependencies in every case, from what was handed in or from the host that cannot be seen.
+    expect(mount.match(/hostChecksOf\(provided \?\? HOST_NOT_SEEN\)/g)).toHaveLength(1);
+    expect(mount).toMatch(/async run\(\) \{\n {6}asked = true;\n {6}const hostChecks = hostChecksOf\(provided \?\? HOST_NOT_SEEN\);\n {6}outcome = await runCaptureBootChecks\(\{/);
+    expect(mount).toMatch(/\.\.\.hostChecks,\n {8}sinks: mount\.sinks,/);
+    expect(mount).not.toMatch(/facts === undefined|host === undefined/);
+    // The host that cannot be seen has nothing in place: no limit, the option variable counts as set, no question is started.
+    expect(mount).toMatch(/export const HOST_NOT_SEEN: CaptureBootHostFacts = Object\.freeze\(\{\n {2}platform: 'not-stated',\n {2}coreFileLimit: \(\): number \| null => null,\n {2}startArguments: Object\.freeze\(\[\]\),\n {2}nodeOptionsSet: true,\n {2}run: async \(\) => \(\{ outcome: 'NOT_STARTED' as const \}\),\n\}\);/);
+    // No production source states a core-file limit of 0 as a fact: a passing host is the entry point's own process or a test's.
+    expect(places(production, /\bcoreFileLimit\s*:\s*\(\s*\)\s*(?::[^=]*)?=>\s*0\b/g)).toEqual([]);
+    expect(places([{ path: 'x.ts', text: 'const host = { coreFileLimit: () => 0 };' }], /\bcoreFileLimit\s*:\s*\(\s*\)\s*(?::[^=]*)?=>\s*0\b/g)).toEqual(['x.ts']);
+    // The door: declared and implemented in the mount, called by the entry point and by no other production source.
+    expect(places(production, /\.\s*provideHost\s*\(/g)).toEqual(['src/index.ts']);
+    expect(places(production, /\bcaptureHostOfProcess\s*\(/g)).toEqual([HOST_FACTS, 'src/index.ts']);
+    // The maker of the facts reads nothing itself: no process, no environment, no file; its facts are parameters.
+    const facts = capture.filter((entry) => entry.path === HOST_FACTS);
+    expect(facts).toHaveLength(1);
+    for (const pattern of [PROCESS_MODULE, PROCESS_START, FILE_SYSTEM, SOCKET_OR_THREAD, GLOBAL_TIMER, ENVIRONMENT, SYSTEM_TIME, RANDOM]) expect(occurrences(facts, pattern), String(pattern)).toEqual([]);
+    expect(text(HOST_FACTS)).not.toMatch(/\bprocess\s*\./);
+    expect(text(HOST_FACTS).match(/^import .*$/gm)).toEqual(["import { startHelperProcess } from '../adapters/local';", "import type { CaptureTimers } from '../types';", "import { hostCommandRunnerOver, type CaptureHostDeps } from './host-checks';"]);
+    // AD-08 (2): the capture unit's two mount calls hand in what they handed in before - sinks, timers, and the fence's
+    // reload - and no seam: the host facts did NOT become a member of the mount call.
+    const unit = text('src/capture/index.ts');
+    expect([...unit.matchAll(/\bmount(?:CaptureFence|CaptureBootChecks)\(app, \{\n((?: {4}.*\n)+?) {2}\}\);/g)].map((match) => [...(match[1] ?? '').matchAll(/^ {4}(?:async )?([A-Za-z]+)[:(]/gm)].map((member) => member[1]))).toEqual([['timers', 'sinks', 'reloadState'], ['timers', 'sinks']]);
+  });
+});
+
+// Task 4 row 157 (gate M6; security addendum AD-08 (2), (3); decisions C46, C50, C55 (DD-1, DD-3), C60, C63, C76).
+// THE NO-TEST-SEAM RULE. The first full session on doubles (row 89) passes the real boot checks by real means: a signing
+// key made by test support under `test/`, fixture operators, stand-in programs in its own configuration. So `src/` gains
+// NOTHING for it, and this block holds that in three halves, each a function of a tree with a planted control:
+//
+//   (a) THE MOUNTS KEEP TODAY'S ARGUMENT MEMBERS. The two mount calls of the capture unit (the fence, the boot checks)
+//       and the two statements of the entry point (the composition, the host-facts door) hand in the members of the
+//       table `MOUNT_MEMBERS` and no other - by name, at every depth of the argument, each with the decision that
+//       admitted it. A member added for a test (an injected check, a door, a clock, a spread) is a name outside the table.
+//   (b) NO TEST KEY MAKER IN `src/`. No production source imports anything of `test/`, of a `__tests__` folder or a test
+//       file (the key maker of row 89 lives under `test/support/`); the two injected checks of the boot are named by the
+//       boot's own two files only (nobody in `src/` hands one in); a signing key is generated in one file.
+//   (c) NO KEY, VARIABLE OR COMMAND-LINE WORD. The `DEMS_*` names of the production sources are the closed list
+//       `CONFIGURATION_KEYS` (each with the row that admitted it), none of them says "test"; the files that read the
+//       environment or the command line are closed lists, and the server's entry reads no command-line word.
+//
+// AMENDING: a new member or key is a decision - it adds ONE line to its table with the decision's number, never a pattern.
+describe('row 157 / AD-08: no seam for the full-session test - mount members, no test key maker in src/, a closed list of configuration keys', () => {
+  const UNIT = 'src/capture/index.ts';
+  const ENTRY = 'src/index.ts';
+  const text = (path: string): string => production.find((file) => file.path === path)?.text ?? '';
+
+  /**
+   * The member names an argument list hands in, for every call of `callee` in a source: each member of each object
+   * literal of the arguments, with the path of the members above it (`sinks.info`), a spread as `...name`, a computed
+   * key as `[computed]`. A function body and a type literal are closed: what a function DOES is not a member.
+   */
+  const argumentMembers = (source: string, callee: string): string[][] => {
+    const calls: string[][] = [];
+    for (const call of source.matchAll(new RegExp(`\\b${callee}\\s*\\(`, 'g'))) {
+      const members: string[] = [];
+      const frames: { object: boolean; closed: boolean; path: string; key: string; expectKey: boolean }[] = [{ object: false, closed: false, path: '', key: '', expectKey: false }];
+      let before = '(';
+      for (let at = (call.index ?? 0) + call[0].length; at < source.length && frames.length > 0; at += 1) {
+        const char = source[at] ?? '';
+        const top = frames[frames.length - 1];
+        if (top === undefined || /\s/.test(char)) continue;
+        if (top.object && !top.closed && top.expectKey && char !== '}') {
+          const key = /^(?:async\s+(?=[A-Za-z_$[]))?(\.\.\.)?\s*([A-Za-z_$][\w$]*|\[|'[^']*'|"[^"]*")?/.exec(source.slice(at));
+          const name = key?.[2] === '[' ? '[computed]' : `${key?.[1] ?? ''}${key?.[2] ?? '(expression)'}`;
+          members.push(`${top.path}${name}`);
+          top.key = name;
+          top.expectKey = false;
+          if (key?.[2] !== '[' && key !== null && key[0].length > 0) {
+            at += key[0].length - 1;
+            before = 'k';
+            continue;
+          }
+        }
+        if (char === "'" || char === '"' || char === '`') {
+          at += 1;
+          while (at < source.length && source[at] !== char) at += source[at] === '\\' ? 2 : 1;
+        } else if (char === '(' || char === '[' || char === '{') {
+          const object = char === '{' && /[(,:[?|&]/.test(before);
+          frames.push({ object, closed: top.closed || (char === '{' && !object), path: top.object ? `${top.path}${top.key}.` : top.path, key: '', expectKey: object });
+        } else if (char === ')' || char === ']' || char === '}') {
+          frames.pop();
+        } else if (char === ',' && top.object) {
+          top.expectKey = true;
+        }
+        before = char;
+      }
+      calls.push(members);
+    }
+    return calls;
+  };
+
+  /**
+   * TODAY'S MEMBERS, with the decision that admitted each. `where` is the one production file that makes the call.
+   * (The declarations of the four functions stand in other files; the call sites are counted below.)
+   */
+  const MOUNT_MEMBERS: readonly { readonly where: string; readonly callee: string; readonly members: readonly (readonly [member: string, admittedBy: string])[] }[] = [
+    {
+      where: UNIT,
+      callee: 'mountCaptureFence',
+      members: [
+        ['timers', 'task 3 row 136 (capture spec §A.1.2): the system timers'],
+        ['sinks', 'task 3 row 136: the four log sinks of the one file that logs (G-R4)'],
+        ['sinks.info', 'task 3 row 136'],
+        ['sinks.warn', 'task 3 row 136'],
+        ['sinks.error', 'task 3 row 136'],
+        ['sinks.persist', 'task 3 row 136: the error log'],
+        ['reloadState', 'task 3 row 136: the engine re-reads a device row the boot registered'],
+      ],
+    },
+    {
+      where: UNIT,
+      callee: 'mountCaptureBootChecks',
+      members: [
+        ['timers', 'task 3 row 61 (ruling D138): the system timers'],
+        ['sinks', 'task 3 row 61: the four log sinks'],
+        ['sinks.info', 'task 3 row 61'],
+        ['sinks.warn', 'task 3 row 61'],
+        ['sinks.error', 'task 3 row 61'],
+        ['sinks.persist', 'task 3 row 61: the error log'],
+        // Decision C55 (DD-1), kept by C50 / C46: the host facts did NOT become a member here - they go through the door below.
+      ],
+    },
+    {
+      where: ENTRY,
+      callee: 'composeProductionCaptureOf',
+      members: [
+        ['platform', 'task 4 row 85b, decisions C55 and C60: the platform of this process'],
+        ['network', 'integration pass I-9a, decision C76 (row 108; C60 (4)): the reader of the network facts, handed in and not called'],
+        // NAMED AMENDMENT SR-11 (decision C82, row 106c): ONE member more. Its one use in the composing file is pinned in the block of row 80.
+        ['hostRunner', 'task 4 row 106c, decision C82 (SR-11): the runner of the host\'s questions, for the single purpose of reading the address helper\'s interface file by a fixed row'],
+      ],
+    },
+    {
+      where: ENTRY,
+      callee: 'provideHost',
+      members: [
+        ['platform', 'task 4 row 85, decisions C46 and C55 (DD-1: the door, not an option of `buildApp`)'],
+        ['startArguments', 'task 4 row 85, decisions C46 and C55 (DD-1)'],
+        ['nodeOptionsSet', 'task 4 row 85, decisions C46 and C55 (DD-1)'],
+        ['userLimits', 'task 4 row 85, decisions C46 and C55 (DD-1)'],
+      ],
+    },
+  ];
+  const mountViolations = (files: readonly SourceFile[]): string[] =>
+    MOUNT_MEMBERS.flatMap((mount) => {
+      const allowed = mount.members.map(([member]) => member);
+      const calls = files.filter((file) => file.path === mount.where).flatMap((file) => argumentMembers(file.text, mount.callee));
+      return [
+        ...(calls.length === 1 ? [] : [`${mount.where} calls ${mount.callee} ${calls.length} times`]),
+        ...calls.flatMap((members) => [
+          ...members.filter((member) => !allowed.includes(member)).map((member) => `${mount.where} hands ${mount.callee} the member ${member}`),
+          ...allowed.filter((member) => !members.includes(member)).map((member) => `${mount.where} no longer hands ${mount.callee} the member ${member}`),
+        ]),
+      ];
+    });
+
+  it('(a) control: an extra member of a mount is seen - a top-level one, a nested one, a spread, a computed key, one inside a call; a function body is not a member', () => {
+    const fence = "mountCaptureFence(app, {\n  timers: createSystemTimers(),\n  sinks: {\n    info: (fields, message) => app.log.info(fields, message),\n    warn: (fields, message) => app.log.warn(fields, message),\n    error: (fields, message) => app.log.error(fields, message),\n    persist: (entry) => app.errorLog.append(entry),\n  },\n  async reloadState() {\n    if (!app.seams.has('engine')) return;\n    await app.engine.start('resync', { again: true });\n  },\n});";
+    const boot = 'mountCaptureBootChecks(app, {\n  timers: createSystemTimers(),\n  sinks: { info, warn, error, persist },\n});';
+    const entry = "composeProductionCaptureOf(app, { platform: process.platform, network: captureNetworkFacts(app), hostRunner: captureHostRunnerOf(createSystemTimers()) });\ncaptureBootControl(app).provideHost(\n  captureHostOfProcess(\n    {\n      platform: process.platform,\n      startArguments: process.execArgv,\n      nodeOptionsSet: flag !== undefined,\n      userLimits: () => (report() as { readonly userLimits?: unknown } | undefined)?.userLimits,\n    },\n    createSystemTimers(),\n  ),\n);";
+    const planted = (unit: string, entryText: string = entry): SourceFile[] => [{ path: UNIT, text: unit }, { path: ENTRY, text: entryText }];
+    // The members as they stand pass, in either layout.
+    expect(mountViolations(planted(`${fence}\n${boot}`))).toEqual([]);
+    expect(argumentMembers(fence, 'mountCaptureFence')).toEqual([['timers', 'sinks', 'sinks.info', 'sinks.warn', 'sinks.error', 'sinks.persist', 'reloadState']]);
+    // AD-08's own example: the boot-check mount with one of the two injected checks.
+    expect(mountViolations(planted(`${fence}\n${boot.replace('  sinks:', '  signingKeyIsDevelopment: () => false,\n  sinks:')}`))).toEqual([`${UNIT} hands mountCaptureBootChecks the member signingKeyIsDevelopment`]);
+    expect(mountViolations(planted(`${fence}\n${boot.replace('persist }', 'persist, audit }')}`))).toEqual([`${UNIT} hands mountCaptureBootChecks the member sinks.audit`]);
+    expect(mountViolations(planted(`${fence}\n${boot.replace('  sinks:', '  ...config.captureTestMount,\n  sinks:')}`))).toEqual([`${UNIT} hands mountCaptureBootChecks the member ...config`]);
+    expect(mountViolations(planted(`${fence}\n${boot.replace('  sinks:', '  [seamName]: seam,\n  sinks:')}`))).toEqual([`${UNIT} hands mountCaptureBootChecks the member [computed]`]);
+    expect(mountViolations(planted(`${fence.replace('timers: createSystemTimers(),', 'timers: timersOf({ fake: true }),\n  door: testDoor,')}\n${boot}`))).toEqual([`${UNIT} hands mountCaptureFence the member timers.fake`, `${UNIT} hands mountCaptureFence the member door`]);
+    // The entry point: a third member of the composition, a fifth host fact, a member taken away, a second call.
+    // Since SR-11 (decision C82, row 106c) the statement has three members. The three OPTIONAL members of `ProductionCaptureInput`
+    // that stand in the place of a product part (`cardPrograms` of row 85c; `aliasTransport` and `aliasInterfaceFile` of
+    // row 106b, decision C82 (3)) are a test's: the entry hands in none of them. So is the runner taken away, or made twice.
+    // Row 111b adds the fourth such member, `commissioningInputs` (the host's observations over stand-in programs): a test's too.
+    for (const seam of ['cardPrograms', 'aliasTransport', 'aliasInterfaceFile', 'commissioningInputs']) {
+      expect(mountViolations(planted(`${fence}\n${boot}`, entry.replace('createSystemTimers()) }', `createSystemTimers()), ${seam}: standIn }`))), seam).toEqual([`${ENTRY} hands composeProductionCaptureOf the member ${seam}`]);
+    }
+    expect(mountViolations(planted(`${fence}\n${boot}`, entry.replace(', hostRunner: captureHostRunnerOf(createSystemTimers()) }', ' }')))).toEqual([`${ENTRY} no longer hands composeProductionCaptureOf the member hostRunner`]);
+    expect(mountViolations(planted(`${fence}\n${boot}`, entry.replace('createSystemTimers()) }', 'createSystemTimers()), aliasRunner: captureHostRunnerOf(createSystemTimers()) }')))).toEqual([`${ENTRY} hands composeProductionCaptureOf the member aliasRunner`]);
+    expect(mountViolations(planted(`${fence}\n${boot}`, entry.replace('      platform: process.platform,\n', '      platform: process.platform,\n      coreFileLimit: () => 0,\n')))).toEqual([`${ENTRY} hands provideHost the member coreFileLimit`]);
+    expect(mountViolations(planted(`${fence}\n${boot.replace('  timers: createSystemTimers(),\n', '')}`))).toEqual([`${UNIT} no longer hands mountCaptureBootChecks the member timers`]);
+    expect(mountViolations(planted(`${fence}\n${boot}\n${boot}`))).toEqual([`${UNIT} calls mountCaptureBootChecks 2 times`]);
+  });
+
+  it('(a) the two mount calls of the capture unit and the two statements of the entry point hand in today\'s members and no other; each is called from its one place, with its text as it stands', () => {
+    expect(mountViolations(production)).toEqual([]);
+    // One call site each, beside the declaration: no second mount with other members anywhere under src/.
+    expect(places(production, /\bmountCaptureFence\s*\(/g).sort()).toEqual(['src/capture/fence/index.ts', UNIT]);
+    expect(places(production, /\bmountCaptureBootChecks\s*\(/g).sort()).toEqual(['src/capture/boot/index.ts', UNIT]);
+    expect(text('src/capture/fence/index.ts').match(/\bmountCaptureFence\s*\(/g)).toHaveLength(1);
+    expect(text('src/capture/boot/index.ts').match(/\bmountCaptureBootChecks\s*\(/g)).toHaveLength(1);
+    // The VALUES of the members, literally (comments are not read): the system timers, the app's own log and error log, the engine's resync.
+    const unit = text(UNIT).replace(/\n\s*\n/g, '\n');
+    const sinks = '    sinks: {\n      info: (fields, message) => app.log.info(fields, message),\n      warn: (fields, message) => app.log.warn(fields, message),\n      error: (fields, message) => app.log.error(fields, message),\n      persist: (entry) => app.errorLog.append(entry),\n    },\n';
+    expect(unit.split(`  mountCaptureFence(app, {\n    timers: createSystemTimers(),\n${sinks}    async reloadState() {\n      if (!app.seams.has('engine')) return;\n      await app.engine.stop();\n      await app.engine.start('resync');\n    },\n  });\n`)).toHaveLength(2);
+    expect(unit.split(`  mountCaptureBootChecks(app, {\n    timers: createSystemTimers(),\n${sinks}  });\n`)).toHaveLength(2);
+    // The entry statements are pinned literally in the block 'P25' above (`index.ts: the supervisor boots ...`): C76's text of the composition, C46's four facts.
+    // Since row 106c (decision C82, NAMED AMENDMENT SR-11) the composition's text has its third member, the runner of the host's questions.
+    expect(text(ENTRY).split('composeProductionCaptureOf(app, { platform: process.platform, network: captureNetworkFacts(app), hostRunner: captureHostRunnerOf(createSystemTimers()) });')).toHaveLength(2);
+  });
+
+  // (b) The key maker of the full-session test is test support (row 89: `apps/core-server/test/support/`). Its name does
+  // not exist yet, so the rule is held by WHERE it lives and by what it would have to do under `src/`.
+  const IMPORT_SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|\brequire\s*\(\s*)['"]([^'"]+)['"]/g;
+  const OF_TEST = /(?:^|\/)(?:test|__tests__)(?:\/|$)|\.test(?:\.[cm]?[jt]s)?$|(?:^|\/)(?:test-)?fixtures?(?:\/|$)/;
+  const testImports = (files: readonly SourceFile[]): string[] =>
+    files.flatMap((file) => [...file.text.matchAll(IMPORT_SPECIFIER)].map((match) => match[1] ?? '').filter((specifier) => OF_TEST.test(specifier)).map((specifier) => `${file.path} imports ${specifier}`));
+  /** The two checks a test may inject into the boot (AD-08 (1)): named by the boot's own two files, handed in by no production source. */
+  const INJECTED_CHECK = new RegExp(`\\b(?:${join('signingKey', 'IsDevelopment')}|${join('demoPassword', 'Operators')})\\b`, 'g');
+  const KEY_GENERATION = new RegExp(`\\b${join('generateKey', 'Pair')}(?:Sync)?\\b`, 'g');
+  const KEY_PROVISION = new RegExp(`\\b${join('provision', 'SigningKey')}\\s*\\(`, 'g');
+
+  it('(b) control: an importer of the test support\'s key maker is seen - by a relative path, a dynamic import, a __tests__ folder, a test file; so is a second key generator', () => {
+    const planted: SourceFile[] = [
+      { path: 'src/capture/boot/index.ts', text: "import { makeProductionSigningKey } from '../../../test/support/production-key';" },
+      { path: 'src/sealing/signing.ts', text: "const { makeKey } = await import('../../test/support/production-key.js');\nimport { rig } from './__tests__/key-rig';" },
+      { path: 'src/capture/x.ts', text: `import '../sealing/__tests__/production-key.test';\nconst pair = ${join('generateKey', 'Pair')}Sync('ed25519');\nconst check = { ${join('signingKey', 'IsDevelopment')}: () => false };` },
+      { path: 'src/capture/y.ts', text: "import { createSystemTimers } from './timers';\nimport { latest } from '../contest/index';" },
+    ];
+    expect(testImports(planted)).toEqual([
+      'src/capture/boot/index.ts imports ../../../test/support/production-key',
+      'src/sealing/signing.ts imports ../../test/support/production-key.js',
+      'src/sealing/signing.ts imports ./__tests__/key-rig',
+      'src/capture/x.ts imports ../sealing/__tests__/production-key.test',
+    ]);
+    expect(occurrences(planted, KEY_GENERATION)).toEqual(['src/capture/x.ts:2']);
+    expect(occurrences(planted, INJECTED_CHECK)).toEqual(['src/capture/x.ts:3']);
+  });
+
+  it('(b) no production source under src/ imports test support; the two injected checks are named by the boot alone; a signing key is generated in one file and provisioned from two', () => {
+    expect(production.length).toBeGreaterThan(300);
+    expect(testImports(production)).toEqual([]);
+    // Nobody under src/ hands the boot one of its two injectable checks: the mount (which declares them) and the checks (which ask them).
+    expect(places(production, INJECTED_CHECK)).toEqual(['src/capture/boot/checks.ts', 'src/capture/boot/index.ts']);
+    // A key maker under src/ would generate a key pair: one file does (the signer's key store, row 83), and its one
+    // function is called by the development key of the sealing host only. The production key is made by the commands
+    // under `cli/` (outside src/), the test's key by test support.
+    expect(places(production, KEY_GENERATION)).toEqual([SIGNER_HOST_KEY]);
+    expect(places(production, KEY_PROVISION)).toEqual([SIGNER_HOST_KEY, 'src/sealing/signing.ts']);
+  });
+
+  /**
+   * (c) THE CLOSED LIST of the configuration keys: every `DEMS_*` name a production source of the server writes in its
+   * code (declaration, parser, a sentence of a refusal), with the row that admitted it. As it stands at row 157: 22.
+   */
+  const CONFIGURATION_KEYS: readonly (readonly [key: string, admittedBy: string])[] = [
+    ['DEMS_CAPTURE_ALIAS_SOCKET', 'task 4 row 105 (WP-19b): the socket of the address helper'],
+    ['DEMS_CAPTURE_AUDIO_HELPER', 'task 4 row 85c (decisions C60 (3), C63 (c)): the audio helper of production capture'],
+    ['DEMS_CAPTURE_DEV_FAKE_MIC', 'task 3 fix wave H (ruling D198): what the first generated development microphone plays'],
+    ['DEMS_CAPTURE_DEV_SOURCES', 'task 3 row 136 (decisions OD-14, D108): the development flag'],
+    ['DEMS_CAPTURE_GUARD', 'task 4 row 21 (WP-02): the guard of a helper'],
+    ['DEMS_CAPTURE_HELPER_FFMPEG', 'task 3 row 136 (decisions OD-14, D108): the program of the development helpers'],
+    ['DEMS_CAPTURE_MODE', 'task 3 row 58 (decision OD-14; capture spec §I edits 7 to 10)'],
+    ['DEMS_CAPTURE_RELAY', 'task 4 row 21 (WP-02): the relay of a camera'],
+    ['DEMS_CAPTURE_WORKER', 'task 3 row 58 (decision OD-14)'],
+    ['DEMS_CORE_PORT', 'plan row W08 (the frozen configuration)'],
+    ['DEMS_DEMO_CONTROLS', 'plan row W08'],
+    ['DEMS_INSTALLATION_DEVICE_ID', 'task 3 wave H closing pass Z1 (decision D207)'],
+    ['DEMS_INSTALLATION_NAME', 'task 3 wave H closing pass Z1 (decision D207)'],
+    ['DEMS_LOG_LEVEL', 'plan row W08'],
+    ['DEMS_MEDIA_DIR', 'task 3 row 58 (decision OD-14)'],
+    ['DEMS_PG_APP_PASSWORD', 'plan row W08: the connection of the app role'],
+    ['DEMS_PG_APP_ROLE', 'plan row W08'],
+    ['DEMS_PG_DATABASE', 'plan row W08'],
+    ['DEMS_PG_HOST', 'plan row W08'],
+    ['DEMS_PG_OWNER_PASSWORD', 'the database commands (`src/db/commands/owner-connection.ts`): the owner role'],
+    ['DEMS_PG_OWNER_ROLE', 'the database commands: the owner role'],
+    ['DEMS_PG_PORT', 'plan row W08'],
+  ];
+  const KEY_NAME = /\bDEMS_[A-Z0-9_]+\b/g;
+  /** A name that says what it is for: a test, a double, a way round a check. `FAKE` is not of the list: `DEMS_CAPTURE_DEV_FAKE_MIC` is a development source, admitted by D198. */
+  const SAYS_TEST = /TEST|E2E|FIXTURE|DOUBLE|STUB|MOCK|SEAM|BYPASS|SKIP|FULL_SESSION|INSECURE|UNSAFE/;
+  const keyViolations = (files: readonly SourceFile[]): string[] => {
+    const allowed = CONFIGURATION_KEYS.map(([key]) => key);
+    return [...new Set(files.flatMap((file) => (file.text.match(KEY_NAME) ?? []).filter((key) => !allowed.includes(key)).map((key) => `${file.path} names the key ${key}`)))];
+  };
+  const ARGUMENT_WORDS = new RegExp(`\\bprocess\\s*\\.\\s*${'argv'}\\b|\\bparse${'Args'}\\s*\\(`, 'g');
+  const START_ARGUMENTS = new RegExp(`\\bprocess\\s*\\.\\s*exec${'Argv'}\\b`, 'g');
+  const ENVIRONMENT_NAME = new RegExp(`\\bprocess\\s*\\.\\s*${'env'}\\s*(?:\\[\\s*['"]([^'"]+)['"]\\s*\\]|\\.\\s*([A-Za-z_]\\w*))`, 'g');
+
+  it('(c) control: a new DEMS_* key is seen, and a name that says test is seen; so are a new reader of the environment and a new reader of the command line', () => {
+    const planted: SourceFile[] = [
+      { path: 'src/config.ts', text: "export const ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE';\nexport const ENV_CAPTURE_TEST_SIGNING_KEY = 'DEMS_CAPTURE_TEST_SIGNING_KEY';" },
+      { path: 'src/capture/boot/index.ts', text: `const skip = process.${'env'}['DEMS_BOOT_CHECKS_SKIP'] === '1' || process.${'env'}.FULL_SESSION;\nconst flag = process.${'argv'}.includes('--full-session');` },
+    ];
+    expect(keyViolations(planted)).toEqual(['src/config.ts names the key DEMS_CAPTURE_TEST_SIGNING_KEY', 'src/capture/boot/index.ts names the key DEMS_BOOT_CHECKS_SKIP']);
+    expect(['DEMS_CAPTURE_TEST_SIGNING_KEY', 'DEMS_BOOT_CHECKS_SKIP', 'DEMS_CAPTURE_E2E', 'DEMS_CAPTURE_DEV_FAKE_MIC', 'DEMS_CAPTURE_AUDIO_HELPER'].filter((key) => SAYS_TEST.test(key))).toEqual(['DEMS_CAPTURE_TEST_SIGNING_KEY', 'DEMS_BOOT_CHECKS_SKIP', 'DEMS_CAPTURE_E2E']);
+    expect(occurrences(planted, ENVIRONMENT)).toEqual(['src/capture/boot/index.ts:1', 'src/capture/boot/index.ts:1']);
+    expect([...(planted[1]?.text ?? '').matchAll(ENVIRONMENT_NAME)].map((match) => match[1] ?? match[2])).toEqual(['DEMS_BOOT_CHECKS_SKIP', 'FULL_SESSION']);
+    expect(occurrences(planted, ARGUMENT_WORDS)).toEqual(['src/capture/boot/index.ts:2']);
+  });
+
+  it('(c) the DEMS_* names of src/ are the closed list, none says test; the environment and the command line are read by the closed lists of files; the server\'s entry reads no command-line word', () => {
+    expect(keyViolations(production)).toEqual([]);
+    const named = [...new Set(production.flatMap((file) => file.text.match(KEY_NAME) ?? []))].sort();
+    expect(named).toEqual(CONFIGURATION_KEYS.map(([key]) => key));
+    expect(named).toHaveLength(22);
+    expect(named.filter((key) => SAYS_TEST.test(key))).toEqual([]);
+    // The sources of src/ that are not TypeScript name no key either (a script, a JSON file, a statement file).
+    expect(tree.filter((file) => isProductionSource(file.path) && !file.path.endsWith('.ts') && KEY_NAME.test(file.text)).map((file) => file.path)).toEqual([]);
+    // ENVIRONMENT: the entry point of the server and the three command files of the database; nothing under src/capture/ (G-R8).
+    expect(places(production, ENVIRONMENT)).toEqual(['src/db/commands/cli.ts', 'src/db/reset/cli.ts', 'src/db/seed/cli.ts', ENTRY]);
+    // A variable read off the environment BY NAME: one, the runtime's own option variable, a fact for the host check (C46).
+    expect(production.flatMap((file) => [...file.text.matchAll(ENVIRONMENT_NAME)].map((match) => `${file.path}: ${match[1] ?? match[2]}`))).toEqual([`${ENTRY}: NODE_OPTIONS`]);
+    // COMMAND LINE: the two command files that are started as programs of their own. The server's entry reads no word of
+    // its command line; it reads the RUNTIME's start arguments once, to judge them (C46), and repeats none.
+    expect(places(production, ARGUMENT_WORDS)).toEqual(['src/db/commands/cli.ts', 'src/sealing/dev-key-cli.ts']);
+    expect(places(production, START_ARGUMENTS)).toEqual([ENTRY]);
+    expect(text(ENTRY).match(START_ARGUMENTS)).toHaveLength(1);
   });
 });

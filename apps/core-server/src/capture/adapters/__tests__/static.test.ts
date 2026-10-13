@@ -18,6 +18,9 @@
 //        them and hands them to nothing but the write and the zero-fill (task 4 row 21; AD-03 (6)).
 //   A-9  the production adapters built beside the class-C stubs are named by no production source
 //        before the lift (task 4 row 46; addendum 6.2). A-2 names the one caller of the injection point.
+//   A-10 the destination rule on a STORED camera address (task 4 row 143; AD-02 points 1 and 2):
+//        `src/` holds no permissive value, the judgement is asked by a closed list of files, and in
+//        each of them it stands before the use of the address.
 //
 // Each rule has a control on a planted source that must be found.
 import { existsSync, readFileSync } from 'node:fs';
@@ -457,5 +460,280 @@ describe('A-9: the built production adapters are named by no production source b
     expect(camera).toMatch(/^ {4}kind: CaptureAdapterKind\.ONVIF_RTSP,$/m);
     // The stub beside it is not edited: it is still what the loader names (A-1), without an opener.
     expect(tree.find((file) => file.path === `${ADAPTERS}camera/onvif-rtsp.ts`)?.text).toMatch(/hasOpener: false,/);
+  });
+});
+
+// Task 4 row 143 (security addendum 04, requirement AD-02 points 1 and 2; GATE CONDITION AD-02: "a search of `src/`
+// for a permissive rule value finds 0"). The stored address of a camera is untrusted, so the destination rule is
+// asked before every use of it. Three statements, each with a control:
+//   (a) an ADMISSION is written as a value in a closed list of production files, each with its count. One more
+//       `allowed: true` anywhere under `src/` is a decision, not a habit: it may be a rule that admits by itself;
+//   (b) no production source names a rule of the tests, and none hands a stored-address rule on as anything but the
+//       dependency it was given (the composition that BINDS the product's rule joins the list below by decision);
+//   (c) the judgement is called by a closed list of files, once in each, on the line before the address is used.
+describe('A-10: no permissive destination value under src/; the judgement of a stored camera address stands before each use (AD-02)', () => {
+  const production = tree.filter((file) => isProductionSource(file.path));
+  /** An admission written as a VALUE: `allowed: true` that is not a member of a type (`readonly allowed: true`). */
+  const ADMISSION_VALUE = /(?<!readonly\s)\ballowed\s*:\s*true\b/g;
+  /**
+   * Where an admission is a value today, with how often, and why it is not a permissive destination:
+   *   destination-rule.ts      the rule itself: the destination it admits after every refusal (1), the address it lets
+   *                            a camera be given (1), the spacing of two attempts (2);
+   *   camera/stored-address.ts the judgement's own answer, returned only after the handed-in rule admitted that address;
+   *   capture-discovery/limits the spacing of two searches; permission-guard/decision the access decision. Neither is a destination.
+   */
+  const ADMISSION_VALUES: Readonly<Record<string, number>> = {
+    'src/capture/destination-rule.ts': 4,
+    [`${ADAPTERS}camera/stored-address.ts`]: 1,
+    'src/modules/capture-discovery/limits.ts': 1,
+    'src/plugins/permission-guard/decision.ts': 1,
+  };
+  const admissionCounts = (files: readonly SourceFile[]): Record<string, number> => {
+    const counts: Record<string, number> = {};
+    for (const place of occurrences(files, ADMISSION_VALUE)) {
+      const path = place.replace(/:\d+$/, '');
+      counts[path] = (counts[path] ?? 0) + 1;
+    }
+    return counts;
+  };
+  /** A rule of the tests, by its name, and the word a permissive value would carry. */
+  const TEST_RULE = /\b(?:loopbackDestination|loopbackStoredCameraAddress|TEST_RULE_\w+|permissive\w*|allowLoopback\w*|ALLOW_LOOPBACK\w*|admitAny\w*|allowAny\w*)\b/gi;
+  /** A stored-address rule handed on with a value of the file's own making (a shorthand member, a type member and a parameter are not this). */
+  const RULE_GIVEN_A_VALUE = /(?<!readonly\s)\bstoredAddress\s*:\s*(?!StoredCameraAddressRule\b)\S/g;
+  /**
+   * THE BINDING of the product's rule: `decideDestination` named with the purpose of a stored camera. A file that
+   * writes this IS a binder, however it hands the bound rule on (a function it exports is not a `storedAddress:` member,
+   * so the pattern above alone did not see it: decision C60 (1), "a rule that is green because its pattern does not
+   * see the binder is not met").
+   */
+  const RULE_BINDING = /\bDestinationPurpose\s*\.\s*STORED_CAMERA\b/g;
+  /**
+   * The production files that give the rule a value, or bind it. NAMED ENTRY SR-8 (decision C60 (1); task 4 row 143b):
+   * `src/capture/fence/production-parts.ts` - the capture unit's own part of the production composition, the ONE place
+   * where the rule is bound to the host's network facts (`storedCameraAddressRuleOf`). Every other file takes the bound
+   * rule from it. One more entry is a decision.
+   */
+  const RULE_BINDERS: readonly string[] = ['src/capture/fence/production-parts.ts'];
+  const JUDGEMENT_CALL = /\bjudgeStoredCamera\s*\(/g;
+  /** The callers of the judgement, with the line each calls it on and the line that must FOLLOW the judgement somewhere below it. */
+  const JUDGEMENT_CALLERS: Readonly<Record<string, { readonly call: RegExp; readonly use: RegExp }>> = {
+    [`${ADAPTERS}camera/onvif-relay.ts`]: {
+      call: /^ {6}const judged = judgeStoredCamera\(stored\.candidate, dependencies\.storedAddress\);$/m,
+      use: /^ {8}sealed = await until\(credentials\.sessionOpen\(deviceId, sessionId\)\);$/m,
+    },
+    [`${ADAPTERS}camera/camera-watch.ts`]: {
+      // Row 143c: the judgement is kept (its source half is taken from it); what follows it is the one answer that hands a camera on.
+      call: /^ {4}const judged = judgeStoredCamera\(target, dependencies\.storedAddress\);$/m,
+      use: /^ {4}return Object\.freeze\(\{ camera: target, from: from\.sourceAddress \}\);$/m,
+    },
+    // Task 4 row 146: the connection test of an adopted camera with its stored credential. The judgement stands before
+    // the bounds are asked, and so before the reader and before the tester.
+    'src/modules/capture-discovery/adopted-test.ts': {
+      call: /^ {2}const judged = judgeStoredCamera\(camera, parts\.storedAddress\);$/m,
+      use: /^ {2}const refusal = limits\.refusal\(camera\.host, sessionId\);$/m,
+    },
+    // Task 4 row 143c (decision C65): the connection test of a candidate that is NOT STORED YET, on a production Core. The
+    // judgement stands in the function that answers the tester of the attempt, before the bounds are taken.
+    'src/modules/capture-discovery/connect/service.ts': {
+      call: /^ {2}const judged = judgeStoredCamera\(resolved\.candidate\.camera, binding\.rule\);$/m,
+      use: /^ {2}const turn = limits\.begin\(candidate\.camera\.host, sessionId\);$/m,
+    },
+  };
+  const DECLARATION = `${ADAPTERS}camera/stored-address.ts`;
+
+  it('finds a planted admission, a planted test rule, a planted binder and a planted second caller (control)', () => {
+    const planted: SourceFile[] = [
+      { path: 'src/capture/fence/index.ts', text: 'const storedAddress = () => ({ allowed: true });\nconst deps = { storedAddress: () => ({ allowed: true }) };\n' },
+      { path: 'src/modules/capture-config/x.ts', text: 'import { loopbackStoredCameraAddress } from "y";\nconst permissiveRule = 1;\nif (judgeStoredCamera(candidate, rule).allowed) dial();\n' },
+      // Not found: a type member, a shorthand member, a parameter, a refusal.
+      { path: 'src/modules/capture-config/z.ts', text: 'type D = { readonly allowed: true } | { readonly allowed: false };\nconst deps = { unit, storedAddress, query };\ninterface I { readonly storedAddress?: StoredCameraAddressRule; }\nconst no = { allowed: false, refusal };\n' },
+      // SR-8: a second binding of the product's rule, handed on as a function and not as a member.
+      { path: 'src/modules/capture-config/w.ts', text: 'export const ruleOf = (facts) => (host) =>\n  decideDestination({ purpose: DestinationPurpose.STORED_CAMERA, address: host }, facts);\nconst other = DestinationPurpose.TYPED_PROBE;\n' },
+    ];
+    expect(occurrences(planted, RULE_BINDING)).toEqual(['src/modules/capture-config/w.ts:2']);
+    expect(admissionCounts(planted)).toEqual({ 'src/capture/fence/index.ts': 2 });
+    expect(occurrences(planted, TEST_RULE)).toEqual(['src/modules/capture-config/x.ts:1', 'src/modules/capture-config/x.ts:2']);
+    expect(occurrences(planted, RULE_GIVEN_A_VALUE)).toEqual(['src/capture/fence/index.ts:2']);
+    expect(occurrences(planted, JUDGEMENT_CALL)).toEqual(['src/modules/capture-config/x.ts:3']);
+  });
+
+  it('(a) an admission is a value in the pinned files only, with the pinned counts: `src/` holds no rule that admits by itself', () => {
+    expect(production.length).toBeGreaterThan(200);
+    expect(admissionCounts(production)).toEqual(ADMISSION_VALUES);
+  });
+
+  it('(b) no production source names a rule of the tests or a permissive value; none gives a stored-address rule a value of its own', () => {
+    expect(occurrences(production, TEST_RULE)).toEqual([]);
+    // SR-8 (C60 (1)): a file that gives the rule a value of its own OR binds the product's rule is a binder, and the binders are the named list.
+    const pathsOf = (pattern: RegExp): string[] => occurrences(production, pattern).map((place) => place.replace(/:\d+$/, ''));
+    expect([...new Set([...pathsOf(RULE_GIVEN_A_VALUE), ...pathsOf(RULE_BINDING)])].sort()).toEqual([...RULE_BINDERS].sort());
+    // The one binder binds ONCE, and it is seen by the pattern that names it (the entry is not a name the rule cannot find).
+    expect(pathsOf(RULE_BINDING)).toEqual(['src/capture/fence/production-parts.ts']);
+    expect(pathsOf(RULE_GIVEN_A_VALUE)).toEqual([]);
+    // The judgement file itself: one import (a type of the layer), no host fact, no address, no rule of its own.
+    const judgement = tree.find((file) => file.path === DECLARATION)?.text ?? '';
+    expect(relativeImports([{ path: DECLARATION, text: judgement }]).map((entry) => entry.target)).toEqual([`${ADAPTERS}types`]);
+    expect(judgement).not.toMatch(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b|\bdecideDestination\b|\bnetworkInterfaces\b|\bDestinationPurpose\b/);
+    // Without a rule it refuses: the first statement of the judgement, before anything of the candidate is read.
+    expect(judgement).toMatch(/\{\n {2}if \(typeof rule !== 'function'\) return refused\(StoredCameraRefusal\.RULE_ABSENT\);\n/);
+  });
+
+  it('(c) the judgement is called by the pinned files, once in each, and in each it stands before the use of the stored address', () => {
+    const callers = occurrences(production, JUDGEMENT_CALL).map((place) => place.replace(/:\d+$/, '')).filter((path) => path !== DECLARATION);
+    expect([...callers].sort()).toEqual(Object.keys(JUDGEMENT_CALLERS).sort());
+    for (const [path, { call, use }] of Object.entries(JUDGEMENT_CALLERS)) {
+      const text = tree.find((file) => file.path === path)?.text ?? '';
+      const judged = call.exec(text);
+      expect(judged, `${path}: the call of the judgement`).not.toBeNull();
+      const used = use.exec(text.slice(judged?.index ?? 0));
+      expect(used, `${path}: the use of the address after the judgement`).not.toBeNull();
+      // And no use of that form stands BEFORE it in the same function: the first one of the file follows the judgement.
+      expect(use.exec(text)?.index ?? -1, path).toBeGreaterThan(judged?.index ?? Number.MAX_SAFE_INTEGER);
+    }
+    // The watch reads a stored camera in ONE place, the function the judgement stands in: every heartbeat, `check` and clock read goes through it.
+    const watch = tree.find((file) => file.path === `${ADAPTERS}camera/camera-watch.ts`)?.text ?? '';
+    expect(watch.match(/\bawait candidate\(/g)).toHaveLength(1);
+    expect(watch.match(/\breader\s*\.\s*read\s*\(/g)).toHaveLength(1);
+    // In the declaration the name stands once, as the function itself.
+    expect(occurrences([{ path: DECLARATION, text: tree.find((file) => file.path === DECLARATION)?.text ?? '' }], JUDGEMENT_CALL)).toHaveLength(1);
+  });
+
+  // Task 4 row 143b (S13-11 point 2): THE SOURCE HALF. The judgement names the camera-interface address a connection
+  // must be made FROM. Each caller of the judgement that DIALS takes its source from that judgement and hands it to
+  // every dial; the ONVIF session gives it to its sockets; a record start of the relay is refused without it.
+  // Row 143c: `camera/camera-watch.ts` joined - its time read is the third dial of a stored camera. Every caller of the
+  // judgement is a taker now.
+  const SOURCE_TAKERS: Readonly<Record<string, { readonly take: RegExp; readonly refuse: RegExp; readonly dials: readonly RegExp[]; readonly unbound: RegExp }>> = {
+    [`${ADAPTERS}camera/camera-watch.ts`]: {
+      take: /^ {4}const from = storedCameraSourceOf\(judged\);$/m,
+      refuse: /^ {4}if \('refusal' in from\) \{\n {6}report\(CameraWatchReportCode\.ADDRESS_REFUSED, deviceId\);\n {6}if \(strict\) throw new CameraClockError\(CameraClockRefusal\.ADDRESS_REFUSED, deviceId\);\n {6}return ADDRESS_REFUSED;\n {4}\}$/m,
+      // What the judgement function hands on is the judged camera WITH its source, as one frozen answer; the one read of
+      // the file (a function declared above it, called only with such an answer) takes both members of it - held below.
+      dials: [/\breturn Object\.freeze\(\{ camera: target, from: from\.sourceAddress \}\);/g],
+      unbound: /\breader\.read\((?!target\.camera, bound\.signal, target\.from\))/g,
+    },
+    [`${ADAPTERS}camera/onvif-relay.ts`]: {
+      take: /^ {6}const from = storedCameraSourceOf\(judged\);$/m,
+      refuse: /^ {6}if \('refusal' in from\) throw new CameraOpenError\(CameraOpenRefusal\.ADDRESS_REFUSED, deviceId, from\.refusal\);$/m,
+      dials: [/\blocator\.locate\(stored\.candidate, sealed, stored\.onvifProfileToken, inner\.signal, from\.sourceAddress\)/g, /\bstartCameraRelay\(\{[^\n]*\bsource: from\.sourceAddress,[^\n]*\}\);/g],
+      unbound: /\blocator\.locate\((?![^\n]*from\.sourceAddress\))|\bstartCameraRelay\((?![^\n]*source: from\.sourceAddress)/g,
+    },
+    'src/modules/capture-discovery/adopted-test.ts': {
+      take: /^ {2}const sourceAddress = !judged\.allowed \? null : judged\.sourceAddress;$/m,
+      refuse: /^ {2}if \(!judged\.allowed \|\| sourceAddress === null\) \{$/m,
+      dials: [/\btester\.test\(camera, sealed, deadline\.signal, sourceAddress\)/g],
+      unbound: /\btester\.test\((?![^\n]*, sourceAddress\))/g,
+    },
+    // Row 143c (C65): where a bound test is required, the tester of the attempt is the provided one BOUND to the source
+    // (`boundTo`), and the provided tester itself is never called or taken out of `resolved` by the function that dials.
+    'src/modules/capture-discovery/connect/service.ts': {
+      take: /^ {2}const fromAddress = !judged\.allowed \? null : judged\.sourceAddress;$/m,
+      refuse: /^ {2}if \(!judged\.allowed \|\| fromAddress === null\) \{$/m,
+      dials: [/\bgiven\.boundTo\(fromAddress\)/g],
+      unbound: /\b(?:resolved\.tester|given)\.test\(|\bconst \{[^}\n]*\btester\b[^}\n]*\} = resolved;/g,
+    },
+  };
+  const sourceHalfFaults = (text: string, spec: (typeof SOURCE_TAKERS)[string]): string[] => {
+    const faults: string[] = [];
+    const taken = spec.take.exec(text);
+    const refused = spec.refuse.exec(text);
+    if (taken === null) faults.push('the source is not taken from the judgement');
+    if (refused === null) faults.push('an admission without a source is not refused');
+    for (const dial of spec.dials) {
+      const places = [...text.matchAll(new RegExp(dial.source, 'g'))];
+      if (places.length !== 1) faults.push(`a dial is made ${places.length} times with the source`);
+      else if ((places[0]?.index ?? -1) < Math.max(taken?.index ?? Number.MAX_SAFE_INTEGER, refused?.index ?? Number.MAX_SAFE_INTEGER)) faults.push('a dial stands before the source was taken');
+    }
+    if ([...text.matchAll(new RegExp(spec.unbound.source, 'g'))].length > 0) faults.push('a dial is made without the source');
+    return faults;
+  };
+
+  it('(d) finds a dial without the source, a dial before it, and a source that is not refused when absent (control)', () => {
+    const spec = SOURCE_TAKERS['src/modules/capture-discovery/adopted-test.ts'];
+    if (spec === undefined) throw new Error('the list has no entry of the adopted test');
+    const good = "  const sourceAddress = !judged.allowed ? null : judged.sourceAddress;\n  if (!judged.allowed || sourceAddress === null) {\n    throw notTestable();\n  }\n    attempt = await tester.test(camera, sealed, deadline.signal, sourceAddress);\n";
+    expect(sourceHalfFaults(good, spec)).toEqual([]);
+    expect(sourceHalfFaults(good.replace(', sourceAddress);', ');'), spec)).toEqual(['a dial is made 0 times with the source', 'a dial is made without the source']);
+    expect(sourceHalfFaults(`${good}    again = await tester.test(camera, sealed, deadline.signal);\n`, spec)).toEqual(['a dial is made without the source']);
+    expect(sourceHalfFaults(good.replace('  if (!judged.allowed || sourceAddress === null) {', '  if (!judged.allowed) {'), spec)).toContain('an admission without a source is not refused');
+    expect(sourceHalfFaults(`    attempt = await tester.test(camera, sealed, deadline.signal, sourceAddress);\n${good.split('\n').slice(0, 4).join('\n')}\n`, spec)).toEqual(['a dial stands before the source was taken']);
+  });
+
+  it('(d) row 143b: every caller of the judgement that dials takes the source address from it, refuses when it names none, and hands it to every dial', () => {
+    for (const [path, spec] of Object.entries(SOURCE_TAKERS)) expect(sourceHalfFaults(tree.find((file) => file.path === path)?.text ?? '', spec), path).toEqual([]);
+    // Every taker is a caller of the judgement, and (row 143c) every caller is a taker: no dial of a stored camera is left unbound.
+    expect(Object.keys(JUDGEMENT_CALLERS).filter((path) => !Object.hasOwn(SOURCE_TAKERS, path))).toEqual([]);
+    expect(Object.keys(SOURCE_TAKERS).sort()).toEqual(Object.keys(JUDGEMENT_CALLERS).sort());
+    // The watch: ONE read, with the camera and the source of ONE answer of the judgement function; that answer is made in
+    // one place, and the seam's read cannot be written without the address (a required parameter).
+    const watchText = tree.find((file) => file.path === `${ADAPTERS}camera/camera-watch.ts`)?.text ?? '';
+    expect(watchText.match(/\breader\.read\([^\n]*?\)/g)).toEqual(['reader.read(target.camera, bound.signal, target.from)']);
+    expect(watchText.match(/\bcamera: target\b/g)).toHaveLength(1);
+    expect(watchText).toMatch(/^ {2}read\(candidate: CameraCandidate, signal: AbortSignal, fromAddress: string\): Promise<CameraTimeAnswer>;$/m);
+    expect(watchText).toMatch(/const readOnce = async \(deviceId: string, target: ReadTarget, outer: AbortSignal \| null\): Promise<Read> => \{/);
+    // The ONVIF session: ONE place gives a socket its local address, from the one parameter of the exchange; the three
+    // calls of the facades hand that parameter in, and a text that is no source address is refused before the exchange.
+    const session = tree.find((file) => file.path === `${ADAPTERS}camera/onvif-session.ts`)?.text ?? '';
+    expect(session.match(/\blocalAddress\b/g)).toHaveLength(1);
+    expect(session).toMatch(/const bound = sourceAddress === undefined \? connectionOptions : \{ \.\.\.connectionOptions, localAddress: sourceAddress, family: 4 \};\n\s+const socket = connect\.call\(agent, bound, callback\)/);
+    expect(session.match(/\bconnect\.call\(/g)).toHaveLength(1);
+    expect(session.match(/^ {4}\}, sourceAddress\);$/gm)).toHaveLength(3);
+    expect(session).toMatch(/if \(sourceAddress !== undefined && !isSourceAddress\(sourceAddress\)\) return Promise\.reject\(new CaptureAdapterError\(CaptureAdapterRefusal\.LOCATOR_INVALID\)\);/);
+    // The relay start: a RECORD start without a source address makes no start message; a probe hands on what it was given, or nothing.
+    const start = tree.find((file) => file.path === `${ADAPTERS}camera/relay-start.ts`)?.text ?? '';
+    expect(start).toMatch(/export function startCameraRelay\(start: CameraRelayStart\): ProductionProcess \{\n(?:\s*\n)*\s*if \(!isSourceAddress\(start\.source\)\) throw new CaptureAdapterError\(CaptureAdapterRefusal\.START_MESSAGE_INVALID\);/);
+    expect(start).toMatch(/if \(start\.source !== undefined && !isSourceAddress\(start\.source\)\) throw new CaptureAdapterError\(CaptureAdapterRefusal\.START_MESSAGE_INVALID\);/);
+    expect(start.match(/\bcredentialAtInjection\s*\(/g)).toHaveLength(1);
+    // The stream half of the connection test: the ONE source of a test goes to its three dials.
+    const probe = tree.find((file) => file.path === `${ADAPTERS}camera/stream-probe.ts`)?.text ?? '';
+    expect(probe).toMatch(/onvif\.test\(candidate, credential, signal, \.\.\.from\)/);
+    expect(probe).toMatch(/locator\.locate\(candidate, credential, profile\.token, signal, \.\.\.from\)/);
+    expect(probe).toMatch(/probe\(relayProgram, address, credential, signal, sourceAddress\)/);
+    expect(probe.match(/\bstartCameraProbe\s*\(/g)).toHaveLength(1);
+    expect(probe).toMatch(/startCameraProbe\(\{[^\n]*\.\.\.\(sourceAddress === undefined \? \{\} : \{ source: sourceAddress \}\)[^\n]*\}\);/);
+    // Row 143c (C65): the bound tester is that same `test` with the address, held to the form of a source address when it is bound.
+    expect(probe).toMatch(/const boundTo = \(fromAddress: string\): Pick<StreamConnectionTester, 'test'> => \{\n\s+if \(!isSourceAddress\(fromAddress\)\) throw new CaptureAdapterError\(CaptureAdapterRefusal\.LOCATOR_INVALID\);\n\s+return Object\.freeze\(\{ test: \([^\n]*\) => test\(candidate, credential, signal, fromAddress\) \}\);/);
+    // The candidate's test: the ONE way to the unbound tester is the answer "not required"; the makers of that answer are the
+    // one maker of an app's seams (from the capture operation) and the constant of seams that state nothing (the flow's own tests).
+    const connect = tree.find((file) => file.path === 'src/modules/capture-discovery/connect/service.ts')?.text ?? '';
+    expect(connect).toMatch(/const binding = seams\.candidateSource\?\.\(\) \?\? NOT_REQUIRED;\n {2}if \(!binding\.required\) return resolved\.tester;\n/);
+    expect(connect.match(/\bresolved\.tester\b/g)).toHaveLength(2);
+    expect(production.filter((file) => /(?<!readonly\s)\brequired\s*:\s*false\b/.test(file.text) && /\bcandidateSource\b|\bCandidateSourceBinding\b/.test(file.text)).map((file) => file.path).sort()).toEqual(['src/modules/capture-discovery/connect/index.ts', 'src/modules/capture-discovery/connect/service.ts']);
+    const connectIndex = tree.find((file) => file.path === 'src/modules/capture-discovery/connect/index.ts')?.text ?? '';
+    expect(connectIndex).toContain('candidateSource: () => (production ? { required: true, rule: control.candidateRule } : { required: false }),');
+    expect(connectIndex).toContain('const production = isProductionCaptureOperation(captureOperationOf(app.config));');
+  });
+});
+
+// A-11 (task 4 row 85d; decision C63 (g)): THE DOOR OF A LATER DEVICE. The fence's builder finds it BY NAME on a built
+// adapter (`lateDoorOf` of `capture/fence/index.ts`), so a renamed member would end the admission without an error. The
+// two built production adapters have it; the class-C stubs and the development adapters have none (a device of theirs is
+// never admitted after the boot); and in each built adapter every refusal stands before the one change.
+describe('A-11: the door of a later device is a member of the two built production adapters, by the name the fence asks for', () => {
+  const DOOR = /\badmitDevice\b/;
+  const BUILT = [`${ADAPTERS}camera/onvif-relay.ts`, `${ADAPTERS}audio/usb-audio-production.ts`];
+
+  it('the adapter files that name the member are the two built ones; the fence asks for that name', () => {
+    expect(adapters.filter((file) => DOOR.test(file.text)).map((file) => file.path).sort()).toEqual([...BUILT].sort());
+    const fence = tree.find((file) => file.path === 'src/capture/fence/index.ts')?.text ?? '';
+    expect(fence).toContain("const member = (adapter as unknown as Record<string, unknown>)['admitDevice'];");
+    // CONTROL: the pattern sees a member of another spelling as absent.
+    expect(DOOR.test('admitDevices: () => []')).toBe(false);
+    expect(DOOR.test('    admitDevice,')).toBe(true);
+  });
+
+  it.each(BUILT)('%s: the member is handed out as it is declared; in it, the last refusal stands before the one statement that takes the device', (path) => {
+    const text = tree.find((file) => file.path === path)?.text ?? '';
+    expect(text.match(/^ {2}function admitDevice\(entry: CaptureDeviceEntry\): void \{$/gm)).toHaveLength(1);
+    expect(text.match(/^ {4}admitDevice,$/gm)).toHaveLength(1);
+    const body = text.slice(text.indexOf('  function admitDevice(entry: CaptureDeviceEntry): void {'));
+    const door = body.slice(0, body.indexOf('\n  }\n'));
+    const taken = door.indexOf('admittedLater.push(');
+    expect(taken).toBeGreaterThan(0);
+    expect(door.match(/\badmittedLater\.push\(/g)).toHaveLength(1);
+    expect(door.lastIndexOf('throw new CaptureAdapterError(')).toBeLessThan(taken);
+    // Refused by the class, a stated kind and a stated source class; and nothing of the host is asked: no await, no call of a dependency.
+    for (const refusal of ['DEVICE_UNKNOWN', 'DEVICE_CLASS_MISMATCH', 'ADAPTER_KIND_NOT_ALLOWED', 'SOURCE_CLASS_NOT_ALLOWED']) expect(door, refusal).toContain(`CaptureAdapterRefusal.${refusal}`);
+    expect(door).not.toMatch(/\bawait\b|\boptions\.|\bdependencies\.|\bdoor\(|\bcredentials\b|\blocator\b|\bstream\(/);
   });
 });

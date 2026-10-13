@@ -9,6 +9,7 @@
  * anything under `test/` (static test `test/static/imports.test.ts`).
  */
 import type { Pool } from 'pg';
+import { ReservedInstallationId } from '../../src/capture/boot/checks';
 import { testConfiguration } from '../../src/test-configuration';
 import { Secret, createConfig, type ConfigInput, type CoreServerConfig } from '../../src/config';
 import type { LogStream } from '../../src/plugins/logger';
@@ -32,7 +33,9 @@ export function unitTestConfig(overrides: Partial<ConfigInput> = {}): CoreServer
     dataDir: '/nonexistent/dems-unit-test-data',
     // Wave H closing pass Z1 (decision D207): a test Core has an installation identity, so a rig in a
     // production capture operation boots as before. A test ABOUT a Core without one passes `null`.
-    installationDeviceId: 'DEMS-TEST-01',
+    // Task 4 row 228b: the id is a RESERVED one, taken from the closed list by import - a production Core refuses it
+    // (boot check 4b-3). A test that boots `REAL_PRODUCTION` passes a synthetic id of its own.
+    installationDeviceId: ReservedInstallationId.TEST_CONFIGURATION,
     installationName: 'Unit test installation',
     database: {
       host: '127.0.0.1',

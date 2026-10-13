@@ -28,6 +28,8 @@ interface FixtureCard {
   readonly usbId: string;
   readonly port: string;
   readonly channels: number;
+  /** The serial the USB device states (task 4 row 200). Left out: it states none. */
+  readonly serial?: string;
 }
 
 interface Host {
@@ -54,6 +56,10 @@ function hostOf(cards: FixtureCard[]): Host {
       const card = at(cardIndex);
       return card === undefined ? null : `${card.usbId}\n`;
     },
+    async usbSerial(cardIndex) {
+      const card = at(cardIndex);
+      return card?.serial === undefined ? null : `${card.serial}\n`;
+    },
     async stream(cardIndex) {
       const card = at(cardIndex);
       if (card === undefined) return null;
@@ -69,7 +75,8 @@ const OCTO: FixtureCard = { index: 2, id: 'Octo', product: 'DEMS Test Octo', usb
 /** Another product that the kernel gave the name of the registered card. */
 const IMPOSTOR: FixtureCard = { index: 1, id: 'Duo', product: 'DEMS Other Codec', usbId: '3c4d:2902', port: '0000:00:14.0-4', channels: 2 };
 
-const row = (deviceId: string, card: FixtureCard, inputNumber: number): RegisteredAudioInput => ({ deviceId, usbId: card.usbId, cardId: card.id, cardDevice: 0, inputNumber, nativeChannels: card.channels });
+// Task 4 row 200: a stored row holds the port path its card was registered on (the fixture cards state no serial); the match reads it.
+const row = (deviceId: string, card: FixtureCard, inputNumber: number): RegisteredAudioInput => ({ deviceId, usbId: card.usbId, usbSerial: card.serial ?? null, usbPort: card.port, cardId: card.id, cardDevice: 0, inputNumber, nativeChannels: card.channels });
 
 // ── The sinks ───────────────────────────────────────────────────────────────────────
 
@@ -109,6 +116,8 @@ interface RigOptions {
   readonly rows?: RegisteredAudioInput[];
   readonly sink?: MicFaultSink;
   readonly intervalMs?: number;
+  /** Task 4 row 85c: whether the capture attempt of a microphone's handle is superseded. Left out: the option is not handed in. */
+  readonly superseded?: (deviceId: string) => boolean;
 }
 
 function rig(options: RigOptions = {}) {
@@ -135,6 +144,7 @@ function rig(options: RigOptions = {}) {
     faults: options.sink ?? recorded.sink,
     timers,
     ...(options.intervalMs === undefined ? {} : { intervalMs: options.intervalMs }),
+    ...(options.superseded === undefined ? {} : { superseded: options.superseded }),
     onChange: (change) => void changes.push(change),
     report: (entry) => void reports.push(entry),
   });
@@ -277,9 +287,12 @@ describe('row 68 (2): the card is looked for by its stored identity; what cannot
   });
 
   it('two cards with the stored identity, a stored row that cannot be read, and a microphone with no row: none is a loss; each is reported by its code', async () => {
-    const h = rig({ rows: [row('MIC-01', DUO, 1), row('MIC-02', OCTO, 1)] });
+    // Task 4 row 200: two units on two ports are told apart by the stored port path, so "two cards
+    // with the stored identity" is now two units that state the STORED SERIAL, neither on the stored port.
+    const twin = { ...DUO, serial: 'SN-SAME' };
+    const h = rig({ rows: [row('MIC-01', twin, 1), row('MIC-02', OCTO, 1)] });
     h.watched.ids = ['MIC-01', 'MIC-02', 'MIC-09'];
-    h.host.cards = [DUO, { ...DUO, index: 7, id: 'Duo_1', port: '0000:00:14.0-5' }, OCTO];
+    h.host.cards = [{ ...twin, port: '0000:00:14.0-6' }, { ...twin, index: 7, id: 'Duo_1', port: '0000:00:14.0-5' }, OCTO];
     h.unreadable.add('MIC-02');
     await h.watch.check();
     expect(h.calls).toEqual([]);
@@ -389,6 +402,90 @@ describe('row 68 (3): the adapter\'s word that a helper ended', () => {
     h.watch.sourceLost('CAM-01', ended);
     await h.watch.settled();
     expect(h.calls).toEqual([]);
+  });
+
+  // Task 4 row 85c (decision C60 (2); the measurement of row 191: the helper of the earlier attempt ended 33 to 46 ms after its
+  // worker, the session's close of that handle began 12 to 19 ms after). The watch is told whether the attempt is superseded.
+  it('row 85c: a word about a handle of a SUPERSEDED attempt raises nothing - no fault, no change, no episode - and is reported by its code; the session then closes and opens the handle and nothing is left', async () => {
+    const state = { replacing: true };
+    const asked: string[] = [];
+    const h = rig({
+      rows: [row('MIC-01', DUO, 1)],
+      superseded: (deviceId) => {
+        asked.push(deviceId);
+        return state.replacing;
+      },
+    });
+    h.held.add('MIC-01');
+    // The worker of attempt 1 went down; its helper ends before the session's close reaches the handle.
+    h.watch.sourceLost('MIC-01', ended);
+    // Asked in the turn of the word, before anything is queued.
+    expect(asked).toEqual(['MIC-01']);
+    await h.watch.settled();
+    expect([h.calls, h.said(), h.watch.lost()]).toEqual([[], [], []]);
+    expect(h.reports.map((entry) => `${entry.code} ${String(entry.deviceId)}`)).toEqual(['MIC_LOSS_REPORT_SUPERSEDED MIC-01']);
+    // The session closes the handle and opens it again for attempt 2 (row 191): the passes see a card that is there. Nothing was raised, so nothing is cleared.
+    h.held.delete('MIC-01');
+    await h.watch.check();
+    h.held.add('MIC-01');
+    await h.watch.check();
+    expect([h.calls, h.said()]).toEqual([[], []]);
+    // Control: the SAME word once the later worker records is a loss of the attempt in force.
+    state.replacing = false;
+    h.watch.sourceLost('MIC-01', ended);
+    await h.watch.settled();
+    expect(h.calls).toEqual(['raise CAPTURE_FAULT/MIC_DISCONNECTED@MIC-01']);
+    expect(asked).toEqual(['MIC-01', 'MIC-01']);
+  });
+
+  it('row 85c: a superseded word does not hide a card that is really gone (the listing pass tells it), and does not end an episode that is open', async () => {
+    const state = { replacing: false };
+    const h = rig({ rows: [row('MIC-01', DUO, 1)], superseded: () => state.replacing });
+    h.held.add('MIC-01');
+    // An episode of the attempt in force.
+    h.watch.sourceLost('MIC-01', ended);
+    await h.watch.settled();
+    expect(h.calls).toEqual(['raise CAPTURE_FAULT/MIC_DISCONNECTED@MIC-01']);
+    // A later word while the worker is replaced: dropped; the open episode is neither raised again nor cleared by it.
+    state.replacing = true;
+    h.watch.sourceLost('MIC-01', ended);
+    await h.watch.settled();
+    expect(h.calls).toHaveLength(1);
+    expect(h.watch.lost()).toEqual(['MIC-01']);
+    // Another microphone, unplugged while its attempt is superseded: the word is dropped, the LISTING raises.
+    const gone = rig({ rows: [row('MIC-01', DUO, 1)], superseded: () => true });
+    gone.held.add('MIC-01');
+    gone.host.cards = [OCTO];
+    gone.watch.sourceLost('MIC-01', ended);
+    await gone.watch.settled();
+    expect(gone.calls).toEqual([]);
+    await gone.watch.check();
+    expect(gone.calls).toEqual(['raise CAPTURE_FAULT/MIC_DISCONNECTED@MIC-01']);
+    expect(gone.said()).toEqual(['LOST MIC-01 CARD_ABSENT']);
+  });
+
+  it('row 85c, fail-closed: a question that throws does not hide a loss - the word counts and the failure is reported; anything but `true` is not superseded; without the option every word counts', async () => {
+    const thrown = rig({
+      rows: [row('MIC-01', DUO, 1)],
+      superseded: () => {
+        throw Object.assign(new Error('the supervisor could not be asked'), { code: 'NOT_READY' });
+      },
+    });
+    thrown.held.add('MIC-01');
+    thrown.watch.sourceLost('MIC-01', ended);
+    await thrown.watch.settled();
+    expect(thrown.calls).toEqual(['raise CAPTURE_FAULT/MIC_DISCONNECTED@MIC-01']);
+    expect(thrown.reports.map((entry) => `${entry.code} ${entry.detail}`)).toEqual(['MIC_LOSS_ATTEMPT_UNREADABLE NOT_READY']);
+    const truthy = rig({ rows: [row('MIC-01', DUO, 1)], superseded: (() => 'yes') as unknown as () => boolean });
+    truthy.held.add('MIC-01');
+    truthy.watch.sourceLost('MIC-01', ended);
+    await truthy.watch.settled();
+    expect(truthy.calls).toHaveLength(1);
+    const plain = rig({ rows: [row('MIC-01', DUO, 1)] });
+    plain.held.add('MIC-01');
+    plain.watch.sourceLost('MIC-01', ended);
+    await plain.watch.settled();
+    expect(plain.calls).toHaveLength(1);
   });
 });
 

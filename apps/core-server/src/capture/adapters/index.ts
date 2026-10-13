@@ -147,6 +147,10 @@ export { ONVIF_SESSION_LIMITS, OnvifTestReason, createOnvifConnectionTester, typ
 // relay's probe of each named stream and the Core's own judgement of it. The locator read is the second
 // facade of the session file. No process is started before `test()` is called with a credential.
 export { createOnvifStreamLocator, type OnvifStreamLocator } from './camera/onvif-session';
+// The destination rule on a STORED camera as one judgement (task 4 row 143; AD-02 (1)): asked by the production
+// camera adapter, by the camera watch and by the stored-credential connection test (row 146) before each use of a
+// stored address. Pure; the rule itself is handed in by the composition - this layer holds no permissive value.
+export { ONVIF_DEVICE_SERVICE_PATH, StoredCameraRefusal, judgeStoredCamera, storedCameraCandidate, type StoredCameraAddressRule, type StoredCameraJudgement } from './camera/stored-address';
 export {
   STREAM_CODECS,
   STREAM_PROBE_BOUND_MS,

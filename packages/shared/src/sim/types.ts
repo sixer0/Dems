@@ -590,16 +590,26 @@ export interface CameraStatus {
    *
    * The picture: `<height>p` for a 16:9 picture (`1080p`, `720p`), else `<width>x<height>`. The same
    * rule as the seal's stream statement (`streamProfileOf`), in the lower-case form the screens show.
+   *
+   * NULL (row V6; finding S-01, decision C36): no stream statement is stored for the track. Never a
+   * default. The simulator's own dataset states a picture and a codec for every camera, so its
+   * screens read as before; a Core answers null for a track whose slot holds no statement.
    */
-  resolution: string;
+  resolution: string | null;
   /**
    * The whole-number nominal rate the stream declares, 1 to 240; null when the stream states no rate
    * (an HEVC stream today). The simulator's cameras state 25. The same type in
    * `CameraStreamFactSchemas.fps` and in `ApiVideoTrack` (integration pass I-1, remainder of row 52).
    */
   fps: number | null;
-  codec: CameraStreamCodec;
-  bitrateMbps: number;
+  /** Null: no stream statement is stored for the track (row V6, S-01). Never a default. */
+  codec: CameraStreamCodec | null;
+  /**
+   * Megabits per second. NULL (pass I-9b; request line of row W4, review 060c R-01, decision C36): no
+   * telemetry states a bitrate for the track. Never a default. The simulator states its own figure for
+   * every camera, so its screens read as before.
+   */
+  bitrateMbps: number | null;
   poePort: string;
   model: string;
   firmware: string;
@@ -782,6 +792,17 @@ export interface RegisterCaptureMicrophoneInput {
   deviceId: string | null;
   /** The product name as the Core's card listing returned it: printable ASCII, 1 to 64 characters (AD-07 (1)). */
   model: string;
+}
+
+/**
+ * The input of the INTERNAL action `readdressCaptureDevice` (task 4 row 195, WP-12): the new address
+ * of ONE registered camera, as operation 100 confirmed it. Nothing else of the device can be named.
+ */
+export interface ReaddressCaptureDeviceInput {
+  /** The registered camera, e.g. `CAM-01`. */
+  deviceId: string;
+  /** The new `host` of the device, taken as the caller gives it: `host`, or `host:port`. Never a URL, never `user:password@`. */
+  address: string;
 }
 
 /**
@@ -1813,6 +1834,17 @@ export interface SimActions {
    * is no product name of a card listing, or an id that is no registered `USB_AUDIO` microphone.
    */
   registerCaptureMicrophone(microphone: RegisterCaptureMicrophoneInput): void;
+  /**
+   * INTERNAL (task 4 row 195, WP-12; finding of row 97): the registered camera `deviceId` holds
+   * `address` as its `host` in the `captureDevices` slice; nothing else of the device and no other
+   * device changes. No client calls it: on the Core server it runs inside the unit of work of
+   * operation 100 (`confirmCaptureDeviceAddress`), which has checked the access rule, the idle
+   * lock, the operator's confirmation and the destination rule, and writes the audit row itself.
+   * Checks no permission, writes no audit row and no event, and leaves `captureConfig` alone.
+   * Throws `SimTransitionError` with code INVALID_INPUT for an id that is no registered camera (an
+   * unknown id, a microphone) and for an address that is no host.
+   */
+  readdressCaptureDevice(change: ReaddressCaptureDeviceInput): void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════

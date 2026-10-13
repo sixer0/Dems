@@ -81,6 +81,13 @@ export interface MicLossFault {
  * Where a fault goes. The composition hands in the engine's two internal actions
  * (`raiseCaptureWarning`, `clearCaptureWarning`): each raise is one alert and one `FAULT_RAISED`
  * audit entry, each clear one `FAULT_CLEARED`. A sink that throws is asked again at the next pass.
+ *
+ * DECISION C60 (2) (task 4 row 85c): the watch raises its fault and clears ONLY the fault it raised
+ * itself, when it observes the source back. Here that is `Episode.raised`: `clear` is called for an
+ * episode whose `raise` at this sink succeeded, and for no other. That the fault under that key was
+ * not raised by ANOTHER part first (the capture worker says the same key) is held by the sink the
+ * composition hands in (`watchFaultSinkOf` of the fence), which does not own - and never clears -
+ * a fault that was active before the watch's raise.
  */
 export interface MicFaultSink {
   raise(fault: MicLossFault): Promise<void> | void;
@@ -122,6 +129,10 @@ export const MicLossReportCode = {
   OBSERVER_FAILED: 'MIC_LOSS_OBSERVER_FAILED',
   /** A scheduled pass ended by something no rule above names. The next pass still runs. */
   PASS_FAILED: 'MIC_LOSS_PASS_FAILED',
+  /** The adapter's word was about a handle of a SUPERSEDED capture attempt: dropped, nothing raised (row 85c; decision C60 (2)). */
+  REPORT_SUPERSEDED: 'MIC_LOSS_REPORT_SUPERSEDED',
+  /** Whether the attempt is superseded could not be asked: the adapter's word COUNTS (a loss is told rather than hidden). */
+  ATTEMPT_UNREADABLE: 'MIC_LOSS_ATTEMPT_UNREADABLE',
 } as const;
 export type MicLossReportCode = (typeof MicLossReportCode)[keyof typeof MicLossReportCode];
 
@@ -153,6 +164,24 @@ export interface MicLossWatchOptions<Row extends MicLossStoredRow = MicLossStore
   /** The microphones whose handle is open now (`UsbAudioProductionAdapter.openSources`). */
   readonly held: () => readonly string[];
   readonly faults: MicFaultSink;
+  /**
+   * ATTEMPT-AWARENESS OF `sourceLost` (task 4 row 85c; decision C60 (2); the measurement of row 191).
+   * Since row 191 a session closes every microphone handle of an attempt when its worker is replaced
+   * and opens new ones. A helper of the EARLIER attempt may end by itself before that close reaches
+   * it (measured: the helper 33 to 46 ms after the worker, the session's close 12 to 19 ms after):
+   * the adapter then says `onSourceLost` about a handle that feeds no worker any more.
+   *
+   * True: the capture attempt that microphone's handle was opened for is SUPERSEDED - its worker is
+   * gone and the session is replacing it. Asked ONCE, in the turn `sourceLost` is called (not later:
+   * the answer is about that moment). An episode of a superseded attempt RAISES NOTHING: the word is
+   * dropped and reported (`REPORT_SUPERSEDED`), as a report of a superseded attempt is dropped
+   * everywhere else (decision C37). A card that is really gone is still told by the listing pass,
+   * and a microphone that cannot be opened again by the session.
+   *
+   * Absent: every word of the adapter counts, as before. A function that throws: the word counts
+   * (`ATTEMPT_UNREADABLE` is reported) - a loss is never hidden by a question that failed.
+   */
+  readonly superseded?: (deviceId: string) => boolean;
   readonly timers: CaptureTimers;
   /** Default `MIC_LOSS_INTERVAL_MS`; a smaller value than the minimum is the minimum. */
   readonly intervalMs?: number;
@@ -344,6 +373,19 @@ export function createMicLossWatch<Row extends MicLossStoredRow>(options: MicLos
 
     sourceLost(deviceId) {
       if (!MIC_ID.test(deviceId)) return;
+      // Row 85c (C60 (2)): asked NOW, before anything is queued. A word about a handle of a superseded attempt opens no episode.
+      if (options.superseded !== undefined) {
+        let superseded = false;
+        try {
+          superseded = options.superseded(deviceId) === true;
+        } catch (error) {
+          report(MicLossReportCode.ATTEMPT_UNREADABLE, deviceId, detailOf(error));
+        }
+        if (superseded) {
+          report(MicLossReportCode.REPORT_SUPERSEDED, deviceId);
+          return;
+        }
+      }
       void enqueue(async () => {
         const episode = episodeOf(deviceId);
         episode.helperEnded = true;

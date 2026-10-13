@@ -64,9 +64,26 @@ export function checkedAtOf(device: unknown): number | null | undefined {
 /**
  * The PoE port and the bitrate of a camera tile (the same ruling: "no bitrate / PoE figure the Core
  * did not measure"). Both are values of the simulator's camera slice. In real capture the Core
- * states no PoE port for a source, and a bitrate exists only while a recording's telemetry runs.
+ * states no PoE port for a source.
+ *
+ * THE BITRATE (task 4 row W4; review `verification/060c` finding R-01; decision C36: a default never stands in
+ * for a fact). Until row W4 it was drawn on a Core in real capture while a session records, on the reading "a
+ * bitrate exists only while a recording's telemetry runs". No telemetry writes it: a camera's `bitrateMbps`
+ * has ONE writer, the simulator's initial literal `9`, and the Core's reads pass that on. An operator read
+ * "9 Mbps" beside a recording of a real camera. On a Core in real capture the figure is therefore NEVER
+ * drawn, recording or not. The contract's member is not nullable (`CamerasSliceSchema.bitrateMbps`,
+ * `amount()`), so the Core cannot say "not stated" for it: the nullable member is asked of the contract's
+ * writer (request line of row W4); when it exists and a writer states a bitrate, this rule reads the member.
+ * In Simulated mode and on a Core in simulated capture the figure is the simulator's own statement: drawn.
+ *
+ * PASS I-9b: THE MEMBER IS NULLABLE NOW (null = no telemetry states a bitrate). The rule reads it: a bitrate of
+ * null is NEVER drawn, in any mode - hand the member in as `bitrateMbps` (not handed in: judged by the mode
+ * alone, as before). The mode rule above STAYS beside it: the slice a Core in real capture serves still
+ * carries the simulator's literal (the Core's devices module does not state null yet - request line of row
+ * I-9b); when it does, the mode's part for the bitrate has nothing left to hide and is taken out.
  */
-export function measuredFiguresShown(input: { readonly realCapture: boolean; readonly recording: boolean }): { poePort: boolean; bitrate: boolean } {
-  if (!input.realCapture) return { poePort: true, bitrate: true }
-  return { poePort: false, bitrate: input.recording }
+export function measuredFiguresShown(input: { readonly realCapture: boolean; readonly recording: boolean; readonly bitrateMbps?: number | null }): { poePort: boolean; bitrate: boolean } {
+  const stated = input.bitrateMbps !== null
+  if (!input.realCapture) return { poePort: true, bitrate: stated }
+  return { poePort: false, bitrate: false }
 }

@@ -32,11 +32,13 @@ import {
 } from '../src/api';
 import {
   DEMO_OPERATOR_PASSWORD,
+  READDRESS_CAPTURE_DEVICE_ACTION,
   REGISTERED_MICROPHONE_MODEL_PATTERN,
   createManualClock,
   createSim,
   nextCaptureCameraId,
   nextCaptureMicrophoneId,
+  readdressCaptureDeviceTransition,
   registerCaptureMicrophoneTransition,
   setSimConnectionTestOutcome,
   type AuditRow,
@@ -749,6 +751,121 @@ describe('the INTERNAL action `registerCaptureMicrophone` (the Core runs it insi
     const answer = h.call('POST', AUDIO_INPUTS, { cardId: SIM_CAPTURE_AUDIO_CARD_IDS.four, cardDevice: 0, inputNumber: 1 });
     expect(answer.status).toBeGreaterThanOrEqual(400);
     expect(h.state().captureDevices).toBe(before);
+  });
+});
+
+// Task 4 (blueprint row 195, WP-12; finding of row 97): the shared action the engine's door of a
+// confirmed re-address runs (row 196). The sibling of the two actions above.
+describe('the INTERNAL action `readdressCaptureDevice` (the Core runs it inside operation 100)', () => {
+  const ADDRESS = '192.168.10.21';
+
+  it('the address of the named camera changes, and no other member, device or slice does', () => {
+    const h = harness();
+    const before = h.state();
+    const camera = before.captureDevices.devices.find((device) => device.id === 'CAM-01')!;
+    expect(camera.host).not.toBe(ADDRESS);
+    h.sim.actions.readdressCaptureDevice({ deviceId: 'CAM-01', address: ADDRESS });
+    const after = h.state();
+    // The one device: every member but `host` is equal, and `host` is the address as given.
+    expect(after.captureDevices.devices.find((device) => device.id === 'CAM-01')).toEqual({ ...camera, host: ADDRESS });
+    // Every other device is the SAME object, in the same place; none is appended.
+    expect(after.captureDevices.devices.map((device) => device.id)).toEqual(before.captureDevices.devices.map((device) => device.id));
+    after.captureDevices.devices.forEach((device, index) => {
+      if (device.id !== 'CAM-01') expect(device, device.id).toBe(before.captureDevices.devices[index]);
+    });
+    // Every other slice is the SAME object: no audit row, no event, the selector alone.
+    for (const slice of Object.keys(before) as (keyof typeof before)[]) {
+      if (slice !== 'captureDevices') expect(after[slice], slice).toBe(before[slice]);
+    }
+    // The address is taken as the caller gives it: with a port, and an address the destination rule
+    // would refuse (the rule is the operation's, not the action's).
+    const withPort = readdressCaptureDeviceTransition(after, { deviceId: 'CAM-02', address: '192.168.10.22:8080' });
+    expect(withPort.result).toEqual({ ...after.captureDevices.devices.find((device) => device.id === 'CAM-02'), host: '192.168.10.22:8080' });
+    expect(readdressCaptureDeviceTransition(after, { deviceId: 'CAM-02', address: '127.0.0.1' }).result.host).toBe('127.0.0.1');
+    // The address the camera already holds: the SAME state object, so the engine writes nothing.
+    const same = readdressCaptureDeviceTransition(after, { deviceId: 'CAM-01', address: ADDRESS });
+    expect(same.state).toBe(after);
+    expect(same.result).toBe(after.captureDevices.devices.find((device) => device.id === 'CAM-01'));
+    h.sim.actions.readdressCaptureDevice({ deviceId: 'CAM-01', address: ADDRESS });
+    expect(h.state()).toBe(after);
+    // An adopted camera is re-addressed the same way.
+    h.sim.actions.registerCaptureDevice({ id: 'CAM-03', host: '192.168.10.30', model: null, adapter: 'ONVIF_RTSP' });
+    h.sim.actions.readdressCaptureDevice({ deviceId: 'CAM-03', address: '192.168.10.31' });
+    expect(h.state().captureDevices.devices.find((device) => device.id === 'CAM-03')).toMatchObject({ host: '192.168.10.31', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', online: true });
+  });
+
+  it('an unknown id, a microphone, the switch and an address that is no host are refused, and nothing changes', () => {
+    const h = harness();
+    const before = h.state();
+    const refused: Array<[string, unknown, unknown]> = [
+      ['an unknown camera', 'CAM-77', ADDRESS],
+      ['a microphone', 'MIC-01', ADDRESS],
+      ['the other microphone', 'MIC-02', ADDRESS],
+      ['the switch', 'POE-SWITCH', ADDRESS],
+      ['an empty id', '', ADDRESS],
+      ['a candidate id', 'CND-000000000002', ADDRESS],
+      ['no id', null, ADDRESS],
+      ['an empty address', 'CAM-01', ''],
+      ['a URL', 'CAM-01', 'http://192.168.10.21/onvif/device_service'],
+      ['a path', 'CAM-01', '192.168.10.21/24'],
+      ['user and password', 'CAM-01', 'admin:pass@192.168.10.21'],
+      ['a blank inside', 'CAM-01', '192.168.10.21 '],
+      ['a text that is too long', 'CAM-01', '1'.repeat(121)],
+      ['no address', 'CAM-01', null],
+      ['a number', 'CAM-01', 3232238101],
+    ];
+    for (const [what, deviceId, address] of refused) {
+      expect(() => readdressCaptureDeviceTransition(before, { deviceId, address } as never), what).toThrow(/Illegal session transition/);
+      expect(() => h.sim.actions.readdressCaptureDevice({ deviceId, address } as never), what).toThrow(/Illegal session transition/);
+      expect(h.state(), what).toBe(before);
+    }
+    // A registered USB microphone is refused as the built-in pair is.
+    h.sim.actions.registerCaptureMicrophone({ deviceId: null, model: 'USB Audio CODEC' });
+    const withMicrophone = h.state();
+    expect(() => h.sim.actions.readdressCaptureDevice({ deviceId: 'MIC-03', address: ADDRESS })).toThrow(/Illegal session transition/);
+    expect(h.state()).toBe(withMicrophone);
+  });
+
+  it('no client may call it: it is INTERNAL with no operation and bound LOCAL, exactly as `registerCaptureDevice`', () => {
+    expect(SIM_ACTION_OPERATIONS.readdressCaptureDevice).toEqual({ operations: [], execution: SimActionExecution.INTERNAL });
+    expect(SIM_ACTION_OPERATIONS.readdressCaptureDevice).toEqual(SIM_ACTION_OPERATIONS.registerCaptureDevice);
+    expect(LIVE_BINDINGS.readdressCaptureDevice.flow).toBe(LiveActionFlow.LOCAL);
+    expect(LIVE_BINDINGS.readdressCaptureDevice.flow).toBe(LIVE_BINDINGS.registerCaptureDevice.flow);
+    expect(READDRESS_CAPTURE_DEVICE_ACTION).toBe('readdressCaptureDevice');
+  });
+
+  it('the simulated operation 100 does not run it: the simulator registry keeps every address', () => {
+    const h = harness();
+    signIn(h, 'rina.wijaya');
+    const before = h.state().captureDevices;
+    expect(h.call('POST', '/api/v1/capture/discovery').status).toBe(202);
+    const answer = h.call('POST', '/api/v1/capture/devices/address/confirm', { deviceId: 'CAM-01', candidateId: 'CND-000000000002', address: ADDRESS });
+    expect(answer.status).toBe(409);
+    expect(h.state().captureDevices).toBe(before);
+  });
+
+  // Task 4 row V3 (blueprint row 146; C58): operation 108, the connection test of a registered camera
+  // with its stored credential. The simulator holds no credential and contacts nothing.
+  // Row V4 (decision C75 (2)): so it answers what a Core server in simulated capture answers - the
+  // envelope's `503 NOT_READY`, `DISCOVERY_NOT_READY` - for every id, and never a synthetic REACHABLE.
+  it('the simulated operation 108 is web console only, answers the 503 of a Core in simulated capture for every id - never a synthetic result - and changes nothing: no audit row, no event, the same state object', () => {
+    const tablet = harness({ deviceConsole: true });
+    signIn(tablet, 'rina.wijaya');
+    const refused = tablet.call('POST', '/api/v1/capture/devices/CAM-01/test');
+    expect([refused.status, codeOf(refused.body), reasonOf(refused.body)]).toEqual([403, 'NOT_PERMITTED', 'WEB_CONSOLE_ONLY']);
+    const h = harness();
+    signIn(h, 'rina.wijaya');
+    const before = h.state();
+    // A registered camera, a microphone and an unknown id alike: "not ready" stands BEFORE the device is looked up, as on the Core server.
+    for (const id of ['CAM-01', 'CAM-02', 'MIC-01', 'CAM-77']) {
+      const answer = h.call('POST', `/api/v1/capture/devices/${id}/test`);
+      expect([answer.status, codeOf(answer.body), reasonOf(answer.body)], id).toEqual([503, 'NOT_READY', 'DISCOVERY_NOT_READY']);
+      expect((answer.body as { error: { message: string } }).error.message, id).toBe('The connection test of a registered camera is not ready.');
+      expect(JSON.stringify(answer.body), id).not.toMatch(/REACHABLE|outcome|usableProfileCount/);
+    }
+    // Not one audit row of the two the Core server writes, and nothing else: the state is the same object.
+    expect(h.state()).toBe(before);
+    expect([...h.rows('CAPTURE_DEVICE_CONNECTION_TESTED'), ...h.rows('CAPTURE_CREDENTIAL_REVEALED')]).toEqual([]);
   });
 });
 

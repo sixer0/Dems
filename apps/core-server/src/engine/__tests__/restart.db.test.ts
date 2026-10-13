@@ -6,7 +6,7 @@
 // is built on the same database and booted with `app.readiness.boot()`.
 import { recordingBytes, verifyAuditChain, type ScenarioName, CORE_NOT_RUNNING_SENTENCE, createManualClock, type AuditRow, STOPPING_MS, CORE_NOT_RUNNING_CLEARED_SENTENCE, type CompleteSealInput, type SealingStepReport } from '@dems/shared/sim';
 import type { Pool } from 'pg';
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { useTestDatabase, type TestDatabase } from '../../../test/helpers/db';
 import { BOOT_CHECKS, passedAmong, readHead, readTrail, sleep, verifyTrail, linkProblems } from '../../../test/support/core';
 import { createSystemClock } from '../../core';
@@ -948,6 +948,8 @@ describe('shutdown (spec §8.6 "Stop")', () => {
 describe('G75b-03, G75b-06: a restart while RECORDING, on a booted Core in real capture and in simulated capture', () => {
   const fixture = realBootFixture('passj_restart');
   fixture.provisionKey();
+  // Task 4 row 228b: the fixture is a temporary directory and goes with the block, passed or failed.
+  afterAll(() => fixture.remove());
   vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
 
   const SESSION_INPUT = { caseNumber: 'LP/2026/1010-0301', subjectType: 'SAKSI', subjectName: 'Test Subject', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' } as const;
@@ -1052,6 +1054,7 @@ describe('G75b-03, G75b-06: a restart while RECORDING, on a booted Core in real 
 describe('G75b-03: a graceful restart while FINALIZING, on a booted Core in real capture and in simulated capture', () => {
   const fixture = realBootFixture('waveia2_restart');
   fixture.provisionKey();
+  afterAll(() => fixture.remove());
   vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
 
   const SESSION_INPUT = { caseNumber: 'LP/2026/1010-0201', subjectType: 'SAKSI', subjectName: 'Test Subject', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' } as const;
@@ -1155,6 +1158,7 @@ describe('G75b-03: a graceful restart while FINALIZING, on a booted Core in real
 describe('G75c-01: the life of the restart fault over four processes on one database', () => {
   const fixture = realBootFixture('wavek_s1_restart');
   fixture.provisionKey();
+  afterAll(() => fixture.remove());
   vi.setConfig({ testTimeout: 180_000, hookTimeout: 180_000 });
 
   const SESSION_INPUT = { caseNumber: 'LP/2026/1011-0401', subjectType: 'SAKSI', subjectName: 'Test Subject', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' } as const;

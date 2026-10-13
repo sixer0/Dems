@@ -31,8 +31,8 @@
 import { createHash } from 'node:crypto';
 import { sep } from 'node:path';
 import { VERIFY_REPORT_MAX_FINDINGS, VERIFY_REPORT_MAX_FRAGMENTS, type EvidenceVerifyResultBody } from '@dems/shared/api';
-import { PackageFile, packageFolderName } from '@dems/shared/evidence-package';
-import { verifyPackageV2, type FragmentOpener, type HashFactory, type PackageVerifyResult, type VerifyCheckId, type VerifyPorts } from '@dems/shared/evidence-verify';
+import { PackageFile, packageFolderName, parseManifestV2 } from '@dems/shared/evidence-package';
+import { SIGNED_BY_COMPROMISED_KEY_REPORT, TranscriptRevisionsFileSchema, VERIFY_MAX_MANIFEST_BYTES, VERIFY_MAX_SMALL_FILE_BYTES, VERIFY_NOTICE, verifyPackageV2, type FragmentOpener, type HashFactory, type PackageVerifyResult, type VerifyCheckId, type VerifyPorts } from '@dems/shared/evidence-verify';
 import { readSigningCertificate, verifyEd25519 } from '../capture';
 import type { Principal } from '../plugins/authenticate';
 import { createPackageReader } from './package-reader';
@@ -81,7 +81,43 @@ export interface RealEvidenceItem {
   readonly transcriptSha256: string | null;
   /** How many transcript revisions the database holds. */
   readonly revisionCount: number;
+  /**
+   * The hash of the LAST transcript revision the database holds (`transcript_revisions.sha256` of
+   * the head); null when it holds none. Asked only for a package under a compromised key (row 227):
+   * a caller that does not state it gets a failure there when the package has revisions.
+   */
+  readonly revisionHeadSha256?: string | null;
 }
+
+/**
+ * WHAT THE CORE SAYS OF THE KEY A PACKAGE WAS SIGNED WITH (task 4 row 227; SX-09 (d)).
+ *
+ *   NOT_COMPROMISED                  no certificate the verdict rests on belongs to a key marked compromised
+ *   COMPROMISED_KEY_STORED_DIGEST    the manifest or a transcript revision is signed by a key that was LATER
+ *                                    MARKED COMPROMISED, and the package is the one this Core sealed: its
+ *                                    manifest digest (and the head of its revisions) equals what the Core's
+ *                                    database stored. The verdict passes, and says so - never a plain pass
+ *   COMPROMISED_KEY_NOT_STORED_DIGEST  signed by such a key and NOT what the database stored: a FAILURE.
+ *                                    After a compromise the holder of the key can sign anything
+ */
+export const SigningKeyVerdict = {
+  NOT_COMPROMISED: 'NOT_COMPROMISED',
+  COMPROMISED_KEY_STORED_DIGEST: 'COMPROMISED_KEY_STORED_DIGEST',
+  COMPROMISED_KEY_NOT_STORED_DIGEST: 'COMPROMISED_KEY_NOT_STORED_DIGEST',
+} as const;
+export type SigningKeyVerdict = (typeof SigningKeyVerdict)[keyof typeof SigningKeyVerdict];
+
+/**
+ * The notice of an answer whose package is under a compromised key, carried in `notices` of
+ * operation 41. Since row V4 the code and the two report lines are members of the SHARED vocabulary
+ * (`VERIFY_NOTICE.SIGNED_BY_COMPROMISED_KEY`, `SIGNED_BY_COMPROMISED_KEY_REPORT`); since row V5 they
+ * are those members BY REFERENCE, so the Core and the contract cannot word the state differently.
+ */
+export const COMPROMISED_KEY_NOTICE_CODE = VERIFY_NOTICE.SIGNED_BY_COMPROMISED_KEY;
+export const COMPROMISED_KEY_NOTICE_REPORT: Readonly<Record<Exclude<SigningKeyVerdict, 'NOT_COMPROMISED'>, string>> = Object.freeze({
+  COMPROMISED_KEY_STORED_DIGEST: SIGNED_BY_COMPROMISED_KEY_REPORT.COMPROMISED_KEY_STORED_DIGEST,
+  COMPROMISED_KEY_NOT_STORED_DIGEST: SIGNED_BY_COMPROMISED_KEY_REPORT.COMPROMISED_KEY_NOT_STORED_DIGEST,
+});
 
 /** The verdict as the audit row and the custody entry of operation 41 carry it (C3 §3, §5). */
 export interface VerdictRecord {
@@ -101,6 +137,14 @@ export interface VerdictRecord {
    * Empty for a pass and for a failure that names no fragment. Names, never values.
    */
   readonly failedFragments: readonly string[];
+  /**
+   * Task 4 row V5 (decision C84, caution R-1; SX-09 (d)): present - with the code of the answer's
+   * notice - exactly when the verdict was formed UNDER A SIGNING KEY MARKED COMPROMISED
+   * (`signingKey` of the run is not `NOT_COMPROMISED`). The recorder hands it on, and the audit row
+   * and the custody entry then say so: a pass that rests on the stored digest alone is never
+   * recorded as a plain pass. Absent in every other verdict.
+   */
+  readonly notice?: typeof COMPROMISED_KEY_NOTICE_CODE;
 }
 
 /**
@@ -121,6 +165,11 @@ export interface RealVerificationOptions {
   readonly opener: FragmentOpener | null;
   /** SHA-256 of the Core's own signing certificates, the retained ones included (spec §C.3). */
   readonly trustedCertificateSha256: () => readonly string[];
+  /**
+   * SHA-256 of the Core's certificates whose key was MARKED COMPROMISED (row 227). Never trusted as
+   * they stand: see `SigningKeyVerdict`. Absent or empty: no key of this Core is marked.
+   */
+  readonly compromisedCertificateSha256?: () => readonly string[];
   readonly record: VerdictRecorder;
   /** A test reads in small chunks. */
   readonly chunkBytes?: number;
@@ -129,6 +178,8 @@ export interface RealVerificationOptions {
 export interface RealVerificationRun {
   readonly body: EvidenceVerifyResultBody;
   readonly report: PackageVerifyResult;
+  /** Row 227: never `NOT_COMPROMISED` for a package or a revision under a key marked compromised. */
+  readonly signingKey: SigningKeyVerdict;
 }
 
 export interface RealVerification {
@@ -333,13 +384,51 @@ export async function readSealedSourceMark(packageDir: string, anchors: SealedSo
   }
 }
 
-export function createRealEvidenceVerification(options: RealVerificationOptions): RealVerification {
-  async function run(principal: Principal, evidenceId: string): Promise<RealVerificationRun | null> {
-    const item = await options.findItem(evidenceId);
-    if (item === null) return null;
-    // One reading of the clock per run: the verdict, its audit row and its answer carry it.
-    const at = options.now();
-    const report = await verifyPackageV2(corePorts(options.packageDirOf(item.sessionId), options.opener, options.chunkBytes), {
+const HEX64 = /^[0-9a-f]{64}$/;
+const NOT_TRUSTED_CODES: readonly string[] = ['CERTIFICATE_NOT_TRUSTED', 'REVISION_CERTIFICATE_NOT_TRUSTED'];
+/** True when a check says that a certificate the package rests on is not one the verifier trusts. */
+const restsOnUntrustedCertificate = (report: PackageVerifyResult): boolean => report.checks.some((check) => check.findings.some((finding) => NOT_TRUSTED_CODES.includes(finding.code)));
+
+/**
+ * The hash of the last revision of the package's own list, null for a package without a list or
+ * with an empty one, `undefined` when the list cannot be read (then nothing is anchored).
+ */
+async function packageRevisionHead(packageDir: string): Promise<string | null | undefined> {
+  try {
+    const reader = createPackageReader(packageDir);
+    if ((await reader.entry(PackageFile.TRANSCRIPT_REVISIONS)).kind === 'ABSENT') return null;
+    const list = TranscriptRevisionsFileSchema.parse(JSON.parse(await reader.readText(PackageFile.TRANSCRIPT_REVISIONS, VERIFY_MAX_SMALL_FILE_BYTES)));
+    return list.revisions.at(-1)?.sha256 ?? null;
+  } catch {
+    return undefined;
+  }
+}
+
+/** What the Core's own verification of one sealed package gives: the report of record and what it says of the signing key. */
+export interface CoreTrustVerification {
+  readonly report: PackageVerifyResult;
+  /** Never `NOT_COMPROMISED` for a package or a revision under a key marked compromised. */
+  readonly signingKey: SigningKeyVerdict;
+}
+
+/**
+ * THE CORE'S OWN VERIFICATION OF ONE SEALED PACKAGE UNDER ITS TRUST LISTS (row 227, SX-09 (d); made
+ * one function by row V5 so that operation 41 and the export's verification of its source are the
+ * same rule): the 15 checks with the session key REQUIRED and every anchor of the item, held to
+ * `trustedCertificateSha256`; and, for a package that rests on a certificate of
+ * `compromisedCertificateSha256`, the second look described below. It records nothing.
+ */
+export async function verifySealedPackageUnderCoreTrust(input: {
+  readonly packageDir: string;
+  readonly item: RealEvidenceItem;
+  readonly opener: FragmentOpener | null;
+  readonly chunkBytes?: number;
+  readonly trustedCertificateSha256: readonly string[];
+  readonly compromisedCertificateSha256: readonly string[];
+}): Promise<CoreTrustVerification> {
+  const { packageDir, item } = input;
+  const verifyTrusting = (trustedCertificateSha256: readonly string[]): Promise<PackageVerifyResult> =>
+    verifyPackageV2(corePorts(packageDir, input.opener, input.chunkBytes), {
       plaintext: 'REQUIRED',
       expected: {
         evidenceId: item.evidenceId,
@@ -347,10 +436,86 @@ export function createRealEvidenceVerification(options: RealVerificationOptions)
         manifestSha256: item.manifestSha256,
         transcriptSha256: item.transcriptSha256,
         revisionCount: item.revisionCount,
-        trustedCertificateSha256: options.trustedCertificateSha256(),
+        trustedCertificateSha256,
       },
     });
-    const body = Object.freeze(contractBodyOf(item.evidenceId, at, report));
+  const trusted = [...input.trustedCertificateSha256];
+  let report = await verifyTrusting(trusted);
+  let signingKey: SigningKeyVerdict = SigningKeyVerdict.NOT_COMPROMISED;
+
+  // UNDER A COMPROMISED KEY (row 227; SX-09 (d)). A certificate of a key that was marked compromised is
+  // NOT in the trusted list, so such a package has failed above (V-13, or V-11 for a revision). It is
+  // looked at once more with those certificates admitted - and may pass ONLY as the package this Core
+  // sealed: the manifest digest the database stored (the anchor of every run, here required to be a
+  // real digest) and, where it has revisions, the head of their chain as the database holds it. The
+  // holder of a compromised key can sign anything; he cannot make it hash to what was stored.
+  const compromised = input.compromisedCertificateSha256.filter((digest) => !trusted.includes(digest));
+  if (compromised.length > 0 && restsOnUntrustedCertificate(report)) {
+    const admitted = await verifyTrusting([...trusted, ...compromised]);
+    // Still resting on a certificate that is neither trusted nor a marked one of this Core: a foreign key. The first verdict stands.
+    if (!restsOnUntrustedCertificate(admitted)) {
+      let stored = admitted.ok && HEX64.test(item.manifestSha256);
+      if (stored) {
+        const head = await packageRevisionHead(packageDir);
+        // No revisions on either side, or the same head on both. A caller that does not state the head anchors nothing.
+        stored = head !== undefined && (item.revisionCount === 0 ? head === null : head !== null && item.revisionHeadSha256 === head);
+      }
+      signingKey = stored ? SigningKeyVerdict.COMPROMISED_KEY_STORED_DIGEST : SigningKeyVerdict.COMPROMISED_KEY_NOT_STORED_DIGEST;
+      // A pass: the admitted run. A failure: the admitted run when it names what differs (`MANIFEST_NOT_OF_ITEM`, ...);
+      // when it found nothing itself (the revision head differs), the first run, which fails on the certificate.
+      if (stored || !admitted.ok) report = admitted;
+    }
+  }
+  return { report, signingKey };
+}
+
+/**
+ * THE MARKED CERTIFICATES A PACKAGE RESTS ON (row V5; C84 R-3): of `compromisedCertificateSha256`,
+ * the fingerprints that the package's own seal or one of its transcript revisions names -
+ * ascending, each once. Read from the manifest and the revision list of the folder (public data);
+ * no key is opened. A folder that cannot be read answers the empty list: the caller, which has
+ * just verified the package, then states nothing it did not find.
+ */
+export async function markedCertificatesOfPackage(packageDir: string, compromisedCertificateSha256: readonly string[]): Promise<readonly string[]> {
+  const found = new Set<string>();
+  try {
+    const reader = createPackageReader(packageDir);
+    const manifest = parseManifestV2(JSON.parse(await reader.readText(PackageFile.MANIFEST, VERIFY_MAX_MANIFEST_BYTES)));
+    found.add(manifest.signature.certificate.sha256);
+    if ((await reader.entry(PackageFile.TRANSCRIPT_REVISIONS)).kind === 'FILE') {
+      const list = TranscriptRevisionsFileSchema.parse(JSON.parse(await reader.readText(PackageFile.TRANSCRIPT_REVISIONS, VERIFY_MAX_SMALL_FILE_BYTES)));
+      for (const revision of list.revisions) if (revision.signature.certificateSha256 !== null) found.add(revision.signature.certificateSha256);
+    }
+  } catch {
+    return Object.freeze([]);
+  }
+  return Object.freeze([...found].filter((digest) => compromisedCertificateSha256.includes(digest)).sort());
+}
+
+export function createRealEvidenceVerification(options: RealVerificationOptions): RealVerification {
+  async function run(principal: Principal, evidenceId: string): Promise<RealVerificationRun | null> {
+    const item = await options.findItem(evidenceId);
+    if (item === null) return null;
+    // One reading of the clock per run: the verdict, its audit row and its answer carry it.
+    const at = options.now();
+    const packageDir = options.packageDirOf(item.sessionId);
+    // Row V5: the two runs and the rule "under a compromised key" are ONE function, which the export's own verification of
+    // its source calls too (`verifySealedPackageUnderCoreTrust`) - operation 41 and an export cannot disagree on a package.
+    const { report, signingKey } = await verifySealedPackageUnderCoreTrust({
+      packageDir,
+      item,
+      opener: options.opener,
+      ...(options.chunkBytes === undefined ? {} : { chunkBytes: options.chunkBytes }),
+      trustedCertificateSha256: options.trustedCertificateSha256(),
+      compromisedCertificateSha256: options.compromisedCertificateSha256?.() ?? [],
+    });
+    const answered = contractBodyOf(item.evidenceId, at, report);
+    // Never a plain pass, never a silent failure: the state is in the answer, by its code and in words.
+    const body = Object.freeze(
+      signingKey === SigningKeyVerdict.NOT_COMPROMISED ? answered : { ...answered, notices: [...(answered.notices ?? []), { code: COMPROMISED_KEY_NOTICE_CODE, report: COMPROMISED_KEY_NOTICE_REPORT[signingKey] }] },
+    );
+    // A package under a compromised key that is not the stored one never answers a pass, whatever a later edit of the above does.
+    if (signingKey === SigningKeyVerdict.COMPROMISED_KEY_NOT_STORED_DIGEST && body.ok) throw new Error('a package under a compromised key that is not the stored one was about to pass');
     await options.record(
       principal,
       Object.freeze({
@@ -362,9 +527,11 @@ export function createRealEvidenceVerification(options: RealVerificationOptions)
         failedTracks: Object.freeze((body.files ?? []).filter((file) => !file.ok).map((file) => file.trackId)),
         detail: custodyDetailOf(report),
         failedFragments: Object.freeze(report.ok ? [] : report.fragments.filter((fragment) => !fragment.storedOk).map((fragment) => `${fragment.trackId}:${fragment.seq}`)),
+        // Row V5 (C84 R-1): the audit row and the custody entry of this verdict carry the notice - never a plain pass.
+        ...(signingKey === SigningKeyVerdict.NOT_COMPROMISED ? {} : { notice: COMPROMISED_KEY_NOTICE_CODE }),
       }),
     );
-    return { body, report };
+    return { body, report, signingKey };
   }
   return { run, verify: async (principal, evidenceId) => (await run(principal, evidenceId))?.body ?? null };
 }

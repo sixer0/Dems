@@ -30,6 +30,7 @@ import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
 import type { DemsScalarConfiguration } from '@/features/api-reference/scalar-config'
 import { TRY_IT_DENIED_OPERATIONS, TryItRefusedError } from '@/features/api-reference/try-it'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
+import { enWeb } from '@/i18n-web'
 import { setCoreEndpointMode } from '@/lib/core-endpoint'
 import { createAppRouter } from '@/router'
 import { webErrorSink } from '@/runtime'
@@ -126,14 +127,14 @@ async function openLive() {
 }
 
 describe('Live mode: the document and Try-it (AC-C-100, AR-4, AR-6)', () => {
-  it('99 operations, every one LIVE, served from the page origin; no switch; the warning names the operator', async () => {
+  it('110 operations, every one LIVE, served from the page origin; no switch; the warning names the operator', async () => {
     const { bed: live } = await openLive()
     expect(screen.getByTestId('page-api-reference')).toHaveAttribute('data-mode', 'live')
     const document = lastConfiguration().content
-    expect(listOpenApiOperations(document)).toHaveLength(99) // 97 + the two sound-card operations of task 4 row 63
+    expect(listOpenApiOperations(document)).toHaveLength(110) // 97 + the two sound-card operations of task 4 row 63 + the re-address of row 194 + the seven commissioning operations of row 102 + the stored-credential connection test of row V3 + the two installation-acceptance operations of row 116
     expect(new Set(badgesOf(document))).toEqual(new Set(['LIVE']))
     expect(document.servers.map((server) => server.url)).toEqual([LIVE_TEST_ORIGIN])
-    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('99 operations')
+    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('110 operations')
     expect(screen.getByTestId('api-base-url')).toHaveTextContent(LIVE_TEST_ORIGIN)
     expect(screen.getByTestId('api-spec-version')).toHaveTextContent('v0.3.0')
     expect(screen.queryByTestId('api-show-simulated')).toBeNull()
@@ -181,7 +182,15 @@ describe('AC-C-103 and AC-C-107: the deny list, web storage and the page\'s log'
         new Request(`${LIVE_TEST_ORIGIN}${pathOf(operationId)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: marked }),
       )
       await expect(call, operationId).rejects.toBeInstanceOf(TryItRefusedError)
-      await expect(call, operationId).rejects.toThrow(A.tryIt.secretDenied)
+      // Decision C67 (1): operation 108 carries no secret; the page refuses it with the sentence that is true of it.
+      // Row 116: operations 109 and 110 change the stored installation record - their own sentence too.
+      const sentence =
+        operationId === 'testCaptureDeviceConnection'
+          ? enWeb.web.tryIt.storedCredentialDenied
+          : operationId === 'acceptInstallation' || operationId === 'revokeInstallationAcceptance'
+            ? enWeb.web.tryIt.storedRecordDenied
+            : A.tryIt.secretDenied
+      await expect(call, operationId).rejects.toThrow(sentence)
       expect(live.fake.log.requestsOf(operationId), operationId).toEqual([])
     }
     expect(live.fake.log.requests).toHaveLength(before)
@@ -287,12 +296,16 @@ async function openSimulated() {
 }
 
 describe('Simulated mode (AC-C-100, AR-2)', () => {
-  it('33 operations as before; "Show Core-server endpoints" lists 99 with CORE SERVER and refuses their Try-it without a request', async () => {
+  it('44 operations as before; "Show Core-server endpoints" lists 110 with CORE SERVER and refuses their Try-it without a request', async () => {
     // Task 4 blueprint row 63: the two simulated sound-card operations 98-99 (31 -> 33, 97 -> 99; the 66 do not move).
+    // Task 4 blueprint row 194: the simulated operation 100 (33 -> 34, 99 -> 100; the 66 do not move).
     const { sim, fetched } = await openSimulated()
     expect(screen.getByTestId('page-api-reference')).toHaveAttribute('data-mode', 'simulated')
-    expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(33)
-    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('33 operations')
+    // Task 4 blueprint row 102: the seven simulated commissioning operations 101-107 (34 -> 41, 100 -> 107; the 66 do not move).
+    // Task 4 row V3: the simulated operation 108, the stored-credential connection test (41 -> 42, 107 -> 108; the 66 do not move).
+    // Task 4 blueprint row 116: the two simulated operations 109-110 of the installation acceptance (42 -> 44, 108 -> 110; the 66 do not move).
+    expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(44)
+    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('44 operations')
     expect(screen.getByTestId('api-spec-version')).toHaveTextContent('v0.2.0')
     expect(screen.queryByTestId('api-live-warning')).toBeNull()
     expect(screen.getByTestId('api-realtime-connect')).toBeInTheDocument()
@@ -301,8 +314,8 @@ describe('Simulated mode (AC-C-100, AR-2)', () => {
     expect(screen.queryByTestId('api-legend-CORE_SERVER')).toBeNull()
 
     fireEvent.click(coreSwitch)
-    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(99))
-    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('99 operations')
+    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(110))
+    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('110 operations')
     expect(screen.getByTestId('api-legend-CORE_SERVER')).toHaveTextContent(A.badges.CORE_SERVER)
     expect(badgesOf(lastConfiguration().content).filter((name) => name === 'CORE SERVER')).toHaveLength(66)
 
@@ -321,7 +334,7 @@ describe('Simulated mode (AC-C-100, AR-2)', () => {
     expect(JSON.stringify(webErrorSink.records())).not.toContain(MARKER_PASSWORD)
 
     fireEvent.click(coreSwitch)
-    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(33))
+    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(44))
     expect(getMissingI18nKeys()).toEqual([])
   })
 })

@@ -122,6 +122,8 @@ export const VERIFY_FAILURES = {
   REVISION_MEMBER_MISMATCH: { check: 'V-11', failureClass: 'TAMPERED' },
   REVISION_CERTIFICATE_MISSING: { check: 'V-11', failureClass: 'MISSING' },
   REVISION_CERTIFICATE_NOT_TRUSTED: { check: 'V-11', failureClass: 'TAMPERED' },
+  /** Row V5: the certificate of a revision is one the verifier was TOLD is marked compromised (`VerifyExpectations.compromisedCertificateSha256`). Never raised without that input. */
+  REVISION_CERTIFICATE_KEY_COMPROMISED: { check: 'V-11', failureClass: 'TAMPERED' },
   REVISION_SIGNATURE_INVALID: { check: 'V-11', failureClass: 'TAMPERED' },
   // V-12
   INTERRUPTED_PREFIX_NOT_VERIFIED: { check: 'V-12', failureClass: 'TAMPERED' },
@@ -131,6 +133,14 @@ export const VERIFY_FAILURES = {
   CERTIFICATE_HASH_MISMATCH: { check: 'V-13', failureClass: 'TAMPERED' },
   CERTIFICATE_NOT_VALID_AT_SIGNING: { check: 'V-13', failureClass: 'TAMPERED' },
   CERTIFICATE_NOT_TRUSTED: { check: 'V-13', failureClass: 'TAMPERED' },
+  /**
+   * Row V5 (decision C84, caution R-2): the certificate of the seal is one the verifier was TOLD is
+   * marked compromised (`VerifyExpectations.compromisedCertificateSha256`). Never raised without
+   * that input. Its class is the class of every certificate that is not to be relied on; the STATE
+   * is `signature.compromisedKey` and the notice `SIGNED_BY_COMPROMISED_KEY`: the signature may be
+   * valid, and that proves nothing any more - not a pass.
+   */
+  CERTIFICATE_KEY_COMPROMISED: { check: 'V-13', failureClass: 'TAMPERED' },
   /** Manifest field 25 / 26 (`device.certificate.subject` / `.serialNumber`) is not what the certificate itself says (F-M7 R88-08). */
   CERTIFICATE_SUBJECT_MISMATCH: { check: 'V-13', failureClass: 'TAMPERED' },
   // V-14
@@ -367,6 +377,14 @@ export interface PackageVerifyResult {
      * `null` otherwise: NOT ESTABLISHED - never `false` from bytes that were not verified.
      */
     readonly developmentKey: boolean | null;
+    /**
+     * Task 4 row V4 (decision C77): whether the key the signature verified under is one the
+     * verifier was told is MARKED COMPROMISED (`VerifiedSigningKeyMark`). OPTIONAL, and ABSENT in
+     * every result of a verifier that is told of no marked key - every result of `verifyPackageV2`
+     * that was not handed `expected.compromisedCertificateSha256` (row V5), so no existing result
+     * changes. Absent is `NOT_ESTABLISHED`: never "not compromised".
+     */
+    readonly compromisedKey?: VerifiedSigningKeyMark;
     /** OD-03: the stored-bytes checks (V-04, V-06, V-07) need no key of any kind. */
     readonly integrityCheckedWithoutKey: true;
   };
@@ -376,7 +394,9 @@ export interface PackageVerifyResult {
   readonly plaintextChecked: boolean;
   /**
    * WHAT THE FORMAT DOES NOT COVER (fix pass F-M7, R88-06): named statements that fail nothing and
-   * are never collapsed by a report. Every v2 result carries `AUDIT_EXTRACT_NOT_SIGNED`.
+   * are never collapsed by a report. Every v2 result carries `AUDIT_EXTRACT_NOT_SIGNED`. ONE member
+   * is of another kind (row V4): `SIGNED_BY_COMPROMISED_KEY` states the mark of the signing key
+   * beside a verdict that already took it into account - see `SIGNED_BY_COMPROMISED_KEY_REPORT`.
    */
   readonly notices: readonly VerifyNotice[];
 }
@@ -387,7 +407,19 @@ export interface PackageVerifyResult {
  * its hash, so its CONTENT is covered by no hash and no signature: it can be altered and all 15
  * checks pass. Until a manifest revision gives it a field, a verifier says so, every time.
  */
-export const VERIFY_NOTICE = { AUDIT_EXTRACT_NOT_SIGNED: 'AUDIT_EXTRACT_NOT_SIGNED', EXPORT_FOLDER_UNEXPECTED_FILE: 'EXPORT_FOLDER_UNEXPECTED_FILE', REVISION_APPEND_PENDING: 'REVISION_APPEND_PENDING' } as const;
+export const VERIFY_NOTICE = {
+  AUDIT_EXTRACT_NOT_SIGNED: 'AUDIT_EXTRACT_NOT_SIGNED',
+  EXPORT_FOLDER_UNEXPECTED_FILE: 'EXPORT_FOLDER_UNEXPECTED_FILE',
+  REVISION_APPEND_PENDING: 'REVISION_APPEND_PENDING',
+  /** Task 4 row V4 (decision C77; SX-09 (d)): see `SIGNED_BY_COMPROMISED_KEY_REPORT`. */
+  SIGNED_BY_COMPROMISED_KEY: 'SIGNED_BY_COMPROMISED_KEY',
+  /** Task 4 row V6 (decision C97; the request of row P1): see `hostProfileNotAskedReport`. */
+  HOST_PROFILE_NOT_ASKED: 'HOST_PROFILE_NOT_ASKED',
+  /** Task 4 row R1b (decision C99): see `videoAbsentInSessionReport`. */
+  VIDEO_ABSENT_IN_SESSION: 'VIDEO_ABSENT_IN_SESSION',
+  /** Task 4 pass I-9b: see `audioAbsentOnRestartReport`. */
+  AUDIO_ABSENT_ON_RESTART: 'AUDIO_ABSENT_ON_RESTART',
+} as const;
 export type VerifyNoticeCode = (typeof VERIFY_NOTICE)[keyof typeof VERIFY_NOTICE];
 export interface VerifyNotice {
   readonly code: VerifyNoticeCode;
@@ -428,10 +460,170 @@ export const REVISION_APPEND_PENDING_FILE = 'transcript/transcript-revisions.jso
 /** THE WORDING SOURCE of the notice: the report line both clients draw. */
 export const REVISION_APPEND_PENDING_REPORT = 'A transcript revision is being written; verify again shortly.';
 
+/**
+ * `HOST_PROFILE_NOT_ASKED` (task 4 row V6; decisions U21 (2), C97; the request of row P1 "the
+ * member is not shown in the verdicts"). The manifest carries the optional signed member
+ * `hostProfileNotAsked` (field 133): the package was sealed by a PRODUCTION Core on a platform
+ * where the checks of the host profile are not run (today `darwin`). A reader of the package saw it
+ * only in the manifest; a verifier now SAYS it, in the verdict lines of the Core's own verification
+ * and of the receiver's command.
+ *
+ * IT FAILS NOTHING AND CHANGES NO VERDICT: a package with the member verifies exactly as before,
+ * with this one line more; a package without it (every package sealed on Linux, in development, and
+ * every package sealed before field 133) gets no line and reads as before. It is raised from the
+ * manifest the verifier READ - also when another check of the same package fails.
+ *
+ * THE PLATFORM in the line is the manifest's own word, printed only when it is one lower-case word
+ * of the form a platform name has; anything else is stated without a name.
+ */
+export const HOST_PROFILE_NOT_ASKED_PLATFORM = /^[a-z][a-z0-9]{0,15}$/;
+/** THE WORDING SOURCE of the notice: the report line both clients and the receiver's command draw. */
+export function hostProfileNotAskedReport(platform: unknown): string {
+  const named = typeof platform === 'string' && HOST_PROFILE_NOT_ASKED_PLATFORM.test(platform) ? ` on ${platform}` : '';
+  return `Host profile: NOT ASKED. This package was sealed by a production Core${named}, where the checks of the host profile are not run.`;
+}
+
+/**
+ * `VIDEO_ABSENT_IN_SESSION` (task 4 row R1b; decision C99). The manifest carries the optional
+ * signed member `tracks[].absentInSession` (fields 134-138) on at least one track: the camera of
+ * that track stopped delivering pictures inside the session and the Core states how often, for how
+ * long (the two measured bounds) and whether the last absence ended. A verifier SAYS it, in the
+ * verdict lines of the Core's own verification and of the receiver's command.
+ *
+ * IT FAILS NOTHING AND CHANGES NO VERDICT: a package with the member verifies exactly as before,
+ * with this one line more; a package without it gets no line and reads as before. It is raised
+ * from the manifest the verifier READ - also when another check of the same package fails.
+ *
+ * ONE LINE for the whole package, at most two tracks, numbers and the track ids of the closed list
+ * only; it stays below the contract's bound of a report line (256) for the largest numbers a
+ * manifest can state. A sum is "not measured" when one of its absences states no such bound.
+ */
+export interface VideoAbsenceOfTrack {
+  readonly trackId: string;
+  readonly absences: readonly { readonly absentAtLeastMs: number | null; readonly absentAtMostMs: number | null; readonly ended: string }[];
+}
+/** A track id that may be PRINTED in the line: the form of the closed list. Any other is stated as "a track". */
+export const VIDEO_ABSENT_TRACK_ID = /^VIDEO-0[1-9]$/;
+/** THE WORDING SOURCE of the notice: the report line both clients and the receiver's command draw. Empty input: the empty string (no notice). */
+export function videoAbsentInSessionReport(tracks: readonly VideoAbsenceOfTrack[]): string {
+  const sumOf = (values: readonly (number | null)[]): string => {
+    let sum = 0;
+    for (const value of values) {
+      if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) return 'not measured';
+      sum += value;
+    }
+    return `${String(sum)} ms`;
+  };
+  const parts = tracks
+    .filter((track) => track.absences.length > 0)
+    .slice(0, 2)
+    .map((track) => {
+      const count = track.absences.length;
+      const open = track.absences.at(-1)?.ended === 'NOT_RE_OPENED';
+      const named = VIDEO_ABSENT_TRACK_ID.test(track.trackId) ? track.trackId : 'a track';
+      return `${named} ${String(count)} time${count === 1 ? '' : 's'}, at least ${sumOf(track.absences.map((absence) => absence.absentAtLeastMs))}, at most ${sumOf(track.absences.map((absence) => absence.absentAtMostMs))}${open ? ', not re-opened' : ''}`;
+    });
+  if (parts.length === 0) return '';
+  const said = `Video: CAMERA ABSENT INSIDE THE SESSION. ${parts.join('; ')}.`;
+  const line = `${said} No picture was recorded in that time.`;
+  // The closing sentence is the first thing given up for the contract's bound; the numbers never are, short of the bound itself.
+  return line.length <= VIDEO_ABSENT_REPORT_MAX ? line : said.slice(0, VIDEO_ABSENT_REPORT_MAX);
+}
+/** The contract's bound of a notice's report line (`trimmedText(256)` of the verify answer). */
+export const VIDEO_ABSENT_REPORT_MAX = 256;
+
+/**
+ * `AUDIO_ABSENT_ON_RESTART` (task 4 integration pass I-9b; the audio twin of `VIDEO_ABSENT_IN_SESSION`,
+ * in its pattern). The manifest carries the optional signed member `audio.absentOnRestart` (fields
+ * 129-132; rows 191c and V4, decisions C73, C83): the capture worker was replaced inside the session
+ * and the Core states, per restart, the two measured bounds of the time without sound. Until this
+ * pass the member was signed and verified (V-01 is the schema) and SAID by no verifier.
+ *
+ * IT FAILS NOTHING AND CHANGES NO VERDICT: a package with the member verifies exactly as before,
+ * with this one line more; a package without it gets no line and reads as before. It is raised
+ * from the manifest the verifier READ - also when another check of the same package fails.
+ *
+ * ONE LINE for the whole package: the count of restarts and the sums of both bounds, numbers only.
+ * A sum is "not measured" when one of its records states no such bound.
+ */
+export interface AudioRestartGapStated {
+  readonly absentAtLeastMs: number | null;
+  readonly absentAtMostMs: number | null;
+}
+/** THE WORDING SOURCE of the notice: the report line both clients and the receiver's command draw. Empty input: the empty string (no notice). */
+export function audioAbsentOnRestartReport(gaps: readonly AudioRestartGapStated[]): string {
+  if (gaps.length === 0) return '';
+  const sumOf = (values: readonly (number | null)[]): string => {
+    let sum = 0;
+    for (const value of values) {
+      if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) return 'not measured';
+      sum += value;
+    }
+    return `${String(sum)} ms`;
+  };
+  const count = gaps.length;
+  const said = `Audio: ABSENT ACROSS A RESTART OF THE CAPTURE. ${String(count)} time${count === 1 ? '' : 's'}, at least ${sumOf(gaps.map((gap) => gap.absentAtLeastMs))}, at most ${sumOf(gaps.map((gap) => gap.absentAtMostMs))}.`;
+  const line = `${said} No sound was recorded in that time.`;
+  // The closing sentence is the first thing given up for the contract's bound; the numbers never are, short of the bound itself.
+  return line.length <= VIDEO_ABSENT_REPORT_MAX ? line : said.slice(0, VIDEO_ABSENT_REPORT_MAX);
+}
+
 export const AUDIT_EXTRACT_NOT_SIGNED_REPORT = Object.freeze({
   PRESENT: 'Audit extract: present, NOT covered by the package signature.',
   MISSING: 'Audit extract: missing; it is NOT covered by the package signature.',
 });
+
+/**
+ * `SIGNED_BY_COMPROMISED_KEY` (task 4 row V4; decision C77; security requirement SX-09 (d); rows
+ * 227, 227b): the manifest - or a transcript revision - is signed by a key that was LATER MARKED
+ * COMPROMISED. After a compromise the holder of the key can sign anything, so the signature alone
+ * proves nothing any more and such a package is NEVER A PLAIN PASS.
+ *
+ * UNLIKE THE OTHER NOTICES THIS ONE IS NOT "FAILS NOTHING": it stands beside a verdict that
+ * already took the mark into account, and it says which. The three lines, by what the verifier
+ * could hold the package to:
+ *   COMPROMISED_KEY_STORED_DIGEST      the Core's own verification (operation 41): the package is the
+ *                                      one this Core sealed - its manifest digest and the head of its
+ *                                      revisions equal what the Core's database stored. A PASS, said so.
+ *   COMPROMISED_KEY_NOT_STORED_DIGEST  the Core's own verification: NOT what the database stored. A FAILURE.
+ *   COMPROMISED_KEY_NO_RECORD          a RECEIVER's verifier (no database of the Core): the STATE alone -
+ *                                      it has no record to hold the package to. Since row V5 (C84 R-2)
+ *                                      the verifier is told the marked fingerprints through
+ *                                      `VerifyExpectations.compromisedCertificateSha256`, and its
+ *                                      verdict in this state is NOT A PASS (V-13 / V-11 fail by name).
+ *
+ * THE WORDING SOURCE: the first two are, character for character, what the Core server sends in
+ * `notices[]` of operation 41 since row 227 (`COMPROMISED_KEY_NOTICE_REPORT` of its
+ * `evidence-verify` unit). `verifyPackageV2` raises the notice with the third line, and only when
+ * it was handed the list of marked fingerprints and the package rests on one of them.
+ */
+export const SIGNED_BY_COMPROMISED_KEY_REPORT = Object.freeze({
+  COMPROMISED_KEY_STORED_DIGEST:
+    'Signing key: MARKED COMPROMISED after this package was sealed. The signature alone proves nothing any more; the package passes because its manifest digest is the one this Core recorded when it sealed the item.',
+  COMPROMISED_KEY_NOT_STORED_DIGEST: 'Signing key: MARKED COMPROMISED, and the package is not the one this Core recorded when it sealed the item: not verified.',
+  COMPROMISED_KEY_NO_RECORD:
+    'Signing key: MARKED COMPROMISED. The signature alone proves nothing any more, and this verifier holds no record of the Core that sealed the item to hold the package to.',
+} as const);
+export type SignedByCompromisedKeyReport = keyof typeof SIGNED_BY_COMPROMISED_KEY_REPORT;
+
+/**
+ * WHAT A VERIFIER SAYS OF THE SIGNING KEY'S MARK (task 4 row V4; decision C77): the state a
+ * RECEIVER's verifier shows, as a member of the result (`PackageVerifyResult.signature.
+ * compromisedKey`). A fact about the key the signature verified under, not a verdict.
+ *   NOT_ESTABLISHED  nothing is said: the verifier was told of no marked key, or the manifest is not
+ *                    the signed one / its certificate did not hold. NEVER read as "not compromised".
+ *   NOT_MARKED       the verifier was told which certificates are marked, and the one that verified
+ *                    the signature is none of them.
+ *   COMPROMISED      the certificate of the seal - or of a transcript revision - is one the verifier was
+ *                    told is marked compromised: "signed by a key later marked compromised". Stated
+ *                    whenever the package rests on a listed certificate (row V5), whatever else failed.
+ */
+export const VerifiedSigningKeyMark = {
+  NOT_ESTABLISHED: 'NOT_ESTABLISHED',
+  NOT_MARKED: 'NOT_MARKED',
+  COMPROMISED: 'COMPROMISED',
+} as const;
+export type VerifiedSigningKeyMark = (typeof VerifiedSigningKeyMark)[keyof typeof VerifiedSigningKeyMark];
 
 // ── Ports ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -536,6 +728,27 @@ export interface VerifyExpectations {
   readonly revisionCount?: number;
   /** SHA-256 of every certificate the verifier trusts, received out of band (spec §C.3). */
   readonly trustedCertificateSha256?: readonly string[];
+  /**
+   * Task 4 row V5 (decision C84, caution R-2 of security review 230; SX-09 (d)): THE MARKED
+   * FINGERPRINTS - SHA-256 of every certificate whose key the verifier was told, OUT OF BAND, is
+   * marked compromised (the form of the hand-over record: SHA-256 of the DER of the public
+   * certificate). A package cannot say this of itself: after a compromise the holder of the key can
+   * sign anything, a clean-looking package included.
+   *
+   * OPTIONAL. ABSENT: nothing of the result changes - no finding, no notice, no `signature.
+   * compromisedKey` member (every result before this step). PRESENT, the empty list included:
+   *   - the seal's certificate is listed -> V-13 fails `CERTIFICATE_KEY_COMPROMISED`;
+   *   - a revision's certificate is listed -> V-11 fails `REVISION_CERTIFICATE_KEY_COMPROMISED`;
+   *   - either -> the notice `SIGNED_BY_COMPROMISED_KEY` with the line `COMPROMISED_KEY_NO_RECORD`;
+   *   - `signature.compromisedKey` is stated (`VerifiedSigningKeyMark`).
+   * THE VERDICT of this verifier for such a package is therefore NEVER A PASS: "signature valid, key
+   * reported compromised by the list supplied - not a pass", a state of its own (`compromisedKey:
+   * COMPROMISED`). It has no record of the Core to hold the package to; the Core, which has one,
+   * does not use this input - it passes such a package only as the digest it stored
+   * (`COMPROMISED_KEY_STORED_DIGEST`). A listed certificate is not relied on even when it is also
+   * in `trustedCertificateSha256`: the mark wins.
+   */
+  readonly compromisedCertificateSha256?: readonly string[];
 }
 
 export interface VerifyOptions {

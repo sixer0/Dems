@@ -25,6 +25,12 @@
  *      key of a fault is (kind, reason, device), the worker's word and this watch's word about one
  *      camera are ONE fault, one alert and one audit entry (`FAULT_RAISED`), never two (C40). The
  *      audit entry is written by the engine action behind the sink; this file writes no row.
+ *      SINCE FINDING F3-01 (M3 review) the same fault is raised EARLIER, by the relay's own word
+ *      that its camera leg was lost inside a session (a report of `relayReports` with the member
+ *      `leg`, event `LOST`: row 43), and cleared by the relay's `REOPENED` of that stream. Before,
+ *      such a loss raised nothing until the relay had used up its six tries and ended (62 s of
+ *      waits). The end of that relay then adds no second fault; a re-open clears only what this
+ *      watch raised (decision C60 (2)), and only for the stream and relay whose loss it was told.
  *   2. PRESENCE. A watched camera is asked the time every `CAMERA_PRESENCE_INTERVAL_MS`. After
  *      `CAMERA_PRESENCE_FAILURES` reads in a row without an answer it is `ABSENT`; the first answer
  *      after that makes it `PRESENT` again. Each change is told ONCE (`onChange`). `check` is one
@@ -42,6 +48,23 @@
  * asked anything, a read cut by the caller: none of them says the camera is gone. Each is reported
  * by its code and counts neither as an answer nor as a failure.
  *
+ * THE DESTINATION RULE STANDS BEFORE EVERY READ (task 4 row 143; AD-02 (1)). The stored address is
+ * untrusted (the runtime database role can write it), and a time read is a request the Core sends
+ * to it. So each read - a heartbeat, `check`, `clockOffsetMs` - first asks `judgeStoredCamera`
+ * with the rule handed in (`storedAddress`), about the candidate read for THAT read. A refused
+ * address is never asked the time: `check` and `clockOffsetMs` refuse by
+ * `CAPTURE_CAMERA_CLOCK_ADDRESS_REFUSED`; a heartbeat reports `CAMERA_WATCH_ADDRESS_REFUSED` and
+ * counts the beat as one without an answer (no camera the Core may use is at that address), so a
+ * camera whose row was moved to a refused address stops being `PRESENT`. Without a rule handed in
+ * every read is refused the same way: this file holds no permissive value.
+ *
+ * THE SOURCE HALF (task 4 row 143c; S13-11 point 2; decision C65): the time read is the THIRD dial
+ * of a stored camera, beside the locator read and the relay. The rule that admits the address also
+ * names the camera-interface address the request must be made FROM; the watch takes it from the
+ * judgement of THAT read (`storedCameraSourceOf`) and hands it to the seam with the candidate. An
+ * admission that names no source address is a refused address here - the same two named refusals,
+ * no read, nothing sent: there is no read "as the host routes".
+ *
  * It does not log (the capture folder logs in one place): what went wrong is told to `report`. No
  * address and no device text is in a report, a change or an error.
  *
@@ -51,6 +74,7 @@ import { CaptureWarningCode, CaptureWarningReason } from '@dems/capture-protocol
 import type { CaptureTimers } from '../../types';
 import { CaptureAdapterError, CaptureAdapterRefusal } from '../errors';
 import type { CameraCandidate } from '../types';
+import { judgeStoredCamera, storedCameraSourceOf, type StoredCameraAddressRule } from './stored-address';
 
 /** The heartbeat of the tested scheme: one read this often per watched camera. */
 export const CAMERA_PRESENCE_INTERVAL_MS = 3_000;
@@ -76,9 +100,12 @@ export interface CameraTimeAnswer {
  * whatever the device does; it rejects only before any request (a candidate that may not be
  * contacted, a signal already aborted). Its production value is a facade of the ONE file that
  * imports the ONVIF package (static rules G-R10 and G-R11).
+ *
+ * `fromAddress` (row 143c): the address of THIS host the request is made from - the source address
+ * the destination rule named for this camera. REQUIRED: the watch has no read without one.
  */
 export interface CameraTimeReader {
-  read(candidate: CameraCandidate, signal: AbortSignal): Promise<CameraTimeAnswer>;
+  read(candidate: CameraCandidate, signal: AbortSignal, fromAddress: string): Promise<CameraTimeAnswer>;
 }
 
 /** The fault of a lost camera: the existing key of a camera that stopped delivering video. */
@@ -127,6 +154,8 @@ export const CameraWatchReportCode = {
   CANDIDATE_NOT_READ: 'CAMERA_WATCH_CANDIDATE_NOT_READ',
   /** The reader refused before it asked anything: nothing is concluded. */
   READ_REFUSED: 'CAMERA_WATCH_READ_REFUSED',
+  /** The stored address is refused by the destination rule, or no rule was handed in: no read was made (row 143; AD-02). */
+  ADDRESS_REFUSED: 'CAMERA_WATCH_ADDRESS_REFUSED',
   /** The sink refused a raise or a clear. */
   SINK_FAILED: 'CAMERA_WATCH_SINK_FAILED',
   /** The loss callback threw. */
@@ -147,6 +176,8 @@ export const CameraClockRefusal = {
   NOT_STATED: 'CAPTURE_CAMERA_CLOCK_NOT_STATED',
   /** The stored address of the camera could not be read: no read was made. */
   ADDRESS_NOT_READ: 'CAPTURE_CAMERA_CLOCK_ADDRESS_NOT_READ',
+  /** The stored address of the camera is refused by the destination rule: no read was made (row 143; AD-02). */
+  ADDRESS_REFUSED: 'CAPTURE_CAMERA_CLOCK_ADDRESS_REFUSED',
 } as const;
 export type CameraClockRefusal = (typeof CameraClockRefusal)[keyof typeof CameraClockRefusal];
 
@@ -154,6 +185,7 @@ const CLOCK_SENTENCE: Readonly<Record<CameraClockRefusal, string>> = Object.free
   CAPTURE_CAMERA_CLOCK_NOT_ANSWERED: 'the camera did not answer the time read',
   CAPTURE_CAMERA_CLOCK_NOT_STATED: 'the camera named no usable time',
   CAPTURE_CAMERA_CLOCK_ADDRESS_NOT_READ: 'the stored address of the camera could not be read',
+  CAPTURE_CAMERA_CLOCK_ADDRESS_REFUSED: 'the stored address of the camera is not one the Core connects to',
 });
 
 export class CameraClockError extends Error {
@@ -187,6 +219,12 @@ export interface CameraWatchDependencies {
    * function (row 143): what it answers is what is contacted.
    */
   readonly candidate: (deviceId: string) => Promise<CameraCandidate | null>;
+  /**
+   * THE DESTINATION RULE ON A STORED CAMERA ADDRESS (row 143; AD-02): the same binding the adapter
+   * and the credential wiring are given. Asked before every read. Optional in the type only:
+   * WITHOUT IT NO READ IS MADE (every read is refused). There is no permissive value under `src/`.
+   */
+  readonly storedAddress?: StoredCameraAddressRule;
   /** Where the fault of a lost camera goes. Without one, losses are told to `onChange` only. */
   readonly faults?: CameraFaultSink;
   /** Told once per change. Must not throw (a throw is reported). */
@@ -199,15 +237,34 @@ export interface CameraWatchDependencies {
 export interface CameraStreamEnd {
   readonly deviceId: string;
   readonly code: string;
+  /** The profile of the stream whose relay ended (`CameraRelayEnd.profile`): a loss of that stream's leg ends with its relay. */
+  readonly profile?: string;
+}
+/** The adapter's word about a camera leg inside a session (`CameraLegReport`, by shape): what the watch reads of it. */
+export interface CameraStreamLeg {
+  readonly event: string;
+  readonly profile: string;
+  /** For `LOST`: the relay's own word for the end of the leg. */
+  readonly cause?: string;
 }
 export interface CameraStreamUp {
   readonly deviceId: string;
+  /** The session and the attempt of the relay that speaks (`CameraRelayReport`): which relay a lost leg belongs to. */
+  readonly sessionId?: string;
+  readonly attempt?: number;
+  /** PRESENT: this is no established push but the relay's word about its camera leg (finding F3-01). */
+  readonly leg?: CameraStreamLeg;
 }
 
 export interface CameraWatch {
   /** The adapter's `relayEnded`: a relay ended by itself after its open. */
   relayEnded(end: CameraStreamEnd): void;
-  /** A listener of the adapter's `relayReports`: a push was established. */
+  /**
+   * A listener of the adapter's `relayReports`. A report WITHOUT the member `leg`: a push was
+   * established. A report WITH it (finding F3-01): the camera leg of an established push was LOST
+   * inside a session - the fault of that camera is raised at once - or REOPENED - the fault this
+   * watch raised for it is cleared. One listener for both, because one source carries both.
+   */
   pushEstablished(report: CameraStreamUp): void;
   /** Starts the heartbeat of a camera. Watching twice is one watch. */
   watch(deviceId: string): void;
@@ -232,6 +289,13 @@ interface Heartbeat {
 }
 
 /** A read as the watch sees it: an answer with the Core's instant at its middle, no answer, or nothing to conclude. */
+/** What the lookup of a stored camera answers for an address the destination rule refuses (row 143). */
+const ADDRESS_REFUSED = 'ADDRESS_REFUSED';
+/** A stored camera that may be read: the candidate that was judged, and the address the read is made FROM (row 143c). */
+interface ReadTarget {
+  readonly camera: CameraCandidate;
+  readonly from: string;
+}
 type Read = { readonly kind: 'ANSWERED'; readonly cameraUtcMs: number | null; readonly coreMs: number } | { readonly kind: 'NO_ANSWER' } | { readonly kind: 'UNDECIDED' };
 
 const usableInstant = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
@@ -241,6 +305,23 @@ export function createCameraWatch(dependencies: CameraWatchDependencies): Camera
   const hearts = new Map<string, Heartbeat>();
   /** Per camera: how many of its relays ended by themselves with no push established since. */
   const lostStreams = new Map<string, number>();
+  /**
+   * Finding F3-01. Per camera: the streams (by profile) whose camera leg a LIVE relay said it lost and has not
+   * said it re-opened, each with the relay it belongs to (session and attempt). A camera is LOST while it has an
+   * ended relay with no push since, OR a leg in this list: ONE fault for both, raised by the first and cleared when
+   * neither is left.
+   */
+  const lostLegs = new Map<string, Map<string, string>>();
+  const isLost = (deviceId: string): boolean => (lostStreams.get(deviceId) ?? 0) > 0 || (lostLegs.get(deviceId)?.size ?? 0) > 0;
+  const relayOf = (up: CameraStreamUp): string | null => (typeof up.sessionId === 'string' && typeof up.attempt === 'number' ? `${up.sessionId} ${up.attempt}` : null);
+  const dropLegs = (deviceId: string, drop: (profile: string, relay: string) => boolean): void => {
+    const legs = lostLegs.get(deviceId);
+    if (legs === undefined) return;
+    // A Map may lose the entry it is at while it is walked.
+    for (const [profile, relay] of legs) if (drop(profile, relay)) legs.delete(profile);
+    if (legs.size === 0) lostLegs.delete(deviceId);
+  };
+  const CODE_WORD = /^[A-Z][A-Z0-9_]{0,63}$/;
   let closed = false;
 
   const report = (code: CameraWatchReportCode, deviceId: string): void => {
@@ -258,18 +339,36 @@ export function createCameraWatch(dependencies: CameraWatchDependencies): Camera
     }
   };
   const faultOf = (deviceId: string): CameraLossFault => ({ code: CaptureWarningCode.CAPTURE_FAULT, subject: deviceId, reason: CaptureWarningReason.CAMERA_STREAM_ENDED });
+  /**
+   * DECISION C60 (2) (task 4 row 85c): the cameras whose fault THIS watch asked the sink to raise, and whose raise did
+   * not fail. A clear goes to the sink for such a camera ONLY: the watch never asks for the end of a fault it did not
+   * raise itself. (That the key was not active before the raise - raised by another part - is the sink's to hold:
+   * `watchFaultSinkOf` of the fence.)
+   */
+  const raisedHere = new Set<string>();
   const toSink = (deviceId: string, act: 'raise' | 'clear'): void => {
     const sink = dependencies.faults;
     if (sink === undefined) return;
-    try {
-      void Promise.resolve(sink[act](faultOf(deviceId))).catch(() => report(CameraWatchReportCode.SINK_FAILED, deviceId));
-    } catch {
+    if (act === 'clear') {
+      if (!raisedHere.has(deviceId)) return;
+      raisedHere.delete(deviceId);
+    } else {
+      raisedHere.add(deviceId);
+    }
+    // A raise that failed raised nothing: its camera is not one whose fault this watch may end.
+    const failed = (): void => {
+      if (act === 'raise') raisedHere.delete(deviceId);
       report(CameraWatchReportCode.SINK_FAILED, deviceId);
+    };
+    try {
+      void Promise.resolve(sink[act](faultOf(deviceId))).catch(failed);
+    } catch {
+      failed();
     }
   };
 
   /** ONE time read, bounded here and by the caller's signal. It never rejects. */
-  const readOnce = async (deviceId: string, target: CameraCandidate, outer: AbortSignal | null): Promise<Read> => {
+  const readOnce = async (deviceId: string, target: ReadTarget, outer: AbortSignal | null): Promise<Read> => {
     if (outer?.aborted === true) return { kind: 'UNDECIDED' };
     const bound = new AbortController();
     let cut: 'BOUND' | 'CALLER' | null = null;
@@ -286,7 +385,7 @@ export function createCameraWatch(dependencies: CameraWatchDependencies): Camera
     const cancel = timers.after(CAMERA_TIME_READ_BOUND_MS, () => stop('BOUND'));
     const before = now();
     try {
-      const answer = await Promise.race([reader.read(target, bound.signal), stopped]);
+      const answer = await Promise.race([reader.read(target.camera, bound.signal, target.from), stopped]);
       const after = now();
       if (answer === null) return cut === 'CALLER' ? { kind: 'UNDECIDED' } : { kind: 'NO_ANSWER' };
       if (answer.answered !== true) return { kind: 'NO_ANSWER' };
@@ -302,7 +401,7 @@ export function createCameraWatch(dependencies: CameraWatchDependencies): Camera
   };
 
   /** The stored camera, or null when it could not be read (reported). When `strict`: throws `CAPTURE_DEVICE_UNKNOWN` when there is none, and the named clock refusal when the read failed. */
-  const targetOf = async (deviceId: string, strict: boolean): Promise<CameraCandidate | null> => {
+  const targetOf = async (deviceId: string, strict: boolean): Promise<ReadTarget | typeof ADDRESS_REFUSED | null> => {
     let target: CameraCandidate | null;
     try {
       target = await candidate(deviceId);
@@ -312,8 +411,20 @@ export function createCameraWatch(dependencies: CameraWatchDependencies): Camera
       return null;
     }
     if (target === null && strict) throw new CaptureAdapterError(CaptureAdapterRefusal.DEVICE_UNKNOWN);
-    if (target === null) report(CameraWatchReportCode.CANDIDATE_NOT_READ, deviceId);
-    return target;
+    if (target === null) {
+      report(CameraWatchReportCode.CANDIDATE_NOT_READ, deviceId);
+      return null;
+    }
+    // Row 143 (AD-02 (1)): the stored address under the destination rule, before the read. A refused address is never asked the time.
+    const judged = judgeStoredCamera(target, dependencies.storedAddress);
+    // Row 143c (S13-11 point 2): the address the read is made FROM, of the same judgement. An admission that names none is a refused address.
+    const from = storedCameraSourceOf(judged);
+    if ('refusal' in from) {
+      report(CameraWatchReportCode.ADDRESS_REFUSED, deviceId);
+      if (strict) throw new CameraClockError(CameraClockRefusal.ADDRESS_REFUSED, deviceId);
+      return ADDRESS_REFUSED;
+    }
+    return Object.freeze({ camera: target, from: from.sourceAddress });
   };
 
   const offsetOf = (read: Extract<Read, { kind: 'ANSWERED' }>): number | null => (read.cameraUtcMs === null ? null : Math.round(read.cameraUtcMs - read.coreMs));
@@ -324,7 +435,8 @@ export function createCameraWatch(dependencies: CameraWatchDependencies): Camera
     const reading = new AbortController();
     heart.reading = reading;
     const target = await targetOf(deviceId, false).catch(() => null);
-    const read: Read = target === null || reading.signal.aborted ? { kind: 'UNDECIDED' } : await readOnce(deviceId, target, reading.signal);
+    // A refused stored address is a beat without an answer, and without a read: no camera the Core may use is there.
+    const read: Read = target === ADDRESS_REFUSED ? { kind: 'NO_ANSWER' } : target === null || reading.signal.aborted ? { kind: 'UNDECIDED' } : await readOnce(deviceId, target, reading.signal);
     heart.reading = null;
     if (closed || hearts.get(deviceId) !== heart) return;
     if (read.kind === 'ANSWERED') {
@@ -350,23 +462,51 @@ export function createCameraWatch(dependencies: CameraWatchDependencies): Camera
 
   return Object.freeze({
     relayEnded(end: CameraStreamEnd): void {
-      const count = lostStreams.get(end.deviceId) ?? 0;
-      lostStreams.set(end.deviceId, count + 1);
-      // One fault per camera: a second stream of a camera that is lost already raises nothing more.
-      if (count > 0) return;
+      const was = isLost(end.deviceId);
+      // The relay of a leg that was lost is gone (its tries are used up): from here on the loss is the ended relay's.
+      if (typeof end.profile === 'string') dropLegs(end.deviceId, (profile) => profile === end.profile);
+      lostStreams.set(end.deviceId, (lostStreams.get(end.deviceId) ?? 0) + 1);
+      // One fault per camera: a second stream of a camera that is lost already - or the end of a relay whose leg loss was said - raises nothing more.
+      if (was) return;
       toSink(end.deviceId, 'raise');
-      changed(end.deviceId, CameraWatchEvent.STREAM_LOST, typeof end.code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(end.code) ? end.code : null);
+      changed(end.deviceId, CameraWatchEvent.STREAM_LOST, typeof end.code === 'string' && CODE_WORD.test(end.code) ? end.code : null);
     },
     pushEstablished(up: CameraStreamUp): void {
-      const count = lostStreams.get(up.deviceId) ?? 0;
-      if (count === 0) return;
-      if (count > 1) {
-        lostStreams.set(up.deviceId, count - 1);
+      const deviceId = up.deviceId;
+      const leg = up.leg;
+      if (leg !== undefined && leg !== null) {
+        // THE CAMERA LEG INSIDE A SESSION (finding F3-01). Never an established push: nothing below is touched by it.
+        if (typeof leg.profile !== 'string') return;
+        const relay = relayOf(up) ?? '';
+        if (leg.event === 'LOST') {
+          const was = isLost(deviceId);
+          const legs = lostLegs.get(deviceId) ?? new Map<string, string>();
+          legs.set(leg.profile, relay);
+          lostLegs.set(deviceId, legs);
+          if (was) return;
+          // AT ONCE: the first line of a loss, not the relay's end after its tries.
+          toSink(deviceId, 'raise');
+          changed(deviceId, CameraWatchEvent.STREAM_LOST, typeof leg.cause === 'string' && CODE_WORD.test(leg.cause) ? leg.cause : null);
+        } else if (leg.event === 'REOPENED') {
+          // Only the loss this watch was told of, of THAT relay: a re-open of anything else ends nothing.
+          if (lostLegs.get(deviceId)?.get(leg.profile) !== relay) return;
+          dropLegs(deviceId, (profile) => profile === leg.profile);
+          if (isLost(deviceId)) return;
+          toSink(deviceId, 'clear');
+          changed(deviceId, CameraWatchEvent.STREAM_RETURNED);
+        }
         return;
       }
-      lostStreams.delete(up.deviceId);
-      toSink(up.deviceId, 'clear');
-      changed(up.deviceId, CameraWatchEvent.STREAM_RETURNED);
+      const was = isLost(deviceId);
+      // A push of ANOTHER relay than the one a lost leg belongs to (a later worker, a later session): that relay is gone, and the camera is back.
+      const relay = relayOf(up);
+      if (relay !== null) dropLegs(deviceId, (_profile, of) => of !== relay);
+      const count = lostStreams.get(deviceId) ?? 0;
+      if (count > 1) lostStreams.set(deviceId, count - 1);
+      else lostStreams.delete(deviceId);
+      if (!was || isLost(deviceId)) return;
+      toSink(deviceId, 'clear');
+      changed(deviceId, CameraWatchEvent.STREAM_RETURNED);
     },
     watch(deviceId: string): void {
       if (closed || hearts.has(deviceId)) return;
@@ -381,11 +521,11 @@ export function createCameraWatch(dependencies: CameraWatchDependencies): Camera
       stopHeart(heart);
     },
     presence: (deviceId: string): CameraPresence => hearts.get(deviceId)?.state ?? CameraPresence.UNKNOWN,
-    lost: (): readonly string[] => Object.freeze([...lostStreams.keys()]),
+    lost: (): readonly string[] => Object.freeze([...new Set([...lostStreams.keys(), ...lostLegs.keys()])]),
     async check(deviceId: string, signal: AbortSignal): Promise<CameraCheck> {
       if (signal.aborted) throw new CaptureAdapterError(CaptureAdapterRefusal.ABORTED, deviceId);
       const target = await targetOf(deviceId, true);
-      const read: Read = target === null ? { kind: 'UNDECIDED' } : await readOnce(deviceId, target, signal);
+      const read: Read = target === null || target === ADDRESS_REFUSED ? { kind: 'UNDECIDED' } : await readOnce(deviceId, target, signal);
       if (signal.aborted) throw new CaptureAdapterError(CaptureAdapterRefusal.ABORTED, deviceId);
       if (read.kind !== 'ANSWERED') return Object.freeze({ present: false, clockOffsetMs: null, clockWithinBound: false });
       const clockOffsetMs = offsetOf(read);
@@ -393,7 +533,7 @@ export function createCameraWatch(dependencies: CameraWatchDependencies): Camera
     },
     async clockOffsetMs(deviceId: string): Promise<number> {
       const target = await targetOf(deviceId, true);
-      const read: Read = target === null ? { kind: 'UNDECIDED' } : await readOnce(deviceId, target, null);
+      const read: Read = target === null || target === ADDRESS_REFUSED ? { kind: 'UNDECIDED' } : await readOnce(deviceId, target, null);
       if (read.kind !== 'ANSWERED') throw new CameraClockError(CameraClockRefusal.NOT_ANSWERED, deviceId);
       const offset = offsetOf(read);
       if (offset === null) throw new CameraClockError(CameraClockRefusal.NOT_STATED, deviceId);

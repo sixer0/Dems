@@ -63,6 +63,8 @@ import { usingCredential, type SealedCredential } from '../credential';
 import { CaptureAdapterError, CaptureAdapterRefusal } from '../errors';
 import type { CameraCandidate } from '../types';
 import { targetOf, type ConnectionTarget } from './connection-target';
+// Row B1 (decision C95; review 060b B-01): a reply is capped per call and scanned in one pass BEFORE the package is handed any of it.
+import { OnvifReplyRefusal, guardOnvifReplies, onvifReplyMaxBytes } from './onvif-reply-guard';
 
 /** The bounds of one call. The whole-call deadline is the caller's signal. */
 export const ONVIF_NETWORK_LIMITS: OnvifNetworkLimits = Object.freeze({
@@ -113,6 +115,8 @@ export const OnvifNetworkReason = {
   NO_INTERFACE: 'NO_INTERFACE',
   /** The interface token is not of the token form: it is never written into a request. */
   INTERFACE_TOKEN_REFUSED: 'INTERFACE_TOKEN_REFUSED',
+  /** The caller's judgement refused the hardware address the device reported: no set request is made (task 4 row 111). */
+  HW_ADDRESS_REFUSED: 'HW_ADDRESS_REFUSED',
   /** The device answered the set with a fault. */
   SET_REFUSED: 'SET_REFUSED',
   /** The answer to the set is not one this file can read. */
@@ -174,6 +178,14 @@ export interface OnvifNetworkSetterOptions {
    * admitted the address, and the address dialled is the one IT returns.
    */
   readonly destination: (address: string, port: number) => DestinationDecision;
+  /**
+   * THE CALLER'S JUDGEMENT of the hardware address the device reports BEFORE the set (task 4 row
+   * 111; S13-12 (d): the address the host saw must be the one the device states). It is asked once,
+   * between the interface read and the set, with six upper-case pairs or null. Anything but `true`,
+   * or a judgement that throws, ends the call `NOT_SET` with `HW_ADDRESS_REFUSED`: NO set request
+   * is made. Left out: no judgement (the call as row 110 built it).
+   */
+  readonly admitHwAddress?: (reported: string | null) => boolean;
   /** A test passes smaller bounds. */
   readonly limits?: Partial<OnvifNetworkLimits>;
 }
@@ -348,7 +360,8 @@ export function createOnvifNetworkSetter(options: OnvifNetworkSetterOptions): On
           const strayed = member(connectionOptions, 'host') !== destination.address || Number(member(connectionOptions, 'port')) !== destination.port;
           const socket = connect.call(agent, { ...connectionOptions, host: destination.address, port: destination.port, localAddress: destination.sourceAddress, family: 4 }, callback) as WatchedSocket | null | undefined;
           if (socket === null || socket === undefined) return socket;
-          if (settled || strayed) {
+          // Row B1: after a refused reply no connection is kept either - whatever the package would still ask goes nowhere.
+          if (settled || strayed || replyRefused) {
             socket.destroy();
             if (strayed) cut('FAULT');
             return socket;
@@ -375,6 +388,27 @@ export function createOnvifNetworkSetter(options: OnvifNetworkSetterOptions): On
           return socket;
         },
       });
+
+      // ── Row B1 (C95; B-01): every reply is judged before the package reads it (the connection file states why). A body
+      // above what its call needs ends the call as the byte cap does; a body of a refused shape is the answer
+      // `INVALID_ANSWER` of the call that was asked, and NOTHING FURTHER IS SENT: no later call makes a request. Only the
+      // code of the refusal is known here; nothing of the reply is kept or passed on (AD-06).
+      let asking: OnvifNetworkCall | null = null;
+      let refuseAnswer: (() => void) | null = null;
+      let replyRefused = false;
+      guardOnvifReplies(
+        agent,
+        () => onvifReplyMaxBytes(asking, limits.maxReceivedBytes),
+        (refusal) => {
+          if (refusal === OnvifReplyRefusal.OVERSIZED) {
+            cut('BYTE_CAP');
+            return;
+          }
+          replyRefused = true;
+          for (const socket of sockets) socket.destroy();
+          refuseAnswer?.();
+        },
+      );
 
       // ── The client of the package. It never leaves this function. ──
       const client = new cam.Cam({
@@ -408,6 +442,8 @@ export function createOnvifNetworkSetter(options: OnvifNetworkSetterOptions): On
       });
 
       const arm = (form: 'HTTP_DIGEST' | 'TOKEN'): void => {
+        // Row V6b (caution R119-09): a call that ended is never armed again - `finish` took the two values off and does not run twice.
+        if (settled) return;
         usingCredential(credential, ({ username, secret }) => {
           Object.assign(client, { username, password: secret, useWSSecurity: form === 'TOKEN' });
         });
@@ -454,6 +490,13 @@ export function createOnvifNetworkSetter(options: OnvifNetworkSetterOptions): On
             once(new Stop('TRANSPORT'));
             return;
           }
+          // Row B1: after a refused reply no request leaves; the call that was being asked is answered by the guard, through this callback.
+          if (replyRefused) {
+            once(new Stop('INVALID_ANSWER'));
+            return;
+          }
+          asking = call;
+          refuseAnswer = () => once(new Stop('INVALID_ANSWER'));
           calls.push(call);
           try {
             holdTarget();
@@ -465,6 +508,9 @@ export function createOnvifNetworkSetter(options: OnvifNetworkSetterOptions): On
 
       /** A call with the credential. At most one request of it is refused, and a refusal is final. */
       const authorizedAsk = async (call: OnvifNetworkCall, invoke: Invoke): Promise<Answer> => {
+        // Row V6b (caution R119-09): after a cut (deadline, byte cap) the steps may still come here - for the reboot after a cut
+        // gateway step. The answer is `ask`'s own for an ended call (no request, the call is not listed), BEFORE the client is armed.
+        if (settled) return ask(call, invoke);
         if (!armed) arm('HTTP_DIGEST');
         const before = credentialRequests;
         if (!digestAllowed) credentialRequests += 1; // the token form: this request carries it
@@ -504,6 +550,16 @@ export function createOnvifNetworkSetter(options: OnvifNetworkSetterOptions): On
         const first = firstInterfaceOf(listed.value);
         if (first === null) return ended(Array.isArray(listed.value) || listed.value === undefined ? OnvifNetworkReason.NO_INTERFACE : OnvifNetworkReason.INTERFACES_ANSWER_INVALID);
         known.hwAddress = first.hwAddress;
+        // The caller's judgement of that address, BEFORE anything is changed: a refusal sends no set request.
+        if (options.admitHwAddress !== undefined) {
+          let admitted = false;
+          try {
+            admitted = options.admitHwAddress(first.hwAddress) === true;
+          } catch {
+            admitted = false;
+          }
+          if (!admitted) return ended(OnvifNetworkReason.HW_ADDRESS_REFUSED);
+        }
         // The token goes into a request body as it is: nothing but the token form is ever sent.
         const interfaceToken = first.token;
         if (typeof interfaceToken !== 'string' || !INTERFACE_TOKEN.test(interfaceToken)) return ended(OnvifNetworkReason.INTERFACE_TOKEN_REFUSED);
@@ -535,7 +591,8 @@ export function createOnvifNetworkSetter(options: OnvifNetworkSetterOptions): On
         }
 
         // 4. The reboot, when the device asked for one. A camera that goes down at once answers nothing.
-        if (rebootNeeded) {
+        // Row B1: not after a refused reply (the gateway step's) - no reboot is sent, and the state stays `NOT_ASKED`, which is the truth.
+        if (rebootNeeded && !replyRefused) {
           const restarted = await authorizedAsk('SystemReboot', (callback) => client.systemReboot(callback));
           known.reboot = restarted.ok ? OnvifRebootState.ACCEPTED : restarted.failure === 'TRANSPORT' || restarted.failure === 'INVALID_ANSWER' ? OnvifRebootState.SENT_NO_ANSWER : OnvifRebootState.REFUSED;
         }

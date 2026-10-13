@@ -285,6 +285,10 @@ export interface AudioSourceStatement {
   readonly nativeChannels: unknown;
   readonly sampleRateHz: unknown;
   readonly sampleBits: unknown;
+  /** The serial number of the card that was opened (task 4 rows 200, 85b); null or absent: it stated none. */
+  readonly usbSerial?: unknown;
+  /** The USB port path of the card that was opened; null or absent: none. */
+  readonly usbPort?: unknown;
 }
 
 export interface AudioInputAdapter {

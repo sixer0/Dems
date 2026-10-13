@@ -16,8 +16,8 @@
 // Core credential store in the system's temporary folder; the release capture worker.
 //
 // THE DOUBLES, all on loopback:
-//   - the camera: `apps/capture-worker/test-fixtures/rtsp_test_camera.py` on 8565 (C33), started by
-//     this file (H.264, HEVC, and its Basic-only mode);
+//   - the camera: `apps/capture-worker/test-fixtures/rtsp_test_camera.py` on 8570 (C33; row T3: this
+//     file's own port), started by this file (H.264, HEVC, and its Basic-only mode);
 //   - the ONVIF device: the scripted device of `test/support/onvif-odd-device.ts` on 8557, whose
 //     `GetStreamUri` answer names the test camera (the fake ONVIF stub answers its own RTSP
 //     responder, which is no camera; it is the double of the session file, not of this one);
@@ -42,8 +42,9 @@
 // `capture/ingest-address.ts` on the sink's port (the product's two ports belong to the emulators
 // on this Mac, driver rule 8). Comparisons that could print a value are asserted as booleans.
 //
-// RUN: sandbox off, under both locks, with a core-file limit of 0 (the door refuses otherwise):
-//   (ulimit -c 0; /usr/bin/lockf -k -t 1800 ../../.locks/heavy-host.lock /usr/bin/lockf -k -t 1800 ../../.locks/db-migrate.lock \
+// RUN: sandbox off, under the database lock (a case takes the heavy-host lock itself - row T3; a run started under it
+// is not asked again), with a core-file limit of 0 (the door refuses otherwise):
+//   (ulimit -c 0; /usr/bin/lockf -k -t 1800 ../../.locks/db-migrate.lock \
 //     npx vitest run --project db --maxWorkers=2 src/modules/capture-config/__tests__/camera-adapter-open.db.test.ts)
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -58,6 +59,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
 import { captureLog, unitTestConfig, type CapturedLog } from '../../../../test/support/config';
 import { readTrail, recordingErrorLog, type RecordingErrorLog } from '../../../../test/support/core';
+import { HEAVY_HOST_LOCK_WAIT_MS, HEAVY_HOST_LOCK_WAIT_S as HEAVY_LOCK_WAIT_S, takeHeavyHostLock, underHeavyHostLock } from '../../../../test/support/heavy-host-lock';
 import { createOddOnvifDevice, dateAnswer, notAuthorizedFault, servicesAnswer, streamAnswer, tokenHolds, type OddDeviceReply, type OddDeviceRequest, type OddOnvifDevice } from '../../../../test/support/onvif-odd-device';
 import { loopbackStoredCameraAddress } from '../../../../test/support/stored-camera-address';
 import { buildApp } from '../../../app';
@@ -65,7 +67,9 @@ import { CaptureAdapterKind } from '../../../capture/adapters/kinds';
 import { startProductionProcess, type ProductionDoor } from '../../../capture/adapters/production-door';
 import type { CameraCandidate, CameraSourceTarget, CaptureDeviceEntry, SourceHandle } from '../../../capture/adapters/types';
 import { CameraOpenRefusal, createOnvifRelayCameraAdapter, type CameraRelayEnd, type CameraRelayNote, type CameraRelayReport, type OnvifRelayCameraAdapter } from '../../../capture/adapters/camera/onvif-relay';
+import { createCameraWatch } from '../../../capture/adapters/camera/camera-watch';
 import { createOnvifStreamLocator } from '../../../capture/adapters/camera/onvif-session';
+import { watchFaultSinkOf } from '../../../capture/fence/production-parts';
 import { DestinationPurpose, decideDestination, type DestinationContext } from '../../../capture/destination-rule';
 import { createSystemTimers } from '../../../capture/timers';
 import { createCredentialStore, type CoreCredentialStore } from '../../../credential-store';
@@ -80,8 +84,13 @@ const LISTENER_SCRIPT = join(WORKER_APP, 'test-fixtures/row046_adapter_listener.
 const OUT = join(REPOSITORY, '.cache/row046-camera-adapter');
 
 const HOST = '127.0.0.1';
+// Row T3 (review 060c T-01; C61 (4)): THIS FILE'S OWN PORTS. The ONVIF device keeps 8557 and is its only user now
+// (`stream-test.db.test.ts` moved to 8575, `minted-code.db.test.ts` to 8576, `adopted-camera-test.db.test.ts` is on
+// 8555; the list of `test/support/onvif-odd-device.ts` holds one port per file). The camera moved from 8565, which
+// three more files named, to 8570. The sink stays on 8563 and the worker of `row046_adapter_listener.py` on 8559 and
+// 8561: ports of the worker's range, used under the heavy-host lock only.
 const ONVIF_PORT = 8557;
-const CAMERA_PORT = 8565;
+const CAMERA_PORT = 8570;
 const SINK_PORT = 8563;
 const WORKER_PORTS = '8559,8561';
 const SCHEME = ['rt', 'sp'].join('');
@@ -104,6 +113,8 @@ const SESSION_H264 = 'SES-20261013-4601';
 const SESSION_HEVC = 'SES-20261013-4602';
 const SESSION_SINK = 'SES-20261013-4603';
 const SESSION_REFUSED = 'SES-20261013-4604';
+/** Finding F3-01: the session of the scripted loss inside a session. */
+const SESSION_LOSS = 'SES-20261013-4605';
 const REVEALED = 'CAPTURE_CREDENTIAL_REVEALED';
 const DEVICES: readonly CaptureDeviceEntry[] = [
   { id: 'CAM-01', deviceClass: 'CAMERA', label: 'Camera 1', capabilities: ['VIDEO', 'PULL'], profiles: ['H264_1080P', 'HEVC_1080P'] },
@@ -140,6 +151,12 @@ const exists = (pid: number | null): boolean => {
   }
 };
 const started: ChildProcessWithoutNullStreams[] = [];
+
+// ── The heavy-host lock (integration pass I-9a; row T3) ──────────────────────────────────────
+// The helper that stood here is `test/support/heavy-host-lock.ts` now, one copy for the four database files that start
+// a camera double. Pass I-9a put the two cases that start the REAL WORKER under the lock; row T3 (review 060c T-01)
+// puts EVERY case that starts the relay or the test camera under it: the sink block holds it from its `beforeAll` to
+// its `afterAll` (its sink is on 8563, a port of the worker's range, and its camera stands for the whole block).
 
 /** A child that speaks one JSON object per line: the next line that holds `event`. */
 function lineReader(child: ChildProcessWithoutNullStreams): (event: string, withinMs: number) => Promise<Record<string, unknown>> {
@@ -198,7 +215,10 @@ async function startCamera(name: string, extra: readonly string[] = []): Promise
       if (child.exitCode === null) child.kill('SIGKILL');
       const events = existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter((line) => line !== '').map((line) => JSON.parse(line) as Record<string, unknown>) : [];
       const exit = events.findLast((event) => event.event === 'exit');
-      return { counters: (exit?.counters ?? {}) as Record<string, number>, requests: events.filter((event) => event.event === 'request').map((event) => `${String(event.method)}:${String(event.auth)}`) };
+      // Row T3 (review 060c T-04): a counter that is absent reads as 0 below ("no Basic request at the camera"). That is
+      // only true of a camera that WROTE its counters: without its `exit` line nothing was counted.
+      if (exit === undefined || typeof exit.counters !== 'object' || exit.counters === null) throw new Error(`the test camera "${name}" left no exit line with its counters: nothing it did not do is proven`);
+      return { counters: exit.counters as Record<string, number>, requests: events.filter((event) => event.event === 'request').map((event) => `${String(event.method)}:${String(event.auth)}`) };
     },
   };
 }
@@ -320,6 +340,32 @@ function processListing(pid: number): { readonly args: string; readonly withEnvi
   return { args, withEnvironment };
 }
 
+/**
+ * Row T3 (review 060c X-07; survivor 17 of its section 6). "Nothing of the session in the relay's environment" is read
+ * from `processListing(pid).withEnvironment`. The relay's environment is EMPTY by design, so that listing never
+ * differs from the argument list - and nothing showed that this `ps` displays an environment at all: on a host where
+ * it does not, a session text in the relay's environment would pass. THE CONTROL: a process of this file with ONE
+ * marker variable, read by the same function; the marker must be in the environment listing and not in the arguments.
+ *
+ * MEASURED ON THIS MAC (macOS 27.0.1, row T3): `ps eww` shows NO environment for a program of the SYSTEM (`/bin/sleep`
+ * with a marker variable: the listing is its arguments and nothing else) and DOES show it for a program that is not
+ * the system's (Node, Python). The relay is a program of this repository's build, so the control is one of that
+ * class: the Node program that runs this test. A control of `/bin/sleep` fails here - the reviewer's doubt was right
+ * for that class of program.
+ */
+function listingShowsAnEnvironment(): { readonly inEnvironmentListing: boolean; readonly inArguments: boolean } {
+  const marker = `ROW_T3_MARKER_${randomBytes(8).toString('hex')}`;
+  const control = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 20000)'], { stdio: ['pipe', 'pipe', 'pipe'], env: { ROW_T3_CONTROL: marker } });
+  started.push(control);
+  try {
+    if (control.pid === undefined) return { inEnvironmentListing: false, inArguments: false };
+    const listing = processListing(control.pid);
+    return { inEnvironmentListing: listing.withEnvironment.includes(marker), inArguments: listing.args.includes(marker) };
+  } finally {
+    control.kill('SIGKILL');
+  }
+}
+
 // ── The Core side ────────────────────────────────────────────────────────────────────────────
 let core: { readonly app: ReturnType<typeof buildApp>; readonly log: CapturedLog };
 let owner: Pool;
@@ -327,8 +373,17 @@ let store: CoreCredentialStore;
 let errorLog: RecordingErrorLog;
 let onvif: OddOnvifDevice;
 let adapter: OnvifRelayCameraAdapter;
+/** Finding F3-01: one more adapter over the SAME dependencies as `adapter`, with the loss callback of the case that asks for it. */
+let adapterWith: (relayEnded: (end: CameraRelayEnd) => void) => OnvifRelayCameraAdapter;
 /** The same adapter code with a reader whose stored-address rule is the PRODUCT'S. */
 let guarded: OnvifRelayCameraAdapter;
+/**
+ * Task 4 row 143 (AD-02 (1)): the adapter with the PRODUCT'S rule as ITS OWN dependency, the product's reader behind
+ * it, and the stored address read from the clone's row for each open, as the production composition reads it.
+ */
+let ruled: OnvifRelayCameraAdapter;
+/** How often the locator double of `ruled` was asked: 0 for every refused address. */
+let ruledLocates = 0;
 /** What the ONVIF double answers for the stream address, and for which account. */
 const device = { locator: '', account: ACCOUNT as { readonly username: string; readonly secret: string } };
 const relayPids: number[] = [];
@@ -405,13 +460,39 @@ beforeAll(async () => {
     timers,
     locator: createOnvifStreamLocator({ timers }),
     stream: async (deviceId: string, profile: string) => (DEVICES.some((entry) => entry.id === deviceId && entry.profiles.includes(profile)) ? { candidate: CANDIDATE, onvifProfileToken: TOKEN } : null),
+    // Row 143: the adapter's own judgement of the stored address. The doubles live on loopback, so these two adapters
+    // get the test-only rule of `test/support` (AD-02 (2)); `guarded` keeps showing the READER'S gate behind it.
+    storedAddress: loopbackStoredCameraAddress,
     relayEnded: (end: CameraRelayEnd) => ends.push(end),
     tell: (note: CameraRelayNote) => notes.push(note),
   };
   adapter = createOnvifRelayCameraAdapter(DEVICES, { ...dependencies, credentials: holders.cameraAdapter });
+  adapterWith = (relayEnded) => createOnvifRelayCameraAdapter(DEVICES, { ...dependencies, credentials: holders.cameraAdapter, relayEnded });
   guarded = createOnvifRelayCameraAdapter(DEVICES, { ...dependencies, credentials: real.cameraAdapter });
+  ruled = createOnvifRelayCameraAdapter(DEVICES, {
+    ...dependencies,
+    credentials: real.cameraAdapter,
+    storedAddress: (address, port) => decideDestination({ purpose: DestinationPurpose.STORED_CAMERA, address, ...(port === undefined ? {} : { port }) }, HOST_FACTS),
+    // NOTHING OF THIS ADAPTER DIALS: its control case stores an address of a camera subnet that is not this Mac's, and
+    // no request may leave for it. The locator read is a double that counts and answers "no camera there".
+    locator: {
+      locate: async () => {
+        ruledLocates += 1;
+        return { outcome: 'UNREACHABLE', reason: null, locator: null, reads: [], credentialRequests: 0, rejectedCredentialRequests: 0 } as unknown as Awaited<ReturnType<ReturnType<typeof createOnvifStreamLocator>['locate']>>;
+      },
+    },
+    // The stored address of the row, now: `host` or `host:port`, the two forms adoption stores.
+    stream: async (deviceId: string, profile: string) => {
+      if (!DEVICES.some((entry) => entry.id === deviceId && entry.profiles.includes(profile))) return null;
+      const { rows } = await app.db.read('row143.storedAddress', (pool) => pool.query<{ address: string | null }>('SELECT address FROM public.capture_devices WHERE id = $1', [deviceId]));
+      const stored = rows[0]?.address ?? '';
+      const host = stored.replace(/:[0-9]+$/, '');
+      return { candidate: { ...CANDIDATE, host, serviceAddress: `http://${stored}/onvif/device_service` }, onvifProfileToken: TOKEN };
+    },
+  });
   adapter.relayReports.subscribe((report) => reports.push(report));
   guarded.relayReports.subscribe((report) => reports.push(report));
+  ruled.relayReports.subscribe((report) => reports.push(report));
 }, 120_000);
 
 afterAll(async () => {
@@ -459,7 +540,7 @@ async function recordedThroughTheWorker(codec: 'h264' | 'hevc', profile: string,
 
 describe('T-2: a camera through the adapter, the real relay and the real worker', () => {
   it('H.264: the open resolves, video reaches the worker at the session\'s address as a decodable file; one audited reveal; nothing of the start message in the process listing', async () => {
-    const run = await recordedThroughTheWorker('h264', 'H264_1080P', SESSION_H264);
+    const run = await underHeavyHostLock(() => recordedThroughTheWorker('h264', 'H264_1080P', SESSION_H264));
     console.info(`[row46] h264: opened in ${run.openedInMs} ms, closed in ${run.closedInMs} ms, ${JSON.stringify({ ...run.result, run_folder: undefined })}`);
     expect(run.result).toMatchObject({ ingest_connected: 1, worker_codec: 'h264', file_codec: 'h264', file_size: '1920x1080', decode_error_lines: 0, gate_refusals: 0, ingest_elements_in_worker_output: 0, control_recorded: true, leftovers: 0 });
     expect(Number(run.result.file_frames)).toBeGreaterThanOrEqual(50);
@@ -467,36 +548,54 @@ describe('T-2: a camera through the adapter, the real relay and the real worker'
     expect(run.listing.args.trim().split(/\s+/)).toHaveLength(1);
     expect(occurrencesIn(run.listing.args)).toBe(0);
     expect(occurrencesIn(run.listing.withEnvironment)).toBe(0);
+    // Row T3 (X-07): the listing the line above read DOES show an environment on this host - a control process's one
+    // marker variable is in it (and not in its arguments). And the relay's listing is its program and NOTHING else: no
+    // `NAME=value` follows it, so its environment is empty as the door promises.
+    expect(listingShowsAnEnvironment()).toEqual({ inEnvironmentListing: true, inArguments: false });
+    expect(run.listing.withEnvironment.trim()).toBe(run.listing.args.trim());
     // The camera was answered with Digest only.
     expect(run.camera.counters.auth_basic ?? 0).toBe(0);
     expect(run.camera.counters.auth_digest_ok ?? 0).toBeGreaterThanOrEqual(1);
     expect(run.closedInMs).toBeLessThan(3_000);
-  }, 180_000);
+  }, 180_000 + HEAVY_LOCK_WAIT_S * 1_000);
 
   it('HEVC: the same path with the second codec', async () => {
-    const run = await recordedThroughTheWorker('hevc', 'HEVC_1080P', SESSION_HEVC);
+    const run = await underHeavyHostLock(() => recordedThroughTheWorker('hevc', 'HEVC_1080P', SESSION_HEVC));
     console.info(`[row46] hevc: opened in ${run.openedInMs} ms, closed in ${run.closedInMs} ms, ${JSON.stringify({ ...run.result, run_folder: undefined })}`);
     expect(run.result).toMatchObject({ ingest_connected: 1, worker_codec: 'hevc', file_codec: 'hevc', file_size: '1920x1080', decode_error_lines: 0, gate_refusals: 0, ingest_elements_in_worker_output: 0, control_recorded: true, leftovers: 0 });
     expect(Number(run.result.file_frames)).toBeGreaterThanOrEqual(50);
     expect(run.listing.args.trim().split(/\s+/)).toHaveLength(1);
     expect(occurrencesIn(run.listing.withEnvironment)).toBe(0);
+    // Row T3 (X-07): as in the H.264 case - the listing shows an environment on this host, and the relay has none.
+    expect(listingShowsAnEnvironment()).toEqual({ inEnvironmentListing: true, inArguments: false });
+    expect(run.listing.withEnvironment.trim()).toBe(run.listing.args.trim());
     expect(run.camera.counters.auth_basic ?? 0).toBe(0);
-  }, 180_000);
+  }, 180_000 + HEAVY_LOCK_WAIT_S * 1_000);
 });
 
 describe('T-2: refusals, the close and the end of a relay, against the sink', () => {
   let sink: Sink;
   let camera: TestCamera;
+  /** Row T3: the block holds the heavy-host lock while its sink (8563) and its camera (8570) stand. */
+  let releaseHeavyHost: (() => Promise<void>) | null = null;
 
   beforeAll(async () => {
+    releaseHeavyHost = await takeHeavyHostLock();
     sink = await startSink();
     camera = await startCamera('sink-h264', ['--codec', 'h264']);
     setLocator(camera.path);
     device.account = ACCOUNT;
-  }, 90_000);
+  }, 90_000 + HEAVY_HOST_LOCK_WAIT_MS);
 
   afterAll(async () => {
-    await sink.stop();
+    try {
+      // (Not set when the lock or the sink's port was not obtained.)
+      await (sink as Sink | undefined)?.stop();
+      // A camera of this block that a failed case left: ended here, before the lock is let go.
+      for (const child of started) if (child.exitCode === null) child.kill('SIGKILL');
+    } finally {
+      await releaseHeavyHost?.();
+    }
   });
 
   it('20 open/close cycles: every open announces the session\'s address byte for byte, every close ends its relay, no process is left; 20 reveals, each audited', async () => {
@@ -580,6 +679,48 @@ describe('T-2: refusals, the close and the end of a relay, against the sink', ()
     expect((await reveals()).length - before.reveals).toBe(1);
   }, 60_000);
 
+  // Task 4 row 143 (GATE CONDITION AD-02): the adapter ITSELF holds the stored address to the rule, at every open,
+  // BEFORE the reader is called. The reader's gate above writes one error-log code per refusal; here the reader is
+  // not reached at all, so the error log does not move either.
+  it('row 143: the adapter\'s own rule on the STORED address - the five refused classes and three more, on PostgreSQL: the named code, 0 reveal entries, 0 reader calls, 0 requests, 0 relay starts', async () => {
+    const before = { reveals: (await reveals()).length, requests: onvif.requests().length, relays: relayPids.length, connections: sink.connections, errors: errorLog.entries.length, trail: (await readTrail(owner)).length };
+    const ingest = sinkIngest(SESSION_REFUSED, 'video-01');
+    const classes: readonly (readonly [string, string])[] = [
+      // CAM-01 as the clone stores it: the loopback address of the doubles.
+      [`${HOST}:${ONVIF_PORT}`, 'LOOPBACK'],
+      ['127.0.0.1', 'LOOPBACK'],
+      ['0.0.0.0', 'UNSPECIFIED'],
+      ['169.254.10.20:80', 'LINK_LOCAL'],
+      ['224.0.0.251', 'MULTICAST'],
+      ['192.168.50.1', 'HOST_ADDRESS'],
+      ['8.8.8.8', 'PUBLIC_ADDRESS'],
+      ['192.168.60.20', 'OUTSIDE_CAMERA_SUBNET'],
+      ['10.20.0.77', 'OTHER_INTERFACE_SUBNET'],
+    ];
+    const seen: string[] = [];
+    for (const [address, refusal] of classes) {
+      // What the runtime role may do (the finding of the security check): UPDATE the address of an adopted camera.
+      await core.app.db.pool.query("UPDATE public.capture_devices SET address = $1 WHERE id = 'CAM-01'", [address]);
+      const refused = await outcomeOf(ruled.openSource('CAM-01', targetOf(ingest, 'H264_1080P', SESSION_REFUSED), never()));
+      expect(refused, address).toMatchObject({ name: 'CameraOpenError', code: CameraOpenRefusal.ADDRESS_REFUSED, deviceId: 'CAM-01', reason: refusal });
+      seen.push(`${refusal}`);
+    }
+    await owner.query("UPDATE public.capture_devices SET address = $1 WHERE id = 'CAM-01'", [`${HOST}:${ONVIF_PORT}`]);
+    console.info(`[row143] stored-address refusals of the adapter, in order: ${seen.join(', ')}`);
+    expect({ reveals: (await reveals()).length, requests: onvif.requests().length, relays: relayPids.length, connections: sink.connections, errors: errorLog.entries.length, trail: (await readTrail(owner)).length }).toEqual(before);
+    expect(ruled.counts().live).toBe(0);
+    expect(ruledLocates).toBe(0);
+    // Control: the same adapter with the same rule goes on to the reader for an address of the camera subnet - 1 reveal,
+    // then the locator read (this adapter's double: nothing is dialled), which answers that no camera is there.
+    await owner.query("UPDATE public.capture_devices SET address = '192.168.50.21' WHERE id = 'CAM-02'");
+    const admitted = await outcomeOf(ruled.openSource('CAM-02', targetOf(ingest, 'H264_1080P', SESSION_REFUSED), never()));
+    await owner.query("UPDATE public.capture_devices SET address = $1 WHERE id = 'CAM-02'", [`${HOST}:${ONVIF_PORT}`]);
+    expect(admitted).toMatchObject({ code: CameraOpenRefusal.UNREACHABLE });
+    expect(ruledLocates).toBe(1);
+    expect((await reveals()).length - before.reveals).toBe(1);
+    expect(relayPids.length).toBe(before.relays);
+  }, 90_000);
+
   it('the read is OUTSIDE any unit of work: an open called from inside one is refused by the reader, with no reveal, no entry and no relay', async () => {
     const before = { reveals: (await reveals()).length, relays: relayPids.length, errors: errorLog.entries.length };
     const ingest = sinkIngest(SESSION_REFUSED, 'video-01');
@@ -641,26 +782,207 @@ describe('T-2: refusals, the close and the end of a relay, against the sink', ()
   }, 90_000);
 });
 
+// Finding F3-01 of the M3 review (verification/060_m3_review.md): ONE scripted scenario. The fixture of row 43
+// (`test-fixtures/row043_reopen.py`, its `drop` case) as this file can drive it: the test camera ends its connection
+// after 60 pictures, in the middle of a group, and begins the next connection with 10 pictures of another group that are
+// no keyframes; the REAL relay keeps its push to the REAL worker and opens the camera again after its first wait (2 s).
+// The Core's side is everything this row built, wired as the composition wires it: the adapter's report source into the
+// camera watch, the watch into the fence's own fault sink (`watchFaultSinkOf`), the sink on the REAL engine of this
+// file's app - so a raise is a row of the audit trail on PostgreSQL.
+// BEFORE this row the reader dropped both lines: the first word the Core had of such a loss was the relay's end, and in
+// this scenario - the camera comes back - there was NEVER one: 0 faults, 0 rows. With a camera that stays away the end
+// came 62.14 s after the loss line (implementation/043, section 5: the six waits sum to 62 s).
+describe('finding F3-01 (T-2): a camera lost INSIDE a session - the real relay, the test camera\'s drop switch, the real worker, the camera watch and the fence\'s fault sink on the real engine', () => {
+  it('the fault of THAT camera is raised by the relay\'s first line of the loss and cleared at its re-open; the relay is not ended, the worker keeps its ONE connection and refuses nothing, the file decodes', async () => {
+    const run = await underHeavyHostLock(async () => {
+      const app = core.app;
+      const startedEngine = !app.engine.running;
+      if (startedEngine) await app.engine.start('resync');
+      const KEY = 'CAMERA_STREAM_ENDED@CAM-01';
+      const activeFaults = (): string[] => app.engine.state().faults.active.filter((fault) => fault.kind === 'CAPTURE_FAULT').map((fault) => `${String(fault.reason)}@${String(fault.target)}`);
+      const sinkNotes: string[] = [];
+      // The fence's sink over the engine, in the words of the composition's port `faultEngine`.
+      const sink = watchFaultSinkOf(
+        () => ({
+          active: (fault) => app.engine.state().faults.active.some((held) => held.kind === fault.code && held.target === fault.subject && (held.reason ?? null) === fault.reason),
+          raise: (fault) => app.engine.raiseCaptureWarning(fault),
+          clear: (fault) => app.engine.clearCaptureWarning(fault),
+        }),
+        (note) => void sinkNotes.push(note),
+      );
+      const asked: { raise: number[]; clear: number[] } = { raise: [], clear: [] };
+      const watchReports: string[] = [];
+      const watch = createCameraWatch({
+        timers: createSystemTimers(),
+        now: () => Date.now(),
+        // No heartbeat is started in this case: the time reader is never asked.
+        reader: { read: async () => ({ answered: false, cameraUtcMs: null }) },
+        candidate: async () => CANDIDATE,
+        storedAddress: loopbackStoredCameraAddress,
+        faults: {
+          raise: (fault) => {
+            asked.raise.push(Date.now());
+            return sink.raise(fault);
+          },
+          clear: (fault) => {
+            asked.clear.push(Date.now());
+            return sink.clear(fault);
+          },
+        },
+        report: (report) => void watchReports.push(report.code),
+      });
+      const endsHere: CameraRelayEnd[] = [];
+      const told: { at: number; report: CameraRelayReport }[] = [];
+      const watched = adapterWith((end) => {
+        endsHere.push(end);
+        watch.relayEnded(end);
+      });
+      watched.relayReports.subscribe((report) => {
+        told.push({ at: Date.now(), report });
+        reports.push(report);
+        watch.pushEstablished(report);
+      });
+      const within = async (what: string, ms: number, met: () => boolean): Promise<void> => {
+        const until = Date.now() + ms;
+        while (!met()) {
+          if (Date.now() >= until) throw new Error(`not within ${ms} ms: ${what}`);
+          await sleep(10);
+        }
+      };
+      const auditBefore = (await readTrail(owner)).length;
+
+      // The `drop` case of row 43, H.264 with the sets in the description, an orderly end of the connection.
+      const camera = await startCamera('f301-drop', ['--codec', 'h264', '--drop-after-frames', '60', '--drop-count', '1', '--drop-style', 'fin', '--first-keyframe-delay-ms', '400', '--first-keyframe-fill', 'inter']);
+      setLocator(camera.path);
+      device.account = ACCOUNT;
+      const listener = await startWorkerListener('f301_drop');
+      const relaysBefore = relayPids.length;
+      const exitsBefore = relayExits.length;
+      const handle = (await watched.openSource('CAM-01', targetOf(listener.ingest, 'H264_1080P', SESSION_LOSS), never())) as SourceHandle;
+      const pid = relayPids.at(-1) as number;
+      expect(relayPids.length - relaysBefore).toBe(1);
+      expect(await listener.connected(10)).toBe(true);
+      expect(activeFaults()).toEqual([]);
+
+      // THE LOSS. The relay's first line of it reaches the watch, and the fault stands on the engine.
+      await within('the relay says the loss of its camera leg', 20_000, () => told.some((entry) => entry.report.leg?.event === 'LOST'));
+      const lost = told.find((entry) => entry.report.leg?.event === 'LOST') as { at: number; report: CameraRelayReport };
+      await within('the fault of the camera stands on the engine', 5_000, () => activeFaults().includes(KEY));
+      const faultAt = Date.now();
+      // The relay lives and has NOT ended: this is not the end the Core used to wait for.
+      expect([exists(pid), endsHere.length, watched.counts().live]).toEqual([true, 0, 1]);
+      expect(sink.owned()).toEqual(['CAMERA_STREAM_ENDED:CAM-01']);
+
+      // THE RE-OPEN. The relay's line clears the watch's own fault.
+      await within('the relay says the re-open', 30_000, () => told.some((entry) => entry.report.leg?.event === 'REOPENED'));
+      const reopened = told.find((entry) => entry.report.leg?.event === 'REOPENED') as { at: number; report: CameraRelayReport };
+      await within('the fault of the camera is cleared', 5_000, () => !activeFaults().includes(KEY));
+      const clearedAt = Date.now();
+      // Pictures of the new leg for two seconds; the relay is still the same process and nothing ended.
+      await sleep(2_000);
+      expect([exists(pid), endsHere.length, activeFaults(), sink.owned()]).toEqual([true, 0, [], []]);
+      await handle.close();
+      await sleep(100);
+      expect(exists(pid)).toBe(false);
+      const result = await listener.finish();
+      await camera.end();
+      // The instant the CAMERA ended the stream, from its own event log (wall clock of this host, ms).
+      const cameraLog = readFileSync(join(OUT, 'cameras', 'f301-drop.jsonl'), 'utf8').split('\n').filter((line) => line !== '').map((line) => JSON.parse(line) as Record<string, unknown>);
+      const dropped = cameraLog.filter((event) => event.event === 'stream_end').map((event) => ({ at: Date.parse(String(event.t)), reason: String(event.reason), frames: Number(event.frames_sent) }));
+      const trail = (await readTrail(owner)).slice(auditBefore);
+      if (startedEngine) await app.engine.stop();
+      return { told, lost, reopened, faultAt, clearedAt, asked, sinkNotes, watchReports, endsHere, result, dropped, trail, exits: relayExits.slice(exitsBefore), counts: watched.counts() };
+    });
+
+    // What the adapter told, in order: the established push ONCE, the loss, the re-open. Numbers and code words only.
+    expect(run.told.map((entry) => entry.report.leg?.event ?? 'ESTABLISHED')).toEqual(['ESTABLISHED', 'LOST', 'REOPENED']);
+    expect(run.lost.report).toEqual({ sessionId: SESSION_LOSS, deviceId: 'CAM-01', attempt: 1, leg: { event: 'LOST', profile: 'H264_1080P', loss: 1, cause: 'CAMERA_LOST' } });
+    expect(run.reopened.report).toMatchObject({ sessionId: SESSION_LOSS, deviceId: 'CAM-01', attempt: 1, leg: { event: 'REOPENED', profile: 'H264_1080P', loss: 1, tries: 1, heldBack: 25 } });
+    const leg = run.reopened.report.leg as { gapMs: number };
+    expect(leg.gapMs).toBeGreaterThanOrEqual(2_000);
+    expect(leg.gapMs).toBeLessThan(6_000);
+    // ONE raise and ONE clear were asked of the sink, in the turn of each line; nothing was dropped or out of order; the watch and the sink had nothing to say.
+    expect([run.asked.raise.length, run.asked.clear.length]).toEqual([1, 1]);
+    expect([run.asked.raise[0], run.asked.clear[0]]).toEqual([run.lost.at, run.reopened.at].map((at) => expect.closeTo(at, -1)));
+    expect([run.counts, run.sinkNotes, run.watchReports, run.endsHere]).toEqual([{ live: 0, droppedReports: 0, outOfOrderReports: 0 }, [], [], []]);
+    // The relay ended by its order to stop at the close: exit 0, never by itself.
+    expect(run.exits).toEqual([0]);
+
+    // THE SESSION'S RECORD IN THE FORMS THAT EXIST: one FAULT_RAISED and one FAULT_CLEARED row about that camera, in this order - the two bounds of the absence.
+    const faultRows = run.trail.filter((row) => row.type === 'FAULT_RAISED' || row.type === 'FAULT_CLEARED');
+    // (The engine's FAULT_CLEARED row names the device in `details.target` and leaves the row's device column empty: the existing form, read as it is.)
+    expect(faultRows.map((row) => [row.type, row.deviceId, (row.details as Record<string, unknown>).target, (row.details as Record<string, unknown>).kind, (row.details as Record<string, unknown>).reason])).toEqual([
+      ['FAULT_RAISED', 'CAM-01', 'CAM-01', 'CAPTURE_FAULT', 'CAMERA_STREAM_ENDED'],
+      ['FAULT_CLEARED', null, 'CAM-01', 'CAPTURE_FAULT', 'CAMERA_STREAM_ENDED'],
+    ]);
+    const [raisedRow, clearedRow] = faultRows as [AuditRow, AuditRow];
+    expect(clearedRow.at - raisedRow.at).toBeGreaterThanOrEqual(2_000);
+
+    // THE WORKER'S SIDE OF THE RE-OPEN: one connection, one connect report, no refusal of its gate, a file that decodes.
+    expect(run.result).toMatchObject({ ingest_connected: 1, worker_codec: 'h264', file_codec: 'h264', decode_error_lines: 0, gate_refusals: 0, ingest_elements_in_worker_output: 0, control_recorded: true, leftovers: 0 });
+
+    // THE MEASURE: from the instant the camera ended the stream (its own event log) to the Core's fault.
+    // The dropped stream: 60 pictures of the clip after the 10 that led up to its first keyframe.
+    const drop = run.dropped.find((end) => end.reason === 'fault_drop');
+    expect(drop).toMatchObject({ reason: 'fault_drop', frames: 70 });
+    const dropAt = (drop as { at: number }).at;
+    const toLine = run.lost.at - dropAt;
+    const toFault = run.faultAt - dropAt;
+    console.info(
+      `[r1 F3-01] camera ended the stream (${String(drop?.reason)}, in mid group) -> the relay's loss line read by the Core: ${toLine} ms; -> the fault active on the engine: ${toFault} ms (polled every 10 ms); raise asked ${(run.asked.raise[0] ?? Number.NaN) - run.lost.at} ms after the line; ` +
+        `absence: FAULT_RAISED to FAULT_CLEARED ${clearedRow.at - raisedRow.at} ms on the audit rows, the relay's own gap ${leg.gapMs} ms, held back ${String((run.reopened.report.leg as { heldBack: number }).heldBack)}; cleared ${run.clearedAt - run.reopened.at} ms after the re-open line; ` +
+        `worker ${JSON.stringify({ ingest_connected: run.result.ingest_connected, gate_refusals: run.result.gate_refusals, file_frames: run.result.file_frames, decode_error_lines: run.result.decode_error_lines })}`,
+    );
+    // Within the first report: well inside the relay's first wait (2 s), against "never" (this scenario) and 62 s (a camera that stays away) before.
+    expect(toFault).toBeLessThan(1_500);
+    expect(toFault).toBeGreaterThanOrEqual(-5);
+  }, 240_000 + HEAVY_LOCK_WAIT_S * 1_000);
+});
+
 describe('T-2: nothing of a credential, a locator or an ingest address is written anywhere', () => {
   it('the log sink, the persistent error log, the audit trail, every error, report, note and end of this file: 0 occurrences; no relay of this file is left', async () => {
     expect(needles.size).toBeGreaterThan(40);
-    const trail = await readTrail(owner);
-    const places: Record<string, string> = {
-      log: core.log.text(),
-      errorLog: JSON.stringify(errorLog.entries),
-      audit: JSON.stringify(trail),
-      thrown: kept.map(everything).join('\n'),
-      told: everything({ reports, ends, notes }),
+    /** THE SWEEP: every place read anew, and how many of the texts stand in each. The control below uses THIS function. */
+    const sweep = async (): Promise<Record<string, number>> => {
+      await core.app.pipeline.drain();
+      const places: Record<string, string> = {
+        log: core.log.text(),
+        errorLog: JSON.stringify(errorLog.entries),
+        audit: JSON.stringify(await readTrail(owner)),
+        // Row T3: the registry rows too - where a locator, or an address with an account in it, would come to rest.
+        devices: ((await owner.query("SELECT coalesce(json_agg(row_to_json(t))::text, '[]') AS rows FROM public.capture_devices t")).rows[0] as { rows: string }).rows,
+        thrown: kept.map(everything).join('\n'),
+        told: everything({ reports, ends, notes }),
+      };
+      return Object.fromEntries(Object.entries(places).map(([place, text]) => [place, occurrencesIn(text)]));
     };
-    const found = Object.fromEntries(Object.entries(places).map(([place, text]) => [place, occurrencesIn(text)]));
+    const found = await sweep();
     console.info(`[row46] occurrences of ${needles.size} texts (account, secret, locators, paths, ingest addresses and their last elements): ${JSON.stringify(found)}; relays started ${relayPids.length}, alive ${relayPids.filter((pid) => exists(pid)).length}`);
-    expect(found).toEqual({ log: 0, errorLog: 0, audit: 0, thrown: 0, told: 0 });
-    // Control: the search does find a text that is there.
-    expect([...needles].some((needle) => `x ${needle} y`.includes(needle))).toBe(true);
-    expect(JSON.stringify(trail).includes(REVEALED)).toBe(true);
+    expect(found).toEqual({ log: 0, errorLog: 0, audit: 0, devices: 0, thrown: 0, told: 0 });
     expect(relayPids.filter((pid) => exists(pid))).toEqual([]);
     expect(adapter.counts().live + guarded.counts().live).toBe(0);
     // Reports dropped as superseded in this file: none was expected, none happened.
     expect(notes.filter((note) => note.code !== 'CAPTURE_RELAY_REPORT_SUPERSEDED')).toEqual([]);
+
+    // ── CONTROL (row T3; review 060c T-03, survivor 4). The control that stood here was
+    // `[...needles].some((needle) => \`x ${needle} y\`.includes(needle))`: true for any set, and it never called the
+    // search - a sweep that always answered 0 passed with it. Now the account's SECRET is put where the product could
+    // really leave it, through the product's own sinks, AFTER the sweep above found nothing, and THE SAME SWEEP must
+    // find each: a line of the app's own logger, an entry of the reader's error log, the message of an audit entry
+    // written through the app's own pipeline (the form of the reveal entry the reader writes), a column of a registry
+    // row, an error this file was thrown, a relay end it was told. This is the file's last case: nothing reads these after it.
+    const planted = ACCOUNT.secret;
+    core.app.log.info({ rowT3Control: planted }, `row T3 control of the sweep: ${planted}`);
+    errorLog.append({ ...errorLog.entries[0], code: 'ROW_T3_CONTROL', message: `row T3 control ${planted}` } as never);
+    const revealRow = (await readTrail(owner)).findLast((row) => row.type === REVEALED);
+    expect(revealRow, 'a reveal entry of this file, as the form of the planted one').toBeDefined();
+    await core.app.pipeline.run('rowT3.sweepControl', async (unit) => void (await unit.audit.append({ type: REVEALED, message: `Capture credential revealed (${planted})`, actorId: null, deviceId: 'CAM-01', details: revealRow?.details ?? {} } as never)));
+    await owner.query("UPDATE public.capture_devices SET model = $1 WHERE id = 'CAM-02'", [`model ${planted}`]);
+    kept.push(new Error(`row T3 control ${planted}`));
+    ends.push({ sessionId: SESSION_REFUSED, deviceId: 'CAM-01', attempt: 99, profile: 'H264_1080P', code: CameraOpenRefusal.INGEST_LOST, reason: planted } as never);
+    const control = await sweep();
+    console.info(`[rowT3] control of the sweep, the secret planted in every place: ${JSON.stringify(control)}`);
+    expect(control).toEqual({ log: 1, errorLog: 1, audit: 1, devices: 1, thrown: 1, told: 1 });
+    expect(JSON.stringify(await readTrail(owner)).includes(REVEALED)).toBe(true);
   }, 30_000);
 });

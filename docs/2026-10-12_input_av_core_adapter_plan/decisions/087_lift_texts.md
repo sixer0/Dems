@@ -1,43 +1,42 @@
 ---
 task_id: 2026-10-12_input_av_core_adapter_plan
 task_slug: input_av_core_adapter_plan
-date: 2026-10-12
+date: 2026-10-13
 agent: data-analyst
 blueprint_row: 87
 milestone: M6
 package: WP-13c
-type: decision and erratum DRAFTS (the texts the class-C lift cites)
+type: decision and erratum texts (the four texts the class-C lift cites)
 narrative_tier: 1
-status: draft - complete as a draft; adopted by the controller, not by this row
-confidence: MEDIUM (three slots depend on results that do not exist yet: rows 8, 86, 141)
-closes_requirements: S13-17 (text half; the code half is row 88), AD-02 (4)
-last_updated: 2026-10-12 22:40 WIB
+status: complete as texts; NOT in force - applied by row 88 after the preconditions of section 1.3 are ticked
+confidence: MEDIUM (row 86 has not run; the kill matrix of row 59 has not run; nothing here was run or built)
+closes_requirements: S13-17 (text half; the code half is row 88), AD-02 (4), condition L-1 (text half)
+supersedes: the draft of this file of 2026-10-12 22:40 WIB (commit 7969f0fa), whose three slots are now settled or turned into preconditions
+last_updated: 2026-10-13 15:59 WIB
 ---
 
-# Row 87: the four texts the class-C lift cites (drafts)
+# Row 87: the four texts the class-C lift cites
 
-**These are drafts.** This row did not write `decisions/decisions.md`, did not edit `masterplan/04_design_addendum.md`, `masterplan/01_specs.md` or any source file, and did not open the closed task-3 folder for writing. The controller adopts each text, or changes it.
+This row wrote this file and `delegation_progress/row_087.md`. It changed no source file, no specification file, not `decisions/decisions.md`, and nothing in the closed task-3 folder. Row 88 applies the texts; the controller records AM-1 (C4, `decisions/decisions.md:31`).
+
+Paths are relative to `/Users/gsp-budi/Documents/DEMS`. `T4` = `docs/2026-10-12_input_av_core_adapter_plan`, `T3` = `docs/2026-10-07_dems_real_capture_sealing`, `CS` = `apps/core-server/src`. A decision id (U15, C60) is a row of `T4/decisions/decisions.md`; its line is given at first use.
 
 ## 0. Frame (5W1H), method, limits
 
 | Question | Answer |
 |---|---|
-| **What** | Four texts: (1) decision row AM-1, which amends task-3 ruling D86 C-5; (2) an ERRATUM DRAFT for section H.5 of the evidence specification, stating the guard as it stands after the lift (S13-17), the word "declared" kept; (3) erratum E-A2 for the credential rule and its code comment; (4) the erratum to design addendum 1.6 #3 (AD-02 (4)). |
-| **Why** | Condition L-1 of the lift: "the text of decision row AM-1 exists (row 87) and the controller has recorded it" (`identification/03_implementation_blueprint.md:545`). Row 88 cites these texts in its change set (`:211`, dependency `87:C`). S13-17 is a stage-1 gate item (`verification/02_security.md:76,316`). |
-| **Who** | Drafted by data-analyst. Adopted by the controller (U12 B2; C4 at `decisions/decisions.md:31`). The ruling behind AM-1 is the user's (U12 A5, A6, `decisions/decisions.md:24`). Readers: row 88 (the lift), row 92 (gate M6), row 137 (final security review). |
-| **When** | Drafted 2026-10-12 22:40 WIB, before rows 8, 86, 88 and 141 have run. Texts 1 and 2 take effect with the change set of row 88, not before (C4: "each takes effect in the work package that needs it"). |
-| **Where** | This file. The task-3 folder `docs/2026-10-07_dems_real_capture_sealing/` is closed and read-only: nothing in it was edited (C16 (4), `decisions/decisions.md:43`). |
-| **How** | Reading only. Read: the driver rules; `decisions/decisions.md`; `decisions/01_decision_register.md:286-299,419-429`; `masterplan/04_design_addendum.md` sections 1.6, 2, 6, 9, 11; `masterplan/01_specs.md:226,245-252,254-282,306-312`; `verification/02_security.md` sections 2, 4, 5, 8, 9; `verification/04_security_addendum.md` in full; the blueprint sections 6, 7, 9 and the rows named below. Read-only in the repository: the task-3 evidence specification (`masterplan/06_evidence_package_spec.md:872-884,1129-1141`), task-3 `decisions/decisions.md:99`, task-3 `masterplan/09_security_design_review.md:638`, task-3 `masterplan/05_capture_architecture_spec.md:227`; `apps/core-server/src/capture/adapters/credential.ts:1-25`, `registry.ts:26-38`, `capture/fence/sources.ts:80-130`, `db/migrations/0005_capture_privileges.sql:20-45`, `0009_capture_sources_privileges.sql:1-27`, a name search of migrations `0010` to `0014`, `db/schema/capture.ts:50-58`, `core/audit-details.ts:298-305`. Nothing was run, built or connected. Nothing under `apps/input-av/data/` and no `.env` was opened. Graft was not queried (docs-only row). |
+| **Subject (what)** | Four texts: (1) decision row AM-1, which amends task-3 ruling D86 C-5 for two adapter kinds; (2) the statement of the new guard for section H.5 of the evidence specification (S13-17), the word "declared" kept; (3) erratum E-A2 for the comment of the credential file; (4) the erratum to design addendum 1.6 #3 (AD-02 (4)). |
+| **Why** | Entry condition L-1 of the lift: "the text of decision row AM-1 exists (row 87) and the controller has recorded it" (`T4/identification/03_implementation_blueprint.md:1082`). Row 88 depends on this row by contract (`:224`, `87:C`). S13-17 is a stage-1 gate item (`T4/verification/02_security.md:76,316`). AD-02 (4) orders the erratum of text 4 (`T4/verification/04_security_addendum.md:161`). |
+| **Stakeholders (who)** | The user, whose word lifts the rule (U15, `decisions.md:69`). The controller, who records AM-1 (C4, `:31`). Row 86 (security review before the lift), which may change a rule these texts state. Row 88 (the lift), which applies them. Rows 91, 92, 137 (review, gate M6, final security review), which read them. A later reader of a sealed package, for whom text 2 says what the word "declared" means. |
+| **When** | Written 2026-10-13 15:59 WIB at commit `0f5d2a8e` plus the uncommitted tree. Row 86 has not run: `T4/verification/086_pre_lift_security.md` does not exist (directory listing, this pass). The kill matrix of row 59 stands at 0 of 35 (`T4/test/059_worker_reverification.md:8`; C88, `decisions.md:124`). Texts 1 and 2 take effect with the commit of row 88, not before (C4: "each takes effect in the work package that needs it"). |
+| **Scope (where)** | In: the four texts, their evidence, the preconditions of AM-1. Out: any edit of code or of a specification; stage 2 ("declared fit to record"); the withdrawal of any limit of the task-3 README or specifications (blueprint `:223`, `:1101`); the audit comment at `core/audit-details.ts:301`. The task-3 folder is closed and is not edited (C16 (4), `decisions.md:43`). |
+| **How** | Reading only. Nothing was run, built, connected or started. No file under `apps/input-av/data/` and no `.env` was opened. |
 
-**Limits.** Three results these texts refer to do not exist yet. Each is a marked slot, `[SLOT-n]`, which the controller fills at adoption:
+**Read in this pass.** In full: the earlier draft of this file; `T4/masterplan/04_design_addendum.md` sections 1 (`:43-163`), 2 (`:166-257`), 6 (`:393-437`), 11 (`:688-704`); `T4/verification/04_security_addendum.md` sections 1, 2, 3.4, 3.5, 5, 8, 9; `T4/verification/02_security.md` section 4 (`:119-166`) and section 9 (`:301-316`); `T3/masterplan/06_evidence_package_spec.md:878-881,1129-1139`; `CS/capture/adapters/registry.ts:1-136`; `CS/capture/adapters/credential.ts:1-60`; `CS/capture/fence/sources.ts:78-132`; `CS/capture/adapters/camera/relay-start.ts:1-30`; `CS/db/migrations/0005_capture_privileges.sql:22-41`; blueprint rows 59, 85 to 92, 141 to 143, 148, 157 and section 9 (`:1066-1103`); decision rows U12, U13, U15 to U21, P10, C4, C9, C15, C16, C20, C27, C34, C36, C38, C39, C45, C46, C50, C51, C55, C56, C59, C60, C63, C65, C66, C70, C71, C76, C82, C85, C88, C89.
+**Read in part** (frontmatter, statement, gate and "unproven" sections, not every line): `T4/implementation/143`, `143b`, `143c`, `144`, `145`, `085`, `085b`, `085c`, `085d`, `i09a_integration_pass.md`, `157`; `T4/test/033_selector_21_states.md`, `141_container_e11_relay_state.md`. Where a claim rests on such a record, the line cited was read.
+**Not opened:** `T4/implementation/046`, `067`, `048` (one line), `058` (five lines), `179` (two lines), `188`, `200` (status lines only), `T4/test/044`, `059` (status lines only). Claims about them are taken from the decision row that adopted them and say so.
 
-| Slot | What it holds | Comes from |
-|---|---|---|
-| `[SLOT-1]` | The branch E-11 selected (A; A with the second-connect rule; B; C) | row 8 (gate RC-1), confirmed by row 141 |
-| `[SLOT-2]` | The verdict and path of the security review before the lift | row 86, `verification/086_pre_lift_security.md` |
-| `[SLOT-3]` | The decision number and date in `decisions/decisions.md` | the controller |
-
-A text with an unfilled slot is not adoptable. If row 86 changes a rule these texts state (the 5,000 ms pairing bound, the address classes refused, the residual), the text follows row 86.
+**Limits.** These are texts. No statement in them was proven by a run of this row. Where a text states what the code does after row 88, row 88 re-reads the code it lifts on and the text follows the code; a difference is reported to the controller, not silently reworded.
 
 ---
 
@@ -45,144 +44,167 @@ A text with an unfilled slot is not adoptable. If row 86 changes a rule these te
 
 ### 1.1 The row, ready for `decisions/decisions.md`
 
-Columns as that file has them (`# | Date | Decision | By | Status`).
+Columns as that file has them (`# | Date | Decision | By | Status`). The number and the date are the controller's. The row is written only after every box of section 1.3 is ticked.
 
-> | `[SLOT-3]` | `[SLOT-3]` | **AM-1 (controller, on U12 A5 and A6; condition L-1 of the class-C lift; STAGE 1, IN CODE ONLY).** Amends task-3 ruling D86 C-5, which reads: "no listener and no session start for a source kind without an opener; no all-PRODUCTION package can be produced in this phase". **(1) What is lifted.** For the adapter kinds `ONVIF_RTSP` and `USB_AUDIO`, and for no other kind, an adapter may state an opener. A session may start, `[SLOT-1: in branches A and B add "and the worker's loopback ingest listener may exist,"]` only when all four slots resolved to adapters with an opener (measure SA-1, `capture/fence/sources.ts`, the line "No opener, no row", unchanged by the lift). Both kinds are lifted in one change set (row 88); neither alone. **(2) What stands in the place of the lifted protection.** (a) `[SLOT-1: the branch text of section 1.2]`. (b) Measure SA-3: a camera counts as open only when the report of its own relay and the worker's connect report for that port arrive within 5,000 ms of each other, in either order; one without the other is a capture fault with an audit entry, and nothing of that track is sealed as that camera. (c) The stored address of a production camera is held to the destination rule at every open, every connection test of an adopted camera and every presence read, before the credential is revealed: loopback, unspecified, link-local, multicast and the host's own addresses are refused (AD-02). (d) An adapter that states an opener is refused at registration unless its source class is the class the running operation records (addendum 1.4 #7). (e) A microphone is opened by the Core's own helper process, which writes a pipe of mode 0600 in a run directory of mode 0700; no network listener exists for audio. **(3) What is NOT lifted.** The first clause of D86 C-5 stays in force for every other kind (`SNMP_POE` and any later kind) and for every adapter that states no opener. The fence files `boot.ts` and `operation.ts` are not edited. One session is never of two source classes. The read-back of the four source rows at session start stays. A production-kind adapter with an opener is refused in a development registry. **(4) The second clause.** "No all-PRODUCTION package can be produced in this phase" ends, with row 88's change set, as a property of the CODE: the code can then seal a package whose four sources read `PRODUCTION`. It does not end as a RULE OF USE. Nothing is declared fit to record. No limit of the task-3 README or of the task-3 specifications is withdrawn by this row. Until stage 2 the only such packages are the ones the automated full-session test seals from doubles in a temporary directory, which is removed with the test (row 89); they are not evidence. Stage 2 ("declared fit to record") is a separate ruling of the user on the result record of the hardware acceptance test package, with S13-03 and S13-15 as its conditions (U13; blueprint 9.2). **(5) Conditions met.** L-2: the selected branch is built, its checks pass, the selection is confirmed in the Ubuntu 24.04 container (row 141), and the security review before the lift is not a FAIL (`[SLOT-2]`). L-3: E-12 extended, 0 occurrences (row 44). L-4: E-1 and E-2 passed for the worker; the sealing half is a check of row 89. L-5: both adapters pass T-1 to T-3 (rows 46, 67) and the registry builder exists (row 85). AD-02 (rows 143, 144), AD-08 (row 157), AD-04 (gate M2). **(6) Residual, accepted with the security review (`verification/02_security.md` 4.4).** A process that runs as the Core's own service user can read the plan and defeat SA-2, and can feed a microphone pipe. That account already holds the database role, the credential store and the signing path. The report line of an all-`PRODUCTION` package therefore keeps the word "declared". Wording of the amendment: `decisions/01_decision_register.md`, entry AM-1. Texts cited by the lift: `decisions/087_lift_texts.md` | controller, on U12 A5, A6 (C4) | in force from the commit of row 88; reversible by reverting that commit |
+> | AM-1 | [date of the commit of row 88] | **AM-1 (amendment of task-3 ruling D86 C-5; STAGE 1 of the class-C lift, IN CODE).** D86 C-5 reads: "no listener and no session start for a source kind without an opener; no all-PRODUCTION package can be produced in this phase". **(1) What is lifted.** For the adapter kinds `ONVIF_RTSP` and `USB_AUDIO`, and for no other kind, an adapter may state an opener, and a session whose four slots resolved to adapters with an opener may start and may have its loopback ingest listener. Both kinds are lifted in one change set (row 88): the two kinds join the opener list, the two stubs are replaced by the built adapters, the boot calls the production registry builder. **(2) On whose word.** The user's: U15, "cabut aturan izin merekam", inside the two stages the user accepted in U12 A5 and the amendments accepted in U12 A6 (C4). Read by the controller as the release of stage 1 (P10 (1), confirmed by U17); the engineering conditions were not waived (P10 (2)). **(3) What stands in front of the two kinds from this commit.** (a) The fence is unchanged: a source of class `PRODUCTION` is assignable and recordable only under `REAL_PRODUCTION`, before and after the lift (C60); `boot.ts` and `operation.ts` of the fence are not edited. (b) New at registration: an adapter that states an opener is refused unless its source class is the class the running operation records (design addendum 1.4 #7). (c) The stored address of a production camera is held to the destination rule at every open, every presence and clock read and every connection test of an adopted camera, before the credential reader is called: loopback, unspecified, link-local, multicast, the host's own addresses and every address outside the configured camera subnet are refused, and with no stored network configuration every address is refused (AD-02; rows 143, 144; C55, C76). (d) Every connection to a stored camera leaves from the camera-interface address the rule names, at every re-open too (rows 143b, 143c; C65, C70). (e) The stored credential is revealed by one reader with a closed list of holders, one audit entry per reveal that carries the session, returned only after its commit; it reaches the relay in the start message on standard input and nowhere else (rows 144, 145). The relay answers a Digest challenge only (U17). (f) Branch B of E-11, final (C89): the worker goes on to the probe, the file and its connect report only after the path the client announced equals the plan's ingest address, which is new for every attempt and track (rows 58, 179). (g) A camera counts as open only when the report of its own relay and the worker's connect report arrive within 5,000 ms of each other; in `REAL_PRODUCTION` a session start without a relay report source is refused (row 48; C34). (h) A microphone is opened by the Core's own helper, which writes a pipe of mode 0600 in a directory of mode 0700; the card is matched by its stored serial, else its stored port (rows 67, 200; C56). No network listener exists for audio. **(4) What is NOT lifted.** The first clause of D86 C-5 stays for every other kind (`SNMP_POE` and any later kind) and for every adapter that states no opener. One session is never of two source classes. The read-back of the four source rows at session start stays. **(5) What this row does not say.** It does not say that any source is fit to record: that is stage 2, the user's ruling on the result of the hardware acceptance test package (U12 A5; U13; blueprint 9.2). It withdraws no limit of the task-3 README or specifications. From this commit the CODE can seal a package whose four sources read `PRODUCTION`; such a package is declared as production by the Core that sealed it and is not evidence of fitness. Agents record nothing from the real devices (U18); the automated full-session test seals from doubles in a temporary directory that is removed with the test (row 89). **(6) Residuals, accepted with the security review (`verification/02_security.md` 4.4; C27).** A process that runs as the Core's own service user can read the ingest address and feed a microphone pipe; that account already holds the database role, the credential store and the signing path. Recording through the worker's gate depends on the wording of one log line of the pinned library and fails closed. On a host that is not Linux the host profile is not asked (C66 (1); U21 (2)). **(7) Conditions.** Ticked by row 88 before this row was written: `decisions/087_lift_texts.md` section 1.3, with the evidence in `implementation/088_class_c_lift.md`. Texts cited by the lift: `decisions/087_lift_texts.md` | user (U15, within U12 A5 and A6); recorded by the controller (C4) | in force from the commit of row 88; reversible by reverting that commit |
 
-### 1.2 The branch text for `[SLOT-1]`, one per outcome of E-11
+Sources of the row, clause by clause:
 
-Source of the four outcomes: blueprint 9.1 (`identification/03_implementation_blueprint.md:531-539`).
-
-| Branch | Text for (2)(a) |
+| Clause | Source |
 |---|---|
-| **A** | "Measure SA-2: the ingest address of each camera track carries a random element of 128 bits from the system's random source, new for every session attempt and every track, held in the plan frame and in the relay's start message and nowhere else (RC-2). The pinned library refuses a push addressed to any other path: observed with a paired control and seven near-miss paths (row 8), repeated on the Ubuntu 24.04 build (row 141), and kept as a permanent test of the worker's suite (row 142)." |
-| **A with the second-connect rule** | The text of A, plus: "A second connect report on a port is a capture fault that ends the capture (row 48); this is the rule for the case in which a second client on the right path was accepted (E-11, O-2)." |
-| **B** | "Measure SA-2: the random element as in RC-2. The worker compares the path the client announced with the plan's, before it probes the stream and before it reports a connection (row 58); the worker's series was run again after that change (row 59); the near-miss test is permanent (row 142)." |
-| **C** | "No listener exists: the worker dials the camera itself (the fallback ruled in U12 A3). RC-1 to RC-5 fall away; what the pulling worker keeps of RC-6 is stated by AD-14." In branch C clause (1) reads "A session may start" without the listener words, and the rows after row 9 are refined, so this row's text is re-read against the refined blueprint before it is adopted. |
+| D86 C-5, quoted | `T3/decisions/decisions.md:99` (row D86, item C-5), read in this pass; the same words in `T4/decisions/01_decision_register.md:427` |
+| (1) kinds, "a listener may exist for a session whose four slots resolved to adapters with an opener" | the register's amendment, `01_decision_register.md:427`; C4 (`decisions.md:31`): "their exact wording is the register's" |
+| (1) one change set, its content | blueprint row 88 (`03_implementation_blueprint.md:224`); design addendum 6.4 (`04_design_addendum.md:432,436` "lift both kinds together") |
+| (2) | U15 (`decisions.md:69`); U12 A5, A6 (`:24`); C4 (`:31`); P10 (`:70`); U17 (`:72`: "P10 (1) is confirmed") |
+| (3)(a) | C60 (`decisions.md:95`), which cites `registry.ts:132`, `fence/index.ts:298,321`, `fence/sources.ts:124-129`; blueprint exit condition 5 (`:1100`); `T4/test/033_selector_21_states.md:18` |
+| (3)(b) | `04_design_addendum.md:100`; supported by the security check (`04_security_addendum.md:165`); today's rule `registry.ts:79-82` |
+| (3)(c) | `T4/implementation/143_stored_address_rule.md:18-24,60-73`; `144_reader_holders.md:28-41`; `085b_production_composition.md:42`; `i09a_integration_pass.md:20` (item 1); C76 (`decisions.md:111`) |
+| (3)(d) | `143b_source_address_bind.md:18-28`; `143c_watch_and_candidate_bind.md:16-23`; C65 (`:100`), C70 (`:105`) |
+| (3)(e) | `144_reader_holders.md:43-52`; `145_reader_commit_session.md:27-48`; `CS/capture/adapters/camera/relay-start.ts:7-17`; `apps/capture-worker/src/relay/relay_rtsp.c:9-15`; U17 (`:72`) |
+| (3)(f) | C27 (`decisions.md:54`); `T4/implementation/058_wp11b_path_compare.md:16`; C89 (`:125`); row 179 as adopted by C37 and C57 (record not opened beyond two lines) |
+| (3)(g) | `T4/implementation/048_sa3_pairing.md:58` (`INGEST_PAIRING_BOUND_MS` 5,000); C34 (`decisions.md:61`); RC-3 (`02_security.md:157`) |
+| (3)(h) | `CS/capture/adapters/local/mic-pipe.ts:6,36`; C56 (`decisions.md:90`); RC-6 (`02_security.md:160`) |
+| (4) | `01_decision_register.md:427` ("The rule stays for every other kind"); `fence/sources.ts:124-129`; blueprint row 88's check "`SNMP_POE` with an opener" (`:224`) |
+| (5) | U12 A5 (`:24`); U13 (`:25`); blueprint `:1101,1103`; U18 (`:73`); blueprint row 89 (`:225`); AD-08 (4) (`04_security_addendum.md:145`) |
+| (6) | `02_security.md:164`; C27 (`:54`); C66 (1) (`:101`); U21 (2) (`:123`) |
 
-### 1.3 Why the row is worded this way
+### 1.2 Conditions already met at the time of drafting, each with its evidence
 
-| Choice | Reason | Source |
+"Met" means: a record or a decision row says so, and that line was read. It does not mean row 86 has judged it. The blueprint says the same: "Whether each condition HOLDS is judged by row 86 and by gate 92, not by this list" (`:1092`).
+
+| Condition (blueprint 9.2, `:1082-1090`) | State | Evidence |
 |---|---|---|
-| The amendment's core sentence is the register's | C4 rules that "their exact wording is the register's". Register AM-1: "For `ONVIF_RTSP` and `USB_AUDIO`: an opener may be stated and a listener may exist for a session whose four slots resolved to adapters with an opener. The rule stays for every other kind" | `decisions/decisions.md:31`; `decisions/01_decision_register.md:427` |
-| "By: controller, on U12 A5, A6" | The user accepted the amendment and the two stages; "the amending decision rows themselves ... the controller writes at the time each line names (AM-1 at the lift)" | `decisions/01_decision_register.md:421`; `decisions/decisions.md:24` |
-| Clause (4) splits D86 C-5's second clause into "property of the code" and "rule of use" | D86 C-5 has two clauses. The register's amendment speaks to the first only. After row 88 the second is no longer true of the code (row 89 seals such a package), yet stage 1 may withdraw no limit (blueprint 9.2, exit condition 6). Saying nothing would leave a decision file that contradicts the code. See finding F-2, section 6 | `identification/03_implementation_blueprint.md:555,559` |
-| The residual is in the row | The review accepted variant A "with this ACCEPT" and that residual; a decision that lifts a protection names what is left | `verification/02_security.md` 4.4 |
-| Reversible | The lift is one change set and one commit (C9 by analogy; blueprint section 5 "every other milestone is one commit that reverts alone") | `identification/03_implementation_blueprint.md:105` |
+| L-1, text half: the text of AM-1 exists | met | this file, section 1.1 |
+| L-2, branch built: branch B (C27) with rows 47, 48, 179, 58, 175 to 178, 142 | met on this Mac's doubles | C88 (`decisions.md:124`): the worker series rc 0, `make e2e` 160 of 160 with the BR-09 cases (row 142: 17 of 17; row 178: 21 of 21), the row-58 gate 12 of 12 three times |
+| L-2, the selection confirmed in the container (AD-01 (6), BR-10) | met; branch B is final | C89 (`:125`); `T4/test/141_container_e11_relay_state.md:20-25` |
+| L-3: E-12 extended, 0 occurrences | met on doubles | C59 (`:93`): 42 runs, 0 occurrences, the search control found in 42 of 42 |
+| L-4, worker half: E-1 and E-2 passed | met | C45 (`:79`). The sealing half is a check of row 89, inside the lift |
+| L-5: both adapters exist and a real registry still refuses them; the builder exists and is not called by the boot | met on doubles | `085_production_registry_builder.md:72`; `085d_admit_device.md:51`; C55 (`:89`). The records of rows 46 and 67 exist and were not opened in this pass |
+| AD-02 (1), (2): the stored-address rule is built; `src/` holds no permissive value | met on doubles | `143_stored_address_rule.md:60-73`; `144_reader_holders.md:28-41` |
+| AD-08 (2), (3): the static rule of row 157 | met, with one provisional entry (SR-10, see P-3) | `157_no_test_seam_rule.md:8` |
+| AD-04: gate M2 | passed with named open items | C50 (`:84`); `T4/gateway_check/036_m2_gate.md:12` |
+| Condition 7: the relay client is ruled | met | U17 (`:72`) |
+| Condition 8: a production session start without a relay report source is refused | met as built | C34 (`:61`); the superseded-report rule of row 188 is `needs-review` (`188_superseded_report_one_notice.md:7`) and is read by row 86 |
+| Condition 9: the card identity is stored and matched | met on doubles, `needs-review` | C56 (`:90`); `200_adapter_card_match.md:7` (the stored session row does not hold the two facts yet) |
+| The composition of the production dependency bundle; the three network-facts mounts | built, adopted | C60 (`:95`), C63 (`:98`), C70 (`:105`), C76 (`:111`) |
+
+### 1.3 Preconditions NOT met at the time of drafting: the boxes row 88 ticks
+
+None of these is a fact today. Row 88 ticks each with its evidence line in `implementation/088_class_c_lift.md`. A box that cannot be ticked stops the lift and goes to the controller.
+
+- [ ] **P-1. The security review of row 86 has run and its verdict is not a FAIL**; every caution is routed to a row (blueprint `:222`; L-2, `:1083`). Not met: `verification/086_pre_lift_security.md` does not exist. If row 86 changes a rule that sections 1.1 or 2.2 state, the text is changed to follow it before AM-1 is recorded.
+- [ ] **P-2. The kill matrix of row 59 reads 35 of 35**, run once inside the next full suite (run c06) by the suite runner (C88, `decisions.md:124`; blueprint `:195`). Not met: 0 of 35 (`test/059_worker_reverification.md:8`). C88 also rules that row 86 does not start before it, so P-2 comes before P-1.
+- [ ] **P-3. The provisional static entries are confirmed or reversed by row 86**: SR-10 (`CREDENTIAL_STORE_USERS` gains `src/capture-composition.ts`, C76, `:111`) and SR-11 (the entry hands the host command runner to the composition, C82, `:117`; restated as built in C85, `:120`).
+- [ ] **P-4. The items put to row 86 by name have an answer each**: review note N-01 on a simulator profile standing in for the stream's statement (C50, `:84`; C36, `:63`); the camera profile token that passes the CHECK (C61 (1), `:96`); re-identification of a card without re-enabling the input (C56, `:90`); the host profile not asked off Linux (C66 (1)(b), `:101`); the entry file pinned by text and not started by a test (C55, `:89`); the relay's static rule changed to "one pinned bind" (`143b_source_address_bind.md:9`); the library opening `/dev/urandom` (C89, `:125`); the fail-closed pairing, the superseded-report rule, the hardened client and the locator query rule (C34, C37, C39, C24; blueprint `:222`).
+- [ ] **P-5. AM-1 is recorded in `decisions/decisions.md`** with its number and date (L-1, second half, `:1082`). The controller writes it (C4); an agent never writes that file (driver rules, "Record and report").
+- [ ] **P-6. The three grants of text 4 are re-read on the tree the lift is made on** (`0005_capture_privileges.sql:24-28,35-37,39-40`; `0009_capture_sources_privileges.sql:21`), and no later migration changes them. At drafting, migrations up to `0027` exist and nine of them (`0019` to `0027`) are uncommitted (git status, this pass); nine migration files name `capture_devices` (`0004`, `0005`, `0008`, `0009`, `0010`, `0015`, `0021`, `0022`, `0023`); the only GRANT or REVOKE statements on that table among them are the ones cited (search for `GRANT` and `REVOKE` in those files, this pass).
+- [ ] **P-7. The remainder of row 200 is closed or ruled**: the stored session row does not hold the card's two facts yet (`200_adapter_card_match.md:7`). Row 200 is a build dependency of row 88 (`:224`).
+- [ ] **P-8. The controller has ruled on the Linux microphone defect of C89 (row 79b)** before both kinds are lifted together. C89 (`:125`): the pinned FFmpeg refuses the helper's argument list ("Option channels not found", 0 of 18; `CS/capture/adapters/local/mic-helper-args.ts:208`), "until then the production microphone path cannot start a helper on Linux". No record of row 79b exists at drafting. Row 79b is not an entry condition of blueprint 9.2; this box is a question, not a rule. If the lift goes first, clause (3)(h) of AM-1 gains the sentence "on Linux the helper cannot start until row 79b lands".
+- [ ] **P-9. Row 88's own verification cell holds**: each of the 21 pin rows in its end state; the `REAL_DEVELOPMENT` suites show 0 changed results; refusals 2 of 2, `SNMP_POE` with an opener and `ONVIF_RTSP` with an opener in a development registry (`:224`).
+- [ ] **P-10. U18 is still in force at the lift, or the user has changed it in words**: agents search and connection-test only; no recording, no change of a camera's address (`decisions.md:73`). Clause (5) of AM-1 quotes it.
+
+Checked after the lift, not before it (gate 92, blueprint `:1094-1101`): the first full session on doubles (row 89), the session scenarios (row 90), the loopback production row answering 409 with 0 reveals and 0 relay starts (row 148, AD-02 (3)), the session-level security checks (row 151), the code review (row 91). AM-1 does not claim them.
 
 ---
 
-## 2. Text 2: ERRATUM DRAFT for section H.5 of the evidence specification (S13-17)
+## 2. Text 2: the statement of the new guard for section H.5 (S13-17)
 
-**Proposed label: E-L1** (lift erratum 1; the label is this row's proposal, the controller names it). **Target:** `docs/2026-10-07_dems_real_capture_sealing/masterplan/06_evidence_package_spec.md`, section H.5 (`:1129-1141`) and the report line of section D.1 (`:880`). **The target is not edited.** The erratum lives in this task folder, as task 3 kept its own errata beside its documents (blueprint section 13, decision 4; C16 (4)). **Takes effect** with the change set of row 88.
+**Target:** `T3/masterplan/06_evidence_package_spec.md`, section H.5 (`:1129-1139`), and the report line of section D.1 (`:880`). **The target is not edited**: the statement lives in this task folder (C16 (4), `decisions.md:43`). **Takes effect** with the commit of row 88. **Label:** proposed E-L1; the controller names it.
 
 ### 2.1 What H.5 says today (read, not changed)
 
-H.5 has seven lines. Guard (4) is already there, in the form valid before the lift (task-3 erratum PE-128-69):
+H.5 already holds guard (4), written for the time before the lift (task-3 erratum PE-128-69): "Guard (4): **the Core itself opened the source** — no listener opens and no session starts for a source kind without an opener (D86 C-5)" (`06_evidence_package_spec.md:1136`). S13-17 asks that H.5 state "the guard 'the Core itself opened the source' and the case of the loopback ingest" at the lift, and that "the report line keeps the word 'declared'" (`T4/verification/02_security.md:316`). So the work at the lift is to state what guard (4) is once two kinds have an opener.
 
-> "The worker's loopback ingest is unauthenticated; in `REAL_PRODUCTION` a local process could push into an open listener and be signed as `PRODUCTION` (SEC35-40). Guard (4): **the Core itself opened the source** — no listener opens and no session starts for a source kind without an opener (D86 C-5)" (`06_evidence_package_spec.md:1136`)
+### 2.2 The statement
 
-So S13-17 ("H.5 gains the guard 'the Core itself opened the source' and the case of the loopback ingest") is, at the lift, a RESTATEMENT of a guard that exists: its present wording is true only while no production kind has an opener. See finding F-1.
+> **H.5, guard (4), from the commit of row 88 (decision AM-1): the Core itself opened the source.**
+>
+> **What the guard does.**
+> 1. For every source kind without an opener nothing changes: no listener opens and no session starts.
+> 2. For a camera of kind `ONVIF_RTSP`: the source of a video track is a relay process that the Core started for that slot. Before it starts the relay, the Core holds the address stored for that camera to its destination rule and refuses loopback, unspecified, link-local and multicast addresses, the host's own addresses, and every address outside the configured camera subnet. Only then is the stored credential revealed, with one audit entry that names the device and the session. The relay connects from the camera-interface address the rule names.
+> 3. The case of the loopback ingest: the worker records a push only when the path the client announced equals the ingest address of the plan, which is new for every session attempt and every track. A camera counts as open only when the report of its own relay and the worker's connect report for that port arrive within 5,000 ms of each other. Otherwise the track ends as a capture fault with an audit entry, and nothing of it is sealed as that camera.
+> 4. For a microphone of kind `USB_AUDIO`: the Core's own helper process opened the card it found by the stored serial, else the stored port, and writes a pipe of mode 0600 in a directory of mode 0700. No network listener exists for audio.
+> 5. At registration an adapter that states an opener is refused unless its source class is the class the running operation records. At session start the four source rows are read back: exactly four, of one class, of the class of the operation.
+>
+> **What the guard does NOT do.**
+> 1. It gives the verifier nothing new. The verifier still cannot tell a package whose manifest says `PRODUCTION` for every source from one that truly came from production devices. The class is a statement of the Core that sealed the package, covered by that Core's signature.
+> 2. It does not stop a process that runs as the Core's own service user. Such a process can read the ingest address and can write into a microphone pipe, without the signing key and without a change of code or configuration. The control for that is the host profile, which is checked on the real host and not by the verifier; on a host that is not Linux the host profile is not asked.
+> 3. It says which process fed the ingest and which stored address that process dialled. It does not say which device stands at that address: a device that answers there and accepts the stored credential is recorded as that camera.
+> 4. It has been shown on doubles and in a container, not on a real camera or a real sound card.
+>
+> **The word "declared".** The report line of section D.1 stays character for character: "Sources: declared as production devices by the Core that sealed this package." A declaration is the sealing Core's own statement of which adapter kinds it opened. It is not proof that the devices were production devices, and it is not a finding that a source is fit to record. No package is declared fit to record by this guard; that is a separate ruling of the user on the result of the hardware acceptance tests (stage 2).
 
-### 2.2 The erratum, line by line
+Sources, line by line:
 
-| H.5 line | Was | Is, from the change set of row 88 |
-|---|---|---|
-| The limit, plainly (`:1133`) | The verifier cannot tell a package whose manifest says `PRODUCTION` for every source from one that truly came from production devices | **Unchanged, and repeated here on purpose.** The lift gives the verifier nothing new. The class is still a statement of the sealing Core under its signature |
-| What guards it, guards (1) to (3) (`:1134`) | The boot fence; the class written from the adapter kind; the signature | **Unchanged** |
-| Guard (4), the case of the loopback ingest (`:1136`) | "the Core itself opened the source — no listener opens and no session starts for a source kind without an opener (D86 C-5)" | **Guard (4): the Core itself opened the source.** (4a) For every kind without an opener, the rule is unchanged: no listener, no session start. (4b) For `ONVIF_RTSP` (decision AM-1): the source of a camera track is a relay process that the Core started for that slot. The relay dials the address stored for that camera; the Core holds that address to its destination rule at every open (not loopback, not unspecified, not link-local, not multicast, not an address of the host itself) and reveals the stored credential only after that, with one audit entry per reveal. `[SLOT-1: the loopback-ingest sentence of section 2.3]` A camera counts as open only when the report of its own relay and the worker's connect report for that port arrive within 5,000 ms of each other; otherwise the track ends as a capture fault and nothing of it is sealed as that camera. (4c) For `USB_AUDIO` (decision AM-1): the Core's own helper process opened the card and writes a pipe of mode 0600 in a run directory of mode 0700; no network listener exists for audio. (4d) An adapter that states an opener is refused at registration unless its source class is the class the running operation records, and the session start reads back the four source rows it wrote |
-| What does not guard it (`:1135`) | A person who can change the Core's code or configuration and holds its signing key | **Kept, and one case added.** Guard (4) stops a process of ANOTHER local account. It does not stop a process that runs as the Core's own service user: such a process can read the plan frame and the run directory, so it can push on the right ingest path and can write into a microphone pipe, without the signing key and without a change of code or configuration. That account already holds the database role, the credential store and the signing path; the control is the host profile (a single-purpose host, no other interactive account, a private run directory, the loopback firewall rule), which is checked on the real host and not by the verifier. Guard (4) also says which PROCESS fed the ingest, not which DEVICE stands at the camera's stored address: a device that answers there and accepts the stored credential is recorded as that camera `[to be confirmed or struck by row 86; see D-3]` |
-| Defined with the fence (`:1137`) | A production configuration has at least one assigned device of source class `PRODUCTION`, or a listener outside loopback | **Unchanged** |
-| Consequence for wording (`:1138`) | A report or a client never states "recorded from production devices" as a verified fact; it states "declared as production devices by the Core that sealed this package" | **Unchanged. The word "declared" stays.** The report line of section D.1 (`:880`) stays character for character: "Sources: declared as production devices by the Core that sealed this package." |
-| On this computer (`:1139`) | "In this phase `developmentSources = false` cannot occur: no all-`PRODUCTION` package can be sealed (D86 C-5); check `M7-SEC-SRC-2`" | **Not withdrawn (stage 2).** One statement of fact is put beside it: from the change set of row 88 the code no longer makes `developmentSources = false` impossible. On the development computer the only packages with that value are the ones the automated full-session test seals from doubles in a temporary directory that is removed with the test; they are not evidence and none leaves that directory. Every package in a data directory of the development computer still has `developmentSources = true`, which is what check `M7-SEC-SRC-2` holds. No package is declared fit to record until stage 2. See finding F-2 |
-
-### 2.3 The loopback-ingest sentence for `[SLOT-1]` in line (4b)
-
-| Branch | Sentence |
+| Statement | Source |
 |---|---|
-| A | "The worker's loopback listener for that track accepts a push only on an ingest path that carries a 128-bit random element, new for every session attempt and track and known to the Core, the worker and that one relay only." |
-| A with the second-connect rule | The sentence of A, plus: "A second connection on a port ends the capture as a fault." |
-| B | The sentence of A, with "the worker compares the announced path before it probes the stream" in place of "accepts a push only on". |
-| C | "No loopback listener exists: the recording process dials the camera itself." Line (4b)'s pairing sentence is then replaced by what the refined blueprint builds. |
+| does 1 | `06_evidence_package_spec.md:1136`; `01_decision_register.md:427`; `CS/capture/fence/sources.ts:105-107` ("No opener, no row") |
+| does 2 | as AM-1 (3)(c), (d), (e): rows 143, 143b, 143c, 144, 145 with the lines cited in section 1.1 |
+| does 3 | as AM-1 (3)(f), (g): C27, C89, `058_wp11b_path_compare.md:16`, `048_sa3_pairing.md:58`; RC-3 (`02_security.md:157`) |
+| does 4 | as AM-1 (3)(h) |
+| does 5 | `04_design_addendum.md:100`; `fence/sources.ts:118-130` |
+| does not 1 | `06_evidence_package_spec.md:1133`, repeated on purpose |
+| does not 2 | `02_security.md:143,147,164`; C27 (`decisions.md:54`); C66 (1) (`:101`); U21 (2) (`:123`) |
+| does not 3 | **HYPOTHESIS of this row.** No review document states it in these words; it follows from what (2) checks (an address and a credential, no identity of the device). The nearest are SEC35-28 on forged probe answers (`T3/decisions/decisions.md:99`) and the fact that the stored address is untrusted (`143_stored_address_rule.md:18`). Row 86 confirms or strikes it (P-1) |
+| does not 4 | every record cited is "on doubles" or "container" by its own status line (`143:9`, `143c:9`, `141:14`); the hardware items are listed by C89 (`:125`) |
+| "declared" | `06_evidence_package_spec.md:880,1138`; `02_security.md:164,316`; blueprint `:1101,1103` |
 
-### 2.4 What this erratum does not do
+### 2.3 The H.5 line "On this computer": a fact beside it, no withdrawal
 
-It does not say that a package is fit to record, does not change manifest fields 124 to 126, check V-15 or any verify result, and does not touch the report line. It does not edit H.5's line "On this computer", the sentence "in this phase nothing is recordable in `REAL_PRODUCTION`" of the capture architecture specification (`05_capture_architecture_spec.md:227`), or the task-3 README. Those are stage 2.
+H.5 says: "In this phase `developmentSources = false` cannot occur: no all-`PRODUCTION` package can be sealed (D86 C-5); check `M7-SEC-SRC-2`" (`06_evidence_package_spec.md:1139`). Stage 1 may withdraw no limit (blueprint `:1101`), so this line is not withdrawn. One fact is put beside it:
+
+> From the commit of row 88 the code no longer makes `developmentSources = false` impossible. A package with that value is one that a `REAL_PRODUCTION` Core sealed from four sources of the two lifted kinds. Agents make such a package only in the automated full-session test, from doubles, in a temporary directory that is removed with the test (row 89); it is not evidence. Nothing is declared fit to record until stage 2.
+
+Source: blueprint rows 88 and 89 (`:224-225`); AD-08 (4) (`04_security_addendum.md:145`); U18 (`decisions.md:73`).
 
 ---
 
-## 3. Text 3: erratum E-A2 (the credential rule and its code comment)
+## 3. Text 3: erratum E-A2 (the comment of the credential file)
 
-**Label: E-A2**, as the addendum names it (`masterplan/04_design_addendum.md:693`). Two places. Neither is edited by this row; the first is superseded without editing (addendum section 11), the second is edited by row 88 ("the code-comment errata").
+**Label:** E-A2, the addendum's (`T4/masterplan/04_design_addendum.md:693`). **Applied by** row 88 ("the code-comment errata", blueprint `:224`), which re-reads the file first.
 
-### 3.1 The specification line
+**Location:** `apps/core-server/src/capture/adapters/credential.ts:12-14` (working tree at `0f5d2a8e`; the file is unmodified against that commit).
 
-| Place | Was | Is |
-|---|---|---|
-| `masterplan/01_specs.md:226`, column "Default in the port" | "start message on standard input; never URL, argument, environment or file" | "start message on standard input; never an argument, the environment or a file. Never a URL in the Core: no process but the relay ever holds a locator with a user part, and the Core composes none. The relay composes that form in its own memory, percent-encoding both values, because the pinned RTSP client takes an account in no other form" |
+**Original, verbatim:**
 
-Reason: "never URL" is "not achievable as written: the pinned RTSP client takes an account only as the user part of its URL" (`masterplan/04_design_addendum.md:240`).
+> As built, no process takes a credential: recording a real camera is class C-2. So `credentialAtInjection` has no caller in the product yet; a static test holds it to "this file and nothing else reads the two members of a credential".
 
-### 3.2 The code comment of `apps/core-server/src/capture/adapters/credential.ts`
+**Corrected:**
 
-The comment was read in the working tree at 22:27 WIB. It already differs from the baseline: row 147 added the paragraph on `startMessageBytes` (lines 16-18). Row 88 re-reads the file before it edits; line numbers below are of that reading.
+> As built, one process takes a credential: the capture relay, in its start message on standard input. `credentialAtInjection` has exactly one caller in the product, `camera/relay-start.ts`; a static test holds it to that one file and to "this file and nothing else reads the two members of a credential".
 
-| Lines | Was | Is, at the lift |
-|---|---|---|
-| 5-10, "THE RULE" | "... Nothing in the Core composes the user-part form of a locator, and the injection result itself keeps the two apart, as §A.6.3 rules." | **Kept word for word.** It stays true: the relay is not a file of the Core, and rule A-2 holds for every file of the Core |
-| 12-14 | "As built, no process takes a credential: recording a real camera is class C-2. So `credentialAtInjection` has no caller in the product yet; a static test holds it to "this file and nothing else reads the two members of a credential"." | Replaced by the paragraph below |
+Evidence that the corrected sentence is true of the tree: the one call at `CS/capture/adapters/camera/relay-start.ts:107`, stated at `:7-8`; the static rule at `CS/capture/adapters/__tests__/static.test.ts:128-144`.
 
-Proposed paragraph (file names are the addendum's proposed names, `masterplan/04_design_addendum.md:200-204`; row 88 writes the names as built):
-
-```
- * THE ONE EXCEPTION, AND IT IS OUTSIDE THE CORE (design addendum 2.5, erratum E-A2; decision
- * AM-1). The relay (`apps/capture-worker/src/capture_relay.c`) is the one process that ever holds
- * a locator with a user part: the pinned RTSP client takes an account in no other form. The relay
- * composes it in its own memory from the start message, percent-encoding both values; it never
- * prints it, stores it or passes it on, and it answers a Digest challenge only. The Core composes
- * none.
- *
- * `credentialAtInjection` has exactly ONE caller in the product: the file that starts the relay
- * (`camera/relay-start.ts`). A static test holds it to that one file, and holds "this file and
- * nothing else reads the two members of a credential".
-```
-
-The paragraph says what the code does. It does not say that a real camera is recorded or that anything is fit to record.
-
-### 3.3 Annex, not one of the four texts: the audit comment
-
-The addendum also says "the comment 'the supervisor reveal path' (`audit-details.ts:301`) gets an erratum" (`masterplan/04_design_addendum.md:219`). Read at `apps/core-server/src/core/audit-details.ts:301`: "SEC35-02: the supervisor reveal path writes the fact only." Proposed for the row that changes that vocabulary (row 19 or 144, whichever owns the line; it is not row 87's or row 88's to decide): "SEC35-02: a reveal writes the fact only. The reason is one of a closed set, fixed per holder of the reader; a reveal for a session carries the session in the row's session column (security addendum AD-03 (1), (3))."
+**What E-A2 does not change.** Lines 5-10 of the same comment ("THE RULE ... Nothing in the Core composes the user-part form of a locator ...") stay word for word, and `T4/masterplan/01_specs.md:226` ("never URL, argument, environment or file") stays as written. The addendum planned E-A2 to name the relay as the one process that composes the user-part form (`04_design_addendum.md:240,693`). That exception was never built: by U17 the relay has its own RTSP client, in which "the account is never part of an address in this program" (`apps/capture-worker/src/relay/relay_core.c:181-182`; `relay.h:191`), and the relay's own record says the erratum is "not needed; `credential.ts:9-10` holds without exception" (`T4/implementation/041_relay_record_mode.md:51`). See contradiction X-1, section 6.
 
 ---
 
 ## 4. Text 4: erratum to design addendum 1.6 #3 (AD-02 (4))
 
-**Proposed label: E-A12** (the next free number after E-A11 of addendum section 11; this row's proposal). **Target:** `masterplan/04_design_addendum.md:143`, not edited by this row. Where the security check corrects the addendum, the check governs (C15, `decisions/decisions.md:42`).
+**Label:** proposed E-A12 (the next free number after E-A11, `04_design_addendum.md:702`); the controller names it. **Target:** `T4/masterplan/04_design_addendum.md:143`, not edited by this row. Where the security check corrects the addendum, the check governs (C15, `decisions.md:42`).
 
-**Was** (`masterplan/04_design_addendum.md:143`):
+**Location:** `T4/masterplan/04_design_addendum.md:143`, second sentence of item 3.
 
-> "3. A production row with a loopback address cannot come out of any product path: adoption refuses it (`service.ts:266-268`), and the two new writers of a camera address (WP-12, WP-22) refuse loopback by the target rule of S13-11. It can be written only by the database owner, which is what the test does and what a real installation's service user cannot do (`dems_app` has no UPDATE on `adapter_kind`, `CS/db/schema/capture.ts:53-57`)."
+**Original, verbatim:**
 
-**Is:**
+> It can be written only by the database owner, which is what the test does and what a real installation's service user cannot do (`dems_app` has no UPDATE on `adapter_kind`, `CS/db/schema/capture.ts:53-57`).
 
-> "3. A production row with a loopback address does not come out of any product OPERATION: adoption refuses it, and the two new writers of a camera address (WP-12, WP-22) refuse loopback by the destination rule of S13-11. **It can be written with the runtime role's database credential alone**, without the owner role and without the operating-system account of the Core, because the runtime role `dems_app` holds three grants:
-> (i) INSERT on `capture_devices` at table level, and `adapter_kind` is written at INSERT; only its UPDATE is revoked;
-> (ii) UPDATE on `capture_devices.address`;
-> (iii) UPDATE on the six selector columns of `capture_config`.
-> Whoever holds that credential can therefore insert an `ONVIF_RTSP` row at `127.0.0.1`, or move an adopted camera's address there, and assign it. The fence classes by adapter kind, so such a selector is "all production". **The design therefore does not rely on the row.** The production camera adapter holds the STORED address to the destination rule at every open, every connection test of an adopted camera and every presence read, before the credential reader is called; loopback, unspecified, link-local, multicast and the host's own addresses are refused by a named code, with no reveal (AD-02 (1); rows 95, 143, 144). The permissive rule the full-session test needs is a value defined under `apps/core-server/test/` and handed in through the builder's dependencies; `src/` holds none (AD-02 (2); row 85). Check: an assigned `ONVIF_RTSP` row at `127.0.0.1` on a Core built without the test value gives session start 409, 0 reveal entries, 0 relay starts (AD-02 (3); row 148)."
+**Corrected:**
 
-**Evidence for the three grants, read by this row:**
+> It can be written with the database credential of the runtime role `dems_app` alone, without the owner role and without the operating-system account of the Core, because that role holds three grants: INSERT on `capture_devices` at table level, where `adapter_kind` is written at INSERT and only its UPDATE is revoked; UPDATE on `capture_devices.address`; and UPDATE on the six selector columns of `capture_config`. The runtime role can therefore insert an `ONVIF_RTSP` row at a loopback address, or move an adopted camera's address there, and assign it; the design does not rely on the row, and holds the stored address to the destination rule at every use (AD-02 (1)).
 
-| Grant | Statement | File:line (as read 2026-10-12 22:27 WIB) |
+Evidence for the three grants, read in this pass:
+
+| Grant | Statement | File:line |
 |---|---|---|
-| (i) INSERT | `GRANT INSERT ON ... capture_devices, capture_device_credentials TO dems_app;` | `apps/core-server/src/db/migrations/0005_capture_privileges.sql:24-28` |
-| (i) only UPDATE revoked | `REVOKE UPDATE (adapter_kind) ON capture_devices FROM dems_app;` | `0009_capture_sources_privileges.sql:21` |
-| (i) written at INSERT | "Written at INSERT and never updated - `dems_app` holds no UPDATE on it" | `apps/core-server/src/db/schema/capture.ts:53-57` |
-| (ii) UPDATE on address | `GRANT UPDATE (transport, model, firmware, address, mac, onvif_uuid, profiles, poe_port, enabled, last_seen_at) ON capture_devices TO dems_app;` | `0005_capture_privileges.sql:39-40` |
-| (iii) UPDATE on the six columns | `GRANT UPDATE (video_01_device_id, video_01_profile, video_02_device_id, video_02_profile, mic_primary_id, mic_standby_id, revision, updated_by, updated_at) ON capture_config TO dems_app;` | `0005_capture_privileges.sql:35-37` |
-| No later migration changes them | name search for `capture_devices` and `adapter_kind` in `0010` to `0014`: 1 hit, a comment (`0010_credential_replace_privileges.sql:17`); 0 statements | this row; it closes the assumption the security check left open (`verification/04_security_addendum.md:319`) |
+| INSERT, table level | `GRANT INSERT ON ... capture_devices, capture_device_credentials TO dems_app;` | `apps/core-server/src/db/migrations/0005_capture_privileges.sql:24-28` |
+| only the UPDATE of `adapter_kind` is revoked | `REVOKE UPDATE (adapter_kind) ON capture_devices FROM dems_app;` | `0009_capture_sources_privileges.sql:21` |
+| written at INSERT | "Written at INSERT and never updated - `dems_app` holds no UPDATE on it (`0009`)" | `apps/core-server/src/db/schema/capture.ts:138-141` |
+| UPDATE on `address` | `GRANT UPDATE (transport, model, firmware, address, mac, onvif_uuid, profiles, poe_port, enabled, last_seen_at) ON capture_devices TO dems_app;` | `0005_capture_privileges.sql:39-40` |
+| UPDATE on the six selector columns | `GRANT UPDATE (video_01_device_id, video_01_profile, video_02_device_id, video_02_profile, mic_primary_id, mic_standby_id, revision, updated_by, updated_at) ON capture_config TO dems_app;` | `0005_capture_privileges.sql:35-37` |
+| no other grant on the table | nine migration files name `capture_devices`; a search of them for `GRANT` and `REVOKE` finds no statement on that table but the ones above | this pass; re-read at the lift (P-6) |
 
-Two line references differ from the security check, which cites `0005:27-31` for the INSERT and `0005:38-39` for the address (`verification/04_security_addendum.md:149-150`); the statements are the same, the lines read here are 24-28 and 39-40. The erratum's sentence does not depend on it. Schema set A (row 17) may add migrations after this reading; row 88 re-checks the three grants against the tree it lifts on.
+The consequence the security check draws ("whoever holds the runtime role's database credential can insert ... and assign it", `04_security_addendum.md:153`) and its remedy (AD-02 (1) to (3), `:157-160`) are the check's; the corrected sentence cites them and adds nothing.
 
 ---
 
@@ -190,53 +212,98 @@ Two line references differ from the security check, which cites `0005:27-31` for
 
 | Text | Present | Section |
 |---|---|---|
-| Decision row AM-1 | yes, with 3 slots | 1 |
-| The statement of the new guard for H.5 (S13-17), "declared" kept | yes, as erratum draft E-L1 | 2 |
+| Decision row AM-1 | yes | 1.1 |
+| The statement of the new guard for H.5 (S13-17), "declared" kept | yes | 2.2 |
 | Erratum E-A2 for the credential comment | yes | 3 |
-| Erratum to addendum 1.6 #3, the three grants | yes, as E-A12 | 4 |
+| Erratum to addendum 1.6 #3, the three grants | yes | 4 |
 
-| Limit of the task-3 README or specification | Touched by these texts? | State |
+| Limit of the task-3 README or specification | Touched? | State |
 |---|---|---|
 | H.5: the verifier cannot tell a declared production package from a true one (`06:1133`) | repeated | kept |
 | D.1: the report line with the word "declared" (`06:880`) | quoted | kept character for character |
-| H.5: "no all-`PRODUCTION` package can be sealed" on this computer, check `M7-SEC-SRC-2` (`06:1139`) | a statement of fact is put beside it | **not withdrawn**; see F-2 |
-| Capture architecture specification: "in this phase nothing is recordable in `REAL_PRODUCTION`" (`05:227`) | no | not withdrawn; stage 2 |
-| The task-3 README | no | not withdrawn; stage 2 |
+| H.5 "On this computer": no all-`PRODUCTION` package can be sealed; check `M7-SEC-SRC-2` (`06:1139`) | a fact is put beside it | not withdrawn (finding F-2) |
 | D86 C-5, first clause, for every other kind | restated | kept |
+| The task-3 README | not touched | not withdrawn |
 
-Occurrences of "fit to record" in the four texts as a statement about the product: 0. Each occurrence is in a sentence that says nothing is declared so.
+Occurrences of "fit to record" in the four texts as a statement that something is so: 0. Each occurrence is in a sentence that says nothing is declared so.
 
 ---
 
-## 6. Findings for the controller
+## 6. Sources that contradict another source
+
+| # | Source A | Source B | What follows here |
+|---|---|---|---|
+| **X-1** | Design addendum 2.5 and section 11: E-A2 "names the relay as the one exception", "no process but the relay holds it" (`04_design_addendum.md:240,693`); "never URL" is "not achievable as written" (`:240`) | The relay as built by U17: "the account is never part of an address in this program" (`relay_core.c:181-182`); "not needed; `credential.ts:9-10` holds without exception" (`implementation/041_relay_record_mode.md:51`) | Text 3 corrects lines 12-14 only and leaves the rule and `01_specs.md:226` as written. The addendum's rows E-A2 and HA-7 are moot; the controller strikes or keeps them |
+| **X-2** | Addendum 1.6 #3: a loopback production row "can be written only by the database owner" (`04_design_addendum.md:143`) | The security check and the migrations: three grants of the runtime role (`04_security_addendum.md:147-153`; `0005:24-28,35-37,39-40`; `0009:21`) | Text 4. C15 already rules that the check governs |
+| **X-3** | The security check cites the grants at `0005_capture_privileges.sql:27-31` and `:38-39` (`04_security_addendum.md:149-150`) | The file as read: `:24-28` and `:39-40` | The statements are the same. Text 4 cites the lines read |
+| **X-4** | S13-17: at the lift H.5 "gains the guard 'the Core itself opened the source'" (`02_security.md:316`) | H.5 already holds that guard since task-3 erratum PE-128-69 (`06_evidence_package_spec.md:1136`) | Text 2 states what the existing guard is after the lift. S13-17's check ("states the guard; the word 'declared' stays") is met by it |
+| **X-5** | C66 (1): the host profile is left unasked off Linux "because the user's cameras are on this Mac (U16) and the user ordered the lift to record from them (U15)" (`decisions.md:101`); U21 (2): a production Core is allowed on this Mac (`:123`) | The production card listing exists on `linux` only (`CS/capture/fence/production-parts.ts:273,286`; C60, `:95`: "macOS: named `AUDIO_CARD_LISTING_NOT_AVAILABLE`"), and a session needs exactly four slots of one class (`fence/sources.ts:118-130`) | **HYPOTHESIS:** on this Mac a production microphone cannot be registered through the product, so no four-slot production session can be completed here after the lift. Not verified beyond the two lines cited; whether another path registers a microphone on macOS was not searched. Put to the controller; AM-1 claims no recording on this Mac |
+| **X-6** | H.5 "On this computer": `developmentSources = false` "cannot occur" (`06:1139`); D86 C-5 second clause | Blueprint exit condition 2: one session from four production-kind sources is sealed (`:1097`), while exit condition 6 withdraws no limit (`:1101`) | Finding F-2: the limit is kept as a rule of use and the code fact is stated beside it (AM-1 (5); section 2.3) |
+| **X-7** | Blueprint L-1: "the controller has recorded it in `decisions/decisions.md`" is an ENTRY condition of row 88 (`:1082`); C20: the texts "are adopted only when their three slots are filled" (`decisions.md:47`) | AM-1's status "in force from the commit of row 88", and this row's brief: "the lift row (88) applies the texts" | P-5 keeps the blueprint's order: the controller records AM-1 before row 88 commits; the row's status column carries the commit |
+| **X-8** | Blueprint status table: row 87 "done, 7969f0fa" (`:682`); rows 44, 46, 67 held or in flight (`:660-675`) | Later records and decisions: C59 adopts row 44; records 046 and 067 exist; this row was re-issued on 2026-10-13 | The status table is older than the decision log. This file follows the decision log |
+
+---
+
+## 7. Rationale, alternatives, findings
+
+### 7.1 Why the texts are worded this way (evidence chain)
+
+1. **The lift is the user's, the wording is the register's.** U15 releases it; C4 fixes the wording of AM-1 to `01_decision_register.md:427`. So clause (1) of AM-1 is the register's sentence, and the "By" column names the user.
+2. **A decision that lifts a protection names what replaces it.** The security review rated AM-1 CAUTION because "the replacement is unproven until RC-1" (`02_security.md:305`). Clause (3) therefore lists what stands in front of the adapters as built, each with its row, and section 1.2 separates "a record says so" from "row 86 judged it".
+3. **Unmet conditions are boxes, not sentences.** Row 86 and the kill matrix have not run. Writing them as facts would make AM-1 false on the day it is recorded if either fails. Section 1.3 is the list row 88 ticks; clause (7) of AM-1 points at it.
+4. **"Declared" carries the limit.** The accepted residual (a process as the Core's own user) is why the report line keeps the word (`02_security.md:164`). Text 2 says what a declaration is not, so that the lift cannot be read as a fitness statement.
+5. **An erratum is a quotation and a correction.** Texts 3 and 4 give the location, the original sentence and the corrected sentence. The evidence sits beside them, outside the corrected text.
+
+### 7.2 Alternatives considered
+
+| Alternative | Not taken because |
+|---|---|
+| Write AM-1 with rows 86 and 59 as facts ("the security review is not a FAIL") | they have not run; a claim without evidence (global rule 4; brief) |
+| Keep the earlier draft's four branch texts for E-11 | branch B is final (C89); three of the four would never apply |
+| Write E-A2 as the addendum planned it (the relay is the one exception) | false of the code since U17 (X-1) |
+| Say nothing about the code being able to seal an all-`PRODUCTION` package until stage 2 | the decision log and H.5 would contradict the code between stage 1 and stage 2 (X-6) |
+| Edit H.5 in the task-3 folder | the folder is closed (C16 (4)) |
+| Leave "which device stands at the address" out of text 2 | it is the cautious direction; it is marked as a hypothesis for row 86 instead |
+
+### 7.3 Findings for the controller
 
 | # | Finding | Evidence | What it changes |
 |---|---|---|---|
-| **F-1** | H.5 already contains guard (4), "the Core itself opened the source", since task-3 erratum PE-128-69. S13-17's sentence "H.5 gains the guard" was taken from SEC35-40's remediation (3), which predates that erratum. At the lift the work is to RESTATE the guard for the two lifted kinds, not to add it | `06_evidence_package_spec.md:1136`; task-3 `09_security_design_review.md:638`; `verification/02_security.md:316` | Text 2 is written as a line-by-line restatement. S13-17's acceptance check ("section H.5 states the guard; the word 'declared' stays") is met by it |
-| **F-2** | After row 88, two task-3 sentences are no longer true of the code, although stage 1 may withdraw no limit: D86 C-5's second clause, and H.5's "`developmentSources = false` cannot occur". Row 89 seals exactly such a package (in a temporary directory). Check `M7-SEC-SRC-2` reads "every package sealed on this Mac in this phase has `developmentSources = true`" | blueprint 9.2 exit conditions 2 and 6 (`:555,559`); `06:1139`; task-3 `09:638` | Texts 1 and 2 keep the limit as a rule of use and state the fact beside it. If the controller prefers silence until stage 2, clause (4) of AM-1 and the last line of table 2.2 are struck; the documents then contradict the code between stage 1 and stage 2. Recommended: keep them. A task-3 regression that still runs `M7-SEC-SRC-2` over a data directory is unaffected, because row 89's package never enters one; row 89 should say so in its record |
-| **F-3** | The task-3 README lines that `masterplan/01_specs.md:280` names as the limits to withdraw at stage 2 (396, 438, 441-442, 775) are, in the README as it stands, file-list entries (396, 438, 441, 442) and an empty line (775). A search of that README for "recordable" and "class C" returned 0 lines | read 2026-10-12 22:30 WIB | Nothing for stage 1. The stage 2 erratum must locate the README limits again; this row withdraws none, so it needed none |
-| **F-4** | `credential.ts` is being changed by row 147 while the lift texts are drafted; its comment already has a new paragraph | `git status` (modified); `credential.ts:16-18` | Text 3 is written against lines 12-14 and leaves row 147's paragraph alone. Row 88 re-reads before editing |
-| **F-5** | The erratum for H.5 lives only in this task folder. A reader who opens the closed task-3 specification finds no pointer to it | C16 (4) | The task-4 README and final report should index E-L1 beside the specification's path. Whether the task-3 document gets a one-line pointer is the user's, at stage 2 |
+| F-1 | E-A2's planned content is moot; only the stale lines 12-14 of the comment need correcting | X-1 | text 3 |
+| F-2 | After row 88 two task-3 sentences are untrue of the code while no limit may be withdrawn. With U21 (2) a person could also seal such a package on this Mac outside a test, if four production sources can be assigned there (see X-5); check `M7-SEC-SRC-2` reads "every package sealed on this Mac in this phase has `developmentSources = true`" (`06:1139`) | X-6; U21 (2) | AM-1 (5) and section 2.3 state the fact. Whether `M7-SEC-SRC-2` still runs over a data directory that such a package can enter is a question for row 86 or gate 92 |
+| F-3 | The lift takes both kinds together, but on Linux the microphone helper cannot start until row 79b, and on macOS the card listing is not available | C89; X-5 | P-8; possibly one more sentence in AM-1 (3)(h) |
+| F-4 | The statement for H.5 lives only in this task folder; a reader of the closed task-3 specification finds no pointer to it | C16 (4) | the task-4 README and final report should index it beside the specification's path |
+| F-5 | P10 (2) and (3) are the controller's reading of U15; only P10 (1) was confirmed in words (U17) | `decisions.md:70,72` | assumption A-1 |
 
 ---
 
-## 7. Driver decisions, assumptions, gaps
+## 8. Assumptions, gaps, driver decisions
 
-**DRIVER DECISIONS (conservative; for the controller to confirm).**
+**Assumptions.**
+- A-1. U15 releases stage 1 and leaves stage 2 as U12 A5 and U13 ruled it. This is P10 (3), which the user was asked and did not answer in words; U18 (no recording by agents) is consistent with it.
+- A-2. The records read in part are accurate in the lines not read, and the decision rows report their records correctly.
+- A-3. The numbers quoted (5,000 ms; modes 0600 and 0700; the refused address classes) are those of the tree at drafting. If row 86 or row 88 finds another value, the text follows the code.
+
+**Gaps.**
+- Row 86 has not run; the kill matrix has not run; row 79b has no record. Each is a box of section 1.3.
+- The size of the random element of the ingest address as built was not read. RC-2 requires at least 128 bits (`02_security.md:156`); the texts say "new for every attempt and track" and state no size.
+- The records of rows 46, 67, 188, 200, 44 and 59 were not read beyond the lines cited.
+- The task-3 README was not opened: this row withdraws none of its limits and needed none of its lines.
+- Graft was not queried: a documents-only row with every symbol located by a direct read.
+
+**Driver decisions (conservative; for the controller to confirm).**
 
 | # | Decision | Alternative not taken |
 |---|---|---|
-| D-1 | AM-1 clause (4) and the last line of table 2.2 keep the limit as a rule and state the code fact beside it (F-2) | Silence until stage 2 |
-| D-2 | Labels E-L1 (H.5) and E-A12 (addendum 1.6 #3) are proposals; E-A2 is the addendum's own | Task-3 style `PE-nn-nn` numbers, which belong to the closed task |
-| D-3 | The sentence "which PROCESS, not which DEVICE" in table 2.2 is this row's wording of a limit, added in the cautious direction. No review document states it in these words (the nearest are SEC35-28 on forged probe answers and note N-1 on the MAC, `verification/02_security.md:322`). It is marked for row 86 to confirm or strike | Leaving it out |
-| D-4 | The annex of 3.3 is offered, not counted among the four texts | Leaving the audit comment to row 88 without a text |
+| D-1 | AM-1's "By" column names the user (U15) with the controller as recorder; the earlier draft named the controller on U12 | the earlier wording, which predates U15 |
+| D-2 | E-A2 is narrowed to lines 12-14 of the comment (X-1) | the addendum's wider erratum |
+| D-3 | "does not 3" of text 2 is kept and marked as a hypothesis for row 86 | leaving it out |
+| D-4 | P-8 (row 79b) is put as a question for the controller, not as an entry condition | adding it to blueprint 9.2, which is not this row's to edit |
+| D-5 | The labels E-L1 and E-A12 are proposals; E-A2 is the addendum's own | task-3 style `PE-nn-nn` numbers, which belong to the closed task |
+| D-6 | The earlier draft's annex on the audit comment (`audit-details.ts:301`) is dropped: it is not one of the four texts and was not re-verified | carrying it unverified |
 
-**Assumptions.** The verification documents are accurate where a line was not re-opened. The numeric rules quoted (128 bits, 5,000 ms, seven near-miss paths, the five refused address classes) are the blueprint's as written today (`identification/03_implementation_blueprint.md:170-171,266`; `verification/04_security_addendum.md:228`); if a row builds another value, the text follows the code and the controller is told.
-
-**Gaps.** Rows 8, 86 and 141 have not run: the branch, the review's verdict and the container confirmation are slots. The relay source, the reader and the registry builder do not exist yet: every file name in text 3 is a proposed name. The task-3 decision file was read at one line only (`:99`).
-
-**What stays unproven and goes to the hardware package.** Nothing of this row: it is text. The guard it describes is proven on doubles by rows 89, 90 and 148, and on the real host by `9A/H-01` (the loopback rule, the repeat of E-11 on the host's build).
+**What stays unproven and goes to the hardware package.** Nothing of this row: it is text. What the guard describes is proven on doubles and in a container; on a real host by `9A/H-01` and the items C89 lists.
 
 ---
-*Generated: 2026-10-12 22:40 WIB*
-*Last Updated: 2026-10-12 22:40 WIB*
+*Generated: 2026-10-12 22:40 WIB (first draft)*
+*Last Updated: 2026-10-13 15:59 WIB (rewritten for U15, U17, C89; slots replaced by preconditions)*

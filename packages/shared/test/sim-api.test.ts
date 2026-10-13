@@ -47,9 +47,9 @@ const CREATE_BODY = {
 };
 
 describe('routes', () => {
-  it('lists the 32 simulated operations (9 book §21.2, the 13 of schema v2 (OD-17), the 3 STT configuration ops 90-92 (C3 §2.5), the 5 camera-search ops 93-97 (C3 §2.6) and the 2 sound-card ops 98-99 (task 4 row 63))', () => {
-    expect(SIM_API_ROUTES).toHaveLength(32);
-    expect(new Set(SIM_API_ROUTES.map((route) => route.operationId)).size).toBe(32);
+  it('lists the 43 simulated operations (9 book §21.2, the 13 of schema v2 (OD-17), the 3 STT configuration ops 90-92 (C3 §2.5), the 5 camera-search ops 93-97 (C3 §2.6), the 2 sound-card ops 98-99 (task 4 row 63), the re-address op 100 (task 4 row 194), the 7 commissioning ops 101-107 (task 4 row 102), the stored-credential connection test op 108 (task 4 row V3) and the 2 installation acceptance ops 109-110 (task 4 row 116))', () => {
+    expect(SIM_API_ROUTES).toHaveLength(43);
+    expect(new Set(SIM_API_ROUTES.map((route) => route.operationId)).size).toBe(43);
   });
 
   it('marks every response simulated and JSON, including errors', () => {

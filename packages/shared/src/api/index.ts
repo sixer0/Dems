@@ -24,7 +24,7 @@ export * from './state-slices';
 export * from './realtime-examples';
 // Backend task (01_specs §7.8 to §7.15, §7.17; plan row W27, contract C): areas 4 to 11 (schemas,
 // operations, examples), the state values their examples show, and the map of the 42 simulator
-// actions to operations. The registry held 75 at that row; it holds 99 now (`core-api.ts`, pinned by test/api-registry.test.ts).
+// actions to operations. The registry held 75 at that row; it holds 110 now (`core-api.ts`, pinned by test/api-registry.test.ts).
 export * from './sessions';
 export * from './evidence';
 export * from './devices';
@@ -48,6 +48,14 @@ export * from './capture-discovery';
 // Task 4 (blueprint row 63, WP-07b; design addendum 4.2): the listing of the sound cards and the
 // registration of one input, operations 98-99 (schemas, operations, examples, the audit-detail builder).
 export * from './capture-audio-cards';
+// Task 4 (blueprint row 102, WP-23b): the commissioning functions of the camera network, operations
+// 101-107 (forms, schemas, operations, examples, the request line of the alias helper as contract facts).
+export * from './capture-commissioning';
+// Task 4 (blueprint row 116, WP-26b): the installation acceptance and its revocation, operations
+// 109-110 (the closed key lists and bounds of `steps` and `diagnostics`, schemas, operations, examples).
+export * from './installation-acceptance';
+// Task 4 (blueprint row 212, X2-1; decision C53; moved here by row V3): the policy for a NEW password.
+export * from './password-policy';
 // Task 3 row 113, fix round 1 (navigator finding N-1): the one rule set of the two client
 // log-blanking lists (web error sink, mobile runtime log). Dependency-free.
 export * from './redaction';

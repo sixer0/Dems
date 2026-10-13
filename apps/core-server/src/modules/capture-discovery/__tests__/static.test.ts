@@ -13,9 +13,10 @@
 //      `M4-SEC-DISC-1` and `M4-SEC-DISC-3` are recorded PASS in BOTH documents: row 131's
 //      (`62_r9_onvif_discovery.md`) and this row's (`63_r9_search_api.md`).
 //   6. A RE-ADDRESS IS NEVER AUTOMATIC (task 4 row 97; NEW-1 / U12 A7): the confirmation of an
-//      operator is made by one function, whose production callers are a CLOSED list - empty until
-//      an operation of the contract calls it at its route edge; the re-address function has the
-//      same closed list; and no file of the search path imports `readdress.ts`.
+//      operator is made by one function, whose production callers are a CLOSED list - since task 4
+//      row 197 the ONE route file of operation 100 (`readdress-route.ts`), which makes it from the
+//      body of the request it answers and from nothing else; the re-address function has the same
+//      closed list; and no file of the search path imports `readdress.ts` or the route file.
 //
 // Every rule has a control: the same reader, on a planted text, reads the other value.
 import { readFileSync, readdirSync } from 'node:fs';
@@ -167,27 +168,86 @@ const CONFIRMATION_MAKER = ['operator', 'Readdress', 'Confirmation'].join('');
 const READDRESS_FUNCTION = ['confirm', 'Camera', 'Readdress'].join('');
 /**
  * The production files that may MAKE an operator's confirmation or CALL the re-address, besides
- * the file that defines both. EMPTY today: the contract has no operation for it, so no route edge
- * exists. The route of that operation is the one entry, by a decision - never the search, the
- * candidate store, a timer, a tick or a file of the capture session.
+ * the file that defines both. ONE entry since task 4 row 197 (decision C47 (29); the contract's
+ * operation 100, row 194): the route edge of that operation - never the search, the candidate
+ * store, a timer, a tick or a file of the capture session.
  */
-const READDRESS_CALLERS: readonly string[] = [];
+const READDRESS_ROUTE_FILE = `${FOLDER}/readdress-route.ts`;
+const READDRESS_CALLERS: readonly string[] = [READDRESS_ROUTE_FILE];
 /** The search path: what runs without an operator's act on a device. None of these may import the re-address. */
 const SEARCH_PATH = [`${FOLDER}/search.ts`, `${FOLDER}/store.ts`, `${FOLDER}/registered.ts`, `${FOLDER}/search-ids.ts`, `${FOLDER}/limits.ts`, `${FOLDER}/session-expiry.ts`, `${FOLDER}/adoption.ts`] as const;
 const READDRESS_IMPORT = /from\s+['"][^'"]*\/readdress['"]/;
 const naming = (sources: readonly Source[], name: string): string[] => holding(sources, new RegExp(`\\b${name}\\b`));
+/** An import of the route file: only the module's plugin registers it. */
+const READDRESS_ROUTE_IMPORT = /from\s+['"][^'"]*\/readdress-route['"]/;
+/** What runs without a request: a timer, a hook of the app, a listener of a commit or of a closed search. */
+const UNATTENDED = /\b(?:setInterval|setTimeout|setImmediate)\s*\(|\.\s*(?:after|every|addHook|onCommit|onClosed|onSearchClosed|afterCommit)\s*\(/;
 
-describe('rule 6 (task 4 row 97): a re-address is never automatic', () => {
-  it('the confirmation maker and the re-address function are named by the file that defines them and by the closed list of callers: none today', () => {
+/**
+ * What is wrong with a route file of the re-address, as text: the maker must be called ONCE, with
+ * the body of the request and nothing else, as the argument of the ONE call of the re-address
+ * function, which stands in a handler of a route built from the registry; and the file holds
+ * nothing that runs without a request. Empty = the call is a confirming request's.
+ */
+function unconfirmedCalls(text: string): string[] {
+  const code = codeOf(text);
+  const problems: string[] = [];
+  const makerCalls = code.match(new RegExp(`\\b${CONFIRMATION_MAKER}\\s*\\(([^()]*)\\)`, 'g')) ?? [];
+  if (makerCalls.length !== 1) problems.push(`the confirmation is made ${makerCalls.length} times`);
+  if (makerCalls.some((call) => !new RegExp(`^${CONFIRMATION_MAKER}\\s*\\(\\s*request\\.body\\s*\\)$`).test(call))) problems.push('a confirmation is made from something that is not the body of the request');
+  const calls = code.match(new RegExp(`\\b${READDRESS_FUNCTION}\\s*\\(`, 'g')) ?? [];
+  if (calls.length !== 1) problems.push(`the re-address is called ${calls.length} times`);
+  if (!new RegExp(`await\\s+${READDRESS_FUNCTION}\\s*\\([^;]*\\b${CONFIRMATION_MAKER}\\s*\\(\\s*request\\.body\\s*\\)\\s*\\)\\s*;`).test(code)) problems.push('the re-address is not called with the confirmation of the request');
+  const handler = /handler:\s*async\s*\(request\)[^{]*\{([\s\S]*)\}\s*,?\s*\}\s*\)\s*;/.exec(code)?.[1] ?? '';
+  if (!new RegExp(`\\b${READDRESS_FUNCTION}\\s*\\(`).test(handler)) problems.push('the re-address is not called inside a route handler');
+  if (!/\.\.\.routeOfOperation\(/.test(code)) problems.push('the route is not built from its registry entry');
+  if (UNATTENDED.test(code)) problems.push('the file holds something that runs without a request');
+  return problems;
+}
+
+describe('rule 6 (task 4 rows 97 and 197): a re-address is never automatic', () => {
+  it('the confirmation maker and the re-address function are named by the file that defines them and by the closed list of callers: the ONE route file of operation 100', () => {
     expect(moduleSources.some((source) => source.path === READDRESS_FILE)).toBe(true);
     expect(naming(serverSources, CONFIRMATION_MAKER)).toEqual([READDRESS_FILE, ...READDRESS_CALLERS].sort());
     expect(naming(serverSources, READDRESS_FUNCTION)).toEqual([READDRESS_FILE, ...READDRESS_CALLERS].sort());
-    expect(READDRESS_CALLERS).toEqual([]);
+    expect(READDRESS_CALLERS).toEqual([`${FOLDER}/readdress-route.ts`]);
   });
 
-  it('no file of the search path imports it, and no production file of the Core server outside the list does', () => {
+  it('no file of the search path imports it or the route file; the route file is imported by the module\'s plugin only', () => {
     expect(SEARCH_PATH.every((path) => moduleSources.some((source) => source.path === path))).toBe(true);
     expect(holding(serverSources, READDRESS_IMPORT)).toEqual([...READDRESS_CALLERS]);
+    expect(holding(serverSources, READDRESS_ROUTE_IMPORT)).toEqual([`${FOLDER}/index.ts`]);
+    // The plugin registers the route and exports its control: it names neither the maker nor the function (first case).
+    const plugin = codeOf(moduleSources.find((source) => source.path === `${FOLDER}/index.ts`)?.text ?? '');
+    expect(plugin.match(/\bregisterCaptureReaddressRoute\s*\(/g)).toHaveLength(1);
+  });
+
+  it('row 197: the route file makes the confirmation ONCE, from the body of the request it answers, inside the handler of the registry\'s route - and holds nothing that runs without a request', () => {
+    const route = moduleSources.find((source) => source.path === READDRESS_ROUTE_FILE)?.text ?? '';
+    expect(codeOf(route).length).toBeGreaterThan(1_000);
+    expect(unconfirmedCalls(route)).toEqual([]);
+    // It holds no statement and sends nothing: the registry is reached through the engine's door only.
+    expect(WRITE_STATEMENT.test(codeOf(route))).toBe(false);
+    expect(DISCOVER_CALL.test(codeOf(route))).toBe(false);
+    expect(/\b(?:fetch|createConnection|createSocket|testConnection)\s*\(|\bfrom\s+['"]node:(?:net|dgram|http|https|tls|child_process)['"]/.test(codeOf(route))).toBe(false);
+    // It holds no network fact of its own: no dotted quad, no prefix.
+    expect(codeOf(route)).not.toMatch(/\b\d{1,3}(?:\.\d{1,3}){3}\b/);
+  });
+
+  it('CONTROL (row 197): a planted call without a confirming request is found - a made-up confirmation, a call from a listener, a second call, a timer', () => {
+    const route = moduleSources.find((source) => source.path === READDRESS_ROUTE_FILE)?.text ?? '';
+    const confirming = `await ${READDRESS_FUNCTION}(seams, { principal }, ${CONFIRMATION_MAKER}(request.body));`;
+    expect(route).toContain(confirming);
+    // The candidate of a search, confirmed by nobody.
+    expect(unconfirmedCalls(route.replace(confirming, `await ${READDRESS_FUNCTION}(seams, { principal }, ${CONFIRMATION_MAKER}({ deviceId: found.registeredDeviceId, candidateId: found.candidateId, address: found.camera.host }));`))).toContain('a confirmation is made from something that is not the body of the request');
+    // A second call beside the handler's, from a listener of the search.
+    const following = `${route}\nrunner.onClosed(async ({ search }) => { await ${READDRESS_FUNCTION}(seams, system, ${CONFIRMATION_MAKER}(search.moved)); });\n`;
+    expect(unconfirmedCalls(following)).toEqual(expect.arrayContaining(['the confirmation is made 2 times', 'the re-address is called 2 times', 'the file holds something that runs without a request']));
+    // The call moved out of the handler.
+    const outside = `import { routeOfOperation } from 'x';\nexport function follow(request) { return ${READDRESS_FUNCTION}(seams, caller, ${CONFIRMATION_MAKER}(request.body)); }\nroutes.route({ ...routeOfOperation(entry), handler: async (request) => { return {}; }, });\n`;
+    expect(unconfirmedCalls(outside)).toEqual(expect.arrayContaining(['the re-address is not called with the confirmation of the request', 'the re-address is not called inside a route handler']));
+    // A timer in the file.
+    expect(unconfirmedCalls(`${route}\nsetInterval(() => {}, 1_000);\n`)).toEqual(['the file holds something that runs without a request']);
   });
 
   it('the re-address file sends nothing and holds no statement: it reaches a device through no adapter and the registry through the engine\'s door only', () => {

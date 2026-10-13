@@ -662,9 +662,245 @@ def fault_suite(args, size):
     return 0 if result["pass"] else 1
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Row 152: the redirect and the hostile descriptions (`--suite hostile`).
+#
+# For each mode, `--runs` times, on h264 with the sets in the description and on hevc with the sets in band,
+# against a fresh camera. THE REFERENCE CLIENT IS THE OWN CLIENT OF THIS CHECK (it shows what the camera really
+# answers, and it FOLLOWS on purpose, to prove that the trap is real and that the camera counts who walks into it);
+# `ffprobe` is asked once per run what it does with the hostile description (a fact, kept; no criterion of this row).
+#   redirect_first    an unauthenticated DESCRIBE gets 302 with a Location on the second port and NO challenge;
+#                     a client that does not follow leaves 0 connections there; one that follows is served there
+#                     and is counted, with the requests that carried its Digest answer
+#   redirect_auth     401 with a Digest challenge first; the 302 comes to the DESCRIBE with the right answer, and
+#                     a wrong answer gets 401 again, never the 302
+#   control_port      the description's media control address is an absolute locator of the second port; the
+#                     Content-Base stays this camera's; a SETUP sent to that address arrives on the second port
+#   control_host      the media control address names 127.0.0.2 with the camera's port: another host, of the
+#                     loopback net, and the camera listens there on nothing (no connection is made to it)
+#   codec_hostile     the codec name of the description is 300 characters: the lower-case name, markup, filler;
+#                     the stream is the real codec and plays
+#   codec_lower       the codec name in lower-case letters; the stream plays
+# Every run: the camera listens on 127.0.0.1 only - its port, and the second port exactly when the switch names
+# one - and on nothing afterwards; its event log holds no locator, none of the hostile text and no account value.
+
+HOSTILE_MODES = ("redirect_first", "redirect_auth", "control_port", "control_host", "codec_hostile", "codec_lower")
+
+
+def media_control(sdp):
+    """The control address of the media section: the last `a=control:` of the description."""
+    found = re.findall(r"^a=control:(.*)$", sdp.replace("\r\n", "\n"), flags=re.M)
+    return found[-1] if found else None
+
+
+def rtpmap_name(sdp):
+    found = re.search(r"^a=rtpmap:%d (.*)/%d$" % (cam.PAYLOAD_TYPE, cam.CLOCK), sdp.replace("\r\n", "\n"), flags=re.M)
+    return found.group(1) if found else None
+
+
+def one_hostile_run(mode, port, second, codec, sets, size, folder):
+    checks, facts = {}, {}
+    log = os.path.join(folder, "camera_events.jsonl")
+    user, password = cam.ACCOUNT_USER, cam.ACCOUNT_PASSWORD
+    frames = 50
+    switches = {"redirect_first": ["--second-port", str(second), "--redirect", "first"],
+                "redirect_auth": ["--second-port", str(second), "--redirect", "authenticated"],
+                "control_port": ["--second-port", str(second), "--sdp-control", "other-port"],
+                "control_host": ["--sdp-control", "other-host"],
+                "codec_hostile": ["--sdp-codec", "hostile"],
+                "codec_lower": ["--sdp-codec", "lower"]}[mode]
+    with_second = "--second-port" in switches
+    facts["switches"] = " ".join(switches)
+    real_name = cam.Codec(codec).rtp_name
+    second_uri = "rtsp://127.0.0.1:%d%s" % (second, cam.DEFAULT_PATH)
+    proc, ready = start_camera(port, codec, sets, frames, size, log, switches)
+    try:
+        path = ready["path"]
+        facts["ready_faults"] = ready.get("faults")
+        facts["listeners_while_running"] = listeners_of(proc.pid)
+
+        def authenticated_describe(client):
+            status, headers, _ = client.ask("DESCRIBE", extra=["Accept: application/sdp"])
+            schemes, fields = challenge_of(headers)
+            if status != 401 or not fields.get("nonce"):
+                return status, headers, "", schemes
+            status, headers, sdp = client.ask("DESCRIBE", extra=["Accept: application/sdp"], password=password, challenge=fields)
+            return status, headers, sdp, schemes
+
+        def follower():
+            """A client that goes where it was sent: the whole open on the second port, ten pictures."""
+            client = Client(second, path)
+            try:
+                statuses, _, _ = open_stream(client, user, password)
+                got, _ = client.pictures(codec, 10) if statuses.get("play") == 200 else ([], None)
+            finally:
+                client.close()
+            return {"statuses": statuses, "pictures": len(got)}
+
+        if mode.startswith("redirect"):
+            client = Client(port, path)
+            status, headers, _ = client.ask("DESCRIBE", extra=["Accept: application/sdp"])
+            schemes, fields = challenge_of(headers)
+            first = {"status": status, "schemes_offered": schemes, "location_is_second_port": headers.get("location", [None])[0] == second_uri}
+            if mode == "redirect_first":
+                checks["unauthenticated_describe_is_302_to_the_second_port"] = status == 302 and first["location_is_second_port"] and schemes == []
+                # OPTIONS is answered as ever; the redirect is the DESCRIBE's.
+                options, _, _ = client.ask("OPTIONS")
+                checks["options_is_not_redirected"] = options == 200
+            else:
+                checks["unauthenticated_describe_is_challenged_not_redirected"] = status == 401 and schemes == ["digest"] and "location" not in headers
+                wrong, wrong_headers, _ = client.ask("DESCRIBE", extra=["Accept: application/sdp"], password=WRONG_PASSWORD, challenge=fields)
+                _, again = challenge_of(wrong_headers)
+                right, right_headers, _ = client.ask("DESCRIBE", extra=["Accept: application/sdp"], password=password, challenge=again or fields)
+                first.update(wrong_answer=wrong, right_answer=right)
+                checks["wrong_answer_is_401_not_a_redirect"] = wrong == 401 and "location" not in wrong_headers
+                checks["right_answer_is_302_to_the_second_port"] = right == 302 and right_headers.get("location", [None])[0] == second_uri
+            client.close()
+            facts["first_port"] = first
+        elif mode.startswith("control"):
+            client = Client(port, path)
+            status, headers, sdp, _ = authenticated_describe(client)
+            control = media_control(sdp)
+            base = headers.get("content-base", [""])[0]
+            facts["description"] = {"status": status, "content_base_is_first_port": base == "rtsp://127.0.0.1:%d%s/" % (port, path),
+                                    "control_is_absolute": bool(control) and control.startswith("rtsp://"), "rtpmap_is_the_real_name": rtpmap_name(sdp) == real_name}
+            want = ("rtsp://127.0.0.1:%d%s/%s" % (second, path, cam.TRACK)) if mode == "control_port" else ("rtsp://%s:%d%s/%s" % (cam.OTHER_HOST, port, path, cam.TRACK))
+            checks["description_is_served"] = status == 200 and facts["description"]["rtpmap_is_the_real_name"]
+            checks["media_control_names_the_other_place"] = control == want
+            checks["content_base_stays_this_camera"] = facts["description"]["content_base_is_first_port"]
+            # The honest track of this camera still answers: a client that keeps to the address it was given plays.
+            own, _, _ = client.ask("SETUP", uri=base + cam.TRACK, extra=["Transport: RTP/AVP/TCP;unicast;interleaved=0-1"], password=password,
+                                   challenge=challenge_of(client.ask("SETUP", uri=base + cam.TRACK, extra=["Transport: RTP/AVP/TCP;unicast;interleaved=0-1"])[1])[1])
+            checks["the_cameras_own_track_still_sets_up"] = own == 200
+            client.close()
+            if mode == "control_host":
+                facts["other_host"] = cam.OTHER_HOST
+                checks["other_host_is_loopback_net_and_not_a_name"] = bool(re.fullmatch(r"127\.\d+\.\d+\.\d+", cam.OTHER_HOST)) and cam.OTHER_HOST != "127.0.0.1"
+        else:
+            client = Client(port, path)
+            status, headers, sdp, _ = authenticated_describe(client)
+            name = rtpmap_name(sdp) or ""
+            facts["description"] = {"status": status, "codec_name_length": len(name), "codec_name_is_lower_case_start": name.startswith(real_name.lower()),
+                                    "markup_characters": sorted(set(name) & set("<>&\"'")), "control_is_the_track": media_control(sdp) == cam.TRACK,
+                                    "sets_in_description": len(description_sets(sdp))}
+            client.close()
+            if mode == "codec_hostile":
+                checks["codec_name_is_300_characters"] = len(name) == 300 == cam.HOSTILE_CODEC_LENGTH
+                checks["codec_name_begins_lower_case_and_holds_markup"] = (name.startswith(real_name.lower()) and "<script>" in name
+                                                                           and facts["description"]["markup_characters"] == sorted("<>&\"'"))
+                checks["codec_name_is_not_the_real_name"] = name != real_name and name.lower() != real_name.lower()
+            else:
+                checks["codec_name_is_the_real_name_in_lower_case"] = name == real_name.lower() and name != real_name
+            checks["the_rest_of_the_description_is_the_base_cameras"] = (status == 200 and facts["description"]["control_is_the_track"]
+                                                                         and (facts["description"]["sets_in_description"] > 0) == (sets == "sdp"))
+            # The stream is the real codec: the own client opens it and reads whole pictures.
+            client = Client(port, path)
+            statuses, _, _ = open_stream(client, user, password)
+            got, _ = client.pictures(codec, 30) if statuses.get("play") == 200 else ([], None)
+            client.close()
+            facts["stream"] = {"statuses": statuses, "pictures": len(got), "keyframes": sum(1 for _, nals in got if picture_kind(codec, nals)[0])}
+            checks["the_stream_is_the_real_codec_and_plays"] = statuses == {"describe": 200, "setup": 200, "play": 200} and len(got) == 30 and facts["stream"]["keyframes"] >= 1
+            # What the reference decoder makes of that description: kept as a fact, no criterion of this row.
+            facts["ffprobe"] = probe(locator_for(port, path, user, password), "%s description" % mode, folder, timeout=60)
+
+        if with_second:
+            # Nobody followed so far; now one client does. The exit counters must then state exactly that one caller.
+            facts["follower"] = follower()
+            checks["a_client_that_follows_is_served_on_the_second_port"] = facts["follower"]["statuses"] == {"describe": 200, "setup": 200, "play": 200} and facts["follower"]["pictures"] == 10
+    finally:
+        rc, counters = stop_camera(proc)
+    facts["camera"] = {"rc": rc, "counters": counters}
+    checks["camera_ended_cleanly"] = rc == 0 and counters.get("errors", 0) == 0
+    want_listeners = sorted(["127.0.0.1:%d (LISTEN)" % port] + (["127.0.0.1:%d (LISTEN)" % second] if with_second else []))
+    checks["listens_on_loopback_only_and_on_the_stated_ports"] = facts.get("listeners_while_running") == want_listeners
+    if with_second:
+        # Exactly ONE caller on the second port: the follower of this check. Everything before it left 0 there.
+        checks["second_port_counts_exactly_the_follower"] = counters.get("second_port_connections", 0) == 1
+        checks["second_port_counts_the_followers_digest_answers"] = counters.get("second_port_authorized", 0) >= 3 and counters.get("second_port_requests", 0) >= 4
+    else:
+        checks["no_second_port_counter_without_the_switch"] = not any(key.startswith("second_port") for key in counters)
+    if mode.startswith("redirect"):
+        checks["redirects_are_counted"] = counters.get("redirects_sent", 0) == 1
+        # The only stream of the camera is the follower's, on the second port: the first port gave none.
+        checks["the_only_stream_is_the_followers"] = counters.get("streams_started", 0) == 1
+    if mode.startswith("control"):
+        checks["foreign_descriptions_are_counted"] = counters.get("foreign_control_descriptions", 0) >= 1
+    if mode == "codec_hostile":
+        checks["hostile_descriptions_are_counted"] = counters.get("hostile_codec_descriptions", 0) >= 1
+    text = open(log, encoding="utf-8").read()
+    needles = ["rtsp://", "<script>", cam.OTHER_HOST, "alert(1)", password, urllib.parse.quote(password, safe="")]
+    facts["texts_in_event_log"] = {needle if needle != password else "<password>": text.count(needle) for needle in needles[:5]}
+    checks["event_log_holds_no_locator_no_hostile_text_no_account_value"] = sum(text.count(needle) for needle in needles) == 0 and len(text) > 0
+    facts["listening_after"] = listening_on(port) + (listening_on(second) if with_second else [])
+    checks["no_listener_left"] = facts["listening_after"] == []
+    return checks, facts
+
+
+def hostile_refusals(port, folder):
+    """The second port is held to the port rule before any socket; a mode that needs it is refused without it."""
+    rows = []
+    for switches in (["--second-port", "8559"], ["--second-port", "8554"], ["--second-port", "4400"], ["--second-port", "80"], ["--second-port", str(port)],
+                     ["--redirect", "first"], ["--redirect", "authenticated"], ["--sdp-control", "other-port"]):
+        done = subprocess.run([sys.executable, "-B", CAMERA, "--port", str(port), "--cache", folder] + switches, stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True, timeout=30)
+        rows.append({"switches": " ".join(switches), "rc": done.returncode, "said_refused": "REFUSED" in done.stderr, "stdout_bytes": len(done.stdout)})
+    source = open(CAMERA, encoding="utf-8").read()
+    return {"rows": rows, "every_one_refused_rc_2": all(r["rc"] == 2 and r["said_refused"] and r["stdout_bytes"] == 0 for r in rows),
+            "nothing_listening": listening_on(port) == [], "bind_calls_in_source": len(re.findall(r"\.bind\(", source)),
+            "datagram_sockets_in_source": source.count("SOCK_DGRAM"), "other_host_is_a_literal_of_the_loopback_net": bool(re.fullmatch(r"127\.\d+\.\d+\.\d+", cam.OTHER_HOST))}
+
+
+def hostile_suite(args, size):
+    modes = [m for m in args.hostile_modes.split(",") if m]
+    if any(m not in HOSTILE_MODES for m in modes):
+        sys.exit("--hostile-modes: one or more of " + ",".join(HOSTILE_MODES))
+    second = args.second_port or args.port + 1
+    if cam.port_refusal(second) or second == args.port or listening_on(second):
+        sys.exit("the hostile suite needs a free second port the camera accepts")
+    result = {"started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "suite": "hostile", "port": args.port, "second_port": second, "size": args.size,
+              "refusals": hostile_refusals(args.port, args.out), "runs": []}
+    rule = result["refusals"]
+    ok = rule["every_one_refused_rc_2"] and rule["nothing_listening"] and rule["bind_calls_in_source"] == 1 and rule["datagram_sockets_in_source"] == 0 and rule["other_host_is_a_literal_of_the_loopback_net"]
+    print("SWITCH RULE refused=%d all_rc_2=%s nothing_listening=%s bind_calls=%d datagram_sockets=%d" % (
+        len(rule["rows"]), rule["every_one_refused_rc_2"], rule["nothing_listening"], rule["bind_calls_in_source"], rule["datagram_sockets_in_source"]))
+    for mode in modes:
+        for codec, sets in FAULT_CODECS:
+            for run in range(1, args.runs + 1):
+                folder = os.path.join(args.out, "%s_%s_%s_run%d" % (mode, codec, sets, run))
+                os.makedirs(folder, exist_ok=True)
+                try:
+                    checks, facts = one_hostile_run(mode, args.port, second, codec, sets, size, folder)
+                except Exception as exc:  # the run is a failure with its place; the series goes on
+                    checks, facts = {"run_completed": False}, {"error_type": type(exc).__name__, "error": redact(str(exc))[:300]}
+                failed = sorted(name for name, good in checks.items() if not good)
+                ok = ok and not failed
+                result["runs"].append({"mode": mode, "codec": codec, "param_sets": sets, "run": run, "pass": not failed, "failed": failed,
+                                       "checks": checks, "facts": facts})
+                counters = facts.get("camera", {}).get("counters", {})
+                brief = {key: counters[key] for key in ("redirects_sent", "foreign_control_descriptions", "hostile_codec_descriptions", "second_port_connections",
+                                                        "second_port_requests", "second_port_authorized") if key in counters}
+                if "ffprobe" in facts:
+                    brief["ffprobe"] = "rc %s codec %s frames %s errors %s" % (facts["ffprobe"]["rc"], facts["ffprobe"]["codec"], facts["ffprobe"]["frames"], facts["ffprobe"]["error_lines"])
+                print("%s %-14s %-4s %-6s run %d  checks %d/%d  %s%s" % (
+                    "PASS" if not failed else "FAIL", mode, codec, sets, run, len(checks) - len(failed), len(checks),
+                    redact(json.dumps(brief, separators=(",", ":"))), "" if not failed else "  failed: " + ",".join(failed)))
+                sys.stdout.flush()
+    result["listening_at_end"] = listening_on(args.port) + listening_on(second)
+    result["pass"] = ok and result["listening_at_end"] == [] and bool(result["runs"])
+    with open(os.path.join(args.out, "result.json"), "w") as handle:
+        handle.write(redact(json.dumps(result, indent=1)))
+    print("RESULT %s  suite hostile  runs %d  passed %d  listener_left %s  %s" % (
+        "PASS" if result["pass"] else "FAIL", len(result["runs"]), sum(1 for r in result["runs"] if r["pass"]), result["listening_at_end"],
+        os.path.relpath(os.path.join(args.out, "result.json"), cam.REPO_ROOT)))
+    return 0 if result["pass"] else 1
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--suite", choices=("base", "faults"), default="base", help="base: the four modes of row 39; faults: the switches of row 40")
+    parser.add_argument("--suite", choices=("base", "faults", "hostile"), default="base",
+                        help="base: the four modes of row 39; faults: the switches of row 40; hostile: the redirect and the hostile descriptions of row 152")
+    parser.add_argument("--hostile-modes", default=",".join(HOSTILE_MODES), help="with --suite hostile: the modes to run")
+    parser.add_argument("--second-port", type=int, default=0, help="with --suite hostile: the camera's second port (default: --port + 1)")
     parser.add_argument("--modes", default=",".join(FAULT_MODES), help="with --suite faults: the fault modes to run")
     parser.add_argument("--port", type=int, default=8565)
     parser.add_argument("--runs", type=int, default=3)
@@ -680,6 +916,8 @@ def main():
         sys.exit("port %d is in use: nothing was started" % args.port)
     if args.suite == "faults":
         return fault_suite(args, size)
+    if args.suite == "hostile":
+        return hostile_suite(args, size)
 
     result = {"started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "port": args.port, "frames": args.frames, "size": args.size,
               "refusals": refusals(args.out), "runs": []}
@@ -708,7 +946,9 @@ def main():
                 "" if not failed else "failed: " + ",".join(failed)))
             sys.stdout.flush()
     result["listening_at_end"] = listening_on(args.port)
-    result["pass"] = ok and result["listening_at_end"] == []
+    # Row T3 (review 060c X-09; survivor 18): a suite that ran NOTHING is no pass - as the two later suites hold it
+    # (`--runs 0` ended RESULT PASS, rc 0, with every check of the four modes unasked).
+    result["pass"] = ok and result["listening_at_end"] == [] and bool(result["runs"])
     with open(os.path.join(args.out, "result.json"), "w") as handle:
         handle.write(redact(json.dumps(result, indent=1)))
     print("RESULT %s  runs %d  passed %d  listener_left %s  %s" % (

@@ -25,7 +25,7 @@ import {
   type AuthTransition,
 } from './auth';
 import { setCaptureConfigTransition } from './capture-config';
-import { registerCaptureDeviceTransition, registerCaptureMicrophoneTransition } from './capture-registry';
+import { readdressCaptureDeviceTransition, registerCaptureDeviceTransition, registerCaptureMicrophoneTransition } from './capture-registry';
 import { applyStorageVolumeTransition } from './core-facts';
 import { clearCaptureNoticeTransition, isCaptureNotice, raiseCaptureNoticeTransition } from './capture-notices';
 import { applyCaptureTelemetryTransition, clearCaptureWarningTransition, feedCaptureLevels, raiseCaptureWarningTransition } from './capture-telemetry';
@@ -269,5 +269,7 @@ export function createActions(context: ActionContext): SimActions {
     registerCaptureDevice: (device) => commit((state) => registerCaptureDeviceTransition(state, device).state),
     // Task 4 row 185: INTERNAL. A `USB_AUDIO` microphone joins the registry, or a registered one is enabled again.
     registerCaptureMicrophone: (microphone) => commit((state) => registerCaptureMicrophoneTransition(state, microphone).state),
+    // Task 4 row 195: INTERNAL. The address of one registered camera changes; nothing else does.
+    readdressCaptureDevice: (change) => commit((state) => readdressCaptureDeviceTransition(state, change).state),
   };
 }

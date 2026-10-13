@@ -273,10 +273,10 @@ beforeEach(() => {
 });
 
 describe('the database this file runs on', () => {
-  it(`is at the schema version of the code: [${DB_SCHEMA_VERSION}, '${DB_CONTRACT_REVISION}'] = [8, 'dbc-9'], read as dems_app`, async () => {
+  it(`is at the schema version of the code: [${DB_SCHEMA_VERSION}, '${DB_CONTRACT_REVISION}'] = [13, 'dbc-14'], read as dems_app`, async () => {
     const row = (await guard.app.db.pool.query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([row.schema_version, row.contract_revision]).toEqual([8, 'dbc-9']);
-    expect([DB_SCHEMA_VERSION, DB_CONTRACT_REVISION]).toEqual([8, 'dbc-9']);
+    expect([row.schema_version, row.contract_revision]).toEqual([13, 'dbc-14']);
+    expect([DB_SCHEMA_VERSION, DB_CONTRACT_REVISION]).toEqual([13, 'dbc-14']);
     expect(((await guard.app.db.pool.query('SELECT current_user AS role')).rows[0] as { role: string }).role).toBe('dems_app');
   });
 });
@@ -522,13 +522,22 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
     await post(supervisor, testPath(id), { credential: ACCOUNT });
     const before = await rowCounts();
     // The statement itself, as dems_app, with a nonce the CHECK refuses: 23514, and the unit is gone.
-    const outcome = await sqlstate(
-      guard.app.engine.run('row142.badEnvelope', async (scope) => {
+    // Row T3 (review 060c T-05; survivor 12 of its section 6): the case took ANY failure - a registrar that failed for
+    // another reason, before the credential statement was reached, passed. Now: the registrar DID return (its device
+    // row was written inside the unit), and what ended the unit is the CHECK of the credential's nonce, by its name.
+    let registrarReturned = false;
+    const failure = await guard.app.engine
+      .run('row142.badEnvelope', async (scope) => {
         await registrar(scope, { kind: 'ANONYMOUS', retiredDeviceId: null }, { id: 'CAM-03', adapterKind: CaptureAdapterKind.FAKE, model: null, address: '127.0.0.1:1', endpointRef: null, profiles: [], streams: [], at: 1 });
+        registrarReturned = true;
         await scope.unit.query(UPSERT_CAPTURE_CREDENTIAL, ['CAM-03', 'x', Buffer.alloc(48), Buffer.alloc(11), 'CAPTURE_DEVICE_K_00000000000000000000', 1]);
-      }),
-    );
-    expect(outcome).not.toBe('answered');
+      })
+      .then(
+        () => ({ code: 'answered', constraint: undefined }),
+        (error: { code?: string; constraint?: string }) => ({ code: error.code, constraint: error.constraint }),
+      );
+    expect(registrarReturned).toBe(true);
+    expect(failure).toEqual({ code: '23514', constraint: 'capture_device_credentials_nonce_check' });
     expect(await rowCounts()).toEqual(before);
     await guard.app.pipeline.drain();
   });
@@ -729,6 +738,41 @@ describe('task 4 rows 50 and 51: the codec is judged from the stream, and an ado
     expect(lax).toBe(true);
   });
 
+  // Row T3 (review 060c T-06; survivor 5 of its section 6). The case above was written when the CHECK was a request: it
+  // evaluates the text `HOLDS` OF THIS FILE and passes with the constraint dropped. The constraint exists since
+  // migration 0022 (`capture_devices_profiles_code_check`, decision C61). THIS case asks the TABLE: the same lists,
+  // written into a registry row as the runtime role, each in a unit that is rolled back - the product's own CHECK
+  // refuses the nine by its name (23514) and takes the four.
+  it('row T3: the TABLE\'s own CHECK holds it - as dems_app, a profile list of another form is refused by `capture_devices_profiles_code_check` (23514) and a list of codes is taken; the rows are as they were', async () => {
+    expect(((await guard.app.db.pool.query('SELECT current_user AS role')).rows[0] as { role: string }).role).toBe('dems_app');
+    const target = ((await owner.query('SELECT id FROM public.capture_devices ORDER BY id LIMIT 1')).rows[0] as { id: string } | undefined)?.id ?? '';
+    expect(target).not.toBe('');
+    const stored = async (): Promise<string> => ((await owner.query('SELECT profiles::text AS profiles FROM public.capture_devices WHERE id = $1', [target])).rows[0] as { profiles: string }).profiles;
+    const before = await stored();
+    /** One write of the list in a unit of its own that is always rolled back: what the table said. */
+    const write = async (profiles: unknown): Promise<{ code: string | undefined; constraint: string | undefined; rows: number | null }> => {
+      const client = await guard.app.db.pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await client.query('UPDATE public.capture_devices SET profiles = $2::jsonb WHERE id = $1', [target, JSON.stringify(profiles)]).then(
+          (answer) => ({ code: 'answered', constraint: undefined, rows: answer.rowCount }),
+          (error: { code?: string; constraint?: string }) => ({ code: error.code, constraint: error.constraint, rows: null }),
+        );
+        return result;
+      } finally {
+        await client.query('ROLLBACK');
+        client.release();
+      }
+    };
+    const taken: readonly unknown[][] = [[], ['HEVC_1080P'], ['H264_1080P25', 'HEVC_2560X1920P'], [`H${'9'.repeat(63)}`]];
+    for (const profiles of taken) expect(await write(profiles), JSON.stringify(profiles)).toEqual({ code: 'answered', constraint: undefined, rows: 1 });
+    const refused: readonly unknown[][] = [['profile_1'], ['HEVC_1080P', 'profile_1'], ['hevc_1080p'], [7], [null], [{ code: 'HEVC_1080P' }], [`H${'9'.repeat(64)}`], ['HEVC_1080P '], [''], [['HEVC_1080P']]];
+    for (const profiles of refused) expect(await write(profiles), JSON.stringify(profiles)).toEqual({ code: '23514', constraint: 'capture_devices_profiles_code_check', rows: null });
+    // A value that is no list at all is refused too - by the older CHECK that the column holds a list, which is asked first.
+    expect(await write('HEVC_1080P')).toEqual({ code: '23514', constraint: 'capture_devices_profiles_check', rows: null });
+    expect(await stored()).toBe(before);
+  });
+
   it('with the module\'s REAL registrar: the camera whose token is lower-case is in the registry, and its minted code is assigned to a video slot (operation 78)', async () => {
     useStreamTester('HEVC', true);
     const id = candidate();
@@ -771,7 +815,7 @@ describe('M4-SEC-CRED-1: the two canaries through every channel (this block runs
     expect(hits(JSON.stringify([...held.values()].map((entry) => entry.candidate)))).toEqual([]);
 
     const tables = ((await owner.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY 1")).rows as { table_name: string }[]).map((row) => row.table_name);
-    expect(tables).toHaveLength(47);
+    expect(tables).toHaveLength(48);
     const found: string[] = [];
     for (const table of tables) {
       const dump = ((await owner.query(`SELECT row_to_json(t)::text AS row FROM public.${table} t`)).rows as { row: string }[]).map((row) => row.row).join('\n');

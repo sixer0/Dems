@@ -1,5 +1,5 @@
 /**
- * Simulated REST handlers for the 32 simulated operations: the 9 §21.2 endpoints
+ * Simulated REST handlers for the 43 simulated operations: the 9 §21.2 endpoints
  * (masterplan/01_specs.md §14.7 `api.ts`, §14.9 `simAwareFetch`; AC-58) plus the 13 capture,
  * audio-source, sealing and transcript operations of schema v2 (task 3 M2-W9b, blueprint row 51a;
  * OD-17 "the simulator emulates v2" supersedes the old "simulator untouched" rule, OD-23;
@@ -7,7 +7,12 @@
  * blueprint row 113; C3 §2.5; R-8) plus the 5 camera-search, connection-test, adoption and
  * local-input operations 93-97 (task 3 R-9..R-11, blueprint row 132, decision D106; C3 §2.6
  * "Simulator") plus the 2 sound-card operations 98-99 (task 4, blueprint row 63; design addendum
- * 4.2): a fixed listing of two test cards, and a registration that registers nothing.
+ * 4.2): a fixed listing of two test cards, and a registration that registers nothing; plus the
+ * confirmed re-address 100 (task 4, blueprint row 194), which refuses every call, and the 7
+ * commissioning operations 101-107 (task 4, blueprint row 102): synthetic answers that change nothing;
+ * plus the stored-credential connection test 108 (task 4, row V3): a synthetic result, nothing changed;
+ * plus the installation acceptance and its revocation 109-110 (task 4, blueprint row 116): the
+ * simulator keeps no installation record, so both answer a refusal that says so and change nothing.
  *
  * `handleSimApiRequest(sim, { method, path, body })` → `{ status, headers, body }`:
  * - every response carries `x-dems-simulated: 1` and `content-type: application/json`;
@@ -28,11 +33,27 @@ import {
   type CaptureAudioCardSearch,
 } from '../api/capture-audio-cards';
 import {
+  CAPTURE_COMMISSIONING_REFUSAL_SENTENCES,
+  CameraFactoryScanRequestSchema,
+  CameraNetworkSetRequestSchema,
+  CaptureCommissioningReason,
+  CaptureNetworkConfigUpdateRequestSchema,
+  simCameraFactoryScan,
+  simCaptureNetworkConfig,
+  type CameraFactoryScan,
+  type CaptureNetworkConfig,
+  type HostAliasState,
+} from '../api/capture-commissioning';
+import {
+  CAPTURE_DEVICE_TEST_NOT_READY_SENTENCE,
+  CAPTURE_READDRESS_REFUSAL_SENTENCES,
   CaptureCandidateAdoptRequestSchema,
   CaptureCandidateStatus,
   CaptureConnectionOutcome,
   CaptureConnectionTestRequestSchema,
+  CaptureDeviceAddressConfirmRequestSchema,
   CaptureDiscoveryReason,
+  CaptureReaddressReason,
   CaptureDiscoveryScope,
   CaptureDiscoveryStartRequestSchema,
   CaptureDiscoveryTrigger,
@@ -52,6 +73,12 @@ import {
 } from '../api/capture-discovery';
 import { WEB_CONSOLE_ONLY_REASON } from '../api/contract-model';
 import { CaptureCredentialWriteRequestSchema } from '../api/devices';
+import {
+  INSTALLATION_ACCEPTANCE_REFUSAL_SENTENCES,
+  InstallationAcceptRequestSchema,
+  InstallationAcceptanceReason,
+  InstallationAcceptanceRevokeRequestSchema,
+} from '../api/installation-acceptance';
 import { EXPORT_JOB_ID_PATTERN, HARDWARE_DEVICE_ID_PATTERN, MIC_INPUT_ID_PATTERN, exportJobIdOf } from '../api/patterns';
 import { CAPTURE_NOT_DURABLE_REASON } from '../api/sessions';
 import {
@@ -167,6 +194,21 @@ export const SIM_API_ROUTES: readonly SimApiRoute[] = [
   // ── Sound cards: the listing and the registration of an input (task 4, blueprint row 63; design addendum 4.2; ops 98-99) ──
   { method: 'POST', path: '/api/v1/capture/audio-cards/search', operationId: 'searchCaptureAudioCards' },
   { method: 'POST', path: '/api/v1/capture/audio-cards/inputs', operationId: 'registerCaptureAudioInput' },
+  // ── The operator-confirmed re-address of a registered camera (task 4, blueprint row 194; WP-12; op 100) ──
+  { method: 'POST', path: '/api/v1/capture/devices/address/confirm', operationId: 'confirmCaptureDeviceAddress' },
+  // ── The commissioning functions of the camera network (task 4, blueprint row 102; WP-23b; ops 101-107) ──
+  { method: 'GET', path: '/api/v1/capture/network/config', operationId: 'getCaptureNetworkConfig' },
+  { method: 'POST', path: '/api/v1/capture/network/config', operationId: 'updateCaptureNetworkConfig' },
+  { method: 'POST', path: '/api/v1/capture/network/scan', operationId: 'scanFactoryCameras' },
+  { method: 'GET', path: '/api/v1/capture/network/alias', operationId: 'getHostAlias' },
+  { method: 'POST', path: '/api/v1/capture/network/alias/remove', operationId: 'removeHostAlias' },
+  { method: 'POST', path: '/api/v1/capture/network/cameras/address', operationId: 'setCameraNetwork' },
+  { method: 'GET', path: '/api/v1/capture/network/jobs/{id}', operationId: 'getCameraNetworkJob' },
+  // ── The connection test of a registered camera with its stored credential (task 4, row V3; blueprint row 146; op 108) ──
+  { method: 'POST', path: '/api/v1/capture/devices/{id}/test', operationId: 'testCaptureDeviceConnection' },
+  // ── The installation acceptance and its revocation (task 4, blueprint row 116; WP-26b; ops 109-110) ──
+  { method: 'POST', path: '/api/v1/installation/acceptance', operationId: 'acceptInstallation' },
+  { method: 'POST', path: '/api/v1/installation/acceptance/revoke', operationId: 'revokeInstallationAcceptance' },
 ];
 
 
@@ -232,11 +274,14 @@ export interface ApiVideoTrack {
   lens: string;
   online: boolean;
   recState: string | null;
-  resolution: string;
+  /** Null (row V6, S-01): no stream statement is stored for the track. Never a default. */
+  resolution: string | null;
   /** Null: the stream states no rate. */
   fps: number | null;
-  codec: string;
-  bitrateMbps: number;
+  /** Null (row V6, S-01): no stream statement is stored for the track. Never a default. */
+  codec: string | null;
+  /** Null (pass I-9b; row W4, R-01): no telemetry states a bitrate for the track. Never a default. */
+  bitrateMbps: number | null;
 }
 
 /**
@@ -1266,6 +1311,23 @@ interface SimDiscoveryHolder {
 const SIM_DISCOVERY = new WeakMap<SimStore, SimDiscoveryHolder>();
 const DISCOVERY_DENIED = 'Your role cannot search for cameras or connect one (RBAC).';
 const AUDIO_CARDS_DENIED = 'Your role cannot list the sound cards or register an input (RBAC).';
+const COMMISSIONING_DENIED = 'Your role cannot set up the camera network (RBAC).';
+
+/**
+ * The refusals every commissioning operation (101-107; task 4 row 102) shares, in the Core
+ * server's order: the role (CAPTURE_COMMISSION, TECHNICIAN only), the web-console condition and,
+ * for a writing operation, the idle lock. Null: the caller may proceed.
+ */
+function commissioningRefusal(target: SimApiTarget, writes: boolean): SimApiResponse | null {
+  const state = target.store.getState();
+  return capabilityRefusal(state, Permission.CAPTURE_COMMISSION, COMMISSIONING_DENIED) ?? webConsoleOnlyRefusal(target) ?? (writes ? captureLockedRefusal(state) : null);
+}
+
+/** The simulator's answer to a commissioning write of the right form: it has no host to change. */
+function commissioningNotAvailable(): SimApiResponse {
+  const reason = CaptureCommissioningReason.COMMISSIONING_NOT_AVAILABLE;
+  return failWith(409, 'INVALID_STATE', CAPTURE_COMMISSIONING_REFUSAL_SENTENCES[reason], { reason });
+}
 
 function simDiscoveryHolder(store: SimStore): SimDiscoveryHolder {
   let holder = SIM_DISCOVERY.get(store);
@@ -1681,6 +1743,144 @@ const DISCOVERY_ROUTES: readonly Route[] = [
       return failWith(409, 'INVALID_STATE', 'A sound-card input can be registered on a production Core only.', {
         reason: CaptureAudioCardReason.AUDIO_INPUT_NOT_REGISTRABLE,
       });
+    },
+  },
+  {
+    // 100 confirmCaptureDeviceAddress (task 4, blueprint row 194; WP-12). The simulator's cameras
+    // never move: no candidate of its fixed search has a changed address. So it stores nothing,
+    // writes no audit row and changes no state: every answer is a refusal the contract names. The
+    // Core server's order: the role, the web-console condition, the idle lock, the body, then the
+    // device and the candidate (404, one answer), then "not this camera at a new address" (409).
+    method: 'POST',
+    pattern: /^\/api\/v1\/capture\/devices\/address\/confirm$/,
+    handle: (target, _params, body) => {
+      const state = target.store.getState();
+      const refused = capabilityRefusal(state, Permission.CAPTURE_CONFIG, DISCOVERY_DENIED) ?? webConsoleOnlyRefusal(target) ?? captureLockedRefusal(state);
+      if (refused) return refused;
+      const parsed = CaptureDeviceAddressConfirmRequestSchema.safeParse(body);
+      // The refusal names where, never what.
+      if (!parsed.success) return failWith(422, 'INVALID_INPUT', 'The request does not match the expected input.', { in: 'body' });
+      const camera = state.captureDevices.devices.some((device) => device.id === parsed.data.deviceId && device.kind === 'CAMERA');
+      const candidate = liveDiscovery(target.store, state, target.clock.now())?.candidates.some((entry) => entry.candidateId === parsed.data.candidateId) ?? false;
+      if (!camera || !candidate) return fail(404, 'NOT_FOUND', 'No camera or candidate has this ID.');
+      const reason = CaptureReaddressReason.READDRESS_NOT_THE_REGISTERED_CAMERA;
+      return failWith(409, 'INVALID_STATE', CAPTURE_READDRESS_REFUSAL_SENTENCES[reason], { reason });
+    },
+  },
+  // ── The commissioning functions of the camera network (task 4, blueprint row 102; WP-23b; ops ──
+  // ── 101-107). The simulator has no host, no interface and no address helper: its answers are ──
+  // ── SYNTHETIC and say so, and NONE of them stores anything, writes an audit row or changes the ──
+  // ── state. The Core server's order is kept: the role (TECHNICIAN only), the web-console ───────
+  // ── condition, then for a write the idle lock and the body. ──────────────────────────────────
+  {
+    // 101 getCaptureNetworkConfig: the fixed configuration, whose interface is named as simulated.
+    method: 'GET',
+    pattern: /^\/api\/v1\/capture\/network\/config$/,
+    handle: (target) => commissioningRefusal(target, false) ?? respond(200, simCaptureNetworkConfig() satisfies CaptureNetworkConfig),
+  },
+  {
+    // 102 updateCaptureNetworkConfig: nothing is stored. A body of the right form: "not available".
+    method: 'POST',
+    pattern: /^\/api\/v1\/capture\/network\/config$/,
+    handle: (target, _params, body) => {
+      const refused = commissioningRefusal(target, true);
+      if (refused) return refused;
+      if (!CaptureNetworkConfigUpdateRequestSchema.safeParse(body).success) return failWith(422, 'INVALID_INPUT', 'The request does not match the expected input.', { in: 'body' });
+      return commissioningNotAvailable();
+    },
+  },
+  {
+    // 103 scanFactoryCameras: nothing is asked of any address. ONE synthetic device, `synthetic: true`,
+    // no temporary address, no audit row.
+    method: 'POST',
+    pattern: /^\/api\/v1\/capture\/network\/scan$/,
+    handle: (target, _params, body) => {
+      const refused = commissioningRefusal(target, true);
+      if (refused) return refused;
+      const parsed = CameraFactoryScanRequestSchema.safeParse(body);
+      if (!parsed.success) return failWith(422, 'INVALID_INPUT', 'The request does not match the expected input.', { in: 'body' });
+      return respond(200, simCameraFactoryScan(target.clock.now(), parsed.data.address) satisfies CameraFactoryScan);
+    },
+  },
+  {
+    // 104 getHostAlias: the simulator never holds a temporary address.
+    method: 'GET',
+    pattern: /^\/api\/v1\/capture\/network\/alias$/,
+    handle: (target) => commissioningRefusal(target, false) ?? respond(200, { alias: null } satisfies HostAliasState),
+  },
+  {
+    // 105 removeHostAlias: none is in place, so nothing can be removed.
+    method: 'POST',
+    pattern: /^\/api\/v1\/capture\/network\/alias\/remove$/,
+    handle: (target) => {
+      const refused = commissioningRefusal(target, true);
+      if (refused) return refused;
+      const reason = CaptureCommissioningReason.HOST_ALIAS_NOT_PRESENT;
+      return failWith(409, 'INVALID_STATE', CAPTURE_COMMISSIONING_REFUSAL_SENTENCES[reason], { reason });
+    },
+  },
+  {
+    // 106 setCameraNetwork: no camera is changed and no job starts. The one fact read from the body
+    // is whether it has the form of the request; the credential pair is dropped unread.
+    method: 'POST',
+    pattern: /^\/api\/v1\/capture\/network\/cameras\/address$/,
+    handle: (target, _params, body) => {
+      const refused = commissioningRefusal(target, true);
+      if (refused) return refused;
+      // E-30: the refusal names where, never what - the body holds a credential.
+      if (!CameraNetworkSetRequestSchema.safeParse(body).success) return failWith(422, 'INVALID_INPUT', 'The request does not match the expected input.', { in: 'body' });
+      return commissioningNotAvailable();
+    },
+  },
+  {
+    // 107 getCameraNetworkJob: the simulator starts no job, so every id is unknown.
+    method: 'GET',
+    pattern: /^\/api\/v1\/capture\/network\/jobs\/([^/]+)$/,
+    handle: (target) => commissioningRefusal(target, false) ?? fail(404, 'NOT_FOUND', 'No job has this ID.'),
+  },
+  {
+    // 108 testCaptureDeviceConnection (task 4, row V3; blueprint row 146; ROW V4, decision C75 (2)).
+    // The simulator contacts nothing and holds no credential, so NOTHING CAN BE TESTED: it answers
+    // what a Core server in simulated capture answers - `503 NOT_READY` with `details.reason:
+    // DISCOVERY_NOT_READY` - and never a synthetic REACHABLE: a simulator that asked no camera does
+    // not say a camera answered. NOTHING CHANGES: no audit row, no event, no state. The Core
+    // server's order: the role, the web-console condition, the idle lock, then "not ready" - BEFORE
+    // the device is looked up, so an unknown id gets the same 503. A body is not read.
+    method: 'POST',
+    pattern: /^\/api\/v1\/capture\/devices\/([^/]+)\/test$/,
+    handle: (target) => {
+      const state = target.store.getState();
+      const refused = capabilityRefusal(state, Permission.CAPTURE_CONFIG, DISCOVERY_DENIED) ?? webConsoleOnlyRefusal(target) ?? captureLockedRefusal(state);
+      if (refused) return refused;
+      return failWith(503, 'NOT_READY', CAPTURE_DEVICE_TEST_NOT_READY_SENTENCE, { reason: CaptureDiscoveryReason.DISCOVERY_NOT_READY });
+    },
+  },
+  // ── The installation acceptance and its revocation (task 4, blueprint row 116; WP-26b; ops ──
+  // ── 109-110). The simulator keeps NO installation record: both answers are refusals that say ──
+  // ── so, and NOTHING CHANGES - no audit row, no event, no state. The Core server's order: the ──
+  // ── role (CAPTURE_COMMISSION), the web-console condition, the idle lock, then the body. ──────
+  {
+    // 109 acceptInstallation: a body of the right form answers "not available"; nothing is stored.
+    method: 'POST',
+    pattern: /^\/api\/v1\/installation\/acceptance$/,
+    handle: (target, _params, body) => {
+      const refused = commissioningRefusal(target, true);
+      if (refused) return refused;
+      if (!InstallationAcceptRequestSchema.safeParse(body).success) return failWith(422, 'INVALID_INPUT', 'The request does not match the expected input.', { in: 'body' });
+      const reason = InstallationAcceptanceReason.INSTALLATION_ACCEPTANCE_NOT_AVAILABLE;
+      return failWith(409, 'INVALID_STATE', INSTALLATION_ACCEPTANCE_REFUSAL_SENTENCES[reason], { reason });
+    },
+  },
+  {
+    // 110 revokeInstallationAcceptance: the simulator never holds an acceptance, so none is in force.
+    method: 'POST',
+    pattern: /^\/api\/v1\/installation\/acceptance\/revoke$/,
+    handle: (target, _params, body) => {
+      const refused = commissioningRefusal(target, true);
+      if (refused) return refused;
+      if (!InstallationAcceptanceRevokeRequestSchema.safeParse(body).success) return failWith(422, 'INVALID_INPUT', 'The request does not match the expected input.', { in: 'body' });
+      const reason = InstallationAcceptanceReason.INSTALLATION_ACCEPTANCE_NOT_IN_FORCE;
+      return failWith(409, 'INVALID_STATE', INSTALLATION_ACCEPTANCE_REFUSAL_SENTENCES[reason], { reason });
     },
   },
 ];

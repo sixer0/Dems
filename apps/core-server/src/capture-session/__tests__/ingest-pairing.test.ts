@@ -339,3 +339,79 @@ describe('row 188, C37: a relay report for an attempt the Core itself superseded
     expect([silent.faults, silent.pairing.supersededReports()]).toEqual([[], 1]);
   });
 });
+
+// Finding F3-01 of the M3 review: the relay now also says the loss of its camera leg and its re-open (row 43). THE RULE
+// OF THIS UNIT IS UNCHANGED BY IT. What a re-open is on each side (implementation/043 section 2; the worker's gate):
+// the relay keeps its ONE push, so the worker has one connection, says one connect and refuses nothing; the relay says
+// no second "push established". Neither side gives this unit a second report - and the control shows that the rule
+// would still bite if one did.
+describe('finding F3-01: a relay re-open inside a session is no arrival - the pairing hears nothing of it and the rule is unchanged (C35 (b))', () => {
+  it('an open camera stays open through a gap of the relay\'s whole retry (62 s of waits and more): no report, no timer, no fault', () => {
+    const of = rig();
+    of.pairing.relayReported('CAM-01', 1);
+    of.pairing.workerConnected('CAM-01', 1);
+    of.pairing.relayReported('CAM-02', 1);
+    of.pairing.workerConnected('CAM-02', 1);
+    expect([of.pairing.open(), of.timers()]).toEqual([['CAM-01', 'CAM-02'], 0]);
+    // The camera leg of CAM-01 is lost and re-opened: on the worker's side nothing changes, on the relay's side two leg lines that are not for this unit.
+    of.advance(62_000 + 6 * 20_000);
+    expect([of.pairing.open(), of.faults, of.timers(), of.pairing.supersededReports()]).toEqual([['CAM-01', 'CAM-02'], [], 0, 0]);
+  });
+
+  it('CONTROL: had a re-open been told as a second relay report, or seen by the worker as a second connect, it would still be the fault that ends the capture', () => {
+    const asRelay = rig();
+    asRelay.pairing.relayReported('CAM-01', 1);
+    asRelay.pairing.workerConnected('CAM-01', 1);
+    asRelay.pairing.relayReported('CAM-01', 1);
+    expect(asRelay.said()).toEqual([`CAM-01@1 ${IngestPairingFault.RELAY_REPORTED_TWICE}`]);
+    const asWorker = rig();
+    asWorker.pairing.relayReported('CAM-01', 1);
+    asWorker.pairing.workerConnected('CAM-01', 1);
+    asWorker.pairing.workerConnected('CAM-01', 1);
+    expect(asWorker.said()).toEqual([`CAM-01@1 ${IngestPairingFault.WORKER_CONNECTED_TWICE}`]);
+  });
+
+  it('the sources: the session hands a relay report to the pairing at ONE line, and only a report without the member `leg`; this unit has no word for a leg', () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const strip = (text: string): string[] =>
+      text
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .split('\n')
+        .map((line) => line.replace(/\/\/.*$/, '').trim())
+        .filter((line) => line !== '');
+    const session = strip(readFileSync(resolve(here, '../index.ts'), 'utf8'));
+    const calls = session.filter((line) => line.includes('relayReported('));
+    expect(calls).toEqual(['else current.pairing?.relayReported(report.deviceId, report.attempt);']);
+    const at = session.indexOf(calls[0] ?? '');
+    expect(session[at - 1]).toBe('if (report.leg !== undefined) cameraLegSaid(current, planCameras, report);');
+    // The function that takes a leg report names no door of the pairing and ends no capture.
+    const from = session.findIndex((line) => line.startsWith('function cameraLegSaid('));
+    const body = session.slice(from, session.findIndex((line, index) => index > from && line.startsWith('function ')));
+    expect(body.length).toBeGreaterThan(10);
+    expect(body.filter((line) => /pairing|captureEnded|pairingFailed|raiseCaptureWarning|clearCaptureWarning|\.leave\(/.test(line))).toEqual([]);
+    // The pure unit: its statements never read the member.
+    const unit = strip(readFileSync(resolve(here, '../ingest-pairing.ts'), 'utf8')).filter((line) => /\bleg\b/.test(line));
+    expect(unit).toEqual(['readonly leg?: RelayCameraLeg;']);
+  });
+
+  // Row R1b (decision C99): the most an absence of a camera can have been is the Core's own span PLUS the longest the relay
+  // lets a playing camera be silent before it says the loss. That number is the relay's (`relay.h`); the session holds a copy.
+  it('row R1b, a source pin: the silence bound the session adds to the most of an absence is the relay\'s own `RELAY_IO_BOUND_US`, in ms; and an absence said in a superseded attempt reaches no audit entry', () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const session = readFileSync(resolve(here, '../index.ts'), 'utf8');
+    const header = readFileSync(resolve(here, '../../../../capture-worker/src/relay/relay.h'), 'utf8');
+    const relayUs = /^#define RELAY_IO_BOUND_US (\d+)LL$/m.exec(header)?.[1];
+    const sessionMs = /^export const RELAY_PLAYING_SILENCE_BOUND_MS = ([\d_]+);$/m.exec(session)?.[1]?.replaceAll('_', '');
+    expect([relayUs, sessionMs]).toEqual(['5000000', '5000']);
+    expect(Number(relayUs) / 1000).toBe(Number(sessionMs));
+    expect(header).toContain('playing                 RELAY_IO_BOUND_US without a COMPLETE PICTURE, else CAMERA_STALLED');
+    // The writer is called at two places: the re-open of the loss that is open, and the end of the capture - there only for the attempt in force.
+    const lines = session.split('\n').map((line) => line.trim());
+    expect(lines.filter((line) => line.startsWith('recordVideoAbsence(of, open,'))).toHaveLength(2);
+    const atEnd = lines.findIndex((line) => line.startsWith("recordVideoAbsence(of, open, { ended: 'NOT_RE_OPENED'"));
+    expect(lines.slice(atEnd - 6, atEnd)).toContain('if (open.attempt !== inForce) continue;');
+    const again = lines.findIndex((line) => line.startsWith('function cameraOpenAgain('));
+    const body = lines.slice(again, lines.findIndex((line, index) => index > again && line.startsWith('function ')));
+    expect(body.filter((line) => !line.startsWith('//') && !line.startsWith('*') && /recordVideoAbsence|audit\.append/.test(line))).toEqual([]);
+  });
+});

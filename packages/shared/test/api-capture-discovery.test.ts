@@ -31,6 +31,19 @@ import {
   CAPTURE_AUDIO_CARD_TEXT_PATTERN,
   CAPTURE_AUDIO_SAMPLE_BITS,
   CAPTURE_AUDIO_USB_ID_PATTERN,
+  CAPTURE_AUDIO_USB_PORT_PATTERN,
+  CAPTURE_AUDIO_USB_SERIAL_PATTERN,
+  CAPTURE_DEVICE_TEST_EXAMPLES,
+  CAPTURE_DEVICE_TEST_OPERATIONS,
+  CAPTURE_DEVICE_TEST_PATH,
+  CAPTURE_DEVICE_TEST_REFUSAL_SENTENCES,
+  CAPTURE_DEVICE_TEST_SCHEMAS,
+  CAPTURE_DEVICE_TEST_AUDIT_PROFILES_MAX,
+  CAPTURE_DEVICE_TEST_NOT_READY_SENTENCE,
+  CaptureConnectionTestReason,
+  CaptureDeviceTestUnreachableReason,
+  CaptureDeviceConnectionTestSchema,
+  captureDeviceConnectionTestedDetails,
   CAPTURE_CANDIDATE_ID_PATTERN,
   CAPTURE_CANDIDATE_TEXT_MAX_LENGTH,
   CAPTURE_CONNECTION_TEST_FAILURE_WINDOW_MS,
@@ -40,7 +53,21 @@ import {
   CAPTURE_CONNECTION_TEST_TIMEOUT_MS,
   CAPTURE_CONNECTION_TEST_VALIDITY_MS,
   CAPTURE_CREDENTIAL_ACCESS,
+  CAPTURE_CAMERA_DEVICE_ID_PATTERN,
+  CAPTURE_DEVICE_ADDRESS_CONFIRM_PATH,
+  CAPTURE_DEVICE_CONFIRMED_ADDRESS_MAX_LENGTH,
+  CAPTURE_DEVICE_CONFIRMED_ADDRESS_PATTERN,
   CAPTURE_DEVICE_UNREACHABLE_REASONS,
+  CAPTURE_READDRESS_ADDRESS_NOT_ALLOWED_SENTENCE,
+  CAPTURE_READDRESS_AUDIT_REASON,
+  CAPTURE_READDRESS_EXAMPLES,
+  CAPTURE_READDRESS_OPERATIONS,
+  CAPTURE_READDRESS_REFUSAL_SENTENCES,
+  CAPTURE_READDRESS_SCHEMAS,
+  CREDENTIAL_CARRYING_OPERATIONS,
+  CaptureDeviceAddressConfirmRequestSchema,
+  CaptureDeviceAddressConfirmationSchema,
+  CaptureReaddressReason,
   CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED,
   CAPTURE_DISCOVERY_MAX_CANDIDATES,
   CAPTURE_DISCOVERY_MAX_PER_HOUR,
@@ -127,24 +154,32 @@ describe('the registry: operations 93 to 97 as C3 §2.6 writes them', () => {
       [97, 'rescanCaptureInputs', 'post', '/api/v1/capture/inputs/rescan', 'Device', 'simulated', 'CAPTURE_CONFIG', [], 'CAPTURE_DISCOVERY_SEARCHED', 'ACCESS_DENIED'],
     ]);
     // They were the last five entries of the table, in number order; task 4 row 63 appends the two
-    // sound-card operations 98-99 after them, so their place moves by two.
-    expect(CORE_API_OPERATIONS.slice(-7, -2).map((operation) => operation.operationId)).toEqual(rows.map((row) => row[1]));
+    // sound-card operations 98-99 after them, and row 194 operation 100. Their place is stated from the
+    // start of the table now (entries 93 to 97), so that a later operation does not move it.
+    expect(CORE_API_OPERATIONS.slice(92, 97).map((operation) => operation.operationId)).toEqual(rows.map((row) => row[1]));
     // The adoption also writes the verification row and, with a credential, the credential fact.
     expect(findCoreApiOperation('adoptCaptureCandidate')?.audit.also).toEqual(['CAPTURE_CONNECTION_TESTED', 'CAPTURE_CREDENTIAL_SET']);
   });
 
-  it('M4-PIN-1 (shared half): 99 operations, 36 GET, 63 POST, offline 33, 77 audit types, 40 error codes (unchanged), 6 access conditions', () => {
+  it('M4-PIN-1 (shared half): 110 operations, 39 GET, 71 POST, offline 44, 83 audit types, 40 error codes (unchanged), 6 access conditions', () => {
     // Task 4 row 63: + the two sound-card operations 98-99 (97 -> 99, POST 61 -> 63, offline 31 -> 33).
+    // Task 4 row 194: + the confirmed re-address, operation 100 (99 -> 100, POST 63 -> 64, offline 33 -> 34).
     const all = listCoreApiOperations(CoreApiScope.ALL);
-    expect([all.length, all.filter((operation) => operation.method === 'get').length, all.filter((operation) => operation.method === 'post').length]).toEqual([99, 36, 63]);
-    expect(listCoreApiOperations(CoreApiScope.OFFLINE)).toHaveLength(33);
-    expect(Object.values(AuditType)).toHaveLength(77);
+    expect([all.length, all.filter((operation) => operation.method === 'get').length, all.filter((operation) => operation.method === 'post').length]).toEqual([110, 39, 71]);
+    // Task 4 row 102: + the seven commissioning operations 101-107 (100 -> 107, GET 36 -> 39, POST 64 -> 68, offline 34 -> 41).
+    // Task 4 row V3: + the stored-credential connection test, operation 108 (107 -> 108, POST 68 -> 69, offline 41 -> 42);
+    // + the four audit types of the third vocabulary step (78 -> 82).
+    // Task 4 row 116: + the acceptance of the installation and its revocation, operations 109-110
+    // (108 -> 110, POST 69 -> 71, offline 42 -> 44); no audit type (the two exist since row 19).
+    expect(listCoreApiOperations(CoreApiScope.OFFLINE)).toHaveLength(44);
+    // Task 4 row R1b (decision C99): + CAPTURE_VIDEO_ABSENT_IN_SESSION (82 -> 83); no operation.
+    expect(Object.values(AuditType)).toHaveLength(83);
     expect(API_ERROR_CODES).toHaveLength(40);
     expect(Object.values(CoreApiAccessCondition)).toHaveLength(6);
     const document = createOpenApiDocument({ scope: 'all' });
-    expect(Object.values(document.paths).flatMap((item) => Object.keys(item))).toHaveLength(99);
+    expect(Object.values(document.paths).flatMap((item) => Object.keys(item))).toHaveLength(110);
     // Must FAIL when the registry and the document differ by one operation: a registry without the last one.
-    expect(all.slice(0, -1)).toHaveLength(98);
+    expect(all.slice(0, -1)).toHaveLength(109);
   });
 
   it('the documented statuses are those of C3 §2.6; 429 and 503 are the envelope-level answers, named by their reason in the text', () => {
@@ -202,14 +237,30 @@ describe('who may call (R-9 AC-12; D80(2), D80(3))', () => {
     for (const operation of CAPTURE_DISCOVERY_OPERATIONS) expect(describeCoreApiAccess(operation.access), operation.operationId).toBe('CAPTURE_CONFIG');
   });
 
-  it('the three operations whose body carries a camera credential are web console only: 89, 95 and 96; so are the two sound-card operations 98 and 99, and no other', () => {
+  it('the three operations whose body carries a camera credential are web console only: 89, 95 and 96; so are the two sound-card operations 98 and 99 and the re-address 100, and no other', () => {
     const everyWebOnly = CORE_API_OPERATIONS.filter((operation) => (operation.access.conditions ?? []).includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION));
     // Task 4 row 63 (design addendum 4.2, "Role"): 98 and 99 are web console only by that ruling;
     // their bodies hold no credential, so the credential rule below is held for the first three.
-    const AUDIO_CARD_IDS = ['searchCaptureAudioCards', 'registerCaptureAudioInput'];
-    expect(everyWebOnly.map((operation) => operation.operationId)).toEqual(['setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate', ...AUDIO_CARD_IDS]);
+    // Task 4 row 194 (row 97's DD-2, confirmed by C47 (29)): operation 100 has the access of 96;
+    // its body holds no credential either (the stored one stays with the device).
+    // Task 4 row 102 (decision U10; design F-4.2 DR-8): the seven commissioning operations 101-107 are
+    // web console only on their OWN permission; ONE of them, `setCameraNetwork`, carries a credential -
+    // the fourth credential-carrying operation, typed for one job and never stored (C1, C7).
+    const COMMISSIONING_IDS = ['getCaptureNetworkConfig', 'updateCaptureNetworkConfig', 'scanFactoryCameras', 'getHostAlias', 'removeHostAlias', 'setCameraNetwork', 'getCameraNetworkJob'];
+    // Task 4 row V3 (row 146; C58): operation 108 tests a REGISTERED camera with its STORED credential.
+    // It has the access of 95 and NO body, so it carries no credential: it is not a fifth member of
+    // `CREDENTIAL_CARRYING_OPERATIONS`.
+    // Task 4 row 116 (WP-26b; decision U10): the acceptance of the installation and its revocation
+    // (109, 110) are web console only on the commissioning permission; neither body holds a credential.
+    const ACCEPTANCE_IDS = ['acceptInstallation', 'revokeInstallationAcceptance'];
+    const AUDIO_CARD_IDS = ['searchCaptureAudioCards', 'registerCaptureAudioInput', 'confirmCaptureDeviceAddress', ...COMMISSIONING_IDS.filter((id) => id !== 'setCameraNetwork'), 'testCaptureDeviceConnection', ...ACCEPTANCE_IDS];
+    expect(everyWebOnly.map((operation) => operation.operationId)).toEqual([
+      'setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate', 'searchCaptureAudioCards', 'registerCaptureAudioInput', 'confirmCaptureDeviceAddress', ...COMMISSIONING_IDS, 'testCaptureDeviceConnection', ...ACCEPTANCE_IDS,
+    ]);
+    expect(findCoreApiOperation('testCaptureDeviceConnection')?.requestBody).toBeUndefined();
     expect(CAPTURE_AUDIO_CARD_ACCESS).toEqual(CAPTURE_CREDENTIAL_ACCESS);
     const webOnly = everyWebOnly.filter((operation) => !AUDIO_CARD_IDS.includes(operation.operationId));
+    expect(webOnly.map((operation) => operation.operationId)).toEqual([...CREDENTIAL_CARRYING_OPERATIONS]);
     expect(CAPTURE_CREDENTIAL_ACCESS).toEqual({ kind: 'PERMISSION', permission: 'CAPTURE_CONFIG', conditions: ['WEB_CONSOLE_SESSION'] });
     expect(WEB_CONSOLE_ONLY_REASON).toBe('WEB_CONSOLE_ONLY');
     // Exactly the operations whose request schema holds a `credential` pair, or IS one.
@@ -553,7 +604,7 @@ describe('the audit details (C3 §5.2; M4-AUD-1: exact keys, no values)', () => 
 // addendum AD-07): the contract of operations 98-99, the listing of the sound cards and the
 // registration of one input. The contract only: no Core route answers them yet.
 describe('task 4 row 63: operations 98 and 99, the sound cards and the registration of an input', () => {
-  it('number, id, method, path, tag, mode, access, conditions and audit; they are the last two entries of the table', () => {
+  it('number, id, method, path, tag, mode, access, conditions and audit; they are entries 98 and 99 of the table', () => {
     const rows = CAPTURE_AUDIO_CARD_OPERATIONS.map((operation) => [
       numberOf(operation.source),
       operation.operationId,
@@ -570,7 +621,7 @@ describe('task 4 row 63: operations 98 and 99, the sound cards and the registrat
       [98, 'searchCaptureAudioCards', 'post', '/api/v1/capture/audio-cards/search', 'Device', 'simulated', 'CAPTURE_CONFIG', ['WEB_CONSOLE_SESSION'], 'CAPTURE_DISCOVERY_SEARCHED', 'ACCESS_DENIED'],
       [99, 'registerCaptureAudioInput', 'post', '/api/v1/capture/audio-cards/inputs', 'Device', 'simulated', 'CAPTURE_CONFIG', ['WEB_CONSOLE_SESSION'], 'CAPTURE_AUDIO_INPUT_CHANGED', 'ACCESS_DENIED'],
     ]);
-    expect(CORE_API_OPERATIONS.slice(-2).map((operation) => operation.operationId)).toEqual(rows.map((row) => row[1]));
+    expect(CORE_API_OPERATIONS.slice(97, 99).map((operation) => operation.operationId)).toEqual(rows.map((row) => row[1]));
     expect(Object.keys(CAPTURE_AUDIO_CARD_SCHEMAS)).toEqual(['CaptureAudioCard', 'CaptureAudioCardSearch', 'CaptureAudioInputRegisterRequest', 'CaptureAudioInputRegistration']);
     // The audit types and the third search scope exist since row 19 and the integration pass I-1.
     expect(AUDIT_TYPE_CATEGORY[AuditType.CAPTURE_AUDIO_INPUT_CHANGED]).toBe('DEVICE');
@@ -657,8 +708,16 @@ describe('task 4 row 63: operations 98 and 99, the sound cards and the registrat
     expect([whole('sampleBits', [16, 24, 32]), whole('sampleBits', []), whole('sampleBits', [8]), whole('sampleBits', ['S24_3LE']), whole('sampleBits', [16, 16, 24, 32])]).toEqual([true, true, false, false, false]);
     expect(whole('registered', [{ inputNumber: 1, deviceId: 'MIC-03' }])).toBe(true);
     expect([whole('registered', [{ inputNumber: 0, deviceId: 'MIC-03' }]), whole('registered', [{ inputNumber: 1, deviceId: 'mic 3' }]), whole('registered', [{ inputNumber: 1, deviceId: 'MIC-03', product: 'x' }])]).toEqual([false, false, false]);
-    // A strict object: no member beyond the seven.
-    expect(Object.keys(CaptureAudioCardSchema.shape)).toEqual(['cardId', 'deviceIndex', 'usbId', 'product', 'channelCount', 'sampleBits', 'registered']);
+    // A strict object: no member beyond the nine (seven, and since row V3 the serial and the port of a USB card; rows 199 / 200, C56).
+    expect(Object.keys(CaptureAudioCardSchema.shape)).toEqual(['cardId', 'deviceIndex', 'usbId', 'usbSerial', 'usbPort', 'product', 'channelCount', 'sampleBits', 'registered']);
+    // The two are OPTIONAL and NULLABLE (an answer without them is what it was: the simulator's), and
+    // each is held to the closed form of its column: letters, digits and `: . _ -`, 1 to 64.
+    for (const member of ['usbSerial', 'usbPort']) {
+      expect([whole(member, undefined), whole(member, null), whole(member, 'A1B2-C3.d4_e5:6'), whole(member, '0000:00:14.0-2.1'), whole(member, 'x'.repeat(64))], member).toEqual([true, true, true, true, true]);
+      for (const refused of ['', 'x'.repeat(65), 'SN 123', 'serial/1', '../x', 'a\u0000', 'sériel', '<b>', 'a,b', 12]) expect(whole(member, refused), `${member} ${JSON.stringify(refused)}`).toBe(false);
+    }
+    expect(CAPTURE_AUDIO_USB_SERIAL_PATTERN.source).toBe('^[A-Za-z0-9:._-]{1,64}$');
+    expect(CAPTURE_AUDIO_USB_PORT_PATTERN.source).toBe(CAPTURE_AUDIO_USB_SERIAL_PATTERN.source);
     expect(whole('path', '/dev/snd/pcmC1D0c')).toBe(false);
     // The list is capped, and the cap is what `truncated` speaks of.
     const many = (length: number) => ({ searchedAt: 0, cards: Array.from({ length }, () => card), truncated: false });
@@ -720,5 +779,275 @@ describe('task 4 row 63: operations 98 and 99, the sound cards and the registrat
     // Each call builds a new list: a caller that changes its copy changes no other answer.
     expect(simCaptureAudioCards()).not.toBe(cards);
     expect(simCaptureAudioCards()).toEqual(cards);
+  });
+});
+
+// Task 4 (blueprint row 194, WP-12; finding of rows 97 and 98; decisions U12 A7, C47 (29)): the
+// contract of operation 100, the operator-confirmed re-address of a registered camera. The contract
+// only: no Core route answers it yet (rows 196, 197).
+describe('task 4 row 194: operation 100, the operator-confirmed re-address of a registered camera', () => {
+  const operation = CAPTURE_READDRESS_OPERATIONS[0];
+  const CONFIRMATION = { deviceId: 'CAM-01', candidateId: 'CND-4F2A91C0D377', address: '192.168.10.21' };
+
+  it('number, id, method, path, tag, mode, access, conditions and audit; it is entry 100 of the table', () => {
+    expect(CAPTURE_READDRESS_OPERATIONS).toHaveLength(1);
+    expect([
+      numberOf(operation.source),
+      operation.operationId,
+      operation.method,
+      operation.path,
+      operation.tag,
+      operation.mode,
+      describeCoreApiAccess(operation.access),
+      [...operation.access.conditions],
+      operation.audit.success,
+      operation.audit.denial,
+    ]).toEqual([100, 'confirmCaptureDeviceAddress', 'post', '/api/v1/capture/devices/address/confirm', 'Device', 'simulated', 'CAPTURE_CONFIG', ['WEB_CONSOLE_SESSION'], 'CAPTURE_DEVICE_ADDRESS_CHANGED', 'ACCESS_DENIED']);
+    expect(CAPTURE_DEVICE_ADDRESS_CONFIRM_PATH).toBe(operation.path);
+    expect(CORE_API_OPERATIONS[99]?.operationId).toBe('confirmCaptureDeviceAddress');
+    // The access of operation 96 (row 97's DD-2): the same object, not a look-alike.
+    expect(operation.access).toEqual(CAPTURE_CREDENTIAL_ACCESS);
+    expect(findCoreApiOperation('adoptCaptureCandidate')?.access).toEqual(operation.access);
+    expect(Object.keys(CAPTURE_READDRESS_SCHEMAS)).toEqual(['CaptureDeviceAddressConfirmRequest', 'CaptureDeviceAddressConfirmation']);
+    // The audit type exists since row 19: no vocabulary step was needed for this operation.
+    expect(AUDIT_TYPE_CATEGORY[AuditType.CAPTURE_DEVICE_ADDRESS_CHANGED]).toBe('DEVICE');
+    expect(CAPTURE_READDRESS_AUDIT_REASON).toBe('OPERATOR_CONFIRMED');
+    // TECHNICIAN and SUPERVISOR hold the permission; nobody else.
+    expect(Object.values(OperatorRole).filter((role) => (ROLE_PERMISSIONS[role] as readonly string[]).includes(Permission.CAPTURE_CONFIG)).sort()).toEqual(['SUPERVISOR', 'TECHNICIAN']);
+  });
+
+  it('the documented statuses; the simulator never sends the success; 503 is envelope-level and named in the text', () => {
+    const found = findCoreApiOperation('confirmCaptureDeviceAddress')!;
+    expect(listCoreApiResponseStatuses(found)).toEqual([200, 400, 401, 403, 404, 409, 422]);
+    expect(listCoreApiResponseStatuses(found, CoreApiScope.OFFLINE)).toEqual([400, 401, 403, 404, 409, 422]);
+    expect([found.requestBody, found.query, found.pathParam]).toEqual([{ schema: 'CaptureDeviceAddressConfirmRequest', required: true }, undefined, undefined]);
+    expect(found.description).toContain('`503 NOT_READY`');
+    expect(found.description).toContain(CaptureDiscoveryReason.DISCOVERY_NOT_READY);
+    expect(found.description).toContain('CAPTURE_CONFIG_LOCKED');
+    expect(found.description).toContain(CaptureDiscoveryReason.DISCOVERY_ADDRESS_NOT_ALLOWED);
+    expect(found.description).toContain('never follows such a camera by itself');
+    expect(found.description).toContain('changes no state');
+    expect(validateCoreApiResponse('confirmCaptureDeviceAddress', 503, { error: { code: 'NOT_READY', message: 'Not ready.', details: { reason: 'DISCOVERY_NOT_READY' } } })).toEqual({ ok: true });
+    // Every 409 reason is named in the text and in the 409 answer, has a sentence, and equals the server's code.
+    const reasons = Object.values(CaptureReaddressReason);
+    expect(reasons).toEqual([
+      'READDRESS_NOT_THE_REGISTERED_CAMERA', 'READDRESS_IDENTITY_CONFLICT', 'READDRESS_CONFIRMATION_MISMATCH',
+      'READDRESS_ADDRESS_UNCHANGED', 'READDRESS_ADDRESS_TAKEN', 'READDRESS_STORED_ADDRESS_UNREADABLE',
+    ]);
+    expect(Object.keys(CAPTURE_READDRESS_REFUSAL_SENTENCES)).toEqual(reasons);
+    for (const reason of reasons) {
+      expect(found.description, reason).toContain(reason);
+      expect(found.responses[409]?.description, reason).toContain(reason);
+      const sentence = CAPTURE_READDRESS_REFUSAL_SENTENCES[reason];
+      expect(sentence.length, reason).toBeGreaterThan(10);
+      // A sentence never quotes an address.
+      expect(sentence, reason).not.toMatch(/\d+\.\d+/);
+      expect(validateCoreApiResponse('confirmCaptureDeviceAddress', 409, { error: { code: 'INVALID_STATE', message: sentence, details: { reason } } })).toEqual({ ok: true });
+    }
+    expect(CAPTURE_READDRESS_ADDRESS_NOT_ALLOWED_SENTENCE).not.toMatch(/\d+\.\d+/);
+  });
+
+  it('the body: three members, all required, no other; an address outside the form of row 94 is refused', () => {
+    const schema = CaptureDeviceAddressConfirmRequestSchema;
+    expect(schema.safeParse(CONFIRMATION).success).toBe(true);
+    expect(schema.safeParse({ ...CONFIRMATION, address: '192.168.10.21:8080' }).success).toBe(true);
+    for (const missing of ['deviceId', 'candidateId', 'address'] as const) {
+      const { [missing]: _dropped, ...rest } = CONFIRMATION;
+      expect(schema.safeParse(rest).success, missing).toBe(false);
+    }
+    for (const extra of ['credential', 'username', 'secret', 'port', 'url', 'reason', 'host', 'force']) {
+      expect(schema.safeParse({ ...CONFIRMATION, [extra]: 'x' }).success, extra).toBe(false);
+    }
+    // The host part is exactly the strict dotted quad of operation 93's typed address.
+    const quads = ['192.168.10.21', '10.0.0.1', '172.16.5.4', '127.0.0.1', '8.8.8.8', '255.255.255.255', '0.0.0.0'];
+    for (const address of quads) {
+      expect(CAPTURE_DISCOVERY_TYPED_ADDRESS_PATTERN.test(address), address).toBe(true);
+      expect(schema.safeParse({ ...CONFIRMATION, address }).success, address).toBe(true);
+    }
+    const outside = [
+      '', ' ', 'camera-1.local', 'localhost', '192.168.10', '192.168.10.21.5', '192.168.10.256', '192.168.010.21', '0x7f.0.0.1', '2130706433',
+      '192.168.10.21/24', ' 192.168.10.21', '192.168.10.21 ', 'fe80::1', '::ffff:192.168.10.21', '[::1]:80',
+      'http://192.168.10.21', 'http://192.168.10.21/onvif/device_service', 'rtsp://192.168.10.21:554/stream1', 'admin:pass@192.168.10.21', '192.168.10.21/path',
+    ];
+    for (const address of outside) {
+      // Whatever the typed-address form refuses, this body refuses too ...
+      expect(CAPTURE_DISCOVERY_TYPED_ADDRESS_PATTERN.test(address), address).toBe(false);
+      expect(schema.safeParse({ ...CONFIRMATION, address }).success, address).toBe(false);
+    }
+    // ... and the one addition is a port from 1 to 65535 without a leading zero.
+    for (const port of ['1', '80', '554', '8080', '65535']) expect(schema.safeParse({ ...CONFIRMATION, address: `192.168.10.21:${port}` }).success, port).toBe(true);
+    for (const port of ['', '0', '080', '65536', '99999', '8a', '-1', '80:80', '80/']) expect(schema.safeParse({ ...CONFIRMATION, address: `192.168.10.21:${port}` }).success, port).toBe(false);
+    // The strict quad with the port stripped is the only thing the pattern adds to: nothing looser.
+    for (const address of [...quads, '192.168.10.21:8080']) expect(CAPTURE_DISCOVERY_TYPED_ADDRESS_PATTERN.test(address.replace(/:\d+$/, '')), address).toBe(true);
+    expect(CAPTURE_DEVICE_CONFIRMED_ADDRESS_MAX_LENGTH).toBe('255.255.255.255:65535'.length);
+    expect(CAPTURE_DEVICE_CONFIRMED_ADDRESS_PATTERN.test('255.255.255.255:65535')).toBe(true);
+    // The device is a camera of the registry, the candidate an id of a search: never a microphone, an address or a name.
+    for (const deviceId of ['MIC-01', 'POE-SWITCH', 'CAM-1', 'cam-01', 'CAM-01 ', '192.168.10.21', '']) expect(schema.safeParse({ ...CONFIRMATION, deviceId }).success, deviceId).toBe(false);
+    for (const deviceId of ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-117']) expect(CAPTURE_CAMERA_DEVICE_ID_PATTERN.test(deviceId), deviceId).toBe(true);
+    for (const candidateId of ['CAM-01', '192.168.10.21', 'CND-1', '']) expect(schema.safeParse({ ...CONFIRMATION, candidateId }).success, candidateId).toBe(false);
+    expect(CAPTURE_CANDIDATE_ID_PATTERN.test(CONFIRMATION.candidateId)).toBe(true);
+  });
+
+  it('the examples parse, carry no credential, and the answer holds the confirmed address', () => {
+    const examples = CAPTURE_READDRESS_EXAMPLES.confirmCaptureDeviceAddress!;
+    expect(CORE_API_EXAMPLES.confirmCaptureDeviceAddress).toBe(examples);
+    for (const example of Object.values(examples.request ?? {})) expect(CaptureDeviceAddressConfirmRequestSchema.safeParse(example.value).success).toBe(true);
+    const answers = Object.values(examples.responses[200] ?? {});
+    expect(answers).toHaveLength(1);
+    for (const example of answers) {
+      const parsed = CaptureDeviceAddressConfirmationSchema.safeParse(example.value);
+      expect(parsed.success).toBe(true);
+      if (parsed.success) expect([parsed.data.deviceId, parsed.data.device.id, parsed.data.device.kind]).toEqual(['CAM-01', 'CAM-01', 'CAMERA']);
+    }
+    expect(Object.keys(examples.responses).map(Number)).toEqual([200, 400, 401, 403, 404, 409, 422]);
+    expect(Object.keys(examples.responses[409] ?? {})).toHaveLength(1 + Object.values(CaptureReaddressReason).length);
+    expect(JSON.stringify(examples)).not.toMatch(/"(username|secret|password|credential)"/);
+  });
+});
+
+describe('task 4 row V3: operation 108, the connection test of a registered camera with its stored credential (row 146; C58)', () => {
+  const found = findCoreApiOperation('testCaptureDeviceConnection')!;
+
+  it('number, id, method, path, tag, mode, access, conditions and audit: the access of operation 95, and BOTH audit rows of a test', () => {
+    const operation = CAPTURE_DEVICE_TEST_OPERATIONS[0];
+    expect(CAPTURE_DEVICE_TEST_OPERATIONS).toHaveLength(1);
+    expect([
+      numberOf(operation.source),
+      operation.operationId,
+      operation.method,
+      operation.path,
+      operation.tag,
+      operation.mode,
+      describeCoreApiAccess(operation.access),
+      [...operation.access.conditions],
+      operation.audit.success,
+      operation.audit.denial,
+    ]).toEqual([108, 'testCaptureDeviceConnection', 'post', '/api/v1/capture/devices/{id}/test', 'Device', 'simulated', 'CAPTURE_CONFIG', ['WEB_CONSOLE_SESSION'], 'CAPTURE_DEVICE_CONNECTION_TESTED', 'ACCESS_DENIED']);
+    expect(CAPTURE_DEVICE_TEST_PATH).toBe(operation.path);
+    expect(CORE_API_OPERATIONS[107]?.operationId).toBe('testCaptureDeviceConnection');
+    // It was the last entry until blueprint row 116 appended operations 109 and 110 after it.
+    expect(CORE_API_OPERATIONS.at(-3)?.operationId).toBe('testCaptureDeviceConnection');
+    // The permission as the candidate test has it: the same access object as operation 95.
+    expect(operation.access).toEqual(CAPTURE_CREDENTIAL_ACCESS);
+    expect(findCoreApiOperation('testCaptureCandidateConnection')?.access).toEqual(operation.access);
+    // The reveal of the stored credential is the reader's own row; the outcome is the operation's.
+    expect(found.audit.also).toEqual(['CAPTURE_CREDENTIAL_REVEALED']);
+    expect([AUDIT_TYPE_CATEGORY[AuditType.CAPTURE_DEVICE_CONNECTION_TESTED], AUDIT_TYPE_CATEGORY[AuditType.CAPTURE_CONNECTION_TESTED]]).toEqual(['SECURITY', 'SECURITY']);
+    expect(Object.keys(CAPTURE_DEVICE_TEST_SCHEMAS)).toEqual(['CaptureDeviceConnectionTest']);
+  });
+
+  it('NO BODY and no query: nothing can carry a credential, an address or a profile; it is not a credential-carrying operation', () => {
+    expect([found.requestBody, found.query]).toEqual([undefined, undefined]);
+    expect(found.pathParam?.name).toBe('id');
+    expect((CREDENTIAL_CARRYING_OPERATIONS as readonly string[]).includes('testCaptureDeviceConnection')).toBe(false);
+    expect(CAPTURE_DEVICE_TEST_EXAMPLES.testCaptureDeviceConnection?.request).toBeUndefined();
+    const document = createOpenApiDocument({ scope: 'all' });
+    const documented = document.paths['/api/v1/capture/devices/{id}/test']?.post as { requestBody?: unknown; parameters?: { name: string; in: string }[] } | undefined;
+    expect(documented).toBeDefined();
+    expect(documented?.requestBody).toBeUndefined();
+    expect((documented?.parameters ?? []).map((parameter) => `${parameter.in} ${parameter.name}`)).toEqual(['path id']);
+  });
+
+  it('the documented statuses; 429 and 503 are envelope-level and named in the text, the lock-out guard as the ONE guard of operation 95', () => {
+    expect(listCoreApiResponseStatuses(found)).toEqual([200, 401, 403, 404, 409, 422]);
+    // Row V4 (decision C75 (2)): the in-app simulator answers what a Core in simulated capture answers - the
+    // envelope's `503 DISCOVERY_NOT_READY` - so the outcome (200) and "no such camera" (404) are the Core server's alone.
+    expect(listCoreApiResponseStatuses(found, CoreApiScope.OFFLINE)).toEqual([401, 403, 409]);
+    expect([found.responses[200]?.services, found.responses[404]?.services]).toEqual([['dems-core-server'], ['dems-core-server']]);
+    expect(CAPTURE_DEVICE_TEST_NOT_READY_SENTENCE).toBe('The connection test of a registered camera is not ready.');
+    expect(validateCoreApiResponse('testCaptureDeviceConnection', 503, { error: { code: 'NOT_READY', message: CAPTURE_DEVICE_TEST_NOT_READY_SENTENCE, details: { reason: 'DISCOVERY_NOT_READY' } } })).toEqual({ ok: true });
+    for (const said of [
+      // Row V4: what a simulated Core and the simulator answer, and what is audited when the reader was reached and no camera asked.
+      'a Core whose capture is simulated, or that runs with development sources, always answers this', 'never a synthetic `REACHABLE`',
+      '**Refusals after the reader of the stored credential was called.**', '`unreachableReason: CREDENTIAL_NOT_READ`', '`unreachableReason: NOT_SENT`',
+      '`429 RATE_LIMITED`', '`retry-after`', CaptureDiscoveryReason.CONNECTION_TEST_RATE_LIMITED, CaptureDiscoveryReason.CONNECTION_TEST_LOCKOUT_GUARD,
+      'The lock-out guard is the one of operation 95', 'a typed and a stored one together',
+      '`503 NOT_READY`', CaptureDiscoveryReason.DISCOVERY_NOT_READY, CaptureDiscoveryReason.CREDENTIAL_STORE_NOT_READY,
+      'CAPTURE_CONFIG_LOCKED', 'WEB_CONSOLE_ONLY', '**No body.**', 'destination rule', 'CAPTURE_CREDENTIAL_REVEALED', 'CAPTURE_DEVICE_CONNECTION_TESTED',
+      'synthetic', 'changes no state',
+    ]) {
+      expect(found.description, said).toContain(said);
+    }
+    expect(validateCoreApiResponse('testCaptureDeviceConnection', 429, { error: { code: 'RATE_LIMITED', message: 'Too many connection tests. Try again later.', details: { reason: 'CONNECTION_TEST_LOCKOUT_GUARD' } } })).toEqual({ ok: true });
+    expect(validateCoreApiResponse('testCaptureDeviceConnection', 503, { error: { code: 'NOT_READY', message: 'Not ready.', details: { reason: 'CREDENTIAL_STORE_NOT_READY' } } })).toEqual({ ok: true });
+    // Every 409 reason is named in the text and in the 409 answer, has the server's sentence, and parses.
+    const reasons = Object.keys(CAPTURE_DEVICE_TEST_REFUSAL_SENTENCES) as (keyof typeof CAPTURE_DEVICE_TEST_REFUSAL_SENTENCES)[];
+    expect(reasons).toEqual(['CANDIDATE_NOT_TESTABLE', 'CREDENTIAL_REQUIRED', 'CONNECTION_TEST_IN_PROGRESS']);
+    for (const reason of reasons) {
+      expect(found.description, reason).toContain(reason);
+      expect(found.responses[409]?.description, reason).toContain(reason);
+      const sentence = CAPTURE_DEVICE_TEST_REFUSAL_SENTENCES[reason];
+      // A sentence never quotes an address or a device id.
+      expect(sentence, reason).not.toMatch(/\d+\.\d+|CAM-/);
+      expect(validateCoreApiResponse('testCaptureDeviceConnection', 409, { error: { code: 'INVALID_STATE', message: sentence, details: { reason } } })).toEqual({ ok: true });
+    }
+  });
+
+  it('the answer: the members of operation 95 with the device in the place of the candidate; `authenticated` is always true; nothing else fits', () => {
+    const schema = CaptureDeviceConnectionTestSchema;
+    expect(Object.keys(schema.shape)).toEqual(['deviceId', 'outcome', 'authenticated', 'testedAt', 'usableProfileCount', 'failedAttemptsRemaining', 'reason']);
+    const answer = { deviceId: 'CAM-01', outcome: 'REACHABLE', authenticated: true, testedAt: 1_790_000_000_000, usableProfileCount: 1, failedAttemptsRemaining: 2 };
+    expect(schema.safeParse(answer).success).toBe(true);
+    for (const outcome of Object.values(CaptureConnectionOutcome)) expect(schema.safeParse({ ...answer, outcome }).success, outcome).toBe(true);
+    expect(schema.safeParse({ ...answer, outcome: 'AUTHENTICATION_FAILED', reason: 'SCHEME_NOT_ALLOWED' }).success).toBe(true);
+    // What the server's function answers (`AdoptedCameraTest` of adopted-test.ts) is exactly this shape.
+    expect(schema.safeParse({ ...answer, outcome: 'AUTHENTICATION_FAILED', usableProfileCount: 0, failedAttemptsRemaining: 0 }).success).toBe(true);
+    expect(schema.safeParse({ ...answer, authenticated: false }).success).toBe(false);
+    for (const deviceId of ['MIC-01', 'POE-SWITCH', 'CND-000000000001', '192.168.10.21', 'cam-01', '']) expect(schema.safeParse({ ...answer, deviceId }).success, deviceId).toBe(false);
+    for (const extra of ['credential', 'username', 'secret', 'password', 'host', 'address', 'url', 'endpointRef', 'candidateId', 'error', 'model', 'profiles']) {
+      expect(schema.safeParse({ ...answer, [extra]: 'x' }).success, extra).toBe(false);
+    }
+    for (const [member, value] of [['outcome', 'OK'], ['reason', 'WRONG_PASSWORD'], ['usableProfileCount', -1], ['failedAttemptsRemaining', 1.5], ['testedAt', '2026-10-13']] as const) {
+      expect(schema.safeParse({ ...answer, [member]: value }).success, member).toBe(false);
+    }
+  });
+
+  it('the audit details of the outcome: a registry id, closed codes and a flag - no key for a credential, an address or announced text', () => {
+    const facts = { deviceId: 'CAM-01', outcome: CaptureConnectionOutcome.REACHABLE, adapter: 'ONVIF_RTSP', sourceClass: CaptureSourceClass.PRODUCTION };
+    expect(captureDeviceConnectionTestedDetails(facts)).toEqual({ deviceId: 'CAM-01', outcome: 'REACHABLE', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', operationId: 'testCaptureDeviceConnection' });
+    expect(
+      captureDeviceConnectionTestedDetails({ ...facts, outcome: CaptureConnectionOutcome.AUTHENTICATION_FAILED, guardTripped: true, reason: 'SCHEME_NOT_ALLOWED', permission: 'CAPTURE_CONFIG' }),
+    ).toEqual({ deviceId: 'CAM-01', outcome: 'AUTHENTICATION_FAILED', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', operationId: 'testCaptureDeviceConnection', guardTripped: true, reason: 'SCHEME_NOT_ALLOWED', permission: 'CAPTURE_CONFIG' });
+    // A flag that is false, a null reason and a null permission are left out: the row holds what happened.
+    expect(Object.keys(captureDeviceConnectionTestedDetails({ ...facts, guardTripped: false, reason: null, permission: null }))).toEqual(['deviceId', 'outcome', 'adapter', 'sourceClass', 'operationId']);
+    // Whatever else a caller hands in is not copied: the function names its keys one by one.
+    const stray = { ...facts, host: '192.168.10.21', endpointRef: 'urn:uuid:0', username: 'USERNAME', secret: 'SECRET', model: 'x' } as unknown as Parameters<typeof captureDeviceConnectionTestedDetails>[0];
+    expect(JSON.stringify(captureDeviceConnectionTestedDetails(stray))).not.toMatch(/192\.168|urn:uuid|USERNAME|SECRET|"model"/);
+  });
+
+  it('row V4 (C75 (1)): the outcome row can say that NO camera was asked - UNREACHABLE with a closed reason - and states the count of usable profiles when one was', () => {
+    expect(Object.values(CaptureDeviceTestUnreachableReason)).toEqual(['CREDENTIAL_NOT_READ', 'NOT_SENT']);
+    expect(CAPTURE_DEVICE_TEST_AUDIT_PROFILES_MAX).toBe(16);
+    const facts = { deviceId: 'CAM-01', adapter: 'ONVIF_RTSP', sourceClass: CaptureSourceClass.PRODUCTION };
+    const row = { deviceId: 'CAM-01', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', operationId: 'testCaptureDeviceConnection' };
+    // The reader was reached and nothing was sent: UNREACHABLE and why. No count - no camera was asked.
+    for (const unreachableReason of Object.values(CaptureDeviceTestUnreachableReason)) {
+      expect(captureDeviceConnectionTestedDetails({ ...facts, outcome: CaptureConnectionOutcome.UNREACHABLE, unreachableReason, usableProfileCount: 0 })).toEqual({ ...row, outcome: 'UNREACHABLE', unreachableReason });
+    }
+    // A camera that was asked and did not answer: a plain UNREACHABLE, with its count.
+    expect(captureDeviceConnectionTestedDetails({ ...facts, outcome: CaptureConnectionOutcome.UNREACHABLE, usableProfileCount: 0 })).toEqual({ ...row, outcome: 'UNREACHABLE', usableProfileCount: 0 });
+    // The reason belongs to UNREACHABLE alone: for any other outcome it is dropped, the count stays.
+    for (const outcome of Object.values(CaptureConnectionOutcome).filter((value) => value !== CaptureConnectionOutcome.UNREACHABLE)) {
+      expect(captureDeviceConnectionTestedDetails({ ...facts, outcome, unreachableReason: 'NOT_SENT', usableProfileCount: 2 }), outcome).toEqual({ ...row, outcome, usableProfileCount: 2 });
+    }
+    // A count outside 0..16, a fraction and null are left out, never cut to fit.
+    for (const usableProfileCount of [-1, 17, 1.5, Number.NaN, null]) {
+      expect(Object.keys(captureDeviceConnectionTestedDetails({ ...facts, outcome: CaptureConnectionOutcome.REACHABLE, usableProfileCount })), String(usableProfileCount)).toEqual(['deviceId', 'outcome', 'adapter', 'sourceClass', 'operationId']);
+    }
+    // The reason is AUDIT ONLY: the answer of the operation has no such member, and its own `reason` keeps its one code.
+    expect(Object.keys(CaptureDeviceConnectionTestSchema.shape)).not.toContain('unreachableReason');
+    expect(Object.values(CaptureConnectionTestReason)).toEqual(['SCHEME_NOT_ALLOWED']);
+  });
+
+  it('the examples parse, carry no credential and no address, and name both kinds of result', () => {
+    const examples = CAPTURE_DEVICE_TEST_EXAMPLES.testCaptureDeviceConnection!;
+    expect(CORE_API_EXAMPLES.testCaptureDeviceConnection).toBe(examples);
+    expect(examples.pathParams).toEqual({ id: 'CAM-01' });
+    const answers = Object.values(examples.responses[200] ?? {});
+    expect(answers.map((example) => (example.value as { outcome: string }).outcome)).toEqual(['REACHABLE', 'AUTHENTICATION_FAILED']);
+    for (const example of answers) expect(CaptureDeviceConnectionTestSchema.safeParse(example.value).success).toBe(true);
+    expect(Object.keys(examples.responses).map(Number)).toEqual([200, 401, 403, 404, 409, 422]);
+    expect(Object.keys(examples.responses[409] ?? {})).toHaveLength(1 + Object.keys(CAPTURE_DEVICE_TEST_REFUSAL_SENTENCES).length);
+    expect(JSON.stringify(examples)).not.toMatch(/"(username|secret|password|credential|host|address)"|\d+\.\d+\.\d+\.\d+/);
   });
 });

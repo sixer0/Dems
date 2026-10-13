@@ -40,7 +40,7 @@ describe('db:seed on a freshly migrated database', () => {
 
     expect(out[0]).toBe(`db:seed: ${db.name} on PostgreSQL 18.4 as dems_owner`);
     expect(out[1]).toBe('db:seed: dataset as of 2026-10-01T03:00:00.000Z (1790823600000); scenario idle; seed 20261001; epoch 0');
-    expect(out[2]).toMatch(/^db:seed: seeded in \d+ ms \(dataset and hashes \d+ ms, transaction \d+ ms\); the database now holds 312 row\(s\) in 24 of 47 table\(s\)$/);
+    expect(out[2]).toMatch(/^db:seed: seeded in \d+ ms \(dataset and hashes \d+ ms, transaction \d+ ms\); the database now holds 312 row\(s\) in 24 of 48 table\(s\)$/);
     for (const [table, rows] of Object.entries(EXPECTED_SEED_COUNTS)) expect(out).toContain(`  ${table.padEnd(24)} ${rows}`);
     expect(out.at(-2)).toMatch(/^audit head       seq 82; hash [0-9a-f]{16}\.\.\.$/);
     expect(out.at(-1)).toBe(`db:seed: OK: ${db.name} is seeded. State: npm run db:status -w @dems/core-server -- --database ${db.name}`);

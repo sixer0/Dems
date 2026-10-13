@@ -127,7 +127,7 @@ const SOURCE_MEMBER = /^(sourceClass|sourceClasses|developmentSources|sources|ad
 describe('M7-SEC-SRC-2: no operation accepts a source class - the Core writes it from the adapter kind', () => {
   const operations = Object.entries(document.paths).flatMap(([path, methods]) => Object.entries(methods).map(([method, operation]) => ({ id: `${method.toUpperCase()} ${path}`, operation: operation as { [key: string]: Json } })));
 
-  it('no request body and no parameter of the 99 operations has a member that names a source class or the development flag', () => {
+  it('no request body and no parameter of the 110 operations has a member that names a source class or the development flag', () => {
     expect(operations).toHaveLength(CORE_API_OPERATIONS.length);
     const accepting: string[] = [];
     let bodies = 0;

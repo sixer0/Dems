@@ -58,3 +58,17 @@ R-6	sink.c	static int planted_r63_removefile(const char *p) { return removefile(
 F-10	ingest.c	static int planted_r63_muxer(AVFormatContext **c) { return avformat_alloc_output_context2(c, NULL, "segment", NULL); }
 F-10	ingest.c	static int planted_r63_named(AVFormatContext **c, const char *file) { return avformat_alloc_output_context2(c, NULL, "mp4", file); }
 R-6	sink.c	static const char planted_r63_trigraph[] = "what??!";
+# Task 4 rows 58 / 142, BR-01: a second way to a camera's bytes that the announce gate does not stand on; another proof switch of the gate.
+BR-01	ingest.c	static int planted_br01_a(AVFormatContext *c) { return avformat_find_stream_info(c, NULL); }
+BR-01	capture_worker.c	static int planted_br01_b(AVFormatContext **c, const char *u) { return avformat_open_input(c, u, NULL, NULL); }
+BR-01	ingest.c	static int planted_br01_c(Cam *c) { return announce_gate_passed(&c->announce); }
+BR-01	sink.c	static int planted_br01_d(AVFormatContext *c, AVPacket *k) { return av_read_frame(c, k); }
+BR-01	ingest.c	#define DEMS_PROOF_ANNOUNCE_OFF 1
+# Task 4 rows 175 / 142, BR-04 (1): a log level set by a call, and through a pointer.
+BR-04	ingest.c	static void planted_br04_a(void) { av_log_set_level(56); }
+BR-04	capture_worker.c	static void (*planted_br04_b)(int) = av_log_set_level;
+# Task 4 row 178 (requests of rows 175 and 182), BR-04 (2)-(3): a word of a refusal a second time, and a frame reason handed over as a text.
+BR-04	ingest.c	static const char *planted_br04_c(void) { return "INGEST_ANNOUNCE_NOT_SEEN"; }
+BR-04	sink.c	static const char *planted_br04_d(void) { return "CAMERA_ANNOUNCE_NOT_MATCHED"; }
+BR-04	audio.c	static const char *planted_br04_e(void) { return "CAMERA_NO_PICTURE"; }
+BR-04	ingest.c	static void planted_br04_f(Cam *c, const char *text) { ingest_over_as(c, "ingest", "INGEST_ENDED", text, 0); }

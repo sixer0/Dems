@@ -29,6 +29,7 @@ import {
 import { SearchCamerasButton } from './camera-search-context'
 import { DevicesPanel } from './panel'
 import { reportDevicesError } from './report'
+import { slotRefusalWording, type SlotSourceKind } from './slot-refusal'
 import { DeviceSourceBadge, LocalMicrophoneLimit } from './source-badge'
 import { micTransportShown, sourceDeviceText } from './own-core-words'
 import { isDevelopmentSource, LOCAL_DEVICE_ADAPTER, useRealCapture, useRealCaptureCore } from './source-class'
@@ -53,7 +54,7 @@ function useBlockReason(): (block: SelectorEditBlock | null) => string | null {
  * What a refused or unanswered command says (ux §2.2 step 6, §2.5). Returns the sentence that stays
  * with the field, or `null` when the notice was a toast (the presenter's, or the page's own).
  */
-function useFailureNotice(): (failure: SelectorFailure) => string | null {
+function useFailureNotice(kind: SlotSourceKind): (failure: SelectorFailure) => string | null {
   const { t } = useTranslation()
   const presentCoreError = useCoreErrorPresenter()
   return (failure) => {
@@ -62,9 +63,15 @@ function useFailureNotice(): (failure: SelectorFailure) => string | null {
         // OD-10: an explained state, never an error toast; the Core wrote no audit row.
         return t('devices.selector.locked')
       case 'DEVELOPMENT_ONLY':
-        return t('devices.selector.developmentOnly')
-      case 'INVALID':
+      case 'INVALID': {
+        // Task 4 row 234: every `422` says its reason (`slot-refusal.ts`), by the word of `details.reason`.
+        const wording = slotRefusalWording(failure.reason)
+        if (wording.kind === 'DEVELOPMENT_ONLY') return t('devices.selector.developmentOnly')
+        // ONE SOURCE (decision C80): the shared group, with the noun of the refused row; a sentence without `{{source}}` ignores it.
+        if (wording.kind === 'SHARED') return t(`common.captureSlotRefusal.${wording.reason}`, { source: t(`common.captureSlotSource.${kind}`) })
+        if (wording.kind === 'CODE') return `${t('devices.selector.invalid')} ${t('web.captureSlotRefusal.code', { code: wording.code })}`
         return t('devices.selector.invalid')
+      }
       case 'UNKNOWN_DEVICE':
         return t('devices.selector.unknownDevice')
       case 'NOT_LOST':
@@ -136,7 +143,7 @@ function CameraSourceRow({
 }: RowShared & { slot: VideoTrackId; line: CaptureCameraLine | null; cameras: readonly CaptureDevice[]; poe: (busy: boolean) => PoeCycleGate }) {
   const { t } = useTranslation()
   const reasonOf = useBlockReason()
-  const notice = useFailureNotice()
+  const notice = useFailureNotice('CAMERA')
   const save = usePendingControl()
   const cycle = usePendingControl()
   // The element refs, taken apart from the controls (the pressed button carries `aria-busy`).
@@ -341,7 +348,7 @@ function MicRow({
 }: RowShared & { slot: CaptureMicLine['role']; line: CaptureMicLine | null; device: CaptureDevice | undefined; mics: readonly CaptureDevice[]; lines: readonly CaptureMicLine[] }) {
   const { t } = useTranslation()
   const reasonOf = useBlockReason()
-  const notice = useFailureNotice()
+  const notice = useFailureNotice('MIC')
   const control = usePendingControl()
   const { ref: controlRef } = control
   const save = usePendingControl()

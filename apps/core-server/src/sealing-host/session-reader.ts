@@ -15,7 +15,11 @@
  *                                  are computed from these rows by row 83's builder, never from
  *                                  the device registry or a flag at sealing time (ev §E.6);
  *   `session_audio_intervals`      the audio-source intervals in FILE time;
- *   `audit_log`                    the rows of the session, as `audit-session-extract.jsonl`;
+ *   `audit_log`                    the rows of the session, as `audit-session-extract.jsonl`; and,
+ *                                  out of the same rows, the worker restarts that cost audio
+ *                                  (`audioRestartGapsOf`, task 4 row 191c: manifest fields 129-132)
+ *                                  and the absences of a camera inside the session
+ *                                  (`videoAbsencesOf`, task 4 row R1b: manifest fields 134-138);
  *   the session's STT snapshot     the five members of manifest field 123 (R-8): the row of
  *                                  `session_stt_config` the session start wrote in its own unit
  *                                  (row 71c; dbc-6 MR-T1);
@@ -56,7 +60,17 @@
  * This file opens no file and no key (the camera file's sample entry comes through a port). A read that cannot be completed throws: the seal does not
  * start on half a session record.
  */
-import type { ManifestAudioIntervalInput, SessionCaptureSourceRow } from '@dems/shared/evidence-package';
+import {
+  MANIFEST_AUDIO_ABSENT_MAX_MS,
+  MANIFEST_HOST_PROFILE_NOT_ASKED_PLATFORMS,
+  MANIFEST_VIDEO_ABSENCE_ENDS,
+  MANIFEST_VIDEO_ABSENT_MAX_MS,
+  type ManifestAudioIntervalInput,
+  type ManifestAudioRestartGap,
+  type ManifestHostProfileNotAsked,
+  type ManifestVideoAbsence,
+  type SessionCaptureSourceRow,
+} from '@dems/shared/evidence-package';
 import type { QueryResultRow } from 'pg';
 import { SealingError, SealingFailure, type SealSessionFacts, type SealSessionReader, type SealTrackFacts, type SttConfigSnapshot } from '../sealing';
 import { CORE_SERVER_VERSION } from '../version';
@@ -196,6 +210,13 @@ export interface SealSessionReaderOptions {
    * `NOT_CONFIGURED`. The stored device record of the state is NOT read for them.
    */
   readonly identity?: { readonly deviceId: string | null; readonly name: string | null };
+  /**
+   * Task 4 row P1 (decision U21 (2)): manifest field 133. The platform of this Core when it is a PRODUCTION Core
+   * whose boot checks did NOT ask its host profile (macOS), read at every seal; null when the profile was asked
+   * (Linux) or none is asked by design (development). Null, and the option being absent: the facts carry no such
+   * member and the manifest is the one of before.
+   */
+  readonly hostProfileNotAsked?: () => ManifestHostProfileNotAsked | null;
   /** Told once per read of a session that has NO STT snapshot. */
   readonly onNoSttSnapshot?: (sessionId: string) => void;
   /** Told once per read whose capture facts are of ANOTHER session of that ID (they are not used). */
@@ -330,6 +351,120 @@ const oneOf = <Value extends string>(values: readonly Value[], value: unknown, o
 const text = (value: string | null | undefined): string => (typeof value === 'string' && value.length > 0 ? value : STAND_INS.unknownText);
 const whole = (value: unknown): number => Number(value);
 
+/** The audit type the session writes once per worker restart that cost audio (task 4 row 191b; the vocabulary's name). */
+export const AUDIO_ABSENT_ON_RESTART_AUDIT_TYPE = 'CAPTURE_AUDIO_ABSENT_ON_RESTART';
+
+/**
+ * Task 4 row 191c (decisions C73, C83): THE RESTARTS THAT COST AUDIO, AS THE SESSION STORED THEM.
+ *
+ * The source is the session's own audit entries of the type above, out of the rows this reader
+ * already reads for `audit-session-extract.jsonl` (`READ_SEAL_AUDIT_ROWS`: no second statement, no
+ * other table, never the error log). One record per entry, in the order of the chain: the two
+ * attempt numbers and the two measured bounds. The audit entry LEAVES A BOUND OUT when its instant
+ * was not known; the manifest states that bound as null ("the gap exists and was not measured").
+ *
+ * No entry = an empty list = the manifest carries no `audio.absentOnRestart`.
+ *
+ * An entry whose numbers are not of the form its writer enforces (`core/audit-details.ts`) is not
+ * skipped and not repaired: the read throws, and the seal does not start on a session record that
+ * would sign fewer restarts, or other numbers, than the audit chain holds.
+ */
+/**
+ * Task 4 row P1 (decisions U21 (2), C66 (1)): manifest field 133 out of what the boot checks of THIS Core found
+ * of its host profile (`CaptureBootOutcome.hostProfile`; undefined in a development Core, where none is asked
+ * by design, and before the boot step passed).
+ *
+ *   undefined, or asked        null - the manifest carries no member (development; production on Linux)
+ *   not asked, on `darwin`     the member, with the platform
+ *   not asked, anywhere else   THROWS: the manifest has no word for that platform, and a seal that left the
+ *                              member out would sign "nothing to state" for a Core whose host nobody checked.
+ *                              Not reachable while the two lists agree (a test holds them equal).
+ */
+export function hostProfileNotAskedOf(found: { readonly platform: string; readonly asked: boolean } | undefined): ManifestHostProfileNotAsked | null {
+  if (found === undefined || found.asked) return null;
+  const platform = MANIFEST_HOST_PROFILE_NOT_ASKED_PLATFORMS.find((word) => word === found.platform);
+  if (platform === undefined) throw new Error('the host profile of this Core was not asked on a platform the manifest cannot state');
+  return { platform };
+}
+
+export function audioRestartGapsOf(auditRows: readonly Record<string, unknown>[]): ManifestAudioRestartGap[] {
+  const attempt = (value: unknown): number | null => (typeof value === 'number' && Number.isSafeInteger(value) && value >= 1 ? value : null);
+  const bound = (value: unknown): number | null | undefined =>
+    value === undefined || value === null ? null : typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= MANIFEST_AUDIO_ABSENT_MAX_MS ? value : undefined;
+  return auditRows
+    .filter((row) => row.type === AUDIO_ABSENT_ON_RESTART_AUDIT_TYPE)
+    .map((row) => {
+      const details = typeof row.details === 'object' && row.details !== null ? (row.details as Record<string, unknown>) : {};
+      const earlierAttempt = attempt(details.earlierAttempt);
+      const laterAttempt = attempt(details.laterAttempt);
+      const absentAtLeastMs = bound(details.audioAbsentAtLeastMs);
+      const absentAtMostMs = bound(details.audioAbsentAtMostMs);
+      if (earlierAttempt === null || laterAttempt === null || absentAtLeastMs === undefined || absentAtMostMs === undefined) {
+        throw new Error(`the audit entry ${String(row.id)} of a worker restart does not hold the numbers its type requires; the seal does not state the restart from it`);
+      }
+      return { earlierAttempt, laterAttempt, absentAtLeastMs, absentAtMostMs };
+    });
+}
+
+/** The audit type the session writes once per absence of a camera inside the session, when the absence ends (task 4 row R1b; the vocabulary's name). */
+export const VIDEO_ABSENT_IN_SESSION_AUDIT_TYPE = 'CAPTURE_VIDEO_ABSENT_IN_SESSION';
+
+/** One absence of a camera as the session stored it: the track and the device its entry names, and the record the manifest states. */
+export interface StoredVideoAbsence {
+  readonly trackId: string;
+  readonly deviceId: string;
+  readonly absence: ManifestVideoAbsence;
+}
+
+/**
+ * Task 4 row R1b (decision C99; finding F3-01): THE ABSENCES OF THE SESSION'S CAMERAS INSIDE THE
+ * SESSION, AS THE SESSION STORED THEM.
+ *
+ * The source is the session's own audit entries of the type above, out of the rows this reader
+ * already reads for `audit-session-extract.jsonl` (`READ_SEAL_AUDIT_ROWS`: no second statement, no
+ * other table, never the error log) - the rule of `audioRestartGapsOf`. One record per entry, in
+ * the order of the chain. The entry LEAVES A BOUND OUT when its instant was not known; the manifest
+ * states that bound as null ("the absence exists and was not measured").
+ *
+ * ONLY THE ATTEMPT WHOSE MEDIA IS IN THE FILES. A worker is replaced only while nothing is durable,
+ * so the camera files of a session begin with its LAST worker. An absence that ended inside an
+ * earlier attempt has its entry in the chain (it was true when it was written) and is NOT stated
+ * in the manifest: nothing of that attempt's timeline is in any file. The last attempt is the
+ * highest number the session's stored entries name - these entries and those of the worker
+ * restarts (`laterAttempt`).
+ *
+ * No entry = an empty list = no track of the manifest carries `absentInSession`.
+ *
+ * An entry that is not of the form its writer enforces (`core/audit-details.ts`), or whose row
+ * names another device than its details, is not skipped and not repaired: the read throws, and
+ * the seal does not start on a session record that would sign fewer absences, or other numbers,
+ * than the audit chain holds.
+ */
+export function videoAbsencesOf(auditRows: readonly Record<string, unknown>[]): StoredVideoAbsence[] {
+  const counted = (value: unknown): number | null => (typeof value === 'number' && Number.isSafeInteger(value) && value >= 1 ? value : null);
+  const bound = (value: unknown): number | null | undefined =>
+    value === undefined || value === null ? null : typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= MANIFEST_VIDEO_ABSENT_MAX_MS ? value : undefined;
+  const stored = auditRows
+    .filter((row) => row.type === VIDEO_ABSENT_IN_SESSION_AUDIT_TYPE)
+    .map((row) => {
+      const details = typeof row.details === 'object' && row.details !== null ? (row.details as Record<string, unknown>) : {};
+      const trackId = TRACKS.find((track) => track === details.trackId) ?? null;
+      const deviceId = typeof details.deviceId === 'string' && details.deviceId.length > 0 && details.deviceId === row.device_id ? details.deviceId : null;
+      const attempt = counted(details.attempt);
+      const loss = counted(details.loss);
+      const absentAtLeastMs = bound(details.videoAbsentAtLeastMs);
+      const absentAtMostMs = bound(details.videoAbsentAtMostMs);
+      const ended = MANIFEST_VIDEO_ABSENCE_ENDS.find((word) => word === details.ended) ?? null;
+      if (trackId === null || deviceId === null || attempt === null || loss === null || absentAtLeastMs === undefined || absentAtMostMs === undefined || ended === null) {
+        throw new Error(`the audit entry ${String(row.id)} of a camera absent inside the session does not hold what its type requires; the seal does not state the absence from it`);
+      }
+      return { trackId, deviceId, absence: { attempt, loss, absentAtLeastMs, absentAtMostMs, ended } };
+    });
+  if (stored.length === 0) return [];
+  const last = Math.max(...stored.map((entry) => entry.absence.attempt), ...audioRestartGapsOf(auditRows).map((gap) => gap.laterAttempt));
+  return stored.filter((entry) => entry.absence.attempt === last);
+}
+
 export function createSealSessionReader(options: SealSessionReaderOptions): SealSessionReader {
   return {
     async read(sessionId: string): Promise<SealSessionFacts | null> {
@@ -353,18 +488,34 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
         options.onForeignCaptureFacts?.(sessionId);
         captureFacts = null;
       }
-      const audioIntervals: ManifestAudioIntervalInput[] = (
+      // Task 4 row 191b (decision C57): THE INTERVALS OF A WORKER THAT WAS REPLACED. A capture worker is
+      // replaced only while nothing is durable, and the session then states the later worker's
+      // interval by a NEW row of reason START (`capture-session`, `recordAudioGap`). Every row BEFORE
+      // the last START row is therefore of a worker whose audio is in NO file: its stored media times
+      // count in a file that does not exist. Fields 58, 59 are FILE time of the sealed file, so such
+      // a row is stated with the span 0..0 - it is in the manifest (the audio source began more than
+      // once: no continuity is claimed), and it claims no part of the file. The rows themselves are
+      // read as they are, by the same statement; nothing is left out and no number is changed.
+      const intervalRows = (
         await db.query<{ seq: number; mic_device_id: string; role: string; from_media_ms: string | number; to_media_ms: string | number | null; reason: string; switched_by: string | null }>(READ_SEAL_AUDIO_INTERVALS, [sessionId])
-      ).rows.map((row) => ({
+      ).rows;
+      const lastStart = intervalRows.reduce((last, row, index) => (row.reason === 'START' ? index : last), -1);
+      const audioIntervals: ManifestAudioIntervalInput[] = intervalRows.map((row, index) => ({
         seq: whole(row.seq),
         micDeviceId: row.mic_device_id,
         role: row.role === 'STANDBY' ? 'STANDBY' : 'PRIMARY',
-        fromMs: whole(row.from_media_ms),
-        toMs: row.to_media_ms === null ? null : whole(row.to_media_ms),
+        fromMs: index < lastStart ? 0 : whole(row.from_media_ms),
+        toMs: index < lastStart ? 0 : row.to_media_ms === null ? null : whole(row.to_media_ms),
         reason: oneOf(INTERVAL_REASONS, row.reason, 'START'),
         switchedBy: row.switched_by,
       }));
       const auditRows = (await db.query<Record<string, unknown>>(READ_SEAL_AUDIT_ROWS, [sessionId])).rows;
+      // Task 4 row 191c: the restarts that cost audio, from the same rows (fields 129-132 of the SIGNED manifest).
+      const audioRestartGaps = audioRestartGapsOf(auditRows);
+      // Task 4 row R1b: the absences of the cameras inside the session, from the same rows (fields 134-138 of the SIGNED manifest).
+      const videoAbsences = videoAbsencesOf(auditRows);
+      // Task 4 row P1: what this Core's boot checks found of its host profile (field 133 of the SIGNED manifest), asked once per read.
+      const hostProfileNotAsked = options.hostProfileNotAsked?.() ?? null;
       // One JSON object per line, members in a fixed order: the rows as the chain holds them.
       const auditExtract = Buffer.from(
         auditRows
@@ -417,6 +568,7 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
         // The device of a slot is the START record's; the snapshot's line is the fallback of a session that has no rows (the builder then refuses it).
         const line = session.captureConfig?.cameras.find((camera) => camera.trackId === trackId);
         const deviceId = sourceRows.find((row) => row.slot === trackId)?.deviceId ?? line?.deviceId ?? STAND_INS.unknownText;
+        const absences = videoAbsences.filter((entry) => entry.trackId === trackId).map((entry) => entry.absence);
         const camera = state.cameras.find((entry) => entry.id === trackId);
         const device = state.captureDevices.devices.find((entry) => entry.id === deviceId);
         // Joined on the track AND the device of the start record (D72 (g)): a report of another camera is not this file's.
@@ -442,8 +594,17 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
           avOffsetMs: null,
           firstVideoSamplePts: reported?.firstVideo?.pts ?? null,
           firstVideoSampleTimescale: reported?.firstVideo?.timescale ?? null,
+          // Row R1b: no absence of this track's camera = NO member here and no key in the manifest (the track record of before, byte for byte).
+          ...(absences.length === 0 ? {} : { absentInSession: absences }),
         };
       };
+      // Row R1b: an entry that names a track with ANOTHER device than the start record of the session gave that track is no
+      // statement about this session's file: the seal does not start on it (the rule of a malformed entry).
+      for (const entry of videoAbsences) {
+        if (sourceRows.find((row) => row.slot === entry.trackId)?.deviceId !== entry.deviceId) {
+          throw new Error('an audit entry of a camera absent inside the session names a device that is not the one the session started that track with; the seal does not state the absence from it');
+        }
+      }
 
       const tracks = [track('VIDEO-01'), track('VIDEO-02')] as const;
       if (profileDifferences.length > 0) options.onProfileDiffers?.(sessionId, profileDifferences);
@@ -477,6 +638,10 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
         tracks,
         audioCodec: STAND_INS.audioCodec,
         audioIntervals,
+        // Row 191c: no restart = NO member here and no key in the manifest (the manifest of before, byte for byte).
+        ...(audioRestartGaps.length === 0 ? {} : { audioRestartGaps }),
+        // Row P1: the host profile of this production Core was not asked = the member; asked, or never asked by design = NO member.
+        ...(hostProfileNotAsked === null ? {} : { hostProfileNotAsked }),
         sourceRows,
         sttSnapshot,
         auditExtract,

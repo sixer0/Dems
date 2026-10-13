@@ -98,6 +98,35 @@ describe('T-CR-2 (b), AC-B-86: no secret outside the connection file', () => {
     expect(suspicious).toEqual([]);
   });
 
+  it('SR-9: the script `operator:set-password` runs exactly its entry file, with no further argument', () => {
+    // WHY THE ENTRY IS NAMED `cli/operator-set.ts` (task 4 row 215; decisions C64, C71 (b), C72;
+    // security review 221 section 7 (b); code review 222 F-08). The rule above reads the COMMAND
+    // TEXT of every script and refuses a word that looks like a secret in it. The logic of this
+    // command is `cli/operator-set-password-command.ts`; an entry named after it would put that
+    // word into the script line, so the entry carries the shorter name. Ruled in C72: THE CODE IS
+    // RIGHT, AND THE RULE IS WIDE ON PURPOSE - its purpose is that no script line carries a secret,
+    // a file name is not one, and the rule is not narrowed for it. So the name is not an oversight:
+    // do not "repair" it to match the other commands (`X.ts` / `X-command.ts`), do not add an
+    // exception to the rule above, and do not widen the script. The command is pinned here BY NAME:
+    // the script is these two words and nothing else - no option, no variable, no value. Everything
+    // the command needs is typed after `--` by the person, and a password only at the terminal.
+    const manifest = server.find((file) => file.path === 'package.json');
+    const scripts = (JSON.parse(manifest?.text ?? '{}') as { scripts?: Record<string, string> }).scripts ?? {};
+    const entry = ['cli', 'operator-set.ts'].join('/');
+    const pinned = (given: Record<string, string>): boolean => given['operator:set-password'] === `tsx ${entry}`;
+    expect(scripts['operator:set-password']).toBe(`tsx ${entry}`);
+    expect(pinned(scripts)).toBe(true);
+    expect(server.map((file) => file.path)).toContain(entry);
+    // The one script of its family, and the only script that names this entry.
+    expect(Object.keys(scripts).filter((name) => name.startsWith('operator:'))).toEqual(['operator:set-password']);
+    expect(Object.entries(scripts).filter(([, command]) => command.includes(entry)).map(([name]) => name)).toEqual(['operator:set-password']);
+    // Positive control: the pin is exact. An argument, a variable before the program or the other file name is not this command.
+    for (const other of [`tsx ${entry} --all-demo`, `DEMS_X=1 tsx ${entry}`, `tsx ${entry.replace('.ts', '-command.ts')}`, `node ${entry}`]) {
+      expect(pinned({ ...scripts, 'operator:set-password': other }), other).toBe(false);
+    }
+    expect(pinned({})).toBe(false);
+  });
+
   it('the server runtime starts no child process but the capture worker, so no secret can become a process argument', () => {
     // ONE file may import the process module: the process channel of the capture supervisor
     // (task 3 row 57; capture spec §G G-R2, SEC35-25). Its own guard,

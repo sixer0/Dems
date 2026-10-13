@@ -49,7 +49,7 @@
  * - `mode` keeps its two values: `simulated` for the nine design-book operations (the in-app
  *   simulator can answer them), `live` for every other one (only a service answers it).
  *   `listCoreApiOperations('offline')` is what a client can call without the Core server (the
- *   ten above); `'all'` is every entry: 99 operations, 36 GET and 63 POST.
+ *   ten above); `'all'` is every entry: 110 operations, 39 GET and 71 POST.
  * - `CORE_API_OPERATION_TABLE` (`operation-table.ts`) is the same table with literal types;
  *   `CORE_API_OPERATIONS` is the widened view.
  */
@@ -87,7 +87,15 @@ import {
 import { ADMINISTRATION_OPERATIONS, ADMINISTRATION_SCHEMAS } from './administration';
 import { ALERT_OPERATIONS, ALERT_SCHEMAS } from './alerts';
 import { CAPTURE_AUDIO_CARD_OPERATIONS, CAPTURE_AUDIO_CARD_SCHEMAS } from './capture-audio-cards';
-import { CAPTURE_DISCOVERY_OPERATIONS, CAPTURE_DISCOVERY_SCHEMAS } from './capture-discovery';
+import { CAPTURE_COMMISSIONING_OPERATIONS, CAPTURE_COMMISSIONING_SCHEMAS } from './capture-commissioning';
+import {
+  CAPTURE_DEVICE_TEST_OPERATIONS,
+  CAPTURE_DEVICE_TEST_SCHEMAS,
+  CAPTURE_DISCOVERY_OPERATIONS,
+  CAPTURE_DISCOVERY_SCHEMAS,
+  CAPTURE_READDRESS_OPERATIONS,
+  CAPTURE_READDRESS_SCHEMAS,
+} from './capture-discovery';
 import { ALLOW_HEADER_NAME, API_BASE_PATH, EXPORT_REASON_MAX_LENGTH, HEALTH_PATH, RETRY_AFTER_HEADER_NAME } from './constants';
 import {
   AUTHENTICATED_ACCESS,
@@ -112,6 +120,7 @@ import {
 import { EVIDENCE_OPERATIONS, EVIDENCE_SCHEMAS, TRANSCRIPT_MEDIA_OPERATIONS, TRANSCRIPT_MEDIA_SCHEMAS } from './evidence';
 import { HealthResponseSchema } from './health';
 import { IDENTITY_OPERATIONS, IDENTITY_SCHEMAS } from './identity';
+import { INSTALLATION_ACCEPTANCE_OPERATIONS, INSTALLATION_ACCEPTANCE_SCHEMAS } from './installation-acceptance';
 import { NETWORK_TIME_OPERATIONS, NETWORK_TIME_SCHEMAS } from './network-time';
 import { EXPORT_DENIAL_NOTE, INVALID_INPUT, NOT_SIGNED_IN, forbidden } from './operation-parts';
 import { PAIRING_OPERATIONS, PAIRING_SCHEMAS } from './pairing';
@@ -415,7 +424,8 @@ export const VideoTrackStatusSchema = z
     resolution: CameraStreamFactSchemas.resolution,
     fps: CameraStreamFactSchemas.fps,
     codec: CameraStreamFactSchemas.codec,
-    bitrateMbps: z.number().nonnegative(),
+    // Pass I-9b (request line of row W4): nullable, as in the `cameras` slice.
+    bitrateMbps: z.number().nonnegative().nullable().describe('Megabits per second; null when no telemetry states a bitrate for the track. Never a default.'),
   })
   .describe('One video track (VIDEO-01 or VIDEO-02), its source device and its stream state (schema v2).');
 export type VideoTrackStatus = z.output<typeof VideoTrackStatusSchema>;
@@ -695,6 +705,14 @@ export const CORE_API_SCHEMAS = {
   ...CAPTURE_DISCOVERY_SCHEMAS,
   // Task 4 (blueprint row 63, WP-07b; design addendum 4.2): the four schemas of operations 98-99.
   ...CAPTURE_AUDIO_CARD_SCHEMAS,
+  // Task 4 (blueprint row 194, WP-12): the two schemas of operation 100.
+  ...CAPTURE_READDRESS_SCHEMAS,
+  // Task 4 (blueprint row 102, WP-23b): the nine schemas of operations 101-107.
+  ...CAPTURE_COMMISSIONING_SCHEMAS,
+  // Task 4 (row V3, the third contract step; blueprint row 146): the one schema of operation 108.
+  ...CAPTURE_DEVICE_TEST_SCHEMAS,
+  // Task 4 (blueprint row 116, WP-26b): the five schemas of operations 109-110.
+  ...INSTALLATION_ACCEPTANCE_SCHEMAS,
 } as const;
 export type CoreApiSchemaName = keyof typeof CORE_API_SCHEMAS;
 
@@ -1108,6 +1126,19 @@ const OPERATION_TABLE = [
   // Task 4 (blueprint row 63, WP-07b; design addendum 4.2): the listing of the sound cards and the
   // registration of one input. 97 + 2 = 99 operations, 36 GET / 63 POST.
   ...CAPTURE_AUDIO_CARD_OPERATIONS, // 98-99
+  // Task 4 (blueprint row 194, WP-12; finding of rows 97 and 98): the operator-confirmed re-address
+  // of a registered camera. 99 + 1 = 100 operations, 36 GET / 64 POST.
+  ...CAPTURE_READDRESS_OPERATIONS, // 100
+  // Task 4 (blueprint row 102, WP-23b): the commissioning functions of the camera network - the
+  // configuration read and write, the scan, the alias state and its removal, the set-network job and
+  // its state. 100 + 7 = 107 operations, 39 GET / 68 POST.
+  ...CAPTURE_COMMISSIONING_OPERATIONS, // 101-107
+  // Task 4 (row V3, the third contract step; blueprint row 146; decisions C58, C62): the connection
+  // test of a registered camera with its stored credential. 107 + 1 = 108 operations, 39 GET / 69 POST.
+  ...CAPTURE_DEVICE_TEST_OPERATIONS, // 108
+  // Task 4 (blueprint row 116, WP-26b; schema set C; decisions U11, C2): the acceptance of the
+  // installation and its revocation. 108 + 2 = 110 operations, 39 GET / 71 POST.
+  ...INSTALLATION_ACCEPTANCE_OPERATIONS, // 109-110
 ] as const satisfies readonly CoreApiRegistryOperation[];
 
 /** The type of the table with literal operation IDs and schema names (`CORE_API_OPERATION_TABLE`). */

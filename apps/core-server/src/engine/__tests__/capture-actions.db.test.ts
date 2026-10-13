@@ -19,7 +19,7 @@ import { READ_SEAL_AUDIT_ROWS } from '../../sealing-host/session-reader';
 const db = useTestDatabase({ template: 'seed' });
 // A boot in capture mode real passes the boot checks of row 61 (`capture.boot`, mounted by row 71b;
 // ruling D144): a worker program that says HELLO, a private media root and a provisioned signing
-// key. Row 61's fixture gives the three below `.data/`; the worker is a stand-in script that
+// key. Row 61's fixture gives the three (the key in a temporary directory, row 228b); the worker is a stand-in script that
 // records nothing, opens no port and reads no device.
 const realBoot = realBootFixture('r58');
 realBoot.provisionKey();

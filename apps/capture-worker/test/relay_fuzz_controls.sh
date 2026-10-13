@@ -8,7 +8,7 @@
 #
 #   sh test/relay_fuzz_controls.sh [SECONDS]      from apps/capture-worker (make relay-fuzz-controls); default 20
 #
-# Not part of `make`: 16 builds and up to 16 runs (about 2 minutes). Run it after a change to a reader of
+# Not part of `make`: 24 builds and up to 24 runs (about 3 minutes; 16 of row 186, 6 of row 42, 2 of row 143b). Run it after a change to a reader of
 # camera bytes or to test/relay_fuzz.c.
 set -u
 LIMIT=${1:-20}
@@ -51,6 +51,16 @@ run control_value_without_its_bound relay_core.c 's/if (c > RELAY_LOCATOR_CHARS)
 run base64_text_without_its_bound relay_core.c 's/if (n >= sizeof copy) return -1;//' description
 # the start message (the Core's)
 run start_message_string_without_its_bound relay_core.c 's/        if (n + 1 >= cap) return -1;$//' start
+# row 42: the attempt of the start message, the stated rate of a description, the report lines
+run attempt_without_its_digit_bound relay_core.c 's/        if (++digits > 9) return -1;/        if (++digits > 99) return -1;/' start
+run stated_rate_without_its_digit_bound relay_core.c 's/if (++digits > 4) return -1; whole/whole/' description
+run stated_rate_without_its_range relay_core.c 's/return milli >= 1 \&\& milli <= RELAY_RATE_MILLI_MAX ? milli : -1;/return milli;/' description
+run report_hex_not_held_to_its_room relay_core.c 's/ || o->n + 2 \* (size_t)length >= o->cap//' report
+run report_word_not_held_to_its_room relay_core.c 's/if (o->bad || o->n + k >= o->cap) { o->bad = 1; return; }/if (o->bad) return;/' report
+run probe_line_of_sets_that_are_not_valid relay_core.c 's/ || !relay_sets_valid(probe->codec, probe->sets)) o.bad = 1;/) o.bad = 1;/' report
+# row 143b: the source address of the start message - its range, and record mode without one
+run source_address_without_its_range relay_core.c 's/    return first >= 1 && first <= 223 && inet_pton(AF_INET, s, &address) == 1;/    return first >= 0 \&\& first <= 255 \&\& inet_pton(AF_INET, s, \&address) == 1;/' start
+run record_mode_without_a_source_address relay_core.c 's/    if (out->mode == RELAY_MODE_RECORD && !with_source) goto refused;//' start
 rm -rf "$work"
 echo "relay_fuzz controls: $found of $total planted flaws found by the fuzz build (seed 186, at most $LIMIT s each)"
 [ $bad -eq 0 ] && [ $found -eq $total ]

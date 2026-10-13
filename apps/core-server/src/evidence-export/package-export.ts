@@ -53,9 +53,9 @@ import { lstat, mkdir, open, readFile, readdir, rename, rm, rmdir, writeFile } f
 import { sep } from 'node:path';
 import { EXPORT_ID_PATTERN } from '@dems/shared/api';
 import { PackageFile, cameraFilePath, exportArchivePath, parseManifestV2, sha256Hex, type ManifestFragment, type ManifestTrack, type ManifestV2 } from '@dems/shared/evidence-package';
-import { VERIFY_MAX_LISTED_FILES, VERIFY_MAX_MANIFEST_BYTES, VERIFY_MAX_OPEN_FRAGMENT_BYTES, retainedCertificatePath, verifyPackageV2, type FragmentOpener, type PackageReader } from '@dems/shared/evidence-verify';
+import { VERIFY_MAX_LISTED_FILES, VERIFY_MAX_MANIFEST_BYTES, VERIFY_MAX_OPEN_FRAGMENT_BYTES, retainedCertificatePath, type FragmentOpener, type PackageReader } from '@dems/shared/evidence-verify';
 import { verifyEd25519, type LoadedSigner } from '../capture';
-import { corePorts, createPackageReader, type RealEvidenceItem } from '../evidence-verify';
+import { SigningKeyVerdict, createPackageReader, markedCertificatesOfPackage, verifySealedPackageUnderCoreTrust, type RealEvidenceItem } from '../evidence-verify';
 import { compositeEncoderAllowed, type CompositeEncoder, type CompositeSource } from './composite';
 import {
   COMPOSITE_ENTRY,
@@ -63,6 +63,8 @@ import {
   EXPORT_PERMISSION,
   EXPORT_REPRESENTATION,
   EXPORT_SIGNATURE_FILE,
+  EXPORT_SOURCE_KEY_STATE,
+  EXPORT_SOURCE_VERIFIED_AS,
   ExportManifestError,
   buildExportManifest,
   serializeExportManifest,
@@ -89,6 +91,13 @@ export const ExportFailureCode = {
   COMPOSITE_FAILED: 'COMPOSITE_FAILED',
   /** The package did not pass the Core's verification: it is not exported. */
   SOURCE_VERIFY_FAILED: 'SOURCE_VERIFY_FAILED',
+  /**
+   * Row V5 (C84 R-3): the package rests on a signing key MARKED COMPROMISED and is NOT the one this
+   * Core recorded at the seal (its manifest digest or the head of its transcript revisions differs):
+   * it is not exported. A package under such a key that IS the one of record is exported, and its
+   * export manifest states the mark (`sourceSigningKey`).
+   */
+  SOURCE_SIGNED_BY_COMPROMISED_KEY: 'SOURCE_SIGNED_BY_COMPROMISED_KEY',
   SOURCE_UNREADABLE: 'SOURCE_UNREADABLE',
   FRAGMENT_OPEN_FAILED: 'FRAGMENT_OPEN_FAILED',
   /** The decrypted file does not hash to the sealed plaintext hash. */
@@ -145,6 +154,13 @@ export interface ExportPorts {
   readonly signer: LoadedSigner | null;
   /** SHA-256 of the Core's own certificates, the retained ones included. */
   readonly trustedCertificateSha256: readonly string[];
+  /**
+   * Row V5 (C84 R-3): SHA-256 of the Core's certificates whose key is MARKED COMPROMISED - never in
+   * the trusted list. Absent or empty: no key is marked, and the source is verified by the one run
+   * of before. With it, a package under such a key is exported ONLY as the package the database
+   * recorded, and its export manifest states the mark.
+   */
+  readonly compromisedCertificateSha256?: readonly string[];
   /** Null: the licence gate is closed (`composite.ts`). */
   readonly composite: CompositeEncoder | null;
   /** A test reads in small chunks. */
@@ -351,21 +367,34 @@ export async function exportPackage(
 
   try {
     stopIfAborted();
-    // 2. The source verifies, with the session key, against the item's anchors.
-    const report = await verifyPackageV2(corePorts(packageDir, opener, ports.chunkBytes), {
-      plaintext: 'REQUIRED',
-      expected: {
-        evidenceId: item.evidenceId,
-        sessionId: item.sessionId,
-        manifestSha256: item.manifestSha256,
-        transcriptSha256: item.transcriptSha256,
-        revisionCount: item.revisionCount,
-        trustedCertificateSha256: ports.trustedCertificateSha256,
-      },
+    // 2. The source verifies, with the session key, against the item's anchors - by THE CORE'S OWN RULE (operation 41's
+    // function): one run under the trusted certificates and, for a package that rests on a certificate of a key MARKED
+    // COMPROMISED, the second look that passes only the package this Core recorded (row V5; C84 R-3). With no marked
+    // certificate handed in this is the one run of before, option for option.
+    const markedByCore = ports.compromisedCertificateSha256 ?? [];
+    const { report, signingKey } = await verifySealedPackageUnderCoreTrust({
+      packageDir,
+      item,
+      opener,
+      ...(ports.chunkBytes === undefined ? {} : { chunkBytes: ports.chunkBytes }),
+      trustedCertificateSha256: ports.trustedCertificateSha256,
+      compromisedCertificateSha256: markedByCore,
     });
     if (!report.ok) {
       const keyLost = report.checks.some((check) => check.findings.some((finding) => finding.code === 'SESSION_KEY_UNAVAILABLE'));
-      throw new ExportFailure(keyLost ? ExportFailureCode.SESSION_KEY_UNAVAILABLE : ExportFailureCode.SOURCE_VERIFY_FAILED);
+      // Under a marked key and NOT the digest of record: the job still fails, and says which state it met.
+      const notOfRecord = signingKey === SigningKeyVerdict.COMPROMISED_KEY_NOT_STORED_DIGEST;
+      throw new ExportFailure(keyLost ? ExportFailureCode.SESSION_KEY_UNAVAILABLE : notOfRecord ? ExportFailureCode.SOURCE_SIGNED_BY_COMPROMISED_KEY : ExportFailureCode.SOURCE_VERIFY_FAILED);
+    }
+    // UNDER A MARKED KEY, AS THE DIGEST OF RECORD: the export proceeds and its manifest - signed by the ACTIVE key - STATES the
+    // mark and names the marked certificates the package rests on. Stated or not exported: a pass under the mark whose
+    // certificates cannot be named is not exported as if nothing were to say.
+    let markedCertificates: readonly string[] = [];
+    if (signingKey !== SigningKeyVerdict.NOT_COMPROMISED) {
+      markedCertificates = await markedCertificatesOfPackage(packageDir, markedByCore);
+      if (markedCertificates.length === 0) throw new ExportFailure(ExportFailureCode.SOURCE_SIGNED_BY_COMPROMISED_KEY);
+      // The key that signs THIS export is never one of the marked ones (the signer refuses such a key itself; held here too).
+      if (markedByCore.includes(signer.certificate.sha256)) throw new ExportFailure(ExportFailureCode.SIGNER_UNAVAILABLE);
     }
     onProgress(30);
     stopIfAborted();
@@ -503,6 +532,8 @@ export async function exportPackage(
       package: { file: `${request.exportId}.zip`, hashAlgorithm: 'SHA-256', entries },
       authorization: { purpose: request.purpose, reference: request.authorizationRef, permission: EXPORT_PERMISSION },
       composite,
+      // Row V5 (C84 R-3): the export's own statement of the mark. The member is ABSENT for every package no mark touches.
+      ...(markedCertificates.length === 0 ? {} : { sourceSigningKey: { state: EXPORT_SOURCE_KEY_STATE, certificateSha256: [...markedCertificates], verifiedAs: EXPORT_SOURCE_VERIFIED_AS } }),
     });
     const signature: ExportSignature = await signExportManifest(signer.signer, signer.certificate, exportManifest, request.exportedAt, verifyEd25519);
     const manifestBytes = serializeExportManifest(exportManifest);

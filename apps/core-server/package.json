@@ -20,7 +20,11 @@
     "db:status": "tsx src/db/commands/status.ts",
     "db:generate": "drizzle-kit generate",
     "evidence:dev-key": "tsx src/sealing/dev-key-cli.ts",
-    "evidence:verify-export": "tsx cli/verify-export.ts"
+    "evidence:mark-compromised": "tsx cli/mark-compromised.ts",
+    "evidence:production-key": "tsx cli/production-key.ts",
+    "evidence:rotate-key": "tsx cli/rotate-key.ts",
+    "evidence:verify-export": "tsx cli/verify-export.ts",
+    "operator:set-password": "tsx cli/operator-set.ts"
   },
   "dependencies": {
     "@dems/capture-protocol": "*",

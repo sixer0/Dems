@@ -1,24 +1,57 @@
 /**
  * Test support of the capture boot checks (blueprint row 61; not a test file, imports no Vitest).
  *
- * A REAL fixture for a real-mode boot: a private directory below the repository's git-ignored
- * `.data/` (the system's temporary directory can be world-writable, which the path rule refuses),
- * with a media root, a provisioned evidence signing key and a STAND-IN worker program - a shell
- * script that says one `HELLO` and exits when its input ends. It records nothing, opens no port
- * and reads no device. Its version is a parameter, so that a proof build can be played.
+ * A REAL fixture for a real-mode boot, in TWO directories (task 4 row 228b; review 221 C-4, review 230 R-4):
+ *
+ *   `dataDir`      the Core's data directory: a media root and, when asked, a provisioned evidence signing
+ *                  key. A TEMPORARY directory of the operating system's temporary root, mode 0700, made by
+ *                  `mkdtemp`. NO KEY OF A TEST IS EVER WRITTEN BELOW THE REPOSITORY (a static test of
+ *                  `reserved-ids.test.ts` holds that): a folder a killed run leaves is not a place a Core
+ *                  is ever pointed at.
+ *   `programsDir`  the STAND-IN programs: shell scripts that say one `HELLO` and exit when their input
+ *                  ends. They record nothing, open no port and read no device. They lie below the
+ *                  repository's git-ignored cache folder and NOT in the temporary root, because the
+ *                  temporary root can be world-writable, which the path rule of a program refuses. No key,
+ *                  no media and no log is written there.
+ *
+ * `remove()` removes both; the test calls it in its teardown (`afterAll`), which runs after a failed case
+ * too. A fixture a test did not remove is removed when the test process ends.
  */
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, rmdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { CAPTURE_PROTOCOL_VERSION } from '@dems/capture-protocol';
 import { REPOSITORY } from '../../../../test/static/scan';
 import { provisionSigningKey } from '../../signer';
-import { CAPTURE_WORKER_VERSION, RELEASE_WORKER_VERSION, SIGNING_STORE_SUBPATH, type CaptureBootSinks } from '../checks';
+import { CAPTURE_WORKER_VERSION, RELEASE_WORKER_VERSION, ReservedInstallationId, SIGNING_STORE_SUBPATH, type CaptureBootSinks } from '../checks';
+import { SIGNING_KEY_UNIT_PREFIX } from '../index';
 
 export const FIXTURE_NOW = 1_760_000_000_000;
 
+/**
+ * The installation device id of the test configuration (`test/support/config.ts`) and of the key the fixture
+ * makes by default. It is a RESERVED id, taken from the one closed list by import (row 228b): a production
+ * Core refuses it (boot check 4b-3), so the default key of this fixture never starts one. A test that boots
+ * `REAL_PRODUCTION` states a synthetic id of its own - `realBootFixture(label, id)` and its configuration.
+ */
+export const FIXTURE_INSTALLATION_ID = ReservedInstallationId.TEST_CONFIGURATION;
+
+/** The name every temporary data directory of the fixture starts with, below the temporary root. */
+export const FIXTURE_DIRECTORY_PREFIX = 'dems-test-row61-';
+/** Where the stand-in programs of the fixtures lie: below the repository's cache folder, one folder per fixture. */
+export const FIXTURE_PROGRAMS_ROOT = resolve(REPOSITORY, '.cache', 'test-row61-programs');
+
 export interface RealBootFixture {
+  /** The Core's data directory: a temporary directory of the operating system, mode 0700. The key store lies here. */
   readonly dataDir: string;
   readonly mediaStoreDir: string;
+  /**
+   * The directory of the stand-in programs (the workers of `worker`, and what a test writes itself or hands to
+   * `testHostPrograms`): a place that passes the path rule of a program on every host. Made at the first ask.
+   */
+  readonly programsDir: string;
+  /** The installation id the key of `provisionKey()` names: the second argument of `realBootFixture`, by default the reserved test id. */
+  readonly installationId: string;
   /**
    * Writes a stand-in worker THE CORE BOOTS WITH and returns its path. Since wave H driver F (gate
    * 64 C7) the boot takes ONE version, the one this Core was built to drive, so this stand-in says
@@ -32,42 +65,117 @@ export interface RealBootFixture {
   worker(name: string, workerVersion?: string, protocolVersion?: number): string;
   /** Writes a stand-in worker that names EXACTLY `workerVersion` (any word), and returns its path. */
   workerSaying(name: string, workerVersion: string, protocolVersion?: number): string;
-  /** Creates the evidence signing key of the fixture (valid from `FIXTURE_NOW`). */
-  provisionKey(): void;
+  /**
+   * Creates the evidence signing key of the fixture (valid from `FIXTURE_NOW`). Since task 4 row 228 (boot check
+   * 4b-2) its certificate names an installation, as a production key does: the unit is `Evidence signing <id>`,
+   * by default the id of THIS fixture (`installationId`). Since row 228b the default of a fixture is the RESERVED
+   * test id, which a production Core refuses (check 4b-3): a test that boots `REAL_PRODUCTION` makes its fixture
+   * with a synthetic id of its own and configures its Core with the same one. Another id is a key of another
+   * installation; `null` is a key with the store's default subject (no installation named) - both are refused
+   * by a production boot. The key is written below `dataDir`, a temporary directory, and nowhere else.
+   */
+  provisionKey(installationId?: string | null): void;
+  /** Removes both directories. Called by the test in its teardown; safe to call twice. */
   remove(): void;
 }
 
 let serial = 0;
 
+/**
+ * The removals of the fixtures that are still there: what the END OF THE TEST PROCESS runs for a fixture no teardown
+ * removed (a file that failed while it was collected, a run that was interrupted). A test runner ends its worker
+ * processes with a termination signal, on which the `exit` event is not raised (measured, row 228b): so the signals
+ * are watched too, and after the removals the signal is raised again so that the process ends as it would have.
+ * A process that is killed outright runs nothing; what it leaves is a temporary directory, never a folder of the
+ * repository's data directory.
+ */
+const standing = new Set<() => void>();
+let endWatched = false;
+function removeStanding(): void {
+  for (const pending of [...standing]) {
+    try {
+      pending();
+    } catch {
+      // The process is ending: one removal that fails does not stop the others.
+    }
+  }
+}
+function removeAtProcessEnd(remove: () => void): void {
+  standing.add(remove);
+  if (endWatched) return;
+  endWatched = true;
+  process.once('exit', removeStanding);
+  for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
+    process.once(signal, () => {
+      removeStanding();
+      // Nobody else waits for this signal: end as the signal would have ended the process.
+      if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
+    });
+  }
+}
+
 /** A shell script that says one `HELLO` and exits when its input ends. It takes any arguments and reads none. */
-function standIn(dataDir: string, name: string, workerVersion: string, protocolVersion: number): string {
-  const path = `${dataDir}/${name}`;
+function standIn(directory: string, name: string, workerVersion: string, protocolVersion: number): string {
+  const path = `${directory}/${name}`;
   const hello = JSON.stringify({ v: CAPTURE_PROTOCOL_VERSION, type: 'HELLO', protocolVersion, workerVersion });
   writeFileSync(path, `#!/bin/sh\nprintf '%s\\n' '${hello}'\nexec /bin/cat > /dev/null\n`, { mode: 0o700 });
   chmodSync(path, 0o700);
   return path;
 }
 
-export function realBootFixture(label: string): RealBootFixture {
+/**
+ * A fixture of its own two directories. `installationId` is the id its key names (`provisionKey()`): by default
+ * the reserved test id; a test that boots `REAL_PRODUCTION` states its own synthetic one here (row 228b).
+ */
+export function realBootFixture(label: string, installationId: string = FIXTURE_INSTALLATION_ID): RealBootFixture {
   serial += 1;
-  const dataDir = resolve(REPOSITORY, '.data', `test-row61-${label}-${process.pid}-${serial}`);
-  mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  // The real path of the temporary root: the checks of a store refuse a link on the way, and on macOS the root is one.
+  const dataDir = mkdtempSync(join(realpathSync(tmpdir()), `${FIXTURE_DIRECTORY_PREFIX}${label}-${process.pid}-${serial}-`));
   chmodSync(dataDir, 0o700);
+  const programsPath = join(FIXTURE_PROGRAMS_ROOT, `${label}-${process.pid}-${serial}`);
+  let programsMade = false;
+  const programsDir = (): string => {
+    if (!programsMade) {
+      mkdirSync(programsPath, { recursive: true, mode: 0o700 });
+      chmodSync(programsPath, 0o700);
+      programsMade = true;
+    }
+    return programsPath;
+  };
+  const remove = (): void => {
+    standing.delete(remove);
+    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(programsPath, { recursive: true, force: true });
+    programsMade = false;
+    // The shared parent goes with its last fixture; another fixture's folder in it keeps it (the call then fails, and that is right).
+    try {
+      rmdirSync(FIXTURE_PROGRAMS_ROOT);
+    } catch {
+      // not empty, or already gone
+    }
+  };
+  removeAtProcessEnd(remove);
   return {
     dataDir,
     mediaStoreDir: `${dataDir}/media/sessions`,
+    get programsDir() {
+      return programsDir();
+    },
+    installationId,
     worker(name, workerVersion = CAPTURE_WORKER_VERSION, protocolVersion = CAPTURE_PROTOCOL_VERSION) {
-      return standIn(dataDir, name, RELEASE_WORKER_VERSION.test(workerVersion) ? CAPTURE_WORKER_VERSION : workerVersion, protocolVersion);
+      return standIn(programsDir(), name, RELEASE_WORKER_VERSION.test(workerVersion) ? CAPTURE_WORKER_VERSION : workerVersion, protocolVersion);
     },
     workerSaying(name, workerVersion, protocolVersion = CAPTURE_PROTOCOL_VERSION) {
-      return standIn(dataDir, name, workerVersion, protocolVersion);
+      return standIn(programsDir(), name, workerVersion, protocolVersion);
     },
-    provisionKey() {
-      provisionSigningKey({ dir: `${dataDir}/${SIGNING_STORE_SUBPATH}`, now: FIXTURE_NOW });
+    provisionKey(named = installationId) {
+      provisionSigningKey({
+        dir: `${dataDir}/${SIGNING_STORE_SUBPATH}`,
+        now: FIXTURE_NOW,
+        ...(named === null ? {} : { subject: { organizationalUnit: `${SIGNING_KEY_UNIT_PREFIX} ${named}` } }),
+      });
     },
-    remove() {
-      rmSync(dataDir, { recursive: true, force: true });
-    },
+    remove,
   };
 }
 

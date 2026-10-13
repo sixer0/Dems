@@ -52,6 +52,7 @@ import {
   type CaptureDeviceStatus,
   type CaptureTelemetryInput,
   type CaptureWarningInput,
+  type ReaddressCaptureDeviceInput,
   type RegisterCaptureDeviceInput,
   type RegisterCaptureMicrophoneInput,
   type Sim,
@@ -792,6 +793,39 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
     return registered;
   }
 
+  /**
+   * The INTERNAL action `readdressCaptureDevice` in a module's own unit (task 4 rows 195 / 196,
+   * WP-12; `internal-actions.ts`): the steps of the camera's registration door. The action changes
+   * `host` of ONE registered camera in the unit's pending state; `flush` writes exactly the
+   * changed column of its row (`capture_devices.address`) through the unit's transaction, and the
+   * slice is published when - and only when - the unit commits. A refused input changes nothing.
+   * The log lines carry the unit and the action, never the address.
+   */
+  async function readdressCaptureDeviceInScope(scope: Scope, change: ReaddressCaptureDeviceInput): Promise<CaptureDeviceStatus> {
+    const where = { unit: scope.unit.id, label: scope.unit.label, action: 'readdressCaptureDevice' };
+    syncNative(scope);
+    await checkHead(scope);
+    const { sim } = scope.live;
+    counters.commands += 1;
+    try {
+      sim.actions.readdressCaptureDevice(change);
+    } catch (error) {
+      const refusal = simRefusal(error);
+      if (refusal !== null) {
+        counters.commandsRefused += 1;
+        log.debug({ ...where, code: refusal.code, simCode: simCodeOf(refusal) }, 'internal action refused');
+        throw refusal;
+      }
+      log.error({ ...where, code: codeOf(error) }, 'internal action failed');
+      persist('error', 'an internal action failed', error, where);
+      throw error;
+    }
+    await flush(scope);
+    const readdressed = sim.store.getState().captureDevices.devices.find((entry) => entry.id === change.deviceId);
+    if (readdressed === undefined) throw new EngineError('ENGINE_ACTION_NOT_HOSTED', 'the re-addressed capture device is not in the state after its action');
+    return readdressed;
+  }
+
   function engineUnitOf(scope: Scope): EngineUnit {
     return bindInternalActions(
       {
@@ -802,6 +836,7 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
       {
         registerCaptureDevice: (device) => registerCaptureDeviceInScope(scope, device),
         registerCaptureMicrophone: (microphone) => registerCaptureMicrophoneInScope(scope, microphone),
+        readdressCaptureDevice: (change) => readdressCaptureDeviceInScope(scope, change),
         // Capture block (blueprint row 71): the two in-unit doors of the session wiring.
         markCaptureConnecting: (sessionId) => markCaptureConnectingInScope(scope, sessionId),
         switchCaptureAudioSource: (change) => switchCaptureAudioSourceInScope(scope, change),

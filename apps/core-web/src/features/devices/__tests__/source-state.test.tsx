@@ -18,6 +18,7 @@ import { createTestSim, withProviders } from '@/components/composed/__tests__/te
 import { enWeb } from '@/i18n-web'
 import { SourceStateChips } from '../source-state-chips'
 import { checkedAtOf, measuredFiguresShown, sourceLineState } from '../source-state'
+import { STREAM_FACTS_NOT_STATED, storedStreamFactsOf, trackFactsOf } from '../stream-facts'
 
 afterEach(cleanup)
 
@@ -67,8 +68,57 @@ describe('the rule', () => {
 
   it('PoE port and bitrate: figures the Core did not measure are not drawn in real capture outside a recording', () => {
     expect(measuredFiguresShown({ realCapture: true, recording: false })).toEqual({ poePort: false, bitrate: false })
-    expect(measuredFiguresShown({ realCapture: true, recording: true })).toEqual({ poePort: false, bitrate: true })
+    // Task 4 row W4 (review 060c R-01), PIN MOVED: this line pinned `bitrate: true` while a session records on a Core in real
+    // capture. The figure drawn there was the simulator's literal 9 (the only writer of a camera's `bitrateMbps`); no telemetry
+    // writes it. A simulator value shown in LIVE mode: never drawn now, recording or not.
+    expect(measuredFiguresShown({ realCapture: true, recording: true })).toEqual({ poePort: false, bitrate: false })
     expect(measuredFiguresShown({ realCapture: false, recording: false })).toEqual({ poePort: true, bitrate: true })
+    // CONTROL - Simulated mode while recording: the simulator's own statement stays.
+    expect(measuredFiguresShown({ realCapture: false, recording: true })).toEqual({ poePort: true, bitrate: true })
+    // Pass I-9b: the nullable member. Null is never drawn, in any mode; a stated figure follows the mode as before.
+    expect(measuredFiguresShown({ realCapture: false, recording: true, bitrateMbps: null })).toEqual({ poePort: true, bitrate: false })
+    expect(measuredFiguresShown({ realCapture: false, recording: false, bitrateMbps: 9 })).toEqual({ poePort: true, bitrate: true })
+    expect(measuredFiguresShown({ realCapture: true, recording: true, bitrateMbps: null })).toEqual({ poePort: false, bitrate: false })
+    expect(measuredFiguresShown({ realCapture: true, recording: true, bitrateMbps: 9 })).toEqual({ poePort: false, bitrate: false })
+  })
+
+  // ── Task 4 row W4: the stream facts of a track (`stream-facts.ts`; review 060c R-02 to R-06, 060b S-01) ──
+  it('W4 - `storedStreamFactsOf`: a stored profile code states its picture, rate and codec as the Core reads it; anything else states nothing', () => {
+    // The Core's own answers for the same codes (`cameraStreamFactsOf`, `apps/core-server/src/modules/devices/status.ts`).
+    expect(storedStreamFactsOf('H264_1080P25')).toEqual({ resolution: '1080p', fps: 25, codec: 'H.264' })
+    expect(storedStreamFactsOf('H264_720P30')).toEqual({ resolution: '720p', fps: 30, codec: 'H.264' })
+    // An HEVC code states no rate: null, never a default.
+    expect(storedStreamFactsOf('HEVC_2160P')).toEqual({ resolution: '2160p', fps: null, codec: 'HEVC' })
+    expect(storedStreamFactsOf('HEVC_2560X1920P')).toEqual({ resolution: '2560x1920', fps: null, codec: 'HEVC' })
+    expect(storedStreamFactsOf('H264_2560X1920P15')).toEqual({ resolution: '2560x1920', fps: 15, codec: 'H.264' })
+    // No statement: a development profile's name, an empty slot, no text, a 16:9 picture written with a width (no code the
+    // mint makes), numbers the contract cannot carry.
+    for (const code of ['STANDARD_1080P25', 'HEVC_2160P25_MAIN', '', null, undefined, 7, 'h264_1080p25', 'H264_1920X1080P25', 'H264_50P25', 'H264_1080P999', 'AV1_1080P25']) {
+      expect(storedStreamFactsOf(code), String(code)).toEqual(STREAM_FACTS_NOT_STATED)
+    }
+  })
+
+  it('W4 - `trackFactsOf`: Simulated mode reads the slice unchanged; a Core in real capture reads the selector line and never the slice', () => {
+    const idle = createTestSim('idle').store.getState()
+    // CONTROL - off a real-capture Core: the dataset's statement, no fault judged here (the simulated lane keeps its own drawing).
+    expect(trackFactsOf(idle, 'VIDEO-01', false)).toEqual({ stated: false, known: true, resolution: '1080p', fps: 25, codec: 'H.264', fault: null })
+    expect(trackFactsOf({ ...idle, cameras: [] }, 'VIDEO-01', false)).toMatchObject({ stated: false, known: false })
+    const lines = (change: (line: (typeof idle.captureConfig.cameras)[number]) => object) => ({
+      ...idle,
+      captureConfig: { ...idle.captureConfig, cameras: idle.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, ...change(line) } : line)) } as typeof idle.captureConfig,
+    })
+    // Stated facts: the line's stored statement, although the slice says 1080p / 25 / H.264.
+    expect(trackFactsOf(lines(() => ({ profile: 'HEVC_2160P' })), 'VIDEO-01', true)).toEqual({ stated: true, known: true, resolution: '2160p', fps: null, codec: 'HEVC', fault: null })
+    // Null facts: a code that is no statement, and a track the selector names no line for.
+    expect(trackFactsOf(lines(() => ({ profile: 'STANDARD' })), 'VIDEO-01', true)).toEqual({ stated: true, known: true, resolution: null, fps: null, codec: null, fault: null })
+    expect(trackFactsOf({ ...idle, captureConfig: { ...idle.captureConfig, cameras: [] } }, 'VIDEO-01', true)).toEqual({ stated: true, known: true, resolution: null, fps: null, codec: null, fault: null })
+    // A fault the Core reports: a lost stream, a source not reachable, the slice's own fault of the track.
+    expect(trackFactsOf(lines(() => ({ streamState: 'LOST' })), 'VIDEO-01', true).fault).toBe('STREAM_LOST')
+    expect(trackFactsOf(lines(() => ({ online: false })), 'VIDEO-01', true).fault).toBe('NOT_REACHABLE')
+    expect(trackFactsOf({ ...idle, cameras: idle.cameras.map((camera) => (camera.id === 'VIDEO-01' ? { ...camera, lens: 'FAULT' as const } : camera)) }, 'VIDEO-01', true).fault).toBe('NO_SIGNAL')
+    expect(trackFactsOf({ ...idle, cameras: idle.cameras.map((camera) => (camera.id === 'VIDEO-01' ? { ...camera, online: false } : camera)) }, 'VIDEO-01', true).fault).toBe('NO_SIGNAL')
+    // The other track is not touched by the first one's fault.
+    expect(trackFactsOf(lines(() => ({ streamState: 'LOST' })), 'VIDEO-02', true).fault).toBeNull()
   })
 })
 

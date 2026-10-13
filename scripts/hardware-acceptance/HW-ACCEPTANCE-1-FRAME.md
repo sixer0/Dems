@@ -4,11 +4,25 @@
 
 This document installs nothing and tests nothing by itself. It is a procedure for people.
 
+**Revision 2 (2026-10-13)**, the consistency pass (blueprint row 181). Still unverified on a host. Changed in this file:
+
+- Order: the room network may be plugged during the installation window (`PREP-03` step 2) and is unplugged in `PREP-08` step 1, or an offline package set is used; chapter 4 steps `HI-01` to `HI-07` now come before `9A/H-16` (sequence 8a), because the Core's unit names the helper's group and a production start asks for the helper's socket, file and grant; `HI-08` is steps `.6` and `.7` of `9A/H-05`.
+- Added: bound B-7 (the level of `9A/H-08`); section 9.5 (how the audit list and a readable track reach a collector as a file); the pusher for the worker's series (`PREP-06` step 1).
+- X-1 and X-2 are no longer "no command of the repository": two commands are being built (rows 206 and 215). A first production boot is reachable for a bench test once they land; section 11 item 8 carries the two lists of the security review.
+- Rulings U15 to U19 and P11 (section 1), decision C46 and the fail-closed host and program checks (section 3, `PREP-08`, `PREP-12`), new known limits in section 9.4 item 7.
+- Open points 1, 5, 6 and 9 of section 13 settled or re-stated; points 10 to 12 added. Marks "to confirm" left in this file: 4 (`PREP-06` step 1, `PREP-09` step 5, `PREP-10` step 1, section 9.5), each naming the row or the check it waits for.
+
+**Revision 3 (2026-10-13)**, the X-1 and X-2 passages only (blueprint row 219). Still unverified on a host: neither command has been run on one. The two commands that Revision 2 called "being built" are built: `evidence:production-key` and `operator:set-password` are script entries of `apps/core-server/package.json`, and the two command lines of `PREP-09` step 5 and `PREP-10` step 1 are copied from there. Where Revision 2 above says "being built" or "once they land", read "built". Changed: the X-1 and X-2 lines of section 4; `PREP-09` steps 1, 5 and 6; `PREP-10` steps 1 and 3; the first sentence of section 11 item 8; the line "A production boot and session" of section 12; open point 1 of section 13. The order of the day and the pass criterion of every check are unchanged. The two marks "to confirm" of `PREP-09` step 5 and `PREP-10` step 1 no longer wait for a row; each now names what only the host can show.
+
 ## Ringkasan (Bahasa Indonesia)
 
 Paket ini adalah prosedur uji terima perangkat keras DEMS Core. Paket dijalankan oleh **pengguna** setelah perangkat terpasang: host Linux Ubuntu 24.04, switch PoE, kamera IP dan antarmuka audio USB. Bab 1 ini adalah kerangkanya: urutan 27 pemeriksaan (`9A/H-01` sampai `9A/H-27`), operasi perekaman yang dibutuhkan tiap pemeriksaan, langkah persiapan, hal-hal yang hanya boleh dilakukan pengguna, lembar hasil, dan aturan keputusan akhir. Isi tiap pemeriksaan ada di bab 2 dan 3; pemasangan helper alamat ada di bab 4.
 
 Yang hanya dilakukan pengguna: memasang profil host dan helper dengan hak administrator, memigrasi basis data host, menyediakan kunci tanda tangan produksi dan kata sandi operator yang bukan kata sandi demo, mengetik kata sandi kamera, mengganti kata sandi setiap kamera sebelum diadopsi (wajib untuk kamera yang pernah terdaftar di input-av), dan memastikan input-av tidak terpasang di host uji. Tidak ada rahasia yang ditulis ke dokumen, lembar hasil, atau percakapan.
+
+Revisi 2 (2026-10-13): urutan diperbaiki. Kabel jaringan ruangan boleh terpasang selama masa pemasangan dan dicabut pada `PREP-08`; helper alamat (`HI-01` sampai `HI-07`) dipasang sebelum boot produksi pertama (`9A/H-16`); ambang level suara B-7 ditetapkan pengguna; kunci tanda tangan produksi dan kata sandi operator disediakan dengan dua perintah yang sedang dibangun (X-1, X-2). Boot produksi pertama dapat dicapai untuk UJI BANGKU; pemeriksaan sungguhan membutuhkan lebih banyak (bagian 11 butir 8).
+
+Revisi 3 (2026-10-13): kedua perintah itu sudah dibangun, `operator:set-password` (X-2, `PREP-09` langkah 5) dan `evidence:production-key` (X-1, `PREP-10` langkah 1). Keduanya dijalankan oleh pengguna di terminal host; setiap operator mengetik kata sandinya sendiri, Supervisor lebih dahulu. Keduanya belum pernah dijalankan pada host.
 
 Semua isi paket ini **belum terverifikasi** pada perangkat nyata. Pengembangan hanya membuktikan logika pada perangkat tiruan. Tahap 2 ("layak merekam") diputuskan oleh pengguna hanya berdasarkan lembar hasil paket ini; "terekam tetapi tidak tersegel" bukan lulus, dan lulus sebagian dilaporkan sebagai sebagian.
 
@@ -23,6 +37,7 @@ Semua isi paket ini **belum terverifikasi** pada perangkat nyata. Pengembangan h
 | Why | The development ran without hardware. What it showed, it showed on generated sources and hand-written stand-ins (section 12). Whether the product records, seals and verifies from real devices is known only after this run |
 | What it decides | Nothing by itself. It produces a result record (section 9). The user rules on that record whether the product is "fit to record" (section 11) |
 | What it cannot show | It runs once, on one host, with the user's cameras and interface. It shows what the product did there, check by check. It says nothing about other camera models, other audio interfaces or another kernel |
+| What is not part of it | Since 2026-10-13 a camera and a microphone are connected to the user's development Mac (rulings U15, U16). On them the development may run the camera SEARCH and the CONNECTION TEST only, with the user typing the password in the web console; no recording and no change of a camera's address (ruling U18). The production microphone path is ALSA on Linux and is not exercised on the Mac (P11). Whatever that work shows is a finding of the development; it is no line of this record and replaces no check of this package |
 
 **Rules for the whole run.**
 
@@ -43,7 +58,8 @@ One folder, `scripts/hardware-acceptance/`, one file per chapter. The scripts of
 | 1 | `HW-ACCEPTANCE-1-FRAME.md` | This document | preparation steps `PREP-01` to `PREP-14`; user actions; the order; the record |
 | 2 | `HW-ACCEPTANCE-2-HOST-HELPER-AUDIO.md` | Host, helper and audio: 12 checks | `9A/H-27`, `9A/H-01` to `9A/H-08`, `9A/H-16`, `9A/H-24`, `9A/H-25` |
 | 3 | `HW-ACCEPTANCE-3-NETWORK-CAMERAS-SESSION.md` | Network functions, cameras and sessions: 15 checks | `9A/H-09` (read inside `9A/H-17`), `9A/H-10` to `9A/H-15`, `9A/H-17` to `9A/H-23`, `9A/H-26` |
-| 4 | `HW-ACCEPTANCE-4-HELPER-INSTALLATION.md` | Installation of the address helper, ten steps for the user | steps `HI-01` to `HI-10` |
+| 4 | `HW-ACCEPTANCE-4-HELPER-INSTALLATION.md` | Installation of the address helper, ten steps for the user. `HI-01` to `HI-07` at sequence 8a, before `9A/H-16`; `HI-08` inside `9A/H-05`; `HI-09.1` and `HI-10` after it | steps `HI-01` to `HI-10` |
+| - | `collect-hNN.sh`, `record-line.sh`, `hw-collect-lib.sh`, `e11b-announce-probe/` | The read-only collectors (26, one per check except `9A/H-20`), the record writer, and the announce-line probe with its own `README.md` | named in the `SCRIPT` steps of chapters 2 and 3 |
 | - | `scripts/host/HOST-PROFILE-UBUNTU-24.04.md` | The host profile that `9A/H-01` applies; it exists already | items `HOST-01` to `HOST-49` |
 
 A check is always written with its prefix, `9A/H-nn`. Inside a chapter, the steps of a check are numbered `9A/H-nn.1`, `9A/H-nn.2`, and so on. Chapters 2 and 3 write every check in the six-part form of section 8.
@@ -56,7 +72,7 @@ A check is always written with its prefix, `9A/H-nn`. Inside a chapter, the step
 |---|---|---|---|
 | `SIMULATED` | `DEMS_CAPTURE_MODE` unset or `simulated` | Nothing. Sessions come from the simulator | The first boot only (`PREP-08`), on the loopback listener, with no session started |
 | `REAL_DEVELOPMENT` | `DEMS_CAPTURE_MODE=real` and `DEMS_CAPTURE_DEV_SOURCES=1` | Generated test sources only | The host checks that need a recording before any production boot exists: `9A/H-02`, `9A/H-03`, `9A/H-04`, `9A/H-24`. Always on the throw-away database, never on the acceptance database |
-| `REAL_PRODUCTION` | `DEMS_CAPTURE_MODE=real`, `DEMS_CAPTURE_DEV_SOURCES` unset | Production sources only: adopted cameras and registered microphone inputs | Every check from `9A/H-16` on |
+| `REAL_PRODUCTION` | `DEMS_CAPTURE_MODE=real`, `DEMS_CAPTURE_DEV_SOURCES` unset | Production sources only: adopted cameras and registered microphone inputs. Only this operation asks the host checks and the program checks at its start (decision C46; the codes `CAPTURE_HOST_*` are listed in chapter 2, `9A/H-16`); the two other operations never ask them | Every check from `9A/H-16` on |
 | none | no Core runs | - | `9A/H-27`, `9A/H-01`, the helper's own proofs in chapter 4 |
 
 One session is never a mix of development and production sources, and a Core in `REAL_PRODUCTION` refuses to start while a generated source is assigned (`DEV_SOURCE_WITHOUT_FLAG`). That is why the two real operations use two databases here.
@@ -94,17 +110,17 @@ No development agent and no script performs any line of this table. A check that
 |---|---|---|---|
 | UA-1 | Provide the Ubuntu 24.04 host and administrator access to it; apply the host profile line by line, with `sudo` | `PREP-03` | every check |
 | UA-2 | Install the devices: the PoE switch on a network port of its own, two cameras, a USB audio interface with two microphone inputs and two microphones, one factory-new camera, and for `9A/H-15` a second camera on the same factory address | `PREP-03` | `9A/H-07` to `9A/H-15`, `9A/H-17` |
-| UA-3 | Install the address helper as chapter 4 states, with `sudo`: a root service on a local socket, one group, two unit files, no sudoers file; compare the printed hash with the file in hand | `9A/H-05` | `9A/H-05`, `9A/H-06`, `9A/H-25`, `9A/H-13` to `9A/H-15` |
+| UA-3 | Install the address helper as chapter 4 states, with `sudo`: a root service on a local socket, one group, two unit files, no sudoers file (decision C19); compare the printed hash with the file in hand | `9A/H-16` for `HI-01` to `HI-07` (sequence 8a); `9A/H-05` for the rest | `9A/H-16`, `9A/H-05`, `9A/H-06`, `9A/H-25`, `9A/H-13` to `9A/H-15` |
 | UA-4 | Type every camera password: in the camera's own page when changing it, in the web console when connecting the camera or setting its address | `9A/H-10`, `9A/H-14`, `9A/H-23` | `9A/H-10`, `9A/H-14`, `9A/H-17`, `9A/H-23` |
 | UA-5 | Provide a person at the bench for the physical steps | `9A/H-06` | `9A/H-06` to `9A/H-08`, `9A/H-11`, `9A/H-13`, `9A/H-15`, `9A/H-18`, `9A/H-19`, `9A/H-22` |
 | UA-6 | The legacy data of input-av on the development machine has no writer: the folder is moved out of the repository, set read-only, or its staying is confirmed in writing. Independent of the acceptance host | any start of an input-av program, in any task | none of the 27 checks; a standing condition |
-| X-1 | Provide the production signing key in the Core's data directory. **No command of the repository provisions one**; the development key command must not be used (`PREP-10`) | `9A/H-16` | `9A/H-16`, `9A/H-17` |
-| X-2 | Give every operator a password that is not the published demonstration password (`PREP-09`). **The product has no password-change function at the time of writing**; the means is the user's (open point 1 of section 13) | `9A/H-16` | `9A/H-16`, `9A/H-17` |
+| X-1 | Provide the production signing key in the Core's data directory, with the command built for it (ruling U19): `evidence:production-key`, run by `USER` at the host's terminal as the Core's service user, never as root (`PREP-10` step 1). It asks for no secret. The development key command must not be used. The fingerprint it prints is handed over only after `9A/H-16` has passed | `9A/H-16` | `9A/H-16`, `9A/H-17` |
+| X-2 | Give every operator a password that is not the published demonstration password, with the command built for it (ruling U19): `operator:set-password`, started by `USER` at the host's terminal with the Core stopped; each operator types their own password at its hidden prompt, the Supervisor first (`PREP-09` step 5). The web console has no password-change function | `9A/H-16` | `9A/H-16`, `9A/H-17` |
 | UA-7 | Confirm that the acceptance host carries no input-av installation: no service, no helper, no sudoers line, no generated audio configuration. If one is found, remove it first. Checked by `9A/H-27` | `9A/H-01` | `9A/H-27`, then all |
 | UA-8 | Migrate the acceptance host's database (`PREP-05`, `PREP-07`). No agent migrates a database on this host | `9A/H-02` | every check with a Core |
 | UA-9 | Change the password of **every** camera of the acceptance in the camera's own page before the Core adopts it, and fill the per-camera sheet of section 9.3 (`PREP-13`). Mandatory without exception for a camera that was ever registered in input-av: its old password lies in that system's database in readable form | `9A/H-10` for that camera | `9A/H-10`, `9A/H-17`; condition of section 11 |
 | UA-10 | Set every camera's clock to the host's time in the camera's own page (`PREP-13`). The product does not set a camera's clock | `9A/H-10` | `9A/H-17` (the clock offset read as `9A/H-09`) |
-| UA-11 | Decide and write down the values of section 5 that have none today | `PREP-02` | `9A/H-18`, `9A/H-19`, `9A/H-11`, `PREP-13` |
+| UA-11 | Decide and write down the values of section 5 that have none today (B-1 to B-7) | `PREP-02` | `9A/H-18`, `9A/H-19`, `9A/H-11`, `9A/H-08`, `PREP-13` |
 | UA-12 | Accept, or refuse, digest authentication over unencrypted HTTP and RTSP on the production camera network. The host's part is the dedicated port and switch with forwarding off (host profile, `HOST-19`, `HOST-20`) | the ruling of section 11 | section 11 |
 | UA-13 | Rule what the bench installation of input-av may do after the ruling of section 11 | with the ruling | section 11 |
 
@@ -129,6 +145,7 @@ The first table holds bounds the product or its design fixes; they are not open.
 | B-4: how long the camera cable stays unplugged in the reconnect check | seconds | no source; the user sets it | |
 | B-5: the camera password rule (see below) | characters | this chapter's proposal | |
 | B-6: whether a guard against a full evidence disk is a precondition of the run. The product does not stop a session when the disk fills, as far as the design could confirm | yes or no | the plan leaves it to be decided | |
+| B-7: the level a microphone input must reach in `9A/H-08`: the peak while a person speaks at 30 cm, and how far it must lie above the same input's peak in a silent room | dBFS; dB | chapter 2's proposal: at or above -40 dBFS, and at least 20 dB above silence. No source in the design; the user sets it | |
 
 **The camera password rule (B-5), proposed.** A camera account's name and a value derived from its password cross the camera network unencrypted. A captured value can be attacked off-line, so the password must be long and random.
 
@@ -144,7 +161,7 @@ The order follows the dependencies. A check may be repeated; it may not be moved
 
 | Seq | Step or check | What happens, in one line | Capture operation | Database | Recording | Needs first |
 |---|---|---|---|---|---|---|
-| 1 | `PREP-01` to `PREP-03` | Entry conditions, values set, devices in place | none | - | - | - |
+| 1 | `PREP-01` to `PREP-03` | Entry conditions, values set, devices in place; the installation window of the room network opens (or the offline package set is on the host) | none | - | - | - |
 | 2 | `9A/H-27` | The host carries no input-av installation | none | - | - | UA-7 |
 | 3 | `9A/H-01` | The host profile applied; the capture programs built and self-checked; the worker's listener refuses a push to a wrong path on this host's build | none | - | - | `9A/H-27` |
 | 4 | `PREP-04` to `PREP-06` | Database server; the throw-away database; a development-capture Core starts | `REAL_DEVELOPMENT` | throw-away | - | `9A/H-01` |
@@ -152,16 +169,17 @@ The order follows the dependencies. A check may be repeated; it may not be moved
 | 6 | `9A/H-24` | No leftover after the kill; a planted leftover is named at the next start | `REAL_DEVELOPMENT` | throw-away | the same kill, then one start | `9A/H-02` |
 | 7 | `9A/H-03` | The durability level the evidence disk gives | `REAL_DEVELOPMENT` | throw-away | one recording from generated sources on the evidence disk | seq 4 |
 | 8 | `9A/H-04` | A missing prerequisite is named at start; restored, none is named | `REAL_DEVELOPMENT` | throw-away | none (starts only) | seq 4 |
-| 9 | `PREP-07` to `PREP-10` | The acceptance database migrated and seeded; first boot on the loopback listener: operator passwords replaced, the four slots unassigned; the production signing key in place | `SIMULATED`, once | acceptance | none; no session is started | `9A/H-01` |
-| 10 | `9A/H-16` | A production Core starts on an unassigned selector and refuses a session start | `REAL_PRODUCTION` | acceptance | none (the refusal is the result) | seq 9, X-1, X-2 |
+| 8a | `PREP-12`, then chapter 4, `HI-01` to `HI-07` | The user installs the address helper: the three hashes, the helper file, the interface file, the group with its one member (`HI-04` part A), the two unit files and the socket (part B), the self-check, the refusals, the firewall readings | none | - | - | `9A/H-01` |
+| 9 | `PREP-07` to `PREP-10` | The acceptance database migrated and seeded; **the room network cable unplugged**; first boot on the loopback listener: the four slots unassigned; operator passwords replaced (X-2); the production signing key in place (X-1) | `SIMULATED`, once | acceptance | none; no session is started | `9A/H-01` |
+| 10 | `9A/H-16` | A production Core starts on an unassigned selector and refuses a session start | `REAL_PRODUCTION` | acceptance | none (the refusal is the result) | seq 8a, seq 9, X-1, X-2 |
 | 11 | `PREP-11` | The host joins the room network | - | - | - | `9A/H-16` passed |
-| 12 | Chapter 4, `HI-01` to `HI-10` | The user installs the address helper | none | - | - | `9A/H-01` |
-| 13 | `9A/H-05` | The helper as installed: owner, mode, refusals, the Core's own boot check of it | none, then `REAL_PRODUCTION` | acceptance | none | seq 12, `9A/H-16` |
+| 12 | Chapter 4, the remainder | The three lines that need a default route are repeated (`HI-03.6`, request (b10) and step (c3) of `HI-06`). `HI-08` is not a step of its own: it is steps `.6` and `.7` of `9A/H-05`. `HI-09.1` and `HI-10` follow `9A/H-05` | none | - | - | seq 8a, `PREP-11` |
+| 13 | `9A/H-05` | The helper as installed: owner, mode, refusals, the Core's own boot check of it (its steps `.6` and `.7` are `HI-08`) | none, then `REAL_PRODUCTION` | acceptance | none | `HI-01` to `HI-07`, `9A/H-16` |
 | 14 | `9A/H-25` | The conflict check refuses an address that another device holds | `REAL_PRODUCTION` | acceptance | none | `9A/H-05` |
 | 15 | `9A/H-06` | A temporary address is added, refused on conflict, and removed after its lifetime with the Core killed | `REAL_PRODUCTION` | acceptance | none | `9A/H-05`, `9A/H-25` |
 | 16 | `9A/H-07` | The real card listing; the same identity after a re-plug | `REAL_PRODUCTION` | acceptance | none | `9A/H-16` |
 | 17 | `9A/H-08` | Shared capture opens on both inputs; rate; audible level on both | `REAL_PRODUCTION` | acceptance | none before S1; the first-second reading is taken from S1 | `9A/H-07` |
-| 18 | `9A/H-12` | Camera search on the real network; a typed address yields a candidate | `REAL_PRODUCTION` | acceptance | none | `9A/H-16`, a camera on the camera subnet |
+| 18 | `9A/H-12` | Camera search on the real network; a typed address yields a candidate | `REAL_PRODUCTION` | acceptance | none | `9A/H-16`, a camera on the camera subnet; for the typed address also the camera interface and subnet chosen (`9A/H-05.6`) |
 | 19 | `9A/H-13` | The factory-address scan finds a factory-new camera plugged in alone | `REAL_PRODUCTION` | acceptance | none | `9A/H-05`, `9A/H-06` |
 | 20 | `9A/H-15` | Two cameras on one factory address: reported, set-address refused, neither changed | `REAL_PRODUCTION` | acceptance | none | `9A/H-13`, before `9A/H-14` |
 | 21 | `9A/H-14` | The camera's address set from the console; found again by its hardware address | `REAL_PRODUCTION` | acceptance | none | `9A/H-13`, `9A/H-15` |
@@ -180,12 +198,14 @@ The order follows the dependencies. A check may be repeated; it may not be moved
 | 34 | `9A/H-19` | **S4:** the long session of B-3 minutes with a clap at its start and its end; drift against B-2 | `REAL_PRODUCTION` | acceptance | S4 | `9A/H-17` passed |
 | 35 | Section 9, section 11 | The record completed; the summary; the user's ruling | - | - | - | all above |
 
-All 27 checks are in the table: `9A/H-01` to `9A/H-27`, each once.
+All 27 checks are in the table: `9A/H-01` to `9A/H-27`, each once. Sequence 8a was inserted by Revision 2 without renumbering, so that the sequence numbers of the recording sheet (section 9.2) and of the record writer stay as they were; the order of the 27 checks is unchanged.
 
 **Why this order differs from the numbering.**
 
 - `9A/H-27` comes first: an input-av installation beside the Core would falsify every later result.
-- `9A/H-16` comes before the helper, the microphones and the cameras. A production Core starts with no source assigned; the commissioning functions and the camera connect flow need that running production Core.
+- The room network is needed for the installation and is a risk for the first boot. `9A/H-01` needs packages and source archives (`HOST-09`, `HOST-10`, `HOST-12`, `HOST-18`, `HOST-25`, `HOST-26`), `PREP-04` needs the database server and `PREP-06` a pusher: the cable may be in from `PREP-03` to the end of sequence 8a. It is out from `PREP-08` step 1, before a Core runs on a database whose operators still have the published password, and returns in `PREP-11`, after `9A/H-16` has shown that password refused.
+- The helper's installation (`HI-01` to `HI-07`) comes before `9A/H-16`. Two reasons, both read from the built product: the Core's unit file names the group `dems-netalias`, and the service manager does not start a unit that names a group the host does not have (`HI-04` part A); and a production start on Linux asks for the helper's socket, its file and its two unit files and refuses when one is absent (host check `CAPTURE_HOST_ALIAS_SOCKET`, program checks `CAPTURE_HOST_ALIAS_HELPER_UNSAFE` and `CAPTURE_HOST_ALIAS_GRANT_UNSAFE`). Installing grants nothing that is used: no address is added before `9A/H-25`.
+- `9A/H-16` comes before the checks of the helper, the microphones and the cameras. A production Core starts with no source assigned; the commissioning functions and the camera connect flow need that running production Core.
 - `9A/H-24` follows `9A/H-02` directly: both read the same kill.
 - `9A/H-25` comes before `9A/H-06`, whose conflict case depends on it.
 - `9A/H-15` comes before `9A/H-14`: it needs two cameras that still hold the same factory address, and `9A/H-14` changes one of them.
@@ -193,7 +213,7 @@ All 27 checks are in the table: `9A/H-01` to `9A/H-27`, each once.
 - `9A/H-11` and `9A/H-22` come after `9A/H-17`: each needs a session, and the first session from production sources is kept free of an injected fault.
 - `9A/H-19` comes last: it is the longest, and nothing waits for it.
 
-**What may be left "not run" without voiding `9A/H-17`.** `9A/H-17` needs `9A/H-27`, `9A/H-01`, `9A/H-16`, `9A/H-07`, `9A/H-08`, `9A/H-10` for two cameras, and one of the two ways of `9A/H-12` to find a camera. If both cameras already sit on the camera subnet, `9A/H-05`, `9A/H-06`, `9A/H-25`, `9A/H-13`, `9A/H-14` and `9A/H-15` may wait; `9A/H-02`, `9A/H-03`, `9A/H-04` and `9A/H-24` may wait as well. A check left out is recorded "not run" with its reason and appears in the summary; it is not counted as passed, and the ruling of section 11 is made knowing it.
+**What may be left "not run" without voiding `9A/H-17`.** `9A/H-17` needs `9A/H-27`, `9A/H-01`, `9A/H-16`, `9A/H-07`, `9A/H-08`, `9A/H-10` for two cameras, and one of the two ways of `9A/H-12` to find a camera. If both cameras already sit on the camera subnet, `9A/H-05`, `9A/H-06`, `9A/H-25`, `9A/H-13`, `9A/H-14` and `9A/H-15` may wait; `9A/H-02`, `9A/H-03`, `9A/H-04` and `9A/H-24` may wait as well. What may not wait is the installation itself: without `HI-01` to `HI-07` the production Core of `9A/H-16` is not expected to start (open point 10 of section 13). A camera found by its typed address needs the camera interface and subnet chosen first (`9A/H-05.6`); until then every typed address is refused. A check left out is recorded "not run" with its reason and appears in the summary; it is not counted as passed, and the ruling of section 11 is made knowing it.
 
 ## 7. The preparation steps
 
@@ -207,12 +227,14 @@ Each step names its performer and its expected result. A step whose expected res
 3. Confirm UA-6 in writing. Expected: one dated line in the record's header ("legacy data: moved", "read-only" or "stays, confirmed").
 
 **`PREP-02` Values.** Performer: `USER`.
-1. Fill the right-hand column of the second table of section 5 for B-1 to B-6. Expected: six values with date and role; none empty.
+1. Fill the right-hand column of the second table of section 5 for B-1 to B-7. Expected: seven values with date and role; none empty.
 2. If B-6 is "yes": state the guard and who watches it. Expected: one line in the record's header.
 
 **`PREP-03` Devices and host.** Performer: `USER`, `BENCH`.
 1. Install the host and the devices (UA-1, UA-2). Label every camera housing `CAM-A`, `CAM-B`, and so on; label the two microphones. Expected: every device of UA-2 is present and labelled; the count of cameras is written into the record's header.
-2. Connect the PoE switch to the host's camera port only. Leave the room network cable **unplugged**. Expected: the host has no default route: `ip -4 route show default` prints nothing.
+2. Connect the PoE switch to the host's camera port only. For the room network choose one of two ways and write the choice into the record's header.
+   - **Way A, the installation window.** The room network cable is plugged from here to the end of sequence 8a, for the packages, the source archives, the database server and the product's dependencies. No Core of the acceptance database runs in that window. The cable is unplugged in `PREP-08` step 1. Expected here: `ip -4 route show default` names an interface that is **not** `<camera-interface>`.
+   - **Way B, the offline package set.** The cable stays unplugged for the whole run until `PREP-11`. Then these are on the host from a medium before `9A/H-01`: the Ubuntu packages of the host profile with their dependencies (`HOST-09`, `HOST-10`, `HOST-18`, `HOST-25`, `HOST-26`); the FFmpeg 9.0.2 release archive with its signature file (`HOST-12`); the product tree with its installed dependencies (`node_modules`); the PostgreSQL packages of `PREP-04`; a pusher for `PREP-06` step 1. Expected here: `ip -4 route show default` prints nothing.
 3. Confirm UA-7 by looking, before `9A/H-27` measures it. Expected: the user's statement "no input-av installation on this host" in the record's header. If the host is a machine that ran input-av, it is removed first; this package does not describe the removal.
 
 ### Part B. Database and the development checks
@@ -222,16 +244,19 @@ Each step names its performer and its expected result. A step whose expected res
 2. Make the database settings known to the Core as the host profile states in `HOST-34`. This chapter adds no other place for a secret. Expected: the check of `HOST-34` prints what the profile states.
 
 **`PREP-05` The throw-away database.** Performer: `USER`.
-1. From `<install-dir>`: `npm run db:create -- --database dems_lane_2`, then `npm run db:migrate -- --database dems_lane_2`, then `npm run db:seed -- --database dems_lane_2` (to confirm: the argument form of the last two). Expected: each command exits 0.
+1. From `<install-dir>`: `npm run db:create -- --database dems_lane_2`, then `npm run db:migrate -- --database dems_lane_2`, then `npm run db:seed -- --database dems_lane_2` (the argument form is the one the three commands state in their own source). Expected: each command exits 0.
 2. `npm run db:status -- --database dems_lane_2`. Expected: exit code 0, which the command gives only when every migration file is applied with its own hash and the schema version is the one the code expects.
 3. Create the throw-away media store on the evidence disk, owner `<service-user>`, mode 0700, in a folder that is not inside `<data-dir>/media/sessions`. Expected: `stat -c '%U %a'` on it prints `<service-user> 700`; `findmnt -no SOURCE --target` prints the same source for it and for `<data-dir>/media/sessions`.
 
 **`PREP-06` A development-capture Core starts.** Performer: `USER`.
-1. Provide what the development operation needs on this host: a private copy of the pinned FFmpeg as its helper program and a development signing key **in a data directory of its own**, never in the acceptance data directory. The commands are those of the product's README, "Set-up of a development-capture Core"; they have run on macOS only (to confirm on this host in chapter 2). Expected: the Core of step 2 names no missing program and no unusable key.
+1. Provide what the development operation needs on this host: a private copy of the pinned FFmpeg as its helper program and a development signing key **in a data directory of its own**, never in the acceptance data directory. The commands are those of the product's README, "Set-up of a development-capture Core"; they have run on macOS only (to confirm in `9A/H-02`: step 2 below is their first run on Linux; open point 7). Expected: the Core of step 2 names no missing program and no unusable key.
+   **The pusher.** The generated sources of this operation and the worker's own capture series (`make e2e`, step `9A/H-01.9`) encode H.264 with `libx264` on Linux, and the H.265 cases of the series encode with `libx265`. The FFmpeg that `HOST-12` builds carries no H.264 and no H.265 encoder (the container build of the development showed it: configure line without an external codec library), and the Ubuntu 24.04 package `ffmpeg` is version 6.1.1, not the pinned 9.0.2. So this private copy must be **a second, self-built FFmpeg 9.0.2 that has an H.264 encoder (and an H.265 encoder for the H.265 cases)**, in a folder of its own outside `<ffmpeg-prefix>`; it serves as a pusher and as the helper program of the development operation only, and is removed in section 14. Which encoder library it is built with decides the licence of that build; that choice is the user's and nothing of it is installed into the product. The package's own probe (`9A/H-01.10`) does not need it: it pushes with the encoder `mpeg4`, which FFmpeg carries itself. Without such a pusher, `9A/H-01` steps `.9` and `.11` and the four development checks are "not run: no pusher on the host" (open point 11).
 2. Start a Core with `DEMS_CAPTURE_MODE=real`, `DEMS_CAPTURE_DEV_SOURCES=1`, the throw-away database and the throw-away media store. Expected: the log holds `capture fence passed` with the operation `REAL_DEVELOPMENT`; `sudo ss -H -ltnp` shows its listener on `127.0.0.1`.
 3. If the Core refuses to start: record the check and the code. `9A/H-02`, `9A/H-03`, `9A/H-04` and `9A/H-24` are then "not run: no development-capture Core on this host", and the run continues at `PREP-07`. Expected: either step 2's result or this record line; nothing else.
 
 Then `9A/H-02`, `9A/H-24`, `9A/H-03`, `9A/H-04` (chapter 2). After them the development-capture Core is stopped and stays stopped for the rest of the run.
+
+Then `PREP-12` and chapter 4, steps `HI-01` to `HI-07` (sequence 8a). `PREP-12` is written under part D, where it stood before Revision 2; it is performed here.
 
 ### Part C. The acceptance database and the first boot
 
@@ -241,39 +266,45 @@ Then `9A/H-02`, `9A/H-24`, `9A/H-03`, `9A/H-04` (chapter 2). After them the deve
 3. Note what the seed wrote: the demonstration data set, the operators with the published demonstration password, and four generated sources in the four selector slots. Expected: none; this is a fact to know. A seeded database is not yet a production database; `PREP-08` to `PREP-10` make it one as far as the product allows.
 
 **`PREP-08` First boot, on the loopback listener.** Performer: `USER`. This is the only time a `SIMULATED` Core runs on the acceptance database. While it runs, the operators still have a password that is published.
-1. Confirm the host is not on the room network. Expected: `ip -4 route show default` prints nothing; the room network cable is unplugged (seen by `BENCH`).
-2. Start the Core with `DEMS_CAPTURE_MODE` unset and `DEMS_DEMO_CONTROLS` unset, on the acceptance database. Expected: the log holds `capture fence passed` with the operation `SIMULATED`; `sudo ss -H -ltnp` shows its listener with local address `127.0.0.1` and no other. If the host's clock cannot synchronise without the room network and the service unit therefore does not start (host profile, `HOST-32`), record that; open point 5 of section 13 applies.
+1. `BENCH` unplugs the room network cable now, if way A of `PREP-03` was chosen; before that, `USER` reads `timedatectl show -p NTPSynchronized --value` once more. Expected: `yes` before the cable is pulled; afterwards `ip -4 route show default` prints nothing and the cable is out (seen by `BENCH`). The host is **not restarted** between this step and `PREP-11`: after a restart without a time source the clock is not reported as synchronised, and the production start of `9A/H-16` then refuses with `CAPTURE_HOST_CLOCK_NOT_SYNCHRONISED` (open point 5 of section 13).
+2. Start the Core with `DEMS_CAPTURE_MODE` unset and `DEMS_DEMO_CONTROLS` unset, on the acceptance database. Expected: the log holds `capture fence passed` with the operation `SIMULATED`; `sudo ss -H -ltnp` shows its listener with local address `127.0.0.1` and no other. If the service unit does not start because the host's clock is not synchronised (host profile, `HOST-32`), record that; open point 5 of section 13 applies.
 3. Open the web console in a browser **on the host itself**. Expected: the sign-in page loads from `127.0.0.1`.
 4. **Start no session** in this Core, at any time. Expected, checked at step 4 of `PREP-09`: the number of sessions in the database is the number the seed wrote.
 
-**`PREP-09` Operator passwords and the unassign step (X-2).** Performer: `USER`.
-1. Give every operator a password of their own that is not the demonstration password, by the user's means (open point 1). Expected: none measurable here; `9A/H-16` measures it, because a production Core refuses to start with `CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION` while even one operator still has it.
+**`PREP-09` The unassign step and the operator passwords (X-2).** Performer: `USER`. Revision 2 changed what step 1 does and when: the password command needs the Core stopped, so it runs after step 4. The step numbers are kept.
+1. Have the operators ready to type one new password each at the keyboard of the host, the Supervisor first; each operator types their own. Where an operator cannot be present, `USER` decides now whether that operator is skipped (the production boot then waits) or `USER` types for them (step 6). Nothing is typed yet. Once on this host, before the first real password: `USER` makes the attended check of the hidden prompt with a throw-away value, as section 2.4 of `scripts/host/INSTALLER-NOTE-FIRST-PRODUCTION-BOOT.md` states it. Expected of that check: nothing appears while typing, not even marks; the terminal shows what is typed again afterwards, and again after Ctrl-C at the prompt.
 2. In the web console, signed in as an operator who may change the capture configuration, unassign the four selector slots: both video slots and both microphone slots. Expected: the device selector shows four slots as "not assigned".
-3. Read the audit list. Expected: one entry of type `CAPTURE_CONFIG_CHANGED` per unassign action; the count is written into the notes of the record.
+3. Read the audit list in the web console (page Security & Audit). Expected: one entry of type `CAPTURE_CONFIG_CHANGED` per unassign action; the count is written into the notes of the record.
 4. Stop the Core. `npm run db:status -- --database dems_demo`. Expected: exit code 0; the row count of the session table equals the count printed in `PREP-07` step 2.
+5. With the Core stopped, give every operator a password that is not the demonstration password, with the command of X-2, started by `USER` as `<service-user>` from the repository root: `npm run operator:set-password -w @dems/core-server -- --database dems_demo --data-dir <data-dir> --all-demo` (the built form: script `operator:set-password` of `apps/core-server/package.json`; to confirm in this step: that the line starts as written for a person who acts as `<service-user>`, an account without a login shell, `HOST-04`). It shows the database, the data directory and the operators who still have the demonstration password, and says that it cannot see a Core process, only connections to the database; `USER` types the word `SET`. It then prompts for each operator, the Supervisor first, twice, with nothing shown; **each operator types their own password**. No password is an argument, a variable or a piped input. While a password is typed no terminal recorder runs, the terminal is not a remote session and the screen is not shared. If the command refuses with `DATABASE_IN_USE`, a connection to the database is open: stop the Core, close every other client and run it again; nothing was changed. Expected: one line `<username>: password set, <n> session(s) ended` per operator, then `operators that still have the demo password: 0`, exit status 0. `9A/H-16` measures the same: a production Core refuses to start with `CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION` while even one operator still has it.
+6. An operator whose first entry is left empty is skipped: the command then ends with exit status 1 and a count above 0, and `9A/H-16` waits until that operator has typed. A password typed by the installer is known to two people. For the acceptance that is stated in the record's notes ("passwords typed by: each operator" or "the installer"); for a real examination it is item A7 of section 11.
 
 **`PREP-10` The production signing key (X-1).** Performer: `USER`.
-1. Place the production signing key where the Core reads it (`<data directory>/signer`), by the user's means. Do **not** run the repository's development key command on the acceptance data directory. Expected: none measurable here; `9A/H-16` measures it. A production Core refuses to start with `CAPTURE_SIGNING_KEY_UNUSABLE` when no key loads and with `CAPTURE_DEVELOPMENT_SIGNING_KEY_IN_PRODUCTION` when the key is a development key.
-2. If X-1 or X-2 cannot be provided on the day: record `9A/H-16` as "not run: X-1 missing" or "not run: X-2 missing". Every check after sequence 10 is then "not run" for the same reason. Expected: those record lines; no workaround is attempted.
+1. As `<service-user>`, at the host's terminal, provision the production signing key where the Core reads it (`<data-dir>/signer`) with the command of X-1, from the repository root: `npm run evidence:production-key -w @dems/core-server -- --data-dir <data-dir>` (the built form: script `evidence:production-key` of `apps/core-server/package.json`; `<data-dir>` is written as an absolute path without a trailing separator; to confirm in this step: that the line starts as written for a person who acts as `<service-user>`, and that the path of `HOST-06` passes the command's directory rule, which also asks that no directory above `<data-dir>` is writable by a group or by others). It asks for the organisation and the installation device id, which are not secrets; it prints the directory, the key id, the subject and the validity window in UTC, and asks for the word `PROVISION` before a key exists. It refuses to run as root. It refuses a directory that already holds any file of a key (`KEY_EXISTS`), names the files that are present and absent and says whether that store loads; it never completes or removes one, and removing an incomplete store is `USER`'s own act (the installer's note, section 2.6). Do **not** run the repository's development key command (`evidence:dev-key`) on the acceptance data directory. Expected: exit status 0 and, after the line that begins `evidence:production-key: OK`, the lines: directory, key id, subject, `certificate: sha256` with 64 hexadecimal characters, valid from (UTC), valid until (UTC), the path of the hand-over record. Keep that output with the installation papers; the certificate sha256 goes into the record's header, it is not a secret. It is handed to whoever will verify only after `9A/H-16` has passed, by another channel than the packages, and the list of receivers is kept. The directory `<data-dir>/signer` is not copied into a backup. `9A/H-16` measures the result: a production Core refuses to start with `CAPTURE_SIGNING_KEY_UNUSABLE` when no key loads and with `CAPTURE_DEVELOPMENT_SIGNING_KEY_IN_PRODUCTION` when the key is a development key.
+2. Set the installation device id in `/etc/dems/core.env` to the value typed in step 1, character for character (`9A/H-16.1`). Expected: none here.
+3. If X-1 or X-2 cannot be provided on the day (a command does not start on the host, or one refuses): record the refusal's code, and record `9A/H-16` as "not run: X-1 missing" or "not run: X-2 missing". Every check after sequence 10 is then "not run" for the same reason. Expected: those record lines; no workaround is attempted, and no key or password is made by another means.
 
 Then `9A/H-16` (chapter 2).
 
 **`PREP-11` The host joins the room network.** Performer: `USER`, `BENCH`.
 1. Only after `9A/H-16` has passed: plug the room network cable in. Expected: `ip -4 route show default` names an interface that is **not** `<camera-interface>`.
 2. `sudo ss -H -ltnp`. Expected: the listeners of `<service-user>` are as the host profile states in `HOST-24`. How the tablet and a web console on another machine reach the Core is open point 4; it must be settled before `9A/H-20`.
+3. Repeat the three lines of chapter 4 that need a default route: `HI-03.6`, and request (b10) and step (c3) of `HI-06`. Expected: as chapter 4 states for each.
 
 ### Part D. Helper, microphones, network functions
 
-**`PREP-12` Before the helper is installed.** Performer: `USER`.
+**`PREP-12` Before the helper is installed.** Performer: `USER`. Performed at sequence 8a, before `PREP-07`.
 1. Read the security review's statement on the helper as delivered, named in chapter 4, step `HI-01`. Expected: its findings on the helper are stated as closed. If not, chapter 4 is not started and `9A/H-05`, `9A/H-06`, `9A/H-25`, `9A/H-13`, `9A/H-14`, `9A/H-15` are "not run: helper not released".
+2. Know what a host without the helper means for the rest of the run. Once the Core's entry point hands the host facts to the boot (decision C46, blueprint row 85), a production Core on Linux does not start without the helper's socket, file and unit files; `9A/H-16` and every check after it would then be "not run: helper not released" as well. Whether a production Core must be able to start without the helper is not ruled (open point 10 of section 13). Expected: none; a fact to know before the day.
 
-Then chapter 4, and `9A/H-05`, `9A/H-25`, `9A/H-06`, `9A/H-07`, `9A/H-08`, `9A/H-12`, `9A/H-13`, `9A/H-15`, `9A/H-14`.
+Then, after `9A/H-16` and `PREP-11`: `9A/H-05`, `9A/H-25`, `9A/H-06`, `9A/H-07`, `9A/H-08`, `9A/H-12`, `9A/H-13`, `9A/H-15`, `9A/H-14`.
 
 ### Part E. Cameras
 
 **`PREP-13` Per camera, before the Core adopts it (UA-9, UA-10).** Performer: `USER`; `BENCH` reads labels. Repeat for every camera of the acceptance.
 1. Open the camera's own page from a browser on the host or on a laptop plugged into the camera switch. The web console does not relay a camera's page. Expected: the camera's sign-in page.
 2. Replace the account's password with one that meets B-5, typed from where the user keeps it. Expected: the camera accepts it; signing out and in again with the new password succeeds; the old password is refused: 1 refusal seen.
+   Two limits of the product are met here, in the camera's own page, before the Core sees the camera. (a) **The account's user name holds no colon.** A name with a colon cannot authenticate on the stream: the media library splits the name at its first colon. The Core would show "authentication failed" for a correct password, and each such attempt counts toward the lock-out. If the account's name has a colon, create another account on the camera. A colon in the password is allowed. (b) **Digest authentication is on for the stream.** The product answers a Digest challenge only. A camera that offers only Basic authentication is refused, the connection test says "authentication failed" with the reason `SCHEME_NOT_ALLOWED`, and the password is not sent. If the camera's page has a setting for the stream's authentication, set it to Digest.
 3. Set the camera's clock to the host's time. Expected: the time the camera's page shows differs from `date` on the host by less than 2 s, read by eye.
 4. Fill one line of the sheet of section 9.3 for this camera. Expected: every column filled; no password in any column.
 5. A camera whose line is not complete is not connected in `9A/H-10`.
@@ -323,7 +354,7 @@ The record is one file, kept by the user. Its copy for the development has the s
 
 ### 9.1 Header and lines
 
-**Header**, written once: date; the product commit (`PREP-01`); the host's release line and processor architecture; the count of cameras with their labels and model names; the audio interface's model name; the values B-1 to B-6; the confirmations of UA-6 and UA-7; the schema version (`PREP-07`); roles present.
+**Header**, written once: date; the product commit (`PREP-01`); the host's release line and processor architecture; the count of cameras with their labels and model names; the audio interface's model name; the values B-1 to B-7; the confirmations of UA-6 and UA-7; the way chosen for the room network (`PREP-03` step 2); the schema version (`PREP-07`); the certificate sha256 of the production signing key (`PREP-10`); roles present.
 
 **One line per check**, 27 lines, in the order of section 6. A repeated check gets a new line with the next run number; earlier lines are kept.
 
@@ -400,8 +431,31 @@ Written by `USER` when the lines are complete. It contains, and only contains:
 4. The measured values against their bounds: the clap offsets against B-1; the drift against B-2; the time to both ingests against 30 s; the three ingest counters; the first-second reading of the audio; the clock offset per camera.
 5. The observation of `9A/H-03`: the durability level the disk gave, and whether a critical notice was raised in every session.
 6. The per-camera sheet: cameras complete, of cameras adopted.
-7. The known limits of the product that the run does not remove: a camera absent at the start of a session is not in that session; a camera whose relay ends is lost for the rest of the session; two streams of one camera in the same format fill one slot only. And what the package cannot show (section 1).
+7. The known limits of the product that the run does not remove, each with "met in this run: yes or no". And what the package cannot show (section 1).
+   - A camera absent at the start of a session is not in that session (`9A/H-22`).
+   - A camera whose relay ends is lost for the rest of the session: after six tries without a picture, or at once when the stream that comes back has other parameter sets or another codec (`9A/H-11`).
+   - Two streams of one camera in the same format fill one slot only; two lenses that give the same profile code cannot both be adopted (`9A/H-10`).
+   - A camera account whose user name holds a colon cannot authenticate; a camera that offers only Basic authentication is refused (`PREP-13`).
+   - A profile whose camera-side token is a plain number is not usable (`9A/H-10`).
+   - A stream address with a query outside the closed rule is refused (`9A/H-10`).
+   - A sound card is recognised by its USB id; a card of the same model on another port is matched without a word until blueprint rows 199 and 200 land; a card without 48 kHz is refused (`9A/H-07`).
+   - After a restart of the capture worker inside a session the audio is silence for the rest of that session, until blueprint row 191 lands (`9A/H-17`).
+   - HEVC is stored with the sample entry `hev1`; a player that does not open `hev1` shows nothing or says so (`9A/H-20`).
+   - No password change in the web console; one signing key without rotation (section 11 item 8).
 8. The word **partial** if any of the 27 is `FAIL` or `NOT RUN`.
+
+### 9.5 Files for the collectors: the audit list and a readable track
+
+Several collectors do not read the product directly. They take a file the user hands over: `--audit-file`, `--journal-file`, `--core-log`, `--track`. This section says where each file comes from. Every file is written into `<evidence-folder>` and stays on the host.
+
+| File | Option | How `USER` obtains it |
+|---|---|---|
+| The Core's journal | `--journal-file`, `--core-log`, `--boot-log` | `sudo journalctl -u dems-core.service -b --no-pager -o cat > <evidence-folder>/core-journal-<check>.txt`, started before the step that needs it and repeated after it. For a Core started from a terminal (`REAL_DEVELOPMENT`): its output redirected into a file at the start |
+| The audit entries **of one session** | `--audit-file` of the session collectors (`9A/H-17`, `9A/H-22`, `9A/H-11`) | The sealed package of the session holds them: `<data-dir>/media/sessions/SESSION-<sessionId>/audit-session-extract.jsonl`, one entry per line, written at the seal. `sudo cp` it into `<evidence-folder>` and make the copy readable by the account that runs the collector. It holds the entries of that session up to its seal, not later ones (to confirm in `9A/H-17`: that the file is plain text as stored) |
+| The audit list **outside a session** (searches, card registrations, temporary addresses, scans, set-address, capture configuration) | `--audit-file` of `collect-h06`, `-h07`, `-h10`, `-h12`, `-h13`, `-h14`, `-h15` | **The product has no export of the audit list as a file.** The operation "export audit" of the page Security & Audit records an export and answers with an export number; it writes nothing the user can copy. The manual reading: `OPER` opens Security & Audit, reads the entries from the noted start time of the check to now, and writes them into a text file, one line per entry: `<time> <type> <code shown in the entry's details>`, for example `10:42:07 CAPTURE_AUDIO_INPUT_CHANGED REGISTERED`. No address, no account name and no device text is copied. That note file is handed to the collector, or the counts are written into the record directly with `OPER` as the observer. A list read by a person is evidence of what the person read |
+| A readable camera track or audio | `--track` (`9A/H-09.2`, `9A/H-18.1`, `9A/H-19.5`, `9A/H-11.5`, `9A/H-08.7`) | The files of a sealed package are encrypted on the disk and owner-only. The product's own way to a readable copy is the **export**: web console, signed in as a supervisor, Evidence, the item of the session, Export; when the job is finished, **Download export** (the link lives 60 seconds and is bound to the sign-in; the download is audited). The Core also keeps the archive on its disk under `SESSION-<sessionId>/export/EXP-<id>.zip`. Check the downloaded archive with `npm run evidence:verify-export -- <archive.zip>` (it needs `unzip`, no Core and no key), unpack it into `<evidence-folder>/<session>/` and hand the camera file of the track to the collector. The archive holds the camera files in plaintext: it and the unpacked files are acceptance recordings under rule 5 of section 1, they do not leave the host, and `USER` removes the unpacked copies when the readings are done. An export marks the item as exported and writes a custody entry; that is expected and is noted in the record |
+
+The time in a track counts from the track's own first picture, not from the operator's start click. `collect-h18.sh` is given the clock time of the clap and of the start click and assumes that the track starts at the click. The track starts later by the time the camera took to connect, which `9A/H-21` measures. That difference moves the 5 s search window of the collector, not the offset between sound and picture, which are read from the same file. If a camera's figure of `9A/H-21` is above 5,000 ms, the clap lies outside the window: `OPER` then gives the collector the click time plus that figure as the start.
 
 ## 10. A failed check
 
@@ -426,6 +480,36 @@ The product reaches production recording in two stages. Stage 1 is in the code: 
 5. Until the ruling: no real examination is recorded; the limits stated in the product's documents stay as they are; no document says "fit to record".
 6. If the record does not support stage 2, nothing is declared. The code stays at stage 1 or is reverted by the development; sessions already sealed stay valid as what they are, acceptance recordings. The host profile and the helper are undone by the user with their own removal steps.
 7. After a ruling in favour, the development issues the errata that withdraw the stated limits. Not before, and not on a partial pass.
+8. **What a first production boot is, now that X-1 and X-2 are built.** The first issue of this chapter said that a first production boot is not reachable because no command provisions a key or sets a password. Revised: with the two commands (`operator:set-password` in `PREP-09` step 5, `evidence:production-key` in `PREP-10` step 1) a first production boot is reachable **for a bench test** on the seeded database (ruling U20). It is not yet the boot of an installation that records real examinations. The security review of the two commands (`verification/07_security_x1_x2.md` of the development task) gives two lists; they are repeated here so that this chapter can be read alone.
+
+   **A. Must be closed before a production recording of a real examination.**
+
+   | # | What | Why it cannot wait |
+   |---|---|---|
+   | A1 | Real, named operator accounts | Every audit entry and every custody entry names its actor; with the seeded accounts they would name three persons of the demonstration data set |
+   | A2 | A production seed without demonstration persons, cases and evidence; the seed and reset commands refuse a production environment | Demonstration items would stand in the same evidence register and audit chain as real evidence |
+   | A3 | The sign-in cards show no demonstration disclosure in `REAL_PRODUCTION` | The cards still list user names and present the installation as a demonstration |
+   | A4 | Rotation of the signing key, the compromise mark and the retained certificate set | Without them a suspected compromise has no clean response |
+   | A5 | Read-path hardening of the signer store | It is the first time the store holds a key that matters |
+   | A6 | The certificate's fingerprint handed to whoever will verify, by a channel other than the packages, and the list of receivers kept | Without it a package is consistent with itself only |
+   | A7 | Each operator's password known to that operator alone: typed by the operator at the installation, or a password change after sign-in exists | A password the installer typed is known to two people |
+   | A8 | The user's decision on the missing escrow of the session keys | Loss of the Core's credential store makes every sealed recording unreadable for ever |
+   | A9 | One complete `REAL_PRODUCTION` start on the Linux production host, and this attended acceptance | On the development Mac the host questions are not asked; a production Core has never started |
+
+   **B. Acceptable for a bench test, if stated in the product's README and in the gate report.**
+
+   | # | What | Condition |
+   |---|---|---|
+   | B1 | The three demonstration persons as accounts | with passwords set by X-2; recordings are test recordings and are named so |
+   | B2 | The demonstration data set in the database | no real examination is recorded into it |
+   | B3 | The sign-in cards still print the demonstration password, which opens nothing | loopback listener only |
+   | B4 | One key id, no rotation, no compromise command | the key protects test recordings only |
+   | B5 | A self-signed certificate, no hand-over yet | nobody outside receives a package as evidence |
+   | B6 | No password change in the console; every change needs the host | stated |
+   | B7 | No escrow of session keys | bench recordings are disposable |
+   | B8 | A macOS host, on which the Linux host profile is not checked | stated as the reason that gate is not a production gate; it does not apply to this acceptance host |
+
+   The recordings of this package are bench recordings in the sense of list B (rule 5 of section 1). A ruling "fit to record" under item 1 is therefore made knowing list A: the items of A that are still open on the day are written into the summary (section 9.4), and the ruling says for each whether it is closed.
 
 ## 12. What the development already supports, and what it cannot
 
@@ -439,7 +523,8 @@ The development closed every part "on doubles": generated video and audio source
 | H.265 | That the worker carries a generated H.265 stream into a file, and that such a session seals and verifies | A real camera's stream: its packetisation, long groups, late parameter sets; the notice not raised; playback in the operator's browser | `9A/H-09`, `9A/H-26`, `9A/H-20` |
 | The address helper | Its refusals and its audit entries with stand-ins for the system tools | The installed file's owner and mode; the bounds on a real interface; the conflict check with the real tool; expiry of an address with the Core killed; scan and set-address on a factory-new camera; two cameras on one address | `9A/H-05`, `9A/H-06`, `9A/H-25`, `9A/H-13` to `9A/H-15` |
 | Picture and sound in step | Nothing. It needs a person, microphones and cameras | The offset and the drift | `9A/H-18`, `9A/H-19` |
-| A production boot and session | One session from four production-kind doubles, sealed and verified, with a key made for the test and test operators | A boot with the user's key and operators; the first session from four real sources | `9A/H-16`, `9A/H-17` |
+| A production boot and session | One session from four production-kind doubles, sealed and verified, with a key made for the test and test operators. The two commands for the key and the passwords (X-1, X-2) are built and were shown by tests on the development Mac only: a production start of the Core's own start routine on a throw-away database with a key the key command made for the test, a stand-in for the capture worker and a stated test host in place of Linux; the password command on throw-away databases with a stand-in for the terminal. No person has typed at the hidden prompt on a real terminal | A boot with the user's key and operators on the Linux host, where all host and program checks are asked; the first session from four real sources | `9A/H-16`, `9A/H-17` |
+| The user's bench devices on the Mac | The camera search and the connection test against the user's own camera, if the development's record of that session says so (rulings U16, U18). No recording, no address change; the microphone path is not exercised there | Everything else on a real device | `9A/H-10`, `9A/H-12` are not replaced by it |
 | No second system | Nothing. There was no host | The acceptance host carries no input-av installation | `9A/H-27` |
 
 ## 13. Open points this chapter could not settle
@@ -448,18 +533,21 @@ Each is open until the named party settles it. None is hidden in a step: where a
 
 | # | Open point | Effect on the run | Settled by |
 |---|---|---|---|
-| 1 | The product has no operator-provisioning and no password-change function. X-2 has no tool | Without a means, `PREP-09` step 1 cannot be done; `9A/H-16` and everything after it is "not run: X-2 missing" | the user, before the day; or a tool delivered by the development |
+| 1 | Settled for the commands: X-1 and X-2 are built (ruling U19), `evidence:production-key` and `operator:set-password`, both script entries of `apps/core-server/package.json`. Open: neither has been run on a host, and no person has typed at the hidden prompt on a real terminal. The product still has no operator-provisioning and no password change in the console, so the boot they give is for a bench test (section 11 item 8) | If a command does not start on the host or refuses, `PREP-09` step 5 or `PREP-10` step 1 is not done; `9A/H-16` and everything after it is then "not run: X-1 missing" or "X-2 missing" | the attended check of the prompt (`PREP-09` step 1), then `PREP-09` step 5 and `PREP-10` step 1 on the host; `9A/H-16` measures the result |
 | 2 | No design document states how PostgreSQL is installed on the Ubuntu host. The product's own provisioning command has run on macOS only and writes under the product tree, which the host profile makes root-owned | `PREP-04` step 1 is by the site's practice until a procedure exists | the development (the controller of the task), before the day |
 | 3 | The database commands accept a closed list of names; the acceptance database is therefore named `dems_demo`, and a seeded database holds the demonstration data set beside the acceptance sessions. Whether the installation goes into service on this database or on a new one after the ruling is not ruled | None on the checks. It is a question for the ruling of section 11 | the user |
 | 4 | How the tablet, the phone and a web console on another machine reach a Core whose listener is on `127.0.0.1`; and the start command of a production Core in the service unit | `9A/H-20` (tablet) cannot be run before it is settled; `PREP-08`, `PREP-11` | the development; chapter 2 (`9A/H-16`) and chapter 3 (`9A/H-20`) state the result |
-| 5 | The Core's unit waits for a synchronised clock (`HOST-32`); the first boot is done off the room network | If no time source is reachable off the room network, the first boot may need the clock synchronised first and the cable removed again | chapter 2, in `9A/H-01` |
-| 6 | Whether a production Core that finds no helper installed refuses to start, or starts with the commissioning functions unavailable | If `9A/H-16` is refused for the missing helper, record the code, do chapter 4, repeat `9A/H-16` as run 2. That is a finding, not a pass of run 1 | chapter 2, in `9A/H-16` |
+| 5 | The Core's unit waits for a synchronised clock (`HOST-32`), and a production start asks the same of the host and refuses with `CAPTURE_HOST_CLOCK_NOT_SYNCHRONISED` (read from the built host checks). The first boot and `9A/H-16` are done off the room network | With way A the clock synchronises in the installation window and `PREP-08` step 1 reads `yes` before the cable is pulled. How long the host keeps reporting `yes` without a time source, and whether it does after a restart, is not known. With way B the site needs a time source on the host's side, or the cable is plugged for the synchronisation and pulled again | `9A/H-01.5` and `9A/H-16.2` on the host |
+| 6 | Settled from the built code, for a Core whose entry point hands the host facts to the boot (decision C46): it refuses to start. The codes are `CAPTURE_HOST_ALIAS_SOCKET` (reason `SOCKET_ABSENT`), `CAPTURE_HOST_ALIAS_HELPER_UNSAFE` (`FILE_ABSENT`) and `CAPTURE_HOST_ALIAS_GRANT_UNSAFE`. The hand-over at the entry point is not built at Revision 2; until it is, no host or program check is asked at all | The order of section 6 was changed for it (sequence 8a). On a tree without the hand-over, `9A/H-16` steps `.8` to `.10` and `9A/H-05.7` read the service manager only | the development: blueprint row 85; see open point 10 |
 | 7 | Whether the development operation with generated sources starts on Linux at all (its set-up commands have run on macOS only) | `PREP-06` step 3: four host checks become "not run" with that reason | chapter 2; the first run |
 | 8 | Whether shared capture, rate and level of `9A/H-08` can be read without a session, from the microphone registration or the pre-check | If not, they are read from S1 and `9A/H-08` gets its result after `9A/H-17` has started | chapter 2, in `9A/H-08` |
-| 9 | The argument form of `db:migrate` and `db:seed` on this host, and the exact text the collectors print | `PREP-05`, `PREP-07` | the package's scripts and their dry run |
+| 9 | Settled for the argument form: `db:create`, `db:migrate`, `db:seed` and `db:status` all take `-- --database <name>` (their own source). Open: the exact text the collectors print | `PREP-05`, `PREP-07` | the dry run of the package, blueprint row 130 |
+| 10 | As built, a production Core on Linux does not start without the address helper's socket, file and unit files. Chapter 4 said that sessions do not depend on the helper; for the start of a production Core that no longer holds. Whether an installation that never uses the commissioning functions must install the helper, or the three checks are asked only when a camera interface is stored, is not ruled | A host on which chapter 4 stops cannot run `9A/H-16` or anything after it. `PREP-12` step 2 | the controller of the development task: a ruling, then rows 80 and 81 or this package |
+| 11 | No pusher with an H.264 encoder is delivered for the host. `HOST-12` builds none, the Ubuntu package is another FFmpeg version, and the encoder library decides the licence of the build | `PREP-06` step 1 names what is needed; without it `9A/H-01` steps `.9` and `.11` and `9A/H-02`, `9A/H-24`, `9A/H-03`, `9A/H-04` are "not run: no pusher on the host", and criterion 5 of `9A/H-01` is not met | the user (which encoder build is acceptable on the host); the development (a series that can push with a built-in encoder) |
+| 12 | The loopback rule: the built host check reads the state of the rule's unit, not the rule table. A table deleted while its unit stays active is not seen by the Core | `9A/H-16` criterion 6 is expected not to be met as built; chapter 2 states it there | the controller: either the criterion reads the unit, or blueprint row 80 reads the table (requirement BR-12) |
 
 ## 14. When the run is over
 
-1. `USER` removes the throw-away database by the database server's own means, then its media store, and the development key and helper copy of `PREP-06`. The product has no command for this on the host. Expected: `npm run db:status -- --database dems_lane_2` exits 1; the throw-away folder is gone; `<data-dir>` is untouched.
+1. `USER` removes the throw-away database by the database server's own means, then its media store, the development key and helper copy of `PREP-06` (the second FFmpeg build with its encoder included), and the unpacked export copies of section 9.5. The product has no command for this on the host. Expected: `npm run db:status -- --database dems_lane_2` exits 1; the throw-away folder is gone; `<data-dir>` is untouched.
 2. `USER` keeps the result record with the three sheets. The acceptance recordings stay in the Core's data directory; no step of this package deletes evidence.
 3. `USER` rules (section 11) or states that no ruling is made yet. Either is written as the last line of the record, with the date.

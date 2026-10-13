@@ -28,7 +28,7 @@
  * the class the Core derives from it (`DEVELOPMENT` for `FAKE` and `LOCAL_DEVICE`).
  */
 import { SimErrorCode, SimTransitionError } from './errors';
-import type { CaptureDeviceStatus, RegisterCaptureDeviceInput, RegisterCaptureMicrophoneInput, SimState } from './types';
+import type { CaptureDeviceStatus, ReaddressCaptureDeviceInput, RegisterCaptureDeviceInput, RegisterCaptureMicrophoneInput, SimState } from './types';
 
 /** The name the action carries in a refusal. */
 export const REGISTER_CAPTURE_DEVICE_ACTION = 'registerCaptureDevice';
@@ -169,4 +169,55 @@ export function registerCaptureMicrophoneTransition(state: SimState, input: Regi
   if (found.online && found.model === input.model) return { state, result: found };
   const enabled: CaptureDeviceStatus = { ...found, online: true, model: input.model };
   return { state: { ...state, captureDevices: { ...state.captureDevices, devices: devices.map((device) => (device === found ? enabled : device)) } }, result: enabled };
+}
+
+// ── The address of a registered camera changes (task 4 row 195, WP-12; finding of row 97; decisions
+// U12 A7, C47 (29)) ─────────────────────────────────────────────────────────────────────────────
+//
+// The INTERNAL action `readdressCaptureDevice` of `SimActions` is built from the function below. It
+// is the one way the address of a registered camera changes in the replicated `captureDevices`
+// slice:
+//
+//   - on the Core server, inside the unit of work of operation 100 (`confirmCaptureDeviceAddress`),
+//     through the engine's door (blueprint row 196), after that operation's access rule, idle lock,
+//     candidate checks and the destination rule. No client can call it: it has no operation of its
+//     own (`sim-actions.ts`);
+//   - the in-app simulator does not run it: its operation 100 refuses every call (`sim/api.ts`).
+//
+// As its two siblings, it checks no permission and no session state, writes NO audit row and no
+// event (the caller writes `CAPTURE_DEVICE_ADDRESS_CHANGED` in the same unit) and leaves
+// `captureConfig` alone: a track that names the device keeps naming it. NEVER AUTOMATIC is the
+// caller's rule, not this file's: the action runs only where an operator's confirmation stands.
+//
+// The address is taken AS THE CALLER GIVES IT: whether the Core may dial it is the destination rule
+// of the operation, which this file cannot ask. What it holds itself:
+//
+// | Rule | Refusal (`SimTransitionError`, code INVALID_INPUT) |
+// |------|---------|
+// | The device is in the registry and is a camera | an unknown id; a microphone; any other class |
+// | The address has the form of a registered `host`: 1 to 120 characters, never a URL, never `user:password@` (C-N8) | a `/`, an `@` or a blank in it; an empty or longer text; no text |
+// | Nothing else of the device changes, and no other device changes | - |
+// | An address the device already holds gives the SAME state object | - |
+
+/** The name the re-address action carries in a refusal. */
+export const READDRESS_CAPTURE_DEVICE_ACTION = 'readdressCaptureDevice';
+
+const invalidReaddress = (detail: string): SimTransitionError => new SimTransitionError(null, READDRESS_CAPTURE_DEVICE_ACTION, detail, SimErrorCode.INVALID_INPUT);
+
+/**
+ * `readdressCaptureDevice`: the state in which the camera `deviceId` holds `address` as its `host`.
+ * Every other member of that device, every other device and every other slice is the same object as
+ * before; a camera that already holds the address gives the SAME state object. Throws as the table says.
+ */
+export function readdressCaptureDeviceTransition(state: SimState, input: ReaddressCaptureDeviceInput): { state: SimState; result: CaptureDeviceStatus } {
+  if (typeof input.deviceId !== 'string') throw invalidReaddress('the registry holds no camera with this id');
+  const devices = state.captureDevices.devices;
+  const found = devices.find((device) => device.id === input.deviceId);
+  if (found === undefined || found.kind !== 'CAMERA') throw invalidReaddress('the registry holds no camera with this id');
+  if (typeof input.address !== 'string' || input.address.length < 1 || input.address.length > TEXT_MAX || /[/@\s]/.test(input.address)) {
+    throw invalidReaddress('the host of a device is a host or an address');
+  }
+  if (found.host === input.address) return { state, result: found };
+  const moved: CaptureDeviceStatus = { ...found, host: input.address };
+  return { state: { ...state, captureDevices: { ...state.captureDevices, devices: devices.map((device) => (device === found ? moved : device)) } }, result: moved };
 }

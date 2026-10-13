@@ -4,7 +4,7 @@
 // real app factory on its own clone of the seed, as `dems_app`. No device is opened: the worker is
 // row 61's stand-in script and the speech runtime is switched off in the clone.
 import { statfsSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
 import { captureLog, unitTestConfig } from '../../../../test/support/config';
 import { buildApp } from '../../../app';
@@ -16,6 +16,8 @@ import { storageStatusOf } from '../index';
 const db = useTestDatabase({ template: 'seed' });
 const fixture = realBootFixture('d10volume');
 fixture.provisionKey();
+// Task 4 row 228b: the fixture is a temporary directory and goes with the file, passed or failed.
+afterAll(() => fixture.remove());
 
 async function booted(slug: string, overrides: Partial<ConfigInput>) {
   const target = await db.another({ template: 'seed', slug });

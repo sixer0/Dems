@@ -117,3 +117,5 @@
 | 2026-10-13 10:10 | I-7 | landed; bahaya batas klon database -> I-7b BERJALAN. Baris 193 berjalan |
 | 2026-10-13 10:16 | I-7b | SELESAI (puncak klon 7, tadinya >= 99). Uji penuh c05 BERJALAN; baris 35 (tinjauan kode fase 2) dan 181 (perapian prosedur) berjalan; baris 193 berjalan |
 | 2026-10-13 10:24 | baris 35 (tinjauan kode fase 2) | LULUS dengan 8 tindak lanjut, 0 memblokir; ketujuh tempat suntingan skrip bersih; C48 |
+| 2026-10-13 10:37 | uji penuh c05 HIJAU; commit b60a9fa3 (skema set B) + 0f5d2a8e (batch 7-8) | 7 commit di branch. Berikutnya: Core untuk kamera asli (baris 232) + batch 9 |
+| 2026-10-13 10:37 | batch 9 (14 agen, 26 baris) | BERJALAN, termasuk baris 232 (Core untuk kamera asli pengguna) |

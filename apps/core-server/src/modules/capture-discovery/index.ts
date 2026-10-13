@@ -56,9 +56,12 @@ import {
 import { captureFenceControl } from '../../capture/fence';
 import { captureNotices, type PrecheckSearchSeam } from '../../capture-notices';
 import { streamProfileOf } from '../../sealing-host';
+import { registerAdoptedCameraTest } from './adopted-test';
+import { registerAdoptedCameraTestRoute } from './adopted-test-route';
 import { registerAdoptedCamera, type AdoptedCamera } from './adoption';
 import { candidateDirectoryOf, registerCaptureConnectRoutes } from './connect';
 import { createSearchLimiter, type SearchLimiter } from './limits';
+import { registerCaptureReaddressRoute } from './readdress-route';
 import { readRegisteredCameras } from './registered';
 import { registerCaptureDiscoveryRoutes } from './routes';
 import { readLastSearchNumber } from './search-ids';
@@ -79,12 +82,18 @@ export {
   type AdoptedCamera,
   type AdoptedCameraStream,
 } from './adoption';
+export { adoptedCameraTestControl, type AdoptedCameraTest, type AdoptedCameraTestControl, type AdoptedCameraTestParts, type StoredCredentialReader } from './adopted-test';
 export { SearchBound, createSearchLimiter, type SearchAllowance, type SearchLimiter } from './limits';
+export { CAPTURE_READDRESS_MODULE_OPERATION, READDRESS_NETWORK_FACTS_UNREADABLE, captureReaddressControl, type CaptureReaddressControl } from './readdress-route';
 export { READ_REGISTERED_CAMERAS, adoptionAddressOf, readRegisteredCameras, registeredIndexOf, type RegisteredCamera, type RegisteredIndex } from './registered';
 export { CAPTURE_DISCOVERY_MODULE_OPERATIONS, captureDiscoveryOperation, searchRefused, type CaptureDiscoveryModuleOperation } from './routes';
 export { READ_LAST_SEARCH_NUMBER, readLastSearchNumber, searchIdOf, type SearchNumberReader } from './search-ids';
 export { createSearchRunner, type SearchClosed, type SearchRefusal, type SearchRequest, type SearchRunner, type SearchRunnerOptions, type SearchStart } from './search';
 export { createCandidateStore, type CandidateStore, type FoundCandidate, type HeldCandidate, type TestRecord } from './store';
+// The rule holder of a typed address (task 4 row 96, its request 1): the door the production composition hands the rule in through.
+export { typedAddressControl, type TypedAddressControl, type TypedAddressRule } from './typed-address';
+// The control of the connect flow (task 4 row 143c, decision C65): the door the production composition hands the candidate rule in through.
+export { captureConnectControl, type CaptureConnectControl } from './connect';
 
 /** Builds the discovery adapter of one search around the lookup of the registered cameras. */
 export type DiscoveryAdapterFactory = (registered: RegisteredLookup) => OnvifDiscoveryAdapter;
@@ -261,6 +270,12 @@ export const captureDiscoveryModule: FastifyPluginAsync = async (app) => {
 
   registerCaptureDiscoveryRoutes(app, { runner, store });
 
+  // THE CONFIRMED RE-ADDRESS (task 4 rows 97 / 197: operation 100; `readdress-route.ts`). It is given the
+  // candidate state of THIS module, asked by the caller's session on the server clock - and none while the
+  // Core has no camera search (503). The destination rule's network facts are handed in by the production
+  // composition (`captureReaddressControl(app).provideNetworkFacts`); until then every address is refused.
+  registerCaptureReaddressRoute(app, { candidates: () => (factory() === null ? null : control.candidates) });
+
   // THE CONNECT FLOW (row 142: operations 95, 96 and 89; `connect/`). Its routes are registered
   // here, and it is given what this module owns: the candidate state (by the caller's session, on
   // the server clock), the read-only connection tester of the camera adapter, and the registrar
@@ -276,20 +291,40 @@ export const captureDiscoveryModule: FastifyPluginAsync = async (app) => {
   // on a Core that has a relay program (`captureRelayPath`); without either the answer is the ONVIF
   // half's own and no code exists. A failure of the relay itself is a fault of the HOST: said in the
   // log and the persistent error log by its code, while the operator gets the outcome of the contract.
-  connect.provideTester(
-    createStreamConnectionTester({
-      onvif: createOnvifConnectionTester({ timers }),
-      locator: createOnvifStreamLocator({ timers }),
-      door: startProductionProcess,
-      relayProgram: app.config.captureRelayPath,
-      timers,
-      statement: { profileOf: streamProfileOf, declaredRate: avcDeclaredFrameRate },
-      tell: (note) => {
-        app.log.error({ source: `${SOURCE}.streamTest`, code: note.code, relayWord: note.reason }, STREAM_TEST_FAULT);
-        app.errorLog.append({ level: 'error', source: `${SOURCE}.streamTest`, message: STREAM_TEST_FAULT, code: note.code, context: { relayWord: note.reason } });
-      },
-    }),
-  );
+  const streamTester = createStreamConnectionTester({
+    onvif: createOnvifConnectionTester({ timers }),
+    locator: createOnvifStreamLocator({ timers }),
+    door: startProductionProcess,
+    relayProgram: app.config.captureRelayPath,
+    timers,
+    statement: { profileOf: streamProfileOf, declaredRate: avcDeclaredFrameRate },
+    tell: (note) => {
+      app.log.error({ source: `${SOURCE}.streamTest`, code: note.code, relayWord: note.reason }, STREAM_TEST_FAULT);
+      app.errorLog.append({ level: 'error', source: `${SOURCE}.streamTest`, message: STREAM_TEST_FAULT, code: note.code, context: { relayWord: note.reason } });
+    },
+  });
+  connect.provideTester(streamTester);
+  // THE CONNECTION TEST OF AN ADOPTED CAMERA WITH ITS STORED CREDENTIAL (task 4 row 146; AD-03 (5), AD-02 (1);
+  // `adopted-test.ts`). It is given the SAME tester and the SAME limits object as operations 95 and 96, so the
+  // single flight, the spacing and the lock-out guard of a host count a typed test and a stored one alike. The reader
+  // (bound to the reason `CONNECTION_TEST`) and the destination rule (bound to the host's facts) are handed in by the
+  // production composition through `adoptedCameraTestControl(app).provide`; until then a test answers 503 before
+  // anything is read. Its route is operation 108 (row 146b, `adopted-test-route.ts`), mounted below. The OUTCOME entry
+  // of a test (`record`) is appended in one unit of its own, after the reader's reveal has committed.
+  registerAdoptedCameraTest(app, {
+    host: {
+      now,
+      state: () => app.engine.state(),
+      query: (text, values) => app.db.read(`${SOURCE}.adoptedCamera`, (pool) => pool.query(text, values)),
+      after: (delayMs, callback) => timers.after(delayMs, callback),
+      note: (fields, message) => app.log.info(fields, message),
+      persist: (entry) => app.errorLog.append({ level: 'warn', source: `${SOURCE}.adoptedTest`, message: entry.message, code: entry.code, context: { ...entry.context } }),
+      record: (entry) => app.pipeline.run(`${SOURCE}.adoptedTested`, async (unit) => void (await unit.audit.append(entry))),
+    },
+    limits: () => connect.limits,
+    tester: () => streamTester,
+  });
+  registerAdoptedCameraTestRoute(app);
   // Fix wave I (re-gate 70, finding G70b-01): the adapter registry of the running operation is built
   // at boot from the stored devices of that moment. A camera adopted afterwards is handed to it WHEN
   // THE ADOPTION COMMITTED (never for a unit that rolled back), before the next unit starts: the

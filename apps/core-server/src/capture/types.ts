@@ -11,6 +11,7 @@ import type {
   CaptureIpcLimits,
   CaptureMicRole,
   CapturePlan,
+  CapturePlanMic,
   CaptureRecord,
   CaptureStopReason,
   CaptureWarningCode,
@@ -354,6 +355,23 @@ export interface CaptureAttemptIngest {
    * writes them nowhere. A call that throws starts no worker (the capture ends with its fault).
    */
   renewed(attempt: number, addresses: ReadonlyMap<string, string>): void;
+  /**
+   * OPTIONAL (task 4 row 191). Called ONCE per attempt after the first, after `renewed`, in the same
+   * turn. The worker of that attempt is started only when the promise has settled: a microphone is
+   * fed by a source that starts once, so the session closes the sources of the earlier worker and
+   * opens them again meanwhile, and the pipe a plan names exists when the worker reads the plan.
+   *
+   * It resolves with the input of every microphone that is open for that attempt, by device: that
+   * attempt's plan holds those microphones of the plan the session was started with, each with the
+   * input given here, and no other. A promise that rejects, and a result that makes no plan of the
+   * protocol (no microphone in the active role), start NO worker and are not tried again (the
+   * capture ends with its fault), as a plan whose addresses could not be renewed.
+   *
+   * The supervisor sets no bound on it: the receiver bounds its own work and always settles. A
+   * receiver whose promise is settled when it is asked costs the restart no time beyond one turn;
+   * the back-off itself is not moved. Left out, the worker is started in the same turn, as before.
+   */
+  sources?(attempt: number): Promise<ReadonlyMap<string, CapturePlanMic['input']>>;
 }
 
 /**

@@ -32,8 +32,27 @@
  * dropped: no path, no owner name and NO INTERFACE NAME is in a result, so none reaches a log line.
  *
  * NOTHING HERE HAS RUN ON A LINUX HOST. Hardware checks `9A/H-04`, `9A/H-05`.
+ *
+ * ROW HC (decision C94 (j), reversing C49 (1); review 119 R119-12): THE ADDRESS HELPER IS NOT PART OF
+ * EVERY PRODUCTION INSTALLATION. Checks 2 and 3 are told what row 80's question found of the socket
+ * node (`DeliveredProgramDeps.aliasSocket`), and the three together are judged as ONE installation:
+ *
+ *   ABSENT   the socket node is not there, the helper file is not there, and NONE of the socket's
+ *            directory and the two unit files is there. No refusal: checks 2 and 3 have the status
+ *            `ABSENT`, check 4 is not asked (no helper would read the interface file), and the outcome
+ *            says `aliasHelper: 'ABSENT'` - the boot states it in one line.
+ *   PARTIAL  the socket node is not there and SOMETHING of the helper is (the file, the directory or a
+ *            unit file): refused by the code of the socket, `CAPTURE_HOST_ALIAS_SOCKET` / `SOCKET_ABSENT`,
+ *            exactly as before this row. The socket node there and a file absent: refused by the code
+ *            of that file, `FILE_ABSENT`, as before.
+ *   WRONG    whatever is there and is not as delivered (kind, owner, write bits), and whatever could
+ *            not be seen (a command that was not started, timed out, or answered in another form), is
+ *            refused by its own code and reason, as before - whether or not the socket node is there.
+ *
+ * Told nothing about the socket (a caller from before this row): it counts as there, so every file is
+ * demanded as before.
  */
-import type { HostCommand, HostCommandResult, HostCommandRunner } from './host-checks';
+import type { AliasSocketFinding, CaptureHostRefusal, HostCommand, HostCommandResult, HostCommandRunner } from './host-checks';
 
 // ── the vocabulary ────────────────────────────────────────────────────────────────────────────
 
@@ -113,16 +132,24 @@ export interface OwnershipCheck {
   readonly command: HostCommand;
   /** The kind each path must be, in the order of the command. */
   readonly kinds: readonly Kind[];
+  /**
+   * Row HC: how many of the paths are there on a host WITHOUT the helper (the system's own directory of check 2; none of
+   * check 3). An answer "a path was not there" with at most this many lines found NOTHING of the helper.
+   */
+  readonly standing: number;
 }
 
-const ownership = (code: CaptureProgramRefusal, items: readonly string[], paths: ReadonlyArray<readonly [string, Kind]>): OwnershipCheck =>
-  Object.freeze({ code, items, command: Object.freeze({ program: STAT, args: Object.freeze(['-c', STAT_FORM, ...paths.map(([path]) => path)]) }), kinds: Object.freeze(paths.map(([, kind]) => kind)) });
+const ownership = (code: CaptureProgramRefusal, items: readonly string[], paths: ReadonlyArray<readonly [string, Kind]>, standing: number): OwnershipCheck =>
+  Object.freeze({ code, items, command: Object.freeze({ program: STAT, args: Object.freeze(['-c', STAT_FORM, ...paths.map(([path]) => path)]) }), kinds: Object.freeze(paths.map(([, kind]) => kind)), standing });
 
 /** THE TWO OWNERSHIP QUESTIONS, in the order they are asked. Literal paths only: no value of the configuration reaches an argument. */
 export const PROGRAM_OWNERSHIP_CHECKS: readonly OwnershipCheck[] = Object.freeze([
-  ownership(CaptureProgramRefusal.PROGRAM_ALIAS_HELPER, ['HOST-45'], [[HELPER_FILE, 'regular file'], [HELPER_DIRECTORY, 'directory']]),
-  ownership(CaptureProgramRefusal.PROGRAM_ALIAS_GRANT, ['HOST-44'], [[SOCKET_DIRECTORY, 'directory'], [SOCKET_UNIT, 'regular file'], [SERVICE_UNIT, 'regular file']]),
+  ownership(CaptureProgramRefusal.PROGRAM_ALIAS_HELPER, ['HOST-45'], [[HELPER_FILE, 'regular file'], [HELPER_DIRECTORY, 'directory']], 1),
+  ownership(CaptureProgramRefusal.PROGRAM_ALIAS_GRANT, ['HOST-44'], [[SOCKET_DIRECTORY, 'directory'], [SOCKET_UNIT, 'regular file'], [SERVICE_UNIT, 'regular file']], 0),
 ]);
+
+/** Row HC: the code a helper of which only a part is there is refused by - the socket's own (row 80), held to that vocabulary by its type. */
+const SOCKET_OF_A_PARTIAL_HELPER: { readonly code: CaptureHostRefusal; readonly reason: string } = Object.freeze({ code: 'CAPTURE_HOST_ALIAS_SOCKET', reason: 'SOCKET_ABSENT' });
 
 /** The question of check 4: the file's content. */
 export const INTERFACE_FILE_COMMAND: HostCommand = Object.freeze({ program: '/usr/bin/cat', args: Object.freeze([INTERFACE_FILE]) });
@@ -141,14 +168,22 @@ export interface DeliveredProgramDeps {
    * null when no row exists or it names none. A reader that cannot read REJECTS: the check then refuses.
    */
   storedInterface(): Promise<string | null>;
+  /**
+   * Row HC (C94 (j)): what row 80's question found of the helper's socket node (`HostCheckOutcome.aliasSocket`).
+   * `ABSENT`: the helper may be absent as a whole - see the header. Left out, `IN_PLACE` and `NOT_ASKED`: the node
+   * counts as there, and every file of the helper is demanded.
+   */
+  readonly aliasSocket?: AliasSocketFinding;
 }
 
-export const ProgramCheckStatus = { IN_PLACE: 'IN_PLACE', MISSING: 'MISSING', NOT_ASKED: 'NOT_ASKED' } as const;
+/** `ABSENT` (row HC): nothing of the address helper is installed - a fact of the host, not a refusal. */
+export const ProgramCheckStatus = { IN_PLACE: 'IN_PLACE', MISSING: 'MISSING', NOT_ASKED: 'NOT_ASKED', ABSENT: 'ABSENT' } as const;
 export type ProgramCheckStatus = (typeof ProgramCheckStatus)[keyof typeof ProgramCheckStatus];
 
 /** One line of the diagnostics: fixed words only. */
 export interface ProgramCheckResult {
-  readonly code: CaptureProgramRefusal;
+  /** A code of this file; or (row HC) the code of the socket, for a helper of which only a part is there. */
+  readonly code: CaptureProgramRefusal | CaptureHostRefusal;
   readonly items: readonly string[];
   readonly status: ProgramCheckStatus;
   /** The reason of `MISSING` (a word of `ProgramCheckReason`, or of the path rule for the relay); null otherwise. */
@@ -156,10 +191,16 @@ export interface ProgramCheckResult {
 }
 
 export interface ProgramCheckOutcome {
-  readonly failure: { readonly code: CaptureProgramRefusal; readonly reason: string } | null;
+  readonly failure: { readonly code: CaptureProgramRefusal | CaptureHostRefusal; readonly reason: string } | null;
   /** How many checks were found in place, and how many were not asked (another platform, or no stored interface). */
   readonly inPlace: number;
   readonly notAsked: number;
+  /**
+   * Row HC (C94 (j)): the address helper as ONE installation. `ABSENT`: nothing of it is there (no socket node, no
+   * helper file, no directory of the socket, no unit file) - the start goes on and the boot says so. `IN_PLACE`: the
+   * socket node, the file and the grant are as delivered. `NOT_ASKED`: another platform, or the boot stopped before.
+   */
+  readonly aliasHelper: 'IN_PLACE' | 'ABSENT' | 'NOT_ASKED';
 }
 
 /** The path rule of a program, handed in by the boot checks (ONE rule for the worker, the relay and the guard). Null: usable. */
@@ -192,9 +233,19 @@ async function relayReason(deps: DeliveredProgramDeps, programProblem: ProgramPr
   return result.exitCode === RELAY_EXIT.START_MESSAGE_INVALID || result.exitCode === RELAY_EXIT.START_MESSAGE_TIMEOUT ? null : UNCLEAR;
 }
 
+/**
+ * Row HC: true when the answer of an ownership question says that NOTHING of the helper is there - a path was not
+ * there, and no more lines were printed than the host has without the helper. Asked of the answer `ownershipReason`
+ * judged `FILE_ABSENT`; every other answer (a wrong kind, owner or mode, an answer that cannot be read) is false.
+ */
+function nothingOfTheHelper(check: OwnershipCheck, answer: { readonly lines: readonly string[]; readonly exitCode: number } | ProgramCheckReason): boolean {
+  return typeof answer !== 'string' && answer.exitCode === 1 && answer.lines.length <= check.standing;
+}
+
 /** Checks 2 and 3. */
-async function ownershipReason(check: OwnershipCheck, run: HostCommandRunner): Promise<ProgramCheckReason | null> {
+async function ownershipReason(check: OwnershipCheck, run: HostCommandRunner, seen?: (answer: { readonly lines: readonly string[]; readonly exitCode: number } | ProgramCheckReason) => void): Promise<ProgramCheckReason | null> {
   const answer = await answerOf(check.command, run);
+  seen?.(answer);
   if (typeof answer === 'string') return answer;
   const { lines, exitCode } = answer;
   // The tool prints a line for every path it found and ends with 1 when one was not there.
@@ -237,12 +288,29 @@ export async function deliveredProgramResults(deps: DeliveredProgramDeps, progra
   const linux = deps.platform === 'linux';
 
   add(CaptureProgramRefusal.PROGRAM_RELAY_LIBRARY, ['HOST-05', 'HOST-15'], await relayReason(deps, programProblem));
+  // Row HC (C94 (j)): with the socket node NOT THERE, the two questions say whether anything of the helper is there at all.
+  const socketAbsent = linux && deps.aliasSocket === 'ABSENT';
+  let nothing = 0;
   for (const check of PROGRAM_OWNERSHIP_CHECKS) {
     if (stopped()) return Object.freeze(results);
-    add(check.code, check.items, linux ? await ownershipReason(check, deps.run) : undefined);
+    if (!socketAbsent) {
+      add(check.code, check.items, linux ? await ownershipReason(check, deps.run) : undefined);
+      continue;
+    }
+    let none = false;
+    const reason = await ownershipReason(check, deps.run, (answer) => void (none = nothingOfTheHelper(check, answer)));
+    if (none) {
+      // Nothing of the helper behind this question either: held as ABSENT. Whether the WHOLE helper is absent is known after both.
+      nothing += 1;
+      results.push(Object.freeze({ code: check.code, items: check.items, status: ProgramCheckStatus.ABSENT, reason: ProgramCheckReason.FILE_ABSENT }));
+    } else if (reason === null || reason === ProgramCheckReason.FILE_ABSENT) {
+      // A PART of the helper is there (as delivered, or with a path absent beside it) and its socket node is not: the socket's own refusal.
+      results.push(Object.freeze({ code: SOCKET_OF_A_PARTIAL_HELPER.code, items: ['HOST-44'], status: ProgramCheckStatus.MISSING, reason: SOCKET_OF_A_PARTIAL_HELPER.reason }));
+    } else add(check.code, check.items, reason);
   }
   if (stopped()) return Object.freeze(results);
-  if (!linux) add(CaptureProgramRefusal.PROGRAM_INTERFACE_FILE, ['HOST-46'], undefined);
+  // Nothing of the helper is installed: no helper would read the interface file, so the file is not asked (a status, not a pass).
+  if (!linux || (socketAbsent && nothing === PROGRAM_OWNERSHIP_CHECKS.length)) add(CaptureProgramRefusal.PROGRAM_INTERFACE_FILE, ['HOST-46'], undefined);
   else {
     let stored: string | null | undefined;
     try {
@@ -261,9 +329,13 @@ export async function deliveredProgramResults(deps: DeliveredProgramDeps, progra
 export async function deliveredProgramOutcomeOf(deps: DeliveredProgramDeps, programProblem: ProgramProblemOf): Promise<ProgramCheckOutcome> {
   const results = await deliveredProgramResults(deps, programProblem, { stopAtFirstMissing: true });
   const missing = results.find((entry) => entry.status === ProgramCheckStatus.MISSING);
+  // Row HC: the helper as one installation - both ownership questions absent, both in place, or not judged (see `aliasHelper`).
+  const helper = results.filter((entry) => PROGRAM_OWNERSHIP_CHECKS.some((check) => check.code === entry.code));
+  const all = (status: ProgramCheckStatus): boolean => helper.length === PROGRAM_OWNERSHIP_CHECKS.length && helper.every((entry) => entry.status === status);
   return Object.freeze({
     failure: missing === undefined ? null : Object.freeze({ code: missing.code, reason: missing.reason ?? UNCLEAR }),
     inPlace: results.filter((entry) => entry.status === ProgramCheckStatus.IN_PLACE).length,
     notAsked: results.filter((entry) => entry.status === ProgramCheckStatus.NOT_ASKED).length,
+    aliasHelper: all(ProgramCheckStatus.ABSENT) ? 'ABSENT' : all(ProgramCheckStatus.IN_PLACE) ? 'IN_PLACE' : 'NOT_ASKED',
   });
 }

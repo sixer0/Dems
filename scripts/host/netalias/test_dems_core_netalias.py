@@ -18,6 +18,13 @@ option of macOS, which the build step puts in place of the Linux ones).
 
 WHAT THIS DOES NOT PROVE. Anything on Linux: the real tools, the real option numbers, the socket
 unit, the service unit. That is hardware check 9A/H-05, H-06 and H-25.
+
+THE TEXTS OF THE DOUBLE ARE NOT CAPTURES OF A HOST (agent H2, cautions R119-01 and R119-02). The
+three result lines of the conflict-check program (FREE_TEXT, TAKEN_TEXT), the flag words of an
+interface, the member `valid_life_time` of an address and the two record files of the package
+manager are written here as the helper EXPECTS them. One text was measured (the container of
+test/079): `Interface "lo" is not ARPable` with exit status 0. Where a host prints another form,
+the helper refuses (it never adds on a text it does not know) and check 9A/H-25 shows it.
 """
 
 import hashlib
@@ -30,6 +37,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -54,7 +62,7 @@ with open(os.path.join(here, "plan.json")) as handle:
     plan = json.load(handle)
 for rule in plan:
     if rule["tool"] == name and sys.argv[1 : 1 + len(rule["prefix"])] == rule["prefix"]:
-        sys.stdout.write(rule.get("stdout", ""))
+        sys.stdout.write(rule.get("stdout", "").replace("@LAST@", sys.argv[-1]))
         sys.stdout.flush()
         os._exit(rule["exit"])
 os._exit(97)
@@ -76,8 +84,29 @@ def codes():
 CODES = codes()
 
 
-def link(name, *addresses):
-    return {"ifname": name, "addr_info": [{"family": "inet", "local": a, "prefixlen": p} for a, p in addresses]}
+ETHERNET_UP = ["BROADCAST", "MULTICAST", "UP", "LOWER_UP"]
+LOOPBACK_UP = ["LOOPBACK", "UP", "LOWER_UP"]
+FOREVER = 4294967295
+# What the conflict-check double prints; "@LAST@" becomes its last argument, the address asked.
+FREE_TEXT = "ARPING @LAST@ from 0.0.0.0 eth1\nSent 2 probes (2 broadcast(s))\nReceived 0 response(s)\n"
+TAKEN_TEXT = ("ARPING @LAST@ from 0.0.0.0 eth1\nUnicast reply from @LAST@ [00:11:22:33:44:55]  0.652ms\n"
+              "Sent 1 probes (1 broadcast(s))\nReceived 1 response(s)\n")
+NOT_ARPABLE_TEXT = 'Interface "eth1" is not ARPable\n'  # the measured answer of test/079, with exit status 0
+
+
+def address_info(local, prefix, lifetime=FOREVER):
+    """One address as the listing gives it. `lifetime` None: the listing does not state one."""
+    info = {"family": "inet", "local": local, "prefixlen": prefix}
+    if lifetime is not None:
+        info["valid_life_time"] = info["preferred_life_time"] = lifetime
+    return info
+
+
+def link(name, *addresses, flags=None):
+    """One interface of `ip -json -4 addr show`. An address is (local, prefix) or (local, prefix, lifetime)."""
+    if flags is None:
+        flags = LOOPBACK_UP if name == "lo" else ETHERNET_UP
+    return {"ifname": name, "flags": flags, "addr_info": [address_info(*address) for address in addresses]}
 
 
 class Bench:
@@ -87,13 +116,15 @@ class Bench:
         self.case = case
         self.root = os.path.realpath(tempfile.mkdtemp(prefix="netalias-"))
         case.addCleanup(shutil.rmtree, self.root, True)
-        for name in ("tools", "etc", "sys", "run/marks", "copy", "decoy"):
+        for name in ("tools", "etc", "sys", "run/marks", "copy", "decoy", "dpkg"):
             os.makedirs(os.path.join(self.root, name))
         os.chmod(os.path.join(self.root, "run/marks"), 0o755)
         os.chmod(os.path.join(self.root, "etc"), 0o755)
+        os.chmod(os.path.join(self.root, "dpkg"), 0o755)
         for tool in ("ip", "arping"):
             self.install_double(os.path.join("tools", tool))
             self.install_double(os.path.join("decoy", tool))
+        self.record_package()
         for name in (CAMERA, OFFICE, "lo"):
             os.mkdir(os.path.join(self.root, "sys", name))
         self.interface_file = self.path("etc/netalias-interface")
@@ -102,6 +133,7 @@ class Bench:
         self.addresses = [link("lo", ("127.0.0.1", 8)), link(OFFICE, ("10.20.0.5", 24)), link(CAMERA, ("192.168.100.1", 24))]
         self.default_route = [{"dst": "default", "gateway": "10.20.0.1", "dev": OFFICE}]
         self.arping_exit = 0
+        self.arping_stdout = None  # None: the text that agrees with the exit status
         self.add_exit = 0
         self.del_exit = 0
         self.copy = build.make_test_copy(self.path("copy/helper"), {
@@ -110,6 +142,7 @@ class Bench:
             "INTERFACE_FILE": self.interface_file,
             "SYSFS_NET": self.path("sys"),
             "MARKS_DIR": self.path("run/marks"),
+            "DPKG_INFO_DIR": self.path("dpkg"),
             "GROUP_FILE": self.path("etc/group"),
             "PASSWD_FILE": self.path("etc/passwd"),
             "TRUSTED_OWNER_UID": os.getuid() if trusted_uid is None else trusted_uid,
@@ -136,19 +169,40 @@ class Bench:
         self.write(self.path("etc/passwd"), "root:x:0:0:root:/root:/bin/bash\n"
                    "dems-core:x:%d:%d:DEMS Core:/var/lib/dems:/usr/sbin/nologin\n" % (uid, uid))
 
-    def mark(self, address):
-        self.write(self.path("run/marks/" + address), "%s/24 %s 0 30\n" % (address, CAMERA))
+    def record_package(self, package="iputils-arping", tool="tools/arping", listed=True, sums=1):
+        """The package manager's two records of the conflict tool, as the tool file is NOW."""
+        with open(self.path(tool), "rb") as handle:
+            digest = hashlib.md5(handle.read(), usedforsecurity=False).hexdigest()
+        path = self.path(tool)
+        self.write(self.path("dpkg/%s.list" % package), "/.\n/usr\n/usr/bin\n" + (path + "\n" if listed else ""))
+        self.write(self.path("dpkg/%s.md5sums" % package),
+                   "0123456789abcdef0123456789abcdef  usr/share/doc/%s/copyright\n" % package + ("%s  %s\n" % (digest, path[1:])) * sums)
+
+    def mark(self, address, age=0, minutes=30, interface=CAMERA):
+        """A mark as the helper writes it, written `age` seconds ago on the host's monotonic clock."""
+        self.write(self.path("run/marks/" + address), "%s/24 %s %d %d\n" % (address, interface, int(time.monotonic()) - age, minutes))
+
+    def hold(self, address, lifetime=1700, name=CAMERA):
+        """The interface now holds `address`/24: with a kernel lifetime in seconds, FOREVER, or None (not stated)."""
+        for entry in self.addresses:
+            if entry["ifname"] == name:
+                entry["addr_info"].append(address_info(address, 24, lifetime))
+                return
+        raise AssertionError("no such interface in the fixture")
 
     def marks(self):
         return sorted(os.listdir(self.path("run/marks")))
 
     def plan(self):
+        said = self.arping_stdout
+        if said is None:
+            said = {0: FREE_TEXT, 1: TAKEN_TEXT}.get(self.arping_exit, "")
         rules = [
             {"tool": "ip", "prefix": ROUTE, "exit": 0, "stdout": json.dumps(self.default_route)},
             {"tool": "ip", "prefix": ADDRS, "exit": 0, "stdout": json.dumps(self.addresses)},
             {"tool": "ip", "prefix": ["addr", "add"], "exit": self.add_exit},
             {"tool": "ip", "prefix": ["addr", "del"], "exit": self.del_exit},
-            {"tool": "arping", "prefix": [], "exit": self.arping_exit},
+            {"tool": "arping", "prefix": [], "exit": self.arping_exit, "stdout": said},
         ]
         for folder in ("tools", "decoy"):
             self.write(self.path(folder + "/plan.json"), json.dumps(rules))
@@ -208,7 +262,7 @@ class Bench:
 
 ADD = b"add 192.168.1.250/24 30\n"
 DEL = b"del 192.168.1.250/24\n"
-ARPING_VECTOR = ["arping", "-D", "-q", "-c", "2", "-w", "3", "-I", CAMERA, "192.168.1.250"]
+ARPING_VECTOR = ["arping", "-D", "-c", "2", "-w", "3", "-I", CAMERA, "192.168.1.250"]
 ADD_VECTOR = ["ip", "addr", "add", "192.168.1.250/24", "dev", CAMERA, "valid_lft", "1800", "preferred_lft", "1800"]
 DEL_VECTOR = ["ip", "addr", "del", "192.168.1.250/24", "dev", CAMERA]
 READS = [["ip"] + ROUTE, ["ip"] + ADDRS]
@@ -241,7 +295,7 @@ class TheWork(HelperCase):
     def test_del_of_a_marked_address_runs_one_del(self):
         bench = self.bench()
         bench.mark("192.168.1.250")
-        bench.addresses.append(link(CAMERA, ("192.168.1.250", 24)))
+        bench.hold("192.168.1.250")
         _, match = bench.run(DEL, expect="OK")
         self.assertEqual(bench.vectors(), READS + [DEL_VECTOR])
         self.assertEqual(bench.marks(), [])
@@ -399,7 +453,7 @@ class Bound3OtherInterfaceAndLimit(HelperCase):
     def test_a_second_alias_while_one_is_active_is_refused(self):
         bench = self.bench()
         bench.mark("192.168.1.250")
-        bench.addresses.append(link(CAMERA, ("192.168.1.250", 24)))
+        bench.hold("192.168.1.250")
         for request in (b"add 192.168.2.250/24 30\n", b"add 192.168.1.251/24 30\n", b"add 10.1.1.250/24 5\n"):
             with self.subTest(request=request):
                 bench.run(request, expect="ALIAS_LIMIT_REACHED")
@@ -410,7 +464,7 @@ class Bound3OtherInterfaceAndLimit(HelperCase):
         bench = self.bench()
         for address in ("192.168.1.250", "192.168.2.250"):
             bench.mark(address)
-            bench.addresses.append(link(CAMERA, (address, 24)))
+            bench.hold(address)
         bench.run(b"add 192.168.3.250/24 30\n", expect="ALIAS_LIMIT_REACHED")
         self.assertEqual(bench.vectors(), READS)
 
@@ -478,6 +532,160 @@ class Bound4ConflictCheck(HelperCase):
                 self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR])
                 self.assertEqual(bench.marks(), [])
 
+    # --- caution R119-01: exit status 0 of a tool that did not ask is not "the address is free" ---
+
+    def camera_flags(self, bench, flags):
+        bench.addresses[2] = link(CAMERA, ("192.168.100.1", 24), flags=flags)
+
+    def test_a_port_that_cannot_be_asked_is_refused_before_the_tool_is_started(self):
+        cases = (
+            ("INTERFACE_NOT_ARPABLE", ["LOOPBACK", "UP", "LOWER_UP"]),
+            ("INTERFACE_NOT_ARPABLE", ["BROADCAST", "MULTICAST", "NOARP", "UP", "LOWER_UP"]),
+            ("INTERFACE_NOT_ARPABLE", ["POINTOPOINT", "MULTICAST", "UP", "LOWER_UP"]),
+            ("INTERFACE_NOT_ARPABLE", ["LOOPBACK", "NOARP"]),  # cannot be asked AND down: the first reason is named
+            ("INTERFACE_DOWN", ["BROADCAST", "MULTICAST"]),
+            ("INTERFACE_DOWN", ["BROADCAST", "MULTICAST", "LOWER_UP"]),
+            ("INTERFACE_DOWN", ["NO-CARRIER", "BROADCAST", "MULTICAST", "UP"]),
+            ("INTERFACE_STATE_UNKNOWN", None),
+            ("INTERFACE_STATE_UNKNOWN", "BROADCAST,UP,LOWER_UP"),
+            ("INTERFACE_STATE_UNKNOWN", ["BROADCAST", "UP", "LOWER_UP", 7]),
+            ("INTERFACE_STATE_UNKNOWN", ["BROADCAST", "UP", "LOWER_UP", "up; reboot"]),
+            ("INTERFACE_STATE_UNKNOWN", {"UP": True}),
+        )
+        for expect, flags in cases:
+            with self.subTest(expect=expect, flags=flags):
+                bench = self.bench()
+                self.camera_flags(bench, flags)
+                if flags is None:
+                    del bench.addresses[2]["flags"]
+                # The double WOULD say "free" with exit status 0: the refusal is not its answer.
+                bench.run(ADD, expect=expect)
+                self.assertEqual(bench.vectors(), READS, "the conflict tool is not started, nothing is added")
+                self.assertEqual(bench.marks(), [])
+
+    def test_a_camera_port_the_listing_does_not_show_or_shows_twice_is_not_asked(self):
+        bench = self.bench()
+        del bench.addresses[2]  # no IPv4 address on the camera port: it is not in the listing
+        bench.run(ADD, expect="INTERFACE_STATE_UNKNOWN")
+        self.assertEqual(bench.vectors(), READS)
+        bench = self.bench()
+        bench.addresses.append(link(CAMERA, ("192.168.50.1", 24)))
+        bench.run(ADD, expect="INTERFACE_STATE_UNKNOWN")
+        self.assertEqual(bench.vectors(), READS)
+        self.assertEqual(bench.marks(), [])
+
+    def test_the_interface_file_naming_the_loopback_no_longer_adds_without_a_check(self):
+        # The reach the review names: `lo` passes the name pattern, is in the kernel's list and
+        # carries no default route; the packaged tool answers 0 there without asking.
+        bench = self.bench()
+        bench.write(bench.interface_file, "lo\n")
+        bench.arping_stdout = NOT_ARPABLE_TEXT.replace("eth1", "lo")
+        bench.run(ADD, expect="INTERFACE_NOT_ARPABLE")
+        self.assertEqual(bench.vectors(), READS)
+        self.assertEqual(bench.marks(), [])
+
+    def test_exit_status_0_without_the_stated_result_is_not_a_free_address(self):
+        free = FREE_TEXT.replace("@LAST@", "192.168.1.250")
+        texts = (
+            "",
+            NOT_ARPABLE_TEXT,
+            'Interface "eth1" is down\n',
+            NOT_ARPABLE_TEXT + free,
+            free.replace("192.168.1.250", "192.168.1.251"),  # it asked for another address
+            free.replace(" eth1\n", " eth0\n"),  # it asked on another interface
+            free.replace("ARPING ", "arping "),
+            free.replace("Sent 2 probes (2 ", "Sent 0 probes (0 "),
+            free.replace("Sent 2 probes (2 ", "Sent 1 probes (1 "),  # fewer probes than were asked for
+            free.replace("(2 broadcast(s))", "(0 broadcast(s))"),
+            free.replace("Received 0 response(s)", "Received 1 response(s)"),  # the text and the status disagree
+            free.replace("Received 0 response(s)", "Received 0 response(s) (1 request(s))"),
+            free.replace("Received 0 response(s)", "Received 0 responses"),
+            free.replace("Received 0 response(s)\n", ""),
+            free.replace("Sent 2 probes (2 broadcast(s))\n", ""),
+            free + "Received 0 response(s)\n",
+            free + free,
+            free[:-1],  # cut before its line end
+            free.replace("Sent", "Sént"),
+            free + "x" * 5000,
+            # the OTHER program named arping (package `arping`) does not print these lines
+            "ARPING 192.168.1.250\nTimeout\nTimeout\n\n--- 192.168.1.250 statistics ---\n"
+            "2 packets transmitted, 0 packets received, 100% unanswered (0 extra)\n",
+        )
+        for text in texts:
+            with self.subTest(text=text[:60]):
+                bench = self.bench()
+                bench.arping_stdout = text
+                bench.run(ADD, expect="CONFLICT_RESULT_UNKNOWN")
+                self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR], "nothing is added")
+                self.assertEqual(bench.marks(), [])
+
+    def test_exit_status_1_without_a_stated_response_is_not_a_result_either(self):
+        for text in ("", FREE_TEXT, NOT_ARPABLE_TEXT, TAKEN_TEXT.replace("Received 1", "Received 0")):
+            with self.subTest(text=text[:40]):
+                bench = self.bench()
+                bench.arping_exit = 1
+                bench.arping_stdout = text
+                bench.run(ADD, expect="CONFLICT_RESULT_UNKNOWN")
+                self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR])
+                self.assertEqual(bench.marks(), [])
+
+    def test_the_stated_results_that_are_read(self):
+        for status, text, expect in (
+                (0, FREE_TEXT.replace("Sent 2 probes (2 ", "Sent 4 probes (4 "), "OK"),
+                (0, FREE_TEXT.replace(" from 0.0.0.0 ", " from 192.168.100.1 "), "OK"),
+                (1, TAKEN_TEXT.replace("Received 1 response(s)", "Received 2 response(s) (1 request(s), 1 broadcast(s))"), "ADDRESS_IN_USE"),
+                (1, TAKEN_TEXT, "ADDRESS_IN_USE")):
+            with self.subTest(status=status, text=text[-40:]):
+                bench = self.bench()
+                bench.arping_exit = status
+                bench.arping_stdout = text
+                bench.run(ADD, expect=expect)
+                self.assertEqual(bench.marks(), ["192.168.1.250"] if expect == "OK" else [])
+
+    def test_a_program_at_the_tools_path_that_is_not_the_packaged_one_is_never_started(self):
+        def changed_after_installation(bench):
+            with open(bench.path("tools/arping"), "a") as handle:
+                handle.write("# another program\n")
+
+        def recorded_for_the_other_package_only(bench):
+            for name in ("iputils-arping.list", "iputils-arping.md5sums"):
+                os.unlink(bench.path("dpkg/" + name))
+            bench.record_package(package="arping")
+
+        damages = (
+            changed_after_installation,
+            recorded_for_the_other_package_only,
+            lambda bench: bench.record_package(listed=False),
+            lambda bench: bench.record_package(sums=0),
+            lambda bench: bench.record_package(sums=2),
+            lambda bench: os.unlink(bench.path("dpkg/iputils-arping.list")),
+            lambda bench: os.unlink(bench.path("dpkg/iputils-arping.md5sums")),
+            lambda bench: os.chmod(bench.path("dpkg/iputils-arping.md5sums"), 0o664),
+            lambda bench: os.chmod(bench.path("dpkg/iputils-arping.list"), 0o646),
+            lambda bench: os.chmod(bench.path("dpkg"), 0o777),
+            lambda bench: bench.write(bench.path("dpkg/iputils-arping.md5sums"), "é\n"),
+            lambda bench: bench.write(bench.path("dpkg/iputils-arping.list"), "x" * 70000),
+        )
+        for number, damage in enumerate(damages):
+            with self.subTest(damage=number):
+                bench = self.bench()
+                damage(bench)
+                self.refused_without_any_tool(bench, ADD, "CONFLICT_TOOL_NOT_EXPECTED")
+                bench.run(b"", arguments=["check"], pipe=True, expect="CONFLICT_TOOL_NOT_EXPECTED")
+                self.assertEqual(bench.vectors(), [], "root's check names it at installation, and starts nothing")
+
+    def test_the_delivered_file_names_one_program_and_reads_its_result(self):
+        with open(DELIVERED, encoding="ascii") as handle:
+            text = handle.read()
+        self.assertEqual(re.findall(r'^CONFLICT_PACKAGE = (.+)$', text, re.M), ['"iputils-arping"'])
+        self.assertEqual(re.findall(r"\[ARPING_TOOL, ([^\]]+)\]", text),
+                         ['"-D", "-c", str(CONFLICT_PROBES), "-w", str(CONFLICT_WAIT_S), "-I", interface, dotted(quad)'])
+        self.assertNotIn('"-q"', text, "a quiet tool states no result")
+        for name, code in (("CONFLICT_TOOL_NOT_EXPECTED", 38), ("INTERFACE_NOT_ARPABLE", 46), ("INTERFACE_DOWN", 47),
+                           ("INTERFACE_STATE_UNKNOWN", 48), ("CONFLICT_RESULT_UNKNOWN", 55)):
+            self.assertEqual(CODES[name], code)
+        self.assertEqual(len(CODES), 41)
+
 
 class Bound5MarkAndLifetime(HelperCase):
     """S13-08 (5): what is added is marked, and lives 5 to 480 minutes by the kernel's own clock."""
@@ -530,7 +738,7 @@ class Bound6DelOnlyWhatWasMarked(HelperCase):
             with self.subTest(address=address):
                 bench = self.bench()
                 bench.mark("192.168.77.250")
-                bench.addresses.append(link(CAMERA, ("192.168.77.250", 24)))
+                bench.hold("192.168.77.250")
                 bench.run(("del %s/24\n" % address).encode(), expect="NOT_MARKED")
                 self.assertEqual(bench.vectors(), [["ip"] + ROUTE], "no removal vector was built")
                 self.assertEqual(bench.marks(), ["192.168.77.250"])
@@ -546,7 +754,7 @@ class Bound6DelOnlyWhatWasMarked(HelperCase):
     def test_a_removal_the_tool_refuses_keeps_the_mark(self):
         bench = self.bench()
         bench.mark("192.168.1.250")
-        bench.addresses.append(link(CAMERA, ("192.168.1.250", 24)))
+        bench.hold("192.168.1.250")
         bench.del_exit = 2
         bench.run(DEL, expect="DEL_FAILED")
         self.assertEqual(bench.vectors(), READS + [DEL_VECTOR])
@@ -555,10 +763,132 @@ class Bound6DelOnlyWhatWasMarked(HelperCase):
     def test_del_needs_no_conflict_tool(self):
         bench = self.bench()
         bench.mark("192.168.1.250")
-        bench.addresses.append(link(CAMERA, ("192.168.1.250", 24)))
+        bench.hold("192.168.1.250")
         os.unlink(bench.path("tools/arping"))
         bench.run(DEL, expect="OK")
         self.assertEqual(bench.vectors(), READS + [DEL_VECTOR])
+
+    # --- caution R119-02: a mark never outlives the address it was written for ---
+
+    def test_a_mark_past_its_lifetime_does_not_remove_an_address_somebody_else_set(self):
+        # Ours expired; later the same address was set on the camera port by another hand.
+        for age, lifetime in ((1800 + 61, FOREVER), (1800 + 61, 900), (9 * 3600, FOREVER)):
+            with self.subTest(age=age, lifetime=lifetime):
+                bench = self.bench()
+                bench.mark("192.168.1.250", age=age)
+                bench.hold("192.168.1.250", lifetime)
+                bench.run(DEL, expect="NOT_MARKED")
+                self.assertEqual(bench.vectors(), READS, "no removal vector was built")
+                self.assertEqual(bench.marks(), [], "the stale mark is gone")
+
+    def test_an_address_set_again_by_hand_inside_the_marks_lifetime_is_not_removed(self):
+        # Ours was removed by hand; the address there now has no lifetime, or a longer one than was asked.
+        for lifetime in (FOREVER, 1801, 28800):
+            with self.subTest(lifetime=lifetime):
+                bench = self.bench()
+                bench.mark("192.168.1.250", age=120)
+                bench.hold("192.168.1.250", lifetime)
+                bench.run(DEL, expect="NOT_MARKED")
+                self.assertEqual(bench.vectors(), READS)
+                self.assertEqual(bench.marks(), [])
+
+    def test_a_mark_inside_its_lifetime_and_its_grace_still_removes_its_own_address(self):
+        for age, lifetime in ((0, 1800), (900, 900), (1799, 1), (1800 + 30, 0)):
+            with self.subTest(age=age):
+                bench = self.bench()
+                bench.mark("192.168.1.250", age=age)
+                bench.hold("192.168.1.250", lifetime)
+                bench.run(DEL, expect="OK")
+                self.assertEqual(bench.vectors(), READS + [DEL_VECTOR])
+                self.assertEqual(bench.marks(), [])
+
+    def test_a_stale_mark_whose_address_is_gone_is_dropped_and_del_is_done(self):
+        # The lifetime bound, a removal by hand: no address, so what was asked is already so.
+        for age in (0, 1800 + 61, 9 * 3600):
+            with self.subTest(age=age):
+                bench = self.bench()
+                bench.mark("192.168.1.250", age=age)
+                _, match = bench.run(DEL, expect="OK")
+                self.assertEqual(bench.vectors(), READS)
+                self.assertEqual(bench.marks(), [])
+                self.assertEqual(match.group(6), " note=already-absent")
+
+    def test_a_mark_that_is_not_what_the_helper_writes_is_no_mark(self):
+        def from_before_this_boot(bench):
+            bench.mark("192.168.1.250", age=-3600)  # written "later" than the clock reads now
+
+        cases = (
+            from_before_this_boot,
+            lambda bench: bench.mark("192.168.1.250", interface=OFFICE),
+            lambda bench: bench.mark("192.168.1.250", minutes=481),
+            lambda bench: bench.mark("192.168.1.250", minutes=4),
+            lambda bench: bench.write(bench.path("run/marks/192.168.1.250"), ""),
+            lambda bench: bench.write(bench.path("run/marks/192.168.1.250"), "192.168.1.251/24 eth1 1 30\n"),
+            lambda bench: bench.write(bench.path("run/marks/192.168.1.250"), "192.168.1.250/24 eth1 1 30\nx\n"),
+            lambda bench: bench.write(bench.path("run/marks/192.168.1.250"), "192.168.1.250/24 eth1 soon 30\n"),
+            lambda bench: bench.write(bench.path("run/marks/192.168.1.250"), "x" * 200),
+        )
+        for number, case in enumerate(cases):
+            with self.subTest(case=number):
+                bench = self.bench()
+                case(bench)
+                bench.hold("192.168.1.250")
+                bench.run(DEL, expect="NOT_MARKED")
+                self.assertEqual(bench.vectors(), READS)
+                self.assertEqual(bench.marks(), [])
+
+    def test_an_address_whose_lifetime_the_listing_does_not_state_is_not_judged(self):
+        for request, expect in ((DEL, "HOST_STATE_UNREADABLE"), (b"add 192.168.2.250/24 30\n", "HOST_STATE_UNREADABLE")):
+            with self.subTest(request=request):
+                bench = self.bench()
+                bench.mark("192.168.1.250", age=60)
+                bench.hold("192.168.1.250", None)
+                bench.run(request, expect=expect)
+                self.assertEqual(bench.vectors(), READS, "nothing is removed and nothing is added")
+                self.assertEqual(bench.marks(), ["192.168.1.250"], "a mark that cannot be judged is kept")
+
+    def test_a_stale_mark_does_not_count_and_does_not_stay_at_the_next_add(self):
+        cases = (
+            lambda bench: bench.mark("192.168.9.250", age=1800 + 61),  # expired by the kernel
+            lambda bench: bench.mark("192.168.9.250", age=60),  # removed by hand inside its lifetime
+            lambda bench: (bench.mark("192.168.9.250", age=1800 + 61), bench.hold("192.168.9.250", FOREVER)),
+            lambda bench: (bench.mark("192.168.9.250", age=60), bench.hold("192.168.9.250", FOREVER)),
+            lambda bench: (bench.mark("192.168.9.250", age=60, interface=OFFICE), bench.mark("192.168.8.250", age=-5)),
+        )
+        for number, case in enumerate(cases):
+            with self.subTest(case=number):
+                bench = self.bench()
+                case(bench)
+                bench.run(ADD, expect="OK")
+                self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, ADD_VECTOR])
+                self.assertEqual(bench.marks(), ["192.168.1.250"], "only the mark of the address just added is left")
+
+    def test_del_of_one_marked_address_drops_every_other_stale_mark(self):
+        bench = self.bench()
+        bench.mark("192.168.1.250", age=60)
+        bench.hold("192.168.1.250")
+        bench.mark("192.168.9.250", age=1800 + 61)
+        bench.mark("192.168.8.250", age=60)
+        bench.run(DEL, expect="OK")
+        self.assertEqual(bench.vectors(), READS + [DEL_VECTOR])
+        self.assertEqual(bench.marks(), [])
+
+    def test_add_then_del_then_add_leaves_one_mark_at_most_at_every_step(self):
+        bench = self.bench()
+        bench.run(ADD, expect="OK")
+        self.assertEqual(bench.marks(), ["192.168.1.250"])
+        with open(bench.path("run/marks/192.168.1.250")) as handle:
+            written = int(handle.read().split(" ")[2])
+        self.assertLessEqual(abs(written - int(time.monotonic())), 30, "the mark carries the monotonic clock, not the wall clock")
+        bench.hold("192.168.1.250", 1795)
+        bench.run(DEL, expect="OK")
+        self.assertEqual(bench.marks(), [])
+        del bench.addresses[2]["addr_info"][-1]
+        bench.run(b"add 192.168.2.250/24 5\n", expect="OK")
+        self.assertEqual(bench.marks(), ["192.168.2.250"])
+        # the lifetime bound took it, nobody called: the next add finds no address and leaves no old mark
+        bench.run(ADD, expect="OK")
+        self.assertEqual(bench.marks(), ["192.168.1.250"])
 
 
 class Bound7NoInjectionPoint(HelperCase):
@@ -594,7 +924,7 @@ class Bound7NoInjectionPoint(HelperCase):
                 name, _ = canary.run(text.encode() + b"\n")
                 self.assertNotEqual(name, "OK")
                 self.assertEqual(canary.vectors(), [])
-                self.assertEqual(sorted(os.listdir(canary.root)), ["copy", "decoy", "etc", "run", "sys", "tools"])
+                self.assertEqual(sorted(os.listdir(canary.root)), ["copy", "decoy", "dpkg", "etc", "run", "sys", "tools"])
                 self.assertEqual(canary.marks(), [])
 
     def test_option_injection_with_a_leading_dash(self):
@@ -617,7 +947,8 @@ class Bound7NoInjectionPoint(HelperCase):
         constants = build.delivered_constants()
         self.assertEqual(constants, {
             "IP_TOOL": "/usr/sbin/ip", "ARPING_TOOL": "/usr/bin/arping", "INTERFACE_FILE": "/etc/dems/netalias-interface",
-            "SYSFS_NET": "/sys/class/net", "MARKS_DIR": "/run/dems-core-netalias/marks", "GROUP_FILE": "/etc/group",
+            "SYSFS_NET": "/sys/class/net", "MARKS_DIR": "/run/dems-core-netalias/marks",
+            "DPKG_INFO_DIR": "/var/lib/dpkg/info", "GROUP_FILE": "/etc/group",
             "PASSWD_FILE": "/etc/passwd", "TRUSTED_OWNER_UID": 0, "PEER_OPTION_LEVEL": 1, "PEER_OPTION_NAME": 17, "PEER_STRUCT": "3i",
         })
         self.assertEqual(sorted(constants), sorted(build.SUBSTITUTED))
@@ -719,7 +1050,7 @@ class Bound8And9JournalAndCodes(HelperCase):
         bench = self.bench()
         _, match = bench.run(ADD, expect="OK")
         self.assertEqual(match.group(0), "dems-core-netalias: caller_uid=%d verb=add address=192.168.1.250/24 result=OK code=0\n" % os.getuid())
-        bench.addresses.append(link(CAMERA, ("192.168.1.250", 24)))
+        bench.hold("192.168.1.250")
         _, match = bench.run(DEL, expect="OK")
         self.assertEqual(match.group(0), "dems-core-netalias: caller_uid=%d verb=del address=192.168.1.250/24 result=OK code=0\n" % os.getuid())
 
@@ -802,6 +1133,174 @@ class TheFormOfTheCall(HelperCase):
         self.assertEqual(bench.vectors(), [])
         bench.run(ADD, arguments=["check"], expect="CONFLICT_TOOL_MISSING")
         self.assertEqual(bench.marks(), [])
+
+
+CAPTURED = os.path.join(HERE, "captured")
+# (file under captured/arping, the interface and the address that run asked, its exit status, the verdict).
+# The table of captured/README.md, which is the table of test/h3_helper_parser_captures.md section 5.
+CAPTURED_ARPING = (
+    ("iputils_free_other_subnet.stdout", "eth0", "192.168.1.250", 0, "FREE"),
+    ("iputils_free_same_subnet.stdout", "eth0", "172.31.203.222", 0, "FREE"),
+    ("iputils_in_use.stdout", "eth0", "172.31.203.50", 1, "ADDRESS_IN_USE"),
+    ("iputils_loopback_not_arpable.stdout", "lo", "192.0.2.1", 0, "CONFLICT_RESULT_UNKNOWN"),
+    ("iputils_noarp_not_arpable.stdout", "h3na", "203.0.113.77", 0, "CONFLICT_RESULT_UNKNOWN"),
+    ("iputils_interface_down.stdout", "h3dn", "192.0.2.77", 2, "CONFLICT_CHECK_FAILED"),
+    # The text and the status of a free address although nobody could be asked: only the flag words stop it.
+    ("iputils_no_carrier_prints_free.stdout", "h3nc", "198.51.100.77", 0, "FREE"),
+    ("iputils_no_such_interface.stdout", "h3none", "192.0.2.1", 2, "CONFLICT_CHECK_FAILED"),
+    ("other_program_free.stdout", "eth0", "172.31.203.223", 1, "CONFLICT_RESULT_UNKNOWN"),
+    ("other_program_in_use.stdout", "eth0", "172.31.203.50", 0, "CONFLICT_RESULT_UNKNOWN"),
+)
+# (file under captured/ip, {interface: the refusal of the flag check, None when the port may be asked}).
+# Section 4 of the same record. `h3none` is in no listing.
+CAPTURED_LISTINGS = (
+    ("addr_eth0_and_lo.json", {"eth0": None, "lo": "INTERFACE_NOT_ARPABLE", "h3none": "INTERFACE_STATE_UNKNOWN"}),
+    ("addr_made_interfaces.json", {
+        "eth0": None, "h3up": None, "lo": "INTERFACE_NOT_ARPABLE", "h3na": "INTERFACE_NOT_ARPABLE",
+        "h3dm": "INTERFACE_NOT_ARPABLE", "h3dn": "INTERFACE_DOWN", "h3nc": "INTERFACE_DOWN",
+        "h3none": "INTERFACE_STATE_UNKNOWN"}),
+    ("addr_eth0_down.json", {"eth0": "INTERFACE_DOWN", "h3up": None, "lo": "INTERFACE_NOT_ARPABLE"}),
+)
+# Captures no function of the helper reads: what the container showed beside the two records.
+CAPTURED_NOT_AN_INPUT = ("README.md", "dpkg/dpkg_S_usr_bin_arping.txt", "dpkg/ls_ln_dpkg_info.txt")
+
+
+def captured(relative):
+    """One captured text, byte for byte."""
+    with open(os.path.join(CAPTURED, relative), "rb") as handle:
+        return handle.read()
+
+
+class CapturedTexts(HelperCase):
+    """Pass I-9b: the real tool texts of row H3 (`captured/`, an Ubuntu 24.04 CONTAINER, not a host) are fed
+    to the helper's own reading functions, each with the verdict the record of row H3 states.
+
+    HOW. The functions are those of a TEST COPY (never of the delivered file): its text is executed without
+    its last line, the call of `main`, so nothing is served and the constants are the bench's - the two
+    tools are the recording doubles, every path lies in the temporary folder. A listing reaches `host_state`
+    as the standard output of the `ip` double, a conflict text reaches `conflict_verdict` as the bytes of
+    the file. No real tool is started and no file of this Mac outside the bench is read.
+    """
+
+    def functions(self, bench):
+        with open(bench.copy, encoding="ascii") as handle:
+            text = handle.read()
+        self.assertTrue(text.endswith("\nmain()\n"), "the last line of the helper is the call of main")
+        namespace = {"__name__": "captured_texts"}
+        exec(compile(text[: -len("main()\n")], bench.copy, "exec"), namespace)  # noqa: S102 - the test copy
+        return namespace
+
+    def plan_captured(self, bench, listing, arping_exit=97, arping_text=""):
+        """The doubles answer with captured bytes; `Bench.run` calls this in the place of its own plan."""
+        rules = [
+            {"tool": "ip", "prefix": ROUTE, "exit": 0, "stdout": captured("ip/route_default_none.json").decode("ascii")},
+            {"tool": "ip", "prefix": ADDRS, "exit": 0, "stdout": captured("ip/" + listing).decode("ascii")},
+            {"tool": "ip", "prefix": ["addr", "add"], "exit": 0},
+            {"tool": "arping", "prefix": [], "exit": arping_exit, "stdout": arping_text},
+        ]
+        bench.plan = lambda: bench.write(bench.path("tools/plan.json"), json.dumps(rules))
+        bench.plan()
+
+    def test_every_captured_file_is_read_by_a_case_of_this_class(self):
+        found = sorted(os.path.relpath(os.path.join(folder, name), CAPTURED).replace(os.sep, "/")
+                       for folder, _, names in os.walk(CAPTURED) for name in names)
+        read = (["arping/" + row[0] for row in CAPTURED_ARPING] + ["ip/" + row[0] for row in CAPTURED_LISTINGS]
+                + ["ip/route_default_none.json"] + list(CAPTURED_NOT_AN_INPUT)
+                + ["dpkg/" + name for name in ("iputils-arping.list", "iputils-arping.md5sums",
+                                               "other_package_arping.list", "other_package_arping.md5sums")])
+        self.assertEqual(found, sorted(read))
+        self.assertEqual(len(found), 21)
+
+    def test_the_ten_conflict_texts_get_the_verdict_the_record_states(self):
+        helper = self.functions(self.bench())
+        for name, interface, address, status, verdict in CAPTURED_ARPING:
+            with self.subTest(capture=name):
+                quad = helper["parse_quad"](address)
+                self.assertEqual(helper["conflict_verdict"](status, captured("arping/" + name), interface, quad), verdict)
+        # The same bytes under the other status, another interface or another address are no result.
+        free = captured("arping/iputils_free_other_subnet.stdout")
+        quad = helper["parse_quad"]("192.168.1.250")
+        self.assertEqual(helper["conflict_verdict"](1, free, "eth0", quad), "CONFLICT_RESULT_UNKNOWN")
+        self.assertEqual(helper["conflict_verdict"](0, free, "eth1", quad), "CONFLICT_RESULT_UNKNOWN")
+        self.assertEqual(helper["conflict_verdict"](0, free, "eth0", helper["parse_quad"]("192.168.1.251")), "CONFLICT_RESULT_UNKNOWN")
+        self.assertEqual(helper["conflict_verdict"](0, captured("arping/iputils_in_use.stdout"), "eth0", helper["parse_quad"]("172.31.203.50")),
+                         "CONFLICT_RESULT_UNKNOWN")
+
+    def test_the_three_listings_and_the_route_text_are_read_and_each_port_gets_its_flag_verdict(self):
+        for listing, ports in CAPTURED_LISTINGS:
+            bench = self.bench()
+            helper = self.functions(bench)
+            self.plan_captured(bench, listing)
+            self.assertEqual(helper["default_route_interfaces"](), set(), "an internal network has no default route")
+            addresses, flags = helper["host_state"]()
+            self.assertEqual(sorted(flags), sorted(entry["ifname"] for entry in json.loads(captured("ip/" + listing))))
+            self.assertNotIn(None, flags.values(), "every flag word of the real listing is one the helper reads")
+            for interface, refusal in ports.items():
+                with self.subTest(listing=listing, interface=interface):
+                    if refusal is None:
+                        helper["refuse_unless_askable"](interface, flags)
+                        continue
+                    with self.assertRaises(helper["Refusal"]) as raised:
+                        helper["refuse_unless_askable"](interface, flags)
+                    self.assertEqual(raised.exception.name, refusal)
+            # The lifetime: 4294967295 for an address without one, the seconds left for one that has one.
+            self.assertIn(("lo", (127, 0, 0, 1), 8, FOREVER), addresses)
+            self.assertNotIn(None, [lifetime for _, _, _, lifetime in addresses])
+            if listing != "addr_eth0_and_lo.json":
+                self.assertIn(("h3na", (10, 203, 5, 10), 24, 300 if listing == "addr_made_interfaces.json" else 288), addresses)
+            self.assertEqual([call["argv"] for call in bench.calls()], [ROUTE, ADDRS], "two reads, nothing else was started")
+
+    def test_through_the_helper_a_free_address_on_the_captured_port_is_added_and_a_port_without_carrier_is_never_asked(self):
+        free = captured("arping/iputils_free_other_subnet.stdout").decode("ascii")  # eth0, 192.168.1.250: the address of ADD
+        bench = self.bench()
+        bench.write(bench.interface_file, "eth0\n")
+        self.plan_captured(bench, "addr_eth0_and_lo.json", 0, free)
+        bench.run(ADD, expect="OK")
+        self.assertEqual(bench.vectors(), READS + [["arping", "-D", "-c", "2", "-w", "3", "-I", "eth0", "192.168.1.250"],
+                                                   ["ip", "addr", "add", "192.168.1.250/24", "dev", "eth0", "valid_lft", "1800", "preferred_lft", "1800"]])
+        self.assertEqual(bench.marks(), ["192.168.1.250"])
+        # Observation O-1 of row H3: without carrier the program prints the whole free text and ends 0.
+        # The double WOULD print exactly that captured text; the flag words (no LOWER_UP) refuse first.
+        bench = self.bench()
+        os.mkdir(bench.path("sys/h3nc"))
+        bench.write(bench.interface_file, "h3nc\n")
+        self.plan_captured(bench, "addr_made_interfaces.json", 0, captured("arping/iputils_no_carrier_prints_free.stdout").decode("ascii"))
+        bench.run(ADD, expect="INTERFACE_DOWN")
+        self.assertEqual(bench.vectors(), READS, "the conflict tool is not started, nothing is added")
+        self.assertEqual(bench.marks(), [])
+
+    def test_the_two_package_records_have_the_form_the_program_check_reads(self):
+        bench = self.bench()
+        helper = self.functions(bench)
+        # The records name the delivered path; the PROGRAM is a stand-in of the bench (the captured program is not in the repository).
+        delivered = build.delivered_constants()
+        helper["ARPING_TOOL"] = delivered["ARPING_TOOL"]
+        helper["_read_program"] = lambda path, limit: captured("README.md") if path == delivered["ARPING_TOOL"] else b""
+        self.assertEqual(captured("dpkg/dpkg_S_usr_bin_arping.txt").decode("ascii"), "%s: %s\n" % (helper["CONFLICT_PACKAGE"], delivered["ARPING_TOOL"]))
+
+        def records(package, listing, sums):
+            for name in os.listdir(bench.path("dpkg")):
+                os.unlink(bench.path("dpkg/" + name))
+            for suffix, data in ((".list", listing), (".md5sums", sums)):
+                with open(bench.path("dpkg/" + package + suffix), "wb") as handle:
+                    handle.write(data)
+                os.chmod(bench.path("dpkg/" + package + suffix), 0o644)  # the mode of captured/dpkg/ls_ln_dpkg_info.txt
+            return helper["_expected_conflict_tool"]()
+
+        listing, sums = captured("dpkg/iputils-arping.list"), captured("dpkg/iputils-arping.md5sums")
+        recorded = b"4e42a0d8a1cfd199153cb067545913f6  usr/bin/arping\n"
+        self.assertEqual(sums.count(recorded), 1)
+        # Byte for byte: the records are read, and a program that is not the recorded one is refused (state 7 of the record: 38).
+        self.assertFalse(records("iputils-arping", listing, sums))
+        # THE FORM (state 1): the same two files with ONE field replaced, the checksum, by the stand-in's own - then the check passes.
+        own = hashlib.md5(captured("README.md"), usedforsecurity=False).hexdigest().encode("ascii")
+        self.assertTrue(records("iputils-arping", listing, sums.replace(recorded[:32], own)))
+        # The OTHER package's records, under its own name (states 5, 6) and in the place of the expected ones: refused.
+        other = captured("dpkg/other_package_arping.list"), captured("dpkg/other_package_arping.md5sums")
+        self.assertFalse(records("arping", *other))
+        self.assertFalse(records("iputils-arping", *other))
+        self.assertFalse(records("iputils-arping", listing, other[1]))
+        self.assertEqual(bench.calls(), [], "nothing is started to learn this")
 
 
 if __name__ == "__main__":

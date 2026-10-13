@@ -29,7 +29,9 @@
  *                fsync() and SAYS so (the level of the file is FSYNC, at the first checkpoint already); a file
  *                whose first sync was full and whose later sync is not is a FAILED sync, never a quieter one.
  *                Built with -DDEMS_PROOF_SILENT_SYNC_FALLBACK (the reporting before fix pass F-M3) THIS TEST
- *                FAILS on exactly the SYNC LEVEL checks.
+ *                FAILS on exactly the SYNC LEVEL checks. On a platform whose one sync is fsync() (Linux; task 4
+ *                row 193) there is no fallback and no weaker later sync: the file states FSYNC and never the
+ *                full level, and the SYNC LEVEL checks there are that no level is stated before a sync.
  */
 #include "../src/worker.h"
 
@@ -46,6 +48,18 @@ static void sha(const uint8_t *p, size_t n, uint8_t out[32]) { CC_SHA256(p, (CC_
 #else
 #include <libavutil/sha.h>
 static void sha(const uint8_t *p, size_t n, uint8_t out[32]) { struct AVSHA *c = av_sha_alloc(); av_sha_init(c, 256); av_sha_update(c, p, n); av_sha_final(c, out); av_free(c); }
+#endif
+
+/* THE STRONGEST SYNC OF THE PLATFORM, STATED BY THE TEST AND NOT TAKEN FROM THE WRITER (task 4 row 193, finding L-4
+ * of row 78). macOS has the full sync (through the drive's own cache): a build of sink.c that no longer has it -
+ * a feature-test macro that hides F_FULLFSYNC, for one - is a WEAKER writer and fails here. Linux has no such
+ * call: fsync() is the one sync there is, the writer's word for it is FSYNC, and it must never say the other
+ * one. What FSYNC is worth on the evidence disk of the real host is not a question of this test (hardware check
+ * 9A/H-03); the Core writes every file that states FSYNC to its persistent log (capture/index.ts). */
+#ifdef __APPLE__
+#define PLATFORM_SYNC "F_FULLFSYNC"
+#else
+#define PLATFORM_SYNC "FSYNC"
 #endif
 
 Session S;                                  /* worker.h declares these; the writer itself uses neither */
@@ -438,6 +452,10 @@ int main(int argc, char **argv) {
         s.on_durable = on_durable; s.opaque = &seen;
         CHECK(feed(&s, in.p, in.n) == 0 && sink_close(&s) == 0, "sync level: the plain run failed");
         CHECK(!strcmp(seen.level_at_first, "F_FULLFSYNC") || !strcmp(seen.level_at_first, "FSYNC"), "sync level: at the first checkpoint the level reads '%s'", seen.level_at_first);
+        /* the platform (row 193): the build asks for the strongest sync THIS platform has, and where that is fsync() no file claims more */
+        const int has_full = !strcmp(PLATFORM_SYNC, "F_FULLFSYNC");
+        CHECK(!strcmp(sink_sync_wanted(), PLATFORM_SYNC), "sync level: this build asks for %s first, the strongest sync of the platform is %s", sink_sync_wanted(), PLATFORM_SYNC);
+        if (!has_full) CHECK(!strcmp(seen.level_at_first, "FSYNC") && !strcmp(sink_sync_level(&s), "FSYNC"), "sync level: on a platform whose one sync is fsync() the file states '%s' at its first checkpoint and '%s' at its end", seen.level_at_first, sink_sync_level(&s));
         /* a volume that does not take the full sync: fsync() is used, every checkpoint is given, and the level SAYS FSYNC */
         sink_full_sync_hook = no_full_sync;
         sync_full_until = 0;
@@ -449,7 +467,8 @@ int main(int argc, char **argv) {
         seen.sink = &s;
         s.on_durable = on_durable; s.opaque = &seen;
         CHECK(feed(&s, in.p, in.n) == 0 && sink_close(&s) == 0 && seen.n == NFRAG, "sync level: on a volume without the full sync the writer must still write and checkpoint (%d checkpoints)", seen.n);
-        CHECK(atomic_load(&sync_calls) >= 2, "sync level: the seam was not asked (%d calls): the test cannot fail", atomic_load(&sync_calls));
+        /* the seam stands before the FULL sync: where the platform has none (row 193) nothing asks it, and that is the check */
+        CHECK(has_full ? atomic_load(&sync_calls) >= 2 : atomic_load(&sync_calls) == 0, has_full ? "sync level: the seam was not asked (%d calls): the test cannot fail" : "sync level: the seam of the full sync was asked %d time(s) on a platform that has no full sync", atomic_load(&sync_calls));
         CHECK(!strcmp(seen.level_at_first, "FSYNC"), "the fallback was silent: at the first checkpoint the level reads '%s', the volume gave FSYNC (SYNC LEVEL)", seen.level_at_first);
         CHECK(!strcmp(sink_sync_level(&s), "FSYNC"), "the fallback was silent: the file's level reads '%s', the volume gave FSYNC (SYNC LEVEL)", sink_sync_level(&s));
         /* the first sync (data + directory) is full, every later one is not: a FAILED sync, no checkpoint, never a quieter level */
@@ -462,15 +481,43 @@ int main(int argc, char **argv) {
         sink_init(&s, path);
         seen.sink = &s;
         s.on_durable = on_durable; s.on_sync_failure = on_sync_failure; s.opaque = &seen;
-        CHECK(feed(&s, in.p, ends[1]) == 0, "sync level: the first fragment was refused");
-        for (int i = 0; i < 2000 && atomic_load(&seen.n) < 1; i++) usleep(1000);       /* the first batch (fragment 1) is synced and named */
-        CHECK(atomic_load(&seen.n) == 1 && !strcmp(seen.level_at_first, "F_FULLFSYNC"), "sync level: the first fragment is not durable at the full level (%d checkpoints, '%s')", atomic_load(&seen.n), seen.level_at_first);
-        feed(&s, in.p + ends[1], in.n - ends[1]);
-        int closed = sink_close(&s);
-        CHECK(closed < 0 && !strcmp(sync_failure_code, "WRITER_SYNC_LEVEL_CHANGED"), "a weaker sync of the same file was taken quietly: close %d, failure '%s' (SYNC LEVEL)", closed, sync_failure_code);
-        CHECK(atomic_load(&seen.n) == 1, "a checkpoint was given for a fragment whose sync was weaker than the file's stated level: %d checkpoints, expected 1 (SYNC LEVEL)", atomic_load(&seen.n));
-        CHECK(!strcmp(sink_sync_level(&s), "F_FULLFSYNC"), "sync level: the stated level of the file changed to '%s' (SYNC LEVEL)", sink_sync_level(&s));
-        sink_full_sync_hook = NULL;
+        if (has_full) {
+            CHECK(feed(&s, in.p, ends[1]) == 0, "sync level: the first fragment was refused");
+            for (int i = 0; i < 2000 && atomic_load(&seen.n) < 1; i++) usleep(1000);       /* the first batch (fragment 1) is synced and named */
+            CHECK(atomic_load(&seen.n) == 1 && !strcmp(seen.level_at_first, "F_FULLFSYNC"), "sync level: the first fragment is not durable at the full level (%d checkpoints, '%s')", atomic_load(&seen.n), seen.level_at_first);
+            feed(&s, in.p + ends[1], in.n - ends[1]);
+            int closed = sink_close(&s);
+            CHECK(closed < 0 && !strcmp(sync_failure_code, "WRITER_SYNC_LEVEL_CHANGED"), "a weaker sync of the same file was taken quietly: close %d, failure '%s' (SYNC LEVEL)", closed, sync_failure_code);
+            CHECK(atomic_load(&seen.n) == 1, "a checkpoint was given for a fragment whose sync was weaker than the file's stated level: %d checkpoints, expected 1 (SYNC LEVEL)", atomic_load(&seen.n));
+            CHECK(!strcmp(sink_sync_level(&s), "F_FULLFSYNC"), "sync level: the stated level of the file changed to '%s' (SYNC LEVEL)", sink_sync_level(&s));
+            sink_full_sync_hook = NULL;
+        } else {
+            /* A PLATFORM WITH ONE SYNC (Linux, row 193). No sync of a file can be weaker than its first, so there is
+             * no changed level to refuse: the same seam, set the same way, changes nothing - the file is written
+             * whole, every checkpoint is given, nothing fails, and the level is FSYNC from the first checkpoint to
+             * the close. What CAN be said falsely here is a level BEFORE a sync: a file that was never synced
+             * states NOT_YET, never the level the build would like (with -DDEMS_PROOF_SILENT_SYNC_FALLBACK it
+             * says FSYNC of a file that has no durable byte, and THIS TEST FAILS on exactly these checks). */
+            CHECK(!strcmp(sink_sync_level(&s), "NOT_YET"), "a file that was never synced states the level '%s' (SYNC LEVEL)", sink_sync_level(&s));
+            CHECK(feed(&s, in.p, in.n) == 0 && sink_close(&s) == 0 && seen.n == NFRAG && !sync_failure_code[0], "sync level: with one sync on the platform the writer must write and checkpoint every fragment (%d checkpoints, failure '%s')", seen.n, sync_failure_code);
+            CHECK(atomic_load(&sync_calls) == 0, "sync level: the seam of the full sync was asked %d time(s) on a platform that has no full sync", atomic_load(&sync_calls));
+            CHECK(!strcmp(seen.level_at_first, "FSYNC") && !strcmp(sink_sync_level(&s), "FSYNC"), "sync level: the one level of the platform is FSYNC; the file states '%s' at its first checkpoint and '%s' at its end", seen.level_at_first, sink_sync_level(&s));
+            sink_full_sync_hook = NULL;
+            /* the first write fails: no byte of the file was ever synced, and it says so after its close as well */
+            memset(&seen, 0, sizeof seen);
+            snprintf(path, sizeof path, "%s/sync_never.mp4", argv[1]);
+            snprintf(seen.path, sizeof seen.path, "%s", path);
+            sink_fault_hook = fault;
+            fault_at = 1;
+            fault_bytes = -2;
+            sink_init(&s, path);
+            seen.sink = &s;
+            s.on_durable = on_durable; s.opaque = &seen;
+            CHECK(feed(&s, in.p, in.n) == AVERROR(ENOSPC) && seen.n == 0, "sync level: the write that had to fail did not (%d checkpoints)", seen.n);
+            sink_close(&s);
+            CHECK(!strcmp(sink_sync_level(&s), "NOT_YET"), "a file whose first write failed, with no durable byte, states the level '%s' (SYNC LEVEL)", sink_sync_level(&s));
+            sink_fault_hook = NULL;
+        }
     }
 
     snprintf(cmd, sizeof cmd, "rm -rf '%s'", argv[1]);

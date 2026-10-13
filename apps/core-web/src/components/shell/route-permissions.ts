@@ -15,6 +15,8 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, Permission>> = {
   '/session/new': Permission.SESSION_START,
   '/admin/users': Permission.USER_ADMIN,
   '/admin/devices': Permission.PAIRING_MANAGE,
+  // Task 4 row 112 (decision U10): the commissioning screen; the same guard, `routes/_app/admin/-guard.ts`.
+  '/admin/commissioning': Permission.CAPTURE_COMMISSION,
 }
 
 /** The permission the guard of `pathname` needs, or `null` for a page every role may open. */

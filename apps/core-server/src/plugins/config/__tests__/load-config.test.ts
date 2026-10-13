@@ -135,6 +135,40 @@ describe('the three environment values', () => {
       expect(error.message).toBe('DEMS_CAPTURE_GUARD must be an absolute path.');
     }
   });
+
+  // Task 4 row 105: the socket of the capture host's address helper, under the same path rule.
+  it('DEMS_CAPTURE_ALIAS_SOCKET: null when unset or empty, the path as given when absolute; a relative path stops the boot before any file is opened', () => {
+    expect(loadConfig({ env: {}, dataDir: dataDir() }).captureAliasSocketPath).toBeNull();
+    expect(loadConfig({ env: { DEMS_CAPTURE_ALIAS_SOCKET: '' }, dataDir: dataDir() }).captureAliasSocketPath).toBeNull();
+    const config = loadConfig({ env: { DEMS_CAPTURE_ALIAS_SOCKET: '/run/dems-core-netalias/socket' }, dataDir: dataDir() });
+    expect(config.captureAliasSocketPath).toBe('/run/dems-core-netalias/socket');
+    // The one key fills its own member and no program path.
+    expect([config.captureRelayPath, config.captureGuardPath, config.captureWorkerPath, config.captureHelperFfmpegPath]).toEqual([null, null, null, null]);
+    for (const bad of ['run/socket', './socket', 'socket', '/run/dems-core-netalias/socket\0x']) {
+      const error = failure(() => loadConfig({ env: { DEMS_CAPTURE_ALIAS_SOCKET: bad }, dataDir: '/nonexistent/dir' }));
+      expect(error.code).toBe('CAPTURE_PATH_NOT_ABSOLUTE');
+      // The message names the key and never the value.
+      expect(error.message).toBe('DEMS_CAPTURE_ALIAS_SOCKET must be an absolute path.');
+    }
+  });
+
+  // Task 4 row 85c (decision C60 (3)): the audio helper of production capture, under the path rule of the other program keys.
+  it('DEMS_CAPTURE_AUDIO_HELPER: null when unset or empty, the path as given when absolute; a relative path stops the boot before any file is opened', () => {
+    expect(loadConfig({ env: {}, dataDir: dataDir() }).captureAudioHelperPath).toBeNull();
+    expect(loadConfig({ env: { DEMS_CAPTURE_AUDIO_HELPER: '' }, dataDir: dataDir() }).captureAudioHelperPath).toBeNull();
+    const config = loadConfig({ env: { DEMS_CAPTURE_AUDIO_HELPER: '/opt/dems/bin/ffmpeg' }, dataDir: dataDir() });
+    expect(config.captureAudioHelperPath).toBe('/opt/dems/bin/ffmpeg');
+    // The one key fills its own member: not the development helper's, not another program's, not the socket's.
+    expect([config.captureHelperFfmpegPath, config.captureRelayPath, config.captureGuardPath, config.captureWorkerPath, config.captureAliasSocketPath]).toEqual([null, null, null, null, null]);
+    // The development helper's key does not fill it either: the two helpers are two keys.
+    expect(loadConfig({ env: { DEMS_CAPTURE_HELPER_FFMPEG: '/opt/dems/bin/ffmpeg' }, dataDir: dataDir() }).captureAudioHelperPath).toBeNull();
+    for (const bad of ['bin/ffmpeg', './ffmpeg', 'ffmpeg', '/opt/dems/bin/ffmpeg\0x']) {
+      const error = failure(() => loadConfig({ env: { DEMS_CAPTURE_AUDIO_HELPER: bad }, dataDir: '/nonexistent/dir' }));
+      expect(error.code).toBe('CAPTURE_PATH_NOT_ABSOLUTE');
+      // The message names the key and never the value.
+      expect(error.message).toBe('DEMS_CAPTURE_AUDIO_HELPER must be an absolute path.');
+    }
+  });
 });
 
 describe('the configuration object', () => {

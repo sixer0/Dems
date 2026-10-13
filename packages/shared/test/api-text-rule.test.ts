@@ -159,7 +159,11 @@ describe('API-13 over the whole registry', () => {
     // Pass D1b (D140) adds the optional body of op 88 (`fileId`, an enum: no free text): 34 -> 35 bodies.
     // Task 4 row 63 (design addendum 4.2) adds the body of op 99 `registerCaptureAudioInput`: 35 -> 36 bodies.
     // Task 4 row 94 (WP-12; AM-3) adds the optional body of op 93 (`address`, bound by a pattern: no free text): 36 -> 37 bodies.
-    expect(CORE_API_OPERATIONS.filter((operation) => operation.requestBody).map((operation) => operation.operationId)).toHaveLength(37);
+    // Task 4 row 194 adds the body of op 100 `confirmCaptureDeviceAddress` (three members, each bound by a pattern): 37 -> 38 bodies.
+    // Task 4 row 102 adds the bodies of ops 102, 103 (optional) and 106; every string of them is bound by a pattern, the credential pair is the existing schema: 38 -> 41 bodies.
+    // Task 4 row V3: op 108 `testCaptureDeviceConnection` has NO body, so the count does not move.
+    // Task 4 row 116 adds the bodies of ops 109 and 110; their free texts (a step's note, the site address, the reason) carry the rule: 41 -> 43 bodies.
+    expect(CORE_API_OPERATIONS.filter((operation) => operation.requestBody).map((operation) => operation.operationId)).toHaveLength(43);
     expect(CORE_API_OPERATIONS.filter((operation) => operation.query).map((operation) => operation.operationId)).toHaveLength(6);
     expect(new Set(checked).size).toBeGreaterThanOrEqual(30);
     expect(checked).toContain('SignInRequest(root).password');
@@ -227,7 +231,11 @@ describe('API-13 over the whole registry', () => {
     // Pass D1b (D140) adds the optional body of op 88: 148 -> 149.
     // Task 4 row 63 (design addendum 4.2) adds the four schemas of ops 98-99: 149 -> 153.
     // Task 4 row 94 (WP-12; AM-3) adds the optional body of op 93: 153 -> 154.
-    expect(added).toHaveLength(154);
+    // Task 4 row 194 adds the two schemas of op 100: 154 -> 156.
+    // Task 4 row 102 adds the nine schemas of ops 101-107: 156 -> 165.
+    // Task 4 row V3 adds the one schema of op 108 (an answer; the operation has no body): 165 -> 166.
+    // Task 4 row 116 adds the five schemas of ops 109-110: 166 -> 171.
+    expect(added).toHaveLength(171);
     let leaves = 0;
     const open: string[] = [];
     for (const name of added) {

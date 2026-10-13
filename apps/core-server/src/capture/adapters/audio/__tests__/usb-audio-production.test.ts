@@ -62,6 +62,8 @@ interface FixtureCard {
   /** Left out: a card that is not USB. */
   readonly usbId?: string;
   readonly port?: string;
+  /** The serial the USB device states (task 4 row 200). Left out: it states none. */
+  readonly serial?: string;
   readonly channels: number;
   readonly format?: string;
   readonly rates?: string;
@@ -95,10 +97,14 @@ function hostOf(cards: FixtureCard[]): Host {
       const card = at(cardIndex);
       return card?.usbId === undefined ? null : `${card.usbId}\n`;
     },
+    async usbSerial(cardIndex) {
+      const card = at(cardIndex);
+      return card?.serial === undefined ? null : `${card.serial}\n`;
+    },
     async stream(cardIndex) {
       const card = at(cardIndex);
       if (card?.usbId === undefined) return null;
-      return `${card.product} at usb-${card.port ?? '0000:00:14.0-2'}, high speed : USB Audio\n\nCapture:\n  Status: Stop\n  Interface 1\n    Altset 1\n    Format: ${card.format ?? 'S24_3LE'}\n    Channels: ${card.channels}\n    Endpoint: 0x81 (1 IN) (ASYNC)\n    Rates: ${card.rates ?? '44100, 48000'}\n    Bits: 24\n\n`;
+      return `${card.product} at usb-${card.port ?? DEFAULT_PORT}, high speed : USB Audio\n\nCapture:\n  Status: Stop\n  Interface 1\n    Altset 1\n    Format: ${card.format ?? 'S24_3LE'}\n    Channels: ${card.channels}\n    Endpoint: 0x81 (1 IN) (ASYNC)\n    Rates: ${card.rates ?? '44100, 48000'}\n    Bits: 24\n\n`;
     },
     async hwParams(cardIndex) {
       const card = at(cardIndex);
@@ -114,9 +120,17 @@ const DUO: FixtureCard = { index: 1, id: 'Duo', product: 'DEMS Test Duo', usbId:
 const OCTO: FixtureCard = { index: 2, id: 'Octo', product: 'DEMS Test Octo', usbId: '1a2b:0008', port: '0000:00:14.0-3.1', channels: 8, format: 'S32_LE', rates: '44100, 48000, 96000' };
 const OTHER: FixtureCard = { index: 3, id: 'Codec', product: 'DEMS Other Codec', usbId: '3c4d:2902', port: '0000:00:14.0-4', channels: 2, format: 'S16_LE' };
 
+/** The port path the fixture host states for a USB card that names none. */
+const DEFAULT_PORT = '0000:00:14.0-2';
+/**
+ * The stored row of an input registered on `card`: since rows 199 / 200 it holds the serial the
+ * card stated (null: none) and the port path it sat on, as the registration stores them.
+ */
 const row = (deviceId: string, card: FixtureCard, inputNumber: number, patch: Partial<RegisteredAudioInput> = {}): RegisteredAudioInput => ({
   deviceId,
   usbId: card.usbId ?? null,
+  usbSerial: card.usbId === undefined ? null : (card.serial ?? null),
+  usbPort: card.usbId === undefined ? null : (card.port ?? DEFAULT_PORT),
   cardId: card.id,
   cardDevice: card.device ?? 0,
   inputNumber,
@@ -297,7 +311,7 @@ async function refusalOf(promise: Promise<unknown>): Promise<UsbAudioError> {
 const vector = (channels: number, device: string, selection: string, pipe: string): string[] => [
   '-hide_banner', '-nostdin', '-nostats', '-loglevel', 'warning',
   '-progress', 'pipe:1',
-  '-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-channels', String(channels), '-sample_rate', '48000', '-i', device,
+  '-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-ch_layout', `${String(channels)}C`, '-sample_rate', '48000', '-i', device,
   '-af', selection,
   '-vn', '-ac', '1', '-ar', '48000', '-c:a', 'pcm_f32le', '-f', 'f32le', '-flush_packets', '1', '-y',
   pipe,
@@ -433,10 +447,22 @@ describe('open: what is refused, by name, before a pipe or a helper exists', () 
     nothingMade(r);
   });
 
-  it('two connected cards carry the stored USB id: AUDIO_CARD_AMBIGUOUS; the fixed word of an unreadable id: AUDIO_CARD_UNIDENTIFIED', async () => {
-    const twins = rig([DUO, { ...DUO, index: 5, id: 'Duo_1', port: '0000:00:14.0-7' }], [row('MIC-01', DUO, 1)]);
-    expect((await refusalOf(twins.adapter.open('MIC-01', target()))).code).toBe(UsbAudioRefusal.CARD_AMBIGUOUS);
-    nothingMade(twins);
+  // TURNED BY ROW 200 (was: "two connected cards carry the stored USB id: AUDIO_CARD_AMBIGUOUS").
+  // Two units of one model are told apart by the stored port path (or serial): a room with two
+  // identical interfaces can record. AMBIGUOUS is left for two units that state the stored serial
+  // where the port names neither.
+  it('two connected cards carry the stored USB id: the one ON THE STORED PORT is opened; two that state the stored serial with no port to tell them apart: AUDIO_CARD_AMBIGUOUS; the fixed word of an unreadable id: AUDIO_CARD_UNIDENTIFIED', async () => {
+    const twin = { ...DUO, index: 5, id: 'Duo_1', port: '0000:00:14.0-7' };
+    const twins = rig([DUO, twin], [row('MIC-01', DUO, 1), row('MIC-02', twin, 1)]);
+    const first = await twins.adapter.open('MIC-01', target());
+    const second = await twins.adapter.open('MIC-02', target());
+    expect([first.card.cardIndex, first.card.usbPort, second.card.cardIndex, second.card.usbPort]).toEqual([1, DUO.port, 5, '0000:00:14.0-7']);
+    await first.close();
+    await second.close();
+    const shared = rig([{ ...DUO, serial: 'SN-SAME' }, { ...twin, serial: 'SN-SAME' }], [row('MIC-01', { ...DUO, serial: 'SN-SAME' }, 1, { usbPort: null })]);
+    const ambiguous = await refusalOf(shared.adapter.open('MIC-01', target()));
+    expect([ambiguous.code, ambiguous.detail, ambiguous.wireCode]).toEqual(['AUDIO_CARD_AMBIGUOUS', 'SERIAL_SHARED', 'DEVICE_NOT_FOUND']);
+    nothingMade(shared);
     const unread = rig([{ ...DUO, usbId: 'not an id' }], [row('MIC-01', DUO, 1, { usbId: '0000:0000' })]);
     expect((await refusalOf(unread.adapter.open('MIC-01', target()))).code).toBe(UsbAudioRefusal.CARD_UNIDENTIFIED);
   });
@@ -455,7 +481,7 @@ describe('open: what is refused, by name, before a pipe or a helper exists', () 
     unregistered.rows.delete('MIC-01');
     expect((await refusalOf(unregistered.adapter.open('MIC-01', target()))).code).toBe(UsbAudioRefusal.INPUT_NOT_REGISTERED);
     nothingMade(unregistered);
-    for (const patch of [{ cardId: 'hw:CARD=Duo' }, { usbId: '1A2B:0001' }, { inputNumber: 0 }, { inputNumber: 1.5 }, { cardDevice: 32 }, { inputNumber: 3, nativeChannels: 2 }, { deviceId: 'CAM-01' }] as const) {
+    for (const patch of [{ cardId: 'hw:CARD=Duo' }, { usbId: '1A2B:0001' }, { inputNumber: 0 }, { inputNumber: 1.5 }, { cardDevice: 32 }, { inputNumber: 3, nativeChannels: 2 }, { deviceId: 'CAM-01' }, { usbSerial: 'SN 01' }, { usbSerial: '' }, { usbPort: '../x' }, { usbPort: 'P'.repeat(65) }, { usbSerial: 7 as unknown as string }] as const) {
       expect(isRegisteredAudioInput(row('MIC-01', DUO, 1, patch)), JSON.stringify(patch)).toBe(false);
     }
     const bent = rig([DUO], [row('MIC-01', DUO, 1, { cardId: 'Duo;x' })]);
@@ -491,8 +517,159 @@ describe('open: what is refused, by name, before a pipe or a helper exists', () 
       { code: UsbAudioNoticeCode.CARD_CHANNELS_DIFFER, deviceId: 'MIC-02' },
     ]);
     // The LIVE count opens the card.
-    expect(stream.helperArguments.slice(stream.helperArguments.indexOf('-channels'), stream.helperArguments.indexOf('-channels') + 2)).toEqual(['-channels', '6']);
+    expect(stream.helperArguments.slice(stream.helperArguments.indexOf('-ch_layout'), stream.helperArguments.indexOf('-ch_layout') + 2)).toEqual(['-ch_layout', '6C']);
     await stream.close();
+  });
+});
+
+// ── 2b. Task 4 row 200: the stored row is matched by serial, else by port path ───────────────
+//
+// T-1 WITH THE DOOR DOUBLE: the guard is played by a door that starts nothing, so "0 helper
+// starts" is the count of what the door was asked. THE HOST is the fixed listing texts above; a
+// swap, a re-plug and a move are a change of those texts. No sound card, never this Mac's
+// microphone. The incident this reproduces: input-av's handover recorded a sound card silently
+// swapped for another of the same model.
+describe('row 200: at open and again at start the stored row is matched to a live card by serial, else by port path', () => {
+  const ELSEWHERE = '0000:00:14.0-7';
+  const nothingStarted = (r: Rig): void => {
+    expect(r.door.calls).toEqual([]);
+    expect(r.door.guards).toEqual([]);
+    expect(r.adapter.openSources()).toEqual([]);
+    expect(existsSync(`${r.runDir}/SES-67`)).toBe(false);
+  };
+
+  it('A SWAPPED SAME-MODEL CARD ON ANOTHER PORT is refused by AUDIO_CARD_CHANGED with 0 helper starts, no pipe and no configuration - at the open, at the pre-check and in the enumeration', async () => {
+    // Registered: the Duo on its port, no serial. Connected now: ANOTHER unit of the model - the same kernel name, index, USB id and product - on another port.
+    const r = rig([{ ...DUO, port: ELSEWHERE }], [row('MIC-01', DUO, 1)]);
+    const refused = await refusalOf(r.adapter.open('MIC-01', target()));
+    expect([refused.code, refused.detail, refused.wireCode, refused.deviceId]).toEqual(['AUDIO_CARD_CHANGED', 'PORT_DIFFERS', 'DEVICE_NOT_FOUND', 'MIC-01']);
+    expect(refused.message).toBe('another sound card sits where the registered one was');
+    nothingStarted(r);
+    expect(existsSync(r.configPath)).toBe(false);
+    const checked = await r.adapter.precheck('MIC-01');
+    expect(checked).toBeInstanceOf(UsbAudioError);
+    expect((checked as UsbAudioError).code).toBe(UsbAudioRefusal.CARD_CHANGED);
+    expect(await r.adapter.enumerate()).toEqual([{ inputId: 'MIC-01', present: false, errorCode: AudioInputErrorCode.DEVICE_NOT_FOUND }]);
+    expect(r.adapter.sourceFacts('MIC-01')).toBeNull();
+    nothingStarted(r);
+    // No serial, port or USB id is in the refusal.
+    for (const text of [DUO.port ?? '', ELSEWHERE, DUO.usbId ?? '', DUO.product]) expect(JSON.stringify({ ...refused, message: refused.message })).not.toContain(text);
+  });
+
+  it('THE SAME CARD AFTER A RE-PLUG ON ITS PORT opens - at another card index too - and the helper starts once; CONTROL for the case above', async () => {
+    const r = rig([DUO], [row('MIC-01', DUO, 1)]);
+    // Unplugged: absent, by its own name.
+    r.host.cards = [];
+    expect((await refusalOf(r.adapter.open('MIC-01', target()))).code).toBe(UsbAudioRefusal.CARD_ABSENT);
+    // Plugged back into the same socket; the kernel gave it another index.
+    r.host.cards = [{ ...DUO, index: 3 }];
+    const stream = await r.adapter.open('MIC-01', target());
+    expect([stream.card.cardIndex, stream.card.usbPort, stream.card.usbSerial]).toEqual([3, DUO.port, null]);
+    expect(await startAndSettle(stream, r.timers)).toBeNull();
+    expect(r.door.guards).toHaveLength(1);
+    expect(r.notices).toEqual([]);
+    await stream.close();
+  });
+
+  it('a card WITH a serial: found on ANOTHER port by its serial (it was moved); another unit - another serial, on the stored port or elsewhere - is refused with 0 helper starts', async () => {
+    const mine = { ...OCTO, serial: 'SN-MINE-0001' };
+    const moved = rig([{ ...mine, port: ELSEWHERE, index: 6 }], [row('MIC-02', mine, 3)]);
+    const stream = await moved.adapter.open('MIC-02', target());
+    // The source facts state the serial and the port ACTUALLY USED: the live port, not the stored one.
+    expect(moved.adapter.sourceFacts('MIC-02')).toMatchObject({ usbSerial: 'SN-MINE-0001', usbPort: ELSEWHERE, usbId: OCTO.usbId, cardId: 'Octo', inputNumber: 3 });
+    expect(moved.rows.get('MIC-02')?.usbPort).toBe(OCTO.port);
+    await stream.close();
+    for (const [name, other] of [
+      ['another serial on the STORED port', { ...OCTO, serial: 'SN-OTHER-0002' }],
+      ['another serial on another port', { ...OCTO, serial: 'SN-OTHER-0002', port: ELSEWHERE }],
+      ['no serial at all, on the stored port', OCTO],
+    ] as const) {
+      const r = rig([other], [row('MIC-02', mine, 3)]);
+      const refused = await refusalOf(r.adapter.open('MIC-02', target()));
+      expect([refused.code, refused.detail], name).toEqual(['AUDIO_CARD_CHANGED', 'SERIAL_DIFFERS']);
+      nothingStarted(r);
+    }
+    // Both units connected: the registered one is opened, whatever sits on its old port.
+    const both = rig([{ ...OCTO, serial: 'SN-OTHER-0002' }, { ...mine, index: 6, id: 'Octo_1', port: ELSEWHERE }], [row('MIC-02', mine, 3)]);
+    const found = await both.adapter.open('MIC-02', target());
+    expect([found.card.cardIndex, found.card.usbSerial, found.card.usbPort]).toEqual([6, 'SN-MINE-0001', ELSEWHERE]);
+    expect(both.notices).toEqual([{ code: UsbAudioNoticeCode.CARD_RENAMED, deviceId: 'MIC-02' }]);
+    await found.close();
+  });
+
+  it('the cases left open, each refused before anything starts: a serial where none was registered; a stored row with neither serial nor port (registered before the columns existed)', async () => {
+    // Registered without a serial; the unit on the stored port states one today.
+    const appeared = rig([{ ...DUO, serial: 'SN-NEW-0003' }], [row('MIC-01', DUO, 1)]);
+    const first = await refusalOf(appeared.adapter.open('MIC-01', target()));
+    expect([first.code, first.detail]).toEqual(['AUDIO_CARD_CHANGED', 'SERIAL_DIFFERS']);
+    nothingStarted(appeared);
+    // The row as schema set A left it, and the row of a reader that hands neither value over: the USB id alone finds no card.
+    for (const patch of [{ usbSerial: null, usbPort: null }, { usbSerial: undefined, usbPort: undefined }] as const) {
+      const before = rig([DUO], [row('MIC-01', DUO, 1, patch)]);
+      const refused = await refusalOf(before.adapter.open('MIC-01', target()));
+      expect([refused.code, refused.detail, refused.wireCode]).toEqual(['AUDIO_CARD_UNIDENTIFIED', 'IDENTITY_NOT_STORED', 'DEVICE_NOT_FOUND']);
+      expect(refused.message).toBe('the registered sound card has no identity to find it by');
+      nothingStarted(before);
+      // Whatever is connected: also with no card at all it is the identity that is missing.
+      before.host.cards = [];
+      expect((await refusalOf(before.adapter.open('MIC-01', target()))).code).toBe(UsbAudioRefusal.CARD_UNIDENTIFIED);
+    }
+    // A card that is not USB has no serial and no port and is found by its kernel name, as before.
+    const onboard: FixtureCard = { index: 0, id: 'PCH', product: 'Onboard', channels: 2 };
+    const plain = rig([onboard], [row('MIC-01', onboard, 1)]);
+    await (await plain.adapter.open('MIC-01', target())).close();
+  });
+
+  it('AGAIN AT START: a card swapped between the open and the start is refused before the door is called - 0 helper starts', async () => {
+    // Without a serial: the registered unit is taken away and another of the model is plugged elsewhere.
+    const r = rig([DUO], [row('MIC-01', DUO, 1)]);
+    const stream = await r.adapter.open('MIC-01', target());
+    r.host.cards = [{ ...DUO, port: ELSEWHERE }];
+    const swapped = await refusalOf(stream.start());
+    expect([swapped.code, swapped.detail]).toEqual(['AUDIO_CARD_CHANGED', 'PORT_DIFFERS']);
+    expect(r.door.guards).toEqual([]);
+    await stream.close();
+    // With a serial: another unit in the SAME socket, at the same index, with the same channels - nothing but the serial differs.
+    const mine = { ...OCTO, serial: 'SN-MINE-0001' };
+    const serialled = rig([mine], [row('MIC-02', mine, 3)]);
+    const opened = await serialled.adapter.open('MIC-02', target());
+    serialled.host.cards = [{ ...OCTO, serial: 'SN-OTHER-0002' }];
+    const other = await refusalOf(opened.start());
+    expect([other.code, other.detail]).toEqual(['AUDIO_CARD_CHANGED', 'SERIAL_DIFFERS']);
+    expect(serialled.door.guards).toEqual([]);
+    await opened.close();
+    // The registered unit moved to another socket since the open (same index): it IS the card, but not where the open found it.
+    const movedSince = rig([mine], [row('MIC-02', mine, 3)]);
+    const handle = await movedSince.adapter.open('MIC-02', target());
+    movedSince.host.cards = [{ ...mine, port: ELSEWHERE }];
+    expect((await refusalOf(handle.start())).code).toBe(UsbAudioRefusal.CARD_MOVED);
+    expect(movedSince.door.guards).toEqual([]);
+    await handle.close();
+  });
+
+  it('the rule as a function of one listing: the detail word of every refusal, and no card index read', async () => {
+    const mine = { ...OCTO, serial: 'SN-A' };
+    const stored = row('MIC-02', mine, 3);
+    const answer = async (cards: FixtureCard[], against: RegisteredAudioInput = stored): Promise<unknown> => {
+      const found = identifyRegisteredCard(await hostOf(cards).enumerator.list(), against);
+      return found.ok ? [found.card.cardIndex, found.renamed] : [found.refusal, found.detail ?? null];
+    };
+    expect(await answer([mine])).toEqual([2, false]);
+    expect(await answer([{ ...mine, index: 9, port: ELSEWHERE }])).toEqual([9, false]);
+    expect(await answer([{ ...OCTO, serial: 'SN-B' }])).toEqual(['AUDIO_CARD_CHANGED', 'SERIAL_DIFFERS']);
+    expect(await answer([DUO])).toEqual(['AUDIO_CARD_ABSENT', null]);
+    expect(await answer([{ ...OTHER, index: 2, id: 'Octo', channels: 8 }])).toEqual(['AUDIO_CARD_CHANGED', 'USB_ID_DIFFERS']);
+    // Two units state the stored serial: the stored port decides; with the registered port empty, or no port stored, nothing decides.
+    const twin = { ...mine, index: 5, id: 'Octo_1', port: ELSEWHERE };
+    expect(await answer([mine, twin])).toEqual([2, false]);
+    expect(await answer([{ ...mine, port: '0000:00:14.0-9' }, twin])).toEqual(['AUDIO_CARD_AMBIGUOUS', 'SERIAL_SHARED']);
+    expect(await answer([mine, twin], { ...stored, usbPort: null })).toEqual(['AUDIO_CARD_AMBIGUOUS', 'SERIAL_SHARED']);
+    // No serial stored: the port, and only the port.
+    const plain = row('MIC-02', OCTO, 3);
+    expect(await answer([OCTO, { ...OCTO, index: 5, id: 'Octo_1', port: ELSEWHERE }], plain)).toEqual([2, false]);
+    expect(await answer([{ ...OCTO, index: 5, id: 'Octo_1', port: ELSEWHERE }], plain)).toEqual(['AUDIO_CARD_CHANGED', 'PORT_DIFFERS']);
+    expect(await answer([mine], plain)).toEqual(['AUDIO_CARD_CHANGED', 'SERIAL_DIFFERS']);
+    expect(await answer([OCTO], { ...plain, usbPort: null })).toEqual(['AUDIO_CARD_UNIDENTIFIED', 'IDENTITY_NOT_STORED']);
   });
 });
 
@@ -650,7 +827,7 @@ describe('pre-check, level, enumerate, source facts', () => {
     expect(r.door.calls).toEqual([
       {
         command: GUARD,
-        args: [HELPER, '-hide_banner', '-nostdin', '-nostats', '-loglevel', 'warning', '-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-channels', '8', '-sample_rate', '48000', '-i', 'dems_2_0', '-t', '0.2', '-vn', '-f', 'null', '-'],
+        args: [HELPER, '-hide_banner', '-nostdin', '-nostats', '-loglevel', 'warning', '-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-ch_layout', '8C', '-sample_rate', '48000', '-i', 'dems_2_0', '-t', '0.2', '-vn', '-f', 'null', '-'],
         env: { ALSA_CONFIG_PATH: r.configPath },
         message: null,
       },
@@ -711,10 +888,160 @@ describe('pre-check, level, enumerate, source facts', () => {
     expect(r.adapter.sourceFacts('MIC-01')).toBeNull();
     const stream = await r.adapter.open('MIC-01', target());
     const lists = r.host.lists();
-    expect(r.adapter.sourceFacts('MIC-01')).toEqual({ product: 'DEMS Test Duo', usbId: '1a2b:0001', cardId: 'Duo', cardDevice: 0, inputNumber: 2, nativeChannels: 2, sampleRateHz: 48_000, sampleBits: 24 });
+    expect(r.adapter.sourceFacts('MIC-01')).toEqual({ product: 'DEMS Test Duo', usbId: '1a2b:0001', usbSerial: null, usbPort: '0000:00:14.0-2', cardId: 'Duo', cardDevice: 0, inputNumber: 2, nativeChannels: 2, sampleRateHz: 48_000, sampleBits: 24 });
     expect(r.host.lists()).toBe(lists);
     await stream.close();
     expect(r.adapter.sourceFacts('MIC-01')).toBeNull();
+  });
+});
+
+// ── 5b. The door of a later device (task 4 row 85d; decision C63 (g)) ─────────────────────────
+//
+// A microphone registered on a RUNNING production Core: its stored row exists (the rig's `rows` is the store the adapter
+// reads at every open), the adapter was built without it. `admitDevice` makes THIS adapter serve it - the same
+// configuration writer, the same allocations - and everything that follows is the path of any other microphone.
+describe('row 85d: `admitDevice` - a microphone registered after the build is served by the same adapter, by its stored identity', () => {
+  /** The adapter was built for MIC-02 (the Octo); MIC-03 (input 2 of the Duo) is registered afterwards. */
+  const later = (cards: FixtureCard[] = [DUO, OCTO], script?: (call: DoorCall, index: number) => Script): Rig => {
+    const r = rig(cards, [row('MIC-02', OCTO, 3)], script);
+    r.rows.set('MIC-03', row('MIC-03', DUO, 2));
+    return r;
+  };
+  const codeOfThrow = (act: () => void): unknown => {
+    try {
+      act();
+    } catch (error) {
+      return error instanceof CaptureAdapterError ? error.code : error;
+    }
+    return 'ADMITTED';
+  };
+
+  it('before the admission the stored row alone serves nothing; the admission itself lists no card, writes no configuration, makes no pipe and starts no program', async () => {
+    const r = later();
+    await expect(r.adapter.open('MIC-03', target())).rejects.toMatchObject({ name: 'CaptureAdapterError', code: 'CAPTURE_DEVICE_UNKNOWN' });
+    await expect(r.adapter.precheck('MIC-03')).rejects.toMatchObject({ code: 'CAPTURE_DEVICE_UNKNOWN' });
+    await expect(r.adapter.level('MIC-03')).rejects.toMatchObject({ code: 'CAPTURE_DEVICE_UNKNOWN' });
+    expect((await r.adapter.enumerate()).map((entry) => entry.inputId)).toEqual(['MIC-02']);
+    const lists = r.host.lists();
+    expect(r.adapter.admittedDevices()).toEqual([]);
+    r.adapter.admitDevice(entryOf('MIC-03'));
+    expect([r.host.lists() - lists, r.door.calls, r.adapter.openSources(), existsSync(r.configPath), existsSync(`${r.runDir}/SES-67`)]).toEqual([0, [], [], false, false]);
+    expect(r.adapter.admittedDevices()).toEqual([entryOf('MIC-03')]);
+    expect(Object.isFrozen(r.adapter.admittedDevices()[0])).toBe(true);
+    // The first list is what it was: the registry takes the later device as an entry of its own.
+    expect(r.adapter.devices.map((entry) => entry.id)).toEqual(['MIC-02']);
+  });
+
+  it('after it: open, pre-check, level and the enumeration serve it as a microphone of the first list - found by its STORED identity in a fresh listing, arguments from integers, ONE configuration for the cards of both microphones', async () => {
+    const r = later();
+    r.adapter.admitDevice(entryOf('MIC-03'));
+    const first = await r.adapter.open('MIC-02', target());
+    const lists = r.host.lists();
+    const stream = await r.adapter.open('MIC-03', target());
+    expect(r.host.lists() - lists).toBe(1);
+    const pipe = `${r.runDir}/SES-67/MIC-03.pcm`;
+    expect([...stream.helperArguments]).toEqual(vector(2, 'dems_1_0', 'pan=mono|c0=c1', pipe));
+    expect(stream.card).toMatchObject({ cardIndex: 1, channelCount: 2, inputNumber: 2, cardId: 'Duo', usbPort: DUO.port });
+    // ONE writer, ONE file: the entry of the first microphone's card and the entry of the later one's.
+    expect(r.configText()).toBe(INCLUDE + sharedBlock(1, 2, 'S24_3LE', 52_032) + sharedBlock(2, 8, 'S32_LE', 52_064));
+    expect(r.adapter.openSources()).toEqual(['MIC-02', 'MIC-03']);
+    expect(r.adapter.sourceFacts('MIC-03')).toMatchObject({ cardId: 'Duo', inputNumber: 2, nativeChannels: 2 });
+    expect(await r.adapter.enumerate()).toEqual([
+      { inputId: 'MIC-02', present: true, errorCode: null },
+      { inputId: 'MIC-03', present: true, errorCode: null },
+    ]);
+    expect(await r.adapter.level('MIC-03')).toBeNull();
+    // A second open of the admitted microphone is refused as for any other; its helper starts under the guard, once.
+    expect((await refusalOf(r.adapter.open('MIC-03', target()))).code).toBe(UsbAudioRefusal.ALREADY_OPEN);
+    expect(await startAndSettle(stream, r.timers)).toBeNull();
+    expect(r.door.guardCalls()).toHaveLength(1);
+    await stream.close();
+    await first.close();
+    expect(r.adapter.openSources()).toEqual([]);
+    // The pre-check of the admitted microphone: the one short open, as for any other.
+    const checking = later([DUO, OCTO], () => ({ ends: { exitCode: 0 } }));
+    checking.adapter.admitDevice(entryOf('MIC-03'));
+    expect(await checking.adapter.precheck('MIC-03')).toBeNull();
+    expect(checking.door.calls.map((call) => [call.command, call.args[0], call.args.includes('dems_1_0')])).toEqual([[GUARD, HELPER, true]]);
+  });
+
+  it('the stored identity rules hold for it: a same-model card on ANOTHER port is AUDIO_CARD_CHANGED with nothing started; an admitted id with no stored row is AUDIO_INPUT_NOT_REGISTERED', async () => {
+    const swapped = later([{ ...DUO, port: '0000:00:14.0-7' }, OCTO]);
+    swapped.adapter.admitDevice(entryOf('MIC-03'));
+    const refused = await refusalOf(swapped.adapter.open('MIC-03', target()));
+    expect([refused.code, refused.detail, refused.deviceId]).toEqual(['AUDIO_CARD_CHANGED', 'PORT_DIFFERS', 'MIC-03']);
+    expect([swapped.door.calls, swapped.adapter.openSources(), existsSync(swapped.configPath)]).toEqual([[], [], false]);
+    expect(await swapped.adapter.enumerate()).toEqual([
+      { inputId: 'MIC-02', present: true, errorCode: null },
+      { inputId: 'MIC-03', present: false, errorCode: AudioInputErrorCode.DEVICE_NOT_FOUND },
+    ]);
+    const rowless = rig([DUO, OCTO], [row('MIC-02', OCTO, 3)]);
+    rowless.adapter.admitDevice(entryOf('MIC-04'));
+    expect((await refusalOf(rowless.adapter.open('MIC-04', target()))).code).toBe(UsbAudioRefusal.INPUT_NOT_REGISTERED);
+    expect(rowless.door.calls).toEqual([]);
+  });
+
+  it('idempotent: a second admission, and the admission of a microphone of the first list, change nothing - an open source of it stays open', async () => {
+    const r = later();
+    r.adapter.admitDevice(entryOf('MIC-03'));
+    const stream = await r.adapter.open('MIC-03', target());
+    r.adapter.admitDevice(entryOf('MIC-03'));
+    r.adapter.admitDevice({ ...entryOf('MIC-03'), label: 'another label' });
+    r.adapter.admitDevice(entryOf('MIC-02'));
+    expect(r.adapter.admittedDevices()).toEqual([entryOf('MIC-03')]);
+    expect(r.adapter.devices.map((entry) => entry.id)).toEqual(['MIC-02']);
+    expect(r.adapter.openSources()).toEqual(['MIC-03']);
+    expect((await r.adapter.enumerate()).map((entry) => entry.inputId)).toEqual(['MIC-02', 'MIC-03']);
+    await stream.close();
+  });
+
+  it('refused, each by its name and with nothing changed: no entry, another class, an id of another class, another adapter kind, another source class, a capability or a profile that is not a microphone\'s', async () => {
+    const r = later();
+    const mic = entryOf('MIC-03');
+    const cases: readonly [string, unknown, string][] = [
+      ['null', null, 'CAPTURE_DEVICE_UNKNOWN'],
+      ['a text', 'MIC-03', 'CAPTURE_DEVICE_UNKNOWN'],
+      ['no id', { ...mic, id: undefined }, 'CAPTURE_DEVICE_UNKNOWN'],
+      ['a camera', { id: 'CAM-03', deviceClass: 'CAMERA', label: 'Camera', capabilities: ['VIDEO'], profiles: ['H264_1080P25'] }, 'CAPTURE_DEVICE_CLASS_MISMATCH'],
+      ['a switch', { id: 'POE-01', deviceClass: 'POE', label: 'Switch', capabilities: [], profiles: [] }, 'CAPTURE_DEVICE_CLASS_MISMATCH'],
+      ['a camera id under the class MIC', { ...mic, id: 'CAM-03' }, 'CAPTURE_DEVICE_CLASS_MISMATCH'],
+      ['an id that is no registry id', { ...mic, id: 'MIC-3; rm' }, 'CAPTURE_DEVICE_CLASS_MISMATCH'],
+      ['a microphone id under the class CAMERA', { ...mic, deviceClass: 'CAMERA' }, 'CAPTURE_DEVICE_CLASS_MISMATCH'],
+      ['the development device kind', { ...mic, adapterKind: CaptureAdapterKind.LOCAL_DEVICE }, 'CAPTURE_ADAPTER_KIND_NOT_ALLOWED'],
+      ['the fake kind', { ...mic, adapterKind: CaptureAdapterKind.FAKE }, 'CAPTURE_ADAPTER_KIND_NOT_ALLOWED'],
+      ['the development source class', { ...mic, adapterKind: CaptureAdapterKind.USB_AUDIO, sourceClass: 'DEVELOPMENT' }, 'DEVELOPMENT_SOURCE_NOT_ALLOWED'],
+      ['a video capability', { ...mic, capabilities: ['AUDIO', 'VIDEO'] }, 'CAPTURE_DEVICE_CLASS_MISMATCH'],
+      ['no capability', { ...mic, capabilities: [] }, 'CAPTURE_DEVICE_CLASS_MISMATCH'],
+      ['a media profile', { ...mic, profiles: ['H264_1080P25'] }, 'CAPTURE_DEVICE_CLASS_MISMATCH'],
+      ['no label', { ...mic, label: 7 }, 'CAPTURE_DEVICE_CLASS_MISMATCH'],
+    ];
+    for (const [label, entry, code] of cases) expect(codeOfThrow(() => r.adapter.admitDevice(entry as CaptureDeviceEntry)), label).toBe(code);
+    expect(r.adapter.admittedDevices()).toEqual([]);
+    await expect(r.adapter.open('MIC-03', target())).rejects.toMatchObject({ code: 'CAPTURE_DEVICE_UNKNOWN' });
+    expect([r.host.lists(), r.door.calls]).toEqual([0, []]);
+    // CONTROL: a descriptor that states THIS adapter's kind and the production class is taken.
+    expect(codeOfThrow(() => r.adapter.admitDevice({ ...mic, adapterKind: CaptureAdapterKind.USB_AUDIO, sourceClass: 'PRODUCTION', hasOpener: true } as CaptureDeviceEntry))).toBe('ADMITTED');
+    expect(r.adapter.admittedDevices()).toEqual([mic]);
+  });
+
+  it('the fence\'s door finds the member, and its one-entry view of the adapter serves the later microphone; BEFORE THE LIFT a registry still refuses that view (`CAPTURE_ADAPTER_INVALID`): the kind does not record', async () => {
+    const r = later();
+    // What `buildProductionRegistryOf` does with a later device (`capture/fence/index.ts`, `lateDoorOf` and `admitLater`).
+    const member = (r.adapter as unknown as Record<string, unknown>)['admitDevice'];
+    expect(typeof member).toBe('function');
+    const entry = entryOf('MIC-03');
+    (member as (entry: CaptureDeviceEntry) => void).call(r.adapter, entry);
+    const view = Object.freeze({ ...r.adapter, devices: Object.freeze([entry]) });
+    expect([view.kind, view.hasOpener, view.devices.map((device) => device.id)]).toEqual([CaptureAdapterKind.USB_AUDIO, true, ['MIC-03']]);
+    const stream = await view.open('MIC-03', target());
+    expect(r.adapter.openSources()).toEqual(['MIC-03']);
+    await stream.close();
+    // In production the kind has no opener before the lift; a development Core does not register the kind at all.
+    for (const [operation, code] of [[CaptureOperation.REAL_PRODUCTION, 'CAPTURE_ADAPTER_INVALID'], [CaptureOperation.REAL_DEVELOPMENT, 'CAPTURE_ADAPTER_KIND_NOT_ALLOWED']] as const) {
+      const registry = createCaptureDeviceRegistry({ operation });
+      expect(codeOfThrow(() => registry.register(view)), operation).toBe(code);
+      expect(registry.list()).toEqual([]);
+    }
   });
 });
 
@@ -781,14 +1108,16 @@ describe('T-3 and the static rules of the row', () => {
   });
 
   it('no text of the stored row and no text of the listing is in any argument or in the configuration (planted values)', async () => {
-    const planted: FixtureCard = { index: 6, id: 'Zq7_Marker', product: 'Qx9 Planted Name', usbId: 'f00d:beef', port: '0000:00:1d.7-9.4', channels: 4, format: 'S24_LE' };
+    const planted: FixtureCard = { index: 6, id: 'Zq7_Marker', product: 'Qx9 Planted Name', usbId: 'f00d:beef', port: '0000:00:1d.7-9.4', serial: 'Vk3-SERIAL-MARK', channels: 4, format: 'S24_LE' };
     const r = rig([planted], [row('MIC-01', planted, 4)], () => ({ ends: { exitCode: 0 } }));
     const stream = await r.adapter.open('MIC-01', target());
     await r.adapter.precheck('MIC-01');
     await stream.start().catch(() => undefined);
     await stream.close();
     const everything = JSON.stringify([r.door.calls.map((call) => [call.command, call.args, call.env]), r.configText()]);
-    for (const text of ['Zq7_Marker', 'Qx9', 'Planted', 'f00d', 'beef', '1d.7-9.4', 'S24_LE'.toLowerCase()]) expect(everything.includes(text), text).toBe(false);
+    // Row 200: the stored row now holds a serial and a port path, and the open matched by them - neither reaches an argument, the environment or the configuration.
+    expect([stream.card.usbSerial, stream.card.usbPort]).toEqual(['Vk3-SERIAL-MARK', '0000:00:1d.7-9.4']);
+    for (const text of ['Zq7_Marker', 'Qx9', 'Planted', 'f00d', 'beef', '1d.7-9.4', 'Vk3', 'SERIAL-MARK', 'S24_LE'.toLowerCase()]) expect(everything.includes(text), text).toBe(false);
     // What IS there: the integers of the listing, and the format as a word of the generator's closed list in the configuration only.
     expect(stream.helperArguments).toEqual(vector(4, 'dems_6_0', 'pan=mono|c0=c3', `${r.runDir}/SES-67/MIC-01.pcm`));
     expect(r.door.calls.flatMap((call) => call.args).some((arg) => arg.includes('S24_LE'))).toBe(false);
@@ -847,7 +1176,7 @@ const STAND_IN_HELPER = `#!${process.execPath}
 const fs = require('node:fs');
 const path = require('node:path');
 const fail = (status, why) => { process.stderr.write('stand-in helper: ' + why + '\\n'); process.exit(status); };
-const VALUES = { '-hide_banner': 0, '-nostdin': 0, '-nostats': 0, '-vn': 0, '-y': 0, '-loglevel': 1, '-progress': 1, '-thread_queue_size': 1, '-f': 1, '-c:a': 1, '-channels': 1, '-sample_rate': 1, '-i': 1, '-af': 1, '-ac': 1, '-ar': 1, '-flush_packets': 1, '-t': 1 };
+const VALUES = { '-hide_banner': 0, '-nostdin': 0, '-nostats': 0, '-vn': 0, '-y': 0, '-loglevel': 1, '-progress': 1, '-thread_queue_size': 1, '-f': 1, '-c:a': 1, '-ch_layout': 1, '-sample_rate': 1, '-i': 1, '-af': 1, '-ac': 1, '-ar': 1, '-flush_packets': 1, '-t': 1 };
 const argv = process.argv.slice(2);
 const input = {}; const output = {}; let device = null; let target = null;
 for (let at = 0; at < argv.length; at += 1) {
@@ -868,8 +1197,9 @@ for (let at = 0; at < argv.length; at += 1) {
 if (device === null || target === null) fail(64, 'no input or no output');
 if (input['-f'] !== 'alsa') fail(65, 'not the sound device layer');
 if (input['-c:a'] !== 'pcm_s24le' || input['-sample_rate'] !== '48000') fail(65, 'another capture form');
-if (!/^[1-9][0-9]?$/.test(input['-channels'] || '')) fail(65, 'channel count');
-const channels = Number(input['-channels']);
+// Row 79b (C89): the channel count is the layout word of the pinned program, '<n>C'; '-channels' is no option of it.
+if (!/^[1-9][0-9]?C$/.test(input['-ch_layout'] || '')) fail(65, 'channel count');
+const channels = Number(input['-ch_layout'].slice(0, -1));
 if (!/^dems_[0-9]{1,2}_[0-9]{1,2}$/.test(device)) fail(65, 'device');
 // The lookup of the device, as the sound library does it through its configuration path.
 const configPath = process.env.ALSA_CONFIG_PATH;
@@ -1031,7 +1361,10 @@ describe('real processes through the real production door: a stand-in guard and 
     expect(await run(swap('alsa', 'pulse'))).toBe(65);
     expect(await run(swap('dems_1_0', 'hw:CARD=Duo,DEV=0'))).toBe(65);
     expect(await run(swap('dems_1_0', 'dems_9_0'))).toBe(67);
-    expect(await run(good.map((arg, at) => (good[at - 1] === '-channels' ? '1' : arg)))).toBe(67);
+    expect(await run(good.map((arg, at) => (good[at - 1] === '-ch_layout' ? '1C' : arg)))).toBe(67);
+    // Row 79b (C89): the row as it was before - the word the pinned program refuses, and a bare count - ends it too.
+    expect(await run(swap('-ch_layout', '-channels'))).toBe(64);
+    expect(await run(good.map((arg, at) => (good[at - 1] === '-ch_layout' ? '2' : arg)))).toBe(65);
     expect(await run(swap('pan=mono|c0=c1', 'pan=mono|c0=c2'))).toBe(68);
     expect(await run(swap('pan=mono|c0=c1', 'pan=stereo|c0=c0|c1=c1'))).toBe(68);
     expect(await run(good, {})).toBe(66);

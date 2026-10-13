@@ -133,6 +133,12 @@
  *                never a fault (ruling C37); and where the worker's gate refused a camera AND the
  *                pairing ends the capture for it, the operator keeps ONE critical notice, the one
  *                of the ended capture (ruling C40 (2); `foldGateNotice`).
+ *   absence      (finding F3-01 of the M3 review; task 4 row 43) the same source also carries a
+ *                relay's word that its CAMERA LEG was lost inside the session and that it is open
+ *                again (a report with the member `leg`). The push stands through both, so they are
+ *                no report of the pairing and end nothing. This unit states the absence of that
+ *                camera with both bounds on the Core's clock in the persistent error log
+ *                (`cameraLegSaid`); the camera's own critical notice is the camera watch's.
  *
  * IN CAPTURE MODE `simulated` NOTHING HERE RUNS: `recordingStartedIn` and the two `after...` calls
  * return at once, and operation 81 is the simulator's own hosted action.
@@ -148,7 +154,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdir, stat } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { AudioSourceIntervalReason, CaptureIngestState, CaptureRecordKind, CaptureStopReason, CaptureSyncLevel, CaptureWarningState, type AudioSourceIntervalRecord, type CapturePlan, type FirstVideoSampleRecord } from '@dems/capture-protocol';
-import { INGEST_PAIRING_BOUND_MS, createIngestPairing, type IngestPairing, type IngestPairingFailure, type RelayIngestReports } from './ingest-pairing';
+import { INGEST_PAIRING_BOUND_MS, createIngestPairing, type IngestPairing, type IngestPairingFailure, type RelayIngestReport, type RelayIngestReports } from './ingest-pairing';
 export { INGEST_PAIRING_BOUND_MS, IngestPairingFault, type IngestPairingFailure, type RelayIngestReport, type RelayIngestReports } from './ingest-pairing';
 import { ApiErrorCode, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES, type AudioSourceStateBody } from '@dems/shared/api';
 import { SessionState } from '@dems/shared/domain';
@@ -165,10 +171,10 @@ import { ApiFailure } from '../plugins/error-envelope';
 import { transcriptionControl } from '../transcription';
 import { describeError } from '../plugins/logger';
 import { SESSION_CAPTURE_FACTS_VERSION, sessionCaptureFactsPath, writeSessionCaptureFacts, type SessionCaptureFacts } from './facts';
-import { AudioIntervalRowReason, CLOSE_OPEN_AUDIO_INTERVAL, INSERT_AUDIO_INTERVAL, INSERT_SESSION_CAPTURE_SOURCES, READ_SESSION_CAPTURE_SOURCES } from './statements';
+import { AudioIntervalRowReason, CLOSE_OPEN_AUDIO_INTERVAL, CLOSE_SUPERSEDED_AUDIO_INTERVAL, INSERT_AUDIO_INTERVAL, INSERT_SESSION_CAPTURE_SOURCES, READ_SESSION_CAPTURE_SOURCES } from './statements';
 
 export { SESSION_CAPTURE_FACTS_FOLDER, SESSION_CAPTURE_FACTS_VERSION, parseSessionCaptureFacts, readSessionCaptureFacts, readSessionVideoFormat, readSessionVideoSampleEntry, removeSessionCaptureFacts, sessionCaptureFactsPath, withCameraEnded, type SessionCameraEnd, type SessionCameraFacts, type SessionCaptureFacts } from './facts';
-export { AudioIntervalRowReason, CLOSE_OPEN_AUDIO_INTERVAL, INSERT_AUDIO_INTERVAL, INSERT_SESSION_CAPTURE_SOURCES, READ_SESSION_CAPTURE_SOURCES } from './statements';
+export { AudioIntervalRowReason, CLOSE_OPEN_AUDIO_INTERVAL, CLOSE_SUPERSEDED_AUDIO_INTERVAL, INSERT_AUDIO_INTERVAL, INSERT_SESSION_CAPTURE_SOURCES, READ_SESSION_CAPTURE_SOURCES } from './statements';
 
 /** `details.reason` of a start that is refused for its sources (C3 §4, erratum PE-128-34). */
 export const SOURCE_KIND_NOT_RECORDABLE = 'SOURCE_KIND_NOT_RECORDABLE';
@@ -489,6 +495,35 @@ interface Live {
   readonly ingest: Map<string, string>;
   /** The camera opens of the worker in force (row 179): null before the first open of the session. */
   cameras: CameraRound | null;
+  /** Task 4 row 191: the microphone handles of the attempt in force, by device. Each is in `handles` as well, which is what the end of a capture closes. */
+  readonly micHandles: Map<string, AudioStreamHandle>;
+  /** Row 191: the attempt the handles in force were opened for (1 at the start). An outcome of a microphone start of an earlier attempt is dropped. */
+  micAttempt: number;
+  /** Row 191: true once the handles in force were started (`startMicrophones`): a handle starts once, so a later worker needs new ones. */
+  micsStarted: boolean;
+  /** Row 191: the microphones made ready for a later worker - which attempt, and the inputs once every close and open has an outcome; null before the first restart. */
+  micsAgain: { readonly attempt: number; readonly ready: Promise<ReadonlyMap<string, AudioStreamHandle['input']>> } | null;
+  /** Row 191: the microphone starts of the attempt in force; resolved once each has an outcome. */
+  micStarts: Promise<void>;
+  /** Row 191: resolves `micStarts` of a later attempt, whose starts are launched when its worker has acknowledged `START`; null otherwise. */
+  micStartsSettle: (() => void) | null;
+  /** Row 191: how many outcomes of microphone starts of superseded attempts were dropped. */
+  micReportsDropped: number;
+  /** Row 191: the first sample of the audio timeline each worker of the session reported, by attempt (the Core's record of the gap a restart leaves). */
+  readonly audioFrom: Map<number, number>;
+  /** Row 191: when the worker of an attempt went down and was replaced, by the attempt that followed it. */
+  readonly workerDownAt: Map<number, number>;
+  /** Row 191: when the microphones of a later attempt were started (the Core's clock), by attempt. */
+  readonly micsStartedAt: Map<number, number>;
+  /**
+   * Row 191b: every worker numbers its interval records from 1. The stored number of a record is
+   * `intervalSeqBase + index`: the base is 0 for the first worker that reported audio and, for a
+   * later one, the highest number the workers before it used (`intervalSeqTop`).
+   */
+  intervalSeqBase: number;
+  intervalSeqTop: number;
+  /** Row 191b: the interval rows of the start and of a restart are written one after the other, in the order their records arrived. */
+  intervalWrites: Promise<void>;
   /** SA-3 (row 48): the pairing of this capture; null when it is not applied (no relay reports here, or not `REAL_PRODUCTION`). */
   pairing: IngestPairing | null;
   /** SA-3: by camera, the attempt and the ingest state the worker last reported: a connect report is a CHANGE to `CONNECTED`. */
@@ -500,6 +535,20 @@ interface Live {
   readonly gateRefusals: Map<string, { readonly reason: string; readonly attempt: number }>;
   /** Row 188 (C37): true once the total of the dropped relay reports of superseded attempts was said at the end of the capture. */
   supersededSummed: boolean;
+  /**
+   * Finding F3-01: by camera and stream, the absence inside this capture that is OPEN - the relay said its camera leg
+   * was lost and has not said it re-opened: the relay's number of the loss, the attempt, and the instant of the Core's
+   * clock at which the word arrived (the earlier bound of the absence).
+   */
+  readonly cameraAbsences: Map<string, { readonly deviceId: string; readonly profile: string; readonly attempt: number; readonly loss: number; readonly lostAt: number }>;
+  /** Finding F3-01 (C37): how many words of a relay about its camera leg were dropped because they named an attempt that is not in force. */
+  cameraLegsDropped: number;
+  /** Row R1b: the audit entries of the absences that ENDED, one after the other; `release` waits for it, so the seal reads every entry. */
+  absenceWrites: Promise<void>;
+  /** Row R1b: the instant of the Core's clock at which the end of this capture was asked (`leave`); null until then. */
+  leftAt: number | null;
+  /** Row R1b: the highest capture attempt a relay word of this capture was taken for - the attempt in force when the last absence was said. */
+  absenceAttempt: number;
   /** True once the tap path of the session was asked of the transcription unit: from then on its scratch folder may exist. */
   tapAsked: boolean;
   /** True once the transcriber session was asked for; true again once it was told the end. */
@@ -568,6 +617,48 @@ export const CHECKPOINT_FACTS_INTERVAL_MS = 5_000;
 interface SwitchActor {
   readonly operatorId: string | null;
   readonly sendingDeviceId: string | null;
+}
+
+/**
+ * Row 191b: what a worker restart cost the audio of a session, as the session measured it on the
+ * Core's own clock (`sayAudioGap`) and as `recordAudioGap` stores it.
+ */
+interface AudioGap {
+  /** The last attempt before the later one that reported audio (the one before it, when none did). */
+  readonly earlierAttempt: number;
+  readonly laterAttempt: number;
+  /** When the earlier worker went down: `to_at` of the interval row it leaves. */
+  readonly earlierEndAt: number;
+  /** `from_at` of the later worker's row: the worker's instant, held between the two bounds. */
+  readonly laterFromAt: number;
+  /** Earlier worker down -> the microphones were started again; null when an instant is not known. */
+  readonly atLeastMs: number | null;
+  /** Earlier worker down -> the later worker's record arrived; null when the instant is not known. */
+  readonly atMostMs: number | null;
+}
+
+/** The longest gap the audit row may state, in ms (`CAPTURE_AUDIO_ABSENT_MAX_MS` of `core/audit-details.ts`): a larger number is a clock fault and is not stated. */
+const AUDIO_GAP_MAX_MS = 86_400_000;
+
+/** Row R1b: the longest absence of a camera the audit row may state, in ms (`CAPTURE_VIDEO_ABSENT_MAX_MS` of `core/audit-details.ts`): a larger number is a clock fault and is not stated. */
+const VIDEO_ABSENCE_MAX_MS = 86_400_000;
+/**
+ * Row R1b: the longest the relay lets a PLAYING camera be silent before it calls its leg lost
+ * (`RELAY_IO_BOUND_US` of `apps/capture-worker/src/relay/relay.h`: "playing, without a COMPLETE
+ * PICTURE, else CAMERA_STALLED"; held equal by a test of this unit). The relay's word of a loss
+ * comes at most this long after the last picture it forwarded, and the Core's clock starts only at
+ * that word: so this is what is ADDED to the Core's own span for the most an absence can have been.
+ */
+export const RELAY_PLAYING_SILENCE_BOUND_MS = 5_000;
+/** Row R1b: an absence that is open - what `Live.cameraAbsences` holds. */
+type OpenCameraAbsence = Live['cameraAbsences'] extends Map<string, infer Entry> ? Entry : never;
+/** Row R1b: how an absence ended, with the two bounds as measured (null: the instant a bound is measured from is not known). */
+interface CameraAbsenceEnd {
+  readonly ended: 'RE_OPENED' | 'NOT_RE_OPENED';
+  /** The relay's tries of the re-open; null when it did not re-open or did not say. */
+  readonly tries: number | null;
+  readonly atLeastMs: number | null;
+  readonly atMostMs: number | null;
 }
 
 const instancesOfShutdown = new WeakSet<object>();
@@ -694,6 +785,24 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     }
     of.pairing?.end();
     for (const off of of.offs.splice(0)) off();
+    // Finding F3-01: an absence of a camera that is still open when the capture ends. The camera did not come back; the end is its later bound.
+    if (of.cameraAbsences.size > 0) {
+      const endedAt = app.clock.now();
+      const inForce = attemptInForceAtEnd(of);
+      for (const open of of.cameraAbsences.values()) {
+        persist('warn', 'CAPTURE_CAMERA_ABSENT_AT_END', 'a camera of the session had stopped delivering video and had not come back when the capture ended: the recording of this camera holds nothing after the first instant', null, { sessionId: of.sessionId, deviceId: open.deviceId, profile: open.profile, attempt: open.attempt, loss: open.loss, lostAt: open.lostAt, endedAt, absentAtLeastMs: Math.max(0, endedAt - open.lostAt) });
+        // Row R1b: the audit entry of an absence that did NOT end. An absence said in a SUPERSEDED attempt writes nothing:
+        // the files of the session begin with the later worker, and nothing of the earlier one is in them.
+        if (open.attempt !== inForce) continue;
+        // At least: to the FIRST instant the end of the capture was asked (the recording still ran then); at most: to now
+        // (the worker has been stopped by every caller of this function), plus the relay's silence bound.
+        const atLeastMs = of.leftAt === null ? null : Math.max(0, of.leftAt - open.lostAt);
+        recordVideoAbsence(of, open, { ended: 'NOT_RE_OPENED', tries: null, atLeastMs, atMostMs: Math.max(endedAt - open.lostAt, atLeastMs ?? 0, 0) + RELAY_PLAYING_SILENCE_BOUND_MS });
+      }
+      of.cameraAbsences.clear();
+    }
+    // Row R1b: every audit entry of an absence is stored (or its failure said) BEFORE the capture is handed over: the seal reads them.
+    await of.absenceWrites;
     for (const handle of of.handles.splice(0)) {
       try {
         await handle.close();
@@ -893,12 +1002,167 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     if (of.checkpointsSaidAt === null || now - of.checkpointsSaidAt >= CHECKPOINT_FACTS_INTERVAL_MS) track(sayCheckpoints(of));
   }
 
-  async function writeInterval(of: Live, record: AudioSourceIntervalRecord): Promise<void> {
-    try {
-      await app.db.pool.query(INSERT_AUDIO_INTERVAL, [of.sessionId, record.index, record.deviceId, record.role, mediaMsOfSample(record.fromSample, record.sampleRateHz), record.capturedAtMs, null, AudioIntervalRowReason.START]);
-    } catch (err) {
-      persist('error', 'AUDIO_INTERVAL_NOT_STORED', 'an audio-source interval could not be stored', err, { sessionId: of.sessionId, seq: record.index, deviceId: record.deviceId });
-    }
+  /** Row 191b: the stored number of a worker's interval record (`Live.intervalSeqBase`). */
+  function intervalSeqOf(of: Live, record: AudioSourceIntervalRecord): number {
+    const seq = of.intervalSeqBase + record.index;
+    of.intervalSeqTop = Math.max(of.intervalSeqTop, seq);
+    return seq;
+  }
+
+  /** The interval of a start, stored in the order the records arrived (a replayed record rewrites nothing). */
+  function writeInterval(of: Live, record: AudioSourceIntervalRecord): Promise<void> {
+    const seq = intervalSeqOf(of, record);
+    of.intervalWrites = of.intervalWrites.then(async () => {
+      try {
+        await app.db.pool.query(INSERT_AUDIO_INTERVAL, [of.sessionId, seq, record.deviceId, record.role, mediaMsOfSample(record.fromSample, record.sampleRateHz), record.capturedAtMs, null, AudioIntervalRowReason.START]);
+      } catch (err) {
+        persist('error', 'AUDIO_INTERVAL_NOT_STORED', 'an audio-source interval could not be stored', err, { sessionId: of.sessionId, seq, deviceId: record.deviceId });
+      }
+    });
+    return of.intervalWrites;
+  }
+
+  /**
+   * Task 4 row 191b (decision C57): THE GAP OF A RESTART AS A FACT OF THE EVIDENCE. One unit of the
+   * engine holds three things, so that none is stored without the others:
+   *
+   *   the earlier worker's END   the interval that was open is closed where it began in media time
+   *                              and at the instant that worker went down (`CLOSE_SUPERSEDED_AUDIO_INTERVAL`);
+   *   the later worker's BEGIN   a NEW row under the next number, reason START, with the later
+   *                              worker's own media time. Its `from_at` is the worker's instant HELD
+   *                              BETWEEN THE TWO BOUNDS of the Core's clock (not before the
+   *                              microphones were started again, not after its record arrived): the
+   *                              instant a worker states for its first sample is computed back from
+   *                              the samples it holds and was measured BEFORE the earlier worker
+   *                              went down (row 191), which no row may state;
+   *   the audit row              `CAPTURE_AUDIO_ABSENT_ON_RESTART` (DEVICE, WARNING, no actor): the
+   *                              session, the two attempts and both bounds in ms whenever they were
+   *                              measured. Its device is the microphone the later worker's audio
+   *                              begins with; its message names every microphone of the session
+   *                              with its role (the detail list of the type is closed and holds no device).
+   *
+   * No UPDATE grant is used that the runtime role had not (the two closing columns, each written
+   * once). A unit that fails is run once more; then the two interval rows are written apart and
+   * the failure is said: the audit row is then MISSING and the error log says so by its code.
+   */
+  function recordAudioGap(of: Live, record: AudioSourceIntervalRecord, gap: AudioGap): Promise<void> {
+    const { sessionId } = of;
+    const seq = intervalSeqOf(of, record);
+    const row = [sessionId, seq, record.deviceId, record.role, mediaMsOfSample(record.fromSample, record.sampleRateHz), gap.laterFromAt, null, AudioIntervalRowReason.START] as const;
+    const bound = (ms: number | null): ms is number => ms !== null && Number.isSafeInteger(ms) && ms >= 0 && ms <= AUDIO_GAP_MAX_MS;
+    const details = {
+      sessionId,
+      earlierAttempt: gap.earlierAttempt,
+      laterAttempt: gap.laterAttempt,
+      ...(bound(gap.atLeastMs) ? { audioAbsentAtLeastMs: gap.atLeastMs } : {}),
+      ...(bound(gap.atMostMs) ? { audioAbsentAtMostMs: gap.atMostMs } : {}),
+    };
+    const context = { sessionId, seq, deviceId: record.deviceId, earlierAttempt: gap.earlierAttempt, laterAttempt: gap.laterAttempt };
+    const unit = (): Promise<unknown> =>
+      app.engine.run('captureSession.audioAbsentOnRestart', async (scope) => {
+        const lines = scope.pending().session?.captureConfig?.mics ?? [];
+        const named = lines.length === 0 ? `${record.deviceId} ${record.role}` : lines.map((line) => `${line.deviceId} ${line.role}`).join(', ');
+        await scope.unit.query(CLOSE_SUPERSEDED_AUDIO_INTERVAL, [sessionId, gap.earlierEndAt]);
+        await scope.unit.query(INSERT_AUDIO_INTERVAL, [...row]);
+        await scope.unit.audit.append({
+          type: 'CAPTURE_AUDIO_ABSENT_ON_RESTART',
+          message: `Audio was not recorded while the capture worker was replaced (attempt ${String(gap.earlierAttempt)} to ${String(gap.laterAttempt)}; microphones: ${named})`,
+          severity: 'WARNING',
+          actorId: null,
+          deviceId: record.deviceId,
+          sessionId,
+          details,
+        });
+      });
+    of.intervalWrites = of.intervalWrites.then(async () => {
+      try {
+        try {
+          await unit();
+        } catch (first) {
+          persist('warn', 'CAPTURE_AUDIO_GAP_UNIT_RETRIED', 'the unit that records the audio gap of a worker restart failed and is run once more', first, context);
+          await unit();
+        }
+      } catch (err) {
+        // The later worker DOES feed the file. The interval rows are evidence metadata: stored by themselves when the unit could not be.
+        persist('error', 'CAPTURE_AUDIO_GAP_NOT_AUDITED', 'the audio gap of a worker restart could not be recorded in its unit: the audit row is missing; the interval rows are written apart', err, context);
+        try {
+          await app.db.pool.query(CLOSE_SUPERSEDED_AUDIO_INTERVAL, [sessionId, gap.earlierEndAt]);
+          await app.db.pool.query(INSERT_AUDIO_INTERVAL, [...row]);
+        } catch (again) {
+          persist('error', 'AUDIO_INTERVAL_NOT_STORED', 'an audio-source interval could not be stored', again, { sessionId, seq, deviceId: record.deviceId });
+        }
+      }
+    });
+    return of.intervalWrites;
+  }
+
+  /**
+   * Task 4 row 191: WHAT A RESTART COST THE AUDIO, SAID ONCE PER LATER WORKER, when that worker
+   * reports the first sample of its audio timeline. A worker is replaced only while the session
+   * holds nothing durable, so nothing of the earlier worker is in any file: the recorded audio of
+   * the session BEGINS with the later worker. This entry states how long no audio was captured,
+   * as TWO BOUNDS ON THE CORE'S OWN CLOCK, because the instant a worker states for its first sample
+   * is computed from the samples it had received and is not exact for a source that delivers its
+   * first samples in a burst (measured with the generated microphones: 185 ms BEFORE the earlier
+   * worker went down, row's record):
+   *
+   *   `audioAbsentAtLeastMs`  from the instant the earlier worker went down to the instant the
+   *                           microphones were started again (before that nothing fed a pipe);
+   *   `audioAbsentAtMostMs`   from the same instant to the arrival of this record (by then the
+   *                           later worker has samples).
+   *
+   * Beside them: the worker's own statement (`workerAudioFromAt`), and - when the earlier worker
+   * had stated its first sample - how long the session had been heard by the earlier worker
+   * without any of it being recorded (`earlierAudioNotRecordedMs`).
+   *
+   * THE INTERVAL ROWS (row 191b): the row of the earlier worker (`intervalRowOf` names its
+   * attempt, `intervalRowFromAt` its instant) is written once and never rewritten. It is CLOSED at
+   * the instant its worker went down, and the later worker's interval is a NEW row
+   * (`recordAudioGap`, which also writes the audit row of the gap); this entry of the error log
+   * stays beside them with the worker's own word. The earlier attempt is the LAST one before this
+   * that reported audio, and the gap is measured from the instant THAT worker went down.
+   *
+   * Returns what `recordAudioGap` stores, or null when this record opens no gap (the first worker
+   * of the session, or a record this worker repeats).
+   */
+  function sayAudioGap(of: Live, attempt: number, record: AudioSourceIntervalRecord): AudioGap | null {
+    const said = of.audioFrom.has(attempt);
+    if (!said) of.audioFrom.set(attempt, record.capturedAtMs);
+    if (attempt <= 1 || said) return null;
+    const startedAt = of.micsStartedAt.get(attempt) ?? null;
+    const heardAt = app.clock.now();
+    const earlier = [...of.audioFrom].filter(([known]) => known < attempt).sort(([a], [b]) => b - a)[0] ?? null;
+    const downAt = (earlier === null ? undefined : of.workerDownAt.get(earlier[0] + 1)) ?? of.workerDownAt.get(attempt) ?? null;
+    // A number every earlier worker used stays its own: the later worker's records are stored after them.
+    of.intervalSeqBase = of.intervalSeqTop;
+    const atLeastMs = downAt === null || startedAt === null ? null : Math.max(0, startedAt - downAt);
+    const atMostMs = downAt === null ? null : Math.max(0, heardAt - downAt);
+    const notBefore = startedAt ?? downAt;
+    const gap: AudioGap = {
+      earlierAttempt: earlier === null ? attempt - 1 : earlier[0],
+      laterAttempt: attempt,
+      earlierEndAt: downAt ?? heardAt,
+      laterFromAt: Math.min(heardAt, notBefore === null ? record.capturedAtMs : Math.max(record.capturedAtMs, notBefore)),
+      atLeastMs,
+      atMostMs,
+    };
+    persist('warn','CAPTURE_AUDIO_BEGINS_AFTER_RESTART', 'the capture worker of the session was replaced before anything was durable: the recorded audio begins with the later worker, and nothing heard before it is recorded', null, {
+      sessionId: of.sessionId,
+      attempt,
+      deviceId: record.deviceId,
+      role: record.role,
+      workerDownAt: downAt,
+      microphonesStartedAt: startedAt,
+      audioHeardAt: heardAt,
+      audioAbsentAtLeastMs: atLeastMs,
+      audioAbsentAtMostMs: atMostMs,
+      workerAudioFromAt: record.capturedAtMs,
+      audioFromMediaMs: mediaMsOfSample(record.fromSample, record.sampleRateHz),
+      intervalRowOf: earlier === null ? attempt : earlier[0],
+      intervalRowFromAt: earlier === null ? record.capturedAtMs : earlier[1],
+      earlierAudioNotRecordedMs: earlier === null || downAt === null ? null : Math.max(0, downAt - earlier[1]),
+    });
+    return gap;
   }
 
   async function closeLastInterval(of: Live): Promise<void> {
@@ -924,7 +1188,9 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     }
     // The interval of the start is this unit's to store; the interval of a switch is stored by the unit of operation 81.
     if (record.kind === CaptureRecordKind.AUDIO_SOURCE_INTERVAL && record.reason === AudioSourceIntervalReason.SESSION_START) {
-      track(writeInterval(of, record));
+      // Row 191b: the first record of a LATER worker closes the earlier worker's interval, opens its own by a new row and writes the audit row of the gap.
+      const gap = sayAudioGap(of, event.attempt, record);
+      track(gap === null ? writeInterval(of, record) : recordAudioGap(of, record, gap));
       return;
     }
     if (record.kind === CaptureRecordKind.AUDIO_SOURCE_INTERVAL) {
@@ -1027,6 +1293,196 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       if (of.ingestSaid.get(ingest.deviceId) === said) continue;
       of.ingestSaid.set(ingest.deviceId, said);
       if (ingest.state === CaptureIngestState.CONNECTED) pairing.workerConnected(ingest.deviceId, attempt);
+    }
+  }
+
+  /**
+   * A CAMERA'S ABSENCE INSIDE A SESSION, AS A FACT OF THE SESSION'S RECORD (finding F3-01 of the M3
+   * review; task 4 row 43; the audio side's model is row 191 / 191b). The relay of a camera says
+   * that its camera leg was lost while its push to the worker stands, and later that it is open
+   * again. NEITHER IS A REPORT OF THE PAIRING: the worker keeps its one connection, so nothing here
+   * reaches `relayReported` and no rule of SA-3 changes (C35 (b) is about an arrival; a re-open is
+   * none). What this function does with them:
+   *   - C37: a word that names another attempt than the one in force, another session's, or a
+   *     device that is no camera of the plan, is dropped - never a fault;
+   *   - LOST: the instant of the Core's clock is kept, and ONE entry of the persistent error log
+   *     (`CAPTURE_CAMERA_ABSENT_IN_SESSION`, level warn) states the camera, the stream, the attempt,
+   *     the relay's number of the loss, its cause and that instant;
+   *   - REOPENED, for the loss that is open: ONE entry (`CAPTURE_CAMERA_BACK_IN_SESSION`) with BOTH
+   *     bounds on the Core's clock, their difference, and the relay's own numbers (its measure of
+   *     the gap, the pictures it held back before the first keyframe, its tries);
+   *   - an absence that is still open when the capture ends is closed by `release` with the end as
+   *     its later bound (`CAPTURE_CAMERA_ABSENT_AT_END`): the camera did not come back.
+   * THE NOTICE is not written here: the camera's own fault (`CAPTURE_FAULT` / `CAMERA_STREAM_ENDED`
+   * about that camera) is raised and cleared by the camera watch through the watch fault sink, on
+   * the same two reports - one critical notice and one `FAULT_RAISED` / `FAULT_CLEARED` pair of
+   * audit entries per absence (C40, C60 (2)). The capture is NOT ended by an absence.
+   * NOT YET STATED ANYWHERE SIGNED: no audit type and no member of the sealed manifest holds the
+   * bounds of a video absence in milliseconds (the audio side has `CAPTURE_AUDIO_ABSENT_ON_RESTART`
+   * and `audio.absentOnRestart`). Until the contract has them, the numbers live in the error log.
+   */
+  function cameraLegSaid(of: Live, cameras: ReadonlySet<string>, report: RelayIngestReport): void {
+    const leg = report.leg;
+    if (leg === undefined || of.ended || !cameras.has(report.deviceId)) return;
+    const whole = (value: unknown, least: number): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= least;
+    if (typeof leg.profile !== 'string' || !/^[A-Z][A-Z0-9_]{0,63}$/.test(leg.profile) || !whole(leg.loss, 1)) return;
+    let inForce: number;
+    try {
+      inForce = of.supervisor.status().attempt;
+    } catch {
+      return;
+    }
+    of.absenceAttempt = Math.max(of.absenceAttempt, inForce);
+    if (report.attempt !== inForce) {
+      of.cameraLegsDropped += 1;
+      if (of.cameraLegsDropped <= SUPERSEDED_REPORT_LINES) {
+        app.log.info({ code: 'CAPTURE_CAMERA_LEG_REPORT_SUPERSEDED', sessionId: of.sessionId, deviceId: report.deviceId, attempt: report.attempt, attemptInForce: inForce, dropped: of.cameraLegsDropped }, 'a relay\'s word about its camera leg named an attempt that is not in force and was dropped; no fault');
+      }
+      return;
+    }
+    const key = `${report.deviceId} ${leg.profile}`;
+    const said = { sessionId: of.sessionId, deviceId: report.deviceId, profile: leg.profile, attempt: report.attempt, loss: leg.loss };
+    if (leg.event === 'LOST') {
+      // One open absence per stream: a loss said while one is open is the same absence going on.
+      if (of.cameraAbsences.has(key)) return;
+      const lostAt = app.clock.now();
+      of.cameraAbsences.set(key, { deviceId: report.deviceId, profile: leg.profile, attempt: report.attempt, loss: leg.loss, lostAt });
+      const cause = typeof leg.cause === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(leg.cause) ? leg.cause : null;
+      persist('warn', 'CAPTURE_CAMERA_ABSENT_IN_SESSION', 'a camera of the session stopped delivering video while the recording goes on: its relay keeps the push and opens the camera again; the recording of this camera has a gap from here', null, { ...said, cause, lostAt });
+      return;
+    }
+    if (leg.event !== 'REOPENED') return;
+    const open = of.cameraAbsences.get(key);
+    // Only the loss this capture was told of ends here: by its number, of the attempt it was said in.
+    if (open === undefined || open.loss !== leg.loss || open.attempt !== report.attempt) return;
+    of.cameraAbsences.delete(key);
+    const backAt = app.clock.now();
+    persist('warn', 'CAPTURE_CAMERA_BACK_IN_SESSION', 'a camera of the session delivers video again: its relay opened it again and forwards from the first keyframe; the recording of this camera has a gap between the two instants', null, {
+      ...said,
+      lostAt: open.lostAt,
+      backAt,
+      absentMs: Math.max(0, backAt - open.lostAt),
+      relayGapMs: whole(leg.gapMs, 0) ? leg.gapMs : null,
+      heldBack: whole(leg.heldBack, 0) ? leg.heldBack : null,
+      tries: whole(leg.tries, 1) ? leg.tries : null,
+    });
+    // Row R1b: THE AUDIT ENTRY of the absence, written now that it ended. At least: the relay's own measure (its monotonic
+    // clock, from the instant it called the camera lost to the first keyframe of the new leg) - the Core's span is no lower
+    // bound, because both of its instants are arrivals. At most: the Core's span, never below the relay's measure, plus
+    // the relay's silence bound (the last picture came at most that long before the relay's word of the loss).
+    const relayGapMs = whole(leg.gapMs, 0) ? leg.gapMs : null;
+    recordVideoAbsence(of, open, {
+      ended: 'RE_OPENED',
+      tries: whole(leg.tries, 1) ? leg.tries : null,
+      atLeastMs: relayGapMs,
+      atMostMs: Math.max(backAt - open.lostAt, relayGapMs ?? 0, 0) + RELAY_PLAYING_SILENCE_BOUND_MS,
+    });
+  }
+
+  /** Row R1b: the capture attempt in force when a capture ends - the supervisor's while it still holds the session, else the highest this capture saw. */
+  function attemptInForceAtEnd(of: Live): number {
+    let said = 0;
+    try {
+      const status = of.supervisor.status();
+      if (status.sessionId === of.sessionId) said = status.attempt;
+    } catch {
+      said = 0;
+    }
+    return Math.max(1, said, of.absenceAttempt, of.micAttempt, ...of.workerDownAt.keys());
+  }
+
+  /**
+   * Row R1b (decision C99; finding F3-01): ONE audit entry `CAPTURE_VIDEO_ABSENT_IN_SESSION` per
+   * absence of a camera inside the session, written WHEN THE ABSENCE ENDS - by the relay's re-open
+   * (`cameraLegSaid`) or by the end of the capture with the camera still away (`release`). DEVICE,
+   * WARNING, no actor; the row's device is the camera. Through the engine (one unit of its own)
+   * and the audit writer, which holds the entry to the closed list of the type. The entries are
+   * written one after the other and `release` waits for them: the seal reads these rows for the
+   * signed manifest member `tracks[].absentInSession`, so the signed numbers ARE the stored ones.
+   * A bound outside 0 to one day is left out (a clock fault is not stated as a measurement). A
+   * unit that fails is run once more; then the failure is said by its code in the persistent error
+   * log - the entry is then MISSING and the manifest states one absence fewer than happened.
+   * A camera whose track is not in the plan has no entry (it has no file either).
+   */
+  function recordVideoAbsence(of: Live, open: OpenCameraAbsence, end: CameraAbsenceEnd): void {
+    const { sessionId } = of;
+    const trackId = of.files.find((file) => file.deviceId === open.deviceId)?.trackId ?? null;
+    const context = { sessionId, deviceId: open.deviceId, trackId, attempt: open.attempt, loss: open.loss, ended: end.ended };
+    if (trackId === null) {
+      persist('error', 'CAPTURE_VIDEO_ABSENCE_NOT_AUDITED', 'the absence of a camera inside the session could not be recorded: the camera has no track in this session', null, context);
+      return;
+    }
+    const bound = (ms: number | null): ms is number => ms !== null && Number.isSafeInteger(ms) && ms >= 0 && ms <= VIDEO_ABSENCE_MAX_MS;
+    const atLeastMs = bound(end.atLeastMs) ? end.atLeastMs : null;
+    // The most is never stated below the least.
+    const atMostMs = bound(end.atMostMs) && (atLeastMs === null || end.atMostMs >= atLeastMs) ? end.atMostMs : null;
+    const details = {
+      sessionId,
+      deviceId: open.deviceId,
+      trackId,
+      attempt: open.attempt,
+      loss: open.loss,
+      ...(end.tries === null ? {} : { tries: end.tries }),
+      ...(atLeastMs === null ? {} : { videoAbsentAtLeastMs: atLeastMs }),
+      ...(atMostMs === null ? {} : { videoAbsentAtMostMs: atMostMs }),
+      ended: end.ended,
+    };
+    const how = end.ended === 'RE_OPENED' ? 'its relay opened it again' : 'it had not come back when the capture ended';
+    const unit = (): Promise<unknown> =>
+      app.engine.run('captureSession.videoAbsentInSession', async (scope) => {
+        await scope.unit.audit.append({
+          type: 'CAPTURE_VIDEO_ABSENT_IN_SESSION',
+          message: `Video was not recorded while a camera of the session was absent (${open.deviceId}, ${trackId}; attempt ${String(open.attempt)}, loss ${String(open.loss)}): ${how}`,
+          severity: 'WARNING',
+          actorId: null,
+          deviceId: open.deviceId,
+          sessionId,
+          details,
+        });
+      });
+    of.absenceWrites = of.absenceWrites.then(async () => {
+      try {
+        try {
+          await unit();
+        } catch (first) {
+          persist('warn', 'CAPTURE_VIDEO_ABSENCE_UNIT_RETRIED', 'the unit that records the absence of a camera inside the session failed and is run once more', first, context);
+          await unit();
+        }
+      } catch (err) {
+        persist('error', 'CAPTURE_VIDEO_ABSENCE_NOT_AUDITED', 'the absence of a camera inside the session could not be recorded: the audit row is missing, and the sealed manifest will state one absence fewer', err, context);
+      }
+    });
+    track(of.absenceWrites);
+  }
+
+  /**
+   * Finding F3-01: a camera counts as open for a LATER worker of the session (the pairing's word). An absence of that
+   * camera that was said in an EARLIER attempt and never ended - its relay was closed with its worker - is over here:
+   * the camera delivers again, to the later worker. The relay of the earlier attempt can no longer say so itself.
+   */
+  function cameraOpenAgain(of: Live, deviceId: string, attempt: number): void {
+    // A Map may lose the entry it is at while it is walked.
+    of.absenceAttempt = Math.max(of.absenceAttempt, attempt);
+    // Row R1b: NO audit entry here - the absence was said in an attempt that is now SUPERSEDED, and the files of the
+    // session begin with the later worker: nothing of the earlier attempt's timeline is in them.
+    for (const [key, open] of of.cameraAbsences) {
+      if (open.deviceId !== deviceId || open.attempt >= attempt) continue;
+      of.cameraAbsences.delete(key);
+      const backAt = app.clock.now();
+      persist('warn', 'CAPTURE_CAMERA_BACK_IN_SESSION', 'a camera of the session delivers video again: it was opened for a later capture worker of the session; the recording of this camera has a gap between the two instants', null, {
+        sessionId: of.sessionId,
+        deviceId,
+        profile: open.profile,
+        attempt: open.attempt,
+        loss: open.loss,
+        lostAt: open.lostAt,
+        backAt,
+        absentMs: Math.max(0, backAt - open.lostAt),
+        relayGapMs: null,
+        heldBack: null,
+        tries: null,
+        laterAttempt: attempt,
+      });
     }
   }
 
@@ -1209,6 +1665,8 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
    */
   function startMicrophones(current: Live, ready: Prepared): Promise<void> {
     const starts: Promise<void>[] = [];
+    // Row 191: the attempt these starts belong to. When its worker is replaced, what they still say is of a superseded attempt.
+    const attempt = current.micAttempt;
     for (const handle of current.handles) {
       const launch = (handle as { start?: (signal?: AbortSignal) => Promise<void> }).start;
       if (typeof launch !== 'function' || current.ended || current.leaving) continue;
@@ -1236,12 +1694,158 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
           clearTimeout(bound);
           // The capture is being ended (a stop, or the worker's end): a start that was cut short by it is no failed start.
           if (current.leaving || current.ended) return;
+          if (outcome === 'STARTED') return;
+          // Row 191 (the reading of C37 for microphones): the worker this start fed was replaced and its handle is closed. The
+          // start that ended with it is no failed microphone of the session: dropped, counted, said in one line.
+          if (current.micAttempt !== attempt) {
+            current.micReportsDropped += 1;
+            app.log.info(
+              { code: 'CAPTURE_MIC_REPORT_SUPERSEDED', sessionId: current.sessionId, deviceId: handle.deviceId, role, attempt, attemptInForce: current.micAttempt, dropped: current.micReportsDropped },
+              'the outcome of a microphone start of an attempt this Core has superseded was dropped: its worker was replaced and the microphone is started again; no fault',
+            );
+            return;
+          }
           if (outcome === 'BOUND') failed(null, 'MIC_START_BOUND');
-          else if (outcome !== 'STARTED') failed(outcome.err, 'MIC_START_FAILED');
+          else failed(outcome.err, 'MIC_START_FAILED');
         }),
       );
     }
     return Promise.all(starts).then(() => undefined);
+  }
+
+  /**
+   * Task 4 row 191: THE MICROPHONES OF A LATER WORKER OF THE SESSION (the rule drafted by row 184;
+   * measured there: a later worker received 0 samples, because the helper of a microphone ends when
+   * the worker that read its pipe goes down, and a handle starts once).
+   *
+   * Asked twice per restart with the same attempt and answered with ONE piece of work: by the
+   * session when it hears `RESTARTING` (so the work runs inside the supervisor's back-off), and by
+   * the supervisor before it starts the worker of that attempt, which waits for the promise
+   * (`CaptureAttemptIngest.sources`). In this order, through the contract of the adapter layer and
+   * nothing else (`close()`, `open()`), in EVERY operation - the generated and the local sources
+   * of development and the production adapter get the same treatment:
+   *
+   *   1. every microphone handle of the earlier attempt is closed, one after the other, and all are
+   *      closed before any is opened (an input is held by one handle; a close removes the pipe);
+   *   2. every microphone the earlier attempt held is opened again, one after the other as at the
+   *      start (an open may list the cards and write a configuration): the pipe is made again
+   *      BEFORE the later worker is given its plan - a worker refuses for good a plan whose
+   *      microphone path is no named pipe;
+   *   3. it resolves with the inputs that are open. `startMicrophonesAgain` starts them when that
+   *      worker has acknowledged `START`, before its cameras are opened.
+   *
+   * A microphone that cannot be opened again is said as at a first start (D80(6)): the PRIMARY an
+   * error, the STANDBY a warning, neither replaced by the other. Without the PRIMARY there is no
+   * plan, as at a first start (`buildCapturePlan`): the promise rejects and the supervisor starts
+   * no worker - the capture ends with its fault. Without the STANDBY the later worker's plan has
+   * one microphone. Each close and each open is held to `ports.micStartBoundMs`, so the promise
+   * always settles; a source that comes up after its bound is closed at once and never held.
+   *
+   * A session whose microphones were never started (its first worker did not come up: the handles
+   * are open and unstarted) keeps them as they are. Never asked for an attempt twice with two
+   * outcomes: the work of an attempt is made once.
+   */
+  function microphonesAgain(current: Live, registry: CaptureDeviceRegistry, ready: Prepared, attempt: number): Promise<ReadonlyMap<string, AudioStreamHandle['input']>> {
+    if (current.micsAgain?.attempt === attempt) return current.micsAgain.ready;
+    const inForce = (): ReadonlyMap<string, AudioStreamHandle['input']> => new Map([...current.micHandles].map(([deviceId, handle]) => [deviceId, handle.input]));
+    if (!current.micsStarted || current.ended || current.leaving) return Promise.resolve(inForce());
+    const { sessionId } = current;
+    const before = current.micsAgain?.ready.then(() => undefined, () => undefined) ?? Promise.resolve();
+    // From here an outcome of a start of the earlier attempt is of a superseded attempt, and STARTED waits for the starts of this one.
+    current.micAttempt = attempt;
+    current.micsStarted = false;
+    const superseded = current.micStartsSettle;
+    current.micStarts = new Promise<void>((resolve) => (current.micStartsSettle = resolve));
+    superseded?.();
+    /** `work`, or 'BOUND' when it has no outcome within the bound of a microphone start. Never rejects for the bound's sake. */
+    const bounded = async <Result>(work: Promise<Result>): Promise<Result | 'BOUND'> => {
+      let bound: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<'BOUND'>((resolve) => {
+        bound = setTimeout(() => resolve('BOUND'), ports.micStartBoundMs);
+        bound.unref?.();
+      });
+      try {
+        return await Promise.race([work, late]);
+      } finally {
+        clearTimeout(bound);
+      }
+    };
+    const made = before.then(async () => {
+      const earlier = [...current.micHandles.values()];
+      current.micHandles.clear();
+      // 1. Closed first, all of them.
+      for (const handle of earlier) {
+        const held = current.handles.indexOf(handle);
+        // Not held any more: the end of the capture closed it meanwhile.
+        if (held === -1) continue;
+        current.handles.splice(held, 1);
+        try {
+          const closing = handle.close();
+          if ((await bounded(closing)) === 'BOUND') {
+            closing.catch(() => undefined);
+            persist('error', 'CAPTURE_SOURCE_NOT_CLOSED', 'a capture source could not be closed', null, { sessionId, deviceId: handle.deviceId, attempt, cause: 'MIC_CLOSE_BOUND' });
+          }
+        } catch (err) {
+          persist('error', 'CAPTURE_SOURCE_NOT_CLOSED', 'a capture source could not be closed', err, { sessionId, deviceId: handle.deviceId, attempt });
+        }
+      }
+      // 2. Opened again, in the order of the selector.
+      const inputs = new Map<string, AudioStreamHandle['input']>();
+      for (const mic of ready.selector.mics) {
+        if (!earlier.some((handle) => handle.deviceId === mic.deviceId)) continue;
+        if (current.ended || current.leaving || current.abort.signal.aborted) break;
+        const failed = (err: unknown, cause: string | null): void =>
+          persist(mic.role === 'PRIMARY' ? 'error' : 'warn', 'CAPTURE_MIC_NOT_OPENED', 'a microphone of the session could not be opened again for a later capture worker', err, { sessionId, deviceId: mic.deviceId, role: mic.role, attempt, ...(cause === null ? {} : { cause }) });
+        let asked: Promise<AudioStreamHandle>;
+        try {
+          asked = Promise.resolve(registry.resolve('MIC', mic.deviceId).open(mic.deviceId, { sessionId, signal: current.abort.signal }));
+        } catch (err) {
+          asked = Promise.reject(err);
+        }
+        try {
+          const handle = await bounded(asked);
+          if (handle === 'BOUND') {
+            // Given up at the bound; a source that comes up afterwards feeds nothing and is closed.
+            asked.then((late) => late.close()).catch(() => undefined);
+            failed(null, 'MIC_OPEN_BOUND');
+            continue;
+          }
+          current.handles.push(handle);
+          current.micHandles.set(mic.deviceId, handle);
+          // The capture was ended while this source was being opened: `release` has run and will not see the handle.
+          if (current.abort.signal.aborted) await release(current);
+          else inputs.set(mic.deviceId, handle.input);
+        } catch (err) {
+          failed(err, null);
+        }
+      }
+      const primary = ready.selector.mics.find((mic) => mic.role === 'PRIMARY');
+      // Said above with the microphone and its role; the supervisor reads only that the sources are not ready.
+      if (primary === undefined || !inputs.has(primary.deviceId)) throw new Error('the primary microphone of the session is not open for the later capture worker');
+      return inputs as ReadonlyMap<string, AudioStreamHandle['input']>;
+    });
+    // Asked for by the supervisor a back-off later: a rejection is not unhandled meanwhile.
+    made.catch(() => undefined);
+    track(made.then(() => undefined, () => undefined));
+    current.micsAgain = { attempt, ready: made };
+    return made;
+  }
+
+  /**
+   * Task 4 row 191: THE LATER WORKER ACCEPTED ITS PLAN (phase `RECORDING` after `RESTARTING`). The
+   * microphones `microphonesAgain` opened for it are started, all in the same turn, exactly as at
+   * the first start (`startMicrophones`): nothing waits for them, each is held to its bound, and
+   * one that cannot start is said with its role and never replaced.
+   */
+  function startMicrophonesAgain(current: Live, ready: Prepared): void {
+    if (current.micsStarted || current.ended || current.leaving) return;
+    current.micsStarted = true;
+    current.micsStartedAt.set(current.micAttempt, app.clock.now());
+    const settle = current.micStartsSettle;
+    current.micStartsSettle = null;
+    const starts = startMicrophones(current, ready);
+    track(starts);
+    void starts.then(() => settle?.());
   }
 
   /**
@@ -1409,6 +2013,8 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       leaving: false,
       left: gone.promise,
       leave() {
+        // Row R1b: the FIRST instant the end was asked is the later edge of what an open absence lasted at least.
+        if (current.leftAt === null) current.leftAt = app.clock.now();
         current.leaving = true;
         gone.resolve();
       },
@@ -1421,10 +2027,28 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       production: registry !== null && ports.operationOf(registry) === CaptureOperation.REAL_PRODUCTION,
       ingest: new Map(),
       cameras: null,
+      micHandles: new Map(),
+      micAttempt: 1,
+      micsStarted: false,
+      micsAgain: null,
+      micStarts: Promise.resolve(),
+      micStartsSettle: null,
+      micReportsDropped: 0,
+      audioFrom: new Map(),
+      workerDownAt: new Map(),
+      micsStartedAt: new Map(),
+      intervalSeqBase: 0,
+      intervalSeqTop: 0,
+      intervalWrites: Promise.resolve(),
       pairing: null,
       ingestSaid: new Map(),
       gateRefusals: new Map(),
       supersededSummed: false,
+      cameraAbsences: new Map(),
+      cameraLegsDropped: 0,
+      absenceWrites: Promise.resolve(),
+      leftAt: null,
+      absenceAttempt: 0,
       tapAsked: false,
       transcriberBegun: false,
       transcriberEnded: false,
@@ -1453,6 +2077,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         try {
           const handle = await registry.resolve('MIC', mic.deviceId).open(mic.deviceId, { sessionId, signal: current.abort.signal });
           current.handles.push(handle);
+          current.micHandles.set(mic.deviceId, handle);
           // The unit was shut down while this source was being opened: `release` has run and will not see the handle.
           if (current.abort.signal.aborted) await release(current);
           mics[mic.deviceId] = handle.input;
@@ -1532,6 +2157,14 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
           if (event.phase === CapturePhase.RESTARTING) current.pairing?.begin(supervisor.status().attempt + 1);
           // Row 179: the worker of a recording went down and is replaced / the next worker listens (see `cameraRoundOver`).
           if (event.phase === CapturePhase.RESTARTING) cameraRoundOver(current);
+          // Row 191: the microphones of the worker that went down are closed and opened again NOW, inside the back-off; the next worker waits for them.
+          if (event.phase === CapturePhase.RESTARTING) {
+            const status = supervisor.status();
+            if (status.lastCrash !== null) current.workerDownAt.set(status.attempt + 1, status.lastCrash.at);
+            void microphonesAgain(current, registry, ready, status.attempt + 1).catch(() => undefined);
+          }
+          // Row 191: the next worker accepted its plan - its microphones are started first, in this turn, as at the first start; then the cameras (row 179).
+          if (event.phase === CapturePhase.RECORDING && event.previous === CapturePhase.RESTARTING) startMicrophonesAgain(current, ready);
           if (event.phase === CapturePhase.RECORDING && event.previous === CapturePhase.RESTARTING) cameraRoundAgain(current, registry, plan);
           if (event.phase !== CapturePhase.FAULTED) return;
           const status = supervisor.status();
@@ -1544,6 +2177,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       // BEFORE the worker is started, so that no report of a relay of this session can come before its listener.
       const relayReports = current.production ? ports.relayReports : null;
       if (relayReports !== null) {
+        const planCameras: ReadonlySet<string> = new Set(plan.cameras.map((camera) => camera.deviceId));
         current.pairing = createIngestPairing({
           cameras: plan.cameras.map((camera) => camera.deviceId),
           boundMs: ports.ingestPairingBoundMs,
@@ -1552,7 +2186,10 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
             timer.unref?.();
             return () => clearTimeout(timer);
           },
-          opened: (deviceId, attempt) => app.log.info({ code: 'CAPTURE_CAMERA_INGEST_PAIRED', sessionId, deviceId, attempt }, 'a camera of the session counts as open: the report of its relay and the connect report of the capture worker are paired'),
+          opened: (deviceId, attempt) => {
+            app.log.info({ code: 'CAPTURE_CAMERA_INGEST_PAIRED', sessionId, deviceId, attempt }, 'a camera of the session counts as open: the report of its relay and the connect report of the capture worker are paired');
+            cameraOpenAgain(current, deviceId, attempt);
+          },
           fault: (failure) => pairingFailed(current, failure),
           // Row 188 (C37): a relay of an attempt the Core itself superseded still spoke. Dropped by the pairing; said here in ONE
           // line per report with the running count - the first `SUPERSEDED_REPORT_LINES` of a capture, the rest are counted only.
@@ -1566,14 +2203,18 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         });
         current.offs.push(
           relayReports.subscribe((report) => {
-            if (report.sessionId === sessionId) current.pairing?.relayReported(report.deviceId, report.attempt);
+            if (report.sessionId !== sessionId) return;
+            // Finding F3-01: a relay's word about its camera leg is NOT a report of the pairing (the push stands; a re-open is no second arrival).
+            if (report.leg !== undefined) cameraLegSaid(current, planCameras, report);
+            else current.pairing?.relayReported(report.deviceId, report.attempt);
           }),
         );
       }
 
       // ONCE (D72(l)): the supervisor restarts a worker by itself while nothing is durable. Row 179 (BR-07 (2)): every
       // such later worker gets addresses of its own, built by the same function from the same source, and says them here.
-      await supervisor.start(sessionId, plan, { chance: randomBytes, renewed: (_attempt, addresses) => addressesInForce(addresses) });
+      // Row 191: every such later worker also waits until the microphones were closed and opened again for it (`microphonesAgain`).
+      await supervisor.start(sessionId, plan, { chance: randomBytes, renewed: (_attempt, addresses) => addressesInForce(addresses), sources: (attempt) => microphonesAgain(current, registry, ready, attempt) });
 
       // ML-5: `open` only PREPARED the pipe of a microphone; its helper is launched when the worker has
       // accepted the plan. BOTH ARE LAUNCHED NOW, TOGETHER, and nothing below waits for either
@@ -1582,7 +2223,9 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       // and the cameras were opened after both. Each start is held to the no-delivery bound; a
       // microphone that cannot start is reported with its role, never replaced (OD-11, cap §E.1: the
       // worker's `MIC_DISCONNECTED` then names it), and it delays neither the other nor a camera.
-      const micStarts = startMicrophones(current, ready);
+      // Row 191: a handle starts once. When this worker is replaced, new handles are opened and started for the next one.
+      current.micsStarted = true;
+      current.micStarts = startMicrophones(current, ready);
 
       // The worker listens and writes the tap: the transcriber session of an STT-enabled session is
       // opened. Not awaited: a recording never waits for the transcriber (RK-1).
@@ -1626,7 +2269,11 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       }
       // Every microphone start has an outcome by now or within its bound: said before the session says STARTED.
       // ... unless the end of the capture was asked meanwhile (R74-08): the step queued behind this one stops the worker NOW.
-      await Promise.race([micStarts, current.left]);
+      // Row 191: the starts waited for are those of the worker in force (a worker that was replaced meanwhile has new ones).
+      for (let waited: Promise<void> | null = null; waited !== current.micStarts && !current.leaving; ) {
+        waited = current.micStarts;
+        await Promise.race([waited, current.left]);
+      }
       await writeFacts(current);
       if (!current.ended) tell({ type: 'STARTED', sessionId, cameras: inPlanOrder(cameraOutcomes.opened), camerasNotOpened: inPlanOrder(cameraOutcomes.notOpened) });
     } catch (err) {
@@ -1688,7 +2335,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       if (!(cause instanceof CaptureSupervisorError)) throw cause;
       // The command was not acknowledged in time or was refused. A record of THAT microphone that
       // arrived while this call waited says the worker did switch: it is recorded, never dropped (R74-06 (b)).
-      const seen = [...of.switchRecordsSeen.values()].find((entry) => entry.deviceId === mic.deviceId && !of.switchesRecorded.has(entry.index));
+      const seen = [...of.switchRecordsSeen.values()].find((entry) => entry.deviceId === mic.deviceId && !of.switchesRecorded.has(of.intervalSeqBase + entry.index));
       if (seen === undefined) throw conflict(cause.detail ?? cause.code, cause);
       record = seen;
     } finally {
@@ -1722,9 +2369,11 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     const lines = app.engine.slice('session')?.captureConfig?.mics ?? [];
     const toInputId = lines.find((line) => line.deviceId === record.deviceId)?.inputId ?? record.deviceId;
     const otherInputId = lines.find((line) => line.deviceId !== record.deviceId)?.inputId ?? toInputId;
-    if (of.switchesRecorded.has(record.index)) return { fromInputId: otherInputId, toMs: atMediaMs };
-    of.switchesRecorded.add(record.index);
-    const intervalValues = [sessionId, record.index, record.deviceId, record.role, atMediaMs, record.capturedAtMs, actor.operatorId, AudioIntervalRowReason.MANUAL] as const;
+    // Row 191b: the stored number, not the worker's own (a later worker counts from 1 again); a record is applied once under it.
+    const seq = intervalSeqOf(of, record);
+    if (of.switchesRecorded.has(seq)) return { fromInputId: otherInputId, toMs: atMediaMs };
+    of.switchesRecorded.add(seq);
+    const intervalValues = [sessionId, seq, record.deviceId, record.role, atMediaMs, record.capturedAtMs, actor.operatorId, AudioIntervalRowReason.MANUAL] as const;
     let fromInputId = otherInputId;
     const unit = (): Promise<unknown> =>
       app.engine.run('captureSession.switchAudioSource', async (scope) => {
@@ -1743,23 +2392,23 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
           sessionId,
           details: { fromInput: fromInputId, toInput: toInputId, fromMs, toMs: switched?.toMs ?? atMediaMs, ...(actor.sendingDeviceId === null ? {} : { sendingDeviceId: actor.sendingDeviceId }) },
         });
-        if (switched === null) persist('warn', 'AUDIO_SWITCH_OUTSIDE_RECORDING', 'a realised microphone switch was recorded for a session that is no longer recording: its rows are written, its state is not moved', null, { sessionId, seq: record.index, deviceId: record.deviceId, atMediaMs });
+        if (switched === null) persist('warn', 'AUDIO_SWITCH_OUTSIDE_RECORDING', 'a realised microphone switch was recorded for a session that is no longer recording: its rows are written, its state is not moved', null, { sessionId, seq, deviceId: record.deviceId, atMediaMs });
       });
     try {
       try {
         await unit();
       } catch (first) {
-        persist('warn', 'AUDIO_SWITCH_UNIT_RETRIED', 'the unit of a realised microphone switch failed and is run once more', first, { sessionId, seq: record.index, deviceId: record.deviceId });
+        persist('warn', 'AUDIO_SWITCH_UNIT_RETRIED', 'the unit of a realised microphone switch failed and is run once more', first, { sessionId, seq, deviceId: record.deviceId });
         await unit();
       }
     } catch (err) {
       // The worker HAS switched. The interval is evidence metadata: it is stored by itself when the unit could not be.
-      persist('error', 'AUDIO_SWITCH_NOT_RECORDED', 'a realised microphone switch could not be recorded in its unit; the interval rows are written apart', err, { sessionId, seq: record.index, deviceId: record.deviceId, atMediaMs });
+      persist('error', 'AUDIO_SWITCH_NOT_RECORDED', 'a realised microphone switch could not be recorded in its unit; the interval rows are written apart', err, { sessionId, seq, deviceId: record.deviceId, atMediaMs });
       try {
         await app.db.pool.query(CLOSE_OPEN_AUDIO_INTERVAL, [sessionId, atMediaMs, record.capturedAtMs]);
         await app.db.pool.query(INSERT_AUDIO_INTERVAL, [...intervalValues]);
       } catch (again) {
-        persist('error', 'AUDIO_INTERVAL_NOT_STORED', 'an audio-source interval could not be stored', again, { sessionId, seq: record.index, deviceId: record.deviceId });
+        persist('error', 'AUDIO_INTERVAL_NOT_STORED', 'an audio-source interval could not be stored', again, { sessionId, seq, deviceId: record.deviceId });
       }
       throw refusal(503, ApiErrorCode.NOT_READY, TEXT.SWITCH_NOT_RECORDED, { reason: 'AUDIO_SWITCH_NOT_RECORDED' }, err);
     }

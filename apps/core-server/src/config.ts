@@ -33,6 +33,12 @@
  * production capture. `DEMS_CAPTURE_RELAY` (the relay of a camera) and `DEMS_CAPTURE_GUARD` (the
  * guard of a helper) are absolute paths, started by the production door only. Whether a start
  * without them is refused is the decision of the boot checks of production capture, not this file's.
+ * WAIVED EDIT (task 4 row 105, work package WP-19b; the category of OD-14): the socket of the capture
+ * host's address helper. `DEMS_CAPTURE_ALIAS_SOCKET` is an absolute path; unset, the helper is "not
+ * configured" for the capture commissioning functions. It is dialled by the one local-socket client.
+ * WAIVED EDIT (task 4 row 85c, decision C60 (3); the category of OD-14): the audio helper of production
+ * capture. `DEMS_CAPTURE_AUDIO_HELPER` is an absolute path; unset, no production microphone can be
+ * opened. It is started by the guard of production capture, never directly and never by a development door.
  */
 
 // ── Listener (SR-01, ADQ-5, ADQ-10) ────────────────────────────────────────────────────────────
@@ -65,6 +71,8 @@ export const ENV_INSTALLATION_DEVICE_ID = 'DEMS_INSTALLATION_DEVICE_ID';
 export const ENV_INSTALLATION_NAME = 'DEMS_INSTALLATION_NAME';
 export const ENV_CAPTURE_RELAY = 'DEMS_CAPTURE_RELAY';
 export const ENV_CAPTURE_GUARD = 'DEMS_CAPTURE_GUARD';
+export const ENV_CAPTURE_ALIAS_SOCKET = 'DEMS_CAPTURE_ALIAS_SOCKET';
+export const ENV_CAPTURE_AUDIO_HELPER = 'DEMS_CAPTURE_AUDIO_HELPER';
 
 export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
@@ -217,6 +225,10 @@ export interface CoreServerConfig {
   readonly captureRelayPath: string | null;
   /** Absolute path of the guard program of production capture, or null when none is configured. Started by the production door only. */
   readonly captureGuardPath: string | null;
+  /** Absolute path of the socket of the capture host's address helper, or null when none is configured. */
+  readonly captureAliasSocketPath: string | null;
+  /** Absolute path of the audio helper of production capture, or null when none is configured. Started by the guard of production capture only. */
+  readonly captureAudioHelperPath: string | null;
 }
 
 /** A configuration that must stop the boot. `code` is stable; `message` never holds a secret. */
@@ -346,6 +358,10 @@ export interface ConfigInput {
   readonly captureRelayPath?: string | null;
   /** Default: null (no guard program of production capture). */
   readonly captureGuardPath?: string | null;
+  /** Default: null (no socket of the capture host's address helper). */
+  readonly captureAliasSocketPath?: string | null;
+  /** Default: null (no audio helper of production capture). */
+  readonly captureAudioHelperPath?: string | null;
 }
 
 /**
@@ -401,5 +417,7 @@ export function createConfig(input: ConfigInput): CoreServerConfig {
     installationName: parseInstallationName(input.installationName ?? undefined),
     captureRelayPath: parseCapturePath(ENV_CAPTURE_RELAY, input.captureRelayPath ?? undefined),
     captureGuardPath: parseCapturePath(ENV_CAPTURE_GUARD, input.captureGuardPath ?? undefined),
+    captureAliasSocketPath: parseCapturePath(ENV_CAPTURE_ALIAS_SOCKET, input.captureAliasSocketPath ?? undefined),
+    captureAudioHelperPath: parseCapturePath(ENV_CAPTURE_AUDIO_HELPER, input.captureAudioHelperPath ?? undefined),
   });
 }

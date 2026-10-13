@@ -50,10 +50,45 @@ export const TRY_IT_DENIED_OPERATIONS = [
   'updateSttConfig',
   'testCaptureCandidateConnection',
   'adoptCaptureCandidate',
+  // Task 4 (blueprint row 102; design F-4.2 DR-8): the fourth operation whose body carries a camera
+  // credential - the set-network job, typed for one job and never stored (C1, C7). Eleven in all.
+  'setCameraNetwork',
+  // Task 4 (decision C67 (1); request of row V3): operation 108 has no body and no secret in its
+  // answer, but one click makes the Core use a STORED camera credential against a device on the
+  // network and counts towards the lock-out guard - never from a documentation page. Twelve in all.
+  'testCaptureDeviceConnection',
+  // Task 4 row 116 (request of agent A5, wave 11): operations 109 and 110 write and revoke the
+  // stored installation acceptance of a Core - an evidential record that is never rewritten. They
+  // carry no secret and use no stored credential; one click from a documentation page must not
+  // make or end that record. Fourteen in all.
+  'acceptInstallation',
+  'revokeInstallationAcceptance',
 ] as const
 export type TryItDeniedOperation = (typeof TRY_IT_DENIED_OPERATIONS)[number]
 
 const DENIED = new Set<string>(TRY_IT_DENIED_OPERATIONS)
+
+/**
+ * The denied operations that change a STORED RECORD of the Core and hold no secret (row 116): the
+ * installation acceptance and its revocation. A reason and a sentence of their own.
+ */
+export const TRY_IT_STORED_RECORD_OPERATIONS = ['acceptInstallation', 'revokeInstallationAcceptance'] as const satisfies readonly TryItDeniedOperation[]
+const STORED_RECORD = new Set<string>(TRY_IT_STORED_RECORD_OPERATIONS)
+
+/** The fixed sentence of the page's own record of a denied Try-it, by its reason (the method and the path are its context; never a body). */
+const DENIED_RECORD: Readonly<Record<string, string>> = {
+  SECRET: 'A Try-it request of an operation that carries a secret was refused.',
+  STORED_CREDENTIAL: 'A Try-it request of an operation that uses a stored credential was refused.',
+  STORED_RECORD: 'A Try-it request of an operation that changes a stored record of the Core was refused.',
+}
+
+/**
+ * The denied operations that carry and return NO secret (decision C67 (1)): the Core would use a
+ * credential it has STORED. Their refusal has its own reason and its own sentence, because "carries
+ * or returns a secret" is not true of them.
+ */
+export const TRY_IT_STORED_CREDENTIAL_OPERATIONS = ['testCaptureDeviceConnection'] as const satisfies readonly TryItDeniedOperation[]
+const STORED_CREDENTIAL = new Set<string>(TRY_IT_STORED_CREDENTIAL_OPERATIONS)
 
 /** AR-2: the operations only the Core server answers (75 minus the ten of the offline scope). */
 export const CORE_SERVER_ONLY_OPERATIONS: readonly CoreApiRegistryOperation[] = CORE_API_OPERATIONS.filter(
@@ -72,7 +107,7 @@ export class BlockedRequestError extends TypeError {
 }
 
 /** Why a Try-it request was refused before it was sent. */
-export type TryItRefusal = 'SECRET' | 'CORE_SERVER'
+export type TryItRefusal = 'SECRET' | 'STORED_CREDENTIAL' | 'STORED_RECORD' | 'CORE_SERVER'
 
 /** A Try-it request refused before any request (Scalar shows its message in its own toast and response panel). */
 export class TryItRefusedError extends Error {
@@ -145,6 +180,10 @@ export function coreServerOnlyOperation(method: string, pathname: string): strin
 export interface LiveTryItFetchOptions {
   /** The sentence of AR-3a, in the page's language: the message of a refusal. */
   secretRefusal: string
+  /** The sentence of decision C67 (1): the message of a refusal of an operation that uses a STORED credential. Defaults to `secretRefusal`. */
+  storedCredentialRefusal?: string
+  /** The sentence of row 116: the message of a refusal of an operation that changes a stored record of the Core. Defaults to `secretRefusal`. */
+  storedRecordRefusal?: string
   /** The network `fetch`. Defaults to the global `fetch` (the browser attaches the session cookie). */
   networkFetch?: FetchLike
   /** Called after every answered exchange (not for refused, blocked or failed ones). */
@@ -212,9 +251,12 @@ export function createLiveTryItFetch(options: LiveTryItFetchOptions): FetchLike 
       })
       throw blocked
     }
-    if (deniedTryItOperation(method, url.pathname) !== null) {
-      const refused = new TryItRefusedError('SECRET', secretRefusal, method, url.pathname)
-      logApiReference('warn', 'liveTryIt.denied', refused, 'A Try-it request of an operation that carries a secret was refused.', {
+    const denied = deniedTryItOperation(method, url.pathname)
+    if (denied !== null) {
+      const reason: TryItRefusal = STORED_CREDENTIAL.has(denied) ? 'STORED_CREDENTIAL' : STORED_RECORD.has(denied) ? 'STORED_RECORD' : 'SECRET'
+      const sentence = reason === 'STORED_CREDENTIAL' ? options.storedCredentialRefusal : reason === 'STORED_RECORD' ? options.storedRecordRefusal : undefined
+      const refused = new TryItRefusedError(reason, sentence ?? secretRefusal, method, url.pathname)
+      logApiReference('warn', 'liveTryIt.denied', refused, DENIED_RECORD[reason], {
         method,
         path: url.pathname,
       })

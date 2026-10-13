@@ -59,8 +59,10 @@ import { SESSION_EXAMPLES } from './sessions';
 import { STORAGE_EXAMPLES } from './storage';
 import { SYSTEM_EXAMPLES } from './system';
 import { STT_CONFIG_EXAMPLES } from './transcription';
-import { CAPTURE_DISCOVERY_EXAMPLES } from './capture-discovery';
+import { CAPTURE_DEVICE_TEST_EXAMPLES, CAPTURE_DISCOVERY_EXAMPLES, CAPTURE_READDRESS_EXAMPLES } from './capture-discovery';
 import { CAPTURE_AUDIO_CARD_EXAMPLES } from './capture-audio-cards';
+import { CAPTURE_COMMISSIONING_EXAMPLES } from './capture-commissioning';
+import { INSTALLATION_ACCEPTANCE_EXAMPLES } from './installation-acceptance';
 
 /** The instant every example describes: 2026-10-01 10:00:00 WIB (UTC+07:00). */
 export const OPENAPI_EXAMPLE_INSTANT = '2026-10-01T03:00:00.000Z';
@@ -577,4 +579,12 @@ export const CORE_API_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
   ...CAPTURE_DISCOVERY_EXAMPLES,
   // Task 4 (blueprint row 63, WP-07b; design addendum 4.2): operations 98-99.
   ...CAPTURE_AUDIO_CARD_EXAMPLES,
+  // Task 4 (blueprint row 194, WP-12): operation 100.
+  ...CAPTURE_READDRESS_EXAMPLES,
+  // Task 4 (blueprint row 102, WP-23b): operations 101-107.
+  ...CAPTURE_COMMISSIONING_EXAMPLES,
+  // Task 4 (row V3, the third contract step; blueprint row 146): operation 108.
+  ...CAPTURE_DEVICE_TEST_EXAMPLES,
+  // Task 4 (blueprint row 116, WP-26b): operations 109-110.
+  ...INSTALLATION_ACCEPTANCE_EXAMPLES,
 };

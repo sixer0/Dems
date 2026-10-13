@@ -1717,7 +1717,20 @@ export interface EvidenceVerdictInput {
   deviceId?: string | null;
   operationId?: string;
   failedFragments?: readonly string[];
+  /**
+   * Task 4 row V5 (decision C84, caution R-1; SX-09 (d)): the verdict was formed UNDER A SIGNING KEY
+   * MARKED COMPROMISED (`EVIDENCE_VERDICT_COMPROMISED_KEY_NOTICE`, the code of the answer's notice).
+   * With `ok: true` the package passed ONLY as the digest the Core recorded at the seal - and the
+   * audit row and the custody entry then say so: such a verification is never recorded as a plain
+   * pass. With `ok: false` the row names the mark beside the failure. Absent: no mark played a part.
+   */
+  notice?: string;
 }
+
+/** The one notice a recorded verdict can carry: the value of `VERIFY_NOTICE.SIGNED_BY_COMPROMISED_KEY` (held equal by a test). */
+export const EVIDENCE_VERDICT_COMPROMISED_KEY_NOTICE = 'SIGNED_BY_COMPROMISED_KEY';
+/** The custody text of a pass under that notice. Names the state, never a value. */
+export const EVIDENCE_VERDICT_COMPROMISED_KEY_CUSTODY = 'Signing key marked compromised: verified as the digest recorded at the seal';
 
 /** The most fragments a failed verify row names; the count says how many there were. */
 export const VERIFY_ROW_MAX_FRAGMENTS = 8;
@@ -1738,17 +1751,23 @@ export function recordEvidenceVerificationTransition(state: SimState, now: Epoch
   if (item.integritySource !== IntegritySource.REAL && !seedSealedDemo) throw new SimTransitionError(state.session?.state ?? null, 'recordEvidenceVerification', 'the item has no real sealed package');
   const failed = verdict.failedTracks.join(',');
   const fragments = verdict.ok ? [] : (verdict.failedFragments ?? []).filter((fragment) => typeof fragment === 'string' && /^[A-Z0-9-]{1,16}:\d{1,9}$/.test(fragment));
+  // Row V5 (C84 R-1): a verdict formed under a signing key marked compromised is recorded AS SUCH - the one code, or nothing.
+  const underCompromisedKey = verdict.notice === EVIDENCE_VERDICT_COMPROMISED_KEY_NOTICE;
   const verified: EvidenceItem = {
     ...item,
     verification: { status: verdict.ok ? 'PASS' : 'FAIL', at: verdict.at },
-    custody: [...item.custody, { at: verdict.at, action: verdict.ok ? 'VERIFIED' : 'VERIFY_FAILED', actorId: verdict.actorId, detail: verdict.ok ? null : (verdict.detail ?? 'Mismatch: manifest or signature') }],
+    custody: [
+      ...item.custody,
+      { at: verdict.at, action: verdict.ok ? 'VERIFIED' : 'VERIFY_FAILED', actorId: verdict.actorId, detail: verdict.ok ? (underCompromisedKey ? EVIDENCE_VERDICT_COMPROMISED_KEY_CUSTODY : null) : (verdict.detail ?? 'Mismatch: manifest or signature') },
+    ],
   };
   const next: SimState = { ...state, evidence: state.evidence.map((existing) => (existing.id === item.id ? verified : existing)) };
+  const passMessage = underCompromisedKey ? `Evidence ${item.id} verified as the digest recorded at the seal: its signing key is marked compromised` : `Evidence ${item.id} verified: every hash matches`;
   return record(next, now, {
     audit: {
       type: verdict.ok ? 'EVIDENCE_VERIFIED' : 'EVIDENCE_VERIFY_FAILED',
-      message: verdict.ok ? `Evidence ${item.id} verified: every hash matches` : `Evidence ${item.id} failed verification (${failed || 'manifest or signature'})`,
-      severity: verdict.ok ? 'INFO' : 'CRITICAL',
+      message: verdict.ok ? passMessage : `Evidence ${item.id} failed verification (${failed || 'manifest or signature'})`,
+      severity: verdict.ok ? (underCompromisedKey ? 'WARNING' : 'INFO') : 'CRITICAL',
       actorId: verdict.actorId,
       ...sentFrom(typeof verdict.deviceId === 'string' && SENDING_DEVICE_ID.test(verdict.deviceId) ? verdict.deviceId : null),
       evidenceId: item.id,
@@ -1759,13 +1778,14 @@ export function recordEvidenceVerificationTransition(state: SimState, now: Epoch
         ...(verdict.ok ? {} : { eventKind: AuditEventKind.TAMPER }),
         ...(fragments.length === 0 ? {} : { failedFragments: fragments.slice(0, VERIFY_ROW_MAX_FRAGMENTS).join(','), failedFragmentCount: fragments.length }),
         ...(typeof verdict.operationId === 'string' && /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(verdict.operationId) ? { operationId: verdict.operationId } : {}),
+        ...(underCompromisedKey ? { notice: EVIDENCE_VERDICT_COMPROMISED_KEY_NOTICE } : {}),
       },
     },
     event: {
       type: verdict.ok ? 'EVIDENCE_VERIFIED' : 'EVIDENCE_VERIFY_FAILED',
-      message: verdict.ok ? `Evidence verified · ${item.id}` : `Integrity check FAILED · ${item.id}`,
-      severity: verdict.ok ? 'SUCCESS' : 'CRITICAL',
-      params: { evidenceId: item.id, failedTracks: failed },
+      message: verdict.ok ? (underCompromisedKey ? `Evidence verified, signing key marked compromised · ${item.id}` : `Evidence verified · ${item.id}`) : `Integrity check FAILED · ${item.id}`,
+      severity: verdict.ok ? (underCompromisedKey ? 'WARNING' : 'SUCCESS') : 'CRITICAL',
+      params: { evidenceId: item.id, failedTracks: failed, ...(underCompromisedKey ? { notice: EVIDENCE_VERDICT_COMPROMISED_KEY_NOTICE } : {}) },
     },
   });
 }

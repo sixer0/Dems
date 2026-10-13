@@ -95,6 +95,8 @@ const DUMP_ORDER: Readonly<Record<string, string>> = {
   // Schema v8 (task 4 schema set B): T-46, one row; T-47, one row per alias.
   capture_network_config: 'singleton',
   host_network_aliases: 'id',
+  // Schema v11 (task 4 schema set C): T-48, one row per acceptance.
+  installation_acceptances: 'id',
 };
 
 /**

@@ -146,7 +146,7 @@ function plantedEvents(type: SimEventType, change: (event: SimEvent) => FixtureE
 const HEX64 = /^[0-9a-f]{64}$/;
 
 describe('where each audit type is written', () => {
-  it('the fixture writes all 77 types, and each has exactly one reference: the list, a module builder, or the simulator', () => {
+  it('the fixture writes all 82 types, and each has exactly one reference: the list, a module builder, or the simulator', () => {
     const written = [...new Set(rows.map((row) => row.type))].sort();
     expect(written).toEqual(Object.values(AuditType).sort());
     expect(written.filter((type) => sourceOf(type, shapes) === null)).toEqual([]);
@@ -158,7 +158,11 @@ describe('where each audit type is written', () => {
     }
     // Row 132 (D106; C3 §5.2): the four types of the camera search join the list, 19 -> 23 (63 -> 67 in all).
     // Task 4 blueprint row 19 (WP-23a): the ten of the hardware-input port join the list, 23 -> 33 (67 -> 77 in all).
-    expect(bySource).toEqual({ 'ALLOW-LIST': 33, MODULE: 11, SIMULATOR: 33 });
+    // Task 4 blueprint row 201 (X-C): OPERATOR_PASSWORD_SET joins the list, 33 -> 34 (77 -> 78 in all).
+    // Task 4 row V3 (the third vocabulary step): the four of the alias intent, the failed alias add, the
+    // audio gap of a worker restart and the stored-credential connection test join the list, 34 -> 38 (78 -> 82 in all).
+    // Task 4 row R1b (decision C99): CAPTURE_VIDEO_ABSENT_IN_SESSION joins the list, 38 -> 39 (82 -> 83 in all).
+    expect(bySource).toEqual({ 'ALLOW-LIST': 39, MODULE: 11, SIMULATOR: 33 });
     // The nineteen of the list are the nineteen the audit writer names (nine of the backend task,
     // nine of the capture phase, and STT_CONFIG_CHANGED of blueprint row 113, which has a builder:
     // `modules/stt-config`), and the nine older ones mostly have a builder too. A listed type
@@ -199,6 +203,19 @@ describe('where each audit type is written', () => {
         'HOST_ALIAS_REMOVE_FAILED',
         'INSTALLATION_ACCEPTANCE_REVOKED',
         'INSTALLATION_ACCEPTED',
+        // Task 4 blueprint row 201 (X-C): the one of the password command. Its live writer is the
+        // host command of row 215; the fixture states one row until then.
+        'OPERATOR_PASSWORD_SET',
+        // Task 4 row V3 (the third vocabulary step): the four of that step. Their live writers land with
+        // row 106 (the two alias types), row 191b (the audio gap) and the route of operation 108 (the
+        // stored-credential connection test); the fixture states one row of each until then.
+        'CAPTURE_AUDIO_ABSENT_ON_RESTART',
+        'CAPTURE_DEVICE_CONNECTION_TESTED',
+        'HOST_ALIAS_ADD_FAILED',
+        'HOST_ALIAS_REQUESTED',
+        // Task 4 row R1b (decision C99): the one of a camera absent inside a session. Its live writer is the
+        // capture session (`capture-session/index.ts`), which states the details itself; the fixture states one row.
+        'CAPTURE_VIDEO_ABSENT_IN_SESSION',
       ].sort(),
     );
   });
@@ -282,7 +299,8 @@ describe('every audit row of the fixture', () => {
             : `simulator: ${braces(shapes.get(type)?.signatures ?? [])}`;
       return `| ${type} | ${source ?? 'none'} | ${expected} | ${counted(ofType(type).map((row) => `{${signatureOf(row.details)}}`))} |`;
     });
-    expect(lines).toHaveLength(77);
+    // Task 4 row R1b: 82 -> 83 with CAPTURE_VIDEO_ABSENT_IN_SESSION.
+    expect(lines).toHaveLength(83);
     console.log(['[w25] audit detail keys per type: | type | written by | keys expected | keys written (rows) |', ...lines].join('\n'));
   });
 
@@ -295,7 +313,7 @@ describe('every audit row of the fixture', () => {
       const expected = builder ?? (administration.has(type) ? [administration.get(type) ?? ''] : (shapes.get(type)?.severities ?? []));
       return `| ${type} | ${AUDIT_TYPE_CATEGORY[type]} | ${source} | ${[...expected].sort().join(' or ')} | ${counted(ofType(type).map((row) => row.severity))} |`;
     });
-    expect(lines).toHaveLength(77);
+    expect(lines).toHaveLength(83);
     console.log(['[w25] audit severity per type: | type | category | severity from | severity expected | severity written (rows) |', ...lines].join('\n'));
   });
 });

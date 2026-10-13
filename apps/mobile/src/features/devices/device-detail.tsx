@@ -64,6 +64,7 @@ import {
   DEVICE_SHORT_NAME_KEY,
   STATUS_LABEL_KEY,
   STATUS_TONE,
+  cameraDetailFactsOf,
   detailFactsOf,
   isDeviceId,
   relayWords,
@@ -77,6 +78,7 @@ import { RegisteredDeviceDetail } from './registered-device-detail';
 import { useRegisteredDevice } from './registered-device-rows';
 import { rosterDeviceName } from './registered-devices-model';
 import { CAMERA_POE_PORT_KEY, channelOf } from './sim-adapter';
+import { statedFormatText, statedTrackOf } from './stream-facts';
 import { usePendingPress } from './use-pending-press';
 import {
   useBookPoe,
@@ -515,7 +517,12 @@ function CameraOverview({ deviceId, statusLabel }: { deviceId: DeviceId; statusL
   const { t } = useTranslation();
   const label = useFieldLabel();
   const camera = useCamera(deviceId);
-  const facts = useDetailFacts(deviceId);
+  // Task 4 row W4 (review 060c R-02): a camera's own rule - a production camera draws only what the Core states, never the model's record.
+  const realCapture = useRealCaptureView();
+  const adapter = useSim((s) => s.captureDevices.devices.find((device) => device.id === deviceId)?.adapter ?? null);
+  const facts = cameraDetailFactsOf(realCapture, adapter);
+  // The stored stream statement of this camera's selector line, and the camera's fault where the Core reports one (`stream-facts.ts`).
+  const stated = useSim((s) => statedTrackOf(s, (line) => line.deviceId === deviceId));
   // The format of a track on a Core in its own capture is its selector line's profile, never the model's resolution / fps.
   const profile = useSim((s) => {
     const stated = (cameraLinesInForce(s).find((line) => line.deviceId === deviceId) as { readonly profile?: unknown } | undefined)?.profile;
@@ -535,8 +542,21 @@ function CameraOverview({ deviceId, statusLabel }: { deviceId: DeviceId; statusL
       />
     );
   }
+  if (facts === 'STATED') {
+    return (
+      <Facts
+        items={[
+          { id: 'status', label: label('status'), value: statusLabel, testID: 'device-fact-status' },
+          { id: 'deviceId', label: label('deviceId'), value: deviceId, mono: true },
+          // The stored stream facts, "Not stated" where the line names none; the fault in their place while the Core reports one.
+          { id: 'format', label: label('format'), value: statedFormatText(t, stated, 'line'), testID: 'device-fact-format' },
+          { id: 'recState', label: label('recState'), value: camera.recState ? t(`common.enums.trackRecState.${camera.recState}`) : EMPTY_DATE_TEXT },
+        ]}
+      />
+    );
+  }
   return (
-    <ModelValues block="camera" marked={facts === 'MODEL_VALUES'}>
+    <ModelValues block="camera" marked={false}>
       <Facts
         items={[
           { id: 'status', label: label('status'), value: statusLabel, testID: 'device-fact-status' },
@@ -548,10 +568,13 @@ function CameraOverview({ deviceId, statusLabel }: { deviceId: DeviceId; statusL
             id: 'format',
             label: label('format'),
             // Row 55 (P12-F08): the slice's picture, rate and codec; a stream that states no rate (`fps` null) reads without one.
+            // Row V6 (S-01): a track with no stored stream statement (`resolution` or `codec` null) reads "Not stated", never a default.
             value:
-              camera.fps === null
-                ? t('common.devices.cameraFormatCodecNoRate', { resolution: camera.resolution, codec: camera.codec })
-                : t('common.devices.cameraFormatCodec', { resolution: camera.resolution, fps: camera.fps, codec: camera.codec }),
+              camera.resolution === null || camera.codec === null
+                ? t('common.devices.cameraFormatNotStated')
+                : camera.fps === null
+                  ? t('common.devices.cameraFormatCodecNoRate', { resolution: camera.resolution, codec: camera.codec })
+                  : t('common.devices.cameraFormatCodec', { resolution: camera.resolution, fps: camera.fps, codec: camera.codec }),
             testID: 'device-fact-format',
           },
           { id: 'bitrate', label: label('bitrate'), value: t('features.devices.detail.mbps', { value: camera.bitrateMbps }) },

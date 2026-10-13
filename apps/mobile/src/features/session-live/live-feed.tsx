@@ -84,7 +84,8 @@ export function LiveFeed({
   const ownCapture = useOwnCapture();
   const settings = useMotionSettings();
   const reduced = settings.policy === 'reduced';
-  const camera = cameras.find((c) => c.id === activeCameraId) ?? cameras[0];
+  // Task 4 row W4 (review 060c R-05, the tablet's reader): the camera OF THE ACTIVE TRACK, or none - never the first camera's room, signal state and format under another track.
+  const camera = cameras.find((c) => c.id === activeCameraId);
   const index = cameraIndexOf(activeCameraId);
   const short = t('features.session-live.feed.cameraShort', { index });
   const room = camera?.room ?? '';
@@ -210,13 +211,21 @@ export function LiveFeed({
               {/* Fix wave K (G89b-01, ruling D222 (2); contract_wave_k.md S1 section 3): "1080p • 25 fps" is the CONFIGURED
                   profile of the simulated camera. Beside a recording of the Core's own capture it would state the picture of
                   a stream nobody measured here (the sealed manifest states the stream): the chip is not drawn then. */}
+              {/* Task 4 row W4 (review 060c R-04): NOT CHANGED HERE, on purpose. Beside a recording of the Core's own capture this
+                  chip stays absent: ruling D222 (2) is pinned by `connecting-meters.test.tsx` ("NOT beside a recording of the
+                  Core's own capture"), and the stored statement of the selector line would read the very text that pin forbids.
+                  The stored facts are ready for this place (`statedTrackOf` / `formatChipText` of `features/devices/stream-facts.ts`,
+                  as the device detail draws them); whether they may stand here is the controller's ruling (request line of row W4). */}
               {camera && !ownCapture ? (
                 <Chip size="sm" variant="secondary" style={styles.darkChip} testID="monitor-feed-format">
                   <Chip.Label style={styles.chipMono}>
                     {/* Task 4 row 55 / I-3 (P12-F08): a stream that states no rate (`fps` null) reads without one, never with an empty rate. */}
-                    {camera.fps === null
-                      ? t('common.devices.cameraFormatNoRate', { resolution: camera.resolution })
-                      : t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}
+                    {/* Row V6 (S-01): a track with no stored stream statement (`resolution` null) reads "Not stated", never a default. */}
+                    {camera.resolution === null
+                      ? t('common.devices.cameraFormatNotStated')
+                      : camera.fps === null
+                        ? t('common.devices.cameraFormatNoRate', { resolution: camera.resolution })
+                        : t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}
                   </Chip.Label>
                 </Chip>
               ) : null}

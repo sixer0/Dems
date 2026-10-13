@@ -10,6 +10,7 @@ import { noLiveLevelsOf, useSim } from '@dems/shared/sim'
 import { DbfsMeter } from '@/components/composed'
 import { CameraPreview } from '@/features/devices/camera-preview'
 import { useRealCaptureCore } from '@/features/devices/source-class'
+import { useStatedFormat } from '@/features/devices/stream-facts'
 import { useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
 import { PANEL_BEAT_MS, useStaggerVariants } from './choreography'
@@ -25,6 +26,17 @@ const MIC_SHORT = { 'AUDIO-01': 'common.devices.mic1', 'AUDIO-02': 'common.devic
  * main feed decodes video, D70) and the two microphones with a DbfsMeter `compact` on the
  * transient channel. Tiles reveal 60 ms apart (M-PG-SM t = 460).
  */
+/** The stored stream statement of a track on a Core in real capture, or its fault (`features/devices/stream-facts.ts`). Nothing off such a Core. */
+function StatedFormat({ cameraId }: { cameraId: VideoTrackId }) {
+  const stated = useStatedFormat(cameraId, 'chip')
+  if (stated === null) return null
+  return (
+    <p className="sm-input-meta" data-testid={`sm-input-format-${cameraId}`} data-fault={stated.fault ?? undefined}>
+      {stated.text}
+    </p>
+  )
+}
+
 export function InputsPanel({ paused }: { paused: boolean }) {
   const { t } = useTranslation()
   const realCapture = useRealCaptureCore()
@@ -78,9 +90,14 @@ export function InputsPanel({ paused }: { paused: boolean }) {
                 <CameraState cameraId={camera.id} ready={camera.ready} online={camera.online} />
                 {/* Fix wave K (C-2, ruling D222 (2)): "1080p • 25 fps" is the dataset's camera record, not the stream of the source behind the track on a Core in real capture. */}
                 {/* A stream that states no rate (`fps` null) reads its picture without one (task 4 row 54 / I-3, P12-F08). */}
-                {realCapture ? null : (
+                {/* Task 4 row W4 (review 060c R-04): on a Core in real capture the line is the track's STORED stream statement
+                    ("Not stated" where the selector line names none), or the camera's fault where the Core reports one. */}
+                {realCapture ? (
+                  <StatedFormat cameraId={camera.id} />
+                ) : (
                   <p className="sm-input-meta">
-                    {camera.fps === null ? t('common.devices.cameraFormatNoRate', { resolution: camera.resolution }) : t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}
+                    {/* Row V6 (S-01): no stored stream statement reads "Not stated". */}
+                    {camera.resolution === null ? t('common.devices.cameraFormatNotStated') : camera.fps === null ? t('common.devices.cameraFormatNoRate', { resolution: camera.resolution }) : t('common.devices.cameraFormat', { resolution: camera.resolution, fps: camera.fps })}
                   </p>
                 )}
               </div>

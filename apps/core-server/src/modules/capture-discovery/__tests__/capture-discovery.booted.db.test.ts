@@ -38,6 +38,8 @@ import { engineControl } from '../../../engine';
 const db = useTestDatabase({ template: 'seed' });
 const fixture = realBootFixture('waveia2_adopt');
 fixture.provisionKey();
+// Task 4 row 228b: the fixture is a temporary directory and goes with the file, passed or failed.
+afterAll(() => fixture.remove());
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 180_000 });
 
 const DISCOVERY = '/api/v1/capture/discovery';

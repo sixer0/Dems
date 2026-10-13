@@ -84,6 +84,32 @@ export interface RelayIngestReport {
   readonly deviceId: string;
   /** The attempt (the worker of the session) the relay was started for. */
   readonly attempt: number;
+  /**
+   * ABSENT on the report this unit pairs: the established push. PRESENT (finding F3-01 of the M3
+   * review; task 4 row 43) on a relay's word about its CAMERA LEG inside a session - the leg was
+   * lost and is being opened again, or it is open again. THE PUSH STANDS THROUGH BOTH: the worker
+   * keeps its one connection and says no second connect. SUCH A REPORT IS NOT A REPORT OF THE
+   * PAIRING and must never be handed to `relayReported` - it would be a second report of an open
+   * camera, `RELAY_REPORTED_TWICE`, and end the capture a re-open exists to keep (C35 (b) names an
+   * unpaired or contradictory ARRIVAL; a re-open is no arrival). The caller reads this member first.
+   */
+  readonly leg?: RelayCameraLeg;
+}
+
+/** A relay's word about its camera leg (`CameraLegReport` of the camera adapter, by shape). Numbers and code words only. */
+export interface RelayCameraLeg {
+  /** `LOST` or `REOPENED`; any other word is read as nothing. */
+  readonly event: string;
+  /** The profile code of the stream. */
+  readonly profile: string;
+  /** The number of the loss in the relay's life. */
+  readonly loss: number;
+  /** `LOST`: the relay's own word for the end of the leg. */
+  readonly cause?: string;
+  /** `REOPENED`: the tries of the re-open, the pictures held back before its first keyframe, the relay's own measure of the gap in ms. */
+  readonly tries?: number;
+  readonly heldBack?: number;
+  readonly gapMs?: number;
 }
 
 /** Where the relay reports come from. `subscribe` returns the function that ends the subscription. */

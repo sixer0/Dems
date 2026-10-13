@@ -7,7 +7,12 @@
  * this interface changes when it arrives, and the database CHECK already names its algorithm.
  */
 
-/** The Core's evidence signing key on this machine (spec §C.1). The v1 demo key has another id. */
+/**
+ * The FIRST evidence signing key id of the Core on this machine (spec §C.1). The v1 demo key has
+ * another id. Since task 4 row 225 it is the first of a series (`-01`, `-02`, ...): which id is
+ * ACTIVE is answered by ONE function, `activeSigningKeyId` of `host-key.ts`, and a store without a
+ * pointer answers this one.
+ */
 export const CORE_EVIDENCE_SIGNING_KEY_ID = 'CORE-KEY-EVSIGN-01';
 
 export type SignerAlgorithm = 'Ed25519' | 'ECDSA-P256-SHA256';
@@ -64,10 +69,39 @@ export const SignerRefusal = {
   KEY_EXISTS: 'KEY_EXISTS',
   /** The certificate is absent, unreadable, not self-consistent or not of this key. */
   CERTIFICATE_INVALID: 'CERTIFICATE_INVALID',
-  /** The certificate's validity does not cover the instant asked for. */
+  /**
+   * The certificate's validity does not cover the instant asked for: at a load, and (row 226c) on
+   * the Core's clock before each signature of a signer the running Core holds - a signer loaded
+   * while its certificate was valid signs nothing after its end.
+   */
   CERTIFICATE_NOT_VALID_NOW: 'CERTIFICATE_NOT_VALID_NOW',
   /** A key id that is not a plain identifier. */
   KEY_ID_INVALID: 'KEY_ID_INVALID',
+  /**
+   * The pointer that names the active key id is there and cannot be taken: a link, not a regular
+   * file, of another user, reachable by group or others, too large, or not exactly one key id of
+   * the series. The start is refused; nothing falls back to the first key id (SX-09 (b)).
+   */
+  ACTIVE_KEY_POINTER_INVALID: 'ACTIVE_KEY_POINTER_INVALID',
+  /** The pointer only moves forward: the key id to activate is not later in the series than the active one. */
+  ACTIVE_KEY_NOT_NEWER: 'ACTIVE_KEY_NOT_NEWER',
+  /**
+   * Asked before a signature (row 226b): the pointer names another key id than the one this signer
+   * was loaded as the ACTIVE key of. A running Core does not change its key: the boot checks judged
+   * the key it started with. It signs nothing until it is started again. Row 226c: the same code
+   * when the signer a running Core takes is not of the key id its BOOT judged - also when that
+   * signer was loaded only after the rotation (`signerHeldToBoot` of `host-key.ts`).
+   */
+  ACTIVE_KEY_CHANGED: 'ACTIVE_KEY_CHANGED',
+  /**
+   * Row 226d (review 230 caution R-7): the signer of a running Core was asked for while NO boot
+   * check of that process had judged a key of the store - the boot step has not passed, or it
+   * loaded no key. In an operation whose boot judges a key (both real ones) a signer is not taken
+   * unheld: nothing is loaded and nothing is signed. Refused by the signer's host, not by a load.
+   */
+  BOOT_KEY_NOT_JUDGED: 'BOOT_KEY_NOT_JUDGED',
+  /** The series of key ids is used up (`-99`): no next id exists. */
+  KEY_SERIES_EXHAUSTED: 'KEY_SERIES_EXHAUSTED',
   /** The manifest names another key or algorithm than the signer's. */
   SIGNER_MISMATCH: 'SIGNER_MISMATCH',
   /** The signer returned something that does not verify. */

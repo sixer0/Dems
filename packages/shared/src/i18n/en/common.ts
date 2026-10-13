@@ -445,6 +445,14 @@ export const common = {
     CAPTURE_DEVICE_ADDRESS_CHANGED: 'Camera address changed',
     INSTALLATION_ACCEPTED: 'Installation accepted',
     INSTALLATION_ACCEPTANCE_REVOKED: 'Installation acceptance revoked',
+    OPERATOR_PASSWORD_SET: 'Operator password set from the host',
+    // Task 4 (row V3): the four types of the third vocabulary step.
+    HOST_ALIAS_REQUESTED: 'Temporary host address change requested',
+    HOST_ALIAS_ADD_FAILED: 'Temporary host address could not be added',
+    CAPTURE_AUDIO_ABSENT_ON_RESTART: 'Audio not recorded across a capture restart',
+    CAPTURE_DEVICE_CONNECTION_TESTED: 'Registered camera connection tested',
+    // Task 4 (row R1b): the video twin of the audio gap.
+    CAPTURE_VIDEO_ABSENT_IN_SESSION: 'Video not recorded while a camera was absent',
   },
 
   /** Audit filter categories (sim `AuditCategory`). */
@@ -526,6 +534,8 @@ export const common = {
     // The same two lines for a stream that states no rate (the slice's `fps` is null): no rate is printed.
     cameraFormatNoRate: '{{resolution}}',
     cameraFormatCodecNoRate: '{{resolution}} • {{codec}}',
+    // Row V6 (finding S-01; decision C36): a track for which no stream statement is stored - the picture or the codec is null. Never a default in its place.
+    cameraFormatNotStated: 'Not stated',
   },
   deviceMenu: {
     label: 'Device actions',
@@ -846,6 +856,14 @@ export const common = {
     finalCheckFailed: 'The camera did not pass the final check, so it was not added.',
     alreadyRegistered: 'This camera is already registered as {{device}}.',
     resultGone: 'This search result is no longer kept. Search again.',
+    /**
+     * Reason `COMMISSIONING_NOT_CONFIGURED` of a connection test (review finding F3-06, the operator's side):
+     * no camera network is configured on the Core. Worded by row W4 in the web's own tree and moved here
+     * unchanged by pass I-9b (request line of row W4). `{{screen}}` is the client's name of its
+     * commissioning screen.
+     */
+    networkNotConfigured: 'This camera cannot be tested yet: the camera network of this Core is not configured.',
+    networkNotConfiguredDetail: 'A technician chooses the camera interface and the camera subnet on the "{{screen}}" screen (Administration). Then test the connection again. Nothing was sent to the camera.',
   },
 
   captureNotice: {
@@ -911,7 +929,19 @@ export const common = {
   captureSlotRefusal: {
     CAMERA_PROFILE_NOT_STATED: 'This camera was not assigned: no stream profile was chosen for it, and the Core does not pick one for a camera. Choose one of the profiles stored for this camera, then assign it again.',
     CAMERA_PROFILE_NOT_OF_DEVICE: 'This camera was not assigned: the chosen stream profile is not one of the profiles stored for this camera. Choose one of them, then assign it again.',
+    // Task 4 row V4 (decision C80; rows 234 and 116): the four refusals of a slot assignment the web
+    // console worded in its own tree, MOVED HERE WORD FOR WORD - the web's wording is the wording,
+    // and this is its one source. `{{source}}` is the kind of the refused row, one of the two nouns
+    // of `captureSlotSource` below: these four are answered for a camera and for a microphone.
+    PRODUCTION_SOURCE_NOT_ALLOWED:
+      'This {{source}} was not assigned: it is a production device, and this Core runs in development capture operation. This {{source}} can be assigned only on a Core running in production capture operation. Nothing was changed.',
+    CAPTURE_DEVICE_NOT_SERVED:
+      'This {{source}} was not assigned: it is registered, but no capture adapter of the running Core serves it, so this Core cannot record from it. Nothing was changed.',
+    CAPTURE_DEVICE_CLASS_MISMATCH: 'This device was not assigned: the Core does not hold it as a {{source}}. Nothing was changed.',
+    SLOT_UNASSIGNED_AND_ASSIGNED: 'This choice was not accepted: one request cleared a slot and filled the same slot. Nothing was changed.',
   },
+  /** The noun `{{source}}` of a `captureSlotRefusal` sentence stands for, by the kind of the refused row (row V4). */
+  captureSlotSource: { CAMERA: 'camera', MIC: 'microphone' },
 
   sourceClass: {
     badge: 'Development source',

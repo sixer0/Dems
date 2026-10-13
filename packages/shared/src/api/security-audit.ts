@@ -79,6 +79,83 @@ import { AuditRowSchema, REPLICATED_SLICE_SCHEMAS, SimEventSchema } from './stat
 /** Fix wave J (GM-02): `evidenceVerification` of operation `getSecurityStatus`: 50 sealed items, 31 PASS, 1 FAIL, 18 never verified. */
 export const SECURITY_STATUS_EVIDENCE_VERIFICATION_EXAMPLE = Object.freeze({ sealed: 50, passed: 31, failed: 1, neverVerified: 18 } as const);
 
+/**
+ * Task 4 (blueprint row 201, X-C; design 05 section 3.7; SX-14): the `details` of the audit row
+ * `OPERATOR_PASSWORD_SET`, as operations 54 and 55 return it. The row is written by the host command
+ * that sets an operator's password: its actor is null (the system), its category SECURITY, its
+ * severity WARNING. Exactly these five keys (`invokerUid` is optional): whose password, the method,
+ * the sessions the change ended, whether the replaced credential was the published demonstration
+ * one, the numeric id of the OS user. Never the password, its length, a salt, a tag or a hash parameter.
+ */
+export const OPERATOR_PASSWORD_SET_DETAILS_EXAMPLE = Object.freeze({
+  targetOperatorId: 'OPR-002',
+  method: 'HOST_COMMAND',
+  sessionsEnded: 1,
+  earlierWasDemo: true,
+  invokerUid: 1000,
+} as const);
+
+/**
+ * Task 4 (blueprint row 201, X-C; design 05 section 2.7): the `details` of the audit row `SYSTEM_BOOT`
+ * of a Core that records with real capture and states its signing key. `signingKeyId` and
+ * `signingCertificateSha256` are public facts (the key's id and the SHA-256 of its certificate);
+ * both are optional - a simulated boot, and a boot written before this step, carries neither. A
+ * change of key between two boots is readable from the chain by comparing these two rows.
+ */
+export const SYSTEM_BOOT_SIGNING_DETAILS_EXAMPLE = Object.freeze({
+  captureOperation: 'REAL_PRODUCTION',
+  signingKeyId: 'CORE-KEY-EVSIGN-01',
+  signingCertificateSha256: '5d'.repeat(32),
+} as const);
+/**
+ * Task 4 row V5 (decision C84, caution R-1 of security review 230): the `details` of a `SYSTEM_BOOT`
+ * row that also states THE SIGNER STORE - public facts only. The two key commands (rotation, the
+ * compromise mark) write no audit row, so the next boot says it: `signingKeysRetained` (how many
+ * certificates are retained), `signingKeysCompromised` (the two-digit places in the key series of the
+ * retained keys that carry the mark, comma-joined; the empty text = none), `signingCertificatesSha256`
+ * (SHA-256 over one line `<key id> <certificate SHA-256>` per retained certificate) and
+ * `signingStoreChange` - what changed against the previous boot row of the same database:
+ * `NO_EARLIER_STATEMENT`, `NONE`, `NOT_READ`, or one or more of `KEY_ROTATED`,
+ * `KEY_MARKED_COMPROMISED`, `KEY_MARK_REMOVED`, `RETAINED_SET_CHANGED`, comma-joined. A row that
+ * names a change is a WARNING row. All four are optional; null = the store could not be read.
+ * This example: the boot after a rotation to the second key and a mark on the first.
+ */
+export const SYSTEM_BOOT_SIGNING_STORE_DETAILS_EXAMPLE = Object.freeze({
+  captureOperation: 'REAL_PRODUCTION',
+  signingKeyId: 'CORE-KEY-EVSIGN-02',
+  signingCertificateSha256: '6e'.repeat(32),
+  signingKeysRetained: 2,
+  signingKeysCompromised: '01',
+  signingCertificatesSha256: '7f'.repeat(32),
+  signingStoreChange: 'KEY_ROTATED,KEY_MARKED_COMPROMISED,RETAINED_SET_CHANGED',
+} as const);
+/**
+ * Task 4 row P1 (decisions U21 (2), C66 (1), C71 C-7): the `details` of a `SYSTEM_BOOT` row of a
+ * PRODUCTION Core, which also states ITS HOST. A production Core is allowed on Linux, where the whole
+ * host profile is asked at every start, and on macOS, where none of it is asked (the loopback owner
+ * rule, the crash collector, forwarding, the clock, sleep and the address helper's socket are
+ * unchecked there). `hostPlatform` is `linux` or `darwin`, or null for any other platform and when
+ * none was stated; `hostProfile` is `WILL_BE_ASKED` (linux), `WILL_NOT_BE_ASKED` (darwin) or
+ * `PLATFORM_NOT_SUPPORTED` (the start is then refused). The row is written BEFORE the boot checks
+ * run: the two members say what the platform MEANS for the checks that follow, never that a check
+ * was run or passed - a row with `WILL_BE_ASKED` may be followed by a refused start. Both optional:
+ * a development boot asks no host profile by design and states neither, as does every row written
+ * before this step. This example: a production Core on a Mac.
+ */
+export const SYSTEM_BOOT_HOST_DETAILS_EXAMPLE = Object.freeze({
+  captureOperation: 'REAL_PRODUCTION',
+  signingKeyId: 'CORE-KEY-EVSIGN-01',
+  signingCertificateSha256: '5d'.repeat(32),
+  signingKeysRetained: 1,
+  signingKeysCompromised: '',
+  signingCertificatesSha256: '7f'.repeat(32),
+  signingStoreChange: 'NONE',
+  hostPlatform: 'darwin',
+  hostProfile: 'WILL_NOT_BE_ASKED',
+} as const);
+/** The same row without the two members: accepted as before. */
+export const SYSTEM_BOOT_DETAILS_EXAMPLE = Object.freeze({ captureOperation: 'REAL_DEVELOPMENT' } as const);
+
 export const SecurityStatusSchema = z
   .strictObject({
     security: REPLICATED_SLICE_SCHEMAS.security,

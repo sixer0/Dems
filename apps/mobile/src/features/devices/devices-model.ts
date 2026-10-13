@@ -147,6 +147,31 @@ export function detailFactsOf(realCapture: boolean, adapter: string | null | und
   return adapter === 'FAKE' ? 'GENERATED' : 'MODEL_VALUES';
 }
 
+/**
+ * WHAT THE DETAIL BLOCK OF A CAMERA MAY DRAW (task 4 row W4; review `verification/060c` finding R-02).
+ *
+ * Until row W4 a camera followed `detailFactsOf`: on a Core in real capture every adapter but `FAKE` was
+ * `MODEL_VALUES`, so a PRODUCTION camera (`ONVIF_RTSP`, the camera phase 3 brings) read the simulator's model,
+ * firmware, PoE port, `1080p / 25 / H.264` and `9 Mbps` under a chip. None of these is a fact of that camera:
+ * the Core states no model, firmware, port or bitrate of a source, and the three stream facts on the state
+ * stream are the simulator's (`stream-facts.ts`). A chip does not make a record another camera's.
+ *
+ * | The Core this app shows | The camera | The block draws |
+ * |---|---|---|
+ * | Simulated client mode, or a Core in simulated capture | any | `SIMULATED`: the dataset's values, exactly as before |
+ * | a Core in real capture | `adapter: 'FAKE'` | `GENERATED`: as before (named a generated test source; the line's profile code) |
+ * | a Core in real capture | any other adapter, or none stated | `STATED`: only what the Core states - the status, the id, the STORED stream statement of its selector line ("Not stated" where null; the fault where the Core reports one) and the recording state. No model value, so no chip |
+ *
+ * `detailFactsOf` is unchanged and still rules every other block (a microphone, the PoE switch, the indicator,
+ * the tablet row). Pure.
+ */
+export type CameraDetailFacts = 'SIMULATED' | 'GENERATED' | 'STATED';
+
+export function cameraDetailFactsOf(realCapture: boolean, adapter: string | null | undefined): CameraDetailFacts {
+  const facts = detailFactsOf(realCapture, adapter);
+  return facts === 'MODEL_VALUES' ? 'STATED' : facts;
+}
+
 // ── The Recording Indicator (fix wave J, JA2-33) ─────────────────────────────────────────────────────────
 /**
  * The ONE statement of the Recording Indicator, from the Core's session fact: the lamp is lit exactly while

@@ -21,6 +21,7 @@ import {
   FAKE_ONVIF_NOT_XML_BODY,
   FAKE_ONVIF_HOST,
   FAKE_ONVIF_GATEWAY_READ_BACK_OPERATION,
+  FAKE_ONVIF_MARKUP_TEXT,
   FAKE_ONVIF_MARKUP_TOKEN,
   FAKE_ONVIF_NETWORK_DEFAULTS,
   FAKE_ONVIF_NETWORK_OPERATIONS,
@@ -917,6 +918,241 @@ describe('fake ONVIF stub: the four network calls (row 109, WP-22a)', () => {
     stub.setDiscoveryMode('NORMAL');
     stub.setNetworkMode('NORMAL');
     expect(references((await search(stub)).answers).size).toBe(1);
+  });
+
+  // ── Row 109, second pass (wave 10): the request record, the camera that moves, the camera that does not apply ──
+
+  it('the HTTP record: every request with its method, path, SOAP action and operation, and of Authorization the presence and the SCHEME only - on a stub with or without the network option', async () => {
+    const stub = await startStub();
+    const url = stub.addresses().deviceServiceUrl;
+    const port = Number(new URL(url).port);
+    const time = '<tds:GetSystemDateAndTime xmlns:tds="http://www.onvif.org/ver10/device/wsdl"/>';
+    const profiles = '<trt:GetProfiles xmlns:trt="http://www.onvif.org/ver10/media/wsdl"/>';
+    const action = `${DEVICE_NS}/GetNetworkInterfaces`;
+    // "0 requests sent" is an empty list.
+    expect(stub.httpRequests()).toEqual([]);
+
+    await soap(url, time);
+    expect(stub.httpRequests()).toEqual([
+      { listener: 'ORIGINAL', port, method: 'POST', path: '/onvif/device_service', queryPresent: false, soapAction: null, operation: 'GetSystemDateAndTime', authorizationPresent: false, authorizationScheme: null, wsSecurity: 'NONE' },
+    ]);
+
+    const basic = `Basic ${Buffer.from(`${ACCOUNT.username}:${ACCOUNT.secret}`).toString('base64')}`;
+    await soap(url, profiles, '', { Authorization: basic });
+    await soap(url, profiles, '', { Authorization: `Digest username="${ACCOUNT.username}", realm="x", nonce="${randomUUID()}", uri="/", response="${md5(ACCOUNT.secret)}"` });
+    await soap(url, profiles, '', { Authorization: `bearer ${ACCOUNT.secret}` });
+    await soap(url, profiles, '', { Authorization: `X-Own ${ACCOUNT.secret}` });
+    await soap(url, profiles, '', { Authorization: ACCOUNT.secret }); // a value with no scheme word before it
+    await soap(url, profiles, usernameToken(ACCOUNT, Date.now()));
+    await soap(url, profiles, usernameToken(ACCOUNT, Date.now(), 'Text'));
+    // The SOAP action: a header (SOAP 1.1), the parameter of Content-Type (SOAP 1.2), and one that is no URI.
+    await soap(url, getInterfaces, '', { SOAPAction: `"${action}"` });
+    await soap(url, getInterfaces, '', { 'Content-Type': `application/soap+xml; charset=utf-8; action="${action}"` });
+    await soap(url, getInterfaces, '', { SOAPAction: `"<x y='${ACCOUNT.secret}'>"` });
+    // A query string is counted, never copied.
+    await soap(`http://${FAKE_ONVIF_HOST}:${port}/onvif/media_service?user=${ACCOUNT.username}&password=${ACCOUNT.secret}`, time);
+
+    const seen = stub.httpRequests();
+    expect(seen.map((entry) => [entry.authorizationPresent, entry.authorizationScheme, entry.wsSecurity])).toEqual([
+      [false, null, 'NONE'],
+      [true, 'Basic', 'NONE'],
+      [true, 'Digest', 'NONE'],
+      [true, 'Bearer', 'NONE'],
+      [true, 'OTHER', 'NONE'],
+      [true, 'OTHER', 'NONE'],
+      [false, null, 'DIGEST'],
+      [false, null, 'CLEAR'],
+      [false, null, 'NONE'],
+      [false, null, 'NONE'],
+      [false, null, 'NONE'],
+      [false, null, 'NONE'],
+    ]);
+    expect(seen.slice(8).map((entry) => entry.soapAction)).toEqual([action, action, '?', null]);
+    expect(seen.at(-1)).toMatchObject({ path: '/onvif/media_service', queryPresent: true, operation: 'GetSystemDateAndTime' });
+    expect(seen.every((entry) => entry.method === 'POST' && entry.listener === 'ORIGINAL' && entry.port === port)).toBe(true);
+    // The assertion a later row makes: requests that carried the password over Basic.
+    expect(seen.filter((entry) => entry.authorizationScheme === 'Basic')).toHaveLength(1);
+    // Nothing of the account, in any encoding it was sent in, is in the record.
+    const written = JSON.stringify(seen);
+    for (const forbidden of [ACCOUNT.secret, ACCOUNT.username, basic.slice(6), md5(ACCOUNT.secret)]) expect(written).not.toContain(forbidden);
+
+    // A request that is never answered is recorded all the same.
+    stub.resetLog();
+    expect(stub.httpRequests()).toEqual([]);
+    stub.setDeviceMode('NO_ANSWER');
+    expect(await soap(url, time)).toBeNull();
+    expect(stub.httpRequests()).toHaveLength(1);
+    expect(stub.httpRequests()[0]).toMatchObject({ operation: 'GetSystemDateAndTime', authorizationPresent: false });
+  });
+
+  it("onApply 'MOVE': the camera answers the reboot on its old ports, then listens on the moved ports only - same hardware address, new address, XAddrs of the new place", async () => {
+    const moved = await freeFakeOnvifPorts();
+    const stub = await startStub({ network: { onApply: 'MOVE', movedPorts: moved } });
+    const before = stub.addresses();
+    const first = { device: Number(new URL(before.deviceServiceUrl).port), discovery: before.discovery.port };
+    expect(await stub.networkSettled()).toBeUndefined(); // nothing under way
+    expect((await call(stub, setInterfaces('eth0', NEW_ADDRESS)))?.status).toBe(200);
+    // Accepted, waiting for the reboot: nothing moved.
+    expect(stub.networkState()).toMatchObject({ location: 'ORIGINAL', address: FAKE_ONVIF_NETWORK_DEFAULTS.address, changesNotApplied: 0 });
+    expect(stub.addresses().deviceServiceUrl).toBe(before.deviceServiceUrl);
+
+    const rebooted = await call(stub, reboot);
+    expect(rebooted?.status).toBe(200); // the answer came from the OLD port
+    await stub.networkSettled();
+    expect(stub.networkState()).toMatchObject({ location: 'MOVED', address: NEW_ADDRESS, hwAddress: FAKE_ONVIF_NETWORK_DEFAULTS.hwAddress, pending: null, rebootCount: 1 });
+
+    // The old place is gone: refused, and no probe is answered there.
+    expect(await soap(before.deviceServiceUrl, getInterfaces, usernameToken(ACCOUNT, Date.now()))).toBeNull();
+    const after = stub.addresses();
+    expect(after.deviceServiceUrl).toBe(`http://${FAKE_ONVIF_HOST}:${moved.device}/onvif/device_service`);
+    expect(after.streamUri).toBe(`rtsp://${FAKE_ONVIF_HOST}:${moved.rtsp}/stream1`);
+    expect(after.discovery).toEqual({ address: FAKE_ONVIF_HOST, port: moved.discovery });
+    expect(after.bound.map((entry) => `${entry.listener} ${entry.address}:${entry.port}`).sort()).toEqual(
+      [`discovery ${FAKE_ONVIF_HOST}:${moved.discovery}`, `device ${FAKE_ONVIF_HOST}:${moved.device}`, `rtsp ${FAKE_ONVIF_HOST}:${moved.rtsp}`].sort(),
+    );
+
+    // The new place answers: the same hardware address reports the new address, and a search finds it there.
+    const read = await call(stub, getInterfaces);
+    expect(read?.status).toBe(200);
+    expect(text(read?.body ?? '', 'Address')).toBe(NEW_ADDRESS);
+    expect(text(read?.body ?? '', 'HwAddress')).toBe(FAKE_ONVIF_NETWORK_DEFAULTS.hwAddress);
+    const found = await search(stub);
+    expect(found.answers).toHaveLength(2);
+    expect([...new Set(found.answers.map((answer) => answer.from.port))]).toEqual([moved.discovery]);
+    expect([...new Set(found.answers.map((answer) => text(answer.text, 'XAddrs')))]).toEqual([after.deviceServiceUrl]);
+    expect((await rtsp(after.streamUri, [`OPTIONS ${after.streamUri} RTSP/1.0`, 'CSeq: 1']))?.status).toBe(200);
+
+    // The record names the place each request reached; the refused one reached nothing.
+    expect(stub.httpRequests().map((entry) => [entry.operation, entry.listener, entry.port])).toEqual([
+      ['SetNetworkInterfaces', 'ORIGINAL', first.device],
+      ['SystemReboot', 'ORIGINAL', first.device],
+      ['GetNetworkInterfaces', 'MOVED', moved.device],
+    ]);
+    // A second change at the new place is a value again: the camera moves once.
+    expect((await call(stub, setInterfaces('eth0', '198.51.100.32')))?.status).toBe(200);
+    expect((await call(stub, reboot))?.status).toBe(200);
+    await stub.networkSettled();
+    expect(stub.networkState()).toMatchObject({ location: 'MOVED', address: '198.51.100.32', rebootCount: 2 });
+    expect(stub.addresses().deviceServiceUrl).toBe(after.deviceServiceUrl);
+    expect(stub.violations()).toEqual([]);
+    // Stopped, the moved ports are free again.
+    await stub.stop();
+    expect(stub.addresses().bound).toEqual([]);
+    expect(await soap(after.deviceServiceUrl, getInterfaces)).toBeNull();
+  });
+
+  it("onApply 'MOVE' without a reboot, and with a camera that drops the reboot: the move follows the call that applied the address; a DHCP change moves nothing", async () => {
+    const atOnce = await startStub({ network: { onApply: 'MOVE', movedPorts: await freeFakeOnvifPorts(), rebootNeeded: false } });
+    const old = atOnce.addresses().deviceServiceUrl;
+    // The address stays, only the DHCP flag changes: no move.
+    expect((await call(atOnce, setInterfaces('eth0', NEW_ADDRESS, 24, true)))?.status).toBe(200);
+    await atOnce.networkSettled();
+    expect(atOnce.networkState()).toMatchObject({ location: 'ORIGINAL', dhcp: true });
+    const set = await call(atOnce, setInterfaces('eth0', NEW_ADDRESS));
+    expect(set?.status).toBe(200);
+    expect(text(set?.body ?? '', 'RebootNeeded')).toBe('false');
+    await atOnce.networkSettled();
+    expect(atOnce.networkState()).toMatchObject({ location: 'MOVED', address: NEW_ADDRESS, rebootCount: 0 });
+    expect(await soap(old, getInterfaces)).toBeNull();
+    expect(text((await call(atOnce, getInterfaces))?.body ?? '', 'Address')).toBe(NEW_ADDRESS);
+
+    const dropping = await startStub({ network: { onApply: 'MOVE', movedPorts: await freeFakeOnvifPorts(), rebootDropsConnection: true } });
+    expect((await call(dropping, setInterfaces('eth0', NEW_ADDRESS)))?.status).toBe(200);
+    expect(await call(dropping, reboot)).toBeNull();
+    await dropping.networkSettled();
+    expect(dropping.networkState()).toMatchObject({ location: 'MOVED', address: NEW_ADDRESS, rebootCount: 1 });
+    expect((await call(dropping, getInterfaces))?.status).toBe(200);
+
+    // An oversized answer is written whole on the old port before the camera leaves it.
+    const large = await startStub({ network: { onApply: 'MOVE', movedPorts: await freeFakeOnvifPorts() } });
+    large.setNetworkMode('OVERSIZED_REPLY', 'SystemReboot');
+    expect((await call(large, setInterfaces('eth0', NEW_ADDRESS)))?.status).toBe(200);
+    const answer = await call(large, reboot);
+    expect(Buffer.byteLength(answer?.body ?? '')).toBeGreaterThan(FAKE_ONVIF_OVERSIZED_REPLY_BYTES);
+    expect(isWellFormedXml(answer?.body ?? '')).toBe(true);
+    await large.networkSettled();
+    expect(large.networkState().location).toBe('MOVED');
+  });
+
+  it("onApply 'MOVE': the moved ports are checked when the stub is built, and a moved port that is busy is a NAMED failure of networkSettled()", async () => {
+    const ports = await freeFakeOnvifPorts();
+    const moved = await freeFakeOnvifPorts();
+    const build = (network: FakeOnvifStubOptions['network']): FakeOnvifStub => createFakeOnvifStub({ ports, credential: ACCOUNT, network });
+    expect(() => build({ onApply: 'MOVE' })).toThrow(RangeError);
+    expect(() => build({ movedPorts: moved })).toThrow(RangeError);
+    expect(() => build({ onApply: 'NOT_APPLIED', movedPorts: moved })).toThrow(RangeError);
+    expect(() => build({ onApply: 'MOVE', movedPorts: ports })).toThrow(RangeError);
+    expect(() => build({ onApply: 'MOVE', movedPorts: { ...moved, rtsp: ports.device } })).toThrow(RangeError);
+    expect(() => build({ onApply: 'MOVE', movedPorts: { ...moved, device: FAKE_ONVIF_HARNESS_PORT_MIN } })).toThrow(RangeError);
+
+    const stub = build({ onApply: 'MOVE', movedPorts: moved });
+    await stub.start();
+    running.push(stub);
+    const squatter = createServer();
+    await new Promise<void>((resolvePromise) => squatter.listen({ host: FAKE_ONVIF_HOST, port: moved.device, exclusive: true }, resolvePromise));
+    try {
+      expect((await call(stub, setInterfaces('eth0', NEW_ADDRESS)))?.status).toBe(200);
+      expect((await call(stub, reboot))?.status).toBe(200);
+      await expect(stub.networkSettled()).rejects.toBeInstanceOf(FakeOnvifPortBusyError);
+      // It left the old ports and could not take the new ones: it listens nowhere, and does not look for another port.
+      expect(stub.addresses().bound).toEqual([]);
+    } finally {
+      await new Promise<void>((resolvePromise) => squatter.close(() => resolvePromise()));
+    }
+  });
+
+  it("onApply 'NOT_APPLIED': every call is answered as accepted, and the camera keeps its address, its gateway and its ports", async () => {
+    const stub = await startStub({ network: { onApply: 'NOT_APPLIED' } });
+    const url = stub.addresses().deviceServiceUrl;
+    const set = await call(stub, setInterfaces('eth0', NEW_ADDRESS));
+    expect(set?.status).toBe(200);
+    expect(text(set?.body ?? '', 'RebootNeeded')).toBe('true');
+    expect((await call(stub, setGateway(NEW_GATEWAY)))?.status).toBe(200);
+    expect((await call(stub, reboot))?.status).toBe(200);
+    await stub.networkSettled();
+    expect(stub.networkState()).toMatchObject({
+      location: 'ORIGINAL',
+      address: FAKE_ONVIF_NETWORK_DEFAULTS.address,
+      prefixLength: FAKE_ONVIF_NETWORK_DEFAULTS.prefixLength,
+      gateway: FAKE_ONVIF_NETWORK_DEFAULTS.gateway,
+      dhcp: false,
+      pending: null,
+      rebootCount: 1,
+      changesNotApplied: 1,
+    });
+    // To the client nothing looked wrong: three accepted requests, 0 faults, 0 violations.
+    expect(stub.networkRequests().map(({ operation, accepted, refusal }) => ({ operation, accepted, refusal }))).toEqual(
+      ['SetNetworkInterfaces', 'SetNetworkDefaultGateway', 'SystemReboot'].map((operation) => ({ operation, accepted: true, refusal: null })),
+    );
+    expect(stub.violations()).toEqual([]);
+    // The camera is where it was and says so.
+    expect(stub.addresses().deviceServiceUrl).toBe(url);
+    const read = await call(stub, getInterfaces);
+    expect(text(read?.body ?? '', 'Address')).toBe(FAKE_ONVIF_NETWORK_DEFAULTS.address);
+    expect(stub.httpRequests().every((entry) => entry.listener === 'ORIGINAL')).toBe(true);
+    // Without a reboot the change is dropped at the Set call.
+    const atOnce = await startStub({ network: { onApply: 'NOT_APPLIED', rebootNeeded: false } });
+    expect((await call(atOnce, setInterfaces('eth0', NEW_ADDRESS)))?.status).toBe(200);
+    expect(atOnce.networkState()).toMatchObject({ address: FAKE_ONVIF_NETWORK_DEFAULTS.address, pending: null, changesNotApplied: 1, rebootCount: 0 });
+  });
+
+  it('mode MARKUP_TEXT: the free-text fields of the replies carry markup characters, escaped; the token and the hardware address are untouched', async () => {
+    const stub = await startStub({ network: {} });
+    stub.setNetworkMode('MARKUP_TEXT');
+    for (const character of ['<', '>', '&', '"', "'", '${', '{{']) expect(FAKE_ONVIF_MARKUP_TEXT).toContain(character);
+    const read = await call(stub, getInterfaces);
+    expect(read?.status).toBe(200);
+    expect(isWellFormedXml(read?.body ?? '')).toBe(true);
+    expect(read?.body).not.toContain('<script>');
+    expect(unescape(text(read?.body ?? '', 'Name') ?? '')).toBe(FAKE_ONVIF_MARKUP_TEXT);
+    expect(tokenOf(read?.body ?? '')).toBe(FAKE_ONVIF_NETWORK_DEFAULTS.interfaceToken);
+    expect(text(read?.body ?? '', 'HwAddress')).toBe(FAKE_ONVIF_NETWORK_DEFAULTS.hwAddress);
+    expect((await call(stub, setInterfaces('eth0', NEW_ADDRESS)))?.status).toBe(200);
+    const rebooted = await call(stub, reboot);
+    expect(isWellFormedXml(rebooted?.body ?? '')).toBe(true);
+    expect(unescape(text(rebooted?.body ?? '', 'Message') ?? '')).toBe(FAKE_ONVIF_MARKUP_TEXT);
+    stub.setNetworkMode('NORMAL');
+    expect(text((await call(stub, getInterfaces))?.body ?? '', 'Name')).toBe('eth0');
   });
 
   it('the judge of a request: one well-formed element, or not', () => {

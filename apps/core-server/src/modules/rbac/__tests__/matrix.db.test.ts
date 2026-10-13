@@ -240,7 +240,8 @@ describe('AC-B-16, unit form: the decision for all 99 operations with a principa
     // Task 4 row 100 (decision U10, plan review P12-F07): the commissioning permission is stored
     // and granted (TECHNICIAN) with schema set B; the contract package of its operations is
     // blueprint row 102, which takes the name out of this list. A second name here is a finding.
-    const NOT_YET_ENFORCED = ['CAPTURE_COMMISSION'];
+    // Task 4 row 102 (WP-23b): operations 101 to 107 name the permission; the list is EMPTY, and a name here is a finding.
+    const NOT_YET_ENFORCED: string[] = [];
     expect(stored.permissions.filter((permission) => !named.has(permission as never))).toEqual(NOT_YET_ENFORCED);
     expect([...named, ...NOT_YET_ENFORCED].sort()).toEqual([...stored.permissions].sort());
   });

@@ -49,7 +49,7 @@ import { createHash } from 'node:crypto';
 import { open, readFile, readdir } from 'node:fs/promises';
 import { sep } from 'node:path';
 import { PackageFile, cameraFilePath, manifestSignedMessage, parseManifestV2, type ManifestV2 } from '@dems/shared/evidence-package';
-import { pemCertificateSha256, retainedCertificatePath, verifyPackageV2, type VerifyCheckId } from '@dems/shared/evidence-verify';
+import { pemCertificateSha256, retainedCertificatePath, verifyPackageV2, type VerifyCheckId, type VideoAbsenceOfTrack } from '@dems/shared/evidence-verify';
 import { readSigningCertificate, verifyEd25519 } from '../capture';
 import { corePorts, createPackageReader } from '../evidence-verify';
 import { COMPOSITE_ENTRY, EXPORT_MANIFEST_FILE, EXPORT_SIGNATURE_FILE, compositeMarkingHolds, computeExportManifestSha256, isSelfContainedExport, parseExportManifest, parseExportSignature, type ExportManifest } from './export-manifest';
@@ -84,6 +84,22 @@ export interface ReceiverVerifyResult {
   readonly development: boolean | null;
   /** True when a composite is included (and then marked derived). */
   readonly derived: boolean | null;
+  /**
+   * Task 4 row V6 (decision C97; the request of row P1): the SIGNED member `hostProfileNotAsked` of
+   * the sealed manifest, repeated - the package was sealed by a production Core on a platform
+   * where the checks of the host profile are not run. PRESENT ONLY when the sealed manifest
+   * carries the member AND could be relied on (X-05 passed): every other result is the result of
+   * before, member for member. It fails nothing and changes no verdict.
+   */
+  readonly hostProfileNotAsked?: { readonly platform: string };
+  /**
+   * Task 4 row R1b (decision C99): the SIGNED member `tracks[].absentInSession` of the sealed
+   * manifest, repeated per track that carries it - a camera stopped delivering pictures inside the
+   * session. PRESENT ONLY when a track of the sealed manifest carries the member AND the manifest
+   * could be relied on (X-05 passed): every other result is the result of before, member for
+   * member. It fails nothing and changes no verdict.
+   */
+  readonly videoAbsentInSession?: readonly VideoAbsenceOfTrack[];
   /** True when the signing certificates were held against anchors the caller gave. */
   readonly anchored: boolean;
   /**
@@ -94,6 +110,25 @@ export interface ReceiverVerifyResult {
   readonly archive: { readonly bytes: number; readonly sha256: string; readonly compared: boolean } | null;
   /** True for the self-contained form: the export manifest and signature were read from inside the unpacked archive. */
   readonly selfContained: boolean | null;
+  /**
+   * Task 4 row V5 (decision C84, cautions R-2 and R-3): WHAT THIS RUN SAYS OF A COMPROMISE MARK.
+   * ABSENT - and the result is then the one of before, member for member - unless the export
+   * manifest STATES a mark (`sourceSigningKey`) or the receiver SUPPLIED a list of marked
+   * fingerprints (`compromisedCertificateSha256`).
+   *
+   *   statedByExport    the marked fingerprints the export manifest states (empty: it states none).
+   *                     With every check passed the result is then a pass UNDER A NAMED STATE, never
+   *                     a plain pass: the exporting Core held the source to its stored digest, and
+   *                     says so under its own (unmarked) signature
+   *   listSupplied      the receiver supplied a list
+   *   reportedByList    a certificate this export rests on - the seal's, a revision's, or the one
+   *                     of the export signature - is in the supplied list and is NOT covered by the
+   *                     export's own statement: X-05 (or X-02) fails by a `..._KEY_COMPROMISED` code
+   *   onlyMarkFails     `reportedByList`, and nothing else failed: "signature valid, key reported
+   *                     compromised by the list supplied - not a pass", a state of its own (the
+   *                     receiver holds no record of the Core to hold the package to)
+   */
+  readonly keyMark?: { readonly statedByExport: readonly string[]; readonly listSupplied: boolean; readonly reportedByList: boolean; readonly onlyMarkFails: boolean };
 }
 
 export interface ReceiverVerifyInput {
@@ -107,8 +142,22 @@ export interface ReceiverVerifyInput {
   readonly expectedArchiveSha256?: string;
   /** SHA-256 of the Core's certificates, received out of band. */
   readonly trustedCertificateSha256?: readonly string[];
+  /**
+   * Row V5 (C84 R-2): THE MARKED FINGERPRINTS, received out of band - SHA-256 of every certificate
+   * whose key the receiver was told is marked compromised (the form of the hand-over record).
+   * Absent: nothing of the run changes. Present: a certificate of the list that this export rests
+   * on is never relied on - unless the export manifest itself states that mark, under a signature
+   * that is not of a listed certificate AND is held to `trustedCertificateSha256` (an anchored run):
+   * then the exporting Core has held the source to its stored digest, and the result is the named
+   * pass. In a run without anchors the export's statement covers nothing: not a pass.
+   */
+  readonly compromisedCertificateSha256?: readonly string[];
   readonly chunkBytes?: number;
 }
+
+/** The finding codes that say "a certificate of the supplied list" (shared verifier V-13, V-11; X-02 here). */
+const KEY_COMPROMISED_CODE = /_KEY_COMPROMISED$/;
+const NOT_TRUSTED_CODE = /CERTIFICATE_NOT_TRUSTED$/;
 
 async function hashRange(file: string, offset: number, length: number | null, chunkBytes: number): Promise<{ sha256: string; bytes: number } | null> {
   try {
@@ -141,7 +190,14 @@ export async function verifyExportAtDestination(input: ReceiverVerifyInput): Pro
   const blocked = (...ids: readonly ReceiverCheckId[]): void => ids.forEach((id) => add(id, 'BLOCKED'));
   const inUnpacked = (relative: string): string => `${input.unpackedDir}${sep}${relative.split('/').join(sep)}`;
   const anchors = input.trustedCertificateSha256;
+  // Row V5: the marked fingerprints the receiver supplied (undefined: none supplied), and what the export states itself.
+  const marks = input.compromisedCertificateSha256;
+  let statedByExport: readonly string[] = [];
   let development: boolean | null = null;
+  /** Row V6: the sealed manifest's `hostProfileNotAsked.platform`, or null: the manifest carries no such member. */
+  let hostProfileNotAsked: string | null = null;
+  /** Row R1b: the tracks of the sealed manifest that carry `absentInSession`, with their records; empty: none does. */
+  let videoAbsent: readonly VideoAbsenceOfTrack[] = [];
   let archiveReport: ReceiverVerifyResult['archive'] = null;
   let selfContained: boolean | null = null;
 
@@ -170,6 +226,13 @@ export async function verifyExportAtDestination(input: ReceiverVerifyInput): Pro
   const result = (manifest: ExportManifest | null): ReceiverVerifyResult => {
     const checks = RECEIVER_CHECKS.map((check) => ({ ...check, ok: (findings.get(check.id) ?? []).length === 0, findings: Object.freeze([...(findings.get(check.id) ?? [])]) }));
     const ok = checks.every((check) => check.ok);
+    // Row V5: the member exists only when a mark is stated by the export or a list was supplied (see `ReceiverVerifyResult.keyMark`).
+    const every = checks.flatMap((check) => check.findings);
+    const reportedByList = every.some((code) => KEY_COMPROMISED_CODE.test(code));
+    const keyMark =
+      statedByExport.length === 0 && marks === undefined
+        ? {}
+        : { keyMark: Object.freeze({ statedByExport: Object.freeze([...statedByExport]), listSupplied: marks !== undefined, reportedByList, onlyMarkFails: reportedByList && every.every((code) => KEY_COMPROMISED_CODE.test(code)) }) };
     return Object.freeze({
       ok,
       checks: Object.freeze(checks),
@@ -179,6 +242,11 @@ export async function verifyExportAtDestination(input: ReceiverVerifyInput): Pro
       anchored: anchors !== undefined,
       archive: archiveReport,
       selfContained,
+      ...keyMark,
+      // Row V6: stated only from a sealed manifest the run relied on (as `development` is), and only when it carries the member.
+      ...(hostProfileNotAsked !== null && findings.get('X-05')?.length === 0 ? { hostProfileNotAsked: Object.freeze({ platform: hostProfileNotAsked }) } : {}),
+      // Row R1b: by the same rule - only from a sealed manifest the run relied on, and only when a track carries the member.
+      ...(videoAbsent.length > 0 && findings.get('X-05')?.length === 0 ? { videoAbsentInSession: videoAbsent } : {}),
     });
   };
 
@@ -199,12 +267,20 @@ export async function verifyExportAtDestination(input: ReceiverVerifyInput): Pro
   // (or the reverse) is not the export the Core wrote.
   if (selfContained !== (input.exportDir === undefined)) add('X-01', 'EXPORT_MANIFEST_FORM_MISMATCH');
   if (embeddedId !== null && embeddedId !== manifest.export.exportId) add('X-01', 'EXPORT_MANIFEST_NAME_MISMATCH');
+  // Row V5 (C84 R-3): the export's own statement of a compromise mark. Each fingerprint it states is a certificate of THIS
+  // archive - the seal's own, or a retained one among the recorded entries: a statement about a certificate that is not here is refused.
+  statedByExport = manifest.sourceSigningKey?.certificateSha256 ?? [];
+  for (const digest of statedByExport) {
+    if (digest !== manifest.signature.certificateSha256 && !manifest.package.entries.some((entry) => entry.path === retainedCertificatePath(digest))) add('X-01', 'EXPORT_SOURCE_KEY_STATEMENT_UNFOUNDED');
+  }
 
   // X-02
   try {
     const signature = parseExportSignature(await readFile(signatureFile ?? '', 'utf8'));
     if (signature.signedDigest !== manifest.export.manifestSha256) add('X-02', 'EXPORT_SIGNATURE_NOT_OF_MANIFEST');
     if (anchors !== undefined && !anchors.includes(signature.certificateSha256)) add('X-02', 'EXPORT_CERTIFICATE_NOT_TRUSTED');
+    // Row V5: an export signed under a certificate of the supplied list attests nothing, its own statement of a mark included.
+    if (marks !== undefined && marks.includes(signature.certificateSha256)) add('X-02', 'EXPORT_CERTIFICATE_KEY_COMPROMISED');
     let pemText: string | null = null;
     for (const candidate of [PackageFile.CERTIFICATE, retainedCertificatePath(signature.certificateSha256)]) {
       try {
@@ -273,6 +349,8 @@ export async function verifyExportAtDestination(input: ReceiverVerifyInput): Pro
 
   // X-05: the one verifier, without a key, over the decrypted copy.
   let sealed: ManifestV2 | null = null;
+  /** Row V5: V-13 failed ONLY because the seal's certificate is in the supplied list (the signature itself verified). */
+  let sealUnderListedKey = false;
   try {
     const report = await verifyPackageV2(corePorts(input.unpackedDir, null, chunkBytes), {
       plaintext: 'WHEN_KEY_AVAILABLE',
@@ -281,19 +359,39 @@ export async function verifyExportAtDestination(input: ReceiverVerifyInput): Pro
         sessionId: manifest.source.sessionId,
         manifestSha256: manifest.sessionManifest.manifestSha256,
         ...(anchors === undefined ? {} : { trustedCertificateSha256: anchors }),
+        // Row V5 (C84 R-2): the supplied list, less the fingerprints THIS export states as marked - for those the exporting
+        // Core has held the source to its stored digest and says so under the export signature (which X-02 holds to the list
+        // too). ONLY IN AN ANCHORED RUN: without `--trust` the export signature is held to the certificate inside the archive,
+        // which the holder of a marked key could make himself - an unanchored statement covers nothing.
+        ...(marks === undefined ? {} : { compromisedCertificateSha256: anchors === undefined ? marks : marks.filter((digest) => !statedByExport.includes(digest)) }),
       },
     });
     for (const id of RECEIVER_VERIFY_V2_CHECKS) {
       const check = report.checks.find((candidate) => candidate.id === id);
-      if (check?.status !== 'PASS') add('X-05', `${id}:${check?.status ?? 'ABSENT'}${check?.findings[0] === undefined ? '' : `:${check.findings[0].code}`}`);
+      if (check?.status === 'PASS') continue;
+      // Row V5: a check that failed ONLY because its certificate is in the supplied list (alone, or beside "not trusted" for a
+      // receiver who also took the fingerprint out of the trust list) names THAT code; every other failure names its first finding, as before.
+      const listed = check?.findings.find((finding) => KEY_COMPROMISED_CODE.test(finding.code));
+      const named = listed !== undefined && check?.findings.every((finding) => KEY_COMPROMISED_CODE.test(finding.code) || NOT_TRUSTED_CODE.test(finding.code)) === true ? listed : check?.findings[0];
+      add('X-05', `${id}:${check?.status ?? 'ABSENT'}${named === undefined ? '' : `:${named.code}`}`);
+      if (id === 'V-13' && named === listed && listed !== undefined) sealUnderListedKey = true;
     }
     const manifestText = await readFile(inUnpacked(PackageFile.MANIFEST), 'utf8');
     if (createHash('sha256').update(manifestText, 'utf8').digest('hex') !== manifest.sessionManifest.sha256) add('X-05', 'SESSION_MANIFEST_NOT_THE_EXPORTED_ONE');
     sealed = parseManifestV2(JSON.parse(manifestText));
-    if (report.sources.development !== manifest.sessionManifest.developmentSources || sealed.developmentSources !== manifest.sessionManifest.developmentSources) {
+    // The verifier repeats the source mark only from a manifest whose certificate it relies on. Row V5: under a certificate of
+    // the supplied list it states none - that is the state X-05 already names by the V-13 line, not a second finding; the
+    // sealed manifest's own flag is still held to the export manifest's.
+    if ((!sealUnderListedKey && report.sources.development !== manifest.sessionManifest.developmentSources) || sealed.developmentSources !== manifest.sessionManifest.developmentSources) {
       add('X-05', 'DEVELOPMENT_MARK_MISMATCH');
     }
     development = sealed.developmentSources;
+    hostProfileNotAsked = sealed.hostProfileNotAsked?.platform ?? null;
+    videoAbsent = Object.freeze(
+      sealed.tracks
+        .filter((track) => track.absentInSession !== undefined)
+        .map((track) => Object.freeze({ trackId: track.trackId, absences: Object.freeze((track.absentInSession ?? []).map((absence) => Object.freeze({ absentAtLeastMs: absence.absentAtLeastMs, absentAtMostMs: absence.absentAtMostMs, ended: absence.ended }))) })),
+    );
   } catch {
     add('X-05', 'SESSION_MANIFEST_UNREADABLE');
   }

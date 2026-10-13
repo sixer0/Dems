@@ -1,8 +1,20 @@
 # DEMS Core: hardware acceptance test package, chapter 3 - network functions, cameras and sessions
 
-**Status of this document: UNVERIFIED on real hardware.** It was written on a development Mac with no Linux host, no camera and no audio interface. No step below has been performed anywhere. Every expected result is a statement of intent taken from the design documents and from results on doubles. Several parts of the product it describes (the camera relay, the commissioning functions and their screens, the production camera adapter) were not built when it was written. A line the author could not settle carries "to confirm" and is listed in section 4.
+**Status of this document: UNVERIFIED on real hardware.** It was written on a development Mac with no Linux host, no camera and no audio interface. No step below has been performed anywhere. Every expected result is a statement of intent taken from the design documents and from results on doubles. When it was first written, the camera relay, the commissioning functions and their screens and the production camera adapter were not built. At Revision 2 the relay, the connection test with its stream half, the adoption and the pairing of relay and worker are built; the commissioning functions (temporary address through the Core, scan, set-address) and their screens are not. A line that could not be settled carries "to confirm" with the row or the check it waits for.
 
-This chapter is read with chapter 1 (`HW-ACCEPTANCE-1-FRAME.md`) for the order, the performers, the sessions S1 to S4, the user actions, the values B-1 to B-6, the result record and the failure rule, and with chapter 2 for the host, the helper and the microphones.
+This chapter is read with chapter 1 (`HW-ACCEPTANCE-1-FRAME.md`) for the order, the performers, the sessions S1 to S4, the user actions, the values B-1 to B-7, the result record, the files for the collectors (section 9.5) and the failure rule, and with chapter 2 for the host, the helper and the microphones.
+
+**Revision 2 (2026-10-13)**, the consistency pass (blueprint row 181). Still unverified on a host. Changed in this file:
+
+- `9A/H-10`, `9A/H-23`: the five outcomes of the connection test by their code words; the bounds of the stream-address query (decision C24) and what the technician sees when a camera is outside them; the limits found while building (a colon in the user name, a camera with Basic authentication only, two lenses with one profile code, the plain-number token); what the product's log does and does not state about a test.
+- `9A/H-12`, `9A/H-13`: a typed address is refused until the camera interface and subnet are chosen.
+- `9A/H-13`, `9A/H-15`, `9A/H-14`: the commissioning functions are not in the tree; each names the rows it waits for.
+- `9A/H-17`, `9A/H-22`: the pairing rule as ruled (decisions C34, C35, C37, C40): a missing camera, a refusal by the worker's gate, an arrival that does not pair; the audit list of a session as a file.
+- `9A/H-21`, `9A/H-09`, `9A/H-26`: the names of the worker's and the Core's lines confirmed; the five counters of the worker's summing line; a readable file comes from an export; the assumption of the clap collector.
+- `9A/H-20`: what is known about HEVC playback (decision C45).
+- `9A/H-11`: the relay's re-open rule in numbers; when a camera is given up at once.
+- Section 4: points B, C, D and G settled; A re-stated; I added.
+
 
 ## Ringkasan (Bahasa Indonesia)
 
@@ -14,7 +26,8 @@ Hal yang paling menentukan:
 - Belum pernah diuji pada perangkat nyata mana pun, termasuk di bangku sistem lama: sambung ulang setelah kabel kamera dicabut (`9A/H-11`), selarasnya gambar dan suara (`9A/H-18`, uji tepuk), dan pergeseran pada sesi panjang (`9A/H-19`). H.265 dari kamera nyata sampai segel, verifikasi, dan pemutaran juga belum terbukti (`9A/H-09`, `9A/H-26`, `9A/H-20`).
 - Pemindaian hanya aktif: kamera pabrik pada alamat yang tidak ada di daftar hanya ditemukan bila teknisi mengetik alamatnya dari label kamera (`9A/H-13`). Fungsi pemasangan jaringan hanya untuk peran TEKNISI.
 - Kata sandi setiap kamera diganti di halaman kamera sebelum kamera diadopsi (`PREP-13`); wajib bagi kamera yang pernah terdaftar di input-av. Kata sandi hanya diketik di halaman kamera dan di kolom kata sandi konsol web, tidak pernah ke skrip, lembar hasil, atau tangkapan layar.
-- Dua batas yang diketahui: profil kamera dengan token berupa angka saja tidak dapat dipakai; kamera yang tidak hadir saat sesi dimulai tidak masuk ke sesi itu.
+- Batas yang diketahui: profil kamera dengan token berupa angka saja tidak dapat dipakai; kamera yang tidak hadir saat sesi dimulai tidak masuk ke sesi itu; nama akun kamera yang memuat titik dua tidak dapat diautentikasi; kamera yang hanya menawarkan autentikasi Basic ditolak; kamera yang set parameternya berubah setelah sambung ulang dilepas untuk sisa sesi.
+- Revisi 2 (2026-10-13): fungsi komisioning (alamat sementara lewat Core, pemindaian, atur alamat) belum ada di kode; `9A/H-13`, `9A/H-14`, `9A/H-15` menunggu baris pengembangan yang disebut di tiap pemeriksaan. Daftar audit di luar sesi tidak dapat diekspor sebagai berkas; dibaca oleh operator.
 
 Tidak ada langkah yang dilakukan agen. Tidak ada alamat jaringan nyata, nama orang, gambar, atau suara rekaman yang ditulis ke lembar hasil.
 
@@ -22,7 +35,7 @@ Tidak ada langkah yang dilakukan agen. Tidak ada alamat jaringan nyata, nama ora
 
 **Form.** Every check has the header line and the six parts of chapter 1, section 8. Part 5 ends with a paragraph "If not met": what the failure means, how it is sorted by chapter 1, section 10, and which development row or decision it reopens.
 
-**Collectors.** As in chapter 2: a `SCRIPT` step names `collect-hNN.sh` in `scripts/hardware-acceptance/`, a read-only collector that the scripts rows of the package deliver, with a dry mode (`--dry`), writing `hNN-run<k>.txt` into `<evidence-folder>`. The result line of a check is written by `record-line.sh`, the record writer of the same rows: one line per check in the form of chapter 1, section 9.1. Until a collector exists, its step is done by `USER` with the reads the step lists.
+**Collectors.** As in chapter 2: a `SCRIPT` step names `collect-hNN.sh` in `scripts/hardware-acceptance/`, a read-only collector with a dry mode (`--dry`), writing `hNN-run<k>[-mode].txt` into `<evidence-folder>`. They exist (blueprint rows 128, 129) and have run on the development Mac only. The result line of a check is written by `record-line.sh`: one line per check in the form of chapter 1, section 9.1; it refuses a field that holds an address or a credential form. A collector reads the Core's log, the worker's log, the audit list and a track **from files the user hands over**; chapter 1, section 9.5, says how each file is obtained, and that the audit list outside a session is read by a person because the product exports no file of it. `9A/H-20` has no collector. Where a collector prints "(absent)" for a code or a field, the product does not write it under that name; section 4, point I, lists those places, and the reading is then a person's.
 
 **What a collector of this chapter never does.** It takes no password as an argument, an environment variable or a file. It captures no packets: a capture of the camera network holds the digests of the camera accounts. It prints codes, counts and figures; it prints no stream address, no account name, no frame and no sound. A search for a secret is always the count-only scan of the product (`scripts/secret-scan/count-only.mjs`), which looks for the form of a camera credential and of an ingest secret and prints a number.
 
@@ -42,20 +55,20 @@ Recording: none   User actions: UA-2
 **1. What it proves.** The Core's camera search gets answers through the host's firewall on the dedicated camera port, and a camera whose address the technician types is found from its probe answer alone. It belongs to the camera search and its typed-address probe.
 On doubles: a hand-written test camera on the loopback interface; no firewall was in the path. On the bench of the earlier system the firewall blocked incoming multicast and the search was only tested inside the program. The rule of the host profile (`HOST-23`) differs from the earlier system's rule and has never met a camera.
 
-**2. Precondition.** `9A/H-16` passed. At least one camera (`CAM-A`) is on the camera subnet and powered. The signed-in person holds the permission of the camera search; the function is in the web console only.
+**2. Precondition.** `9A/H-16` passed. At least one camera (`CAM-A`) is on the camera subnet and powered. For steps `.3` and `.4` the camera interface and the camera subnet are chosen in the commissioning settings (`9A/H-05.6`): until the Core knows them, every typed address is refused (the destination rule answers `NOT_CONFIGURED`), and steps `.3` and `.4` are then "not run: camera interface not configured". The signed-in person holds the permission of the camera search; the function is in the web console only.
 
 **3. Steps.**
 - `9A/H-12.1` `USER`, terminal: `sudo ufw status numbered`.
 - `9A/H-12.2` `TECH`, web console, camera search: run the search with no typed address. Read the candidates.
 - `9A/H-12.3` `TECH`, web console: run the search with the address of `CAM-B` (or of `CAM-A` if there is one camera) typed into the address field. Read the candidates.
 - `9A/H-12.4` `TECH`, web console: type `203.0.113.10` into the address field and run the search.
-- `9A/H-12.5` `SCRIPT` `collect-h12.sh`: from the audit list, the count of entries `CAPTURE_DISCOVERY_SEARCHED` with the scope `CAMERA_NETWORK` since step `.2`; from the Core's log, the count of candidates each search returned and any refusal code. No address is printed.
+- `9A/H-12.5` `SCRIPT` `collect-h12.sh` with the note file of chapter 1, section 9.5: from the audit list, the count of entries `CAPTURE_DISCOVERY_SEARCHED` with the scope `CAMERA_NETWORK` since step `.2`; from the Core's log, the count of candidates each search returned and any refusal code. No address is printed.
 
 **4. Expected result.**
 - `.1` one rule admits UDP from source port 3702 on `<camera-interface>`; no rule opens the Core's own ports.
 - `.2` at least 1 candidate, each a camera on the camera subnet.
 - `.3` exactly 1 candidate for the typed address.
-- `.4` the address is refused, in the form or by the operation, with a message that names the address rule (private ranges only); no candidate.
+- `.4` the address is refused, in the form or by the operation, with a message that names the address rule (private ranges only); no candidate. Inside the Core the rule's word for this address is `PUBLIC_ADDRESS`; that word is not shown to the client and is not expected in the log.
 - `.5` 2 or 3 search entries (whether a refused address writes one is recorded as seen); candidate counts as read on the screen.
 
 **5. Pass criterion.** Candidates from the search without a typed address: at least 1. Candidate from the typed address: 1. The address outside the private ranges refused: 1 of 1. Whether the rule of `HOST-23` alone sufficed is recorded as yes or no: "yes" when step `.2` meets its criterion with only that rule in the firewall.
@@ -73,7 +86,7 @@ Recording: none   User actions: UA-2, UA-3, UA-5
 On doubles: the scan against a scripted device and a helper stand-in. Not shown: a real camera on a factory address; probe answers from a factory subnet through the firewall.
 **The scan is active only** (the user's ruling U9: no passive monitor, no packet capture). It asks the addresses of a stored list and one address a technician types. A camera whose factory address is not in the list is found only when its address is typed. On the bench of the earlier system three cameras sat on factory addresses that were not in the default list.
 
-**2. Precondition.** `9A/H-05`, `9A/H-25` and `9A/H-06` passed. `CAM-N`, a factory-new or factory-reset camera, is the only device on the camera switch that sits on a factory address. If its model must be activated before it answers (item `HOST-48`), `USER` activates it in the camera's own page from a laptop on the camera switch or from a browser on the host while a temporary address is in place; the web console does not relay a camera's page. The signed-in person is a technician: the commissioning functions belong to that role alone (ruling U10). No session is open.
+**2. Precondition.** The commissioning scan, the Core's temporary address and their screen are not in the tree at Revision 2 (to confirm when blueprint rows 105 to 109 land); until then this check is "not run: the commissioning scan is not built". `9A/H-05`, `9A/H-25` and `9A/H-06` passed. A typed address is accepted only when the camera interface and subnet are chosen (`9A/H-05.6`). `CAM-N`, a factory-new or factory-reset camera, is the only device on the camera switch that sits on a factory address. If its model must be activated before it answers (item `HOST-48`), `USER` activates it in the camera's own page from a laptop on the camera switch or from a browser on the host while a temporary address is in place; the web console does not relay a camera's page. The signed-in person is a technician: the commissioning functions belong to that role alone (ruling U10). No session is open.
 
 **3. Steps.**
 - `9A/H-13.1` `OPER`, web console, signed in as a supervisor who is not a technician: look for the commissioning screen.
@@ -105,7 +118,7 @@ Recording: none   User actions: UA-2, UA-5
 **1. What it proves.** When two devices answer on one factory address, the scan reports the conflict and the Core refuses to set an address, so that no camera is changed by a request meant for another. It belongs to the scan's conflict flag and the set-address job (experiment E-15).
 On doubles: a scan result with two endpoints on one address blocked the job. Not shown: two real cameras.
 
-**2. Precondition.** `9A/H-13` passed. `BENCH` plugs a second camera that holds the same factory address as `CAM-N` into the camera switch (UA-2). This check comes before `9A/H-14`, which moves `CAM-N` away. If no second camera with that address exists, the check is `NOT RUN: UA-2, second camera`.
+**2. Precondition.** The set-address job and its screens are not in the tree at Revision 2 (to confirm when blueprint rows 110, 111 and 194 to 198 land); until then this check is "not run: set-address is not built". `9A/H-13` passed. `BENCH` plugs a second camera that holds the same factory address as `CAM-N` into the camera switch (UA-2). This check comes before `9A/H-14`, which moves `CAM-N` away. If no second camera with that address exists, the check is `NOT RUN: UA-2, second camera`.
 
 **3. Steps.**
 - `9A/H-15.1` `TECH`, web console, commissioning screen: run the scan (with the typed address if `9A/H-13` needed it).
@@ -115,7 +128,7 @@ On doubles: a scan result with two endpoints on one address blocked the job. Not
 
 **4. Expected result.**
 - `.1` the scan reports that more than one device answers on that address.
-- `.2` the job is refused with a message that names the conflict, before a password field is offered (to confirm). If a password field is offered, nothing is typed and that is recorded.
+- `.2` the job is refused with a message that names the conflict, before a password field is offered (to confirm when blueprint row 198 lands: the confirmation dialog of the set-address job is not built). If a password field is offered, nothing is typed and that is recorded.
 - `.3` each camera, alone, is found on the unchanged factory address with its own hardware address: 2 of 2.
 - `.4` entries `CAMERA_NETWORK_SET`: 0; 1 address on the camera port.
 
@@ -132,13 +145,13 @@ Recording: none   User actions: UA-2, UA-4, UA-5
 **1. What it proves.** A technician moves a factory-new camera from its factory address to an address of the camera subnet, typing the camera's account for that one action, and the Core finds the same device at the new address by its hardware address (experiment E-14). The network address is the only setting of a camera the Core ever changes.
 On doubles: the job against a scripted device on a fake clock. Not shown: a real camera, its restart, the wait.
 
-**2. Precondition.** `9A/H-13` and `9A/H-15` done; `CAM-N` is alone on its factory address; no session is open. `USER`, or `TECH` at the user's direction, knows the camera's factory or activation account. The fixed bound: the camera answers at its new address with the same hardware address inside 180 s.
+**2. Precondition.** As for `9A/H-15`: "not run: set-address is not built" until blueprint rows 110, 111 and 194 to 198 land. `9A/H-13` and `9A/H-15` done; `CAM-N` is alone on its factory address; no session is open. `USER`, or `TECH` at the user's direction, knows the camera's factory or activation account. The fixed bound: the camera answers at its new address with the same hardware address inside 180 s.
 
 **3. Steps.**
 - `9A/H-14.1` `TECH`, web console, commissioning screen: run the scan; choose `CAM-N`; open the set-address dialog. Read what it shows before any password is typed.
 - `9A/H-14.2` `USER` (or `TECH` at the user's direction), web console: type the camera's account name and password into the dialog's fields; start the job; note the host clock.
 - `9A/H-14.3` `TECH`, web console: watch the job until it ends; read its result and the elapsed time it states.
-- `9A/H-14.4` `SCRIPT` `collect-h14.sh --state`: the count of addresses on `<camera-interface>`; the count of mark files; whether the host's neighbour table holds the camera's hardware address at an address of the camera subnet (it prints "yes" or "no").
+- `9A/H-14.4` `SCRIPT` `collect-h14.sh --state`, given the camera's hardware address in a file that `USER` writes into `<evidence-folder>` from the dialog of step `.1` and deletes after the step (the collector prints "yes" or "no", never the address): the count of addresses on `<camera-interface>`; the count of mark files; whether the host's neighbour table holds the camera's hardware address at an address of the camera subnet (it prints "yes" or "no").
 - `9A/H-14.5` `SCRIPT` `collect-h14.sh --audit`: the count of entries `CAMERA_NETWORK_SET` since step `.1`; the count-only scan over the Core's log, the error log and the audit details since step `.1`.
 - `9A/H-14.6` `TECH`, web console: open the device list; then open the set-address dialog again and read the password field.
 
@@ -164,7 +177,7 @@ Recording: none   User actions: UA-2, UA-4, UA-9, UA-10
 **1. What it proves.** A real camera authenticates in the Core's connect flow, its profiles are listed one per video source with the largest picture first, its codec is judged from the stream and not from what the camera says about itself, and a profile is adopted and assigned to a slot although the camera's own profile token does not have the form of the Core's profile codes (finding F-DB-1; experiment E-3). It carries two points of decision C24: a camera whose stream address has a query is located, and the known limit of a token made of digits only.
 On doubles: a hand-written test camera and a scripted device, with tokens of every form. Not shown: any real token, any real stream address, a camera with two lenses.
 
-**2. Precondition.** `9A/H-16` passed; the camera is on the camera subnet and was found by one of the two ways of `9A/H-12`. **`PREP-13` is complete for this camera:** its password was replaced in the camera's own page before this check, its clock is set, its line of the per-camera sheet is filled. This holds for every camera, and without exception for one that was ever registered in input-av, whose old password lies in that system's database in readable form; "not known" counts as "yes". A camera without a complete line is not connected. The check is done once per camera of the sessions (`CAM-A`, `CAM-B`), each with its own result line. The fixed bound: the connection test stays inside 15,000 ms.
+**2. Precondition.** `9A/H-16` passed; the camera is on the camera subnet and was found by one of the two ways of `9A/H-12`. **`PREP-13` is complete for this camera:** its password was replaced in the camera's own page before this check, its clock is set, its line of the per-camera sheet is filled. This holds for every camera, and without exception for one that was ever registered in input-av, whose old password lies in that system's database in readable form; "not known" counts as "yes". A camera without a complete line is not connected. The check is done once per camera of the sessions (`CAM-A`, `CAM-B`), each with its own result line. The fixed bound: the connection test stays inside 15,000 ms. The account's user name holds no colon and the camera answers the stream with Digest authentication (`PREP-13` step 2).
 
 **3. Steps.**
 - `9A/H-10.1` `USER`, camera's own page: read how the camera states its stream address (its documentation or its page shows the form). Note only: "the stream address carries a query: yes or no", and the codec the main stream is set to.
@@ -172,14 +185,29 @@ On doubles: a hand-written test camera and a scripted device, with tokens of eve
 - `9A/H-10.3` `USER` (or `TECH` at the user's direction), web console: type the account name and the new password into the fields of the connect flow; start the test; note the host clock.
 - `9A/H-10.4` `TECH`, web console: read the outcome, the time it took and the listed profiles.
 - `9A/H-10.5` `TECH`, web console: adopt the camera; assign its first listed profile to a video slot of the selector (`CAM-A` to the first, `CAM-B` to the second).
-- `9A/H-10.6` `SCRIPT` `collect-h10.sh --camera <label>`: from the Core's log and the stored stream facts, for each listed profile: its code; the codec and picture size; and three yes-or-no facts about its camera-side token: "has a character outside the code form", "is digits only", "is listed". The duration of the test in milliseconds. The count of audit entries of the adoption and of `CAPTURE_CONFIG_CHANGED`. The count-only scan over the Core's log and error log since step `.2`. It prints no token, no address and no account name.
+- `9A/H-10.6` `SCRIPT` `collect-h10.sh --camera <label>`, with the Core's journal as a file and the note file of the audit list (chapter 1, section 9.5). What the product states about a test, as built: one log line with the code `CAPTURE_CONNECTION_TESTED` and the members `outcome`, `authenticated`, `testReason` (a code word or nothing) and `judgedStreams` (a count); the audit entries `CAPTURE_CONNECTION_TESTED`, `CAPTURE_CANDIDATE_ADOPTED`, `CAPTURE_CREDENTIAL_SET` and `CAPTURE_CONFIG_CHANGED`. It states no duration and nothing about a camera-side token. So: the duration is the difference of the two clock readings of steps `.3` and `.4`, by `USER`; the profile codes, codecs and picture sizes are read from the screen by `TECH`; the three yes-or-no facts about the token ("has a character outside the code form", "is digits only", "is listed") are read by `USER` from the camera's own page or documentation where it shows the profile token, and are otherwise recorded "not read". The count-only scan over the Core's log and error log since step `.2`. Nothing prints a token, an address or an account name.
 
 **4. Expected result.**
-- `.4` the outcome is "reachable", inside 15,000 ms. One profile per video source, the largest picture first. For a camera set to H.265 the listed codec is HEVC, also when the camera reports H264 about itself (the four bench cameras of the earlier system did). For a camera whose stream address carries a query, the outcome is still "reachable": the query passes the closed rule (bounded length, a closed character set, no parameter with a credential-like name). An outcome "wrong profile" with the reason `STREAM_LOCATOR_FORM` means the camera's query was refused by that rule.
+- `.4` the outcome is `REACHABLE`, inside 15,000 ms. One profile per video source, the largest picture first. For a camera set to H.265 the listed codec is HEVC, also when the camera reports H264 about itself (the four bench cameras of the earlier system did). The five outcomes of a test and what each means here:
+
+  | Outcome | Reason word | What the technician sees, and what it means |
+  |---|---|---|
+  | `REACHABLE` | - | the profile list; the camera can be adopted |
+  | `AUTHENTICATION_FAILED` | none | the camera refused the account. Counted by the lock-out guard |
+  | `AUTHENTICATION_FAILED` | `SCHEME_NOT_ALLOWED` | the camera offers only Basic authentication for its stream. The password was **not** sent, and the lock-out guard does not count it. Set the camera to Digest in its own page; a camera that cannot is not usable |
+  | `WRONG_PROFILE` | `STREAM_LOCATOR_FORM` | the camera's stream address is outside the closed rule below; the camera is refused |
+  | `NOT_H264` | `NO_H264_PROFILE`, `STREAM_CODEC_NOT_USABLE` | the stream is neither H.264 nor HEVC (the screen says "Neither H.264 nor HEVC") |
+  | `UNREACHABLE` | - | no answer inside the bound |
+
+  **The closed rule for a stream address with a query (decision C24, as built).** The address is at most 256 characters in all. A query is allowed with at most 128 characters and at most 8 parameters, each name at most 32 and each value at most 64 characters, from a closed character set, **without percent-encoding**, and with no parameter whose name looks like a credential (`user`, `username`, `pass`, `password`, `pwd`, `auth`, `token`, `key`, `secret`, `session`, in any case). A user part in the address is always refused. A camera whose address passes is "reachable" as any other. A camera outside the rule shows `WRONG_PROFILE` with `STREAM_LOCATOR_FORM`: it cannot be adopted by this product version, whatever its password, and a second attempt changes nothing.
 - `.5` the camera appears in the device list as a capture device; the selector shows the slot as assigned to its profile code, for example `HEVC_1080P`.
 - `.6` at least 1 profile; for a real camera the token usually has a character outside the code form ("yes"), and the profile was assigned all the same. Count-only scan: 0.
 
-**Known limit (decision C24), stated here because this is where cameras are adopted.** The ONVIF library the Core uses reads a profile token that consists of digits only (for example `1`) as a number, and such a profile is not usable: it is not listed. A token with a leading zero stays text. If every profile of a camera has a digits-only token, that camera cannot be adopted by this product version.
+**Known limits, stated here because this is where cameras are adopted.**
+- **A plain-number profile token (decision C24).** The ONVIF library the Core uses reads a profile token that consists of digits only (for example `1`) as a number, and such a profile is not usable: it is not listed. A token with a leading zero stays text. If every profile of a camera has a digits-only token, that camera cannot be adopted by this product version. The fix (reading the token from the raw answer) is not built.
+- **A colon in the account's user name.** Such an account cannot authenticate on the stream; the outcome is `AUTHENTICATION_FAILED` for a correct password, and it is counted by the lock-out guard. Use an account whose name has no colon (`PREP-13`).
+- **A camera that offers only Basic authentication** is refused, as the table says.
+- **Two lenses with one profile code.** A camera with several video sources is adopted with one main stream per lens. If two lenses give the same profile code (same codec and picture size), the adoption is refused (`CAPTURE_ADOPTION_PROFILE_INVALID`): both cannot be stored. A camera with several lenses was never tried, on doubles or on a device.
 
 **5. Pass criterion.** Per camera, all of:
 1. outcome "reachable" inside 15,000 ms (the measured milliseconds are recorded);
@@ -187,17 +215,18 @@ On doubles: a hand-written test camera and a scripted device, with tokens of eve
 3. the codec listed equals the codec the camera's main stream is set to (step `.1`);
 4. a profile adopted and assigned to its slot: 1 of 1; if its token has a character outside the code form, that is recorded as "exercised", otherwise "not exercised on this camera";
 5. occurrences of a credential form in any log: 0;
-6. the stream-address query (C24): "located with a query", "no query on this camera", or "refused `STREAM_LOCATOR_FORM`"; the first two meet the criterion.
+6. the stream-address query (C24): "located with a query", "no query on this camera", or "refused `STREAM_LOCATOR_FORM`"; the first two meet the criterion. For a refused camera `USER` notes which bound its address breaks (total length, query length, number of parameters, a name, a value, percent-encoding, a credential-like name), by kind only.
 
 If not met:
-- criterion 1 with "refused credential": installation first (the password typed is not the one set in `PREP-13`); mind the lock-out guard. With "unreachable" or a time above the bound on a camera that answers `ping`: product, the ONVIF session and the stream test (rows 26, 50).
+- criterion 1 with `AUTHENTICATION_FAILED`: installation first (the password typed is not the one set in `PREP-13`; the user name holds a colon; with `SCHEME_NOT_ALLOWED`, the camera is set to Basic); mind the lock-out guard. With `UNREACHABLE` or a time above the bound on a camera that answers `ping`: product, the ONVIF session and the stream test (rows 26, 50).
 - criterion 2 or 3: product, the profile selection (row 26) and the code minted from the stream (rows 50, 51; decision on the notice, design addendum section 7). It leads to `9A/H-26`.
 - criterion 4: product, finding F-DB-1: the mapping of code to token at the open (rows 28, 46, 51).
-- criterion 6, refused: product, the query rule of row 174 is too narrow for this model. The model name and the fact "refused" go to the development, never the address.
+- criterion 6, refused: product, the query rule of row 174 is too narrow for this model. The model name, the fact "refused" and the kind of bound go to the development, never the address.
+- an adoption refused with `CAPTURE_ADOPTION_PROFILE_INVALID` on a camera with several lenses: the known limit of two equal profile codes; product, the stored stream rows (row 51).
 - a digits-only token: the known limit. The result for that camera is `FAIL` with the reason "known limit C24"; it reopens the fix named in row 26's record (reading the token from the raw answer), which is not built. Another camera takes its place in the sessions.
 - criterion 5: a security finding; product; the camera's password is changed again.
 
-**6. What to record.** Per camera: label, model; milliseconds; number of video sources and profiles; codec set against codec listed; the profile code assigned; the three token facts; the query outcome; scan count. The per-camera sheet gets its date of adoption. Not recorded: token, stream address, account name, password.
+**6. What to record.** Per camera: label, model; milliseconds; number of video sources and profiles; codec set against codec listed; the profile code assigned; the three token facts; the query outcome; scan count; "token facts: read from the camera's page" or "not read". The per-camera sheet gets its date of adoption. Not recorded: token, stream address, account name, password.
 
 ### 9A/H-23  A camera account whose password has special characters authenticates
 
@@ -207,12 +236,12 @@ Recording: none here; its log search is repeated after S1   User actions: UA-4, 
 **1. What it proves.** The relay writes the account into the request to the camera in an encoded form, and the media library decodes it before it computes the digest (the design's hypothesis HA-7). If that fails, a camera with such a password authenticates in the ONVIF half and is refused on the stream.
 On doubles: an account with these characters against the test camera, if the development's closing report says so. Not shown: a real camera's digest.
 
-**2. Precondition.** One camera of the sessions is the camera of rule 4 of B-5: in `PREP-13` its password was set to one that contains each of these five characters, as far as the camera's page accepts them: `@`, `:`, `/`, `%` and one space. `USER` notes which of the five the camera's page refused, by character, never the password. `9A/H-10` is about to be done, or was done, for that camera with that password.
+**2. Precondition.** One camera of the sessions is the camera of rule 4 of B-5: in `PREP-13` its password was set to one that contains each of these five characters, as far as the camera's page accepts them: `@`, `:`, `/`, `%` and one space. The five characters are in the **password**. The account's user name may hold `@`, `/`, `%` and a space, but **no colon** (the known limit of `9A/H-10`). `USER` notes which of the five the camera's page refused, by character, never the password. `9A/H-10` is about to be done, or was done, for that camera with that password.
 
 **3. Steps.**
 - `9A/H-23.1` `USER`, note: characters of the five that the password holds: n of 5; which were refused by the camera's page.
 - `9A/H-23.2` `TECH` and `USER`, web console: the connect flow of `9A/H-10` for this camera (steps `.2` to `.4` there), with this password.
-- `9A/H-23.3` `SCRIPT` `collect-h23.sh --after-test`: the outcome code of the connection test for this camera, and whether its stream half authenticated; the count-only scan over the Core's log and error log.
+- `9A/H-23.3` `SCRIPT` `collect-h23.sh --after-test`, with the Core's journal as a file: of the log line `CAPTURE_CONNECTION_TESTED` of this test, the members `outcome`, `authenticated` and `testReason`; the count-only scan over the Core's log and error log. The stream half authenticated when the outcome is `REACHABLE`: the codec of a listed profile is read from the stream.
 - `9A/H-23.4` `SCRIPT` `collect-h23.sh --after-session S1`, after S1 is sealed: whether this camera's track of S1 holds video; the count-only scan over the Core's log, the error log, the worker's log of S1, the session's persisted lines and the journal of the Core's unit.
 
 **4. Expected result.**
@@ -232,28 +261,28 @@ Recording: S1   User actions: UA-2, UA-4, UA-5
 **1. What it proves.** The product does the whole of its work on real devices once: a session from four production sources is recorded, sealed and verified on the Linux host. It is the milestone of the package and one of the four checks without which no session from production sources exists.
 On doubles: one session from four production-kind doubles on a copy of the database, one of them a generated HEVC stream, sealed and verified with a key made for the test. Not shown: any real source.
 
-**2. Precondition.** `9A/H-27`, `9A/H-01`, `9A/H-16`, `9A/H-07`, `9A/H-08` steps `.1` to `.5`, and `9A/H-10` for two cameras have passed. `PREP-14` is done: four slots assigned, none a generated source; all four must be assigned for a session to start (decision C25). `BENCH` stands where both cameras see the hands and within 1 m of the primary microphone. Planned length: 5 minutes. No real examination is recorded: the content is the bench.
+**2. Precondition.** `9A/H-27`, `9A/H-01`, `9A/H-16`, `9A/H-07`, `9A/H-08` steps `.1` to `.5`, and `9A/H-10` for two cameras have passed. Before the start `USER` has ready what the collectors of step `.5` need while S1 records: the Core's process id, and a terminal that saves the Core's journal to a file. `PREP-14` is done: four slots assigned, none a generated source; all four must be assigned for a session to start (decision C25). `BENCH` stands where both cameras see the hands and within 1 m of the primary microphone. Planned length: 5 minutes. No real examination is recorded: the content is the bench.
 
 **3. Steps.**
 - `9A/H-17.1` `OPER`, web console: open the pre-check of a new session; read it.
 - `9A/H-17.2` `OPER`, web console: start the session; note the host clock at the click. This is S1.
 - `9A/H-17.3` `BENCH`: keep the room silent for the first 10 s (the first-second reading of `9A/H-08`).
 - `9A/H-17.4` `BENCH`: at about 15 s, one clap, hands in view of both cameras; then speak for ten seconds (numbers, not names). Note the host clock at the clap to the second.
-- `9A/H-17.5` `SCRIPT`, while S1 records: `collect-h21.sh` and `collect-h09.sh --live` (their checks below); `collect-h08.sh --session S1` (chapter 2); `collect-h17.sh --live`: the processes of the session (the worker, two relays, two microphone helpers) with owner; the listeners (all on `127.0.0.1`); by `USER` with `sudo`, the modes of the run directory and of the microphone pipes (item `HOST-08`) and the four capability lines of the Core (item `HOST-39`).
+- `9A/H-17.5` `SCRIPT`, while S1 records: `collect-h21.sh` and `collect-h09.sh --live` (their checks below); `collect-h08.sh --session S1` (chapter 2); `collect-h17.sh --live`: the processes of the session (the worker, two relays, two microphone helpers; the guard program may appear as the parent of each helper) with owner; the listeners (all on `127.0.0.1`); by `USER` with `sudo`, the modes of the run directory and of the microphone pipes (item `HOST-08`) and the four capability lines of the Core (item `HOST-39`).
 - `9A/H-17.6` `TECH`, web console, during S1: open the commissioning screen and attempt a scan.
 - `9A/H-17.7` `BENCH`: at about 4 minutes 45 s, a second clap as the first; note the host clock.
 - `9A/H-17.8` `OPER`, web console: end the session; wait until its state is shown as sealed; note the host clock.
 - `9A/H-17.9` `OPER`, web console: run the verification of the sealed session; read its report.
-- `9A/H-17.10` `SCRIPT` `collect-h17.sh --sealed S1`: the session's state; the capture operation the session states; its sources (count, kind, and how each is declared); the tracks of the package with their sizes; every notice of the session by its code, with "critical" yes or no; the sync level per camera file (the reading of `9A/H-03`, now in the production operation); the verification result per item; the count of credential reveals the audit list holds for this session; the count-only scan over the Core's log, the error log, the worker's log, the session tables and the journal, for both forms.
+- `9A/H-17.10` `USER` copies the session's audit extract and saves the Core's journal as chapter 1, section 9.5, states; then `SCRIPT` `collect-h17.sh --sealed S1`: the session's state; the capture operation the session states; its sources (count, kind, and how each is declared); the tracks of the package with their sizes; every notice of the session by its code, with "critical" yes or no; the sync level per camera file (the reading of `9A/H-03`, now in the production operation); the verification result per item; the count of credential reveals the audit list holds for this session; the count-only scan over the Core's log, the error log, the worker's log, the session tables and the journal, for both forms.
 
 **4. Expected result.**
 - `.1` no blocking item; both cameras shown as present.
 - `.2` the monitor shows the session recording, both pictures live, the level of the primary microphone moving.
-- `.5` five processes of `<service-user>`; no listener on another address than `127.0.0.1`; run directory 0700, pipes 0600, at least 1 pipe; four capability lines ending in sixteen zeros.
+- `.5` at least five processes of `<service-user>` (seven when each helper runs under its guard; the count is recorded as seen); no listener on another address than `127.0.0.1`; run directory 0700, pipes 0600, at least 1 pipe; four capability lines ending in sixteen zeros.
 - `.6` the scan is refused because a session is open; nothing is added to the camera port.
 - `.8` the state goes from recording through sealing to sealed.
 - `.9` the verification passes on every item.
-- `.10` state sealed; operation `REAL_PRODUCTION`; 4 sources, 2 cameras and 2 microphone inputs, each declared a production device; 2 camera tracks with video and the audio of the primary microphone (the stored form keeps one microphone; the standby input is opened and not stored); notices as they are (the sync-level notice of `9A/H-03`, marked critical here if the level is not full; `STREAM_PROFILE_DIFFERS` is read in `9A/H-26`); reveals: 2, one per camera; both scans: 0.
+- `.10` state sealed; operation `REAL_PRODUCTION`; 4 sources, 2 cameras and 2 microphone inputs, each declared a production device; 2 camera tracks with video and the audio of the primary microphone (the stored form keeps one microphone; the standby input is opened and not stored); notices as they are (the sync-level notice of `9A/H-03`, marked critical here if the level is not full; `STREAM_PROFILE_DIFFERS` is read in `9A/H-26`); reveals: 2 audit entries of the type `CAPTURE_CREDENTIAL_REVEALED`, one per camera; both scans: 0. The Core's log holds one line `CAPTURE_CAMERA_INGEST_PAIRED` per camera and no line `CAPTURE_WORKER_DOWN`.
 
 **5. Pass criterion.** Sessions from 4 production sources recorded, sealed **and** verified: 1. In detail, all of:
 1. the session reached the state sealed: 1 of 1;
@@ -264,7 +293,15 @@ On doubles: one session from four production-kind doubles on a copy of the datab
 6. a commissioning action during the session refused: 1 of 1.
 "Recorded, not sealed" is not a pass. "Sealed, not verified" is not a pass. A session with one camera is not a pass of this check.
 
-If not met: product, unless a device was unplugged or misassigned (installation; repeat as run 2). By stage: the session does not start: the selector rules (decision C25) or the opens (the production adapters and the session start, rows 46, 47, 67). A camera is lost at the start: read `9A/H-21`. A capture fault ends the session: the pairing rule between relay and worker (row 48) or the worker's gate (`9A/H-01`, criterion 4). Not sealed or not verified: the sealing host on a production session, first exercised on doubles by row 89. In every case the lift of the production kinds (row 88) stays what it is, a state of the code: nothing is declared, and the ruling of chapter 1, section 11, is made knowing this line.
+If not met: product, unless a device was unplugged or misassigned (installation; repeat as run 2). By stage, with the words the Core uses (the sentences the operator sees are those of the product's fault wording; the reason word is in the Core's log and in the audit entry):
+- The session does not start. With a slot unassigned: the selector rule (decision C25; `CAPTURE_SOURCE_NOT_ASSIGNED`). With all four assigned and the reason `RELAY_REPORTS_NOT_WIRED`: a production start without the relay's report source is refused by design (decision C34), and the tree under acceptance does not wire it; product, the composition of the camera path (rows 43, 44, 46). With `NO_CAMERA_CONNECTED`: no camera at all arrived inside the window; read `9A/H-21`. Otherwise the opens (the production adapters and the session start, rows 46, 47, 67).
+- One camera is missing at the start (`CAMERA_NOT_CONNECTED`, `CAMERA_NO_PICTURE`): the session records with the other camera and one warning names the missing one (decision C35 (a)). For this check that is not a pass; read `9A/H-21`.
+- A refusal by the worker's gate (`CAMERA_ANNOUNCE_NOT_MATCHED`, `CAMERA_ANNOUNCE_NOT_SEEN`): a **critical fault of that camera**; the capture goes on with the other one (decision C40), and nothing foreign was recorded. On a host with the loopback rule this means the product's own relay announced a wrong address, or the announce line was not seen: product, the worker's gate (`9A/H-01`, criterion 4).
+- An arrival that was accepted and does not pair (`CAMERA_INGEST_NOT_PAIRED`): a worker connect report without the relay's report, a second connect report on a port, or a contradiction. **The capture is ended**, one critical notice and one audit entry state the cause, and nothing of that attempt counts as a recording of that camera (decision C35 (b)). It is an integrity fault: record it, do not repeat the session before the cause is known; product, the pairing rule (row 48).
+- A relay report for an attempt the Core itself replaced after a worker restart is not a fault: it is dropped with the log line `CAPTURE_RELAY_REPORT_SUPERSEDED` and counted in `CAPTURE_RELAY_REPORTS_SUPERSEDED_TOTAL` (decision C37). Its count is recorded.
+- The worker was restarted inside the session (`CAPTURE_WORKER_DOWN`): the audio after the restart is silence (the known limit of chapter 2, `9A/H-08`, until row 191); the session is not a pass of criterion 4.
+- Not sealed or not verified: the sealing host on a production session, first exercised on doubles by row 89.
+In every case the lift of the production kinds (row 88) stays what it is, a state of the code: nothing is declared, and the ruling of chapter 1, section 11, is made knowing this line.
 
 **6. What to record.** The clock at start, at both claps and at the end; the state; failed verification items (count); sources (count and kinds); notices by code with "critical"; reveals; the two scan counts; the session's identifier in the product. Not recorded: a frame, a sound, a word spoken, the content of the room.
 
@@ -279,11 +316,11 @@ On doubles: a test camera with a configurable delay, on fake clocks.
 **2. Precondition.** S1 was started (`9A/H-17.2`). The fixed bound: 30 s.
 
 **3. Steps.**
-- `9A/H-21.1` `SCRIPT` `collect-h21.sh --session S1`: from the Core's log of S1, the instant of the session's start request and, per camera, the instant at which the camera counts as open (the relay's report and the worker's connect report for its port, both present); the two differences in milliseconds; the count of camera faults at the start.
+- `9A/H-21.1` `SCRIPT` `collect-h21.sh --session S1`, with the worker's log and the Core's journal as files: from the worker's log, the time of `session_starting` and of each `ingest_connected` (its port and codec), and the two differences in milliseconds; the count of camera faults at the start. The collector's figure runs from the worker's start of the session, not from the operator's click, so it leaves out the Core's part. The whole figure is read by `USER` from the Core's journal: from the clock of the click (`9A/H-17.2`) to the line `CAPTURE_CAMERA_INGEST_PAIRED` of each camera, which the Core writes when the relay's report and the worker's connect report are both present. Both figures are recorded; the bound is held against the larger.
 
 **4. Expected result.** Two figures, each below 30,000 ms; 0 camera faults at the start.
 
-**5. Pass criterion.** Both cameras connected inside 30,000 ms; the larger figure is the measured value.
+**5. Pass criterion.** Both cameras connected inside 30,000 ms, counted from the operator's click to the Core's line `CAPTURE_CAMERA_INGEST_PAIRED`; the larger figure is the measured value.
 If not met: a camera that did not connect inside the window is not in S1, and `9A/H-17` is then not a pass. Sort: a camera that needs longer than the window because of a long distance between its keyframes is first an installation question (set the camera's keyframe interval to one second in its own page, repeat S1). If it still fails: product, the window constant and the bounded open (row 47, hypothesis HA-8).
 
 **6. What to record.** The two figures in milliseconds; the keyframe interval each camera is set to.
@@ -294,26 +331,26 @@ Capture operation: `REAL_PRODUCTION`   Database: acceptance
 Recording: read from S1; no recording of its own   User actions: UA-2, UA-4, UA-10
 
 **1. What it proves.** A real H.265 camera's stream comes through the relay and the worker into a file that decodes: its packetisation, its groups of pictures, its parameter sets as the camera sends them (experiment E-4). The product records only from four assigned sources, so one camera cannot be recorded alone; the readings are taken from S1.
-On doubles: generated H.265 streams from an encoder on the same machine, with parameter sets announced and with parameter sets in the stream only: 350 of 350 frames, 0 decode errors, sample entry `hev1`. Not shown: any real camera; long groups, B-frames, parameter sets that arrive late; sealing, verification and playback of real HEVC material.
+On doubles: generated H.265 streams from an encoder on the same machine, with parameter sets announced and with parameter sets in the stream only: 350 of 350 frames, 0 decode errors, sample entry `hev1`; such a session seals and verifies, and its export verifies (decision C45). Not shown: any real camera; long groups, B-frames, parameter sets that arrive late; sealing, verification and playback of real HEVC material.
 
-**2. Precondition.** `9A/H-17` produced S1. `USER` noted in `9A/H-10.1` the codec each camera is set to, and set each camera's clock in `PREP-13`. The fixed bound: a camera's clock at most 2,000 ms off the Core's; above 500 ms the operator sees an advisory.
+**2. Precondition.** `9A/H-17` produced S1. For step `.2` the export of S1 is made first, as chapter 1, section 9.5, states; `9A/H-18`, `9A/H-20.3` and chapter 2, `9A/H-08.7`, use the same export. `USER` noted in `9A/H-10.1` the codec each camera is set to, and set each camera's clock in `PREP-13`. The fixed bound: a camera's clock at most 2,000 ms off the Core's; above 500 ms the operator sees an advisory.
 
 **3. Steps.**
-- `9A/H-09.1` `SCRIPT` `collect-h09.sh --live`, during S1, and `--session S1` after it, per camera: from the worker's log, the connect line (codec, picture size, parameter-set length), the count of lines `INGEST_NO_EXTRADATA`, the anchoring mode, the observed keyframe interval, and the line that sums the camera up (video packets, fragments, and its three counters: packets dropped for a missing time stamp, packets dropped before the start, packets re-timed; to confirm that these are the three the plan means); from the session, the clock offset of the camera in milliseconds and whether the advisory was raised.
-- `9A/H-09.2` `SCRIPT` `collect-h09.sh --file S1`, after S1 is sealed, per camera file, read-only with the pinned tools (if the stored file cannot be read directly, from an export of the session; to confirm): the codec and sample entry of the video track; the frame count; the number of error lines of a full decode into nothing.
+- `9A/H-09.1` `SCRIPT` `collect-h09.sh --live`, during S1, and `--session S1` after it, per camera, with the worker's log and the Core's journal as files. From the worker's log: the line `ingest_connected` (port, codec, width, height, the length of the parameter sets as `extradata`); the count of lines `INGEST_NO_EXTRADATA`; the line `video_anchored` (its `mode` and `shift_us`); the line `keyframe_interval_observed` (`observed_ms`, `bound_ms`, `above_bound`); and the line `camera_summary`, which exists after the session ended: `video_packets`, `fragments`, and its five counters `dropped_no_pts` (no time stamp), `dropped_prestart` (before the start), `retimed` (moved by the monotonic guard), `dropped_prearm` and `dropped_unanchored`. The first three are "the three ingest counters" of the plan; all five are recorded. From the Core's journal: the line `CAPTURE_CLOCK_OFFSET_MEASURED` of each camera (`offsetMs`, `advisoryMs`, `above`). The notice `CAMERA_CLOCK_OFFSET` exists only for a camera above the advisory threshold; the offset of a camera below it is in the measurement line alone.
+- `9A/H-09.2` `SCRIPT` `collect-h09.sh --file S1 --track <file>`, after S1 is sealed, per camera file, read-only with the pinned tools, **from the export of S1** (chapter 1, section 9.5; the stored camera file is encrypted and cannot be read directly): the codec and sample entry of the video track; the frame count; the number of error lines of a full decode into nothing.
 - `9A/H-09.3` `OPER`, web console monitor during S1: read whether an advisory about a camera's clock is shown.
 
 **4. Expected result.**
-- `.1` per camera: codec `hevc` for a camera set to H.265; `INGEST_NO_EXTRADATA`: 0 lines; one summing line with video packets above 0; a clock offset of at most 2,000 ms.
+- `.1` per camera: codec `hevc` for a camera set to H.265; `INGEST_NO_EXTRADATA`: 0 lines; one `camera_summary` line with `video_packets` above 0; one `CAPTURE_CLOCK_OFFSET_MEASURED` line with an offset of at most 2,000 ms.
 - `.2` codec `hevc`, sample entry `hev1`; the frame count equals the worker's count of video packets; decode error lines: 0.
 - `.3` an advisory exactly for a camera whose offset is above 500 ms.
 
 **5. Pass criterion.** Per camera, all of: the codec in the connect line equals the codec the camera is set to; `INGEST_NO_EXTRADATA` lines 0; decode errors 0; frames in the file equal the worker's packet count; clock offset at most 2,000 ms (the figure is recorded; an advisory above 500 ms is recorded and is not a fail).
 If not met:
-- a clock offset above 2,000 ms: installation (UA-10: set the camera's clock, repeat S1). The product does not set a camera's clock.
+- a clock offset above 2,000 ms: installation (UA-10: set the camera's clock, repeat S1). The product does not set a camera's clock. A camera whose clock lies outside the worker's own bound is ended by the worker with the reason `CAMERA_CLOCK_OUT_OF_BOUND` and is then not in S1 at all.
 - `INGEST_NO_EXTRADATA`, decode errors, or a frame count that differs: product: the relay's hold-back until parameter sets and a keyframe, and the worker's ingest for HEVC (rows 42 and 43, and the HEVC outcome of the lift, entry condition L-4). **The ruled fallback applies** (chapter 1, section 10, item 6): the installer sets that camera to H.264 in the camera's own page, `9A/H-10` is repeated for it, S1 is repeated, and the record says which codec the passing session used. H.265 support for that model is then a finding for the development, and the summary states it.
 
-**6. What to record.** Per camera: codec set, codec in the connect line, sample entry; packets and frames; the three counters; anchoring mode; keyframe interval observed; clock offset in milliseconds and "advisory" yes or no; decode error lines. For the summary: the three counters and the clock offset per camera.
+**6. What to record.** Per camera: codec set, codec in the connect line, sample entry; packets and frames; the five counters, the first three marked as "the three"; anchoring mode; keyframe interval observed; clock offset in milliseconds and "advisory" yes or no; decode error lines. For the summary: the three counters and the clock offset per camera.
 
 ### 9A/H-26  The notice STREAM_PROFILE_DIFFERS is not raised for the H.265 cameras
 
@@ -326,7 +363,7 @@ On doubles: two generated streams. Not shown: a real camera's parameter sets.
 **2. Precondition.** S1 is sealed. At least one camera of S1 recorded H.265 (`9A/H-09`). If both ran on H.264 by the fallback, the check is `NOT RUN: no H.265 camera in S1`.
 
 **3. Steps.**
-- `9A/H-26.1` `SCRIPT` `collect-h26.sh --session S1`: per camera of S1, the profile code in the selector at the start, the stream statement the seal wrote, and the count of notices `STREAM_PROFILE_DIFFERS` in the sealed session.
+- `9A/H-26.1` `OPER`, web console, before S1 is started (or from the capture configuration afterwards): the profile code each video slot of the selector shows. Then `SCRIPT` `collect-h26.sh --session S1` with the worker's log, the Core's journal and the session's audit extract as files: the codec and picture size of each `ingest_connected` line, and the count of notices `STREAM_PROFILE_DIFFERS` of the sealed session. The Core writes no log line that states a slot's profile code or the seal's stream statement, so those two are `OPER`'s readings: the code from the selector, the statement from the verification report of step `.2`.
 - `9A/H-26.2` `OPER`, web console: open the verification report of S1 and read its notices.
 
 **4. Expected result.**
@@ -346,10 +383,10 @@ Recording: read from sealed S1   User actions: UA-5, UA-11
 **1. What it proves.** In the stored session the sound of an event lies at the same time as its picture, within the tolerance the user set. Sound comes from a USB interface on the host's clock, pictures from cameras over the network; nothing in the design proves that the two meet.
 On doubles: nothing. On the bench of the earlier system the alignment of picture and sound was never measured correctly.
 
-**2. Precondition.** `9A/H-17` passed. B-1 is set (milliseconds). The measurement reads the picture frame by frame: at 25 frames per second its resolution is 40 ms, so a B-1 below one frame time cannot be decided by this method; the frame time of each camera is recorded. The clap was made within 1 m of the microphone, so the sound's travel adds at most 3 ms.
+**2. Precondition.** `9A/H-17` passed. The export of S1 exists (made for `9A/H-09.2`). B-1 is set (milliseconds). The measurement reads the picture frame by frame: at 25 frames per second its resolution is 40 ms, so a B-1 below one frame time cannot be decided by this method; the frame time of each camera is recorded. The clap was made within 1 m of the microphone, so the sound's travel adds at most 3 ms.
 
 **3. Steps.**
-- `9A/H-18.1` `SCRIPT` `collect-h18.sh --session S1 --clap <host clock of the clap>`, per camera track and per clap: the time in the track, in milliseconds, of the sharpest rise of the audio level within 5 s around the given clock time. It prints numbers only.
+- `9A/H-18.1` `SCRIPT` `collect-h18.sh --session S1 --clap <host clock of the clap> --start <host clock of the start click> --track <file>`, per camera track and per clap, on the camera files of the export of S1 (chapter 1, section 9.5): the time in the track, in milliseconds, of the sharpest rise of the audio level within 5 s around the given clock time. It prints numbers only. **The collector assumes that the track starts at the start click.** The track starts later, by the time that camera took to connect (`9A/H-21`). That shifts the search window, not the result: sound and picture are read from the same file. If a camera's figure of `9A/H-21` is above 5,000 ms, give `--start` the click time plus that figure, or the clap falls outside the window.
 - `9A/H-18.2` `OPER`, web console playback of S1 on the host, per camera and per clap: step the picture frame by frame to the first frame in which the hands touch; read the frame's time in the track.
 - `9A/H-18.3` `OPER`, note: offset = time of the sound minus time of the picture, per camera and per clap: 4 values. A positive value means the sound is late.
 
@@ -366,14 +403,15 @@ Capture operation: `REAL_PRODUCTION`   Database: acceptance
 Recording: sealed S1   User actions: UA-1
 
 **1. What it proves.** Material from real cameras can be played at an operator's desk, or the client says plainly that it cannot. The stored video of an H.265 camera is HEVC with the sample entry `hev1`, which not every browser and player plays (experiment E-8 on real material).
-On doubles: nothing for playback of HEVC.
+What the development knows (decision C45): on generated HEVC material the reader, the seal, the verification, the web console and the export passed; **the tablet was not measured**; QuickLook on macOS, which is not a client of the product, did not open a `hev1` file, once. No client of the product is known to refuse `hev1`. Whether the worker should write another sample entry (`hvc1`) waits for the tablet measurement (blueprint rows 12 and 57). A receiver who opens an export in an Apple player may therefore see nothing; that is a risk to state when an export is handed over.
+On doubles: playback of generated HEVC in the web console; nothing on the tablet; nothing from a real camera.
 
 **2. Precondition.** `9A/H-17` passed. How the tablet and a web console on another machine reach a Core that listens on `127.0.0.1` is settled (open point 4 of chapter 1); if it is not, the tablet line is "not run: no route to the Core" and the check is `NOT RUN`. The clients: the web console in the operator's browser on the operator's machine; the tablet application; an export of S1 opened in the player the site uses.
 
 **3. Steps.**
 - `9A/H-20.1` `OPER`, web console in the operator's browser: open S1; play from the first clap for 30 s, each camera.
 - `9A/H-20.2` `OPER`, tablet: open S1; play from the first clap for 30 s, each camera.
-- `9A/H-20.3` `OPER`, web console: export S1. Then verify the export with the product's verification and open its video in the site's player; play from the first clap for 30 s.
+- `9A/H-20.3` `OPER`, web console: export S1, or take the export already made for `9A/H-09.2` and download it again. Then verify the export with the product's verification and open its video in the site's player; play from the first clap for 30 s.
 - `9A/H-20.4` `OPER`, note, per client and camera: one of three words.
 
 **4. Expected result.** Per client and camera one of two outcomes: "plays" (the picture moves and the clap is heard) or "states that it cannot" (the client shows a message that says the material cannot be played here). The export verifies.
@@ -382,14 +420,14 @@ On doubles: nothing for playback of HEVC.
 For the summary the count of clients that play is stated beside the result; "3 of 3 state that they cannot" is a pass of this check and a plain statement that nobody can watch the recording there.
 If not met: product: the client's handling of an unplayable stream (the camera slice and its two clients, rows 53 to 55; the playback package of the design if it is built). The stored form is not changed by this check.
 
-**6. What to record.** Per client: browser or application with version, operating system, and the word per camera; the codec of each camera; "export verifies" yes or no.
+**6. What to record.** Per client: browser or application with version, operating system, and the word per camera; the codec and the sample entry of each camera (from `9A/H-09.2`); "export verifies" yes or no; for the site's player, its name and version, because a player that does not open `hev1` is a finding for row 57.
 
 ### 9A/H-22  S2: a camera absent at the start
 
 Capture operation: `REAL_PRODUCTION`   Database: acceptance
 Recording: S2   User actions: UA-5
 
-**1. What it proves.** With one camera missing at the start, the session starts with the other after one bound, says so once, and the missing camera is not in the sealed package. It also shows the known limit: a camera absent at the start of a session is not in that session, even when it returns.
+**1. What it proves.** With one camera missing at the start, the session starts with the other after one bound, says so once, and the missing camera is not in the sealed package. It also shows the known limit: a camera absent at the start of a session is not in that session, even when it returns. This is the "missing camera" case of the pairing rule (decision C35 (a)): a degraded start with a warning, not a fault that ends the capture.
 On doubles: the three timing cases with a test camera.
 
 **2. Precondition.** `9A/H-17` passed. `BENCH` unplugs the network cable of `CAM-B` at the switch at least 60 s before the start. Planned length: 3 minutes.
@@ -399,17 +437,17 @@ On doubles: the three timing cases with a test camera.
 - `9A/H-22.2` `OPER`, web console: start the session (S2), confirming the warning if one is asked; note the host clock; read the monitor.
 - `9A/H-22.3` `BENCH`: 90 s after the start, plug `CAM-B` in again. `OPER`: watch the monitor until the end.
 - `9A/H-22.4` `OPER`, web console: end the session; wait for sealed; run the verification.
-- `9A/H-22.5` `SCRIPT` `collect-h22.sh --session S2`: the time from the start request to the state recording, in milliseconds; warnings and audit entries that name the absent camera (counts, codes); the tracks of the package with their sizes; the state; failed verification items.
+- `9A/H-22.5` `SCRIPT` `collect-h22.sh --session S2`, with the worker's log, the Core's journal and the audit extract of S2 as files (the collector counts from the worker's `session_starting`, as in `9A/H-21`): the time from the start request to the state recording, in milliseconds; warnings and audit entries that name the absent camera (counts, codes); the tracks of the package with their sizes; the state; failed verification items.
 
 **4. Expected result.**
 - `.1` the item of `CAM-B` says the camera does not answer.
-- `.2` the session reaches recording with `CAM-A` and the microphones after the open of `CAM-B` has run into its bound; one warning names `CAM-B` as not connected.
+- `.2` the session reaches recording with `CAM-A` and the microphones after the open of `CAM-B` has run into its bound; one warning names `CAM-B` as not connected (reason word `CAMERA_NOT_CONNECTED`, or `CAMERA_NO_PICTURE` when a connection came and no picture; neither raises a critical fault, decision C40). No notice with `CAMERA_INGEST_NOT_PAIRED` and none with `CAMERA_ANNOUNCE_NOT_MATCHED` or `CAMERA_ANNOUNCE_NOT_SEEN` appears: those belong to the two other cases of the rule.
 - `.3` `CAM-B` does not join S2 after it returns.
 - `.4` sealed; the verification passes.
 - `.5` 1 warning and 1 audit entry for the absent camera; the package holds the track of `CAM-A` and nothing of `CAM-B`: 0 fragments, no entry for its file.
 
 **5. Pass criterion.** The session started with one camera: 1 of 1. Warnings for the absent camera: 1. Audit entries for it: 1. Material of the absent camera in the package: 0. S2 sealed and verified: 1 of 1. The time to recording is recorded.
-If not met: a session that does not start with one camera, or that waits two bounds: product, the parallel bounded open (row 47) and the session scenarios (row 90). Material of `CAM-B` in the package, or `CAM-B` joining silently: product, the pairing rule (row 48). If both cameras are absent the session must not start at all; that case is not provoked here.
+If not met: a session that does not start with one camera, or that waits two bounds: product, the parallel bounded open (row 47) and the session scenarios (row 90). Material of `CAM-B` in the package, or `CAM-B` joining silently: product, the pairing rule (row 48). If both cameras are absent the session must not start at all (a failed start with `NO_CAMERA_CONNECTED`); that case is not provoked here. A session that is **ended** here with `CAMERA_INGEST_NOT_PAIRED` means the missing camera was treated as an arrival that does not pair: product, the pairing rule (row 48, decision C35).
 
 **6. What to record.** Milliseconds to recording; the three counts; "joined after return: no"; state; failed items.
 
@@ -421,25 +459,26 @@ Recording: S3   User actions: UA-5, UA-11
 **1. What it proves.** When a camera's link is lost in the middle of a recording, the fault is raised once, the relay connects again by its rule, the recording continues in the same track after the gap, and the fault is cleared; the other camera and the microphones are not disturbed. **Reconnection after a lost stream was never tested on a physical camera, not on the bench of the earlier system either.**
 On doubles: a test camera that drops the connection and resumes in the middle of a group of pictures, on fake clocks.
 
-**2. Precondition.** `9A/H-17` passed. B-4 is set (seconds). On a PoE switch, unplugging the cable also takes the camera's power: the outage is then B-4 plus the camera's start time, and both instants are noted. If the site can cut the link without the power, it says which was done. The relay gives a lost camera up after a bound of its own, which the development's closing report states (to confirm); B-4 plus the start time must lie below it, or the expected result is the known limit instead: a camera whose relay ends is lost for the rest of the session. Planned length: B-4 plus 4 minutes.
+**2. Precondition.** `9A/H-17` passed. B-4 is set (seconds). On a PoE switch, unplugging the cable also takes the camera's power: the outage is then B-4 plus the camera's start time, and both instants are noted. If the site can cut the link without the power, it says which was done. The relay's rule, read from the built relay: after a loss it tries the camera again 6 times, waiting 2, 2, 4, 8, 16 and 30 s before the tries, so the sixth and last try begins no earlier than 62 s after the loss (later by what the failed tries took, each at most 15 s); the count starts again when a picture is forwarded. A camera that answers none of the six is given up, and a camera whose relay ends is lost for the rest of the session. So B-4 plus the camera's start time must lie below 60 s, or the expected result is that known limit. A camera that restarts after a power cut often needs longer than that: if the site can cut the link without the power, do so, or choose B-4 from the camera's measured start time.
+**A camera is given up at once, without a further try,** when the stream that comes back is not the one it announced: another codec, or a parameter set that differs by one byte (for example after the camera's settings were changed, or a firmware that sends other sets after a restart); when its stream address no longer exists; and when it offers only Basic authentication. A 401 answer to a keep-alive that is not marked stale ends that connection to the camera; the relay then opens again by the rule above, and the second refused Digest answer ends the relay. Nobody changes a camera's settings during S3. Planned length: B-4 plus 4 minutes.
 
 **3. Steps.**
 - `9A/H-11.1` `OPER`, web console: start the session (S3); wait 60 s.
 - `9A/H-11.2` `BENCH`: unplug the cable of `CAM-A` at the switch; note the host clock. After B-4 seconds plug it in; note the host clock.
 - `9A/H-11.3` `OPER`, web console monitor: read what it shows for `CAM-A` and for `CAM-B` from the unplugging until `CAM-A`'s picture is back; note the host clock of the return.
 - `9A/H-11.4` `OPER`: let the session record 120 s more; end it; wait for sealed; run the verification.
-- `9A/H-11.5` `SCRIPT` `collect-h11.sh --session S3`: for `CAM-A`: the count of loss faults raised and cleared, with their instants; the instants of the relay's connection attempts; the number of files of its track; the length of the gap in the track in milliseconds; decode error lines of a full decode; the count of credential reveals of the session. For `CAM-B`: faults (count) and gaps (count). The state and the failed verification items.
+- `9A/H-11.5` `SCRIPT` `collect-h11.sh --session S3 --track <file>`, with the worker's log, the Core's journal, the audit extract of S3 and the camera file of `CAM-A` from the export of S3 (chapter 1, section 9.5). For `CAM-A`: the faults of the camera raised and cleared, with their instants, from the audit extract and the journal; the number of files of its track; the length of the gap in the track in milliseconds (a distance above 1 s between two video packets); decode error lines of a full decode; the count of audit entries `CAPTURE_CREDENTIAL_REVEALED` of the session. For `CAM-B`: faults (count) and gaps (count). The state and the failed verification items. The relay states each loss and each re-open on its own output, as the lines `camera_lost` (with the code of the loss) and `camera_reopened` (with `tries`, `held_back` and `gap_ms`); the Core as built reads the relay's line `push_established` only, so the instants of the attempts are not in the Core's log (to confirm when blueprint row 44 lands: where the two lines reach the log). Until then "attempts" is recorded as "not readable".
 
 **4. Expected result.**
 - `.3` `CAM-A` is shown as lost within seconds of the unplugging; `CAM-B` keeps its live picture; after the cable is back and the camera has started, `CAM-A`'s picture returns without any action of the operator.
 - `.4` sealed; the verification passes.
-- `.5` for `CAM-A`: 1 fault raised, 1 cleared; attempts at the intervals of the relay's rule; 1 file for the track with 1 gap whose length equals the outage read in step `.3` within 5 s; decode error lines 0; reveals of the session: 2 (the reconnection reads no credential again). For `CAM-B`: 0 faults, 0 gaps.
+- `.5` for `CAM-A`: 1 fault raised, 1 cleared; attempts at the intervals of the relay's rule where they can be read; 1 file for the track with 1 gap whose length equals the outage read in step `.3` within 5 s; decode error lines 0; reveals of the session: 2 (the reconnection reads no credential again). For `CAM-B`: 0 faults, 0 gaps.
 
-**5. Pass criterion.** For the unplugged camera: fault raised 1, cleared 1; files of the track 1; gaps 1; decode errors 0. For the other camera: faults 0, gaps 0. S3 sealed and verified: 1 of 1. The gap in milliseconds and the outage are recorded.
+**5. Pass criterion.** For the unplugged camera: fault raised 1, cleared 1; files of the track 1; gaps 1; decode errors 0, and by eye the first picture after the gap is a whole picture (a relay that resumed in the middle of a group would show a broken picture that a decode does not always report). For the other camera: faults 0, gaps 0. S3 sealed and verified: 1 of 1. The gap in milliseconds and the outage are recorded.
 If the outage exceeded the relay's bound and the camera stayed lost, that is the named second outcome "lost for the rest of the session": the check is `FAIL` for reconnection, with the reason "outage above the relay's bound", and is repeated with a smaller B-4 as run 2.
 If not met: product: the relay's reconnection and its hold-back until a keyframe (row 43; design addendum section 5.1; hypothesis HA-1), the fault interval (row 49), and, if the worker does not accept the jump in time, the conditional package for a resumed push. Decode errors after the gap mean the first forwarded picture was not a keyframe. A disturbed second camera is the gravest outcome and reopens the fault isolation of the worker (row 176).
 
-**6. What to record.** B-4; "power cut with the link" yes or no; the three clock readings; the counts; the gap in milliseconds; the attempts' intervals.
+**6. What to record.** B-4; "power cut with the link" yes or no; the camera's start time; the three clock readings; the counts; the gap in milliseconds; the attempts' intervals or "not readable".
 
 ### 9A/H-19  S4: the long session, with a clap at its start and its end
 
@@ -456,13 +495,13 @@ On doubles: nothing.
 - `9A/H-19.2` `OPER`: start the session (S4). `BENCH`: silence for 10 s, then one clap as in `9A/H-17.4`; note the host clock.
 - `9A/H-19.3` `OPER`: leave the session recording for B-3 minutes. Nobody needs to stay; nothing is changed on the host meanwhile.
 - `9A/H-19.4` `BENCH`: 15 s before the end, one clap; note the host clock. `OPER`: end the session; wait for sealed; run the verification.
-- `9A/H-19.5` `SCRIPT` `collect-h18.sh --session S4 --clap <clock>` for both claps, and `OPER` reads the picture frame of each clap, as in `9A/H-18`. Drift per camera = offset at the last clap minus offset at the first.
+- `9A/H-19.5` `SCRIPT` `collect-h18.sh --session S4 --clap <clock> --start <clock of the start click> --track <file>` for both claps, on the camera files of the export of S4 (an export of a session of B-3 minutes is as large as the recording: the free space is read first), and `OPER` reads the picture frame of each clap, as in `9A/H-18`. Drift per camera = offset at the last clap minus offset at the first.
 - `9A/H-19.6` `SCRIPT` `collect-h19.sh --session S4`: the session's length; faults by code and count; the notices; per camera the count of re-timed packets; the size of the package; free space after; the state and the failed verification items.
 
 **4. Expected result.** The session records for B-3 minutes without a fault, seals and verifies. Two drift values of small magnitude.
 
 **5. Pass criterion.** The magnitude of the drift is at most B-2 for both cameras: 2 of 2. S4 sealed and verified: 1 of 1. Camera and microphone faults during S4: the count is recorded; a fault that ends a track fails the check.
-If not met: drift above B-2 with clean recordings: product: the mapping between the clocks (hypothesis H-J); the finding names the two drift values, B-3 and the offsets. A session that does not last: by its fault code, as in `9A/H-17` and `9A/H-11`. A disk that filled: an installation matter and the reason B-6 exists; the session's state is recorded as found.
+If not met: drift above B-2 with clean recordings: product: the mapping between the clocks (hypothesis H-J); the finding names the two drift values, B-3 and the offsets. A session that does not last: by its fault code, as in `9A/H-17` and `9A/H-11`. A session in whose log `CAPTURE_WORKER_DOWN` occurs has silence for audio after that instant (the known limit until row 191): the last clap is then not heard, the drift cannot be read, and the check is `FAIL` with that reason. A disk that filled: an installation matter and the reason B-6 exists; the session's state is recorded as found.
 
 **6. What to record.** B-2, B-3; four offsets and two drift values in milliseconds; length; faults; re-timed packets; sizes and free space; state; failed items.
 
@@ -488,17 +527,18 @@ Each line of the development's list "what stays unproven at the end of track D" 
 | The first session from four production sources | `9A/H-17` |
 | A real camera whose stream address carries a query; a camera whose profile token is digits only | `9A/H-10` criterion 6 and the known limit; recorded through `9A/H-17` |
 
-What this run may leave unexercised, to be written into the summary when it applies: no camera of the acceptance has a stream address with a query; none has a digits-only token; none has two lenses; the interface has no more than two inputs. A line "not exercised: no such device" is not a pass and not a fail.
+What this run may leave unexercised, to be written into the summary when it applies: no camera of the acceptance has a stream address with a query; none has a digits-only token; none has two lenses; none offers Basic authentication only; no account name holds a colon; no camera changed its parameter sets after a reconnect; the interface has no more than two inputs. A line "not exercised: no such device" is not a pass and not a fail.
 
 ## 4. Open points of this chapter
 
 | # | Open point | Effect | Settled by |
 |---|---|---|---|
-| A | The relay, the commissioning functions, their screens and the production camera adapter were not built when this chapter was written. Screen texts, refusal codes and the number of audit entries per action are taken from the design | Each expected result names the outcome and marks the text "to confirm"; criteria count outcomes | the development's closing report; the dry run of the package |
-| B | Which three counters the plan means by "the three ingest counters" | `9A/H-09` reads the three of the worker's summing line and says so | the development |
-| C | Whether a stored camera file can be read by the pinned tools directly, or only from an export | `9A/H-09.2`, `9A/H-18.1` | the scripts rows |
-| D | The relay's bound for giving a lost camera up, and the intervals of its attempts | `9A/H-11` precondition and step `.5` | the development's closing report |
+| A | Built and confirmed against the code in Revision 2: the relay with its exit codes and report lines, the connection test and its outcomes, the adoption, the pairing rule, the query rule. Not in the tree: the commissioning functions and their screens (`9A/H-13`, `9A/H-15`, `9A/H-14`), and the Core's reading of the relay's loss and re-open lines (`9A/H-11.5`) | Each place names the rows it waits for: 105 to 111, 194 to 198, 44 | the named rows; the dry run of the package, row 130 |
+| B | Settled: the worker's summing line `camera_summary` carries five counters; `dropped_no_pts`, `dropped_prestart` and `retimed` are read as "the three", and `dropped_prearm` and `dropped_unanchored` are recorded beside them | `9A/H-09.1` | - |
+| C | Settled: a stored camera file is encrypted; a readable file comes from an export of the session (chapter 1, section 9.5) | `9A/H-09.2`, `9A/H-18.1`, `9A/H-19.5`, `9A/H-11.5`; chapter 2, `9A/H-08.7` | - |
+| D | Settled from the built relay: 6 tries per loss after waits of 2, 2, 4, 8, 16 and 30 s; given up at once for a changed stream, a vanished address or Basic authentication | `9A/H-11` precondition | - |
 | E | How the tablet reaches a Core on `127.0.0.1` (open point 4 of chapter 1) | `9A/H-20` tablet line | the development |
-| F | Whether the set-address job is refused before a password field is offered when the scan saw a conflict | `9A/H-15.2` | the development (the set-address screens) |
-| G | The names of the collectors and of the record writer are this chapter's and chapter 2's | Until the scripts exist, the reads are done by hand | the scripts rows |
+| F | Whether the set-address job is refused before a password field is offered when the scan saw a conflict | `9A/H-15.2` | the development: blueprint row 198 (the confirmation dialog of the set-address job) |
+| G | Settled: the 14 collectors of this chapter and the record writer exist under these names; they have run on the development Mac only | Their first run on the host is the run itself | the dry run of the package, row 130 |
 | H | The clap method has a resolution of one picture frame, and reading the frame is a person's judgement | `9A/H-18`, `9A/H-19`: a B-1 or B-2 below one frame time cannot be decided | the user, when setting B-1 and B-2 |
+| I | Collectors of this chapter that search for a code, a line or a field the product does not write under that name. `collect-h10.sh`, `collect-h23.sh`: `CAMERA_CONNECTION_TESTED` (the product: `CAPTURE_CONNECTION_TESTED`, with `outcome`, `authenticated`, `testReason`, `judgedStreams`; no `reason`, `durationMs`, `profiles`, `codec`), `CAMERA_PROFILE_LISTED` and its token members (no such line), `CAMERA_CREDENTIAL_REFUSED`, `STREAM_AUTHENTICATION_FAILED` (the outcome is `AUTHENTICATION_FAILED`). `collect-h12.sh`: `DISCOVERY_ADDRESS_NOT_PRIVATE`, `ADDRESS_NOT_PRIVATE` (the rule's word is `PUBLIC_ADDRESS` and is not logged). `collect-h09.sh`: the lines `anchored` and `keyframe_interval` (the worker: `video_anchored`, `keyframe_interval_observed`, with other members); `CAMERA_CLOCK_OFFSET` with `offsetMs` (the measurement is `CAPTURE_CLOCK_OFFSET_MEASURED`). `collect-h11.sh`: `CAPTURE_FAULT_CLEARED`, `RELAY_CONNECT_ATTEMPT`, `RELAY_GAVE_UP`. `collect-h26.sh`: `SESSION_SOURCE_OPENED`, `SESSION_SEALED`. `collect-h17.sh`: `SESSION_SEALED` as a log code. `collect-h19.sh`: `MIC_NOT_DELIVERING`. `collect-h21.sh`, `collect-h22.sh`: they do not read `CAPTURE_CAMERA_INGEST_PAIRED` | Those lines print "(absent)" or 0 whatever happened; the steps above say what a person reads instead | the owner of the scripts (the full list is in the record of row 181) |

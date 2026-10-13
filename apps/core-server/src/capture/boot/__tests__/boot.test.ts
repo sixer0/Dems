@@ -1,6 +1,6 @@
 // The boot step `capture.boot` as mounted (blueprint row 61; check M3-BC-1): the readiness runner,
 // the control, and the DEFAULT wiring - the real path inspector, the real probe of the media root,
-// the real key store and the real process channel - on a fixture below `.data/`. The worker is a
+// the real key store and the real process channel - on row 61's fixture (a temporary directory; row 228b). The worker is a
 // stand-in shell script that says one HELLO (no capture worker is started here: that is
 // `worker-probe.real.ts`, a check for the test runner). No database: the ONE fact the step reads from
 // one - how many operators still have the published demo password, asked in REAL_PRODUCTION only
@@ -8,6 +8,7 @@
 import { chmodSync, readdirSync, statSync, writeFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, describe, expect, it } from 'vitest';
+import { TEST_CAPTURE_HOST, testHostPrograms } from '../../../../test/support/capture-host';
 import { unitTestConfig } from '../../../../test/support/config';
 import type { ConfigInput } from '../../../config';
 import { BootError, createReadiness } from '../../../plugins/readiness';
@@ -17,16 +18,36 @@ import { hashPassword, type PasswordHashRecord } from '../../../modules/identity
 import { DEMO_OPERATOR_PASSWORD } from '@dems/shared/sim';
 import { CAPTURE_BOOT_STEP, CAPTURE_WORKER_VERSION, CaptureBootError, CaptureBootRefusal, OPERATORS_UNREADABLE, SELECT_STORED_HASH_SETS, SIMULATED_WITHOUT_DEMO_CONTROLS, captureBootControl, mountCaptureBootChecks, storedDemoPasswordOperators, type CaptureBootControl } from '../index';
 import { FIXTURE_NOW, realBootFixture, recordedSinks } from './support';
+// Task 4 row 228 (check 4b-2): what its cases at the end of this file need.
+import { generateKeyPairSync, randomBytes, sign } from 'node:crypto';
+import { PRODUCTION_KEY_UNIT_PREFIX, productionKeySubjectOf } from '../../../../cli/production-key-command';
+import { parseInstallationDeviceId } from '../../../config';
+import { captureOperationDecisionOf } from '../../fence/operation';
+import { certificatePem, loadSoftwareSigner, provisionSigningKey, readSigningCertificate, type CertificateSubject } from '../../signer';
+import { CaptureInstallationIdError, INSTALLATION_ID_NOT_TAKEN, InstallationBindingProblem, SIGNING_KEY_UNIT_PREFIX, organisationalUnitsOf, signingKeyInstallationProblemOf, storedSigningKeyReaders } from '../index';
+import { FIXTURE_INSTALLATION_ID } from './support';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CAPTURE_PROTOCOL_VERSION, CAPTURE_WORKER_SETTINGS, LIBAVFORMAT_VERSION_MISMATCH } from '@dems/capture-protocol';
 import { captureWorkerArguments } from '../../worker-arguments';
 import { EVIDENCE_STORE_PRIVATE_FOLDERS, evidenceStoreProblemOf, runCaptureBootChecks, type WorkerHandshake } from '../checks';
 import { probeEvidenceVolume } from '../evidence-volume';
-import { HOST_COMMAND_CHECKS, INTERFACE_FILE_COMMAND, PROGRAM_OWNERSHIP_CHECKS, SELECT_STORED_CAMERA_INTERFACE, storedCameraInterface, type CaptureBootHostFacts, type CaptureBootMount, type HostCommand } from '../index';
+import { ALIAS_SOCKET_INSTALLED_PATH, CaptureHostFactsError, HOST_COMMAND_CHECKS, HOST_FACTS_NOT_TAKEN, HOST_NOT_SEEN, INTERFACE_FILE_COMMAND, PROGRAM_OWNERSHIP_CHECKS, SELECT_STORED_CAMERA_INTERFACE, captureHostOfProcess, coreFileLimitOf, storedCameraInterface, type CaptureBootHostFacts, type CaptureBootMount, type HostCommand } from '../index';
 import { HOST_ANSWERS, PREPARED_INTERFACE, PROGRAM_ANSWERS, fakeProductionHost } from './host-support';
 
-const fixture = realBootFixture('boot');
+/**
+ * Task 4 row 228b: THE INSTALLATION OF THIS SUITE - a synthetic id of its own, NOT one of the reserved ids, so that a
+ * production mount of this file is not refused by check 4b-3. Every mount is handed it as its seam and every key
+ * of the fixtures names it. The reserved test id (`FIXTURE_INSTALLATION_ID`) is what the test configuration carries.
+ */
+const SUITE_INSTALLATION_ID = 'DEMS-TEST-BOOT';
+const TEST_INSTALLATION = Object.freeze({ installationId: SUITE_INSTALLATION_ID });
+const fixture = realBootFixture('boot', SUITE_INSTALLATION_ID);
+/** Task 4 row 85 (C46): the explicit TEST host of the mounts below, and its two stand-in programs in the fixture's own directory. */
+const TEST_HOST = { host: TEST_CAPTURE_HOST };
+const TEST_HOST_PROGRAMS = testHostPrograms(fixture.programsDir);
+/** What a production start on the test host persists before the worker is asked: the host is not Linux, so the profile's questions were not asked (step 4d). */
+const TEST_HOST_NOT_LINUX = { level: 'warn', source: 'capture.boot', code: 'CAPTURE_HOST_PROFILE_NOT_ASKED' };
 /** The operators of these database-free apps: none has the published demo password. The S99-01 cases replace or drop it. */
 const NO_DEMO_PASSWORD = { demoPasswordOperators: async (): Promise<number | null> => 0 };
 afterAll(() => fixture.remove());
@@ -40,8 +61,8 @@ interface Mounted {
 function mounted(overrides: Partial<ConfigInput>, operators: { readonly demoPasswordOperators?: () => Promise<number | null> } = NO_DEMO_PASSWORD): Mounted {
   const recorded = recordedSinks();
   const log = { info() {} } as unknown as Parameters<typeof createReadiness>[0];
-  const app = { config: unitTestConfig({ dataDir: fixture.dataDir, ...overrides }), stages: {}, readiness: createReadiness(log), clock: { now: () => FIXTURE_NOW + 1_000 } } as unknown as FastifyInstance;
-  const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, ...operators });
+  const app = { config: unitTestConfig({ dataDir: fixture.dataDir, ...TEST_HOST_PROGRAMS, ...overrides }), stages: {}, readiness: createReadiness(log), clock: { now: () => FIXTURE_NOW + 1_000 } } as unknown as FastifyInstance;
+  const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, ...TEST_HOST, ...TEST_INSTALLATION, ...operators });
   expect(captureBootControl(app)).toBe(control);
   const boot = (): Promise<void> => app.readiness.boot();
   return {
@@ -80,7 +101,7 @@ describe('the boot step, with nothing replaced', () => {
   });
 
   it('real, a worker path that is not there, and one that others can write: refused by the path rule, on real files', async () => {
-    expect((await mounted({ captureMode: 'real', captureWorkerPath: `${fixture.dataDir}/no-such-worker` }).refusal()).reason).toBe('NOT_FOUND');
+    expect((await mounted({ captureMode: 'real', captureWorkerPath: `${fixture.programsDir}/no-such-worker` }).refusal()).reason).toBe('NOT_FOUND');
     const loose = fixture.worker('worker-loose');
     chmodSync(loose, 0o777);
     expect((await mounted({ captureMode: 'real', captureWorkerPath: loose }).refusal()).reason).toBe('FILE_WRITABLE');
@@ -103,13 +124,13 @@ describe('the boot step, with nothing replaced', () => {
       const outcome = app.control.outcome();
       expect(outcome).toMatchObject({ operation, label: null, workerVersion: CAPTURE_WORKER_VERSION });
       expect(outcome?.evidenceVolume?.totalBytes).toBeGreaterThan(1_000_000_000);
-      expect(app.recorded.persisted).toEqual([]);
+      expect(app.recorded.persisted).toEqual(operation === CaptureOperation.REAL_PRODUCTION ? [TEST_HOST_NOT_LINUX] : []);
     }
     const proof = mounted({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-proof', 'capture-worker/0.3.0-PROOF') });
     expect((await proof.refusal()).code).toBe(CaptureBootRefusal.WORKER_PROOF_BUILD);
-    expect(proof.recorded.persisted).toEqual([{ level: 'error', source: 'capture.boot', code: CaptureBootRefusal.WORKER_PROOF_BUILD }]);
+    expect(proof.recorded.persisted).toEqual([TEST_HOST_NOT_LINUX, { level: 'error', source: 'capture.boot', code: CaptureBootRefusal.WORKER_PROOF_BUILD }]);
     // A program that is no worker at all, and a worker of another protocol version.
-    const silent = `${fixture.dataDir}/worker-silent`;
+    const silent = `${fixture.programsDir}/worker-silent`;
     writeFileSync(silent, '#!/bin/sh\nexit 3\n', { mode: 0o700 });
     expect((await mounted({ captureMode: 'real', captureWorkerPath: silent }).refusal()).code).toBe(CaptureBootRefusal.WORKER_NO_HANDSHAKE);
     expect((await mounted({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-old', 'capture-worker/0.2.0', 2) }).refusal()).code).toBe(CaptureBootRefusal.WORKER_PROTOCOL_MISMATCH);
@@ -205,8 +226,8 @@ describe('CS-09: the measured evidence volume is handed over after the checks pa
   function mountedWithDoor(overrides: Partial<ConfigInput>, door: (volume: { readonly totalBytes: number; readonly freeBytes: number }) => Promise<unknown>) {
     const recorded = recordedSinks();
     const log = { info() {} } as unknown as Parameters<typeof createReadiness>[0];
-    const app = { config: unitTestConfig({ dataDir: fixture.dataDir, ...overrides }), stages: {}, readiness: createReadiness(log), clock: { now: () => FIXTURE_NOW + 1_000 } } as unknown as FastifyInstance;
-    const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, applyStorageVolume: door, ...NO_DEMO_PASSWORD });
+    const app = { config: unitTestConfig({ dataDir: fixture.dataDir, ...TEST_HOST_PROGRAMS, ...overrides }), stages: {}, readiness: createReadiness(log), clock: { now: () => FIXTURE_NOW + 1_000 } } as unknown as FastifyInstance;
+    const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, applyStorageVolume: door, ...TEST_HOST, ...TEST_INSTALLATION, ...NO_DEMO_PASSWORD });
     return { control, recorded, boot: (): Promise<void> => app.readiness.boot() };
   }
 
@@ -219,7 +240,7 @@ describe('CS-09: the measured evidence volume is handed over after the checks pa
     const measured = real.control.outcome()?.evidenceVolume;
     expect(measured?.totalBytes).toBeGreaterThan(1_000_000_000);
     expect(handed).toEqual([{ totalBytes: measured?.totalBytes, freeBytes: measured?.freeBytes }]);
-    expect(real.recorded.persisted).toEqual([]);
+    expect(real.recorded.persisted).toEqual([TEST_HOST_NOT_LINUX]);
 
     // CONTROL: in SIMULATED nothing is measured, so the door is never called and the simulator's figures stay.
     const simulated = mountedWithDoor({}, door);
@@ -235,7 +256,7 @@ describe('CS-09: the measured evidence volume is handed over after the checks pa
     });
     await failing.boot();
     expect(failing.control.outcome()?.operation).toBe(CaptureOperation.REAL_PRODUCTION);
-    expect(failing.recorded.persisted).toEqual([{ level: 'error', source: 'capture.boot', code: 'CAPTURE_BOOT_STORAGE_VOLUME_NOT_APPLIED' }]);
+    expect(failing.recorded.persisted).toEqual([TEST_HOST_NOT_LINUX, { level: 'error', source: 'capture.boot', code: 'CAPTURE_BOOT_STORAGE_VOLUME_NOT_APPLIED' }]);
     expect(failing.recorded.lines.filter((line) => line.level === 'error')).toHaveLength(1);
   });
 });
@@ -250,10 +271,10 @@ describe('gate 64 C7 and the owner-only folders: the boot probe of the worker (w
   //           `.quarantine` and `.transcriber`; the media-library and proof-build refusals still hold.
   //
   // The step is mounted with NOTHING replaced: the real path inspector, the real probe, the real key
-  // store, the real process channel. The workers are stand-in shell scripts below `.data/`: they say
+  // store, the real process channel. The workers are stand-in shell scripts of the fixture's programs directory: they say
   // one line and record nothing.
 
-  const fixture = realBootFixture('wave-h-f');
+  const fixture = realBootFixture('wave-h-f', SUITE_INSTALLATION_ID);
   fixture.provisionKey();
   const scratch = mkdtempSync(join(tmpdir(), 'dems-wave-h-f-volume-'));
   afterAll(() => {
@@ -264,8 +285,8 @@ describe('gate 64 C7 and the owner-only folders: the boot probe of the worker (w
   function mounted(overrides: Partial<ConfigInput>) {
     const recorded = recordedSinks();
     const log = { info() {} } as unknown as Parameters<typeof createReadiness>[0];
-    const app = { config: unitTestConfig({ dataDir: fixture.dataDir, captureMode: 'real', ...overrides }), stages: {}, readiness: createReadiness(log), clock: { now: () => FIXTURE_NOW + 1_000 } } as unknown as FastifyInstance;
-    const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, ...NO_DEMO_PASSWORD });
+    const app = { config: unitTestConfig({ dataDir: fixture.dataDir, captureMode: 'real', ...TEST_HOST_PROGRAMS, ...overrides }), stages: {}, readiness: createReadiness(log), clock: { now: () => FIXTURE_NOW + 1_000 } } as unknown as FastifyInstance;
+    const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, ...TEST_HOST, ...TEST_INSTALLATION, ...NO_DEMO_PASSWORD });
     return {
       control,
       recorded,
@@ -284,7 +305,7 @@ describe('gate 64 C7 and the owner-only folders: the boot probe of the worker (w
 
   /** A stand-in worker as a shell script with a body of the test's own. */
   function script(name: string, body: string): string {
-    const path = `${fixture.dataDir}/${name}`;
+    const path = `${fixture.programsDir}/${name}`;
     writeFileSync(path, `#!/bin/sh\n${body}\n`, { mode: 0o700 });
     chmodSync(path, 0o700);
     return path;
@@ -300,7 +321,7 @@ describe('gate 64 C7 and the owner-only folders: the boot probe of the worker (w
       expect(failure.message).toContain('another version than the one this server was built to drive');
       expect(app.control.outcome()).toBeNull();
       // Logged and persisted like every refusal of the step: an operator finds it tomorrow.
-      expect(app.recorded.persisted).toEqual([{ level: 'error', source: 'capture.boot', code: 'CAPTURE_WORKER_VERSION_MISMATCH' }]);
+      expect(app.recorded.persisted).toEqual([TEST_HOST_NOT_LINUX, { level: 'error', source: 'capture.boot', code: 'CAPTURE_WORKER_VERSION_MISMATCH' }]);
       expect(app.recorded.lines.find((line) => line.level === 'error')?.fields).toMatchObject({ code: 'CAPTURE_WORKER_VERSION_MISMATCH', reason: `expected ${CAPTURE_WORKER_VERSION}, found capture-worker/0.4.0` });
     });
 
@@ -468,6 +489,7 @@ describe('row 81: the mount hands the host facts to the boot checks - a REAL_PRO
       timers: createSystemTimers(),
       helloTimeoutMs: 3_000,
       ...NO_DEMO_PASSWORD,
+      ...TEST_INSTALLATION,
       host: facts,
       storedCameraInterface: async () => ((reads += 1), options.stored === undefined ? PREPARED_INTERFACE : options.stored),
     };
@@ -542,12 +564,117 @@ describe('row 81: the mount hands the host facts to the boot checks - a REAL_PRO
     expect(simulated.app.recorded.lines.filter((line) => /HOST|PROGRAM/.test(String(line.fields['code'])))).toEqual([]);
   });
 
-  it('a mount that is handed NO host facts runs neither step in REAL_PRODUCTION: the start is what it was before the wiring (the control of every case above this block)', async () => {
+  // Task 4 row 85 (decision C46; review finding F-07). Until row 85 this case read "a mount that is handed NO host
+  // facts runs neither step in REAL_PRODUCTION" and expected the start to PASS: the fail-open the review named. Turned.
+  /** A mount with NOTHING handed in but the sinks and the operators: no seam `host`, as the capture unit mounts it. */
+  const bare = (overrides: Partial<ConfigInput>) => {
+    const recorded = recordedSinks();
+    const log = { info() {} } as unknown as Parameters<typeof createReadiness>[0];
+    const app = { config: unitTestConfig({ dataDir: fixture.dataDir, ...overrides }), stages: {}, readiness: createReadiness(log), clock: { now: () => FIXTURE_NOW + 1_000 } } as unknown as FastifyInstance;
+    const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, ...TEST_INSTALLATION, ...NO_DEMO_PASSWORD });
+    const refusal = (): Promise<unknown> =>
+      app.readiness.boot().then(
+        () => null,
+        (error: unknown) => (error instanceof BootError ? error.cause : error),
+      );
+    return { control, recorded, refusal, boot: (): Promise<void> => app.readiness.boot() };
+  };
+
+  it('C46: a mount that is handed NO host facts is a host that cannot be seen - a REAL_PRODUCTION start is REFUSED by step 4d, after checks 1 to 4c, and the worker is not started; the two other operations never ask', async () => {
     keyThere();
-    const plain = mounted({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-host-10') });
-    await plain.boot();
-    expect(plain.recorded.lines.map((line) => line.fields['code'])).toEqual(['CAPTURE_BOOT_CHECKS_PASSED']);
-    expect(plain.control.outcome()?.operation).toBe(CaptureOperation.REAL_PRODUCTION);
+    const plain = bare({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-host-10'), ...TEST_HOST_PROGRAMS });
+    // RE-STATED by row HC (decision C55 DD-2): until then this start was refused `CAPTURE_HOST_CORE_FILE_LIMIT` / `LIMIT_UNREADABLE` -
+    // the code of a limit nobody had read. A Core that was handed NO facts now says exactly that, by a code of its own, at the same place.
+    expect(await plain.refusal()).toMatchObject({ code: 'CAPTURE_HOST_FACTS_NOT_HANDED_IN', reason: 'NO_HOST_FACTS' });
+    expect(plain.control.outcome()).toBeNull();
+    expect(plain.recorded.lines.map((line) => [line.level, line.fields['code']])).toEqual([['error', 'CAPTURE_HOST_FACTS_NOT_HANDED_IN']]);
+    expect(plain.recorded.persisted).toEqual([{ level: 'error', source: 'capture.boot', code: 'CAPTURE_HOST_FACTS_NOT_HANDED_IN' }]);
+    // Facts that WERE handed in and whose limit cannot be read keep the code of the limit (C46): the new code is for "none" alone.
+    const unreadable = bare({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-host-hc-1'), ...TEST_HOST_PROGRAMS });
+    unreadable.control.provideHost({ ...TEST_CAPTURE_HOST, coreFileLimit: () => null });
+    expect(await unreadable.refusal()).toMatchObject({ code: 'CAPTURE_HOST_CORE_FILE_LIMIT', reason: 'LIMIT_UNREADABLE' });
+    // The order of before: a check of 1 to 4c that fails is still the one named (here: no worker program).
+    expect(await bare({ captureMode: 'real' }).refusal()).toMatchObject({ code: CaptureBootRefusal.WORKER_NOT_CONFIGURED });
+    // REAL_DEVELOPMENT and SIMULATED: nothing is asked of the host, with no facts at all.
+    const development = bare({ captureMode: 'real', captureDevSources: true, captureWorkerPath: fixture.worker('worker-host-12') });
+    await development.boot();
+    expect(development.control.outcome()?.operation).toBe(CaptureOperation.REAL_DEVELOPMENT);
+    const simulated = bare({});
+    await simulated.boot();
+    expect(simulated.control.outcome()?.operation).toBe(CaptureOperation.SIMULATED);
+    expect([...development.recorded.lines, ...simulated.recorded.lines].filter((line) => /HOST|PROGRAM/.test(String(line.fields['code'])))).toEqual([]);
+  });
+
+  it('C46: the facts go through ONE door, once, before the boot steps - `provideHost`; with the test host a production start runs BOTH steps and passes; a second hand-over and one after the step are refused', async () => {
+    keyThere();
+    const provided = bare({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-host-13'), ...TEST_HOST_PROGRAMS });
+    provided.control.provideHost(TEST_CAPTURE_HOST);
+    expect(() => provided.control.provideHost(TEST_CAPTURE_HOST)).toThrow(CaptureHostFactsError);
+    await provided.boot();
+    expect(provided.control.outcome()?.operation).toBe(CaptureOperation.REAL_PRODUCTION);
+    // Step 4d (off Linux: the process's own facts and the two programs, the profile's questions not asked), then step 4e, then the worker.
+    expect(provided.recorded.lines.map((line) => line.fields['code'])).toEqual(['CAPTURE_HOST_PROFILE_NOT_ASKED', 'CAPTURE_PROGRAM_CHECKS_PASSED', 'CAPTURE_BOOT_CHECKS_PASSED']);
+    expect(() => provided.control.provideHost(TEST_CAPTURE_HOST)).toThrow(/handed in once/);
+    // A mount that was given the seam takes no second host; a hand-over after the step asked is refused even when none was given.
+    const seamed = mounted({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-host-14') });
+    expect(() => seamed.control.provideHost(TEST_CAPTURE_HOST)).toThrow(expect.objectContaining({ code: HOST_FACTS_NOT_TAKEN, reason: 'ALREADY_PROVIDED' }));
+    const late = bare({});
+    await late.boot();
+    expect(() => late.control.provideHost(TEST_CAPTURE_HOST)).toThrow(expect.objectContaining({ code: HOST_FACTS_NOT_TAKEN, reason: 'ALREADY_ASKED' }));
+    // The host that cannot be seen has nothing in place, and its runner starts nothing.
+    expect([HOST_NOT_SEEN.coreFileLimit(), HOST_NOT_SEEN.nodeOptionsSet, await HOST_NOT_SEEN.run({ program: '/usr/bin/id', args: ['-nG'] })]).toEqual([null, true, { outcome: 'NOT_STARTED' }]);
+  });
+
+  // Task 4 row HC (decision C53 (4c), R119-10): the mount hands the CONFIGURED socket path of the address helper to check 4d-3.
+  it('row HC, C53 (4c): the mounted step refuses a configured DEMS_CAPTURE_ALIAS_SOCKET that is not the installed path, by its own code; unset and the installed path start; REAL_DEVELOPMENT never asks', async () => {
+    keyThere();
+    const started = (captureAliasSocketPath: string | null, name: string, development = false) => {
+      const app = bare({ captureMode: 'real', captureWorkerPath: fixture.worker(name), ...TEST_HOST_PROGRAMS, captureAliasSocketPath, ...(development ? { captureDevSources: true } : {}) });
+      app.control.provideHost(TEST_CAPTURE_HOST);
+      return app;
+    };
+    const other = started(`${fixture.dataDir}/netalias.socket`, 'worker-host-hc-2');
+    expect(await other.refusal()).toMatchObject({ code: 'CAPTURE_HOST_ALIAS_SOCKET_PATH', reason: 'CONFIGURED_PATH_NOT_THE_INSTALLED_ONE' });
+    expect(other.control.outcome()).toBeNull();
+    // The test host is not Linux: step 4d's warning has its row first, then the refusal of check 4d-3.
+    expect(other.recorded.persisted.map((entry) => [entry.level, entry.code])).toEqual([['warn', 'CAPTURE_HOST_PROFILE_NOT_ASKED'], ['error', 'CAPTURE_HOST_ALIAS_SOCKET_PATH']]);
+    expect(JSON.stringify(other.recorded.lines)).not.toContain(fixture.dataDir);
+    for (const [path, name] of [[null, 'worker-host-hc-3'], [ALIAS_SOCKET_INSTALLED_PATH, 'worker-host-hc-4']] as const) {
+      const same = started(path, name);
+      await same.boot();
+      expect(same.control.outcome()?.operation, String(path)).toBe(CaptureOperation.REAL_PRODUCTION);
+    }
+    expect(ALIAS_SOCKET_INSTALLED_PATH).toBe('/run/dems-core-netalias/socket');
+    const development = started(`${fixture.dataDir}/netalias.socket`, 'worker-host-hc-5', true);
+    await development.boot();
+    expect(development.control.outcome()?.operation).toBe(CaptureOperation.REAL_DEVELOPMENT);
+  });
+
+  it('C46: THE ENTRY POINT\'S OWN FACTS (`captureHostOfProcess`) on a production Core WITHOUT a relay program - the start is refused CAPTURE_HOST_RELAY_PROGRAM_UNUSABLE / NOT_SET; without a guard, the guard\'s code; the limit is read from the runtime\'s statement, fail closed', async () => {
+    keyThere();
+    const started: string[] = [];
+    // The four facts the entry point states of its process (a clean one), and timers that are never needed: no question is asked before the refusal.
+    const own = { platform: 'linux', startArguments: [], nodeOptionsSet: false, userLimits: () => ({ core_file_size_blocks: { soft: 0, hard: 'unlimited' } }) };
+    const facts = captureHostOfProcess(own, { after: () => () => {}, every: () => () => {} } as unknown as Parameters<typeof captureHostOfProcess>[1]);
+    const watched: CaptureBootHostFacts = { ...facts, run: async (command) => (started.push(command.program), { outcome: 'NOT_STARTED' }) };
+    const noRelay = bare({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-host-15') });
+    noRelay.control.provideHost(watched);
+    expect(await noRelay.refusal()).toMatchObject({ code: 'CAPTURE_HOST_RELAY_PROGRAM_UNUSABLE', reason: 'NOT_SET' });
+    expect(noRelay.recorded.persisted).toEqual([{ level: 'error', source: 'capture.boot', code: 'CAPTURE_HOST_RELAY_PROGRAM_UNUSABLE' }]);
+    const noGuard = bare({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-host-16'), captureRelayPath: TEST_HOST_PROGRAMS.captureRelayPath });
+    noGuard.control.provideHost(watched);
+    expect(await noGuard.refusal()).toMatchObject({ code: 'CAPTURE_HOST_GUARD_PROGRAM_UNUSABLE', reason: 'NOT_SET' });
+    // Nothing was asked of the host and no worker was started: the refusal comes first.
+    expect(started).toEqual([]);
+    expect([noRelay.control.outcome(), noGuard.control.outcome()]).toEqual([null, null]);
+    // The limit: one value of the runtime's own statement; anything else is "not readable", which the check refuses.
+    expect([coreFileLimitOf({ core_file_size_blocks: { soft: 0 } }), coreFileLimitOf({ core_file_size_blocks: { soft: 'unlimited' } }), coreFileLimitOf({ core_file_size_blocks: { soft: 4096 } })]).toEqual([0, Number.POSITIVE_INFINITY, 4096]);
+    for (const unreadable of [undefined, null, 'x', {}, { core_file_size_blocks: null }, { core_file_size_blocks: { soft: '0' } }, { core_file_size_blocks: { soft: -1 } }, { core_file_size_blocks: { soft: Number.NaN } }]) expect(coreFileLimitOf(unreadable), JSON.stringify(unreadable)).toBeNull();
+    expect(facts.coreFileLimit()).toBe(0);
+    expect(captureHostOfProcess({ ...own, userLimits: () => { throw new Error('no report'); } }, {} as never).coreFileLimit()).toBeNull();
+    const limited = bare({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-host-17'), ...TEST_HOST_PROGRAMS });
+    limited.control.provideHost({ ...watched, coreFileLimit: () => coreFileLimitOf({ core_file_size_blocks: { soft: 'unlimited' } }) });
+    expect(await limited.refusal()).toMatchObject({ code: 'CAPTURE_HOST_CORE_FILE_LIMIT', reason: 'LIMIT_ABOVE_ZERO' });
   });
 
   it('the default reader of the stored camera interface: ONE statement on the pool, the name of the one row; no row and no name are null; a read that fails REJECTS (the check then refuses)', async () => {
@@ -584,11 +711,245 @@ describe('row 81: the mount hands the host facts to the boot checks - a REAL_PRO
     const recorded = recordedSinks();
     const log = { info() {} } as unknown as Parameters<typeof createReadiness>[0];
     const app = { config: unitTestConfig({ dataDir: fixture.dataDir, captureMode: 'real', captureWorkerPath: fixture.worker('worker-host-11'), captureRelayPath: relay, captureGuardPath: fixture.worker('guard-stand-in-nodb') }), stages: {}, readiness: createReadiness(log), clock: { now: () => FIXTURE_NOW + 1_000 } } as unknown as FastifyInstance;
-    mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, ...NO_DEMO_PASSWORD, host: { platform: 'linux', coreFileLimit: () => 0, startArguments: [], nodeOptionsSet: false, run: host.deps.run } });
+    mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, ...TEST_INSTALLATION, ...NO_DEMO_PASSWORD, host: { platform: 'linux', coreFileLimit: () => 0, startArguments: [], nodeOptionsSet: false, run: host.deps.run } });
     const failure = await app.readiness.boot().then(
       () => null,
       (error: unknown) => (error instanceof BootError ? error.cause : error),
     );
     expect(failure).toMatchObject({ code: 'CAPTURE_HOST_INTERFACE_FILE_MISMATCH', reason: 'INTERFACE_ROW_UNREADABLE' });
+  });
+});
+
+// ── Task 4 row 228 (X1-5; SX-10; UD-4; caution C-4 of the as-built security review): check 4b-2 ─────────────────
+// EVERY KEY BELOW IS MADE BY THE TEST: a store in a temporary directory of its own that the case removes (never
+// the fixture of row 61, never below the repository's data directory), or a key pair that exists in memory only.
+// Nothing prints or stores key material. The worker and the two host programs are the stand-ins of the fixture.
+describe('row 228, check 4b-2: the active certificate of a production Core names its installation', () => {
+  const MISMATCH = CaptureBootRefusal.SIGNING_KEY_INSTALLATION_MISMATCH;
+  const scratch: string[] = [];
+  afterAll(() => {
+    for (const directory of scratch.splice(0)) rmSync(directory, { recursive: true, force: true });
+    expect(scratch).toEqual([]);
+  });
+  /** A data directory of this case alone, with a key store whose certificate has `subject` (absent: the store's default subject). */
+  const storeWith = (subject?: Partial<CertificateSubject>): string => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'dems-row228-'));
+    scratch.push(dataDir);
+    provisionSigningKey({ dir: join(dataDir, 'signer'), now: FIXTURE_NOW, ...(subject === undefined ? {} : { subject }) });
+    return dataDir;
+  };
+  const unitOf = (installationId: string): string => `${SIGNING_KEY_UNIT_PREFIX} ${installationId}`;
+  /** The step as the capture unit mounts it - the real inspector, probe, key store and process channel - over a store of the case. */
+  const core = (dataDir: string, seams: Partial<CaptureBootMount> = TEST_INSTALLATION, overrides: Partial<ConfigInput> = {}) => {
+    const recorded = recordedSinks();
+    const log = { info() {} } as unknown as Parameters<typeof createReadiness>[0];
+    const config = unitTestConfig({ dataDir, mediaStoreDir: fixture.mediaStoreDir, captureMode: 'real', captureWorkerPath: fixture.worker('worker-row228'), ...TEST_HOST_PROGRAMS, ...overrides });
+    const app = { config, stages: {}, readiness: createReadiness(log), clock: { now: () => FIXTURE_NOW + 1_000 } } as unknown as FastifyInstance;
+    const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, ...TEST_HOST, ...NO_DEMO_PASSWORD, ...seams });
+    const boot = (): Promise<void> => app.readiness.boot();
+    const refusal = (): Promise<[string, string | null]> =>
+      boot().then(
+        () => ['NOT REFUSED', null],
+        (error: unknown) => {
+          const cause = error instanceof BootError ? error.cause : error;
+          if (!(cause instanceof CaptureBootError)) throw error;
+          return [cause.code, cause.reason];
+        },
+      );
+    return { control, recorded, boot, refusal };
+  };
+
+  it('the fixture and the test configuration name ONE installation, and the check reads the prefix the key command writes', () => {
+    // Row 228b: the test configuration carries the RESERVED test id (the fixture's default); this suite's mounts carry their own.
+    expect(unitTestConfig({}).installationDeviceId).toBe(FIXTURE_INSTALLATION_ID);
+    expect(SUITE_INSTALLATION_ID).not.toBe(FIXTURE_INSTALLATION_ID);
+    expect(SIGNING_KEY_UNIT_PREFIX).toBe(PRODUCTION_KEY_UNIT_PREFIX);
+    expect(productionKeySubjectOf('Example Unit', SUITE_INSTALLATION_ID)).toBe(`CN=CORE-KEY-EVSIGN-01,OU=${unitOf(SUITE_INSTALLATION_ID)},O=Example Unit`);
+  });
+
+  it('a certificate whose WHOLE unit is `Evidence signing <configured id>` boots REAL_PRODUCTION; the same store under another configured id is refused', async () => {
+    const dataDir = storeWith({ organization: 'Example Unit', organizationalUnit: unitOf(SUITE_INSTALLATION_ID) });
+    const matching = core(dataDir);
+    await matching.boot();
+    expect(matching.control.outcome()).toMatchObject({ operation: CaptureOperation.REAL_PRODUCTION, workerVersion: CAPTURE_WORKER_VERSION });
+    // The installation was RENAMED: the old key no longer starts it (the way out is a rotation to a key with the new name).
+    expect(await core(dataDir, { installationId: 'DEMS-JKT-07' }).refusal()).toEqual([MISMATCH, 'OTHER_INSTALLATION']);
+  });
+
+  it('C-4: a key of ANOTHER installation and a key with the store\'s DEFAULT subject (a test-made key) are refused by the named code; nothing of the certificate or the id is logged', async () => {
+    const other = core(storeWith({ organizationalUnit: unitOf('DEMS-JKT-07') }));
+    expect(await other.refusal()).toEqual([MISMATCH, 'OTHER_INSTALLATION']);
+    expect(other.recorded.lines).toEqual([{ level: 'error', fields: { code: MISMATCH, operation: 'REAL_PRODUCTION', reason: 'OTHER_INSTALLATION' }, message: 'the capture boot checks refuse this start: the server does not start' }]);
+    expect(other.recorded.persisted).toEqual([{ level: 'error', source: 'capture.boot', code: MISMATCH }]);
+    expect(JSON.stringify(other.recorded)).not.toMatch(/DEMS-JKT-07|DEMS-TEST-01|DEMS-TEST-BOOT/);
+    // The default subject of the store: the unit is `Evidence signing` and names no installation. Before row 228 such a key passed checks 4 and 4b.
+    const defaulted = storeWith();
+    expect(organisationalUnitsOf(loadSoftwareSigner({ dir: join(defaulted, 'signer'), now: FIXTURE_NOW }).certificate.pemText)).toEqual([SIGNING_KEY_UNIT_PREFIX]);
+    expect(await core(defaulted).refusal()).toEqual([MISMATCH, 'OTHER_INSTALLATION']);
+  });
+
+  it('an id that only CONTAINS the configured one, or is contained in it, is refused: the comparison is of the whole unit', async () => {
+    for (const unit of [unitOf(`${SUITE_INSTALLATION_ID}1`), unitOf(`X${SUITE_INSTALLATION_ID}`), unitOf(SUITE_INSTALLATION_ID.slice(0, -1)), `${unitOf(SUITE_INSTALLATION_ID)} `, ` ${unitOf(SUITE_INSTALLATION_ID)}`, `${SIGNING_KEY_UNIT_PREFIX}  ${SUITE_INSTALLATION_ID}`, unitOf(SUITE_INSTALLATION_ID).toLowerCase(), SUITE_INSTALLATION_ID]) {
+      expect(await core(storeWith({ organizationalUnit: unit })).refusal(), unit).toEqual([MISMATCH, 'OTHER_INSTALLATION']);
+    }
+    // And the other way round: the configured id is a part of the certificate's.
+    expect(await core(storeWith({ organizationalUnit: unitOf(SUITE_INSTALLATION_ID) }), { installationId: SUITE_INSTALLATION_ID.slice(0, -1) }).refusal()).toEqual([MISMATCH, 'OTHER_INSTALLATION']);
+  });
+
+  it('CRAFTED: the matching text inside ANOTHER attribute (organisation, common name) does not match - the subject TEXT holds it, the parsed unit does not', async () => {
+    const wanted = unitOf(SUITE_INSTALLATION_ID);
+    const smuggled = storeWith({ organization: `Example,OU=${wanted}`, organizationalUnit: unitOf('DEMS-JKT-07') });
+    const loaded = loadSoftwareSigner({ dir: join(smuggled, 'signer'), now: FIXTURE_NOW }).certificate;
+    expect(loaded.subject).toContain(`OU=${wanted}`);
+    expect(organisationalUnitsOf(loaded.pemText)).toEqual([unitOf('DEMS-JKT-07')]);
+    expect(await core(smuggled).refusal()).toEqual([MISMATCH, 'OTHER_INSTALLATION']);
+    // A unit that CONTINUES after the id with distinguished-name syntax: one attribute, and not the whole text.
+    expect(await core(storeWith({ organizationalUnit: `${wanted},O=Example Unit` })).refusal()).toEqual([MISMATCH, 'OTHER_INSTALLATION']);
+    expect(await core(storeWith({ organizationalUnit: `${wanted}+OU=${wanted}` })).refusal()).toEqual([MISMATCH, 'OTHER_INSTALLATION']);
+    // A unit that is not plain visible ASCII is not read at all (the command of row 206 types ASCII only).
+    expect(await core(storeWith({ organizationalUnit: `${wanted}\n` })).refusal()).toEqual([MISMATCH, 'SUBJECT_UNREADABLE']);
+    expect(await core(storeWith({ organizationalUnit: `Evidence signing DEMS-TEST-0١` })).refusal()).toEqual([MISMATCH, 'SUBJECT_UNREADABLE']);
+  });
+
+  it('CRAFTED: a configured id with distinguished-name syntax is never compared - even a certificate that repeats it byte for byte is refused', async () => {
+    for (const crafted of ['DEMS-TEST-01,O=X', 'A=B', 'DEMS TEST', 'dems-test-01', 'DEMS-TEST-01\n', 'DEMS+01', `D${'A'.repeat(32)}`, '1DEMS']) {
+      expect(() => parseInstallationDeviceId(crafted), crafted).toThrow();
+      expect(signingKeyInstallationProblemOf([unitOf(crafted)], crafted), crafted).toBe(InstallationBindingProblem.INSTALLATION_ID_FORM);
+    }
+    // The form is the configuration's: what it takes, the rule compares.
+    for (const taken of ['D', 'DEMS-JKT-07', `D${'A'.repeat(31)}`]) {
+      expect(parseInstallationDeviceId(taken)).toBe(taken);
+      expect(signingKeyInstallationProblemOf([unitOf(taken)], taken), taken).toBeNull();
+    }
+    expect(await core(storeWith({ organizationalUnit: unitOf('DEMS-TEST-01,O=X') }), { installationId: 'DEMS-TEST-01,O=X' }).refusal()).toEqual([MISMATCH, 'INSTALLATION_ID_FORM']);
+  });
+
+  /** A minimal DER writer of this test, for certificates the store's own writer cannot make (no unit, two units, a unit in a set of two). */
+  const tlv = (tag: number, ...parts: readonly Uint8Array[]): Buffer => {
+    const body = Buffer.concat(parts);
+    const size = body.length < 0x80 ? [body.length] : body.length < 0x100 ? [0x81, body.length] : [0x82, body.length >> 8, body.length & 0xff];
+    return Buffer.concat([Buffer.from([tag, ...size]), body]);
+  };
+  const TYPE = { organisation: [0x55, 0x04, 0x0a], unit: [0x55, 0x04, 0x0b], commonName: [0x55, 0x04, 0x03] } as const;
+  const attribute = (type: readonly number[], text: string, tag = 0x0c): Buffer => tlv(0x30, tlv(0x06, Buffer.from(type)), tlv(tag, Buffer.from(text, 'utf8')));
+  const one = (type: readonly number[], text: string, tag?: number): Buffer => tlv(0x31, attribute(type, text, tag));
+  /** A self-signed Ed25519 certificate whose subject is `names`, signed by a key pair that never leaves this function; read back by the store's public reader. */
+  const certificateOf = (names: readonly Buffer[]) => {
+    const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+    const algorithm = tlv(0x30, tlv(0x06, Buffer.from([0x2b, 0x65, 0x70])));
+    const name = tlv(0x30, ...names);
+    const instant = (text: string): Buffer => tlv(0x17, Buffer.from(text, 'ascii'));
+    const signed = tlv(0x30, tlv(0xa0, tlv(0x02, Buffer.from([0x02]))), tlv(0x02, Buffer.from([0x41, ...randomBytes(8)])), algorithm, name, tlv(0x30, instant('251001000000Z'), instant('351001000000Z')), name, publicKey.export({ format: 'der', type: 'spki' }));
+    return readSigningCertificate(certificatePem(tlv(0x30, signed, algorithm, tlv(0x03, Buffer.from([0]), sign(null, signed, privateKey)))), 'TEST-KEY-ROW228');
+  };
+  /** The REAL decision over the readers of the mounted step, with a loader that hands back `certificate` and counts. */
+  const decided = async (certificate: ReturnType<typeof certificateOf>, installationId: string | null = SUITE_INSTALLATION_ID): Promise<{ readonly answer: [string, string | null]; readonly loads: number }> => {
+    let loads = 0;
+    const readers = storedSigningKeyReaders(() => ((loads += 1), { certificate }) as ReturnType<typeof loadSoftwareSigner>);
+    const answer = await runCaptureBootChecks({
+      decision: captureOperationDecisionOf({ captureMode: 'real', demoControls: false, captureDevSources: false, host: '127.0.0.1' }),
+      workerProgram: '/opt/dems/capture-worker',
+      inspect: () => ({ absolute: true, exists: true, regularFile: true, symbolicLink: false, file: { ownerUid: 501, mode: 0o755 }, directoriesAsWritten: [{ ownerUid: 0, mode: 0o755 }], directoriesResolved: [{ ownerUid: 0, mode: 0o755 }], serverUid: 501 }),
+      probeEvidenceVolume: () => ({ absolute: true, present: true, directory: true, ownerUid: 501, mode: 0o700, serverUid: 501, exclusiveCreate: true, exclusiveRefusesSecond: true, synced: true, hardLink: true, linkRefusesExisting: true, cleaned: true, totalBytes: 1, freeBytes: 1 }),
+      signingKeyProblem: () => readers.problem('/nowhere/signer', FIXTURE_NOW),
+      signingKeyIsDevelopment: () => readers.isDevelopment('/nowhere/signer', FIXTURE_NOW),
+      signingKeyInstallationProblem: () => signingKeyInstallationProblemOf(readers.organisationalUnits('/nowhere/signer', FIXTURE_NOW), installationId),
+      demoPasswordOperators: async () => 0,
+      handshake: async () => ({ outcome: 'HELLO', protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion: CAPTURE_WORKER_VERSION }),
+      sinks: recordedSinks().sinks,
+    }).then(
+      (): [string, string | null] => ['PASSED', null],
+      (error: unknown): [string, string | null] => {
+        if (!(error instanceof CaptureBootError)) throw error;
+        return [error.code, error.reason];
+      },
+    );
+    return { answer, loads };
+  };
+
+  it('C-4: a key whose certificate has NO organisational unit is refused by the named code; checks 4, 4b and 4b-2 judged ONE loaded certificate', async () => {
+    const wanted = unitOf(SUITE_INSTALLATION_ID);
+    const none = certificateOf([one(TYPE.organisation, 'Example Unit'), one(TYPE.commonName, 'TEST-KEY-ROW228')]);
+    expect(organisationalUnitsOf(none.pemText)).toEqual([]);
+    expect(await decided(none)).toEqual({ answer: [MISMATCH, 'NO_ORGANISATIONAL_UNIT'], loads: 1 });
+    // CONTROL of the hand-made certificate: with the right unit the same construction passes every check, on one load.
+    const right = certificateOf([one(TYPE.organisation, 'Example Unit'), one(TYPE.unit, wanted), one(TYPE.commonName, 'TEST-KEY-ROW228')]);
+    expect(organisationalUnitsOf(right.pemText)).toEqual([wanted]);
+    expect(await decided(right)).toEqual({ answer: ['PASSED', null], loads: 1 });
+    expect(await decided(certificateOf([one(TYPE.unit, wanted, 0x13)]))).toEqual({ answer: ['PASSED', null], loads: 1 });
+    // No id handed in, and an id that is not configured: nothing a certificate could equal.
+    expect((await decided(right, null)).answer).toEqual([MISMATCH, 'INSTALLATION_ID_NOT_KNOWN']);
+    expect(signingKeyInstallationProblemOf([wanted], undefined)).toBe('INSTALLATION_ID_NOT_KNOWN');
+    expect(signingKeyInstallationProblemOf([wanted], '')).toBe('INSTALLATION_ID_NOT_KNOWN');
+  });
+
+  it('CRAFTED: two units of which one matches, a unit beside another attribute in one set, a unit of another string type, and bytes that are no certificate are refused', async () => {
+    const wanted = unitOf(SUITE_INSTALLATION_ID);
+    const twice = certificateOf([one(TYPE.unit, unitOf('DEMS-JKT-07')), one(TYPE.unit, wanted), one(TYPE.commonName, 'K')]);
+    expect(organisationalUnitsOf(twice.pemText)).toEqual([unitOf('DEMS-JKT-07'), wanted]);
+    expect((await decided(twice)).answer).toEqual([MISMATCH, 'SEVERAL_ORGANISATIONAL_UNITS']);
+    expect((await decided(certificateOf([one(TYPE.unit, wanted), one(TYPE.unit, wanted)]))).answer).toEqual([MISMATCH, 'SEVERAL_ORGANISATIONAL_UNITS']);
+    // One set with two attributes: the unit is still ONE parsed value and is compared as a whole; two units in one set are two.
+    const together = certificateOf([tlv(0x31, attribute(TYPE.commonName, 'K'), attribute(TYPE.unit, unitOf('DEMS-JKT-07')))]);
+    expect((await decided(together)).answer).toEqual([MISMATCH, 'OTHER_INSTALLATION']);
+    expect((await decided(certificateOf([tlv(0x31, attribute(TYPE.unit, unitOf('DEMS-JKT-07')), attribute(TYPE.unit, wanted))]))).answer).toEqual([MISMATCH, 'SEVERAL_ORGANISATIONAL_UNITS']);
+    // A unit written as an IA5 string (not one of the two types the reader takes) is not read as text at all.
+    expect((await decided(certificateOf([one(TYPE.unit, wanted, 0x16)]))).answer).toEqual([MISMATCH, 'SUBJECT_UNREADABLE']);
+    for (const text of ['', 'not a certificate', '-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n', certificatePem(Buffer.from([0x30, 0x84, 0xff, 0xff, 0xff, 0xff])), certificatePem(Buffer.from([0x30, 0x80, 0x00, 0x00]))]) {
+      expect(organisationalUnitsOf(text), text).toBeNull();
+      expect(signingKeyInstallationProblemOf(organisationalUnitsOf(text), SUITE_INSTALLATION_ID)).toBe('SUBJECT_UNREADABLE');
+    }
+    // A store that does not load answers no units: fail closed (check 4 has refused such a start before).
+    const unloadable = storedSigningKeyReaders(() => {
+      throw new Error('a text of the operating system');
+    });
+    expect(unloadable.organisationalUnits('/nowhere/signer', FIXTURE_NOW)).toBeNull();
+  });
+
+  it('REAL_DEVELOPMENT and SIMULATED never ask: a key of another installation, and no id at all, start as before', async () => {
+    const other = storeWith({ organizationalUnit: unitOf('DEMS-JKT-07') });
+    const development = core(other, {}, { captureDevSources: true });
+    await development.boot();
+    expect(development.control.outcome()).toMatchObject({ operation: CaptureOperation.REAL_DEVELOPMENT });
+    const simulated = core(other, {}, { captureMode: 'simulated', captureWorkerPath: null });
+    await simulated.boot();
+    expect(simulated.control.outcome()).toMatchObject({ operation: CaptureOperation.SIMULATED });
+  });
+
+  it('THE DOOR: the id is handed in once, before the boot steps; without it - or with none configured - a production start is refused INSTALLATION_ID_NOT_KNOWN', async () => {
+    const dataDir = storeWith({ organizationalUnit: unitOf(SUITE_INSTALLATION_ID) });
+    // As the capture unit mounts it: no seam. Nobody handed the id in.
+    expect(await core(dataDir, {}).refusal()).toEqual([MISMATCH, 'INSTALLATION_ID_NOT_KNOWN']);
+    // The unit that holds the identity says "none is configured".
+    const unconfigured = core(dataDir, {});
+    unconfigured.control.provideInstallationId(null);
+    expect(await unconfigured.refusal()).toEqual([MISMATCH, 'INSTALLATION_ID_NOT_KNOWN']);
+    // Handed in through the door: the start passes; a second hand-over and one after the step ran are refused.
+    const provided = core(dataDir, {});
+    provided.control.provideInstallationId(SUITE_INSTALLATION_ID);
+    expect(() => provided.control.provideInstallationId('DEMS-JKT-07')).toThrow(CaptureInstallationIdError);
+    await provided.boot();
+    expect(provided.control.outcome()).toMatchObject({ operation: CaptureOperation.REAL_PRODUCTION });
+    const late = ((): unknown => {
+      try {
+        provided.control.provideInstallationId(SUITE_INSTALLATION_ID);
+        return null;
+      } catch (error) {
+        return error;
+      }
+    })();
+    expect(late).toMatchObject({ code: INSTALLATION_ID_NOT_TAKEN, reason: 'ALREADY_ASKED' });
+    // A mount that was given the seam does not take a second id either, and an id handed in as null is not replaced.
+    expect(() => core(dataDir).control.provideInstallationId('DEMS-JKT-07')).toThrow(expect.objectContaining({ code: INSTALLATION_ID_NOT_TAKEN, reason: 'ALREADY_PROVIDED' }));
+    expect(() => unconfigured.control.provideInstallationId(SUITE_INSTALLATION_ID)).toThrow(CaptureInstallationIdError);
+  });
+
+  it('a mount whose key is a SEAM and that hands in no units reads the real store for them - and is refused when there is none (no seam passes by default)', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'dems-row228-'));
+    scratch.push(empty);
+    expect(await core(empty, { ...TEST_INSTALLATION, signingKeyProblem: () => null, signingKeyIsDevelopment: () => false }).refusal()).toEqual([MISMATCH, 'SUBJECT_UNREADABLE']);
+    const seamed = core(empty, { ...TEST_INSTALLATION, signingKeyProblem: () => null, signingKeyIsDevelopment: () => false, signingKeyUnits: () => [unitOf(SUITE_INSTALLATION_ID)] });
+    await seamed.boot();
+    expect(seamed.control.outcome()).toMatchObject({ operation: CaptureOperation.REAL_PRODUCTION });
   });
 });

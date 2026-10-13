@@ -372,10 +372,12 @@ export interface CameraTileModel {
   room: string
   ready: boolean
   online: boolean
-  resolution: string
+  /** Null (row V6, S-01): no stream statement is stored for the track; the tile then reads "Not stated". */
+  resolution: string | null
   /** Null: the stream states no rate; the tile then shows no format line. */
   fps: number | null
-  codec: string
+  /** Null (row V6, S-01): no stream statement is stored for the track. */
+  codec: string | null
 }
 
 /**
@@ -448,7 +450,9 @@ function trackNotConnected(s: SimState, trackId: string): boolean {
 }
 
 export function selectFeed(s: SimState): FeedModel {
-  const camera = s.cameras.find((c) => c.id === s.activeCameraId) ?? s.cameras[0]
+  // Task 4 row W4 (review 060c R-05): the camera OF THE ACTIVE TRACK, or none. Until row W4 a track the slice does not
+  // carry fell back to the first camera, whose name, room, signal state and facts then stood under the other track.
+  const camera = s.cameras.find((c) => c.id === s.activeCameraId)
   // D84: the REC indicator and the timer start with the first durable fragment.
   const recording = selectRecordingDurable(s)
   return {

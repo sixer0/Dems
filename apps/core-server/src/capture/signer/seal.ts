@@ -66,7 +66,11 @@ export async function signManifest(signing: Signer, unsigned: UnsignedManifestV2
   let signature: Uint8Array;
   try {
     signature = await signing.sign(message);
-  } catch {
+  } catch (error) {
+    // Row 226b: a refusal the signer NAMED (the key was marked compromised or is no longer the active
+    // one while this Core runs) keeps its name - a code and a key id, nothing else. Anything else a
+    // signer throws stays the one code, its text dropped.
+    if (error instanceof SignerError) throw error;
     throw new SignerError(SignerRefusal.SIGNATURE_FAILED, signing.keyId);
   }
   if (!verifier(signing.publicKey(), message, signature)) throw new SignerError(SignerRefusal.SIGNATURE_FAILED, signing.keyId);

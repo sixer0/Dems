@@ -56,6 +56,20 @@
  * 127.0.0.1 - "the camera moved" is a value in its state, not a socket; IPv6, link settings, MTU
  * and DNS are not read; well-formedness is judged by a small scanner, not an XML parser.
  * Every value is synthetic (RFC 5737 addresses, an RFC 7042 documentation hardware address).
+ *
+ * ROW 109, SECOND PASS (wave 10; all of it additive, every default is the behaviour above):
+ *   - `httpRequests()`: EVERY request the device listener receives, recorded when its head arrives
+ *     (so also one that is never answered or whose body is cut): method, path, the SOAP action, the
+ *     operation, whether an `Authorization` header was present and its SCHEME ONLY - never its
+ *     value - and whether a WS-Security token came as a digest or in clear. A later row asserts
+ *     "0 requests sent" and "the password never left over Basic" on this list.
+ *   - `network.onApply`: `'STATE_ONLY'` (the default: the paragraph above), `'MOVE'` (the camera
+ *     APPLIES the address: once the reply is written the stub closes its three listeners and opens
+ *     them on `network.movedPorts` - other ports of 127.0.0.1, because no other address can be
+ *     bound here (see FAKE_ONVIF_TESTABLE_DEVICES_MAX); the old ports refuse from then on) and
+ *     `'NOT_APPLIED'` (the camera answers every call as accepted and keeps its address).
+ *   - network mode `MARKUP_TEXT`: the free-text fields of the replies (interface name, reboot
+ *     message) carry markup characters, escaped; the hostile-text case of AD-06.
  */
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createSocket, type RemoteInfo, type Socket as UdpSocket } from 'node:dgram';
@@ -231,9 +245,28 @@ export type FakeOnvifNetworkMode =
   | 'MALFORMED_REPLY' //        status 200, a body cut in the middle of an element
   | 'OVERSIZED_REPLY' //        a well-formed body above FAKE_ONVIF_OVERSIZED_REPLY_BYTES
   | 'MARKUP_TOKEN' //           the interface token is FAKE_ONVIF_MARKUP_TOKEN
+  | 'MARKUP_TEXT' //            the free-text fields of the replies are FAKE_ONVIF_MARKUP_TEXT (second pass)
   | 'TWO_ENDPOINTS'; //         a Probe is answered by two endpoint references from the one address
 
+/**
+ * The free text of mode `MARKUP_TEXT` (second pass; AD-06): what `<tt:Name>` of GetNetworkInterfaces
+ * and `<tds:Message>` of SystemReboot hold, escaped in the reply. The interface TOKEN stays `eth0`
+ * and the hardware address stays what it is: only text nobody needs is hostile here.
+ */
+export const FAKE_ONVIF_MARKUP_TEXT = `eth0 <script>alert('x')</script> & "q" \${jndi} {{7*7}}`;
+
+/**
+ * What the camera does with an address it accepted (second pass). `STATE_ONLY`: the address is a
+ * value of `networkState()` and no socket changes. `MOVE`: it also leaves its ports for
+ * `movedPorts`. `NOT_APPLIED`: it answers as accepted and changes nothing.
+ */
+export type FakeOnvifNetworkApply = 'STATE_ONLY' | 'MOVE' | 'NOT_APPLIED';
+
 export interface FakeOnvifNetworkOptions {
+  /** Second pass. Default `STATE_ONLY`. */
+  readonly onApply?: FakeOnvifNetworkApply;
+  /** Second pass. Required with `onApply: 'MOVE'` and refused without it: where the three listeners answer after the move (ask `freeFakeOnvifPorts()` a second time). */
+  readonly movedPorts?: FakeOnvifPorts;
   readonly hwAddress?: string;
   readonly address?: string;
   readonly prefixLength?: number;
@@ -260,6 +293,35 @@ export interface FakeOnvifNetworkState {
   readonly rebootCount: number;
   /** The second endpoint reference of mode `TWO_ENDPOINTS`. */
   readonly twinEndpointRef: string;
+  /** Second pass. `MOVED` from the moment a move begins (`networkSettled()` resolves when the new ports listen); always `ORIGINAL` without `onApply: 'MOVE'`. */
+  readonly location: 'ORIGINAL' | 'MOVED';
+  /** Second pass. How many accepted changes a `NOT_APPLIED` camera dropped. */
+  readonly changesNotApplied: number;
+}
+
+/**
+ * Second pass. One HTTP request as the device listener received it. Recorded when the request HEAD
+ * arrives; `operation` and `wsSecurity` are filled in when the body has been read and stay `null`
+ * for a request whose body never ended. NEVER a header value, a query string, a nonce, a user name
+ * or a secret: of `Authorization` only its presence and the name of its scheme.
+ */
+export interface FakeOnvifHttpRequest {
+  /** Which ports the request came in on: the ones the stub was built with, or `movedPorts`. */
+  readonly listener: 'ORIGINAL' | 'MOVED';
+  readonly port: number;
+  readonly method: string;
+  /** The request path without its query string, at most 256 characters; `?` when it holds a character outside printable ASCII. */
+  readonly path: string;
+  readonly queryPresent: boolean;
+  /** The `SOAPAction` header, or the `action` parameter of `Content-Type` (SOAP 1.2); `null` when neither is sent, `?` when it is no plain URI. */
+  readonly soapAction: string | null;
+  /** The first element of the SOAP body; `?` when it could not be read. */
+  readonly operation: string | null;
+  readonly authorizationPresent: boolean;
+  /** `null` without the header; `OTHER` for a scheme outside the four named. */
+  readonly authorizationScheme: 'Basic' | 'Digest' | 'Bearer' | 'Negotiate' | 'OTHER' | null;
+  /** A WS-Security UsernameToken in the body: none, a password digest (valid or not), or the password in clear. */
+  readonly wsSecurity: 'NONE' | 'DIGEST' | 'CLEAR' | null;
 }
 
 /** One network request as the stub judged it. Addresses are recorded only when they are dotted IPv4; never a header, a token of the account or a secret. */
@@ -351,13 +413,21 @@ export interface FakeOnvifStub {
   /**
    * Row 109. Throws on a stub built without `network`. MALFORMED_REPLY and OVERSIZED_REPLY shape the
    * reply of every network call, or of the one call named in `only`; a Set call is still OBEYED
-   * (the device did it and answered badly). MARKUP_TOKEN and TWO_ENDPOINTS ignore `only`.
+   * (the device did it and answered badly). MARKUP_TOKEN, MARKUP_TEXT and TWO_ENDPOINTS ignore `only`.
    */
   setNetworkMode(mode: FakeOnvifNetworkMode, only?: FakeOnvifNetworkOperation): void;
   /** Row 109. Throws on a stub built without `network`. */
   networkState(): FakeOnvifNetworkState;
   /** Row 109. The network requests that passed authentication, in order; empty without `network`. Cleared by `resetLog()`. */
   networkRequests(): readonly FakeOnvifNetworkRequest[];
+  /** Second pass. Every HTTP request the device listener received, in order of arrival, on every stub (with or without `network`). Cleared by `resetLog()`. */
+  httpRequests(): readonly FakeOnvifHttpRequest[];
+  /**
+   * Second pass. Resolves when no move of the listeners is under way (at once on a stub that never
+   * moves); rejects with `FakeOnvifPortBusyError` when a moved port was taken. Await it after the
+   * call that applies the address and before dialling the new ports.
+   */
+  networkSettled(): Promise<void>;
   /** ST-2 "an answer nobody asked for": one ProbeMatches datagram to that socket, related to no Probe. */
   sendUnsolicited(target: { readonly address: string; readonly port: number }): Promise<void>;
   /** The devices that answer a Probe, in order. */
@@ -532,9 +602,12 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
     name: `Fake Camera ${index + 1}`,
     hardware: 'FAKE-CAM-1',
   }));
-  const deviceServiceUrl = `http://${FAKE_ONVIF_HOST}:${ports.device}/onvif/device_service`;
-  const mediaServiceUrl = `http://${FAKE_ONVIF_HOST}:${ports.device}/onvif/media_service`;
-  const streamUri = `rtsp://${FAKE_ONVIF_HOST}:${ports.rtsp}/stream1`;
+  // Second pass: the ports the listeners are on NOW. They are `ports` for the whole life of every stub
+  // that does not move (`onApply: 'MOVE'` is the one writer of these four, in `moveListeners`).
+  let livePorts: FakeOnvifPorts = ports;
+  let deviceServiceUrl = `http://${FAKE_ONVIF_HOST}:${ports.device}/onvif/device_service`;
+  let mediaServiceUrl = `http://${FAKE_ONVIF_HOST}:${ports.device}/onvif/media_service`;
+  let streamUri = `rtsp://${FAKE_ONVIF_HOST}:${ports.rtsp}/stream1`;
 
   let discoveryMode: FakeOnvifDiscoveryMode = 'NORMAL';
   let deviceMode: FakeOnvifDeviceMode = 'NORMAL';
@@ -547,6 +620,22 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
       throw new RangeError('fake ONVIF stub: the network option needs dotted IPv4 addresses and a prefix length of 1 to 32');
     }
   }
+  // Second pass: what an accepted address does to the sockets.
+  const onApply: FakeOnvifNetworkApply = network?.onApply ?? 'STATE_ONLY';
+  const movedPorts = network?.movedPorts ?? null;
+  if ((onApply === 'MOVE') !== (movedPorts !== null)) throw new RangeError("fake ONVIF stub: `movedPorts` and `onApply: 'MOVE'` are given together or not at all");
+  if (movedPorts !== null) {
+    assertFixturePort('moved discovery', movedPorts.discovery);
+    assertFixturePort('moved device', movedPorts.device);
+    assertFixturePort('moved rtsp', movedPorts.rtsp);
+    if (new Set([ports.device, ports.rtsp, movedPorts.device, movedPorts.rtsp]).size !== 4 || movedPorts.discovery === ports.discovery) {
+      throw new RangeError('fake ONVIF stub: the moved ports must differ from the first ports and from each other');
+    }
+  }
+  let location: FakeOnvifNetworkState['location'] = 'ORIGINAL';
+  let changesNotApplied = 0;
+  let moving: Promise<void> = Promise.resolve();
+  let httpLog: FakeOnvifHttpRequest[] = [];
   // Integration pass I-2: `profileSet === null` is every stub built before it: nothing it guards is reached.
   const profileSet = options.profileSet ?? null;
   let networkMode: FakeOnvifNetworkMode = 'NORMAL';
@@ -797,12 +886,29 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
   const isNetworkCall = (operation: string): operation is FakeOnvifNetworkRequest['operation'] =>
     network !== null && ((FAKE_ONVIF_NETWORK_OPERATIONS as readonly string[]).includes(operation) || (network.gatewayReadBack === true && operation === FAKE_ONVIF_GATEWAY_READ_BACK_OPERATION));
 
-  function applyPending(): void {
-    if (networkNow.pending === null) return;
+  /** Applies the waiting change. Returns true when the camera now has to leave its ports (second pass, `onApply: 'MOVE'`, a changed address, not yet moved). */
+  function applyPending(): boolean {
+    if (networkNow.pending === null) return false;
+    if (onApply === 'NOT_APPLIED') {
+      // Accepted, answered, and nothing happens: the address, the prefix and the DHCP flag stay.
+      networkNow.pending = null;
+      changesNotApplied += 1;
+      return false;
+    }
+    const addressChanged = networkNow.pending.address !== networkNow.address;
     networkNow.address = networkNow.pending.address;
     networkNow.prefixLength = networkNow.pending.prefixLength;
     networkNow.dhcp = networkNow.pending.dhcp;
     networkNow.pending = null;
+    return onApply === 'MOVE' && addressChanged && location === 'ORIGINAL';
+  }
+
+  /** Second pass: begins the move of the three listeners. `location` is MOVED from here on; `moving` settles when the new ports listen. */
+  function beginMove(): void {
+    if (movedPorts === null || location === 'MOVED') return;
+    location = 'MOVED';
+    moving = moving.then(() => moveListeners(movedPorts));
+    moving.catch(() => undefined); // a busy moved port is reported by `networkSettled()`, not as an unhandled rejection
   }
 
   /** An authenticated network request: judged, recorded, obeyed, then answered in the shape the mode asks for. */
@@ -818,11 +924,13 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
       return;
     }
     let body: string;
+    let moveDue = false; // second pass: this call applied an address and the camera leaves its ports once it has answered
+    const freeText = (plain: string): string => (networkMode === 'MARKUP_TEXT' ? xmlEscape(FAKE_ONVIF_MARKUP_TEXT) : plain);
     switch (operation) {
       case 'GetNetworkInterfaces':
         body =
           `<tds:GetNetworkInterfacesResponse><tds:NetworkInterfaces token="${xmlEscape(interfaceToken())}"><tt:Enabled>true</tt:Enabled>` +
-          `<tt:Info><tt:Name>eth0</tt:Name><tt:HwAddress>${xmlEscape(network?.hwAddress ?? FAKE_ONVIF_NETWORK_DEFAULTS.hwAddress)}</tt:HwAddress><tt:MTU>1500</tt:MTU></tt:Info>` +
+          `<tt:Info><tt:Name>${freeText('eth0')}</tt:Name><tt:HwAddress>${xmlEscape(network?.hwAddress ?? FAKE_ONVIF_NETWORK_DEFAULTS.hwAddress)}</tt:HwAddress><tt:MTU>1500</tt:MTU></tt:Info>` +
           `<tt:IPv4><tt:Enabled>true</tt:Enabled><tt:Config><tt:Manual><tt:Address>${networkNow.address}</tt:Address><tt:PrefixLength>${networkNow.prefixLength}</tt:PrefixLength></tt:Manual>` +
           `<tt:DHCP>${String(networkNow.dhcp)}</tt:DHCP></tt:Config></tt:IPv4></tds:NetworkInterfaces></tds:GetNetworkInterfacesResponse>`;
         break;
@@ -845,7 +953,7 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
         }
         const rebootNeeded = network?.rebootNeeded ?? true;
         networkNow.pending = { address: dhcp ? networkNow.address : (record.address ?? networkNow.address), prefixLength: dhcp ? networkNow.prefixLength : (record.prefixLength ?? networkNow.prefixLength), dhcp };
-        if (!rebootNeeded) applyPending();
+        if (!rebootNeeded) moveDue = applyPending();
         body = `<tds:SetNetworkInterfacesResponse><tds:RebootNeeded>${String(rebootNeeded)}</tds:RebootNeeded></tds:SetNetworkInterfacesResponse>`;
         break;
       }
@@ -856,7 +964,7 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
           refuse('GATEWAY_REFUSED', 'InvalidGatewayAddress', 'the gateway address is not accepted');
           return;
         }
-        networkNow.gateway = record.gateway;
+        if (onApply !== 'NOT_APPLIED') networkNow.gateway = record.gateway; // second pass: a camera that applies nothing keeps its gateway too
         body = '<tds:SetNetworkDefaultGatewayResponse/>';
         break;
       }
@@ -865,16 +973,19 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
         break;
       case 'SystemReboot':
         networkNow.rebootCount += 1;
-        applyPending();
+        moveDue = applyPending();
         if (network?.rebootDropsConnection === true) {
           record.accepted = true;
           request.socket.destroy(); // obeyed, and the camera is gone before it answers
+          if (moveDue) beginMove();
           return;
         }
-        body = '<tds:SystemRebootResponse><tds:Message>Rebooting</tds:Message></tds:SystemRebootResponse>';
+        body = `<tds:SystemRebootResponse><tds:Message>${freeText('Rebooting')}</tds:Message></tds:SystemRebootResponse>`;
         break;
     }
     record.accepted = true;
+    // Second pass: the answer is written on the OLD port first; the listeners move once it has been handed to the system.
+    if (moveDue) response.once('finish', beginMove);
     const shaped = networkModeOnly === null || networkModeOnly === operation ? networkMode : 'NORMAL';
     if (shaped === 'MALFORMED_REPLY') {
       const whole = envelope(body);
@@ -886,7 +997,32 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
     }
   }
 
+  /** Second pass: the record of one request, made from its head. Values of headers are read here and never kept, but for the SOAP action (a plain URI or `?`). */
+  function recordHttp(request: IncomingMessage): { -readonly [K in keyof FakeOnvifHttpRequest]: FakeOnvifHttpRequest[K] } {
+    const [rawPath = '', ...query] = (request.url ?? '').split('?');
+    const scheme = /^\s*([A-Za-z][A-Za-z0-9-]*)(?:\s|$)/.exec(request.headers.authorization ?? '')?.[1]?.toLowerCase();
+    const named = { basic: 'Basic', digest: 'Digest', bearer: 'Bearer', negotiate: 'Negotiate' } as const;
+    const soapHeader = request.headers.soapaction;
+    const action = (typeof soapHeader === 'string' ? soapHeader : undefined) ?? /;\s*action\s*=\s*("[^"]*"|[^;\s]*)/i.exec(request.headers['content-type'] ?? '')?.[1];
+    const actionText = action?.replace(/^"|"$/g, '') ?? '';
+    const record = {
+      listener: request.socket.localPort === ports.device ? ('ORIGINAL' as const) : ('MOVED' as const),
+      port: request.socket.localPort ?? 0,
+      method: /^[A-Z]{1,16}$/.test(request.method ?? '') ? (request.method ?? '?') : '?',
+      path: /^[\x21-\x7e]*$/.test(rawPath) ? rawPath.slice(0, 256) : '?',
+      queryPresent: query.length > 0,
+      soapAction: actionText === '' ? null : /^[A-Za-z0-9:/._#-]{1,200}$/.test(actionText) ? actionText : '?',
+      operation: null as string | null,
+      authorizationPresent: request.headers.authorization !== undefined,
+      authorizationScheme: request.headers.authorization === undefined ? null : scheme !== undefined && Object.hasOwn(named, scheme) ? named[scheme as keyof typeof named] : ('OTHER' as const),
+      wsSecurity: null as FakeOnvifHttpRequest['wsSecurity'],
+    };
+    httpLog.push(record);
+    return record;
+  }
+
   function onHttp(request: IncomingMessage, response: ServerResponse): void {
+    const httpRecord = recordHttp(request);
     const chunks: Buffer[] = [];
     let size = 0;
     request.on('data', (chunk: Buffer) => {
@@ -899,6 +1035,8 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
       const operation = /<(?:[\w.-]+:)?Body(?:\s[^>]*)?>\s*<(?:[\w.-]+:)?(\w+)/.exec(xml)?.[1] ?? '?';
       const authorization = request.headers.authorization ?? '';
       const token = tokenState(xml);
+      httpRecord.operation = operation;
+      httpRecord.wsSecurity = token === 'NONE' ? 'NONE' : token === 'CLEAR' ? 'CLEAR' : 'DIGEST';
       log.push({ channel: 'device', method: request.method ?? '?', operation, authPresent: authorization !== '' || token !== 'NONE' });
       if (deviceMode === 'NO_ANSWER') return; // the connection stays open until the client gives up or the stub stops
 
@@ -939,7 +1077,7 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
           response,
           200,
           envelope(
-            `<trt:GetStreamUriResponse><trt:MediaUri><tt:Uri>${fakeOnvifProfileStreamUri(ports.rtsp, profile)}</tt:Uri><tt:InvalidAfterConnect>false</tt:InvalidAfterConnect>` +
+            `<trt:GetStreamUriResponse><trt:MediaUri><tt:Uri>${fakeOnvifProfileStreamUri(livePorts.rtsp, profile)}</tt:Uri><tt:InvalidAfterConnect>false</tt:InvalidAfterConnect>` +
               `<tt:InvalidAfterReboot>false</tt:InvalidAfterReboot><tt:Timeout>PT60S</tt:Timeout></trt:MediaUri></trt:GetStreamUriResponse>`,
           ),
         );
@@ -1044,56 +1182,88 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
     });
   }
 
+  /** Binds the three listeners on `livePorts` (the body of `start()`, and of a move). */
+  async function openListeners(): Promise<void> {
+    const at = livePorts;
+    const socket = createSocket({ type: 'udp4', reuseAddr: false });
+    udp = socket;
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      const failed = (error: NodeJS.ErrnoException): void => rejectPromise(error.code === 'EADDRINUSE' ? new FakeOnvifPortBusyError('discovery', at.discovery, error) : error);
+      socket.once('error', failed);
+      socket.bind({ address: FAKE_ONVIF_HOST, port: at.discovery, exclusive: true }, () => {
+        socket.off('error', failed);
+        resolvePromise();
+      });
+    });
+    socket.on('error', () => undefined);
+    // The 60 KiB answer of ST-2 needs a send buffer above the default datagram limit of this platform.
+    socket.setSendBufferSize(256 * 1024);
+    socket.on('message', onDatagram);
+    http = createHttpServer(onHttp);
+    track(http);
+    await listenTcp(http, at.device, 'device');
+    rtsp = createTcpServer(onRtspConnection);
+    track(rtsp);
+    await listenTcp(rtsp, at.rtsp, 'rtsp');
+  }
+
+  /** Closes the three listeners and every open connection, whatever ports they are on. */
+  async function closeListeners(): Promise<void> {
+    for (const socket of openSockets) socket.destroy();
+    openSockets.clear();
+    const socket = udp;
+    udp = null;
+    if (socket !== null) {
+      await new Promise<void>((resolvePromise) => {
+        try {
+          socket.close(() => resolvePromise());
+        } catch {
+          resolvePromise(); // it was never bound
+        }
+      });
+    }
+    await closeServer(http);
+    await closeServer(rtsp);
+    http = null;
+    rtsp = null;
+  }
+
+  /**
+   * Second pass, `onApply: 'MOVE'`: the camera leaves the ports it was built with and answers on
+   * `to`. Everything the stub announces (XAddrs, the service addresses, the stream address) names
+   * the new ports from here on. A stub that was stopped in between stays stopped.
+   */
+  async function moveListeners(to: FakeOnvifPorts): Promise<void> {
+    if (udp === null) return;
+    await closeListeners();
+    livePorts = to;
+    deviceServiceUrl = `http://${FAKE_ONVIF_HOST}:${to.device}/onvif/device_service`;
+    mediaServiceUrl = `http://${FAKE_ONVIF_HOST}:${to.device}/onvif/media_service`;
+    streamUri = `rtsp://${FAKE_ONVIF_HOST}:${to.rtsp}/stream1`;
+    try {
+      await openListeners();
+    } catch (error) {
+      await closeListeners();
+      throw error;
+    }
+  }
+
   return {
     async start() {
       if (udp !== null || http !== null || rtsp !== null) throw new Error('fake ONVIF stub: already started');
       try {
-        const socket = createSocket({ type: 'udp4', reuseAddr: false });
-        udp = socket;
-        await new Promise<void>((resolvePromise, rejectPromise) => {
-          const failed = (error: NodeJS.ErrnoException): void => rejectPromise(error.code === 'EADDRINUSE' ? new FakeOnvifPortBusyError('discovery', ports.discovery, error) : error);
-          socket.once('error', failed);
-          socket.bind({ address: FAKE_ONVIF_HOST, port: ports.discovery, exclusive: true }, () => {
-            socket.off('error', failed);
-            resolvePromise();
-          });
-        });
-        socket.on('error', () => undefined);
-        // The 60 KiB answer of ST-2 needs a send buffer above the default datagram limit of this platform.
-        socket.setSendBufferSize(256 * 1024);
-        socket.on('message', onDatagram);
-        http = createHttpServer(onHttp);
-        track(http);
-        await listenTcp(http, ports.device, 'device');
-        rtsp = createTcpServer(onRtspConnection);
-        track(rtsp);
-        await listenTcp(rtsp, ports.rtsp, 'rtsp');
+        await openListeners();
       } catch (error) {
         await this.stop();
         throw error;
       }
     },
     async stop() {
-      for (const socket of openSockets) socket.destroy();
-      openSockets.clear();
-      const socket = udp;
-      udp = null;
-      if (socket !== null) {
-        await new Promise<void>((resolvePromise) => {
-          try {
-            socket.close(() => resolvePromise());
-          } catch {
-            resolvePromise(); // it was never bound
-          }
-        });
-      }
-      await closeServer(http);
-      await closeServer(rtsp);
-      http = null;
-      rtsp = null;
+      await moving.catch(() => undefined); // a move under way ends first, so that nothing is opened after the stop
+      await closeListeners();
     },
     async closeDeviceListener() {
-      for (const socket of openSockets) if (socket.localPort === ports.device) socket.destroy();
+      for (const socket of openSockets) if (socket.localPort === livePorts.device) socket.destroy();
       await closeServer(http);
     },
     async openDeviceListener() {
@@ -1101,7 +1271,7 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
       if (http !== null && http.listening) return;
       const server = createHttpServer(onHttp);
       track(server);
-      await listenTcp(server, ports.device, 'device');
+      await listenTcp(server, livePorts.device, 'device');
       http = server;
     },
     setDiscoveryMode(mode) {
@@ -1130,10 +1300,18 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
         pending: networkNow.pending,
         rebootCount: networkNow.rebootCount,
         twinEndpointRef,
+        location,
+        changesNotApplied,
       };
     },
     networkRequests() {
       return networkLog;
+    },
+    httpRequests() {
+      return httpLog;
+    },
+    networkSettled() {
+      return moving;
     },
     async sendUnsolicited(target) {
       const first = deviceList[0] ?? { endpointRef: `urn:uuid:${randomUUID()}`, name: 'Unasked', hardware: 'FAKE-CAM-1' };
@@ -1149,7 +1327,7 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
         const address = server?.address();
         if (address !== null && address !== undefined && typeof address !== 'string') bound.push({ listener, address: address.address, port: address.port });
       }
-      return { discovery: { address: FAKE_ONVIF_HOST, port: ports.discovery }, deviceServiceUrl, streamUri, bound };
+      return { discovery: { address: FAKE_ONVIF_HOST, port: livePorts.discovery }, deviceServiceUrl, streamUri, bound };
     },
     requestLog() {
       return log;
@@ -1161,6 +1339,7 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
       log = [];
       violationList = [];
       networkLog = [];
+      httpLog = [];
     },
   };
 }

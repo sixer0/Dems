@@ -7,7 +7,7 @@
 // refusals, the lock, and the seam of the adapter registry.
 import { CAPTURE_CONFIG_CHANGE_OPERATIONS, CAPTURE_CONFIG_OPERATIONS, CoreApiAccessKind, CoreApiAuditNone, SIM_ACTION_OPERATIONS, matchCoreApiOperation, validateCoreApiResponse } from '@dems/shared/api';
 import { SessionState } from '@dems/shared/domain';
-import { CAPTURE_CONFIG_SLOT_UNASSIGNED_AND_ASSIGNED } from '@dems/shared/sim';
+import { CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS, CAPTURE_CONFIG_SLOT_UNASSIGNED_AND_ASSIGNED } from '@dems/shared/sim';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import { detailRulesOf, type DetailRule } from '../../../core/audit-details';
@@ -54,9 +54,25 @@ describe('MODG: the route list of the module', () => {
       'POST /api/v1/capture/discovery/candidates/:id/test testCaptureCandidateConnection',
       'POST /api/v1/capture/discovery/candidates/:id/adopt adoptCaptureCandidate',
       'POST /api/v1/capture/devices/:id/credential setCaptureDeviceCredential',
+      // Task 4 row 197: the confirmed re-address, mounted by `modules/capture-discovery` (operation 100; `readdress-route.ts`).
+      'POST /api/v1/capture/devices/address/confirm confirmCaptureDeviceAddress',
       // Task 4 row 70: the sound-card routes, mounted by `modules/capture-inputs` from its sub-folder `audio-cards` (operations 98 and 99).
       'POST /api/v1/capture/audio-cards/search searchCaptureAudioCards',
       'POST /api/v1/capture/audio-cards/inputs registerCaptureAudioInput',
+      // Task 4 row 108: the camera network configuration, mounted by THIS module from its sub-folder `network` (operations 101 and 102;
+      // another list of the registry, `CAPTURE_COMMISSIONING_OPERATIONS`). Named here, so that the selector's own list below stays the five.
+      'GET /api/v1/capture/network/config getCaptureNetworkConfig',
+      'POST /api/v1/capture/network/config updateCaptureNetworkConfig',
+      // Task 4 row 107: the commissioning scan, mounted by THIS module from its sub-folder `factory-scan` (operation 103).
+      'POST /api/v1/capture/network/scan scanFactoryCameras',
+      // Task 4 row 106b: the alias state and its removal, mounted by THIS module from its sub-folder `host-alias` (operations 104 and 105).
+      'GET /api/v1/capture/network/alias getHostAlias',
+      'POST /api/v1/capture/network/alias/remove removeHostAlias',
+      // Task 4 row 111: the set-IP job and its state, mounted by THIS module from its sub-folder `camera-network` (operations 106 and 107).
+      'POST /api/v1/capture/network/cameras/address setCameraNetwork',
+      'GET /api/v1/capture/network/jobs/:id getCameraNetworkJob',
+      // Task 4 row 146b: the stored-credential connection test, mounted by `modules/capture-discovery` (operation 108; `adopted-test-route.ts`).
+      'POST /api/v1/capture/devices/:id/test testCaptureDeviceConnection',
     ];
     const under = registered.filter((route) => route.url.startsWith('/api/v1/capture/')).map((route) => signature(String(route.method), route.url, String(route.config?.operationId)));
     expect(under.filter((route) => OTHER_UNITS.includes(route)).sort()).toEqual([...OTHER_UNITS].sort());
@@ -594,6 +610,62 @@ describe('the seam of the adapter registry (rule RG-3): provided by the wiring, 
     // An unknown path ID never reaches the registry: it is the 404 of the operation.
     expect(outcome(await post(built, cameraSource('CAM-99'), { trackId: 'VIDEO-01' }))).toEqual([404, 'NOT_FOUND']);
     expect(asked).not.toContain('CAMERA CAM-99');
+  });
+
+  // Row R2 (ruling C93 on review finding F3-11): on a Core in real capture one camera fills one video slot. The simulator's rule
+  // (two profiles admit it, OD-05) stands where no registry is provided; with one, the edit is refused before the action.
+  it('C93: with a registry, the SAME camera on VIDEO-01 and VIDEO-02 is 422 CAMERA_ON_BOTH_TRACKS by operation 78 and by 79, whatever the profiles - before the action, nothing changed; a swap and a move after a clear pass; without a registry the simulator\'s rule stands (control)', async () => {
+    const built = await build();
+    built.actAs(operatorOf('SUPERVISOR'));
+    const control = captureConfigControl(built.app);
+    const devicesOf = (): string[][] => built.engine.state().captureConfig.cameras.map((camera) => [camera.trackId, camera.deviceId]);
+    expect(devicesOf()).toEqual([['VIDEO-01', 'CAM-01'], ['VIDEO-02', 'CAM-02']]);
+
+    // CONTROL, no registry (Simulated mode): one camera on both tracks with two profiles is the simulator's admitted state, as before.
+    expect(control.hasDeviceRegistry()).toBe(false);
+    expect((await post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-01', profile: 'H264_720P25' }] })).statusCode).toBe(200);
+    expect(devicesOf()).toEqual([['VIDEO-01', 'CAM-01'], ['VIDEO-02', 'CAM-01']]);
+
+    // A registry that serves both cameras and both microphones: every refusal below is this rule's, none the registry's.
+    control.provideDeviceRegistry(createFakeRegistry({ runDir: '/nonexistent/dems-run/capture', operation: CaptureOperation.REAL_DEVELOPMENT }).registry);
+    // A selector that held the state BEFORE the rule: an edit elsewhere is not refused (the start rule of the plan builder holds it) ...
+    expect((await post(built, primaryMic('MIC-02'))).statusCode).toBe(200);
+    // ... a line that names the camera again is, and the edit that ends the state passes.
+    const again = await post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_1080P25' }] });
+    expect(outcome(again)).toEqual([422, 'INVALID_INPUT']);
+    expect(errorOf(again).details).toEqual({ in: 'body', reason: 'CAMERA_ON_BOTH_TRACKS', deviceId: 'CAM-01', trackId: 'VIDEO-01' });
+    expect((await post(built, cameraSource('CAM-02'), { trackId: 'VIDEO-02' })).statusCode).toBe(200);
+    expect(devicesOf()).toEqual([['VIDEO-01', 'CAM-01'], ['VIDEO-02', 'CAM-02']]);
+
+    // THE REFUSALS. Each leaves the committed selector the same object and calls no action.
+    const before = built.engine.state().captureConfig;
+    const commands = built.engine.commands.length;
+    const refusals: readonly [string, () => Promise<Awaited<ReturnType<typeof post>>>, string, string][] = [
+      ['79: the camera of VIDEO-01 into VIDEO-02', () => post(built, cameraSource('CAM-01'), { trackId: 'VIDEO-02' }), 'CAM-01', 'VIDEO-02'],
+      ['79: the camera of VIDEO-02 into VIDEO-01', () => post(built, cameraSource('CAM-02'), { trackId: 'VIDEO-01' }), 'CAM-02', 'VIDEO-01'],
+      ['78: one line, a second profile (the simulator would admit it)', () => post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-01', profile: 'H264_720P25' }] }), 'CAM-01', 'VIDEO-02'],
+      ['78: two lines, one camera, two profiles', () => post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02', profile: 'H264_1080P25' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'H264_720P25' }] }), 'CAM-02', 'VIDEO-01'],
+      ['78: the other slot cleared in the same body is NOT the slot the line fills twice', () => post(built, CONFIG, { unassign: ['PRIMARY'], cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }] }), 'CAM-02', 'VIDEO-01'],
+    ];
+    for (const [label, send, deviceId, trackId] of refusals) {
+      const refused = await send();
+      expect(outcome(refused), label).toEqual([422, 'INVALID_INPUT']);
+      expect(errorOf(refused).details, label).toEqual({ in: 'body', reason: CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS, deviceId, trackId });
+      expect(errorOf(refused).message, label).toBe('One camera fills one video slot: this camera is already assigned to the other video slot.');
+    }
+    expect(CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS).toBe('CAMERA_ON_BOTH_TRACKS');
+    expect(built.engine.commands).toHaveLength(commands);
+    expect(built.engine.state().captureConfig).toBe(before);
+
+    // NOT REFUSED: the two cameras swapped in one body; a camera moved into the other slot after its own slot was cleared by the same body.
+    expect((await post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }] })).statusCode).toBe(200);
+    expect(devicesOf()).toEqual([['VIDEO-01', 'CAM-02'], ['VIDEO-02', 'CAM-01']]);
+    expect((await post(built, CONFIG, { unassign: ['VIDEO-01'], cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-02' }] })).statusCode).toBe(200);
+    expect(devicesOf()).toEqual([['VIDEO-02', 'CAM-02']]);
+    // And the cleared slot takes the other camera, not the same one.
+    expect(errorOf(await post(built, cameraSource('CAM-02'), { trackId: 'VIDEO-01' })).details).toMatchObject({ reason: 'CAMERA_ON_BOTH_TRACKS', deviceId: 'CAM-02', trackId: 'VIDEO-01' });
+    expect((await post(built, cameraSource('CAM-01'), { trackId: 'VIDEO-01' })).statusCode).toBe(200);
+    expect(devicesOf()).toEqual([['VIDEO-01', 'CAM-01'], ['VIDEO-02', 'CAM-02']]);
   });
 });
 
