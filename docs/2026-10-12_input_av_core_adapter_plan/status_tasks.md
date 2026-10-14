@@ -192,3 +192,11 @@ The WIP commit may NOT typecheck or pass tests (rows above are mid-edit). The fi
 - `ffprobe-export.txt` at the repo root (2026-10-13, origin unknown): yours? Left untouched, not committed.
 - Push: nothing has been pushed; push only on the user's word.
 - The user's own first real run (assign / save cam 1 / 2): a Core started from a commit holding d9df31ac + W6, re-adopt the cameras, type the camera password in the console, "Test connection", then assign. No agent does this (C151 C-6).
+
+### Added after the pause (same day): packages the user asked for (C156-C158), built from 6d6553e3 + one Core typecheck fix - UNVERIFIED (compile only)
+- Debug APK: `release/mobile/dems-mobile-task4-6d6553e3-unverified-debug.apk` (C157).
+- Docker images amd64 + arm64: `release/docker/` ; sources `deploy/docker/` (C158).
+10. The Core does not serve the built web console; in the image only the Vite dev server reaches it -> a row to serve the built console from the Core (or a static server) before any real deployment.
+11. REAL_PRODUCTION in a container is expected to be refused (host check 4d needs `systemctl` and the loopback-rule service) -> the image cannot record from production sources as built; decision owed (Core on the Linux host vs a container form of the host's loopback-rule fact, cf. review 086 C-11).
+12. amd64 worker `make` stopped at the sanitizer step under emulation -> re-run the worker series on a real amd64 host.
+13. `docker image prune -f` removed all dangling images in the colima VM (not only DK's).

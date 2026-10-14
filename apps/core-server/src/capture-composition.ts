@@ -570,7 +570,7 @@ export function composeProductionCapture(ports: ProductionCapturePorts, input: P
       timers,
       faults,
       superseded,
-      report: (entry): void => ports.report('warn', CaptureCompositionCode.MIC_LOSS_WATCH_REPORT, { note: entry.code, deviceId: entry.deviceId, detail: entry.detail }),
+      report: (entry: { readonly code: string; readonly deviceId: string | null; readonly detail: string }): void => ports.report('warn', CaptureCompositionCode.MIC_LOSS_WATCH_REPORT, { note: entry.code, deviceId: entry.deviceId, detail: entry.detail }),
     }),
   });
   const attachCameraWatch = (watch: AttachedCameraWatch): void => {

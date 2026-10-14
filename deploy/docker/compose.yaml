@@ -1,0 +1,112 @@
+# DEMS Core on one Linux host, with Docker Compose (task 4 row DK). STATUS: UNVERIFIED - read README.md first.
+#
+# Three services and one tool:
+#   db       PostgreSQL 18.4 (the version the migrations and the database tests ran on), 127.0.0.1:4432
+#   core     the DEMS Core server, 127.0.0.1:4420 (database dems_demo)
+#   console  (profile "console") the web console's development server, 127.0.0.1:5173, proxying to the Core
+#   tools    (profile "tools") one script of apps/core-server at a time:
+#              docker compose run --rm tools db:migrate --database dems_demo
+#
+# NETWORK. Every listener of DEMS binds 127.0.0.1 - a constant of the Core's code (config.ts LISTEN_HOST), not a
+# setting - and the Core accepts its database on 127.0.0.1 only. So the services share the HOST's network
+# (network_mode: host, Linux only) and nothing is published: the console is opened on the host itself at
+# http://127.0.0.1:5173 (or through an SSH tunnel). compose.isolated.yaml puts all of them into one private network
+# namespace instead (nothing reachable from outside; used by smoke-test.sh).
+#
+# SECRETS. Three files the operator makes in ./secrets (README "First start"); none is in the image or in this file.
+# The values of the Core's environment are in ./.env (copy .env.example; placeholders only).
+name: dems
+
+x-dems-image: &dems-image
+  image: ${DEMS_IMAGE:-dems/core:task4-6d6553e3-unverified}
+
+# The entrypoint starts as root to own the data directory and write the connection file, then drops every
+# capability (empty bounding set, no new privileges) before Node.js starts. These six are what it needs until then.
+x-dems-privileges: &dems-privileges
+  cap_drop: [ALL]
+  cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID, SETPCAP]
+  security_opt: ["no-new-privileges:true"]
+  ulimits:
+    core: { soft: 0, hard: 0 }   # HOST-35
+
+services:
+  db:
+    image: postgres:18.4@sha256:a02db8cac496f15b094798a38254f14d6e00741f709360e5e00bb6668ea31636
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dems_admin
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/dems_pg_superuser_password
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256 --encoding=UTF8 --locale=C"
+    # Given on the command line as well as in postgresql.conf (as scripts/pg does), so that neither a later edit of
+    # that file nor ALTER SYSTEM can open another interface or port.
+    command: ["postgres", "-c", "listen_addresses=127.0.0.1", "-c", "port=4432"]
+    secrets: [dems_pg_superuser_password, dems_pg_owner_password, dems_pg_app_password]
+    volumes:
+      - dems-pgdata:/var/lib/postgresql
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "4432", "-U", "dems_admin", "-d", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+    stop_grace_period: 60s
+
+  core:
+    <<: [*dems-image, *dems-privileges]
+    command: ["core"]
+    network_mode: host
+    restart: unless-stopped
+    init: true
+    depends_on:
+      db: { condition: service_healthy }
+    env_file: [.env]
+    secrets: [dems_pg_app_password]
+    volumes:
+      - dems-data:/opt/dems/core/.data
+      - dems-logs:/opt/dems/core/apps/core-server/logs
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + (process.env.DEMS_CORE_PORT || '4420') + '/api/v1/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+    stop_grace_period: 30s
+
+  console:
+    profiles: [console]
+    <<: [*dems-image, *dems-privileges]
+    command: ["console"]
+    network_mode: host
+    restart: unless-stopped
+    init: true
+    depends_on:
+      core: { condition: service_healthy }
+    environment:
+      DEMS_CORE_PROXY_PORT: "${DEMS_CORE_PORT:-4420}"
+
+  tools:
+    profiles: [tools]
+    <<: [*dems-image, *dems-privileges]
+    network_mode: host
+    init: true
+    stdin_open: true
+    tty: true
+    depends_on:
+      db: { condition: service_healthy }
+    env_file: [.env]
+    secrets: [dems_pg_owner_password, dems_pg_app_password]
+    volumes:
+      - dems-data:/opt/dems/core/.data
+
+secrets:
+  dems_pg_superuser_password: { file: ./secrets/dems_pg_superuser_password }
+  dems_pg_owner_password: { file: ./secrets/dems_pg_owner_password }
+  dems_pg_app_password: { file: ./secrets/dems_pg_app_password }
+
+volumes:
+  dems-pgdata: {}   # the database: it holds the audit chain - never removed by any step of the README
+  dems-data: {}     # <tree>/.data: media store, credential store (session keys), signer, transcriber host file
+  dems-logs: {}     # apps/core-server/logs/errors.log
