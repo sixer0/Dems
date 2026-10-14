@@ -15,13 +15,16 @@ export const CaptureAdapterRefusal = {
   DEVICE_CLASS_MISMATCH: 'CAPTURE_DEVICE_CLASS_MISMATCH',
   /** The adapter's kind may not be registered in the running capture operation (rule RG-1). */
   ADAPTER_KIND_NOT_ALLOWED: 'CAPTURE_ADAPTER_KIND_NOT_ALLOWED',
-  /** An adapter that says it has an opener for a kind this phase has none for (D86 C-5; class C-2, C-4). */
+  /**
+   * An adapter that says it has an opener for a kind not on the opener list (D86 C-5 as amended by AM-1: `SNMP_POE` and any
+   * later kind), or an opener of another source class than the running operation records (task 4 row 88; addendum 1.4 #7).
+   */
   ADAPTER_INVALID: 'CAPTURE_ADAPTER_INVALID',
   /** The configuration is locked while a session is open (OD-10). */
   REGISTRY_LOCKED: 'CAPTURE_REGISTRY_LOCKED',
   /** The device's source class is not the class of the running operation (rule RG-3). */
   SOURCE_CLASS_NOT_ALLOWED: 'DEVELOPMENT_SOURCE_NOT_ALLOWED',
-  /** No listener and no session for a source kind without an opener (D86 C-5). */
+  /** No listener and no session for a source whose adapter states no opener (D86 C-5; since AM-1 the adapter's own word decides for the two lifted kinds). */
   SOURCE_KIND_NOT_RECORDABLE: 'SOURCE_KIND_NOT_RECORDABLE',
   /** The device has no such media profile. */
   PROFILE_UNKNOWN: 'CAPTURE_PROFILE_UNKNOWN',
@@ -33,9 +36,9 @@ export const CaptureAdapterRefusal = {
   POE_PORT_UNKNOWN: 'CAPTURE_POE_PORT_UNKNOWN',
   /** The source was asked for after the call was aborted. */
   ABORTED: 'CAPTURE_ADAPTER_ABORTED',
-  /** A member of a class-C adapter: specified, not built in this phase (structured §9 C-1 to C-4). */
+  /** A member of an adapter that builds nothing: the switch stub, the microphone adapter of a host without an opener, the retired camera stub (task 4 row 88). */
   CLASS_C_NOT_BUILT: 'CAPTURE_ADAPTER_CLASS_C',
-  /** The class-C adapters were asked for in an operation that never loads them. */
+  /** The production adapters were asked for in an operation that never loads them. */
   REAL_ADAPTERS_REFUSED: 'CAPTURE_REAL_ADAPTERS_REFUSED',
 } as const;
 export type CaptureAdapterRefusal = (typeof CaptureAdapterRefusal)[keyof typeof CaptureAdapterRefusal];

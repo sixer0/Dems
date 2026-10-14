@@ -1717,7 +1717,7 @@ describe('row 85d: `admitDevice` - a camera adopted after the build is served by
     expect(r.adapter.admittedDevices().map((device) => [device.id, device.profiles])).toEqual([['CAM-03', ['HEVC_1080P']], ['CAM-04', []]]);
   });
 
-  it('the fence\'s door finds the member, and its one-entry view of the adapter opens the later camera; BEFORE THE LIFT a registry still refuses that view (`CAPTURE_ADAPTER_INVALID`): the kind does not record', async () => {
+  it('the fence\'s door finds the member, and its one-entry view of the adapter opens the later camera; SINCE THE LIFT (row 88) a production registry takes that view and a development registry refuses it (`CAPTURE_ADAPTER_INVALID`)', async () => {
     const r = rig();
     // What `buildProductionRegistryOf` does with a later device (`capture/fence/index.ts`, `lateDoorOf` and `admitLater`).
     const member = (r.adapter as unknown as Record<string, unknown>)['admitDevice'];
@@ -1732,17 +1732,25 @@ describe('row 85d: `admitDevice` - a camera adopted after the build is served by
     r.children[0]?.say(established(1));
     expect(await pending).toMatchObject({ deviceId: 'CAM-03' });
     expect(r.adapter.counts().live).toBe(1);
-    for (const operation of [CaptureOperation.REAL_PRODUCTION, CaptureOperation.REAL_DEVELOPMENT]) {
-      const registry = createCaptureDeviceRegistry({ operation });
-      expect(codeOfThrow(() => registry.register(view)), operation).toBe('CAPTURE_ADAPTER_INVALID');
-      expect(registry.list()).toEqual([]);
-    }
+    // Row 88 (AM-1): production takes the view and the later camera records; development refuses its opener (design addendum 1.4 #7).
+    const production = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION });
+    production.register(view);
+    expect(production.assertRecordable('CAM-03').id).toBe('CAM-03');
+    const development = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_DEVELOPMENT });
+    expect(codeOfThrow(() => development.register(view))).toBe('CAPTURE_ADAPTER_INVALID');
+    expect(development.list()).toEqual([]);
   });
 });
 
-describe('T-3: behind the rule (addendum 6.3; registry fact 1)', () => {
-  it('the built adapter handed to a real registry is refused `CAPTURE_ADAPTER_INVALID`, in production and in development; nothing of it is registered', () => {
-    for (const operation of [CaptureOperation.REAL_PRODUCTION, CaptureOperation.REAL_DEVELOPMENT]) {
+// T-3, REWRITTEN BY ROW 88 (THE LIFT, AM-1): the built adapter is taken by a production registry and refused by a development one.
+describe('T-3: behind the rule (addendum 6.3; registry fact 1; since the lift: the class of the operation)', () => {
+  it('the built adapter handed to a real registry: taken in production (its devices record), refused `CAPTURE_ADAPTER_INVALID` in development (nothing of it is registered)', () => {
+    const production = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION });
+    production.register(rig().adapter);
+    expect(production.openerKinds()).toEqual(['ONVIF_RTSP']);
+    expect(production.cameraAdapters()).toHaveLength(1);
+    {
+      const operation = CaptureOperation.REAL_DEVELOPMENT;
       const registry = createCaptureDeviceRegistry({ operation });
       const { adapter } = rig();
       let thrown: unknown = null;

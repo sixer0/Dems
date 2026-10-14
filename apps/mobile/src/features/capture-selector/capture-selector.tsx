@@ -49,7 +49,7 @@ export interface CaptureSelectorProps {
   testID?: string;
 }
 
-const STREAM_TONE = { LIVE: 'success', LOST: 'danger', OFFLINE: 'warning' } as const;
+const STREAM_TONE = { LIVE: 'success', LOST: 'danger', OFFLINE: 'warning', NOT_READ: 'default' } as const;
 const MIC_ROW_KEY = 'MIC';
 /** The i18n key of the Change control of a microphone line (fix wave H, G70-02: each line has its own sheet). */
 const MIC_CHANGE_LABEL = { PRIMARY: 'changeMicLabel', STANDBY: 'changeStandbyMicLabel' } as const;
@@ -343,7 +343,8 @@ const NOTICE_STATUS: Readonly<Record<Exclude<AnswerClass, 'ok'>, 'warning' | 'da
 };
 
 /** The words of `details.reason` the Core answers for a production camera's profile (`CaptureProfileRefusal` of the Core's capture-config routes). */
-const PROFILE_REFUSAL_REASONS: readonly string[] = ['CAMERA_PROFILE_NOT_STATED', 'CAMERA_PROFILE_NOT_OF_DEVICE'];
+// Row W6 (request line 565; row V7c, C130): `CAMERA_PROFILE_WITHOUT_STREAM` - a listed profile with no stored stream row.
+const PROFILE_REFUSAL_REASONS: readonly string[] = ['CAMERA_PROFILE_NOT_STATED', 'CAMERA_PROFILE_NOT_OF_DEVICE', 'CAMERA_PROFILE_WITHOUT_STREAM'];
 
 function NoticeAlert({ notice, selector }: { notice: SelectorNotice; selector: CaptureSelectorData }) {
   const { t } = useTranslation();

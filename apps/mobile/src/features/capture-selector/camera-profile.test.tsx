@@ -184,8 +184,9 @@ describe('row W5 (Q-02): the stream profile of a camera assignment', () => {
     it('no stored profile: no profile is offered, nothing is sent, and the sheet says why', async () => {
       const onSave = await sheet(request());
       fireEvent.press(screen.getByTestId('capture-source-option-CAM-03'));
+      // Row W6 (C117, C126 (d)): EXPECTATION MOVED - the sentence names the remedy, "Test connection" on the web console (operation 108 is web-console only).
       expect(screen.getByTestId('capture-source-profile-hint')).toHaveTextContent(
-        'This camera cannot be assigned: the Core holds no stream profile for it, and it does not pick one for a camera. The profiles of a camera are stored when its connection test reads its stream, before the camera is added. Nothing was changed.',
+        'This camera cannot be assigned yet: the Core holds no stream profile for it, and it does not pick one for a camera. On the web console, open Devices and press "Test connection" for this camera: when the test reads its stream, the Core stores the profiles it states and they are offered here. Nothing was changed.',
       );
       expect(screen.queryAllByTestId(/^capture-source-profile-(?!hint)/)).toHaveLength(0);
       save();

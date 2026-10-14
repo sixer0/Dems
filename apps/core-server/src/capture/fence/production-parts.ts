@@ -39,6 +39,7 @@
  * handed, each with its table's row.
  */
 import { CaptureWarningCode, CaptureWarningReason } from '@dems/capture-protocol';
+import { CAPTURE_INTERFACE_NAME_PATTERN } from '@dems/shared/api';
 import { createCardEnumerator, type CardEnumerator } from '../adapters/audio/card-listing';
 import { createCardListingReader, type CardListingPrograms } from '../adapters/audio/card-listing-reader';
 import { MacosCardListingError, createMacosCardEnumerator, type MacosCardEnumerator, type MacosListingSource, type MacosTiedListing } from '../adapters/audio/macos-card-listing';
@@ -640,7 +641,8 @@ const NEIGHBOUR_ABSENT: NeighbourReading = Object.freeze({ kind: 'ABSENT' });
 const NEIGHBOUR_LINE = /^(\S+) dev (\S+)(?: lladdr (\S+))?(?: router)? ([A-Z]+)$/;
 const NEIGHBOUR_HW_ADDRESS = /^[0-9a-f]{2}(?::[0-9a-f]{2}){5}$/;
 /** The form of an interface name (the form the address helper's interface file is held to). */
-const CAMERA_INTERFACE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$/;
+// Request line 558 (row V7b; decision C140 (6)): THE shared constant of the contract, no copy of its text (task 4 row 88).
+const CAMERA_INTERFACE_NAME = CAPTURE_INTERFACE_NAME_PATTERN;
 /** The states in which the kernel holds a hardware address it was told by the neighbour itself. */
 const NEIGHBOUR_LEARNT_STATES: readonly string[] = Object.freeze(['REACHABLE', 'STALE', 'DELAY', 'PROBE']);
 /** The states that say "asked, no answer (yet)". */
@@ -877,6 +879,11 @@ export function hostCommissioningInputsOf(host: CommissioningHostParts): Commiss
 /** The production door and the locator read of the ONVIF session, as the production camera adapter takes them. Nothing is started or contacted here. */
 export function productionCameraDoors(timers: CaptureTimers): { readonly door: ProductionDoor; readonly locator: OnvifStreamLocator } {
   return Object.freeze({ door: startProductionProcess, locator: createOnvifStreamLocator({ timers }) });
+}
+
+/** The unauthenticated ONVIF time read the camera watch asks (task 4 row 88: the lift builds the watch in the boot step). Nothing is contacted here. */
+export function productionCameraTimeReaderOf(timers: CaptureTimers): ReturnType<typeof createOnvifTimeReader> {
+  return createOnvifTimeReader({ timers });
 }
 
 /**

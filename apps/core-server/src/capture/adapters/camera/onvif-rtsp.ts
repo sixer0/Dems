@@ -1,16 +1,14 @@
 /**
- * CLASS C — the production camera adapter, adapter kind `ONVIF_RTSP` (blueprint row 65; register
- * NM-09; capture spec §A.6, §A.6.0; structured §9 C-1, C-2).
+ * RETIRED BY THE LIFT (task 4 row 88, decision AM-1) - formerly the CLASS C stub of the production
+ * camera adapter, adapter kind `ONVIF_RTSP` (blueprint row 65; register NM-09; capture spec §A.6).
  *
- * An INTERFACE-COMPLETE STUB. It states the seam for a real IP camera and builds none of it: no
- * socket, no process, no package. Every member that would touch a device refuses with
- * `CAPTURE_ADAPTER_CLASS_C`. It has no opener (D86 C-5): the path that records a real camera is
- * class C-2 and is decided nowhere yet (spec §A.6.3).
- *
- * This file is loaded by `adapters/real.ts` only, and never in a test (static rule in
- * `adapters/__tests__/static.test.ts`). The search is NOT here: row 131 built it as its own adapter
- * (`camera/onvif-discovery.ts` over `camera/ws-discovery.ts`), because this file may import nothing
- * but the layer's vocabulary (rule A-1). Row 142 builds the connection test (`camera/onvif-session.ts`).
+ * The loader (`adapters/real.ts`) builds the BUILT adapter `camera/onvif-relay.ts` in its place
+ * since row 88 (pin table, specification 6.3: "Stub literal, camera: replaced by the built
+ * adapter"). NO FILE IMPORTS THIS ONE any more, in the product or in a test (static rule A-1 of
+ * `adapters/__tests__/static.test.ts` holds it to that). It is left in the tree, unchanged in its
+ * behaviour, only because a row deletes no file nobody asked it to delete: its removal is the
+ * controller's (record `implementation/088_class_c_lift.md`). It states no opener and builds
+ * nothing: every member that would touch a device refuses with `CAPTURE_ADAPTER_CLASS_C`.
  */
 import { CaptureAdapterError, CaptureAdapterRefusal } from '../errors';
 import { CaptureAdapterKind } from '../kinds';

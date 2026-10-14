@@ -35,6 +35,18 @@ rules() {
   say() { echo "check.sh: $dir: $1"; fail=1; }
   count() { cat "$dir"/*.c "$dir"/*.h 2>/dev/null | grep -c -- "$1"; }
   files() { grep -l -- "$1" "$dir"/*.c "$dir"/*.h 2>/dev/null | sed 's|.*/||' | sort | tr '\n' ' ' | sed 's/ $//'; }
+  # Row N3: "file:function:count ..." of the matches of an awk expression, by the function they stand in ("-": outside one).
+  # A function begins at a line of column 0 that ends in ") {" and ends at a "}" of column 0 (the style of the sources).
+  by_function() {
+    for f in "$2"/*.c "$2"/*.h; do
+      [ -f "$f" ] || continue
+      awk -v re="$1" -v file="${f##*/}" '
+        /^[A-Za-z_].*\(.*\) \{$/ { fn = $0; sub(/\(.*/, "", fn); sub(/.*[ *]/, "", fn) }
+        { line = $0; n = gsub(re, "", line); if (n > 0) c[fn == "" ? "-" : fn] += n }
+        /^\}/ { fn = "" }
+        END { for (k in c) printf "%s:%s:%d\n", file, k, c[k] }' "$f"
+    done | sort | tr '\n' ' ' | sed 's/ $//'
+  }
 
   # AU2-07: one call site of the graph command, in the unit of the filtering thread, behind the thread guard.
   [ "$(count 'avfilter_graph_send_comman[d](')" = "1" ] || say "AU2-07: expected exactly 1 call site of the graph command, found $(count 'avfilter_graph_send_comman[d](')"
@@ -153,6 +165,44 @@ rules() {
   [ "$(files 'STDOUT_FILENO')" = "ipc.c" ] || say "B.2: standard output is written outside ipc.c: $(files 'STDOUT_FILENO')"
   [ "$(count '[^fnsv]printf(\|puts(\|putchar(\|fputs(\|stdou[t]')" = "0" ] || say "B.2: a print to standard output (only frames go there)"
   [ "$(count 'geten[v](')" = "0" ] || say "B.2: the worker reads no environment variable"
+  # Task 4 row N3 (protocol version 5; design 06 s7.2a "the worker's static rule"; SM-31, SM-33 (4)): THE GAPPED KIND.
+  # ONE predicate, ONE place that sets it, read in a closed set of functions; no resampler call can be reached for it.
+  #   - exactly one assignment of the member, as written, in the plan reader; no address of it is ever taken;
+  [ "$(count 'gapped[[:space:]]*[-+*/%&|^]\{0,1\}=[^=]\|gapped[[:space:]]*++\|gapped[[:space:]]*--\|++[[:space:]]*[A-Za-z_][]A-Za-z0-9_.>[-]*gappe[d]\|--[[:space:]]*[A-Za-z_][]A-Za-z0-9_.>[-]*gappe[d]')" = "1" ] \
+    && [ "$(grep -c '^        s->mic\[at\]\.gapped = !strcmp(kind->str, "PCM_FIFO_GAPPED");$' "$dir/capture_worker.c" 2>/dev/null)" = "1" ] \
+    && [ "$(count '\(^\|[^&]\)&[[:space:]]*[A-Za-z_(][]A-Za-z0-9_.>[(-]*gappe[d]')" = "0" ] || say "N3-GAP: the gapped flag is set in more than one place, not as written in the plan reader, or its address is taken"
+  #   - its reads, per function (a member access `.gapped` / `->gapped`; comments never spell it so): the closed set;
+  [ "$(by_function '[.>]gapped([^A-Za-z0-9_]|$)' "$dir")" = "audio.c:audio_main:3 audio.c:mic_open:1 audio.c:mic_read:2 audio.c:mic_take:1 audio.c:telemetry:1 capture_worker.c:take_plan:1" ] \
+    || say "N3-GAP: the gapped flag is read outside its closed set of places (mic_open, mic_read, mic_take, telemetry, audio_main; the plan reader sets it): $(by_function '[.>]gapped([^A-Za-z0-9_]|$)' "$dir")"
+  #   - the kind words are literals of the plan reader and of nothing else: no other place branches on a kind;
+  [ "$(by_function '"PCM_FIFO' "$dir")" = "capture_worker.c:take_plan:3" ] || say "N3-GAP: a microphone kind word is a literal outside the plan reader: $(by_function '"PCM_FIFO' "$dir")"
+  #   - the resampler's functions: exactly these five names, each mentioned as often as it is called, all in audio.c;
+  [ "$(cat "$dir"/*.c "$dir"/*.h 2>/dev/null | grep -o 'swr_[a-z_0-9]*' | sort -u | tr '\n' ' ')" = "swr_alloc_set_opts2 swr_convert swr_free swr_init swr_set_compensation " ] \
+    && [ "$(count 'swr_set_compensatio[n]')" = "2" ] && [ "$(count 'swr_conver[t]')" = "1" ] && [ "$(count 'swr_alloc_set_opts[2]')" = "1" ] && [ "$(count 'swr_ini[t]')" = "1" ] \
+    && [ "$(by_function 'swr_set_compensation[(]' "$dir")" = "audio.c:mic_open:1 audio.c:mic_take:1" ] && [ "$(by_function 'swr_convert[(]' "$dir")" = "audio.c:mic_read:1" ] \
+    || say "N3-GAP: the resampler is called otherwise than by its five calls in mic_open, mic_read and mic_take"
+  #   - mic_open: the resampler is made and switched on only inside the branch of a microphone that is NOT gapped;
+  ga=$(grep -n '^    if (!plan->gapped) {$' "$dir/audio.c" 2>/dev/null | head -1 | cut -d: -f1)
+  ge=$( [ -n "$ga" ] && awk -v a="$ga" 'NR > a && /^    }$/ { print NR; exit }' "$dir/audio.c")
+  for call in 'swr_alloc_set_opts[2](' 'swr_ini[t](' 'swr_set_compensation(m->swr, 0, 0)'; do
+    at=$(grep -n "$call" "$dir/audio.c" 2>/dev/null | head -1 | cut -d: -f1)
+    [ -n "$ga" ] && [ -n "$ge" ] && [ -n "$at" ] && [ "$ga" -lt "$at" ] && [ "$at" -lt "$ge" ] || say "N3-GAP: mic_open makes or switches on the resampler outside the branch of a microphone that is not gapped ($(echo "$call" | tr -d '[]'))"
+  done
+  #   - mic_read: the convert stands in the else-branch of the gapped test (a gapped microphone's samples are copied);
+  ra=$(grep -n '^        if (m->plan->gapped) {$' "$dir/audio.c" 2>/dev/null | head -1 | cut -d: -f1)
+  re=$( [ -n "$ra" ] && awk -v a="$ra" 'NR > a && /^        } else {$/ { print NR; exit }' "$dir/audio.c")
+  rz=$( [ -n "$re" ] && awk -v a="$re" 'NR > a && /^        }$/ { print NR; exit }' "$dir/audio.c")
+  at=$(grep -n 'swr_conver[t](' "$dir/audio.c" 2>/dev/null | head -1 | cut -d: -f1)
+  [ -n "$re" ] && [ -n "$rz" ] && [ -n "$at" ] && [ "$re" -lt "$at" ] && [ "$at" -lt "$rz" ] || say "N3-GAP: the convert of mic_read does not stand in the branch of a microphone that is not gapped"
+  #   - mic_take: the return of a gapped microphone precedes the compensation and the rate judgement; no jump in the function.
+  gt=$(grep -n '^    if (m->plan->gapped) return 0;$' "$dir/audio.c" 2>/dev/null | cut -d: -f1)
+  ta=$(grep -n '^static int mic_take(' "$dir/audio.c" 2>/dev/null | head -1 | cut -d: -f1)
+  tz=$( [ -n "$ta" ] && awk -v a="$ta" 'NR > a && /^}$/ { print NR; exit }' "$dir/audio.c")
+  tc=$(grep -n 'swr_set_compensation(m->swr, (int)lrint(rate), SR)' "$dir/audio.c" 2>/dev/null | head -1 | cut -d: -f1)
+  tw=$(grep -n 'return micwatch_rat[e](' "$dir/audio.c" 2>/dev/null | head -1 | cut -d: -f1)
+  [ "$(echo "$gt" | grep -c .)" = "1" ] && [ -n "$ta" ] && [ -n "$tz" ] && [ -n "$tc" ] && [ -n "$tw" ] && [ "$ta" -lt "$gt" ] && [ "$gt" -lt "$tc" ] && [ "$gt" -lt "$tw" ] && [ "$tw" -lt "$tz" ] \
+    && [ "$(sed -n "${ta},${tz}p" "$dir/audio.c" | grep -c '[^a-z_]got[o] \|^[A-Za-z_][A-Za-z0-9_]*:\|setjm[p]\|longjm[p]')" = "0" ] \
+    || say "N3-GAP: in mic_take the compensation or the rate judgement can be reached for a gapped microphone (its return must stand once before both, with no jump in the function)"
   # Row 61 (D84 R-6, D85 R-8, pair-58 F-10): the pinned calls, read as tokens. One line per violation, tagged R-6 or F-10.
   if command -v python3 >/dev/null 2>&1; then
     pinned=$(python3 test/static/pinned_calls.py "$dir" test/static/pinned-calls.tsv 2>&1)
@@ -241,7 +291,13 @@ if [ "${1:-}" = "--selftest" ]; then
                   'worker.h~s/^#pragma GCC poison av_log_set_level$//~BR-04~the line that makes av_log_set_level uncallable removed' \
                   'ingest.c~s/ANNOUNCE_NOT_SEEN ? "CAMERA_ANNOUNCE_NOT_SEEN" : "CAMERA_ANNOUNCE_NOT_MATCHED";/ANNOUNCE_NOT_SEEN ? "CAMERA_ANNOUNCE_NOT_MATCHED" : "CAMERA_ANNOUNCE_NOT_SEEN";/~BR-04~the two frame members of the gate swapped' \
                   'ingest.c~s/ANNOUNCE_NOT_SEEN ? "INGEST_ANNOUNCE_NOT_SEEN" : "INGEST_ANNOUNCE_NOT_MATCHED";/ANNOUNCE_NOT_SEEN ? "INGEST_ANNOUNCE_NOT_MATCHED" : "INGEST_ANNOUNCE_NOT_SEEN";/~BR-04~the two log codes of the gate swapped' \
-                  'ingest.c~s/ingest_over_as(c, src, "INGEST_NO_PICTURE_SIZE", "CAMERA_NO_PICTURE", /ingest_over_as(c, src, "INGEST_NO_PICTURE_SIZE", src, /~BR-04~a frame reason taken from a variable'; do
+                  'ingest.c~s/ingest_over_as(c, src, "INGEST_NO_PICTURE_SIZE", "CAMERA_NO_PICTURE", /ingest_over_as(c, src, "INGEST_NO_PICTURE_SIZE", src, /~BR-04~a frame reason taken from a variable' \
+                  'audio.c~s/^    if (m->plan->gapped) return 0;$//~N3-GAP~the return of a gapped microphone in mic_take removed (its compensation and rate judgement become reachable)' \
+                  'audio.c~s/^    if (m->plan->gapped) return 0;$/    if (m->plan->gapped \&\& !realtime) return 0;/~N3-GAP~the return of a gapped microphone in mic_take made conditional' \
+                  'audio.c~s/^    m->taken = present;$/    m->taken = present; if (realtime < 0) goto planted;/~N3-GAP~a jump inside mic_take (a way round its return)' \
+                  'audio.c~s/^    if (!plan->gapped) {$/    {/~N3-GAP~mic_open makes and switches on the resampler for a gapped microphone too' \
+                  'audio.c~s/^        if (m->plan->gapped) {$/        if (0) {/~N3-GAP~mic_read sends a gapped microphone through the convert (its copy branch never taken)' \
+                  'capture_worker.c~s/s->mic\[at\].gapped = !strcmp(kind->str, "PCM_FIFO_GAPPED");/s->mic[at].gapped = !strcmp(kind->str, "PCM_FIFO");/~N3-GAP~the plan reader sets the flag from another word'; do
     file=${mutation%%~*}; rest=${mutation#*~}; script=${rest%%~*}; rest=${rest#*~}; tag=${rest%%~*}; what=${rest#*~}
     n=$((n + 1)); dir="$work/mutated$n"; mkdir -p "$dir"; cp src/*.c src/*.h "$dir/"
     sed "$script" "src/$file" > "$dir/$file"
@@ -317,4 +373,4 @@ grep -q 'DEMS_PROOF_MUX_EXTRA=.*use_editlis[t]=1.*capture-worker-negctl' Makefil
 fixture_rules test-fixtures || exit 1
 proof_rule Makefile "$1" || exit 1
 version_rule test/static/libavformat.pin "$(${PKG_CONFIG:-pkg-config} --modversion libavformat 2>/dev/null)" || exit 1
-echo "check.sh: $1: static rules OK (AU2-07, N-10, C.4 forbidden options, W1-C1, SR-3 mux options, H-4 one encoder, W-1, W-4, B.2, D58-1/2 exclusive create, D59-2 sync, D59-3 one truncation, D59-4 fault seam, F-2, BR-01 one open + one probe + the announce gate between them and no switch around it, BR-03 per-camera interrupt, BR-04 no av_log_set_level + the words of a refusal fixed (each code and frame member a literal of one line, no frame reason from a text), R-6 pinned file calls + no digraph / assembler name, F-10 pinned mux calls + one muxer name + proof builds marked, R63-06 every proof switch marks, R63-09 sync seam, D85 libavformat $(${PKG_CONFIG:-pkg-config} --modversion libavformat); fixtures: SEC35-23)"
+echo "check.sh: $1: static rules OK (AU2-07, N-10, C.4 forbidden options, W1-C1, SR-3 mux options, H-4 one encoder, W-1, W-4, B.2, D58-1/2 exclusive create, D59-2 sync, D59-3 one truncation, D59-4 fault seam, F-2, BR-01 one open + one probe + the announce gate between them and no switch around it, BR-03 per-camera interrupt, BR-04 no av_log_set_level + the words of a refusal fixed (each code and frame member a literal of one line, no frame reason from a text), R-6 pinned file calls + no digraph / assembler name, F-10 pinned mux calls + one muxer name + proof builds marked, R63-06 every proof switch marks, R63-09 sync seam, N3-GAP the gapped kind: one place sets it, a closed set reads it, no resampler call reachable for it, D85 libavformat $(${PKG_CONFIG:-pkg-config} --modversion libavformat); fixtures: SEC35-23)"

@@ -197,9 +197,11 @@ export interface NetworkSettingsFormValues {
   aliasHost: string
   aliasMinutes: string
   cameraIpStart: string
+  /** Row W6 (request line 557, row V7b): the allowed ONVIF ports, comma- or line-separated, in the stored order. */
+  onvifPorts: string
 }
 
-export const NETWORK_SETTINGS_FIELDS = ['interfaceName', 'cameraSubnet', 'factoryAddresses', 'aliasHost', 'aliasMinutes', 'cameraIpStart'] as const
+export const NETWORK_SETTINGS_FIELDS = ['interfaceName', 'cameraSubnet', 'factoryAddresses', 'aliasHost', 'aliasMinutes', 'cameraIpStart', 'onvifPorts'] as const
 export type NetworkSettingsField = (typeof NETWORK_SETTINGS_FIELDS)[number]
 
 /** The addresses of the list field, in the order typed. */
@@ -218,6 +220,20 @@ const validList = (text: string): boolean => {
 }
 
 /**
+ * Row W6 (request line 557, row V7b; S2-02, C116): the ports of the ONVIF field in the order typed, or `null`
+ * when the text is no valid list - 1 to 8 entries (`onvifPortsMin/Max`), each a whole number 1 to 65535
+ * (`onvifPortMin/Max`, no sign, no leading zero), no port twice. The contract refuses all three.
+ */
+export function onvifPortsOf(text: string): number[] | null {
+  const parts = factoryListOf(text)
+  if (parts.length < L.onvifPortsMin || parts.length > L.onvifPortsMax) return null
+  if (!parts.every((part) => /^[1-9]\d{0,4}$/.test(part))) return null
+  const ports = parts.map(Number)
+  if (!ports.every((port) => port >= L.onvifPortMin && port <= L.onvifPortMax)) return null
+  return new Set(ports).size === ports.length ? ports : null
+}
+
+/**
  * The rule of each field, no looser than the contract's own form (`capture-commissioning.ts`): the
  * message of an issue is the FIELD's name, which the page words. Whether a value of the right form
  * may be stored (an interface the host has, a subnet with zero host bits) is the Core's decision.
@@ -229,6 +245,7 @@ export const networkSettingsFormSchema = z.object({
   aliasHost: z.string().refine(wholeNumberIn(L.aliasHostMin, L.aliasHostMax), 'aliasHost'),
   aliasMinutes: z.string().refine(wholeNumberIn(L.aliasMinutesMin, L.aliasMinutesMax), 'aliasMinutes'),
   cameraIpStart: z.string().refine(wholeNumberIn(L.cameraIpStartMin, L.cameraIpStartMax), 'cameraIpStart'),
+  onvifPorts: z.string().refine((text) => onvifPortsOf(text) !== null, 'onvifPorts'),
 })
 
 /** The form's values for a configuration the Core answered. */
@@ -240,10 +257,12 @@ export function formValuesOf(config: CaptureNetworkConfig): NetworkSettingsFormV
     aliasHost: String(config.aliasHost),
     aliasMinutes: String(config.aliasMinutes),
     cameraIpStart: String(config.cameraIpStart),
+    // The stored order, one port per line (row W6).
+    onvifPorts: config.onvifPorts.join('\n'),
   }
 }
 
-const sameList = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((entry, index) => entry === b[index])
+const sameList = <T extends string | number>(a: readonly T[], b: readonly T[]): boolean => a.length === b.length && a.every((entry, index) => entry === b[index])
 
 /**
  * The body of operation 102 for valid form values: `revision` and ONLY the settings that differ
@@ -258,6 +277,7 @@ export function settingsChangeOf(values: NetworkSettingsFormValues, config: Capt
   const aliasHost = Number(values.aliasHost.trim())
   const aliasMinutes = Number(values.aliasMinutes.trim())
   const cameraIpStart = Number(values.cameraIpStart.trim())
+  const onvifPorts = onvifPortsOf(values.onvifPorts) ?? []
   const change = {
     ...(interfaceName !== config.interfaceName ? { interfaceName } : {}),
     ...(cameraSubnet !== config.cameraSubnet ? { cameraSubnet } : {}),
@@ -265,6 +285,8 @@ export function settingsChangeOf(values: NetworkSettingsFormValues, config: Capt
     ...(aliasHost !== config.aliasHost ? { aliasHost } : {}),
     ...(aliasMinutes !== config.aliasMinutes ? { aliasMinutes } : {}),
     ...(cameraIpStart !== config.cameraIpStart ? { cameraIpStart } : {}),
+    // The WHOLE list, only when it differs entry by entry IN ORDER: another order is a change (the first is the default port's place).
+    ...(!sameList(onvifPorts, config.onvifPorts) ? { onvifPorts } : {}),
   }
   if (Object.keys(change).length === 0) return null
   const parsed = CaptureNetworkConfigUpdateRequestSchema.safeParse({ revision: config.revision, ...change })

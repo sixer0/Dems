@@ -393,8 +393,8 @@ describe('known state (a), D128: the local microphone at the limit of the rate c
     worker.say({
       type: 'TELEMETRY',
       levels: [
-        { deviceId: 'MIC-03', role: 'PRIMARY', dbfs: -28, clipped: false, ratePpm: -5_000 },
-        { deviceId: 'MIC-02', role: 'STANDBY', dbfs: -20, clipped: false, ratePpm: 12 },
+        { deviceId: 'MIC-03', role: 'PRIMARY', dbfs: -28, clipped: false, ratePpm: -5_000, timelineSamples: 480_000, receivedSamples: 480_000, insertedSamples: 0, nonZero: true },
+        { deviceId: 'MIC-02', role: 'STANDBY', dbfs: -20, clipped: false, ratePpm: 12, timelineSamples: 480_000, receivedSamples: 480_000, insertedSamples: 0, nonZero: true },
       ],
       ingest: [],
       fragments: [],

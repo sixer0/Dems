@@ -159,6 +159,14 @@ def series(runs):
     add("m5_warn_silent_disconnect_never_switch", ["m5warn"])
     add("m5_rate_limit_reported", ["m5rate", "--ppm", "-8000"])
     add("neg_m5_rate_inside_the_range", ["m5rate", "--ppm", "-2000", "--expect-fail", "--must-fail-on", "rate_limit_warning_raised_and_named"], "FAIL")
+    # Task 4 row N3 (protocol version 5), once each: THE GAPPED MICROPHONE KIND on the stand-in of the macOS path
+    # (test/n3gapped.py, test/gapped_mic.c) - the account to the sample against the tap and the writer, the runs, no stretch;
+    # its must-FAIL vector is one tap sample removed (every reconciliation with the tap must refuse it).
+    for mode in ("measured", "whole", "late4", "trim", "stop3", "nan", "killbefore", "killbetween", "killafter", "runs1025"):
+        add("n3_gapped_%s" % mode, ["n3gap", "--mode", mode])
+    add("neg_n3_one_tap_sample_removed", ["n3judge", "--control", "dropone", "--expect-fail", "--must-fail-on",
+                                          "account_closes_on_the_timeline_end,tap_zeros_are_the_inserted_ones", "--may-fail-on", "copy_is_exact,tap_runs_are_the_listed_runs"],
+        "FAIL", False, on="n3_gapped_measured")
     # Fix pass F-M3 (code review of row 63; ruling D179), once each (decision D122):
     #   R63-02  the fragment size bound on an oversized GOP: every durable fragment inside the bound, no sample lost, the
     #           chain whole; its control is the proof build with the rule off (fragments above the bound are written);

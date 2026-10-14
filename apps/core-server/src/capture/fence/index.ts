@@ -37,6 +37,14 @@ import { CaptureAdapterKind, CaptureOperation } from '../adapters/kinds';
 import { createFakePoeController } from '../adapters/fake';
 import { createCaptureDeviceRegistry } from '../adapters/registry';
 import type { AudioInputAdapter, CameraAdapter, CaptureAdapter, CaptureDeviceEntry, CaptureDeviceRegistry } from '../adapters/types';
+// Task 4 row 88 (THE LIFT): the boot builds the production registry, its two watches and the microphone's configuration writer.
+// The loader is imported for its TYPES here and for its value by ONE dynamic import inside the boot step (rule A-1).
+import type { ProductionAdapterDependencies, ProductionAdapters, ProductionMicrophoneDependencies } from '../adapters/real';
+import { createCameraWatch, type CameraWatch, type CameraWatchDependencies } from '../adapters/camera/camera-watch';
+import { createMicLossWatch, type MicLossWatch, type MicLossWatchOptions } from '../adapters/audio/mic-loss';
+import { identifyRegisteredCard, isRegisteredAudioInput, type RegisteredAudioInput } from '../adapters/audio/usb-audio-production';
+import { createAlsaConfigWriter } from '../adapters/audio/alsa-config-writer';
+import type { CardEnumerator } from '../adapters/audio/card-listing';
 import {
   LOCAL_CAMERA_DEVICE_NAME,
   LOCAL_MIC_DEVICE_NAME,
@@ -59,7 +67,7 @@ import { CAPTURE_FENCE_BOOT_STEP, runCaptureFenceBoot, type CaptureFenceOutcome,
 import { READ_PREVIOUS_BOOT_STATEMENT, storedBootSigningKey, storedBootSigningStore, systemBootDetailsOf, systemBootSeverityOf } from './boot-key';
 import { createGeneratedCameraAdapter, createGeneratedMicAdapter } from './generated-sources';
 import { captureOperationDecisionOf, type CaptureOperationDecision } from './operation';
-import { READ_STORED_DEVICE_PROFILES, READ_STORED_DEVICE_PROFILES_OF, productionDeviceEntryOf, tellQuietly } from './production-parts';
+import { READ_STORED_DEVICE_PROFILES, READ_STORED_DEVICE_PROFILES_OF, productionCameraTimeReaderOf, productionDeviceEntryOf, tellQuietly } from './production-parts';
 import { readStoredDevices, type FenceExecutor, type LocalDeviceClass, type StoredCaptureDevice } from './registration';
 import { tellEach, whileShortOpen } from './sources';
 
@@ -207,8 +215,9 @@ export interface BuiltCaptureRegistry {
  *   ADMITTED         the device has its adapter now and the registry serves it;
  *   ALREADY_SERVED   the registry served it before the call (a repeat is not an error);
  *   NOT_SERVED       no adapter of the running operation stands behind this kind of device: a
- *                    production kind (class C: no opener in this phase), a second local device,
- *                    or any device while the Core runs `SIMULATED` (no registry at all).
+ *                    production kind in `REAL_DEVELOPMENT`, a production device whose adapter has
+ *                    no door of a later device (a kind without an opener on this host), a second
+ *                    local device, or any device while the Core runs `SIMULATED` (no registry at all).
  *   ADMITTING        (task 4 row 85c; the production registry only) the stored row of the device
  *                    is being read and handed to its adapter: the registry serves it when that has
  *                    settled (`BuiltProductionRegistry.admitted`), and says so through
@@ -345,11 +354,12 @@ export function buildDevelopmentRegistry(input: DevelopmentRegistryInput): Built
 }
 
 /**
- * The registry of `REAL_PRODUCTION` in this phase: NO adapter. The production kinds are class C
- * (no opener); their loader is not called here, so that nothing of class C is evaluated. Every
- * assignment is refused by the registry (unknown to it), and every plan by the plan builder
- * (`SOURCE_KIND_NOT_RECORDABLE`): search, test, adoption and assignment of a production camera are
- * the discovery rows', which register that half when they land.
+ * The EMPTY registry of `REAL_PRODUCTION`: NO adapter. Since the lift (task 4 row 88) the boot step
+ * builds it only where NO composition handed the fence its production parts (`provideProductionParts`
+ * was not called: a test app that composes nothing; the entry point always composes). The loader is
+ * not called here, so nothing of the production adapters is evaluated. Every assignment is refused
+ * by the registry (unknown to it), and every plan by the plan builder (`SOURCE_KIND_NOT_RECORDABLE`):
+ * fail-closed.
  */
 export function buildProductionRegistry(locked?: () => boolean): BuiltCaptureRegistry {
   const registry = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION, ...(locked === undefined ? {} : { locked }) });
@@ -408,9 +418,8 @@ export const ADMISSION_FAILED = 'FAILED';
  * THE DOOR OF A LATER DEVICE IN A BUILT ADAPTER (task 4 row 85c), by shape. Both built production
  * adapters take a FIXED device list when they are built, so a device registered afterwards has no
  * adapter. An adapter that can take one says so with this member: it serves `entry` from then on
- * exactly as a device of its first list. NEITHER BUILT ADAPTER HAS IT YET (their files are not
- * this row's: a request line) and the class-C stubs never will; without it the admission answers
- * `NOT_SERVED`, as before.
+ * exactly as a device of its first list. Both built adapters have it (row 85d); the stubs never
+ * will; without it the admission answers `NOT_SERVED`.
  */
 export interface LateDeviceAdapter {
   admitDevice(entry: CaptureDeviceEntry): void;
@@ -439,11 +448,12 @@ const optionalCall = <Result>(adapter: object, name: 'openSources' | 'closeAll')
  * In this order: (1) any operation but `REAL_PRODUCTION` is refused, before a read, an import or a
  * build; (2) the stored registry is read and the rows of the three production kinds become the
  * device entries; (3) the loader builds the three adapters from them and from the dependency bundle;
- * (4) each is registered in a registry of the operation - whose rules are unchanged, so an adapter
- * that states an opener for a kind without one is still REFUSED (`CAPTURE_ADAPTER_INVALID`) until
- * the lift; a refused registration ends the build and closes what was built.
+ * (4) each is registered in a registry of the operation - under the registry's own rules: since the
+ * lift (AM-1) the two production source kinds may state an opener there, `SNMP_POE` may not, and an
+ * adapter with an opener of another class than the operation's is refused (`CAPTURE_ADAPTER_INVALID`);
+ * a refused registration ends the build and closes what was built.
  *
- * NOT CALLED BY THE BOOT (row 88 switches the boot step from `buildProductionRegistry` to this).
+ * CALLED BY THE BOOT STEP since the lift (task 4 row 88), with the parts the composition handed in.
  * It takes no seam: every member of its input is a product dependency, and the one value a test may
  * hand in that a product must not - a permissive destination rule - exists under `test/` only and
  * travels inside `dependencies.camera` (AD-02 (2)).
@@ -452,8 +462,9 @@ const optionalCall = <Result>(adapter: object, name: 'openSources' | 'closeAll')
  * profile list (the wider read `READ_STORED_DEVICE_PROFILES`; a list not of its form is an empty
  * list and is named by `malformedProfiles`). `admit` serves a device registered after the boot
  * where a read of the store is handed in (`reader`) and the adapter of its class has the door of a
- * later device (`LateDeviceAdapter`); NEITHER BUILT ADAPTER HAS THAT DOOR YET, so until their
- * owners add it the answer stays `NOT_SERVED` and such a device needs a restart.
+ * later device (`LateDeviceAdapter`): the adapter takes the entry through that door FIRST, then
+ * the registry takes a view of it (C70). Both built adapters have the door (row 85d); the stubs of
+ * a kind without an opener do not, so such a device needs a restart.
  */
 export async function buildProductionRegistryOf<Camera, Audio, Cards = unknown>(input: ProductionRegistryInput<Camera, Audio, Cards>): Promise<BuiltProductionRegistry<Cards>> {
   if (input.operation !== CaptureOperation.REAL_PRODUCTION) throw new CaptureAdapterError(CaptureAdapterRefusal.REAL_ADAPTERS_REFUSED);
@@ -566,6 +577,174 @@ export async function buildProductionRegistryOf<Camera, Audio, Cards = unknown>(
   };
 }
 
+// ── THE LIFT (task 4 row 88; decision AM-1; request lines 295, 304, 339 of rows 85b, 85c, 85d; decision C70) ──
+
+/** The one platform whose host has a production microphone opener (AM-1 (3)(h) with the erratum of C135): `linux`. */
+export const PRODUCTION_MICROPHONE_OPENER_PLATFORM = 'linux';
+
+/** What the composition hands for the production microphone: the adapter's options but the two the capture unit owns, with the two program paths as the configuration states them (may be null). */
+export type ProductionAudioParts = Omit<ProductionMicrophoneDependencies, 'helperProgram' | 'guardProgram' | 'configWriter' | 'runDir'> & { readonly helperProgram: string | null; readonly guardProgram: string | null };
+
+/**
+ * WHAT THE COMPOSING FILE HANDS THE FENCE FOR PRODUCTION CAPTURE (row 88). The fence may not import
+ * the composition (it stands above the modules), so the composition opens this door of the fence
+ * control, ONCE, before the boot steps run; the boot step of `REAL_PRODUCTION` builds the registry,
+ * the two watches and the microphone's configuration writer from it.
+ */
+export interface ProductionCaptureParts {
+  /** The platform of the process, as the entry point stated it: only on `PRODUCTION_MICROPHONE_OPENER_PLATFORM` is a microphone opener built. */
+  readonly platform: string;
+  readonly dependencies: { readonly camera: ProductionAdapterDependencies['camera']; readonly audio: ProductionAudioParts };
+  readonly watches: {
+    /** Everything the camera watch takes but its time reader, which the fence builds. */
+    readonly camera: Omit<CameraWatchDependencies, 'reader'>;
+    /** Everything the microphone loss watch takes but the four members the fence names. */
+    readonly microphone: Omit<MicLossWatchOptions<RegisteredAudioInput>, 'devices' | 'identify' | 'isRow' | 'held'>;
+  };
+  /** The card listing of the host (operations 98 and 99), read at every call. */
+  readonly cards: CardEnumerator;
+  /** The report source of the session: the camera adapter's own source is attached to it; the camera watch listens to it. */
+  readonly relayReports: {
+    attach(source: ProductionAdapters['camera']['relayReports']): () => void;
+    subscribe(listener: (report: Parameters<CameraWatch['pushEstablished']>[0]) => void): () => void;
+  };
+  /** Once each. The camera watch is attached BEFORE the registry is built: no start can come before it (finding E-03). */
+  attachCameraWatch(watch: CameraWatch): void;
+  attachMicLossWatch(watch: MicLossWatch): void;
+}
+
+/** Codes the wiring of the production registry logs. Identifiers and counts only. */
+export const ProductionWiringCode = {
+  /** REAL_PRODUCTION booted without the parts of a composition: the empty registry, nothing recordable. */
+  PARTS_NOT_PROVIDED: 'CAPTURE_PRODUCTION_PARTS_NOT_PROVIDED',
+  /** `linux`, but the audio helper or the guard is not configured: the microphone adapter WITHOUT an opener is built. */
+  MIC_PROGRAM_NOT_CONFIGURED: 'CAPTURE_PRODUCTION_MIC_PROGRAM_NOT_CONFIGURED',
+  /** Not `linux`: no production microphone opener on this host (AM-1 (3)(h), C135): the microphone adapter WITHOUT an opener is built. */
+  MIC_OPENER_NOT_ON_THIS_PLATFORM: 'CAPTURE_PRODUCTION_MIC_OPENER_NOT_ON_THIS_PLATFORM',
+  /** Cameras whose stored profile list was not of its form (each has an empty list). */
+  PROFILES_MALFORMED: 'CAPTURE_PRODUCTION_PROFILES_MALFORMED',
+  /** A device registered after the boot could not be admitted. */
+  ADMISSION_FAILED: 'CAPTURE_PRODUCTION_ADMISSION_FAILED',
+  /** A device registered after the boot was admitted (a camera's heartbeat starts). */
+  ADMITTED: 'CAPTURE_PRODUCTION_DEVICE_ADMITTED',
+  /** The production registry was built: how many devices per class, whether a microphone opener exists. */
+  BUILT: 'CAPTURE_PRODUCTION_REGISTRY_BUILT',
+} as const;
+
+/** What the wiring needs of the app: a read of the store that works after the boot, the run directory, the lock, the log sinks. A test hands doubles. */
+export interface ProductionWiringEnvironment {
+  readonly store: FenceExecutor;
+  /** `<dataDir>/run/capture`. */
+  readonly runDir: string;
+  readonly locked: () => boolean;
+  readonly sinks: CaptureFenceSinks;
+}
+
+/**
+ * THE LIFT'S WIRING OF THE PRODUCTION REGISTRY, in this order:
+ *   1. the microphone's dependencies: on `linux` with both programs configured, the composition's
+ *      bundle with the configuration writer and the run directory added; else NULL - the loader
+ *      then builds the `USB_AUDIO` adapter WITHOUT an opener (AM-1 (3)(h), C135: on `darwin` no
+ *      production microphone is ever recorded, so no REAL_PRODUCTION session can start there);
+ *   2. the camera watch, built and ATTACHED before anything else (E-03);
+ *   3. the builder, with the stored registry read through `store` at the boot and after it
+ *      (`reader`: a later device), the loader by a dynamic import, the card listing, the watch's
+ *      check, the lock and the admission sink (C70);
+ *   4. the camera adapter's report source attached to the hub, the watch listening to the hub, a
+ *      heartbeat for every stored production camera; the microphone loss watch where a microphone
+ *      opener exists, reading the stored microphones LIVE (a later one too);
+ *   5. the malformed profile lists said once; the closing of all of it at shutdown.
+ */
+export async function wireProductionRegistry(parts: ProductionCaptureParts, environment: ProductionWiringEnvironment): Promise<BuiltProductionRegistry> {
+  const { sinks } = environment;
+  const say = (level: 'warn' | 'error', code: string, context: Record<string, string | number>, message: string): void => {
+    sinks[level]({ code, ...context }, message);
+    sinks.persist({ level, source: 'capture.fence', message, code, context });
+  };
+
+  // 1. The microphone.
+  const audioParts = parts.dependencies.audio;
+  let audio: ProductionMicrophoneDependencies | null = null;
+  if (parts.platform !== PRODUCTION_MICROPHONE_OPENER_PLATFORM) {
+    sinks.info({ code: ProductionWiringCode.MIC_OPENER_NOT_ON_THIS_PLATFORM }, 'no production microphone opener on this platform: a production microphone is listed and never recorded');
+  } else if (audioParts.helperProgram === null || audioParts.guardProgram === null) {
+    say('warn', ProductionWiringCode.MIC_PROGRAM_NOT_CONFIGURED, { helper: audioParts.helperProgram === null ? 'NOT_CONFIGURED' : 'CONFIGURED', guard: audioParts.guardProgram === null ? 'NOT_CONFIGURED' : 'CONFIGURED' }, 'the production microphone programs are not configured: no microphone opener is built');
+  } else {
+    audio = { ...audioParts, helperProgram: audioParts.helperProgram, guardProgram: audioParts.guardProgram, configWriter: createAlsaConfigWriter(environment.runDir), runDir: environment.runDir };
+  }
+
+  // 2. The camera watch, attached before the registry exists.
+  const cameraWatch = createCameraWatch({ ...parts.watches.camera, reader: productionCameraTimeReaderOf(parts.watches.camera.timers) });
+  parts.attachCameraWatch(cameraWatch);
+
+  // 3. The builder. Every member is a product dependency (static rule of row 85).
+  const loaded: { adapters: ProductionAdapters | null; registry: BuiltProductionRegistry | null } = { adapters: null, registry: null };
+  const operation = CaptureOperation.REAL_PRODUCTION;
+  const executor = environment.store;
+  const reader = environment.store;
+  const dependencies: ProductionAdapterDependencies = { camera: parts.dependencies.camera, audio };
+  const load = async (asked: CaptureOperation, devices: ProductionRegistryDevices, given: ProductionAdapterDependencies): Promise<ProductionAdapters> => {
+    loaded.adapters = await (await import('../adapters/real')).loadProductionAdapters(asked, devices, given);
+    return loaded.adapters;
+  };
+  const audioCards = (): ReturnType<CardEnumerator['list']> => parts.cards.list();
+  const checkCamera = (deviceId: string, signal: AbortSignal): Promise<unknown> => cameraWatch.check(deviceId, signal);
+  const { locked } = environment;
+  const onAdmission = (deviceId: string, outcome: CaptureDeviceAdmission | typeof ADMISSION_FAILED, code: string | null): void => {
+    if (outcome === ADMISSION_FAILED) {
+      say('error', ProductionWiringCode.ADMISSION_FAILED, { deviceId, reason: code ?? 'NONE' }, 'a device registered after the boot could not be admitted: it is served after a restart');
+      return;
+    }
+    if (outcome !== CaptureDeviceAdmission.ADMITTED) return;
+    sinks.info({ code: ProductionWiringCode.ADMITTED, deviceId }, 'a device registered after the boot is served');
+    // Row 85d (d): an admitted CAMERA gets its heartbeat now. A microphone is read by the loss watch at its next pass.
+    if (loaded.registry?.devices().some((device) => device.id === deviceId && device.kind === 'CAMERA') === true) cameraWatch.watch(deviceId);
+  };
+  // A refused build stops the watch it started and goes to the caller as it is (no error is handled here: static rule G-R14).
+  try {
+    loaded.registry = await buildProductionRegistryOf({ operation, executor, reader, dependencies, load, audioCards, checkCamera, locked, onAdmission });
+  } finally {
+    if (loaded.registry === null) cameraWatch.close();
+  }
+  const built: BuiltProductionRegistry = loaded.registry;
+  const camera = loaded.adapters?.camera;
+  if (camera === undefined) throw new CaptureAdapterError(CaptureAdapterRefusal.ADAPTER_INVALID);
+
+  // 4. The reports, the heartbeats, the microphone loss watch.
+  const offAdapterReports = parts.relayReports.attach(camera.relayReports);
+  const offWatchReports = parts.relayReports.subscribe((report) => cameraWatch.pushEstablished(report));
+  const stored = built.devices();
+  for (const device of stored) if (device.kind === 'CAMERA') cameraWatch.watch(device.id);
+  let micWatch: MicLossWatch | null = null;
+  if (audio !== null) {
+    const watched = createMicLossWatch<RegisteredAudioInput>({
+      ...parts.watches.microphone,
+      devices: () => built.devices().filter((device) => device.kind === 'MIC').map((device) => device.id),
+      identify: identifyRegisteredCard,
+      isRow: isRegisteredAudioInput,
+      held: () => built.openSources(),
+    });
+    micWatch = watched;
+    parts.attachMicLossWatch(watched);
+    watched.start();
+  }
+
+  // 5. Said once; closed at shutdown.
+  const malformed = built.malformedProfiles();
+  if (malformed.length > 0) say('warn', ProductionWiringCode.PROFILES_MALFORMED, { count: malformed.length, devices: malformed.join(',') }, 'stored profile lists that are not of their form: those cameras have no profile');
+  sinks.info({ code: ProductionWiringCode.BUILT, cameras: stored.filter((device) => device.kind === 'CAMERA').length, microphones: stored.filter((device) => device.kind === 'MIC').length, microphoneOpener: audio !== null }, 'the production registry is built');
+  return {
+    ...built,
+    async closeAll(): Promise<void> {
+      micWatch?.stop();
+      cameraWatch.close();
+      offWatchReports();
+      offAdapterReports();
+      await built.closeAll();
+    },
+  };
+}
+
 /** What the fence offers after the boot: for the session wiring (row 71), the boot checks (row 61), the selector and the clients' device shapes. */
 export interface CaptureFenceControl {
   /** The decision of the one function for this app's configuration. Available at once. */
@@ -608,6 +787,14 @@ export interface CaptureFenceControl {
    * every generated source is always there. A second call replaces the first.
    */
   installDevelopmentSourceSwitch(unreachable: (deviceId: string) => boolean): void;
+  /**
+   * THE DOOR OF THE COMPOSITION (task 4 row 88, the lift): the parts the production registry, its
+   * watches and its microphone writer are built from. Opened ONCE, by the composing file
+   * (`src/capture-composition.ts`), before the boot step ran. REFUSED - `CAPTURE_ADAPTER_INVALID` -
+   * in every operation but `REAL_PRODUCTION`, a second time, and after the boot step ran. Without a
+   * call the boot step of `REAL_PRODUCTION` builds the empty registry (nothing recordable).
+   */
+  provideProductionParts(parts: ProductionCaptureParts): void;
   /**
    * SEC35-43 (d): the helper processes of an earlier run, by the exact program path. Capture must
    * not start while the answer is not an empty list (null: the process table could not be read).
@@ -663,6 +850,9 @@ export function mountCaptureFence(app: FastifyInstance, mount: CaptureFenceMount
   let built: BuiltCaptureRegistry | null = null;
   /** The development source switch (fix wave M): null until a development tool installed one. */
   let sourceSwitch: ((deviceId: string) => boolean) | null = null;
+  /** Row 88: what the composition handed in for production capture; null until then (and in every other operation). */
+  let productionParts: ProductionCaptureParts | null = null;
+  let bootStepRan = false;
   const openListeners = new Set<() => void>();
   /** Tells every listener; one that throws is reported and never stops an open or a close of a source. */
   const openSourcesChanged = (): void =>
@@ -690,6 +880,10 @@ export function mountCaptureFence(app: FastifyInstance, mount: CaptureFenceMount
       if (decision.operation !== CaptureOperation.REAL_DEVELOPMENT) throw new DevelopmentSourceSwitchRefusedError(decision.operation);
       sourceSwitch = unreachable;
     },
+    provideProductionParts(parts) {
+      if (decision.operation !== CaptureOperation.REAL_PRODUCTION || productionParts !== null || bootStepRan) throw new CaptureAdapterError(CaptureAdapterRefusal.ADAPTER_INVALID);
+      productionParts = parts;
+    },
     async leftoverHelpers() {
       const program = outcome?.helperProgram ?? null;
       return program === null ? Object.freeze([]) : leftoverHelperPids(door, mount.timers, program);
@@ -709,6 +903,7 @@ export function mountCaptureFence(app: FastifyInstance, mount: CaptureFenceMount
   app.readiness.addBootStep({
     id: CAPTURE_FENCE_BOOT_STEP,
     async run() {
+      bootStepRan = true;
       const passed = await runCaptureFenceBoot({
         config: app.config,
         inUnit: (work) =>
@@ -757,7 +952,18 @@ export function mountCaptureFence(app: FastifyInstance, mount: CaptureFenceMount
           sourceUnreachable: (deviceId) => sourceSwitch?.(deviceId) === true,
         });
       } else if (passed.operation === CaptureOperation.REAL_PRODUCTION) {
-        built = buildProductionRegistry(mount.locked);
+        // Row 88 (THE LIFT): the builder, with the parts the composition handed in. Without them: the empty registry, said once.
+        const parts = productionParts;
+        if (parts === null) mount.sinks.warn({ code: ProductionWiringCode.PARTS_NOT_PROVIDED }, 'no composition handed the production parts in: the production registry is empty');
+        built =
+          parts === null
+            ? buildProductionRegistry(mount.locked)
+            : await wireProductionRegistry(parts, {
+                store: { query: (text, values) => app.db.read('capture.fence.production', async (pool) => pool.query(text, values === undefined ? undefined : [...values])) },
+                runDir: `${app.config.dataDir}/${RUN_SUBPATH}`,
+                locked: mount.locked ?? ((): boolean => false),
+                sinks: mount.sinks,
+              });
       }
       outcome = passed;
       if (passed.inserted.length > 0 || passed.generatedProfilesCorrected === true) await mount.reloadState();

@@ -32,6 +32,8 @@ export const captureSelectorEn = {
       LIVE: 'Live',
       LOST: 'Lost',
       OFFLINE: 'Offline',
+      /** Row W6 (lines 566, 569): the Core's `streamState: null` - nobody reads the stream now. */
+      NOT_READ: 'Not read',
     },
     change: 'Change',
     changeCameraLabel: 'Change the camera of {{track}}',
@@ -105,8 +107,11 @@ export const captureSelectorEn = {
       notStated: 'Not stated ({{code}})',
       choose: 'This camera has {{count}} stored stream profiles. Choose the one this track records, then save.',
       one: 'This camera has one stored stream profile. It is the one this track records.',
-      /** No action is named that would not help: as built, only the adoption of a camera stores its profiles. */
-      none: 'This camera cannot be assigned: the Core holds no stream profile for it, and it does not pick one for a camera. The profiles of a camera are stored when its connection test reads its stream, before the camera is added. Nothing was changed.',
+      /**
+       * Row W6 (decisions C117, C126 (d)): the remedy is named. The connection test of a registered camera (operation 108)
+       * stores what its stream states when it holds no profile; that test is a WEB CONSOLE operation (a tablet session is refused).
+       */
+      none: 'This camera cannot be assigned yet: the Core holds no stream profile for it, and it does not pick one for a camera. On the web console, open Devices and press "Test connection" for this camera: when the test reads its stream, the Core stores the profiles it states and they are offered here. Nothing was changed.',
     },
   },
   /** Settings → Capture (MB-09). */

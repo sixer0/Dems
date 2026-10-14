@@ -5,7 +5,7 @@ date: 2026-10-14
 agent: coder-execution (agent N13)
 tier: T3
 builds_on: masterplan/06 sections 7.2, 7.2a, 8.2 (a)-(e), 9.2, 10.1 rows N1 and N3; verification/08b (SM-29, SM-30, SM-31, SM-33); decisions U25, C107, C110, C112 (5), C119 (1), C123, C124; test/a1_worker_baseline_and_kill_matrix.md (the baseline)
-status: SEE SECTION 1 (filled after the series)
+status: complete - N1 + N3 built and proven on the stand-in to the sample; the worker's whole own series green on the new tree (171 of 171, every A1 fixture, row 046's database test). OPEN, not this row's: the Core's request lines (8 typecheck errors and 2 red pin tests until they land, in the same change set as this one), run B+ (the kill matrix with the three gapped kill cases)
 ---
 
 # Row N13: protocol version 5 and the worker's gapped microphone kind
@@ -14,7 +14,16 @@ Edit tool only for existing files (no scripted replace, no shell append, no gene
 
 ## 1. Result
 
-(filled in section 9 when the series and the fixtures ended)
+| Part | Result |
+|---|---|
+| C123 `m5_gap_analyser` | a real insertion of 17 zeros (one late fixture chunk under load), counted exactly by the worker, measured exactly by the check: NOT a miscount, nothing fixed (section 2) |
+| N1 protocol | version 5; 36 of 36; 12 mutants, 11 red + 1 equivalent (section 3) |
+| N3 worker | places 1-12 of 7.2a, run tracker, accounts (section 4); `make` rc 0; check.sh + selftest rc 0, 109 refused (section 5) |
+| The account on the stand-in | ten modes, every count reconciled to the sample against the tap and the writer; 1,024 listed + 2 counted at 1,026 long runs; no stretch reachable (section 6) |
+| Displacement | -26.9 to -38.9 ms on the gapped pattern (whole pipe +0.45): inside +-40 ms by 1.1 ms (section 6) |
+| Existing kinds | series 171 of 171 (160 existing + 11 new), every A1 fixture, row 046 12 of 12 (section 9) |
+| A Core of today with v5 | refused at HELLO if built from the old package; a Core of this tree accepts it; 8 Core tsc errors + 2 red pin tests = request lines (section 7) |
+| C124 | the media zero is already on the wire; Core-side request line (section 7) |
 
 ## 2. FIRST, BEFORE ANY EDIT: the `m5_gap_analyser` failure of row A1 (decision C123)
 
@@ -140,9 +149,27 @@ Binaries (`make` of 10:53):
 eae272715f12ffc274e59b237fecc35aa3e9bca2ff63c39cdd60107106a55400  build/capture-guard   (was 4f1e7a9c...; the same)
 ```
 
-## 9. The existing series on the new tree
+## 9. The existing series on the new tree (binaries 2a0e36ce / 4d0c3cd6 / eae27271 throughout - `hash_trail.tsv`)
 
-(filled when they ended)
+| # | Part (sandbox off; one bounded lock hold each) | rc | Result line |
+|--:|---|--:|---|
+| 1 | `make -C apps/capture-worker && make fixtures proof` (10:53, load 6.66) | 0 | `check.sh: src: static rules OK (... N3-GAP ...)`; 203 lines `refused as required` (189 at A1 + 14); `anchor_test`, `micwatch_test`, `writer_test`, `start_checks`, `log_test`: all checks hold; `relay_unit_test: 989 checks passed ... 34 of 34`; `guard_test: ... 13 planted lines and 7 mutations refused` |
+| 2 | `check.sh src`; `check.sh --selftest` | 0, 0 | static rules OK; 109 `refused as required` |
+| 3 | **THE SERIES**: `make e2e E2E_ARGS="--tag n13 --ports 8559,8561 --load-wait 60"` (11:08 to about 12:00) | 0 | `171 checks (124 expected PASS, 47 negative controls expected FAIL): 171 as expected, 0 unexpected` / `ports still listening after the series: none` / `AGGREGATE EXIT CODE 0`; load at the sensitive checks 2.06 .. 8.89. `m5_gap_analyser` PASS. The 160 checks of A1 all as expected, ONE run, no re-run |
+| 4 | `row58_gate.py all` x 3 | 0 x 3 | `ROW58 GATE: 12 run(s), 12 PASS, 0 FAIL` x 3 |
+| 5 | `row176_camera_end.py all` | 0 | `ROW176 CAMERA END: 6 run(s), 6 PASS, 0 FAIL` |
+| 6 | `row175_log_hygiene.py repeat`; `scan` | 0, 0 | 2 PASS; `ROW175 LOG HYGIENE: 14 run(s) scanned, 14 PASS, 0 FAIL; path text in any worker log: 0; library lines above level 16: 0` |
+| 7 | `row041_relay.py all` | 0 | `ROW41 RELAY: 28 run(s), 28 PASS, 0 FAIL` |
+| 8 | `row042_probe.py all` | 0 | `ROW42 PROBE: 21 run(s), 21 PASS, 0 FAIL; ... Basic scheme ...: 0` |
+| 9 | `row043_reopen.py` drop, back, refused, gone, control | 0 x 5 | `ROW43 REOPEN: 11 run(s), 11 PASS, 0 FAIL` after each |
+| 10 | `row186_bounds.py all` | 0 | `ROW186 BOUNDS (capture-relay): 23 run(s), 23 PASS, 0 FAIL` |
+| 11 | `row143b_source_bind.py all` | 0 | `14 of 14 runs PASS` |
+| 12 | `row152_hostile_relay.py all` | 0 | `ROW152 HOSTILE RELAY: 14 run(s), 14 PASS, 0 FINDING, 0 FAIL` |
+| 13 | `row153_confinement.py all` | 0 | `ROW153 CONFINEMENT: 6 run(s), 6 PASS, 0 FAIL` |
+| 14 | `make relay-fuzz-controls` | 0 | `relay_fuzz controls: 24 of 24 planted flaws found by the fuzz build` |
+| 15 | row 046's database test (db-migrate lock, then heavy-host lock) | 0 | `Tests 12 passed (12)`; `teardown: dropped 2 database(s) ...; 0 remain with the run prefix dems_test_step_n13r046_tmvtkjvl_` |
+
+Scripts and logs: `.cache/task4-n13/` (`run_fixtures.sh` and `run_step.sh` are A1's, pointed at this folder; `steps.tsv`, `hash_trail.tsv`, `20_e2e.log`, `30_fixtures.log`, one log per step). NOT run here: the kill matrix (run B+, design 10.1). Left behind at 12:22: no listener on 8550-8574, no worker, relay, guard, stand-in, fake camera, bounded or harness process; the two throw-away databases dropped; `apps/capture-worker/test/__pycache__` (my own `py_compile`) removed.
 
 ## 10. Driver decisions (for the controller)
 

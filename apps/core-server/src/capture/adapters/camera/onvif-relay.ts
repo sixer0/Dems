@@ -3,10 +3,11 @@
  * 46, work package WP-06b; design addendum 2.3, 3.2, 6.2; security AD-02, AD-03, AD-05, AD-09 (3),
  * BR-07, BR-08, S13-01, S13-02; decisions C34 to C37, C40).
  *
- * REGISTERED NOWHERE. This file stands beside the class-C stub `onvif-rtsp.ts`, which stays the
- * adapter the loader `../real.ts` names. No boot path imports this file: it states an opener for a
- * kind the registry has none for, so a real registry REFUSES it (`CAPTURE_ADAPTER_INVALID`) until
- * the lift (WP-13, rows 85 and 88). Until then it is built and proven at adapter level only.
+ * REGISTERED SINCE THE LIFT (task 4 row 88, decision AM-1): the loader `../real.ts` builds THIS
+ * adapter in the place of the retired stub `onvif-rtsp.ts`, and the boot step of the fence
+ * registers it in the production registry with its opener. A development registry refuses it
+ * (`CAPTURE_ADAPTER_INVALID`: an opener of another class than the operation's). Before the lift it
+ * was registered nowhere and proven at adapter level only.
  *
  * `openSource(deviceId, target, signal)`, IN THIS ORDER (addendum 2.3 step 3):
  *

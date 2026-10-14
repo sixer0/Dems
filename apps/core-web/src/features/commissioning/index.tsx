@@ -335,6 +335,22 @@ function SettingsForm({
           </TextField>
         )}
       />
+      {/* Row W6 (request line 557, row V7b): the seventh setting - the allowed ONVIF ports, in the stored order. */}
+      <Controller
+        control={form.control}
+        name="onvifPorts"
+        render={({ field, fieldState }) => (
+          <TextField name={field.name} value={field.value} onChange={field.onChange} onBlur={field.onBlur} isInvalid={fieldState.invalid} isDisabled={save.busy}>
+            <Label>{t('web.commissioning.settings.onvifPorts.label')}</Label>
+            <TextArea ref={field.ref} className="font-mono" rows={3} inputMode="numeric" autoComplete="off" autoCapitalize="off" spellCheck={false} data-testid="com-field-onvifPorts" />
+            {fieldState.invalid ? (
+              <FieldError data-testid="com-error-onvifPorts">{t('web.commissioning.settings.onvifPorts.error')}</FieldError>
+            ) : (
+              <Description data-testid="com-onvif-hint">{t('web.commissioning.settings.onvifPorts.hint', { min: L.onvifPortsMin, max: L.onvifPortsMax })}</Description>
+            )}
+          </TextField>
+        )}
+      />
       <div className="com-numbers">
         {NUMBER_FIELDS.map(({ name, min, max }) => (
           <Controller

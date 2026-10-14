@@ -173,7 +173,10 @@ static const char *take_plan(Session *s, const JNode *plan) {
         if (m->t != J_OBJ || m->n != 3 || !id_ok(id, ID_CHARS) || !role || role->t != J_STR || !input || input->t != J_OBJ || input->n != 2) return "PLAN_INVALID";
         int at = !strcmp(role->str, "PRIMARY") ? 0 : !strcmp(role->str, "STANDBY") ? 1 : -1;
         const JNode *kind = jget(input, "kind"), *path = jget(input, "path");
-        if (at < 0 || s->mic[at].present || !kind || kind->t != J_STR || strcmp(kind->str, "PCM_FIFO") || !is_path(path)) return "PLAN_INVALID";
+        /* Protocol version 5: two words, any other is PLAN_INVALID. PCM_FIFO_GAPPED is the same bytes from a writer that
+         * does not promise every sample (design 06 s7.2a): the ONE place that sets the predicate the audio thread reads. */
+        if (at < 0 || s->mic[at].present || !kind || kind->t != J_STR || (strcmp(kind->str, "PCM_FIFO") && strcmp(kind->str, "PCM_FIFO_GAPPED")) || !is_path(path)) return "PLAN_INVALID";
+        s->mic[at].gapped = !strcmp(kind->str, "PCM_FIFO_GAPPED");
         s->mic[at].present = 1;
         snprintf(s->mic[at].device_id, sizeof s->mic[at].device_id, "%s", id->str);
         snprintf(s->mic[at].path, sizeof s->mic[at].path, "%s", path->str);

@@ -13,6 +13,7 @@ import {
   CaptureOperation,
   FakeTopology,
   createCaptureDeviceRegistry,
+  createFakeAudioInputAdapter,
   createFakeCameraAdapter,
   createFakeRegistry,
   sourceClassOf,
@@ -168,11 +169,24 @@ describe('what is refused before anything is opened (D86 C-5, D82): SOURCE_KIND_
     expect(refusalOf(() => assertRecordableSelector(selector, development.registry))).toEqual(refused);
     expect(refusalOf(() => buildCapturePlan({ ...base, selector, registry: development.registry }))).toEqual(refused);
 
-    // REAL_PRODUCTION: nothing is recordable in this phase (spec §A.1.2 row 2).
+    // REAL_PRODUCTION (task 4 row 88, THE LIFT; specification 6.3 "Test: plan builder ... rewritten"): a production source whose
+    // adapter states NO opener is still refused by name - the adapter's word decides (on `darwin` the microphone's, AM-1 (3)(h)).
     const production = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION });
     production.register(productionCamera('CAM-01'));
     production.register(productionCamera('CAM-02'));
     expect(refusalOf(() => buildCapturePlan({ ...base, registry: production }))).toEqual({ code: 'SOURCE_KIND_NOT_RECORDABLE', reason: 'NO_OPENER', deviceId: 'CAM-01' });
+    // ... and four production sources that state their opener ARE a plan since the lift (before it: refused at registration).
+    const lifted = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION });
+    for (const id of ['CAM-01', 'CAM-02']) lifted.register({ ...createFakeCameraAdapter({ id }), kind: CaptureAdapterKind.ONVIF_RTSP });
+    for (const id of ['MIC-01', 'MIC-02']) lifted.register({ ...createFakeAudioInputAdapter({ id, runDir: RUN_DIR }), kind: CaptureAdapterKind.USB_AUDIO });
+    expect(assertRecordableSelector(SEEDED, lifted).sourceClass).toBe('PRODUCTION');
+    expect(capturePlanSubjects(buildCapturePlan({ ...base, registry: lifted }))).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'PRIMARY', 'STANDBY']);
+    // ... unless ONE of the four states none (the darwin microphone): refused by that device.
+    const darwin = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION });
+    for (const id of ['CAM-01', 'CAM-02']) darwin.register({ ...createFakeCameraAdapter({ id }), kind: CaptureAdapterKind.ONVIF_RTSP });
+    darwin.register({ ...createFakeAudioInputAdapter({ id: 'MIC-01', runDir: RUN_DIR }), kind: CaptureAdapterKind.USB_AUDIO, hasOpener: false });
+    darwin.register({ ...createFakeAudioInputAdapter({ id: 'MIC-02', runDir: RUN_DIR }), kind: CaptureAdapterKind.USB_AUDIO, hasOpener: false });
+    expect(refusalOf(() => buildCapturePlan({ ...base, registry: darwin }))).toEqual({ code: 'SOURCE_KIND_NOT_RECORDABLE', reason: 'NO_OPENER', deviceId: 'MIC-01' });
     // Control: the same selector over the fake registry is a plan.
     expect(refusalOf(() => buildCapturePlan(base))).toBe('no refusal');
   });

@@ -11,7 +11,7 @@ import { appendFileSync, chmodSync, existsSync, mkdtempSync, readFileSync, rmSyn
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CAPTURE_WORKER_SETTINGS, CaptureSyncLevel, CaptureWarningReason, LIBAVFORMAT_VERSION_MISMATCH, captureWorkerSettingArguments, type WorkerMessage } from '@dems/capture-protocol';
+import { CAPTURE_PROTOCOL_VERSION, CAPTURE_WORKER_SETTINGS, CaptureSyncLevel, CaptureWarningReason, LIBAVFORMAT_VERSION_MISMATCH, captureWorkerSettingArguments, type WorkerMessage } from '@dems/capture-protocol';
 import { CAPTURE_REASON_SEVERITY, captureFaultSentence, isCaptureFaultReason } from '@dems/shared/sim';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { STUB_WORKER, capturePlan, fakeLauncher, flush, manualCaptureTimers } from '../../../test/support/capture';
@@ -159,7 +159,7 @@ describe('item 1: the fake worker and the stub worker say what the real worker s
     const mismatch = fakeLauncher({ libavformatMismatch: true });
     const channel = mismatch.launcher({ sessionId: SESSION, correlationId: 'cap:test:1', attempt: 1 } as never, { message: (message) => void said.push(message), violation: () => {}, exit: (exit) => void said.push({ exit } as never) });
     await flush();
-    expect(said).toEqual([{ v: 4, sessionId: null, type: 'CRASH', code: LIBAVFORMAT_VERSION_MISMATCH, signal: null, exitCode: 70 }, { exit: { exitCode: 70, signal: null, spawnFailed: false } }]);
+    expect(said).toEqual([{ v: CAPTURE_PROTOCOL_VERSION, sessionId: null, type: 'CRASH', code: LIBAVFORMAT_VERSION_MISMATCH, signal: null, exitCode: 70 }, { exit: { exitCode: 70, signal: null, spawnFailed: false } }]);
     expect((channel as { exited?: boolean }).exited).toBe(true);
   });
 });

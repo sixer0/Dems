@@ -89,7 +89,7 @@ export interface CaptureSourceSheetProps {
   onClose: () => void;
 }
 
-const STREAM_TONE = { LIVE: 'success', LOST: 'danger', OFFLINE: 'warning' } as const;
+const STREAM_TONE = { LIVE: 'success', LOST: 'danger', OFFLINE: 'warning', NOT_READ: 'default' } as const;
 
 export function CaptureSourceSheet({ request, fullHeight, busy, pending, onSave, onClose }: CaptureSourceSheetProps) {
   const reduced = useMotionPolicy() === 'reduced';
@@ -195,7 +195,8 @@ function SheetBody({ request, busy, pending, onSave, onClose }: SheetBodyProps) 
       <ListGroup variant="transparent" accessibilityRole="radiogroup" accessibilityLabel={t(`features.capture-selector.selector.sheet.${sheetKey}Title`, { track })}>
         {request.kind === 'camera'
           ? request.options.map((option) => {
-              const status = cameraLineStatus({ online: option.online, streamState: option.streamState ?? 'LIVE' });
+              // Row W6 (line 569 (3)): the Core's null is passed through - "Not read", never a LIVE the Core did not state.
+              const status = cameraLineStatus({ online: option.online, streamState: option.streamState ?? null });
               // Fix wave J (JA2-24): the camera that feeds the OTHER track says so before it is chosen.
               const otherTrack = option.assignedTo !== null && option.assignedTo !== request.trackId ? option.assignedTo : null;
               const word = cameraOptionWord({ reported: request.reported?.[option.deviceId] ?? null, realCapture: request.reported !== undefined, recording: request.recording === true, onTrack: option.assignedTo !== null });

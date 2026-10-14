@@ -5,7 +5,9 @@
 // `src/capture/__tests__/static.test.ts`. This file adds what is the adapter layer's own:
 //
 //   A-1  the class-C adapter files are imported by the loader `real.ts` only; the loader is
-//        imported by no production file statically and by no test but its own refusal test;
+//        imported by no test but its own refusal test and, since the lift (task 4 row 88), by ONE
+//        production file - the fence, for its types and by ONE dynamic import in the boot step;
+//        the retired camera stub is imported by no file;
 //   A-2  the two members of a credential are read in `credential.ts` only, and no file composes a
 //        locator with a user part;
 //   A-3  the statement of the microphone transport is held to the worker's source;
@@ -16,8 +18,10 @@
 //        the typed schema, compared with each other directly (row 97; A-6 is the codec word).
 //   A-8  the start message is made into bytes by the production door only, which makes no text of
 //        them and hands them to nothing but the write and the zero-fill (task 4 row 21; AD-03 (6)).
-//   A-9  the production adapters built beside the class-C stubs are named by no production source
-//        before the lift (task 4 row 46; addendum 6.2). A-2 names the one caller of the injection point.
+//   A-9  the production adapters built beside the class-C stubs are named by a closed list of
+//        production sources: before the lift by none (task 4 row 46; addendum 6.2); since the lift
+//        (row 88) by the loader and, for the watch and the card match, the fence's boot step.
+//        A-2 names the one caller of the injection point.
 //   A-10 the destination rule on a STORED camera address (task 4 row 143; AD-02 points 1 and 2):
 //        `src/` holds no permissive value, the judgement is asked by a closed list of files, and in
 //        each of them it stands before the use of the address.
@@ -40,19 +44,34 @@ const ADAPTERS = 'src/capture/adapters/';
 const tree = codeOnly(readTree(WORKSPACE).filter((file) => /\.[cm]?tsx?$/.test(file.path)));
 const adapters = tree.filter((file) => file.path.startsWith(ADAPTERS) && isProductionSource(file.path));
 
-/** The class-C adapter files, without extension (structured §9 C-1 to C-4). */
-const CLASS_C = [`${ADAPTERS}camera/onvif-rtsp`, `${ADAPTERS}audio/usb-audio`, `${ADAPTERS}poe/snmp-poe`];
+/**
+ * The adapter files WITHOUT an opener the loader builds, without extension (structured §9 C-3, C-4). Task 4 row 88 (THE
+ * LIFT, AM-1; specification 6.3 "class-C files ... the two files leave the class-C list; `poe/snmp-poe.ts` stays"): the
+ * camera stub left the list - it is RETIRED, named by no file; `audio/usb-audio` stays, as the `USB_AUDIO` adapter of a
+ * host without a production microphone opener (AM-1 (3)(h) with the erratum of C135: every platform but `linux`).
+ */
+const CLASS_C = [`${ADAPTERS}audio/usb-audio`, `${ADAPTERS}poe/snmp-poe`];
+/** Row 88: the stub the built camera adapter replaced. No file imports it; its removal is the controller's. */
+const RETIRED = [`${ADAPTERS}camera/onvif-rtsp`];
 const LOADER = `${ADAPTERS}real`;
 const LOADER_TEST = `${ADAPTERS}__tests__/real.test.ts`;
+/** Row 88 (request line 280 of row 85): the ONE production importer of the loader - its types, and its value by ONE dynamic import in the boot step. */
+const LOADER_IMPORTER = 'src/capture/fence/index.ts';
+/** A static import of the loader that is not a type import. */
+const STATIC_VALUE_IMPORT_OF_LOADER = /^import\s+(?!type\b)[^;]*from\s+'\.\.\/adapters\/real'/;
 
 /** A-1, as a function of a tree, so that the control can run it on planted files. */
 function classCViolations(files: readonly SourceFile[]): string[] {
   const imports = relativeImports(files);
   const naming = imports.filter((entry) => CLASS_C.includes(entry.target) && entry.file !== `${LOADER}.ts`).map((entry) => `${entry.file}:${entry.line} imports a class-C adapter`);
+  const retired = imports.filter((entry) => RETIRED.includes(entry.target)).map((entry) => `${entry.file}:${entry.line} imports a retired stub`);
   const loading = imports
-    .filter((entry) => entry.target === LOADER && entry.file !== LOADER_TEST)
+    .filter((entry) => entry.target === LOADER && entry.file !== LOADER_TEST && entry.file !== LOADER_IMPORTER)
     .map((entry) => `${entry.file}:${entry.line} imports the class-C loader`);
-  return [...naming, ...loading];
+  const importer = files
+    .filter((file) => file.path === LOADER_IMPORTER)
+    .flatMap((file) => file.text.split('\n').flatMap((line, index) => (STATIC_VALUE_IMPORT_OF_LOADER.test(line) ? [`${file.path}:${index + 1} imports the loader's value statically`] : [])));
+  return [...naming, ...retired, ...loading, ...importer];
 }
 
 /** A read of a credential member: `.secret` or `.username` after any expression. */
@@ -76,31 +95,43 @@ describe('A-1: the class-C adapters never load in a test', () => {
       { path: `${ADAPTERS}index.ts`, text: `export { loadProductionAdapters } from './real';\n` },
       { path: 'src/modules/capture-config/z.ts', text: `import { createUsbAudioInputAdapter } from '${UP}/../capture/adapters/audio/usb-audio';\n` },
       { path: `${ADAPTERS}fake/index.ts`, text: `import { loadProductionAdapters } from '${UP}/real';\n` },
-      // Allowed: the loader's own imports, and its own refusal test.
+      // Row 88: the retired camera stub, named anywhere - the loader included; the fence's loader import as a VALUE.
       { path: `${LOADER}.ts`, text: `await import('./camera/onvif-rtsp');\n` },
+      { path: LOADER_IMPORTER, text: `import { loadProductionAdapters } from '../adapters/real';\n` },
+      // Allowed: the loader's own imports, its own refusal test, and the fence's type import and dynamic import.
+      { path: `${LOADER}.ts`, text: `await import('./audio/usb-audio');\n` },
       { path: LOADER_TEST, text: `import { loadProductionAdapters } from '${UP}/real';\n` },
+      { path: LOADER_IMPORTER, text: `import type { ProductionAdapters } from '../adapters/real';\nconst real = await import('../adapters/real');\n` },
     ];
     expect(classCViolations(planted)).toEqual([
-      `${ADAPTERS}__tests__/x.test.ts:1 imports a class-C adapter`,
       'test/support/y.ts:1 imports a class-C adapter',
       'src/modules/capture-config/z.ts:1 imports a class-C adapter',
+      `${ADAPTERS}__tests__/x.test.ts:1 imports a retired stub`,
+      `${LOADER}.ts:1 imports a retired stub`,
       `${ADAPTERS}index.ts:1 imports the class-C loader`,
       `${ADAPTERS}fake/index.ts:1 imports the class-C loader`,
+      `${LOADER_IMPORTER}:1 imports the loader's value statically`,
     ]);
   });
 
-  it('no file of the workspace but the loader names a class-C adapter; nothing but its refusal test imports the loader', () => {
+  it('no file of the workspace but the loader names a class-C adapter, none names the retired stub; the loader is imported by its refusal test and - types, and ONE dynamic import - by the fence alone', () => {
     expect(classCViolations(tree)).toEqual([]);
-    // The loader does name all three, and only through an import that runs when it is called.
+    // The loader names the two adapters without an opener, and the two built ones, only through an import that runs when it is called.
     const loader = tree.find((file) => file.path === `${LOADER}.ts`)?.text ?? '';
-    expect(relativeImports([{ path: `${LOADER}.ts`, text: loader }]).filter((entry) => CLASS_C.includes(entry.target)).map((entry) => entry.target)).toEqual(CLASS_C);
-    expect(loader).not.toMatch(/^import\s[^;]*from\s+'\.\/(?:camera|audio|poe)\//m);
+    const named = relativeImports([{ path: `${LOADER}.ts`, text: loader }]).map((entry) => entry.target);
+    expect(named.filter((target) => CLASS_C.includes(target)).sort()).toEqual([...CLASS_C].sort());
+    expect(named.filter((target) => /camera\/onvif-relay$|audio\/usb-audio-production$/.test(target)).sort()).toEqual([`${ADAPTERS}audio/usb-audio-production`, `${ADAPTERS}audio/usb-audio-production`, `${ADAPTERS}camera/onvif-relay`, `${ADAPTERS}camera/onvif-relay`]);
+    expect(loader).not.toMatch(/^import\s+(?!type\b)[^;]*from\s+'\.\/(?:camera|audio|poe)\//m);
     expect(loader.indexOf('REAL_ADAPTERS_REFUSED')).toBeGreaterThan(0);
     expect(loader.indexOf('REAL_ADAPTERS_REFUSED')).toBeLessThan(loader.indexOf('import('));
+    // The fence: one dynamic import of the loader, inside the wiring of the boot step.
+    const fence = tree.find((file) => file.path === LOADER_IMPORTER)?.text ?? '';
+    expect(fence.match(/\bimport\('\.\.\/adapters\/real'\)/g)).toHaveLength(1);
+    expect(fence.indexOf("import('../adapters/real')")).toBeGreaterThan(fence.indexOf('export async function wireProductionRegistry'));
   });
 
-  it('a class-C adapter has no opener and builds nothing: no import but the layer\'s own files', () => {
-    for (const path of CLASS_C) {
+  it('a class-C adapter (and the retired stub) has no opener and builds nothing: no import but the layer\'s own files', () => {
+    for (const path of [...CLASS_C, ...RETIRED]) {
       const text = tree.find((file) => file.path === `${path}.ts`)?.text ?? '';
       expect(text, path).toMatch(/hasOpener: false,|seam: 'POE'/);
       expect([...text.matchAll(/from\s+'([^']+)'/g)].map((match) => match[1]).filter((specifier) => !/^\.\.\/(?:errors|kinds|types)$/.test(specifier ?? '')), path).toEqual([]);
@@ -441,13 +472,15 @@ describe('A-8: the bytes of a start message are made by the production door only
 });
 
 // Task 4 row 46 (design addendum 6.2: "new files, stubs untouched"; blueprint 9.2 L-5). The production adapters
-// are BUILT in new files beside the class-C stubs and REGISTERED NOWHERE until the lift (WP-13, rows 85 and 88):
-// no production source names them, so no boot path can load one. Rule A-1 is unchanged: the three stubs stay the
-// files the loader names. The row that lifts class C rewrites this block together with A-1.
-describe('A-9: the built production adapters are named by no production source before the lift', () => {
-  /** Each built file, without extension, with the built files that may name it (its own unit). */
+// are BUILT in new files beside the class-C stubs and were REGISTERED NOWHERE until the lift (WP-13, rows 85 and 88).
+// REWRITTEN BY ROW 88 (THE LIFT, AM-1) together with A-1: the loader names the two built adapters (dynamic imports);
+// the fence's boot step names the microphone loss watch it builds and the card match of the microphone adapter (two
+// pure functions); every other production source still names none of them. The macOS adapter stays named by none (N10).
+const FENCE_INDEX = 'src/capture/fence/index.ts';
+describe('A-9: the built production adapters are named by a closed list of production sources (since the lift: the loader and the fence\'s boot step)', () => {
+  /** Each built file, without extension, with the files that may name it. */
   const BUILT: Readonly<Record<string, readonly string[]>> = {
-    [`${ADAPTERS}camera/onvif-relay`]: [],
+    [`${ADAPTERS}camera/onvif-relay`]: [`${LOADER}.ts`],
     // Task 4 row 50 (amendment AM-2): the stream half of the CONNECTION TEST starts the relay in probe mode through the
     // same relay start (the one caller of the injection point, rule A-2). It is no adapter and is registered nowhere:
     // the connect flow hands it its door, and no stream is opened without a credential and a configured relay program.
@@ -455,47 +488,51 @@ describe('A-9: the built production adapters are named by no production source b
     // Task 4 row 67 (its request, served by row 46): the production microphone adapter beside the stub `audio/usb-audio`.
     // Task 4 row N9 (design 06 section 4.4: "may be shared AS CODE"): the macOS adapter imports from it the match of a
     // stored row, the refusal codes and their error class, the row's shape rule and the guard's vector - no adapter of it.
-    [`${ADAPTERS}audio/usb-audio-production`]: [`${ADAPTERS}audio/usb-audio-macos.ts`],
+    // Row 88: the loader builds it on `linux`; the fence takes its card match for the loss watch.
+    [`${ADAPTERS}audio/usb-audio-production`]: [`${ADAPTERS}audio/usb-audio-macos.ts`, `${LOADER}.ts`, FENCE_INDEX],
     // Task 4 row N9: the macOS production microphone adapter of kind USB_AUDIO, registered nowhere until row N10 (by
     // platform), and its pure gate, which only that adapter names.
     [`${ADAPTERS}audio/usb-audio-macos`]: [],
     [`${ADAPTERS}audio/macos-launch-gate`]: [`${ADAPTERS}audio/usb-audio-macos.ts`],
     // Task 4 row 68 (its request, served by integration pass I-7): the microphone loss watch, built beside that
     // adapter and wired by no production source until the composition (row 85). It imports no adapter: the match is handed in.
-    [`${ADAPTERS}audio/mic-loss`]: [],
+    // Row 88: the boot step of the fence builds it where the host has a microphone opener.
+    [`${ADAPTERS}audio/mic-loss`]: [FENCE_INDEX],
   };
   const violations = (files: readonly SourceFile[]): string[] =>
     relativeImports(files.filter((file) => isProductionSource(file.path)))
       .filter((entry) => Object.hasOwn(BUILT, entry.target) && !(BUILT[entry.target] ?? []).includes(entry.file))
       .map((entry) => `${entry.file}:${entry.line} names a built production adapter`);
 
-  it('finds a planted import by the loader, by the layer index and by the fence (control)', () => {
+  it('finds a planted import by the layer index, by the fence, by the capture unit and by the loader (control)', () => {
     const planted: SourceFile[] = [
-      { path: `${LOADER}.ts`, text: "await import('./camera/onvif-relay');\n" },
       { path: `${ADAPTERS}index.ts`, text: "export { createOnvifRelayCameraAdapter } from './camera/onvif-relay';\n" },
-      { path: 'src/capture/fence/index.ts', text: "import { startCameraRelay } from '../adapters/camera/relay-start';\n" },
-      { path: `${LOADER}.ts`, text: "\nawait import('./audio/usb-audio-production');\n" },
+      { path: FENCE_INDEX, text: "import { startCameraRelay } from '../adapters/camera/relay-start';\n" },
+      { path: FENCE_INDEX, text: "\nimport { createOnvifRelayCameraAdapter } from '../adapters/camera/onvif-relay';\n" },
       { path: 'src/capture/index.ts', text: "import { createMicLossWatch } from './adapters/audio/mic-loss';\n" },
-      // Allowed: the adapter names its own relay start; a test names the adapter.
+      { path: `${LOADER}.ts`, text: "await import('./audio/usb-audio-macos');\n" },
+      // Allowed: the loader names the two built adapters; the fence the loss watch and the card match; the adapter its own relay start; a test the adapter.
+      { path: `${LOADER}.ts`, text: "await import('./camera/onvif-relay');\nawait import('./audio/usb-audio-production');\n" },
+      { path: FENCE_INDEX, text: "import { createMicLossWatch } from '../adapters/audio/mic-loss';\nimport { identifyRegisteredCard } from '../adapters/audio/usb-audio-production';\n" },
       { path: `${ADAPTERS}camera/onvif-relay.ts`, text: "import { startCameraRelay } from './relay-start';\n" },
       { path: `${ADAPTERS}camera/__tests__/onvif-relay.test.ts`, text: "import { createOnvifRelayCameraAdapter } from '../onvif-relay';\n" },
     ];
     expect(violations(planted)).toEqual([
-      `${LOADER}.ts:1 names a built production adapter`,
       `${ADAPTERS}index.ts:1 names a built production adapter`,
-      'src/capture/fence/index.ts:1 names a built production adapter',
-      `${LOADER}.ts:2 names a built production adapter`,
+      `${FENCE_INDEX}:1 names a built production adapter`,
+      `${FENCE_INDEX}:2 names a built production adapter`,
       'src/capture/index.ts:1 names a built production adapter',
+      `${LOADER}.ts:1 names a built production adapter`,
     ]);
   });
 
-  it('no production source names a built production adapter; each exists, and the camera adapter states its opener', () => {
+  it('no production source outside the closed list names a built production adapter; each exists, the camera adapter states its opener, and the retired stub states none', () => {
     expect(violations(tree)).toEqual([]);
     for (const path of Object.keys(BUILT)) expect(tree.some((file) => file.path === `${path}.ts`), path).toBe(true);
     const camera = tree.find((file) => file.path === `${ADAPTERS}camera/onvif-relay.ts`)?.text ?? '';
     expect(camera).toMatch(/^ {4}hasOpener: true,$/m);
     expect(camera).toMatch(/^ {4}kind: CaptureAdapterKind\.ONVIF_RTSP,$/m);
-    // The stub beside it is not edited: it is still what the loader names (A-1), without an opener.
+    // The retired stub is unchanged in what it states (A-1: named by no file).
     expect(tree.find((file) => file.path === `${ADAPTERS}camera/onvif-rtsp.ts`)?.text).toMatch(/hasOpener: false,/);
   });
 });

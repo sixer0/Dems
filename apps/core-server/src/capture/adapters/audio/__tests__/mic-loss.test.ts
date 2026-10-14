@@ -569,9 +569,10 @@ describe('row 68 (5): the watch can switch, start and write nothing', () => {
     expect(source.match(/CaptureWarningCode\.\w+/g)).toEqual(['CaptureWarningCode.CAPTURE_FAULT', 'CaptureWarningCode.CAPTURE_FAULT']);
   });
 
-  it('registered nowhere: no production file imports the watch (the composition of row 85 will)', () => {
+  // Task 4 row 88 (THE LIFT): the boot step of the fence builds the watch where the host has a microphone opener - its one production importer.
+  it('one production importer: the fence\'s boot step builds the watch (row 88)', () => {
     const importers = relativeImports(tree.filter((file) => isProductionSource(file.path))).filter((entry) => entry.target === FILE.replace(/\.ts$/, ''));
-    expect(importers).toEqual([]);
+    expect(importers.map((entry) => entry.file)).toEqual(['src/capture/fence/index.ts']);
     // Control: a planted importer is seen.
     expect(relativeImports([{ path: 'src/capture/adapters/real.ts', text: "await import('./audio/mic-loss');\n" }]).map((entry) => entry.target)).toEqual([FILE.replace(/\.ts$/, '')]);
   });

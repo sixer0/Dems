@@ -191,4 +191,17 @@ describe('the one rule - a generated source is not named by a dataset model', ()
     expect(statedModelOf({ model: 'AXIS P1375', adapter: 'ONVIF_RTSP' })).toBe('AXIS P1375');
   });
 });
+
+// Task 4 row W6 (request line 569 (3); decisions C141, C143): the sheet stated LIVE for an option whose stream nobody reads
+// (`option.streamState ?? 'LIVE'`). A registered camera at rest (`streamState: null`) reads "Not read" where the stream words
+// are drawn; a stated LIVE / LOST is drawn as before. Seen RED on the mutation "the fallback to LIVE put back".
+describe('row W6: a registered camera option at rest is "Not read", never "Live"', () => {
+  it('the stream words (no report): null reads "Not read"; LIVE and LOST as the Core states them', async () => {
+    const options = [option('CAM-01', 'VIDEO-01'), option('CAM-07', null, { streamState: null, adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION' }), option('CAM-08', null, { streamState: 'LOST' })];
+    await sheet({ kind: 'camera', trackId: 'VIDEO-02', currentDeviceId: null, options, badgeMode: { live: false } });
+    expect(labelOf('capture-source-state-CAM-07')).toBe('Not read');
+    expect(labelOf('capture-source-state-CAM-01')).toBe('Live');
+    expect(labelOf('capture-source-state-CAM-08')).toBe('Lost');
+  });
+});
 });

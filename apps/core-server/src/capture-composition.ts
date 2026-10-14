@@ -37,9 +37,10 @@
  *      the stored row of a microphone INCLUDING its serial and its port path (row 200: without the
  *      two columns every open of a USB microphone is refused).
  *
- * WHAT IT DOES NOT DO. It registers no adapter and names no built adapter file (static rule A-9
- * holds until the lift, row 88): the two bundles are stated here BY SHAPE and are handed to the
- * loader by the row that lifts class C. Until then the production kinds do not record.
+ * WHAT IT DOES NOT DO. It registers no adapter and names no built adapter file (static rule A-9):
+ * the two bundles are stated here BY SHAPE. SINCE THE LIFT (task 4 row 88, AM-1) it hands them,
+ * with the watch bundles, the hub and the two attach doors, to the fence (member 11 below); the
+ * fence's boot step builds the registry from them, so the production kinds record there.
  *
  * THE REMAINDER (task 4 row 85c; decision C60 (2), (3)):
  *
@@ -94,6 +95,7 @@ import {
   type HostAliasLifecycle,
   type HostAliasTransport,
   type OnvifStreamLocator,
+  type ProductionCaptureParts,
   type ProductionDoor,
   type StoredCameraAddressRule,
   type WatchFaultEngine,
@@ -270,10 +272,12 @@ export function storedProductionFactsOf(query: Query): StoredProductionFacts {
 export const EARLY_LOSSES_KEPT = 64;
 const EARLY_LOSS_ID = /^[A-Z][A-Z0-9]{0,15}-[0-9]{1,6}$/;
 
-/** What the camera watch gives the composition when it is attached (the watch's `relayEnded` and `clockOffsetMs`). */
+/** What the camera watch gives the composition when it is attached (the watch's `relayEnded`, `clockOffsetMs` and - finding E-03 - `captureEnded`). */
 export interface AttachedCameraWatch {
   relayEnded(end: unknown): void;
   clockOffsetMs(deviceId: string): Promise<number>;
+  /** Called by the composition at every end of a capture (finding E-03). */
+  captureEnded(): void;
 }
 
 /** What the microphone loss watch gives the composition when it is attached (the watch's `sourceLost`). */
@@ -411,6 +415,10 @@ export interface ProductionCapturePorts extends Pick<CaptureCredentialHoldersDep
   provideEnumerator(enumerator: CardEnumerator): void;
   /** `sessionCapture(app).replace({ relayReports })`. */
   provideRelayReports(reports: RelayIngestReports): void;
+  /** `captureFenceControl(app).provideProductionParts` (task 4 row 88, the lift). */
+  provideProductionParts(parts: ProductionCaptureParts): void;
+  /** Calls `listener` at every end of a capture: the session's events `STOPPED`, `INTERRUPTED`, `FAILED_START` (finding E-03). */
+  onCaptureEnd(listener: () => void): () => void;
   /** One line of the log and of the persistent error log: a code and identifiers. */
   report(level: 'warn' | 'error', code: CaptureCompositionCode, context: Readonly<Record<string, string | number | null>>): void;
 }
@@ -548,6 +556,40 @@ export function composeProductionCapture(ports: ProductionCapturePorts, input: P
         : keepEarlyLoss(earlyMicLosses, { deviceId, error, superseded: supersededNow() }, CaptureCompositionCode.MIC_LOSS_WATCH_NOT_ATTACHED, loggedId(deviceId)),
   });
 
+  const watches = Object.freeze({
+    camera: Object.freeze({ timers, now: ports.now, candidate: stored.candidate, storedAddress, faults }),
+    microphone: Object.freeze({ registered: stored.microphone, cards, timers, faults, superseded }),
+  });
+  const attachCameraWatch = (watch: AttachedCameraWatch): void => {
+    if (cameraWatch !== null) throw new CaptureCompositionError(CaptureCompositionCode.ATTACHED_TWICE, 'CAMERA_WATCH');
+    cameraWatch = watch;
+    // Row B2 (S-02): what arrived before the attach, in its order, once. A loss of a superseded relay is the watch's and the adapter's to judge, as it is after the attach.
+    handOverEarlyLosses(earlyCameraLosses, CaptureCompositionCode.CAMERA_WATCH_NOT_ATTACHED, (end) => watch.relayEnded(end));
+  };
+  const attachMicLossWatch = (watch: AttachedMicLossWatch): void => {
+    if (micLossWatch !== null) throw new CaptureCompositionError(CaptureCompositionCode.ATTACHED_TWICE, 'MIC_LOSS_WATCH');
+    micLossWatch = watch;
+    // Row B2 (S-02): each kept loss with the `superseded` answer of ITS moment - a word of a superseded attempt is still dropped by the watch (rows 191, 85c).
+    handOverEarlyLosses(earlyMicLosses, CaptureCompositionCode.MIC_LOSS_WATCH_NOT_ATTACHED, (loss) => {
+      supersededThen = loss.superseded;
+      try {
+        watch.sourceLost(loss.deviceId, loss.error);
+      } finally {
+        supersededThen = null;
+      }
+    });
+  };
+
+  // 11. THE LIFT (task 4 row 88; decision AM-1): the parts of the production registry go to the fence through its door,
+  // once; the fence's boot step builds the registry, the camera watch (attached here BEFORE the registry is built) and,
+  // where the host has a production microphone opener, the microphone loss watch. The platform word decides the microphone.
+  ports.provideProductionParts({ platform: input.platform, dependencies: { camera, audio }, watches, cards, relayReports, attachCameraWatch, attachMicLossWatch });
+  // FINDING E-03: AT EVERY END OF A CAPTURE (a stop, an interruption, a failed start - the session's three end events) the
+  // camera watch forgets the losses of that capture and ends the faults it raised itself. The watch is attached before the
+  // registry exists, so before any start. WHO READS `lost()`: no product file today (a test, and the watch's own state);
+  // the session states a camera's absence from the relay's reports, not from the watch.
+  ports.onCaptureEnd(() => cameraWatch?.captureEnded());
+
   return Object.freeze({
     composed: true,
     storedAddress,
@@ -557,30 +599,10 @@ export function composeProductionCapture(ports: ProductionCapturePorts, input: P
     cardListingUnavailable: unavailable,
     stored,
     dependencies: Object.freeze({ camera, audio }),
-    watches: Object.freeze({
-      camera: Object.freeze({ timers, now: ports.now, candidate: stored.candidate, storedAddress, faults }),
-      microphone: Object.freeze({ registered: stored.microphone, cards, timers, faults, superseded }),
-    }),
+    watches,
     faults,
-    attachCameraWatch(watch: AttachedCameraWatch): void {
-      if (cameraWatch !== null) throw new CaptureCompositionError(CaptureCompositionCode.ATTACHED_TWICE, 'CAMERA_WATCH');
-      cameraWatch = watch;
-      // Row B2 (S-02): what arrived before the attach, in its order, once. A loss of a superseded relay is the watch's and the adapter's to judge, as it is after the attach.
-      handOverEarlyLosses(earlyCameraLosses, CaptureCompositionCode.CAMERA_WATCH_NOT_ATTACHED, (end) => watch.relayEnded(end));
-    },
-    attachMicLossWatch(watch: AttachedMicLossWatch): void {
-      if (micLossWatch !== null) throw new CaptureCompositionError(CaptureCompositionCode.ATTACHED_TWICE, 'MIC_LOSS_WATCH');
-      micLossWatch = watch;
-      // Row B2 (S-02): each kept loss with the `superseded` answer of ITS moment - a word of a superseded attempt is still dropped by the watch (rows 191, 85c).
-      handOverEarlyLosses(earlyMicLosses, CaptureCompositionCode.MIC_LOSS_WATCH_NOT_ATTACHED, (loss) => {
-        supersededThen = loss.superseded;
-        try {
-          watch.sourceLost(loss.deviceId, loss.error);
-        } finally {
-          supersededThen = null;
-        }
-      });
-    },
+    attachCameraWatch,
+    attachMicLossWatch,
   });
 }
 
@@ -816,6 +838,11 @@ export function composeProductionCaptureOf(app: FastifyInstance, input: Producti
       },
       provideEnumerator: (enumerator) => captureAudioCardsControl(app).provideEnumerator(enumerator),
       provideRelayReports: (relayReports) => sessionCapture(app).replace({ relayReports }),
+      provideProductionParts: (parts) => captureFenceControl(app).provideProductionParts(parts),
+      onCaptureEnd: (listener) =>
+        sessionCapture(app).on((event) => {
+          if (event.type === 'STOPPED' || event.type === 'INTERRUPTED' || event.type === 'FAILED_START') listener();
+        }),
       report,
     },
     input,

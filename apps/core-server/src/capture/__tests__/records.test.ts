@@ -556,9 +556,9 @@ describe('D72 (A-2): the supervisor\'s own CAPTURE_FAULT ends when a later sessi
 
 // ── Blueprint row 59 ───────────────────────────────────────────────────────────────────────────
 
-describe('row 59: protocol version 4 is a gate at HELLO (decision D84 R-7)', () => {
-  it('the supervisor speaks version 4, and a worker that says 3 (the worker before the checkpoint content) is refused at HELLO and not started again', async () => {
-    expect(CAPTURE_PROTOCOL_VERSION).toBe(4);
+describe('row 59: protocol version 5 is a gate at HELLO (decision D84 R-7)', () => {
+  it('the supervisor speaks version 5, and a worker that says 3 (the worker before the checkpoint content) is refused at HELLO and not started again', async () => {
+    expect(CAPTURE_PROTOCOL_VERSION).toBe(5);
     const clock = manualCaptureTimers();
     const fake = fakeLauncher({ protocolVersion: 2 });
     const supervisor = createCaptureSupervisor({ now: clock.now, timers: clock.timers, launcher: fake.launcher });
@@ -572,10 +572,10 @@ describe('row 59: protocol version 4 is a gate at HELLO (decision D84 R-7)', () 
     expect(supervisor.status()).toMatchObject({ phase: CapturePhase.IDLE, lastCrash: { code: WorkerDownCode.PROTOCOL_MISMATCH, detail: 'V2' } });
   });
 
-  it('CONTROL: the same start with a worker that says 4 records, and its START carries version 4', async () => {
+  it('CONTROL: the same start with a worker that says 5 records, and its START carries version 5', async () => {
     const { supervisor, fake } = await recording();
     expect(supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, lastCrash: null });
-    expect(fake.last().commands('START')[0]).toMatchObject({ v: 4, attempt: 1 });
+    expect(fake.last().commands('START')[0]).toMatchObject({ v: 5, attempt: 1 });
   });
 });
 

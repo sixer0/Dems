@@ -85,6 +85,21 @@ export const MIC_TRANSPORTS = Object.freeze({
     latenessBeyondRangeMs: MIC_WORKER_BUFFER_CAP_MS,
     reportsOutOfRange: false,
   }),
+  /**
+   * Protocol 5 (row N13, request line 541): the same bytes as PCM_FIFO; the writer does not promise
+   * every sample; the worker neither resamples nor follows the writer's clock (no compensation:
+   * 0 ppm), and accounts for every sample.
+   */
+  PCM_FIFO_GAPPED: Object.freeze({
+    kind: CaptureMicInputKind.PCM_FIFO_GAPPED,
+    sampleFormat: 'F32LE',
+    sampleRateHz: CAPTURE_AUDIO_SAMPLE_RATE_HZ,
+    channels: CAPTURE_AUDIO_CHANNELS,
+    placement: 'ARRIVAL',
+    clockCompensationPpm: 0,
+    latenessBeyondRangeMs: MIC_WORKER_BUFFER_CAP_MS,
+    reportsOutOfRange: false,
+  }),
 } as const satisfies Record<CaptureMicInputKind, MicTransportStatement>);
 
 export function micTransportOf(kind: CaptureMicInputKind): MicTransportStatement {

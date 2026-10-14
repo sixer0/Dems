@@ -259,7 +259,7 @@ export class FakeWorkerProcess implements WorkerChannel {
   telemetry(count: number, clocks: ReadonlyArray<{ readonly deviceId: string; readonly lagMs: number; readonly trendPpm?: number | null; readonly nearBound?: boolean }> = []): void {
     this.say({
       type: WorkerMessageType.TELEMETRY,
-      levels: [{ deviceId: 'MIC-01', role: CaptureMicRole.PRIMARY, dbfs: -20, clipped: false, ratePpm: 0 }],
+      levels: [{ deviceId: 'MIC-01', role: CaptureMicRole.PRIMARY, dbfs: -20, clipped: false, ratePpm: 0, timelineSamples: 480_000, receivedSamples: 480_000, insertedSamples: 0, nonZero: true }],
       ingest: [{ deviceId: 'CAM-01', state: CaptureIngestState.CONNECTED }],
       fragments: [{ deviceId: 'CAM-01', count, bytes: count * 1_000 }],
       clocks: clocks.map((clock) => ({ deviceId: clock.deviceId, lagMs: clock.lagMs, trendPpm: clock.trendPpm ?? null, nearBound: clock.nearBound ?? false })),

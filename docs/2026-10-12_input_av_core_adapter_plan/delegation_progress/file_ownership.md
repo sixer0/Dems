@@ -1330,3 +1330,24 @@ Rows 85, 191, 143, 146, 154, 199, 200, 201, 194, 195, 102, 202, 114 (+ profiles 
 ## Update 2026-10-14 - N5c landed - C142: linear blanking. credential.ts + production-door.ts RELEASED.
 - Next: checkpoint commit when V7d lands (N13 paths excluded), then row 88.
 - In flight: N13 (=N1+N3), V7d.
+
+## Update 2026-10-14 - CHECKPOINT cb06d42c (C144): 372 files; worker + protocol (N13) and ffprobe-export.txt excluded.
+- Launches: ROW 88 (the lift: registry.ts, camera/onvif-rtsp.ts, audio/usb-audio.ts, fence/index.ts, fence/production-parts.ts, capture/boot/**, src/capture-composition.ts, capture-session/index.ts (lift only), connect/index.ts (E-02), adapters + capture static) and W6 (apps/core-web/** + apps/mobile/**: op 108 wired, new words, null state, onvifPorts setting).
+- Queue after 88: N10 (registry darwin branch unadmitted), commit of the lift with AM-1 status, 89, 148, 90 (+S86b C-2), C-5 hardening, N11 (after N13; + 553, 554), N12, N17, N14, gates M2b, N15 (user: 48 kHz), N16.
+- In flight: N13 (=N1+N3), 88, W6.
+
+## Update 2026-10-14 - N13 (N1+N3) landed - C145: protocol v5 + worker gapped kind. apps/capture-worker/** + packages/capture-protocol RELEASED. Launch N11a (sonnet: capture/__tests__ seven files, fence development-session.db, test/support/capture.ts, adapters/mic-transport.ts). Queue: run B+ (kill matrix on new worker) after 88; commit worker+protocol+N11a; N11 (545, 553 constant, 554), N12 (+546 media zero).
+- In flight: 88, W6, N11a.
+
+## Update 2026-10-14 - W6 landed - C146: op 108 wired; words; null state; ports setting. apps/core-web + apps/mobile RELEASED. Launch RD (design only: masterplan/07_design_retire_readopt.md).
+- In flight: 88, N11a, RD.
+
+## Update 2026-10-14 - RD design landed - C147: op 111 retireCaptureDevice; schema v15. Launches: RD1 (db/schema, migrations 0032/0033, set16 test, version pins by delta) and RD2 (single writer packages/shared + core/audit-details.ts). Queue: RD3 (after RD1+RD2+88), RD4a/RD4b, RD5 (after RD2), RD6 review.
+- In flight: 88, N11a, RD1, RD2.
+
+## Update 2026-10-14 - ROW 88 landed in the tree (uncommitted) - C148. Launch 88b (gate review, read-only). Row 88 files RELEASED except: they stay frozen until the lift commit (no edits to registry.ts, real.ts, fence/index.ts, production-parts.ts, capture/boot/**, capture-composition.ts, capture-session/index.ts until 88b + commit).
+- Queue: MH1 (mic-helper leftover red), run B+ (after N11a), commit lift (+ worker/protocol + N11a), N10, N11, RD3.
+- In flight: 88b, N11a, RD1, RD2.
+
+## Update 2026-10-14 - N11a closed - C150: capture tests 627/627 on protocol 5. Launch run B+ (test runner; heavy + db locks).
+- In flight: 88b, RD1, RD2, B+.

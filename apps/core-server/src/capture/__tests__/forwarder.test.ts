@@ -59,7 +59,7 @@ describe('the forwarder: telemetry and warnings reach the engine (SH-18 / CS-04,
     await flush();
     expect(calls.telemetry).toEqual([
       {
-        levels: [{ deviceId: 'MIC-01', role: 'PRIMARY', dbfs: -20, clipped: false, ratePpm: 0 }],
+        levels: [{ deviceId: 'MIC-01', role: 'PRIMARY', dbfs: -20, clipped: false, ratePpm: 0, timelineSamples: 480_000, receivedSamples: 480_000, insertedSamples: 0, nonZero: true }],
         ingest: [{ deviceId: 'CAM-01', state: 'CONNECTED' }],
         fragments: [{ deviceId: 'CAM-01', count: 7, bytes: 7_000 }],
       },

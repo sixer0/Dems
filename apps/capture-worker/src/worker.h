@@ -45,7 +45,7 @@
 
 /* The protocol this worker speaks: packages/capture-protocol/src/index.ts. A test of the Core
  * server holds these three numbers equal to the package's. */
-#define CAPTURE_PROTOCOL_VERSION 4
+#define CAPTURE_PROTOCOL_VERSION 5
 #define CAPTURE_MEDIA_PORT_MIN 8554
 #define CAPTURE_MEDIA_PORT_MAX 8564
 #define MAX_FRAME_CHARS 65536
@@ -84,6 +84,11 @@
 
 #define SR 48000            /* AUDIO-01: AAC-LC 48 kHz mono (OD-06) */
 #define QUANTUM 480         /* worker input quantum: 10 ms (AU2-07 bound) */
+/* THE SAMPLE ACCOUNT of a gapped microphone (protocol version 5; design 06 sections 7.2a, 8.2 (a)): the three
+ * constants of the package, restated; the Core's pin test holds them equal. */
+#define CAPTURE_MIC_ACCOUNT_PERIOD_SAMPLES 2880000     /* an account every 60 s of the timeline */
+#define CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES 4800    /* 100 ms: a run this long carries its position */
+#define CAPTURE_AUDIO_INSERTED_RUNS_MAX 1024           /* runs listed per worker; the rest are counted */
 #define AAC_FRAME 1024
 #define NCAM 2
 #define NMIC 2              /* index 0 = role PRIMARY, index 1 = role STANDBY */
@@ -290,6 +295,10 @@ typedef struct Cam {
 
 typedef struct Mic {
     int present;
+    /* Protocol version 5: the input kind is PCM_FIFO_GAPPED - a writer that does not promise every sample. ONE
+     * predicate, ONE place that sets it: the plan reader (capture_worker.c, take_plan). It is read in a closed set of
+     * places of audio.c (mic_open, mic_read, mic_take, telemetry, audio_main); check.sh holds both. */
+    int gapped;
     char device_id[ID_CHARS + 1];
     char path[PATH_CHARS + 1];
 } Mic;

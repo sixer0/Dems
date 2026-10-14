@@ -555,6 +555,8 @@ describe("the capture selector: every registered microphone and camera on its li
         ['CAPTURE_DEVICE_CLASS_MISMATCH', camera(shared.CAPTURE_DEVICE_CLASS_MISMATCH)],
         ['CAMERA_PROFILE_NOT_STATED', en.common.captureSlotRefusal.CAMERA_PROFILE_NOT_STATED],
         ['CAMERA_PROFILE_NOT_OF_DEVICE', en.common.captureSlotRefusal.CAMERA_PROFILE_NOT_OF_DEVICE],
+        // Row W6 (line 564): the new word reads the shared sentence, which names adoption (a connection test does not repair it).
+        ['CAMERA_PROFILE_WITHOUT_STREAM', en.common.captureSlotRefusal.CAMERA_PROFILE_WITHOUT_STREAM],
         ['DEVELOPMENT_SOURCE_NOT_ALLOWED', S.developmentOnly],
         ['CAPTURE_ADAPTER_KIND_NOT_ALLOWED', `${S.invalid} ${R.code.replace('{{code}}', 'CAPTURE_ADAPTER_KIND_NOT_ALLOWED')}`],
       ]
@@ -581,7 +583,8 @@ describe("the capture selector: every registered microphone and camera on its li
 
     it('row 234: `slotRefusalWording` words every reason the capture-config routes name, the shared tree first; a microphone row names a microphone', async () => {
       // The closed lists of `apps/core-server/src/modules/capture-config/routes.ts` (`CaptureAssignmentRefusal`, `CaptureProfileRefusal`) and the action's own word.
-      const named = ['DEVELOPMENT_SOURCE_NOT_ALLOWED', 'PRODUCTION_SOURCE_NOT_ALLOWED', 'CAPTURE_DEVICE_NOT_SERVED', 'CAPTURE_DEVICE_CLASS_MISMATCH', 'CAMERA_PROFILE_NOT_STATED', 'CAMERA_PROFILE_NOT_OF_DEVICE', 'SLOT_UNASSIGNED_AND_ASSIGNED']
+      // Row W6 (request line 564; row V7c, decision C130): `CAMERA_PROFILE_WITHOUT_STREAM` reached the shared tree.
+      const named = ['DEVELOPMENT_SOURCE_NOT_ALLOWED', 'PRODUCTION_SOURCE_NOT_ALLOWED', 'CAPTURE_DEVICE_NOT_SERVED', 'CAPTURE_DEVICE_CLASS_MISMATCH', 'CAMERA_PROFILE_NOT_STATED', 'CAMERA_PROFILE_NOT_OF_DEVICE', 'CAMERA_PROFILE_WITHOUT_STREAM', 'SLOT_UNASSIGNED_AND_ASSIGNED']
       for (const reason of named) expect(['DEVELOPMENT_ONLY', 'SHARED'], reason).toContain(slotRefusalWording(reason).kind)
       expect([...wordedSlotRefusalReasons()].sort()).toEqual([...named].sort())
       // The worded reasons are exactly the shared group's keys and the one development word: no table of this console adds one.

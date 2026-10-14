@@ -202,7 +202,7 @@ describe('protocol 4: a fault per cause, advisory reasons, notices', () => {
     const frame = (nearBound: boolean, ratePpm: number): void =>
       fake.last().say({
         type: 'TELEMETRY',
-        levels: [{ deviceId: 'MIC-01', role: CaptureMicRole.PRIMARY, dbfs: -20, clipped: false, ratePpm }],
+        levels: [{ deviceId: 'MIC-01', role: CaptureMicRole.PRIMARY, dbfs: -20, clipped: false, ratePpm, timelineSamples: 480_000, receivedSamples: 480_000, insertedSamples: 0, nonZero: true }],
         ingest: [],
         fragments: [],
         clocks: [{ deviceId: 'CAM-01', lagMs: 31.5, trendPpm: null, nearBound }],

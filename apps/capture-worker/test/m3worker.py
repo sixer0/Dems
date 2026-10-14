@@ -58,7 +58,7 @@ if len(PORTS) != 2 or PORTS[0] == PORTS[1] or any(p < PORT_MIN or p > PORT_MAX o
 # Ports of other systems on this host that no process of a run may ever hold or reach (the SMART WMS stack and the
 # DEMS dev servers): checked on every socket snapshot.
 FOREIGN_PORTS = frozenset((5173, 5174, 5175, 5176, 5177, 5178, 8000, 5432, 4421, 4422, 4423, 4432, 8081))
-V = 4                           # CAPTURE_PROTOCOL_VERSION (row 59: 3 since the checkpoint content; row 71: 4 since the microphone rows)
+V = 5                           # CAPTURE_PROTOCOL_VERSION (row 59: 3 since the checkpoint content; row 71: 4 since the microphone rows; task 4 row N3: 5 since the sample account)
 FPS, FRAME_US, SR = 50, 20000, 48000
 REGRESSION_MS, PRODUCT_MS = 2.0, 40.0      # two different tolerances (AU2-04): never merged
 PRIMING = 1024
@@ -2264,6 +2264,15 @@ def m5(name):
     return run
 
 
+def n3(name):
+    """A check of test/n3gapped.py (task 4 row N3: the gapped microphone kind, protocol version 5), handed this module."""
+    def run(a):
+        sys.path.insert(0, HERE)
+        import n3gapped
+        getattr(n3gapped, name)(a, sys.modules[__name__])
+    return run
+
+
 def main():
     ap = argparse.ArgumentParser()
     sp = ap.add_subparsers(dest="cmd", required=True)
@@ -2315,6 +2324,9 @@ def main():
     case("m5bound", m5("cmd_bound"), **{"bound-us": {"type": int, "default": 21333}})
     case("m5warn", m5("cmd_warn"))
     case("m5rate", m5("cmd_rate"), ppm={"type": int, "default": -8000})
+    # Task 4 row N3 (protocol version 5): the gapped microphone kind on the stand-in of the macOS path (test/n3gapped.py).
+    case("n3gap", n3("cmd_gap"), mode={"choices": ["measured", "whole", "late4", "trim", "stop3", "nan", "runs1025", "killbefore", "killbetween", "killafter"], "required": True})
+    case("n3judge", n3("cmd_judge"), control={"choices": ["dropone"], "default": None})
     global ARGS
     a = ARGS = ap.parse_args()
     a.fn(a)

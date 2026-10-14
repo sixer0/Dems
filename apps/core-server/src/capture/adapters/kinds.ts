@@ -67,7 +67,8 @@ export function sourceClassOfOperation(operation: CaptureOperation): CaptureSour
 /**
  * Which adapter kinds may be registered in an operation (rule RG-1). In `REAL_DEVELOPMENT` the
  * production camera kind is registered too, for its search and connection-test half only: it is
- * never assignable there (rule RG-3) and it has no opener (D86 C-5).
+ * never assignable there (rule RG-3), and an adapter of it that states an opener is refused there
+ * at registration (task 4 row 88, AM-1 (3)(b): an opener of another class than the operation's).
  */
 export function registrableKindsOf(operation: CaptureOperation): readonly CaptureAdapterKind[] {
   if (operation === CaptureOperation.REAL_PRODUCTION) return CAPTURE_ADAPTER_KINDS.filter((kind) => sourceClassOf(kind) === CaptureSourceClass.PRODUCTION);

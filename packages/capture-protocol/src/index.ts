@@ -60,7 +60,9 @@
  * first-video-sample, one first-durable-fragment and one keyframe-interval per camera, one
  * checkpoint per fragment per camera, one audio-source interval at the start and one per operator
  * switch (at most one per input chunk: a second switch is refused while one waits), one end of the
- * audio timeline, one seal completion. Checkpoints of fragments that were
+ * audio timeline, one seal completion; since version 5, for a gapped microphone only, one sample account
+ * per 60 s of the timeline plus the closing one, and one inserted run per run of 100 ms or more (runs follow
+ * each other on the one track, so at most ten a second). Checkpoints of fragments that were
  * written while one disk sync ran leave together when the next sync returned: after a sync that
  * took t seconds, about t / 2 checkpoints per camera arrive at once, far below the ceiling. A fragment is a camera GOP of about 2 s (never shorter than a
  * stall cut every `fragmentTargetMs`), so two cameras write about 2 records a second at most.
@@ -141,11 +143,28 @@
  * Core BEFORE them does not decode a frame that carries one, so the worker that writes them and the
  * Core that reads them are built from one tree (the Core's `protocol-pins` test holds the worker's
  * sources to this list).
+ *
+ * VERSION 5 (task 4, the macOS microphone path: design `06_design_macos_microphone.md` revision 3,
+ * sections 7.2a and 8.2 (a) to (e); decisions U25 (3), C107, C110 (2), (5), C119 (1)). One version
+ * step, because the members of a `TELEMETRY` level become REQUIRED:
+ *   - the microphone input kind `PCM_FIFO_GAPPED`: the same bytes as `PCM_FIFO`, from a writer that
+ *     does NOT promise every sample. The worker neither resamples nor follows such a writer's clock,
+ *     and it ACCOUNTS FOR EVERY SAMPLE: each one it received, inserted as silence or discarded;
+ *   - every `TELEMETRY` level, of every kind, states `timelineSamples`, `receivedSamples`,
+ *     `insertedSamples` and `nonZero` (cumulative from sample 0 of the audio timeline); `ratePpm` is
+ *     null for a gapped microphone (no rate controller runs for it);
+ *   - the records `MIC_SAMPLE_ACCOUNT` (the whole account of one gapped microphone: every
+ *     `CAPTURE_MIC_ACCOUNT_PERIOD_SAMPLES` of the timeline and once more, `closing`, before
+ *     `AUDIO_TIMELINE_END`) and `AUDIO_INSERTED_RUN` (one run of inserted silence of
+ *     `CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES` or more, with its first sample) are new. They are
+ *     written for a gapped microphone ONLY: a session without one gets no record of these kinds.
+ * A worker of version 4 is refused at `HELLO`, and none of its frames decodes; a Core of version 4
+ * refuses a worker of version 5 the same way.
  */
 import { z } from 'zod';
 
 /** Version of this protocol. The worker names it in `HELLO`; a mismatch ends the worker. */
-export const CAPTURE_PROTOCOL_VERSION = 4;
+export const CAPTURE_PROTOCOL_VERSION = 5;
 
 /**
  * The loopback media ports (spec §A.8: fixture readers and the worker ingest listen only on
@@ -333,6 +352,13 @@ export const CaptureRecordKind = {
   AUDIO_TIMELINE_END: 'AUDIO_TIMELINE_END',
   /** Sealing finished. Never read from `PROGRESS` with progress 1, which is a level and can be evicted. */
   SEAL_COMPLETE: 'SEAL_COMPLETE',
+  /**
+   * Version 5: the whole sample account of ONE gapped microphone (`PCM_FIFO_GAPPED`): every
+   * `CAPTURE_MIC_ACCOUNT_PERIOD_SAMPLES` of the timeline, and the closing one when the timeline ends.
+   */
+  MIC_SAMPLE_ACCOUNT: 'MIC_SAMPLE_ACCOUNT',
+  /** Version 5: one run of inserted silence on the track, `CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES` or longer, with its first sample. */
+  AUDIO_INSERTED_RUN: 'AUDIO_INSERTED_RUN',
 } as const;
 export type CaptureRecordKind = (typeof CaptureRecordKind)[keyof typeof CaptureRecordKind];
 
@@ -347,13 +373,20 @@ export type CaptureRecordKind = (typeof CaptureRecordKind)[keyof typeof CaptureR
 export const CaptureSyncLevel = { FULL: 'F_FULLFSYNC', FSYNC: 'FSYNC' } as const;
 export type CaptureSyncLevel = (typeof CaptureSyncLevel)[keyof typeof CaptureSyncLevel];
 
-/** How a mic's samples reach the worker. One kind today; the adapter rows add the device kinds. */
+/** How a mic's samples reach the worker. Two kinds (version 5); a plan may hold one microphone of each. */
 export const CaptureMicInputKind = {
   /**
    * A named pipe the worker reads raw PCM from: 32-bit float, little-endian, at the plan's sample
    * rate and channel count. Written by another process (a fixture, or an adapter process).
    */
   PCM_FIFO: 'PCM_FIFO',
+  /**
+   * Version 5: the same bytes as `PCM_FIFO` (32-bit float, little-endian, mono, 48,000 Hz); the
+   * writer does NOT promise every sample. The worker neither resamples nor follows the writer's
+   * clock, and accounts for every sample (`MIC_SAMPLE_ACCOUNT`, `AUDIO_INSERTED_RUN`). The bench
+   * form of the macOS microphone path states it (design 06, sections 7.2, 8.1).
+   */
+  PCM_FIFO_GAPPED: 'PCM_FIFO_GAPPED',
 } as const;
 export type CaptureMicInputKind = (typeof CaptureMicInputKind)[keyof typeof CaptureMicInputKind];
 
@@ -394,6 +427,22 @@ export const SWITCH_REFUSAL_CODES: readonly string[] = ['NOT_RECORDING', 'SESSIO
  */
 export const CAPTURE_AUDIO_INPUT_QUANTUM_SAMPLES = 480;
 export const CAPTURE_SWITCH_BOUND_US = 21_333;
+
+/**
+ * THE SAMPLE ACCOUNT (version 5; design 06 section 8.2 (a)). Every count is a whole number of samples
+ * cumulative from SAMPLE 0 of the session's audio timeline (the worker's T0); none is a percentage
+ * and none is rounded. `CAPTURE_AUDIO_DAY_SAMPLES` is one day at 48,000 Hz: the bound of every count.
+ * The worker restates the three constants of the account (`worker.h`); the Core's pin test holds them equal.
+ *   CAPTURE_MIC_ACCOUNT_PERIOD_SAMPLES       a periodic account every 60 s of the timeline
+ *   CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES   100 ms: a run of inserted silence this long or longer carries its position
+ *   CAPTURE_AUDIO_INSERTED_RUNS_MAX          the most runs listed per worker (per capture attempt); the rest are counted
+ *   CAPTURE_MIC_BUFFER_MAX_SAMPLES           what a microphone's buffer holds at most (two seconds)
+ */
+export const CAPTURE_AUDIO_DAY_SAMPLES = 4_147_200_000;
+export const CAPTURE_MIC_ACCOUNT_PERIOD_SAMPLES = 2_880_000;
+export const CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES = 4_800;
+export const CAPTURE_AUDIO_INSERTED_RUNS_MAX = 1_024;
+export const CAPTURE_MIC_BUFFER_MAX_SAMPLES = 96_000;
 
 /**
  * THE NAMED SETTINGS OF A WORKER PROCESS (version 4; decision D84 "the ingest-open window is a
@@ -520,6 +569,8 @@ export const CAPTURE_KEY_ID = /^KID-[A-Za-z0-9._:-]{1,124}$/;
 /** A worker's own version as `HELLO` states it: a word, never a sentence. WHICH versions the Core starts is the supervisor's allowlist. */
 export const CAPTURE_WORKER_VERSION_WORD = /^[A-Za-z0-9._+/-]{1,64}$/;
 const wholeNumber = z.number().int().nonnegative();
+/** A count of samples of the account (version 5): a whole number from 0 to one day at 48,000 Hz. */
+const daySamples = wholeNumber.max(CAPTURE_AUDIO_DAY_SAMPLES);
 function isMicRoleWord(value: string): boolean {
   return (Object.values(CaptureMicRole) as string[]).includes(value);
 }
@@ -563,8 +614,11 @@ export const CapturePlanMicSchema = z.strictObject({
   /** `MIC-01` or `MIC-02`. */
   deviceId: id,
   role: z.enum(CaptureMicRole),
-  /** Where this mic's samples come from. */
-  input: z.discriminatedUnion('kind', [z.strictObject({ kind: z.literal(CaptureMicInputKind.PCM_FIFO), path: absolutePath })]),
+  /** Where this mic's samples come from: one of two strict forms (version 5), the same members for each. */
+  input: z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal(CaptureMicInputKind.PCM_FIFO), path: absolutePath }),
+    z.strictObject({ kind: z.literal(CaptureMicInputKind.PCM_FIFO_GAPPED), path: absolutePath }),
+  ]),
 });
 export type CapturePlanMic = z.infer<typeof CapturePlanMicSchema>;
 
@@ -668,9 +722,32 @@ export const TelemetryMessageSchema = z.strictObject({
    * the level in dBFS (null: no samples), and `ratePpm`: what the rate controller asks of the
    * resampler now, in parts per million of the sample rate (positive: the microphone's clock is
    * slow; null while the microphone does not run). At +-5,000 the controller is at its limit (D85).
+   *
+   * VERSION 5: four REQUIRED members, for every microphone of every kind, cumulative from sample 0 of
+   * the audio timeline (a dropped telemetry line loses nothing but time):
+   *   timelineSamples  samples of the audio timeline so far: what a whole pipe would have delivered by
+   *                    the worker's clock (the same number in both entries)
+   *   receivedSamples  samples read from this microphone's pipe
+   *   insertedSamples  zeros the worker put on this microphone's timeline; never above `timelineSamples`
+   *   nonZero          true once one sample of this microphone, as read, was finite and not zero; never false again
+   * `ratePpm` is ALWAYS null for a `PCM_FIFO_GAPPED` microphone: no rate controller runs for it.
    */
   levels: z
-    .array(z.strictObject({ deviceId: deviceIdOnWire, role: z.enum(CaptureMicRole), dbfs: z.number().max(0).nullable(), clipped: z.boolean(), ratePpm: z.number().min(-5_000).max(5_000).nullable() }))
+    .array(
+      z
+        .strictObject({
+          deviceId: deviceIdOnWire,
+          role: z.enum(CaptureMicRole),
+          dbfs: z.number().max(0).nullable(),
+          clipped: z.boolean(),
+          ratePpm: z.number().min(-5_000).max(5_000).nullable(),
+          timelineSamples: daySamples,
+          receivedSamples: daySamples,
+          insertedSamples: daySamples,
+          nonZero: z.boolean(),
+        })
+        .refine((level) => level.insertedSamples <= level.timelineSamples, { message: 'more samples inserted than the timeline holds', path: ['insertedSamples'] }),
+    )
     .max(2),
   ingest: z.array(z.strictObject({ deviceId: id, state: z.enum(CaptureIngestState) })).max(2),
   /** Fragments written so far, per camera file. */
@@ -899,6 +976,85 @@ export const AudioTimelineEndRecordSchema = z.strictObject({
   intervals: wholeNumber.positive(),
 });
 export const SealCompleteRecordSchema = z.strictObject({ kind: z.literal(CaptureRecordKind.SEAL_COMPLETE) });
+/**
+ * VERSION 5: THE ACCOUNT OF ONE GAPPED MICROPHONE (design 06 sections 7.2a, 8.2 (d); decisions C110 (2), (5)).
+ * Written for a `PCM_FIFO_GAPPED` microphone only: once per `CAPTURE_MIC_ACCOUNT_PERIOD_SAMPLES` of the
+ * timeline, and once more with `closing` true when the timeline ends, BEFORE `AUDIO_TIMELINE_END`. The
+ * counts are the WORKER's, never the writer's, and cumulative from sample 0; the Core keeps the LAST account
+ * of each microphone and attempt. THE IDENTITY, which the worker checks before it writes (an account that
+ * does not hold is not written: the worker logs an error and the Core states "not measured"):
+ *
+ *   timelineSamples = receivedSamples - discardedSamples - bufferedSamples + insertedSamples
+ *
+ * Every sample of the timeline is either taken from the buffer or inserted; every sample received entered the
+ * buffer and left it taken, discarded, or is still buffered. In the closing account the buffer's rest is
+ * discarded, so `bufferedSamples` is 0 and `timelineSamples` is `AUDIO_TIMELINE_END.samples`. A sample received
+ * as not a finite number is on the timeline as a zero the worker made: it is counted in `nonFiniteSamples`,
+ * not in `insertedSamples`, and is no term of the identity.
+ *   fedSamples / fedInsertedSamples   track samples for which THIS microphone fed the encoder / of those, the inserted
+ *                                     ones (the sum over the microphones of an attempt is the track's inserted total)
+ *   fedRuns / fedLongestRunSamples    runs of inserted samples on the track of ANY length that BEGAN while it fed / the longest
+ *   listedRuns / runsNotListed(Samples) of the runs of `CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES` or more: those written as
+ *                                     `AUDIO_INSERTED_RUN`, and those not written because the bound was reached (with their sum)
+ *   openRunFromSample                 the first sample of such a run that began on it and is STILL RUNNING; null: none
+ */
+export const MicSampleAccountRecordSchema = z
+  .strictObject({
+    kind: z.literal(CaptureRecordKind.MIC_SAMPLE_ACCOUNT),
+    deviceId: deviceIdOnWire,
+    role: z.enum(CaptureMicRole),
+    /** True: THE CLOSING ACCOUNT, written with the end of the timeline. False: a periodic one. */
+    closing: z.boolean(),
+    sampleRateHz: wholeNumber.positive(),
+    /** The sample the account reaches: samples expected by the session's own clock from sample 0 to this account. */
+    timelineSamples: daySamples,
+    receivedSamples: daySamples,
+    insertedSamples: daySamples,
+    discardedSamples: daySamples,
+    bufferedSamples: wholeNumber.max(CAPTURE_MIC_BUFFER_MAX_SAMPLES),
+    nonFiniteSamples: daySamples,
+    fedSamples: daySamples,
+    fedInsertedSamples: daySamples,
+    fedRuns: daySamples,
+    fedLongestRunSamples: daySamples,
+    listedRuns: wholeNumber.max(CAPTURE_AUDIO_INSERTED_RUNS_MAX),
+    runsNotListed: daySamples,
+    runsNotListedSamples: daySamples,
+    openRunFromSample: daySamples.nullable(),
+  })
+  .superRefine((a, context) => {
+    const issue = (message: string, path: string): void => context.addIssue({ code: 'custom', message, path: [path] });
+    if (a.timelineSamples % CAPTURE_AUDIO_INPUT_QUANTUM_SAMPLES !== 0) issue('the timeline grows by whole input chunks', 'timelineSamples');
+    if (a.timelineSamples !== a.receivedSamples - a.discardedSamples - a.bufferedSamples + a.insertedSamples) issue('the account does not add up: timeline = received - discarded - buffered + inserted', 'timelineSamples');
+    if (a.insertedSamples > a.timelineSamples) issue('more samples inserted than the timeline holds', 'insertedSamples');
+    if (a.discardedSamples > a.receivedSamples) issue('more samples discarded than received', 'discardedSamples');
+    if (a.nonFiniteSamples > a.receivedSamples) issue('more samples not finite than received', 'nonFiniteSamples');
+    if (a.fedSamples > a.timelineSamples) issue('fed more samples than the timeline holds', 'fedSamples');
+    if (a.fedInsertedSamples > a.fedSamples || a.fedInsertedSamples > a.insertedSamples) issue('more inserted samples fed than fed or than inserted', 'fedInsertedSamples');
+    if (a.fedLongestRunSamples > a.timelineSamples) issue('a run longer than the timeline', 'fedLongestRunSamples');
+    if (a.listedRuns + a.runsNotListed > a.fedRuns) issue('more long runs than runs', 'listedRuns');
+    if (a.closing && (a.bufferedSamples !== 0 || a.openRunFromSample !== null)) issue('the closing account holds nothing buffered and no open run', 'closing');
+  });
+/**
+ * VERSION 5: ONE RUN OF INSERTED SILENCE ON THE TRACK, `CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES` or longer
+ * (design 06 section 8.2 (e)). Written when the run ENDS (at the latest with the timeline) and before any
+ * account that follows it. A run is a maximal row of consecutive TRACK samples that are zeros the worker
+ * inserted for a gapped microphone that fed the encoder; it may cross an input chunk and a switch between two
+ * gapped microphones, and it belongs to the microphone that fed at its FIRST sample. A sample fed by a
+ * `PCM_FIFO` microphone, and a sample received as not finite, end a run. The FIRST
+ * `CAPTURE_AUDIO_INSERTED_RUNS_MAX` runs of a worker are listed; the rest are counted in the account.
+ * `fromSample` is on the counter of `AUDIO_SOURCE_INTERVAL.fromSample`: sample 0 is T0 and the index in the PCM tap.
+ */
+export const AudioInsertedRunRecordSchema = z.strictObject({
+  kind: z.literal(CaptureRecordKind.AUDIO_INSERTED_RUN),
+  deviceId: deviceIdOnWire,
+  role: z.enum(CaptureMicRole),
+  /** 1, 2, 3 ... of this worker, without a gap. */
+  index: wholeNumber.positive().max(CAPTURE_AUDIO_INSERTED_RUNS_MAX),
+  fromSample: daySamples,
+  samples: daySamples.min(CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES),
+  sampleRateHz: wholeNumber.positive(),
+});
 export const CaptureRecordSchema = z.discriminatedUnion('kind', [
   FirstVideoSampleRecordSchema,
   FirstDurableFragmentRecordSchema,
@@ -907,6 +1063,8 @@ export const CaptureRecordSchema = z.discriminatedUnion('kind', [
   AudioSourceIntervalRecordSchema,
   AudioTimelineEndRecordSchema,
   SealCompleteRecordSchema,
+  MicSampleAccountRecordSchema,
+  AudioInsertedRunRecordSchema,
 ]);
 /** `chain_0`: SHA-256 of nothing, what the chain of the first fragment is built on (spec §C.3). */
 export const CAPTURE_CHAIN_GENESIS_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
@@ -916,7 +1074,7 @@ export const ONCE_PER_CAMERA_RECORD_KINDS: readonly CaptureRecordKind[] = [Captu
 export const DURABLE_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.FIRST_DURABLE_FRAGMENT, CaptureRecordKind.FRAGMENT_CHECKPOINT];
 /** Whose device ID a record carries (version 4): a camera's, a microphone's, or none (a record of the session). */
 export const CAMERA_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.FIRST_VIDEO_SAMPLE, CaptureRecordKind.FIRST_DURABLE_FRAGMENT, CaptureRecordKind.FRAGMENT_CHECKPOINT, CaptureRecordKind.KEYFRAME_INTERVAL];
-export const MIC_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.AUDIO_SOURCE_INTERVAL];
+export const MIC_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.AUDIO_SOURCE_INTERVAL, CaptureRecordKind.MIC_SAMPLE_ACCOUNT, CaptureRecordKind.AUDIO_INSERTED_RUN];
 export const SESSION_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.AUDIO_TIMELINE_END, CaptureRecordKind.SEAL_COMPLETE];
 export type CaptureRecord = z.infer<typeof CaptureRecordSchema>;
 export type AudioSourceIntervalRecord = z.infer<typeof AudioSourceIntervalRecordSchema>;
@@ -924,6 +1082,8 @@ export type AudioTimelineEndRecord = z.infer<typeof AudioTimelineEndRecordSchema
 export type FirstVideoSampleRecord = z.infer<typeof FirstVideoSampleRecordSchema>;
 export type FragmentCheckpointRecord = z.infer<typeof FragmentCheckpointRecordSchema>;
 export type KeyframeIntervalRecord = z.infer<typeof KeyframeIntervalRecordSchema>;
+export type MicSampleAccountRecord = z.infer<typeof MicSampleAccountRecordSchema>;
+export type AudioInsertedRunRecord = z.infer<typeof AudioInsertedRunRecordSchema>;
 
 /** A record: lossless, in order, never through the event queue (see the header). */
 export const RecordMessageSchema = z.strictObject({

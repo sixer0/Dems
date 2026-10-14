@@ -18,9 +18,19 @@
 // member that reaches a log, an alert or a file name (R63-05 / carried question 8), each refused by
 // the decoder as a frame that is no message; the reason FRAGMENT_SIZE_BOUND_REACHED and the named
 // setting maxFragmentBytes (R63-02); the sync level a first durable fragment states (R63-09).
+//
+// Task 4 rows N1 + N3 (design 06 revision 3, section 8.2 (a) to (e); decisions C110, C119 (1)) add:
+// protocol version 5 - the input kind PCM_FIFO_GAPPED, the four required account members of a telemetry
+// level, and the records MIC_SAMPLE_ACCOUNT (with its identity) and AUDIO_INSERTED_RUN.
 import { describe, expect, it } from 'vitest';
 import {
   ADVISORY_WARNING_REASONS,
+  CAPTURE_AUDIO_DAY_SAMPLES,
+  CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES,
+  CAPTURE_AUDIO_INSERTED_RUNS_MAX,
+  CAPTURE_MIC_ACCOUNT_PERIOD_SAMPLES,
+  CAPTURE_MIC_BUFFER_MAX_SAMPLES,
+  CaptureMicInputKind,
   CAMERA_RECORD_KINDS,
   CAPTURE_AUDIO_INPUT_QUANTUM_SAMPLES,
   CAPTURE_IPC_DEFAULTS,
@@ -95,16 +105,44 @@ const checkpointRecord = {
 const nothingSkipped = { skipped: { noTimestamp: 0, beforeAudioStart: 0, noCameraClock: 0, beforeKeyframe: 0 }, skippedSpanMs: 0 } as const;
 const intervalOfTheStart = { kind: 'AUDIO_SOURCE_INTERVAL', deviceId: 'MIC-01', role: 'PRIMARY', index: 1, fromSample: 0, sampleRateHz: 48_000, capturedAtMs: 1_791_529_000_000, reason: 'SESSION_START', correlationId: null, appliedDelayUs: null } as const;
 const intervalOfASwitch = { kind: 'AUDIO_SOURCE_INTERVAL', deviceId: 'MIC-02', role: 'STANDBY', index: 2, fromSample: 124_800, sampleRateHz: 48_000, capturedAtMs: 1_791_529_002_600, reason: 'OPERATOR_SWITCH', correlationId: 'cap:S-1:1:3', appliedDelayUs: 4_210 } as const;
+/** The four account members every telemetry level carries since version 5 (a whole pipe: nothing inserted). */
+const accountOfALevel = { timelineSamples: 480_000, receivedSamples: 481_200, insertedSamples: 0, nonZero: true } as const;
+/**
+ * A periodic account of a gapped microphone after one minute (version 5), in the measured pattern of the macOS
+ * path (about one packet of 512 in ten missing): 2,880,000 = 2,606,592 - 0 - 1,792 + 275,200.
+ */
+const periodicAccount = {
+  kind: 'MIC_SAMPLE_ACCOUNT',
+  deviceId: 'MIC-01',
+  role: 'PRIMARY',
+  closing: false,
+  sampleRateHz: 48_000,
+  timelineSamples: 2_880_000,
+  receivedSamples: 2_606_592,
+  insertedSamples: 275_200,
+  discardedSamples: 0,
+  bufferedSamples: 1_792,
+  nonFiniteSamples: 0,
+  fedSamples: 2_880_000,
+  fedInsertedSamples: 275_200,
+  fedRuns: 5_400,
+  fedLongestRunSamples: 512,
+  listedRuns: 0,
+  runsNotListed: 0,
+  runsNotListedSamples: 0,
+  openRunFromSample: null,
+} as const;
+const insertedRun = { kind: 'AUDIO_INSERTED_RUN', deviceId: 'MIC-01', role: 'PRIMARY', index: 1, fromSample: 0, samples: 192_000, sampleRateHz: 48_000 } as const;
 
 describe('the messages', () => {
-  it('the protocol has the three commands and the eight worker messages of spec §B.2 (the eight of its table, HELLO, ACK and, since version 2, RECORD); version 3 since the checkpoint content, version 4 since the microphone rows', () => {
-    expect(CAPTURE_PROTOCOL_VERSION).toBe(4);
+  it('the protocol has the three commands and the eight worker messages of spec §B.2 (the eight of its table, HELLO, ACK and, since version 2, RECORD); version 3 since the checkpoint content, version 4 since the microphone rows, version 5 since the sample account', () => {
+    expect(CAPTURE_PROTOCOL_VERSION).toBe(5);
     expect(Object.values(SupervisorMessageType)).toEqual(['START', 'STOP', 'SWITCH_AUDIO_SOURCE']);
     expect(Object.values(WorkerMessageType)).toEqual(['HELLO', 'ACK', 'TELEMETRY', 'PROGRESS', 'HEARTBEAT', 'WARNING', 'CRASH', 'RECORD']);
-    expect(Object.values(CaptureRecordKind)).toEqual(['FIRST_VIDEO_SAMPLE', 'FIRST_DURABLE_FRAGMENT', 'FRAGMENT_CHECKPOINT', 'KEYFRAME_INTERVAL', 'AUDIO_SOURCE_INTERVAL', 'AUDIO_TIMELINE_END', 'SEAL_COMPLETE']);
+    expect(Object.values(CaptureRecordKind)).toEqual(['FIRST_VIDEO_SAMPLE', 'FIRST_DURABLE_FRAGMENT', 'FRAGMENT_CHECKPOINT', 'KEYFRAME_INTERVAL', 'AUDIO_SOURCE_INTERVAL', 'AUDIO_TIMELINE_END', 'SEAL_COMPLETE', 'MIC_SAMPLE_ACCOUNT', 'AUDIO_INSERTED_RUN']);
     // Every kind says whose device ID it carries: a camera's, a microphone's, or none.
     expect([...CAMERA_RECORD_KINDS, ...MIC_RECORD_KINDS, ...SESSION_RECORD_KINDS].sort()).toEqual(Object.values(CaptureRecordKind).sort());
-    expect(MIC_RECORD_KINDS).toEqual(['AUDIO_SOURCE_INTERVAL']);
+    expect(MIC_RECORD_KINDS).toEqual(['AUDIO_SOURCE_INTERVAL', 'MIC_SAMPLE_ACCOUNT', 'AUDIO_INSERTED_RUN']);
     expect(SESSION_RECORD_KINDS).toEqual(['AUDIO_TIMELINE_END', 'SEAL_COMPLETE']);
     expect(DURABLE_RECORD_KINDS).toEqual(['FIRST_DURABLE_FRAGMENT', 'FRAGMENT_CHECKPOINT']);
     // The observed keyframe interval says nothing about the disk: it is no sign of durability.
@@ -122,7 +160,7 @@ describe('the messages', () => {
       { v, type: 'ACK', correlationId: 'cap:S-1:1:1', ok: true },
       { v, type: 'ACK', correlationId: 'cap:S-1:1:3', ok: false, code: 'MIC_UNPLUGGED' },
       { v, type: 'HEARTBEAT', counter: 7 },
-      { v, type: 'TELEMETRY', sessionId: 'S-1', levels: [{ deviceId: 'MIC-01', role: 'PRIMARY', dbfs: -18.5, clipped: false, ratePpm: -12.5 }, { deviceId: 'MIC-02', role: 'STANDBY', dbfs: null, clipped: false, ratePpm: null }], ingest: [{ deviceId: 'VIDEO-01', state: 'CONNECTED' }], fragments: [{ deviceId: 'VIDEO-01', count: 3, bytes: 4096 }], clocks: [{ deviceId: 'VIDEO-01', lagMs: 4.8, trendPpm: null, nearBound: false }], tapActive: false },
+      { v, type: 'TELEMETRY', sessionId: 'S-1', levels: [{ deviceId: 'MIC-01', role: 'PRIMARY', dbfs: -18.5, clipped: false, ratePpm: -12.5, ...accountOfALevel }, { deviceId: 'MIC-02', role: 'STANDBY', dbfs: null, clipped: false, ratePpm: null, timelineSamples: 480_000, receivedSamples: 0, insertedSamples: 480_000, nonZero: false }], ingest: [{ deviceId: 'VIDEO-01', state: 'CONNECTED' }], fragments: [{ deviceId: 'VIDEO-01', count: 3, bytes: 4096 }], clocks: [{ deviceId: 'VIDEO-01', lagMs: 4.8, trendPpm: null, nearBound: false }], tapActive: false },
       { v, type: 'PROGRESS', sessionId: 'S-1', step: 'HASH', progress: 0.25, etaMs: 1200 },
       { v, type: 'WARNING', sessionId: 'S-1', code: 'MIC_SILENT', reason: 'MIC_LEVEL_BELOW_THRESHOLD', state: 'ACTIVE', subject: 'MIC-01' },
       { v, type: 'WARNING', sessionId: 'S-1', code: 'CAPTURE_FAULT', reason: 'MIC_DISCONNECTED', state: 'CLEARED', subject: 'MIC-02' },
@@ -137,6 +175,8 @@ describe('the messages', () => {
       { v, type: 'RECORD', sessionId: 'S-1', seq: 6, record: { kind: 'KEYFRAME_INTERVAL', deviceId: 'CAM-01', observedMs: 5000, boundMs: 2000, intervals: 1, complete: true, aboveBound: true } },
       { v, type: 'RECORD', sessionId: 'S-1', seq: 3, record: { kind: 'SEAL_COMPLETE' } },
       { v, type: 'RECORD', sessionId: 'S-1', seq: 4, record: { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'VIDEO-01', pts: 526386, timescale: 90000, skipped: { noTimestamp: 1, beforeAudioStart: 0, noCameraClock: 0, beforeKeyframe: 29 }, skippedSpanMs: 805 } },
+      { v, type: 'RECORD', sessionId: 'S-1', seq: 10, record: insertedRun },
+      { v, type: 'RECORD', sessionId: 'S-1', seq: 11, record: periodicAccount },
     ];
     const commandSplitter = createLineSplitter();
     expect(commands.flatMap((command) => commandSplitter.push(encodeFrame(command))).map((line) => decodeSupervisorLine(line ?? ''))).toEqual(commands.map((message) => ({ ok: true, message })));
@@ -160,7 +200,7 @@ describe('the messages', () => {
     expect(not({ ...silent, state: undefined })).toEqual(refused);
     expect(not({ ...silent, state: 'GONE' })).toEqual(refused);
     expect(not({ v, type: 'STOP', sessionId: 'S-1', correlationId: 'c', reason: 'STOPPED' })).toEqual(refused);
-    expect(decodeWorkerLine('{"v":4,')).toEqual({ ok: false, violation: FrameViolation.NOT_JSON });
+    expect(decodeWorkerLine('{"v":5,')).toEqual({ ok: false, violation: FrameViolation.NOT_JSON });
     expect(decodeWorkerLine(JSON.stringify({ v, type: 'HEARTBEAT', counter: 1 }), 10)).toEqual({ ok: false, violation: FrameViolation.TOO_LONG });
   });
 
@@ -191,20 +231,20 @@ describe('the messages', () => {
     ];
     for (const frame of today) {
       expect(decodeWorkerLine(JSON.stringify({ v: 3, ...frame })), frame.type).toEqual({ ok: false, violation: FrameViolation.NOT_A_MESSAGE });
-      // CONTROL: the same frame under version 4 is a message.
-      expect(decodeWorkerLine(JSON.stringify({ v: 4, ...frame })).ok, frame.type).toBe(true);
+      // CONTROL: the same frame under the version of this package is a message.
+      expect(decodeWorkerLine(JSON.stringify({ v, ...frame })).ok, frame.type).toBe(true);
     }
-    // The shapes of version 3, sent under version 4: each is refused by what version 4 requires.
+    // The shapes of version 3, sent under the version of this package: each is refused by what version 4 requires.
     const version3Shapes = [
       { type: 'WARNING', sessionId: 'S-1', code: 'CAPTURE_FAULT', state: 'ACTIVE', subject: 'CAM-01' },
       { type: 'TELEMETRY', sessionId: 'S-1', levels: [{ role: 'PRIMARY', dbfs: -18.5, clipped: false }], ingest: [], fragments: [], clocks: [], tapActive: false },
       { type: 'RECORD', sessionId: 'S-1', seq: 1, record: { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-01', pts: 0, timescale: 90000 } },
     ];
-    for (const frame of version3Shapes) expect(decodeWorkerLine(JSON.stringify({ v: 4, ...frame })).ok, frame.type).toBe(false);
+    for (const frame of version3Shapes) expect(decodeWorkerLine(JSON.stringify({ v, ...frame })).ok, frame.type).toBe(false);
     expect(decodeSupervisorLine(JSON.stringify({ v: 3, type: 'SWITCH_AUDIO_SOURCE', sessionId: 'S-1', correlationId: 'c', to: 'STANDBY' })).ok).toBe(false);
-    expect(decodeSupervisorLine(JSON.stringify({ v: 4, type: 'SWITCH_AUDIO_SOURCE', sessionId: 'S-1', correlationId: 'c', to: 'STANDBY' })).ok).toBe(true);
+    expect(decodeSupervisorLine(JSON.stringify({ v, type: 'SWITCH_AUDIO_SOURCE', sessionId: 'S-1', correlationId: 'c', to: 'STANDBY' })).ok).toBe(true);
     // The switch names a ROLE of the plan and nothing else: a device ID or a third value is no command.
-    expect(decodeSupervisorLine(JSON.stringify({ v: 4, type: 'SWITCH_AUDIO_SOURCE', sessionId: 'S-1', correlationId: 'c', to: 'MIC-02' })).ok).toBe(false);
+    expect(decodeSupervisorLine(JSON.stringify({ v, type: 'SWITCH_AUDIO_SOURCE', sessionId: 'S-1', correlationId: 'c', to: 'MIC-02' })).ok).toBe(false);
     expect(SWITCH_REFUSAL_CODES).toEqual(['NOT_RECORDING', 'SESSION_MISMATCH', 'NO_SUCH_MIC', 'SWITCH_PENDING', 'SELECTOR_COMMAND_FAILED']);
   });
 
@@ -241,7 +281,7 @@ describe('the messages', () => {
     // inside version 4. Each is a fault of a CAMERA under the existing code - no microphone reason, no advice - and
     // a fixed word: a member-like word that is not of the list (a path, a lower-case form, a suffix) is no message.
     const added = ['CAMERA_ANNOUNCE_NOT_MATCHED', 'CAMERA_ANNOUNCE_NOT_SEEN', 'CAMERA_NO_PICTURE'] as const;
-    expect(v).toBe(4);
+    expect(v).toBe(5);
     expect(Object.values(CaptureWarningReason)).toHaveLength(11);
     for (const reason of added) {
       expect(CaptureWarningReason[reason], reason).toBe(reason);
@@ -313,7 +353,7 @@ describe('the messages', () => {
 
   it('a telemetry level names its microphone by device ID, with its role and the rate correction inside the controller limit', () => {
     const ok = (level: unknown): boolean => decodeWorkerLine(JSON.stringify({ v, type: 'TELEMETRY', sessionId: 'S-1', levels: [level], ingest: [], fragments: [], clocks: [], tapActive: false })).ok;
-    const level = { deviceId: 'MIC-01', role: 'PRIMARY', dbfs: -20, clipped: false, ratePpm: 4_999.9 };
+    const level = { deviceId: 'MIC-01', role: 'PRIMARY', dbfs: -20, clipped: false, ratePpm: 4_999.9, ...accountOfALevel };
     expect(ok(level)).toBe(true);
     expect(ok({ ...level, ratePpm: -5_000 })).toBe(true);
     expect(ok({ ...level, ratePpm: null })).toBe(true);
@@ -323,6 +363,130 @@ describe('the messages', () => {
     expect(ok(noDevice)).toBe(false);
     const { ratePpm: _rate, ...noRate } = level;
     expect(ok(noRate)).toBe(false);
+  });
+
+  // ── Version 5 (task 4 rows N1 + N3; design 06 section 8.2 (a) to (e)) ──────────────────────────
+  it('version 5: no frame of a version-4 worker decodes, and a version-4 telemetry level (without the account) is no message', () => {
+    const today = [
+      { type: 'HELLO', protocolVersion: 4, workerVersion: 'capture-worker/0.6.0' },
+      { type: 'HEARTBEAT', counter: 1 },
+      { type: 'RECORD', sessionId: 'S-1', seq: 1, record: intervalOfTheStart },
+    ];
+    for (const frame of today) {
+      expect(decodeWorkerLine(JSON.stringify({ v: 4, ...frame })), frame.type).toEqual({ ok: false, violation: FrameViolation.NOT_A_MESSAGE });
+      // CONTROL: the same frame under version 5 is a message (the version is what refuses it).
+      expect(decodeWorkerLine(JSON.stringify({ v: 5, ...frame })).ok, frame.type).toBe(true);
+    }
+    const version4Level = { deviceId: 'MIC-01', role: 'PRIMARY', dbfs: -20, clipped: false, ratePpm: 0 };
+    const telemetry = (level: unknown) => decodeWorkerLine(JSON.stringify({ v: 5, type: 'TELEMETRY', sessionId: 'S-1', levels: [level], ingest: [], fragments: [], clocks: [], tapActive: false })).ok;
+    expect(telemetry(version4Level)).toBe(false);
+    expect(telemetry({ ...version4Level, ...accountOfALevel })).toBe(true);
+    expect(decodeSupervisorLine(JSON.stringify({ v: 4, type: 'STOP', sessionId: 'S-1', correlationId: 'c', reason: 'STOPPED' })).ok).toBe(false);
+  });
+
+  it('version 5: the three constants of the account, and a telemetry level states timeline, received, inserted and nonZero - each required, each a whole count of one day at most', () => {
+    expect([CAPTURE_MIC_ACCOUNT_PERIOD_SAMPLES, CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES, CAPTURE_AUDIO_INSERTED_RUNS_MAX]).toEqual([2_880_000, 4_800, 1_024]);
+    expect([CAPTURE_AUDIO_DAY_SAMPLES, CAPTURE_MIC_BUFFER_MAX_SAMPLES]).toEqual([4_147_200_000, 96_000]);
+    expect(CAPTURE_MIC_ACCOUNT_PERIOD_SAMPLES % CAPTURE_AUDIO_INPUT_QUANTUM_SAMPLES).toBe(0);
+    const ok = (level: unknown): boolean => decodeWorkerLine(JSON.stringify({ v, type: 'TELEMETRY', sessionId: 'S-1', levels: [level], ingest: [], fragments: [], clocks: [], tapActive: false })).ok;
+    // A gapped microphone: no rate controller runs, ratePpm is null.
+    const gapped = { deviceId: 'MIC-01', role: 'PRIMARY', dbfs: -24, clipped: false, ratePpm: null, timelineSamples: 480_000, receivedSamples: 434_176, insertedSamples: 47_744, nonZero: true };
+    expect(ok(gapped)).toBe(true);
+    expect(ok({ ...gapped, timelineSamples: 0, receivedSamples: 0, insertedSamples: 0, nonZero: false })).toBe(true);
+    expect(ok({ ...gapped, timelineSamples: CAPTURE_AUDIO_DAY_SAMPLES, insertedSamples: CAPTURE_AUDIO_DAY_SAMPLES, receivedSamples: CAPTURE_AUDIO_DAY_SAMPLES })).toBe(true);
+    for (const member of ['timelineSamples', 'receivedSamples', 'insertedSamples', 'nonZero'] as const) {
+      const { [member]: _dropped, ...rest } = gapped;
+      expect(ok(rest), `without ${member}`).toBe(false);
+    }
+    for (const member of ['timelineSamples', 'receivedSamples', 'insertedSamples'] as const) {
+      expect(ok({ ...gapped, [member]: -1 }), `${member} -1`).toBe(false);
+      expect(ok({ ...gapped, [member]: 1.5 }), `${member} 1.5`).toBe(false);
+      expect(ok({ ...gapped, [member]: CAPTURE_AUDIO_DAY_SAMPLES + 1 }), `${member} above a day`).toBe(false);
+      expect(ok({ ...gapped, [member]: '480000' }), `${member} as text`).toBe(false);
+    }
+    // Inserted never above the timeline: the nearest wrong value on each side.
+    expect(ok({ ...gapped, insertedSamples: 480_000 })).toBe(true);
+    expect(ok({ ...gapped, insertedSamples: 480_001 })).toBe(false);
+    expect(ok({ ...gapped, nonZero: 'yes' })).toBe(false);
+    expect(ok({ ...gapped, nonZero: null })).toBe(false);
+    expect(ok({ ...gapped, shortfallPercent: 9.9 })).toBe(false);
+  });
+
+  it('version 5: the input kind PCM_FIFO_GAPPED - the same bytes, a writer that does not promise every sample', () => {
+    expect(Object.values(CaptureMicInputKind)).toEqual(['PCM_FIFO', 'PCM_FIFO_GAPPED']);
+    const gappedPlan = { ...plan, mics: [{ ...plan.mics[0], input: { kind: 'PCM_FIFO_GAPPED', path: '/data/run/S-1/MIC-01.pcm' } }, plan.mics[1]] };
+    expect(CapturePlanSchema.safeParse(gappedPlan).success).toBe(true);
+    // One microphone of each kind, or both gapped.
+    expect(CapturePlanSchema.safeParse({ ...gappedPlan, mics: [gappedPlan.mics[0], { ...plan.mics[1], input: { kind: 'PCM_FIFO_GAPPED', path: '/data/run/S-1/MIC-02.pcm' } }] }).success).toBe(true);
+    // Near misses of the word, and a member more, are no plan.
+    for (const kind of ['PCM_FIFO_GAPPED ', 'pcm_fifo_gapped', 'PCM_FIFO_GAP', 'PCM_FIFO-GAPPED', 'GAPPED']) {
+      expect(CapturePlanSchema.safeParse({ ...plan, mics: [{ ...plan.mics[0], input: { kind, path: '/data/run/S-1/MIC-01.pcm' } }] }).success, kind).toBe(false);
+    }
+    expect(CapturePlanSchema.safeParse({ ...plan, mics: [{ ...plan.mics[0], input: { kind: 'PCM_FIFO_GAPPED', path: '/data/run/S-1/MIC-01.pcm', sampleRateHz: 48_000 } }] }).success).toBe(false);
+    expect(CapturePlanSchema.safeParse({ ...plan, mics: [{ ...plan.mics[0], input: { kind: 'PCM_FIFO_GAPPED', path: 'relative.pcm' } }] }).success).toBe(false);
+  });
+
+  it('version 5: MIC_SAMPLE_ACCOUNT holds its identity to the sample, and every cross rule refuses its nearest wrong value', () => {
+    const ok = (record: unknown): boolean => decodeWorkerLine(JSON.stringify({ v, type: 'RECORD', sessionId: 'S-1', seq: 1, record })).ok;
+    expect(ok(periodicAccount)).toBe(true);
+    // THE IDENTITY: timeline = received - discarded - buffered + inserted. One sample off in any term is no record.
+    expect(periodicAccount.receivedSamples - periodicAccount.discardedSamples - periodicAccount.bufferedSamples + periodicAccount.insertedSamples).toBe(periodicAccount.timelineSamples);
+    for (const member of ['receivedSamples', 'insertedSamples', 'bufferedSamples'] as const) {
+      expect(ok({ ...periodicAccount, [member]: periodicAccount[member] + 1 }), `${member} + 1`).toBe(false);
+      expect(ok({ ...periodicAccount, [member]: periodicAccount[member] - 1 }), `${member} - 1`).toBe(false);
+    }
+    expect(ok({ ...periodicAccount, discardedSamples: 1 })).toBe(false);
+    expect(ok({ ...periodicAccount, discardedSamples: 1, receivedSamples: periodicAccount.receivedSamples + 1 })).toBe(true);
+    // The closing account: the buffer's rest is discarded, nothing is buffered and no run is open.
+    const closing = { ...periodicAccount, closing: true, bufferedSamples: 0, discardedSamples: 1_792 };
+    expect(ok(closing)).toBe(true);
+    expect(ok({ ...closing, bufferedSamples: 1_792, discardedSamples: 0 })).toBe(false);
+    expect(ok({ ...closing, openRunFromSample: 0 })).toBe(false);
+    expect(ok({ ...periodicAccount, openRunFromSample: 2_870_400 })).toBe(true);
+    // The timeline grows by whole input chunks.
+    expect(ok({ ...periodicAccount, timelineSamples: 2_880_001, insertedSamples: 275_201 })).toBe(false);
+    // Bounds.
+    expect(ok({ ...periodicAccount, bufferedSamples: CAPTURE_MIC_BUFFER_MAX_SAMPLES + 1, receivedSamples: periodicAccount.receivedSamples + CAPTURE_MIC_BUFFER_MAX_SAMPLES + 1 - 1_792 })).toBe(false);
+    expect(ok({ ...periodicAccount, listedRuns: CAPTURE_AUDIO_INSERTED_RUNS_MAX + 1, fedRuns: 9_999 })).toBe(false);
+    expect(ok({ ...periodicAccount, listedRuns: CAPTURE_AUDIO_INSERTED_RUNS_MAX, fedRuns: 9_999 })).toBe(true);
+    expect(ok({ ...periodicAccount, sampleRateHz: 0 })).toBe(false);
+    // Cross rules beside the identity.
+    expect(ok({ ...periodicAccount, nonFiniteSamples: periodicAccount.receivedSamples + 1 })).toBe(false);
+    expect(ok({ ...periodicAccount, fedSamples: periodicAccount.timelineSamples + 480 })).toBe(false);
+    expect(ok({ ...periodicAccount, fedInsertedSamples: periodicAccount.insertedSamples + 1 })).toBe(false);
+    expect(ok({ ...periodicAccount, fedSamples: 1_000, fedInsertedSamples: 1_001 })).toBe(false);
+    expect(ok({ ...periodicAccount, fedLongestRunSamples: periodicAccount.timelineSamples + 1 })).toBe(false);
+    expect(ok({ ...periodicAccount, fedRuns: 2, listedRuns: 2, runsNotListed: 1, runsNotListedSamples: 4_800 })).toBe(false);
+    expect(ok({ ...periodicAccount, fedRuns: 3, listedRuns: 2, runsNotListed: 1, runsNotListedSamples: 4_800 })).toBe(true);
+    // Strict: every member required, nothing else, never a role as the device, never free text.
+    for (const member of Object.keys(periodicAccount).filter((key) => key !== 'kind')) {
+      const { [member as keyof typeof periodicAccount]: _dropped, ...rest } = periodicAccount;
+      expect(ok(rest), `without ${member}`).toBe(false);
+    }
+    expect(ok({ ...periodicAccount, shortfallPercent: 9.55 })).toBe(false);
+    expect(ok({ ...periodicAccount, deviceId: 'PRIMARY' })).toBe(false);
+    expect(ok({ ...periodicAccount, deviceId: 'MIC 01 (USB interface)' })).toBe(false);
+    expect(ok({ ...periodicAccount, role: 'SECOND' })).toBe(false);
+  });
+
+  it('version 5: AUDIO_INSERTED_RUN - a run of 4,800 samples or more, its first sample and its microphone; the index from 1 to 1,024', () => {
+    const ok = (record: unknown): boolean => decodeWorkerLine(JSON.stringify({ v, type: 'RECORD', sessionId: 'S-1', seq: 1, record })).ok;
+    expect(ok(insertedRun)).toBe(true);
+    expect(ok({ ...insertedRun, samples: CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES })).toBe(true);
+    expect(ok({ ...insertedRun, samples: CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES - 1 })).toBe(false);
+    expect(ok({ ...insertedRun, index: CAPTURE_AUDIO_INSERTED_RUNS_MAX })).toBe(true);
+    expect(ok({ ...insertedRun, index: CAPTURE_AUDIO_INSERTED_RUNS_MAX + 1 })).toBe(false);
+    expect(ok({ ...insertedRun, index: 0 })).toBe(false);
+    // A run may begin anywhere in a chunk: its first sample is any whole sample of the timeline.
+    expect(ok({ ...insertedRun, fromSample: 451_663 })).toBe(true);
+    expect(ok({ ...insertedRun, fromSample: -1 })).toBe(false);
+    expect(ok({ ...insertedRun, fromSample: CAPTURE_AUDIO_DAY_SAMPLES + 1 })).toBe(false);
+    for (const member of ['deviceId', 'role', 'index', 'fromSample', 'samples', 'sampleRateHz'] as const) {
+      const { [member]: _dropped, ...rest } = insertedRun;
+      expect(ok(rest), `without ${member}`).toBe(false);
+    }
+    expect(ok({ ...insertedRun, toSample: 196_800 })).toBe(false);
+    expect(ok({ ...insertedRun, deviceId: 'STANDBY' })).toBe(false);
   });
 
   it('the named settings of a worker process: the ingest-open window, the three microphone thresholds and the fragment size bound, as arguments with ranges', () => {
@@ -348,7 +512,7 @@ describe('the messages', () => {
       v,
       type: 'TELEMETRY',
       sessionId: 'S-1',
-      levels: [{ deviceId: 'MIC-01', role: 'PRIMARY', dbfs: -18.5, clipped: false, ratePpm: 0 }],
+      levels: [{ deviceId: 'MIC-01', role: 'PRIMARY', dbfs: -18.5, clipped: false, ratePpm: 0, ...accountOfALevel }],
       ingest: [{ deviceId: 'CAM-01', state: 'CONNECTED' }],
       fragments: [{ deviceId: 'CAM-01', count: 1, bytes: 5131 }],
       clocks: [{ deviceId: 'CAM-01', lagMs: 21.5, trendPpm: null, nearBound: false }],

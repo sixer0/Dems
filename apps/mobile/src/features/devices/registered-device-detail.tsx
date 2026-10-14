@@ -38,7 +38,10 @@ export function RegisteredDeviceDetail({ device, header }: { device: RegisteredD
     // The Core's local device has no address; a network camera's is the host the Core sent.
     ...(local || device.host === null ? [] : [{ id: 'address', label: t('common.developmentRoster.field.address'), value: device.host, mono: true }]),
     { id: 'usedAs', label: t('common.developmentRoster.field.usedAs'), value: t(`common.developmentRoster.usedAs.${device.slot ?? 'NONE'}`) },
-    ...(device.streamState === null ? [] : [{ id: 'stream', label: t('common.developmentRoster.field.stream'), value: device.streamState }]),
+    // Row W6 (request lines 566, 569): a camera's null stream state is "Not read" (nobody reads its stream now) - never Live or Lost.
+    ...(device.streamState === null && device.kind !== 'CAMERA'
+      ? []
+      : [{ id: 'stream', label: t('common.developmentRoster.field.stream'), value: device.streamState ?? t('features.capture-selector.selector.stream.NOT_READ') }]),
   ];
   return (
     <View style={styles.root} testID="registered-device-detail">

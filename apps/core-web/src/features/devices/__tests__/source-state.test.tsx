@@ -185,3 +185,30 @@ describe('the chips', () => {
     expect(chips.querySelectorAll('[data-chip]')).toHaveLength(2)
   })
 })
+
+// Task 4 row W6 (request lines 566, 569; decisions C141, C143): the Core states `streamState: null` for an idle
+// registered camera (nobody reads its stream). It is "Stream not read" - never "Live", "Lost" or "Online". Seen RED on
+// the mutation "an explicit null reads as an absent member" (`const stream = read` in `sourceLineState`): the first case.
+describe('row W6: the Core\'s null stream state is "not read"', () => {
+  const idle = { realCapture: true, recording: false, online: true, streamState: null, checkedAt: undefined }
+
+  it('the rule: an explicit null is NOT_READ where a stream word is said; an absent member says nothing; not reachable keeps its negative fact alone', () => {
+    expect(sourceLineState(idle)).toEqual({ reach: 'NOT_CHECKED', stream: 'NOT_READ' })
+    expect(sourceLineState({ ...idle, checkedAt: 1_791_000_000_000 })).toEqual({ reach: 'REACHABLE', stream: 'NOT_READ' })
+    expect(sourceLineState({ ...idle, realCapture: false })).toEqual({ reach: 'ONLINE', stream: 'NOT_READ' })
+    // CONTROL: the member absent (an older Core) says nothing, and a source never checked keeps "Not checked" alone.
+    expect(sourceLineState({ ...idle, streamState: undefined })).toEqual({ reach: 'NOT_CHECKED', stream: null })
+    expect(sourceLineState({ ...idle, checkedAt: null })).toEqual({ reach: 'NOT_CHECKED', stream: null })
+    expect(sourceLineState({ ...idle, online: false })).toEqual({ reach: 'NOT_REACHABLE', stream: null })
+  })
+
+  it('the chips: "Stream not read" as a neutral chip, never the words of a live or a lost stream', () => {
+    const sim = createTestSim('idle')
+    render(withProviders(<SourceStateChips state={sourceLineState(idle)} />, { sim }))
+    const chips = screen.getByTestId('source-state-chips')
+    expect(chips).toHaveAttribute('data-stream', 'NOT_READ')
+    expect(chips).toHaveTextContent(enWeb.web.source.streamNotRead)
+    for (const word of [S.stream.LIVE, S.stream.LOST, S.online]) expect(chips).not.toHaveTextContent(word)
+    expect(chips.querySelector('[data-chip="stream"]')).toHaveTextContent('Stream not read')
+  })
+})

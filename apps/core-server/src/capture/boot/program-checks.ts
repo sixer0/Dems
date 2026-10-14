@@ -128,6 +128,8 @@ const SOCKET_UNIT = '/etc/systemd/system/dems-core-netalias.socket';
 const SERVICE_UNIT = '/etc/systemd/system/dems-core-netalias@.service';
 const INTERFACE_FILE = '/etc/dems/netalias-interface';
 /** The form of an interface name: the helper's own pattern and the CHECK of the stored column. */
+// Request line 558 (row V7b; decision C140 (6)): kept as EQUAL TEXT of the shared `CAPTURE_INTERFACE_NAME_PATTERN` - this
+// file imports types only (pin of row 81 (5) in `__tests__/program-checks.test.ts`), so the import is not admitted (task 4 row 88).
 const INTERFACE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$/;
 const GROUP_OR_OTHER_WRITE = 0o022;
 /** More output than this is an answer of another form (the bound of row 80). */

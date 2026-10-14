@@ -3,10 +3,11 @@
  * addendum 4.1 d, 4.2 "Arguments of the helper", 6.2; security addendum AD-07 (2) (4), AD-09 (3);
  * review P12-F13; specification S3-2, S3-4, S3-5).
  *
- * REGISTERED NOWHERE. The registered adapter of the kind is still the class-C stub beside this
- * file (`usb-audio.ts`), loaded by `real.ts`; nothing in `src/` imports this file, and a registry
- * refuses it (`CAPTURE_ADAPTER_INVALID`: it states an opener for a kind that has none before the
- * lift, WP-13c). It exists so that the opener can be built and tested before the lift.
+ * REGISTERED ON `linux` SINCE THE LIFT (task 4 row 88, decision AM-1): the loader `real.ts` builds
+ * THIS adapter where the host has a production microphone opener, and the boot step of the fence
+ * registers it with its opener. On every other platform the loader builds the stub beside it
+ * (`usb-audio.ts`, no opener) in its place (AM-1 (3)(h) with the erratum of C135). The fence also
+ * takes this file's card match (`identifyRegisteredCard`, `isRegisteredAudioInput`) for the loss watch.
  *
  * A microphone of a production room is ONE INPUT of a USB sound card on a Linux host. What this
  * file does, in the order of an `open`:

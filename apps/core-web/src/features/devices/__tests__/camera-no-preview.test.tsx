@@ -423,3 +423,27 @@ describe('row W5 (Q-01): a camera lost inside a session shows its fault in the S
     expect(tiles(page)).toHaveLength(0)
   })
 })
+
+// Task 4 row W6 (request line 569 (3); decisions C141, C143): the Core states `streamState: null` for an idle registered
+// camera's line. The tile's `data-state` was 'ONLINE' for it (`!== 'LOST'`); it is 'NOT_READ' now, and its words are never
+// "Stream live" or "Online". Seen RED on the mutation "the null branch of `data-state` removed" (back to 'ONLINE').
+describe('row W6: a selector line whose stream nobody reads is "not read" on the tile', () => {
+  const unread = (state: SimState): SimState => {
+    const real = realCapture(state)
+    return { ...real, captureConfig: { ...real.captureConfig, cameras: real.captureConfig.cameras.map((line) => ({ ...line, streamState: null })) } }
+  }
+
+  it('Devices & Inputs, idle: data-state NOT_READ; no "Stream live", no "Online"', async () => {
+    const page = await livePage('/devices', 'page-devices', unread)
+    const tile = await within(page).findByTestId('camera-tile-VIDEO-01')
+    await waitFor(() => expect(tiles(tile)).toHaveLength(1))
+    const [first] = tiles(tile)
+    expect(first).toHaveAttribute('data-state', 'NOT_READ')
+    expect(first).not.toHaveTextContent(en.devices.selector.stream.LIVE)
+    expect(first).not.toHaveTextContent(en.devices.selector.online)
+    // The selector line of the same track: the neutral chip "Stream not read".
+    const row = await within(page).findByTestId('selector-camera-VIDEO-01')
+    await waitFor(() => expect(within(row).getByTestId('source-state-chips')).toHaveAttribute('data-stream', 'NOT_READ'))
+    expect(within(row).getByTestId('source-state-chips')).toHaveTextContent(enWeb.web.source.streamNotRead)
+  })
+})

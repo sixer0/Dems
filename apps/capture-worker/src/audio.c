@@ -63,6 +63,23 @@
  * rows decide how a real microphone is read; what they inherit is this rule, not the pipe.
  * The file's time 0 is T0 minus the AAC priming under the pinned mux flags (spec F): see
  * CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES in @dems/shared/api.
+ *
+ * A GAPPED MICROPHONE (protocol version 5; design 06 sections 7.2a, 8.2; decisions C107, C110 (2), (5)). The
+ * input kind PCM_FIFO_GAPPED is the same bytes from a writer that does NOT promise every sample (the bench form
+ * of the macOS path loses about one packet of 512 in ten). For such a microphone the worker:
+ *   - makes NO resampler and asks for NO compensation: what it reads is COPIED into its buffer, value for value;
+ *     no rate controller runs, so MIC_RATE_AT_LIMIT cannot arise and `ratePpm` is null (mic_open, mic_read,
+ *     mic_take, telemetry: the only places besides audio_main that read the flag);
+ *   - inserts zeros where its buffer runs empty, as for every microphone, and ACCOUNTS FOR EVERY SAMPLE, from
+ *     sample 0 of the timeline: received, inserted, discarded (the full buffer, the re-placement, the trim
+ *     before sample 0, and the buffer's rest at the end), buffered, not finite. Before it writes an account it
+ *     checks  timeline = received - discarded - buffered + inserted  and writes NO account when that fails;
+ *   - follows the RUNS of inserted samples on the TRACK (what the one encoder is fed): one AUDIO_INSERTED_RUN per
+ *     run of CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES or more, and a MIC_SAMPLE_ACCOUNT every
+ *     CAPTURE_MIC_ACCOUNT_PERIOD_SAMPLES and once more, closing, before AUDIO_TIMELINE_END.
+ * A microphone of kind PCM_FIFO is not changed by any of this: every line of its path is the line it was. The
+ * counts the account needs are kept for every microphone (they change nothing a microphone does) and are
+ * reported, beside the four telemetry members every microphone states, for a gapped one only.
  */
 #include "worker.h"
 #include "micwatch.h"
@@ -117,6 +134,15 @@ typedef struct MicIn {
     MicWatch watch;                     /* silence, disconnect, rate at its limit (micwatch.h): says, never switches */
     int taken;                          /* samples it delivered into the last quantum */
     double taken_sumsq;                 /* the sum of their squares */
+    /* Protocol version 5: the account (kept for every microphone, reported for a gapped one). */
+    const Mic *plan;                    /* its microphone of the plan: whether it is gapped */
+    int head;                           /* zeros at the HEAD of the last quantum (owed lead, or all of it while it does not run) */
+    int nonzero;                        /* one sample, as read, was finite and not zero */
+    int64_t discarded;                  /* received and never put on the timeline */
+    int64_t nonfinite;                  /* received as not a finite number (on the timeline as a zero, not inserted) */
+    int64_t fed, fed_inserted;          /* track samples while it fed the encoder; of those, inserted */
+    int64_t fed_runs, fed_longest;      /* runs of inserted track samples that BEGAN while it fed; the longest (closed) */
+    int64_t listed, not_listed, not_listed_samples;   /* of the long ones: written; not written (the bound), their sum */
 } MicIn;
 
 /* Private to the filtering thread. */
@@ -129,6 +155,10 @@ static int intervals;                   /* AUDIO_SOURCE_INTERVAL records written
 static FILE *manifest;
 static int tap_fd = -1, tap_is_fifo;
 static int64_t a_pkts, tap_samples;
+/* Version 5: the run of inserted samples on the TRACK that is open now (first sample, length; -1: none), the
+ * microphone that fed at its first sample, and the AUDIO_INSERTED_RUN records written so far (the last index). */
+static int64_t run_from = -1, run_len;
+static int run_owner, runs_listed;
 
 /* The switch another thread asked for. */
 static pthread_mutex_t sw_mx = PTHREAD_MUTEX_INITIALIZER;
@@ -346,16 +376,20 @@ static int mic_open(MicIn *m, const Mic *plan) {
     memset(m, 0, sizeof *m);
     m->fd = -1;
     m->best_real = INT64_MAX;
+    m->plan = plan;
     if (!plan->present) return 0;
     if (!(m->fifo = malloc(sizeof(float) * FIFO_CAP))) return AVERROR(ENOMEM);
-    AVChannelLayout mono;
-    av_channel_layout_default(&mono, 1);
-    int r = swr_alloc_set_opts2(&m->swr, &mono, AV_SAMPLE_FMT_FLT, SR, &mono, AV_SAMPLE_FMT_FLT, SR, 0, NULL);
-    if (r < 0) return r;
-    if ((r = swr_init(m->swr)) < 0) return r;
-    /* The resampler runs from the first sample (a compensation of nothing turns it on), so that
-     * its delay is the same for the whole session and no step appears when it is first needed. */
-    if ((r = swr_set_compensation(m->swr, 0, 0)) < 0) return r;
+    /* 7.2a place 1: a gapped microphone gets NO resampler (the member stays null; mic_close allows that). */
+    if (!plan->gapped) {
+        AVChannelLayout mono;
+        av_channel_layout_default(&mono, 1);
+        int r = swr_alloc_set_opts2(&m->swr, &mono, AV_SAMPLE_FMT_FLT, SR, &mono, AV_SAMPLE_FMT_FLT, SR, 0, NULL);
+        if (r < 0) return r;
+        if ((r = swr_init(m->swr)) < 0) return r;
+        /* The resampler runs from the first sample (a compensation of nothing turns it on), so that
+         * its delay is the same for the whole session and no step appears when it is first needed. */
+        if ((r = swr_set_compensation(m->swr, 0, 0)) < 0) return r;
+    }
     m->fd = open(plan->path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
     if (m->fd < 0) return AVERROR(errno);
     return 0;
@@ -368,11 +402,13 @@ static void mic_close(MicIn *m) {
     m->fifo = NULL;
 }
 
-static void fifo_drop_oldest(MicIn *m, int n) {
-    if (n <= 0) return;
+/* Returns how many samples it removed (version 5: what the account counts as discarded, never the number asked for). */
+static int fifo_drop_oldest(MicIn *m, int n) {
+    if (n <= 0) return 0;
     if (n > m->have) n = m->have;
     memmove(m->fifo, m->fifo + n, sizeof(float) * (size_t)(m->have - n));
     m->have -= n;
+    return n;
 }
 
 /* Reads what the pipe holds, through the resampler, into the mic's buffer. Never blocks. */
@@ -390,14 +426,27 @@ static void mic_read(MicIn *m) {
         float in[sizeof buf / 4];
         memcpy(in, buf, samples * 4);
         memcpy(m->part, buf + samples * 4, (size_t)m->n_part);
-        for (size_t i = 0; i < samples; i++) if (!isfinite(in[i])) in[i] = 0.f;
-        /* Room for what this chunk can become (the resampler may give a few samples more). */
-        int room = (int)samples + 64;
-        if (m->have + room > FIFO_CAP) { int over = m->have + room - FIFO_CAP; fifo_drop_oldest(m, over); m->dropped += over; }
-        const uint8_t *src_data[1] = { (const uint8_t *)in };
-        uint8_t *dst_data[1] = { (uint8_t *)(m->fifo + m->have) };
-        int made = swr_convert(m->swr, dst_data, room, src_data, (int)samples);
-        if (made < 0) { fatal("filter", "MIC_RESAMPLE_FAILED", made); return; }
+        /* 7.2a place 2: a sample that is not a finite number becomes zero, and is COUNTED; `nonzero` is decided on
+         * the sample AS READ, before the replacement. */
+        for (size_t i = 0; i < samples; i++) {
+            if (in[i] != 0.f && isfinite(in[i])) m->nonzero = 1;
+            if (!isfinite(in[i])) { in[i] = 0.f; m->nonfinite++; }
+        }
+        /* Room for what this chunk can become (the resampler may give a few samples more; place 3: a gapped
+         * microphone has no resampler, its room is the chunk exactly). */
+        int room = (int)samples + (m->plan->gapped ? 0 : 64);
+        if (m->have + room > FIFO_CAP) { int over = m->have + room - FIFO_CAP; m->discarded += fifo_drop_oldest(m, over); m->dropped += over; }
+        int made;
+        if (m->plan->gapped) {
+            /* 7.2a place 4: COPIED, value for value and in order - what enters the buffer is exactly what was read. */
+            memcpy(m->fifo + m->have, in, samples * sizeof(float));
+            made = (int)samples;
+        } else {
+            const uint8_t *src_data[1] = { (const uint8_t *)in };
+            uint8_t *dst_data[1] = { (uint8_t *)(m->fifo + m->have) };
+            made = swr_convert(m->swr, dst_data, room, src_data, (int)samples);
+            if (made < 0) { fatal("filter", "MIC_RESAMPLE_FAILED", made); return; }
+        }
         m->have += made;
         m->received += (int64_t)samples;
         m->has_data = 1;
@@ -418,7 +467,7 @@ static void mic_start(MicIn *m, int64_t lead_silence) {
  * buffer's level by asking the resampler for a little more or a little less. */
 /* Returns the MW_ bits of the rate controller's limit (micwatch.h); the quantum's own level is left in `taken`. */
 static int mic_take(MicIn *m, float *dst, int64_t now_mono, int realtime) {
-    int present = 0;
+    int present = 0, head = 0;
     double sumsq = 0;
     if (m->running && !m->have && now_mono - m->last_data_mono > MIC_GAP_US) {
         /* The mic stopped. What it sends when it returns is placed anew. */
@@ -428,7 +477,7 @@ static int mic_take(MicIn *m, float *dst, int64_t now_mono, int realtime) {
     if (!m->running && m->has_data && m->fd >= 0 && m->have >= TARGET_FILL + QUANTUM && now_mono - m->last_data_mono < MIC_GAP_US) {
         /* It delivers (again): start from the newest samples, one buffer level behind the present. */
         int over = m->have - (TARGET_FILL + QUANTUM);
-        fifo_drop_oldest(m, over);
+        m->discarded += fifo_drop_oldest(m, over);          /* 7.2a place 6: the re-placement, counted */
         mic_start(m, 0);
         m->restarts++;
         logj("info", "filter", "mic_started", "\"mic\":%d,\"restarts\":%lld", (int)(m - mics) + 1, (long long)m->restarts);
@@ -436,7 +485,7 @@ static int mic_take(MicIn *m, float *dst, int64_t now_mono, int realtime) {
     for (int i = 0; i < QUANTUM; i++) {
         float v = 0.f;
         if (m->running) {
-            if (m->lead_silence > 0) m->lead_silence--;
+            if (m->lead_silence > 0) { m->lead_silence--; head++; }
             else if (present < m->have) v = m->fifo[present++];
         }
         dst[i] = v;
@@ -449,6 +498,12 @@ static int mic_take(MicIn *m, float *dst, int64_t now_mono, int realtime) {
     m->missing += QUANTUM - present;
     m->taken = present;
     m->taken_sumsq = sumsq;
+    /* Version 5, the shape of this quantum for the run tracker: `head` zeros, `present` samples, the rest zeros. A
+     * quantum without a sample is zeros only, wherever its owed lead ended. */
+    m->head = present ? head : QUANTUM;
+    /* 7.2a place 8: a gapped microphone RETURNS here - no level is followed, no compensation is asked, no rate limit
+     * is judged (it has no resampler: check.sh holds that nothing below can be reached for it). */
+    if (m->plan->gapped) return 0;
     if (!m->running || !realtime || m->lead_silence > 0) return 0;
     /* The level right after a quantum was taken, smoothed over about half a second. */
     /* The mic delivers in chunks: between two of them its samples go on being captured. The
@@ -481,25 +536,31 @@ static int mic_take(MicIn *m, float *dst, int64_t now_mono, int realtime) {
 }
 
 /* ---------------------------------------------------------------- telemetry */
-static void telemetry(Session *s) {
+static void telemetry(Session *s, int64_t timeline) {
     static const char *const role[NMIC] = { "PRIMARY", "STANDBY" };
     static const char *const state[] = { "WAITING", "CONNECTED", "ENDED" };
+    /* 768 holds two entries of the longest device ID (128) with every count at one day (10 digits): 625 characters. */
     char levels[768] = "", ingest[512] = "", frags[512] = "", clocks[512] = "";
     size_t l = 0, g = 0, f = 0, k = 0;
     for (int i = 0; i < NMIC; i++) {
         MicIn *m = &mics[i];
         if (!s->mic[i].present) continue;
-        /* The microphone by its device ID (protocol version 4), and what its rate controller asks now. */
+        /* The microphone by its device ID (protocol version 4), and what its rate controller asks now (place 9: none
+         * runs for a gapped microphone - always null). */
         char rate[32] = "null";
-        if (m->running) snprintf(rate, sizeof rate, "%.1f", m->ppm > MIC_MAX_PPM ? (double)MIC_MAX_PPM : m->ppm < -MIC_MAX_PPM ? (double)-MIC_MAX_PPM : m->ppm);
+        if (m->running && !s->mic[i].gapped) snprintf(rate, sizeof rate, "%.1f", m->ppm > MIC_MAX_PPM ? (double)MIC_MAX_PPM : m->ppm < -MIC_MAX_PPM ? (double)-MIC_MAX_PPM : m->ppm);
+        /* Version 5, for every microphone of every kind: its account so far, cumulative from sample 0 (`missing` IS the inserted count). */
+        char account[160];
+        snprintf(account, sizeof account, ",\"timelineSamples\":%lld,\"receivedSamples\":%lld,\"insertedSamples\":%lld,\"nonZero\":%s", (long long)timeline, (long long)m->received, (long long)m->missing,
+                 m->nonzero ? "true" : "false");
         if (l >= sizeof levels) continue;
         if (m->n_meter > 0) {
             double db = m->sumsq > 0 ? 10.0 * log10(m->sumsq / m->n_meter) : -120.0;
             if (db > 0) db = 0;
             if (db < -120.0) db = -120.0;
-            l += (size_t)snprintf(levels + l, sizeof levels - l, "%s{\"deviceId\":\"%s\",\"role\":\"%s\",\"dbfs\":%.2f,\"clipped\":%s,\"ratePpm\":%s}", l ? "," : "", s->mic[i].device_id, role[i], db, m->peak >= 0.999f ? "true" : "false", rate);
+            l += (size_t)snprintf(levels + l, sizeof levels - l, "%s{\"deviceId\":\"%s\",\"role\":\"%s\",\"dbfs\":%.2f,\"clipped\":%s,\"ratePpm\":%s%s}", l ? "," : "", s->mic[i].device_id, role[i], db, m->peak >= 0.999f ? "true" : "false", rate, account);
         } else {
-            l += (size_t)snprintf(levels + l, sizeof levels - l, "%s{\"deviceId\":\"%s\",\"role\":\"%s\",\"dbfs\":null,\"clipped\":false,\"ratePpm\":%s}", l ? "," : "", s->mic[i].device_id, role[i], rate);
+            l += (size_t)snprintf(levels + l, sizeof levels - l, "%s{\"deviceId\":\"%s\",\"role\":\"%s\",\"dbfs\":null,\"clipped\":false,\"ratePpm\":%s%s}", l ? "," : "", s->mic[i].device_id, role[i], rate, account);
         }
         m->sumsq = 0;
         m->peak = 0;
@@ -531,6 +592,77 @@ static void telemetry(Session *s) {
     if (f >= sizeof frags) frags[0] = 0;
     if (k >= sizeof clocks) clocks[0] = 0;
     ipc_send_level("\"type\":\"TELEMETRY\",\"sessionId\":\"%s\",\"levels\":[%s],\"ingest\":[%s],\"fragments\":[%s],\"clocks\":[%s],\"tapActive\":%s", s->id, levels, ingest, frags, clocks, tap_fd >= 0 ? "true" : "false");
+}
+
+/* ---------------------------------------------------------------- the sample account (protocol version 5) */
+/* THE RUNS (design 06 section 8.2, "what a run is"). A run is a maximal row of consecutive TRACK samples that are
+ * zeros inserted for a gapped microphone that fed the encoder. It may cross a quantum's edge and a switch from one
+ * gapped microphone to the other; it belongs to the microphone that fed at its first sample. A sample fed by a
+ * PCM_FIFO microphone ends a run, and so does a received sample (a non-finite one too: it is no inserted zero).
+ * These functions are handed what audio_main knows; none of them reads the input kind. */
+static void run_end(Session *s) {
+    static const char *const role[NMIC] = { "PRIMARY", "STANDBY" };
+    if (run_from < 0) return;
+    MicIn *m = &mics[run_owner];
+    if (run_len > m->fed_longest) m->fed_longest = run_len;
+    if (run_len >= CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES) {
+        if (runs_listed < CAPTURE_AUDIO_INSERTED_RUNS_MAX) {
+            /* The FIRST runs in timeline order are the listed ones; the list is never cut silently (SM-30 (2)). */
+            runs_listed++;
+            m->listed++;
+            send_record("\"kind\":\"AUDIO_INSERTED_RUN\",\"deviceId\":\"%s\",\"role\":\"%s\",\"index\":%d,\"fromSample\":%lld,\"samples\":%lld,\"sampleRateHz\":%d",
+                        s->mic[run_owner].device_id, role[run_owner], runs_listed, (long long)run_from, (long long)run_len, SR);
+        } else {
+            m->not_listed++;
+            m->not_listed_samples += run_len;
+        }
+    }
+    run_from = -1;
+    run_len = 0;
+}
+
+static void run_insert(int owner, int64_t at, int64_t count) {
+    if (count <= 0) return;
+    if (run_from < 0) {
+        run_from = at;
+        run_len = 0;
+        run_owner = owner;
+        mics[owner].fed_runs++;
+    }
+    run_len += count;
+}
+
+/* Quantum `n` of the track, fed by microphone `f`, which is gapped: `head` zeros, `taken` samples, the rest zeros. */
+static void run_feed(Session *s, int f, int64_t n) {
+    MicIn *m = &mics[f];
+    m->fed += QUANTUM;
+    m->fed_inserted += QUANTUM - m->taken;
+    run_insert(f, n, m->head);
+    if (!m->taken) return;
+    run_end(s);
+    run_insert(f, n + m->head + m->taken, QUANTUM - m->head - m->taken);
+}
+
+/* One MIC_SAMPLE_ACCOUNT of microphone `i` at timeline sample `timeline`. The identity is checked FIRST: an account that
+ * does not add up is not written (the Core then states "not measured"); the error goes to the worker's log. */
+static void account(Session *s, int i, int64_t timeline, int closing) {
+    static const char *const role[NMIC] = { "PRIMARY", "STANDBY" };
+    MicIn *m = &mics[i];
+    int owns_run = run_from >= 0 && run_owner == i;
+    int64_t longest = owns_run && run_len > m->fed_longest ? run_len : m->fed_longest;
+    char open_from[24] = "null";
+    if (owns_run && run_len >= CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES) snprintf(open_from, sizeof open_from, "%lld", (long long)run_from);
+    if (timeline != m->received - m->discarded - m->have + m->missing || (closing && (m->have || owns_run))) {
+        logj("error", "filter", "mic_account_does_not_add_up", "\"mic\":%d,\"closing\":%d,\"timeline\":%lld,\"received\":%lld,\"discarded\":%lld,\"buffered\":%d,\"inserted\":%lld",
+             i + 1, closing, (long long)timeline, (long long)m->received, (long long)m->discarded, m->have, (long long)m->missing);
+        return;
+    }
+    send_record("\"kind\":\"MIC_SAMPLE_ACCOUNT\",\"deviceId\":\"%s\",\"role\":\"%s\",\"closing\":%s,\"sampleRateHz\":%d,\"timelineSamples\":%lld,\"receivedSamples\":%lld,"
+                "\"insertedSamples\":%lld,\"discardedSamples\":%lld,\"bufferedSamples\":%d,\"nonFiniteSamples\":%lld,\"fedSamples\":%lld,\"fedInsertedSamples\":%lld,"
+                "\"fedRuns\":%lld,\"fedLongestRunSamples\":%lld,\"listedRuns\":%lld,\"runsNotListed\":%lld,\"runsNotListedSamples\":%lld,\"openRunFromSample\":%s",
+                s->mic[i].device_id, role[i], closing ? "true" : "false", SR, (long long)timeline, (long long)m->received, (long long)m->missing, (long long)m->discarded, m->have,
+                (long long)m->nonfinite, (long long)m->fed, (long long)m->fed_inserted, (long long)m->fed_runs, (long long)longest, (long long)m->listed, (long long)m->not_listed,
+                (long long)m->not_listed_samples, open_from);
 }
 
 /* ---------------------------------------------------------------- the thread */
@@ -579,7 +711,7 @@ void *audio_main(void *arg) {
         if (!m->has_data) continue;
         /* Sample 0 of the master is output sample 0. Another mic that began a little later owes that much silence first. */
         int64_t off = i == master ? 0 : llround((double)(m->best_real - t0_real) * SR / US);
-        if (off < 0) { fifo_drop_oldest(m, (int)(-off > m->have ? m->have : -off)); off = 0; }
+        if (off < 0) { m->discarded += fifo_drop_oldest(m, (int)(-off > m->have ? m->have : -off)); off = 0; }    /* 7.2a place 11: the trim, counted */
         mic_start(m, off);
     }
     for (int i = 0; i < NMIC; i++) micwatch_init(&mics[i].watch, (double)g_mic_silence_dbfs, g_mic_silence_ms, g_mic_disconnect_ms, SR);
@@ -627,9 +759,17 @@ void *audio_main(void *arg) {
              * It says; it never switches (OD-11). */
             if (s->mic[i].present) mic_warn(s, i, events | micwatch_chunk(&mics[i].watch, QUANTUM, mics[i].taken, mics[i].taken_sumsq));
         }
+        /* Version 5: the runs of inserted samples on the TRACK - this quantum is what `cur_map` fed. A PCM_FIFO
+         * microphone feeding ends a run and starts none. */
+        if (s->mic[cur_map].gapped) run_feed(s, cur_map, n);
+        else run_end(s);
         n += QUANTUM;
         filter_drain(s, o, pkt, 0);
-        if (n - meter_at >= meter_period) { meter_at = n; telemetry(s); }
+        /* Version 5: a periodic account of every gapped microphone, so that a worker that is killed leaves a statement. */
+        if (n % CAPTURE_MIC_ACCOUNT_PERIOD_SAMPLES == 0)
+            for (int i = 0; i < NMIC; i++)
+                if (s->mic[i].present && s->mic[i].gapped) account(s, i, n, 0);
+        if (n - meter_at >= meter_period) { meter_at = n; telemetry(s, n); }
         if (n % (QUANTUM * 10) == 0) {
             for (int i = 0; i < NCAM; i++)
                 if (s->cam[i].present && (r = cam_cut_if_stalled(&s->cam[i], now, stall_us)) < 0) fatal("filter", "STALL_CUT_FAILED", r);
@@ -654,6 +794,16 @@ void *audio_main(void *arg) {
              i + 1, (long long)mics[i].received, (long long)mics[i].missing, (long long)mics[i].dropped, (long long)mics[i].restarts, mics[i].ppm);
     }
     logj("info", "filter", "audio_finished", "\"samples_in\":%lld,\"encoder_packets\":%lld,\"tap_samples\":%lld,\"intervals\":%d", (long long)n, (long long)a_pkts, (long long)tap_samples, intervals);
+    /* Version 5, 7.2a place 12: the timeline ends - a run still open ends with it; what a gapped microphone's buffer
+     * still holds was received and never put on the timeline (discarded); then its CLOSING account, before the end. */
+    if (intervals) {
+        run_end(s);
+        for (int i = 0; i < NMIC; i++) {
+            if (!s->mic[i].present || !s->mic[i].gapped) continue;
+            mics[i].discarded += fifo_drop_oldest(&mics[i], mics[i].have);
+            account(s, i, n, 1);
+        }
+    }
     /* The end of the audio timeline closes the last interval (lossless; absent only when the worker was killed). */
     if (intervals) send_record("\"kind\":\"AUDIO_TIMELINE_END\",\"samples\":%lld,\"sampleRateHz\":%d,\"intervals\":%d", (long long)n, SR, intervals);
     if (tap_fd >= 0) close(tap_fd);

@@ -950,11 +950,13 @@ describe('M4-LOCAL-PLAN-1: the development plan and the four session_capture_sou
     for (const operation of [CaptureOperation.REAL_DEVELOPMENT, CaptureOperation.REAL_PRODUCTION]) {
       expect(() => buildSessionCaptureSources({ sessionId: SESSION, operation, slots: mixed, recordedAt: 1 })).toThrow('no opener exists for this source kind');
     }
-    // An all-production set: refused in REAL_PRODUCTION (no opener in this phase, SEC35-40) and in REAL_DEVELOPMENT.
+    // An all-production set (task 4 row 88, THE LIFT; specification 6.3 "Test: fence ... rewritten for REAL_PRODUCTION, kept
+    // for REAL_DEVELOPMENT"): refused in REAL_DEVELOPMENT, as before; in REAL_PRODUCTION four PRODUCTION rows once each source
+    // states its opener - and still refused where one of them states none (SEC35-40 (1): no opener, no row).
     const production = [slot('VIDEO-01', 'CAM-11', 'CAMERA', 'ONVIF_RTSP'), slot('VIDEO-02', 'CAM-12', 'CAMERA', 'ONVIF_RTSP'), slot('PRIMARY', 'MIC-11', 'MIC', 'USB_AUDIO'), slot('STANDBY', 'MIC-12', 'MIC', 'USB_AUDIO')];
-    for (const operation of [CaptureOperation.REAL_DEVELOPMENT, CaptureOperation.REAL_PRODUCTION]) {
-      expect(() => buildSessionCaptureSources({ sessionId: SESSION, operation, slots: production, recordedAt: 1 })).toThrow(CaptureAdapterError);
-    }
+    expect(() => buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.REAL_DEVELOPMENT, slots: production, recordedAt: 1 })).toThrow(CaptureAdapterError);
+    expect(buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.REAL_PRODUCTION, slots: production, recordedAt: 1 }).map((row) => `${row.slot} ${row.adapterKind} ${row.sourceClass}`)).toEqual(['VIDEO-01 ONVIF_RTSP PRODUCTION', 'VIDEO-02 ONVIF_RTSP PRODUCTION', 'MIC-PRIMARY USB_AUDIO PRODUCTION', 'MIC-STANDBY USB_AUDIO PRODUCTION']);
+    expect(() => buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.REAL_PRODUCTION, slots: [...production.slice(0, 2), slot('PRIMARY', 'MIC-11', 'MIC', 'USB_AUDIO', false), production[3]!], recordedAt: 1 })).toThrow('no opener exists for this source kind');
     // A development set in REAL_PRODUCTION, a source that states no opener, three slots, a microphone in a video slot: refused.
     const good = [slot('VIDEO-01', 'CAM-03', 'CAMERA', 'LOCAL_DEVICE'), slot('VIDEO-02', 'CAM-02', 'CAMERA', 'FAKE'), slot('PRIMARY', 'MIC-03', 'MIC', 'LOCAL_DEVICE'), slot('STANDBY', 'MIC-02', 'MIC', 'FAKE')];
     expect(() => buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.REAL_PRODUCTION, slots: good, recordedAt: 1 })).toThrow(CaptureAdapterError);
@@ -1501,8 +1503,8 @@ describe('task 4 row 33: the 21-state table - seven selector categories by the t
 describe('task 4 row 85c (f), (g): the wider device read of the production registry builder, and a device registered after the boot', () => {
   // DOUBLES. The store is a table of this file behind the two statements the builder runs (the boot's pinned read and the
   // wider read) and the one the admission runs. The adapters are plain objects of the three production kinds WITHOUT an
-  // opener (as the class-C stubs are; a built adapter that states one is refused by the registry until the lift, which the
-  // tests of row 85 hold). No loader file is imported, nothing is started.
+  // opener unless a case asks for one (since the lift, row 88, a built adapter that states one is taken by the registry: the
+  // last (g) case holds it). No loader file is imported, nothing is started.
   interface Row {
     id: string;
     kind: string;
@@ -1704,9 +1706,17 @@ describe('task 4 row 85c (f), (g): the wider device read of the production regis
     expect(refusing.told).toEqual([`CAM-14 ${ADMISSION_FAILED} CAPTURE_DEVICE_DUPLICATE`]);
     expect(() => refused.registry.describe('CAM-14')).toThrow(CaptureAdapterError);
 
-    // BEFORE THE LIFT an adapter that states an opener cannot enter a production registry - not at the build, and not through the admission either.
+    // SINCE THE LIFT (task 4 row 88, AM-1) an adapter of the two production source kinds that states an opener enters a production
+    // registry - at the build and through the admission, where the adapter takes the device through its door BEFORE the registry
+    // serves it (C70) - and its devices are recordable. (Before the lift both were refused CAPTURE_ADAPTER_INVALID.)
     const withOpener = rig({ hasOpener: true });
-    await expect(withOpener.build()).rejects.toMatchObject({ code: CaptureAdapterRefusal.ADAPTER_INVALID });
+    const opened = await withOpener.build();
+    expect(opened.registry.openerKinds()).toEqual(['ONVIF_RTSP', 'USB_AUDIO']);
+    withOpener.rows.push(ADOPTED);
+    expect(opened.admit(asked(ADOPTED))).toBe(CaptureDeviceAdmission.ADMITTING);
+    expect(await opened.admitted('CAM-14')).toBe(CaptureDeviceAdmission.ADMITTED);
+    expect(withOpener.taken).toEqual(['CAMERA:CAM-14']);
+    expect(opened.registry.assertRecordable('CAM-14').id).toBe('CAM-14');
     // An observer that throws changes nothing.
     const loud = rig();
     const loudBuilt = await buildProductionRegistryOf({

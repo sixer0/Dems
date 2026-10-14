@@ -3,8 +3,9 @@
  * H-22 "hot-plug detection"; README "Recording": a silent or disconnected microphone raises a
  * warning ONLY).
  *
- * REGISTERED NOWHERE, as the production microphone adapter beside it: the composition of the
- * production registry (row 85) makes one watch, hands it the adapter's enumerator, stored-row
+ * BUILT BY THE BOOT STEP OF THE FENCE since the lift (task 4 row 88; `wireProductionRegistry`),
+ * where the host has a production microphone opener (`linux`). The composition of the
+ * production registry makes one watch, hands it the adapter's enumerator, stored-row
  * reader, match and `openSources`, and gives `sourceLost` to the adapter as its `onSourceLost`.
  *
  * WHAT IT WATCHES. Two things make a registered microphone "lost":

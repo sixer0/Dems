@@ -27,8 +27,8 @@ const FOLDER = 'src/credential-store/';
 const CREDENTIAL_STORE_USERS: readonly string[] = [
   // Task 4 NAMED ENTRY SR-10 (decision C76; the composing file of row 85b, decisions C55 and C60): the ONE file above the
   // modules that hands the store to the capture credential reader, for the ONE purpose `capture.open` (never `seal`, never
-  // a named secret, a session key or a fragment). PROVISIONAL: put by name to the security review of row 86, which
-  // confirms or reverses it before the lift. What the file does with the store is pinned line by line in the case
+  // a named secret, a session key or a fragment). CONFIRMED by the security review of row 86 (answer (5); decisions C94,
+  // C127; caution C-9 applied by row 88). What the file does with the store is pinned line by line in the case
   // 'SR-10' below (`COMPOSITION_STORE_LINES`): a second use from that file fails there.
   'src/capture-composition.ts',
   // Integration pass A (D109), row 85's request: the fragment opener of verify v2 (`sessionKeys` + `openFragment`).
@@ -96,7 +96,7 @@ describe('rule 1: one store', () => {
     expect(occurrences(outside, /from\s+['"](?:\.\.?\/)+(?:[\w-]+\/)*credential-store\/[\w./-]+['"]/g)).toEqual([]);
   });
 
-  // Task 4 named entry SR-10 (decision C76), PROVISIONAL until the security review of row 86 confirms or reverses it.
+  // Task 4 named entry SR-10 (decision C76), CONFIRMED by the security review of row 86 (answer (5); C94, C127; C-9, row 88).
   // The entry of `CREDENTIAL_STORE_USERS` admits the FILE; this case holds the PURPOSE: the composing file imports the one
   // name `coreCredentialStore`, asks the store in one place, reads its status and calls `capture.open` - nothing else.
   // Every line of the file that touches the store is pinned; a second use (a seal, a named secret, a session key, the

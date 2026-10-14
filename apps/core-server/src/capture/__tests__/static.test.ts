@@ -2240,10 +2240,12 @@ describe('row 80: the host checks ask the host through an injected runner; no li
 
   // Task 4 row 85 (WP-13b; design addendum 1.6 #2, 6.4; AD-02 (2), AD-08). The production registry builder takes product
   // dependencies only. A production source that calls it hands in members of the closed list below and nothing else: no
-  // door, no inspector, no clock, no "permissive" anything. Until the lift (row 88) NO production source calls it at all.
-  it('row 85: the production registry builder is called by no production source before the lift, and never with a seam argument; the boot still builds the empty production registry', () => {
+  // door, no inspector, no clock, no "permissive" anything. SINCE THE LIFT (row 88, AM-1) the ONE production call is the
+  // boot step's wiring in the fence (`wireProductionRegistry`), with the two members of rows 85c / 85d added by name
+  // (`reader`, `onAdmission`); without the composition's parts the boot step builds the empty registry.
+  it('row 85 / row 88: the production registry builder is called by the boot step\'s wiring alone, never with a seam argument; without the composition\'s parts the boot builds the empty production registry', () => {
     const BUILDER_CALL = /\bbuildProductionRegistryOf\s*(?:<[^(]*>)?\(\s*\{([^}]*)\}/g;
-    const MEMBERS = ['operation', 'executor', 'dependencies', 'load', 'audioCards', 'checkCamera', 'locked'];
+    const MEMBERS = ['operation', 'executor', 'reader', 'dependencies', 'load', 'audioCards', 'checkCamera', 'locked', 'onAdmission'];
     const violations = (files: readonly SourceFile[]): string[] =>
       files.flatMap((file) =>
         [...file.text.matchAll(BUILDER_CALL)].flatMap((match) =>
@@ -2260,11 +2262,16 @@ describe('row 80: the host checks ask the host through an injected runner; no li
       { path: 'src/capture/y.ts', text: 'await buildProductionRegistryOf<Camera, Audio>({\n  operation,\n  permissiveAddressRule,\n  ...mount,\n});' },
     ])).toEqual(['src/capture/x.ts hands the builder the member door', 'src/capture/y.ts hands the builder the member permissiveAddressRule', 'src/capture/y.ts hands the builder the member mount']);
     expect(violations(production)).toEqual([]);
-    // Before the lift: the one occurrence in the product is the declaration; the boot step calls the empty registry of this phase.
+    // Since the lift: two occurrences in the product, the declaration and the ONE call of the wiring, which the boot step's
+    // REAL_PRODUCTION branch calls with the composition's parts; without them that branch builds the empty registry.
     const FENCE_INDEX = 'src/capture/fence/index.ts';
     expect(places(production, /\bbuildProductionRegistryOf\b/g)).toEqual([FENCE_INDEX]);
-    expect(text(FENCE_INDEX).match(/\bbuildProductionRegistryOf\b/g)).toHaveLength(1);
-    expect(text(FENCE_INDEX)).toMatch(/\} else if \(passed\.operation === CaptureOperation\.REAL_PRODUCTION\) \{\n {8}built = buildProductionRegistry\(mount\.locked\);/);
+    expect(text(FENCE_INDEX).match(/\bbuildProductionRegistryOf\b/g)).toHaveLength(2);
+    expect(text(FENCE_INDEX).match(/\bloaded\.registry = await buildProductionRegistryOf\(\{ operation, executor, reader, dependencies, load, audioCards, checkCamera, locked, onAdmission \}\);/g)).toHaveLength(1);
+    expect(places(production, /\bwireProductionRegistry\s*\(/g)).toEqual([FENCE_INDEX]);
+    expect(text(FENCE_INDEX)).toMatch(/\} else if \(passed\.operation === CaptureOperation\.REAL_PRODUCTION\) \{\n[^]*?\n {8}built =\n {10}parts === null\n {12}\? buildProductionRegistry\(mount\.locked\)\n {12}: await wireProductionRegistry\(parts, \{/);
+    // The parts reach the fence through ONE door, opened by the composing file alone.
+    expect(places(production, /\.\s*provideProductionParts\s*\(/g)).toEqual(['src/capture-composition.ts']);
     // The builder refuses another operation before it reads the stored registry or asks the loader.
     const builder = text(FENCE_INDEX).slice(text(FENCE_INDEX).indexOf('export async function buildProductionRegistryOf'));
     const refusal = builder.indexOf('if (input.operation !== CaptureOperation.REAL_PRODUCTION) throw new CaptureAdapterError(CaptureAdapterRefusal.REAL_ADAPTERS_REFUSED);');

@@ -37,7 +37,9 @@
 //                        (a worker that breaks both rules: only a signal ends it)
 import { createInterface } from 'node:readline';
 
-const PROTOCOL_VERSION = 4;
+// A plain .mjs run by node cannot import the TypeScript package; the literal is the protocol version of
+// `@dems/capture-protocol` (5 since row N13), held equal to `CAPTURE_PROTOCOL_VERSION` by `tidy-fy.test.ts`.
+const PROTOCOL_VERSION = 5;
 const args = process.argv.slice(2);
 const option = (name, fallback) => {
   const found = args.find((arg) => arg.startsWith(`--${name}=`));

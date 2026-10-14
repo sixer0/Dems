@@ -58,7 +58,7 @@ BIN   := $(BUILD)/capture-worker
 SRC   := src/capture_worker.c src/ipc.c src/sink.c src/ingest.c src/audio.c src/anchor.c src/micwatch.c src/announce.c
 HDR   := src/worker.h src/anchor.h src/micwatch.h src/announce.h
 
-FIXTURES := $(BUILD)/fake_cam $(BUILD)/fake_mic $(BUILD)/capture-worker-skeleton111 $(BUILD)/writer_replay $(BUILD)/m5_mic
+FIXTURES := $(BUILD)/fake_cam $(BUILD)/fake_mic $(BUILD)/capture-worker-skeleton111 $(BUILD)/writer_replay $(BUILD)/m5_mic $(BUILD)/gapped_mic
 
 # THE CAPTURE RELAY (task 4 blueprint row 41, WP-03a): a SEPARATE PROGRAM with source and rules of its own.
 #   make relay         its static rules and their self-test (relay-check.sh), its unit checks, then
@@ -261,6 +261,12 @@ $(BUILD)/fake_mic: test-fixtures/fake_mic.c Makefile
 
 # Row 71: the scripted fake microphones of the warning checks (silence, no delivery). Source in test/ (a test tool of m5mic.py).
 $(BUILD)/m5_mic: test/m5_mic.c Makefile
+	@mkdir -p $(BUILD)
+	$(CC) -std=c11 -D_DEFAULT_SOURCE -O2 -Wall -Wextra -Werror -o $@ $< -lm
+
+# Task 4 row N3: the stand-in of a gapped microphone writer (protocol version 5): whole packets of 512 left out in a known
+# pattern, a marker signal. Source in test/ (a test tool of n3gapped.py).
+$(BUILD)/gapped_mic: test/gapped_mic.c Makefile
 	@mkdir -p $(BUILD)
 	$(CC) -std=c11 -D_DEFAULT_SOURCE -O2 -Wall -Wextra -Werror -o $@ $< -lm
 

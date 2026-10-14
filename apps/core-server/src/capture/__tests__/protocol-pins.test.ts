@@ -7,9 +7,12 @@ import { fileURLToPath } from 'node:url';
 import {
   AudioSourceIntervalReason,
   CAPTURE_AUDIO_INPUT_QUANTUM_SAMPLES,
+  CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES,
+  CAPTURE_AUDIO_INSERTED_RUNS_MAX,
   CAPTURE_IPC_DEFAULTS,
   CAPTURE_MEDIA_PORT_MAX,
   CAPTURE_MEDIA_PORT_MIN,
+  CAPTURE_MIC_ACCOUNT_PERIOD_SAMPLES,
   CAPTURE_PROTOCOL_VERSION,
   CAPTURE_SWITCH_BOUND_US,
   CAPTURE_WORKER_SETTINGS,
@@ -62,6 +65,12 @@ describe('what the C capture worker restates from the protocol package and the c
     expect([define('CAPTURE_MEDIA_PORT_MIN'), define('CAPTURE_MEDIA_PORT_MAX')]).toEqual([String(CAPTURE_MEDIA_PORT_MIN), String(CAPTURE_MEDIA_PORT_MAX)]);
     expect(define('MAX_FRAME_CHARS')).toBe(String(CAPTURE_IPC_DEFAULTS.maxFrameChars));
     expect(define('SR')).toBe(String(CAPTURE_AUDIO_SAMPLE_RATE_HZ));
+    // Version 5 (row N13): the three numbers of the sample account of a gapped microphone.
+    expect([define('CAPTURE_MIC_ACCOUNT_PERIOD_SAMPLES'), define('CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES'), define('CAPTURE_AUDIO_INSERTED_RUNS_MAX')]).toEqual([
+      String(CAPTURE_MIC_ACCOUNT_PERIOD_SAMPLES),
+      String(CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES),
+      String(CAPTURE_AUDIO_INSERTED_RUNS_MAX),
+    ]);
     expect(CAPTURE_AUDIO_CHANNELS).toBe(1);
     // Positive control: the reader finds a define that is there and none that is not.
     expect(define('AAC_FRAME')).toBe('1024');
@@ -76,17 +85,18 @@ describe('what the C capture worker restates from the protocol package and the c
     expect(written('type')).not.toContain(WorkerMessageType.PROGRESS);
     // Row 59: the fMP4 writer's checkpoint and the observed keyframe interval joined the two of row 58.
     // Row 71 (protocol version 4): the audio-source interval and the end of the audio timeline joined them.
+    // Row N13 (protocol version 5): the sample account of a gapped microphone and the run of inserted silence.
     expect(written('kind')).toEqual(
-      [CaptureRecordKind.AUDIO_SOURCE_INTERVAL, CaptureRecordKind.AUDIO_TIMELINE_END, CaptureRecordKind.FIRST_DURABLE_FRAGMENT, CaptureRecordKind.FIRST_VIDEO_SAMPLE, CaptureRecordKind.FRAGMENT_CHECKPOINT, CaptureRecordKind.KEYFRAME_INTERVAL].sort(),
+      [CaptureRecordKind.AUDIO_INSERTED_RUN, CaptureRecordKind.AUDIO_SOURCE_INTERVAL, CaptureRecordKind.AUDIO_TIMELINE_END, CaptureRecordKind.MIC_SAMPLE_ACCOUNT, CaptureRecordKind.FIRST_DURABLE_FRAGMENT, CaptureRecordKind.FIRST_VIDEO_SAMPLE, CaptureRecordKind.FRAGMENT_CHECKPOINT, CaptureRecordKind.KEYFRAME_INTERVAL].sort(),
     );
     for (const state of Object.values(CaptureIngestState)) expect(all, state).toContain(`"${state}"`);
     for (const role of Object.values(CaptureMicRole)) expect(all, role).toContain(`"${role}"`);
     expect(all).toContain(`send_warning("${CaptureWarningCode.CAPTURE_FAULT}"`);
   });
 
-  // Blueprint row 71 (worker half): protocol version 4. What the worker restates of it is held here.
-  it('version 4: every warning reason, interval reason and switch refusal the worker writes is one of the package, and each reason is written', () => {
-    expect(CAPTURE_PROTOCOL_VERSION).toBe(4);
+  // Blueprint row 71 (worker half): protocol version 4; row N13: version 5. What the worker restates of it is held here.
+  it('version 5: every warning reason, interval reason and switch refusal the worker writes is one of the package, and each reason is written', () => {
+    expect(CAPTURE_PROTOCOL_VERSION).toBe(5);
     const reasons = Object.values(CaptureWarningReason) as string[];
     // Every reason the package names is a literal of the worker's sources, and the mic warnings name their code.
     for (const reason of reasons) expect(all, reason).toContain(`"${reason}"`);
@@ -107,7 +117,7 @@ describe('what the C capture worker restates from the protocol package and the c
     expect(CAPTURE_SWITCH_BOUND_US).toBe(Math.floor((CAPTURE_AAC_FRAME_SAMPLES * 1_000_000) / CAPTURE_AUDIO_SAMPLE_RATE_HZ));
   });
 
-  it('version 4: the named settings of a worker process - the worker\'s defaults, the package\'s defaults and the contract constants are one set of numbers', () => {
+  it('version 5: the named settings of a worker process - the worker\'s defaults, the package\'s defaults and the contract constants are one set of numbers', () => {
     expect(define('DEFAULT_INGEST_OPEN_WINDOW_MS')).toBe(String(CAPTURE_WORKER_SETTING_DEFAULTS.ingestOpenWindowMs));
     expect(define('DEFAULT_MIC_SILENCE_DBFS')).toBe(String(CAPTURE_WORKER_SETTING_DEFAULTS.micSilenceDbfs));
     expect(define('DEFAULT_MIC_SILENCE_MS')).toBe(String(CAPTURE_WORKER_SETTING_DEFAULTS.micSilenceDurationMs));

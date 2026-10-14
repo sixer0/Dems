@@ -285,6 +285,34 @@ describe('row W5 (Q-02): a production camera is assigned with one of its stored 
     expect(screen.getByTestId('capture-selector-notice-invalid')).not.toHaveTextContent(/camera profile not of device/);
     expect(cameraOf(h, 'VIDEO-01')).toBe('CAM-01');
   });
+
+  // Row W6 (request line 565; row V7c, decision C130): the third profile refusal reads ITS shared sentence, which names
+  // adoption - a connection test does not repair it. Seen RED on the mutation "the word left out of `PROFILE_REFUSAL_REASONS`"
+  // (the notice read "camera profile without stream").
+  it('row W6: CAMERA_PROFILE_WITHOUT_STREAM reads the shared sentence, not the word in lower case', async () => {
+    const answers: unknown[] = [{ ok: false, status: 422, error: { code: 'INVALID_INPUT', details: { reason: 'CAMERA_PROFILE_WITHOUT_STREAM', deviceId: 'CAM-07', trackId: 'VIDEO-01' } } }];
+    const call = liveAnswering(() => answers.shift());
+    mockLive = { client: { call } };
+    const h = renderDevicesApp({ user: 'andi.pratama', window: 'tabletLandscape' });
+    await settle();
+    register(h);
+    act(() => h.sim.store.setState((s) => ({ captureDevices: { ...s.captureDevices, devices: [...s.captureDevices.devices, ADOPTED] } })));
+    await settle();
+    await openLine('VIDEO-01');
+    fireEvent.press(option('CAM-07'));
+    await settle();
+    fireEvent.press(screen.getByTestId('capture-source-profile-H264_720P30'));
+    await settle();
+    fireEvent.press(screen.getByTestId('capture-source-save'));
+    await settle();
+    await settle();
+    expect(selectorCalls(call)).toHaveLength(1);
+    expect(screen.getByTestId('capture-selector-notice-invalid')).toHaveTextContent(
+      /This camera was not assigned: the Core holds no stream facts for this profile, so the camera cannot record it\. A connection test does not repair this\. Adopt the camera again, then assign one of the profiles it states\./,
+    );
+    expect(screen.getByTestId('capture-selector-notice-invalid')).not.toHaveTextContent(/camera profile without stream/);
+    expect(cameraOf(h, 'VIDEO-01')).toBe('CAM-01');
+  });
 });
 });
 

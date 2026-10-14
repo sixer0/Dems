@@ -84,6 +84,11 @@ export const enWeb = {
     source: {
       notChecked: 'Not checked',
       /**
+       * Task 4 row W6 (request lines 566, 569; decisions C141, C143): the Core states `streamState: null` -
+       * nobody reads the camera's stream now (an idle registered camera). Never "Live", "Lost" or "Online".
+       */
+      streamNotRead: 'Stream not read',
+      /**
        * Task 4 row W4 (review finding F3-06, the operator's side): the connection test of a found camera is
        * refused `409 INVALID_STATE` with reason `COMMISSIONING_NOT_CONFIGURED` when no camera network is
        * configured on the Core. The shared tree has no sentence for it in the connection dialog (the
@@ -639,11 +644,40 @@ export const enWeb = {
       choose: 'This camera has {{count}} stored stream profiles. Choose the one this track records, then save.',
       one: 'This camera has one stored stream profile. It is the one this track records.',
       /**
-       * No action is named that would not help: as built, only the adoption of a camera stores its profiles
-       * (from the connection test that came before it); the test of a registered camera (operation 108)
-       * stores nothing and no screen offers it. Request line of row W5.
+       * Row W6 (decisions C117, C126 (d)): the remedy is named. Since rows PR and V7 the connection test of a
+       * registered camera (operation 108) stores what the stream states when the camera holds no profile;
+       * the control "Test connection" is drawn under this sentence (`adopted-camera-test.tsx`).
        */
-      none: 'This camera cannot be assigned: the Core holds no stream profile for it, and it does not pick one for a camera. The profiles of a camera are stored when its connection test reads its stream, before the camera is added. Nothing was changed.',
+      none: 'This camera cannot be assigned yet: the Core holds no stream profile for it, and it does not pick one for a camera. Press "Test connection": when the test reads the camera\'s stream, the Core stores the profiles it states and they are offered here. Nothing was changed.',
+    },
+    /**
+     * Task 4 row W6 (operation 108; decisions C117, C126 (d)): "Test connection" of an ADOPTED camera
+     * (`features/devices/adopted-camera-test.tsx`). The button and its pending words are the shared
+     * `common.captureConnect.test` / `.testing`; the three `409` reasons and the not-ready answer read the
+     * contract's own sentences (`CAPTURE_DEVICE_TEST_REFUSAL_SENTENCES`, `CAPTURE_DEVICE_TEST_NOT_READY_SENTENCE`);
+     * UNREACHABLE, WRONG_PROFILE and NOT_H264 read `common.captureConnect.outcome`. Nothing here asks for a password.
+     */
+    adoptedTest: {
+      hint: 'The Core tests this camera with the password it stored when the camera was added. Nothing is typed here, and no setting of the camera is changed.',
+      locked: 'A camera cannot be tested while a session is open.',
+      nothingStored: 'No stream profile was stored.',
+      /** The device entry's fact (line 526 (1)): the stored profiles, each by what its stream stated. */
+      profilesLabel: 'Stored stream profiles',
+      profilesNone: 'None stored yet',
+      result: {
+        PROFILES_STORED: 'The connection works. The Core stored the stream profiles this camera states: it can now be assigned to Camera 1 or Camera 2.',
+        STREAM_PROFILE_DIFFERS:
+          'The camera now states other stream profiles than the ones stored for it. Nothing was stored: the stored profiles stand, and a connection test does not replace them. To use what the camera states now, adopt the camera again.',
+        REACHABLE: 'The connection works with the stored password. No stream profile was stored.',
+        PASSWORD_REFUSED: 'The camera refused the stored password. No stream profile was stored.',
+      },
+      refusal: {
+        LOCKED: 'A camera cannot be tested while a session is open. Nothing was sent to the camera.',
+        NOT_FOUND: 'The Core has no such registered camera. Nothing was sent.',
+        STORE_NOT_READY: 'The Core cannot read the stored camera password now. Nothing was sent to the camera.',
+        ROLE: 'Your role may not test a camera, or this is not a web console session. Nothing was sent.',
+        OTHER: 'The Core did not carry out the test. Nothing was stored.',
+      },
     },
     /**
      * Task 4 row 198 (operation 100): the confirmation dialog of a camera re-address. The sentences
@@ -695,8 +729,9 @@ export const enWeb = {
         notConfigured: 'No camera interface or no camera subnet is chosen yet. The Core never chooses one: until both are set, a scan is refused.',
         interfaceName: {
           label: 'Camera interface',
-          hint: 'The network interface of the Core host the cameras are on, for example eth1. Leave it empty for "not chosen".',
-          error: 'Type an interface name: 1 to 15 lower-case letters, digits, ".", "_" or "-", starting with a letter or a digit.',
+          // Row W6 (request line 557 (3), row V7b): the form admits capitals (`CAPTURE_INTERFACE_NAME_PATTERN` widened, e.g. `enP3s0`).
+          hint: 'The network interface of the Core host the cameras are on, for example eth1 or enP3s0: letters of either case, digits, "_", "." and "-", the first a letter or a digit, at most 15 characters. Leave it empty for "not chosen".',
+          error: 'Type an interface name: 1 to 15 letters of either case, digits, ".", "_" or "-", starting with a letter or a digit.',
         },
         cameraSubnet: {
           label: 'Camera subnet',
@@ -711,6 +746,12 @@ export const enWeb = {
         aliasHost: { label: 'Temporary address: host part', hint: 'The last number of the temporary address the Core takes in a factory network, {{min}} to {{max}}.' },
         aliasMinutes: { label: 'Temporary address: lifetime in minutes', hint: 'The host removes the temporary address by itself after this time, {{min}} to {{max}} minutes.' },
         cameraIpStart: { label: 'First camera address: host part', hint: 'The last number of the first address offered to a camera in the camera subnet, {{min}} to {{max}}.' },
+        /** Row W6 (request line 557, row V7b; F-4, S2-02, C116): the seventh setting, the allowed ONVIF ports in their stored order. */
+        onvifPorts: {
+          label: 'Allowed ONVIF ports',
+          hint: "The ports a stored camera's ONVIF service may be reached on, in order, {{min}} to {{max}} ports, separated by commas or lines. A camera stored without a port is reached on port 80, so keep 80 in the list for such cameras.",
+          error: '1 to 8 whole numbers from 1 to 65535, each once',
+        },
         numberError: 'Type a whole number from {{min}} to {{max}}.',
         save: 'Save settings',
         saved: 'The camera network settings were saved.',

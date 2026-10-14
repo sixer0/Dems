@@ -1,6 +1,8 @@
 import { Chip, Drawer } from '@heroui/react'
 import { Camera, Mic } from 'lucide-react'
 import { isGeneratedSource } from './own-core-words'
+import { AdoptedCameraTest } from './adopted-camera-test-control'
+import { isProductionCamera, profileWords, storedProfilesOf } from './camera-profile'
 import { useTranslation } from 'react-i18next'
 import { LOCAL_STATE_VIEW, localStateSentenceKey } from './capture-inputs'
 import { RateAtLimitWarning } from './registered-devices'
@@ -95,8 +97,15 @@ function Content({ card, name, realCapture }: { card: RosterCard; name: string; 
           {/* A local device has no address; a network camera's is the host the Core sent. */}
           {card.local || device.host === null ? null : <Fact label={t('common.developmentRoster.field.address')} value={device.host} untrusted />}
           <Fact label={t('common.developmentRoster.field.usedAs')} value={card.slot === null ? t('common.developmentRoster.usedAs.NONE') : t(ROSTER_SLOT_KEY[card.slot])} />
-          {device.streamState === null || notChecked ? null : <Fact label={t('common.developmentRoster.field.stream')} value={device.streamState} />}
+          {/* Row W6 (lines 566, 569): a camera's null stream state is "not read" - nobody reads its stream now; never Live or Lost. */}
+          {notChecked || (device.streamState === null && card.kind !== 'CAMERA') ? null : (
+            <Fact label={t('common.developmentRoster.field.stream')} value={device.streamState === null ? t('web.source.streamNotRead') : device.streamState} />
+          )}
+          {/* Row W6 (line 526 (1); V7): the stored stream profiles as the entry states them (`{ code, codec, resolution, fps }`). */}
+          {card.kind === 'CAMERA' && isProductionCamera(device) ? <Fact label={t('web.adoptedTest.profilesLabel')} value={storedProfilesOf(device).length === 0 ? t('web.adoptedTest.profilesNone') : storedProfilesOf(device).map((code) => profileWords(t, code)).join(', ')} /> : null}
         </dl>
+        {/* Row W6 (operation 108; C117): the connection test of an adopted production camera on a Core in real capture. */}
+        {card.kind === 'CAMERA' && realCaptureCore && isProductionCamera(device) ? <AdoptedCameraTest deviceId={card.id} place="drawer" /> : null}
         {limitKey === null ? null : (
           <section className="dev-roster-limits" data-testid="registered-drawer-limits" aria-label={t('common.developmentRoster.limits.title')}>
             <h4 className="dev-roster-title">{t('common.developmentRoster.limits.title')}</h4>

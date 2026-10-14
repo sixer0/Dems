@@ -4,8 +4,9 @@
  * G-R10 kept: presence uses the ONVIF time read"; plan review, WP-06 verdict: "presence by TCP
  * reachability has no permitted place").
  *
- * REGISTERED NOWHERE, as the adapter beside it (`onvif-relay.ts`): the composition of the
- * production registry (row 85) makes one watch, hands `relayEnded` to the adapter as its
+ * BUILT BY THE BOOT STEP OF THE FENCE since the lift (task 4 row 88; `wireProductionRegistry`),
+ * attached to the composition before the registry exists, and told `captureEnded` at every end of
+ * a capture (finding E-03). The composition of the production registry makes one watch, hands `relayEnded` to the adapter as its
  * dependency of that name, subscribes `pushEstablished` to the adapter's `relayReports`, and hands
  * `clockOffsetMs` to the adapter as its dependency `clock` (the adapter's `ntpOffsetMs`).
  *

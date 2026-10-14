@@ -72,3 +72,13 @@ BR-04	ingest.c	static const char *planted_br04_c(void) { return "INGEST_ANNOUNCE
 BR-04	sink.c	static const char *planted_br04_d(void) { return "CAMERA_ANNOUNCE_NOT_MATCHED"; }
 BR-04	audio.c	static const char *planted_br04_e(void) { return "CAMERA_NO_PICTURE"; }
 BR-04	ingest.c	static void planted_br04_f(Cam *c, const char *text) { ingest_over_as(c, "ingest", "INGEST_ENDED", text, 0); }
+# Task 4 row N3 (protocol version 5; design 06 s7.2a): THE GAPPED KIND - a second place that sets the flag, its address taken,
+# a read outside the closed set, a branch on the kind word outside the plan reader, a resampler call a gapped microphone can reach.
+N3-GAP	capture_worker.c	static void planted_gap_a(Session *s) { s->mic[1].gapped = 1; }
+N3-GAP	capture_worker.c	static int *planted_gap_b(Session *s) { return &s->mic[0].gapped; }
+N3-GAP	ingest.c	static int planted_gap_c(void) { return S.mic[0].gapped; }
+N3-GAP	audio.c	static int planted_gap_d(const char *k) { return !strcmp(k, "PCM_FIFO_GAPPED"); }
+N3-GAP	audio.c	static void planted_gap_e(MicIn *m) { swr_set_compensation(m->swr, 240, SR); }
+N3-GAP	audio.c	static int planted_gap_f(MicIn *m, uint8_t **d, const uint8_t **s) { return swr_convert(m->swr, d, 1, s, 1); }
+N3-GAP	audio.c	static int planted_gap_g(MicIn *m) { return swr_inject_silence(m->swr, 480); }
+N3-GAP	audio.c	#define planted_gap_h swr_set_compensation

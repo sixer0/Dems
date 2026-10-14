@@ -85,18 +85,31 @@ describe('registration (RG-1, duplicates, D86 C-5)', () => {
     expect(registry.list()).toEqual([]);
   });
 
-  it('D86 C-5: a production kind cannot state an opener in this phase; the registry says which kinds have one', () => {
-    expect(OPENER_CAPABLE_KINDS).toEqual(['FAKE', 'LOCAL_DEVICE']);
-    expect(OPENER_CAPABLE_KINDS.every((kind) => sourceClassOf(kind) === CaptureSourceClass.DEVELOPMENT)).toBe(true);
+  // Task 4 row 88 (THE LIFT, decision AM-1; specification 6.3 pins "Test: the list", "every listed kind is DEVELOPMENT",
+  // "production cannot state an opener"): the list holds the four kinds; the listed production kinds are exactly the two
+  // source kinds; a production adapter WITH an opener registers in REAL_PRODUCTION and one without stays unrecordable.
+  it('D86 C-5 as amended by AM-1: the two production source kinds may state an opener, SNMP_POE may not, and an opener of another class than the operation\'s is refused', () => {
+    expect(OPENER_CAPABLE_KINDS).toEqual(['FAKE', 'LOCAL_DEVICE', 'ONVIF_RTSP', 'USB_AUDIO']);
+    expect(OPENER_CAPABLE_KINDS.filter((kind) => sourceClassOf(kind) === CaptureSourceClass.PRODUCTION)).toEqual(['ONVIF_RTSP', 'USB_AUDIO']);
+    expect(OPENER_CAPABLE_KINDS).not.toContain('SNMP_POE');
     const production = createCaptureDeviceRegistry({ operation: 'REAL_PRODUCTION' });
-    expect(codeOf(() => production.register(productionCamera('CAM-03', { hasOpener: true })))).toBe('CAPTURE_ADAPTER_INVALID');
-    production.register(productionCamera('CAM-03'));
+    production.register(productionCamera('CAM-03', { hasOpener: true }));
     production.register(productionMic('MIC-03'));
-    // Nothing is recordable in REAL_PRODUCTION today (erratum PE-128-48).
-    expect(production.openerKinds()).toEqual([]);
-    expect(production.list().map((device) => [device.id, device.hasOpener])).toEqual([['CAM-03', false], ['MIC-03', false]]);
-    expect(codeOf(() => production.assertRecordable('CAM-03'))).toBe('SOURCE_KIND_NOT_RECORDABLE');
+    expect(production.openerKinds()).toEqual(['ONVIF_RTSP']);
+    expect(production.list().map((device) => [device.id, device.hasOpener])).toEqual([['CAM-03', true], ['MIC-03', false]]);
+    expect(production.assertRecordable('CAM-03').id).toBe('CAM-03');
+    // One that states no opener stays unrecordable: the adapter's word decides, not its kind.
     expect(codeOf(() => production.assertRecordable('MIC-03'))).toBe('SOURCE_KIND_NOT_RECORDABLE');
+    // REFUSAL 1: a switch of kind SNMP_POE that states an opener, in the operation of its own class.
+    expect(codeOf(() => production.register({ ...createFakePoeController({ id: 'POE-09', ports: [] }), kind: CaptureAdapterKind.SNMP_POE, hasOpener: true } as unknown as CaptureAdapter))).toBe('CAPTURE_ADAPTER_INVALID');
+    expect(codeOf(() => production.register({ ...createFakeCameraAdapter({ id: 'CAM-09' }), kind: CaptureAdapterKind.SNMP_POE, hasOpener: true }))).toBe('CAPTURE_ADAPTER_INVALID');
+    // REFUSAL 2: an ONVIF_RTSP adapter WITH an opener in REAL_DEVELOPMENT (registrable there for its search half only); the same without one is taken.
+    const development = createCaptureDeviceRegistry({ operation: 'REAL_DEVELOPMENT' });
+    expect(codeOf(() => development.register(productionCamera('CAM-04', { hasOpener: true })))).toBe('CAPTURE_ADAPTER_INVALID');
+    expect(codeOf(() => development.register(productionCamera('CAM-04')))).toBe('no refusal');
+    // A refused adapter leaves nothing behind.
+    expect(development.list().map((device) => device.id)).toEqual(['CAM-04']);
+    expect(production.list().map((device) => device.id)).toEqual(['CAM-03', 'MIC-03']);
     // Control: the development fakes have an opener and are recordable; the switch is never a source.
     const { registry } = createFakeRegistry({ runDir: RUN_DIR });
     expect(registry.openerKinds()).toEqual(['FAKE']);

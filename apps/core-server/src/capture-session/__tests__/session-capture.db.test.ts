@@ -454,7 +454,8 @@ describe('M5-SEC-SRC-1 (the suite part): production-kind sources have no opener 
       for (const id of ['MIC-01', 'MIC-02']) {
         production.register({ ...createFakeAudioInputAdapter({ id, runDir: `${fixture.dataDir}/run-m5-sec-src` }), kind: 'USB_AUDIO', hasOpener: false, open: async (inputId) => (asked.push(`open ${inputId}`), Promise.reject(new Error('a production kind was asked to open'))) });
       }
-      // Nothing is recordable in a registry of this class today (erratum PE-128-48): the registry says so itself.
+      // These adapters state NO opener (specification 6.3: this case is KEPT at the lift because its registry states none; its
+      // twin below states them): the registry says so itself.
       expect(production.openerKinds()).toEqual([]);
       expect(production.list().map((device) => [device.id, device.adapterKind, device.hasOpener])).toEqual([['CAM-01', 'ONVIF_RTSP', false], ['CAM-02', 'ONVIF_RTSP', false], ['MIC-01', 'USB_AUDIO', false], ['MIC-02', 'USB_AUDIO', false]]);
       return production;
@@ -489,6 +490,33 @@ describe('M5-SEC-SRC-1 (the suite part): production-kind sources have no opener 
     await development.settled();
     expect(development.fake.calls()).toBe(1);
     expect(development.order.filter((entry) => entry.startsWith('open ')).length).toBeGreaterThan(0);
+  });
+
+  // Task 4 row 88 (THE LIFT, AM-1; specification 6.3 "Test: no listener without an opener ... a twin with openers is added").
+  it('TWIN since the lift: the same four production-kind devices WITH their opener register and pass the class gate; the start is then held by the next fail-closed line (ruling C34: this rig wires no relay report source) - 409 RELAY_REPORTS_NOT_WIRED, still 0 workers, 0 sources asked to open, 0 source rows', async () => {
+    const asked: string[] = [];
+    const liftedRegistry = (): CaptureDeviceRegistry => {
+      const production = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION });
+      for (const id of ['CAM-01', 'CAM-02']) {
+        production.register({ ...createFakeCameraAdapter({ id }), kind: 'ONVIF_RTSP', hasOpener: true, openSource: async (deviceId) => (asked.push(`open ${deviceId}`), Promise.reject(new Error('a production kind was asked to open'))) });
+      }
+      for (const id of ['MIC-01', 'MIC-02']) {
+        production.register({ ...createFakeAudioInputAdapter({ id, runDir: `${fixture.dataDir}/run-r88-twin` }), kind: 'USB_AUDIO', hasOpener: true, open: async (inputId) => (asked.push(`open ${inputId}`), Promise.reject(new Error('a production kind was asked to open'))) });
+      }
+      expect(production.openerKinds()).toEqual(['ONVIF_RTSP', 'USB_AUDIO']);
+      return production;
+    };
+    const of = await rig('r88_lift_twin', { registry: liftedRegistry });
+    const id = await of.arm();
+    const refused = await of.start(id).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(refused).toBeInstanceOf(ApiFailure);
+    expect(refused).toMatchObject({ statusCode: 409, code: 'INVALID_STATE', details: { reason: SOURCE_KIND_NOT_RECORDABLE, cause: RELAY_REPORTS_NOT_WIRED } });
+    expect([of.fake.calls(), asked, of.order, of.events]).toEqual([0, [], [], []]);
+    expect(of.app.engine.slice('session')).toMatchObject({ id, state: 'ARMED' });
+    expect(await sourcesOf(of, id)).toEqual([]);
   });
 });
 

@@ -9,9 +9,10 @@
  * environment variable). Nothing in the Core composes the user-part form of a locator, and the
  * injection result itself keeps the two apart, as §A.6.3 rules.
  *
- * As built, no process takes a credential: recording a real camera is class C-2. So
- * `credentialAtInjection` has no caller in the product yet; a static test holds it to "this file
- * and nothing else reads the two members of a credential".
+ * As built, one process takes a credential: the capture relay, in its start message on standard
+ * input. `credentialAtInjection` has exactly one caller in the product, `camera/relay-start.ts`; a
+ * static test holds it to that one file and to "this file and nothing else reads the two members
+ * of a credential". (Erratum E-A2, `decisions/087_lift_texts.md` text 3; applied by task 4 row 88.)
  *
  * The injection result is opaque too (security addendum AD-03 point 6): it prints as the mark,
  * and ONE function, `startMessageBytes`, reads it - into the bytes of the start message, which

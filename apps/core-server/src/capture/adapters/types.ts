@@ -12,11 +12,14 @@
  *   - `testConnection` toward a device -> row 142 (`camera/onvif-session.ts`);
  *   - the local camera and microphone  -> rows 134 to 136 (`local-device/`);
  *   - a real camera's recording path, a real microphone's transport, a real PoE switch -> class C.
+ *     ERRATUM (task 4 row 88, the lift, AM-1): the first two are BUILT since task 4 - the camera
+ *     `camera/onvif-relay.ts`, the microphone `audio/usb-audio-production.ts` (linux) - and the
+ *     production registry registers them with their opener; the PoE switch stays class C.
  *
- * "HAS AN OPENER" (D86 C-5). A source adapter states `hasOpener`. A kind whose adapter has none
- * gets no listener and no session: the plan builder (row 66) and the session start (row 71) ask
- * `CaptureDeviceRegistry.assertRecordable` before `app.capture.start`, and row 136 registers the
- * local-device adapters that have one.
+ * "HAS AN OPENER" (D86 C-5, amended by AM-1). A source adapter states `hasOpener`. A source whose
+ * adapter has none gets no listener and no session: the plan builder (row 66) and the session start
+ * (row 71) ask `CaptureDeviceRegistry.assertRecordable` before `app.capture.start`, and row 136
+ * registers the local-device adapters that have one.
  */
 import type { CapturePlanMic } from '@dems/capture-protocol';
 import type { CameraCredential, SealedCredential } from './credential';

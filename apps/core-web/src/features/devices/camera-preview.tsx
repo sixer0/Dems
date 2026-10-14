@@ -78,7 +78,9 @@ function NoPreviewTile({ cameraId, variant = 'feed', recordingSince = null, form
             ? t('web.source.notChecked')
             : reach.stream === 'LIVE'
               ? t('devices.selector.stream.LIVE')
-              : t('common.developmentRoster.reachable')
+              : reach.stream === 'NOT_READ'
+                ? t('web.source.streamNotRead')
+                : t('common.developmentRoster.reachable')
   const small = variant === 'thumb'
   return (
     <div
@@ -97,7 +99,8 @@ function NoPreviewTile({ cameraId, variant = 'feed', recordingSince = null, form
         title={small ? t('devices.noPreview.aria', { name, state }) : undefined}
         data-testid="camera-no-preview"
         data-camera={cameraId}
-        data-state={line === undefined ? 'NOT_ASSIGNED' : !line.online ? 'OFFLINE' : line.streamState === 'LOST' ? 'LOST' : 'ONLINE'}
+        // Row W6 (line 569): the Core's null stream state has its own value - an unread stream is not 'ONLINE'.
+        data-state={line === undefined ? 'NOT_ASSIGNED' : !line.online ? 'OFFLINE' : line.streamState === 'LOST' ? 'LOST' : line.streamState === null ? 'NOT_READ' : 'ONLINE'}
         data-fault={line === undefined ? undefined : (raised ?? undefined)}
         // Fix wave L (G89c-08): in a Dashboard tile (variant `tile`) the four lines fit the short stage at 1440 x 900 - a small icon and tight lines.
         className={cn(

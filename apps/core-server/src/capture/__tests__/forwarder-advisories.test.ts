@@ -44,7 +44,7 @@ async function rig(engineFails = false) {
   const frame = (nearBound: boolean, deviceId = 'CAM-01'): void =>
     fake.last().say({
       type: 'TELEMETRY',
-      levels: [{ deviceId: 'MIC-01', role: CaptureMicRole.PRIMARY, dbfs: -20, clipped: false, ratePpm: 10 }],
+      levels: [{ deviceId: 'MIC-01', role: CaptureMicRole.PRIMARY, dbfs: -20, clipped: false, ratePpm: 10, timelineSamples: 480_000, receivedSamples: 480_000, insertedSamples: 0, nonZero: true }],
       ingest: [],
       fragments: [],
       clocks: [{ deviceId, lagMs: 31.5, trendPpm: null, nearBound }],

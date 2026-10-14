@@ -276,11 +276,16 @@ export function isSelectorEmpty(config: Pick<CaptureConfigSlice, 'cameras' | 'mi
   return config.cameras.length === 0 && config.mics.length === 0 && registry.devices.length === 0;
 }
 
-/** The status word of a camera row: text only (OD-12). */
-export type CameraLineStatus = 'LIVE' | 'LOST' | 'OFFLINE';
+/**
+ * The status word of a camera row: text only (OD-12). Task 4 row W6 (request lines 566, 569; decisions C141,
+ * C143): `NOT_READ` is the Core's `streamState: null` - nobody reads the camera's stream now (an idle registered
+ * camera; LIVE only while an open session's ingest receives it). Never "Live" or "Lost" for it.
+ */
+export type CameraLineStatus = 'LIVE' | 'LOST' | 'OFFLINE' | 'NOT_READ';
 
 export function cameraLineStatus(row: Pick<CameraSelectorRow, 'online' | 'streamState'>): CameraLineStatus {
   if (!row.online) return 'OFFLINE';
+  if (row.streamState === null) return 'NOT_READ';
   return row.streamState === CaptureStreamState.LOST ? 'LOST' : 'LIVE';
 }
 

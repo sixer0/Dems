@@ -74,8 +74,8 @@ async function joined() {
     worker.say({
       type: WorkerMessageType.TELEMETRY,
       levels: [
-        { deviceId: 'MIC-01', role: CaptureMicRole.PRIMARY, dbfs: patch.primary === undefined ? -20 : patch.primary, clipped: false, ratePpm: 0 },
-        { deviceId: 'MIC-02', role: CaptureMicRole.STANDBY, dbfs: -35, clipped: false, ratePpm: 0 },
+        { deviceId: 'MIC-01', role: CaptureMicRole.PRIMARY, dbfs: patch.primary === undefined ? -20 : patch.primary, clipped: false, ratePpm: 0, timelineSamples: 480_000, receivedSamples: 480_000, insertedSamples: 0, nonZero: true },
+        { deviceId: 'MIC-02', role: CaptureMicRole.STANDBY, dbfs: -35, clipped: false, ratePpm: 0, timelineSamples: 480_000, receivedSamples: 480_000, insertedSamples: 0, nonZero: true },
       ],
       ingest: [
         { deviceId: first, state: patch.cam01 ?? CaptureIngestState.CONNECTED },

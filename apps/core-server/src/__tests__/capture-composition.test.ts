@@ -96,6 +96,9 @@ interface Rig {
   readonly connectionTests: Parameters<ProductionCapturePorts['provideConnectionTest']>[0][];
   readonly enumerators: CardEnumerator[];
   readonly relayReports: RelayIngestReports[];
+  /** Row 88: what went through the fence's door, and the listeners of the end of a capture. */
+  readonly productionParts: Parameters<ProductionCapturePorts['provideProductionParts']>[0][];
+  readonly captureEndListeners: (() => void)[];
 }
 
 function rig(operation: CaptureOperation, overrides: Partial<ProductionCapturePorts> = {}): Rig {
@@ -108,6 +111,8 @@ function rig(operation: CaptureOperation, overrides: Partial<ProductionCapturePo
     connectionTests: [] as Parameters<ProductionCapturePorts['provideConnectionTest']>[0][],
     enumerators: [] as CardEnumerator[],
     relayReports: [] as RelayIngestReports[],
+    productionParts: [] as Parameters<ProductionCapturePorts['provideProductionParts']>[0][],
+    captureEndListeners: [] as (() => void)[],
   };
   const ports: ProductionCapturePorts = {
     operation,
@@ -150,6 +155,12 @@ function rig(operation: CaptureOperation, overrides: Partial<ProductionCapturePo
     provideConnectionTest: (parts) => void out.connectionTests.push(parts),
     provideEnumerator: (enumerator) => void out.enumerators.push(enumerator),
     provideRelayReports: (reports) => void out.relayReports.push(reports),
+    // Row 88 (the lift): the parts the fence's boot step builds from, and the session's end events (E-03).
+    provideProductionParts: (parts) => void out.productionParts.push(parts),
+    onCaptureEnd: (listener) => {
+      out.captureEndListeners.push(listener);
+      return () => {};
+    },
     report: (level, code, context) => void out.reports.push({ level, code, context }),
     ...overrides,
   };
@@ -484,31 +495,33 @@ describe('the stored facts', () => {
   });
 });
 
-describe('the bundles build the built production parts (constructed, never opened), and the registry still refuses them before the lift', () => {
+describe('the bundles build the built production parts (constructed, never opened); since the lift (row 88) the registry of the right class takes them', () => {
   const CAMERAS: readonly CaptureDeviceEntry[] = [{ id: 'CAM-01', deviceClass: 'CAMERA', label: 'camera', capabilities: [], profiles: [] }];
   const MICS: readonly CaptureDeviceEntry[] = [{ id: 'MIC-03', deviceClass: 'MIC', label: 'microphone', capabilities: [], profiles: [] }];
   const NEVER = (): never => {
     throw new Error('nothing is started, read or raised in this test');
   };
 
-  it('the camera bundle IS the dependencies of the production camera adapter: the adapter is built from it, states its opener, and a production registry refuses it (CAPTURE_ADAPTER_INVALID)', () => {
+  it('the camera bundle IS the dependencies of the production camera adapter: the adapter is built from it, states its opener, and - SINCE THE LIFT (row 88) - a production registry takes it and a development registry refuses it (CAPTURE_ADAPTER_INVALID)', () => {
     const built = rig(CaptureOperation.REAL_PRODUCTION);
     const composition = composed(built, { platform: 'darwin' });
     const dependencies: OnvifRelayCameraDependencies = composition.dependencies.camera;
     expect(Object.keys(dependencies).sort()).toEqual(['clock', 'credentials', 'door', 'locator', 'relayEnded', 'relayProgram', 'storedAddress', 'stream', 'tell', 'timers']);
     const camera = createOnvifRelayCameraAdapter(CAMERAS, dependencies);
     expect([camera.kind, camera.hasOpener]).toEqual([CaptureAdapterKind.ONVIF_RTSP, true]);
-    // UNTIL THE LIFT (row 88): the kind has no opener in the registry's list, so the built adapter cannot be registered.
+    // SINCE THE LIFT (row 88, AM-1): the kind is on the opener list, so a production registry takes the built adapter ...
     const registry = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION });
+    registry.register(camera);
+    expect(registry.list().map((device) => [device.id, device.hasOpener])).toEqual([['CAM-01', true]]);
+    // ... and a development registry refuses it: an opener of another class than the operation's (design addendum 1.4 #7).
     let refused: unknown = null;
     try {
-      registry.register(camera);
+      createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_DEVELOPMENT }).register(camera);
     } catch (error) {
       refused = error;
     }
     expect(refused).toBeInstanceOf(CaptureAdapterError);
     expect((refused as CaptureAdapterError).code).toBe(CaptureAdapterRefusal.ADAPTER_INVALID);
-    expect(registry.list()).toEqual([]);
     // A note of the adapter is logged by its code and identifiers.
     dependencies.tell?.({ code: 'CAPTURE_RELAY_NOT_REAPED', sessionId: SESSION, deviceId: 'CAM-01', attempt: 2 });
     expect(built.reports.at(-1)).toEqual({ level: 'warn', code: CaptureCompositionCode.CAMERA_RELAY_NOTE, context: { note: 'CAPTURE_RELAY_NOT_REAPED', sessionId: SESSION, deviceId: 'CAM-01', attempt: 2 } });
@@ -522,7 +535,7 @@ describe('the bundles build the built production parts (constructed, never opene
     expect((await refusalOf(clock('CAM-01'))).code).toBe(CaptureCompositionCode.CAMERA_WATCH_NOT_ATTACHED);
     expect(() => relayEnded({ sessionId: SESSION, deviceId: 'CAM-01', attempt: 1 })).not.toThrow();
     const seen: unknown[] = [];
-    composition.attachCameraWatch({ relayEnded: (end) => void seen.push(end), clockOffsetMs: async (deviceId) => (deviceId === 'CAM-01' ? 37 : 0) });
+    composition.attachCameraWatch({ relayEnded: (end) => void seen.push(end), clockOffsetMs: async (deviceId) => (deviceId === 'CAM-01' ? 37 : 0), captureEnded: () => {} });
     expect(await clock('CAM-01')).toBe(37);
     relayEnded({ deviceId: 'CAM-01' });
     // Row B2 (S-02): the loss that arrived BEFORE the attach was kept and handed over first; nothing is dropped unsaid.
@@ -1337,11 +1350,57 @@ describe('row 85c (d): the fault sink of the two watches (decision C60 (2)) - a 
           seen.push(index);
         },
         clockOffsetMs: async () => 0,
+        captureEnded: () => {},
       });
       expect(seen).toEqual(Array.from({ length: EARLY_LOSSES_KEPT - 1 }, (_, index) => index + 1));
       expect(earlyReports(built).at(-1)).toEqual({ level: 'error', code: CaptureCompositionCode.EARLY_LOSS_NOT_DELIVERED, context: { reason: 'WATCH_THREW', watch: CaptureCompositionCode.CAMERA_WATCH_NOT_ATTACHED, deviceId: null } });
       expect(JSON.stringify(built.reports)).not.toContain('a watch that throws');
     });
+  });
+});
+
+describe('task 4 row 88 (THE LIFT): the parts go to the fence once; every end of a capture reaches the camera watch (finding E-03)', () => {
+  it('REAL_PRODUCTION: ONE hand-over of the parts - the platform word, the two bundles, the watch bundles, the cards, the hub and the two attach doors of this composition; nothing in any other operation', () => {
+    const built = rig(CaptureOperation.REAL_PRODUCTION);
+    const composition = composed(built, { platform: 'linux' });
+    expect(built.productionParts).toHaveLength(1);
+    const parts = built.productionParts[0]!;
+    expect(parts.platform).toBe('linux');
+    expect(parts.dependencies.camera).toBe(composition.dependencies.camera);
+    expect(parts.dependencies.audio).toBe(composition.dependencies.audio);
+    expect([parts.watches, parts.cards, parts.relayReports]).toEqual([composition.watches, composition.cards, composition.relayReports]);
+    expect(parts.relayReports).toBe(composition.relayReports);
+    expect(parts.attachCameraWatch).toBe(composition.attachCameraWatch);
+    for (const operation of [CaptureOperation.SIMULATED, CaptureOperation.REAL_DEVELOPMENT]) {
+      const other = rig(operation);
+      composeProductionCapture(other.ports, { platform: 'linux' });
+      expect([other.productionParts, other.captureEndListeners], operation).toEqual([[], []]);
+    }
+  });
+
+  it('E-03: the composition listens to the ends of a capture ONCE; each end calls the attached watch\'s `captureEnded`; an end before a watch is attached is nothing', () => {
+    const built = rig(CaptureOperation.REAL_PRODUCTION);
+    const composition = composed(built, { platform: 'darwin' });
+    expect(built.captureEndListeners).toHaveLength(1);
+    const end = built.captureEndListeners[0]!;
+    expect(() => end()).not.toThrow();
+    let ended = 0;
+    composition.attachCameraWatch({ relayEnded: () => {}, clockOffsetMs: async () => 0, captureEnded: () => void (ended += 1) });
+    end();
+    end();
+    expect(ended).toBe(2);
+  });
+
+  it('E-03 control: a composition that forgot the call would leave the watch\'s losses standing - the real watch forgets them only on `captureEnded`', async () => {
+    const built = rig(CaptureOperation.REAL_PRODUCTION);
+    const composition = composed(built, { platform: 'darwin' });
+    const watch = createCameraWatch({ ...composition.watches.camera, reader: { read: async () => ({ answered: false, cameraUtcMs: null }) } });
+    composition.attachCameraWatch(watch);
+    watch.relayEnded({ deviceId: 'CAM-01', code: 'CAPTURE_CAMERA_RELAY_ENDED', sessionId: SESSION });
+    expect(watch.lost()).toEqual(['CAM-01']);
+    built.captureEndListeners[0]!();
+    expect(watch.lost()).toEqual([]);
+    watch.close();
   });
 });
 

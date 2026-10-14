@@ -175,4 +175,23 @@ describe('"View device" of a registered device (the detail pane / screen)', () =
     await flushAsync();
     expect(screen.getByTestId('device-detail-missing')).toBeTruthy();
   });
+
+  // Task 4 row W6 (request lines 566, 569; decisions C141, C143): an idle registered camera's entry states `streamState: null`
+  // (nobody reads its stream). The detail says "Not read" - before this row the fact was left out, and it is never Live or Lost.
+  // Seen RED on the mutation "the null fact is left out again" (`device.streamState === null ? []`).
+  it('row W6: an added production camera whose stream nobody reads states "Not read"; a microphone states no stream fact', async () => {
+    mockLive = { session: { demoControls: false } };
+    const engine = createTestSim();
+    development(engine);
+    patchDevice(engine, 'CAM-04', { streamState: null });
+    const view = renderWithRuntime(<DeviceDetail deviceId="CAM-04" variant="pane" />, { sim: engine.sim });
+    await flushAsync();
+    expect(screen.getByTestId('registered-device-detail')).toHaveTextContent('Not read', { exact: false });
+    expect(screen.queryByText('LIVE')).toBeNull();
+    expect(screen.queryByText('Live')).toBeNull();
+    view.unmount();
+    renderWithRuntime(<DeviceDetail deviceId="MIC-03" variant="pane" />, { sim: engine.sim });
+    await flushAsync();
+    expect(screen.getByTestId('registered-device-detail')).not.toHaveTextContent('Not read', { exact: false });
+  });
 });

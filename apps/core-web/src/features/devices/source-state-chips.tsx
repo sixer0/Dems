@@ -33,8 +33,9 @@ export function SourceStateChips({ state }: { state: SourceLineState }) {
         <Chip.Label>{reach}</Chip.Label>
       </Chip>
       {state.stream !== null ? (
-        <Chip size="sm" variant="soft" color={state.stream === 'LIVE' ? 'success' : 'danger'} data-chip="stream">
-          <Chip.Label>{t(`devices.selector.stream.${state.stream}`)}</Chip.Label>
+        <Chip size="sm" variant="soft" color={state.stream === 'LIVE' ? 'success' : state.stream === 'NOT_READ' ? 'default' : 'danger'} data-chip="stream">
+          {/* Row W6 (lines 566, 569): the Core's null stream state has its own words, never Live or Lost. */}
+          <Chip.Label>{state.stream === 'NOT_READ' ? t('web.source.streamNotRead') : t(`devices.selector.stream.${state.stream}`)}</Chip.Label>
         </Chip>
       ) : null}
     </span>

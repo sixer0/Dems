@@ -1434,3 +1434,56 @@ describe('row 118, Live mode: a stored acceptance, its revocation and every refu
     expect(getMissingI18nKeys()).toEqual([])
   })
 })
+
+// Task 4 row W6 (request line 557, row V7b; F-4, S2-02, C116): THE SEVENTH SETTING - the allowed ONVIF ports, one field,
+// comma- or line-separated, in the stored order; 1 to 8 whole numbers 1 to 65535, no port twice; another ORDER is a change.
+// And the widened interface-name form (capitals admitted: `enP3s0`). Seen RED on the mutations: (a) `settingsChangeOf`
+// compares the ports sorted (another order no change) - the model case; (b) `onvifPortsOf` admits a repeated port - the
+// model case and the page case (the refused list was sent).
+describe('row W6: the allowed ONVIF ports and the interface name of either case', () => {
+  it('the model: the stored order is the form\'s value; a valid list is sent whole, only when it differs entry by entry IN ORDER', async () => {
+    const { onvifPortsOf } = await import('../model')
+    const config: CaptureNetworkConfig = { ...STORED, onvifPorts: [80, 8080] }
+    const values = formValuesOf(config)
+    expect(values.onvifPorts).toBe('80\n8080')
+    expect(settingsChangeOf(values, config)).toBeNull()
+    expect(onvifPortsOf(' 8080, 80\n2020 ')).toEqual([8080, 80, 2020])
+    // Another order IS a change: the first port is the one of an address that names none.
+    expect(settingsChangeOf({ ...values, onvifPorts: '8080, 80' }, config)).toEqual({ revision: 4, onvifPorts: [8080, 80] })
+    expect(settingsChangeOf({ ...values, onvifPorts: '80,8080,2020' }, config)).toEqual({ revision: 4, onvifPorts: [80, 8080, 2020] })
+    const refusedFields = (onvifPorts: string) => {
+      const parsed = networkSettingsFormSchema.safeParse({ ...values, onvifPorts })
+      return parsed.success ? [] : parsed.error.issues.map((issue) => issue.message)
+    }
+    // Empty, nine ports, zero, above 65535, not whole, signed, a leading zero, a name, and one port twice: refused, nothing sent.
+    for (const text of ['', '1,2,3,4,5,6,7,8,9', '0', '65536', '80.5', '-80', '080', 'http', '80, 80']) {
+      expect(refusedFields(text), text).toEqual(['onvifPorts'])
+      expect(settingsChangeOf({ ...values, onvifPorts: text }, config), text).toBeNull()
+    }
+    expect(refusedFields('1,2,3,4,5,6,7,65535')).toEqual([])
+    // The interface name: capitals are admitted now; a blank inside is not.
+    expect(settingsChangeOf({ ...values, interfaceName: 'enP3s0' }, config)).toEqual({ revision: 4, interfaceName: 'enP3s0' })
+    expect(networkSettingsFormSchema.safeParse({ ...values, interfaceName: 'enP3 s0' }).success).toBe(false)
+  })
+
+  it('the page: the field shows the stored order and its hint; typing enP3s0 and a reordered list sends both, as typed', async () => {
+    viewport(1920)
+    const created = await live(OPERATOR_IDS.RINA)
+    await screen.findByTestId('com-settings-form')
+    expect(field('onvifPorts').value).toBe(STORED.onvifPorts.join('\n'))
+    expect(screen.getByTestId('com-onvif-hint')).toHaveTextContent('keep 80 in the list for such cameras')
+    expect(screen.getByTestId('com-settings-form')).toHaveTextContent('letters of either case')
+    // A refused list: the field's own error, nothing sent.
+    type('onvifPorts', '80, 80')
+    fireEvent.click(screen.getByTestId('com-settings-save'))
+    await waitFor(() => expect(screen.getByTestId('com-error-onvifPorts')).toHaveTextContent(W.settings.onvifPorts.error))
+    expect(created.fake.log.requestsOf('updateCaptureNetworkConfig')).toHaveLength(0)
+    created.fake.answerOnce('updateCaptureNetworkConfig', { status: 200, body: { ...STORED, interfaceName: 'enP3s0', onvifPorts: [8080, 80], revision: 5 } })
+    type('interfaceName', 'enP3s0')
+    type('onvifPorts', '8080\n80')
+    fireEvent.click(screen.getByTestId('com-settings-save'))
+    await waitFor(() => expect(screen.getByTestId('com-settings-form')).toHaveAttribute('data-revision', '5'))
+    expect(created.fake.log.requestsOf('updateCaptureNetworkConfig')[0]).toMatchObject({ body: { revision: 4, interfaceName: 'enP3s0', onvifPorts: [8080, 80] } })
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+})

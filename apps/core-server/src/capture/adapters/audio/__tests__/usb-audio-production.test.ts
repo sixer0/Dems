@@ -1024,7 +1024,7 @@ describe('row 85d: `admitDevice` - a microphone registered after the build is se
     expect(r.adapter.admittedDevices()).toEqual([mic]);
   });
 
-  it('the fence\'s door finds the member, and its one-entry view of the adapter serves the later microphone; BEFORE THE LIFT a registry still refuses that view (`CAPTURE_ADAPTER_INVALID`): the kind does not record', async () => {
+  it('the fence\'s door finds the member, and its one-entry view of the adapter serves the later microphone; SINCE THE LIFT (row 88) a production registry takes that view and it records; a development Core does not register the kind', async () => {
     const r = later();
     // What `buildProductionRegistryOf` does with a later device (`capture/fence/index.ts`, `lateDoorOf` and `admitLater`).
     const member = (r.adapter as unknown as Record<string, unknown>)['admitDevice'];
@@ -1036,12 +1036,13 @@ describe('row 85d: `admitDevice` - a microphone registered after the build is se
     const stream = await view.open('MIC-03', target());
     expect(r.adapter.openSources()).toEqual(['MIC-03']);
     await stream.close();
-    // In production the kind has no opener before the lift; a development Core does not register the kind at all.
-    for (const [operation, code] of [[CaptureOperation.REAL_PRODUCTION, 'CAPTURE_ADAPTER_INVALID'], [CaptureOperation.REAL_DEVELOPMENT, 'CAPTURE_ADAPTER_KIND_NOT_ALLOWED']] as const) {
-      const registry = createCaptureDeviceRegistry({ operation });
-      expect(codeOfThrow(() => registry.register(view)), operation).toBe(code);
-      expect(registry.list()).toEqual([]);
-    }
+    // Row 88 (AM-1): in production the kind has its opener since the lift - the view is taken and recordable; a development Core does not register the kind at all.
+    const production = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION });
+    production.register(view);
+    expect(production.assertRecordable('MIC-03').id).toBe('MIC-03');
+    const development = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_DEVELOPMENT });
+    expect(codeOfThrow(() => development.register(view))).toBe('CAPTURE_ADAPTER_KIND_NOT_ALLOWED');
+    expect(development.list()).toEqual([]);
   });
 });
 
@@ -1052,7 +1053,9 @@ describe('T-3 and the static rules of the row', () => {
   const tree = codeOnly(readTree(WORKSPACE).filter((file) => /\.[cm]?tsx?$/.test(file.path)));
   const source = tree.find((file) => file.path === FILE)?.text ?? '';
 
-  it('T-3: a real registry refuses the adapter - it states an opener for a kind that has none before the lift', () => {
+  // T-3, REWRITTEN BY ROW 88 (THE LIFT, AM-1): a production registry takes the adapter and its device records; a development
+  // registry does not register the kind (and would refuse its opener: design addendum 1.4 #7).
+  it('T-3 since the lift: a production registry takes the adapter - the kind may state an opener - and a development registry refuses the kind', () => {
     const adapter = rig([DUO], [row('MIC-01', DUO, 1)]).adapter;
     expect([adapter.seam, adapter.kind, adapter.hasOpener]).toEqual(['AUDIO', CaptureAdapterKind.USB_AUDIO, true]);
     const thrownBy = (call: () => void): unknown => {
@@ -1064,25 +1067,26 @@ describe('T-3 and the static rules of the row', () => {
       return null;
     };
     const production = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION });
-    const refused = thrownBy(() => production.register(adapter));
-    expect(refused).toBeInstanceOf(CaptureAdapterError);
-    expect((refused as CaptureAdapterError).code).toBe(CaptureAdapterRefusal.ADAPTER_INVALID);
-    expect((refused as CaptureAdapterError).code).toBe('CAPTURE_ADAPTER_INVALID');
-    expect(production.list()).toEqual([]);
-    expect(production.openerKinds()).toEqual([]);
+    expect(thrownBy(() => production.register(adapter))).toBeNull();
+    expect(production.openerKinds()).toEqual(['USB_AUDIO']);
+    expect(production.assertRecordable('MIC-01').id).toBe('MIC-01');
     const development = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_DEVELOPMENT });
-    expect((thrownBy(() => development.register(adapter)) as CaptureAdapterError).code).toBe(CaptureAdapterRefusal.ADAPTER_KIND_NOT_ALLOWED);
+    const refused = thrownBy(() => development.register(adapter));
+    expect(refused).toBeInstanceOf(CaptureAdapterError);
+    expect((refused as CaptureAdapterError).code).toBe(CaptureAdapterRefusal.ADAPTER_KIND_NOT_ALLOWED);
   });
 
-  it('registered nowhere: no production file imports the adapter, and the loader still names the stub', () => {
+  it('since the lift (row 88): the loader builds the adapter on linux, the fence takes its card match; the macOS adapter shares its code; no other production file imports it', () => {
     expect(source.length).toBeGreaterThan(5_000);
     const importers = relativeImports(tree.filter((file) => isProductionSource(file.path))).filter((entry) => entry.target === FILE.replace(/\.ts$/, ''));
     // MOVED BY ROW N9 (design 06 s4.4: the logic "may be shared AS CODE: identifyRegisteredCard, UsbAudioError, the refusal tables,
-    // guardedArguments, isRegisteredAudioInput"): the macOS adapter imports those from this file; it is the ONLY importer (rule A-9).
-    expect(importers.map((entry) => entry.file)).toEqual(['src/capture/adapters/audio/usb-audio-macos.ts']);
+    // guardedArguments, isRegisteredAudioInput"): the macOS adapter imports those from this file (rule A-9). Row 88: the loader
+    // (a type import and the dynamic import of the build) and the fence's boot step (the card match of the loss watch).
+    expect([...new Set(importers.map((entry) => entry.file))].sort()).toEqual(['src/capture/adapters/audio/usb-audio-macos.ts', 'src/capture/adapters/real.ts', 'src/capture/fence/index.ts']);
     const loader = tree.find((file) => file.path === 'src/capture/adapters/real.ts')?.text ?? '';
-    expect(loader).toMatch(/audio\/usb-audio'/);
-    expect(loader).not.toMatch(/usb-audio-production/);
+    expect(loader).toMatch(/await import\('\.\/audio\/usb-audio-production'\)/);
+    // The adapter without an opener is still what a host without a microphone opener gets.
+    expect(loader).toMatch(/await import\('\.\/audio\/usb-audio'\)/);
     // Control: a planted importer is seen.
     expect(relativeImports([{ path: 'src/capture/adapters/real.ts', text: "await import('./audio/usb-audio-production');\n" }]).map((entry) => entry.target)).toEqual([FILE.replace(/\.ts$/, '')]);
   });

@@ -309,7 +309,7 @@ describe('no orphan', () => {
 
   it('a worker ends by itself when its input ends', async () => {
     const { channel, messages, exit } = rawChannel();
-    await vi.waitFor(() => expect(messages[0]).toMatchObject({ type: 'HELLO', protocolVersion: 4 }), WAIT);
+    await vi.waitFor(() => expect(messages[0]).toMatchObject({ type: 'HELLO', protocolVersion: 5 }), WAIT);
     const pid = channel.pid ?? -1;
     expect(alive(pid)).toBe(true);
     channel.closeInput();

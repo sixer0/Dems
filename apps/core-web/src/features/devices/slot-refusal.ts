@@ -16,6 +16,7 @@
  * | `CAPTURE_DEVICE_CLASS_MISMATCH` | `CaptureAssignmentRefusal` | the shared tree, `common.captureSlotRefusal`, with the source noun |
  * | `CAMERA_PROFILE_NOT_STATED` | `CaptureProfileRefusal` | the shared tree, `common.captureSlotRefusal` |
  * | `CAMERA_PROFILE_NOT_OF_DEVICE` | `CaptureProfileRefusal` | the shared tree, `common.captureSlotRefusal` |
+ * | `CAMERA_PROFILE_WITHOUT_STREAM` | the stream-row rule of operations 78 / 79 (rows S86a, V7c; C130) | the shared tree, `common.captureSlotRefusal` (names adoption: a connection test does not repair it) |
  * | `SLOT_UNASSIGNED_AND_ASSIGNED` | the hosted action of operation 78 | the shared tree, `common.captureSlotRefusal`, with the source noun |
  * | any other word | the adapter layer's own code (rule CR-4: a fixed word) | the general sentence, followed by the code |
  * | no word | a refusal of the schema stage | the general sentence alone |

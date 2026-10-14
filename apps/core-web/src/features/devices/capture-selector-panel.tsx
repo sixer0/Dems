@@ -26,6 +26,7 @@ import {
   type SelectorEditBlock,
   type SelectorFailure,
 } from './capture-selector'
+import { AdoptedCameraTest } from './adopted-camera-test-control'
 import { cameraAssignmentOf, profileWords, storedProfilesOf } from './camera-profile'
 import { SearchCamerasButton } from './camera-search-context'
 import { DevicesPanel } from './panel'
@@ -365,6 +366,8 @@ function CameraSourceRow({
           {profileHint}
         </p>
       ) : null}
+      {/* Row W6 (operation 108; C117): the remedy the sentence names - the connection test of the adopted camera stores what its stream states. */}
+      {assignment.kind === 'NO_PROFILE' && chosenDevice !== undefined ? <AdoptedCameraTest deviceId={chosenDevice.id} place={`selector-${trackId}`} isDisabled={block !== null || save.busy} /> : null}
       {poeReason ? (
         <p className="dev-sel-reason" data-testid={`selector-poe-reason-${trackId}`}>
           {poeReason}

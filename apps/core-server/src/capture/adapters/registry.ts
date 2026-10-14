@@ -5,7 +5,9 @@
  * It resolves a registered device to its adapter and holds the rules that are refusals, never
  * fall-backs: which kinds an operation registers (RG-1), what a list may show (RG-2), what may be
  * assigned (RG-3), that a candidate is no device (RG-4), and which kinds can be recorded at all
- * (D86 C-5). It is built once, for one capture operation; it reads no flag and no configuration
+ * (D86 C-5, amended by AM-1: since task 4 row 88 the two production source kinds may state an
+ * opener, and an adapter that states one is refused outside the operation of its source class).
+ * It is built once, for one capture operation; it reads no flag and no configuration
  * (static rule G-R15: the operation is row 61's one function's result, passed in).
  *
  * It keeps no state but the adapters it was given. The lock of the configuration while a session
@@ -27,15 +29,20 @@ const KINDS_OF_SEAM: Readonly<Record<CaptureAdapter['seam'], readonly CaptureAda
 });
 
 /**
- * The kinds an opener can exist for IN THIS PHASE (D86 C-5; D82): the development kinds. A
- * production camera's recording path and a production microphone's transport are class C (C-2,
- * C-4); an adapter of those kinds that claims an opener is refused at registration, so that "no
- * listener for a source kind without an opener" cannot be talked around by one boolean.
- * Adding a kind here is the decision that lands the class-C path.
+ * The kinds an opener can exist for (D86 C-5 as amended by decision AM-1, task 4 row 88): the two
+ * development kinds and, SINCE THE LIFT, the two production source kinds `ONVIF_RTSP` and
+ * `USB_AUDIO` - lifted together, in one change set. An adapter of any other kind that states an
+ * opener (`SNMP_POE`, or any later kind) is refused at registration, so that "no listener for a
+ * source kind without an opener" cannot be talked around by one boolean. Being on this list is NOT
+ * a statement that a source is fit to record (stage 2 of the lift, the user's ruling): it says
+ * only which kinds MAY state an opener. Whether a host has one is the adapter's own word
+ * (`hasOpener`): on `darwin` no production microphone adapter states one (AM-1 (3)(h), C135).
  */
-export const OPENER_CAPABLE_KINDS: readonly CaptureAdapterKind[] = Object.freeze([CaptureAdapterKind.FAKE, CaptureAdapterKind.LOCAL_DEVICE]);
+export const OPENER_CAPABLE_KINDS: readonly CaptureAdapterKind[] = Object.freeze([CaptureAdapterKind.FAKE, CaptureAdapterKind.LOCAL_DEVICE, CaptureAdapterKind.ONVIF_RTSP, CaptureAdapterKind.USB_AUDIO]);
 
 const hasOpenerOf = (adapter: CaptureAdapter): boolean => adapter.seam !== 'POE' && adapter.hasOpener;
+/** What an adapter STATES, whatever its seam: a switch that says it has an opener is held to the list as well (row 88). */
+const statesOpener = (adapter: CaptureAdapter): boolean => (adapter as { readonly hasOpener?: unknown }).hasOpener === true;
 
 export interface CaptureDeviceRegistryOptions {
   readonly operation: CaptureOperation;
@@ -79,7 +86,11 @@ export function createCaptureDeviceRegistry(options: CaptureDeviceRegistryOption
     register(adapter) {
       if (!allowed.includes(adapter.kind)) throw new CaptureAdapterError(CaptureAdapterRefusal.ADAPTER_KIND_NOT_ALLOWED);
       if (!KINDS_OF_SEAM[adapter.seam].includes(adapter.kind)) throw new CaptureAdapterError(CaptureAdapterRefusal.ADAPTER_INVALID);
-      if (hasOpenerOf(adapter) && !OPENER_CAPABLE_KINDS.includes(adapter.kind)) throw new CaptureAdapterError(CaptureAdapterRefusal.ADAPTER_INVALID);
+      if (statesOpener(adapter) && !OPENER_CAPABLE_KINDS.includes(adapter.kind)) throw new CaptureAdapterError(CaptureAdapterRefusal.ADAPTER_INVALID);
+      // Design addendum 1.4 #7 (AM-1 (3)(b)): an adapter that states an opener is refused unless its source class is the class
+      // the operation records - an `ONVIF_RTSP` adapter WITH an opener is never registered in REAL_DEVELOPMENT, where that kind
+      // is registrable for its search half only. The class checks of the plan builder and of the source rows stay behind it.
+      if (statesOpener(adapter) && sourceClassOf(adapter.kind) !== sourceClassOfOperation(operation)) throw new CaptureAdapterError(CaptureAdapterRefusal.ADAPTER_INVALID);
       const ids = new Set<string>();
       for (const entry of adapter.devices) {
         if (entry.deviceClass !== CLASS_OF_SEAM[adapter.seam]) throw new CaptureAdapterError(CaptureAdapterRefusal.DEVICE_CLASS_MISMATCH, entry.id);

@@ -327,3 +327,14 @@ describe('the Live port (the app\'s one typed client)', () => {
     await expect(liveSelectorPort(throwing).send({ kind: 'primaryMic', inputId: 'MIC-02' })).resolves.toMatchObject({ result: 'offline' });
   });
 });
+
+// Task 4 row W6 (request lines 566, 569; decisions C141, C143): the Core states `streamState: null` for an idle registered
+// camera. Before this row `cameraLineStatus` read it as LIVE. Seen RED on the mutation "the null branch removed" (back to LIVE).
+describe('row W6: a line whose stream nobody reads is NOT_READ', () => {
+  it('null is NOT_READ; LIVE and LOST stay; an offline line is OFFLINE first', () => {
+    expect(cameraLineStatus({ online: true, streamState: null })).toBe('NOT_READ');
+    expect(cameraLineStatus({ online: true, streamState: 'LIVE' })).toBe('LIVE');
+    expect(cameraLineStatus({ online: true, streamState: 'LOST' })).toBe('LOST');
+    expect(cameraLineStatus({ online: false, streamState: null })).toBe('OFFLINE');
+  });
+});

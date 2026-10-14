@@ -1,18 +1,28 @@
 /**
- * The ONE loader of the class-C adapters (blueprint row 65; check M4-FAKE-1 "real adapters =
- * class C, not executed"; capture spec §A.1 "class-C adapters must never load in a test").
+ * The ONE loader of the production adapters (blueprint row 65; task 4 row 88, THE LIFT, decision
+ * AM-1; capture spec §A.1 "class-C adapters must never load in a test").
  *
- * The three production adapter files are imported HERE and nowhere else, and only when this
- * function is called for the operation `REAL_PRODUCTION`: the import is dynamic, so that reading
- * the adapter layer (its barrel, its fakes, its registry) never evaluates a class-C file. Two
- * fences keep them out of every test:
- *   - static: no file but this one names a class-C file, and no test or test-support file
- *     imports this one except its own refusal test (`adapters/__tests__/static.test.ts`);
- *   - at run time: any other operation is refused BEFORE the import.
+ * The production adapter files are imported HERE and, for their values, nowhere else in the
+ * product, and only when this function is called for the operation `REAL_PRODUCTION`: the import
+ * is dynamic, so that reading the adapter layer (its barrel, its fakes, its registry) never
+ * evaluates a production adapter. Its one production caller is the boot step of the fence, by a
+ * dynamic import (rule A-1 as rewritten by row 88). At run time any other operation is refused
+ * BEFORE the import.
+ *
+ * SINCE THE LIFT (row 88) it builds the BUILT adapters: the camera `camera/onvif-relay.ts` (with
+ * an opener) and, where the host has a production microphone opener, `audio/usb-audio-production.ts`.
+ * The microphone is the one choice by platform (AM-1 (3)(h) as read with the erratum of C135): the
+ * caller hands `audio: null` where the host has none - every platform but `linux` until the macOS
+ * rows (N10, then the M2b gate row) - and the stub `audio/usb-audio.ts` is built in its place: a
+ * `USB_AUDIO` adapter that states NO opener, so that a production microphone is listed and
+ * assignable there and never recorded, and no `REAL_PRODUCTION` session can start (fail-closed).
+ * The switch stays the class-C stub `poe/snmp-poe.ts` (no opener; `SNMP_POE` is not lifted).
  */
 import { CaptureAdapterError, CaptureAdapterRefusal } from './errors';
 import { CaptureOperation } from './kinds';
-import type { AudioInputAdapter, CameraAdapter, CaptureDeviceEntry, PoeController } from './types';
+import type { OnvifRelayCameraAdapter, OnvifRelayCameraDependencies } from './camera/onvif-relay';
+import type { UsbAudioProductionOptions } from './audio/usb-audio-production';
+import type { AudioInputAdapter, CaptureDeviceEntry, PoeController } from './types';
 
 export interface ProductionDevices {
   readonly cameras: readonly CaptureDeviceEntry[];
@@ -21,7 +31,8 @@ export interface ProductionDevices {
 }
 
 export interface ProductionAdapters {
-  readonly camera: CameraAdapter;
+  /** The built camera adapter: its own report source (`relayReports`) is attached to the session's hub by the boot step. */
+  readonly camera: OnvifRelayCameraAdapter;
   readonly audio: AudioInputAdapter;
   readonly poe: PoeController;
 }
@@ -39,27 +50,31 @@ export interface ProductionAdapters {
  *            a microphone, the card enumerator, the configuration writer, the helper and the guard
  *            program, the run directory, the timers, the loss callback.
  *
- * THE TWO SHAPES ARE TYPE PARAMETERS UNTIL THE LIFT. Static rule A-9 lets no production source name
- * a built adapter file before row 88 - not for a type either - so this file cannot state the two
- * option types. The test of this loader binds them to the adapters' own types and builds both
- * adapters from one bundle. AT THE LIFT (row 88): the two parameters become those two types, the
- * first two imports below become the built files, and the bundle is passed on. Until then the
- * class-C stubs are loaded and the bundle is carried and NOT READ: a stub builds nothing.
+ * SINCE THE LIFT (row 88) the two shapes are the adapters' own option types (they were type
+ * parameters while rule A-9 let no production source name a built file). The imports above are
+ * TYPE imports: they are erased and evaluate nothing.
  */
-export interface ProductionAdapterDependencies<Camera = unknown, Audio = unknown> {
-  readonly camera: Camera;
-  readonly audio: Audio;
+/** What the production microphone adapter takes beside its device list. */
+export type ProductionMicrophoneDependencies = Omit<UsbAudioProductionOptions, 'devices'>;
+
+export interface ProductionAdapterDependencies {
+  readonly camera: OnvifRelayCameraDependencies;
+  /** NULL: this host has no production microphone opener (every platform but `linux` today; AM-1 (3)(h), C135) - the stub without an opener is built. */
+  readonly audio: ProductionMicrophoneDependencies | null;
 }
 
-export async function loadProductionAdapters<Camera, Audio>(operation: CaptureOperation, devices: ProductionDevices, dependencies: ProductionAdapterDependencies<Camera, Audio>): Promise<ProductionAdapters> {
+export async function loadProductionAdapters(operation: CaptureOperation, devices: ProductionDevices, dependencies: ProductionAdapterDependencies): Promise<ProductionAdapters> {
   if (operation !== CaptureOperation.REAL_PRODUCTION) throw new CaptureAdapterError(CaptureAdapterRefusal.REAL_ADAPTERS_REFUSED);
-  // A caller that forgot the bundle is refused before anything is imported: after the lift a missing member would be a
-  // production adapter without its door or its reader.
-  if (typeof dependencies !== 'object' || dependencies === null || !('camera' in dependencies) || !('audio' in dependencies)) throw new CaptureAdapterError(CaptureAdapterRefusal.ADAPTER_INVALID);
-  const [camera, audio, poe] = await Promise.all([import('./camera/onvif-rtsp'), import('./audio/usb-audio'), import('./poe/snmp-poe')]);
+  // A caller that forgot the bundle is refused before anything is imported: a missing member would be a production adapter
+  // without its door or its reader. `audio` must be STATED - a bundle or null - never left out.
+  if (typeof dependencies !== 'object' || dependencies === null || typeof dependencies.camera !== 'object' || dependencies.camera === null || !('audio' in dependencies) || typeof dependencies.audio !== 'object') throw new CaptureAdapterError(CaptureAdapterRefusal.ADAPTER_INVALID);
+  const microphone = dependencies.audio;
+  const [camera, poe] = await Promise.all([import('./camera/onvif-relay'), import('./poe/snmp-poe')]);
+  const audio: AudioInputAdapter =
+    microphone === null ? (await import('./audio/usb-audio')).createUsbAudioInputAdapter(devices.mics) : (await import('./audio/usb-audio-production')).createUsbAudioProductionAdapter({ ...microphone, devices: devices.mics });
   return {
-    camera: camera.createOnvifRtspCameraAdapter(devices.cameras),
-    audio: audio.createUsbAudioInputAdapter(devices.mics),
+    camera: camera.createOnvifRelayCameraAdapter(devices.cameras, dependencies.camera),
+    audio,
     poe: poe.createSnmpPoeController(devices.switches),
   };
 }
