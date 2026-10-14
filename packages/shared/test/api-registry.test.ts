@@ -241,8 +241,17 @@ const T4_ACCEPTANCE_OPERATIONS: typeof M2_OPERATIONS = [
   [109, 'acceptInstallation', 'post', '/api/v1/installation/acceptance', 'CAPTURE_COMMISSION', 'INSTALLATION_ACCEPTED', 'ACCESS_DENIED', 'simulated'],
   [110, 'revokeInstallationAcceptance', 'post', '/api/v1/installation/acceptance/revoke', 'CAPTURE_COMMISSION', 'INSTALLATION_ACCEPTANCE_REVOKED', 'ACCESS_DENIED', 'simulated'],
 ];
+/**
+ * Task 4 (row RD2; design 07; decisions C146, C147): the retirement of a registered camera or
+ * microphone, 111, appended after op 110. Same columns. CAPTURE_COMMISSION (ruling Q1) and
+ * `simulated`, so the `offline` scope gains it too (44 -> 45). The pinned totals: registry 111
+ * operations, 39 GET / 72 POST.
+ */
+const T4_RETIRE_OPERATIONS: typeof M2_OPERATIONS = [
+  [111, 'retireCaptureDevice', 'post', '/api/v1/capture/devices/{id}/retire', 'CAPTURE_COMMISSION', 'CAPTURE_DEVICE_RETIRED', 'ACCESS_DENIED', 'simulated'],
+];
 /** The task-4 operations after the sound cards, in number order: one list, so that a later package appends in ONE place. */
-const T4_LATER_OPERATIONS: typeof M2_OPERATIONS = [...T4_READDRESS_OPERATIONS, ...T4_COMMISSIONING_OPERATIONS, ...T4_DEVICE_TEST_OPERATIONS, ...T4_ACCEPTANCE_OPERATIONS];
+const T4_LATER_OPERATIONS: typeof M2_OPERATIONS = [...T4_READDRESS_OPERATIONS, ...T4_COMMISSIONING_OPERATIONS, ...T4_DEVICE_TEST_OPERATIONS, ...T4_ACCEPTANCE_OPERATIONS, ...T4_RETIRE_OPERATIONS];
 /** The thirteen simulated M2 operations, the three of M6, the five of R-9..R-11, the two of task 4 row 63 and the later ones of task 4, in number order — the ones the `offline` scope gains. */
 const M2_SIMULATED_IDS = [...M2_OPERATIONS, ...M6_OPERATIONS, ...M4_DISCOVERY_OPERATIONS, ...T4_AUDIO_CARD_OPERATIONS, ...T4_LATER_OPERATIONS].filter((entry) => entry[7] === 'simulated').map((entry) => entry[1]);
 
@@ -348,9 +357,9 @@ function concretePath(operation: CoreApiOperation): string {
   return operation.pathParam ? operation.path.replace('{id}', id ?? 'MISSING') : operation.path;
 }
 
-describe('AC-B-09: the registry holds exactly 110 operations', () => {
-  it('holds the 10 existing operations first, then the 65 that only the Core server answers, then the 22 of task 3 (14 of M2, 3 of M6, 5 of R-9..R-11), the 2 of task 4 row 63, the 1 of row 194, the 7 of row 102, the 1 of row V3 and the 2 of row 116, by area in spec order', () => {
-    expect(CORE_API_OPERATIONS).toHaveLength(110);
+describe('AC-B-09: the registry holds exactly 111 operations', () => {
+  it('holds the 10 existing operations first, then the 65 that only the Core server answers, then the 22 of task 3 (14 of M2, 3 of M6, 5 of R-9..R-11), the 2 of task 4 row 63, the 1 of row 194, the 7 of row 102, the 1 of row V3, the 2 of row 116 and the 1 of row RD2, by area in spec order', () => {
+    expect(CORE_API_OPERATIONS).toHaveLength(111);
     expect(CORE_API_OPERATIONS.slice(0, 10).map((operation) => operation.operationId)).toEqual(BASELINE.map(([id]) => id));
     // Areas 1, 2 and 3 (contract A), then areas 4 to 11 (contract C), then area 13 (contract A),
     // then task 3 M2-W7's operations 76-89, M6's 90-92 and the 93-97 of R-9..R-11 appended in number order.
@@ -375,8 +384,9 @@ describe('AC-B-09: the registry holds exactly 110 operations', () => {
     expect(T4_COMMISSIONING_OPERATIONS).toHaveLength(7);
     expect(T4_DEVICE_TEST_OPERATIONS).toHaveLength(1);
     expect(T4_ACCEPTANCE_OPERATIONS).toHaveLength(2);
-    expect(T4_LATER_OPERATIONS).toHaveLength(11);
-    // Every number of 01_specs §7 from 1 to 75 plus task 3's 76 to 97 and task 4's 98 to 110 is one operation of the registry.
+    expect(T4_RETIRE_OPERATIONS).toHaveLength(1);
+    expect(T4_LATER_OPERATIONS).toHaveLength(12);
+    // Every number of 01_specs §7 from 1 to 75 plus task 3's 76 to 97 and task 4's 98 to 111 is one operation of the registry.
     const numbers = [...EXISTING_NUMBERS, ...byNumber.map(([number]) => number)].sort((a, b) => a - b);
     expect(numbers).toEqual([...Array.from({ length: 75 }, (_, index) => index + 1), ...Array.from({ length: 24 + T4_LATER_OPERATIONS.length }, (_, index) => index + 76)]);
     // Areas 4 to 11 are the numbers 24 to 70: 47 operations, 9 of them existing and 38 new.
@@ -384,16 +394,17 @@ describe('AC-B-09: the registry holds exactly 110 operations', () => {
     expect(EXISTING_NUMBERS.filter((number) => number >= 24 && number <= 70)).toHaveLength(9);
   });
 
-  it('names every operation and every method-and-path once; 39 are GET and 71 are POST', () => {
+  it('names every operation and every method-and-path once; 39 are GET and 72 are POST', () => {
     const ids = CORE_API_OPERATIONS.map((operation) => operation.operationId);
-    expect(new Set(ids).size).toBe(110);
+    expect(new Set(ids).size).toBe(111);
     const routes = CORE_API_OPERATIONS.map((operation) => `${operation.method} ${operation.path}`);
-    expect(new Set(routes).size).toBe(110);
+    expect(new Set(routes).size).toBe(111);
     // Task 4 row 102: three of the seven commissioning operations are reads (36 -> 39), four write (64 -> 68).
     // Task 4 row V3: operation 108 is a POST (68 -> 69).
     // Task 4 row 116: operations 109 and 110 are POSTs (69 -> 71).
+    // Task 4 row RD2: operation 111 is a POST (71 -> 72).
     expect(CORE_API_OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(39);
-    expect(CORE_API_OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(71);
+    expect(CORE_API_OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(72);
     for (const id of ids) expect(findCoreApiOperation(id)?.operationId).toBe(id);
   });
 
@@ -593,10 +604,11 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
     // CAPTURE_AUDIO_ABSENT_ON_RESTART, CAPTURE_DEVICE_CONNECTION_TESTED, 78 -> 82.
     // Task 4 row R1b (decision C99): + CAPTURE_VIDEO_ABSENT_IN_SESSION, 82 -> 83.
     // Task 4 row N2: + CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED, CAPTURE_AUDIO_SILENCE_INSERTED, 83 -> 85.
-    expect(AUDIT_TYPES).toHaveLength(85);
+    // Task 4 row RD2: + CAPTURE_DEVICE_RETIRED, 85 -> 86.
+    expect(AUDIT_TYPES).toHaveLength(86);
   });
 
-  it('counts by access rule: 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 68 with one permission, 1 any-of', () => {
+  it('counts by access rule: 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 71 with one permission, 1 any-of', () => {
     const count = (kind: string) => CORE_API_OPERATIONS.filter((operation) => operation.access.kind === kind).length;
     // M6 row 113 (C3 §2.5): op 90 is AUTHENTICATED (29 -> 30); ops 91 and 92 need CAPTURE_CONFIG (50 -> 52).
     // R-9..R-11 (C3 §2.6): all five of 93-97 need CAPTURE_CONFIG (52 -> 57).
@@ -605,10 +617,11 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
     // Task 4 row 102: the seven commissioning operations 101-107 need CAPTURE_COMMISSION (60 -> 67).
     // Task 4 row V3: operation 108 needs CAPTURE_CONFIG (67 -> 68).
     // Task 4 row 116: operations 109 and 110 need CAPTURE_COMMISSION (68 -> 70).
-    expect([count('PUBLIC'), count('DEVICE'), count('AUTHENTICATED'), count('PERMISSION'), count('ANY_OF')]).toEqual([4, 5, 30, 70, 1]);
-    // 71 operations carry a permission: the 40 of contract C plus the one any-of, plus task 3's seventeen
-    // permission operations (78/79/80/81/84/85/86/87/88/89, 91/92 and 93-97), plus task 4's thirteen (98/99, 100, 101-107, 108, 109/110).
-    expect(CORE_API_OPERATIONS.filter((operation) => coreApiAccessPermissions(operation.access).length > 0)).toHaveLength(71);
+    // Task 4 row RD2: operation 111 needs CAPTURE_COMMISSION (70 -> 71).
+    expect([count('PUBLIC'), count('DEVICE'), count('AUTHENTICATED'), count('PERMISSION'), count('ANY_OF')]).toEqual([4, 5, 30, 71, 1]);
+    // 72 operations carry a permission: the 40 of contract C plus the one any-of, plus task 3's seventeen
+    // permission operations (78/79/80/81/84/85/86/87/88/89, 91/92 and 93-97), plus task 4's fourteen (98/99, 100, 101-107, 108, 109/110, 111).
+    expect(CORE_API_OPERATIONS.filter((operation) => coreApiAccessPermissions(operation.access).length > 0)).toHaveLength(72);
     const byPermission = (permission: string) =>
       CORE_API_OPERATIONS.filter((operation) => describeCoreApiAccess(operation.access) === permission).map((operation) => operation.operationId);
     expect(byPermission('USER_ADMIN')).toEqual(['listUsers', 'assignUserRole', 'enableUser', 'disableUser']);
@@ -652,7 +665,8 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
       // Task 4 row 102 (WP-23b): the contract package of the commissioning operations filled this
       // list - the deferral of row 100 is ENDED here. Seven operations, and no other, name it.
       // Task 4 row 116 (WP-26b): the acceptance of the installation (109) and its revocation (110) take it too.
-      ['CAPTURE_COMMISSION', [101, 102, 103, 104, 105, 106, 107, 109, 110]],
+      // Task 4 row RD2 (decision C147, ruling Q1): the retirement of a device (111) takes it too.
+      ['CAPTURE_COMMISSION', [101, 102, 103, 104, 105, 106, 107, 109, 110, 111]],
     ];
     expect(ENFORCED_AT.map(([permission]) => permission)).toEqual(PERMISSIONS);
     const numberOf = new Map<string, number>([
@@ -665,7 +679,7 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
       ...T4_AUDIO_CARD_OPERATIONS.map(([number, id]) => [id, number] as const),
       ...T4_LATER_OPERATIONS.map(([number, id]) => [id, number] as const),
     ]);
-    expect(numberOf.size).toBe(110);
+    expect(numberOf.size).toBe(111);
     for (const [permission, numbers] of ENFORCED_AT) {
       const found = CORE_API_OPERATIONS.filter((operation) => (coreApiAccessPermissions(operation.access) as string[]).includes(permission))
         .map((operation) => numberOf.get(operation.operationId))
@@ -698,10 +712,12 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
       ...T4_DEVICE_TEST_OPERATIONS.map(([, id]) => id),
       // Task 4 row 116 (decision U10): the acceptance of the installation and its revocation are web console only.
       ...T4_ACCEPTANCE_OPERATIONS.map(([, id]) => id),
+      // Task 4 row RD2 (decision C147, Q1): the retirement of a device is web console only.
+      ...T4_RETIRE_OPERATIONS.map(([, id]) => id),
     ]);
-    // Twenty-six operations carry a condition (13 + the two of task 4 row 63 + the one of row 194 + the seven of row 102 + the one of row V3 + the two of row 116), each exactly one; the other 84 carry none.
+    // Twenty-seven operations carry a condition (13 + the two of task 4 row 63 + the one of row 194 + the seven of row 102 + the one of row V3 + the two of row 116 + the one of row RD2), each exactly one; the other 84 carry none.
     const conditioned = CORE_API_OPERATIONS.filter((operation) => operation.access.conditions !== undefined);
-    expect(conditioned).toHaveLength(26);
+    expect(conditioned).toHaveLength(27);
     for (const operation of conditioned) expect(operation.access.conditions, operation.operationId).toHaveLength(1);
   });
 
@@ -858,9 +874,10 @@ describe('answering services and the two scopes (AR-1)', () => {
     // Task 4 row 102: + operations 101-107, simulated (100 -> 107; offline 34 -> 41).
     // Task 4 row V3: + operation 108, simulated (107 -> 108; offline 41 -> 42).
     // Task 4 row 116: + operations 109-110, simulated (108 -> 110; offline 42 -> 44).
-    expect(listCoreApiOperations(CoreApiScope.ALL)).toHaveLength(110);
-    expect(listCoreApiOperations()).toHaveLength(110);
-    expect(CORE_API_OPERATIONS.filter(isOfflineCoreApiOperation)).toHaveLength(44);
+    // Task 4 row RD2: + operation 111, simulated (110 -> 111; offline 44 -> 45).
+    expect(listCoreApiOperations(CoreApiScope.ALL)).toHaveLength(111);
+    expect(listCoreApiOperations()).toHaveLength(111);
+    expect(CORE_API_OPERATIONS.filter(isOfflineCoreApiOperation)).toHaveLength(45);
   });
 
   it('the new tags hold the new areas', () => {
@@ -870,12 +887,13 @@ describe('answering services and the two scopes (AR-1)', () => {
     // three Session ops (81/82/83), five Evidence ops (84-88) and six Device ops (76-80, 89); M6 row
     // 113 adds three more Device ops (90-92, `C3 §2.5` tag column); R-9..R-11 add five more (93-97,
     // `C3 §2.6` tag column); task 4 row 63 adds two more Device ops (98-99), row 194 one (100), row 102 seven (101-107), row V3 one (108)
-    // and row 116 two (109-110: the acceptance of the installation and its revocation, beside the commissioning functions).
-    expect([byTag(CoreApiTag.SESSION), byTag(CoreApiTag.EVIDENCE), byTag(CoreApiTag.DEVICE), byTag(CoreApiTag.STORAGE)]).toEqual([4 + 11 + 3, 1 + 4 + 5, 3 + 6 + 6 + 3 + 5 + 2 + 1 + 7 + 1 + 2, 1 + 2]);
+    // and row 116 two (109-110: the acceptance of the installation and its revocation, beside the commissioning functions);
+    // row RD2 one (111: the retirement of a device).
+    expect([byTag(CoreApiTag.SESSION), byTag(CoreApiTag.EVIDENCE), byTag(CoreApiTag.DEVICE), byTag(CoreApiTag.STORAGE)]).toEqual([4 + 11 + 3, 1 + 4 + 5, 3 + 6 + 6 + 3 + 5 + 2 + 1 + 7 + 1 + 2 + 1, 1 + 2]);
     expect([byTag(CoreApiTag.NETWORK), byTag(CoreApiTag.SECURITY), byTag(CoreApiTag.SYSTEM), byTag(CoreApiTag.ALERTS)]).toEqual([2, 6, 5, 2]);
     expect(byTag(CoreApiTag.SERVICE)).toBe(1);
     expect(byTag(CoreApiTag.REALTIME)).toBe(0);
-    expect(Object.values(CoreApiTag).reduce((sum, tag) => sum + byTag(tag), 0)).toBe(110);
+    expect(Object.values(CoreApiTag).reduce((sum, tag) => sum + byTag(tag), 0)).toBe(111); // task 4 row RD2: + op 111 (Device)
   });
 });
 
@@ -942,7 +960,7 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
     // R-9..R-11 append the eight of operations 93-97; task 4 row 63 appends the four of operations 98-99.
     // Task 4 row 194 appends the two of operation 100; row 102 the nine of operations 101-107; row V3 the one of operation 108;
     // row 116 the five of operations 109-110.
-    expect(Object.keys(CORE_API_SCHEMAS)).toHaveLength(51 + 39 + 11 + 33 + 18 + 6 + 8 + 1 + 4 + 1 + 2 + 9 + 1 + 5); // + EvidenceMediaSessionRequest, the optional body of op 88 (pass D1b, D140); + 4 of task 4 row 63; + 1, the optional body of op 93 (task 4 row 94)
+    expect(Object.keys(CORE_API_SCHEMAS)).toHaveLength(51 + 39 + 11 + 33 + 18 + 6 + 8 + 1 + 4 + 1 + 2 + 9 + 1 + 5 + 2); // + 2 of op 111 (task 4 row RD2); + EvidenceMediaSessionRequest, the optional body of op 88 (pass D1b, D140); + 4 of task 4 row 63; + 1, the optional body of op 93 (task 4 row 94)
     // The 51 of contract A stay first and in their order, then the socket's schemas.
     expect(Object.keys(CORE_API_SCHEMAS).slice(51, 51 + 39 + 11)).toEqual(socket);
     expect(Object.keys(CORE_API_SCHEMAS).slice(51 + 39 + 11)).toEqual([
@@ -981,6 +999,8 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
       'CaptureDeviceConnectionTest',
       // Task 4 (blueprint row 116, WP-26b): the schemas of operations 109-110.
       'InstallationAcceptanceStep', 'InstallationAcceptanceDiagnostics', 'InstallationAcceptance', 'InstallationAcceptRequest', 'InstallationAcceptanceRevokeRequest',
+      // Task 4 (row RD2; design 07): the schemas of operation 111.
+      'CaptureDeviceRetireRequest', 'CaptureDeviceRetirement',
     ]);
     // API-6: a read of contract C answers slices, so two operations answer a slice component directly.
     // Task 3 M2-W7 (`C3 §2.3`, API-6): the six capture-config/credential operations answer the
@@ -1131,7 +1151,7 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
       // Task 4 rows 194 and 102 name their blueprint row and their operation number the same way.
       // Task 4 row V3 lands operation 108 of blueprint row 146 and names it the same way.
       // Task 4 row 116 names its blueprint row and its operation numbers 109 and 110 the same way.
-      expect(operation.source, operation.operationId).toMatch(/^(Backend task 2026-10-04|Task 3 M2-W7|Task 3 M6|Task 3 R-(?:9|10),|Task 4, blueprint row (?:63|194|102|146|116) )/);
+      expect(operation.source, operation.operationId).toMatch(/^(Backend task 2026-10-04|Task 3 M2-W7|Task 3 M6|Task 3 R-(?:9|10),|Task 4, blueprint row (?:63|194|102|146|116) |Task 4, row RD2 )/); // row RD2 names its row (no blueprint number yet) and operation 111
       expect(operation.source, operation.operationId).toMatch(/operation \d+/);
     }
     const secret = CORE_API_OPERATIONS.filter((operation) => operation.description.includes('holds a secret')).map((operation) => operation.operationId);
@@ -1209,7 +1229,7 @@ describe('contract gap 1: CORE_API_OPERATION_TABLE is the table with literal typ
     expectTypeOf(CORE_API_OPERATIONS).toEqualTypeOf<readonly CoreApiRegistryOperation[]>();
     expectTypeOf<Table>().toExtend<readonly CoreApiRegistryOperation[]>();
     expectTypeOf<Table>().toExtend<readonly CoreApiOperation[]>();
-    expectTypeOf<Table['length']>().toEqualTypeOf<110>();
+    expectTypeOf<Table['length']>().toEqualTypeOf<111>(); // task 4 row RD2: + operation 111 (110 -> 111)
     expectTypeOf<Table[0]['operationId']>().toEqualTypeOf<'getServiceHealth'>();
     expectTypeOf<Table[10]['operationId']>().toEqualTypeOf<'signIn'>();
     // Areas 4 to 11 sit between pairing and the demo controls, which stay last.
@@ -1264,7 +1284,7 @@ describe('contract gap 1: CORE_API_OPERATION_TABLE is the table with literal typ
 
     const client = createCoreClient({ baseUrl: 'http://127.0.0.1:4420', credentials: 'browser-cookie', fetch: noAnswer, operations: CORE_API_OPERATION_TABLE });
     // AC-C-01: the callable operation count of the typed client is the registry's, 110.
-    expect(client.operationIds).toHaveLength(110);
+    expect(client.operationIds).toHaveLength(111); // task 4 row RD2: + operation 111
     expect(client.operationIds).toEqual(CORE_API_OPERATIONS.map((operation) => operation.operationId));
     const signedOut = await client.call('signOut', { body: { reason: 'LOCK' } });
     expectTypeOf(signedOut).toEqualTypeOf<CoreCallSuccess<204, undefined> | CoreCallFailure>();

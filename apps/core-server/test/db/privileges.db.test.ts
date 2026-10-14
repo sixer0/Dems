@@ -3,7 +3,7 @@
 // The expected matrix below is written from the table of contract §7.3, not from the migration
 // file. T-PV-1 compares it with the catalog (`has_table_privilege`, `has_column_privilege`) and
 // then with LIVE statements as `dems_app`: for every table one SELECT, INSERT, DELETE and
-// TRUNCATE, and one UPDATE for each of the 498 columns. The statements match no row
+// TRUNCATE, and one UPDATE for each of the 501 columns. The statements match no row
 // (`WHERE false`), so an allowed one changes nothing; a privilege is checked before any row is
 // looked at, so a forbidden one fails with 42501 all the same.
 import type { Pool } from 'pg';
@@ -93,7 +93,9 @@ const MATRIX: Readonly<Record<string, Grant>> = {
   },
   capture_devices: {
     insert: true,
-    update: ['transport', 'model', 'firmware', 'address', 'mac', 'onvif_uuid', 'profiles', 'poe_port', 'enabled', 'last_seen_at'],
+    // `retired_at` and `retired_by` since schema v15 (`0033`, design 07): the retirement is an
+    // UPDATE of the row, never a DELETE.
+    update: ['transport', 'model', 'firmware', 'address', 'mac', 'onvif_uuid', 'profiles', 'poe_port', 'enabled', 'last_seen_at', 'retired_at', 'retired_by'],
   },
   capture_device_credentials: {
     select: false,
@@ -143,7 +145,8 @@ const MATRIX: Readonly<Record<string, Grant>> = {
   // like `usb_id`, updated with it.
   capture_audio_inputs: {
     insert: true,
-    update: ['usb_id', 'card_id', 'card_device', 'input_number', 'native_channels', 'sample_bits', 'updated_by', 'updated_at', 'usb_serial', 'usb_port'],
+    // `retired_at` since schema v15 (`0033`): the mirror of the registry's retirement.
+    update: ['usb_id', 'card_id', 'card_device', 'input_number', 'native_channels', 'sample_bits', 'updated_by', 'updated_at', 'usb_serial', 'usb_port', 'retired_at'],
   },
   // ── schema v8 (task 4 schema set B, `0018`). T-46 holds one row: SELECT, INSERT (the default row
   //    at first use) and UPDATE on every column but the key; no DELETE. T-47: SELECT, INSERT, and
@@ -224,7 +227,7 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
     expect(rows).toEqual(expected);
   });
 
-  it('catalog: for each of the 498 columns, has_column_privilege(UPDATE) equals the matrix', async () => {
+  it('catalog: for each of the 501 columns, has_column_privilege(UPDATE) equals the matrix', async () => {
     const { rows } = await owner.query<{ table_name: string; column_name: string; can_update: boolean }>(
       `SELECT c.relname::text AS table_name, a.attname::text AS column_name,
               has_column_privilege('dems_app', c.oid, a.attnum, 'UPDATE') AS can_update
@@ -232,11 +235,11 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
         WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' AND a.attnum > 0 AND NOT a.attisdropped
         ORDER BY 1, a.attnum`,
     );
-    expect(rows).toHaveLength(498);
+    expect(rows).toHaveLength(501);
     const wrong = rows.filter((row) => row.can_update !== mayUpdate(row.table_name, row.column_name));
     expect(wrong).toEqual([]);
     const granted = rows.filter((row) => row.can_update).length;
-    console.info(`[w17] T-PV-1: UPDATE is granted on ${granted} of 498 columns (30 of them are every column of active_session, 14 every column of stt_config)`);
+    console.info(`[w17] T-PV-1: UPDATE is granted on ${granted} of 501 columns (30 of them are every column of active_session, 14 every column of stt_config)`);
   });
 
   it('LIVE as dems_app: SELECT, INSERT, DELETE and TRUNCATE on every table behave as the matrix says', async () => {
@@ -282,7 +285,7 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
     await expectRefused(() => app.query('SELECT secret_ciphertext FROM public.capture_device_credentials'), SQLSTATE.insufficientPrivilege);
   });
 
-  it('catalog + LIVE: has_column_privilege(SELECT) equals the matrix on all 498 columns; of the credential store only device_id is readable (0010, PE-129a-01)', async () => {
+  it('catalog + LIVE: has_column_privilege(SELECT) equals the matrix on all 501 columns; of the credential store only device_id is readable (0010, PE-129a-01)', async () => {
     const { rows } = await owner.query<{ table_name: string; column_name: string; can_select: boolean }>(
       `SELECT c.relname::text AS table_name, a.attname::text AS column_name,
               has_column_privilege('dems_app', c.oid, a.attnum, 'SELECT') AS can_select
@@ -290,7 +293,7 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
         WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' AND a.attnum > 0 AND NOT a.attisdropped
         ORDER BY 1, a.attnum`,
     );
-    expect(rows).toHaveLength(498);
+    expect(rows).toHaveLength(501);
     expect(rows.filter((row) => row.can_select !== readable(row.table_name, row.column_name))).toEqual([]);
     // The unreadable columns of the whole schema are exactly these nine: six of T-33, three of T-40.
     expect(rows.filter((row) => !row.can_select).map((row) => `${row.table_name}.${row.column_name}`).sort()).toEqual([
@@ -313,7 +316,7 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
     await expectRefused(() => app.query('SELECT * FROM public.capture_device_credentials'), SQLSTATE.insufficientPrivilege);
   });
 
-  it('LIVE as dems_app: one UPDATE per column, 498 statements; allowed exactly where the matrix grants it', async () => {
+  it('LIVE as dems_app: one UPDATE per column, 501 statements; allowed exactly where the matrix grants it', async () => {
     const wrong: string[] = [];
     let allowed = 0;
     let refused = 0;
@@ -335,11 +338,11 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
       }
     }
     expect(wrong).toEqual([]);
-    expect(allowed + refused).toBe(498);
+    expect(allowed + refused).toBe(501);
     console.info(`[w17] T-PV-1 live: ${allowed} column UPDATEs allowed, ${refused} refused with 42501, 0 unexpected`);
   });
 
-  it('functions: dems_app may execute audit_chain_lock(), dems_jsonb_is_flat(jsonb) and the two reveal functions only; PUBLIC none (OW-4, PG-17; dbc-3 §B.3, §B.13)', async () => {
+  it('functions: dems_app may execute audit_chain_lock(), dems_jsonb_is_flat(jsonb), the two reveal functions and (since set 16) the credential-destroy function only; PUBLIC none (OW-4, PG-17; dbc-3 §B.3, §B.13)', async () => {
     const { rows } = await owner.query(
       `SELECT p.proname::text AS name, has_function_privilege('dems_app', p.oid, 'EXECUTE') AS app,
               has_function_privilege('public', p.oid, 'EXECUTE') AS everyone
@@ -350,7 +353,9 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
       { name: 'audit_chain_lock', app: true, everyone: false },
       { name: 'audit_log_guard_insert', app: false, everyone: false },
       { name: 'audit_log_refuse_change', app: false, everyone: false },
+      { name: 'dems_capture_credential_destroy', app: true, everyone: false },
       { name: 'dems_capture_credential_reveal', app: true, everyone: false },
+      { name: 'dems_capture_retired_row_guard', app: false, everyone: false },
       { name: 'dems_jsonb_is_flat', app: true, everyone: false },
       { name: 'dems_stt_credential_reveal', app: true, everyone: false },
     ]);
@@ -359,6 +364,8 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
     // functions are refused by privilege.
     expect((await app.query(`SELECT username FROM public.dems_capture_credential_reveal('CAM-01')`)).rows).toEqual([]);
     expect((await app.query(`SELECT credential_kind FROM public.dems_stt_credential_reveal()`)).rows).toEqual([]);
+    // Set 16: the destroy path answers for the runtime role; on an empty registry nothing is retired, so nothing goes.
+    expect((await app.query(`SELECT public.dems_capture_credential_destroy('CAM-01') AS destroyed`)).rows).toEqual([{ destroyed: 0 }]);
     expect((await app.query(`SELECT public.dems_jsonb_is_flat('{"a": 1, "b": null}'::jsonb) AS flat, public.dems_jsonb_is_flat('{"a": {"b": 1}}'::jsonb) AS nested, public.dems_jsonb_is_flat('[1]'::jsonb) AS list`)).rows).toEqual([
       { flat: true, nested: false, list: false },
     ]);
@@ -370,7 +377,7 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
     } finally {
       client.release();
     }
-    for (const name of ['audit_log_guard_insert', 'audit_log_refuse_change', 'audit_chain_history_refuse_change']) {
+    for (const name of ['audit_log_guard_insert', 'audit_log_refuse_change', 'audit_chain_history_refuse_change', 'dems_capture_retired_row_guard']) {
       await expectRefused(() => app.query(`SELECT public.${name}()`), SQLSTATE.insufficientPrivilege);
     }
   });
@@ -530,7 +537,8 @@ describe('T-PV-2: roles, memberships and ownership (OW-1, OW-2, OW-9; SR-68)', (
       { kind: 'drizzle index', owner: 'dems_owner', total: 1 },
       { kind: 'drizzle sequence', owner: 'dems_owner', total: 1 },
       { kind: 'drizzle table', owner: 'dems_owner', total: 1 },
-      { kind: 'public function', owner: 'dems_owner', total: 7 },
+      // 9 since set 16 (task 4 design 07): the guard of a retired row and the credential-destroy function.
+      { kind: 'public function', owner: 'dems_owner', total: 9 },
       { kind: 'public index', owner: 'dems_owner', total: 95 },
       { kind: 'public table', owner: 'dems_owner', total: 48 },
       { kind: 'schema drizzle', owner: 'dems_owner', total: 1 },

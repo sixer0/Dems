@@ -18,6 +18,7 @@
  * | The two mic inputs have two devices; one camera on both tracks has two profiles (OD-05) | `SimTransitionError`, code INVALID_INPUT |
  * | Mic lines BY ROLE (lines with `role`; D133 (1), rule MIC-ASSIGN of task 4) are one or two lines, no role twice, each `deviceId == inputId`, each a registered microphone; a single line never names the other role's input | `SimTransitionError`, code INVALID_INPUT |
  * | A slot is never cleared (`unassign`) and filled by the same change (AD-10 (3)) | `SimTransitionError`, code INVALID_INPUT, reason `SLOT_UNASSIGNED_AND_ASSIGNED` |
+ * | A line never names a RETIRED device (task 4 row RD2; operation 111) | `SimTransitionError`, code INVALID_INPUT, reason `CAPTURE_DEVICE_RETIRED` |
  *
  * An edit that changes nothing returns the SAME state: no audit row, no new `updatedAt`. One
  * CAPTURE_CONFIG_CHANGED row is written per line that changed. A refused edit writes nothing.
@@ -90,6 +91,16 @@ export const CAPTURE_CONFIG_MIC_ON_BOTH_INPUTS = 'MIC_ON_BOTH_INPUTS';
  * can see: a mic line WITHOUT `role` that edits the input the cleared slot held.
  */
 export const CAPTURE_CONFIG_SLOT_UNASSIGNED_AND_ASSIGNED = 'SLOT_UNASSIGNED_AND_ASSIGNED';
+/**
+ * The device a line names is RETIRED (task 4 row RD2; design 07 section 4.4; decision C147): it is
+ * never assigned again. The contract's word `CaptureRetireRefusalReason.CAPTURE_DEVICE_RETIRED`
+ * (a test holds them equal); the clients word it with `common.captureSlotRefusal.CAPTURE_DEVICE_RETIRED`.
+ */
+export const CAPTURE_CONFIG_DEVICE_RETIRED = 'CAPTURE_DEVICE_RETIRED';
+const notRetired = (device: CaptureDeviceStatus): CaptureDeviceStatus => {
+  if (device.retiredAt !== undefined) throw invalid('a retired device is never assigned again', CAPTURE_CONFIG_DEVICE_RETIRED);
+  return device;
+};
 
 /**
  * The profile of a camera line that is assigned into an EMPTY video slot by a change that names no
@@ -175,6 +186,7 @@ function assignMicsByRole(
     if (line.deviceId !== line.inputId) throw invalid('a mic input holds the microphone of the same ID');
     const device = deviceOf(state, line.deviceId, 'MIC');
     if (device === null) throw invalid('a mic line names no microphone of the registry');
+    notRetired(device);
     const held = current.find((entry) => entry.inputId === line.inputId);
     return { inputId: line.inputId, deviceId: device.id, role: line.role ?? MicRole.STANDBY, transport: line.transport ?? held?.transport ?? UNKNOWN_MIC_TRANSPORT, online: device.online };
   });
@@ -231,6 +243,7 @@ export function setCaptureConfigTransition(state: SimState, now: EpochMs, change
    */
   const assignCamera = (trackId: CaptureConfigCamera['trackId'], device: CaptureDeviceStatus, profile: string | undefined): void => {
     if (!isVideoSlot(trackId)) throw invalid('the selector has no such video track');
+    notRetired(device);
     if (profile !== undefined && !PROFILE_CODE.test(profile)) throw invalid('a media profile is a code');
     const slot = cameras.find((entry) => entry.trackId === trackId);
     // Task 4 row V7c (decision C126 (b)): the line states its camera's stream as the registry entry
@@ -294,6 +307,7 @@ export function setCaptureConfigTransition(state: SimState, now: EpochMs, change
       for (const line of micLines) {
         const device = deviceOf(state, line.deviceId, 'MIC');
         if (device === null) throw invalid('a mic line names no microphone of the registry');
+        notRetired(device);
         // The form the schema cannot see (names register 4.3): the line edits the input a slot of this change just lost.
         if (clearedInputs.has(line.inputId)) throw invalid('a slot is not cleared and assigned by one change', CAPTURE_CONFIG_SLOT_UNASSIGNED_AND_ASSIGNED);
         const slot = mics.find((entry) => entry.inputId === line.inputId);

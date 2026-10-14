@@ -113,6 +113,15 @@
  * `0031_network_config_onvif_ports_privileges.sql` (the UPDATE grant on the column; the version
  * step).
  *
+ * SCHEMA VERSION 15 (`dbc-16`; design 07 of task 4, retiring a capture device, decision C147):
+ * the generated `0032_capture_device_retirement.sql` (`capture_devices.retired_at` / `retired_by`
+ * with their foreign key and two CHECKs, `capture_audio_inputs.retired_at`, and the two identity
+ * indexes `capture_devices_onvif_uuid_key` / `capture_audio_inputs_card_input_key` made partial on
+ * rows in service, the second a constraint until then) plus the hand-written
+ * `0033_capture_device_retirement_privileges.sql` (the UPDATE grants on the three columns, the
+ * guard trigger of a retired row on both tables, the owner's credential-destroy function with its
+ * EXECUTE grant; the version step).
+ *
  * Not expressed here, because the tool cannot generate them: the function of `0000_prelude`,
  * the chain lock, the chain guard, the three triggers and the genesis row (`0002_audit_guards`),
  * and every privilege (`0003_privileges`, and `0005_capture_privileges` from row 46). The typed

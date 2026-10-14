@@ -188,6 +188,8 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
       enabled: true,
       lastSeenAt: seenAgo(),
       adapterKind: 'ONVIF_RTSP',
+      retiredAt: null,
+      retiredBy: null,
     },
     {
       id: 'CAM-04',
@@ -203,6 +205,8 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
       enabled: true,
       lastSeenAt: seenAgo(),
       adapterKind: 'ONVIF_RTSP',
+      retiredAt: null,
+      retiredBy: null,
     },
     {
       // The third discovered camera of dbc-4 §N.10: three `ONVIF_RTSP` rows, three distinct
@@ -220,6 +224,8 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
       enabled: true,
       lastSeenAt: seenAgo(),
       adapterKind: 'ONVIF_RTSP',
+      retiredAt: null,
+      retiredBy: null,
     },
     {
       // The Core Mac's own camera (R-11; D-DB-13: a row of its own, never a re-labelled built-in).
@@ -236,6 +242,8 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
       enabled: true,
       lastSeenAt: seenAgo(),
       adapterKind: 'LOCAL_DEVICE',
+      retiredAt: null,
+      retiredBy: null,
     },
     {
       id: 'MIC-03',
@@ -251,6 +259,8 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
       enabled: true,
       lastSeenAt: seenAgo(),
       adapterKind: 'USB_AUDIO',
+      retiredAt: null,
+      retiredBy: null,
     },
     {
       id: 'MIC-04',
@@ -266,6 +276,8 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
       enabled: true,
       lastSeenAt: seenAgo(),
       adapterKind: 'USB_AUDIO',
+      retiredAt: null,
+      retiredBy: null,
     },
     {
       // The Core Mac's own microphone (R-11).
@@ -282,6 +294,8 @@ function buildCaptureWorld(world: World): { captureDevices: CaptureDeviceRow[]; 
       enabled: true,
       lastSeenAt: seenAgo(),
       adapterKind: 'LOCAL_DEVICE',
+      retiredAt: null,
+      retiredBy: null,
     },
   ];
 

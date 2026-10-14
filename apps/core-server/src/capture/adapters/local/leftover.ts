@@ -18,7 +18,7 @@
  * Linux reading has run against a double only: the real one is hardware check `9A/H-24`.
  */
 import type { CaptureTimers } from '../../types';
-import type { HelperDoor } from './process-door';
+import { HELPER_OUTPUT_CAP_BYTES, type HelperDoor } from './process-door';
 
 const PROCESS_TABLE = '/bin/ps';
 const PROCESS_TABLE_ARGUMENTS = ['-axo', 'pid=,comm='] as const;
@@ -37,6 +37,17 @@ const REMOVED_MARK = ' (deleted)';
  * of processes.
  */
 export const LEFTOVER_CANDIDATE_LIMIT = 64;
+
+/**
+ * THE WHOLE TABLE (row MH1, decision C148 (f)). The door keeps only the HEAD of a stream
+ * (`HELPER_OUTPUT_CAP_BYTES`, 64 KiB). A busy host prints a longer table (this Mac: about 900 rows,
+ * 82 KB, on 2026-10-14), and `ps -ax` lists the processes with a terminal LAST: a helper of a Core
+ * started from a terminal stood past the cut, and the check answered "nothing is left" without having
+ * compared its row. The table is therefore read from the stream as it arrives, up to this bound; a
+ * longer table, or a door that hands only a FULL head, is answered like a table that could not be read
+ * (null).
+ */
+export const LEFTOVER_TABLE_LIMIT_BYTES = 4 * 1024 * 1024;
 
 /** A live process of one of the programs looked for, that the Core did not start. */
 export interface LeftoverProcess {
@@ -97,14 +108,32 @@ export async function leftoverPrograms(
   own: ReadonlySet<number> = new Set(),
   readProgramPath?: ProgramPathReader,
 ): Promise<readonly LeftoverProcess[] | null> {
-  const child = door({ command: PROCESS_TABLE, args: PROCESS_TABLE_ARGUMENTS });
+  // The whole table, not the door's head (`LEFTOVER_TABLE_LIMIT_BYTES`).
+  const streamed: Buffer[] = [];
+  let streamedBytes = 0;
+  let tooLong = false;
+  const keep = (chunk: Buffer): void => {
+    if (tooLong) return;
+    if (streamedBytes + chunk.length > LEFTOVER_TABLE_LIMIT_BYTES) {
+      tooLong = true;
+      streamed.length = 0;
+      return;
+    }
+    streamed.push(chunk);
+    streamedBytes += chunk.length;
+  };
+  const child = door({ command: PROCESS_TABLE, args: PROCESS_TABLE_ARGUMENTS, onOutput: keep });
   const cancel = timers.after(READING_BOUND_MS, () => child.kill('SIGKILL'));
   const exit = await child.ended;
   cancel();
-  if (exit.spawnFailed || exit.exitCode !== 0) return null;
+  if (exit.spawnFailed || exit.exitCode !== 0 || tooLong) return null;
+  // A door that streamed nothing (a double, or an empty table) is read from its kept head; a head that
+  // filled the cap may have been cut, and a check that cannot see does not answer "nothing is left".
+  if (streamedBytes === 0 && Buffer.byteLength(exit.output) >= HELPER_OUTPUT_CAP_BYTES) return null;
+  const table = streamedBytes > 0 ? Buffer.concat(streamed).toString('utf8') : exit.output;
   const found: LeftoverProcess[] = [];
   let asked = 0;
-  for (const line of exit.output.split('\n')) {
+  for (const line of table.split('\n')) {
     const row = /^\s*(\d+)\s+(.*)$/.exec(line);
     if (row === null) continue;
     const pid = Number(row[1]);

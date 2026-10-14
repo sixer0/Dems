@@ -311,6 +311,10 @@ const REFUSED_BY_CHECK: ReadonlyArray<readonly [string, string, Row]> = [
   ['host_network_aliases_remove_error_check', 'host_network_aliases', hostNetworkAlias({ remove_error: 'del failed' })],
   ['capture_audio_inputs_usb_serial_check', 'capture_audio_inputs', captureAudioInput('MIC-01', { usb_serial: 'SN 0042' })],
   ['capture_audio_inputs_usb_port_check', 'capture_audio_inputs', captureAudioInput('MIC-01', { usb_port: '1-1.4/input0' })],
+  // Schema v15 (set 16, design 07): the two CHECKs of the retirement. An instant without an
+  // operator breaks the first alone; a retired PoE row (instant and operator both set) the second alone.
+  ['capture_devices_retired_check', 'capture_devices', captureDevice('CAM-01', 'CAMERA', { retired_at: T })],
+  ['capture_devices_retired_kind_check', 'capture_devices', captureDevice('POE-A1', 'POE', { poe_port: 'P1', retired_at: T, retired_by: 'OPR-001' })],
   // ── schema v11 (task 4 schema set C): the eleven CHECKs of T-48. Each row breaks ONE rule, or
   //    the rule it names comes first in name order (CHECKs are evaluated in name order). ──
   ['installation_acceptances_software_version_check', 'installation_acceptances', installationAcceptance({ software_version: '' })],
@@ -354,11 +358,11 @@ async function insert(table: string, row: Row): Promise<void> {
 }
 
 describe('CL-03: one refused row per named CHECK', () => {
-  it('the list covers all 231 CHECKs of the contract: 226 directly, 5 that another rule refuses first', () => {
+  it('the list covers all 233 CHECKs of the contract: 228 directly, 5 that another rule refuses first', () => {
     const named = inventory.tables.flatMap((table) => table.constraints.filter((constraint) => constraint.kind === 'CHECK').map((constraint) => constraint.name));
     const covered = [...REFUSED_BY_CHECK.map(([name]) => name), ...SHADOWED.map(([name]) => name)];
-    expect(named).toHaveLength(231);
-    expect(REFUSED_BY_CHECK).toHaveLength(226);
+    expect(named).toHaveLength(233);
+    expect(REFUSED_BY_CHECK).toHaveLength(228);
     expect([...covered].sort()).toEqual([...named].sort());
     for (const [name, table] of [...REFUSED_BY_CHECK, ...SHADOWED]) expect(name.startsWith(`${table}_`), name).toBe(true);
   });
@@ -568,11 +572,13 @@ describe('CL-02: every reference is a foreign key with ON DELETE RESTRICT', () =
     // Both rows are REVOKED ones: a row in force would meet the one-in-force rule first.
     ['installation_acceptances_accepted_by_fkey', 'installation_acceptances', installationAcceptance({ ...ACCEPTANCE_REVOKED, accepted_by: 'OPR-777' })],
     ['installation_acceptances_revoked_by_fkey', 'installation_acceptances', installationAcceptance({ ...ACCEPTANCE_REVOKED, revoked_by: 'OPR-777' })],
+    // schema v15 (set 16, design 07): who retired a device, an unknown operator.
+    ['capture_devices_retired_by_fkey', 'capture_devices', captureDevice('CAM-77', 'CAMERA', { retired_at: T, retired_by: 'OPR-777' })],
   ];
 
-  it('the list covers all 48 foreign keys of the contract', () => {
+  it('the list covers all 49 foreign keys of the contract', () => {
     const named = inventory.tables.flatMap((table) => table.constraints.filter((constraint) => constraint.kind === 'FOREIGN KEY').map((constraint) => constraint.name));
-    expect(named).toHaveLength(48);
+    expect(named).toHaveLength(49);
     expect([...UNKNOWN_PARENT.map(([name]) => name), 'audit_log_actor_id_fkey'].sort()).toEqual([...named].sort());
   });
 

@@ -163,7 +163,8 @@ describe('where each audit type is written', () => {
     // audio gap of a worker restart and the stored-credential connection test join the list, 34 -> 38 (78 -> 82 in all).
     // Task 4 row R1b (decision C99): CAPTURE_VIDEO_ABSENT_IN_SESSION joins the list, 38 -> 39 (82 -> 83 in all).
     // Task 4 row N2: CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED and CAPTURE_AUDIO_SILENCE_INSERTED join the list, 39 -> 41 (83 -> 85 in all).
-    expect(bySource).toEqual({ 'ALLOW-LIST': 41, MODULE: 11, SIMULATOR: 33 });
+    // Task 4 row RD2: CAPTURE_DEVICE_RETIRED joins the list, 41 -> 42 (85 -> 86 in all).
+    expect(bySource).toEqual({ 'ALLOW-LIST': 42, MODULE: 11, SIMULATOR: 33 });
     // The nineteen of the list are the nineteen the audit writer names (nine of the backend task,
     // nine of the capture phase, and STT_CONFIG_CHANGED of blueprint row 113, which has a builder:
     // `modules/stt-config`), and the nine older ones mostly have a builder too. A listed type
@@ -221,6 +222,9 @@ describe('where each audit type is written', () => {
         // capture session (row N11), which states the details itself; the fixture states one row of each.
         'CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED',
         'CAPTURE_AUDIO_SILENCE_INSERTED',
+        // Task 4 row RD2 (decision C147): the retirement of a device. Its live writer is operation 111's unit
+        // (row RD3) with the shared builder `captureDeviceRetiredDetails`; the fixture states one row until then.
+        'CAPTURE_DEVICE_RETIRED',
       ].sort(),
     );
   });
@@ -306,7 +310,8 @@ describe('every audit row of the fixture', () => {
     });
     // Task 4 row R1b: 82 -> 83 with CAPTURE_VIDEO_ABSENT_IN_SESSION.
     // Task 4 row N2: 83 -> 85 with CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED and CAPTURE_AUDIO_SILENCE_INSERTED.
-    expect(lines).toHaveLength(85);
+    // Task 4 row RD2: 85 -> 86 with CAPTURE_DEVICE_RETIRED.
+    expect(lines).toHaveLength(86);
     console.log(['[w25] audit detail keys per type: | type | written by | keys expected | keys written (rows) |', ...lines].join('\n'));
   });
 
@@ -319,7 +324,7 @@ describe('every audit row of the fixture', () => {
       const expected = builder ?? (administration.has(type) ? [administration.get(type) ?? ''] : (shapes.get(type)?.severities ?? []));
       return `| ${type} | ${AUDIT_TYPE_CATEGORY[type]} | ${source} | ${[...expected].sort().join(' or ')} | ${counted(ofType(type).map((row) => row.severity))} |`;
     });
-    expect(lines).toHaveLength(85);
+    expect(lines).toHaveLength(86); // task 4 row RD2: + CAPTURE_DEVICE_RETIRED
     console.log(['[w25] audit severity per type: | type | category | severity from | severity expected | severity written (rows) |', ...lines].join('\n'));
   });
 });

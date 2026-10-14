@@ -1,5 +1,5 @@
 /**
- * Simulated REST handlers for the 43 simulated operations: the 9 §21.2 endpoints
+ * Simulated REST handlers for the 44 simulated operations: the 9 §21.2 endpoints
  * (masterplan/01_specs.md §14.7 `api.ts`, §14.9 `simAwareFetch`; AC-58) plus the 13 capture,
  * audio-source, sealing and transcript operations of schema v2 (task 3 M2-W9b, blueprint row 51a;
  * OD-17 "the simulator emulates v2" supersedes the old "simulator untouched" rule, OD-23;
@@ -12,7 +12,9 @@
  * commissioning operations 101-107 (task 4, blueprint row 102): synthetic answers that change nothing;
  * plus the stored-credential connection test 108 (task 4, row V3): a synthetic result, nothing changed;
  * plus the installation acceptance and its revocation 109-110 (task 4, blueprint row 116): the
- * simulator keeps no installation record, so both answer a refusal that says so and change nothing.
+ * simulator keeps no installation record, so both answer a refusal that says so and change nothing;
+ * plus the retirement of a registered camera or microphone 111 (task 4, row RD2; design 07): the
+ * simulator retires a device it registered itself, in its own state, with its audit row.
  *
  * `handleSimApiRequest(sim, { method, path, body })` → `{ status, headers, body }`:
  * - every response carries `x-dems-simulated: 1` and `content-type: application/json`;
@@ -79,6 +81,14 @@ import {
   InstallationAcceptanceReason,
   InstallationAcceptanceRevokeRequestSchema,
 } from '../api/installation-acceptance';
+import {
+  CAPTURE_RETIRE_REFUSAL_SENTENCES,
+  CaptureDeviceRetireRequestSchema,
+  CaptureRetireRefusalReason,
+  captureDeviceRetiredDetails,
+  type CaptureDeviceRetirement,
+  type CaptureRetireRefusal,
+} from '../api/capture-retire';
 import { EXPORT_JOB_ID_PATTERN, HARDWARE_DEVICE_ID_PATTERN, MIC_INPUT_ID_PATTERN, exportJobIdOf } from '../api/patterns';
 import { CAPTURE_NOT_DURABLE_REASON } from '../api/sessions';
 import {
@@ -106,7 +116,7 @@ import { SEALING_ETA_STEP_MS, SEALING_FIRST_ATTEMPT } from './constants';
 import { toWibIso } from './clock';
 import { findOperatorById, roleHas } from './auth';
 import { setCaptureConfigTransition } from './capture-config';
-import { nextCaptureCameraId, registerCaptureDeviceTransition } from './capture-registry';
+import { RETIRE_REFUSAL, nextCaptureCameraId, registerCaptureDeviceTransition, retireCaptureDeviceTransition, selectorSlotOfDevice } from './capture-registry';
 import { describeError, SimErrorCode, SimNotFoundError, SimPermissionError, SimTransitionError } from './errors';
 import { canonicalJSON, recordActivity, sha256Hex } from './events';
 import { SIMULATED_SIGNING_KEY_ID } from './evidence';
@@ -209,6 +219,8 @@ export const SIM_API_ROUTES: readonly SimApiRoute[] = [
   // ── The installation acceptance and its revocation (task 4, blueprint row 116; WP-26b; ops 109-110) ──
   { method: 'POST', path: '/api/v1/installation/acceptance', operationId: 'acceptInstallation' },
   { method: 'POST', path: '/api/v1/installation/acceptance/revoke', operationId: 'revokeInstallationAcceptance' },
+  // ── The retirement of a registered camera or microphone (task 4, row RD2; design 07; op 111) ──
+  { method: 'POST', path: '/api/v1/capture/devices/{id}/retire', operationId: 'retireCaptureDevice' },
 ];
 
 
@@ -1883,6 +1895,55 @@ const DISCOVERY_ROUTES: readonly Route[] = [
       if (!InstallationAcceptanceRevokeRequestSchema.safeParse(body).success) return failWith(422, 'INVALID_INPUT', 'The request does not match the expected input.', { in: 'body' });
       const reason = InstallationAcceptanceReason.INSTALLATION_ACCEPTANCE_NOT_IN_FORCE;
       return failWith(409, 'INVALID_STATE', INSTALLATION_ACCEPTANCE_REFUSAL_SENTENCES[reason], { reason });
+    },
+  },
+  {
+    // 111 retireCaptureDevice (task 4, row RD2; design 07 sections 4.2-4.4; decision C147). The
+    // simulator retires a device IT registered (an adopted camera) in its own state, through the
+    // transition of the INTERNAL action the Core runs inside operation 111's unit, and writes the
+    // same CAPTURE_DEVICE_RETIRED row. It holds no credential: `credentialDestroyed: false`, and no
+    // stream row: `streamRowsKept: 0`. The Core server's order: the role (CAPTURE_COMMISSION), the
+    // web-console condition, the idle lock, the body, the device (404), then the transition's own
+    // refusals - built-in, retired already, assigned to a slot. A refusal changes nothing.
+    method: 'POST',
+    pattern: /^\/api\/v1\/capture\/devices\/([^/]+)\/retire$/,
+    handle: (target, [id = ''], body) => {
+      const refused = commissioningRefusal(target, true);
+      if (refused) return refused;
+      const parsed = CaptureDeviceRetireRequestSchema.safeParse(body);
+      if (!parsed.success) return failWith(422, 'INVALID_INPUT', 'The request does not match the expected input.', { in: 'body' });
+      const { store, clock } = target;
+      const state = store.getState();
+      const actorId = signedInOperatorId(state);
+      const now = clock.now();
+      let retired: ReturnType<typeof retireCaptureDeviceTransition>;
+      try {
+        retired = retireCaptureDeviceTransition(state, { deviceId: id, retiredAt: now, retiredBy: actorId ?? '' });
+      } catch (error) {
+        if (!(error instanceof SimTransitionError)) throw error;
+        if (error.reason === RETIRE_REFUSAL.NOT_FOUND) return fail(404, 'NOT_FOUND', 'The capture registry has no such device.');
+        const reason = error.reason as CaptureRetireRefusal | null;
+        if (reason === null || !(reason in CAPTURE_RETIRE_REFUSAL_SENTENCES)) throw error;
+        const slot = reason === CaptureRetireRefusalReason.CAPTURE_DEVICE_ASSIGNED ? selectorSlotOfDevice(state, id) : null;
+        return failWith(409, 'INVALID_STATE', CAPTURE_RETIRE_REFUSAL_SENTENCES[reason], { reason, ...(slot === null ? {} : { slot }) });
+      }
+      const device = retired.result;
+      const kind = device.kind === 'MIC' ? 'MIC' : 'CAMERA';
+      store.setState({
+        ...retired.state,
+        ...recordActivity(retired.state, now, [
+          {
+            audit: {
+              type: AuditType.CAPTURE_DEVICE_RETIRED,
+              message: `Device retired: ${device.id}`,
+              actorId,
+              deviceId: device.id,
+              details: captureDeviceRetiredDetails({ deviceId: device.id, kind, reason: parsed.data.reason, credentialDestroyed: false, streamRowsKept: 0, permission: Permission.CAPTURE_COMMISSION }),
+            },
+          },
+        ]),
+      });
+      return respond(200, { deviceId: device.id, device, reason: parsed.data.reason, credentialDestroyed: false } satisfies CaptureDeviceRetirement);
     },
   },
 ];

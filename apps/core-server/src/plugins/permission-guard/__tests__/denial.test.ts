@@ -305,7 +305,7 @@ describe('the row of an audited refusal (RB-4, RB-6; spec §13.1)', () => {
         const allowedByMarker = rule.permissions.some((permission) => (ROLE_PERMISSIONS[role] as readonly Permission[]).includes(permission));
         return allowedByMarker && rule.conditions.includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION);
       }).length;
-    expect(Object.fromEntries(Object.values(OperatorRole).map((role) => [role, webOnlyRows(role)]))).toEqual({ INVESTIGATOR: 0, SUPERVISOR: 7, TECHNICIAN: 16 }); // 3 + the two sound-card operations of task 4 row 63 + the re-address of row 194 + the stored-credential connection test of row V3; the TECHNICIAN also holds the permission of the seven commissioning operations of row 102 and of the two installation-acceptance operations of row 116 (14 -> 16)
+    expect(Object.fromEntries(Object.values(OperatorRole).map((role) => [role, webOnlyRows(role)]))).toEqual({ INVESTIGATOR: 0, SUPERVISOR: 7, TECHNICIAN: 17 }); // 3 + the two sound-card operations of task 4 row 63 + the re-address of row 194 + the stored-credential connection test of row V3; the TECHNICIAN also holds the permission of the seven commissioning operations of row 102 and of the two installation-acceptance operations of row 116 (14 -> 16) and of the retirement of row RD2 (16 -> 17)
     const expectedRows = retiredRows + Object.values(OperatorRole).reduce((sum, role) => sum + deniedByRoleTable(role) + holderRows(role) + webOnlyRows(role), 0);
     expect(rows).toBe(expectedRows);
   });

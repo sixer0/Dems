@@ -188,6 +188,10 @@ describe.skipIf(!existsSync(FFMPEG))('M4-LOCAL-MIC-1 support: the helper with th
     const reading = readPipe(stream.input.path, 48_000 * 4 * 60, 20_000);
     await stream.start();
     const pid = stream.helperPid() as number;
+    // Row MH1 (C148 (f)): the helper is alive when the check reads the table, so a miss below is the check's, not a
+    // helper that already ended. The check reads the WHOLE table: this host's table is longer than the door's 64 KiB
+    // head, and `ps -ax` lists a helper started from a terminal past it (the cause of the two REDs; `leftover.ts`).
+    expect(alive(pid)).toBe(true);
     // As a stranger's process (the Core of an earlier run) it IS found; as the Core's own it is not (control in both directions).
     expect(await leftoverHelperPids(startHelperProcess, timers, FFMPEG, new Set())).toContain(pid);
     expect(await leftoverHelperPids(startHelperProcess, timers, FFMPEG, helper.livePids())).not.toContain(pid);

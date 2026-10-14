@@ -77,8 +77,9 @@ describe('the examples of the 100 operations that only the Core server answers',
     // sound cards of task 4 row 63 (design addendum 4.2), and the 1 of the confirmed re-address of
     // task 4 row 194 (operation 100), and the 7 of the commissioning functions of task 4 row 102,
     // and the 1 of the stored-credential connection test of task 4 row V3 (operation 108),
-    // and the 2 of the installation acceptance of task 4 row 116 (operations 109-110).
-    expect(NEW_OPERATIONS).toHaveLength(100);
+    // and the 2 of the installation acceptance of task 4 row 116 (operations 109-110),
+    // and the 1 of the retirement of a device of task 4 row RD2 (operation 111).
+    expect(NEW_OPERATIONS).toHaveLength(101);
     expect(responses).toBeGreaterThan(300);
   });
 

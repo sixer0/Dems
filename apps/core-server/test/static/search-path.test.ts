@@ -50,6 +50,9 @@ const ALLOWED: Readonly<Record<string, string>> = {
   // SECURITY DEFINER reveal function pins its own search_path (dbc-3 §D, MG-5; rows 46 and 112).
   'src/db/migrations/0005_capture_privileges.sql': 'the capture credential reveal function pins its own path (migration, owner role)',
   'src/db/migrations/0007_stt_config_privileges.sql': 'the STT credential reveal function pins its own path (migration, owner role)',
+  // Task 4 set 16 (design 07, decision C147), the same pattern: the SECURITY DEFINER destroy
+  // function of a retired device's credential and the guard of a retired row pin their own path.
+  'src/db/migrations/0033_capture_device_retirement_privileges.sql': 'the capture credential destroy function and the retired-row guard pin their own path (migration, owner role)',
 };
 
 // TypeScript without its comments; an SQL file as it is (its comments are not TypeScript's).

@@ -3,7 +3,7 @@
   "info": {
     "title": "DEMS Core API",
     "version": "0.3.0",
-    "summary": "Core API v1 of the DEMS Edge Client demo, as the Core server answers it: 110 operations and one WebSocket channel.",
+    "summary": "Core API v1 of the DEMS Edge Client demo, as the Core server answers it: 111 operations and one WebSocket channel.",
     "description": "Reference for the Core API v1 of the **DEMS Edge Client demo** (device DEMS-IR-01), as the **Core server** answers it. The design book (§21.2) names nine endpoints; this document adds their bodies, and the operations both clients need beyond them: sign-in, user administration, pairing, the session lifecycle, evidence, devices, storage, network and time, security and audit, system, alerts and the demo controls.\n\n### Who answers\n\n| Service | Address | Answers |\n|---|---|---|\n| The Core server (`dems-core-server`) | `http://127.0.0.1:4420` | Every operation of this document and `WS /ws`. It keeps the Core state in PostgreSQL and is the only authority on who may do what. Loopback only. |\n| mock-core (`dems-mock-core`) | `http://127.0.0.1:4400` | `GET /api/v1/health` and a heartbeat-only `WS /ws`. It is the service of Simulated mode and answers no other operation. |\n| The in-app simulator | none | In Simulated mode, the nine design-book operations (`x-dems-mode: simulated`), inside the app and without a request. Its answers carry `x-dems-simulated: 1`; the Core server never sends that header. |\n\nEvery operation carries the badge **LIVE**: the Core server answers it over the network. `x-dems-services` names the services that answer an operation, and `x-dems-mode` says whether the in-app simulator can answer it too (`simulated`) or only a service can (`live`).\n\n### Access\n\nThe Core server decides on every request, before the body is read, from the credential the request carries:\n- a **web console** sends the session cookie that `signIn` set (scheme `sessionCookie`);\n- a **paired device** sends `Authorization: Bearer` (scheme `bearerAuth`): its device credential on the device operations and at sign-in, its session token once an operator is signed in.\n\nA request carries one credential, never both. Each operation states its access rule as `x-dems-access` (PUBLIC, DEVICE, AUTHENTICATED, one permission, or the one any-of) and the audit row it writes as `x-dems-audit`. A refusal for a missing permission answers `403` and writes one audit row; the role and its permissions are read from the database for each request.\n\n### Answers every operation shares\n\nThe answers that do not depend on the operation are defined once, under Responses: a malformed path, an unknown route, a wrong method, a server that is not ready, an Origin outside the allowed lists, two credentials in one request, the request throttle, a body over 65,536 bytes, and an unexpected failure. Every answer carries `x-request-id`, and an error repeats it as `error.requestId`. A 2xx answer of a POST carries `x-dems-epoch` and `x-dems-revision`: the state revision that holds the effect of the command.\n\n### Lists\n\nA list is cursor-paged: `cursor` is the `nextCursor` of the page before, `limit` is 1 to 200 (50 when omitted), and `nextCursor` is null on the last page.\n\n### Not part of this API\n\n- Media and evidence package files are not served: the clients keep their bundled demo media, and the server owns the records, the hashes and the verdicts.\n- No operation creates or deletes a user, changes a password or edits the role matrix.\n- No operation takes a file or resolves a path that a client sent.\n\n### Examples\n\nExamples are frozen at 2026-10-01 10:00:00 WIB and follow the canonical demo dataset: session SES-20261001-0024 (case LP/2026/1001-0007) and evidence EV-20260930-0004, exported by the SUPERVISOR operator. The nine design-book operations write times as ISO-8601 text; every other operation writes epoch milliseconds on the server clock. A password, a pairing code, a session token, a device credential and a biometric token appear only as placeholders that open nothing. All data is synthetic."
   },
   "servers": [
@@ -15043,7 +15043,8 @@
                 "CAPTURE_DEVICE_CONNECTION_TESTED",
                 "CAPTURE_VIDEO_ABSENT_IN_SESSION",
                 "CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED",
-                "CAPTURE_AUDIO_SILENCE_INSERTED"
+                "CAPTURE_AUDIO_SILENCE_INSERTED",
+                "CAPTURE_DEVICE_RETIRED"
               ]
             }
           },
@@ -29706,6 +29707,417 @@
           "dems-core-server"
         ]
       }
+    },
+    "/api/v1/capture/devices/{id}/retire": {
+      "post": {
+        "operationId": "retireCaptureDevice",
+        "tags": [
+          "Device"
+        ],
+        "summary": "Retire a registered camera or microphone",
+        "description": "**Retires ONE registered camera or microphone for good.** Its stored credential is **destroyed** in the same unit of work; its registry row is **kept** with `retiredAt` and `retiredBy` set, together with its stream rows and its audio input row, so every sealed package and every audit row that names its id keeps its meaning. A retired device is **never assigned again**, never tested (operation 108), never given a credential (89) or an address (100), and it is no longer \"registered\" for an adoption: **adopting the same unit again (operations 95/96, or 99 for a microphone) gives a NEW id** - an id is never reused. There is no way back and no hard delete.\n\n**TECHNICIAN only, web console only.** Needs CAPTURE_COMMISSION, which the TECHNICIAN role alone holds, and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row.\n\n**Idle only.** With a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.\n\n**The body is the reason only**: `REMOVED`, `REPLACED` or `STATEMENT_CHANGED` - a closed set, so no free text reaches the audit row. No credential, address or profile member exists.\n\nRefusals, each storing nothing and writing no audit row, in this order after the role, the web console and the idle lock: `422 INVALID_INPUT` for a body of another form; `404 NOT_FOUND` for an id the registry does not hold; `409 INVALID_STATE` with `details.reason` `CAPTURE_DEVICE_BUILT_IN` (a built-in device of the demonstration model - `CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`, `POE-SWITCH` - or any PoE switch), `CAPTURE_DEVICE_RETIRED` (retired already), `CAPTURE_DEVICE_ASSIGNED` (a slot of the device selector names it; `details.slot` names the slot: unassign it first) or `CONNECTION_TEST_IN_PROGRESS` (operation 108 is testing this camera).\n\n**On success writes one CAPTURE_DEVICE_RETIRED row** (category SECURITY): `deviceId`, `kind` (CAMERA or MIC), `reason`, `credentialDestroyed`, `streamRowsKept` (a count), `operationId` and `permission` - never an address, a hardware id, a serial or a credential. The answer is the device entry after the change. The `captureDevices` slice keeps the entry with `retiredAt` set: a client lists it as Retired and leaves it out of every selector and assignment list.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator holds no credential: it retires a device it registered itself (an adopted camera) in its own state and writes the same CAPTURE_DEVICE_RETIRED row with `credentialDestroyed: false` and `streamRowsKept: 0`; its built-in devices answer `CAPTURE_DEVICE_BUILT_IN`. Same order of refusals as the Core server's.",
+        "responses": {
+          "200": {
+            "description": "The device is retired: its entry with `retiredAt` and `retiredBy`. No credential member exists.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "x-dems-epoch": {
+                "$ref": "#/components/headers/XDemsEpoch"
+              },
+              "x-dems-revision": {
+                "$ref": "#/components/headers/XDemsRevision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureDeviceRetirement"
+                },
+                "examples": {
+                  "retired": {
+                    "summary": "The camera is retired and its stored credential destroyed",
+                    "value": {
+                      "deviceId": "CAM-03",
+                      "device": {
+                        "id": "CAM-03",
+                        "kind": "CAMERA",
+                        "model": "Example camera",
+                        "firmware": null,
+                        "host": "192.168.10.101",
+                        "poePort": null,
+                        "online": true,
+                        "streamState": null,
+                        "capabilities": [
+                          "VIDEO"
+                        ],
+                        "adapter": "ONVIF_RTSP",
+                        "sourceClass": "PRODUCTION",
+                        "profiles": [],
+                        "retiredAt": 1790823600000,
+                        "retiredBy": "OPR-003"
+                      },
+                      "reason": "REPLACED",
+                      "credentialDestroyed": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a JSON object (INVALID_JSON).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidJson": {
+                    "summary": "Not a JSON object",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_JSON",
+                        "message": "The request body must be a JSON object.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session (NOT_SIGNED_IN): none was sent, it expired or ended, or the request carried two credentials (`details.reason: CREDENTIAL_CONFLICT`).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "No valid session",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: the operator's role lacks CAPTURE_COMMISSION (NOT_PERMITTED; one ACCESS_DENIED audit row); the operator's session is bound to a paired tablet or phone (NOT_PERMITTED, `details.reason: WEB_CONSOLE_ONLY`; one ACCESS_DENIED audit row; refused before the body is used); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notPermitted": {
+                    "summary": "SUPERVISOR lacks CAPTURE_COMMISSION",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "retireCaptureDevice",
+                          "permission": "CAPTURE_COMMISSION",
+                          "role": "SUPERVISOR"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "deviceRevoked": {
+                    "summary": "The device is no longer paired",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_REVOKED",
+                        "message": "This device is no longer paired with the Core.",
+                        "details": {
+                          "reason": "DEVICE_REVOKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "originNotAllowed": {
+                    "summary": "An Origin outside the allowed lists",
+                    "value": {
+                      "error": {
+                        "code": "ORIGIN_NOT_ALLOWED",
+                        "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "webConsoleOnly": {
+                    "summary": "A tablet or phone session on a web-console-only operation",
+                    "description": "The caller holds CAPTURE_COMMISSION, but the session is bound to a paired device. One ACCESS_DENIED row is written; the body is not used.",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "retireCaptureDevice",
+                          "permission": "CAPTURE_COMMISSION",
+                          "role": "TECHNICIAN",
+                          "reason": "WEB_CONSOLE_ONLY"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The id names no device of the capture registry (NOT_FOUND). Nothing is changed.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notFound": {
+                    "summary": "No such device",
+                    "value": {
+                      "error": {
+                        "code": "NOT_FOUND",
+                        "message": "The capture registry has no such device.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A session is open (CAPTURE_CONFIG_LOCKED; no audit row), or the device cannot be retired (INVALID_STATE, `details.reason`: CAPTURE_DEVICE_ASSIGNED, CAPTURE_DEVICE_RETIRED, CAPTURE_DEVICE_BUILT_IN, CONNECTION_TEST_IN_PROGRESS). Nothing is changed and no audit row is written.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "locked": {
+                    "summary": "A session is open",
+                    "value": {
+                      "error": {
+                        "code": "CAPTURE_CONFIG_LOCKED",
+                        "message": "The capture configuration cannot be changed while a session is open.",
+                        "details": {
+                          "simCode": "CAPTURE_CONFIG_LOCKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "assigned": {
+                    "summary": "A slot of the device selector names the device",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "This device is assigned to a slot of the device selector. Unassign it first, then retire it. Nothing was changed.",
+                        "details": {
+                          "reason": "CAPTURE_DEVICE_ASSIGNED",
+                          "slot": "VIDEO-01"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "retired": {
+                    "summary": "The device is retired already",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "This device is already retired. Nothing was changed.",
+                        "details": {
+                          "reason": "CAPTURE_DEVICE_RETIRED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "builtIn": {
+                    "summary": "A built-in device of the demonstration model",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "The demo devices of the simulator and the PoE switch cannot be retired. Nothing was changed.",
+                        "details": {
+                          "reason": "CAPTURE_DEVICE_BUILT_IN"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "inProgress": {
+                    "summary": "A connection test of this camera is running",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "Another connection test is running. Try again shortly.",
+                        "details": {
+                          "reason": "CONNECTION_TEST_IN_PROGRESS"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The body or the path parameter does not match its form (INVALID_INPUT). The refusal never quotes the input. Nothing is changed.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidInput": {
+                    "summary": "The body does not match its schema",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_INPUT",
+                        "message": "The request does not match the expected input.",
+                        "details": {
+                          "in": "body"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "invalidPathParameter": {
+                    "summary": "The path parameter does not match its pattern",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_INPUT",
+                        "message": "The request does not match the expected input.",
+                        "details": {
+                          "in": "params"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "LIVE",
+            "position": "after",
+            "color": "#22C55E"
+          }
+        ],
+        "x-dems-mode": "simulated",
+        "x-dems-source": "Task 4, row RD2 (design 07 sections 4.2-4.4), operation 111; decisions C146, C147 (rulings Q1-Q4) (not in the design book)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "A registered camera or microphone of the capture devices, e.g. `CAM-03` or `MIC-03`. Never a candidate id and never an address.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9-]{0,31}$"
+            },
+            "example": "CAM-03"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureDeviceRetireRequest"
+              },
+              "examples": {
+                "statementChanged": {
+                  "summary": "The camera now states other stream profiles",
+                  "value": {
+                    "reason": "STATEMENT_CHANGED"
+                  }
+                },
+                "replaced": {
+                  "summary": "A new unit takes its place",
+                  "value": {
+                    "reason": "REPLACED"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-dems-access": {
+          "rule": "CAPTURE_COMMISSION",
+          "permissions": [
+            "CAPTURE_COMMISSION"
+          ],
+          "conditions": [
+            "WEB_CONSOLE_SESSION"
+          ]
+        },
+        "x-dems-audit": {
+          "success": "CAPTURE_DEVICE_RETIRED",
+          "denial": "ACCESS_DENIED",
+          "also": []
+        },
+        "x-dems-services": [
+          "dems-core-server"
+        ]
+      }
     }
   },
   "components": {
@@ -34504,6 +34916,16 @@
                     "additionalProperties": false,
                     "description": "One stored stream profile of a camera: its code and what the code states of the stream."
                   }
+                },
+                "retiredAt": {
+                  "description": "When the device was retired (operation 111, `capture_devices.retired_at`). PRESENT ONLY ON A RETIRED DEVICE, always together with `retiredBy`: its stored credential is destroyed, it is never assigned again, and a client lists it with a Retired state and leaves it out of every selector and assignment list. Absent: the device is in service. A retired device stays in the registry for good (its id is never reused).",
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "retiredBy": {
+                  "description": "The operator who retired the device (`OPR-NNN`). Present exactly when `retiredAt` is.",
+                  "type": "string",
+                  "pattern": "^OPR-\\d{3}$"
                 }
               },
               "required": [
@@ -37025,7 +37447,8 @@
               "CAPTURE_DEVICE_CONNECTION_TESTED",
               "CAPTURE_VIDEO_ABSENT_IN_SESSION",
               "CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED",
-              "CAPTURE_AUDIO_SILENCE_INSERTED"
+              "CAPTURE_AUDIO_SILENCE_INSERTED",
+              "CAPTURE_DEVICE_RETIRED"
             ]
           },
           "category": {
@@ -39692,7 +40115,8 @@
               "CAPTURE_DEVICE_CONNECTION_TESTED",
               "CAPTURE_VIDEO_ABSENT_IN_SESSION",
               "CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED",
-              "CAPTURE_AUDIO_SILENCE_INSERTED"
+              "CAPTURE_AUDIO_SILENCE_INSERTED",
+              "CAPTURE_DEVICE_RETIRED"
             ]
           },
           "actorId": {
@@ -42230,6 +42654,16 @@
                   "additionalProperties": false,
                   "description": "One stored stream profile of a camera: its code and what the code states of the stream."
                 }
+              },
+              "retiredAt": {
+                "description": "When the device was retired (operation 111, `capture_devices.retired_at`). PRESENT ONLY ON A RETIRED DEVICE, always together with `retiredBy`: its stored credential is destroyed, it is never assigned again, and a client lists it with a Retired state and leaves it out of every selector and assignment list. Absent: the device is in service. A retired device stays in the registry for good (its id is never reused).",
+                "type": "integer",
+                "minimum": 0
+              },
+              "retiredBy": {
+                "description": "The operator who retired the device (`OPR-NNN`). Present exactly when `retiredAt` is.",
+                "type": "string",
+                "pattern": "^OPR-\\d{3}$"
               }
             },
             "required": [
@@ -42745,6 +43179,16 @@
                   "additionalProperties": false,
                   "description": "One stored stream profile of a camera: its code and what the code states of the stream."
                 }
+              },
+              "retiredAt": {
+                "description": "When the device was retired (operation 111, `capture_devices.retired_at`). PRESENT ONLY ON A RETIRED DEVICE, always together with `retiredBy`: its stored credential is destroyed, it is never assigned again, and a client lists it with a Retired state and leaves it out of every selector and assignment list. Absent: the device is in service. A retired device stays in the registry for good (its id is never reused).",
+                "type": "integer",
+                "minimum": 0
+              },
+              "retiredBy": {
+                "description": "The operator who retired the device (`OPR-NNN`). Present exactly when `retiredAt` is.",
+                "type": "string",
+                "pattern": "^OPR-\\d{3}$"
               }
             },
             "required": [
@@ -44102,6 +44546,229 @@
         ],
         "additionalProperties": false,
         "description": "Request body of `POST /api/v1/installation/acceptance/revoke` (task 4, operation 110). No id: the one acceptance in force is revoked."
+      },
+      "CaptureDeviceRetireRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "REMOVED",
+              "REPLACED",
+              "STATEMENT_CHANGED"
+            ],
+            "description": "Why the device is retired: REMOVED (taken out for good), REPLACED (a new unit takes its place) or STATEMENT_CHANGED (the camera now states other stream profiles). A closed set: no free text."
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "The body of operation 111. Only the reason: no credential, no address, no profile."
+      },
+      "CaptureDeviceRetirement": {
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "pattern": "^(?:CAM|MIC)-\\d{2,8}$",
+            "description": "The retired device: `CAM-NN` or `MIC-NN`. Never assigned again; never reused."
+          },
+          "device": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "`CAM-nn`, `MIC-nn` or `POE-…` (`dbc-3 §B.2` id CHECK)."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CAMERA",
+                  "MIC",
+                  "POE"
+                ],
+                "description": "The `capture_devices.kind` value set: CAMERA, MIC, POE."
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "firmware": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "host": {
+                "description": "Host or address only; never a credential URL (C-N8).",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "poePort": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "online": {
+                "type": "boolean",
+                "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
+              },
+              "streamState": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "LIVE",
+                      "LOST"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Null for a device with no stream (a mic, the PoE switch). Like `online`, not a reading at rest on a Core in its own capture (finding JW-23)."
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Capability codes the adapters reported; an open set."
+              },
+              "adapter": {
+                "description": "The adapter kind behind the device (C3 §2.6 \"Device shapes\"): `ONVIF_RTSP`, `USB_AUDIO`, `SNMP_POE`, `FAKE` or `LOCAL_DEVICE`. Present on a device that operation 96 registered.",
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+              },
+              "sourceClass": {
+                "description": "Derived by the Core from `adapter`: `DEVELOPMENT` exactly for `FAKE` and `LOCAL_DEVICE`. Never set by a client.",
+                "type": "string",
+                "enum": [
+                  "PRODUCTION",
+                  "DEVELOPMENT"
+                ]
+              },
+              "sourceOpen": {
+                "description": "True while the Core holds this source open (C3 §2.6, erratum PE-128-38; SEC35-44 (4)): the \"is on\" fact of a `LOCAL_DEVICE` - the short open of a pre-check included. A runtime fact, never stored: absent when the source is not open, after a restart until it opens, and always in simulated capture.",
+                "type": "boolean"
+              },
+              "profiles": {
+                "description": "The stream profiles the Core holds stored for this camera (`capture_devices.profiles`), in the stored order, each code once. A production camera is assigned to a track with ONE of them: the `code` is sent as `profile` of a camera line of operation 78 (operation 79 carries no profile). An EMPTY list: the Core holds no profile for this camera - it cannot be assigned, and no default stands in (C36). Present on every registered camera (one that operation 96 added); absent on every other entry (a microphone, the PoE switch, a built-in device). No credential, no address, no URL, no text of the camera.",
+                "maxItems": 16,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "pattern": "^[A-Z][A-Z0-9_]{0,63}$",
+                      "description": "The profile code (`HEVC_1080P`, `H264_720P30`): upper-case letters, digits and underscores, 1 to 64 characters. The value a camera line of operation 78 names as `profile`."
+                    },
+                    "codec": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "H.264",
+                            "HEVC"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The codec the code states: a closed set. Null when the code is no stream statement. Never a default."
+                    },
+                    "resolution": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^(?:[1-9][0-9]{2,3}p|[1-9][0-9]{2,3}x[1-9][0-9]{2,3})$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The picture the code states: `<height>p` for a 16:9 picture, else `<width>x<height>`. Null when the code is no stream statement. Never a default."
+                    },
+                    "fps": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 240
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The whole-number rate the code states, 1 to 240; null when it states none (an HEVC stream states no rate). Never a default."
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "codec",
+                    "resolution",
+                    "fps"
+                  ],
+                  "additionalProperties": false,
+                  "description": "One stored stream profile of a camera: its code and what the code states of the stream."
+                }
+              },
+              "retiredAt": {
+                "description": "When the device was retired (operation 111, `capture_devices.retired_at`). PRESENT ONLY ON A RETIRED DEVICE, always together with `retiredBy`: its stored credential is destroyed, it is never assigned again, and a client lists it with a Retired state and leaves it out of every selector and assignment list. Absent: the device is in service. A retired device stays in the registry for good (its id is never reused).",
+                "type": "integer",
+                "minimum": 0
+              },
+              "retiredBy": {
+                "description": "The operator who retired the device (`OPR-NNN`). Present exactly when `retiredAt` is.",
+                "type": "string",
+                "pattern": "^OPR-\\d{3}$"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "model",
+              "firmware",
+              "host",
+              "poePort",
+              "online",
+              "streamState",
+              "capabilities"
+            ],
+            "additionalProperties": false,
+            "description": "The device entry after the change: `retiredAt` and `retiredBy` are set. No credential member exists."
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "REMOVED",
+              "REPLACED",
+              "STATEMENT_CHANGED"
+            ]
+          },
+          "credentialDestroyed": {
+            "type": "boolean",
+            "description": "True when a stored credential existed and was destroyed in the same unit (a camera with a stored password). False for a microphone, a camera without one, and always in the simulator, which stores none."
+          }
+        },
+        "required": [
+          "deviceId",
+          "device",
+          "reason",
+          "credentialDestroyed"
+        ],
+        "additionalProperties": false,
+        "description": "The answer of operation 111: the retired device entry."
       }
     },
     "headers": {

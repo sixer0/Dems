@@ -55,7 +55,9 @@ export const MIGRATIONS_TABLE = '__drizzle_migrations';
  * contract revision `dbc-14`): `0028` generated, `0029` hand-written, schema version 13. Files
  * thirty-one and thirty-two are migration set 15 (the allowed ONVIF ports of the network settings
  * and the widened form of an interface name, contract revision `dbc-15`): `0030` generated,
- * `0031` hand-written, schema version 14.
+ * `0031` hand-written, schema version 14. Files thirty-three and thirty-four are migration set 16
+ * (retiring a capture device, design 07 of task 4, decision C147, contract revision `dbc-16`):
+ * `0032` generated, `0033` hand-written, schema version 15.
  */
 export const INITIAL_MIGRATION_TAGS = [
   '0000_prelude',
@@ -90,6 +92,8 @@ export const INITIAL_MIGRATION_TAGS = [
   '0029_alias_removal_reason_unconfirmed_privileges',
   '0030_network_config_onvif_ports',
   '0031_network_config_onvif_ports_privileges',
+  '0032_capture_device_retirement',
+  '0033_capture_device_retirement_privileges',
 ] as const;
 
 export interface MigrationFile {

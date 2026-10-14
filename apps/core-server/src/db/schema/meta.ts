@@ -106,10 +106,21 @@ import { boolean, check, integer, pgTable, text } from 'drizzle-orm/pg-core';
  * own (upper case admitted) in the two CHECKs that hold one. Code that names the column answers
  * 42703 on a database without the set, and older code must not start on settings that may hold
  * a name or a port list it does not know, so B-3 refuses in both directions.
+ *
+ * 15 since migration set 16 (`0032_capture_device_retirement.sql` +
+ * `0033_capture_device_retirement_privileges.sql`; design
+ * `docs/2026-10-12_input_av_core_adapter_plan/masterplan/07_design_retire_readopt.md` section 4.1,
+ * decision C147): RETIREMENT of a capture device - `capture_devices.retired_at` / `retired_by` with
+ * their two CHECKs, the mirror `capture_audio_inputs.retired_at`, the two identity indexes made
+ * partial (a retired row no longer holds its ONVIF reference or its card input), the guard trigger
+ * that keeps a retired row as it is, and the owner's function that destroys a retired device's
+ * credential. Code that names the columns answers 42703 on a database without the set, and older
+ * code must not start on a registry that may hold retired rows it would treat as in service, so B-3
+ * refuses in both directions.
  */
-export const DB_SCHEMA_VERSION = 14;
+export const DB_SCHEMA_VERSION = 15;
 /** The revision of the database contract the migration set was written from. */
-export const DB_CONTRACT_REVISION = 'dbc-15';
+export const DB_CONTRACT_REVISION = 'dbc-16';
 
 /** T-29. One row. */
 export const schemaMeta = pgTable(

@@ -121,6 +121,7 @@ import { EVIDENCE_OPERATIONS, EVIDENCE_SCHEMAS, TRANSCRIPT_MEDIA_OPERATIONS, TRA
 import { HealthResponseSchema } from './health';
 import { IDENTITY_OPERATIONS, IDENTITY_SCHEMAS } from './identity';
 import { INSTALLATION_ACCEPTANCE_OPERATIONS, INSTALLATION_ACCEPTANCE_SCHEMAS } from './installation-acceptance';
+import { CAPTURE_RETIRE_OPERATIONS, CAPTURE_RETIRE_SCHEMAS } from './capture-retire';
 import { NETWORK_TIME_OPERATIONS, NETWORK_TIME_SCHEMAS } from './network-time';
 import { EXPORT_DENIAL_NOTE, INVALID_INPUT, NOT_SIGNED_IN, forbidden } from './operation-parts';
 import { PAIRING_OPERATIONS, PAIRING_SCHEMAS } from './pairing';
@@ -722,6 +723,8 @@ export const CORE_API_SCHEMAS = {
   ...CAPTURE_DEVICE_TEST_SCHEMAS,
   // Task 4 (blueprint row 116, WP-26b): the five schemas of operations 109-110.
   ...INSTALLATION_ACCEPTANCE_SCHEMAS,
+  // Task 4 (row RD2; design 07): the two schemas of operation 111.
+  ...CAPTURE_RETIRE_SCHEMAS,
 } as const;
 export type CoreApiSchemaName = keyof typeof CORE_API_SCHEMAS;
 
@@ -1148,6 +1151,9 @@ const OPERATION_TABLE = [
   // Task 4 (blueprint row 116, WP-26b; schema set C; decisions U11, C2): the acceptance of the
   // installation and its revocation. 108 + 2 = 110 operations, 39 GET / 71 POST.
   ...INSTALLATION_ACCEPTANCE_OPERATIONS, // 109-110
+  // Task 4 (row RD2; design 07; decisions C146, C147): the retirement of a registered camera or
+  // microphone. 110 + 1 = 111 operations, 39 GET / 72 POST.
+  ...CAPTURE_RETIRE_OPERATIONS, // 111
 ] as const satisfies readonly CoreApiRegistryOperation[];
 
 /** The type of the table with literal operation IDs and schema names (`CORE_API_OPERATION_TABLE`). */

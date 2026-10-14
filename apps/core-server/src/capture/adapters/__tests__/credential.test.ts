@@ -468,7 +468,9 @@ describe('the canary through every channel of the layer', () => {
     const notAFlag = (rule: { accepts(value: unknown): boolean }): boolean => ['', 'x', CANARY.secret, 0, 1, null, [], {}].some((value) => rule.accepts(value)) || !rule.accepts(true) || !rule.accepts(false);
     const named = captureTypes.flatMap(([type, rules]) => Object.entries(rules).filter(([key]) => /secret|credential|passw|user|locator|url|uri/i.test(key)).map(([key, rule]) => ({ name: `${type}.${key}`, rule })));
     expect(named.filter(({ rule }) => notAFlag(rule)).map(({ name }) => name)).toEqual([]);
-    expect(named.map(({ name }) => name)).toEqual(['CAPTURE_CANDIDATE_ADOPTED.credentialSet']);
+    // Task 4 row RD2 (design 07 section 4.2; decisions C147, C154): `credentialDestroyed` of CAPTURE_DEVICE_RETIRED - whether
+    // the retire unit destroyed a stored credential; a yes/no fact as `credentialSet`, held by the flag rule above.
+    expect(named.map(({ name }) => name)).toEqual(['CAPTURE_CANDIDATE_ADOPTED.credentialSet', 'CAPTURE_DEVICE_RETIRED.credentialDestroyed']);
     expect(notAFlag(SERVER_AUDIT_DETAIL_RULES.CAPTURE_CREDENTIAL_SET.deviceId)).toBe(true);
     // Pass D1a (D132): `endpointRef` is a closed form (`urn:uuid:<UUID>`), not a length: no free text, a reference kept.
     for (const type of ['CAPTURE_CONNECTION_TESTED', 'CAPTURE_CANDIDATE_ADOPTED'] as const) {

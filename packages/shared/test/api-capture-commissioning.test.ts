@@ -63,8 +63,34 @@ import {
   simCameraFactoryScan,
   simCaptureNetworkConfig,
   validateCoreApiResponse,
+  // Task 4 row RD2: operation 111.
+  CAPTURE_BUILT_IN_DEVICE_IDS,
+  CAPTURE_DEVICE_RETIRE_PATH,
+  CAPTURE_RETIRE_OPERATIONS,
+  CAPTURE_RETIRE_REFUSAL_SENTENCES,
+  CAPTURE_RETIRE_SCHEMAS,
+  CaptureDeviceRetireRequestSchema,
+  CaptureDeviceRetireReason,
+  CaptureDeviceStatusSchema,
+  CaptureRetireRefusalReason,
+  captureDeviceRetiredDetails,
 } from '../src/api';
-import { AUDIT_TYPE_CATEGORY, AuditType, DEMO_OPERATOR_PASSWORD, OperatorRole, Permission, ROLE_PERMISSIONS, createManualClock, createSim } from '../src/sim';
+import {
+  AUDIT_TYPE_CATEGORY,
+  AuditType,
+  CAPTURE_CONFIG_DEVICE_RETIRED,
+  DEFAULT_CAPTURE_DEVICES,
+  DEMO_OPERATOR_PASSWORD,
+  OperatorRole,
+  Permission,
+  RETIRE_BUILT_IN_DEVICE_IDS,
+  RETIRE_REFUSAL,
+  ROLE_PERMISSIONS,
+  createManualClock,
+  createSim,
+  isCaptureDeviceRetired,
+  retireCaptureDeviceTransition,
+} from '../src/sim';
 
 const numberOf = (source: string): number => Number(/operation (\d+)/.exec(source)?.[1]);
 const IDS = ['getCaptureNetworkConfig', 'updateCaptureNetworkConfig', 'scanFactoryCameras', 'getHostAlias', 'removeHostAlias', 'setCameraNetwork', 'getCameraNetworkJob'] as const;
@@ -113,9 +139,10 @@ describe('the registry: operations 101 to 107', () => {
     expect(holders).toEqual(['TECHNICIAN']);
     // The deferral of row 100 ends here: the permission is enforced at these seven and at no other
     // - until blueprint row 116 (WP-26b) added the acceptance of the installation and its
-    // revocation, operations 109 and 110, which take the same permission (7 -> 9).
+    // revocation, operations 109 and 110, which take the same permission (7 -> 9). Row RD2 (decision
+    // C147, ruling Q1): the retirement of a device, operation 111, takes it too (9 -> 10).
     const naming = CORE_API_OPERATIONS.filter((operation) => describeCoreApiAccess(operation.access) === 'CAPTURE_COMMISSION').map((operation) => operation.operationId);
-    expect(naming).toEqual([...IDS, 'acceptInstallation', 'revokeInstallationAcceptance']);
+    expect(naming).toEqual([...IDS, 'acceptInstallation', 'revokeInstallationAcceptance', 'retireCaptureDevice']);
     for (const operation of CAPTURE_COMMISSIONING_OPERATIONS) {
       expect(operation.responses[403]?.description, operation.operationId).toContain(WEB_CONSOLE_ONLY_REASON);
       expect(operation.responses[403]?.description, operation.operationId).toContain('ACCESS_DENIED');
@@ -482,6 +509,141 @@ describe('the simulator: synthetic answers that change nothing', () => {
       const answer = sim.request({ method, path, body: { anything: 'at all' } });
       expect([answer.status, (answer.body as { error: { code: string; details?: { reason?: string } } }).error.details?.reason], `${method} ${path}`).toEqual([403, 'WEB_CONSOLE_ONLY']);
     }
+    sim.stop();
+  });
+});
+
+// ── Task 4 row RD2 (design 07 sections 4.2-4.4; decisions C146, C147 rulings Q1-Q4): operation 111
+// `retireCaptureDevice`, the retirement of a registered camera or microphone, and its one transition.
+// The simulator's whole flow (every status, the audit row) is flow 20 of openapi.test.ts.
+describe('task 4 row RD2: operation 111, the retirement of a registered camera or microphone', () => {
+  const AT = Date.UTC(2026, 9, 1, 3, 0, 0);
+  async function registry() {
+    const sim = createSim({ storage: null, authStorage: null, clock: createManualClock(AT), scheduler: () => () => {} });
+    await sim.ready;
+    sim.actions.registerCaptureDevice({ id: 'CAM-03', model: 'Example camera', host: '192.168.10.101', adapter: 'ONVIF_RTSP' });
+    sim.actions.registerCaptureMicrophone({ deviceId: null, model: 'USB Audio CODEC' });
+    return sim;
+  }
+  const RETIRE = { retiredAt: AT, retiredBy: 'OPR-003' } as const;
+
+  it('the registry row: number, id, method, path, tag, mode, CAPTURE_COMMISSION on a web console (Q1), the audit type; it is the last entry', () => {
+    const [operation] = CAPTURE_RETIRE_OPERATIONS;
+    expect(CAPTURE_RETIRE_OPERATIONS).toHaveLength(1);
+    expect([numberOf(operation.source), operation.operationId, operation.method, operation.path, operation.tag, operation.mode, operation.audit.success, operation.audit.denial]).toEqual([
+      111, 'retireCaptureDevice', 'post', '/api/v1/capture/devices/{id}/retire', 'Device', 'simulated', 'CAPTURE_DEVICE_RETIRED', 'ACCESS_DENIED',
+    ]);
+    expect(CAPTURE_DEVICE_RETIRE_PATH).toBe(operation.path);
+    expect(operation.access).toEqual(CAPTURE_COMMISSION_ACCESS);
+    expect(CORE_API_OPERATIONS.at(-1)?.operationId).toBe('retireCaptureDevice');
+    expect(Object.keys(CAPTURE_RETIRE_SCHEMAS)).toEqual(['CaptureDeviceRetireRequest', 'CaptureDeviceRetirement']);
+    for (const [name, schema] of Object.entries(CAPTURE_RETIRE_SCHEMAS)) expect((CORE_API_SCHEMAS as Record<string, unknown>)[name], name).toBe(schema);
+    // SECURITY: a stored credential is destroyed (as CAPTURE_CREDENTIAL_SET / _REVEALED).
+    expect(AUDIT_TYPE_CATEGORY[AuditType.CAPTURE_DEVICE_RETIRED]).toBe('SECURITY');
+    // The body is a closed reason: no free text, no credential, no address member.
+    expect(Object.keys(CaptureDeviceRetireRequestSchema.shape)).toEqual(['reason']);
+    expect(CREDENTIAL_CARRYING_OPERATIONS as readonly string[]).not.toContain('retireCaptureDevice');
+    for (const reason of Object.values(CaptureDeviceRetireReason)) expect(CaptureDeviceRetireRequestSchema.safeParse({ reason }).success, reason).toBe(true);
+    for (const body of [{}, { reason: 'BROKEN' }, { reason: 'REMOVED', note: 'free text' }, { reason: 'removed' }]) expect(CaptureDeviceRetireRequestSchema.safeParse(body).success, JSON.stringify(body)).toBe(false);
+  });
+
+  it('the refusals: each a 409 INVALID_STATE word with its sentence; nothing was changed; the simulator and the contract use the same words', () => {
+    expect(Object.keys(CAPTURE_RETIRE_REFUSAL_SENTENCES)).toEqual(['CAPTURE_DEVICE_ASSIGNED', 'CAPTURE_DEVICE_RETIRED', 'CAPTURE_DEVICE_BUILT_IN', 'CONNECTION_TEST_IN_PROGRESS']);
+    for (const [reason, sentence] of Object.entries(CAPTURE_RETIRE_REFUSAL_SENTENCES)) {
+      expect(sentence, reason).not.toMatch(/\{\{|CAM-|MIC-|192\.168|password/i);
+      if (reason !== 'CONNECTION_TEST_IN_PROGRESS') expect(sentence.endsWith('Nothing was changed.'), reason).toBe(true);
+    }
+    const operation = CAPTURE_RETIRE_OPERATIONS[0];
+    for (const reason of Object.keys(CAPTURE_RETIRE_REFUSAL_SENTENCES)) expect(operation.responses[409].description, reason).toContain(reason);
+    expect([RETIRE_REFUSAL.BUILT_IN, RETIRE_REFUSAL.RETIRED, RETIRE_REFUSAL.ASSIGNED]).toEqual([
+      CaptureRetireRefusalReason.CAPTURE_DEVICE_BUILT_IN, CaptureRetireRefusalReason.CAPTURE_DEVICE_RETIRED, CaptureRetireRefusalReason.CAPTURE_DEVICE_ASSIGNED,
+    ]);
+    expect(CAPTURE_CONFIG_DEVICE_RETIRED).toBe(CaptureRetireRefusalReason.CAPTURE_DEVICE_RETIRED);
+    // The built-in devices of both lists are the demonstration model's five.
+    expect([...CAPTURE_BUILT_IN_DEVICE_IDS]).toEqual(DEFAULT_CAPTURE_DEVICES.devices.map((device) => device.id));
+    expect([...RETIRE_BUILT_IN_DEVICE_IDS]).toEqual([...CAPTURE_BUILT_IN_DEVICE_IDS]);
+  });
+
+  it('the audit details: an id, two closed words, a flag, a count and the operation - never an address, a hardware id or a credential', () => {
+    const details = captureDeviceRetiredDetails({ deviceId: 'CAM-03', kind: 'CAMERA', reason: 'STATEMENT_CHANGED', credentialDestroyed: true, streamRowsKept: 2, permission: 'CAPTURE_COMMISSION' });
+    expect(details).toEqual({ deviceId: 'CAM-03', kind: 'CAMERA', reason: 'STATEMENT_CHANGED', credentialDestroyed: true, streamRowsKept: 2, operationId: 'retireCaptureDevice', permission: 'CAPTURE_COMMISSION' });
+    // The facts carry nothing else: an extra member handed in does not reach the row.
+    const handed = { deviceId: 'MIC-03', kind: 'MIC', reason: 'REMOVED', credentialDestroyed: false, streamRowsKept: 0, host: '192.168.10.101', onvifUuid: 'urn:uuid:1', usbSerial: 'ABC123' } as unknown as Parameters<typeof captureDeviceRetiredDetails>[0];
+    expect(Object.keys(captureDeviceRetiredDetails(handed))).toEqual(['deviceId', 'kind', 'reason', 'credentialDestroyed', 'streamRowsKept', 'operationId']);
+  });
+
+  it('the device entry: `retiredAt` and `retiredBy` stand together or not at all (Q2); a retired entry is listed, never assignable', () => {
+    const entry = DEFAULT_CAPTURE_DEVICES.devices[0]!;
+    expect(CaptureDeviceStatusSchema.safeParse(entry).success).toBe(true);
+    expect(CaptureDeviceStatusSchema.safeParse({ ...entry, retiredAt: AT, retiredBy: 'OPR-003' }).success).toBe(true);
+    expect(CaptureDeviceStatusSchema.safeParse({ ...entry, retiredAt: AT }).success).toBe(false);
+    expect(CaptureDeviceStatusSchema.safeParse({ ...entry, retiredBy: 'OPR-003' }).success).toBe(false);
+    expect(CaptureDeviceStatusSchema.safeParse({ ...entry, retiredAt: AT, retiredBy: 'rina.wijaya' }).success).toBe(false);
+    expect([isCaptureDeviceRetired(entry), isCaptureDeviceRetired({ retiredAt: AT })]).toEqual([false, true]);
+  });
+
+  it('the transition: a camera and a microphone are retired, stay in the registry, and nothing else changes', async () => {
+    const sim = await registry();
+    const state = sim.store.getState();
+    for (const deviceId of ['CAM-03', 'MIC-03']) {
+      const { state: next, result } = retireCaptureDeviceTransition(state, { deviceId, ...RETIRE });
+      expect(result).toEqual({ ...state.captureDevices.devices.find((device) => device.id === deviceId), ...RETIRE });
+      expect(next.captureDevices.devices.map((device) => device.id)).toEqual(state.captureDevices.devices.map((device) => device.id));
+      for (const device of next.captureDevices.devices) if (device.id !== deviceId) expect(state.captureDevices.devices).toContain(device);
+      expect(next.captureConfig).toBe(state.captureConfig);
+      expect(next.audit).toBe(state.audit);
+    }
+    // Through the INTERNAL action of `SimActions` (the Core's door, row RD3).
+    sim.actions.retireCaptureDevice({ deviceId: 'CAM-03', ...RETIRE });
+    expect(sim.store.getState().captureDevices.devices.find((device) => device.id === 'CAM-03')).toMatchObject(RETIRE);
+    sim.stop();
+  });
+
+  it('the transition refuses, changing nothing: a built-in or PoE device, one retired already, one in a slot, an open session, an unknown id, a bad instant or operator', async () => {
+    const sim = await registry();
+    const state = sim.store.getState();
+    const reasonOf = (input: Parameters<typeof retireCaptureDeviceTransition>[1], from = state): string | null => {
+      try {
+        retireCaptureDeviceTransition(from, input);
+        return 'NOT REFUSED';
+      } catch (error) {
+        return (error as { reason: string | null }).reason;
+      }
+    };
+    for (const deviceId of ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH']) expect(reasonOf({ deviceId, ...RETIRE }), deviceId).toBe('CAPTURE_DEVICE_BUILT_IN');
+    expect(reasonOf({ deviceId: 'CAM-77', ...RETIRE })).toBe('NOT_FOUND');
+    const retired = retireCaptureDeviceTransition(state, { deviceId: 'CAM-03', ...RETIRE }).state;
+    expect(reasonOf({ deviceId: 'CAM-03', ...RETIRE }, retired)).toBe('CAPTURE_DEVICE_RETIRED');
+    const inSlot = { ...state, captureConfig: { ...state.captureConfig, cameras: [...state.captureConfig.cameras.filter((line) => line.trackId !== 'VIDEO-02'), { trackId: 'VIDEO-02' as const, deviceId: 'CAM-03', profile: 'H264_1080P25', online: true, streamState: null }] } };
+    expect(reasonOf({ deviceId: 'CAM-03', ...RETIRE }, inSlot)).toBe('CAPTURE_DEVICE_ASSIGNED');
+    const micInSlot = { ...state, captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.map((line) => (line.role === 'STANDBY' ? { ...line, inputId: 'MIC-03', deviceId: 'MIC-03' } : line)) } };
+    expect(reasonOf({ deviceId: 'MIC-03', ...RETIRE }, micInSlot)).toBe('CAPTURE_DEVICE_ASSIGNED');
+    const open = { ...state, session: { ...(state.session ?? {}), state: 'RECORDING' } } as unknown as typeof state;
+    expect(reasonOf({ deviceId: 'CAM-03', ...RETIRE }, open)).toBe('CAPTURE_CONFIG_LOCKED');
+    expect(reasonOf({ deviceId: 'CAM-03', retiredAt: -1, retiredBy: 'OPR-003' })).toBeNull();
+    expect(reasonOf({ deviceId: 'CAM-03', retiredAt: AT, retiredBy: 'rina.wijaya' })).toBeNull();
+    expect(sim.store.getState()).toBe(state);
+    sim.stop();
+  });
+
+  it('the selector never takes a retired device: operations 78 and 79 refuse it with CAPTURE_DEVICE_RETIRED (camera and microphone)', async () => {
+    const sim = await registry();
+    sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD);
+    sim.actions.retireCaptureDevice({ deviceId: 'CAM-03', ...RETIRE });
+    sim.actions.retireCaptureDevice({ deviceId: 'MIC-03', ...RETIRE });
+    const before = sim.store.getState();
+    const reasonOfChange = (change: Parameters<typeof sim.actions.setCaptureConfig>[0]): string | null => {
+      try {
+        sim.actions.setCaptureConfig(change);
+        return 'NOT REFUSED';
+      } catch (error) {
+        return (error as { reason: string | null }).reason;
+      }
+    };
+    expect(reasonOfChange({ kind: 'CAMERA_SOURCE', trackId: 'VIDEO-02', deviceId: 'CAM-03' })).toBe('CAPTURE_DEVICE_RETIRED');
+    expect(reasonOfChange({ kind: 'UPDATE', cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-03', profile: 'H264_1080P25' }] })).toBe('CAPTURE_DEVICE_RETIRED');
+    expect(reasonOfChange({ kind: 'UPDATE', mics: [{ inputId: 'MIC-03', deviceId: 'MIC-03', role: 'STANDBY' }] })).toBe('CAPTURE_DEVICE_RETIRED');
+    expect(sim.store.getState()).toBe(before);
     sim.stop();
   });
 });

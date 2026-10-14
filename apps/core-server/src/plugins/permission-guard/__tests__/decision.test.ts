@@ -99,8 +99,11 @@ const CALLERS: ReadonlyArray<readonly [label: string, principal: Principal]> = [
 const COMMISSION_WEB_ONLY = ['getCaptureNetworkConfig', 'updateCaptureNetworkConfig', 'scanFactoryCameras', 'getHostAlias', 'removeHostAlias', 'setCameraNetwork', 'getCameraNetworkJob'];
 /** Task 4 row V3 (blueprint row 146): the stored-credential connection test, web console only on CAPTURE_CONFIG as operation 95. It follows the commissioning operations in the registry. */
 const STORED_TEST_WEB_ONLY = ['testCaptureDeviceConnection'];
-/** Task 4 blueprint row 116 (WP-26b; decision U10): the acceptance of the installation and its revocation, web console only on CAPTURE_COMMISSION. They are the last two of the registry. */
-const ACCEPTANCE_WEB_ONLY = ['acceptInstallation', 'revokeInstallationAcceptance'];
+/**
+ * Task 4 blueprint row 116 (WP-26b; decision U10): the acceptance of the installation and its revocation, web console only on CAPTURE_COMMISSION.
+ * Task 4 row RD2 (decision C147, Q1): the retirement of a device (operation 111) has the same access and follows them; the last three of the registry.
+ */
+const ACCEPTANCE_WEB_ONLY = ['acceptInstallation', 'revokeInstallationAcceptance', 'retireCaptureDevice'];
 
 describe('AC-B-16, unit form: all 110 operations for nine callers', () => {
   it.each(CALLERS)('%s: every operation answers what its access rule and the role matrix say', (_label, principal) => {
@@ -113,7 +116,7 @@ describe('AC-B-16, unit form: all 110 operations for nine callers', () => {
     expect(wrong).toEqual([]);
   });
 
-  it('the cells are 110 x 9 = 990; the denied cells of an operator are re-derived from the registry and the role table (47 INVESTIGATOR, 12 SUPERVISOR, 34 TECHNICIAN at 110 operations), as spec AC-B-16 counts them', () => {
+  it('the cells are 111 x 9 = 999; the denied cells of an operator are re-derived from the registry and the role table (48 INVESTIGATOR, 13 SUPERVISOR, 34 TECHNICIAN at 111 operations), as spec AC-B-16 counts them', () => {
     const cells = CORE_API_OPERATIONS.length * CALLERS.length;
     // C3 §2.5 (blueprint row 113): 92 operations x 9 callers. C3 §10.1 (blueprint row 132, D106): 97 x 9.
     // Task 4 blueprint row 63: 99 x 9. The two sound-card operations need CAPTURE_CONFIG, which an
@@ -124,7 +127,8 @@ describe('AC-B-16, unit form: all 110 operations for nine callers', () => {
     // Task 4 row V3: 108 x 9. Operation 108 needs CAPTURE_CONFIG (INVESTIGATOR 44 -> 45; SUPERVISOR and TECHNICIAN hold it).
     // Task 4 blueprint row 116: 110 x 9. Operations 109 and 110 need CAPTURE_COMMISSION, which the
     // TECHNICIAN alone holds (INVESTIGATOR 45 -> 47, SUPERVISOR 10 -> 12, TECHNICIAN no change).
-    expect(cells).toBe(990);
+    // Task 4 row RD2: 111 x 9. Operation 111 needs CAPTURE_COMMISSION (INVESTIGATOR 47 -> 48, SUPERVISOR 12 -> 13, TECHNICIAN no change).
+    expect(cells).toBe(999);
     const denied = (role: OperatorRole): string[] =>
       CORE_API_OPERATIONS.filter((operation) => outcomeOf(decideAccess(ruleOf(operation.operationId), granted(operator(role, null)))) === '403 NOT_PERMITTED').map(
         (operation) => operation.operationId,
@@ -142,7 +146,7 @@ describe('AC-B-16, unit form: all 110 operations for nine callers', () => {
       }).map((operation) => operation.operationId);
     for (const role of ROLES) expect(denied(role), role).toEqual(deniedByRoleTable(role));
     console.log(`[ac-b-16] denied cells over ${CORE_API_OPERATIONS.length} operations: ${ROLES.map((role) => `${role} ${denied(role).length}`).join(', ')}`);
-    expect(Object.fromEntries(ROLES.map((role) => [role, denied(role).length]))).toEqual({ INVESTIGATOR: 47, SUPERVISOR: 12, TECHNICIAN: 34 });
+    expect(Object.fromEntries(ROLES.map((role) => [role, denied(role).length]))).toEqual({ INVESTIGATOR: 48, SUPERVISOR: 13, TECHNICIAN: 34 });
     // The same on a device: the transport changes no permission. What it adds is the one condition
     // that names the transport (C3 §0 `WEB_CONSOLE_SESSION`, D80(3)): the three operations whose body
     // carries a camera credential refuse a HOLDER of their permission there too, and so do the two

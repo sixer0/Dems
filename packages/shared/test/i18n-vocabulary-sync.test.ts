@@ -134,7 +134,7 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
 
   // Backend task W16 (GP-06; 2026-10-04 01_specs §13.1, §19.2): nine audit types the Core server
   // writes, in the existing eight categories; no event type was added.
-  it('AuditType: 85 values; the nine task-3 capture types, STT_CONFIG_CHANGED, the four of the camera search, the ten of task 4 row 19, the one of row 201, the four of row V3, the one of row R1b and the two of row N2 sit in the existing categories (M2-W7, M6 row 113, R-9..R-11 row 132)', () => {
+  it('AuditType: 86 values; the nine task-3 capture types, STT_CONFIG_CHANGED, the four of the camera search, the ten of task 4 row 19, the one of row 201, the four of row V3, the one of row R1b, the two of row N2 and the one of row RD2 sit in the existing categories (M2-W7, M6 row 113, R-9..R-11 row 132)', () => {
     // Task 3 M2-W7 (blueprint row 48; C3 §5.2/§5.3): 53 -> 62. Each new type joins an EXISTING
     // category (no new AuditCategory), and each is labelled in `common.auditType` (checked above).
     // Task 3 M6 (blueprint row 113; C3 §2.5): 62 -> 63 with STT_CONFIG_CHANGED, category DEVICE.
@@ -151,10 +151,14 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
     // every position below moves by that delta of one.
     // Task 4 row N2 (decisions U25 (3), C110, C112 (3)): 83 -> 85 with CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED
     // and CAPTURE_AUDIO_SILENCE_INSERTED, appended last; every position below moves by that delta of two.
-    expect(values(V.AuditType)).toHaveLength(85);
-    expect(values(V.AuditType).slice(-2)).toEqual(['CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED', 'CAPTURE_AUDIO_SILENCE_INSERTED']);
+    // Task 4 row RD2 (decision C147): 85 -> 86 with CAPTURE_DEVICE_RETIRED (SECURITY: a stored credential
+    // is destroyed), appended last; every position below moves by that delta of one.
+    expect(values(V.AuditType)).toHaveLength(86);
+    expect(values(V.AuditType).at(-1)).toBe('CAPTURE_DEVICE_RETIRED');
+    expect(V.AUDIT_TYPE_CATEGORY.CAPTURE_DEVICE_RETIRED).toBe('SECURITY');
+    expect(values(V.AuditType).slice(-3, -1)).toEqual(['CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED', 'CAPTURE_AUDIO_SILENCE_INSERTED']);
     expect([V.AUDIT_TYPE_CATEGORY.CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED, V.AUDIT_TYPE_CATEGORY.CAPTURE_AUDIO_SILENCE_INSERTED]).toEqual(['DEVICE', 'DEVICE']);
-    expect(values(V.AuditType).at(-3)).toBe('CAPTURE_VIDEO_ABSENT_IN_SESSION');
+    expect(values(V.AuditType).at(-4)).toBe('CAPTURE_VIDEO_ABSENT_IN_SESSION');
     expect([V.AUDIT_TYPE_CATEGORY.CAPTURE_VIDEO_ABSENT_IN_SESSION, V.AUDIT_TYPE_CATEGORY.CAPTURE_AUDIO_ABSENT_ON_RESTART]).toEqual(['DEVICE', 'DEVICE']);
     expect(values(V.AuditCategory)).toHaveLength(8);
     expect(values(V.SimEventType)).toHaveLength(46);
@@ -173,8 +177,8 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
       expect(V.AuditType[type]).toBe(type);
       expect(V.AUDIT_TYPE_CATEGORY[type]).toBe(added[type]);
     }
-    expect(values(V.AuditType).slice(-32, -23)).toEqual(Object.keys(added));
-    expect(values(V.AuditType).at(-23)).toBe('STT_CONFIG_CHANGED');
+    expect(values(V.AuditType).slice(-33, -24)).toEqual(Object.keys(added));
+    expect(values(V.AuditType).at(-24)).toBe('STT_CONFIG_CHANGED');
     expect(V.AUDIT_TYPE_CATEGORY.STT_CONFIG_CHANGED).toBe('DEVICE');
     // C3 §5.3 (erratum PE-121-09): exactly four entries, each in an EXISTING category.
     const discovery = {
@@ -183,7 +187,7 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
       CAPTURE_CANDIDATE_ADOPTED: 'DEVICE',
       CAPTURE_DEVICE_UNREACHABLE: 'DEVICE',
     } as const satisfies Partial<Record<V.AuditType, V.AuditCategory>>;
-    expect(values(V.AuditType).slice(-22, -18)).toEqual(Object.keys(discovery));
+    expect(values(V.AuditType).slice(-23, -19)).toEqual(Object.keys(discovery));
     for (const type of Object.keys(discovery) as (keyof typeof discovery)[]) expect(V.AUDIT_TYPE_CATEGORY[type]).toBe(discovery[type]);
     // Task 4 blueprint row 19 (WP-23a): exactly ten entries, each in an EXISTING category.
     const hardwareInput = {
@@ -198,10 +202,10 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
       INSTALLATION_ACCEPTED: 'SYSTEM',
       INSTALLATION_ACCEPTANCE_REVOKED: 'SYSTEM',
     } as const satisfies Partial<Record<V.AuditType, V.AuditCategory>>;
-    expect(values(V.AuditType).slice(-18, -8)).toEqual(Object.keys(hardwareInput));
+    expect(values(V.AuditType).slice(-19, -9)).toEqual(Object.keys(hardwareInput));
     for (const type of Object.keys(hardwareInput) as (keyof typeof hardwareInput)[]) expect(V.AUDIT_TYPE_CATEGORY[type]).toBe(hardwareInput[type]);
     // Task 4 blueprint row 201 (X-C; SX-14): exactly one entry, in an EXISTING category.
-    expect(values(V.AuditType).at(-8)).toBe('OPERATOR_PASSWORD_SET');
+    expect(values(V.AuditType).at(-9)).toBe('OPERATOR_PASSWORD_SET');
     expect(V.AUDIT_TYPE_CATEGORY.OPERATOR_PASSWORD_SET).toBe('SECURITY');
     // Task 4 row V3 (the third vocabulary step): exactly four entries, each in an EXISTING category.
     // The two alias types as the three of row 19; the audio gap as the capture-fault types MIC_SILENT
@@ -212,7 +216,7 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
       CAPTURE_AUDIO_ABSENT_ON_RESTART: 'DEVICE',
       CAPTURE_DEVICE_CONNECTION_TESTED: 'SECURITY',
     } as const satisfies Partial<Record<V.AuditType, V.AuditCategory>>;
-    expect(values(V.AuditType).slice(-7, -3)).toEqual(Object.keys(third));
+    expect(values(V.AuditType).slice(-8, -4)).toEqual(Object.keys(third));
     for (const type of Object.keys(third) as (keyof typeof third)[]) expect(V.AUDIT_TYPE_CATEGORY[type]).toBe(third[type]);
     expect([V.AUDIT_TYPE_CATEGORY.HOST_ALIAS_ADDED, V.AUDIT_TYPE_CATEGORY.MIC_SILENT, V.AUDIT_TYPE_CATEGORY.CAPTURE_DEVICE_UNREACHABLE, V.AUDIT_TYPE_CATEGORY.CAPTURE_CONNECTION_TESTED]).toEqual(['SECURITY', 'DEVICE', 'DEVICE', 'SECURITY']);
   });

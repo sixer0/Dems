@@ -485,10 +485,10 @@ describe('the bulk template: every constraint holds, and nothing was switched of
         WHERE n.nspname = 'public' GROUP BY 1 ORDER BY 1`,
     );
     const byKind = Object.fromEntries(constraints.rows.map((row) => [row.kind, { rows: Number(row.rows), invalid: Number(row.invalid) }]));
-    // The contract's counts as landed: 231 named CHECKs, 48 foreign keys, 48 primary keys (the
-    // composed inventory; dbc-3 §0.1 + §B.13 + dbc-4 §N.11). None invalid - the loader switched nothing off.
-    expect(byKind['c']).toEqual({ rows: 231, invalid: 0 });
-    expect(byKind['f']).toEqual({ rows: 48, invalid: 0 });
+    // The contract's counts as landed: 233 named CHECKs, 49 foreign keys, 48 primary keys (the
+    // composed inventory; dbc-3 §0.1 + §B.13 + dbc-4 §N.11; set 16 of task 4: +2 CHECKs, +1 foreign key). None invalid - the loader switched nothing off.
+    expect(byKind['c']).toEqual({ rows: 233, invalid: 0 });
+    expect(byKind['f']).toEqual({ rows: 49, invalid: 0 });
     expect(byKind['p']).toEqual({ rows: 48, invalid: 0 });
     expect(constraints.rows.reduce((sum, row) => sum + Number(row.invalid), 0)).toBe(0);
 
@@ -503,6 +503,9 @@ describe('the bulk template: every constraint holds, and nothing was switched of
       { name: 'audit_chain_history_append_only', mode: 'A', internal: false },
       { name: 'audit_log_append_only', mode: 'A', internal: false },
       { name: 'audit_log_chain_guard', mode: 'A', internal: false },
+      // Set 16 of task 4 (design 07): the guards of a retired capture row, ENABLE ALWAYS too.
+      { name: 'capture_audio_inputs_retired_guard', mode: 'A', internal: false },
+      { name: 'capture_devices_retired_guard', mode: 'A', internal: false },
     ]);
     expect(triggers.rows.filter((row) => row.internal && row.mode !== 'O')).toEqual([]);
 

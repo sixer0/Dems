@@ -112,6 +112,9 @@ export const SIM_ACTION_OPERATIONS = {
   // The stored profile list of a registered camera (task 4 row V7; decision C117): run by the server inside the
   // unit that writes the list to the camera's row (operation 108's storing test), never by a client. `internal` again.
   storeCaptureDeviceProfiles: { operations: [], execution: SimActionExecution.INTERNAL },
+  // The retirement of a registered camera or microphone (task 4 row RD2; design 07): run by the server inside
+  // operation 111's unit (`retireCaptureDevice`), never by a client. `internal` again (52 -> 53 members).
+  retireCaptureDevice: { operations: [], execution: SimActionExecution.INTERNAL },
 } as const satisfies Record<keyof SimActions, SimActionBinding>;
 
 export type SimActionName = keyof typeof SIM_ACTION_OPERATIONS;

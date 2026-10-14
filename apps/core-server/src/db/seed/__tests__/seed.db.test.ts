@@ -110,7 +110,7 @@ describe('ST-1: row counts after a first seed at the fixed instant (contract §9
   it('the two mechanism rows and the seed bookkeeping are as the contract says', async () => {
     const pool = db.ownerPool();
     const meta = await pool.query('SELECT schema_version, contract_revision FROM schema_meta');
-    expect(meta.rows).toEqual([{ schema_version: 14, contract_revision: 'dbc-15' }]);
+    expect(meta.rows).toEqual([{ schema_version: 15, contract_revision: 'dbc-16' }]);
     const state = await pool.query('SELECT seed, sim_schema_version, scenario, epoch, created_at, seeded_at, last_reset_at, last_sealed_session_id, last_sealed_acknowledged, updated_at FROM core_state');
     expect(state.rows).toEqual([
       {

@@ -31,6 +31,14 @@ const FAKE_IMPORT = /from\s+['"](?:\.\.?\/)+(?:fake|\.\.\/fake)(?:\/[^'"]*)?['"]
 
 const places = (files: readonly SourceFile[], pattern: RegExp): string[] => [...new Set(occurrences(files, pattern).map((place) => place.replace(/:\d+$/, '')))];
 
+/** Row N10: THE KEEPER'S ONE OPEN, by its text - for reading, without waiting for a writer. */
+const KEEPER_OPEN = 'openSync(path, constants.O_RDONLY | constants.O_NONBLOCK)';
+/** Every open that is not that one; every write, creation, truncation or flag of writing. */
+const keeperViolations = (text: string): string[] => [
+  ...[...text.matchAll(/\bopenSync\([^)]*\)/g)].map((match) => match[0]).filter((call) => call !== KEEPER_OPEN).map((call) => `an open that is not the keeper's: ${call}`),
+  ...[...text.matchAll(/\b(?:writeSync|writevSync|ftruncateSync)\(|\bO_(?:WRONLY|RDWR|CREAT|APPEND|TRUNC)\b/g)].map((match) => `a write, a creation or a flag of writing: ${match[0]}`),
+];
+
 describe('the scan itself', () => {
   it('reads exactly the microphone files of this row', () => {
     expect(mic.map((file) => file.path.slice(FOLDER.length))).toEqual(['mic-adapter.ts', 'mic-helper-args.ts', 'mic-helper.ts', 'mic-pipe.ts', 'pipe-files.ts']);
@@ -74,16 +82,28 @@ describe('G-R6, G-R12: the microphone files start no process of their own and to
     expect(occurrences(mic, PROCESS_START)).toEqual([]);
   });
 
-  it('only pipe-files.ts imports the file system, and it names exactly lstat, mkdir, realpath and unlink', () => {
+  // WIDENED BY ROW N10 (decision C118 (1); request line 552 of row N9): the product's pipe keeper lives in this one file and adds
+  // exactly three calls - open (for reading, NON-BLOCKING), read, close - and the flag constants of the open. Nothing else.
+  it('only pipe-files.ts imports the file system, and it names exactly lstat, mkdir, realpath and unlink - and the keeper\'s open, read and close (row N10)', () => {
     expect(places(mic, FILE_SYSTEM)).toEqual([`${FOLDER}pipe-files.ts`]);
     const text = mic.find((file) => file.path === `${FOLDER}pipe-files.ts`)?.text ?? '';
     const imported = /import\s*\{([^}]*)\}\s*from\s*'node:fs'/.exec(text)?.[1]?.split(',').map((name) => name.trim()).sort();
-    expect(imported).toEqual(['lstatSync', 'mkdirSync', 'realpathSync', 'unlinkSync']);
+    expect(imported).toEqual(['closeSync', 'constants', 'lstatSync', 'mkdirSync', 'openSync', 'readSync', 'realpathSync', 'unlinkSync']);
+    expect(keeperViolations(text)).toEqual([]);
+    expect(text.match(/\b(?:openSync|readSync|closeSync)\(/g)).toEqual(['openSync(', 'readSync(', 'closeSync(']);
   });
 
-  it('no microphone file writes, moves, copies, opens or links a file: the pipe is made by mkfifo, through the door', () => {
-    // `remove(…)`/`unlinkSync` is the pipe's own removal; nothing else is a writer.
-    expect(occurrences(mic, FILE_WRITER)).toEqual([]);
+  it('finds an open for writing, a blocking open and a write in a planted keeper (control)', () => {
+    expect(keeperViolations('const a = openSync(path, constants.O_RDWR | constants.O_NONBLOCK);')).toEqual(['an open that is not the keeper\'s: openSync(path, constants.O_RDWR | constants.O_NONBLOCK)', 'a write, a creation or a flag of writing: O_RDWR']);
+    expect(keeperViolations('const a = openSync(path, constants.O_RDONLY);')).toEqual(['an open that is not the keeper\'s: openSync(path, constants.O_RDONLY)']);
+    expect(keeperViolations("writeSync(descriptor, data);\nconst b = openSync(path, 'w');")).toEqual(["an open that is not the keeper's: openSync(path, 'w')", 'a write, a creation or a flag of writing: writeSync(']);
+    expect(keeperViolations('openSync(path, constants.O_RDONLY | constants.O_NONBLOCK);')).toEqual([]);
+  });
+
+  it('no microphone file writes, moves, copies or links a file, and none opens one but the keeper\'s ONE open of a pipe for reading: the pipe is made by mkfifo, through the door', () => {
+    // `remove(…)`/`unlinkSync` is the pipe's own removal; nothing else is a writer. Row N10: the keeper's open is the one match of the
+    // pattern (it names `open` among the writers), pinned by its text above.
+    expect(occurrences(mic, FILE_WRITER).map((place) => place.replace(/:\d+$/, ''))).toEqual([`${FOLDER}pipe-files.ts`]);
   });
 
   it('only the argument table names the device layer; nothing outside it composes an argument list for FFmpeg', () => {

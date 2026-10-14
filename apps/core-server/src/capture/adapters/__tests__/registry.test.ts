@@ -122,6 +122,22 @@ describe('registration (RG-1, duplicates, D86 C-5)', () => {
     expect(mute.openerKinds()).toEqual([]);
     expect(codeOf(() => mute.assertRecordable('CAM-01'))).toBe('SOURCE_KIND_NOT_RECORDABLE');
   });
+
+  // Task 4 row N10 (caution C-1 of verification/088b): the opener flag is read as EXACTLY `true` at registration AND at the
+  // recordability check. An adapter whose flag is truthy but not `true` skips both registration rules (it states no opener), so
+  // it must not be recordable either - here an ONVIF_RTSP adapter in REAL_DEVELOPMENT, where a real opener is refused.
+  // Seen RED with `hasOpenerOf` reading the flag as truthy (the form before row N10): the descriptor states `1`, not false.
+  it('C-1: a truthy opener flag that is not `true` states no opener anywhere - registered as without one, never recordable, no opener kind', () => {
+    for (const flag of [1, 'yes', {}, ['x']]) {
+      const development = createCaptureDeviceRegistry({ operation: 'REAL_DEVELOPMENT' });
+      expect(codeOf(() => development.register(productionCamera('CAM-05', { hasOpener: flag as unknown as boolean }))), String(flag)).toBe('no refusal');
+      expect(development.describe('CAM-05').hasOpener).toBe(false);
+      expect(development.openerKinds()).toEqual([]);
+      expect(codeOf(() => development.assertRecordable('CAM-05'))).toBe('SOURCE_KIND_NOT_RECORDABLE');
+    }
+    // Control: `true` itself is the opener the class rule refuses in this operation.
+    expect(codeOf(() => createCaptureDeviceRegistry({ operation: 'REAL_DEVELOPMENT' }).register(productionCamera('CAM-05', { hasOpener: true })))).toBe('CAPTURE_ADAPTER_INVALID');
+  });
 });
 
 describe('listing and resolving (RG-2, OD-10)', () => {

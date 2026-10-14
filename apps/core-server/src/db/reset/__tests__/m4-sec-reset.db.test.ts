@@ -10,7 +10,7 @@
 //                   three facts can be changed.
 //   M4-MT-14        an adopted ONVIF_RTSP row and the LOCAL_DEVICE rows survive the permitted
 //                   reset with their kind; `session_capture_sources` is emptied; the version
-//                   stays at this code's pair, (14, 'dbc-15') since migration set 15; the kept set is 13 (12 until PE-0013-01).
+//                   stays at this code's pair, (15, 'dbc-16') since migration set 16; the kept set is 13 (12 until PE-0013-01).
 //   D98(1) / M7-SEC-SRC-2 (blueprint row 141): the DISK side follows the row side. A package folder
 //                   of the exempt item whose SIGNED manifest verifies and says development sources
 //                   does not block; an unsigned, tampered or all-PRODUCTION manifest on disk
@@ -404,6 +404,6 @@ describe('the permitted reset: M4-SEC-RESET-1 (the count is stated) and M4-MT-14
       { id: 'POE-SWITCH', adapter_kind: 'FAKE' },
     ]);
     const meta = await after.query('SELECT schema_version, contract_revision FROM public.schema_meta');
-    expect(meta.rows).toEqual([{ schema_version: 14, contract_revision: 'dbc-15' }]);
+    expect(meta.rows).toEqual([{ schema_version: 15, contract_revision: 'dbc-16' }]);
   });
 });

@@ -146,6 +146,9 @@ const OFFLINE_SCHEMA_NAMES = [
   'InstallationAcceptanceStep',
   'InstallationAcceptRequest',
   'InstallationAcceptanceRevokeRequest',
+  // Task 4 (row RD2): the body and the answer of op 111 - the simulator answers its 200 (+2; 71 components).
+  'CaptureDeviceRetireRequest',
+  'CaptureDeviceRetirement',
 ];
 
 /** The nine book §21.2 endpoints, verbatim (research/01_explore.md §21.2). */
@@ -199,9 +202,9 @@ describe('AC-56: the OpenAPI document', () => {
     expect((await validate(serializeOpenApiDocument(broken))).valid).toBe(false);
   });
 
-  it('has 44 operations: GET /api/v1/health LIVE and the 43 simulated endpoints (9 book §21.2 + 13 capture + 3 STT configuration + 5 camera search + 2 sound cards + 1 re-address + 7 commissioning + 1 stored-credential connection test + 2 installation acceptance) SIMULATED', () => {
-    expect(operations).toHaveLength(44);
-    expect(new Set(operations.map((entry) => entry.operation.operationId)).size).toBe(44);
+  it('has 45 operations: GET /api/v1/health LIVE and the 44 simulated endpoints (9 book §21.2 + 13 capture + 3 STT configuration + 5 camera search + 2 sound cards + 1 re-address + 7 commissioning + 1 stored-credential connection test + 2 installation acceptance + 1 retirement) SIMULATED', () => {
+    expect(operations).toHaveLength(45);
+    expect(new Set(operations.map((entry) => entry.operation.operationId)).size).toBe(45);
 
     const live = operations.filter((entry) => entry.operation['x-dems-mode'] === 'live');
     expect(live.map((entry) => `${entry.method} ${entry.path}`)).toEqual([`get ${HEALTH_PATH}`]);
@@ -219,7 +222,8 @@ describe('AC-56: the OpenAPI document', () => {
     // Task 4 row 102 adds the seven commissioning operations 101-107: 33 -> 40.
     // Task 4 row V3 adds the stored-credential connection test, operation 108: 40 -> 41.
     // Task 4 row 116 adds the installation acceptance and its revocation, operations 109-110: 41 -> 43.
-    expect(simulatedPaths.length).toBe(43);
+    // Task 4 row RD2 adds the retirement of a device, operation 111: 43 -> 44.
+    expect(simulatedPaths.length).toBe(44);
     for (const endpoint of BOOK_21_2) expect(simulatedPaths, endpoint).toContain(endpoint);
     for (const entry of simulated) {
       expect(badgeNames(entry.operation)).toContain(API_BADGES.SIMULATED.name);
@@ -227,7 +231,7 @@ describe('AC-56: the OpenAPI document', () => {
     }
     const badgeCount = (name: string) => operations.filter((entry) => badgeNames(entry.operation).includes(name)).length;
     expect(badgeCount('LIVE')).toBe(1);
-    expect(badgeCount('SIMULATED')).toBe(43);
+    expect(badgeCount('SIMULATED')).toBe(44);
   });
 
   it('marks only the export RBAC + AUDIT, and every x-dems-rbac lists exactly the roles holding its permission', () => {
@@ -255,7 +259,7 @@ describe('AC-56: the OpenAPI document', () => {
     expect(OPENAPI_COMMITTED_SCOPE).toBe(CoreApiScope.ALL);
     expect(renderOpenApiJson()).toBe(serializeOpenApiDocument(createOpenApiDocument({ scope: OPENAPI_COMMITTED_SCOPE })));
     expect(committed).toBe(renderOpenApiJson());
-    expect(listOpenApiOperations(JSON.parse(committed) as typeof document)).toHaveLength(110);
+    expect(listOpenApiOperations(JSON.parse(committed) as typeof document)).toHaveLength(111); // task 4 row RD2: + operation 111
     expect(renderOpenApiJson(CoreApiScope.OFFLINE)).toBe(serializeOpenApiDocument(document));
   });
 
@@ -948,7 +952,58 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     const lockedCode = (answer: { body: unknown }): unknown => (answer.body as { error?: { code?: string } }).error?.code;
     expect(lockedCode(locked.call('acceptInstallation', 'POST', ACCEPT_PATH, ACCEPT_BODY))).toBe('CAPTURE_CONFIG_LOCKED');
     expect(lockedCode(locked.call('revokeInstallationAcceptance', 'POST', REVOKE_PATH, {}))).toBe('CAPTURE_CONFIG_LOCKED');
+    // Flow 20, the locked half (task 4, row RD2; operation 111): idle only, before the body and the device.
+    expect(lockedCode(locked.call('retireCaptureDevice', 'POST', '/api/v1/capture/devices/CAM-03/retire', { reason: 'REMOVED' }))).toBe('CAPTURE_CONFIG_LOCKED');
     locked.sim.stop();
+
+    // Flow 20 (task 4, row RD2; design 07; decision C147): the retirement of a registered camera or
+    // microphone, operation 111. Signed out 401, a SUPERVISOR 403 (CAPTURE_COMMISSION is the
+    // TECHNICIAN's alone). For a TECHNICIAN: a body that is no request 400 / 422, an unknown id 404,
+    // a built-in device 409 CAPTURE_DEVICE_BUILT_IN, a device in a slot 409 CAPTURE_DEVICE_ASSIGNED
+    // (with the slot), then the retirement itself 200 with ONE CAPTURE_DEVICE_RETIRED row, and a
+    // second retirement 409 CAPTURE_DEVICE_RETIRED. A refusal changes nothing.
+    const RETIRE = (id: string): string => `/api/v1/capture/devices/${id}/retire`;
+    const r1 = await rig(seen);
+    expect(r1.call('retireCaptureDevice', 'POST', RETIRE('CAM-01'), { reason: 'REMOVED' }).status).toBe(401);
+    r1.sim.actions.signIn('andi.pratama', DEMO_OPERATOR_PASSWORD);
+    expect(r1.call('retireCaptureDevice', 'POST', RETIRE('CAM-01'), { reason: 'REMOVED' }).status).toBe(403);
+    r1.sim.stop();
+    const r2 = await rig(seen);
+    r2.sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD);
+    // A camera the simulator registered itself (the transition of operation 96's internal action).
+    r2.sim.actions.registerCaptureDevice({ id: 'CAM-03', model: 'Example camera', host: '192.168.10.101', adapter: 'ONVIF_RTSP' });
+    const beforeRetire = r2.sim.store.getState();
+    expect(r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-03'), '[1]').status).toBe(400);
+    expect(r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-03'), {}).status).toBe(422);
+    expect(r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-03'), { reason: 'BROKEN' }).status).toBe(422);
+    expect(r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-03'), { reason: 'REMOVED', note: 'free text' }).status).toBe(422);
+    expect(r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-77'), { reason: 'REMOVED' }).status).toBe(404);
+    for (const id of ['CAM-01', 'MIC-02', 'POE-SWITCH']) {
+      const builtIn = r2.call('retireCaptureDevice', 'POST', RETIRE(id), { reason: 'REMOVED' });
+      expect([builtIn.status, reasonOf(builtIn)], id).toEqual([409, 'CAPTURE_DEVICE_BUILT_IN']);
+    }
+    expect(r2.sim.store.getState()).toBe(beforeRetire);
+    // In a slot: refused with the slot named; unassigned, it can be retired.
+    r2.sim.actions.setCaptureConfig({ kind: 'CAMERA_SOURCE', trackId: 'VIDEO-02', deviceId: 'CAM-03' });
+    const assigned = r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-03'), { reason: 'REPLACED' });
+    expect([assigned.status, reasonOf(assigned), (assigned.body as { error: { details?: { slot?: string } } }).error.details?.slot]).toEqual([409, 'CAPTURE_DEVICE_ASSIGNED', 'VIDEO-02']);
+    r2.sim.actions.setCaptureConfig({ kind: 'UPDATE', unassign: ['VIDEO-02'] });
+    const auditBefore = r2.sim.store.getState().audit.total;
+    const retired = r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-03'), { reason: 'REPLACED' });
+    expect(retired.status).toBe(200);
+    expect(retired.body).toMatchObject({ deviceId: 'CAM-03', reason: 'REPLACED', credentialDestroyed: false, device: { id: 'CAM-03', retiredAt: AT, retiredBy: 'OPR-003' } });
+    const auditAfter = r2.sim.store.getState().audit;
+    const rows = auditAfter.rows.slice(auditAfter.rows.length - (auditAfter.total - auditBefore));
+    expect(rows.map((row) => [row.type, row.deviceId, row.details])).toEqual([
+      ['CAPTURE_DEVICE_RETIRED', 'CAM-03', { deviceId: 'CAM-03', kind: 'CAMERA', reason: 'REPLACED', credentialDestroyed: false, streamRowsKept: 0, operationId: 'retireCaptureDevice', permission: 'CAPTURE_COMMISSION' }],
+    ]);
+    // It stays in the registry; a second retirement is refused and changes nothing.
+    expect(r2.sim.store.getState().captureDevices.devices.find((device) => device.id === 'CAM-03')?.retiredAt).toBe(AT);
+    const afterRetire = r2.sim.store.getState();
+    const again = r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-03'), { reason: 'REMOVED' });
+    expect([again.status, reasonOf(again)]).toEqual([409, 'CAPTURE_DEVICE_RETIRED']);
+    expect(r2.sim.store.getState()).toBe(afterRetire);
+    r2.sim.stop();
 
     // Every status of the simulated operations that the simulator can produce was produced by it.
     // Changed by design (W27; 01_specs §7.19): the five baseline reads document a 401 and a 403, and

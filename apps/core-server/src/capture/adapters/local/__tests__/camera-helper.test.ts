@@ -39,7 +39,7 @@ import {
   type HelperProcessOptions,
   type ProgramFacts,
 } from '../index';
-import { LEFTOVER_CANDIDATE_LIMIT, leftoverPrograms, linuxProgramPathReader, processShortName, programPathReaderFor } from '../leftover';
+import { LEFTOVER_CANDIDATE_LIMIT, LEFTOVER_TABLE_LIMIT_BYTES, leftoverPrograms, linuxProgramPathReader, processShortName, programPathReaderFor } from '../leftover';
 
 const SCHEME = ['rtsp', '://'].join('');
 const INGEST = `${SCHEME}127.0.0.1:8559/cam1`;
@@ -695,6 +695,33 @@ describe('the process door (HL-2, HL-4, HL-7)', () => {
       const asked: number[] = [];
       expect(await leftoverPrograms(tableDoor(crowd).door, clock.timers, [PROGRAM], new Set(), async (pid) => { asked.push(pid); return '/usr/bin/ffmpeg'; })).toBeNull();
       expect(asked).toHaveLength(LEFTOVER_CANDIDATE_LIMIT);
+    });
+
+    // Row MH1 (decision C148 (f); request line 574). THE DOUBLE: a door that starts nothing, streams a recorded table
+    // through `onOutput` in chunks and keeps a 64 KiB head, as the real door does. The table has the shape this Mac
+    // printed on 2026-10-14 (about 900 rows, 82 KB; `ps -ax` lists the rows with a terminal - a Core started from one
+    // and its helpers - LAST), so the planted leftover stands past the head. Seen RED on the code before MH1 (the head
+    // read as the whole table: `[]`), and on two mutants (stream ignored; full-head guard removed) - see the record.
+    it('the whole table is read, not the door\'s head (row MH1): a leftover past the 64 KiB cut is named; a full head without the stream, or a table past the bound, answers null', async () => {
+      const clock = manualCaptureTimers();
+      const filler = Array.from({ length: 1_000 }, (_, index) => `${String(1_000 + index).padStart(5)} /System/Library/PrivateFrameworks/Agent.framework/Versions/A/XPCServices/Agent${index}.xpc`).join('\n');
+      const table = `${filler}\n 4242 ${PROGRAM}\n 4243 /bin/zsh\n`;
+      const streaming = (text: string, chunkBytes = 16 * 1024): HelperDoor => (options) => {
+        const bytes = Buffer.from(text);
+        for (let at = 0; at < bytes.length; at += chunkBytes) options.onOutput?.(bytes.subarray(at, at + chunkBytes));
+        return { pid: 1, ended: Promise.resolve({ exitCode: 0, signal: null, spawnFailed: false, diagnostics: '', output: bytes.subarray(0, HELPER_OUTPUT_CAP_BYTES).toString('utf8') }), alive: () => false, kill: () => {} };
+      };
+      // Control: the table is longer than the head, and the head does not hold the planted row.
+      expect(Buffer.byteLength(table)).toBeGreaterThan(HELPER_OUTPUT_CAP_BYTES);
+      expect(table.slice(0, HELPER_OUTPUT_CAP_BYTES)).not.toContain(` 4242 ${PROGRAM}`);
+      expect(await leftoverHelperPids(streaming(table), clock.timers, PROGRAM)).toEqual([4242]);
+      expect(await leftoverHelperPids(streaming(table), clock.timers, PROGRAM, new Set([4242]))).toEqual([]);
+      // A door that hands only a FULL head may have cut the table: null, never "nothing is left".
+      const headOnly: HelperDoor = () => ({ pid: 1, ended: Promise.resolve({ exitCode: 0, signal: null, spawnFailed: false, diagnostics: '', output: table.slice(0, HELPER_OUTPUT_CAP_BYTES) }), alive: () => false, kill: () => {} });
+      expect(await leftoverHelperPids(headOnly, clock.timers, PROGRAM)).toBeNull();
+      // Past the bound: null (the check never keeps an unbounded table).
+      const huge = `${' 1 x\n'.repeat(Math.ceil(LEFTOVER_TABLE_LIMIT_BYTES / 5))} 4242 ${PROGRAM}\n`;
+      expect(await leftoverHelperPids(streaming(huge, 1024 * 1024), clock.timers, PROGRAM)).toBeNull();
     });
   });
 });

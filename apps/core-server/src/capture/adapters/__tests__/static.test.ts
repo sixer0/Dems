@@ -121,6 +121,9 @@ describe('A-1: the class-C adapters never load in a test', () => {
     const named = relativeImports([{ path: `${LOADER}.ts`, text: loader }]).map((entry) => entry.target);
     expect(named.filter((target) => CLASS_C.includes(target)).sort()).toEqual([...CLASS_C].sort());
     expect(named.filter((target) => /camera\/onvif-relay$|audio\/usb-audio-production$/.test(target)).sort()).toEqual([`${ADAPTERS}audio/usb-audio-production`, `${ADAPTERS}audio/usb-audio-production`, `${ADAPTERS}camera/onvif-relay`, `${ADAPTERS}camera/onvif-relay`]);
+    // Row N10: the macOS adapter the same way - its option type, and ONE dynamic import of the build.
+    expect(named.filter((target) => target.endsWith('audio/usb-audio-macos'))).toEqual([`${ADAPTERS}audio/usb-audio-macos`, `${ADAPTERS}audio/usb-audio-macos`]);
+    expect(loader.match(/\bawait import\('\.\/audio\/usb-audio-macos'\)/g)).toHaveLength(1);
     expect(loader).not.toMatch(/^import\s+(?!type\b)[^;]*from\s+'\.\/(?:camera|audio|poe)\//m);
     expect(loader.indexOf('REAL_ADAPTERS_REFUSED')).toBeGreaterThan(0);
     expect(loader.indexOf('REAL_ADAPTERS_REFUSED')).toBeLessThan(loader.indexOf('import('));
@@ -475,7 +478,8 @@ describe('A-8: the bytes of a start message are made by the production door only
 // are BUILT in new files beside the class-C stubs and were REGISTERED NOWHERE until the lift (WP-13, rows 85 and 88).
 // REWRITTEN BY ROW 88 (THE LIFT, AM-1) together with A-1: the loader names the two built adapters (dynamic imports);
 // the fence's boot step names the microphone loss watch it builds and the card match of the microphone adapter (two
-// pure functions); every other production source still names none of them. The macOS adapter stays named by none (N10).
+// pure functions); every other production source still names none of them. ROW N10: the macOS adapter is named by the same two
+// (the loader builds it on `darwin` once its opener is admitted; the fence takes its pure match of the loss watch).
 const FENCE_INDEX = 'src/capture/fence/index.ts';
 describe('A-9: the built production adapters are named by a closed list of production sources (since the lift: the loader and the fence\'s boot step)', () => {
   /** Each built file, without extension, with the files that may name it. */
@@ -490,9 +494,11 @@ describe('A-9: the built production adapters are named by a closed list of produ
     // stored row, the refusal codes and their error class, the row's shape rule and the guard's vector - no adapter of it.
     // Row 88: the loader builds it on `linux`; the fence takes its card match for the loss watch.
     [`${ADAPTERS}audio/usb-audio-production`]: [`${ADAPTERS}audio/usb-audio-macos.ts`, `${LOADER}.ts`, FENCE_INDEX],
-    // Task 4 row N9: the macOS production microphone adapter of kind USB_AUDIO, registered nowhere until row N10 (by
-    // platform), and its pure gate, which only that adapter names.
-    [`${ADAPTERS}audio/usb-audio-macos`]: [],
+    // Task 4 row N9: the macOS production microphone adapter of kind USB_AUDIO, and its pure gate, which only that adapter names.
+    // MOVED BY ROW N10 (design 06 row N10; C135 (3)): the loader builds it on `darwin` once its opener is admitted (a type import and
+    // the dynamic import of the build); the fence's boot step takes its pure match of the loss watch and the notice's type - no
+    // adapter of it (the Linux adapter's form of row 88).
+    [`${ADAPTERS}audio/usb-audio-macos`]: [`${LOADER}.ts`, FENCE_INDEX],
     [`${ADAPTERS}audio/macos-launch-gate`]: [`${ADAPTERS}audio/usb-audio-macos.ts`],
     // Task 4 row 68 (its request, served by integration pass I-7): the microphone loss watch, built beside that
     // adapter and wired by no production source until the composition (row 85). It imports no adapter: the match is handed in.
@@ -510,10 +516,11 @@ describe('A-9: the built production adapters are named by a closed list of produ
       { path: FENCE_INDEX, text: "import { startCameraRelay } from '../adapters/camera/relay-start';\n" },
       { path: FENCE_INDEX, text: "\nimport { createOnvifRelayCameraAdapter } from '../adapters/camera/onvif-relay';\n" },
       { path: 'src/capture/index.ts', text: "import { createMicLossWatch } from './adapters/audio/mic-loss';\n" },
-      { path: `${LOADER}.ts`, text: "await import('./audio/usb-audio-macos');\n" },
-      // Allowed: the loader names the two built adapters; the fence the loss watch and the card match; the adapter its own relay start; a test the adapter.
-      { path: `${LOADER}.ts`, text: "await import('./camera/onvif-relay');\nawait import('./audio/usb-audio-production');\n" },
-      { path: FENCE_INDEX, text: "import { createMicLossWatch } from '../adapters/audio/mic-loss';\nimport { identifyRegisteredCard } from '../adapters/audio/usb-audio-production';\n" },
+      // MOVED BY ROW N10: the loader may name the macOS adapter now; the composing file may not.
+      { path: 'src/capture-composition.ts', text: "import { createUsbAudioMacosAdapter } from './capture/adapters/audio/usb-audio-macos';\n" },
+      // Allowed: the loader names the built adapters; the fence the loss watch and the two card matches; the adapter its own relay start; a test the adapter.
+      { path: `${LOADER}.ts`, text: "await import('./camera/onvif-relay');\nawait import('./audio/usb-audio-production');\nawait import('./audio/usb-audio-macos');\n" },
+      { path: FENCE_INDEX, text: "import { createMicLossWatch } from '../adapters/audio/mic-loss';\nimport { identifyRegisteredCard } from '../adapters/audio/usb-audio-production';\nimport { identifyMacosRegisteredCard } from '../adapters/audio/usb-audio-macos';\n" },
       { path: `${ADAPTERS}camera/onvif-relay.ts`, text: "import { startCameraRelay } from './relay-start';\n" },
       { path: `${ADAPTERS}camera/__tests__/onvif-relay.test.ts`, text: "import { createOnvifRelayCameraAdapter } from '../onvif-relay';\n" },
     ];
@@ -522,7 +529,7 @@ describe('A-9: the built production adapters are named by a closed list of produ
       `${FENCE_INDEX}:1 names a built production adapter`,
       `${FENCE_INDEX}:2 names a built production adapter`,
       'src/capture/index.ts:1 names a built production adapter',
-      `${LOADER}.ts:1 names a built production adapter`,
+      'src/capture-composition.ts:1 names a built production adapter',
     ]);
   });
 
@@ -848,7 +855,9 @@ describe('A-12: the macOS microphone adapter marks the bench form, and no other 
     expect(code).toMatch(/^ {8}captureLayer: MACOS_CAPTURE_LAYER,$/m);
     expect(code).toMatch(/^ {8}sampleContinuity: MACOS_SAMPLE_CONTINUITY,$/m);
     // The worker is handed the GAPPED kind (design 8.2 (b)); the continuous kind and its transport are not named.
-    expect(code).toMatch(/^export const MACOS_MIC_PIPE_KIND = 'PCM_FIFO_GAPPED';$/m);
+    // MOVED BY ROW N10 (request line 553 (1)): the protocol's member and its statement of `mic-transport.ts`; no constant, no cast.
+    expect(code).toMatch(/^export const MACOS_MIC_TRANSPORT: MicTransportStatement = micTransportOf\(CaptureMicInputKind\.PCM_FIFO_GAPPED\);$/m);
+    expect(code).not.toMatch(/\bMACOS_MIC_PIPE_KIND\b|as unknown as MicTransportStatement/);
     expect(code).not.toMatch(/\bMIC_TRANSPORTS\b|CaptureMicInputKind\.PCM_FIFO\b|['"]PCM_FIFO['"]/);
     // No progress report and no delivery watch of the development helper (design 4.2: the row has none).
     expect(code).not.toMatch(/\bcreateDeliveryWatch\b|\bstartHelperProcess\b|-progress/);

@@ -457,6 +457,8 @@ export const common = {
     // Task 4 (row N2): the two types of an audio path that is not sample-continuous.
     CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED: 'Audio samples not received from a microphone',
     CAPTURE_AUDIO_SILENCE_INSERTED: 'Silence inserted into the audio track',
+    // Task 4 (row RD2): the retirement of a camera or microphone (operation 111).
+    CAPTURE_DEVICE_RETIRED: 'Capture device retired',
   },
 
   /** Audit filter categories (sim `AuditCategory`). */
@@ -948,9 +950,34 @@ export const common = {
       'This {{source}} was not assigned: it is registered, but no capture adapter of the running Core serves it, so this Core cannot record from it. Nothing was changed.',
     CAPTURE_DEVICE_CLASS_MISMATCH: 'This device was not assigned: the Core does not hold it as a {{source}}. Nothing was changed.',
     SLOT_UNASSIGNED_AND_ASSIGNED: 'This choice was not accepted: one request cleared a slot and filled the same slot. Nothing was changed.',
+    // Task 4 row RD2 (design 07 section 4.4; decision C147): the device was retired (operation 111) and is never assigned again.
+    CAPTURE_DEVICE_RETIRED: 'This {{source}} was not assigned: it is retired, and a retired device is never assigned again. Nothing was changed.',
   },
   /** The noun `{{source}}` of a `captureSlotRefusal` sentence stands for, by the kind of the refused row (row V4). */
   captureSlotSource: { CAMERA: 'camera', MIC: 'microphone' },
+
+  // Task 4 row RD2 (design 07 sections 4.3-4.5; decision C147, rulings Q1-Q2): operation 111, the
+  // retirement of a registered camera or microphone. `refusal` is keyed by the word of
+  // `details.reason` (`CAPTURE_CONFIG_LOCKED` by the error code, `NOT_FOUND` by the code of the 404);
+  // `{{source}}` is a noun of `captureSlotSource`, `{{slot}}` a name of `captureSlot`. `reason`
+  // labels the three closed reasons of the body; `state.retired` is the state a device list shows.
+  captureRetire: {
+    action: 'Retire',
+    state: { retired: 'Retired' },
+    reason: {
+      REMOVED: 'Removed for good',
+      REPLACED: 'Replaced by another unit',
+      STATEMENT_CHANGED: 'The camera now states other stream profiles',
+    },
+    refusal: {
+      CAPTURE_CONFIG_LOCKED: 'A session is open. Devices can be retired only while no session is open.',
+      CAPTURE_DEVICE_ASSIGNED: 'This {{source}} is assigned to {{slot}}. Unassign it first, then retire it. Nothing was changed.',
+      CAPTURE_DEVICE_RETIRED: 'This {{source}} is already retired. Nothing was changed.',
+      CAPTURE_DEVICE_BUILT_IN: 'The demo devices of the simulator and the PoE switch cannot be retired. Nothing was changed.',
+      CONNECTION_TEST_IN_PROGRESS: 'A connection test of this camera is running. Wait until it ends, then retire it. Nothing was changed.',
+      NOT_FOUND: 'This device is not in the registry. Nothing was changed.',
+    },
+  },
 
   sourceClass: {
     badge: 'Development source',

@@ -27,6 +27,8 @@ const NOT_HOSTED = [
   'readdressCaptureDevice',
   // Task 4 row V7: the INTERNAL action of a camera's stored profile list (its engine door: `storeCaptureDeviceProfilesIn`).
   'storeCaptureDeviceProfiles',
+  // Task 4 row RD2: the INTERNAL action of a retirement (operation 111; its engine door is row RD3).
+  'retireCaptureDevice',
 ];
 
 describe('the hosted actions', () => {
@@ -37,7 +39,8 @@ describe('the hosted actions', () => {
     // Task 4 row 185: the INTERNAL `registerCaptureMicrophone`, 49 -> 50; the hosted 33 are unchanged.
     // Task 4 row 195: the INTERNAL `readdressCaptureDevice`, 50 -> 51; the hosted 33 are unchanged.
     // Task 4 row V7: the INTERNAL `storeCaptureDeviceProfiles`, 51 -> 52; the hosted 33 are unchanged.
-    expect(Object.keys(SIM_ACTION_OPERATIONS)).toHaveLength(52);
+    // Task 4 row RD2: the INTERNAL `retireCaptureDevice`, 52 -> 53; the hosted 33 are unchanged.
+    expect(Object.keys(SIM_ACTION_OPERATIONS)).toHaveLength(53);
     const expected = Object.entries(SIM_ACTION_OPERATIONS)
       .filter(([, binding]) => binding.execution === 'hosted')
       .map(([name]) => name);

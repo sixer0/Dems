@@ -25,7 +25,7 @@ import {
   type AuthTransition,
 } from './auth';
 import { setCaptureConfigTransition } from './capture-config';
-import { readdressCaptureDeviceTransition, registerCaptureDeviceTransition, registerCaptureMicrophoneTransition, storeCaptureDeviceProfilesTransition } from './capture-registry';
+import { readdressCaptureDeviceTransition, registerCaptureDeviceTransition, registerCaptureMicrophoneTransition, retireCaptureDeviceTransition, storeCaptureDeviceProfilesTransition } from './capture-registry';
 import { applyStorageVolumeTransition } from './core-facts';
 import { clearCaptureNoticeTransition, isCaptureNotice, raiseCaptureNoticeTransition } from './capture-notices';
 import { applyCaptureTelemetryTransition, clearCaptureWarningTransition, feedCaptureLevels, raiseCaptureWarningTransition } from './capture-telemetry';
@@ -273,5 +273,7 @@ export function createActions(context: ActionContext): SimActions {
     readdressCaptureDevice: (change) => commit((state) => readdressCaptureDeviceTransition(state, change).state),
     // Task 4 row V7: INTERNAL. The stored profile list of one registered camera changes; nothing else does.
     storeCaptureDeviceProfiles: (change) => commit((state) => storeCaptureDeviceProfilesTransition(state, change).state),
+    // Task 4 row RD2: INTERNAL. One registered camera or microphone is retired (operation 111); it stays in the registry.
+    retireCaptureDevice: (change) => commit((state) => retireCaptureDeviceTransition(state, change).state),
   };
 }

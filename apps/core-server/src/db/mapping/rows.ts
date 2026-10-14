@@ -889,6 +889,11 @@ export function captureDevicesToRows(slice: CaptureDevicesSlice, config: Capture
       enabled: device.online,
       lastSeenAt: null,
       adapterKind: adapterKindOf(device),
+      // Schema v15 (set 16, task 4 design 07): the engine state does not model retirement yet, so
+      // the row states the in-service form; RUNTIME_UPDATABLE_COLUMNS names neither column, so no
+      // change set writes them (row RD3 brings the slice member and its write).
+      retiredAt: null,
+      retiredBy: null,
     }));
 }
 

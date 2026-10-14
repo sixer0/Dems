@@ -783,6 +783,16 @@ export interface CaptureDeviceStatus {
    * the in-app simulator, whose cameras state the empty list) or the Core read back from its registry.
    */
   profiles?: CaptureDeviceProfile[];
+  /**
+   * Task 4 row RD2 (design 07 section 4.2; decision C147, ruling Q2): when the device was RETIRED
+   * (operation 111). Present ONLY on a retired device, always with `retiredBy`; absent = in service.
+   * A retired device stays in the slice for good (the engine refuses a device that leaves the
+   * registry): it is listed as Retired and is never in a selector or assignment list
+   * (`isCaptureDeviceRetired` of `capture-registry.ts`). See `CaptureDeviceStatusSchema`.
+   */
+  retiredAt?: EpochMs;
+  /** The operator who retired the device (`OPR-NNN`). Present exactly when `retiredAt` is. */
+  retiredBy?: string;
 }
 
 /**
@@ -847,6 +857,16 @@ export interface StoreCaptureDeviceProfilesInput {
   deviceId: string;
   /** The profile codes as the caller's own statement writes them to `capture_devices.profiles`, in that order. */
   profiles: readonly string[];
+}
+
+/** The input of the INTERNAL action `retireCaptureDevice` (task 4 row RD2; operation 111): who retires which device, and when. */
+export interface RetireCaptureDeviceInput {
+  /** The registered camera or microphone, e.g. `CAM-03`, `MIC-03`. */
+  deviceId: string;
+  /** The instant of the retire unit (the Core's clock): `capture_devices.retired_at`. */
+  retiredAt: EpochMs;
+  /** The operator of operation 111 (`OPR-NNN`): `capture_devices.retired_by`. */
+  retiredBy: string;
 }
 
 /**
@@ -1901,6 +1921,18 @@ export interface SimActions {
    * value that is no list of at most 16 profile codes, each once.
    */
   storeCaptureDeviceProfiles(change: StoreCaptureDeviceProfilesInput): void;
+  /**
+   * INTERNAL (task 4 row RD2; design 07 section 4.2; decision C147): the registered camera or
+   * microphone `deviceId` is RETIRED in the `captureDevices` slice (`retiredAt`, `retiredBy`);
+   * nothing else of it and no other device changes, and it stays in the slice. No client calls it:
+   * on the Core server it runs inside the unit of work of operation 111 (`retireCaptureDevice`),
+   * which checks the access rule and destroys the stored credential in the same unit, and writes
+   * the audit row itself. It holds ITSELF, inside that unit, the idle lock and the slot rule, so
+   * no session start can race it (design 07, security point 2). Checks no permission and writes no
+   * audit row and no event. Throws `SimTransitionError` (code INVALID_INPUT, `reason` the contract's
+   * word) as `retireCaptureDeviceTransition` of `capture-registry.ts` says.
+   */
+  retireCaptureDevice(change: RetireCaptureDeviceInput): void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════

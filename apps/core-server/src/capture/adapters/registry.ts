@@ -40,7 +40,8 @@ const KINDS_OF_SEAM: Readonly<Record<CaptureAdapter['seam'], readonly CaptureAda
  */
 export const OPENER_CAPABLE_KINDS: readonly CaptureAdapterKind[] = Object.freeze([CaptureAdapterKind.FAKE, CaptureAdapterKind.LOCAL_DEVICE, CaptureAdapterKind.ONVIF_RTSP, CaptureAdapterKind.USB_AUDIO]);
 
-const hasOpenerOf = (adapter: CaptureAdapter): boolean => adapter.seam !== 'POE' && adapter.hasOpener;
+// Row N10 (caution C-1 of review 088b): EXACTLY `true` here as at registration (`statesOpener`), never a truthy value.
+const hasOpenerOf = (adapter: CaptureAdapter): boolean => adapter.seam !== 'POE' && adapter.hasOpener === true;
 /** What an adapter STATES, whatever its seam: a switch that says it has an opener is held to the list as well (row 88). */
 const statesOpener = (adapter: CaptureAdapter): boolean => (adapter as { readonly hasOpener?: unknown }).hasOpener === true;
 

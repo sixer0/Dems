@@ -53,7 +53,6 @@ import {
   primaryKey,
   smallint,
   text,
-  unique,
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
@@ -170,14 +169,33 @@ export const captureDevices = pgTable(
     //    writer that forgets the column creates a development device. Written at INSERT and never
     //    updated - `dems_app` holds no UPDATE on it (`0009`), like `kind` (D72(f), D83). ──
     adapterKind: text('adapter_kind').$type<CaptureAdapterKindValue>().notNull().default('FAKE'),
+    // ── schema v15 additions (migration set 16, `0032` + `0033`; design
+    //    `docs/2026-10-12_input_av_core_adapter_plan/masterplan/07_design_retire_readopt.md` section
+    //    4.1, decision C147). Declared LAST: `0032` appends them. RETIREMENT: the instant (epoch ms,
+    //    as `last_seen_at`) and the operator. Both NULL = in service. A retired row is kept for
+    //    history - its id stays named by audit rows and sealed packages and is never minted again -
+    //    and is never changed again but for `last_seen_at` and `enabled` (the guard trigger of
+    //    `0033`); its credential is destroyed in the same unit (`dems_capture_credential_destroy`). ──
+    retiredAt: bigint('retired_at', { mode: 'number' }),
+    retiredBy: text('retired_by'),
   },
   (t) => [
     index('capture_devices_kind_idx').on(t.kind),
-    // At most one device per ONVIF endpoint reference (dbc-4 §N.5, D-DB-15): the database's
-    // backstop for the "already registered" match of adoption.
+    // At most one device IN SERVICE per ONVIF endpoint reference (dbc-4 §N.5, D-DB-15): the
+    // database's backstop for the "already registered" match of adoption. Since schema v15 a
+    // retired row no longer holds its reference, so the same camera can be adopted again under a
+    // NEW id (design 07 section 4.1).
     uniqueIndex('capture_devices_onvif_uuid_key')
       .on(t.onvifUuid)
-      .where(sql`${t.onvifUuid} IS NOT NULL`),
+      .where(sql`${t.onvifUuid} IS NOT NULL AND ${t.retiredAt} IS NULL`),
+    // Schema v15: who retired the device. RESTRICT, as every operator reference of this file.
+    foreignKey({
+      name: 'capture_devices_retired_by_fkey',
+      columns: [t.retiredBy],
+      foreignColumns: [operators.id],
+    })
+      .onDelete('restrict')
+      .onUpdate('no action'),
     // The id prefix is tied to the kind, so a registry row cannot claim to be a camera under a
     // `MIC-` id (dbc-3 §B.2).
     check(
@@ -211,6 +229,12 @@ export const captureDevices = pgTable(
       'capture_devices_adapter_pairing_check',
       sql`(${t.kind} = 'CAMERA' AND ${oneOf(t.adapterKind, CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND.CAMERA)}) OR (${t.kind} = 'MIC' AND ${oneOf(t.adapterKind, CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND.MIC)}) OR (${t.kind} = 'POE' AND ${oneOf(t.adapterKind, CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND.POE)})`,
     ),
+    // Schema v15. Declared LAST: `0032` adds them. Retired is the instant AND the operator, or
+    // neither (design 07 section 4.1).
+    check('capture_devices_retired_check', sql`(${t.retiredAt} IS NULL) = (${t.retiredBy} IS NULL)`),
+    // Cameras and microphones are retired; the PoE switch is not (design 07 section 4.3,
+    // `CAPTURE_DEVICE_BUILT_IN`) - held by the database too.
+    check('capture_devices_retired_kind_check', sql`${t.retiredAt} IS NULL OR ${t.kind} <> 'POE'`),
   ],
 );
 
@@ -422,6 +446,12 @@ export const captureAudioInputs = pgTable(
     //    the registered card. The runtime role updates both with the other card columns (`0018`). ──
     usbSerial: text('usb_serial'),
     usbPort: text('usb_port'),
+    // ── schema v15 addition (migration set 16; design 07 section 4.1, decision C147). Declared
+    //    LAST: `0032` appends it. The MIRROR of `capture_devices.retired_at` of this microphone,
+    //    written in the same unit with the same value. A retired input no longer holds its card
+    //    input (the partial unique index below), so the card is listed as new and registering it
+    //    mints a NEW `MIC-nn`; the row itself is never changed again (the guard trigger of `0033`). ──
+    retiredAt: bigint('retired_at', { mode: 'number' }),
   },
   (t) => [
     foreignKey({
@@ -438,7 +468,12 @@ export const captureAudioInputs = pgTable(
     })
       .onDelete('restrict')
       .onUpdate('no action'),
-    unique('capture_audio_inputs_card_input_key').on(t.cardId, t.cardDevice, t.inputNumber),
+    // One input IN SERVICE per card input. Until schema v15 a unique CONSTRAINT of the same name;
+    // since then a partial unique index, so that a retired input no longer holds it (design 07
+    // section 4.1).
+    uniqueIndex('capture_audio_inputs_card_input_key')
+      .on(t.cardId, t.cardDevice, t.inputNumber)
+      .where(sql`${t.retiredAt} IS NULL`),
     // Microphones only: the id prefix states the device kind (`capture_devices_id_check`).
     check('capture_audio_inputs_device_id_check', matches(t.deviceId, '^MIC-[0-9]{2,}$')),
     check('capture_audio_inputs_usb_id_check', sql`${t.usbId} IS NULL OR ${matches(t.usbId, '^[0-9a-f]{4}:[0-9a-f]{4}$')}`),

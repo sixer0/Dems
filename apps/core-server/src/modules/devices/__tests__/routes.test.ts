@@ -122,8 +122,11 @@ describe('MODG: the route list of the module equals its registry operations', ()
     // Task 4 blueprint row 116: operations 109 and 110 (the acceptance of the installation and its
     // revocation) carry the Device tag too. The contract only: no route answers them yet (row 117).
     const ACCEPTANCE_AREA = ['acceptInstallation', 'revokeInstallationAcceptance'];
+    // Task 4 row RD2: operation 111 (the retirement of a device) carries the Device tag too. The contract
+    // only: no route answers it yet (row RD3).
+    const RETIRE_AREA = ['retireCaptureDevice'];
     expect(area.map((operation) => operation.operationId)).toEqual([
-      ...DEVICES_OPERATIONS, ...CAPTURE_CONFIG_AREA, ...STT_CONFIG_AREA, ...CAPTURE_DISCOVERY_AREA, ...AUDIO_CARD_AREA, ...READDRESS_AREA, ...COMMISSIONING_AREA, ...DEVICE_TEST_AREA, ...ACCEPTANCE_AREA,
+      ...DEVICES_OPERATIONS, ...CAPTURE_CONFIG_AREA, ...STT_CONFIG_AREA, ...CAPTURE_DISCOVERY_AREA, ...AUDIO_CARD_AREA, ...READDRESS_AREA, ...COMMISSIONING_AREA, ...DEVICE_TEST_AREA, ...ACCEPTANCE_AREA, ...RETIRE_AREA,
     ]);
     expect(area.map(operationNumber).slice(0, DEVICES_OPERATIONS.length)).toEqual([null, null, null, 47, 48, 49, 50, 51, 52]);
     expect(area.slice(0, 3).map((operation) => operation.source)).toEqual(['Design book §21.2', 'Design book §21.2', 'Design book §21.2']);

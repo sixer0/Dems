@@ -1351,3 +1351,11 @@ Rows 85, 191, 143, 146, 154, 199, 200, 201, 194, 195, 102, 202, 114 (+ profiles 
 
 ## Update 2026-10-14 - N11a closed - C150: capture tests 627/627 on protocol 5. Launch run B+ (test runner; heavy + db locks).
 - In flight: 88b, RD1, RD2, B+.
+
+## Update 2026-10-14 - LIFT COMMITTED d9df31ac (C152); AM-1 in force. Row 88 files UNFROZEN.
+- Launches: N10 (capture/adapters/real.ts, registry.ts (C-1), fence/index.ts (macOS loss watch only), local/pipe-files.ts, audio/usb-audio-macos.ts (2 lines), adapters + capture static), 89 (e2e test area it declares + test/support key maker; C-2 door refusals, C-8 entry file), MH1 (local/__tests__/mic-helper.generated.test.ts; product leftover check only if the cause is there).
+- Queue: 148 (after 89, same area), 90 (+C-3, after 89), S86b (C-2 of 086), RD3 (after RD1+RD2; + C-4 via RD4a/b), N11 (545, 554), N12 (+546), N17, N14, M2b, N15, N16.
+- In flight: RD1, RD2, B+, N10, 89, MH1.
+
+## Update 2026-10-14 - N10 landed - C154. Launch I-9f (sonnet: capture-composition.ts loss-watch report sink; audio-cards routes.db.test.ts:564). RD2 gains credential.test.ts:471.
+- In flight: RD1, RD2, B+, 89, I-9f.

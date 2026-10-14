@@ -570,7 +570,8 @@ describe('the bundles build the built production parts (constructed, never opene
     });
     expect([adapter.kind, adapter.hasOpener]).toEqual([CaptureAdapterKind.USB_AUDIO, true]);
     // Row 85c: the fault sink and `superseded` are in the bundle; the lift adds the device list, the two match functions and `held`.
-    expect(Object.keys(composition.watches.microphone).sort()).toEqual(['cards', 'faults', 'registered', 'superseded', 'timers']);
+    // Decision C154: and `report` (the loss watch's reports reach the composition's report port).
+    expect(Object.keys(composition.watches.microphone).sort()).toEqual(['cards', 'faults', 'registered', 'report', 'superseded', 'timers']);
     const watch = createMicLossWatch({
       ...composition.watches.microphone,
       devices: () => MICS.map((device) => device.id),
@@ -1218,6 +1219,21 @@ describe('row 85c (d): the fault sink of the two watches (decision C60 (2)) - a 
     await mic.settled();
     expect(e.calls.at(-1)).toBe('raise MIC_DISCONNECTED@MIC-03');
     expect(composition.faults.owned()).toEqual(['MIC_DISCONNECTED:MIC-03']);
+  });
+
+  // Decision C154 (request line 584): the loss watch of the composition had NO `report`, so its words were dropped in production.
+  it('C154: a report of the microphone loss watch reaches the composition\'s report port - its own code, the device and a closed detail word, as a warning, and never the text of the failure', async () => {
+    const built = rig(CaptureOperation.REAL_PRODUCTION);
+    const composition = composed(built, { platform: 'darwin' });
+    expect(typeof composition.watches.microphone.report).toBe('function');
+    const failing = { list: () => Promise.reject(Object.assign(new Error('secret rtsp://user:pass@192.168.1.5/stream'), { code: 'EACCES' })) };
+    const mic = createMicLossWatch({ ...composition.watches.microphone, cards: failing, devices: () => [], identify: identifyRegisteredCard, isRow: isRegisteredAudioInput, held: () => [] });
+    await mic.check();
+    await mic.settled();
+    expect(built.reports.filter((entry) => entry.code === CaptureCompositionCode.MIC_LOSS_WATCH_REPORT)).toEqual([
+      { level: 'warn', code: CaptureCompositionCode.MIC_LOSS_WATCH_REPORT, context: { note: 'MIC_LOSS_LISTING_FAILED', deviceId: null, detail: 'EACCES' } },
+    ]);
+    expect(JSON.stringify(built.reports)).not.toMatch(/secret|rtsp|192\.168/);
   });
 
   // Row B2 (review follow-up S-02 of `verification/060b`; decision C95). Before the lift no production kind records, so the

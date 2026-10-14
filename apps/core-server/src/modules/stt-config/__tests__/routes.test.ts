@@ -125,7 +125,8 @@ describe('MODG: the route list of the module equals the registry operations it o
     // 100, 36, 64 until task 4 blueprint row 102 added the seven commissioning operations 101-107 (three GET, four POST).
     // 107, 39, 68 until task 4 row V3 added operation 108, the stored-credential connection test (POST).
     // 108, 39, 69 until task 4 blueprint row 116 added operations 109 and 110, the installation acceptance and its revocation (both POST).
-    expect([CORE_API_OPERATIONS.length, gets, posts]).toEqual([110, 39, 71]);
+    // 110, 39, 71 until task 4 row RD2 added operation 111, the retirement of a device (POST).
+    expect([CORE_API_OPERATIONS.length, gets, posts]).toEqual([111, 39, 72]);
   });
 
   it('the guard holds the registry rule for each: AUTHENTICATED for 90, CAPTURE_CONFIG for 91 and 92', async () => {

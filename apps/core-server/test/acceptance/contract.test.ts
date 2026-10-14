@@ -227,8 +227,12 @@ const EXTERNAL_ROUTES: readonly string[] = [CHANNEL_ROUTE, MEDIA_ROUTE, EXPORT_D
 // (`modules/capture-config/camera-network`) and their two entries left both lists, which are EMPTY now; the area
 // "the set-IP job" of this file produces their statuses with real requests. The camera, the alias address and the
 // host's observations are doubles of that area.
-const LANDED_UNROUTED: readonly string[] = [];
-const UNROUTED_UNTIL: Readonly<Record<string, string>> = {};
+// Task 4 row RD2 (design 07; decision C147): the contract of operation 111 `retireCaptureDevice` landed before its
+// route (CONTRACT ONLY: the shared transition, the simulator, the audit rule; no Core route, no screen). Its entry
+// leaves with the row that routes it:
+//   111 retireCaptureDevice                                        task 4 row RD3 (the Core's retire unit)
+const LANDED_UNROUTED: readonly string[] = ['POST /api/v1/capture/devices/{id}/retire'];
+const UNROUTED_UNTIL: Readonly<Record<string, string>> = { 'POST /api/v1/capture/devices/{id}/retire': 'task 4 row RD3' };
 /**
  * The operations of `LANDED_UNROUTED` and the rest. A walk of this file that CALLS every operation
  * calls the routed ones: an unrouted path answers the router's 404, which is no answer of the
@@ -531,12 +535,13 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     // 107 + 1 = 108, 39 GET / 69 POST.
     // Task 4 (blueprint row 116): the installation acceptance and its revocation, operations 109 and
     // 110, both POST: 108 + 2 = 110, 39 GET / 71 POST.
-    expect(CORE_API_OPERATION_TABLE).toHaveLength(110);
-    expect(OPERATIONS).toHaveLength(110);
-    expect(new Set(OPERATIONS.map((operation) => operation.operationId)).size).toBe(110);
-    expect(new Set(REGISTRY_ROUTES).size).toBe(110);
+    // Task 4 row RD2: the retirement of a device, operation 111, POST: 110 + 1 = 111, 39 GET / 72 POST.
+    expect(CORE_API_OPERATION_TABLE).toHaveLength(111);
+    expect(OPERATIONS).toHaveLength(111);
+    expect(new Set(OPERATIONS.map((operation) => operation.operationId)).size).toBe(111);
+    expect(new Set(REGISTRY_ROUTES).size).toBe(111);
     expect(OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(39);
-    expect(OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(71);
+    expect(OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(72);
     // Task 4 row 70: the named deferral of operations 98 and 99 is gone.
     // Task 4 row 194: ONE named deferral, pinned by literal - operation 100 has no route until row 197.
     // Task 4 row 102: SEVEN more, pinned by literal - operations 101 to 107 have no route until rows 106, 107, 108 and 111.
@@ -549,7 +554,8 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     // Task 4 row 117: operations 109 and 110 are routed; their two entries left the literal.
     // Task 4 row 106b: operations 104 and 105 are routed; their two entries left the literal.
     // Task 4 row 111: operations 106 and 107 are routed; their two entries left the literal, which is empty.
-    expect(UNROUTED_OPERATIONS.map((operation) => operation.operationId)).toEqual([]);
+    // Task 4 row RD2: ONE more, pinned by literal - operation 111 has no route until row RD3 (the Core's retire unit).
+    expect(UNROUTED_OPERATIONS.map((operation) => operation.operationId)).toEqual(['retireCaptureDevice']);
     expect(Object.keys(UNROUTED_UNTIL)).toEqual([...LANDED_UNROUTED]);
     for (const operation of OPERATIONS) {
       expect(describeCoreApiAccess(operation.access), operation.operationId).not.toBe('');
@@ -621,7 +627,7 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     expect(missing).toEqual(UNROUTED_OPERATIONS.map((operation) => operation.operationId));
   });
 
-  it('the committed openapi.json lists the same 110 operations with two security schemes, and equals what the generator produces now', () => {
+  it('the committed openapi.json lists the same 111 operations with two security schemes, and equals what the generator produces now', () => {
     const text = readFileSync(COMMITTED_OPENAPI, 'utf8');
     const committed = JSON.parse(text) as OpenApiDocument;
     const documented = listOpenApiOperations(committed).map((entry) => routeKey(entry.method, entry.path));
@@ -637,7 +643,7 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     // refused outright), and unregistered must be precisely the fourteen, so one more or one less
     // unrouted operation fails here. The calls themselves stay red as their own deferrals.
     expect(comparison).toEqual({ undocumented: [], unregistered: LANDED_UNROUTED });
-    expect(documented).toHaveLength(110);
+    expect(documented).toHaveLength(111); // task 4 row RD2: + operation 111
     expect([...documented].sort()).toEqual([...REGISTRY_ROUTES].sort());
     // The same operation ID on the same method and path.
     for (const entry of listOpenApiOperations(committed)) {
@@ -1830,9 +1836,9 @@ describe('AC-B-14: the refusals of the stages, generated for every operation of 
   it('401 NOT_SIGNED_IN: every operation that is not PUBLIC, called without a credential', async () => {
     const guarded = OPERATIONS.filter((operation) => operation.access.kind !== CoreApiAccessKind.PUBLIC);
     // 110 operations, four of them PUBLIC (the pin read 71 of the 75 of the base; 103 of 107 until task 4 row V3 added operation 108;
-    // 104 of 108 until task 4 row 116 added operations 109 and 110).
+    // 104 of 108 until task 4 row 116 added operations 109 and 110; 106 of 110 until task 4 row RD2 added operation 111).
     expect(OPERATIONS.length - guarded.length).toBe(4);
-    expect(guarded).toHaveLength(106);
+    expect(guarded).toHaveLength(107);
     // The two unrouted operations (task 4 row 70) answer the router's 404: they are not called.
     for (const operation of guarded.filter((entry) => !UNROUTED_OPERATIONS.includes(entry))) {
       fresh(main);

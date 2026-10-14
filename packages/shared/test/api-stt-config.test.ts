@@ -310,8 +310,9 @@ describe('the model identifier: one shared pattern, used by operation 91', () =>
     // Task 4 blueprint row 102: the nine schemas and the seven operations of the commissioning functions, 174 -> 183 and 100 -> 107.
     // Task 4 row V3: the one schema and the one operation of the stored-credential connection test, 183 -> 184 and 107 -> 108.
     // Task 4 blueprint row 116: the five schemas and the two operations of the installation acceptance, 184 -> 189 and 108 -> 110.
-    expect(Object.keys(document.components.schemas)).toHaveLength(189);
-    expect(CORE_API_OPERATIONS).toHaveLength(110);
+    // Task 4 row RD2: the two schemas and the one operation of the retirement of a device, 189 -> 191 and 110 -> 111.
+    expect(Object.keys(document.components.schemas)).toHaveLength(191);
+    expect(CORE_API_OPERATIONS).toHaveLength(111);
   });
 });
 

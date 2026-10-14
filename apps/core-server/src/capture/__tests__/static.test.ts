@@ -167,7 +167,8 @@ describe('G-R2: the pinned allowlist of the capture folder (SEC35-25)', () => {
     // Task 4 row 21 (SR-1, entry 1): the production door is the third. It imports the process module and NOT the file system.
     expect(places(capture, PROCESS_MODULE).sort()).toEqual([LOCAL_HELPER_DOOR, PRODUCTION_DOOR, 'src/capture/ipc.ts']);
     // Row 83: the software signer's key at rest (evidence package spec §C.3, SEC35-07). Rows 134 / 135: the facts of a program path
-    // (the door) and the named pipe of a microphone (`pipe-files.ts`: lstat, mkdir, realpath, unlink and nothing else).
+    // (the door) and the named pipe of a microphone (`pipe-files.ts`: lstat, mkdir, realpath, unlink and nothing else; WIDENED BY ROW N10,
+    // decision C118 (1): the pipe keeper's open for reading NON-BLOCKING, read and close - pinned by text in `adapters/local/__tests__/mic-static.test.ts`).
     // Row 61: the probe of the evidence store (`boot/evidence-volume.ts`: one exclusive create, a sync, a link and the removal of its own two names).
     // Task 4 row 64 (SR-1, entry 3): the reader of the card listing (`audio/card-listing-reader.ts`: open for reading, read, close and nothing else).
     // Task 4 row 65 (SR-1, entry 2): the writer of the shared-capture configuration (`audio/alsa-config-writer.ts`: one file below the run directory, made whole by a rename).
@@ -2281,6 +2282,73 @@ describe('row 80: the host checks ask the host through an injected runner; no li
     // No file under src/ states a destination rule that admits loopback: the permissive rule of a test lives under test/ (AD-02 (2)).
     expect(tree.filter((file) => file.path.startsWith('src/') && isProductionSource(file.path) && /\bloopback-destination\b|\bpermissive[A-Z]\w*Rule\b/.test(file.text)).map((file) => file.path)).toEqual([]);
     expect(tree.some((file) => file.path === 'test/support/loopback-destination.ts')).toBe(true);
+  });
+
+  // Task 4 row N10 (decision C135 (3); design 06 row N10, SM-21). THE macOS MICROPHONE OPENER IS ADMITTED BY A CODE CONSTANT ALONE:
+  // `MACOS_MICROPHONE_OPENER_ADMITTED = false` in the fence, flipped only by the M2b gate row (a decision row and a one-line commit).
+  // A test may admit it for ONE wiring call by an explicit third argument (`ProductionWiringAdmission`); NO PRODUCTION CALL SITE
+  // PASSES ONE - the form row 88 used for `provideProductionParts`'s one caller. Held: the constant's line and its one read, the
+  // option named only by its declaration and that read, every production call of the wiring with exactly two arguments.
+  // Mutants seen RED: the constant set to `true`; a third argument at the boot step's call.
+  describe('row N10: the macOS microphone opener is admitted by the code constant alone; no production call site passes the test\'s admission', () => {
+    const FENCE_INDEX = 'src/capture/fence/index.ts';
+    const CONSTANT = 'export const MACOS_MICROPHONE_OPENER_ADMITTED = false;';
+    const READ = 'const macosAdmitted = parts.platform === MACOS_MICROPHONE_OPENER_PLATFORM && (MACOS_MICROPHONE_OPENER_ADMITTED || admission?.admitMacosMicrophoneOpener === true);';
+    /** The arguments of the call that starts at `from` (the index of its open bracket), counted at the call's own depth. */
+    const argumentsAt = (text: string, from: number): number => {
+      let depth = 0;
+      let commas = 0;
+      for (let at = from; at < text.length; at += 1) {
+        const char = text[at];
+        if (char === '(' || char === '{' || char === '[') depth += 1;
+        else if (char === ')' || char === '}' || char === ']') {
+          depth -= 1;
+          if (depth === 0) return text.slice(from + 1, at).trim() === '' ? 0 : commas + 1;
+        } else if (char === ',' && depth === 1) commas += 1;
+      }
+      return -1;
+    };
+    const violations = (files: readonly SourceFile[]): string[] =>
+      files.flatMap((file) => {
+        const own = file.path === FENCE_INDEX;
+        const found: string[] = [];
+        const option = (file.text.match(/\badmitMacosMicrophoneOpener\b/g) ?? []).length;
+        if (option !== (own ? 2 : 0)) found.push(`${file.path} names the test's admission ${option} times`);
+        const constant = (file.text.match(/\bMACOS_MICROPHONE_OPENER_ADMITTED\b/g) ?? []).length;
+        if (constant !== (own ? 2 : 0)) found.push(`${file.path} names the admission constant ${constant} times`);
+        if (own && !file.text.includes(CONSTANT)) found.push(`${file.path} states another value of the constant`);
+        if (own && !file.text.includes(READ)) found.push(`${file.path} reads the admission otherwise`);
+        for (const call of file.text.matchAll(/(?<!function )\bwireProductionRegistry\s*\(/g)) {
+          const count = argumentsAt(file.text, (call.index ?? 0) + call[0].length - 1);
+          if (count !== 2) found.push(`${file.path} calls the wiring with ${count} arguments`);
+        }
+        return found;
+      });
+
+    it('finds a third argument, a named admission, another value of the constant and an admission read from the environment (control)', () => {
+      const fence = production.find((file) => file.path === FENCE_INDEX)?.text ?? '';
+      expect(violations([
+        { path: 'src/capture/x.ts', text: 'await wireProductionRegistry(parts, environment, { admitMacosMicrophoneOpener: true });' },
+        { path: FENCE_INDEX, text: fence.replace(CONSTANT, 'export const MACOS_MICROPHONE_OPENER_ADMITTED = true;') },
+        { path: FENCE_INDEX, text: fence.replace(': await wireProductionRegistry(parts, {', ': await wireProductionRegistry(parts, TESTING, {') },
+        { path: 'src/capture/y.ts', text: "const open = process.env['DEMS_MACOS_OPENER'] === '1' || MACOS_MICROPHONE_OPENER_ADMITTED;" },
+      ])).toEqual([
+        "src/capture/x.ts names the test's admission 1 times",
+        'src/capture/x.ts calls the wiring with 3 arguments',
+        `${FENCE_INDEX} states another value of the constant`,
+        `${FENCE_INDEX} calls the wiring with 3 arguments`,
+        'src/capture/y.ts names the admission constant 1 times',
+      ]);
+      expect(argumentsAt('f(a, { b: g(c, d) }, [e, f])', 1)).toBe(3);
+    });
+
+    it('the constant is false with its one read; the option is named by its declaration and that read alone; the ONE production call of the wiring hands two arguments', () => {
+      expect(violations(production)).toEqual([]);
+      expect(places(production, /\bwireProductionRegistry\s*\(/g)).toEqual([FENCE_INDEX]);
+      expect([...text(FENCE_INDEX).matchAll(/(?<!function )\bwireProductionRegistry\s*\(/g)]).toHaveLength(1);
+      // The test's admission reaches the wiring only through its declared parameter.
+      expect(text(FENCE_INDEX)).toContain('export async function wireProductionRegistry(parts: ProductionCaptureParts, environment: ProductionWiringEnvironment, admission?: ProductionWiringAdmission): Promise<BuiltProductionRegistry> {');
+    });
   });
 
   // Task 4 row 85 (decision C46; code review finding F-07; gate M2, decision C50). Before: the capture unit mounted the

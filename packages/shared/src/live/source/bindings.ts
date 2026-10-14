@@ -684,6 +684,14 @@ export const LIVE_BINDINGS: LiveBindings = {
     plan: () => resolve(undefined),
     result: nothing,
   },
+  retireCaptureDevice: {
+    flow: LiveActionFlow.LOCAL,
+    // Task 4 row RD2: no client retires a device through an action. The Core does it inside operation 111
+    // (`retireCaptureDevice`), which a client calls as a request; the retired entry (`retiredAt`) then
+    // arrives in the replicated `captureDevices` slice. One more `local` again.
+    plan: () => resolve(undefined),
+    result: nothing,
+  },
 };
 
 /** The names of the 47 bindings, in the order of `SimActions`. */

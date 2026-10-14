@@ -28,9 +28,10 @@
  * Adoption is not assignment: `captureConfig` is not changed. The new device carries `adapter` and
  * the class the Core derives from it (`DEVELOPMENT` for `FAKE` and `LOCAL_DEVICE`).
  */
+import { SessionState } from '../domain';
 import { captureDeviceProfilesOf } from './capture-profile';
 import { SimErrorCode, SimTransitionError } from './errors';
-import type { CaptureDeviceStatus, ReaddressCaptureDeviceInput, RegisterCaptureDeviceInput, RegisterCaptureMicrophoneInput, SimState, StoreCaptureDeviceProfilesInput } from './types';
+import type { CaptureDeviceStatus, ReaddressCaptureDeviceInput, RegisterCaptureDeviceInput, RegisterCaptureMicrophoneInput, RetireCaptureDeviceInput, SimState, StoreCaptureDeviceProfilesInput } from './types';
 
 /** The name the action carries in a refusal. */
 export const REGISTER_CAPTURE_DEVICE_ACTION = 'registerCaptureDevice';
@@ -266,4 +267,94 @@ export function storeCaptureDeviceProfilesTransition(state: SimState, input: Sto
   if (held !== undefined && held.length === profiles.length && held.every((profile, index) => profile.code === profiles[index]?.code)) return { state, result: found };
   const stored: CaptureDeviceStatus = { ...found, profiles };
   return { state: { ...state, captureDevices: { ...state.captureDevices, devices: devices.map((device) => (device === found ? stored : device)) } }, result: stored };
+}
+
+// ── A registered camera or microphone is RETIRED (task 4 row RD2; design 07 sections 4.2-4.4;
+// decision C147) ─────────────────────────────────────────────────────────────────────────────────
+//
+// The INTERNAL action `retireCaptureDevice` of `SimActions` is built from the function below (52 ->
+// 53 actions). It is the one way a device becomes retired in the replicated `captureDevices` slice:
+//
+//   - on the Core server, inside the unit of work of operation 111 (`retireCaptureDevice`, row RD3),
+//     through the engine's door, in the same unit that destroys the stored credential and writes
+//     `retired_at` / `retired_by` to the device's row. No client can call it;
+//   - in the in-app simulator, by the simulated operation 111 (`sim/api.ts`).
+//
+// As its siblings it checks no permission and writes NO audit row and no event (the caller writes
+// `CAPTURE_DEVICE_RETIRED`). UNLIKE them it holds the idle lock and the slot rule ITSELF: run inside
+// the engine's unit, no session start and no assignment can come between the check and the change
+// (design 07, security point 2). The device STAYS in the slice: it is never removed (the engine
+// refuses a device that leaves the registry) and nothing else of it changes - model and firmware
+// stay what a pending seal reads.
+//
+// | Rule | Refusal (`SimTransitionError`, code INVALID_INPUT, `reason`) |
+// |------|---------|
+// | No session is open (one that is not sealed) | ILLEGAL_STATE, reason `CAPTURE_CONFIG_LOCKED` |
+// | The device is in the registry | reason `NOT_FOUND` |
+// | It is not a built-in device of the demonstration model, nor of kind POE | reason `CAPTURE_DEVICE_BUILT_IN` |
+// | It is a camera or a microphone | reason `CAPTURE_DEVICE_BUILT_IN` (no other kind exists) |
+// | It is not retired already | reason `CAPTURE_DEVICE_RETIRED` |
+// | No slot of the selector names it | reason `CAPTURE_DEVICE_ASSIGNED` |
+// | `retiredAt` is an instant, `retiredBy` an operator id (`OPR-NNN`) | INVALID_INPUT, no reason |
+
+/** The name the retire action carries in a refusal. */
+export const RETIRE_CAPTURE_DEVICE_ACTION = 'retireCaptureDevice';
+
+/**
+ * The words of the refusals of the retire action: `SimTransitionError.reason`, which the Core
+ * answers as `details.reason`. The contract's words (`CaptureRetireRefusalReason` of
+ * `api/capture-retire.ts`); a test holds them equal (this file imports nothing of the contract).
+ */
+export const RETIRE_REFUSAL = {
+  LOCKED: 'CAPTURE_CONFIG_LOCKED',
+  NOT_FOUND: 'NOT_FOUND',
+  BUILT_IN: 'CAPTURE_DEVICE_BUILT_IN',
+  RETIRED: 'CAPTURE_DEVICE_RETIRED',
+  ASSIGNED: 'CAPTURE_DEVICE_ASSIGNED',
+} as const;
+
+/** The built-in devices of the demonstration model (`DEFAULT_CAPTURE_DEVICES`): never retired. Held equal to the contract's `CAPTURE_BUILT_IN_DEVICE_IDS` by a test. */
+export const RETIRE_BUILT_IN_DEVICE_IDS: readonly string[] = ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH'];
+
+const OPERATOR_ID = /^OPR-\d{3}$/;
+
+/**
+ * True for a RETIRED device (operation 111): it is listed as Retired and is left out of every
+ * selector and assignment list. The one test of "retired" for the simulator, the Core and both clients.
+ */
+export function isCaptureDeviceRetired(device: Pick<CaptureDeviceStatus, 'retiredAt'>): boolean {
+  return device.retiredAt !== undefined;
+}
+
+/**
+ * The selector slot that names `deviceId`, or null: `VIDEO-01` / `VIDEO-02` for a camera line, the
+ * ROLE (`PRIMARY` / `STANDBY`) for a microphone line - the slot names of `CAPTURE_SELECTOR_SLOTS`.
+ */
+export function selectorSlotOfDevice(state: SimState, deviceId: string): string | null {
+  const camera = state.captureConfig.cameras.find((line) => line.deviceId === deviceId);
+  if (camera !== undefined) return camera.trackId;
+  const mic = state.captureConfig.mics.find((line) => line.deviceId === deviceId);
+  return mic === undefined ? null : mic.role;
+}
+
+/**
+ * `retireCaptureDevice`: the state in which the device `deviceId` carries `retiredAt` and
+ * `retiredBy`. Every other member of it, every other device and every other slice is the same
+ * object as before. Throws as the table above says; a refusal changes nothing.
+ */
+export function retireCaptureDeviceTransition(state: SimState, input: RetireCaptureDeviceInput): { state: SimState; result: CaptureDeviceStatus } {
+  const refuse = (detail: string, reason: string | null, code: SimErrorCode = SimErrorCode.INVALID_INPUT): SimTransitionError =>
+    new SimTransitionError(null, RETIRE_CAPTURE_DEVICE_ACTION, detail, code, reason);
+  // The lock of the selector: a session that is not sealed (`isSessionActive` of `session-machine.ts`, not imported here to keep this file a leaf).
+  if (state.session !== null && state.session.state !== SessionState.SEALED) throw refuse('a device is retired only while no session is open', RETIRE_REFUSAL.LOCKED, SimErrorCode.ILLEGAL_STATE);
+  if (!Number.isSafeInteger(input.retiredAt) || input.retiredAt < 0) throw refuse('the instant of a retirement is a whole number of milliseconds', null);
+  if (typeof input.retiredBy !== 'string' || !OPERATOR_ID.test(input.retiredBy)) throw refuse('a retirement names its operator', null);
+  const devices = state.captureDevices.devices;
+  const found = typeof input.deviceId === 'string' ? devices.find((device) => device.id === input.deviceId) : undefined;
+  if (found === undefined) throw refuse('the registry holds no device with this id', RETIRE_REFUSAL.NOT_FOUND);
+  if (RETIRE_BUILT_IN_DEVICE_IDS.includes(found.id) || (found.kind !== 'CAMERA' && found.kind !== 'MIC')) throw refuse('a built-in device or a PoE switch is never retired', RETIRE_REFUSAL.BUILT_IN);
+  if (isCaptureDeviceRetired(found)) throw refuse('the device is retired already', RETIRE_REFUSAL.RETIRED);
+  if (selectorSlotOfDevice(state, found.id) !== null) throw refuse('a slot of the selector names the device', RETIRE_REFUSAL.ASSIGNED);
+  const retired: CaptureDeviceStatus = { ...found, retiredAt: input.retiredAt, retiredBy: input.retiredBy };
+  return { state: { ...state, captureDevices: { ...state.captureDevices, devices: devices.map((device) => (device === found ? retired : device)) } }, result: retired };
 }

@@ -28,6 +28,10 @@
 import {
   CAPTURE_CAMERA_DEVICE_ID_PATTERN,
   CAPTURE_CANDIDATE_ID_PATTERN,
+  CAPTURE_DEVICE_RETIRE_OPERATION_ID,
+  CAPTURE_RETIRABLE_DEVICE_ID_PATTERN,
+  CAPTURE_RETIRABLE_KINDS,
+  CaptureDeviceRetireReason,
   CAPTURE_DEVICE_TEST_AUDIT_DIFFERING_MAX,
   CAPTURE_DEVICE_TEST_AUDIT_PROFILES_MAX,
   CAPTURE_DEVICE_UNREACHABLE_REASONS,
@@ -954,16 +958,32 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     fromSample: daySamples(REQUIRED),
     samples: wholeBetween(CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES, CAPTURE_AUDIO_DAY_SAMPLES, 'samples')(REQUIRED),
   },
+  // ── Task 4 (row RD2; design 07 section 4.2; decision C147; the writer is operation 111's unit, row
+  // RD3, and the in-app simulator's operation 111): a registered camera or microphone was RETIRED -
+  // its stored credential destroyed in the same unit, its row kept and never assignable again. The
+  // device (also the row's device), its kind, the closed reason of the body (NL-1: no free text),
+  // whether a stored credential was destroyed, and how many stream rows are kept for history. Ids,
+  // closed words, one flag and one count: NO address, NO `onvif_uuid`, NO serial or port, NO
+  // credential and no text a device chose - no such key exists.
+  [AuditType.CAPTURE_DEVICE_RETIRED]: {
+    deviceId: matching(CAPTURE_RETIRABLE_DEVICE_ID_PATTERN, 'a registered camera or microphone id (CAM-03, MIC-03)')(REQUIRED),
+    kind: oneOf(CAPTURE_RETIRABLE_KINDS, `one of ${CAPTURE_RETIRABLE_KINDS.join(', ')}`)(REQUIRED),
+    reason: oneOf(Object.values(CaptureDeviceRetireReason), `one of ${Object.values(CaptureDeviceRetireReason).join(', ')}`)(REQUIRED),
+    credentialDestroyed: flag(REQUIRED),
+    streamRowsKept: count(REQUIRED),
+    operationId: oneOf([CAPTURE_DEVICE_RETIRE_OPERATION_ID], CAPTURE_DEVICE_RETIRE_OPERATION_ID)(REQUIRED),
+    permission: code(OPTIONAL),
+  },
 } as const satisfies Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>;
 
 /**
- * The forty-one types that have a list (nine of the backend task, nine of the capture phase, one
+ * The forty-two types that have a list (nine of the backend task, nine of the capture phase, one
  * of R-8, four of R-9 / R-10, ten of task 4 blueprint row 19, one of task 4 blueprint row 201, four
- * of task 4 row V3, one of task 4 row R1b, two of task 4 row N2).
+ * of task 4 row V3, one of task 4 row R1b, two of task 4 row N2, one of task 4 row RD2).
  */
 export type ServerAuditType = keyof typeof SERVER_AUDIT_DETAIL_RULES;
 
-/** The list of `type`, or undefined for one of the simulator's 44 types (85 minus the 41 listed here). */
+/** The list of `type`, or undefined for one of the simulator's 44 types (86 minus the 42 listed here). */
 export function detailRulesOf(type: AuditType): Readonly<Record<string, DetailRule>> | undefined {
   return (SERVER_AUDIT_DETAIL_RULES as Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>)[type];
 }

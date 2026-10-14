@@ -59,7 +59,7 @@ function entry(operationId: string, change: Record<string, unknown>): CoreApiOpe
 }
 
 describe('the rule book of the contract registry', () => {
-  it('compiles a rule for every one of the 110 operations: none lacks an access rule or an audit rule', () => {
+  it('compiles a rule for every one of the 111 operations: none lacks an access rule or an audit rule', () => {
     // C3 §2.5 (blueprint row 113): 89 + the STT configuration operations 90-92 = 92.
     // C3 §2.6, §10.1 (blueprint row 132, decision D106): + the camera-search operations 93-97 = 97.
     // Task 4 blueprint row 63 (design addendum 4.2): + the sound-card operations 98-99 = 99.
@@ -67,12 +67,13 @@ describe('the rule book of the contract registry', () => {
     // Task 4 blueprint row 102: + the seven commissioning operations 101-107 = 107.
     // Task 4 row V3 (blueprint row 146): + the stored-credential connection test, operation 108 = 108.
     // Task 4 blueprint row 116: + the installation acceptance and its revocation, operations 109-110 = 110.
-    expect(book.operationIds).toHaveLength(110);
+    // Task 4 row RD2: + the retirement of a device, operation 111 = 111.
+    expect(book.operationIds).toHaveLength(111);
     expect(rules.filter((rule) => !isAccessRule(rule))).toEqual([]);
-    expect(new Set(compiled.map((rule) => rule.operationId)).size).toBe(110);
+    expect(new Set(compiled.map((rule) => rule.operationId)).size).toBe(111);
   });
 
-  it('holds 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 70 with one permission and 1 any-of (spec §7, D13; C3 §2.5, §2.6; task 4 rows 63, 194, 102, V3 and 116)', () => {
+  it('holds 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 71 with one permission and 1 any-of (spec §7, D13; C3 §2.5, §2.6; task 4 rows 63, 194, 102, V3, 116 and RD2)', () => {
     const count = (kind: string): number => compiled.filter((rule) => rule.kind === kind).length;
     expect({
       PUBLIC: count(CoreApiAccessKind.PUBLIC),
@@ -80,7 +81,7 @@ describe('the rule book of the contract registry', () => {
       AUTHENTICATED: count(CoreApiAccessKind.AUTHENTICATED),
       PERMISSION: count(CoreApiAccessKind.PERMISSION),
       ANY_OF: count(CoreApiAccessKind.ANY_OF),
-    }).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 30, PERMISSION: 70, ANY_OF: 1 });
+    }).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 30, PERMISSION: 71, ANY_OF: 1 });
   });
 
   it('takes method, path, permissions and conditions from the registry entry, and nothing from anywhere else', () => {
@@ -149,6 +150,8 @@ describe('the rule book of the contract registry', () => {
       // Task 4 blueprint row 116 (decision U10): the installation acceptance and its revocation, web console only.
       ['acceptInstallation', CoreApiAccessCondition.WEB_CONSOLE_SESSION],
       ['revokeInstallationAcceptance', CoreApiAccessCondition.WEB_CONSOLE_SESSION],
+      // Task 4 row RD2 (decision C147, Q1): the retirement of a device, web console only.
+      ['retireCaptureDevice', CoreApiAccessCondition.WEB_CONSOLE_SESSION],
     ]);
   });
 

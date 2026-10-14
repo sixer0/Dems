@@ -156,3 +156,39 @@ decisions/decisions.md U15-U27 and C88-C111; delegation_progress/file_ownership.
 - Checkpoint commits exist: f20c9b39 (schema steps 9-13, 59 files), 1fbeada7 (everything else, 679 files). Scan baselines at 1fbeada7 are in delegation_progress/file_ownership.md.
 - M1c landed: the macOS microphone design is revision 3 (uncommitted); 18 work packages; five points of the addendum not buildable as worded must be ruled before lane B starts (file_ownership.md, last update).
 - NOTHING IS IN FLIGHT.
+
+---
+
+## STATE AT THE PAUSE OF 2026-10-14 (user's word: "tutup dulu ... usage limit hampir habis ... catat temuan yang belum terselesaikan")
+
+Commits today (branch task4/input-av-core-port, NO push): cb06d42c (checkpoint, C144), d9df31ac (THE CLASS-C LIFT, AM-1 in force, C152), and the WIP commit made at this pause (C155 - read it before resuming). Decisions C120-C155 in `decisions/decisions.md`; landings in `delegation_progress/file_ownership.md`.
+
+### Landed and complete (in the WIP commit, not yet in a clean commit)
+- N10 (C154): registry by platform; `MACOS_MICROPHONE_OPENER_ADMITTED = false`; C-1 of 088b; pipe keeper; macOS loss watch (said, not sealed).
+- MH1 (C153): REAL DEFECT fixed - the leftover check read only 64 KiB of the process list. OWED: one run of `mic-helper.generated.test.ts` under the heavy lock; a sweep for the same 64 KiB cut in other process checks.
+
+### STOPPED MID-WORK at the pause (half-done edits are IN the WIP commit; resume each by re-launching its row with its brief)
+- RD1 (schema v15 / dbc-16 for device retirement: migrations 0032/0033, set16 test, version pins 14 -> 15 across Core tests). State: files written; checks NOT finished (it was waiting on the heavy lock). Re-run its checks first.
+- RD2 (operation 111 `retireCaptureDevice` contract: packages/shared, `core/audit-details.ts`, new `api/capture-retire.ts`, OpenAPI). State: was fixing two lint warnings; checks NOT finished; owed: `credential.test.ts:471` pin for `CAPTURE_DEVICE_RETIRED.credentialDestroyed` (request 585).
+- Row 89 (first full session on doubles, AD-08; + C-2 door refusals, C-8 entry file): test files under `modules/capture-config/__tests__/e2e/` and `test/support/{entry-start/,production-key.ts}` partly written; NOT run.
+- I-9f (C154): loss-watch report sink in `capture-composition.ts` (request 584) + stale control `audio-cards/__tests__/routes.db.test.ts:564` (request 582): partly applied; NOT verified.
+- Run B+ (worker series + kill matrix on the v5 binaries): stopped at step 1 (hashes matched N13's). NOT PROVEN: BR-11 on the new worker.
+
+The WIP commit may NOT typecheck or pass tests (rows above are mid-edit). The first act on resume: Core / shared / web / mobile typecheck and the static sets, attributed to the rows above.
+
+### Open findings, not yet resolved (each with its routing)
+1. Device retirement (C146, C147): the refusal sentences tell the operator to "adopt the camera again", which has NO path until op 111 (RD1-RD6) lands. RD3 (Core op), RD4a/RD4b (cameras / microphones skip retired - ALSO caution C-4 of 088b: a HARD precondition before op 111 can retire anything), RD5 (web + tablet), RD6 (security review) not started.
+2. Gate cautions 088b (C151): C-2 -> row 89; C-3 (no end event when the engine returns IGNORED with nothing durable - hypothesis) -> row 90; C-5 stale comments / fence imports the production mic module directly -> tidy 134-135; C-6 RULE: no agent boots REAL_PRODUCTION on the user's data or cameras without the user's word.
+3. Review 086 (C127): C-2 (tokens / lens not compared; the open does not compare the stream with its stored row) -> row S86b before gate M6 with row 90; C-5 (no camera identity check at open) -> hardening row before M6 + hardware chapter; C-11 (firewall table state) -> document row + a build row before the first Linux installation; F-2 rescope of task-3 check `M7-SEC-SRC-2` -> gate 92 / document row.
+4. macOS microphone path: N11 (Core reads the v5 records; supervisor record subject - request 545; the four loss-watch codes; the not-confirmed interval sealed - 583; 554), N12 (seal; + C124 remainder: the media zero is `session_audio_intervals.from_at` of the START row - state `mediaZeroAt + media end`, keep the clamp - request 546), N17 (verdict lines / export), N14 (session on doubles), M2b gates + security acceptance (then flip `MACOS_MICROPHONE_OPENER_ADMITTED`), N15 (the user's USB interface - MUST be set to 48 kHz by the user; it read 96 kHz on 2026-10-14), N16 (docs). Finding to carry: gapped samples displaced 26.9-38.9 ms EARLY vs a +/-40 ms bound (1.1 ms margin, C145) - a finding for M2b, not a pass.
+5. Rows after the lift: 148 (loopback production row, AD-02 (3)), 90 (session scenarios + C-3), row 57 tablet HEVC measurement, M3 / M5 / M10 / M11 gates.
+6. F-V7-1 (C126): OD-22 (PoE cycle only for a LOST camera) is enforced nowhere; operation 48 is a plain restart; input-av has no PoE control - OPEN ITEM FOR THE USER in the final report.
+7. Tidy (134-135): four Core copies of the interface-name pattern stay equal text (pins refuse the import: host-alias tests, `boot/program-checks.ts`); text 4 of 087 into addendum 1.6 #3 (E-A12) - N16; `onvif-rtsp.ts` retired and unimported, NOT deleted (deletion only on the user's word); README test totals "to be refreshed after the final full suite".
+8. Not re-run since their files' neighbours changed: camera-network and factory-scan loopback test files (sandbox EPERM; C141) -> final full suite.
+9. Final: full suite (kill matrix, `DEMS_REQUIRE_RECORDED_FILES=1`, `DEMS_SEAL_E2E=1`), closing gates, clean final commits (the WIP commit's rows re-verified), report, memory.
+
+### Waiting on the user
+- Set the USB audio interface to 48 kHz before N15.
+- `ffprobe-export.txt` at the repo root (2026-10-13, origin unknown): yours? Left untouched, not committed.
+- Push: nothing has been pushed; push only on the user's word.
+- The user's own first real run (assign / save cam 1 / 2): a Core started from a commit holding d9df31ac + W6, re-adopt the cameras, type the camera password in the console, "Test connection", then assign. No agent does this (C151 C-6).

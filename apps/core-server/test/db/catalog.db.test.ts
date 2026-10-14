@@ -167,7 +167,7 @@ function difference(
 }
 
 describe('the live catalog equals the database contract (section 4)', () => {
-  it('48 tables, 498 columns, 231 named CHECKs, 48 foreign keys: the difference is empty', async () => {
+  it('48 tables, 501 columns, 233 named CHECKs, 49 foreign keys: the difference is empty', async () => {
     const live = await readCatalog();
     const lines = difference(inventory.tables, live);
     const count = (type: string): number => live.constraints.filter((constraint) => constraint.type === type).length;
@@ -203,7 +203,8 @@ describe('the live catalog equals the database contract (section 4)', () => {
     // Task 4 requirement AD-06 (4) (set 11, dbc-11): +1 CHECK (`capture_devices_profiles_code_check`).
     // Task 4 schema set C (set 12, dbc-12): +1 table (T-48), +13 columns, +11 CHECKs, +2 foreign keys.
     // Task 4 findings F-4 and S2-02 (set 15, dbc-15): +1 column and +2 CHECKs on `capture_network_config`.
-    expect(counts).toMatchObject({ tables: 48, columns: 498, checks: 231, foreignKeys: 48 });
+    // Task 4 design 07, decision C147 (set 16, dbc-16): +3 columns, +2 CHECKs, +1 foreign key (retirement).
+    expect(counts).toMatchObject({ tables: 48, columns: 501, checks: 233, foreignKeys: 49 });
   });
 
   it('the comparison is not vacuous: a changed inventory produces a difference of each kind', async () => {
@@ -247,7 +248,8 @@ describe('the live catalog equals the database contract (section 4)', () => {
     );
     const byType = Object.fromEntries(rows.map((row) => [row.type, Number(row.total)]));
     const notNullColumns = inventory.tables.reduce((sum, table) => sum + table.columns.filter((column) => column.notNull).length, 0);
-    expect(byType).toEqual({ c: 231, f: 48, n: notNullColumns, p: 48, u: 16 });
+    // Set 16 (dbc-16): the unique constraint on a sound-card input became a partial unique index (u 16 -> 15).
+    expect(byType).toEqual({ c: 233, f: 49, n: notNullColumns, p: 48, u: 15 });
     console.info(`[w17] pg_constraint in public by contype: ${JSON.stringify(byType)} (n = NOT NULL constraints of PostgreSQL 18)`);
   });
 });
@@ -286,7 +288,7 @@ describe('functions and triggers (contract §6.3, §8.3)', () => {
     return text.slice(open + 5, close);
   };
 
-  it('7 functions, each with the body of its migration file (GD-13), the language, the security mode and the settings of the contract', async () => {
+  it('9 functions, each with the body of its migration file (GD-13), the language, the security mode and the settings of the contract', async () => {
     const { rows } = await db.ownerPool().query(
       `SELECT p.proname::text AS name, pg_get_function_identity_arguments(p.oid) AS arguments,
               pg_get_function_result(p.oid) AS result, l.lanname::text AS language, p.prosecdef AS security_definer,
@@ -302,13 +304,17 @@ describe('functions and triggers (contract §6.3, §8.3)', () => {
       { name: 'audit_log_guard_insert', arguments: '', result: 'trigger', language: 'plpgsql', security_definer: true, volatility: 'v', parallel: 'u', settings: pinned, owner: 'dems_owner', body: bodyOf('0002_audit_guards', 'audit_log_guard_insert') },
       { name: 'audit_log_refuse_change', arguments: '', result: 'trigger', language: 'plpgsql', security_definer: false, volatility: 'v', parallel: 'u', settings: null, owner: 'dems_owner', body: bodyOf('0002_audit_guards', 'audit_log_refuse_change') },
       // The two write-only secret reveal functions of dbc-3 §B.3/§B.13 (SEC35-02, Q-SEC-3 default).
+      // Set 16 (dbc-16, design 07): the destroy path of a retired device's credential, the mirror of the reveal.
+      { name: 'dems_capture_credential_destroy', arguments: 'p_device_id text', result: 'integer', language: 'sql', security_definer: true, volatility: 'v', parallel: 'u', settings: pinned, owner: 'dems_owner', body: bodyOf('0033_capture_device_retirement_privileges', 'dems_capture_credential_destroy') },
       { name: 'dems_capture_credential_reveal', arguments: 'p_device_id text', result: 'TABLE(username text, encryption text, secret_ciphertext bytea, nonce bytea, key_ref text)', language: 'sql', security_definer: true, volatility: 'v', parallel: 'u', settings: pinned, owner: 'dems_owner', body: bodyOf('0005_capture_privileges', 'dems_capture_credential_reveal') },
+      // Set 16: the guard of a retired row (invoker rights; its search path pinned).
+      { name: 'dems_capture_retired_row_guard', arguments: '', result: 'trigger', language: 'plpgsql', security_definer: false, volatility: 'v', parallel: 'u', settings: pinned, owner: 'dems_owner', body: bodyOf('0033_capture_device_retirement_privileges', 'dems_capture_retired_row_guard') },
       { name: 'dems_jsonb_is_flat', arguments: 'doc jsonb', result: 'boolean', language: 'sql', security_definer: false, volatility: 'i', parallel: 's', settings: null, owner: 'dems_owner', body: bodyOf('0000_prelude', 'dems_jsonb_is_flat') },
       { name: 'dems_stt_credential_reveal', arguments: '', result: 'TABLE(credential_kind text, credential_ref text, secret_ciphertext bytea, nonce bytea)', language: 'sql', security_definer: true, volatility: 'v', parallel: 'u', settings: pinned, owner: 'dems_owner', body: bodyOf('0007_stt_config_privileges', 'dems_stt_credential_reveal') },
     ]);
   });
 
-  it('T-AO-2d: 3 triggers, each with tgenabled = A (ENABLE ALWAYS), and no other trigger in the schema', async () => {
+  it('T-AO-2d: 3 triggers on the audit tables and, since set 16, the 2 guards of a retired capture row, each with tgenabled = A (ENABLE ALWAYS), and no other trigger in the schema', async () => {
     const { rows } = await db.ownerPool().query(
       `SELECT c.relname::text AS table_name, t.tgname::text AS name, t.tgenabled::text AS mode, pg_get_triggerdef(t.oid) AS definition
          FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
@@ -336,6 +342,20 @@ describe('functions and triggers (contract §6.3, §8.3)', () => {
         definition:
           'CREATE TRIGGER audit_log_chain_guard BEFORE INSERT ON public.audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_guard_insert()',
       },
+      {
+        table_name: 'capture_audio_inputs',
+        name: 'capture_audio_inputs_retired_guard',
+        mode: 'A',
+        definition:
+          'CREATE TRIGGER capture_audio_inputs_retired_guard BEFORE UPDATE ON public.capture_audio_inputs FOR EACH ROW EXECUTE FUNCTION dems_capture_retired_row_guard()',
+      },
+      {
+        table_name: 'capture_devices',
+        name: 'capture_devices_retired_guard',
+        mode: 'A',
+        definition:
+          'CREATE TRIGGER capture_devices_retired_guard BEFORE UPDATE ON public.capture_devices FOR EACH ROW EXECUTE FUNCTION dems_capture_retired_row_guard()',
+      },
     ]);
     // The statement of T-AO-2d, as the contract writes it.
     const contract = await db.appPool().query(
@@ -350,7 +370,7 @@ describe('functions and triggers (contract §6.3, §8.3)', () => {
 });
 
 describe('what the schema must not contain (CL-01, CL-07, CL-09, N-1)', () => {
-  it('schema public holds tables, their indexes and seven functions: no sequence, view, enum or domain', async () => {
+  it('schema public holds tables, their indexes and nine functions: no sequence, view, enum or domain', async () => {
     const { rows } = await db.ownerPool().query<{ kind: string; total: string }>(
       `SELECT relkind::text AS kind, count(*) AS total FROM pg_class WHERE relnamespace = 'public'::regnamespace GROUP BY 1
        UNION ALL

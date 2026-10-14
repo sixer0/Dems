@@ -154,9 +154,9 @@ beforeEach(() => {
 });
 
 describe('the database and the Core this file runs on', () => {
-  it(`the schema version of the code: [${DB_SCHEMA_VERSION}, '${DB_CONTRACT_REVISION}'] = [14, 'dbc-15'], read as dems_app; the capture operation is SIMULATED`, async () => {
+  it(`the schema version of the code: [${DB_SCHEMA_VERSION}, '${DB_CONTRACT_REVISION}'] = [15, 'dbc-16'], read as dems_app; the capture operation is SIMULATED`, async () => {
     const row = (await guard.app.db.pool.query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([row.schema_version, row.contract_revision]).toEqual([14, 'dbc-15']);
+    expect([row.schema_version, row.contract_revision]).toEqual([15, 'dbc-16']);
     expect(((await guard.app.db.pool.query('SELECT current_user AS role')).rows[0] as { role: string }).role).toBe('dems_app');
     expect(captureFenceControl(guard.app).operation).toBe('SIMULATED');
   });
@@ -560,8 +560,17 @@ describe('admission to the registry handed in: a DEVICE ROW, not a recordable so
       // It IS assignable as a production microphone: only the recording is refused.
       expect(registry.assertAssignable('MIC', id).id).toBe(id);
     }
-    // CONTROL: an adapter of this kind that CLAIMS an opener is refused at registration (the lift is WP-13's decision).
-    expect(() => registry.register(usbAudioStandIn({ id: 'MIC-99', kind: 'MIC', adapterKind: 'USB_AUDIO', model: null }, true))).toThrow(CaptureAdapterError);
+    // CONTROL (updated for the lift, AM-1, commit d9df31ac; decision C154): since the lift a `USB_AUDIO` adapter that states an opener
+    // IS registered in REAL_PRODUCTION (its kind is on OPENER_CAPABLE_KINDS and its source class is the class that operation records),
+    // and is still REFUSED in a development registry. Both halves run on registries of their own, so this file's shared registry
+    // (read by the cases below) is not changed by the control.
+    const withOpener = (): AudioInputAdapter => usbAudioStandIn({ id: 'MIC-99', kind: 'MIC', adapterKind: 'USB_AUDIO', model: null }, true);
+    const production = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION });
+    production.register(withOpener());
+    expect(production.list().map((device) => [device.id, device.adapterKind, device.sourceClass, device.hasOpener])).toEqual([['MIC-99', 'USB_AUDIO', 'PRODUCTION', true]]);
+    const development = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_DEVELOPMENT });
+    expect(() => development.register(withOpener())).toThrow(CaptureAdapterError);
+    expect(development.list()).toEqual([]);
     expect(registry.list().map((device) => device.id)).toEqual(['MIC-03', 'MIC-04']);
   });
 

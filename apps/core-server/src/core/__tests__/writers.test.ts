@@ -24,7 +24,7 @@ import {
   ManifestVideoAbsenceSchema,
   VIDEO_TRACK_IDS,
 } from '@dems/shared/evidence-package';
-import { OPERATOR_PASSWORD_SET_DETAILS_EXAMPLE, SYSTEM_BOOT_DETAILS_EXAMPLE, SYSTEM_BOOT_HOST_DETAILS_EXAMPLE, SYSTEM_BOOT_SIGNING_DETAILS_EXAMPLE, SYSTEM_BOOT_SIGNING_STORE_DETAILS_EXAMPLE, captureDeviceConnectionTestedDetails } from '@dems/shared/api';
+import { OPERATOR_PASSWORD_SET_DETAILS_EXAMPLE, SYSTEM_BOOT_DETAILS_EXAMPLE, SYSTEM_BOOT_HOST_DETAILS_EXAMPLE, SYSTEM_BOOT_SIGNING_DETAILS_EXAMPLE, SYSTEM_BOOT_SIGNING_STORE_DETAILS_EXAMPLE, captureDeviceConnectionTestedDetails, captureDeviceRetiredDetails } from '@dems/shared/api';
 import {
   CAPTURE_AUDIO_ABSENT_MAX_MS,
   CAPTURE_AUDIO_ACCOUNT_NUMBER_KEYS,
@@ -100,7 +100,7 @@ const SECRET_FORMS = {
 };
 
 describe('the vocabulary', () => {
-  it('every one of the 85 shared audit types is accepted, with the category of the shared map', () => {
+  it('every one of the 86 shared audit types is accepted, with the category of the shared map', () => {
     const types = Object.values(AuditType);
     // C3 §2.5 (blueprint row 113): 62 + STT_CONFIG_CHANGED = 63. C3 §5.2, §10.1 (blueprint row 132,
     // decision D106): + the four of the camera search, the test, the adoption and the no-device warning = 67.
@@ -110,7 +110,8 @@ describe('the vocabulary', () => {
     // CAPTURE_AUDIO_ABSENT_ON_RESTART, CAPTURE_DEVICE_CONNECTION_TESTED = 82.
     // Task 4 row R1b (decision C99): + CAPTURE_VIDEO_ABSENT_IN_SESSION = 83.
     // Task 4 row N2 (decisions U25 (3), C110, C112 (3)): + CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED, CAPTURE_AUDIO_SILENCE_INSERTED = 85.
-    expect(types).toHaveLength(85);
+    // Task 4 row RD2 (decision C147): + CAPTURE_DEVICE_RETIRED = 86.
+    expect(types).toHaveLength(86);
     const typed = new Set<string>(Object.keys(SERVER_AUDIT_DETAIL_RULES));
     for (const type of types.filter((candidate) => !typed.has(candidate))) {
       const input = auditInputOf(audit({ type }));
@@ -422,9 +423,14 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
       { type: 'CAPTURE_AUDIO_SILENCE_INSERTED', actorId: null, deviceId: null, severity: 'WARNING', message: 'Silence was inserted into the audio track in one piece', details: { sessionId: 'SES-20261001-0024', attempt: 1, index: 1, fromSample: 1_440_000, samples: 5_280 } },
       { type: 'CAPTURE_AUDIO_SILENCE_INSERTED', actorId: null, deviceId: null, severity: 'WARNING', message: 'Silence was inserted into the audio track in one piece', details: { sessionId: 'SES-20261001-0024', attempt: 1, index: 1024, fromSample: 0, samples: 4_800 } },
     ],
+    // Row RD2 (decision C147): a camera retired with its stored credential destroyed; a microphone, which has none.
+    CAPTURE_DEVICE_RETIRED: [
+      { type: 'CAPTURE_DEVICE_RETIRED', actorId: 'OPR-003', deviceId: 'CAM-03', message: 'Device retired: CAM-03', details: { deviceId: 'CAM-03', kind: 'CAMERA', reason: 'STATEMENT_CHANGED', credentialDestroyed: true, streamRowsKept: 2, operationId: 'retireCaptureDevice', permission: 'CAPTURE_COMMISSION' } },
+      { type: 'CAPTURE_DEVICE_RETIRED', actorId: 'OPR-003', deviceId: 'MIC-03', message: 'Device retired: MIC-03', details: { deviceId: 'MIC-03', kind: 'MIC', reason: 'REMOVED', credentialDestroyed: false, streamRowsKept: 0, operationId: 'retireCaptureDevice' } },
+    ],
   };
 
-  it('covers exactly the forty-one types the server writes; the simulator\'s 44 have no list', () => {
+  it('covers exactly the forty-two types the server writes; the simulator\'s 44 have no list', () => {
     const typed = Object.keys(SERVER_AUDIT_DETAIL_RULES).sort();
     expect(typed).toEqual(Object.keys(accepted).sort());
     // Task 4 blueprint row 19: 23 + the ten of the hardware-input port = 33; the simulator's 44 do not move.
@@ -432,7 +438,8 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
     // Task 4 row V3 (the third vocabulary step): + the four of that step = 38; the 44 still do not move.
     // Task 4 row R1b (decision C99): + CAPTURE_VIDEO_ABSENT_IN_SESSION = 39; the 44 still do not move.
     // Task 4 row N2: + CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED, CAPTURE_AUDIO_SILENCE_INSERTED = 41; the 44 still do not move.
-    expect(typed).toHaveLength(41);
+    // Task 4 row RD2: + CAPTURE_DEVICE_RETIRED = 42; the 44 still do not move.
+    expect(typed).toHaveLength(42);
     expect(Object.values(AuditType).filter((type) => detailRulesOf(type) === undefined)).toHaveLength(44);
     for (const type of typed) expect(Object.values(AuditType)).toContain(type);
   });
@@ -498,6 +505,7 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
         'fedSamples', 'fedInsertedSamples', 'fedRuns', 'fedLongestRunSamples', 'listedRuns', 'runsNotListed', 'runsNotListedSamples', 'openRunFromSample',
       ],
       CAPTURE_AUDIO_SILENCE_INSERTED: ['sessionId', 'attempt', 'index', 'fromSample', 'samples'],
+      CAPTURE_DEVICE_RETIRED: ['deviceId', 'kind', 'reason', 'credentialDestroyed', 'streamRowsKept', 'operationId', 'permission'],
     });
     expect(required).toEqual({
       ACCESS_DENIED: ['operationId'],
@@ -542,13 +550,52 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
       CAPTURE_VIDEO_ABSENT_IN_SESSION: ['sessionId', 'deviceId', 'trackId', 'attempt', 'loss', 'ended'],
       CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED: ['sessionId', 'attempt', 'part', 'captureLayer', 'captureGroup', 'account', 'openRetries'],
       CAPTURE_AUDIO_SILENCE_INSERTED: ['sessionId', 'attempt', 'index', 'fromSample', 'samples'],
+      CAPTURE_DEVICE_RETIRED: ['deviceId', 'kind', 'reason', 'credentialDestroyed', 'streamRowsKept', 'operationId'],
     });
+  });
+
+  it('task 4 row RD2 (C147): CAPTURE_DEVICE_RETIRED is the last type, category SECURITY; accepted in its stated forms (the shared builder\'s output); refuses an address, a hardware id, a serial, a credential, free text and a value outside its form', () => {
+    // MUTATIONS THIS CASE WAS SEEN RED ON: `kind` given the word POE; `deviceId` taken as any hardware id; `reason` taken as a code.
+    expect(Object.values(AuditType).at(-1)).toBe('CAPTURE_DEVICE_RETIRED');
+    expect(AUDIT_TYPE_CATEGORY.CAPTURE_DEVICE_RETIRED).toBe('SECURITY');
+    const withDetail = (item: AuditEntry, key: string, value: unknown): AuditEntry => ({ ...item, details: { ...item.details, [key]: value } as AuditEntry['details'] });
+    const without = (item: AuditEntry, key: string): AuditEntry => ({ ...item, details: Object.fromEntries(Object.entries(item.details ?? {}).filter(([name]) => name !== key)) as AuditEntry['details'] });
+    const codeOf = (run: () => unknown): string => {
+      try {
+        run();
+      } catch (error) {
+        return (error as { code?: string }).code ?? 'threw';
+      }
+      return 'accepted';
+    };
+    const [camera, microphone] = accepted['CAPTURE_DEVICE_RETIRED'] as [AuditEntry, AuditEntry];
+    for (const item of [camera, microphone]) {
+      expect(codeOf(() => auditInputOf(item)), item.deviceId ?? '').toBe('accepted');
+      const { row } = appendAudit({ rows: [], head: GENESIS, total: 0, dropped: 0 }, auditInputOf(item), 1);
+      expect([row.type, row.category]).toEqual(['CAPTURE_DEVICE_RETIRED', 'SECURITY']);
+    }
+    // The shared builder writes exactly the accepted form.
+    expect(captureDeviceRetiredDetails({ deviceId: 'CAM-03', kind: 'CAMERA', reason: 'STATEMENT_CHANGED', credentialDestroyed: true, streamRowsKept: 2, permission: 'CAPTURE_COMMISSION' })).toEqual(camera.details);
+    // No locator, no identity of the unit, no credential, no free text: no such key exists.
+    for (const key of ['host', 'address', 'endpointRef', 'url', 'onvifUuid', 'mac', 'usbSerial', 'usbPort', 'cardId', 'model', 'firmware', 'username', 'password', 'secret', 'note', 'text', 'previousDeviceId', 'retiredBy']) {
+      // Off the list, or one of the names the general rule forbids for every type (a credential, an identity of a unit).
+      expect(codeOf(() => auditInputOf(withDetail(camera, key, 'x'))), key).toMatch(/^AUDIT_DETAIL_KEY_(NOT_ALLOWED|FORBIDDEN)$/);
+    }
+    for (const key of ['deviceId', 'kind', 'reason', 'credentialDestroyed', 'streamRowsKept', 'operationId']) expect(codeOf(() => auditInputOf(without(camera, key))), key).not.toBe('accepted');
+    for (const [key, value] of [
+      ['deviceId', 'POE-SWITCH'], ['deviceId', 'CND-000000000001'], ['deviceId', '192.168.10.101'],
+      ['kind', 'POE'], ['kind', 'camera'],
+      ['reason', 'BROKEN'], ['reason', 'The camera fell off the wall.'],
+      ['credentialDestroyed', 'yes'], ['streamRowsKept', -1], ['streamRowsKept', 1.5],
+      ['operationId', 'testCaptureDeviceConnection'],
+    ] as const) expect(codeOf(() => auditInputOf(withDetail(camera, key, value))), `${key} ${String(value)}`).not.toBe('accepted');
   });
 
   it('task 4 row N2 (U25 (3), C110, C112 (3)): the two types of an audio path that is not sample-continuous are the last two, category DEVICE; accepted in their stated forms; refuse a foreign key, device or card text, a percentage, a value outside its form; their sets and bounds are the manifest\'s', () => {
     // MUTATIONS THIS CASE WAS SEEN RED ON: the bound of `bufferedSamples` raised to one day; `samples` of a run admitted from 0; `captureLayer` given a second word.
     const TYPES = ['CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED', 'CAPTURE_AUDIO_SILENCE_INSERTED'] as const;
-    expect(Object.values(AuditType).slice(-2)).toEqual([...TYPES]);
+    // Row RD2: one type joined the end (85 -> 86); the positions move by that delta of one.
+    expect(Object.values(AuditType).slice(-3, -1)).toEqual([...TYPES]);
     expect(TYPES.map((type) => AUDIT_TYPE_CATEGORY[type])).toEqual(['DEVICE', 'DEVICE']);
     const withDetail = (item: AuditEntry, key: string, value: unknown): AuditEntry => ({ ...item, details: { ...item.details, [key]: value } as AuditEntry['details'] });
     const without = (item: AuditEntry, key: string): AuditEntry => ({ ...item, details: Object.fromEntries(Object.entries(item.details ?? {}).filter(([name]) => name !== key)) as AuditEntry['details'] });
@@ -712,8 +759,8 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
   });
 
   it('task 4 row R1b (C99): CAPTURE_VIDEO_ABSENT_IN_SESSION is the last type, category DEVICE; accepted in its stated forms; refuses a foreign key, a locator, a profile, a cause, a value outside its form; its sets and bound are the manifest\'s', () => {
-    // Row N2: two types follow it (83 -> 85); the position moves by that delta of two.
-    expect(Object.values(AuditType).at(-3)).toBe('CAPTURE_VIDEO_ABSENT_IN_SESSION');
+    // Row N2: two types follow it (83 -> 85); the position moves by that delta of two. Row RD2: one more (85 -> 86).
+    expect(Object.values(AuditType).at(-4)).toBe('CAPTURE_VIDEO_ABSENT_IN_SESSION');
     expect([AUDIT_TYPE_CATEGORY.CAPTURE_VIDEO_ABSENT_IN_SESSION, AUDIT_TYPE_CATEGORY.CAPTURE_AUDIO_ABSENT_ON_RESTART, AUDIT_TYPE_CATEGORY.CAPTURE_DEVICE_UNREACHABLE]).toEqual(['DEVICE', 'DEVICE', 'DEVICE']);
     const rows = accepted['CAPTURE_VIDEO_ABSENT_IN_SESSION'] as AuditEntry[];
     const withDetail = (item: AuditEntry, key: string, value: unknown): AuditEntry => ({ ...item, details: { ...item.details, [key]: value } as AuditEntry['details'] });
@@ -768,8 +815,8 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
     const NEW_TYPES = ['HOST_ALIAS_REQUESTED', 'HOST_ALIAS_ADD_FAILED', 'CAPTURE_AUDIO_ABSENT_ON_RESTART', 'CAPTURE_DEVICE_CONNECTION_TESTED'] as const;
     // The four are the last of the vocabulary, in this order (78 -> 82), each in an existing category.
     // Row R1b: one type follows them (82 -> 83); the positions move by that delta of one.
-    // Row N2: two more follow (83 -> 85); the positions move by that delta of two.
-    expect(Object.values(AuditType).slice(-7, -3)).toEqual([...NEW_TYPES]);
+    // Row N2: two more follow (83 -> 85); the positions move by that delta of two. Row RD2: one more (85 -> 86).
+    expect(Object.values(AuditType).slice(-8, -4)).toEqual([...NEW_TYPES]);
     expect(NEW_TYPES.map((type) => AUDIT_TYPE_CATEGORY[type])).toEqual(['SECURITY', 'SECURITY', 'DEVICE', 'SECURITY']);
     // As the existing types of their kind: the three alias types, the capture-fault types, the candidate's test.
     expect([AUDIT_TYPE_CATEGORY.HOST_ALIAS_ADDED, AUDIT_TYPE_CATEGORY.MIC_SILENT, AUDIT_TYPE_CATEGORY.CAPTURE_DEVICE_UNREACHABLE, AUDIT_TYPE_CATEGORY.CAPTURE_CONNECTION_TESTED]).toEqual(['SECURITY', 'DEVICE', 'DEVICE', 'SECURITY']);
@@ -892,8 +939,8 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
 
   it('task 4 row 201 (X-C; SX-14): OPERATOR_PASSWORD_SET is accepted and refuses every foreign key, among them each name of a password, a length, a salt, a tag or a hash parameter; its severity is fixed', () => {
     // The one type follows the ten of row 19 (77 -> 78), category SECURITY; the four of row V3 follow it (78 -> 82).
-    // Row N2: two types joined the end (83 -> 85); the position moves by that delta of two.
-    expect(Object.values(AuditType).at(-8)).toBe('OPERATOR_PASSWORD_SET');
+    // Row N2: two types joined the end (83 -> 85); the position moves by that delta of two. Row RD2: one more (85 -> 86).
+    expect(Object.values(AuditType).at(-9)).toBe('OPERATOR_PASSWORD_SET');
     expect(AUDIT_TYPE_CATEGORY.OPERATOR_PASSWORD_SET).toBe('SECURITY');
     expect(SERVER_AUDIT_FIXED_SEVERITY).toEqual({ OPERATOR_PASSWORD_SET: 'WARNING' });
     expect(fixedSeverityOf(AuditType.OPERATOR_PASSWORD_SET)).toBe('WARNING');
@@ -1093,8 +1140,8 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
       'INSTALLATION_ACCEPTANCE_REVOKED',
     ] as const;
     // The ten are in this order (67 -> 77); the one type of row 201 follows them (77 -> 78), then the four of row V3 (78 -> 82).
-    // Row N2: two types joined the end (83 -> 85); the positions move by that delta of two.
-    expect(Object.values(AuditType).slice(-18, -8)).toEqual([...NEW_TYPES]);
+    // Row N2: two types joined the end (83 -> 85); the positions move by that delta of two. Row RD2: one more (85 -> 86).
+    expect(Object.values(AuditType).slice(-19, -9)).toEqual([...NEW_TYPES]);
     const withDetail = (item: AuditEntry, key: string, value: unknown): AuditEntry => ({ ...item, details: { ...item.details, [key]: value } as AuditEntry['details'] });
     const first = (type: string): AuditEntry => accepted[type]?.[0] as AuditEntry;
     for (const type of NEW_TYPES) {

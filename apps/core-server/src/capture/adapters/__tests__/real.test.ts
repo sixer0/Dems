@@ -11,8 +11,24 @@
 import { describe, expect, it } from 'vitest';
 import { createSystemTimers } from '../../timers';
 import { assertRecordableSelector } from '../../../modules/capture-config';
-import { CaptureDeviceAdmission, assertSessionSourcesOfOperation, buildProductionRegistryOf, buildSessionCaptureSources, wireProductionRegistry, type CaptureFenceSinks, type FenceExecutor, type ProductionAdapterLoader, type ProductionCaptureParts } from '../../fence';
-import type { UsbAudioProductionOptions } from '../audio/usb-audio-production';
+import {
+  CaptureDeviceAdmission,
+  MACOS_MICROPHONE_OPENER_ADMITTED,
+  assertSessionSourcesOfOperation,
+  buildProductionRegistryOf,
+  buildSessionCaptureSources,
+  macosLossMatchOf,
+  wireProductionRegistry,
+  type CaptureFenceSinks,
+  type FenceExecutor,
+  type ProductionAdapterLoader,
+  type ProductionCaptureParts,
+} from '../../fence';
+import type { CaptureCard } from '../audio/card-listing';
+import type { MicLossWatch } from '../audio/mic-loss';
+import type { MacosTiedListing } from '../audio/macos-card-listing';
+import type { UsbAudioMacosOptions } from '../audio/usb-audio-macos';
+import type { RegisteredAudioInput, UsbAudioProductionOptions } from '../audio/usb-audio-production';
 import type { OnvifRelayCameraDependencies } from '../camera/onvif-relay';
 import { CaptureAdapterError } from '../errors';
 import { CaptureAdapterKind, CaptureOperation } from '../kinds';
@@ -107,6 +123,18 @@ const admissionOf = (registry: CaptureDeviceRegistry): string =>
     assertSessionSourcesOfOperation(rows, registry.operation);
   });
 
+// ── Row N10: a macOS host's tied listing, on doubles (every value synthetic) ─────────────────────
+/** The stored row of `MIC-11`, as the registration stores an input of a macOS USB interface. */
+const STORED_MIC: RegisteredAudioInput = { deviceId: 'MIC-11', usbId: '1a2b:0006', usbSerial: null, usbPort: '01120000', cardId: 'usb_01120000', cardDevice: 0, inputNumber: 1, nativeChannels: 6 };
+const MIC_CARD = { cardIndex: 1, deviceIndex: 0, cardId: 'usb_01120000', usb: true, usbId: '1a2b:0006', usbPort: '01120000', usbSerial: null, product: 'DEMS Hexa 6', channelCount: 6, factsSource: 'SYSTEM_PROFILE', formats: [], nativeFormat: 'S32_LE', sampleBits: [], ratesHz: [48_000], rateRangeHz: null } as unknown as CaptureCard;
+/** One tied listing: the card present, absent, or connected and UNDECIDED (two units under one name). */
+const tiedOf = (state: 'PRESENT' | 'ABSENT' | 'UNDECIDED'): MacosTiedListing => {
+  const cards = state === 'PRESENT' ? [MIC_CARD] : [];
+  const undecided = state === 'UNDECIDED' ? [{ reason: 'NAME_SHARED' as const, usbId: '1a2b:0006', usbPort: '01120000', usbSerial: null }] : [];
+  return { ok: true, listing: { cards, truncated: false, skipped: undecided.length }, cards, undecided, refusedDevices: 0, passedOver: 0, captureOrderMark: 0, captureEntries: cards.length };
+};
+const UNREADABLE: MacosTiedListing = { ok: false, failure: 'SYSTEM_LIST_UNREADABLE', detail: 'NOT_JSON' } as unknown as MacosTiedListing;
+
 describe('the production loader', () => {
   it('refuses SIMULATED and REAL_DEVELOPMENT with a typed error, whatever it is handed; and REAL_PRODUCTION without its dependency bundle', async () => {
     const none = { cameras: [], mics: [], switches: [] };
@@ -119,6 +147,33 @@ describe('the production loader', () => {
     // Row 88: `audio` must be STATED - a bundle or null - and the camera bundle must be there.
     for (const missing of [undefined, null, {}, { camera: dependencies.camera }, { audio: dependencies.audio }, { camera: dependencies.camera, audio: undefined }, { camera: null, audio: null }]) {
       await expect(loadProductionAdapters('REAL_PRODUCTION', none, missing as never)).rejects.toMatchObject({ code: 'CAPTURE_ADAPTER_INVALID' });
+    }
+    expect(calls).toEqual([]);
+  });
+
+  // Task 4 row N10 (SM-21: by platform, NEVER BOTH; C135 (3)). The loader reads no platform: the wiring hands it at most one
+  // microphone bundle. Mutant (the "never both" check removed): RED - both bundles build the Linux adapter.
+  it('row N10: the macOS bundle builds the macOS adapter (its opener stated); both bundles, or a macOS bundle that is no object, are refused before anything is imported; neither builds the adapter without an opener', async () => {
+    const { dependencies, calls, timers } = rig();
+    const mics = [{ id: 'MIC-11', deviceClass: 'MIC' as const, label: 'A', capabilities: ['AUDIO' as const], profiles: [] }];
+    const macosAudio: Omit<UsbAudioMacosOptions, 'devices'> = {
+      registered: async () => null,
+      cards: { listTied: async () => UNREADABLE, list: async () => ({ cards: [], truncated: false, skipped: 0 }) },
+      helperProgram: '/opt/dems/bin/ffmpeg',
+      guardProgram: '/opt/dems/bin/capture-guard',
+      runDir: '/nonexistent/dems-run/capture',
+      timers,
+      pipes: { hold: async () => ({ drain: () => {}, release: () => {} }) },
+    };
+    const built = await loadProductionAdapters(CaptureOperation.REAL_PRODUCTION, { cameras: [], mics, switches: [] }, { camera: dependencies.camera, audio: null, macosAudio });
+    expect([built.audio.kind, built.audio.hasOpener, typeof (built.audio as { groupOf?: unknown }).groupOf, built.audio.devices.map((entry) => entry.id)]).toEqual(['USB_AUDIO', true, 'function', ['MIC-11']]);
+    // The Linux adapter has no capture group; the stub has no opener.
+    const linux = await loadProductionAdapters(CaptureOperation.REAL_PRODUCTION, { cameras: [], mics, switches: [] }, { ...dependencies, macosAudio: null });
+    expect([linux.audio.hasOpener, typeof (linux.audio as { groupOf?: unknown }).groupOf]).toEqual([true, 'undefined']);
+    const neither = await loadProductionAdapters(CaptureOperation.REAL_PRODUCTION, { cameras: [], mics, switches: [] }, { camera: dependencies.camera, audio: null });
+    expect(neither.audio.hasOpener).toBe(false);
+    for (const refused of [{ ...dependencies, macosAudio }, { camera: dependencies.camera, audio: null, macosAudio: 'darwin' }]) {
+      await expect(loadProductionAdapters(CaptureOperation.REAL_PRODUCTION, { cameras: [], mics, switches: [] }, refused as never)).rejects.toMatchObject({ code: 'CAPTURE_ADAPTER_INVALID' });
     }
     expect(calls).toEqual([]);
   });
@@ -239,18 +294,31 @@ describe('task 4 row 85: the production registry builder (WP-13b)', () => {
 });
 
 /** The parts a composition hands the fence (`ProductionCaptureParts`), on doubles, and what the wiring did with them. */
-function wiringRig(platform: string, audio: Partial<Pick<ProductionCaptureParts['dependencies']['audio'], 'helperProgram' | 'guardProgram'>> = {}) {
+function wiringRig(platform: string, audio: Partial<Pick<ProductionCaptureParts['dependencies']['audio'], 'helperProgram' | 'guardProgram'>> = {}, tied?: () => Promise<MacosTiedListing>) {
   const base = rig();
-  const seen = { attached: [] as string[], listings: 0, heartbeatsAsked: 0, reportsAttached: 0, subscribed: 0, logged: [] as string[], persisted: [] as string[] };
+  const seen = { attached: [] as string[], listings: 0, heartbeatsAsked: 0, reportsAttached: 0, subscribed: 0, logged: [] as string[], persisted: [] as string[], raised: [] as string[], micWatch: null as MicLossWatch | null };
   // A timer double that never fires: no heartbeat and no pass after the first runs in this test.
   const timers = { after: () => () => {} };
+  // Row N10: with `tied`, the listing of a macOS host (`listTied`), as row N7's enumerator is on `darwin`.
   const cards = {
     list: async (): Promise<never> => {
       seen.listings += 1;
       throw Object.assign(new Error('no listing in this test'), { code: 'NOT_LISTED' });
     },
+    ...(tied === undefined
+      ? {}
+      : {
+          listTied: async (): Promise<MacosTiedListing> => {
+            seen.listings += 1;
+            return tied();
+          },
+        }),
   } as unknown as ProductionCaptureParts['cards'];
-  const faults = { raise: async () => {}, clear: async () => {}, owns: () => false } as unknown as ProductionCaptureParts['watches']['camera']['faults'];
+  const faults = {
+    raise: async (fault: { subject: string; reason: string }) => void seen.raised.push(`${fault.reason}:${fault.subject}`),
+    clear: async () => {},
+    owns: () => false,
+  } as unknown as ProductionCaptureParts['watches']['camera']['faults'];
   const parts: ProductionCaptureParts = {
     platform,
     dependencies: { camera: base.camera, audio: { registered: async () => null, cards, timers: base.timers, helperProgram: '/opt/dems/bin/ffmpeg', guardProgram: '/opt/dems/bin/capture-guard', ...audio } },
@@ -264,7 +332,7 @@ function wiringRig(platform: string, audio: Partial<Pick<ProductionCaptureParts[
         },
         faults,
       },
-      microphone: { registered: async () => null, cards, timers, faults: faults as unknown as ProductionCaptureParts['watches']['microphone']['faults'] },
+      microphone: { registered: async (deviceId: string) => (deviceId === STORED_MIC.deviceId ? STORED_MIC : null), cards, timers, faults: faults as unknown as ProductionCaptureParts['watches']['microphone']['faults'] },
     },
     cards,
     relayReports: {
@@ -278,7 +346,10 @@ function wiringRig(platform: string, audio: Partial<Pick<ProductionCaptureParts[
       },
     },
     attachCameraWatch: () => void seen.attached.push('CAMERA'),
-    attachMicLossWatch: () => void seen.attached.push('MIC'),
+    attachMicLossWatch: (watch: MicLossWatch) => {
+      seen.attached.push('MIC');
+      seen.micWatch = watch;
+    },
   };
   const sinks: CaptureFenceSinks = {
     info: (fields) => void seen.logged.push(String(fields['code'])),
@@ -319,6 +390,25 @@ describe('task 4 row 88: THE LIFT - the boot step wiring of the production regis
     await built.closeAll();
   });
 
+  // Task 4 row N10 (decision C135 (3)): THE DARWIN PROOF UNCHANGED. The macOS adapter is built only with its opener ADMITTED, and the
+  // constant says it is not: a darwin host with the tied listing and both programs configured is EXACTLY as at d9df31ac - the
+  // adapter without an opener, nothing listed by a watch, nothing persisted, a REAL_PRODUCTION start refused.
+  // Mutant (the constant set to true): RED here (openerKinds gains USB_AUDIO) and in the capture static case "row N10".
+  it('row N10: darwin, the macOS opener NOT ADMITTED (the constant is false) - with the tied listing and both programs configured, exactly as before row N10', async () => {
+    expect(MACOS_MICROPHONE_OPENER_ADMITTED).toBe(false);
+    const { parts, environment, seen, calls } = wiringRig('darwin', {}, async () => tiedOf('PRESENT'));
+    const built = await wireProductionRegistry(parts, environment);
+    expect(built.registry.openerKinds()).toEqual(['ONVIF_RTSP']);
+    expect(built.registry.list().map((device) => `${device.id}:${String(device.hasOpener)}`)).toEqual(['CAM-11:true', 'CAM-12:true', 'MIC-11:false', 'MIC-12:false']);
+    expect(codeOf(() => built.registry.assertRecordable('MIC-11'))).toBe('SOURCE_KIND_NOT_RECORDABLE');
+    expect(admissionOf(built.registry)).toBe('SOURCE_KIND_NOT_RECORDABLE');
+    expect(seen.attached).toEqual(['CAMERA']);
+    expect(seen.logged.filter((code) => /MIC|MACOS/.test(code))).toEqual(['CAPTURE_PRODUCTION_MIC_OPENER_NOT_ON_THIS_PLATFORM']);
+    expect([seen.listings, seen.persisted]).toEqual([0, []]);
+    await built.closeAll();
+    expect(calls).toEqual([]);
+  });
+
   it('linux without the audio helper (or the guard) configured: no microphone opener is built, said by code in the log and the persistent error log; the session start is refused', async () => {
     for (const missing of [{ helperProgram: null }, { guardProgram: null }]) {
       const { parts, environment, seen } = wiringRig('linux', missing);
@@ -328,5 +418,113 @@ describe('task 4 row 88: THE LIFT - the boot step wiring of the production regis
       expect(seen.persisted).toEqual(['CAPTURE_PRODUCTION_MIC_PROGRAM_NOT_CONFIGURED']);
       await built.closeAll();
     }
+  });
+});
+
+// Task 4 row N10 (design 06 row N10; SM-06, SM-21; decision C135 (3)): THE REGISTRY BY PLATFORM with the TEST's explicit admission
+// (`ProductionWiringAdmission`, which no production call site passes - static case "row N10"). Doubles only: no door is called, no
+// pipe is made, no device is listed (the tied listing is a function of this file).
+describe('task 4 row N10: the microphone by platform - linux the Linux adapter, darwin (admitted) the macOS one, any other none', () => {
+  const ADMITTED = { admitMacosMicrophoneOpener: true } as const;
+  const isMacos = (adapter: unknown): boolean => typeof (adapter as { groupOf?: unknown }).groupOf === 'function';
+
+  it('darwin, ADMITTED by the test: the macOS adapter states its opener, a four-slot start is ADMITTED, the loss watch is attached after the camera watch; nothing was started', async () => {
+    const { parts, environment, seen, calls } = wiringRig('darwin', {}, async () => tiedOf('PRESENT'));
+    const built = await wireProductionRegistry(parts, environment, ADMITTED);
+    expect(built.registry.openerKinds()).toEqual(['ONVIF_RTSP', 'USB_AUDIO']);
+    expect(isMacos(built.registry.resolve('MIC', 'MIC-11'))).toBe(true);
+    expect(admissionOf(built.registry)).toBe('ADMITTED');
+    expect(seen.attached).toEqual(['CAMERA', 'MIC']);
+    expect(seen.logged).not.toContain('CAPTURE_PRODUCTION_MIC_OPENER_NOT_ON_THIS_PLATFORM');
+    expect(seen.logged).toContain('CAPTURE_PRODUCTION_REGISTRY_BUILT');
+    await built.closeAll();
+    expect(calls).toEqual([]);
+  });
+
+  // Mutant (the darwin watch given the Linux match `identifyRegisteredCard`): RED - the undecided device raises MIC_DISCONNECTED.
+  it('darwin, ADMITTED: the loss watch reads the TIED listing with the macOS match - an undecided device raises nothing, an absent one raises the microphone\'s fault', async () => {
+    let state: Parameters<typeof tiedOf>[0] = 'UNDECIDED';
+    const { parts, environment, seen } = wiringRig('darwin', {}, async () => tiedOf(state));
+    const built = await wireProductionRegistry(parts, environment, ADMITTED);
+    const watch = seen.micWatch;
+    expect(watch).not.toBeNull();
+    await watch?.settled();
+    await watch?.check();
+    expect(seen.raised).toEqual([]);
+    state = 'ABSENT';
+    await watch?.check();
+    expect(seen.raised).toEqual(['MIC_DISCONNECTED:MIC-11']);
+    await built.closeAll();
+  });
+
+  it('darwin, ADMITTED, but a program not configured or the listing not tied: no microphone opener, said by code; the start is refused', async () => {
+    const helperless = wiringRig('darwin', { helperProgram: null }, async () => tiedOf('PRESENT'));
+    const first = await wireProductionRegistry(helperless.parts, helperless.environment, ADMITTED);
+    expect([first.registry.openerKinds(), helperless.seen.persisted, helperless.seen.attached]).toEqual([['ONVIF_RTSP'], ['CAPTURE_PRODUCTION_MIC_PROGRAM_NOT_CONFIGURED'], ['CAMERA']]);
+    await first.closeAll();
+    const untied = wiringRig('darwin');
+    const second = await wireProductionRegistry(untied.parts, untied.environment, ADMITTED);
+    expect([second.registry.openerKinds(), untied.seen.persisted, admissionOf(second.registry)]).toEqual([['ONVIF_RTSP'], ['CAPTURE_PRODUCTION_MIC_LISTING_NOT_TIED'], 'SOURCE_KIND_NOT_RECORDABLE']);
+    await second.closeAll();
+  });
+
+  it('the admission is of darwin alone: linux with it builds the Linux adapter as without it; another platform with it builds none', async () => {
+    const linux = wiringRig('linux', {}, async () => tiedOf('PRESENT'));
+    const onLinux = await wireProductionRegistry(linux.parts, linux.environment, ADMITTED);
+    expect([onLinux.registry.openerKinds(), isMacos(onLinux.registry.resolve('MIC', 'MIC-11')), admissionOf(onLinux.registry)]).toEqual([['ONVIF_RTSP', 'USB_AUDIO'], false, 'ADMITTED']);
+    await onLinux.closeAll();
+    const other = wiringRig('win32', {}, async () => tiedOf('PRESENT'));
+    const elsewhere = await wireProductionRegistry(other.parts, other.environment, ADMITTED);
+    expect([elsewhere.registry.openerKinds(), other.seen.attached, other.seen.logged.includes('CAPTURE_PRODUCTION_MIC_OPENER_NOT_ON_THIS_PLATFORM')]).toEqual([['ONVIF_RTSP'], ['CAMERA'], true]);
+    await elsewhere.closeAll();
+  });
+
+  // SM-06: "a listing that is unreadable, disagrees or leaves the device undecided for two passes in a row raises a named fault on
+  // that microphone; it does not stop the helper". Mutant (`MACOS_MIC_UNCONFIRMED_PASSES` read as 1): RED - said after ONE pass.
+  it('SM-06: a HELD microphone not confirmed for two passes in a row is said ONCE by its named code; a confirming pass or the closed handle ends the interval; a microphone not held is never said', async () => {
+    let answer: MacosTiedListing = UNREADABLE;
+    let holding: string[] = ['MIC-11'];
+    const said: string[] = [];
+    const match = macosLossMatchOf({ listTied: async () => answer, list: async () => ({ cards: [], truncated: false, skipped: 0 }) }, () => holding, (_level, code, context) => void said.push(`${code}:${String(context['deviceId'])}:${String(context['detail'] ?? context['end'])}`));
+    const pass = async (): Promise<string> => {
+      try {
+        const listing = await match.cards.list();
+        const found = match.identify(listing, STORED_MIC);
+        return found.ok ? 'PRESENT' : found.refusal;
+      } catch {
+        return 'LISTING_FAILED';
+      }
+    };
+    // Pass 1 unreadable, pass 2 undecided: the second pass in a row says the fault, once.
+    expect(await pass()).toBe('LISTING_FAILED');
+    expect(said).toEqual([]);
+    answer = tiedOf('UNDECIDED');
+    expect(await pass()).toBe('AUDIO_CARD_AMBIGUOUS');
+    expect(said).toEqual(['CAPTURE_PRODUCTION_MIC_NOT_CONFIRMED:MIC-11:NAME_SHARED']);
+    expect(await pass()).toBe('AUDIO_CARD_AMBIGUOUS');
+    expect(said).toHaveLength(1);
+    // A confirming pass ends the interval.
+    answer = tiedOf('PRESENT');
+    expect(await pass()).toBe('PRESENT');
+    expect(said).toEqual(['CAPTURE_PRODUCTION_MIC_NOT_CONFIRMED:MIC-11:NAME_SHARED', 'CAPTURE_PRODUCTION_MIC_CONFIRMATION_ENDED:MIC-11:CONFIRMED']);
+    // Again two undecided passes, then the handle is closed: the interval ends at the next pass, NOT_HELD.
+    answer = tiedOf('UNDECIDED');
+    await pass();
+    await pass();
+    expect(said).toHaveLength(3);
+    holding = [];
+    await pass();
+    expect(said.at(-1)).toBe('CAPTURE_PRODUCTION_MIC_CONFIRMATION_ENDED:MIC-11:NOT_HELD');
+    // Not held: undecided as often as it likes, nothing is said.
+    await pass();
+    await pass();
+    expect(said).toHaveLength(4);
+    // An absent card is a CONFIRMING pass here: the watch's own rule raises "disconnected" for it.
+    holding = ['MIC-11'];
+    answer = UNREADABLE;
+    await pass();
+    answer = tiedOf('ABSENT');
+    expect(await pass()).toBe('AUDIO_CARD_ABSENT');
+    expect(said).toHaveLength(4);
   });
 });

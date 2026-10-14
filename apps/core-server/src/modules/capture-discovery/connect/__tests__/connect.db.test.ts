@@ -273,10 +273,10 @@ beforeEach(() => {
 });
 
 describe('the database this file runs on', () => {
-  it(`is at the schema version of the code: [${DB_SCHEMA_VERSION}, '${DB_CONTRACT_REVISION}'] = [14, 'dbc-15'], read as dems_app`, async () => {
+  it(`is at the schema version of the code: [${DB_SCHEMA_VERSION}, '${DB_CONTRACT_REVISION}'] = [15, 'dbc-16'], read as dems_app`, async () => {
     const row = (await guard.app.db.pool.query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([row.schema_version, row.contract_revision]).toEqual([14, 'dbc-15']);
-    expect([DB_SCHEMA_VERSION, DB_CONTRACT_REVISION]).toEqual([14, 'dbc-15']);
+    expect([row.schema_version, row.contract_revision]).toEqual([15, 'dbc-16']);
+    expect([DB_SCHEMA_VERSION, DB_CONTRACT_REVISION]).toEqual([15, 'dbc-16']);
     expect(((await guard.app.db.pool.query('SELECT current_user AS role')).rows[0] as { role: string }).role).toBe('dems_app');
   });
 });

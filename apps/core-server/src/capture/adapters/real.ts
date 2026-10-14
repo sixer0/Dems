@@ -17,11 +17,21 @@
  * `USB_AUDIO` adapter that states NO opener, so that a production microphone is listed and
  * assignable there and never recorded, and no `REAL_PRODUCTION` session can start (fail-closed).
  * The switch stays the class-C stub `poe/snmp-poe.ts` (no opener; `SNMP_POE` is not lifted).
+ *
+ * ROW N10 (design 06 row N10; SM-21; decision C135 (3)): THE MICROPHONE BY PLATFORM, NEVER BOTH. The
+ * caller states at most ONE microphone bundle: `audio` (the Linux adapter
+ * `audio/usb-audio-production.ts`, on `linux`) or `macosAudio` (the macOS adapter
+ * `audio/usb-audio-macos.ts`, on `darwin`, and only once its opener is ADMITTED - the fence's
+ * constant `MACOS_MICROPHONE_OPENER_ADMITTED`, false until the M2b gate row); both stated is
+ * refused before anything is imported; neither builds the stub without an opener. The platform is
+ * the entry point's word, read by the fence's wiring (the one production caller): this file reads no
+ * platform, no configuration key and no environment.
  */
 import { CaptureAdapterError, CaptureAdapterRefusal } from './errors';
 import { CaptureOperation } from './kinds';
 import type { OnvifRelayCameraAdapter, OnvifRelayCameraDependencies } from './camera/onvif-relay';
 import type { UsbAudioProductionOptions } from './audio/usb-audio-production';
+import type { UsbAudioMacosOptions } from './audio/usb-audio-macos';
 import type { AudioInputAdapter, CaptureDeviceEntry, PoeController } from './types';
 
 export interface ProductionDevices {
@@ -56,11 +66,15 @@ export interface ProductionAdapters {
  */
 /** What the production microphone adapter takes beside its device list. */
 export type ProductionMicrophoneDependencies = Omit<UsbAudioProductionOptions, 'devices'>;
+/** What the macOS production microphone adapter takes beside its device list (row N10): the pipe keeper among them. */
+export type ProductionMacosMicrophoneDependencies = Omit<UsbAudioMacosOptions, 'devices'>;
 
 export interface ProductionAdapterDependencies {
   readonly camera: OnvifRelayCameraDependencies;
-  /** NULL: this host has no production microphone opener (every platform but `linux` today; AM-1 (3)(h), C135) - the stub without an opener is built. */
+  /** The LINUX microphone (`linux`). NULL: no Linux microphone opener on this host - with no `macosAudio` either, the stub without an opener is built (AM-1 (3)(h), C135). */
   readonly audio: ProductionMicrophoneDependencies | null;
+  /** The macOS microphone (`darwin`, opener ADMITTED - row N10, C135 (3)). Absent or NULL: none. Never stated beside `audio`. */
+  readonly macosAudio?: ProductionMacosMicrophoneDependencies | null;
 }
 
 export async function loadProductionAdapters(operation: CaptureOperation, devices: ProductionDevices, dependencies: ProductionAdapterDependencies): Promise<ProductionAdapters> {
@@ -69,9 +83,16 @@ export async function loadProductionAdapters(operation: CaptureOperation, device
   // without its door or its reader. `audio` must be STATED - a bundle or null - never left out.
   if (typeof dependencies !== 'object' || dependencies === null || typeof dependencies.camera !== 'object' || dependencies.camera === null || !('audio' in dependencies) || typeof dependencies.audio !== 'object') throw new CaptureAdapterError(CaptureAdapterRefusal.ADAPTER_INVALID);
   const microphone = dependencies.audio;
+  // Row N10 (SM-21): the macOS bundle is an object or nothing, and NEVER beside the Linux one - refused before any import.
+  const macos = dependencies.macosAudio ?? null;
+  if (typeof macos !== 'object' || (macos !== null && microphone !== null)) throw new CaptureAdapterError(CaptureAdapterRefusal.ADAPTER_INVALID);
   const [camera, poe] = await Promise.all([import('./camera/onvif-relay'), import('./poe/snmp-poe')]);
   const audio: AudioInputAdapter =
-    microphone === null ? (await import('./audio/usb-audio')).createUsbAudioInputAdapter(devices.mics) : (await import('./audio/usb-audio-production')).createUsbAudioProductionAdapter({ ...microphone, devices: devices.mics });
+    microphone !== null
+      ? (await import('./audio/usb-audio-production')).createUsbAudioProductionAdapter({ ...microphone, devices: devices.mics })
+      : macos !== null
+        ? (await import('./audio/usb-audio-macos')).createUsbAudioMacosAdapter({ ...macos, devices: devices.mics })
+        : (await import('./audio/usb-audio')).createUsbAudioInputAdapter(devices.mics);
   return {
     camera: camera.createOnvifRelayCameraAdapter(devices.cameras, dependencies.camera),
     audio,

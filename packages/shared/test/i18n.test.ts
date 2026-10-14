@@ -290,6 +290,8 @@ describe('shared i18n resources: language and copy rules', () => {
       'CAPTURE_DEVICE_NOT_SERVED',
       'CAPTURE_DEVICE_CLASS_MISMATCH',
       'SLOT_UNASSIGNED_AND_ASSIGNED',
+      // Row RD2 (decision C147): a retired device is never assigned again.
+      'CAPTURE_DEVICE_RETIRED',
     ]);
     const R = en.common.captureSlotRefusal;
     expect(R.PRODUCTION_SOURCE_NOT_ALLOWED).toBe(
@@ -299,13 +301,31 @@ describe('shared i18n resources: language and copy rules', () => {
     expect(R.CAPTURE_DEVICE_CLASS_MISMATCH).toBe('This device was not assigned: the Core does not hold it as a {{source}}. Nothing was changed.');
     expect(R.SLOT_UNASSIGNED_AND_ASSIGNED).toBe('This choice was not accepted: one request cleared a slot and filled the same slot. Nothing was changed.');
     expect(en.common.captureSlotSource).toEqual({ CAMERA: 'camera', MIC: 'microphone' });
-    for (const sentence of [R.PRODUCTION_SOURCE_NOT_ALLOWED, R.CAPTURE_DEVICE_NOT_SERVED, R.CAPTURE_DEVICE_CLASS_MISMATCH, R.SLOT_UNASSIGNED_AND_ASSIGNED]) {
+    for (const sentence of [R.PRODUCTION_SOURCE_NOT_ALLOWED, R.CAPTURE_DEVICE_NOT_SERVED, R.CAPTURE_DEVICE_CLASS_MISMATCH, R.SLOT_UNASSIGNED_AND_ASSIGNED, R.CAPTURE_DEVICE_RETIRED]) {
       // A refusal: nothing changed, and the one placeholder a sentence may hold is the source noun.
       expect(sentence.endsWith('Nothing was changed.')).toBe(true);
       expect((sentence.match(/\{\{[^}]*\}\}/g) ?? []).every((placeholder) => placeholder === '{{source}}')).toBe(true);
     }
-    // Row V7c: 6 -> 7 (CAMERA_PROFILE_WITHOUT_STREAM), each sentence its own.
-    expect(new Set(Object.values(R)).size).toBe(7);
+    // Row V7c: 6 -> 7 (CAMERA_PROFILE_WITHOUT_STREAM), each sentence its own. Row RD2: 7 -> 8 (CAPTURE_DEVICE_RETIRED).
+    expect(new Set(Object.values(R)).size).toBe(8);
+  });
+
+  // Task 4 row RD2 (design 07 sections 4.3-4.5; decision C147): the words of operation 111. The refusal
+  // keys are the contract's words (`details.reason`, the 409 code, the 404 code); each says nothing changed;
+  // the placeholders are the source noun and the slot name only. The Retired state and the three reasons.
+  it('row RD2: `common.captureRetire` words every refusal of operation 111, the three reasons and the Retired state', async () => {
+    const { CaptureRetireRefusalReason, CaptureDeviceRetireReason, CAPTURE_RETIRE_REFUSAL_SENTENCES } = await import('../src/api');
+    const W = en.common.captureRetire;
+    expect(Object.keys(W.refusal).sort()).toEqual([...Object.keys(CAPTURE_RETIRE_REFUSAL_SENTENCES), 'CAPTURE_CONFIG_LOCKED', 'NOT_FOUND'].sort());
+    for (const reason of Object.values(CaptureRetireRefusalReason)) expect(W.refusal[reason], reason).toBeDefined();
+    for (const [key, sentence] of Object.entries(W.refusal)) {
+      if (key !== 'CAPTURE_CONFIG_LOCKED') expect(sentence.endsWith('Nothing was changed.'), key).toBe(true);
+      expect((sentence.match(/\{\{[^}]*\}\}/g) ?? []).every((placeholder) => placeholder === '{{source}}' || placeholder === '{{slot}}'), key).toBe(true);
+    }
+    expect(W.refusal.CAPTURE_DEVICE_ASSIGNED).toContain('{{slot}}');
+    expect(Object.keys(W.reason)).toEqual(Object.values(CaptureDeviceRetireReason));
+    expect(W.state.retired).toBe('Retired');
+    expect(en.common.auditType.CAPTURE_DEVICE_RETIRED).toBe('Capture device retired');
   });
 });
 

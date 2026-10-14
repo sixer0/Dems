@@ -54,6 +54,9 @@ export * from './capture-commissioning';
 // Task 4 (blueprint row 116, WP-26b): the installation acceptance and its revocation, operations
 // 109-110 (the closed key lists and bounds of `steps` and `diagnostics`, schemas, operations, examples).
 export * from './installation-acceptance';
+// Task 4 (row RD2; design 07; decision C147): operation 111, the retirement of a registered camera or
+// microphone (the closed reasons, the refusal words and sentences, schemas, the audit builder, examples).
+export * from './capture-retire';
 // Task 4 (blueprint row 212, X2-1; decision C53; moved here by row V3): the policy for a NEW password.
 export * from './password-policy';
 // Task 3 row 113, fix round 1 (navigator finding N-1): the one rule set of the two client

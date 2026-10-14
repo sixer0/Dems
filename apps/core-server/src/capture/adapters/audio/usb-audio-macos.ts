@@ -13,8 +13,10 @@
  * worker counts what did not arrive (the pipe kind `PCM_FIFO_GAPPED`, row N13); what the Core does
  * with the counts is row N11's.
  *
- * REGISTERED NOWHERE (row N10 registers it, on `darwin` only). Nothing under `src/` imports this
- * file (static rule A-9).
+ * BUILT BY THE LOADER ON `darwin` ONLY, AND ONLY WITH ITS OPENER ADMITTED (row N10; decision C135
+ * (3)): until the M2b gate row admits it (`MACOS_MICROPHONE_OPENER_ADMITTED` of the fence) a
+ * `darwin` host still gets the adapter WITHOUT an opener. Named by the loader and, for its pure
+ * match of the loss watch, by the fence's boot step (static rule A-9).
  *
  * ONE HELPER PER DEVICE, TWO HANDLES (design 6.1; MF13: two helpers cannot hold the device). The
  * handles of one device in one session form a GROUP, and the group owns the one helper:
@@ -73,7 +75,7 @@
  * gate is trusted - `launchReading` below holds what the reader made of them, no text), the
  * pause and the retry against the real refusals, the permission's forms, an unplug.
  */
-import { CAPTURE_AUDIO_SAMPLE_RATE_HZ } from '@dems/shared/api';
+import { CaptureMicInputKind } from '@dems/capture-protocol';
 import type { CaptureTimers } from '../../types';
 import { CaptureAdapterError, CaptureAdapterRefusal } from '../errors';
 import { CaptureAdapterKind, sourceClassOf } from '../kinds';
@@ -82,15 +84,15 @@ import { macMicPrecheckArguments, macMicPushArguments } from '../local/mic-helpe
 import { preparePipe, removePipe } from '../local/mic-pipe';
 import { createPipeFiles, type PipeFiles } from '../local/pipe-files';
 import { inspectProgram, type HelperDoor, type ProgramInspector } from '../local/process-door';
-import { MIC_WORKER_BUFFER_CAP_MS, type MicTransportStatement } from '../mic-transport';
+import { micTransportOf, type MicTransportStatement } from '../mic-transport';
 import { startProductionProcess, type ProductionDiagnosticsEvent, type ProductionDoor, type ProductionExit, type ProductionProcess } from '../production-door';
 import { AudioInputBeyondCardError, AudioInputErrorCode, type AudioInputAdapter, type AudioInputDescriptor, type AudioOpenTarget, type AudioStreamHandle, type CaptureDeviceEntry } from '../types';
-import { CardFactsSource, type CaptureCard } from './card-listing';
+import { CardFactsSource, type CaptureCard, type CardListing } from './card-listing';
 import type { MacosCardEnumerator, MacosTiedListing } from './macos-card-listing';
 import type { MacosUndecidedDevice } from './macos-card-tie';
 import { HELPER_EXIT_STATUS_OPEN_REFUSED, readHelperLine, startHelperLines, type HelperLinesState } from './macos-helper-lines';
 import { MACOS_MIC_RATE_HZ, createSampleCounter, judgeHelperStart, type MacosGateVerdict, type MacosSampleCount } from './macos-launch-gate';
-import { UsbAudioError, UsbAudioRefusal, guardedArguments, identifyRegisteredCard, isRegisteredAudioInput, type RegisteredAudioInput } from './usb-audio-production';
+import { UsbAudioError, UsbAudioRefusal, guardedArguments, identifyRegisteredCard, isRegisteredAudioInput, type CardIdentification, type RegisteredAudioInput } from './usb-audio-production';
 
 // ── The bench-form marking (design 8.1; decision U25 (3)) ────────────────────────────────────────
 
@@ -100,27 +102,14 @@ export const MACOS_CAPTURE_LAYER = 'AVFOUNDATION';
 export const MACOS_SAMPLE_CONTINUITY = 'NOT_CONTINUOUS';
 
 /**
- * THE PIPE KIND of this path, by the name the worker protocol will have at version 5 (design 8.2
- * (b); row N13, in flight): "the same bytes as `PCM_FIFO`; the writer does NOT promise every
- * sample; the worker neither resamples nor follows the writer's clock, and accounts for every
- * sample". REQUEST LINE (row N13 / N11): replace this constant by
- * `CaptureMicInputKind.PCM_FIFO_GAPPED` when the protocol package states it. Until then a worker
- * of version 4 refuses a plan that names it (`PLAN_INVALID`): fail-closed, never `PCM_FIFO`.
+ * THE PIPE KIND of this path and what the worker is told to expect: the protocol's member
+ * `CaptureMicInputKind.PCM_FIFO_GAPPED` (protocol 5, design 8.2 (b), rows N13 / N1) and ITS
+ * statement in `mic-transport.ts` (row N11a) - "the same bytes as `PCM_FIFO`; the writer does NOT
+ * promise every sample; the worker neither resamples nor follows the writer's clock (0 ppm), and
+ * accounts for every sample". Never `PCM_FIFO`. Row N10 (request line 553 (1)) replaced the earlier
+ * constant and its cast by these two names.
  */
-export const MACOS_MIC_PIPE_KIND = 'PCM_FIFO_GAPPED';
-
-/** The transport statement of the gapped pipe: what the worker is told to expect. One place holds the protocol's name by cast. */
-export const MACOS_MIC_TRANSPORT: MicTransportStatement = Object.freeze({
-  kind: MACOS_MIC_PIPE_KIND as unknown as MicTransportStatement['kind'],
-  sampleFormat: 'F32LE',
-  sampleRateHz: CAPTURE_AUDIO_SAMPLE_RATE_HZ,
-  channels: 1,
-  placement: 'ARRIVAL',
-  // The gapped kind has NO resampler (design 7.2, R3.2 row 3): the worker follows no clock of the writer.
-  clockCompensationPpm: 0,
-  latenessBeyondRangeMs: MIC_WORKER_BUFFER_CAP_MS,
-  reportsOutOfRange: false,
-} as const);
+export const MACOS_MIC_TRANSPORT: MicTransportStatement = micTransportOf(CaptureMicInputKind.PCM_FIFO_GAPPED);
 
 // ── Refusals: the Linux adapter's codes, with the sentences this path needs ─────────────────────
 
@@ -391,6 +380,26 @@ function undecidedOf(undecided: readonly MacosUndecidedDevice[], stored: Registe
   const port = identityText(stored.usbPort);
   if (stored.usbId === null || (serial === null && port === null)) return null;
   return undecided.find((device) => device.usbId === stored.usbId && (serial !== null ? identityText(device.usbSerial) === serial : identityText(device.usbPort) === port)) ?? null;
+}
+
+/** One listing as the loss watch of `darwin` reads it: the cards, and the devices that are connected and could not be tied. */
+export interface MacosWatchedListing extends CardListing {
+  readonly undecided: readonly MacosUndecidedDevice[];
+}
+
+/**
+ * THE MATCH OF THE MICROPHONE LOSS WATCH ON `darwin` (row N10; review SM-06; DRIVER DECISION of its
+ * record: shared AS CODE, as the Linux match is, so that `undecidedOf` has no twin). The unchanged
+ * match on the listing's cards; where it finds no card, the undecided devices of the SAME listing: a
+ * registered device that is connected and could not be tied is NOT absent (design 3.3) - it answers
+ * `AUDIO_CARD_AMBIGUOUS` with the tie's reason, as `open` does, so the watch raises no
+ * "disconnected" for it and the fence counts a pass that could not confirm the device. Pure.
+ */
+export function identifyMacosRegisteredCard(listing: MacosWatchedListing, stored: RegisteredAudioInput): CardIdentification | { readonly ok: false; readonly refusal: typeof UsbAudioRefusal.CARD_AMBIGUOUS; readonly detail: MacosUndecidedDevice['reason'] } {
+  const found = identifyRegisteredCard(listing, stored);
+  if (found.ok) return found;
+  const undecided = undecidedOf(listing.undecided, stored);
+  return undecided === null ? found : Object.freeze({ ok: false, refusal: UsbAudioRefusal.CARD_AMBIGUOUS, detail: undecided.reason });
 }
 
 /** Two cards of two listings are the same device in the same state: identity, tie, count and rate. The index is NOT compared (it is the launch's own). */
@@ -863,7 +872,7 @@ export function createUsbAudioMacosAdapter(options: UsbAudioMacosOptions): UsbAu
     let closing: Promise<void> | null = null;
     const stream: UsbAudioMacosStream = {
       deviceId: inputId,
-      // The gapped pipe kind, by the protocol's coming name (see `MACOS_MIC_PIPE_KIND`).
+      // The gapped pipe kind, the protocol's member (see `MACOS_MIC_TRANSPORT`).
       input: Object.freeze({ kind: MACOS_MIC_TRANSPORT.kind, path: pipePath }),
       transport: MACOS_MIC_TRANSPORT,
       inputNumber: stored.inputNumber,

@@ -134,6 +134,8 @@ export const CaptureCompositionCode = {
   CAMERA_RELAY_NOTE: 'CAPTURE_COMPOSITION_CAMERA_RELAY_NOTE',
   /** What the fault sink of the watches did NOT write (its own code is in the context): a fault another part holds, a clear of a fault not its own. */
   WATCH_FAULT_NOTE: 'CAPTURE_COMPOSITION_WATCH_FAULT_NOTE',
+  /** Decision C154: a report of the microphone loss watch (its own `MIC_LOSS_*` code and a closed detail word are in the context). */
+  MIC_LOSS_WATCH_REPORT: 'CAPTURE_COMPOSITION_MIC_LOSS_WATCH_REPORT',
 } as const;
 export type CaptureCompositionCode = (typeof CaptureCompositionCode)[keyof typeof CaptureCompositionCode];
 
@@ -342,6 +344,8 @@ export interface MicLossWatchBundle {
   readonly faults: WatchFaultSink;
   /** True while the session is replacing its worker: a word about a handle of the superseded attempt raises nothing (row 191). */
   readonly superseded: (deviceId: string) => boolean;
+  /** Decision C154: where the watch tells what went wrong (its `MIC_LOSS_*` code, the device or null, a closed detail word; never a message). */
+  readonly report: (entry: { readonly code: string; readonly deviceId: string | null; readonly detail: string }) => void;
 }
 
 // ── The composition ────────────────────────────────────────────────────────────────────────────
@@ -558,7 +562,16 @@ export function composeProductionCapture(ports: ProductionCapturePorts, input: P
 
   const watches = Object.freeze({
     camera: Object.freeze({ timers, now: ports.now, candidate: stored.candidate, storedAddress, faults }),
-    microphone: Object.freeze({ registered: stored.microphone, cards, timers, faults, superseded }),
+    // Decision C154 (request line 584): the loss watch's reports (`MIC_LOSS_LISTING_FAILED`, `..._CARD_UNDECIDED`, `..._ROW_UNREADABLE`,
+    // `..._SINK_FAILED`, ...) reach the log as a warning: its own code, the device id and the closed detail word, as the camera's notes do.
+    microphone: Object.freeze({
+      registered: stored.microphone,
+      cards,
+      timers,
+      faults,
+      superseded,
+      report: (entry): void => ports.report('warn', CaptureCompositionCode.MIC_LOSS_WATCH_REPORT, { note: entry.code, deviceId: entry.deviceId, detail: entry.detail }),
+    }),
   });
   const attachCameraWatch = (watch: AttachedCameraWatch): void => {
     if (cameraWatch !== null) throw new CaptureCompositionError(CaptureCompositionCode.ATTACHED_TWICE, 'CAMERA_WATCH');

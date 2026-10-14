@@ -141,7 +141,8 @@ describe('AR-2: the Simulated views (AC-C-100)', () => {
     // Task 4 blueprint row 102: the seven simulated commissioning operations 101-107 join it, 34 -> 41.
     // Task 4 row V3: the simulated operation 108 (the stored-credential connection test) joins it, 41 -> 42.
     // Task 4 blueprint row 116: the two simulated operations 109-110 of the installation acceptance join it, 42 -> 44.
-    expect(countOperations(view)).toBe(44)
+    // Task 4 row RD2: the simulated operation 111 (the retirement of a device) joins it, 44 -> 45.
+    expect(countOperations(view)).toBe(45)
     expect(serializeOpenApiDocument(view)).toBe(serializeOpenApiDocument(buildApiDocument(true)))
     expect(apiDocumentJsonFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: false })).toBe(apiDocumentJson(true))
     expect(apiDocumentJsonFor({ mode: 'simulated', includeSimulated: false, includeCoreServer: false })).toBe(apiDocumentJson(false))
@@ -155,7 +156,8 @@ describe('AR-2: the Simulated views (AC-C-100)', () => {
     // Task 4 row 102: + the seven commissioning operations 101-107 (all simulated); the 66 still do not move.
     // Task 4 row V3: + operation 108 (simulated); the 66 still do not move.
     // Task 4 blueprint row 116: + operations 109-110 (simulated); the 66 still do not move.
-    expect(countOperations(view)).toBe(110)
+    // Task 4 row RD2: + operation 111 (simulated); the 66 still do not move.
+    expect(countOperations(view)).toBe(111)
     expect(CORE_SERVER_ONLY_OPERATIONS).toHaveLength(66)
     const coreOnly = new Set(CORE_SERVER_ONLY_OPERATIONS.map((operation) => operation.operationId))
     for (const [operationId, badges] of badgesOf(view)) {
@@ -222,7 +224,8 @@ describe('AR-2: Try-it in Simulated mode (AC-C-100)', () => {
     // 33 until task 4 row 102 added the seven simulated commissioning operations 101-107.
     // 40 until task 4 row V3 added the simulated operation 108.
     // 41 until task 4 row 116 added the two simulated operations 109-110 of the installation acceptance.
-    expect(request).toHaveBeenCalledTimes(43)
+    // 43 until task 4 row RD2 added the simulated operation 111, the retirement of a device.
+    expect(request).toHaveBeenCalledTimes(44)
   })
 
   it('without the switch nothing changes: a Core-server path is the simulator\'s answer, as before', async () => {
@@ -250,9 +253,9 @@ describe('AR-2: Try-it in Simulated mode (AC-C-100)', () => {
 describe('AR-3: the Live document (AC-C-100)', () => {
   beforeEach(() => setCoreEndpointMode('LIVE'))
 
-  it('110 operations, every one LIVE, served from the page\'s own origin and from nowhere else', () => {
+  it('111 operations, every one LIVE, served from the page\'s own origin and from nowhere else', () => {
     const document = buildLiveApiDocument(NO_REPLICA_IDENTIFIERS)
-    expect(countOperations(document)).toBe(110)
+    expect(countOperations(document)).toBe(111) // task 4 row RD2: + operation 111
     for (const [operationId, badges] of badgesOf(document)) expect(badges[0], operationId).toBe('LIVE')
     expect(document.servers.map((server) => server.url)).toEqual([PAGE])
     expect(document.info.version).toBe('0.3.0')
@@ -365,11 +368,14 @@ describe('AR-3: Try-it in Live mode (AC-C-100)', () => {
     // Task 4 blueprint row 116: 110 minus FOURTEEN - operations 109 and 110 (the installation
     // acceptance and its revocation) change a stored record and are denied (12 -> 14), so the
     // count stays 96.
-    expect(allowed).toHaveLength(96)
+    // Task 4 row RD2: 111 minus the same fourteen - operation 111 (the retirement of a device) is not on
+    // the deny list yet: 96 -> 97 FOR NOW. It changes a stored record and destroys a credential, as 109 /
+    // 110 change one; its deny entry is row RD5's (request line of row RD2), which takes this back to 96.
+    expect(allowed).toHaveLength(97)
     for (const operation of allowed) {
       await fetch(new Request(`${PAGE}${operation.path.replace('{id}', 'X-1')}`, { method: operation.method.toUpperCase() }))
     }
-    expect(networkFetch).toHaveBeenCalledTimes(96)
+    expect(networkFetch).toHaveBeenCalledTimes(97)
   })
 
   it.each([

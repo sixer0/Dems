@@ -162,26 +162,28 @@ describe('the registry: operations 93 to 97 as C3 §2.6 writes them', () => {
     expect(findCoreApiOperation('adoptCaptureCandidate')?.audit.also).toEqual(['CAPTURE_CONNECTION_TESTED', 'CAPTURE_CREDENTIAL_SET']);
   });
 
-  it('M4-PIN-1 (shared half): 110 operations, 39 GET, 71 POST, offline 44, 85 audit types, 40 error codes (unchanged), 6 access conditions', () => {
+  it('M4-PIN-1 (shared half): 111 operations, 39 GET, 72 POST, offline 45, 86 audit types, 40 error codes (unchanged), 6 access conditions', () => {
     // Task 4 row 63: + the two sound-card operations 98-99 (97 -> 99, POST 61 -> 63, offline 31 -> 33).
     // Task 4 row 194: + the confirmed re-address, operation 100 (99 -> 100, POST 63 -> 64, offline 33 -> 34).
+    // Task 4 row RD2: + the retirement of a device, operation 111 (110 -> 111, POST 71 -> 72, offline 44 -> 45);
+    // + CAPTURE_DEVICE_RETIRED (85 -> 86).
     const all = listCoreApiOperations(CoreApiScope.ALL);
-    expect([all.length, all.filter((operation) => operation.method === 'get').length, all.filter((operation) => operation.method === 'post').length]).toEqual([110, 39, 71]);
+    expect([all.length, all.filter((operation) => operation.method === 'get').length, all.filter((operation) => operation.method === 'post').length]).toEqual([111, 39, 72]);
     // Task 4 row 102: + the seven commissioning operations 101-107 (100 -> 107, GET 36 -> 39, POST 64 -> 68, offline 34 -> 41).
     // Task 4 row V3: + the stored-credential connection test, operation 108 (107 -> 108, POST 68 -> 69, offline 41 -> 42);
     // + the four audit types of the third vocabulary step (78 -> 82).
     // Task 4 row 116: + the acceptance of the installation and its revocation, operations 109-110
     // (108 -> 110, POST 69 -> 71, offline 42 -> 44); no audit type (the two exist since row 19).
-    expect(listCoreApiOperations(CoreApiScope.OFFLINE)).toHaveLength(44);
+    expect(listCoreApiOperations(CoreApiScope.OFFLINE)).toHaveLength(45);
     // Task 4 row R1b (decision C99): + CAPTURE_VIDEO_ABSENT_IN_SESSION (82 -> 83); no operation.
     // Task 4 row N2: + CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED, CAPTURE_AUDIO_SILENCE_INSERTED (83 -> 85); no operation.
-    expect(Object.values(AuditType)).toHaveLength(85);
+    expect(Object.values(AuditType)).toHaveLength(86);
     expect(API_ERROR_CODES).toHaveLength(40);
     expect(Object.values(CoreApiAccessCondition)).toHaveLength(6);
     const document = createOpenApiDocument({ scope: 'all' });
-    expect(Object.values(document.paths).flatMap((item) => Object.keys(item))).toHaveLength(110);
+    expect(Object.values(document.paths).flatMap((item) => Object.keys(item))).toHaveLength(111);
     // Must FAIL when the registry and the document differ by one operation: a registry without the last one.
-    expect(all.slice(0, -1)).toHaveLength(109);
+    expect(all.slice(0, -1)).toHaveLength(110);
   });
 
   it('the documented statuses are those of C3 §2.6; 429 and 503 are the envelope-level answers, named by their reason in the text', () => {
@@ -254,7 +256,9 @@ describe('who may call (R-9 AC-12; D80(2), D80(3))', () => {
     // `CREDENTIAL_CARRYING_OPERATIONS`.
     // Task 4 row 116 (WP-26b; decision U10): the acceptance of the installation and its revocation
     // (109, 110) are web console only on the commissioning permission; neither body holds a credential.
-    const ACCEPTANCE_IDS = ['acceptInstallation', 'revokeInstallationAcceptance'];
+    // Task 4 row RD2 (decision C147, Q1): the retirement of a device (111) is web console only on the
+    // commissioning permission; its body is a closed reason and holds no credential.
+    const ACCEPTANCE_IDS = ['acceptInstallation', 'revokeInstallationAcceptance', 'retireCaptureDevice'];
     const AUDIO_CARD_IDS = ['searchCaptureAudioCards', 'registerCaptureAudioInput', 'confirmCaptureDeviceAddress', ...COMMISSIONING_IDS.filter((id) => id !== 'setCameraNetwork'), 'testCaptureDeviceConnection', ...ACCEPTANCE_IDS];
     expect(everyWebOnly.map((operation) => operation.operationId)).toEqual([
       'setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate', 'searchCaptureAudioCards', 'registerCaptureAudioInput', 'confirmCaptureDeviceAddress', ...COMMISSIONING_IDS, 'testCaptureDeviceConnection', ...ACCEPTANCE_IDS,
@@ -927,8 +931,8 @@ describe('task 4 row V3: operation 108, the connection test of a registered came
     ]).toEqual([108, 'testCaptureDeviceConnection', 'post', '/api/v1/capture/devices/{id}/test', 'Device', 'simulated', 'CAPTURE_CONFIG', ['WEB_CONSOLE_SESSION'], 'CAPTURE_DEVICE_CONNECTION_TESTED', 'ACCESS_DENIED']);
     expect(CAPTURE_DEVICE_TEST_PATH).toBe(operation.path);
     expect(CORE_API_OPERATIONS[107]?.operationId).toBe('testCaptureDeviceConnection');
-    // It was the last entry until blueprint row 116 appended operations 109 and 110 after it.
-    expect(CORE_API_OPERATIONS.at(-3)?.operationId).toBe('testCaptureDeviceConnection');
+    // It was the last entry until blueprint row 116 appended operations 109 and 110 after it (and row RD2 operation 111).
+    expect(CORE_API_OPERATIONS.at(-4)?.operationId).toBe('testCaptureDeviceConnection');
     // The permission as the candidate test has it: the same access object as operation 95.
     expect(operation.access).toEqual(CAPTURE_CREDENTIAL_ACCESS);
     expect(findCoreApiOperation('testCaptureCandidateConnection')?.access).toEqual(operation.access);

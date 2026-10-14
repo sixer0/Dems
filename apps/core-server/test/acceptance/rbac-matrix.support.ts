@@ -297,7 +297,8 @@ export const API_CONTRACT_SECTIONS: ReadonlyArray<{ readonly heading: string; re
   // Task 4 (blueprint row 102): and the seven rows of the commissioning operations 101 to 107.
   // Task 4 (row V3, the third contract step; blueprint row 146): and the row of operation 108, the stored-credential connection test.
   // Task 4 (blueprint row 116, WP-26b): and the two rows of operations 109 and 110, the installation acceptance and its revocation.
-  { heading: '### 2.6 ', section: 'C3 §2.6', rows: 18, what: 'the eighteen of operations 93 to 110' },
+  // Task 4 (row RD2; decision C147): and the row of operation 111, the retirement of a device.
+  { heading: '### 2.6 ', section: 'C3 §2.6', rows: 19, what: 'the nineteen of operations 93 to 111' },
 ];
 
 /** True for a row the composed table takes from C3, not from the closed task-2 base. */

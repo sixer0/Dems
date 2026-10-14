@@ -78,7 +78,8 @@ describe('D62: the document Scalar renders', () => {
     // 34 until task 4 row 102 added the seven simulated commissioning operations 101-107.
     // 41 until task 4 row V3 added the simulated operation 108, the stored-credential connection test.
     // 42 until task 4 row 116 added the two simulated operations 109-110 of the installation acceptance.
-    expect(countOperations(doc)).toBe(44)
+    // 44 until task 4 row RD2 added the simulated operation 111, the retirement of a device.
+    expect(countOperations(doc)).toBe(45)
     const live = listOpenApiOperations(doc).filter((e) => e.operation['x-dems-mode'] === 'live')
     expect(live.map((e) => `${e.method} ${e.path}`)).toEqual(['get /api/v1/health'])
     expect(live[0]?.operation['x-badges'].map((b) => b.name)).toEqual(['LIVE'])

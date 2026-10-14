@@ -163,7 +163,8 @@ describe('API-13 over the whole registry', () => {
     // Task 4 row 102 adds the bodies of ops 102, 103 (optional) and 106; every string of them is bound by a pattern, the credential pair is the existing schema: 38 -> 41 bodies.
     // Task 4 row V3: op 108 `testCaptureDeviceConnection` has NO body, so the count does not move.
     // Task 4 row 116 adds the bodies of ops 109 and 110; their free texts (a step's note, the site address, the reason) carry the rule: 41 -> 43 bodies.
-    expect(CORE_API_OPERATIONS.filter((operation) => operation.requestBody).map((operation) => operation.operationId)).toHaveLength(43);
+    // Task 4 row RD2 adds the body of op 111 (one member, a closed reason; no free text): 43 -> 44 bodies.
+    expect(CORE_API_OPERATIONS.filter((operation) => operation.requestBody).map((operation) => operation.operationId)).toHaveLength(44);
     expect(CORE_API_OPERATIONS.filter((operation) => operation.query).map((operation) => operation.operationId)).toHaveLength(6);
     expect(new Set(checked).size).toBeGreaterThanOrEqual(30);
     expect(checked).toContain('SignInRequest(root).password');
@@ -235,7 +236,8 @@ describe('API-13 over the whole registry', () => {
     // Task 4 row 102 adds the nine schemas of ops 101-107: 156 -> 165.
     // Task 4 row V3 adds the one schema of op 108 (an answer; the operation has no body): 165 -> 166.
     // Task 4 row 116 adds the five schemas of ops 109-110: 166 -> 171.
-    expect(added).toHaveLength(171);
+    // Task 4 row RD2 adds the two schemas of op 111: 171 -> 173.
+    expect(added).toHaveLength(173);
     let leaves = 0;
     const open: string[] = [];
     for (const name of added) {

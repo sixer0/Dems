@@ -31,18 +31,21 @@ import { manualTimers, trustedInspector, type ManualTimers } from '../../local/_
 import { inspectProgram, type ProgramFacts } from '../../local/process-door';
 import { startProductionProcess, type ProductionDiagnosticsEvent, type ProductionDoor, type ProductionExit, type ProductionProcess, type ProductionProcessOptions } from '../../production-door';
 import { AudioInputBeyondCardError, AudioInputErrorCode, type CaptureDeviceEntry } from '../../types';
+import { CaptureMicInputKind } from '@dems/capture-protocol';
+import { micTransportOf } from '../../mic-transport';
 import { createMacosCardEnumerator, type MacosCardEnumerator } from '../macos-card-listing';
 import {
   MACOS_AUDIO_LIMITS,
   MACOS_AUDIO_SENTENCES,
   MACOS_CAPTURE_LAYER,
-  MACOS_MIC_PIPE_KIND,
   MACOS_MIC_TRANSPORT,
   MACOS_SAMPLE_CONTINUITY,
   MacosAudioNoticeCode,
   MacosUsbAudioError,
   createUsbAudioMacosAdapter,
+  identifyMacosRegisteredCard,
   type MacosAudioNotice,
+  type MacosWatchedListing,
   type MacosHeldPipe,
   type MacosPipeKeeper,
   type UsbAudioMacosAdapter,
@@ -384,7 +387,9 @@ describe('open: the stored input found in a fresh listing; the group is joined; 
     expect(r.host.lists()).toBe(1);
     expect(r.door.guards).toHaveLength(0);
     expect(stream.input).toEqual({ kind: 'PCM_FIFO_GAPPED', path: `${r.runDir}/SES-N9/MIC-01.pcm` });
-    expect(MACOS_MIC_PIPE_KIND).toBe('PCM_FIFO_GAPPED');
+    // MOVED BY ROW N10 (request line 553 (1)): the protocol's member and ITS statement of `mic-transport.ts`, no constant of this file.
+    expect(MACOS_MIC_TRANSPORT).toBe(micTransportOf(CaptureMicInputKind.PCM_FIFO_GAPPED));
+    expect(MACOS_MIC_TRANSPORT.kind).toBe('PCM_FIFO_GAPPED');
     // The gapped kind has no resampler: the worker follows no clock of the writer.
     expect(stream.transport).toBe(MACOS_MIC_TRANSPORT);
     expect(MACOS_MIC_TRANSPORT.clockCompensationPpm).toBe(0);
@@ -476,6 +481,26 @@ describe('open: the stored input found in a fresh listing; the group is joined; 
       expect([reason, refused.code, refused.detail]).toEqual([reason, UsbAudioRefusal.CARD_AMBIGUOUS, reason]);
       expect(r.door.guards).toHaveLength(0);
     }
+  });
+
+  // Task 4 row N10 (review SM-06): THE LOSS WATCH'S MATCH on `darwin` is the same rule as `open`'s, as a pure function of ONE tied
+  // listing: present, absent, or AMBIGUOUS with the tie's reason - never ABSENT for a connected device that could not be tied.
+  // Mutant (the undecided list not read, i.e. the Linux match alone): RED - the NAME_SHARED case answers CARD_ABSENT.
+  it('row N10: the loss watch\'s match of one tied listing - found, absent, and the undecided device AMBIGUOUS with its reason', async () => {
+    const watched = async (host: Host): Promise<MacosWatchedListing> => {
+      const tied = await host.enumerator.listTied();
+      if (!tied.ok) throw new Error('the fixture listing must be readable');
+      return { ...tied.listing, undecided: tied.undecided };
+    };
+    const stored = row('MIC-01', HEXA, 1);
+    const host = hostOf([HEXA]);
+    expect(identifyMacosRegisteredCard(await watched(host), stored).ok).toBe(true);
+    host.devices = [];
+    host.captureOrder = [BUILT_IN];
+    expect(identifyMacosRegisteredCard(await watched(host), stored)).toMatchObject({ ok: false, refusal: UsbAudioRefusal.CARD_ABSENT });
+    host.devices = [HEXA, { ...HEXA, product: 0x0007, location: 0x01140000 }];
+    host.captureOrder = [BUILT_IN, HEXA.name, HEXA.name];
+    expect(identifyMacosRegisteredCard(await watched(host), stored)).toEqual({ ok: false, refusal: UsbAudioRefusal.CARD_AMBIGUOUS, detail: 'NAME_SHARED' });
   });
 });
 

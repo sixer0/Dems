@@ -152,6 +152,8 @@ const ARGS: { readonly [Name in keyof SimActions]: Parameters<SimActions[Name]> 
   readdressCaptureDevice: [{ deviceId: 'CAM-01', address: '192.168.10.21' }],
   // Task 4 row V7: INTERNAL, bound LOCAL.
   storeCaptureDeviceProfiles: [{ deviceId: 'CAM-01', profiles: ['HEVC_1080P'] }],
+  // Task 4 row RD2: INTERNAL, bound LOCAL.
+  retireCaptureDevice: [{ deviceId: 'CAM-03', retiredAt: 1, retiredBy: 'OPR-003' }],
 };
 
 /** A real state with a session that is ARMED: one engine, from sign-in through the pre-check. */
@@ -213,11 +215,11 @@ function expectContractRequest(name: string, plan: CallPlan): void {
   }
 }
 
-describe('the 52 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17; pass D6 CS-09: applyStorageVolume, 48 -> 49; task 4 row 185: registerCaptureMicrophone, 49 -> 50; row 195: readdressCaptureDevice, 50 -> 51; row V7: storeCaptureDeviceProfiles, 51 -> 52)', () => {
+describe('the 53 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17; pass D6 CS-09: applyStorageVolume, 48 -> 49; task 4 row 185: registerCaptureMicrophone, 49 -> 50; row 195: readdressCaptureDevice, 50 -> 51; row V7: storeCaptureDeviceProfiles, 51 -> 52; row RD2: retireCaptureDevice, 52 -> 53)', () => {
   it('has one binding per member of SimActions: the keys of the contract table, of the bindings and of a real simulator are equal', () => {
     const sim = createSim({ clock: createManualClock(NOW), storage: null, authStorage: null });
     const simulator = Object.keys(sim.actions).sort();
-    expect(simulator).toHaveLength(52);
+    expect(simulator).toHaveLength(53);
     expect([...LIVE_BINDING_NAMES].sort()).toEqual(simulator);
     expect(Object.keys(SIM_ACTION_OPERATIONS).sort()).toEqual(simulator);
     expect(Object.keys(ARGS).sort()).toEqual(simulator);
@@ -225,7 +227,7 @@ describe('the 52 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17; pas
     expect(LIVE_BINDING_NAMES).toEqual(Object.keys(SIM_ACTION_OPERATIONS));
   });
 
-  it('the flows: 35 commands, 1 read, 2 sign-ins, sign-out, touch, pair, unpair, 10 local', () => {
+  it('the flows: 35 commands, 1 read, 2 sign-ins, sign-out, touch, pair, unpair, 11 local', () => {
     const count = (flow: string) => LIVE_BINDING_NAMES.filter((name) => LIVE_BINDINGS[name].flow === flow);
     expect(count(LiveActionFlow.COMMAND)).toHaveLength(35);
     expect(count(LiveActionFlow.READ)).toEqual(['verifyAuditChain']);
@@ -234,7 +236,7 @@ describe('the 52 bindings, driven by SIM_ACTION_OPERATIONS (01_specs §7.17; pas
     expect(count(LiveActionFlow.TOUCH)).toEqual(['touch']);
     expect(count(LiveActionFlow.PAIR)).toEqual(['pair']);
     expect(count(LiveActionFlow.UNPAIR)).toEqual(['unpair']);
-    expect(count(LiveActionFlow.LOCAL)).toEqual(['signInWithSecurityKey', 'setTabletLink', 'applyCaptureTelemetry', 'raiseCaptureWarning', 'clearCaptureWarning', 'applyStorageVolume', 'registerCaptureDevice', 'registerCaptureMicrophone', 'readdressCaptureDevice', 'storeCaptureDeviceProfiles']);
+    expect(count(LiveActionFlow.LOCAL)).toEqual(['signInWithSecurityKey', 'setTabletLink', 'applyCaptureTelemetry', 'raiseCaptureWarning', 'clearCaptureWarning', 'applyStorageVolume', 'registerCaptureDevice', 'registerCaptureMicrophone', 'readdressCaptureDevice', 'storeCaptureDeviceProfiles', 'retireCaptureDevice']);
     expect(Object.values(LiveActionFlow)).toHaveLength(8);
   });
 

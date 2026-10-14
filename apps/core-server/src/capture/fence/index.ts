@@ -39,12 +39,16 @@ import { createCaptureDeviceRegistry } from '../adapters/registry';
 import type { AudioInputAdapter, CameraAdapter, CaptureAdapter, CaptureDeviceEntry, CaptureDeviceRegistry } from '../adapters/types';
 // Task 4 row 88 (THE LIFT): the boot builds the production registry, its two watches and the microphone's configuration writer.
 // The loader is imported for its TYPES here and for its value by ONE dynamic import inside the boot step (rule A-1).
-import type { ProductionAdapterDependencies, ProductionAdapters, ProductionMicrophoneDependencies } from '../adapters/real';
+import type { ProductionAdapterDependencies, ProductionAdapters, ProductionMacosMicrophoneDependencies, ProductionMicrophoneDependencies } from '../adapters/real';
 import { createCameraWatch, type CameraWatch, type CameraWatchDependencies } from '../adapters/camera/camera-watch';
-import { createMicLossWatch, type MicLossWatch, type MicLossWatchOptions } from '../adapters/audio/mic-loss';
+import { MIC_CARD_ABSENT, MIC_CARD_CHANGED, createMicLossWatch, type MicCardMatch, type MicLossWatch, type MicLossWatchOptions } from '../adapters/audio/mic-loss';
 import { identifyRegisteredCard, isRegisteredAudioInput, type RegisteredAudioInput } from '../adapters/audio/usb-audio-production';
+// Row N10: the macOS adapter's pure match of the loss watch (shared AS CODE, as the Linux match above), the tied listing, the keeper.
+import { identifyMacosRegisteredCard, type MacosAudioNotice, type MacosWatchedListing } from '../adapters/audio/usb-audio-macos';
+import { MacosCardListingError, type MacosCardEnumerator } from '../adapters/audio/macos-card-listing';
+import { createPipeKeeper } from '../adapters/local/pipe-files';
 import { createAlsaConfigWriter } from '../adapters/audio/alsa-config-writer';
-import type { CardEnumerator } from '../adapters/audio/card-listing';
+import type { CardEnumerator, CardListing } from '../adapters/audio/card-listing';
 import {
   LOCAL_CAMERA_DEVICE_NAME,
   LOCAL_MIC_DEVICE_NAME,
@@ -582,6 +586,35 @@ export async function buildProductionRegistryOf<Camera, Audio, Cards = unknown>(
 /** The one platform whose host has a production microphone opener (AM-1 (3)(h) with the erratum of C135): `linux`. */
 export const PRODUCTION_MICROPHONE_OPENER_PLATFORM = 'linux';
 
+/**
+ * THE PLATFORM OF THE macOS MICROPHONE ADAPTER (task 4 row N10; design 06 row N10; SM-21): `linux` builds
+ * the Linux adapter, `darwin` the macOS one, any other none - never both. The platform word is the
+ * entry point's (`process.platform`, handed through the composition); no key, flag or seam chooses it.
+ */
+export const MACOS_MICROPHONE_OPENER_PLATFORM = 'darwin';
+
+/**
+ * THE macOS MICROPHONE OPENER IS NOT ADMITTED (decision C135 (3); row N10). On `darwin` the boot step
+ * builds the macOS adapter only once the M2b gate row has admitted its opener BY A DECISION ROW AND A
+ * ONE-LINE COMMIT OF THIS CONSTANT - never by an environment variable, a flag or a key of the
+ * configuration. While it is false a `darwin` host is exactly as before row N10: the microphone
+ * adapter WITHOUT an opener, no loss watch, a REAL_PRODUCTION start refused
+ * (`SOURCE_KIND_NOT_RECORDABLE`). Pinned with its value by `capture/__tests__/static.test.ts` (row N10).
+ */
+export const MACOS_MICROPHONE_OPENER_ADMITTED = false;
+
+/**
+ * FOR TESTS ONLY (row N14 will use it): the explicit admission of the macOS opener in ONE wiring call,
+ * beside the constant above. NO PRODUCTION CALL SITE PASSES IT: the one production call of
+ * `wireProductionRegistry` hands two arguments (static case "row N10" of `capture/__tests__/static.test.ts`).
+ */
+export interface ProductionWiringAdmission {
+  readonly admitMacosMicrophoneOpener: true;
+}
+
+/** Passes IN A ROW that could not confirm a HELD macOS microphone before its named fault is said (review SM-06). */
+export const MACOS_MIC_UNCONFIRMED_PASSES = 2;
+
 /** What the composition hands for the production microphone: the adapter's options but the two the capture unit owns, with the two program paths as the configuration states them (may be null). */
 export type ProductionAudioParts = Omit<ProductionMicrophoneDependencies, 'helperProgram' | 'guardProgram' | 'configWriter' | 'runDir'> & { readonly helperProgram: string | null; readonly guardProgram: string | null };
 
@@ -592,7 +625,7 @@ export type ProductionAudioParts = Omit<ProductionMicrophoneDependencies, 'helpe
  * the two watches and the microphone's configuration writer from it.
  */
 export interface ProductionCaptureParts {
-  /** The platform of the process, as the entry point stated it: only on `PRODUCTION_MICROPHONE_OPENER_PLATFORM` is a microphone opener built. */
+  /** The platform of the process, as the entry point stated it: `linux` builds the Linux microphone opener, `darwin` the macOS one once admitted (row N10), any other none. */
   readonly platform: string;
   readonly dependencies: { readonly camera: ProductionAdapterDependencies['camera']; readonly audio: ProductionAudioParts };
   readonly watches: {
@@ -629,6 +662,14 @@ export const ProductionWiringCode = {
   ADMITTED: 'CAPTURE_PRODUCTION_DEVICE_ADMITTED',
   /** The production registry was built: how many devices per class, whether a microphone opener exists. */
   BUILT: 'CAPTURE_PRODUCTION_REGISTRY_BUILT',
+  /** Row N10: `darwin`, opener admitted, but the card listing handed in is no tied macOS listing: no microphone opener is built. */
+  MIC_LISTING_NOT_TIED: 'CAPTURE_PRODUCTION_MIC_LISTING_NOT_TIED',
+  /** Row N10: a notice of the macOS microphone adapter (`MacosAudioNoticeCode`), with the microphone's registry id. */
+  MACOS_AUDIO_NOTICE: 'CAPTURE_PRODUCTION_MACOS_AUDIO_NOTICE',
+  /** Row N10 (SM-06): a HELD macOS microphone could not be confirmed by the listing for two passes in a row. Its capture goes on. */
+  MIC_NOT_CONFIRMED: 'CAPTURE_PRODUCTION_MIC_NOT_CONFIRMED',
+  /** Row N10 (SM-06): the end of that interval - the listing confirmed the microphone again, or its handle was closed. */
+  MIC_CONFIRMATION_ENDED: 'CAPTURE_PRODUCTION_MIC_CONFIRMATION_ENDED',
 } as const;
 
 /** What the wiring needs of the app: a read of the store that works after the boot, the run directory, the lock, the log sinks. A test hands doubles. */
@@ -640,12 +681,108 @@ export interface ProductionWiringEnvironment {
   readonly sinks: CaptureFenceSinks;
 }
 
+/** What the wiring says and persists: a level, a code, identifiers and counts. */
+type WiringSay = (level: 'warn' | 'error', code: string, context: Record<string, string | number>, message: string) => void;
+
+/** The card listing handed in, IF it is the tied listing of a macOS host (row N7's `macosCardEnumeratorOf`); else null. */
+function tiedCardsOf(cards: CardEnumerator): MacosCardEnumerator | null {
+  return typeof (cards as Partial<MacosCardEnumerator>).listTied === 'function' ? (cards as MacosCardEnumerator) : null;
+}
+
+/**
+ * Row N10: what the macOS microphone adapter is built from on `darwin` - the composition's parts, the
+ * tied listing, the two configured programs, the run directory, THE PRODUCT'S PIPE KEEPER
+ * (`local/pipe-files.ts`, request line 552) on the capture timers, and its notices said by code. The
+ * Linux-only members of the parts (its limits, its notice observer) are not handed on.
+ */
+function macosMicrophoneOf(audioParts: ProductionAudioParts, cards: MacosCardEnumerator, helperProgram: string, guardProgram: string, runDir: string, say: WiringSay): ProductionMacosMicrophoneDependencies {
+  const onNotice = (notice: MacosAudioNotice): void => say('warn', ProductionWiringCode.MACOS_AUDIO_NOTICE, { notice: notice.code, deviceId: notice.deviceId }, 'a notice of the macOS microphone adapter');
+  return {
+    registered: audioParts.registered,
+    cards,
+    helperProgram,
+    guardProgram,
+    runDir,
+    timers: audioParts.timers,
+    pipes: createPipeKeeper(audioParts.timers),
+    onNotice,
+    ...(audioParts.onSourceLost === undefined ? {} : { onSourceLost: audioParts.onSourceLost }),
+    ...(audioParts.level === undefined ? {} : { level: audioParts.level }),
+    ...(audioParts.door === undefined ? {} : { door: audioParts.door }),
+    ...(audioParts.inspect === undefined ? {} : { inspect: audioParts.inspect }),
+    ...(audioParts.files === undefined ? {} : { files: audioParts.files }),
+  };
+}
+
+/**
+ * Row N10 (review SM-06): THE LOSS WATCH'S MATCH ON `darwin`, and its fault. The watch reads the TIED
+ * listing (one reading of the three lists per pass) and matches each stored microphone with the
+ * macOS adapter's own match, so a connected device that could not be tied is AMBIGUOUS, never
+ * "disconnected". The watch raises nothing for an unreadable listing or an undecided device (it
+ * cannot say the card is gone). For a microphone whose handle is HELD, such a pass is a pass that
+ * could NOT CONFIRM it: after `MACOS_MIC_UNCONFIRMED_PASSES` of them with no confirming pass between,
+ * the named fault `CAPTURE_PRODUCTION_MIC_NOT_CONFIRMED` is said on that microphone (log and
+ * persistent error log); its capture goes on and its helper is not stopped (the audio may be fine).
+ * The interval ends - `CAPTURE_PRODUCTION_MIC_CONFIRMATION_ENDED` - when a listing confirms the
+ * microphone (present, absent or replaced: the watch's own rule then speaks) or its handle is closed.
+ * A pass whose stored row could not be read judges nothing and breaks no count. Exported for its test
+ * (`adapters/__tests__/real.test.ts`); its one production caller is the wiring below.
+ */
+export function macosLossMatchOf(tied: MacosCardEnumerator, held: () => readonly string[], say: WiringSay): Pick<MicLossWatchOptions<RegisteredAudioInput>, 'cards' | 'identify'> {
+  const misses = new Map<string, number>();
+  const unconfirmed = new Set<string>();
+  const miss = (deviceId: string, detail: string): void => {
+    const count = (misses.get(deviceId) ?? 0) + 1;
+    misses.set(deviceId, count);
+    if (count < MACOS_MIC_UNCONFIRMED_PASSES || unconfirmed.has(deviceId)) return;
+    unconfirmed.add(deviceId);
+    say('warn', ProductionWiringCode.MIC_NOT_CONFIRMED, { deviceId, passes: count, detail }, 'a held production microphone was not confirmed by the card listing for two passes in a row: its capture goes on');
+  };
+  const confirm = (deviceId: string, end: 'CONFIRMED' | 'NOT_HELD'): void => {
+    misses.delete(deviceId);
+    if (unconfirmed.delete(deviceId)) say('warn', ProductionWiringCode.MIC_CONFIRMATION_ENDED, { deviceId, end }, 'the interval in which a production microphone could not be confirmed has ended');
+  };
+  const cards: CardEnumerator = {
+    // No error is HANDLED here (static rule G-R14: the fence has no error path): a failed reading is counted and goes on to the
+    // watch as it was, which reports it and concludes nothing.
+    list(): Promise<CardListing> {
+      const holding = new Set(held());
+      for (const deviceId of new Set([...misses.keys(), ...unconfirmed])) if (!holding.has(deviceId)) confirm(deviceId, 'NOT_HELD');
+      return tied.listTied().then(
+        (reading) => {
+          if (!reading.ok) {
+            for (const deviceId of holding) miss(deviceId, reading.failure);
+            throw new MacosCardListingError(reading.failure, reading.detail);
+          }
+          const watched: MacosWatchedListing = Object.freeze({ ...reading.listing, undecided: reading.undecided });
+          return watched;
+        },
+        (error: unknown) => {
+          for (const deviceId of holding) miss(deviceId, 'LISTING_NOT_READ');
+          throw error;
+        },
+      );
+    },
+  };
+  const identify = (listing: CardListing, stored: RegisteredAudioInput): MicCardMatch => {
+    const undecided = (listing as Partial<MacosWatchedListing>).undecided;
+    const found = identifyMacosRegisteredCard({ ...listing, undecided: Array.isArray(undecided) ? undecided : [] }, stored);
+    if (found.ok || found.refusal === MIC_CARD_ABSENT || found.refusal === MIC_CARD_CHANGED) confirm(stored.deviceId, 'CONFIRMED');
+    else if (held().includes(stored.deviceId)) miss(stored.deviceId, typeof found.detail === 'string' ? found.detail : found.refusal);
+    return found;
+  };
+  return { cards, identify };
+}
+
 /**
  * THE LIFT'S WIRING OF THE PRODUCTION REGISTRY, in this order:
  *   1. the microphone's dependencies: on `linux` with both programs configured, the composition's
- *      bundle with the configuration writer and the run directory added; else NULL - the loader
- *      then builds the `USB_AUDIO` adapter WITHOUT an opener (AM-1 (3)(h), C135: on `darwin` no
- *      production microphone is ever recorded, so no REAL_PRODUCTION session can start there);
+ *      bundle with the configuration writer and the run directory added; on `darwin` (row N10)
+ *      ONLY WITH THE macOS OPENER ADMITTED (`MACOS_MICROPHONE_OPENER_ADMITTED`, false until the M2b
+ *      gate row; a test's explicit `admission`), both programs configured and the tied listing: the
+ *      macOS bundle with the run directory and the product's pipe keeper; else neither - the loader
+ *      then builds the `USB_AUDIO` adapter WITHOUT an opener (AM-1 (3)(h), C135: on `darwin`
+ *      unadmitted no production microphone is ever recorded, so no REAL_PRODUCTION session starts);
  *   2. the camera watch, built and ATTACHED before anything else (E-03);
  *   3. the builder, with the stored registry read through `store` at the boot and after it
  *      (`reader`: a later device), the loader by a dynamic import, the card listing, the watch's
@@ -655,22 +792,31 @@ export interface ProductionWiringEnvironment {
  *      opener exists, reading the stored microphones LIVE (a later one too);
  *   5. the malformed profile lists said once; the closing of all of it at shutdown.
  */
-export async function wireProductionRegistry(parts: ProductionCaptureParts, environment: ProductionWiringEnvironment): Promise<BuiltProductionRegistry> {
+export async function wireProductionRegistry(parts: ProductionCaptureParts, environment: ProductionWiringEnvironment, admission?: ProductionWiringAdmission): Promise<BuiltProductionRegistry> {
   const { sinks } = environment;
   const say = (level: 'warn' | 'error', code: string, context: Record<string, string | number>, message: string): void => {
     sinks[level]({ code, ...context }, message);
     sinks.persist({ level, source: 'capture.fence', message, code, context });
   };
 
-  // 1. The microphone.
+  // 1. The microphone, BY PLATFORM (row N10; SM-21): `linux` the Linux adapter; `darwin` the macOS one, and only with its opener
+  // ADMITTED (C135 (3): the constant, or a test's explicit admission); any other platform none - never both. Not admitted on
+  // `darwin`: exactly as before row N10.
   const audioParts = parts.dependencies.audio;
   let audio: ProductionMicrophoneDependencies | null = null;
-  if (parts.platform !== PRODUCTION_MICROPHONE_OPENER_PLATFORM) {
+  let macosAudio: ProductionMacosMicrophoneDependencies | null = null;
+  let macosCards: MacosCardEnumerator | null = null;
+  const macosAdmitted = parts.platform === MACOS_MICROPHONE_OPENER_PLATFORM && (MACOS_MICROPHONE_OPENER_ADMITTED || admission?.admitMacosMicrophoneOpener === true);
+  if (parts.platform !== PRODUCTION_MICROPHONE_OPENER_PLATFORM && !macosAdmitted) {
     sinks.info({ code: ProductionWiringCode.MIC_OPENER_NOT_ON_THIS_PLATFORM }, 'no production microphone opener on this platform: a production microphone is listed and never recorded');
   } else if (audioParts.helperProgram === null || audioParts.guardProgram === null) {
     say('warn', ProductionWiringCode.MIC_PROGRAM_NOT_CONFIGURED, { helper: audioParts.helperProgram === null ? 'NOT_CONFIGURED' : 'CONFIGURED', guard: audioParts.guardProgram === null ? 'NOT_CONFIGURED' : 'CONFIGURED' }, 'the production microphone programs are not configured: no microphone opener is built');
-  } else {
+  } else if (parts.platform === PRODUCTION_MICROPHONE_OPENER_PLATFORM) {
     audio = { ...audioParts, helperProgram: audioParts.helperProgram, guardProgram: audioParts.guardProgram, configWriter: createAlsaConfigWriter(environment.runDir), runDir: environment.runDir };
+  } else {
+    macosCards = tiedCardsOf(audioParts.cards);
+    if (macosCards === null) say('warn', ProductionWiringCode.MIC_LISTING_NOT_TIED, {}, 'the card listing of this host is not the tied macOS listing: no microphone opener is built');
+    else macosAudio = macosMicrophoneOf(audioParts, macosCards, audioParts.helperProgram, audioParts.guardProgram, environment.runDir, say);
   }
 
   // 2. The camera watch, attached before the registry exists.
@@ -682,7 +828,7 @@ export async function wireProductionRegistry(parts: ProductionCaptureParts, envi
   const operation = CaptureOperation.REAL_PRODUCTION;
   const executor = environment.store;
   const reader = environment.store;
-  const dependencies: ProductionAdapterDependencies = { camera: parts.dependencies.camera, audio };
+  const dependencies: ProductionAdapterDependencies = macosAudio === null ? { camera: parts.dependencies.camera, audio } : { camera: parts.dependencies.camera, audio, macosAudio };
   const load = async (asked: CaptureOperation, devices: ProductionRegistryDevices, given: ProductionAdapterDependencies): Promise<ProductionAdapters> => {
     loaded.adapters = await (await import('../adapters/real')).loadProductionAdapters(asked, devices, given);
     return loaded.adapters;
@@ -727,12 +873,24 @@ export async function wireProductionRegistry(parts: ProductionCaptureParts, envi
     micWatch = watched;
     parts.attachMicLossWatch(watched);
     watched.start();
+  } else if (macosAudio !== null && macosCards !== null) {
+    // Row N10: the loss watch of `darwin` - the macOS match over the TIED listing, and the fault of review SM-06.
+    const watched = createMicLossWatch<RegisteredAudioInput>({
+      ...parts.watches.microphone,
+      devices: () => built.devices().filter((device) => device.kind === 'MIC').map((device) => device.id),
+      ...macosLossMatchOf(macosCards, () => built.openSources(), say),
+      isRow: isRegisteredAudioInput,
+      held: () => built.openSources(),
+    });
+    micWatch = watched;
+    parts.attachMicLossWatch(watched);
+    watched.start();
   }
 
   // 5. Said once; closed at shutdown.
   const malformed = built.malformedProfiles();
   if (malformed.length > 0) say('warn', ProductionWiringCode.PROFILES_MALFORMED, { count: malformed.length, devices: malformed.join(',') }, 'stored profile lists that are not of their form: those cameras have no profile');
-  sinks.info({ code: ProductionWiringCode.BUILT, cameras: stored.filter((device) => device.kind === 'CAMERA').length, microphones: stored.filter((device) => device.kind === 'MIC').length, microphoneOpener: audio !== null }, 'the production registry is built');
+  sinks.info({ code: ProductionWiringCode.BUILT, cameras: stored.filter((device) => device.kind === 'CAMERA').length, microphones: stored.filter((device) => device.kind === 'MIC').length, microphoneOpener: audio !== null || macosAudio !== null }, 'the production registry is built');
   return {
     ...built,
     async closeAll(): Promise<void> {

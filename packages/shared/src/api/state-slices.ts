@@ -1216,6 +1216,19 @@ export const CaptureDeviceStatusSchema = z
       .describe(
         'The stream profiles the Core holds stored for this camera (`capture_devices.profiles`), in the stored order, each code once. A production camera is assigned to a track with ONE of them: the `code` is sent as `profile` of a camera line of operation 78 (operation 79 carries no profile). An EMPTY list: the Core holds no profile for this camera - it cannot be assigned, and no default stands in (C36). Present on every registered camera (one that operation 96 added); absent on every other entry (a microphone, the PoE switch, a built-in device). No credential, no address, no URL, no text of the camera.',
       ),
+    // Task 4 row RD2 (design 07 section 4.2; decision C147, ruling Q2): the two members of a RETIRED
+    // device (operation 111). Both present or both absent - absent: the device is in service.
+    retiredAt: epochMs()
+      .optional()
+      .describe(
+        'When the device was retired (operation 111, `capture_devices.retired_at`). PRESENT ONLY ON A RETIRED DEVICE, always together with `retiredBy`: its stored credential is destroyed, it is never assigned again, and a client lists it with a Retired state and leaves it out of every selector and assignment list. Absent: the device is in service. A retired device stays in the registry for good (its id is never reused).',
+      ),
+    retiredBy: operatorId().optional().describe('The operator who retired the device (`OPR-NNN`). Present exactly when `retiredAt` is.'),
+  })
+  .superRefine((device, context) => {
+    if ((device.retiredAt === undefined) !== (device.retiredBy === undefined)) {
+      context.addIssue({ code: 'custom', path: ['retiredBy'], message: 'retiredAt and retiredBy are both present (a retired device) or both absent' });
+    }
   })
   .describe('One capture device (`dbc-3 §B.2`); carries no credential (RK-12).');
 export type CaptureDeviceStatusBody = z.output<typeof CaptureDeviceStatusSchema>;

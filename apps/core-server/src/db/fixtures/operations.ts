@@ -836,6 +836,16 @@ function buildCaptureActivity(world: World, directory: OperatorDirectory): void 
       details: { sessionId: 'SES-20261001-0001', attempt: 1, index: 1, fromSample: 1_440_000, samples: 5_280 },
     },
   });
+  // Task 4 row RD2 (decision C147): the retirement of a camera (operation 111); its live writer is the retire unit (row RD3).
+  world.record(at(32), {
+    audit: {
+      type: 'CAPTURE_DEVICE_RETIRED',
+      message: 'Device retired: CAM-03',
+      actorId: technician(at(32)),
+      deviceId: null,
+      details: { deviceId: 'CAM-03', kind: 'CAMERA', reason: 'STATEMENT_CHANGED', credentialDestroyed: true, streamRowsKept: 1, operationId: 'retireCaptureDevice', permission: 'CAPTURE_COMMISSION' },
+    },
+  });
 }
 
 // ── The lineage of discarded chains ────────────────────────────────────────────────────────────

@@ -190,6 +190,8 @@ const DEFERRED_ROUTE: Readonly<Record<string, string>> = {
   // Task 4 row V3 (the third contract step; blueprint row 146, decisions C58, C62): the contract of
   // operation 108 landed before its route; the route edge of `modules/capture-discovery/adopted-test.ts` takes the entry out.
   // Task 4 row 146b: operation 108 is routed (`modules/capture-discovery/adopted-test-route.ts`) and its entry left the record.
+  // Task 4 row RD2 (decision C147): the contract of operation 111 landed before its route; row RD3 routes it and takes the entry out.
+  retireCaptureDevice: 'task 4 row RD3',
 };
 
 /**
@@ -1018,8 +1020,8 @@ function summaryOf(column: readonly Cell[]): string {
 // The registry against the specification (an independent check of the registry itself)
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-describe('the contract registry against the composed operation tables: all 110 rows, read from the documents', () => {
-  it('the composed document holds operations 1 to 110 and the registry holds the same 110, each once', () => {
+describe('the contract registry against the composed operation tables: all 111 rows, read from the documents', () => {
+  it('the composed document holds operations 1 to 111 and the registry holds the same 111, each once', () => {
     // R1 (D44): 75 rows of the closed task-2 §7 base + 14 rows of C3 §2.2 + 3 rows of C3 §2.5 (the
     // STT configuration operations 90 to 92, task 3 row 113) + 5 rows of C3 §2.6 (the camera search,
     // the connection test, the adoption and the local-input re-read, 93 to 97; task 3 row 132,
@@ -1029,10 +1031,11 @@ describe('the contract registry against the composed operation tables: all 110 r
     // Task 4 (blueprint row 102) added the seven rows of the commissioning operations 101 to 107: 107.
     // Task 4 (row V3; blueprint row 146) added the row of operation 108, the stored-credential connection test: 108.
     // Task 4 (blueprint row 116) added the two rows of operations 109 and 110, the installation acceptance and its revocation: 110.
-    expect(spec.operations.map((operation) => operation.number)).toEqual(Array.from({ length: 110 }, (_unused, index) => index + 1));
-    expect(CORE_API_OPERATIONS).toHaveLength(110);
+    // Task 4 (row RD2) added the row of operation 111, the retirement of a device: 111.
+    expect(spec.operations.map((operation) => operation.number)).toEqual(Array.from({ length: 111 }, (_unused, index) => index + 1));
+    expect(CORE_API_OPERATIONS).toHaveLength(111);
     expect(CORE_API_OPERATIONS.map((operation) => operation.operationId).sort()).toEqual(spec.operations.map((operation) => operation.operationId).sort());
-    expect(new Set(CORE_API_OPERATIONS.map((operation) => operation.operationId)).size).toBe(110);
+    expect(new Set(CORE_API_OPERATIONS.map((operation) => operation.operationId)).size).toBe(111);
   });
 
   it('every registry entry has the method, the path, the access rule, the conditions and the audit rule of its row', () => {
@@ -1074,7 +1077,8 @@ describe('the contract registry against the composed operation tables: all 110 r
     // Task 4 row 102: the seven commissioning operations 101 to 107 need CAPTURE_COMMISSION (60 -> 67).
     // Task 4 row V3: operation 108 needs CAPTURE_CONFIG (67 -> 68).
     // Task 4 row 116: operations 109 and 110 need CAPTURE_COMMISSION (68 -> 70).
-    expect(registry).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 30, PERMISSION: 70, ANY_OF: 1 });
+    // Task 4 row RD2: operation 111 needs CAPTURE_COMMISSION (70 -> 71).
+    expect(registry).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 30, PERMISSION: 71, ANY_OF: 1 });
     // Every permission a rule names is one of the fifteen of the composed matrix (C3 §2.1).
     for (const operation of CORE_API_OPERATIONS) {
       for (const permission of coreApiAccessPermissions(operation.access)) expect(spec.permissions, operation.operationId).toContain(permission);
@@ -1144,12 +1148,14 @@ describe('the contract registry against the composed operation tables: all 110 r
       // Task 4 row 116: the two rows of the installation acceptance and its revocation, web console only (decision U10).
       [109, 'acceptInstallation'],
       [110, 'revokeInstallationAcceptance'],
+      // Task 4 row RD2: the row of the retirement of a device, web console only (decision C147, Q1).
+      [111, 'retireCaptureDevice'],
     ]);
     expect(carrying.map((operation) => operation.operationId).sort()).toEqual(documented.map((operation) => operation.operationId).sort());
     // It adds to a permission: CAPTURE_CONFIG, or CAPTURE_COMMISSION for the seven of task 4 row 102
     // and the two of row 116 (109, 110). It is defined on no marker without one.
     expect(carrying.filter((operation) => !['CAPTURE_CONFIG', 'CAPTURE_COMMISSION'].includes(describeCoreApiAccess(operation.access))).map((operation) => operation.operationId)).toEqual([]);
-    expect(carrying.filter((operation) => describeCoreApiAccess(operation.access) === 'CAPTURE_COMMISSION').map((operation) => specRowOf(operation).number)).toEqual([101, 102, 103, 104, 105, 106, 107, 109, 110]);
+    expect(carrying.filter((operation) => describeCoreApiAccess(operation.access) === 'CAPTURE_COMMISSION').map((operation) => specRowOf(operation).number)).toEqual([101, 102, 103, 104, 105, 106, 107, 109, 110, 111]); // + 111 (task 4 row RD2)
     // The model of this file: a holder of the permission on the web console is allowed, the same holder
     // on a paired device is refused 403 NOT_PERMITTED with the reason and one ACCESS_DENIED row.
     const technicianWeb = world.callers['TECHNICIAN'] ?? ANONYMOUS;
@@ -1230,7 +1236,8 @@ describe('the role matrix the server decides from (spec §4.4 composed with C3 �
     // Task 4 row 102: and the seven rows of 101 to 107, 25 + 7.
     // Task 4 row V3: and the row of 108, 32 + 1.
     // Task 4 row 116: and the two rows of 109 and 110, 33 + 2.
-    expect(deltaRows).toHaveLength(35);
+    // Task 4 row RD2: and the row of 111, 35 + 1.
+    expect(deltaRows).toHaveLength(36);
     const deniedDelta = deniedCellsFromTable(deltaRows, spec.grants, spec.roles);
     expect(denied).toEqual(Object.fromEntries(spec.roles.map((role) => [role, (deniedBase[role] ?? 0) + (deniedDelta[role] ?? 0)])));
     console.info(`[w47] denied cells over the composed 97: ${JSON.stringify(denied)} (base ${JSON.stringify(deniedBase)} + C3 delta ${JSON.stringify(deniedDelta)})`);

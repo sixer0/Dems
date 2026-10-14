@@ -519,6 +519,13 @@ export const AuditType = {
   // numbers and closed words - never device text, card text, a file name or a percentage.
   CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED: 'CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED',
   CAPTURE_AUDIO_SILENCE_INSERTED: 'CAPTURE_AUDIO_SILENCE_INSERTED',
+  // Task 4 (row RD2; design 07 section 4.2; decision C147): one type (85 -> 86). A camera or a
+  // microphone was RETIRED by operation 111 (`retireCaptureDevice`): its stored credential destroyed,
+  // its registry row kept and never assignable again. Written by the Core in the retire unit and by
+  // the in-app simulator's operation 111. Its closed detail-key list is in
+  // `apps/core-server/src/core/audit-details.ts`: the device id, its kind, a closed reason, one flag
+  // and one count - never an address, a hardware id, a serial, a credential or text a device chose.
+  CAPTURE_DEVICE_RETIRED: 'CAPTURE_DEVICE_RETIRED',
 } as const;
 export type AuditType = ValueOf<typeof AuditType>;
 
@@ -625,6 +632,9 @@ export const AUDIT_TYPE_CATEGORY = {
   // video absence.
   CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED: 'DEVICE',
   CAPTURE_AUDIO_SILENCE_INSERTED: 'DEVICE',
+  // Task 4 (row RD2; decision C147): one entry, in an EXISTING category - SECURITY, as
+  // `CAPTURE_CREDENTIAL_SET` and `CAPTURE_CREDENTIAL_REVEALED`: a stored credential is destroyed.
+  CAPTURE_DEVICE_RETIRED: 'SECURITY',
 } as const satisfies Record<AuditType, AuditCategory>;
 
 // ── Operational events (Recent Events, bell, timeline sources) ──────────────────────────

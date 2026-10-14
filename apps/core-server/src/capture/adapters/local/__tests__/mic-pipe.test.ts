@@ -2,13 +2,13 @@
 // M4-SEC-HELPER-1, pipe-path half). These tests use the REAL file system (a throw-away directory)
 // and the REAL /usr/bin/mkfifo through the real door: a pipe that a planted tree only pretends to
 // make would prove nothing about "created exclusively, never an existing regular file".
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, constants, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, symlinkSync, writeFileSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { CaptureAdapterError, CaptureAdapterRefusal } from '../../errors';
 import { micPipePath } from '../../mic-transport';
 import { LocalSourceError, LocalSourceErrorCode, LocalSourceErrorReason } from '../errors';
-import { createPipeFiles, type PipeEntryFacts, type PipeFiles } from '../pipe-files';
+import { PIPE_DRAIN_INTERVAL_MS, createPipeFiles, createPipeKeeper, type PipeEntryFacts, type PipeFiles } from '../pipe-files';
 import { MKFIFO_BOUND_MS, MKFIFO_PROGRAM, preparePipe, removePipe, runBounded } from '../mic-pipe';
 import { inspectProgram, startHelperProcess, type HelperDoor } from '../process-door';
 import { exitOf, manualTimers, scriptedProcess, temporaryRoot, trustedInspector } from './mic-support';
@@ -304,5 +304,89 @@ describe('the bounded run', () => {
     controller.abort();
     expect((await run).aborted).toBe(true);
     expect(hanging.signals).toEqual(['SIGKILL']);
+  });
+});
+
+// Task 4 row N10 (decision C118 (1); request line 552 of row N9): THE PRODUCT'S PIPE KEEPER on a REAL named pipe made by the real
+// mkfifo. A writer is played by this test with a non-blocking open for writing, which the system refuses (ENXIO) while no reader
+// holds the pipe - so "the keeper holds a reader" is a fact of the system, not of a double. The drain's turns are fired by hand.
+// Mutations seen RED: the drain reading nothing (`DRAIN_READS_PER_TURN` 0) - the second case; `release` not closing - the writer
+// still finds a reader (cases 1 and 2). The open's flags (`O_RDONLY | O_NONBLOCK`, a blocking open would hold the thread) are
+// pinned by text in `mic-static.test.ts`.
+describe('row N10: the pipe keeper (hold without a writer, read nothing while held, drain and drop, release)', () => {
+  const writerOf = (path: string): number => openSync(path, constants.O_WRONLY | constants.O_NONBLOCK);
+  const codeOfThrow = (work: () => unknown): string => {
+    try {
+      work();
+      return 'NONE';
+    } catch (error) {
+      return String((error as { code?: unknown }).code);
+    }
+  };
+  /** Writes chunks of 4 KiB until the pipe is full; the bytes it took. */
+  const fill = (writer: number): number => {
+    const chunk = Buffer.alloc(4_096, 7);
+    let total = 0;
+    for (;;) {
+      try {
+        total += writeSync(writer, chunk);
+      } catch (error) {
+        if ((error as { code?: unknown }).code === 'EAGAIN') return total;
+        throw error;
+      }
+    }
+  };
+
+  it('holds a pipe that has no writer at once, and is a reader of it: before the hold a writer is refused, after it a writer opens', async () => {
+    const path = await prepare(fresh());
+    expect(codeOfThrow(() => writerOf(path))).toBe('ENXIO');
+    const clock = manualTimers();
+    const held = await createPipeKeeper(clock).hold(path);
+    const writer = writerOf(path);
+    // Held, not drained: nothing is read and no turn is planned.
+    expect(clock.pending()).toEqual([]);
+    closeSync(writer);
+    held.release();
+    expect(codeOfThrow(() => writerOf(path))).toBe('ENXIO');
+  });
+
+  it('reads NOTHING while held: a full pipe stays full; drained, every turn reads and drops what waits, and the writer can write again', async () => {
+    const path = await prepare(fresh());
+    const clock = manualTimers();
+    const held = await createPipeKeeper(clock).hold(path);
+    const writer = writerOf(path);
+    const capacity = fill(writer);
+    expect(capacity).toBeGreaterThan(0);
+    expect(fill(writer)).toBe(0);
+    held.drain();
+    // The first turn ran at once and planned the next one.
+    expect(clock.pending()).toEqual([PIPE_DRAIN_INTERVAL_MS]);
+    expect(fill(writer)).toBeGreaterThan(0);
+    expect(clock.fire(PIPE_DRAIN_INTERVAL_MS)).toBe(true);
+    expect(fill(writer)).toBeGreaterThan(0);
+    // A second drain is the first one: one turn is planned, never two.
+    held.drain();
+    expect(clock.pending()).toEqual([PIPE_DRAIN_INTERVAL_MS]);
+    held.release();
+    expect(clock.pending()).toEqual([]);
+    // Released: the pipe has no reader; the writer's next write is refused by the system.
+    expect(codeOfThrow(() => writeSync(writer, Buffer.alloc(1)))).toBe('EPIPE');
+    closeSync(writer);
+  });
+
+  it('never throws from drain or release: twice, after release, and with the writer gone; a pipe that is not there is a rejected hold', async () => {
+    const path = await prepare(fresh());
+    const clock = manualTimers();
+    const held = await createPipeKeeper(clock).hold(path);
+    const writer = writerOf(path);
+    closeSync(writer);
+    // No writer any more: a turn reads 0 bytes and plans the next one.
+    held.drain();
+    expect(clock.fire(PIPE_DRAIN_INTERVAL_MS)).toBe(true);
+    held.release();
+    held.release();
+    held.drain();
+    expect(clock.pending()).toEqual([]);
+    await expect(createPipeKeeper(clock).hold(join(fresh(), 'absent.pcm'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });
