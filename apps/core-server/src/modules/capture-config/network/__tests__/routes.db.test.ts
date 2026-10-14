@@ -17,12 +17,19 @@
 //                          no address of any host is changed, nothing is sent anywhere. Proven on
 //                          hardware: `9A/H-05`.
 //   the composition        the reader is taken from the folder's door (`captureNetworkFacts`) and
-//                          handed to the rule by this file; the entry point does not hand it in
-//                          yet (the mount is requested of row 85c).
+//                          handed to the rule by this file. The entry point hands the same reader
+//                          to the composition of production capture since integration pass I-9a
+//                          (decision C76); that hand-over is `capture-composition.db.test.ts`.
+//   a refused COMMIT       (row NF) a deferred constraint this file creates on the throw-away
+//                          clone and silences again with its switch: the unit's work resolves and the
+//                          database refuses the COMMIT itself. A commit that is STORED and whose
+//                          answer is lost cannot be made on a real connection here; it is the
+//                          bench of `service.test.ts`, and here the owner writes the row behind
+//                          the reader, which is the state such a commit leaves.
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validateCoreApiResponse } from '@dems/shared/api';
+import { CAPTURE_INTERFACE_NAME_PATTERN, validateCoreApiResponse } from '@dems/shared/api';
 import { OPERATORS, type AuditRow } from '@dems/shared/sim';
 import type { LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
@@ -32,13 +39,14 @@ import { readTrail } from '../../../../../test/support/core';
 import { manualTimer } from '../../../../../test/support/engine';
 import { buildGuardApp, deviceOperator, webOperator, type GuardApp } from '../../../../../test/support/guard';
 import { CLOCK_START, WEB_ORIGIN, insertPairedDevice, type Headers } from '../../../../../test/support/identity';
+import { CaptureAdapterKind, judgeStoredCamera, storedCameraCandidate } from '../../../../capture/adapters';
 import { captureFenceControl, storedCameraAddressRuleOf } from '../../../../capture/fence';
 import { engineControl } from '../../../../engine';
 import type { Principal } from '../../../../plugins/authenticate';
 import { throttleControl } from '../../../../plugins/throttle';
 import { identityControl } from '../../../identity';
 import { captureNetworkConfigControl, captureNetworkFacts } from '../../index';
-import { createNetworkConfigStore, type HostInterface, type NetworkConfigStore } from '../index';
+import { NETWORK_FACTS_RELOADED_CODE, NETWORK_FACTS_RELOAD_FAILED_CODE, createNetworkConfigStore, type HostInterface, type NetworkConfigStore } from '../index';
 
 const db = useTestDatabase({ template: 'seed', slug: 'row108' });
 const dataDir = mkdtempSync(join(tmpdir(), 'dems-row108-db-'));
@@ -68,8 +76,24 @@ let technicianOnTablet: Headers;
 /** The real store, with a write that can be made to fail AFTER the statement ran (the unit must roll it back). */
 let failAfterWrite = false;
 const realStore = createNetworkConfigStore();
+/**
+ * Row NF (review 120b S2-01, T-1): the reads of the row through the store of this file, counted from 1 since the last
+ * `reads = 0`. In ONE call of operation 102 the first read is the unit's own and the second is the RE-LOAD of the
+ * reader, after the unit ended. `beforeRead` may look at the reader at that instant, or throw (a read that fails);
+ * `afterRead` may hold the row it read back for a while (a slow read).
+ */
+let reads = 0;
+let beforeRead: ((read: number) => void) | null = null;
+let afterRead: ((read: number) => Promise<void>) | null = null;
 const store: NetworkConfigStore = {
   ...realStore,
+  async read(connection) {
+    const read = (reads += 1);
+    beforeRead?.(read);
+    const row = await realStore.read(connection);
+    await afterRead?.(read);
+    return row;
+  },
   async update(connection, write, expectedRevision) {
     const written = await realStore.update(connection, write, expectedRevision);
     if (failAfterWrite) throw Object.assign(new Error('row108: a failure injected after the write'), { code: 'ROW108_INJECTED' });
@@ -132,6 +156,9 @@ beforeEach(() => {
   throttleControl(guard.app).reset();
   identityControl(guard.app).lockout.reset();
   failAfterWrite = false;
+  reads = 0;
+  beforeRead = null;
+  afterRead = null;
 });
 
 describe('the Core this file runs on: nothing is stored, nothing is chosen, a change is not accepted', () => {
@@ -163,6 +190,7 @@ describe('the Core this file runs on: nothing is stored, nothing is chosen, a ch
       aliasHost: 253,
       aliasMinutes: 30,
       cameraIpStart: 101,
+      onvifPorts: [80],
       revision: 1,
       updatedAt: null,
       updatedBy: null,
@@ -224,7 +252,8 @@ describe('operation 102 on the database: every refusal stores nothing and writes
       {},
       { interfaceName: 'eth1' },
       { revision: 0, interfaceName: 'eth1' },
-      { revision: 1, interfaceName: 'ETH1' },
+      // Row V7b (F-4): capitals are in the form now; a first character outside it is not.
+      { revision: 1, interfaceName: '_ETH1' },
       { revision: 1, interfaceName: 'eth1; rm -rf /' },
       { revision: 1, cameraSubnet: 'cameras' },
       { revision: 1, cameraSubnet: '8.8.8.0/24' },
@@ -361,6 +390,52 @@ describe('a committed change: the row, ONE entry, and the reader of the network 
     expect((await write(technician, { revision: 6, cameraSubnet: '192.168.50.0/24' })).statusCode).toBe(200);
   });
 
+  // Review 120b T-1. The case above fails INSIDE the work, before the line that hands the row to the reader, so it is
+  // green whether that line waits for the commit or not. Here the work RESOLVES and the database refuses the COMMIT.
+  // SEEN RED on the mutation `unit.afterCommit(() => seams.committed(after))` -> `seams.committed(after)` (service.ts):
+  // at the re-load's read the reader then already answers from the row that was never stored.
+  it('NEVER A NEW VALUE BEFORE A COMMIT THAT ROLLS BACK: the work resolves, the database refuses the COMMIT - when the unit has ended the reader still answers from the OLD row, nothing is stored, no entry', async () => {
+    const before = await storedRow();
+    const revision = before!['revision'] as number;
+    const from = (await trail()).length;
+    // A deferred constraint of this test on the throw-away clone: it speaks at COMMIT, and only while the switch table
+    // holds a row. Nothing of it is removed afterwards (static rule T-AO-4 lets no file take a trigger away): the
+    // switch is emptied and the constraint stays, silent, until the clone is dropped with the case.
+    await owner.query('CREATE TABLE public.row_nf_commit_switch (refuse boolean NOT NULL)');
+    await owner.query('GRANT SELECT ON public.row_nf_commit_switch TO PUBLIC');
+    await owner.query(
+      "CREATE FUNCTION public.row_nf_refuse_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF EXISTS (SELECT 1 FROM public.row_nf_commit_switch) THEN RAISE EXCEPTION 'rowNF: the commit is refused'; END IF; RETURN NULL; END $$",
+    );
+    await owner.query('CREATE CONSTRAINT TRIGGER row_nf_refuse_commit AFTER UPDATE ON public.capture_network_config DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.row_nf_refuse_commit()');
+    await owner.query('INSERT INTO public.row_nf_commit_switch (refuse) VALUES (true)');
+    // What the reader answers at the instant the unit has ENDED and nothing has been read again yet: the second read
+    // of the call is the re-load's, and it is asked BEFORE that read returns anything.
+    const atUnitEnd: string[] = [];
+    beforeRead = (read) => {
+      if (read === 2) atUnitEnd.push(judged(INSIDE), judged(OUTSIDE));
+    };
+    let response: LightMyRequestResponse;
+    try {
+      response = await write(technician, { revision, cameraSubnet: '192.168.60.0/24' });
+    } finally {
+      beforeRead = null;
+      await owner.query('DELETE FROM public.row_nf_commit_switch');
+    }
+    expect(response.statusCode).toBeGreaterThanOrEqual(500);
+    // The work DID resolve: the unit read the row, wrote it, and the reader was read again once after it (two reads).
+    expect(reads).toBe(2);
+    expect(atUnitEnd).toEqual(['ALLOWED from 192.168.50.1', 'OUTSIDE_CAMERA_SUBNET']);
+    expect(await storedRow()).toEqual(before);
+    expect(await since(from)).toEqual([]);
+    expect([judged(INSIDE), judged(OUTSIDE)]).toEqual(['ALLOWED from 192.168.50.1', 'OUTSIDE_CAMERA_SUBNET']);
+    // CONTROL: without the refusing constraint the same body commits, and the reader follows it and comes back.
+    await engineControl(guard.app).idle();
+    expect((await write(technician, { revision, cameraSubnet: '192.168.60.0/24' })).statusCode).toBe(200);
+    expect(judged(INSIDE)).toBe('OUTSIDE_CAMERA_SUBNET');
+    expect((await write(technician, { revision: revision + 1, cameraSubnet: '192.168.50.0/24' })).statusCode).toBe(200);
+    expect(judged(INSIDE)).toBe('ALLOWED from 192.168.50.1');
+  });
+
   it('the boot load reads the STORED row: a reader that forgot everything answers from the row again after `load`, and a load that fails leaves it unknown and says so in the persistent error log', async () => {
     const control = captureNetworkConfigControl(guard.app);
     expect(judged(INSIDE)).toBe('ALLOWED from 192.168.50.1');
@@ -386,6 +461,180 @@ describe('a committed change: the row, ONE entry, and the reader of the network 
     await owner.query('UPDATE public.capture_network_config SET interface_name = NULL, revision = revision + 1');
     await control.load();
     expect([captureNetworkFacts(guard.app)(), judged(INSIDE)]).toEqual([null, 'NOT_CONFIGURED']);
+  });
+});
+
+// Review 120b finding S2-01 (with 60e E-09), row NF: operation 101 answers from the DATABASE, the rule judges on
+// MEMORY - so memory has to follow the row after every unit of operation 102, not only after a confirmed commit.
+// The first three cases were SEEN RED with the re-load removed from `changeNetworkConfig` (`await seams.reload()`
+// deleted, service.ts); the fourth on its own mutation, named there.
+describe('the reader\'s way back to the stored row (S2-01): after every unit of operation 102 the rule judges on the row operation 101 shows', () => {
+  const logSince = (from: number): string => guard.log.text().slice(from);
+  const countOf = (text: string, needle: string): number => text.split(needle).length - 1;
+  const revisionNow = async (): Promise<number> => (await storedRow())!['revision'] as number;
+
+  it('(a) A ROW STORED BEHIND THE READER (what a commit whose answer was lost leaves): the retry of the same body is a REVISION_CONFLICT - and from then on the rule judges on the stored row; (b) so does a body that changes nothing', async () => {
+    expect((await write(technician, { revision: await revisionNow(), interfaceName: 'eth1', cameraSubnet: '192.168.50.0/24' })).statusCode).toBe(200);
+    expect([judged(INSIDE), judged(OUTSIDE)]).toEqual(['ALLOWED from 192.168.50.1', 'OUTSIDE_CAMERA_SUBNET']);
+    const stale = await revisionNow();
+    // The row is stored and the reader was not told. Until the next call of operation 102 the reader is behind it.
+    await owner.query("UPDATE public.capture_network_config SET camera_subnet = '192.168.60.0/24', revision = revision + 1");
+    expect(judged(INSIDE)).toBe('ALLOWED from 192.168.50.1');
+    const trailFrom = (await trail()).length;
+    let logFrom = guard.log.text().length;
+    expect(reasonOf(await write(technician, { revision: stale, cameraSubnet: '192.168.60.0/24' }))).toEqual([409, 'INVALID_STATE', 'REVISION_CONFLICT']);
+    // The screen and the rule agree again, with no restart: the read shows the row the rule now judges on.
+    expect((await read(technician)).json()).toMatchObject({ cameraSubnet: '192.168.60.0/24', revision: stale + 1 });
+    expect([judged(INSIDE), judged(OUTSIDE)]).toEqual(['OUTSIDE_CAMERA_SUBNET', 'NO_CAMERA_SOURCE']);
+    // Said once, with two facts and no value: memory was behind the row.
+    expect(countOf(logSince(logFrom), NETWORK_FACTS_RELOADED_CODE)).toBe(1);
+
+    // (b) The no-change path (E-09): the row moves behind the reader once more, and the body changes nothing.
+    await owner.query("UPDATE public.capture_network_config SET camera_subnet = '192.168.50.0/24', revision = revision + 1");
+    expect(judged(INSIDE)).toBe('OUTSIDE_CAMERA_SUBNET');
+    logFrom = guard.log.text().length;
+    const same = await write(technician, { revision: stale + 2, interfaceName: 'eth1' });
+    expect([same.statusCode, (same.json() as { revision: number }).revision]).toEqual([200, stale + 2]);
+    expect([judged(INSIDE), judged(OUTSIDE)]).toEqual(['ALLOWED from 192.168.50.1', 'OUTSIDE_CAMERA_SUBNET']);
+    expect(countOf(logSince(logFrom), NETWORK_FACTS_RELOADED_CODE)).toBe(1);
+    // Neither call stored anything or wrote an entry.
+    expect(await since(trailFrom)).toEqual([]);
+    // A confirmed commit says nothing of a re-load: `committed` handed the same row over, memory was not behind.
+    logFrom = guard.log.text().length;
+    expect((await write(technician, { revision: stale + 2, aliasMinutes: 41 })).statusCode).toBe(200);
+    expect(countOf(logSince(logFrom), NETWORK_FACTS_RELOADED_CODE)).toBe(0);
+  });
+
+  it('A RE-LOAD THAT FAILS IS FAIL-CLOSED: the change is stored and answered, the reader goes to NULL (every address refused), ONE line and ONE persistent entry with the named code - and the next call reads the row again', async () => {
+    const control = captureNetworkConfigControl(guard.app);
+    const revision = await revisionNow();
+    const logFrom = guard.log.text().length;
+    const persistedBefore = countOf(readFileSync(errorLogFile, 'utf8'), NETWORK_FACTS_RELOAD_FAILED_CODE);
+    reads = 0;
+    beforeRead = (read) => {
+      // The second read of the call: the re-load's, after the unit committed.
+      if (read === 2) throw Object.assign(new Error('rowNF: the row cannot be read again'), { code: 'ROWNF_READ' });
+    };
+    const stored = await write(technician, { revision, aliasMinutes: 42 });
+    beforeRead = null;
+    expect([stored.statusCode, (stored.json() as { revision: number }).revision]).toEqual([200, revision + 1]);
+    expect(await storedRow()).toMatchObject({ alias_minutes: 42, revision: revision + 1 });
+    expect([captureNetworkFacts(guard.app)(), control.loaded(), control.storedInterface()]).toEqual([null, false, null]);
+    expect([judged(INSIDE), judged(OUTSIDE)]).toEqual(['NOT_CONFIGURED', 'NOT_CONFIGURED']);
+    expect(NETWORK_FACTS_RELOAD_FAILED_CODE).toBe('CAPTURE_NETWORK_FACTS_RELOAD_FAILED');
+    expect(countOf(logSince(logFrom), NETWORK_FACTS_RELOAD_FAILED_CODE)).toBe(1);
+    const persisted = readFileSync(errorLogFile, 'utf8');
+    expect(countOf(persisted, NETWORK_FACTS_RELOAD_FAILED_CODE) - persistedBefore).toBe(1);
+    expect(persisted).toContain('captureNetworkConfig.reload');
+    // The way out is the next call of operation 102, whatever it is: here a body that changes nothing.
+    expect((await write(technician, { revision: revision + 1 })).statusCode).toBe(200);
+    expect([control.loaded(), judged(INSIDE)]).toEqual([true, 'ALLOWED from 192.168.50.1']);
+  });
+
+  it('(c) THE TABLE EMPTIED BEHIND THE READER (what a demo reset does to it): `reload()` of the control is the door - after it the reader answers "not configured", as the read does', async () => {
+    const control = captureNetworkConfigControl(guard.app);
+    expect(judged(INSIDE)).toBe('ALLOWED from 192.168.50.1');
+    await owner.query('DELETE FROM public.capture_network_config');
+    // STATED, NOT HIDDEN: nobody told the reader. This is the state between a reset's commit and its call of the door.
+    expect(judged(INSIDE)).toBe('ALLOWED from 192.168.50.1');
+    await expect(control.reload()).resolves.toBeUndefined();
+    expect([captureNetworkFacts(guard.app)(), control.loaded(), judged(INSIDE)]).toEqual([null, true, 'NOT_CONFIGURED']);
+    expect((await read(technician)).json()).toMatchObject({ configured: false, revision: 1, interfaceName: null, cameraSubnet: null });
+    // The first change after it inserts the row again, at revision 2.
+    const again = await write(technician, { revision: 1, interfaceName: 'eth1', cameraSubnet: '192.168.50.0/24' });
+    expect([again.statusCode, (again.json() as { revision: number }).revision]).toEqual([200, 2]);
+    expect(judged(INSIDE)).toBe('ALLOWED from 192.168.50.1');
+  });
+
+  // SEEN RED on the mutation `if (turn !== control.turn) return;` removed from `reload` (index.ts): the slow re-load then
+  // puts the row it read BEFORE the commit over the committed one.
+  it('A RE-LOAD OVERTAKEN BY A COMMIT CHANGES NOTHING: a slow read that began before a change committed does not put the older row back', async () => {
+    const control = captureNetworkConfigControl(guard.app);
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    reads = 0;
+    // The FIRST read from here on is the slow one: it has read the row (subnet 50) and waits before it answers.
+    afterRead = async (read) => {
+      if (read === 1) await held;
+    };
+    const slow = control.reload();
+    const moved = await write(technician, { revision: 2, cameraSubnet: '192.168.60.0/24' });
+    expect([moved.statusCode, reads]).toEqual([200, 3]);
+    expect(judged(INSIDE)).toBe('OUTSIDE_CAMERA_SUBNET');
+    release();
+    await slow;
+    afterRead = null;
+    expect([judged(INSIDE), judged(OUTSIDE)]).toEqual(['OUTSIDE_CAMERA_SUBNET', 'NO_CAMERA_SOURCE']);
+    expect((await write(technician, { revision: 3, cameraSubnet: '192.168.50.0/24' })).statusCode).toBe(200);
+    expect(judged(INSIDE)).toBe('ALLOWED from 192.168.50.1');
+  });
+});
+
+// Row V7b (findings F-4 and S2-02; decisions C114, C116, C127): the seventh setting and the widened name form, on the
+// table of schema version 14 as `dems_app`, through the committed hand-over and NF's re-load.
+describe('row V7b: the allowed ONVIF ports and the widened interface name, stored and read, and the rule judging by the STORED list', () => {
+  /** The whole chain of a dial: the camera adapter's stored-address judgement on the rule bound to the BOOTED reader. */
+  const dial = (address: string): unknown => judgeStoredCamera(storedCameraCandidate({ adapterKind: CaptureAdapterKind.ONVIF_RTSP, address }), storedCameraAddressRuleOf(captureNetworkFacts(guard.app)));
+  const portsRow = async (): Promise<unknown> => ((await owner.query('SELECT onvif_ports FROM public.capture_network_config')).rows[0] as { onvif_ports: unknown } | undefined)?.onvif_ports;
+
+  it('ONE pattern: the contract\'s interface-name constant is the text of the table\'s CHECK, character for character', async () => {
+    const { rows } = await owner.query("SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conname = 'capture_network_config_interface_name_check'");
+    expect(rows.length).toBe(1);
+    expect((rows[0] as { definition: string }).definition).toContain(`'${CAPTURE_INTERFACE_NAME_PATTERN.source}'`);
+  });
+
+  it('the list is read as stored ([80] by the column\'s default), replaced whole and in order, named in ONE entry with its count, and the rule judges every dial by it at once - no restart', async () => {
+    const before = (await read(technician)).json() as { revision: number; onvifPorts: number[] };
+    expect([before.onvifPorts, await portsRow()]).toEqual([[80], [80]]);
+    expect(dial(INSIDE)).toEqual({ allowed: true, sourceAddress: '192.168.50.1' });
+    const from = (await trail()).length;
+
+    // [8080]: a camera stored without a port is dialled on 80, which is no longer listed (C127 / S-04).
+    const only8080 = await write(technician, { revision: before.revision, onvifPorts: [8080] });
+    expect([only8080.statusCode, (only8080.json() as { onvifPorts: number[] }).onvifPorts]).toEqual([200, [8080]]);
+    expect(validateCoreApiResponse('updateCaptureNetworkConfig', 200, only8080.json())).toMatchObject({ ok: true });
+    expect(await portsRow()).toEqual([8080]);
+    expect([dial(INSIDE), dial(`${INSIDE}:8080`), dial(`${INSIDE}:80`)]).toEqual([
+      { allowed: false, refusal: 'PORT_NOT_LISTED' },
+      { allowed: true, sourceAddress: '192.168.50.1' },
+      { allowed: false, refusal: 'PORT_NOT_LISTED' },
+    ]);
+    // [8080, 80], in that order: both admitted; the read answers the order written.
+    expect((await write(technician, { revision: before.revision + 1, onvifPorts: [8080, 80] })).statusCode).toBe(200);
+    expect([(await read(technician)).json().onvifPorts, await portsRow(), dial(INSIDE), dial(`${INSIDE}:8080`)]).toEqual([[8080, 80], [8080, 80], { allowed: true, sourceAddress: '192.168.50.1' }, { allowed: true, sourceAddress: '192.168.50.1' }]);
+    // Back to [80], the state the later blocks of this file take.
+    expect((await write(technician, { revision: before.revision + 2, onvifPorts: [80] })).statusCode).toBe(200);
+    expect([dial(INSIDE), dial(`${INSIDE}:8080`)]).toEqual([{ allowed: true, sourceAddress: '192.168.50.1' }, { allowed: false, refusal: 'PORT_NOT_LISTED' }]);
+
+    const rows = await since(from);
+    expect(rows.map((row) => row.details)).toEqual([2, 3, 4].map((step, index) => ({ changedFields: 'onvifPorts', revision: before.revision + step - 1, onvifPortCount: [1, 2, 1][index], operationId: 'updateCaptureNetworkConfig', permission: 'CAPTURE_COMMISSION' })));
+    expect(JSON.stringify(rows.map((row) => row.details))).not.toContain('8080');
+  });
+
+  it('a list outside the two CHECKs is refused by the schema (422 INVALID_INPUT) and never reaches the table; nothing stored, no entry', async () => {
+    const before = await storedRow();
+    const ports = await portsRow();
+    const from = (await trail()).length;
+    const revision = before!['revision'] as number;
+    for (const onvifPorts of [[], [80, 80], [0], [65536], [1, 2, 3, 4, 5, 6, 7, 8, 9], ['80'], [80.5], null]) {
+      const response = await write(technician, { revision, onvifPorts });
+      expect([response.statusCode, errorOf(response).code], JSON.stringify(onvifPorts)).toEqual([422, 'INVALID_INPUT']);
+    }
+    expect([await storedRow(), await portsRow(), await since(from)]).toEqual([before, ports, []]);
+  });
+
+  it('F-4: an interface whose name holds capitals is stored (the table\'s CHECK of version 14 admits it) and read back; the reader judges on it', async () => {
+    const control = captureNetworkConfigControl(guard.app);
+    control.replaceForTest({ interfaces: () => HOST.map((entry) => (entry.name === 'eth1' ? { ...entry, name: 'enP3s0_Cam' } : entry)) });
+    const revision = (await storedRow())!['revision'] as number;
+    const response = await write(technician, { revision, interfaceName: 'enP3s0_Cam' });
+    expect([response.statusCode, (response.json() as { interfaceName: string }).interfaceName]).toEqual([200, 'enP3s0_Cam']);
+    expect((await storedRow())!['interface_name']).toBe('enP3s0_Cam');
+    expect([control.storedInterface(), judged(INSIDE)]).toEqual(['enP3s0_Cam', 'ALLOWED from 192.168.50.1']);
+    // Back to the host and the name of this file.
+    control.replaceForTest({ interfaces: () => HOST });
+    expect((await write(technician, { revision: revision + 1, interfaceName: 'eth1' })).statusCode).toBe(200);
+    expect(judged(INSIDE)).toBe('ALLOWED from 192.168.50.1');
   });
 });
 

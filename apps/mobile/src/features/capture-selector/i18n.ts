@@ -89,6 +89,25 @@ export const captureSelectorEn = {
       save: 'Save',
       close: 'Close the source list',
     },
+    /**
+     * Task 4 row W5 (review 060d Q-02; decision C36): the stream profile of a production camera's
+     * assignment (`camera-profile.ts`). A profile is said by what its stream stated; nothing names a default.
+     */
+    cameraProfile: {
+      title: 'Stream profile',
+      /** What a stored profile is: codec, picture, rate. */
+      facts: '{{codec}} • {{resolution}} • {{rate}}',
+      rate: '{{fps}} fps',
+      codecNotStated: 'Codec not stated',
+      resolutionNotStated: 'Picture not stated',
+      rateNotStated: 'Rate not stated',
+      /** A stored code that is no stream statement. */
+      notStated: 'Not stated ({{code}})',
+      choose: 'This camera has {{count}} stored stream profiles. Choose the one this track records, then save.',
+      one: 'This camera has one stored stream profile. It is the one this track records.',
+      /** No action is named that would not help: as built, only the adoption of a camera stores its profiles. */
+      none: 'This camera cannot be assigned: the Core holds no stream profile for it, and it does not pick one for a camera. The profiles of a camera are stored when its connection test reads its stream, before the camera is added. Nothing was changed.',
+    },
   },
   /** Settings → Capture (MB-09). */
   settings: {

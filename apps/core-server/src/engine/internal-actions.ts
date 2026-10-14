@@ -18,7 +18,7 @@
  * The host binds what the function does when it builds a unit's scope (`bindInternalActions`).
  * A scope the host did not build - a test double - has no binding, and the call says so.
  */
-import type { CaptureDeviceStatus, ReaddressCaptureDeviceInput, RegisterCaptureDeviceInput, RegisterCaptureMicrophoneInput } from '@dems/shared/sim';
+import type { CaptureDeviceStatus, ReaddressCaptureDeviceInput, RegisterCaptureDeviceInput, RegisterCaptureMicrophoneInput, StoreCaptureDeviceProfilesInput } from '@dems/shared/sim';
 import type { AudioSourceSwitch, AudioSourceSwitched } from './capture-session';
 import { EngineError } from './errors';
 import type { EngineUnit } from './types';
@@ -29,6 +29,8 @@ export interface InternalActions {
   registerCaptureMicrophone(microphone: RegisterCaptureMicrophoneInput): Promise<CaptureDeviceStatus>;
   /** Task 4 rows 195 / 196 (operation 100): see `readdressCaptureDeviceIn`. */
   readdressCaptureDevice(change: ReaddressCaptureDeviceInput): Promise<CaptureDeviceStatus>;
+  /** Task 4 row V7 (the stored profile list of a camera): see `storeCaptureDeviceProfilesIn`. */
+  storeCaptureDeviceProfiles(change: StoreCaptureDeviceProfilesInput): Promise<CaptureDeviceStatus>;
   /** Blueprint row 71 (capture session): see `markCaptureConnectingIn`. */
   markCaptureConnecting(sessionId: string): Promise<boolean>;
   /** Blueprint row 71 (capture session): see `switchCaptureAudioSourceIn`. */
@@ -95,6 +97,29 @@ export function readdressCaptureDeviceIn(unit: EngineUnit, change: ReaddressCapt
   const actions = bound.get(unit);
   if (actions === undefined) return Promise.reject(new EngineError('ENGINE_ACTION_NOT_HOSTED', NOT_A_HOST_UNIT));
   return actions.readdressCaptureDevice(change);
+}
+
+/**
+ * Task 4 row V7 (decisions C36, C117; request of row PR): THE ENGINE DOOR OF A STORED PROFILE LIST.
+ * Runs the INTERNAL action `storeCaptureDeviceProfiles` in `unit`: the device entry of ONE registered
+ * camera in slice `captureDevices` states `profiles` (the minted codes, in the stored order, each
+ * with what it states of its stream). The slice is published with the commit; a unit that throws
+ * after this call leaves the running engine with the list it had.
+ *
+ * IT WRITES NO ROW. The column `capture_devices.profiles` has ONE writer, the caller's own statement
+ * in the same unit (`writeAdoptedCameraColumns`): the row mapping never names the column in a
+ * change. So the caller writes the row AND calls this door with the SAME list, in one unit - the
+ * row and the slice then commit together, and a restart reads back what the slice states.
+ *
+ * It checks no permission and writes no audit row: the operation that calls it has passed stage 6
+ * and writes its own entry in the same unit. A list the entry already states changes nothing.
+ * Rejects with the mapped `ApiFailure` when the action refuses the input (an unknown id, a device
+ * that is no camera, a value that is no list of at most 16 profile codes, each once).
+ */
+export function storeCaptureDeviceProfilesIn(unit: EngineUnit, change: StoreCaptureDeviceProfilesInput): Promise<CaptureDeviceStatus> {
+  const actions = bound.get(unit);
+  if (actions === undefined) return Promise.reject(new EngineError('ENGINE_ACTION_NOT_HOSTED', NOT_A_HOST_UNIT));
+  return actions.storeCaptureDeviceProfiles(change);
 }
 
 /**

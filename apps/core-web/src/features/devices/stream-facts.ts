@@ -77,13 +77,46 @@ export interface TrackFacts {
 
 type FactsState = Pick<SimState, 'cameras' | 'captureConfig' | 'captureDevices' | 'session' | 'alerts'>
 
+/** `params.reason` of the fault the camera watch raises for a camera that stopped delivering (task 4 rows 49, R1). */
+export const CAMERA_STREAM_ENDED_REASON = 'CAMERA_STREAM_ENDED'
+
+/**
+ * THE ACTIVE CAPTURE FAULT OF A CAMERA (task 4 row W5; review `verification/060d` finding Q-01; decision C111).
+ *
+ * The Core raises a `CAPTURE_FAULT` about a camera device (the alert's `target` is the device id, `CAM-nn`;
+ * `raiseCaptureWarningTransition`) when the camera stops delivering inside a session - within 25 ms of the
+ * relay's loss report since row R1 - and clears it when the watch sees the camera back (decision C60 (2)).
+ * Raising it changes NO selector line: the line's `streamState` follows the worker's ingest, which stays
+ * connected while the relay re-opens its camera. Until this row a track therefore read "Stream live" and its
+ * stored format under a critical notice. The alert is the fact: while it is ACTIVE the track is in fault;
+ * when the Core resolves it (`active: false`) the track reads as before.
+ *
+ * | The active fault's `params.reason` | Word |
+ * |---|---|
+ * | `CAMERA_STREAM_ENDED` | `STREAM_LOST` ("Stream lost") |
+ * | any other reason, or none (a camera that did not connect, sent no picture, was refused, a clock beyond the bound) | `NO_SIGNAL` ("NO SIGNAL") |
+ *
+ * Advice about a camera that keeps recording is a `SYSTEM` alert, never a `CAPTURE_FAULT`: it is no fault here.
+ * A fault about the capture as a whole has no target and names no track. Pure.
+ */
+export function cameraCaptureFaultOf(alerts: FactsState['alerts'], deviceId: string): TrackFault | null {
+  let found: TrackFault | null = null
+  for (const alert of alerts) {
+    if (!alert.active || alert.kind !== 'CAPTURE_FAULT' || (alert.target ?? null) !== deviceId) continue
+    if (alert.params?.['reason'] === CAMERA_STREAM_ENDED_REASON) return 'STREAM_LOST'
+    found = 'NO_SIGNAL'
+  }
+  return found
+}
+
 /**
  * The rule of this file's header for one track. Pure; a flat object of primitives (it compares by value).
  *
  * THE FAULT of a track on a Core in real capture, from what the Core reports, in this order:
- * 1. the selector line as `sourceLineState` reads it (the ONE rule of a source line): a lost stream, a source not reachable;
- * 2. an active "not reachable" notice of the Core that names the line's camera (pre-check or session start);
- * 3. the camera slice's own fault of the track (`online: false`, a lens fault): the engine's fault state.
+ * 1. the selector line as `sourceLineState` reads it (the ONE rule of a source line): a lost stream;
+ * 2. an ACTIVE capture fault the Core raised about the line's camera (`cameraCaptureFaultOf`, row W5);
+ * 3. the selector line's source not reachable, or an active "not reachable" notice of the Core that names the line's camera (pre-check or session start);
+ * 4. the camera slice's own fault of the track (`online: false`, a lens fault): the engine's fault state.
  */
 export function trackFactsOf(state: FactsState, cameraId: VideoTrackId, realCapture: boolean): TrackFacts {
   const camera = state.cameras.find((entry) => entry.id === cameraId)
@@ -101,10 +134,13 @@ export function trackFactsOf(state: FactsState, cameraId: VideoTrackId, realCapt
   const noticed =
     line !== undefined &&
     activeCaptureNotices(state.alerts).some((notice) => notice.kind === 'UNREACHABLE' && notice.deviceKind === 'CAMERA' && notice.deviceId === line.deviceId)
+  const raised = line === undefined ? null : cameraCaptureFaultOf(state.alerts, line.deviceId)
   const fault: TrackFault | null =
     reach?.stream === 'LOST'
       ? 'STREAM_LOST'
-      : reach?.reach === 'NOT_REACHABLE' || noticed
+      : raised !== null
+        ? raised
+        : reach?.reach === 'NOT_REACHABLE' || noticed
         ? 'NOT_REACHABLE'
         : camera !== undefined && (!camera.online || camera.lens === 'FAULT')
           ? 'NO_SIGNAL'
@@ -116,6 +152,19 @@ export function trackFactsOf(state: FactsState, cameraId: VideoTrackId, realCapt
 export function useTrackFacts(cameraId: VideoTrackId): TrackFacts {
   const realCapture = useRealCaptureCore()
   return useSim((state) => trackFactsOf(state, cameraId, realCapture))
+}
+
+/**
+ * `cameraCaptureFaultOf` for the camera on a track's selector line in force (row W5, Q-01). `null` off a Core
+ * in real capture (the simulated lane keeps its own drawing), for a track without a line, and with no active fault.
+ */
+export function useCameraCaptureFault(cameraId: VideoTrackId): TrackFault | null {
+  const realCapture = useRealCaptureCore()
+  return useSim((state) => {
+    if (!realCapture) return null
+    const line = cameraLinesInForce(state).find((entry) => entry.trackId === cameraId)
+    return line === undefined ? null : cameraCaptureFaultOf(state.alerts, line.deviceId)
+  })
 }
 
 /** The fault in the console's existing words (the selector line's "Stream lost", the roster's "Not reachable", "NO SIGNAL"). */

@@ -1,5 +1,6 @@
 /**
- * The thirteen kept tables and how their rows cross a reset (plan row W29; database contract §8.5
+ * The eighteen kept tables (thirteen until task 4 integration pass I-9c added the five of schema
+ * sets A to C, review 120 F-6) and how their rows cross a reset (plan row W29; database contract §8.5
  * "Kept tables", R-3, R-5c, R-5d, R-5e, R-6; spec §12.4; SA-08; the three capture tables and the
  * `upsert` mode are dbc-3 §E.1 / blueprint row 54, OD-19, D-DB-08; `stt_config` joins the same set
  * as the twelfth by dbc-3 §B.13/§E.1 and blueprint row 114, R-8 of D20 confirmed at D24; the
@@ -51,20 +52,30 @@ export interface KeptTable {
   /** SQL name, in schema `public`. */
   readonly name: string;
   readonly mode: CarryMode;
-  /** The primary key column (SQL name): the order of the images and the join of an update. */
+  /**
+   * The primary key column (SQL name): the order of the images and the join of an update. For the
+   * one table whose primary key has two columns (`capture_device_streams`: `device_id`, `profile`;
+   * integration pass I-9c, review 120 F-6) it is the FIRST of them, and `keys` names both.
+   */
   readonly key: string;
+  /** Every column of the primary key, in key order (SQL names). One column for every table but `capture_device_streams`. */
+  readonly keys: readonly string[];
   /** Every column, in table order (SQL names), from the typed schema. */
   readonly columns: readonly string[];
 }
 
-function kept(table: PgTable, mode: CarryMode, key: string): KeptTable {
+function kept(table: PgTable, mode: CarryMode, key: string | readonly [string, ...string[]]): KeptTable {
   const columns = Object.values(getTableColumns(table)).map((column) => column.name);
-  if (!columns.includes(key)) throw new Error(`kept table ${getTableName(table)}: ${key} is not a column.`);
-  return Object.freeze({ name: getTableName(table), mode, key, columns: Object.freeze(columns) });
+  const keys: readonly [string, ...string[]] = typeof key === 'string' ? [key] : key;
+  for (const column of keys) if (!columns.includes(column)) throw new Error(`kept table ${getTableName(table)}: ${column} is not a column.`);
+  return Object.freeze({ name: getTableName(table), mode, key: keys[0], keys: Object.freeze([...keys]), columns: Object.freeze(columns) });
 }
 
+/** The key columns quoted and joined (`"a", "b"`), each with an optional table alias. */
+const keyList = (table: KeptTable, alias = ''): string => table.keys.map((column) => `${alias}${quoted(column)}`).join(', ');
+
 /**
- * The thirteen kept tables, in the carry-over order of R-5c: parents before the rows that name
+ * The eighteen kept tables, in the carry-over order of R-5c: parents before the rows that name
  * them (a device names its pairing code; a session and a token name a device). The three capture
  * tables of OD-19 join it in their own FK order — devices, then credentials, then the selector
  * that names a device (dbc-3 §E.1) — followed by the STT configuration singleton of R-8 (its one
@@ -85,6 +96,16 @@ export const KEPT_TABLES: readonly KeptTable[] = Object.freeze([
   kept(schema.captureConfig, 'upsert', 'singleton'),
   kept(schema.sttConfig, 'upsert', 'singleton'),
   kept(schema.coreMediaStore, 'upsert', 'singleton'),
+  // Task 4, integration pass I-9c (review 120 F-6; schema design 03 section 3.3, decision C61 (5)): the five tables
+  // of schema sets A to C that describe the installation. The two that extend `capture_devices` (T-44 streams, T-45
+  // inputs) follow it, mode `upsert`, so that a kept camera keeps what its profile codes mean; T-46 the network
+  // configuration `upsert`; T-47 the alias rows and T-48 the acceptances `insert` (an alias that a reset forgot would
+  // stay on the interface with no owner). The seed writes no row of any of them. The lineage stays last.
+  kept(schema.captureDeviceStreams, 'upsert', ['device_id', 'profile']),
+  kept(schema.captureAudioInputs, 'upsert', 'device_id'),
+  kept(schema.captureNetworkConfig, 'upsert', 'singleton'),
+  kept(schema.hostNetworkAliases, 'insert', 'id'),
+  kept(schema.installationAcceptances, 'insert', 'id'),
   kept(schema.auditChainHistory, 'insert', 'reset_no'),
 ]);
 
@@ -107,7 +128,7 @@ const quoted = (identifier: string): string => `"${identifier}"`;
 
 /** R-3 and R-6: one row image per row, in primary-key order. */
 export function readImagesStatement(table: KeptTable): string {
-  return `SELECT to_jsonb(k)::text AS image FROM public.${table.name} AS k ORDER BY k.${quoted(table.key)}`;
+  return `SELECT to_jsonb(k)::text AS image FROM public.${table.name} AS k ORDER BY ${keyList(table, 'k.')}`;
 }
 
 /** The three columns the reset may rewrite on a pairing code (R-5d). */
@@ -129,19 +150,20 @@ export function insertCarriedStatement(table: KeptTable): string {
   const values = table.columns.map((column) => `c.${quoted(column)}`).join(', ');
   return (
     `INSERT INTO public.${table.name} (${columns}) SELECT ${values} ` +
-    `FROM jsonb_populate_recordset(NULL::public.${table.name}, $1::jsonb) AS c ORDER BY c.${quoted(table.key)}`
+    `FROM jsonb_populate_recordset(NULL::public.${table.name}, $1::jsonb) AS c ORDER BY ${keyList(table, 'c.')}`
   );
 }
 
 /** R-5c, `update` tables: every column but the key takes the carried value. `$1` is a JSON array of images. */
 export function updateCarriedStatement(table: KeptTable): string {
   const assignments = table.columns
-    .filter((column) => column !== table.key)
+    .filter((column) => !table.keys.includes(column))
     .map((column) => `${quoted(column)} = c.${quoted(column)}`)
     .join(', ');
+  const join = table.keys.map((column) => `n.${quoted(column)} = c.${quoted(column)}`).join(' AND ');
   return (
     `UPDATE public.${table.name} AS n SET ${assignments} ` +
-    `FROM jsonb_populate_recordset(NULL::public.${table.name}, $1::jsonb) AS c WHERE n.${quoted(table.key)} = c.${quoted(table.key)}`
+    `FROM jsonb_populate_recordset(NULL::public.${table.name}, $1::jsonb) AS c WHERE ${join}`
   );
 }
 
@@ -152,12 +174,12 @@ export function updateCarriedStatement(table: KeptTable): string {
 export function upsertCarriedStatement(table: KeptTable): string {
   const columns = table.columns.map(quoted).join(', ');
   const values = table.columns.map((column) => `c.${quoted(column)}`).join(', ');
-  const carried = table.columns.filter((column) => column !== table.key);
+  const carried = table.columns.filter((column) => !table.keys.includes(column));
   // A key-only table cannot be updated; its carried rows are then simply kept as they are.
   const conflict =
     carried.length === 0
       ? 'ON CONFLICT DO NOTHING'
-      : `ON CONFLICT (${quoted(table.key)}) DO UPDATE SET ${carried.map((column) => `${quoted(column)} = EXCLUDED.${quoted(column)}`).join(', ')}`;
+      : `ON CONFLICT (${keyList(table)}) DO UPDATE SET ${carried.map((column) => `${quoted(column)} = EXCLUDED.${quoted(column)}`).join(', ')}`;
   return `INSERT INTO public.${table.name} (${columns}) SELECT ${values} FROM jsonb_populate_recordset(NULL::public.${table.name}, $1::jsonb) AS c ${conflict}`;
 }
 
@@ -220,7 +242,7 @@ export interface PairingCodeImage {
   readonly closedBy: string | null;
 }
 
-/** What the routine read from one database: the images of the thirteen kept tables. */
+/** What the routine read from one database: the images of the eighteen kept tables. */
 export interface KeptImages {
   /** By SQL table name; each list is in primary-key order. */
   readonly images: Readonly<Record<string, readonly string[]>>;

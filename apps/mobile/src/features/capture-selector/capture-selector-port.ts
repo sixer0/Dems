@@ -44,6 +44,8 @@ function answerOf(facts: AnswerFacts, body: unknown): SelectorAnswer {
 /** The path of the operation a command maps to (C3 §2.2). Ids are path segments, so they are encoded. */
 export function selectorPath(command: SelectorCommand): string {
   if (command.kind === 'micPair' || command.kind === 'micRole') return '/api/v1/capture/config';
+  // Row W5 (Q-02): a camera with a chosen stream profile is a camera line of operation 78.
+  if (command.kind === 'camera' && command.profile !== undefined) return '/api/v1/capture/config';
   return command.kind === 'camera'
     ? `/api/v1/capture/cameras/${encodeURIComponent(command.deviceId)}/source`
     : `/api/v1/capture/mics/${encodeURIComponent(command.inputId)}/primary`;
@@ -73,7 +75,20 @@ export function micRoleBody(command: Extract<SelectorCommand, { kind: 'micRole' 
   return { mics: [{ inputId: command.inputId, deviceId: command.inputId, role: command.role }] };
 }
 
+/**
+ * The body of operation 78 for ONE camera with its chosen stream profile (task 4 row W5; review 060d Q-02;
+ * decision C36; `camera-profile.ts`): `cameras: [{ trackId, deviceId, profile }]`. Operation 79's body is a
+ * strict `{ trackId }` - it cannot name a profile, and the Core assigns a production camera only with one of
+ * its own. The other track's line and the microphone lines are not named and keep what they hold.
+ */
+export function cameraProfileBody(command: { readonly trackId: 'VIDEO-01' | 'VIDEO-02'; readonly deviceId: string; readonly profile: string }): {
+  cameras: { trackId: 'VIDEO-01' | 'VIDEO-02'; deviceId: string; profile: string }[];
+} {
+  return { cameras: [{ trackId: command.trackId, deviceId: command.deviceId, profile: command.profile }] };
+}
+
 function simBody(command: SelectorCommand): { body?: unknown } {
+  if (command.kind === 'camera' && command.profile !== undefined) return { body: cameraProfileBody({ trackId: command.trackId, deviceId: command.deviceId, profile: command.profile }) };
   if (command.kind === 'camera') return { body: { trackId: command.trackId } };
   if (command.kind === 'micRole') return { body: micRoleBody(command) };
   return command.kind === 'micPair' ? { body: micPairBody(command) } : {};
@@ -103,7 +118,9 @@ export function liveSelectorPort(client: Pick<MobileCoreClient, 'call'>): Select
     async send(command) {
       try {
         const answer =
-          command.kind === 'camera'
+          command.kind === 'camera' && command.profile !== undefined
+            ? await client.call('updateCaptureConfig', { body: cameraProfileBody({ trackId: command.trackId, deviceId: command.deviceId, profile: command.profile }) })
+            : command.kind === 'camera'
             ? await client.call('setCaptureCameraSource', { params: { id: command.deviceId }, body: { trackId: command.trackId } })
             : command.kind === 'micPair'
               ? await client.call('updateCaptureConfig', { body: micPairBody(command) })

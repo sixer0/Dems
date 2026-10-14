@@ -28,12 +28,16 @@
 import {
   CAPTURE_CAMERA_DEVICE_ID_PATTERN,
   CAPTURE_CANDIDATE_ID_PATTERN,
+  CAPTURE_DEVICE_TEST_AUDIT_DIFFERING_MAX,
   CAPTURE_DEVICE_TEST_AUDIT_PROFILES_MAX,
   CAPTURE_DEVICE_UNREACHABLE_REASONS,
   CAPTURE_HOST_LITERAL_PATTERN,
+  CAPTURE_NETWORK_CONFIG_FIELDS as CONTRACT_NETWORK_CONFIG_FIELDS,
+  CAPTURE_NETWORK_CONFIG_LIMITS,
   CAPTURE_SEARCH_ID_PATTERN,
   CaptureConnectionOutcome,
   CaptureConnectionTestReason,
+  CaptureDeviceTestProfiles,
   CaptureDeviceTestUnreachableReason,
   CaptureDiscoveryScope,
   CaptureDiscoveryTrigger,
@@ -197,8 +201,11 @@ export type CaptureCredentialRevealReason = (typeof CAPTURE_CREDENTIAL_REVEAL_RE
 export const CAPTURE_DISCOVERY_AUDIT_SCOPES: readonly string[] = [...new Set<string>([...Object.values(CaptureDiscoveryScope), 'AUDIO_CARDS'])];
 /** `change` of CAPTURE_AUDIO_INPUT_CHANGED (design addendum 04 section 4.2). */
 export const CAPTURE_AUDIO_INPUT_CHANGES = ['REGISTERED', 'CARD_CHANGED', 'REENABLED'] as const;
-/** The six settings of `capture_network_config` an operator can change (schema extension 03 section 2.4), by member name. */
-export const CAPTURE_NETWORK_CONFIG_FIELDS = ['interfaceName', 'cameraSubnet', 'factoryAddresses', 'aliasHost', 'aliasMinutes', 'cameraIpStart'] as const;
+/**
+ * The seven settings of `capture_network_config` an operator can change (schema extension 03 section 2.4; the seventh,
+ * `onvifPorts`, schema version 14, row V7b), by member name: THE CONTRACT'S LIST, not a copy.
+ */
+export const CAPTURE_NETWORK_CONFIG_FIELDS = CONTRACT_NETWORK_CONFIG_FIELDS;
 /** Why a temporary host address was added, and how it left (schema extension 03 section 2.5: `HOST_ALIAS_REASON`, `HOST_ALIAS_REMOVE_REASON`). */
 export const HOST_ALIAS_AUDIT_REASONS = ['FACTORY_SCAN', 'SET_CAMERA_ADDRESS'] as const;
 export const HOST_ALIAS_AUDIT_REMOVE_REASONS = ['EXPIRED', 'MANUAL', 'JOB_DONE', 'BOOT_SWEEP', 'SHUTDOWN', 'NOT_ADDED', 'ADD_UNCONFIRMED'] as const;
@@ -292,6 +299,166 @@ const profileCount = (required: boolean): DetailRule => ({
   form: `a whole number of 0 to ${String(CAPTURE_DEVICE_TEST_AUDIT_PROFILES_MAX)}`,
   accepts: (value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= CAPTURE_DEVICE_TEST_AUDIT_PROFILES_MAX,
 });
+// ── Task 4 (row N2; design 06 revision 3, section 8.4; decisions U25 (3), C110, C112 (3)): the closed
+// sets and bounds of CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED and CAPTURE_AUDIO_SILENCE_INSERTED. Each is the
+// manifest's own value (`@dems/shared/evidence-package`), held equal by a test, so that one name means
+// one thing from the audit row to the signature.
+/** One day at 48,000 Hz: the largest sample count or sample position a row can state. */
+export const CAPTURE_AUDIO_DAY_SAMPLES = 4_147_200_000;
+/** The most samples a microphone's buffer holds (two seconds at 48,000 Hz): the bound of `bufferedSamples`. */
+export const CAPTURE_AUDIO_BUFFERED_MAX_SAMPLES = 96_000;
+/** 100 ms at 48,000 Hz: the shortest run of inserted silence that is a row of its own. */
+export const CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES = 4_800;
+/** The most runs listed per capture attempt: the largest `index` of a run and the bound of `listedRuns`. */
+export const CAPTURE_AUDIO_INSERTED_RUNS_MAX = 1_024;
+/** `captureLayer` of CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED: the capture layers that do not promise every sample. One word. */
+export const CAPTURE_AUDIO_CAPTURE_LAYERS = ['AVFOUNDATION'] as const;
+/** `captureGroup`: 1 to this number (a session has at most two microphones). */
+export const CAPTURE_AUDIO_CAPTURE_GROUP_MAX = 2;
+/**
+ * `account` of CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED, THE CLOSED MARK: `CLOSED` - the worker's closing
+ * account, it reaches the end of the track; `NOT_CLOSED` - the last periodic account of a worker that
+ * did not end its timeline, the track goes on after it; `NONE` - the worker left no account, nothing
+ * was measured.
+ */
+export const CAPTURE_AUDIO_SAMPLE_ACCOUNTS = ['CLOSED', 'NOT_CLOSED', 'NONE'] as const;
+export type CaptureAudioSampleAccount = (typeof CAPTURE_AUDIO_SAMPLE_ACCOUNTS)[number];
+/** The most retries of the open of a microphone's helper in one capture attempt: one. */
+export const CAPTURE_AUDIO_OPEN_RETRIES_MAX = 1;
+/**
+ * The thirteen numbers of an account, `timelineSamples` to `runsNotListedSamples`: ALL present
+ * (`account` CLOSED or NOT_CLOSED) or ALL absent (NONE). The writer builds the account so and the seal's
+ * reader refuses any other form; a detail list holds a form per key, not a rule between keys.
+ * Since row V7 they stand in TWO entries (`CAPTURE_AUDIO_ACCOUNT_PART_NUMBER_KEYS` below).
+ */
+export const CAPTURE_AUDIO_ACCOUNT_NUMBER_KEYS = [
+  'timelineSamples',
+  'receivedSamples',
+  'insertedSamples',
+  'discardedSamples',
+  'bufferedSamples',
+  'nonFiniteSamples',
+  'fedSamples',
+  'fedInsertedSamples',
+  'fedRuns',
+  'fedLongestRunSamples',
+  'listedRuns',
+  'runsNotListed',
+  'runsNotListedSamples',
+] as const;
+/**
+ * THE ACCOUNT IS TWO ENTRIES (task 4 row V7; decision C119 (1); finding F-1 of row N2). The account
+ * holds 19 or 20 details and the audit writer holds a native row to 16 (`NATIVE_PAYLOAD_KEYS_MAX`,
+ * `./limits`) - THAT LIMIT STAYS: it bounds what a writer can put into the chain. So one account is
+ * written as TWO entries of the type CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED, each within the bound,
+ * joined on the session, the microphone (the entry's device) and the attempt:
+ *
+ * | `part` | What it states | Its numbers | Keys at most |
+ * |---|---|---|---|
+ * | 1 | THE SOURCE: what the microphone's path delivered | `timelineSamples`, `receivedSamples`, `insertedSamples`, `discardedSamples`, `bufferedSamples`, `nonFiniteSamples`; and `openRunFromSample` when the account states one | 7 + 6 + 1 = 14 |
+ * | 2 | THE TRACK: what of the audio track this microphone fed | `fedSamples`, `fedInsertedSamples`, `fedRuns`, `fedLongestRunSamples`, `listedRuns`, `runsNotListed`, `runsNotListedSamples` | 7 + 7 = 14 |
+ *
+ * BOTH parts state the seven keys of the path (`CAPTURE_AUDIO_ACCOUNT_PATH_KEYS`), with the same
+ * values: each entry says by itself whose account it is and whether it is closed. A part states ALL
+ * its numbers (`account` CLOSED or NOT_CLOSED) or NONE of them (`NONE`), and never a number of the
+ * other part. An account `NONE` is two entries too: a reader never has to tell "no part 2" from "a
+ * part 2 that was not written". A MISSING PART IS NO ACCOUNT - `captureAudioAccountOfParts` says
+ * which rule failed and the seal refuses; half an account is never read as one.
+ */
+export const CAPTURE_AUDIO_ACCOUNT_PARTS = 2;
+/** The seven keys both parts state, with the same values. */
+export const CAPTURE_AUDIO_ACCOUNT_PATH_KEYS = ['sessionId', 'attempt', 'part', 'captureLayer', 'captureGroup', 'account', 'openRetries'] as const;
+/** The numbers of each part: together the thirteen of `CAPTURE_AUDIO_ACCOUNT_NUMBER_KEYS`, in that order. */
+export const CAPTURE_AUDIO_ACCOUNT_PART_NUMBER_KEYS = {
+  1: ['timelineSamples', 'receivedSamples', 'insertedSamples', 'discardedSamples', 'bufferedSamples', 'nonFiniteSamples'],
+  2: ['fedSamples', 'fedInsertedSamples', 'fedRuns', 'fedLongestRunSamples', 'listedRuns', 'runsNotListed', 'runsNotListedSamples'],
+} as const satisfies Record<1 | 2, readonly (typeof CAPTURE_AUDIO_ACCOUNT_NUMBER_KEYS)[number][]>;
+/** The one key of part 1 that is present only when the account states it. */
+export const CAPTURE_AUDIO_ACCOUNT_OPEN_RUN_KEY = 'openRunFromSample';
+
+type AccountNumberKey = (typeof CAPTURE_AUDIO_ACCOUNT_NUMBER_KEYS)[number];
+/** One account as its writer holds it before it is cut: the path, then all thirteen numbers or none (`account` NONE). */
+export type CaptureAudioAccount = {
+  readonly sessionId: string;
+  readonly attempt: number;
+  readonly captureLayer: (typeof CAPTURE_AUDIO_CAPTURE_LAYERS)[number];
+  readonly captureGroup: number;
+  readonly account: CaptureAudioSampleAccount;
+  readonly openRetries: number;
+  readonly openRunFromSample?: number;
+} & Partial<Readonly<Record<AccountNumberKey, number>>>;
+/** The details of one entry of an account. */
+export type CaptureAudioAccountPart = Readonly<Record<string, string | number>>;
+
+/** Why a set of entries is no account (`captureAudioAccountOfParts`). Closed words; none carries a value. */
+export const CaptureAudioAccountPartRefusal = {
+  /** Not exactly the entries of part 1 and part 2. */
+  PART_MISSING: 'ACCOUNT_PART_MISSING',
+  PART_REPEATED: 'ACCOUNT_PART_REPEATED',
+  /** The two parts do not state the same path (session, attempt, layer, group, account, retries). */
+  PARTS_DIFFER: 'ACCOUNT_PARTS_DIFFER',
+  /** A part states a number of the other part, a key of neither, or some of its numbers and not all. */
+  PART_KEYS: 'ACCOUNT_PART_KEYS',
+} as const;
+export type CaptureAudioAccountPartRefusal = (typeof CaptureAudioAccountPartRefusal)[keyof typeof CaptureAudioAccountPartRefusal];
+
+/**
+ * THE CUT: the two detail lists of one account, part 1 then part 2. The writer (row N11) appends
+ * both in ONE unit of work. Throws a `TypeError` for an account whose thirteen numbers are neither
+ * all stated nor all absent, or that states numbers under `NONE` - the writer's own rule, held here
+ * so that no half-stated account is ever cut into two well-formed entries.
+ */
+export function captureAudioAccountParts(account: CaptureAudioAccount): readonly [CaptureAudioAccountPart, CaptureAudioAccountPart] {
+  const stated = CAPTURE_AUDIO_ACCOUNT_NUMBER_KEYS.filter((key) => account[key] !== undefined);
+  const measured = account.account !== 'NONE';
+  if (stated.length !== (measured ? CAPTURE_AUDIO_ACCOUNT_NUMBER_KEYS.length : 0)) throw new TypeError('an audio account states all thirteen numbers (CLOSED, NOT_CLOSED) or none (NONE)');
+  if (!measured && account.openRunFromSample !== undefined) throw new TypeError('an audio account without numbers states no open run');
+  const path = (part: 1 | 2): Record<string, string | number> => ({ sessionId: account.sessionId, attempt: account.attempt, part, captureLayer: account.captureLayer, captureGroup: account.captureGroup, account: account.account, openRetries: account.openRetries });
+  const numbers = (part: 1 | 2): Record<string, number> => (measured ? Object.fromEntries(CAPTURE_AUDIO_ACCOUNT_PART_NUMBER_KEYS[part].map((key) => [key, account[key] as number])) : {});
+  return [
+    { ...path(1), ...numbers(1), ...(account.openRunFromSample === undefined ? {} : { [CAPTURE_AUDIO_ACCOUNT_OPEN_RUN_KEY]: account.openRunFromSample }) },
+    { ...path(2), ...numbers(2) },
+  ];
+}
+
+/**
+ * THE JOIN: the account of the entries of ONE session, ONE microphone and ONE attempt (the caller
+ * groups by the entry's device and these two keys), or the rule that failed. The seal (row N12)
+ * reads an account through this and refuses the session on any refusal: never a half account.
+ * It judges the FORM of the pair; the form of each value is the detail list's, at the write.
+ */
+export function captureAudioAccountOfParts(entries: readonly Readonly<Record<string, unknown>>[]): { readonly ok: true; readonly account: CaptureAudioAccount } | { readonly ok: false; readonly reason: CaptureAudioAccountPartRefusal } {
+  const refuse = (reason: CaptureAudioAccountPartRefusal) => ({ ok: false, reason }) as const;
+  const first = entries.filter((entry) => entry['part'] === 1);
+  const second = entries.filter((entry) => entry['part'] === 2);
+  if (first.length > 1 || second.length > 1) return refuse(CaptureAudioAccountPartRefusal.PART_REPEATED);
+  const [one, two] = [first[0], second[0]];
+  if (one === undefined || two === undefined || entries.length !== CAPTURE_AUDIO_ACCOUNT_PARTS) return refuse(CaptureAudioAccountPartRefusal.PART_MISSING);
+  for (const key of CAPTURE_AUDIO_ACCOUNT_PATH_KEYS) {
+    if (key !== 'part' && (one[key] === undefined || one[key] !== two[key])) return refuse(CaptureAudioAccountPartRefusal.PARTS_DIFFER);
+  }
+  const measured = one['account'] !== 'NONE';
+  for (const [entry, part] of [[one, 1], [two, 2]] as const) {
+    const own: readonly string[] = CAPTURE_AUDIO_ACCOUNT_PART_NUMBER_KEYS[part];
+    const allowed = new Set<string>([...CAPTURE_AUDIO_ACCOUNT_PATH_KEYS, ...(measured ? own : []), ...(measured && part === 1 ? [CAPTURE_AUDIO_ACCOUNT_OPEN_RUN_KEY] : [])]);
+    if (Object.keys(entry).some((key) => !allowed.has(key))) return refuse(CaptureAudioAccountPartRefusal.PART_KEYS);
+    if (measured && own.some((key) => typeof entry[key] !== 'number')) return refuse(CaptureAudioAccountPartRefusal.PART_KEYS);
+  }
+  const { part: _one, ...source } = one;
+  const { part: _two, sessionId: _s, attempt: _a, captureLayer: _l, captureGroup: _g, account: _c, openRetries: _r, ...track } = two;
+  return { ok: true, account: { ...source, ...track } as unknown as CaptureAudioAccount };
+}
+
+/** A whole number of `min` to `max`, with its unit in the form text. */
+const wholeBetween =(min: number, max: number, unit: string) => (required: boolean): DetailRule => ({
+  required,
+  form: `a whole number of ${String(min)} to ${String(max)} (${unit})`,
+  accepts: (value) => typeof value === 'number' && Number.isSafeInteger(value) && value >= min && value <= max,
+});
+/** A count of samples, or a sample position, of at most one day. */
+const daySamples = wholeBetween(0, CAPTURE_AUDIO_DAY_SAMPLES, 'samples');
+/** A count of runs of at most one day of samples. */
+const dayRuns = wholeBetween(0, CAPTURE_AUDIO_DAY_SAMPLES, 'runs');
 
 const REQUIRED = true;
 const OPTIONAL = false;
@@ -512,6 +679,12 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     // Schema extension 03 section 2.4: the NAMES of the changed fields (the pattern of STT_CONFIG_CHANGED), never a value.
     changedFields: networkFieldNames(REQUIRED),
     revision: revisionNumber(REQUIRED),
+    // Row V7b (S2-02, C116): when `onvifPorts` changed, HOW MANY ports are listed now (1 to 8); never the ports.
+    onvifPortCount: {
+      required: OPTIONAL,
+      form: `a whole number of ${String(CAPTURE_NETWORK_CONFIG_LIMITS.onvifPortsMin)} to ${String(CAPTURE_NETWORK_CONFIG_LIMITS.onvifPortsMax)}`,
+      accepts: (value) => typeof value === 'number' && Number.isInteger(value) && value >= CAPTURE_NETWORK_CONFIG_LIMITS.onvifPortsMin && value <= CAPTURE_NETWORK_CONFIG_LIMITS.onvifPortsMax,
+    },
     operationId: operationId(OPTIONAL),
     permission: code(OPTIONAL),
   },
@@ -683,6 +856,13 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     unreachableReason: oneOf(Object.values(CaptureDeviceTestUnreachableReason), `one of ${Object.values(CaptureDeviceTestUnreachableReason).join(', ')}`)(OPTIONAL),
     // Row V4: the answer's own count of usable profiles (0 to 16) when a camera was asked. A count: no profile name, no codec text.
     usableProfileCount: profileCount(OPTIONAL),
+    // Rows PR, V7 (decision C117): what the test found about the camera's STORED profiles - a closed word and three
+    // counts (stored before the test, stated by the stream now, differing). All four together or none (the shared
+    // builder's rule); absent when there is nothing to say. Counts only: no profile code, no codec text.
+    profiles: oneOf(Object.values(CaptureDeviceTestProfiles), `one of ${Object.values(CaptureDeviceTestProfiles).join(', ')}`)(OPTIONAL),
+    storedProfileCount: profileCount(OPTIONAL),
+    statedProfileCount: profileCount(OPTIONAL),
+    differingProfileCount: wholeBetween(0, CAPTURE_DEVICE_TEST_AUDIT_DIFFERING_MAX, 'profile codes')(OPTIONAL),
     permission: code(OPTIONAL),
   },
   // ── Task 4 (row R1b; decision C99, finding F3-01; the capture session is the writer): a camera
@@ -714,16 +894,76 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     videoAbsentAtMostMs: videoAbsentMs(OPTIONAL),
     ended: oneOf(CAPTURE_VIDEO_ABSENCE_ENDS, `one of ${CAPTURE_VIDEO_ABSENCE_ENDS.join(', ')}`)(REQUIRED),
   },
+  // ── Task 4 (row N2; design 06 revision 3, section 8.4; decisions U25 (3), C107, C110, C112 (3); the
+  // capture session is the writer, row N11): THE ACCOUNT of a microphone whose capture path is NOT
+  // SAMPLE-CONTINUOUS (the bench path of a Mac). Written ONCE per such microphone (the row's device)
+  // and per capture attempt, when that attempt's audio ends: with the worker's closing account
+  // (`CLOSED`), with the last periodic account of a worker that went down without one (`NOT_CLOSED`),
+  // or with none (`NONE`: the path is not sample-continuous and the amount was not measured).
+  // The names of the numbers are the worker's: expected (`timelineSamples`), received, inserted,
+  // discarded, still buffered, not finite; then the TRACK - how much of it this microphone fed, how
+  // much of that was inserted, the runs of inserted zeros that began on it, the longest, how many
+  // of 100 ms or more are listed as rows of CAPTURE_AUDIO_SILENCE_INSERTED and how many are not.
+  // The thirteen numbers are all present or all absent (`CAPTURE_AUDIO_ACCOUNT_NUMBER_KEYS`).
+  // Whole numbers, ids and closed words: NO device text, NO card text, NO file name and NO
+  // percentage (a reader computes it; whole numbers cannot be rounded wrongly). No `operationId` and
+  // no `permission`: no operation stands behind the row (its actor is null).
+  //
+  // TWO ENTRIES PER ACCOUNT (row V7; decision C119 (1)): `part` 1 holds the source's six numbers and
+  // the open run, `part` 2 the track's seven; both hold the seven keys of the path. Which keys a part
+  // holds is `CAPTURE_AUDIO_ACCOUNT_PART_NUMBER_KEYS` above; the writer cuts an account with
+  // `captureAudioAccountParts` and the seal joins it with `captureAudioAccountOfParts`. This list
+  // holds the form of each key; that a part holds only ITS numbers is those two functions' rule
+  // (a detail list has no rule between keys), and the key bound of 16 holds each part besides.
+  [AuditType.CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED]: {
+    sessionId: sessionId(REQUIRED),
+    attempt: attemptNumber(REQUIRED),
+    part: wholeBetween(1, CAPTURE_AUDIO_ACCOUNT_PARTS, 'the part of the account')(REQUIRED),
+    captureLayer: oneOf(CAPTURE_AUDIO_CAPTURE_LAYERS, `one of ${CAPTURE_AUDIO_CAPTURE_LAYERS.join(', ')}`)(REQUIRED),
+    captureGroup: wholeBetween(1, CAPTURE_AUDIO_CAPTURE_GROUP_MAX, 'the shared capture group')(REQUIRED),
+    account: oneOf(CAPTURE_AUDIO_SAMPLE_ACCOUNTS, `one of ${CAPTURE_AUDIO_SAMPLE_ACCOUNTS.join(', ')}`)(REQUIRED),
+    openRetries: wholeBetween(0, CAPTURE_AUDIO_OPEN_RETRIES_MAX, 'retries of the open')(REQUIRED),
+    timelineSamples: daySamples(OPTIONAL),
+    receivedSamples: daySamples(OPTIONAL),
+    insertedSamples: daySamples(OPTIONAL),
+    discardedSamples: daySamples(OPTIONAL),
+    bufferedSamples: wholeBetween(0, CAPTURE_AUDIO_BUFFERED_MAX_SAMPLES, 'samples')(OPTIONAL),
+    nonFiniteSamples: daySamples(OPTIONAL),
+    fedSamples: daySamples(OPTIONAL),
+    fedInsertedSamples: daySamples(OPTIONAL),
+    fedRuns: dayRuns(OPTIONAL),
+    fedLongestRunSamples: daySamples(OPTIONAL),
+    listedRuns: wholeBetween(0, CAPTURE_AUDIO_INSERTED_RUNS_MAX, 'runs')(OPTIONAL),
+    runsNotListed: dayRuns(OPTIONAL),
+    runsNotListedSamples: daySamples(OPTIONAL),
+    // Present only when the account states one: a run of 100 ms or more that was still running at it.
+    openRunFromSample: daySamples(OPTIONAL),
+  },
+  // ── Task 4 (row N2; decision C112 (3); the capture session is the writer, row N11): ONE LISTED RUN
+  // of inserted silence of 100 ms or more in the audio track. A TYPE OF ITS OWN, not keys of the
+  // account: an audit detail list is flat and cannot hold a list, and a required key of one type
+  // cannot be relaxed for a second kind of row. Written when the worker's record of the run ARRIVES,
+  // not at the end: the runs of a worker that is killed later are already in the chain. The row's
+  // device is the microphone that fed the track at the run's first sample. `fromSample` is the
+  // first sample of the run on the track's own timeline (sample 0 is the first sample of the
+  // track's sound); `samples` its length. Whole numbers and one id; all five are required.
+  [AuditType.CAPTURE_AUDIO_SILENCE_INSERTED]: {
+    sessionId: sessionId(REQUIRED),
+    attempt: attemptNumber(REQUIRED),
+    index: wholeBetween(1, CAPTURE_AUDIO_INSERTED_RUNS_MAX, "the worker's number of the run")(REQUIRED),
+    fromSample: daySamples(REQUIRED),
+    samples: wholeBetween(CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES, CAPTURE_AUDIO_DAY_SAMPLES, 'samples')(REQUIRED),
+  },
 } as const satisfies Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>;
 
 /**
- * The thirty-nine types that have a list (nine of the backend task, nine of the capture phase, one
+ * The forty-one types that have a list (nine of the backend task, nine of the capture phase, one
  * of R-8, four of R-9 / R-10, ten of task 4 blueprint row 19, one of task 4 blueprint row 201, four
- * of task 4 row V3, one of task 4 row R1b).
+ * of task 4 row V3, one of task 4 row R1b, two of task 4 row N2).
  */
 export type ServerAuditType = keyof typeof SERVER_AUDIT_DETAIL_RULES;
 
-/** The list of `type`, or undefined for one of the simulator's 44 types (83 minus the 39 listed here). */
+/** The list of `type`, or undefined for one of the simulator's 44 types (85 minus the 41 listed here). */
 export function detailRulesOf(type: AuditType): Readonly<Record<string, DetailRule>> | undefined {
   return (SERVER_AUDIT_DETAIL_RULES as Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>)[type];
 }
@@ -880,6 +1120,26 @@ export const SYSTEM_BOOT_ADDRESS_HELPER_DETAIL_RULES = {
   },
 } as const satisfies Readonly<Record<string, DetailRule>>;
 
+/** Row NB (design 06 row N13, SM-15): the codes of `microphonePermission` of a `SYSTEM_BOOT` row. */
+export const SYSTEM_BOOT_MICROPHONE_PERMISSION_STATES = ['NOT_KNOWN'] as const;
+
+/**
+ * Task 4 row NB (design 06 row N13, SM-15): THE MICROPHONE PERMISSION A PRODUCTION BOOT ON DARWIN STATES in its
+ * `SYSTEM_BOOT` row.
+ *
+ *   microphonePermission   `NOT_KNOWN`: the permission of the host to record cannot be read without opening a device
+ *
+ * Written by a `REAL_PRODUCTION` boot on `darwin` only. It is a FACT, not a pass: the boot does not know the
+ * permission and says so. Optional: every other row carries no such member.
+ */
+export const SYSTEM_BOOT_MICROPHONE_DETAIL_RULES = {
+  microphonePermission: {
+    required: OPTIONAL,
+    form: `one of ${SYSTEM_BOOT_MICROPHONE_PERMISSION_STATES.join(', ')}`,
+    accepts: (value) => typeof value === 'string' && (SYSTEM_BOOT_MICROPHONE_PERMISSION_STATES as readonly string[]).includes(value),
+  },
+} as const satisfies Readonly<Record<string, DetailRule>>;
+
 /** `rule`, or JSON null: a member a writer states as "not known" instead of leaving it out. */
 const orNull = (rule: DetailRule): DetailRule => ({
   required: false,
@@ -917,6 +1177,8 @@ export const SERVER_AUDIT_OPEN_DETAIL_RULES = {
     hostProfile: SYSTEM_BOOT_HOST_DETAIL_RULES.hostProfile,
     // Row HC (C94 (j)): whether something lay at the installed socket path of the address helper - a code, never null (a boot that does not state it leaves it out).
     addressHelperSocket: SYSTEM_BOOT_ADDRESS_HELPER_DETAIL_RULES.addressHelperSocket,
+    // Row NB (design 06 row N13, SM-15): the microphone permission a darwin production boot states - a code, never null (a boot that does not state it leaves it out).
+    microphonePermission: SYSTEM_BOOT_MICROPHONE_DETAIL_RULES.microphonePermission,
   },
 } as const satisfies Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>;
 

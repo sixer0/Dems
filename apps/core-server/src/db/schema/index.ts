@@ -105,6 +105,14 @@
  * again under its name) plus the hand-written
  * `0029_alias_removal_reason_unconfirmed_privileges.sql` (no grant; the version step).
  *
+ * SCHEMA VERSION 14 (`dbc-15`; code reviews 120 (finding F-4) and 120b (finding S2-02) of task 4,
+ * decisions C114 and C116; requirement S13-11 point 3): the generated
+ * `0030_network_config_onvif_ports.sql` (the column `onvif_ports` of `capture_network_config` in
+ * `./capture` with its two CHECKs, and the two interface-name CHECKs dropped and added again
+ * under their names with the alias helper's own form) plus the hand-written
+ * `0031_network_config_onvif_ports_privileges.sql` (the UPDATE grant on the column; the version
+ * step).
+ *
  * Not expressed here, because the tool cannot generate them: the function of `0000_prelude`,
  * the chain lock, the chain guard, the three triggers and the genesis row (`0002_audit_guards`),
  * and every privilege (`0003_privileges`, and `0005_capture_privileges` from row 46). The typed

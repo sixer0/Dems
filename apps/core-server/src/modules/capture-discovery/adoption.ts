@@ -133,9 +133,23 @@ export async function writeAdoptedCameraStreams(unit: Pick<EngineUnit['unit'], '
 export async function registerAdoptedCamera(scope: EngineUnit, device: AdoptedCamera): Promise<CaptureDeviceStatus> {
   // The code rule first: a list that is not the Core's codes reaches neither the engine nor a statement.
   assertAdoptedProfiles(device);
-  const registered = await registerCaptureDeviceIn(scope, { id: device.id, model: device.model, host: device.address, adapter: device.adapterKind });
-  const updated = await scope.unit.query(SET_ADOPTED_CAMERA_COLUMNS, [device.id, ADOPTED_CAMERA_TRANSPORT, device.endpointRef, JSON.stringify(device.profiles), device.at]);
-  if (updated.rowCount !== 1) throw new AdoptionRowMissing();
-  await writeAdoptedCameraStreams(scope.unit, device);
+  // Row V7 (C117): the device entry of the replicated slice states the SAME list the statement below writes to the row.
+  const registered = await registerCaptureDeviceIn(scope, { id: device.id, model: device.model, host: device.address, adapter: device.adapterKind, profiles: device.profiles });
+  await writeAdoptedCameraColumns(scope.unit, device);
   return registered;
+}
+
+/**
+ * THE ONE WRITE OF A CAMERA'S PROFILE LIST AND ITS STREAM ROWS (rows 51 / 187; row PR, decision
+ * C117): the discovery columns of the row by the adoption's one statement, then one stream row per
+ * judged stream - the code rule first, the row count deciding. It has TWO callers and one form:
+ * the adoption above, on the row its unit has just written, and the stored-credential connection
+ * test of a camera that holds NO stored profile (`adopted-profiles.ts`), which hands back the
+ * endpoint reference the row already holds. Neither mints here: a code is the stream test's.
+ */
+export async function writeAdoptedCameraColumns(unit: Pick<EngineUnit['unit'], 'query'>, device: Pick<AdoptedCamera, 'id' | 'endpointRef' | 'profiles' | 'streams' | 'at'>): Promise<void> {
+  assertAdoptedProfiles(device);
+  const updated = await unit.query(SET_ADOPTED_CAMERA_COLUMNS, [device.id, ADOPTED_CAMERA_TRANSPORT, device.endpointRef, JSON.stringify(device.profiles), device.at]);
+  if (updated.rowCount !== 1) throw new AdoptionRowMissing();
+  await writeAdoptedCameraStreams(unit, device);
 }

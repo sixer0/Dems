@@ -177,25 +177,35 @@ export function cameraStreamFactsOf(profile: unknown): CameraStreamFacts | null 
  * and records nothing. NOT held by a constraint: the database holds a stored code to the `CODE`
  * form only, not to the statement form - a list written by another hand could hold a code that is
  * no statement, and its track would read like an unassigned one here.
+ *
+ * THE BITRATE (wave 12, row CB; review finding R-01 of `060c`; decision C36): `bitrateMbps` of a
+ * track is NULL here, always. This function is the composer of a REAL capture operation, and in
+ * one NO SOURCE STATES A BITRATE: the stored stream statement names a picture, a rate and a codec
+ * and nothing else, the relay and the worker report none, and no telemetry writes the member. The
+ * one writer of a number is the simulator's initial state (`sim/initial-state.ts`, the literal 9),
+ * which is a fact of the simulated device and of no real camera. The contract says null for
+ * exactly this ("no telemetry states a bitrate for the track. Never a default"). The day a real
+ * source states one, it is read HERE, beside the three stream facts. The state itself says the
+ * same since this row (`engine/camera-bitrate.ts`, applied at every start of a Core in its own
+ * capture): this line holds for a slice that was handed in from anywhere else.
  */
 export function withCameraStreamFacts(cameras: CommittedState['cameras'], slots: Pick<CaptureSlots, 'cameras'>): CommittedState['cameras'] {
   let changed = false;
   const next = cameras.map((camera) => {
-    const facts = cameraStreamFactsOf(slots.cameras.find((entry) => entry.trackId === camera.id)?.profile);
-    if (facts === null) {
-      // Rows B2 and V6 (S-01; decision C36): NO STREAM STATEMENT - the picture, the rate and the codec are each NOT STATED
-      // (null, which the contract lets all three say since row V6). The simulator's initial `1080p / 25 / H.264` of the
-      // slice is no fact of this track and is never handed on as one.
-      if (camera.resolution === null && camera.fps === null && camera.codec === null) return camera;
-      changed = true;
-      return { ...camera, resolution: null, fps: null, codec: null };
-    }
-    if (facts.resolution === camera.resolution && facts.fps === camera.fps && facts.codec === camera.codec) return camera;
+    // Rows B2 and V6 (S-01; decision C36): NO STREAM STATEMENT - the picture, the rate and the codec are each NOT STATED
+    // (null, which the contract lets all three say since row V6). The simulator's initial `1080p / 25 / H.264` of the
+    // slice is no fact of this track and is never handed on as one.
+    const { resolution, fps, codec } = cameraStreamFactsOf(slots.cameras.find((entry) => entry.trackId === camera.id)?.profile) ?? NO_STREAM_STATEMENT;
+    if (resolution === camera.resolution && fps === camera.fps && codec === camera.codec && camera.bitrateMbps === null) return camera;
     changed = true;
-    return { ...camera, ...facts };
+    // Row CB (R-01): no real source states a bitrate - null, never the simulator's 9.
+    return { ...camera, resolution, fps, codec, bitrateMbps: null };
   });
   return changed ? next : cameras;
 }
+
+/** What a track without a stream statement says of its picture, its rate and its codec: nothing (row V6). */
+const NO_STREAM_STATEMENT = Object.freeze({ resolution: null, fps: null, codec: null } as const);
 
 /**
  * Operation 46, and `cameras` of operation 44: one entry per video track.
@@ -206,8 +216,10 @@ export function withCameraStreamFacts(cameras: CommittedState['cameras'], slots:
  *
  * Schema v2 (C3 §3 ops 44/46; SH-05; OD-22): each track carries the capture-config device feeding
  * it (`sourceDeviceId`, equal to `deviceId` on the built-in topology, moved by op 79) and its
- * stream state - the selector slot's when it has one, else LIVE while the camera is online. A LOST
- * stream is what makes operation 48's PoE cycle legal (OD-22). The member order mirrors the
+ * stream state - the selector slot's, null (NOT READ) included; null for a track without a slot.
+ * Task 4 row V7d (decisions C126 (b), C141): until then a null line and a missing line fell back to
+ * LIVE while the camera's `online` flag was set - a stream no one read stated LIVE. A LOST stream is
+ * what makes operation 48's PoE cycle legal (OD-22). The member order mirrors the
  * simulator's own builder (`sim/api.ts videoTracks`), which the parity test holds member by member.
  *
  * Task 4 row 150 (AD-04 (2); site B11; names register E39): the selector line of a track is found
@@ -223,7 +235,7 @@ export function videoTracksOf(cameras: CommittedState['cameras'], slots: Capture
       trackId: camera.id,
       deviceId: camera.deviceId,
       sourceDeviceId: slot?.deviceId ?? null,
-      streamState: slot?.streamState ?? (camera.online ? 'LIVE' : 'LOST'),
+      streamState: slot?.streamState ?? null,
       name: camera.name,
       lens: camera.lens,
       online: camera.online,

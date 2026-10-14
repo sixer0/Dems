@@ -43,6 +43,7 @@ import {
   CaptureConnectionTestReason,
   CaptureDeviceTestUnreachableReason,
   CaptureDeviceConnectionTestSchema,
+  CaptureDeviceTestProfiles,
   captureDeviceConnectionTestedDetails,
   CAPTURE_CANDIDATE_ID_PATTERN,
   CAPTURE_CANDIDATE_TEXT_MAX_LENGTH,
@@ -161,7 +162,7 @@ describe('the registry: operations 93 to 97 as C3 §2.6 writes them', () => {
     expect(findCoreApiOperation('adoptCaptureCandidate')?.audit.also).toEqual(['CAPTURE_CONNECTION_TESTED', 'CAPTURE_CREDENTIAL_SET']);
   });
 
-  it('M4-PIN-1 (shared half): 110 operations, 39 GET, 71 POST, offline 44, 83 audit types, 40 error codes (unchanged), 6 access conditions', () => {
+  it('M4-PIN-1 (shared half): 110 operations, 39 GET, 71 POST, offline 44, 85 audit types, 40 error codes (unchanged), 6 access conditions', () => {
     // Task 4 row 63: + the two sound-card operations 98-99 (97 -> 99, POST 61 -> 63, offline 31 -> 33).
     // Task 4 row 194: + the confirmed re-address, operation 100 (99 -> 100, POST 63 -> 64, offline 33 -> 34).
     const all = listCoreApiOperations(CoreApiScope.ALL);
@@ -173,7 +174,8 @@ describe('the registry: operations 93 to 97 as C3 §2.6 writes them', () => {
     // (108 -> 110, POST 69 -> 71, offline 42 -> 44); no audit type (the two exist since row 19).
     expect(listCoreApiOperations(CoreApiScope.OFFLINE)).toHaveLength(44);
     // Task 4 row R1b (decision C99): + CAPTURE_VIDEO_ABSENT_IN_SESSION (82 -> 83); no operation.
-    expect(Object.values(AuditType)).toHaveLength(83);
+    // Task 4 row N2: + CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED, CAPTURE_AUDIO_SILENCE_INSERTED (83 -> 85); no operation.
+    expect(Object.values(AuditType)).toHaveLength(85);
     expect(API_ERROR_CODES).toHaveLength(40);
     expect(Object.values(CoreApiAccessCondition)).toHaveLength(6);
     const document = createOpenApiDocument({ scope: 'all' });
@@ -985,9 +987,14 @@ describe('task 4 row V3: operation 108, the connection test of a registered came
 
   it('the answer: the members of operation 95 with the device in the place of the candidate; `authenticated` is always true; nothing else fits', () => {
     const schema = CaptureDeviceConnectionTestSchema;
-    expect(Object.keys(schema.shape)).toEqual(['deviceId', 'outcome', 'authenticated', 'testedAt', 'usableProfileCount', 'failedAttemptsRemaining', 'reason']);
+    // Rows PR, V7 (decision C117): + `profiles`, the closed word of what the test found about the camera's STORED profiles.
+    expect(Object.keys(schema.shape)).toEqual(['deviceId', 'outcome', 'authenticated', 'testedAt', 'usableProfileCount', 'failedAttemptsRemaining', 'reason', 'profiles']);
     const answer = { deviceId: 'CAM-01', outcome: 'REACHABLE', authenticated: true, testedAt: 1_790_000_000_000, usableProfileCount: 1, failedAttemptsRemaining: 2 };
     expect(schema.safeParse(answer).success).toBe(true);
+    expect(Object.values(CaptureDeviceTestProfiles)).toEqual(['PROFILES_STORED', 'STREAM_PROFILE_DIFFERS']);
+    for (const profiles of Object.values(CaptureDeviceTestProfiles)) expect(schema.safeParse({ ...answer, profiles }).success, profiles).toBe(true);
+    // A closed word: no agreement word, no code of a stream, no count, no list.
+    for (const profiles of ['PROFILES_AGREE', 'PROFILES_NOT_STORED', 'HEVC_1080P', 2, ['HEVC_1080P'], null]) expect(schema.safeParse({ ...answer, profiles }).success, String(profiles)).toBe(false);
     for (const outcome of Object.values(CaptureConnectionOutcome)) expect(schema.safeParse({ ...answer, outcome }).success, outcome).toBe(true);
     expect(schema.safeParse({ ...answer, outcome: 'AUTHENTICATION_FAILED', reason: 'SCHEME_NOT_ALLOWED' }).success).toBe(true);
     // What the server's function answers (`AdoptedCameraTest` of adopted-test.ts) is exactly this shape.

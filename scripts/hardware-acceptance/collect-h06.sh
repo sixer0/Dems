@@ -5,6 +5,12 @@
 #   --audit --audit-file FILE                                                              step .9
 # --at is a label of the reading (for step .7: 330, the seconds after the add of step .5; the USER
 # times it, the collector does not wait). Adding, removing and killing are steps of TECH and USER.
+# NAMES (wave 12, row C1; each checked against the product source on 2026-10-14): per action that
+# reaches the helper the Core writes ONE entry of intent, HOST_ALIAS_REQUESTED, and ONE of result:
+# HOST_ALIAS_ADDED or HOST_ALIAS_ADD_FAILED, HOST_ALIAS_REMOVED or HOST_ALIAS_REMOVE_FAILED
+# (apps/core-server/src/capture/host-alias/journal.ts). The reason of a removal is the member
+# `removeReason`, of a failed add `failureReason`, of an add `reason` (core/audit-details.ts); the
+# members reasonCode, code and phase were removed from the listing, no alias entry carries them.
 # Read-only. NOTHING HERE IS PROVEN ON A HOST: this is the instrument of the hardware package.
 set -eu
 HW_SCRIPT=collect-h06.sh
@@ -18,7 +24,7 @@ case "$0" in */*) HW_DIR=${0%/*} ;; *) HW_DIR=. ;; esac
 . "$HW_DIR/hw-collect-lib.sh"
 hw_init "$@"
 
-criterion '1. added: 2 of 2 (steps .1, .5), each with a valid_lft not above its lifetime in seconds; 2. removed on request: 1 of 1; 3. conflict refused: 1 of 1, address not added; 4. with the Core killed, the address is absent at 330 s: 1 of 1 (hypothesis H-S holds); 5. after the restart, temporary-address rows still open: 0; entries HOST_ALIAS_REMOVE_FAILED: 0; actions without an audit entry: 0.'
+criterion '1. added: 2 of 2 (steps .1, .5), each with a valid_lft not above its lifetime in seconds; 2. removed on request: 1 of 1; 3. conflict refused: 1 of 1, address not added; 4. with the Core killed, the address is absent at 330 s: 1 of 1 (hypothesis H-S holds); and the helper'"'"'s mark of it is dropped on request: the del of step .7a answered 0 OK with note=already-absent, mark files 0: 1 of 1; 5. after the restart, temporary-address rows still open: 0; entries HOST_ALIAS_REMOVE_FAILED: 0; actions that reached the helper without their entry of intent and their entry of result: 0.'
 case "$HW_MODE" in
   state)
     step '9A/H-06.2 (.3, .4, .5, .7)' SCRIPT 'ip -4 addr show dev <camera-interface> reduced to the count of addresses and the valid_lft figure of each; the count of files under /run/dems-core-netalias/marks; NoNewPrivs of the Core'"'"'s process'
@@ -49,21 +55,21 @@ case "$HW_MODE" in
     fi
     ;;
   audit)
-    step '9A/H-06.9' SCRIPT 'from the audit list, the count of entries of the types HOST_ALIAS_ADDED, HOST_ALIAS_REMOVED and HOST_ALIAS_REMOVE_FAILED since step .1, in order, each with its reason code; no address is printed'
-    expected 'entries in this order: added (.1), removed (.3), the conflict of .4 as the development'"'"'s record states it, added (.5), removed at the start of .8. HOST_ALIAS_REMOVE_FAILED: 0.'
+    step '9A/H-06.9' SCRIPT 'from the audit list, the count of entries of the types HOST_ALIAS_REQUESTED, HOST_ALIAS_ADDED, HOST_ALIAS_ADD_FAILED, HOST_ALIAS_REMOVED and HOST_ALIAS_REMOVE_FAILED since step .1, in order, each with its reason code; no address is printed'
+    expected 'per action one entry of intent (requested) and one of result, in this order: added (.1), removed (.3), add-failed for the conflict of .4, added (.5), removed at the start of .8. Counts: HOST_ALIAS_REQUESTED 5, HOST_ALIAS_ADDED 2, HOST_ALIAS_ADD_FAILED 1, HOST_ALIAS_REMOVED 2, HOST_ALIAS_REMOVE_FAILED 0.'
     user_step 'save the audit list since step .1 as a text file, one entry per line (the export of the web console, or its lines copied), and pass it with --audit-file'
     if hw_log_needed --audit-file "$HW_AUDIT"; then
-      hw_count 'audit list' "${HW_AUDIT:-<audit>}" HOST_ALIAS_ADDED HOST_ALIAS_REMOVED HOST_ALIAS_REMOVE_FAILED
+      hw_count 'audit list' "${HW_AUDIT:-<audit>}" HOST_ALIAS_REQUESTED HOST_ALIAS_ADDED HOST_ALIAS_ADD_FAILED HOST_ALIAS_REMOVED HOST_ALIAS_REMOVE_FAILED
       if [ "$HW_DRY" = 1 ]; then
-        hw_line '   would-list: the three types in the order of the file, each with its reason code (reason, reasonCode or code); no address'
+        hw_line '   would-list: the five types in the order of the file, each with its reason code (removeReason, failureReason or reason) and, for an entry of intent, its action; no address'
       else
         HW_READ_COUNT=$((HW_READ_COUNT + 1))
         # shellcheck disable=SC2016
         awk "$HW_AWK_JSON"'
-          { t = ""; if (index($0, "HOST_ALIAS_REMOVE_FAILED")) t = "HOST_ALIAS_REMOVE_FAILED"; else if (index($0, "HOST_ALIAS_REMOVED")) t = "HOST_ALIAS_REMOVED"; else if (index($0, "HOST_ALIAS_ADDED")) t = "HOST_ALIAS_ADDED" }
-          t != "" { c++; r = jget($0, "reason"); if (r == "") r = jget($0, "reasonCode"); if (r == "") r = jget($0, "code"); print c ": " t " reason=" safe(r) " phase=" safe(jget($0, "phase")) }' "$HW_AUDIT" | while IFS= read -r line; do hw_line "      in order | $line"; done
+          { t = ""; if (index($0, "HOST_ALIAS_REMOVE_FAILED")) t = "HOST_ALIAS_REMOVE_FAILED"; else if (index($0, "HOST_ALIAS_REMOVED")) t = "HOST_ALIAS_REMOVED"; else if (index($0, "HOST_ALIAS_ADD_FAILED")) t = "HOST_ALIAS_ADD_FAILED"; else if (index($0, "HOST_ALIAS_ADDED")) t = "HOST_ALIAS_ADDED"; else if (index($0, "HOST_ALIAS_REQUESTED")) t = "HOST_ALIAS_REQUESTED" }
+          t != "" { c++; r = jget($0, "removeReason"); if (r == "") r = jget($0, "failureReason"); if (r == "") r = jget($0, "reason"); print c ": " t " reason=" safe(r) " action=" safe(jget($0, "action")) }' "$HW_AUDIT" | while IFS= read -r line; do hw_line "      in order | $line"; done
       fi
-      confirm 'the form of the saved audit list and the field that holds the reason code; the number of entries per action (intent and result) is the one the closing report states'
+      confirm 'the form of the saved audit list (a note file written by OPER, chapter 1 section 9.5, holds the type and one code per line; the member names read here are those of a stored entry); whether the boot sweep writes its pair when the kernel has already removed the address'
     fi
     ;;
 esac

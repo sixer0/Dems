@@ -38,6 +38,7 @@ import { StatusChip } from '@/components/kit';
 import { withAlpha } from '@/components/media/color';
 import { REDUCED_FADE_MS, useMotionPolicy } from '@/motion';
 import { PendingSpinner, busyState } from '@/runtime';
+import { cameraAssignmentOf, profileWords, type CameraAssignment } from './camera-profile';
 import { developmentSourceOf, type DevelopmentSourceKind } from './capture-notices-model';
 import { cameraLineStatus, micLineCommand, micOptionRefusal, type CameraOption, type MicOption, type SelectorCommand } from './capture-selector-model';
 import { MicrophoneLimitLine, SourceBadge } from './development-source-badge';
@@ -138,12 +139,38 @@ function SheetBody({ request, busy, pending, onSave, onClose }: SheetBodyProps) 
   const [draft, setDraft] = useState<string | null>(current);
   const track = request.kind === 'camera' ? t(`features.capture-selector.selector.track.${request.trackId}`) : '';
   // What Save would send; null when the draft is what the Core holds, or a choice the selector refuses.
+  // Task 4 row W5 (review 060d Q-02; decision C36; `camera-profile.ts`): a PRODUCTION camera on a Core in real capture
+  // is assigned with one of its STORED stream profiles - offered with what each is, chosen by the operator, sent with
+  // the assignment. Any other camera (`PLAIN`) is assigned exactly as before. `reported` is present on a Core in real capture.
+  const draftCamera = request.kind === 'camera' && draft !== null ? request.options.find((option) => option.deviceId === draft) : undefined;
+  const heldProfile = request.kind === 'camera' && draftCamera !== undefined && draftCamera.assignedTo === request.trackId ? (draftCamera.lineProfile ?? null) : null;
+  const assignment: CameraAssignment =
+    request.kind === 'camera' && draftCamera !== undefined
+      ? cameraAssignmentOf({ realCapture: request.reported !== undefined, adapter: draftCamera.adapter, profiles: draftCamera.profiles ?? [], heldProfile })
+      : { kind: 'PLAIN' };
+  // The operator's own choice of a profile, for the camera it was made for; another camera starts from its own preselection.
+  const [profileDraft, setProfileDraft] = useState<{ readonly deviceId: string; readonly profile: string } | null>(null);
+  const profile =
+    assignment.kind !== 'CHOOSE'
+      ? null
+      : profileDraft !== null && profileDraft.deviceId === draft && assignment.profiles.includes(profileDraft.profile)
+        ? profileDraft.profile
+        : assignment.preselected;
+  const cameraCommand = (trackId: VideoTrackId, deviceId: string): SelectorCommand | null => {
+    if (assignment.kind === 'PLAIN') return deviceId === current ? null : { kind: 'camera', trackId, deviceId };
+    // Nothing is sent for a production camera without a chosen profile: the Core would refuse it and never picks one.
+    if (assignment.kind === 'NO_PROFILE' || profile === null) return null;
+    // The camera the track holds with the profile it holds: no change. Another of its profiles is an edit.
+    return deviceId === current && profile === heldProfile ? null : { kind: 'camera', trackId, deviceId, profile };
+  };
   const command: SelectorCommand | null =
-    draft === null || draft === current
+    draft === null
       ? null
       : request.kind === 'camera'
-        ? { kind: 'camera', trackId: request.trackId, deviceId: draft }
-        : micLineCommand(request.role, draft, { mics: request.options.flatMap((option) => (option.role === null ? [] : [{ inputId: option.deviceId, role: option.role }])) });
+        ? cameraCommand(request.trackId, draft)
+        : draft === current
+          ? null
+          : micLineCommand(request.role, draft, { mics: request.options.flatMap((option) => (option.role === null ? [] : [{ inputId: option.deviceId, role: option.role }])) });
   const unchanged = command === null;
   const sheetKey = request.kind === 'camera' ? 'camera' : request.role === 'PRIMARY' ? 'mic' : 'standbyMic';
 
@@ -225,6 +252,40 @@ function SheetBody({ request, busy, pending, onSave, onClose }: SheetBodyProps) 
               );
             })}
       </ListGroup>
+      {/* Row W5 (Q-02): the stored stream profiles of the chosen production camera, each by what it is. ONE stored
+          profile is preselected and still shown; for a camera the Core holds no profile for, the sentence says why. */}
+      {assignment.kind === 'PLAIN' || draft === null ? null : (
+        <View testID="capture-source-profiles" style={styles.profiles}>
+          <Text maxFontSizeMultiplier={1.2} style={styles.title}>
+            {t('features.capture-selector.selector.cameraProfile.title')}
+          </Text>
+          <Text maxFontSizeMultiplier={1.2} style={assignment.kind === 'NO_PROFILE' ? styles.warning : styles.detail} testID="capture-source-profile-hint">
+            {assignment.kind === 'NO_PROFILE'
+              ? t('features.capture-selector.selector.cameraProfile.none')
+              : assignment.profiles.length === 1
+                ? t('features.capture-selector.selector.cameraProfile.one')
+                : t('features.capture-selector.selector.cameraProfile.choose', { count: assignment.profiles.length })}
+          </Text>
+          {assignment.kind === 'CHOOSE' ? (
+            <ListGroup variant="transparent" accessibilityRole="radiogroup" accessibilityLabel={t('features.capture-selector.selector.cameraProfile.title')}>
+              {assignment.profiles.map((code) => (
+                <OptionRow
+                  key={code}
+                  id={code}
+                  testID={`capture-source-profile-${code}`}
+                  icon="camera"
+                  title={profileWords(t, code)}
+                  detail=""
+                  chip={null}
+                  selected={profile === code}
+                  disabled={busy}
+                  onPress={(chosen) => setProfileDraft({ deviceId: draft, profile: chosen })}
+                />
+              ))}
+            </ListGroup>
+          ) : null}
+        </View>
+      )}
       <View style={styles.actions}>
         <Button variant="outline" isDisabled={busy} onPress={onClose} testID="capture-source-cancel">
           <Button.Label>{t('common.actions.cancel')}</Button.Label>
@@ -265,15 +326,17 @@ interface OptionRowProps {
   selected: boolean;
   disabled: boolean;
   onPress: (id: string) => void;
+  /** Row W5: the test id of a row that is no source (a stream profile); default `capture-source-option-<id>`. */
+  testID?: string;
 }
 
-function OptionRow({ id, icon, title, detail, chip, source = null, refusal = null, warning = null, selected, disabled, onPress }: OptionRowProps) {
+function OptionRow({ id, icon, title, detail, chip, source = null, refusal = null, warning = null, selected, disabled, onPress, testID }: OptionRowProps) {
   const Icon = icon === 'camera' ? Camera : Mic;
   const hint = refusal ?? warning;
   return (
     <View style={styles.wrap}>
       <ListGroup.Item
-        testID={`capture-source-option-${id}`}
+        testID={testID ?? `capture-source-option-${id}`}
         accessibilityRole="radio"
         // Fix wave J (JA2-16 / N-10): a radio row exposes its CHECKED state (not only `selected`).
         accessibilityState={{ selected, checked: selected, disabled }}
@@ -329,6 +392,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing[2], marginBottom: spacing[2] },
   headerText: { flex: 1, gap: spacing[0] },
   wrap: { position: 'relative', marginBottom: spacing[1] },
+  profiles: { marginTop: spacing[1], gap: spacing[1] },
   item: { borderRadius: radius.px.lg, paddingVertical: spacing[1], paddingHorizontal: spacing[1], gap: spacing[2], ...ROW_CARD_BORDER },
   itemSelected: { borderColor: palette.gold, backgroundColor: withAlpha(palette.gold, 0.06) },
   content: { flex: 1, minWidth: 0, gap: 2 },

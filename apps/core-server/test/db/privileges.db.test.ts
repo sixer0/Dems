@@ -3,7 +3,7 @@
 // The expected matrix below is written from the table of contract §7.3, not from the migration
 // file. T-PV-1 compares it with the catalog (`has_table_privilege`, `has_column_privilege`) and
 // then with LIVE statements as `dems_app`: for every table one SELECT, INSERT, DELETE and
-// TRUNCATE, and one UPDATE for each of the 497 columns. The statements match no row
+// TRUNCATE, and one UPDATE for each of the 498 columns. The statements match no row
 // (`WHERE false`), so an allowed one changes nothing; a privilege is checked before any row is
 // looked at, so a forbidden one fails with 42501 all the same.
 import type { Pool } from 'pg';
@@ -151,7 +151,8 @@ const MATRIX: Readonly<Record<string, Grant>> = {
   //    address, reason, who added it and when) is never rewritten; no DELETE. ──
   capture_network_config: {
     insert: true,
-    update: ['interface_name', 'camera_subnet', 'factory_addresses', 'alias_host', 'alias_minutes', 'camera_ip_start', 'revision', 'updated_by', 'updated_at'],
+    // `onvif_ports` since schema v14 (`0031`): the same rule, every column but the key.
+    update: ['interface_name', 'camera_subnet', 'factory_addresses', 'alias_host', 'alias_minutes', 'camera_ip_start', 'revision', 'updated_by', 'updated_at', 'onvif_ports'],
   },
   host_network_aliases: {
     insert: true,
@@ -223,7 +224,7 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
     expect(rows).toEqual(expected);
   });
 
-  it('catalog: for each of the 497 columns, has_column_privilege(UPDATE) equals the matrix', async () => {
+  it('catalog: for each of the 498 columns, has_column_privilege(UPDATE) equals the matrix', async () => {
     const { rows } = await owner.query<{ table_name: string; column_name: string; can_update: boolean }>(
       `SELECT c.relname::text AS table_name, a.attname::text AS column_name,
               has_column_privilege('dems_app', c.oid, a.attnum, 'UPDATE') AS can_update
@@ -231,11 +232,11 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
         WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' AND a.attnum > 0 AND NOT a.attisdropped
         ORDER BY 1, a.attnum`,
     );
-    expect(rows).toHaveLength(497);
+    expect(rows).toHaveLength(498);
     const wrong = rows.filter((row) => row.can_update !== mayUpdate(row.table_name, row.column_name));
     expect(wrong).toEqual([]);
     const granted = rows.filter((row) => row.can_update).length;
-    console.info(`[w17] T-PV-1: UPDATE is granted on ${granted} of 497 columns (30 of them are every column of active_session, 14 every column of stt_config)`);
+    console.info(`[w17] T-PV-1: UPDATE is granted on ${granted} of 498 columns (30 of them are every column of active_session, 14 every column of stt_config)`);
   });
 
   it('LIVE as dems_app: SELECT, INSERT, DELETE and TRUNCATE on every table behave as the matrix says', async () => {
@@ -281,7 +282,7 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
     await expectRefused(() => app.query('SELECT secret_ciphertext FROM public.capture_device_credentials'), SQLSTATE.insufficientPrivilege);
   });
 
-  it('catalog + LIVE: has_column_privilege(SELECT) equals the matrix on all 497 columns; of the credential store only device_id is readable (0010, PE-129a-01)', async () => {
+  it('catalog + LIVE: has_column_privilege(SELECT) equals the matrix on all 498 columns; of the credential store only device_id is readable (0010, PE-129a-01)', async () => {
     const { rows } = await owner.query<{ table_name: string; column_name: string; can_select: boolean }>(
       `SELECT c.relname::text AS table_name, a.attname::text AS column_name,
               has_column_privilege('dems_app', c.oid, a.attnum, 'SELECT') AS can_select
@@ -289,7 +290,7 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
         WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' AND a.attnum > 0 AND NOT a.attisdropped
         ORDER BY 1, a.attnum`,
     );
-    expect(rows).toHaveLength(497);
+    expect(rows).toHaveLength(498);
     expect(rows.filter((row) => row.can_select !== readable(row.table_name, row.column_name))).toEqual([]);
     // The unreadable columns of the whole schema are exactly these nine: six of T-33, three of T-40.
     expect(rows.filter((row) => !row.can_select).map((row) => `${row.table_name}.${row.column_name}`).sort()).toEqual([
@@ -312,7 +313,7 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
     await expectRefused(() => app.query('SELECT * FROM public.capture_device_credentials'), SQLSTATE.insufficientPrivilege);
   });
 
-  it('LIVE as dems_app: one UPDATE per column, 497 statements; allowed exactly where the matrix grants it', async () => {
+  it('LIVE as dems_app: one UPDATE per column, 498 statements; allowed exactly where the matrix grants it', async () => {
     const wrong: string[] = [];
     let allowed = 0;
     let refused = 0;
@@ -334,7 +335,7 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
       }
     }
     expect(wrong).toEqual([]);
-    expect(allowed + refused).toBe(497);
+    expect(allowed + refused).toBe(498);
     console.info(`[w17] T-PV-1 live: ${allowed} column UPDATEs allowed, ${refused} refused with 42501, 0 unexpected`);
   });
 

@@ -18,7 +18,7 @@ import { BootError } from '../../plugins/readiness';
 import { changedSlices } from '../delta';
 import { EngineError } from '../errors';
 import { FIXED_NOW, engineApp, seedScenario, stateChanges, storedSlices, tableCounts, type EngineApp, manualTimer } from './support';
-import { SecuritySliceSchema, CORE_NOT_RUNNING_FAULT_EXAMPLE, SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE } from '@dems/shared/api';
+import { CamerasSliceSchema, SecuritySliceSchema, CORE_NOT_RUNNING_FAULT_EXAMPLE, SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE } from '@dems/shared/api';
 import { captureLog, unitTestConfig } from '../../../test/support/config';
 import { buildApp } from '../../app';
 import { realBootFixture } from '../../capture/boot/__tests__/support';
@@ -982,6 +982,8 @@ describe('G75b-03, G75b-06: a restart while RECORDING, on a booted Core in real 
     it('REAL capture: the stored fault row says the Core was not running (kind and fromState unchanged), and the served state says the platform is not reported', async () => {
       const target = await db.another({ template: 'seed', slug: 'passj_restart_real' });
       const { sessionId, closedAt, rows } = await closedWhileRecording(target);
+      // Row CB: the `cameras` row the first (simulated) process left, read before the real start.
+      const camerasBefore = (await target.ownerPool().query<{ cameras: { id: string; deviceId: string; name: string; resolution: string | null; fps: number | null; codec: string | null; bitrateMbps: number | null }[] }>('SELECT cameras FROM public.hardware_snapshot')).rows[0]?.cameras ?? [];
 
       const log = captureLog();
       const app = buildApp({
@@ -1017,6 +1019,19 @@ describe('G75b-03, G75b-06: a restart while RECORDING, on a booted Core in real 
       expect(SecuritySliceSchema.safeParse(state.security).success).toBe(true);
       expect(state.time.hostClock).toBe(true);
 
+      // Wave 12, row CB (review 060c finding R-01; decision C36): the state of a Core in real capture states NO bitrate
+      // of a camera - the `cameras` slice the state stream and operation 47 serve, and the row this start stored. The
+      // first process (simulated) left the simulator's 9 in that row; nothing of a real camera ever stated it.
+      // Seen RED on: the camera-bitrate block of the start taken out of `engine/host.ts` (the slice then reads [9, 9]).
+      expect(state.cameras.map((camera) => camera.bitrateMbps)).toEqual([null, null]);
+      expect(CamerasSliceSchema.safeParse(state.cameras).success).toBe(true);
+      expect(app.engine.slice('cameras').map((camera) => camera.bitrateMbps)).toEqual([null, null]);
+      const storedCameras = (await target.ownerPool().query<{ cameras: { bitrateMbps: number | null }[] }>('SELECT cameras FROM public.hardware_snapshot')).rows;
+      expect(storedCameras.map((row) => row.cameras.map((camera) => camera.bitrateMbps))).toEqual([[null, null]]);
+      // The number it replaced was the simulator's, and the stream facts of a track did not move with it.
+      expect(camerasBefore.map((camera) => camera.bitrateMbps)).toEqual([9, 9]);
+      expect(state.cameras.map((camera) => [camera.id, camera.deviceId, camera.name, camera.resolution, camera.fps, camera.codec])).toEqual(camerasBefore.map((camera) => [camera.id, camera.deviceId, camera.name, camera.resolution, camera.fps, camera.codec]));
+
       const trail = await readTrail(target.ownerPool());
       expect(linkProblems(trail)).toEqual([]);
       expect(verifyTrail(trail, await readHead(target.ownerPool())).ok).toBe(true);
@@ -1035,6 +1050,10 @@ describe('G75b-03, G75b-06: a restart while RECORDING, on a booted Core in real 
       expect(raised[0]?.details).not.toHaveProperty('coreNotRunning');
       expect(second.engine.slice('security')).not.toHaveProperty('platformNotReported');
       expect(second.engine.slice('security')).toMatchObject({ posture: 'SECURE', tpm: { ok: true }, secureBoot: true });
+      // Row CB (R-01), the control: a SIMULATED Core keeps the simulator's own bitrate, in the state and in the stored row.
+      expect(second.engine.slice('cameras').map((camera) => camera.bitrateMbps)).toEqual([9, 9]);
+      const storedCameras = (await target.ownerPool().query<{ cameras: { bitrateMbps: number | null }[] }>('SELECT cameras FROM public.hardware_snapshot')).rows;
+      expect(storedCameras.map((row) => row.cameras.map((camera) => camera.bitrateMbps))).toEqual([[9, 9]]);
     });
   });
 });

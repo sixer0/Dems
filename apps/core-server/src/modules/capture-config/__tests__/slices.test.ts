@@ -356,3 +356,27 @@ describe('an unassigned selector slot is an absent line, and the boot step passe
     expect(sinks.lines.filter((line) => line.level === 'error')).toHaveLength(2);
   });
 });
+
+// Task 4 row V7d (decisions C126 (b), C141; request line 568 of row V7c): the two builders state a REGISTERED camera's
+// stream as the row layer does (`db/mapping/rows.ts`): null - NOT READ - at rest, whatever its `enabled` flag; only the
+// built-in cameras of the demonstration model keep LIVE / LOST from the flag (the cases above, unedited). Mutations: v7d_op44_not_read.md.
+describe('row V7d: a registered camera is NOT READ (null) on both slices the builders make, never LIVE / LOST from `enabled`', () => {
+  const registered = (enabled: boolean): CaptureDeviceRecord => ({ id: 'CAM-07', kind: 'CAMERA', transport: 'RTSP', model: null, firmware: null, address: '192.0.2.17', poePort: null, enabled });
+
+  it('on its selector line and on its registry entry, enabled or not; CONTROL: the built-in CAM-01 beside it keeps LIVE, and LOST when disabled', () => {
+    for (const enabled of [true, false]) {
+      const devices = [...seededDevices.map((device) => (device.id === 'CAM-01' ? { ...device, enabled } : device)), registered(enabled)];
+      const config = captureConfigSliceOf({ ...seededConfig, video02DeviceId: 'CAM-07' }, devices, false);
+      expect(config.cameras.map((line) => [line.trackId, line.deviceId, line.online, line.streamState]), `enabled ${enabled}`).toEqual([
+        ['VIDEO-01', 'CAM-01', enabled, enabled ? 'LIVE' : 'LOST'],
+        ['VIDEO-02', 'CAM-07', enabled, null],
+      ]);
+      const entries = captureDevicesSliceOf(devices).devices.filter((device) => device.kind === 'CAMERA');
+      expect(entries.map((device) => [device.id, device.online, device.streamState]), `enabled ${enabled}`).toEqual([
+        ['CAM-01', enabled, enabled ? 'LIVE' : 'LOST'],
+        ['CAM-02', true, 'LIVE'],
+        ['CAM-07', enabled, null],
+      ]);
+    }
+  });
+});

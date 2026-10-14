@@ -528,12 +528,13 @@ describe('the codec is judged from the stream, not from the ONVIF answer (amendm
       expect(message.includes('ingest')).toBe(false);
     }
 
-    // A camera that is not stored yet has no judged source: no trailing argument at all, and no member of the message.
+    // A camera that is not stored yet has no judged source. Finding E-02 (review 60e): the two ONVIF facades REQUIRE the
+    // argument, so it is STATED to them - `undefined`, as the host routes - and never left out; still no member of the message.
     const unbound = rig();
     await run(unbound, reportsAndEnds(probeLine()));
     expect(unbound.dials).toEqual([
-      { call: 'test', given: 3, sourceAddress: undefined },
-      { call: 'locate', given: 4, sourceAddress: undefined },
+      { call: 'test', given: 4, sourceAddress: undefined },
+      { call: 'locate', given: 5, sourceAddress: undefined },
     ]);
     expect(Object.keys(JSON.parse(startMessageBytes(unbound.children[0]!.options.message!).toString('utf8')) as Record<string, unknown>)).toEqual(['type', 'mode', 'attempt', 'access']);
   });

@@ -189,6 +189,37 @@ export async function readCameraProfiles(reader: CaptureStoreReader): Promise<Re
   return byCamera;
 }
 
+/**
+ * THE PROFILE CODES THAT HAVE A STORED STREAM ROW (`capture_device_streams`; task 4 row S86a,
+ * caution C-1 of the security review row 86, decision C127). The camera adapter's open reads the
+ * stream row of the assigned code and refuses a code without one (`CAPTURE_PROFILE_UNKNOWN`, before
+ * the reveal); the assignment of a production camera now asks the same table, so such a code - a
+ * raw camera token in code form (C61) or a listed code no stream stated - is refused at assignment,
+ * not at the start. Only the key columns: no token, no address, no credential table, no parameter.
+ */
+export const READ_CAMERA_STREAM_PROFILES = 'SELECT s.device_id AS id, s.profile FROM public.capture_device_streams s';
+
+interface CameraStreamProfileRow {
+  readonly id: unknown;
+  readonly profile: unknown;
+}
+
+/**
+ * By camera, the profile codes that have a stored stream row. A row whose key is no text states
+ * nothing (FAIL CLOSED: a camera this map does not hold has no code with a stream row).
+ */
+export async function readCameraStreamProfiles(reader: CaptureStoreReader): Promise<ReadonlyMap<string, ReadonlySet<string>>> {
+  const { rows } = await reader.query<CameraStreamProfileRow>(READ_CAMERA_STREAM_PROFILES);
+  const byCamera = new Map<string, Set<string>>();
+  for (const row of rows) {
+    if (typeof row.id !== 'string' || typeof row.profile !== 'string') continue;
+    const codes = byCamera.get(row.id) ?? new Set<string>();
+    codes.add(row.profile);
+    byCamera.set(row.id, codes);
+  }
+  return byCamera;
+}
+
 /** Creates the store. One instance per app; the boot step of the module loads it. */
 export function createCaptureConfigStore(): CaptureConfigStore {
   let current: CaptureSnapshot | null = null;

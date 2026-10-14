@@ -217,11 +217,13 @@ describe('the forms: no looser than the Core\'s destination rule', () => {
     for (const subnet of ['192.168.10.0', '192.168.10.0/15', '192.168.10.0/31', '192.168.10.0/32', '192.168.10.0/8', '8.8.8.0/24', '127.0.0.0/24', '192.168.010.0/24', '192.168.10.0/024', 'fe80::/64', '192.168.10.0/24 ', 'lan/24', '']) {
       expect(CAPTURE_CAMERA_SUBNET_PATTERN.test(subnet), JSON.stringify(subnet)).toBe(false);
     }
-    for (const name of ['enp3s0', 'eth1', 'br-cam', 'eno1.20', 'a', 'x'.repeat(15)]) expect(CAPTURE_INTERFACE_NAME_PATTERN.test(name), name).toBe(true);
-    for (const name of ['', 'Eth1', '-eth', 'eth 1', 'eth1;reboot', '../eth1', 'x'.repeat(16), 'eth1\n']) expect(CAPTURE_INTERFACE_NAME_PATTERN.test(name), JSON.stringify(name)).toBe(false);
-    expect(CAPTURE_NETWORK_CONFIG_LIMITS).toEqual({ factoryAddressesMax: 32, aliasHostMin: 2, aliasHostMax: 254, aliasMinutesMin: 5, aliasMinutesMax: 480, cameraIpStartMin: 2, cameraIpStartMax: 250 });
-    expect(CAPTURE_NETWORK_CONFIG_DEFAULTS).toEqual({ factoryAddresses: ['192.168.1.64', '192.168.1.108', '192.168.0.90', '192.168.1.13'], aliasHost: 253, aliasMinutes: 30, cameraIpStart: 101 });
-    expect([...CAPTURE_NETWORK_CONFIG_FIELDS]).toEqual(['interfaceName', 'cameraSubnet', 'factoryAddresses', 'aliasHost', 'aliasMinutes', 'cameraIpStart']);
+    // Row V7b (F-4, C114): the widened form of schema version 14 - letters of either case, as the alias helper's own rule.
+    for (const name of ['enp3s0', 'eth1', 'br-cam', 'eno1.20', 'a', 'x'.repeat(15), 'Eth1', 'en0_CAM', 'A', 'Z9.x-y_']) expect(CAPTURE_INTERFACE_NAME_PATTERN.test(name), name).toBe(true);
+    for (const name of ['', '-eth', '_eth', '.eth', 'eth 1', 'eth1;reboot', '../eth1', 'x'.repeat(16), 'X'.repeat(16), 'eth1\n', 'eth/1', 'eth:1', 'éth1']) expect(CAPTURE_INTERFACE_NAME_PATTERN.test(name), JSON.stringify(name)).toBe(false);
+    expect(CAPTURE_INTERFACE_NAME_PATTERN.source).toBe('^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$');
+    expect(CAPTURE_NETWORK_CONFIG_LIMITS).toEqual({ factoryAddressesMax: 32, aliasHostMin: 2, aliasHostMax: 254, aliasMinutesMin: 5, aliasMinutesMax: 480, cameraIpStartMin: 2, cameraIpStartMax: 250, onvifPortsMin: 1, onvifPortsMax: 8, onvifPortMin: 1, onvifPortMax: 65535 });
+    expect(CAPTURE_NETWORK_CONFIG_DEFAULTS).toEqual({ factoryAddresses: ['192.168.1.64', '192.168.1.108', '192.168.0.90', '192.168.1.13'], aliasHost: 253, aliasMinutes: 30, cameraIpStart: 101, onvifPorts: [80] });
+    expect([...CAPTURE_NETWORK_CONFIG_FIELDS]).toEqual(['interfaceName', 'cameraSubnet', 'factoryAddresses', 'aliasHost', 'aliasMinutes', 'cameraIpStart', 'onvifPorts']);
     const update = (change: Record<string, unknown>) => CaptureNetworkConfigUpdateRequestSchema.safeParse({ revision: 1, ...change }).success;
     expect(update({})).toBe(true);
     expect(update({ interfaceName: 'enp3s0', cameraSubnet: '192.168.10.0/24' })).toBe(true);
@@ -243,6 +245,44 @@ describe('the forms: no looser than the Core\'s destination rule', () => {
     for (const mac of ['aa:bb:cc:00:11:22', 'AA-BB-CC-00-11-22', 'AABBCC001122', 'AA:BB:CC:00:11', '']) expect(CAPTURE_MAC_ADDRESS_PATTERN.test(mac), mac).toBe(false);
     expect(CAMERA_NETWORK_JOB_ID_PATTERN.test('CNJ-000001')).toBe(true);
     for (const id of ['CNJ-1', 'cnj-000001', 'CAM-01', '192.168.1.64', '']) expect(CAMERA_NETWORK_JOB_ID_PATTERN.test(id), id).toBe(false);
+  });
+
+  it('row V7b (S2-02, C116): the allowed ONVIF ports - the two CHECKs of `onvif_ports` as a form, each bound held; the answer states the list', () => {
+    const update = (onvifPorts: unknown) => CaptureNetworkConfigUpdateRequestSchema.safeParse({ revision: 1, onvifPorts }).success;
+    // Each bound, at it and one past it. SEEN RED: `.min(onvifPortsMin)` removed ([] passed); `.max(onvifPortsMax)` -> 9 (nine ports passed); the distinct refine removed ([80, 80] passed); `onvifPortMax` 65535 -> 65536.
+    expect(update([80])).toBe(true);
+    expect(update([])).toBe(false);
+    expect(update([1, 2, 3, 4, 5, 6, 7, 8])).toBe(true);
+    expect(update([1, 2, 3, 4, 5, 6, 7, 8, 9])).toBe(false);
+    expect(update([1])).toBe(true);
+    expect(update([0])).toBe(false);
+    expect(update([65535])).toBe(true);
+    expect(update([65536])).toBe(false);
+    expect(update([-80])).toBe(false);
+    // No port twice; a whole number only (the schema is stricter than the CHECK, which takes 80.0 as 80); a number, not its text; no null.
+    expect(update([80, 8080, 80])).toBe(false);
+    expect(update([80.5])).toBe(false);
+    expect(update(['80'])).toBe(false);
+    expect(update(null)).toBe(false);
+    expect(update(80)).toBe(false);
+    // The order is kept as written: the first is the port of an address that names none.
+    expect(CaptureNetworkConfigUpdateRequestSchema.parse({ revision: 1, onvifPorts: [8080, 80, 554] }).onvifPorts).toEqual([8080, 80, 554]);
+    // Absent: the stored list stays (the member is optional in the request, required in the answer).
+    expect(update(undefined)).toBe(true);
+    const answer = simCaptureNetworkConfig();
+    expect(answer.onvifPorts).toEqual([80]);
+    expect(CaptureNetworkConfigSchema.safeParse(answer).success).toBe(true);
+    const { onvifPorts: _dropped, ...withoutPorts } = answer;
+    expect(CaptureNetworkConfigSchema.safeParse(withoutPorts).success).toBe(false);
+    expect(CaptureNetworkConfigSchema.safeParse({ ...answer, onvifPorts: [80, 80] }).success).toBe(false);
+    // The open document states the bounds a client validates against.
+    const schemas = createOpenApiDocument({ scope: 'all' }).components.schemas as Record<string, { properties?: Record<string, { minItems?: number; maxItems?: number; items?: { minimum?: number; maximum?: number; type?: string } }>; required?: string[] }>;
+    for (const name of ['CaptureNetworkConfig', 'CaptureNetworkConfigUpdateRequest']) {
+      const member = schemas[name]?.properties?.['onvifPorts'];
+      expect([member?.minItems, member?.maxItems, member?.items?.minimum, member?.items?.maximum, member?.items?.type], name).toEqual([1, 8, 1, 65535, 'integer']);
+    }
+    expect(schemas['CaptureNetworkConfig']?.required).toContain('onvifPorts');
+    expect(schemas['CaptureNetworkConfigUpdateRequest']?.required ?? []).not.toContain('onvifPorts');
   });
 });
 

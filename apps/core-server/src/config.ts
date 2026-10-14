@@ -26,7 +26,7 @@
  * development fence. `DEMS_CAPTURE_DEV_FAKE_MIC` (`tone`, the default, or `speech`): what the first
  * generated test microphone plays. What a start refuses for it is the capture fence's decision.
  * WAIVED EDIT (task 3, fix wave H closing pass Z1, decision D207): the installation identity of the
- * Core. `DEMS_INSTALLATION_DEVICE_ID` (a device id, e.g. `DEMS-IR-01`) and `DEMS_INSTALLATION_NAME`
+ * Core. `DEMS_INSTALLATION_DEVICE_ID` (a device id, e.g. `DEMS-SITE-21`) and `DEMS_INSTALLATION_NAME`
  * (a display name) are what the signed manifest of a sealed recording states as its device. Read
  * once, at start. Whether a start without them is refused is the sealing host's decision.
  * WAIVED EDIT (task 4 row 21, work package WP-02; the category of OD-14): the two program paths of
@@ -310,7 +310,7 @@ export function parseCaptureDevFakeMic(raw: string | undefined): CaptureDevFakeM
   return source;
 }
 
-/** A device id of the contract's form (`DEMS-IR-01`), or null when the variable is unset. Any other value stops the boot. */
+/** A device id of the contract's form (`DEMS-SITE-21`), or null when the variable is unset. Any other value stops the boot. */
 export function parseInstallationDeviceId(raw: string | undefined): string | null {
   if (raw === undefined || raw === '') return null;
   if (!/^[A-Z][A-Z0-9-]{0,31}$/.test(raw)) throw new ConfigError('INSTALLATION_DEVICE_ID_INVALID', `${ENV_INSTALLATION_DEVICE_ID} must be a device id: a capital letter, then capitals, digits or hyphens, 32 characters at most.`);

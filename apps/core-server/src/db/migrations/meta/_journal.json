@@ -211,6 +211,20 @@
       "when": 1791883047288,
       "tag": "0029_alias_removal_reason_unconfirmed_privileges",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1791944690296,
+      "tag": "0030_network_config_onvif_ports",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791944690680,
+      "tag": "0031_network_config_onvif_ports_privileges",
+      "breakpoints": true
     }
   ]
 }

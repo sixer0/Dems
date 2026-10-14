@@ -25,9 +25,16 @@ step '9A/H-11.5' SCRIPT 'for CAM-A: the count of loss faults raised and cleared,
 expected 'for CAM-A: 1 fault raised, 1 cleared; attempts at the intervals of the relay'"'"'s rule; 1 file for the track with 1 gap whose length equals the outage within 5 s; decode error lines 0; reveals of the session: 2. For CAM-B: 0 faults, 0 gaps.'
 user_step 'OPER reads in the web console and notes: the state (sealed) and the failed verification items (0)'
 if hw_log_needed --core-log "$HW_CORE_LOG"; then
-  hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_FAULT time deviceId reason state
-  hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_FAULT CAMERA_STREAM_ENDED CAPTURE_FAULT_CLEARED RELAY_CONNECT_ATTEMPT RELAY_GAVE_UP
-  confirm 'the codes of a loss fault raised and cleared and of the relay'"'"'s connection attempts with their instants; the relay'"'"'s bound for giving a camera up (open point D of chapter 3)'
+  # NAMES (wave 12, row C1; each checked against the product source on 2026-10-14): the Core's fault
+  # line of the supervisor carries code, sessionId, correlationId and reason (capture/index.ts); a
+  # fault that is over is the line CAPTURE_SUPERVISOR_FAULT_OVER. Removed, the product never emitted
+  # them: CAPTURE_FAULT_CLEARED, RELAY_CONNECT_ATTEMPT, RELAY_GAVE_UP, and the fields time, deviceId
+  # and state of the fault line. The relay states a loss and a re-open as the report lines
+  # camera_lost and camera_reopened on its own output; the Core reads them and raises and clears the
+  # camera's fault, and writes no log line of its own for an attempt.
+  hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_FAULT sessionId reason
+  hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_FAULT CAMERA_STREAM_ENDED CAMERA_UNREACHABLE CAPTURE_SUPERVISOR_FAULT_OVER CAPTURE_RELAY_REPORT_SUPERSEDED CAPTURE_WORKER_DOWN
+  confirm 'where the camera'"'"'s fault raised and cleared, and the instants of the relay'"'"'s re-open tries, can be read on a host: the audit extract of the session is the first place; the Core log holds no line per try, so "attempts" is recorded as "not readable" unless the extract states them'
 fi
 if hw_log_needed --worker-log "$HW_WORKER_LOG"; then
   hw_fields 'worker log' "${HW_WORKER_LOG:-<worker-log>}" ingest_connected ts_us port codec
@@ -35,7 +42,8 @@ if hw_log_needed --worker-log "$HW_WORKER_LOG"; then
   hw_count 'worker log' "${HW_WORKER_LOG:-<worker-log>}" INGEST_ENDED CAMERA_STREAM_ENDED
 fi
 if [ -n "$HW_AUDIT" ] || [ "$HW_DRY" = 1 ]; then
-  hw_count_part 'audit list' "${HW_AUDIT:-<audit>}" CREDENTIAL_REVEAL
+  # The exact type: a substring search for CREDENTIAL_REVEAL would also count a failed reveal.
+  hw_count 'audit list' "${HW_AUDIT:-<audit>}" CAPTURE_CREDENTIAL_REVEALED CAPTURE_FAULT
 fi
 if [ -n "$HW_TRACK" ] || [ "$HW_DRY" = 1 ]; then
   if [ "$HW_DRY" != 1 ] && [ -z "$HW_FFMPEG_PREFIX" ]; then hw_fail 2 'refused: --track needs --ffmpeg-prefix. Nothing more was read.'; fi

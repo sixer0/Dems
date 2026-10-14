@@ -419,6 +419,10 @@ export const VERIFY_NOTICE = {
   VIDEO_ABSENT_IN_SESSION: 'VIDEO_ABSENT_IN_SESSION',
   /** Task 4 pass I-9b: see `audioAbsentOnRestartReport`. */
   AUDIO_ABSENT_ON_RESTART: 'AUDIO_ABSENT_ON_RESTART',
+  /** Task 4 row N2 (decisions C110 (8), C112 (4)): see `audioSamplesNotReceivedReport`. */
+  AUDIO_SAMPLES_NOT_RECEIVED: 'AUDIO_SAMPLES_NOT_RECEIVED',
+  /** Task 4 row N2 (decisions C110 (4), C112 (4)): see `AUDIO_ONE_CAPTURE_GROUP_REPORT`. */
+  AUDIO_ONE_CAPTURE_GROUP: 'AUDIO_ONE_CAPTURE_GROUP',
 } as const;
 export type VerifyNoticeCode = (typeof VERIFY_NOTICE)[keyof typeof VERIFY_NOTICE];
 export interface VerifyNotice {
@@ -567,6 +571,139 @@ export function audioAbsentOnRestartReport(gaps: readonly AudioRestartGapStated[
   // The closing sentence is the first thing given up for the contract's bound; the numbers never are, short of the bound itself.
   return line.length <= VIDEO_ABSENT_REPORT_MAX ? line : said.slice(0, VIDEO_ABSENT_REPORT_MAX);
 }
+
+/**
+ * `AUDIO_SAMPLES_NOT_RECEIVED` and `AUDIO_ONE_CAPTURE_GROUP` (task 4 row N2; design 06 revision 3,
+ * section 8.4a; decisions U25 (3), C110 (4) and (8), C112 (4); SM-34 (3), SM-37 (1)). The manifest
+ * carries the optional signed member `audio.samplesNotReceived` (fields 139-158): the microphones
+ * of the session were captured on a path that does not deliver every sample, and the recorder
+ * states its own account of it. A verifier SAYS it, in the verdict lines of the Core's own
+ * verification and of the receiver's command.
+ *
+ * THEY FAIL NOTHING AND CHANGE NO VERDICT: a package can be untouched and its audio incomplete, and
+ * the reader is told both. A package without the member gets neither line and reads as before. Each
+ * is raised from the manifest the verifier READ - also when another check of the same package
+ * fails - and cannot be switched off. (A member whose counts do NOT reconcile is another matter:
+ * it is refused by the manifest's schema, V-01 fails with `MANIFEST_FIELD_INVALID`, and no notice
+ * is drawn from it.)
+ *
+ * TWO NOTICES, NOT ONE: one line of the contract's 256 characters cannot hold both statements at
+ * their largest numbers (decision C112 (4)). The host statement is not repeated here: it is its own
+ * notice (`HOST_PROFILE_NOT_ASKED`).
+ *
+ * THE NUMBERS ARE THOSE OF THE HIGHEST ATTEMPT - the sound of the package is the audio of the
+ * highest attempt - and are whole samples, never a percentage: see `audioSamplesNotReceivedNumbers`.
+ */
+export interface AudioSamplesNotReceivedStated {
+  /** A record of the manifest carries more members than the statement reads; they are not looked at. */
+  readonly [member: string]: unknown;
+  readonly attempt: number;
+  readonly captureGroup: number;
+  readonly account: string;
+  readonly timelineSamples: number | null;
+  readonly fedInsertedSamples: number | null;
+  readonly fedLongestRunSamples: number | null;
+  readonly runsNotListed: number | null;
+  readonly insertedRuns?: readonly unknown[] | undefined;
+}
+/** What the numbers of a package cover: the whole track, the track up to a sample, or nothing. */
+export const AudioShortfallMeasured = { CLOSED: 'CLOSED', NOT_CLOSED: 'NOT_CLOSED', NONE: 'NONE' } as const;
+export type AudioShortfallMeasured = (typeof AudioShortfallMeasured)[keyof typeof AudioShortfallMeasured];
+/**
+ * THE NUMBERS OF THE STATEMENT, of the highest attempt. ONE function, so that the verdict line, the
+ * receiver's line and the statement at the head of a transcript (operation 84,
+ * `audioNotSampleContinuous`) cannot say different numbers:
+ *
+ *   trackSamples       <Y>  the largest field 144 of the attempt: with `CLOSED` the length of the track
+ *   insertedSamples    <Z>  the sum of fields 151: the inserted zeros IN THE TRACK
+ *   arrivedSamples     <X>  <Y> - <Z>
+ *   listedRuns         <N>  the runs of 100 ms or more that carry their position
+ *   runsNotListed      <R>  the sum of fields 154
+ *   longestRunSamples  <L>  the largest field 153
+ *
+ * `measured`: `CLOSED` when EVERY record of the attempt is a closed account; `NONE` when none of
+ * them states a number (the three sample numbers and the longest run are then null); `NOT_CLOSED`
+ * otherwise - the numbers reach sample <Y> only and the rest of the track was not measured.
+ */
+export interface AudioSamplesNotReceivedNumbers {
+  readonly attempt: number;
+  readonly measured: AudioShortfallMeasured;
+  readonly arrivedSamples: number | null;
+  readonly trackSamples: number | null;
+  readonly insertedSamples: number | null;
+  readonly listedRuns: number;
+  readonly runsNotListed: number;
+  readonly longestRunSamples: number | null;
+}
+const wholeSamples = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+const highestAttemptOf = <T extends { readonly attempt: number }>(records: readonly T[]): readonly T[] => {
+  const highest = records.reduce((most, record) => (wholeSamples(record.attempt) && record.attempt > most ? record.attempt : most), 0);
+  return records.filter((record) => record.attempt === highest);
+};
+/** The numbers of the statement; null for no record (no member, no statement). */
+export function audioSamplesNotReceivedNumbers(records: readonly AudioSamplesNotReceivedStated[]): AudioSamplesNotReceivedNumbers | null {
+  const last = highestAttemptOf(records);
+  const first = last[0];
+  if (first === undefined) return null;
+  const measuredRecords = last.filter((record) => record.account !== AudioShortfallMeasured.NONE && wholeSamples(record.timelineSamples) && wholeSamples(record.fedInsertedSamples) && wholeSamples(record.fedLongestRunSamples) && wholeSamples(record.runsNotListed));
+  const listedRuns = last.reduce((sum, record) => sum + (record.insertedRuns?.length ?? 0), 0);
+  if (measuredRecords.length === 0) return { attempt: first.attempt, measured: AudioShortfallMeasured.NONE, arrivedSamples: null, trackSamples: null, insertedSamples: null, listedRuns, runsNotListed: 0, longestRunSamples: null };
+  const trackSamples = Math.max(...measuredRecords.map((record) => record.timelineSamples ?? 0));
+  const insertedSamples = measuredRecords.reduce((sum, record) => sum + (record.fedInsertedSamples ?? 0), 0);
+  return {
+    attempt: first.attempt,
+    measured: last.every((record) => record.account === AudioShortfallMeasured.CLOSED) && measuredRecords.length === last.length ? AudioShortfallMeasured.CLOSED : AudioShortfallMeasured.NOT_CLOSED,
+    arrivedSamples: Math.max(0, trackSamples - insertedSamples),
+    trackSamples,
+    insertedSamples,
+    listedRuns,
+    runsNotListed: measuredRecords.reduce((sum, record) => sum + (record.runsNotListed ?? 0), 0),
+    longestRunSamples: Math.max(...measuredRecords.map((record) => record.fedLongestRunSamples ?? 0)),
+  };
+}
+/** The head of both forms of the first line. "Bench capture path": not the hardened form of a production host. */
+export const AUDIO_NOT_SAMPLE_CONTINUOUS_HEAD = 'Audio: NOT SAMPLE-CONTINUOUS (bench capture path of a Mac).';
+/**
+ * THE WORDING SOURCE of `AUDIO_SAMPLES_NOT_RECEIVED`: the report line both clients and the receiver's
+ * command draw. Empty input: the empty string (no notice). Four forms - a closed account; an account
+ * that is NOT CLOSED (row V7, decision C119 (2): "ACCOUNT NOT CLOSED, measured to sample <Y>" - the
+ * worker's last periodic account, exempt from the closing reconciliation); numbers that reach a sample
+ * only for another reason (one microphone measured, the other not); and nothing measured. Every number of the statement is in the line; it
+ * stays within the contract's bound of a report line (256) for the largest numbers a manifest can
+ * state (the second form is shorter in WORDS for that reason, never by a number).
+ */
+export function audioSamplesNotReceivedReport(records: readonly AudioSamplesNotReceivedStated[]): string {
+  const numbers = audioSamplesNotReceivedNumbers(records);
+  if (numbers === null) return '';
+  if (numbers.measured === AudioShortfallMeasured.NONE) return `${AUDIO_NOT_SAMPLE_CONTINUOUS_HEAD} How much sound did not arrive was NOT MEASURED.`;
+  const x = String(numbers.arrivedSamples ?? 0);
+  const y = String(numbers.trackSamples ?? 0);
+  const z = String(numbers.insertedSamples ?? 0);
+  const runs = `(runs of 100 ms or more: ${String(numbers.listedRuns)} listed, ${String(numbers.runsNotListed)} not listed, longest ${String(numbers.longestRunSamples ?? 0)} samples)`;
+  // Row V7 (decision C119 (2)): an account of the highest attempt that is NOT_CLOSED is said to be so, in these words. Its
+  // numbers are what the worker's last periodic account held; the manifest's schema does not ask them to reconcile to the
+  // end of the track (rule 5 of `samplesNotReceivedRules`), and the line must not read as if they did.
+  const notClosed = highestAttemptOf(records).some((record) => record.account === AudioShortfallMeasured.NOT_CLOSED);
+  const line =
+    numbers.measured === AudioShortfallMeasured.CLOSED
+      ? `${AUDIO_NOT_SAMPLE_CONTINUOUS_HEAD} ${x} of ${y} samples of the track arrived; ${z} are inserted silence, not sound ${runs}.`
+      : notClosed
+        ? `${AUDIO_NOT_SAMPLE_CONTINUOUS_HEAD} ACCOUNT NOT CLOSED, measured to sample ${y}: ${x} arrived; ${z} are inserted silence ${runs}.`
+        : `${AUDIO_NOT_SAMPLE_CONTINUOUS_HEAD} Measured to sample ${y} only, rest NOT MEASURED: ${x} arrived; ${z} are inserted silence ${runs}.`;
+  return line.slice(0, VIDEO_ABSENT_REPORT_MAX);
+}
+/**
+ * `AUDIO_ONE_CAPTURE_GROUP`: two records of the highest attempt state the SAME `captureGroup` - the
+ * two microphones were channels of one device recorded by one capture program. A reader who sees a
+ * source interval with the role `STANDBY` is told, from the signed manifest, that it was not an
+ * independent source. True = the notice is raised.
+ */
+export function audioOneCaptureGroup(records: readonly Pick<AudioSamplesNotReceivedStated, 'attempt' | 'captureGroup'>[]): boolean {
+  const groups = highestAttemptOf(records).map((record) => record.captureGroup);
+  return new Set(groups).size < groups.length;
+}
+/** THE WORDING SOURCE of `AUDIO_ONE_CAPTURE_GROUP`: one fixed line, no number. */
+export const AUDIO_ONE_CAPTURE_GROUP_REPORT = 'Audio: PRIMARY and STANDBY were channels of ONE device recorded by ONE capture program. A switch between them was not a switch to an independent source.';
 
 export const AUDIT_EXTRACT_NOT_SIGNED_REPORT = Object.freeze({
   PRESENT: 'Audit extract: present, NOT covered by the package signature.',

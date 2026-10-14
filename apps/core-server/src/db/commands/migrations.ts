@@ -52,7 +52,10 @@ export const MIGRATIONS_TABLE = '__drizzle_migrations';
  * twenty-eight are migration set 13 (the honest removal reasons of a temporary host address,
  * contract revision `dbc-13`): `0026` generated, `0027` hand-written, schema version 12. Files
  * twenty-nine and thirty are migration set 14 (the further removal reason `ADD_UNCONFIRMED`,
- * contract revision `dbc-14`): `0028` generated, `0029` hand-written, schema version 13.
+ * contract revision `dbc-14`): `0028` generated, `0029` hand-written, schema version 13. Files
+ * thirty-one and thirty-two are migration set 15 (the allowed ONVIF ports of the network settings
+ * and the widened form of an interface name, contract revision `dbc-15`): `0030` generated,
+ * `0031` hand-written, schema version 14.
  */
 export const INITIAL_MIGRATION_TAGS = [
   '0000_prelude',
@@ -85,6 +88,8 @@ export const INITIAL_MIGRATION_TAGS = [
   '0027_alias_removal_reasons_privileges',
   '0028_alias_removal_reason_unconfirmed',
   '0029_alias_removal_reason_unconfirmed_privileges',
+  '0030_network_config_onvif_ports',
+  '0031_network_config_onvif_ports_privileges',
 ] as const;
 
 export interface MigrationFile {

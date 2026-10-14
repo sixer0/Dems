@@ -1077,7 +1077,9 @@ describe('T-3 and the static rules of the row', () => {
   it('registered nowhere: no production file imports the adapter, and the loader still names the stub', () => {
     expect(source.length).toBeGreaterThan(5_000);
     const importers = relativeImports(tree.filter((file) => isProductionSource(file.path))).filter((entry) => entry.target === FILE.replace(/\.ts$/, ''));
-    expect(importers).toEqual([]);
+    // MOVED BY ROW N9 (design 06 s4.4: the logic "may be shared AS CODE: identifyRegisteredCard, UsbAudioError, the refusal tables,
+    // guardedArguments, isRegisteredAudioInput"): the macOS adapter imports those from this file; it is the ONLY importer (rule A-9).
+    expect(importers.map((entry) => entry.file)).toEqual(['src/capture/adapters/audio/usb-audio-macos.ts']);
     const loader = tree.find((file) => file.path === 'src/capture/adapters/real.ts')?.text ?? '';
     expect(loader).toMatch(/audio\/usb-audio'/);
     expect(loader).not.toMatch(/usb-audio-production/);

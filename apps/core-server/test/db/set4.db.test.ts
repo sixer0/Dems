@@ -119,25 +119,25 @@ describe('M4-MT-9: set 4 applies on a (2, dbc-3) database that holds rows', () =
     await migrateToVersion2(other.ownerPool());
     const error = await applyMigrations(other.ownerPool(), folderOf(9)).catch((thrown: unknown) => thrown);
     expect(error).toMatchObject({ code: 'SCHEMA_VERSION_MISMATCH' });
-    expect((error as Error).message).toContain('After the migration the database is at schema version 2 (dbc-3); this code expects 13 (dbc-14)');
+    expect((error as Error).message).toContain('After the migration the database is at schema version 2 (dbc-3); this code expects 14 (dbc-15)');
     // 0008 did land (the table exists), and without 0009 the runtime role holds nothing on it.
     expect(await readSchemaVersion(other.ownerPool())).toEqual({ schemaVersion: 2, contractRevision: 'dbc-3' });
     await expect(checkSchemaVersion(other.appPool())).rejects.toBeInstanceOf(BootCheckError);
     await expectRefused(() => other.appPool().query('SELECT 1 FROM public.session_capture_sources'), SQLSTATE.insufficientPrivilege);
   });
 
-  it('db:migrate applies exactly the pending files - set 4, then 0010 of set 5 (row 129a), set 6 (row 129b), set 7 (PE-0013-01), set 8 and set 9 (task 4 schema sets A and B), set 10 (task 4 package X-C), set 11 (the profile-code CHECK), set 12 (task 4 schema set C), set 13 and set 14 (the alias removal reasons, two steps) - and ends at (13, dbc-14)', async () => {
+  it('db:migrate applies exactly the pending files - set 4, then 0010 of set 5 (row 129a), set 6 (row 129b), set 7 (PE-0013-01), set 8 and set 9 (task 4 schema sets A and B), set 10 (task 4 package X-C), set 11 (the profile-code CHECK), set 12 (task 4 schema set C), set 13 and set 14 (the alias removal reasons, two steps), set 15 (the allowed ONVIF ports) - and ends at (14, dbc-15)', async () => {
     const owner = db.ownerPool();
     const result = await applyMigrations(owner);
     expect(result.versionBefore).toEqual({ schemaVersion: 2, contractRevision: 'dbc-3' });
     expect(result.applied).toEqual(['0008_capture_sources', '0009_capture_sources_privileges', '0010_credential_replace_privileges', '0011_session_stt_config', '0012_session_stt_config_privileges', '0013_key_id_fault_reason_media_root', '0014_key_id_fault_reason_media_root_privileges', '0015_capture_streams_audio_inputs', '0016_capture_streams_audio_inputs_privileges', '0017_network_commissioning', '0018_network_commissioning_privileges', ...INITIAL_MIGRATION_TAGS.slice(19)]);
-    expect(result.versionAfter).toEqual({ schemaVersion: 13, contractRevision: 'dbc-14' });
+    expect(result.versionAfter).toEqual({ schemaVersion: 14, contractRevision: 'dbc-15' });
     expect(result.versionAfter).toEqual({ schemaVersion: DB_SCHEMA_VERSION, contractRevision: DB_CONTRACT_REVISION });
-    // Ledger current with 30 files, each with its own hash.
+    // Ledger current with 32 files, each with its own hash.
     expect(result.ledger.ok).toBe(true);
     expect(result.ledger.pending).toEqual([]);
     expect(result.ledger.entries.map((entry) => entry.state)).toEqual(INITIAL_MIGRATION_TAGS.map(() => 'applied'));
-    expect(await readAppliedMigrations(owner)).toHaveLength(30);
+    expect(await readAppliedMigrations(owner)).toHaveLength(32);
     expect(SET_3_TAGS).toHaveLength(8);
   });
 
@@ -178,8 +178,8 @@ describe('M4-MT-9: set 4 applies on a (2, dbc-3) database that holds rows', () =
     const catalogBefore = await owner.query(objects);
     const result = await applyMigrations(owner);
     expect(result.applied).toEqual([]);
-    expect(result.versionBefore).toEqual({ schemaVersion: 13, contractRevision: 'dbc-14' });
-    expect(result.versionAfter).toEqual({ schemaVersion: 13, contractRevision: 'dbc-14' });
+    expect(result.versionBefore).toEqual({ schemaVersion: 14, contractRevision: 'dbc-15' });
+    expect(result.versionAfter).toEqual({ schemaVersion: 14, contractRevision: 'dbc-15' });
     expect(await readAppliedMigrations(owner)).toEqual(before);
     expect((await owner.query(objects)).rows).toEqual(catalogBefore.rows);
   });
@@ -331,7 +331,7 @@ describe('M4-MT-11: the privileges of dems_app after set 4', () => {
 
   it('no SELECT regression: the credential store and the three hidden stt_config columns still fail 42501', async () => {
     const app = db.appPool();
-    // This database is at (13, dbc-14) (the applier ran 0010 too, row 129a, set 6, row 129b, set 7, set 8 and set 9): `SELECT 1` answers
+    // This database is at (14, dbc-15) (the applier ran 0010 too, row 129a, set 6, row 129b, set 7, set 8 and set 9): `SELECT 1` answers
     // since the key column is readable; the row and each column that carries the credential do not.
     await expectRefused(() => app.query('SELECT * FROM public.capture_device_credentials'), SQLSTATE.insufficientPrivilege);
     await expectRefused(() => app.query('SELECT secret_ciphertext FROM public.capture_device_credentials'), SQLSTATE.insufficientPrivilege);
@@ -363,7 +363,7 @@ describe('M4-MT-16: B-3 across the version step, in both directions', () => {
     const error = await checkSchemaVersion(old.appPool()).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(BootCheckError);
     expect((error as BootCheckError).message).toBe(
-      'B-3: the database is at schema version 2 (dbc-3); this server expects 13 (dbc-14). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>',
+      'B-3: the database is at schema version 2 (dbc-3); this server expects 14 (dbc-15). Apply the migrations: npm run db:migrate -w @dems/core-server -- --database <name>',
     );
   });
 
@@ -381,24 +381,24 @@ describe('M4-MT-16: B-3 across the version step, in both directions', () => {
       io: { out: (line) => out.push(line), err: (line) => err.push(line) },
     });
     expect(exitCode).toBe(1);
-    expect(out).toContain('schema version   2; contract revision dbc-3; this code expects 13 (dbc-14)');
-    expect(out).toContain('migrations       30 file(s); ledger matches');
-    expect(out.filter((line) => / pending /.test(line))).toHaveLength(22);
+    expect(out).toContain('schema version   2; contract revision dbc-3; this code expects 14 (dbc-15)');
+    expect(out).toContain('migrations       32 file(s); ledger matches');
+    expect(out.filter((line) => / pending /.test(line))).toHaveLength(24);
     expect(out).toContain('row counts       40 table(s)');
     expect(out.some((line) => line.includes('session_capture_sources'))).toBe(false);
     expect(out.some((line) => line.includes('session_stt_config  '))).toBe(false);
-    expect(err[0]).toContain('22 migration(s) are not applied: 0008_capture_sources, 0009_capture_sources_privileges, 0010_credential_replace_privileges, 0011_session_stt_config, 0012_session_stt_config_privileges, 0013_key_id_fault_reason_media_root, 0014_key_id_fault_reason_media_root_privileges, 0015_capture_streams_audio_inputs, 0016_capture_streams_audio_inputs_privileges, 0017_network_commissioning, 0018_network_commissioning_privileges, ');
+    expect(err[0]).toContain('24 migration(s) are not applied: 0008_capture_sources, 0009_capture_sources_privileges, 0010_credential_replace_privileges, 0011_session_stt_config, 0012_session_stt_config_privileges, 0013_key_id_fault_reason_media_root, 0014_key_id_fault_reason_media_root_privileges, 0015_capture_streams_audio_inputs, 0016_capture_streams_audio_inputs_privileges, 0017_network_commissioning, 0018_network_commissioning_privileges, ');
     expect(err[0]).toContain(`, ${INITIAL_MIGRATION_TAGS.slice(19).join(', ')}. Run "npm run db:migrate".`);
     expect(err.at(-1)).toContain(`NOT OK: 2 problem(s) on ${old.name}.`);
   });
 
-  it('code older than row 129 on the migrated database (now at (13, dbc-14), set 14) is refused', async () => {
+  it('code older than row 129 on the migrated database (now at (14, dbc-15), set 15) is refused', async () => {
     const error = await checkSchemaVersion(db.appPool(), { schemaVersion: 2, contractRevision: 'dbc-3' }).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(BootCheckError);
-    expect((error as BootCheckError).message).toContain('the database is at schema version 13 (dbc-14); this server expects 2 (dbc-3)');
+    expect((error as BootCheckError).message).toContain('the database is at schema version 14 (dbc-15); this server expects 2 (dbc-3)');
   });
 
-  it('positive control: this code on its own version (13, dbc-14) passes', async () => {
+  it('positive control: this code on its own version (14, dbc-15) passes', async () => {
     await expect(checkSchemaVersion(db.appPool())).resolves.toBeUndefined();
   });
 });

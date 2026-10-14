@@ -25,7 +25,7 @@ import {
   type AuthTransition,
 } from './auth';
 import { setCaptureConfigTransition } from './capture-config';
-import { readdressCaptureDeviceTransition, registerCaptureDeviceTransition, registerCaptureMicrophoneTransition } from './capture-registry';
+import { readdressCaptureDeviceTransition, registerCaptureDeviceTransition, registerCaptureMicrophoneTransition, storeCaptureDeviceProfilesTransition } from './capture-registry';
 import { applyStorageVolumeTransition } from './core-facts';
 import { clearCaptureNoticeTransition, isCaptureNotice, raiseCaptureNoticeTransition } from './capture-notices';
 import { applyCaptureTelemetryTransition, clearCaptureWarningTransition, feedCaptureLevels, raiseCaptureWarningTransition } from './capture-telemetry';
@@ -271,5 +271,7 @@ export function createActions(context: ActionContext): SimActions {
     registerCaptureMicrophone: (microphone) => commit((state) => registerCaptureMicrophoneTransition(state, microphone).state),
     // Task 4 row 195: INTERNAL. The address of one registered camera changes; nothing else does.
     readdressCaptureDevice: (change) => commit((state) => readdressCaptureDeviceTransition(state, change).state),
+    // Task 4 row V7: INTERNAL. The stored profile list of one registered camera changes; nothing else does.
+    storeCaptureDeviceProfiles: (change) => commit((state) => storeCaptureDeviceProfilesTransition(state, change).state),
   };
 }

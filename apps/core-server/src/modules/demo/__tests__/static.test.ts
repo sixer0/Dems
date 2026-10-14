@@ -296,7 +296,8 @@ describe('M8, M14: time, logging, and what the folder may touch', () => {
     expect(found).toEqual(['src/modules/demo/reset.ts entry']);
     // Every catch of the folder logs what it caught under `err`, or rethrows it wrapped.
     // +2 by integration pass D11: a guard that could not be asked, an audit row of a refusal that could not be written.
-    expect(count(/\{\s*err\s*:/g)).toBe(7);
+    // +1 by integration pass I-9c: the camera network settings that could not be read again after a reset.
+    expect(count(/\{\s*err\s*:/g)).toBe(8);
     expect(count(/\{\s*(?:error|cause|e)\s*[,:}]/g)).toBe(0);
   });
 
@@ -320,6 +321,7 @@ describe('M8, M14: time, logging, and what the folder may touch', () => {
       '../../plugins/permission-guard',
       '../../plugins/readiness',
       '../../realtime',
+      '../capture-config',
       './host',
       './operations',
       './reset',

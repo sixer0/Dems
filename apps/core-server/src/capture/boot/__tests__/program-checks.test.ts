@@ -282,6 +282,65 @@ describe('row 81 (4): off Linux the three questions to the host are not asked; t
   });
 });
 
+// Task 4 row NB (design 06 revision 3 row N13; decision C135 (1)). Stand-in paths and a stand-in rule: what is proven is the
+// check's use of the rule it is handed; the rule itself is the worker's (`checks.test.ts`, row NB, holds the two together).
+describe('row NB: on darwin ONE line per system program of the microphone listing, the path rule alone; NO line on any other platform', () => {
+  const LISTING = ['/stand-in/usb-tree', '/stand-in/audio-facts'] as const;
+  const LISTED = 'CAPTURE_HOST_LISTING_PROGRAM_UNUSABLE';
+  /** The rule of the boot as a stand-in that records what it was asked, and refuses the paths of `refused` by their word. */
+  const ruleOf = (refused: Readonly<Record<string, string>> = {}) => {
+    const asked: (string | null)[] = [];
+    return { asked, rule: (program: string | null): string | null => (asked.push(program), program !== null && refused[program] !== undefined ? (refused[program] ?? null) : usable(program)) };
+  };
+  const lines = async (deps: DeliveredProgramDeps, rule: (program: string | null) => string | null) => (await deliveredProgramResults(deps, rule)).map((entry) => [entry.code, entry.items, entry.status, entry.reason]);
+
+  it('darwin: two lines, L1 and L2, AFTER the four of before, in the order handed in; the rule is asked of each path; nothing is started for them', async () => {
+    const mac = host({ platform: 'darwin' });
+    const { asked, rule } = ruleOf();
+    expect(await lines({ ...mac.deps, systemListingPrograms: LISTING }, rule)).toEqual([
+      ['CAPTURE_HOST_RELAY_LIBRARY_UNVERIFIED', ['HOST-05', 'HOST-15'], 'IN_PLACE', null],
+      ['CAPTURE_HOST_ALIAS_HELPER_UNSAFE', ['HOST-45'], 'NOT_ASKED', null],
+      ['CAPTURE_HOST_ALIAS_GRANT_UNSAFE', ['HOST-44'], 'NOT_ASKED', null],
+      ['CAPTURE_HOST_INTERFACE_FILE_MISMATCH', ['HOST-46'], 'NOT_ASKED', null],
+      [LISTED, ['L1'], 'IN_PLACE', null],
+      [LISTED, ['L2'], 'IN_PLACE', null],
+    ]);
+    expect(asked).toEqual([RELAY, ...LISTING]);
+    expect(mac.asked).toEqual([RELAY]);
+    await expect(deliveredProgramOutcomeOf({ ...host({ platform: 'darwin' }).deps, systemListingPrograms: LISTING }, usable)).resolves.toEqual({ failure: null, inPlace: 3, notAsked: 3, aliasHelper: 'NOT_ASKED' });
+  });
+
+  it('darwin: a program that fails the rule is MISSING with the rule\'s own word; the boot stops at the first, the diagnostics show both', async () => {
+    const first = ruleOf({ [LISTING[0]]: 'FILE_WRITABLE' });
+    expect(await deliveredProgramOutcomeOf({ ...host({ platform: 'darwin' }).deps, systemListingPrograms: LISTING }, first.rule)).toEqual({ failure: { code: LISTED, reason: 'FILE_WRITABLE' }, inPlace: 1, notAsked: 3, aliasHelper: 'NOT_ASKED' });
+    expect(first.asked).toEqual([RELAY, LISTING[0]]);
+    const both = ruleOf({ [LISTING[0]]: 'FILE_WRITABLE' });
+    expect((await lines({ ...host({ platform: 'darwin' }).deps, systemListingPrograms: LISTING }, both.rule)).slice(4)).toEqual([[LISTED, ['L1'], 'MISSING', 'FILE_WRITABLE'], [LISTED, ['L2'], 'IN_PLACE', null]]);
+    const second = ruleOf({ [LISTING[1]]: 'NOT_FOUND' });
+    expect((await deliveredProgramOutcomeOf({ ...host({ platform: 'darwin' }).deps, systemListingPrograms: LISTING }, second.rule)).failure).toEqual({ code: LISTED, reason: 'NOT_FOUND' });
+    // A relay that fails is refused first, by its own code: nothing of the listing is asked after it.
+    const relayFirst = ruleOf({ [LISTING[0]]: 'FILE_WRITABLE' });
+    expect((await deliveredProgramOutcomeOf({ ...host({ platform: 'darwin', answers: { RELAY: answerOf('RELAY') } }).deps, systemListingPrograms: LISTING }, relayFirst.rule)).failure?.code).toBe('CAPTURE_HOST_RELAY_LIBRARY_UNVERIFIED');
+    expect(relayFirst.asked).toEqual([RELAY]);
+  });
+
+  it('linux and every other platform word: NO line, the rule is never asked of the paths - the results of before this row, line for line', async () => {
+    for (const platform of ['linux', 'win32', 'freebsd', 'Darwin', 'not-stated', '']) {
+      const { asked, rule } = ruleOf(Object.fromEntries(LISTING.map((path) => [path, 'NOT_FOUND'])));
+      const handed = await lines({ ...host({ platform }).deps, systemListingPrograms: LISTING }, rule);
+      expect(handed, platform).toEqual(await lines(host({ platform }).deps, usable));
+      expect(asked.filter((program) => (LISTING as readonly (string | null)[]).includes(program)), platform).toEqual([]);
+    }
+    await expect(deliveredProgramOutcomeOf({ ...host().deps, systemListingPrograms: LISTING }, usable)).resolves.toEqual({ failure: null, inPlace: 4, notAsked: 0, aliasHelper: 'IN_PLACE' });
+  });
+
+  it('darwin without the member (a caller from before this row), or with an empty list: the four lines of before', async () => {
+    const before = await lines(host({ platform: 'darwin' }).deps, usable);
+    expect(before).toHaveLength(4);
+    expect(await lines({ ...host({ platform: 'darwin' }).deps, systemListingPrograms: [] }, usable)).toEqual(before);
+  });
+});
+
 // ── 5. The tables, the relay's interface and the file itself ──────────────────────────
 
 describe('row 81 (5): what the checks ask and what the file may reach', () => {
@@ -330,7 +389,8 @@ describe('row 81 (5): what the checks ask and what the file may reach', () => {
   });
 
   it('every code has a text that names its item of the host profile and no path of the host; the vocabulary is closed', () => {
-    expect(Object.values(CaptureProgramRefusal)).toEqual(['CAPTURE_HOST_RELAY_LIBRARY_UNVERIFIED', 'CAPTURE_HOST_ALIAS_HELPER_UNSAFE', 'CAPTURE_HOST_ALIAS_GRANT_UNSAFE', 'CAPTURE_HOST_INTERFACE_FILE_MISMATCH']);
+    // Row NB (design 06 row N13): +1 code, the system programs of the macOS microphone listing (darwin only).
+    expect(Object.values(CaptureProgramRefusal)).toEqual(['CAPTURE_HOST_RELAY_LIBRARY_UNVERIFIED', 'CAPTURE_HOST_ALIAS_HELPER_UNSAFE', 'CAPTURE_HOST_ALIAS_GRANT_UNSAFE', 'CAPTURE_HOST_INTERFACE_FILE_MISMATCH', 'CAPTURE_HOST_LISTING_PROGRAM_UNUSABLE']);
     expect(Object.keys(PROGRAM_REFUSAL_TEXT).sort()).toEqual(Object.values(CaptureProgramRefusal).sort());
     for (const text of Object.values(PROGRAM_REFUSAL_TEXT)) expect(text).not.toMatch(/\/usr\/|\/run\/|\/etc\/|\/proc\//);
     for (const code of [CaptureProgramRefusal.PROGRAM_ALIAS_HELPER, CaptureProgramRefusal.PROGRAM_ALIAS_GRANT, CaptureProgramRefusal.PROGRAM_INTERFACE_FILE]) expect(PROGRAM_REFUSAL_TEXT[code]).toMatch(/HOST-4[456]/);

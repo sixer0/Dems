@@ -621,6 +621,31 @@ export const enWeb = {
       code: 'Reason code: {{code}}.',
     },
     /**
+     * Task 4 row W5 (review 060d Q-02; decision C36): the stream profile of a production camera's
+     * assignment (`features/devices/camera-profile.ts`). A profile is said by what its stream stated;
+     * nothing here names a default.
+     */
+    cameraProfile: {
+      label: 'Stream profile for {{track}}',
+      placeholder: 'Choose a stream profile',
+      /** What a stored profile is: codec, picture, rate. */
+      facts: '{{codec}} • {{resolution}} • {{rate}}',
+      rate: '{{fps}} fps',
+      codecNotStated: 'Codec not stated',
+      resolutionNotStated: 'Picture not stated',
+      rateNotStated: 'Rate not stated',
+      /** A stored code that is no stream statement. */
+      notStated: 'Not stated ({{code}})',
+      choose: 'This camera has {{count}} stored stream profiles. Choose the one this track records, then save.',
+      one: 'This camera has one stored stream profile. It is the one this track records.',
+      /**
+       * No action is named that would not help: as built, only the adoption of a camera stores its profiles
+       * (from the connection test that came before it); the test of a registered camera (operation 108)
+       * stores nothing and no screen offers it. Request line of row W5.
+       */
+      none: 'This camera cannot be assigned: the Core holds no stream profile for it, and it does not pick one for a camera. The profiles of a camera are stored when its connection test reads its stream, before the camera is added. Nothing was changed.',
+    },
+    /**
      * Task 4 row 198 (operation 100): the confirmation dialog of a camera re-address. The sentences
      * of the six `409` reasons are the contract's own (`CAPTURE_READDRESS_REFUSAL_SENTENCES`).
      */

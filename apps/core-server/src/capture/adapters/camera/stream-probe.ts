@@ -499,8 +499,9 @@ export function createStreamConnectionTester(options: StreamConnectionTesterOpti
   }
 
   async function test(candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal, sourceAddress?: string): Promise<StreamTestResult> {
-    // Row 143b: ONE source address for every dial of the test. A call without one hands none on (no trailing argument at all).
-    const from: readonly [] | readonly [string] = sourceAddress === undefined ? [] : [sourceAddress];
+    // Row 143b: ONE source address for every dial of the test. Finding E-02: the two ONVIF facades REQUIRE the argument, so a
+    // test without one STATES `undefined` to them (the host routes) - it is handed on as it came, never left out.
+    const from: readonly [string | undefined] = [sourceAddress];
     const first = await onvif.test(candidate, credential, signal, ...from);
     let rejected = first.rejectedCredentialRequests;
     const answered = (outcome: ConnectionTestOutcome, reason: string | null, streamTested: boolean, streams: readonly JudgedStream[] = [], duplicateCodes = 0): StreamTestResult =>

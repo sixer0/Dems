@@ -102,10 +102,12 @@ export const CAPTURE_CAMERA_SUBNET_PATTERN = new RegExp(`^${PRIVATE_FIRST_THREE}
 export const CAPTURE_CAMERA_SUBNET_MAX_LENGTH = 18;
 /**
  * The name of a network interface of the Core host, in the form of the CHECK of
- * `capture_network_config.interface_name` and of the alias helper's own rule: 1 to 15 characters of
- * lower-case letters, digits, `.`, `_` and `-`, the first a letter or a digit.
+ * `capture_network_config.interface_name` (schema version 14, migration `0030`; review 120 finding
+ * F-4, decision C114) and of the alias helper's own rule: 1 to 15 characters of letters of either
+ * case, digits, `_`, `.` and `-`, the first a letter or a digit. THE ONE CONTRACT CONSTANT: both
+ * request and answer schemas take it, and the Core's database test holds it equal to the CHECK.
  */
-export const CAPTURE_INTERFACE_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,14}$/;
+export const CAPTURE_INTERFACE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$/;
 /** A hardware address in its one closed form: six pairs of upper-case hexadecimal digits with colons. */
 export const CAPTURE_MAC_ADDRESS_PATTERN = /^[0-9A-F]{2}(?::[0-9A-F]{2}){5}$/;
 /** The id of a temporary host address: the key of its row, a lower-case UUID. */
@@ -113,7 +115,7 @@ export const HOST_ALIAS_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 /** The id of a set-network job: `CNJ-` and six digits. Minted by the Core; meaningful only inside the operator session that started the job. */
 export const CAMERA_NETWORK_JOB_ID_PATTERN = /^CNJ-\d{6}$/;
 
-/** The bounds of the six settings of `capture_network_config` (schema set B; the CHECKs of the table). */
+/** The bounds of the seven settings of `capture_network_config` (schema set B and version 14; the CHECKs of the table). */
 export const CAPTURE_NETWORK_CONFIG_LIMITS = Object.freeze({
   /** At most this many stored factory addresses: the scan's bound (destination rule, point 4). */
   factoryAddressesMax: 32,
@@ -123,6 +125,15 @@ export const CAPTURE_NETWORK_CONFIG_LIMITS = Object.freeze({
   aliasMinutesMax: 480,
   cameraIpStartMin: 2,
   cameraIpStartMax: 250,
+  /**
+   * The allowed ONVIF ports (code review 120b finding S2-02, decision C116; `capture_network_config_onvif_ports_check`
+   * and `..._distinct_check`, migration `0030`): 1 to 8 entries (the destination rule's `DESTINATION_MAX_PORTS`), each
+   * a whole number 1 to 65535, no port twice, kept in the order written.
+   */
+  onvifPortsMin: 1,
+  onvifPortsMax: 8,
+  onvifPortMin: 1,
+  onvifPortMax: 65535,
 } as const);
 /**
  * The values of a row nobody has written yet: the reference application's defaults, CARRIED AS THEY
@@ -134,9 +145,11 @@ export const CAPTURE_NETWORK_CONFIG_DEFAULTS = Object.freeze({
   aliasHost: 253,
   aliasMinutes: 30,
   cameraIpStart: 101,
+  /** The column's default (`DEFAULT '[80]'`) and the destination rule's `DESTINATION_DEFAULT_PORTS`: the `http:` port of the ONVIF device service. */
+  onvifPorts: Object.freeze([80] as const),
 } as const);
-/** The six settings an operator can change, by member name: the NAMES the audit row of operation 102 lists. */
-export const CAPTURE_NETWORK_CONFIG_FIELDS = ['interfaceName', 'cameraSubnet', 'factoryAddresses', 'aliasHost', 'aliasMinutes', 'cameraIpStart'] as const;
+/** The seven settings an operator can change, by member name: the NAMES the audit row of operation 102 lists. */
+export const CAPTURE_NETWORK_CONFIG_FIELDS = ['interfaceName', 'cameraSubnet', 'factoryAddresses', 'aliasHost', 'aliasMinutes', 'cameraIpStart', 'onvifPorts'] as const;
 export type CaptureNetworkConfigField = (typeof CAPTURE_NETWORK_CONFIG_FIELDS)[number];
 
 /** A scan covers the stored list plus at most ONE typed address (destination rule, point 4). */
@@ -360,6 +373,13 @@ const factoryAddresses = () => z.array(privateHost()).max(CAPTURE_NETWORK_CONFIG
 const aliasHost = () => z.int().min(CAPTURE_NETWORK_CONFIG_LIMITS.aliasHostMin).max(CAPTURE_NETWORK_CONFIG_LIMITS.aliasHostMax);
 const aliasMinutes = () => z.int().min(CAPTURE_NETWORK_CONFIG_LIMITS.aliasMinutesMin).max(CAPTURE_NETWORK_CONFIG_LIMITS.aliasMinutesMax);
 const cameraIpStart = () => z.int().min(CAPTURE_NETWORK_CONFIG_LIMITS.cameraIpStartMin).max(CAPTURE_NETWORK_CONFIG_LIMITS.cameraIpStartMax);
+/** The allowed ONVIF ports: the table's two CHECKs as a form (S2-02, C116). The order is kept: the first is the port of an address that names none. */
+const onvifPorts = () =>
+  z
+    .array(z.int().min(CAPTURE_NETWORK_CONFIG_LIMITS.onvifPortMin).max(CAPTURE_NETWORK_CONFIG_LIMITS.onvifPortMax))
+    .min(CAPTURE_NETWORK_CONFIG_LIMITS.onvifPortsMin)
+    .max(CAPTURE_NETWORK_CONFIG_LIMITS.onvifPortsMax)
+    .refine((ports) => new Set(ports).size === ports.length, { error: 'No port may be listed twice.' });
 const macAddress = () => z.string().regex(CAPTURE_MAC_ADDRESS_PATTERN);
 const aliasId = () => z.string().regex(HOST_ALIAS_ID_PATTERN);
 const jobId = () => z.string().regex(CAMERA_NETWORK_JOB_ID_PATTERN);
@@ -377,6 +397,9 @@ export const CaptureNetworkConfigSchema = z
     aliasHost: aliasHost().describe('The host part (2 to 254) of the temporary address the Core takes in a factory /24.'),
     aliasMinutes: aliasMinutes().describe('The lifetime of a temporary address in minutes (5 to 480): the kernel removes the address when it ends.'),
     cameraIpStart: cameraIpStart().describe('The host part (2 to 250) of the first address a set-network job offers a camera in the camera subnet.'),
+    onvifPorts: onvifPorts().describe(
+      'The ports a stored camera\'s ONVIF device service may be dialled on: 1 to 8 whole numbers 1 to 65535, no port twice, in the order written; [80] for a configuration nobody has written yet. A camera stored without a port is dialled on 80, which must then be listed.',
+    ),
     revision: z.int().min(1).describe('Optimistic revision: send it back in `updateCaptureNetworkConfig`. 1 for a configuration nobody has written yet.'),
     updatedAt: epochMs().nullable().describe('When the configuration was last written; null when nobody has written it yet.'),
     updatedBy: z.string().regex(OPERATOR_ID_PATTERN).nullable().describe('Who wrote it last; null when nobody has.'),
@@ -394,8 +417,9 @@ export const CaptureNetworkConfigUpdateRequestSchema = z
     aliasHost: aliasHost().optional(),
     aliasMinutes: aliasMinutes().optional(),
     cameraIpStart: cameraIpStart().optional(),
+    onvifPorts: onvifPorts().optional().describe('The whole list of allowed ONVIF ports, replacing the stored one: 1 to 8 ports 1 to 65535, no port twice, in order.'),
   })
-  .describe('Request body of `POST /api/v1/capture/network/config` (task 4, operation 102). No member carries a credential, a port, a gateway or a DHCP mode.');
+  .describe('Request body of `POST /api/v1/capture/network/config` (task 4, operation 102). No member carries a credential, a gateway or a DHCP mode; the only ports are the allowed ONVIF port list.');
 export type CaptureNetworkConfigUpdateRequest = z.output<typeof CaptureNetworkConfigUpdateRequestSchema>;
 
 /** A temporary address the Core put on the camera interface through the alias helper. */
@@ -583,7 +607,8 @@ export const CAPTURE_COMMISSIONING_OPERATIONS = [
       WHO,
       IDLE,
       `Refusals, each storing nothing: a stale \`revision\` answers \`409 INVALID_STATE\` with \`details.reason: ${STT_REVISION_CONFLICT_REASON}\`; settings that have the form of the schema and are refused as a whole (host bits set in the subnet, an interface the host does not have, a factory address listed twice) answer \`422 INVALID_INPUT\` with \`details.reason: ${R.NETWORK_CONFIG_NOT_ALLOWED}\`.`,
-      'On success writes one CAPTURE_NETWORK_CONFIG_CHANGED row whose details are `changedFields` (the NAMES of the changed settings, comma-joined; never a value) and `revision`. An update that changes nothing answers `200` with the unchanged `revision` and writes no row.',
+      '`onvifPorts` replaces the whole list of allowed ONVIF ports (1 to 8, no port twice, the order kept). From the commit on, a stored camera is dialled only on a listed port; one stored without a port is dialled on 80, which must then be listed.',
+      'On success writes one CAPTURE_NETWORK_CONFIG_CHANGED row whose details are `changedFields` (the NAMES of the changed settings, comma-joined; never a value) and `revision`, and - when `onvifPorts` changed - `onvifPortCount`, the number of ports now listed. An update that changes nothing answers `200` with the unchanged `revision` and writes no row.',
       WHERE,
       `${SIM_V2_NOTE} The simulator stores nothing: a body of the right form answers \`409 INVALID_STATE\` with \`details.reason: ${R.COMMISSIONING_NOT_AVAILABLE}\`.`,
     ].join('\n\n'),
@@ -770,6 +795,7 @@ export function simCaptureNetworkConfig(): CaptureNetworkConfig {
     aliasHost: CAPTURE_NETWORK_CONFIG_DEFAULTS.aliasHost,
     aliasMinutes: CAPTURE_NETWORK_CONFIG_DEFAULTS.aliasMinutes,
     cameraIpStart: CAPTURE_NETWORK_CONFIG_DEFAULTS.cameraIpStart,
+    onvifPorts: [...CAPTURE_NETWORK_CONFIG_DEFAULTS.onvifPorts],
     revision: 1,
     updatedAt: null,
     updatedBy: null,
@@ -853,6 +879,7 @@ const EXAMPLE_CONFIG = {
   aliasHost: 253,
   aliasMinutes: 30,
   cameraIpStart: 101,
+  onvifPorts: [80, 8080],
   revision: 2,
   updatedAt: EXAMPLE_INSTANT_MS,
   updatedBy: 'OPR-003',
@@ -897,6 +924,7 @@ export const CAPTURE_COMMISSIONING_EXAMPLES: Readonly<Record<string, OperationEx
     request: {
       choose: { summary: 'Choose the camera interface and the camera subnet', value: { revision: 1, interfaceName: 'enp3s0', cameraSubnet: '192.168.10.0/24' } satisfies CaptureNetworkConfigUpdateRequest },
       factoryList: { summary: 'Replace the factory address list', value: { revision: 2, factoryAddresses: ['192.168.1.64', '192.168.1.108'] } satisfies CaptureNetworkConfigUpdateRequest },
+      onvifPorts: { summary: 'Replace the list of allowed ONVIF ports', value: { revision: 2, onvifPorts: [80, 8080] } satisfies CaptureNetworkConfigUpdateRequest },
     },
     responses: {
       200: { changed: { summary: 'The configuration after the change', description: 'Only the Core server answers this: the in-app simulator stores nothing.', value: EXAMPLE_CONFIG } },

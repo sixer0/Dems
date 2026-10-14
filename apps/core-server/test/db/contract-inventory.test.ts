@@ -52,7 +52,7 @@ describe('the inventory is the contract (sections 2.4 and 4)', () => {
     expect(serialise(parseContract(contractText))).toBe(serialise(inventory));
   });
 
-  it("holds the composed counts: the closed §4 base plus the dbc-3, dbc-4, dbc-6, dbc-7, dbc-8, dbc-9, dbc-10, dbc-11, dbc-12, dbc-13 and dbc-14 deltas = 48 tables, 497 columns, 229 CHECKs, 48 foreign keys", () => {
+  it("holds the composed counts: the closed §4 base plus the dbc-3, dbc-4, dbc-6, dbc-7, dbc-8, dbc-9, dbc-10, dbc-11, dbc-12, dbc-13, dbc-14 and dbc-15 deltas = 48 tables, 498 columns, 231 CHECKs, 48 foreign keys", () => {
     // The base is the CLOSED task-2 contract (§15.6 states its own totals — re-pinned in
     // contract-inventory.ts's composition header); the delta is dbc-3 §A/§B/§B.13/§C transcribed
     // in contract-v2-delta.ts. The per-kind totals below are the composition's measured output;
@@ -77,14 +77,17 @@ describe('the inventory is the contract (sections 2.4 and 4)', () => {
       // unique index - the one acceptance in force - and 11 CHECKs).
       // Task 4 decisions C74 D-2 / D-3 (set 13, dbc-13): two values in one value set; no count moves.
       // Task 4 caution R119-05 (d), decision C94 (d) (set 14, dbc-14): one value more in that set; no count moves.
+      // Task 4 findings F-4 and S2-02, decisions C114 and C116 (set 15, dbc-15): +1 column and
+      // +2 CHECKs on `capture_network_config` (the allowed ONVIF ports); the two interface-name
+      // CHECKs keep their names and take the alias helper's own form.
       tables: 48,
-      columns: 497,
+      columns: 498,
       primaryKeys: 48,
       foreignKeys: 48,
       uniques: 16,
       uniqueIndexes: 7,
       indexes: 24,
-      checks: 229,
+      checks: 231,
     });
     expect(inventory.tables.map((table) => table.id).sort()).toEqual(
       Array.from({ length: 48 }, (_, index) => `T-${String(index + 1).padStart(2, '0')}`),
@@ -277,14 +280,14 @@ describe('the hand-written migration files are the statements of the contract', 
     expect(text).toContain("VALUES (true, 1, 'dbc-2')");
   });
 
-  it('the set is thirty files; the seventeen hand-written ones never hold the marker inside a comment or a string (D38; dbc-3 §A.1; dbc-4 §N.8; errata PE-129a-01, PE-129b-01, PE-0013-01; task 4 schema sets A, B and C; task 4 package X-C; the profile-code CHECK; the alias removal reasons, both steps)', () => {
+  it('the set is thirty-two files; the eighteen hand-written ones never hold the marker inside a comment or a string (D38; dbc-3 §A.1; dbc-4 §N.8; errata PE-129a-01, PE-129b-01, PE-0013-01; task 4 schema sets A, B and C; task 4 package X-C; the profile-code CHECK; the alias removal reasons, both steps; the allowed ONVIF ports)', () => {
     expect(readMigrationSet().map((entry) => entry.tag)).toEqual([...INITIAL_MIGRATION_TAGS]);
     const marker = ['-->', 'statement-breakpoint'].join(' ');
     // Hand-written: the v1 trio plus the two privilege migrations row 46/row 112 wrote by hand
     // and the privilege migration of set 4, row 129, and of set 5, row 129a (0004, 0006 and 0008 are drizzle-generated
     // and legitimately carry the marker as lines).
-    expect(readMigrationSet()).toHaveLength(30);
-    for (const tag of ['0000_prelude', '0002_audit_guards', '0003_privileges', '0005_capture_privileges', '0007_stt_config_privileges', '0009_capture_sources_privileges', '0010_credential_replace_privileges', '0012_session_stt_config_privileges', '0014_key_id_fault_reason_media_root_privileges', '0016_capture_streams_audio_inputs_privileges', '0018_network_commissioning_privileges', '0020_credential_replaced_reason_privileges', '0021_profile_codes_data', '0023_profile_codes_privileges', '0025_installation_acceptance_privileges', '0027_alias_removal_reasons_privileges', '0029_alias_removal_reason_unconfirmed_privileges']) {
+    expect(readMigrationSet()).toHaveLength(32);
+    for (const tag of ['0000_prelude', '0002_audit_guards', '0003_privileges', '0005_capture_privileges', '0007_stt_config_privileges', '0009_capture_sources_privileges', '0010_credential_replace_privileges', '0012_session_stt_config_privileges', '0014_key_id_fault_reason_media_root_privileges', '0016_capture_streams_audio_inputs_privileges', '0018_network_commissioning_privileges', '0020_credential_replaced_reason_privileges', '0021_profile_codes_data', '0023_profile_codes_privileges', '0025_installation_acceptance_privileges', '0027_alias_removal_reasons_privileges', '0029_alias_removal_reason_unconfirmed_privileges', '0031_network_config_onvif_ports_privileges']) {
       for (const line of file(tag).split('\n')) {
         if (line.includes(marker)) expect(line, `${tag}: the marker must be a line of its own`).toBe(marker);
       }

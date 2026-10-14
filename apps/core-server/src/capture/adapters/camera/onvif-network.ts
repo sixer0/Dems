@@ -65,6 +65,8 @@ import type { CameraCandidate } from '../types';
 import { targetOf, type ConnectionTarget } from './connection-target';
 // Row B1 (decision C95; review 060b B-01): a reply is capped per call and scanned in one pass BEFORE the package is handed any of it.
 import { OnvifReplyRefusal, guardOnvifReplies, onvifReplyMaxBytes } from './onvif-reply-guard';
+// Row S06 (review 086 caution C-10 / S-06; decision C127): the source of a set call is held to the one source-address form.
+import { isSourceAddress } from './stored-address';
 
 /** The bounds of one call. The whole-call deadline is the caller's signal. */
 export const ONVIF_NETWORK_LIMITS: OnvifNetworkLimits = Object.freeze({
@@ -183,9 +185,12 @@ export interface OnvifNetworkSetterOptions {
    * 111; S13-12 (d): the address the host saw must be the one the device states). It is asked once,
    * between the interface read and the set, with six upper-case pairs or null. Anything but `true`,
    * or a judgement that throws, ends the call `NOT_SET` with `HW_ADDRESS_REFUSED`: NO set request
-   * is made. Left out: no judgement (the call as row 110 built it).
+   * is made. REQUIRED (finding E-02 of the fifth review pass; S-03 of the second; the F-07 family):
+   * left out, the set went out WITHOUT the judgement - a check turned off by an absence. A caller
+   * that gets past the type without a function is answered as a refusing judgement is: `NOT_SET`,
+   * `HW_ADDRESS_REFUSED`, no set request.
    */
-  readonly admitHwAddress?: (reported: string | null) => boolean;
+  readonly admitHwAddress: (reported: string | null) => boolean;
   /** A test passes smaller bounds. */
   readonly limits?: Partial<OnvifNetworkLimits>;
 }
@@ -204,6 +209,15 @@ export interface OnvifNetworkSetter {
 /** The form of an interface token that may be written into a request (the token rule of the connection file). */
 const INTERFACE_TOKEN = /^[A-Za-z0-9_.:-]{1,64}$/;
 const DOTTED_QUAD = /^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+/**
+ * THE SOURCE OF A SET CALL (row S06; review 086 caution C-10, finding S-06; decision C127). The address every connection is
+ * made FROM is a source address in the form the capture relay holds its start message to (`isSourceAddress`: not `0.0.0.0`,
+ * not multicast, not the reserved range, not broadcast, never a name) - the dotted form alone admitted all four. And it is
+ * not link-local: the destination rule names a camera-interface address of a private block, never one of 169.254.0.0/16, so
+ * a link-local source is a rule handed in that is not the product's. Either refusal is `DESTINATION_REFUSED`, before any request.
+ */
+const LINK_LOCAL_SOURCE = /^169\.254\./;
+const sourceAdmitted = (source: unknown): boolean => isSourceAddress(source) && !LINK_LOCAL_SOURCE.test(source);
 const HW_ADDRESS = /^[0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}$/;
 const REASON_WORD = /^[A-Z][A-Z0-9_]{0,63}$/;
 /** The hash names of a Digest challenge this file answers. Anything else is not answered. */
@@ -339,7 +353,7 @@ export function createOnvifNetworkSetter(options: OnvifNetworkSetterOptions): On
     }
     /** THE destination of every request of this call: the value the rule returned. */
     const destination = decision.destination;
-    if (!DOTTED_QUAD.test(destination.address) || !DOTTED_QUAD.test(destination.sourceAddress) || !Number.isInteger(destination.port) || destination.port < 1 || destination.port > 65_535) {
+    if (!DOTTED_QUAD.test(destination.address) || !sourceAdmitted(destination.sourceAddress) || !Number.isInteger(destination.port) || destination.port < 1 || destination.port > 65_535) {
       return Promise.resolve(ended(OnvifNetworkReason.DESTINATION_REFUSED));
     }
 
@@ -551,15 +565,14 @@ export function createOnvifNetworkSetter(options: OnvifNetworkSetterOptions): On
         if (first === null) return ended(Array.isArray(listed.value) || listed.value === undefined ? OnvifNetworkReason.NO_INTERFACE : OnvifNetworkReason.INTERFACES_ANSWER_INVALID);
         known.hwAddress = first.hwAddress;
         // The caller's judgement of that address, BEFORE anything is changed: a refusal sends no set request.
-        if (options.admitHwAddress !== undefined) {
-          let admitted = false;
-          try {
-            admitted = options.admitHwAddress(first.hwAddress) === true;
-          } catch {
-            admitted = false;
-          }
-          if (!admitted) return ended(OnvifNetworkReason.HW_ADDRESS_REFUSED);
+        // Finding E-02: there is no set without the judgement. No function handed in is a judgement that refuses.
+        let admitted = false;
+        try {
+          admitted = typeof options.admitHwAddress === 'function' && options.admitHwAddress(first.hwAddress) === true;
+        } catch {
+          admitted = false;
         }
+        if (!admitted) return ended(OnvifNetworkReason.HW_ADDRESS_REFUSED);
         // The token goes into a request body as it is: nothing but the token form is ever sent.
         const interfaceToken = first.token;
         if (typeof interfaceToken !== 'string' || !INTERFACE_TOKEN.test(interfaceToken)) return ended(OnvifNetworkReason.INTERFACE_TOKEN_REFUSED);

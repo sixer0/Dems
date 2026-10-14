@@ -31,7 +31,12 @@ import {
   captureConnectionTestedDetails,
 } from '../src/api';
 import {
+  CAPTURE_DEVICE_PROFILES_MAX,
   DEMO_OPERATOR_PASSWORD,
+  captureDeviceProfilesOf,
+  captureProfileFactsOf,
+  storeCaptureDeviceProfilesTransition,
+  STORE_CAPTURE_DEVICE_PROFILES_ACTION,
   READDRESS_CAPTURE_DEVICE_ACTION,
   REGISTERED_MICROPHONE_MODEL_PATTERN,
   createManualClock,
@@ -43,7 +48,7 @@ import {
   setSimConnectionTestOutcome,
   type AuditRow,
 } from '../src/sim';
-import { CAPTURE_AUDIO_CARD_TEXT_PATTERN, SIM_ACTION_OPERATIONS, SimActionExecution } from '../src/api';
+import { CAMERA_FPS_MAX, CAMERA_RESOLUTION_PATTERN, CAMERA_STREAM_CODECS, CAPTURE_AUDIO_CARD_TEXT_PATTERN, CaptureDeviceStatusSchema, SIM_ACTION_OPERATIONS, SimActionExecution } from '../src/api';
 import { LIVE_BINDINGS, LiveActionFlow } from '../src/live/source/bindings';
 
 const AT = Date.UTC(2026, 9, 1, 3, 0, 0);
@@ -396,7 +401,7 @@ describe('operations 95 and 96: the connection test and the adoption', () => {
     expect(adopted.status).toBe(201);
     expect(adopted.body).toEqual({
       deviceId: SIM_ADOPTED_DEVICE_ID,
-      device: { id: 'CAM-03', kind: 'CAMERA', model: 'Test source', firmware: null, host: '127.0.0.1', poePort: null, online: true, streamState: null, capabilities: ['VIDEO'], adapter: 'FAKE', sourceClass: 'DEVELOPMENT' },
+      device: { id: 'CAM-03', kind: 'CAMERA', model: 'Test source', firmware: null, host: '127.0.0.1', poePort: null, online: true, streamState: null, capabilities: ['VIDEO'], adapter: 'FAKE', sourceClass: 'DEVELOPMENT', profiles: [] },
       credentialSet: false,
     });
     expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'CAM-03']);
@@ -636,7 +641,7 @@ describe('the INTERNAL action `registerCaptureDevice` (C3 §2.6 "Adoption"; the 
     const before = h.state();
     h.sim.actions.registerCaptureDevice({ id: 'CAM-03', model: null, host: '192.0.2.10:8080', adapter: 'ONVIF_RTSP' });
     const after = h.state();
-    expect(after.captureDevices.devices.at(-1)).toEqual({ id: 'CAM-03', kind: 'CAMERA', model: null, firmware: null, host: '192.0.2.10:8080', poePort: null, online: true, streamState: null, capabilities: ['VIDEO'], adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION' });
+    expect(after.captureDevices.devices.at(-1)).toEqual({ id: 'CAM-03', kind: 'CAMERA', model: null, firmware: null, host: '192.0.2.10:8080', poePort: null, online: true, streamState: null, capabilities: ['VIDEO'], adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', profiles: [] });
     expect(after.captureDevices.devices).toHaveLength(6);
     expect([after.audit, after.events, after.captureConfig]).toEqual([before.audit, before.events, before.captureConfig]);
     expect(nextCaptureCameraId(after.captureDevices.devices)).toBe('CAM-04');
@@ -659,6 +664,95 @@ describe('the INTERNAL action `registerCaptureDevice` (C3 §2.6 "Adoption"; the 
       expect(() => h.sim.actions.registerCaptureDevice(device), JSON.stringify(device)).toThrow(/Illegal session transition/);
     }
     expect(h.state()).toBe(before);
+  });
+
+  // Task 4 row V7 (decisions C36, C111 finding Q-02, C117; the two blocking request lines of row W5): the stored profile
+  // list of a camera reaches the clients as the device entry's `profiles`. MUTATIONS SEEN RED: (1) `captureDeviceOf`
+  // leaving the member out; (2) `captureProfileFactsOf` answering a rate of 25 where the code states none.
+  describe('row V7: the stored profile list travels on the device entry (`profiles`)', () => {
+    const DEVICE = { id: 'CAM-03', model: null, host: '192.0.2.10', adapter: 'ONVIF_RTSP' };
+
+    it('an adoption that names its list gives an entry that states each code with what the code states - null where it states none, never a default', () => {
+      const h = harness();
+      h.sim.actions.registerCaptureDevice({ ...DEVICE, profiles: ['HEVC_2560X1920P', 'H264_720P30', 'MAIN_STREAM'] });
+      const entry = h.state().captureDevices.devices.at(-1);
+      expect(entry?.profiles).toEqual([
+        { code: 'HEVC_2560X1920P', codec: 'HEVC', resolution: '2560x1920', fps: null },
+        { code: 'H264_720P30', codec: 'H.264', resolution: '720p', fps: 30 },
+        // A code that is no stream statement: three nulls, no default (C36).
+        { code: 'MAIN_STREAM', codec: null, resolution: null, fps: null },
+      ]);
+      // The contract's device entry accepts it, and refuses what it does not name.
+      expect(CaptureDeviceStatusSchema.safeParse(entry).success).toBe(true);
+      expect(CaptureDeviceStatusSchema.safeParse({ ...entry, profiles: [{ ...entry!.profiles![0], url: 'rtsp://192.0.2.10/1' }] }).success).toBe(false);
+      expect(CaptureDeviceStatusSchema.safeParse({ ...entry, profiles: ['HEVC_1080P'] }).success).toBe(false);
+    });
+
+    it('an EMPTY list is stated as empty (none stored), and so is a registration that names no list - the in-app simulator; the built-in devices state no member', () => {
+      const h = harness();
+      h.sim.actions.registerCaptureDevice({ ...DEVICE, profiles: [] });
+      expect(h.state().captureDevices.devices.at(-1)?.profiles).toEqual([]);
+      h.sim.actions.registerCaptureDevice({ ...DEVICE, id: 'CAM-04' });
+      expect(h.state().captureDevices.devices.at(-1)?.profiles).toEqual([]);
+      // The built-in devices state none, as before.
+      expect(h.state().captureDevices.devices.filter((device) => Object.hasOwn(device, 'profiles')).map((device) => device.id)).toEqual(['CAM-03', 'CAM-04']);
+      // The simulated operation 96 goes through the same transition: its camera states the empty list, and its answer is the contract's.
+      expect(CaptureDeviceStatusSchema.safeParse(h.state().captureDevices.devices.at(-1)).success).toBe(true);
+    });
+
+    it('a value that is no list of codes within the bound is refused and nothing changes: no element is cut or cleaned', () => {
+      const h = harness();
+      const before = h.state();
+      const seventeen = Array.from({ length: CAPTURE_DEVICE_PROFILES_MAX + 1 }, (_, index) => `H264_${String(100 + index)}P`);
+      for (const profiles of [['hevc_1080p'], ['HEVC_1080P', 'HEVC_1080P'], ['rtsp://192.0.2.10/1'], [7], 'HEVC_1080P', seventeen, [['HEVC_1080P']]]) {
+        expect(() => h.sim.actions.registerCaptureDevice({ ...DEVICE, profiles } as never), JSON.stringify(profiles)).toThrow(/Illegal session transition/);
+      }
+      expect(h.state()).toBe(before);
+      expect(captureDeviceProfilesOf(seventeen.slice(0, CAPTURE_DEVICE_PROFILES_MAX))).toHaveLength(CAPTURE_DEVICE_PROFILES_MAX);
+      expect(CaptureDeviceStatusSchema.safeParse({ ...before.captureDevices.devices[0], profiles: captureDeviceProfilesOf(seventeen.slice(0, 16))!.concat({ code: 'H264_720P', codec: 'H.264', resolution: '720p', fps: null }) }).success).toBe(false);
+    });
+
+    it('the one reader of the code form: the facts are within the contract, and a code the mint cannot make states nothing', () => {
+      expect(captureProfileFactsOf('H264_1080P25')).toEqual({ codec: 'H.264', resolution: '1080p', fps: 25 });
+      expect(captureProfileFactsOf('HEVC_1080P')).toEqual({ codec: 'HEVC', resolution: '1080p', fps: null });
+      // A 16:9 picture written with its width, a side outside 100 to 9999, a rate above the bound, another codec: no statement.
+      for (const code of ['H264_1920X1080P25', 'H264_99P25', 'H264_1080P241', 'AV1_1080P25', 'H264_1080', '', null, 7]) {
+        expect(captureProfileFactsOf(code), String(code)).toEqual({ codec: null, resolution: null, fps: null });
+      }
+      // Held to the contract's own forms: every stated fact parses as the camera status states it.
+      for (const code of ['H264_1080P25', 'HEVC_2560X1920P', 'H264_9999P240', 'H264_100X100P1']) {
+        const facts = captureProfileFactsOf(code);
+        expect(facts.resolution, code).toMatch(CAMERA_RESOLUTION_PATTERN);
+        expect(facts.fps === null || facts.fps <= CAMERA_FPS_MAX, code).toBe(true);
+        expect((CAMERA_STREAM_CODECS as readonly string[]).includes(facts.codec ?? ''), code).toBe(true);
+      }
+    });
+
+    it('the list of a registered camera is replaced by a pure transition; the same list gives the SAME state; a microphone and an unknown id are refused', () => {
+      const h = harness();
+      h.sim.actions.registerCaptureDevice({ ...DEVICE, profiles: [] });
+      const before = h.state();
+      const stored = storeCaptureDeviceProfilesTransition(before, { deviceId: 'CAM-03', profiles: ['HEVC_1080P'] });
+      expect(stored.result.profiles).toEqual([{ code: 'HEVC_1080P', codec: 'HEVC', resolution: '1080p', fps: null }]);
+      expect({ ...stored.result, profiles: [] }).toEqual(before.captureDevices.devices.at(-1));
+      expect(stored.state.captureDevices.devices.slice(0, -1)).toEqual(before.captureDevices.devices.slice(0, -1));
+      expect(storeCaptureDeviceProfilesTransition(stored.state, { deviceId: 'CAM-03', profiles: ['HEVC_1080P'] }).state).toBe(stored.state);
+      for (const input of [{ deviceId: 'MIC-01', profiles: [] }, { deviceId: 'CAM-09', profiles: [] }, { deviceId: 'CAM-03', profiles: ['x'] }]) {
+        expect(() => storeCaptureDeviceProfilesTransition(before, input), JSON.stringify(input)).toThrow(/Illegal session transition/);
+        expect(() => h.sim.actions.storeCaptureDeviceProfiles(input), JSON.stringify(input)).toThrow(/Illegal session transition/);
+      }
+      expect(h.state()).toBe(before);
+      // THE INTERNAL ACTION (51 -> 52): the same transition; no audit row, no event, the selector alone; no client may call it.
+      h.sim.actions.storeCaptureDeviceProfiles({ deviceId: 'CAM-03', profiles: ['HEVC_1080P'] });
+      const after = h.state();
+      expect(after.captureDevices.devices.at(-1)).toEqual(stored.result);
+      for (const slice of Object.keys(before) as (keyof typeof before)[]) {
+        if (slice !== 'captureDevices') expect(after[slice], slice).toBe(before[slice]);
+      }
+      expect(SIM_ACTION_OPERATIONS.storeCaptureDeviceProfiles).toEqual({ operations: [], execution: SimActionExecution.INTERNAL });
+      expect(LIVE_BINDINGS.storeCaptureDeviceProfiles.flow).toBe(LiveActionFlow.LOCAL);
+      expect(STORE_CAPTURE_DEVICE_PROFILES_ACTION).toBe('storeCaptureDeviceProfiles');
+    });
   });
 });
 

@@ -10,6 +10,14 @@ import {
   EvidencePackageError,
   FRAGMENT_CHAIN_GENESIS,
   MANIFEST_AUDIO_ABSENT_MAX_MS,
+  MANIFEST_AUDIO_BUFFERED_MAX_SAMPLES,
+  MANIFEST_AUDIO_CAPTURE_GROUP_MAX,
+  MANIFEST_AUDIO_CAPTURE_LAYERS,
+  MANIFEST_AUDIO_DAY_SAMPLES,
+  MANIFEST_AUDIO_INSERTED_RUNS_MAX,
+  MANIFEST_AUDIO_INSERTED_RUN_MIN_SAMPLES,
+  MANIFEST_AUDIO_SAMPLE_ACCOUNTS,
+  MANIFEST_AUDIO_SAMPLE_COUNT_MEMBERS,
   MANIFEST_HOST_PROFILE_NOT_ASKED_PLATFORMS,
   MANIFEST_SIGNATURE_EXCLUSIONS,
   MANIFEST_VIDEO_ABSENCE_ENDS,
@@ -47,7 +55,18 @@ import {
   type ManifestV2,
   type SessionCaptureSourceRow,
 } from '../src/evidence-package';
-import { VERIFY_NOTICE, audioAbsentOnRestartReport, videoAbsentInSessionReport, verifyPackageV2 } from '../src/evidence-verify';
+import {
+  AUDIO_ONE_CAPTURE_GROUP_REPORT,
+  VERIFY_NOTICE,
+  audioAbsentOnRestartReport,
+  audioOneCaptureGroup,
+  audioSamplesNotReceivedNumbers,
+  audioSamplesNotReceivedReport,
+  videoAbsentInSessionReport,
+  verifyPackageV2,
+} from '../src/evidence-verify';
+import { TRANSCRIPT_AUDIO_DAY_SAMPLES, TRANSCRIPT_LISTED_RUNS_MAX, TranscriptDocumentSchema, TranscriptSegmentSchema } from '../src/api';
+import { AUDIO_INSERTED_SILENCE_SENTENCE } from '../src/sim';
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -651,6 +670,27 @@ describe('row V4: `audio.absentOnRestart`, the one optional member (fields 129-1
       [136, 'tracks[].absentInSession[].absentAtLeastMs', 'sealed'],
       [137, 'tracks[].absentInSession[].absentAtMostMs', 'sealed'],
       [138, 'tracks[].absentInSession[].ended', 'sealed'],
+      // Task 4 row N2 (decisions U25 (3), C110, C112): + the fourth optional member, 10 -> 30 optional fields.
+      [139, 'audio.samplesNotReceived[].micDeviceId', 'sealed'],
+      [140, 'audio.samplesNotReceived[].attempt', 'sealed'],
+      [141, 'audio.samplesNotReceived[].captureLayer', 'sealed'],
+      [142, 'audio.samplesNotReceived[].captureGroup', 'sealed'],
+      [143, 'audio.samplesNotReceived[].account', 'sealed'],
+      [144, 'audio.samplesNotReceived[].timelineSamples', 'sealed'],
+      [145, 'audio.samplesNotReceived[].receivedSamples', 'sealed'],
+      [146, 'audio.samplesNotReceived[].insertedSamples', 'sealed'],
+      [147, 'audio.samplesNotReceived[].discardedSamples', 'sealed'],
+      [148, 'audio.samplesNotReceived[].bufferedSamples', 'sealed'],
+      [149, 'audio.samplesNotReceived[].nonFiniteSamples', 'sealed'],
+      [150, 'audio.samplesNotReceived[].fedSamples', 'sealed'],
+      [151, 'audio.samplesNotReceived[].fedInsertedSamples', 'sealed'],
+      [152, 'audio.samplesNotReceived[].fedRuns', 'sealed'],
+      [153, 'audio.samplesNotReceived[].fedLongestRunSamples', 'sealed'],
+      [154, 'audio.samplesNotReceived[].runsNotListed', 'sealed'],
+      [155, 'audio.samplesNotReceived[].runsNotListedSamples', 'sealed'],
+      [156, 'audio.samplesNotReceived[].openRunFromSample', 'sealed'],
+      [157, 'audio.samplesNotReceived[].insertedRuns[].fromSample', 'sealed'],
+      [158, 'audio.samplesNotReceived[].insertedRuns[].samples', 'sealed'],
     ]);
     const required = new Set(MANIFEST_V2_FIELDS.map((field) => field.path));
     for (const field of MANIFEST_V2_OPTIONAL_FIELDS) expect(required.has(field.path), field.path).toBe(false);
@@ -1018,5 +1058,342 @@ describe('row V4: `audio.absentOnRestart`, the one optional member (fields 129-1
     const beyond = Array.from({ length: 100_000 }, () => ({ absentAtLeastMs: MANIFEST_VIDEO_ABSENT_MAX_MS, absentAtMostMs: MANIFEST_VIDEO_ABSENT_MAX_MS, ended: 'NOT_RE_OPENED' }));
     const cut = videoAbsentInSessionReport([{ trackId: 'VIDEO-01', absences: beyond }, { trackId: 'VIDEO-02', absences: beyond }]);
     expect([cut.length <= 256, cut.endsWith('not re-opened.'), cut.includes('No picture')]).toEqual([true, true, false]);
+  });
+
+  // ── Task 4 row N2 (design 06 revision 3, sections 8.4, 8.4a, 8.6; decisions U25 (3), C107, C110, C112; SM-29, SM-30, SM-34 (3),
+  //    SM-36 (5), SM-37 (1), SM-38): `audio.samplesNotReceived`, the fourth optional member (fields 139-158) ──
+  /** A closed account of one minute that reconciles to the sample: 2,606,592 received + 273,408 inserted = 2,880,000 expected; one listed run. */
+  const PRIMARY = {
+    micDeviceId: 'MIC-01',
+    attempt: 1,
+    captureLayer: 'AVFOUNDATION',
+    captureGroup: 1,
+    account: 'CLOSED',
+    timelineSamples: 2_880_000,
+    receivedSamples: 2_606_592,
+    insertedSamples: 273_408,
+    discardedSamples: 0,
+    bufferedSamples: 0,
+    nonFiniteSamples: 0,
+    fedSamples: 2_400_000,
+    fedInsertedSamples: 228_000,
+    fedRuns: 445,
+    fedLongestRunSamples: 5_280,
+    runsNotListed: 0,
+    runsNotListedSamples: 0,
+    openRunFromSample: null,
+    insertedRuns: [{ fromSample: 1_440_000, samples: 5_280 }],
+  } as const;
+  /** The other channel of the same device (the same capture group): it fed the last ten seconds of the track. */
+  const STANDBY = { ...PRIMARY, micDeviceId: 'MIC-02', fedSamples: 480_000, fedInsertedSamples: 45_408, fedRuns: 89, fedLongestRunSamples: 1_536, insertedRuns: undefined };
+  /** Nothing measured: the path is not sample-continuous and the worker left no account. */
+  const NONE = {
+    micDeviceId: 'MIC-01',
+    attempt: 1,
+    captureLayer: 'AVFOUNDATION',
+    captureGroup: 1,
+    account: 'NONE',
+    timelineSamples: null,
+    receivedSamples: null,
+    insertedSamples: null,
+    discardedSamples: null,
+    bufferedSamples: null,
+    nonFiniteSamples: null,
+    fedSamples: null,
+    fedInsertedSamples: null,
+    fedRuns: null,
+    fedLongestRunSamples: null,
+    runsNotListed: null,
+    runsNotListedSamples: null,
+    openRunFromSample: null,
+  };
+  const DARWIN = { hostProfileNotAsked: { platform: 'darwin' } } as const;
+  const withShortfall = (records: unknown, more: Record<string, unknown> = DARWIN): ManifestV2 => {
+    const input = exampleManifestInput();
+    return attachSignature(buildUnsignedManifest({ ...input, ...more, audio: { ...input.audio, samplesNotReceived: records as never } } as never, EXAMPLE_SOURCE_ROWS), FILLER_SIGNATURE);
+  };
+  const refusedShortfall = (records: unknown, more: Record<string, unknown> = DARWIN): readonly string[] => {
+    try {
+      withShortfall(records, more);
+    } catch (error) {
+      expect(error).toBeInstanceOf(EvidencePackageError);
+      return (error as EvidencePackageError).members;
+    }
+    return ['accepted'];
+  };
+  /** A manifest-scope run of the verifier over a manifest text and nothing else. */
+  const verified = async (manifest: unknown) => {
+    const text = JSON.stringify(manifest);
+    return verifyPackageV2(
+      {
+        reader: {
+          entry: async (path) => (path === PackageFile.MANIFEST ? { kind: 'FILE', size: text.length } : { kind: 'ABSENT' }),
+          readText: async (path) => (path === PackageFile.MANIFEST ? text : Promise.reject(new Error('absent'))),
+          readRange: async () => Promise.reject(new Error('absent')),
+          list: async () => [],
+        },
+        opener: null,
+        readCertificate: () => null,
+        verifySignature: () => false,
+      },
+      { scope: 'MANIFEST' },
+    );
+  };
+  const at = (index: number, member: string): string[] => [`audio.samplesNotReceived.${String(index)}.${member}`];
+
+  it('row N2: A PACKAGE WITHOUT THE MEMBER IS UNCHANGED - the example has no such key, the same bytes, the same digest, the same V-01 verdict and the same notices; `undefined` gives no key, in the list and inside a record', async () => {
+    const sealed = sealedExample();
+    expect('samplesNotReceived' in sealed.audio).toBe(false);
+    expect(Object.keys(sealed.audio)).toEqual(['trackId', 'codec', 'containsIn', 'sourceIntervals']);
+    expect(decode(serializeManifest(sealed))).not.toContain('samplesNotReceived');
+    // A caller that hands `undefined` for the member seals the SAME manifest as one that leaves it out.
+    expect(withShortfall(undefined, {})).toEqual(sealed);
+    expect(decode(serializeManifest(withShortfall(undefined, {})))).toBe(decode(serializeManifest(sealed)));
+    expect(await v01(sealed)).toBe('PASS');
+    const notices = (await verified(sealed)).notices.map((notice) => notice.code);
+    expect(notices).toEqual(['AUDIT_EXTRACT_NOT_SIGNED']);
+    // Inside a record `insertedRuns: undefined` gives no key either (`undefined` has no canonical form).
+    const noRuns = withShortfall([{ ...PRIMARY, insertedRuns: undefined }]);
+    expect('insertedRuns' in (noRuns.audio.samplesNotReceived?.[0] ?? {})).toBe(false);
+    // The sets and bounds of the member, as the design states them.
+    expect([MANIFEST_AUDIO_DAY_SAMPLES, MANIFEST_AUDIO_BUFFERED_MAX_SAMPLES, MANIFEST_AUDIO_INSERTED_RUN_MIN_SAMPLES, MANIFEST_AUDIO_INSERTED_RUNS_MAX, MANIFEST_AUDIO_CAPTURE_GROUP_MAX]).toEqual([4_147_200_000, 96_000, 4_800, 1_024, 2]);
+    expect([[...MANIFEST_AUDIO_CAPTURE_LAYERS], [...MANIFEST_AUDIO_SAMPLE_ACCOUNTS]]).toEqual([['AVFOUNDATION'], ['CLOSED', 'NOT_CLOSED', 'NONE']]);
+    expect(MANIFEST_AUDIO_SAMPLE_COUNT_MEMBERS).toHaveLength(12);
+  });
+
+  it('row N2: a manifest that states the account is accepted by the schema and by the verifier (V-01) - one microphone, a pair of one capture group, an account that is not closed, nothing measured, two attempts; the member is the last of `audio` and is SIGNED', async () => {
+    const sealed = withShortfall([PRIMARY, STANDBY]);
+    expect(Object.keys(sealed.audio).at(-1)).toBe('samplesNotReceived');
+    expect(sealed.audio.samplesNotReceived).toHaveLength(2);
+    expect(parseManifestV2(JSON.parse(decode(serializeManifest(sealed))))).toEqual(sealed);
+    expect(await v01(sealed)).toBe('PASS');
+    expect(decode(serializeManifest(sealed))).toContain('"insertedRuns":[{"fromSample":1440000,"samples":5280}]');
+    const notClosed = { ...PRIMARY, account: 'NOT_CLOSED', receivedSamples: 2_609_000, bufferedSamples: 2_408, openRunFromSample: 2_875_200 };
+    for (const records of [[PRIMARY], [notClosed], [NONE], [NONE, { ...NONE, micDeviceId: 'MIC-02' }], [NONE, { ...PRIMARY, attempt: 2 }, { ...STANDBY, attempt: 2 }], [{ ...PRIMARY, captureGroup: 1 }, { ...STANDBY, captureGroup: 2 }]]) {
+      expect(refusedShortfall(records), JSON.stringify(records).slice(0, 120)).toEqual(['accepted']);
+      expect(await v01(withShortfall(records))).toBe('PASS');
+    }
+    // SIGNED: inside the digest - adding it, removing it, or changing one number changes `manifestSha256`.
+    const without = withShortfall(undefined);
+    expect(sealed.manifestSha256).not.toBe(without.manifestSha256);
+    expect(manifestHashMatches(sealed)).toBe(true);
+    for (const key of ['receivedSamples', 'insertedSamples', 'fedInsertedSamples', 'captureGroup', 'attempt'] as const) {
+      const changed = clone(sealed) as unknown as { audio: { samplesNotReceived: Record<string, number>[] } };
+      (changed.audio.samplesNotReceived[0] as Record<string, number>)[key] = PRIMARY[key] + 1;
+      expect(manifestHashMatches(changed), key).toBe(false);
+    }
+    const moved = clone(sealed) as unknown as { audio: { samplesNotReceived: { insertedRuns: { fromSample: number }[] }[] } };
+    const movedRecord = moved.audio.samplesNotReceived[0] as { insertedRuns: { fromSample: number }[] };
+    (movedRecord.insertedRuns[0] as { fromSample: number }).fromSample = 1_440_001;
+    expect(manifestHashMatches(moved)).toBe(false);
+    const removed = clone(sealed) as unknown as { audio: Record<string, unknown> };
+    delete removed.audio.samplesNotReceived;
+    expect(ManifestV2Schema.safeParse(removed).success).toBe(true);
+    expect(manifestHashMatches(removed)).toBe(false);
+  });
+
+  it('row N2: THE ACCOUNT RECONCILES TO THE SAMPLE OR THE MANIFEST IS REFUSED - the identity, the closed account, the null rule, the order, the runs; the verifier fails V-01 with MANIFEST_FIELD_INVALID and names the member', async () => {
+    // MUTATIONS THIS CASE WAS SEEN RED ON: the identity line removed from `samplesNotReceivedRules`; the overlap test of the runs removed;
+    // the rule "only beside hostProfileNotAsked" removed.
+    // Rule 6: an empty list, null, an object, a foreign key, a missing key.
+    expect(refusedShortfall([])).toEqual(['audio.samplesNotReceived']);
+    expect(refusedShortfall(null)).toEqual(['audio.samplesNotReceived']);
+    expect(refusedShortfall(PRIMARY)).toEqual(['audio.samplesNotReceived']);
+    expect(refusedShortfall([{ ...PRIMARY, cardName: 'USB Audio' }])).toEqual(['audio.samplesNotReceived.0']);
+    expect(refusedShortfall([{ ...PRIMARY, shortfallPercent: 9.5 }])).toEqual(['audio.samplesNotReceived.0']);
+    for (const key of Object.keys(NONE)) {
+      const { [key]: _gone, ...rest } = PRIMARY as Record<string, unknown>;
+      expect(refusedShortfall([rest]), `without ${key}`).toEqual(at(0, key));
+    }
+    // The forms and bounds of the fields.
+    const invalid: readonly (readonly [string, unknown])[] = [
+      ['micDeviceId', ''], ['attempt', 0], ['attempt', 1.5], ['captureLayer', 'ALSA'], ['captureLayer', 'avfoundation'], ['captureGroup', 0], ['captureGroup', 3], ['account', 'OPEN'],
+      ['timelineSamples', -1], ['timelineSamples', 0.5], ['timelineSamples', '2880000'], ['timelineSamples', MANIFEST_AUDIO_DAY_SAMPLES + 1], ['bufferedSamples', MANIFEST_AUDIO_BUFFERED_MAX_SAMPLES + 1],
+      ['fedRuns', -1], ['openRunFromSample', MANIFEST_AUDIO_DAY_SAMPLES + 1], ['insertedRuns', []], ['insertedRuns', null],
+    ];
+    // (A number outside its own bound is also held against the other fields, so more than its own member may be named.)
+    for (const [key, value] of invalid) expect(refusedShortfall([{ ...PRIMARY, [key]: value }]), `${key}=${String(value)}`).toContain(at(0, key)[0]);
+    expect(refusedShortfall([{ ...PRIMARY, insertedRuns: [{ fromSample: 1_440_000, samples: MANIFEST_AUDIO_INSERTED_RUN_MIN_SAMPLES - 1 }] }])).toEqual(at(0, 'insertedRuns.0.samples'));
+    expect(refusedShortfall([{ ...PRIMARY, insertedRuns: [{ fromSample: 1_440_000, samples: 5_280, micDeviceId: 'MIC-01' }] }])).toEqual(at(0, 'insertedRuns.0'));
+    // Rule 1: NONE exactly when the twelve counts are all null; then no open run and no listed run. Otherwise all twelve are numbers.
+    expect(refusedShortfall([{ ...NONE, receivedSamples: 0 }])).toEqual(at(0, 'account'));
+    expect(refusedShortfall([{ ...NONE, openRunFromSample: 0 }])).toEqual(at(0, 'openRunFromSample'));
+    expect(refusedShortfall([{ ...NONE, insertedRuns: [{ fromSample: 0, samples: 4_800 }] }])).toEqual(at(0, 'insertedRuns'));
+    for (const name of MANIFEST_AUDIO_SAMPLE_COUNT_MEMBERS) expect(refusedShortfall([{ ...PRIMARY, [name]: null }]), name).toEqual(at(0, 'account'));
+    expect(refusedShortfall([{ ...NONE, account: 'CLOSED' }])).toEqual(at(0, 'account'));
+    // Rule 2, THE IDENTITY: expected = received - discarded - buffered + inserted, to the sample.
+    for (const [key, delta] of [['timelineSamples', 1], ['receivedSamples', 1], ['receivedSamples', -1], ['insertedSamples', -1], ['discardedSamples', 1]] as const) {
+      expect(refusedShortfall([{ ...PRIMARY, [key]: PRIMARY[key] + delta }]), `${key} ${String(delta)}`).toEqual(at(0, 'timelineSamples'));
+    }
+    // ... and it holds with a discard: 2,606,692 received - 100 discarded + 273,408 inserted = 2,880,000.
+    expect(refusedShortfall([{ ...PRIMARY, receivedSamples: 2_606_692, discardedSamples: 100 }])).toEqual(['accepted']);
+    // Rule 3: a closed account holds nothing in the buffer and no open run.
+    expect(refusedShortfall([{ ...PRIMARY, receivedSamples: 2_606_692, bufferedSamples: 100 }])).toEqual(at(0, 'bufferedSamples'));
+    expect(refusedShortfall([{ ...PRIMARY, openRunFromSample: 2_870_000 }])).toEqual(at(0, 'openRunFromSample'));
+    // The bounds of the fields against each other.
+    expect(refusedShortfall([{ ...PRIMARY, fedInsertedSamples: 273_409 }])).toEqual(at(0, 'fedInsertedSamples'));
+    expect(refusedShortfall([{ ...PRIMARY, fedSamples: 100, fedInsertedSamples: 101, insertedRuns: undefined }])).toEqual(at(0, 'fedInsertedSamples'));
+    expect(refusedShortfall([{ ...PRIMARY, fedSamples: 2_880_001 }])).toEqual(at(0, 'fedSamples'));
+    expect(refusedShortfall([{ ...PRIMARY, fedLongestRunSamples: 2_880_001 }])).toEqual(at(0, 'fedLongestRunSamples'));
+    expect(refusedShortfall([{ ...PRIMARY, nonFiniteSamples: 2_606_593 }])).toEqual(at(0, 'nonFiniteSamples'));
+    expect(refusedShortfall([{ ...PRIMARY, receivedSamples: 100, discardedSamples: 101, insertedSamples: 2_880_001 }])).toContain('audio.samplesNotReceived.0.discardedSamples');
+    // One microphone feeds the track at a time: the two parts are together at most the track.
+    expect(refusedShortfall([PRIMARY, { ...STANDBY, fedSamples: 480_001 }])).toEqual(at(0, 'fedSamples'));
+    // Rule 4: two closed accounts of one attempt state the same expected count.
+    expect(refusedShortfall([PRIMARY, { ...STANDBY, timelineSamples: 2_880_480, receivedSamples: 2_607_072 }])).toEqual(at(1, 'timelineSamples'));
+    // Rule 5: the listed runs of an attempt do not overlap, end inside the account, and are no more than the track's inserted total.
+    expect(refusedShortfall([{ ...PRIMARY, insertedRuns: [{ fromSample: 1_440_000, samples: 5_280 }, { fromSample: 1_445_279, samples: 4_800 }] }])).toEqual(at(0, 'insertedRuns.1.fromSample'));
+    expect(refusedShortfall([{ ...PRIMARY, insertedRuns: [{ fromSample: 1_440_000, samples: 5_280 }, { fromSample: 1_445_280, samples: 4_800 }] }])).toEqual(['accepted']);
+    expect(refusedShortfall([{ ...PRIMARY, insertedRuns: [{ fromSample: 1_445_280, samples: 4_800 }, { fromSample: 1_440_000, samples: 5_280 }] }])).toEqual(at(0, 'insertedRuns.1.fromSample'));
+    expect(refusedShortfall([PRIMARY, { ...STANDBY, insertedRuns: [{ fromSample: 1_442_000, samples: 4_800 }] }])).toEqual(at(1, 'insertedRuns.0.fromSample'));
+    expect(refusedShortfall([{ ...PRIMARY, insertedRuns: [{ fromSample: 2_875_200, samples: 4_801 }] }])).toEqual(at(0, 'insertedRuns.0.samples'));
+    expect(refusedShortfall([{ ...PRIMARY, insertedRuns: [{ fromSample: 2_875_200, samples: 4_800 }] }])).toEqual(['accepted']);
+    expect(refusedShortfall([{ ...PRIMARY, fedInsertedSamples: 5_279 }])).toEqual(at(0, 'insertedRuns.0'));
+    expect(refusedShortfall([{ ...PRIMARY, fedInsertedSamples: 10_000, runsNotListed: 1, runsNotListedSamples: 4_800 }])).toEqual(at(0, 'insertedRuns.0'));
+    // ... and at most 1,024 are listed per ATTEMPT, over its records together: 1,024 pass, one more in the other record does not.
+    const day = { timelineSamples: MANIFEST_AUDIO_DAY_SAMPLES, receivedSamples: 0, insertedSamples: MANIFEST_AUDIO_DAY_SAMPLES, fedInsertedSamples: 1_000_000_000, fedSamples: 2_000_000_000, fedLongestRunSamples: MANIFEST_AUDIO_DAY_SAMPLES };
+    const full = Array.from({ length: MANIFEST_AUDIO_INSERTED_RUNS_MAX }, (_, index) => ({ fromSample: index * 10_000, samples: 4_800 }));
+    expect(refusedShortfall([{ ...PRIMARY, ...day, insertedRuns: full }])).toEqual(['accepted']);
+    expect(refusedShortfall([{ ...PRIMARY, ...day, insertedRuns: [...full, { fromSample: 20_000_000, samples: 4_800 }] }])).toContain(at(0, 'insertedRuns')[0]);
+    expect(refusedShortfall([{ ...PRIMARY, ...day, insertedRuns: full }, { ...STANDBY, ...day, insertedRuns: [{ fromSample: 20_000_000, samples: 4_800 }] }])).toEqual(at(0, 'insertedRuns.0'));
+    // Rule 6: a pair (microphone, attempt) stands once, attempt ascending, then microphone ascending.
+    expect(refusedShortfall([NONE, NONE])).toEqual(at(1, 'micDeviceId'));
+    expect(refusedShortfall([STANDBY, PRIMARY])).toEqual(at(1, 'micDeviceId'));
+    expect(refusedShortfall([{ ...NONE, attempt: 2 }, NONE])).toEqual(at(1, 'micDeviceId'));
+    // ... never beside `demo` or an integrity other than REAL, and only in a manifest that also carries `hostProfileNotAsked`.
+    expect(refusedShortfall([PRIMARY], {})).toEqual(['audio.samplesNotReceived']);
+    const demoRows = EXAMPLE_SOURCE_ROWS.map((row) => ({ ...row, adapterKind: 'FAKE' }));
+    const demo = (): readonly string[] => {
+      try {
+        const input = exampleManifestInput();
+        buildUnsignedManifest({ ...input, integrity: 'DEMO_PACKAGE', demo: true, audio: { ...input.audio, samplesNotReceived: [NONE] as never } }, demoRows);
+      } catch (error) {
+        return (error as EvidencePackageError).members;
+      }
+      return ['accepted'];
+    };
+    expect(demo()).toEqual(['audio.samplesNotReceived']);
+
+    // THE VERIFIER REFUSES THE SAME MANIFESTS AT V-01, by the existing code `MANIFEST_FIELD_INVALID` (class UNREADABLE), naming the member -
+    // and draws NO notice from a manifest it could not read: one sample taken out of the account of a sealed manifest by hand.
+    const forged = clone(withShortfall([PRIMARY, STANDBY])) as unknown as { audio: { samplesNotReceived: Record<string, number>[] } };
+    (forged.audio.samplesNotReceived[0] as Record<string, number>)['insertedSamples'] = PRIMARY.insertedSamples - 1;
+    const result = await verified(forged);
+    const check = result.checks.find((entry) => entry.id === 'V-01');
+    expect([result.ok, check?.status, check?.failureClass]).toEqual([false, 'FAIL', 'UNREADABLE']);
+    expect(check?.findings.map((finding) => [finding.code, finding.member])).toEqual([['MANIFEST_FIELD_INVALID', 'audio.samplesNotReceived.0.timelineSamples']]);
+    expect(result.notices.map((notice) => notice.code)).toEqual(['AUDIT_EXTRACT_NOT_SIGNED']);
+    const emptied = clone(withShortfall([PRIMARY])) as unknown as { audio: Record<string, unknown> };
+    emptied.audio.samplesNotReceived = [];
+    expect(await v01(emptied)).toBe('FAIL');
+  });
+
+  // Row V7 (decision C119 (2); finding F-2 of row N2): the worker of an HONEST session is killed. Its account is its LAST PERIODIC one
+  // (up to 60 s old); a run of inserted silence that ended AFTER that account is already an audit entry of its own and is listed. As
+  // row N2 built rule 5, the schema refused that manifest and the session could not be sealed.
+  // MUTATIONS THIS CASE WAS SEEN RED ON: (1) `attempt.closed` never set to false (the exemption gone: the honest manifest is refused);
+  // (2) `attempt.closed` initialised false (a CLOSED account no longer reconciles: the three CLOSED controls are accepted).
+  it('row V7: an account that is NOT_CLOSED is EXEMPT from the closing reconciliation and the verifier SAYS it is not closed; a CLOSED account reconciles to the sample as before; NONE as before', async () => {
+    // The last periodic account reached sample 2,880,000; the Core holds a run at 2,890,000 and one more that this account's totals do not count.
+    const killed = { ...PRIMARY, account: 'NOT_CLOSED', fedSamples: 2_880_000, receivedSamples: 2_609_000, bufferedSamples: 2_408, insertedRuns: [{ fromSample: 1_440_000, samples: 5_280 }, { fromSample: 2_890_000, samples: 9_600 }] };
+    expect(refusedShortfall([killed])).toEqual(['accepted']);
+    expect(await v01(withShortfall([killed]))).toBe('PASS');
+    const notice = (await verified(withShortfall([killed]))).notices.at(-1);
+    expect(notice).toEqual({
+      code: 'AUDIO_SAMPLES_NOT_RECEIVED',
+      report: 'Audio: NOT SAMPLE-CONTINUOUS (bench capture path of a Mac). ACCOUNT NOT CLOSED, measured to sample 2880000: 2652000 arrived; 228000 are inserted silence (runs of 100 ms or more: 2 listed, 0 not listed, longest 5280 samples).',
+    });
+    // The listed runs together exceed what the account's totals hold (`fedInsertedSamples`): exempt too, for the same reason.
+    expect(refusedShortfall([{ ...killed, fedInsertedSamples: 5_279 }])).toEqual(['accepted']);
+    // A pair of one attempt, both not closed, whose fed parts are together more than the older account's track: exempt.
+    expect(refusedShortfall([killed, { ...STANDBY, account: 'NOT_CLOSED', receivedSamples: 2_609_000, bufferedSamples: 2_408 }])).toEqual(['accepted']);
+    // CONTROL - THE SAME NUMBERS UNDER `CLOSED` ARE REFUSED AS BEFORE: only a closed account must reconcile to the sample.
+    const closedForm = { receivedSamples: PRIMARY.receivedSamples, bufferedSamples: 0 };
+    expect(refusedShortfall([{ ...killed, ...closedForm, account: 'CLOSED' }])).toEqual(at(0, 'insertedRuns.1.samples'));
+    expect(refusedShortfall([{ ...killed, ...closedForm, account: 'CLOSED', insertedRuns: [{ fromSample: 1_440_000, samples: 5_280 }], fedInsertedSamples: 5_279 }])).toEqual(at(0, 'insertedRuns.0'));
+    expect(refusedShortfall([{ ...PRIMARY, fedSamples: 2_880_000 }, STANDBY])).toEqual(at(0, 'fedSamples'));
+    // WHAT A NOT_CLOSED ACCOUNT STILL HOLDS: the identity of what the last periodic account held (rule 2), the bounds of its own
+    // fields, and the form of the run list - ascending, not overlapping.
+    expect(refusedShortfall([{ ...killed, receivedSamples: killed.receivedSamples + 1 }])).toEqual(at(0, 'timelineSamples'));
+    expect(refusedShortfall([{ ...killed, fedSamples: 2_880_001 }])).toEqual(at(0, 'fedSamples'));
+    expect(refusedShortfall([{ ...killed, insertedRuns: [{ fromSample: 2_890_000, samples: 9_600 }, { fromSample: 2_899_599, samples: 4_800 }] }])).toEqual(at(0, 'insertedRuns.1.fromSample'));
+    expect(refusedShortfall([{ ...killed, insertedRuns: [{ fromSample: 2_890_000, samples: 9_600 }, { fromSample: 1_440_000, samples: 5_280 }] }])).toEqual(at(0, 'insertedRuns.1.fromSample'));
+    // NONE as designed: no number, no open run, no listed run.
+    expect(refusedShortfall([NONE])).toEqual(['accepted']);
+    expect(refusedShortfall([{ ...NONE, insertedRuns: [{ fromSample: 2_890_000, samples: 9_600 }] }])).toEqual(at(0, 'insertedRuns'));
+    // An EARLIER attempt that was killed beside a later one that closed: each attempt is judged by its own accounts.
+    expect(refusedShortfall([killed, { ...PRIMARY, attempt: 2, fedSamples: 2_880_000 }])).toEqual(['accepted']);
+    expect(refusedShortfall([killed, { ...PRIMARY, attempt: 2, fedSamples: 2_880_000, insertedRuns: [{ fromSample: 2_890_000, samples: 9_600 }] }])).toEqual(at(1, 'insertedRuns.0.samples'));
+  });
+
+  it('row N2: the verifier SAYS the member in TWO notices - `AUDIO_SAMPLES_NOT_RECEIVED` with the numbers of the highest attempt and `AUDIO_ONE_CAPTURE_GROUP` for a pair of one group; neither for a manifest without the member; each line fits the contract at the largest numbers', async () => {
+    // MUTATION THIS CASE WAS SEEN RED ON: the inserted total taken from `insertedSamples` (the microphone's) instead of the sum of `fedInsertedSamples` (the track's).
+    const noticesOf = async (manifest: unknown) => (await verified(manifest)).notices;
+    const without = await noticesOf(withShortfall(undefined));
+    expect(without.map((notice) => notice.code)).toEqual(['AUDIT_EXTRACT_NOT_SIGNED', 'HOST_PROFILE_NOT_ASKED']);
+    // The pair on one device: both lines, the last two, in this order. X = Y - Z; Z is the track's inserted total (228,000 + 45,408).
+    const closed = 'Audio: NOT SAMPLE-CONTINUOUS (bench capture path of a Mac). 2606592 of 2880000 samples of the track arrived; 273408 are inserted silence, not sound (runs of 100 ms or more: 1 listed, 0 not listed, longest 5280 samples).';
+    expect(await noticesOf(withShortfall([PRIMARY, STANDBY]))).toEqual([...without, { code: 'AUDIO_SAMPLES_NOT_RECEIVED', report: closed }, { code: 'AUDIO_ONE_CAPTURE_GROUP', report: AUDIO_ONE_CAPTURE_GROUP_REPORT }]);
+    expect(audioSamplesNotReceivedReport([PRIMARY, STANDBY])).toBe(closed);
+    expect(AUDIO_ONE_CAPTURE_GROUP_REPORT).toBe('Audio: PRIMARY and STANDBY were channels of ONE device recorded by ONE capture program. A switch between them was not a switch to an independent source.');
+    // One microphone, or two of different groups: the first line only.
+    expect((await noticesOf(withShortfall([{ ...PRIMARY, fedSamples: 2_880_000 }]))).map((notice) => notice.code).slice(-1)).toEqual(['AUDIO_SAMPLES_NOT_RECEIVED']);
+    expect((await noticesOf(withShortfall([PRIMARY, { ...STANDBY, captureGroup: 2 }]))).map((notice) => notice.code).slice(-1)).toEqual(['AUDIO_SAMPLES_NOT_RECEIVED']);
+    expect([audioOneCaptureGroup([PRIMARY, STANDBY]), audioOneCaptureGroup([PRIMARY]), audioOneCaptureGroup([PRIMARY, { ...STANDBY, captureGroup: 2 }]), audioOneCaptureGroup([])]).toEqual([true, false, false, false]);
+    // An account that is not closed: measured up to a sample only. Nothing measured: said so.
+    const notClosed = { ...PRIMARY, account: 'NOT_CLOSED', fedSamples: 2_880_000, fedInsertedSamples: 273_408, receivedSamples: 2_609_000, bufferedSamples: 2_408 };
+    // Row V7 (decision C119 (2)): an account that is NOT_CLOSED is said to be so, in these words (the line of row N2 said "Measured to sample ... only, rest NOT MEASURED").
+    expect(audioSamplesNotReceivedReport([notClosed])).toBe(
+      'Audio: NOT SAMPLE-CONTINUOUS (bench capture path of a Mac). ACCOUNT NOT CLOSED, measured to sample 2880000: 2606592 arrived; 273408 are inserted silence (runs of 100 ms or more: 1 listed, 0 not listed, longest 5280 samples).',
+    );
+    // A closed account beside a microphone that was not measured is NOT "not closed": the words of row N2 stand.
+    expect(audioSamplesNotReceivedReport([PRIMARY, { ...NONE, micDeviceId: 'MIC-02' }])).not.toContain('ACCOUNT NOT CLOSED');
+    expect(audioSamplesNotReceivedReport([PRIMARY, { ...NONE, micDeviceId: 'MIC-02' }])).toContain('Measured to sample 2880000 only, rest NOT MEASURED');
+    const none = 'Audio: NOT SAMPLE-CONTINUOUS (bench capture path of a Mac). How much sound did not arrive was NOT MEASURED.';
+    expect(audioSamplesNotReceivedReport([NONE])).toBe(none);
+    expect((await noticesOf(withShortfall([NONE]))).at(-1)).toEqual({ code: 'AUDIO_SAMPLES_NOT_RECEIVED', report: none });
+    expect(audioSamplesNotReceivedReport([])).toBe('');
+    // THE HIGHEST ATTEMPT is the sound of the package: an earlier attempt's numbers are not the line's.
+    expect(audioSamplesNotReceivedReport([{ ...PRIMARY, fedSamples: 2_880_000 }, { ...NONE, attempt: 2 }])).toBe(none);
+    expect(audioOneCaptureGroup([PRIMARY, STANDBY, { ...NONE, attempt: 2 }])).toBe(false);
+    expect(audioSamplesNotReceivedNumbers([PRIMARY, STANDBY])).toEqual({ attempt: 1, measured: 'CLOSED', arrivedSamples: 2_606_592, trackSamples: 2_880_000, insertedSamples: 273_408, listedRuns: 1, runsNotListed: 0, longestRunSamples: 5_280 });
+    expect(audioSamplesNotReceivedNumbers([NONE])).toEqual({ attempt: 1, measured: 'NONE', arrivedSamples: null, trackSamples: null, insertedSamples: null, listedRuns: 0, runsNotListed: 0, longestRunSamples: null });
+    expect(audioSamplesNotReceivedNumbers([])).toBeNull();
+    // The contract's bound of a report line (256) at the largest numbers a manifest can state, in both forms: every number is in the line.
+    const D = MANIFEST_AUDIO_DAY_SAMPLES;
+    const runs = Array.from({ length: 512 }, () => ({ fromSample: 0, samples: 4_800 }));
+    const largest = { ...PRIMARY, timelineSamples: D, fedSamples: D, fedInsertedSamples: 1_000_000_000, fedLongestRunSamples: D, runsNotListed: D, insertedRuns: runs };
+    for (const account of ['CLOSED', 'NOT_CLOSED'] as const) {
+      const line = audioSamplesNotReceivedReport([{ ...largest, account }, { ...largest, account, micDeviceId: 'MIC-02' }]);
+      expect(line.length, account).toBeLessThanOrEqual(256);
+      expect(line, account).toContain(`(runs of 100 ms or more: 1024 listed, ${String(2 * D)} not listed, longest ${String(D)} samples).`);
+      expect(line, account).toContain(String(D - 2_000_000_000));
+      expect(line, account).toContain('2000000000 are inserted silence');
+    }
+    expect(AUDIO_ONE_CAPTURE_GROUP_REPORT.length).toBeLessThanOrEqual(256);
+    // No line says where the missing sound is: neither "near" nor "at" the missing sound.
+    for (const line of [closed, none, AUDIO_ONE_CAPTURE_GROUP_REPORT]) expect(line).not.toMatch(/\bnear\b|at the (missing|lost)/i);
+  });
+
+  it('row N2: the transcript answer (operation 84) has its two OPTIONAL members - the statement at the head and the mark on a segment; an answer without them is the answer of before', () => {
+    const segment = { index: 0, startMs: 0, endMs: 4_000, text: 'Selamat pagi.', speaker: null };
+    const document = { documentVersion: 'dems.transcript/1', language: 'id', speakerState: 'UNAVAILABLE', segments: [segment], sha256: 'a'.repeat(64), machineTranscriptHash: 'b'.repeat(64), assembledAt: 1_760_000_000_000, revision: 0 };
+    // Absent: the same value out as in, no key added.
+    expect(TranscriptDocumentSchema.parse(document)).toEqual(document);
+    expect(Object.keys(TranscriptSegmentSchema.parse(segment))).toEqual(['index', 'startMs', 'endMs', 'text', 'speaker']);
+    // Present: the numbers of the verdict line, from the one function, are a statement the schema accepts.
+    const numbers = audioSamplesNotReceivedNumbers([PRIMARY, STANDBY]);
+    const statement = { arrivedSamples: numbers?.arrivedSamples, trackSamples: numbers?.trackSamples, insertedSamples: numbers?.insertedSamples, listedRuns: numbers?.listedRuns, runsNotListed: numbers?.runsNotListed };
+    expect(TranscriptDocumentSchema.safeParse({ ...document, audioNotSampleContinuous: statement, segments: [{ ...segment, insertedSilenceMs: 110 }] }).success).toBe(true);
+    expect(TranscriptDocumentSchema.safeParse({ ...document, audioNotSampleContinuous: { arrivedSamples: null, trackSamples: null, insertedSamples: null, listedRuns: 0, runsNotListed: 0 } }).success).toBe(true);
+    // Refused: a foreign member, a missing one, a percentage, a mark of 0 ms, a fraction.
+    expect(TranscriptDocumentSchema.safeParse({ ...document, audioNotSampleContinuous: { ...statement, percent: 9.5 } }).success).toBe(false);
+    expect(TranscriptDocumentSchema.safeParse({ ...document, audioNotSampleContinuous: { arrivedSamples: 1, trackSamples: 1, insertedSamples: 0, listedRuns: 0 } }).success).toBe(false);
+    expect(TranscriptDocumentSchema.safeParse({ ...document, audioNotSampleContinuous: { ...statement, listedRuns: TRANSCRIPT_LISTED_RUNS_MAX + 1 } }).success).toBe(false);
+    expect(TranscriptDocumentSchema.safeParse({ ...document, audioNotSampleContinuous: true }).success).toBe(false);
+    for (const mark of [0, -1, 1.5, '110', null]) expect(TranscriptSegmentSchema.safeParse({ ...segment, insertedSilenceMs: mark }).success, String(mark)).toBe(false);
+    // The bounds are the manifest's, and the description of the statement holds THE FIXED SENTENCE word for word.
+    expect([TRANSCRIPT_AUDIO_DAY_SAMPLES, TRANSCRIPT_LISTED_RUNS_MAX]).toEqual([MANIFEST_AUDIO_DAY_SAMPLES, MANIFEST_AUDIO_INSERTED_RUNS_MAX]);
+    expect(TranscriptDocumentSchema.shape.audioNotSampleContinuous.description).toContain(AUDIO_INSERTED_SILENCE_SENTENCE);
   });
 });

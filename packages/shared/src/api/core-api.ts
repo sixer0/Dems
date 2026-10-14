@@ -414,8 +414,17 @@ export const VideoTrackStatusSchema = z
       .min(1)
       .nullable()
       .describe('The capture device assigned to this track by the selector (op 79 moves it). Null: the slot of this track is not assigned.'),
-    /** Schema v2 (C3 §3 ops 44/46; OD-22): LIVE or LOST; a LOST stream is what makes op 48's PoE cycle legal. */
-    streamState: z.enum(CaptureStreamState),
+    /**
+     * Schema v2 (C3 §3 ops 44/46; OD-22): LIVE or LOST; a LOST stream is what makes op 48's PoE cycle legal.
+     *
+     * Task 4 row V7d (decisions C126 (b), C141): NULLABLE, null = NOT READ - the selector line's own
+     * value (`CaptureConfigCameraSchema.streamState`), never the registry flag in its place. A track
+     * without a line states null too: it has no source whose stream could be read.
+     */
+    streamState: z
+      .enum(CaptureStreamState)
+      .nullable()
+      .describe('The stream state of the track\'s selector line, as the `captureConfig` slice states it (OD-22: a LOST stream makes a PoE cycle legal). NULL = NOT READ (task 4 row V7d; decision C126 (b)): the Core reads no stream of this camera now - a registered camera at rest - or the track has no source (`sourceDeviceId` null). Never derived from `online`, the registry flag. The two built-in cameras of the demonstration model state the model\'s `LIVE` / `LOST`.'),
     name: z.string().min(1),
     lens: z.enum(LensState),
     online: z.boolean(),

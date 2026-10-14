@@ -91,18 +91,38 @@ const LOCATOR_MAX_CHARS = 256;
  *               to 32 and a value 0 to 64 characters of `A-Z a-z 0-9 . _ ~ -`. Nothing else: no
  *               `%` (so no name can hide behind an encoding), no `+`, no `;`, no second `?`, no
  *               second `=` in a parameter, no empty parameter;
- *   names       no parameter may be named, in any letter case, by a word of
- *               `CREDENTIAL_LIKE_PARAMETERS`; and no name may appear twice (two readers could
- *               disagree on which one counts).
+ *   names       no parameter name (letter case folded) may CONTAIN a part of
+ *               `CREDENTIAL_LIKE_PARTS` or BE a word of `CREDENTIAL_LIKE_WHOLE_NAMES`, unless it is a
+ *               stream parameter of `STREAM_PARAMETER_EXCEPTIONS` with the value form stated there;
+ *               and no name may appear twice (two readers could disagree on which one counts).
  *
- * A VALUE is not judged: `mode=password` names a mode. The list is closed and compared with the
- * whole name: `sessiontimeout` is not `session`.
+ * A VALUE is not judged (but an exception's): `mode=password` names a mode.
+ *
+ * Row 174b (decision C127, caution C-4 of the security review of row 86): the names were compared
+ * WHOLE against a list of ten, which let `passwd`, `pw`, `usr`, `login`, `loginuse`, `loginpas`,
+ * `account`, `apikey`, `access_token` through. A name is now refused by the CLASS of a part it
+ * contains: `apikey` holds `key`, `access_token` holds `token`, `loginpas` holds `login` and `pass`.
+ * The short words `pw`, `usr`, `account` are refused only as the whole name: as a part they stand
+ * inside harmless names (`pwm`, `busrate`) and add no class the parts above do not already hold.
+ * ONE exception, for a stream address a camera itself states: `sessiontimeout` (an ONVIF stream
+ * address of the form `.../media.amp?profile=...&sessiontimeout=60&streamtype=unicast`) contains
+ * `session`; it is admitted with a value of 1 to 6 digits only, so it can carry no text.
  */
 const QUERY_MAX_CHARS = 128;
 const QUERY_MAX_PARAMETERS = 8;
-const QUERY_PARAMETER = /^([A-Za-z0-9._~-]{1,32})(?:=[A-Za-z0-9._~-]{0,64})?$/;
-// One text, split: these are names to REFUSE, not accounts (static rule G-R14 reads a quoted account word as a default account).
-const CREDENTIAL_LIKE_PARAMETERS: ReadonlySet<string> = new Set('user username pass password pwd auth token key secret session'.split(' '));
+const QUERY_PARAMETER = /^([A-Za-z0-9._~-]{1,32})(?:=([A-Za-z0-9._~-]{0,64}))?$/;
+// One text each, split: these are names to REFUSE, not accounts (static rule G-R14 reads a quoted account word as a default account).
+const CREDENTIAL_LIKE_PARTS: readonly string[] = Object.freeze('pass pwd token key secret auth user login session'.split(' '));
+const CREDENTIAL_LIKE_WHOLE_NAMES: ReadonlySet<string> = new Set('pw usr account'.split(' '));
+/** A stream parameter a camera states that contains a part above: admitted only with a value of this form (never without a value). */
+const STREAM_PARAMETER_EXCEPTIONS: ReadonlyMap<string, RegExp> = new Map([['sessiontimeout', /^[0-9]{1,6}$/]]);
+
+/** True when a (case-folded) parameter name reads as a credential, judged with its value only for an exception. */
+function credentialLikeName(name: string, value: string | undefined): boolean {
+  const exception = STREAM_PARAMETER_EXCEPTIONS.get(name);
+  if (exception !== undefined) return value === undefined || !exception.test(value);
+  return CREDENTIAL_LIKE_WHOLE_NAMES.has(name) || CREDENTIAL_LIKE_PARTS.some((part) => name.includes(part));
+}
 
 /** True when the text after the `?` of a stream locator is inside the query rule. It answers yes or no: no part of the text is kept. */
 function queryAllowed(query: string): boolean {
@@ -111,8 +131,9 @@ function queryAllowed(query: string): boolean {
   if (parameters.length > QUERY_MAX_PARAMETERS) return false;
   const seen = new Set<string>();
   for (const parameter of parameters) {
-    const name = QUERY_PARAMETER.exec(parameter)?.[1]?.toLowerCase();
-    if (name === undefined || CREDENTIAL_LIKE_PARAMETERS.has(name) || seen.has(name)) return false;
+    const match = QUERY_PARAMETER.exec(parameter);
+    const name = match?.[1]?.toLowerCase();
+    if (name === undefined || credentialLikeName(name, match?.[2]) || seen.has(name)) return false;
     seen.add(name);
   }
   return true;
@@ -311,8 +332,19 @@ export function startMessageBytes(message: StartMessage): Buffer {
   }
 }
 
-/** A user part inside any locator-shaped text: scheme, two slashes, anything up to an `@` before the next slash. */
-const USER_PART = /([a-z][a-z0-9+.-]*:\/\/)[^/\s'"<>@]*@/gi;
+/**
+ * A user part inside any locator-shaped text: scheme, two slashes, anything up to an `@` before the next slash.
+ *
+ * LINEAR (row N5c, decision C138; request of row N5b). The form before, `([a-z][a-z0-9+.-]*:\/\/)...`,
+ * was tried at EVERY letter of a run of scheme characters and scanned to the run's end each time:
+ * quadratic in a run not followed by `://` (64 KiB of letters about 2.5 to 4.4 s on this Mac, one
+ * device-chosen base64 run inside the door's kept text). A match now starts only where a run of
+ * scheme characters starts (the look-behind), and the group takes the run's leading digits and
+ * signs, which the form before left in front of its match unchanged: the output is the same
+ * (differential fuzz, 500,000 texts, 0 differences) and each character is passed a bounded number
+ * of times (1 MiB of letters under 10 ms).
+ */
+const USER_PART = /(?<![a-z0-9+.-])([0-9+.-]*[a-z][a-z0-9+.-]*:\/\/)[^/\s'"<>@]*@/gi;
 
 /**
  * Removes the user part of every locator in a text (the camera-credential form of spec §G G-R4).

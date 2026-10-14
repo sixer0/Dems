@@ -1,0 +1,302 @@
+/**
+ * @vitest-environment jsdom
+ * @vitest-environment-options { "url": "http://127.0.0.1:5178/" }
+ */
+// Task 4 row W5 (review `verification/060d` finding Q-02; decisions C36, C60, C111): NO CLIENT COULD ASSIGN A
+// PRODUCTION CAMERA. The console sent operation 79 with a track alone; the Core refuses a production camera
+// without a profile of its own (`CAMERA_PROFILE_NOT_STATED`) and never picks one.
+//
+// | Case | Where |
+// |------|-------|
+// | the rule: who needs a profile, what is preselected, what a profile is in words | "the rule (pure)" |
+// | TWO stored profiles: both offered by what they are, none preselected, Save waits for the choice, the request carries it | "two stored profiles" |
+// | ONE stored profile: preselected, still shown, the request carries it | "one stored profile" |
+// | NO stored profile: nothing is offered and nothing is sent; the row says why | "no stored profile" |
+// | a held line: the same camera with another of its profiles is an edit | "a held line" |
+// | a refusal of the Core keeps its sentence | "a refused profile" |
+// | a development source is assigned exactly as before (operation 79, no profile control) | "CONTROL" (and, unedited, `selector-microphones.test.tsx`) |
+//
+// THE DOUBLE, AND WHAT IT DOES NOT PROVE. The fake Core of the live harness serves the device list by the
+// contract, and the contract's device entry has no `profiles` member today: the typed client refuses an answer
+// that carries one (a strict schema), so the list cannot travel through operation 77 in a test either. The page
+// cases therefore replace THE ONE READER of the list (`storedProfilesOf`, the seam of `camera-profile.ts`) by a
+// table keyed by device id; what the reader does with a real device entry is the pure case. Proven here: the
+// screen and the request, given the list. NOT proven: that a Core states the list (request lines of row W5).
+// No browser session. Seen RED on the mutation "the row sends the assignment without the chosen profile"
+// (operation 79 in the place of the camera line of operation 78): the four cases that read the request.
+import { cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { toast } from '@heroui/react'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { TFunction } from 'i18next'
+import { en } from '@dems/shared/i18n'
+import { refusal } from '@dems/shared/live/testing'
+import type { SimState } from '@dems/shared/sim'
+import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
+import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
+import { enWeb } from '@/i18n-web'
+import { resetCoreErrorPresenter } from '@/lib/core-errors'
+import { createLiveTestBed, SUPERVISOR_SESSION, type LiveTestBed } from '@/runtime/testing/live-harness'
+import { stubMediaForJsdom } from '@/features/session-new/__tests__/live-session-new-bed'
+import * as cameraProfile from '../camera-profile'
+
+const TABLE = vi.hoisted(() => ({ profiles: {} as Record<string, readonly string[]> }))
+
+vi.mock('../camera-profile', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../camera-profile')>()
+  return {
+    ...actual,
+    // The seam: the list of a device by its id, from the test's table. A device the table does not name is read by the real reader.
+    storedProfilesOf: (device: unknown) => {
+      const id = (device as { readonly id?: unknown } | null | undefined)?.id
+      return typeof id === 'string' && id in TABLE.profiles ? TABLE.profiles[id]! : actual.storedProfilesOf(device)
+    },
+  }
+})
+
+configure({ asyncUtilTimeout: 8_000 })
+vi.setConfig({ testTimeout: 30_000 })
+
+const W = enWeb.web.cameraProfile
+type Device = SimState['captureDevices']['devices'][number]
+type Track = 'VIDEO-01' | 'VIDEO-02'
+
+const TWO = ['HEVC_2560X1920P20', 'H264_720P30'] as const
+const ONE = ['HEVC_2160P'] as const
+
+let bed: LiveTestBed | undefined
+
+/**
+ * A Live console on a Core in real capture: CAM-01 and CAM-02 are PRODUCTION cameras (two and one stored profile),
+ * CAM-03 a production camera the Core holds no profile for, CAM-04 a generated development source.
+ */
+async function liveSelector(held: readonly { readonly trackId: Track; readonly deviceId: string; readonly profile: string }[] = []) {
+  const created = createLiveTestBed({ session: SUPERVISOR_SESSION })
+  bed = created
+  const served = created.core.served
+  const camera = served.captureDevices.devices.find((device) => device.kind === 'CAMERA')!
+  const production = (id: string): Device => ({ ...camera, id, model: 'Adopted camera', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION' }) as Device
+  created.core.served = {
+    ...served,
+    captureDevices: {
+      devices: [
+        production('CAM-01'),
+        production('CAM-02'),
+        production('CAM-03'),
+        { ...camera, id: 'CAM-04', model: 'Generated', adapter: 'FAKE', sourceClass: 'DEVELOPMENT' } as Device,
+        ...served.captureDevices.devices.filter((device) => device.kind !== 'CAMERA').map((device) => ({ ...device, adapter: 'FAKE', sourceClass: 'DEVELOPMENT' }) as Device),
+      ],
+    },
+    captureConfig: {
+      ...served.captureConfig,
+      cameras: held.map((line) => ({ ...served.captureConfig.cameras[0]!, ...line })),
+    } as SimState['captureConfig'],
+  }
+  TABLE.profiles = { 'CAM-01': TWO, 'CAM-02': ONE, 'CAM-03': [] }
+  const page = await created.load()
+  await created.mount(page, '/devices')
+  await screen.findByTestId('page-devices')
+  const panel = await screen.findByTestId('panel-selector')
+  await within(panel).findByTestId('selector-ready')
+  return { bed: created, panel }
+}
+
+const requests = (operationId: string) => bed!.fake.log.requestsOf(operationId)
+const rowOf = (panel: HTMLElement, track: Track) => within(panel).getByTestId(`selector-camera-${track}`)
+const sourceOf = (panel: HTMLElement, track: Track) => within(within(panel).getByTestId(`selector-source-${track}`)).getByRole('button')
+const saveOf = (panel: HTMLElement, track: Track) => within(panel).getByTestId(`selector-save-${track}`)
+const profileOf = (panel: HTMLElement, track: Track) => within(panel).queryByTestId(`selector-profile-${track}`)
+const hintOf = (panel: HTMLElement, track: Track) => within(panel).queryByTestId(`selector-profile-hint-${track}`)
+async function pickCamera(panel: HTMLElement, track: Track, name: RegExp) {
+  fireEvent.click(sourceOf(panel, track))
+  fireEvent.click(await screen.findByRole('option', { name }))
+}
+async function profileOptions(panel: HTMLElement, track: Track): Promise<string[]> {
+  fireEvent.click(within(profileOf(panel, track)!).getByRole('button'))
+  const options = await screen.findAllByRole('option')
+  return options.map((option) => option.textContent ?? '')
+}
+
+const originalMatchMedia = window.matchMedia
+async function clearToasts() {
+  window.matchMedia = (() => ({ matches: true })) as unknown as typeof window.matchMedia
+  toast.clear()
+  window.matchMedia = originalMatchMedia
+  const queue = toast.getQueue() as { getExitingKeys?: () => ReadonlySet<string> }
+  if ((queue.getExitingKeys?.().size ?? 0) > 0) await new Promise((resolve) => setTimeout(resolve, 350))
+}
+
+let restoreMedia: () => void = () => undefined
+beforeAll(() => {
+  restoreMedia = stubMediaForJsdom()
+  Element.prototype.scrollTo ??= function scrollTo() {}
+  window.scrollTo = (() => undefined) as typeof window.scrollTo
+  Element.prototype.getAnimations ??= function getAnimations() {
+    return []
+  }
+})
+afterAll(() => restoreMedia())
+beforeEach(() => {
+  resetMissingI18nKeys()
+  resetCoreErrorPresenter()
+  window.localStorage.clear()
+  window.sessionStorage.clear()
+  window.sessionStorage.setItem(SHELL_INTRO_STORAGE_KEY, '1')
+})
+afterEach(async () => {
+  cleanup()
+  await clearToasts()
+  bed?.dispose()
+  bed = undefined
+  TABLE.profiles = {}
+})
+
+describe('row W5 (Q-02): the rule (pure)', () => {
+  const t = ((key: string, options?: Record<string, unknown>) => {
+    const text = key.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown>)[part], enWeb as unknown)
+    return String(text).replace(/\{\{(\w+)\}\}/g, (_match, name: string) => String(options?.[name]))
+  }) as unknown as TFunction
+  const production = { id: 'CAM-01', kind: 'CAMERA', adapter: 'ONVIF_RTSP' }
+
+  it('`storedProfilesOf` reads the member `profiles` of a device entry as untrusted data: codes only, each once, in the Core\'s order; anything else states nothing', async () => {
+    const { storedProfilesOf, STORED_PROFILES_MAX } = await vi.importActual<typeof import('../camera-profile')>('../camera-profile')
+    expect(storedProfilesOf({ ...production, profiles: ['HEVC_2160P', 'H264_720P30', 'HEVC_2160P'] })).toEqual(['HEVC_2160P', 'H264_720P30'])
+    // Row V7: an entry of the contract is `{ code, codec, resolution, fps }` - its `code` is read; an object without a code states nothing.
+    expect(storedProfilesOf({ ...production, profiles: ['H264_720P30', 7, null, 'rtsp://camera/stream', '', 'h264_720p30', { codec: 'HEVC' }, { code: 'rtsp://camera/2' }] })).toEqual(['H264_720P30'])
+    expect(storedProfilesOf({ ...production, profiles: [{ code: 'HEVC_2560X1920P', codec: 'HEVC', resolution: '2560x1920', fps: null }, { code: 'H264_720P30', codec: 'H.264', resolution: '720p', fps: 30 }] })).toEqual(['HEVC_2560X1920P', 'H264_720P30'])
+    // An entry without the member (a Core before row V7, a built-in device) states nothing.
+    for (const entry of [production, { ...production, profiles: 'H264_720P30' }, { ...production, profiles: null }, null, undefined, 'CAM-01']) expect(storedProfilesOf(entry)).toEqual([])
+    expect(storedProfilesOf({ profiles: Array.from({ length: 100 }, (_unused, index) => `P${String(index)}`) })).toHaveLength(STORED_PROFILES_MAX)
+  })
+
+  it('`cameraAssignmentOf`: a profile is asked only for a production camera on a Core in real capture; one stored profile is preselected, several are not, a held one is kept', () => {
+    const { cameraAssignmentOf, isProductionCamera } = cameraProfile
+    expect(isProductionCamera(production)).toBe(true)
+    for (const device of [{ ...production, adapter: 'FAKE' }, { ...production, adapter: 'LOCAL_DEVICE' }, { ...production, adapter: undefined }, { ...production, kind: 'MIC' }, null, undefined]) {
+      expect(isProductionCamera(device)).toBe(false)
+      expect(cameraAssignmentOf({ realCapture: true, device, profiles: [...TWO], heldProfile: null })).toEqual({ kind: 'PLAIN' })
+    }
+    // Simulated mode and a Core in simulated capture: exactly as before, whatever the device says.
+    expect(cameraAssignmentOf({ realCapture: false, device: production, profiles: [...TWO], heldProfile: null })).toEqual({ kind: 'PLAIN' })
+    expect(cameraAssignmentOf({ realCapture: true, device: production, profiles: [], heldProfile: null })).toEqual({ kind: 'NO_PROFILE' })
+    expect(cameraAssignmentOf({ realCapture: true, device: production, profiles: [...ONE], heldProfile: null })).toEqual({ kind: 'CHOOSE', profiles: [...ONE], preselected: 'HEVC_2160P' })
+    expect(cameraAssignmentOf({ realCapture: true, device: production, profiles: [...TWO], heldProfile: null })).toEqual({ kind: 'CHOOSE', profiles: [...TWO], preselected: null })
+    expect(cameraAssignmentOf({ realCapture: true, device: production, profiles: [...TWO], heldProfile: 'H264_720P30' })).toMatchObject({ preselected: 'H264_720P30' })
+    // A held profile the camera no longer lists is never kept as the choice: no default stands in (C36).
+    expect(cameraAssignmentOf({ realCapture: true, device: production, profiles: [...TWO], heldProfile: 'H264_1080P25' })).toMatchObject({ preselected: null })
+    // NO held profile and a held one that is not listed, on a camera with one stored profile: its own one.
+    expect(cameraAssignmentOf({ realCapture: true, device: production, profiles: [...ONE], heldProfile: 'H264_1080P25' })).toMatchObject({ preselected: 'HEVC_2160P' })
+  })
+
+  it('`profileWords`: the codec, the picture and the rate as the stream stated them; "not stated" where the code states none', () => {
+    const { profileWords } = cameraProfile
+    expect(profileWords(t, 'HEVC_2560X1920P20')).toBe('HEVC • 2560x1920 • 20 fps')
+    expect(profileWords(t, 'H264_720P30')).toBe('H.264 • 720p • 30 fps')
+    expect(profileWords(t, 'HEVC_2160P')).toBe(`HEVC • 2160p • ${W.rateNotStated}`)
+    expect(profileWords(t, 'STANDARD')).toBe('Not stated (STANDARD)')
+  })
+})
+
+describe('row W5 (Q-02): the capture selector assigns a production camera with one of its stored profiles', () => {
+  it('two stored profiles: both are offered by what they are, none is preselected, Save waits for the choice, and the request carries the chosen profile', async () => {
+    const { bed: created, panel } = await liveSelector()
+    expect(rowOf(panel, 'VIDEO-01')).toHaveAttribute('data-state', 'NOT_ASSIGNED')
+    expect(profileOf(panel, 'VIDEO-01')).toBeNull()
+    await pickCamera(panel, 'VIDEO-01', /CAM-01/)
+    await waitFor(() => expect(profileOf(panel, 'VIDEO-01')).not.toBeNull())
+    expect(profileOf(panel, 'VIDEO-01')).not.toHaveAttribute('data-profile')
+    expect(profileOf(panel, 'VIDEO-01')).toHaveTextContent(W.placeholder)
+    expect(hintOf(panel, 'VIDEO-01')).toHaveTextContent(W.choose.replace('{{count}}', '2'))
+    expect(hintOf(panel, 'VIDEO-01')).toHaveAttribute('data-profile-state', 'CHOOSE')
+    // Nothing can be sent without a profile: the Core would refuse it and never picks one.
+    expect(saveOf(panel, 'VIDEO-01')).toBeDisabled()
+    expect(await profileOptions(panel, 'VIDEO-01')).toEqual(['HEVC • 2560x1920 • 20 fps', 'H.264 • 720p • 30 fps'])
+    fireEvent.click(await screen.findByRole('option', { name: 'H.264 • 720p • 30 fps' }))
+    await waitFor(() => expect(saveOf(panel, 'VIDEO-01')).toBeEnabled())
+    expect(profileOf(panel, 'VIDEO-01')).toHaveAttribute('data-profile', 'H264_720P30')
+    const served = JSON.parse(JSON.stringify(created.core.served.captureConfig)) as SimState['captureConfig']
+    created.fake.answerOnce('updateCaptureConfig', { status: 200, body: { ...served, updatedAt: served.updatedAt + 1 } })
+    fireEvent.click(saveOf(panel, 'VIDEO-01'))
+    await waitFor(() => expect(requests('updateCaptureConfig')).toHaveLength(1))
+    expect(requests('updateCaptureConfig')[0]).toMatchObject({ method: 'POST', path: '/api/v1/capture/config' })
+    expect(requests('updateCaptureConfig')[0]!.body).toEqual({ cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_720P30' }] })
+    // Never the request without a profile.
+    expect(requests('setCaptureCameraSource')).toHaveLength(0)
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('one stored profile: it is preselected and still shown, and the request carries it', async () => {
+    const { bed: created, panel } = await liveSelector()
+    await pickCamera(panel, 'VIDEO-02', /CAM-02/)
+    await waitFor(() => expect(profileOf(panel, 'VIDEO-02')).toHaveAttribute('data-profile', 'HEVC_2160P'))
+    expect(profileOf(panel, 'VIDEO-02')).toHaveTextContent(`HEVC • 2160p • ${W.rateNotStated}`)
+    expect(hintOf(panel, 'VIDEO-02')).toHaveTextContent(W.one)
+    await waitFor(() => expect(saveOf(panel, 'VIDEO-02')).toBeEnabled())
+    const served = JSON.parse(JSON.stringify(created.core.served.captureConfig)) as SimState['captureConfig']
+    created.fake.answerOnce('updateCaptureConfig', { status: 200, body: { ...served, updatedAt: served.updatedAt + 1 } })
+    fireEvent.click(saveOf(panel, 'VIDEO-02'))
+    await waitFor(() => expect(requests('updateCaptureConfig')).toHaveLength(1))
+    expect(requests('updateCaptureConfig')[0]!.body).toEqual({ cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'HEVC_2160P' }] })
+    expect(requests('setCaptureCameraSource')).toHaveLength(0)
+  })
+
+  it('no stored profile: no profile is offered, nothing can be sent, and the row says why', async () => {
+    const { panel } = await liveSelector()
+    await pickCamera(panel, 'VIDEO-01', /CAM-03/)
+    await waitFor(() => expect(hintOf(panel, 'VIDEO-01')).toHaveAttribute('data-profile-state', 'NO_PROFILE'))
+    expect(hintOf(panel, 'VIDEO-01')!.textContent).toBe(
+      'This camera cannot be assigned: the Core holds no stream profile for it, and it does not pick one for a camera. The profiles of a camera are stored when its connection test reads its stream, before the camera is added. Nothing was changed.',
+    )
+    expect(profileOf(panel, 'VIDEO-01')).toBeNull()
+    expect(saveOf(panel, 'VIDEO-01')).toBeDisabled()
+    fireEvent.click(saveOf(panel, 'VIDEO-01'))
+    expect(requests('updateCaptureConfig')).toHaveLength(0)
+    expect(requests('setCaptureCameraSource')).toHaveLength(0)
+    // Another camera of the same row starts from its own list: the hint follows the choice.
+    await pickCamera(panel, 'VIDEO-01', /CAM-02/)
+    await waitFor(() => expect(hintOf(panel, 'VIDEO-01')).toHaveTextContent(W.one))
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('a held line: its profile is the one shown; the same camera with another of its profiles is an edit and is sent', async () => {
+    const { bed: created, panel } = await liveSelector([{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_720P30' }])
+    await waitFor(() => expect(profileOf(panel, 'VIDEO-01')).toHaveAttribute('data-profile', 'H264_720P30'))
+    // Nothing changed yet.
+    expect(saveOf(panel, 'VIDEO-01')).toBeDisabled()
+    await profileOptions(panel, 'VIDEO-01')
+    fireEvent.click(await screen.findByRole('option', { name: 'HEVC • 2560x1920 • 20 fps' }))
+    await waitFor(() => expect(saveOf(panel, 'VIDEO-01')).toBeEnabled())
+    const served = JSON.parse(JSON.stringify(created.core.served.captureConfig)) as SimState['captureConfig']
+    created.fake.answerOnce('updateCaptureConfig', { status: 200, body: { ...served, updatedAt: served.updatedAt + 1 } })
+    fireEvent.click(saveOf(panel, 'VIDEO-01'))
+    await waitFor(() => expect(requests('updateCaptureConfig')).toHaveLength(1))
+    expect(requests('updateCaptureConfig')[0]!.body).toEqual({ cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'HEVC_2560X1920P20' }] })
+  })
+
+  it('a refused profile keeps the Core\'s sentence at the field, and the slot stays empty', async () => {
+    const { bed: created, panel } = await liveSelector()
+    await pickCamera(panel, 'VIDEO-02', /CAM-02/)
+    await waitFor(() => expect(saveOf(panel, 'VIDEO-02')).toBeEnabled())
+    for (const reason of ['CAMERA_PROFILE_NOT_OF_DEVICE', 'CAMERA_PROFILE_NOT_STATED', 'PRODUCTION_SOURCE_NOT_ALLOWED'] as const) {
+      created.fake.answerOnce('updateCaptureConfig', refusal(422, 'INVALID_INPUT', 'A production camera is assigned with a profile of its own.', { in: 'body', reason, deviceId: 'CAM-02', trackId: 'VIDEO-02' }))
+      await waitFor(() => expect(saveOf(panel, 'VIDEO-02')).toBeEnabled())
+      fireEvent.click(saveOf(panel, 'VIDEO-02'))
+      const sentence = en.common.captureSlotRefusal[reason].replaceAll('{{source}}', en.common.captureSlotSource.CAMERA)
+      await waitFor(async () => expect((await within(panel).findByTestId('selector-message-VIDEO-02')).textContent).toBe(sentence))
+    }
+    expect(rowOf(panel, 'VIDEO-02')).toHaveAttribute('data-state', 'NOT_ASSIGNED')
+  })
+
+  it('CONTROL - a development source of the same Core: no profile control, no hint, and operation 79 with the track alone, as before', async () => {
+    const { bed: created, panel } = await liveSelector()
+    await pickCamera(panel, 'VIDEO-01', /CAM-04/)
+    await waitFor(() => expect(saveOf(panel, 'VIDEO-01')).toBeEnabled())
+    expect(profileOf(panel, 'VIDEO-01')).toBeNull()
+    expect(hintOf(panel, 'VIDEO-01')).toBeNull()
+    const served = JSON.parse(JSON.stringify(created.core.served.captureConfig)) as SimState['captureConfig']
+    created.fake.answerOnce('setCaptureCameraSource', { status: 200, body: { ...served, updatedAt: served.updatedAt + 1 } })
+    fireEvent.click(saveOf(panel, 'VIDEO-01'))
+    await waitFor(() => expect(requests('setCaptureCameraSource')).toHaveLength(1))
+    expect(requests('setCaptureCameraSource')[0]).toMatchObject({ method: 'POST', path: '/api/v1/capture/cameras/CAM-04/source', body: { trackId: 'VIDEO-01' } })
+    expect(requests('updateCaptureConfig')).toHaveLength(0)
+  })
+})

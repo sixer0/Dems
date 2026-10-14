@@ -5,11 +5,23 @@
 import { describe, expect, it } from 'vitest';
 import { en } from '../src/i18n';
 import {
+  AUDIO_INSERTED_SILENCE_SENTENCE,
+  AUDIO_NOT_SAMPLE_CONTINUOUS_WORDS,
+  CAPTURE_ADVISORY_DEVICE_KIND,
   CAPTURE_ADVISORY_REASONS,
+  CAPTURE_ADVISORY_SEVERITY,
+  CAPTURE_ADVISORY_WARNING_REASONS,
   CAPTURE_FAULT_SENTENCES,
   CAPTURE_REASON_SEVERITY,
   CaptureAdvisoryReason,
+  MIC_SAME_DEVICE_WORDS,
+  MIC_SHORTFALL_FLOOR_PER_100K,
+  MIC_SHORTFALL_WINDOW_SECONDS,
+  MIC_SILENCE_RUN_MAX_MS,
   captureFaultSentence,
+  isMicShortfallReason,
+  micShortfallSentence,
+  shortfallPercentText,
   createManualClock,
   createSim,
   isCaptureFaultReason,
@@ -98,12 +110,75 @@ describe('worded by its reason', () => {
 
     it('severity: the degraded start is a WARNING, advice is INFO; every reason has one; every advisory notice of the simulator has a sentence', () => {
       expect(CAPTURE_REASON_SEVERITY.CAMERA_NOT_CONNECTED).toBe('WARNING');
-      for (const reason of CAPTURE_ADVISORY_REASONS) expect(CAPTURE_REASON_SEVERITY[reason]).toBe('INFO');
+      // Task 4 row N2 (SM-32 (5)): the advisory list carries a second level. Advice is INFO, but for the THREE notices of a
+      // microphone that loses more audio than it should, which the operator reads as a WARNING; never CRITICAL, never a fault.
+      expect([...CAPTURE_ADVISORY_WARNING_REASONS]).toEqual(['MIC_SAMPLES_SHORT_ABOVE_BOUND', 'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', 'MIC_SILENCE_RUN_INSERTED']);
+      for (const reason of CAPTURE_ADVISORY_REASONS) expect(CAPTURE_REASON_SEVERITY[reason], reason).toBe(CAPTURE_ADVISORY_WARNING_REASONS.includes(reason) ? 'WARNING' : 'INFO');
+      for (const reason of CAPTURE_ADVISORY_WARNING_REASONS) expect(CAPTURE_ADVISORY_REASONS, reason).toContain(reason);
       expect(Object.keys(CAPTURE_REASON_SEVERITY).sort()).toEqual(Object.keys(CAPTURE_FAULT_SENTENCES).sort());
       for (const reason of Object.values(CaptureAdvisoryReason)) {
         expect(isCaptureFaultReason(reason), reason).toBe(true);
         expect(CAPTURE_ADVISORY_REASONS, reason).toContain(reason);
+        // The level of the alert (`CAPTURE_ADVISORY_SEVERITY`) is the severity of the wording table: one statement, two tables held equal.
+        expect(CAPTURE_ADVISORY_SEVERITY[reason], reason).toBe(CAPTURE_REASON_SEVERITY[reason]);
       }
+      // 5 -> 10 advisory reasons with the five of row N2, appended last in both lists.
+      expect(Object.values(CaptureAdvisoryReason)).toHaveLength(10);
+      expect(CAPTURE_ADVISORY_REASONS).toHaveLength(10);
+      expect(Object.values(CaptureAdvisoryReason).slice(-5)).toEqual(['MIC_PATH_NOT_SAMPLE_CONTINUOUS', 'MIC_SAMPLES_SHORT_ABOVE_BOUND', 'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', 'MIC_SILENCE_RUN_INSERTED', 'STANDBY_ON_PRIMARY_DEVICE']);
+      expect(Object.values(CaptureAdvisoryReason).slice(-5).map((reason) => CAPTURE_ADVISORY_DEVICE_KIND[reason])).toEqual(['MIC', 'MIC', 'MIC', 'MIC', 'MIC']);
+    });
+
+    it('task 4 row N2: the five notices of a microphone path that is not sample-continuous - the sentences of the design word for word, the fixed sentence in one place, numbers as whole values or not at all', () => {
+      // MUTATION THIS CASE WAS SEEN RED ON: `shortfallPercentText` rounding to the nearest tenth instead of cutting (11,999 read "12.0").
+      expect(AUDIO_INSERTED_SILENCE_SENTENCE).toBe('Sound that did not arrive is not in the recording. Silence of the same total length was inserted by the recorder; its places are not the places of the missing sound.');
+      expect(captureFaultSentence('MIC_PATH_NOT_SAMPLE_CONTINUOUS', 'MIC-01')).toBe(
+        `This microphone path does not deliver every sample (bench form of this Mac). ${AUDIO_INSERTED_SILENCE_SENTENCE} The amount is measured and recorded with the session.`,
+      );
+      expect(captureFaultSentence('STANDBY_ON_PRIMARY_DEVICE', 'MIC-02')).toBe("The standby microphone is another channel of the primary's device and is recorded by the same capture program. It guards a microphone and its cable, nothing else.");
+      expect(micShortfallSentence('MIC_SAMPLES_SHORT_ABOVE_BOUND', { shortfallPer100k: 13_250 })).toBe('The microphone is losing more audio than this path may: 13.2% of the last 10 seconds was inserted silence (bound 12.0%).');
+      expect(micShortfallSentence('MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', { shortfallPer100k: 11_400, referencePer100k: 9_671 })).toBe(
+        "The microphone is losing more audio than at the start of this session: 11.4% of the last 10 seconds was inserted silence (this session's level: 9.6%).",
+      );
+      expect(micShortfallSentence('MIC_SILENCE_RUN_INSERTED', { runMs: 2_772 })).toBe('Silence of 2772 ms was inserted into the recording in one piece: no audio arrived from the microphone in that time.');
+      // The floor is said as the constant says it; a share is CUT to one decimal, never rounded up.
+      expect([MIC_SHORTFALL_FLOOR_PER_100K, shortfallPercentText(MIC_SHORTFALL_FLOOR_PER_100K), MIC_SHORTFALL_WINDOW_SECONDS]).toEqual([12_000, '12.0', 10]);
+      expect([0, 99, 100, 9_476, 11_999, 12_000, 100_000].map(shortfallPercentText)).toEqual(['0.0', '0.0', '0.1', '9.4', '11.9', '12.0', '100.0']);
+      for (const value of [-1, 100_001, 1.5, '12000', null, undefined, Number.NaN]) expect(shortfallPercentText(value), String(value)).toBeNull();
+      // Without a whole number inside its bounds: the sentence without numbers - never half of them, never a raw placeholder.
+      const bare = [
+        micShortfallSentence('MIC_SAMPLES_SHORT_ABOVE_BOUND'),
+        micShortfallSentence('MIC_SAMPLES_SHORT_ABOVE_BOUND', { shortfallPer100k: 100_001 }),
+        micShortfallSentence('MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', { shortfallPer100k: 11_400 }),
+        micShortfallSentence('MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', { shortfallPer100k: 11_400, referencePer100k: null }),
+        micShortfallSentence('MIC_SILENCE_RUN_INSERTED', { runMs: 1.5 }),
+        micShortfallSentence('MIC_SILENCE_RUN_INSERTED', { runMs: MIC_SILENCE_RUN_MAX_MS + 1 }),
+        captureFaultSentence('MIC_SAMPLES_SHORT_ABOVE_BOUND', 'MIC-01'),
+        captureFaultSentence('MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', null),
+        captureFaultSentence('MIC_SILENCE_RUN_INSERTED', 'MIC-01'),
+      ];
+      for (const sentence of bare) expect(sentence).not.toMatch(/\{\{|\d+\.\d% of the last|Silence of \d/);
+      expect(bare[0]).toBe('The microphone is losing more audio than this path may (bound 12.0% of 10 seconds as inserted silence).');
+      expect([isMicShortfallReason('MIC_SILENCE_RUN_INSERTED'), isMicShortfallReason('MIC_PATH_NOT_SAMPLE_CONTINUOUS'), isMicShortfallReason('MIC_RATE_AT_LIMIT'), isMicShortfallReason(null)]).toEqual([true, false, false, false]);
+      // THE WORDS OF THE PRODUCT (SM-30 (5), SM-34 (5), SM-37 (3)): no sentence of the path says the silence stands at or near the missing
+      // sound, calls the pair redundant, or calls the audio complete.
+      const said = [...Object.values(MIC_SAME_DEVICE_WORDS), ...Object.values(AUDIO_NOT_SAMPLE_CONTINUOUS_WORDS), ...Object.values(CaptureAdvisoryReason).slice(-5).map((reason) => CAPTURE_FAULT_SENTENCES[reason]), ...bare];
+      for (const sentence of said) expect(sentence).not.toMatch(/\bnear\b|redundan|complete audio|fit to record|hardened|production-grade/i);
+      // The operator's words for a pair on one device, and the i18n blocks ARE the tables.
+      expect(MIC_SAME_DEVICE_WORDS).toEqual({
+        role: 'Second channel',
+        slot: 'Second channel of the same device',
+        line: 'Microphone for the standby line - second channel of the same device',
+        source: 'MIC (second channel of the same device)',
+        joinsAtNextStart: "Both microphones of one device are started together. This microphone joins at the next start of the session's microphones.",
+        switchRefused: 'The capture program of this device has ended. Both of its channels are gone; the second channel cannot bring the audio back.',
+      });
+      expect(en.common.micSameDevice).toBe(MIC_SAME_DEVICE_WORDS);
+      expect(en.common.audioNotSampleContinuous).toBe(AUDIO_NOT_SAMPLE_CONTINUOUS_WORDS);
+      expect(AUDIO_NOT_SAMPLE_CONTINUOUS_WORDS.sentence).toBe(AUDIO_INSERTED_SILENCE_SENTENCE);
+      expect(Object.keys(AUDIO_NOT_SAMPLE_CONTINUOUS_WORDS)).toEqual(['title', 'sentence', 'measured', 'measuredTo', 'notMeasured', 'runs', 'segment', 'transcript']);
+      // The plain words for two devices did not move.
+      expect([en.devices.selector.role.STANDBY, en.common.captureSlot.STANDBY, en.devices.micLines.label.STANDBY]).toEqual(['Standby', 'Standby microphone', 'Microphone for the standby line']);
     });
 
     it('the i18n block IS the table: a client that translates and one that calls the function read the same words', () => {

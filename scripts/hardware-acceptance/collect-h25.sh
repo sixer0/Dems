@@ -17,7 +17,8 @@ case "$0" in */*) HW_DIR=${0%/*} ;; *) HW_DIR=. ;; esac
 . "$HW_DIR/hw-collect-lib.sh"
 hw_init "$@"
 
-criterion 'The tool is the iputils one at the stated path: 1 of 1. An address in use refused: 1 of 1, address not added. The free control added and removed: 1 of 1 each.'
+criterion 'The tool is the iputils one at the stated path, and the package manager'"'"'s two records agree with it: 1 of 1. An address in use refused: 1 of 1, address not added. The free control added and removed: 1 of 1 each. A second address refused with code 41 while one is in place: 1 of 1. With the tool moved away, refused with code 37: 2 of 2 (self-check and the add request). A port without ARP refused with code 46 and a port without carrier with code 47: 2 of 2. The tool'"'"'s printed text for a free and a taken address in the expected form: 2 of 2.'
+note 'steps .5, .6 and .7 (codes 41, 37, 46, 47 and the tool'"'"'s own text) are the USER'"'"'s: this collector sends no request, moves no file and starts no arping. The two records of the package manager (iputils-arping.list, iputils-arping.md5sums) are read by the USER as chapter 2 states in step .1.'
 case "$HW_MODE" in
   tool)
     step '9A/H-25.1' SCRIPT 'command -v arping; dpkg -S on that path; dpkg -s arping; stat -c "%U %a" on /usr/bin/arping and /usr/sbin/ip'

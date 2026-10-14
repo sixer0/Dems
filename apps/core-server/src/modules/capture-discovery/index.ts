@@ -54,6 +54,7 @@ import {
   type RegisteredLookup,
 } from '../../capture/adapters';
 import { captureFenceControl } from '../../capture/fence';
+import { storeCaptureDeviceProfilesIn } from '../../engine';
 import { captureNotices, type PrecheckSearchSeam } from '../../capture-notices';
 import { streamProfileOf } from '../../sealing-host';
 import { registerAdoptedCameraTest } from './adopted-test';
@@ -320,6 +321,15 @@ export const captureDiscoveryModule: FastifyPluginAsync = async (app) => {
       note: (fields, message) => app.log.info(fields, message),
       persist: (entry) => app.errorLog.append({ level: 'warn', source: `${SOURCE}.adoptedTest`, message: entry.message, code: entry.code, context: { ...entry.context } }),
       record: (entry) => app.pipeline.run(`${SOURCE}.adoptedTested`, async (unit) => void (await unit.audit.append(entry))),
+      // Row PR (decision C117): a test that judged a stream ends in ONE unit of the engine - what it stores for a camera
+      // without a stored profile and its outcome entry commit together. The entry is appended here, after the work.
+      // Row V7: the unit carries the engine's door for the camera's stored profile list, bound to itself - the device
+      // entry of the replicated slice states what the unit stores, in the same commit.
+      settle: async (work) =>
+        void (await app.engine.run(`${SOURCE}.adoptedSettled`, async (scope) => {
+          const entry = await work({ unit: scope.unit, pending: () => scope.pending(), storeProfiles: (change) => storeCaptureDeviceProfilesIn(scope, change) });
+          await scope.unit.audit.append(entry);
+        })),
     },
     limits: () => connect.limits,
     tester: () => streamTester,

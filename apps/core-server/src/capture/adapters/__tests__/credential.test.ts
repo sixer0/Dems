@@ -138,6 +138,90 @@ describe('a locator never carries a user part', () => {
     }
   });
 
+  // Task 4 row 174b (decision C127, caution C-4 of the security review of row 86): a parameter NAME is refused by the
+  // class of a part it contains, case folded (`pass pwd token key secret auth user login session`), or when it IS one
+  // of the short words `pw usr account`; one stream parameter a camera states, `sessiontimeout`, is admitted with
+  // digits only. Mutations seen RED (implementation/174b_locator_name_class.md): row 174's whole-name rule put back
+  // (cases 1, 2, 3, 5); the parts compared as whole names (cases 1, 2, 5 and row 46's case above); the whole-name list
+  // emptied (cases 1, 3); the exception removed (cases 4, 5); the exception's value form widened to any value (case 5).
+  describe('row 174b (C127 C-4): a credential-like parameter name is refused by its class, not by a closed list of whole names', () => {
+    const isRefused = (locator: string): boolean => {
+      try {
+        credentialFreeLocator(locator, 'CAM-03');
+        return false;
+      } catch (error) {
+        expect(error).toMatchObject({ code: 'CAPTURE_LOCATOR_INVALID', deviceId: 'CAM-03' });
+        expect(leaks(everything(error))).toEqual([]);
+        return true;
+      }
+    };
+    /** Every form a refused name must be refused in: three letter cases, first and later position, without a value. */
+    const forms = (name: string): string[] => {
+      const mixed = `${name.slice(0, 1).toUpperCase()}${name.slice(1, 2)}${name.slice(2).toUpperCase()}`;
+      return [`${PLAIN}?${name}=1`, `${PLAIN}?${name.toUpperCase()}=1`, `${PLAIN}?${mixed}=1`, `${PLAIN}?channel=1&${name}=1`, `${PLAIN}?channel=1&${name.toUpperCase()}=1&subtype=0`, `${PLAIN}?${name}`];
+    };
+
+    it('1. each name the whole-name list let through is refused, in every form', () => {
+      const missed = ['passwd', 'pw', 'usr', 'login', 'loginuse', 'loginpas', 'account', 'apikey', 'access_token'];
+      expect(missed.flatMap(forms).filter((locator) => !isRefused(locator))).toEqual([]);
+      // ... and so is each of the ten names of row 174, unchanged.
+      const former = 'user username pass password pwd auth token key secret session'.split(' ');
+      expect(former.flatMap(forms).filter((locator) => !isRefused(locator))).toEqual([]);
+    });
+
+    it('2. a name that CONTAINS a part of the class is refused, wherever the part stands in it', () => {
+      const parts = 'pass pwd token key secret auth user login session'.split(' ');
+      const around = parts.flatMap((part) => [`x${part}`, `${part}x`, `x_${part}_2`, `${part}${part}`]);
+      expect(around).toHaveLength(36);
+      expect(around.flatMap(forms).filter((locator) => !isRefused(locator))).toEqual([]);
+      // Names of the kind a device could choose: every one holds a part.
+      const chosen = ['authorization', 'oauth', 'x-api-key', 'userid', 'user_name', 'sessionid', 'session_key', 'pwdhash', 'tokens', 'keyframe', 'authmode', 'username2', 'secretkey', 'passphrase', 'loginid'];
+      expect(chosen.flatMap(forms).filter((locator) => !isRefused(locator))).toEqual([]);
+    });
+
+    it('3. the short words are refused as the WHOLE name only: inside a longer name they are not a class (the stated choice)', () => {
+      expect(['pw', 'usr', 'account'].flatMap(forms).filter((locator) => !isRefused(locator))).toEqual([]);
+      // Control on the admitted side: a longer name that holds a short word and no part of the class.
+      for (const locator of [`${PLAIN}?pwm=1`, `${PLAIN}?busrate=2`, `${PLAIN}?accountancy=3`, `${PLAIN}?pwm=1&busrate=2&accountancy=3`]) expect(isRefused(locator), locator).toBe(false);
+    });
+
+    it('4. the names the product\'s locators use are admitted, and pass the injection point byte for byte', () => {
+      const products = [
+        `${PLAIN}?channel=1&subtype=0`,
+        `${PLAIN}?channel=1&subtype=0&unicast=true&proto=Onvif`,
+        `${PLAIN}?transportmode=unicast&profile=Profile_1`,
+        `${PLAIN}?profile=profile_1_h264&sessiontimeout=60&streamtype=unicast`,
+        `${PLAIN}?real_stream`,
+        `${PLAIN}?SessionTimeout=60`,
+        // A VALUE is still not judged.
+        `${PLAIN}?mode=password&stream=token&profile=secret_key&name=user&kind=session&channel=auth`,
+      ];
+      for (const locator of products) {
+        expect(isRefused(locator), locator).toBe(false);
+        const bytes = startMessageBytes({ access: credentialAtInjection(locator, sealCredential(CANARY)) });
+        expect(bytes.includes(Buffer.from(`"locator":"${locator}"`, 'utf8'))).toBe(true);
+        bytes.fill(0);
+      }
+    });
+
+    it('5. the one exception, sessiontimeout, carries digits only: 1 to 6 of them, never text, never no value', () => {
+      expect(isRefused(`${PLAIN}?sessiontimeout=1`)).toBe(false);
+      expect(isRefused(`${PLAIN}?sessiontimeout=999999`)).toBe(false);
+      const refused = [`${PLAIN}?sessiontimeout`, `${PLAIN}?sessiontimeout=`, `${PLAIN}?sessiontimeout=1234567`, `${PLAIN}?sessiontimeout=abc`, `${PLAIN}?sessiontimeout=6O`, `${PLAIN}?sessiontimeout=${CANARY.secret}`, `${PLAIN}?sessiontimeouts=60`, `${PLAIN}?xsessiontimeout=60`];
+      expect(refused.filter((locator) => !isRefused(locator))).toEqual([]);
+    });
+
+    it('6. every other bound of the rule holds as before: 128, 8 parameters, the character set, no repeat, no user part', () => {
+      const at128 = `a=${'x'.repeat(62)}&b=${'y'.repeat(61)}`;
+      expect(at128).toHaveLength(128);
+      expect(isRefused(`${PLAIN}?${at128}`)).toBe(false);
+      expect(isRefused(`${PLAIN}?${at128}y`)).toBe(true);
+      expect(isRefused(`${PLAIN}?${Array.from({ length: 8 }, (_unused, index) => `p${index}=1`).join('&')}`)).toBe(false);
+      expect(isRefused(`${PLAIN}?${Array.from({ length: 9 }, (_unused, index) => `p${index}=1`).join('&')}`)).toBe(true);
+      expect([`${PLAIN}?p%61ss=1`, `${PLAIN}?channel=1&Channel=2`, `${PLAIN}?sessiontimeout=60&sessiontimeout=60`, `${PLAIN}?a=1;b=2`, WITH_USER_PART, `${WITH_USER_PART}?channel=1`].filter((locator) => !isRefused(locator))).toEqual([]);
+    });
+  });
+
   it('the injection point is where the two meet, and its result shows the mark in every print form (AD-03 point 6)', async () => {
     const injected = credentialAtInjection(PLAIN, sealCredential(CANARY));
     expect(injected).toBeInstanceOf(InjectedStreamAccess);
@@ -404,5 +488,79 @@ describe('the canary through every channel of the layer', () => {
     expect(leaks(control.text())).toEqual([CANARY.secret]);
     expect(leaks(readFileSync(controlFile, 'utf8'))).toEqual([CANARY.secret]);
     expect(SERVER_AUDIT_DETAIL_RULES.CAPTURE_CREDENTIAL_SET.deviceId.accepts('CAM-01')).toBe(true);
+  });
+});
+
+// Row N5c (wave 12; decision C138; request of row N5b, record n5b section 4): the blanking of text the
+// Core did not write is LINEAR in its length. The form before was quadratic in a run of scheme
+// characters not followed by `://` (64 KiB of letters about 2.5 to 4.4 s on this Mac), and the door
+// blanks up to 1 MiB of a device's text per stream.
+// Seen RED on (in memory, the form before put back in credential.ts): the time case (64 KiB of
+// letters took seconds against the 100 ms bound; the 1 MiB step was never reached).
+describe('row N5c: the blanking of foreign text is linear, and its output is the output of before', () => {
+  /** THE FORM BEFORE, kept here only as the reference of the output: quadratic, so it is given short texts only. */
+  const FORM_BEFORE = /([a-z][a-z0-9+.-]*:\/\/)[^/\s'"<>@]*@/gi;
+  const timed = (text: string): { out: string; ms: number } => {
+    const start = performance.now();
+    const out = blankCredentialLocators(text);
+    return { out, ms: performance.now() - start };
+  };
+
+  it('64 KiB of letters within 100 ms, then 1 MiB of letters and 1 MiB of `x1` within 250 ms each, unchanged (no locator in them)', () => {
+    const small = 'a'.repeat(64 * 1024);
+    const first = timed(small);
+    expect(first.ms).toBeLessThan(100);
+    expect(first.out).toBe(small);
+    for (const text of ['a'.repeat(1024 * 1024), 'x1'.repeat(512 * 1024), 'Zq9-'.repeat(256 * 1024)]) {
+      const run = timed(text);
+      expect(run.ms).toBeLessThan(250);
+      expect(run.out).toBe(text);
+    }
+    // A user part after a long run is still blanked, and the run before it is kept as it was.
+    const tail = `${'b'.repeat(1024 * 1024)} rtsp://u:p@192.0.2.10/s`;
+    const run = timed(tail);
+    expect(run.ms).toBeLessThan(250);
+    expect(run.out).toBe(`${'b'.repeat(1024 * 1024)} rtsp://${CREDENTIAL_MARK}@192.0.2.10/s`);
+  });
+
+  it('the cases of before give the output of before, a run\'s leading digits and signs included', () => {
+    const cases: readonly (readonly [string, string])[] = [
+      ['rtsp://u:p@h/x', `rtsp://${CREDENTIAL_MARK}@h/x`],
+      ['1rtsp://u:p@h', `1rtsp://${CREDENTIAL_MARK}@h`],
+      ['-+.9Rtsp://a@b', `-+.9Rtsp://${CREDENTIAL_MARK}@b`],
+      ['see HTTP://user:pw@host:80/a and rtsp://h/s', `see HTTP://${CREDENTIAL_MARK}@host:80/a and rtsp://h/s`],
+      ['x:rtsp://u@h', `x:rtsp://${CREDENTIAL_MARK}@h`],
+      ['(rtsp://u:p@h) "rtsp://a:b@c"', `(rtsp://${CREDENTIAL_MARK}@h) "rtsp://${CREDENTIAL_MARK}@c"`],
+      ['rtsp://u:p@h rtsp://v:q@k', `rtsp://${CREDENTIAL_MARK}@h rtsp://${CREDENTIAL_MARK}@k`],
+      ['123://u@h', '123://u@h'],
+      ['aaaa1x', 'aaaa1x'],
+    ];
+    for (const [text, expected] of cases) {
+      expect(blankCredentialLocators(text)).toBe(expected);
+      expect(text.replace(FORM_BEFORE, `$1${CREDENTIAL_MARK}@`)).toBe(expected);
+    }
+  });
+
+  it('20,000 seeded random short texts: the same output as the form before (the row\'s own fuzz was 500,000, 0 differences)', () => {
+    const alphabet = [...'aZ19+.-:/@ <x"\'\n'];
+    const pieces = ['://', 'rtsp://', 'u:p@', '1x', 'RTSP://', '-1.a+://'];
+    let seed = 20_261_014;
+    const next = (): number => {
+      seed = (Math.imul(seed, 1_103_515_245) + 12_345) >>> 0;
+      return seed / 4_294_967_296;
+    };
+    const differ: string[] = [];
+    let changed = 0;
+    for (let index = 0; index < 20_000; index += 1) {
+      let text = '';
+      const length = Math.floor(next() * 48);
+      for (let at = 0; at < length; at += 1) text += next() < 0.3 ? pieces[Math.floor(next() * pieces.length)] : alphabet[Math.floor(next() * alphabet.length)];
+      const before = text.replace(FORM_BEFORE, `$1${CREDENTIAL_MARK}@`);
+      if (before !== text) changed += 1;
+      if (blankCredentialLocators(text) !== before) differ.push(text);
+    }
+    expect(differ).toEqual([]);
+    // The texts do reach the pattern: a good share of them carries a user part.
+    expect(changed).toBeGreaterThan(2_000);
   });
 });

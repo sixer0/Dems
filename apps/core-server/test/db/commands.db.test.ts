@@ -84,7 +84,7 @@ describe('db:migrate (AC-B-01)', () => {
     ]);
   });
 
-  it('first run on the empty database: applies the thirty files; prints the version before and after', async () => {
+  it('first run on the empty database: applies the thirty-two files; prints the version before and after', async () => {
     const result = await run(runMigrate, ['--database', created()]);
     expect(result.err).toEqual([]);
     expect(result.exitCode).toBe(0);
@@ -92,7 +92,7 @@ describe('db:migrate (AC-B-01)', () => {
       `db:migrate: ${created()} on PostgreSQL 18.4 as dems_owner`,
       'db:migrate: schema version before: none (not migrated)',
       `db:migrate: applied ${INITIAL_MIGRATION_TAGS.length} migration(s): ${INITIAL_MIGRATION_TAGS.join(', ')}`,
-      'db:migrate: schema version after: 13 (dbc-14)',
+      'db:migrate: schema version after: 14 (dbc-15)',
     ]);
   });
 
@@ -101,9 +101,9 @@ describe('db:migrate (AC-B-01)', () => {
     expect(result.exitCode).toBe(0);
     expect(result.out).toEqual([
       `db:migrate: ${created()} on PostgreSQL 18.4 as dems_owner`,
-      'db:migrate: schema version before: 13 (dbc-14)',
+      'db:migrate: schema version before: 14 (dbc-15)',
       'db:migrate: no pending migration; nothing was applied.',
-      'db:migrate: schema version after: 13 (dbc-14)',
+      'db:migrate: schema version after: 14 (dbc-15)',
     ]);
   });
 });
@@ -114,11 +114,11 @@ describe('db:status', () => {
     expect(result.err).toEqual([]);
     expect(result.exitCode).toBe(0);
     const files = readMigrationSet();
-    expect(result.out.slice(0, 34)).toEqual([
+    expect(result.out.slice(0, 36)).toEqual([
       `database         ${created()} on PostgreSQL 18.4`,
       'owner            dems_owner; encoding UTF8; locale C',
-      'schema version   13; contract revision dbc-14; this code expects 13 (dbc-14)',
-      'migrations       30 file(s); ledger matches',
+      'schema version   14; contract revision dbc-15; this code expects 14 (dbc-15)',
+      'migrations       32 file(s); ledger matches',
       ...files.map((file) => `  ${file.tag.padEnd(20)} applied  file sha256 ${file.sha256}  stored ${file.sha256}`),
     ]);
     expect(result.out).toContain('seeded_at        not seeded');
@@ -153,12 +153,12 @@ describe('db:status', () => {
     expect(result.out).toContain('  audit_chain_history      2');
   });
 
-  it('a database that exists and is not migrated: exit 1, thirty pending migrations', async () => {
+  it('a database that exists and is not migrated: exit 1, thirty-two pending migrations', async () => {
     const empty = await db.another({ template: EMPTY_DATABASE, slug: 'cmd_empty' });
     const result = await run(runStatus, ['--database', empty.name]);
     expect(result.exitCode).toBe(1);
-    expect(result.out).toContain('schema version   none (not migrated); this code expects 13 (dbc-14)');
-    expect(result.out.filter((line) => / pending /.test(line))).toHaveLength(30);
+    expect(result.out).toContain('schema version   none (not migrated); this code expects 14 (dbc-15)');
+    expect(result.out.filter((line) => / pending /.test(line))).toHaveLength(32);
     expect(result.err).toEqual([
       `db:status: ${INITIAL_MIGRATION_TAGS.length} migration(s) are not applied: ${INITIAL_MIGRATION_TAGS.join(', ')}. Run "npm run db:migrate".`,
       `db:status: NOT OK: 1 problem(s) on ${empty.name}.`,
@@ -183,9 +183,9 @@ describe('D38: an applied migration file that was edited is noticed by db:status
 
     const status = await run(runStatus, ['--database', created()], { migrationsFolder: folder });
     expect(status.exitCode).toBe(1);
-    expect(status.out).toContain('migrations       30 file(s); ledger DOES NOT MATCH');
+    expect(status.out).toContain('migrations       32 file(s); ledger DOES NOT MATCH');
     expect(status.out).toContain(`  ${'0001_tables'.padEnd(20)} edited   file sha256 ${edited?.sha256}  stored ${original?.sha256}`);
-    expect(status.out.filter((line) => / applied {2}file sha256 /.test(line))).toHaveLength(29);
+    expect(status.out.filter((line) => / applied {2}file sha256 /.test(line))).toHaveLength(31);
     expect(status.err).toEqual([
       `db:status: 0001_tables.sql was edited after it was applied: the file's SHA-256 is ${edited?.sha256.slice(0, 16)}..., the stored hash is ${original?.sha256.slice(0, 16)}.... An applied file is never edited; a correction is a new file (MG-4).`,
       `db:status: NOT OK: 1 problem(s) on ${created()}.`,

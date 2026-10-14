@@ -85,7 +85,18 @@ describe('row V4: `SIGNED_BY_COMPROMISED_KEY`, the notice and the state of the s
     // Row V6 (decision C97; row P1's request): `HOST_PROFILE_NOT_ASKED` was ADDED after it; the four earlier codes did not move.
     // Row R1b (decision C99): `VIDEO_ABSENT_IN_SESSION` was ADDED after it; the five earlier codes did not move.
     // Pass I-9b: `AUDIO_ABSENT_ON_RESTART` was ADDED after it; the six earlier codes did not move.
-    expect(Object.values(VERIFY_NOTICE)).toEqual(['AUDIT_EXTRACT_NOT_SIGNED', 'EXPORT_FOLDER_UNEXPECTED_FILE', 'REVISION_APPEND_PENDING', 'SIGNED_BY_COMPROMISED_KEY', 'HOST_PROFILE_NOT_ASKED', 'VIDEO_ABSENT_IN_SESSION', 'AUDIO_ABSENT_ON_RESTART']);
+    // Row N2 (decisions C110 (8), C112 (4)): `AUDIO_SAMPLES_NOT_RECEIVED` and `AUDIO_ONE_CAPTURE_GROUP` were ADDED after it, 7 -> 9; the seven earlier codes did not move.
+    expect(Object.values(VERIFY_NOTICE)).toEqual([
+      'AUDIT_EXTRACT_NOT_SIGNED',
+      'EXPORT_FOLDER_UNEXPECTED_FILE',
+      'REVISION_APPEND_PENDING',
+      'SIGNED_BY_COMPROMISED_KEY',
+      'HOST_PROFILE_NOT_ASKED',
+      'VIDEO_ABSENT_IN_SESSION',
+      'AUDIO_ABSENT_ON_RESTART',
+      'AUDIO_SAMPLES_NOT_RECEIVED',
+      'AUDIO_ONE_CAPTURE_GROUP',
+    ]);
     // Its line: the manifest's platform word only when it is one lower-case word; anything else is stated without a name.
     expect(hostProfileNotAskedReport('darwin')).toBe('Host profile: NOT ASKED. This package was sealed by a production Core on darwin, where the checks of the host profile are not run.');
     for (const platform of ['<b>darwin</b>', 'Darwin', 'darwin linux', '', 'x'.repeat(17), null, undefined, 7]) {

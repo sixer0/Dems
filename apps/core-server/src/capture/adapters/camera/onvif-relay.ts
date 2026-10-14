@@ -242,10 +242,32 @@ export interface StoredCameraStream {
  *             pictures it held back before it, `tries` the tries the re-open took.
  * Numbers and code words only. A loss that is never followed by its `REOPENED` ends with the
  * relay: `relayEnded` says it (codes 20 / 31 / 32 after the open: the tries are used up).
+ *
+ * THE NUMBER `loss` IS THE NUMBER THAT WAS TOLD (finding E-04 of the fifth review pass). A listener
+ * hears every absence as ONE pair under ONE number: a `REOPENED` always carries the `loss` of the
+ * `LOST` this source handed on before it, never a number the listener was not told. Where the
+ * relay's lines do not arrive as such a pair, the adapter states what it knows:
+ *   - `through` on a `REOPENED`: the relay's OWN number of the loss whose re-open this is, present
+ *     only when it is higher than `loss` - the absence told under `loss` went on over the relay's
+ *     losses `loss` to `through` (a line between them did not arrive). `tries`, `heldBack` and
+ *     `gapMs` are then the relay's numbers of the LAST of those losses only: `gapMs` is still a
+ *     true LOWER bound of the absence, and the three say nothing of the losses before it;
+ *   - the cause `LOSS_NOT_TOLD` on a `LOST` (`CAMERA_LOSS_NOT_TOLD`): the relay's line of this loss
+ *     never arrived, and its `REOPENED` did. Both facts are handed on in their order, in ONE turn.
+ *     WHAT THE `LOST` THEN CANNOT STATE: when the loss began - the listener learns of it at or
+ *     AFTER its end, so an instant it takes at the `LOST` is the instant of the re-open (the
+ *     beginning lies before it, by the relay's `gapMs` of the `REOPENED` that follows at once) -
+ *     and the relay's cause.
  */
 export type CameraLegReport =
   | { readonly event: 'LOST'; readonly profile: string; readonly loss: number; readonly cause: string }
-  | { readonly event: 'REOPENED'; readonly profile: string; readonly loss: number; readonly tries: number; readonly heldBack: number; readonly gapMs: number };
+  | { readonly event: 'REOPENED'; readonly profile: string; readonly loss: number; readonly through?: number; readonly tries: number; readonly heldBack: number; readonly gapMs: number };
+
+/** The reason of an open refused because no listener of a relay's end was handed in (finding E-02). */
+export const RELAY_END_LISTENER_ABSENT = 'RELAY_END_LISTENER_ABSENT';
+
+/** The cause of a `LOST` the adapter states itself, for a loss whose own line never arrived (finding E-04). No exit word of the relay. */
+export const CAMERA_LOSS_NOT_TOLD = 'LOSS_NOT_TOLD';
 
 /** The relay's side of the pairing SA-3: the shape of `RelayIngestReport` of the session unit. */
 export interface CameraRelayReport {
@@ -301,8 +323,14 @@ export interface OnvifRelayCameraDependencies {
    * is no permissive value under `src/`; a loopback test hands in the rule of `test/support`.
    */
   readonly storedAddress?: StoredCameraAddressRule;
-  /** Told once when a relay ends by itself after its open (the camera loss of row 49 hangs on it). Must not throw. */
-  readonly relayEnded?: (end: CameraRelayEnd) => void;
+  /**
+   * Told once when a relay ends by itself after its open (the camera loss of row 49 hangs on it). Must not throw.
+   * REQUIRED (finding E-02 of the fifth review pass; the F-07 family, decisions C46 and C50): left out, a relay that
+   * dies would be told to nobody and no fault would be raised - a function turned off by an absence. A caller that
+   * gets past the type without it has every open REFUSED before anything is asked
+   * (`CAPTURE_CAMERA_RELAY_NOT_STARTED`, reason `RELAY_END_LISTENER_ABSENT`): no relay is started whose end nobody hears.
+   */
+  readonly relayEnded: (end: CameraRelayEnd) => void;
   /** Told the facts this file cannot log itself. Must not throw. */
   readonly tell?: (note: CameraRelayNote) => void;
   /**
@@ -360,10 +388,12 @@ interface Slot {
   closed: Promise<void> | null;
   /** True once this relay's established push was handed on: only then can its camera leg be lost inside a session. */
   established: boolean;
-  /** The highest loss number this relay said (it counts from 1); 0: none yet. */
+  /** The highest loss number this relay said in any line that was taken (it counts from 1); 0: none yet. */
   lastLoss: number;
-  /** The loss that was said and is not over: no `REOPENED` of that number came yet. Null: the leg plays. */
-  lossOpen: number | null;
+  /** Finding E-04: the number under which a loss was TOLD to the listeners and whose re-open was not told yet. Null: the leg plays, as far as they were told. */
+  lossTold: number | null;
+  /** The highest loss number the relay said BEFORE its push was established: no loss inside a session, and its re-open is none either. */
+  lossBeforePush: number;
 }
 
 const classC = (deviceId: string | null = null): never => {
@@ -514,13 +544,33 @@ export function createOnvifRelayCameraAdapter(devices: readonly CaptureDeviceEnt
    * `camera_reopened`, told AT ONCE on the report source - the camera's fault is raised by the first
    * line of a loss, not when the relay has used up its tries. C37 first, as for every line. Then the
    * order, on the careful side of each doubt:
-   *   - a loss before the push is established is no loss inside a session: dropped;
+   *   - a loss before the push is established is no loss inside a session, and its re-open is none
+   *     either: both dropped;
    *   - the relay counts its losses up: a loss whose number was said already is dropped; a HIGHER
-   *     number is taken also when it skips one or follows a loss that is still open (the camera is
-   *     away either way: the absence that was told goes on, nothing is told twice);
-   *   - a re-open ends ONLY the loss that is open, by its number: any other is dropped, and the
-   *     loss that was told stays told.
-   * What is dropped here is counted (`outOfOrderReports`) and noted, never handed on.
+   *     number is taken also when it skips one or follows a loss that is still told (the camera is
+   *     away either way: the absence that was told goes on UNDER THE NUMBER IT WAS TOLD BY, nothing
+   *     is told twice).
+   * THE RE-OPEN (finding E-04 of the fifth review pass). Every listener matches a re-open to the loss
+   * it was told - the session by the NUMBER, the camera watch by the relay. So what is handed on is
+   * always a pair under one number, and the relay's own number travels beside it where it differs:
+   *   - a re-open of a number BELOW the highest one heard is a late or repeated line: a loss came
+   *     after it. Dropped; what was told stays told and its fault stands (decision of row R1: a
+   *     doubt about order keeps the fault);
+   *   - a re-open of the highest number heard, or of a higher one, while a loss is told: the camera
+   *     delivers again NOW - the relay forwards from a keyframe of the new leg. It ends the absence
+   *     that was told, UNDER THE NUMBER THAT WAS TOLD; the relay's number is the member `through`
+   *     when it differs. (Before this row the re-open went out under the relay's later number: the
+   *     watch cleared the fault, the session - which was never told that number - kept its absence
+   *     open and signed `NOT_RE_OPENED` for a camera that had come back.);
+   *   - a re-open of a number higher than any heard while NO loss is told: the line of that loss
+   *     never arrived (or the two came the wrong way round). The camera WAS away - the relay
+   *     measured it - so both facts are handed on, in their order, in this turn: the `LOST` with
+   *     the cause `LOSS_NOT_TOLD`, then the `REOPENED` with the relay's numbers. Refusing it would
+   *     leave a gap in the recording that no listener ever states; no fault could be "kept",
+   *     because none was raised. The loss line, should it still come, is a number said already;
+   *   - a re-open of a number heard already while no loss is told: a repeated line. Dropped.
+   * What is dropped here is counted (`outOfOrderReports`) and noted, never handed on; a pair that
+   * was put together here, and a re-open told under an earlier number, is noted too.
    */
   const legReported = (slot: Slot, report: Exclude<RelayReport, { readonly kind: typeof RelayReportKind.PUSH_ESTABLISHED }>): void => {
     if (!inForce(slot, report)) return;
@@ -529,21 +579,40 @@ export function createOnvifRelayCameraAdapter(devices: readonly CaptureDeviceEnt
       tell('CAPTURE_RELAY_REPORT_OUT_OF_ORDER', slot);
     };
     if (report.kind === RelayReportKind.CAMERA_LOST) {
-      if (!slot.established || report.loss <= slot.lastLoss) return outOfOrder();
-      const expected = slot.lossOpen === null && report.loss === slot.lastLoss + 1;
-      const told = slot.lossOpen !== null;
+      if (!slot.established) {
+        slot.lossBeforePush = Math.max(slot.lossBeforePush, report.loss);
+        return outOfOrder();
+      }
+      if (report.loss <= slot.lastLoss) return outOfOrder();
+      const expected = slot.lossTold === null && report.loss === slot.lastLoss + 1;
       slot.lastLoss = report.loss;
-      slot.lossOpen = report.loss;
       if (!expected) outOfOrder();
-      if (told) return;
+      // The absence that was told goes on, under the number it was told by.
+      if (slot.lossTold !== null) return;
+      slot.lossTold = report.loss;
       // The cause as the relay's own exit word; the reader admits the four codes the relay opens again, each of which has one.
       const cause = (Object.hasOwn(RELAY_EXIT, report.cause) ? RELAY_EXIT[report.cause] : undefined)?.word ?? 'CAUSE_UNKNOWN';
       hand(slot, { ...facts(slot), leg: Object.freeze({ event: 'LOST' as const, profile: slot.profile, loss: report.loss, cause }) });
       return;
     }
-    if (slot.lossOpen !== report.loss) return outOfOrder();
-    slot.lossOpen = null;
-    hand(slot, { ...facts(slot), leg: Object.freeze({ event: 'REOPENED' as const, profile: slot.profile, loss: report.loss, tries: report.tries, heldBack: report.heldBack, gapMs: report.gapMs }) });
+    // A late or repeated line, or one of before the push: a doubt about order ends nothing.
+    if (!slot.established || report.loss < slot.lastLoss) return outOfOrder();
+    const told = slot.lossTold;
+    const numbers = { tries: report.tries, heldBack: report.heldBack, gapMs: report.gapMs };
+    if (told === null) {
+      if (report.loss <= Math.max(slot.lastLoss, slot.lossBeforePush)) return outOfOrder();
+      // The loss line never arrived: the loss and its end, in their order, under the relay's number.
+      slot.lastLoss = report.loss;
+      outOfOrder();
+      hand(slot, { ...facts(slot), leg: Object.freeze({ event: 'LOST' as const, profile: slot.profile, loss: report.loss, cause: CAMERA_LOSS_NOT_TOLD }) });
+      hand(slot, { ...facts(slot), leg: Object.freeze({ event: 'REOPENED' as const, profile: slot.profile, loss: report.loss, ...numbers }) });
+      return;
+    }
+    // A re-open of a number no line named before: its loss line is missing too.
+    if (report.loss > slot.lastLoss) outOfOrder();
+    slot.lastLoss = report.loss;
+    slot.lossTold = null;
+    hand(slot, { ...facts(slot), leg: Object.freeze({ event: 'REOPENED' as const, profile: slot.profile, loss: told, ...(report.loss === told ? {} : { through: report.loss }), ...numbers }) });
   };
 
   async function openSource(deviceId: string, target: CameraSourceTarget, signal: AbortSignal): Promise<SourceHandle> {
@@ -555,9 +624,11 @@ export function createOnvifRelayCameraAdapter(devices: readonly CaptureDeviceEnt
     if (typeof profile !== 'string' || !PROFILE_CODE.test(profile)) throw new CaptureAdapterError(CaptureAdapterRefusal.PROFILE_UNKNOWN, deviceId);
     if (typeof sessionId !== 'string' || sessionId === '' || typeof attempt !== 'number' || !Number.isSafeInteger(attempt) || attempt < 1 || attempt > RELAY_ATTEMPT_MAX) throw new CameraOpenError(CameraOpenRefusal.SESSION_UNKNOWN, deviceId);
     if (relayProgram === null) throw new CameraOpenError(CameraOpenRefusal.RELAY_NOT_CONFIGURED, deviceId);
+    // Finding E-02: a relay whose end nobody would hear is not started. The type requires the listener; this is the same rule for a caller the type did not hold.
+    if (typeof dependencies.relayEnded !== 'function') throw new CameraOpenError(CameraOpenRefusal.RELAY_NOT_STARTED, deviceId, RELAY_END_LISTENER_ABSENT);
     const key = keyOf(deviceId, profile);
     if (live.has(key)) throw new CameraOpenError(CameraOpenRefusal.ALREADY_OPEN, deviceId);
-    const slot: Slot = { deviceId, profile, sessionId, attempt, process: null, ending: false, closed: null, established: false, lastLoss: 0, lossOpen: null };
+    const slot: Slot = { deviceId, profile, sessionId, attempt, process: null, ending: false, closed: null, established: false, lastLoss: 0, lossTold: null, lossBeforePush: 0 };
     live.set(key, slot);
     if ((attemptInForce.get(sessionId) ?? 0) < attempt) attemptInForce.set(sessionId, attempt);
 
@@ -667,7 +738,7 @@ export function createOnvifRelayCameraAdapter(devices: readonly CaptureDeviceEnt
       slot.ending = true;
       const end = relayEndOf(exit);
       try {
-        dependencies.relayEnded?.({ ...facts(slot), profile, code: end.refusal, reason: end.reason });
+        dependencies.relayEnded({ ...facts(slot), profile, code: end.refusal, reason: end.reason });
       } catch {
         // A listener never stops the adapter.
       }

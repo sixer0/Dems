@@ -23,8 +23,10 @@ import { SERVER_AUDIT_DETAIL_RULES } from '../../../core/audit-details';
 import { auditInputOf } from '../../../core/audit-writer';
 import type { Principal } from '../../../plugins/authenticate';
 import { ApiFailure } from '../../../plugins/error-envelope';
-import { ADOPTED_TEST_FAULT, ADOPTED_TEST_NOT_SENT, ADOPTED_TEST_OUTCOME_NOT_RECORDED, READ_ADOPTED_CAMERA, adoptedCameraOf, registerAdoptedCameraTest, testAdoptedCamera, type AdoptedCameraTestCaller, type AdoptedCameraTestSeams } from '../adopted-test';
+import { READ_STORED_CAMERA_PROFILES, READ_STORED_CAMERA_STREAMS, StoredProfilesVerdict, compareStoredProfiles, storedProfilesWords } from '../adopted-profiles';
+import { ADOPTED_TEST_FAULT, ADOPTED_TEST_NOT_SENT, ADOPTED_TEST_OUTCOME_NOT_RECORDED, ADOPTED_TEST_PROFILES_NOT_STORED, ADOPTED_TEST_PROFILE_DIFFERS, READ_ADOPTED_CAMERA, adoptedCameraOf, registerAdoptedCameraTest, testAdoptedCamera, type AdoptedCameraTestCaller, type AdoptedCameraTestSeams } from '../adopted-test';
 import { CAPTURE_DEVICE_TEST_MODULE_OPERATION, captureDeviceTestOperation } from '../adopted-test-route';
+import { INSERT_ADOPTED_CAMERA_STREAM, SET_ADOPTED_CAMERA_COLUMNS, type AdoptedCameraStream } from '../adoption';
 import { createConnectionTestLimits, type ConnectionAttempt, type ConnectionTestLimits } from '../connect';
 
 const ACCOUNT = { username: ['row146', 'unit', 'account'].join('-'), secret: ['row146', 'unit', 'placeholder', 'Vb4Ns8'].join('-') } as const;
@@ -46,6 +48,14 @@ const CALLER = operator('SESSION-A');
 const outcomeOf = async (pending: Promise<unknown>): Promise<unknown> => pending.then((value) => value, (error: unknown) => error);
 
 type StoredRow = { kind: string; adapter_kind: string; address: string | null; onvif_uuid: string | null };
+/** Row PR: the stored statement of one camera, as the two tables hold it. */
+type StoredStream = { profile: string; codec: unknown; width: unknown; height: unknown; onvif_profile_token?: unknown; video_source_token?: unknown; lens?: unknown; stream_role?: unknown; read_at?: unknown };
+type StoredProfiles = { profiles: unknown; streams: StoredStream[]; transport?: unknown; onvif_uuid?: unknown; last_seen_at?: unknown };
+const HEVC = { code: 'HEVC_1080P', codec: 'HEVC', width: 1920, height: 1080, onvifProfileToken: 'profile_1', videoSourceToken: null, lens: 1 } as const satisfies AdoptedCameraStream;
+const AVC = { code: 'H264_720P25', codec: 'H264', width: 1280, height: 720, onvifProfileToken: 'profile_2', videoSourceToken: 'source_1', lens: 2 } as const satisfies AdoptedCameraStream;
+// The streams as a tester hands them on. The cast admits what the type refuses on purpose: a hostile case hands in a codec that is a device's text.
+const reachableWith = (...streams: AdoptedCameraStream[]): ConnectionAttempt => ({ outcome: CaptureConnectionOutcome.REACHABLE, authenticated: true, usableProfiles: streams.map((stream) => stream.code), rejectedCredentialRequests: 0, streams: streams as ConnectionAttempt['streams'] & object });
+const storedOf = (...streams: AdoptedCameraStream[]): StoredProfiles => ({ profiles: streams.map((stream) => stream.code), streams: streams.map((stream) => ({ profile: stream.code, codec: stream.codec, width: stream.width, height: stream.height })) });
 const REFUSED_AT_THE_STREAM: ConnectionAttempt = { outcome: CaptureConnectionOutcome.AUTHENTICATION_FAILED, authenticated: true, usableProfiles: [], rejectedCredentialRequests: 1, reason: StreamTestReason.STREAM_CREDENTIAL_REFUSED };
 
 interface World {
@@ -62,6 +72,16 @@ interface World {
   readonly recorded: AuditEntry[];
   /** Row 146b: what the unit of the outcome entry throws instead of committing. */
   recordFails: Error | null;
+  /** Row PR: what is STORED for a camera - its profile list and its stream rows. Changed only by a unit that committed. */
+  stored: Record<string, StoredProfiles | undefined>;
+  /** Row PR: every statement asked INSIDE the unit of a test that judged a stream, in order. */
+  readonly unitQueries: { text: string; values: unknown[] }[];
+  /** Row PR: units opened for a test that judged a stream (`host.settle`). */
+  settled: number;
+  /** Row V7: what the engine's door was told, by units that committed: the device entry's stored profile list. */
+  readonly engineLists: { deviceId: string; profiles: string[] }[];
+  /** Row PR: a session that opened while the camera was being asked - seen by the unit only. */
+  sessionOpensInUnit: boolean;
   readonly timers: { delayMs: number; fire(): void; cancelled: boolean }[];
   rows: Record<string, StoredRow | undefined>;
   answer: ConnectionAttempt | Error | 'HANG';
@@ -84,6 +104,12 @@ function world(): World {
     persisted: [],
     recorded: [],
     recordFails: null,
+    // The default answer below judges ONE stream; what is stored for CAM-07 agrees with it (case (c): nothing is stored).
+    stored: { 'CAM-07': storedOf(HEVC) },
+    unitQueries: [],
+    engineLists: [],
+    settled: 0,
+    sessionOpensInUnit: false,
     timers: [],
     rows: { 'CAM-07': { kind: 'CAMERA', adapter_kind: 'ONVIF_RTSP', address: CAMERA_HOST, onvif_uuid: ENDPOINT } },
     answer: { outcome: CaptureConnectionOutcome.REACHABLE, authenticated: true, usableProfiles: ['HEVC_1080P'], rejectedCredentialRequests: 0, streams: [{ code: 'HEVC_1080P', codec: 'HEVC', width: 1920, height: 1080, onvifProfileToken: 'profile_1', videoSourceToken: null, lens: 1 }] },
@@ -118,6 +144,43 @@ function world(): World {
       record: async (entry) => {
         state.calls.push('record');
         if (state.recordFails !== null) throw state.recordFails;
+        state.recorded.push(entry);
+      },
+      // Row PR: ONE unit. Its statements are answered from `stored`; its writes are kept aside and reach `stored` only
+      // when the work AND the append succeeded - a unit that fails leaves nothing, as a rolled-back transaction does.
+      settle: async (work) => {
+        state.calls.push('record');
+        state.settled += 1;
+        const pending: (() => void)[] = [];
+        const entry = await work({
+          unit: {
+            query: async (text: string, values: readonly unknown[] = []) => {
+              state.unitQueries.push({ text, values: [...values] });
+              const held = state.stored[String(values[0])];
+              if (text === READ_STORED_CAMERA_PROFILES) return { rows: held === undefined ? [] : [{ onvif_uuid: state.rows[String(values[0])]?.onvif_uuid ?? null, profiles: held.profiles }], rowCount: held === undefined ? 0 : 1 };
+              if (text === READ_STORED_CAMERA_STREAMS) return { rows: held?.streams ?? [], rowCount: held?.streams.length ?? 0 };
+              if (text === SET_ADOPTED_CAMERA_COLUMNS) {
+                if (held === undefined) return { rows: [], rowCount: 0 };
+                pending.push(() => Object.assign(held, { transport: values[1], onvif_uuid: values[2], profiles: JSON.parse(String(values[3])) as unknown, last_seen_at: values[4] }));
+                return { rows: [], rowCount: 1 };
+              }
+              if (text === INSERT_ADOPTED_CAMERA_STREAM) {
+                pending.push(() => void held?.streams.push({ profile: String(values[1]), onvif_profile_token: values[2], video_source_token: values[3], lens: values[4], stream_role: values[5], codec: values[6], width: values[7], height: values[8], read_at: values[9] }));
+                return { rows: [], rowCount: 1 };
+              }
+              throw new Error('a statement the unit of a connection test does not make');
+            },
+          } as never,
+          pending: () => ({ session: state.sessionOpen || state.sessionOpensInUnit ? ({ state: 'RECORDING' } as never) : null }),
+          // Row V7: the engine's door for the device entry's list, bound to the unit. Kept aside like a write: it
+          // reaches `engineLists` only when the unit committed.
+          storeProfiles: async (change) => {
+            const said = { deviceId: change.deviceId, profiles: [...change.profiles] };
+            pending.push(() => void state.engineLists.push(said));
+          },
+        });
+        if (state.recordFails !== null) throw state.recordFails;
+        for (const apply of pending) apply();
         state.recorded.push(entry);
       },
     },
@@ -452,22 +515,40 @@ describe('the read of the credential: outside any unit, one per test, and a fail
     expect(writer.match(/\bcamera\b/g)).toHaveLength(1);
     expect(writer).toContain('`Registered camera connection tested (${');
     expect(writer).not.toMatch(/\bcamera\s*[.[]|\battempt\b|\bsealed\b|\bserviceAddress\b|\bendpointRef\b|\bsourceAddress\b|\bstreams\b|\bvendor\b|\bmodel\b|\bname\b/);
-    // The closed facts: five members, each a code, a flag or a count.
+    // The closed facts: five members, each a code, a flag or a count - and, since row V7 (request of row PR), the closed word of the stored profiles with its three counts.
     const facts = /interface OutcomeFacts \{\n([\s\S]*?)\n\}/.exec(code)?.[1] ?? '';
-    expect(facts.match(/readonly [A-Za-z]+\??: [A-Za-z]+;/g)).toEqual(['readonly outcome: CaptureConnectionOutcome;', 'readonly guardTripped?: boolean;', 'readonly reason?: CaptureConnectionTestReason;', 'readonly unreachableReason?: CaptureDeviceTestUnreachableReason;', 'readonly usableProfileCount?: number;']);
+    expect(facts.match(/readonly [A-Za-z]+\??: [A-Za-z]+;/g)).toEqual([
+      'readonly outcome: CaptureConnectionOutcome;',
+      'readonly guardTripped?: boolean;',
+      'readonly reason?: CaptureConnectionTestReason;',
+      'readonly unreachableReason?: CaptureDeviceTestUnreachableReason;',
+      'readonly usableProfileCount?: number;',
+      'readonly profiles?: CaptureDeviceTestProfiles;',
+      'readonly storedProfileCount?: number;',
+      'readonly statedProfileCount?: number;',
+      'readonly differingProfileCount?: number;',
+    ]);
     // The builder is handed the registry id, the adapter kind, the class, those facts and the permission - nothing else.
     const built = /captureDeviceConnectionTestedDetails\(\{\n([\s\S]*?)\n {4}\}\),\n/.exec(code)?.[1] ?? '';
     expect(built.split('\n').map((line) => line.trim())).toEqual(['deviceId,', 'adapter,', 'sourceClass: CaptureSourceClass.PRODUCTION,', '...facts,', 'permission: Permission.CAPTURE_CONFIG,']);
     // Every call hands in `camera.adapterKind` and nothing else of the camera; of the attempt only its outcome, and the ONE count of the answer.
     const calls = [...code.matchAll(/await recordOutcome\(host, caller, deviceId, camera\.adapterKind, \{([\s\S]*?)\}\);\n/g)].map((match) => match[1] ?? '');
-    expect(calls).toHaveLength(4);
+    // Row PR (C117): the facts of the FOURTH end - the tester answered - are ONE object, handed to exactly one of two
+    // writers: `settleOutcome` when a stream was judged (the entry in the unit that meets what is stored), else `recordOutcome`.
+    expect(calls).toHaveLength(3);
     expect(calls.slice(0, 3).map((call) => call.trim())).toEqual([
       'outcome: CaptureConnectionOutcome.UNREACHABLE, unreachableReason: CaptureDeviceTestUnreachableReason.CREDENTIAL_NOT_READ',
       'outcome: CaptureConnectionOutcome.UNREACHABLE, unreachableReason: CaptureDeviceTestUnreachableReason.NOT_SENT',
       'outcome: CaptureConnectionOutcome.UNREACHABLE',
     ]);
+    calls[3] = /const facts: OutcomeFacts = \{([\s\S]*?)\n {2}\};\n/.exec(code)?.[1] ?? '';
     expect([...new Set(calls[3]?.match(/\battempt\.[A-Za-z]+/g))]).toEqual(['attempt.outcome']);
-    expect(calls[3]).toMatch(/\n {4}usableProfileCount,\n/);
+    expect(calls[3]).toMatch(/\n {4}usableProfileCount,$/);
+    expect(code).toMatch(/const profiles = stated\.length === 0 \? null : await settleOutcome\(host, caller, deviceId, camera\.adapterKind, facts, stated, testedAt\);\n {2}if \(profiles === null\) await recordOutcome\(host, caller, deviceId, camera\.adapterKind, facts\);\n/);
+    // The unit of a test that judged a stream is the host's, asked ONCE; the file still appends nothing and holds no statement.
+    expect(code.match(/\bhost\.settle\(/g)).toHaveLength(1);
+    expect(code.match(/\boutcomeEntryOf\(/g)).toHaveLength(3); // its definition and one call in each writer
+    expect(code.match(/\bsettleStatedProfiles\(/g)).toHaveLength(1);
     expect(calls.join('\n')).not.toMatch(/\bsealed\b|\bcamera\b|\bserviceAddress\b|\bendpointRef\b|\bsourceAddress\b|\bstreams\b|\bvendor\b|\bmodel\b|\bname\b|\bunreachableReason: [a-z]/);
     expect(code.match(/const usableProfileCount = reachable \? attempt\.usableProfiles\.length : 0;/g)).toHaveLength(1);
     // It reads no member of a credential and composes no address of its own.
@@ -768,5 +849,291 @@ describe('the control of an app', () => {
     expect(() => control.provide(parts)).toThrow(/provided twice/);
     expect(await control.test(CALLER, 'CAM-07')).toMatchObject({ outcome: 'REACHABLE' });
     expect(w.calls).toEqual(['query', 'rule', 'reader', 'tester', 'record']);
+  });
+});
+
+// ── Row PR (wave 12; decision C117; rulings C36, C61 (1); AD-06) ────────────────────────────────────
+// What a test that JUDGED A STREAM does with what is stored for the camera. The unit is the world's
+// `settle`: its statements are answered from `stored`, and its writes reach `stored` only when the
+// work and the append succeeded. MUTATIONS each case was seen RED on are named in the case.
+describe('row PR (C117): a test that judged a stream meets what is stored - nothing stored: it is stored; another statement stored: nothing is; the same: nothing', () => {
+  const DETAILS = (count: number): Record<string, unknown> => ({ deviceId: 'CAM-07', outcome: 'REACHABLE', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', operationId: 'testCaptureDeviceConnection', usableProfileCount: count, permission: 'CAPTURE_CONFIG' });
+  const writesOf = (w: World): string[] => w.unitQueries.map((query) => query.text).filter((text) => text === SET_ADOPTED_CAMERA_COLUMNS || text === INSERT_ADOPTED_CAMERA_STREAM);
+  const emptyWorld = (): World => {
+    const w = world();
+    w.stored = { 'CAM-07': { profiles: [], streams: [] } };
+    return w;
+  };
+
+  it('(a) NO STORED PROFILE: the judged statement is stored by the adoption\'s own statements - the list, then one stream row per stream - in the unit of the ONE outcome entry, whose message says how many; the answer and the details are the contract\'s', async () => {
+    // RED ON: `compareStoredProfiles` answering PROFILES_AGREE for an empty list (nothing written); `settleStatedProfiles`
+    // returning before `writeAdoptedCameraColumns` (the list stays empty); `storedProfilesWords` answering '' (the message).
+    const w = emptyWorld();
+    w.answer = reachableWith(HEVC, AVC);
+    const answer = await testAdoptedCamera(w.seams, CALLER, 'CAM-07');
+    // Row V7 (request of row PR): the answer SAYS that the profiles were stored, in the contract's closed word.
+    expect(answer).toEqual({ deviceId: 'CAM-07', outcome: 'REACHABLE', authenticated: true, testedAt: w.now, usableProfileCount: 2, failedAttemptsRemaining: CAPTURE_CONNECTION_TEST_MAX_FAILURES, profiles: 'PROFILES_STORED' });
+    // Row V7: the engine's door was told the SAME codes, in the order written, in that unit - the device entry every client reads.
+    // MUTATION SEEN RED: `settleStatedProfiles` without its call of `scope.storeProfiles`.
+    expect(w.engineLists).toEqual([{ deviceId: 'CAM-07', profiles: ['HEVC_1080P', 'H264_720P25'] }]);
+    // The statements of the unit, in order: the two reads, the adoption's UPDATE, one INSERT per stream. Nothing else.
+    expect(w.unitQueries.map((query) => query.text)).toEqual([READ_STORED_CAMERA_PROFILES, READ_STORED_CAMERA_STREAMS, SET_ADOPTED_CAMERA_COLUMNS, INSERT_ADOPTED_CAMERA_STREAM, INSERT_ADOPTED_CAMERA_STREAM]);
+    // The adoption's statement with the transport it stores, the endpoint reference the row ALREADY holds, the minted codes.
+    expect(w.unitQueries[2]?.values).toEqual(['CAM-07', 'RTSP', ENDPOINT, JSON.stringify(['HEVC_1080P', 'H264_720P25']), w.now]);
+    expect(w.unitQueries.slice(3).map((query) => query.values)).toEqual([
+      ['CAM-07', 'HEVC_1080P', 'profile_1', null, 1, 'MAIN', 'HEVC', 1920, 1080, w.now],
+      ['CAM-07', 'H264_720P25', 'profile_2', 'source_1', 2, 'MAIN', 'H264', 1280, 720, w.now],
+    ]);
+    expect(w.stored['CAM-07']?.profiles).toEqual(['HEVC_1080P', 'H264_720P25']);
+    expect(w.stored['CAM-07']?.streams.map((stream) => [stream.profile, stream.codec, stream.width, stream.height])).toEqual([['HEVC_1080P', 'HEVC', 1920, 1080], ['H264_720P25', 'H264', 1280, 720]]);
+    // EXACTLY ONE outcome entry, by the unit (never beside `record`): the contract's details, and the message says "stored".
+    expect(w.settled).toBe(1);
+    expect(w.calls.filter((call) => call === 'record')).toHaveLength(1);
+    expect(w.recorded).toEqual([{ type: 'CAPTURE_DEVICE_CONNECTION_TESTED', message: 'Registered camera connection tested (REACHABLE); profiles stored: 2', actorId: 'OPR-002', deviceId: null, details: { ...DETAILS(2), profiles: 'PROFILES_STORED', storedProfileCount: 0, statedProfileCount: 2, differingProfileCount: 0 } }]);
+    const entry = w.recorded[0];
+    if (entry === undefined) throw new Error('no entry');
+    expect(() => auditInputOf(entry)).not.toThrow();
+    // The log line says it in a code and counts; nothing goes to the error log: a stored statement is no fault.
+    expect(w.notes).toEqual([{ code: 'CAPTURE_STORED_CONNECTION_TESTED', source: 'captureAdoptedTest', deviceId: 'CAM-07', outcome: 'REACHABLE', guardTripped: false, testReason: null, judgedStreams: 2, profiles: 'PROFILES_STORED', storedProfiles: 0, differingProfiles: 0, profilesCause: null }]);
+    expect(w.persisted).toEqual([]);
+    // No code of a stream, no token and no address is in the entry, the note or the answer.
+    for (const absent of ['HEVC_1080P', 'H264_720P25', 'profile_1', 'source_1', CAMERA_HOST, ENDPOINT]) expect(JSON.stringify([w.recorded, w.notes, answer]).includes(absent), absent).toBe(false);
+
+    // THE SECOND TEST of the same camera: what was stored agrees - case (c), nothing written, the entry of rows 146b / 146c.
+    nextInterval(w);
+    const before = w.unitQueries.length;
+    await testAdoptedCamera(w.seams, CALLER, 'CAM-07');
+    expect(w.unitQueries.slice(before).map((query) => query.text)).toEqual([READ_STORED_CAMERA_PROFILES, READ_STORED_CAMERA_STREAMS]);
+    expect(w.recorded[1]?.message).toBe('Registered camera connection tested (REACHABLE)');
+    expect(w.stored['CAM-07']?.streams).toHaveLength(2);
+  });
+
+  it('(a) is ONE unit with its entry: an entry that cannot be appended leaves NOTHING stored - the fault of rows 146b / 146c, by its code; the next test stores', async () => {
+    // RED ON: the world's unit applying its writes before the append (a store outside the entry's unit would look like that).
+    const w = emptyWorld();
+    w.recordFails = Object.assign(new Error('the unit did not commit'), { code: 'AUDIT_APPEND_FAILED' });
+    const failed = await outcomeOf(testAdoptedCamera(w.seams, CALLER, 'CAM-07'));
+    expect(failed).toBe(w.recordFails);
+    expect(writesOf(w)).toEqual([SET_ADOPTED_CAMERA_COLUMNS, INSERT_ADOPTED_CAMERA_STREAM]);
+    expect(w.stored['CAM-07']).toEqual({ profiles: [], streams: [] });
+    // Row V7: the device entry is told nothing by a unit that did not commit.
+    expect(w.engineLists).toEqual([]);
+    expect(w.recorded).toEqual([]);
+    expect(w.persisted).toEqual([{ code: ADOPTED_TEST_OUTCOME_NOT_RECORDED, message: expect.any(String) as unknown, context: { deviceId: 'CAM-07', outcome: 'REACHABLE', cause: 'AUDIT_APPEND_FAILED' } }]);
+    expect(w.limits.busy()).toBe(false);
+    w.recordFails = null;
+    nextInterval(w);
+    await testAdoptedCamera(w.seams, CALLER, 'CAM-07');
+    expect(w.stored['CAM-07']?.profiles).toEqual(['HEVC_1080P']);
+    expect(w.recorded.map((entry) => entry.message)).toEqual(['Registered camera connection tested (REACHABLE); profiles stored: 1']);
+  });
+
+  it('(b) A STORED STATEMENT AND A STREAM THAT STATES SOMETHING ELSE: nothing is stored - another set, another picture or codec for a code, a listed code with no stream row; ONE entry with `STREAM_PROFILE_DIFFERS` and three counts, one code in the error log; the outcome stays the test\'s own', async () => {
+    // RED ON: `compareStoredProfiles` never counting a difference (PROFILES_AGREE for every non-empty list: no word, no
+    // error-log code); the comparison dropping the width / height / codec test (the second and third rows below);
+    // a "replace what differs" mutant - `settleStatedProfiles` writing when the verdict is the difference (the writes).
+    const OTHER_PICTURE: AdoptedCameraStream = { ...HEVC, width: 2560, height: 1440 };
+    const cases: { name: string; stored: StoredProfiles; stated: AdoptedCameraStream[]; counts: [number, number, number] }[] = [
+      { name: 'another set of codes', stored: storedOf(HEVC), stated: [AVC], counts: [1, 1, 2] },
+      { name: 'one more stream than is stored', stored: storedOf(HEVC), stated: [HEVC, AVC], counts: [1, 2, 1] },
+      { name: 'one stream fewer than is stored', stored: storedOf(HEVC, AVC), stated: [HEVC], counts: [2, 1, 1] },
+      { name: 'the same code, another picture', stored: storedOf(HEVC), stated: [OTHER_PICTURE], counts: [1, 1, 1] },
+      { name: 'the same code, another codec in its row', stored: { profiles: ['HEVC_1080P'], streams: [{ profile: 'HEVC_1080P', codec: 'H264', width: 1920, height: 1080 }] }, stated: [HEVC], counts: [1, 1, 1] },
+      { name: 'a listed code with NO stream row (C61 (1): a kept string no stream stated)', stored: { profiles: ['HEVC_1080P'], streams: [] }, stated: [HEVC], counts: [1, 1, 1] },
+      { name: 'an EMPTY list beside a stream row: a stored statement too, not written over', stored: { profiles: [], streams: [{ profile: 'HEVC_1080P', codec: 'HEVC', width: 1920, height: 1080 }] }, stated: [HEVC], counts: [0, 1, 1] },
+      { name: 'a column that is no list of codes', stored: { profiles: ['profile_1'], streams: [] }, stated: [HEVC], counts: [0, 1, 1] },
+    ];
+    for (const one of cases) {
+      const w = world();
+      w.stored = { 'CAM-07': structuredClone(one.stored) };
+      w.answer = reachableWith(...one.stated);
+      const answer = await testAdoptedCamera(w.seams, CALLER, 'CAM-07');
+      const [stored, stated, differing] = one.counts;
+      // The outcome is the test's own, and the count is what the stream states NOW. Row V7 (request of row PR): the contract
+      // has a member for the word since that row - the answer and the entry's details say `STREAM_PROFILE_DIFFERS`.
+      expect(answer, one.name).toEqual({ deviceId: 'CAM-07', outcome: 'REACHABLE', authenticated: true, testedAt: w.now, usableProfileCount: one.stated.length, failedAttemptsRemaining: CAPTURE_CONNECTION_TEST_MAX_FAILURES, profiles: 'STREAM_PROFILE_DIFFERS' });
+      expect(w.engineLists, one.name).toEqual([]);
+      expect(writesOf(w), one.name).toEqual([]);
+      expect(w.stored['CAM-07'], one.name).toEqual(one.stored);
+      expect(w.recorded, one.name).toEqual([
+        { type: 'CAPTURE_DEVICE_CONNECTION_TESTED', message: `Registered camera connection tested (REACHABLE); STREAM_PROFILE_DIFFERS: stored ${String(stored)}, stated ${String(stated)}, differing ${String(differing)}; nothing stored`, actorId: 'OPR-002', deviceId: null, details: { ...DETAILS(one.stated.length), profiles: 'STREAM_PROFILE_DIFFERS', storedProfileCount: stored, statedProfileCount: stated, differingProfileCount: differing } },
+      ]);
+      expect(w.notes.at(-1), one.name).toMatchObject({ profiles: 'STREAM_PROFILE_DIFFERS', storedProfiles: stored, differingProfiles: differing, judgedStreams: one.stated.length });
+      expect(w.persisted, one.name).toEqual([{ code: ADOPTED_TEST_PROFILE_DIFFERS, message: expect.any(String) as unknown, context: { deviceId: 'CAM-07', cause: null, stored: String(stored), stated: String(stated), differing: String(differing) } }]);
+      // Counts only: no code of either statement is in the entry, the note or the persisted line.
+      for (const absent of ['HEVC_1080P', 'H264_720P25', 'profile_1', '2560', '1440']) expect(JSON.stringify([w.recorded, w.notes, w.persisted]).includes(absent), `${one.name}: ${absent}`).toBe(false);
+    }
+  });
+
+  it('(c) STORED AND STATED AGREE: nothing is stored and nothing is said - the entry, the note and the error log of rows 146b / 146c, with two reads in the unit; the ORDER of the list does not matter', async () => {
+    // RED ON: `compareStoredProfiles` comparing the lists by position (the reversed list below read as a difference).
+    const w = world();
+    w.stored = { 'CAM-07': { profiles: ['H264_720P25', 'HEVC_1080P'], streams: storedOf(HEVC, AVC).streams } };
+    w.answer = reachableWith(HEVC, AVC);
+    const kept = structuredClone(w.stored['CAM-07']);
+    await testAdoptedCamera(w.seams, CALLER, 'CAM-07');
+    expect(w.unitQueries.map((query) => query.text)).toEqual([READ_STORED_CAMERA_PROFILES, READ_STORED_CAMERA_STREAMS]);
+    expect(w.stored['CAM-07']).toEqual(kept);
+    expect(w.recorded).toEqual([{ type: 'CAPTURE_DEVICE_CONNECTION_TESTED', message: 'Registered camera connection tested (REACHABLE)', actorId: 'OPR-002', deviceId: null, details: DETAILS(2) }]);
+    expect(w.notes).toEqual([{ code: 'CAPTURE_STORED_CONNECTION_TESTED', source: 'captureAdoptedTest', deviceId: 'CAM-07', outcome: 'REACHABLE', guardTripped: false, testReason: null, judgedStreams: 2 }]);
+    expect(w.persisted).toEqual([]);
+  });
+
+  it('A TEST THAT JUDGED NO STREAM compares nothing and stores nothing: the four other outcomes, and REACHABLE by the ONVIF half alone (a Core without a relay program) - no unit of the store is opened, the entry goes by `record`', async () => {
+    // RED ON: `stated` read from `attempt.streams` whatever the outcome (the first row below would store a stream of a
+    // camera that refused the credential); `stated.length === 0 ? null :` dropped (a unit opened for no stream).
+    const answers: ConnectionAttempt[] = [
+      { outcome: CaptureConnectionOutcome.AUTHENTICATION_FAILED, authenticated: true, usableProfiles: [], rejectedCredentialRequests: 1, streams: [HEVC] },
+      { outcome: CaptureConnectionOutcome.WRONG_PROFILE, authenticated: true, usableProfiles: [], rejectedCredentialRequests: 0, streams: [HEVC] },
+      { outcome: CaptureConnectionOutcome.NOT_H264, authenticated: true, usableProfiles: [], rejectedCredentialRequests: 0, streams: [HEVC] },
+      { outcome: CaptureConnectionOutcome.UNREACHABLE, authenticated: true, usableProfiles: [], rejectedCredentialRequests: 0, streams: [HEVC] },
+      // The ONVIF half's own answer: tokens of the camera as `usableProfiles`, and NO judged stream. No code exists (C36).
+      { outcome: CaptureConnectionOutcome.REACHABLE, authenticated: true, usableProfiles: ['profile_1', 'profile_2'], rejectedCredentialRequests: 0 },
+      { outcome: CaptureConnectionOutcome.REACHABLE, authenticated: true, usableProfiles: ['profile_1'], rejectedCredentialRequests: 0, streams: [] },
+    ];
+    const w = emptyWorld();
+    for (const answer of answers) {
+      w.answer = answer;
+      await testAdoptedCamera(w.seams, CALLER, 'CAM-07');
+      w.now += 60_000 + CAPTURE_CONNECTION_TEST_MIN_INTERVAL_MS;
+    }
+    expect(w.settled).toBe(0);
+    expect(w.unitQueries).toEqual([]);
+    expect(w.stored['CAM-07']).toEqual({ profiles: [], streams: [] });
+    expect(w.recorded.map((entry) => entry.message)).toEqual(['AUTHENTICATION_FAILED', 'WRONG_PROFILE', 'NOT_H264', 'UNREACHABLE', 'REACHABLE', 'REACHABLE'].map((outcome) => `Registered camera connection tested (${outcome})`));
+    expect(w.recorded).toHaveLength(answers.length);
+  });
+
+  it('EVERY REFUSAL IS UNCHANGED and reaches no unit: before the reader (the lock, 503, 404, not a production camera, a refused address, the spacing, the guard) 0 entries; after it (nothing read, not sent, a fault) ONE entry by `record` - a camera WITHOUT a stored profile gets none from a test that asked no camera', async () => {
+    // RED ON: the settle call moved before the reader (a unit opened for a refused test).
+    const refused: { name: string; arrange(w: World): void; status: number | null; entries: number }[] = [
+      { name: 'a session is open', arrange: (w) => void (w.sessionOpen = true), status: 409, entries: 0 },
+      { name: 'no parts', arrange: (w) => void (w.provided.parts = false), status: 503, entries: 0 },
+      { name: 'no tester', arrange: (w) => void (w.provided.tester = false), status: 503, entries: 0 },
+      { name: 'not a production camera', arrange: (w) => void (w.rows['CAM-07'] = { kind: 'CAMERA', adapter_kind: 'FAKE', address: CAMERA_HOST, onvif_uuid: null }), status: 409, entries: 0 },
+      { name: 'a stored loopback address', arrange: (w) => void (w.rows['CAM-07'] = { kind: 'CAMERA', adapter_kind: 'ONVIF_RTSP', address: '127.0.0.1', onvif_uuid: ENDPOINT }), status: 409, entries: 0 },
+      { name: 'nothing stored for the credential', arrange: (w) => void (w.readerFails = 'CAPTURE_CREDENTIAL_NOT_STORED'), status: 409, entries: 1 },
+      { name: 'the store not readable', arrange: (w) => void (w.readerFails = 'CAPTURE_CREDENTIAL_REVEAL_FAILED'), status: 503, entries: 1 },
+      { name: 'the adapter refused before a request', arrange: (w) => void (w.answer = new CaptureAdapterError(CaptureAdapterRefusal.DEVICE_UNKNOWN, 'refused')), status: 409, entries: 1 },
+      { name: 'the tester failed', arrange: (w) => void (w.answer = new Error('a fault')), status: null, entries: 1 },
+    ];
+    for (const one of refused) {
+      const w = emptyWorld();
+      one.arrange(w);
+      const outcome = await outcomeOf(testAdoptedCamera(w.seams, CALLER, 'CAM-07'));
+      expect(failureOf(outcome)?.statusCode ?? null, one.name).toBe(one.status);
+      expect(w.recorded, one.name).toHaveLength(one.entries);
+      expect([w.settled, w.unitQueries.length], one.name).toEqual([0, 0]);
+      expect(w.stored['CAM-07'], one.name).toEqual({ profiles: [], streams: [] });
+    }
+    // 404, the spacing (429) and the lock-out guard (429): the same.
+    const w = emptyWorld();
+    expect(failureOf(await outcomeOf(testAdoptedCamera(w.seams, CALLER, 'CAM-99')))?.statusCode).toBe(404);
+    await testAdoptedCamera(w.seams, CALLER, 'CAM-07');
+    const after = { settled: w.settled, entries: w.recorded.length };
+    expect(failureOf(await outcomeOf(testAdoptedCamera(w.seams, CALLER, 'CAM-07')))).toMatchObject({ statusCode: 429, reason: 'CONNECTION_TEST_RATE_LIMITED' });
+    w.answer = REFUSED_AT_THE_STREAM;
+    for (let attempt = 0; attempt < CAPTURE_CONNECTION_TEST_MAX_FAILURES; attempt += 1) {
+      w.now += 60_000 + CAPTURE_CONNECTION_TEST_MIN_INTERVAL_MS;
+      await testAdoptedCamera(w.seams, CALLER, 'CAM-07');
+    }
+    w.now += 60_000 + CAPTURE_CONNECTION_TEST_MIN_INTERVAL_MS;
+    w.answer = reachableWith(HEVC, AVC);
+    expect(failureOf(await outcomeOf(testAdoptedCamera(w.seams, CALLER, 'CAM-07')))).toMatchObject({ statusCode: 429, reason: 'CONNECTION_TEST_LOCKOUT_GUARD' });
+    expect(w.settled).toBe(after.settled);
+    expect(w.recorded).toHaveLength(after.entries + CAPTURE_CONNECTION_TEST_MAX_FAILURES);
+    expect(w.stored['CAM-07']?.profiles).toEqual(['HEVC_1080P']);
+  });
+
+  it('(a) WAS DUE AND NOTHING IS WRITTEN: a session that opened while the camera was asked, a row that is gone, a judged stream outside the bounds of its table - `PROFILES_NOT_STORED` with a closed cause, the plain entry, one code in the error log; the test keeps its outcome', async () => {
+    // RED ON: the session check of the unit removed (the first row stores under an open session); `assertAdoptedProfiles`
+    // not asked before the statement (the third row: the adoption's refusal would fail the unit - a fault, not an answer).
+    const ends: { name: string; arrange(w: World): void; cause: string; stated: number }[] = [
+      { name: 'a session opened meanwhile', arrange: (w) => void (w.sessionOpensInUnit = true), cause: 'SESSION_ACTIVE', stated: 1 },
+      { name: 'the row is gone', arrange: (w) => void (w.stored = {}), cause: 'ROW_ABSENT', stated: 1 },
+      { name: 'a lens outside 1 to 4', arrange: (w) => void (w.answer = reachableWith({ ...HEVC, lens: 5 })), cause: 'STREAM_OUT_OF_BOUNDS', stated: 1 },
+      { name: 'two streams of one code', arrange: (w) => void (w.answer = reachableWith(HEVC, { ...HEVC, onvifProfileToken: 'profile_9' })), cause: 'STREAM_OUT_OF_BOUNDS', stated: 2 },
+    ];
+    for (const one of ends) {
+      const w = emptyWorld();
+      one.arrange(w);
+      const answer = await testAdoptedCamera(w.seams, CALLER, 'CAM-07');
+      expect(answer.outcome, one.name).toBe('REACHABLE');
+      expect(writesOf(w), one.name).toEqual([]);
+      expect(w.recorded.map((entry) => entry.message), one.name).toEqual(['Registered camera connection tested (REACHABLE)']);
+      expect(w.notes.at(-1), one.name).toMatchObject({ profiles: 'PROFILES_NOT_STORED', profilesCause: one.cause });
+      expect(w.persisted, one.name).toEqual([{ code: ADOPTED_TEST_PROFILES_NOT_STORED, message: expect.any(String) as unknown, context: { deviceId: 'CAM-07', cause: one.cause, stored: '0', stated: String(one.stated), differing: '0' } }]);
+    }
+  });
+
+  it('AD-06, the hostile descriptions of row 154 on THIS path: a stream whose code, token, codec or picture is a device\'s text - markup, lower case, 300 characters - is never stored and is in no entry, note, persisted line, answer or error; against a stored statement it is a COUNT', async () => {
+    // RED ON: the pre-check of the code rule removed TOGETHER WITH the adoption's own (`assertAdoptedProfiles` a no-op):
+    // the hostile code reaches the UPDATE's values. With only the pre-check removed the adoption's refusal still holds
+    // the text out of the store (the unit fails as a fault): two walls, and the case above holds the first.
+    const MARK = '<script>alert(1)</script>';
+    const hostile = (head: string): string => `${head}${MARK}${'q'.repeat(300 - head.length - MARK.length)}`;
+    const texts = [hostile('h265'), hostile('profile'), hostile('HEVC_1080P'), 'hevc_1080p', 'HEVC_1080P; DROP TABLE capture_devices', `HEVC_1080P\n${MARK}`];
+    const streamsOf = (text: string): AdoptedCameraStream[] => [
+      { ...HEVC, code: text },
+      { ...HEVC, onvifProfileToken: text },
+      { ...HEVC, videoSourceToken: text },
+      { ...HEVC, codec: text },
+      { ...HEVC, width: text as unknown as number },
+    ];
+    for (const text of texts) {
+      for (const stream of streamsOf(text)) {
+        // (a) nothing stored: the hostile stream is NOT stored.
+        const empty = emptyWorld();
+        empty.answer = reachableWith(stream);
+        const first = await outcomeOf(testAdoptedCamera(empty.seams, CALLER, 'CAM-07'));
+        // ONE text of the list is a well-formed ONVIF token (`hevc_1080p`: the token form admits lower case, 1 to 64): as a
+        // TOKEN it is the camera's own name of the stream and is stored in the token column, as the adoption stores it -
+        // the LIST holds the minted code only, and the token is in no entry, note or persisted line (below).
+        const asToken = /^[A-Za-z0-9_.:-]{1,64}$/.test(text) && (stream.onvifProfileToken === text || stream.videoSourceToken === text);
+        if (asToken) {
+          expect(empty.stored['CAM-07']?.profiles).toEqual(['HEVC_1080P']);
+          expect(empty.notes.at(-1)).toMatchObject({ profiles: 'PROFILES_STORED' });
+        } else {
+          expect(writesOf(empty)).toEqual([]);
+          expect(empty.stored['CAM-07']).toEqual({ profiles: [], streams: [] });
+          expect(empty.notes.at(-1)).toMatchObject({ profiles: 'PROFILES_NOT_STORED', profilesCause: 'STREAM_OUT_OF_BOUNDS' });
+        }
+        // (b) / (c) a stored statement: the hostile text is compared and counted, or not looked at (a token) - never written.
+        const held = world();
+        held.answer = reachableWith(stream);
+        const second = await outcomeOf(testAdoptedCamera(held.seams, CALLER, 'CAM-07'));
+        expect(writesOf(held)).toEqual([]);
+        expect(held.stored['CAM-07']).toEqual(storedOf(HEVC));
+        for (const w of [empty, held]) {
+          const said = JSON.stringify([w.recorded, w.notes, w.persisted]) + everything(first) + everything(second);
+          // The answer's `usableProfiles` is the double's own echo of the attempt and never leaves `testAdoptedCamera`: the answer holds a count.
+          for (const needle of [MARK, 'qqqqqqqq', 'DROP TABLE', 'hevc_1080p']) expect(said.includes(needle), needle).toBe(false);
+          expect(w.recorded).toHaveLength(1);
+        }
+      }
+    }
+  });
+
+  it('the judgement and its words, pure: the verdicts of a closed list, whole numbers, and the ONE definition of the word `STREAM_PROFILE_DIFFERS`', () => {
+    expect(Object.values(StoredProfilesVerdict)).toEqual(['PROFILES_STORED', 'STREAM_PROFILE_DIFFERS', 'PROFILES_AGREE', 'PROFILES_NOT_STORED']);
+    expect(compareStoredProfiles([], [], [HEVC, AVC])).toEqual({ verdict: 'PROFILES_STORED', stored: 0, stated: 2, differing: 0 });
+    expect(compareStoredProfiles(['HEVC_1080P'], storedOf(HEVC).streams, [HEVC])).toEqual({ verdict: 'PROFILES_AGREE', stored: 1, stated: 1, differing: 0 });
+    // A stale stream row of a code the list no longer names is ignored, as the table's own note says.
+    expect(compareStoredProfiles(['HEVC_1080P'], storedOf(HEVC, AVC).streams, [HEVC]).verdict).toBe('PROFILES_AGREE');
+    expect(compareStoredProfiles(null, [], [HEVC]).verdict).toBe('STREAM_PROFILE_DIFFERS');
+    expect(compareStoredProfiles('HEVC_1080P', [], [HEVC]).verdict).toBe('STREAM_PROFILE_DIFFERS');
+    expect(storedProfilesWords({ verdict: 'PROFILES_STORED', stored: 0, stated: 3, differing: 0 })).toBe('; profiles stored: 3');
+    expect(storedProfilesWords({ verdict: 'STREAM_PROFILE_DIFFERS', stored: 2, stated: 3, differing: 1 })).toBe('; STREAM_PROFILE_DIFFERS: stored 2, stated 3, differing 1; nothing stored');
+    expect(storedProfilesWords({ verdict: 'PROFILES_AGREE', stored: 2, stated: 2, differing: 0 })).toBe('');
+    expect(storedProfilesWords({ verdict: 'PROFILES_NOT_STORED', stored: 0, stated: 2, differing: 0, cause: 'SESSION_ACTIVE' })).toBe('');
+    // The sources: the file that judges holds no write statement and mints nothing; its one write is the adoption's function.
+    const [source] = codeOnly([{ path: 'adopted-profiles.ts', text: readFileSync(join(import.meta.dirname, '..', 'adopted-profiles.ts'), 'utf8') }]);
+    const code = source?.text ?? '';
+    expect(code.length).toBeGreaterThan(2_000);
+    expect(code).not.toMatch(/\b(?:INSERT\s+INTO|UPDATE\s+[a-z_.]+\s+SET|DELETE\s+FROM|TRUNCATE)\b/i);
+    expect(code).not.toMatch(/\bprofileOf\b|\bstreamProfileOf\b|\bstreamFactsOf\b|\.audit\b|\.append\s*\(|\bpipeline\b/);
+    expect(code.match(/\bwriteAdoptedCameraColumns\(/g)).toHaveLength(1);
+    expect(code.match(/'STREAM_PROFILE_DIFFERS'/g)).toBeNull();
+    expect(code.match(/\bSTREAM_PROFILE_DIFFERS_REASON\b/g)?.length).toBeGreaterThanOrEqual(2);
   });
 });

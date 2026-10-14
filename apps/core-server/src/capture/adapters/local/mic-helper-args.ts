@@ -29,7 +29,7 @@
 import { AlsaConfigError, AlsaConfigRefusal, sharedPcmName } from '../audio/alsa-config';
 import { MIC_TRANSPORTS } from '../mic-transport';
 import { AudioInputBeyondCardError } from '../types';
-import { PROGRESS_ARGUMENTS } from './camera-helper-args';
+import { PROGRESS_ARGUMENTS, deviceListArguments } from './camera-helper-args';
 import { isUsableDeviceName } from './device-list';
 
 /** The microphone of this Mac (probe P-1: the only audio device listed). Never an index (ML-1). */
@@ -433,4 +433,241 @@ export const COMMISSIONING_HELPER_TABLE = Object.freeze({
   neighbour: Object.freeze({ program: LINUX_NEIGHBOUR_PROGRAM, literals: Object.freeze<string[]>([...LINUX_NEIGHBOUR]) as readonly string[] }),
   echo: Object.freeze({ program: LINUX_ECHO_PROGRAM, literals: Object.freeze<string[]>([...LINUX_ECHO]) as readonly string[] }),
   addressArgument: /^(?:10\.(?:0|[1-9]\d{0,2})|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.(?:0|[1-9]\d{0,2})\.(?:[1-9]\d{0,2})$/,
+});
+
+// ── The macOS production table (task 4 row N4; design masterplan/06 revision 3, sections 4.2 to 4.4; ──
+// ── NAMED AMENDMENT SR-15 of static rule G-R12, final words, decision C110; decisions U23 to U25, C96, C107) ──
+//
+// The production microphone of kind `USB_AUDIO` on `darwin` is a CHANNEL of one USB audio interface.
+// Its helper is the same program, started by the guard through the PRODUCTION door with an EMPTY
+// environment, ONE HELPER PER DEVICE, with the lists below. They are a kind of list of their own:
+// neither the development lists at the top of this file (which name a device by text and belong to
+// the development class) nor the Linux lists. Nothing above this line is changed by this table.
+//
+// THE TWO LISTS ARE WHOLE TEMPLATES (SR-15 (2), (3)). The static rule compares each list word for
+// word; there is no set of admitted words beside the template. `<D>`, `<S>`, `<P>` are the THREE
+// COMPUTED PLACES, every other word is a literal of this table:
+//
+//   push       -hide_banner -nostdin -nostats -loglevel info -thread_queue_size 1024 -f avfoundation -i <D>
+//              then ONE or TWO sections, in the ascending order of their selections, each
+//              -map 0:a -af <S> -ac 1 -ar 48000 -c:a pcm_f32le -f fifo -fifo_format f32le
+//              -drop_pkts_on_overflow 1 -queue_size 32 -format_opts flush_packets=1 -y <P>
+//   pre-check  -hide_banner -nostdin -nostats -loglevel info -f avfoundation -i <D>
+//              -t 1 -map 0:a -af <S> -ac 1 -ar 48000 -c:a pcm_f32le -f f32le -flush_packets 1 -
+//
+//   <D>  THE DEVICE WORD: one of the CLOSED SET of 32 words `none:0` to `none:31`, made by ONE
+//        function from ONE whole number (`macMicDeviceWord`): the audio index of the device list read
+//        for THIS launch. The video part is the literal `none` always. A NAME IS NEVER AN ARGUMENT:
+//        the table has no parameter that is text (AD-07 (2) holds on macOS in its own words).
+//   <S>  THE SELECTION: one of the 64 words of `linuxChannelSelection` - the SAME function as the
+//        Linux row, no twin (review SM-09) - k = the registered input number minus 1, refused at or
+//        above the LIVE channel count before any argument is built (`AUDIO_INPUT_BEYOND_CARD`).
+//   <P>  THE PIPE, held to `isMicPipeArgument`, as in every list of this file.
+//
+// WHY THESE WORDS (the measured best form of row MM3, test/mm3 section 8; decision C107):
+//   `-loglevel info`   a literal of these rows only: at `warning` the helper prints nothing and the
+//                      stream line the product reads before a session is "recording" does not exist.
+//   `-ar 48000`        a NO-OP GUARD, NOT THE CONTROL. The control is the adapter's refusal of any
+//                      device whose own stream line does not state 48,000 Hz (design 4.6; decision
+//                      U23 (2): nothing is resampled without a word). At that rate the option changes
+//                      no sample.
+//   `-f fifo` and its four fixed groups, in this order and with these values, and NO other option of
+//                      that output format: the DROPPING queue in front of each output. Without it a
+//                      reader of one output that stops for 3 s stops the other for 2.772 s without a
+//                      line; with it the other loses 0 samples. `-drop_pkts_on_overflow` is NEVER `0`.
+//   no `-progress`     what it reports follows the helper's own timestamps and reads 60.00 s for a
+//                      minute with 5.8 s missing. Delivery is known from the worker, not the helper.
+//   `-t 1`             in the PRE-CHECK list and in no other: one second of the SELECTED input to
+//                      standard output, counted by the Core in memory and stored nowhere.
+//
+// NOTHING BETWEEN THE DEVICE AND THE PIPE PADS, STRETCHES, RE-TIMES, CUTS OR MIXES (SR-15 (5);
+// design 4.2a). About a tenth of the samples never arrive on this path (MM3): what is missing STAYS
+// missing in the pipe and the product says how much. This table therefore holds no filter but the one
+// selection per output, no re-timing option, no padding, no second log level, no option that selects
+// a device by another way and no layout option. No later row adds one without a named amendment.
+//
+// PROVISIONAL (SR-15 (3) and the one-section form of (2); design 4.3.3): no row has RUN the
+// pre-check list to standard output or the push list with one section in these exact words. They
+// are confirmed by one run of the pinned helper on a generated source. If that run shows that a word
+// must change, that is a NEW AMENDMENT and goes back to the review; it is not a row's decision.
+//
+// NOT PROVEN WITHOUT A DEVICE: that another index than 0 opens another device (MM: one interface).
+
+/** The highest audio index of the helper's device list a device word can name (32 words, `none:0` to `none:31`). */
+export const MACOS_MIC_DEVICE_INDEX_MAX = 31;
+/** One output section per registered input of the device that is open at the launch: one or two, never more. */
+export const MACOS_MIC_SECTIONS_MAX = 2;
+
+const MACOS_PUSH_HEAD = ['-hide_banner', '-nostdin', '-nostats', '-loglevel', 'info', '-thread_queue_size', '1024', '-f', 'avfoundation', '-i'] as const;
+const MACOS_SECTION_HEAD = ['-map', '0:a', '-af'] as const;
+const MACOS_SECTION_TAIL = ['-ac', '1', '-ar', '48000', '-c:a', 'pcm_f32le', '-f', 'fifo', '-fifo_format', 'f32le', '-drop_pkts_on_overflow', '1', '-queue_size', '32', '-format_opts', 'flush_packets=1', '-y'] as const;
+const MACOS_PRECHECK_HEAD = ['-hide_banner', '-nostdin', '-nostats', '-loglevel', 'info', '-f', 'avfoundation', '-i'] as const;
+const MACOS_PRECHECK_SELECT = ['-t', '1', '-map', '0:a', '-af'] as const;
+const MACOS_PRECHECK_TAIL = ['-ac', '1', '-ar', '48000', '-c:a', 'pcm_f32le', '-f', 'f32le', '-flush_packets', '1', '-'] as const;
+/** THE CLOSED SET of device words: `MACOS_DEVICE_WORDS[n]` is `none:<n>` in canonical decimal, n from 0 to 31. Written from the number, never read from a text. */
+const MACOS_DEVICE_WORDS: readonly string[] = Object.freeze(Array.from({ length: MACOS_MIC_DEVICE_INDEX_MAX + 1 }, (_unused, index) => `none:${String(index)}`));
+
+export const MACOS_MIC_ARGUMENT_REFUSED = 'MACOS_MIC_ARGUMENT_REFUSED';
+export type MacMicArgumentRefusal = 'DEVICE_INDEX' | 'CHANNEL_COUNT' | 'INPUT_NUMBER' | 'PIPE' | 'SECTION_COUNT' | 'INPUT_REPEATED' | 'PIPE_REPEATED';
+
+/** A value the macOS production table does not take. Fixed text: the value itself is never put into the message. */
+export class MacMicArgumentError extends Error {
+  readonly code: typeof MACOS_MIC_ARGUMENT_REFUSED = MACOS_MIC_ARGUMENT_REFUSED;
+  readonly what: MacMicArgumentRefusal;
+  constructor(what: MacMicArgumentRefusal) {
+    super('a value of the macOS microphone helper is not of its shape');
+    this.name = 'MacMicArgumentError';
+    this.what = what;
+  }
+}
+
+/**
+ * THE device word: `none:<n>`, taken from the closed set by ONE whole number 0 to 31 - the audio
+ * index of the device list read for this launch. One number and nothing else; text in its place
+ * (a name, `'0'`, `'default'`) makes nothing.
+ */
+export function macMicDeviceWord(audioIndex: number): string {
+  const word = isWholeIn(audioIndex, 0, MACOS_MIC_DEVICE_INDEX_MAX) ? MACOS_DEVICE_WORDS[audioIndex] : undefined;
+  if (word === undefined) throw new MacMicArgumentError('DEVICE_INDEX');
+  return word;
+}
+
+/** The device of a launch, as two integers of the listing read for it. */
+export interface MacMicDevice {
+  /** The index of the device in the AUDIO section of the helper's own device list, 0 to 31. */
+  readonly audioIndex: number;
+  /** The LIVE input channel count of the device, 1 to 64 (the system list of the same listing). Never an argument: it bounds the selection. */
+  readonly channelCount: number;
+}
+
+/** One registered input of the device: what one output section is made from. */
+export interface MacMicInput {
+  /** The input of the interface the microphone is registered on, numbered from 1. */
+  readonly inputNumber: number;
+  /** The registry id of the microphone (`MIC-NN`), for the named refusal only. Never an argument. */
+  readonly deviceId?: string | null;
+}
+
+export interface MacMicSection extends MacMicInput {
+  /** The pipe the worker reads for this input (`AudioStreamHandle.input.path`). */
+  readonly pipePath: string;
+}
+
+export interface MacMicPushArguments extends MacMicDevice {
+  /** ONE or TWO registered inputs of the one device, in any order: the list states them in the ascending order of their input numbers. A role is no member and no argument. */
+  readonly sections: readonly MacMicSection[];
+}
+
+/** The two integers of the device, held to their ranges; answers the device word. */
+function macDeviceWordOf(device: MacMicDevice): string {
+  const word = macMicDeviceWord(device.audioIndex);
+  if (!isWholeIn(device.channelCount, 1, LINUX_MIC_CHANNELS_MAX)) throw new MacMicArgumentError('CHANNEL_COUNT');
+  return word;
+}
+
+/** The selection of one registered input: the Linux row's own function, below the live channel count. An absent input is never replaced by another. */
+function macSelectionOf(device: MacMicDevice, input: MacMicInput): string {
+  if (!isWholeIn(input.inputNumber, 1, LINUX_MIC_CHANNELS_MAX)) throw new MacMicArgumentError('INPUT_NUMBER');
+  if (input.inputNumber > device.channelCount) throw new AudioInputBeyondCardError(input.deviceId ?? null);
+  return linuxChannelSelection(input.inputNumber - 1);
+}
+
+/**
+ * The argument list of THE ONE helper of a device: the head, then one output section per registered
+ * input. Refusals, before any argument is built: an index or a channel count that is no whole number
+ * of its range; no section or more than two; a pipe not of its shape; an input number that is no
+ * whole number 1 to 64 (`MacMicArgumentError`); an input number above the live channel count
+ * (`AudioInputBeyondCardError`, code `AUDIO_INPUT_BEYOND_CARD`); the same input or the same pipe in
+ * two sections.
+ */
+export function macMicPushArguments(input: MacMicPushArguments): readonly string[] {
+  const device = macDeviceWordOf(input);
+  const given: readonly MacMicSection[] = Array.isArray(input.sections) ? input.sections : [];
+  if (given.length < 1 || given.length > MACOS_MIC_SECTIONS_MAX) throw new MacMicArgumentError('SECTION_COUNT');
+  const sections = given.map((section) => {
+    if (typeof section.pipePath !== 'string' || !isMicPipeArgument(section.pipePath)) throw new MacMicArgumentError('PIPE');
+    return { inputNumber: section.inputNumber, selection: macSelectionOf(input, section), pipePath: section.pipePath };
+  });
+  if (new Set(sections.map((section) => section.inputNumber)).size !== sections.length) throw new MacMicArgumentError('INPUT_REPEATED');
+  if (new Set(sections.map((section) => section.pipePath)).size !== sections.length) throw new MacMicArgumentError('PIPE_REPEATED');
+  const ascending = [...sections].sort((left, right) => left.inputNumber - right.inputNumber);
+  return Object.freeze([...MACOS_PUSH_HEAD, device, ...ascending.flatMap((section) => [...MACOS_SECTION_HEAD, section.selection, ...MACOS_SECTION_TAIL, section.pipePath])]);
+}
+
+export interface MacMicPrecheckArguments extends MacMicDevice, MacMicInput {}
+
+/**
+ * The pre-check of ONE registered input: one second of the selected channel to standard output,
+ * nothing kept. The same refusals as the push list for the device and the input; it takes no pipe.
+ */
+export function macMicPrecheckArguments(input: MacMicPrecheckArguments): readonly string[] {
+  const device = macDeviceWordOf(input);
+  return Object.freeze([...MACOS_PRECHECK_HEAD, device, ...MACOS_PRECHECK_SELECT, macSelectionOf(input, input), ...MACOS_PRECHECK_TAIL]);
+}
+
+/**
+ * For the static argument test (SR-15): the literals of the two templates, the two closed sets of
+ * computed words and the lengths. The test pins the templates in its OWN words and does not read
+ * them from here.
+ */
+export const MIC_MACOS_HELPER_TABLE = Object.freeze({
+  literals: Object.freeze([...new Set<string>([...MACOS_PUSH_HEAD, ...MACOS_SECTION_HEAD, ...MACOS_SECTION_TAIL, ...MACOS_PRECHECK_HEAD, ...MACOS_PRECHECK_SELECT, ...MACOS_PRECHECK_TAIL])]),
+  /** The 32 words that may follow `-i`, in order: `deviceWords[n]` names audio index n. */
+  deviceWords: Object.freeze([...MACOS_DEVICE_WORDS]) as readonly string[],
+  /** The 64 words that may follow `-af`: the Linux table's own, the same array. */
+  channelSelections: MIC_LINUX_HELPER_TABLE.channelSelections,
+  headLength: MACOS_PUSH_HEAD.length + 1,
+  sectionLength: MACOS_SECTION_HEAD.length + 1 + MACOS_SECTION_TAIL.length + 1,
+  sectionsMax: MACOS_MIC_SECTIONS_MAX,
+  precheckLength: MACOS_PRECHECK_HEAD.length + 1 + MACOS_PRECHECK_SELECT.length + 1 + MACOS_PRECHECK_TAIL.length,
+});
+
+// ── The three listing rows of macOS (task 4 row N4; design section 2.2 rows L1 to L3; SR-15 (6)) ──
+//
+// The list of the USB audio devices of a `darwin` host is the text of THREE programs, each a FIXED
+// row WITHOUT A PARAMETER, started through the PRODUCTION door with an empty environment and without
+// a start message, on `darwin` only, and killed at its own bound:
+//
+//   L1  `/usr/sbin/ioreg -r -c IOUSBHostDevice -l -d 2 -a`      the USB tree: identity (vendor,
+//        product, serial, location). `-a` is the PROPERTY-LIST form and belongs to the row: the TEXT
+//        form is FORGEABLE by a device's own product string, which can write a whole new header
+//        with a location the device chose (review SM-02; decision C96 (2)). It is not used.
+//   L2  `/usr/sbin/system_profiler SPAudioDataType -json`       the audio facts: channel count,
+//        rate, transport.
+//   L3  the audio helper of the configuration with the EXISTING device-list row of the camera table,
+//        unchanged: the index the device word is made from, read from the very program that opens
+//        the device. Its program is the configured helper, vouched for by the path rule before the
+//        start; this table names no program for it.
+//
+// The first two programs are absolute literals named by this file alone; no key of the
+// configuration, no value of the database and no text of a listing reaches a program or a row.
+
+/** The program that prints the USB tree (a system program of macOS). A literal: no key of the configuration names it. */
+export const MACOS_USB_TREE_PROGRAM = '/usr/sbin/ioreg';
+const MACOS_USB_TREE = ['-r', '-c', 'IOUSBHostDevice', '-l', '-d', '2', '-a'] as const;
+/** The program that prints the audio facts of the system (a system program of macOS). A literal. */
+export const MACOS_SYSTEM_AUDIO_PROGRAM = '/usr/sbin/system_profiler';
+const MACOS_SYSTEM_AUDIO = ['SPAudioDataType', '-json'] as const;
+
+/** THE argument list of row L1: its seven literals, the property-list form. It takes nothing. */
+export function macUsbTreeArguments(): readonly string[] {
+  return Object.freeze([...MACOS_USB_TREE]);
+}
+
+/** THE argument list of row L2: its two literals. It takes nothing. */
+export function macSystemAudioArguments(): readonly string[] {
+  return Object.freeze([...MACOS_SYSTEM_AUDIO]);
+}
+
+/** THE argument list of row L3: the device-list row of the camera table as it is (it opens no device). It takes nothing. */
+export function macMicDeviceListArguments(): readonly string[] {
+  return deviceListArguments();
+}
+
+/** For the static argument test (SR-15 (6)): the two programs, the literals of the three rows and the bound of each. */
+export const MACOS_LISTING_HELPER_TABLE = Object.freeze({
+  usbTree: Object.freeze({ program: MACOS_USB_TREE_PROGRAM, literals: Object.freeze<string[]>([...MACOS_USB_TREE]) as readonly string[], boundMs: 5_000 }),
+  systemAudio: Object.freeze({ program: MACOS_SYSTEM_AUDIO_PROGRAM, literals: Object.freeze<string[]>([...MACOS_SYSTEM_AUDIO]) as readonly string[], boundMs: 10_000 }),
+  /** Row L3 has no program of this table: the configured audio helper. */
+  deviceList: Object.freeze({ literals: Object.freeze<string[]>([...deviceListArguments()]) as readonly string[], boundMs: 5_000 }),
 });

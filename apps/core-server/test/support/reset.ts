@@ -226,8 +226,8 @@ export async function untilNoSession(pool: Pool, filter: SessionFilter, what: st
 
 // ── Dumps: independent of how the routine itself reads a row ───────────────────────────────────
 
-/** The primary key each kept table's dump is ordered by. */
-const KEPT_KEYS: Readonly<Record<string, string>> = Object.fromEntries(KEPT_TABLES.map((table) => [table.name, table.key]));
+/** The primary key each kept table's dump is ordered by: every key column, quoted and joined (two for `capture_device_streams`, I-9c). */
+const KEPT_KEYS: Readonly<Record<string, string>> = Object.fromEntries(KEPT_TABLES.map((table) => [table.name, table.keys.map((column) => `"${column}"`).join(', ')]));
 
 /**
  * A stable ordered dump of one table: every row as the text of the whole record (`t::text`, the
@@ -242,7 +242,7 @@ export async function dumpTable(pool: Pool, table: string, orderBy: string): Pro
 /** The dumps of the eight kept tables, by SQL name. */
 export async function dumpKept(pool: Pool): Promise<Record<string, string[]>> {
   const dumps: Record<string, string[]> = {};
-  for (const table of KEPT_TABLES) dumps[table.name] = await dumpTable(pool, table.name, `"${table.key}"`);
+  for (const table of KEPT_TABLES) dumps[table.name] = await dumpTable(pool, table.name, KEPT_KEYS[table.name] ?? `"${table.key}"`);
   return dumps;
 }
 
@@ -251,7 +251,7 @@ export async function contractChecksum(pool: Pool, table: string): Promise<strin
   const key = KEPT_KEYS[table];
   if (key === undefined) throw new Error(`no key for ${table}`);
   const { rows } = await pool.query<{ digest: string }>(
-    `SELECT md5(coalesce(string_agg(to_jsonb(t)::text, E'\\n' ORDER BY t."${key}"), '')) AS digest FROM public.${table} AS t`,
+    `SELECT md5(coalesce(string_agg(to_jsonb(t)::text, E'\\n' ORDER BY ${key}), '')) AS digest FROM public.${table} AS t`,
   );
   return rows[0]?.digest ?? '';
 }

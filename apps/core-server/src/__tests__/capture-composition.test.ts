@@ -31,6 +31,10 @@ import { createCardListingReader } from '../capture/adapters/audio/card-listing-
 import { LINUX_CARD_LISTING_PROGRAM, linuxCardListingArguments } from '../capture/adapters/local/mic-helper-args';
 import { COMMISSIONING_HELPER_TABLE, CommissioningArgumentError, LINUX_ECHO_PROGRAM, LINUX_NEIGHBOUR_PROGRAM, commissioningAddressArgument, linuxEchoArguments, linuxNeighbourArguments } from '../capture/adapters/local/mic-helper-args';
 import { CommissioningInputError, CommissioningInputFailure, NEIGHBOUR_OUTPUT_MAX_CHARS, echoReadingOf, hostCommissioningInputsOf, neighbourReadingOf, type CommissioningHostInputs, type CommissioningHostParts } from '../capture/fence';
+import { MACOS_CARD_LISTING_PLATFORM, MACOS_LISTING_ROW_LIMITS, MacosListingRow, macosCardEnumeratorOf, macosListingSourceOf, type MacosCardEnumerator, type MacosListingRunnerParts, type ProgramInspector } from '../capture/fence';
+import { MacosCardListingError } from '../capture/adapters/audio/macos-card-listing';
+import { macMicDeviceListArguments, macSystemAudioArguments, macUsbTreeArguments } from '../capture/adapters/local/mic-helper-args';
+import type { ProductionExit } from '../capture/adapters/production-door';
 import {
   CARD_LISTING_PLATFORM,
   CardListingNotAvailableError,
@@ -342,7 +346,8 @@ describe('fail-closed: the destination rule on a stored camera address', () => {
 
 describe('fail-closed: the card enumerator of operations 98 and 99', () => {
   it.each([
-    ['darwin', undefined, CardListingUnavailable.NOT_AVAILABLE_ON_THIS_PLATFORM],
+    // Row N7: macOS HAS a listing now; with no audio helper configured (this rig's) its third row cannot be started - the named answer, nothing started.
+    ['darwin', undefined, CardListingUnavailable.LISTING_PROGRAM_NOT_HANDED_IN],
     ['win32', { captureDevices: async () => 'card 0: USB [Scarlett], device 0: USB Audio [USB Audio]' }, CardListingUnavailable.NOT_AVAILABLE_ON_THIS_PLATFORM],
     // Row 85c took the third line of this table out: on the platform with a reader the composition has the product's runner
     // behind the enumerator, so `LISTING_PROGRAM_NOT_HANDED_IN` is no answer of a composed Core any more (block "row 85c (b)").
@@ -660,7 +665,7 @@ describe('row 85c (b): the runner of the card listing program - the fixed row of
     expect([error.code, error.reason]).toEqual(['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'ENDED_NONZERO']);
   });
 
-  it('the composition: on the platform with a reader the enumerator has the product\'s runner behind it - `LISTING_PROGRAM_NOT_HANDED_IN` is no answer any more and nothing is reported; on macOS the named answer stays and NO program is ever started', async () => {
+  it('the composition: on the platform with a reader the enumerator has the product\'s runner behind it - `LISTING_PROGRAM_NOT_HANDED_IN` is no answer any more and nothing is reported; on another platform the named answer stays and NO program is ever started (macOS: row N7 block)', async () => {
     const linux = rig(CaptureOperation.REAL_PRODUCTION);
     const composition = composed(linux, { platform: CARD_LISTING_PLATFORM });
     expect(composition.cardListingUnavailable).toBeNull();
@@ -670,11 +675,18 @@ describe('row 85c (b): the runner of the card listing program - the fixed row of
     const never: ProductionDoor = () => {
       throw new Error('no program is started on a platform without the sound directory');
     };
-    for (const platform of ['darwin', 'win32', 'freebsd', '']) {
+    for (const platform of ['win32', 'freebsd', '']) {
       const { enumerator, unavailable } = hostCardEnumeratorOf({ platform, door: never, timers });
       expect(unavailable).toBe(CardListingUnavailable.NOT_AVAILABLE_ON_THIS_PLATFORM);
       const error = await refusalOf(enumerator.list());
       expect([error.code, error.reason]).toEqual(['AUDIO_CARD_LISTING_NOT_AVAILABLE', 'NOT_AVAILABLE_ON_THIS_PLATFORM']);
+    }
+    // Row N7: macOS has a listing; without the audio helper of its third row it is the named answer, and nothing is started.
+    for (const helperProgram of [undefined, null]) {
+      const { enumerator, unavailable } = hostCardEnumeratorOf({ platform: 'darwin', door: never, timers, helperProgram });
+      expect(unavailable).toBe(CardListingUnavailable.LISTING_PROGRAM_NOT_HANDED_IN);
+      const error = await refusalOf(enumerator.list());
+      expect([error.code, error.reason]).toEqual(['AUDIO_CARD_LISTING_NOT_AVAILABLE', 'LISTING_PROGRAM_NOT_HANDED_IN']);
     }
     // On the platform with a reader the door IS asked, with the table's row and nothing else.
     const asked: { command: string; args: readonly string[]; env: unknown; message: unknown }[] = [];
@@ -688,6 +700,330 @@ describe('row 85c (b): the runner of the card listing program - the fixed row of
     expect(asked).toEqual([{ command: '/usr/bin/arecord', args: ['-l'], env: {}, message: null }]);
     // The two-argument function still names the missing program text for a caller that hands none in (no composed Core does).
     expect(cardEnumeratorOf(CARD_LISTING_PLATFORM, undefined).unavailable).toBe(CardListingUnavailable.LISTING_PROGRAM_NOT_HANDED_IN);
+  });
+});
+
+// ── Task 4 row N7 (masterplan/06 revision 3 sections 2.2, 2.3, 3.3; SM-10, SM-21): the platform seam of the card listing ──
+
+describe('row N7: the platform seam of the card listing - on darwin the three fixed rows through the production door, read by the strict readers; on linux nothing changes', () => {
+  const FIXTURES = join(__dirname, '..', 'capture', 'adapters', 'audio', '__tests__', 'fixtures', 'macos');
+  const fixture = (name: string): string => readFileSync(join(FIXTURES, name), 'utf8');
+  const TREE = fixture('tree-one-interface.txt');
+  const SYSTEM = fixture('system-one-interface.txt');
+  const CAPTURE = fixture('helper-one-interface.txt');
+  /** The same capture list with the two audio entries in the other order: the interface at index 0 instead of 1. */
+  const CAPTURE_SWAPPED = CAPTURE.replace('[0] DEMS Built-in Input', '[0] @@').replace('[1] DEMS Hexa 6', '[1] DEMS Built-in Input').replace('[0] @@', '[0] DEMS Hexa 6');
+  /** A root-owned program the path rule admits; the door doubles below never start it. */
+  const HELPER = '/bin/echo';
+  const timers = createSystemTimers();
+  const USB_TREE = '/usr/sbin/ioreg';
+  const SYSTEM_AUDIO = '/usr/sbin/system_profiler';
+  const TRUSTED: ProgramInspector = (path) => ({ absolute: path.startsWith('/'), exists: true, regularFile: true, symbolicLink: false, file: { ownerUid: 0, mode: 0o755 }, directoriesAsWritten: [{ ownerUid: 0, mode: 0o755 }], directoriesResolved: [{ ownerUid: 0, mode: 0o755 }], serverUid: 501 });
+
+  type Answer = Partial<ProductionExit> & { readonly hold?: Promise<void> };
+  /** A door that starts nothing: it records each call and answers the exit of its program. */
+  const answering = (answers: Readonly<Record<string, Answer>>) => {
+    const asked: { command: string; args: readonly string[]; env: unknown; message: unknown }[] = [];
+    const door: ProductionDoor = (options) => {
+      asked.push({ command: options.command, args: [...options.args], env: options.env, message: options.message });
+      const answer = answers[options.command] ?? {};
+      const exit: ProductionExit = { exitCode: 0, signal: null, spawnFailed: false, diagnostics: '', output: '', ...answer };
+      return { pid: null, started: Promise.resolve(), ended: (answer.hold ?? Promise.resolve()).then(() => exit), alive: () => false, endInput: () => {}, kill: () => {} };
+    };
+    return { door, asked };
+  };
+  const GOOD: Readonly<Record<string, Answer>> = { [USB_TREE]: { output: TREE }, [SYSTEM_AUDIO]: { output: SYSTEM }, [HELPER]: { exitCode: 251, diagnostics: CAPTURE } };
+  const parts = (answers: Readonly<Record<string, Answer>>, more: Partial<MacosListingRunnerParts> = {}) => {
+    const { door, asked } = answering(answers);
+    return { asked, parts: { door, timers, helperProgram: HELPER, inspect: TRUSTED, ...more } satisfies MacosListingRunnerParts };
+  };
+  const failure = async (promise: Promise<unknown>): Promise<readonly unknown[]> => {
+    const error = await refusalOf(promise);
+    if (error instanceof CardListingProgramError) return [error.code, error.reason, error.row];
+    if (error instanceof MacosCardListingError) return [error.code, error.failure, error.detail];
+    return ['NOT_A_NAMED_REFUSAL', String(error.name)];
+  };
+
+  it('THE SEAM: darwin with a helper is the macOS listing - the three rows in their order, each the table\'s row unchanged, an empty environment, no start message; linux still asks its one row; the platform alone chooses', async () => {
+    expect(MACOS_CARD_LISTING_PLATFORM).toBe('darwin');
+    const { door, asked } = answering(GOOD);
+    const host = hostCardEnumeratorOf({ platform: 'darwin', door, timers, helperProgram: HELPER });
+    expect(host.unavailable).toBeNull();
+    expect(typeof (host.enumerator as MacosCardEnumerator).listTied).toBe('function');
+    const listing = await host.enumerator.list();
+    expect(asked).toEqual([
+      { command: USB_TREE, args: [...macUsbTreeArguments()], env: {}, message: null },
+      { command: SYSTEM_AUDIO, args: [...macSystemAudioArguments()], env: {}, message: null },
+      { command: HELPER, args: [...macMicDeviceListArguments()], env: {}, message: null },
+    ]);
+    expect(listing.cards).toHaveLength(1);
+    expect(listing.cards[0]).toMatchObject({ cardIndex: 1, deviceIndex: 0, channelCount: 6, factsSource: 'SYSTEM_PROFILE', usb: true });
+    expect(listing.truncated).toBe(false);
+    // Linux: the same function, the same door - its one row, the helper is never named.
+    const linux = answering({ '/usr/bin/arecord': { output: '**** List of CAPTURE Hardware Devices ****\n' } });
+    expect(hostCardEnumeratorOf({ platform: CARD_LISTING_PLATFORM, door: linux.door, timers, helperProgram: HELPER }).unavailable).toBeNull();
+    await hostCardEnumeratorOf({ platform: CARD_LISTING_PLATFORM, door: linux.door, timers, helperProgram: HELPER }).enumerator.list();
+    expect(linux.asked).toEqual([{ command: '/usr/bin/arecord', args: ['-l'], env: {}, message: null }]);
+  });
+
+  it('AN INDEX IS NEVER KEPT: two listings are six runs, and the index follows the capture list read for THAT listing (1, then 0)', async () => {
+    let capture = CAPTURE;
+    const { parts: runner, asked } = parts({ ...GOOD, get [HELPER]() { return { exitCode: 251, diagnostics: capture }; } });
+    const enumerator = macosCardEnumeratorOf(runner);
+    expect((await enumerator.list()).cards.map((card) => card.cardIndex)).toEqual([1]);
+    capture = CAPTURE_SWAPPED;
+    expect((await enumerator.list()).cards.map((card) => card.cardIndex)).toEqual([0]);
+    expect(asked).toHaveLength(6);
+  });
+
+  it('SINGLE-FLIGHT (SM-10 (4)): callers that fall together share ONE listing in flight - three runs, not six; once it settled the next call runs the rows again', async () => {
+    let release: () => void = () => undefined;
+    const hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { parts: runner, asked } = parts({ ...GOOD, [USB_TREE]: { output: TREE, hold } });
+    const enumerator = macosCardEnumeratorOf(runner);
+    const first = enumerator.list();
+    const second = enumerator.listTied();
+    const third = enumerator.list();
+    release();
+    const [a, b, c] = await Promise.all([first, second, third]);
+    expect(asked).toHaveLength(3);
+    expect(b.ok && b.listing).toBe(a);
+    expect(c).toBe(a);
+    await enumerator.list();
+    expect(asked).toHaveLength(6);
+    // A failed listing is shared as a failure and is not kept either.
+    const failing = parts({ ...GOOD, [SYSTEM_AUDIO]: { exitCode: 1 } });
+    const shared = macosCardEnumeratorOf(failing.parts);
+    expect(await Promise.all([failure(shared.list()), failure(shared.list())])).toEqual([
+      ['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'ENDED_NONZERO', 'SYSTEM_AUDIO'],
+      ['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'ENDED_NONZERO', 'SYSTEM_AUDIO'],
+    ]);
+    expect(failing.asked).toHaveLength(2);
+    await failure(shared.list());
+    expect(failing.asked).toHaveLength(4);
+  });
+
+  it('THE EXIT RULES PER ROW (SM-10 (1), (2)): anything but "ended by itself as its row must, every stream under its cap" is the NAMED refusal with the row - never a text, never an empty list', async () => {
+    const big = (bytes: number): string => 'x'.repeat(bytes);
+    const cases: readonly [string, Readonly<Record<string, Answer>>, readonly unknown[]][] = [
+      // The USB tree: exit code 0 only; a signal; not started; its text at the door's cap; its other stream at the cap.
+      ['tree exit 1', { ...GOOD, [USB_TREE]: { exitCode: 1, output: TREE } }, ['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'ENDED_NONZERO', 'USB_TREE']],
+      ['tree by a signal', { ...GOOD, [USB_TREE]: { exitCode: null, signal: 'SIGKILL', output: TREE } }, ['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'ENDED_NONZERO', 'USB_TREE']],
+      ['tree not started', { ...GOOD, [USB_TREE]: { exitCode: null, spawnFailed: true } }, ['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'NOT_STARTED', 'USB_TREE']],
+      // MOVED BY ROW N5b (decision C131 (2)): the tree's cap is 512 KiB (was the door's 64 KiB).
+      ['tree at the cap', { ...GOOD, [USB_TREE]: { output: big(512 * 1024) } }, ['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'OUTPUT_TOO_LONG', 'USB_TREE']],
+      ['tree diagnostics at the cap', { ...GOOD, [USB_TREE]: { output: TREE, diagnostics: big(512 * 1024) } }, ['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'OUTPUT_TOO_LONG', 'USB_TREE']],
+      // The audio list: exit code 0 only; its own cap of 32 KiB (and of its other stream).
+      ['system exit 2', { ...GOOD, [SYSTEM_AUDIO]: { exitCode: 2, output: SYSTEM } }, ['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'ENDED_NONZERO', 'SYSTEM_AUDIO']],
+      ['system at its cap', { ...GOOD, [SYSTEM_AUDIO]: { output: big(32 * 1024) } }, ['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'OUTPUT_TOO_LONG', 'SYSTEM_AUDIO']],
+      ['system diagnostics at its cap', { ...GOOD, [SYSTEM_AUDIO]: { output: SYSTEM, diagnostics: big(32 * 1024) } }, ['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'OUTPUT_TOO_LONG', 'SYSTEM_AUDIO']],
+      // The capture list: ANY exit code (non-zero by design), but not a signal; read from its diagnostics, held to 32 KiB.
+      ['capture by a signal', { ...GOOD, [HELPER]: { exitCode: null, signal: 'SIGTERM', diagnostics: CAPTURE } }, ['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'ENDED_NONZERO', 'CAPTURE_DEVICES']],
+      ['capture at its cap', { ...GOOD, [HELPER]: { exitCode: 251, diagnostics: CAPTURE + big(32 * 1024) } }, ['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'OUTPUT_TOO_LONG', 'CAPTURE_DEVICES']],
+      ['capture output at its cap', { ...GOOD, [HELPER]: { exitCode: 251, diagnostics: CAPTURE, output: big(32 * 1024) } }, ['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'OUTPUT_TOO_LONG', 'CAPTURE_DEVICES']],
+      ['capture not started', { ...GOOD, [HELPER]: { exitCode: null, spawnFailed: true } }, ['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'NOT_STARTED', 'CAPTURE_DEVICES']],
+      // A text the reader refuses is the reader's named word: the audio section line missing, a capture list on standard output only, a cut tree.
+      ['capture without its audio section', { ...GOOD, [HELPER]: { exitCode: 251, diagnostics: CAPTURE.split('\n').filter((line) => !line.endsWith('audio devices:')).join('\n') } }, ['MACOS_CARD_LISTING_UNDECIDED', 'CAPTURE_LIST_UNREADABLE', 'NO_AUDIO_SECTION']],
+      ['capture text on the wrong stream', { ...GOOD, [HELPER]: { exitCode: 251, output: CAPTURE } }, ['MACOS_CARD_LISTING_UNDECIDED', 'CAPTURE_LIST_UNREADABLE', 'NO_AUDIO_SECTION']],
+      ['tree cut', { ...GOOD, [USB_TREE]: { output: TREE.slice(0, 2_000) } }, ['MACOS_CARD_LISTING_UNDECIDED', 'USB_TREE_UNREADABLE', 'FOOT']],
+    ];
+    for (const [name, answers, expected] of cases) {
+      const { parts: runner } = parts(answers);
+      expect(await failure(macosCardEnumeratorOf(runner).list()), name).toEqual(expected);
+    }
+    // The ends that ARE a list: the capture list with exit 0 or 251 alike; and the limits stated.
+    for (const exitCode of [0, 1, 251]) expect((await macosCardEnumeratorOf(parts({ ...GOOD, [HELPER]: { exitCode, diagnostics: CAPTURE } }).parts).list()).cards, String(exitCode)).toHaveLength(1);
+    expect(MACOS_LISTING_ROW_LIMITS).toEqual({
+      // MOVED BY ROW N5b (decision C131 (2)): 524,288 = `MACOS_USB_TREE_TEXT_BYTES`, the property-list reader's bound (held equal in the reader's case).
+      USB_TREE: { boundMs: 5_000, capBytes: 524_288, read: 'output' },
+      SYSTEM_AUDIO: { boundMs: 10_000, capBytes: 32_768, read: 'output' },
+      CAPTURE_DEVICES: { boundMs: 5_000, capBytes: 32_768, read: 'diagnostics' },
+    });
+    // No refusal carries a path, an argument or a line of a list.
+    const error = await refusalOf(macosCardEnumeratorOf(parts({ ...GOOD, [USB_TREE]: { exitCode: 1, output: TREE, diagnostics: 'ioreg: DEMS Hexa 6' } }).parts).list());
+    expect(JSON.stringify({ ...(error as object), message: (error as Error).message })).not.toMatch(/ioreg|system_profiler|Hexa|\/bin\/echo|IOUSB/);
+  });
+
+  it('THE PATH RULE before EVERY start of the capture list (SM-10 (6)): a helper the rule refuses starts nothing - the two system rows ran, the third did not', async () => {
+    const writable: ProgramInspector = (path) => ({ ...TRUSTED(path), file: { ownerUid: 0, mode: 0o777 } });
+    let inspected = 0;
+    const counting: ProgramInspector = (path) => {
+      inspected += 1;
+      return TRUSTED(path);
+    };
+    for (const [inspect, helperProgram] of [[writable, HELPER], [TRUSTED, 'ffmpeg'], [(): never => { throw new Error('stat failed'); }, HELPER]] as const) {
+      const { parts: runner, asked } = parts(GOOD, { inspect, helperProgram });
+      expect(await failure(macosCardEnumeratorOf(runner).list())).toEqual(['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'NOT_STARTED', 'CAPTURE_DEVICES']);
+      expect(asked.map((call) => call.command)).toEqual([USB_TREE, SYSTEM_AUDIO]);
+    }
+    const { parts: runner } = parts(GOOD, { inspect: counting });
+    const enumerator = macosCardEnumeratorOf(runner);
+    await enumerator.list();
+    await enumerator.list();
+    expect(inspected).toBe(2);
+    // The source offers the three rows and takes nothing: no method has a parameter.
+    const source = macosListingSourceOf(runner);
+    expect(Object.keys(source)).toEqual(['usbTree', 'systemAudio', 'captureDevices']);
+    expect([source.usbTree.length, source.systemAudio.length, source.captureDevices.length]).toEqual([0, 0, 0]);
+  });
+
+  describe('through the REAL production door, with stand-in programs (no listing program of the system is started)', () => {
+    const door: ProductionDoor = (options) => productionCameraDoors(createSystemTimers()).door({ ...options, coreFileLimit: () => 0 });
+    const folders: string[] = [];
+    const strays: number[] = [];
+    afterEach(() => {
+      for (const pid of strays.splice(0)) {
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch {
+          // Already gone.
+        }
+      }
+      for (const folder of folders.splice(0)) rmSync(folder, { recursive: true, force: true });
+    });
+    const standIn = (body: string): string => {
+      const folder = mkdtempSync(join(tmpdir(), 'dems-rown7-'));
+      folders.push(folder);
+      const program = join(folder, 'row');
+      writeFileSync(program, `#!/bin/sh\nprintf '%s\\n' "$#" "$@" > "$0.args"\n/usr/bin/env > "$0.env"\n${body}\n`, { mode: 0o700 });
+      chmodSync(program, 0o700);
+      return program;
+    };
+    const textFile = (text: string): string => {
+      const folder = mkdtempSync(join(tmpdir(), 'dems-rown7-text-'));
+      folders.push(folder);
+      writeFileSync(join(folder, 'text'), text);
+      return join(folder, 'text');
+    };
+
+    it('the three stand-ins are started with exactly their rows and none of the server\'s environment; the texts they print are listed', async () => {
+      const tree = standIn(`/bin/cat '${textFile(TREE)}'`);
+      const system = standIn(`/bin/cat '${textFile(SYSTEM)}'`);
+      const helper = standIn(`/bin/cat '${textFile(CAPTURE)}' >&2\nexit 251`);
+      process.env['DEMS_ROWN7_MARK'] = 'must-not-travel';
+      try {
+        const listing = await macosCardEnumeratorOf({ door, timers, helperProgram: helper, inspect: TRUSTED, usbTreeProgram: tree, systemAudioProgram: system }).list();
+        expect(listing.cards.map((card) => [card.cardIndex, card.channelCount])).toEqual([[1, 6]]);
+      } finally {
+        delete process.env['DEMS_ROWN7_MARK'];
+      }
+      expect(readFileSync(`${tree}.args`, 'utf8')).toBe(`7\n${macUsbTreeArguments().join('\n')}\n`);
+      expect(readFileSync(`${system}.args`, 'utf8')).toBe('2\nSPAudioDataType\n-json\n');
+      expect(readFileSync(`${helper}.args`, 'utf8')).toBe(`8\n${macMicDeviceListArguments().join('\n')}\n`);
+      for (const program of [tree, system, helper]) expect(readFileSync(`${program}.env`, 'utf8')).not.toMatch(/DEMS_ROWN7_MARK|^HOME=|^PATH=/m);
+    });
+
+    it('A ROW THAT DOES NOT END is killed at its bound and is TIMED_OUT - also when it forked a child that holds its stream open: the wait ends at the bound (SM-10 (3), (5))', async () => {
+      const stuck = standIn('exec /bin/sleep 30');
+      const before = Date.now();
+      expect(await failure(macosListingSourceOf({ door, timers, helperProgram: HELPER, inspect: TRUSTED, usbTreeProgram: stuck, limits: { USB_TREE: { boundMs: 300, capBytes: 65_536 } } }).usbTree())).toEqual(['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'TIMED_OUT', 'USB_TREE']);
+      expect(Date.now() - before).toBeLessThan(5_000);
+      // A program that forks a child which keeps standard output open, then hangs: the door's end would wait for that child.
+      const forking = standIn('/bin/sleep 30 &\necho $! > "$0.child"\nexec /bin/sleep 30');
+      const started = Date.now();
+      expect(await failure(macosListingSourceOf({ door, timers, helperProgram: HELPER, inspect: TRUSTED, systemAudioProgram: forking, limits: { SYSTEM_AUDIO: { boundMs: 400, capBytes: 32_768 } } }).systemAudio())).toEqual(['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'TIMED_OUT', 'SYSTEM_AUDIO']);
+      expect(Date.now() - started).toBeLessThan(5_000);
+      // ROW N5b (decision C131 (3), SM-10 (3) closed): the runner starts each row in a process group of its own and the kill at the
+      // bound ends the GROUP, so the forked child no longer outlives it - 0 survive. (Before N5b this case pinned the survivor: the
+      // door signalled its own child only. The door's own cases hold both forms: without the option the child survives, with it none.)
+      const child = Number(readFileSync(`${forking}.child`, 'utf8').trim());
+      strays.push(child);
+      expect(Number.isInteger(child) && child > 1).toBe(true);
+      const alive = (): boolean => {
+        try {
+          process.kill(child, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      for (let step = 0; step < 250 && alive(); step += 1) await new Promise((done) => setTimeout(done, 20));
+      expect(alive()).toBe(false);
+    });
+
+    it('more text than the row\'s cap through the real door is OUTPUT_TOO_LONG; the capture list\'s non-zero end is a list', async () => {
+      // MOVED BY ROW N5b (decision C131 (2)): the flood is over the tree's 512 KiB (was 70,000 bytes over 64 KiB); a text between the
+      // old and the new cap is the row's text, whole, through the real door.
+      const flood = standIn('/usr/bin/yes "<string>DEMS Hexa 6</string>" | /usr/bin/head -c 600000');
+      expect(await failure(macosListingSourceOf({ door, timers, helperProgram: HELPER, inspect: TRUSTED, usbTreeProgram: flood }).usbTree())).toEqual(['AUDIO_CARD_LISTING_PROGRAM_FAILED', 'OUTPUT_TOO_LONG', 'USB_TREE']);
+      const between = standIn('/usr/bin/yes "<string>DEMS Hexa 6</string>" | /usr/bin/head -c 300000');
+      expect((await macosListingSourceOf({ door, timers, helperProgram: HELPER, inspect: TRUSTED, usbTreeProgram: between }).usbTree()).length).toBe(300_000);
+      const helper = standIn(`/bin/cat '${textFile(CAPTURE)}' >&2\nexit 251`);
+      expect(await macosListingSourceOf({ door, timers, helperProgram: helper, inspect: TRUSTED }).captureDevices()).toBe(CAPTURE);
+    });
+  });
+
+  it('THE COMPOSITION on darwin with the configured helper: the macOS enumerator goes to operations 98 / 99 (the hand-over of `provideEnumerator`), nothing is reported and NOTHING is started at composition', () => {
+    const built = rig(CaptureOperation.REAL_PRODUCTION, { audioHelperProgram: HELPER });
+    const composition = composed(built, { platform: 'darwin' });
+    expect(composition.cardListingUnavailable).toBeNull();
+    expect(built.reports).toEqual([]);
+    expect(built.enumerators).toEqual([composition.cards]);
+    expect(typeof (composition.cards as MacosCardEnumerator).listTied).toBe('function');
+    // The same object in the audio bundle and the microphone watch: one enumerator per Core, so one listing in flight.
+    expect([composition.dependencies.audio.cards, composition.watches.microphone.cards]).toEqual([composition.cards, composition.cards]);
+  });
+
+  // THE FIRST RUN OF THE WHOLE LISTING ON THIS MAC'S REAL TEXTS THROUGH THE PRODUCT (row N7's own check; decision U23 (3)).
+  // Read-only: the three system rows, no device opened. Runs only when asked (`DEMS_N7_REAL_LISTING=1`, `DEMS_N7_HELPER=<path>`),
+  // outside the command sandbox (inside it the USB tree row fails and the audio list is empty: SM-13). It prints counts and
+  // closed words only - no name, no serial, no location, no USB id.
+  it.skipIf(process.env['DEMS_N7_REAL_LISTING'] !== '1')('REAL TEXTS of this Mac through the seam (asked only)', async () => {
+    const helperProgram = process.env['DEMS_N7_HELPER'] ?? '';
+    const host = hostCardEnumeratorOf({ platform: process.platform, door: productionCameraDoors(timers).door, timers, helperProgram });
+    expect(host.unavailable).toBeNull();
+    const runs: unknown[] = [];
+    for (let run = 0; run < 2; run += 1) {
+      const started = Date.now();
+      const tied = await (host.enumerator as MacosCardEnumerator).listTied();
+      if (!tied.ok) {
+        runs.push({ ok: false, failure: tied.failure, detail: tied.detail });
+        continue;
+      }
+      runs.push({
+        ok: true,
+        ms: Date.now() - started,
+        cards: tied.cards.map((card) => ({ cardIndex: card.cardIndex, deviceIndex: card.deviceIndex, channelCount: card.channelCount, ratesHz: card.ratesHz, factsSource: card.factsSource, usb: card.usb, serialStated: card.usbSerial !== null, portForm: /^[0-9a-f]{8}$/.test(card.usbPort ?? '') ? 'EIGHT_HEX' : 'OTHER', cardIdForm: /^usb_[0-9a-f]{8}$/.test(card.cardId) ? 'usb_EIGHT_HEX' : 'OTHER' })),
+        undecided: tied.undecided.map((device) => device.reason),
+        refusedDevices: tied.refusedDevices,
+        passedOver: tied.passedOver,
+        captureEntries: tied.captureEntries,
+        skipped: tied.listing.skipped,
+      });
+    }
+    // OPERATION 98 as the audio-cards module answers it (its own service function, the enumerator the composition hands over,
+    // a store that holds no registered input), held to the contract's schema. Counts and forms only.
+    const { createListingGate, searchAudioCards } = await import('../modules/capture-inputs/audio-cards/service');
+    const { createMicrophoneStore } = await import('../modules/capture-inputs/audio-cards/store');
+    const { createAudioCardSearchIds } = await import('../modules/capture-inputs/audio-cards');
+    const { CaptureAudioCardSearchSchema } = await import('@dems/shared/api');
+    const audits: unknown[] = [];
+    const empty = { query: async () => ({ rows: [], rowCount: 0 }) };
+    const answer = await searchAudioCards(
+      {
+        store: createMicrophoneStore(),
+        gate: createListingGate(() => Date.now()),
+        enumerator: () => host.enumerator,
+        registrar: () => null,
+        admit: () => {},
+        nextSearchId: createAudioCardSearchIds(),
+        host: {
+          now: () => Date.now(),
+          sessionOpen: () => false,
+          read: (_label, work) => work(empty as never),
+          unit: (_label, work) => work({ db: empty, scope: {}, sessionOpen: () => false, audit: async (entry: unknown) => void audits.push(entry), afterCommit: () => {} } as never),
+          note: () => {},
+          failed: () => {},
+        },
+      },
+      { operatorId: 'USR-0001', deviceId: null } as never,
+    );
+    const operation98 = { schema: CaptureAudioCardSearchSchema.safeParse(answer).success, cards: answer.cards.map((card) => ({ deviceIndex: card.deviceIndex, channelCount: card.channelCount, serialAnswered: card.usbSerial !== null, portAnswered: card.usbPort !== null, registered: card.registered.length })), truncated: answer.truncated, audits: audits.length };
+    console.log(`ROW N7 REAL LISTING: ${JSON.stringify(runs)} OPERATION 98: ${JSON.stringify(operation98)}`);
+    expect(runs.every((run) => (run as { ok: boolean }).ok)).toBe(true);
+    expect(operation98.schema).toBe(true);
   });
 });
 

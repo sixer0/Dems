@@ -237,6 +237,8 @@ export interface CameraWatchDependencies {
 export interface CameraStreamEnd {
   readonly deviceId: string;
   readonly code: string;
+  /** The session of the relay that ended (`CameraRelayEnd.sessionId`): whose loss this is (finding E-03). */
+  readonly sessionId?: string;
   /** The profile of the stream whose relay ended (`CameraRelayEnd.profile`): a loss of that stream's leg ends with its relay. */
   readonly profile?: string;
 }
@@ -271,8 +273,22 @@ export interface CameraWatch {
   /** Stops it and forgets what was known of the camera's presence. A running read is cut. */
   unwatch(deviceId: string): void;
   presence(deviceId: string): CameraPresence;
-  /** The cameras that are lost now (a relay ended by itself and no push returned since). */
+  /** The cameras that are lost now, IN THE CAPTURE THAT RUNS (a relay ended by itself and no push returned since, or a leg said lost). Empty once that capture ended (`captureEnded`). */
   lost(): readonly string[];
+  /**
+   * THE SESSION BOUNDARY (finding E-03 of the fifth review pass): the capture ended. A loss belongs
+   * to the capture it happened in - its relay is gone with it - so the watch forgets every loss it
+   * holds, and asks the sink ONCE to end each fault it raised itself (decision C60 (2): its own
+   * only; the sink ends one that still stands and only drops its mark of one the session's end
+   * cleared already, so nothing is ended twice). After it `lost()` is empty and the next capture
+   * starts clean: a camera lost at the end of one session is not "lost" in the next, raises its
+   * fault there anew, and gets no clear for a loss of the session before.
+   * No change is told for it (`onChange`): no camera came back. The heartbeats are not touched.
+   * THE SAME happens by itself at the first established push that names ANOTHER session than the
+   * one whose reports the watch last read (one capture runs at a time): the boundary holds also
+   * where nobody called this function.
+   */
+  captureEnded(): void;
   /** ONE read, apart from the heartbeat: the pre-check item. Rejects `CAPTURE_DEVICE_UNKNOWN` for a device that is no stored camera. */
   check(deviceId: string, signal: AbortSignal): Promise<CameraCheck>;
   /** The camera's clock minus the Core's, whole milliseconds, from ONE read. Rejects with `CameraClockError`, or `CAPTURE_DEVICE_UNKNOWN`. */
@@ -365,6 +381,16 @@ export function createCameraWatch(dependencies: CameraWatchDependencies): Camera
     } catch {
       failed();
     }
+  };
+
+  /** Finding E-03: the session whose reports the watch last read. Null: none yet, or its capture ended. */
+  let session: string | null = null;
+  /** Finding E-03: see `CameraWatch.captureEnded`. Its own faults asked away once each, then every loss forgotten. */
+  const forgetLosses = (): void => {
+    for (const deviceId of [...raisedHere]) toSink(deviceId, 'clear');
+    lostStreams.clear();
+    lostLegs.clear();
+    session = null;
   };
 
   /** ONE time read, bounded here and by the caller's signal. It never rejects. */
@@ -462,6 +488,7 @@ export function createCameraWatch(dependencies: CameraWatchDependencies): Camera
 
   return Object.freeze({
     relayEnded(end: CameraStreamEnd): void {
+      if (typeof end.sessionId === 'string') session ??= end.sessionId;
       const was = isLost(end.deviceId);
       // The relay of a leg that was lost is gone (its tries are used up): from here on the loss is the ended relay's.
       if (typeof end.profile === 'string') dropLegs(end.deviceId, (profile) => profile === end.profile);
@@ -477,6 +504,7 @@ export function createCameraWatch(dependencies: CameraWatchDependencies): Camera
       if (leg !== undefined && leg !== null) {
         // THE CAMERA LEG INSIDE A SESSION (finding F3-01). Never an established push: nothing below is touched by it.
         if (typeof leg.profile !== 'string') return;
+        if (typeof up.sessionId === 'string') session ??= up.sessionId;
         const relay = relayOf(up) ?? '';
         if (leg.event === 'LOST') {
           const was = isLost(deviceId);
@@ -496,6 +524,11 @@ export function createCameraWatch(dependencies: CameraWatchDependencies): Camera
           changed(deviceId, CameraWatchEvent.STREAM_RETURNED);
         }
         return;
+      }
+      // Finding E-03: the first established push of ANOTHER session - the capture whose losses are held is over (one runs at a time).
+      if (typeof up.sessionId === 'string') {
+        if (session !== null && session !== up.sessionId) forgetLosses();
+        session = up.sessionId;
       }
       const was = isLost(deviceId);
       // A push of ANOTHER relay than the one a lost leg belongs to (a later worker, a later session): that relay is gone, and the camera is back.
@@ -522,6 +555,7 @@ export function createCameraWatch(dependencies: CameraWatchDependencies): Camera
     },
     presence: (deviceId: string): CameraPresence => hearts.get(deviceId)?.state ?? CameraPresence.UNKNOWN,
     lost: (): readonly string[] => Object.freeze([...new Set([...lostStreams.keys(), ...lostLegs.keys()])]),
+    captureEnded: forgetLosses,
     async check(deviceId: string, signal: AbortSignal): Promise<CameraCheck> {
       if (signal.aborted) throw new CaptureAdapterError(CaptureAdapterRefusal.ABORTED, deviceId);
       const target = await targetOf(deviceId, true);

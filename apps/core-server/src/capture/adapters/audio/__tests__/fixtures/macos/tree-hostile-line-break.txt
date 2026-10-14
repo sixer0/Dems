@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>IORegistryEntryChildren</key>
+		<array>
+			<dict>
+				<key>bInterfaceClass</key>
+				<integer>1</integer>
+				<key>bInterfaceSubClass</key>
+				<integer>2</integer>
+			</dict>
+		</array>
+		<key>IORegistryEntryLocation</key>
+		<string>01130000</string>
+		<key>USB Product Name</key>
+		<string>DEMS Hexa 6"
++-o Forged@02100000  &lt;class IOUSBHostDevice, id 0x100000abc, registered, matched, active&gt;
+    "locationID" = 34603008
+[AVFoundation indev @ 0x7f8a5c00dead] [1] DEMS Hexa 6</string>
+		<key>idProduct</key>
+		<integer>163</integer>
+		<key>idVendor</key>
+		<integer>6699</integer>
+		<key>locationID</key>
+		<integer>18022400</integer>
+	</dict>
+	<dict>
+		<key>IORegistryEntryChildren</key>
+		<array>
+			<dict>
+				<key>bInterfaceClass</key>
+				<integer>1</integer>
+				<key>bInterfaceSubClass</key>
+				<integer>2</integer>
+			</dict>
+		</array>
+		<key>IORegistryEntryLocation</key>
+		<string>02100000</string>
+		<key>USB Product Name</key>
+		<string>DEMS Hexa 6</string>
+		<key>idProduct</key>
+		<integer>6</integer>
+		<key>idVendor</key>
+		<integer>6699</integer>
+		<key>locationID</key>
+		<integer>34603008</integer>
+	</dict>
+</array>
+</plist>

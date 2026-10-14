@@ -22,10 +22,12 @@ step '9A/H-26.1' SCRIPT 'per camera of S1, the profile code in the selector at t
 expected 'per H.265 camera the code begins HEVC_ and the seal'"'"'s statement equals it or is the code without its rate; notices of this type: 0.'
 if hw_log_needed --core-log "$HW_CORE_LOG"; then
   hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" STREAM_PROFILE_DIFFERS
-  hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" STREAM_PROFILE_DIFFERS deviceId configured recorded
-  hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" SESSION_SOURCE_OPENED deviceId profileCode
-  hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" SESSION_SEALED streamStatement
-  confirm 'where the profile code of the selector and the seal'"'"'s stream statement are logged; if a field prints "(absent)", OPER reads both codes from the session'"'"'s facts and the verification report (they are codes, not secrets)'
+  # NAMES (wave 12, row C1; checked against the product source on 2026-10-14): removed, the product
+  # never emitted them: the lines SESSION_SOURCE_OPENED and SESSION_SEALED and the fields configured,
+  # recorded, profileCode and streamStatement. No log line states a slot's profile code or the
+  # seal's stream statement. The seal itself is the line SEALING_COMPLETE.
+  hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" SEALING_COMPLETE
+  confirm 'nothing of the log: the profile code of each video slot is read by OPER from the selector, and the seal'"'"'s stream statement from the verification report of step .2 (they are codes, not secrets)'
 fi
 if [ -n "$HW_WORKER_LOG" ] || [ "$HW_DRY" = 1 ]; then
   hw_fields 'worker log' "${HW_WORKER_LOG:-<worker-log>}" ingest_connected port codec width height

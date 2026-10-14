@@ -50,6 +50,10 @@ function rig() {
     credentials: { sessionOpen: never('credentials.sessionOpen') },
     locator: { locate: never('locator.locate') } as unknown as CameraBundle['locator'],
     stream: never('stream'),
+    // Finding E-02 (review 60e): the listener of a relay's end is REQUIRED; a build starts no relay, so it hears nothing here.
+    relayEnded: () => {
+      calls.push('relayEnded');
+    },
   };
   const audio: AudioBundle = {
     registered: never('registered'),

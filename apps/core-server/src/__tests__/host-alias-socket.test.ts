@@ -11,7 +11,7 @@ import { createServer, type Server, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HELPER_CODES, HostAliasTransportFailure, createHostAliasCaller, type HelperCodeName, type HostAliasFacts, type HostAliasTransport } from '../capture/host-alias';
 import {
   HOST_ALIAS_ANSWER_MAX_BYTES,
@@ -22,6 +22,30 @@ import {
   hostAliasSocketTransportOf,
   type LocalSocketTransport,
 } from '../host-alias-socket';
+
+/**
+ * Row NF (review 120b T-3): the owner the operating system is made to state for ONE path, by path. Empty in every case
+ * but the one that names it; while it is empty the wrapper below hands every answer of `lstat` on unchanged. The test
+ * runner lifts both statements above the imports, so the client under test is loaded with the wrapper in place.
+ */
+const nodeOwners = vi.hoisted(() => new Map<string, number>());
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const real = await importOriginal<typeof import('node:fs/promises')>();
+  const lstat = async (...parameters: Parameters<typeof real.lstat>): Promise<unknown> => {
+    const stats = await real.lstat(...parameters);
+    const owner = typeof parameters[0] === 'string' ? nodeOwners.get(parameters[0]) : undefined;
+    if (owner === undefined) return stats;
+    // Everything of the real answer but the owner: its mode, its kind and its methods (bound to the real object).
+    return new Proxy(stats, {
+      get(target, key) {
+        if (key === 'uid') return owner;
+        const value: unknown = Reflect.get(target, key, target);
+        return typeof value === 'function' ? (value as (...inner: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+  };
+  return { ...real, default: { ...real, lstat }, lstat };
+});
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const NAMES = Object.keys(HELPER_CODES) as HelperCodeName[];
@@ -338,6 +362,28 @@ describe('refused before connecting, by what the client can check', () => {
       await expect(transportTo(helper.path).exchange(ADD), mode.toString(8)).resolves.toEqual({ kind: 'FAILED', failure: 'SOCKET_DIRECTORY_UNSAFE' });
     }
     chmodSync(helper.folder, 0o755);
+    helper.plan({ answer: '0 OK\n' });
+    await expect(transportTo(helper.path).exchange(ADD)).resolves.toEqual({ kind: 'ANSWER', text: '0 OK\n' });
+    expect(helper.connections()).toBe(1);
+  });
+
+  // Row NF (review 120b T-3, finding S2-10). In the case above the FOLDER answers first, so the owner check of the NODE
+  // is never the one that refuses. A node of another owner in a folder of the trusted one cannot be MADE on this Mac
+  // without another account, so the operating system's answer for the node - and for the node only - is replaced
+  // (`nodeOwners`, the wrapper of `lstat` at the top of this file); the folder, the mode and the socket are real.
+  // SEEN RED on the mutation `node.uid !== trustedOwnerUid || ` removed (host-alias-socket.ts): the client then
+  // connects and sends the request line. NOT PROVEN by this: a real node of another owner under a root-owned folder
+  // on the Linux host - hardware check `9A/H-05`.
+  it('THE NODE ALONE is not the trusted owner\'s while its folder is: SOCKET_OWNER_OR_MODE, no connection, nothing sent', async () => {
+    const helper = await double();
+    for (const other of [0, ME + 1]) {
+      nodeOwners.set(helper.path, other);
+      await expect(transportTo(helper.path).preflight(), String(other)).resolves.toBe('SOCKET_OWNER_OR_MODE');
+      await expect(transportTo(helper.path).exchange(ADD), String(other)).resolves.toEqual({ kind: 'FAILED', failure: 'SOCKET_OWNER_OR_MODE' });
+    }
+    expect([helper.connections(), helper.requests]).toEqual([0, []]);
+    // CONTROL: the same node, the same folder, the owner the operating system really states - the request is sent.
+    nodeOwners.delete(helper.path);
     helper.plan({ answer: '0 OK\n' });
     await expect(transportTo(helper.path).exchange(ADD)).resolves.toEqual({ kind: 'ANSWER', text: '0 OK\n' });
     expect(helper.connections()).toBe(1);

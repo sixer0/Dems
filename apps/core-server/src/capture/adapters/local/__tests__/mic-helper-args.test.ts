@@ -12,8 +12,22 @@ import {
   LINUX_MIC_CHANNEL_INDEX_MAX,
   LOCAL_MIC_DEVICE_NAME,
   LinuxMicArgumentError,
+  MACOS_LISTING_HELPER_TABLE,
+  MACOS_MIC_ARGUMENT_REFUSED,
+  MACOS_MIC_DEVICE_INDEX_MAX,
+  MACOS_MIC_SECTIONS_MAX,
+  MACOS_SYSTEM_AUDIO_PROGRAM,
+  MACOS_USB_TREE_PROGRAM,
   MIC_HELPER_TABLE,
   MIC_LINUX_HELPER_TABLE,
+  MIC_MACOS_HELPER_TABLE,
+  MacMicArgumentError,
+  macMicDeviceListArguments,
+  macMicDeviceWord,
+  macMicPrecheckArguments,
+  macMicPushArguments,
+  macSystemAudioArguments,
+  macUsbTreeArguments,
   MIC_OUTPUT_ARGUMENTS,
   MicGeneratedTone,
   MicHelperArgumentError,
@@ -546,5 +560,157 @@ describe('G-R12 as amended by SR-4, AD-07 (2): the Linux lists are literals, one
     // 0 changed results on the macOS side: its table holds no word of the Linux one and no bar.
     expect(MIC_HELPER_TABLE.literals.filter((literal) => /alsa|pcm_s24le|-channels|-ch_layout|^\d+C$|-sample_rate|-thread_queue_size|-af|\|/.test(literal))).toEqual([]);
     expect([MIC_HELPER_TABLE.quietLength, MIC_HELPER_TABLE.deviceInputLength, MIC_HELPER_TABLE.generatedInputLength, MIC_HELPER_TABLE.fixtureInputLength, MIC_HELPER_TABLE.outputLength]).toEqual([7, 4, 5, 7, 12]);
+  });
+});
+
+// Task 4 row N4 (wave 12): the macOS PRODUCTION table - one helper per device, the device named by the
+// index of the live device list, one output section per registered input (design masterplan/06
+// revision 3, sections 4.2 to 4.3; named amendment SR-15, decision C110). The static rule that holds
+// the lists to their templates and to the forbidden list is in `capture/__tests__/static.test.ts`;
+// these are the tests of the BUILDER: every member of the two closed sets, the two-output form, and
+// every refusal. Mutations each case was seen red on: implementation/n4_mic_table_and_rule.md.
+describe('the macOS production table (row N4; SR-15)', () => {
+  const PIPE_1 = micPipePath('/work/.data/run/capture', 'SES-20261009-0001', 'MIC-01');
+  const PIPE_2 = micPipePath('/work/.data/run/capture', 'SES-20261009-0001', 'MIC-02');
+  const SECTION = (selection: string, pipe: string): string[] => ['-map', '0:a', '-af', selection, '-ac', '1', '-ar', '48000', '-c:a', 'pcm_f32le', '-f', 'fifo', '-fifo_format', 'f32le', '-drop_pkts_on_overflow', '1', '-queue_size', '32', '-format_opts', 'flush_packets=1', '-y', pipe];
+  const HEAD = (device: string): string[] => ['-hide_banner', '-nostdin', '-nostats', '-loglevel', 'info', '-thread_queue_size', '1024', '-f', 'avfoundation', '-i', device];
+  const macRefusal = (make: () => unknown): string => {
+    try {
+      make();
+    } catch (error) {
+      if (error instanceof MacMicArgumentError) return `${error.code}:${error.what}`;
+      if (error instanceof AudioInputBeyondCardError) return `${error.code}:${String(error.deviceId)}`;
+      throw error;
+    }
+    return 'made';
+  };
+
+  it('the device word: every member of the closed set, from its number; canonical decimal', () => {
+    const words = Array.from({ length: MACOS_MIC_DEVICE_INDEX_MAX + 1 }, (_unused, index) => macMicDeviceWord(index));
+    expect(words).toEqual(['none:0', 'none:1', 'none:2', 'none:3', 'none:4', 'none:5', 'none:6', 'none:7', 'none:8', 'none:9', 'none:10', 'none:11', 'none:12', 'none:13', 'none:14', 'none:15', 'none:16', 'none:17', 'none:18', 'none:19', 'none:20', 'none:21', 'none:22', 'none:23', 'none:24', 'none:25', 'none:26', 'none:27', 'none:28', 'none:29', 'none:30', 'none:31']);
+    expect(words).toEqual([...MIC_MACOS_HELPER_TABLE.deviceWords]);
+    expect(new Set(words).size).toBe(32);
+    expect(MACOS_MIC_DEVICE_INDEX_MAX).toBe(31);
+  });
+
+  it('the device word: an index out of range, a number that is not whole, and text in the place of the number are refused', () => {
+    for (const outside of [-1, 32, 33, 1_000, 0.5, 31.0001, -0.5, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) expect(macRefusal(() => macMicDeviceWord(outside)), String(outside)).toBe(`${MACOS_MIC_ARGUMENT_REFUSED}:DEVICE_INDEX`);
+    for (const text of ['0', '00', '1', 'default', 'none:0', 'USB Audio Interface', '0 -i x', '', null, undefined, [0], { valueOf: () => 0 }, true]) expect(macRefusal(() => macMicDeviceWord(text as unknown as number)), String(text)).toBe(`${MACOS_MIC_ARGUMENT_REFUSED}:DEVICE_INDEX`);
+    expect(macRefusal(() => macMicPushArguments({ audioIndex: 32, channelCount: 6, sections: [{ inputNumber: 1, pipePath: PIPE_1 }] }))).toBe(`${MACOS_MIC_ARGUMENT_REFUSED}:DEVICE_INDEX`);
+    expect(macRefusal(() => macMicPrecheckArguments({ audioIndex: -1, channelCount: 6, inputNumber: 1 }))).toBe(`${MACOS_MIC_ARGUMENT_REFUSED}:DEVICE_INDEX`);
+  });
+
+  it('one output: the list verbatim, for every device word and every selection below the channel count', () => {
+    expect([...macMicPushArguments({ audioIndex: 0, channelCount: 6, sections: [{ inputNumber: 1, pipePath: PIPE_1 }] })]).toEqual([...HEAD('none:0'), ...SECTION('pan=mono|c0=c0', PIPE_1)]);
+    for (let audioIndex = 0; audioIndex <= MACOS_MIC_DEVICE_INDEX_MAX; audioIndex += 1) {
+      for (let inputNumber = 1; inputNumber <= LINUX_MIC_CHANNELS_MAX; inputNumber += 1) {
+        const list = macMicPushArguments({ audioIndex, channelCount: LINUX_MIC_CHANNELS_MAX, sections: [{ inputNumber, pipePath: PIPE_1 }] });
+        expect([...list], `${String(audioIndex)} / ${String(inputNumber)}`).toEqual([...HEAD(`none:${String(audioIndex)}`), ...SECTION(`pan=mono|c0=c${String(inputNumber - 1)}`, PIPE_1)]);
+        expect(list[14]).toBe(linuxChannelSelection(inputNumber - 1));
+      }
+    }
+  });
+
+  it('two outputs: the list verbatim; the sections stand in the ascending order of the input numbers whatever the order they were handed in', () => {
+    const expected = [...HEAD('none:0'), ...SECTION('pan=mono|c0=c0', PIPE_1), ...SECTION('pan=mono|c0=c3', PIPE_2)];
+    expect([...macMicPushArguments({ audioIndex: 0, channelCount: 6, sections: [{ inputNumber: 1, pipePath: PIPE_1 }, { inputNumber: 4, pipePath: PIPE_2 }] })]).toEqual(expected);
+    expect([...macMicPushArguments({ audioIndex: 0, channelCount: 6, sections: [{ inputNumber: 4, pipePath: PIPE_2 }, { inputNumber: 1, pipePath: PIPE_1 }] })]).toEqual(expected);
+    expect(expected).toHaveLength(55);
+    // Each pipe stays with ITS input: handing the pipes the other way round gives the other list.
+    expect([...macMicPushArguments({ audioIndex: 0, channelCount: 6, sections: [{ inputNumber: 4, pipePath: PIPE_1 }, { inputNumber: 1, pipePath: PIPE_2 }] })]).toEqual([...HEAD('none:0'), ...SECTION('pan=mono|c0=c0', PIPE_2), ...SECTION('pan=mono|c0=c3', PIPE_1)]);
+    // Every pair of the 64 inputs, on the last device word.
+    let pairs = 0;
+    for (let first = 1; first <= LINUX_MIC_CHANNELS_MAX; first += 1) {
+      for (let second = first + 1; second <= LINUX_MIC_CHANNELS_MAX; second += 1) {
+        const list = macMicPushArguments({ audioIndex: 31, channelCount: LINUX_MIC_CHANNELS_MAX, sections: [{ inputNumber: second, pipePath: PIPE_2 }, { inputNumber: first, pipePath: PIPE_1 }] });
+        expect([...list]).toEqual([...HEAD('none:31'), ...SECTION(`pan=mono|c0=c${String(first - 1)}`, PIPE_1), ...SECTION(`pan=mono|c0=c${String(second - 1)}`, PIPE_2)]);
+        pairs += 1;
+      }
+    }
+    expect(pairs).toBe(2_016);
+  });
+
+  it('the pre-check: the list verbatim, one second of the selected input to standard output; it takes no pipe', () => {
+    expect([...macMicPrecheckArguments({ audioIndex: 2, channelCount: 6, inputNumber: 4 })]).toEqual(['-hide_banner', '-nostdin', '-nostats', '-loglevel', 'info', '-f', 'avfoundation', '-i', 'none:2', '-t', '1', '-map', '0:a', '-af', 'pan=mono|c0=c3', '-ac', '1', '-ar', '48000', '-c:a', 'pcm_f32le', '-f', 'f32le', '-flush_packets', '1', '-']);
+    for (let inputNumber = 1; inputNumber <= LINUX_MIC_CHANNELS_MAX; inputNumber += 1) expect(macMicPrecheckArguments({ audioIndex: 0, channelCount: LINUX_MIC_CHANNELS_MAX, inputNumber })[14]).toBe(`pan=mono|c0=c${String(inputNumber - 1)}`);
+    expect(macMicPrecheckArguments({ audioIndex: 0, channelCount: 6, inputNumber: 1 }).some((argument) => argument.includes('/'))).toBe(false);
+  });
+
+  it('a channel: an input above the LIVE channel count is the named refusal with the registry id; an input that is no whole number 1 to 64, and a channel count that is none, are refused', () => {
+    // Every channel count: its last input is made, the one above it is AUDIO_INPUT_BEYOND_CARD (never replaced by another).
+    for (let channelCount = 1; channelCount <= LINUX_MIC_CHANNELS_MAX; channelCount += 1) {
+      expect(macMicPushArguments({ audioIndex: 0, channelCount, sections: [{ inputNumber: channelCount, pipePath: PIPE_1 }] })[14]).toBe(`pan=mono|c0=c${String(channelCount - 1)}`);
+      if (channelCount < LINUX_MIC_CHANNELS_MAX) {
+        expect(macRefusal(() => macMicPushArguments({ audioIndex: 0, channelCount, sections: [{ inputNumber: channelCount + 1, pipePath: PIPE_1, deviceId: 'MIC-01' }] })), String(channelCount)).toBe(`${AUDIO_INPUT_BEYOND_CARD}:MIC-01`);
+        expect(macRefusal(() => macMicPrecheckArguments({ audioIndex: 0, channelCount, inputNumber: channelCount + 1, deviceId: 'MIC-02' })), String(channelCount)).toBe(`${AUDIO_INPUT_BEYOND_CARD}:MIC-02`);
+      }
+    }
+    expect(macRefusal(() => macMicPushArguments({ audioIndex: 0, channelCount: 6, sections: [{ inputNumber: 7, pipePath: PIPE_1 }] }))).toBe(`${AUDIO_INPUT_BEYOND_CARD}:null`);
+    // The second section is held like the first.
+    expect(macRefusal(() => macMicPushArguments({ audioIndex: 0, channelCount: 2, sections: [{ inputNumber: 1, pipePath: PIPE_1 }, { inputNumber: 3, pipePath: PIPE_2, deviceId: 'MIC-02' }] }))).toBe(`${AUDIO_INPUT_BEYOND_CARD}:MIC-02`);
+    for (const outside of [0, -1, 65, 1.5, Number.NaN, '1', 'c0', null, undefined]) {
+      expect(macRefusal(() => macMicPushArguments({ audioIndex: 0, channelCount: 64, sections: [{ inputNumber: outside as number, pipePath: PIPE_1 }] })), String(outside)).toBe(`${MACOS_MIC_ARGUMENT_REFUSED}:INPUT_NUMBER`);
+      expect(macRefusal(() => macMicPrecheckArguments({ audioIndex: 0, channelCount: 64, inputNumber: outside as number })), String(outside)).toBe(`${MACOS_MIC_ARGUMENT_REFUSED}:INPUT_NUMBER`);
+    }
+    for (const outside of [0, -1, 65, 5.5, Number.NaN, '6', '5.1', null, undefined]) {
+      expect(macRefusal(() => macMicPushArguments({ audioIndex: 0, channelCount: outside as number, sections: [{ inputNumber: 1, pipePath: PIPE_1 }] })), String(outside)).toBe(`${MACOS_MIC_ARGUMENT_REFUSED}:CHANNEL_COUNT`);
+      expect(macRefusal(() => macMicPrecheckArguments({ audioIndex: 0, channelCount: outside as number, inputNumber: 1 })), String(outside)).toBe(`${MACOS_MIC_ARGUMENT_REFUSED}:CHANNEL_COUNT`);
+    }
+  });
+
+  it('the sections: none, three, the same input twice, the same pipe twice and a pipe not of its shape are refused; nothing is made', () => {
+    const device = { audioIndex: 0, channelCount: 6 };
+    expect(macRefusal(() => macMicPushArguments({ ...device, sections: [] }))).toBe(`${MACOS_MIC_ARGUMENT_REFUSED}:SECTION_COUNT`);
+    expect(macRefusal(() => macMicPushArguments({ ...device, sections: [{ inputNumber: 1, pipePath: PIPE_1 }, { inputNumber: 2, pipePath: PIPE_2 }, { inputNumber: 3, pipePath: micPipePath('/work/.data/run/capture', 'SES-20261009-0001', 'MIC-03') }] }))).toBe(`${MACOS_MIC_ARGUMENT_REFUSED}:SECTION_COUNT`);
+    expect(macRefusal(() => macMicPushArguments({ ...device, sections: undefined as unknown as [] }))).toBe(`${MACOS_MIC_ARGUMENT_REFUSED}:SECTION_COUNT`);
+    expect(macRefusal(() => macMicPushArguments({ ...device, sections: [{ inputNumber: 2, pipePath: PIPE_1 }, { inputNumber: 2, pipePath: PIPE_2 }] }))).toBe(`${MACOS_MIC_ARGUMENT_REFUSED}:INPUT_REPEATED`);
+    expect(macRefusal(() => macMicPushArguments({ ...device, sections: [{ inputNumber: 1, pipePath: PIPE_1 }, { inputNumber: 2, pipePath: PIPE_1 }] }))).toBe(`${MACOS_MIC_ARGUMENT_REFUSED}:PIPE_REPEATED`);
+    for (const pipe of ['/tmp/x.wav', 'MIC-01.pcm', '/work/../etc/MIC-01.pcm', '-', 'pipe:1', 'tcp://127.0.0.1:9000', '', null, undefined, 7]) {
+      expect(macRefusal(() => macMicPushArguments({ ...device, sections: [{ inputNumber: 1, pipePath: pipe as string }] })), String(pipe)).toBe(`${MACOS_MIC_ARGUMENT_REFUSED}:PIPE`);
+      expect(macRefusal(() => macMicPushArguments({ ...device, sections: [{ inputNumber: 1, pipePath: PIPE_1 }, { inputNumber: 2, pipePath: pipe as string }] })), String(pipe)).toBe(`${MACOS_MIC_ARGUMENT_REFUSED}:PIPE`);
+    }
+    // The refusal names no value: its text is fixed.
+    try {
+      macMicPushArguments({ audioIndex: 99, channelCount: 6, sections: [] });
+    } catch (error) {
+      expect((error as Error).message).toBe('a value of the macOS microphone helper is not of its shape');
+      expect((error as Error).name).toBe('MacMicArgumentError');
+    }
+  });
+
+  it('no text a device announced can reach an argument: members that carry it give exactly the list of the bare integers; a list is frozen', () => {
+    const HOSTILE = ['Evil Interface -i /etc/shadow', 'default', 'none:Evil', 'aresample=async=1', 'pan=mono|c0=c0+c1', '$(reboot)', 'ffff:0666'];
+    const carried = { audioIndex: 3, channelCount: 6, name: 'Evil Interface -i /etc/shadow', device: 'default', deviceWord: 'none:Evil', filter: 'aresample=async=1', selection: 'pan=mono|c0=c0+c1', product: '$(reboot)', usbId: 'ffff:0666' };
+    const sections = [{ inputNumber: 1, pipePath: PIPE_1, role: 'PRIMARY', name: '$(reboot)', selection: 'pan=mono|c0=c0+c1', deviceId: 'Evil Interface -i /etc/shadow' }, { inputNumber: 2, pipePath: PIPE_2, role: 'STANDBY', filter: 'aresample=async=1' }];
+    const list = macMicPushArguments({ ...carried, sections });
+    expect([...list]).toEqual([...macMicPushArguments({ audioIndex: 3, channelCount: 6, sections: [{ inputNumber: 1, pipePath: PIPE_1 }, { inputNumber: 2, pipePath: PIPE_2 }] })]);
+    const precheck = macMicPrecheckArguments({ ...carried, inputNumber: 2, deviceId: '$(reboot)' });
+    expect([...precheck]).toEqual([...macMicPrecheckArguments({ audioIndex: 3, channelCount: 6, inputNumber: 2 })]);
+    for (const planted of [...HOSTILE, 'PRIMARY', 'STANDBY']) expect([...list, ...precheck].some((argument) => argument.includes(planted)), planted).toBe(false);
+    expect(Object.isFrozen(list)).toBe(true);
+    expect(Object.isFrozen(precheck)).toBe(true);
+    expect(() => (list as string[]).push('-shortest')).toThrow(TypeError);
+  });
+
+  it('the three listing rows: fixed, without a parameter; the USB tree in its property-list form', () => {
+    expect([MACOS_USB_TREE_PROGRAM, ...macUsbTreeArguments()]).toEqual(['/usr/sbin/ioreg', '-r', '-c', 'IOUSBHostDevice', '-l', '-d', '2', '-a']);
+    expect([MACOS_SYSTEM_AUDIO_PROGRAM, ...macSystemAudioArguments()]).toEqual(['/usr/sbin/system_profiler', 'SPAudioDataType', '-json']);
+    expect([...macMicDeviceListArguments()]).toEqual(['-hide_banner', '-nostdin', '-f', 'avfoundation', '-list_devices', 'true', '-i', '']);
+    // Whatever is handed in, a row is its literals: a function of a row reads no argument.
+    expect([...(macUsbTreeArguments as (...given: unknown[]) => readonly string[])('-n', 'Evil Interface')]).toEqual([...macUsbTreeArguments()]);
+    expect([...(macSystemAudioArguments as (...given: unknown[]) => readonly string[])('SPUSBDataType')]).toEqual([...macSystemAudioArguments()]);
+    expect([...(macMicDeviceListArguments as (...given: unknown[]) => readonly string[])('none:0')]).toEqual([...macMicDeviceListArguments()]);
+    expect(Object.isFrozen(macUsbTreeArguments())).toBe(true);
+    expect(Object.isFrozen(macSystemAudioArguments())).toBe(true);
+    expect([MACOS_LISTING_HELPER_TABLE.usbTree.boundMs, MACOS_LISTING_HELPER_TABLE.systemAudio.boundMs, MACOS_LISTING_HELPER_TABLE.deviceList.boundMs]).toEqual([5_000, 10_000, 5_000]);
+  });
+
+  it('the lists above this table are as they were: the development rows and the Linux rows hold no word that is the macOS table\'s alone', () => {
+    const own = MIC_MACOS_HELPER_TABLE.literals.filter((literal) => !MIC_HELPER_TABLE.literals.includes(literal) && !MIC_LINUX_HELPER_TABLE.literals.includes(literal));
+    expect([...own].sort()).toEqual(['-drop_pkts_on_overflow', '-fifo_format', '-format_opts', '-map', '-queue_size', '0:a', '32', 'fifo', 'flush_packets=1', 'info'].sort());
+    const development = [...micPushArguments({ source: { kind: 'DEVICE', name: LOCAL_MIC_DEVICE_NAME }, pipePath: PIPE_1 }), ...micPrecheckArguments(LOCAL_MIC_DEVICE_NAME)];
+    const linux = [...linuxMicPushArguments({ cardIndex: 1, deviceIndex: 0, channelCount: 2, inputNumber: 2, pipePath: PIPE_1 }), ...linuxMicPrecheckArguments({ cardIndex: 1, deviceIndex: 0, channelCount: 2 })];
+    expect([...development, ...linux].filter((argument) => own.includes(argument))).toEqual([]);
+    expect([MIC_MACOS_HELPER_TABLE.headLength, MIC_MACOS_HELPER_TABLE.sectionLength, MIC_MACOS_HELPER_TABLE.precheckLength, MIC_MACOS_HELPER_TABLE.sectionsMax, MACOS_MIC_SECTIONS_MAX]).toEqual([11, 22, 26, 2, 2]);
   });
 });

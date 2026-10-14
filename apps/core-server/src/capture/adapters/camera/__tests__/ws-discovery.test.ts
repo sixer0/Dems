@@ -9,6 +9,8 @@
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createSocket } from 'node:dgram';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { manualCaptureTimers } from '../../../../../test/support/capture';
 import type { FakeOnvifDiscoveryMode, FakeOnvifStub } from '../../../../../test/support/fake-onvif-stub';
@@ -253,21 +255,57 @@ describe('M4-SEC-DISC-1 on the stub: each hostile answer of ST-2 is dropped and 
     }
   });
 
-  it('negative control: the same throw in a datagram handler WITHOUT the try / catch ends a process; with it, the process ends cleanly', () => {
-    const script = (contained: boolean): string =>
-      [
-        "const dgram = require('node:dgram');",
-        "const socket = dgram.createSocket('udp4');",
-        "const parse = () => { throw new TypeError('thrown inside the parse callback'); };",
-        contained ? "socket.on('message', () => { try { parse(); } catch { /* counted, dropped */ } socket.close(); });" : "socket.on('message', () => { parse(); socket.close(); });",
-        "socket.bind(0, '127.0.0.1', () => socket.send('x', socket.address().port, '127.0.0.1'));",
-        'setTimeout(() => process.exit(3), 5000).unref();',
-      ].join('\n');
-    const bare = spawnSync(process.execPath, ['-e', script(false)], { encoding: 'utf8', env: {} });
+  // Review 060d Q-09 (section 6, survivor 4), wave 12 row CB. This case ran two scripts WRITTEN IN THE TEST - a bare
+  // handler and one with a try / catch of the test's own: the product was not called, so no change of the product could
+  // fail it. Its "contained" half is now THE PRODUCT, in a process of its own: the search of `ws-discovery.ts` (through
+  // the adapter, as the cases above call it), loaded from this folder, with a reader that throws the SAME error on
+  // every datagram a loopback responder of that process sends back. The bare script stays, named for what it is: the
+  // PREMISE (in this runtime an exception that leaves a datagram handler ends the process, status 1).
+  // Seen RED on (a scratch copy of the workspace; `ws-discovery.ts` of the copy): the `catch { handlerErrors += 1; }` of
+  // the datagram handler replaced by a `finally {}` - the product's process then ends as the bare one does: status 1,
+  // the thrown text on its standard error, no result line.
+  it('negative control: the same throw in a datagram handler WITHOUT a try / catch ends a process (the premise); THE PRODUCT\'S search, in a process of its own with a reader that throws it on every datagram, ends cleanly and counts each one', () => {
+    const THROWN = 'thrown inside the parse callback';
+    // THE PREMISE - no product code: a bare handler of this runtime.
+    const bareScript = [
+      "const dgram = require('node:dgram');",
+      "const socket = dgram.createSocket('udp4');",
+      `const parse = () => { throw new TypeError('${THROWN}'); };`,
+      "socket.on('message', () => { parse(); socket.close(); });",
+      "socket.bind(0, '127.0.0.1', () => socket.send('x', socket.address().port, '127.0.0.1'));",
+      'setTimeout(() => process.exit(3), 5000).unref();',
+    ].join('\n');
+    const bare = spawnSync(process.execPath, ['-e', bareScript], { encoding: 'utf8', env: {} });
     expect(bare.status).toBe(1);
-    expect(bare.stderr).toContain('thrown inside the parse callback');
-    const contained = spawnSync(process.execPath, ['-e', script(true)], { encoding: 'utf8', env: {} });
-    expect(contained.status).toBe(0);
+    expect(bare.stderr).toContain(THROWN);
+
+    // THE PRODUCT, in its own process (the TypeScript loader of the workspace; loopback only: the responder is that
+    // process's own socket on 127.0.0.1, and the fixture target is its port).
+    const camera = resolve(import.meta.dirname, '..');
+    const productScript = [
+      "import { randomUUID } from 'node:crypto';",
+      "import { createSocket } from 'node:dgram';",
+      `const { createOnvifDiscoveryAdapter } = await import(${JSON.stringify(pathToFileURL(resolve(camera, 'onvif-discovery.ts')).href)});`,
+      `const { createSystemTimers } = await import(${JSON.stringify(pathToFileURL(resolve(camera, '../../timers.ts')).href)});`,
+      'setTimeout(() => process.exit(3), 8000).unref();',
+      "const responder = createSocket('udp4');",
+      "responder.on('message', (_bytes, remote) => responder.send('an answer', remote.port, remote.address));",
+      "await new Promise((bound) => responder.bind(0, '127.0.0.1', bound));",
+      `const read = () => { throw new TypeError('${THROWN}'); };`,
+      "const adapter = createOnvifDiscoveryAdapter({ timers: createSystemTimers(), newMessageId: randomUUID, loopbackFixture: { address: '127.0.0.1', port: responder.address().port }, read });",
+      'const result = await adapter.discover({ windowMs: 300, signal: new AbortController().signal });',
+      'responder.close();',
+      'process.stdout.write(JSON.stringify({ candidates: result.candidates.length, counts: result.counts }));',
+    ].join('\n');
+    const product = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', productScript], { encoding: 'utf8', env: {}, cwd: camera, timeout: 20_000 });
+    expect(product.stderr).not.toContain(THROWN);
+    expect(product.status, product.stderr).toBe(0);
+    const said = JSON.parse(product.stdout) as { candidates: number; counts: { datagramsSent: number; datagramsReceived: number; handlerErrors: number } };
+    // Every probe was answered, every answer reached the handler, and every one of them threw THERE: counted, dropped.
+    expect(said.counts.datagramsSent).toBeGreaterThanOrEqual(1);
+    expect(said.counts.datagramsReceived).toBe(said.counts.datagramsSent);
+    expect(said.counts.handlerErrors).toBe(said.counts.datagramsReceived);
+    expect(said.candidates).toBe(0);
   });
 });
 

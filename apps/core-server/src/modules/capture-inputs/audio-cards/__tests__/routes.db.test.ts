@@ -154,9 +154,9 @@ beforeEach(() => {
 });
 
 describe('the database and the Core this file runs on', () => {
-  it(`the schema version of the code: [${DB_SCHEMA_VERSION}, '${DB_CONTRACT_REVISION}'] = [13, 'dbc-14'], read as dems_app; the capture operation is SIMULATED`, async () => {
+  it(`the schema version of the code: [${DB_SCHEMA_VERSION}, '${DB_CONTRACT_REVISION}'] = [14, 'dbc-15'], read as dems_app; the capture operation is SIMULATED`, async () => {
     const row = (await guard.app.db.pool.query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([row.schema_version, row.contract_revision]).toEqual([13, 'dbc-14']);
+    expect([row.schema_version, row.contract_revision]).toEqual([14, 'dbc-15']);
     expect(((await guard.app.db.pool.query('SELECT current_user AS role')).rows[0] as { role: string }).role).toBe('dems_app');
     expect(captureFenceControl(guard.app).operation).toBe('SIMULATED');
   });

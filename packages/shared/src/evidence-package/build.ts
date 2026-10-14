@@ -59,10 +59,27 @@ export function buildUnsignedManifest(input: ManifestV2Input, sourceRows: readon
   // Fields 129-132 (row V4): the one optional member. A caller with no restart gap leaves the key
   // out or hands `undefined`; either way the manifest has NO such key (never `undefined`, which has
   // no canonical form, and never an empty list, which the schema refuses).
-  const { absentOnRestart, ...audio } = input.audio;
+  // Fields 139-158 (row N2): the fourth optional member, by the same rule - left out or `undefined`
+  // gives NO key; and inside a record `insertedRuns` left out or `undefined` gives NO key there.
+  const { absentOnRestart, samplesNotReceived, ...audio } = input.audio;
+  // Anything that is no list of records is handed on AS IT IS, for the schema to refuse: only `undefined` is "no member".
+  const handed: unknown = samplesNotReceived;
+  const shortfall: unknown = Array.isArray(handed)
+    ? handed.map((record: unknown) => {
+        if (record === null || typeof record !== 'object' || Array.isArray(record)) return record;
+        const { insertedRuns, ...rest } = record as Record<string, unknown>;
+        return { ...rest, ...(insertedRuns === undefined ? {} : { insertedRuns }) };
+      })
+    : handed;
   // Field 133 (row P1): the second optional member, by the same rule - left out or `undefined` gives NO key.
   const { hostProfileNotAsked, ...body } = input;
-  const draft = { ...body, developmentSources, tracks, audio: { ...audio, sourceIntervals, ...(absentOnRestart === undefined ? {} : { absentOnRestart }) }, ...(hostProfileNotAsked === undefined ? {} : { hostProfileNotAsked }) };
+  const draft = {
+    ...body,
+    developmentSources,
+    tracks,
+    audio: { ...audio, sourceIntervals, ...(absentOnRestart === undefined ? {} : { absentOnRestart }), ...(shortfall === undefined ? {} : { samplesNotReceived: shortfall }) },
+    ...(hostProfileNotAsked === undefined ? {} : { hostProfileNotAsked }),
+  };
   // The digest is taken over the draft; the placeholder below is replaced, and the canonical body
   // sets the member to null in any case.
   const manifestSha256 = computeManifestSha256({ ...draft, manifestSha256: null });

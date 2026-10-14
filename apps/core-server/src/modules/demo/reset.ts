@@ -151,6 +151,16 @@ export interface ResetHost {
   reloadEngine(): Promise<void>;
   /** After a reset that did not happen: the engine rehydrates under a NEW epoch, the stored one plus 1. */
   resyncEngine(): Promise<void>;
+  /**
+   * Integration pass I-9c (review 120b S2-01 case (c), request line `row NF`): reads the stored camera network
+   * settings again into the reader the capture-config module holds in memory - its door
+   * `captureNetworkConfigControl(app).reload()`, which never rejects. Asked after the engine is back and BEFORE the
+   * hold is released, whether or not the reset happened (the database behind the name may be new). OPTIONAL: this
+   * module may not import the capture-config module (rule 5 of `test/static/imports.test.ts`), so the server's host
+   * has it only once the composition hands the door in; without it nothing is asked. Since I-9c the reset KEEPS
+   * `capture_network_config`, so the row behind the reader is the row it held; the call is the proof, not the carry.
+   */
+  reloadNetworkFacts?(): Promise<void>;
   publish(publication: Publication): void;
   persist(entry: ErrorLogEntry): void;
 }
@@ -231,6 +241,9 @@ const NOT_RESUMED = 'the server could not resume after a demo reset; it stays no
 export const RECOVERY = 'restart the server: a start runs the boot checks';
 const EPOCH_MISMATCH = 'the engine did not take the epoch the reset routine wrote';
 const ROLES_NOT_READ = 'the operators could not be read after a demo reset; no role change was published';
+const NETWORK_FACTS_NOT_RELOADED = 'the camera network settings could not be read again after a demo reset; the reader keeps what it held';
+/** The code of the line and the entry above (I-9c). */
+export const NETWORK_FACTS_NOT_RELOADED_CODE = 'DEMO_RESET_NETWORK_FACTS_NOT_RELOADED';
 
 function refusal(reason: ResetRefusal): ApiFailure {
   return new ApiFailure(503, EnvelopeCode.NOT_READY, 'The server is not ready. Try again shortly.', { details: { reason } });
@@ -419,6 +432,17 @@ export function createDemoReset(host: ResetHost): DemoReset {
           context: { ...context, step: failure.step, epochBefore, routine: rejected ? codeOf(thrown) : 'done', serving: false, recovery: RECOVERY },
         });
         throw refusal(ResetRefusal.FAILED);
+      }
+      // I-9c: the camera network reader follows the database behind the name, before any request is served. Its door
+      // never rejects (a failed read leaves it at "not configured" with its own entry); a stand-in that throws is
+      // stated here and does not fail a reset whose server is otherwise whole.
+      if (host.reloadNetworkFacts !== undefined) {
+        try {
+          await host.reloadNetworkFacts();
+        } catch (error) {
+          log.warn({ err: error, code: NETWORK_FACTS_NOT_RELOADED_CODE, ...who }, NETWORK_FACTS_NOT_RELOADED);
+          host.persist({ level: 'warn', source: RESET_ERROR_SOURCE, message: NETWORK_FACTS_NOT_RELOADED, ...describeError(error), code: NETWORK_FACTS_NOT_RELOADED_CODE, context });
+        }
       }
     }
     // The server is whole again, or nothing of it was stopped: requests are served.

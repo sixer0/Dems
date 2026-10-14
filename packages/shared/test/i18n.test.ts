@@ -261,8 +261,9 @@ describe('shared i18n resources: language and copy rules', () => {
   // server's capture-config module: words of that module, no shared member, so they are literals here).
   it('words the two refusals of a production camera without a profile of its own (`common.captureSlotRefusal`): nothing was assigned, and no default is promised', () => {
     // Row V4: the group also holds the four sentences moved from the web console (the case below); these two come first.
-    expect(Object.keys(en.common.captureSlotRefusal).slice(0, 2)).toEqual(['CAMERA_PROFILE_NOT_STATED', 'CAMERA_PROFILE_NOT_OF_DEVICE']);
-    for (const sentence of [en.common.captureSlotRefusal.CAMERA_PROFILE_NOT_STATED, en.common.captureSlotRefusal.CAMERA_PROFILE_NOT_OF_DEVICE]) {
+    // Row V7c (decision C130): the third word of the profile rule, a listed profile without its stored stream row (row S86a).
+    expect(Object.keys(en.common.captureSlotRefusal).slice(0, 3)).toEqual(['CAMERA_PROFILE_NOT_STATED', 'CAMERA_PROFILE_NOT_OF_DEVICE', 'CAMERA_PROFILE_WITHOUT_STREAM']);
+    for (const sentence of [en.common.captureSlotRefusal.CAMERA_PROFILE_NOT_STATED, en.common.captureSlotRefusal.CAMERA_PROFILE_NOT_OF_DEVICE, en.common.captureSlotRefusal.CAMERA_PROFILE_WITHOUT_STREAM]) {
       expect(sentence).toMatch(/^This camera was not assigned: /);
       // No placeholder: the screen that shows it already names the camera and the slot.
       expect(sentence).not.toContain('{{');
@@ -270,16 +271,21 @@ describe('shared i18n resources: language and copy rules', () => {
       expect(sentence).not.toMatch(/default|H\.?264|HEVC|1080|720/i);
     }
     expect(en.common.captureSlotRefusal.CAMERA_PROFILE_NOT_STATED).not.toBe(en.common.captureSlotRefusal.CAMERA_PROFILE_NOT_OF_DEVICE);
+    // Row V7c: the sentence of row S86a's refusal word for word (the Core's `PROFILE_WITHOUT_STREAM_TEXT`): the one remedy is a new adoption, and a connection test is said not to repair it.
+    expect(en.common.captureSlotRefusal.CAMERA_PROFILE_WITHOUT_STREAM).toBe(
+      'This camera was not assigned: the Core holds no stream facts for this profile, so the camera cannot record it. A connection test does not repair this. Adopt the camera again, then assign one of the profiles it states.',
+    );
   });
 
   // Task 4 row V4 (decision C80): the four sentences the web console worded for a refused slot
   // assignment are the shared tree's now, WORD FOR WORD (the web's wording is the wording). The
   // words of `details.reason` are the server's (`CaptureAssignmentRefusal` of its capture-config
   // module and the hosted action's own word): no shared member, so they are literals here.
-  it('row V4: `common.captureSlotRefusal` holds the four slot refusals of the web console word for word, six reasons in all; `{{source}}` is one of two nouns', () => {
+  it('row V4: `common.captureSlotRefusal` holds the four slot refusals of the web console word for word, seven reasons in all (row V7c: + CAMERA_PROFILE_WITHOUT_STREAM); `{{source}}` is one of two nouns', () => {
     expect(Object.keys(en.common.captureSlotRefusal)).toEqual([
       'CAMERA_PROFILE_NOT_STATED',
       'CAMERA_PROFILE_NOT_OF_DEVICE',
+      'CAMERA_PROFILE_WITHOUT_STREAM',
       'PRODUCTION_SOURCE_NOT_ALLOWED',
       'CAPTURE_DEVICE_NOT_SERVED',
       'CAPTURE_DEVICE_CLASS_MISMATCH',
@@ -298,7 +304,8 @@ describe('shared i18n resources: language and copy rules', () => {
       expect(sentence.endsWith('Nothing was changed.')).toBe(true);
       expect((sentence.match(/\{\{[^}]*\}\}/g) ?? []).every((placeholder) => placeholder === '{{source}}')).toBe(true);
     }
-    expect(new Set(Object.values(R)).size).toBe(6);
+    // Row V7c: 6 -> 7 (CAMERA_PROFILE_WITHOUT_STREAM), each sentence its own.
+    expect(new Set(Object.values(R)).size).toBe(7);
   });
 });
 

@@ -23,12 +23,14 @@
  * | The id is not in the registry (an id is never reused) | a duplicate |
  * | `host` is a host or an address, never a URL and never `user:password@` (C-N8) | a `/` or an `@` in it |
  * | `adapter` is a machine code | anything else |
+ * | `profiles`, when named, is a list of at most 16 profile codes, each once (task 4 row V7) | anything else |
  *
  * Adoption is not assignment: `captureConfig` is not changed. The new device carries `adapter` and
  * the class the Core derives from it (`DEVELOPMENT` for `FAKE` and `LOCAL_DEVICE`).
  */
+import { captureDeviceProfilesOf } from './capture-profile';
 import { SimErrorCode, SimTransitionError } from './errors';
-import type { CaptureDeviceStatus, ReaddressCaptureDeviceInput, RegisterCaptureDeviceInput, RegisterCaptureMicrophoneInput, SimState } from './types';
+import type { CaptureDeviceStatus, ReaddressCaptureDeviceInput, RegisterCaptureDeviceInput, RegisterCaptureMicrophoneInput, SimState, StoreCaptureDeviceProfilesInput } from './types';
 
 /** The name the action carries in a refusal. */
 export const REGISTER_CAPTURE_DEVICE_ACTION = 'registerCaptureDevice';
@@ -58,6 +60,13 @@ export function captureDeviceOf(state: SimState, input: RegisterCaptureDeviceInp
   if (input.host.length < 1 || input.host.length > TEXT_MAX || /[/@\s]/.test(input.host)) throw invalid('the host of a device is a host or an address');
   if (!ADAPTER_CODE.test(input.adapter)) throw invalid('the adapter of a device is a code');
   if (input.model !== null && (input.model.length < 1 || input.model.length > TEXT_MAX)) throw invalid('the model of a device is a text of 1 to 120 characters');
+  // Task 4 row V7 (C36, C117): the list the adoption stores travels with the entry. A value that is
+  // no list of codes within the bound is refused - never cut, never cleaned; the text names the rule only.
+  // A registration that names no list registers a camera with NONE stored: the entry states the
+  // EMPTY list, which is also what its row holds and what a restart reads back (the stored registry
+  // is the engine's registry).
+  const profiles = captureDeviceProfilesOf(input.profiles ?? []);
+  if (profiles === null) throw invalid('the profiles of a device are a list of at most 16 profile codes, each once');
   return {
     id: input.id,
     kind: 'CAMERA',
@@ -71,6 +80,7 @@ export function captureDeviceOf(state: SimState, input: RegisterCaptureDeviceInp
     capabilities: ['VIDEO'],
     adapter: input.adapter,
     sourceClass: DEVELOPMENT_ADAPTERS.has(input.adapter) ? 'DEVELOPMENT' : 'PRODUCTION',
+    profiles,
   };
 }
 
@@ -220,4 +230,40 @@ export function readdressCaptureDeviceTransition(state: SimState, input: Readdre
   if (found.host === input.address) return { state, result: found };
   const moved: CaptureDeviceStatus = { ...found, host: input.address };
   return { state: { ...state, captureDevices: { ...state.captureDevices, devices: devices.map((device) => (device === found ? moved : device)) } }, result: moved };
+}
+
+// ── The stored profile list of a registered camera changes (task 4 row V7; decision C117, the
+// ruling on the empty lists: the stored-credential connection test of a camera that holds NO stored
+// profile stores what the stream states - row PR) ────────────────────────────────────────────────
+//
+// The INTERNAL action `storeCaptureDeviceProfiles` of `SimActions` is built from the function below
+// (51 -> 52 actions). On the Core server it runs through the engine's door
+// (`storeCaptureDeviceProfilesIn`) inside the unit that writes the list to the camera's row, so the
+// slice and the row state the same list in one commit; no client can call it, and the in-app
+// simulator does not run it. As its siblings it checks no permission and no session state, writes no
+// audit row and no event, and leaves `captureConfig` alone.
+//
+// | Rule | Refusal (`SimTransitionError`, code INVALID_INPUT) |
+// |------|---------|
+// | The device is in the registry and is a camera | an unknown id; a microphone; any other class |
+// | `profiles` is a list of at most 16 profile codes, each once | anything else |
+// | Nothing else of the device changes, and no other device changes | - |
+// | A list the entry already states gives the SAME state object | - |
+
+/** The name the profile-list transition carries in a refusal. */
+export const STORE_CAPTURE_DEVICE_PROFILES_ACTION = 'storeCaptureDeviceProfiles';
+
+const invalidProfiles = (detail: string): SimTransitionError => new SimTransitionError(null, STORE_CAPTURE_DEVICE_PROFILES_ACTION, detail, SimErrorCode.INVALID_INPUT);
+
+/** The state in which the camera `deviceId` states `profiles` (codes, in the stored order). Throws as the table says. */
+export function storeCaptureDeviceProfilesTransition(state: SimState, input: StoreCaptureDeviceProfilesInput):{ state: SimState; result: CaptureDeviceStatus } {
+  const devices = state.captureDevices.devices;
+  const found = typeof input.deviceId === 'string' ? devices.find((device) => device.id === input.deviceId) : undefined;
+  if (found === undefined || found.kind !== 'CAMERA') throw invalidProfiles('the registry holds no camera with this id');
+  const profiles = captureDeviceProfilesOf(input.profiles);
+  if (profiles === null) throw invalidProfiles('the profiles of a device are a list of at most 16 profile codes, each once');
+  const held = found.profiles;
+  if (held !== undefined && held.length === profiles.length && held.every((profile, index) => profile.code === profiles[index]?.code)) return { state, result: found };
+  const stored: CaptureDeviceStatus = { ...found, profiles };
+  return { state: { ...state, captureDevices: { ...state.captureDevices, devices: devices.map((device) => (device === found ? stored : device)) } }, result: stored };
 }

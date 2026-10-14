@@ -7,12 +7,22 @@
 // and B-8 is reported and never blocking. The blocking checks against PostgreSQL:
 // `reset-failures.db.test.ts` (a reset after which B-5 does not pass).
 import type { FastifyInstance } from 'fastify';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BOOT_CHECK_IDS, BootCheckError } from '../../../db/schema/boot-checks';
 import { RUNTIME_SEARCH_PATH, SEARCH_PATH_NOT_PINNED, SEARCH_PATH_QUESTION } from '../../../plugins/db';
 import type { ErrorLogEntry } from '../../../plugins/logger';
-import { READ_OPERATOR_ROLES, ResumeFailure, runBootChecks } from '../index';
+import { READ_OPERATOR_ROLES, ResumeFailure, createResetHost, runBootChecks } from '../index';
 import { recordingLogger } from './support';
+
+// The door of the network facts is replaced by a recorder: only the binding of the host is under test (decision C132).
+const door = vi.hoisted(() => ({ apps: [] as unknown[], reloads: 0 }));
+vi.mock('../../capture-config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../capture-config')>()),
+  captureNetworkConfigControl: (app: unknown) => {
+    door.apps.push(app);
+    return { reload: async () => void (door.reloads += 1) };
+  },
+}));
 
 interface Script {
   probe: boolean;
@@ -131,5 +141,24 @@ describe('B-2 to B-9, in the order of the contract', () => {
 describe('the read of the operators', () => {
   it('names the two columns it needs and no other: the operator and its role', () => {
     expect(READ_OPERATOR_ROLES).toBe('SELECT id, role_id AS role FROM public.operators ORDER BY id');
+  });
+});
+
+describe('the network facts after a reset (decision C132, review 120b S2-01 (c))', () => {
+  // RED ON: the member `reloadNetworkFacts` removed from `createResetHost` (the member is undefined, the call throws).
+  it('the bound host reloads the camera network facts of THIS app once for each call, and nothing before it is called', async () => {
+    const app = { stages: {} } as unknown as FastifyInstance;
+    door.apps.length = 0;
+    door.reloads = 0;
+    const host = createResetHost(app, () => {
+      throw new Error('the routine is not asked');
+    });
+    expect(door.reloads).toBe(0);
+    expect(host.reloadNetworkFacts).toBeTypeOf('function');
+    await host.reloadNetworkFacts?.();
+    expect(door.reloads).toBe(1);
+    expect(door.apps).toEqual([app]);
+    await host.reloadNetworkFacts?.();
+    expect(door.reloads).toBe(2);
   });
 });

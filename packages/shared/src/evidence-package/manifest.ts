@@ -8,7 +8,8 @@
  * `MANIFEST_V2_OPTIONAL_FIELDS`: `audio.absentOnRestart` (fields 129-132), optional so that no
  * package sealed before it verifies differently; since row P1 the same list holds a second member,
  * `hostProfileNotAsked` (field 133), for the same reason; since row R1b a third,
- * `tracks[].absentInSession` (fields 134-138).
+ * `tracks[].absentInSession` (fields 134-138); since row N2 a fourth,
+ * `audio.samplesNotReceived` (fields 139-158).
  *
  * WHERE THE 128 LIVE. 119 fields are members of the sealed `session-manifest.json`; the 9 fields
  * of §B.11 (`export.*`) are "present only in an export" and live in the export manifest, because
@@ -269,6 +270,118 @@ export const ManifestAudioRestartGapSchema = z.strictObject({
   /** Field 132: null = not measured. */
   absentAtMostMs: gapMs.nullable(),
 });
+
+// ── Fields 139-158 (optional): the audio of a path that is not sample-continuous ───────────────
+/** One day at 48,000 Hz: the largest sample count or sample position the member can state. */
+export const MANIFEST_AUDIO_DAY_SAMPLES = 4_147_200_000;
+/** The most samples a microphone's buffer holds (two seconds at 48,000 Hz): the bound of field 148. */
+export const MANIFEST_AUDIO_BUFFERED_MAX_SAMPLES = 96_000;
+/** 100 ms at 48,000 Hz: a run of inserted silence of this length or more carries its position (fields 157, 158). */
+export const MANIFEST_AUDIO_INSERTED_RUN_MIN_SAMPLES = 4_800;
+/** THE STATED MAXIMUM of listed runs per capture ATTEMPT, over the records of that attempt together. */
+export const MANIFEST_AUDIO_INSERTED_RUNS_MAX = 1_024;
+/** Field 141: the capture layers that deliver a microphone without promising every sample. One word; `ALSA` is never stated. */
+export const MANIFEST_AUDIO_CAPTURE_LAYERS = ['AVFOUNDATION'] as const;
+export type ManifestAudioCaptureLayer = (typeof MANIFEST_AUDIO_CAPTURE_LAYERS)[number];
+/** Field 142: the largest capture group number (a session has at most two microphones). */
+export const MANIFEST_AUDIO_CAPTURE_GROUP_MAX = 2;
+/**
+ * Field 143, THE CLOSED MARK of an account. `CLOSED`: the worker's closing account - it reaches the
+ * end of the track. `NOT_CLOSED`: the last periodic account of a worker that did not end its
+ * timeline - it reaches `timelineSamples` and the track goes on after it. `NONE`: the worker left
+ * no account - the path is not sample-continuous and the amount was NOT MEASURED.
+ */
+export const MANIFEST_AUDIO_SAMPLE_ACCOUNTS = ['CLOSED', 'NOT_CLOSED', 'NONE'] as const;
+export type ManifestAudioSampleAccount = (typeof MANIFEST_AUDIO_SAMPLE_ACCOUNTS)[number];
+const daySamples = count.max(MANIFEST_AUDIO_DAY_SAMPLES);
+
+/** One LISTED run of inserted silence (fields 157, 158): where it starts on the track's own timeline and how long it is. */
+export const ManifestAudioInsertedRunSchema = z.strictObject({
+  /** Field 157: the run's first sample; sample 0 is the first sample of the track's sound. Its time in the file is (`fromSample` + 1,024) / 48,000 s. */
+  fromSample: daySamples,
+  /** Field 158: the run's length in samples, 4,800 (100 ms) or more. */
+  samples: z.number().int().min(MANIFEST_AUDIO_INSERTED_RUN_MIN_SAMPLES).max(MANIFEST_AUDIO_DAY_SAMPLES),
+});
+
+/**
+ * THE AUDIO OF ONE MICROPHONE IN ONE CAPTURE ATTEMPT, ON A PATH THAT IS NOT SAMPLE-CONTINUOUS (task 4
+ * row N2; design `masterplan/06_design_macos_microphone.md` revision 3, section 8.4; decisions U25
+ * (3), C107, C110, C112; SM-29, SM-30, SM-34 (3), SM-36). The capture layer named here does not
+ * deliver every sample of the microphone. SOUND THAT DID NOT ARRIVE IS NOT IN THE RECORDING. SILENCE
+ * OF THE SAME TOTAL LENGTH WAS INSERTED BY THE RECORDER; ITS PLACES ARE NOT THE PLACES OF THE MISSING
+ * SOUND. This record is the recorder's own account of it, in whole samples, never a percentage:
+ *
+ *   EXPECTED  `timelineSamples`   samples expected by the session's own clock from sample 0 to the account
+ *   RECEIVED  `receivedSamples`   samples read from the microphone
+ *   INSERTED  `insertedSamples`   zeros the recorder put on this microphone's timeline
+ *   DISCARDED `discardedSamples`  received and not put on the timeline
+ *
+ * and, for the TRACK (what the one encoder was fed; one microphone at a time): how much of it this
+ * microphone fed, how much of that was inserted, how many runs of inserted zeros began on it, the
+ * longest of them, and - for every run of 100 ms or more - WHERE it stands (`insertedRuns`), up to
+ * `MANIFEST_AUDIO_INSERTED_RUNS_MAX` runs per attempt, with the count and the sum of the runs that
+ * are not listed. The twelve counts of fields 144 to 155 are ALL whole numbers or ALL null (`NONE`:
+ * not measured). No device text, no card text, no file name.
+ *
+ * `captureGroup`: records of one attempt with the SAME number were captured by ONE process from ONE
+ * device - a microphone with the role `STANDBY` in such a pair was not an independent source.
+ */
+export const ManifestAudioSamplesNotReceivedSchema = z.strictObject({
+  /** Field 139: the registry id of the microphone (the form of `audio.sourceIntervals[].micDeviceId`). */
+  micDeviceId: text,
+  /** Field 140: the capture attempt (the first worker of a session is attempt 1). */
+  attempt: positive,
+  /** Field 141. */
+  captureLayer: z.enum(MANIFEST_AUDIO_CAPTURE_LAYERS),
+  /** Field 142: THE SHARED CAPTURE GROUP, 1 to 2. */
+  captureGroup: positive.max(MANIFEST_AUDIO_CAPTURE_GROUP_MAX),
+  /** Field 143. */
+  account: z.enum(MANIFEST_AUDIO_SAMPLE_ACCOUNTS),
+  /** Field 144: SAMPLES EXPECTED by the session's own clock, sample 0 to the account. With `CLOSED` it is the length of the track. null = not measured. */
+  timelineSamples: daySamples.nullable(),
+  /** Field 145: SAMPLES RECEIVED. */
+  receivedSamples: daySamples.nullable(),
+  /** Field 146: ZEROS INSERTED on this microphone's timeline; at most field 144. */
+  insertedSamples: daySamples.nullable(),
+  /** Field 147: SAMPLES DISCARDED (received, not in the track); at most field 145. */
+  discardedSamples: daySamples.nullable(),
+  /** Field 148: received and still waiting at a `NOT_CLOSED` account; 0 with `CLOSED`. */
+  bufferedSamples: count.max(MANIFEST_AUDIO_BUFFERED_MAX_SAMPLES).nullable(),
+  /** Field 149: received as not a number and written as zero; not part of field 146; at most field 145. */
+  nonFiniteSamples: daySamples.nullable(),
+  /** Field 150: the part of the track this microphone fed; at most field 144. */
+  fedSamples: daySamples.nullable(),
+  /** Field 151: the inserted zeros IN THE TRACK from this microphone; at most fields 150 and 146. Their sum over the records of an attempt is the track's inserted total. */
+  fedInsertedSamples: daySamples.nullable(),
+  /** Field 152: runs of inserted zeros in the track, of ANY length, that began on this microphone. */
+  fedRuns: daySamples.nullable(),
+  /** Field 153: the longest of them, in samples; at most field 144. */
+  fedLongestRunSamples: daySamples.nullable(),
+  /** Field 154: runs of 4,800 samples or more that are NOT in `insertedRuns` because the attempt's bound was reached. 0 says: every such run is listed. */
+  runsNotListed: daySamples.nullable(),
+  /** Field 155: the sum of their lengths, in samples. */
+  runsNotListedSamples: daySamples.nullable(),
+  /** Field 156: the first sample of a run of 4,800 samples or more that was STILL RUNNING at a `NOT_CLOSED` account; its end was not measured. null = none. */
+  openRunFromSample: daySamples.nullable(),
+  /** Fields 157, 158: the listed runs that began on this microphone, in ascending `fromSample`. Absent = none listed; an empty list is refused. */
+  insertedRuns: z.array(ManifestAudioInsertedRunSchema).min(1).max(MANIFEST_AUDIO_INSERTED_RUNS_MAX).optional(),
+});
+/** Fields 144 to 155: the twelve counts that are all whole numbers or all null. */
+export const MANIFEST_AUDIO_SAMPLE_COUNT_MEMBERS = [
+  'timelineSamples',
+  'receivedSamples',
+  'insertedSamples',
+  'discardedSamples',
+  'bufferedSamples',
+  'nonFiniteSamples',
+  'fedSamples',
+  'fedInsertedSamples',
+  'fedRuns',
+  'fedLongestRunSamples',
+  'runsNotListed',
+  'runsNotListedSamples',
+] as const;
+
 const AudioSchema = z.strictObject({
   trackId: z.literal(SESSION_AUDIO_TRACK_ID),
   codec: text,
@@ -281,6 +394,17 @@ const AudioSchema = z.strictObject({
    * digest. When present it is inside the digest and under the signature like every other member.
    */
   absentOnRestart: z.array(ManifestAudioRestartGapSchema).min(1).optional(),
+  /**
+   * Fields 139-158, THE FOURTH OPTIONAL MEMBER (see `MANIFEST_V2_OPTIONAL_FIELDS`). One record for
+   * every microphone of the session whose capture path is not sample-continuous and every capture
+   * attempt, in the order attempt ascending, then `micDeviceId` ascending. THE SOUND OF THE PACKAGE
+   * IS THE AUDIO OF THE HIGHEST ATTEMPT; a record of an earlier attempt states what that worker
+   * measured before it was replaced. ABSENT = "this manifest states no measured shortfall" - never
+   * "the audio is complete". An EMPTY list is refused, so "none" has exactly one form and one
+   * digest. When present it is inside the digest and under the signature, and it reconciles to the
+   * sample (the cross-field rules below).
+   */
+  samplesNotReceived: z.array(ManifestAudioSamplesNotReceivedSchema).min(1).optional(),
 });
 
 // ── Field 133 (optional): the host profile was not asked ──────────────────────────────────────
@@ -514,6 +638,9 @@ function crossFieldRules(manifest: BodyShape, issue: Issue): void {
     if (previous !== undefined && gap.earlierAttempt < previous.laterAttempt) issue([...at, 'earlierAttempt'], 'a restart does not begin before the previous one ended');
   });
 
+  // Fields 139-158 (row N2, optional): the account of a path that is not sample-continuous reconciles to the sample.
+  samplesNotReceivedRules(manifest, issue);
+
   // §B.12 field 126 and rule 5: the flag is exactly the summary of fields 124 and 125.
   const classes = [...manifest.tracks.map((track) => track.sourceClass), ...intervals.map((interval) => interval.sourceClass)];
   if (manifest.developmentSources !== deriveDevelopmentSources(classes)) issue(['developmentSources'], 'equals "some source is not PRODUCTION"');
@@ -532,6 +659,158 @@ function crossFieldRules(manifest: BodyShape, issue: Issue): void {
   if (manifest.timeline.stoppedAt === null && !manifest.timeline.interrupted) issue(['timeline', 'stoppedAt'], 'null only for an interrupted seal');
 
   transcriptRules(manifest.transcript, issue);
+}
+
+/**
+ * HOW `audio.samplesNotReceived` RECONCILES, TO THE SAMPLE (task 4 row N2; design 06 revision 3,
+ * section 8.4, rules 1 to 6). Checked by the schema at the seal and again by every verifier (V-01):
+ * a member whose counts do not reconcile is NOT a manifest - the verifier fails V-01 with
+ * `MANIFEST_FIELD_INVALID` and names the member. Messages name members, never values.
+ *
+ *   1. `account` is `NONE` exactly when the twelve counts (fields 144 to 155) are all null; then
+ *      field 156 is null and there is no `insertedRuns`. Otherwise the twelve are all numbers.
+ *   2. THE IDENTITY: field 144 = field 145 - field 147 - field 148 + field 146
+ *      (expected = received - discarded - buffered + inserted).
+ *   3. `CLOSED` implies field 148 = 0 and field 156 = null: EXPECTED = RECEIVED + INSERTED - DISCARDED,
+ *      and EXPECTED is the track's length in samples.
+ *   4. Two `CLOSED` records of one attempt state the same field 144.
+ *   5. The listed runs of an attempt do not overlap and are at most 1,024. AND, FOR AN ATTEMPT WHOSE
+ *      MEASURED ACCOUNTS ARE ALL `CLOSED` (the closing reconciliation): each run ends at or before
+ *      the largest field 144 of the attempt, and the sum of their lengths plus the attempt's fields
+ *      155 is at most the sum of its fields 151.
+ *      AN ACCOUNT THAT IS `NOT_CLOSED` IS EXEMPT from the closing reconciliation (row V7; decision
+ *      C119 (2); finding F-2 of row N2): it states what the worker's LAST PERIODIC account held, up
+ *      to 60 s before the worker went down, while a listed run is written when the worker's record
+ *      of it ARRIVES. A run that ended after that account lies past the account's field 144 - an
+ *      honest session, which the rule as first worded made unsealable. So for an attempt with such
+ *      an account the two bounds above and the fed-total bound below are not asked; rules 1, 2, 3,
+ *      6, the order of the runs, their not overlapping, their count and the bounds of the fields of
+ *      ONE record against each other still are. The verifier's notice says the account is not closed.
+ *      A relaxing only: every manifest that was valid before is valid now.
+ *   6. A pair (`micDeviceId`, `attempt`) stands once, in the order attempt ascending then
+ *      `micDeviceId` ascending; never beside `demo` or an integrity other than `REAL`; only in a
+ *      manifest that also carries `hostProfileNotAsked` (the capture layer is one platform's).
+ *
+ * And the bounds of the fields against each other: 146, 150 and 153 at most 144; 147 and 149 at
+ * most 145; 151 at most 150 and 146; and, because one microphone feeds the track at a time, the
+ * sum of fields 150 of an attempt at most its largest field 144 (so the track's inserted total is
+ * never more than the track) - this last one for an attempt whose measured accounts are all
+ * `CLOSED` only (rule 5).
+ *
+ * WHAT THIS DOES NOT CHECK, because a verifier cannot: that field 144 of a closing account equals
+ * the samples of the sealed, encrypted track. The statement is whole and consistent with itself;
+ * the recorder holds it against the track where it can.
+ */
+function samplesNotReceivedRules(manifest: BodyShape, issue: Issue): void {
+  const records = manifest.audio.samplesNotReceived;
+  if (records === undefined) return;
+  const member = ['audio', 'samplesNotReceived'] as const;
+  if (manifest.demo || manifest.integrity !== 'REAL') issue(member, 'only in a package a production Core sealed: never beside demo or an integrity other than REAL');
+  if (manifest.hostProfileNotAsked === undefined) issue(member, 'only in a manifest that also carries hostProfileNotAsked');
+
+  interface AttemptAccount {
+    closedTimeline: number | null;
+    largestTimeline: number;
+    fed: number;
+    fedInserted: number;
+    notListedSamples: number;
+    runs: { from: number; samples: number; path: readonly (string | number)[] }[];
+    /** The first measured record of the attempt: where a rule over the attempt's records is reported. */
+    path: readonly (string | number)[];
+    /** True while every MEASURED account of the attempt is `CLOSED`: only then the closing reconciliation is asked (decision C119 (2)). */
+    closed: boolean;
+  }
+  const attempts = new Map<number, AttemptAccount>();
+  records.forEach((record, index) => {
+    const at = [...member, index] as const;
+    const previous = index > 0 ? records[index - 1] : undefined;
+    if (previous !== undefined && (record.attempt < previous.attempt || (record.attempt === previous.attempt && !(previous.micDeviceId < record.micDeviceId)))) {
+      issue([...at, 'micDeviceId'], 'records stand in the order attempt ascending, then micDeviceId ascending; a microphone and attempt stand once');
+    }
+    const stated = MANIFEST_AUDIO_SAMPLE_COUNT_MEMBERS.filter((name) => record[name] !== null).length;
+    if (record.account === 'NONE') {
+      if (stated !== 0) issue([...at, 'account'], 'NONE exactly when the twelve counts are all null');
+      if (record.openRunFromSample !== null) issue([...at, 'openRunFromSample'], 'null when nothing was measured');
+      if (record.insertedRuns !== undefined) issue([...at, 'insertedRuns'], 'no listed run when nothing was measured');
+      return;
+    }
+    const { timelineSamples, receivedSamples, insertedSamples, discardedSamples, bufferedSamples, nonFiniteSamples, fedSamples, fedInsertedSamples, fedLongestRunSamples, runsNotListedSamples } = record;
+    if (
+      stated !== MANIFEST_AUDIO_SAMPLE_COUNT_MEMBERS.length ||
+      timelineSamples === null ||
+      receivedSamples === null ||
+      insertedSamples === null ||
+      discardedSamples === null ||
+      bufferedSamples === null ||
+      nonFiniteSamples === null ||
+      fedSamples === null ||
+      fedInsertedSamples === null ||
+      fedLongestRunSamples === null ||
+      runsNotListedSamples === null
+    ) {
+      issue([...at, 'account'], 'the twelve counts are all whole numbers unless the account is NONE');
+      return;
+    }
+    // The bounds of the fields against each other.
+    if (insertedSamples > timelineSamples) issue([...at, 'insertedSamples'], 'at most timelineSamples');
+    if (discardedSamples > receivedSamples) issue([...at, 'discardedSamples'], 'at most receivedSamples');
+    if (nonFiniteSamples > receivedSamples) issue([...at, 'nonFiniteSamples'], 'at most receivedSamples');
+    if (fedSamples > timelineSamples) issue([...at, 'fedSamples'], 'at most timelineSamples');
+    if (fedInsertedSamples > fedSamples || fedInsertedSamples > insertedSamples) issue([...at, 'fedInsertedSamples'], 'at most fedSamples and at most insertedSamples');
+    if (fedLongestRunSamples > timelineSamples) issue([...at, 'fedLongestRunSamples'], 'at most timelineSamples');
+    // Rule 2, THE IDENTITY.
+    if (timelineSamples !== receivedSamples - discardedSamples - bufferedSamples + insertedSamples) {
+      issue([...at, 'timelineSamples'], 'the account does not reconcile: timelineSamples = receivedSamples - discardedSamples - bufferedSamples + insertedSamples');
+    }
+    // Rule 3.
+    if (record.account === 'CLOSED') {
+      if (bufferedSamples !== 0) issue([...at, 'bufferedSamples'], '0 in a closed account');
+      if (record.openRunFromSample !== null) issue([...at, 'openRunFromSample'], 'null in a closed account');
+    }
+    const attempt = attempts.get(record.attempt) ?? { closedTimeline: null, largestTimeline: 0, fed: 0, fedInserted: 0, notListedSamples: 0, runs: [], path: at, closed: true };
+    attempts.set(record.attempt, attempt);
+    if (record.account !== 'CLOSED') attempt.closed = false;
+    // Rule 4.
+    if (record.account === 'CLOSED') {
+      if (attempt.closedTimeline !== null && attempt.closedTimeline !== timelineSamples) issue([...at, 'timelineSamples'], 'two closed accounts of one attempt state the same timelineSamples');
+      attempt.closedTimeline = timelineSamples;
+    }
+    attempt.largestTimeline = Math.max(attempt.largestTimeline, timelineSamples);
+    attempt.fed += fedSamples;
+    attempt.fedInserted += fedInsertedSamples;
+    attempt.notListedSamples += runsNotListedSamples;
+    (record.insertedRuns ?? []).forEach((run, runIndex, runs) => {
+      const path = [...at, 'insertedRuns', runIndex] as const;
+      const before = runIndex > 0 ? runs[runIndex - 1] : undefined;
+      if (before !== undefined && run.fromSample <= before.fromSample) issue([...path, 'fromSample'], 'the listed runs stand in ascending fromSample');
+      attempt.runs.push({ from: run.fromSample, samples: run.samples, path });
+    });
+  });
+  // Rule 5, per attempt, over its records together.
+  for (const attempt of attempts.values()) {
+    // The track is fed by one microphone at a time: the parts the microphones of an attempt fed are
+    // together at most the track the attempt's accounts reach.
+    // THE CLOSING RECONCILIATION holds for an attempt whose measured accounts are ALL `CLOSED` (row V7;
+    // decision C119 (2)). An attempt with an account that is `NOT_CLOSED` states what the worker's last
+    // periodic account held, and that account may be older than what the Core already holds of the
+    // same attempt (a listed run, a switch of the feeding microphone): it is exempt from the three
+    // bounds that tie the attempt to its largest `timelineSamples` and to its fed totals.
+    if (attempt.closed && attempt.fed > attempt.largestTimeline) issue([...attempt.path, 'fedSamples'], 'the parts of the track the microphones of an attempt fed are together at most the largest timelineSamples of the attempt');
+    if (attempt.runs.length === 0) continue;
+    const first = attempt.runs[0];
+    if (first !== undefined && attempt.runs.length > MANIFEST_AUDIO_INSERTED_RUNS_MAX) issue(first.path, 'at most 1,024 listed runs per attempt');
+    const ordered = [...attempt.runs].sort((left, right) => left.from - right.from);
+    let listed = 0;
+    ordered.forEach((run, index) => {
+      listed += run.samples;
+      const before = index > 0 ? ordered[index - 1] : undefined;
+      if (before !== undefined && run.from < before.from + before.samples) issue([...run.path, 'fromSample'], 'the listed runs of an attempt do not overlap');
+      if (attempt.closed && run.from + run.samples > attempt.largestTimeline) issue([...run.path, 'samples'], 'a listed run ends at or before the largest timelineSamples of its attempt');
+    });
+    if (attempt.closed && first !== undefined && listed + attempt.notListedSamples > attempt.fedInserted) {
+      issue(first.path, 'the listed runs and the runs not listed are at most the inserted samples of the track (the sum of fedInsertedSamples of the attempt)');
+    }
+  }
 }
 
 /**
@@ -827,7 +1106,36 @@ export const MANIFEST_V2_OPTIONAL_FIELDS: readonly ManifestFieldDefinition[] = O
   sealed(136, 'tracks[].absentInSession[].absentAtLeastMs'),
   sealed(137, 'tracks[].absentInSession[].absentAtMostMs'),
   sealed(138, 'tracks[].absentInSession[].ended'),
+  // Task 4 row N2 (decisions U25 (3), C107, C110, C112): optional for the SAME reason - no package
+  // sealed before it, and no package of a session whose microphones are sample-continuous (every
+  // Linux and development session) sealed after it, may verify or read differently. What absence
+  // means is no claim in the Core's favour: "this manifest states no measured shortfall" - never
+  // "the audio is complete". That a package of the path that is not sample-continuous CARRIES the
+  // member is a rule of the seal, not of this schema: a verifier cannot tell from a package alone
+  // that the member is missing.
+  sealed(139, 'audio.samplesNotReceived[].micDeviceId'),
+  sealed(140, 'audio.samplesNotReceived[].attempt'),
+  sealed(141, 'audio.samplesNotReceived[].captureLayer'),
+  sealed(142, 'audio.samplesNotReceived[].captureGroup'),
+  sealed(143, 'audio.samplesNotReceived[].account'),
+  sealed(144, 'audio.samplesNotReceived[].timelineSamples'),
+  sealed(145, 'audio.samplesNotReceived[].receivedSamples'),
+  sealed(146, 'audio.samplesNotReceived[].insertedSamples'),
+  sealed(147, 'audio.samplesNotReceived[].discardedSamples'),
+  sealed(148, 'audio.samplesNotReceived[].bufferedSamples'),
+  sealed(149, 'audio.samplesNotReceived[].nonFiniteSamples'),
+  sealed(150, 'audio.samplesNotReceived[].fedSamples'),
+  sealed(151, 'audio.samplesNotReceived[].fedInsertedSamples'),
+  sealed(152, 'audio.samplesNotReceived[].fedRuns'),
+  sealed(153, 'audio.samplesNotReceived[].fedLongestRunSamples'),
+  sealed(154, 'audio.samplesNotReceived[].runsNotListed'),
+  sealed(155, 'audio.samplesNotReceived[].runsNotListedSamples'),
+  sealed(156, 'audio.samplesNotReceived[].openRunFromSample'),
+  sealed(157, 'audio.samplesNotReceived[].insertedRuns[].fromSample'),
+  sealed(158, 'audio.samplesNotReceived[].insertedRuns[].samples'),
 ]);
+export type ManifestAudioSamplesNotReceived = z.output<typeof ManifestAudioSamplesNotReceivedSchema>;
+export type ManifestAudioInsertedRun = z.output<typeof ManifestAudioInsertedRunSchema>;
 export type ManifestVideoAbsence = z.output<typeof ManifestVideoAbsenceSchema>;
 export type ManifestAudioRestartGap = z.output<typeof ManifestAudioRestartGapSchema>;
 export type ManifestHostProfileNotAsked = z.output<typeof ManifestHostProfileNotAskedSchema>;

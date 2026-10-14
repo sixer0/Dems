@@ -87,20 +87,25 @@ case "$HW_MODE" in
     ;;
   core)
     step '9A/H-05.7' SCRIPT 'boot lines that name the helper, its grant or the interface file; the supplementary groups of the Core'"'"'s process'
-    expected 'capture fence passed; no line names the helper, its grant or the interface file; the groups are exactly those of audio and dems-netalias.'
+    expected 'capture fence passed; no line names the helper, its grant or the interface file, and the warning CAPTURE_HOST_ALIAS_HELPER_ABSENT of 9A/H-16 is gone; the groups are exactly those of audio and dems-netalias.'
+    # NAMES (wave 12, row C1; checked against apps/core-server/src/capture/boot on 2026-10-14): the
+    # boot names the helper by the codes CAPTURE_HOST_ALIAS_SOCKET, CAPTURE_HOST_ALIAS_SOCKET_PATH,
+    # CAPTURE_HOST_ALIAS_HELPER_UNSAFE, CAPTURE_HOST_ALIAS_GRANT_UNSAFE, CAPTURE_HOST_ALIAS_HELPER_ABSENT
+    # and CAPTURE_HOST_INTERFACE_FILE_MISMATCH. The word ALIAS_HELPER alone was removed from the search:
+    # no code of the product is that word, and "netalias" does not occur in any of the six.
     if hw_log_needed --core-log "$HW_CORE_LOG"; then
       hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_FENCE_PASSED operation
       if [ "$HW_DRY" = 1 ]; then
-        hw_line '   would-count: lines of the Core log that hold "netalias", "NETALIAS", "ALIAS_HELPER" or "interface file" (the lines are not printed; their code fields are)'
+        hw_line '   would-count: lines of the Core log that hold a code beginning CAPTURE_HOST_ALIAS_ or CAPTURE_HOST_INTERFACE_FILE_, or the word "netalias" (the lines are not printed; their code and reason fields are)'
       else
         HW_READ_COUNT=$((HW_READ_COUNT + 1))
         # shellcheck disable=SC2016
         awk "$HW_AWK_JSON"'
           { low = tolower($0) }
-          index(low, "netalias") > 0 || index(low, "alias_helper") > 0 || index(low, "interface file") > 0 { c++; print c ": level=" safe(jget($0, "level")) " code=" safe(jget($0, "code")) " check=" safe(jget($0, "check")) }
+          index(low, "capture_host_alias_") > 0 || index(low, "capture_host_interface_file_") > 0 || index(low, "netalias") > 0 { c++; print c ": level=" safe(jget($0, "level")) " code=" safe(jget($0, "code")) " reason=" safe(jget($0, "reason")) }
           END { print "boot lines that name the helper, its grant or the interface file: " c + 0 }' "$HW_CORE_LOG" | while IFS= read -r line; do hw_line "      Core log | $line"; done
       fi
-      confirm 'the words by which a boot line names the helper (row 81 was not built when chapter 2 was written); a count of 0 here is only as good as these words'
+      confirm 'that the journal of a real unit carries the code and the reason of a boot line as the members "code" and "reason" (the six codes are the product'"'"'s; the line form was seen on doubles only)'
     fi
     if [ -n "$HW_CORE_PID" ] || [ "$HW_DRY" = 1 ]; then
       hw_proc_lines 'supplementary groups of the Core (HOST-40)' "${HW_CORE_PID:-<core-pid>}" status '^Groups:'

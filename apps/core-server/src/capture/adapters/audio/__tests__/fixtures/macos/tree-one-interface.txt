@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>IORegistryEntryChildren</key>
+		<array>
+			<dict>
+				<key>IOClass</key>
+				<string>SyntheticDriverNode</string>
+				<key>IOProviderClass</key>
+				<string>IOUSBHostDevice</string>
+			</dict>
+			<dict>
+				<key>bAlternateSetting</key>
+				<integer>0</integer>
+				<key>bInterfaceClass</key>
+				<integer>9</integer>
+				<key>bInterfaceNumber</key>
+				<integer>0</integer>
+				<key>bInterfaceSubClass</key>
+				<integer>0</integer>
+			</dict>
+		</array>
+		<key>IORegistryEntryLocation</key>
+		<string>01100000</string>
+		<key>IORegistryEntryName</key>
+		<string>DEMS Hub 4</string>
+		<key>USB Product Name</key>
+		<string>DEMS Hub 4</string>
+		<key>USB Vendor Name</key>
+		<string>DEMS Test Works</string>
+		<key>bDeviceClass</key>
+		<integer>9</integer>
+		<key>idProduct</key>
+		<integer>4</integer>
+		<key>idVendor</key>
+		<integer>6699</integer>
+		<key>locationID</key>
+		<integer>17825792</integer>
+		<key>sessionID</key>
+		<integer>40218863551</integer>
+	</dict>
+	<dict>
+		<key>IOCFPlugInTypes</key>
+		<dict>
+			<key>00000000-0000-4000-8000-00000000DE35</key>
+			<string>Synthetic.plugin</string>
+		</dict>
+		<key>IOPowerManagement</key>
+		<dict>
+			<key>CapabilityFlags</key>
+			<integer>32768</integer>
+			<key>PowerOverrideOn</key>
+			<true/>
+		</dict>
+		<key>IORegistryEntryChildren</key>
+		<array>
+			<dict>
+				<key>IOClass</key>
+				<string>SyntheticDriverNode</string>
+				<key>IOProviderClass</key>
+				<string>IOUSBHostDevice</string>
+			</dict>
+			<dict>
+				<key>USB Product Name</key>
+				<string>DEMS Hexa 6</string>
+				<key>bAlternateSetting</key>
+				<integer>0</integer>
+				<key>bInterfaceClass</key>
+				<integer>1</integer>
+				<key>bInterfaceNumber</key>
+				<integer>0</integer>
+				<key>bInterfaceSubClass</key>
+				<integer>1</integer>
+				<key>idProduct</key>
+				<integer>6</integer>
+				<key>idVendor</key>
+				<integer>6699</integer>
+				<key>locationID</key>
+				<integer>17956864</integer>
+			</dict>
+			<dict>
+				<key>USB Product Name</key>
+				<string>DEMS Hexa 6</string>
+				<key>bAlternateSetting</key>
+				<integer>0</integer>
+				<key>bInterfaceClass</key>
+				<integer>1</integer>
+				<key>bInterfaceNumber</key>
+				<integer>1</integer>
+				<key>bInterfaceSubClass</key>
+				<integer>2</integer>
+				<key>idProduct</key>
+				<integer>6</integer>
+				<key>idVendor</key>
+				<integer>6699</integer>
+				<key>locationID</key>
+				<integer>17956864</integer>
+			</dict>
+			<dict>
+				<key>USB Product Name</key>
+				<string>DEMS Hexa 6</string>
+				<key>bAlternateSetting</key>
+				<integer>0</integer>
+				<key>bInterfaceClass</key>
+				<integer>1</integer>
+				<key>bInterfaceNumber</key>
+				<integer>2</integer>
+				<key>bInterfaceSubClass</key>
+				<integer>2</integer>
+				<key>idProduct</key>
+				<integer>6</integer>
+				<key>idVendor</key>
+				<integer>6699</integer>
+				<key>locationID</key>
+				<integer>17956864</integer>
+			</dict>
+			<dict>
+				<key>bAlternateSetting</key>
+				<integer>0</integer>
+				<key>bInterfaceClass</key>
+				<integer>254</integer>
+				<key>bInterfaceNumber</key>
+				<integer>3</integer>
+				<key>bInterfaceSubClass</key>
+				<integer>1</integer>
+			</dict>
+			<dict>
+				<key>IOClass</key>
+				<string>SyntheticUserClient</string>
+			</dict>
+		</array>
+		<key>IORegistryEntryLocation</key>
+		<string>01120000</string>
+		<key>IORegistryEntryName</key>
+		<string>DEMS Hexa 6</string>
+		<key>USB Address</key>
+		<integer>3</integer>
+		<key>USB Product Name</key>
+		<string>DEMS Hexa 6</string>
+		<key>USB Vendor Name</key>
+		<string>DEMS Test Works</string>
+		<key>bDeviceClass</key>
+		<integer>239</integer>
+		<key>bcdDevice</key>
+		<integer>257</integer>
+		<key>iSerialNumber</key>
+		<integer>0</integer>
+		<key>idProduct</key>
+		<integer>6</integer>
+		<key>idVendor</key>
+		<integer>6699</integer>
+		<key>kUSBProductString</key>
+		<string>DEMS Hexa 6</string>
+		<key>kUSBVendorString</key>
+		<string>DEMS Test Works</string>
+		<key>locationID</key>
+		<integer>17956864</integer>
+		<key>sessionID</key>
+		<integer>40218863552</integer>
+	</dict>
+	<dict>
+		<key>IORegistryEntryChildren</key>
+		<array>
+			<dict>
+				<key>IOClass</key>
+				<string>SyntheticDriverNode</string>
+			</dict>
+			<dict>
+				<key>bInterfaceClass</key>
+				<integer>2</integer>
+				<key>bInterfaceSubClass</key>
+				<integer>6</integer>
+			</dict>
+			<dict>
+				<key>bInterfaceClass</key>
+				<integer>10</integer>
+				<key>bInterfaceSubClass</key>
+				<integer>0</integer>
+			</dict>
+		</array>
+		<key>IORegistryEntryLocation</key>
+		<string>01130000</string>
+		<key>SyntheticDescriptor</key>
+		<data>
+		REVNUy1TWU5USEVUSUMtREFUQS0wMDAxREVNUy1TWU5USEVUSUMt
+		REFUQS0wMDAy
+		</data>
+		<key>USB Product Name</key>
+		<string>DEMS Network Stick</string>
+		<key>USB Serial Number</key>
+		<string>SN-SYN-NET-0001</string>
+		<key>idProduct</key>
+		<integer>33107</integer>
+		<key>idVendor</key>
+		<integer>6699</integer>
+		<key>locationID</key>
+		<integer>18022400</integer>
+	</dict>
+</array>
+</plist>

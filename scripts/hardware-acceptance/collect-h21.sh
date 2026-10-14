@@ -35,8 +35,13 @@ if hw_log_needed --worker-log "$HW_WORKER_LOG"; then
   note 'the figure counts from the instant the WORKER started the session. The instant of the operator'"'"'s start request and the relay'"'"'s own report lie in the Core log; the USER adds the difference between the two instants if the Core log states them'
 fi
 if [ -n "$HW_CORE_LOG" ] || [ "$HW_DRY" = 1 ]; then
-  hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_FAULT CAMERA_NOT_CONNECTED CAMERA_STREAM_ENDED
-  confirm 'the codes of the session start request and of the relay'"'"'s report in the Core log (the camera path was not built when chapter 3 was written)'
+  # NAMES (wave 12, row C1; checked against capture-session/index.ts on 2026-10-14): the Core writes
+  # the line CAPTURE_CAMERA_INGEST_PAIRED (sessionId, deviceId, attempt) when the relay's report and
+  # the worker's connect report of a camera are both present. The criterion's figure runs from the
+  # operator's click to that line; this collector prints the line's instant, the USER subtracts.
+  hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_CAMERA_INGEST_PAIRED time deviceId attempt
+  hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_CAMERA_INGEST_PAIRED CAPTURE_FAULT CAMERA_NOT_CONNECTED CAMERA_STREAM_ENDED
+  confirm 'that the journal of a real unit carries the instant of the line as the member "time" (milliseconds since 1970), so that the difference to the click of step 9A/H-17.2 can be taken'
 fi
 note 'what to record (part 6): the two figures in milliseconds; the keyframe interval each camera is set to.'
 hw_done

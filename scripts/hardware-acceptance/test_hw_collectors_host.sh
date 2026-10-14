@@ -427,7 +427,7 @@ cat >"$RUN/core.log" <<EOF
 {"level":40,"time":1791822965000,"code":"CAPTURE_SYNC_LEVEL_NOT_FULL","sessionId":"S-1","deviceId":"cam-1","syncLevel":"FSYNC","msg":"sync level"}
 {"level":40,"time":1791822965100,"code":"CAPTURE_SYNC_LEVEL_NOT_FULL","sessionId":"S-1","deviceId":"cam-2","syncLevel":"FSYNC","msg":"sync level"}
 {"level":50,"time":1791822966000,"msg":"camera open failed","locator":"$PLANTED_LOCATOR","password":"$PLANTED_PASSWORD"}
-{"level":30,"time":1791822967000,"msg":"alias helper checked","code":"NETALIAS_INTERFACE_MISMATCH","check":"capture.helper"}
+{"level":50,"time":1791822967000,"msg":"a production Core does not start","code":"CAPTURE_HOST_INTERFACE_FILE_MISMATCH","operation":"REAL_PRODUCTION","reason":"INTERFACE_FILE_DIFFERS_FROM_ROW"}
 EOF
 printf '{"ts_us":1,"level":"info","message":"first_durable_fragment","cam":1,"bytes":1000,"sync":"FSYNC","sync_wanted":"F_FULLFSYNC"}\n' >"$RUN/worker.jsonl"
 collect c03l "$SEAM" collect-h03.sh --level --evidence "$EVID" --core-log "$RUN/core.log" --worker-log "$RUN/worker.jsonl"
@@ -526,7 +526,7 @@ drwxr-xr-x root root sbin
 -rwxr-xr-x root root dems-core-netalias
 EOF
 can sha256sum <<'EOF'
-62c0b726aaaa  /usr/local/sbin/dems-core-netalias
+1e758a24aaaa  /usr/local/sbin/dems-core-netalias
 1111bbbb  /etc/systemd/system/dems-core-netalias.socket
 2222cccc  /etc/systemd/system/dems-core-netalias@.service
 EOF
@@ -539,7 +539,7 @@ std c05i 9A/H-05 h05-run1-installed.txt
 expect 'c05i: the group has exactly the service user as member' has c05i 'members: 1; the only member is <service-user>: yes'
 expect 'c05i: owner, group and mode of the five objects' [ "$(grep -cE 'output  \| root (root|dems-netalias) (660|644|755) ' "$RUN/out/c05i.txt")" = 5 ]
 expect 'c05i: the path of the helper: 5 components, none foreign, none writable, no link' has c05i 'components: 5; not owned by root: 0; writable by group or others: 0; symbolic links: 0'
-expect 'c05i: the three hashes are printed and compared with the delivery (3 of 3 with the canned double)'' (1 of 2)' has c05i '62c0b726aaaa'
+expect 'c05i: the three hashes are printed and compared with the delivery (3 of 3 with the canned double)'' (1 of 2)' has c05i '1e758a24aaaa'
 expect 'c05i: the three hashes are printed and compared with the delivery (3 of 3 with the canned double)'' (2 of 2)' has c05i 'installed hash equals the delivery'"'"'s (helper, socket unit, service unit, in this order) = 3 of 3'
 expect 'c05i: says that chapter 4 governs the hashes' has c05i 'CHAPTER 4 GOVERNS'
 expect 'c05i: the interface file: one line, the given interface, its name not printed'' (1 of 2)' has c05i 'lines: 1; names the interface given with --camera-interface: yes'
@@ -567,7 +567,7 @@ expect 'c05j: no address and no caller of a journal line is printed'' (3 of 3)' 
 expect 'c05j: one address on the camera port' has c05j 'addresses on the camera port = 1'
 collect c05c "$SEAM" collect-h05.sh --core --evidence "$EVID" --core-log "$RUN/core.log" --core-pid 4242
 std c05c 9A/H-05 h05-run1-core.txt
-expect 'c05c: one boot line names the helper, printed by its code only'' (1 of 2)' has c05c '1: level=30 code=NETALIAS_INTERFACE_MISMATCH check=capture.helper'
+expect 'c05c: one boot line names the helper, printed by its code only'' (1 of 2)' has c05c '1: level=50 code=CAPTURE_HOST_INTERFACE_FILE_MISMATCH reason=INTERFACE_FILE_DIFFERS_FROM_ROW'
 expect 'c05c: one boot line names the helper, printed by its code only'' (2 of 2)' has c05c 'the interface file: 1'
 expect 'c05c: the supplementary groups of the Core' has c05c 'Groups:'
 
@@ -620,10 +620,14 @@ collect c06s330 "$SEAM" collect-h06.sh --state --at 330 --evidence "$EVID" --cam
 expect 'c06s330: the reading at 330 s has its own file and needs no Core'' (1 of 2)' [ -s "$EVID/h06-run1-state-330s.txt" ]
 expect 'c06s330: the reading at 330 s has its own file and needs no Core'' (2 of 2)' [ "$(code_of c06s330)" = 0 ]
 cat >"$RUN/audit.txt" <<'EOF'
-{"seq":201,"type":"HOST_ALIAS_ADDED","details":{"phase":"RESULT","address":"192.168.77.1/24"}}
-{"seq":202,"type":"HOST_ALIAS_REMOVED","details":{"reason":"REQUESTED"}}
-{"seq":203,"type":"HOST_ALIAS_ADDED","details":{"phase":"RESULT"}}
-{"seq":204,"type":"HOST_ALIAS_REMOVED","details":{"reason":"BOOT_SWEEP"}}
+{"seq":197,"type":"HOST_ALIAS_REQUESTED","details":{"action":"ADD","address":"192.168.77.1","reason":"FACTORY_SCAN","minutes":30}}
+{"seq":198,"type":"HOST_ALIAS_ADDED","details":{"address":"192.168.77.1","reason":"FACTORY_SCAN","expiresAt":1791824764}}
+{"seq":199,"type":"HOST_ALIAS_REQUESTED","details":{"action":"REMOVE","address":"192.168.77.1","removeReason":"MANUAL"}}
+{"seq":200,"type":"HOST_ALIAS_REMOVED","details":{"address":"192.168.77.1","removeReason":"MANUAL"}}
+{"seq":201,"type":"HOST_ALIAS_REQUESTED","details":{"action":"ADD","address":"192.168.77.1","reason":"FACTORY_SCAN","minutes":5}}
+{"seq":202,"type":"HOST_ALIAS_ADDED","details":{"address":"192.168.77.1","reason":"FACTORY_SCAN","expiresAt":1791825064}}
+{"seq":203,"type":"HOST_ALIAS_REQUESTED","details":{"action":"REMOVE","address":"192.168.77.1","removeReason":"BOOT_SWEEP"}}
+{"seq":204,"type":"HOST_ALIAS_REMOVED","details":{"address":"192.168.77.1","removeReason":"BOOT_SWEEP"}}
 {"seq":205,"type":"CAPTURE_DISCOVERY_SEARCHED","details":{"scope":"AUDIO_CARDS"}}
 {"seq":206,"type":"CAPTURE_AUDIO_INPUT_CHANGED","details":{"change":"REGISTERED"}}
 {"seq":207,"type":"CAPTURE_AUDIO_INPUT_CHANGED","details":{"change":"REGISTERED"}}
@@ -633,7 +637,7 @@ std c06a 9A/H-06 h06-run1-audit.txt
 expect 'c06a: counts per type'' (1 of 3)' has c06a 'lines that hold HOST_ALIAS_ADDED = 2'
 expect 'c06a: counts per type'' (2 of 3)' has c06a 'lines that hold HOST_ALIAS_REMOVED = 2'
 expect 'c06a: counts per type'' (3 of 3)' has c06a 'lines that hold HOST_ALIAS_REMOVE_FAILED = 0'
-expect 'c06a: the entries in order with their reason code, no address'' (1 of 2)' has c06a '4: HOST_ALIAS_REMOVED reason=BOOT_SWEEP'
+expect 'c06a: the entries in order with their reason code, no address'' (1 of 2)' has c06a '8: HOST_ALIAS_REMOVED reason=BOOT_SWEEP action=(absent)'
 expect 'c06a: the entries in order with their reason code, no address'' (2 of 2)' lacks c06a '192.168.77.1'
 
 # --- 9A/H-07
@@ -696,17 +700,17 @@ can ps <<'EOF'
  4302  4242 ffmpeg
 EOF
 mkdir -p "$SEAM/root/proc/4301" "$SEAM/root/proc/4302"
-printf '/opt/ffmpeg/bin/ffmpeg\0-f\0alsa\0-channels\0002\0-sample_rate\00048000\0-i\0dems_card1\0-af\0pan=mono|c0=c0\0-y\0/srv/dems/data/run/capture/mic1.fifo\0' >"$SEAM/root/proc/4301/cmdline"
-printf '/opt/ffmpeg/bin/ffmpeg\0-f\0alsa\0-channels\0002\0-sample_rate\00048000\0-i\0dems_card1\0-af\0pan=mono|c0=c1\0' >"$SEAM/root/proc/4302/cmdline"
+printf '/opt/ffmpeg/bin/ffmpeg\0-thread_queue_size\0001024\0-f\0alsa\0-c:a\0pcm_s24le\0-ch_layout\0002C\0-sample_rate\00048000\0-i\0dems_card1\0-af\0pan=mono|c0=c0\0-y\0/srv/dems/data/run/capture/mic1.fifo\0' >"$SEAM/root/proc/4301/cmdline"
+printf '/opt/ffmpeg/bin/ffmpeg\0-thread_queue_size\0001024\0-f\0alsa\0-c:a\0pcm_s24le\0-ch_layout\0002C\0-sample_rate\00048000\0-i\0dems_card1\0-af\0pan=mono|c0=c1\0' >"$SEAM/root/proc/4302/cmdline"
 printf '{"ts_us":1,"level":"info","message":"session_starting","cameras":2,"mics":2}\n{"ts_us":2,"level":"info","message":"audio_started","encoders":1,"quantum_samples":480}\n' >"$RUN/worker.jsonl"
 collect c08s "$SEAM" collect-h08.sh --session S1 --evidence "$EVID" --core-pid 4242 --core-log "$RUN/core.log" --worker-log "$RUN/worker.jsonl"
 std c08s 9A/H-08 h08-run1-session-S1.txt
-expect 'c08s: two helper processes, each reduced to format, channel count, rate and selection'' (1 of 3)' has c08s 'helper process 4301: -f alsa -channels 2 -sample_rate 48000 -af pan=mono|c0=c0'
-expect 'c08s: two helper processes, each reduced to format, channel count, rate and selection'' (2 of 3)' has c08s 'helper process 4302: -f alsa -channels 2 -sample_rate 48000 -af pan=mono|c0=c1'
+expect 'c08s: two helper processes, each reduced to format, channel count, rate and selection'' (1 of 3)' has c08s 'helper process 4301: -f alsa -ch_layout 2C -sample_rate 48000 -af pan=mono|c0=c0'
+expect 'c08s: two helper processes, each reduced to format, channel count, rate and selection'' (2 of 3)' has c08s 'helper process 4302: -f alsa -ch_layout 2C -sample_rate 48000 -af pan=mono|c0=c1'
 expect 'c08s: two helper processes, each reduced to format, channel count, rate and selection'' (3 of 3)' has c08s 'named ffmpeg) = 2'
 expect 'c08s: no other argument of a helper is printed'' (1 of 2)' lacks c08s mic1.fifo
 expect 'c08s: no other argument of a helper is printed'' (2 of 2)' lacks c08s dems_card1
-expect 'c08s: counts of failed or busy opens, and what the worker states'' (1 of 2)' has c08s 'lines that hold AUDIO_DEVICE_BUSY = 0'
+expect 'c08s: counts of failed or busy opens, and what the worker states'' (1 of 2)' has c08s 'lines that hold AUDIO_HELPER_EXITED = 0'
 expect 'c08s: counts of failed or busy opens, and what the worker states'' (2 of 2)' has c08s 'quantum_samples=480'
 can ffmpeg <<'EOF'
 [Parsed_volumedetect_0 @ 0x55] n_samples: 48000

@@ -341,8 +341,12 @@ function settleCache(queryClient: QueryClient, answer: SelectorAnswer, config: C
 const COMMAND_THREW_RECORD = 'A command of the capture device selector could not be sent.'
 
 export interface CaptureSelectorCommands {
-  /** Operation 79: `deviceId` feeds `trackId`. */
-  readonly setCameraSource: (deviceId: string, trackId: VideoTrackId) => Promise<SelectorAnswer>
+  /**
+   * `deviceId` feeds `trackId`. Without `profile`: operation 79, as always. With `profile` (task 4 row W5,
+   * review 060d Q-02; `camera-profile.ts`): ONE camera line of operation 78 that names the chosen stream
+   * profile - operation 79's body has no profile member, and a production camera is assigned with one.
+   */
+  readonly setCameraSource: (deviceId: string, trackId: VideoTrackId, profile?: string) => Promise<SelectorAnswer>
   /** Operation 80: `inputId` becomes PRIMARY, the other input STANDBY. */
   readonly setPrimaryMic: (inputId: string) => Promise<SelectorAnswer>
   /** Operation 78 by role (wave H, G70-02; task 4 row 31): `pair` (of `micPairFor`) is the new pair of microphone inputs, or the one line of a role beside an empty slot. */
@@ -387,8 +391,15 @@ export function useCaptureSelectorCommands(): CaptureSelectorCommands {
       }
     }
     return {
-      setCameraSource: (deviceId, trackId) =>
-        guarded('setCaptureCameraSource', () =>
+      setCameraSource: (deviceId, trackId, profile) =>
+        profile !== undefined
+          ? guarded('updateCaptureConfig', () => {
+              const body = { cameras: [{ trackId, deviceId, profile }] }
+              return live === null
+                ? simAnswer('updateCaptureConfig', sim.request({ method: 'POST', path: '/api/v1/capture/config', body }))
+                : callLive(live, queryClient, 'updateCaptureConfig', () => live.client.call('updateCaptureConfig', { body }))
+            })
+          : guarded('setCaptureCameraSource', () =>
           live === null
             ? simAnswer('setCaptureCameraSource', sim.request({ method: 'POST', path: `/api/v1/capture/cameras/${encodeURIComponent(deviceId)}/source`, body: { trackId } }))
             : callLive(live, queryClient, 'setCaptureCameraSource', () => live.client.call('setCaptureCameraSource', { params: { id: deviceId }, body: { trackId } })),

@@ -17,8 +17,10 @@
  * cause. A new reason of the protocol without a sentence here fails
  * `apps/core-server/src/capture/__tests__/fault-wording.test.ts`, which enumerates the protocol.
  *
- * This file imports nothing: it is read by the simulator, by the i18n resources and by the clients.
+ * This file imports one wording file that itself imports nothing (`audio-not-continuous.ts`, the
+ * fixed sentence of task 4 row N2): it is read by the simulator, by the i18n resources and by the clients.
  */
+import { AUDIO_INSERTED_SILENCE_SENTENCE, MIC_SILENCE_RUN_MAX_MS, shortfallPercentText } from './audio-not-continuous';
 
 /** How grave the condition of a reason is for the operator (ux §8e.2, §8g.3). */
 export type CaptureReasonSeverity = 'CRITICAL' | 'WARNING' | 'INFO';
@@ -59,6 +61,23 @@ export const CAPTURE_FAULT_SENTENCES = {
    * translates this entry with `params.offsetMs` of the alert.
    */
   CAMERA_CLOCK_OFFSET: "Camera clock differs from the Core by {{offsetMs}} ms; the recording keeps the camera's own timeline and records the offset.",
+  // ── Task 4 row N2 (design 06 revision 3, sections 6.2 and 8.3; decisions U25 (3), C110 (2), (4); SM-32, SM-34 (2)):
+  //    the five notices of a microphone whose capture path is NOT SAMPLE-CONTINUOUS (the bench path of a Mac). Raised by the
+  //    Core's capture side only; the simulator raises none. No sentence says the silence stands at or near the missing sound.
+  /** Information, at every pre-check and once per session at its start, on each microphone of that path. It blocks nothing. */
+  MIC_PATH_NOT_SAMPLE_CONTINUOUS: `This microphone path does not deliver every sample (bench form of this Mac). ${AUDIO_INSERTED_SILENCE_SENTENCE} The amount is measured and recorded with the session.`,
+  /**
+   * WARNING, THE FLOOR: more than 12.0% of a 10 s window was inserted silence, two windows in a row.
+   * `{{percent}}`: the measured share with one decimal - filled by `micShortfallSentence`, or by a
+   * client that translates this entry with `params.shortfallPer100k` of the alert.
+   */
+  MIC_SAMPLES_SHORT_ABOVE_BOUND: 'The microphone is losing more audio than this path may: {{percent}}% of the last 10 seconds was inserted silence (bound 12.0%).',
+  /** WARNING, THE SESSION'S OWN LEVEL: a window stands above the level the attempt began with. `{{reference}}`: that level (`params.referencePer100k`). */
+  MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL: "The microphone is losing more audio than at the start of this session: {{percent}}% of the last 10 seconds was inserted silence (this session's level: {{reference}}%).",
+  /** WARNING, A LONG RUN, at once: silence of 100 ms or more was inserted in one piece. `{{ms}}`: its length (`params.runMs`). */
+  MIC_SILENCE_RUN_INSERTED: 'Silence of {{ms}} ms was inserted into the recording in one piece: no audio arrived from the microphone in that time.',
+  /** Information, on the STANDBY microphone of a pair that resolves to one device. */
+  STANDBY_ON_PRIMARY_DEVICE: "The standby microphone is another channel of the primary's device and is recorded by the same capture program. It guards a microphone and its cable, nothing else.",
   // ── Codes the capture of a session ends with ────────────────────────────────────────────────
   /** The worker's final crash code: no camera connected within the ingest-open window (D72(k)). */
   NO_CAMERA_CONNECTED: 'No camera connected. Nothing was recorded.',
@@ -154,7 +173,29 @@ export const CAPTURE_FAULT_NO_REASON_SENTENCES = {
 } as const;
 
 /** The reasons that are ADVICE, not a failed device: the subject keeps recording. Raised as a named `SYSTEM` alert, never as a fault. */
-export const CAPTURE_ADVISORY_REASONS: readonly CaptureFaultReason[] = ['MIC_RATE_AT_LIMIT', 'KEYFRAME_INTERVAL_ABOVE_BOUND', 'AV_OFFSET_NEAR_BOUND', 'FRAGMENT_SIZE_BOUND_REACHED', 'CAMERA_CLOCK_OFFSET'];
+export const CAPTURE_ADVISORY_REASONS: readonly CaptureFaultReason[] = [
+  'MIC_RATE_AT_LIMIT',
+  'KEYFRAME_INTERVAL_ABOVE_BOUND',
+  'AV_OFFSET_NEAR_BOUND',
+  'FRAGMENT_SIZE_BOUND_REACHED',
+  'CAMERA_CLOCK_OFFSET',
+  // Task 4 row N2: the five notices of a microphone path that is not sample-continuous.
+  'MIC_PATH_NOT_SAMPLE_CONTINUOUS',
+  'MIC_SAMPLES_SHORT_ABOVE_BOUND',
+  'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL',
+  'MIC_SILENCE_RUN_INSERTED',
+  'STANDBY_ON_PRIMARY_DEVICE',
+];
+
+/**
+ * THE ADVISORY REASONS THE OPERATOR READS AS A WARNING (task 4 row N2; SM-32 (5): "a WARNING in what
+ * the operator reads"). Until row N2 every advisory notice was information. These three are still
+ * ADVICE in every other respect - a named `SYSTEM` alert on the device, no fault life cycle, no audit
+ * row, nothing stopped - and their alert carries the severity WARNING: a microphone that loses more
+ * audio than its path may, more than at the start of its session, or a silence of 100 ms or more
+ * inserted in one piece, is not a line an operator may read past.
+ */
+export const CAPTURE_ADVISORY_WARNING_REASONS: readonly CaptureFaultReason[] = ['MIC_SAMPLES_SHORT_ABOVE_BOUND', 'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', 'MIC_SILENCE_RUN_INSERTED'];
 
 /**
  * The severity the operator is shown a reason with (ux §8e.2 situation C, §8g.3): a degraded start
@@ -174,6 +215,12 @@ export const CAPTURE_REASON_SEVERITY: Readonly<Record<CaptureFaultReason, Captur
   AV_OFFSET_NEAR_BOUND: 'INFO',
   FRAGMENT_SIZE_BOUND_REACHED: 'INFO',
   CAMERA_CLOCK_OFFSET: 'INFO',
+  // Task 4 row N2: two are information, three a warning (`CAPTURE_ADVISORY_WARNING_REASONS`).
+  MIC_PATH_NOT_SAMPLE_CONTINUOUS: 'INFO',
+  MIC_SAMPLES_SHORT_ABOVE_BOUND: 'WARNING',
+  MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL: 'WARNING',
+  MIC_SILENCE_RUN_INSERTED: 'WARNING',
+  STANDBY_ON_PRIMARY_DEVICE: 'INFO',
   NO_CAMERA_CONNECTED: 'CRITICAL',
   CAPTURE_START_FAILED: 'CRITICAL',
   SESSION_LEFT_RECORDING: 'CRITICAL',
@@ -241,6 +288,47 @@ export function cameraClockOffsetSentence(offsetMs: number | null | undefined): 
   return CAPTURE_FAULT_SENTENCES.CAMERA_CLOCK_OFFSET.replaceAll('{{offsetMs}}', String(Math.abs(Math.round(offsetMs))));
 }
 
+// ── Task 4 row N2: the three notices of a microphone path that carry a number ────────────────────
+/** The three sentences without their number: said when no whole number is known, never a raw placeholder. */
+const MIC_SHORTFALL_NO_NUMBER = {
+  MIC_SAMPLES_SHORT_ABOVE_BOUND: 'The microphone is losing more audio than this path may (bound 12.0% of 10 seconds as inserted silence).',
+  MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL: 'The microphone is losing more audio than at the start of this session.',
+  MIC_SILENCE_RUN_INSERTED: 'Silence was inserted into the recording in one piece: no audio arrived from the microphone in that time.',
+} as const;
+/** The advisory reasons whose sentence carries a measured number of the worker's counts. */
+export type MicShortfallReason = keyof typeof MIC_SHORTFALL_NO_NUMBER;
+/** What a raise of one of the three states: whole numbers, never device text. */
+export interface MicShortfallNumbers {
+  /** The shortfall of the last window in parts per 100,000 (12.0% is 12,000). The two window notices. */
+  readonly shortfallPer100k?: number | null | undefined;
+  /** The attempt's reference level in parts per 100,000. `MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL` only. */
+  readonly referencePer100k?: number | null | undefined;
+  /** The length of the run in whole ms. `MIC_SILENCE_RUN_INSERTED` only. */
+  readonly runMs?: number | null | undefined;
+}
+/** True for one of the three reasons. */
+export function isMicShortfallReason(reason: unknown): reason is MicShortfallReason {
+  return typeof reason === 'string' && Object.prototype.hasOwnProperty.call(MIC_SHORTFALL_NO_NUMBER, reason);
+}
+/**
+ * The sentence of one of the three notices with its measured numbers. A number that is missing or
+ * is no whole number inside its bounds gives the sentence WITHOUT numbers - never half of them and
+ * never a raw placeholder.
+ */
+export function micShortfallSentence(reason: MicShortfallReason, numbers: MicShortfallNumbers = {}): string {
+  if (reason === 'MIC_SILENCE_RUN_INSERTED') {
+    const ms = numbers.runMs;
+    if (typeof ms !== 'number' || !Number.isSafeInteger(ms) || ms < 0 || ms > MIC_SILENCE_RUN_MAX_MS) return MIC_SHORTFALL_NO_NUMBER[reason];
+    return CAPTURE_FAULT_SENTENCES[reason].replaceAll('{{ms}}', String(ms));
+  }
+  const percent = shortfallPercentText(numbers.shortfallPer100k);
+  if (percent === null) return MIC_SHORTFALL_NO_NUMBER[reason];
+  if (reason === 'MIC_SAMPLES_SHORT_ABOVE_BOUND') return CAPTURE_FAULT_SENTENCES[reason].replaceAll('{{percent}}', percent);
+  const reference = shortfallPercentText(numbers.referencePer100k);
+  if (reference === null) return MIC_SHORTFALL_NO_NUMBER[reason];
+  return CAPTURE_FAULT_SENTENCES[reason].replaceAll('{{percent}}', percent).replaceAll('{{reference}}', reference);
+}
+
 /**
  * The sentence of a capture fault. `reason`: `params.reason` of the alert (null / absent: none).
  * `device`: the device as the reader names it, or null for the capture as a whole.
@@ -251,6 +339,8 @@ export function captureFaultSentence(reason: string | null | undefined, device: 
   if (isCaptureFaultReason(reason)) {
     // The one sentence with a number: without the number it reads without one (the caller that has it uses `cameraClockOffsetSentence`).
     if (reason === 'CAMERA_CLOCK_OFFSET') return CAMERA_CLOCK_OFFSET_NO_NUMBER;
+    // The three of row N2 likewise (the caller that has the numbers uses `micShortfallSentence`).
+    if (isMicShortfallReason(reason)) return MIC_SHORTFALL_NO_NUMBER[reason];
     const sentence: string = CAPTURE_FAULT_SENTENCES[reason];
     // A sentence about a device, for a fault that names none: the neutral one with the code.
     if (device === null && sentence.includes('{{device}}')) return fill(CAPTURE_FAULT_UNKNOWN_SENTENCES.capture, name, reason);

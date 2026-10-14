@@ -24,13 +24,28 @@
  *     only the fault it raised itself - never one another part raised, never one without its cause;
  *   - the stored facts of a production device beyond its label (its profile list; its capability).
  *
+ * Since task 4 row N7 (masterplan/06 revision 3 sections 2.2, 2.3, 3.3; review SM-10, SM-21) also:
+ *
+ *   - THE PLATFORM SEAM OF THE CARD LISTING: `linux` the reader of the sound directory (unchanged),
+ *     `darwin` the listing of a macOS host (three fixed rows of the helper table - the USB tree in
+ *     its property-list form, the system's audio list, the capture program's own device list - read
+ *     by the strict readers of row N6), any other platform the named "not available" answer. The
+ *     platform is the one the entry point states; no key of the configuration chooses a reader.
+ *
  * It builds no adapter, names no built adapter file (static rule A-9), registers nothing, opens no
- * socket, reads no file, no environment and no clock, and it does not log. It starts no process
- * itself: the one program it knows is started by the door it is handed, with the table's row.
+ * socket, reads no file but the facts of the path rule on the configured audio helper (ownership
+ * and mode bits, before every start of the device-list row), no environment and no clock, and it
+ * does not log. It starts no process itself: the programs it knows are started by the door it is
+ * handed, each with its table's row.
  */
 import { CaptureWarningCode, CaptureWarningReason } from '@dems/capture-protocol';
 import { createCardEnumerator, type CardEnumerator } from '../adapters/audio/card-listing';
 import { createCardListingReader, type CardListingPrograms } from '../adapters/audio/card-listing-reader';
+import { MacosCardListingError, createMacosCardEnumerator, type MacosCardEnumerator, type MacosListingSource, type MacosTiedListing } from '../adapters/audio/macos-card-listing';
+import { MACOS_USB_TREE_TEXT_BYTES } from '../adapters/audio/macos-plist';
+import { helperProgramRefusal } from '../adapters/local/helper-program';
+import { MACOS_LISTING_HELPER_TABLE, MACOS_SYSTEM_AUDIO_PROGRAM, MACOS_USB_TREE_PROGRAM, macMicDeviceListArguments, macSystemAudioArguments, macUsbTreeArguments } from '../adapters/local/mic-helper-args';
+import { inspectProgram, type ProgramInspector } from '../adapters/local/process-door';
 import { createOnvifNetworkSetter, type OnvifNetworkSetResult } from '../adapters/camera/onvif-network';
 import { createOnvifStreamLocator, createOnvifTimeReader, type OnvifStreamLocator } from '../adapters/camera/onvif-session';
 import { storedCameraCandidate, type StoredCameraAddressRule } from '../adapters/camera/stored-address';
@@ -44,7 +59,7 @@ import { DestinationPurpose, decideDestination, type DestinationContext, type De
 import { decideNewCameraAddress, type NewCameraAddress, type NewCameraAddressContext, type NewCameraAddressDecision, type NewCameraAddressRequest } from '../destination-rule';
 import type { CaptureTimers } from '../types';
 
-export type { CameraCandidate, CardEnumerator, CardListingPrograms, DestinationContext, OnvifStreamLocator, ProductionDoor, StoredCameraAddressRule };
+export type { CameraCandidate, CardEnumerator, CardListingPrograms, DestinationContext, MacosCardEnumerator, MacosListingSource, MacosTiedListing, OnvifStreamLocator, ProductionDoor, ProgramInspector, StoredCameraAddressRule };
 
 /** True for the one capture operation production capture is composed in. */
 export const isProductionCaptureOperation = (operation: CaptureOperation): boolean => operation === CaptureOperation.REAL_PRODUCTION;
@@ -306,14 +321,27 @@ export const CardListingProgramFailure = {
 } as const;
 export type CardListingProgramFailure = (typeof CardListingProgramFailure)[keyof typeof CardListingProgramFailure];
 
-/** A code, a reason of the closed set and a fixed sentence: no path, no output, no cause. */
+/** The row of a macOS listing that failed (row N7): a closed word, never a program path. */
+export const MacosListingRow = {
+  /** L1: the USB tree, property-list form, standard output. */
+  USB_TREE: 'USB_TREE',
+  /** L2: the system's audio list, JSON, standard output. */
+  SYSTEM_AUDIO: 'SYSTEM_AUDIO',
+  /** L3: the capture program's own device list, its diagnostics. */
+  CAPTURE_DEVICES: 'CAPTURE_DEVICES',
+} as const;
+export type MacosListingRow = (typeof MacosListingRow)[keyof typeof MacosListingRow];
+
+/** A code, a reason of the closed set and a fixed sentence: no path, no output, no cause. `row`: which macOS row failed (null on Linux: one row). */
 export class CardListingProgramError extends Error {
   readonly code: typeof AUDIO_CARD_LISTING_PROGRAM_FAILED = AUDIO_CARD_LISTING_PROGRAM_FAILED;
   readonly reason: CardListingProgramFailure;
-  constructor(reason: CardListingProgramFailure) {
+  readonly row: MacosListingRow | null;
+  constructor(reason: CardListingProgramFailure, row: MacosListingRow | null = null) {
     super('the card listing program gave no usable list');
     this.name = 'CardListingProgramError';
     this.reason = reason;
+    this.row = row;
   }
 }
 
@@ -367,13 +395,181 @@ export function cardListingProgramsOf(parts: CardListingRunnerParts): CardListin
 }
 
 /**
- * The enumerator of THIS host, with the runner of the listing program behind it: on the platform
- * whose sound directory the reader reads, the product's enumerator over the product's runner; on
- * any other platform the named "not available" answer, and the program is never started.
+ * The enumerator of THIS host, with the runner of the listing program behind it - THE PLATFORM SEAM
+ * (row N7; SM-21: chosen by the platform alone, never both, no key of the configuration):
+ *   `linux`   the product's enumerator over the product's runner (unchanged);
+ *   `darwin`  the listing of a macOS host over the runner of its three rows (`macosCardEnumeratorOf`).
+ *             Its third row is started by the configured audio helper: without one the named
+ *             answer `LISTING_PROGRAM_NOT_HANDED_IN`, and nothing is ever started;
+ *   any other the named "not available" answer, and no program is ever started.
+ * `helperProgram` is read on `darwin` only; the Linux runner never sees it.
  */
-export function hostCardEnumeratorOf(host: { readonly platform: string } & CardListingRunnerParts): { readonly enumerator: CardEnumerator; readonly unavailable: CardListingUnavailable | null } {
+export function hostCardEnumeratorOf(host: { readonly platform: string; readonly helperProgram?: string | null } & CardListingRunnerParts): { readonly enumerator: CardEnumerator; readonly unavailable: CardListingUnavailable | null } {
+  if (host.platform === MACOS_CARD_LISTING_PLATFORM) {
+    if (typeof host.helperProgram !== 'string') return { enumerator: unavailableCardEnumerator(CardListingUnavailable.LISTING_PROGRAM_NOT_HANDED_IN), unavailable: CardListingUnavailable.LISTING_PROGRAM_NOT_HANDED_IN };
+    return { enumerator: macosCardEnumeratorOf({ door: host.door, timers: host.timers, helperProgram: host.helperProgram }), unavailable: null };
+  }
   if (host.platform !== CARD_LISTING_PLATFORM) return cardEnumeratorOf(host.platform, undefined);
   return cardEnumeratorOf(host.platform, cardListingProgramsOf(host));
+}
+
+// ── The card listing of a macOS host (task 4 row N7; masterplan/06 revision 3 sections 2.2, 2.3, 3.3; SM-10) ──
+//
+// THREE FIXED ROWS of the helper table, each through the production door with an empty environment,
+// no start message, its input ended at once, and each held to its own bound and cap. The texts go
+// UNCHANGED to the strict readers of row N6 (`createMacosCardEnumerator`); this file reads none of
+// them. What makes a row's text UNREADABLE (review SM-10 (1), (2)) - never an empty list, never a
+// guess - is the named refusal `CardListingProgramError` with the row:
+//
+//   row               read from        ends                                               cap of each stream
+//   USB tree          standard output  by itself, exit code 0                             512 KiB (row N5b, C131)
+//   system audio      standard output  by itself, exit code 0                             32 KiB
+//   capture devices   diagnostics      by itself with an exit code (non-zero by design),  32 KiB
+//                                      not by a signal; the audio section line is the
+//                                      reader's to require (exactly once)
+//
+// A row killed at its bound is `TIMED_OUT` and the wait ends THEN: a descendant that holds a stream
+// open does not hold the caller. AN INDEX IS NEVER KEPT: every listing is three new runs, and what
+// a listing answered is dropped once it has settled (`macosCardEnumeratorOf`).
+
+/** The platform whose listing is the three rows below. */
+export const MACOS_CARD_LISTING_PLATFORM = 'darwin';
+
+/** Which stream of a row is its text. */
+type MacosListingStream = 'output' | 'diagnostics';
+
+/**
+ * THE LIMITS OF THE THREE ROWS. The bounds are the table's (SR-15 (6)). The caps, against the sizes
+ * measured on this Mac on 2026-10-14 (record `implementation/n7_macos_platform_seam.md` section 3):
+ *   USB tree       45,342 bytes for 5 devices (6,722 to 12,435 each). Row N5b (decision C131 (2)):
+ *                  512 KiB, `MACOS_USB_TREE_TEXT_BYTES` of the property-list reader - ONE constant
+ *                  for this cap and the reader's bound - handed to the door as the call's cap (the
+ *                  door's default 64 KiB left about two more devices). It holds the listing's 32
+ *                  devices of the largest measured size (397,920 bytes). A longer text is refused,
+ *                  never cut. The row is not narrowed: every narrower form measured loses the
+ *                  interface class the audio rule rests on, and its words are pinned (SR-15 (6)).
+ *   system audio   1,471 bytes for 3 items (at most 445 each); the reader takes 32 items: 32 KiB is
+ *                  32 items of 1 KiB, more than twice the largest measured item.
+ *   capture list   613 bytes for 6 entries and 3 closing lines (68 characters at most); the reader
+ *                  takes lines of 512 characters and 32 audio entries: 32 KiB is 64 such lines.
+ */
+export const MACOS_LISTING_ROW_LIMITS: Readonly<Record<MacosListingRow, { readonly boundMs: number; readonly capBytes: number; readonly read: MacosListingStream }>> = Object.freeze({
+  USB_TREE: Object.freeze({ boundMs: MACOS_LISTING_HELPER_TABLE.usbTree.boundMs, capBytes: MACOS_USB_TREE_TEXT_BYTES, read: 'output' as const }),
+  SYSTEM_AUDIO: Object.freeze({ boundMs: MACOS_LISTING_HELPER_TABLE.systemAudio.boundMs, capBytes: 32 * 1024, read: 'output' as const }),
+  CAPTURE_DEVICES: Object.freeze({ boundMs: MACOS_LISTING_HELPER_TABLE.deviceList.boundMs, capBytes: 32 * 1024, read: 'diagnostics' as const }),
+});
+
+export interface MacosListingRunnerParts {
+  /** The production door: the one file that starts a production program. */
+  readonly door: ProductionDoor;
+  readonly timers: CaptureTimers;
+  /** The audio helper of the configuration (`DEMS_CAPTURE_AUDIO_HELPER`): the program of the device-list row. */
+  readonly helperProgram: string;
+  /** Default: the path rule's own inspector. A TEST hands in facts; production code hands in nothing. */
+  readonly inspect?: ProgramInspector;
+  /** Defaults: the two programs of the table. A TEST hands in stand-ins; production code hands in nothing. */
+  readonly usbTreeProgram?: string;
+  readonly systemAudioProgram?: string;
+  /** Defaults: `MACOS_LISTING_ROW_LIMITS`. A TEST hands in short bounds or small caps; production code hands in nothing. */
+  readonly limits?: Partial<Readonly<Record<MacosListingRow, { readonly boundMs: number; readonly capBytes: number }>>>;
+}
+
+/** ONE run of ONE row: the text of the row's stream, or the named refusal with the row. */
+async function macosListingRowText(parts: MacosListingRunnerParts, row: MacosListingRow, program: string, args: readonly string[]): Promise<string> {
+  const given = parts.limits?.[row];
+  const { read } = MACOS_LISTING_ROW_LIMITS[row];
+  const boundMs = boundOf(given?.boundMs, MACOS_LISTING_ROW_LIMITS[row].boundMs);
+  const capBytes = boundOf(given?.capBytes, MACOS_LISTING_ROW_LIMITS[row].capBytes);
+  const { door, timers } = parts;
+  // Row N5b (decision C131): the door keeps the row's own cap of each stream, and the row's program leads a process group of its
+  // own, so the kill at the bound below ends a descendant it forked as well (SM-10 (3)).
+  const running = door({ command: program, args, env: {}, message: null, timers, outputCapBytes: capBytes, processGroup: true });
+  let tellHalted: () => void = () => undefined;
+  const halted = new Promise<null>((resolve) => {
+    tellHalted = () => resolve(null);
+  });
+  let timedOut = false;
+  const cancel = timers.after(boundMs, () => {
+    timedOut = true;
+    running.kill('SIGKILL');
+    tellHalted();
+  });
+  // The program takes nothing on its input: it is ended as soon as the start settled, either way.
+  void running.started.then(
+    () => running.endInput(),
+    () => undefined,
+  );
+  const exit = await Promise.race([running.ended, halted]);
+  cancel();
+  if (exit !== null && exit.spawnFailed) throw new CardListingProgramError(CardListingProgramFailure.NOT_STARTED, row);
+  if (timedOut || exit === null) throw new CardListingProgramError(CardListingProgramFailure.TIMED_OUT, row);
+  const endedByItself = exit.signal === null && exit.exitCode !== null;
+  if (!endedByItself || (read === 'output' && exit.exitCode !== 0)) throw new CardListingProgramError(CardListingProgramFailure.ENDED_NONZERO, row);
+  // BOTH streams are held to the cap (SM-10 (1)); the text is the stream the row is read from.
+  const text = read === 'output' ? exit.output : exit.diagnostics;
+  const other = read === 'output' ? exit.diagnostics : exit.output;
+  if (Buffer.byteLength(text, 'utf8') >= capBytes || Buffer.byteLength(other, 'utf8') >= capBytes) throw new CardListingProgramError(CardListingProgramFailure.OUTPUT_TOO_LONG, row);
+  return text;
+}
+
+/**
+ * THE RUNNER OF THE THREE ROWS: the source of row N6's listing. Each method is ONE new run of its
+ * fixed row; no method takes an argument, so nothing a device announced can become part of a
+ * question. The audio helper is vouched for by the path rule before EVERY start of its row (SM-10
+ * (6)): a refused path starts nothing and is `NOT_STARTED`.
+ */
+export function macosListingSourceOf(parts: MacosListingRunnerParts): MacosListingSource {
+  const inspect = parts.inspect ?? inspectProgram;
+  const usbTreeProgram = parts.usbTreeProgram ?? MACOS_USB_TREE_PROGRAM;
+  const systemAudioProgram = parts.systemAudioProgram ?? MACOS_SYSTEM_AUDIO_PROGRAM;
+  return Object.freeze({
+    usbTree: () => macosListingRowText(parts, MacosListingRow.USB_TREE, usbTreeProgram, macUsbTreeArguments()),
+    systemAudio: () => macosListingRowText(parts, MacosListingRow.SYSTEM_AUDIO, systemAudioProgram, macSystemAudioArguments()),
+    async captureDevices(): Promise<string> {
+      let refusal: string | null;
+      try {
+        refusal = helperProgramRefusal(inspect(parts.helperProgram));
+      } catch {
+        refusal = 'NOT_INSPECTED';
+      }
+      if (refusal !== null) throw new CardListingProgramError(CardListingProgramFailure.NOT_STARTED, MacosListingRow.CAPTURE_DEVICES);
+      return macosListingRowText(parts, MacosListingRow.CAPTURE_DEVICES, parts.helperProgram, macMicDeviceListArguments());
+    },
+  });
+}
+
+/**
+ * THE ENUMERATOR OF A macOS HOST: row N6's enumerator over the runner above, SINGLE-FLIGHT (review
+ * SM-10 (4)): a search, an open, a start and a watch pass that fall together share the ONE listing
+ * in flight; none queues a second. NOTHING IS KEPT once a listing has settled: the next call is
+ * three new runs, so an index of the capture list is never answered from an earlier listing (it
+ * was 0, then 1, then 2 on this Mac across restarts). Residual, stated for the adapter (row N9): a
+ * caller that joins a listing in flight gets texts read from the moment that listing began, at
+ * most one listing's time before its own call.
+ * `list` raises `MacosCardListingError` for a list its reader refused and the runner's
+ * `CardListingProgramError` for a row that failed: never a listing of no card.
+ */
+export function macosCardEnumeratorOf(parts: MacosListingRunnerParts): MacosCardEnumerator {
+  const reader = createMacosCardEnumerator(macosListingSourceOf(parts));
+  let inFlight: Promise<MacosTiedListing> | null = null;
+  const listTied = (): Promise<MacosTiedListing> => {
+    if (inFlight !== null) return inFlight;
+    const reading = reader.listTied();
+    inFlight = reading;
+    const settled = (): void => {
+      if (inFlight === reading) inFlight = null;
+    };
+    reading.then(settled, settled);
+    return reading;
+  };
+  return Object.freeze({
+    listTied,
+    async list() {
+      const tied = await listTied();
+      if (!tied.ok) throw new MacosCardListingError(tied.failure, tied.detail);
+      return tied.listing;
+    },
+  });
 }
 
 // ── The host's own observations of the commissioning functions (task 4 row 111b; decisions C78, C87) ──

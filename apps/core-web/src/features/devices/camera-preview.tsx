@@ -1,7 +1,7 @@
 import { useId, useImperativeHandle } from 'react'
 import { VideoOff } from 'lucide-react'
 import { sourceDeviceText } from './own-core-words'
-import { useStatedFormat } from './stream-facts'
+import { cameraCaptureFaultOf, trackFaultText, useStatedFormat } from './stream-facts'
 import { checkedAtOf, sourceLineState } from './source-state'
 import { useTranslation } from 'react-i18next'
 import { selectIsRecording, useSim, cameraLinesInForce } from '@dems/shared/sim'
@@ -60,11 +60,18 @@ function NoPreviewTile({ cameraId, variant = 'feed', recordingSince = null, form
   const name = source === null ? track : `${track} · ${source}`
   // Fix wave L (G70c-02): the word under "No preview" follows the rule of a source line - "Online" was said of sources nobody opened.
   const reach = line === undefined ? null : sourceLineState({ realCapture: true, recording, online: line.online, streamState: line.streamState, checkedAt: checkedAtOf(device) })
+  // Task 4 row W5 (review 060d Q-01): a camera the Core holds an ACTIVE capture fault about (it stopped delivering
+  // inside the session) is not "Stream live" - its line still reads LIVE while the relay re-opens it. The fault is
+  // said in the state's place and goes when the Core resolves it.
+  const lineDeviceId = line?.deviceId ?? null
+  const raised = useSim((simState) => (lineDeviceId === null ? null : cameraCaptureFaultOf(simState.alerts, lineDeviceId)))
   const state =
     line === undefined || reach === null
       ? t('devices.selector.notAssigned')
       : reach.stream === 'LOST'
         ? t('devices.selector.stream.LOST')
+        : raised !== null
+          ? trackFaultText(t, raised)
         : reach.reach === 'NOT_REACHABLE'
           ? t('common.developmentRoster.notReachable')
           : reach.reach === 'NOT_CHECKED'
@@ -91,6 +98,7 @@ function NoPreviewTile({ cameraId, variant = 'feed', recordingSince = null, form
         data-testid="camera-no-preview"
         data-camera={cameraId}
         data-state={line === undefined ? 'NOT_ASSIGNED' : !line.online ? 'OFFLINE' : line.streamState === 'LOST' ? 'LOST' : 'ONLINE'}
+        data-fault={line === undefined ? undefined : (raised ?? undefined)}
         // Fix wave L (G89c-08): in a Dashboard tile (variant `tile`) the four lines fit the short stage at 1440 x 900 - a small icon and tight lines.
         className={cn(
           'flex flex-col items-center justify-center rounded-[inherit] px-2 text-center',

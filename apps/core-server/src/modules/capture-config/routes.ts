@@ -58,7 +58,11 @@
  *     the profile that slot keeps (operation 79 names none);
  *   - none (an empty slot, no profile named): `422 INVALID_INPUT`, `CAMERA_PROFILE_NOT_STATED`;
  *   - one that is no element of the device's stored list: `422 INVALID_INPUT`,
- *     `CAMERA_PROFILE_NOT_OF_DEVICE`.
+ *     `CAMERA_PROFILE_NOT_OF_DEVICE`;
+ *   - (row S86a; caution C-1 of row 86, C127) one that is listed but has NO STORED STREAM ROW
+ *     (`capture_device_streams`, what the camera adapter's open reads): `422 INVALID_INPUT`,
+ *     `CAMERA_PROFILE_WITHOUT_STREAM` (`PROFILE_WITHOUT_STREAM_REASON`; row V7c, C130) with its own
+ *     sentence: adopt the camera again (operation 108 cannot heal it).
  * Nothing changes on a refusal: no state, no audit row, the slot as it was. NOT touched: Simulated
  * mode (no registry is provided), a development or fake source, a built-in device (their adapter
  * is another kind or none), a microphone.
@@ -119,7 +123,7 @@ import { CaptureAdapterError, CaptureAdapterKind, CaptureAdapterRefusal, sourceC
 import type { DurableSlices } from '../../db/mapping';
 import { ApiFailure } from '../../plugins/error-envelope';
 import { routeOfOperation } from '../../plugins/permission-guard';
-import { readCameraProfiles, readMicTransports } from './store';
+import { readCameraProfiles, readCameraStreamProfiles, readMicTransports } from './store';
 
 /** The operations this module answers, in registry order (operations 76 to 80). */
 export const CAPTURE_CONFIG_MODULE_OPERATIONS = ['getCaptureConfig', 'getCaptureDevices', 'updateCaptureConfig', 'setCaptureCameraSource', 'setPrimaryMic'] as const;
@@ -184,8 +188,43 @@ export const CaptureProfileRefusal = {
   CAMERA_PROFILE_NOT_STATED: 'CAMERA_PROFILE_NOT_STATED',
   /** The profile in force after the edit is no element of the profiles the camera's stored row lists. */
   CAMERA_PROFILE_NOT_OF_DEVICE: 'CAMERA_PROFILE_NOT_OF_DEVICE',
+  /** Task 4 row V7c (C130): the profile is listed, but no stored stream row holds it (row S86a; `common.captureSlotRefusal.CAMERA_PROFILE_WITHOUT_STREAM`). */
+  CAMERA_PROFILE_WITHOUT_STREAM: 'CAMERA_PROFILE_WITHOUT_STREAM',
 } as const;
 export type CaptureProfileRefusal = (typeof CaptureProfileRefusal)[keyof typeof CaptureProfileRefusal];
+
+/**
+ * A LISTED CODE WITHOUT ITS STORED STREAM ROW (task 4 row S86a; caution C-1 of the security review
+ * row 86; decision C127). The camera adapter's open refuses such a code (`onvif-relay.ts`, the
+ * stored stream facts, `CAPTURE_PROFILE_UNKNOWN`); the assignment now refuses it first, with a
+ * sentence that names the one remedy: ADOPT THE CAMERA AGAIN. A connection test (operation 108)
+ * cannot heal it - a listed code with no stream row is a difference there, and a difference stores
+ * nothing (row PR, case (b); C117, C126).
+ *
+ * THE WORD (task 4 row V7c; decision C130): `details.reason` is `CAMERA_PROFILE_WITHOUT_STREAM`, whose
+ * sentence the shared tree holds (`common.captureSlotRefusal.CAMERA_PROFILE_WITHOUT_STREAM`, the same
+ * words as `PROFILE_WITHOUT_STREAM_TEXT`, the `message`). Until row V7c this seam answered the closest
+ * existing word, `CAMERA_PROFILE_NOT_OF_DEVICE` (row S86a).
+ */
+export const PROFILE_WITHOUT_STREAM_REASON: CaptureProfileRefusal = CaptureProfileRefusal.CAMERA_PROFILE_WITHOUT_STREAM;
+export const PROFILE_WITHOUT_STREAM_TEXT =
+  'This camera was not assigned: the Core holds no stream facts for this profile, so the camera cannot record it. A connection test does not repair this. Adopt the camera again, then assign one of the profiles it states.';
+
+/** What the profile rule found for one camera line: the three refusals, or none. */
+export type OwnProfileFinding = 'NOT_STATED' | 'NOT_OF_DEVICE' | 'WITHOUT_STREAM';
+
+/**
+ * The judgement of the profile in force for a PRODUCTION camera (rows 187 and S86a), pure:
+ *   none                               -> NOT_STATED
+ *   not an element of the stored list  -> NOT_OF_DEVICE
+ *   listed, and no stored stream row   -> WITHOUT_STREAM
+ * `listed` is the camera's stored list, `streamed` the codes that have a stream row for THAT camera.
+ */
+export function ownProfileFindingOf(inForce: string | undefined, listed: readonly string[], streamed: ReadonlySet<string>): OwnProfileFinding | null {
+  if (inForce === undefined) return 'NOT_STATED';
+  if (!listed.includes(inForce)) return 'NOT_OF_DEVICE';
+  return streamed.has(inForce) ? null : 'WITHOUT_STREAM';
+}
 
 const LOCKED_TEXT = 'The capture configuration cannot be changed while a session is open.';
 const OWN_PROFILE_TEXT = 'A production camera is assigned with a profile of its own: one of the profiles it was registered with.';
@@ -316,25 +355,38 @@ function assertOneSlotPerCamera(registry: AssignmentRegistry | null, state: Dura
 const isProductionCamera = (state: Pick<DurableSlices, 'captureDevices'>, deviceId: string): boolean =>
   state.captureDevices.devices.some((device) => device.id === deviceId && device.kind === 'CAMERA' && device.adapter === CaptureAdapterKind.ONVIF_RTSP);
 
+/** Each finding of the profile rule as the 422 answers it: `details.reason` and the sentence (row S86a: the seam above). */
+const OWN_PROFILE_ANSWER: Readonly<Record<OwnProfileFinding, { readonly reason: CaptureProfileRefusal; readonly text: string }>> = Object.freeze({
+  NOT_STATED: { reason: CaptureProfileRefusal.CAMERA_PROFILE_NOT_STATED, text: OWN_PROFILE_TEXT },
+  NOT_OF_DEVICE: { reason: CaptureProfileRefusal.CAMERA_PROFILE_NOT_OF_DEVICE, text: OWN_PROFILE_TEXT },
+  WITHOUT_STREAM: { reason: PROFILE_WITHOUT_STREAM_REASON, text: PROFILE_WITHOUT_STREAM_TEXT },
+});
+const NO_STREAM_ROWS: ReadonlySet<string> = new Set<string>();
+
 /**
  * A PRODUCTION CAMERA HAS A PROFILE OF ITS OWN (see the header): refuses, before the hosted action,
- * a camera line that would leave a production camera with no profile or with one its stored row
- * does not list. `ownProfiles` is the stored list by camera, read for this edit; a production
- * camera it does not hold states nothing, so every profile is refused for it (fail closed).
+ * a camera line that would leave a production camera with no profile, with one its stored row
+ * does not list, or (row S86a) with a listed one that has no stored stream row. `ownProfiles` is the
+ * stored list by camera and `streamed` the codes with a stream row by camera, both read for this
+ * edit; a production camera they do not hold states nothing, so every profile is refused for it
+ * (fail closed).
  */
-function assertOwnProfile(registry: AssignmentRegistry | null, state: DurableSlices, change: CaptureConfigChange, ownProfiles: ReadonlyMap<string, readonly string[]> | null): void {
+function assertOwnProfile(
+  registry: AssignmentRegistry | null,
+  state: DurableSlices,
+  change: CaptureConfigChange,
+  ownProfiles: ReadonlyMap<string, readonly string[]> | null,
+  streamed: ReadonlyMap<string, ReadonlySet<string>> | null,
+): void {
   if (registry === null) return;
   for (const line of cameraLinesOf(change)) {
     if (!isProductionCamera(state, line.deviceId)) continue;
     // What the action would store: the line's own profile, else the one a held slot keeps. An empty slot has none.
     const inForce = line.profile ?? state.captureConfig.cameras.find((camera) => camera.trackId === line.trackId)?.profile;
-    const reason =
-      inForce === undefined
-        ? CaptureProfileRefusal.CAMERA_PROFILE_NOT_STATED
-        : (ownProfiles?.get(line.deviceId) ?? []).includes(inForce)
-          ? null
-          : CaptureProfileRefusal.CAMERA_PROFILE_NOT_OF_DEVICE;
-    if (reason !== null) throw new ApiFailure(422, ApiErrorCode.INVALID_INPUT, OWN_PROFILE_TEXT, { details: { in: 'body', reason, deviceId: line.deviceId, trackId: line.trackId } });
+    const finding = ownProfileFindingOf(inForce, ownProfiles?.get(line.deviceId) ?? [], streamed?.get(line.deviceId) ?? NO_STREAM_ROWS);
+    if (finding === null) continue;
+    const { reason, text } = OWN_PROFILE_ANSWER[finding];
+    throw new ApiFailure(422, ApiErrorCode.INVALID_INPUT, text, { details: { in: 'body', reason, deviceId: line.deviceId, trackId: line.trackId } });
   }
 }
 
@@ -386,6 +438,9 @@ export function registerCaptureConfigRoutes(app: FastifyInstance, seams: Capture
     // Row 187 (C36 (1)): the stored profile lists, read ONCE and only for an edit that assigns a production camera on a Core in real
     // capture (a registry is provided). Simulated mode and every development, fake or built-in camera make no read.
     const ownProfiles = assignsProductionCamera(change) ? await readCameraProfiles(app.db.pool) : null;
+    // Row S86a (C-1 of row 86, C127): with them, and under the same condition, the codes that have a STORED STREAM ROW - what the
+    // camera adapter's open reads. Simulated mode (no registry) and every non-production camera make no read, as above.
+    const streamed = ownProfiles === null ? null : await readCameraStreamProfiles(app.db.pool);
     const outcome = await app.engine.run(`captureConfig.${operationId}`, async (scope) => {
       const before = scope.pending();
       // The simulator's order: an unknown path ID is 404 also while the selector is locked.
@@ -397,7 +452,7 @@ export function registerCaptureConfigRoutes(app: FastifyInstance, seams: Capture
       // Row R2 (C93): after the registry's own refusals, BEFORE the profile rule (no profile makes one camera two) and before the action.
       assertOneSlotPerCamera(seams.deviceRegistry(), before, change);
       // Row 187 (C36 (1)): after the registry's own refusals (each keeps its reason), BEFORE the action - no default profile stands in.
-      assertOwnProfile(seams.deviceRegistry(), before, change, ownProfiles);
+      assertOwnProfile(seams.deviceRegistry(), before, change, ownProfiles, streamed);
       await scope.command(request.principal, 'setCaptureConfig', change);
       const after = scope.pending();
       return { captureConfig: after.captureConfig, changed: after.captureConfig !== before.captureConfig };

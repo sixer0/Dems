@@ -119,7 +119,8 @@ describe('M2-STTCFG-DB (seed clause): the seed writes the one confirmed row and 
 describe('M2-STTCFG-DB (kept clause): the kept set is thirteen with stt_config by upsert', () => {
   it('thirteen names, stt_config among them, carried by upsert on its singleton key', () => {
     console.log(`[row114] kept set (${String(KEPT_TABLE_NAMES.length)}) | ${KEPT_TABLE_NAMES.join(', ')}`);
-    expect(KEPT_TABLE_NAMES).toHaveLength(13);
+    // 18 since integration pass I-9c (review 120 F-6): the five tables of task 4's schema sets A to C join; stt_config is unchanged.
+    expect(KEPT_TABLE_NAMES).toHaveLength(18);
     expect(KEPT_TABLE_NAMES).toContain('stt_config');
     const entry = KEPT_TABLES.find((table) => table.name === 'stt_config');
     expect(entry?.mode).toBe('upsert');

@@ -55,6 +55,7 @@ import {
   type ReaddressCaptureDeviceInput,
   type RegisterCaptureDeviceInput,
   type RegisterCaptureMicrophoneInput,
+  type StoreCaptureDeviceProfilesInput,
   type Sim,
   type SimClock,
   type SimErrorReport,
@@ -94,6 +95,8 @@ import { SEALED_FACTS_DOOR_LABEL, applySealedItemFactsTransition, type EngineSea
 // Capture-checkpoint block and time block (wave H closing pass Z1): what the Core holds of a running recording; the host clock as the time of a Core in its own capture.
 import { hostClockTimeTransition, platformNotReportedTransition, updaterNotAvailableTransition } from '@dems/shared/sim';
 import { CAPTURE_CHECKPOINT_DOOR_LABEL, applyCaptureCheckpointsTransition, type CaptureCheckpointFacts, type EngineCaptureCheckpointDoors } from './capture-checkpoint-doors';
+// Camera-bitrate block (task 4 wave 12, row CB; finding R-01): a Core in its own capture states no bitrate of a camera.
+import { cameraBitrateNotStatedTransition } from './camera-bitrate';
 import { asc } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import {
@@ -826,6 +829,40 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
     return readdressed;
   }
 
+  /**
+   * The INTERNAL action `storeCaptureDeviceProfiles` in a module's own unit (task 4 row V7; request
+   * of row PR; `internal-actions.ts`): the steps of the re-address door. The action changes the
+   * `profiles` of ONE registered camera in the unit's pending state; the slice is published when -
+   * and only when - the unit commits. `flush` finds NO changed column: the row mapping keeps the
+   * empty form of `capture_devices.profiles` whatever the entry lists (`captureDevicesToRows`), and
+   * the caller's own statement writes the column in this unit. A refused input changes nothing.
+   * The log lines carry the unit and the action, never a profile code.
+   */
+  async function storeCaptureDeviceProfilesInScope(scope: Scope, change: StoreCaptureDeviceProfilesInput): Promise<CaptureDeviceStatus> {
+    const where = { unit: scope.unit.id, label: scope.unit.label, action: 'storeCaptureDeviceProfiles' };
+    syncNative(scope);
+    await checkHead(scope);
+    const { sim } = scope.live;
+    counters.commands += 1;
+    try {
+      sim.actions.storeCaptureDeviceProfiles(change);
+    } catch (error) {
+      const refusal = simRefusal(error);
+      if (refusal !== null) {
+        counters.commandsRefused += 1;
+        log.debug({ ...where, code: refusal.code, simCode: simCodeOf(refusal) }, 'internal action refused');
+        throw refusal;
+      }
+      log.error({ ...where, code: codeOf(error) }, 'internal action failed');
+      persist('error', 'an internal action failed', error, where);
+      throw error;
+    }
+    await flush(scope);
+    const stored = sim.store.getState().captureDevices.devices.find((entry) => entry.id === change.deviceId);
+    if (stored === undefined) throw new EngineError('ENGINE_ACTION_NOT_HOSTED', 'the capture device is not in the state after the action that stored its profiles');
+    return stored;
+  }
+
   function engineUnitOf(scope: Scope): EngineUnit {
     return bindInternalActions(
       {
@@ -837,6 +874,7 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
         registerCaptureDevice: (device) => registerCaptureDeviceInScope(scope, device),
         registerCaptureMicrophone: (microphone) => registerCaptureMicrophoneInScope(scope, microphone),
         readdressCaptureDevice: (change) => readdressCaptureDeviceInScope(scope, change),
+        storeCaptureDeviceProfiles: (change) => storeCaptureDeviceProfilesInScope(scope, change),
         // Capture block (blueprint row 71): the two in-unit doors of the session wiring.
         markCaptureConnecting: (sessionId) => markCaptureConnectingInScope(scope, sessionId),
         switchCaptureAudioSource: (change) => switchCaptureAudioSourceInScope(scope, change),
@@ -1078,6 +1116,14 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
         // press on a real-capture Core): it says `updaterNotAvailable` before anything reads it.
         if (dependencies.captureLevels === 'external') {
           const stated = updaterNotAvailableTransition(sim.store.getState());
+          if (stated !== sim.store.getState()) sim.store.setState(stated, true);
+        }
+
+        // Camera-bitrate block (task 4 wave 12, row CB; review finding R-01; decision C36): on a Core in its own
+        // capture no source states a bitrate of a camera. The slice this start read holds the simulator's initial 9
+        // (a seed, a reset, a state stored before this rule): it says null before anything reads it (`camera-bitrate.ts`).
+        if (dependencies.captureLevels === 'external') {
+          const stated = cameraBitrateNotStatedTransition(sim.store.getState());
           if (stated !== sim.store.getState()) sim.store.setState(stated, true);
         }
 

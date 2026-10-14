@@ -591,7 +591,21 @@ describe('gates 64 / 75 / 89 (D194, D199, D200): the worker version, the reason 
     const alert = (reason: string, target: string | null, over: Record<string, unknown> = {}) => ({ active: true, kind: 'SYSTEM' as const, target, params: { reason }, ...over });
 
     it('the notices of a RUNNING capture that are still active: every advisory reason on its device, and the volume notice', () => {
-      expect([...BOOT_RESOLVED_NOTICE_REASONS].sort()).toEqual(['AV_OFFSET_NEAR_BOUND', 'CAMERA_CLOCK_OFFSET', 'EVIDENCE_VOLUME_SYNC_NOT_FULL', 'FRAGMENT_SIZE_BOUND_REACHED', 'KEYFRAME_INTERVAL_ABOVE_BOUND', 'MIC_RATE_AT_LIMIT']);
+      // Task 4 row N2 (the one contract step of the macOS microphone design): the list is every advisory reason of the shared contract plus the
+      // volume notice, and the contract gained five advisory reasons of a microphone path that is not sample-continuous (6 -> 11 names).
+      expect([...BOOT_RESOLVED_NOTICE_REASONS].sort()).toEqual([
+        'AV_OFFSET_NEAR_BOUND',
+        'CAMERA_CLOCK_OFFSET',
+        'EVIDENCE_VOLUME_SYNC_NOT_FULL',
+        'FRAGMENT_SIZE_BOUND_REACHED',
+        'KEYFRAME_INTERVAL_ABOVE_BOUND',
+        'MIC_PATH_NOT_SAMPLE_CONTINUOUS',
+        'MIC_RATE_AT_LIMIT',
+        'MIC_SAMPLES_SHORT_ABOVE_BOUND',
+        'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL',
+        'MIC_SILENCE_RUN_INSERTED',
+        'STANDBY_ON_PRIMARY_DEVICE',
+      ]);
       expect(
         staleCaptureNoticesOf([
           alert('AV_OFFSET_NEAR_BOUND', 'CAM-01'),

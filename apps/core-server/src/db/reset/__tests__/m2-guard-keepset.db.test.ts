@@ -173,3 +173,70 @@ describe('M2-MT-5: the twelve kept tables survive a permitted reset (capture tab
     expect(config.rows).toEqual([{ revision: '3', updated_by: 'OPR-002', video_01_device_id: 'CAM-01' }]);
   });
 });
+
+describe('I-9c (review 120 F-6): the five tables of task 4 cross a permitted reset with the device they describe', () => {
+  // Their own database: the planted rows are the only content of the five tables.
+  let target: ReturnType<typeof db.another> extends Promise<infer D> ? D : never;
+  const FIVE = ['capture_device_streams', 'capture_audio_inputs', 'capture_network_config', 'host_network_aliases', 'installation_acceptances'] as const;
+
+  beforeAll(async () => {
+    target = await db.another({ template: 'seed', slug: 'rgk9c' });
+  });
+  afterAll(async () => {
+    if (target !== undefined) await discard(maintenance, target, db.run.identity.prefix);
+  });
+
+  it('an adopted camera keeps BOTH of its stream rows (two-column key), a registered input, the network settings, an open and a closed alias and an acceptance; each table byte-equal', async () => {
+    const owner = target.ownerPool();
+    const t = 1_760_000_000_000;
+    // An adopted camera with TWO stored profiles (one row per (device, profile)) and a registered USB input.
+    await owner.query(
+      "INSERT INTO public.capture_devices (id, kind, transport, enabled, adapter_kind, address) VALUES ('CAM-21', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP', '192.168.50.21'), ('MIC-21', 'MIC', 'USB', true, 'USB_AUDIO', NULL)",
+    );
+    await owner.query(
+      'INSERT INTO public.capture_device_streams (device_id, profile, onvif_profile_token, video_source_token, lens, stream_role, codec, width, height, read_at) VALUES ' +
+        "('CAM-21', 'H264_FHD', 'profile_1', 'vs_1', 1, 'MAIN', 'H264', 1920, 1080, $1), ('CAM-21', 'HEVC_UHD', 'profile_2', 'vs_1', 1, 'SUB', 'HEVC', 3840, 2160, $1)",
+      [t],
+    );
+    await owner.query(
+      "INSERT INTO public.capture_audio_inputs (device_id, usb_id, card_id, card_device, input_number, native_channels, updated_by, updated_at, usb_serial, usb_port) VALUES ('MIC-21', '1235:8215', 'USB', 0, 3, 18, 'OPR-003', $1, 'Y8ABC123', '0000:00:14.0-2.3')",
+      [t],
+    );
+    await owner.query(
+      "INSERT INTO public.capture_network_config (interface_name, camera_subnet, factory_addresses, alias_host, alias_minutes, camera_ip_start, revision, updated_by, updated_at, onvif_ports) VALUES ('eth1', '192.168.50.0/24', '[\"192.168.1.64\"]', 250, 45, 120, 4, 'OPR-003', $1, '[80, 8000]')",
+      [t],
+    );
+    // One alias still in place (its address is up on the host) and one closed: the reset must not forget the open one.
+    await owner.query(
+      'INSERT INTO public.host_network_aliases (interface_name, address, reason, added_at, added_by, expires_at, removed_at, remove_reason, removed_by, remove_error) VALUES ' +
+        "('eth1', '192.168.1.253/24', 'FACTORY_SCAN', $1, 'OPR-003', $2, $3, 'JOB_DONE', 'OPR-003', NULL), ('eth1', '192.168.1.252/24', 'SET_CAMERA_ADDRESS', $4, 'OPR-003', $5, NULL, NULL, NULL, NULL)",
+      [t, t + 1_800_000, t + 600_000, t + 900_000, t + 2_700_000],
+    );
+    await owner.query(
+      'INSERT INTO public.installation_acceptances (accepted_at, accepted_by, software_version, core_device_id, site_name, room, site_address, steps, diagnostics) VALUES ' +
+        "($1, 'OPR-003', '0.6.0', 'DEMS-RST-09', 'Ruang Uji', 'R-9', NULL, $2::jsonb, $3::jsonb)",
+      [t, JSON.stringify([{ id: '9A/H-01', passed: true, detail: null }]), JSON.stringify({ id: 'DIAG-000009', startedAt: t - 60_000, completedAt: t - 30_000, checks: [] })],
+    );
+
+    const before = Object.fromEntries(await Promise.all(KEPT_TABLE_NAMES.map(async (table) => [table, await contractChecksum(owner, table)] as const)));
+
+    await quiet(maintenance, target);
+    const report = await resetDatabase({ database: target.name, clock: () => t + 3_600_000, dataDir: db.run.dataDir, sessionDrainMs: PATIENT_MS }, internals);
+
+    // Read from the old database: two stream rows, one input, one settings row, two aliases, one acceptance.
+    expect(report.kept).toMatchObject({ capture_device_streams: 2, capture_audio_inputs: 1, capture_network_config: 1, host_network_aliases: 2, installation_acceptances: 1 });
+    console.log(`[i9c] kept rows of the five tables: ${FIVE.map((table) => `${table} ${String(report.kept[table])}`).join(', ')}`);
+
+    const after = target.ownerPool();
+    for (const table of FIVE) expect(await contractChecksum(after, table), table).toBe(before[table]);
+    // And the device rows they describe crossed too (they always did): the stream rows still name a kept camera.
+    expect(await contractChecksum(after, 'capture_devices')).toBe(before['capture_devices']);
+    const streams = await after.query("SELECT profile, codec FROM public.capture_device_streams WHERE device_id = 'CAM-21' ORDER BY profile");
+    expect(streams.rows).toEqual([
+      { profile: 'H264_FHD', codec: 'H264' },
+      { profile: 'HEVC_UHD', codec: 'HEVC' },
+    ]);
+    const open = await after.query('SELECT address FROM public.host_network_aliases WHERE removed_at IS NULL');
+    expect(open.rows).toEqual([{ address: '192.168.1.252/24' }]);
+  });
+});

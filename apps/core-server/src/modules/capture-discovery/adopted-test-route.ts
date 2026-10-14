@@ -46,8 +46,18 @@
  * refused the camera before a request (NOT_SENT). A reveal never stands without a result; an
  * outcome entry that cannot be written fails the request as a fault.
  *
+ * WHAT A `200` MAY STORE (row PR, decision C117; `adopted-profiles.ts`). A test whose stream half
+ * judged a stream meets what is stored for the camera, in the unit of its outcome entry: a camera
+ * with NO stored profile gets the judged statement stored (the adoption's own write; the entry's
+ * message ends `; profiles stored: N`); a camera whose stored statement the stream no longer makes
+ * gets NOTHING stored (the message ends `; STREAM_PROFILE_DIFFERS: stored N, stated N, differing N;
+ * nothing stored`); stored and stated the same: nothing, as before. The answer of this route is
+ * the same in all three - the contract's `CaptureDeviceConnectionTest` has no member for either
+ * (a request of row PR to the writer of the contract). Still TWO audit entries, and no body.
+ *
  * A CORE WITHOUT A RELAY PROGRAM (`captureRelayPath` not configured) is no refusal: the tester of
- * the module answers the ONVIF half's own outcome and judges no stream (`index.ts`, row 50).
+ * the module answers the ONVIF half's own outcome and judges no stream (`index.ts`, row 50) - and
+ * so stores nothing: such a Core cannot give a camera its profiles.
  *
  * A CORE IN SIMULATED CAPTURE answers `503 DISCOVERY_NOT_READY`, as the contract states for a
  * Core whose reader was not provided. It does NOT answer the in-app simulator's synthetic `200`:

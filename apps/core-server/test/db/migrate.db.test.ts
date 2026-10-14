@@ -28,8 +28,8 @@ async function publicTables(): Promise<string[]> {
 }
 
 describe('AC-B-01: the migration set on an empty database', () => {
-  it('the set is the thirty files of dbc-3 §A.1, §B.13, dbc-4 §N.8, errata PE-129a-01, PE-129b-01, PE-0013-01, task 4 schema sets A, B and C, task 4 package X-C, the profile-code CHECK and the alias removal reasons (two steps), in order, with rising journal times', () => {
-    expect(INITIAL_MIGRATION_TAGS).toHaveLength(30);
+  it('the set is the thirty-two files of dbc-3 §A.1, §B.13, dbc-4 §N.8, errata PE-129a-01, PE-129b-01, PE-0013-01, task 4 schema sets A, B and C, task 4 package X-C, the profile-code CHECK, the alias removal reasons (two steps) and the allowed ONVIF ports, in order, with rising journal times', () => {
+    expect(INITIAL_MIGRATION_TAGS).toHaveLength(32);
     const files = readMigrationSet();
     expect(files.map((file) => file.tag)).toEqual([...INITIAL_MIGRATION_TAGS]);
     expect(files.map((file) => file.idx)).toEqual(Array.from({ length: INITIAL_MIGRATION_TAGS.length }, (_, index) => index));
@@ -52,7 +52,7 @@ describe('AC-B-01: the migration set on an empty database', () => {
     expect(ledger.ok).toBe(true);
   });
 
-  it('first run, as dems_owner: applies the thirty files and sets schema version 13 (dbc-14)', async () => {
+  it('first run, as dems_owner: applies the thirty-two files and sets schema version 14 (dbc-15)', async () => {
     const who = await db.ownerPool().query<{ role: string; superuser: boolean }>(
       'SELECT current_user::text AS role, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS superuser',
     );
@@ -65,7 +65,7 @@ describe('AC-B-01: the migration set on an empty database', () => {
     expect(result.versionBefore).toBeNull();
     expect(result.applied).toEqual([...INITIAL_MIGRATION_TAGS]);
     expect(result.versionAfter).toEqual({ schemaVersion: DB_SCHEMA_VERSION, contractRevision: DB_CONTRACT_REVISION });
-    expect(result.versionAfter).toEqual({ schemaVersion: 13, contractRevision: 'dbc-14' });
+    expect(result.versionAfter).toEqual({ schemaVersion: 14, contractRevision: 'dbc-15' });
     expect(await publicTables()).toHaveLength(48);
 
     // The migrator stored each file's hash and journal time, in order.
@@ -88,8 +88,8 @@ describe('AC-B-01: the migration set on an empty database', () => {
     const ms = performance.now() - started;
 
     expect(result.applied).toEqual([]);
-    expect(result.versionBefore).toEqual({ schemaVersion: 13, contractRevision: 'dbc-14' });
-    expect(result.versionAfter).toEqual({ schemaVersion: 13, contractRevision: 'dbc-14' });
+    expect(result.versionBefore).toEqual({ schemaVersion: 14, contractRevision: 'dbc-15' });
+    expect(result.versionAfter).toEqual({ schemaVersion: 14, contractRevision: 'dbc-15' });
     expect(await readAppliedMigrations(pool)).toEqual(before);
     const catalogAfter = await pool.query(
       "SELECT count(*) AS objects, max(oid::bigint) AS newest FROM pg_class WHERE relnamespace = 'public'::regnamespace",
@@ -104,7 +104,7 @@ describe('AC-B-01: the migration set on an empty database', () => {
     const head = await pool.query('SELECT singleton, seq::int AS seq, hash FROM audit_chain_head');
     expect(head.rows).toEqual([{ singleton: true, seq: 0, hash: '0'.repeat(64) }]);
     const meta = await pool.query('SELECT singleton, schema_version, contract_revision FROM schema_meta');
-    expect(meta.rows).toEqual([{ singleton: true, schema_version: 13, contract_revision: 'dbc-14' }]);
+    expect(meta.rows).toEqual([{ singleton: true, schema_version: 14, contract_revision: 'dbc-15' }]);
 
     // Since 0018 a hand-written file may also write the two rows of the commissioning permission -
     // into a database that is ALREADY SEEDED only. On this empty one it writes nothing: `permissions`

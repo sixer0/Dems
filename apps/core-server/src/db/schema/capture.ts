@@ -40,7 +40,7 @@
  * (TY-1; `test/db/contract-inventory.test.ts`, `catalog.db.test.ts`), and an address stays text
  * as `capture_devices.address` is. Every address column is held to a pattern written out here.
  */
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import {
   bigint,
   boolean,
@@ -92,11 +92,19 @@ const ONVIF_TOKEN = '^[A-Za-z0-9_.:-]{1,64}$';
  */
 const USB_PATH_OR_SERIAL = '^[A-Za-z0-9:._-]{1,64}$';
 /**
- * The name of a host network interface (assumption AS-9 of the schema design): at most 15
- * characters, the first a lower-case letter or a digit. The alias helper holds the name it reads
- * from its own root-owned file to the same form.
+ * The name of a host network interface: at most 15 characters, the first a letter or a digit, the
+ * rest letters, digits and `_ . -`. EXACTLY the form the alias helper holds the name of its own
+ * root-owned file to (`scripts/host/netalias/dems-core-netalias`, `INTERFACE_NAME`:
+ * `\A[A-Za-z0-9][A-Za-z0-9_.-]{0,14}\Z`) and the Core's caller holds both names to
+ * (`capture/host-alias/caller.ts`, `facts.ts`) - no wider: the stored name ends up beside a root
+ * helper's argument. `$` is the end of the text here (PostgreSQL's default), as `\Z` is there.
+ *
+ * UPPER CASE SINCE SCHEMA V14 (`0030`; code review 120 finding F-4, decision C114). Until then
+ * the form was lower case only (assumption AS-9 of the schema design), and a port the kernel
+ * names with a capital - the predictable form with a PCI domain, `enP2p1s0` - could not be stored
+ * on a host where the helper itself would work.
  */
-const INTERFACE_NAME = '^[a-z0-9][a-z0-9._-]{0,14}$';
+const INTERFACE_NAME = '^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$';
 /** One number of a dotted IPv4 address, 0 to 255, without a leading zero. */
 const IPV4_OCTET = '(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])';
 /** The host part of an address inside a /24, 1 to 254 (never the network or the broadcast address). */
@@ -114,6 +122,28 @@ const PRIVATE_ALIAS_ADDRESS = `^(10[.]${IPV4_OCTET}[.]${IPV4_OCTET}|172[.](1[6-9
  * task - no camera at a factory address was ever reached from the Core.
  */
 const FACTORY_ADDRESSES_DEFAULT = ['192.168.1.64', '192.168.1.108', '192.168.0.90', '192.168.1.13'];
+/**
+ * The allowed ONVIF ports an existing row gets and a first-use row starts with (schema v14): port
+ * 80 alone, which is what the destination rule used before the list was stored
+ * (`capture/destination-rule.ts`, `DESTINATION_DEFAULT_PORTS`).
+ */
+const ONVIF_PORTS_DEFAULT = [80];
+/** The bound of the destination rule's port list (`capture/destination-rule.ts`, `DESTINATION_MAX_PORTS`). */
+const ONVIF_PORTS_MAX = 8;
+/**
+ * `a -> i = a -> j` for every two places of a list of at most `ONVIF_PORTS_MAX` elements, joined
+ * by OR: true when two elements are equal. A place the list does not have reads NULL, so the
+ * comparison is NULL there and never true. Plain SQL and no path: a CHECK admits no sub-select,
+ * and a path cannot compare an element with the ones after it without naming the places either.
+ * Statement text only (the column name of this file and the numbers 0 to 7).
+ */
+function anyTwoEqual(column: string): SQL {
+  const pairs: string[] = [];
+  for (let first = 0; first < ONVIF_PORTS_MAX; first += 1) {
+    for (let second = first + 1; second < ONVIF_PORTS_MAX; second += 1) pairs.push(`(${column} -> ${first}) = (${column} -> ${second})`);
+  }
+  return sql.raw(pairs.join(' OR '));
+}
 
 /**
  * T-32. The real/fake capture-device registry — never the paired-client registry
@@ -447,8 +477,16 @@ export const captureAudioInputs = pgTable(
  * `factory_addresses` is a list, never free JSON (S13-13): an array of at most 32 texts, each
  * of the dotted form of an IPv4 address. Whether an address is a private one is the module's
  * rule (it is the destination rule's too); the database holds the form and the size.
- * Runtime role (`0018`): SELECT, INSERT (the default row at first use), UPDATE on every column
- * but `singleton`, no DELETE.
+ *
+ * `onvif_ports` (schema v14, `0030`; code review 120b finding S2-02, decision C116; security
+ * requirement S13-11 point 3, "the port from the short stored list") is the SEVENTH SETTING: the
+ * ports the destination rule admits for a camera's ONVIF service, in the order the rule reads
+ * them (the FIRST is the port of an address that names none). Every bound of the rule's list is
+ * held here too: a list of 1 to 8 elements, each a whole number 1 to 65535, no two equal. An
+ * empty list is refused as the rule refuses it (`PORT_LIST_INVALID`). The default `[80]` is what
+ * the rule used while no list was stored, so an existing row keeps today's behaviour.
+ * Runtime role (`0018`, `0031`): SELECT, INSERT (the default row at first use), UPDATE on every
+ * column but `singleton`, no DELETE.
  */
 export const captureNetworkConfig = pgTable(
   'capture_network_config',
@@ -463,6 +501,8 @@ export const captureNetworkConfig = pgTable(
     revision: bigint('revision', { mode: 'number' }).notNull().default(1),
     updatedBy: text('updated_by'),
     updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
+    // Schema v14. Declared LAST: `0030` adds it, so this is its place in the stored table.
+    onvifPorts: jsonb('onvif_ports').$type<number[]>().notNull().default(ONVIF_PORTS_DEFAULT),
   },
   (t) => [
     foreignKey({
@@ -487,6 +527,19 @@ export const captureNetworkConfig = pgTable(
     check('capture_network_config_alias_minutes_check', sql`${t.aliasMinutes} BETWEEN 5 AND 480`),
     check('capture_network_config_camera_ip_start_check', sql`${t.cameraIpStart} BETWEEN 2 AND 250`),
     check('capture_network_config_revision_check', sql`${t.revision} >= 1`),
+    // Schema v14. Declared LAST: `0030` adds them. CASE as above: what is no list is refused as a
+    // rule. Three STRICT paths, one question each: an element that is no number; a number outside
+    // 1..65535; a number that is not whole. The size is the rule's own, 1 to 8.
+    check(
+      'capture_network_config_onvif_ports_check',
+      sql`CASE WHEN jsonb_typeof(${t.onvifPorts}) = 'array' THEN jsonb_array_length(${t.onvifPorts}) BETWEEN 1 AND ${sql.raw(String(ONVIF_PORTS_MAX))} AND NOT jsonb_path_exists(${t.onvifPorts}, 'strict $[*]?(@.type() != "number")') AND NOT jsonb_path_exists(${t.onvifPorts}, 'strict $[*]?(@ < 1 || @ > 65535)') AND NOT jsonb_path_exists(${t.onvifPorts}, 'strict $[*]?(@ != @.floor())') ELSE false END`,
+    ),
+    // No two elements equal. Where no two are, the comparison is false or NULL, and a CHECK
+    // admits both; `80` and `80.0` are one number to it.
+    check(
+      'capture_network_config_onvif_ports_distinct_check',
+      sql`CASE WHEN jsonb_typeof(${t.onvifPorts}) = 'array' THEN NOT (${anyTwoEqual('"capture_network_config"."onvif_ports"')}) ELSE false END`,
+    ),
   ],
 );
 

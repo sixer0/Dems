@@ -47,7 +47,10 @@
  *      enumerator of member 4 now has the product's runner behind it (the fixed row of the helper
  *      table through the production door): operations 98 and 99 no longer answer
  *      `LISTING_PROGRAM_NOT_HANDED_IN` there. On every other platform the named "not available"
- *      answer stays, and the program is never started.
+ *      answer stays, and the program is never started. SINCE ROW N7: on `darwin` the enumerator is
+ *      the listing of a macOS host (three fixed rows through the production door; the third is
+ *      started by the configured audio helper of member 7 - without one, the named answer
+ *      `LISTING_PROGRAM_NOT_HANDED_IN` and nothing is started). The platform alone chooses.
  *   7. THE AUDIO HELPER PROGRAM of the configuration (`DEMS_CAPTURE_AUDIO_HELPER`) in the audio
  *      bundle. The configuration writer and the run directory stay the capture unit's own.
  *   8. THE FAULT SINK of the two watches (decision C60 (2)): ONE sink, built by the fence on the
@@ -461,8 +464,9 @@ export function composeProductionCapture(ports: ProductionCapturePorts, input: P
   const { door, locator } = productionCameraDoors(timers);
 
   // 4 and 6. The card enumerator, with the runner of the listing program behind it: the fence's own over the production
-  // door, unless a runner was handed in. On a platform without the sound directory nothing is ever started.
-  const { enumerator: cards, unavailable } = input.cardPrograms === undefined ? hostCardEnumeratorOf({ platform: input.platform, door, timers }) : cardEnumeratorOf(input.platform, input.cardPrograms);
+  // door, unless a runner was handed in. On a platform without a listing nothing is ever started. Row N7: on `darwin` the
+  // fence's seam answers the listing of a macOS host, whose third row is started by the configured audio helper.
+  const { enumerator: cards, unavailable } = input.cardPrograms === undefined ? hostCardEnumeratorOf({ platform: input.platform, door, timers, helperProgram: ports.audioHelperProgram }) : cardEnumeratorOf(input.platform, input.cardPrograms);
   ports.provideEnumerator(cards);
   if (unavailable !== null) ports.report('warn', CaptureCompositionCode.CARD_LISTING_NOT_AVAILABLE, { reason: unavailable });
 

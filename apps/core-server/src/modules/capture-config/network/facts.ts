@@ -16,6 +16,7 @@
  *                           anything else it holds (link-local) is a host address and no source
  *   otherInterfaceSubnets   the subnet of every IPv4 address of every OTHER interface (DR-4)
  *   hostAddresses           every IPv4 address of the host
+ *   allowedPorts            the STORED list `onvif_ports` (row V7b; S2-02, C116), in its order
  *
  * NULL - and the rule then refuses every address - when no row is stored, when the interface or
  * the subnet is not chosen, when the host has no interface of that name (or it is a loopback
@@ -53,6 +54,12 @@ export type HostInterfacesReader = () => readonly HostInterface[];
 export interface StoredNetworkChoice {
   readonly interfaceName: string | null;
   readonly cameraSubnet: string | null;
+  /**
+   * `onvif_ports` (row V7b; S2-02, C116): the STORED list of allowed ONVIF ports, handed to the rule as
+   * `allowedPorts`. Before this row no production file set `allowedPorts` and the rule always used its
+   * own `DESTINATION_DEFAULT_PORTS` ([80]); now the stored list is what the rule judges a port by.
+   */
+  readonly onvifPorts: readonly number[];
 }
 
 const QUAD = /^(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})$/;
@@ -131,6 +138,8 @@ export function networkFactsOf(stored: StoredNetworkChoice | null, interfaces: r
   if (stored === null || stored.interfaceName === null || stored.cameraSubnet === null) return null;
   const subnet = subnetOf(stored.cameraSubnet);
   if (subnet === null || !Array.isArray(interfaces) || !hostHoldsInterface(interfaces, stored.interfaceName)) return null;
+  // A stored port list that is no list: the facts are unknown (the rule holds the list's own bounds itself, `PORT_LIST_INVALID`).
+  if (!Array.isArray(stored.onvifPorts)) return null;
 
   const cameraAddresses: { address: string; alias: boolean }[] = [];
   const otherInterfaceSubnets = new Map<string, { network: string; prefixLength: number }>();
@@ -157,6 +166,7 @@ export function networkFactsOf(stored: StoredNetworkChoice | null, interfaces: r
     cameraAddresses: Object.freeze(cameraAddresses.map((entry) => Object.freeze(entry))),
     otherInterfaceSubnets: Object.freeze([...otherInterfaceSubnets.values()].map((entry) => Object.freeze(entry))),
     hostAddresses: Object.freeze(hostAddresses),
+    allowedPorts: Object.freeze([...stored.onvifPorts]),
   });
 }
 

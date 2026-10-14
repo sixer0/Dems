@@ -485,9 +485,9 @@ describe('the bulk template: every constraint holds, and nothing was switched of
         WHERE n.nspname = 'public' GROUP BY 1 ORDER BY 1`,
     );
     const byKind = Object.fromEntries(constraints.rows.map((row) => [row.kind, { rows: Number(row.rows), invalid: Number(row.invalid) }]));
-    // The contract's counts as landed: 229 named CHECKs, 48 foreign keys, 48 primary keys (the
+    // The contract's counts as landed: 231 named CHECKs, 48 foreign keys, 48 primary keys (the
     // composed inventory; dbc-3 §0.1 + §B.13 + dbc-4 §N.11). None invalid - the loader switched nothing off.
-    expect(byKind['c']).toEqual({ rows: 229, invalid: 0 });
+    expect(byKind['c']).toEqual({ rows: 231, invalid: 0 });
     expect(byKind['f']).toEqual({ rows: 48, invalid: 0 });
     expect(byKind['p']).toEqual({ rows: 48, invalid: 0 });
     expect(constraints.rows.reduce((sum, row) => sum + Number(row.invalid), 0)).toBe(0);

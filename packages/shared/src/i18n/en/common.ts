@@ -5,6 +5,7 @@
  * vocabulary (roles, audit types, fault kinds, …) from `src/sim/vocabulary.ts` as read on
  * 2026-10-01 02:36 WIB, so `t('common.auditType.' + row.type)` needs no lookup table.
  */
+import { AUDIO_NOT_SAMPLE_CONTINUOUS_WORDS, MIC_SAME_DEVICE_WORDS } from '../../sim/audio-not-continuous';
 import { CAPTURE_FAULT_NO_REASON_SENTENCES, CAPTURE_FAULT_SENTENCES, CAPTURE_FAULT_UNKNOWN_SENTENCES, INTERRUPTED_SEAL_SENTENCES } from '../../sim/capture-fault-wording';
 import { CORE_NOT_RUNNING_LABEL, CORE_NOT_RUNNING_SENTENCE } from '../../sim/core-not-running';
 import { SEAL_UNSEALABLE_SENTENCE } from '../../sim/seal-unsealable';
@@ -453,6 +454,9 @@ export const common = {
     CAPTURE_DEVICE_CONNECTION_TESTED: 'Registered camera connection tested',
     // Task 4 (row R1b): the video twin of the audio gap.
     CAPTURE_VIDEO_ABSENT_IN_SESSION: 'Video not recorded while a camera was absent',
+    // Task 4 (row N2): the two types of an audio path that is not sample-continuous.
+    CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED: 'Audio samples not received from a microphone',
+    CAPTURE_AUDIO_SILENCE_INSERTED: 'Silence inserted into the audio track',
   },
 
   /** Audit filter categories (sim `AuditCategory`). */
@@ -929,6 +933,11 @@ export const common = {
   captureSlotRefusal: {
     CAMERA_PROFILE_NOT_STATED: 'This camera was not assigned: no stream profile was chosen for it, and the Core does not pick one for a camera. Choose one of the profiles stored for this camera, then assign it again.',
     CAMERA_PROFILE_NOT_OF_DEVICE: 'This camera was not assigned: the chosen stream profile is not one of the profiles stored for this camera. Choose one of them, then assign it again.',
+    // Task 4 row V7c (decision C130; row S86a, caution C-1 of row 86): the profile is LISTED for the
+    // camera, but the Core holds no stored stream row for it (an old raw camera token, or a code no
+    // stream stated). The one remedy is a new adoption; a connection test stores nothing on a difference.
+    CAMERA_PROFILE_WITHOUT_STREAM:
+      'This camera was not assigned: the Core holds no stream facts for this profile, so the camera cannot record it. A connection test does not repair this. Adopt the camera again, then assign one of the profiles it states.',
     // Task 4 row V4 (decision C80; rows 234 and 116): the four refusals of a slot assignment the web
     // console worded in its own tree, MOVED HERE WORD FOR WORD - the web's wording is the wording,
     // and this is its one source. `{{source}}` is the kind of the refused row, one of the two nouns
@@ -1211,6 +1220,18 @@ export const common = {
     unknown: CAPTURE_FAULT_UNKNOWN_SENTENCES,
     noReason: CAPTURE_FAULT_NO_REASON_SENTENCES,
   },
+  /**
+   * Task 4 row N2 (design 06 revision 3, sections 6.2, 8.3, 8.6; decisions U25 (3), C110 (2), (4)):
+   * the words of an audio path that is NOT SAMPLE-CONTINUOUS (the bench microphone path of a Mac).
+   * Both blocks ARE the tables of `sim/audio-not-continuous.ts` (imported, never copied).
+   * `audioNotSampleContinuous`: the statement a client shows at the head of a transcript, of an
+   * evidence item and of a session summary, with the fixed sentence (`sentence`) - never collapsed.
+   * `micSameDevice`: what the operator reads INSTEAD of the plain standby words when PRIMARY and
+   * STANDBY are two channels of one device. The five notices of the path are in
+   * `captureFault.reason`.
+   */
+  audioNotSampleContinuous: AUDIO_NOT_SAMPLE_CONTINUOUS_WORDS,
+  micSameDevice: MIC_SAME_DEVICE_WORDS,
   /**
    * Fix pass F-M7b (review R88-02 (c)): the STATE of a recording the Core could not seal. This IS
    * the sentence of `sim/seal-unsealable.ts` (imported, never copied): the alert of the Core, the

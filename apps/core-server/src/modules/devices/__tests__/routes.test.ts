@@ -254,6 +254,33 @@ describe('row 53: operations 44, 46 and 47 of a Core in REAL capture state the s
       expect(built.engine.commands).toEqual([]);
     }
   });
+
+  // Wave 12, row CB (review 060c finding R-01; decision C36): the WIRING of the bitrate rule - the pure mapping is in
+  // `status.test.ts`. Seen RED on: the flag not handed to one read (`videoStatusOf(state, captureSlotsOf(state))`,
+  // `deviceHealthOf(...)` without it, `deviceInventoryOf(app.engine.state())`) - that read then answers 9 in real capture.
+  it('row CB (R-01): on a Core in REAL capture each of the three reads that carry a camera\'s bitrate answers null, valid against the contract; a SIMULATED Core on the same state answers the simulator\'s 9', async () => {
+    const state = committedOf(scenarioState('idle'));
+    expect(state.cameras.map((camera) => camera.bitrateMbps)).toEqual([9, 9]);
+    const bitrates = (entries: readonly { readonly bitrateMbps: number | null }[]): unknown[] => entries.map((entry) => entry.bitrateMbps);
+    for (const [config, expected] of [[{ captureMode: 'real', demoControls: false }, [null, null]], [{}, [9, 9]]] as const) {
+      const built = await build(state, config);
+      built.actAs(operatorOf('SUPERVISOR'));
+      const video = await get(built, VIDEO);
+      expect(video.statusCode, video.body).toBe(200);
+      expect(bitrates((video.json() as { tracks: Parameters<typeof bitrates>[0] }).tracks)).toEqual(expected);
+      expect(validateCoreApiResponse('getVideoStatus', 200, video.json())).toEqual({ ok: true });
+      const health = await get(built, HEALTH);
+      expect(health.statusCode, health.body).toBe(200);
+      expect(bitrates((health.json() as { cameras: Parameters<typeof bitrates>[0] }).cameras)).toEqual(expected);
+      expect(validateCoreApiResponse('getDeviceHealth', 200, health.json())).toEqual({ ok: true });
+      const inventory = await get(built, INVENTORY);
+      expect(inventory.statusCode, inventory.body).toBe(200);
+      expect(bitrates((inventory.json() as { cameras: Parameters<typeof bitrates>[0] }).cameras)).toEqual(expected);
+      expect(validateCoreApiResponse('getDeviceInventory', 200, inventory.json())).toEqual({ ok: true });
+      // The member is PRESENT and null - not left out: a reader that goes by null finds it.
+      expect((video.json() as { tracks: object[] }).tracks.every((track) => Object.hasOwn(track, 'bitrateMbps'))).toBe(true);
+    }
+  });
 });
 
 describe('operations 44 to 47: a read answers from the committed state of the engine', () => {

@@ -34,6 +34,11 @@ import { EVIDENCE_STORE_PRIVATE_FOLDERS, evidenceStoreProblemOf, runCaptureBootC
 import { probeEvidenceVolume } from '../evidence-volume';
 import { ALIAS_SOCKET_INSTALLED_PATH, CaptureHostFactsError, HOST_COMMAND_CHECKS, HOST_FACTS_NOT_TAKEN, HOST_NOT_SEEN, INTERFACE_FILE_COMMAND, PROGRAM_OWNERSHIP_CHECKS, SELECT_STORED_CAMERA_INTERFACE, captureHostOfProcess, coreFileLimitOf, storedCameraInterface, type CaptureBootHostFacts, type CaptureBootMount, type HostCommand } from '../index';
 import { HOST_ANSWERS, PREPARED_INTERFACE, PROGRAM_ANSWERS, fakeProductionHost } from './host-support';
+// Row NB (design 06 row N13): the mount's list of the two system listing programs, row N4's constants, the inspector and the rule.
+import { SYSTEM_LISTING_PROGRAMS } from '../index';
+import { workerProgramProblemOf } from '../checks';
+import { inspectProgram, type ProgramFacts } from '../../adapters/local';
+import { MACOS_SYSTEM_AUDIO_PROGRAM, MACOS_USB_TREE_PROGRAM } from '../../adapters/local/mic-helper-args';
 
 /**
  * Task 4 row 228b: THE INSTALLATION OF THIS SUITE - a synthetic id of its own, NOT one of the reserved ids, so that a
@@ -951,5 +956,40 @@ describe('row 228, check 4b-2: the active certificate of a production Core names
     const seamed = core(empty, { ...TEST_INSTALLATION, signingKeyProblem: () => null, signingKeyIsDevelopment: () => false, signingKeyUnits: () => [unitOf(SUITE_INSTALLATION_ID)] });
     await seamed.boot();
     expect(seamed.control.outcome()).toMatchObject({ operation: CaptureOperation.REAL_PRODUCTION });
+  });
+});
+
+// ── Task 4 row NB (design 06 revision 3 row N13; decision C135 (1)): THE MOUNT hands step 4e the two system programs of the macOS
+// microphone listing. Only their PATH FACTS are read (a stand-in inspector for the failing case; the real inspector for this Mac's
+// own programs, metadata only). Nothing is started for them, no listing is run, no device is opened.
+describe('row NB: the mount hands step 4e the two system programs of the microphone listing, by row N4\'s constants; on darwin a program that fails the path rule refuses the start before the worker', () => {
+  it('the list is the two literals of row N4\'s table, in its order, frozen; a production boot on the darwin test host whose second program fails the rule is refused by its own code, the first having been inspected', async () => {
+    expect(SYSTEM_LISTING_PROGRAMS).toEqual([MACOS_USB_TREE_PROGRAM, MACOS_SYSTEM_AUDIO_PROGRAM]);
+    expect(Object.isFrozen(SYSTEM_LISTING_PROGRAMS)).toBe(true);
+    try {
+      fixture.provisionKey();
+    } catch {
+      // KEY_EXISTS: it is there.
+    }
+    const inspected: string[] = [];
+    const recorded = recordedSinks();
+    const log = { info() {} } as unknown as Parameters<typeof createReadiness>[0];
+    const app = { config: unitTestConfig({ dataDir: fixture.dataDir, captureMode: 'real', captureWorkerPath: fixture.worker('worker-nb-1'), ...TEST_HOST_PROGRAMS }), stages: {}, readiness: createReadiness(log), clock: { now: () => FIXTURE_NOW + 1_000 } } as unknown as FastifyInstance;
+    // The real inspector for every other path. The two listing programs are answered by the REAL facts of a stand-in file of the
+    // fixture (so the case holds on any machine), the second one with its mode made writable by others.
+    const standIn = inspectProgram(fixture.worker('listing-stand-in'));
+    const inspect = (path: string): ProgramFacts => (inspected.push(path), path === MACOS_SYSTEM_AUDIO_PROGRAM ? { ...standIn, file: { ownerUid: 0, mode: 0o777 } } : path === MACOS_USB_TREE_PROGRAM ? standIn : inspectProgram(path));
+    mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, ...TEST_INSTALLATION, ...NO_DEMO_PASSWORD, ...TEST_HOST, inspect });
+    const failure = await app.readiness.boot().then(
+      () => null,
+      (error: unknown) => (error instanceof BootError ? error.cause : error),
+    );
+    expect(failure).toMatchObject({ code: 'CAPTURE_HOST_LISTING_PROGRAM_UNUSABLE', reason: 'FILE_WRITABLE' });
+    expect(inspected.filter((path) => (SYSTEM_LISTING_PROGRAMS as readonly string[]).includes(path))).toEqual([...SYSTEM_LISTING_PROGRAMS]);
+    expect(recorded.persisted).toEqual([TEST_HOST_NOT_LINUX, { level: 'error', source: 'capture.boot', code: 'CAPTURE_HOST_LISTING_PROGRAM_UNUSABLE' }]);
+  });
+
+  it.runIf(process.platform === 'darwin')('on this Mac the two programs of the operating system pass the worker\'s path rule by their REAL facts (design 06 M11: root, mode 755, root\'s directories)', () => {
+    for (const program of SYSTEM_LISTING_PROGRAMS) expect(workerProgramProblemOf(program, inspectProgram), program).toBeNull();
   });
 });

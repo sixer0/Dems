@@ -18,7 +18,8 @@ import { createTestSim, withProviders } from '@/components/composed/__tests__/te
 import { enWeb } from '@/i18n-web'
 import { SourceStateChips } from '../source-state-chips'
 import { checkedAtOf, measuredFiguresShown, sourceLineState } from '../source-state'
-import { STREAM_FACTS_NOT_STATED, storedStreamFactsOf, trackFactsOf } from '../stream-facts'
+import { cameraLinesInForce, clearCaptureWarningTransition, raiseCaptureWarningTransition } from '@dems/shared/sim'
+import { cameraCaptureFaultOf, STREAM_FACTS_NOT_STATED, storedStreamFactsOf, trackFactsOf } from '../stream-facts'
 
 afterEach(cleanup)
 
@@ -119,6 +120,36 @@ describe('the rule', () => {
     expect(trackFactsOf({ ...idle, cameras: idle.cameras.map((camera) => (camera.id === 'VIDEO-01' ? { ...camera, online: false } : camera)) }, 'VIDEO-01', true).fault).toBe('NO_SIGNAL')
     // The other track is not touched by the first one's fault.
     expect(trackFactsOf(lines(() => ({ streamState: 'LOST' })), 'VIDEO-02', true).fault).toBeNull()
+  })
+
+  // Task 4 row W5 (review 060d Q-01). The double: the Core's own raise and clear of a capture warning
+  // (`raiseCaptureWarningTransition` / `clearCaptureWarningTransition` of the shared package) on the recording dataset.
+  // Seen RED on the mutation "trackFactsOf does not read `cameraCaptureFaultOf`": the first `fault` below read null.
+  it('W5 (Q-01) - a camera the Core holds an ACTIVE capture fault about is in fault although its line reads LIVE; the fault goes when the Core clears it', () => {
+    const recording = createTestSim('recording').store.getState()
+    const cameraOf = (trackId: string) => cameraLinesInForce(recording).find((line) => line.trackId === trackId)!.deviceId
+    const warning = { code: 'CAPTURE_FAULT', subject: cameraOf('VIDEO-01'), reason: 'CAMERA_STREAM_ENDED' } as Parameters<typeof raiseCaptureWarningTransition>[2]
+    const raised = raiseCaptureWarningTransition(recording, recording.clock.now, warning)
+    // THE PREMISE of the finding: raising the fault changes no line - the track still says LIVE.
+    expect(cameraLinesInForce(raised).find((line) => line.trackId === 'VIDEO-01')).toMatchObject({ online: true, streamState: 'LIVE' })
+    expect(cameraCaptureFaultOf(raised.alerts, cameraOf('VIDEO-01'))).toBe('STREAM_LOST')
+    expect(trackFactsOf(raised, 'VIDEO-01', true).fault).toBe('STREAM_LOST')
+    // The other track keeps its state; Simulated mode and a Core in simulated capture judge no fault here.
+    expect(trackFactsOf(raised, 'VIDEO-02', true).fault).toBeNull()
+    expect(trackFactsOf(raised, 'VIDEO-01', false).fault).toBeNull()
+    // Another cause about the camera (it did not connect, sent no picture, ...) is a fault too, in the general word.
+    const other = raiseCaptureWarningTransition(recording, recording.clock.now, { ...warning, reason: 'CAMERA_NO_PICTURE' } as unknown as typeof warning)
+    expect(trackFactsOf(other, 'VIDEO-01', true).fault).toBe('NO_SIGNAL')
+    // A fault of the capture as a whole names no track; an advisory (`SYSTEM`) alert about the camera is no fault.
+    const whole = raiseCaptureWarningTransition(recording, recording.clock.now, { ...warning, subject: null } as unknown as typeof warning)
+    expect(trackFactsOf(whole, 'VIDEO-01', true).fault).toBeNull()
+    const advisory = { ...recording, alerts: raised.alerts.map((alert) => (alert.kind === 'CAPTURE_FAULT' ? { ...alert, kind: 'SYSTEM' as const } : alert)) }
+    expect(trackFactsOf(advisory, 'VIDEO-01', true).fault).toBeNull()
+    // The re-open: the Core clears the fault it raised, and the track reads as before.
+    const cleared = clearCaptureWarningTransition(raised, raised.clock.now, warning)
+    expect(cleared.alerts.some((alert) => alert.kind === 'CAPTURE_FAULT' && alert.active)).toBe(false)
+    expect(cameraCaptureFaultOf(cleared.alerts, cameraOf('VIDEO-01'))).toBeNull()
+    expect(trackFactsOf(cleared, 'VIDEO-01', true).fault).toBeNull()
   })
 })
 

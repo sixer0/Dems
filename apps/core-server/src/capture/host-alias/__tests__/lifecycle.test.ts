@@ -34,6 +34,7 @@ import {
   type HostAliasTransport,
   type HostAliasTransportFailure,
 } from '../index';
+import { HOST_ALIAS_NOT_CONFIRMED_MESSAGES } from '../journal';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const T0 = 1_760_000_000_000;
@@ -281,14 +282,26 @@ describe('one alias, from the request to its removal', () => {
     expect(w.armed()).toEqual([]);
   });
 
-  it('a removal the helper answers NOT_MARKED: nothing of ours is there, the row is closed', async () => {
+  // Row HA (caution R119c-01; decision C122): this case pinned `HOST_ALIAS_REMOVED` for a `NOT_MARKED` answer. The helper
+  // removed nothing and does not say the address is gone, so the result entry is HOST_ALIAS_REMOVE_FAILED and the answer
+  // carries `confirmed: false`. What row NF pinned below (the row closed with the reason of the call, by nobody) stands.
+  it('a removal the helper answers NOT_MARKED: the row is closed, and the entry is NOT "removed"', async () => {
     const w = world();
     w.answers.push(pair('OK'), pair('NOT_MARKED'));
     const life = w.lifecycle();
     await w.add(life);
-    await expect(life.release({ removeReason: 'JOB_DONE', actor: null })).resolves.toEqual({ ok: true, removed: true });
-    expect(w.types().slice(2)).toEqual(['HOST_ALIAS_REQUESTED:REMOVE', 'HOST_ALIAS_REMOVED']);
+    await expect(life.release({ removeReason: 'JOB_DONE', actor: null })).resolves.toEqual({ ok: true, removed: true, confirmed: false });
+    expect(w.types().slice(2)).toEqual(['HOST_ALIAS_REQUESTED:REMOVE', 'HOST_ALIAS_REMOVE_FAILED']);
     expect(w.openRows()).toEqual([]);
+    // Row NF (review 120b T-7): the row is closed WITH THE REASON OF THE CALL and by nobody (no actor), and both entries
+    // name that reason - "the row is closed" alone held the two entry types and nothing of what was written. SEEN RED on
+    // the mutation `subject.removeReason` -> `'EXPIRED'` in the close of the row (journal.ts, `store.close(...)`).
+    expect(w.rows).toMatchObject([{ removeReason: 'JOB_DONE', removedBy: null, removeError: null }]);
+    expect(w.rows[0]?.removedAt).not.toBeNull();
+    expect(w.audit.slice(2).map((entry) => [entry.type, entry.details['removeReason'], entry.details['aliasId']])).toEqual([
+      ['HOST_ALIAS_REQUESTED', 'JOB_DONE', w.rows[0]?.id],
+      ['HOST_ALIAS_REMOVE_FAILED', 'JOB_DONE', w.rows[0]?.id],
+    ]);
   });
 
   it('a removal that fails: the code on the row, which stays open; one REMOVE_FAILED; a retry is armed, bounded, then reported', async () => {
@@ -314,6 +327,186 @@ describe('one alias, from the request to its removal', () => {
     w.answers.push(pair('OK'));
     await expect(life.release({ removeReason: 'MANUAL', actor: ACTOR })).resolves.toEqual({ ok: true, removed: true });
     expect(w.rows).toMatchObject([{ removeReason: 'MANUAL', removeError: null }]);
+  });
+});
+
+// Row HA (wave 12; caution R119c-01 of statement 119c; decisions C114 F-1 / F-9, C122). Since its row H5 the helper answers
+// `NOT_MARKED` to a `del` when it cannot say the address is gone (no standing mark of its own while some interface may
+// still hold the address). The Core's record must not say "removed" for that answer. THE HELPER IS THE DOUBLE of this file.
+describe('a removal the helper answers NOT_MARKED is settled and NOT CONFIRMED: never recorded as removed (caution R119c-01)', () => {
+  type Way = 'JOB_DONE' | 'MANUAL' | 'EXPIRED' | 'SHUTDOWN' | 'BOOT_SWEEP';
+  type Held = 'not shown' | 'on another interface' | 'on the camera interface' | 'table unreadable';
+  const WAYS: readonly Way[] = ['JOB_DONE', 'MANUAL', 'EXPIRED', 'SHUTDOWN', 'BOOT_SWEEP'];
+  const HELD: Record<Held, { network: DestinationContext | null; held: boolean | null; severity: 'INFO' | 'WARNING'; message: string }> = {
+    'not shown': { network: NETWORK, held: false, severity: 'INFO', message: HOST_ALIAS_NOT_CONFIRMED_MESSAGES.NOT_SHOWN },
+    // THE CASE OF FINDING F-1: the address stays on an interface that is not the camera's.
+    'on another interface': { network: { ...NETWORK, hostAddresses: [...NETWORK.hostAddresses, ALIAS] }, held: true, severity: 'WARNING', message: HOST_ALIAS_NOT_CONFIRMED_MESSAGES.HELD },
+    'on the camera interface': { network: { ...NETWORK, cameraAddresses: [...NETWORK.cameraAddresses, { address: ALIAS, alias: true }] }, held: true, severity: 'WARNING', message: HOST_ALIAS_NOT_CONFIRMED_MESSAGES.HELD },
+    'table unreadable': { network: null, held: null, severity: 'WARNING', message: HOST_ALIAS_NOT_CONFIRMED_MESSAGES.NOT_KNOWN },
+  };
+  /** An alias added and recorded as done, then taken away one of the five ways; the helper's answer to the `del` is `answer`. */
+  async function removed(way: Way, answer: 'OK' | 'NOT_MARKED', network: DestinationContext | null) {
+    const w = world();
+    w.answers.push(pair('OK'));
+    let life = w.lifecycle();
+    await w.add(life);
+    w.knobs.network = network;
+    w.answers.push(pair(answer));
+    let answered: unknown;
+    if (way === 'JOB_DONE') answered = await life.release({ removeReason: 'JOB_DONE', actor: null });
+    else if (way === 'MANUAL') answered = await life.release({ removeReason: 'MANUAL', actor: ACTOR });
+    else if (way === 'SHUTDOWN') answered = await life.shutdown();
+    else if (way === 'EXPIRED') await w.fire();
+    else {
+      // A restart: a new lifecycle on the same database and the same helper. Its sweep meets the open row.
+      life = w.lifecycle();
+      answered = await life.boot();
+    }
+    return { w, life, answered };
+  }
+
+  it.each(WAYS)('control, %s: answered `0 OK` the entry is HOST_ALIAS_REMOVED as before, the row closed, nothing reported, no `confirmed` in the answer', async (way) => {
+    const { w, answered } = await removed(way, 'OK', HELD['on another interface'].network);
+    expect(w.types()).toEqual(['HOST_ALIAS_REQUESTED:ADD', 'HOST_ALIAS_ADDED', 'HOST_ALIAS_REQUESTED:REMOVE', 'HOST_ALIAS_REMOVED']);
+    expect(w.audit[3]).toMatchObject({ message: 'Alias address removed', details: { aliasId: w.rows[0]?.id, address: ALIAS, removeReason: way } });
+    expect(w.audit[3]?.severity).toBeUndefined();
+    expect(w.rows).toMatchObject([{ removeReason: way, removeError: null }]);
+    expect(w.openRows()).toEqual([]);
+    expect(w.reports).toEqual([]);
+    if (way === 'JOB_DONE' || way === 'MANUAL' || way === 'SHUTDOWN') expect(answered).toEqual({ ok: true, removed: true });
+  });
+
+  // 5 ways x 4 readings of the Core's own table. SEEN RED (each mutation planted in the source, then taken out again):
+  // The counts are failing tests of this FILE (99 tests), measured, one run per mutant.
+  //   M1 journal.ts - `NOT_MARKED` with a row counted as removed again (the behaviour before row HA): 23 red - all 20 here.
+  //   M2 journal.ts - the row NOT closed for `NOT_MARKED` (the code noted on the open row instead): 23 red - all 20 here.
+  //   M3 lifecycle.ts - `settled` without `notMarked` (a retry armed, the caller refused): 23 red - all 20 here.
+  //   M4 journal.ts - severity always INFO: 16 red (the 15 "held" and "unreadable" rows); always WARNING: 8 red (the 5 "not shown" rows).
+  //   M5 lifecycle.ts - the report `HOST_ALIAS_REMOVAL_NOT_CONFIRMED` dropped: 16 red (the same 15 rows).
+  //   M6 lifecycle.ts - `confirmed: false` left out of the answer: 13 red (the 12 rows of release and shutdown).
+  //   M7 lifecycle.ts - `hostHolds` reading the camera interface only: 5 red, the "on another interface" rows (finding F-1's case).
+  it.each(WAYS.flatMap((way) => (Object.keys(HELD) as Held[]).map((held) => [way, held] as const)))(
+    '%s, the address %s: ONE intent and ONE result HOST_ALIAS_REMOVE_FAILED { HELPER_NOT_MARKED }; the row closed; no retry; the next add not held back',
+    async (way, heldAs) => {
+      const expected = HELD[heldAs];
+      const { w, life, answered } = await removed(way, 'NOT_MARKED', expected.network);
+      const aliasId = w.rows[0]?.id;
+      const actor = way === 'MANUAL' ? { operationId: ACTOR.operationId, permission: ACTOR.permission } : {};
+
+      // Exactly one intent and one result for the action, the intent committed before the line.
+      expect(w.types()).toEqual(['HOST_ALIAS_REQUESTED:ADD', 'HOST_ALIAS_ADDED', 'HOST_ALIAS_REQUESTED:REMOVE', 'HOST_ALIAS_REMOVE_FAILED']);
+      expect(w.events.slice(3)).toEqual(['commit hostAlias.intent HOST_ALIAS_REQUESTED', `line del ${ALIAS}/24`, 'commit hostAlias.result HOST_ALIAS_REMOVE_FAILED']);
+      expect(w.audit[2]?.details).toEqual({ action: 'REMOVE', address: ALIAS, removeReason: way, aliasId, ...actor });
+      // THE RESULT, whole: the type, the helper's code under the Core's name, and words that do not say "removed".
+      expect(w.audit[3]).toEqual({
+        type: 'HOST_ALIAS_REMOVE_FAILED',
+        message: expected.message,
+        severity: expected.severity,
+        actorId: way === 'MANUAL' ? 'OP-0003' : null,
+        deviceId: null,
+        details: { aliasId, address: ALIAS, removeReason: way, failureReason: 'HELPER_NOT_MARKED', ...actor },
+      });
+      expect(w.audit.some((entry) => entry.type === 'HOST_ALIAS_REMOVED')).toBe(false);
+      expect(w.audit[3]?.message).not.toMatch(/^Alias address removed|\bis gone\b|\bwas removed\b/);
+
+      // The row is CLOSED with the reason the removal was asked with; no code stays on it; nothing is in place by the state.
+      expect(w.rows).toMatchObject([{ removedAt: T0, removeReason: way, removedBy: way === 'MANUAL' ? 'OP-0003' : null, removeError: null }]);
+      expect(w.openRows()).toEqual([]);
+      await expect(life.state()).resolves.toBeNull();
+
+      // No retry is armed and the helper is not asked again. (After a restart the one timer left in this file's list is
+      // the lifetime timer of the lifecycle that "died": the new one armed none.)
+      expect(w.armed().map((timer) => timer.delayMs)).toEqual(way === 'BOOT_SWEEP' ? [MINUTES * 60_000] : []);
+      expect(w.lines).toEqual([`add ${ALIAS}/24 ${String(MINUTES)}\n`, `del ${ALIAS}/24\n`]);
+
+      // What the caller is told: settled, and not confirmed.
+      if (way === 'JOB_DONE' || way === 'MANUAL' || way === 'SHUTDOWN') expect(answered).toEqual({ ok: true, removed: true, confirmed: false });
+      if (way === 'BOOT_SWEEP') {
+        expect(answered).toEqual({ stateRead: true, interfaceTableRead: expected.network !== null, stillOpen: false, swept: [{ address: ALIAS, hadRow: true, attempted: true, effect: 'NOT_DONE', refusal: 'HELPER_NOT_MARKED', resultRecorded: true }] });
+      }
+
+      // Said in the persistent log when the Core's own table shows the address or cannot be read: a code, no address.
+      expect(w.reports).toEqual(expected.held === false ? [] : [{ code: 'HOST_ALIAS_REMOVAL_NOT_CONFIRMED', facts: { removeReason: way, hadRow: true, heldByHost: expected.held } }]);
+      expect(JSON.stringify(w.reports)).not.toContain(ALIAS);
+
+      // THE NEXT ADD IS NOT HELD BACK (after a shutdown every add is refused, whatever the helper said).
+      w.knobs.network = NETWORK;
+      w.answers.push(pair('OK'));
+      const next = await life.acquire({ address: OTHER, minutes: MINUTES, reason: 'FACTORY_SCAN', actor: ACTOR });
+      if (way === 'SHUTDOWN') expect(next).toEqual({ ok: false, refusal: 'SHUTTING_DOWN', stillInPlace: false });
+      else expect(next).toMatchObject({ ok: true, alias: { address: OTHER } });
+    },
+  );
+
+  it('the lifetime timer: after NOT_MARKED nothing is armed - there is no timer left to fire', async () => {
+    const { w } = await removed('EXPIRED', 'NOT_MARKED', HELD['on another interface'].network);
+    await expect(w.fire()).rejects.toThrow('no timer is armed');
+    expect(w.lines).toHaveLength(2);
+  });
+
+  // SEEN RED on M1 (the type: HOST_ALIAS_REMOVED) and on M3 (`stillInPlace: true`, a retry armed).
+  it('after an add of UNKNOWN effect (lifecycle.ts, the removal at once): the row closes ADD_UNCONFIRMED (ruling F-9 of C114 stands) and the entry is not "removed"', async () => {
+    const w = world();
+    w.answers.push(failed('TIMED_OUT'), pair('NOT_MARKED'));
+    const life = w.lifecycle();
+    await expect(w.add(life)).resolves.toEqual({ ok: false, refusal: 'HELPER_TIMED_OUT', stillInPlace: false });
+    expect(w.types()).toEqual(['HOST_ALIAS_REQUESTED:ADD', 'HOST_ALIAS_ADD_FAILED', 'HOST_ALIAS_REQUESTED:REMOVE', 'HOST_ALIAS_REMOVE_FAILED']);
+    expect(w.audit[3]).toMatchObject({ severity: 'INFO', actorId: null, details: { aliasId: w.rows[0]?.id, address: ALIAS, removeReason: 'ADD_UNCONFIRMED', failureReason: 'HELPER_NOT_MARKED' } });
+    expect(w.rows).toMatchObject([{ removeReason: 'ADD_UNCONFIRMED', removedBy: null, removeError: null }]);
+    expect(w.openRows()).toEqual([]);
+    expect(w.armed()).toEqual([]);
+    w.answers.push(pair('OK'));
+    await expect(w.add(life, OTHER)).resolves.toMatchObject({ ok: true });
+  });
+
+  // SEEN RED on M8 (lifecycle.ts: `notMarked` without `recorded`): the row was answered as settled with no result on record.
+  it('a NOT_MARKED whose result entry cannot be written is NOT settled: the intent stands alone, the row stays open, it is reported and a retry is armed', async () => {
+    const w = world();
+    w.answers.push(pair('OK'), pair('NOT_MARKED'));
+    const life = w.lifecycle();
+    await w.add(life);
+    w.knobs.auditRefuses = (entry) => entry.type === 'HOST_ALIAS_REMOVE_FAILED';
+    await expect(life.release({ removeReason: 'JOB_DONE', actor: null })).resolves.toEqual({ ok: false, refusal: 'RESULT_NOT_RECORDED', stillInPlace: true });
+    expect(w.types().slice(2)).toEqual(['HOST_ALIAS_REQUESTED:REMOVE']);
+    expect(w.openRows()).toHaveLength(1);
+    expect(w.reports).toEqual([{ code: 'HOST_ALIAS_RESULT_NOT_RECORDED', facts: { action: 'REMOVE', removeReason: 'JOB_DONE', hadRow: true } }]);
+    expect(w.armed().map((timer) => timer.delayMs)).toEqual([HOST_ALIAS_REMOVE_RETRY_MS]);
+  });
+
+  // THE BOOT SWEEP WITHOUT A ROW follows the same rule. SEEN RED on M1r (journal.ts: a row-less `NOT_MARKED` written as
+  // HOST_ALIAS_REMOVED; 2 red: this case and the configuration's candidates below), on M4 (both ways) and on M5.
+  it('the boot sweep WITHOUT a row: `0 OK` is HOST_ALIAS_REMOVED; NOT_MARKED of an address the camera interface still holds is HOST_ALIAS_REMOVE_FAILED, a warning, reported; of one the table does not show, INFO and no report', async () => {
+    const w = world();
+    const THIRD = '192.168.2.253';
+    w.knobs.network = { ...NETWORK, cameraAddresses: [...NETWORK.cameraAddresses, { address: ALIAS, alias: true }, { address: THIRD, alias: true }], hostAddresses: [...NETWORK.hostAddresses, ALIAS, THIRD] };
+    w.answers.push(pair('NOT_MARKED'), pair('OK'), pair('NOT_MARKED'));
+    const report = await w.lifecycle([OTHER]).boot();
+    expect(report).toEqual({
+      stateRead: true,
+      interfaceTableRead: true,
+      stillOpen: false,
+      swept: [
+        { address: ALIAS, hadRow: false, attempted: true, effect: 'NOT_DONE', refusal: 'HELPER_NOT_MARKED', resultRecorded: true },
+        { address: THIRD, hadRow: false, attempted: true, effect: 'DONE', refusal: null, resultRecorded: true },
+        { address: OTHER, hadRow: false, attempted: true, effect: 'NOT_DONE', refusal: 'HELPER_NOT_MARKED', resultRecorded: true },
+      ],
+    });
+    // One intent and one result per address asked; no entry names a row.
+    expect(w.types()).toEqual(['HOST_ALIAS_REQUESTED:REMOVE', 'HOST_ALIAS_REMOVE_FAILED', 'HOST_ALIAS_REQUESTED:REMOVE', 'HOST_ALIAS_REMOVED', 'HOST_ALIAS_REQUESTED:REMOVE', 'HOST_ALIAS_REMOVE_FAILED']);
+    expect(w.audit.some((entry) => 'aliasId' in entry.details)).toBe(false);
+    expect(w.audit[1]).toEqual({ type: 'HOST_ALIAS_REMOVE_FAILED', message: HOST_ALIAS_NOT_CONFIRMED_MESSAGES.HELD, severity: 'WARNING', actorId: null, deviceId: null, details: { address: ALIAS, removeReason: 'BOOT_SWEEP', failureReason: 'HELPER_NOT_MARKED' } });
+    expect(w.audit[3]).toMatchObject({ type: 'HOST_ALIAS_REMOVED', message: 'Alias address removed', details: { address: THIRD, removeReason: 'BOOT_SWEEP' } });
+    expect(w.audit[5]).toEqual({ type: 'HOST_ALIAS_REMOVE_FAILED', message: HOST_ALIAS_NOT_CONFIRMED_MESSAGES.NOT_SHOWN, severity: 'INFO', actorId: null, deviceId: null, details: { address: OTHER, removeReason: 'BOOT_SWEEP', failureReason: 'HELPER_NOT_MARKED' } });
+    expect(w.reports).toEqual([{ code: 'HOST_ALIAS_REMOVAL_NOT_CONFIRMED', facts: { removeReason: 'BOOT_SWEEP', hadRow: false, heldByHost: true } }]);
+    expect(w.rows).toEqual([]);
+    expect(w.armed()).toEqual([]);
+  });
+
+  it('the words of the three entries: none says the address was removed or is gone; the two warnings name the kernel lifetime', () => {
+    const words = Object.values(HOST_ALIAS_NOT_CONFIRMED_MESSAGES);
+    expect(words).toHaveLength(3);
+    for (const text of words) expect(text).not.toMatch(/^Alias address removed|\bis gone\b|\bwas removed\b|\bremoved the\b/);
+    expect([HOST_ALIAS_NOT_CONFIRMED_MESSAGES.HELD, HOST_ALIAS_NOT_CONFIRMED_MESSAGES.NOT_KNOWN].every((text) => text.includes('kernel lifetime'))).toBe(true);
   });
 });
 

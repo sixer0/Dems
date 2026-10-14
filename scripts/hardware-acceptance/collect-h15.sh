@@ -17,7 +17,8 @@ case "$0" in */*) HW_DIR=${0%/*} ;; *) HW_DIR=. ;; esac
 # shellcheck source=hw-collect-lib.sh
 . "$HW_DIR/hw-collect-lib.sh"
 hw_init "$@"
-criterion 'Conflict reported: 1 of 1. Set-address refused: 1 of 1. Cameras changed: 0 of 2.'
+criterion 'The scan row does not state ONE while two cameras answer on the address: 1 of 1 (the word seen, NOT_KNOWN or MORE_THAN_ONE, is recorded). No set-address job started: 0 jobs, 0 entries CAMERA_NETWORK_SET. Cameras changed: 0 of 2. "Conflict reported" is recorded as yes or no; "no" with NOT_KNOWN is the stated limit and does not fail the check.'
+note 'the scan'"'"'s word for the number of devices at an address (deviceCount: ONE, MORE_THAN_ONE or NOT_KNOWN; as built always NOT_KNOWN) is on the screen of the scan; TECH reads it there. The audit entry of a scan, CAMERA_FACTORY_SCANNED, holds counts only; the word is a member of the entry CAMERA_NETWORK_SET of a job, and no job is started in this check. This collector counts entries.'
 step '9A/H-15.4' SCRIPT 'the count of entries CAMERA_NETWORK_SET since step .1; the count of addresses on <camera-interface> after the last scan'
 expected 'entries CAMERA_NETWORK_SET: 0; 1 address on the camera port.'
 if hw_log_needed --audit-file "$HW_AUDIT"; then

@@ -8,6 +8,15 @@
 # directory, handed over by the USER (sudo cat). --track: the audio of S1 in a file this account
 # can read (from an export of the session, or a copy the USER makes); it is DECODED INTO NOTHING
 # and two numbers are printed. No sound leaves the host, and no device is opened.
+# NAMES (wave 12, row C1; each checked against the product source on 2026-10-14):
+#   the helper's argument row is `-f alsa -c:a pcm_s24le -ch_layout <n>C -sample_rate 48000 -i <device>
+#   -af pan=mono|c0=c<k>` (apps/core-server/src/capture/adapters/local/mic-helper-args.ts). The row
+#   never holds -channels, -ac, -ar, -filter:a or -map_channel: the searches for those were removed.
+#   The Core's words for a failed open are those of usb-audio-production.ts; the searches for
+#   MIC_OPEN_FAILED, AUDIO_DEVICE_BUSY, MIC_HELPER_EXITED, MIC_NOT_CONNECTED and MIC_NOT_DELIVERING were
+#   removed, the product never emitted them. The worker's line `audio_started` states no rate (its
+#   members are t0_real_us, encoders, quantum_samples, master_mic, movflags): the fields sample_rate
+#   and rate were removed; the rate is the -sample_rate of the helper's row.
 # Read-only. NOTHING HERE IS PROVEN ON A HOST: this is the instrument of the hardware package.
 set -eu
 HW_SCRIPT=collect-h08.sh
@@ -44,7 +53,7 @@ case "$HW_MODE" in
     ;;
   session)
     step '9A/H-08.6' SCRIPT 'during S1: the two microphone helper processes with their argument lists reduced to the format, the channel count, the rate and the channel selection; any line that reports a failed or busy audio open; the rate the worker states for the microphone'
-    expected 'two helper processes, both alive, each opened with the card'"'"'s native channel count, format alsa, rate 48000 and a selection of one channel; failed or busy opens: 0; the stated rate is 48,000 Hz.'
+    expected 'two helper processes, both alive, each opened with the card'"'"'s native channel count (written -ch_layout <native count>C), format alsa, -sample_rate 48000 and a selection of one channel; failed or busy opens: 0; the rate is 48,000 Hz.'
     if [ "$HW_DRY" != 1 ] && [ -z "$HW_CORE_PID" ]; then hw_fail 2 'refused: --session needs --core-pid. Nothing more was read.'; fi
     hw_read_quiet 'process table' ps -eo pid=,ppid=,comm=
     # shellcheck disable=SC2016
@@ -56,7 +65,7 @@ case "$HW_MODE" in
         for (i = 1; i <= NR; i++) if ((pid[i] in want) && pid[i] != core && name[pid[i]] ~ /^ffmpeg/) print pid[i]
       }' -v core="${HW_CORE_PID:-0}"
     if [ "$HW_DRY" = 1 ]; then
-      hw_line '   would-read-file: /proc/<pid>/cmdline of every descendant of the Core named ffmpeg, reduced to the values after -f, -channels or -ac, -sample_rate or -ar, and the channel selection (-af or -filter:a or -map_channel)'
+      hw_line '   would-read-file: /proc/<pid>/cmdline of every descendant of the Core named ffmpeg, reduced to the values after -f, -ch_layout (the channel count, as <n>C), -sample_rate, and the channel selection (-af)'
     else
       helpers=0
       while read -r pid; do
@@ -73,7 +82,7 @@ case "$HW_MODE" in
         value_re='^[A-Za-z0-9_=|.:+*,-]{1,80}$'
         while IFS= read -r -d '' arg || [ -n "$arg" ]; do
           case "$previous" in
-            -f | -channels | -ac | -sample_rate | -ar | -af | -filter:a | -map_channel)
+            -f | -ch_layout | -sample_rate | -af)
               if [[ $arg =~ $value_re ]]; then picked="$picked $previous $arg"; else picked="$picked $previous [not printed]"; fi
               ;;
           esac
@@ -86,14 +95,14 @@ LIST
       obs 'microphone helper processes (descendants of the Core named ffmpeg)' "$helpers"
     fi
     if [ -n "$HW_CORE_LOG" ] || [ "$HW_DRY" = 1 ]; then
-      hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" MIC_OPEN_FAILED AUDIO_DEVICE_BUSY MIC_HELPER_EXITED MIC_NOT_CONNECTED
+      hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" AUDIO_HELPER_NOT_STARTED AUDIO_HELPER_ENDED_AT_START AUDIO_HELPER_EXITED AUDIO_NO_SAMPLE_WITHIN_BOUND AUDIO_SHARED_CAPTURE_REFUSED AUDIO_CARD_RATE_UNSUPPORTED AUDIO_CARD_MOVED
     fi
     if [ -n "$HW_WORKER_LOG" ] || [ "$HW_DRY" = 1 ]; then
       hw_fields 'worker log' "${HW_WORKER_LOG:-<worker-log>}" session_starting mics
-      hw_fields 'worker log' "${HW_WORKER_LOG:-<worker-log>}" audio_started encoders sample_rate rate quantum_samples
-      hw_count 'worker log' "${HW_WORKER_LOG:-<worker-log>}" MIC_NOT_DELIVERING MIC_SILENT MIC_DISCONNECTED
+      hw_fields 'worker log' "${HW_WORKER_LOG:-<worker-log>}" audio_started encoders quantum_samples master_mic
+      hw_count 'worker log' "${HW_WORKER_LOG:-<worker-log>}" MIC_INPUT_OPEN_FAILED MIC_SILENT MIC_DISCONNECTED
     fi
-    confirm 'the codes by which the Core and the worker report a failed or busy audio open, and the field in which the worker states the microphone rate (quantum_samples 480 per 10 ms means 48,000 Hz)'
+    confirm 'that a failed or busy open of a real card reaches the Core log under one of the seven codes counted here (they were seen on doubles only); the worker states no rate: quantum_samples is read beside the -sample_rate of the helper'"'"'s row'
     ;;
   first-second)
     step '9A/H-08.7' SCRIPT 'after S1 is sealed: from the sealed audio of S1, read-only, the peak of the first 1,000 ms and the peak of the following 4,000 ms, in dBFS. It prints two numbers and no sound.'

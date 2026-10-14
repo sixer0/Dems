@@ -26,11 +26,13 @@ import { createCaptureDeviceRegistry } from '../../registry';
 import { ConnectionTestOutcome, type CameraCandidate, type CameraSourceTarget, type CaptureDeviceEntry } from '../../types';
 import { createCameraWatch } from '../camera-watch';
 import {
+  CAMERA_LOSS_NOT_TOLD,
   CAMERA_OPEN_BOUND_MS,
   CAMERA_RELAY_REAP_BOUND_MS,
   CAMERA_RELAY_STOP_BOUND_MS,
   CameraOpenError,
   CameraOpenRefusal,
+  RELAY_END_LISTENER_ABSENT,
   createOnvifRelayCameraAdapter,
   relayEndOf,
   type CameraRelayEnd,
@@ -1195,24 +1197,25 @@ describe('finding F3-01: the relay\'s `camera_lost` and `camera_reopened` (row 4
     pendingOpen.child.say(established(3));
     expect(await pendingOpen.pending).toMatchObject({ deviceId: 'CAM-01' });
     const child = pendingOpen.child;
-    // A re-open with no loss open.
+    // A re-open of the loss that was said BEFORE the push: no loss inside a session, so no re-open of one either.
     child.say(cameraReopened(3, 1));
     expect(r.reports).toHaveLength(1);
     // The first loss; said again, and a lower number: one absence, told once.
     child.say(cameraLost(3, 1) + cameraLost(3, 1));
     expect(r.reports.map((report) => report.leg?.event ?? 'ESTABLISHED')).toEqual(['ESTABLISHED', 'LOST']);
-    // A re-open of another number ends nothing: the loss that was told stays told.
-    child.say(cameraReopened(3, 2));
-    expect(r.reports).toHaveLength(2);
-    // A HIGHER loss while one is open (the re-open line between them was never seen): the camera is away either way - nothing told twice, noted.
+    // A HIGHER loss while one is told (the re-open line between them was never seen): the camera is away either way - nothing told twice, noted.
     child.say(cameraLost(3, 2));
     expect(r.reports).toHaveLength(2);
-    // The re-open of the number that is open now ends the absence; the earlier number no longer does.
+    // The LATE re-open of the earlier number ends nothing: a loss came after it (a doubt about order keeps what was told).
     child.say(cameraReopened(3, 1));
     expect(r.reports).toHaveLength(2);
+    // The re-open of the loss the relay is in ends the absence - UNDER THE NUMBER THAT WAS TOLD (finding E-04), the relay's own beside it.
     child.say(cameraReopened(3, 2));
     expect(r.reports.map((report) => report.leg?.event ?? 'ESTABLISHED')).toEqual(['ESTABLISHED', 'LOST', 'REOPENED']);
-    expect(r.reports[2]?.leg).toMatchObject({ loss: 2 });
+    expect(r.reports[2]?.leg).toEqual({ event: 'REOPENED', profile: 'HEVC_1080P', loss: 1, through: 2, tries: 1, heldBack: 25, gapMs: 3_040 });
+    // That re-open said again: nothing is open, nothing is told.
+    child.say(cameraReopened(3, 2));
+    expect(r.reports).toHaveLength(3);
     // A loss that skips a number is taken (told) and noted.
     child.say(cameraLost(3, 5));
     expect(r.reports.at(-1)?.leg).toMatchObject({ event: 'LOST', loss: 5 });
@@ -1305,6 +1308,218 @@ describe('finding F3-01: the relay\'s `camera_lost` and `camera_reopened` (row 4
   });
 });
 
+// Finding E-04 of the fifth review pass (decision C113). TWO readers hear the report source: the camera watch, which
+// matches a re-open to the RELAY of the loss it was told, and the session, which matches it to the NUMBER it was told
+// (`capture-session/index.ts`, `cameraLegSaid`: one open absence per stream; a loss said while one is open is the same
+// absence; `open.loss !== leg.loss` ends nothing). Before this row a re-open could go out under a number no `LOST` had
+// carried: the watch cleared the fault, the session kept its absence open to the end and SIGNED `NOT_RE_OPENED`.
+// `sessionOf` below is that rule of the session, restated (the session file is not this row's): the cases hold the two
+// readers to ONE answer after every line.
+// MUTATIONS, each seen RED on its mutant of `legReported` (the row record names the failing assertions):
+//   M1  the re-open handed under the relay's number (`loss: report.loss`, no `through`) - the defect as found: cases 1 and 4;
+//   M2  a re-open with no loss told dropped as before (`if (told === null) return outOfOrder();`): cases 2 and 4;
+//   M3  the late re-open taken (the test `report.loss < slot.lastLoss` removed): cases 3 and 4.
+describe('finding E-04: a re-open is always told under the number its loss was told by - the session and the watch end the same absence', () => {
+  interface Readers {
+    readonly r: Rig;
+    readonly child: FakeChild;
+    /** The session's open absences, by stream: the number each was told by. */
+    readonly open: Map<string, number>;
+    /** The absences the session ended, in order. */
+    readonly ended: { loss: number; gapMs: number }[];
+    readonly raised: unknown[];
+    readonly cleared: unknown[];
+    readonly lost: () => readonly string[];
+    readonly legs: () => (readonly [string, number, number | string | undefined])[];
+  }
+  async function readers(): Promise<Readers> {
+    const raised: unknown[] = [];
+    const cleared: unknown[] = [];
+    const watch = createCameraWatch({
+      timers: manualTimers(),
+      now: () => 0,
+      reader: { read: async () => ({ answered: false, cameraUtcMs: null }) },
+      candidate: async () => CANDIDATE,
+      faults: { raise: (fault) => void raised.push(fault), clear: (fault) => void cleared.push(fault) },
+    });
+    const r = rig({ relayEnded: (end) => watch.relayEnded(end) });
+    const open = new Map<string, number>();
+    const ended: Readers['ended'] = [];
+    const sessionOf = (report: CameraRelayReport): void => {
+      const leg = report.leg;
+      if (leg === undefined) return;
+      const key = `${report.deviceId} ${leg.profile}`;
+      if (leg.event === 'LOST') {
+        if (!open.has(key)) open.set(key, leg.loss);
+        return;
+      }
+      if (open.get(key) !== leg.loss) return;
+      open.delete(key);
+      ended.push({ loss: leg.loss, gapMs: leg.gapMs });
+    };
+    r.adapter.relayReports.subscribe(sessionOf);
+    r.adapter.relayReports.subscribe((report) => watch.pushEstablished(report));
+    const { child } = await opened(r, 'CAM-01', { attempt: 1 });
+    const legs = (): (readonly [string, number, number | string | undefined])[] =>
+      r.reports.flatMap((report) => (report.leg === undefined ? [] : [[report.leg.event, report.leg.loss, report.leg.event === 'LOST' ? report.leg.cause : report.leg.through] as const]));
+    return { r, child, open, ended, raised, cleared, lost: () => watch.lost(), legs };
+  }
+  /** Both readers say the same of the camera: away, or not. */
+  const agree = (s: Readers, away: boolean): void => {
+    expect([s.open.size > 0, s.lost().length > 0, s.raised.length - s.cleared.length]).toEqual([away, away, away ? 1 : 0]);
+  };
+
+  it('case 1, a DROPPED re-open line (the review\'s case): LOST 1, [REOPENED 1 never arrives], LOST 2, REOPENED 2 - the session is told the end of the absence it knows as 1, with the relay\'s number beside it', async () => {
+    const s = await readers();
+    s.child.say(cameraLost(1, 1, 32));
+    agree(s, true);
+    s.child.say(cameraLost(1, 2, 31));
+    agree(s, true);
+    s.child.say(cameraReopened(1, 2, 4, 25, 9_000));
+    // What the session receives, exactly: the number it was told, the relay's own in `through`, the relay's numbers of loss 2.
+    expect(s.r.reports.at(-1)).toEqual({ sessionId: SESSION, deviceId: 'CAM-01', attempt: 1, leg: { event: 'REOPENED', profile: 'HEVC_1080P', loss: 1, through: 2, tries: 4, heldBack: 25, gapMs: 9_000 } });
+    expect(s.legs()).toEqual([['LOST', 1, 'CAMERA_LOST'], ['REOPENED', 1, 2]]);
+    // ONE answer: the session ended the absence it had open, the watch cleared the fault it raised.
+    agree(s, false);
+    expect(s.ended).toEqual([{ loss: 1, gapMs: 9_000 }]);
+    // The same with the loss line of 2 dropped as well: LOST 3, [REOPENED 3 and LOST 4 never arrive], REOPENED 4.
+    s.child.say(cameraLost(1, 3));
+    s.child.say(cameraReopened(1, 4, 1, 25, 700));
+    expect(s.legs().slice(2)).toEqual([['LOST', 3, 'CAMERA_LOST'], ['REOPENED', 3, 4]]);
+    agree(s, false);
+    // A pair in order names no `through` at all.
+    s.child.say(cameraLost(1, 5) + cameraReopened(1, 5));
+    expect(s.r.reports.at(-1)?.leg).toEqual({ event: 'REOPENED', profile: 'HEVC_1080P', loss: 5, tries: 1, heldBack: 25, gapMs: 3_040 });
+    agree(s, false);
+    expect([s.raised.length, s.cleared.length, s.ended.length]).toEqual([3, 3, 3]);
+  });
+
+  it('case 2, a DROPPED loss line: REOPENED 1 with no loss told - both facts are handed on in their order in one turn (the loss with the cause `LOSS_NOT_TOLD`), and the absence is on both records', async () => {
+    const s = await readers();
+    s.child.say(cameraReopened(1, 1, 2, 25, 4_200));
+    expect(s.r.reports.slice(1)).toEqual([
+      { sessionId: SESSION, deviceId: 'CAM-01', attempt: 1, leg: { event: 'LOST', profile: 'HEVC_1080P', loss: 1, cause: CAMERA_LOSS_NOT_TOLD } },
+      { sessionId: SESSION, deviceId: 'CAM-01', attempt: 1, leg: { event: 'REOPENED', profile: 'HEVC_1080P', loss: 1, tries: 2, heldBack: 25, gapMs: 4_200 } },
+    ]);
+    // The absence happened and is stated once by each reader: a fault raised and cleared, an absence opened and ended with the relay's measure.
+    agree(s, false);
+    expect([s.raised.length, s.cleared.length, s.ended]).toEqual([1, 1, [{ loss: 1, gapMs: 4_200 }]]);
+    // It is noted, and it is no exit word of the relay.
+    expect(s.r.notes.map((note) => note.code)).toEqual(['CAPTURE_RELAY_REPORT_OUT_OF_ORDER']);
+    expect(CAMERA_LOSS_NOT_TOLD).toBe('LOSS_NOT_TOLD');
+    // OUT OF ORDER, the two lines the wrong way round: the loss line that comes after its re-open is a number said already.
+    s.child.say(cameraLost(1, 1));
+    expect(s.r.reports).toHaveLength(3);
+    agree(s, false);
+    // A skipped number the same way: REOPENED 3 while nothing is told.
+    s.child.say(cameraReopened(1, 3));
+    expect(s.legs().slice(2)).toEqual([['LOST', 3, CAMERA_LOSS_NOT_TOLD], ['REOPENED', 3, undefined]]);
+    agree(s, false);
+    expect(s.r.adapter.counts().outOfOrderReports).toBe(3);
+  });
+
+  it('case 3, OUT OF ORDER and DUPLICATED lines: a late or repeated re-open ends nothing and the fault stands; a repeated loss tells nothing twice', async () => {
+    const s = await readers();
+    s.child.say(cameraLost(1, 1) + cameraLost(1, 2));
+    // The re-open of 1 arrives AFTER the loss of 2: the camera is away now. A doubt about order keeps the fault (row R1).
+    s.child.say(cameraReopened(1, 1));
+    expect(s.r.reports).toHaveLength(2);
+    agree(s, true);
+    expect(s.cleared).toEqual([]);
+    // Each line once more.
+    s.child.say(cameraLost(1, 1) + cameraLost(1, 2) + cameraReopened(1, 1));
+    expect(s.r.reports).toHaveLength(2);
+    agree(s, true);
+    // The re-open of the loss the relay is in: told once, under 1.
+    s.child.say(cameraReopened(1, 2) + cameraReopened(1, 2) + cameraReopened(1, 1));
+    expect(s.legs()).toEqual([['LOST', 1, 'CAMERA_LOST'], ['REOPENED', 1, 2]]);
+    agree(s, false);
+    expect([s.raised.length, s.cleared.length, s.ended.length]).toEqual([1, 1, 1]);
+    // Dropped: the loss of 2 while 1 is told is noted and told to nobody; the five repeats and late lines are dropped.
+    expect(s.r.adapter.counts()).toEqual({ live: 1, droppedReports: 0, outOfOrderReports: 7 });
+  });
+
+  it('case 4, EVERY way a relay\'s lines can be dropped, repeated or swapped (600 seeded runs of five losses): after each line the two readers agree, and every re-open told names a loss that was told and not yet ended', async () => {
+    // A small generator with a fixed seed: the runs are the same at every run of the suite.
+    let seed = 0x2f6e2b1;
+    const next = (below: number): number => {
+      seed = (Math.imul(seed, 1_103_515_245) + 12_345) >>> 0;
+      return (seed >>> 8) % below;
+    };
+    let reopenedUnderAnotherNumber = 0;
+    let pairsPutTogether = 0;
+    for (let run = 0; run < 600; run += 1) {
+      const s = await readers();
+      // The relay's true lines, in its order: five losses, each re-opened but perhaps the last.
+      const truth: string[] = [];
+      for (let loss = 1; loss <= 5; loss += 1) truth.push(cameraLost(1, loss), cameraReopened(1, loss, 1, 25, 1_000 + loss));
+      if (next(3) === 0) truth.pop();
+      // What arrives: each line dropped (1 in 4), repeated (1 in 6), or swapped with the line after it (1 in 5).
+      const lines: string[] = [];
+      for (const line of truth) {
+        if (next(4) === 0) continue;
+        lines.push(line);
+        if (next(6) === 0) lines.push(line);
+      }
+      for (let index = 0; index + 1 < lines.length; index += 1) {
+        if (next(5) !== 0) continue;
+        const [a, b] = [lines[index] as string, lines[index + 1] as string];
+        lines[index] = b;
+        lines[index + 1] = a;
+      }
+      const told = new Set<number>();
+      let seen = s.r.reports.length;
+      for (const line of lines) {
+        s.child.say(line);
+        for (const report of s.r.reports.slice(seen)) {
+          const leg = report.leg;
+          if (leg === undefined) throw new Error('an established push was told twice');
+          if (leg.event === 'LOST') {
+            // Never a second loss while one is told.
+            expect(told.size, `run ${run}: ${lines.join('')}`).toBe(0);
+            told.add(leg.loss);
+            if (leg.cause === CAMERA_LOSS_NOT_TOLD) pairsPutTogether += 1;
+          } else {
+            expect(told.has(leg.loss), `run ${run}: a re-open under a number that was not told\n${lines.join('')}`).toBe(true);
+            told.delete(leg.loss);
+            if (leg.through !== undefined) {
+              expect(leg.through).toBeGreaterThan(leg.loss);
+              reopenedUnderAnotherNumber += 1;
+            }
+          }
+        }
+        seen = s.r.reports.length;
+        // ONE answer, after every line.
+        expect([s.open.size, s.lost().length, s.raised.length - s.cleared.length], `run ${run}: ${lines.join('')}`).toEqual([told.size, told.size, told.size]);
+      }
+    }
+    // The runs reached both repairs many times: the case is not green by never meeting them.
+    expect(reopenedUnderAnotherNumber).toBeGreaterThan(50);
+    expect(pairsPutTogether).toBeGreaterThan(50);
+  });
+});
+
+// Finding E-02 of the fifth review pass (decision C113; the F-07 family of C46 / C50). `relayEnded` was optional: left out,
+// a relay that died after its open was told to nobody and no fault was raised. It is required in the type now; this case is
+// the caller the type did not hold. SEEN RED on the mutant without the refusal line of `openSource`: the open came up.
+describe('finding E-02: no relay is started whose end nobody would hear', () => {
+  it('an adapter built WITHOUT the listener of a relay\'s end refuses every open by a named code before anything is asked: no stored fact read, no reveal, no dial, no process', async () => {
+    for (const relayEnded of [undefined, null, 'a text']) {
+      const r = rig({ relayEnded } as unknown as Partial<OnvifRelayCameraDependencies>);
+      const refused = await outcomeOf(r.adapter.openSource('CAM-01', target(), never));
+      expect(refused).toBeInstanceOf(CameraOpenError);
+      expect(refused).toMatchObject({ code: CameraOpenRefusal.RELAY_NOT_STARTED, deviceId: 'CAM-01', reason: RELAY_END_LISTENER_ABSENT });
+      expect([r.calls, r.readerCalls, r.locateCalls, r.children, r.reports, r.adapter.counts().live]).toEqual([[], [], [], [], [], 0]);
+    }
+    // Control: the same rig WITH the listener opens, and hears the end of a relay that dies.
+    const r = rig();
+    const { child } = await opened(r);
+    child.exit(32);
+    await flush();
+    expect(r.ends).toHaveLength(1);
+  });
+});
+
 describe('T-1: what the adapter is and is not', () => {
   it('`pullUrl` refuses by a named code; the members of other rows refuse as class C; the adapter states an opener of the production kind', async () => {
     const { adapter } = rig();
@@ -1356,10 +1571,10 @@ describe('T-1: what the adapter is and is not', () => {
     expect(adapter.filter((line) => /\btarget\b/.test(line) && !line.startsWith('async function openSource(') && line !== 'const { profile, sessionId, attempt } = target;')).toEqual(naming);
     // In the relay start it is a member of the message and of the options type, and nothing else.
     expect(relayStart.filter((line) => /\bingest\b/.test(line))).toEqual(['readonly ingest: string;', 'ingest: start.ingest,']);
-    // The slot of a live relay holds identifiers, the process and (finding F3-01) one flag and two loss numbers of its camera leg: no locator, no address, no credential member.
+    // The slot of a live relay holds identifiers, the process and (findings F3-01, E-04) one flag and three loss numbers of its camera leg: no locator, no address, no credential member.
     const slot = adapter.slice(adapter.indexOf('interface Slot {'), adapter.indexOf('}', adapter.indexOf('interface Slot {')) + 1).join(' ');
     expect(slot).toBe(
-      'interface Slot { readonly deviceId: string; readonly profile: string; readonly sessionId: string; readonly attempt: number; process: ProductionProcess | null; ending: boolean; closed: Promise<void> | null; established: boolean; lastLoss: number; lossOpen: number | null; }',
+      'interface Slot { readonly deviceId: string; readonly profile: string; readonly sessionId: string; readonly attempt: number; process: ProductionProcess | null; ending: boolean; closed: Promise<void> | null; established: boolean; lastLoss: number; lossTold: number | null; lossBeforePush: number; }',
     );
     // The locator and the credential are locals of the open: named in `openSource` only, never assigned to a slot or a map.
     for (const line of adapter.filter((text) => /\b(?:sealed|located)\b/.test(text))) expect(line, line).not.toMatch(/\bslot\.|\.set\(|\blive\b|\bthis\./);

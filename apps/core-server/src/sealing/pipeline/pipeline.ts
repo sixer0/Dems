@@ -161,6 +161,18 @@ function builtOf(row: SealingStepRecord): BuiltCheckpoint {
   return checkpoint as unknown as BuiltCheckpoint;
 }
 
+/**
+ * Where the sealed media ends on the Core clock (manifest field 16; the item's `endedAt`): the operator's stop, or - for a
+ * durable prefix - `startedAt` + the end of the last durable fragment, NEVER after the seal's own instant. Wave 12 row D1
+ * (row 184's open fault): the worker puts the zero of the media time where its audio began, which can lie before the
+ * session's `startedAt` (407 to 443 ms on the development microphones), so the sum could lie after `sealedAt`; the item row
+ * was then refused by `evidence_items_values_check` (`sealed_at >= ended_at`), at every retry, the instant being frozen.
+ */
+function durableEndOf(interrupted: boolean, session: Pick<SealSessionFacts, 'startedAt' | 'stoppedAt'>, mediaEndMs: number, sealedAt: number): number {
+  if (!interrupted && session.stoppedAt !== null) return session.stoppedAt;
+  return Math.min(session.startedAt + mediaEndMs, sealedAt);
+}
+
 export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
   const chunkBytes = ports.chunkBytes ?? DEFAULT_CHUNK_BYTES;
   // ONE BOUND (row 82c, F-86-1): the verifier's. A port may lower it for a test; it is never raised.
@@ -699,7 +711,7 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
       const sealedIds = closedTracks.tracks.map((track) => track.trackId);
       // Where the sealed media ends on the Core clock: the operator's stop, or - for a durable
       // prefix - the end of the last durable fragment counted from the start of the recording.
-      const durableEndMs = !interrupted && session.stoppedAt !== null ? session.stoppedAt : session.startedAt + mediaEndMs;
+      const durableEndMs = durableEndOf(interrupted, session, mediaEndMs, frozen.sealedAt);
       const intervals = session.audioIntervals.map((interval, index, all) => (interval.toMs === null && index === all.length - 1 ? { ...interval, toMs: Math.max(interval.fromMs, mediaEndMs) } : interval));
       // Task 4 row 191c (C73, C83): fields 129-132, the manifest's ONE optional member. The records are the session's
       // own (its reader states them from what the session stored); a session without a restart hands none, and then
@@ -862,7 +874,7 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
           signature: { value: signed.signature, keyId: signed.keyId, algorithm: 'Ed25519' },
           tracks: hashedTracks.tracks.map((track) => ({ trackId: track.trackId, sizeBytes: track.bytes, sha256: track.sha256 })),
           interrupted: closedTracks.interrupted,
-          durableEndAt: !closedTracks.interrupted && session.stoppedAt !== null ? session.stoppedAt : session.startedAt + mediaEndMs,
+          durableEndAt: durableEndOf(closedTracks.interrupted, session, mediaEndMs, was.sealedAt),
           transcriptSha256: done.transcript.itemColumns.transcriptSha256,
           labelsStatus: done.transcript.itemColumns.labelsStatus,
           developmentSources: was.developmentSources,

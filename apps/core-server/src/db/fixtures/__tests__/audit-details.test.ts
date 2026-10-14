@@ -162,7 +162,8 @@ describe('where each audit type is written', () => {
     // Task 4 row V3 (the third vocabulary step): the four of the alias intent, the failed alias add, the
     // audio gap of a worker restart and the stored-credential connection test join the list, 34 -> 38 (78 -> 82 in all).
     // Task 4 row R1b (decision C99): CAPTURE_VIDEO_ABSENT_IN_SESSION joins the list, 38 -> 39 (82 -> 83 in all).
-    expect(bySource).toEqual({ 'ALLOW-LIST': 39, MODULE: 11, SIMULATOR: 33 });
+    // Task 4 row N2: CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED and CAPTURE_AUDIO_SILENCE_INSERTED join the list, 39 -> 41 (83 -> 85 in all).
+    expect(bySource).toEqual({ 'ALLOW-LIST': 41, MODULE: 11, SIMULATOR: 33 });
     // The nineteen of the list are the nineteen the audit writer names (nine of the backend task,
     // nine of the capture phase, and STT_CONFIG_CHANGED of blueprint row 113, which has a builder:
     // `modules/stt-config`), and the nine older ones mostly have a builder too. A listed type
@@ -216,6 +217,10 @@ describe('where each audit type is written', () => {
         // Task 4 row R1b (decision C99): the one of a camera absent inside a session. Its live writer is the
         // capture session (`capture-session/index.ts`), which states the details itself; the fixture states one row.
         'CAPTURE_VIDEO_ABSENT_IN_SESSION',
+        // Task 4 row N2: the two of an audio path that is not sample-continuous. Their live writer is the
+        // capture session (row N11), which states the details itself; the fixture states one row of each.
+        'CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED',
+        'CAPTURE_AUDIO_SILENCE_INSERTED',
       ].sort(),
     );
   });
@@ -300,7 +305,8 @@ describe('every audit row of the fixture', () => {
       return `| ${type} | ${source ?? 'none'} | ${expected} | ${counted(ofType(type).map((row) => `{${signatureOf(row.details)}}`))} |`;
     });
     // Task 4 row R1b: 82 -> 83 with CAPTURE_VIDEO_ABSENT_IN_SESSION.
-    expect(lines).toHaveLength(83);
+    // Task 4 row N2: 83 -> 85 with CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED and CAPTURE_AUDIO_SILENCE_INSERTED.
+    expect(lines).toHaveLength(85);
     console.log(['[w25] audit detail keys per type: | type | written by | keys expected | keys written (rows) |', ...lines].join('\n'));
   });
 
@@ -313,7 +319,7 @@ describe('every audit row of the fixture', () => {
       const expected = builder ?? (administration.has(type) ? [administration.get(type) ?? ''] : (shapes.get(type)?.severities ?? []));
       return `| ${type} | ${AUDIT_TYPE_CATEGORY[type]} | ${source} | ${[...expected].sort().join(' or ')} | ${counted(ofType(type).map((row) => row.severity))} |`;
     });
-    expect(lines).toHaveLength(83);
+    expect(lines).toHaveLength(85);
     console.log(['[w25] audit severity per type: | type | category | severity from | severity expected | severity written (rows) |', ...lines].join('\n'));
   });
 });

@@ -484,3 +484,67 @@ describe('a selector slot without a source: the pre-check item (task 4 row 163)'
     expect(() => h.sim.actions.startRecording()).toThrow(SimTransitionError);
   });
 });
+
+// Task 4 row V7d (decisions C126 (b), C141): the answer of a pre-check or a re-scan is a read of the camera's CONTROL
+// service (the Core's probe asks the adapter's `profiles`), not of its stream. A REGISTERED camera (an entry with an
+// `adapter`) therefore never reads LIVE from it: NOT READ (null), unless the ingest said LIVE (kept) or a stream fault
+// is active (LOST kept). No answer still says LOST. The built-in pair keeps the model's LIVE (the case of CAM-02 above,
+// unedited). Mutations each seen RED: implementation/v7d_op44_not_read.md.
+describe('row V7d: a camera that answered a check was not read - a registered camera is NOT READ after the clear, never LIVE', () => {
+  const CAM = 'CAM-07';
+  // The form of row V7c's stream fault (sim-capture-telemetry.test.ts): `reason` is read beside the input type (CaptureFaultFacts).
+  const FAULT = { code: 'CAPTURE_FAULT', subject: CAM, reason: 'CAMERA_STREAM_ENDED' } as const;
+  /** The idle harness with CAM-07 registered (its entry null, as a registration leaves it) and on VIDEO-02, its line null. */
+  const seeded = () => {
+    const h = harness();
+    h.sim.actions.registerCaptureDevice({ id: CAM, model: null, host: '192.0.2.17', adapter: 'ONVIF_RTSP' });
+    const state = h.state();
+    h.sim.store.setState({ captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-02' ? { ...line, deviceId: CAM, online: true, streamState: null } : line)) } });
+    return h;
+  };
+  const of = (h: ReturnType<typeof harness>, deviceId = CAM) => ({
+    entry: h.state().captureDevices.devices.find((device) => device.id === deviceId)?.streamState,
+    line: h.state().captureConfig.cameras.find((camera) => camera.deviceId === deviceId)?.streamState,
+    online: h.state().captureDevices.devices.find((device) => device.id === deviceId)?.online,
+  });
+
+  it('no answer says LOST; the answer of a pre-check and of a re-scan (PRESENCE) says NOT READ, with `online` true again; CONTROL: the built-in CAM-01 reads LIVE after the same clear', () => {
+    const h = seeded();
+    expect(of(h)).toEqual({ entry: null, line: null, online: true });
+    h.sim.actions.raiseCaptureWarning(UNREACHABLE(CAM));
+    expect(of(h)).toEqual({ entry: 'LOST', line: 'LOST', online: false });
+    h.sim.actions.clearCaptureWarning({ code: 'CAPTURE_DEVICE_UNREACHABLE', subject: CAM, phase: 'PRECHECK' });
+    expect(of(h)).toEqual({ entry: null, line: null, online: true });
+
+    h.sim.actions.raiseCaptureWarning(UNREACHABLE(CAM, { phase: 'PRESENCE' }));
+    expect(of(h)).toEqual({ entry: 'LOST', line: 'LOST', online: false });
+    h.sim.actions.clearCaptureWarning({ code: 'CAPTURE_DEVICE_UNREACHABLE', subject: CAM, phase: 'PRESENCE' });
+    expect(of(h)).toEqual({ entry: null, line: null, online: true });
+
+    // CONTROL: the built-in camera through the same raise and clear is the demonstration model's LIVE again.
+    h.sim.actions.raiseCaptureWarning(UNREACHABLE('CAM-01'));
+    h.sim.actions.clearCaptureWarning({ code: 'CAPTURE_DEVICE_UNREACHABLE', subject: 'CAM-01', phase: 'PRECHECK' });
+    expect(of(h, 'CAM-01')).toEqual({ entry: 'LIVE', line: 'LIVE', online: true });
+  });
+
+  it('the answer keeps what a reading stated: a LIVE of the ingest stays LIVE; an active stream fault stays LOST until its own clear', () => {
+    const live = seeded();
+    live.sim.actions.raiseCaptureWarning(UNREACHABLE(CAM));
+    // What a CONNECTED frame of the ingest writes (capture-telemetry `cameraOfIngest`), while the alert is still active.
+    const state = live.state();
+    live.sim.store.setState({
+      captureDevices: { ...state.captureDevices, devices: state.captureDevices.devices.map((device) => (device.id === CAM ? { ...device, online: true, streamState: 'LIVE' } : device)) },
+      captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.map((line) => (line.deviceId === CAM ? { ...line, online: true, streamState: 'LIVE' } : line)) },
+    });
+    live.sim.actions.clearCaptureWarning({ code: 'CAPTURE_DEVICE_UNREACHABLE', subject: CAM, phase: 'PRECHECK' });
+    expect(of(live)).toEqual({ entry: 'LIVE', line: 'LIVE', online: true });
+
+    const faulted = seeded();
+    faulted.sim.actions.raiseCaptureWarning(FAULT);
+    faulted.sim.actions.raiseCaptureWarning(UNREACHABLE(CAM));
+    faulted.sim.actions.clearCaptureWarning({ code: 'CAPTURE_DEVICE_UNREACHABLE', subject: CAM, phase: 'PRECHECK' });
+    expect(of(faulted)).toEqual({ entry: 'LOST', line: 'LOST', online: true });
+    faulted.sim.actions.clearCaptureWarning(FAULT);
+    expect(of(faulted)).toEqual({ entry: null, line: null, online: true });
+  });
+});

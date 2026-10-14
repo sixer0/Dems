@@ -10,7 +10,7 @@
 //                   three facts can be changed.
 //   M4-MT-14        an adopted ONVIF_RTSP row and the LOCAL_DEVICE rows survive the permitted
 //                   reset with their kind; `session_capture_sources` is emptied; the version
-//                   stays at this code's pair, (13, 'dbc-14') since migration set 14; the kept set is 13 (12 until PE-0013-01).
+//                   stays at this code's pair, (14, 'dbc-15') since migration set 15; the kept set is 13 (12 until PE-0013-01).
 //   D98(1) / M7-SEC-SRC-2 (blueprint row 141): the DISK side follows the row side. A package folder
 //                   of the exempt item whose SIGNED manifest verifies and says development sources
 //                   does not block; an unsigned, tampered or all-PRODUCTION manifest on disk
@@ -383,7 +383,8 @@ describe('the permitted reset: M4-SEC-RESET-1 (the count is stated) and M4-MT-14
     expect(rebuilt.rows).toEqual([{ real_items: 0, flagged: 0, items: 13, sources: 0, snapshots: 0 }]);
 
     // M4-MT-14: the kept set is the same twelve tables plus `core_media_store` (PE-0013-01) and the registry crossed image for image.
-    expect(KEPT_TABLE_NAMES).toHaveLength(13);
+    // 18 since integration pass I-9c (review 120 F-6): the five tables of task 4's schema sets A to C are kept too.
+    expect(KEPT_TABLE_NAMES).toHaveLength(18);
     expect(KEPT_TABLE_NAMES).toContain('capture_devices');
     expect(KEPT_TABLE_NAMES).not.toContain('session_capture_sources');
     expect(KEPT_TABLE_NAMES).not.toContain('session_stt_config');
@@ -403,6 +404,6 @@ describe('the permitted reset: M4-SEC-RESET-1 (the count is stated) and M4-MT-14
       { id: 'POE-SWITCH', adapter_kind: 'FAKE' },
     ]);
     const meta = await after.query('SELECT schema_version, contract_revision FROM public.schema_meta');
-    expect(meta.rows).toEqual([{ schema_version: 13, contract_revision: 'dbc-14' }]);
+    expect(meta.rows).toEqual([{ schema_version: 14, contract_revision: 'dbc-15' }]);
   });
 });

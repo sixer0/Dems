@@ -206,9 +206,11 @@ export interface OnvifConnectionTester {
    * names (`storedCameraSourceOf`). Handed in, it is the local address of every request; a text
    * that is no source address rejects with `CAPTURE_LOCATOR_INVALID` before any request, and an
    * address the host does not hold gets no connection (`UNREACHABLE`, `NO_ANSWER`; 0 requests).
-   * Left out - a camera that is not stored yet - the host's own routing chooses, as before.
+   * `undefined` - a camera that is not stored yet - the host's own routing chooses, as before.
+   * REQUIRED TO BE STATED (finding E-02 of the fifth review pass; S-03 of the second): a caller
+   * that means "as the host routes" writes `undefined`; a call that forgot the argument does not compile.
    */
-  test(candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal, sourceAddress?: string): Promise<OnvifSessionResult>;
+  test(candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal, sourceAddress: string | undefined): Promise<OnvifSessionResult>;
 }
 
 /** What one `locate` answers. The locator is the one piece of device text: checked, bounded, without a credential. */
@@ -232,9 +234,9 @@ export interface OnvifStreamLocator {
    * aborted signal and for a candidate that may not be contacted. Otherwise it RESOLVES. At most
    * one request carries the credential, and a refusal of it is final (the lock-out bound of `test`).
    * Nothing keeps the answer: a caller resolves again at each start of a source.
-   * `sourceAddress`: as `test` takes it (row 143b) - the local address of every request of the read.
+   * `sourceAddress`: as `test` takes it (row 143b) - the local address of every request of the read; stated by every caller (finding E-02).
    */
-  locate(candidate: CameraCandidate, credential: SealedCredential | null, profileToken: string, signal: AbortSignal, sourceAddress?: string): Promise<OnvifLocatorResult>;
+  locate(candidate: CameraCandidate, credential: SealedCredential | null, profileToken: string, signal: AbortSignal, sourceAddress: string | undefined): Promise<OnvifLocatorResult>;
 }
 
 const PROFILE_TOKEN = /^[A-Za-z0-9_.:-]{1,64}$/;
@@ -518,7 +520,7 @@ function exchange<Result>(
   credential: SealedCredential | null,
   signal: AbortSignal,
   course: Course<Result>,
-  sourceAddress?: string,
+  sourceAddress: string | undefined,
 ): Promise<Result> {
     if (signal.aborted) return Promise.reject(new CaptureAdapterError(CaptureAdapterRefusal.ABORTED));
     let target: ConnectionTarget;
@@ -636,6 +638,8 @@ function exchange<Result>(
       });
 
       const arm = (form: 'HTTP_DIGEST' | 'TOKEN'): void => {
+        // Finding E-05 (row V6b's guard, caution R119-09, as in `onvif-network.ts`): an exchange that ended is never armed again - `finish` took the two values off and does not run twice.
+        if (settled) return;
         if (credential === null) return;
         usingCredential(credential, ({ username, secret }) => {
           Object.assign(client, { username, password: secret, useWSSecurity: form === 'TOKEN' });
@@ -702,6 +706,9 @@ function exchange<Result>(
        */
       const authorizedAsk = async (read: OnvifSessionRead, invoke: Invoke): Promise<Answer> => {
         if (credential === null) return ask(read, invoke);
+        // Finding E-05: after a cut (deadline, byte cap) a course may still come here for its next read. The answer is `ask`'s own
+        // for an ended exchange (no request, the read is not listed), BEFORE the client is armed and before a request is counted.
+        if (settled) return ask(read, invoke);
         if (!armed) arm('HTTP_DIGEST');
         const before = credentialRequests;
         if (!digestAllowed) credentialRequests += 1; // the token form: this request carries it
@@ -760,7 +767,7 @@ export function createOnvifConnectionTester(options: OnvifConnectionTesterOption
       rejectedCredentialRequests: session.rejectedCredentialRequests(),
     });
 
-  const test = (candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal, sourceAddress?: string): Promise<OnvifSessionResult> =>
+  const test = (candidate: CameraCandidate, credential: SealedCredential | null, signal: AbortSignal, sourceAddress: string | undefined): Promise<OnvifSessionResult> =>
     exchange<OnvifSessionResult>(limits, timers, candidate, credential, signal, {
       cut: (session, cause) => ended(session, ConnectionTestOutcome.UNREACHABLE, cutReason(cause)),
       steps: async (session) => {
@@ -824,7 +831,7 @@ export function createOnvifStreamLocator(options: OnvifConnectionTesterOptions):
       rejectedCredentialRequests: session.rejectedCredentialRequests(),
     });
 
-  const locate = (candidate: CameraCandidate, credential: SealedCredential | null, profileToken: string, signal: AbortSignal, sourceAddress?: string): Promise<OnvifLocatorResult> => {
+  const locate = (candidate: CameraCandidate, credential: SealedCredential | null, profileToken: string, signal: AbortSignal, sourceAddress: string | undefined): Promise<OnvifLocatorResult> => {
     // The token goes into a request body as it is: nothing but the token form is ever sent.
     if (typeof profileToken !== 'string' || !PROFILE_TOKEN.test(profileToken)) return Promise.reject(new CaptureAdapterError(CaptureAdapterRefusal.PROFILE_UNKNOWN));
     return exchange<OnvifLocatorResult>(limits, timers, candidate, credential, signal, {

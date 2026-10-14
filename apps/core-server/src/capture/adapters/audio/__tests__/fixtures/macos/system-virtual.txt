@@ -1,0 +1,30 @@
+{
+  "SPAudioDataType" : [
+    {
+      "_items" : [
+        {
+          "_name" : "DEMS Hexa 6",
+          "coreaudio_device_input" : 6,
+          "coreaudio_device_output" : 6,
+          "coreaudio_device_srate" : 48000,
+          "coreaudio_device_transport" : "coreaudio_device_type_usb"
+        },
+        {
+          "_name" : "DEMS Loopback 2ch",
+          "coreaudio_device_input" : 2,
+          "coreaudio_device_manufacturer" : "DEMS Driver Maker",
+          "coreaudio_device_output" : 2,
+          "coreaudio_device_srate" : 48000,
+          "coreaudio_device_transport" : "coreaudio_device_type_virtual"
+        },
+        {
+          "_name" : "DEMS Built-in Input",
+          "coreaudio_device_input" : 1,
+          "coreaudio_device_srate" : 48000,
+          "coreaudio_device_transport" : "coreaudio_device_type_builtin"
+        }
+      ],
+      "_name" : "coreaudio_device"
+    }
+  ]
+}

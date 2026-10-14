@@ -625,16 +625,24 @@ describe('row 53: the camera facts of a real capture operation are the stored st
     const inventory = deviceInventoryOf(real, undefined, true);
     expect(inventory.cameras.map((camera) => [camera.id, camera.resolution, camera.fps, camera.codec])).toEqual([['VIDEO-01', '1080p', null, 'HEVC'], ['VIDEO-02', '1080p', 25, 'H.264']]);
     expect(DeviceInventorySchema.safeParse(inventory).success).toBe(true);
-    // Every other member of a track is as it was: only the three facts are the stream's.
+    // Every other member of a track is as it was: the three facts are the stream's - and, since row CB (finding R-01),
+    // the bitrate is null: no real source states one (this line pinned the simulator's 9 in real capture before).
     const plain = videoStatusOf(real);
-    expect(video.tracks.map(({ resolution: _r, fps: _f, codec: _c, ...rest }) => rest)).toEqual(plain.tracks.map(({ resolution: _r, fps: _f, codec: _c, ...rest }) => rest));
+    expect(video.tracks.map(({ resolution: _r, fps: _f, codec: _c, bitrateMbps: _b, ...rest }) => rest)).toEqual(plain.tracks.map(({ resolution: _r, fps: _f, codec: _c, bitrateMbps: _b, ...rest }) => rest));
+    expect(video.tracks.map((track) => track.bitrateMbps)).toEqual([null, null]);
   });
 
   it('the H.264 baseline is unchanged, member for member, and the state is not touched: the same slice object when nothing differs', () => {
-    expect(videoStatusOf(state, undefined, true)).toEqual(videoStatusOf(state));
-    expect(deviceHealthOf(state, NOW, null, undefined, true)).toEqual(deviceHealthOf(state, NOW));
-    expect(deviceInventoryOf(state, undefined, true).cameras).toBe(state.cameras);
-    expect(withCameraStreamFacts(state.cameras, state.captureConfig)).toBe(state.cameras);
+    // Row CB (finding R-01): the state of a Core in real capture states no bitrate (`engine/camera-bitrate.ts`, at every
+    // start). On THAT state nothing differs. (These four lines ran on the simulator's slice, 9, before: the pin of R-01.)
+    const stated: CommittedState = { ...state, cameras: state.cameras.map((camera) => ({ ...camera, bitrateMbps: null })) };
+    expect(videoStatusOf(stated, undefined, true)).toEqual(videoStatusOf(stated));
+    expect(deviceHealthOf(stated, NOW, null, undefined, true)).toEqual(deviceHealthOf(stated, NOW));
+    expect(deviceInventoryOf(stated, undefined, true).cameras).toBe(stated.cameras);
+    expect(withCameraStreamFacts(stated.cameras, stated.captureConfig)).toBe(stated.cameras);
+    // On the simulator's own slice the ONE difference of the baseline is the bitrate.
+    const withoutBitrate = (answer: ReturnType<typeof videoStatusOf>): unknown[] => answer.tracks.map(({ bitrateMbps: _b, ...rest }) => rest);
+    expect(withoutBitrate(videoStatusOf(state, undefined, true))).toEqual(withoutBitrate(videoStatusOf(state)));
     const frozen = deepFreeze(slotted('HEVC_1080P', 'HEVC_2560X1920P'));
     expect(withCameraStreamFacts(frozen.cameras, frozen.captureConfig).map((camera) => [camera.resolution, camera.fps, camera.codec])).toEqual([['1080p', null, 'HEVC'], ['2560x1920', null, 'HEVC']]);
     expect(frozen.cameras.map((camera) => [camera.resolution, camera.fps, camera.codec])).toEqual(state.cameras.map((camera) => [camera.resolution, camera.fps, camera.codec]));
@@ -644,6 +652,36 @@ describe('row 53: the camera facts of a real capture operation are the stored st
     const simulated = slotted('HEVC_1080P', 'H264_720P30');
     expect(factsOf(videoStatusOf(simulated))).toEqual(factsOf(videoStatusOf(state)));
     expect(deviceInventoryOf(simulated).cameras).toBe(simulated.cameras);
+  });
+
+  // Wave 12, row CB (review 060c finding R-01; decision C36). Seen RED on: `bitrateMbps: null` taken out of
+  // `withCameraStreamFacts` (`{ ...camera, resolution, fps, codec }` and the `=== null` of its identity test) - the
+  // three real answers then read 9. (The flag's wiring, and a Core that is not real, are held in `routes.test.ts`.)
+  it('row CB (R-01): a camera\'s bitrate is NULL on the three reads of a real capture operation, whatever the slot holds and whatever number the slice holds; a SIMULATED Core answers the simulator\'s own', () => {
+    // The simulator's one writer: its initial 9 on both tracks. It is what a seed, a reset or an older stored state hands in.
+    expect(state.cameras.map((camera) => camera.bitrateMbps)).toEqual([9, 9]);
+    // An assigned H.264 slot, an assigned HEVC slot, a code that is no statement, and another number in the slice.
+    const other: CommittedState = { ...slotted('HEVC_1080P', 'NOT_A_STATEMENT'), cameras: state.cameras.map((camera, at) => ({ ...camera, bitrateMbps: at === 0 ? 4.5 : 0 })) };
+    for (const real of [state, slotted('HEVC_1080P', 'H264_720P30'), slotted('NOT_A_STATEMENT', 'H264_1080P25'), other]) {
+      const video = videoStatusOf(real, undefined, true);
+      expect(video.tracks.map((track) => track.bitrateMbps)).toEqual([null, null]);
+      expect(validateCoreApiResponse('getVideoStatus', 200, video)).toMatchObject({ ok: true });
+      const health = deviceHealthOf(real, NOW, null, undefined, true);
+      expect(health.cameras.map((camera) => camera.bitrateMbps)).toEqual([null, null]);
+      expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
+      const inventory = deviceInventoryOf(real, undefined, true);
+      expect(inventory.cameras.map((camera) => camera.bitrateMbps)).toEqual([null, null]);
+      expect(DeviceInventorySchema.safeParse(inventory).success).toBe(true);
+      // The state handed in is not written: its own numbers are still there.
+      expect(real.cameras.map((camera) => camera.bitrateMbps)).not.toContain(null);
+      // CONTROL - a SIMULATED Core (no flag) on the SAME state: the slice's own number, on all three.
+      const own = real.cameras.map((camera) => camera.bitrateMbps);
+      expect(videoStatusOf(real).tracks.map((track) => track.bitrateMbps)).toEqual(own);
+      expect(deviceHealthOf(real, NOW).cameras.map((camera) => camera.bitrateMbps)).toEqual(own);
+      expect(deviceInventoryOf(real).cameras).toBe(real.cameras);
+    }
+    // The storage volume's own bitrate (a figure of the write rate, another member) is not this rule's: unchanged.
+    expect(deviceHealthOf(state, NOW, null, undefined, true).storage.bitrateMbps).toBe(deviceHealthOf(state, NOW).storage.bitrateMbps);
   });
 
   it('the reading is the inverse of the seal\'s own function: every code it makes is read back to the picture, the whole-number rate or none, and the codec', () => {
@@ -742,5 +780,34 @@ describe('row 53: the camera facts of a real capture operation are the stored st
         expect(VideoStatusResponseSchema.safeParse({ tracks: [candidate, video.tracks[1]] }).success).toBe(true);
       }
     });
+  });
+});
+
+// Task 4 row V7d (decisions C126 (b), C141; request line 567 of row V7c): operations 44 and 46 state the stream state of
+// the track's selector LINE - null (NOT READ) included - and null for a track without a line. Until this row a null line
+// and a missing line fell back to LIVE from the hardware slice's `online` flag: an idle registered camera read LIVE here
+// while its line said "not read". Mutations: implementation/v7d_op44_not_read.md.
+describe('row V7d: operations 44 and 46 say NOT READ where the line does, and for a track without a line - never LIVE from `online`', () => {
+  const stated = (tracks: readonly { readonly trackId: string; readonly sourceDeviceId: string | null; readonly streamState: string | null }[]) =>
+    tracks.map((track) => [track.trackId, track.sourceDeviceId, track.streamState]);
+
+  it('a registered camera on VIDEO-02 whose line states null: null on both reads although the hardware slice says online; no line: null; CONTROL: the built-in line LIVE', () => {
+    const idle = scenarioState('idle');
+    const state = {
+      ...idle,
+      captureConfig: { ...idle.captureConfig, cameras: idle.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-02' ? { ...line, deviceId: 'CAM-07', streamState: null } : line)) },
+    } as SimState;
+    // The flag the old fallback read: both cameras of the hardware slice are online.
+    expect(state.cameras.map((camera) => camera.online)).toEqual([true, true]);
+    const video = videoStatusOf(committedOf(state));
+    const health = deviceHealthOf(committedOf(state), NOW);
+    expect(stated(video.tracks)).toEqual([['VIDEO-01', 'CAM-01', 'LIVE'], ['VIDEO-02', 'CAM-07', null]]);
+    expect(stated(health.cameras)).toEqual(stated(video.tracks));
+    expect(VideoStatusResponseSchema.safeParse(video).success).toBe(true);
+    expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
+
+    const none = { ...state, captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.filter((line) => line.trackId === 'VIDEO-02') } } as SimState;
+    expect(stated(videoStatusOf(committedOf(none)).tracks)).toEqual([['VIDEO-01', null, null], ['VIDEO-02', 'CAM-07', null]]);
+    expect(stated(deviceHealthOf(committedOf(none), NOW).cameras)).toEqual([['VIDEO-01', null, null], ['VIDEO-02', 'CAM-07', null]]);
   });
 });

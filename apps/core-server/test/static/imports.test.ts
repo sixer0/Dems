@@ -137,8 +137,11 @@ const BELOW_THE_MODULES: readonly string[] = ['src/core', 'src/engine', 'src/rea
  *                         `SESSION_IDLE_TIMEOUT_MS`, the limit the registry read applies to a
  *                         device's session. (`createSweeper`, the timer helper of the expiry
  *                         sweeps, moved to the core: review findings CPB1-10, W91-11.)
+ *   demo    -> capture-config
+ *                         C132: the demo reset reloads the network facts (review 120b S2-01 (c), row NF):
+ *                         `captureNetworkConfigControl(app).reload()`, the one use, in `createResetHost`.
  */
-const MODULE_TO_MODULE: readonly string[] = ['src/modules/admin -> src/modules/identity', 'src/modules/pairing -> src/modules/identity'];
+const MODULE_TO_MODULE: readonly string[] = ['src/modules/admin -> src/modules/identity', 'src/modules/demo -> src/modules/capture-config', 'src/modules/pairing -> src/modules/identity'];
 
 const tree = readTree(WORKSPACE);
 const production = codeOnly(tree.filter((file) => isProductionSource(file.path) && file.path.endsWith('.ts')));

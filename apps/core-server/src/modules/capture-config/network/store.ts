@@ -18,7 +18,7 @@ export interface Queryable {
   query<Row extends QueryResultRow = QueryResultRow>(text: string, values?: unknown[]): Promise<{ readonly rows: Row[]; readonly rowCount: number | null }>;
 }
 
-/** The six settings, as stored. */
+/** The seven settings, as stored. */
 export interface NetworkConfigValues {
   readonly interfaceName: string | null;
   readonly cameraSubnet: string | null;
@@ -26,6 +26,8 @@ export interface NetworkConfigValues {
   readonly aliasHost: number;
   readonly aliasMinutes: number;
   readonly cameraIpStart: number;
+  /** `onvif_ports` (schema version 14; S2-02, C116): the allowed ONVIF ports, in the order written. */
+  readonly onvifPorts: readonly number[];
 }
 
 /** The stored row. */
@@ -46,24 +48,25 @@ export class NetworkConfigRowError extends Error {
 
 const COLUMNS =
   'interface_name AS "interfaceName", camera_subnet AS "cameraSubnet", factory_addresses AS "factoryAddresses", alias_host AS "aliasHost", ' +
-  'alias_minutes AS "aliasMinutes", camera_ip_start AS "cameraIpStart", revision AS "revision", updated_by AS "updatedBy", updated_at AS "updatedAt"';
+  'alias_minutes AS "aliasMinutes", camera_ip_start AS "cameraIpStart", onvif_ports AS "onvifPorts", revision AS "revision", updated_by AS "updatedBy", updated_at AS "updatedAt"';
 
 /** The one row, or none. */
 export const READ_NETWORK_CONFIG = `SELECT ${COLUMNS} FROM public.capture_network_config WHERE singleton`;
 
 /**
- * The FIRST change: `$1` to `$6` the six settings (`$3` the factory list as JSON text), `$7` the
- * revision, `$8` the operator, `$9` the instant. A row that is there already is left as it is: the
- * caller reads `rowCount` 0 as a change somebody else made first.
+ * The FIRST change: `$1` to `$6` six settings (`$3` the factory list as JSON text), `$7` the
+ * revision, `$8` the operator, `$9` the instant, `$10` the seventh setting, the ONVIF port list as
+ * JSON text (schema version 14). A row that is there already is left as it is: the caller reads
+ * `rowCount` 0 as a change somebody else made first.
  */
 export const INSERT_NETWORK_CONFIG =
-  'INSERT INTO public.capture_network_config (singleton, interface_name, camera_subnet, factory_addresses, alias_host, alias_minutes, camera_ip_start, revision, updated_by, updated_at) ' +
-  'VALUES (true, $1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9) ON CONFLICT (singleton) DO NOTHING';
+  'INSERT INTO public.capture_network_config (singleton, interface_name, camera_subnet, factory_addresses, alias_host, alias_minutes, camera_ip_start, revision, updated_by, updated_at, onvif_ports) ' +
+  'VALUES (true, $1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9, $10::jsonb) ON CONFLICT (singleton) DO NOTHING';
 
-/** A later change: compare-and-set on `$7`, the revision that was read. `$8` the operator, `$9` the instant. */
+/** A later change: compare-and-set on `$7`, the revision that was read. `$8` the operator, `$9` the instant, `$10` the ONVIF port list. */
 export const UPDATE_NETWORK_CONFIG =
   'UPDATE public.capture_network_config SET interface_name = $1, camera_subnet = $2, factory_addresses = $3::jsonb, alias_host = $4, alias_minutes = $5, camera_ip_start = $6, ' +
-  'revision = revision + 1, updated_by = $8, updated_at = $9 WHERE singleton AND revision = $7';
+  'onvif_ports = $10::jsonb, revision = revision + 1, updated_by = $8, updated_at = $9 WHERE singleton AND revision = $7';
 
 /** The statements of this file that write, for the tests of the module. */
 export const CAPTURE_NETWORK_CONFIG_WRITES: readonly string[] = Object.freeze([INSERT_NETWORK_CONFIG, UPDATE_NETWORK_CONFIG]);
@@ -75,6 +78,7 @@ interface Row extends QueryResultRow {
   aliasHost: unknown;
   aliasMinutes: unknown;
   cameraIpStart: unknown;
+  onvifPorts: unknown;
   revision: unknown;
   updatedBy: unknown;
   updatedAt: unknown;
@@ -92,8 +96,13 @@ function textOrNull(value: unknown, column: string): string | null {
   return value;
 }
 
+/** A port the table's CHECK admits: a whole number 1 to 65535 (the CHECK judges `80.0` as 80; JSON reads it back as 80). */
+const isPort = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 65_535;
+
 function storedOf(row: Row): StoredNetworkConfig {
   if (!Array.isArray(row.factoryAddresses) || !row.factoryAddresses.every((entry) => typeof entry === 'string')) throw new NetworkConfigRowError('factory_addresses');
+  // The list as the two CHECKs of `onvif_ports` define it, or the row cannot be read: never repaired, never a default.
+  if (!Array.isArray(row.onvifPorts) || row.onvifPorts.length === 0 || !row.onvifPorts.every(isPort) || new Set(row.onvifPorts).size !== row.onvifPorts.length) throw new NetworkConfigRowError('onvif_ports');
   return {
     interfaceName: textOrNull(row.interfaceName, 'interface_name'),
     cameraSubnet: textOrNull(row.cameraSubnet, 'camera_subnet'),
@@ -101,6 +110,7 @@ function storedOf(row: Row): StoredNetworkConfig {
     aliasHost: whole(row.aliasHost, 'alias_host'),
     aliasMinutes: whole(row.aliasMinutes, 'alias_minutes'),
     cameraIpStart: whole(row.cameraIpStart, 'camera_ip_start'),
+    onvifPorts: Object.freeze([...(row.onvifPorts as number[])]),
     revision: whole(row.revision, 'revision'),
     updatedBy: textOrNull(row.updatedBy, 'updated_by'),
     updatedAt: whole(row.updatedAt, 'updated_at'),
@@ -131,11 +141,11 @@ export function createNetworkConfigStore(): NetworkConfigStore {
       return rows[0] === undefined ? null : storedOf(rows[0]);
     },
     async insert(db, write, revision) {
-      const { rowCount } = await db.query(INSERT_NETWORK_CONFIG, [...settingsOf(write.values), revision, write.operatorId, write.now]);
+      const { rowCount } = await db.query(INSERT_NETWORK_CONFIG, [...settingsOf(write.values), revision, write.operatorId, write.now, JSON.stringify(write.values.onvifPorts)]);
       return rowCount === 1;
     },
     async update(db, write, expectedRevision) {
-      const { rowCount } = await db.query(UPDATE_NETWORK_CONFIG, [...settingsOf(write.values), expectedRevision, write.operatorId, write.now]);
+      const { rowCount } = await db.query(UPDATE_NETWORK_CONFIG, [...settingsOf(write.values), expectedRevision, write.operatorId, write.now, JSON.stringify(write.values.onvifPorts)]);
       return rowCount === 1;
     },
   };

@@ -297,6 +297,19 @@ describe('every refusal comes BEFORE a job exists: nothing asked of the camera, 
     expectClean(rig, refused.text);
   });
 
+  // Row NF (review 120b T-6): the refusal table above stands one millisecond PAST the bound and nowhere AT it, so the
+  // bound could move by one unseen. SEEN RED on the mutation `scanAge > CAMERA_NETWORK_SCAN_MAX_AGE_MS` -> `>=`
+  // (camera-network/service.ts): the job at the bound is then 409 CAMERA_SCAN_TOO_OLD.
+  it('THE AGE OF THE SCAN, EXACTLY AT THE BOUND: a scan as old as the bound is still a statement - the job is accepted and runs; one millisecond more is refused', async () => {
+    const atTheBound = rigOf({ lastScanOf: (_address, now) => ({ deviceCount: 'NOT_KNOWN', mac: MAC, scannedAt: now - CAMERA_NETWORK_SCAN_MAX_AGE_MS }) });
+    const { started, ended } = await atTheBound.job({ fromAddress: FROM, scannedMac: MAC });
+    expect([started.state, ended.state, ended.failure]).toEqual(['RUNNING', 'COMPLETED', null]);
+    expect(atTheBound.audits.map((entry) => entry.details?.['phase'])).toEqual(['REQUESTED', 'COMPLETED']);
+    const past = rigOf({ lastScanOf: (_address, now) => ({ deviceCount: 'NOT_KNOWN', mac: MAC, scannedAt: now - CAMERA_NETWORK_SCAN_MAX_AGE_MS - 1 }) });
+    expect((await refusalOf(past.job({ fromAddress: FROM, scannedMac: MAC }))).answer).toEqual([409, 'INVALID_STATE', 'CAMERA_SCAN_TOO_OLD']);
+    expect(past.audits).toEqual([]);
+  });
+
   it('AN ADDRESS THAT ANSWERS: a typed new address at which anything answers is 409 CAMERA_NEW_ADDRESS_IN_USE; asked once, of the host, and nothing of the camera', async () => {
     const rig = rigOf({ answers: (address) => address === NEXT });
     const refused = await refusalOf(rig.job({ fromAddress: FROM, scannedMac: MAC, toAddress: NEXT }));

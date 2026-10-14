@@ -36,6 +36,7 @@ import { CameraFeed, type CameraFeedProps } from '@/components/media';
 import { captureNoticesOf, developmentSourceOf } from '@/features/capture-selector/capture-notices-model';
 import { useSourceBadgeMode } from '@/features/capture-selector/development-source-badge';
 import { rosterDeviceName, rosterDeviceState, sourceChecked, sourceOnKeyOf, sourceStateLabelKey } from './registered-devices-model';
+import { cameraCaptureFaultOf, TRACK_FAULT_KEY, type TrackFault } from './stream-facts';
 
 type PreviewDevices = readonly { readonly sourceClass?: string | null | undefined }[];
 
@@ -75,13 +76,19 @@ export interface NoPreviewFacts {
   readonly checked: boolean;
   /** The named cause of the device's active "not reachable" notice, or null. */
   readonly cause: string | null;
+  /**
+   * Task 4 row W5 (review 060d Q-01): the ACTIVE capture fault the Core raised about this camera
+   * (`cameraCaptureFaultOf`: it stopped delivering inside the session), or null. While it is active the tile
+   * says the fault, not the roster's "Reachable"; it goes when the Core resolves it.
+   */
+  readonly fault: TrackFault | null;
 }
 
 export function noPreviewFactsOf(state: PreviewState, trackId: PreviewTrackId): NoPreviewFacts {
   const selector = selectorInForce(state);
   const deviceId = selector.cameras.find((line) => line.trackId === trackId)?.deviceId ?? null;
   const device = deviceId === null ? undefined : state.captureDevices.devices.find((candidate) => candidate.id === deviceId);
-  if (device === undefined) return { deviceId: null, sourceClass: null, adapter: null, online: false, sourceOpen: false, checked: false, cause: null };
+  if (device === undefined) return { deviceId: null, sourceClass: null, adapter: null, online: false, sourceOpen: false, checked: false, cause: null, fault: null };
   const notice = captureNoticesOf(state.alerts).find((entry) => entry.kind === 'unreachable' && entry.deviceId === device.id);
   return {
     deviceId: device.id,
@@ -92,6 +99,7 @@ export function noPreviewFactsOf(state: PreviewState, trackId: PreviewTrackId): 
     // The tile is of a camera ON a line: while a session records, the recording's telemetry is the checked fact.
     checked: sourceChecked({ checkedAt: (device as { readonly checkedAt?: unknown }).checkedAt, sourceOpen: device.sourceOpen, recording: state.session?.state === 'RECORDING' }),
     cause: notice !== undefined && notice.kind === 'unreachable' ? notice.cause : null,
+    fault: cameraCaptureFaultOf(state.alerts, device.id),
   };
 }
 
@@ -103,6 +111,8 @@ export function noPreviewWords(t: Translate, facts: NoPreviewFacts, live: boolea
   const source = developmentSourceOf({ sourceClass: facts.sourceClass ?? undefined, adapter: facts.adapter ?? undefined, deviceKind: 'CAMERA', live });
   const device = rosterDeviceName(t, { id: facts.deviceId, kind: 'CAMERA', sourceClass: facts.sourceClass, adapter: facts.adapter }, live);
   const onKey = sourceOnKeyOf({ sourceClass: facts.sourceClass, adapter: facts.adapter, deviceKind: 'CAMERA', sourceOpen: facts.sourceOpen }, live);
+  // Row W5 (Q-01): a camera in an active capture fault says the fault - never "On", "Reachable" or "Ready" beside it.
+  if (facts.fault !== null) return { device, state: t(TRACK_FAULT_KEY[facts.fault]) };
   const state = onKey !== null ? t('features.capture-selector.preview.on') : t(sourceStateLabelKey(rosterDeviceState(facts), source === 'localCamera', facts.checked));
   return { device, state };
 }
@@ -130,7 +140,7 @@ export function NoPreviewTile({ trackId, name, compact = false, style, testID = 
   // a camera with no named cause says "Connecting cameras…" - not the roster's "Not reachable", which nothing
   // has established yet. A named cause (an active notice) and "On" keep their own words.
   const connecting = useSim((s) => s.session?.state === 'RECORDING' && (s.session as { captureDurable?: unknown }).captureDurable === false);
-  const words = connecting && facts.deviceId !== null && facts.cause === null && !facts.sourceOpen ? { device: stated.device, state: t('common.session.connectingCameras') } : stated;
+  const words = connecting && facts.deviceId !== null && facts.cause === null && facts.fault === null && !facts.sourceOpen ? { device: stated.device, state: t('common.session.connectingCameras') } : stated;
   const names = [name, words.device].filter((part): part is string => part !== undefined && part !== null && part !== '');
   const title = names.join(' · ');
   return (

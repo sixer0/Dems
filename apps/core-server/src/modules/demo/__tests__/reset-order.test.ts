@@ -9,7 +9,8 @@
 import { describe, expect, it } from 'vitest';
 import { ResetError } from '../../../db/reset';
 import { ApiFailure } from '../../../plugins/error-envelope';
-import { RECOVERY, RESET_ERROR_SOURCE, RESUME_STEPS, RESYNC_STEP, ResetRefusal, ResumeFailure, createDemoReset, roleChanges, type ResetCall } from '../index';
+import { RECOVERY, RESET_ERROR_SOURCE, RESUME_STEPS, RESYNC_STEP, ResetRefusal, ResumeFailure, createDemoReset, roleChanges, type ResetCall, type ResetHost } from '../index';
+import { NETWORK_FACTS_NOT_RELOADED_CODE } from '../reset';
 import { SEED_ROLES, recordingHost, recordingLogger, resetError, sharedGrants, standInRoutine, type HostMember, type LoggedLine, type RecordingHost } from './support';
 
 const QUIESCE = ['hold', 'drain', 'roles', 'engine.stop', 'pool.close'];
@@ -564,5 +565,62 @@ describe('the reset guard refuses (real sealed evidence): 409 RESET_BLOCKED_REAL
     recording.routine = standInRoutine(recording.trace, { fail: resetError('RESET_SCHEMA_MISMATCH', 'R-3', true) });
     const { failure } = await run(recording);
     expectRefused(failure, ResetRefusal.FAILED);
+  });
+});
+
+// Integration pass I-9c (review 120b S2-01 case (c), request line `row NF`): the camera network reader is read again
+// after the engine is back and before the hold is released. Mutation seen RED: the call moved after `release` (the
+// first case), and the call removed (the first two cases).
+describe('I-9c: the camera network settings are read again after a reset, before any request is served', () => {
+  /** Gives the recording host the optional door; `behaviour` runs inside it. */
+  function withNetworkReload(recording: RecordingHost, behaviour?: () => Promise<void>): void {
+    (recording.host as ResetHost).reloadNetworkFacts = async () => {
+      recording.trace.push('network.reload');
+      await behaviour?.();
+    };
+  }
+
+  it('a reset that happened: pool, boot checks, matrix, engine reload, THEN the network settings, then the release', async () => {
+    const recording = recordingHost();
+    withNetworkReload(recording);
+    const { failure } = await run(recording);
+    expect(failure).toBeNull();
+    expect(recording.trace.slice(recording.trace.indexOf('routine:R-9') + 1)).toEqual([...RESUME, 'network.reload', 'release', 'roles', 'publish:admin.changed']);
+    expect(recording.persisted).toEqual([]);
+  });
+
+  it('a reset that failed after the quiesce: the resync, then the network settings (the database behind the name is read either way)', async () => {
+    const recording = recordingHost();
+    withNetworkReload(recording);
+    recording.routine = standInRoutine(recording.trace, { fail: resetError('RESET_BUILD_FAILED', 'R-5') });
+    const { failure } = await run(recording);
+    expectRefused(failure, ResetRefusal.FAILED);
+    expect(recording.trace.slice(-7)).toEqual([...RESUME_FAILED, 'network.reload', 'release', 'roles']);
+  });
+
+  it('a reset refused before anything was stopped asks nothing of the network settings', async () => {
+    const recording = recordingHost();
+    withNetworkReload(recording);
+    recording.routine = standInRoutine(recording.trace, { refuse: resetError('RESET_OWNER_CREDENTIALS', 'R-0') });
+    await run(recording);
+    expect(recording.trace).not.toContain('network.reload');
+  });
+
+  it('a door that throws (the real one never does) is stated once as a warning and does not fail a reset whose server is whole', async () => {
+    const recording = recordingHost();
+    withNetworkReload(recording, () => Promise.reject(Object.assign(new Error('read failed'), { code: 'X_TEST' })));
+    const { report, failure, lines } = await run(recording);
+    expect(failure).toBeNull();
+    expect(report).toMatchObject({ epoch: 5 });
+    expect(recording.heldNow()).toBe(0);
+    expect(lines.filter((line) => line.level === 'warn').map((line) => line.fields['code'])).toEqual([NETWORK_FACTS_NOT_RELOADED_CODE]);
+    expect(recording.persisted).toMatchObject([{ level: 'warn', source: RESET_ERROR_SOURCE, code: NETWORK_FACTS_NOT_RELOADED_CODE, context: { requestId: 'req-1' } }]);
+  });
+
+  it('CONTROL: a host without the door resumes exactly as before (the server host until the composition hands it in)', async () => {
+    const recording = recordingHost();
+    expect((recording.host as ResetHost).reloadNetworkFacts).toBeUndefined();
+    await run(recording);
+    expect(recording.trace).not.toContain('network.reload');
   });
 });

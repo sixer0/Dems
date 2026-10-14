@@ -40,9 +40,11 @@ import { SimNotFoundError } from './errors';
 import { nextItemId, pushRing, recordActivity } from './events';
 import { ALERT_RING_SIZE } from './constants';
 import { selectorInForce } from './selector-in-force';
-import { cameraClockOffsetSentence, captureFaultSentence } from './capture-fault-wording';
+import { MIC_SILENCE_RUN_MAX_MS } from './audio-not-continuous';
+import { cameraClockOffsetSentence, captureFaultSentence, isMicShortfallReason, micShortfallSentence } from './capture-fault-wording';
 import type { CaptureConfigCamera, CaptureConfigMic, CaptureDeviceStatus, CaptureSelectorSlot, EpochMs, PrecheckItem, SimAlert, SimState } from './types';
 import { AuditType, CaptureStreamState } from './vocabulary';
+import { cameraNotReadAtRest, cameraStreamFaultActive } from './camera-stream-fault';
 
 /** `params.reason` of the two notices (C3 §5.4). */
 export const CaptureNoticeReason = {
@@ -62,7 +64,9 @@ export type CaptureNoticeReason = (typeof CaptureNoticeReason)[keyof typeof Capt
  * THE ADVISORY NOTICES (ruling D144; integration pass D1b). Three conditions of a running capture
  * that are no fault and stop nothing, and that the capture side used to write to the error log
  * only. Each is one more value of `params.reason` of the same alert kind `SYSTEM`, with severity
- * INFO (advisory) and the device as its target:
+ * INFO (advisory) and the device as its target (since task 4 row N2 three of them carry the
+ * severity WARNING and are advice all the same: `CAPTURE_ADVISORY_SEVERITY`; the five notices of
+ * that row are listed at the members below):
  *
  * | `code` | Device | Meaning |
  * |--------|--------|---------|
@@ -84,6 +88,23 @@ export const CaptureAdvisoryReason = {
   MIC_RATE_AT_LIMIT: 'MIC_RATE_AT_LIMIT',
   FRAGMENT_SIZE_BOUND_REACHED: 'FRAGMENT_SIZE_BOUND_REACHED',
   CAMERA_CLOCK_OFFSET: 'CAMERA_CLOCK_OFFSET',
+  // Task 4 row N2 (design 06 revision 3, sections 6.2 and 8.3; decisions U25 (3), C110 (2), (4)):
+  // FIVE notices of a microphone whose capture path is NOT SAMPLE-CONTINUOUS (the bench path of a
+  // Mac), 5 -> 10. Raised by the Core's capture side only; the simulator raises none.
+  //   MIC_PATH_NOT_SAMPLE_CONTINUOUS         information: at every pre-check and once per session at
+  //                                          its start, on each microphone of that path
+  //   MIC_SAMPLES_SHORT_ABOVE_BOUND          WARNING, the floor: above 12.0% of a 10 s window, twice in a row
+  //   MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL  WARNING: above the level the capture attempt began with
+  //   MIC_SILENCE_RUN_INSERTED               WARNING, at once: silence of 100 ms or more inserted in one piece
+  //   STANDBY_ON_PRIMARY_DEVICE              information, on the STANDBY microphone: it is another
+  //                                          channel of the primary's device, in the same capture program
+  // The three WARNING ones carry whole numbers of the worker's counts in the alert's text and `params`
+  // (`shortfallPer100k`, `referencePer100k`, `runMs`); their severity is `CAPTURE_ADVISORY_SEVERITY`.
+  MIC_PATH_NOT_SAMPLE_CONTINUOUS: 'MIC_PATH_NOT_SAMPLE_CONTINUOUS',
+  MIC_SAMPLES_SHORT_ABOVE_BOUND: 'MIC_SAMPLES_SHORT_ABOVE_BOUND',
+  MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL: 'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL',
+  MIC_SILENCE_RUN_INSERTED: 'MIC_SILENCE_RUN_INSERTED',
+  STANDBY_ON_PRIMARY_DEVICE: 'STANDBY_ON_PRIMARY_DEVICE',
 } as const;
 export type CaptureAdvisoryReason = (typeof CaptureAdvisoryReason)[keyof typeof CaptureAdvisoryReason];
 
@@ -94,7 +115,32 @@ export const CAPTURE_ADVISORY_DEVICE_KIND = {
   MIC_RATE_AT_LIMIT: 'MIC',
   FRAGMENT_SIZE_BOUND_REACHED: 'CAMERA',
   CAMERA_CLOCK_OFFSET: 'CAMERA',
+  MIC_PATH_NOT_SAMPLE_CONTINUOUS: 'MIC',
+  MIC_SAMPLES_SHORT_ABOVE_BOUND: 'MIC',
+  MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL: 'MIC',
+  MIC_SILENCE_RUN_INSERTED: 'MIC',
+  STANDBY_ON_PRIMARY_DEVICE: 'MIC',
 } as const satisfies Record<CaptureAdvisoryReason, 'CAMERA' | 'MIC'>;
+
+/**
+ * THE LEVEL OF EACH ADVISORY NOTICE (task 4 row N2; SM-32 (5)). The advisory list had ONE level,
+ * information; it carries a second one for the three notices of a microphone that loses more audio
+ * than it should. A notice with the level WARNING is advice in every other respect: no fault life
+ * cycle, no audit row, nothing stopped, at most one active per (`reason`, device). The alert's
+ * `severity` is this level.
+ */
+export const CAPTURE_ADVISORY_SEVERITY = {
+  KEYFRAME_INTERVAL_ABOVE_BOUND: 'INFO',
+  AV_OFFSET_NEAR_BOUND: 'INFO',
+  MIC_RATE_AT_LIMIT: 'INFO',
+  FRAGMENT_SIZE_BOUND_REACHED: 'INFO',
+  CAMERA_CLOCK_OFFSET: 'INFO',
+  MIC_PATH_NOT_SAMPLE_CONTINUOUS: 'INFO',
+  MIC_SAMPLES_SHORT_ABOVE_BOUND: 'WARNING',
+  MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL: 'WARNING',
+  MIC_SILENCE_RUN_INSERTED: 'WARNING',
+  STANDBY_ON_PRIMARY_DEVICE: 'INFO',
+} as const satisfies Record<CaptureAdvisoryReason, 'INFO' | 'WARNING'>;
 
 const ADVISORY_TEXT = {
   KEYFRAME_INTERVAL_ABOVE_BOUND: 'keyframe interval is above the bound',
@@ -103,7 +149,22 @@ const ADVISORY_TEXT = {
   FRAGMENT_SIZE_BOUND_REACHED: 'a fragment reached the size bound and was closed early',
   // Not shown as it stands: this notice has its own sentence with the measured number (`cameraClockOffsetSentence`).
   CAMERA_CLOCK_OFFSET: 'clock differs from the Core',
+  // Row N2: the alert of these five says the sentence of the wording table, the target names the microphone.
+  MIC_PATH_NOT_SAMPLE_CONTINUOUS: 'path does not deliver every sample',
+  MIC_SAMPLES_SHORT_ABOVE_BOUND: 'is losing more audio than its path may',
+  MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL: 'is losing more audio than at the start of the session',
+  MIC_SILENCE_RUN_INSERTED: 'silence was inserted in one piece',
+  STANDBY_ON_PRIMARY_DEVICE: "is another channel of the primary's device",
 } as const satisfies Record<CaptureAdvisoryReason, string>;
+
+/** The five advisory notices of row N2: their alert says the whole sentence of the wording table (the fixed sentence must not be shortened). */
+const MIC_PATH_NOTICES: ReadonlySet<CaptureAdvisoryReason> = new Set([
+  CaptureAdvisoryReason.MIC_PATH_NOT_SAMPLE_CONTINUOUS,
+  CaptureAdvisoryReason.MIC_SAMPLES_SHORT_ABOVE_BOUND,
+  CaptureAdvisoryReason.MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL,
+  CaptureAdvisoryReason.MIC_SILENCE_RUN_INSERTED,
+  CaptureAdvisoryReason.STANDBY_ON_PRIMARY_DEVICE,
+]);
 
 /** The alert target of the volume-durability notice: the evidence volume, not a device. */
 export const CAPTURE_NOTICE_VOLUME_TARGET = 'EVIDENCE_VOLUME';
@@ -170,6 +231,16 @@ export interface CaptureAdvisoryNotice {
    * clock, in whole ms. A number, never device text. Ignored for every other notice.
    */
   offsetMs?: number;
+  /**
+   * `MIC_SAMPLES_SHORT_ABOVE_BOUND` and `MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL` only, read at a raise
+   * only (row N2): the shortfall of the last 10 s window in parts per 100,000 (12.0% is 12,000), from
+   * the worker's own counts. A whole number, never device text.
+   */
+  shortfallPer100k?: number;
+  /** `MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL` only, read at a raise only: the capture attempt's reference level, parts per 100,000. */
+  referencePer100k?: number;
+  /** `MIC_SILENCE_RUN_INSERTED` only, read at a raise only: the length of the inserted run in whole ms. */
+  runMs?: number;
 }
 
 /** The evidence volume did not confirm the full sync for the session's recording (decision D189). */
@@ -232,9 +303,22 @@ function advisoryDeviceOf(state: SimState, notice: CaptureAdvisoryNotice): Captu
  * `streamState` follows (`LIVE` when it answers, `LOST` when it does not), as telemetry writes it.
  * Returns THE SAME state when nothing changes; `captureConfig.updatedAt` is left alone (it is the
  * stamp of an edit of the selector).
+ *
+ * Task 4 row V7d (decisions C126 (b), C141): the answer of a pre-check or a re-scan is a READ OF THE
+ * CAMERA'S CONTROL SERVICE (`capture-notices/probe.ts` on the Core: the adapter's `profiles`), not of
+ * its stream. So for a REGISTERED camera (`cameraNotReadAtRest`) an answer never says `LIVE`: it
+ * keeps a `LIVE` the ingest stated, keeps `LOST` while a stream fault of the camera is active, and
+ * is NOT READ (null) otherwise - the next `CONNECTED` frame of a reading ingest says `LIVE`. No
+ * answer still says `LOST` (a camera that does not answer delivers no stream). The two built-in
+ * cameras of the demonstration model keep the model's `LIVE` / `LOST`, as before.
  */
 function withDeviceOnline(state: SimState, device: CaptureDeviceStatus, online: boolean): SimState {
-  const stream = device.kind === 'CAMERA' ? { streamState: online ? CaptureStreamState.LIVE : CaptureStreamState.LOST } : {};
+  const answered = (): CaptureStreamState | null => {
+    if (!cameraNotReadAtRest(device)) return CaptureStreamState.LIVE;
+    if (cameraStreamFaultActive(state, device.id)) return CaptureStreamState.LOST;
+    return device.streamState === CaptureStreamState.LIVE ? CaptureStreamState.LIVE : null;
+  };
+  const stream = device.kind === 'CAMERA' ? { streamState: online ? answered() : CaptureStreamState.LOST } : {};
   const sameDevice = device.online === online && (device.kind !== 'CAMERA' || device.streamState === stream.streamState);
   const devices = sameDevice ? state.captureDevices.devices : state.captureDevices.devices.map((candidate) => (candidate === device ? { ...candidate, online, ...stream } : candidate));
   const staleCamera = (camera: CaptureConfigCamera): boolean => camera.deviceId === device.id && (camera.online !== online || camera.streamState !== stream.streamState);
@@ -288,6 +372,32 @@ export function raiseCaptureNoticeTransition(state: SimState, now: EpochMs, noti
         about.id,
         { reason: notice.code, deviceId: about.id, deviceKind: about.kind, ...(session === null ? {} : { sessionId: session }), ...(offsetMs === null ? {} : { offsetMs }) },
         'INFO',
+      );
+    }
+    // Row N2: the five notices of a microphone path that is not sample-continuous say the sentence of the
+    // wording table, with the whole numbers of the worker's counts where the notice has them. Numbers and
+    // codes only: no label, no card text. A number outside its bounds is left out of the text AND of `params`.
+    if (MIC_PATH_NOTICES.has(notice.code)) {
+      const whole = (value: number | undefined, max: number): number | null => (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= max ? value : null);
+      const shortfallPer100k = notice.code === CaptureAdvisoryReason.MIC_SAMPLES_SHORT_ABOVE_BOUND || notice.code === CaptureAdvisoryReason.MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL ? whole(notice.shortfallPer100k, 100_000) : null;
+      const referencePer100k = notice.code === CaptureAdvisoryReason.MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL ? whole(notice.referencePer100k, 100_000) : null;
+      const runMs = notice.code === CaptureAdvisoryReason.MIC_SILENCE_RUN_INSERTED ? whole(notice.runMs, MIC_SILENCE_RUN_MAX_MS) : null;
+      const sentence = isMicShortfallReason(notice.code) ? micShortfallSentence(notice.code, { shortfallPer100k, referencePer100k, runMs }) : captureFaultSentence(notice.code, about.id);
+      return raiseNoticeAlert(
+        state,
+        now,
+        sentence,
+        about.id,
+        {
+          reason: notice.code,
+          deviceId: about.id,
+          deviceKind: about.kind,
+          ...(session === null ? {} : { sessionId: session }),
+          ...(shortfallPer100k === null ? {} : { shortfallPer100k }),
+          ...(referencePer100k === null ? {} : { referencePer100k }),
+          ...(runMs === null ? {} : { runMs }),
+        },
+        CAPTURE_ADVISORY_SEVERITY[notice.code],
       );
     }
     // The device ID and codes only (R-10 AC-6): no label, no address, no measured value.

@@ -167,7 +167,7 @@ function difference(
 }
 
 describe('the live catalog equals the database contract (section 4)', () => {
-  it('48 tables, 497 columns, 229 named CHECKs, 48 foreign keys: the difference is empty', async () => {
+  it('48 tables, 498 columns, 231 named CHECKs, 48 foreign keys: the difference is empty', async () => {
     const live = await readCatalog();
     const lines = difference(inventory.tables, live);
     const count = (type: string): number => live.constraints.filter((constraint) => constraint.type === type).length;
@@ -202,7 +202,8 @@ describe('the live catalog equals the database contract (section 4)', () => {
     // Task 4 package X-C (set 10, dbc-10): no count moves (two CHECKs take one value more).
     // Task 4 requirement AD-06 (4) (set 11, dbc-11): +1 CHECK (`capture_devices_profiles_code_check`).
     // Task 4 schema set C (set 12, dbc-12): +1 table (T-48), +13 columns, +11 CHECKs, +2 foreign keys.
-    expect(counts).toMatchObject({ tables: 48, columns: 497, checks: 229, foreignKeys: 48 });
+    // Task 4 findings F-4 and S2-02 (set 15, dbc-15): +1 column and +2 CHECKs on `capture_network_config`.
+    expect(counts).toMatchObject({ tables: 48, columns: 498, checks: 231, foreignKeys: 48 });
   });
 
   it('the comparison is not vacuous: a changed inventory produces a difference of each kind', async () => {
@@ -246,7 +247,7 @@ describe('the live catalog equals the database contract (section 4)', () => {
     );
     const byType = Object.fromEntries(rows.map((row) => [row.type, Number(row.total)]));
     const notNullColumns = inventory.tables.reduce((sum, table) => sum + table.columns.filter((column) => column.notNull).length, 0);
-    expect(byType).toEqual({ c: 229, f: 48, n: notNullColumns, p: 48, u: 16 });
+    expect(byType).toEqual({ c: 231, f: 48, n: notNullColumns, p: 48, u: 16 });
     console.info(`[w17] pg_constraint in public by contype: ${JSON.stringify(byType)} (n = NOT NULL constraints of PostgreSQL 18)`);
   });
 });

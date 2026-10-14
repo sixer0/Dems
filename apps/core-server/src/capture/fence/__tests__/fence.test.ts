@@ -16,6 +16,8 @@ import { LIVING_PROGRESS, deviceListText, exitOf, manualTimers, scriptedDoor, tr
 import { CORE_EVIDENCE_SIGNING_KEY_ID, SignerError, SignerRefusal, activateSigningKey, markSigningKeyCompromised, provisionSigningKey } from '../../signer';
 import type { CaptureTimers } from '../../types';
 import { CORRECT_GENERATED_SOURCE_PROFILES } from '../fake-profile';
+// Row NB (design 06 row N13): the microphone permission member, from its file (the fence's barrel is row 88's).
+import { BootMicrophonePermission, SYSTEM_BOOT_MICROPHONE_MEMBERS, bootMicrophoneStatementOf } from '../boot-key';
 import {
   BOOT_SIGNING_KEY_NOT_READ,
   SYSTEM_BOOT_SIGNING_MEMBERS,
@@ -431,7 +433,8 @@ describe('the boot audit row (SEC35-41 (b))', () => {
     for (const [platform, hostPlatform, hostProfile] of table) {
       const details = detailsOf('REAL_PRODUCTION', platform);
       // The two members come AFTER every member of before: the row of before is a prefix of this one.
-      expect(Object.keys(details), String(platform)).toEqual([...before, ...SYSTEM_BOOT_HOST_MEMBERS]);
+      // MOVED BY ROW NB (design 06 row N13): on darwin ONE member more after the two, `microphonePermission` - its own case below.
+      expect(Object.keys(details), String(platform)).toEqual([...before, ...SYSTEM_BOOT_HOST_MEMBERS, ...(platform === 'darwin' ? SYSTEM_BOOT_MICROPHONE_MEMBERS : [])]);
       expect([details['hostPlatform'], details['hostProfile']], String(platform)).toEqual([hostPlatform, hostProfile]);
       expect(bootHostStatementOf('REAL_PRODUCTION', platform), String(platform)).toEqual({ hostPlatform, hostProfile });
       for (const member of SYSTEM_BOOT_HOST_MEMBERS) expect(open[member].accepts(details[member] as never), `${String(platform)}: ${member}`).toBe(true);
@@ -485,7 +488,8 @@ describe('the boot audit row (SEC35-41 (b))', () => {
     looks = 0;
     for (const platform of ['darwin', 'win32', 'Linux', 'not-stated', '', null]) {
       const details = detailsOf('REAL_PRODUCTION', platform, true);
-      expect(Object.keys(details), String(platform)).toEqual(before);
+      // MOVED BY ROW NB: darwin states `microphonePermission` (not a member of the helper's); still nothing of the helper.
+      expect(Object.keys(details), String(platform)).toEqual(platform === 'darwin' ? [...before, ...SYSTEM_BOOT_MICROPHONE_MEMBERS] : before);
       expect(details, String(platform)).toEqual(systemBootDetailsOf('REAL_PRODUCTION', key, { store, previous: undefined, hostPlatform: platform }));
     }
     // REAL_DEVELOPMENT, and no boot checks mounted (undefined): the row of before this row and of before row P1.
@@ -501,6 +505,42 @@ describe('the boot audit row (SEC35-41 (b))', () => {
     for (const refused of [null, '', 'ABSENT', 'present', true, 0, '/run/dems-core-netalias/socket']) expect(open.addressHelperSocket.accepts(refused as never), String(refused)).toBe(false);
     // `boot.ts` and `operation.ts` name no part of it: their diff stays empty.
     for (const name of ['boot.ts', 'operation.ts']) for (const word of [...SYSTEM_BOOT_ADDRESS_HELPER_MEMBERS, 'ALIAS_SOCKET_INSTALLED_PATH', 'bootAddressHelperStatementOf']) expect(source(name).includes(word), `${name}: ${word}`).toBe(false);
+  });
+
+  // ── Task 4 row NB (design 06 revision 3 row N13; review SM-15; decision C135 (1)): the boot row of a PRODUCTION boot ON macOS states the microphone permission as NOT KNOWN ──
+  it('row NB: a REAL_PRODUCTION boot row on darwin states ONE member more, `microphonePermission: NOT_KNOWN`, after every member of before; linux, any other platform, REAL_DEVELOPMENT and a fence without boot checks state none', () => {
+    const key = { signingKeyId: 'CORE-KEY-EVSIGN-01', signingCertificateSha256: SHA };
+    const store: BootSigningStore = { retained: 1, compromisedPlaces: [], certificatesSha256: 'cd'.repeat(32) };
+    let looks = 0;
+    const detailsOf = (operation: 'REAL_PRODUCTION' | 'REAL_DEVELOPMENT', hostPlatform: string | null | undefined): Record<string, unknown> =>
+      systemBootDetailsOf(operation, key, { store, previous: undefined, hostPlatform, addressHelperSocketPresent: () => ((looks += 1), true) });
+    const before = ['captureOperation', ...SYSTEM_BOOT_SIGNING_MEMBERS, ...SYSTEM_BOOT_SIGNING_STORE_MEMBERS, ...SYSTEM_BOOT_HOST_MEMBERS];
+    // darwin: the one word, LAST; the members of before unchanged in value; the severity of the row unchanged; nothing looked at.
+    const mac = detailsOf('REAL_PRODUCTION', 'darwin');
+    expect(Object.keys(mac)).toEqual([...before, ...SYSTEM_BOOT_MICROPHONE_MEMBERS]);
+    expect(mac['microphonePermission']).toBe('NOT_KNOWN');
+    expect([mac['hostPlatform'], mac['hostProfile']]).toEqual(['darwin', 'WILL_NOT_BE_ASKED']);
+    expect(systemBootSeverityOf(mac as never)).toBe('INFO');
+    expect(looks).toBe(0);
+    // The row of before is a prefix of this one, value for value.
+    const { microphonePermission: stated, ...rest } = mac;
+    expect(stated).toBe(BootMicrophonePermission.NOT_KNOWN);
+    expect(Object.keys(rest)).toEqual(before);
+    // linux: the helper's member, NOT this one; any other platform word and none handed in: neither.
+    expect(Object.keys(detailsOf('REAL_PRODUCTION', 'linux'))).toEqual([...before, ...SYSTEM_BOOT_ADDRESS_HELPER_MEMBERS]);
+    for (const platform of ['Darwin', 'darwin ', 'win32', 'not-stated', '', null]) expect(Object.keys(detailsOf('REAL_PRODUCTION', platform)), String(platform)).toEqual(before);
+    // REAL_DEVELOPMENT (even on darwin) and no boot checks mounted: no member - the rows of before.
+    for (const platform of ['darwin', 'linux', undefined]) expect('microphonePermission' in detailsOf('REAL_DEVELOPMENT', platform), String(platform)).toBe(false);
+    expect('microphonePermission' in detailsOf('REAL_PRODUCTION', undefined)).toBe(false);
+    expect('microphonePermission' in systemBootDetailsOf('REAL_PRODUCTION', key)).toBe(false);
+    // The statement alone: a function of the two words; frozen; the closed vocabulary is ONE word.
+    expect(bootMicrophoneStatementOf('REAL_PRODUCTION', 'darwin')).toEqual({ microphonePermission: 'NOT_KNOWN' });
+    expect(Object.isFrozen(bootMicrophoneStatementOf('REAL_PRODUCTION', 'darwin'))).toBe(true);
+    for (const [operation, platform] of [['REAL_PRODUCTION', 'linux'], ['REAL_DEVELOPMENT', 'darwin'], ['SIMULATED', 'darwin'], ['REAL_PRODUCTION', undefined], ['REAL_PRODUCTION', null]] as const) expect(bootMicrophoneStatementOf(operation, platform), `${operation} ${String(platform)}`).toBeNull();
+    expect(Object.values(BootMicrophonePermission)).toEqual(['NOT_KNOWN']);
+    expect([...SYSTEM_BOOT_MICROPHONE_MEMBERS]).toEqual(['microphonePermission']);
+    // The fence's other files name no part of it: `boot.ts` and `operation.ts` stay as they were.
+    for (const name of ['boot.ts', 'operation.ts']) for (const word of [...SYSTEM_BOOT_MICROPHONE_MEMBERS, 'bootMicrophoneStatementOf']) expect(source(name).includes(word), `${name}: ${word}`).toBe(false);
   });
 });
 

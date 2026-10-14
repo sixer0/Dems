@@ -15041,7 +15041,9 @@
                 "HOST_ALIAS_ADD_FAILED",
                 "CAPTURE_AUDIO_ABSENT_ON_RESTART",
                 "CAPTURE_DEVICE_CONNECTION_TESTED",
-                "CAPTURE_VIDEO_ABSENT_IN_SESSION"
+                "CAPTURE_VIDEO_ABSENT_IN_SESSION",
+                "CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED",
+                "CAPTURE_AUDIO_SILENCE_INSERTED"
               ]
             }
           },
@@ -24401,7 +24403,8 @@
                           "VIDEO"
                         ],
                         "adapter": "FAKE",
-                        "sourceClass": "DEVELOPMENT"
+                        "sourceClass": "DEVELOPMENT",
+                        "profiles": []
                       },
                       "credentialSet": false
                     }
@@ -26016,6 +26019,9 @@
                       "aliasHost": 253,
                       "aliasMinutes": 30,
                       "cameraIpStart": 101,
+                      "onvifPorts": [
+                        80
+                      ],
                       "revision": 1,
                       "updatedAt": null,
                       "updatedBy": null
@@ -26036,6 +26042,9 @@
                       "aliasHost": 253,
                       "aliasMinutes": 30,
                       "cameraIpStart": 101,
+                      "onvifPorts": [
+                        80
+                      ],
                       "revision": 1,
                       "updatedAt": null,
                       "updatedBy": null
@@ -26056,6 +26065,10 @@
                       "aliasHost": 253,
                       "aliasMinutes": 30,
                       "cameraIpStart": 101,
+                      "onvifPorts": [
+                        80,
+                        8080
+                      ],
                       "revision": 2,
                       "updatedAt": 1790823600000,
                       "updatedBy": "OPR-003"
@@ -26206,7 +26219,7 @@
           "Device"
         ],
         "summary": "Change the camera network configuration",
-        "description": "Stores a change of the camera network configuration. The body names `revision` (the optimistic lock) and the settings to change; a setting that is absent is left as it is. `interfaceName` and `cameraSubnet` may be set to null: the commissioning functions then answer \"not configured\". No address of the host is changed by this operation and nothing is sent to any device.\n\n**TECHNICIAN only, web console only.** Needs CAPTURE_COMMISSION, which the TECHNICIAN role alone holds, and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row.\n\n**Idle only.** With a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row: the addresses of the camera port are not touched during a recording.\n\nRefusals, each storing nothing: a stale `revision` answers `409 INVALID_STATE` with `details.reason: REVISION_CONFLICT`; settings that have the form of the schema and are refused as a whole (host bits set in the subnet, an interface the host does not have, a factory address listed twice) answer `422 INVALID_INPUT` with `details.reason: NETWORK_CONFIG_NOT_ALLOWED`.\n\nOn success writes one CAPTURE_NETWORK_CONFIG_CHANGED row whose details are `changedFields` (the NAMES of the changed settings, comma-joined; never a value) and `revision`. An update that changes nothing answers `200` with the unchanged `revision` and writes no row.\n\n**Production capture on the Core's Linux host only.** Anywhere else nothing is changed and no audit row is written: `409 INVALID_STATE` with `details.reason: COMMISSIONING_NOT_AVAILABLE`, or `COMMISSIONING_HELPER_NOT_CONFIGURED` when the Core has no address helper configured.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator stores nothing: a body of the right form answers `409 INVALID_STATE` with `details.reason: COMMISSIONING_NOT_AVAILABLE`.",
+        "description": "Stores a change of the camera network configuration. The body names `revision` (the optimistic lock) and the settings to change; a setting that is absent is left as it is. `interfaceName` and `cameraSubnet` may be set to null: the commissioning functions then answer \"not configured\". No address of the host is changed by this operation and nothing is sent to any device.\n\n**TECHNICIAN only, web console only.** Needs CAPTURE_COMMISSION, which the TECHNICIAN role alone holds, and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row.\n\n**Idle only.** With a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row: the addresses of the camera port are not touched during a recording.\n\nRefusals, each storing nothing: a stale `revision` answers `409 INVALID_STATE` with `details.reason: REVISION_CONFLICT`; settings that have the form of the schema and are refused as a whole (host bits set in the subnet, an interface the host does not have, a factory address listed twice) answer `422 INVALID_INPUT` with `details.reason: NETWORK_CONFIG_NOT_ALLOWED`.\n\n`onvifPorts` replaces the whole list of allowed ONVIF ports (1 to 8, no port twice, the order kept). From the commit on, a stored camera is dialled only on a listed port; one stored without a port is dialled on 80, which must then be listed.\n\nOn success writes one CAPTURE_NETWORK_CONFIG_CHANGED row whose details are `changedFields` (the NAMES of the changed settings, comma-joined; never a value) and `revision`, and - when `onvifPorts` changed - `onvifPortCount`, the number of ports now listed. An update that changes nothing answers `200` with the unchanged `revision` and writes no row.\n\n**Production capture on the Core's Linux host only.** Anywhere else nothing is changed and no audit row is written: `409 INVALID_STATE` with `details.reason: COMMISSIONING_NOT_AVAILABLE`, or `COMMISSIONING_HELPER_NOT_CONFIGURED` when the Core has no address helper configured.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator stores nothing: a body of the right form answers `409 INVALID_STATE` with `details.reason: COMMISSIONING_NOT_AVAILABLE`.",
         "responses": {
           "200": {
             "description": "The configuration after the change.",
@@ -26243,6 +26256,10 @@
                       "aliasHost": 253,
                       "aliasMinutes": 30,
                       "cameraIpStart": 101,
+                      "onvifPorts": [
+                        80,
+                        8080
+                      ],
                       "revision": 2,
                       "updatedAt": 1790823600000,
                       "updatedBy": "OPR-003"
@@ -26511,6 +26528,16 @@
                     "factoryAddresses": [
                       "192.168.1.64",
                       "192.168.1.108"
+                    ]
+                  }
+                },
+                "onvifPorts": {
+                  "summary": "Replace the list of allowed ONVIF ports",
+                  "value": {
+                    "revision": 2,
+                    "onvifPorts": [
+                      80,
+                      8080
                     ]
                   }
                 }
@@ -30170,12 +30197,19 @@
                       "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
                     },
                     "streamState": {
-                      "type": "string",
-                      "enum": [
-                        "LIVE",
-                        "LOST"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "LIVE",
+                            "LOST"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
                       ],
-                      "description": "A lost stream is what makes a PoE cycle legal (OD-22). On a Core in its own capture the selector derives it from the same registry flag as `online` (`LIVE` for true, `LOST` for false): it is not a reading of a stream, and `LIVE` at rest does not say that the camera delivers pictures (finding JW-23)."
+                      "description": "A lost stream is what makes a PoE cycle legal (OD-22). NULL = NOT READ (task 4 row V7c; decision C126 (b)): the Core reads no stream of this camera now, so it states neither LIVE nor LOST - the value of a registered camera at rest, the same as its registry entry's. `LIVE` is stated only while the capture ingest of an open session receives the stream (telemetry `CONNECTED`) - a pre-check or re-scan that reached the camera read its control service, not its stream, and states NULL (row V7d); `LOST` while a stream fault of the camera is active or the ingest waits or ended under a recording; the ingest closing after the stop gives NULL again. The two built-in cameras of the demonstration model keep the model's `LIVE` / `LOST` from the registry flag, as their registry entries do (finding JW-23: that is no reading of a stream)."
                     }
                   },
                   "required": [
@@ -30510,11 +30544,19 @@
             "description": "The capture device assigned to this track by the selector (op 79 moves it). Null: the slot of this track is not assigned."
           },
           "streamState": {
-            "type": "string",
-            "enum": [
-              "LIVE",
-              "LOST"
-            ]
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "LIVE",
+                  "LOST"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The stream state of the track's selector line, as the `captureConfig` slice states it (OD-22: a LOST stream makes a PoE cycle legal). NULL = NOT READ (task 4 row V7d; decision C126 (b)): the Core reads no stream of this camera now - a registered camera at rest - or the track has no source (`sourceDeviceId` null). Never derived from `online`, the registry flag. The two built-in cameras of the demonstration model state the model's `LIVE` / `LOST`."
           },
           "name": {
             "type": "string",
@@ -34220,12 +34262,19 @@
                   "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
                 },
                 "streamState": {
-                  "type": "string",
-                  "enum": [
-                    "LIVE",
-                    "LOST"
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "LIVE",
+                        "LOST"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
                   ],
-                  "description": "A lost stream is what makes a PoE cycle legal (OD-22). On a Core in its own capture the selector derives it from the same registry flag as `online` (`LIVE` for true, `LOST` for false): it is not a reading of a stream, and `LIVE` at rest does not say that the camera delivers pictures (finding JW-23)."
+                  "description": "A lost stream is what makes a PoE cycle legal (OD-22). NULL = NOT READ (task 4 row V7c; decision C126 (b)): the Core reads no stream of this camera now, so it states neither LIVE nor LOST - the value of a registered camera at rest, the same as its registry entry's. `LIVE` is stated only while the capture ingest of an open session receives the stream (telemetry `CONNECTED`) - a pre-check or re-scan that reached the camera read its control service, not its stream, and states NULL (row V7d); `LOST` while a stream fault of the camera is active or the ingest waits or ended under a recording; the ingest closing after the stop gives NULL again. The two built-in cameras of the demonstration model keep the model's `LIVE` / `LOST` from the registry flag, as their registry entries do (finding JW-23: that is no reading of a stream)."
                 }
               },
               "required": [
@@ -34392,6 +34441,69 @@
                 "sourceOpen": {
                   "description": "True while the Core holds this source open (C3 §2.6, erratum PE-128-38; SEC35-44 (4)): the \"is on\" fact of a `LOCAL_DEVICE` - the short open of a pre-check included. A runtime fact, never stored: absent when the source is not open, after a restart until it opens, and always in simulated capture.",
                   "type": "boolean"
+                },
+                "profiles": {
+                  "description": "The stream profiles the Core holds stored for this camera (`capture_devices.profiles`), in the stored order, each code once. A production camera is assigned to a track with ONE of them: the `code` is sent as `profile` of a camera line of operation 78 (operation 79 carries no profile). An EMPTY list: the Core holds no profile for this camera - it cannot be assigned, and no default stands in (C36). Present on every registered camera (one that operation 96 added); absent on every other entry (a microphone, the PoE switch, a built-in device). No credential, no address, no URL, no text of the camera.",
+                  "maxItems": 16,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "code": {
+                        "type": "string",
+                        "pattern": "^[A-Z][A-Z0-9_]{0,63}$",
+                        "description": "The profile code (`HEVC_1080P`, `H264_720P30`): upper-case letters, digits and underscores, 1 to 64 characters. The value a camera line of operation 78 names as `profile`."
+                      },
+                      "codec": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "H.264",
+                              "HEVC"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "The codec the code states: a closed set. Null when the code is no stream statement. Never a default."
+                      },
+                      "resolution": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^(?:[1-9][0-9]{2,3}p|[1-9][0-9]{2,3}x[1-9][0-9]{2,3})$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "The picture the code states: `<height>p` for a 16:9 picture, else `<width>x<height>`. Null when the code is no stream statement. Never a default."
+                      },
+                      "fps": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 240
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "The whole-number rate the code states, 1 to 240; null when it states none (an HEVC stream states no rate). Never a default."
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "codec",
+                      "resolution",
+                      "fps"
+                    ],
+                    "additionalProperties": false,
+                    "description": "One stored stream profile of a camera: its code and what the code states of the stream."
+                  }
                 }
               },
               "required": [
@@ -35320,12 +35432,19 @@
                           "description": "On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means \"registered and not found unreachable at the last check\" - never \"reachable now\": a client at rest says \"Not checked\", not \"Online\" or \"Ready\" (finding JW-23). In Simulated mode it is the demonstration model's value."
                         },
                         "streamState": {
-                          "type": "string",
-                          "enum": [
-                            "LIVE",
-                            "LOST"
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "LIVE",
+                                "LOST"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
                           ],
-                          "description": "A lost stream is what makes a PoE cycle legal (OD-22). On a Core in its own capture the selector derives it from the same registry flag as `online` (`LIVE` for true, `LOST` for false): it is not a reading of a stream, and `LIVE` at rest does not say that the camera delivers pictures (finding JW-23)."
+                          "description": "A lost stream is what makes a PoE cycle legal (OD-22). NULL = NOT READ (task 4 row V7c; decision C126 (b)): the Core reads no stream of this camera now, so it states neither LIVE nor LOST - the value of a registered camera at rest, the same as its registry entry's. `LIVE` is stated only while the capture ingest of an open session receives the stream (telemetry `CONNECTED`) - a pre-check or re-scan that reached the camera read its control service, not its stream, and states NULL (row V7d); `LOST` while a stream fault of the camera is active or the ingest waits or ended under a recording; the ingest closing after the stop gives NULL again. The two built-in cameras of the demonstration model keep the model's `LIVE` / `LOST` from the registry flag, as their registry entries do (finding JW-23: that is no reading of a stream)."
                         }
                       },
                       "required": [
@@ -36904,7 +37023,9 @@
               "HOST_ALIAS_ADD_FAILED",
               "CAPTURE_AUDIO_ABSENT_ON_RESTART",
               "CAPTURE_DEVICE_CONNECTION_TESTED",
-              "CAPTURE_VIDEO_ABSENT_IN_SESSION"
+              "CAPTURE_VIDEO_ABSENT_IN_SESSION",
+              "CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED",
+              "CAPTURE_AUDIO_SILENCE_INSERTED"
             ]
           },
           "category": {
@@ -39176,7 +39297,7 @@
           },
           "notices": {
             "description": "Schema v2 (decision D178): what the package format does NOT cover. Named statements that fail nothing; a client shows each one and never collapses it. Absent for a v1 item.",
-            "maxItems": 8,
+            "maxItems": 9,
             "type": "array",
             "items": {
               "type": "object",
@@ -39184,7 +39305,7 @@
                 "code": {
                   "type": "string",
                   "pattern": "^[A-Z][A-Z0-9_]{2,63}$",
-                  "description": "`AUDIT_EXTRACT_NOT_SIGNED` (every v2 result): `audit-session-extract.jsonl` is in the package and its content is covered by no hash and no signature. `EXPORT_FOLDER_UNEXPECTED_FILE` (only when there is such a file): the `export/` folder of the package holds a file that is no finished export - a `.partial` a stopped export left, a name no export writes, or anything in a sub-folder; the sealed set is not affected. `REVISION_APPEND_PENDING` (only while there is such a file): a transcript revision is being written - `transcript/transcript-revisions.json.next` lies in the package; it fails nothing; verify again shortly. `SIGNED_BY_COMPROMISED_KEY` (only for a package under such a key): the manifest or a transcript revision is signed by a key that was later MARKED COMPROMISED, so the signature alone proves nothing any more. **This notice is not \"fails nothing\"**: it stands beside a verdict that took the mark into account and its `report` says which - the answer is a pass ONLY when the package is the one this Core recorded when it sealed the item (its manifest digest and the head of its revisions equal what the Core stored), and a failure otherwise. An answer with this code is never a plain pass: a client shows it as a state of the signing key, not among what the signature does not cover. `HOST_PROFILE_NOT_ASKED` (only for a package whose manifest carries the member `hostProfileNotAsked`): the package was sealed by a production Core on a platform where the checks of the host profile are not run; it fails nothing and changes no verdict. `VIDEO_ABSENT_IN_SESSION` (only for a package whose manifest carries the member `absentInSession` on a track): a camera stopped delivering pictures inside the session; the line states per track how often, the two measured bounds of the time in ms, and whether the last absence ended; it fails nothing and changes no verdict. `AUDIO_ABSENT_ON_RESTART` (only for a package whose manifest carries the member `audio.absentOnRestart`): the capture was restarted inside the session and no sound was recorded across the restart; the line states how often and the two measured bounds of the time in ms; it fails nothing and changes no verdict."
+                  "description": "`AUDIT_EXTRACT_NOT_SIGNED` (every v2 result): `audit-session-extract.jsonl` is in the package and its content is covered by no hash and no signature. `EXPORT_FOLDER_UNEXPECTED_FILE` (only when there is such a file): the `export/` folder of the package holds a file that is no finished export - a `.partial` a stopped export left, a name no export writes, or anything in a sub-folder; the sealed set is not affected. `REVISION_APPEND_PENDING` (only while there is such a file): a transcript revision is being written - `transcript/transcript-revisions.json.next` lies in the package; it fails nothing; verify again shortly. `SIGNED_BY_COMPROMISED_KEY` (only for a package under such a key): the manifest or a transcript revision is signed by a key that was later MARKED COMPROMISED, so the signature alone proves nothing any more. **This notice is not \"fails nothing\"**: it stands beside a verdict that took the mark into account and its `report` says which - the answer is a pass ONLY when the package is the one this Core recorded when it sealed the item (its manifest digest and the head of its revisions equal what the Core stored), and a failure otherwise. An answer with this code is never a plain pass: a client shows it as a state of the signing key, not among what the signature does not cover. `HOST_PROFILE_NOT_ASKED` (only for a package whose manifest carries the member `hostProfileNotAsked`): the package was sealed by a production Core on a platform where the checks of the host profile are not run; it fails nothing and changes no verdict. `VIDEO_ABSENT_IN_SESSION` (only for a package whose manifest carries the member `absentInSession` on a track): a camera stopped delivering pictures inside the session; the line states per track how often, the two measured bounds of the time in ms, and whether the last absence ended; it fails nothing and changes no verdict. `AUDIO_ABSENT_ON_RESTART` (only for a package whose manifest carries the member `audio.absentOnRestart`): the capture was restarted inside the session and no sound was recorded across the restart; the line states how often and the two measured bounds of the time in ms; it fails nothing and changes no verdict. `AUDIO_SAMPLES_NOT_RECEIVED` (only for a package whose manifest carries the member `audio.samplesNotReceived`): the audio was captured on a path that does not deliver every sample (bench capture path of a Mac); the line states, in whole samples of the highest capture attempt, how many samples of the track arrived, how many are silence the recorder inserted, and the runs of 100 ms or more (listed, not listed, the longest) - or that the amount was measured up to a sample only, or not measured; sound that did not arrive is not in the recording, and the places of the inserted silence are not the places of the missing sound; it fails nothing and changes no verdict - a package can be untouched and its audio incomplete. `AUDIO_ONE_CAPTURE_GROUP` (only beside the previous one, when two of its records state the same capture group): PRIMARY and STANDBY were channels of one device recorded by one capture program, so a switch between them was not a switch to an independent source; it fails nothing and changes no verdict."
                 },
                 "report": {
                   "type": "string",
@@ -39569,7 +39690,9 @@
               "HOST_ALIAS_ADD_FAILED",
               "CAPTURE_AUDIO_ABSENT_ON_RESTART",
               "CAPTURE_DEVICE_CONNECTION_TESTED",
-              "CAPTURE_VIDEO_ABSENT_IN_SESSION"
+              "CAPTURE_VIDEO_ABSENT_IN_SESSION",
+              "CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED",
+              "CAPTURE_AUDIO_SILENCE_INSERTED"
             ]
           },
           "actorId": {
@@ -40687,6 +40810,12 @@
               }
             ],
             "description": "Speaker label when diarization labelled it; null when UNAVAILABLE (D226 labels part; never blocks text)."
+          },
+          "insertedSilenceMs": {
+            "description": "THE MARK ON THE SEGMENT (Core server only; task 4 row N2): this many whole milliseconds of the segment (`startMs` to `endMs`) are SILENCE THE RECORDER INSERTED, in runs of 100 ms or more that the signed manifest of the item lists with their positions (`audio.samplesNotReceived[].insertedRuns`). No audio arrived from the microphone in that time; the text of the segment is the engine's and is not cut - the segment is marked, not split. A client shows the mark at the segment and never joins two segments into one line or paragraph across a listed run. ABSENT: no listed run overlaps the segment - never to be read as \"this segment holds every word that was spoken\".",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400000
           }
         },
         "required": [
@@ -40744,6 +40873,70 @@
             "type": "integer",
             "minimum": 0,
             "description": "Current max(revision_no); 0 when no revision exists (SEC35-21)."
+          },
+          "audioNotSampleContinuous": {
+            "description": "THE STATEMENT AT THE HEAD OF THE TRANSCRIPT (Core server only; task 4 row N2; decisions U25 (3), C110 (2)): the audio this text was made from is NOT SAMPLE-CONTINUOUS - it was captured on a path that does not deliver every sample (bench capture path of a Mac). Sound that did not arrive is not in the recording. Silence of the same total length was inserted by the recorder; its places are not the places of the missing sound. The numbers are whole samples of the highest capture attempt, the ones of the verify notice `AUDIO_SAMPLES_NOT_RECEIVED`, read from the SIGNED manifest of the item. A client shows this statement with its numbers at the head of the transcript and never collapses it; a transcript of such audio does not hold every word that was spoken. ABSENT: the manifest of the item states no measured shortfall - never to be read as \"the audio is complete\".",
+            "type": "object",
+            "properties": {
+              "arrivedSamples": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4147200000
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Samples of the track that arrived (`trackSamples` less `insertedSamples`); null when the amount was not measured."
+              },
+              "trackSamples": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4147200000
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Samples the session's own clock expected up to the recorder's last account: the length of the track when that account closed it. null when the amount was not measured."
+              },
+              "insertedSamples": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 4147200000
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Samples of the track that are silence the recorder inserted, not sound; null when the amount was not measured."
+              },
+              "listedRuns": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1024,
+                "description": "Runs of inserted silence of 100 ms or more that the signed manifest lists with their positions; the segments they overlap carry `insertedSilenceMs`."
+              },
+              "runsNotListed": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Runs of 100 ms or more that the manifest counts and does NOT list: they have no position and mark no segment."
+              }
+            },
+            "required": [
+              "arrivedSamples",
+              "trackSamples",
+              "insertedSamples",
+              "listedRuns",
+              "runsNotListed"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -41974,6 +42167,69 @@
               "sourceOpen": {
                 "description": "True while the Core holds this source open (C3 §2.6, erratum PE-128-38; SEC35-44 (4)): the \"is on\" fact of a `LOCAL_DEVICE` - the short open of a pre-check included. A runtime fact, never stored: absent when the source is not open, after a restart until it opens, and always in simulated capture.",
                 "type": "boolean"
+              },
+              "profiles": {
+                "description": "The stream profiles the Core holds stored for this camera (`capture_devices.profiles`), in the stored order, each code once. A production camera is assigned to a track with ONE of them: the `code` is sent as `profile` of a camera line of operation 78 (operation 79 carries no profile). An EMPTY list: the Core holds no profile for this camera - it cannot be assigned, and no default stands in (C36). Present on every registered camera (one that operation 96 added); absent on every other entry (a microphone, the PoE switch, a built-in device). No credential, no address, no URL, no text of the camera.",
+                "maxItems": 16,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "pattern": "^[A-Z][A-Z0-9_]{0,63}$",
+                      "description": "The profile code (`HEVC_1080P`, `H264_720P30`): upper-case letters, digits and underscores, 1 to 64 characters. The value a camera line of operation 78 names as `profile`."
+                    },
+                    "codec": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "H.264",
+                            "HEVC"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The codec the code states: a closed set. Null when the code is no stream statement. Never a default."
+                    },
+                    "resolution": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^(?:[1-9][0-9]{2,3}p|[1-9][0-9]{2,3}x[1-9][0-9]{2,3})$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The picture the code states: `<height>p` for a 16:9 picture, else `<width>x<height>`. Null when the code is no stream statement. Never a default."
+                    },
+                    "fps": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 240
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The whole-number rate the code states, 1 to 240; null when it states none (an HEVC stream states no rate). Never a default."
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "codec",
+                    "resolution",
+                    "fps"
+                  ],
+                  "additionalProperties": false,
+                  "description": "One stored stream profile of a camera: its code and what the code states of the stream."
+                }
               }
             },
             "required": [
@@ -42426,6 +42682,69 @@
               "sourceOpen": {
                 "description": "True while the Core holds this source open (C3 §2.6, erratum PE-128-38; SEC35-44 (4)): the \"is on\" fact of a `LOCAL_DEVICE` - the short open of a pre-check included. A runtime fact, never stored: absent when the source is not open, after a restart until it opens, and always in simulated capture.",
                 "type": "boolean"
+              },
+              "profiles": {
+                "description": "The stream profiles the Core holds stored for this camera (`capture_devices.profiles`), in the stored order, each code once. A production camera is assigned to a track with ONE of them: the `code` is sent as `profile` of a camera line of operation 78 (operation 79 carries no profile). An EMPTY list: the Core holds no profile for this camera - it cannot be assigned, and no default stands in (C36). Present on every registered camera (one that operation 96 added); absent on every other entry (a microphone, the PoE switch, a built-in device). No credential, no address, no URL, no text of the camera.",
+                "maxItems": 16,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "pattern": "^[A-Z][A-Z0-9_]{0,63}$",
+                      "description": "The profile code (`HEVC_1080P`, `H264_720P30`): upper-case letters, digits and underscores, 1 to 64 characters. The value a camera line of operation 78 names as `profile`."
+                    },
+                    "codec": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "H.264",
+                            "HEVC"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The codec the code states: a closed set. Null when the code is no stream statement. Never a default."
+                    },
+                    "resolution": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^(?:[1-9][0-9]{2,3}p|[1-9][0-9]{2,3}x[1-9][0-9]{2,3})$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The picture the code states: `<height>p` for a 16:9 picture, else `<width>x<height>`. Null when the code is no stream statement. Never a default."
+                    },
+                    "fps": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 240
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "The whole-number rate the code states, 1 to 240; null when it states none (an HEVC stream states no rate). Never a default."
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "codec",
+                    "resolution",
+                    "fps"
+                  ],
+                  "additionalProperties": false,
+                  "description": "One stored stream profile of a camera: its code and what the code states of the stream."
+                }
               }
             },
             "required": [
@@ -42461,7 +42780,7 @@
             "anyOf": [
               {
                 "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9._-]{0,14}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$"
               },
               {
                 "type": "null"
@@ -42510,6 +42829,17 @@
             "maximum": 250,
             "description": "The host part (2 to 250) of the first address a set-network job offers a camera in the camera subnet."
           },
+          "onvifPorts": {
+            "minItems": 1,
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "description": "The ports a stored camera's ONVIF device service may be dialled on: 1 to 8 whole numbers 1 to 65535, no port twice, in the order written; [80] for a configuration nobody has written yet. A camera stored without a port is dialled on 80, which must then be listed."
+          },
           "revision": {
             "type": "integer",
             "minimum": 1,
@@ -42548,6 +42878,7 @@
           "aliasHost",
           "aliasMinutes",
           "cameraIpStart",
+          "onvifPorts",
           "revision",
           "updatedAt",
           "updatedBy"
@@ -42568,7 +42899,7 @@
             "anyOf": [
               {
                 "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9._-]{0,14}$"
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$"
               },
               {
                 "type": "null"
@@ -42611,13 +42942,24 @@
             "type": "integer",
             "minimum": 2,
             "maximum": 250
+          },
+          "onvifPorts": {
+            "description": "The whole list of allowed ONVIF ports, replacing the stored one: 1 to 8 ports 1 to 65535, no port twice, in order.",
+            "minItems": 1,
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
           }
         },
         "required": [
           "revision"
         ],
         "additionalProperties": false,
-        "description": "Request body of `POST /api/v1/capture/network/config` (task 4, operation 102). No member carries a credential, a port, a gateway or a DHCP mode."
+        "description": "Request body of `POST /api/v1/capture/network/config` (task 4, operation 102). No member carries a credential, a gateway or a DHCP mode; the only ports are the allowed ONVIF port list."
       },
       "HostAlias": {
         "type": "object",
@@ -43106,6 +43448,14 @@
             "type": "string",
             "enum": [
               "SCHEME_NOT_ALLOWED"
+            ]
+          },
+          "profiles": {
+            "description": "What this test found about the STORED stream profiles of the camera (task 4 rows PR, V7; decision C117). `PROFILES_STORED`: the camera held none and the test stored what its stream states - the device entry of the `captureDevices` slice carries them (`profiles`) and the camera can be assigned. `STREAM_PROFILE_DIFFERS`: the camera holds stored profiles and its stream now states something else - NOTHING was stored, the stored statement stands. Absent: nothing to say (the stored and the stated agree, or the test judged no stream). A closed word: no profile code, no count.",
+            "type": "string",
+            "enum": [
+              "PROFILES_STORED",
+              "STREAM_PROFILE_DIFFERS"
             ]
           }
         },

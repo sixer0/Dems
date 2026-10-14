@@ -77,6 +77,9 @@ import {
   REVISION_APPEND_PENDING_REPORT,
   exportFolderNoticeReport,
   audioAbsentOnRestartReport,
+  audioOneCaptureGroup,
+  audioSamplesNotReceivedReport,
+  AUDIO_ONE_CAPTURE_GROUP_REPORT,
   hostProfileNotAskedReport,
   videoAbsentInSessionReport,
   VERIFY_NOTICE,
@@ -1086,6 +1089,9 @@ export async function verifyPackageV2(ports: VerifyPorts, options: VerifyOptions
   const videoAbsent = videoAbsentInSessionReport((manifest?.tracks ?? []).map((track) => ({ trackId: track.trackId, absences: track.absentInSession ?? [] })));
   // Pass I-9b: the one line of the sound that is absent across a worker restart, from the manifest as READ; '' = none stated.
   const audioAbsent = audioAbsentOnRestartReport(manifest?.audio.absentOnRestart ?? []);
+  // Row N2 (C110 (8), C112 (4)): the two lines of an audio path that is not sample-continuous, from the manifest as READ; '' / false = none stated.
+  const audioShortfall = audioSamplesNotReceivedReport(manifest?.audio.samplesNotReceived ?? []);
+  const audioOneGroup = audioOneCaptureGroup(manifest?.audio.samplesNotReceived ?? []);
   const toldOfMarks = expected.compromisedCertificateSha256 !== undefined;
   const underMarkedKey = toldOfMarks && checks.some((check) => check.findings.some((finding) => finding.code === 'CERTIFICATE_KEY_COMPROMISED' || finding.code === 'REVISION_CERTIFICATE_KEY_COMPROMISED'));
   const keyMark: VerifiedSigningKeyMark = underMarkedKey ? VerifiedSigningKeyMark.COMPROMISED : trusted ? VerifiedSigningKeyMark.NOT_MARKED : VerifiedSigningKeyMark.NOT_ESTABLISHED;
@@ -1126,6 +1132,9 @@ export async function verifyPackageV2(ports: VerifyPorts, options: VerifyOptions
       ...(videoAbsent === '' ? [] : [Object.freeze({ code: VERIFY_NOTICE.VIDEO_ABSENT_IN_SESSION, report: videoAbsent })]),
       // Pass I-9b: the manifest's optional member `audio.absentOnRestart` is SAID in the verdict. It fails nothing.
       ...(audioAbsent === '' ? [] : [Object.freeze({ code: VERIFY_NOTICE.AUDIO_ABSENT_ON_RESTART, report: audioAbsent })]),
+      // Row N2: the manifest's optional member `audio.samplesNotReceived` is SAID in the verdict, in TWO lines. They fail nothing.
+      ...(audioShortfall === '' ? [] : [Object.freeze({ code: VERIFY_NOTICE.AUDIO_SAMPLES_NOT_RECEIVED, report: audioShortfall })]),
+      ...(audioOneGroup ? [Object.freeze({ code: VERIFY_NOTICE.AUDIO_ONE_CAPTURE_GROUP, report: AUDIO_ONE_CAPTURE_GROUP_REPORT })] : []),
     ]),
   });
 }

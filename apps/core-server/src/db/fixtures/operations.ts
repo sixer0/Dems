@@ -807,6 +807,35 @@ function buildCaptureActivity(world: World, directory: OperatorDirectory): void 
       details: { sessionId: 'SES-20261001-0001', deviceId: 'CAM-01', trackId: 'VIDEO-01', attempt: 1, loss: 1, tries: 1, videoAbsentAtLeastMs: 3048, videoAbsentAtMostMs: 8049, ended: 'RE_OPENED' },
     },
   });
+  // Task 4 row N2 (decisions U25 (3), C110, C112 (3)): the two types of an audio path that is not sample-continuous;
+  // their live writer is the capture session (row N11). The account row is stated in its form WITHOUT numbers
+  // (`account: NONE`: the worker left no account), and one listed run that arrived before the worker went down.
+  // WHY NOT A CLOSED ACCOUNT: an account with its thirteen numbers holds 19 keys, and the audit writer holds a
+  // native row to `NATIVE_PAYLOAD_KEYS_MAX` (16) - it refuses such a row today. Found by row N2 and put to the
+  // controller (`implementation/n2_mic_contract.md`, section 6); the fixture states a row the writer accepts.
+  // ROW V7 (decision C119 (1)): the bound stays and an account is TWO entries, `part` 1 and 2. This fixture row
+  // is ONE example entry of the type - part 1 of an account without numbers - and no whole account: no row was
+  // added, so that no count of the fixture moved. The seal reads no account from fixture rows.
+  world.record(at(30), {
+    audit: {
+      type: 'CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED',
+      message: 'Audio samples were not received from a microphone; the amount was not measured',
+      actorId: null,
+      deviceId: null,
+      severity: 'WARNING',
+      details: { sessionId: 'SES-20261001-0001', attempt: 1, part: 1, captureLayer: 'AVFOUNDATION', captureGroup: 1, account: 'NONE', openRetries: 0 },
+    },
+  });
+  world.record(at(31), {
+    audit: {
+      type: 'CAPTURE_AUDIO_SILENCE_INSERTED',
+      message: 'Silence was inserted into the audio track in one piece',
+      actorId: null,
+      deviceId: null,
+      severity: 'WARNING',
+      details: { sessionId: 'SES-20261001-0001', attempt: 1, index: 1, fromSample: 1_440_000, samples: 5_280 },
+    },
+  });
 }
 
 // ── The lineage of discarded chains ────────────────────────────────────────────────────────────

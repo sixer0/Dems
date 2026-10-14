@@ -32,7 +32,7 @@
  * The shared code reads every one of these with `?? null` or `?? []`, so the two empty forms
  * behave alike; the table only decides which one a rehydrated state holds.
  */
-import { DEFAULT_CAPTURE_DEVICES, EVIDENCE_FILE_TRACKS, SIM_SNAPSHOT_VERSION, eventCategory, neverSealedShape } from '@dems/shared/sim';
+import { DEFAULT_CAPTURE_DEVICES, EVIDENCE_FILE_TRACKS, SIM_SNAPSHOT_VERSION, captureDeviceProfilesOf, eventCategory, neverSealedShape } from '@dems/shared/sim';
 import type {
   ActiveSession,
   AuditRow,
@@ -860,8 +860,15 @@ function adapterKindOf(device: CaptureDevicesSlice['devices'][number]): CaptureA
  * Slice 30 to its registry rows (T-32), in id order. `enabled` carries the slice's `online`; the
  * mic rows take their `transport` from the selector slot that names the same device (the only
  * home the state has for it); `address` is the slice's `host`, never a credential URL (C-N8).
- * `profiles`, `mac`, `onvif_uuid` and `last_seen_at` are discovery/telemetry columns the engine
- * state does not model; they read back as the empty forms the builders use.
+ * `mac`, `onvif_uuid` and `last_seen_at` are discovery/telemetry columns the engine state does not
+ * model; they read back as the empty forms the builders use.
+ *
+ * `profiles` (task 4 row V7): the engine state CARRIES the list since that row (the device entry's
+ * `profiles`, read back by `captureDeviceFromRow`), and still never WRITES it: the one writer of
+ * the column is the adoption's own statement in the same unit (`SET_ADOPTED_CAMERA_COLUMNS`), and
+ * the store's UPSERT names the column in no SET list. So the row built here keeps the empty form in
+ * its VALUES, for every device, whatever the entry lists - a change of an entry's list alone is no
+ * change of a row.
  */
 export function captureDevicesToRows(slice: CaptureDevicesSlice, config: CaptureConfigSlice): CaptureDeviceRow[] {
   const transportOf = (deviceId: string): string =>
@@ -903,7 +910,24 @@ function captureDeviceFromRow(row: CaptureDeviceRow): Omit<CaptureDevicesSlice['
     // built-in devices keep the shape they had: they gain the two members with the rows that
     // surface them (136 / 139).
     ...(BUILT_IN_CAPABILITIES.has(row.id) ? {} : { adapter: row.adapterKind, sourceClass: DEVELOPMENT_ADAPTER_KINDS.has(row.adapterKind) ? ('DEVELOPMENT' as const) : ('PRODUCTION' as const) }),
+    // Task 4 row V7 (decisions C36, C117; the blocking request lines of row W5): a REGISTERED camera
+    // states the profile list its row holds, so that the slice and operation 77 carry it to the
+    // clients. The list is read as the Core's own rule reads it (`storedProfilesOf` of the capture
+    // fence, by the shared `captureDeviceProfilesOf`): a stored value that is no list of codes
+    // within the bound states NOTHING - an empty list, never a cut or a cleaned one, and never a
+    // refusal of the whole rehydration for one camera's column. A built-in camera whose row lists
+    // NOTHING keeps the shape it had (no member), as for `adapter`; one whose row holds a list - a
+    // built-in id that a stored-credential connection test stored profiles for - states it, so that
+    // the read-back is what the engine's door (`storeCaptureDeviceProfilesIn`) made of the entry.
+    ...storedProfilesOfRow(row),
   };
+}
+
+/** The `profiles` member of a device entry read back from its row (task 4 row V7): see `captureDeviceFromRow`. */
+function storedProfilesOfRow(row: CaptureDeviceRow): { profiles?: NonNullable<CaptureDevicesSlice['devices'][number]['profiles']> } {
+  if (row.kind !== 'CAMERA') return {};
+  const profiles = captureDeviceProfilesOf(row.profiles) ?? [];
+  return BUILT_IN_CAPABILITIES.has(row.id) && profiles.length === 0 ? {} : { profiles };
 }
 
 /** What `registerCaptureDevice` gives a camera it registers (`packages/shared/src/sim/capture-registry.ts`). */
@@ -958,7 +982,12 @@ export function captureConfigFromRow(row: CaptureConfigRow, devices: readonly Ca
     }
     const profile = codeToProfile(code, `capture_config.${columns[1]}`);
     const device = named(columns[0], deviceId);
-    return [{ trackId, deviceId, profile, online: device.enabled, streamState: (device.enabled ? 'LIVE' : 'LOST') as CaptureConfigSlice['cameras'][number]['streamState'] }];
+    // Task 4 row V7c (decision C126 (b)): the line states the stream as the device's entry does
+    // (`captureDeviceFromRow`): NULL - NOT READ - for a registered camera, since a restart reads no
+    // stream; the two built-in cameras of the demonstration model keep the model's value from the
+    // registry flag. Until this row every line said LIVE / LOST from `enabled`.
+    const streamState: CaptureConfigSlice['cameras'][number]['streamState'] = BUILT_IN_CAPABILITIES.has(device.id) ? (device.enabled ? 'LIVE' : 'LOST') : null;
+    return [{ trackId, deviceId, profile, online: device.enabled, streamState }];
   };
   const mic = (role: 'PRIMARY' | 'STANDBY', deviceId: string | null): CaptureConfigSlice['mics'] => {
     if (deviceId === null) return [];

@@ -14,7 +14,9 @@
 // 127.0.0.1, and a candidate with another host is only ever REFUSED before a request.
 // Fixture credentials are drawn at run time. EVERY RULE HAS ITS CONTROL.
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { Agent as HttpAgent } from 'node:http';
+import { resolve } from 'node:path';
 import { inspect } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FAKE_ONVIF_ALLOWED_OPERATIONS, FAKE_ONVIF_HOST, FAKE_ONVIF_ODD_PROFILE_TOKEN, FAKE_ONVIF_TWO_SOURCE_PROFILES, createFakeOnvifStub, fakeOnvifProfileStreamUri, freeFakeOnvifPorts, type FakeOnvifStub, type FakeOnvifStubOptions } from '../../../../../test/support/fake-onvif-stub';
@@ -117,7 +119,20 @@ async function startOdd(script: (request: OddDeviceRequest, index: number, base:
   return device;
 }
 
-const tester = (timers: CaptureTimers = manualTimers(), limits: Partial<typeof ONVIF_SESSION_LIMITS> = {}) => createOnvifConnectionTester({ timers, limits });
+/**
+ * Finding E-02 of the fifth review pass (S-03 of the second): the two facades REQUIRE the source address of a call. The
+ * devices of this file stand on loopback and none of them is a stored camera, so a call that names no address STATES the
+ * old behaviour - "as the host routes" - by this one name, here, for every call below that passes three (four) arguments.
+ * The facades themselves have no default: `createOnvifConnectionTester(...).test(a, b, c)` does not compile.
+ */
+const AS_THE_HOST_ROUTES = undefined;
+const statedTester = (made: ReturnType<typeof createOnvifConnectionTester>) => ({
+  test: (candidate: CameraCandidate, credential: Parameters<typeof made.test>[1], signal: AbortSignal, sourceAddress: string | undefined = AS_THE_HOST_ROUTES) => made.test(candidate, credential, signal, sourceAddress),
+});
+const statedLocator = (made: ReturnType<typeof createOnvifStreamLocator>) => ({
+  locate: (candidate: CameraCandidate, credential: Parameters<typeof made.locate>[1], profileToken: string, signal: AbortSignal, sourceAddress: string | undefined = AS_THE_HOST_ROUTES) => made.locate(candidate, credential, profileToken, signal, sourceAddress),
+});
+const tester = (timers: CaptureTimers = manualTimers(), limits: Partial<typeof ONVIF_SESSION_LIMITS> = {}) => statedTester(createOnvifConnectionTester({ timers, limits }));
 const never = (): AbortSignal => new AbortController().signal;
 const deviceRequests = (stub: FakeOnvifStub) => stub.requestLog().filter((request) => request.channel === 'device');
 
@@ -166,8 +181,26 @@ describe('M4-CONN-OUT-1 (adapter half): the five outcomes on the fake stub, thro
     stub.setDeviceMode('NO_PROFILE');
     const result = await tester().test(candidateAt(stub.addresses().deviceServiceUrl), sealCredential(ACCOUNT), never());
     expect(result).toMatchObject({ outcome: ConnectionTestOutcome.WRONG_PROFILE, authenticated: true, usableProfiles: [] });
-    expect([OnvifTestReason.NO_USABLE_PROFILE, OnvifTestReason.PROFILE_ANSWER_INVALID]).toContain(result.reason);
+    // Review 060d Q-08 (section 6, survivor 3), row CB: ONE reason, not either of two. The stub's NO_PROFILE device
+    // answers an EMPTY response element (`<trt:GetProfilesResponse/>`), which the package cannot read as a list: the
+    // read FAILED, and the reason is the name of an answer that could not be read - `PROFILE_ANSWER_INVALID`.
+    // Seen RED on (in memory): the product answering `NO_USABLE_PROFILE` where it answers `PROFILE_ANSWER_INVALID`.
+    expect(result.reason).toBe(OnvifTestReason.PROFILE_ANSWER_INVALID);
+    expect(result.profiles).toEqual([]);
+    expect(result.reads).toEqual(['GetSystemDateAndTime', 'GetServices', 'GetProfiles']);
     expect(result.reads).not.toContain('GetStreamUri');
+    // CONTROL of the name - THE OTHER REASON, on an answer that WAS read: one listed profile that names no video
+    // source and no encoder is no usable profile. `NO_USABLE_PROFILE`, by its exact value (no case of this file held
+    // it so before). Seen RED on (in memory): the product answering `PROFILE_ANSWER_INVALID` for an empty usable list.
+    const hollow = await startOdd((request, _index, base) => {
+      if (request.operation === 'GetSystemDateAndTime') return dateAnswer();
+      if (request.operation === 'GetServices') return servicesAnswer(base);
+      return ok('<trt:GetProfilesResponse><trt:Profiles token="main" fixed="true"><tt:Name>hollow</tt:Name></trt:Profiles></trt:GetProfilesResponse>');
+    });
+    const listed = await tester().test(candidateAt(hollow.serviceUrl), sealCredential(ACCOUNT), never());
+    expect(listed).toMatchObject({ outcome: ConnectionTestOutcome.WRONG_PROFILE, usableProfiles: [] });
+    expect(listed.reason).toBe(OnvifTestReason.NO_USABLE_PROFILE);
+    expect(listed.reads).toEqual(['GetSystemDateAndTime', 'GetServices', 'GetProfiles']);
   });
 
   it('NOT_H264: a usable profile, and no H.264 encoder among them', async () => {
@@ -392,13 +425,86 @@ describe('M4-SEC-CONN-3 (SEC35-32, SEC35-33): a hostile device ends in a named o
     }
   });
 
-  it('the connection limit is asked of the timer seam, and it is cancelled once the connection stands', async () => {
+  // Review 060d Q-03 (section 6, survivor 1), wave 12 row CB. The case asked only that a timer of `connectMs` was asked
+  // and that none was left: with `if (socket.connecting === true) socket.destroy();` deleted from the session file it
+  // passed. Its second half now keeps a connection from being established and FIRES the limit (row T3's case (b) of
+  // the set-network file, here for the tester - the three facades share the exchange).
+  // Seen RED on (in memory): that line deleted - the test is still pending 3 s after the limit fired; `timers.after(
+  // limits.connectMs,` -> `limits.requestMs,` - the timer asked is 60,000 and not 1,234; `cancel();` of `established`
+  // deleted - a timer is left pending in the first half. (`socket.once('connect', established)` deleted is row T3's
+  // EQUIVALENT mutant, another one: the same `established` runs at `close`. It survives here too, for that reason.)
+  it('the connection limit is asked of the timer seam, and it is cancelled once the connection stands; a connection that never stands is destroyed when the limit fires - NO_ANSWER - and nothing else ends the test before', async () => {
     const stub = await startStub();
     const timers = manualTimers();
     await tester(timers).test(candidateAt(stub.addresses().deviceServiceUrl), sealCredential(ACCOUNT), never());
     expect(timers.asked.length).toBeGreaterThan(0);
     expect(timers.asked.every((delay) => delay === ONVIF_SESSION_LIMITS.connectMs)).toBe(true);
     expect(timers.pending()).toBe(0);
+
+    // THE OTHER SIDE. The double of "a device that does not complete the connection": the agent's real maker is
+    // handed a host NAME and a resolver that never answers, so the socket stays `connecting` and nothing is sent
+    // anywhere. The limits are this call's own (1,234 ms; a request limit far away), on manual timers: only the
+    // connection limit can end the test, and only when the test fires it.
+    const reached = stub.requestLog().length;
+    const waiting = manualTimers();
+    const cutting = new AbortController();
+    const seen: { outcome: OnvifSessionResult | 'PENDING'; atLimit: OnvifSessionResult | 'PENDING' | 'NOT FIRED' } = { outcome: 'PENDING', atLimit: 'NOT FIRED' };
+    const made = Reflect.get(HttpAgent.prototype, 'createConnection') as (this: unknown, options: Record<string, unknown>, callback?: unknown) => unknown;
+    let dials = 0;
+    Reflect.set(HttpAgent.prototype, 'createConnection', function wrapped(this: unknown, options: Record<string, unknown>, callback?: unknown): unknown {
+      dials += 1;
+      return made.call(this, { ...options, host: 'never-established.invalid', lookup: () => undefined }, callback);
+    });
+    try {
+      const pending = tester(waiting, { connectMs: 1_234, requestMs: 60_000 })
+        .test(candidateAt(stub.addresses().deviceServiceUrl), sealCredential(ACCOUNT), cutting.signal)
+        .then((result) => {
+          seen.outcome = result;
+        });
+      // The limit was asked of the timer seam, once, with the limit of THIS call - not the request limit, not a constant.
+      await expect.poll(() => waiting.asked.length, { timeout: 2_000 }).toBe(1);
+      expect(waiting.asked).toEqual([1_234]);
+      expect(waiting.pending()).toBe(1);
+      // The connection is not established and nothing has ended the test: only the limit can.
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 150));
+      expect(seen.outcome).toBe('PENDING');
+      waiting.fireAll();
+      await Promise.race([pending, new Promise((resolvePromise) => setTimeout(resolvePromise, 3_000))]);
+      seen.atLimit = seen.outcome;
+    } finally {
+      Reflect.set(HttpAgent.prototype, 'createConnection', made);
+      cutting.abort();
+    }
+    // Ended BY THE LIMIT (read before the abort above could end it): no answer, and no credential travelled.
+    expect(seen.atLimit).toMatchObject({ outcome: ConnectionTestOutcome.UNREACHABLE, reason: OnvifTestReason.NO_ANSWER, credentialRequests: 0, rejectedCredentialRequests: 0, profiles: [], usableProfiles: [] });
+    expect(dials).toBe(1);
+    expect(stub.requestLog()).toHaveLength(reached);
+    expect(waiting.pending()).toBe(0);
+  });
+
+  // Review 060d Q-03, its second sentence (row CB): the REQUEST limit of the session file was held by a text pin only.
+  // Seen RED on (in memory): `timeout: limits.requestMs,` deleted from the package client's options - still pending at 4 s.
+  it('the request limit ends a read: a device that accepts the connection, takes the request and never answers - NO_ANSWER after `requestMs`, not before and not much later; ONE request was sent', async () => {
+    const silent = await startOdd(() => ({ kind: 'HANG' }));
+    const cutting = new AbortController();
+    const seen: { outcome: OnvifSessionResult | 'PENDING'; atLimit: OnvifSessionResult | 'PENDING' | 'NOT WAITED'; afterMs: number } = { outcome: 'PENDING', atLimit: 'NOT WAITED', afterMs: -1 };
+    const fromAt = performance.now();
+    try {
+      const pending = tester(manualTimers(), { requestMs: 400 })
+        .test(candidateAt(silent.serviceUrl), sealCredential(ACCOUNT), cutting.signal)
+        .then((result) => {
+          seen.outcome = result;
+          seen.afterMs = performance.now() - fromAt;
+        });
+      await Promise.race([pending, new Promise((resolvePromise) => setTimeout(resolvePromise, 4_000))]);
+      seen.atLimit = seen.outcome;
+    } finally {
+      cutting.abort();
+    }
+    expect(seen.atLimit).toMatchObject({ outcome: ConnectionTestOutcome.UNREACHABLE, reason: OnvifTestReason.NO_ANSWER, credentialRequests: 0 });
+    expect(seen.afterMs).toBeGreaterThanOrEqual(350);
+    expect(seen.afterMs).toBeLessThan(4_000);
+    expect(silent.requests()).toHaveLength(1);
   });
 
   it('a redirect is not followed: 0 requests leave for the second host, and the outcome is named', async () => {
@@ -543,15 +649,19 @@ describe('CR-1, CR-4 / SEC35-34: nothing the call returns, and nothing that outl
 
   it('every result, on success and on refusal, and the facade itself: 0 hits of either canary', async () => {
     const stub = await startStub();
-    const facade = tester();
+    // The facade ITSELF is judged below (`made`); the calls go through the helper that states the source address (finding E-02).
+    const made = createOnvifConnectionTester({ timers: manualTimers() });
+    const facade = statedTester(made);
     const results: OnvifSessionResult[] = [];
     results.push(await facade.test(candidateAt(stub.addresses().deviceServiceUrl), sealCredential(ACCOUNT), never()));
     results.push(await facade.test(candidateAt(stub.addresses().deviceServiceUrl), sealCredential(WRONG), never()));
     for (const result of results) expect(holds(result, ACCOUNT) || holds(result, WRONG)).toBe(false);
-    expect(holds(facade, ACCOUNT)).toBe(false);
+    expect(holds(made, ACCOUNT)).toBe(false);
     // The facade has one member: no client object, no agent, no option object can be reached from it.
-    expect(Object.keys(facade)).toEqual(['test']);
-    expect(Object.isFrozen(facade)).toBe(true);
+    expect(Object.keys(made)).toEqual(['test']);
+    expect(Object.isFrozen(made)).toBe(true);
+    // Finding E-02: its one call declares FOUR parameters - the source address has no default and cannot be left out.
+    expect(made.test).toHaveLength(4);
     // Control: the same sweep finds a canary in an object that does hold one.
     expect(holds({ nested: { account: { ...ACCOUNT } } }, ACCOUNT)).toBe(true);
   });
@@ -614,7 +724,7 @@ describe('task 4 row 26: the stream of each video source, and the locator of a p
     await device.stop();
     return result;
   };
-  const locator = (timers: CaptureTimers = manualTimers()) => createOnvifStreamLocator({ timers });
+  const locator = (timers: CaptureTimers = manualTimers()) => statedLocator(createOnvifStreamLocator({ timers }));
 
   const TWO_LENSES: readonly FixtureProfile[] = [
     { token: 'a.sub', source: 'vs_A', width: 704, height: 576 },
@@ -712,7 +822,9 @@ describe('task 4 row 26: the stream of each video source, and the locator of a p
   it('locate on the fake stub: the credential-free locator of the profile, ONE authenticated GetStreamUri, no profile listed, no stream opened', async () => {
     const stub = await startStub();
     const timers = manualTimers();
-    const facade = locator(timers);
+    // The facade ITSELF is judged below (`made`); the calls go through the helper that states the source address (finding E-02).
+    const made = createOnvifStreamLocator({ timers });
+    const facade = statedLocator(made);
     const result = await facade.locate(candidateAt(stub.addresses().deviceServiceUrl), sealCredential(ACCOUNT), 'profile_1', never());
     expect(result).toEqual({
       outcome: ConnectionTestOutcome.REACHABLE,
@@ -728,9 +840,11 @@ describe('task 4 row 26: the stream of each video source, and the locator of a p
     expect(stub.violations()).toEqual([]);
     expect(timers.pending()).toBe(0);
     // The facade has one member, and neither it nor its answer holds the credential.
-    expect(Object.keys(facade)).toEqual(['locate']);
-    expect(Object.isFrozen(facade) && Object.isFrozen(result)).toBe(true);
-    const text = `${inspect([facade, result], { depth: 12, showHidden: true, getters: true })}\n${JSON.stringify(result)}`;
+    expect(Object.keys(made)).toEqual(['locate']);
+    expect(Object.isFrozen(made) && Object.isFrozen(result)).toBe(true);
+    // Finding E-02: FIVE declared parameters - the source address has no default and cannot be left out.
+    expect(made.locate).toHaveLength(5);
+    const text = `${inspect([made, result], { depth: 12, showHidden: true, getters: true })}\n${JSON.stringify(result)}`;
     expect(text.includes(ACCOUNT.secret) || text.includes(ACCOUNT.username)).toBe(false);
 
     // A wrong secret: one request carried it, the refusal is final, no locator.
@@ -931,8 +1045,9 @@ describe('task 4 row 26: the stream of each video source, and the locator of a p
           `${BASE}?${name}`, // without a value
         ]);
       }
-      // Control: the list is closed and compared with the WHOLE name - a longer name is another name.
-      await expectAllowed([`${BASE}?sessiontimeout=60&keyframe=1&authmode=digest&username2=a&tokens=2`]);
+      // Control (row 174b, C127 C-4): a name is judged by the class of a part it holds; the camera's own `sessiontimeout` with digits, and a longer name holding only a short whole word, are locators.
+      await expectAllowed([`${BASE}?sessiontimeout=60&pwm=1&busrate=2&accountancy=3`]);
+      await expectRefused([`${BASE}?keyframe=1`, `${BASE}?authmode=digest`, `${BASE}?username2=a`, `${BASE}?tokens=2`, `${BASE}?apikey=1`, `${BASE}?access_token=1`, `${BASE}?sessiontimeout=abc`]);
     });
 
     it('a percent-encoded parameter name is refused: no name hides behind an encoding, because no encoding is admitted', async () => {
@@ -1115,7 +1230,7 @@ describe('task 4 integration pass I-7: the time read of a camera, without a cred
 describe('row 143b: the requests of the session leave from the source address handed in, or do not leave', () => {
   const NOT_THIS_HOSTS = '192.0.2.1';
   const reader = (timers: CaptureTimers = manualTimers()) => createOnvifTimeReader({ timers });
-  const locator = (timers: CaptureTimers = manualTimers()) => createOnvifStreamLocator({ timers });
+  const locator = (timers: CaptureTimers = manualTimers()) => statedLocator(createOnvifStreamLocator({ timers }));
 
   // Review 060b section 7.4 (3), row T2: on loopback a connection that was never given a local address arrives from
   // 127.0.0.1 as well, so "it answered" passes with the source address dropped. What is asked here instead is THE
@@ -1278,7 +1393,7 @@ describe('row B1 / B-01: a hostile reply never reaches the package - the review\
     const result = await pending;
     return { result, elapsedMs: performance.now() - from };
   };
-  const locator = () => createOnvifStreamLocator({ timers: manualTimers() });
+  const locator = () => statedLocator(createOnvifStreamLocator({ timers: manualTimers() }));
   const reader = () => createOnvifTimeReader({ timers: manualTimers() });
   const padded = (reply: OddDeviceReply, bytes: number): OddDeviceReply => (reply.kind === 'ANSWER' ? { ...reply, body: reply.body.replace('</s:Body>', `<!--${'x'.repeat(Math.max(0, bytes - Buffer.byteLength(reply.body) - 7))}--></s:Body>`) } : reply);
 
@@ -1483,5 +1598,147 @@ describe('row T3 / C100 (2): a Digest challenge above 2,048 characters never rea
     } finally {
       methods['digestAuth'] = packageDigest;
     }
+  });
+});
+
+// Finding E-05 of the fifth review pass (decision C113): row V6b's guard "an exchange that ended is never armed again"
+// (caution R119-09) stood in `onvif-network.ts` only. In THIS file - the one every camera open and every connection test
+// uses - `finish` disarmed the client at a cut, and a course that went on to its next read armed it again: no request
+// could leave, and the two values of the account sat on the dead client until the exchange was collected.
+// The client never leaves the file: the cases see it as `this` of the package's own read methods, which they replace for
+// the one case and put back. NO REQUEST IS MADE and no port is used: every read of the course is answered here.
+// MUTATIONS (the row record has the failing lines):
+//   both guard lines absent (the file as it was at 1fbeada7): BOTH cases RED - the client held the account's two values;
+//   only the line in `arm` absent: the SECOND case RED (the first is then held by the line in `authorizedAsk`);
+//   only the line in `authorizedAsk` absent: no case is red - with the line in `arm` it changes nothing a caller can
+//   see (it keeps a request from being COUNTED on a result that was handed out already). It stands for parity with the
+//   set-network file, and is said here so that nobody takes it for a tested rule.
+describe('finding E-05: an exchange that ended is never armed again - after a cut the client holds neither value of the account, whatever the course still does', () => {
+  type Method = (this: Record<string, unknown>, ...parts: unknown[]) => unknown;
+  type Callback = (error: unknown, value?: unknown) => void;
+  const turns = async (count = 8): Promise<void> => {
+    for (let turn = 0; turn < count; turn += 1) await new Promise((resolvePromise) => setImmediate(resolvePromise));
+  };
+  /** The package's client with some of its read methods replaced for `body`, and put back. */
+  const withReads = async (replaced: Record<string, Method>, body: () => Promise<void>): Promise<void> => {
+    const { default: cam } = await import('onvif/lib/cam.js');
+    const methods = cam.Cam.prototype as unknown as Record<string, Method | undefined>;
+    const kept = Object.keys(replaced).map((name) => [name, methods[name]] as const);
+    for (const [name, method] of kept) if (method === undefined) throw new Error(`fixture: the package has no ${name}`);
+    Object.assign(methods, replaced);
+    try {
+      await body();
+    } finally {
+      for (const [name, method] of kept) methods[name] = method;
+    }
+  };
+  // Nothing listens there and nothing is dialled: the candidate only has to be one the exchange may contact.
+  const NOWHERE = candidateAt(`http://${FAKE_ONVIF_HOST}:8571/onvif/device_service`);
+  const held = (client: Record<string, unknown> | null): unknown[] => [client?.['username'], client?.['password'], client?.['useWSSecurity']];
+
+  it('cut during a read WITHOUT the credential; the read is then answered and the course goes on to the read the credential is for: the client is not armed, and that read is never asked', async () => {
+    const seen: { client: Record<string, unknown> | null; answerServices: Callback | null; profilesAsked: number } = { client: null, answerServices: null, profilesAsked: 0 };
+    await withReads(
+      {
+        getSystemDateAndTime(callback) {
+          seen.client = this;
+          (callback as Callback)(null, new Date());
+        },
+        getServices(_capabilities, callback) {
+          seen.answerServices = callback as Callback;
+        },
+        getProfiles(callback) {
+          seen.profilesAsked += 1;
+          (callback as Callback)(new Error('not expected: the exchange had ended'));
+        },
+      },
+      async () => {
+        const cutting = new AbortController();
+        const pending = createOnvifConnectionTester({ timers: manualTimers() }).test(NOWHERE, sealCredential(ACCOUNT), cutting.signal, AS_THE_HOST_ROUTES);
+        await turns();
+        expect(seen.answerServices).not.toBeNull();
+        // Control: the two reads so far carry no credential, and the client holds none.
+        expect(held(seen.client)).toEqual([undefined, undefined, false]);
+        cutting.abort();
+        expect(await pending).toMatchObject({ outcome: ConnectionTestOutcome.UNREACHABLE, reason: OnvifTestReason.DEADLINE, reads: ['GetSystemDateAndTime', 'GetServices'], credentialRequests: 0 });
+        // The package answers the read it was asked before the cut, with a media service: the course goes on to `GetProfiles`.
+        Object.assign(seen.client ?? {}, { uri: { media: {} } });
+        seen.answerServices?.(null, {});
+        await turns();
+        expect(held(seen.client)).toEqual([undefined, undefined, false]);
+        expect(inspect({ ...seen.client, agent: undefined }, { depth: 4 })).not.toContain(ACCOUNT.secret);
+        expect(seen.profilesAsked).toBe(0);
+      },
+    );
+  });
+
+  it('cut during the read the credential is for, which the device then answers with a fault that asks for the token form: the client is not armed a second time', async () => {
+    const seen: { client: Record<string, unknown> | null; heldAtProfiles: unknown[]; answerProfiles: Callback | null; profilesAsked: number } = { client: null, heldAtProfiles: [], answerProfiles: null, profilesAsked: 0 };
+    await withReads(
+      {
+        getSystemDateAndTime(callback) {
+          seen.client = this;
+          (callback as Callback)(null, new Date());
+        },
+        getServices(_capabilities, callback) {
+          Object.assign(this, { uri: { media: {} } });
+          (callback as Callback)(null, {});
+        },
+        getProfiles(callback) {
+          seen.profilesAsked += 1;
+          seen.heldAtProfiles = [this['username'], this['password']];
+          seen.answerProfiles = callback as Callback;
+        },
+      },
+      async () => {
+        const cutting = new AbortController();
+        const pending = createOnvifConnectionTester({ timers: manualTimers() }).test(NOWHERE, sealCredential(ACCOUNT), cutting.signal, AS_THE_HOST_ROUTES);
+        await turns();
+        // Control: while the exchange runs the client IS armed for this read - this is what must be gone after the cut.
+        expect(seen.heldAtProfiles).toEqual([ACCOUNT.username, ACCOUNT.secret]);
+        cutting.abort();
+        expect(await pending).toMatchObject({ outcome: ConnectionTestOutcome.UNREACHABLE, reason: OnvifTestReason.DEADLINE, reads: ['GetSystemDateAndTime', 'GetServices', 'GetProfiles'] });
+        expect(held(seen.client)).toEqual([undefined, undefined, false]);
+        // The answer of the read that was cut: a fault that asks for authentication. Before the guard this armed the token form.
+        seen.answerProfiles?.(new Error('ONVIF SOAP Fault: Sender not authorized'));
+        await turns();
+        expect(held(seen.client)).toEqual([undefined, undefined, false]);
+        expect(inspect({ ...seen.client, agent: undefined }, { depth: 4 })).not.toContain(ACCOUNT.secret);
+        // The second form was never asked of the device.
+        expect(seen.profilesAsked).toBe(1);
+      },
+    );
+  });
+
+  // THE LINE IN `authorizedAsk` (controller's order after the first record). No BEHAVIOUR tells it from its absence: with
+  // the line in `arm` an ended exchange cannot be armed, and the only other thing the line prevents - a request COUNTED
+  // after the end - is a number of a result nobody receives (`finish` hands out one result, at the cut). So this is a
+  // PIN OF THE SOURCE, said as one: in BOTH copies of the exchange the ended-call answer stands in `authorizedAsk` before
+  // the client is armed and before a request is counted, and `arm` begins with the same guard.
+  // SEEN RED on the mutant without the line `if (settled) return ask(read, invoke);` of `onvif-session.ts` (the first
+  // `toEqual` below: the body then begins with the no-credential line and the arming line).
+  it('the source, both copies: `authorizedAsk` answers an ended exchange BEFORE it arms or counts, and `arm` never arms one (the session file and the set-network file say it the same way)', () => {
+    const code = (name: string): string[] =>
+      readFileSync(resolve(__dirname, '..', name), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .split('\n')
+        .map((line) => line.replace(/\/\/.*$/, '').trim())
+        .filter((line) => line !== '');
+    const after = (lines: string[], opening: RegExp, count: number): string[] => {
+      const at = lines.findIndex((line) => opening.test(line));
+      expect(at).toBeGreaterThanOrEqual(0);
+      return lines.slice(at + 1, at + 1 + count);
+    };
+    const session = code('onvif-session.ts');
+    const network = code('onvif-network.ts');
+    expect(after(session, /^const authorizedAsk = async \(read: OnvifSessionRead, invoke: Invoke\): Promise<Answer> => \{$/, 3)).toEqual([
+      'if (credential === null) return ask(read, invoke);',
+      'if (settled) return ask(read, invoke);',
+      "if (!armed) arm('HTTP_DIGEST');",
+    ]);
+    expect(after(network, /^const authorizedAsk = async \(call: OnvifNetworkCall, invoke: Invoke\): Promise<Answer> => \{$/, 2)).toEqual(['if (settled) return ask(call, invoke);', "if (!armed) arm('HTTP_DIGEST');"]);
+    for (const lines of [session, network]) expect(after(lines, /^const arm = \(form: 'HTTP_DIGEST' \| 'TOKEN'\): void => \{$/, 1)).toEqual(['if (settled) return;']);
+    // Each file has ONE `authorizedAsk` and ONE `arm`: no second copy without the guard.
+    for (const lines of [session, network]) expect([lines.filter((line) => line.startsWith('const authorizedAsk = ')).length, lines.filter((line) => line.startsWith('const arm = ')).length]).toEqual([1, 1]);
   });
 });

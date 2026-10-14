@@ -26,9 +26,15 @@ case "$HW_MODE" in
     step '9A/H-23.3' SCRIPT 'the outcome code of the connection test for this camera, and whether its stream half authenticated; the count-only scan over the Core'"'"'s log and error log'
     expected '"reachable"; the stream half authenticated (the codec was read from the stream); scan: 0.'
     if hw_log_needed --core-log "$HW_CORE_LOG"; then
-      hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" CAMERA_CONNECTION_TESTED outcome reason durationMs codec
-      hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" CAMERA_CREDENTIAL_REFUSED STREAM_AUTHENTICATION_FAILED
-      confirm 'the code of the outcome and the fact "the stream half authenticated" in the Core log (a codec read from the stream implies it)'
+      # NAMES (wave 12, row C1; checked against modules/capture-discovery/connect/service.ts on
+      # 2026-10-14): the line is CAPTURE_CONNECTION_TESTED with outcome, authenticated, testReason,
+      # judgedStreams. Removed, the product never emitted them: CAMERA_CONNECTION_TESTED, the fields
+      # reason, durationMs and codec, and the codes CAMERA_CREDENTIAL_REFUSED and
+      # STREAM_AUTHENTICATION_FAILED (the outcome is AUTHENTICATION_FAILED; a camera that offers only
+      # Basic authentication has the reason SCHEME_NOT_ALLOWED).
+      hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_CONNECTION_TESTED outcome authenticated testReason judgedStreams
+      hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" AUTHENTICATION_FAILED SCHEME_NOT_ALLOWED
+      confirm 'that the stream half authenticated when the outcome is REACHABLE and judgedStreams is above 0 (the codec of a listed profile is read from the stream; seen on doubles only)'
     fi
     hw_secret_scan 'the Core log and the error log' "$HW_CORE_LOG" "$HW_ERROR_LOG"
     ;;

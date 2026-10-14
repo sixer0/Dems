@@ -1,5 +1,5 @@
 {
-  "source": "docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts; erratum PE-0013-01; delta module contract-v6-delta.ts; task 4 schema set A, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md sections 2.1 to 2.3 with 04_design_addendum.md sections 1.4 and 7.2; delta module contract-v7-delta.ts; task 4 schema set B, the same document sections 2.4 and 2.5; delta module contract-v8-delta.ts; task 4 package X-C, docs/2026-10-12_input_av_core_adapter_plan/masterplan/05_design_x1_x2.md section 3.6; delta module contract-v9-delta.ts; task 4 requirement AD-06 (4), docs/2026-10-12_input_av_core_adapter_plan/verification/04_security_addendum.md; delta module contract-v10-delta.ts; task 4 schema set C, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md section 2.6; delta module contract-v11-delta.ts; task 4 honest removal reasons of a temporary host address, docs/2026-10-12_input_av_core_adapter_plan/decisions/decisions.md C74 D-2 and D-3; delta module contract-v12-delta.ts; task 4 further removal reason ADD_UNCONFIRMED, docs/2026-10-12_input_av_core_adapter_plan/verification/119_commissioning_security.md caution R119-05 answer (d) with decisions/decisions.md C94 (d); delta module contract-v13-delta.ts)",
+  "source": "docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts; erratum PE-0013-01; delta module contract-v6-delta.ts; task 4 schema set A, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md sections 2.1 to 2.3 with 04_design_addendum.md sections 1.4 and 7.2; delta module contract-v7-delta.ts; task 4 schema set B, the same document sections 2.4 and 2.5; delta module contract-v8-delta.ts; task 4 package X-C, docs/2026-10-12_input_av_core_adapter_plan/masterplan/05_design_x1_x2.md section 3.6; delta module contract-v9-delta.ts; task 4 requirement AD-06 (4), docs/2026-10-12_input_av_core_adapter_plan/verification/04_security_addendum.md; delta module contract-v10-delta.ts; task 4 schema set C, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md section 2.6; delta module contract-v11-delta.ts; task 4 honest removal reasons of a temporary host address, docs/2026-10-12_input_av_core_adapter_plan/decisions/decisions.md C74 D-2 and D-3; delta module contract-v12-delta.ts; task 4 further removal reason ADD_UNCONFIRMED, docs/2026-10-12_input_av_core_adapter_plan/verification/119_commissioning_security.md caution R119-05 answer (d) with decisions/decisions.md C94 (d); delta module contract-v13-delta.ts; task 4 allowed ONVIF ports of the network settings and the widened form of an interface name, docs/2026-10-12_input_av_core_adapter_plan/verification/120_m10_review.md finding F-4 and 120b_m10_review_second_pass.md finding S2-02 with decisions/decisions.md C114 and C116; delta module contract-v14-delta.ts)",
   "valueSets": {
     "ROLE": [
       "INVESTIGATOR",
@@ -5174,6 +5174,12 @@
           "type": "bigint",
           "notNull": true,
           "default": null
+        },
+        {
+          "name": "onvif_ports",
+          "type": "jsonb",
+          "notNull": true,
+          "default": "'[80]'"
         }
       ],
       "constraints": [
@@ -5191,11 +5197,6 @@
           "name": "capture_network_config_singleton_check",
           "kind": "CHECK",
           "definition": "\"capture_network_config\".\"singleton\""
-        },
-        {
-          "name": "capture_network_config_interface_name_check",
-          "kind": "CHECK",
-          "definition": "\"capture_network_config\".\"interface_name\" IS NULL OR \"capture_network_config\".\"interface_name\" ~ '^[a-z0-9][a-z0-9._-]{0,14}$'"
         },
         {
           "name": "capture_network_config_camera_subnet_check",
@@ -5226,6 +5227,21 @@
           "name": "capture_network_config_revision_check",
           "kind": "CHECK",
           "definition": "\"capture_network_config\".\"revision\" >= 1"
+        },
+        {
+          "name": "capture_network_config_interface_name_check",
+          "kind": "CHECK",
+          "definition": "\"capture_network_config\".\"interface_name\" IS NULL OR \"capture_network_config\".\"interface_name\" ~ '^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$'"
+        },
+        {
+          "name": "capture_network_config_onvif_ports_check",
+          "kind": "CHECK",
+          "definition": "CASE WHEN jsonb_typeof(\"capture_network_config\".\"onvif_ports\") = 'array' THEN jsonb_array_length(\"capture_network_config\".\"onvif_ports\") BETWEEN 1 AND 8 AND NOT jsonb_path_exists(\"capture_network_config\".\"onvif_ports\", 'strict $[*]?(@.type() != \"number\")') AND NOT jsonb_path_exists(\"capture_network_config\".\"onvif_ports\", 'strict $[*]?(@ < 1 || @ > 65535)') AND NOT jsonb_path_exists(\"capture_network_config\".\"onvif_ports\", 'strict $[*]?(@ != @.floor())') ELSE false END"
+        },
+        {
+          "name": "capture_network_config_onvif_ports_distinct_check",
+          "kind": "CHECK",
+          "definition": "CASE WHEN jsonb_typeof(\"capture_network_config\".\"onvif_ports\") = 'array' THEN NOT ((\"capture_network_config\".\"onvif_ports\" -> 0) = (\"capture_network_config\".\"onvif_ports\" -> 1) OR (\"capture_network_config\".\"onvif_ports\" -> 0) = (\"capture_network_config\".\"onvif_ports\" -> 2) OR (\"capture_network_config\".\"onvif_ports\" -> 0) = (\"capture_network_config\".\"onvif_ports\" -> 3) OR (\"capture_network_config\".\"onvif_ports\" -> 0) = (\"capture_network_config\".\"onvif_ports\" -> 4) OR (\"capture_network_config\".\"onvif_ports\" -> 0) = (\"capture_network_config\".\"onvif_ports\" -> 5) OR (\"capture_network_config\".\"onvif_ports\" -> 0) = (\"capture_network_config\".\"onvif_ports\" -> 6) OR (\"capture_network_config\".\"onvif_ports\" -> 0) = (\"capture_network_config\".\"onvif_ports\" -> 7) OR (\"capture_network_config\".\"onvif_ports\" -> 1) = (\"capture_network_config\".\"onvif_ports\" -> 2) OR (\"capture_network_config\".\"onvif_ports\" -> 1) = (\"capture_network_config\".\"onvif_ports\" -> 3) OR (\"capture_network_config\".\"onvif_ports\" -> 1) = (\"capture_network_config\".\"onvif_ports\" -> 4) OR (\"capture_network_config\".\"onvif_ports\" -> 1) = (\"capture_network_config\".\"onvif_ports\" -> 5) OR (\"capture_network_config\".\"onvif_ports\" -> 1) = (\"capture_network_config\".\"onvif_ports\" -> 6) OR (\"capture_network_config\".\"onvif_ports\" -> 1) = (\"capture_network_config\".\"onvif_ports\" -> 7) OR (\"capture_network_config\".\"onvif_ports\" -> 2) = (\"capture_network_config\".\"onvif_ports\" -> 3) OR (\"capture_network_config\".\"onvif_ports\" -> 2) = (\"capture_network_config\".\"onvif_ports\" -> 4) OR (\"capture_network_config\".\"onvif_ports\" -> 2) = (\"capture_network_config\".\"onvif_ports\" -> 5) OR (\"capture_network_config\".\"onvif_ports\" -> 2) = (\"capture_network_config\".\"onvif_ports\" -> 6) OR (\"capture_network_config\".\"onvif_ports\" -> 2) = (\"capture_network_config\".\"onvif_ports\" -> 7) OR (\"capture_network_config\".\"onvif_ports\" -> 3) = (\"capture_network_config\".\"onvif_ports\" -> 4) OR (\"capture_network_config\".\"onvif_ports\" -> 3) = (\"capture_network_config\".\"onvif_ports\" -> 5) OR (\"capture_network_config\".\"onvif_ports\" -> 3) = (\"capture_network_config\".\"onvif_ports\" -> 6) OR (\"capture_network_config\".\"onvif_ports\" -> 3) = (\"capture_network_config\".\"onvif_ports\" -> 7) OR (\"capture_network_config\".\"onvif_ports\" -> 4) = (\"capture_network_config\".\"onvif_ports\" -> 5) OR (\"capture_network_config\".\"onvif_ports\" -> 4) = (\"capture_network_config\".\"onvif_ports\" -> 6) OR (\"capture_network_config\".\"onvif_ports\" -> 4) = (\"capture_network_config\".\"onvif_ports\" -> 7) OR (\"capture_network_config\".\"onvif_ports\" -> 5) = (\"capture_network_config\".\"onvif_ports\" -> 6) OR (\"capture_network_config\".\"onvif_ports\" -> 5) = (\"capture_network_config\".\"onvif_ports\" -> 7) OR (\"capture_network_config\".\"onvif_ports\" -> 6) = (\"capture_network_config\".\"onvif_ports\" -> 7)) ELSE false END"
         }
       ]
     },
@@ -5327,11 +5343,6 @@
           "definition": "((removed_at IS NULL)) WHERE removed_at IS NULL"
         },
         {
-          "name": "host_network_aliases_interface_name_check",
-          "kind": "CHECK",
-          "definition": "\"host_network_aliases\".\"interface_name\" ~ '^[a-z0-9][a-z0-9._-]{0,14}$'"
-        },
-        {
           "name": "host_network_aliases_address_check",
           "kind": "CHECK",
           "definition": "\"host_network_aliases\".\"address\" ~ '^(10[.](25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])[.](25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])|172[.](1[6-9]|2[0-9]|3[01])[.](25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])|192[.]168[.](25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9]))[.](25[0-4]|2[0-4][0-9]|1[0-9]{2}|[1-9][0-9]?)/24$'"
@@ -5365,6 +5376,11 @@
           "name": "host_network_aliases_remove_reason_check",
           "kind": "CHECK",
           "definition": "((\"host_network_aliases\".\"remove_reason\" IS NULL) = (\"host_network_aliases\".\"removed_at\" IS NULL)) AND (\"host_network_aliases\".\"remove_reason\" IS NULL OR \"host_network_aliases\".\"remove_reason\" IN ('EXPIRED', 'MANUAL', 'JOB_DONE', 'BOOT_SWEEP', 'SHUTDOWN', 'NOT_ADDED', 'ADD_UNCONFIRMED'))"
+        },
+        {
+          "name": "host_network_aliases_interface_name_check",
+          "kind": "CHECK",
+          "definition": "\"host_network_aliases\".\"interface_name\" ~ '^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$'"
         }
       ]
     },
@@ -5532,12 +5548,12 @@
   ],
   "counts": {
     "tables": 48,
-    "columns": 497,
+    "columns": 498,
     "primaryKeys": 48,
     "foreignKeys": 48,
     "uniques": 16,
     "uniqueIndexes": 7,
     "indexes": 24,
-    "checks": 229
+    "checks": 231
   }
 }

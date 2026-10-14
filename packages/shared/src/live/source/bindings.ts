@@ -676,6 +676,14 @@ export const LIVE_BINDINGS: LiveBindings = {
     plan: () => resolve(undefined),
     result: nothing,
   },
+  storeCaptureDeviceProfiles: {
+    flow: LiveActionFlow.LOCAL,
+    // Task 4 row V7: no client stores the profiles of a camera through an action. The Core does it inside
+    // operation 108 (`testCaptureDeviceConnection`), which a client calls as a request; the device's
+    // `profiles` then arrive in the replicated `captureDevices` slice. One more `local` again.
+    plan: () => resolve(undefined),
+    result: nothing,
+  },
 };
 
 /** The names of the 47 bindings, in the order of `SimActions`. */

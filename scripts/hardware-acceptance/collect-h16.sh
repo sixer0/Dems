@@ -19,7 +19,11 @@ case "$0" in */*) HW_DIR=${0%/*} ;; *) HW_DIR=. ;; esac
 . "$HW_DIR/hw-collect-lib.sh"
 hw_init "$@"
 
-criterion '1. the boot log prints the operation REAL_PRODUCTION in run k; 2. listeners of the Core with a local address other than 127.0.0.1: 0; the six process readings as stated: 6 of 6; 3. slots "not assigned": 4 of 4; blocking pre-check items: 4; 4. session start refused: 1 of 1; new session rows: 0; new entries in the media store: 0; 5. sign-ins with the demonstration password refused: n of n seeded operators; 6. missing loopback rule named by the production boot: 1 of 1; after restoring, named 0.'
+criterion '1. the boot log prints the operation REAL_PRODUCTION in run k; 2. listeners of the Core with a local address other than 127.0.0.1: 0; the six process readings as stated: 6 of 6; 3. slots "not assigned": 4 of 4; blocking pre-check items: 4; 4. session start refused: 1 of 1; new session rows: 0; new entries in the media store: 0; 5. sign-ins with the demonstration password refused: n of n seeded operators; 6. the loopback rule, as far as the Core can know it: with the rule'"'"'s unit stopped the Core is not active (step .8): 1 of 1; with the unit active again the Core starts and names no prerequisite (step .10): 1 of 1. Step .9 is an observation under a stated limit (the Core reads the unit'"'"'s state and cannot read the rule table); outcome (ii) does not fail this check.'
+# NAMES (wave 12, row C1; each checked against apps/core-server/src/capture/boot/checks.ts and
+# transcription/boot.ts on 2026-10-14): the refusals a first production boot gained are counted below
+# beside the four of before, and the warning CAPTURE_HOST_ALIAS_HELPER_ABSENT, which is NOT a refusal:
+# on a host without the address helper it is expected once per start.
 case "$HW_MODE" in
   process)
     step '9A/H-16.3' SCRIPT 'the capture operation printed in the line "capture fence passed"; the listeners; the core-file limit (HOST-35), the switches of HOST-36 (counts, never the environment), NoNewPrivs (HOST-38), the four capability lines (HOST-39), the supplementary groups (HOST-40), the umask (HOST-42)'
@@ -29,6 +33,8 @@ case "$HW_MODE" in
     if hw_log_needed --core-log "$HW_CORE_LOG"; then
       hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_FENCE_PASSED operation
       hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION CAPTURE_SIGNING_KEY_UNUSABLE CAPTURE_DEVELOPMENT_SIGNING_KEY_IN_PRODUCTION DEV_SOURCE_WITHOUT_FLAG
+      hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_SIGNING_KEY_INSTALLATION_MISMATCH CAPTURE_INSTALLATION_ID_RESERVED_FOR_TESTS CAPTURE_HOST_FACTS_NOT_HANDED_IN CAPTURE_HOST_PLATFORM_NOT_SUPPORTED CAPTURE_HOST_ALIAS_SOCKET_PATH TRANSCRIBER_CONFIG_UNRESOLVABLE
+      hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_HOST_CHECKS_PASSED CAPTURE_PROGRAM_CHECKS_PASSED CAPTURE_HOST_ALIAS_HELPER_ABSENT CAPTURE_HOST_LOOPBACK_RULE_MISSING
     fi
     hw_read_quiet 'listening TCP sockets (all accounts; without administrator rights the owner is not shown)' ss -H -ltn
     # shellcheck disable=SC2016

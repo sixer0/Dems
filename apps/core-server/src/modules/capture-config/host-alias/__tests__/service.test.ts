@@ -131,4 +131,25 @@ describe('static: the folder opens nothing itself', () => {
     expect(all).toMatch(/removeReason: 'MANUAL',/);
     expect(all).not.toMatch(/request\s*\.\s*body/);
   });
+
+  // Review 120, F-11 and survivor C-1 (row H4). The service TYPES four words of the capture unit, and the table of
+  // refusals above types them again: a rename in the unit left both agreeing with each other and with nothing else.
+  // Here the words are read from the service's own text and each must be a VALUE of the unit's refusal set, read from
+  // the unit's own file (a text read: the folder may not import the unit but through the fence, which does not carry
+  // the set). SEEN RED on `HELPER_NOT_INSTALLED: 'HELPER_IS_NOT_INSTALLED'` in `capture/host-alias/caller.ts` (in memory).
+  it('the four words of the capture unit that the service types are values of the unit\'s own refusal set (the fifth, the session word, is compared above)', () => {
+    const service = strip(readFileSync(join(HERE, '..', 'service.ts'), 'utf8'));
+    const platform = /const NOT_THIS_PLATFORM = '([A-Z_]+)';/.exec(service)?.[1];
+    const installed = /const HELPER_NOT_AS_INSTALLED: readonly string\[\] = \[([^\]]+)\];/.exec(service)?.[1]?.split(',').map((word) => word.trim().replace(/^'|'$/g, '')) ?? [];
+    const typed = [platform, ...installed];
+    expect(typed).toEqual(['NOT_AVAILABLE_ON_THIS_PLATFORM', 'HELPER_NOT_CONFIGURED', 'HELPER_NOT_INSTALLED', 'HELPER_SOCKET_UNSAFE']);
+
+    const unit = readFileSync(join(HERE, '..', '..', '..', '..', 'capture', 'host-alias', 'caller.ts'), 'utf8');
+    const set = /export const HostAliasCoreRefusal = \{([\s\S]*?)\n\} as const;/.exec(unit)?.[1] ?? '';
+    const values = [...set.matchAll(/^\s*[A-Z][A-Z0-9_]*: '([A-Z][A-Z0-9_]*)',$/gm)].map((match) => match[1]);
+    expect(values.length).toBeGreaterThanOrEqual(20);
+    for (const word of typed) expect(values, `${String(word)} is a refusal of the capture unit`).toContain(word);
+    // The control: a word the unit does not have is not found by this read.
+    expect(values).not.toContain('HELPER_IS_NOT_INSTALLED');
+  });
 });

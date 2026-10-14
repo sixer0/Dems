@@ -114,7 +114,8 @@ describe('row 85b: the composition on the real app, in each capture operation', 
     const composition = composeProductionCaptureOf(app, INPUT);
     if (!composition.composed) throw new Error('expected a composition');
     expect([adoptedCameraTestControl(app).ready(), captureAudioCardsControl(app).ready()]).toEqual([true, true]);
-    expect([composition.networkFactsInjected, composition.cardListingUnavailable, composition.relayReports.attached()]).toEqual([false, 'NOT_AVAILABLE_ON_THIS_PLATFORM', false]);
+    // Row N7: macOS has a listing; this configuration names no audio helper, so its third row cannot be started - the named answer.
+    expect([composition.networkFactsInjected, composition.cardListingUnavailable, composition.relayReports.attached()]).toEqual([false, 'LISTING_PROGRAM_NOT_HANDED_IN', false]);
     // Once per app: the doors of the modules refuse a second hand-over, and so does the composition itself.
     expect(() => composeProductionCaptureOf(app, INPUT)).toThrow(expect.objectContaining({ code: CaptureCompositionCode.COMPOSED_TWICE }));
     expect(() => captureAudioCardsControl(app).provideEnumerator(composition.cards)).toThrow('provided twice');
@@ -142,8 +143,8 @@ describe('row 85b: the composition on the real app, in each capture operation', 
     expect(await codeOf(composition.cards.list())).toBe('AUDIO_CARD_LISTING_NOT_AVAILABLE');
     const lines = log.lines().filter((line) => String(line['code'] ?? '').startsWith('CAPTURE_COMPOSITION') || line['code'] === 'AUDIO_CARD_LISTING_NOT_AVAILABLE');
     expect(lines.map((line) => [line['code'], line['reason'] ?? line['cardListing'] ?? null])).toEqual([
-      ['AUDIO_CARD_LISTING_NOT_AVAILABLE', 'NOT_AVAILABLE_ON_THIS_PLATFORM'],
-      ['CAPTURE_COMPOSITION_DONE', 'NOT_AVAILABLE_ON_THIS_PLATFORM'],
+      ['AUDIO_CARD_LISTING_NOT_AVAILABLE', 'LISTING_PROGRAM_NOT_HANDED_IN'],
+      ['CAPTURE_COMPOSITION_DONE', 'LISTING_PROGRAM_NOT_HANDED_IN'],
     ]);
     // No address and no path in a line of the composition.
     expect(JSON.stringify(lines)).not.toMatch(/192\.168\.|127\.0\.0\.1|\/onvif/);
@@ -712,7 +713,11 @@ describe('row 106b: the alias of the camera port through the real composition, o
     expect(reasonOf(await call('POST', SCAN))).toEqual([409, 'INVALID_STATE', 'HOST_ALIAS_FAILED', 'HELPER_TIMED_OUT']);
     expect(seen.slice(lines).map((entry) => entry.line)).toEqual(['add 192.168.1.253/24 30', 'del 192.168.1.253/24']);
     written = await since(from);
-    expect(typesOf(written)).toEqual(['HOST_ALIAS_REQUESTED:ADD', 'HOST_ALIAS_ADD_FAILED', 'HOST_ALIAS_REQUESTED:REMOVE', 'HOST_ALIAS_REMOVED', 'CAMERA_FACTORY_SCANNED']);
+    // Row HA (caution R119c-01): the double never marked this address (its add timed out), so its `del` is answered
+    // NOT_MARKED - the helper removed nothing. The result is HOST_ALIAS_REMOVE_FAILED { HELPER_NOT_MARKED }, no longer
+    // HOST_ALIAS_REMOVED; the row is closed all the same (the line after the next).
+    expect(typesOf(written)).toEqual(['HOST_ALIAS_REQUESTED:ADD', 'HOST_ALIAS_ADD_FAILED', 'HOST_ALIAS_REQUESTED:REMOVE', 'HOST_ALIAS_REMOVE_FAILED', 'CAMERA_FACTORY_SCANNED']);
+    expect([written[3]?.details['removeReason'], written[3]?.details['failureReason']]).toEqual(['ADD_UNCONFIRMED', 'HELPER_NOT_MARKED']);
     expect([written[1]?.details['failureReason'], written[4]?.details['outcome'], written[4]?.details['failureReason']]).toEqual(['HELPER_TIMED_OUT', 'FAILED', 'HOST_ALIAS_FAILED']);
     expect((await rows()).filter((row) => row['open'] === true)).toEqual([]);
 

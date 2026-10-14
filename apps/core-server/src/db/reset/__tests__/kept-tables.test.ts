@@ -1,9 +1,9 @@
-// The thirteen kept tables: the list, the statements and the comparison of row images (plan row
+// The eighteen kept tables (thirteen until integration pass I-9c): the list, the statements and the comparison of row images (plan row
 // W29; database contract §8.5 "Kept tables", R-5c, R-6; dbc-3 §E.1 and blueprint row 54 add the
 // three capture tables and their `upsert` carry mode; dbc-3 §B.13 and blueprint row 114 add
 // `stt_config` as the twelfth). Database-free.
 import { getTableColumns, getTableName } from 'drizzle-orm';
-import type { PgTable } from 'drizzle-orm/pg-core';
+import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 import * as schema from '../../schema';
 import {
@@ -36,7 +36,9 @@ const table = (name: string) => {
 };
 
 describe('the kept list', () => {
-  it('is the thirteen tables of the contract, in the carry-over order of R-5c', () => {
+  it('is the eighteen tables of the contract, in the carry-over order of R-5c', () => {
+    // Thirteen until integration pass I-9c (review 120 F-6; schema design 03 section 3.3): the five tables of task 4's
+    // schema sets A to C join before the lineage, in the design's modes.
     expect(KEPT_TABLE_NAMES).toEqual([
       'registry_counters',
       'console_settings',
@@ -50,6 +52,11 @@ describe('the kept list', () => {
       'capture_config',
       'stt_config',
       'core_media_store',
+      'capture_device_streams',
+      'capture_audio_inputs',
+      'capture_network_config',
+      'host_network_aliases',
+      'installation_acceptances',
       'audit_chain_history',
     ]);
     // The two tables the seed writes are updated; the six it leaves empty are inserted into; the
@@ -69,8 +76,46 @@ describe('the kept list', () => {
       'upsert',
       'upsert',
       'upsert',
+      'upsert',
+      'upsert',
+      'upsert',
+      'insert',
+      'insert',
       'insert',
     ]);
+  });
+
+  it('I-9c (F-6): the five tables of task 4 cross a reset - streams and inputs after the device they extend, the lineage still last', () => {
+    const position = (name: string): number => KEPT_TABLE_NAMES.indexOf(name);
+    for (const name of ['capture_device_streams', 'capture_audio_inputs']) {
+      expect(position(name), name).toBeGreaterThan(position('capture_devices'));
+      expect(table(name).mode, name).toBe('upsert');
+    }
+    expect(table('capture_network_config').mode).toBe('upsert');
+    expect(table('host_network_aliases').mode).toBe('insert');
+    expect(table('installation_acceptances').mode).toBe('insert');
+    expect(KEPT_TABLE_NAMES.at(-1)).toBe('audit_chain_history');
+    // The one two-column key: a stream row is (device, profile). Every other kept table has one key column.
+    expect(table('capture_device_streams').keys).toEqual(['device_id', 'profile']);
+    expect(table('capture_device_streams').key).toBe('device_id');
+    for (const entry of KEPT_TABLES.filter((candidate) => candidate.name !== 'capture_device_streams')) expect(entry.keys, entry.name).toEqual([entry.key]);
+  });
+
+  it('I-9c: a two-column key is read in the order of BOTH columns and carried on BOTH (mutation: one key column - red)', () => {
+    const streams = table('capture_device_streams');
+    expect(readImagesStatement(streams)).toBe('SELECT to_jsonb(k)::text AS image FROM public.capture_device_streams AS k ORDER BY k."device_id", k."profile"');
+    const upsert = upsertCarriedStatement(streams);
+    expect(upsert).toContain('ON CONFLICT ("device_id", "profile") DO UPDATE SET');
+    // Neither key column is assigned; every other column is.
+    expect(upsert).not.toContain('"device_id" = EXCLUDED');
+    expect(upsert).not.toContain('"profile" = EXCLUDED');
+    expect(upsert).toContain('"onvif_profile_token" = EXCLUDED."onvif_profile_token"');
+    expect(upsert).toContain('"read_at" = EXCLUDED."read_at"');
+    expect(insertCarriedStatement(streams)).toMatch(/ORDER BY c\."device_id", c\."profile"$/);
+    expect(updateCarriedStatement(streams)).toMatch(/WHERE n\."device_id" = c\."device_id" AND n\."profile" = c\."profile"$/);
+    expect(upsertCarriedStatement(table('capture_audio_inputs'))).toContain('ON CONFLICT ("device_id") DO UPDATE SET');
+    expect(upsertCarriedStatement(table('capture_network_config'))).toContain('ON CONFLICT ("singleton") DO UPDATE SET');
+    expect(insertCarriedStatement(table('host_network_aliases'))).toMatch(/ORDER BY c\."id"$/);
   });
 
   it('the STT configuration singleton joins after the capture selector and before the lineage', () => {
@@ -128,6 +173,11 @@ describe('the kept list', () => {
       capture_config: schema.captureConfig,
       stt_config: schema.sttConfig,
       core_media_store: schema.coreMediaStore,
+      capture_device_streams: schema.captureDeviceStreams,
+      capture_audio_inputs: schema.captureAudioInputs,
+      capture_network_config: schema.captureNetworkConfig,
+      host_network_aliases: schema.hostNetworkAliases,
+      installation_acceptances: schema.installationAcceptances,
       audit_chain_history: schema.auditChainHistory,
     };
     for (const entry of KEPT_TABLES) {
@@ -135,7 +185,10 @@ describe('the kept list', () => {
       if (typed === undefined) throw new Error(entry.name);
       expect(getTableName(typed)).toBe(entry.name);
       const columns = Object.values(getTableColumns(typed));
-      expect(columns.filter((column) => column.primary).map((column) => column.name), entry.name).toEqual([entry.key]);
+      // A one-column key is marked on its column; a two-column key is a table-level primary key (I-9c).
+      const single = columns.filter((column) => column.primary).map((column) => column.name);
+      const declared = single.length > 0 ? single : getTableConfig(typed).primaryKeys.flatMap((key) => key.columns.map((column) => column.name));
+      expect(declared, entry.name).toEqual([...entry.keys]);
       expect(entry.columns, entry.name).toEqual(columns.map((column) => column.name));
     }
     expect(table('auth_sessions').columns).toEqual([

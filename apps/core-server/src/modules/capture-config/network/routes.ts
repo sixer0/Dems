@@ -11,7 +11,7 @@
  * tablet or a phone (`WEB_CONSOLE_ONLY`) never reach a handler here and get their one
  * ACCESS_DENIED row there, before the body is read.
  *
- * OPERATION 102 takes a strict object: `revision` and up to six settings. A body that is no JSON
+ * OPERATION 102 takes a strict object: `revision` and up to seven settings (the seventh, `onvifPorts`, row V7b). A body that is no JSON
  * is `400`, one that does not match is `422`; neither refusal quotes the input. What the
  * operations do, and the order of their refusals, is `service.ts`.
  */

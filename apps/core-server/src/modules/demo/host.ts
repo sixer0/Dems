@@ -23,6 +23,8 @@
  *   reloadEngine    `app.engine.reload`: rehydrates and takes the stored epoch as it is
  *   resyncEngine    `app.engine.start('resync')`: rehydrates under the stored epoch plus 1 and
  *                   touches nothing else (no restart fault: that is a process start's)
+ *   reloadNetworkFacts  `captureNetworkConfigControl(app).reload()`: the network reader takes the
+ *                   table again after the engine is back (decision C132; review 120b S2-01 (c), row NF)
  *
  * THE BOOT CHECKS AFTER A RESET are the ones of a start (database contract §7.4; §8.5 R-9), run
  * again on the pool that was reopened: B-1 with both of its halves (the database answers; a
@@ -40,6 +42,7 @@ import { runDatabaseBootChecks } from '../../core';
 import { findRealSealedEvidence } from '../../db/reset';
 import { permissionGuard } from '../../plugins/permission-guard';
 import { BootError } from '../../plugins/readiness';
+import { captureNetworkConfigControl } from '../capture-config';
 import { RESET_HOLD_NAME, ResumeFailure, type OperatorRoleRow, type ResetHost, type ResetRoutine } from './reset';
 
 /** The roles the operators table holds. Operator IDs and role names are identifiers, not secrets. */
@@ -108,6 +111,8 @@ export function createResetHost(app: FastifyInstance, routine: () => ResetRoutin
     reloadMatrix: async () => (await permissionGuard(app).reloadMatrix()).grants,
     reloadEngine: () => app.engine.reload(),
     resyncEngine: () => app.engine.start('resync'),
+    // Decision C132: a reset must not leave the network reader behind the table. `reload()` never rejects (reset.ts).
+    reloadNetworkFacts: () => captureNetworkConfigControl(app).reload(),
     publish: (publication) => app.publish(publication),
     persist: (entry) => app.errorLog.append(entry),
   };

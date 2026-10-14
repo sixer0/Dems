@@ -368,12 +368,12 @@ export const EvidenceVerifyResultSchema = z
             .string()
             .regex(/^[A-Z][A-Z0-9_]{2,63}$/)
             .describe(
-              '`AUDIT_EXTRACT_NOT_SIGNED` (every v2 result): `audit-session-extract.jsonl` is in the package and its content is covered by no hash and no signature. `EXPORT_FOLDER_UNEXPECTED_FILE` (only when there is such a file): the `export/` folder of the package holds a file that is no finished export - a `.partial` a stopped export left, a name no export writes, or anything in a sub-folder; the sealed set is not affected. `REVISION_APPEND_PENDING` (only while there is such a file): a transcript revision is being written - `transcript/transcript-revisions.json.next` lies in the package; it fails nothing; verify again shortly. `SIGNED_BY_COMPROMISED_KEY` (only for a package under such a key): the manifest or a transcript revision is signed by a key that was later MARKED COMPROMISED, so the signature alone proves nothing any more. **This notice is not "fails nothing"**: it stands beside a verdict that took the mark into account and its `report` says which - the answer is a pass ONLY when the package is the one this Core recorded when it sealed the item (its manifest digest and the head of its revisions equal what the Core stored), and a failure otherwise. An answer with this code is never a plain pass: a client shows it as a state of the signing key, not among what the signature does not cover. `HOST_PROFILE_NOT_ASKED` (only for a package whose manifest carries the member `hostProfileNotAsked`): the package was sealed by a production Core on a platform where the checks of the host profile are not run; it fails nothing and changes no verdict. `VIDEO_ABSENT_IN_SESSION` (only for a package whose manifest carries the member `absentInSession` on a track): a camera stopped delivering pictures inside the session; the line states per track how often, the two measured bounds of the time in ms, and whether the last absence ended; it fails nothing and changes no verdict. `AUDIO_ABSENT_ON_RESTART` (only for a package whose manifest carries the member `audio.absentOnRestart`): the capture was restarted inside the session and no sound was recorded across the restart; the line states how often and the two measured bounds of the time in ms; it fails nothing and changes no verdict.',
+              '`AUDIT_EXTRACT_NOT_SIGNED` (every v2 result): `audit-session-extract.jsonl` is in the package and its content is covered by no hash and no signature. `EXPORT_FOLDER_UNEXPECTED_FILE` (only when there is such a file): the `export/` folder of the package holds a file that is no finished export - a `.partial` a stopped export left, a name no export writes, or anything in a sub-folder; the sealed set is not affected. `REVISION_APPEND_PENDING` (only while there is such a file): a transcript revision is being written - `transcript/transcript-revisions.json.next` lies in the package; it fails nothing; verify again shortly. `SIGNED_BY_COMPROMISED_KEY` (only for a package under such a key): the manifest or a transcript revision is signed by a key that was later MARKED COMPROMISED, so the signature alone proves nothing any more. **This notice is not "fails nothing"**: it stands beside a verdict that took the mark into account and its `report` says which - the answer is a pass ONLY when the package is the one this Core recorded when it sealed the item (its manifest digest and the head of its revisions equal what the Core stored), and a failure otherwise. An answer with this code is never a plain pass: a client shows it as a state of the signing key, not among what the signature does not cover. `HOST_PROFILE_NOT_ASKED` (only for a package whose manifest carries the member `hostProfileNotAsked`): the package was sealed by a production Core on a platform where the checks of the host profile are not run; it fails nothing and changes no verdict. `VIDEO_ABSENT_IN_SESSION` (only for a package whose manifest carries the member `absentInSession` on a track): a camera stopped delivering pictures inside the session; the line states per track how often, the two measured bounds of the time in ms, and whether the last absence ended; it fails nothing and changes no verdict. `AUDIO_ABSENT_ON_RESTART` (only for a package whose manifest carries the member `audio.absentOnRestart`): the capture was restarted inside the session and no sound was recorded across the restart; the line states how often and the two measured bounds of the time in ms; it fails nothing and changes no verdict. `AUDIO_SAMPLES_NOT_RECEIVED` (only for a package whose manifest carries the member `audio.samplesNotReceived`): the audio was captured on a path that does not deliver every sample (bench capture path of a Mac); the line states, in whole samples of the highest capture attempt, how many samples of the track arrived, how many are silence the recorder inserted, and the runs of 100 ms or more (listed, not listed, the longest) - or that the amount was measured up to a sample only, or not measured; sound that did not arrive is not in the recording, and the places of the inserted silence are not the places of the missing sound; it fails nothing and changes no verdict - a package can be untouched and its audio incomplete. `AUDIO_ONE_CAPTURE_GROUP` (only beside the previous one, when two of its records state the same capture group): PRIMARY and STANDBY were channels of one device recorded by one capture program, so a switch between them was not a switch to an independent source; it fails nothing and changes no verdict.',
             ),
           report: trimmedText(256).describe('The report line of the notice.'),
         }),
       )
-      .max(8)
+      .max(9)
       .optional()
       .describe('Schema v2 (decision D178): what the package format does NOT cover. Named statements that fail nothing; a client shows each one and never collapses it. Absent for a v1 item.'),
   })
@@ -382,6 +382,20 @@ export type EvidenceVerifyResultBody = z.output<typeof EvidenceVerifyResultSchem
 
 // ── Operations 84-88: transcript, revisions, export job, media session ────────────────────────
 // (task 3 M2-W7, blueprint row 48; register SH-14; C3 §2.2/§2.3/§2.4; OD-15/OD-16; NM-06/NM-11/NM-12)
+
+// Task 4 row N2 (design 06 revision 3, section 8.6; decisions C110 (2), C112 (1), (2)): the two
+// OPTIONAL members a transcript of a session whose audio is not sample-continuous carries in this
+// answer - the statement at its head and the mark on a segment. Absent for every other transcript,
+// so the answer of every other item is the answer of before. The sealed document `dems.transcript/1`
+// gains no member: these two are made when the answer is made. The bounds are the manifest's
+// (`@dems/shared/evidence-package`), restated here and held equal by a test.
+/** One day at 48,000 Hz: the largest sample count the statement can hold (the manifest's `MANIFEST_AUDIO_DAY_SAMPLES`). */
+export const TRANSCRIPT_AUDIO_DAY_SAMPLES = 4_147_200_000;
+/** The most runs a manifest lists per capture attempt (the manifest's `MANIFEST_AUDIO_INSERTED_RUNS_MAX`). */
+export const TRANSCRIPT_LISTED_RUNS_MAX = 1_024;
+/** The longest inserted silence a segment can be marked with (ms): one day. */
+export const TRANSCRIPT_INSERTED_SILENCE_MAX_MS = 86_400_000;
+const samplesOfADay = () => z.int().min(0).max(TRANSCRIPT_AUDIO_DAY_SAMPLES);
 
 /** One segment of the canonical document (`dems.transcript/1`; transcript-spec §A.5), REST camelCase. */
 export const TranscriptSegmentSchema = z
@@ -394,6 +408,14 @@ export const TranscriptSegmentSchema = z
       .min(1)
       .nullable()
       .describe('Speaker label when diarization labelled it; null when UNAVAILABLE (D226 labels part; never blocks text).'),
+    insertedSilenceMs: z
+      .int()
+      .min(1)
+      .max(TRANSCRIPT_INSERTED_SILENCE_MAX_MS)
+      .optional()
+      .describe(
+        'THE MARK ON THE SEGMENT (Core server only; task 4 row N2): this many whole milliseconds of the segment (`startMs` to `endMs`) are SILENCE THE RECORDER INSERTED, in runs of 100 ms or more that the signed manifest of the item lists with their positions (`audio.samplesNotReceived[].insertedRuns`). No audio arrived from the microphone in that time; the text of the segment is the engine\'s and is not cut - the segment is marked, not split. A client shows the mark at the segment and never joins two segments into one line or paragraph across a listed run. ABSENT: no listed run overlaps the segment - never to be read as "this segment holds every word that was spoken".',
+      ),
   })
   .describe('One transcript segment.');
 export type TranscriptSegmentBody = z.output<typeof TranscriptSegmentSchema>;
@@ -411,6 +433,18 @@ export const TranscriptDocumentSchema = z
     machineTranscriptHash: sha256Hex().describe('Hash of the SEALED machine transcript; revisions never change it (OD-15).'),
     assembledAt: epochMs(),
     revision: count().describe('Current max(revision_no); 0 when no revision exists (SEC35-21).'),
+    audioNotSampleContinuous: z
+      .strictObject({
+        arrivedSamples: samplesOfADay().nullable().describe('Samples of the track that arrived (`trackSamples` less `insertedSamples`); null when the amount was not measured.'),
+        trackSamples: samplesOfADay().nullable().describe('Samples the session\'s own clock expected up to the recorder\'s last account: the length of the track when that account closed it. null when the amount was not measured.'),
+        insertedSamples: samplesOfADay().nullable().describe('Samples of the track that are silence the recorder inserted, not sound; null when the amount was not measured.'),
+        listedRuns: z.int().min(0).max(TRANSCRIPT_LISTED_RUNS_MAX).describe('Runs of inserted silence of 100 ms or more that the signed manifest lists with their positions; the segments they overlap carry `insertedSilenceMs`.'),
+        runsNotListed: count().describe('Runs of 100 ms or more that the manifest counts and does NOT list: they have no position and mark no segment.'),
+      })
+      .optional()
+      .describe(
+        'THE STATEMENT AT THE HEAD OF THE TRANSCRIPT (Core server only; task 4 row N2; decisions U25 (3), C110 (2)): the audio this text was made from is NOT SAMPLE-CONTINUOUS - it was captured on a path that does not deliver every sample (bench capture path of a Mac). Sound that did not arrive is not in the recording. Silence of the same total length was inserted by the recorder; its places are not the places of the missing sound. The numbers are whole samples of the highest capture attempt, the ones of the verify notice `AUDIO_SAMPLES_NOT_RECEIVED`, read from the SIGNED manifest of the item. A client shows this statement with its numbers at the head of the transcript and never collapses it; a transcript of such audio does not hold every word that was spoken. ABSENT: the manifest of the item states no measured shortfall - never to be read as "the audio is complete".',
+      ),
   })
   .describe('The machine transcript of an evidence item (op 84).');
 export type TranscriptDocumentBody = z.output<typeof TranscriptDocumentSchema>;

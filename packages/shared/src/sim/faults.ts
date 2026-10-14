@@ -16,6 +16,7 @@
  */
 import { AuditEventKind, SessionState, type AudioTrackId, type TrackId } from '../domain';
 import { activeMeterChannel, captureMicLines, meterInputOfChannel } from './audio';
+import { cameraStreamStateAfterFaults } from './camera-stream-fault';
 import { DEMO_CAPTURE_FAULT_REASON, captureFaultSentence } from './capture-fault-wording';
 import { CORE_NOT_RUNNING_CLEARED_SENTENCE, CORE_NOT_RUNNING_SENTENCE } from './core-not-running';
 import { ALERT_RING_SIZE, AUDIO_CLIP_BURST_DBFS, MIC_SILENCE_DBFS, MIC_SILENCE_DURATION_MS } from './constants';
@@ -365,6 +366,8 @@ export function raiseFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
   }
 
   next = deriveDeviceState(next);
+  // Task 4 row V7 (finding E-01; decisions C113, C115): a fault of a camera's stream family says LOST on that camera's lines.
+  next = cameraStreamStateAfterFaults(state, next);
   next = raiseAlert(next, now, kind, key, message, facts);
   const sessionId = next.session?.id ?? null;
   const fromState = next.session?.state ?? null;
@@ -523,6 +526,8 @@ export function clearFaultAtKey(state: SimState, now: EpochMs, kind: FaultKind, 
     next = resolveAlerts(next, now, kind, fault.target, fault.target === null ? undefined : (fault.reason ?? null));
   }
   next = deriveDeviceState(next);
+  // Task 4 row V7 (finding E-01): the last fault of a camera's stream family is cleared - its lines say LIVE again.
+  next = cameraStreamStateAfterFaults(state, next);
   const sessionId = next.session?.id ?? null;
   return {
     ...next,

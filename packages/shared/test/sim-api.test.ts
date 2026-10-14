@@ -722,3 +722,36 @@ describe('the simulator answers for an unassigned selector slot (task 4 row 165)
     expect(seeded.state().audio.inputs['MIC-01']).toMatchObject({ noSignal: false });
   });
 });
+
+// Task 4 row V7d (decisions C126 (b), C141; request line 567 of row V7c): operations 44 and 46 state the stream state of the
+// track's selector LINE - NOT READ (null) included - and null for a track without a line. Until this row both fell back to
+// LIVE / LOST from the hardware slice's `online` flag, so an idle registered camera read LIVE on the device reads while its
+// line said "not read". The built-in pair keeps the demonstration model's LIVE (control). Mutations: v7d_op44_not_read.md.
+describe('row V7d: operations 44 and 46 say NOT READ for an idle registered camera and for a track without a line, never LIVE from `online`', () => {
+  const CAM = 'CAM-07';
+  type Stated = { trackId: string; sourceDeviceId: string | null; streamState: string | null };
+  /** Operation 46's tracks and operation 44's cameras, each a body of the contract, and the two equal. */
+  const read = (h: ReturnType<typeof harness>) => {
+    const video = h.sim.request({ method: 'GET', path: '/api/v1/video/status' }).body as { tracks: Stated[] };
+    const health = h.sim.request({ method: 'GET', path: '/api/v1/device/health' }).body as { cameras: Stated[] };
+    expect(VideoStatusResponseSchema.safeParse(video).success).toBe(true);
+    expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
+    const stated = (list: Stated[]) => list.map((track) => [track.trackId, track.sourceDeviceId, track.streamState]);
+    expect(stated(health.cameras)).toEqual(stated(video.tracks));
+    return stated(video.tracks);
+  };
+
+  it('a registered camera assigned at rest: null on both reads while the hardware slice says online; a track without a line: null; CONTROL: the built-in pair reads LIVE', () => {
+    const h = harness('idle');
+    expect(h.sim.actions.signIn('rina.wijaya', 'demo-2026')).toMatchObject({ ok: true });
+    expect(read(h)).toEqual([['VIDEO-01', 'CAM-01', 'LIVE'], ['VIDEO-02', 'CAM-02', 'LIVE']]);
+    h.sim.actions.registerCaptureDevice({ id: CAM, model: null, host: '192.0.2.17', adapter: 'ONVIF_RTSP' });
+    h.sim.actions.setCaptureConfig({ kind: 'CAMERA_SOURCE', deviceId: CAM, trackId: 'VIDEO-02' });
+    // The flag the old fallback read: the hardware slice's camera of VIDEO-02 is online.
+    expect(h.state().cameras.map((camera) => camera.online)).toEqual([true, true]);
+    expect(h.state().captureConfig.cameras.find((line) => line.trackId === 'VIDEO-02')).toMatchObject({ deviceId: CAM, streamState: null });
+    expect(read(h)).toEqual([['VIDEO-01', 'CAM-01', 'LIVE'], ['VIDEO-02', CAM, null]]);
+    h.sim.actions.setCaptureConfig({ kind: 'UPDATE', unassign: ['VIDEO-01'] });
+    expect(read(h)).toEqual([['VIDEO-01', null, null], ['VIDEO-02', CAM, null]]);
+  });
+});

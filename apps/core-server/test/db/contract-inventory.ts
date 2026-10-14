@@ -30,6 +30,7 @@ import { V10 } from './contract-v10-delta';
 import { V11 } from './contract-v11-delta';
 import { V12 } from './contract-v12-delta';
 import { V13 } from './contract-v13-delta';
+import { V14 } from './contract-v14-delta';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** The workspace root of the repository: this folder is four levels below it. */
@@ -336,7 +337,11 @@ export function parseContract(text: string): ContractInventory {
   // value `ADD_UNCONFIRMED` in the same set; the CHECK keeps its name (contract-v13-delta.ts).
   // No table, no column.
   Object.assign(valueSets, V13.valueSets);
-  for (const change of [...V2.changedTables, ...V3.changedTables, ...V6.changedTables, ...V7.changedTables, ...V8.changedTables, ...V9.changedTables, ...V10.changedTables, ...V12.changedTables, ...V13.changedTables]) {
+  // ── Schema v14 (task 4 findings F-4 and S2-02, decisions C114 and C116, contract revision
+  // dbc-15): the column `onvif_ports` of `capture_network_config` with its two CHECKs, and the
+  // two interface-name CHECKs under their names with the alias helper's own form
+  // (contract-v14-delta.ts). No table, no value set.
+  for (const change of [...V2.changedTables, ...V3.changedTables, ...V6.changedTables, ...V7.changedTables, ...V8.changedTables, ...V9.changedTables, ...V10.changedTables, ...V12.changedTables, ...V13.changedTables, ...V14.changedTables]) {
     const table = tables.find((candidate) => candidate.name === change.name);
     if (table === undefined) throw new Error(`dbc-3/dbc-4 delta: the composed inventory has no table ${change.name}`);
     const mutable = table as unknown as { columns: ContractColumn[]; constraints: ContractConstraint[] };
@@ -351,7 +356,7 @@ export function parseContract(text: string): ContractInventory {
   const all = tables.flatMap((table) => table.constraints);
   const count = (kind: ConstraintKind): number => all.filter((constraint) => constraint.kind === kind).length;
   return {
-    source: 'docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts; erratum PE-0013-01; delta module contract-v6-delta.ts; task 4 schema set A, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md sections 2.1 to 2.3 with 04_design_addendum.md sections 1.4 and 7.2; delta module contract-v7-delta.ts; task 4 schema set B, the same document sections 2.4 and 2.5; delta module contract-v8-delta.ts; task 4 package X-C, docs/2026-10-12_input_av_core_adapter_plan/masterplan/05_design_x1_x2.md section 3.6; delta module contract-v9-delta.ts; task 4 requirement AD-06 (4), docs/2026-10-12_input_av_core_adapter_plan/verification/04_security_addendum.md; delta module contract-v10-delta.ts; task 4 schema set C, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md section 2.6; delta module contract-v11-delta.ts; task 4 honest removal reasons of a temporary host address, docs/2026-10-12_input_av_core_adapter_plan/decisions/decisions.md C74 D-2 and D-3; delta module contract-v12-delta.ts; task 4 further removal reason ADD_UNCONFIRMED, docs/2026-10-12_input_av_core_adapter_plan/verification/119_commissioning_security.md caution R119-05 answer (d) with decisions/decisions.md C94 (d); delta module contract-v13-delta.ts)',
+    source: 'docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts; erratum PE-0013-01; delta module contract-v6-delta.ts; task 4 schema set A, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md sections 2.1 to 2.3 with 04_design_addendum.md sections 1.4 and 7.2; delta module contract-v7-delta.ts; task 4 schema set B, the same document sections 2.4 and 2.5; delta module contract-v8-delta.ts; task 4 package X-C, docs/2026-10-12_input_av_core_adapter_plan/masterplan/05_design_x1_x2.md section 3.6; delta module contract-v9-delta.ts; task 4 requirement AD-06 (4), docs/2026-10-12_input_av_core_adapter_plan/verification/04_security_addendum.md; delta module contract-v10-delta.ts; task 4 schema set C, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md section 2.6; delta module contract-v11-delta.ts; task 4 honest removal reasons of a temporary host address, docs/2026-10-12_input_av_core_adapter_plan/decisions/decisions.md C74 D-2 and D-3; delta module contract-v12-delta.ts; task 4 further removal reason ADD_UNCONFIRMED, docs/2026-10-12_input_av_core_adapter_plan/verification/119_commissioning_security.md caution R119-05 answer (d) with decisions/decisions.md C94 (d); delta module contract-v13-delta.ts; task 4 allowed ONVIF ports of the network settings and the widened form of an interface name, docs/2026-10-12_input_av_core_adapter_plan/verification/120_m10_review.md finding F-4 and 120b_m10_review_second_pass.md finding S2-02 with decisions/decisions.md C114 and C116; delta module contract-v14-delta.ts)',
     valueSets,
     formats,
     tables,

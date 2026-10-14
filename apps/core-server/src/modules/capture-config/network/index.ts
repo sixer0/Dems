@@ -16,7 +16,14 @@
  *     (`load`, before the listener opens and before the capture boot), and REPLACED by the unit
  *     that commits a change - after its commit, never for a unit that rolled back. A committed
  *     change is therefore what the next judgement reads; no other code path of the Core writes the
- *     row. Before the load, and after a load that failed (logged and persisted), it is unknown;
+ *     row. Before the load, and after a load that failed (logged and persisted), it is unknown.
+ *     ITS WAY BACK TO THE ROW (review 120b S2-01, review 60e E-09; `reload`): after every unit of
+ *     operation 102 has ENDED - a confirmed commit, a commit whose answer was lost, a body that
+ *     changes nothing, a refusal inside the unit - the row is READ AGAIN, outside the unit, and
+ *     memory takes what is stored. A read that fails puts the reader at NULL (not configured:
+ *     every address refused) and says so once, code `CAPTURE_NETWORK_FACTS_RELOAD_FAILED`. The
+ *     same door is the control's `reload()`, for whoever else changes the table (a demo reset).
+ *     The re-load is the only asynchronous part and never runs inside a judgement;
  *   - the interfaces of the host, READ AT EACH CALL through the reader handed in (the product's:
  *     the operating system's table). An address the host gains or loses is seen at the next call.
  * It answers null - and the rule then refuses every address - while no row is stored, while the
@@ -91,7 +98,16 @@ export interface CaptureNetworkConfigControl {
    * unknown (every stored camera address is refused) until a change commits or the Core restarts.
    */
   load(): Promise<void>;
-  /** True once a load succeeded or a change committed. */
+  /**
+   * THE WAY BACK TO THE STORED ROW (review 120b S2-01): reads the row again, outside every unit of work, and puts it
+   * in the reader's memory. Run by operation 102 after each of its units ended; the door for any other code that
+   * changes or empties the table behind the reader (a demo reset, after its own commit). It never rejects. A read that
+   * FAILS leaves the reader at null - "not configured", every stored camera address refused - and writes ONE line and
+   * ONE persistent entry with the code `NETWORK_FACTS_RELOAD_FAILED_CODE`. A read that a later commit or a later
+   * re-load overtook changes nothing: the later one is what the reader holds.
+   */
+  reload(): Promise<void>;
+  /** True once a load or a re-load succeeded or a change committed; false again after a re-load that failed. */
   loaded(): boolean;
   /** True when a change is accepted on this Core. */
   available(): boolean;
@@ -113,6 +129,8 @@ export interface CaptureNetworkConfigControl {
 interface ControlState extends CaptureNetworkConfigControl {
   stored: StoredNetworkChoice | null;
   known: boolean;
+  /** Counts every hand-over to memory (a commit, a load, the START of a re-load): a re-load applies only while it is the last. */
+  turn: number;
   accepts: boolean;
   interfaces: HostInterfacesReader;
   store: NetworkConfigStore;
@@ -141,6 +159,23 @@ const SOURCE = 'captureNetworkConfig';
 export const NETWORK_FACTORY_LIST_LABEL = 'captureNetworkConfig.factoryList';
 const PRODUCTION = 'REAL_PRODUCTION';
 const LOAD_FAILED = 'the stored camera network configuration could not be read at boot: the network facts stay unknown and every stored camera address is refused';
+/** The code of the ONE line and the ONE persistent entry of a re-load that failed (review 120b S2-01). */
+export const NETWORK_FACTS_RELOAD_FAILED_CODE = 'CAPTURE_NETWORK_FACTS_RELOAD_FAILED';
+/** The code of the line of a re-load that found the reader BEHIND the stored row and corrected it. Two facts, no value. */
+export const NETWORK_FACTS_RELOADED_CODE = 'CAPTURE_NETWORK_FACTS_RELOADED';
+const RELOAD_SOURCE = `${SOURCE}.reload`;
+const RELOAD_FAILED = 'the stored camera network configuration could not be read again after a change: the network facts are set to not configured and every stored camera address is refused until a read succeeds';
+const RELOAD_OVERTAKEN = 'the stored camera network configuration could not be read again after a change; a later commit or re-load decides what the reader holds';
+const sameChoice = (left: StoredNetworkChoice | null, right: StoredNetworkChoice | null): boolean =>
+  left === null || right === null
+    ? left === right
+    : left.interfaceName === right.interfaceName && left.cameraSubnet === right.cameraSubnet && left.onvifPorts.length === right.onvifPorts.length && left.onvifPorts.every((port, index) => port === right.onvifPorts[index]);
+/** What the reader keeps of a stored row (row V7b: the ONVIF port list too - the rule's `allowedPorts`). */
+const choiceOf = (row: { readonly interfaceName: string | null; readonly cameraSubnet: string | null; readonly onvifPorts: readonly number[] }): StoredNetworkChoice => ({
+  interfaceName: row.interfaceName,
+  cameraSubnet: row.cameraSubnet,
+  onvifPorts: Object.freeze([...row.onvifPorts]),
+});
 
 /** Mounts operations 101 and 102 and the reader on the app. Called once, by the capture-config module's plugin. */
 export function mountCaptureNetworkConfig(app: FastifyInstance): CaptureNetworkConfigControl {
@@ -155,6 +190,7 @@ export function mountCaptureNetworkConfig(app: FastifyInstance): CaptureNetworkC
   const control: ControlState = {
     stored: null,
     known: false,
+    turn: 0,
     // The ONE decision of the capture operation (the fence's function): this folder reads no flag.
     accepts: captureOperationOf(app.config) === PRODUCTION,
     interfaces: readHostInterfaces,
@@ -163,13 +199,44 @@ export function mountCaptureNetworkConfig(app: FastifyInstance): CaptureNetworkC
     async load() {
       try {
         const row = await control.store.read({ query: (text, values) => app.db.pool.query(text, values) });
-        control.stored = row === null ? null : { interfaceName: row.interfaceName, cameraSubnet: row.cameraSubnet };
+        control.stored = row === null ? null : choiceOf(row);
         control.known = true;
+        control.turn += 1;
         // Two facts, no value: whether a row is stored and whether both choices are made.
         app.log.info({ code: 'CAPTURE_NETWORK_CONFIG_LOADED', source: `${SOURCE}.load`, stored: row !== null, configured: row !== null && row.interfaceName !== null && row.cameraSubnet !== null }, 'camera network configuration loaded');
       } catch (error) {
         failed(`${SOURCE}.load`, LOAD_FAILED, error);
       }
+    },
+    async reload() {
+      // The turn is taken BEFORE the read: a commit or a re-load that starts later is newer than what this read sees.
+      const turn = (control.turn += 1);
+      let row: Awaited<ReturnType<NetworkConfigStore['read']>>;
+      try {
+        row = await control.store.read({ query: (text, values) => app.db.pool.query(text, values) });
+      } catch (error) {
+        const last = turn === control.turn;
+        if (last) {
+          // FAIL-CLOSED: what the reader held may be behind the row, and the row cannot be read. Not configured.
+          control.stored = null;
+          control.known = false;
+        }
+        const described = describeError(error);
+        const fields = { source: RELOAD_SOURCE, code: NETWORK_FACTS_RELOAD_FAILED_CODE, cause: codeOf(error), readerCleared: last };
+        const message = last ? RELOAD_FAILED : RELOAD_OVERTAKEN;
+        app.log.error(fields, message);
+        app.errorLog.append({ level: 'error', source: RELOAD_SOURCE, message, code: NETWORK_FACTS_RELOAD_FAILED_CODE, errorName: described.errorName, stackTrace: described.stackTrace, context: { cause: fields.cause, readerCleared: last } });
+        return;
+      }
+      // Overtaken by a later commit or re-load: that one read, or wrote, a row at least as new as this one.
+      if (turn !== control.turn) return;
+      const next: StoredNetworkChoice | null = row === null ? null : choiceOf(row);
+      const behind = !control.known || !sameChoice(control.stored, next);
+      control.stored = next;
+      control.known = true;
+      // Only when memory was BEHIND the row (a commit whose answer was lost, a boot read that failed, a table changed
+      // elsewhere): after a confirmed commit `committed` has already handed the same row over and nothing is said.
+      if (behind) app.log.info({ code: NETWORK_FACTS_RELOADED_CODE, source: RELOAD_SOURCE, stored: row !== null, configured: next !== null && next.interfaceName !== null && next.cameraSubnet !== null }, 'camera network facts read again from the stored row');
     },
     loaded: () => control.known,
     available: () => control.accepts,
@@ -216,9 +283,12 @@ export function mountCaptureNetworkConfig(app: FastifyInstance): CaptureNetworkC
     interfaces: () => control.interfaces(),
     committed(stored) {
       // THE REPLACEMENT: from here on the reader answers from the row this unit committed.
-      control.stored = { interfaceName: stored.interfaceName, cameraSubnet: stored.cameraSubnet };
+      control.stored = choiceOf(stored);
       control.known = true;
+      // A re-load that began before this commit read an older row: it no longer applies.
+      control.turn += 1;
     },
+    reload: () => control.reload(),
   });
 
   registerCaptureNetworkConfigRoutes(app, seams);

@@ -14,6 +14,14 @@ This chapter is read with chapter 1 (`HW-ACCEPTANCE-1-FRAME.md`) for the order o
 - Section 5: "sessions do not depend on the helper" is corrected: a production Core does not start without the installed helper.
 - Section 6: points A, D and F settled; B and C name their rows. The marks "to confirm in 9A/H-nn" stay: each waits for that check on the host.
 
+**Revision 4 (2026-10-14)**, the document row of wave 12 (Revision 3 touched chapter 1 only). Still unverified on a host: nothing below was run on one. Where a line of Revision 2 above differs from this list, this list holds. Changed in this file:
+
+- The helper's hash. The delivered helper is now SHA-256 `3621e79c...7e4914` (row H5 of wave 12, 2026-10-14: finding F-1 of review 120 and caution R119b-01 changed the helper's code; it was `1e758a24...c7d015b1` earlier in Revision 4 and `62c0b726...2ee5fb` before); `HI-01.4`, `HI-02.6` and `HI-10.1` print the new value, as the file `SHA256SUMS` of the delivery does. The two unit files are unchanged. **The security review's statement of `HI-01.1` was made for `1e758a24...c7d015b1`; for `3621e79c...7e4914` it is still to be made (condition C-4). Until it is, `HI-01.1` is not met and nothing of this chapter beyond `HI-04` part A is done.**
+- The order (section 2). The helper is **not** part of every production installation any more (decision C94 (j), which reverses C49 (1)): a production Core on Linux starts with nothing of the helper installed and says so. Only `HI-04` part A (the group) still comes before the Core's unit is first started; `HI-01` to `HI-07` are run as a whole after `9A/H-16`, at sequence 12 of chapter 1. The rule that stays is "all of it or none".
+- `HI-01.1`: the security review's statement exists and is made for the new hash, under four conditions.
+- `HI-05`, `HI-06`, section 4: the five refusals the helper gained (codes 38, 46, 47, 48, 55) by their fixed words, and where each is shown; the journal line may end with a `note=` field; the two records of the package manager the helper reads for `/usr/bin/arping`.
+- Section 5: what a production Core does on a host where this chapter stopped half-way.
+
 
 ## Ringkasan (Bahasa Indonesia)
 
@@ -24,7 +32,8 @@ Bentuk yang dipasang (keputusan C19): layanan root pada soket lokal, satu grup (
 Hal yang paling menentukan:
 
 - Hash yang berbeda dari yang tercetak di bab ini tidak pernah diterima: berkas itu bukan berkas yang ditinjau.
-- **Seluruh `HI-01` sampai `HI-07` dilakukan sebelum unit Core dijalankan pertama kali (`9A/H-16`)** (Revisi 2, 2026-10-13): unit Core menyebut grup `dems-netalias`, dan start produksi memeriksa soket, berkas helper, dan dua berkas unit, lalu menolak bila salah satunya tidak ada.
+- **Revisi 4 (2026-10-14): helper tidak lagi wajib untuk start produksi** (keputusan C94 (j)). Host tanpa helper sama sekali: Core tetap start dan menyatakannya (`CAPTURE_HOST_ALIAS_HELPER_ABSENT`). Helper yang terpasang sebagian atau salah: start ditolak. Jadi bab ini dijalankan seluruhnya atau tidak sama sekali. Hanya grup `dems-netalias` (`HI-04` bagian A) yang tetap dibuat sebelum unit Core dijalankan pertama kali, karena unit Core menyebut grup itu; `HI-01` sampai `HI-07` dilakukan sebagai satu kesatuan setelah `9A/H-16`.
+- Hash helper berubah menjadi `3621e79c...7e4914` (Revisi 4, baris H5: kode helper berubah; sebelumnya `1e758a24...c7d015b1`). Pernyataan tinjauan keamanan untuk hash baru ini BELUM dibuat: sebelum ada, `HI-01.1` tidak terpenuhi.
 - Pengatur waktu penghapusan (S13-10 (a)) BELUM dibangun. Hilangnya alamat sementara hanya bergantung pada masa berlaku di kernel, yang baru terbukti di `9A/H-06`. Sebelum `9A/H-05` dan `9A/H-06` lulus, fungsi alamat sementara tidak boleh dipakai di instalasi.
 - Bila satu langkah gagal: berhenti, cabut hak dengan mematikan soket (`HI-09.3`), catat, dan jangan pernah mengubah berkas yang dikirim.
 
@@ -36,7 +45,7 @@ Tidak ada rahasia di bab ini. Semua isi **belum terverifikasi** pada host nyata.
 |---|---|
 | What | The ten steps of the security review (`verification/02_security.md`, section 5.4) as steps for the user, for the helper as it was delivered: a root service on a local socket, one group, two unit files, no sudoers file (decision C19). Each step has its exact command or file content, what it must print, and the check that shows it took effect |
 | Who | Performer `USER` for every step: the owner of the installation, with administrator rights. User action UA-3 of chapter 1 |
-| When | Once. `HI-01` to `HI-07` after `9A/H-01` and after the security review of the helper as delivered (`HI-01`), **before `9A/H-16`** (sequence 8a of chapter 1). `HI-08` inside `9A/H-05`. `HI-09.1` and `HI-10` after `9A/H-05`. Section 2 states why |
+| When | Once. `HI-04` part A (the group alone) before `9A/H-16`, at sequence 8a of chapter 1. `HI-01` to `HI-07` as a whole after `9A/H-16` and `PREP-11`, at sequence 12, with no start of the Core in between. `HI-08` inside `9A/H-05`. `HI-09.1` and `HI-10` after `9A/H-05`. Section 2 states why |
 | Capture operation | none for `HI-01` to `HI-07` and `HI-09`: no Core is needed. `HI-08` needs a Core in `REAL_PRODUCTION` |
 | What it changes on the host | One file under `/usr/local/sbin`, one file under `/etc/dems`, two files under `/etc/systemd/system`, one group, one membership, one enabled socket unit. No address of the host is changed by any step of this chapter |
 
@@ -47,7 +56,9 @@ Tidak ada rahasia di bab ini. Semua isi **belum terverifikasi** pada host nyata.
 - The interface is never in the request. It is read from the root-owned file `/etc/dems/netalias-interface`.
 - One temporary address at a time.
 - The only caller it serves is the ONE member of the group `dems-netalias`. Root itself is refused through the socket.
-- It writes one journal line per call: `dems-core-netalias: caller_uid=<n> verb=<add|del|-> address=<a.b.c.d/24|-> result=<NAME> code=<n>`.
+- It writes one journal line per call: `dems-core-netalias: caller_uid=<n> verb=<add|del|-> address=<a.b.c.d/24|-> result=<NAME> code=<n>`. A `del` of a marked address that is already gone from the port ends the line with ` note=already-absent`; no other call adds a field.
+- Its answers are a closed set of 41 names with their codes. Before any `add` it asks the conflict question with `/usr/bin/arping -D -c 2 -w 3 -I <interface> <address>`, the program of the Ubuntu package `iputils-arping`, and reads the program's printed result together with its exit status.
+- A mark is honoured for the lifetime it records plus 60 s. After that the helper no longer treats the address as its own (`9A/H-06` reads what that means when the kernel did not remove the address).
 - The address is removed after its lifetime by the kernel (`valid_lft`). **A removal timer of the service manager (requirement S13-10 (a)) is not built.** Where this chapter tells the user what to check because of that, the line carries "to confirm when blueprint rows 104 and 106 deliver the removal timer".
 
 **Names fixed by the delivery.** They are constants of the delivered files and are not chosen on the host.
@@ -106,21 +117,38 @@ It is then used in three forms. Each sends one request on one connection and pri
 
 The client was written for this chapter and has not been run (to confirm in 9A/H-05). Where `nc` of the package `netcat-openbsd` is present, `printf '%s\n' '<request>' | sudo runuser -u <service-user> -- nc -N -U /run/dems-core-netalias/socket` is the same request; the helper does not require the sending side to be closed.
 
-## 2. What must come before the Core's unit is first started
+## 2. What must come before the Core's unit is first started, and what need not
 
-Two facts of the built product fix the order.
+Revision 4 (decision C94 (j), reversing C49 (1)). Revision 2 put the whole of `HI-01` to `HI-07` before `9A/H-16` because the built start checks then refused a production start without the helper. They no longer do: the helper is used at commissioning only, and a recording host that never commissions a camera need not carry a root service. Two facts of the built product fix the order now.
 
 1. The Core's unit file (file G of the host profile, item `HOST-40`) holds `SupplementaryGroups=audio dems-netalias`. A unit that names a group the host does not have is not started by the service manager; the expected failure is `status=216/GROUP` (to confirm in 9A/H-16).
-2. A Core in `REAL_PRODUCTION` on Linux asks, at every start, for the helper's socket (`CAPTURE_HOST_ALIAS_SOCKET`: a socket owned by root, group `dems-netalias`, mode 660), for the helper file (`CAPTURE_HOST_ALIAS_HELPER_UNSAFE`) and for the socket's directory and the two unit files (`CAPTURE_HOST_ALIAS_GRANT_UNSAFE`), and refuses to start when one is absent or unsafe (decision C46; read from the built host and program checks). Once a camera interface is stored in the Core, it also compares the interface file with it (`CAPTURE_HOST_INTERFACE_FILE_MISMATCH`). These checks are asked when the Core's entry point hands the host facts to the boot (blueprint row 85); a tree without that hand-over asks none of them.
+2. A Core in `REAL_PRODUCTION` on Linux looks, at every start, at five things of the helper: the socket node, the helper file, the socket's directory and the two unit files. It judges them as ONE installation (read from the built host and program checks, `capture/boot/host-checks.ts` and `program-checks.ts`):
+
+   | What the start finds | What the Core does | What is seen |
+   |---|---|---|
+   | **None of the five** (the helper is absent as a whole) | It starts. The fact is stated, not refused | One warning in the journal with the code `CAPTURE_HOST_ALIAS_HELPER_ABSENT`, and a row in the error log. The audit entry `SYSTEM_BOOT` of that start carries `addressHelperSocket: NOT_PRESENT`. The commissioning functions answer their own refusal, `409 COMMISSIONING_NOT_AVAILABLE`; searching, adopting, assigning and recording are not touched |
+   | **All five, as delivered** | It starts | No line names the helper; `SYSTEM_BOOT` carries `addressHelperSocket: PRESENT`. Once a camera interface is stored, the interface file is compared with it as well (`CAPTURE_HOST_INTERFACE_FILE_MISMATCH`) |
+   | **Some of the five** (the socket node missing beside a helper file, the socket's directory or a unit file) | It refuses to start | `CAPTURE_HOST_ALIAS_SOCKET` with the reason `SOCKET_ABSENT` |
+   | The socket node there and a file missing | It refuses to start | `CAPTURE_HOST_ALIAS_HELPER_UNSAFE` or `CAPTURE_HOST_ALIAS_GRANT_UNSAFE`, each with the reason `FILE_ABSENT` |
+   | Something there and not as delivered (kind, owner, mode), or not readable | It refuses to start | the code of that thing with its reason word, as `HI-08` lists them |
+
+   The member `addressHelperSocket` is written before the checks run, from one look at the socket's path; it says what lay there, not that the helper passed. The group and the interface file are not among the five: a host that has the group and nothing else counts as "none".
 
 | Part of this chapter | Relation to the first `sudo systemctl start dems-core.service` (`9A/H-16.2`) |
 |---|---|
-| **`HI-01` to `HI-07`** | **Must be done before it** (sequence 8a of chapter 1). `HI-04` part A for the group (fact 1); `HI-02` and `HI-04` part B for the helper file, the unit files and the socket (fact 2); `HI-03` so that the self-check of `HI-05` and the refusals of `HI-06` can be read. Installing grants nothing that is used: without a Core no request reaches the socket but the user's own of `HI-05` and `HI-06`, and none of those adds an address |
-| `HI-01` | Always first: nothing is installed before the hashes are compared |
+| **`HI-04` part A** (steps `.1` to `.4`: the group and its one member) | **Before it** (sequence 8a of chapter 1), because of fact 1. A group with one member grants nothing: no socket exists that the group could open, and no delivered file is installed by these four steps |
+| **`HI-01` to `HI-07`** | **After it, as a whole** (sequence 12 of chapter 1, after `9A/H-16` and `PREP-11`). The Core is stopped before `HI-02.3` and is not started again before `HI-04.10` has shown the socket active: a start in between meets "some of the five" and is refused (fact 2). `HI-04` part A is then read again, not repeated (`HI-04.1` prints the group's line) |
+| `HI-01` | Always the first step of the installation proper: no delivered file is installed before the hashes are compared |
 | `HI-08` | After it: needs a Core in `REAL_PRODUCTION` and the camera interface chosen in the web console. It is not performed as a step of its own: it is steps `.6` and `.7` of `9A/H-05`, and its result is copied here |
 | `HI-09.1`, `HI-10` | Last, after `9A/H-05` |
 
-Three lines need a default route on the host: `HI-03.6` (the default-route line), request (b10) and step (c3) of `HI-06`. With way A of chapter 1, `PREP-03` step 2 (the room network plugged for the installation window), the route exists at sequence 8a and the three lines are measured at once. With way B (the offline package set) the host has no default route yet: the three lines cannot be measured and are repeated after `PREP-11` (chapter 1, `PREP-11` step 3). The helper checks the default route itself on every call, so the bound holds in the meantime.
+**What the first production start shows, in the order of this revision.** At `9A/H-16` nothing of the helper is on the host but the group: the journal holds the warning `CAPTURE_HOST_ALIAS_HELPER_ABSENT` and the boot's audit entry `addressHelperSocket: NOT_PRESENT`. After this chapter, at the restart of `9A/H-05.7`, the warning is gone and the entry says `PRESENT`. Both readings are recorded; neither is a fault.
+
+**The other order stays allowed.** A site that wants the helper in place before the first production start may still run the whole of `HI-01` to `HI-07` at sequence 8a, as Revision 2 wrote. `9A/H-16` then shows `PRESENT` and no warning. What is not allowed, in either order, is a start of the Core between `HI-02.3` and `HI-04.10`.
+
+**All of it or none.** A helper that is taken away after commissioning is taken away as a whole: `HI-09.3` to `HI-09.5` and the socket's directory (`HI-09.8`), in one sitting, with the Core stopped. `HI-09.3` alone (the socket unit stopped and disabled, the files left) is the safe state while a fault is sought, and it **refuses the next production start** (`CAPTURE_HOST_ALIAS_SOCKET` / `SOCKET_ABSENT`); section 5 says so again.
+
+Three lines need a default route on the host: `HI-03.6` (the default-route line), request (b10) and step (c3) of `HI-06`. At sequence 12 the room network is joined (`PREP-11`), the route exists and the three lines are measured at once. Only a site that installs at sequence 8a with way B of chapter 1 (the offline package set) has no default route yet: it repeats the three lines after `PREP-11` (chapter 1, `PREP-11` step 3). The helper checks the default route itself on every call, so the bound holds in the meantime.
 
 The membership reaches a running Core only through its unit, at the Core's start. Adding the service user to the group does not change a Core that already runs.
 
@@ -132,10 +160,10 @@ Capture operation: none   Changes on the host: none
 
 **1. What it achieves.** The files in hand are the files that were reviewed, and the user knows under which condition they are installed.
 
-**2. Precondition.** `9A/H-27` and `9A/H-01` passed; `9A/H-16` has not been started yet. No input-av helper and no sudoers line on the host; the product tree is at `<install-dir>`, owned by root (`HOST-05`); Python 3 is installed (`HOST-10`). `PREP-12` of chapter 1.
+**2. Precondition.** `9A/H-27` and `9A/H-01` passed. In the order of Revision 4: `9A/H-16` passed, the Core is stopped and stays stopped until `HI-04.10`; the group of `HI-04` part A exists since sequence 8a. No input-av helper and no sudoers line on the host; the product tree is at `<install-dir>`, owned by root (`HOST-05`); Python 3 is installed (`HOST-10`), version 3.9 or later (the helper needs it; Ubuntu 24.04 carries 3.12). `PREP-12` of chapter 1.
 
 **3. Steps.**
-- `HI-01.1` Read the security review of the commissioning functions as built, handed over with the closing report of the development (`verification/119_commissioning_security.md` of the development task; it does not exist at the time of writing: to confirm when blueprint row 119 lands).
+- `HI-01.1` Read the security review's statement on the helper, handed over with the closing report of the development (`verification/119b_helper_statement.md` of the development task, which re-examines `verification/119_commissioning_security.md`). It is made for ONE hash, the one of step `.4`, and under four conditions: (C-1) requirement S13-10 (a) remains for the host, so the function is not used on an installation before `9A/H-06` has passed; (C-2) `HI-01` to `HI-08`, `9A/H-05` and `9A/H-25` remain for the host; (C-3) this chapter prints the hash the statement names; (C-4) any change of the helper needs a new reading and a new statement.
 - `HI-01.2` Read in that statement how requirement S13-10 (a) is treated. In this delivery no removal timer exists; the address is removed by its kernel lifetime only, which is proven or disproven in `9A/H-06` (to confirm when blueprint rows 104 and 106 deliver the removal timer).
 - `HI-01.3` `cd <install-dir>/scripts/host/netalias && sha256sum -c SHA256SUMS`
 - `HI-01.4` In the same folder: `sha256sum dems-core-netalias dems-core-netalias.socket 'dems-core-netalias@.service'`
@@ -148,7 +176,7 @@ Capture operation: none   Changes on the host: none
 - `.4` exactly these three lines:
 
 ```
-62c0b7260a743224de455892ddb12c7cee8ce0c1907c1e9f89291ff35c2ee5fb  dems-core-netalias
+3621e79ccebb05d052efa06b9c1c0dd4d5d4e30d08c2f55f39019857cc7e4914  dems-core-netalias
 8623c1cdc530308762c154ad5ad17c73ce50ee6a6e5854952710028d45ffdbcb  dems-core-netalias.socket
 7e40f25e21a187e5f05942cb87926131f182718f466d40704784540ec38dd60a  dems-core-netalias@.service
 ```
@@ -182,7 +210,7 @@ Capture operation: none   Changes on the host: one file
 - `.3` prints nothing.
 - `.4` `root root 755 regular file`.
 - `.5` the same four directory lines, then `-rwxr-xr-x root root dems-core-netalias`; no line begins with `l`.
-- `.6` `62c0b7260a743224de455892ddb12c7cee8ce0c1907c1e9f89291ff35c2ee5fb  /usr/local/sbin/dems-core-netalias`.
+- `.6` `3621e79ccebb05d052efa06b9c1c0dd4d5d4e30d08c2f55f39019857cc7e4914  /usr/local/sbin/dems-core-netalias`.
 
 **5. Pass criterion.** Owner, group, mode and type as stated: 1 of 1. Components writable by group or others, or symbolic links: 0. Hash equal to `HI-01`: 1 of 1.
 If not met: remove the file (`sudo rm /usr/local/sbin/dems-core-netalias`), find the cause (a parent directory with another owner or mode is a fault of the host, not of the helper) and repeat the step. A different hash after the copy is never accepted.
@@ -226,7 +254,7 @@ Capture operation: none   Changes on the host: one group, one membership, two fi
 
 **1. What it achieves.** The only way to reach the helper is a local socket that root and the members of the group `dems-netalias` may open, and that group has exactly one member, the Core's service user (`HOST-43`, `HOST-44`). No sudoers line exists for the helper (`HOST-47`). This replaces the sudoers file of the earlier system; `sudo -n` would be used only under an exception row that the user confirms before the installation, and none exists.
 
-**2. Precondition.** Part A: the service user exists (`HOST-04`). Part B: `HI-01` to `HI-03` passed, and part A done. **Both parts come before the Core's unit is first started (section 2).**
+**2. Precondition.** Part A: the service user exists (`HOST-04`). Part B: `HI-01` to `HI-03` passed, and part A done. **Part A comes before the Core's unit is first started; part B belongs to the installation as a whole and is done with the Core stopped (section 2).**
 
 **3. Steps.**
 
@@ -268,10 +296,11 @@ Capture operation: none   Changes on the host: the marks folder under `/run` app
 
 **1. What it achieves.** The two tools the helper calls are at the paths it calls them by, and the helper's read-only self-check, run once by root, answers `0 OK` for the installation as it stands. The self-check is the one command-line form of the helper; it changes nothing and cannot be reached through the socket.
 
-**2. Precondition.** `HI-04` passed. `HOST-18` passed in `9A/H-01` (the conflict-check tool is the iputils one). The variable `ASK` of section 1 is set in this terminal.
+**2. Precondition.** `HI-04` passed. `HOST-18` passed in `9A/H-01`: the conflict-check tool is `/usr/bin/arping` of the package `iputils-arping`, the path the helper calls it by; the other package named `arping` is absent. The variable `ASK` of section 1 is set in this terminal.
 
 **3. Steps.**
 - `HI-05.1` `stat -L -c '%U %a %n' /usr/sbin/ip /usr/bin/arping /usr/bin/python3`; `/usr/bin/python3 --version`.
+- `HI-05.1a` The two records of the package manager that the helper reads before it ever starts the tool: `grep -x /usr/bin/arping /var/lib/dpkg/info/iputils-arping.list`; `grep '  usr/bin/arping$' /var/lib/dpkg/info/iputils-arping.md5sums`; `md5sum /usr/bin/arping`; `stat -c '%U %a' /var/lib/dpkg/info /var/lib/dpkg/info/iputils-arping.list /var/lib/dpkg/info/iputils-arping.md5sums`; `dpkg --verify iputils-arping`.
 - `HI-05.2` As root, one connection: `sudo /usr/bin/python3 -I -c "$ASK" 'del 203.0.113.10/24'`.
 - `HI-05.3` `stat -c '%U %G %a' /run/dems-core-netalias/marks`; `ls -A /run/dems-core-netalias/marks | wc -l`.
 - `HI-05.4` `sudo /usr/bin/python3 -I -S -B /usr/local/sbin/dems-core-netalias check; echo "exit $?"`.
@@ -279,6 +308,7 @@ Capture operation: none   Changes on the host: the marks folder under `/run` app
 
 **4. Expected result.**
 - `.1` three lines that begin `root 755` (to confirm in 9A/H-25: the two tool paths on Ubuntu 24.04); `Python 3.12.<n>` (to confirm in 9A/H-05: the helper has not been run on this Python version).
+- `.1a` the first command prints `/usr/bin/arping`; the second prints exactly one line, 32 hexadecimal characters, two spaces, `usr/bin/arping`; the third prints the same 32 characters; the fourth prints three lines that begin `root` with no write right for group or others; the last prints nothing (to confirm in 9A/H-25: the two file names without an architecture suffix and the form of the checksum line were not read on a host). If one of them differs, the helper answers `38 CONFLICT_TOOL_NOT_EXPECTED` to the self-check and to every `add`: the file at that path is not the one the package manager recorded.
 - `.2` `12 PEER_NOT_SERVICE_USER`: the helper refuses root as a caller, before it reads the request. This first connection also makes the service manager create the marks folder (to confirm in 9A/H-05: that the folder appears with the first instance and stays).
 - `.3` `root root 755`; `0`.
 - `.4` three lines: `dems-core-netalias: caller_uid=0 verb=check address=- result=OK code=0`, then `0 OK`, then `exit 0`.
@@ -297,6 +327,7 @@ Other answers of step `.4` and the step each one sends back to:
 | `34 INTERFACE_HAS_DEFAULT_ROUTE` | the named port carries the default route: the wrong port was chosen | `HI-03.2` |
 | `36 TOOL_MISSING` | `/usr/sbin/ip` is absent or not root-owned | host profile, `HOST-18` |
 | `37 CONFLICT_TOOL_MISSING` | `/usr/bin/arping` is absent or not root-owned | host profile, `HOST-18` |
+| `38 CONFLICT_TOOL_NOT_EXPECTED` | the file at `/usr/bin/arping` is not the one the package manager recorded for `iputils-arping` (another package's program, a changed file, a missing or unsafe record) | step `.1a`; host profile, `HOST-18` |
 | `50 HOST_STATE_UNREADABLE` | the route listing could not be read in the form the helper expects | stop; section 5, product |
 | `no answer line` in step `.2` | no instance answered | section 5 |
 
@@ -312,6 +343,18 @@ Capture operation: none   Changes on the host: none that stays (the interface fi
 **1. What it achieves.** On the real host the helper refuses a caller outside the group, an address outside its bounds and a wrong interface, and writes one journal line for every call that reaches it. Only harmless requests are used: each is either refused before any tool is started, or is a `del` of an address that was never added, or is the read-only self-check. No request of this step may be answered `0 OK`.
 
 The security review asks for nine refusals. Those that need an address to be added or a tool to be removed cannot be shown with harmless requests and are not in this chapter; section 4 states where each of the nine is proven.
+
+**Five refusals the helper gained with the hash of Revision 4**, by their fixed words (read from the table `CODES` of the delivered file). None of them is provoked in this step: each needs a state of the host that this step must not produce. They are named here so that an answer with one of these codes is read correctly if it appears.
+
+| Answer | When the helper gives it | Shown in |
+|---|---|---|
+| `38 CONFLICT_TOOL_NOT_EXPECTED` | the self-check and every `add`: the file at `/usr/bin/arping` is not the one the package manager recorded for `iputils-arping` | `HI-05.1a` shows the opposite case; not provoked on the host (it would need a changed package record) |
+| `46 INTERFACE_NOT_ARPABLE` | an `add`, before the conflict tool is started: the camera port is a loopback port, has the no-ARP flag, or has no broadcast address, so the conflict question cannot be asked on it | `9A/H-25.7` |
+| `47 INTERFACE_DOWN` | an `add`, before the conflict tool is started: the camera port is not up or has no carrier (no cable, the switch off) | `9A/H-25.7` |
+| `48 INTERFACE_STATE_UNKNOWN` | an `add`: the address listing of the host does not show the camera port at all, which is the case when the port holds no IPv4 address of its own | not provoked (it would need `<camera-address>` taken off the port); stated |
+| `55 CONFLICT_RESULT_UNKNOWN` | an `add`, after the conflict tool ran: the tool ended with status 0 or 1 and its printed text is not the three lines the helper expects for this address on this port. The address is NOT added: an answer the helper cannot read is never "free" | `9A/H-25.2` and `.4` show the readable cases; a 55 there is a finding against the helper's reading of the real tool |
+
+In an `add` the bounds are asked in this order: the address's form (20 to 27), the installation (30 to 38), then 42, 40, 41, 43, then 46, 47 or 48, then the conflict tool with 44, 51 or 55. So request (b9) of this step still answers 43 and (b10) still answers 40, whatever the state of the port.
 
 **2. Precondition.** `HI-05` passed; `ASK` is set. No temporary address is in place, and no Core runs. For (b10) and (c3) only: the host has a default route (way A of chapter 1, or after `PREP-11`).
 
@@ -427,12 +470,12 @@ Capture operation: `REAL_PRODUCTION`   Changes on the host: the Core is restarte
 **2. Precondition.** `HI-01` to `HI-07` passed. `9A/H-16` passed. No session is open. The camera interface is chosen in the commissioning settings of the web console (`9A/H-05.6`), the same port the interface file names.
 
 **3. Steps.**
-- `HI-08.1` `sudo systemctl restart dems-core.service`
+- `HI-08.1` With the line `DEMS_CAPTURE_ALIAS_SOCKET=/run/dems-core-netalias/socket` in `/etc/dems/core.env` (`9A/H-05.7`): `sudo systemctl restart dems-core.service`
 - `HI-08.2` `journalctl -u dems-core.service -b --no-pager | tail -n 80`
 - `HI-08.3` `systemctl show dems-core.service -p NoNewPrivileges`; `sudo grep NoNewPrivs /proc/<core-pid>/status`; `sudo grep '^Groups:' /proc/<core-pid>/status`; `getent group audio dems-netalias`.
 
 **4. Expected result.**
-- `.2` the line `capture fence passed` with the operation `REAL_PRODUCTION`, and a line with the code `CAPTURE_PROGRAM_CHECKS_PASSED`; no line holds one of the four codes `CAPTURE_HOST_ALIAS_SOCKET`, `CAPTURE_HOST_ALIAS_HELPER_UNSAFE`, `CAPTURE_HOST_ALIAS_GRANT_UNSAFE`, `CAPTURE_HOST_INTERFACE_FILE_MISMATCH`. A journal without the "checks passed" line is a tree whose entry point does not hand the host facts to the boot (blueprint row 85): recorded as "start checks of the helper not asked", which is not a pass of this step.
+- `.2` the line `capture fence passed` with the operation `REAL_PRODUCTION`, and a line with the code `CAPTURE_PROGRAM_CHECKS_PASSED`; no line holds one of the four codes `CAPTURE_HOST_ALIAS_SOCKET`, `CAPTURE_HOST_ALIAS_HELPER_UNSAFE`, `CAPTURE_HOST_ALIAS_GRANT_UNSAFE`, `CAPTURE_HOST_INTERFACE_FILE_MISMATCH`, and none holds `CAPTURE_HOST_ALIAS_HELPER_ABSENT`: with the chapter done the helper is there as a whole. The audit entry `SYSTEM_BOOT` of this start carries `addressHelperSocket: PRESENT` (read by `OPER` in the audit list). A start refused with `CAPTURE_HOST_FACTS_NOT_HANDED_IN` (reason `NO_HOST_FACTS`) is a Core whose entry point handed no host facts to the boot: a product fault, not a pass of this step.
 - `.3` `NoNewPrivileges=yes`; `NoNewPrivs:` followed by `1`; exactly the two group numbers that the last command prints (`HOST-38`, `HOST-40`).
 
 **5. Pass criterion.** The start names no fault of the helper: 0 lines. The Core runs without the right to gain privileges and with the two groups: 2 of 2.
@@ -486,7 +529,7 @@ Capture operation: none   Changes on the host: none
 ```
 Address helper installed. Date: <date>. Host: <the host's label in this record>. Product commit: <identifier of PREP-01>.
 Form: root service on a local socket, group dems-netalias with one member, two unit files, no sudoers file (decision C19).
-Hashes: 62c0b7260a743224de455892ddb12c7cee8ce0c1907c1e9f89291ff35c2ee5fb (helper),
+Hashes: 3621e79ccebb05d052efa06b9c1c0dd4d5d4e30d08c2f55f39019857cc7e4914 (helper),
 8623c1cdc530308762c154ad5ad17c73ce50ee6a6e5854952710028d45ffdbcb (socket unit),
 7e40f25e21a187e5f05942cb87926131f182718f466d40704784540ec38dd60a (service unit).
 Steps HI-01 to HI-07: met. HI-08: 9A/H-05 run <k>, <result>. HI-09.1: marks 0, addresses 1.
@@ -511,13 +554,15 @@ If not met: the installation is not on record; `9A/H-05` is not started.
 | 2 | An address that is not private | `HI-06` (b1); `9A/H-05.3` (a) | 25 |
 | 3 | A prefix other than `/24` | `HI-06` (b2); `9A/H-05.3` (b) | 21 |
 | 4 | An address another device holds | `9A/H-25.2`: needs a second device, and the helper sends a probe on the camera port | 44 |
-| 5 | The conflict-check tool missing | `9A/H-25.6` (added in Revision 2): the user moves the tool away, reads the self-check and one `del` request, and restores it. `HI-05.4` shows the opposite case, the tool present | 37 |
+| 5 | The conflict-check tool missing | `9A/H-25.6` (added in Revision 2; corrected in Revision 4): the user moves the tool away, reads the self-check and one `add` request, and restores it. A `del` does not need the tool and is not refused for its absence. `HI-05.4` shows the opposite case, the tool present | 37 |
 | 6 | `del` of an address the helper did not add | `HI-06` (b8); `9A/H-05.3` (d) | 45 |
 | 7 | An overlap with a `/24` of another port | `HI-06` (b10), when another port holds a private address | 40 |
 | 8 | The default-route port | `HI-06` (c3), when the host has a default route | 34 |
 | 9 | One alias more than the limit (the delivered limit is one) | `9A/H-25.5` (added in Revision 2): with one address in place, a second `add` in another `/24` is refused. The helper asks this bound before the one of code 43 | 41 |
 
 Beyond the nine, `HI-06` shows: an account outside the group refused by the socket; root refused by the helper (12); a lifetime out of range (27); a host part out of range (26); an unknown verb (15); a `/24` the camera port already has (43).
+
+The five refusals of Revision 4 belong to bound 4 (the conflict check always runs, and only a readable "free" adds an address): 38 `CONFLICT_TOOL_NOT_EXPECTED`, 46 `INTERFACE_NOT_ARPABLE`, 47 `INTERFACE_DOWN`, 48 `INTERFACE_STATE_UNKNOWN`, 55 `CONFLICT_RESULT_UNKNOWN`. The table in `HI-06` says when each is given; 46 and 47 are shown in `9A/H-25.7`.
 
 ## 5. If a step fails
 
@@ -530,16 +575,17 @@ Beyond the nine, `HI-06` shows: an account outside the group refused by the sock
 5. Never repair on the host: no edit of a delivered file, no change of the socket's mode, group or owner, no second member in the group, no sudoers line, no capability on the Core. Each of these would pass a step and remove the bound the step exists for.
 6. A correction by the development changes at least one hash. The helper is then removed (`HI-09.1` to `HI-09.6`) and this chapter is run again from `HI-01` with the new hashes.
 
-A recording session never calls the helper. But a production Core does not **start** on a host where the helper's socket, file or unit files are absent or unsafe (section 2, fact 2). A host on which this chapter stopped, or on which the grant was taken away with `HI-09.3`, therefore cannot start its production Core until the chapter is completed, on a tree that asks those checks. Whether an installation that never uses the commissioning functions must carry the helper is not ruled (open point 10 of chapter 1).
+A recording session never calls the helper, and a production Core starts on a host that has nothing of the helper (decision C94 (j); section 2, fact 2). What it does not start on is a helper that is there in part or is wrong. A host on which this chapter stopped after `HI-02.3`, or on which the grant was taken away with `HI-09.3` while the files stayed, therefore cannot start its production Core. There are two ways out and no third: complete the chapter, or take the helper away as a whole (`HI-09.3` to `HI-09.5`, then `HI-09.8` for the socket's directory); after the second the Core starts and states `CAPTURE_HOST_ALIAS_HELPER_ABSENT`. The group may stay in both cases.
 
 ## 6. Open points of this chapter
 
 | # | Open point | Effect | Settled by |
 |---|---|---|---|
-| A | Settled in Revision 2: chapter 1 places `HI-01` to `HI-07` at sequence 8a, before `9A/H-16` | Section 2 | - |
+| A | Settled again in Revision 4 (decision C94 (j)): only `HI-04` part A stays at sequence 8a; `HI-01` to `HI-07` run as a whole at sequence 12, after `9A/H-16`. The order of Revision 2 stays allowed | Section 2 | - |
 | B | The removal timer of requirement S13-10 (a) is not built (blueprint rows 104 and 106) | Four lines are marked "to confirm when blueprint rows 104 and 106 deliver the removal timer": section 1, `HI-01.2`, `HI-09.1` and `HI-10`. If `9A/H-06` shows that the kernel does not remove the address, the helper changes and this chapter is run again | `9A/H-06`; the development |
-| C | The security review of the helper as delivered does not exist yet | `HI-01.1` cannot be met until it does; with the order of Revision 2, `9A/H-16` then waits as well (chapter 1, `PREP-12` step 2) | the development: blueprint row 119 |
-| D | Settled for the boot checks: built, with the four codes `HI-08` names; the hand-over at the entry point waits for blueprint row 85. Not built: the Core's caller of the helper | `HI-08`; whether the helper answers from inside the Core's unit is `9A/H-06` | blueprint rows 85 and 105 |
+| C | Settled in Revision 4: the security review's statement on the helper is made for the hash of `HI-01.4` (decision C101), under conditions C-1 to C-4 of `HI-01.1`. Open by its nature: C-1 and C-2 are the host's (`9A/H-05`, `9A/H-06`, `9A/H-25`) | The function is not used on an installation before `9A/H-06` has passed. `9A/H-16` no longer waits for the helper | the run itself |
+| D | Settled in Revision 4: the boot checks are built with the codes `HI-08` names, the entry point hands the host facts in, and the Core's caller of the helper is built (one stream-socket client; key `DEMS_CAPTURE_ALIAS_SOCKET`, which must be unset or the installed path `/run/dems-core-netalias/socket`, else the start is refused with `CAPTURE_HOST_ALIAS_SOCKET_PATH`). None of it has run on a host | `HI-08`; whether the helper answers from inside the Core's unit is `9A/H-06` | `9A/H-05`, `9A/H-06` |
+| H | The five refusals of Revision 4 (38, 46, 47, 48, 55) were shown with stand-ins for the two system tools only. Whether the real `arping` prints the three lines the helper expects, and whether `ip -json -4 addr show` prints `flags` with `LOWER_UP` and `valid_life_time` as the helper reads them, is unread on a host | A helper that cannot read the real tool answers 55 to every `add`, and one that cannot read the lifetime answers `50 HOST_STATE_UNREADABLE` to a `del`: both fail closed | `9A/H-25` (steps `.2`, `.4`, `.7`), `9A/H-06` |
 | E | The self-check answers `35` until the first connection has made the marks folder, and again after every restart of the host | `HI-05` orders the first connection before the self-check | `9A/H-05` |
 | F | Settled in Revision 2: refusals 5 and 9 have the steps `9A/H-25.6` and `9A/H-25.5` | Section 4 | - |
 | G | The client of section 1 was not run; `nc -N -U` is named as an equivalent where it is installed | The first request of `HI-05.2` shows whether it answers | `9A/H-05` |

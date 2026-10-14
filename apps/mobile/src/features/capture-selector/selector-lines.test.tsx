@@ -237,6 +237,55 @@ describe('M4-PC-1: the role is not known yet', () => {
     expect(screen.queryByText(ROLE_SENTENCE)).toBeNull();
   });
 });
+
+// Task 4 row W5 (review 060d finding Q-02; decisions C36, C111): a PRODUCTION camera is assigned from the tablet with
+// one of its stored stream profiles. The double: the app's own store with a registered `ONVIF_RTSP` camera whose device
+// entry carries the list (the member `profiles`; the contract does not carry it yet - see `camera-profile.ts`), and the
+// Live stand-in of this file. Seen RED on the mutation "the port sends operation 79 for a command with a profile".
+describe('row W5 (Q-02): a production camera is assigned with one of its stored profiles (tabletLandscape)', () => {
+  // Row V7: the member in the contract's shape, `{ code, codec, resolution, fps }`.
+  const ADOPTED = {
+    ...device('CAM-07', 'CAMERA', { model: 'Adopted camera', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION' }),
+    profiles: [
+      { code: 'HEVC_2560X1920P20', codec: 'HEVC', resolution: '2560x1920', fps: 20 },
+      { code: 'H264_720P30', codec: 'H.264', resolution: '720p', fps: 30 },
+    ],
+  } as Device;
+
+  it('the sheet offers the two profiles, Save is ONE operation 78 with the chosen one; a refused profile reads the Core\'s sentence', async () => {
+    const answers: unknown[] = [
+      { ok: false, status: 422, error: { code: 'INVALID_INPUT', details: { reason: 'CAMERA_PROFILE_NOT_OF_DEVICE', deviceId: 'CAM-07', trackId: 'VIDEO-01' } } },
+      { ok: true, status: 200, data: { updatedAt: 0 } },
+    ];
+    const call = liveAnswering(() => answers.shift());
+    mockLive = { client: { call } };
+    const h = renderDevicesApp({ user: 'andi.pratama', window: 'tabletLandscape' });
+    await settle();
+    register(h);
+    act(() => h.sim.store.setState((s) => ({ captureDevices: { ...s.captureDevices, devices: [...s.captureDevices.devices, ADOPTED] } })));
+    await settle();
+    await openLine('VIDEO-01');
+    fireEvent.press(option('CAM-07'));
+    await settle();
+    expect(screen.getByTestId('capture-source-profile-hint')).toHaveTextContent('This camera has 2 stored stream profiles. Choose the one this track records, then save.');
+    // Nothing is sent without a chosen profile.
+    fireEvent.press(screen.getByTestId('capture-source-save'));
+    await settle();
+    expect(selectorCalls(call)).toHaveLength(0);
+    fireEvent.press(screen.getByTestId('capture-source-profile-H264_720P30'));
+    await settle();
+    fireEvent.press(screen.getByTestId('capture-source-save'));
+    await settle();
+    await settle();
+    expect(selectorCalls(call)).toEqual([['updateCaptureConfig', { body: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-07', profile: 'H264_720P30' }] } }]]);
+    // The refusal: the shared sentence of the Core's word, not the word in lower case.
+    expect(screen.getByTestId('capture-selector-notice-invalid')).toHaveTextContent(
+      /This camera was not assigned: the chosen stream profile is not one of the profiles stored for this camera\. Choose one of them, then assign it again\./,
+    );
+    expect(screen.getByTestId('capture-selector-notice-invalid')).not.toHaveTextContent(/camera profile not of device/);
+    expect(cameraOf(h, 'VIDEO-01')).toBe('CAM-01');
+  });
+});
 });
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────

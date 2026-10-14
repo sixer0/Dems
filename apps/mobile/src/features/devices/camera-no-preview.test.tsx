@@ -12,7 +12,7 @@ import './testing/devices-test-setup';
 import '@/navigation/testing/router-harness';
 
 import { act, screen, within } from '@testing-library/react-native';
-import type { SimState } from '@dems/shared/sim';
+import { clearCaptureWarningTransition, raiseCaptureWarningTransition, type SimState } from '@dems/shared/sim';
 import { getMissingKeys, i18n, resetMissingKeys } from '@/i18n';
 import { noPreviewFactsOf, noPreviewWords, previewTrackOf, realCaptureView } from './camera-preview';
 import { renderDevicesApp, settle, type DevicesHarness } from './testing/devices-harness';
@@ -93,6 +93,37 @@ describe('the words of the tile: the device and its TRUE state, as the Core sent
   });
   it('a track whose device the list does not hold: no device name, "State not known"', () => {
     expect(noPreviewWords(t, noPreviewFactsOf(stateWith({}, 'CAM-09'), 'VIDEO-01'), true)).toEqual({ device: null, state: 'State not known' });
+  });
+
+  // Task 4 row W5 (review 060d finding Q-01; decision C111). The tile is the tablet's feed of a Core in real capture
+  // (`CameraPreview` of `session-live/live-feed.tsx`). The double: the Core's own raise and clear of a capture warning
+  // (`raiseCaptureWarningTransition` / `clearCaptureWarningTransition`). The format chip of the feed pinned by ruling
+  // D222 (2) (`connecting-meters.test.tsx`) is not touched: the fault is the tile's STATE word.
+  // Seen RED on the mutation "`cameraCaptureFaultOf` answers null for every camera" (the tile's fact is never set).
+  it('W5 (Q-01) - a camera the Core holds an ACTIVE capture fault about says the fault, not "Reachable" or "On"; it reads as before once the Core cleared it', () => {
+    const warning = { code: 'CAPTURE_FAULT', subject: 'CAM-01', reason: 'CAMERA_STREAM_ENDED' } as Parameters<typeof raiseCaptureWarningTransition>[2];
+    for (const [marks, before] of [
+      [{ 'CAM-01': { ...PRODUCTION, checkedAt: 1_791_636_968_000 } as Mark }, 'Reachable'],
+      [{ 'CAM-01': { ...LOCAL, sourceOpen: true } }, 'On'],
+    ] as const) {
+      const state = stateWith(marks);
+      expect(noPreviewWords(t, noPreviewFactsOf(state, 'VIDEO-01'), true).state).toBe(before);
+      const raised = raiseCaptureWarningTransition(state, state.clock.now, warning);
+      // THE PREMISE of the finding changed with row V7 (finding E-01; decisions C113, C115): raising a fault of the camera's
+      // stream family now sets LOST on its selector line in the same transition; the alert is read as before.
+      expect(raised.captureConfig.cameras.find((line) => line.deviceId === 'CAM-01')?.streamState).toBe('LOST');
+      expect(noPreviewFactsOf(raised, 'VIDEO-01')).toMatchObject({ deviceId: 'CAM-01', online: true, fault: 'STREAM_LOST' });
+      expect(noPreviewWords(t, noPreviewFactsOf(raised, 'VIDEO-01'), true).state).toBe('Stream lost');
+      // The other track is not touched.
+      expect(noPreviewFactsOf(raised, 'VIDEO-02').fault).toBeNull();
+      // Another cause about the camera is a fault too, in the general word.
+      const other = raiseCaptureWarningTransition(state, state.clock.now, { ...warning, reason: 'CAMERA_NO_PICTURE' } as unknown as typeof warning);
+      expect(noPreviewWords(t, noPreviewFactsOf(other, 'VIDEO-01'), true).state).toBe('No signal');
+      // The re-open: the Core clears the fault it raised.
+      const cleared = clearCaptureWarningTransition(raised, raised.clock.now, warning);
+      expect(noPreviewFactsOf(cleared, 'VIDEO-01').fault).toBeNull();
+      expect(noPreviewWords(t, noPreviewFactsOf(cleared, 'VIDEO-01'), true).state).toBe(before);
+    }
   });
 });
 

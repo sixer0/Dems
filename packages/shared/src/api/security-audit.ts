@@ -141,6 +141,9 @@ export const SYSTEM_BOOT_SIGNING_STORE_DETAILS_EXAMPLE = Object.freeze({
  * was run or passed - a row with `WILL_BE_ASKED` may be followed by a refused start. Both optional:
  * a development boot asks no host profile by design and states neither, as does every row written
  * before this step. This example: a production Core on a Mac.
+ * Since row NB (decision C139; SM-15) the darwin production row also states `microphonePermission:
+ * 'NOT_KNOWN'` (darwin only): the boot opens no device and does not read the system's privacy
+ * database, so whether the Core may use a microphone is not known at the boot.
  */
 export const SYSTEM_BOOT_HOST_DETAILS_EXAMPLE = Object.freeze({
   captureOperation: 'REAL_PRODUCTION',
@@ -152,6 +155,7 @@ export const SYSTEM_BOOT_HOST_DETAILS_EXAMPLE = Object.freeze({
   signingStoreChange: 'NONE',
   hostPlatform: 'darwin',
   hostProfile: 'WILL_NOT_BE_ASKED',
+  microphonePermission: 'NOT_KNOWN',
 } as const);
 /** The same row without the two members: accepted as before. */
 export const SYSTEM_BOOT_DETAILS_EXAMPLE = Object.freeze({ captureOperation: 'REAL_DEVELOPMENT' } as const);

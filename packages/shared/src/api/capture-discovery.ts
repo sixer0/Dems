@@ -948,6 +948,8 @@ export const SIM_ADOPTED_DEVICE = {
   capabilities: ['VIDEO'],
   adapter: SIM_CAPTURE_ADAPTER,
   sourceClass: CaptureSourceClass.DEVELOPMENT,
+  // Task 4 row V7: a registered camera states its stored profile list; the simulator's camera has none stored.
+  profiles: [],
 } as const satisfies z.output<typeof CaptureDeviceStatusSchema>;
 /** Placeholders only: an example never carries anything that reads like a real credential (E-30). */
 const EXAMPLE_CREDENTIAL = { username: 'USERNAME', secret: 'SECRET' } as const satisfies CaptureCredentialWriteRequest;
@@ -1380,6 +1382,21 @@ export const CAPTURE_READDRESS_EXAMPLES: Readonly<Record<string, OperationExampl
 // asked, and why. Its writer is row 146c.
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
+/**
+ * What a stored-credential connection test found about the camera's STORED stream profiles (task 4
+ * rows PR and V7; decision C117, the ruling on the empty lists). A closed set of two; a test with
+ * nothing to say states neither.
+ *   PROFILES_STORED          the camera held no stored profile and the test stored what its stream states;
+ *   STREAM_PROFILE_DIFFERS   the camera holds stored profiles and its stream now states something
+ *                            else: nothing was stored - a stored statement is never silently replaced.
+ *                            The word is the one of the sealing notice of the same name.
+ */
+export const CaptureDeviceTestProfiles = {
+  PROFILES_STORED: 'PROFILES_STORED',
+  STREAM_PROFILE_DIFFERS: 'STREAM_PROFILE_DIFFERS',
+} as const;
+export type CaptureDeviceTestProfiles = (typeof CaptureDeviceTestProfiles)[keyof typeof CaptureDeviceTestProfiles];
+
 /** Operation 108's answer: the outcome of operation 95 for a registered camera. `deviceId` stands where `candidateId` stood; `authenticated` is always true. */
 export const CaptureDeviceConnectionTestSchema = z
   .strictObject({
@@ -1390,6 +1407,12 @@ export const CaptureDeviceConnectionTestSchema = z
     usableProfileCount: count().describe('Usable media profiles the test read: profiles whose stream is H.264 or HEVC, as the Core judged it. A count: no profile name and no codec text.'),
     failedAttemptsRemaining: count().describe('Refused credentials this host may still see before the lock-out guard closes. The guard is the one of operation 95: a typed and a stored credential count together.'),
     reason: z.enum(CaptureConnectionTestReason).optional().describe('Present only for an AUTHENTICATION_FAILED test in which the credential was NOT sent (see `CaptureConnectionTestReason`).'),
+    profiles: z
+      .enum(CaptureDeviceTestProfiles)
+      .optional()
+      .describe(
+        'What this test found about the STORED stream profiles of the camera (task 4 rows PR, V7; decision C117). `PROFILES_STORED`: the camera held none and the test stored what its stream states - the device entry of the `captureDevices` slice carries them (`profiles`) and the camera can be assigned. `STREAM_PROFILE_DIFFERS`: the camera holds stored profiles and its stream now states something else - NOTHING was stored, the stored statement stands. Absent: nothing to say (the stored and the stated agree, or the test judged no stream). A closed word: no profile code, no count.',
+      ),
   })
   .describe('The outcome of one connection test of a registered camera with its stored credential (task 4, operation 108). No address, no device error text, no URL, no credential member.');
 export type CaptureDeviceConnectionTest = z.output<typeof CaptureDeviceConnectionTestSchema>;
@@ -1419,6 +1442,8 @@ export type CaptureDeviceTestUnreachableReason = (typeof CaptureDeviceTestUnreac
 
 /** The most `usableProfileCount` of CAPTURE_DEVICE_CONNECTION_TESTED can state: a count of judged profiles, never more than a camera's profile list is read to. */
 export const CAPTURE_DEVICE_TEST_AUDIT_PROFILES_MAX = 16;
+/** The most `differingProfileCount` can state (rows PR, V7): every stored code and every stated one differing, 16 and 16. */
+export const CAPTURE_DEVICE_TEST_AUDIT_DIFFERING_MAX = 2 * CAPTURE_DEVICE_TEST_AUDIT_PROFILES_MAX;
 
 export interface CaptureDeviceConnectionTestedFacts {
   deviceId: string;
@@ -1432,18 +1457,45 @@ export interface CaptureDeviceConnectionTestedFacts {
   unreachableReason?: CaptureDeviceTestUnreachableReason | null;
   /** Row V4: the answer's own `usableProfileCount` (a whole number of 0 to 16), when a camera was asked. A count: no profile name, no codec text. */
   usableProfileCount?: number | null;
+  /**
+   * Rows PR, V7 (decision C117): what the test found about the camera's STORED profiles; absent = nothing
+   * to say. With it, and only with it, the three counts: codes stored BEFORE the test, streams the test
+   * judged, and codes that differ (0 for `PROFILES_STORED`). Whole numbers of 0 to 16 (the differing count:
+   * 0 to 32): no code of a stream.
+   */
+  profiles?: CaptureDeviceTestProfiles | null;
+  storedProfileCount?: number | null;
+  statedProfileCount?: number | null;
+  differingProfileCount?: number | null;
   permission?: string | null;
 }
 
 /**
- * `details` of CAPTURE_DEVICE_CONNECTION_TESTED: five required keys and five optional ones (the
+ * `details` of CAPTURE_DEVICE_CONNECTION_TESTED: five required keys and nine optional ones (the
  * closed list of the Core server's `core/audit-details.ts`). A registry id, closed codes, a flag
- * and one count. NEVER a credential, an address, an endpoint reference or text a device announced:
+ * and counts. NEVER a credential, an address, an endpoint reference or text a device announced:
  * the function takes none of them, so no caller can hand one in.
+ *
+ * `profiles` and its three counts (rows PR, V7) stand TOGETHER or not at all: the word needs its
+ * numbers and the numbers mean nothing without the word. A word outside the closed set, or a count
+ * that is no whole number within its bound (16; 32 for the differing count), drops all four - never
+ * a part of the statement. (A count beyond its bound can come from a stored list longer than the
+ * Core records with; the Core's writer then says it in its message and its error log.)
  */
 export function captureDeviceConnectionTestedDetails(facts: CaptureDeviceConnectionTestedFacts): AuditDetails {
   const notAsked = facts.outcome === CaptureConnectionOutcome.UNREACHABLE && facts.unreachableReason ? facts.unreachableReason : null;
   const profiles = facts.usableProfileCount;
+  const counted = (value: unknown, most: number): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= most;
+  const { storedProfileCount, statedProfileCount, differingProfileCount } = facts;
+  const storedStatement: AuditDetails =
+    notAsked === null &&
+    facts.profiles != null &&
+    Object.values(CaptureDeviceTestProfiles).includes(facts.profiles) &&
+    counted(storedProfileCount, CAPTURE_DEVICE_TEST_AUDIT_PROFILES_MAX) &&
+    counted(statedProfileCount, CAPTURE_DEVICE_TEST_AUDIT_PROFILES_MAX) &&
+    counted(differingProfileCount, CAPTURE_DEVICE_TEST_AUDIT_DIFFERING_MAX)
+      ? { profiles: facts.profiles, storedProfileCount, statedProfileCount, differingProfileCount }
+      : {};
   return {
     deviceId: facts.deviceId,
     outcome: facts.outcome,
@@ -1455,6 +1507,7 @@ export function captureDeviceConnectionTestedDetails(facts: CaptureDeviceConnect
     ...(notAsked ? { unreachableReason: notAsked } : {}),
     // No camera was asked: there is no count to state, not a count of zero.
     ...(notAsked === null && typeof profiles === 'number' && Number.isSafeInteger(profiles) && profiles >= 0 && profiles <= CAPTURE_DEVICE_TEST_AUDIT_PROFILES_MAX ? { usableProfileCount: profiles } : {}),
+    ...storedStatement,
     ...(facts.permission ? { permission: facts.permission } : {}),
   };
 }

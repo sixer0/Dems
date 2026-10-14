@@ -20,7 +20,7 @@ case "$0" in */*) HW_DIR=${0%/*} ;; *) HW_DIR=. ;; esac
 # shellcheck source=hw-collect-lib.sh
 . "$HW_DIR/hw-collect-lib.sh"
 hw_init "$@"
-criterion 'Same hardware address at the new address inside 180 s: the measured seconds are recorded. Audit entries for the change: at least 1 and as the closing report states. Occurrences of a credential form in the log, the error log and the audit details: 0. Temporary addresses left: 0. The password field is not pre-filled: 2 of 2 readings.'
+criterion 'Same hardware address at the new address inside 180 s: the measured seconds are recorded. Audit entries for the change: 2, one per phase (at least 1; the count seen is recorded). Occurrences of a credential form in the log, the error log and the audit details: 0. Temporary addresses left: 0. The password field is not pre-filled: 2 of 2 readings.'
 case "$HW_MODE" in
   state)
     step '9A/H-14.4' SCRIPT 'the count of addresses on <camera-interface>; the count of mark files; whether the host'"'"'s neighbour table holds the camera'"'"'s hardware address at an address of the camera subnet (it prints "yes" or "no")'

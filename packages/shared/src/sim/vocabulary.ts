@@ -318,6 +318,17 @@ export type CaptureDeviceKind = ValueOf<typeof CaptureDeviceKind>;
 export const CaptureStreamState = { LIVE: 'LIVE', LOST: 'LOST' } as const;
 export type CaptureStreamState = ValueOf<typeof CaptureStreamState>;
 
+/**
+ * The most stored stream profiles one device entry carries (task 4 row V7; `capture-profile.ts`).
+ * The Core's own bound of a stored list (`STORED_PROFILES_MAX` of
+ * `apps/core-server/src/capture/fence/production-parts.ts`): a longer list is no list of a camera
+ * this Core records. Here, with the code form, because the API contract reads its constants from
+ * this file and loads no engine file.
+ */
+export const CAPTURE_DEVICE_PROFILES_MAX = 16;
+/** The form of a profile code (`capture_devices_profiles_code_check`; the contract's machine code). */
+export const CAPTURE_PROFILE_CODE_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/;
+
 export const DiagnosticStatus = {
   PENDING: 'PENDING',
   RUNNING: 'RUNNING',
@@ -487,6 +498,27 @@ export const AuditType = {
   // `apps/core-server/src/core/audit-details.ts`: ids, numbers, the two measured bounds in ms and
   // one closed word - never a locator, a credential or text a device chose.
   CAPTURE_VIDEO_ABSENT_IN_SESSION: 'CAPTURE_VIDEO_ABSENT_IN_SESSION',
+  // Task 4 (row N2; design 06 revision 3, section 8.4; decisions U25 (3), C110, C112 (3)): two
+  // types in ONE change set ahead of their writer (83 -> 85), for a microphone whose capture path
+  // is NOT SAMPLE-CONTINUOUS (the bench path of a Mac). Written by the Core's capture session only;
+  // the simulator emits none. Two types, because an audit detail list is flat and cannot hold a list:
+  //   CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED  THE ACCOUNT, once per such microphone and capture attempt
+  //                                       when that attempt's audio ends: the recorder's own counts
+  //                                       in whole samples - expected, received, inserted, discarded
+  //                                       - or that nothing was measured. SINCE ROW V7 (decision
+  //                                       C119 (1)) ONE ACCOUNT IS TWO ENTRIES of this type, `part` 1
+  //                                       (the source's six numbers, the open run) and `part` 2 (the
+  //                                       track's seven), each within the audit writer's bound of 16
+  //                                       details, both stating the session, the attempt and the path,
+  //                                       joined on session, microphone and attempt. One part alone
+  //                                       is no account;
+  //   CAPTURE_AUDIO_SILENCE_INSERTED     ONE LISTED RUN of inserted silence of 100 ms or more, written
+  //                                       when the worker reports it: where it starts on the track's
+  //                                       own timeline and how long it is.
+  // Each has an exact detail-key list in `apps/core-server/src/core/audit-details.ts`: ids, whole
+  // numbers and closed words - never device text, card text, a file name or a percentage.
+  CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED: 'CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED',
+  CAPTURE_AUDIO_SILENCE_INSERTED: 'CAPTURE_AUDIO_SILENCE_INSERTED',
 } as const;
 export type AuditType = ValueOf<typeof AuditType>;
 
@@ -589,6 +621,10 @@ export const AUDIT_TYPE_CATEGORY = {
   // Task 4 (row R1b): one entry, in an EXISTING category - DEVICE, as the audio gap and the capture
   // device faults (`MIC_SILENT`, `CAPTURE_DEVICE_UNREACHABLE`).
   CAPTURE_VIDEO_ABSENT_IN_SESSION: 'DEVICE',
+  // Task 4 (row N2): two entries, each in an EXISTING category - DEVICE, as the audio gap and the
+  // video absence.
+  CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED: 'DEVICE',
+  CAPTURE_AUDIO_SILENCE_INSERTED: 'DEVICE',
 } as const satisfies Record<AuditType, AuditCategory>;
 
 // ── Operational events (Recent Events, bell, timeline sources) ──────────────────────────

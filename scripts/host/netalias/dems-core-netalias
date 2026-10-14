@@ -735,6 +735,18 @@ def add(quad, minutes, call):
     verdict = conflict_verdict(status, output, interface, quad)
     if verdict != "FREE":
         raise Refusal(verdict)
+    # The conflict check took seconds, and its program prints "free" on a port that lost its
+    # carrier while it asked. The host is read once more, after the check and before the mark:
+    # the port must still be one that can be asked, and the address and its /24 must still be
+    # nobody's. What changes between this read and the kernel's add is not seen by this helper.
+    addresses, flags = host_state()
+    if any(held == quad for _, held, _, _ in addresses):
+        raise Refusal("ADDRESS_ALREADY_PRESENT")
+    if any(name != interface and overlaps_slash24(quad, held, length) for name, held, length, _ in addresses):
+        raise Refusal("OTHER_INTERFACE_HOLDS_SUBNET")
+    if any(name == interface and overlaps_slash24(quad, held, length) for name, held, length, _ in addresses):
+        raise Refusal("CAMERA_INTERFACE_HOLDS_SUBNET")
+    refuse_unless_askable(interface, flags)
     seconds = str(minutes * 60)
     write_mark(quad, interface, minutes)
     status, _ = run_tool(
@@ -758,8 +770,11 @@ def delete(quad, call):
     if quad not in standing_marks(interface, addresses):
         # The mark is dropped. An address that is there all the same is not the one this helper
         # added (its mark is past its lifetime, or the kernel shows a longer lifetime or none):
-        # it is not removed. No address there: what was asked is already so.
-        if on_camera_interface(addresses, interface, quad):
+        # it is not removed. "Already so" is said only of an address NO interface of the host holds:
+        # one that is still on another interface (the mark was written for the interface the file
+        # named then), or on this one with another prefix, is still there, and the caller reads
+        # an answer of 0 as "gone".
+        if any(held == quad for _, held, _, _ in addresses):
             raise Refusal("NOT_MARKED")
         call.note = "already-absent"
         return

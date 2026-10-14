@@ -3,7 +3,8 @@
 // to hand-written host facts (`stored-address-cases.ts`).
 import { describe, expect, it } from 'vitest';
 import { CaptureAdapterKind } from '../../kinds';
-import { ONVIF_DEVICE_SERVICE_PATH, StoredCameraRefusal, isSourceAddress, judgeStoredCamera, storedCameraCandidate, storedCameraSourceOf, type StoredCameraAddressRule } from '../stored-address';
+import { DestinationPurpose, decideDestination } from '../../../destination-rule';
+import { ONVIF_DEVICE_SERVICE_DEFAULT_PORT, ONVIF_DEVICE_SERVICE_PATH, StoredCameraRefusal, isSourceAddress, judgeStoredCamera, storedCameraCandidate, storedCameraSourceOf, type StoredCameraAddressRule } from '../stored-address';
 import { ADMITTED_HOST, GATE_CLASSES, HOST_FACTS, REAL_RULE, REFUSED_STORED_ADDRESSES, storedCameraAt } from './stored-address-cases';
 
 /** Row 143b: an admission of the real rule names the ONE camera-interface address of the hand-written host facts as the source. */
@@ -149,5 +150,37 @@ describe('the judgement of a stored camera (AD-02 (1))', () => {
     for (const rule of failing) expect(judgeStoredCamera(camera, rule as StoredCameraAddressRule)).toEqual({ allowed: false, refusal: 'STORED_ADDRESS_RULE_FAILED' });
     // Nothing of the address is in a refusal.
     for (const entry of REFUSED_STORED_ADDRESSES) expect(JSON.stringify(judgeStoredCamera(entry.candidate, REAL_RULE)).includes(entry.candidate.host === '' ? ADMITTED_HOST : entry.candidate.host)).toBe(false);
+  });
+});
+
+// Decision C127 (security review 086 caution C-3, finding S-04): THE PORT HALF. The port DIALLED - the service
+// address's own, or 80 (`http:`) when it names none - must be in the stored list of allowed ONVIF ports.
+describe('C127 / S-04: the port dialled is a member of the stored allowed list', () => {
+  const ruleWith = (allowedPorts: readonly number[]): StoredCameraAddressRule => (host, port) =>
+    decideDestination({ purpose: DestinationPurpose.STORED_CAMERA, address: host, ...(port === undefined ? {} : { port }) }, { ...HOST_FACTS, allowedPorts });
+
+  it('the default port of a service address that names none is the `http:` one, 80', () => {
+    expect(ONVIF_DEVICE_SERVICE_DEFAULT_PORT).toBe(80);
+  });
+
+  it('list [80] admits 80 (named or not); list [8080] refuses 80 (named or not) and admits 8080; list [8080, 80] admits both', () => {
+    // SEEN RED: `?? ONVIF_DEVICE_SERVICE_DEFAULT_PORT` -> `?? 8080` (the [80] cases); the second ask removed (`PORT_NOT_LISTED` -> `STORED_ADDRESS_PORT_MISMATCH`, and [8080, 80] host-only refused).
+    expect(judgeStoredCamera(storedCameraAt(ADMITTED_HOST), ruleWith([80]))).toEqual(ADMITTED_FROM_THE_CAMERA_INTERFACE);
+    expect(judgeStoredCamera(storedCameraAt(ADMITTED_HOST, 80), ruleWith([80]))).toEqual(ADMITTED_FROM_THE_CAMERA_INTERFACE);
+    expect(judgeStoredCamera(storedCameraAt(ADMITTED_HOST), ruleWith([8080]))).toEqual({ allowed: false, refusal: 'PORT_NOT_LISTED' });
+    expect(judgeStoredCamera(storedCameraAt(ADMITTED_HOST, 80), ruleWith([8080]))).toEqual({ allowed: false, refusal: 'PORT_NOT_LISTED' });
+    expect(judgeStoredCamera(storedCameraAt(ADMITTED_HOST, 8080), ruleWith([8080]))).toEqual(ADMITTED_FROM_THE_CAMERA_INTERFACE);
+    expect(judgeStoredCamera(storedCameraAt(ADMITTED_HOST), ruleWith([8080, 80]))).toEqual(ADMITTED_FROM_THE_CAMERA_INTERFACE);
+    expect(judgeStoredCamera(storedCameraAt(ADMITTED_HOST, 8080), ruleWith([8080, 80]))).toEqual(ADMITTED_FROM_THE_CAMERA_INTERFACE);
+    expect(judgeStoredCamera(storedCameraAt(ADMITTED_HOST, 554), ruleWith([8080, 80]))).toEqual({ allowed: false, refusal: 'PORT_NOT_LISTED' });
+  });
+
+  it('an admission that states another port than the one dialled is STORED_ADDRESS_PORT_MISMATCH, whatever was asked', () => {
+    // SEEN RED: the comparison of `destination.port` with the dialled port removed (both cases admitted).
+    const admits8080: StoredCameraAddressRule = (host) => ({ allowed: true, destination: { address: host, sourceAddress: '192.168.50.1', port: 8080 } });
+    expect(StoredCameraRefusal.PORT_MISMATCH).toBe('STORED_ADDRESS_PORT_MISMATCH');
+    expect(judgeStoredCamera(storedCameraAt(ADMITTED_HOST), admits8080)).toEqual({ allowed: false, refusal: 'STORED_ADDRESS_PORT_MISMATCH' });
+    expect(judgeStoredCamera(storedCameraAt(ADMITTED_HOST, 554), admits8080)).toEqual({ allowed: false, refusal: 'STORED_ADDRESS_PORT_MISMATCH' });
+    expect(judgeStoredCamera(storedCameraAt(ADMITTED_HOST, 8080), admits8080)).toEqual(ADMITTED_FROM_THE_CAMERA_INTERFACE);
   });
 });

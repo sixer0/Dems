@@ -133,7 +133,8 @@ describe('the pinned ONVIF client (onvif-session.ts) with the guard ON', () => {
   });
 
   it('a connection test against the stub on 127.0.0.1 is REACHABLE: every connection was handed on, none refused', async () => {
-    const result = await createOnvifConnectionTester({ timers }).test(candidate(stub.addresses().deviceServiceUrl), sealCredential(ACCOUNT), new AbortController().signal);
+    // Finding E-02 (review 60e): the source address is stated - `undefined`, as the host routes (a candidate on loopback, no stored camera).
+    const result = await createOnvifConnectionTester({ timers }).test(candidate(stub.addresses().deviceServiceUrl), sealCredential(ACCOUNT), new AbortController().signal, undefined);
     expect(result.outcome).toBe(ConnectionTestOutcome.REACHABLE);
     expect(guard.refused()).toEqual([]);
     expect(guard.connections().length).toBeGreaterThan(0);
@@ -143,7 +144,7 @@ describe('the pinned ONVIF client (onvif-session.ts) with the guard ON', () => {
 
   it('the same client aimed at another host never leaves the process: the guard refuses it and the stub hears nothing', async () => {
     const elsewhere = `http://${FAKE_ONVIF_FOREIGN_HOST}:${new URL(stub.addresses().deviceServiceUrl).port}/onvif/device_service`;
-    const result = await createOnvifConnectionTester({ timers }).test(candidate(elsewhere, FAKE_ONVIF_FOREIGN_HOST), sealCredential(ACCOUNT), new AbortController().signal).then(
+    const result = await createOnvifConnectionTester({ timers }).test(candidate(elsewhere, FAKE_ONVIF_FOREIGN_HOST), sealCredential(ACCOUNT), new AbortController().signal, undefined).then(
       (value) => value.outcome as string,
       () => 'REJECTED',
     );

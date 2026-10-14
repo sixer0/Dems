@@ -306,6 +306,27 @@ describe('capture_devices: a device the state holds no transport for keeps the r
     // The built-in pair is what the seed states, unchanged.
     expect(back.filter((device) => device.id === 'MIC-01' || device.id === 'MIC-02').map((device) => device.capabilities)).toEqual([['AUDIO'], ['AUDIO']]);
   });
+
+  // Task 4 row V7 (decisions C36, C117; the blocking request lines of row W5): the profile list a camera's row holds
+  // comes back on its device entry. MUTATION SEEN RED: `captureDeviceFromRow` without the `profiles` member.
+  it('row V7: a registered camera reads back with the profile list its row holds, each code with what it states; an empty or unreadable list is an empty list; the engine never writes the column', () => {
+    const CAMERA = { id: 'CAM-03', kind: 'CAMERA', model: null, firmware: null, host: '192.0.2.10', poePort: null, online: true, streamState: null, capabilities: ['VIDEO'], adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION' };
+    const LISTED = [{ code: 'HEVC_2560X1920P', codec: 'HEVC', resolution: '2560x1920', fps: null }, { code: 'H264_720P30', codec: 'H.264', resolution: '720p', fps: 30 }];
+    const state = { ...base, captureDevices: { devices: [...base.captureDevices.devices, { ...CAMERA, profiles: LISTED }] } } as unknown as SimState;
+    const written = asStored(toRows(state, context));
+    // The engine's row keeps the empty form whatever the entry lists: the adoption's own statement is the one writer.
+    expect(written.captureDevices.find((row) => row.id === 'CAM-03')?.profiles).toEqual([]);
+    const withList = (profiles: unknown) => ({ ...written, captureDevices: written.captureDevices.map((row) => (row.id === 'CAM-03' ? { ...row, profiles } : row)) });
+    const cameraOf = (profiles: unknown) => fromRows(withList(profiles)).captureDevices.devices.find((device) => device.id === 'CAM-03');
+    expect(cameraOf(['HEVC_2560X1920P', 'H264_720P30'])).toEqual({ ...CAMERA, profiles: LISTED });
+    expect(cameraOf([])).toEqual({ ...CAMERA, profiles: [] });
+    // A stored value that is no list of codes within the bound states nothing: never cut, never cleaned, no refusal of the rehydration.
+    for (const stored of [['hevc_1080p'], ['HEVC_1080P', 'HEVC_1080P'], 'HEVC_1080P', null, Array.from({ length: 17 }, (_, index) => `H264_${String(100 + index)}P`)]) {
+      expect(cameraOf(stored)?.profiles, JSON.stringify(stored)).toEqual([]);
+    }
+    // The built-in devices, the microphones and the switch state no member, as before.
+    expect(fromRows(withList(['HEVC_1080P'])).captureDevices.devices.filter((device) => Object.hasOwn(device, 'profiles')).map((device) => device.id)).toEqual(['CAM-03']);
+  });
 });
 
 // Fix F-M4 (review row 69, finding R69-03): the stored registry becomes the device list through the
@@ -460,5 +481,27 @@ describe('capture_config: an unassigned slot is NULL in the row and an absent li
     expect(half({ video01DeviceId: null, video01Profile: null, video02Profile: 'h264-1080p25' })).toThrowError(expect.objectContaining({ code: 'ROW_SHAPE', place:'capture_config.video_02_profile' }));
     // Control: the same hand-written form with a whole NULL slot is read.
     expect(half({ video01DeviceId: null, video01Profile: null })().captureConfig.cameras.map((line) => line.trackId)).toEqual(['VIDEO-02']);
+  });
+});
+
+// Task 4 row V7c (decision C126 (b)): a restart reads no stream - the selector line of a REGISTERED camera comes back NOT READ
+// (null), as its registry entry does, whatever the engine held before; the built-in cameras keep the model's value from `enabled`.
+describe('capture_config: a registered camera\'s line comes back NOT READ (row V7c)', () => {
+  it('a line the engine held LIVE comes back null, as the entry; CONTROL: the built-in CAM-01 comes back LIVE, and LOST when its row is disabled', () => {
+    const base = idle();
+    const REGISTERED = { id: 'CAM-07', kind: 'CAMERA', model: null, firmware: null, host: '192.0.2.17', poePort: null, online: true, streamState: 'LIVE', capabilities: ['VIDEO'], adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', profiles: [] };
+    const read = {
+      ...base,
+      captureDevices: { devices: [...base.captureDevices.devices.map((device) => (device.id === 'CAM-01' ? { ...device, online: false, streamState: 'LOST' } : device)), REGISTERED] },
+      captureConfig: { ...base.captureConfig, cameras: base.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-02' ? { ...line, deviceId: 'CAM-07', streamState: 'LIVE' } : line)) },
+    } as unknown as SimState;
+    const back = fromRows(asStored(toRows(read, context)));
+    expect(back.captureConfig.cameras.map((line) => [line.trackId, line.deviceId, line.online, line.streamState])).toEqual([
+      ['VIDEO-01', 'CAM-01', false, 'LOST'],
+      ['VIDEO-02', 'CAM-07', true, null],
+    ]);
+    expect(back.captureDevices.devices.find((device) => device.id === 'CAM-07')?.streamState).toBeNull();
+    // CONTROL: the seeded selector of the built-in pair reads back LIVE, the demonstration model's value.
+    expect(fromRows(asStored(toRows(base, context))).captureConfig.cameras.map((line) => line.streamState)).toEqual(['LIVE', 'LIVE']);
   });
 });

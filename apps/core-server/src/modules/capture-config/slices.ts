@@ -68,6 +68,20 @@ export class CaptureSliceError extends Error {
   }
 }
 
+/**
+ * The ids of the five built-in devices of the demonstration model (`dbc-3 §E.3`). Task 4 row V7d
+ * (decisions C126 (b), C141): only their cameras state `LIVE` / `LOST` from the registry flag - the
+ * model's value; a REGISTERED camera states null (NOT READ) at rest, since no builder here reads a
+ * stream. The same derivation as the row layer's (`db/mapping/rows.ts` `BUILT_IN_CAPABILITIES`).
+ */
+const BUILT_IN_DEVICE_IDS: ReadonlySet<string> = new Set(DEFAULT_CAPTURE_DEVICES.devices.map((device) => device.id));
+
+/** A camera's stream state at rest, as these builders state it: the model's for a built-in camera, NOT READ (null) for any other. */
+function streamStateAtRest(device: CaptureDeviceRecord): 'LIVE' | 'LOST' | null {
+  if (!BUILT_IN_DEVICE_IDS.has(device.id)) return null;
+  return device.enabled ? 'LIVE' : 'LOST';
+}
+
 /** The built-in selector with its live `locked` flag (the baseline constant pins `locked: false`). */
 export function baselineCaptureConfig(locked: boolean): CaptureConfigSliceBody {
   return { ...DEFAULT_CAPTURE_CONFIG, locked };
@@ -122,7 +136,7 @@ export function captureConfigSliceOf(config: CaptureConfigRecord | null, devices
     if (device === undefined || device.kind !== 'CAMERA') {
       throw new CaptureSliceError('CAPTURE_DEVICE_UNKNOWN', 'the selector names a camera the registry does not hold', { trackId, deviceId });
     }
-    return [{ trackId, deviceId, profile, online: device.enabled, streamState: device.enabled ? ('LIVE' as const) : ('LOST' as const) }];
+    return [{ trackId, deviceId, profile, online: device.enabled, streamState: streamStateAtRest(device) }];
   };
   const mic = (deviceId: string | null, role: 'PRIMARY' | 'STANDBY'): MicLine[] => {
     if (deviceId === null) return [];
@@ -161,7 +175,7 @@ export function captureDevicesSliceOf(devices: readonly CaptureDeviceRecord[]): 
         host: device.address,
         poePort: device.poePort,
         online: device.enabled,
-        streamState: device.kind === 'CAMERA' ? (device.enabled ? ('LIVE' as const) : ('LOST' as const)) : null,
+        streamState: device.kind === 'CAMERA' ? streamStateAtRest(device) : null,
         capabilities: [],
       })),
   };

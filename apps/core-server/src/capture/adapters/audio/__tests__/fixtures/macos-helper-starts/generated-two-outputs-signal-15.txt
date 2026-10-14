@@ -1,0 +1,30 @@
+FIXTURE  generated-two-outputs-signal-15
+BASIS    GENERATED_SOURCE_VERBATIM
+SOURCE   row N4b part A, the run "two sections, ordered stop" (test/n4b_helper_rows_run.md s3; kept whole in .cache/task4-n4b/numbers_A_two_sigterm.json, 24 lines): the pinned build, the product's 55-word list with only "-f avfoundation -i none:0" replaced by a generated six-channel source, SIGTERM 3.0 s after the first data, exit status 255. NO DEVICE
+NOTE     the input is not the capture layer: its header and its stream line (pcm_f64le, dbl, no start value) are not the device's forms
+CHANGED  the two pipe paths are synthetic (the number file prints <work>/run/...). The pointers are the run's own
+--- helper standard error ---
+Input #0, lavfi, from 'aevalsrc=exprs=(n+0)/8388608|(n+1048576)/8388608|(n+2097152)/8388608|(n+3145728)/8388608|(n+4194304)/8388608|(n+5242880)/8388608:s=48000:c=5.1:n=512:d=8':
+  Duration: N/A, start: 0.000000, bitrate: 18432 kb/s
+  Stream #0:0: Audio: pcm_f64le, 48000 Hz, 5.1, dbl, 18432 kb/s
+Stream mapping:
+  Stream #0:0 -> #0:0 (pcm_f64le (native) -> pcm_f32le (native))
+  Stream #0:0 -> #1:0 (pcm_f64le (native) -> pcm_f32le (native))
+[Parsed_pan_0 @ 0x7561019440] Pure channel mapping detected: 0
+[Parsed_pan_0 @ 0x7561019500] Pure channel mapping detected: 2
+Output #0, fifo, to '/synthetic/run/MIC-01.pcm':
+  Metadata:
+    encoder         : Lavf63.1.102
+  Stream #0:0: Audio: pcm_f32le, 48000 Hz, mono, flt, 1536 kb/s
+    Metadata:
+      encoder         : Lavc63.1.102 pcm_f32le
+Output #1, fifo, to '/synthetic/run/MIC-02.pcm':
+  Metadata:
+    encoder         : Lavf63.1.102
+  Stream #1:0: Audio: pcm_f32le, 48000 Hz, mono, flt, 1536 kb/s
+    Metadata:
+      encoder         : Lavc63.1.102 pcm_f32le
+[out#0/fifo @ 0x7561018600] video:0KiB audio:564KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
+[out#1/fifo @ 0x7561018cc0] video:0KiB audio:564KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
+size=N/A time=00:00:03.00 bitrate=N/A speed=0.999x elapsed=0:00:03.01    
+Exiting normally, received signal 15.

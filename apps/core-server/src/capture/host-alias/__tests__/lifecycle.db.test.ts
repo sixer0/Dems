@@ -39,8 +39,9 @@ import {
   type HostAliasStore,
   type HostAliasTransport,
 } from '../index';
+import { HOST_ALIAS_NOT_CONFIRMED_MESSAGES } from '../journal';
 
-const db = useTestDatabase({ template: 'seed', slug: 'row106' });
+const db =useTestDatabase({ template: 'seed', slug: 'row106' });
 const dataDir = mkdtempSync(join(tmpdir(), 'dems-row106-db-'));
 const logDir = mkdtempSync(join(tmpdir(), 'dems-row106-log-'));
 
@@ -99,12 +100,23 @@ function hostOf(app: GuardApp['app']): HostAliasHost {
   };
 }
 
+/** Row HA: every timer a lifecycle of this file armed and did not cancel - its delay and its callback. Only the row HA cases fire one. */
+const armedTimers: { delayMs: number; callback: () => void; cancelled: boolean }[] = [];
+
 function lifecycle(store?: HostAliasStore): HostAliasLifecycle {
   return createHostAliasLifecycle({
     transport,
     host: hostOf(guard.app),
     sources: { network: () => network, storedInterface: () => INTERFACE, fileInterface: () => INTERFACE },
-    timers: { after: () => () => undefined },
+    timers: {
+      after: (delayMs, callback) => {
+        const timer = { delayMs, callback, cancelled: false };
+        armedTimers.push(timer);
+        return () => {
+          timer.cancelled = true;
+        };
+      },
+    },
     ...(store === undefined ? {} : { store }),
   });
 }
@@ -280,6 +292,161 @@ describe('the alias lifecycle as the runtime role, on the real table and the rea
       expect(rows[1]).toMatchObject({ type: 'HOST_ALIAS_REMOVED', actorId: null, details: { address: OTHER, removeReason: 'BOOT_SWEEP' } });
       expect('aliasId' in (rows[1]?.details ?? {})).toBe(false);
       expect(reports).toEqual([]);
+    } finally {
+      network = NETWORK;
+    }
+    expect((await stored()).filter((row) => row['open'] === true)).toEqual([]);
+  });
+});
+
+// Row HA (wave 12; caution R119c-01 of statement 119c; decisions C114 F-1 / F-9, C122). The helper answers `NOT_MARKED`
+// to a `del` when it cannot say the address is gone. On the REAL table and the REAL audit writer: the result entry is
+// HOST_ALIAS_REMOVE_FAILED with `failureReason: HELPER_NOT_MARKED` (admitted by the closed list of that type: `failureReason`
+// is a code), never HOST_ALIAS_REMOVED; the row is closed by the table's own statement; one intent and one result per action.
+// THE HELPER IS THE DOUBLE of this file. SEEN RED, each case, on mutation M1 of `lifecycle.test.ts` (journal.ts: `NOT_MARKED`
+// with a row counted as removed again) and on M2 (the row not closed): 3 of the 3 cases below, one run per mutant.
+describe('a removal the helper answers NOT_MARKED, as the runtime role: not recorded as removed (caution R119c-01)', () => {
+  const HELD_ELSEWHERE = (address: string): DestinationContext => ({ ...NETWORK, hostAddresses: [...NETWORK.hostAddresses, address] });
+  const NOT_CONFIRMED = { ok: true, removed: true, confirmed: false };
+  const retriesArmed = (from: number): number[] => armedTimers.slice(from).filter((timer) => !timer.cancelled && timer.delayMs === 60_000).map((timer) => timer.delayMs);
+
+  it('`0 OK` then NOT_MARKED on one Core - a job\'s release while another interface still holds the address (finding F-1), then the shutdown: REMOVED only for `0 OK`; the rows closed; no retry; the next add not held back', async () => {
+    const from = (await trail()).length;
+    const timersFrom = armedTimers.length;
+    const known = new Set((await stored()).map((row) => row['id']));
+    const fresh = async (): Promise<Record<string, unknown>[]> => (await stored()).filter((row) => !known.has(row['id']));
+    reports.length = 0;
+    const life = lifecycle();
+    try {
+      // The control: answered `0 OK`, the entry is HOST_ALIAS_REMOVED, as before.
+      answers.push(pair('OK'), pair('OK'));
+      await add(life);
+      network = HELD_ELSEWHERE(ALIAS);
+      await expect(life.release({ removeReason: 'JOB_DONE', actor: ACTOR })).resolves.toEqual({ ok: true, removed: true });
+      expect(typesOf(await since(from))).toEqual(['HOST_ALIAS_REQUESTED:ADD', 'HOST_ALIAS_ADDED', 'HOST_ALIAS_REQUESTED:REMOVE', 'HOST_ALIAS_REMOVED']);
+      expect(reports).toEqual([]);
+      for (const row of await fresh()) known.add(row['id']);
+      network = NETWORK;
+
+      // The same removal answered NOT_MARKED while the host still holds the address on another interface.
+      const second = (await trail()).length;
+      answers.push(pair('OK'), pair('NOT_MARKED'));
+      const got = await add(life);
+      const aliasId = got.ok ? got.alias.aliasId : '';
+      network = HELD_ELSEWHERE(ALIAS);
+      await expect(life.release({ removeReason: 'JOB_DONE', actor: ACTOR })).resolves.toEqual(NOT_CONFIRMED);
+      const rows = await since(second);
+      expect(typesOf(rows)).toEqual(['HOST_ALIAS_REQUESTED:ADD', 'HOST_ALIAS_ADDED', 'HOST_ALIAS_REQUESTED:REMOVE', 'HOST_ALIAS_REMOVE_FAILED']);
+      expect(rows[3]).toMatchObject({
+        type: 'HOST_ALIAS_REMOVE_FAILED',
+        severity: 'WARNING',
+        message: HOST_ALIAS_NOT_CONFIRMED_MESSAGES.HELD,
+        actorId: TECHNICIAN.id,
+        details: { aliasId, address: ALIAS, removeReason: 'JOB_DONE', failureReason: 'HELPER_NOT_MARKED', operationId: 'scanFactoryCameras', permission: 'CAPTURE_COMMISSION' },
+      });
+      // The closed list of the type took exactly these keys: no other was written.
+      expect(Object.keys(rows[3]?.details ?? {}).sort()).toEqual(['address', 'aliasId', 'failureReason', 'operationId', 'permission', 'removeReason']);
+      // THE ROW IS CLOSED, with the reason the removal was asked with; the code of a failed removal is not on it.
+      expect(await fresh()).toEqual([{ id: aliasId, interface_name: INTERFACE, address: `${ALIAS}/24`, reason: 'FACTORY_SCAN', added_by: TECHNICIAN.id, lifetime_ms: 30 * 60_000, open: false, remove_reason: 'JOB_DONE', removed_by: TECHNICIAN.id, remove_error: null }]);
+      await expect(life.state()).resolves.toBeNull();
+      expect(reports).toEqual([{ code: 'HOST_ALIAS_REMOVAL_NOT_CONFIRMED', facts: { removeReason: 'JOB_DONE', hadRow: true, heldByHost: true } }]);
+      expect(retriesArmed(timersFrom)).toEqual([]);
+      for (const row of await fresh()) known.add(row['id']);
+
+      // THE NEXT ADD IS NOT HELD BACK - by the lifecycle or by the table's index of one open row.
+      network = NETWORK;
+      reports.length = 0;
+      const third = (await trail()).length;
+      answers.push(pair('OK'), pair('NOT_MARKED'));
+      await expect(add(life, OTHER)).resolves.toMatchObject({ ok: true, alias: { address: OTHER } });
+
+      // AT SHUTDOWN, the table of the Core not showing the address: the same entry, INFO, nothing reported, the row closed SHUTDOWN.
+      await expect(life.shutdown()).resolves.toEqual(NOT_CONFIRMED);
+      const last = await since(third);
+      expect(typesOf(last)).toEqual(['HOST_ALIAS_REQUESTED:ADD', 'HOST_ALIAS_ADDED', 'HOST_ALIAS_REQUESTED:REMOVE', 'HOST_ALIAS_REMOVE_FAILED']);
+      expect(last[3]).toMatchObject({ severity: 'INFO', message: HOST_ALIAS_NOT_CONFIRMED_MESSAGES.NOT_SHOWN, actorId: null, details: { address: OTHER, removeReason: 'SHUTDOWN', failureReason: 'HELPER_NOT_MARKED' } });
+      expect(await fresh()).toMatchObject([{ address: `${OTHER}/24`, open: false, remove_reason: 'SHUTDOWN', removed_by: null, remove_error: null }]);
+      expect(reports).toEqual([]);
+      expect(retriesArmed(timersFrom)).toEqual([]);
+      expect((await since(from)).filter((row) => row.type === 'HOST_ALIAS_REMOVED')).toHaveLength(1);
+    } finally {
+      network = NETWORK;
+    }
+  });
+
+  it('AT THE TIMER: the lifetime timer fires, the helper answers NOT_MARKED - one EXPIRED pair ending in HOST_ALIAS_REMOVE_FAILED, the row closed EXPIRED by nobody, no retry armed', async () => {
+    const from = (await trail()).length;
+    const timersFrom = armedTimers.length;
+    const known = new Set((await stored()).map((row) => row['id']));
+    reports.length = 0;
+    answers.push(pair('OK'), pair('NOT_MARKED'));
+    const life = lifecycle();
+    const got = await add(life);
+    const aliasId = got.ok ? got.alias.aliasId : '';
+    const lifetime = armedTimers.slice(timersFrom).filter((timer) => !timer.cancelled);
+    expect(lifetime.map((timer) => timer.delayMs)).toEqual([30 * 60_000]);
+    network = HELD_ELSEWHERE(ALIAS);
+    try {
+      lifetime[0]?.callback();
+      await expect.poll(async () => (await stored()).filter((row) => row['id'] === aliasId).map((row) => row['open']), { timeout: 5_000 }).toEqual([false]);
+      const rows = await since(from);
+      expect(typesOf(rows)).toEqual(['HOST_ALIAS_REQUESTED:ADD', 'HOST_ALIAS_ADDED', 'HOST_ALIAS_REQUESTED:REMOVE', 'HOST_ALIAS_REMOVE_FAILED']);
+      expect(rows.slice(2).map((row) => [row.actorId, row.details['removeReason'], row.details['aliasId']])).toEqual([[null, 'EXPIRED', aliasId], [null, 'EXPIRED', aliasId]]);
+      expect(rows[3]).toMatchObject({ severity: 'WARNING', details: { address: ALIAS, failureReason: 'HELPER_NOT_MARKED' } });
+      expect((await stored()).filter((row) => !known.has(row['id']))).toMatchObject([{ id: aliasId, open: false, remove_reason: 'EXPIRED', removed_by: null, remove_error: null }]);
+      await expect.poll(() => reports, { timeout: 5_000 }).toEqual([{ code: 'HOST_ALIAS_REMOVAL_NOT_CONFIRMED', facts: { removeReason: 'EXPIRED', hadRow: true, heldByHost: true } }]);
+      expect(retriesArmed(timersFrom)).toEqual([]);
+    } finally {
+      network = NETWORK;
+    }
+    answers.push(pair('OK'), pair('OK'));
+    await expect(add(life, OTHER)).resolves.toMatchObject({ ok: true });
+    await expect(life.release({ removeReason: 'JOB_DONE', actor: ACTOR })).resolves.toEqual({ ok: true, removed: true });
+  });
+
+  it('AT THE BOOT SWEEP, with a row and without one: each `del` answered NOT_MARKED is one BOOT_SWEEP pair ending in HOST_ALIAS_REMOVE_FAILED; the row is closed; the row-less result names no row', async () => {
+    const from = (await trail()).length;
+    const timersFrom = armedTimers.length;
+    const sent = lines.length;
+    reports.length = 0;
+    // A Core that "died" after the line of its add left: the intent and an open row stay.
+    void add(lifecycle());
+    await expect.poll(() => lines.length, { timeout: 5_000 }).toBe(sent + 1);
+    const open = (await stored()).filter((row) => row['open'] === true);
+    expect(open).toMatchObject([{ address: `${ALIAS}/24` }]);
+    // The next boot: the camera interface holds an address of the alias class the Core has no row of.
+    network = { ...NETWORK, cameraAddresses: [...NETWORK.cameraAddresses, { address: OTHER, alias: true }], hostAddresses: [...NETWORK.hostAddresses, OTHER] };
+    try {
+      answers.push(pair('NOT_MARKED'), pair('NOT_MARKED'));
+      const report = await lifecycle().boot();
+      expect(report).toEqual({
+        stateRead: true,
+        interfaceTableRead: true,
+        stillOpen: false,
+        swept: [
+          { address: ALIAS, hadRow: true, attempted: true, effect: 'NOT_DONE', refusal: 'HELPER_NOT_MARKED', resultRecorded: true },
+          { address: OTHER, hadRow: false, attempted: true, effect: 'NOT_DONE', refusal: 'HELPER_NOT_MARKED', resultRecorded: true },
+        ],
+      });
+      expect(lines.slice(sent)).toEqual([`add ${ALIAS}/24 30\n`, `del ${ALIAS}/24\n`, `del ${OTHER}/24\n`]);
+      const rows = await since(from);
+      expect(typesOf(rows)).toEqual(['HOST_ALIAS_REQUESTED:ADD', 'HOST_ALIAS_REQUESTED:REMOVE', 'HOST_ALIAS_REMOVE_FAILED', 'HOST_ALIAS_REQUESTED:REMOVE', 'HOST_ALIAS_REMOVE_FAILED']);
+      // With the row: its id on both entries; the table of the Core does not show the address: INFO.
+      expect(rows.slice(1, 3).map((row) => [row.actorId, row.details['removeReason'], row.details['aliasId'], row.details['address']])).toEqual([
+        [null, 'BOOT_SWEEP', open[0]?.['id'], ALIAS],
+        [null, 'BOOT_SWEEP', open[0]?.['id'], ALIAS],
+      ]);
+      expect(rows[2]).toMatchObject({ severity: 'INFO', message: HOST_ALIAS_NOT_CONFIRMED_MESSAGES.NOT_SHOWN, details: { failureReason: 'HELPER_NOT_MARKED' } });
+      expect((await stored()).filter((row) => row['id'] === open[0]?.['id'])).toMatchObject([{ open: false, remove_reason: 'BOOT_SWEEP', removed_by: null, remove_error: null }]);
+      // Without a row: neither entry names one; the camera interface still holds the address: a warning, and it is reported.
+      expect(rows.slice(3).map((row) => ['aliasId' in row.details, row.details['address'], row.details['removeReason']])).toEqual([
+        [false, OTHER, 'BOOT_SWEEP'],
+        [false, OTHER, 'BOOT_SWEEP'],
+      ]);
+      expect(rows[4]).toMatchObject({ severity: 'WARNING', message: HOST_ALIAS_NOT_CONFIRMED_MESSAGES.HELD, actorId: null, details: { failureReason: 'HELPER_NOT_MARKED' } });
+      expect(reports).toEqual([{ code: 'HOST_ALIAS_REMOVAL_NOT_CONFIRMED', facts: { removeReason: 'BOOT_SWEEP', hadRow: false, heldByHost: true } }]);
+      expect(rows.some((row) => row.type === 'HOST_ALIAS_REMOVED')).toBe(false);
+      expect(retriesArmed(timersFrom)).toEqual([]);
     } finally {
       network = NETWORK;
     }

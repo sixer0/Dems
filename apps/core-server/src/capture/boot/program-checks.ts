@@ -51,6 +51,13 @@
  *
  * Told nothing about the socket (a caller from before this row): it counts as there, so every file is
  * demanded as before.
+ *
+ * ROW NB (design 06 revision 3, row N13; decision C135 (1)): A FIFTH CHECK, ON `darwin` ONLY. The listing of
+ * USB microphones on macOS runs two SYSTEM programs by fixed paths (row N4's table, rows L1 and L2). Each is
+ * held to the path rule of check 2 of `checks.ts` - the one rule the boot holds the worker, the relay and the guard to -
+ * BEFORE any session can run them: a program that fails it refuses the start by
+ * `CAPTURE_HOST_LISTING_PROGRAM_UNUSABLE` with the rule's own word. Nothing is started for it and no listing
+ * is waited for (the boot never runs one). On Linux and on every other platform it adds NO line.
  */
 import type { AliasSocketFinding, CaptureHostRefusal, HostCommand, HostCommandResult, HostCommandRunner } from './host-checks';
 
@@ -66,6 +73,8 @@ export const CaptureProgramRefusal = {
   PROGRAM_ALIAS_GRANT: 'CAPTURE_HOST_ALIAS_GRANT_UNSAFE',
   /** HOST-46: the interface file does not agree with the stored network configuration. */
   PROGRAM_INTERFACE_FILE: 'CAPTURE_HOST_INTERFACE_FILE_MISMATCH',
+  /** Row NB (design 06 row N13), `darwin` only: a system program of the macOS microphone listing fails the path rule of the boot. */
+  PROGRAM_SYSTEM_LISTING: 'CAPTURE_HOST_LISTING_PROGRAM_UNUSABLE',
 } as const;
 export type CaptureProgramRefusal = (typeof CaptureProgramRefusal)[keyof typeof CaptureProgramRefusal];
 
@@ -78,6 +87,7 @@ export const PROGRAM_REFUSAL_TEXT: Readonly<Record<CaptureProgramRefusal, string
   CAPTURE_HOST_ALIAS_HELPER_UNSAFE: `${PRODUCTION}: the file of the address helper is absent, is not a regular file of root, or it or its directory can be written by group or others (item HOST-45; the helper is installed by its own procedure, after its security review). ${REMEDY}`,
   CAPTURE_HOST_ALIAS_GRANT_UNSAFE: `${PRODUCTION}: the directory of the address helper's socket or one of its two unit files is absent, is not root's, or can be written by group or others (item HOST-44). ${REMEDY}`,
   CAPTURE_HOST_INTERFACE_FILE_MISMATCH: `${PRODUCTION}: the interface file of the address helper does not agree with the camera interface of the stored network configuration, or one of the two cannot be read (item HOST-46). The helper would change another interface than the one the Core believes it does. ${REMEDY}`,
+  CAPTURE_HOST_LISTING_PROGRAM_UNUSABLE: `${PRODUCTION} on macOS: one of the two system programs the listing of USB microphones runs (the one that prints the USB tree, the one that prints the audio facts of the system) fails the rule the capture worker is held to - it is absent, is not a regular executable file of root or of the user of the server, or it or a directory on the way to it can be written by group or others. The Core would take the identity, channel count and rate of a microphone from a program it cannot vouch for. The Core checks and never repairs: restore the program of the operating system (a system update), then start again.`,
 });
 
 /** Why a check failed. Fixed words; none is made from an output. */
@@ -174,6 +184,13 @@ export interface DeliveredProgramDeps {
    * counts as there, and every file of the helper is demanded.
    */
   readonly aliasSocket?: AliasSocketFinding;
+  /**
+   * Row NB (design 06 row N13): the SYSTEM programs the macOS microphone listing runs, by their fixed paths - the two literals of
+   * row N4's table, in the order of its rows (L1 the USB tree, L2 the audio facts of the system). Asked on `darwin` only: each is
+   * held to THE PATH RULE handed in (the worker's rule, as the relay is) and NOTHING IS STARTED - the boot never runs a listing
+   * and never waits for one. ABSENT: not asked (a caller from before this member); THE MOUNT ALWAYS HANDS IT IN.
+   */
+  readonly systemListingPrograms?: readonly string[];
 }
 
 /** `ABSENT` (row HC): nothing of the address helper is installed - a fact of the host, not a refusal. */
@@ -321,6 +338,15 @@ export async function deliveredProgramResults(deps: DeliveredProgramDeps, progra
     }
     const reason = stored === undefined || (stored !== null && typeof stored !== 'string') ? ProgramCheckReason.INTERFACE_ROW_UNREADABLE : stored === null ? undefined : await interfaceReason(stored, deps.run);
     add(CaptureProgramRefusal.PROGRAM_INTERFACE_FILE, ['HOST-46'], reason);
+  }
+  // Row NB (design 06 row N13): on `darwin` only, one line per system program of the microphone listing - the path rule alone,
+  // nothing started, nothing waited for. Its item is the row of the design's listing table (L1, L2). No line on any other
+  // platform: the results of Linux are the ones of before this row, line for line.
+  if (deps.platform === 'darwin') {
+    for (const [index, program] of (deps.systemListingPrograms ?? []).entries()) {
+      if (stopped()) return Object.freeze(results);
+      add(CaptureProgramRefusal.PROGRAM_SYSTEM_LISTING, [`L${String(index + 1)}`], programProblem(program));
+    }
   }
   return Object.freeze(results);
 }

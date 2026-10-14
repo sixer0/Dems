@@ -268,8 +268,8 @@ export interface ApiVideoTrack {
    * `null`: the track holds no source - its selector slot is unassigned (task 4 row 165; register E39).
    */
   sourceDeviceId: string | null;
-  /** Schema v2 (C3 §3 ops 44/46; OD-22): LIVE or LOST. */
-  streamState: CaptureStreamState;
+  /** Schema v2 (C3 §3 ops 44/46; OD-22): LIVE or LOST. Null (row V7d; C126 (b)): NOT READ - the selector line says so, or the track has no line. */
+  streamState: CaptureStreamState | null;
   name: string;
   lens: string;
   online: boolean;
@@ -414,12 +414,14 @@ function videoTracks(state: SimState): ApiVideoTrack[] {
     // stream state; a fault that drops the stream flips it to LOST (OD-22 makes op 48 legal then).
     // The line is found BY ITS TRACK. A track without a line has NO source (task 4 row 165; site
     // C23): `null`, never the built-in camera of that track.
+    // Row V7d (C126 (b)): the stream state is the LINE's - null (NOT READ) included - and null for a
+    // track without a line; never the hardware slice's `online` flag in its place.
     const slot = state.captureConfig.cameras.find((entry) => entry.trackId === camera.id);
     return {
       trackId: camera.id,
       deviceId: camera.deviceId,
       sourceDeviceId: slot?.deviceId ?? null,
-      streamState: slot?.streamState ?? (camera.online ? CaptureStreamState.LIVE : CaptureStreamState.LOST),
+      streamState: slot?.streamState ?? null,
       name: camera.name,
       lens: camera.lens,
       online: camera.online,

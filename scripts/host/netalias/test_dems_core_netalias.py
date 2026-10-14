@@ -25,6 +25,35 @@ interface, the member `valid_life_time` of an address and the two record files o
 manager are written here as the helper EXPECTS them. One text was measured (the container of
 test/079): `Interface "lo" is not ARPable` with exit status 0. Where a host prints another form,
 the helper refuses (it never adds on a text it does not know) and check 9A/H-25 shows it.
+
+THE CLOCK OF A MARK'S AGE IS STATED, NEVER THE HOST'S (agent H4, finding B-1 of review 120). The helper
+reads `time.monotonic()`, which starts at boot. A test that writes a mark of some age therefore STATES
+what that clock reads (`bench(clock=...)`, `Bench.clock_reads`); a mark with an age and no stated clock
+fails the test with its reason. Every age case runs on two clocks: the youngest host on which such a
+mark can exist at all, and a host that has been up for a year (`clocks`). The suite gives the same
+result one minute after a boot and a year after it. Until this change the fixture wrote
+`host clock - age`, a NEGATIVE number on a host up for less than that age, which the helper rightly
+reads as no mark: the suite was red in the first 31 minutes after a boot, and the stale-mark cases
+passed there with the age rule taken out of the helper.
+
+HOW THE CLOCK AND THE KERNEL ARE STOOD IN (`STAND_IN`). The helper has no door for a test, and none is
+added. When a test states a clock, a read in pieces or a file swapped behind a look, the SAME test copy
+is started through a few lines that first replace `time.monotonic`, `os.read` or `os.lstat` in that one
+process and then execute the copy's text, unchanged, as the main program. The copy is not edited; the
+form is the one `CapturedTexts` already uses. A test that states none of the three starts the copy
+directly, as before, on the host's own clock (only marks written at this instant are valid there).
+
+EVERY TEST THAT HOLDS A RULE NAMES THE MUTATION IT WAS SEEN RED ON (wave 12 rule 6). The mutants were
+planted in scratch copies of this folder under `.cache/task4-h4/`, never in the delivered file; the
+table is test/h4_helper_suite_holds_its_rules.md. "HP:nnn" is a line of `dems-core-netalias` at the
+hash 1e758a24...c7d015b1 (the helper before row H5).
+
+ROW H5 (finding F-1 of review 120, caution R119b-01) CHANGED THE HELPER: an add reads the address listing
+a SECOND time, after the conflict check and before the mark (`REREAD`; `Bench.addresses_later` is what
+that second listing says, the stand-in's `later` answer), and a removal answers "already absent" only
+for an address no interface holds. In the helper of SHA256SUMS the lines named "HP:nnn" above line 737
+are where they were; HP:748 is now line 760, HP:755 line 767, HP:794 line 809. The mutants of row H5
+were planted in scratch copies under `.cache/task4-h5/`; its table is implementation/h5_helper_f1_r119b01.md.
 """
 
 import hashlib
@@ -53,20 +82,88 @@ JOURNAL = re.compile(
 )
 
 DOUBLE = """#!%s -ISB
-import json, os, sys
+import json, os, stat, sys, time
 here = os.path.dirname(os.path.abspath(sys.argv[0]))
 name = os.path.basename(sys.argv[0])
+def given(descriptor):
+    try:
+        found = os.fstat(descriptor)
+    except OSError:
+        return "closed"
+    if os.path.samestat(found, os.stat("/dev/null")):
+        return "null"
+    return "socket" if stat.S_ISSOCK(found.st_mode) else "pipe" if stat.S_ISFIFO(found.st_mode) else "other"
+mask = os.umask(0o022)
+os.umask(mask)
 with open(os.path.join(here, "calls.jsonl"), "a") as log:
-    log.write(json.dumps({"tool": name, "argv": sys.argv[1:], "env": dict(os.environ), "cwd": os.getcwd()}) + "\\n")
+    log.write(json.dumps({"tool": name, "argv": sys.argv[1:], "env": dict(os.environ), "cwd": os.getcwd(),
+                          "stdin": given(0), "stderr": given(2), "umask": mask}) + "\\n")
 with open(os.path.join(here, "plan.json")) as handle:
     plan = json.load(handle)
 for rule in plan:
     if rule["tool"] == name and sys.argv[1 : 1 + len(rule["prefix"])] == rule["prefix"]:
-        sys.stdout.write(rule.get("stdout", "").replace("@LAST@", sys.argv[-1]))
+        for what, path, text in rule.get("first", []):
+            if what == "link":
+                os.symlink(text, path)
+            else:
+                with open(path, "w") as handle:
+                    handle.write(text)
+        time.sleep(rule.get("sleep", 0))
+        said = rule.get("stdout", "")
+        if "later" in rule:
+            with open(os.path.join(here, "calls.jsonl")) as log:
+                asked = [json.loads(line) for line in log]
+            if len([call for call in asked if call["tool"] == name and call["argv"] == sys.argv[1:]]) >= 2:
+                said = rule["later"]
+        sys.stdout.write(said.replace("@LAST@", sys.argv[-1]))
         sys.stdout.flush()
         os._exit(rule["exit"])
 os._exit(97)
 """
+
+# What stands in for the host's clock and for the kernel in ONE process of the test copy (see the head of
+# this file). Its first argument states what is stood in, the second is the copy, the rest are the copy's
+# own arguments. The copy's text is executed as it is; its last line, `main()`, serves the call and ends
+# the process with the answer's code.
+#   clock             `time.monotonic()` reads this number for the whole call (a call lasts milliseconds;
+#                     a clock that stands still makes the bounds of an age exact to the second).
+#   short_reads       the connection is handed over one byte per read, as a kernel may do on a stream.
+#   swap_after_lstat  [path, target, n]: right after the n-th `os.lstat` of `path` has answered, `path`
+#                     is replaced by a link to `target` - somebody who wins the race between the look at
+#                     a file and its opening.
+STAND_IN = """import json, os, sys, time
+said = json.loads(sys.argv[1])
+sys.argv = sys.argv[2:]
+if said.get("clock") is not None:
+    time.monotonic = lambda: float(said["clock"])
+if said.get("short_reads"):
+    whole = os.read
+    os.read = lambda descriptor, count: whole(descriptor, 1 if descriptor == 0 else count)
+if said.get("swap_after_lstat"):
+    looked = os.lstat
+    seen = [0]
+    def lstat(path, *more, **named):
+        answer = looked(path, *more, **named)
+        if path == said["swap_after_lstat"][0]:
+            seen[0] += 1
+            if seen[0] == said["swap_after_lstat"][2]:
+                os.unlink(path)
+                os.symlink(said["swap_after_lstat"][1], path)
+        return answer
+    os.lstat = lstat
+with open(sys.argv[0], encoding="ascii") as handle:
+    text = handle.read()
+exec(compile(text, sys.argv[0], "exec"), {"__name__": "__main__"})
+"""
+
+YEAR_UP = 365 * 24 * 3600  # a host that has been up for a year
+MINUTE_UP = 60  # a host that booted a minute ago
+
+
+def clocks(oldest):
+    """The two clocks an age case runs on: the youngest host on which a mark `oldest` seconds old can
+    exist (it was written in the first second after the boot, its clock field is 0), and a year."""
+    return (max(oldest, 0), YEAR_UP)
 
 ROUTE = ["-json", "-4", "route", "show", "default"]
 ADDRS = ["-json", "-4", "addr", "show"]
@@ -112,8 +209,14 @@ def link(name, *addresses, flags=None):
 class Bench:
     """One temporary installation: doubles, files, marks, a test copy of the helper."""
 
-    def __init__(self, case, trusted_uid=None, service_uid=None):
+    def __init__(self, case, trusted_uid=None, service_uid=None, clock=None):
         self.case = case
+        self.clock = clock  # None: the host's own clock, and then only a mark written at this instant
+        self.short_reads = False
+        self.swap_after_lstat = None
+        self.umask = None  # None: the umask of this test process
+        self.add_sleep = 0
+        self.arping_first = []
         self.root = os.path.realpath(tempfile.mkdtemp(prefix="netalias-"))
         case.addCleanup(shutil.rmtree, self.root, True)
         for name in ("tools", "etc", "sys", "run/marks", "copy", "decoy", "dpkg"):
@@ -132,6 +235,9 @@ class Bench:
         self.accounts(["dems-core"], os.getuid() if service_uid is None else service_uid)
         self.addresses = [link("lo", ("127.0.0.1", 8)), link(OFFICE, ("10.20.0.5", 24)), link(CAMERA, ("192.168.100.1", 24))]
         self.default_route = [{"dst": "default", "gateway": "10.20.0.1", "dev": OFFICE}]
+        # None: the host reads the same every time. Otherwise what the SECOND and every later address
+        # listing of one call says (caution R119b-01: the host changed while the conflict check ran).
+        self.addresses_later = None
         self.arping_exit = 0
         self.arping_stdout = None  # None: the text that agrees with the exit status
         self.add_exit = 0
@@ -178,9 +284,28 @@ class Bench:
         self.write(self.path("dpkg/%s.md5sums" % package),
                    "0123456789abcdef0123456789abcdef  usr/share/doc/%s/copyright\n" % package + ("%s  %s\n" % (digest, path[1:])) * sums)
 
+    def clock_reads(self, seconds):
+        """From now on the helper's monotonic clock reads `seconds` (whole seconds since the boot)."""
+        self.clock = seconds
+
     def mark(self, address, age=0, minutes=30, interface=CAMERA):
-        """A mark as the helper writes it, written `age` seconds ago on the host's monotonic clock."""
-        self.write(self.path("run/marks/" + address), "%s/24 %s %d %d\n" % (address, interface, int(time.monotonic()) - age, minutes))
+        """A mark as the helper writes it, written `age` seconds before what the helper's clock reads.
+
+        With an age the clock must be STATED: the host's own clock says how long THIS machine has been
+        up, and a mark older than that cannot be written (finding B-1: it came out negative, which is
+        no mark at all, and the case passed for that reason). A negative age is a mark from a clock
+        that reads less now than when the mark was written: one from before this boot.
+        """
+        if self.clock is None:
+            if age != 0:
+                self.case.fail("a mark's age is stated against a stated clock: bench(clock=...) - the host's own "
+                               "clock (%d s since its boot) is not a value of a test" % int(time.monotonic()))
+            now = int(time.monotonic())
+        else:
+            now = self.clock
+        if now - age < 0:
+            self.case.fail("no host that reads %d s on its clock holds a mark %d s old: it would be older than the boot" % (now, age))
+        self.write(self.path("run/marks/" + address), "%s/24 %s %d %d\n" % (address, interface, now - age, minutes))
 
     def hold(self, address, lifetime=1700, name=CAMERA):
         """The interface now holds `address`/24: with a kernel lifetime in seconds, FOREVER, or None (not stated)."""
@@ -200,10 +325,12 @@ class Bench:
         rules = [
             {"tool": "ip", "prefix": ROUTE, "exit": 0, "stdout": json.dumps(self.default_route)},
             {"tool": "ip", "prefix": ADDRS, "exit": 0, "stdout": json.dumps(self.addresses)},
-            {"tool": "ip", "prefix": ["addr", "add"], "exit": self.add_exit},
+            {"tool": "ip", "prefix": ["addr", "add"], "exit": self.add_exit, "sleep": self.add_sleep},
             {"tool": "ip", "prefix": ["addr", "del"], "exit": self.del_exit},
-            {"tool": "arping", "prefix": [], "exit": self.arping_exit, "stdout": said},
+            {"tool": "arping", "prefix": [], "exit": self.arping_exit, "stdout": said, "first": self.arping_first},
         ]
+        if self.addresses_later is not None:
+            rules[1]["later"] = json.dumps(self.addresses_later)
         for folder in ("tools", "decoy"):
             self.write(self.path(folder + "/plan.json"), json.dumps(rules))
 
@@ -217,8 +344,25 @@ class Bench:
     def vectors(self):
         return [[call["tool"]] + call["argv"] for call in self.calls()]
 
+    def command(self, arguments=()):
+        """How the test copy is started: directly, or through STAND_IN when a clock or the kernel is stated."""
+        said = {}
+        if self.clock is not None:
+            said["clock"] = self.clock
+        if self.short_reads:
+            said["short_reads"] = True
+        if self.swap_after_lstat is not None:
+            said["swap_after_lstat"] = list(self.swap_after_lstat)
+        if not said:
+            return [sys.executable, "-I", "-S", "-B", self.copy, *arguments]
+        return [sys.executable, "-I", "-S", "-B", "-c", STAND_IN, json.dumps(said), self.copy, *arguments]
+
     def run(self, request, arguments=(), pipe=False, end=False, environment=None, expect=None):
-        """Runs the test copy once. Returns (code name, journal match). Checks bounds 8 and 9 on EVERY run."""
+        """Runs the test copy once. Returns (code name, journal match).
+
+        Checks on EVERY run: bounds 8 and 9, and of bound 7 that no tool was handed the connection or
+        the journal (seen red on HP:464 and HP:466 removed: the tool then inherits them).
+        """
         self.plan()
         if os.path.exists(self.path("tools/calls.jsonl")):
             os.unlink(self.path("tools/calls.jsonl"))
@@ -227,9 +371,10 @@ class Bench:
         if pipe:
             reader, writer = os.pipe()
         process = subprocess.Popen(
-            [sys.executable, "-I", "-S", "-B", self.copy, *arguments],
+            self.command(arguments),
             stdin=reader if pipe else theirs.fileno(), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             env={} if environment is None else environment, cwd=self.root,
+            umask=-1 if self.umask is None else self.umask,
         )
         theirs.close()
         try:
@@ -255,6 +400,9 @@ class Bench:
         case.assertEqual(int(match.group(5)), CODES[name])
         case.assertEqual(answer, ("%d %s\n" % (CODES[name], name)).encode("ascii"), "bound 9: the answer is the code and its name")
         case.assertEqual(process.returncode, CODES[name], "bound 9: the exit status is the code")
+        for call in self.calls():
+            case.assertEqual((call["stdin"], call["stderr"]), ("null", "null"),
+                             "bound 7: a tool gets neither the connection nor the journal, got %r" % (call["argv"],))
         if expect is not None:
             case.assertEqual(name, expect)
         return name, match
@@ -266,6 +414,8 @@ ARPING_VECTOR = ["arping", "-D", "-c", "2", "-w", "3", "-I", CAMERA, "192.168.1.
 ADD_VECTOR = ["ip", "addr", "add", "192.168.1.250/24", "dev", CAMERA, "valid_lft", "1800", "preferred_lft", "1800"]
 DEL_VECTOR = ["ip", "addr", "del", "192.168.1.250/24", "dev", CAMERA]
 READS = [["ip"] + ROUTE, ["ip"] + ADDRS]
+# The second address listing of an add (caution R119b-01): after the conflict check, before the mark.
+REREAD = ["ip"] + ADDRS
 
 
 @unittest.skipIf(os.getuid() == 0, "these tests are never run as root")
@@ -285,10 +435,12 @@ class HelperCase(unittest.TestCase):
 class TheWork(HelperCase):
     """What the helper does when everything is in order: the exact argument vectors."""
 
-    def test_add_runs_route_read_address_read_conflict_check_then_add(self):
+    def test_add_runs_route_read_address_read_conflict_check_second_address_read_then_add(self):
+        # The ORDER is the rule of caution R119b-01: the second listing comes after the conflict check and
+        # before the add. SEEN RED on the second read moved in front of the conflict check, and on it removed.
         bench = self.bench()
         _, match = bench.run(ADD, expect="OK")
-        self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, ADD_VECTOR])
+        self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, REREAD, ADD_VECTOR])
         self.assertEqual(match.group(1), str(os.getuid()))
         self.assertEqual((match.group(2), match.group(3)), ("add", "192.168.1.250/24"))
 
@@ -344,6 +496,24 @@ class Bound1Interface(HelperCase):
         bench.write(bench.path("etc/real"), CAMERA + "\n")
         os.symlink(bench.path("etc/real"), bench.interface_file)
         self.refused_without_any_tool(bench, ADD, "INTERFACE_FILE_UNSAFE")
+
+    def test_an_interface_file_changed_into_a_link_after_it_was_looked_at_is_not_read(self):
+        # The look (`lstat`) and the opening are two steps. The file is a plain, safe file when it is
+        # looked at and a link to another text when it is opened: the opening itself must refuse a link.
+        # SEEN RED on HP:232 without O_NOFOLLOW (`_read_small` follows the link): the helper then goes on
+        # with the interface the OTHER text names (answer INTERFACE_HAS_DEFAULT_ROUTE, a tool started).
+        bench = self.bench()
+        bench.write(bench.path("etc/other"), OFFICE + "\n")
+        bench.swap_after_lstat = (bench.interface_file, bench.path("etc/other"), 1)
+        self.refused_without_any_tool(bench, ADD, "INTERFACE_FILE_UNSAFE")
+        self.assertTrue(os.path.islink(bench.interface_file), "the stand-in did change the file behind the look")
+        # The control: the same stand-in with a look that never comes (the 99th) changes nothing and the call is served.
+        bench = self.bench()
+        bench.write(bench.path("etc/other"), OFFICE + "\n")
+        bench.swap_after_lstat = (bench.interface_file, bench.path("etc/other"), 99)
+        bench.run(ADD, expect="OK")
+        self.assertFalse(os.path.islink(bench.interface_file))
+        self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, REREAD, ADD_VECTOR])
 
     def test_interface_file_in_a_folder_others_can_write(self):
         bench = self.bench()
@@ -476,7 +646,7 @@ class Bound3OtherInterfaceAndLimit(HelperCase):
         bench = self.bench()
         bench.mark("192.168.9.250")
         bench.run(ADD, expect="OK")
-        self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, ADD_VECTOR])
+        self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, REREAD, ADD_VECTOR])
         self.assertEqual(bench.marks(), ["192.168.1.250"])
 
     def test_an_address_the_host_already_holds_and_a_subnet_the_camera_port_already_has(self):
@@ -583,6 +753,101 @@ class Bound4ConflictCheck(HelperCase):
         bench.run(ADD, expect="INTERFACE_NOT_ARPABLE")
         self.assertEqual(bench.vectors(), READS)
         self.assertEqual(bench.marks(), [])
+
+    # --- caution R119b-01: the host is read AGAIN after the conflict check, before the mark and the add ---
+
+    def listing(self, bench):
+        """A copy of the bench's address listing, to be changed into what the host says later."""
+        return json.loads(json.dumps(bench.addresses))
+
+    def test_a_port_that_can_no_longer_be_asked_when_the_conflict_check_ends_gets_no_mark_and_no_address(self):
+        # The port could be asked when it was first read; the conflict stand-in answers "free" (as the real
+        # program does on a port without carrier: captured/arping/iputils_no_carrier_prints_free.stdout);
+        # the SECOND listing of the same call, the one after the check, says the port cannot be asked.
+        # SEEN RED, every row, on the second read removed (the answer is OK, a mark is written, `ip addr
+        # add` is started), on the second read's flag words not judged (the first read's are judged again),
+        # and on the mark written before the second read (a mark is left behind the refusal).
+        cases = (
+            ("INTERFACE_DOWN", ["NO-CARRIER", "BROADCAST", "MULTICAST", "UP"]),  # the cable was pulled
+            ("INTERFACE_DOWN", ["BROADCAST", "MULTICAST", "LOWER_UP"]),
+            ("INTERFACE_DOWN", ["BROADCAST", "MULTICAST"]),
+            ("INTERFACE_NOT_ARPABLE", ["BROADCAST", "MULTICAST", "NOARP", "UP", "LOWER_UP"]),
+            ("INTERFACE_NOT_ARPABLE", ["POINTOPOINT", "MULTICAST", "UP", "LOWER_UP"]),
+            ("INTERFACE_STATE_UNKNOWN", "BROADCAST,UP,LOWER_UP"),
+            ("INTERFACE_STATE_UNKNOWN", ["BROADCAST", "UP", "LOWER_UP", 7]),
+            ("INTERFACE_STATE_UNKNOWN", "no flags"),
+            ("INTERFACE_STATE_UNKNOWN", "not listed"),  # its last IPv4 address went: the port is in no listing
+            ("HOST_STATE_UNREADABLE", "no listing"),
+        )
+        for expect, flags in cases:
+            with self.subTest(expect=expect, flags=flags):
+                bench = self.bench()
+                later = self.listing(bench)
+                if flags == "no flags":
+                    del later[2]["flags"]
+                elif flags == "not listed":
+                    del later[2]
+                elif flags == "no listing":
+                    later = "x"
+                else:
+                    later[2]["flags"] = flags
+                bench.addresses_later = later
+                bench.run(ADD, expect=expect)
+                self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, REREAD], "the check ran, the host was read again, nothing was added")
+                self.assertEqual(bench.marks(), [], "no mark is written for an address that is not added")
+
+    def test_an_address_the_host_gained_while_the_conflict_check_ran_is_judged_before_the_mark(self):
+        # The same second listing is the one the bounds of the first are judged on again: the address itself
+        # on any interface, its /24 on another interface (a lease on the office port), its /24 on the camera
+        # port. SEEN RED, row by row, on each of the three lines removed from the second pass (rows 1-2: the
+        # address; rows 3-4: another interface; row 5: the camera port): the answer is OK and the add is started.
+        def held_by(name, address, prefix):
+            def change(later):
+                for entry in later:
+                    if entry["ifname"] == name:
+                        entry["addr_info"].append(address_info(address, prefix))
+                        return
+                later.append(link(name, (address, prefix)))
+            return change
+
+        rows = (
+            ("ADDRESS_ALREADY_PRESENT", held_by(CAMERA, "192.168.1.250", 24)),
+            ("ADDRESS_ALREADY_PRESENT", held_by("wlan0", "192.168.1.250", 32)),
+            ("OTHER_INTERFACE_HOLDS_SUBNET", held_by(OFFICE, "192.168.1.7", 24)),
+            ("OTHER_INTERFACE_HOLDS_SUBNET", held_by("wlan0", "192.168.0.5", 16)),
+            ("CAMERA_INTERFACE_HOLDS_SUBNET", held_by(CAMERA, "192.168.1.9", 24)),
+        )
+        for number, (expect, change) in enumerate(rows):
+            with self.subTest(row=number + 1, expect=expect):
+                bench = self.bench()
+                later = self.listing(bench)
+                change(later)
+                bench.addresses_later = later
+                bench.run(ADD, expect=expect)
+                self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, REREAD])
+                self.assertEqual(bench.marks(), [])
+
+    def test_a_second_listing_that_differs_in_nothing_the_bounds_read_is_served_and_the_first_read_still_refuses_alone(self):
+        # The control of the two cases above: the stand-in's second answer DOES differ from its first (another
+        # network on the office port, a new port, the remaining lifetime of the camera port's own address),
+        # and the add is done.
+        bench = self.bench()
+        later = self.listing(bench)
+        later[1]["addr_info"].append(address_info("10.99.0.1", 24))
+        later[2]["addr_info"][0]["valid_life_time"] = 86000
+        later.append(link("wlan0", ("172.20.0.9", 16)))
+        bench.addresses_later = later
+        bench.run(ADD, expect="OK")
+        self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, REREAD, ADD_VECTOR])
+        self.assertEqual(bench.marks(), ["192.168.1.250"])
+        # And the first read keeps its own refusal: a port that is down BEFORE the check is not asked at all,
+        # whatever a later listing would say. SEEN RED on the flag check before the conflict tool removed
+        # (the tool is started on a port that cannot be asked).
+        bench = self.bench()
+        bench.addresses_later = self.listing(bench)
+        self.camera_flags(bench, ["NO-CARRIER", "BROADCAST", "MULTICAST", "UP"])
+        bench.run(ADD, expect="INTERFACE_DOWN")
+        self.assertEqual(bench.vectors(), READS, "the conflict tool is not started")
 
     def test_exit_status_0_without_the_stated_result_is_not_a_free_address(self):
         free = FREE_TEXT.replace("@LAST@", "192.168.1.250")
@@ -701,6 +966,25 @@ class Bound5MarkAndLifetime(HelperCase):
                     self.assertRegex(handle.read(), r"\A192\.168\.1\.250/24 eth1 [0-9]+ %d\n\Z" % minutes)
                 self.assertEqual(stat.S_IMODE(os.stat(mark).st_mode), 0o644)
 
+    def test_the_mode_of_a_mark_and_the_umask_of_a_tool_do_not_come_from_whoever_started_the_helper(self):
+        # The helper sets its own umask. Started under a wider one (0) or a narrower one (077, 027) it
+        # writes the same mark, mode 0644, and every tool it starts creates files under 022.
+        # SEEN RED on HP:794 removed (`os.umask(0o022)`): the tools then record the starter's umask, and
+        # under 077 the mark is 0600. The assertion of mode 0644 in the case above never saw that line:
+        # it ran under this test process's own umask, which gives 0644 by itself.
+        for umask in (0o000, 0o077, 0o027):
+            with self.subTest(umask=oct(umask)):
+                bench = self.bench()
+                bench.umask = umask
+                bench.run(ADD, expect="OK")
+                self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, REREAD, ADD_VECTOR])
+                self.assertEqual([call["umask"] for call in bench.calls()], [0o022] * 5)
+                self.assertEqual(stat.S_IMODE(os.stat(bench.path("run/marks/192.168.1.250")).st_mode), 0o644)
+                # and the mark it wrote is one it takes at the removal
+                bench.hold("192.168.1.250", 1795)
+                bench.run(DEL, expect="OK")
+                self.assertEqual([call["umask"] for call in bench.calls()], [0o022] * 3)
+
     def test_lifetime_out_of_range_or_not_a_plain_number(self):
         for minutes in ("0", "1", "4", "481", "999", "030", "005", "1000", "-5", "+30", "5.5", "1e2", "abc", "0x1e", "30m"):
             with self.subTest(minutes=minutes):
@@ -710,8 +994,60 @@ class Bound5MarkAndLifetime(HelperCase):
         bench = self.bench()
         bench.add_exit = 2
         bench.run(ADD, expect="ADD_FAILED")
-        self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, ADD_VECTOR])
+        self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, REREAD, ADD_VECTOR])
         self.assertEqual(bench.marks(), [])
+
+    def test_an_add_the_tool_does_not_answer_keeps_its_mark_so_that_del_can_still_remove_the_address(self):
+        # The `ip addr add` stand-in records its call and then says nothing for longer than the helper
+        # waits (its bound is 5 s; the stand-in is stopped by the helper at that bound). The address MAY
+        # be on the port: the answer is ADD_FAILED and the mark STAYS.
+        # SEEN RED on HP:748 with the condition removed (the mark is dropped whatever the tool did): no
+        # mark is left, and the removal below answers NOT_MARKED for an address the helper itself added.
+        # (The case above, a tool that ANSWERS no, is seen red on the opposite mutant: the mark kept.)
+        bench = self.bench()
+        bench.add_sleep = 30
+        started = time.monotonic()
+        bench.run(ADD, expect="ADD_FAILED")
+        self.assertLess(time.monotonic() - started, 25, "the helper did not wait for the tool beyond its bound")
+        self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, REREAD, ADD_VECTOR])
+        self.assertEqual(bench.marks(), ["192.168.1.250"], "an unanswered add keeps its mark")
+        # The tool had in fact added it: the removal the Core asks next takes it away.
+        bench.add_sleep = 0
+        bench.hold("192.168.1.250", 1795)
+        bench.run(DEL, expect="OK")
+        self.assertEqual(bench.vectors(), READS + [DEL_VECTOR])
+        self.assertEqual(bench.marks(), [])
+
+    def test_a_mark_planted_while_the_conflict_check_runs_is_refused_and_nothing_is_written_through_it(self):
+        # The marks folder is read before the conflict check and the mark is written after it. Here the
+        # conflict stand-in, while it "asks", puts an entry under the mark's name: a link to a file, a
+        # link to nothing, a file with another text. The helper must not write through or over it.
+        # SEEN RED on HP:630: without O_EXCL and O_NOFOLLOW all three (answer OK; the linked file is
+        # written over, the missing one is made, the planted text is written over); without O_EXCL
+        # alone the planted file. Without O_NOFOLLOW alone NOTHING changes, measured: O_CREAT with O_EXCL
+        # refuses a link by itself - that flag is a second lock on the same door, and no test can see it.
+        planted_mark = "192.168.1.250/24 eth1 0 480\n"
+        for what in ("link-to-a-file", "link-to-nothing", "file"):
+            with self.subTest(planted=what):
+                bench = self.bench()
+                mark = bench.path("run/marks/192.168.1.250")
+                victim = bench.path("etc/victim")
+                bench.write(victim, "not a mark\n")
+                if what == "link-to-a-file":
+                    bench.arping_first = [["link", mark, victim]]
+                elif what == "link-to-nothing":
+                    bench.arping_first = [["link", mark, bench.path("etc/made-by-the-helper")]]
+                else:
+                    bench.arping_first = [["file", mark, planted_mark]]
+                bench.run(ADD, expect="MARK_WRITE_FAILED")
+                self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, REREAD], "no address is added without its mark")
+                with open(victim) as handle:
+                    self.assertEqual(handle.read(), "not a mark\n")
+                self.assertFalse(os.path.lexists(bench.path("etc/made-by-the-helper")))
+                self.assertEqual(os.path.islink(mark), what != "file", "the planted entry is as it was planted")
+                if what == "file":
+                    with open(mark) as handle:
+                        self.assertEqual(handle.read(), planted_mark)
 
     def test_marks_folder_others_can_write_or_with_a_foreign_entry(self):
         bench = self.bench()
@@ -751,6 +1087,72 @@ class Bound6DelOnlyWhatWasMarked(HelperCase):
         self.assertEqual(bench.marks(), [])
         self.assertEqual(match.group(6), " note=already-absent")
 
+    # --- finding F-1 of review 120: "already absent" is said only of an address NO interface of the host holds ---
+
+    def test_a_marked_address_the_host_still_holds_elsewhere_is_not_answered_as_already_absent(self):
+        # The mark does not stand (the address is not on the camera port as a /24) but the HOST holds the
+        # address: on another interface, or on the camera port with another prefix. The Core reads `0 OK` as
+        # "gone" and writes HOST_ALIAS_REMOVED; so the answer must be a refusal, not "already absent".
+        # SEEN RED, every row, on the condition as it was before row H5 (`on_camera_interface(...)`, the
+        # camera port's /24 only): the answer is `0 OK` with note=already-absent.
+        def held_on(name, lifetime=1700, prefix=24):
+            def change(bench):
+                for entry in bench.addresses:
+                    if entry["ifname"] == name:
+                        entry["addr_info"].append(address_info("192.168.1.250", prefix, lifetime))
+                        return
+                bench.addresses.append(link(name, ("192.168.1.250", prefix, lifetime)))
+            return change
+
+        rows = (held_on(OFFICE), held_on(OFFICE, FOREVER), held_on(OFFICE, None), held_on("wlan0", 60),
+                held_on(OFFICE, 1700, 32), held_on(CAMERA, 1700, 32), held_on(CAMERA, FOREVER, 16))
+        for number, change in enumerate(rows):
+            for age in (0, 1800 + 61):  # a mark written now, and one past its lifetime: neither stands here
+                for clock in clocks(age):
+                    with self.subTest(row=number + 1, age=age, clock=clock):
+                        bench = self.bench(clock=clock)
+                        bench.mark("192.168.1.250", age=age)
+                        change(bench)
+                        _, match = bench.run(DEL, expect="NOT_MARKED")
+                        self.assertEqual(bench.vectors(), READS, "no removal vector was built")
+                        self.assertIsNone(match.group(6), "nothing is noted as already absent")
+                        self.assertEqual(bench.marks(), [], "the mark that does not stand is dropped, as before")
+        # The control: ANOTHER address of the same /24 on another interface is not the address asked.
+        bench = self.bench()
+        bench.mark("192.168.1.250")
+        bench.addresses[1]["addr_info"].append(address_info("192.168.1.251", 24, 1700))
+        _, match = bench.run(DEL, expect="OK")
+        self.assertEqual(bench.vectors(), READS)
+        self.assertEqual(match.group(6), " note=already-absent")
+
+    def test_an_address_left_on_the_port_the_interface_file_named_before_is_not_answered_as_already_absent(self):
+        # The reach finding F-1 names. The helper adds the address on eth1 and marks it; root then changes
+        # the interface file to eth2 while the alias is up. The mark was written for eth1 and does not stand
+        # for eth2; the address is still on eth1.
+        # SEEN RED on the condition as it was before row H5: `0 OK` with note=already-absent while the
+        # address stays on eth1 for the rest of its lifetime.
+        def added_then(interface_now):
+            bench = self.bench()
+            bench.run(ADD, expect="OK")
+            self.assertEqual(bench.marks(), ["192.168.1.250"])
+            bench.hold("192.168.1.250", 1795)  # what the tool did: the address on eth1, its lifetime running
+            os.mkdir(bench.path("sys/eth2"))
+            bench.addresses.append(link("eth2", ("192.168.200.1", 24)))
+            bench.write(bench.interface_file, interface_now + "\n")
+            return bench
+
+        bench = added_then("eth2")
+        _, match = bench.run(DEL, expect="NOT_MARKED")
+        self.assertEqual(bench.vectors(), READS, "nothing is removed from eth1 or from eth2")
+        self.assertIsNone(match.group(6))
+        # The removal asked again gets the same refusal, never "done": the address is still there.
+        bench.run(DEL, expect="NOT_MARKED")
+        # The control: the same steps with the file left as it was remove the address.
+        bench = added_then(CAMERA)
+        bench.run(DEL, expect="OK")
+        self.assertEqual(bench.vectors(), READS + [DEL_VECTOR])
+        self.assertEqual(bench.marks(), [])
+
     def test_a_removal_the_tool_refuses_keeps_the_mark(self):
         bench = self.bench()
         bench.mark("192.168.1.250")
@@ -770,50 +1172,165 @@ class Bound6DelOnlyWhatWasMarked(HelperCase):
 
     # --- caution R119-02: a mark never outlives the address it was written for ---
 
+    # THE CLOCK. Every case below that gives a mark an age STATES what the helper's clock reads, and
+    # runs on two clocks (`clocks`): the youngest host that can hold such a mark, and a host up for a
+    # year. None of them reads this machine's uptime.
+
     def test_a_mark_past_its_lifetime_does_not_remove_an_address_somebody_else_set(self):
         # Ours expired; later the same address was set on the camera port by another hand.
-        for age, lifetime in ((1800 + 61, FOREVER), (1800 + 61, 900), (9 * 3600, FOREVER)):
-            with self.subTest(age=age, lifetime=lifetime):
-                bench = self.bench()
-                bench.mark("192.168.1.250", age=age)
-                bench.hold("192.168.1.250", lifetime)
-                bench.run(DEL, expect="NOT_MARKED")
-                self.assertEqual(bench.vectors(), READS, "no removal vector was built")
-                self.assertEqual(bench.marks(), [], "the stale mark is gone")
+        # In every row but the last two the address there now has a lifetime NO LONGER than the mark
+        # asked, on the camera port, once: the lifetime rule (HP:681) would let it go, and ONLY the age
+        # of the mark (HP:676) says it is not ours.
+        # SEEN RED, every row but the last two, on HP:676 with the age rule removed (both halves, and
+        # the upper half alone): the answer is OK and `ip addr del` is started for somebody else's
+        # address. Before row H4 two of the three rows of this case held an address WITHOUT a lifetime,
+        # which the lifetime rule refuses by itself - they passed with the age rule removed on any host -
+        # and on a host up for less than 1,861 s the third passed too (its mark could not be read).
+        # (minutes of the mark, its age in seconds, the lifetime the kernel shows now)
+        rows = ((30, 1800 + 61, 900), (30, 1800 + 61, 1800), (30, 1800 + 61, 1), (30, 1800 + 61, 0), (30, 9 * 3600, 900),
+                (5, 300 + 61, 300), (5, 300 + 61, 1), (480, 28800 + 61, 28800), (480, 28800 + 61, 60), (30, 30 * 24 * 3600, 1800),
+                (30, 1800 + 61, FOREVER), (30, 9 * 3600, FOREVER))
+        for minutes, age, lifetime in rows:
+            for clock in clocks(age):
+                with self.subTest(minutes=minutes, age=age, lifetime=lifetime, clock=clock):
+                    bench = self.bench(clock=clock)
+                    bench.mark("192.168.1.250", age=age, minutes=minutes)
+                    bench.hold("192.168.1.250", lifetime)
+                    bench.run(DEL, expect="NOT_MARKED")
+                    self.assertEqual(bench.vectors(), READS, "no removal vector was built")
+                    self.assertEqual(bench.marks(), [], "the stale mark is gone")
+
+    def test_the_helpers_own_mark_ends_one_second_after_its_lifetime_and_its_grace(self):
+        # No fixture writes the mark here: the helper writes it, at a stated second of the clock, and is
+        # asked to remove the address at a later stated second. The whole rule R119-02 was closed on, on
+        # the helper's own text of a mark.
+        # SEEN RED on HP:676 (age rule removed, upper half removed: the last removal answers OK), on the
+        # grace removed and on `>` made `>=` (the removal AT the bound answers NOT_MARKED), and on the age
+        # taken from the wall clock (HP:675, `time.time()`: no mark is ever young enough).
+        for minutes in (5, 30, 480):
+            for written in (0, MINUTE_UP, YEAR_UP):
+                bound = minutes * 60 + 60
+                for later, expect in ((0, "OK"), (bound, "OK"), (bound + 1, "NOT_MARKED")):
+                    with self.subTest(minutes=minutes, written=written, later=later):
+                        bench = self.bench(clock=written)
+                        bench.run(("add 192.168.1.250/24 %d\n" % minutes).encode(), expect="OK")
+                        with open(bench.path("run/marks/192.168.1.250")) as handle:
+                            self.assertEqual(handle.read(), "192.168.1.250/24 eth1 %d %d\n" % (written, minutes),
+                                             "the mark carries the second the stated clock read")
+                        # The address is on the port, with a lifetime no longer than was asked.
+                        bench.hold("192.168.1.250", 1)
+                        bench.clock_reads(written + later)
+                        bench.run(DEL, expect=expect)
+                        self.assertEqual(bench.vectors(), READS + ([DEL_VECTOR] if expect == "OK" else []))
+                        self.assertEqual(bench.marks(), [])
+
+    def test_a_mark_from_before_this_boot_is_no_mark(self):
+        # The clock reads LESS now than when the mark was written: the mark is from another boot (the
+        # marks folder is emptied at a boot; a mark that survived one is not this helper's word).
+        # The address there has a lifetime no longer than was asked, so only the age decides.
+        # SEEN RED on HP:676 with `age < 0` removed, and with the whole age rule removed: answer OK,
+        # `ip addr del` started.
+        for clock in (0, MINUTE_UP, YEAR_UP):
+            for ahead in (1, 3600, YEAR_UP):
+                with self.subTest(clock=clock, ahead=ahead):
+                    bench = self.bench(clock=clock)
+                    bench.mark("192.168.1.250", age=-ahead)
+                    bench.hold("192.168.1.250", 900)
+                    bench.run(DEL, expect="NOT_MARKED")
+                    self.assertEqual(bench.vectors(), READS)
+                    self.assertEqual(bench.marks(), [])
 
     def test_an_address_set_again_by_hand_inside_the_marks_lifetime_is_not_removed(self):
         # Ours was removed by hand; the address there now has no lifetime, or a longer one than was asked.
+        # The mark is YOUNG (the age rule lets it stand): only the lifetime rule says it is not ours.
+        # SEEN RED on HP:681 with the lifetime comparison removed: answer OK, `ip addr del` started.
         for lifetime in (FOREVER, 1801, 28800):
-            with self.subTest(lifetime=lifetime):
-                bench = self.bench()
-                bench.mark("192.168.1.250", age=120)
-                bench.hold("192.168.1.250", lifetime)
-                bench.run(DEL, expect="NOT_MARKED")
-                self.assertEqual(bench.vectors(), READS)
-                self.assertEqual(bench.marks(), [])
+            for clock in clocks(120):
+                with self.subTest(lifetime=lifetime, clock=clock):
+                    bench = self.bench(clock=clock)
+                    bench.mark("192.168.1.250", age=120)
+                    bench.hold("192.168.1.250", lifetime)
+                    bench.run(DEL, expect="NOT_MARKED")
+                    self.assertEqual(bench.vectors(), READS)
+                    self.assertEqual(bench.marks(), [])
 
     def test_a_mark_inside_its_lifetime_and_its_grace_still_removes_its_own_address(self):
-        for age, lifetime in ((0, 1800), (900, 900), (1799, 1), (1800 + 30, 0)):
-            with self.subTest(age=age):
-                bench = self.bench()
-                bench.mark("192.168.1.250", age=age)
-                bench.hold("192.168.1.250", lifetime)
-                bench.run(DEL, expect="OK")
-                self.assertEqual(bench.vectors(), READS + [DEL_VECTOR])
-                self.assertEqual(bench.marks(), [])
+        # The two rows at `minutes * 60 + 60` stand ON the bound: the clock stands still for the call.
+        # SEEN RED on HP:676 with the grace removed (the rows past the lifetime) and with `>` made `>=`
+        # (the two rows on the bound): answer NOT_MARKED. These are the rows that were red on a young host
+        # before row H4 (ages 1799 and 1830, finding B-1): they now run with the clock at exactly their age.
+        rows = ((30, 0, 1800), (30, 900, 900), (30, 1799, 1), (30, 1800, 0), (30, 1800 + 30, 0), (30, 1800 + 60, 0),
+                (5, 0, 300), (5, 300 + 60, 0), (480, 28800, 1), (480, 28800 + 60, 0), (30, MINUTE_UP, 1740))
+        for minutes, age, lifetime in rows:
+            for clock in clocks(age):
+                with self.subTest(minutes=minutes, age=age, clock=clock):
+                    bench = self.bench(clock=clock)
+                    bench.mark("192.168.1.250", age=age, minutes=minutes)
+                    bench.hold("192.168.1.250", lifetime)
+                    bench.run(DEL, expect="OK")
+                    self.assertEqual(bench.vectors(), READS + [DEL_VECTOR])
+                    self.assertEqual(bench.marks(), [])
+
+    def test_a_mark_with_an_age_and_no_stated_clock_is_refused_by_the_fixture(self):
+        # Finding B-1, the fixture's half: an age against the host's own clock, and a mark older than the
+        # stated clock's boot, fail the test with their reason and write nothing.
+        bench = self.bench()
+        with self.assertRaisesRegex(AssertionError, "stated clock"):
+            bench.mark("192.168.1.250", age=1)
+        bench = self.bench(clock=MINUTE_UP)
+        with self.assertRaisesRegex(AssertionError, "older than the boot"):
+            bench.mark("192.168.1.250", age=MINUTE_UP + 1)
+        self.assertEqual(bench.marks(), [])
+        bench.mark("192.168.1.250", age=MINUTE_UP)
+        with open(bench.path("run/marks/192.168.1.250")) as handle:
+            self.assertEqual(handle.read(), "192.168.1.250/24 eth1 0 30\n")
+        # A copy started on a stated clock is the same text, started with the same interpreter options.
+        self.assertEqual(bench.command(["check"]),
+                         [sys.executable, "-I", "-S", "-B", "-c", STAND_IN, '{"clock": 60}', bench.copy, "check"])
+        # and a bench that states nothing starts the copy directly, as it always did
+        plain = self.bench()
+        self.assertEqual(plain.command(["check"]), [sys.executable, "-I", "-S", "-B", plain.copy, "check"])
 
     def test_a_stale_mark_whose_address_is_gone_is_dropped_and_del_is_done(self):
         # The lifetime bound, a removal by hand: no address, so what was asked is already so.
         for age in (0, 1800 + 61, 9 * 3600):
-            with self.subTest(age=age):
-                bench = self.bench()
-                bench.mark("192.168.1.250", age=age)
-                _, match = bench.run(DEL, expect="OK")
-                self.assertEqual(bench.vectors(), READS)
-                self.assertEqual(bench.marks(), [])
-                self.assertEqual(match.group(6), " note=already-absent")
+            for clock in clocks(age):
+                with self.subTest(age=age, clock=clock):
+                    bench = self.bench(clock=clock)
+                    bench.mark("192.168.1.250", age=age)
+                    _, match = bench.run(DEL, expect="OK")
+                    self.assertEqual(bench.vectors(), READS)
+                    self.assertEqual(bench.marks(), [])
+                    self.assertEqual(match.group(6), " note=already-absent")
+
+    def test_a_mark_changed_into_a_link_after_the_folder_was_read_is_no_mark(self):
+        # The marks folder is looked at three times in a removal (HP:708, HP:755, HP:687); after the third
+        # look the mark is a link to a text that says, in the helper's own form, "mine, written now".
+        # SEEN RED on HP:232 without O_NOFOLLOW: the forged text is read through the link, the mark
+        # stands, answer OK and `ip addr del` is started.
+        bench = self.bench(clock=YEAR_UP)
+        bench.mark("192.168.1.250", age=1800 + 61)  # the real mark is past its lifetime
+        bench.hold("192.168.1.250", 900)
+        bench.write(bench.path("etc/forged"), "192.168.1.250/24 eth1 %d 30\n" % YEAR_UP)
+        bench.swap_after_lstat = (bench.path("run/marks/192.168.1.250"), bench.path("etc/forged"), 3)
+        bench.run(DEL, expect="NOT_MARKED")
+        self.assertEqual(bench.vectors(), READS)
+        self.assertEqual(bench.marks(), [], "the link is dropped as any mark that does not stand")
+        with open(bench.path("etc/forged")) as handle:
+            self.assertEqual(handle.read(), "192.168.1.250/24 eth1 %d 30\n" % YEAR_UP, "the link is removed, not what it names")
+        # The control: the forged text, as a plain file in the place of the mark, IS a mark that stands.
+        bench = self.bench(clock=YEAR_UP)
+        bench.mark("192.168.1.250", age=0)
+        bench.hold("192.168.1.250", 900)
+        bench.run(DEL, expect="OK")
+        self.assertEqual(bench.vectors(), READS + [DEL_VECTOR])
 
     def test_a_mark_that_is_not_what_the_helper_writes_is_no_mark(self):
+        # The clock is stated (a year) and every text below carries THAT second where it carries a clock,
+        # so no row is refused for its age (but the first, which is from before the boot); the address
+        # there has a lifetime of 200 s, no longer than any of these marks could ask: each row is
+        # refused for the one thing its text has wrong. Until row H4 the texts carried the second 1,
+        # which on a host up for more than 31 minutes is also a mark past its lifetime.
         def from_before_this_boot(bench):
             bench.mark("192.168.1.250", age=-3600)  # written "later" than the clock reads now
 
@@ -823,55 +1340,88 @@ class Bound6DelOnlyWhatWasMarked(HelperCase):
             lambda bench: bench.mark("192.168.1.250", minutes=481),
             lambda bench: bench.mark("192.168.1.250", minutes=4),
             lambda bench: bench.write(bench.path("run/marks/192.168.1.250"), ""),
-            lambda bench: bench.write(bench.path("run/marks/192.168.1.250"), "192.168.1.251/24 eth1 1 30\n"),
-            lambda bench: bench.write(bench.path("run/marks/192.168.1.250"), "192.168.1.250/24 eth1 1 30\nx\n"),
+            lambda bench: bench.write(bench.path("run/marks/192.168.1.250"), "192.168.1.251/24 eth1 %d 30\n" % YEAR_UP),
+            lambda bench: bench.write(bench.path("run/marks/192.168.1.250"), "192.168.1.250/24 eth1 %d 30\nx\n" % YEAR_UP),
             lambda bench: bench.write(bench.path("run/marks/192.168.1.250"), "192.168.1.250/24 eth1 soon 30\n"),
             lambda bench: bench.write(bench.path("run/marks/192.168.1.250"), "x" * 200),
         )
         for number, case in enumerate(cases):
             with self.subTest(case=number):
-                bench = self.bench()
+                bench = self.bench(clock=YEAR_UP)
                 case(bench)
-                bench.hold("192.168.1.250")
+                bench.hold("192.168.1.250", 200)
                 bench.run(DEL, expect="NOT_MARKED")
                 self.assertEqual(bench.vectors(), READS)
                 self.assertEqual(bench.marks(), [])
+        # The control: the text the helper writes, at that second, with that address there, IS a mark.
+        bench = self.bench(clock=YEAR_UP)
+        bench.write(bench.path("run/marks/192.168.1.250"), "192.168.1.250/24 eth1 %d 30\n" % YEAR_UP)
+        bench.hold("192.168.1.250", 200)
+        bench.run(DEL, expect="OK")
+        self.assertEqual(bench.vectors(), READS + [DEL_VECTOR])
 
     def test_an_address_whose_lifetime_the_listing_does_not_state_is_not_judged(self):
         for request, expect in ((DEL, "HOST_STATE_UNREADABLE"), (b"add 192.168.2.250/24 30\n", "HOST_STATE_UNREADABLE")):
-            with self.subTest(request=request):
-                bench = self.bench()
-                bench.mark("192.168.1.250", age=60)
-                bench.hold("192.168.1.250", None)
-                bench.run(request, expect=expect)
-                self.assertEqual(bench.vectors(), READS, "nothing is removed and nothing is added")
-                self.assertEqual(bench.marks(), ["192.168.1.250"], "a mark that cannot be judged is kept")
+            for clock in clocks(60):
+                with self.subTest(request=request, clock=clock):
+                    bench = self.bench(clock=clock)
+                    bench.mark("192.168.1.250", age=60)
+                    bench.hold("192.168.1.250", None)
+                    bench.run(request, expect=expect)
+                    self.assertEqual(bench.vectors(), READS, "nothing is removed and nothing is added")
+                    self.assertEqual(bench.marks(), ["192.168.1.250"], "a mark that cannot be judged is kept")
 
     def test_a_stale_mark_does_not_count_and_does_not_stay_at_the_next_add(self):
+        # Rows 5 and 6 are the ones that hold the AGE of a mark at an add: the mark is past its lifetime
+        # and its address is on the camera port again with a lifetime no longer than was asked (another
+        # hand set it). Only the age says the mark is not ours; it must not count against the limit of
+        # one, and must not stay.
+        # SEEN RED, rows 5 and 6, on HP:676 with the age rule removed: the add answers ALIAS_LIMIT_REACHED
+        # and the stale mark stays. Before row H4 no row of this case was red on that mutant, on any
+        # host: in every row the address was absent or had no lifetime, which the lifetime rule drops.
         cases = (
             lambda bench: bench.mark("192.168.9.250", age=1800 + 61),  # expired by the kernel
             lambda bench: bench.mark("192.168.9.250", age=60),  # removed by hand inside its lifetime
             lambda bench: (bench.mark("192.168.9.250", age=1800 + 61), bench.hold("192.168.9.250", FOREVER)),
             lambda bench: (bench.mark("192.168.9.250", age=60), bench.hold("192.168.9.250", FOREVER)),
             lambda bench: (bench.mark("192.168.9.250", age=60, interface=OFFICE), bench.mark("192.168.8.250", age=-5)),
+            lambda bench: (bench.mark("192.168.9.250", age=1800 + 61), bench.hold("192.168.9.250", 900)),
+            lambda bench: (bench.mark("192.168.9.250", age=300 + 61, minutes=5), bench.hold("192.168.9.250", 1)),
         )
         for number, case in enumerate(cases):
-            with self.subTest(case=number):
-                bench = self.bench()
-                case(bench)
-                bench.run(ADD, expect="OK")
-                self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, ADD_VECTOR])
-                self.assertEqual(bench.marks(), ["192.168.1.250"], "only the mark of the address just added is left")
+            for clock in clocks(1800 + 61):
+                with self.subTest(case=number, clock=clock):
+                    bench = self.bench(clock=clock)
+                    case(bench)
+                    bench.run(ADD, expect="OK")
+                    self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, REREAD, ADD_VECTOR])
+                    self.assertEqual(bench.marks(), ["192.168.1.250"], "only the mark of the address just added is left")
+        # The control: the same mark INSIDE its lifetime, its address there, does count.
+        for clock in clocks(1800 + 60):
+            with self.subTest(control=clock):
+                bench = self.bench(clock=clock)
+                bench.mark("192.168.9.250", age=1800 + 60)
+                bench.hold("192.168.9.250", 900)
+                bench.run(ADD, expect="ALIAS_LIMIT_REACHED")
+                self.assertEqual(bench.marks(), ["192.168.9.250"])
 
     def test_del_of_one_marked_address_drops_every_other_stale_mark(self):
-        bench = self.bench()
-        bench.mark("192.168.1.250", age=60)
-        bench.hold("192.168.1.250")
-        bench.mark("192.168.9.250", age=1800 + 61)
-        bench.mark("192.168.8.250", age=60)
-        bench.run(DEL, expect="OK")
-        self.assertEqual(bench.vectors(), READS + [DEL_VECTOR])
-        self.assertEqual(bench.marks(), [])
+        # The mark of 192.168.7.250 is past its lifetime while that address is on the port with a lifetime
+        # no longer than was asked: only its age drops it.
+        # SEEN RED on HP:676 with the age rule removed: the mark of 192.168.7.250 is left in the folder.
+        # Before row H4 the stale marks of this case had no address at all, and were dropped without it.
+        for clock in clocks(1800 + 61):
+            with self.subTest(clock=clock):
+                bench = self.bench(clock=clock)
+                bench.mark("192.168.1.250", age=60)
+                bench.hold("192.168.1.250")
+                bench.mark("192.168.9.250", age=1800 + 61)
+                bench.mark("192.168.8.250", age=60)
+                bench.mark("192.168.7.250", age=1800 + 61)
+                bench.hold("192.168.7.250", 900)
+                bench.run(DEL, expect="OK")
+                self.assertEqual(bench.vectors(), READS + [DEL_VECTOR])
+                self.assertEqual(bench.marks(), [])
 
     def test_add_then_del_then_add_leaves_one_mark_at_most_at_every_step(self):
         bench = self.bench()
@@ -906,11 +1456,39 @@ class Bound7NoInjectionPoint(HelperCase):
         }
         bench.run(ADD, environment=hostile, expect="OK")
         self.assertEqual(bench.calls("decoy"), [], "no tool was found by search path or by a variable")
-        self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, ADD_VECTOR])
+        self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, REREAD, ADD_VECTOR])
         for call in bench.calls():
             given = {key: value for key, value in call["env"].items() if not key.startswith("__CF")}
             self.assertEqual(given, {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"})
             self.assertEqual(call["cwd"], "/")
+
+    def test_a_tool_is_handed_neither_the_connection_nor_the_journal(self):
+        # The helper's standard input and output are the Core's connection, its standard error is the
+        # journal. A tool that inherited them could read the request, answer in the helper's place, or
+        # write a journal line. Each stand-in records what its own descriptors 0 and 2 ARE.
+        # SEEN RED on HP:464 removed (the tool's standard input is then the socket) and on HP:466 removed
+        # (its standard error is then the journal's pipe). `Bench.run` asserts the same on every run of
+        # this file; this case names it, for both verbs and for root's check.
+        bench = self.bench()
+        bench.run(ADD, expect="OK")
+        self.assertEqual([(call["tool"], call["stdin"], call["stderr"]) for call in bench.calls()],
+                         [("ip", "null", "null"), ("ip", "null", "null"), ("arping", "null", "null"), ("ip", "null", "null"),
+                          ("ip", "null", "null")])
+        bench.hold("192.168.1.250", 1795)
+        bench.run(DEL, expect="OK")
+        self.assertEqual([(call["stdin"], call["stderr"]) for call in bench.calls()], [("null", "null")] * 3)
+        bench.run(b"", arguments=["check"], pipe=True, expect="OK")
+        self.assertEqual([(call["stdin"], call["stderr"]) for call in bench.calls()], [("null", "null")])
+        # The control: the stand-in does tell a socket from the null device.
+        ours, theirs = socket.socketpair()
+        try:
+            bench.plan()
+            subprocess.run([bench.path("tools/ip"), "control"], stdin=theirs.fileno(), stdout=subprocess.DEVNULL,
+                           stderr=theirs.fileno(), env={}, cwd=bench.root, timeout=30, check=False)
+        finally:
+            ours.close()
+            theirs.close()
+        self.assertEqual([(call["stdin"], call["stderr"]) for call in bench.calls() if call["argv"] == ["control"]], [("socket", "socket")])
 
     def test_shell_metacharacters_are_never_evaluated(self):
         canary = self.bench()
@@ -1084,6 +1662,31 @@ class TheFormOfTheCall(HelperCase):
                 bench.run(request, expect="REQUEST_MALFORMED")
                 self.assertEqual(bench.vectors(), [])
 
+    def test_a_second_line_the_kernel_hands_over_after_the_first_is_refused(self):
+        # In the case above both lines arrive in ONE read, and the helper sees bytes behind the line end
+        # in what it has read (HP:377). A stream may also be handed over in pieces: here every read of the
+        # connection gives one byte, so the read that completes the line gives the line end and nothing
+        # more, and what follows is still in the connection. "Nothing after the line" then rests on the
+        # look for further bytes (HP:379-380).
+        # SEEN RED on HP:379-380 removed: the first line is served (answer OK, or the removal done) with
+        # a second request waiting behind it.
+        for request in (ADD + DEL, ADD + ADD, ADD + b"\n", ADD + b"x", DEL + b"add 10.0.0.9/24 30\n", DEL + b"\x00"):
+            with self.subTest(request=request):
+                bench = self.bench()
+                bench.short_reads = True
+                bench.mark("192.168.1.250")
+                bench.hold("192.168.1.250")
+                bench.run(request, expect="REQUEST_MALFORMED")
+                self.assertEqual(bench.vectors(), [])
+                self.assertEqual(bench.marks(), ["192.168.1.250"])
+        # The control: handed over byte by byte, ONE line is served, also when the caller then closes.
+        for end in (False, True):
+            with self.subTest(one_line_end=end):
+                bench = self.bench()
+                bench.short_reads = True
+                bench.run(ADD, end=end, expect="OK")
+                self.assertEqual(bench.vectors(), READS + [ARPING_VECTOR, REREAD, ADD_VECTOR])
+
     def test_oversized_input(self):
         valid_then_padding = b"add 192.168.1.250/24 30" + b" " * 41  # 64 bytes, the line end is byte 65
         for request, expect in ((valid_then_padding + b"\n", "REQUEST_TOO_LONG"), (b"a" * 65 + b"\n", "REQUEST_TOO_LONG"),
@@ -1119,6 +1722,38 @@ class TheFormOfTheCall(HelperCase):
         bench = self.bench()
         os.chmod(bench.path("etc/group"), 0o666)
         self.refused_without_any_tool(bench, ADD, "SERVICE_USER_UNRESOLVED")
+
+    def test_a_group_or_an_account_that_is_listed_twice_names_nobody(self):
+        # Two lines for the dedicated group, or two for its member: which one is "the" service user is
+        # not this helper's to choose. Each pair is given in both orders, so that neither "the last
+        # line wins" nor "the first line wins" passes; in every pair one of the two lines alone would
+        # name the caller of this test, and the call would be served.
+        # SEEN RED on HP:292-293 removed (the last group line wins: answer OK, an address added), on the
+        # same two lines made a `continue` (the first wins: OK), and on HP:301 without `found is not
+        # None` (the last account line wins: OK).
+        me = os.getuid()
+        root_line = "root:x:0:\n"
+        ours = "dems-netalias:x:990:dems-core\n"
+        for other in ("dems-netalias:x:991:mallory\n", "dems-netalias:x:990:\n", "dems-netalias:x:990:dems-core,mallory\n", ours):
+            for text in (root_line + ours + other, root_line + other + ours):
+                with self.subTest(group=text):
+                    bench = self.bench()
+                    bench.write(bench.path("etc/group"), text)
+                    self.refused_without_any_tool(bench, ADD, "SERVICE_USER_UNRESOLVED")
+        account = "dems-core:x:%d:%d:DEMS Core:/var/lib/dems:/usr/sbin/nologin\n"
+        root_account = "root:x:0:0:root:/root:/bin/bash\n"
+        for other in (me + 1, 0, me):
+            for text in (root_account + account % (me, me) + account % (other, other),
+                         root_account + account % (other, other) + account % (me, me)):
+                with self.subTest(passwd=text):
+                    bench = self.bench()
+                    bench.write(bench.path("etc/passwd"), text)
+                    self.refused_without_any_tool(bench, ADD, "SERVICE_USER_UNRESOLVED")
+        # The control: the same two files with each name once serve the call.
+        bench = self.bench()
+        bench.write(bench.path("etc/group"), root_line + ours)
+        bench.write(bench.path("etc/passwd"), root_account + account % (me, me))
+        bench.run(ADD, expect="OK")
 
     def test_a_silent_connection_is_closed_after_the_time_bound(self):
         self.refused_without_any_tool(self.bench(), b"add 192.168.1.250/24", "REQUEST_TIMEOUT")
@@ -1256,7 +1891,7 @@ class CapturedTexts(HelperCase):
         bench.write(bench.interface_file, "eth0\n")
         self.plan_captured(bench, "addr_eth0_and_lo.json", 0, free)
         bench.run(ADD, expect="OK")
-        self.assertEqual(bench.vectors(), READS + [["arping", "-D", "-c", "2", "-w", "3", "-I", "eth0", "192.168.1.250"],
+        self.assertEqual(bench.vectors(), READS + [["arping", "-D", "-c", "2", "-w", "3", "-I", "eth0", "192.168.1.250"], REREAD,
                                                    ["ip", "addr", "add", "192.168.1.250/24", "dev", "eth0", "valid_lft", "1800", "preferred_lft", "1800"]])
         self.assertEqual(bench.marks(), ["192.168.1.250"])
         # Observation O-1 of row H3: without carrier the program prints the whole free text and ends 0.

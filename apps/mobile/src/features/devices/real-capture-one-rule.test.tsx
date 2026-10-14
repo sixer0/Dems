@@ -22,13 +22,13 @@ import '@/navigation/testing/router-harness';
 import { act, fireEvent, screen, within } from '@testing-library/react-native';
 import { AUDIO_FRAME_NOT_MEASURED_EXAMPLE, DIAGNOSTIC_NOT_REPORTED_EXAMPLE } from '@dems/shared/api';
 import { en } from '@dems/shared/i18n';
-import { createSim, isLevelNotMeasured, type SimState } from '@dems/shared/sim';
+import { clearCaptureWarningTransition, createSim, isLevelNotMeasured, raiseCaptureWarningTransition, type SimState } from '@dems/shared/sim';
 import { micRows, statedTransportOf } from '@/features/capture-selector/capture-selector-model';
 import { getMissingKeys, resetMissingKeys } from '@/i18n';
 import { resetMotionStateForTests } from '@/motion';
 import { deviceMicLevelKind } from './device-mic-meter';
 import { cameraDetailFactsOf, detailFactsOf, relayWords } from './devices-model';
-import { STREAM_FACTS_NOT_STATED, statedTrackOf, storedStreamFactsOf } from './stream-facts';
+import { cameraCaptureFaultOf, STREAM_FACTS_NOT_STATED, statedTrackOf, storedStreamFactsOf } from './stream-facts';
 import { PLATFORM_CHECK_IDS, diagnosticNotReported, summaryOf } from './diagnostics-sheet';
 import { registeredStateTone } from './registered-device-rows';
 import { renderDevicesApp, settle, type DevicesHarness } from './testing/devices-harness';
@@ -116,6 +116,25 @@ describe('the two rules (pure)', () => {
     expect(statedTrackOf({ ...idle, cameras: idle.cameras.map((camera) => (camera.id === 'VIDEO-01' ? { ...camera, lens: 'FAULT' as const } : camera)) }, first).fault).toBe('NO_SIGNAL');
     // CONTROL: the other track is not touched by the first one's fault.
     expect(statedTrackOf(lines({ streamState: 'LOST' }), (line) => line.trackId === 'VIDEO-02').fault).toBeNull();
+  });
+
+  // Task 4 row W5 (review 060d Q-01). Seen RED on the mutation "`cameraCaptureFaultOf` answers null for every camera".
+  it('W5 (Q-01) - `statedTrackOf`: an ACTIVE capture fault the Core raised about the line\'s camera is the track\'s fault although the line reads LIVE; it goes when the Core clears it', () => {
+    const recording = createSim({ scenario: 'recording', storage: null }).store.getState();
+    const first = (line: { readonly trackId?: unknown }): boolean => line.trackId === 'VIDEO-01';
+    const deviceId = recording.captureConfig.cameras.find((line) => line.trackId === 'VIDEO-01')!.deviceId;
+    const warning = { code: 'CAPTURE_FAULT', subject: deviceId, reason: 'CAMERA_STREAM_ENDED' } as Parameters<typeof raiseCaptureWarningTransition>[2];
+    expect(statedTrackOf(recording, first).fault).toBeNull();
+    const raised = raiseCaptureWarningTransition(recording, recording.clock.now, warning);
+    expect(cameraCaptureFaultOf(raised.alerts, deviceId)).toBe('STREAM_LOST');
+    expect(statedTrackOf(raised, first).fault).toBe('STREAM_LOST');
+    expect(statedTrackOf(raised, (line) => line.trackId === 'VIDEO-02').fault).toBeNull();
+    // A fault of the capture as a whole names no track; an advisory (`SYSTEM`) alert about the camera is no fault.
+    expect(statedTrackOf(raiseCaptureWarningTransition(recording, recording.clock.now, { ...warning, subject: null } as unknown as typeof warning), first).fault).toBeNull();
+    expect(statedTrackOf({ ...recording, alerts: raised.alerts.map((alert) => (alert.kind === 'CAPTURE_FAULT' ? { ...alert, kind: 'SYSTEM' as const } : alert)) }, first).fault).toBeNull();
+    const cleared = clearCaptureWarningTransition(raised, raised.clock.now, warning);
+    expect(cameraCaptureFaultOf(cleared.alerts, deviceId)).toBeNull();
+    expect(statedTrackOf(cleared, first).fault).toBeNull();
   });
 
   it('`statedTransportOf`: no transport word for a generated source; every other line keeps what the selector states', () => {

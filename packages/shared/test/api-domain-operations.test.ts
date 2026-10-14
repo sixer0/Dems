@@ -655,18 +655,18 @@ describe('the list queries (API-9; decision D51)', () => {
   });
 });
 
-describe('the 51 simulator actions and the operations they reach (01_specs §7.17; task 3 SH-18, R-9; pass D6 CS-09: applyStorageVolume, 48 -> 49; task 4 row 185: registerCaptureMicrophone, 49 -> 50; row 195: readdressCaptureDevice, 50 -> 51)', () => {
+describe('the 52 simulator actions and the operations they reach (01_specs §7.17; task 3 SH-18, R-9; pass D6 CS-09: applyStorageVolume, 48 -> 49; task 4 row 185: registerCaptureMicrophone, 49 -> 50; row 195: readdressCaptureDevice, 50 -> 51; row V7: storeCaptureDeviceProfiles, 51 -> 52)', () => {
   const names = Object.keys(SIM_ACTION_OPERATIONS) as (keyof typeof SIM_ACTION_OPERATIONS)[];
   const byExecution = (execution: string) => names.filter((name) => SIM_ACTION_OPERATIONS[name].execution === execution);
 
   it('names exactly the actions of the real simulator', () => {
     const { actions } = rig('idle');
     expect([...names].sort()).toEqual(Object.keys(actions).sort());
-    expect(names).toHaveLength(51);
+    expect(names).toHaveLength(52);
   });
 
-  it('33 are hosted, 9 server-native, 1 is not available and 8 are internal', () => {
-    expect([SimActionExecution.HOSTED, SimActionExecution.SERVER_NATIVE, SimActionExecution.NOT_AVAILABLE, SimActionExecution.INTERNAL].map((execution) => byExecution(execution).length)).toEqual([33, 9, 1, 8]);
+  it('33 are hosted, 9 server-native, 1 is not available and 9 are internal', () => {
+    expect([SimActionExecution.HOSTED, SimActionExecution.SERVER_NATIVE, SimActionExecution.NOT_AVAILABLE, SimActionExecution.INTERNAL].map((execution) => byExecution(execution).length)).toEqual([33, 9, 1, 9]);
     // Blueprint row 66 (SH-18, C3 §2.4): the hosted pair of the capture selector and the mic switch,
     // the last two members. One is three operations (78, 79, 80), as `deviceCommand` is.
     expect(byExecution('hosted').slice(-2)).toEqual(['setCaptureConfig', 'switchAudioSource']);
@@ -681,8 +681,9 @@ describe('the 51 simulator actions and the operations they reach (01_specs §7.1
     // R-9 (row 132; C3 §2.6): the adoption's `registerCaptureDevice` is the fifth - run by the Core inside
     // operation 96's unit, reached by no client and by no operation of its own.
     // Task 4 row 185: `registerCaptureMicrophone` is the seventh - run by the Core inside operation 99's unit.
-    expect(byExecution('internal')).toEqual(['setTabletLink', 'applyCaptureTelemetry', 'raiseCaptureWarning', 'clearCaptureWarning', 'applyStorageVolume', 'registerCaptureDevice', 'registerCaptureMicrophone', 'readdressCaptureDevice']);
+    expect(byExecution('internal')).toEqual(['setTabletLink', 'applyCaptureTelemetry', 'raiseCaptureWarning', 'clearCaptureWarning', 'applyStorageVolume', 'registerCaptureDevice', 'registerCaptureMicrophone', 'readdressCaptureDevice', 'storeCaptureDeviceProfiles']);
     // Task 4 row 195: `readdressCaptureDevice` is the eighth - run by the Core inside operation 100's unit.
+    // Task 4 row V7: `storeCaptureDeviceProfiles` is the ninth - run by the Core inside the unit of operation 108's storing test.
     for (const name of [...byExecution('not-available'), ...byExecution('internal')]) expect(SIM_ACTION_OPERATIONS[name].operations, name).toEqual([]);
     expect(CORE_API_OPERATIONS.filter((operation) => /tablet-?link|security-?key|telemetry|capture-?warning|register/i.test(operation.path))).toEqual([]);
   });
@@ -866,10 +867,10 @@ describe('the indexed view of the media session', () => {
       expect([Object.keys(valueOf('video01')).length > 0, MEMBER in valueOf('video01')]).toEqual([true, false]);
     });
 
-    it('the totals do not move with the indexed view: 110 operations (39 GET / 71 POST; 97 + the two of task 4 row 63 + the one of row 194 + the seven of row 102 + the one of row V3 + the two of row 116), 83 audit types (67 + the ten of task 4 row 19 + the one of row 201 + the four of row V3 + the one of row R1b)', () => {
+    it('the totals do not move with the indexed view: 110 operations (39 GET / 71 POST; 97 + the two of task 4 row 63 + the one of row 194 + the seven of row 102 + the one of row V3 + the two of row 116), 85 audit types (67 + the ten of task 4 row 19 + the one of row 201 + the four of row V3 + the one of row R1b + the two of row N2)', () => {
       const methods = CORE_API_OPERATIONS.map((operation) => String(operation.method).toUpperCase());
       expect([methods.length, methods.filter((method) => method === 'GET').length, methods.filter((method) => method === 'POST').length]).toEqual([110, 39, 71]);
-      expect(Object.keys(AuditType)).toHaveLength(83);
+      expect(Object.keys(AuditType)).toHaveLength(85);
     });
   });
 });

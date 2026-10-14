@@ -1,0 +1,21 @@
+FIXTURE  device-one-output-96k-signal-15
+BASIS    DEVICE_VERBATIM
+SOURCE   row MM, capture 15 (test/mm_macos_microphone_measurement.md s6; kept whole in .cache/task4-mm/session.log, 854 bytes, 15 lines): the user's USB interface at 96,000 Hz, device index 0, ONE output, SIGTERM 2.5 s after the start, exit status 255
+LAUNCH   NOT the product's list of today: the output is a file through the muxer f32le (not a pipe through fifo), with -progress pipe:1
+CHANGED  the two pointers (the record prints 0x<ptr>) are synthetic numbers; the output path is synthetic. No device name stands in these lines
+--- helper standard error ---
+Input #0, avfoundation, from 'none:0':
+  Duration: N/A, start: 396562.576469, bitrate: 18432 kb/s
+  Stream #0:0: Audio: pcm_f32le, 96000 Hz, 5.1, flt, 18432 kb/s, start 396562.576469
+Stream mapping:
+  Stream #0:0 -> #0:0 (pcm_f32le (native) -> pcm_f32le (native))
+[Parsed_pan_0 @ 0x600002c84000] Pure channel mapping detected: 0
+Output #0, f32le, to '/synthetic/run/capture-b.raw':
+  Metadata:
+    encoder         : Lavf63.1.102
+  Stream #0:0: Audio: pcm_f32le, 48000 Hz, mono, flt, 1536 kb/s
+    Metadata:
+      encoder         : Lavc63.1.102 pcm_f32le
+[out#0/f32le @ 0x600003d08000] video:0KiB audio:180KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: 0.000000%
+size=     180KiB time=00:00:02.09 bitrate= 705.3kbits/s speed=0.995x elapsed=0:00:02.10    
+Exiting normally, received signal 15.

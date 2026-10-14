@@ -18,6 +18,8 @@ import { permissionGuard, routePatternOf } from '../../../plugins/permission-gua
 import { bodyOf, errorOf, operatorOf, outcome, signature } from '../../devices/__tests__/support';
 import { CAPTURE_CONFIG_MODULE_OPERATIONS, captureConfigControl, captureConfigOperation, CaptureAssignmentRefusal, DEVELOPMENT_SOURCE_NOT_ALLOWED, captureAssignmentRefusalOf } from '../index';
 import { CONFIG, CREDENTIAL, DEVICES, cameraSource, primaryMic, selectorUnitApp, type SelectorUnitApp } from './support';
+import { CaptureProfileRefusal, PROFILE_WITHOUT_STREAM_REASON, PROFILE_WITHOUT_STREAM_TEXT, ownProfileFindingOf } from '../routes';
+import { READ_CAMERA_STREAM_PROFILES, readCameraStreamProfiles } from '../store';
 
 const apps: FastifyInstance[] = [];
 afterEach(async () => {
@@ -706,5 +708,53 @@ describe('G70b-01: the reason of a refused assignment (wave I, driver A2)', () =
       expect(new Set(Object.values(CaptureAssignmentRefusal)).size).toBe(4);
       for (const reason of Object.values(CaptureAssignmentRefusal)) expect(reason).toMatch(/^[A-Z][A-Z0-9_]*$/);
     });
+  });
+});
+
+// Row S86a (caution C-1 of the security review row 86; decision C127): a production camera's profile is judged against its
+// stored list AND its stored stream rows. The route on PostgreSQL is the database test's (block 5, last case); here the pure
+// judgement, the seam's word and sentence, and the reader's statement and fail-closed parse.
+describe('row S86a (C-1): a listed code without its stored stream row is refused at assignment', () => {
+  const OWN = 'HEVC_2160P25_MAIN';
+  const RAW = 'PROFILE_1'; // C61: a raw token in code form
+
+  it('the judgement: none -> NOT_STATED, unlisted -> NOT_OF_DEVICE, listed without a stream row -> WITHOUT_STREAM, listed with one -> admitted', () => {
+    const listed = [OWN, RAW, 'H264_1080P25_MAIN'];
+    const streamed = new Set([OWN, 'H264_720P25']);
+    expect(ownProfileFindingOf(undefined, listed, streamed)).toBe('NOT_STATED');
+    expect(ownProfileFindingOf('H264_720P25', listed, streamed)).toBe('NOT_OF_DEVICE');
+    expect(ownProfileFindingOf(RAW, listed, streamed)).toBe('WITHOUT_STREAM');
+    expect(ownProfileFindingOf('H264_1080P25_MAIN', listed, streamed)).toBe('WITHOUT_STREAM');
+    expect(ownProfileFindingOf(OWN, listed, streamed)).toBeNull();
+    // Fail closed: a camera the reads do not hold has no list and no stream row.
+    expect(ownProfileFindingOf(OWN, [], new Set())).toBe('NOT_OF_DEVICE');
+    expect(ownProfileFindingOf(OWN, [OWN], new Set())).toBe('WITHOUT_STREAM');
+  });
+
+  it('the word: its own (row V7c, C130: `common.captureSlotRefusal.CAMERA_PROFILE_WITHOUT_STREAM`), and a sentence of its own that names re-adoption and says a connection test does not repair it', () => {
+    expect(PROFILE_WITHOUT_STREAM_REASON).toBe('CAMERA_PROFILE_WITHOUT_STREAM');
+    expect(Object.values(CaptureProfileRefusal)).toContain(PROFILE_WITHOUT_STREAM_REASON);
+    expect(PROFILE_WITHOUT_STREAM_TEXT).toMatch(/Adopt the camera again/);
+    expect(PROFILE_WITHOUT_STREAM_TEXT).toMatch(/connection test does not repair/);
+    expect(PROFILE_WITHOUT_STREAM_TEXT).not.toMatch(/PROFILE_|HEVC|H264|token/i);
+  });
+
+  it('the reader: one statement on the stream table, key columns only, no parameter, no credential table; codes by camera, a row that is no text states nothing', async () => {
+    expect(READ_CAMERA_STREAM_PROFILES).toContain('public.capture_device_streams');
+    expect(READ_CAMERA_STREAM_PROFILES).not.toMatch(/credential|token|address|\$1/);
+    const asked: string[] = [];
+    const reader = {
+      async query<Row>(text: string): Promise<{ rows: Row[] }> {
+        asked.push(text);
+        return { rows: [{ id: 'CAM-11', profile: OWN }, { id: 'CAM-11', profile: 'H264_720P25' }, { id: 'CAM-12', profile: RAW }, { id: 7, profile: OWN }, { id: 'CAM-13', profile: null }] as Row[] };
+      },
+    };
+    const byCamera = await readCameraStreamProfiles(reader);
+    expect(asked).toEqual([READ_CAMERA_STREAM_PROFILES]);
+    expect([...byCamera.keys()].sort()).toEqual(['CAM-11', 'CAM-12']);
+    expect([...(byCamera.get('CAM-11') ?? [])].sort()).toEqual(['H264_720P25', OWN]);
+    // Per camera: CAM-12's code is not CAM-11's.
+    expect(byCamera.get('CAM-11')?.has(RAW)).toBe(false);
+    expect(byCamera.get('CAM-13')).toBeUndefined();
   });
 });

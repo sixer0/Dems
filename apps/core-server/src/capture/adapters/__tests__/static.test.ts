@@ -397,7 +397,9 @@ describe('A-8: the bytes of a start message are made by the production door only
     expect(door.match(/\bstartBytes\?\.fill\(0\);/g)).toHaveLength(2);
     // The one text the file makes is the bounded copy of an OUTPUT stream, and it is blanked before it is handed on.
     expect(occurrences([{ path: DOOR, text: door }], TEXT_MAKERS)).toHaveLength(2);
-    expect(door).toMatch(/const part = chunk\.subarray\(0, PRODUCTION_OUTPUT_CAP_BYTES - size\);/);
+    // MOVED BY ROW N5b (decision C131 (2)): the cap is the call's, held to 1 byte to 1 MiB and 64 KiB when none is named.
+    expect(door).toMatch(/const part = chunk\.subarray\(0, capBytes - size\);/);
+    expect(door).toMatch(/const capBytes = options\.outputCapBytes \?\? PRODUCTION_OUTPUT_CAP_BYTES;/);
     expect(door).toMatch(/text: \(\) => blankCredentialLocators\(Buffer\.concat\(kept\)\.toString\('utf8'\)\),/);
     // Every argument of the start is the caller's list, spread once; the door adds none and computes none.
     expect(door).toMatch(/child = spawn\(options\.command, \[\.\.\.options\.args\], \{/);
@@ -406,6 +408,35 @@ describe('A-8: the bytes of a start message are made by the production door only
     expect(door.match(/new ProductionDoorError\([^)]*\)/g)?.every((call) => /^new ProductionDoorError\((?:code|spawnFailed \? ProductionDoorRefusal\.PROGRAM_NOT_STARTED : refusal)\)$/.test(call))).toBe(true);
     // The door logs nothing and names no log sink.
     expect(door).not.toMatch(/\bconsole\b|\blog\s*\.|\.(?:warn|info|error|debug)\s*\(/);
+  });
+
+  // C-6 / C139 (verification 086 caution C-6): the relay's start hands the door no `onDiagnostics`. The observer of standard error
+  // lines is an option of the door that nothing in the relay's unit asks for today; a relay that listened to the child's error output
+  // would carry the lines of a process that holds a credential. The rule sees the call of the door in `relay-start.ts` (code only, no comment).
+  describe('C-6: the relay start never hands onDiagnostics to the production door', () => {
+    const RELAY_START = `${ADAPTERS}camera/relay-start.ts`;
+    /** Every line of the file that names the observer, and every `.door(` statement (to its semicolon) that names it. */
+    const handsOnDiagnostics = (text: string): string[] => [
+      ...text.split('\n').flatMap((line, index) => (/\bonDiagnostics\b/.test(line) ? [`:${index + 1} names onDiagnostics`] : [])),
+      ...[...text.matchAll(/\.door\s*\([^;]*;/g)].filter((call) => /\bonDiagnostics\b/.test(call[0])).map(() => 'a door call carries onDiagnostics'),
+    ];
+
+    it('finds a door call that carries onDiagnostics, a spread-in member and a bare name (control)', () => {
+      const planted = [
+        'return start.door({ command: start.program, args: [], env: {}, message, timers: start.timers, onOutput: start.onOutput, onDiagnostics: start.onDiagnostics });',
+        'const observer = start.onDiagnostics;',
+      ].join('\n');
+      expect(handsOnDiagnostics(planted)).toEqual([':1 names onDiagnostics', ':2 names onDiagnostics', 'a door call carries onDiagnostics']);
+      expect(handsOnDiagnostics('return start.door({ command: start.program, args: [], env: {}, message, timers: start.timers, onOutput: start.onOutput });')).toEqual([]);
+    });
+
+    it('the relay start calls the door once, with the members it has today, and names onDiagnostics nowhere', () => {
+      const relayStart = tree.find((file) => file.path === RELAY_START)?.text ?? '';
+      expect(relayStart.length).toBeGreaterThan(1_000);
+      expect(relayStart.match(/\.door\s*\(/g)).toHaveLength(1);
+      expect(relayStart).toMatch(/start\.door\(\{ command: start\.program, args: \[\], env: \{\}, message, timers: start\.timers, onOutput: start\.onOutput \}\)/);
+      expect(handsOnDiagnostics(relayStart)).toEqual([]);
+    });
   });
 });
 
@@ -422,7 +453,13 @@ describe('A-9: the built production adapters are named by no production source b
     // the connect flow hands it its door, and no stream is opened without a credential and a configured relay program.
     [`${ADAPTERS}camera/relay-start`]: [`${ADAPTERS}camera/onvif-relay.ts`, `${ADAPTERS}camera/stream-probe.ts`],
     // Task 4 row 67 (its request, served by row 46): the production microphone adapter beside the stub `audio/usb-audio`.
-    [`${ADAPTERS}audio/usb-audio-production`]: [],
+    // Task 4 row N9 (design 06 section 4.4: "may be shared AS CODE"): the macOS adapter imports from it the match of a
+    // stored row, the refusal codes and their error class, the row's shape rule and the guard's vector - no adapter of it.
+    [`${ADAPTERS}audio/usb-audio-production`]: [`${ADAPTERS}audio/usb-audio-macos.ts`],
+    // Task 4 row N9: the macOS production microphone adapter of kind USB_AUDIO, registered nowhere until row N10 (by
+    // platform), and its pure gate, which only that adapter names.
+    [`${ADAPTERS}audio/usb-audio-macos`]: [],
+    [`${ADAPTERS}audio/macos-launch-gate`]: [`${ADAPTERS}audio/usb-audio-macos.ts`],
     // Task 4 row 68 (its request, served by integration pass I-7): the microphone loss watch, built beside that
     // adapter and wired by no production source until the composition (row 85). It imports no adapter: the match is handed in.
     [`${ADAPTERS}audio/mic-loss`]: [],
@@ -711,9 +748,11 @@ describe('A-10: no permissive destination value under src/; the judgement of a s
 // never admitted after the boot); and in each built adapter every refusal stands before the one change.
 describe('A-11: the door of a later device is a member of the two built production adapters, by the name the fence asks for', () => {
   const DOOR = /\badmitDevice\b/;
-  const BUILT = [`${ADAPTERS}camera/onvif-relay.ts`, `${ADAPTERS}audio/usb-audio-production.ts`];
+  // Task 4 row N9: the macOS microphone adapter states the same door, by the Linux adapter's shape, so that a microphone
+  // registered on a running Core on this Mac is served by the same adapter (row 85d's rule; registered by row N10).
+  const BUILT = [`${ADAPTERS}camera/onvif-relay.ts`, `${ADAPTERS}audio/usb-audio-production.ts`, `${ADAPTERS}audio/usb-audio-macos.ts`];
 
-  it('the adapter files that name the member are the two built ones; the fence asks for that name', () => {
+  it('the adapter files that name the member are the built ones; the fence asks for that name', () => {
     expect(adapters.filter((file) => DOOR.test(file.text)).map((file) => file.path).sort()).toEqual([...BUILT].sort());
     const fence = tree.find((file) => file.path === 'src/capture/fence/index.ts')?.text ?? '';
     expect(fence).toContain("const member = (adapter as unknown as Record<string, unknown>)['admitDevice'];");
@@ -735,5 +774,49 @@ describe('A-11: the door of a later device is a member of the two built producti
     // Refused by the class, a stated kind and a stated source class; and nothing of the host is asked: no await, no call of a dependency.
     for (const refusal of ['DEVICE_UNKNOWN', 'DEVICE_CLASS_MISMATCH', 'ADAPTER_KIND_NOT_ALLOWED', 'SOURCE_CLASS_NOT_ALLOWED']) expect(door, refusal).toContain(`CaptureAdapterRefusal.${refusal}`);
     expect(door).not.toMatch(/\bawait\b|\boptions\.|\bdependencies\.|\bdoor\(|\bcredentials\b|\blocator\b|\bstream\(/);
+  });
+});
+
+// Task 4 row N9 (masterplan/06 revision 3 section 8.1; security addendum 08b SM-20, SM-21, SM-40; decision U25 (3)): WHERE THE
+// CODE MARKS THE macOS MICROPHONE PATH AS THE BENCH FORM. The macOS adapter is a file of its own whose head says what it is;
+// it exports the two words of the source facts and no other file of the layer builds them; it hands the worker the GAPPED
+// pipe kind and never the continuous one; and it imports no file of the development class (SM-21; design 4.4).
+describe('A-12: the macOS microphone adapter marks the bench form, and no other file of the layer makes its words', () => {
+  const MACOS = `${ADAPTERS}audio/usb-audio-macos.ts`;
+  const WORDS = /['"](?:AVFOUNDATION|NOT_CONTINUOUS)['"]/g;
+  /** The development files design 4.4 keeps out of the production path: the dev adapter, its helper, its delivery watch and its list parser. */
+  const DEVELOPMENT = [`${ADAPTERS}local/mic-adapter`, `${ADAPTERS}local/mic-helper`, `${ADAPTERS}local/camera-helper`, `${ADAPTERS}local/device-list`, `${ADAPTERS}local/camera-adapter`];
+  const violations = (files: readonly SourceFile[]): string[] => [
+    ...occurrences(files.filter((file) => file.path !== MACOS), WORDS).map((place) => `${place} builds a word of the bench form`),
+    ...relativeImports(files.filter((file) => file.path === MACOS))
+      .filter((entry) => DEVELOPMENT.includes(entry.target))
+      .map((entry) => `${entry.file}:${entry.line} imports a development file`),
+  ];
+
+  it('finds a planted word in another file and a planted development import (control)', () => {
+    const planted: SourceFile[] = [
+      { path: `${ADAPTERS}audio/usb-audio-production.ts`, text: "const layer = 'AVFOUNDATION';\n" },
+      { path: MACOS, text: "import { createMicHelper } from '../local/mic-helper';\nconst a = 'NOT_CONTINUOUS';\n" },
+    ];
+    expect(violations(planted)).toEqual([`${ADAPTERS}audio/usb-audio-production.ts:1 builds a word of the bench form`, `${MACOS}:1 imports a development file`]);
+  });
+
+  it('the head says it, the two words are made in this file alone, once each; the pipe kind is the gapped one; no development file is imported', () => {
+    expect(violations(adapters)).toEqual([]);
+    const code = adapters.find((file) => file.path === MACOS)?.text ?? '';
+    expect(code.match(/^export const MACOS_CAPTURE_LAYER = 'AVFOUNDATION';$/gm)).toHaveLength(1);
+    expect(code.match(/^export const MACOS_SAMPLE_CONTINUITY = 'NOT_CONTINUOUS';$/gm)).toHaveLength(1);
+    expect(code.match(WORDS)).toHaveLength(2);
+    // Stated in the source facts by the constants, never by a second spelling.
+    expect(code).toMatch(/^ {8}captureLayer: MACOS_CAPTURE_LAYER,$/m);
+    expect(code).toMatch(/^ {8}sampleContinuity: MACOS_SAMPLE_CONTINUITY,$/m);
+    // The worker is handed the GAPPED kind (design 8.2 (b)); the continuous kind and its transport are not named.
+    expect(code).toMatch(/^export const MACOS_MIC_PIPE_KIND = 'PCM_FIFO_GAPPED';$/m);
+    expect(code).not.toMatch(/\bMIC_TRANSPORTS\b|CaptureMicInputKind\.PCM_FIFO\b|['"]PCM_FIFO['"]/);
+    // No progress report and no delivery watch of the development helper (design 4.2: the row has none).
+    expect(code).not.toMatch(/\bcreateDeliveryWatch\b|\bstartHelperProcess\b|-progress/);
+    const head = readFileSync(resolve(WORKSPACE, MACOS), 'utf8').slice(0, 1_200);
+    expect(head).toContain('THE BENCH FORM OF THIS MAC: NOT THE HARDENED LINUX FORM; THE AUDIO OF THIS PATH IS NOT');
+    expect(head).toContain('SAMPLE-CONTINUOUS');
   });
 });

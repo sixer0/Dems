@@ -342,6 +342,9 @@ const NOTICE_STATUS: Readonly<Record<Exclude<AnswerClass, 'ok'>, 'warning' | 'da
   failed: 'danger',
 };
 
+/** The words of `details.reason` the Core answers for a production camera's profile (`CaptureProfileRefusal` of the Core's capture-config routes). */
+const PROFILE_REFUSAL_REASONS: readonly string[] = ['CAMERA_PROFILE_NOT_STATED', 'CAMERA_PROFILE_NOT_OF_DEVICE'];
+
 function NoticeAlert({ notice, selector }: { notice: SelectorNotice; selector: CaptureSelectorData }) {
   const { t } = useTranslation();
   // Fix wave J (JA2-24): a refused choice says why - the cause the client knows, else the Core's reason, else the plain sentence.
@@ -349,7 +352,11 @@ function NoticeAlert({ notice, selector }: { notice: SelectorNotice; selector: C
   const body =
     cause !== null && cause.kind === 'cameraOnOtherTrack'
       ? t('features.capture-selector.selector.notice.cameraOnOtherTrack', { device: cause.deviceId, track: t(`features.capture-selector.selector.track.${cause.trackId}`) })
-      : cause !== null && cause.kind === 'core'
+      : cause !== null && cause.kind === 'core' && PROFILE_REFUSAL_REASONS.includes(cause.reason)
+        ? // Task 4 row W5 (review 060d Q-02; request line of integration I-7): the two profile refusals of the Core read
+          // THE SHARED SENTENCE of their word (`common.captureSlotRefusal`), as the web console reads it - not the word in lower case.
+          t(`common.captureSlotRefusal.${cause.reason}`, { source: t('common.captureSlotSource.CAMERA') })
+        : cause !== null && cause.kind === 'core'
         ? t('features.capture-selector.selector.notice.coreReason', { reason: cause.reason.toLowerCase().replace(/_/g, ' ') })
         : notice.result === 'denied'
       ? t('features.capture-selector.selector.gate.denied', { first: t('common.roles.SUPERVISOR'), second: t('common.roles.TECHNICIAN') })

@@ -18,9 +18,15 @@
  *   200, unchanged revision, no row                the body changes nothing
  *   200                                            ONE unit of work: the row, ONE CAPTURE_NETWORK_CONFIG_CHANGED
  *                                                  entry (the NAMES of the changed settings and the new
- *                                                  revision; never a value), and - after the commit, never for
+ *                                                  revision; never a value - a changed ONVIF port list adds
+ *                                                  its COUNT `onvifPortCount`, row V7b), and - after the commit, never for
  *                                                  a unit that rolled back - the new row handed to the reader of
  *                                                  the network facts (`committed`)
+ *
+ * AFTER THE UNIT, HOWEVER IT ENDED (review 120b S2-01): the reader is read again from the STORED row (`reload`), so
+ * that a commit whose answer was lost, a body that changes nothing and a refusal on a row changed elsewhere leave the
+ * reader on the row and not on what it held. A refusal before the unit (a session open, a Core that cannot commission)
+ * reads nothing.
  *
  * THE CORE CHOOSES NOTHING. The interface is what the technician wrote, or null; it is only
  * compared with the names the host states, through the reader handed in. A setting the body does
@@ -85,6 +91,12 @@ export interface NetworkConfigSeams {
   interfaces(): readonly HostInterface[];
   /** The row a unit committed: the reader of the network facts answers from it from now on. */
   committed(stored: StoredNetworkConfig): void;
+  /**
+   * THE READER'S WAY BACK TO THE STORED ROW (review 120b finding S2-01, review 60e finding E-09): one read of the row,
+   * outside every unit, into the reader's memory. Called by `changeNetworkConfig` after EVERY unit it opened has ended,
+   * however it ended. Never rejects: a read that fails leaves the reader at "not configured" and says so itself.
+   */
+  reload(): Promise<void>;
 }
 
 export const NETWORK_CONFIG_READ_LABEL = 'captureNetworkConfig.read';
@@ -117,6 +129,7 @@ const UNWRITTEN: NetworkConfigValues = Object.freeze({
   aliasHost: CAPTURE_NETWORK_CONFIG_DEFAULTS.aliasHost,
   aliasMinutes: CAPTURE_NETWORK_CONFIG_DEFAULTS.aliasMinutes,
   cameraIpStart: CAPTURE_NETWORK_CONFIG_DEFAULTS.cameraIpStart,
+  onvifPorts: CAPTURE_NETWORK_CONFIG_DEFAULTS.onvifPorts,
 });
 
 /** The body of operations 101 and 102 from the stored row, or from an empty table. */
@@ -130,6 +143,7 @@ export function networkConfigOf(stored: StoredNetworkConfig | null): CaptureNetw
     aliasHost: values.aliasHost,
     aliasMinutes: values.aliasMinutes,
     cameraIpStart: values.cameraIpStart,
+    onvifPorts: [...values.onvifPorts],
     revision: stored === null ? UNWRITTEN_REVISION : stored.revision,
     updatedAt: stored === null ? null : stored.updatedAt,
     updatedBy: stored === null ? null : stored.updatedBy,
@@ -144,7 +158,8 @@ export async function readNetworkConfig(seams: NetworkConfigSeams): Promise<Capt
 
 // ── Operation 102 ──────────────────────────────────────────────────────────────────────────────
 
-const sameList = (left: readonly string[], right: readonly string[]): boolean => left.length === right.length && left.every((entry, index) => entry === right[index]);
+/** Two lists equal entry by entry, IN ORDER: a list in another order is a change (the first port is the one an address without a port gets judged by). */
+const sameList = (left: readonly (string | number)[], right: readonly (string | number)[]): boolean => left.length === right.length && left.every((entry, index) => entry === right[index]);
 
 /** The settings after the body: a member the body does not carry stays as it is. */
 function merged(current: NetworkConfigValues, body: CaptureNetworkConfigUpdateRequest): NetworkConfigValues {
@@ -155,12 +170,13 @@ function merged(current: NetworkConfigValues, body: CaptureNetworkConfigUpdateRe
     aliasHost: body.aliasHost ?? current.aliasHost,
     aliasMinutes: body.aliasMinutes ?? current.aliasMinutes,
     cameraIpStart: body.cameraIpStart ?? current.cameraIpStart,
+    onvifPorts: body.onvifPorts ?? current.onvifPorts,
   };
 }
 
 /** The NAMES of the settings that differ, in the contract's order. */
 function changedFieldsOf(current: NetworkConfigValues, next: NetworkConfigValues): CaptureNetworkConfigField[] {
-  return CAPTURE_NETWORK_CONFIG_FIELDS.filter((field) => (field === 'factoryAddresses' ? !sameList(current.factoryAddresses, next.factoryAddresses) : current[field] !== next[field]));
+  return CAPTURE_NETWORK_CONFIG_FIELDS.filter((field) => (field === 'factoryAddresses' || field === 'onvifPorts' ? !sameList(current[field], next[field]) : current[field] !== next[field]));
 }
 
 /** The interfaces of the host for the ONE comparison of a chosen name; a reader that throws refuses the change. */
@@ -184,12 +200,27 @@ function judge(seams: NetworkConfigSeams, next: NetworkConfigValues, changed: re
   if (changed.includes('interfaceName') && next.interfaceName !== null && !hostHoldsInterface(hostInterfaces(seams), next.interfaceName)) throw notAllowed();
 }
 
+/** The ONE unit of a change, and - whatever its end - the reader read again from the stored row AFTER it ended. */
+async function unitThenReload<Value>(seams: NetworkConfigSeams, work: (unit: NetworkConfigUnit) => Promise<Value>): Promise<Value> {
+  try {
+    return await seams.host.unit(NETWORK_CONFIG_UNIT_LABEL, work);
+  } finally {
+    await seams.reload();
+  }
+}
+
 export async function changeNetworkConfig(seams: NetworkConfigSeams, caller: NetworkConfigCaller, body: CaptureNetworkConfigUpdateRequest): Promise<CaptureNetworkConfig> {
   const { host, store } = seams;
   if (host.sessionOpen()) throw locked();
   if (!seams.available()) throw notAvailable();
 
-  const outcome = await host.unit(NETWORK_CONFIG_UNIT_LABEL, async (unit) => {
+  // MEMORY FOLLOWS THE ROW (S2-01, E-09). `committed` runs only for a commit the database CONFIRMED. Three ends of a
+  // unit leave the reader behind the row without it: a commit whose answer was lost (thrown as a failed commit, the
+  // tasks after the commit never run, the row may be stored), a body that changes nothing (no task is registered, and
+  // the reader may hold nothing after a boot read that failed), and a refusal inside the unit on a row another writer
+  // changed. So once the unit has ENDED - committed, failed or refused - the reader is read again from the stored row:
+  // one read, outside the unit, never inside a judgement. A refusal BEFORE the unit (the two lines above) reads nothing.
+  const outcome = await unitThenReload(seams, async (unit) => {
     // A session that opened meanwhile: the addresses of the camera port are not touched during a recording.
     if (unit.sessionOpen()) throw locked();
     const stored = await store.read(unit.db);
@@ -215,9 +246,16 @@ export async function changeNetworkConfig(seams: NetworkConfigSeams, caller: Net
       message: NETWORK_CONFIG_CHANGED_MESSAGE,
       actorId: caller.operatorId,
       deviceId: caller.deviceId,
-      details: { changedFields: changedFields.join(','), revision, operationId: 'updateCaptureNetworkConfig', permission: Permission.CAPTURE_COMMISSION },
+      details: {
+        changedFields: changedFields.join(','),
+        revision,
+        // Row V7b: a changed port list is stated by its COUNT (the type names settings, never a value).
+        ...(changedFields.includes('onvifPorts') ? { onvifPortCount: next.onvifPorts.length } : {}),
+        operationId: 'updateCaptureNetworkConfig',
+        permission: Permission.CAPTURE_COMMISSION,
+      },
     });
-    const after: StoredNetworkConfig = { ...next, factoryAddresses: Object.freeze([...next.factoryAddresses]), revision, updatedBy: caller.operatorId, updatedAt: now };
+    const after: StoredNetworkConfig = { ...next, factoryAddresses: Object.freeze([...next.factoryAddresses]), onvifPorts: Object.freeze([...next.onvifPorts]), revision, updatedBy: caller.operatorId, updatedAt: now };
     unit.afterCommit(() => seams.committed(after));
     return { answer: networkConfigOf(after), changedFields };
   });

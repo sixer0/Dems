@@ -174,7 +174,7 @@ describe('db:reset on a used database', () => {
     expect(done.err).toEqual([]);
     expect(done.out).toContain('db:reset: epoch 0 -> 1');
     expect(done.out).toContain(
-      'db:reset: kept tables carried over unchanged (rows): registry_counters 2, console_settings 1, pairing_codes 5, paired_devices 2, device_credentials 2, auth_sessions 3, biometric_tokens 3, capture_devices 5, capture_device_credentials 0, capture_config 1, stt_config 1, core_media_store 0, audit_chain_history 0',
+      'db:reset: kept tables carried over unchanged (rows): registry_counters 2, console_settings 1, pairing_codes 5, paired_devices 2, device_credentials 2, auth_sessions 3, biometric_tokens 3, capture_devices 5, capture_device_credentials 0, capture_config 1, stt_config 1, core_media_store 0, capture_device_streams 0, capture_audio_inputs 0, capture_network_config 0, host_network_aliases 0, installation_acceptances 0, audit_chain_history 0',
     );
     expect(done.out).toContain('db:reset: pairing codes that were ACTIVE, now CANCELLED: 1; operators with a last sign-in from a kept session: 2');
     expect(done.out).toContain('db:reset: SCENARIO_LOADED is audit row 83 of the new chain');

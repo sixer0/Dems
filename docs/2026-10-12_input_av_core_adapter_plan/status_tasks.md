@@ -119,3 +119,40 @@
 | 2026-10-13 10:24 | baris 35 (tinjauan kode fase 2) | LULUS dengan 8 tindak lanjut, 0 memblokir; ketujuh tempat suntingan skrip bersih; C48 |
 | 2026-10-13 10:37 | uji penuh c05 HIJAU; commit b60a9fa3 (skema set B) + 0f5d2a8e (batch 7-8) | 7 commit di branch. Berikutnya: Core untuk kamera asli (baris 232) + batch 9 |
 | 2026-10-13 10:37 | batch 9 (14 agen, 26 baris) | BERJALAN, termasuk baris 232 (Core untuk kamera asli pengguna) |
+
+## STATE AT THE PAUSE OF 2026-10-13 (decision U27) - resume from here
+
+**Paused by the user after the checkpoint commit. Nothing is launched until the user says continue.**
+
+### Where the code is
+- Branch `task4/input-av-core-port`, no push. Last verified commit: 0f5d2a8e (suite run c05 green). After it: the CHECKPOINT commits of this pause (light checks only - typecheck, static sets, lint; hashes in implementation/checkpoint_commit_c06_pending.md when that agent lands). The full suite c06 is POSTPONED to the end of development (U26).
+- Schema [13,'dbc-14'], 30 migration files; never migrated on the demo or lane databases (C29). Contract: 110 operations, 83 audit types, 51 actions.
+- Baselines: boot/checks.ts 90b3a1e6, boot/index.ts 63fe763e; helper `dems-core-netalias` SHA-256 1e758a24...c7d015b1.
+- Left uncommitted on purpose: masterplan/06_design_macos_microphone.md (M1c mid-edit at the pause) and the commit's own record.
+
+### Decisions to re-read first
+decisions/decisions.md U15-U27 and C88-C111; delegation_progress/file_ownership.md from "Batch 9" to the end (every landing, ruling and open item).
+
+### What is next, in lanes (none started)
+- A (critical, serial): ONE targeted worker verification (`make`, `make e2e`, fixtures) WITH the kill matrix (ports 8554/8556 - check the user's lanes and instance first) -> row 86 (security review before the lift; items put to it by name: SR-10/11/12 confirmed by 119 - re-state; N-01; the profile-CHECK limit of C61; `/dev/urandom`; `ps eww` blind spot; the firewall-table design question of C103; row 87's contradictions) -> record AM-1 -> row 88 (the lift; tick lists: decisions/087_lift_texts.md section 1.3 and 060d's seven lift items) -> 89, 90 (incl. a dropped camera leg with the BUILT relay, sealed) -> 91 -> 92.
+- G (preconditions of row 88): W5 (web + tablet: assign a production camera WITH a stored profile - Q-02; a faulted track is not "Live" - Q-01), the Core's bitrate writer (the simulator's literal 9 in real capture), T4 (four tests that still survive a mutation, worst onvif-session.test.ts:395).
+- B: macOS production microphone path (U22-U25): design revision 3 (M1c) -> build rows per its work-package table; gates SM-02, SM-04, SM-14, SM-16, SM-29, SM-30, SM-33, SM-36; SR-15; no worker C edit before lane A's first step; BR-11 again after it. Measured facts: test/mm*, mm2*, mm3* (about 90.3% of samples; one helper, two outputs behind dropping FIFOs).
+- C: documents - README row 218 (+ keys DEMS_CAPTURE_ALIAS_SOCKET, DEMS_CAPTURE_AUDIO_HELPER; reserved ids; production on Linux + this Mac; what a Mac does not check; limit 7; rotation; the receiver's marks list), installer note (helper all-or-none; restart after rotation; retired keys kept; transcriber config; the 4b-2/4b-3 refusals), hardware chapters (helper hash 1e758a24 at HW-ACCEPTANCE-4:151,185,489; HI order no longer forced; criterion 6 of 9A/H-16 as a stated limit; new refusals; ONVIF reply caps; the acceptance step list), collectors' names (incl. -ch_layout).
+- D: row 184 diagnosis (seal WRITE_FAILED on an INTERRUPTED session - never reproduced since).
+- E (read-only): 60e (fifth pass: product diffs of R1, R2, B2, V6, V6b; discovery product files; live source; tablet selector), M10 code review, gates M5 / M10 / M11 / M3 (M3 closes with the final suite).
+- F: tablet HEVC measurement (controller's own device session, U20 (2)); decides `hvc1` (row 57).
+- Small rows queued: demo reset kept tables; the alias journal's NOT_MARKED close (design point); SR-13 the scan's device count (before a real installation); a Core-held lock for "Core stopped" (before real examinations); stale "C49 (2)" comments; one shared stream-facts decoder.
+- LAST: the one full suite (kill matrix, DEMS_REQUIRE_RECORDED_FILES=1, DEMS_SEAL_E2E=1), closing gates, final commits, report, memory.
+
+### Waiting for the user (non-blocking)
+- A small own reader for ONE counting-only 60 s measurement of the audio interface (reviewer's recommendation, C110) - yes / no.
+- Dual-lens cameras as one device on both tracks - in scope or not.
+- Who runs the first real recording on this Mac (U24 allows agents; the camera password is typed by the user).
+
+### Left running
+- The user's instance for real cameras: Core 127.0.0.1:4423 (REAL_DEVELOPMENT, database dems_test_m12_row232, export of 0f5d2a8e - it does NOT have the fix of the event-loop stall B-01), web console 127.0.0.1:5178. Stop: `sh .cache/task4-row232/stop.sh`. Do not run `scripts/lane/lane.sh stop 3` by accident.
+
+### Added after the pause was written (same day)
+- Checkpoint commits exist: f20c9b39 (schema steps 9-13, 59 files), 1fbeada7 (everything else, 679 files). Scan baselines at 1fbeada7 are in delegation_progress/file_ownership.md.
+- M1c landed: the macOS microphone design is revision 3 (uncommitted); 18 work packages; five points of the addendum not buildable as worded must be ruled before lane B starts (file_ownership.md, last update).
+- NOTHING IS IN FLIGHT.

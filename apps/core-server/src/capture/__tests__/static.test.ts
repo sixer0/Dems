@@ -27,6 +27,7 @@ import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, read
 import { CAMERA_HELPER_TABLE, CameraHelperEncoder, LOCAL_CAMERA_DEVICE_NAME, LOCAL_MIC_DEVICE_NAME, MIC_HELPER_TABLE, MicGeneratedTone, cameraPrecheckArguments, cameraPushArguments, deviceListArguments, micPrecheckArguments, micPushArguments } from '../adapters/local';
 import { CARD_LISTING_HELPER_TABLE, MIC_LINUX_HELPER_TABLE, linuxCardListingArguments, linuxChannelSelection, linuxMicDeviceArgument, linuxMicPrecheckArguments, linuxMicPushArguments } from '../adapters/local/mic-helper-args';
 import { COMMISSIONING_HELPER_TABLE, commissioningAddressArgument, linuxEchoArguments, linuxNeighbourArguments } from '../adapters/local/mic-helper-args';
+import { MACOS_LISTING_HELPER_TABLE, MIC_MACOS_HELPER_TABLE, isMicPipeArgument, macMicDeviceListArguments, macMicDeviceWord, macMicPrecheckArguments, macMicPushArguments, macSystemAudioArguments, macUsbTreeArguments } from '../adapters/local/mic-helper-args';
 
 const tree = readTree(WORKSPACE);
 const production = codeOnly(tree.filter((file) => isProductionSource(file.path) && file.path.endsWith('.ts')));
@@ -276,13 +277,25 @@ describe('G-R8: process, timer, time and chance go through one named place each'
     const door = capture.find((file) => file.path === PRODUCTION_DOOR)?.text ?? '';
     expect([...door.matchAll(PROCESS_START)]).toHaveLength(1);
     expect(door).toMatch(/shell: false,/);
-    expect(door).toMatch(/detached: false,/);
+    // MOVED BY ROW N5b (decision C131 (3)): a group of its own ONLY on the caller's ask with `true`; every other caller is the door of before.
+    expect(door).toMatch(/detached: inOwnGroup,/);
+    expect(door).toMatch(/const inOwnGroup = options\.processGroup === true;/);
     expect(door).toMatch(/env: environment,/);
     expect(door).toMatch(/stdio: \['pipe', 'pipe', 'pipe'\],/);
     // Never the caller's object and never the server's own environment: the one `env:` of the file is the line above.
     expect(door.match(/\benv:/g)).toHaveLength(1);
     expect(door).toMatch(/PRODUCTION_ENVIRONMENT_KEYS = Object\.freeze\(\['ALSA_CONFIG_PATH'\] as const\);/);
     expect([...door.matchAll(FILE_SYSTEM)]).toEqual([]);
+    // Task 4 row N5 (wave 12; its request line, served by row N4): the door's observer of standard error (`onDiagnostics`, design
+    // masterplan/06 section 4.6) NEVER HOLDS THE CHILD - the door pauses no stream of a child - and the door has THREE timers and no
+    // other: the write bound of the start message, the second of the observer's rate bound, the turn of its telling. Additive.
+    const PAUSES_A_STREAM = /\.pause\s*\(/g;
+    const DOOR_TIMER = /\btimers\.after\(/g;
+    expect(door.match(PAUSES_A_STREAM)).toBeNull();
+    expect(door.match(DOOR_TIMER)).toHaveLength(3);
+    // Control: a paused stream and a fourth timer are seen by the same patterns.
+    expect('child.stderr.pause(); child.stdout.pause ();'.match(PAUSES_A_STREAM)).toHaveLength(2);
+    expect(`${door}\ncancelExtra = options.timers.after(1_000, later);`.match(DOOR_TIMER)).toHaveLength(4);
     // The local door keeps its own line (G-R12 pins it): the two doors are two files, neither a variant of the other.
     expect(capture.find((file) => file.path === LOCAL_HELPER_DOOR)?.text).not.toMatch(/'pipe', 'pipe', 'pipe'/);
   });
@@ -646,7 +659,8 @@ describe('G-R10 / G-R11: one importer of the ONVIF client, five reads, no stream
     // NAMED ENTRY (row B1; decision C95; review `verification/060b_m3_review_second_pass.md` finding B-01): + the reply guard, `./onvif-reply-guard` -
     // the one-pass scan that caps and judges a device's reply BEFORE the package reads it (its namespace replacement is quadratic and synchronous).
     // The guard itself imports NOTHING (checked on the next line), so the entry opens no door: no module, no socket, no file, no timer.
-    expect(network.match(/from\s+'[^']+'/g)).toEqual(["from 'node:http'", `from '${FILE_OF_THE_CLIENT}'`, "from '../../destination-rule'", "from '../../types'", "from '../credential'", "from '../errors'", "from '../types'", "from './connection-target'", "from './onvif-reply-guard'"]);
+    // NAMED ENTRY (row S06; review 086 caution C-10 / S-06; decision C127): + `./stored-address` for `isSourceAddress` - the source of a set call held to the relay's source form; stored-address.ts imports only a type of '../types', so the entry opens no door
+    expect(network.match(/from\s+'[^']+'/g)).toEqual(["from 'node:http'", `from '${FILE_OF_THE_CLIENT}'`, "from '../../destination-rule'", "from '../../types'", "from '../credential'", "from '../errors'", "from '../types'", "from './connection-target'", "from './onvif-reply-guard'", "from './stored-address'"]);
     expect([capture.find((file) => file.path === 'src/capture/adapters/camera/onvif-reply-guard.ts')?.text.match(/\bfrom\s+['"]|\b(?:import|require)\s*\(/g) ?? 'no import', session.match(/from '\.\/onvif-reply-guard'/g)?.length]).toEqual(['no import', 1]);
     expect(network).toMatch(/^import \{ usingCredential, type SealedCredential \} from '\.\.\/credential';$/m);
     expect(network).not.toMatch(/credential-reader|credential-holders|\breveal\w*\s*\(|\bsessionOpen\b|\bconnectionTest\b|\brelayRestart\b/);
@@ -916,7 +930,7 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       " * generated test microphone plays. What a start refuses for it is the capture fence's decision.",
       // Wave H closing pass Z1 (decision D207): the installation identity, two keys, in the same four places.
       ' * WAIVED EDIT (task 3, fix wave H closing pass Z1, decision D207): the installation identity of the',
-      ' * Core. `DEMS_INSTALLATION_DEVICE_ID` (a device id, e.g. `DEMS-IR-01`) and `DEMS_INSTALLATION_NAME`',
+      ' * Core. `DEMS_INSTALLATION_DEVICE_ID` (a device id, e.g. `DEMS-SITE-21`) and `DEMS_INSTALLATION_NAME`',
       ' * (a display name) are what the signed manifest of a sealed recording states as its device. Read',
       " * once, at start. Whether a start without them is refused is the sealing host's decision.",
       // Task 4 row 21 (WP-02; addendum 8.2 "Configuration keys"): the relay and guard paths, two keys, in the same four places.
@@ -1006,7 +1020,7 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '  return source;',
       '}',
       '',
-      '/** A device id of the contract\'s form (`DEMS-IR-01`), or null when the variable is unset. Any other value stops the boot. */',
+      '/** A device id of the contract\'s form (`DEMS-SITE-21`), or null when the variable is unset. Any other value stops the boot. */',
       'export function parseInstallationDeviceId(raw: string | undefined): string | null {',
       "  if (raw === undefined || raw === '') return null;",
       "  if (!/^[A-Z][A-Z0-9-]{0,31}$/.test(raw)) throw new ConfigError('INSTALLATION_DEVICE_ID_INVALID', `${ENV_INSTALLATION_DEVICE_ID} must be a device id: a capital letter, then capitals, digits or hyphens, 32 characters at most.`);",
@@ -1302,7 +1316,8 @@ describe('G-R12: helpers and mkfifo start through the pinned door; every argumen
     expect(flat(PARTS)).toContain('const program = parts.program ?? LINUX_CARD_LISTING_PROGRAM;');
     // (d) No production file hands the runner another program: the override is a test's. The composition names the platform, the door and the timers.
     expect(places(production, /\b(?:cardListingProgramsOf|hostCardEnumeratorOf)\s*\(/g)).toEqual(['src/capture-composition.ts', PARTS]);
-    expect(flat('src/capture-composition.ts').match(/\b(?:cardListingProgramsOf|hostCardEnumeratorOf)\s*\([^)]*\)/g)).toEqual(['hostCardEnumeratorOf({ platform: input.platform, door, timers })']);
+    // Row N7 (decision C123) moved the literal by ONE member: the configured audio helper, read by the fence on `darwin` only (case "row N7").
+    expect(flat('src/capture-composition.ts').match(/\b(?:cardListingProgramsOf|hostCardEnumeratorOf)\s*\([^)]*\)/g)).toEqual(['hostCardEnumeratorOf({ platform: input.platform, door, timers, helperProgram: ports.audioHelperProgram })']);
     expect(flat(PARTS).match(/\bcardListingProgramsOf\s*\([^)]*\)/g)).toEqual(['cardListingProgramsOf(parts: CardListingRunnerParts)', 'cardListingProgramsOf(host)']);
     // The fence file starts nothing itself and imports no process module (G-R2 and G-R8 are unchanged: their lists did not grow).
     expect([...flat(PARTS).matchAll(PROCESS_START)]).toEqual([]);
@@ -1361,6 +1376,9 @@ describe('G-R12: helpers and mkfifo start through the pinned door; every argumen
     // (c) ONE caller in the product, and its two door calls: the program, the table's row made from `target`, an empty environment, no message.
     expect(places(production, /\b(?:linuxNeighbourArguments|linuxEchoArguments|commissioningAddressArgument)\b/g).sort()).toEqual([TABLE_FILE, PARTS].sort());
     expect(flat(PARTS).match(/(?<![.\w])door\(\{[^;]*;/g)).toEqual([
+      // Row N7 (decision C123): the runner of the three macOS listing rows - pinned in the SR-15 case "row N7".
+      // MOVED BY ROW N5b (decision C131): + the row's own cap per call and the process group of its program.
+      'door({ command: program, args, env: {}, message: null, timers, outputCapBytes: capBytes, processGroup: true });',
       'door({ command: neighbourProgram, args: argumentsOf(linuxNeighbourArguments, target), env: {}, message: null, timers: host.timers });',
       'door({ command: echoProgram, args: argumentsOf(linuxEchoArguments, target), env: {}, message: null, timers: host.timers });',
     ]);
@@ -1419,6 +1437,475 @@ describe('G-R12: helpers and mkfifo start through the pinned door; every argumen
     expect(places(capture, MKFIFO).length).toBeGreaterThan(0);
     // The argument tables live in one file per source class.
     expect(places(capture, /'-list_devices'|'avfoundation'|'lavfi'/g).sort()).toEqual([`${LOCAL}camera-helper-args.ts`, `${LOCAL}mic-helper-args.ts`]);
+  });
+});
+
+// Task 4 row N4 (wave 12). NAMED AMENDMENT SR-15 of rule G-R12 as amended by SR-4 and SR-12, in its FINAL WORDS
+// (verification/08b section 8; decision C110; design masterplan/06 revision 3, sections 4.3.1 and 4.3.2). It is for the
+// production microphone of kind `USB_AUDIO` on `darwin`, in a KIND OF LIST OF ITS OWN - neither a development list nor a
+// Linux list. ADDITIVE: no rule above is changed, no pin above moves, and the lists of this block are counted here alone.
+//
+// (2), (3) THE PUSH LIST AND THE PRE-CHECK LIST ARE WHOLE TEMPLATES, COMPARED WORD FOR WORD. The templates stand below
+// in this file's OWN words (not read from the table). Their only computed places are `<D>` the device word, `<S>` the
+// selection and `<P>` the pipe. There is no set of admitted words beside the template.
+// THE FORBIDDEN LIST stays as a rule of its own (design 4.2a; decision C107: an option that pads, stretches or re-times
+// would make the sample count read "100%" by inventing audio). Each of its lines fails a macOS production list WHEREVER
+// the word stands, and each line has ITS OWN planted control: the rule ids are pinned, every id has a control, and a
+// control must be refused BY ITS OWN LINE (row T2 found rule statements that could be deleted with their self-test
+// green). The mutation each line was seen RED on is in implementation/n4_mic_table_and_rule.md.
+describe('SR-15 (named amendment of G-R12; decision C110): the macOS production microphone lists are whole templates with three computed places; the forbidden list holds wherever a word stands', () => {
+  const TABLE_FILE = 'src/capture/adapters/local/mic-helper-args.ts';
+  const flat = (path: string): string => (production.find((file) => file.path === path)?.text ?? '').replace(/\s+/g, ' ');
+  const PIPE_1 = '/data/dems/run/capture/SES-20261009-0001/MIC-01.pcm';
+  const PIPE_2 = '/data/dems/run/capture/SES-20261009-0001/MIC-02.pcm';
+  type MacKind = 'PUSH' | 'PRECHECK';
+
+  // THE TEMPLATES, one word per position (design 4.3.2): a head of 11 words and one or two sections of 22; 26 words.
+  const PUSH_HEAD = '-hide_banner -nostdin -nostats -loglevel info -thread_queue_size 1024 -f avfoundation -i <D>'.split(' ');
+  const PUSH_SECTION = '-map 0:a -af <S> -ac 1 -ar 48000 -c:a pcm_f32le -f fifo -fifo_format f32le -drop_pkts_on_overflow 1 -queue_size 32 -format_opts flush_packets=1 -y <P>'.split(' ');
+  const PRECHECK = '-hide_banner -nostdin -nostats -loglevel info -f avfoundation -i <D> -t 1 -map 0:a -af <S> -ac 1 -ar 48000 -c:a pcm_f32le -f f32le -flush_packets 1 -'.split(' ');
+  /** SR-15 (1): `none:`, then one whole number 0 to 31 in canonical decimal - no sign, no leading zero, no text. */
+  const DEVICE_WORD = /^none:(?:[0-9]|[12][0-9]|3[01])$/;
+  /** SR-15 (2): one of the 64 words of SR-4 (2). */
+  const SELECTION = /^pan=mono\|c0=c(?:[0-9]|[1-5][0-9]|6[0-3])$/;
+  const COMPUTED_PLACES = new Map<string, (word: string) => boolean>([
+    ['<D>', (word) => DEVICE_WORD.test(word)],
+    ['<S>', (word) => SELECTION.test(word)],
+    ['<P>', (word) => isMicPipeArgument(word)],
+  ]);
+  const templateOf = (kind: MacKind, args: readonly string[]): readonly string[] | null => {
+    if (kind === 'PRECHECK') return args.length === PRECHECK.length ? PRECHECK : null;
+    const sections = (args.length - PUSH_HEAD.length) / PUSH_SECTION.length;
+    return sections === 1 || sections === 2 ? [...PUSH_HEAD, ...Array.from({ length: sections }, () => PUSH_SECTION).flat()] : null;
+  };
+  /** The template rule over one list: the count, every word of its place, and the three rules over the sections. */
+  const templateViolations = (kind: MacKind, args: readonly string[]): string[] => {
+    const template = templateOf(kind, args);
+    if (template === null) return [`${kind}: ${String(args.length)} words are no form of the template`];
+    const at = (place: string): string[] => args.filter((_word, index) => template[index] === place);
+    const channels = at('<S>').map((word) => Number(word.slice(word.lastIndexOf('c') + 1)));
+    return [
+      ...template.flatMap((place, index) => ((COMPUTED_PLACES.get(place)?.(args[index] ?? '') ?? args[index] === place) ? [] : [`${kind}: word ${String(index + 1)} is ${args[index] ?? ''} where the template has ${place}`])),
+      ...(new Set(at('<S>')).size === at('<S>').length ? [] : [`${kind}: a selection stands twice`]),
+      ...(channels.every((channel, index) => index === 0 || !(channel < (channels[index - 1] ?? 0))) ? [] : [`${kind}: the sections do not ascend`]),
+      ...(new Set(at('<P>')).size === at('<P>').length ? [] : [`${kind}: a pipe stands twice`]),
+    ];
+  };
+
+  // THE FORBIDDEN LIST. One line per rule: its id, and what it finds in a list. No line leans on the template.
+  const words = (pattern: RegExp) => (args: readonly string[]): string[] => args.filter((arg) => pattern.test(arg));
+  /** An option whose value is not the one word of the template: found as `<option> <value>`. */
+  const valued = (option: string, only: string) => (args: readonly string[]): string[] => args.flatMap((arg, index) => (arg === option && args[index + 1] !== only ? [`${option} ${args[index + 1] ?? ''}`] : []));
+  const twice = (pattern: RegExp, text: string) => (args: readonly string[]): string[] => (args.filter((arg) => pattern.test(arg)).length > 1 ? [text] : []);
+  const FORMATS_OF: Record<MacKind, readonly string[]> = { PUSH: ['avfoundation', 'fifo'], PRECHECK: ['avfoundation', 'f32le'] };
+  const FORBIDDEN_RULES: readonly (readonly [id: string, found: (args: readonly string[], kind: MacKind) => readonly string[]])[] = [
+    ['asetpts', words(/asetpts/i)],
+    ['aresample', words(/aresample/i)],
+    ['async', words(/^-async(?::|$)|\basync\s*=/i)],
+    ['apad', words(/apad/i)],
+    ['atempo', words(/atempo/i)],
+    ['asetrate', words(/asetrate/i)],
+    ['adelay', words(/adelay/i)],
+    ['aloop', words(/aloop/i)],
+    ['channelsplit', words(/channelsplit/i)],
+    ['-use_wallclock_as_timestamps', words(/^-use_wallclock_as_timestamps$/)],
+    ['-fflags', words(/^-fflags(?::|$)/)],
+    ['-copyts', words(/^-copyts$/)],
+    ['-itsoffset', words(/^-itsoffset$/)],
+    ['-re', words(/^-re$/)],
+    ['-ss', words(/^-ss$/)],
+    ['-shortest', words(/^-shortest$/)],
+    ['-t in a push list', (args, kind) => (kind === 'PUSH' ? args.filter((arg) => arg === '-t') : [])],
+    ['-t of the pre-check', (args, kind) => (kind === 'PRECHECK' ? [...valued('-t', '1')(args), ...twice(/^-t$/, '-t twice')(args)] : [])],
+    ['-progress', words(/^-progress$/)],
+    ['a filter option in another spelling or from a file', (args) => args.filter((arg) => arg !== '-af' && /^-\/?(?:af|vf|filter|lavfi|filter_complex|filter_script|filter_complex_script)(?::.*)?$/.test(arg))],
+    ['a second -af in a section', (args) => args.join('\n').split(/(?:^|\n)-map(?:\n|$)/).filter((section) => section.split('\n').filter((arg) => arg === '-af').length > 1).map(() => '-af twice')],
+    ['filter text that is not the one selection', (args) => args.filter((arg, index) => args[index - 1] === '-af' && !SELECTION.test(arg))],
+    ['-ch_layout', words(/^-ch_layout$/)],
+    ['-channels', words(/^-channels$/)],
+    ['-audio_device_index', words(/^-audio_device_index$/)],
+    ['-video_device_index', words(/^-video_device_index$/)],
+    ['default as a device', words(/^(?:default|[^:]*:default|default:[^:]*)$/i)],
+    ['-i that is not none:<n>', (args) => args.flatMap((arg, index) => (arg === '-i' && !DEVICE_WORD.test(args[index + 1] ?? '') ? [`-i ${args[index + 1] ?? ''}`] : []))],
+    ['a second -i', twice(/^-i$/, '-i twice')],
+    ['-drop_pkts_on_overflow', valued('-drop_pkts_on_overflow', '1')],
+    ['-queue_size', valued('-queue_size', '32')],
+    ['-fifo_format', valued('-fifo_format', 'f32le')],
+    ['-format_opts', valued('-format_opts', 'flush_packets=1')],
+    ['-attempt_recovery', words(/^-attempt_recovery$/)],
+    ['-max_recovery_attempts', words(/^-max_recovery_attempts$/)],
+    ['-recovery_wait_streamtime', words(/^-recovery_wait_streamtime$/)],
+    ['-recovery_wait_time', words(/^-recovery_wait_time$/)],
+    ['-recover_any_error', words(/^-recover_any_error$/)],
+    ['-restart_with_keyframe', words(/^-restart_with_keyframe$/)],
+    ['-timeshift', words(/^-timeshift$/)],
+    ['-loglevel', valued('-loglevel', 'info')],
+    ['-v', words(/^-v$/)],
+    ['a second log level', twice(/^-(?:loglevel|v)$/, 'a log level twice')],
+    ['a format outside the kind', (args, kind) => args.flatMap((arg, index) => (arg === '-f' && !FORMATS_OF[kind].includes(args[index + 1] ?? '') ? [`-f ${args[index + 1] ?? ''}`] : []))],
+  ];
+  const forbiddenViolations = (kind: MacKind, args: readonly string[]): string[] => FORBIDDEN_RULES.flatMap(([id, found]) => found(args, kind).map((word) => `forbidden (${id}): ${word}`));
+  const macViolations = (kind: MacKind, args: readonly string[]): string[] => [...templateViolations(kind, args), ...forbiddenViolations(kind, args)];
+
+  const one = macMicPushArguments({ audioIndex: 0, channelCount: 6, sections: [{ inputNumber: 1, pipePath: PIPE_1 }] });
+  const two = macMicPushArguments({ audioIndex: 0, channelCount: 6, sections: [{ inputNumber: 1, pipePath: PIPE_1 }, { inputNumber: 2, pipePath: PIPE_2 }] });
+  const precheck = macMicPrecheckArguments({ audioIndex: 0, channelCount: 6, inputNumber: 1 });
+  // Plantings: a word is put where it would ACT.
+  const beforeInput = (args: readonly string[], ...planted: string[]): string[] => [...args.slice(0, args.indexOf('-i')), ...planted, ...args.slice(args.indexOf('-i'))];
+  const inSection = (args: readonly string[], ...planted: string[]): string[] => [...args.slice(0, args.indexOf('-ac')), ...planted, ...args.slice(args.indexOf('-ac'))];
+  const swap = (args: readonly string[], from: string, to: string): string[] => { const index = args.indexOf(from); return args.map((arg, at) => (at === index ? to : arg)); };
+  const after = (args: readonly string[], option: string, value: string): string[] => { const index = args.indexOf(option) + 1; return args.map((arg, at) => (at === index ? value : arg)); };
+  const inSelection = (args: readonly string[], text: string): string[] => swap(args, 'pan=mono|c0=c0', `pan=mono|c0=c0${text}`);
+
+  it('the two templates, verbatim: 33 words with one section, 55 with two, 26 for the pre-check; the lengths of the table are those', () => {
+    expect([...one]).toEqual(['-hide_banner', '-nostdin', '-nostats', '-loglevel', 'info', '-thread_queue_size', '1024', '-f', 'avfoundation', '-i', 'none:0', '-map', '0:a', '-af', 'pan=mono|c0=c0', '-ac', '1', '-ar', '48000', '-c:a', 'pcm_f32le', '-f', 'fifo', '-fifo_format', 'f32le', '-drop_pkts_on_overflow', '1', '-queue_size', '32', '-format_opts', 'flush_packets=1', '-y', PIPE_1]);
+    expect([...two]).toEqual([...one, '-map', '0:a', '-af', 'pan=mono|c0=c1', '-ac', '1', '-ar', '48000', '-c:a', 'pcm_f32le', '-f', 'fifo', '-fifo_format', 'f32le', '-drop_pkts_on_overflow', '1', '-queue_size', '32', '-format_opts', 'flush_packets=1', '-y', PIPE_2]);
+    expect([...precheck]).toEqual(['-hide_banner', '-nostdin', '-nostats', '-loglevel', 'info', '-f', 'avfoundation', '-i', 'none:0', '-t', '1', '-map', '0:a', '-af', 'pan=mono|c0=c0', '-ac', '1', '-ar', '48000', '-c:a', 'pcm_f32le', '-f', 'f32le', '-flush_packets', '1', '-']);
+    expect([one.length, two.length, precheck.length]).toEqual([33, 55, 26]);
+    expect([PUSH_HEAD.length, PUSH_SECTION.length, PRECHECK.length]).toEqual([11, 22, 26]);
+    expect([MIC_MACOS_HELPER_TABLE.headLength, MIC_MACOS_HELPER_TABLE.sectionLength, MIC_MACOS_HELPER_TABLE.precheckLength, MIC_MACOS_HELPER_TABLE.sectionsMax]).toEqual([11, 22, 26, 2]);
+    // The three computed places stand where the template has them and nowhere else: once, once per section, once per section.
+    expect([PUSH_HEAD.indexOf('<D>'), PUSH_SECTION.indexOf('<S>'), PUSH_SECTION.indexOf('<P>'), PRECHECK.indexOf('<D>'), PRECHECK.indexOf('<S>')]).toEqual([10, 3, 21, 8, 14]);
+    expect([...PUSH_HEAD, ...PUSH_SECTION, ...PRECHECK].filter((word) => word.startsWith('<'))).toEqual(['<D>', '<S>', '<P>', '<D>', '<S>']);
+    // Every literal of the table is a word of a template, and every literal word of a template is of the table.
+    expect([...MIC_MACOS_HELPER_TABLE.literals].sort()).toEqual([...new Set([...PUSH_HEAD, ...PUSH_SECTION, ...PRECHECK].filter((word) => !word.startsWith('<')))].sort());
+  });
+
+  it('SR-15 (1) to (5): EVERY list the table can make equals its template - every device word, every selection, one section and two; none holds a forbidden word', () => {
+    // The two closed sets, as text: 32 device words and the 64 selections of SR-4 (2) (the same array as the Linux table).
+    expect([...MIC_MACOS_HELPER_TABLE.deviceWords]).toEqual(Array.from({ length: 32 }, (_unused, index) => `none:${String(index)}`));
+    expect(MIC_MACOS_HELPER_TABLE.channelSelections).toBe(MIC_LINUX_HELPER_TABLE.channelSelections);
+    expect([...MIC_MACOS_HELPER_TABLE.channelSelections]).toEqual(Array.from({ length: 64 }, (_unused, index) => `pan=mono|c0=c${String(index)}`));
+    expect(MIC_MACOS_HELPER_TABLE.deviceWords.filter((word) => !DEVICE_WORD.test(word))).toEqual([]);
+    expect(MIC_MACOS_HELPER_TABLE.channelSelections.filter((word) => !SELECTION.test(word))).toEqual([]);
+    let lists = 0;
+    const bad: string[] = [];
+    const hold = (kind: MacKind, args: readonly string[], whole: boolean): void => {
+      lists += 1;
+      const found = whole ? macViolations(kind, args) : templateViolations(kind, args);
+      if (found.length > 0 && bad.length < 5) bad.push(`${args.join(' ')} -> ${found.join('; ')}`);
+    };
+    for (let audioIndex = 0; audioIndex <= 31; audioIndex += 1) {
+      for (let first = 1; first <= 64; first += 1) {
+        const pushed = macMicPushArguments({ audioIndex, channelCount: 64, sections: [{ inputNumber: first, pipePath: PIPE_1 }] });
+        const checked = macMicPrecheckArguments({ audioIndex, channelCount: 64, inputNumber: first });
+        // The computed words are the ones of the two numbers, at their places.
+        if (pushed[10] !== `none:${String(audioIndex)}` || pushed[14] !== `pan=mono|c0=c${String(first - 1)}` || checked[8] !== pushed[10] || checked[14] !== pushed[14]) bad.push(`computed words of ${String(audioIndex)} / ${String(first)}`);
+        hold('PUSH', pushed, true);
+        hold('PRECHECK', checked, true);
+        // Two sections: every pair, handed in in DESCENDING order - the list states them ascending. The forbidden list runs on every pair of device 0 and 31.
+        for (let second = first + 1; second <= 64; second += 1) hold('PUSH', macMicPushArguments({ audioIndex, channelCount: 64, sections: [{ inputNumber: second, pipePath: PIPE_2 }, { inputNumber: first, pipePath: PIPE_1 }] }), audioIndex === 0 || audioIndex === 31);
+      }
+    }
+    expect(bad).toEqual([]);
+    expect(lists).toBe(32 * (64 + 64 + (64 * 63) / 2));
+    // (3) `-t` stands in the pre-check list and in no other; (4) `fifo` stands in a push section only; (5) one log level, no progress report.
+    expect([one, two, precheck].map((args) => args.filter((arg) => arg === '-t').length)).toEqual([0, 0, 1]);
+    expect([one, two, precheck].map((args) => args.filter((arg) => arg === 'fifo').length)).toEqual([1, 2, 0]);
+    expect([one, two, precheck].map((args) => args.filter((arg) => arg.includes('|')))).toEqual([['pan=mono|c0=c0'], ['pan=mono|c0=c0', 'pan=mono|c0=c1'], ['pan=mono|c0=c0']]);
+    // A kind of list of its own: the development table and the Linux table are as they were, and lend nothing but the selection function.
+    expect(MIC_HELPER_TABLE.literals.filter((literal) => /^(?:fifo|info|-map|0:a|-af|-fifo_format|-drop_pkts_on_overflow|-queue_size|-format_opts|flush_packets=1|-thread_queue_size)$/.test(literal))).toEqual([]);
+    expect(MIC_LINUX_HELPER_TABLE.literals.filter((literal) => /^(?:fifo|info|-map|0:a|avfoundation|-fifo_format|-drop_pkts_on_overflow|-queue_size|-format_opts|flush_packets=1)$/.test(literal))).toEqual([]);
+    expect(MIC_MACOS_HELPER_TABLE.literals.filter((literal) => /^(?:warning|-progress|pipe:1|-vn|null|alsa|lavfi|-re|-ch_layout|-sample_rate|-stream_loop)$/.test(literal))).toEqual([]);
+  });
+
+  it('the template rule, line by line (controls): a word, the count, a third section, a selection twice, a pipe twice, descending sections, and each computed place', () => {
+    expect(templateViolations('PUSH', one)).toEqual([]);
+    expect(templateViolations('PUSH', two)).toEqual([]);
+    expect(templateViolations('PRECHECK', precheck)).toEqual([]);
+    // A word of a place: the log level, the queue's values, the order of two words.
+    expect(templateViolations('PUSH', after(one, '-loglevel', 'warning'))).toEqual(['PUSH: word 5 is warning where the template has info']);
+    expect(templateViolations('PUSH', after(one, '-drop_pkts_on_overflow', '0'))).toEqual(['PUSH: word 27 is 0 where the template has 1']);
+    expect(templateViolations('PRECHECK', after(precheck, '-t', '2'))).toEqual(['PRECHECK: word 11 is 2 where the template has 1']);
+    expect(templateViolations('PUSH', [one[0] ?? '', one[2] ?? '', one[1] ?? '', ...one.slice(3)])).toEqual(['PUSH: word 2 is -nostats where the template has -nostdin', 'PUSH: word 3 is -nostdin where the template has -nostats']);
+    // The count: a word more, a word less, no section, a THIRD section, a push list in the place of a pre-check.
+    expect(templateViolations('PUSH', [...one, '-shortest'])).toEqual(['PUSH: 34 words are no form of the template']);
+    expect(templateViolations('PUSH', one.slice(0, -1))).toEqual(['PUSH: 32 words are no form of the template']);
+    expect(templateViolations('PUSH', one.slice(0, 11))).toEqual(['PUSH: 11 words are no form of the template']);
+    expect(templateViolations('PUSH', [...two, ...two.slice(33).map((arg) => (arg === 'pan=mono|c0=c1' ? 'pan=mono|c0=c2' : arg === PIPE_2 ? PIPE_2.replace('MIC-02', 'MIC-03') : arg))])).toEqual(['PUSH: 77 words are no form of the template']);
+    expect(templateViolations('PRECHECK', one)).toEqual(['PRECHECK: 33 words are no form of the template']);
+    expect(templateViolations('PRECHECK', precheck.slice(0, -1))).toEqual(['PRECHECK: 25 words are no form of the template']);
+    // The sections: the same selection twice, the same pipe twice, descending order.
+    expect(templateViolations('PUSH', swap(two, 'pan=mono|c0=c1', 'pan=mono|c0=c0'))).toEqual(['PUSH: a selection stands twice']);
+    expect(templateViolations('PUSH', swap(two, PIPE_2, PIPE_1))).toEqual(['PUSH: a pipe stands twice']);
+    expect(templateViolations('PUSH', swap(swap(two, 'pan=mono|c0=c0', 'pan=mono|c0=c5'), 'pan=mono|c0=c1', 'pan=mono|c0=c2'))).toEqual(['PUSH: the sections do not ascend']);
+    // <D>: the controls of the review's SM-08 (e) - beyond the set, a leading zero, a sign, the video place, a tail, a name, `default`, nothing.
+    for (const word of ['none:32', 'none:01', 'none:-1', 'none:+1', '0:none', 'none:1x', 'none:1 ', 'none:', ':0', '0', 'none:USB Audio Interface', 'default', 'none:default', 'none:0:1']) {
+      expect(templateViolations('PUSH', swap(one, 'none:0', word)), word).toEqual([`PUSH: word 11 is ${word} where the template has <D>`]);
+      expect(templateViolations('PRECHECK', swap(precheck, 'none:0', word)), word).toEqual([`PRECHECK: word 9 is ${word} where the template has <D>`]);
+    }
+    // <S>: a mix, a channel beyond 63, a second output channel, a gain, filter text after a comma or a semicolon, another filter.
+    for (const word of ['pan=mono|c0=c0+c1', 'pan=mono|c0=c64', 'pan=mono|c0=c00', 'pan=stereo|c0=c0|c1=c1', 'pan=mono|c0=0.5*c0', 'pan=mono|c0=c0,apad', 'pan=mono|c0=c0;apad', 'anull', '']) {
+      expect(templateViolations('PUSH', swap(one, 'pan=mono|c0=c0', word)), word).toEqual([`PUSH: word 15 is ${word} where the template has <S>`]);
+    }
+    // <P>: anything that is not a pipe of the transport - a file, a dot-dot path, an address, standard output, an option.
+    for (const word of ['/tmp/x.wav', '/data/dems/run/capture/../MIC-01.pcm', 'tcp://127.0.0.1:9000', '-', 'pipe:1', '-shortest']) {
+      expect(templateViolations('PUSH', swap(one, PIPE_1, word)), word).toEqual([`PUSH: word 33 is ${word} where the template has <P>`]);
+    }
+  });
+
+  it('the forbidden list: its ids are pinned, every id has its own control, and every control is refused BY ITS OWN LINE and by the template', () => {
+    expect(forbiddenViolations('PUSH', one)).toEqual([]);
+    expect(forbiddenViolations('PUSH', two)).toEqual([]);
+    expect(forbiddenViolations('PRECHECK', precheck)).toEqual([]);
+    // The ids, written out: a rule line that is taken away is missed HERE, and its control below then finds no line that refuses it.
+    expect(FORBIDDEN_RULES.map(([id]) => id)).toEqual([
+      'asetpts', 'aresample', 'async', 'apad', 'atempo', 'asetrate', 'adelay', 'aloop', 'channelsplit',
+      '-use_wallclock_as_timestamps', '-fflags', '-copyts', '-itsoffset', '-re', '-ss', '-shortest', '-t in a push list', '-t of the pre-check', '-progress',
+      'a filter option in another spelling or from a file', 'a second -af in a section', 'filter text that is not the one selection',
+      '-ch_layout', '-channels', '-audio_device_index', '-video_device_index', 'default as a device', '-i that is not none:<n>', 'a second -i',
+      '-drop_pkts_on_overflow', '-queue_size', '-fifo_format', '-format_opts',
+      '-attempt_recovery', '-max_recovery_attempts', '-recovery_wait_streamtime', '-recovery_wait_time', '-recover_any_error', '-restart_with_keyframe', '-timeshift',
+      '-loglevel', '-v', 'a second log level', 'a format outside the kind',
+    ]);
+    /** id of the rule line, the kind of list, the planted list, the word the line must name. */
+    const CONTROLS: readonly (readonly [id: string, kind: MacKind, planted: readonly string[], found: string])[] = [
+      // Invented or re-timed audio (design 4.2a; decision C107): filter text after a comma or a semicolon INSIDE the selection word, an output option inside a section, an input option before `-i`.
+      ['asetpts', 'PUSH', inSelection(two, ',asetpts=N/SR/TB'), 'pan=mono|c0=c0,asetpts=N/SR/TB'],
+      ['aresample', 'PUSH', inSelection(two, ',aresample=async=1'), 'pan=mono|c0=c0,aresample=async=1'],
+      ['aresample', 'PUSH', inSelection(two, ';aresample=48000'), 'pan=mono|c0=c0;aresample=48000'],
+      ['async', 'PUSH', inSelection(two, ',aresample=async=1'), 'pan=mono|c0=c0,aresample=async=1'],
+      ['async', 'PUSH', inSection(two, '-async', '1'), '-async'],
+      ['apad', 'PUSH', inSelection(two, ';apad'), 'pan=mono|c0=c0;apad'],
+      ['apad', 'PRECHECK', inSelection(precheck, ',apad=whole_dur=1'), 'pan=mono|c0=c0,apad=whole_dur=1'],
+      ['atempo', 'PUSH', inSelection(two, ',atempo=1.1'), 'pan=mono|c0=c0,atempo=1.1'],
+      ['asetrate', 'PUSH', inSelection(two, ',asetrate=48000'), 'pan=mono|c0=c0,asetrate=48000'],
+      ['adelay', 'PUSH', inSelection(two, ',adelay=10'), 'pan=mono|c0=c0,adelay=10'],
+      ['aloop', 'PUSH', inSelection(two, ',aloop=1'), 'pan=mono|c0=c0,aloop=1'],
+      ['channelsplit', 'PUSH', inSection(two, '-filter_complex', 'channelsplit'), 'channelsplit'],
+      ['-use_wallclock_as_timestamps', 'PUSH', beforeInput(two, '-use_wallclock_as_timestamps', '1'), '-use_wallclock_as_timestamps'],
+      ['-fflags', 'PUSH', beforeInput(two, '-fflags', '+genpts'), '-fflags'],
+      ['-copyts', 'PUSH', inSection(two, '-copyts'), '-copyts'],
+      ['-itsoffset', 'PUSH', beforeInput(two, '-itsoffset', '0.1'), '-itsoffset'],
+      ['-re', 'PUSH', beforeInput(two, '-re'), '-re'],
+      // Cuts.
+      ['-ss', 'PUSH', inSection(two, '-ss', '1'), '-ss'],
+      ['-shortest', 'PUSH', inSection(two, '-shortest'), '-shortest'],
+      ['-t in a push list', 'PUSH', inSection(two, '-t', '10'), '-t'],
+      ['-t of the pre-check', 'PRECHECK', after(precheck, '-t', '3600'), '-t 3600'],
+      ['-t of the pre-check', 'PRECHECK', inSection(precheck, '-t', '1'), '-t twice'],
+      ['-progress', 'PUSH', beforeInput(two, '-progress', 'pipe:1'), '-progress'],
+      // Another filter: every spelling of a filter option, one whose value is read from a file (08b HB-4), a second `-af`, other text after `-af`.
+      ['a filter option in another spelling or from a file', 'PUSH', inSection(two, '-filter:a', 'volume=2'), '-filter:a'],
+      ['a filter option in another spelling or from a file', 'PUSH', inSection(two, '-filter_complex', 'amix'), '-filter_complex'],
+      ['a filter option in another spelling or from a file', 'PUSH', inSection(two, '-lavfi', 'amix'), '-lavfi'],
+      ['a filter option in another spelling or from a file', 'PUSH', inSection(two, '-/af', '/data/x.txt'), '-/af'],
+      ['a filter option in another spelling or from a file', 'PUSH', inSection(two, '-/filter:a', '/data/x.txt'), '-/filter:a'],
+      ['a filter option in another spelling or from a file', 'PUSH', inSection(two, '-filter_script:a', '/data/x.txt'), '-filter_script:a'],
+      ['a filter option in another spelling or from a file', 'PUSH', inSection(two, '-af:0', 'volume=2'), '-af:0'],
+      ['a second -af in a section', 'PUSH', inSection(two, '-af', 'pan=mono|c0=c2'), '-af twice'],
+      ['filter text that is not the one selection', 'PUSH', swap(two, 'pan=mono|c0=c0', 'pan=mono|c0=c0+c1'), 'pan=mono|c0=c0+c1'],
+      ['filter text that is not the one selection', 'PUSH', swap(two, 'pan=mono|c0=c0', 'volume=2'), 'volume=2'],
+      // Another device or layout.
+      ['-ch_layout', 'PUSH', beforeInput(two, '-ch_layout', '6C'), '-ch_layout'],
+      ['-channels', 'PUSH', beforeInput(two, '-channels', '6'), '-channels'],
+      ['-audio_device_index', 'PUSH', beforeInput(two, '-audio_device_index', '1'), '-audio_device_index'],
+      ['-video_device_index', 'PUSH', beforeInput(two, '-video_device_index', '0'), '-video_device_index'],
+      ['default as a device', 'PUSH', swap(two, 'none:0', 'default'), 'default'],
+      ['default as a device', 'PUSH', swap(two, 'none:0', 'none:default'), 'none:default'],
+      ['default as a device', 'PRECHECK', swap(precheck, 'none:0', ':default'), ':default'],
+      ['-i that is not none:<n>', 'PUSH', swap(two, 'none:0', 'none:USB Audio Interface'), '-i none:USB Audio Interface'],
+      ['-i that is not none:<n>', 'PUSH', swap(two, 'none:0', 'none:32'), '-i none:32'],
+      ['-i that is not none:<n>', 'PUSH', swap(two, 'none:0', 'none:01'), '-i none:01'],
+      ['-i that is not none:<n>', 'PUSH', swap(two, 'none:0', 'none:-1'), '-i none:-1'],
+      ['-i that is not none:<n>', 'PUSH', swap(two, 'none:0', '0:none'), '-i 0:none'],
+      ['-i that is not none:<n>', 'PUSH', swap(two, 'none:0', 'none:1x'), '-i none:1x'],
+      ['-i that is not none:<n>', 'PRECHECK', swap(precheck, 'none:0', 'default'), '-i default'],
+      ['-i that is not none:<n>', 'PUSH', inSection(two, '-i', '/data/x.wav'), '-i /data/x.wav'],
+      ['a second -i', 'PUSH', inSection(two, '-i', 'none:1'), '-i twice'],
+      // The queue: the blocking form, another size, another target, another option of the target, and every further option the pinned
+      // program's `-h muxer=fifo` names beside the four of the row (08b HB-3; the list is in the record).
+      ['-drop_pkts_on_overflow', 'PUSH', after(two, '-drop_pkts_on_overflow', '0'), '-drop_pkts_on_overflow 0'],
+      ['-drop_pkts_on_overflow', 'PUSH', after(two, '-drop_pkts_on_overflow', 'false'), '-drop_pkts_on_overflow false'],
+      ['-queue_size', 'PUSH', after(two, '-queue_size', '60'), '-queue_size 60'],
+      ['-queue_size', 'PUSH', after(two, '-queue_size', '1024'), '-queue_size 1024'],
+      ['-fifo_format', 'PUSH', after(two, '-fifo_format', 'wav'), '-fifo_format wav'],
+      ['-format_opts', 'PUSH', after(two, '-format_opts', 'flush_packets=0'), '-format_opts flush_packets=0'],
+      ['-attempt_recovery', 'PUSH', inSection(two, '-attempt_recovery', '1'), '-attempt_recovery'],
+      ['-max_recovery_attempts', 'PUSH', inSection(two, '-max_recovery_attempts', '3'), '-max_recovery_attempts'],
+      ['-recovery_wait_streamtime', 'PUSH', inSection(two, '-recovery_wait_streamtime', '1'), '-recovery_wait_streamtime'],
+      ['-recovery_wait_time', 'PUSH', inSection(two, '-recovery_wait_time', '1'), '-recovery_wait_time'],
+      ['-recover_any_error', 'PUSH', inSection(two, '-recover_any_error', '1'), '-recover_any_error'],
+      ['-restart_with_keyframe', 'PUSH', inSection(two, '-restart_with_keyframe', '1'), '-restart_with_keyframe'],
+      ['-timeshift', 'PUSH', inSection(two, '-timeshift', '2'), '-timeshift'],
+      // Shape: the log level and the formats.
+      ['-loglevel', 'PUSH', after(two, '-loglevel', 'warning'), '-loglevel warning'],
+      ['-loglevel', 'PRECHECK', after(precheck, '-loglevel', 'quiet'), '-loglevel quiet'],
+      ['-v', 'PUSH', beforeInput(two, '-v', 'debug'), '-v'],
+      ['a second log level', 'PUSH', beforeInput(two, '-loglevel', 'info'), 'a log level twice'],
+      ['a format outside the kind', 'PUSH', swap(two, 'fifo', 'f32le'), '-f f32le'],
+      ['a format outside the kind', 'PUSH', swap(two, 'avfoundation', 'lavfi'), '-f lavfi'],
+      ['a format outside the kind', 'PRECHECK', swap(precheck, 'f32le', 'null'), '-f null'],
+      ['a format outside the kind', 'PRECHECK', swap(precheck, 'f32le', 'fifo'), '-f fifo'],
+    ];
+    expect([...new Set(CONTROLS.map(([id]) => id))]).toEqual(FORBIDDEN_RULES.map(([id]) => id));
+    for (const [id, kind, planted, found] of CONTROLS) {
+      expect(forbiddenViolations(kind, planted), `${id}: ${planted.join(' ')}`).toContain(`forbidden (${id}): ${found}`);
+      // A control the template passes is a failed rule (SM-08 (2)).
+      expect(templateViolations(kind, planted).length, `${id}: ${planted.join(' ')}`).toBeGreaterThan(0);
+    }
+    // The options of the queue in the pinned program (`-h muxer=fifo`, FFmpeg 9.0.2): eleven. Four are the row's, seven are refused above.
+    const FIFO_OPTIONS = ['-attempt_recovery', '-drop_pkts_on_overflow', '-fifo_format', '-format_opts', '-max_recovery_attempts', '-queue_size', '-recovery_wait_streamtime', '-recovery_wait_time', '-recover_any_error', '-restart_with_keyframe', '-timeshift'];
+    expect(FIFO_OPTIONS.filter((option) => !FORBIDDEN_RULES.some(([id]) => id === option))).toEqual([]);
+    expect(FIFO_OPTIONS.filter((option) => PUSH_SECTION.includes(option))).toEqual(['-drop_pkts_on_overflow', '-fifo_format', '-format_opts', '-queue_size']);
+    expect(PUSH_SECTION.slice(PUSH_SECTION.indexOf('fifo'), PUSH_SECTION.indexOf('-y'))).toEqual(['fifo', '-fifo_format', 'f32le', '-drop_pkts_on_overflow', '1', '-queue_size', '32', '-format_opts', 'flush_packets=1']);
+  });
+
+  it('SR-15 (1) at the table: the device word is made by ONE function from ONE whole number; the selection is the Linux row\'s own function; no text is a parameter', () => {
+    const table = flat(TABLE_FILE);
+    expect(table).toContain("const MACOS_DEVICE_WORDS: readonly string[] = Object.freeze(Array.from({ length: MACOS_MIC_DEVICE_INDEX_MAX + 1 }, (_unused, index) => `none:${String(index)}`));");
+    expect(table).toContain('export function macMicDeviceWord(audioIndex: number): string { const word = isWholeIn(audioIndex, 0, MACOS_MIC_DEVICE_INDEX_MAX) ? MACOS_DEVICE_WORDS[audioIndex] : undefined; if (word === undefined) throw new MacMicArgumentError(\'DEVICE_INDEX\'); return word; }');
+    expect(table).toContain('export const MACOS_MIC_DEVICE_INDEX_MAX = 31;');
+    expect(table).toContain('export const MACOS_MIC_SECTIONS_MAX = 2;');
+    expect(macMicDeviceWord.length).toBe(1);
+    // `none:` is written in ONE place of the macOS table (the development row's `none:${name}` is the other, older one), the selection text in ONE place of the file.
+    expect(table.match(/`none:\$\{[^}]*\}`/g)).toEqual(['`none:${name}`', '`none:${String(index)}`']);
+    expect(table.match(/pan=mono/g)).toHaveLength(1);
+    expect(table.match(/\bmacMicDeviceWord\s*\(/g)).toHaveLength(2);
+    // The five literal groups of the two templates, as the table file writes them.
+    expect(table).toContain("const MACOS_PUSH_HEAD = ['-hide_banner', '-nostdin', '-nostats', '-loglevel', 'info', '-thread_queue_size', '1024', '-f', 'avfoundation', '-i'] as const;");
+    expect(table).toContain("const MACOS_SECTION_HEAD = ['-map', '0:a', '-af'] as const;");
+    expect(table).toContain("const MACOS_SECTION_TAIL = ['-ac', '1', '-ar', '48000', '-c:a', 'pcm_f32le', '-f', 'fifo', '-fifo_format', 'f32le', '-drop_pkts_on_overflow', '1', '-queue_size', '32', '-format_opts', 'flush_packets=1', '-y'] as const;");
+    expect(table).toContain("const MACOS_PRECHECK_HEAD = ['-hide_banner', '-nostdin', '-nostats', '-loglevel', 'info', '-f', 'avfoundation', '-i'] as const;");
+    expect(table).toContain("const MACOS_PRECHECK_SELECT = ['-t', '1', '-map', '0:a', '-af'] as const;");
+    expect(table).toContain("const MACOS_PRECHECK_TAIL = ['-ac', '1', '-ar', '48000', '-c:a', 'pcm_f32le', '-f', 'f32le', '-flush_packets', '1', '-'] as const;");
+    // (4) the queue's options are named by the table file alone in the capture folder (the bare word 'fifo' is also the pipe files' kind of a file entry).
+    expect(places(capture, /'-fifo_format'|'-drop_pkts_on_overflow'|'-queue_size'|'-format_opts'|'-f', 'fifo'/g)).toEqual([TABLE_FILE]);
+    // Text in the place of a number makes nothing; so does a number outside 0 to 31.
+    for (const outside of [-1, 32, 1.5, Number.NaN, Number.POSITIVE_INFINITY, '0', '00', 'default', 'USB Audio Interface', null, undefined]) expect(() => macMicDeviceWord(outside as number), String(outside)).toThrow('a value of the macOS microphone helper is not of its shape');
+    // BEFORE THE CALLER EXISTS (row N9 is not built): no production source but the table file names a function of the macOS
+    // table. The row that adds the ONE caller moves this pin and pins its call (SM-08 (3): once per launch, once more for the one retry).
+    // MOVED BY ROW N7 (decision C123): the three LISTING rows have their one caller, the fence's runner - pinned in the case
+    // "row N7" below; the push, pre-check and device-word functions still have none.
+    // MOVED BY ROW NB (design 06 row N13): the boot's mount names the two program constants to hold them to the path rule (never runs them).
+    expect(places(production, /\b(?:macUsbTreeArguments|macSystemAudioArguments|macMicDeviceListArguments|MACOS_USB_TREE_PROGRAM|MACOS_SYSTEM_AUDIO_PROGRAM)\b/g)).toEqual([TABLE_FILE, 'src/capture/boot/index.ts', 'src/capture/fence/production-parts.ts']);
+    // MOVED BY ROW N5b for row N9 (decision C134; N9's request line 550): the ONE caller of the push and pre-check functions is the
+    // macOS adapter, each at ONE call site (the retry runs the same site again, SM-08 (3)); the device word still has no caller
+    // outside the table. Control: a second call site in a planted copy is counted and refused.
+    const MAC_ADAPTER = 'src/capture/adapters/audio/usb-audio-macos.ts';
+    expect(places(production, /\bmacMicDeviceWord\b/g)).toEqual([TABLE_FILE]);
+    expect(places(production, /\b(?:macMicPushArguments|macMicPrecheckArguments)\b/g).sort()).toEqual([MAC_ADAPTER, TABLE_FILE].sort());
+    const PUSH_CALL = /\bmacMicPushArguments\s*\(/g;
+    const PRECHECK_CALL = /\bmacMicPrecheckArguments\s*\(/g;
+    const PUSH_SITE = 'macMicPushArguments({ audioIndex: card.cardIndex, channelCount: card.channelCount, sections: launched.map((member) => ({ inputNumber: member.located.stored.inputNumber, pipePath: member.pipePath, deviceId: member.deviceId })) })';
+    const PRECHECK_SITE = 'macMicPrecheckArguments({ audioIndex: located.card.cardIndex, channelCount: located.card.channelCount, inputNumber: located.stored.inputNumber, deviceId: located.stored.deviceId })';
+    const adapter = flat(MAC_ADAPTER);
+    expect([adapter.match(PUSH_CALL)?.length, adapter.match(PRECHECK_CALL)?.length]).toEqual([1, 1]);
+    expect(adapter).toContain(PUSH_SITE);
+    expect(adapter).toContain(PRECHECK_SITE);
+    const planted = `${adapter} const again = ${PUSH_SITE}; const twice = ${PRECHECK_SITE};`;
+    expect([planted.match(PUSH_CALL)?.length, planted.match(PRECHECK_CALL)?.length]).toEqual([2, 2]);
+  });
+
+  it('SR-15 (6): the three listing rows are FIXED and take nothing - the USB tree in its PROPERTY-LIST form, the audio facts as JSON, the helper\'s own device list unchanged; the two programs are literals of the table file alone', () => {
+    const table = flat(TABLE_FILE);
+    /** The rule over one listing start: the program is one of the two literals and the list is ITS row, word for word. */
+    const ROWS = new Map<string, readonly string[]>([
+      ['/usr/sbin/ioreg', ['-r', '-c', 'IOUSBHostDevice', '-l', '-d', '2', '-a']],
+      ['/usr/sbin/system_profiler', ['SPAudioDataType', '-json']],
+    ]);
+    const listingViolations = (program: string, args: readonly string[]): string[] => {
+      const row = ROWS.get(program);
+      if (row === undefined) return [`no listing program of the table: ${program}`];
+      return args.length === row.length && args.every((arg, index) => arg === row[index]) ? [] : [`not the row of ${program}: ${args.join(' ')}`];
+    };
+    const tree = macUsbTreeArguments();
+    const audio = macSystemAudioArguments();
+    expect([MACOS_LISTING_HELPER_TABLE.usbTree.program, ...tree]).toEqual(['/usr/sbin/ioreg', '-r', '-c', 'IOUSBHostDevice', '-l', '-d', '2', '-a']);
+    expect([MACOS_LISTING_HELPER_TABLE.systemAudio.program, ...audio]).toEqual(['/usr/sbin/system_profiler', 'SPAudioDataType', '-json']);
+    expect(listingViolations(MACOS_LISTING_HELPER_TABLE.usbTree.program, tree)).toEqual([]);
+    expect(listingViolations(MACOS_LISTING_HELPER_TABLE.systemAudio.program, audio)).toEqual([]);
+    expect([...MACOS_LISTING_HELPER_TABLE.usbTree.literals]).toEqual([...tree]);
+    expect([...MACOS_LISTING_HELPER_TABLE.systemAudio.literals]).toEqual([...audio]);
+    // The bounds of SR-15 (6): 5,000 ms, 10,000 ms, 5,000 ms.
+    expect([MACOS_LISTING_HELPER_TABLE.usbTree.boundMs, MACOS_LISTING_HELPER_TABLE.systemAudio.boundMs, MACOS_LISTING_HELPER_TABLE.deviceList.boundMs]).toEqual([5_000, 10_000, 5_000]);
+    // L3: the EXISTING device-list row, unchanged - the very array of the camera table. It names no device.
+    expect(macMicDeviceListArguments()).toBe(deviceListArguments());
+    expect([...macMicDeviceListArguments()]).toEqual(['-hide_banner', '-nostdin', '-f', 'avfoundation', '-list_devices', 'true', '-i', '']);
+    expect([...MACOS_LISTING_HELPER_TABLE.deviceList.literals]).toEqual([...deviceListArguments()]);
+    // No function of a row has a parameter, and each answers its literals.
+    expect([macUsbTreeArguments.length, macSystemAudioArguments.length, macMicDeviceListArguments.length]).toEqual([0, 0, 0]);
+    expect(table).toContain("const MACOS_USB_TREE = ['-r', '-c', 'IOUSBHostDevice', '-l', '-d', '2', '-a'] as const;");
+    expect(table).toContain("const MACOS_SYSTEM_AUDIO = ['SPAudioDataType', '-json'] as const;");
+    expect(table).toContain('export function macUsbTreeArguments(): readonly string[] { return Object.freeze([...MACOS_USB_TREE]); }');
+    expect(table).toContain('export function macSystemAudioArguments(): readonly string[] { return Object.freeze([...MACOS_SYSTEM_AUDIO]); }');
+    expect(table).toContain('export function macMicDeviceListArguments(): readonly string[] { return deviceListArguments(); }');
+    // The two programs: absolute literals, named by the table file alone in the whole server.
+    expect(table).toContain("export const MACOS_USB_TREE_PROGRAM = '/usr/sbin/ioreg';");
+    expect(table).toContain("export const MACOS_SYSTEM_AUDIO_PROGRAM = '/usr/sbin/system_profiler';");
+    expect(places(production, /['"`][^'"`\n]*\bioreg\b/g)).toEqual([TABLE_FILE]);
+    expect(places(production, /['"`][^'"`\n]*\bsystem_profiler\b/g)).toEqual([TABLE_FILE]);
+    // The words of the rows as ARGUMENTS stand in the table file alone (the reader of the audio facts names `SPAudioDataType` too, as the top member of the JSON it reads: no argument).
+    expect(places(production, /IOUSBHostDevice|'-json'|'SPAudioDataType', /g)).toEqual([TABLE_FILE]);
+
+    // Controls, each seen by the rule.
+    // The TEXT form of the USB tree (review SM-02: forgeable by a device's product string) - the row without `-a`; the long form of revision 1.
+    expect(listingViolations('/usr/sbin/ioreg', ['-r', '-c', 'IOUSBHostDevice', '-l', '-d', '2'])).toEqual(['not the row of /usr/sbin/ioreg: -r -c IOUSBHostDevice -l -d 2']);
+    expect(listingViolations('/usr/sbin/ioreg', ['-p', 'IOUSB', '-l'])).toEqual(['not the row of /usr/sbin/ioreg: -p IOUSB -l']);
+    // A further argument of a row: a name, a depth from data, a width.
+    expect(listingViolations('/usr/sbin/ioreg', [...tree, '-n', 'USB Audio Interface'])).toEqual(['not the row of /usr/sbin/ioreg: -r -c IOUSBHostDevice -l -d 2 -a -n USB Audio Interface']);
+    expect(listingViolations('/usr/sbin/ioreg', tree.map((arg) => (arg === '2' ? '9' : arg)))).toEqual(['not the row of /usr/sbin/ioreg: -r -c IOUSBHostDevice -l -d 9 -a']);
+    expect(listingViolations('/usr/sbin/ioreg', ['-r -c', 'IOUSBHostDevice -l', '-d', '2', '-a', '', ''])).toEqual(['not the row of /usr/sbin/ioreg: -r -c IOUSBHostDevice -l -d 2 -a  ']);
+    // Another data type, another form, a third argument.
+    expect(listingViolations('/usr/sbin/system_profiler', ['SPUSBDataType', '-json'])).toEqual(['not the row of /usr/sbin/system_profiler: SPUSBDataType -json']);
+    expect(listingViolations('/usr/sbin/system_profiler', ['SPAudioDataType', '-xml'])).toEqual(['not the row of /usr/sbin/system_profiler: SPAudioDataType -xml']);
+    expect(listingViolations('/usr/sbin/system_profiler', ['SPAudioDataType'])).toEqual(['not the row of /usr/sbin/system_profiler: SPAudioDataType']);
+    expect(listingViolations('/usr/sbin/system_profiler', [...audio, '-detailLevel', 'full'])).toEqual(['not the row of /usr/sbin/system_profiler: SPAudioDataType -json -detailLevel full']);
+    // A program that is not a literal of the table: by name, by another folder, the row of one under the program of the other.
+    expect(listingViolations('ioreg', tree)).toEqual(['no listing program of the table: ioreg']);
+    expect(listingViolations('/usr/local/bin/ioreg', tree)).toEqual(['no listing program of the table: /usr/local/bin/ioreg']);
+    expect(listingViolations('/usr/sbin/system_profiler', tree)).toEqual(['not the row of /usr/sbin/system_profiler: -r -c IOUSBHostDevice -l -d 2 -a']);
+  });
+
+  it('SR-15 (7), as a rule over a start vector: the first word the guard is handed is the helper, and what follows is a list of the template unchanged (control: nice, taskpolicy, a shell)', () => {
+    const HELPER = '/opt/dems/helpers/ffmpeg';
+    /** The rule: `[<helper>, ...list]`. Anything before the helper - a wrapper that sets a scheduling class, a shell - is seen (design 4.2, MM3 s6: a background class lowers the delivery to 11 to 27% without a line). */
+    const launchViolations = (kind: MacKind, vector: readonly string[]): string[] => [...(vector[0] === HELPER ? [] : [`before the helper: ${vector[0] ?? ''}`]), ...macViolations(kind, vector.slice(1))];
+    expect(launchViolations('PUSH', [HELPER, ...two])).toEqual([]);
+    expect(launchViolations('PRECHECK', [HELPER, ...precheck])).toEqual([]);
+    expect(launchViolations('PUSH', ['/usr/bin/nice', '-n', '10', HELPER, ...two])[0]).toBe('before the helper: /usr/bin/nice');
+    expect(launchViolations('PUSH', ['/usr/sbin/taskpolicy', '-b', HELPER, ...two])[0]).toBe('before the helper: /usr/sbin/taskpolicy');
+    expect(launchViolations('PUSH', ['/bin/sh', '-c', `${HELPER} ${two.join(' ')}`])[0]).toBe('before the helper: /bin/sh');
+    expect(launchViolations('PUSH', ['/usr/bin/nice', '-n', '10', HELPER, ...two]).length).toBeGreaterThan(1);
+    // The pin of the ONE caller's start line is the caller's row (N9): there is no caller in the product yet (see the pin above).
+  });
+
+  // Task 4 row N7 (wave 12; decision C123: the ONE named entry this row adds to this list). SR-15 (6) AT ITS ONE CALLER: each
+  // listing row is handed to the production door unchanged, with an empty environment and no start message, by the fence's
+  // runner alone, on `darwin` alone (SM-21: the platform chooses, no key of the configuration), and no production file hands
+  // the runner another program. The mutation each line was seen RED on is in implementation/n7_macos_platform_seam.md.
+  it('row N7: the three listing rows have ONE caller, the fence\'s runner - each table function called once with nothing, ONE door call with the row unchanged, an empty environment and no message; the platform alone chooses; the program overrides are a test\'s', () => {
+    const PARTS = 'src/capture/fence/production-parts.ts';
+    const parts = flat(PARTS);
+    const ROW_CALLS = /\b(?:macUsbTreeArguments|macSystemAudioArguments|macMicDeviceListArguments)\s*\([^)]*\)/g;
+    const DOOR_CALL = /(?<![.\w])door\(\{(?:[^{}]|\{[^{}]*\})*\}\)/g;
+    const SOURCE_LINES = /\b(?:usbTree|systemAudio): \(\) => macosListingRowText\([^;]*?\)\),|\breturn macosListingRowText\([^;]*;/g;
+    // (a) Each row's function once, with no argument; the runner's one door call; the three places that hand a row to it.
+    expect(parts.match(ROW_CALLS)).toEqual(['macUsbTreeArguments()', 'macSystemAudioArguments()', 'macMicDeviceListArguments()']);
+    // MOVED BY ROW N5b (decision C131): the runner's call names the row's cap and the process group; still no key, no message.
+    expect(parts.match(DOOR_CALL)).toEqual(['door({ command: program, args, env: {}, message: null, timers, outputCapBytes: capBytes, processGroup: true })', 'door({ command: neighbourProgram, args: argumentsOf(linuxNeighbourArguments, target), env: {}, message: null, timers: host.timers })', 'door({ command: echoProgram, args: argumentsOf(linuxEchoArguments, target), env: {}, message: null, timers: host.timers })']);
+    expect(parts.match(SOURCE_LINES)).toEqual([
+      'usbTree: () => macosListingRowText(parts, MacosListingRow.USB_TREE, usbTreeProgram, macUsbTreeArguments()),',
+      'systemAudio: () => macosListingRowText(parts, MacosListingRow.SYSTEM_AUDIO, systemAudioProgram, macSystemAudioArguments()),',
+      'return macosListingRowText(parts, MacosListingRow.CAPTURE_DEVICES, parts.helperProgram, macMicDeviceListArguments());',
+    ]);
+    expect(parts).toContain('const usbTreeProgram = parts.usbTreeProgram ?? MACOS_USB_TREE_PROGRAM;');
+    expect(parts).toContain('const systemAudioProgram = parts.systemAudioProgram ?? MACOS_SYSTEM_AUDIO_PROGRAM;');
+    // (b) The helper is vouched for by the path rule before the start of its row (SM-10 (6)).
+    expect(parts).toMatch(/refusal = helperProgramRefusal\(inspect\(parts\.helperProgram\)\);.*if \(refusal !== null\) throw new CardListingProgramError\(CardListingProgramFailure\.NOT_STARTED, MacosListingRow\.CAPTURE_DEVICES\); return macosListingRowText/);
+    // (c) SM-21: the platform word alone chooses, read from what the entry states; this file reads no process fact and no configuration key.
+    expect(parts).toContain("export const MACOS_CARD_LISTING_PLATFORM = 'darwin';");
+    expect(parts).toContain('if (host.platform === MACOS_CARD_LISTING_PLATFORM) {');
+    expect(parts).not.toMatch(/process\.(?:platform|env)|DEMS_CAPTURE_AUDIO_HELPER/);
+    // (d) Only the fence makes the runner; no production file hands it another program or other limits (they are a test's).
+    expect(places(production, /\b(?:macosListingSourceOf|macosCardEnumeratorOf|macosListingRowText)\s*\(/g)).toEqual([PARTS]);
+    expect(places(production, /\b(?:usbTreeProgram|systemAudioProgram)\s*[?:]/g)).toEqual([PARTS]);
+    expect(parts.match(/\blimits\?\.\[row\]|\blimits\?:/g)).toEqual(['limits?:', 'limits?.[row]']);
+    // Controls, each seen by the same patterns: an argument from data, a program from the configuration, a second door call with a key.
+    const planted = "usbTree: () => macosListingRowText(parts, MacosListingRow.USB_TREE, config.captureUsbTreePath, [...macUsbTreeArguments(), name]), door({ command: program, args, env: { DYLD_INSERT_LIBRARIES: x }, message: null, timers })";
+    expect(planted.match(SOURCE_LINES)).not.toEqual(['usbTree: () => macosListingRowText(parts, MacosListingRow.USB_TREE, usbTreeProgram, macUsbTreeArguments()),']);
+    expect(planted.match(DOOR_CALL)).toEqual(['door({ command: program, args, env: { DYLD_INSERT_LIBRARIES: x }, message: null, timers })']);
+    expect('macUsbTreeArguments(name)'.match(ROW_CALLS)).toEqual(['macUsbTreeArguments(name)']);
   });
 });
 

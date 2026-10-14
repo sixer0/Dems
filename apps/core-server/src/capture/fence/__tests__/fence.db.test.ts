@@ -123,7 +123,8 @@ const bootRowOf = (captureOperation: string, signingStoreChange = 'NO_EARLIER_ST
   // Task 4 row V5 (C84 R-1): the state of the fixture's store - ONE retained certificate, no mark - and what changed since the previous boot row.
   // Task 4 row P1 (U21 (2)): a PRODUCTION boot row also states its host - the test host of this file is `darwin`, where the host profile
   // is not asked. A REAL_DEVELOPMENT row states neither member: it is the row of before.
-  const host = captureOperation === 'REAL_PRODUCTION' ? { hostPlatform: 'darwin', hostProfile: 'WILL_NOT_BE_ASKED' } : {};
+  // Task 4 row NB (design 06 row N13; SM-15): on darwin the production row also states the microphone permission as not known.
+  const host = captureOperation === 'REAL_PRODUCTION' ? { hostPlatform: 'darwin', hostProfile: 'WILL_NOT_BE_ASKED', microphonePermission: 'NOT_KNOWN' } : {};
   return { captureOperation, signingKeyId: FIXTURE_KEY_ID, signingCertificateSha256, ...storeMembersOf([[FIXTURE_KEY_ID, signingCertificateSha256]], '', signingStoreChange), ...host };
 };
 /** Row V5: the four members of the store's state, the digest of the retained set computed HERE (one line `<key id> <fingerprint>` per certificate). */
@@ -165,9 +166,9 @@ function expectRefused(booted: Booted, code: string, deviceIds: readonly string[
 }
 
 describe('the schema this row was written against', () => {
-  it('schema version 13, contract dbc-14', async () => {
+  it('schema version 14, contract dbc-15', async () => {
     const meta = (await db.ownerPool().query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([13, 'dbc-14']);
+    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([14, 'dbc-15']);
   });
 });
 

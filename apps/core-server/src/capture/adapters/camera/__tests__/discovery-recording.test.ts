@@ -69,14 +69,49 @@ async function recordingSession() {
   // fragment checkpoint, for as long as the test lets it (10 records per second of the session's clock: far
   // below the supervisor's record ceiling, which ends a worker that floods).
   let index = 0;
+  // Row CB (review 060d Q-04): the WALL time of every tick of the writer - what a stall of the event loop leaves a hole in.
+  const ticks: number[] = [];
   const writer = setInterval(() => {
     index += 1;
+    ticks.push(performance.now());
     clock.advance(100);
     worker.heartbeat();
     worker.record(checkpoint(index));
   }, 5);
   stopWriting = () => clearInterval(writer);
-  return { supervisor, worker, events, fragments };
+  return { supervisor, worker, events, fragments, ticks };
+}
+
+/**
+ * Review 060d Q-04 (section 6, survivor 2), wave 12 row CB. "More fragments after the search than before" is true of a
+ * search whose datagram handler held the event loop for most of its window, as long as ONE 5 ms tick ran. B-01 was an
+ * event-loop stall. Two measures of the WALL clock say it instead:
+ *
+ *   the fixed-time count   the fragments that arrived by `FIXED_WALL_MS` after the search was started, taken by a
+ *                          timer set BEFORE the search (the form of the booted check, `capture-discovery.db.test.ts`).
+ *                          A loop that was held has used that time up: the timer fires late and has little to count.
+ *   the longest silence    the longest time between two ticks of the 5 ms writer from the start of the search to the
+ *                          later of its end and the fixed time. A held loop IS that hole.
+ *
+ * The bounds are far from both sides, by measurement on this host (record `implementation/cb_bitrate_and_survivors.md`):
+ * through every hostile mode the writer gave 12 to 19 fragments in the 100 ms and no silence above 22 ms (two runs, the
+ * host at a load average of 11); a handler that holds the loop 40 ms per datagram is the mutant the record shows red.
+ */
+const FIXED_WALL_MS = 100;
+const MIN_FRAGMENTS_AT_FIXED_TIME = 8;
+const MAX_WRITER_SILENCE_MS = 75;
+
+/** The longest time without a tick between `from` and `to` (the two edges count: a writer that never ticked was silent throughout). */
+function longestSilenceMs(ticks: readonly number[], from: number, to: number): number {
+  let last = from;
+  let longest = 0;
+  for (const at of ticks) {
+    if (at < from) continue;
+    if (at > to) break;
+    longest = Math.max(longest, at - last);
+    last = at;
+  }
+  return Math.max(longest, to - last);
 }
 
 describe('M4-SEC-DISC-3: a hostile flood during RECORDING', () => {
@@ -87,37 +122,71 @@ describe('M4-SEC-DISC-3: a hostile flood during RECORDING', () => {
     process.on('unhandledRejection', onUncaught);
     const pid = process.pid;
     try {
-      const { supervisor, worker, events, fragments } = await recordingSession();
+      const { supervisor, worker, events, fragments, ticks } = await recordingSession();
       expect(supervisor.status().phase).toBe(CapturePhase.RECORDING);
       await until(() => fragments.length >= 5);
       const running = await startFakeOnvif(1);
       stub = running;
       const search = (more: Partial<WsDiscoveryOptions> = {}) =>
         createOnvifDiscoveryAdapter({ timers: createSystemTimers(), newMessageId: randomUUID, loopbackFixture: running.addresses().discovery, ...more }).discover({ windowMs: 150, signal: new AbortController().signal });
+      /**
+       * One search, measured on the wall clock (row CB, Q-04): the fragments that arrived by the fixed time - counted by
+       * a timer set BEFORE the search starts - and the writer's longest silence until the later of the search's end and
+       * that time. Seen RED on (in memory, `ws-discovery.ts`): the datagram handler holding the loop 40 ms per datagram.
+       */
+      const measured = async (mode: string, more: Partial<WsDiscoveryOptions> = {}) => {
+        const before = fragments.length;
+        const from = performance.now();
+        const atFixedTime = new Promise<number>((resolveCount) => setTimeout(() => resolveCount(fragments.length - before), FIXED_WALL_MS));
+        const result = await search(more);
+        const byFixedTime = await atFixedTime;
+        const silence = longestSilenceMs(ticks, from, performance.now());
+        // The fragment counter advanced WHILE this search ran - at the writer's own pace, with no hole in it.
+        expect(fragments.length, mode).toBeGreaterThan(before);
+        expect(byFixedTime, `${mode}: fragments by ${String(FIXED_WALL_MS)} ms of the wall clock after the search was started`).toBeGreaterThanOrEqual(MIN_FRAGMENTS_AT_FIXED_TIME);
+        expect(silence, `${mode}: the writer's longest silence while the search ran, in ms`).toBeLessThan(MAX_WRITER_SILENCE_MS);
+        return { result, byFixedTime, silence };
+      };
+
+      // CONTROL of the two measures, with NO search: the writer alone reads far inside the bounds - so a red below is
+      // the search's doing - and the SAME measures read a hole when the loop is held (here, by the test itself).
+      const idleFrom = performance.now();
+      const idleBefore = fragments.length;
+      await delay(FIXED_WALL_MS);
+      expect(fragments.length - idleBefore).toBeGreaterThanOrEqual(MIN_FRAGMENTS_AT_FIXED_TIME);
+      expect(longestSilenceMs(ticks, idleFrom, performance.now())).toBeLessThan(MAX_WRITER_SILENCE_MS);
+      const heldFrom = performance.now();
+      const heldBefore = fragments.length;
+      const heldAtFixedTime = new Promise<number>((resolveCount) => setTimeout(() => resolveCount(fragments.length - heldBefore), FIXED_WALL_MS));
+      while (performance.now() - heldFrom < FIXED_WALL_MS + 20) {
+        /* the event loop is held for a little longer than the fixed time */
+      }
+      expect(await heldAtFixedTime).toBeLessThan(MIN_FRAGMENTS_AT_FIXED_TIME);
+      expect(longestSilenceMs(ticks, heldFrom, performance.now())).toBeGreaterThanOrEqual(MAX_WRITER_SILENCE_MS);
 
       let datagrams = 0;
       let handlerErrors = 0;
+      const readings: string[] = [];
       for (const mode of HOSTILE) {
         running.setDiscoveryMode(mode);
-        const before = fragments.length;
-        const result = await search();
+        const { result, byFixedTime, silence } = await measured(mode);
+        readings.push(`${mode} ${String(byFixedTime)} ${silence.toFixed(1)}`);
         datagrams += result.counts.datagramsReceived;
-        // The fragment counter advanced WHILE this search ran.
-        expect(fragments.length, mode).toBeGreaterThan(before);
         expect(result.candidates.filter((candidate) => candidate.testable), mode).toEqual([]);
       }
       // The throwing-callback case, on the flood: every datagram's handling throws.
       for (const mode of ['FLOOD_300', 'NORMAL'] as const) {
         running.setDiscoveryMode(mode);
-        const before = fragments.length;
-        const result = await search({
+        const { result, byFixedTime, silence } = await measured(`${mode}, a reader that throws`, {
           read: () => {
             throw new TypeError("Cannot read properties of undefined (reading 'address')");
           },
         });
+        readings.push(`${mode}/throw ${String(byFixedTime)} ${silence.toFixed(1)}`);
         handlerErrors += result.counts.handlerErrors;
-        expect(fragments.length, mode).toBeGreaterThan(before);
       }
+      // One reading per search, kept for the message of a failure below: the mode, the fragments by the fixed time, the longest silence.
+      expect(readings, readings.join(' | ')).toHaveLength(HOSTILE.length + 2);
       await delay(20);
 
       expect(datagrams).toBeGreaterThan(256);

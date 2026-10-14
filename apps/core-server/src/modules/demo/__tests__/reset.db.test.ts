@@ -365,7 +365,7 @@ describe('AC-B-57: resetDemo through the routine, inside the running server', ()
     // seven v2 data tables (intervals, fragments, chunks, transcripts, revisions, sealing jobs,
     // stt_config) join the tables a reset must rebuild to the seed's shape. The per-table equality
     // loop below is the real check; this pin guards the list's size.
-    expect(rebuilt).toHaveLength(29); // + T-42 `session_stt_config`, rebuilt (PE-129b-01, row 129b); + T-44, T-45 of task 4 set A, T-46, T-47 of set B and T-48 of set C, not carried by a reset yet
+    expect(rebuilt).toHaveLength(24); // + T-42 `session_stt_config`, rebuilt (PE-129b-01, row 129b); T-44 to T-48 of task 4 sets A to C were counted here (29) until integration pass I-9c made the reset carry them (review 120 F-6)
     for (const table of rebuilt) expect(built[table], table).toBe(seeded[table]);
     // What the two columns ARE: the link the engine held (no device socket: OFFLINE), stored as the engine holds it.
     const heldLink = server.engine.slice('tabletLink');

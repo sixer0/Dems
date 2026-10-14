@@ -24,7 +24,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { enWeb } from '@/i18n-web'
 import { en } from '@dems/shared/i18n'
 import type { SocketLike } from '@dems/shared/realtime'
-import { ALWAYS_VISIBLE, createMemoryAuthStorage, createSim, OPERATOR_IDS, type Sim, type SimState } from '@dems/shared/sim'
+import { ALWAYS_VISIBLE, cameraLinesInForce, clearCaptureWarningTransition, createMemoryAuthStorage, createSim, OPERATOR_IDS, raiseCaptureWarningTransition, type Sim, type SimState } from '@dems/shared/sim'
 import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
 import { coreWithSession, CORE_START_MS, stubMediaForJsdom } from '@/features/session-new/__tests__/live-session-new-bed'
 import { resetCoreErrorPresenter } from '@/lib/core-errors'
@@ -348,5 +348,78 @@ describe('G70-03 the other surfaces, real capture', () => {
     await waitFor(() => expect(tiles(page).length).toBeGreaterThanOrEqual(3))
     expect(feeds(page)).toHaveLength(0)
     tiles(page).forEach(expectNeutral)
+  })
+})
+
+// Task 4 row W5 (review 060d finding Q-01; decision C111). A camera lost INSIDE a session: the Core raises a
+// `CAPTURE_FAULT` about the camera device and changes no selector line (the worker's ingest stays connected while
+// the relay re-opens its camera), so the track read "Stream live" and its stored format under a critical notice.
+// The double: the served state of the fake Core, with the fault raised and cleared by the Core's own transitions
+// (`raiseCaptureWarningTransition` / `clearCaptureWarningTransition`). No browser session.
+// Seen RED on the mutation "`trackFactsOf` does not read the raised fault": the feed kept its stored format under the fault.
+describe('row W5 (Q-01): a camera lost inside a session shows its fault in the Session Monitor, not "Stream live"', () => {
+  const S = en.devices.selector.stream
+  const lost = (state: SimState): SimState => {
+    const deviceId = cameraLinesInForce(state).find((line) => line.trackId === 'VIDEO-01')!.deviceId
+    return raiseCaptureWarningTransition(state, state.clock.now, { code: 'CAPTURE_FAULT', subject: deviceId, reason: 'CAMERA_STREAM_ENDED' } as Parameters<typeof raiseCaptureWarningTransition>[2])
+  }
+  const back = (state: SimState): SimState => {
+    const deviceId = cameraLinesInForce(state).find((line) => line.trackId === 'VIDEO-01')!.deviceId
+    return clearCaptureWarningTransition(state, state.clock.now, { code: 'CAPTURE_FAULT', subject: deviceId, reason: 'CAMERA_STREAM_ENDED' } as Parameters<typeof clearCaptureWarningTransition>[2])
+  }
+  const recordingState = (): SimState => {
+    const recording = createSim({ scenario: 'recording', storage: null, authStorage: createMemoryAuthStorage(), visibility: ALWAYS_VISIBLE, scheduler: () => () => undefined })
+    sims.push(recording)
+    return realCapture(recording.store.getState())
+  }
+  const feedOf = (page: HTMLElement) => tiles(page).find((tile) => tile.parentElement?.getAttribute('data-variant') === 'feed')!
+  const stateOf = (tile: HTMLElement) => tile.querySelector('[data-part="state"]')!
+
+  it('CONTROL then the fault: with no fault the feed of the recording track says "Stream live"; with the fault active it says "Stream lost", shows no format, and the input card says so too', async () => {
+    const control = await livePage('/session', 'page-session-monitor', () => recordingState())
+    await waitFor(() => expect(tiles(control).length).toBeGreaterThanOrEqual(3))
+    expect(stateOf(feedOf(control))).toHaveTextContent(S.LIVE)
+    expect(within(control).getByTestId('sm-input-state-VIDEO-01')).not.toHaveAttribute('data-fault')
+    cleanup()
+    bed?.dispose()
+    bed = undefined
+
+    const page = await livePage('/session', 'page-session-monitor', () => lost(recordingState()))
+    await waitFor(() => expect(tiles(page).length).toBeGreaterThanOrEqual(3))
+    const feed = feedOf(page)
+    await waitFor(() => expect(feed).toHaveAttribute('data-fault', 'STREAM_LOST'))
+    // The line itself still reads LIVE (the finding's premise): the fault is what is said.
+    expect(feed).toHaveAttribute('data-state', 'ONLINE')
+    expect(stateOf(feed)).toHaveTextContent(S.LOST)
+    expect(stateOf(feed)).not.toHaveTextContent(S.LIVE)
+    expect(within(feed).queryByTestId('camera-no-preview-format')).toBeNull()
+    expect(feed.getAttribute('aria-label') ?? '').toContain(S.LOST)
+    // The input card of the track: the fault in the state's place and in the place of the stored format.
+    const card = within(page).getByTestId('sm-input-state-VIDEO-01')
+    expect(card).toHaveAttribute('data-fault', 'STREAM_LOST')
+    expect(card).toHaveTextContent(new RegExp(`^${S.LOST}$`))
+    expect(within(page).getByTestId('sm-input-format-VIDEO-01')).toHaveAttribute('data-fault', 'STREAM_LOST')
+    // The other track is not touched.
+    expect(within(page).getByTestId('sm-input-state-VIDEO-02')).not.toHaveAttribute('data-fault')
+    expect(within(page).getByTestId('sm-input-format-VIDEO-02')).not.toHaveAttribute('data-fault')
+  })
+
+  it('the re-open: once the Core cleared the fault the track is "Stream live" again and states its format', async () => {
+    const page = await livePage('/session', 'page-session-monitor', () => back(lost(recordingState())))
+    await waitFor(() => expect(tiles(page).length).toBeGreaterThanOrEqual(3))
+    const feed = feedOf(page)
+    expect(feed).not.toHaveAttribute('data-fault')
+    expect(stateOf(feed)).toHaveTextContent(S.LIVE)
+    expect(within(page).getByTestId('sm-input-state-VIDEO-01')).not.toHaveAttribute('data-fault')
+    expect(within(page).getByTestId('sm-input-format-VIDEO-01')).not.toHaveAttribute('data-fault')
+  })
+
+  it('CONTROL - a Core in simulated capture (Live mode, no class stated) and the same alert: the simulated lane keeps its own drawing', async () => {
+    const recording = createSim({ scenario: 'recording', storage: null, authStorage: createMemoryAuthStorage(), visibility: ALWAYS_VISIBLE, scheduler: () => () => undefined })
+    sims.push(recording)
+    const page = await livePage('/session', 'page-session-monitor', () => lost(recording.store.getState()))
+    const card = await within(page).findByTestId('sm-input-state-VIDEO-01')
+    expect(card).not.toHaveAttribute('data-fault')
+    expect(tiles(page)).toHaveLength(0)
   })
 })

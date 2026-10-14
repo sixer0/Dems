@@ -61,6 +61,8 @@ import {
 import {
   AuditCategory,
   AuditType,
+  CAPTURE_DEVICE_PROFILES_MAX,
+  CAPTURE_PROFILE_CODE_PATTERN,
   CaptureDeviceKind,
   CaptureStreamState,
   CaseType,
@@ -235,7 +237,8 @@ export const CaptureConfigCameraSchema = z
     online: z.boolean().describe('On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means "registered and not found unreachable at the last check" - never "reachable now": a client at rest says "Not checked", not "Online" or "Ready" (finding JW-23). In Simulated mode it is the demonstration model\'s value.'),
     streamState: z
       .enum(CaptureStreamState)
-      .describe('A lost stream is what makes a PoE cycle legal (OD-22). On a Core in its own capture the selector derives it from the same registry flag as `online` (`LIVE` for true, `LOST` for false): it is not a reading of a stream, and `LIVE` at rest does not say that the camera delivers pictures (finding JW-23).'),
+      .nullable()
+      .describe('A lost stream is what makes a PoE cycle legal (OD-22). NULL = NOT READ (task 4 row V7c; decision C126 (b)): the Core reads no stream of this camera now, so it states neither LIVE nor LOST - the value of a registered camera at rest, the same as its registry entry\'s. `LIVE` is stated only while the capture ingest of an open session receives the stream (telemetry `CONNECTED`) - a pre-check or re-scan that reached the camera read its control service, not its stream, and states NULL (row V7d); `LOST` while a stream fault of the camera is active or the ingest waits or ended under a recording; the ingest closing after the stop gives NULL again. The two built-in cameras of the demonstration model keep the model\'s `LIVE` / `LOST` from the registry flag, as their registry entries do (finding JW-23: that is no reading of a stream).'),
   })
   .describe('One video slot of the device selector.');
 export type CaptureConfigCameraBody = z.output<typeof CaptureConfigCameraSchema>;
@@ -1161,6 +1164,21 @@ export const CaptureConfigSliceSchema = z
 export type CaptureConfigSliceBody = z.output<typeof CaptureConfigSliceSchema>;
 
 /**
+ * One stored stream profile of a camera (task 4 row V7; decisions C36, C117): the code the Core
+ * minted from the stream when the camera was adopted, and what that code states. The three facts
+ * are the forms of `CameraStreamFactSchemas`, each null where the code states none - never a default.
+ */
+export const CaptureDeviceProfileSchema = z
+  .strictObject({
+    code: z.string().regex(CAPTURE_PROFILE_CODE_PATTERN).describe('The profile code (`HEVC_1080P`, `H264_720P30`): upper-case letters, digits and underscores, 1 to 64 characters. The value a camera line of operation 78 names as `profile`.'),
+    codec: CameraStreamFactSchemas.codec.describe('The codec the code states: a closed set. Null when the code is no stream statement. Never a default.'),
+    resolution: CameraStreamFactSchemas.resolution.describe('The picture the code states: `<height>p` for a 16:9 picture, else `<width>x<height>`. Null when the code is no stream statement. Never a default.'),
+    fps: CameraStreamFactSchemas.fps.describe('The whole-number rate the code states, 1 to 240; null when it states none (an HEVC stream states no rate). Never a default.'),
+  })
+  .describe('One stored stream profile of a camera: its code and what the code states of the stream.');
+export type CaptureDeviceProfileBody = z.output<typeof CaptureDeviceProfileSchema>;
+
+/**
  * One device of the capture registry. The field list is `C3 §2.3`: **no credential** member exists
  * here at all (RK-12), and `host` is a host or address only, never a `user:password@` URL (C-N8).
  */
@@ -1189,6 +1207,14 @@ export const CaptureDeviceStatusSchema = z
       .optional()
       .describe(
         'True while the Core holds this source open (C3 §2.6, erratum PE-128-38; SEC35-44 (4)): the "is on" fact of a `LOCAL_DEVICE` - the short open of a pre-check included. A runtime fact, never stored: absent when the source is not open, after a restart until it opens, and always in simulated capture.',
+      ),
+    // Task 4 row V7 (decisions C36, C111 finding Q-02, C117; the two blocking request lines of row W5).
+    profiles: z
+      .array(CaptureDeviceProfileSchema)
+      .max(CAPTURE_DEVICE_PROFILES_MAX)
+      .optional()
+      .describe(
+        'The stream profiles the Core holds stored for this camera (`capture_devices.profiles`), in the stored order, each code once. A production camera is assigned to a track with ONE of them: the `code` is sent as `profile` of a camera line of operation 78 (operation 79 carries no profile). An EMPTY list: the Core holds no profile for this camera - it cannot be assigned, and no default stands in (C36). Present on every registered camera (one that operation 96 added); absent on every other entry (a microphone, the PoE switch, a built-in device). No credential, no address, no URL, no text of the camera.',
       ),
   })
   .describe('One capture device (`dbc-3 §B.2`); carries no credential (RK-12).');

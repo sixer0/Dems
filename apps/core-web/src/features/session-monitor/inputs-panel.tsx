@@ -10,7 +10,7 @@ import { noLiveLevelsOf, useSim } from '@dems/shared/sim'
 import { DbfsMeter } from '@/components/composed'
 import { CameraPreview } from '@/features/devices/camera-preview'
 import { useRealCaptureCore } from '@/features/devices/source-class'
-import { useStatedFormat } from '@/features/devices/stream-facts'
+import { trackFaultText, useCameraCaptureFault, useStatedFormat } from '@/features/devices/stream-facts'
 import { useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
 import { PANEL_BEAT_MS, useStaggerVariants } from './choreography'
@@ -84,7 +84,7 @@ export function InputsPanel({ paused }: { paused: boolean }) {
               />
               <div className="sm-input-text">
                 <p className="sm-input-name">
-                  <span className={cn('sm-dot', camera.ready ? 'sm-dot-success' : 'sm-dot-danger')} aria-hidden="true" />
+                  <CameraDot cameraId={camera.id} ready={camera.ready} />
                   {camera.name}
                 </p>
                 <CameraState cameraId={camera.id} ready={camera.ready} online={camera.online} />
@@ -143,13 +143,30 @@ export function InputsPanel({ paused }: { paused: boolean }) {
   )
 }
 
+/** The dot of a camera card: never the "ready" colour beside a camera in an active capture fault (row W5, Q-01). */
+function CameraDot({ cameraId, ready }: { cameraId: VideoTrackId; ready: boolean }) {
+  const fault = useCameraCaptureFault(cameraId)
+  return <span className={cn('sm-dot', ready && fault === null ? 'sm-dot-success' : 'sm-dot-danger')} aria-hidden="true" />
+}
+
 /**
  * Fix wave J (JW-23 (4); rule 3c): the state word of a camera here is the one the Dashboard and the Devices page say.
  * "READY" of a source the Core never checked reads "Not checked" (`useTrackReach`).
  */
 function CameraState({ cameraId, ready, online }: { cameraId: VideoTrackId; ready: boolean; online: boolean }) {
   const { t } = useTranslation()
-  const notChecked = useTrackReach(cameraId) === 'NOT_CHECKED' && ready && online
+  // Task 4 row W5 (review 060d Q-01): a camera the Core holds an ACTIVE capture fault about (it stopped delivering
+  // inside the session) is not "READY". The fault is said in the state's place and goes when the Core resolves it.
+  const fault = useCameraCaptureFault(cameraId)
+  const reach = useTrackReach(cameraId)
+  if (fault !== null) {
+    return (
+      <p className="sm-input-state text-danger" role="status" data-testid={`sm-input-state-${cameraId}`} data-fault={fault}>
+        {trackFaultText(t, fault)}
+      </p>
+    )
+  }
+  const notChecked = reach === 'NOT_CHECKED' && ready && online
   if (notChecked) return <p className="sm-input-state" data-testid={`sm-input-state-${cameraId}`} data-reach="NOT_CHECKED">{t('web.source.notChecked')}</p>
   return (
     <p className={cn('sm-input-state', ready ? 'text-success' : 'text-danger')} data-testid={`sm-input-state-${cameraId}`}>

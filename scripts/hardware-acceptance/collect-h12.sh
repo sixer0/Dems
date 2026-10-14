@@ -25,9 +25,16 @@ if hw_log_needed --audit-file "$HW_AUDIT"; then
   hw_count 'audit list' "${HW_AUDIT:-<audit>}" CAPTURE_DISCOVERY_SEARCHED CAMERA_NETWORK
 fi
 if hw_log_needed --core-log "$HW_CORE_LOG"; then
-  hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_DISCOVERY_SEARCHED scope candidates outcome reason
-  hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" DISCOVERY_ADDRESS_NOT_PRIVATE ADDRESS_NOT_PRIVATE INVALID_INPUT
-  confirm 'the fields in which a search states its scope and its candidate count, and the refusal code of an address outside the private ranges'
+  # NAMES (wave 12, row C1; each checked against modules/capture-discovery/search.ts on 2026-10-14):
+  # the Core's line of a closed search carries trigger, outcome, failureReason, responderCount,
+  # newCount, registeredCount, interfaceCount and durationMs. Removed, the product never emitted
+  # them: the fields scope, candidates and reason of that line, and the codes
+  # DISCOVERY_ADDRESS_NOT_PRIVATE and ADDRESS_NOT_PRIVATE (the second is the address helper's word).
+  # The destination rule's word for an address outside the private ranges is PUBLIC_ADDRESS; it does
+  # not leave the Core, so a count of 0 is the expected reading. The scope is in the audit entry.
+  hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_DISCOVERY_SEARCHED trigger outcome responderCount newCount registeredCount interfaceCount failureReason
+  hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" INVALID_INPUT PUBLIC_ADDRESS
+  confirm 'that the candidates the screen lists equal responderCount of the line (new and registered together); the refusal of an address outside the private ranges is read on the screen by TECH'
 fi
 note 'what to record (part 6): the three candidate counts; "rule alone sufficed: yes or no"; the refusal of .4; the entry count. Not: an address, a camera'"'"'s serial number.'
 hw_done

@@ -336,6 +336,91 @@ describe('finding F3-01: a camera leg lost inside a session raises the fault at 
   });
 });
 
+// Finding E-03 of the fifth review pass (decision C113). Before this row the watch kept `lostStreams`, `lostLegs` and its
+// own raise marks across sessions: `close()` cleared the heartbeats only, and nothing said "the capture ended".
+// MUTATIONS, each seen RED (the row record names the failing assertions):
+//   M1  `captureEnded` forgets nothing (its body emptied): the first case;
+//   M2  the boundary by itself removed (no `forgetLosses()` at the first established push of another session): the second case;
+//   M3  the losses forgotten but the watch's own faults NOT asked away: both cases (the sink keeps a fault of a finished capture).
+describe('finding E-03: a loss belongs to the capture it happened in - two sessions back to back, a loss in the first', () => {
+  const FIRST = 'SES-20261014-0001';
+  const SECOND = 'SES-20261014-0002';
+  const fault = (subject: string) => ({ code: 'CAPTURE_FAULT', subject, reason: 'CAMERA_STREAM_ENDED' });
+  const up = (deviceId: string, sessionId: string, attempt = 1): Parameters<Rig['watch']['pushEstablished']>[0] => ({ deviceId, sessionId, attempt });
+  const legLost = (deviceId: string, sessionId: string): Parameters<Rig['watch']['pushEstablished']>[0] => ({ deviceId, sessionId, attempt: 1, leg: { event: 'LOST', profile: 'HEVC_1080P', cause: 'CAMERA_LOST' } });
+  /** The first session: both cameras up; CAM-01's relay dies, CAM-02's leg is lost and never comes back. */
+  const firstSession = (r: Rig): void => {
+    r.watch.pushEstablished(up('CAM-01', FIRST));
+    r.watch.pushEstablished(up('CAM-02', FIRST));
+    r.watch.relayEnded({ deviceId: 'CAM-01', sessionId: FIRST, code: 'CAPTURE_CAMERA_STREAM_LOST', profile: 'HEVC_1080P' });
+    r.watch.pushEstablished(legLost('CAM-02', FIRST));
+    expect([r.raised, r.cleared, [...r.watch.lost()].sort()]).toEqual([[fault('CAM-01'), fault('CAM-02')], [], ['CAM-01', 'CAM-02']]);
+  };
+
+  it('`captureEnded`: nothing is lost any more, each fault the watch raised is asked away ONCE, and the next session starts clean - a camera lost in the first is not lost in the second, raises anew there, and gets no clear for the old loss', async () => {
+    const r = rig();
+    firstSession(r);
+    r.watch.captureEnded();
+    expect(r.watch.lost()).toEqual([]);
+    expect(r.cleared).toEqual([fault('CAM-01'), fault('CAM-02')]);
+    // No camera came back: no change is told for the boundary.
+    expect(r.changes.map((change) => change.event)).toEqual(['STREAM_LOST', 'STREAM_LOST']);
+    // Twice is once.
+    r.watch.captureEnded();
+    expect(r.cleared).toHaveLength(2);
+
+    // THE SECOND SESSION, with the same cameras. Their pushes are no "return": nothing is cleared, nothing is told.
+    r.watch.pushEstablished(up('CAM-01', SECOND));
+    r.watch.pushEstablished(up('CAM-02', SECOND));
+    expect([r.raised.length, r.cleared.length, r.watch.lost(), r.changes.length]).toEqual([2, 2, [], 2]);
+    // A loss in the second session is a loss of the second session: raised anew, and ended by its own return.
+    r.watch.relayEnded({ deviceId: 'CAM-02', sessionId: SECOND, code: 'CAPTURE_CAMERA_STREAM_LOST', profile: 'HEVC_1080P' });
+    expect([r.raised.length, r.watch.lost()]).toEqual([3, ['CAM-02']]);
+    r.watch.pushEstablished(up('CAM-02', SECOND, 2));
+    expect([r.cleared.length, r.watch.lost()]).toEqual([3, []]);
+    // ONE relay of CAM-01 ended in the first session; before this row that count was still held here, so that ONE new loss
+    // of the camera needed TWO returns. Now one loss, one return.
+    r.watch.relayEnded({ deviceId: 'CAM-01', sessionId: SECOND, code: 'CAPTURE_CAMERA_STREAM_LOST' });
+    r.watch.pushEstablished(up('CAM-01', SECOND, 2));
+    expect([r.raised.length, r.cleared.length, r.watch.lost()]).toEqual([4, 4, []]);
+    // The heartbeats are not the boundary's: a watched camera stays watched.
+    r.watch.watch('CAM-01');
+    await beat(r);
+    expect(r.watch.presence('CAM-01')).toBe(CameraPresence.PRESENT);
+    const reads = r.reads.length;
+    r.watch.captureEnded();
+    expect(r.watch.presence('CAM-01')).toBe(CameraPresence.PRESENT);
+    await beat(r);
+    expect(r.reads.length).toBeGreaterThan(reads);
+    r.watch.close();
+  });
+
+  it('where nobody says the capture ended: the first established push that names ANOTHER session is the boundary - also when the camera of that push is not the one that was lost', () => {
+    const r = rig();
+    firstSession(r);
+    // A later worker of the SAME session is no boundary: CAM-01 returns and ITS fault is cleared (row 49's rule); CAM-02 stays lost.
+    const same = rig();
+    firstSession(same);
+    same.watch.pushEstablished(up('CAM-01', FIRST, 2));
+    expect([same.cleared, same.watch.lost()]).toEqual([[fault('CAM-01')], ['CAM-02']]);
+    // A leg report and an ended relay that name another session are no boundary either (only an established push is).
+    r.watch.pushEstablished(legLost('CAM-02', SECOND));
+    expect([...r.watch.lost()].sort()).toEqual(['CAM-01', 'CAM-02']);
+    expect(r.cleared).toEqual([]);
+
+    // The second session opens with CAM-02 only. CAM-01 - lost in the first, not in this plan - is no longer lost.
+    r.watch.pushEstablished(up('CAM-02', SECOND));
+    expect(r.watch.lost()).toEqual([]);
+    expect(r.cleared).toEqual([fault('CAM-01'), fault('CAM-02')]);
+    expect(r.changes.map((change) => change.event)).toEqual(['STREAM_LOST', 'STREAM_LOST']);
+    // And the second session's own loss stands alone.
+    r.watch.pushEstablished(legLost('CAM-02', SECOND));
+    expect([r.raised.length, r.watch.lost()]).toEqual([3, ['CAM-02']]);
+    r.watch.pushEstablished(up('CAM-01', SECOND));
+    expect(r.watch.lost()).toEqual(['CAM-02']);
+  });
+});
+
 describe('presence: the heartbeat of the tested scheme by the time read', () => {
   it(`one read every ${CAMERA_PRESENCE_INTERVAL_MS} ms; absent after ${CAMERA_PRESENCE_FAILURES} reads without an answer, told once; the first answer after it is told once`, async () => {
     const r = rig();

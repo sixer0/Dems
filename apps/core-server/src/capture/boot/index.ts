@@ -64,6 +64,8 @@ import { DEMO_OPERATOR_PASSWORD } from '@dems/shared/sim';
 import { verifyPassword } from '../../modules/identity/password-hash';
 import { factDoorsOf } from '../../engine';
 import { inspectProgram, type ProgramInspector } from '../adapters/local';
+// Row NB (design 06 row N13): the two system programs of the macOS microphone listing, by the literals of row N4's table.
+import { MACOS_SYSTEM_AUDIO_PROGRAM, MACOS_USB_TREE_PROGRAM } from '../adapters/local/mic-helper-args';
 import { captureOperationDecisionOf, type CaptureOperationDecision } from '../fence/operation';
 import { createProcessLauncher } from '../ipc';
 import { SignerError, certificateDer, loadSoftwareSigner } from '../signer';
@@ -598,6 +600,12 @@ export async function storedDemoPasswordOperators(
   }
 }
 
+/**
+ * Row NB (design 06 row N13): the system programs of the macOS microphone listing that a production boot on `darwin` holds to the
+ * path rule - rows L1 and L2 of row N4's table, in that order, by its own constants (no key of the configuration names them).
+ */
+export const SYSTEM_LISTING_PROGRAMS: readonly string[] = Object.freeze([MACOS_USB_TREE_PROGRAM, MACOS_SYSTEM_AUDIO_PROGRAM]);
+
 /** The camera interface of the stored network configuration: the ONE row of the table, one column. Read at boot of a production Core only (row 81). */
 export const SELECT_STORED_CAMERA_INTERFACE = 'SELECT interface_name FROM public.capture_network_config';
 
@@ -661,6 +669,8 @@ export function mountCaptureBootChecks(app: FastifyInstance, mount: CaptureBootM
       relayProgram: captureRelayPath,
       run: facts.run,
       storedInterface: () => (mount.storedCameraInterface ?? (() => storedCameraInterface(app)))(),
+      // Row NB (design 06 row N13): held to the path rule on `darwin` only (`program-checks.ts` decides by the platform); never started.
+      systemListingPrograms: SYSTEM_LISTING_PROGRAMS,
     },
   });
   const handshake = (): Promise<WorkerHandshake> => {

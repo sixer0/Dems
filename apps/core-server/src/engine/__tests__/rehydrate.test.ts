@@ -29,7 +29,8 @@ import {
   storedStateOf,
   type StoredState,
 } from '../rehydrate';
-import { CORE_NOT_RUNNING_FAULT_EXAMPLE } from '@dems/shared/api';
+import { CamerasSliceSchema, CORE_NOT_RUNNING_FAULT_EXAMPLE } from '@dems/shared/api';
+import { cameraBitrateNotStatedTransition, isCameraBitrateNotStated } from '../camera-bitrate';
 import { SEALING_STEP_ORDER } from '../../sealing';
 import { RESTART_FAULT_OPEN_STATES, endRestartFaultTransition, hasRestartFault, restartFaultSessionOpen } from '../restart-fault';
 
@@ -831,5 +832,47 @@ describe('G75c-01: the end of the restart fault (wave K, driver S1)', () => {
       expect(hasRestartFault(state)).toBe(false);
       expect(endRestartFaultTransition({ ...state, session: null }, first.now).faults.active.some((fault) => fault.kind === 'POWER_FAIL')).toBe(true);
     });
+  });
+});
+
+// Task 4 wave 12, row CB (review 060c finding R-01; decision C36): the statement "no bitrate of a camera is stated" of a
+// Core in its own capture. The host applies it at every start (held on a booted Core in `restart.db.test.ts`, block
+// G75b); here the pure transition. Seen RED on: the transition returning its state unchanged (cases 1 and 3).
+describe('row CB (R-01): a Core in its own capture states no bitrate of a camera', () => {
+  it('every track says null; nothing else of the state moves; the result passes the slice contract and survives the stored round trip', async () => {
+    const host = await createHost({ scenario: 'recording' });
+    const before = host.state();
+    // The simulator's one writer: its initial 9.
+    expect(before.cameras.map((camera) => camera.bitrateMbps)).toEqual([9, 9]);
+    expect(isCameraBitrateNotStated(before.cameras)).toBe(false);
+    const stated = cameraBitrateNotStatedTransition(before);
+    expect(stated.cameras.map((camera) => camera.bitrateMbps)).toEqual([null, null]);
+    expect(isCameraBitrateNotStated(stated.cameras)).toBe(true);
+    expect(stated.cameras.map(({ bitrateMbps: _b, ...rest }) => rest)).toEqual(before.cameras.map(({ bitrateMbps: _b, ...rest }) => rest));
+    // The state handed in is not written, and every other slice is the same object.
+    expect(before.cameras.map((camera) => camera.bitrateMbps)).toEqual([9, 9]);
+    for (const key of Object.keys(before) as (keyof SimState)[]) if (key !== 'cameras') expect(stated[key], key).toBe(before[key]);
+    // The storage volume's own bitrate is another member and no part of this statement.
+    expect(stated.storage.bitrateMbps).toBe(before.storage.bitrateMbps);
+    expect(CamerasSliceSchema.safeParse(stated.cameras).success).toBe(true);
+    // Stored and read back (the rows of the one mapping module): still null, and no slice is rejected.
+    const again = storedStateOf(rowsOf(stated, host.now()));
+    expect(rejectedSlices(again.slices)).toEqual([]);
+    expect(again.slices.cameras.map((camera) => camera.bitrateMbps)).toEqual([null, null]);
+  });
+
+  it('the SAME state when every track already says null: no write, no statement, no revision', async () => {
+    const host = await createHost({ scenario: 'idle' });
+    const stated = cameraBitrateNotStatedTransition(host.state());
+    expect(cameraBitrateNotStatedTransition(stated)).toBe(stated);
+  });
+
+  it('a slice that holds one number and one null: the number goes, the track that said null is the same object', async () => {
+    const host = await createHost({ scenario: 'idle' });
+    const state = host.state();
+    const mixed: SimState = { ...state, cameras: state.cameras.map((camera, at) => (at === 0 ? { ...camera, bitrateMbps: null } : { ...camera, bitrateMbps: 4.5 })) };
+    const stated = cameraBitrateNotStatedTransition(mixed);
+    expect(stated.cameras.map((camera) => camera.bitrateMbps)).toEqual([null, null]);
+    expect(stated.cameras[0]).toBe(mixed.cameras[0]);
   });
 });

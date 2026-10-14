@@ -196,7 +196,8 @@ export interface CaptureCredentialReaderDependencies {
   /**
    * The destination rule on a STORED camera address (AD-02): `decideDestination` with the purpose
    * `STORED_CAMERA`, bound to the host's facts by the composition inside the capture unit. `port`
-   * is left out when the stored address names none. There is no permissive value under `src/`.
+   * is the port DIALLED: the stored one, or `STORED_ADDRESS_DEFAULT_PORT` when the stored address
+   * names none (C127, finding S-04). There is no permissive value under `src/`.
    */
   storedAddress(host: string, port: number | undefined): StoredCameraAddressDecision;
 }
@@ -212,10 +213,20 @@ export interface CaptureCredentialDevice {
 }
 
 /** The answer of the destination rule, as far as the gate reads it (`DestinationDecision` fits it). */
-export type StoredCameraAddressDecision = { readonly allowed: true } | { readonly allowed: false; readonly refusal: string };
+export type StoredCameraAddressDecision = { readonly allowed: true; readonly destination?: unknown } | { readonly allowed: false; readonly refusal: string };
 
-/** Why the gate refused an address, where the rule itself was not asked. */
-export const StoredAddressRefusal = { ABSENT: 'STORED_ADDRESS_ABSENT', MALFORMED: 'STORED_ADDRESS_MALFORMED', RULE_FAILED: 'STORED_ADDRESS_RULE_FAILED' } as const;
+/**
+ * Why the gate refused an address, where the rule itself was not asked. `PORT_MISMATCH` (C127, S-04):
+ * the rule's admission states another port than the one dialled.
+ */
+export const StoredAddressRefusal = { ABSENT: 'STORED_ADDRESS_ABSENT', MALFORMED: 'STORED_ADDRESS_MALFORMED', RULE_FAILED: 'STORED_ADDRESS_RULE_FAILED', PORT_MISMATCH: 'STORED_ADDRESS_PORT_MISMATCH' } as const;
+
+/**
+ * THE PORT DIALLED when the stored address names none (C127): the camera's ONVIF device service is an
+ * `http:` address, and `http:` without a port is 80 (RFC 9110 section 4.2.1). The same number as the
+ * stored-address judgement's `ONVIF_DEVICE_SERVICE_DEFAULT_PORT`; a test holds the two equal.
+ */
+export const STORED_ADDRESS_DEFAULT_PORT = 80;
 
 /** A refusal is named by a code in the error log; anything else a rule answered is not copied. */
 const REFUSAL_CODE = /^[A-Z][A-Z0-9_]{0,47}$/;
@@ -289,9 +300,11 @@ export function createCaptureCredentialReaders(dependencies: CaptureCredentialRe
     if (typeof stored.address !== 'string' || stored.address === '') throw failed(CaptureCredentialReadFailure.ADDRESS_REFUSED, deviceId, reason, undefined, StoredAddressRefusal.ABSENT);
     const parts = STORED_ADDRESS.exec(stored.address);
     if (parts === null || parts[1] === undefined) throw failed(CaptureCredentialReadFailure.ADDRESS_REFUSED, deviceId, reason, undefined, StoredAddressRefusal.MALFORMED);
+    // C127 (S-04): the rule is asked about the port DIALLED - the stored one, or the `http:` default - never left to the first of its list.
+    const dialled = parts[2] === undefined ? STORED_ADDRESS_DEFAULT_PORT : Number(parts[2]);
     let decision: StoredCameraAddressDecision;
     try {
-      decision = storedAddress(parts[1], parts[2] === undefined ? undefined : Number(parts[2]));
+      decision = storedAddress(parts[1], dialled);
     } catch (error) {
       throw failed(CaptureCredentialReadFailure.ADDRESS_REFUSED, deviceId, reason, error, StoredAddressRefusal.RULE_FAILED);
     }
@@ -300,6 +313,9 @@ export function createCaptureCredentialReaders(dependencies: CaptureCredentialRe
       const named = typeof decision === 'object' && decision !== null && typeof decision.refusal === 'string' && REFUSAL_CODE.test(decision.refusal) ? decision.refusal : StoredAddressRefusal.RULE_FAILED;
       throw failed(CaptureCredentialReadFailure.ADDRESS_REFUSED, deviceId, reason, undefined, named);
     }
+    // An admission that states its port is this device's only for the port dialled.
+    const admittedPort = typeof decision.destination === 'object' && decision.destination !== null ? (decision.destination as { readonly port?: unknown }).port : undefined;
+    if (admittedPort !== undefined && admittedPort !== dialled) throw failed(CaptureCredentialReadFailure.ADDRESS_REFUSED, deviceId, reason, undefined, StoredAddressRefusal.PORT_MISMATCH);
   }
 
   /** The one path. Closure-private: a holder reaches it through its bound methods only. */

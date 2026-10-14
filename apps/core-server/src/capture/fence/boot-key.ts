@@ -341,8 +341,45 @@ export function bootAddressHelperStatementOf(operation: CaptureOperation, platfo
   return Object.freeze({ addressHelperSocket: present ? BootAddressHelperSocket.PRESENT : BootAddressHelperSocket.NOT_PRESENT });
 }
 
+// ── THE MICROPHONE PERMISSION OF A PRODUCTION BOOT ON macOS (task 4 row NB = design 06 rev 3 row N13; review SM-15, SM-13; decision C135) ──
+//
+// On macOS the operating system, not the Core, decides whether a program may record from a microphone: it asks the user at
+// the FIRST OPEN of a microphone and names the application at the top of the chain of the program that opened it (design 06
+// section 5; SM-15). There is no way to know the answer without opening a device, and the boot opens none and never waits for
+// a listing (design 06 section 10.1 row N13). It does NOT read the system's privacy database either (SM-15). So the entry of a
+// `REAL_PRODUCTION` boot on `darwin` states the fact that it does not know:
+//
+//   microphonePermission   `NOT_KNOWN` - the one word. A FACT, NOT A PASS: whether recording is allowed shows only at the
+//                          first open (the pre-check's non-zero sample, SM-14) - a denial may show as silence, not as an error
+//
+// The design states it on `darwin` only (design 06 section 10.2, "optional, `darwin` only"): the member is NOT written on
+// `linux`; nor in `REAL_DEVELOPMENT`, nor when no boot checks are mounted - the entry is the one of before this row.
+// The members of the host (row P1) already say that the host profile is not asked on `darwin`.
+//
+// The form, held by the audit writer for every `SYSTEM_BOOT` row, is a request line of this row (`src/core/audit-details.ts`
+// is not this row's file): until it lands, the writer takes the member under its general rules.
+
+/** The one member of the microphone permission statement. */
+export const SYSTEM_BOOT_MICROPHONE_MEMBERS = ['microphonePermission'] as const;
+
+/** The codes of `microphonePermission`: one word - the boot cannot know it (see above). */
+export const BootMicrophonePermission = { NOT_KNOWN: 'NOT_KNOWN' } as const;
+export type BootMicrophonePermission = (typeof BootMicrophonePermission)[keyof typeof BootMicrophonePermission];
+
+/** The microphone permission statement as an entry holds it. */
+export type BootMicrophoneStatement = { readonly microphonePermission: BootMicrophonePermission };
+
+/**
+ * The microphone permission statement of a boot, or null when the boot states none: any operation but `REAL_PRODUCTION`,
+ * and any platform word but `darwin`. A function of the two words alone: it asks nothing, opens nothing, reads nothing.
+ */
+export function bootMicrophoneStatementOf(operation: CaptureOperation, platform: string | null | undefined): BootMicrophoneStatement | null {
+  if (operation !== CaptureOperation.REAL_PRODUCTION || platform !== 'darwin') return null;
+  return Object.freeze({ microphonePermission: BootMicrophonePermission.NOT_KNOWN });
+}
+
 /** The details of the `SYSTEM_BOOT` entry of a real boot: the operation, then the two members, then (row V5) the store's state, then (row P1) the host of a production boot, then (row HC) the address helper of a production boot on Linux. (A type, not an interface: it is handed to the audit writer as a record of detail values.) */
-export type SystemBootDetails = { readonly captureOperation: CaptureOperation } & BootSigningKey & Partial<BootSigningStoreStatement> & Partial<BootHostStatement> & Partial<BootAddressHelperStatement>;
+export type SystemBootDetails = { readonly captureOperation: CaptureOperation } & BootSigningKey & Partial<BootSigningStoreStatement> & Partial<BootHostStatement> & Partial<BootAddressHelperStatement> & Partial<BootMicrophoneStatement>;
 
 /** The severity of the boot entry: WARNING when it names a change of the signer store, else INFO. */
 export function systemBootSeverityOf(details: SystemBootDetails): 'INFO' | 'WARNING' {
@@ -368,6 +405,9 @@ export function systemBootSeverityOf(details: SystemBootDetails): 'INFO' | 'WARN
  * Row HC: `statement.addressHelperSocketPresent` - a reader of "something lies at the installed socket path of the
  * address helper" - adds the ONE member `addressHelperSocket` to the entry of a `REAL_PRODUCTION` boot on `linux`,
  * AFTER every member of before. Left out, another operation or another platform: nothing is added and nothing is read.
+ *
+ * Row NB (design 06 row N13; SM-15): the same `statement.hostPlatform` adds the ONE member `microphonePermission: NOT_KNOWN`
+ * to the entry of a `REAL_PRODUCTION` boot on `darwin`, AFTER every member of before. Nothing is asked for it.
  */
 export function systemBootDetailsOf(operation: CaptureOperation, key: BootSigningKey, statement?: { readonly store: BootSigningStore | null; readonly previous: unknown; readonly hostPlatform?: string | null | undefined; readonly addressHelperSocketPresent?: (() => boolean) | undefined }): SystemBootDetails {
   const problem = bootSigningKeyProblemOf(key);
@@ -377,6 +417,7 @@ export function systemBootDetailsOf(operation: CaptureOperation, key: BootSignin
   const { store } = statement;
   const host = bootHostStatementOf(operation, statement.hostPlatform);
   const helper = bootAddressHelperStatementOf(operation, statement.hostPlatform, statement.addressHelperSocketPresent);
+  const microphone = bootMicrophoneStatementOf(operation, statement.hostPlatform);
   return {
     ...stated,
     signingKeysRetained: store === null ? null : store.retained,
@@ -385,5 +426,6 @@ export function systemBootDetailsOf(operation: CaptureOperation, key: BootSignin
     signingStoreChange: bootSigningStoreChangeOf(key, store, statement.previous),
     ...(host === null ? {} : host),
     ...(helper === null ? {} : helper),
+    ...(microphone === null ? {} : microphone),
   };
 }

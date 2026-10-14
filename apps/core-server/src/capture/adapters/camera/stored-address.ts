@@ -26,7 +26,8 @@
  *     strict dotted quad only: a name, a mapped or an abbreviated form is its own refusal);
  *   - `serviceAddress` is an `http:` address ON THAT HOST - the same text as its host part, no user
  *     part - so that what is dialled is what was judged. Its port, when it names one, is the port
- *     the rule is asked about (the rule's own stored list decides);
+ *     the rule is asked about (the rule's own stored list decides); when it names none, the port
+ *     DIALLED is 80 and an admission of any other port is not this camera's (C127, finding S-04);
  *   - an answer of the rule that names another address than the one asked is not an admission.
  *
  * The stream address a camera names later is held to this same host by the ONVIF session
@@ -58,11 +59,21 @@ import type { CameraCandidate } from '../types';
 /**
  * The rule on one stored address, by shape (`DestinationDecision` fits the answer). `port` is left
  * out when the stored service address names none: the rule then takes the first of its own list.
+ * The PORT HALF (security review 086 caution C-3, finding S-04; decision C127): an admission whose
+ * `destination.port` is stated is used only when that port is the one DIALLED - see `judgeStoredCamera`.
  */
 export type StoredCameraAddressRule = (
   host: string,
   port: number | undefined,
-) => { readonly allowed: true; readonly destination?: { readonly address?: unknown; readonly sourceAddress?: unknown } } | { readonly allowed: false; readonly refusal: string };
+) => { readonly allowed: true; readonly destination?: { readonly address?: unknown; readonly sourceAddress?: unknown; readonly port?: unknown } } | { readonly allowed: false; readonly refusal: string };
+
+/**
+ * THE PORT DIALLED when a stored address names none (C127): the device service is an `http:` address,
+ * and `http:` without a port is port 80 (RFC 9110 section 4.2.1; the WHATWG URL parser drops `:80` too,
+ * so `host` and `host:80` are the same service address). The credential reader's gate holds the same
+ * number (`STORED_ADDRESS_DEFAULT_PORT`; a test holds the two equal).
+ */
+export const ONVIF_DEVICE_SERVICE_DEFAULT_PORT = 80;
 
 /** Why a stored camera was refused where the rule itself was not asked, or did not answer a decision. */
 export const StoredCameraRefusal = {
@@ -76,6 +87,11 @@ export const StoredCameraRefusal = {
   RULE_FAILED: 'STORED_ADDRESS_RULE_FAILED',
   /** Row 143b: the rule admitted the address and named no camera-interface address to connect from (or one that is not the strict form). Nothing is dialled without it. */
   SOURCE_ABSENT: 'STORED_ADDRESS_SOURCE_ABSENT',
+  /**
+   * C127 (S-04): the rule admitted a port that is not the port dialled (the stored address's own, or
+   * `ONVIF_DEVICE_SERVICE_DEFAULT_PORT` when it names none), and asked about the dialled port it did not admit it.
+   */
+  PORT_MISMATCH: 'STORED_ADDRESS_PORT_MISMATCH',
 } as const;
 export type StoredCameraRefusal = (typeof StoredCameraRefusal)[keyof typeof StoredCameraRefusal];
 
@@ -169,6 +185,22 @@ export function storedCameraCandidate(stored: { readonly adapterKind: CameraCand
   });
 }
 
+/** The rule's answer, or null when it threw (refused as `RULE_FAILED`). */
+function askRule(rule: StoredCameraAddressRule, host: string, port: number | undefined): unknown {
+  try {
+    return rule(host, port);
+  } catch {
+    return null;
+  }
+}
+
+/** The port an ADMISSION states (`destination.port`), or undefined for a refusal or an admission that states none. */
+function admittedPortOf(decision: unknown): unknown {
+  if (typeof decision !== 'object' || decision === null || (decision as { allowed?: unknown }).allowed !== true) return undefined;
+  const destination = (decision as { destination?: unknown }).destination;
+  return typeof destination === 'object' && destination !== null ? (destination as { port?: unknown }).port : undefined;
+}
+
 /**
  * THE JUDGEMENT of one stored camera. Asked before every use of its address; it changes nothing
  * and keeps nothing, so asking it again is the same question about what is stored NOW.
@@ -189,18 +221,20 @@ export function judgeStoredCamera(candidate: Pick<CameraCandidate, 'host' | 'ser
   // (A user part is refused by its separator in the stored text: no member of the parsed address is read for it.)
   if (service.protocol !== HTTP || service.hostname !== host || serviceAddress.includes(USER_PART_SEPARATOR)) return refused(StoredCameraRefusal.MALFORMED);
   const port = service.port === '' ? undefined : Number(service.port);
-  let decision: unknown;
-  try {
-    decision = rule(host, port);
-  } catch {
-    return refused(StoredCameraRefusal.RULE_FAILED);
-  }
+  // C127 (S-04): THE PORT DIALLED - the service address's own, or the `http:` default when it names none.
+  const dialled = port ?? ONVIF_DEVICE_SERVICE_DEFAULT_PORT;
+  let decision = askRule(rule, host, port);
+  // An address that names no port is judged by the rule on the FIRST port of its own list; what is dialled is the
+  // default port. When the admission names another port, the rule is asked about the dialled port itself.
+  if (port === undefined && admittedPortOf(decision) !== undefined && admittedPortOf(decision) !== dialled) decision = askRule(rule, host, dialled);
   if (typeof decision !== 'object' || decision === null) return refused(StoredCameraRefusal.RULE_FAILED);
-  const { allowed, refusal, destination } = decision as { allowed?: unknown; refusal?: unknown; destination?: { address?: unknown; sourceAddress?: unknown } | null };
+  const { allowed, refusal, destination } = decision as { allowed?: unknown; refusal?: unknown; destination?: { address?: unknown; sourceAddress?: unknown; port?: unknown } | null };
   if (allowed === true) {
     // The rule rebuilds the address it admits from its numbers: another address than the one asked is not this camera's admission.
     const named = destination === undefined || destination === null ? host : destination.address;
     if (named !== host) return refused(StoredCameraRefusal.RULE_FAILED);
+    // C127 (S-04): an admission that states its port is this camera's only for the port that is dialled.
+    if (destination !== undefined && destination !== null && destination.port !== undefined && destination.port !== dialled) return refused(StoredCameraRefusal.PORT_MISMATCH);
     // Row 143b: the camera-interface address the rule names, in the strict form or not at all.
     const source = destination === undefined || destination === null ? null : destination.sourceAddress;
     return admitted(isSourceAddress(source) ? source : null);

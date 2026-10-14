@@ -1071,3 +1071,262 @@ Rows 85, 191, 143, 146, 154, 199, 200, 201, 194, 195, 102, 202, 114 (+ profiles 
 - SKIPPED, each a small row of its own: (3) the journal's NOT_MARKED close - no durable "add confirmed" fact exists and HOST_ALIAS_REMOVED's closed rule admits no code member: my ruling in the D3 update could not be built as worded; it goes back as a design point of the commissioning lane, not forced; (4) the demo reset's kept tables (capture_device_streams, capture_network_config, host_network_aliases, installation_acceptances, and capture_audio_inputs by rows 17 / 51b): reset code with a two-column key, a reader reload and eight pin files - a row of its own.
 - Checks: typecheck clean in shared, core-server, core-web, mobile; static set 45 files / 778; touched units 781; acceptance pair + two db tests 107; composition 15; shared after the one openapi regeneration 2892; web 145. No red in what ran. Counts: 110 operations, 83 audit types, 15 permissions, 51 actions.
 - QUIET POINT: only M1c (one design document) is in flight. The checkpoint commit (U26 (4)) is launched: light checks, then commits by named paths, no push; masterplan/06_design_macos_microphone.md is left out (mid-edit).
+
+## Update 2026-10-13 - CHECKPOINT COMMITS made (U26 (4)); no push; the branch has no upstream
+- f20c9b39: schema steps 9 to 13 in ONE commit, 59 files (the five steps share the journal, schema/meta.ts, schema/index.ts, the contract inventory; interactive staging is not available) - C32 kept as "schema apart from the rest", not as five. 1fbeada7: everything else, 679 files (pin files that mix schema pins with other rows' code are here).
+- Light checks before them, all exit 0: `npm run typecheck` in all 7 workspaces; static rule sets 47 files / 806 passed; `npm run lint` no errors (3 warnings). NOT run: every unit, database, worker, web and mobile suite, the kill matrix.
+- Secret scan, count only: ingest-secret 4, private-key-pem 3, database-password-line 1 - at baseline; camera-credential 58. CORRECTION OF MY BASELINES: I had recorded camera-credential 55 and "the other needles 0"; HEAD (0f5d2a8e) already held camera-credential 57 and private-key-pem 2, and the tree has session-token 20, device-credential 8, biometric-token 8, database-locator 10 - identical to HEAD. So my recorded baselines were incomplete (they covered the needles of rows 5 and 207 as I read them, not the script's whole list). New hits against HEAD: one camera-credential in src/__tests__/capture-composition.test.ts and one private-key-pem in src/core/__tests__/writers.test.ts - both test files. BASELINES FROM NOW, at 1fbeada7: camera-credential 58, private-key-pem 3, database-password-line 1, ingest-secret 4, session-token 20, device-credential 8, biometric-token 8, database-locator 10.
+- Left unstaged on purpose: masterplan/06_design_macos_microphone.md (M1c), the stray root file ffprobe-export.txt, the commit's own record. Nothing under apps/input-av/.
+- PAUSED (U27). In flight: M1c only (a document).
+
+## Update 2026-10-13 - M1c landed (macOS microphone design, revision 3) - needs-review; RECORDED ONLY, the work is PAUSED (U27). Nothing is in flight.
+- masterplan/06_design_macos_microphone.md is revision 3 (815 -> 1,330 lines), uncommitted. Stated by the designer: review 08 and records MM / MM2 were read by outline and section only.
+- `audio.samplesNotReceived` (optional): one record per microphone with `sampleContinuity` and, per attempt, `micDeviceId`, `attempt`, `captureLayer`, `captureGroup` (1-2), `account` (CLOSED / NOT_CLOSED / NONE), twelve sample counts (all whole numbers or all null), `openRunFromSample`, and `insertedRuns[]` of `{fromSample, samples}` for runs of 4,800 samples (100 ms) or more, at most 1,024 per attempt, beyond that a count and sum of the runs not listed. Reconciliation: timelineSamples = received - discarded - buffered + inserted; the gapped pipe kind BYPASSES the resampler.
+- Notice margin: 1.5 points above the session's own reference, twice in a row (the addendum's 2.0 nearly coincides with the 12.0% floor).
+- Worker pin: protocol number 4 -> 5 (worker.h:48 with packages/capture-protocol/src/index.ts:148); the record-kind list gains two.
+- 18 work packages (6 S, 12 M); ONE (N3) edits the worker's C source.
+- NOT buildable as the addendum worded it - to rule at the resume, before any build row: a SEALED transcript cannot read the signed member (it is hashed first); an engine segment spanning an inserted run cannot be split - it is marked; audit details are flat, so the runs need a second audit type; one verdict line exceeds 256 characters - two notices; "N1 cannot land before c06" - by U26 the worker's baseline is the TARGETED worker verification of lane A's first step, not c06: N1 and N3 wait for that step.
+
+## RESUME 2026-10-14 (U28, C112) - wave 12 launched; map: delegation_progress/wave_12_brief.md
+- In flight: A1, N2, N4, N5, N6, N8, W5, CB, C1, C2, D1, 60e, 120.
+
+## Update 2026-10-14 - N8 landed (pure reader of the macOS helper's lines) - complete, adopted
+- New: capture/adapters/audio/macos-helper-lines.ts + its test. Typed facts: INPUT_HEADER, OUTPUT_HEADER, STREAM, QUEUE_FULL, QUEUE_FLUSHED (both `output: NOT_STATED` - the helper's queue lines do not say which output: the amount and place of a drop come from the worker, C110 (5)), OPEN_REFUSED, ENDED_ON_SIGNAL, UNRECOGNISED. Layout table: 40 entries from the pinned build's `-layouts`. 20 mutations each seen RED (M12 red by the reason word only). Row tests 33; audio suite + capture static 331; test/static 210.
+- Decisions: D1 each layout entry is marked MEASURED (only `5.1`) or BUILD_TABLE, so the adapter (N9) chooses - ACCEPTED, and RULED for N9: a layout that is BUILD_TABLE and not MEASURED is admitted (the table is the pinned build's own), with the channel count ALSO required to agree with the listing's channel count for that device - two sources, not one. D2 a second stream line or header WITHDRAWS the statement - accepted (fail-closed). D6 the input shape `{ text, cut }` was ASSUMED because N5 had not landed: to check against N5's observer at its return.
+- Typecheck red (3 errors) at packages/shared/src/sim/capture-notices.ts:367-368 = N2 in flight.
+- In flight: A1, N2, N4, N5, N6, W5, CB, C1, C2, D1, 60e, 120.
+
+## Update 2026-10-14 - C2 landed (README and installer note; row 218) - complete, adopted; documents only, nothing run
+- README: "The signing key" paragraph; the installation identity table (reserved ids) and the receiver's command (`--compromised`, exit status 3); a new block "Task 4: production key, operator passwords, real cameras, commissioning" before Known limits; Known limits 7, 25, 30, 34 rewritten, 37 one sentence, 46 to 58 added. Command lines copied from package.json (operator:set-password, evidence:production-key, evidence:rotate-key, evidence:mark-compromised, evidence:verify-export, db:migrate, db:seed). No name from the decision rows was missing in the product.
+- Confirmed: the README says a missing camera network answers COMMISSIONING_NOT_CONFIGURED, as the product does since row R2 (C70's older word CANDIDATE_NOT_TESTABLE is the status' umbrella, the reason is the README's word). The installer note's "switch transcription off in the SIMULATED first boot" is marked to confirm on the host - kept as a mark.
+- Found wrong, outside its list - the close chain (rows 134 / 135): README line 441 and the check-4c refusal row still describe 713d83f; the totals under Tests and the top Ringkasan predate task 4; apps/core-server/src/config.ts:29 gives the now RESERVED id DEMS-IR-01 as an example (a comment in a file with pinned lines: one tidy edit with its static waiver, at the lift's change set or the close).
+- README is free for row N16 (the macOS microphone) later.
+- In flight: A1, N2, N4, N5, N6, W5, CB, C1, D1, 60e, 120.
+
+## Update 2026-10-14 - row 60e landed - C113; rows E1 (slices.ts streamState) and E2 (camera adapter E-02..E-05) launched; E3 (capture-session E-06, E-07) waits for D1
+- wave_12_brief.md row 9 amended by this line: capture/adapters/camera/* is E2's; modules/capture-config/slices.ts is E1's.
+- In flight: A1, N2, N4, N5, N6, W5, CB, C1, D1, 120, E1, E2.
+
+## Update 2026-10-14 - row 120 landed - C114 (1 blocking: the helper's suite is red after a restart and its stale-mark tests pass with the rule removed)
+- Launched: H4 (helper TESTS only: scripts/host/netalias test files; the helper file's hash 1e758a24 must not move) and 120b (second reading pass, read-only).
+- Queued: H5 (helper changes F-1 + R119b-01; new hash; reviewer's statement again; chapters' hash lines) after C1 lands; D4 (interface-name form widened in table + contract) after N2 lands.
+- In flight: A1, N2, N4, N5, N6, W5, CB, C1, D1, E1, E2, H4, 120b.
+
+## Update 2026-10-14 - E1 landed with NO change - C115 (the review's file was the wrong place; E-01 is a shared-engine change: row E1b after N2)
+- modules/capture-config/slices.ts untouched and free.
+- In flight: A1, N2, N4, N5, N6, W5, CB, C1, D1, E2, H4, 120b.
+
+## Update 2026-10-14 - N5 landed (the production door's live standard-error observer) - complete, adopted
+- `onDiagnostics?: (event) => void` with events `{ kind: 'line', text, cut }`, `{ kind: 'dropped', lines }`, `{ kind: 'quiet' }`; bounds 512 characters per line, 200 lines per second, 20,000 lines per life; text printable ASCII only, locators blanked; the door logs nothing. Standard error is never paused; the observer is told in a later turn, 8 events per turn, its return not awaited; at most 200 lines wait, overflow dropped and counted. Stated limit: a synchronous long call of the observer still holds the whole Core (the observer of row N9 must be short).
+- Unchanged without it: the 10 existing door cases pass unedited (+363/-0 in the test file); 18 door tests; ten mutants each red; capture static 79 after N4's pin.
+- N8's assumed input shape `{ text, cut }` MATCHES the line event (C: no change needed in N8).
+- Open for the lift's change set (row 88 / N7): rule A-8's pin and the barrel export of the new option type.
+- Typecheck red: macos-card-listing.test.ts(308,24) = N6 in flight.
+- In flight: A1, N2, N4, N6, W5, CB, C1, D1, E2, H4, 120b.
+
+## Update 2026-10-14 - N6 landed (macOS audio device listing and identity) - complete, adopted, with one gap
+- New under capture/adapters/audio/: macos-plist.ts (own strict bounded parser, no dependency), macos-usb-tree-reader.ts, macos-system-audio-reader.ts, macos-helper-list-reader.ts, macos-card-tie.ts, macos-card-listing.ts; 21 synthetic fixtures; card-listing.ts gained the word SYSTEM_PROFILE. Port path = the location id as eight lower-case hex digits; the `usb_port` column's CHECK accepts it (tested against migration 0017). Undecided states: NAME_NOT_TIEABLE, NAME_SHARED, NO_SYSTEM_INPUT, NO_CAPTURE_ENTRY, LISTS_DISAGREE, TRANSPORT_NOT_USB, NO_USB_DEVICE; a whole listing that fails its bounds raises (USB_TREE_UNREADABLE, SYSTEM_LIST_UNREADABLE, CAPTURE_LIST_UNREADABLE). 43 tests; audio suite + static 584; six mutations red.
+- GAP, stated: its readers were NOT run on this Mac's real texts (its one permitted run compared shapes only): row N7's first check.
+- THREE FACTS FROM THE REAL LISTS, for N7 / N9: (1) the USB interface's HELPER INDEX CHANGED since row MM (0 -> 1, after the restart): an index is only valid from the list read for THIS start - the design's rule is confirmed by observation; (2) the USB tree list is already 42 KiB for 5 devices against the 64 KiB cap: one more hub and the whole listing is refused - fail-closed but a host with many USB devices could not list at all: N7 measures and sets the cap with a margin, or narrows the query; (3) the system list ends without a line end.
+- For N9 (its request): for `AUDIO_CARD_AMBIGUOUS` the adapter must read `listTied().undecided`, because the unchanged match answers CARD_ABSENT.
+- Decisions accepted: non-USB inputs are passed over, not offered; a line break in an input's name refuses the whole listing.
+- In flight: A1, N2, N4, W5, CB, C1, D1, E2, H4, 120b.
+
+## Update 2026-10-14 - N4 landed (macOS helper table and the SR-15 static rule) - needs-review: built and green; two sentences of SR-15 stay provisional until the run of design 4.3.3
+- Templates as built (<D> device word, <S> selection, <P> pipe): push head `-hide_banner -nostdin -nostats -loglevel info -thread_queue_size 1024 -f avfoundation -i <D>`; a section, one or two, ascending: `-map 0:a -af <S> -ac 1 -ar 48000 -c:a pcm_f32le -f fifo -fifo_format f32le -drop_pkts_on_overflow 1 -queue_size 32 -format_opts flush_packets=1 -y <P>`; pre-check `... -f avfoundation -i <D> -t 1 -map 0:a -af <S> -ac 1 -ar 48000 -c:a pcm_f32le -f f32le -flush_packets 1 -`.
+- SR-15 entered as a NAMED AMENDMENT of G-R12 (after SR-4, SR-12), additive. 130 mutations all red: 44 forbidden lines each with its own control; 17 template / listing-row / start-vector mutations; 23 table mutations. The pinned build's `fifo` muxer has the row's four options (quoted in its record). Capture static 79; static set 794 with no foreign red; table tests 157 with existing cases unedited; tsc 0. N5's two door pins served.
+- Decisions accepted: the builder sorts sections ascending; the forbidden list wider than the brief; listing bounds in the table; "no caller yet" pinned (moves with N7 / N9).
+- Launched: N4b - the run of design 4.3.3: the PRODUCT's own argument lists run with the pinned FFmpeg, on a generated source and (U24) on the user's USB interface: push with one output, with two outputs, the pre-check - settles SR-15's two provisional sentences before N9.
+- In flight: A1, N2, W5, CB, C1, D1, E2, H4, 120b, N4b.
+
+## Update 2026-10-14 - row 120b landed - C116; row NF launched (network-facts reader S2-01 + nine surviving tests of the M10 passes on the Core side)
+- NF owns: modules/capture-config/network/* and its tests; the test files of the nine named survivors.
+- D4 (after N2): ONE schema step - interface-name form widened (F-4) + the seventh setting, allowed ONVIF ports (S2-02) - with contract, Core and the settings screen.
+- In flight: A1, N2, W5, CB, C1, D1, E2, H4, N4b, NF.
+
+## Update 2026-10-14 - W5 landed - C117: assigning a production camera needs a contract member and the engine's device line (row V7 after N2) and a way to store profiles for an adopted camera that has none (row PR after E2); both are preconditions of row 88
+- apps/core-web and apps/mobile are free.
+- Queue after N2: D4 (schema: interface-name form + allowed ONVIF ports) and V7a (device entry `profiles` + engine line; E-01 streamState transitions) in parallel only if their files do not meet (D4: db + network module; V7a: shared + db/mapping/rows.ts) - then V7b (network configuration's contract after D4), W6 (settings screen for the ports; the profile words).
+- In flight: A1, N2, CB, C1, D1, E2, H4, N4b, NF.
+
+## Update 2026-10-14 - N4b landed - C118: SR-15 final, row N4 closed; N8's reader refuses a real start (row N8b launched); the USB interface is back at 96 kHz after the restart (put to the user)
+- For N9: never close one pipe of a group while the other records; SIGKILL escalation for a helper whose pipe was never opened; the index from the list of this start.
+- In flight: A1, N2, CB, C1, D1, E2, H4, NF, N8b.
+
+## Update 2026-10-14 - N2 landed - C119. Counts: 110 operations, 85 audit types, 51 actions, 9 verify notices. packages/shared is free.
+- Launched: V7 (single writer of packages/shared + db/mapping/rows.ts + core/audit-details.ts): the device entry's stored `profiles` and the engine's device line (C117); the fault transitions of `streamState` with the PoE consequence (C115); the account entry in two parts and rule 5 relaxed for NOT_CLOSED (C119). D4a (schema ONLY: version 13 -> 14 - interface-name form widened, C114 F-4; the seventh setting `allowed ONVIF ports`, C116) - db/schema, migrations 0030.., value sets, schema pins; the network MODULE is agent NF's now: D4a does not touch it.
+- After D4a and NF: V7b (the network configuration's contract + Core for the two) and the settings screen.
+- In flight: A1, CB, C1, D1, E2, H4, NF, N8b, V7, D4a.
+
+## Update 2026-10-14 - C1 landed (hardware chapters, host profile, collectors) - complete, adopted; nothing run on a host
+- Chapters: items 1-7 done, each with a "Revision 4" note; the helper hash 1e758a24...c7d015b1 verified (SHA256SUMS 3 of 3) and printed in all three places of chapter 4 - this meets condition C-3 of C101 for the chapters; implementation/104_alias_helper.md:34 still prints the old hash (a record: the controller adds a pointer line there at the close, the record itself is history). Host profile: 56 items, new section 3.11 (`ping`, `ip`). Collectors: 17 scripts and both test scripts changed; names the product never emits removed and stated in each script's comment.
+- Tests: hw collectors host 637, camera 535 (twice); host-profile script test 171; the shared test that reads the frame 21. "To confirm" marks: 43 (39 name a host check or step, 4 name rows 104/106).
+- Decisions accepted: `9A/H-15` ("conflict reported") re-issued as a STATED LIMIT - the scan always states NOT_KNOWN today (capture-commissioning.ts:222; SR-13 not built); only the group step (HI-04 part A) stays at sequence 8a, HI-01..HI-07 run whole at sequence 12; the two-network reading is a USER tcpdump step, headers only; `9A/H-25.6` now uses an `add` (a helper `del` needs no arping).
+- Facts it found against my records, each correct: with DEMS_CAPTURE_ALIAS_SOCKET unset the helper is "not configured" (config.ts:36) - C102 said only "unset passes": both true, the chapter states the product's word; `deviceCount` sits on the audit entry CAMERA_NETWORK_SET, not on the scan's entry; the key command refuses reserved ids since row K6 (C86's last sentence is superseded by K6's landing).
+- scripts/hardware-acceptance and the host profile are free. H5 (the helper's F-1 + R119b-01) follows H4; it will move the hash again and the three chapter places with it.
+- In flight: A1, CB, D1, E2, H4, NF, N8b, V7, D4a.
+
+## Update 2026-10-14 - E2 landed (camera adapter: review findings E-02..E-05) - complete on doubles, adopted; ITS DATABASE SUITES DID NOT RUN (the db-migrate lock was held past its 45 s and 120 s waits - agent A1's long run)
+- E-04: the adapter hands on consistent loss numbers - a dropped RE-OPEN line: REOPENED { loss: <the number that was told>, through: <relay's number>, ... }; a dropped or swapped LOSS line: LOST { loss, cause: 'LOSS_NOT_TOLD' } then REOPENED in one turn; a late or repeated re-open is dropped and the fault kept. The session's number match needs no change (a wording request for row E3).
+- E-02: REQUIRED now - `relayEnded`, `admitHwAddress`, `sourceAddress` of the session's test / locate / exchange; the first two refuse by name when absent. Waiting for row 88: `candidateSource` in connect/service.ts.
+- E-03: `captureEnded()` on the watch + the same reset at the first established push of another session; the composition's call is a line of row 88.
+- E-05: both lines added. Of 11 mutations 10 were seen red: the `authorizedAsk` line of E-05 has NO test that fails without it - a named gap for the next test row.
+- Unit set 47 files / 1012 (second run; 3 reds of its own in the first); tsc 0. Four lines added to adapters/__tests__/real.test.ts to keep the tree compiling - accepted.
+- OWED: the adapter's database suites (camera-adapter-open, adopted-camera-test, stream-test, minted-code, connect) on this tree - in the final suite, and earlier if the lock frees.
+- LOCK CONTENTION noted: A1 (kill matrix), CB, D1, V7, D4a, NF all want .locks/db-migrate.lock; database tests queue. No new database-heavy row is launched until A1 lands.
+- Launched: PR (the stored-credential connection test stores the stream-stated profiles when the camera has none - C117) - owns modules/capture-discovery/adopted-test.ts and the stream rows' writer.
+- In flight: A1, CB, D1, H4, NF, N8b, V7, D4a, PR.
+
+## Update 2026-10-14 - CB landed (needs-review) and C120: the project's PostgreSQL (port 4432) was NOT running since the restart - my resume check was wrong; an agent is starting it with `npm run pg:start`
+- CB item 1 (bitrate): the ONLY writer of the number is packages/shared/src/sim/initial-state.ts:300, :316; modules/devices/status.ts was a pass-through; a real Core now states null in `withCameraStreamFacts` (operations 44/46/47) and through an additive start block in engine/host.ts:1086 with a new engine/camera-bitrate.ts - engine files outside its brief: ACCEPTED (the state stream serves the engine's slice; without it the fix would not reach the clients). Simulated keeps 9. Two cases of status.test.ts that pinned the 9 in real capture re-stated. Request to the web: the reader can go by null.
+- CB item 2 (four survivors): each red on its mutant - onvif-session.test.ts:434 (destroy line deleted: 1 failed; NOT the equivalent mutant of row T3, which still survives), :177, discovery-recording.test.ts:118, ws-discovery.test.ts:267.
+- Unit 1015, static 906, tsc 0 at 08:44; a rerun at 09:05 had 2 reds at onvif-session.test.ts:658, :836 from E2's then in-flight edits (E2 has landed: to re-check). ITS DATABASE CHECKS DID NOT RUN (restart.db.test.ts extensions).
+- OWED database checks so far: E2 (camera adapter db suites), CB, and - until they report - NF, V7, D4a, PR, D1, A1's kill matrix.
+- In flight: A1, D1, H4, NF, N8b, V7, D4a, PR, pg-start.
+
+## Update 2026-10-14 - the project's PostgreSQL is running again: 127.0.0.1:4432, pid 65169 (`npm run pg:start`; the stale pid file was overwritten by the script; no init / create / migrate / seed / reset / stop; the system PostgreSQL untouched)
+- Read-only `db:status` on dems_demo and dems_lane_1..3: all four exist, audit heads, lineage and triggers unchanged; each reports NOT OK only because migrations 0015-0029 are unapplied there (schema version 6 against the code's 13) - as it was before the restart and as decision C29 wants (this task never migrates them).
+- Broadcast sent to A1, D1, D4a, NF, V7, PR. OWED database checks of landed rows: E2, CB - a small runner after A1 frees the locks.
+- In flight: A1, D1, H4, NF, N8b, V7, D4a, PR.
+
+## Update 2026-10-14 - H4 landed - C121: the helper's suite holds its rules (91 tests OK on the real helper, no defect found); B-1 closed; R119-02 closed on evidence. Row H5 launched (the helper's two batched changes; owns scripts/host/netalias/*, its suite, SHA256SUMS, and the three hash places of scripts/hardware-acceptance/HW-ACCEPTANCE-4-HELPER-INSTALLATION.md).
+- In flight: A1, D1, NF, N8b, V7, D4a, PR, H5.
+
+## Update 2026-10-14 - N8b landed - complete, adopted (closes the reader's fault of C118)
+- The reader now reads COMPLETE starts: `Stream mapping:` ends the input's block; mapping lines are their own kind (any other stream-prefixed line there withdraws the input statement); each `Output #n` block states its own output. A complete two-output start yields: input f32le, 48000, 5.1 (6 channels); outputs 0 and 1 each f32le, 48000, mono; 2 mapping lines, 2 output headers, the queue lines counted.
+- Eight fixtures of whole starts: four device-verbatim (two outputs with queue lines; one output at 96,000 Hz; signal 15; refused open), one device-abridged, two of the pinned build on a generated source, one composed (lines 1-12 device-verbatim, the two closing lines the build's standard form). No device name in any line; pointers and paths synthetic.
+- Mutations N1-N11 each red; N1 (the original fault) turns 16 cases red. 55 tests; audio suite + static 366; tsc 0. Two existing cases that pinned the fault were re-stated.
+- Edit-only departure: new test blocks appended to the existing test file with a shell here-document (an append to its own row's file; noted).
+- For N9: the first device start is fed to the reader before the gate is trusted (its request line).
+- Resumed to run OWED database checks now that PostgreSQL is up: CB, E2.
+- In flight: A1, D1, NF, V7, D4a, PR, H5, CB (resumed), E2 (resumed).
+
+## Update 2026-10-14 - NF landed - needs-review, adopted (S2-01 (a), (b) closed; (c) and four named tests left with owners)
+- Operation 102 re-reads the stored row after EVERY unit it opened (commit confirmed, lost answer, no-change path); a failed re-load makes the reader NULL (everything refused), one log line and one persistent entry, code CAPTURE_NETWORK_FACTS_RELOAD_FAILED; the reader stays synchronous at judgement time.
+- (c) the demo reset has NO hook for this module: the door `captureNetworkConfigControl(app).reload()` is built and tested; its CALL belongs to the queued demo-reset row (with the kept-tables item, F-6 / I-9b item 4).
+- Tests red on a mutant: 5 of 9 - T-1 twice (`committed` called directly: 3 failed and 1 failed), T-3, T-6, T-7. Left: T-4 x3 (they test functions with no product caller: the tidy row S2-03 removes or uses them), T-5 (waits for D4a's column).
+- Network unit 31, database 17 (run AFTER PostgreSQL came up), 0 clones left. One static red of its own found and fixed (that file re-run green; the set NOT re-run). Composition / siblings / acceptance 148 passed, 1 failed = the openapi byte comparison (V7 is the writer in flight). Typecheck: 3 lines in `AdoptedCameraTestHost.settle` = agent PR in flight.
+- modules/capture-config/network is free: the follow-up of D4a (the seventh setting and the interface-name form in module + contract) can take it when D4a and V7 land.
+- In flight: A1, D1, V7, D4a, PR, H5, CB, E2.
+
+## Update 2026-10-14 - E2's OWED database suites ran (after PostgreSQL came up) - row E2 is complete
+- Relay-backed files (camera-adapter-open, adopted-camera-test, stream-test, minted-code): 4 files / 50 passed. connect, capture-composition, camera-network routes: 46 passed / 1 failed = connect.db.test.ts's schema pin "[14,'dbc-15'] = [13,'dbc-14']" - the schema writer D4a is mid-step (its pins move with it).
+- The missing test for E-05's `authorizedAsk` guard is a SOURCE PIN (no behaviour distinguishes the guard): red without the line, green on the tree (97 passed) - accepted as stated: a pin, not a behavioural proof.
+- Typecheck: 2 errors in agent PR's in-flight files.
+- SCHEMA BROADCAST (from this result): the tree is moving to [14,'dbc-15'] under D4a.
+- In flight: A1, D1, V7, D4a, PR, H5, CB.
+
+## Update 2026-10-14 - H5 landed (the helper's two batched changes) - complete; THE HELPER'S HASH MOVED: 1e758a24...c7d015b1 -> 3621e79ccebb05d052efa06b9c1c0dd4d5d4e30d08c2f55f39019857cc7e4914 - the reviewer's statement (C101) does not cover the new file until row 119c
+- F-1: `del` answers "already absent" only when NO interface holds the address, else the existing NOT_MARKED. R119b-01: the host is read again after the conflict check and before the mark; refuses 46 / 47 / 48 (and 42 / 40 / 43 on the same read - driver decision, accepted: a second read that fails for any of the first read's reasons refuses for that reason). No new code; 41 codes. The gap that remains, stated: from the second read to the kernel's add (bounded only by the 5 s tool bound, unmeasured on a host), and a carrier that drops and returns inside the check.
+- Tests written first: 75 failures on the old helper, then 96 tests OK; 14 mutants on scratch copies all red. Captures 5 OK; collectors 637 and 535; the Core's table test 22.
+- Hash updated in SHA256SUMS and in the hardware chapters (chapter 4 lines 19, 36, 179, 213, 532; chapter 1 :309; chapter 2 :361). Nothing under apps/core-server pins the hash.
+- Tidy: `on_camera_interface` has no caller now (a dead function in a root helper: removed with the NEXT helper change, not alone - it would move the hash again).
+- Launched: 119c (the security reviewer's statement on hash 3621e79c: two hunks re-read; read-only).
+- In flight: A1, D1, V7, D4a, PR, CB, 119c.
+
+## Update 2026-10-14 - row 119c landed - C122: the helper statement is MADE for hash 3621e79c (conditions C-1..C-4). Row HA launched (the Core's journal must not write HOST_ALIAS_REMOVED on the helper's NOT_MARKED - R119c-01) - owns capture/host-alias/journal.ts, lifecycle.ts and tests.
+- In flight: A1, D1, V7, D4a, PR, CB, HA.
+
+## Update 2026-10-14 - PR landed (the stored-credential connection test stores profiles when a camera has none) - complete, adopted
+- (a) no stored profile: the list and one stream row per stream are stored through the ADOPTION'S OWN write (extracted as `writeAdoptedCameraColumns`; no second minting), in one unit with the outcome entry; the audit message ends "; profiles stored: N". (b) stored and the stream differs: NOTHING stored; outcome stays REACHABLE; the message ends "; STREAM_PROFILE_DIFFERS: stored N, stated N, differing N; nothing stored" and the error log gets a code with the counts. (c) agree: nothing stored.
+- LIMIT, routed to V7 (message sent): the fact sits in the audit MESSAGE text only - the closed answer and detail lists have no member for it - and the ENGINE LINE is not updated yet (the device's line still shows no profiles until a restart).
+- tsc 0; unit and static 28 files / 499 (credentials.test.ts unedited); adopted-camera-test.db 18 (new cases on camera port 8571); adoption database tests 48 unedited; seven mutations red. One existing source pin re-stated.
+- Seven driver decisions of its record: accepted as recorded for now; they are read by the security review of row 86 with the path (a stored statement is never replaced; counts only, no device text).
+- In flight: A1, D1, V7, D4a, CB, HA.
+
+## Update 2026-10-14 - CB's OWED database checks ran - row CB is complete
+- restart.db.test.ts (case G75b): 4 passed; with the engine start block removed in memory: 1 failed, "expected [ 9, 9 ] to deeply equal [ null, null ]" - the block IS held; host.ts ends unmutated. Devices database suites 42 + 8 (source-class). onvif-session.test.ts 66 passed (the two earlier reds are gone since E2 landed).
+- Lock decision ACCEPTED: the two boot-fixture suites ran under the db-migrate lock alone because the heavy-host lock stayed held through a 20-minute retry; the fixture starts only a stand-in script, no worker, no relay, no port of the worker's range.
+- NOTE: the heavy-host lock has been held for long stretches all morning - agent A1's worker series and kill matrix (expected), and D1's scenarios. No new heavy row until A1 lands.
+- In flight: A1, D1, V7, D4a, HA.
+
+## Update 2026-10-14 - D4a landed - complete, adopted. SCHEMA IS NOW [14,'dbc-15'], 32 migration files (0030, 0031); 498 columns, 231 CHECKs
+- Interface-name form: the table's CHECKs (capture_network_config, host_network_aliases) now equal the helper's `[A-Za-z0-9][A-Za-z0-9_.-]{0,14}`. New column `capture_network_config.onvif_ports`, jsonb NOT NULL default `[80]`, CHECKs: a list of 1-8 whole numbers 1-65535, no two equal.
+- Decisions accepted: an EMPTY list is refused (a configuration with no allowed port would refuse every camera silently - the default states 80); `80.0` counts as 80 (jsonb number); the UNDO refuses while a stored name has a capital (it would not fit the old CHECK).
+- Checks (PostgreSQL up): drift "No schema changes"; test/db 998; pins / seed / reset / network module db 234; fence / connect / audio cards 101; unit 964; tsc 0; lint clean; set15 (apply, rollback, undo, every planted bound) 66.
+- 18 pin files moved. Schema commits are now SIX steps (202, 51b, 114 committed in f20c9b39 with D2, D3; D4a new) - D4a is one more schema commit at the next commit point.
+- STILL OPEN until the follow-up row V7b (after V7 lands): F-4 and S2-02 in the MODULE and the CONTRACT - operations 101 / 102 state `onvifPorts` and the widened name form; the network module stores and reads the column; the destination rule's context takes `allowedPorts` from the stored list; the settings screen.
+- Red not its own: capture/host-alias/__tests__/lifecycle.test.ts, 8 red = agent HA in flight.
+- In flight: A1, D1, V7, HA.
+
+## Update 2026-10-14 - HA landed - complete, adopted (closes R119c-01)
+- On the helper's NOT_MARKED the Core writes `HOST_ALIAS_REMOVE_FAILED` with `failureReason: 'HELPER_NOT_MARKED'`, `removeReason` (the removal's own reason; ADD_UNCONFIRMED stays on the F-9 path) and `aliasId` when a row exists; severity WARNING, or INFO when the Core's own interface table does not show the address. The closed list admits it - the vocabulary is unedited. Rows close, no retry, the next add is not blocked - at release, timer, shutdown and the boot sweep with and without a row. 10 mutations red.
+- Expectations re-stated: the NOT_MARKED case of lifecycle.test.ts; capture-composition.db.test.ts:715.
+- Requests (non-blocking, next contract step): an `expiresAt` member on HOST_ALIAS_REMOVE_FAILED; a "not confirmed" state for operation 104.
+- Checks: unit 1009 passed / 1 failed = rule R-5 of capture-config/__tests__/static.test.ts on a file of row PR (landed) - integration pass I-9c; host-alias db 11; composition 15; acceptance pair 83; typecheck 0.
+- I-9c list (new): the R-5 red; the demo reset's kept tables + `captureNetworkConfigControl(app).reload()` call (F-6, NF (c)); the README sentences of OD-22 / PoE (V7), R119c-03 (chapter 4's "still to be made"), the stale README parts C2 found; config.ts:29's reserved example id.
+- In flight: A1, D1, V7.
+
+## Update 2026-10-14 - A1 landed - C123: kill matrix 35/35; row 59 closed; worker baseline recorded. Launches: 86 (read-only), N13 (N1+N3: packages/capture-protocol + apps/capture-worker/** - single writer of both), N7 (capture/fence/production-parts.ts + src/capture-composition.ts: the macOS seam; RELEASED to N7 now, back to row 88 after), N9 (new macOS adapter files under capture/adapters/audio/ + adapters' static list entry).
+- In flight: D1, V7, 86, N13, N7, N9.
+
+## Update 2026-10-14 - D1 landed - C124: seal clamp `durableEndOf` (sealing/pipeline/pipeline.ts); sealing area RELEASED by D1. Media-zero request routed to N13 (inside protocol v5). Launch: D1b (sonnet test runner, read-only on source: the sealing `*.db.test.ts` files).
+- In flight: V7, 86, N13, N7, N9, D1b.
+
+## Update 2026-10-14 - D1b landed - C125: sealing db tests 29/29; row 184 line closed.
+- In flight: V7, 86, N13, N7, N9.
+
+## Update 2026-10-14 - V7 landed - C126: profiles reach the clients (Q-02 delivery half built); LOST transitions; account in two parts. packages/shared + rows.ts + audit-details.ts RELEASED by V7.
+- Launches: V7b (SINGLE WRITER of packages/shared/** + modules/capture-config/network/**: onvifPorts + widened name form on ops 101/102; allowedPorts from the stored list), I-9c (capture-config/__tests__/static.test.ts R-5; README.md; the demo reset; core config.ts:29).
+- Queue: V7c (idle camera state 'not read' at rest; after V7b, contract writer), then W6 (web + tablet: settings screen ports/name form; the profile words of op 108; 'Test connection' as the remedy; render 'not read').
+- Open item for the user's report: F-V7-1 (OD-22 PoE cycle not built; op 48 is a plain restart).
+- In flight: 86, N13, N7, N9, V7b, I-9c.
+
+## Update 2026-10-14 - row 86 landed - C127: CAUTION, no FAIL; AD-01(6) / AD-02 / AD-08 yes.
+- V7b GAINS (S-04, C-3): capture/adapters/camera/stored-address.ts, modules/capture-config/credential-reader.ts, capture/destination-rule.ts.
+- Launches: S86a (modules/capture-config/routes.ts + store.ts: C-1, refusal at assignment), 174b (capture/adapters/credential.ts: C-4), 87b (decisions/087_lift_texts.md re-issue: C-7, C-5).
+- Queue: AM-1 record (controller, after 87b); checkpoint commit with B1 (quiet point, light checks, U26) before any production start; row 88 (preconditions C127); S86b (C-2, before M6 with E3 / row 90); I-9d (C-6 pin, after N9); V6b-family commissioning row (C-10); document row (C-11, F-2 rescope of M7-SEC-SRC-2); V7c; W6.
+- In flight: N13, N7, N9, V7b, I-9c, S86a, 174b, 87b.
+
+## Update 2026-10-14 - 87b landed - C128: texts re-issued; X-9 / X-10 ruled; AM-1 RECORDED (in force from the commit of row 88).
+- Row 88 now waits only for: V7b (S-04) and N7 quiet on their files; the checkpoint commit holding B1 (quiet point).
+- In flight: N13, N7, N9, V7b, I-9c, S86a, 174b.
+
+## Update 2026-10-14 - 174b landed - C129: locator name rule by class; onvif-session.test.ts control updated; locator files 196/196.
+- Attributed reds seen by 174b: static 3 = N9 (usb-audio-macos.ts, in flight); tsc 16 = N13 audio levels (7, message sent: keep v5 members optional or request lines), mic-transport.ts (N13/N9 - to attribute at landing), adopted-camera-test.db / camera-adapter-open.db (to attribute: V7b or S86a), onvifPorts (V7b in flight).
+- In flight: N13, N7, N9, V7b, I-9c, S86a.
+
+## Update 2026-10-14 - S86a landed - C130: C-1 closed (refusal at assignment, real path). capture-config/routes.ts + store.ts RELEASED. V7c gains: the new reason word (S86a request). W6 gains its rendering.
+- In flight: N13, N7, N9, V7b, I-9c.
+
+## Update 2026-10-14 - N7 landed - C131: darwin listing seam; 3 pins confirmed. Launch: N5b (production-door.ts optional per-call cap + group kill; macos-plist.ts bound; production-parts.ts limits + runner call only; composition.test.ts one case; static pins by delta). Row 88 waits for N5b on production-parts.ts.
+- In flight: N13, N9, V7b, I-9c, N5b.
+
+## Update 2026-10-14 - I-9c landed (needs-review) - C132: reset keeps 18 tables + optional reload; README tidied. Launch: I-9e (sonnet: rename cause SESSION_OPEN -> SESSION_ACTIVE in capture-discovery adopted-*; admit demo -> capture-config edge in test/static/imports.test.ts; bind reloadNetworkFacts in modules/demo/host.ts). Queue I-9d (after N9 + N5b): C-6 relay pin; config.ts:29/:313 + capture static.test.ts:930/:1020 paired to DEMS-SITE-21.
+- In flight: N13, N9, V7b, N5b, I-9e.
+
+## Update 2026-10-14 - I-9e landed - C133: R-5 green; reset reload bound. capture-discovery adopted-*, modules/demo/host.ts, test/static/imports.test.ts RELEASED.
+- In flight: N13, N9, V7b, N5b.
+
+## Update 2026-10-14 - N9 landed - C134: macOS USB_AUDIO adapter (unregistered). capture/adapters/audio/** new files + adapters static RELEASED. N5b gains request 550 (capture static SR-15 caller pin). I-9d list now: 551 (usb-audio-production.test.ts pin), 553 (mic-transport gapped entry + constant, after N13), C-6 relay pin, config.ts:29/:313 + static :930/:1020 -> DEMS-SITE-21. Starts after N5b and N13.
+- In flight: N13, V7b, N5b.
+
+## Update 2026-10-14 - C135: launches NB (design row N13 = THE BOOT: capture/boot/ + fence/boot-key.ts; back to row 88 after) and S06 (camera/onvif-network.ts: C-10). AM-1 (3)(h) erratum recorded. Order: 88 -> N10 (darwin opener unadmitted until M2b) -> N14.
+- Row 88 waits for: V7b, N5b, NB, and the checkpoint commit (B1).
+- In flight: N13 (=N1+N3), V7b, N5b, NB, S06.
+
+## Update 2026-10-14 - S06 landed - C136: C-10 closed. camera/onvif-network.ts RELEASED. N5b gains request 556.
+- In flight: N13 (=N1+N3), V7b, N5b, NB.
+
+## Update 2026-10-14 - V7b landed - C137: onvifPorts + name form in contract/module; S-04 fixed. packages/shared + capture-config/network/** + stored-address.ts + credential-reader.ts + destination-rule.ts RELEASED. Launch V7c (single writer packages/shared + rows.ts + S86a seam constant in capture-config/routes.ts). I-9d list + request 558 (HA files caller.ts, facts.ts) + re-run of the reds V7b saw. Row 88 gains request 558 (boot/program-checks.ts, fence/production-parts.ts).
+- Row 88 waits for: N5b, NB, checkpoint commit (B1).
+- In flight: N13 (=N1+N3), N5b, NB, V7c.
+
+## Update 2026-10-14 - N5b landed - C138: per-call cap, group kill; requests 550/556 applied. production-parts.ts + capture static RELEASED (static :1780 waits for NB). Launch N5c (BLOCKING: capture/adapters/credential.ts + production-door.ts: linear USER_PART + regex audit).
+- Row 88 waits for: NB, N5c, checkpoint commit (B1).
+- In flight: N13 (=N1+N3), NB, V7c, N5c.
+
+## Update 2026-10-14 - NB landed - C139: darwin boot path rule + microphonePermission NOT_KNOWN. boot/ + fence/boot-key.ts RELEASED (to row 88). Launch I-9d (sonnet; capture static, config.ts, usb-audio-production.test.ts, core/audit-details.ts + writers.test.ts, adapters static, host-alias caller.ts + facts.ts). 553 -> N11 brief.
+- Row 88 waits for: N5c, I-9d (capture static + audit-details), checkpoint commit (B1).
+- In flight: N13 (=N1+N3), V7c, N5c, I-9d.
+
+## Update 2026-10-14 - I-9d landed - C140: static sets green; C-6 closed. Released: capture static, config.ts, usb-audio-production.test.ts, core/audit-details.ts, writers.test.ts, adapters static.
+- Row 88 waits for: N5c, then the checkpoint commit (after V7c and N5c land; N13 paths excluded).
+- In flight: N13 (=N1+N3), V7c, N5c.
+
+## Update 2026-10-14 - V7c landed - C141: streamState nullable on the selector line; CAMERA_PROFILE_WITHOUT_STREAM. Launch V7d (single writer packages/shared + modules/devices/status.ts + capture-config/slices.ts). W6 after V7d (requests 557, 564-566 + V7d lines + C117 remedy sentence + op 108 words).
+- In flight: N13 (=N1+N3), N5c, V7d.
+
+## Update 2026-10-14 - N5c landed - C142: linear blanking. credential.ts + production-door.ts RELEASED.
+- Next: checkpoint commit when V7d lands (N13 paths excluded), then row 88.
+- In flight: N13 (=N1+N3), V7d.

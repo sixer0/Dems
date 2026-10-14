@@ -25,6 +25,7 @@
  */
 import { SessionState, type MicRole } from '../domain';
 import { activeMeterChannel, captureMicLines, channelOfMicLine, type AudioRuntime } from './audio';
+import { cameraNotReadAtRest, cameraStreamFaultActive } from './camera-stream-fault';
 import { SimNotFoundError } from './errors';
 import { clearFaultAtKey, raiseFaultAtKey } from './faults';
 import type {
@@ -105,12 +106,30 @@ export function feedCaptureLevels(runtime: AudioRuntime, state: SimState, now: E
  * | `WAITING` | not online, stream LOST | the worker asked and receives nothing |
  * | `ENDED` while the session is RECORDING | not online, stream LOST | the stream ended under a running recording |
  * | `ENDED` otherwise | unchanged | the worker closes its ingest when a recording stops: that is no loss |
+ *
+ * Task 4 row V7c (decision C126 (b)): for a REGISTERED camera (`cameraNotReadAtRest`) the last row
+ * is "stream NOT READ" - `streamState: null` on the entry and its lines, `online` unchanged - since
+ * the stream is no longer read; unless a fault of the camera's stream family is active (it stays
+ * LOST until that clears). See `notReadAfterStop`. The built-in cameras of the model: unchanged.
  */
 function cameraOfIngest(state: SimState, ingest: CaptureIngestStateName): { online: boolean; streamState: CaptureStreamState } | null {
   if (ingest === 'CONNECTED') return { online: true, streamState: CaptureStreamState.LIVE };
   if (ingest === 'WAITING') return { online: false, streamState: CaptureStreamState.LOST };
   if (ingest === 'ENDED' && state.session?.state === SessionState.RECORDING) return { online: false, streamState: CaptureStreamState.LOST };
   return null;
+}
+
+/**
+ * Task 4 row V7c: what an `ENDED` ingest that is NO loss (`cameraOfIngest` said nothing) says of a
+ * REGISTERED camera - its stream is no longer read: NOT READ (null), `online` as it is. Null (says
+ * nothing) for another ingest state, a built-in camera of the model, a device that is no camera of
+ * the registry, and a camera with an active fault of the stream family (LOST until it clears).
+ */
+function notReadAfterStop(state: SimState, devices: SimState['captureDevices']['devices'], deviceId: string, ingest: CaptureIngestStateName): { online: boolean; streamState: null } | null {
+  if (ingest !== 'ENDED') return null;
+  const device = devices.find((candidate) => candidate.id === deviceId && candidate.kind === 'CAMERA');
+  if (device === undefined || !cameraNotReadAtRest(device) || cameraStreamFaultActive(state, deviceId)) return null;
+  return { online: device.online, streamState: null };
 }
 
 /**
@@ -123,8 +142,11 @@ export function applyCaptureTelemetryTransition(state: SimState, telemetry: Capt
   let devices = state.captureDevices.devices;
   let cameras = state.captureConfig.cameras;
   for (const entry of telemetry.ingest) {
-    const want = cameraOfIngest(state, entry.state);
-    if (want === null) continue;
+    const said = cameraOfIngest(state, entry.state) ?? notReadAfterStop(state, devices, entry.deviceId, entry.state);
+    if (said === null) continue;
+    // Task 4 row V7 (finding E-01): an ingest that is connected does not say LIVE over an active fault of the
+    // camera's stream family - the relay's ingest stays connected while it re-opens a camera that is lost.
+    const want = said.streamState === CaptureStreamState.LIVE && cameraStreamFaultActive(state, entry.deviceId) ?{ ...said, streamState: CaptureStreamState.LOST } : said;
     const device = devices.find((candidate) => candidate.id === entry.deviceId && candidate.kind === 'CAMERA');
     if (device === undefined) continue;
     if (device.online !== want.online || device.streamState !== want.streamState) {

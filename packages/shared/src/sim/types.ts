@@ -694,7 +694,12 @@ export interface CaptureConfigCamera {
   /** Media profile (open `CODE` set, OD-05/OD-06). */
   profile: string;
   online: boolean;
-  streamState: CaptureStreamState;
+  /**
+   * Null = NOT READ (task 4 row V7c; decision C126 (b)): a registered camera whose stream no open
+   * session reads, as its registry entry states it. `LIVE` only while a stream is read; the two
+   * built-in cameras of the demonstration model keep the model's value. See `CaptureConfigCameraSchema`.
+   */
+  streamState: CaptureStreamState | null;
 }
 
 /**
@@ -726,6 +731,21 @@ export interface CaptureConfigSlice {
   updatedAt: EpochMs;
 }
 
+/**
+ * One stored stream profile of a camera, as its device entry carries it (task 4 row V7; decisions
+ * C36, C117): the code the Core minted from the stream, and what that code states. Each fact is
+ * null where the code states none - never a default. See `capture-profile.ts`.
+ */
+export interface CaptureDeviceProfile {
+  /** The Core's own code of the stream (`HEVC_1080P`, `H264_720P30`): the value a camera line of operation 78 names. */
+  code: string;
+  codec: CameraStreamCodec | null;
+  /** `<height>p` for a 16:9 picture, else `<width>x<height>`. */
+  resolution: string | null;
+  /** The whole-number rate the code states; null when it states none. */
+  fps: number | null;
+}
+
 /** One device of the `captureDevices` slice (`C3 §6` slice 30; `dbc-3 §B.2`). */
 export interface CaptureDeviceStatus {
   id: string;
@@ -754,6 +774,15 @@ export interface CaptureDeviceStatus {
    * erratum PE-128-38). A runtime fact, never stored: absent when not open and in simulated capture.
    */
   sourceOpen?: boolean;
+  /**
+   * The stream profiles the Core holds stored for this camera (`capture_devices.profiles`; task 4
+   * row V7, decisions C36, C117), in the stored order. An EMPTY list: none is stored - the camera
+   * cannot be assigned to a track, and no default stands in. Absent: the entry states none (a
+   * microphone, the PoE switch, a built-in device).
+   * Present on every REGISTERED camera: one that `registerCaptureDevice` added (on the Core and in
+   * the in-app simulator, whose cameras state the empty list) or the Core read back from its registry.
+   */
+  profiles?: CaptureDeviceProfile[];
 }
 
 /**
@@ -780,6 +809,13 @@ export interface RegisterCaptureDeviceInput {
   host: string;
   /** The adapter kind, e.g. `ONVIF_RTSP` or `FAKE`. */
   adapter: string;
+  /**
+   * The profile codes the adoption stores for the camera (task 4 row V7): exactly the list it writes
+   * to `capture_devices.profiles`, in that order - empty when the connection test judged no stream.
+   * Absent (the in-app simulator; a caller with nothing to store): the same as an empty list. The new
+   * entry ALWAYS carries `profiles`.
+   */
+  profiles?: readonly string[];
 }
 
 /**
@@ -803,6 +839,14 @@ export interface ReaddressCaptureDeviceInput {
   deviceId: string;
   /** The new `host` of the device, taken as the caller gives it: `host`, or `host:port`. Never a URL, never `user:password@`. */
   address: string;
+}
+
+/** The input of the INTERNAL action `storeCaptureDeviceProfiles` (task 4 row V7): the stored profile list of a registered camera. */
+export interface StoreCaptureDeviceProfilesInput {
+  /** The registered camera, e.g. `CAM-03`. */
+  deviceId: string;
+  /** The profile codes as the caller's own statement writes them to `capture_devices.profiles`, in that order. */
+  profiles: readonly string[];
 }
 
 /**
@@ -1845,6 +1889,18 @@ export interface SimActions {
    * unknown id, a microphone) and for an address that is no host.
    */
   readdressCaptureDevice(change: ReaddressCaptureDeviceInput): void;
+  /**
+   * INTERNAL (task 4 row V7; decision C117, the ruling on the empty lists): the registered camera
+   * `deviceId` states `profiles` as its stored stream profiles in the `captureDevices` slice;
+   * nothing else of the device and no other device changes. No client calls it: on the Core server
+   * it runs inside the unit of work that WRITES the list to the camera's row (the stored-credential
+   * connection test of a camera that held none, operation 108), so the slice and the row state the
+   * same list in one commit. Checks no permission, writes no audit row and no event, and leaves
+   * `captureConfig` alone. A list the entry already states changes nothing. Throws
+   * `SimTransitionError` with code INVALID_INPUT for an id that is no registered camera and for a
+   * value that is no list of at most 16 profile codes, each once.
+   */
+  storeCaptureDeviceProfiles(change: StoreCaptureDeviceProfilesInput): void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════

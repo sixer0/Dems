@@ -50,11 +50,16 @@ case "$HW_MODE" in
           END { if (start > 0 && stop > start) printf "length of the session by the worker: %d s (%.1f minutes)\n", int((stop - start) / 1000000), (stop - start) / 60000000; else print "length of the session by the worker: not determined" }' "$HW_WORKER_LOG" | while IFS= read -r line; do hw_line "      worker  | $line"; done
       fi
       hw_fields 'worker log' "${HW_WORKER_LOG:-<worker-log>}" camera_summary cam video_packets fragments retimed dropped_no_pts bytes
-      hw_count 'worker log' "${HW_WORKER_LOG:-<worker-log>}" INGEST_ENDED MIC_SILENT MIC_NOT_DELIVERING MIC_DISCONNECTED
+      # NAMES (wave 12, row C1; checked against apps/capture-worker/src/audio.c and the Core's
+      # capture/index.ts on 2026-10-14): MIC_NOT_DELIVERING was removed, the worker never emitted it
+      # (its words are MIC_SILENT, MIC_DISCONNECTED, MIC_RATE_AT_LIMIT); the Core's fault line has no
+      # deviceId (sessionId and reason are read); CAPTURE_WORKER_DOWN is counted because a worker
+      # restart inside a session leaves a gap in the audio.
+      hw_count 'worker log' "${HW_WORKER_LOG:-<worker-log>}" INGEST_ENDED MIC_SILENT MIC_DISCONNECTED MIC_RATE_AT_LIMIT
     fi
     if [ -n "$HW_CORE_LOG" ] || [ "$HW_DRY" = 1 ]; then
-      hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_FAULT deviceId reason
-      hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_FAULT EVIDENCE_VOLUME_SYNC_NOT_FULL STREAM_PROFILE_DIFFERS CAMERA_CLOCK_OFFSET
+      hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_FAULT sessionId reason
+      hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_FAULT EVIDENCE_VOLUME_SYNC_NOT_FULL STREAM_PROFILE_DIFFERS CAPTURE_CAMERA_CLOCK_OFFSET CAPTURE_WORKER_DOWN
     fi
     if [ -n "$HW_DATA_DIR" ] || [ "$HW_DRY" = 1 ]; then free_space; fi
     user_step 'sudo du -sb <data-dir>/media/sessions/<the folder of S4>     (the size of the package: one number into the file for --sudo-reads)'

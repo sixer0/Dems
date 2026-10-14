@@ -297,6 +297,10 @@ const REFUSED_BY_CHECK: ReadonlyArray<readonly [string, string, Row]> = [
   ['capture_network_config_alias_minutes_check', 'capture_network_config', captureNetworkConfig({ alias_minutes: 4 })],
   ['capture_network_config_camera_ip_start_check', 'capture_network_config', captureNetworkConfig({ camera_ip_start: 251 })],
   ['capture_network_config_revision_check', 'capture_network_config', captureNetworkConfig({ revision: 0 })],
+  // Schema v14 (set 15): the two CHECKs of the allowed ONVIF ports. Nine different ports break the
+  // size alone; one port twice breaks the second rule alone.
+  ['capture_network_config_onvif_ports_check', 'capture_network_config', captureNetworkConfig({ onvif_ports: json([80, 81, 82, 83, 84, 85, 86, 87, 88]) })],
+  ['capture_network_config_onvif_ports_distinct_check', 'capture_network_config', captureNetworkConfig({ onvif_ports: json([80, 8080, 80]) })],
   ['host_network_aliases_interface_name_check', 'host_network_aliases', hostNetworkAlias({ interface_name: 'eth1;reboot' })],
   ['host_network_aliases_address_check', 'host_network_aliases', hostNetworkAlias({ address: '8.8.8.8/24' })],
   ['host_network_aliases_reason_check', 'host_network_aliases', hostNetworkAlias({ reason: 'TESTING' })],
@@ -350,11 +354,11 @@ async function insert(table: string, row: Row): Promise<void> {
 }
 
 describe('CL-03: one refused row per named CHECK', () => {
-  it('the list covers all 229 CHECKs of the contract: 224 directly, 5 that another rule refuses first', () => {
+  it('the list covers all 231 CHECKs of the contract: 226 directly, 5 that another rule refuses first', () => {
     const named = inventory.tables.flatMap((table) => table.constraints.filter((constraint) => constraint.kind === 'CHECK').map((constraint) => constraint.name));
     const covered = [...REFUSED_BY_CHECK.map(([name]) => name), ...SHADOWED.map(([name]) => name)];
-    expect(named).toHaveLength(229);
-    expect(REFUSED_BY_CHECK).toHaveLength(224);
+    expect(named).toHaveLength(231);
+    expect(REFUSED_BY_CHECK).toHaveLength(226);
     expect([...covered].sort()).toEqual([...named].sort());
     for (const [name, table] of [...REFUSED_BY_CHECK, ...SHADOWED]) expect(name.startsWith(`${table}_`), name).toBe(true);
   });

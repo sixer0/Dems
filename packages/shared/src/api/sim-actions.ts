@@ -109,6 +109,9 @@ export const SIM_ACTION_OPERATIONS = {
   // The re-address of a registered camera (task 4 row 195, WP-12): run by the server inside operation 100's
   // unit through the engine's door, never by a client. One more member and one more `internal` again.
   readdressCaptureDevice: { operations: [], execution: SimActionExecution.INTERNAL },
+  // The stored profile list of a registered camera (task 4 row V7; decision C117): run by the server inside the
+  // unit that writes the list to the camera's row (operation 108's storing test), never by a client. `internal` again.
+  storeCaptureDeviceProfiles: { operations: [], execution: SimActionExecution.INTERNAL },
 } as const satisfies Record<keyof SimActions, SimActionBinding>;
 
 export type SimActionName = keyof typeof SIM_ACTION_OPERATIONS;

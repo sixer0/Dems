@@ -28,6 +28,8 @@ import { CaptureHostRefusal, HOST_COMMAND_CHECKS, type HostCommand } from '../ho
 import { CANARY, HOST_ANSWERS, PREPARED_INTERFACE, PROGRAM_ANSWERS, fakeHost, fakeProductionHost, type FakeHostOptions } from './host-support';
 import { INTERFACE_FILE_COMMAND, PROGRAM_OWNERSHIP_CHECKS, type DeliveredProgramDeps } from '../program-checks';
 import { recordedSinks } from './support';
+// Row NB (design 06 row N13): the two system programs of the macOS microphone listing, by row N4's own constants.
+import { MACOS_SYSTEM_AUDIO_PROGRAM, MACOS_USB_TREE_PROGRAM } from '../../adapters/local/mic-helper-args';
 
 const SERVER_UID = 501;
 const WORKER = '/opt/dems/capture-worker';
@@ -869,5 +871,84 @@ describe('row HC: the helper absent is a stated fact, the helper wrong a refusal
     for (const handedIn of [{ hostFactsHandedIn: true }, {}]) {
       expect(await refusalOf(scene({ host: unseen, ...handedIn }).deps)).toMatchObject({ code: 'CAPTURE_HOST_CORE_FILE_LIMIT', reason: 'LIMIT_UNREADABLE' });
     }
+  });
+});
+
+// ── Task 4 row NB (design 06 revision 3 row N13; decision C135 (1)): the two system programs of the macOS microphone listing ──
+// Stand-in path facts only: the inspector of the scene answers per path; the runner is the double of `host-support.ts` and
+// starts nothing. What is proven: the step's judgement of the facts; NOT the facts of a real Mac (the db cases use the real inspector).
+describe('row NB: a production boot on darwin holds the two system programs of the microphone listing to the worker\'s path rule, starts neither and waits for no listing; Linux and REAL_DEVELOPMENT unchanged', () => {
+  const RELAY = '/srv/dems/relay';
+  const same = (a: HostCommand, b: HostCommand): boolean => a.program === b.program && a.args.join(' ') === b.args.join(' ');
+  const hostCodeOf = (command: HostCommand): string | undefined => HOST_COMMAND_CHECKS.find((check) => same(check.command, command))?.code;
+  const programKeyOf = (command: HostCommand): string | undefined => (command.program === RELAY && command.args.length === 0 ? 'RELAY' : same(command, INTERFACE_FILE_COMMAND) ? 'INTERFACE' : PROGRAM_OWNERSHIP_CHECKS.find((check) => same(check.command, command))?.code);
+  const LISTING = [MACOS_USB_TREE_PROGRAM, MACOS_SYSTEM_AUDIO_PROGRAM] as const;
+  /** A scene on `platform` whose inspector answers `facts(path)` for the listing programs and a good program for every other path. */
+  const on = (platform: string, facts: (path: string) => ProgramFacts = () => goodProgram(), config: Partial<CaptureOperationInput> = {}) => {
+    const host = fakeProductionHost({ codeOf: hostCodeOf, programKeyOf, platform });
+    const programs: DeliveredProgramDeps = { platform, relayProgram: RELAY, run: host.deps.run, storedInterface: async () => PREPARED_INTERFACE, systemListingPrograms: LISTING };
+    const inspected: string[] = [];
+    const inspect = (path: string): ProgramFacts => (inspected.push(path), (LISTING as readonly string[]).includes(path) ? facts(path) : goodProgram());
+    return { ...scene({ config, host: host.deps, programs, inspect }), host, inspected };
+  };
+  /** Each word of the worker's path rule, from facts of the form the real inspector gives. */
+  const FAILING: ReadonlyArray<readonly [string, ProgramFacts]> = [
+    ['NOT_FOUND', goodProgram({ exists: false, regularFile: false, file: null })],
+    ['NOT_A_FILE', goodProgram({ regularFile: false })],
+    ['FILE_OWNER', goodProgram({ file: { ownerUid: 777, mode: 0o755 } })],
+    ['FILE_WRITABLE', goodProgram({ file: { ownerUid: 0, mode: 0o775 } })],
+    ['DIRECTORY_WRITABLE', goodProgram({ directoriesResolved: [{ ownerUid: 0, mode: 0o777 }], directoriesAsWritten: [{ ownerUid: 0, mode: 0o777 }] })],
+    ['NOT_EXECUTABLE', goodProgram({ file: { ownerUid: 0, mode: 0o644 } })],
+  ];
+
+  it('darwin, both programs as the system delivers them: the start goes on; both are inspected in table order AFTER the delivered programs; NOTHING is started for them; the passed line counts them', async () => {
+    const mac = on('darwin', () => goodProgram({ file: { ownerUid: 0, mode: 0o755 } }));
+    await expect(runCaptureBootChecks(mac.deps)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION', hostProfile: { platform: 'darwin', asked: false } });
+    expect(mac.inspected.filter((path) => (LISTING as readonly string[]).includes(path))).toEqual([...LISTING]);
+    expect(mac.inspected.indexOf(MACOS_USB_TREE_PROGRAM)).toBeGreaterThan(mac.inspected.lastIndexOf(RELAY));
+    // The runner was asked the relay alone: no listing program is run by the boot (design 06 10.1: the boot never waits for a listing).
+    expect(mac.host.asked).toEqual([RELAY]);
+    expect(mac.recorded.lines.find((line) => line.fields.code === 'CAPTURE_PROGRAM_CHECKS_PASSED')?.fields).toEqual({ code: 'CAPTURE_PROGRAM_CHECKS_PASSED', operation: 'REAL_PRODUCTION', programChecks: 3, notAsked: 3 });
+    expect(mac.calls.at(-1)).toBe('handshake');
+  });
+
+  it('darwin, a program that fails the rule refuses the start by CAPTURE_HOST_LISTING_PROGRAM_UNUSABLE with the rule\'s own word - for each word, for either program; the worker is not started; no path in the line or the message', async () => {
+    for (const failing of LISTING) {
+      for (const [word, facts] of FAILING) {
+        const mac = on('darwin', (path) => (path === failing ? facts : goodProgram()));
+        const failure = await refusalOf(mac.deps);
+        expect([failure.code, failure.reason], `${failing} ${word}`).toEqual(['CAPTURE_HOST_LISTING_PROGRAM_UNUSABLE', word]);
+        expect(failure.code).toBe(CaptureBootRefusal.PROGRAM_SYSTEM_LISTING);
+        expect(mac.calls, word).not.toContain('handshake');
+        // The warning of 4d (the host profile is not asked on darwin), then the refusal: nothing else.
+        expect(mac.recorded.persisted, word).toEqual([{ level: 'warn', source: 'capture.boot', code: 'CAPTURE_HOST_PROFILE_NOT_ASKED' }, { level: 'error', source: 'capture.boot', code: 'CAPTURE_HOST_LISTING_PROGRAM_UNUSABLE' }]);
+        expect(JSON.stringify([mac.recorded.lines, failure.message]), word).not.toMatch(/\/usr\/|sbin|ioreg|system_profiler/);
+        // The boot stops at the first: a failing first program leaves the second uninspected.
+        if (failing === MACOS_USB_TREE_PROGRAM) expect(mac.inspected, word).not.toContain(MACOS_SYSTEM_AUDIO_PROGRAM);
+      }
+    }
+  });
+
+  it('linux, other platforms the boot refuses anyway, and REAL_DEVELOPMENT on darwin: the two programs are NEVER inspected, the lines are the ones of before this row', async () => {
+    const refusing = (): ProgramFacts => goodProgram({ exists: false, regularFile: false, file: null });
+    const linux = on('linux', refusing);
+    await expect(runCaptureBootChecks(linux.deps)).resolves.toMatchObject({ operation: 'REAL_PRODUCTION', hostProfile: { platform: 'linux', asked: true } });
+    expect(linux.recorded.lines.find((line) => line.fields.code === 'CAPTURE_PROGRAM_CHECKS_PASSED')?.fields).toEqual({ code: 'CAPTURE_PROGRAM_CHECKS_PASSED', operation: 'REAL_PRODUCTION', programChecks: 4, notAsked: 0 });
+    const development = on('darwin', refusing, { captureDevSources: true });
+    await expect(runCaptureBootChecks(development.deps)).resolves.toMatchObject({ operation: 'REAL_DEVELOPMENT' });
+    // 4d-2 refuses another platform BEFORE 4e: the programs are not inspected there either.
+    const other = on('freebsd', refusing);
+    expect((await refusalOf(other.deps)).code).toBe('CAPTURE_HOST_PLATFORM_NOT_SUPPORTED');
+    for (const seen of [linux, development, other]) expect(seen.inspected.filter((path) => (LISTING as readonly string[]).includes(path))).toEqual([]);
+  });
+
+  it('a decision built without the member (a caller from before this row) asks nothing more on darwin; the refusal has a text that names the key, not a path', async () => {
+    const mac = on('darwin', () => goodProgram({ exists: false, regularFile: false, file: null }));
+    const before: DeliveredProgramDeps = { platform: 'darwin', relayProgram: RELAY, run: mac.host.deps.run, storedInterface: async () => PREPARED_INTERFACE };
+    await expect(runCaptureBootChecks({ ...mac.deps, programs: before })).resolves.toMatchObject({ operation: 'REAL_PRODUCTION' });
+    expect(mac.inspected.filter((path) => (LISTING as readonly string[]).includes(path))).toEqual([]);
+    const text = new CaptureBootError(CaptureBootRefusal.PROGRAM_SYSTEM_LISTING, 'NOT_FOUND').message;
+    expect(text).toMatch(/^This host is not prepared for a production Core \(DEMS_CAPTURE_MODE=real without DEMS_CAPTURE_DEV_SOURCES\) on macOS: /);
+    expect(text).not.toMatch(/\/usr\/|ioreg|system_profiler/);
   });
 });

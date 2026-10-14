@@ -17,6 +17,7 @@ import { forgetCounters, WEB_ORIGIN, cookieValue, webSignIn } from '../../../../
 import { withoutNegativeZeros } from '../../../../test/support/seed';
 import { bodyOf, devicesApp, errorOf, outcome, type DevicesApp } from '../../devices/__tests__/support';
 import { createCaptureConfigStore, captureConfigControl, captureConfigOperation } from '../index';
+import { PROFILE_WITHOUT_STREAM_REASON, PROFILE_WITHOUT_STREAM_TEXT } from '../routes';
 import { CONFIG, DEVICES, cameraSource, primaryMic } from './support';
 import { detailRulesOf, type DetailRule } from '../../../core/audit-details';
 import type { Principal } from '../../../plugins/authenticate';
@@ -39,7 +40,7 @@ beforeAll(async () => {
 });
 
 interface Selector {
-  cameras: { trackId: string; deviceId: string; profile: string; online: boolean; streamState: string }[];
+  cameras: { trackId: string; deviceId: string; profile: string; online: boolean; streamState: string | null }[];
   mics: { inputId: string; deviceId: string; role: string; transport: string; online: boolean }[];
   locked: boolean;
   updatedAt: number;
@@ -1411,6 +1412,9 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
     async function productionCore(slug: string, operation: 'REAL_PRODUCTION' | 'SIMULATED' = 'REAL_PRODUCTION') {
       const target = await clone(slug, async (owner) => {
         await owner.query("INSERT INTO public.capture_devices (id, kind, transport, enabled, adapter_kind, profiles) VALUES ('CAM-11', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP', $1::jsonb)", [JSON.stringify([OWN])]);
+        // Row S86a (C-1 of row 86): the OWN code is what an adoption leaves - listed AND with its stored stream row. Without the row
+        // the assignment is refused since S86a (the case at the end of this block); the cases above it are about the list.
+        await owner.query("INSERT INTO public.capture_device_streams (device_id, profile, onvif_profile_token, lens, stream_role, codec, width, height, read_at) VALUES ('CAM-11', $1, 'profile_1', 1, 'MAIN', 'HEVC', 3840, 2160, 1730000000000)", [OWN]);
         await unassignStored(owner, SLOTS);
         if (operation === 'REAL_PRODUCTION') await ownCredentials(owner);
       });
@@ -1529,6 +1533,60 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
       const bySource = await core.post(cameraSource('CAM-11'), { trackId: 'VIDEO-02' });
       expect(bySource.statusCode, bySource.body).toBe(200);
       expect((await core.stored())[0]).toEqual({ ...rowWithout(SLOTS), video_02_device_id: 'CAM-11', video_02_profile: 'H264_1080P25' });
+    });
+
+    // Row S86a (caution C-1 of the security review row 86; decision C127): the camera adapter's open refuses a code without its
+    // stored stream row (`capture_device_streams`); the assignment now refuses it FIRST, with a sentence that names the remedy
+    // (adopt again: operation 108 cannot heal such a code, row PR case (b)). `details.reason` is its own word since row V7c
+    // (C130: `CAMERA_PROFILE_WITHOUT_STREAM`, `PROFILE_WITHOUT_STREAM_REASON`); until then the seam answered the list rule's word.
+    it('row S86a (C-1): REAL_PRODUCTION - a LISTED code without its stored stream row (a C61 raw token in code form; a code no stream stated) is refused at assignment by 78 and, for a held slot, by 79 - 0 rows, nothing stored, the re-adopt sentence; with its stream row the same code is admitted; a stream row alone admits no unlisted code; SIMULATED unchanged', async () => {
+      const RAW = 'PROFILE_1'; // C61: a raw ONVIF token that has the code form; no adoption ever writes its stream row.
+      const UNSTATED = 'H264_1080P25_MAIN'; // a code in the list that no stream stated (no stream row).
+      const UNLISTED = 'H264_720P25'; // a stream row, but no element of the list.
+      const core = await productionCore('s86a-stream-row');
+      await core.owner.query("UPDATE public.capture_devices SET profiles = $1::jsonb WHERE id = 'CAM-11'", [JSON.stringify([OWN, RAW, UNSTATED])]);
+      const streamRow = (profile: string) =>
+        core.owner.query("INSERT INTO public.capture_device_streams (device_id, profile, onvif_profile_token, lens, stream_role, codec, width, height, read_at) VALUES ('CAM-11', $1, 'profile_2', 1, 'SUB', 'H264', 1280, 720, 1730000000000)", [profile]);
+      await streamRow(UNLISTED);
+      const messageOf = (response: LightMyRequestResponse): string => (response.json() as { error: { message: string } }).error.message;
+      const [, rows] = await core.stored();
+
+      // 1. Listed, no stream row: refused at assignment, by the seam's word and the re-adopt sentence. Nothing stored, no row.
+      for (const profile of [RAW, UNSTATED]) {
+        const refused = await core.post(CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-11', profile }] });
+        // Row V7c (C130): the refusal's own word, no longer the list rule's.
+        expect(reasonOf(refused), profile).toEqual([422, 'INVALID_INPUT', 'CAMERA_PROFILE_WITHOUT_STREAM', 'CAM-11', 'VIDEO-01']);
+        expect(PROFILE_WITHOUT_STREAM_REASON).toBe('CAMERA_PROFILE_WITHOUT_STREAM');
+        expect(messageOf(refused), profile).toBe(PROFILE_WITHOUT_STREAM_TEXT);
+        expect(messageOf(refused)).toMatch(/Adopt the camera again/);
+      }
+      // CONTROL: a stream row alone admits no code the list does not hold - the list rule of row 187, its own sentence.
+      const unlisted = await core.post(CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-11', profile: UNLISTED }] });
+      expect(reasonOf(unlisted)).toEqual([422, 'INVALID_INPUT', 'CAMERA_PROFILE_NOT_OF_DEVICE', 'CAM-11', 'VIDEO-01']);
+      expect(messageOf(unlisted)).not.toBe(PROFILE_WITHOUT_STREAM_TEXT);
+      expect(await core.stored()).toEqual([rowWithout(SLOTS), rows]);
+
+      // 2. The SAME code with its stream row (what an adoption writes): admitted and stored, ONE row.
+      await streamRow(UNSTATED);
+      const admitted = await core.post(CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-11', profile: UNSTATED }] });
+      expect(admitted.statusCode, admitted.body).toBe(200);
+      const held = { ...rowWithout(SLOTS), video_01_device_id: 'CAM-11', video_01_profile: UNSTATED };
+      expect(await core.stored()).toEqual([held, rows + 1]);
+
+      // 3. The stream row gone (the owner; the runtime role cannot delete one): operation 79 on the HELD slot keeps a code the open
+      //    would refuse - refused now, with the same answer; the slot keeps what it held.
+      await core.owner.query("DELETE FROM public.capture_device_streams WHERE device_id = 'CAM-11' AND profile = $1", [UNSTATED]);
+      const bySource = await core.post(cameraSource('CAM-11'), { trackId: 'VIDEO-01' });
+      expect(reasonOf(bySource)).toEqual([422, 'INVALID_INPUT', 'CAMERA_PROFILE_WITHOUT_STREAM', 'CAM-11', 'VIDEO-01']);
+      expect(messageOf(bySource)).toBe(PROFILE_WITHOUT_STREAM_TEXT);
+      expect(await core.stored()).toEqual([held, rows + 1]);
+
+      // 4. CONTROL, SIMULATED - unchanged: no registry, no read, no stream rule; the raw token with no stream row is assigned as before.
+      const simulated = await productionCore('s86a-simulated', 'SIMULATED');
+      await simulated.owner.query("UPDATE public.capture_devices SET profiles = $1::jsonb WHERE id = 'CAM-11'", [JSON.stringify([OWN, RAW])]);
+      const raw = await simulated.post(CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-11', profile: RAW }] });
+      expect(raw.statusCode, raw.body).toBe(200);
+      expect((await simulated.stored())[0]).toEqual({ ...rowWithout(SLOTS), video_01_device_id: 'CAM-11', video_01_profile: RAW });
     });
   });
 });

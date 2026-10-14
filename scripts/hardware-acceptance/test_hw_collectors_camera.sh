@@ -86,15 +86,15 @@ expect 'no file was planted by a refused value' empty_dir "$RUN/cwd"
 printf '%s\n' '--- 5. collecting, against the doubles'
 cat >"$RUN/core.log" <<EOF
 {"level":30,"time":1791822964466,"code":"CAPTURE_FENCE_PASSED","operation":"REAL_PRODUCTION","msg":"capture fence passed"}
-{"level":30,"time":1791822965000,"code":"CAPTURE_DISCOVERY_SEARCHED","scope":"CAMERA_NETWORK","candidates":2,"msg":"search"}
-{"level":30,"time":1791822965500,"code":"CAPTURE_DISCOVERY_SEARCHED","scope":"CAMERA_NETWORK","candidates":1,"msg":"search"}
-{"level":30,"time":1791822966000,"code":"CAMERA_CONNECTION_TESTED","outcome":"REACHABLE","durationMs":2140,"profiles":2,"codec":"HEVC","msg":"tested"}
+{"level":30,"time":1791822965000,"code":"CAPTURE_DISCOVERY_SEARCHED","trigger":"MANUAL","outcome":"COMPLETE","failureReason":null,"responderCount":2,"newCount":2,"registeredCount":0,"interfaceCount":1,"durationMs":3010,"msg":"camera search closed"}
+{"level":30,"time":1791822965500,"code":"CAPTURE_DISCOVERY_SEARCHED","trigger":"MANUAL","outcome":"COMPLETE","failureReason":null,"responderCount":1,"newCount":1,"registeredCount":0,"interfaceCount":1,"durationMs":3004,"msg":"camera search closed"}
+{"level":30,"time":1791822966000,"code":"CAPTURE_CONNECTION_TESTED","outcome":"REACHABLE","authenticated":true,"sourceClass":"PRODUCTION","guardTripped":false,"judgedStreams":1,"msg":"camera connection tested"}
 {"level":30,"time":1791822966100,"code":"CAMERA_PROFILE_LISTED","profileCode":"HEVC_1080P","codec":"HEVC","width":1920,"height":1080,"tokenOutsideCodeForm":true,"tokenDigitsOnly":false,"listed":true,"token":"$PLANTED_TOKEN","msg":"profile"}
 {"level":50,"time":1791822966200,"msg":"camera open failed","locator":"$PLANTED_LOCATOR","password":"$PLANTED_PASSWORD"}
 {"level":40,"time":1791822967000,"code":"CAPTURE_SYNC_LEVEL_NOT_FULL","deviceId":"cam-1","syncLevel":"FSYNC","msg":"sync"}
 {"level":40,"time":1791822967100,"code":"EVIDENCE_VOLUME_SYNC_NOT_FULL","syncLevel":"FSYNC","critical":true,"msg":"notice"}
-{"level":30,"time":1791822967200,"code":"CAMERA_CLOCK_OFFSET","deviceId":"cam-2","offsetMs":640,"msg":"offset"}
-{"level":40,"time":1791822968000,"code":"CAPTURE_FAULT","deviceId":"cam-1","reason":"CAMERA_STREAM_ENDED","state":"RAISED","msg":"fault"}
+{"level":30,"time":1791822967200,"code":"CAPTURE_CLOCK_OFFSET_MEASURED","sessionId":"S-1","deviceId":"cam-2","offsetMs":640,"advisoryMs":500,"above":true,"msg":"offset"}
+{"level":50,"time":1791822968000,"code":"CAPTURE_FAULT","sessionId":"S-1","correlationId":"c-1","reason":"CAMERA_STREAM_ENDED","msg":"capture fault"}
 EOF
 cat >"$RUN/worker.jsonl" <<'EOF'
 {"ts_us":1000000000,"level":"info","source":"capture-worker.main","message":"session_starting","cameras":2,"port1":8559,"port2":8561,"mics":2}
@@ -112,7 +112,7 @@ cat >"$RUN/audit.txt" <<EOF
 {"seq":304,"type":"HOST_ALIAS_ADDED","details":{}}
 {"seq":305,"type":"HOST_ALIAS_REMOVED","details":{}}
 {"seq":306,"type":"CAMERA_NETWORK_SET","details":{"hardwareAddress":"$PLANTED_MAC"}}
-{"seq":307,"type":"CAPTURE_DEVICE_ADOPTED","details":{}}
+{"seq":307,"type":"CAPTURE_CANDIDATE_ADOPTED","details":{}}
 {"seq":308,"type":"CAPTURE_CONFIG_CHANGED","details":{}}
 {"seq":309,"type":"CAPTURE_CREDENTIAL_REVEALED","details":{}}
 {"seq":310,"type":"CAPTURE_CREDENTIAL_REVEALED","details":{}}
@@ -148,8 +148,8 @@ collect c12 "$SEAM" collect-h12.sh --evidence "$EVID" --audit-file "$RUN/audit.t
 std c12 9A/H-12 h12-run1.txt
 expect 'c12: two search entries with the scope of the camera network'' (1 of 2)' has c12 'lines that hold CAPTURE_DISCOVERY_SEARCHED = 2'
 expect 'c12: two search entries with the scope of the camera network'' (2 of 2)' has c12 'lines that hold CAMERA_NETWORK = 2'
-expect 'c12: the candidate count of each search'' (1 of 2)' has c12 'scope=CAMERA_NETWORK candidates=2'
-expect 'c12: the candidate count of each search'' (2 of 2)' has c12 'scope=CAMERA_NETWORK candidates=1'
+expect 'c12: the candidate count of each search'' (1 of 2)' has c12 'trigger=MANUAL outcome=COMPLETE responderCount=2 newCount=2'
+expect 'c12: the candidate count of each search'' (2 of 2)' has c12 'trigger=MANUAL outcome=COMPLETE responderCount=1 newCount=1'
 
 # --- 9A/H-13
 collect c13s "$SEAM" collect-h13.sh --state --evidence "$EVID" --camera-interface enp3s0
@@ -213,14 +213,14 @@ EOF
 # shellcheck disable=SC2086
 collect c10 "$SEAM" collect-h10.sh --camera CAM-A --evidence "$EVID" --audit-file "$RUN/audit.txt" --error-log "$RUN/error.log" $ARGS_LOGS
 std c10 9A/H-10 h10-run1-CAM-A.txt
-expect 'c10: the outcome and the duration of the test in milliseconds' has c10 'outcome=REACHABLE reason=(absent) durationMs=2140'
-expect 'c10: per profile its code, codec, picture size and the three token facts' has c10 'profileCode=HEVC_1080P codec=HEVC width=1920 height=1080 tokenOutsideCodeForm=true tokenDigitsOnly=false listed=true'
+expect 'c10: the outcome line of the test as the product writes it' has c10 'outcome=REACHABLE authenticated=true testReason=(absent) judgedStreams=1 guardTripped=false'
+expect 'c10: a line the product does not write (a planted profile line with a token) is not read at all' lacks c10 'profileCode='
 expect 'c10: no token, no stream address, no account, no password is printed'' (1 of 4)' lacks c10 "$PLANTED_TOKEN"
 expect 'c10: no token, no stream address, no account, no password is printed'' (2 of 4)' lacks c10 "$PLANTED_PASSWORD"
 expect 'c10: no token, no stream address, no account, no password is printed'' (3 of 4)' lacks c10 'Streaming/Channels'
 expect 'c10: no token, no stream address, no account, no password is printed'' (4 of 4)' lacks c10 'admin'
 expect 'c10: the adoption and the configuration change are counted'' (1 of 2)' has c10 'lines that hold CAPTURE_CONFIG_CHANGED = 1'
-expect 'c10: the adoption and the configuration change are counted'' (2 of 2)' has c10 'lines that hold ADOPTED = 1'
+expect 'c10: the adoption and the configuration change are counted'' (2 of 2)' has c10 'lines that hold CAPTURE_CANDIDATE_ADOPTED = 1'
 expect 'c10: the count-only scan ran over the Core log and the error log' has c10 'count-only scan = TOTAL 0 (exit 0)'
 
 # --- 9A/H-23
@@ -228,7 +228,7 @@ expect 'c10: the count-only scan ran over the Core log and the error log' has c1
 collect c23t "$SEAM" collect-h23.sh --after-test --evidence "$EVID" --error-log "$RUN/error.log" $ARGS_LOGS
 std c23t 9A/H-23 h23-run1-after-test.txt
 expect 'c23t: the outcome code and the codec read from the stream'' (1 of 2)' has c23t 'outcome=REACHABLE'
-expect 'c23t: the outcome code and the codec read from the stream'' (2 of 2)' has c23t 'codec=HEVC'
+expect 'c23t: the outcome code and the codec read from the stream'' (2 of 2)' has c23t 'authenticated=true testReason=(absent) judgedStreams=1'
 # shellcheck disable=SC2086
 collect c23s "$SEAM" collect-h23.sh --after-session S1 --evidence "$EVID" --worker-log "$RUN/worker.jsonl" --error-log "$RUN/error.log" $ARGS_LOGS
 std c23s 9A/H-23 h23-run1-after-session-S1.txt
@@ -268,7 +268,7 @@ expect 'c17s: the capture operation, the sync level per camera file and the noti
 expect 'c17s: the capture operation, the sync level per camera file and the notice with "critical"'' (3 of 3)' has c17s 'syncLevel=FSYNC critical=true'
 expect 'c17s: both camera tracks with their packets and sizes; the worker'"'"'s exit code'' (1 of 2)' has c17s 'cam=1 video_packets=7500 audio_packets=14000 fragments=150 durable_fragments=150 bytes=90000000 sync=FSYNC'
 expect 'c17s: both camera tracks with their packets and sizes; the worker'"'"'s exit code'' (2 of 2)' has c17s 'rc=0'
-expect 'c17s: two credential reveals counted' has c17s 'lines that hold CREDENTIAL_REVEAL = 2'
+expect 'c17s: two credential reveals counted' has c17s 'lines that hold CAPTURE_CREDENTIAL_REVEALED = 2'
 expect 'c17s: state, sources and verification are OPER'"'"'s readings; no script signs in' has c17s 'No script signs in to the Core'
 expect 'c17s: the listing of the tracks was not handed over (exit code 5: a reading is missing)' has c17s 'NOT HANDED OVER: "the tracks of the package with their sizes"'
 expect 'c17s: nothing of the planted log line is printed'' (1 of 2)' lacks c17s "$PLANTED_PASSWORD"
@@ -350,11 +350,11 @@ can ffmpeg <<'EOF'
 EOF
 collect c11 "$SEAM" collect-h11.sh --session S3 --evidence "$EVID" --core-log "$RUN/core.log" --worker-log "$RUN/worker.jsonl" --audit-file "$RUN/audit.txt" --camera CAM-A --track "$RUN/track.mp4" --ffmpeg-prefix "$SEAM/prefix"
 std c11 9A/H-11 h11-run1-session-S3-CAM-A.txt
-expect 'c11: the fault with its device, reason and state' has c11 'deviceId=cam-1 reason=CAMERA_STREAM_ENDED state=RAISED'
+expect 'c11: the fault line with its session and reason' has c11 'sessionId=S-1 reason=CAMERA_STREAM_ENDED'
 expect 'c11: one gap in the track, its length in milliseconds' has c11 '5 packets; gaps longer than 1 s: 1; the longest distance between two packets: 42040 ms'
 expect 'c11: the decode error lines are counted, not printed'' (1 of 2)' has c11 'error lines of the full decode = 1'
 expect 'c11: the decode error lines are counted, not printed'' (2 of 2)' lacks c11 'Could not find ref'
-expect 'c11: the credential reveals of the session' has c11 'lines that hold CREDENTIAL_REVEAL = 2'
+expect 'c11: the credential reveals of the session' has c11 'lines that hold CAPTURE_CREDENTIAL_REVEALED = 2'
 
 # --- 9A/H-19
 can df <<'EOF'

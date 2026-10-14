@@ -8,6 +8,14 @@
 # copy the USER makes). It is probed and DECODED INTO NOTHING; no frame leaves the host.
 # It takes no password as an argument, an environment variable or a file, and captures no packets.
 # It prints codes, counts and figures: no stream address, no account name, no frame, no sound.
+# NAMES (wave 12, row C1; each checked against the product source on 2026-10-14): the worker's lines
+# are `video_anchored` (mode, shift_us) and `keyframe_interval_observed` (cam, observed_ms, bound_ms,
+# intervals, complete, above_bound), apps/capture-worker/src/ingest.c; `camera_summary` carries five
+# counters. The Core's measurement line is CAPTURE_CLOCK_OFFSET_MEASURED (deviceId, offsetMs,
+# advisoryMs, above), capture-session/index.ts. Removed, the product never emitted them: the lines
+# `anchored` and `keyframe_interval`, the fields offset_us, interval_ms, frames, clockOffsetMs.
+# CAMERA_CLOCK_OFFSET is kept as a count only: it is the notice of a camera above the advisory, and
+# CAPTURE_CAMERA_CLOCK_OFFSET is the code of the Core's persisted warning for the same case.
 # Read-only. NOTHING HERE IS PROVEN ON A HOST: this is the instrument of the hardware package.
 set -eu
 HW_SCRIPT=collect-h09.sh
@@ -24,21 +32,21 @@ hw_init "$@"
 criterion 'Per camera, all of: the codec in the connect line equals the codec the camera is set to; INGEST_NO_EXTRADATA lines 0; decode errors 0; frames in the file equal the worker'"'"'s packet count; clock offset at most 2,000 ms (the figure is recorded; an advisory above 500 ms is recorded and is not a fail).'
 case "$HW_MODE" in
   live | session)
-    step '9A/H-09.1' SCRIPT 'per camera: from the worker'"'"'s log, the connect line (codec, picture size, parameter-set length), the count of lines INGEST_NO_EXTRADATA, the anchoring mode, the observed keyframe interval, and the line that sums the camera up (video packets, fragments, and its three counters); from the session, the clock offset of the camera in milliseconds and whether the advisory was raised'
+    step '9A/H-09.1' SCRIPT 'per camera: from the worker'"'"'s log, the connect line (codec, picture size, parameter-set length), the count of lines INGEST_NO_EXTRADATA, the anchoring mode, the observed keyframe interval, and the line that sums the camera up (video packets, fragments, and its five counters); from the session, the clock offset of the camera in milliseconds and whether the advisory was raised'
     expected 'per camera: codec hevc for a camera set to H.265; INGEST_NO_EXTRADATA: 0 lines; one summing line with video packets above 0; a clock offset of at most 2,000 ms.'
     if hw_log_needed --worker-log "$HW_WORKER_LOG"; then
       hw_fields 'worker log' "${HW_WORKER_LOG:-<worker-log>}" ingest_connected port codec width height extradata
       hw_count 'worker log' "${HW_WORKER_LOG:-<worker-log>}" INGEST_NO_EXTRADATA
-      hw_fields 'worker log' "${HW_WORKER_LOG:-<worker-log>}" anchored cam mode offset_us
-      hw_fields 'worker log' "${HW_WORKER_LOG:-<worker-log>}" keyframe_interval cam interval_ms frames
-      hw_fields 'worker log' "${HW_WORKER_LOG:-<worker-log>}" camera_summary cam video_packets fragments dropped_no_pts dropped_prestart retimed
-      note 'the three counters read here are those of the worker'"'"'s summing line: dropped_no_pts, dropped_prestart, retimed (open point B of chapter 3). In --live the summing line does not exist yet.'
-      confirm 'the names of the worker'"'"'s lines for the anchoring mode and the observed keyframe interval'
+      hw_fields 'worker log' "${HW_WORKER_LOG:-<worker-log>}" video_anchored mode shift_us
+      hw_fields 'worker log' "${HW_WORKER_LOG:-<worker-log>}" keyframe_interval_observed cam observed_ms bound_ms intervals above_bound
+      hw_fields 'worker log' "${HW_WORKER_LOG:-<worker-log>}" camera_summary cam video_packets fragments dropped_no_pts dropped_prestart retimed dropped_prearm dropped_unanchored
+      note 'the worker'"'"'s summing line carries five counters. The first three read here are "the three" of the plan: dropped_no_pts, dropped_prestart, retimed; dropped_prearm and dropped_unanchored are recorded beside them (open point B of chapter 3). In --live the summing line does not exist yet. The line video_anchored names its camera by the source of the line, not by a member.'
+      confirm 'that a real camera'"'"'s stream produces the lines video_anchored and keyframe_interval_observed (seen on generated streams only)'
     fi
     if [ -n "$HW_CORE_LOG" ] || [ "$HW_DRY" = 1 ]; then
-      hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" CAMERA_CLOCK_OFFSET deviceId offsetMs clockOffsetMs
-      hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" CAMERA_CLOCK_OFFSET
-      confirm 'the field that holds a camera'"'"'s clock offset in milliseconds; the advisory itself is read by OPER on the monitor (step .3)'
+      hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_CLOCK_OFFSET_MEASURED deviceId offsetMs advisoryMs above
+      hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_CLOCK_OFFSET_MEASURED CAPTURE_CAMERA_CLOCK_OFFSET CAMERA_CLOCK_OFFSET
+      confirm 'that a real camera'"'"'s clock read produces the line CAPTURE_CLOCK_OFFSET_MEASURED; the advisory itself is read by OPER on the monitor (step .3)'
     fi
     ;;
   file)

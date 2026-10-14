@@ -19,12 +19,15 @@ import { CREDENTIAL_MARK, SealedCredential, usingCredential } from '../../../cap
 import type { AuditEntry, UnitContext } from '../../../core';
 import { CAPTURE_CREDENTIAL_REVEAL_REASONS } from '../../../core/audit-details';
 import { DestinationPurpose, decideDestination, type DestinationContext } from '../../../capture/destination-rule';
+import { ONVIF_DEVICE_SERVICE_DEFAULT_PORT } from '../../../capture/adapters/camera/stored-address';
 import { READ_CAPTURE_CREDENTIAL_DEVICE, wireCaptureCredentialHolders } from '../credential-holders';
 import {
   CAPTURE_CREDENTIAL_HOLDERS,
   CAPTURE_CREDENTIAL_REVEAL_UNIT,
   CaptureCredentialHolder,
   CaptureCredentialReadError,
+  STORED_ADDRESS_DEFAULT_PORT,
+  StoredAddressRefusal,
   createCaptureCredentialReaders,
   type CameraAdapterCredentialReader,
   type CaptureCredentialDevice,
@@ -533,5 +536,42 @@ describe('the reveal module: an answer, never a throw for the form of a row', ()
     ]) {
       expect(await revealCaptureCredential(connectionOf(invalid), 'CAM-01')).toEqual({ kind: 'INVALID' });
     }
+  });
+});
+
+// Decision C127 (security review 086 caution C-3, finding S-04): the credential gate asks the rule about the port DIALLED.
+describe('C127 / S-04: the reader\'s gate holds the dialled port to the stored allowed list', () => {
+  const ruleWith = (allowedPorts: readonly number[]): CaptureCredentialReaderDependencies['storedAddress'] => (address, port) =>
+    decideDestination({ purpose: DestinationPurpose.STORED_CAMERA, address, ...(port === undefined ? {} : { port }) }, { ...HOST, allowedPorts });
+  const at = (address: string): CaptureCredentialReaderDependencies['device'] => async () => ({ ...PRODUCTION_CAMERA, address });
+  const read = (built: Rig) => createCaptureCredentialReaders(built.dependencies).take(CaptureCredentialHolder.CAMERA_ADAPTER).sessionOpen('CAM-01', SESSION);
+  const refusalOf = (built: Rig): unknown => built.errorLog.entries.map((entry) => (entry.context as Record<string, unknown>)['refusal']);
+
+  it('the default port is the `http:` one, 80, the same number as the stored-address judgement\'s', () => {
+    expect([STORED_ADDRESS_DEFAULT_PORT, ONVIF_DEVICE_SERVICE_DEFAULT_PORT]).toEqual([80, 80]);
+  });
+
+  it('list [80] admits 80; list [8080] refuses an address with no port and one at 80, and admits 8080 - each refusal named, 0 reveal statements', async () => {
+    // SEEN RED: `STORED_ADDRESS_DEFAULT_PORT` -> `undefined` as the asked port (the [8080] address with no port admitted).
+    for (const [list, address] of [[[80], '192.168.50.21'], [[80], '192.168.50.21:80'], [[8080], '192.168.50.21:8080'], [[8080, 80], '192.168.50.21']] as const) {
+      const built = rig({ commits: true, device: at(address), storedAddress: ruleWith(list) });
+      expect(await read(built), `${address} under [${list.join(',')}]`).toBeInstanceOf(SealedCredential);
+    }
+    for (const address of ['192.168.50.21', '192.168.50.21:80', '192.168.50.21:554']) {
+      const built = rig({ commits: true, device: at(address), storedAddress: ruleWith([8080]) });
+      expect(await codeOf(read(built)), address).toBe('CAPTURE_CREDENTIAL_ADDRESS_REFUSED');
+      expect([refusalOf(built), built.statements.length, built.entries.length], address).toEqual([['PORT_NOT_LISTED'], 0, 0]);
+    }
+  });
+
+  it('an admission that states another port than the one dialled is STORED_ADDRESS_PORT_MISMATCH', async () => {
+    // SEEN RED: the comparison of the admitted port with the dialled one removed (the credential was served).
+    const admits8080: CaptureCredentialReaderDependencies['storedAddress'] = () => ({ allowed: true, destination: { port: 8080 } });
+    for (const address of ['192.168.50.21', '192.168.50.21:554']) {
+      const built = rig({ commits: true, device: at(address), storedAddress: admits8080 });
+      expect(await codeOf(read(built)), address).toBe('CAPTURE_CREDENTIAL_ADDRESS_REFUSED');
+      expect([refusalOf(built), built.statements.length], address).toEqual([[StoredAddressRefusal.PORT_MISMATCH], 0]);
+    }
+    expect(await read(rig({ commits: true, device: at('192.168.50.21:8080'), storedAddress: admits8080 }))).toBeInstanceOf(SealedCredential);
   });
 });

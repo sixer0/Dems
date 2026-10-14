@@ -1,0 +1,24 @@
+FIXTURE  composed-one-output-48k
+BASIS    COMPOSED - NOT A RECORDED START. ONE REAL START MUST CONFIRM IT (request line of row N8b to row N9)
+WHY      no record holds a whole start of the product's ONE-output list on the device (rows MM to MM3 ran one output only through the muxer f32le, and row N4b part B did not open the device)
+LINES    1 to 3  DEVICE, verbatim: the input's block of row MM3 capture 30 (.cache/task4-mm/session3.log; the stream line is the one test/n4b_helper_rows_run.md s6 quotes)
+LINES    4 to 6  DEVICE, verbatim: the mapping header, the one mapping line and the filter's line as the device printed them with one output (row MM capture 6)
+LINES    7 to 12 DEVICE, verbatim: the block of output 0 through fifo as the device printed it (row MM2 capture 15)
+LINES    13, 14  THE BUILD'S FORM: the two closing lines of the pinned build's one-section run on a generated source (row N4b part A, numbers_A_b_one_section.json, verbatim with its own pointer); not recorded on the device with one fifo output
+ORDER    the order and the number of lines (14) are those of row N4b's one-section run on the pinned build; that the DEVICE prints one fifo output in this order is the build's standard form, not a record
+CHANGED  the pointer of line 6 (the record prints 0x<ptr>) is a synthetic number; the pipe path is synthetic. No device name stands in these lines
+--- helper standard error ---
+Input #0, avfoundation, from 'none:0':
+  Duration: N/A, start: 399163.910563, bitrate: 9216 kb/s
+  Stream #0:0: Audio: pcm_f32le, 48000 Hz, 5.1, flt, 9216 kb/s, start 399163.910563
+Stream mapping:
+  Stream #0:0 -> #0:0 (pcm_f32le (native) -> pcm_f32le (native))
+[Parsed_pan_0 @ 0x600002c84000] Pure channel mapping detected: 0
+Output #0, fifo, to '/synthetic/run/MIC-01.pcm':
+  Metadata:
+    encoder         : Lavf63.1.102
+  Stream #0:0: Audio: pcm_f32le, 48000 Hz, mono, flt, 1536 kb/s
+    Metadata:
+      encoder         : Lavc63.1.102 pcm_f32le
+[out#0/fifo @ 0x77b6c0cb40] video:0KiB audio:1125KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
+size=N/A time=00:00:06.00 bitrate=N/A speed=   1x elapsed=0:00:05.99    

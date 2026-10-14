@@ -592,7 +592,8 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
     // Task 4 row V3 (the third vocabulary step): + HOST_ALIAS_REQUESTED, HOST_ALIAS_ADD_FAILED,
     // CAPTURE_AUDIO_ABSENT_ON_RESTART, CAPTURE_DEVICE_CONNECTION_TESTED, 78 -> 82.
     // Task 4 row R1b (decision C99): + CAPTURE_VIDEO_ABSENT_IN_SESSION, 82 -> 83.
-    expect(AUDIT_TYPES).toHaveLength(83);
+    // Task 4 row N2: + CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED, CAPTURE_AUDIO_SILENCE_INSERTED, 83 -> 85.
+    expect(AUDIT_TYPES).toHaveLength(85);
   });
 
   it('counts by access rule: 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 68 with one permission, 1 any-of', () => {

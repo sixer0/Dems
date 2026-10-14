@@ -501,6 +501,23 @@ describe('the interrupted durable-prefix seal and the truncated tail (OD-08; ev 
     expect(h.log.entries).toEqual([]);
   });
 
+  // Wave 12 row D1 (the open fault of row 184: `WRITE_FAILED` at STORE_SEALED_PACKAGE in 3 of 4 interrupted seals). The
+  // worker puts the zero of the media time where its audio began, which may lie BEFORE the session's `startedAt` (426 ms
+  // in row 184's run b2); `startedAt + media end` then lay after the seal's own instant, and the item row was refused by
+  // `evidence_items_values_check` (`sealed_at >= ended_at`) at every retry, because the instant is frozen.
+  // Seen RED before the fix: `durableEndMs` was CLOCK_START + 400 (expected at most CLOCK_START).
+  it('D1: an interrupted recording never ends AFTER the instant of its seal - in the manifest and in the item the engine is given', async () => {
+    const recording = recordSession();
+    // 10,000 ms of durable media; the session says it started 9,600 ms before the seal's instant.
+    const h = harnessOf(recording, { facts: { stoppedAt: null, startedAt: CLOCK_START - 9_600 } });
+    expect(sealedOf(await h.pipeline.run({ sessionId: recording.sessionId, cause: 'INTERRUPTED' })).interrupted).toBe(true);
+    const timeline = manifestOf(recording).timeline;
+    expect(timeline).toMatchObject({ interrupted: true, stoppedAt: null, sealedAt: CLOCK_START, durableEndMs: CLOCK_START, recordingDurationMs: 9_600 });
+    expect(h.engine.sealed[0]?.input).toMatchObject({ interrupted: true, sealedAt: CLOCK_START, durableEndAt: CLOCK_START });
+    const result = await verify(h);
+    expect([result.ok, result.overall, result.interrupted, passing(result)]).toEqual([true, 'PASS', true, ALL]);
+  });
+
   it('AU2-08: a recording cut INSIDE an mdat is found by the box walk; the cut fragment is left out and flagged, the durable prefix is sealed and verifies', async () => {
     const recording = recordSession();
     const file = recording.recordingFile('VIDEO-01');

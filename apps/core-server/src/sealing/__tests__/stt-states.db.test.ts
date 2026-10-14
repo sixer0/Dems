@@ -109,10 +109,10 @@ beforeAll(async () => {
 });
 
 describe('the database this file runs on', () => {
-  it('is the runtime role on schema version 13 / dbc-14, and this row brought no migration', async () => {
+  it('is the runtime role on schema version 14 / dbc-15, and this row brought no migration', async () => {
     expect((await app.query('SELECT current_user AS role')).rows[0]).toEqual({ role: 'dems_app' });
     const meta = (await owner.query('SELECT schema_version, contract_revision FROM public.schema_meta')).rows[0] as { schema_version: number; contract_revision: string };
-    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([13, 'dbc-14']); // set 14 (task 4, the further alias removal reason)
+    expect([Number(meta.schema_version), meta.contract_revision]).toEqual([14, 'dbc-15']); // set 15 (task 4, the allowed ONVIF ports and the form of an interface name)
   });
 });
 

@@ -139,7 +139,7 @@ interface CardStringRule {
  *   USB_PORT      letters, digits and `: . _ -`, 1 to 64; else nothing
  *   USB_SERIAL    letters, digits and `: . _ -`, 1 to 64; else nothing (the card then has no serial)
  *   FORMAT       one of the four words of `CARD_FORMAT_PREFERENCE`; else nothing
- *   FACTS_SOURCE  one of the three words of `CardFactsSource`; else nothing
+ *   FACTS_SOURCE  one of the four words of `CardFactsSource`; else nothing
  */
 const CARD_STRING_RULES: Readonly<Record<CardStringKind, CardStringRule>> = Object.freeze({
   NAME: Object.freeze({ passes: (text: string) => CAPTURE_AUDIO_CARD_TEXT_PATTERN.test(text) && !MARKUP.test(text), dropsOuterSpaces: true, replacement: CARD_TEXT_REPLACEMENT }),
@@ -481,7 +481,7 @@ export function parseHwParams(text: string | null | undefined): CardHwParams | n
 // ── One card of the answer ────────────────────────────────────────────────────────────────────
 
 /** Where the channel count of a card comes from. `ASSUMED` is a guess of 2: a caller that stores a count refuses it. */
-export const CardFactsSource = { STREAM: 'STREAM', HW_PARAMS: 'HW_PARAMS', ASSUMED: 'ASSUMED' } as const;
+export const CardFactsSource = { STREAM: 'STREAM', HW_PARAMS: 'HW_PARAMS', ASSUMED: 'ASSUMED', SYSTEM_PROFILE: 'SYSTEM_PROFILE' } as const;
 export type CardFactsSource = (typeof CardFactsSource)[keyof typeof CardFactsSource];
 
 /**

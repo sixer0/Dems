@@ -34,8 +34,13 @@ if hw_log_needed --worker-log "$HW_WORKER_LOG"; then
   hw_fields 'worker log' "${HW_WORKER_LOG:-<worker-log>}" camera_summary cam video_packets fragments bytes
 fi
 if [ -n "$HW_CORE_LOG" ] || [ "$HW_DRY" = 1 ]; then
-  hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" CAMERA_NOT_CONNECTED CAPTURE_FAULT
-  confirm 'the code of the one warning that names the absent camera, and the instant of the state "recording" in the Core log'
+  # NAMES (wave 12, row C1; checked against the product source on 2026-10-14): the camera that
+  # counts as open is the Core's line CAPTURE_CAMERA_INGEST_PAIRED; the three reason words of the
+  # pairing rule are counted so that a missing camera (CAMERA_NOT_CONNECTED, CAMERA_NO_PICTURE) is
+  # told from an arrival that does not pair (CAMERA_INGEST_NOT_PAIRED).
+  hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_CAMERA_INGEST_PAIRED time deviceId attempt
+  hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" CAMERA_NOT_CONNECTED CAPTURE_FAULT CAMERA_NO_PICTURE CAMERA_INGEST_NOT_PAIRED
+  confirm 'that the one warning that names the absent camera reaches the Core log or the audit extract under the reason word CAMERA_NOT_CONNECTED or CAMERA_NO_PICTURE (seen on doubles only)'
 fi
 if [ -n "$HW_AUDIT" ] || [ "$HW_DRY" = 1 ]; then
   hw_count 'audit list' "${HW_AUDIT:-<audit>}" CAMERA_NOT_CONNECTED CAPTURE_FAULT

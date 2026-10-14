@@ -20,6 +20,18 @@
  * `HOST_ALIAS_REMOVE_RETRIES`, every `HOST_ALIAS_REMOVE_RETRY_MS`); then it is reported and left to
  * the kernel lifetime and to the next boot.
  *
+ * A REMOVAL THE HELPER ANSWERS `NOT_MARKED` IS SETTLED, NOT CONFIRMED (caution R119c-01 of
+ * statement 119c; decisions C114 F-1 / F-9, C122). The helper holds no standing mark of the
+ * address, removed nothing, and does not say the address is gone (some interface may still hold
+ * it). The Core has nothing more to ask: the row is CLOSED with the reason the removal was asked
+ * with (`ADD_UNCONFIRMED` on the path after an add of unknown effect), NO retry is armed, the next
+ * `add` is not held back, and the caller is answered `ok` - with `confirmed: false`. The result
+ * entry is the journal's HOST_ALIAS_REMOVE_FAILED { failureReason HELPER_NOT_MARKED }, never
+ * HOST_ALIAS_REMOVED. When the Core's own interface table still shows the address, or cannot be
+ * read, the fact is reported (`HOST_ALIAS_REMOVAL_NOT_CONFIRMED`): the kernel lifetime ends the
+ * address at the latest. The same at the timer, at shutdown and in the boot sweep, with or
+ * without a row.
+ *
  * `effect: UNKNOWN` IS "POSSIBLY IN PLACE". An `add` whose effect is not known (no answer, an
  * answer not of the table, a tool of the helper that did not answer) or whose result entry could
  * not be written keeps its open row, and a removal is attempted AT ONCE, with its own intent and
@@ -120,7 +132,16 @@ export interface HostAliasReleaseRequest {
 }
 
 export type HostAliasReleased =
-  | { readonly ok: true; /** False: none was in place; nothing was asked and nothing written. */ readonly removed: boolean }
+  | {
+      readonly ok: true;
+      /** False: none was in place; nothing was asked and nothing written. True: no row is open any more. */
+      readonly removed: boolean;
+      /**
+       * Present, and false, ONLY when the helper answered `NOT_MARKED`: the row is closed and nothing more is asked, but
+       * the helper did not say the address is gone (caution R119c-01). Left out when the helper removed it.
+       */
+      readonly confirmed?: false;
+    }
   | { readonly ok: false; readonly refusal: string; /** True when a row is (or may be) still open. */ readonly stillInPlace: boolean };
 
 export interface HostAliasSwept {
@@ -177,6 +198,20 @@ const LIMIT_REACHED = 'HELPER_ALIAS_LIMIT_REACHED';
 const literalOf = (address: string): string => (address.endsWith('/24') ? address.slice(0, -3) : address);
 const recordOf = (row: StoredHostAlias): HostAliasRecord =>
   Object.freeze({ aliasId: row.id, address: literalOf(row.address), reason: row.reason, addedAt: row.addedAt, expiresAt: row.expiresAt, removeError: row.removeError });
+/**
+ * Does the host hold `address` (a dotted quad) on ANY interface, by the Core's own reading of the interface table?
+ * null: the facts are not known (not configured, a reader that throws, a table of another form) - never read as "no".
+ */
+function hostHolds(network: HostAliasFactSources['network'], address: string): boolean | null {
+  try {
+    const context = network();
+    if (context === null || typeof context !== 'object' || !Array.isArray(context.hostAddresses) || !Array.isArray(context.cameraAddresses)) return null;
+    const onCameraInterface = (context.cameraAddresses as readonly unknown[]).some((entry) => typeof entry === 'object' && entry !== null && (entry as { address?: unknown }).address === address);
+    return onCameraInterface || (context.hostAddresses as readonly unknown[]).includes(address);
+  } catch {
+    return null;
+  }
+}
 const isActor = (actor: unknown): actor is HostAliasActor =>
   typeof actor === 'object' && actor !== null && typeof (actor as HostAliasActor).operatorId === 'string' && typeof (actor as HostAliasActor).operationId === 'string' && typeof (actor as HostAliasActor).permission === 'string';
 
@@ -202,7 +237,13 @@ export function createHostAliasLifecycle(deps: HostAliasLifecycleDeps): HostAlia
     interfaceOfThisAdd = typeof read.storedInterface === 'string' ? read.storedInterface : null;
     return read;
   };
-  const journal = createHostAliasJournal({ host, store, interfaceName: () => interfaceOfThisAdd });
+  // The Core's own table, asked by the journal after a `NOT_MARKED`: what it answered is kept for the report of that removal.
+  let heldAtNotMarked: boolean | null = null;
+  const heldNow = (address: string): boolean | null => {
+    heldAtNotMarked = hostHolds(deps.sources.network, address);
+    return heldAtNotMarked;
+  };
+  const journal = createHostAliasJournal({ host, store, interfaceName: () => interfaceOfThisAdd, heldByHost: heldNow });
   const caller = createHostAliasCaller<HostAliasSubject, HostAliasToken>({ transport: deps.transport, journal, facts });
 
   let closed = false;
@@ -271,15 +312,25 @@ export function createHostAliasLifecycle(deps: HostAliasLifecycleDeps): HostAlia
   interface Removal {
     readonly outcome: HostAliasOutcome;
     readonly refusal: string | null;
-    /** True when the address is known to be gone AND its result is on record. */
-    readonly gone: boolean;
+    /** True when the helper said it REMOVED the address (`OK`) and that result is on record. */
+    readonly confirmed: boolean;
+    /**
+     * True when nothing more is to be asked for this address and its result is on record: `confirmed`, or the helper's
+     * `NOT_MARKED` (it holds no mark, a second `del` gets the same answer). The row, if any, is closed.
+     */
+    readonly settled: boolean;
   }
   async function removeOne(address: string, subject: Extract<HostAliasSubject, { action: 'REMOVE' }>): Promise<Removal> {
+    heldAtNotMarked = null;
     const outcome = await caller.remove({ address, subject });
     const refusal = outcome.attempted ? outcome.refusal : (journal.takeRefusal() ?? outcome.refusal);
     if (outcome.attempted && !outcome.resultRecorded) report('HOST_ALIAS_RESULT_NOT_RECORDED', { action: 'REMOVE', removeReason: subject.removeReason, hadRow: subject.aliasId !== null });
-    const gone = outcome.attempted && outcome.resultRecorded && ((outcome.effect === 'DONE' && outcome.refusal === null) || outcome.refusal === NOT_MARKED);
-    return { outcome, refusal: outcome.attempted && !outcome.resultRecorded ? HostAliasLifecycleRefusal.RESULT_NOT_RECORDED : refusal, gone };
+    const recorded = outcome.attempted && outcome.resultRecorded;
+    const confirmed = recorded && outcome.effect === 'DONE' && outcome.refusal === null;
+    const notMarked = recorded && outcome.refusal === NOT_MARKED;
+    // NOT CONFIRMED and the Core's own table shows the address, or cannot be read: said in the persistent log (a code, no address).
+    if (notMarked && heldAtNotMarked !== false) report('HOST_ALIAS_REMOVAL_NOT_CONFIRMED', { removeReason: subject.removeReason, hadRow: subject.aliasId !== null, heldByHost: heldAtNotMarked });
+    return { outcome, refusal: outcome.attempted && !outcome.resultRecorded ? HostAliasLifecycleRefusal.RESULT_NOT_RECORDED : refusal, confirmed, settled: confirmed || notMarked };
   }
 
   /** Removes every open row (one, by the table's index). Arms a retry when one stays open. Not queued: its callers are. */
@@ -291,16 +342,19 @@ export function createHostAliasLifecycle(deps: HostAliasLifecycleDeps): HostAlia
       return { ok: true, removed: false };
     }
     let failed: string | null = null;
+    let everyConfirmed = true;
     for (const row of rows) {
       const removeReason = reasonOf(row);
       const removal = await removeOne(literalOf(row.address), { action: 'REMOVE', removeReason, aliasId: row.id, actor, idleOnly });
       swept?.push(Object.freeze({ address: literalOf(row.address), hadRow: true, attempted: removal.outcome.attempted, effect: removal.outcome.effect, refusal: removal.outcome.refusal, resultRecorded: removal.outcome.resultRecorded }));
-      if (!removal.gone) failed = removal.refusal ?? HostAliasLifecycleRefusal.UNNAMED_FAILURE;
+      if (!removal.settled) failed = removal.refusal ?? HostAliasLifecycleRefusal.UNNAMED_FAILURE;
+      if (!removal.confirmed) everyConfirmed = false;
     }
     if (failed === null) {
+      // Settled: every row is closed. Nothing is armed, also when the helper answered `NOT_MARKED` (not confirmed).
       disarm();
       retriesLeft = HOST_ALIAS_REMOVE_RETRIES;
-      return { ok: true, removed: true };
+      return everyConfirmed ? { ok: true, removed: true } : { ok: true, removed: true, confirmed: false };
     }
     if (failed !== HostAliasLifecycleRefusal.SESSION_OPEN) {
       if (retriesLeft > 0) {

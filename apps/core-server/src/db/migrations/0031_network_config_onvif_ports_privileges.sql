@@ -1,0 +1,26 @@
+-- Custom SQL migration file, put your code below! --
+-- 0031_network_config_onvif_ports_privileges (hand-written; task 4, the allowed ONVIF ports of
+-- the network settings and the form of an interface name, contract revision dbc-15; the 0010 /
+-- 0014 / 0016 / 0018 / 0020 / 0027 / 0029 pattern; MG-2, MG-5). Decisions C114 (finding F-4 of
+-- docs/2026-10-12_input_av_core_adapter_plan/verification/120_m10_review.md) and C116 (finding
+-- S2-02 of verification/120b_m10_review_second_pass.md) of decisions/decisions.md; security
+-- requirement S13-11 point 3. Migration set 15: 0030 (generated) + this file.
+--
+-- No statement names the owner role or the provisioning superuser (MG-9, OW-9).
+--
+-- ONE GRANT. 0030 adds the column capture_network_config.onvif_ports. The runtime role reads the
+-- table and inserts its one row by the table-level SELECT and INSERT of 0018, which cover a new
+-- column; its UPDATE is a column list (0018: the nine columns that are not the key), so the new
+-- column is named here - the same rule: every column but singleton, no DELETE, no TRUNCATE.
+-- The two interface-name CHECKs 0030 replaces under their own names (capture_network_config,
+-- host_network_aliases) carry no privilege. No table and no role is new. No stored row is
+-- rewritten by a statement: the existing settings row gains the column's default, the list of
+-- port 80 alone, which is what the destination rule used while no list was stored.
+GRANT UPDATE (onvif_ports) ON capture_network_config TO dems_app;
+--
+-- MG-5: the last file of the set carries the version; DB_SCHEMA_VERSION / DB_CONTRACT_REVISION
+-- in src/db/schema/meta.ts change in the same commit (boot check B-3 compares them). The step is
+-- taken: code that reads or writes the port list answers 42703 on a database without 0030, and
+-- code older than the set must not start on a database whose settings may hold an interface name
+-- with a capital letter or a port list it does not read.
+UPDATE public.schema_meta SET schema_version = 14, contract_revision = 'dbc-15' WHERE singleton;

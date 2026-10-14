@@ -56,7 +56,7 @@ import type {
   EpochMs,
   SimState,
 } from './types';
-import { AuditType, CaptureStreamState, Permission } from './vocabulary';
+import { AuditType, Permission } from './vocabulary';
 
 /** The name the action carries in a refusal. */
 export const SET_CAPTURE_CONFIG_ACTION = 'setCaptureConfig';
@@ -233,8 +233,11 @@ export function setCaptureConfigTransition(state: SimState, now: EpochMs, change
     if (!isVideoSlot(trackId)) throw invalid('the selector has no such video track');
     if (profile !== undefined && !PROFILE_CODE.test(profile)) throw invalid('a media profile is a code');
     const slot = cameras.find((entry) => entry.trackId === trackId);
+    // Task 4 row V7c (decision C126 (b)): the line states its camera's stream as the registry entry
+    // does - NULL (not read) for a registered camera no session reads; an assignment reads nothing,
+    // so it never says LIVE of its own (until this row: `LIVE` from `online` for such a camera).
     if (slot === undefined) {
-      const streamState = device.streamState ?? (device.online ? CaptureStreamState.LIVE : CaptureStreamState.LOST);
+      const streamState = device.streamState;
       cameras = inTrackOrder([...cameras, { trackId, deviceId: device.id, profile: profile ?? CAPTURE_CONFIG_EMPTY_SLOT_PROFILE, online: device.online, streamState }]);
       rows.push({ operationId, scope: 'CAMERA', field: 'SOURCE', trackId, deviceId: device.id, to: device.id, permission });
       return;
@@ -242,7 +245,7 @@ export function setCaptureConfigTransition(state: SimState, now: EpochMs, change
     const nextProfile = profile ?? slot.profile;
     if (slot.deviceId === device.id && slot.profile === nextProfile) return;
     cameras = cameras.map((entry) =>
-      entry === slot ? { ...entry, deviceId: device.id, profile: nextProfile, online: device.online, streamState: device.streamState ?? entry.streamState } : entry,
+      entry === slot ? { ...entry, deviceId: device.id, profile: nextProfile, online: device.online, streamState: device.streamState } : entry,
     );
     rows.push({ operationId, scope: 'CAMERA', field: 'SOURCE', trackId, deviceId: device.id, from: slot.deviceId, to: device.id, permission });
   };

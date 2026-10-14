@@ -60,15 +60,23 @@ case "$HW_MODE" in
       hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_SYNC_LEVEL deviceId syncLevel
       hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_SYNC_LEVEL_NOT_FULL deviceId syncLevel
       hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" EVIDENCE_VOLUME_SYNC_NOT_FULL syncLevel critical
-      hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" STREAM_PROFILE_DIFFERS EVIDENCE_VOLUME_SYNC_NOT_FULL CAPTURE_FAULT CAMERA_CLOCK_OFFSET SESSION_SEALED UNSEALABLE
-      confirm 'the codes by which the Core logs the seal of a session and its notices; the list of notices with "critical" is read by OPER from the verification report where the log does not hold it'
+      # NAMES (wave 12, row C1; each checked against the product source on 2026-10-14): the seal of a
+      # session is the Core's line SEALING_COMPLETE (sessionId, evidenceId, attempt, interrupted), a
+      # session that cannot be sealed SEALING_SESSION_UNSEALABLE (sealing-host/index.ts); a camera
+      # counts as open with CAPTURE_CAMERA_INGEST_PAIRED (capture-session/index.ts). Removed, the
+      # product never emitted them as log codes: SESSION_SEALED and the bare word UNSEALABLE.
+      hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" SEALING_COMPLETE attempt interrupted
+      hw_fields 'Core log' "${HW_CORE_LOG:-<core-log>}" CAPTURE_CAMERA_INGEST_PAIRED deviceId attempt
+      hw_count 'Core log' "${HW_CORE_LOG:-<core-log>}" STREAM_PROFILE_DIFFERS EVIDENCE_VOLUME_SYNC_NOT_FULL CAPTURE_FAULT CAPTURE_CAMERA_CLOCK_OFFSET SEALING_COMPLETE SEALING_SESSION_UNSEALABLE CAPTURE_WORKER_DOWN CAPTURE_RELAY_REPORT_SUPERSEDED
+      confirm 'that a session of real sources writes these lines (seen on doubles only); the list of notices with "critical" is read by OPER from the verification report where the log does not hold it'
     fi
     if hw_log_needed --worker-log "$HW_WORKER_LOG"; then
       hw_fields 'worker log' "${HW_WORKER_LOG:-<worker-log>}" camera_summary cam video_packets audio_packets fragments durable_fragments bytes sync
       hw_fields 'worker log' "${HW_WORKER_LOG:-<worker-log>}" worker_exit rc
     fi
     if [ -n "$HW_AUDIT" ] || [ "$HW_DRY" = 1 ]; then
-      hw_count_part 'audit list' "${HW_AUDIT:-<audit>}" CREDENTIAL_REVEAL
+      # The exact type: a substring search for CREDENTIAL_REVEAL would also count a failed reveal.
+      hw_count 'audit list' "${HW_AUDIT:-<audit>}" CAPTURE_CREDENTIAL_REVEALED
     fi
     user_step 'sudo ls -l <data-dir>/media/sessions/<the folder of S1>     (the tracks of the package with their sizes; names and sizes only, into the file for --sudo-reads)'
     hw_handed 'the tracks of the package with their sizes' "$HW_SUDO_READS" 'pass the file with --sudo-reads'

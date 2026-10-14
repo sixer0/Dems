@@ -8,6 +8,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   AUDIO_FLOOR_DBFS,
+  CAMERA_STREAM_FAULT_REASONS,
+  cameraStreamFaultActive,
+  clearCaptureFaultsTransition,
   CAPTURE_LEVEL_HOLD_MS,
   SimNotFoundError,
   applyCaptureTelemetryTransition,
@@ -24,6 +27,7 @@ import {
   OPERATORS,
   CAPTURE_ADVISORY_DEVICE_KIND,
   CAPTURE_ADVISORY_REASONS,
+  CAPTURE_ADVISORY_SEVERITY,
   CAPTURE_REASON_SEVERITY,
   CaptureNoticeReason,
   cameraClockOffsetSentence,
@@ -453,14 +457,24 @@ describe('the advisory notices', () => {
         ['FRAGMENT_SIZE_BOUND_REACHED', 'CAM-01', 'CAMERA'],
         // Tidy pass F-Y (ruling D179): the fifth. Raised here WITHOUT its number: the alert then holds none (the CAMERA_CLOCK_OFFSET block below has the number).
         ['CAMERA_CLOCK_OFFSET', 'CAM-01', 'CAMERA'],
+        // Task 4 row N2: the five of a microphone path that is not sample-continuous (5 -> 10). Raised here WITHOUT their numbers: the alert
+        // then holds none. Three of them carry the level WARNING and are advice all the same (the block below has the numbers).
+        // (On MIC-02, so that the count of the three conditions of MIC-01 below stays what it was.)
+        ['MIC_PATH_NOT_SAMPLE_CONTINUOUS', 'MIC-02', 'MIC'],
+        ['MIC_SAMPLES_SHORT_ABOVE_BOUND', 'MIC-02', 'MIC'],
+        ['MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', 'MIC-02', 'MIC'],
+        ['MIC_SILENCE_RUN_INSERTED', 'MIC-02', 'MIC'],
+        ['STANDBY_ON_PRIMARY_DEVICE', 'MIC-02', 'MIC'],
       ] as const;
       expect(cases.map(([code]) => code).sort()).toEqual(Object.values(CaptureAdvisoryReason).sort());
       for (const [code, subject] of cases) h.sim.actions.raiseCaptureWarning({ code, subject });
       const raised = h.state();
       const alerts = raised.alerts.filter((alert) => alert.active && alert.kind === 'SYSTEM' && !before.alerts.includes(alert));
       expect(alerts.map((alert) => [alert.severity, alert.target, alert.params])).toEqual(
-        cases.map(([code, subject, deviceKind]) => ['INFO', subject, { reason: code, deviceId: subject, deviceKind, sessionId: before.session?.id }]),
+        cases.map(([code, subject, deviceKind]) => [CAPTURE_ADVISORY_SEVERITY[code], subject, { reason: code, deviceId: subject, deviceKind, sessionId: before.session?.id }]),
       );
+      // The level: information for seven, WARNING for the three of a microphone that loses more audio than it should (row N2); the five earlier ones did not move.
+      expect(cases.map(([code]) => CAPTURE_ADVISORY_SEVERITY[code])).toEqual(['INFO', 'INFO', 'INFO', 'INFO', 'INFO', 'INFO', 'WARNING', 'WARNING', 'WARNING', 'INFO']);
       expect(REPLICATED_SLICE_SCHEMAS.alerts.safeParse(raised.alerts).success).toBe(true);
       // Advice only: nothing else of the state moved.
       expect(raised.faults).toBe(before.faults);
@@ -561,6 +575,71 @@ describe('the advisory notices that carry a number or a state', () => {
     });
   });
 
+  // Task 4 row N2 (design 06 revision 3, section 8.3; decisions U25 (3), C110 (2); SM-32): the notices of a microphone whose capture
+  // path is not sample-continuous. The Core's capture side raises them from the worker's own counts; the simulator raises none.
+  describe('the notices of a microphone path that is not sample-continuous', () => {
+    it('each raise is ONE SYSTEM alert on the microphone with the sentence of the wording table and its whole numbers in the text and params: three are a WARNING, two information; no fault, no audit row; a second raise writes nothing; the clear resolves it', () => {
+      // MUTATION THIS CASE WAS SEEN RED ON: the raise of the five taking the severity 'INFO' for all (the level of before).
+      const h = recording();
+      const before = h.state();
+      const session = before.session?.id;
+      h.sim.actions.raiseCaptureWarning({ code: 'MIC_PATH_NOT_SAMPLE_CONTINUOUS', subject: 'MIC-01' });
+      h.sim.actions.raiseCaptureWarning({ code: 'MIC_SAMPLES_SHORT_ABOVE_BOUND', subject: 'MIC-01', shortfallPer100k: 13_250 });
+      h.sim.actions.raiseCaptureWarning({ code: 'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', subject: 'MIC-01', shortfallPer100k: 11_400, referencePer100k: 9_671 });
+      h.sim.actions.raiseCaptureWarning({ code: 'MIC_SILENCE_RUN_INSERTED', subject: 'MIC-01', runMs: 2_772 });
+      h.sim.actions.raiseCaptureWarning({ code: 'STANDBY_ON_PRIMARY_DEVICE', subject: 'MIC-02' });
+      const raised = h.state();
+      const alerts = raised.alerts.filter((alert) => alert.active && alert.kind === 'SYSTEM' && !before.alerts.includes(alert));
+      const base = (reason: string, deviceId: string) => ({ reason, deviceId, deviceKind: 'MIC', sessionId: session });
+      expect(alerts.map((alert) => [alert.severity, alert.target, alert.message, alert.params])).toEqual([
+        ['INFO', 'MIC-01', captureFaultSentence('MIC_PATH_NOT_SAMPLE_CONTINUOUS', 'MIC-01'), base('MIC_PATH_NOT_SAMPLE_CONTINUOUS', 'MIC-01')],
+        ['WARNING', 'MIC-01', 'The microphone is losing more audio than this path may: 13.2% of the last 10 seconds was inserted silence (bound 12.0%).', { ...base('MIC_SAMPLES_SHORT_ABOVE_BOUND', 'MIC-01'), shortfallPer100k: 13_250 }],
+        [
+          'WARNING',
+          'MIC-01',
+          "The microphone is losing more audio than at the start of this session: 11.4% of the last 10 seconds was inserted silence (this session's level: 9.6%).",
+          { ...base('MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', 'MIC-01'), shortfallPer100k: 11_400, referencePer100k: 9_671 },
+        ],
+        ['WARNING', 'MIC-01', 'Silence of 2772 ms was inserted into the recording in one piece: no audio arrived from the microphone in that time.', { ...base('MIC_SILENCE_RUN_INSERTED', 'MIC-01'), runMs: 2_772 }],
+        ['INFO', 'MIC-02', "The standby microphone is another channel of the primary's device and is recorded by the same capture program. It guards a microphone and its cable, nothing else.", base('STANDBY_ON_PRIMARY_DEVICE', 'MIC-02')],
+      ]);
+      // The standing notice says the fixed sentence whole.
+      expect(alerts[0]?.message).toContain('Sound that did not arrive is not in the recording. Silence of the same total length was inserted by the recorder; its places are not the places of the missing sound.');
+      expect(REPLICATED_SLICE_SCHEMAS.alerts.safeParse(raised.alerts).success).toBe(true);
+      // Advice, also at the level WARNING: no fault, no audit row, no device state, the session records on.
+      expect(raised.faults).toBe(before.faults);
+      expect(raised.audit.rows).toHaveLength(before.audit.rows.length);
+      expect(raised.captureDevices).toBe(before.captureDevices);
+      expect(raised.session?.state).toBe('RECORDING');
+      h.sim.actions.raiseCaptureWarning({ code: 'MIC_SAMPLES_SHORT_ABOVE_BOUND', subject: 'MIC-01', shortfallPer100k: 20_000 });
+      expect(h.state().alerts).toBe(raised.alerts);
+      h.sim.actions.clearCaptureWarning({ code: 'MIC_SAMPLES_SHORT_ABOVE_BOUND', subject: 'MIC-01' });
+      expect(activeCaptureNotice(h.state(), 'MIC_SAMPLES_SHORT_ABOVE_BOUND', 'MIC-01')).toBeUndefined();
+      expect(activeCaptureNotice(h.state(), 'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', 'MIC-01')).toBeDefined();
+      expect(activeCaptureNotice(h.state(), 'MIC_PATH_NOT_SAMPLE_CONTINUOUS', 'MIC-01')).toBeDefined();
+    });
+
+    it('CONTROL: a number belongs to its own notice alone and is a whole number inside its bounds or is neither shown nor stored; a camera is no microphone', () => {
+      const h = recording();
+      const alertOf = (reason: string) => h.state().alerts.find((alert) => alert.active && alert.params?.['reason'] === reason);
+      h.sim.actions.raiseCaptureWarning({ code: 'MIC_PATH_NOT_SAMPLE_CONTINUOUS', subject: 'MIC-01', shortfallPer100k: 13_250, runMs: 500 });
+      expect(Object.keys(alertOf('MIC_PATH_NOT_SAMPLE_CONTINUOUS')?.params ?? {}).sort()).toEqual(['deviceId', 'deviceKind', 'reason', 'sessionId']);
+      h.sim.actions.raiseCaptureWarning({ code: 'MIC_SAMPLES_SHORT_ABOVE_BOUND', subject: 'MIC-01', shortfallPer100k: 100_001, runMs: 500, referencePer100k: 9_000 });
+      expect(Object.keys(alertOf('MIC_SAMPLES_SHORT_ABOVE_BOUND')?.params ?? {}).sort()).toEqual(['deviceId', 'deviceKind', 'reason', 'sessionId']);
+      expect(alertOf('MIC_SAMPLES_SHORT_ABOVE_BOUND')?.message).toBe('The microphone is losing more audio than this path may (bound 12.0% of 10 seconds as inserted silence).');
+      h.sim.actions.raiseCaptureWarning({ code: 'MIC_SILENCE_RUN_INSERTED', subject: 'MIC-01', runMs: Number.NaN });
+      expect(alertOf('MIC_SILENCE_RUN_INSERTED')?.params).not.toHaveProperty('runMs');
+      expect(alertOf('MIC_SILENCE_RUN_INSERTED')?.message).not.toMatch(/NaN|\{\{/);
+      // The rate notice of before is what it was: INFO, its own short text, no number.
+      h.sim.actions.raiseCaptureWarning({ code: 'MIC_RATE_AT_LIMIT', subject: 'MIC-01', shortfallPer100k: 13_250 });
+      expect([alertOf('MIC_RATE_AT_LIMIT')?.severity, alertOf('MIC_RATE_AT_LIMIT')?.message]).toEqual(['INFO', 'MIC-01: rate correction is at its limit']);
+      expect(alertOf('MIC_RATE_AT_LIMIT')?.params).not.toHaveProperty('shortfallPer100k');
+      for (const code of ['MIC_PATH_NOT_SAMPLE_CONTINUOUS', 'MIC_SAMPLES_SHORT_ABOVE_BOUND', 'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', 'MIC_SILENCE_RUN_INSERTED', 'STANDBY_ON_PRIMARY_DEVICE'] as const) {
+        expect(() => h.sim.actions.raiseCaptureWarning({ code, subject: 'CAM-01' }), code).toThrow();
+      }
+    });
+  });
+
   // Controller decision D189 (fix F-M7c could not build a boot probe of the sync level: the worker's
   // `FIRST_DURABLE_FRAGMENT.syncLevel` is the only truthful source). A session whose first durable
   // fragment was NOT synced through the drive cache is told: ONE alert on the session, CRITICAL where
@@ -593,5 +672,213 @@ describe('the advisory notices that carry a number or a state', () => {
       h.sim.actions.clearCaptureWarning({ code: 'EVIDENCE_VOLUME_SYNC_NOT_FULL', subject: null });
       expect(h.state().alerts.filter((alert) => alert.active && alert.params?.['reason'] === 'EVIDENCE_VOLUME_SYNC_NOT_FULL')).toEqual([]);
     });
+  });
+});
+
+// Task 4 row V7 (finding E-01 of review 60e, Q-01 / Q-05 of 60d; decisions C113, C115): the fault of a camera's STREAM
+// FAMILY sets LOST on that camera's registry entry and selector line and restores LIVE when it clears.
+// MUTATIONS SEEN RED: (1) `cameraStreamStateAfterFaults` returning `after` unchanged (the raise and the clear cases);
+// (2) `applyCaptureTelemetryTransition` without the `cameraStreamFaultActive` guard (the telemetry case);
+// (3) the restore ignoring `online` (the not-online case).
+describe('row V7: a camera whose stream is lost says LOST (finding E-01)', () => {
+  const ENDED = { code: 'CAPTURE_FAULT', subject: 'CAM-02', reason: 'CAMERA_STREAM_ENDED' } as const;
+  const streamsOf = (state: SimState, deviceId = 'CAM-02') => ({
+    entry: state.captureDevices.devices.find((device) => device.id === deviceId)?.streamState,
+    line: state.captureConfig.cameras.find((camera) => camera.deviceId === deviceId)?.streamState,
+    online: state.captureDevices.devices.find((device) => device.id === deviceId)?.online,
+  });
+  const LIVE = { entry: 'LIVE', line: 'LIVE', online: true };
+  const LOST = { entry: 'LOST', line: 'LOST', online: true };
+
+  it('the raise sets LOST on the entry and the line of THAT camera in the unit of the fault; `online` and every other device are untouched; the clear restores LIVE', () => {
+    const h = harness();
+    const before = h.state();
+    expect(streamsOf(before)).toEqual(LIVE);
+    const sets = h.sets();
+    h.sim.actions.raiseCaptureWarning(ENDED);
+    // ONE commit: the revision that carries the alert carries the lines.
+    expect(h.sets()).toBe(sets + 1);
+    const raised = h.state();
+    expect(streamsOf(raised)).toEqual(LOST);
+    expect(streamsOf(raised, 'CAM-01')).toEqual(LIVE);
+    expect(raised.captureDevices.devices.filter((device) => device.id !== 'CAM-02')).toEqual(before.captureDevices.devices.filter((device) => device.id !== 'CAM-02'));
+    expect(raised.captureConfig.updatedAt).toBe(before.captureConfig.updatedAt);
+    expect(raised.alerts.filter((alert) => alert.active && alert.kind === 'CAPTURE_FAULT')).toMatchObject([{ target: 'CAM-02', params: { reason: 'CAMERA_STREAM_ENDED' } }]);
+    expect(REPLICATED_SLICE_SCHEMAS.captureDevices.safeParse(raised.captureDevices).success).toBe(true);
+    // The status every client reads for the track (operation 44's member) says it too.
+    expect(cameraStreamFaultActive(raised, 'CAM-02')).toBe(true);
+    h.sim.actions.clearCaptureWarning(ENDED);
+    expect(streamsOf(h.state())).toEqual(LIVE);
+    expect(cameraStreamFaultActive(h.state(), 'CAM-02')).toBe(false);
+  });
+
+  it('telemetry does not say LIVE over the active fault (the relay\'s ingest stays CONNECTED while it re-opens its camera); after the clear it does', () => {
+    const h = harness();
+    h.sim.actions.raiseCaptureWarning(ENDED);
+    const raised = h.state();
+    h.sim.actions.applyCaptureTelemetry(frame({ ingest: [{ deviceId: 'CAM-02', state: 'CONNECTED' }, { deviceId: 'CAM-01', state: 'CONNECTED' }] }));
+    expect(streamsOf(h.state())).toEqual(LOST);
+    expect(h.state().captureDevices).toBe(raised.captureDevices);
+    // A WAITING ingest is its own statement: not online, LOST - and the clear of the fault does not say LIVE for a device that is not online.
+    h.sim.actions.applyCaptureTelemetry(frame({ ingest: [{ deviceId: 'CAM-02', state: 'WAITING' }] }));
+    h.sim.actions.clearCaptureWarning(ENDED);
+    expect(streamsOf(h.state())).toEqual({ entry: 'LOST', line: 'LOST', online: false });
+    // Telemetry is what says it is back.
+    h.sim.actions.applyCaptureTelemetry(frame({ ingest: [{ deviceId: 'CAM-02', state: 'CONNECTED' }] }));
+    expect(streamsOf(h.state())).toEqual(LIVE);
+  });
+
+  it('two causes on one camera: LOST until the LAST of the family is cleared; clearing every capture fault restores LIVE', () => {
+    const h = harness();
+    h.sim.actions.raiseCaptureWarning(ENDED);
+    // (The input type names no `reason`: it rides the raise, pass D6 item 14 - hence the cast of a literal.)
+    const NO_PICTURE = { ...ENDED, reason: 'CAMERA_NO_PICTURE' } as never;
+    h.sim.actions.raiseCaptureWarning(NO_PICTURE);
+    h.sim.actions.clearCaptureWarning(ENDED);
+    expect(streamsOf(h.state())).toEqual(LOST);
+    h.sim.actions.clearCaptureWarning(NO_PICTURE);
+    expect(streamsOf(h.state())).toEqual(LIVE);
+    h.sim.actions.raiseCaptureWarning({ ...ENDED, reason: 'CAMERA_NOT_CONNECTED' } as never);
+    expect(streamsOf(h.state())).toEqual(LOST);
+    expect(streamsOf(clearCaptureFaultsTransition(h.state(), START + 1))).toEqual(LIVE);
+  });
+
+  it('CONTROL - what is NOT of the family moves no line: a capture fault without a reason (the simulator\'s own), an integrity refusal, a clock reason, a microphone, the capture as a whole', () => {
+    expect([...CAMERA_STREAM_FAULT_REASONS]).toEqual(['CAMERA_STREAM_ENDED', 'CAMERA_NOT_CONNECTED', 'CAMERA_NO_PICTURE']);
+    for (const warning of [
+      { code: 'CAPTURE_FAULT', subject: 'CAM-02' },
+      { code: 'CAPTURE_FAULT', subject: 'CAM-02', reason: 'CAMERA_ANNOUNCE_NOT_MATCHED' },
+      { code: 'CAPTURE_FAULT', subject: 'CAM-02', reason: 'CAMERA_ANNOUNCE_NOT_SEEN' },
+      { code: 'CAPTURE_FAULT', subject: 'CAM-02', reason: 'CAMERA_CLOCK_OUT_OF_BOUND' },
+      { code: 'CAPTURE_FAULT', subject: 'MIC-01', reason: 'MIC_DISCONNECTED' },
+      { code: 'CAPTURE_FAULT', subject: 'MIC-01', reason: 'CAMERA_STREAM_ENDED' },
+      { code: 'MIC_SILENT', subject: 'MIC-01' },
+      { code: 'CAPTURE_FAULT', subject: null, reason: 'CAMERA_STREAM_ENDED' },
+    ] as const) {
+      const h = harness();
+      const before = h.state();
+      h.sim.actions.raiseCaptureWarning(warning as never);
+      expect(h.state().faults, JSON.stringify(warning)).not.toBe(before.faults);
+      expect([h.state().captureDevices, h.state().captureConfig], JSON.stringify(warning)).toEqual([before.captureDevices, before.captureConfig]);
+      h.sim.actions.clearCaptureWarning(warning as never);
+      expect([h.state().captureDevices, h.state().captureConfig], JSON.stringify(warning)).toEqual([before.captureDevices, before.captureConfig]);
+    }
+  });
+
+  // THE CONSEQUENCE, STATED (decision C115; task-3 rule OD-22): LOST is the condition of a camera's PoE power cycle.
+  // WHAT THIS CASE SHOWS OF THE ENGINE AS IT IS: the action behind operation 48 (`deviceCommand(id, RESTART)`) is
+  // ACCEPTED for a camera that lost its stream when no recording runs, and REFUSED while one runs (RECORDING_ACTIVE).
+  // AND THE CONTROL: it is accepted for a camera whose stream is LIVE as well - the engine does not ask for LOST;
+  // the refusal `CAMERA_NOT_LOST` of the contract is written by no transition of this package (see the record of row V7).
+  it('PoE (OD-22): a real camera that lost its stream reads LOST, and the restart behind operation 48 is accepted for it outside a recording and refused inside one', () => {
+    const technician = OPERATORS.find((candidate) => candidate.role === 'TECHNICIAN');
+    if (technician === undefined) throw new Error('no seeded TECHNICIAN');
+    const idle = harness('idle');
+    expect(idle.sim.actions.signIn(technician.username, DEMO_OPERATOR_PASSWORD)).toMatchObject({ ok: true });
+    idle.sim.actions.raiseCaptureWarning(ENDED);
+    expect(streamsOf(idle.state())).toEqual(LOST);
+    const rowsBefore = idle.state().audit.total;
+    expect(() => idle.sim.actions.deviceCommand('CAM-02', 'RESTART')).not.toThrow();
+    expect(idle.state().audit.total).toBe(rowsBefore + 1);
+    expect(idle.state().audit.rows.at(-1)).toMatchObject({ type: 'DEVICE_COMMAND', deviceId: 'CAM-02', details: { command: 'RESTART' } });
+    // The restart is no statement about the stream: the camera stays LOST until its fault clears.
+    expect(streamsOf(idle.state())).toEqual(LOST);
+    // CONTROL: the engine accepts the same command for the camera whose stream is LIVE.
+    expect(streamsOf(idle.state(), 'CAM-01')).toEqual(LIVE);
+    expect(() => idle.sim.actions.deviceCommand('CAM-01', 'RESTART')).not.toThrow();
+
+    const recording = harness('recording');
+    expect(recording.sim.actions.signIn(technician.username, DEMO_OPERATOR_PASSWORD)).toMatchObject({ ok: true });
+    recording.sim.actions.raiseCaptureWarning(ENDED);
+    expect(streamsOf(recording.state())).toEqual(LOST);
+    expect(() => recording.sim.actions.deviceCommand('CAM-02', 'RESTART')).toThrow(/restart is unavailable while recording/);
+  });
+});
+
+// Task 4 row V7c (decision C126 (b); request line 523): an IDLE camera is NOT READ. The selector line's member is nullable as the
+// registry entry's is; a REGISTERED camera (an entry with an `adapter`) states null at rest and LIVE only while a stream is read
+// (telemetry CONNECTED of an open session's ingest). The two built-in cameras of the demonstration model keep the model's value
+// (every case above passes unedited). Mutations each seen RED are listed in implementation/v7c_idle_state_and_reason.md.
+describe('row V7c: a registered camera no session reads is NOT READ (null), never LIVE at rest', () => {
+  const CAM = 'CAM-07';
+  const REGISTERED = { id: CAM, kind: 'CAMERA', model: null, firmware: null, host: '192.0.2.17', poePort: null, online: true, streamState: null, capabilities: ['VIDEO'], adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', profiles: [] } as const;
+  const FAULT = { code: 'CAPTURE_FAULT', subject: CAM, reason: 'CAMERA_STREAM_ENDED' } as const;
+  /** The camera registered and on VIDEO-02, both stating null: what an assignment of it at rest leaves (case 1). */
+  const seeded = (scenario: ScenarioName) => {
+    const h = harness(scenario);
+    const state = h.state();
+    h.sim.store.setState({
+      captureDevices: { ...state.captureDevices, devices: [...state.captureDevices.devices, { ...REGISTERED, capabilities: ['VIDEO'], profiles: [] }] },
+      captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-02' ? { ...line, deviceId: CAM, online: true, streamState: null } : line)) },
+    });
+    return h;
+  };
+  const of = (state: SimState, deviceId = CAM) => ({
+    entry: state.captureDevices.devices.find((device) => device.id === deviceId)?.streamState,
+    line: state.captureConfig.cameras.find((camera) => camera.deviceId === deviceId)?.streamState,
+    online: state.captureDevices.devices.find((device) => device.id === deviceId)?.online,
+  });
+  const NOT_READ = { entry: null, line: null, online: true };
+  const LIVE = { entry: 'LIVE', line: 'LIVE', online: true };
+  const LOST = { entry: 'LOST', line: 'LOST', online: true };
+
+  it('the contract: the selector line\'s `streamState` admits null (NOT READ) beside LIVE and LOST, as the registry entry\'s does; no third word', () => {
+    const line = { trackId: 'VIDEO-01', deviceId: CAM, profile: 'H264_1080P25', online: true };
+    expect(REPLICATED_SLICE_SCHEMAS.captureConfig.shape.cameras.element.safeParse({ ...line, streamState: null }).success).toBe(true);
+    expect(REPLICATED_SLICE_SCHEMAS.captureConfig.shape.cameras.element.safeParse({ ...line, streamState: 'LIVE' }).success).toBe(true);
+    expect(REPLICATED_SLICE_SCHEMAS.captureConfig.shape.cameras.element.safeParse({ ...line, streamState: 'NOT_READ' }).success).toBe(false);
+  });
+
+  it('an assignment reads nothing: a registered camera put on a slot at rest states null on its line, as its entry does; CONTROL: a built-in camera keeps the model\'s LIVE', () => {
+    const h = harness('idle');
+    h.sim.actions.registerCaptureDevice({ id: CAM, model: null, host: '192.0.2.17', adapter: 'ONVIF_RTSP' });
+    expect(h.sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD)).toMatchObject({ ok: true });
+    // A held slot (VIDEO-02 holds CAM-02) ...
+    h.sim.actions.setCaptureConfig({ kind: 'CAMERA_SOURCE', deviceId: CAM, trackId: 'VIDEO-02' });
+    expect(of(h.state())).toEqual(NOT_READ);
+    // ... and an empty slot (VIDEO-02 cleared first, then filled by operation 78's form).
+    h.sim.actions.setCaptureConfig({ kind: 'UPDATE', unassign: ['VIDEO-02'] });
+    expect(h.state().captureConfig.cameras.map((line) => line.trackId)).toEqual(['VIDEO-01']);
+    h.sim.actions.setCaptureConfig({ kind: 'UPDATE', cameras: [{ trackId: 'VIDEO-02', deviceId: CAM }] });
+    expect(of(h.state())).toEqual(NOT_READ);
+    // CONTROL: the built-in CAM-02 put back on the same slot carries the demonstration model's value.
+    h.sim.actions.setCaptureConfig({ kind: 'CAMERA_SOURCE', deviceId: 'CAM-02', trackId: 'VIDEO-02' });
+    expect(h.state().captureConfig.cameras.find((line) => line.trackId === 'VIDEO-02')).toMatchObject({ deviceId: 'CAM-02', streamState: 'LIVE' });
+  });
+
+  it('LIVE only while read: CONNECTED says LIVE; the ingest closing after the stop says NOT READ again (`online` stays); ENDED under a recording is a loss; CONTROL: a built-in camera keeps LIVE', () => {
+    const idle = seeded('idle');
+    idle.sim.actions.applyCaptureTelemetry(frame({ ingest: [{ deviceId: CAM, state: 'CONNECTED' }, { deviceId: 'CAM-01', state: 'CONNECTED' }] }));
+    expect(of(idle.state())).toEqual(LIVE);
+    idle.sim.actions.applyCaptureTelemetry(frame({ ingest: [{ deviceId: CAM, state: 'ENDED' }, { deviceId: 'CAM-01', state: 'ENDED' }] }));
+    expect(of(idle.state())).toEqual(NOT_READ);
+    expect(of(idle.state(), 'CAM-01')).toEqual(LIVE);
+    // A second ENDED changes nothing: the same state object.
+    const settled = idle.state();
+    expect(applyCaptureTelemetryTransition(settled, frame({ ingest: [{ deviceId: CAM, state: 'ENDED' }] }))).toBe(settled);
+
+    const recording = seeded('recording');
+    recording.sim.actions.applyCaptureTelemetry(frame({ ingest: [{ deviceId: CAM, state: 'CONNECTED' }] }));
+    expect(of(recording.state())).toEqual(LIVE);
+    recording.sim.actions.applyCaptureTelemetry(frame({ ingest: [{ deviceId: CAM, state: 'ENDED' }] }));
+    expect(of(recording.state())).toEqual({ entry: 'LOST', line: 'LOST', online: false });
+  });
+
+  it('a stream fault: LOST at the raise; the last clear says LIVE only while the session records, NOT READ otherwise; a closing ingest does not hide an active fault', () => {
+    const recording = seeded('recording');
+    recording.sim.actions.applyCaptureTelemetry(frame({ ingest: [{ deviceId: CAM, state: 'CONNECTED' }] }));
+    recording.sim.actions.raiseCaptureWarning(FAULT);
+    expect(of(recording.state())).toEqual(LOST);
+    recording.sim.actions.clearCaptureWarning(FAULT);
+    expect(of(recording.state())).toEqual(LIVE);
+
+    const idle = seeded('idle');
+    idle.sim.actions.raiseCaptureWarning(FAULT);
+    expect(of(idle.state())).toEqual(LOST);
+    // The ingest closes while the fault is active: still LOST (the fault is the statement).
+    idle.sim.actions.applyCaptureTelemetry(frame({ ingest: [{ deviceId: CAM, state: 'ENDED' }] }));
+    expect(of(idle.state())).toEqual(LOST);
+    idle.sim.actions.clearCaptureWarning(FAULT);
+    expect(of(idle.state())).toEqual(NOT_READ);
   });
 });

@@ -16,6 +16,7 @@
  */
 import { TrackId, type MicRole, type VideoTrackId } from '@dems/shared/domain';
 import { CaptureDeviceKind, CaptureStreamState, type CaptureConfigSlice, type CaptureDeviceStatus, type CaptureDevicesSlice } from '@dems/shared/sim';
+import { storedProfilesOf } from './camera-profile';
 
 // ── Rows ─────────────────────────────────────────────────────────────────────────────────
 
@@ -156,6 +157,13 @@ export interface CameraOption {
   readonly sourceClass: string | null;
   /** `adapter` as the Core sent it on the device; null when the device carries none. */
   readonly adapter: string | null;
+  /**
+   * Task 4 row W5 (review 060d Q-02; `camera-profile.ts`): the stream profile codes the Core states for this
+   * camera (`storedProfilesOf`), in its order. Present only when the device entry states at least one.
+   */
+  readonly profiles?: readonly string[];
+  /** Row W5: the profile of the selector line this camera feeds (`assignedTo`). Present only with such a line. */
+  readonly lineProfile?: string;
 }
 
 /**
@@ -166,15 +174,22 @@ export interface CameraOption {
 export function cameraOptions(config: Pick<CaptureConfigSlice, 'cameras'>, registry: CaptureDevicesSlice): CameraOption[] {
   return registry.devices
     .filter((device) => device.kind === CaptureDeviceKind.CAMERA)
-    .map((device) => ({
-      deviceId: device.id,
-      model: statedModelOf(device),
-      online: device.online,
-      streamState: device.streamState,
-      assignedTo: config.cameras.find((line) => line.deviceId === device.id)?.trackId ?? null,
-      sourceClass: device.sourceClass ?? null,
-      adapter: device.adapter ?? null,
-    }));
+    .map((device) => {
+      const line = config.cameras.find((candidate) => candidate.deviceId === device.id);
+      const profiles = storedProfilesOf(device);
+      return {
+        deviceId: device.id,
+        model: statedModelOf(device),
+        online: device.online,
+        streamState: device.streamState,
+        assignedTo: line?.trackId ?? null,
+        sourceClass: device.sourceClass ?? null,
+        adapter: device.adapter ?? null,
+        // Row W5: members only where the Core states them, so an option of before reads exactly as before.
+        ...(profiles.length === 0 ? {} : { profiles }),
+        ...(line === undefined ? {} : { lineProfile: line.profile }),
+      };
+    });
 }
 
 /**
@@ -310,7 +325,12 @@ export const SELECTOR_GATED_CONTROLS = ['G1', 'G2', 'G3'] as const;
 // ── Commands and their answers (ops 79, 80) ──────────────────────────────────────────────
 
 export type SelectorCommand =
-  | { readonly kind: 'camera'; readonly trackId: VideoTrackId; readonly deviceId: string }
+  /**
+   * Operation 79. With `profile` (task 4 row W5, review 060d Q-02; `camera-profile.ts`): ONE camera line of
+   * operation 78 that names the chosen stream profile - operation 79's body has no profile member, and a
+   * production camera is assigned with one of its own.
+   */
+  | { readonly kind: 'camera'; readonly trackId: VideoTrackId; readonly deviceId: string; readonly profile?: string }
   | { readonly kind: 'primaryMic'; readonly inputId: string }
   /** Operation 78, pair replacement (D133 (1); fix wave H, G70-02): the two microphones of the selector, by role. */
   | { readonly kind: 'micPair'; readonly primaryId: string; readonly standbyId: string }
@@ -395,7 +415,10 @@ export function isAwaitingRepublish(answeredUpdatedAt: number | null, storeUpdat
 
 /** True when the command would change nothing: the control does not send it. */
 export function isNoChange(command: SelectorCommand, config: Pick<CaptureConfigSlice, 'cameras' | 'mics'>): boolean {
-  if (command.kind === 'camera') return config.cameras.some((line) => line.trackId === command.trackId && line.deviceId === command.deviceId);
+  // Row W5: the same camera with ANOTHER of its profiles is a change; a command that names no profile is judged as before.
+  if (command.kind === 'camera') {
+    return config.cameras.some((line) => line.trackId === command.trackId && line.deviceId === command.deviceId && (command.profile === undefined || command.profile === line.profile));
+  }
   if (command.kind === 'micPair') {
     return (
       config.mics.some((line) => line.inputId === command.primaryId && line.role === 'PRIMARY') &&

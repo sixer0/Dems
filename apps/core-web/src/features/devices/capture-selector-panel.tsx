@@ -26,6 +26,7 @@ import {
   type SelectorEditBlock,
   type SelectorFailure,
 } from './capture-selector'
+import { cameraAssignmentOf, profileWords, storedProfilesOf } from './camera-profile'
 import { SearchCamerasButton } from './camera-search-context'
 import { DevicesPanel } from './panel'
 import { reportDevicesError } from './report'
@@ -164,12 +165,44 @@ function CameraSourceRow({
   const current = line === null ? undefined : cameras.find((device) => device.id === line.deviceId)
   const name = current ? deviceText(current) : (line?.deviceId ?? '')
   const reason = reasonOf(block)
-  const dirty = selected !== held
+  // Task 4 row W5 (review 060d Q-02; decision C36; `camera-profile.ts`): a PRODUCTION camera on a Core in real
+  // capture is assigned with one of its STORED stream profiles - offered with what each is, chosen by the
+  // operator, sent with the assignment. Any other camera (`PLAIN`) is assigned exactly as before.
+  const realCaptureCore = useRealCaptureCore()
+  const chosenDevice = selected === NOT_ASSIGNED_KEY ? undefined : cameras.find((device) => device.id === selected)
+  const assignment = cameraAssignmentOf({
+    realCapture: realCaptureCore,
+    device: chosenDevice,
+    profiles: storedProfilesOf(chosenDevice),
+    heldProfile: line !== null && line.deviceId === selected ? line.profile : null,
+  })
+  // The operator's own choice of a profile, for the camera it was made for; another camera starts from its own preselection.
+  const [profileChoice, setProfileChoice] = useState<{ readonly deviceId: string; readonly profile: string } | null>(null)
+  const profile =
+    assignment.kind !== 'CHOOSE'
+      ? null
+      : profileChoice !== null && profileChoice.deviceId === selected && assignment.profiles.includes(profileChoice.profile)
+        ? profileChoice.profile
+        : assignment.preselected
+  // The same camera with another of its profiles is an edit too.
+  const profileDirty = assignment.kind === 'CHOOSE' && line !== null && line.deviceId === selected && profile !== null && profile !== line.profile
+  const dirty = selected !== held || profileDirty
+  // Nothing is sent for a production camera without a chosen profile: the Core would refuse it (C36).
+  const assignable = assignment.kind === 'PLAIN' || selected === NOT_ASSIGNED_KEY || (assignment.kind === 'CHOOSE' && profile !== null)
+  const profileHint =
+    selected === NOT_ASSIGNED_KEY || assignment.kind === 'PLAIN'
+      ? null
+      : assignment.kind === 'NO_PROFILE'
+        ? t('web.cameraProfile.none')
+        : assignment.profiles.length === 1
+          ? t('web.cameraProfile.one')
+          : t('web.cameraProfile.choose', { count: assignment.profiles.length })
   const poeGate = poe(cycle.busy)
 
   const settled = (answer: SelectorAnswer, ok: string) => {
     if (answer.ok) {
       setChoice(null)
+      setProfileChoice(null)
       setMessage(null)
       toast.success(ok)
       return
@@ -178,8 +211,14 @@ function CameraSourceRow({
   }
 
   const onSave = () => {
+    if (!assignable) return
     save.run((release) => {
-      void (selected === NOT_ASSIGNED_KEY ? commands.unassign(trackId) : commands.setCameraSource(selected, trackId))
+      void (selected === NOT_ASSIGNED_KEY
+        ? commands.unassign(trackId)
+        : assignment.kind === 'CHOOSE' && profile !== null
+          ? commands.setCameraSource(selected, trackId, profile)
+          : commands.setCameraSource(selected, trackId)
+      )
         .then((answer) => settled(answer, t('devices.selector.saved')))
         .finally(release)
     })
@@ -266,7 +305,38 @@ function CameraSourceRow({
             </ListBox>
           </Select.Popover>
         </Select>
-        <Button ref={saveRef} size="sm" variant="primary" isDisabled={block !== null || !dirty} isPending={save.pending} onPress={onSave} data-testid={`selector-save-${trackId}`}>
+        {/* Row W5 (Q-02): the stored stream profiles of a production camera, each by what it is. ONE stored profile is
+            preselected and still shown; nothing is offered for a camera the Core holds no profile for (the hint says why). */}
+        {assignment.kind === 'CHOOSE' && selected !== NOT_ASSIGNED_KEY ? (
+          <Select
+            value={profile}
+            onChange={(key) => {
+              if (typeof key === 'string') setProfileChoice({ deviceId: selected, profile: key })
+            }}
+            placeholder={t('web.cameraProfile.placeholder')}
+            isDisabled={block !== null || save.busy}
+            className="dev-sel-select"
+            data-testid={`selector-profile-${trackId}`}
+            data-profile={profile ?? undefined}
+          >
+            <Label>{t('web.cameraProfile.label', { track })}</Label>
+            <Select.Trigger>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {assignment.profiles.map((code) => (
+                  <ListBox.Item key={code} id={code} textValue={profileWords(t, code)}>
+                    {profileWords(t, code)}
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
+          </Select>
+        ) : null}
+        <Button ref={saveRef} size="sm" variant="primary" isDisabled={block !== null || !dirty || !assignable} isPending={save.pending} onPress={onSave} data-testid={`selector-save-${trackId}`}>
           {save.pending ? <Spinner size="sm" color="current" aria-hidden="true" /> : null}
           {line === null ? t('common.captureSlot.assign') : t('devices.selector.save')}
         </Button>
@@ -288,6 +358,11 @@ function CameraSourceRow({
       {reason ? (
         <p className="dev-sel-reason" data-testid={`selector-reason-${trackId}`} data-block={block?.kind}>
           {reason}
+        </p>
+      ) : null}
+      {profileHint ? (
+        <p className="dev-sel-reason" data-testid={`selector-profile-hint-${trackId}`} data-profile-state={assignment.kind}>
+          {profileHint}
         </p>
       ) : null}
       {poeReason ? (

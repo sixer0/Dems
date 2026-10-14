@@ -71,7 +71,14 @@ async function startStub(network: FakeOnvifStubOptions['network'] = { gatewayRea
   return stub;
 }
 
-const setter = (destination: (address: string, port: number) => DestinationDecision = loopbackDestination, limits: Partial<typeof ONVIF_NETWORK_LIMITS> = {}) => createOnvifNetworkSetter({ timers: manualTimers(), destination, limits });
+/**
+ * Finding E-02 of the fifth review pass (S-03 of the second): the judgement of the reported hardware address is REQUIRED.
+ * The cases of this file are about the calls, not about that judgement, so their double STATES one that admits whatever the
+ * device reports - by this name. The judgement itself has its own case below (block "finding E-02").
+ */
+const ADMIT_WHAT_THE_DEVICE_REPORTS = (): boolean => true;
+const setter = (destination: (address: string, port: number) => DestinationDecision = loopbackDestination, limits: Partial<typeof ONVIF_NETWORK_LIMITS> = {}) =>
+  createOnvifNetworkSetter({ timers: manualTimers(), destination, admitHwAddress: ADMIT_WHAT_THE_DEVICE_REPORTS, limits });
 const never = (): AbortSignal => new AbortController().signal;
 const here = (stub: FakeOnvifStub): CameraCandidate => candidateAt(stub.addresses().deviceServiceUrl);
 const run = (stub: FakeOnvifStub, assignment: NewCameraAddress = NEW, account = ACCOUNT): Promise<OnvifNetworkSetResult> => setter().setAddress(here(stub), assignment, sealCredential(account), never());
@@ -131,6 +138,46 @@ describe('the four calls on a well-behaved camera (the stub), through the real p
     const stub = await startStub({ gatewayReadBack: true, rebootDropsConnection: true });
     expect(await run(stub)).toMatchObject({ outcome: 'SET', reason: null, reboot: 'SENT_NO_ANSWER' });
     expect(stub.networkState()).toMatchObject({ address: NEW.address, rebootCount: 1 });
+  });
+});
+
+// Finding E-02 of the fifth review pass (decision C113; S-03 of the second pass; the F-07 family of C46 / C50). Before it the
+// member was optional and its absence sent the set WITHOUT the judgement. SEEN RED on the mutant that puts the old guard
+// back (`if (options.admitHwAddress !== undefined) { ... }` around the judgement): the third part below then answered
+// `SET` and the stub's address had moved.
+describe('finding E-02: the judgement of the reported hardware address is required - no set leaves without it', () => {
+  it('asked ONCE, with what the device reports, between the read and the set; a refusal, a throw, a value that is not `true` and NO FUNCTION AT ALL each end `NOT_SET` / `HW_ADDRESS_REFUSED` with no set request', async () => {
+    const asked: (string | null)[] = [];
+    const admitted = await startStub();
+    const result = await createOnvifNetworkSetter({
+      timers: manualTimers(),
+      destination: loopbackDestination,
+      admitHwAddress: (reported) => {
+        asked.push(reported);
+        // At this instant the device was read and nothing was written.
+        expect(operations(admitted)).toEqual(['GetNetworkInterfaces']);
+        return true;
+      },
+    }).setAddress(here(admitted), NEW, sealCredential(ACCOUNT), never());
+    expect(result).toMatchObject({ outcome: 'SET', hwAddress: HW_ADDRESS });
+    expect(asked).toEqual([HW_ADDRESS]);
+
+    const refusing: [string, unknown][] = [
+      ['a refusal', () => false],
+      ['a throw', () => { throw new Error('the judgement failed'); }],
+      ['a value that is not true', () => 'yes'],
+      // A caller the type did not hold: the member left out, and a value that is no function.
+      ['no function at all', undefined],
+      ['a value that is no function', true],
+    ];
+    for (const [name, admitHwAddress] of refusing) {
+      const stub = await startStub();
+      const options = { timers: manualTimers(), destination: loopbackDestination, ...(admitHwAddress === undefined ? {} : { admitHwAddress }) } as unknown as Parameters<typeof createOnvifNetworkSetter>[0];
+      const refused = await createOnvifNetworkSetter(options).setAddress(here(stub), NEW, sealCredential(ACCOUNT), never());
+      expect(refused, name).toMatchObject({ outcome: 'NOT_SET', reason: 'HW_ADDRESS_REFUSED', hwAddress: HW_ADDRESS, gateway: 'NOT_ASKED', reboot: 'NOT_ASKED', calls: ['GetNetworkInterfaces'] });
+      expect(operations(stub), name).toEqual(['GetNetworkInterfaces']);
+      expect(stub.networkState(), name).toMatchObject({ address: FAKE_ONVIF_NETWORK_DEFAULTS.address, rebootCount: 0 });
+    }
   });
 });
 
@@ -607,7 +654,7 @@ describe('row T3 / T-02: the source bind, the connection limit, the request limi
   it('(b) THE CONNECTION LIMIT: one timer of `connectMs` per connection; a connection that is not established when it fires is destroyed and the call ends `NO_ANSWER` - and nothing else ends it before', async () => {
     const stub = await startStub();
     const timers = firingTimers();
-    const call = createOnvifNetworkSetter({ timers, destination: loopbackDestination, limits: { connectMs: 1_234, requestMs: 60_000 } });
+    const call = createOnvifNetworkSetter({ timers, destination: loopbackDestination, admitHwAddress: ADMIT_WHAT_THE_DEVICE_REPORTS, limits: { connectMs: 1_234, requestMs: 60_000 } });
     const cutting = new AbortController();
     const seen: { outcome: OnvifNetworkSetResult | 'PENDING' } = { outcome: 'PENDING' };
     try {
@@ -639,7 +686,7 @@ describe('row T3 / T-02: the source bind, the connection limit, the request limi
   it('(b) THE CONNECTION LIMIT, the other side: a connection that WAS established has its timer cancelled - one timer per request, each of `connectMs`; a late firing destroys nothing', async () => {
     const stub = await startStub();
     const timers = firingTimers();
-    const result = await createOnvifNetworkSetter({ timers, destination: loopbackDestination, limits: { connectMs: 1_234 } }).setAddress(here(stub), NEW, sealCredential(ACCOUNT), never());
+    const result = await createOnvifNetworkSetter({ timers, destination: loopbackDestination, admitHwAddress: ADMIT_WHAT_THE_DEVICE_REPORTS, limits: { connectMs: 1_234 } }).setAddress(here(stub), NEW, sealCredential(ACCOUNT), never());
     expect(result).toMatchObject({ outcome: 'SET', gateway: 'CONFIRMED', reboot: 'ACCEPTED' });
     expect(timers.asked.length).toBe(deviceRequests(stub).length);
     expect(timers.asked.filter((timer) => timer.delayMs !== 1_234 || !timer.cancelled)).toEqual([]);
@@ -747,5 +794,53 @@ describe('row T3 / T-02: the source bind, the connection limit, the request limi
     } finally {
       methods['digestAuth'] = packageDigest;
     }
+  });
+});
+
+// ── Row S06 (security review 086 caution C-10, finding S-06; decision C127) ─────────────────────────────────────────
+// The source of a set call was held to the dotted form only, so `0.0.0.0`, multicast and broadcast passed as the address a
+// connection is made FROM. It is now held to `isSourceAddress` (the relay's form) and refused when link-local. Every
+// connection the agent's REAL maker is handed is counted (the maker is wrapped on the prototype and put back): a refused
+// source opens NO socket. Shown RED on the mutants named in `implementation/s06_source_address_form.md`.
+describe('row S06 / C-10: the source of a set call is a source address - not the unspecified address, multicast, broadcast or link-local', () => {
+  type Maker = (this: unknown, options: Record<string, unknown>, callback?: unknown) => unknown;
+  const socketsOf = async <T>(run: () => Promise<T>): Promise<{ readonly sources: unknown[]; readonly value: T }> => {
+    const sources: unknown[] = [];
+    const made = Reflect.get(HttpAgent.prototype, 'createConnection') as Maker;
+    expect(typeof made).toBe('function');
+    Reflect.set(HttpAgent.prototype, 'createConnection', function counted(this: unknown, options: Record<string, unknown>, callback?: unknown): unknown {
+      sources.push(options['localAddress']);
+      return made.call(this, options, callback);
+    });
+    try {
+      return { sources, value: await run() };
+    } finally {
+      Reflect.set(HttpAgent.prototype, 'createConnection', made);
+    }
+  };
+  /** A rule that admits the stub and names `source` as the address every connection is made from. */
+  const from = (port: number, source: string) => (_address: string, _port: number): DestinationDecision => ({ allowed: true, destination: { address: FAKE_ONVIF_HOST, port, sourceAddress: source, viaAlias: false } });
+  const portOf = (stub: FakeOnvifStub): number => Number(new URL(stub.addresses().deviceServiceUrl).port);
+
+  it.each(['0.0.0.0', '224.0.0.1', '239.255.255.250', '255.255.255.255', '169.254.10.20'])('a rule that names %s as the source: `DESTINATION_REFUSED` before any request - 0 sockets, 0 requests at the device, nothing written', async (source) => {
+    const stub = await startStub();
+    const held = await socketsOf(() => setter(from(portOf(stub), source)).setAddress(here(stub), NEW, sealCredential(ACCOUNT), never()));
+    expect(held.value).toEqual({ outcome: 'NOT_SET', reason: 'DESTINATION_REFUSED', destinationRefusal: null, hwAddress: null, rebootNeeded: null, gateway: 'NOT_ASKED', reboot: 'NOT_ASKED', calls: [], credentialRequests: 0, rejectedCredentialRequests: 0 });
+    expect(held.sources).toEqual([]);
+    expect(deviceRequests(stub)).toEqual([]);
+    expect(stub.networkState()).toMatchObject({ address: FAKE_ONVIF_NETWORK_DEFAULTS.address, pending: null, rebootCount: 0 });
+  });
+
+  it('an ordinary camera-interface source (the product context\'s 192.168.50.1) is ADMITTED: the call is not refused, and its connection is made from that address; CONTROL: the double\'s own 127.0.0.1 sets the address', async () => {
+    const stub = await startStub();
+    const camera = await socketsOf(() => setter(from(portOf(stub), '192.168.50.1')).setAddress(here(stub), NEW, sealCredential(ACCOUNT), never()));
+    // Whether this host holds 192.168.50.1 decides only whether the dial answers; the form check let it through to a socket.
+    expect(camera.value.reason).not.toBe('DESTINATION_REFUSED');
+    expect(camera.sources.length).toBeGreaterThanOrEqual(1);
+    expect(camera.sources.filter((source) => source !== '192.168.50.1')).toEqual([]);
+    const loopback = await socketsOf(() => setter(from(portOf(stub), FAKE_ONVIF_HOST)).setAddress(here(stub), NEW, sealCredential(ACCOUNT), never()));
+    expect(loopback.value).toMatchObject({ outcome: 'SET', reboot: 'ACCEPTED' });
+    expect(loopback.sources.length).toBeGreaterThanOrEqual(4);
+    expect(loopback.sources.filter((source) => source !== FAKE_ONVIF_HOST)).toEqual([]);
   });
 });

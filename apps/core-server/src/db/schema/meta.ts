@@ -96,10 +96,20 @@ import { boolean, check, integer, pgTable, text } from 'drizzle-orm/pg-core';
  * decision C94 (d)): the value `ADD_UNCONFIRMED` in the same set, for the removal at once after
  * an `add` whose effect is not known. No table, no column, no grant. B-3 refuses in both
  * directions for the reasons of set 13.
+ *
+ * 14 since migration set 15 (`0030_network_config_onvif_ports.sql` +
+ * `0031_network_config_onvif_ports_privileges.sql`; code review 120 finding F-4 with decision
+ * C114, and code review 120b finding S2-02 with decision C116, of
+ * `docs/2026-10-12_input_av_core_adapter_plan/decisions/decisions.md`): the column
+ * `capture_network_config.onvif_ports` (the allowed ONVIF ports, default `[80]`) with its two
+ * CHECKs and its UPDATE grant, and the form of an interface name widened to the alias helper's
+ * own (upper case admitted) in the two CHECKs that hold one. Code that names the column answers
+ * 42703 on a database without the set, and older code must not start on settings that may hold
+ * a name or a port list it does not know, so B-3 refuses in both directions.
  */
-export const DB_SCHEMA_VERSION = 13;
+export const DB_SCHEMA_VERSION = 14;
 /** The revision of the database contract the migration set was written from. */
-export const DB_CONTRACT_REVISION = 'dbc-14';
+export const DB_CONTRACT_REVISION = 'dbc-15';
 
 /** T-29. One row. */
 export const schemaMeta = pgTable(

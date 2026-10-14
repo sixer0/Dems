@@ -83,6 +83,25 @@
  * THE READ IS STILL OUTSIDE ANY UNIT: this file opens none; (b)'s unit is the host's, opened after
  * the reader's own unit has ended.
  *
+ * WHAT A TEST STORES (row PR, decision C117; rulings C36, C61 (1)). Until row PR this test "changed
+ * no setting" and a camera whose profile list was empty could get one only by being adopted again.
+ * Now a test whose STREAM HALF judged at least one stream meets what is stored for the camera, in
+ * the unit of its outcome entry (`host.settle`; the work is `adopted-profiles.ts`):
+ *   (a) NO stored profile: the judged statement is stored - by the adoption's own function, with
+ *       the codes the stream test minted; the entry's message ends `; profiles stored: N`;
+ *   (b) a stored statement and a stream that states something else: NOTHING is stored; the
+ *       message ends `; STREAM_PROFILE_DIFFERS: stored N, stated N, differing N; nothing stored`
+ *       and a code with the three counts goes to the persistent error log;
+ *   (c) stored and stated agree: nothing is stored and the entry is the one of rows 146b / 146c.
+ * In all three the ANSWER and the entry's `details` are the contract's, unchanged: the outcome is
+ * the test's own (`REACHABLE`) and `usableProfileCount` is what the stream states NOW. The
+ * contract has no member that says "stored" or "differs" (its `reason` is the closed
+ * `SCHEME_NOT_ALLOWED`, and `STREAM_PROFILE_DIFFERS` is the word of the sealing notice): the
+ * members are a request of row PR to the writer of the contract. A test that judged no stream -
+ * any other outcome, a Core without a relay program - stores nothing and compares nothing.
+ * The refusals before the reader, the guard, the destination rule and the bound source address
+ * are untouched: all of this stands after step 9.
+ *
  * WHAT IT KEEPS: nothing. The credential is the opaque object of one call; no member of it is
  * read here, and it is in no log line, answer, error, argument or environment. The answer carries
  * an outcome, counts and at most the one reason the contract tells a client.
@@ -90,13 +109,15 @@
  * THE ROUTE is operation 108 `testCaptureDeviceConnection` (`adopted-test-route.ts`, row 146b): one
  * handler that calls `adoptedCameraTestControl(app).test(caller, deviceId)` and nothing else.
  */
-import { ApiErrorCode, CAPTURE_CONNECTION_TEST_TIMEOUT_MS, CAPTURE_DEVICE_TEST_NOT_READY_SENTENCE, CaptureConnectionOutcome, CaptureConnectionTestReason, CaptureDeviceTestUnreachableReason, CaptureDiscoveryReason, CaptureSourceClass, RETRY_AFTER_HEADER_NAME, captureDeviceConnectionTestedDetails } from '@dems/shared/api';
+import { ApiErrorCode, CAPTURE_CONNECTION_TEST_TIMEOUT_MS, CAPTURE_DEVICE_TEST_NOT_READY_SENTENCE, CaptureConnectionOutcome, CaptureConnectionTestReason, CaptureDeviceTestProfiles, CaptureDeviceTestUnreachableReason, CaptureDiscoveryReason, CaptureSourceClass, RETRY_AFTER_HEADER_NAME, captureDeviceConnectionTestedDetails } from '@dems/shared/api';
 import { AuditType, Permission, isSessionActive } from '@dems/shared/sim';
 import { CAPTURE_ADAPTER_KINDS, CaptureAdapterError, StoredCameraRefusal, judgeStoredCamera, sourceClassOf, storedCameraCandidate, type CameraCandidate, type CaptureAdapterKind, type SealedCredential, type StoredCameraAddressRule } from '../../capture/adapters';
 import type { AuditEntry } from '../../core';
 import type { DurableSlices } from '../../db/mapping';
 import type { Principal } from '../../plugins/authenticate';
 import { ApiFailure } from '../../plugins/error-envelope';
+import { StoredProfilesVerdict, settleStatedProfiles, storedProfilesWords, type StoredProfilesComparison, type StoredProfilesUnit } from './adopted-profiles';
+import type { AdoptedCameraStream } from './adoption';
 import type { ConnectionTestLimits, ConnectionTestRefusal, ConnectionTester } from './connect';
 
 /** The reader of this holder, by shape (`ConnectionTestCredentialReader` of the credential wiring): the device and the operator, no reason, no session. */
@@ -132,6 +153,14 @@ export interface AdoptedCameraTestHost {
    * answered, before the refusal or the fault travels on when no camera was asked.
    */
   record(entry: AuditEntry): Promise<void>;
+  /**
+   * THE UNIT OF A TEST THAT JUDGED A STREAM (row PR, decision C117): ONE unit of the engine
+   * (`app.engine.run`) in which `work` reads what is stored for the camera, stores the judged
+   * statement when nothing is, and hands back the outcome entry - which the host appends IN THAT
+   * UNIT. Resolved when the unit has committed; a `work` or an append that fails rolls all of it
+   * back. Called in the place of `record`, never beside it: one outcome entry per test.
+   */
+  settle(work: (scope: StoredProfilesUnit) => Promise<AuditEntry>): Promise<void>;
 }
 
 export interface AdoptedCameraTestSeams {
@@ -159,6 +188,8 @@ export interface AdoptedCameraTest {
   readonly failedAttemptsRemaining: number;
   /** Present only for an `AUTHENTICATION_FAILED` test in which the credential was NOT sent. */
   readonly reason?: CaptureConnectionTestReason;
+  /** Rows PR, V7: present only when the test stored the camera's profiles, or found a stored statement the stream no longer makes. */
+  readonly profiles?: CaptureDeviceTestProfiles;
 }
 
 const SOURCE = 'captureAdoptedTest';
@@ -176,6 +207,12 @@ export const ADOPTED_TEST_FAULT = 'CAPTURE_STORED_TEST_FAULT';
 const NOT_SENT_TEXT = 'the stored credential of a camera was read for its connection test and the adapter refused the camera before a request: nothing was sent';
 const OUTCOME_NOT_RECORDED_TEXT = 'the outcome of a stored-credential connection test could not be written to the audit: the test is answered as a fault';
 const FAULT_TEXT = 'the stored credential of a camera was read for its connection test and the test failed before an outcome: what was sent is not known';
+/** Row PR (C117): the stream of a tested camera states something else than what is stored for it. Nothing was stored. */
+export const ADOPTED_TEST_PROFILE_DIFFERS = 'CAPTURE_STORED_TEST_PROFILE_DIFFERS';
+/** Row PR (C117): the camera holds no stored profile and the judged statement was NOT stored (a closed cause says why). */
+export const ADOPTED_TEST_PROFILES_NOT_STORED = 'CAPTURE_STORED_TEST_PROFILES_NOT_STORED';
+const PROFILE_DIFFERS_TEXT = 'the stream of a registered camera states something else than the profiles stored for it: nothing was stored, the stored statement stands';
+const PROFILES_NOT_STORED_TEXT = 'a registered camera holds no stored profile and the statement of its stream was not stored by this connection test';
 
 /**
  * What ONE outcome entry states beside the device and its adapter kind (row 146c): closed codes, a
@@ -191,6 +228,23 @@ interface OutcomeFacts {
   readonly unreachableReason?: CaptureDeviceTestUnreachableReason;
   /** Only when the tester answered: the answer's own count. */
   readonly usableProfileCount?: number;
+  /** Rows PR, V7: only when the test stored the camera's profiles or found a stored statement the stream no longer makes - the closed word and its three counts. */
+  readonly profiles?: CaptureDeviceTestProfiles;
+  readonly storedProfileCount?: number;
+  readonly statedProfileCount?: number;
+  readonly differingProfileCount?: number;
+}
+
+/**
+ * Rows PR, V7 (decision C117): what a comparison states in the CONTRACT's words - the closed word of
+ * operation 108's answer and of the outcome entry's details, with the three counts; nothing for a
+ * comparison with nothing to say (agreement) and for one whose write was due and not made (its
+ * cause is a code of the log and the error log, not a member of the contract).
+ */
+function storedProfilesFactsOf(compared: StoredProfilesComparison): Pick<OutcomeFacts, 'profiles' | 'storedProfileCount' | 'statedProfileCount' | 'differingProfileCount'> {
+  const word =
+    compared.verdict === StoredProfilesVerdict.PROFILES_STORED ? CaptureDeviceTestProfiles.PROFILES_STORED : compared.verdict === StoredProfilesVerdict.STREAM_PROFILE_DIFFERS ? CaptureDeviceTestProfiles.STREAM_PROFILE_DIFFERS : null;
+  return word === null ? {} : { profiles: word, storedProfileCount: compared.stored, statedProfileCount: compared.stated, differingProfileCount: compared.differing };
 }
 
 /** A code word of another unit, as a log line may carry it: never a value. */
@@ -320,18 +374,45 @@ export async function testAdoptedCamera(seams: AdoptedCameraTestSeams, caller: A
 
   // 10. THE OUTCOME ENTRY (rows 146b, 146c): the second entry of this test, after the reader's reveal. The tester
   // answered, so a camera was asked: the outcome as it is - UNREACHABLE too, with NO `unreachableReason` - and the count.
-  await recordOutcome(host, caller, deviceId, camera.adapterKind, {
+  const facts: OutcomeFacts = {
     outcome: attempt.outcome,
     // Marked on a refused credential: `true` on the one that closed the host (as on CAPTURE_CONNECTION_TESTED).
     ...(attempt.outcome === CaptureConnectionOutcome.AUTHENTICATION_FAILED ? { guardTripped: verdict.guardTripped } : {}),
     // The row of a scheme refusal says so: the credential was NOT sent.
     ...(schemeRefused ? { reason: CaptureConnectionTestReason.SCHEME_NOT_ALLOWED } : {}),
     usableProfileCount,
-  });
+  };
+  // Row PR (decision C117): a test that JUDGED A STREAM meets what is stored for the camera, in the unit of its entry -
+  // nothing stored: the statement is stored; another statement stored: nothing is, and the difference is said in counts.
+  const stated = reachable ? (attempt.streams ?? []) : [];
+  const profiles = stated.length === 0 ? null : await settleOutcome(host, caller, deviceId, camera.adapterKind, facts, stated, testedAt);
+  if (profiles === null) await recordOutcome(host, caller, deviceId, camera.adapterKind, facts);
+  // Row V7: the contract's closed word of that comparison, for the answer (absent: nothing to say).
+  const storedWord = profiles === null ? undefined : storedProfilesFactsOf(profiles).profiles;
   host.note(
-    { code: ADOPTED_TEST_LOG_CODE, source: SOURCE, deviceId, outcome: attempt.outcome, guardTripped: verdict.guardTripped, testReason: codeOf(attempt.reason), judgedStreams: reachable ? (attempt.streams ?? []).length : 0 },
+    {
+      code: ADOPTED_TEST_LOG_CODE,
+      source: SOURCE,
+      deviceId,
+      outcome: attempt.outcome,
+      guardTripped: verdict.guardTripped,
+      testReason: codeOf(attempt.reason),
+      judgedStreams: stated.length,
+      // Case (c) - stored and stated agree - is the line of rows 146 / 146b, as it was.
+      ...(profiles === null || profiles.verdict === StoredProfilesVerdict.PROFILES_AGREE ? {} : { profiles: profiles.verdict, storedProfiles: profiles.stored, differingProfiles: profiles.differing, profilesCause: profiles.cause ?? null }),
+    },
     'stored-credential camera connection tested',
   );
+  // A stored statement the stream no longer makes, and a statement that was due and not stored, are states somebody must
+  // find the next morning: a code and counts in the persistent error log.
+  if (profiles !== null && (profiles.verdict === StoredProfilesVerdict.STREAM_PROFILE_DIFFERS || profiles.verdict === StoredProfilesVerdict.PROFILES_NOT_STORED)) {
+    const differs = profiles.verdict === StoredProfilesVerdict.STREAM_PROFILE_DIFFERS;
+    host.persist({
+      code: differs ? ADOPTED_TEST_PROFILE_DIFFERS : ADOPTED_TEST_PROFILES_NOT_STORED,
+      message: differs ? PROFILE_DIFFERS_TEXT : PROFILES_NOT_STORED_TEXT,
+      context: { deviceId, cause: profiles.cause ?? null, stored: String(profiles.stored), stated: String(profiles.stated), differing: String(profiles.differing) },
+    });
+  }
   return {
     deviceId,
     outcome: attempt.outcome,
@@ -340,7 +421,37 @@ export async function testAdoptedCamera(seams: AdoptedCameraTestSeams, caller: A
     usableProfileCount,
     failedAttemptsRemaining: verdict.failedAttemptsRemaining,
     ...(schemeRefused ? { reason: CaptureConnectionTestReason.SCHEME_NOT_ALLOWED } : {}),
+    // Row V7 (request of row PR): the answer says whether the profiles were stored, or differ from the stored ones.
+    ...(storedWord === undefined ? {} : { profiles: storedWord }),
   };
+}
+
+/**
+ * THE OUTCOME ENTRY OF A TEST THAT JUDGED A STREAM (row PR, decision C117): the same entry as
+ * `recordOutcome` writes, in ONE unit of the host's in which the judged statement first meets what
+ * is stored for the camera (`settleStatedProfiles`: nothing stored - it is stored; another
+ * statement stored - nothing is). The entry is built INSIDE that unit, after the comparison, and
+ * handed back to the host, which appends it: what was stored and the entry that says so commit
+ * together or not at all. Of the comparison the entry takes fixed words and whole numbers, in its
+ * message; its `details` are the contract's, unchanged.
+ * A unit that fails is the fault of `recordOutcome`, by the same code.
+ */
+async function settleOutcome(host: AdoptedCameraTestHost, caller: AdoptedCameraTestCaller, deviceId: string, adapter: CaptureAdapterKind, facts: OutcomeFacts, stated: readonly AdoptedCameraStream[], at: number): Promise<StoredProfilesComparison> {
+  const held: { compared: StoredProfilesComparison | null } = { compared: null };
+  try {
+    await host.settle(async (scope) => {
+      const compared = await settleStatedProfiles(scope, deviceId, stated, at);
+      held.compared = compared;
+      // Row V7: the entry's DETAILS say it too, in the contract's closed word and counts (the message keeps its words).
+      return outcomeEntryOf(caller, deviceId, adapter, { ...facts, ...storedProfilesFactsOf(compared) }, storedProfilesWords(compared));
+    });
+    // A host that resolved without running the work recorded no entry: the same fault as an entry that failed.
+    if (held.compared === null) throw new Error('the unit of a stored-credential connection test ended without its comparison');
+  } catch (error) {
+    notRecorded(host, deviceId, facts, error);
+    throw error;
+  }
+  return held.compared;
 }
 
 /**
@@ -353,9 +464,20 @@ export async function testAdoptedCamera(seams: AdoptedCameraTestSeams, caller: A
  * log, and the failure of the unit travels on.
  */
 async function recordOutcome(host: AdoptedCameraTestHost, caller: AdoptedCameraTestCaller, deviceId: string, adapter: CaptureAdapterKind, facts: OutcomeFacts): Promise<void> {
-  const outcomeEntry: AuditEntry = {
+  try {
+    const outcomeEntry = outcomeEntryOf(caller, deviceId, adapter, facts, '');
+    await host.record(outcomeEntry);
+  } catch (error) {
+    notRecorded(host, deviceId, facts, error);
+    throw error;
+  }
+}
+
+/** The entry itself: the contract's one builder, and a message of closed codes - with, for a test that judged a stream, the fixed words and counts of row PR. */
+function outcomeEntryOf(caller: AdoptedCameraTestCaller, deviceId: string, adapter: CaptureAdapterKind, facts: OutcomeFacts, profileWords: string): AuditEntry {
+  return {
     type: AuditType.CAPTURE_DEVICE_CONNECTION_TESTED,
-    message: `Registered camera connection tested (${facts.unreachableReason === undefined ? facts.outcome : `${facts.outcome}, ${facts.unreachableReason}`})`,
+    message: `Registered camera connection tested (${facts.unreachableReason === undefined ? facts.outcome : `${facts.outcome}, ${facts.unreachableReason}`})${profileWords}`,
     actorId: caller.principal.operatorId,
     deviceId: caller.principal.deviceId,
     details: captureDeviceConnectionTestedDetails({
@@ -366,14 +488,13 @@ async function recordOutcome(host: AdoptedCameraTestHost, caller: AdoptedCameraT
       permission: Permission.CAPTURE_CONFIG,
     }),
   };
-  try {
-    await host.record(outcomeEntry);
-  } catch (error) {
-    const cause = codeOf((error as { code?: unknown } | null)?.code);
-    host.note({ code: ADOPTED_TEST_OUTCOME_NOT_RECORDED, source: SOURCE, deviceId, outcome: facts.outcome, cause }, OUTCOME_NOT_RECORDED_TEXT);
-    host.persist({ code: ADOPTED_TEST_OUTCOME_NOT_RECORDED, message: OUTCOME_NOT_RECORDED_TEXT, context: { deviceId, outcome: facts.outcome, cause } });
-    throw error;
-  }
+}
+
+/** An entry that could not be recorded: a code to the log and the persistent error log. The caller throws the failure on. */
+function notRecorded(host: AdoptedCameraTestHost, deviceId: string, facts: OutcomeFacts, error: unknown): void {
+  const cause = codeOf((error as { code?: unknown } | null)?.code);
+  host.note({ code: ADOPTED_TEST_OUTCOME_NOT_RECORDED, source: SOURCE, deviceId, outcome: facts.outcome, cause }, OUTCOME_NOT_RECORDED_TEXT);
+  host.persist({ code: ADOPTED_TEST_OUTCOME_NOT_RECORDED, message: OUTCOME_NOT_RECORDED_TEXT, context: { deviceId, outcome: facts.outcome, cause } });
 }
 
 // ── The control of one app ─────────────────────────────────────────────────────────────────────
