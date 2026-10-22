@@ -432,8 +432,8 @@ export const devices = {
       STANDBY: 'Microphone for the standby line',
     },
     onOtherLine: {
-      PRIMARY: 'already on the primary line',
-      STANDBY: 'already on the standby line',
+      PRIMARY: 'on the primary line - choose to move it here',
+      STANDBY: 'on the standby line - choose to move it here',
     },
   },
   noPreview: {

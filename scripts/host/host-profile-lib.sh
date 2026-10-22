@@ -32,6 +32,8 @@ HP_INSTALL_DIR='<install-dir>'
 HP_DATA_DIR='<data-dir>'
 HP_FFMPEG_PREFIX='<ffmpeg-prefix>'
 HP_CAMERA_INTERFACE='<camera-interface>'
+# The Wi-Fi port whose camera-search answers are admitted too (HOST-23; decision D33 M-6, row 144).
+HP_SEARCH_INTERFACE='<search-interface>'
 HP_CAMERA_ADDRESS='<camera-address>'
 # Fixed by the helper's delivery (scripts/host/netalias/dems-core-netalias.socket): not an option.
 HP_HELPER_GROUP='dems-netalias'
@@ -68,6 +70,7 @@ hp_usage() {
   printf '%s\n' '  --ffmpeg-prefix PATH   where the pinned FFmpeg is installed'
   printf '%s\n' '  --camera-interface IF  the network port that carries only the cameras'
   printf '%s\n' '  --camera-address A     the private address of the host on that port (no prefix)'
+  printf '%s\n' '  --search-interface IF  the Wi-Fi port whose camera-search answers are admitted too (HOST-23)'
   printf '%s\n' '  --with-lid             the host has a lid (HOST-30)'
   printf '%s\n' 'UNPROVEN ON LINUX: proven only by the hardware checks 9A/H-01 to 9A/H-27.'
 }
@@ -147,6 +150,7 @@ hp_need() {
       data-dir) value=$HP_DATA_DIR ;;
       ffmpeg-prefix) value=$HP_FFMPEG_PREFIX ;;
       camera-interface) value=$HP_CAMERA_INTERFACE ;;
+      search-interface) value=$HP_SEARCH_INTERFACE ;;
       camera-address) value=$HP_CAMERA_ADDRESS ;;
       *) hp_fail 2 "internal: unknown value name $name" ;;
     esac
@@ -166,7 +170,7 @@ hp_init() {
         hp_usage
         exit 0
         ;;
-      --service-user | --install-dir | --data-dir | --ffmpeg-prefix | --camera-interface | --camera-address)
+      --service-user | --install-dir | --data-dir | --ffmpeg-prefix | --camera-interface | --camera-address | --search-interface)
         if [ $# -lt 2 ]; then hp_fail 2 "refused: $1 needs a value"; fi
         case "$1" in
           --service-user)
@@ -192,6 +196,10 @@ hp_init() {
           --camera-address)
             hp_check_address "$2"
             HP_CAMERA_ADDRESS=$2
+            ;;
+          --search-interface)
+            hp_check_interface "$2"
+            HP_SEARCH_INTERFACE=$2
             ;;
         esac
         shift
@@ -219,6 +227,7 @@ hp_subst() {
   HP_OUT=${HP_OUT//<ffmpeg-prefix>/$HP_FFMPEG_PREFIX}
   HP_OUT=${HP_OUT//<camera-interface>/$HP_CAMERA_INTERFACE}
   HP_OUT=${HP_OUT//<camera-address>/$HP_CAMERA_ADDRESS}
+  HP_OUT=${HP_OUT//<search-interface>/$HP_SEARCH_INTERFACE}
   HP_OUT=${HP_OUT//<helper-group>/$HP_HELPER_GROUP}
 }
 

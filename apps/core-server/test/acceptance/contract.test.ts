@@ -1186,14 +1186,15 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     captureAudioCardsControl(main.app).replaceForTest({ enumerator: host.enumerator });
     /** Past the spacing of the search (the server clock decides): this file produces no 429 of the operation. */
     const spaced = (): void => main.clock.advance(CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS);
-    interface Search { cards: { cardId: string; channelCount: number; registered: { inputNumber: number; deviceId: string }[] }[]; truncated: boolean }
-    interface Registration { deviceId: string; change: string; inputNumber: number; channelCount: number }
+    interface Search { cards: { cardId: string; channelCount: number; registered: { inputNumber: number; deviceId: string }[]; boundTo: string | null }[]; truncated: boolean }
+    interface Registration { deviceId: string; change: string; inputNumber: number; channelCount: number; releasedDeviceId: string | null }
 
-    // 98: the listing, for each holder of CAPTURE_CONFIG on the web console.
+    // 98: the listing, for each holder of CAPTURE_CONFIG on the web console. R-FLEX (row 138, AU-L1): every card
+    // names the microphone that holds it (`boundTo`), here none.
     for (const caller of [supervisor, technician]) {
       spaced();
       const listed = bodyOf<Search>(await expectCall(main, 'searchCaptureAudioCards', caller, 'a holder of CAPTURE_CONFIG lists the sound cards', {}, 200));
-      expect(listed.cards.map((card) => [card.cardId, card.channelCount, card.registered])).toEqual([[DUO.cardId, 2, []], [SIX.cardId, 6, []]]);
+      expect(listed.cards.map((card) => [card.cardId, card.channelCount, card.registered, card.boundTo])).toEqual([[DUO.cardId, 2, [], null], [SIX.cardId, 6, [], null]]);
     }
     // 98: a second call while a listing runs (409), then the first one answers.
     spaced();
@@ -1209,16 +1210,27 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     // 99: a new microphone (201), the same input again (200, no second device), and the refusals.
     const payload = { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 3 };
     const registered = bodyOf<Registration>(await expectCall(main, 'registerCaptureAudioInput', technician, 'the third input of the six-input interface', { payload }, 201));
-    expect(registered).toMatchObject({ change: 'REGISTERED', inputNumber: 3, channelCount: 6 });
+    expect(registered).toMatchObject({ change: 'REGISTERED', inputNumber: 3, channelCount: 6, releasedDeviceId: null });
     const again = bodyOf<Registration>(await expectCall(main, 'registerCaptureAudioInput', supervisor, 'the same input again', { payload }, 200));
     expect(again).toEqual({ ...registered, change: 'REENABLED' });
     await expectCall(main, 'registerCaptureAudioInput', technician, 'a card the listing does not hold', { payload: { ...payload, cardId: 'NoSuchCard' } }, 404, 'NOT_FOUND');
     const beyond = await expectCall(main, 'registerCaptureAudioInput', technician, 'an input beyond the card', { payload: { ...payload, inputNumber: 7 } }, 409, 'INVALID_STATE');
     expect(detailsOf(beyond)['reason']).toBe('AUDIO_INPUT_BEYOND_CARD');
     await expectCall(main, 'registerCaptureAudioInput', technician, 'a member the body does not have', { payload: { ...payload, product: 'x' } }, 422, 'INVALID_INPUT');
+    await expectCall(main, 'registerCaptureAudioInput', technician, 'a release that is no boolean', { payload: { ...payload, release: 'true' } }, 422, 'INVALID_INPUT');
     spaced();
-    const after = bodyOf<Search>(await expectCall(main, 'searchCaptureAudioCards', technician, 'the listing names the registered input', {}, 200));
-    expect(after.cards.map((card) => card.registered)).toEqual([[], [{ inputNumber: 3, deviceId: registered.deviceId }]]);
+    const held = bodyOf<Search>(await expectCall(main, 'searchCaptureAudioCards', technician, 'the listing names the registered input and its holder', {}, 200));
+    expect(held.cards.map((card) => [card.registered, card.boundTo])).toEqual([[[], null], [[{ inputNumber: 3, deviceId: registered.deviceId }], registered.deviceId]]);
+    // 99, R-FLEX (row 138; AU-R1, AU-B1, AU-B2, bundle M): one microphone per card. Another input of the held card
+    // is refused by name with the holder; with `release: true` the holder MOVES to that input (200 REENABLED,
+    // `releasedDeviceId` = the holder's id, no new microphone).
+    const bound = await expectCall(main, 'registerCaptureAudioInput', technician, 'another input of the card a microphone holds', { payload: { ...payload, inputNumber: 4 } }, 409, 'INVALID_STATE');
+    expect(detailsOf(bound)).toEqual({ reason: 'AUDIO_CARD_ALREADY_BOUND', deviceId: registered.deviceId });
+    const moved = bodyOf<Registration>(await expectCall(main, 'registerCaptureAudioInput', technician, 'the same input with the release of the holder', { payload: { ...payload, inputNumber: 4, release: true } }, 200));
+    expect(moved).toMatchObject({ deviceId: registered.deviceId, change: 'REENABLED', inputNumber: 4, channelCount: 6, releasedDeviceId: registered.deviceId });
+    spaced();
+    const after = bodyOf<Search>(await expectCall(main, 'searchCaptureAudioCards', technician, 'the listing names the moved holder', {}, 200));
+    expect(after.cards.map((card) => [card.registered, card.boundTo])).toEqual([[[], null], [[{ inputNumber: 4, deviceId: registered.deviceId }], registered.deviceId]]);
     // 77 (decision C43 (2), (3)): the registered microphone is in the registry every role reads, once
     // (the repeat made no second device), after the built-in pair and with the capability they state.
     const registry = bodyOf<{ devices: { id: string; kind: string; capabilities: string[]; adapter?: string }[] }>(await expectCall(main, 'getCaptureDevices', web.INVESTIGATOR, 'the registry lists the registered microphone', {}, 200));
@@ -1252,7 +1264,8 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       available: true,
       interfaces: () => [
         { name: 'lo', internal: true, addresses: [{ address: '127.0.0.1', prefixLength: 8 }] },
-        { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24 }] },
+        // R-FLEX (row 138, D23; RG-13): an address without a non-zero hardware address is not eligible.
+        { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24, mac: '02:00:5E:00:53:01' }] },
       ],
     });
 
@@ -1296,7 +1309,8 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       available: true,
       interfaces: () => [
         { name: 'lo', internal: true, addresses: [{ address: '127.0.0.1', prefixLength: 8 }] },
-        { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24 }, ...(onPort === null ? [] : [{ address: onPort, prefixLength: 24 }])] },
+        // R-FLEX (row 138, D23; RG-13): every non-loopback address states a non-zero hardware address (the alias sits on eth1).
+        { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24, mac: '02:00:5E:00:53:01' }, ...(onPort === null ? [] : [{ address: onPort, prefixLength: 24, mac: '02:00:5E:00:53:01' }])] },
       ],
     });
     scanControl.replaceForTest({
@@ -1407,7 +1421,8 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       available: true,
       interfaces: () => [
         { name: 'lo', internal: true, addresses: [{ address: '127.0.0.1', prefixLength: 8 }] },
-        { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24 }, ...(onPort === null ? [] : [{ address: onPort, prefixLength: 24 }])] },
+        // R-FLEX (row 138, D23; RG-13): every non-loopback address states a non-zero hardware address (the alias sits on eth1).
+        { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24, mac: '02:00:5E:00:53:01' }, ...(onPort === null ? [] : [{ address: onPort, prefixLength: 24, mac: '02:00:5E:00:53:01' }])] },
       ],
     });
     jobControl.replaceForTest({

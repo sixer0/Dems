@@ -34,6 +34,11 @@ const HOST_FACTS: DestinationContext = {
   cameraSubnet: { network: '192.168.50.0', prefixLength: 24 },
   cameraAddresses: [{ address: '192.168.50.1', alias: false }],
   otherInterfaceSubnets: [{ network: '10.20.0.0', prefixLength: 24 }],
+  // R-FLEX NW-C1 (row 104): every eligible interface of the host - STORED_CAMERA is global.
+  interfaceSubnets: [
+    { name: 'eth0', address: '192.168.50.1', network: '192.168.50.0', prefixLength: 24 },
+    { name: 'eth1', address: '10.20.0.5', network: '10.20.0.0', prefixLength: 24 },
+  ],
   hostAddresses: ['10.20.0.5'],
 };
 const REAL_RULE: StoredCameraAddressRule = (host, port) => decideDestination({ purpose: DestinationPurpose.STORED_CAMERA, address: host, ...(port === undefined ? {} : { port }) }, HOST_FACTS);
@@ -308,8 +313,9 @@ describe('every refusal comes BEFORE the reveal: 0 reads of the credential, 0 re
       ['224.0.0.251', 'MULTICAST'],
       ['192.168.50.1', 'HOST_ADDRESS'],
       ['8.8.8.8', 'PUBLIC_ADDRESS'],
-      ['192.168.60.20', 'OUTSIDE_CAMERA_SUBNET'],
-      ['10.20.0.77', 'OTHER_INTERFACE_SUBNET'],
+      // R-FLEX (row 104): STORED_CAMERA is global - a private address no interface holds is NW-R1 (was OUTSIDE_CAMERA_SUBNET);
+      // another interface's subnet (was OTHER_INTERFACE_SUBNET) is admitted from that interface (RM-N1), asserted below.
+      ['192.168.60.20', 'NO_SOURCE_INTERFACE'],
       ['camera.room.example', 'HOST_NAME'],
       [`${CAMERA_HOST}:8080`, 'PORT_NOT_LISTED'],
     ];
@@ -328,6 +334,7 @@ describe('every refusal comes BEFORE the reveal: 0 reads of the credential, 0 re
       expect(w.limits.busy()).toBe(false);
       expect(w.timers).toEqual([]);
     }
+    expect(REAL_RULE('10.20.0.77', undefined)).toMatchObject({ allowed: true, destination: { address: '10.20.0.77', sourceAddress: '10.20.0.5', viaAlias: false } });
   });
 
   it('the rule is asked at EVERY test, about what is stored then: a row moved to loopback after a passed test is refused, with no second reveal', async () => {

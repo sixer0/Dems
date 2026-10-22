@@ -17,6 +17,12 @@
  * | `audioCardsGate` | Checking, then allowed, or refused with its reason: the role, an open session, the Core's own spacing |
  * | `listRefusal`, `registerRefusal` | What a refused listing or registration is, by its status and reason |
  * | `inputsOf`, `withRegistration` | The inputs of a card as the Core stated them; the listing with what an answer of operation 99 stated |
+ * | `isAmbiguous`, `inputOffered` | R-FLEX row 111: two serial-less units of one model (W-A8); which inputs of a bound card are offered |
+ *
+ * R-FLEX (row 111; spec 92 section 3 with the spec section 2.4/6.2 corrections, decision D16): a sound
+ * card is held by ONE microphone (`boundTo`, Q96-01 a: the physical card is the unit). Its other
+ * inputs are not offered; "Move {{device}} to another input" puts that card in move mode, and the
+ * registration then says `release: true` (bundle M: the holder moves to the new input and keeps its id).
  * | `useAudioCards` | The control in both data modes |
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -24,6 +30,7 @@ import {
   CAPTURE_AUDIO_CARD_SEARCH_PATH,
   CAPTURE_AUDIO_INPUT_REGISTER_PATH,
   CaptureAudioCardReason,
+  HARDWARE_DEVICE_ID_PATTERN,
   type CaptureAudioCard,
   type CaptureAudioCardSearch,
   type CaptureAudioInputRegisterRequest,
@@ -67,6 +74,8 @@ export interface AudioCardsFailure {
   readonly retryAfterSeconds: number | null
   /** The failed Live call, for the refusal presenter; `null` in Simulated mode. */
   readonly failure: CoreCallFailure | null
+  /** `details.deviceId` of an `AUDIO_CARD_ALREADY_BOUND` refusal (the holder, an id of the registry's form); `null` otherwise. */
+  readonly holder: string | null
 }
 
 export type ListAnswer = { readonly ok: true; readonly listing: CaptureAudioCardSearch } | AudioCardsFailure
@@ -84,19 +93,26 @@ export function listRefusal(failure: Pick<AudioCardsFailure, 'status' | 'code' |
   return 'OTHER'
 }
 
-/** What a refused registration is (operation 99): the refusals of a listing, and the three of the card or its input. */
-export type RegisterRefusal = ListRefusal | 'NOT_FOUND' | 'BEYOND_CARD' | 'NOT_REGISTRABLE'
+/** What a refused registration is (operation 99): the refusals of a listing, and the four of the card or its input. */
+export type RegisterRefusal = ListRefusal | 'NOT_FOUND' | 'BEYOND_CARD' | 'NOT_REGISTRABLE' | 'ALREADY_BOUND'
 
 export function registerRefusal(failure: Pick<AudioCardsFailure, 'status' | 'code' | 'reason'>): RegisterRefusal {
   if (failure.status === 404) return 'NOT_FOUND'
   if (failure.status === 409 && failure.reason === CaptureAudioCardReason.AUDIO_INPUT_BEYOND_CARD) return 'BEYOND_CARD'
   if (failure.status === 409 && failure.reason === CaptureAudioCardReason.AUDIO_INPUT_NOT_REGISTRABLE) return 'NOT_REGISTRABLE'
+  if (failure.status === 409 && failure.reason === CaptureAudioCardReason.AUDIO_CARD_ALREADY_BOUND) return 'ALREADY_BOUND'
   return listRefusal(failure)
 }
 
 const reasonOf = (details: unknown): string | null => {
   const reason = (details as { reason?: unknown } | null | undefined)?.reason
   return typeof reason === 'string' ? reason : null
+}
+
+/** The holder an `AUDIO_CARD_ALREADY_BOUND` refusal names: an id of the registry's form, else `null` (never device text). */
+const holderOf = (details: unknown): string | null => {
+  const deviceId = (details as { deviceId?: unknown } | null | undefined)?.deviceId
+  return typeof deviceId === 'string' && HARDWARE_DEVICE_ID_PATTERN.test(deviceId) ? deviceId : null
 }
 
 interface SimAnswer {
@@ -106,7 +122,7 @@ interface SimAnswer {
 
 function simFailure(response: SimAnswer): AudioCardsFailure {
   const error = (response.body as { error?: { code?: unknown; details?: unknown } } | null)?.error
-  return { ok: false, status: response.status, code: typeof error?.code === 'string' ? error.code : 'SIMULATOR_ERROR', reason: reasonOf(error?.details), retryAfterSeconds: null, failure: null }
+  return { ok: false, status: response.status, code: typeof error?.code === 'string' ? error.code : 'SIMULATOR_ERROR', reason: reasonOf(error?.details), retryAfterSeconds: null, failure: null, holder: holderOf(error?.details) }
 }
 
 const liveFailure = (answer: CoreCallFailure): AudioCardsFailure => ({
@@ -116,6 +132,7 @@ const liveFailure = (answer: CoreCallFailure): AudioCardsFailure => ({
   reason: reasonOf(answer.error.details),
   retryAfterSeconds: answer.retryAfterSeconds,
   failure: answer,
+  holder: holderOf(answer.error.details),
 })
 
 async function listAudioCards(gate: Pick<CaptureDiscoveryGate, 'live' | 'sim'>): Promise<ListAnswer> {
@@ -139,8 +156,8 @@ async function registerAudioInput(gate: Pick<CaptureDiscoveryGate, 'live' | 'sim
 
 // ── The list ─────────────────────────────────────────────────────────────────────────────
 
-/** ONE input of ONE card: exactly the three members of the body of operation 99. */
-export type InputChoice = CaptureAudioInputRegisterRequest
+/** ONE input of ONE card: the three members of the body of operation 99 (`release` is added only in move mode). */
+export type InputChoice = Omit<CaptureAudioInputRegisterRequest, 'release'>
 
 /** The key of a card entry in a listing: the card id and the device index, both of the kernel's form (no device text). */
 export const cardKeyOf = (card: Pick<CaptureAudioCard, 'cardId' | 'deviceIndex'>): string => `${card.cardId}-${card.deviceIndex}`
@@ -164,18 +181,49 @@ export function inputsOf(card: Pick<CaptureAudioCard, 'channelCount' | 'register
 
 /**
  * The listing with what an answer of operation 99 stated: the input the request named is the
- * microphone the answer names. Two statements of the Core put together; nothing else of the listing
- * changes, and the Core is not asked again (nothing lists by itself).
+ * microphone the answer names, and that microphone holds the card (`boundTo`). A microphone is one
+ * input: an entry of it at another input of the card (the old input of a move, bundle M) goes. Two
+ * statements of the Core put together; no other card changes, and the Core is not asked again
+ * (nothing lists by itself).
  */
 export function withRegistration(listing: CaptureAudioCardSearch, choice: InputChoice, registration: Pick<CaptureAudioInputRegistration, 'deviceId' | 'inputNumber'>): CaptureAudioCardSearch {
   return {
     ...listing,
     cards: listing.cards.map((card) =>
       isChoiceOf(choice, card)
-        ? { ...card, registered: [...card.registered.filter((entry) => entry.inputNumber !== registration.inputNumber), { inputNumber: registration.inputNumber, deviceId: registration.deviceId }] }
+        ? {
+            ...card,
+            boundTo: registration.deviceId,
+            registered: [
+              ...card.registered.filter((entry) => entry.inputNumber !== registration.inputNumber && entry.deviceId !== registration.deviceId),
+              { inputNumber: registration.inputNumber, deviceId: registration.deviceId },
+            ],
+          }
         : card,
     ),
   }
+}
+
+/**
+ * W-A8 (Q96-03 a, client-derived, no new member): the card is one of two or more entries of one USB
+ * model that state no serial number and are bound to the same microphone. The Core cannot tell which
+ * unit the microphone uses, so no input of either is offered and neither can be moved to.
+ */
+export function isAmbiguous(card: Pick<CaptureAudioCard, 'cardId' | 'deviceIndex' | 'usbId' | 'usbSerial' | 'boundTo'>, cards: readonly Pick<CaptureAudioCard, 'cardId' | 'deviceIndex' | 'usbId' | 'usbSerial' | 'boundTo'>[]): boolean {
+  if (card.boundTo === null || card.usbId === null || (card.usbSerial ?? null) !== null) return false
+  return cards.some((other) => cardKeyOf(other) !== cardKeyOf(card) && other.usbId === card.usbId && (other.usbSerial ?? null) === null && other.boundTo === card.boundTo)
+}
+
+/**
+ * Whether an input is offered for a registration (Q96-01 a, the physical card is the unit): every
+ * input of a free card; of a bound card only the holder's own input (registering it again is
+ * REENABLED, not a new binding), unless the card is in move mode, where every input is offered.
+ * An ambiguous card offers none.
+ */
+export function inputOffered(card: Pick<CaptureAudioCard, 'boundTo'>, input: CardInput, state: { readonly moving: boolean; readonly ambiguous: boolean }): boolean {
+  if (state.ambiguous) return false
+  if (card.boundTo === null || state.moving) return true
+  return input.deviceId === card.boundTo
 }
 
 // ── The control ──────────────────────────────────────────────────────────────────────────
@@ -187,6 +235,8 @@ export type AudioCardsNotice = 'NOT_READY' | 'BUSY' | 'LOCKED' | 'LIST_FAILED' |
 export type RegisterOutcome =
   | { readonly kind: 'DONE'; readonly registration: CaptureAudioInputRegistration }
   | { readonly kind: 'REFUSED'; readonly refusal: 'NOT_FOUND' | 'BEYOND_CARD' | 'NOT_REGISTRABLE' | 'FAILED' }
+  /** `409 AUDIO_CARD_ALREADY_BOUND` (W-A4): another microphone, `holder`, took the card between the listing and the press. */
+  | { readonly kind: 'REFUSED'; readonly refusal: 'ALREADY_BOUND'; readonly holder: string }
 
 export interface AudioCardsController {
   readonly block: AudioCardsBlock | null
@@ -197,6 +247,11 @@ export interface AudioCardsController {
   readonly notice: AudioCardsNotice
   readonly choice: InputChoice | null
   readonly choose: (choice: InputChoice) => void
+  /** The card in move mode (one at a time; ends on list-again and on an accepted registration); `null` when none. */
+  readonly moving: Pick<CaptureAudioCard, 'cardId' | 'deviceIndex'> | null
+  /** Puts this bound card in move mode: the next registration of one of its inputs says `release: true`. */
+  readonly startMove: (card: Pick<CaptureAudioCard, 'cardId' | 'deviceIndex'>) => void
+  readonly cancelMove: () => void
   readonly outcome: RegisterOutcome | null
   /** One operation 98. One call at a time; resolves with the answer; never rejects. */
   readonly list: () => Promise<ListAnswer | null>
@@ -219,6 +274,7 @@ export function useAudioCards(): AudioCardsController {
   const [notice, setNotice] = useState<AudioCardsNotice>(null)
   const [choice, setChoice] = useState<InputChoice | null>(null)
   const [outcome, setOutcome] = useState<RegisterOutcome | null>(null)
+  const [moving, setMoving] = useState<Pick<CaptureAudioCard, 'cardId' | 'deviceIndex'> | null>(null)
   const [limitedSeconds, setLimitedSeconds] = useState<number | null>(null)
 
   // The control re-enables by itself at the instant the Core named. No label ticks and nothing is sent then.
@@ -263,6 +319,7 @@ export function useAudioCards(): AudioCardsController {
         setNotice(null)
         setOutcome(null)
         setChoice(null)
+        setMoving(null)
         setListing(answer.listing)
         return answer
       }
@@ -286,20 +343,26 @@ export function useAudioCards(): AudioCardsController {
     inFlight.current = true
     setBusy('REGISTER')
     const sent = choice
+    // Move mode of the chosen card only: the body then says `release: true`; otherwise the three members as before.
+    const release = moving !== null && isChoiceOf(sent, moving)
     try {
-      const answer = await registerAudioInput(gate, sent)
+      const answer = await registerAudioInput(gate, release ? { ...sent, release: true } : sent)
       if (answer.ok) {
         setNotice(null)
         setOutcome({ kind: 'DONE', registration: answer.registration })
         setListing((held) => (held === null ? held : withRegistration(held, sent, answer.registration)))
         setChoice(null)
+        setMoving(null)
         return answer
       }
       const refusal = registerRefusal(answer)
-      if (refusal === 'NOT_FOUND' || refusal === 'BEYOND_CARD' || refusal === 'NOT_REGISTRABLE') {
+      if (refusal === 'ALREADY_BOUND' && answer.holder !== null) {
+        setNotice(null)
+        setOutcome({ kind: 'REFUSED', refusal, holder: answer.holder })
+      } else if (refusal === 'NOT_FOUND' || refusal === 'BEYOND_CARD' || refusal === 'NOT_REGISTRABLE') {
         setNotice(null)
         setOutcome({ kind: 'REFUSED', refusal })
-      } else if (shared(refusal, answer)) {
+      } else if (refusal !== 'ALREADY_BOUND' && shared(refusal, answer)) {
         setOutcome(null)
       } else {
         setOutcome({ kind: 'REFUSED', refusal: 'FAILED' })
@@ -315,12 +378,22 @@ export function useAudioCards(): AudioCardsController {
       inFlight.current = false
       setBusy(null)
     }
-  }, [gate, choice, shared])
+  }, [gate, choice, moving, shared])
 
   const choose = useCallback((next: InputChoice) => {
     setChoice(next)
     setOutcome(null)
   }, [])
 
-  return { block, listing, busy, notice, choice, choose, outcome, list, register }
+  const startMove = useCallback((card: Pick<CaptureAudioCard, 'cardId' | 'deviceIndex'>) => {
+    setMoving({ cardId: card.cardId, deviceIndex: card.deviceIndex })
+    setChoice(null)
+    setOutcome(null)
+  }, [])
+  const cancelMove = useCallback(() => {
+    setMoving(null)
+    setChoice(null)
+  }, [])
+
+  return { block, listing, busy, notice, choice, choose, outcome, moving, startMove, cancelMove, list, register }
 }

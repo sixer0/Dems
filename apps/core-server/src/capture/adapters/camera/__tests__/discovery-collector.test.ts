@@ -54,6 +54,23 @@ describe('DS-4: which interfaces a search probes, by property and never by name'
     expect(selectInterfaces(many).probed).toHaveLength(DISCOVERY_MAX_INTERFACES);
     expect(selectInterfaces(many).ownAddresses).toHaveLength(6);
   });
+
+  it('R-FLEX 5.2 (NW-K1): the typed probe\'s source interface is placed FIRST, the others follow in table order, the bound stays four', () => {
+    const lan = (index: number) => [{ address: `192.0.2.${index + 1}`, netmask: '255.255.255.0', family: 'IPv4', mac: '02:00:00:00:00:01', internal: false }];
+    const five = Object.fromEntries(Array.from({ length: 5 }, (_unused, index) => [`en${index}`, lan(index)]));
+    const addresses = (source?: string) => selectInterfaces(five, source).probed.map((probed) => probed.address);
+    // Control: no source, or a source no eligible interface holds - table order, first four.
+    expect(addresses()).toEqual(['192.0.2.1', '192.0.2.2', '192.0.2.3', '192.0.2.4']);
+    expect(addresses('192.0.2.99')).toEqual(['192.0.2.1', '192.0.2.2', '192.0.2.3', '192.0.2.4']);
+    // The source on the fifth: probed, first, and still four in all.
+    expect(addresses('192.0.2.5')).toEqual(['192.0.2.5', '192.0.2.1', '192.0.2.2', '192.0.2.3']);
+    expect(selectInterfaces(five, '192.0.2.5').probed).toHaveLength(DISCOVERY_MAX_INTERFACES);
+    // The source on the second: moved to the front, nothing dropped that was in the first four.
+    expect(addresses('192.0.2.2')).toEqual(['192.0.2.2', '192.0.2.1', '192.0.2.3', '192.0.2.4']);
+    // An internal or host-mask address is never made eligible by being the source.
+    expect(addresses('127.0.0.1')).toEqual(['192.0.2.1', '192.0.2.2', '192.0.2.3', '192.0.2.4']);
+    expect(selectInterfaces(five, '192.0.2.5').ownAddresses).toHaveLength(5);
+  });
 });
 
 describe('DS-8 / SEC35-28 (2): the source is the kernel\'s, and only an on-link device may answer', () => {

@@ -42,33 +42,29 @@
  *
  * WHERE A CANDIDATE'S TEST IS MADE FROM (task 4 row 143c; decision C65; S13-11 point 2). Under
  * capture operation `REAL_PRODUCTION` the test of a candidate that is NOT STORED YET - both halves:
- * the ONVIF requests, each locator read and each stream probe - leaves from the camera-interface
- * address, as every dial to a stored camera does. The seam `candidateSource` says whether that is
+ * the ONVIF requests, each locator read and each stream probe - leaves from the address the
+ * destination rule names (R-FLEX: STORED_CAMERA is global - the interface whose subnet holds the
+ * candidate, Wi-Fi included), as every dial to a stored camera does. The seam `candidateSource` says whether that is
  * required and hands in the destination rule (the ONE binding of the production composition, the
  * rule a stored camera is held to: an adopted candidate becomes exactly such a camera). When it is
  * required, `testerOf` asks the rule about the candidate's own address BEFORE the bounds are asked
- * and before anything is sent: no rule handed in -> `503 NOT_READY`; the rule refuses (no network
- * configuration is `NOT_CONFIGURED`), or admits and names no source address -> `409
- * CANDIDATE_NOT_TESTABLE`; a tester that cannot be bound -> `503`. There is no unbound test in
+ * and before anything is sent: no rule handed in -> `503 NOT_READY`; the rule refuses, or admits
+ * and names no source address -> `409 CANDIDATE_NOT_TESTABLE`; a tester that cannot be bound -> `503`. There is no unbound test in
  * production. In every other capture operation the seam says "not required" and the flow is
  * exactly what it was: no rule is asked, the tester is called as it is.
  *
- * THE REASON OF THAT 409 IS THE TRUE CAUSE (row R2; review finding F3-06; decision C93). When the
- * rule's word is `NOT_CONFIGURED` - this Core has no camera interface or no camera subnet chosen -
- * the device is not at fault and the answer says so: `409 INVALID_STATE`, `details.reason:
- * COMMISSIONING_NOT_CONFIGURED` (a reason the contract already has, `CaptureCommissioningReason`:
- * the one the commissioning functions answer for this same state, which operation 102 ends), with
- * its sentence. Every other refusal of the rule keeps `CANDIDATE_NOT_TESTABLE`: there the address
- * of the device is the cause. The status, the code, the order (before the bounds, nothing sent,
- * nothing spent, no audit row) and the log line are unchanged.
+ * ONE REASON FOR EVERY REFUSAL OF THE RULE (R-FLEX U4, RF-N3, RM-N4; replaces the F3-06 branch of
+ * row R2 / C93). An empty camera network configuration no longer stops a connection test: the
+ * rule judges STORED_CAMERA against every interface of the host. So every refusal - including
+ * `NOT_CONFIGURED` from unreadable host facts - answers `409 INVALID_STATE`, `details.reason:
+ * CANDIDATE_NOT_TESTABLE`. The order (before the bounds, nothing sent, nothing spent, no audit
+ * row) and the log line (the rule's word, never the address) are unchanged.
  */
 import {
   ApiErrorCode,
   CAPTURE_CONNECTION_TEST_TIMEOUT_MS,
   CAPTURE_CONNECTION_TEST_VALIDITY_MS,
-  CAPTURE_COMMISSIONING_REFUSAL_SENTENCES,
   CAPTURE_DEVICE_CHANGED_CAUSE,
-  CaptureCommissioningReason,
   CaptureConnectionOutcome,
   CaptureConnectionTestReason,
   CaptureDiscoveryReason,
@@ -290,7 +286,7 @@ type ContactPermit = { readonly kind: 'OPERATOR_CREDENTIAL'; readonly sealed: Se
 // ── Refusals: fixed texts that quote nothing of the request ────────────────────────────────────
 
 const SOURCE = 'captureConnect';
-const invalidState = (reason: CaptureDiscoveryReason | typeof CaptureCommissioningReason.COMMISSIONING_NOT_CONFIGURED, text: string, details: Readonly<Record<string, string>> = {}): ApiFailure => new ApiFailure(409, ApiErrorCode.INVALID_STATE, text, { details: { reason, ...details } });
+const invalidState = (reason: CaptureDiscoveryReason, text: string, details: Readonly<Record<string, string>> = {}): ApiFailure => new ApiFailure(409, ApiErrorCode.INVALID_STATE, text, { details: { reason, ...details } });
 const locked = (): ApiFailure => new ApiFailure(409, ApiErrorCode.CAPTURE_CONFIG_LOCKED, 'The capture configuration cannot be changed while a session is open.');
 const noCandidate = (): ApiFailure => new ApiFailure(404, ApiErrorCode.NOT_FOUND, 'No candidate has this ID.');
 const noDevice = (): ApiFailure => new ApiFailure(404, ApiErrorCode.NOT_FOUND, 'The capture registry has no such device.');
@@ -358,16 +354,12 @@ function permitFor(candidate: ConnectCandidate, credential: OperatorCredential |
 
 /** The log code of a candidate whose test was refused by the destination rule (row 143c). A code and the rule's own word; never the address. */
 export const CANDIDATE_TEST_ADDRESS_REFUSED = 'CAPTURE_CANDIDATE_TEST_ADDRESS_REFUSED';
-const CANDIDATE_ADDRESS_REFUSED_TEXT = 'the address of a camera candidate is not one this Core connects to from its camera interface: its connection test was refused and nothing was sent';
+const CANDIDATE_ADDRESS_REFUSED_TEXT = 'the address of a camera candidate is not one this Core connects to: its connection test was refused and nothing was sent';
 const NOT_REQUIRED: CandidateSourceBinding = Object.freeze({ required: false });
-/** The destination rule's own word for "no camera interface or no camera subnet is chosen" (`DestinationRefusal.NOT_CONFIGURED` of `capture/destination-rule.ts`). */
-const RULE_NOT_CONFIGURED = 'NOT_CONFIGURED';
-/** F3-06: what the operator is told when the Core, not the device, is why no test can be made. The second sentence is the contract's own for the reason. */
-const NETWORK_NOT_SET_UP_TEXT = `This device cannot be tested yet: the camera network of this Core is not set up. ${CAPTURE_COMMISSIONING_REFUSAL_SENTENCES[CaptureCommissioningReason.COMMISSIONING_NOT_CONFIGURED]}`;
 
 /**
  * THE TESTER OF ONE ATTEMPT (task 4 row 143c; decision C65). Not required: the tester as it was
- * provided. Required (`REAL_PRODUCTION`): the tester BOUND to the camera-interface address the
+ * provided. Required (`REAL_PRODUCTION`): the tester BOUND to the source address the
  * destination rule names for the candidate's own address - or a refusal, before the bounds are
  * asked and before any request. It sends nothing and spends nothing.
  */
@@ -381,8 +373,7 @@ function testerOf(seams: ConnectSeams, resolved: { readonly tester: ConnectionTe
   if (!judged.allowed || fromAddress === null) {
     const refusal = judged.allowed ? StoredCameraRefusal.SOURCE_ABSENT : judged.refusal;
     seams.host.note({ code: CANDIDATE_TEST_ADDRESS_REFUSED, source: SOURCE, operationId, refusal }, CANDIDATE_ADDRESS_REFUSED_TEXT);
-    // F3-06 (C93): a Core without a camera network is the cause, not the device - the reason and the sentence say it.
-    if (refusal === RULE_NOT_CONFIGURED) throw invalidState(CaptureCommissioningReason.COMMISSIONING_NOT_CONFIGURED, NETWORK_NOT_SET_UP_TEXT);
+    // R-FLEX U4: every refusal of the rule, NOT_CONFIGURED included, is CANDIDATE_NOT_TESTABLE (the F3-06 branch is gone, RF-N3).
     throw invalidState(CaptureDiscoveryReason.CANDIDATE_NOT_TESTABLE, 'This device cannot be tested.');
   }
   try {
@@ -415,7 +406,7 @@ async function contact(
 ): Promise<Attempt> {
   const { host, limits } = seams;
   const { candidate, directory } = resolved;
-  // Row 143c (C65): in production the tester of this attempt is bound to the camera interface, or the attempt is refused here.
+  // Row 143c (C65), R-FLEX: in production the tester of this attempt is bound to the source address the rule names, or the attempt is refused here.
   const tester = testerOf(seams, resolved, operationId);
   const sessionId = caller.principal.sessionId;
   const refusal = limits.refusal(candidate.camera.host, sessionId);

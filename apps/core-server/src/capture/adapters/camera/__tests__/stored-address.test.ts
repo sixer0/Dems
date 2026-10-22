@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { CaptureAdapterKind } from '../../kinds';
 import { DestinationPurpose, decideDestination } from '../../../destination-rule';
 import { ONVIF_DEVICE_SERVICE_DEFAULT_PORT, ONVIF_DEVICE_SERVICE_PATH, StoredCameraRefusal, isSourceAddress, judgeStoredCamera, storedCameraCandidate, storedCameraSourceOf, type StoredCameraAddressRule } from '../stored-address';
-import { ADMITTED_HOST, GATE_CLASSES, HOST_FACTS, REAL_RULE, REFUSED_STORED_ADDRESSES, storedCameraAt } from './stored-address-cases';
+import { ADMITTED_HOST, ADMITTED_OFFICE_HOST, GATE_CLASSES, HOST_FACTS, REAL_RULE, REFUSED_STORED_ADDRESSES, storedCameraAt } from './stored-address-cases';
 
 /** Row 143b: an admission of the real rule names the ONE camera-interface address of the hand-written host facts as the source. */
 const ADMITTED_FROM_THE_CAMERA_INTERFACE = { allowed: true, sourceAddress: '192.168.50.1' };
@@ -16,7 +16,7 @@ describe('row 143b: the source address of an admission, and the refusal that sta
   const camera = storedCameraAt(ADMITTED_HOST);
   const admitting = (destination: unknown): StoredCameraAddressRule => (() => ({ allowed: true, destination })) as unknown as StoredCameraAddressRule;
 
-  it('the real rule: the source is the camera-interface address of the host facts - never the office interface, never the camera', () => {
+  it('the real rule: for a camera-subnet host the source is the camera-interface address of the host facts - never the office interface, never the camera', () => {
     const judged = judgeStoredCamera(camera, REAL_RULE);
     expect(judged).toEqual(ADMITTED_FROM_THE_CAMERA_INTERFACE);
     expect(storedCameraSourceOf(judged)).toEqual({ sourceAddress: HOST_FACTS.cameraAddresses[0]?.address });
@@ -24,6 +24,19 @@ describe('row 143b: the source address of an admission, and the refusal that sta
     // A refused address has no source: its refusal is the answer.
     for (const entry of REFUSED_STORED_ADDRESSES) expect(storedCameraSourceOf(judgeStoredCamera(entry.candidate, REAL_RULE)), entry.className).toEqual({ refusal: entry.refusal });
     expect(storedCameraSourceOf(judgeStoredCamera(camera, undefined))).toEqual({ refusal: StoredCameraRefusal.RULE_ABSENT });
+  });
+
+  it('R-FLEX (RF-N1, row 103): STORED_CAMERA is global - an address on the office subnet is admitted FROM the office address; facts without `interfaceSubnets` are NOT_CONFIGURED', () => {
+    // Lifted pin: this address was OTHER_INTERFACE_SUBNET before R-FLEX.
+    expect(judgeStoredCamera(storedCameraAt(ADMITTED_OFFICE_HOST), REAL_RULE)).toEqual({ allowed: true, sourceAddress: '10.20.0.5' });
+    expect(storedCameraSourceOf(judgeStoredCamera(storedCameraAt(ADMITTED_OFFICE_HOST), REAL_RULE))).toEqual({ sourceAddress: '10.20.0.5' });
+    // Control: the camera-subnet host keeps the camera-interface source.
+    expect(judgeStoredCamera(camera, REAL_RULE)).toEqual(ADMITTED_FROM_THE_CAMERA_INTERFACE);
+    // RF-N7: the same facts without `interfaceSubnets` refuse every stored address.
+    const { interfaceSubnets: _dropped, ...withoutSubnets } = HOST_FACTS;
+    const unreadable: StoredCameraAddressRule = (host, port) => decideDestination({ purpose: DestinationPurpose.STORED_CAMERA, address: host, ...(port === undefined ? {} : { port }) }, withoutSubnets);
+    expect(judgeStoredCamera(camera, unreadable)).toEqual({ allowed: false, refusal: 'NOT_CONFIGURED' });
+    expect(judgeStoredCamera(storedCameraAt(ADMITTED_OFFICE_HOST), unreadable)).toEqual({ allowed: false, refusal: 'NOT_CONFIGURED' });
   });
 
   it('an admission that names no source, or one outside the strict form, is `STORED_ADDRESS_SOURCE_ABSENT` at the dial: there is no third answer', () => {

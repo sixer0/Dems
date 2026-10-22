@@ -37,6 +37,11 @@ const HOST: DestinationContext = {
   cameraSubnet: { network: '192.168.50.0', prefixLength: 24 },
   cameraAddresses: [{ address: '192.168.50.1', alias: false }],
   otherInterfaceSubnets: [{ network: '10.20.0.0', prefixLength: 16 }],
+  // R-FLEX NW-C1 (row 104): every eligible interface of the host - STORED_CAMERA is global.
+  interfaceSubnets: [
+    { name: 'eth0', address: '192.168.50.1', network: '192.168.50.0', prefixLength: 24 },
+    { name: 'eth1', address: '10.20.0.15', network: '10.20.0.0', prefixLength: 16 },
+  ],
   hostAddresses: ['10.20.0.15', '192.168.50.1'],
 };
 /** The composition's binding: the real rule, purpose STORED_CAMERA, on the host above. */
@@ -274,7 +279,8 @@ describe('the new address is held to the destination rule (AD-02), before the un
     ['loopback', '127.0.0.1'],
     ['a public address', '8.8.8.8'],
     ['the host\'s own address', '192.168.50.1'],
-    ['the subnet of another interface', '10.20.0.40'],
+    // R-FLEX (row 104): the subnet of another interface (10.20.0.0/16) is admitted now (RM-N1); a private address no interface holds is refused (NW-R1).
+    ['a private address no interface holds', '172.16.9.9'],
     ['a private address outside the camera subnet', '192.168.51.20'],
     ['the broadcast address of the camera subnet', '192.168.50.255'],
     ['a link-local address', '169.254.10.10'],
@@ -383,9 +389,12 @@ describe('row 197: the destination rule on INJECTED network facts (fail-closed)'
     )(GOOD, 80);
     expect(thrown).toEqual({ allowed: false, refusal: 'NOT_CONFIGURED' });
     expect(told).toBe(1);
-    // Facts without a camera subnet, or without an address on the camera interface: nothing is admitted.
-    expect(readdressRuleOf(() => () => ({ ...HOST, cameraSubnet: null }), tell)(GOOD, undefined).allowed).toBe(false);
-    expect(readdressRuleOf(() => () => ({ ...HOST, cameraAddresses: [] }), tell)(GOOD, undefined).allowed).toBe(false);
+    // R-FLEX (row 104; RM-N4, RF-N3): facts without a camera subnet, or without an address on the camera interface, are no longer a
+    // refusal - STORED_CAMERA is judged on every interface. Facts that do not list the interfaces (NW-C1 left out) still admit nothing (RF-N7).
+    expect(readdressRuleOf(() => () => ({ ...HOST, cameraSubnet: null }), tell)(GOOD, undefined).allowed).toBe(true);
+    expect(readdressRuleOf(() => () => ({ ...HOST, cameraAddresses: [] }), tell)(GOOD, undefined).allowed).toBe(true);
+    const { interfaceSubnets: _unlisted, ...unlisted } = HOST;
+    expect(readdressRuleOf(() => () => unlisted, tell)(GOOD, undefined)).toEqual({ allowed: false, refusal: 'NOT_CONFIGURED' });
   });
 
   it('on the host\'s facts it is the rule of a stored camera: the same answers as the binding the function was built against, and the reader is asked at EVERY judgement', () => {

@@ -2,7 +2,7 @@
 //
 // What the unit file cannot show: the app-bound function opens the REAL doors of the three modules and of the session,
 // once, in `REAL_PRODUCTION` only; the stored facts are read from the registry tables as the runtime role; and with no
-// network facts injected - the product of today - both credential readers refuse a registered production camera with no
+// network facts injected (R-FLEX, row 109: no reader is the one "not configured" left for a stored camera) both credential readers refuse a registered production camera with no
 // reveal and no audit entry. Nothing is booted and nothing is started: no worker, no relay, no camera, no port. The
 // composition is asked for where the entry point asks for it, after `app.ready()` and before the boot steps.
 import type { Pool } from 'pg';
@@ -52,6 +52,11 @@ const HOST: DestinationContext = {
   cameraSubnet: { network: '192.168.50.0', prefixLength: 24 },
   cameraAddresses: [{ address: '192.168.50.1', alias: false }],
   otherInterfaceSubnets: [{ network: '10.20.0.0', prefixLength: 24 }],
+  // R-FLEX NW-C1 (row 136): the eligible interfaces the global STORED_CAMERA rule reads; without them it is NOT_CONFIGURED (RF-N7, RM-N4).
+  interfaceSubnets: [
+    { name: 'eth1', address: '192.168.50.1', network: '192.168.50.0', prefixLength: 24 },
+    { name: 'eth0', address: '10.20.0.5', network: '10.20.0.0', prefixLength: 24 },
+  ],
   hostAddresses: ['192.168.50.1', '10.20.0.5'],
 };
 const SESSION = 'SES-20261013-0085';
@@ -284,16 +289,17 @@ describe('row 85c: the remainder of the composition on the real app', () => {
 // 192.168.50.0/24) - no interface of this Mac is read, no address is contacted, no device and no credential exists.
 describe('integration pass I-9a: the network facts through the real composition', () => {
   /** The host of this block: an office network on `eth0`, the camera port `eth1`, a loopback. Synthetic. */
+  // R-FLEX row 136: a non-zero `mac` on every non-loopback address - row 105 makes an address without one ineligible as a source (RG-13).
   const INTERFACES: readonly HostInterface[] = [
     { name: 'lo', internal: true, addresses: [{ address: '127.0.0.1', prefixLength: 8 }] },
-    { name: 'eth0', internal: false, addresses: [{ address: '10.20.0.15', prefixLength: 16 }] },
-    { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24 }] },
+    { name: 'eth0', internal: false, addresses: [{ address: '10.20.0.15', prefixLength: 16, mac: '02:00:00:00:00:e0' }] },
+    { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24, mac: '02:00:00:00:00:e1' }] },
   ];
   const INSIDE = '192.168.50.31';
   const OUTSIDE = '192.168.60.31';
   const STORE_CHOICE = "INSERT INTO public.capture_network_config (interface_name, camera_subnet, updated_at) VALUES ('eth1', '192.168.50.0/24', 1760000000000)";
 
-  it('(1) the entry\'s statement: the reader is handed in and NOT called at composition; a stored camera address inside the configured subnet is allowed and one outside refused; with no configuration, and before the boot step loaded it, everything is refused', async () => {
+  it('(1) the entry\'s statement: the reader is handed in and NOT called at composition; a stored camera address inside the configured subnet is allowed and one outside refused; with no configuration the global purposes judge on the eligible interfaces (R-FLEX RM-N4)', async () => {
     const { app, owner } = await ready('i9a_facts', PRODUCTION, async (pool) => {
       await productionRows(pool);
       await pool.query(STORE_CHOICE);
@@ -324,12 +330,14 @@ describe('integration pass I-9a: the network facts through the real composition'
     // CALLED AT EACH JUDGEMENT: one read of the table per answer.
     expect(composition.storedAddress(INSIDE, undefined)).toEqual({ allowed: true, destination: { address: INSIDE, port: 80, sourceAddress: '192.168.50.1', viaAlias: false } });
     expect(tableReads).toBe(1);
-    expect(composition.storedAddress(OUTSIDE, undefined)).toEqual({ allowed: false, refusal: 'OUTSIDE_CAMERA_SUBNET' });
+    // R-FLEX (row 136): off-link is NW-R1 NO_SOURCE_INTERFACE, no longer OUTSIDE_CAMERA_SUBNET (RM-N2).
+    expect(composition.storedAddress(OUTSIDE, undefined)).toEqual({ allowed: false, refusal: 'NO_SOURCE_INTERFACE' });
     expect(tableReads).toBe(2);
     // The same facts at the typed probe's rule (item 3): the rule's own answer for a typed address, as it came.
     expect(typedAddressControl(app).decide('192.168.50.77')).toEqual({ allowed: true, destination: { address: '192.168.50.77', port: 80, sourceAddress: '192.168.50.1', viaAlias: false } });
-    expect(typedAddressControl(app).decide('192.168.60.77')).toEqual({ allowed: false, refusal: 'OUTSIDE_CAMERA_SUBNET' });
-    expect(typedAddressControl(app).decide('10.20.0.77')).toEqual({ allowed: false, refusal: 'OTHER_INTERFACE_SUBNET' });
+    // R-FLEX (row 136): TYPED_PROBE is global - off-link NO_SOURCE_INTERFACE (RM-N2); the office subnet is dialled from eth0 (RM-N1 lifted).
+    expect(typedAddressControl(app).decide('192.168.60.77')).toEqual({ allowed: false, refusal: 'NO_SOURCE_INTERFACE' });
+    expect(typedAddressControl(app).decide('10.20.0.77')).toEqual({ allowed: true, destination: { address: '10.20.0.77', port: 80, sourceAddress: '10.20.0.15', viaAlias: false } });
     expect(tableReads).toBe(5);
     // Through the credential reader of the camera bundle: CAM-11 (192.168.50.21) passes the gate - its refusal is the store's, not the address rule's.
     const reader = composition.dependencies.camera.credentials;
@@ -337,23 +345,20 @@ describe('integration pass I-9a: the network facts through the real composition'
     expect(admitted).not.toBe('CAPTURE_CREDENTIAL_ADDRESS_REFUSED');
     expect(admitted).not.toBe('RESOLVED');
 
-    // THE CHOICE IS TAKEN AWAY (the interface is not chosen): everything is refused, the camera subnet included.
+    // THE CHOICE IS TAKEN AWAY (the interface is not chosen). R-FLEX (row 136): the facts are still a context with
+    // `cameraSubnet: null` (row 105, RF-N3), and STORED_CAMERA / TYPED_PROBE no longer answer NOT_CONFIGURED for a missing
+    // camera interface (RM-N4): they judge on the eligible interfaces - the camera port's subnet is dialled from eth1, off-link is NW-R1.
     await owner.query('UPDATE public.capture_network_config SET interface_name = NULL, revision = revision + 1');
     await control.load();
-    expect(captureNetworkFacts(app)()).toBeNull();
-    expect([composition.storedAddress(INSIDE, undefined), composition.storedAddress(OUTSIDE, undefined)]).toEqual([
-      { allowed: false, refusal: 'NOT_CONFIGURED' },
-      { allowed: false, refusal: 'NOT_CONFIGURED' },
-    ]);
-    expect(typedAddressControl(app).decide('192.168.50.77')).toEqual({ allowed: false, refusal: 'NOT_CONFIGURED' });
-    expect(await codeOf(reader.sessionOpen('CAM-11', SESSION))).toBe('CAPTURE_CREDENTIAL_ADDRESS_REFUSED');
-    // NO ROW AT ALL: the same.
+    expect(captureNetworkFacts(app)()).toMatchObject({ cameraSubnet: null, cameraAddresses: [] });
+    const fromEth1 = (address: string) => ({ allowed: true, destination: { address, port: 80, sourceAddress: '192.168.50.1', viaAlias: false } });
+    expect([composition.storedAddress(INSIDE, undefined), composition.storedAddress(OUTSIDE, undefined)]).toEqual([fromEth1(INSIDE), { allowed: false, refusal: 'NO_SOURCE_INTERFACE' }]);
+    expect(typedAddressControl(app).decide('192.168.50.77')).toEqual(fromEth1('192.168.50.77'));
+    expect(await codeOf(reader.sessionOpen('CAM-11', SESSION))).not.toBe('CAPTURE_CREDENTIAL_ADDRESS_REFUSED');
+    // NO ROW AT ALL: the same (RM-N4).
     await owner.query('DELETE FROM public.capture_network_config');
     await control.load();
-    expect([composition.storedAddress(INSIDE, undefined), typedAddressControl(app).decide('192.168.50.77')]).toEqual([
-      { allowed: false, refusal: 'NOT_CONFIGURED' },
-      { allowed: false, refusal: 'NOT_CONFIGURED' },
-    ]);
+    expect([composition.storedAddress(INSIDE, undefined), typedAddressControl(app).decide('192.168.50.77')]).toEqual([fromEth1(INSIDE), fromEth1('192.168.50.77')]);
   });
 
   it('a Core that is NOT production, and a production Core composed WITHOUT a reader: neither door is opened - a re-address and a typed address stay refused', async () => {
@@ -581,12 +586,13 @@ describe('row 106b: the alias of the camera port through the real composition, o
       },
     };
     // THE HOST: the camera port holds its own address and whatever the double marked in a factory /24 of this file.
+    // R-FLEX row 136: a non-zero `mac` on every non-loopback address - row 105 makes an address without one ineligible as a source (RG-13).
     const SCANNED = ['192.168.1.253', '192.168.0.253'];
     captureNetworkConfigControl(app).replaceForTest({
       interfaces: () => [
         { name: 'lo', internal: true, addresses: [{ address: '127.0.0.1', prefixLength: 8 }] },
-        { name: 'eth0', internal: false, addresses: [{ address: '10.20.0.15', prefixLength: 16 }] },
-        { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24 }, ...SCANNED.filter((address) => marked.has(address)).map((address) => ({ address, prefixLength: 24 }))] },
+        { name: 'eth0', internal: false, addresses: [{ address: '10.20.0.15', prefixLength: 16, mac: '02:00:00:00:00:e0' }] },
+        { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24, mac: '02:00:00:00:00:e1' }, ...SCANNED.filter((address) => marked.has(address)).map((address) => ({ address, prefixLength: 24, mac: '02:00:00:00:00:e1' }))] },
       ],
     });
 

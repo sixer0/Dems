@@ -791,7 +791,7 @@ export const common = {
       hint: 'An IPv4 address, for example 192.168.10.20. No name, port or link.',
       action: 'Search this address',
       form: 'Type an IPv4 address: four numbers from 0 to 255, separated by dots.',
-      notAllowed: 'The Core does not ask this address. It asks only addresses on the network the cameras are connected to. Nothing was sent.',
+      notAllowed: 'The Core does not ask this address. It asks only private addresses on a network the Core is connected to. Nothing was sent.',
       searching: 'A search is running. An address can be asked when it has finished.',
       notProbed: 'Your search was still running, so this address was not asked. Search this address again when the search has finished.',
     },
@@ -868,8 +868,6 @@ export const common = {
      * unchanged by pass I-9b (request line of row W4). `{{screen}}` is the client's name of its
      * commissioning screen.
      */
-    networkNotConfigured: 'This camera cannot be tested yet: the camera network of this Core is not configured.',
-    networkNotConfiguredDetail: 'A technician chooses the camera interface and the camera subnet on the "{{screen}}" screen (Administration). Then test the connection again. Nothing was sent to the camera.',
   },
 
   captureNotice: {
@@ -1056,10 +1054,15 @@ export const common = {
       usbId: 'USB ID {{id}}',
       notUsb: 'Not a USB card',
       device: 'Capture device {{index}}',
+      boundTo: 'Bound to {{device}}',
+      notTellable: 'Two sound cards of this model state no serial number. The Core cannot tell which one {{device}} uses, so neither is offered.',
     },
     inputsLabel: 'Inputs of sound card {{position}}',
     input: 'Input {{number}}',
     registeredAs: 'Registered as {{device}}',
+    release: 'Move {{device}} to another input',
+    releaseHint: '{{device}} will move to the input you choose and stop using its present input. Choose the input, then register it.',
+    released: '{{released}} now uses input {{number}} of this sound card. Its old input was released.',
     pickHint: 'Choose one input of one sound card. A microphone is one input; inputs are never mixed.',
     pickFirst: 'Choose an input first.',
     register: 'Register as microphone',
@@ -1070,12 +1073,13 @@ export const common = {
     result: {
       REGISTERED: 'Input {{number}} is registered as {{device}}. It is not used until it is assigned as a microphone.',
       REENABLED: 'Input {{number}} already has a microphone, {{device}}. It is enabled again; no second microphone was made.',
-      CARD_CHANGED: 'Input {{number}} is {{device}}, which was stored for a sound card at another place. It now names this sound card.',
+      CARD_CHANGED: 'Input {{number}} is {{device}}, which was stored for another sound card. It now names this sound card.',
     },
     refusal: {
       NOT_FOUND: 'The Core no longer finds this sound card. List the sound cards again.',
       AUDIO_INPUT_BEYOND_CARD: 'This sound card has no input of that number. List the sound cards again.',
-      AUDIO_INPUT_NOT_REGISTRABLE: 'This Core cannot capture from this sound card, so the input was not registered. Nothing was saved.',
+      AUDIO_INPUT_NOT_REGISTRABLE: 'This Core cannot capture from this sound card, or cannot find it again, so the input was not registered. Nothing was saved.',
+      AUDIO_CARD_ALREADY_BOUND: 'This sound card is already used by {{device}}. List the sound cards again, or move {{device}} to another input first. Nothing was saved.',
       FAILED: 'The input could not be registered. Nothing was saved.',
     },
   },

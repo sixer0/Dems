@@ -8,7 +8,7 @@
 // EVERY RULE HAS ITS CONTROL.
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { createSocket } from 'node:dgram';
+import { Socket as DgramSocket, createSocket } from 'node:dgram';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -18,11 +18,12 @@ import { DestinationPurpose, decideDestination, type AllowedDestination, type De
 import { createSystemTimers } from '../../../timers';
 import { CaptureAdapterError } from '../../errors';
 import { createCaptureDeviceRegistry } from '../../registry';
-import type { InterfaceTable } from '../discovery-collector';
+import { selectInterfaces, type InterfaceTable } from '../discovery-collector';
 import { createOnvifDiscoveryAdapter } from '../onvif-discovery';
 import { DiscoveryNotRunError, WS_DISCOVERY_GROUP, WS_DISCOVERY_REPEAT_MS, type WsDiscoveryOptions, type WsDiscoveryResult } from '../ws-discovery';
 import { LAN_A, LAN_B, LOOPBACK, answerFrom, datagramSockets, delay, installLoopbackGuard, interfaceTable, startFakeOnvif, until, type LoopbackGuard } from './support';
 
+const dgramSocketPrototype = DgramSocket.prototype;
 const WINDOW_MS = 400;
 let guard: LoopbackGuard;
 let stubs: FakeOnvifStub[] = [];
@@ -487,6 +488,8 @@ describe('task 4 row 96: the typed-address probe - one more datagram, from the s
     cameraSubnet: { network: '192.168.50.0', prefixLength: 24 },
     cameraAddresses: [{ address: '192.168.50.1', alias: false }],
     otherInterfaceSubnets: [],
+    // R-FLEX (RF-N7): TYPED_PROBE without `interfaceSubnets` is NOT_CONFIGURED.
+    interfaceSubnets: [{ name: 'eth1', address: '192.168.50.1', network: '192.168.50.0', prefixLength: 24 }],
     hostAddresses: ['192.168.50.1'],
   };
   const TYPED = '192.168.50.20';
@@ -592,6 +595,46 @@ describe('task 4 row 96: the typed-address probe - one more datagram, from the s
       expect(decideDestination({ purpose: DestinationPurpose.TYPED_PROBE, address }, HOST_FACTS).allowed, address).toBe(false);
     }
     expect(ruled(TYPED)).toEqual({ address: TYPED, port: 80, sourceAddress: '192.168.50.1', viaAlias: false });
+  });
+
+  it('R-FLEX network-spec AC-6 (5.2, NW-K1): 5 eligible interfaces, the typed source on the 5th - probed first, probed.length = 4, not NO_ELIGIBLE_INTERFACE', async () => {
+    const lans = Array.from({ length: 5 }, (_unused, index) => ({ address: `10.0.${index + 1}.10`, netmask: '255.255.255.0' }));
+    const facts: DestinationContext = {
+      cameraSubnet: null,
+      cameraAddresses: [],
+      otherInterfaceSubnets: [],
+      interfaceSubnets: lans.map((lan, index) => ({ name: `en${index}`, address: lan.address, network: `10.0.${index + 1}.0`, prefixLength: 24 })),
+      hostAddresses: lans.map((lan) => lan.address),
+    };
+    const decision = decideDestination({ purpose: DestinationPurpose.TYPED_PROBE, address: '10.0.5.20' }, facts);
+    if (!decision.allowed) throw new Error(`the rule refused the address of this test: ${decision.refusal}`);
+    expect(decision.destination).toEqual({ address: '10.0.5.20', port: 80, sourceAddress: '10.0.5.10', viaAlias: false });
+    // The selection itself: the 5th interface is probed, first, and the bound of four holds.
+    const selection = selectInterfaces(interfaceTable(...lans), decision.destination.sourceAddress);
+    expect(selection.probed).toHaveLength(4);
+    expect(selection.probed.map((probed) => probed.address)).toEqual(['10.0.5.10', '10.0.1.10', '10.0.2.10', '10.0.3.10']);
+    // Control: table order alone would leave the 5th out.
+    expect(selectInterfaces(interfaceTable(...lans)).probed.map((probed) => probed.address)).not.toContain('10.0.5.10');
+    // The product path (no fixture): the search is NOT refused NO_ELIGIBLE_INTERFACE; a socket is opened and each of the
+    // four interfaces is asked for as the outgoing one, the 5th first. This host holds none of these documentation-like
+    // addresses, so the operating system refuses the option and nothing is sent: SOCKET_ERROR, 0 datagrams.
+    guard.reset();
+    const before = datagramSockets();
+    const asked: string[] = [];
+    const original = dgramSocketPrototype.setMulticastInterface;
+    dgramSocketPrototype.setMulticastInterface = function recorded(this: typeof dgramSocketPrototype, address: string): void {
+      asked.push(address);
+      original.call(this, address);
+    };
+    try {
+      const product = createOnvifDiscoveryAdapter({ timers: createSystemTimers(), newMessageId: randomUUID, interfaces: () => interfaceTable(...lans) });
+      expect(await refusal(product.discover({ windowMs: WINDOW_MS, signal: new AbortController().signal, unicast: decision.destination }))).toBe('DiscoveryNotRunError/SOCKET_ERROR');
+    } finally {
+      dgramSocketPrototype.setMulticastInterface = original;
+    }
+    expect(asked).toEqual(['10.0.5.10', '10.0.1.10', '10.0.2.10', '10.0.3.10']);
+    expect(guard.datagrams()).toEqual([]);
+    expect(datagramSockets() - before).toBe(0);
   });
 
   it('the typed probe has a message ID of its own: one that repeats an ID of the search is refused before a socket is opened', async () => {

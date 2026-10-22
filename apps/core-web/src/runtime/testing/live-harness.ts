@@ -436,6 +436,9 @@ export function createLiveTestBed(options: LiveTestBedOptions = {}): LiveTestBed
   // that lands on `/login`, whose device strip asks for health on the page's own origin. A page row
   // that needs another answer scripts `fake.answer('getServiceHealth', …)` of its own.
   answered('getServiceHealth', () => ({ status: 200, body: coreHealth() }))
+  // Row 139: the Devices page's LCD connection card polls `getDeviceHealth`. Default answer = the
+  // contract's idle example; a test that scripts `fake.answer('getDeviceHealth', …)` replaces it.
+  answered('getDeviceHealth', () => fake.example('getDeviceHealth', 200, 'idle'))
 
   const flush = async (): Promise<void> => {
     await act(async () => {

@@ -142,6 +142,11 @@ const HOST_FACTS: DestinationContext = {
   cameraSubnet: { network: '192.168.50.0', prefixLength: 24 },
   cameraAddresses: [{ address: '192.168.50.1', alias: false }],
   otherInterfaceSubnets: [{ network: '10.20.0.0', prefixLength: 24 }],
+  // R-FLEX NW-C1 (row 136): the eligible interfaces the global STORED_CAMERA rule reads; without them it is NOT_CONFIGURED (RF-N7, RM-N4).
+  interfaceSubnets: [
+    { name: 'eth1', address: '192.168.50.1', network: '192.168.50.0', prefixLength: 24 },
+    { name: 'eth0', address: '10.20.0.5', network: '10.20.0.0', prefixLength: 24 },
+  ],
   hostAddresses: ['10.20.0.5'],
 };
 const PRODUCT_RULE: StoredCameraAddressRule = (host, port) => decideDestination({ purpose: DestinationPurpose.STORED_CAMERA, address: host, ...(port === undefined ? {} : { port }) }, HOST_FACTS);
@@ -547,7 +552,8 @@ describe('row 146: refusals on PostgreSQL - before the reveal, and outside any u
     }
     await owner.query("UPDATE public.capture_devices SET address = $1 WHERE id = 'CAM-01'", [`${HOST}:${ONVIF_PORT}`]);
     say(`[row146] stored-address refusals: ${refusals.join(', ')}`);
-    expect(refusals).toEqual(['LOOPBACK', 'LINK_LOCAL', 'PUBLIC_ADDRESS', 'OUTSIDE_CAMERA_SUBNET', 'HOST_ADDRESS']);
+    // R-FLEX (row 136): 192.168.60.20 is off-link: NW-R1 NO_SOURCE_INTERFACE, no longer OUTSIDE_CAMERA_SUBNET (RM-N2).
+    expect(refusals).toEqual(['LOOPBACK', 'LINK_LOCAL', 'PUBLIC_ADDRESS', 'NO_SOURCE_INTERFACE', 'HOST_ADDRESS']);
     expect({ trail: (await readTrail(owner)).length, relays: relayPids.length, tester: testerCalls, onvif: onvif.requests().length, errors: errorLog.entries.length }).toEqual({ trail: before.trail, relays: before.relays, tester: before.tester, onvif: before.onvif, errors: before.errors });
     expect(persisted.length - before.persisted).toBe(5);
     expect(limits.busy()).toBe(false);

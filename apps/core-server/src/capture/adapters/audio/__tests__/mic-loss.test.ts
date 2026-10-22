@@ -75,7 +75,7 @@ const OCTO: FixtureCard = { index: 2, id: 'Octo', product: 'DEMS Test Octo', usb
 /** Another product that the kernel gave the name of the registered card. */
 const IMPOSTOR: FixtureCard = { index: 1, id: 'Duo', product: 'DEMS Other Codec', usbId: '3c4d:2902', port: '0000:00:14.0-4', channels: 2 };
 
-// Task 4 row 200: a stored row holds the port path its card was registered on (the fixture cards state no serial); the match reads it.
+// Task 4 row 200: a stored row holds the port path its card was registered on (the fixture cards state no serial); since R-FLEX row 107 the match does not compare it (information only).
 const row = (deviceId: string, card: FixtureCard, inputNumber: number): RegisteredAudioInput => ({ deviceId, usbId: card.usbId, usbSerial: card.serial ?? null, usbPort: card.port, cardId: card.id, cardDevice: 0, inputNumber, nativeChannels: card.channels });
 
 // ── The sinks ───────────────────────────────────────────────────────────────────────
@@ -265,6 +265,33 @@ describe('row 68 (2): the card is looked for by its stored identity; what cannot
     expect(h.said()).toEqual(['LOST MIC-01 CARD_CHANGED', 'RETURNED MIC-01 CARD_CHANGED']);
   });
 
+  // R-FLEX row 107 (T-4; D10 ruling 1, no port lock): the bench microphone states no serial; moved to another socket it is the bound card.
+  it('T-4: a serial-less card unplugged and plugged into ANOTHER port: pass 1 raises MIC_DISCONNECTED (CARD_ABSENT), pass 2 clears it (RETURNED); no CARD_CHANGED cause', async () => {
+    const real = simulatorSink();
+    const h = rig({ rows: [row('MIC-01', DUO, 1)], sink: real.sink });
+    h.host.cards = [OCTO];
+    await h.watch.check();
+    expect(real.faults()).toHaveLength(1);
+    expect(real.audits()).toEqual(['FAULT_RAISED MIC_DISCONNECTED']);
+    h.host.cards = [OCTO, { ...DUO, index: 4, port: '0000:00:14.0-7' }];
+    await h.watch.check();
+    expect(real.faults()).toEqual([]);
+    expect(real.audits()).toEqual(['FAULT_RAISED MIC_DISCONNECTED', 'FAULT_CLEARED MIC_DISCONNECTED']);
+    expect(h.said()).toEqual(['LOST MIC-01 CARD_ABSENT', 'RETURNED MIC-01 CARD_ABSENT']);
+    expect(h.changes.filter((change) => change.cause === MicLossCause.CARD_CHANGED)).toEqual([]);
+    expect(h.watch.lost()).toEqual([]);
+  });
+
+  // R-FLEX row 107 (T-5; Q96-03 (iii), AU-R2): two serial-less units of the stored model cannot be told apart - undecided, no fault.
+  it('T-5: two serial-less units of the stored model: CARD_UNDECIDED with AUDIO_CARD_AMBIGUOUS, 0 faults raised', async () => {
+    const h = rig({ rows: [row('MIC-01', DUO, 1)] });
+    h.host.cards = [DUO, { ...DUO, index: 7, id: 'Duo_1', port: '0000:00:14.0-5' }];
+    await h.watch.check();
+    expect(h.calls).toEqual([]);
+    expect(h.said()).toEqual([]);
+    expect(h.reports.map((entry) => `${entry.code} ${String(entry.deviceId)} ${entry.detail}`)).toEqual([`${MicLossReportCode.CARD_UNDECIDED} MIC-01 ${UsbAudioRefusal.CARD_AMBIGUOUS}`]);
+  });
+
   it('a listing that could not be made raises nothing and clears nothing: before a loss and during one', async () => {
     const h = rig({ rows: [row('MIC-01', DUO, 1)] });
     h.host.failing = true;
@@ -287,8 +314,8 @@ describe('row 68 (2): the card is looked for by its stored identity; what cannot
   });
 
   it('two cards with the stored identity, a stored row that cannot be read, and a microphone with no row: none is a loss; each is reported by its code', async () => {
-    // Task 4 row 200: two units on two ports are told apart by the stored port path, so "two cards
-    // with the stored identity" is now two units that state the STORED SERIAL, neither on the stored port.
+    // Task 4 row 200: "two cards with the stored identity" here is two units that state the STORED
+    // SERIAL, neither on the stored port (the serial-less case is T-5 above, R-FLEX row 107).
     const twin = { ...DUO, serial: 'SN-SAME' };
     const h = rig({ rows: [row('MIC-01', twin, 1), row('MIC-02', OCTO, 1)] });
     h.watched.ids = ['MIC-01', 'MIC-02', 'MIC-09'];

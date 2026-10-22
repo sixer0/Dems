@@ -77,6 +77,11 @@ const HOST: DestinationContext = {
   cameraSubnet: { network: '192.168.50.0', prefixLength: 24 },
   cameraAddresses: [{ address: '192.168.50.1', alias: false }],
   otherInterfaceSubnets: [{ network: '10.20.0.0', prefixLength: 24 }],
+  // R-FLEX NW-C1 (row 109, as row 136 in the db file): the eligible interfaces the global TYPED_PROBE / STORED_CAMERA rule reads; without them both are NOT_CONFIGURED (RF-N7, RM-N4).
+  interfaceSubnets: [
+    { name: 'eth1', address: '192.168.50.1', network: '192.168.50.0', prefixLength: 24 },
+    { name: 'eth0', address: '10.20.0.5', network: '10.20.0.0', prefixLength: 24 },
+  ],
   hostAddresses: ['192.168.50.1', '10.20.0.5'],
 };
 const CAMERA_ADDRESS = '192.168.50.21';
@@ -230,7 +235,7 @@ describe('the composition in each capture operation', () => {
 describe('fail-closed: the destination rule on a stored camera address', () => {
   const ADDRESSES = [CAMERA_ADDRESS, '192.168.50.1', '10.20.0.9', '127.0.0.1', '0.0.0.0', '169.254.10.20', '224.0.0.251', '8.8.8.8', 'camera.local', ''];
 
-  it('NO network reader (the product today: row 108 is not built): every address is refused, the camera subnet included', () => {
+  it('NO network reader: every address is refused, the camera subnet included', () => {
     const rule = storedCameraAddressRuleOf(undefined);
     expect(ADDRESSES.map((address) => refusal(rule, address))).not.toContain('ALLOWED');
     // The class of an address keeps its own code; an address that WOULD be a camera is `NOT_CONFIGURED`.
@@ -241,39 +246,51 @@ describe('fail-closed: the destination rule on a stored camera address', () => {
     expect(judgeStoredCamera({ host: CAMERA_ADDRESS, serviceAddress: `http://${CAMERA_ADDRESS}/onvif/device_service` }, rule)).toMatchObject({ allowed: false });
   });
 
-  it('a reader that answers nothing, a reader that throws and facts with no camera subnet: every address is refused; the throw is reported once per judgement, without its text', () => {
+  // R-FLEX (row 109; spec 01_specs_rflex_network.md U7, RM-N4, RF-N7): "no reader, or an unreadable host: every address
+  // refused". Facts that hold no camera subnet or no camera-interface address are NOT "not configured" for a stored camera.
+  it('a reader that answers nothing, a reader that throws and facts without the eligible interfaces: every address is refused; the throw is reported once per judgement, without its text', () => {
     let unreadable = 0;
+    const { interfaceSubnets: _left, ...unreadableHost } = HOST;
     const cases: StoredCameraAddressRule[] = [
       storedCameraAddressRuleOf(() => null),
       storedCameraAddressRuleOf(() => {
         throw new Error('interface eth9 at 192.168.50.1 could not be read');
       }, () => void (unreadable += 1)),
-      storedCameraAddressRuleOf(() => ({ ...HOST, cameraSubnet: null })),
-      storedCameraAddressRuleOf(() => ({ ...HOST, cameraAddresses: [] })),
+      storedCameraAddressRuleOf(() => unreadableHost),
     ];
     for (const rule of cases) expect(ADDRESSES.map((address) => refusal(rule, address))).not.toContain('ALLOWED');
-    expect(unreadable).toBe(ADDRESSES.length);
+    for (const rule of cases) expect(refusal(rule, CAMERA_ADDRESS)).toBe('NOT_CONFIGURED');
+    expect(unreadable).toBe(ADDRESSES.length + 1);
+    // No camera subnet configured, no camera-interface address: a stored camera on an eligible interface is still reached (global rule).
+    for (const facts of [{ ...HOST, cameraSubnet: null }, { ...HOST, cameraAddresses: [] }]) expect(storedCameraAddressRuleOf(() => facts)(CAMERA_ADDRESS, undefined)).toMatchObject({ allowed: true, destination: { sourceAddress: '192.168.50.1' } });
   });
 
-  it('with the host facts injected the SAME binding admits a camera of the camera subnet and nothing else; the facts are read at every judgement', () => {
+  it('with the host facts injected the SAME binding admits a camera on the subnet of ANY eligible interface (global rule) and nothing else; the facts are read at every judgement', () => {
     let facts: DestinationContext | null = HOST;
     let reads = 0;
     const rule = storedCameraAddressRuleOf(() => {
       reads += 1;
       return facts;
     });
-    expect(ADDRESSES.map((address) => refusal(rule, address))).toEqual(['ALLOWED', 'HOST_ADDRESS', 'OTHER_INTERFACE_SUBNET', 'LOOPBACK', 'UNSPECIFIED', 'LINK_LOCAL', 'MULTICAST', 'PUBLIC_ADDRESS', 'HOST_NAME', 'EMPTY'].map((code, index) => (index < 8 ? code : expect.any(String))));
+    // 10.20.0.9 is on the office interface: reached from it (RM-N1), no longer OTHER_INTERFACE_SUBNET.
+    expect(ADDRESSES.map((address) => refusal(rule, address))).toEqual(['ALLOWED', 'HOST_ADDRESS', 'ALLOWED', 'LOOPBACK', 'UNSPECIFIED', 'LINK_LOCAL', 'MULTICAST', 'PUBLIC_ADDRESS', 'HOST_NAME', 'EMPTY'].map((code, index) => (index < 8 ? code : expect.any(String))));
+    expect(rule('10.20.0.9', undefined)).toMatchObject({ allowed: true, destination: { sourceAddress: '10.20.0.5', viaAlias: false } });
+    // Off-link: no eligible interface holds it (NW-R1); two interfaces at the same prefix: no source is named (NW-R2).
+    expect(refusal(rule, '192.168.60.21')).toBe('NO_SOURCE_INTERFACE');
+    facts = { ...HOST, interfaceSubnets: [...(HOST.interfaceSubnets ?? []), { name: 'wlan0', address: '192.168.50.7', network: '192.168.50.0', prefixLength: 24 }] };
+    expect(refusal(rule, CAMERA_ADDRESS)).toBe('SOURCE_INTERFACE_AMBIGUOUS');
+    facts = HOST;
     expect(refusal(rule, CAMERA_ADDRESS, 80)).toBe('ALLOWED');
     expect(refusal(rule, CAMERA_ADDRESS, 8557)).toBe('PORT_NOT_LISTED');
     // The configuration is taken away between two judgements: the second is refused. Nothing is remembered.
     facts = null;
     expect(refusal(rule, CAMERA_ADDRESS)).toBe('NOT_CONFIGURED');
-    expect(reads).toBe(ADDRESSES.length + 3);
+    expect(reads).toBe(ADDRESSES.length + 6);
   });
 
   // Integration pass I-9a (records 095, 096): the binding for ONE typed address of operation 93 - the purpose of a typed
   // probe on the SAME injected reader, fail-closed the same way.
-  it('the binding for a typed address: no reader, a reader that answers nothing or throws -> NOT_CONFIGURED (the thrower is told of, once per judgement); with the facts it admits the camera subnet only, never a port and never an alias', () => {
+  it('the binding for a typed address: no reader, a reader that answers nothing or throws -> NOT_CONFIGURED (the thrower is told of, once per judgement); with the facts it admits the subnet of any eligible interface (global rule), never a port and never an alias', () => {
     let told = 0;
     const thrower = typedProbeRuleOf(
       () => {
@@ -291,11 +308,13 @@ describe('fail-closed: the destination rule on a stored camera address', () => {
       return HOST;
     });
     expect(rule(CAMERA_ADDRESS)).toEqual({ allowed: true, destination: { address: CAMERA_ADDRESS, port: 80, sourceAddress: HOST.cameraAddresses[0]?.address, viaAlias: false } });
-    // The typed probe is held to the camera subnet (record 095, decision 1): an address of a factory network is NOT reached through an alias.
+    // R-FLEX (RM-N1, RM-N2): an address on another eligible interface is reached from it; off-link is NO_SOURCE_INTERFACE.
+    // An address of a factory network is still NOT reached through an alias (record 095, decision 1): an alias is not an eligible interface.
+    expect(rule('10.20.0.77')).toEqual({ allowed: true, destination: { address: '10.20.0.77', port: 80, sourceAddress: '10.20.0.5', viaAlias: false } });
     const aliased: DestinationContext = { ...HOST, cameraAddresses: [...HOST.cameraAddresses, { address: '192.168.1.253', alias: true }] };
-    expect(typedProbeRuleOf(() => aliased)('192.168.1.64')).toEqual({ allowed: false, refusal: 'OUTSIDE_CAMERA_SUBNET' });
-    expect(rule('192.168.60.21')).toEqual({ allowed: false, refusal: 'OUTSIDE_CAMERA_SUBNET' });
-    expect(reads).toBe(2);
+    expect(typedProbeRuleOf(() => aliased)('192.168.1.64')).toEqual({ allowed: false, refusal: 'NO_SOURCE_INTERFACE' });
+    expect(rule('192.168.60.21')).toEqual({ allowed: false, refusal: 'NO_SOURCE_INTERFACE' });
+    expect(reads).toBe(3);
   });
 
   // Task 4 row 106b (request line `row 107`, (a) and (c); decision C78): the two parts of the commissioning scan the capture
@@ -452,7 +471,8 @@ describe('the relay report hub (decision C34)', () => {
 });
 
 describe('the stored facts', () => {
-  it('the three statements are constants with bind parameters; the microphone statement selects the serial and the port path (row 200)', () => {
+  // R-FLEX (row 107, RQ-A1 d): the port path is no lock any more (a moved card opens); it is read only as the tie-break of two units with one serial.
+  it('the three statements are constants with bind parameters; the microphone statement selects the serial and the port path (row 200; the port only a tie-break since R-FLEX)', () => {
     for (const statement of [READ_STORED_CAMERA, READ_STORED_STREAM_TOKEN, READ_STORED_MICROPHONE]) {
       expect(statement).toMatch(/^SELECT /);
       expect(statement).toMatch(/ FROM public\.capture_(?:devices|device_streams|audio_inputs) WHERE /);
@@ -1034,7 +1054,7 @@ describe('row N7: the platform seam of the card listing - on darwin the three fi
       },
       { operatorId: 'USR-0001', deviceId: null } as never,
     );
-    const operation98 = { schema: CaptureAudioCardSearchSchema.safeParse(answer).success, cards: answer.cards.map((card) => ({ deviceIndex: card.deviceIndex, channelCount: card.channelCount, serialAnswered: card.usbSerial !== null, portAnswered: card.usbPort !== null, registered: card.registered.length })), truncated: answer.truncated, audits: audits.length };
+    const operation98 = { schema: CaptureAudioCardSearchSchema.safeParse(answer).success, cards: answer.cards.map((card) => ({ deviceIndex: card.deviceIndex, channelCount: card.channelCount, serialAnswered: card.usbSerial !== null, portAnswered: card.usbPort !== null, registered: card.registered.length, bound: card.boundTo !== null })), truncated: answer.truncated, audits: audits.length };
     console.log(`ROW N7 REAL LISTING: ${JSON.stringify(runs)} OPERATION 98: ${JSON.stringify(operation98)}`);
     expect(runs.every((run) => (run as { ok: boolean }).ok)).toBe(true);
     expect(operation98.schema).toBe(true);

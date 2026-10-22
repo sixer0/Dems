@@ -396,10 +396,16 @@ function assertOwnProfile(
  * registry row. The replicated device slice has no transport member, so without this the new slot
  * would say a code the stored row does not - and a restarted Core would publish another selector.
  * One read of the registry, only for such a line; a line of the earlier form is returned as it is.
+ * R-FLEX row 132 (T-13, risk R-2; D16 Q96-02 (B)): "held" is judged on the selector as the edit
+ * would leave it - the roles the edit clears (`unassign`) first, as the action orders them and as
+ * the camera rule does (`assertOneSlotPerCamera`). A microphone MOVED from PRIMARY to STANDBY in one
+ * edit is a new line of the cleared selector and takes its registered transport; before this, it
+ * kept none (`UNKNOWN` committed, the registry's code stored).
  */
 async function withRegisteredTransports(app: FastifyInstance, change: CaptureConfigChange): Promise<CaptureConfigChange> {
   if (change.kind !== 'UPDATE' || change.mics === undefined || !change.mics.some((line) => line.role !== undefined)) return change;
-  const held = new Set(app.engine.slice('captureConfig').mics.map((mic) => mic.inputId));
+  const cleared: ReadonlySet<string> = new Set(change.unassign ?? []);
+  const held = new Set(app.engine.slice('captureConfig').mics.filter((mic) => !cleared.has(mic.role)).map((mic) => mic.inputId));
   if (change.mics.every((line) => line.transport !== undefined || held.has(line.inputId))) return change;
   const transports = await readMicTransports(app.db.pool);
   return {

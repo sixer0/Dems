@@ -203,8 +203,8 @@ export type CaptureCredentialRevealReason = (typeof CAPTURE_CREDENTIAL_REVEAL_RE
  * literal beside it is the same value and the set states it once, so this rule did not change.
  */
 export const CAPTURE_DISCOVERY_AUDIT_SCOPES: readonly string[] = [...new Set<string>([...Object.values(CaptureDiscoveryScope), 'AUDIO_CARDS'])];
-/** `change` of CAPTURE_AUDIO_INPUT_CHANGED (design addendum 04 section 4.2). */
-export const CAPTURE_AUDIO_INPUT_CHANGES = ['REGISTERED', 'CARD_CHANGED', 'REENABLED'] as const;
+/** `change` of CAPTURE_AUDIO_INPUT_CHANGED (design addendum 04 section 4.2; `RELEASED`: R-FLEX AU-A1, audit-only, the old input of a moved microphone). Equal to the shared `CaptureAudioInputChange`. */
+export const CAPTURE_AUDIO_INPUT_CHANGES = ['REGISTERED', 'CARD_CHANGED', 'REENABLED', 'RELEASED'] as const;
 /**
  * The seven settings of `capture_network_config` an operator can change (schema extension 03 section 2.4; the seventh,
  * `onvifPorts`, schema version 14, row V7b), by member name: THE CONTRACT'S LIST, not a copy.

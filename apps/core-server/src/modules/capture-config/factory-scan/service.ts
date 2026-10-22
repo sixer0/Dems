@@ -572,7 +572,9 @@ async function scan(seams: FactoryScanSeams, parts: FactoryScanParts, caller: Fa
     }
   };
   const before = facts();
-  if (before === null) throw invalidState(R.COMMISSIONING_NOT_CONFIGURED);
+  // Since R-FLEX row 105 the reader answers a context without a camera subnet - not null - for a choice on an
+  // interface this host does not have; the scan stays bound to the camera interface (Q96-04 a). Row 143.
+  if (before === null || before.cameraSubnet === null) throw invalidState(R.COMMISSIONING_NOT_CONFIGURED);
 
   // Every address through the rule, BEFORE anything is asked of the helper or of an address.
   const plan = planOf(parts.rule, before, settings.factoryAddresses, body?.address, settings.aliasHost);

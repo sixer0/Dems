@@ -13,7 +13,9 @@
  *             192.168.0.0/16; never loopback, the unspecified address, link-local, multicast,
  *             broadcast, the network or broadcast address of its /24 or of its subnet, or an
  *             address of the Core host itself
- *   point 2   never inside the subnet of an interface other than the camera interface (DR-4); the
+ *   point 2   (COMMISSIONING_SCAN and SET_IP only since R-FLEX; TYPED_PROBE and STORED_CAMERA follow
+ *             the on-link source rule of `decideGlobal`, RF-N1, RF-N5, RF-N6)
+ *             never inside the subnet of an interface other than the camera interface (DR-4); the
  *             connection is made FROM a camera-interface address the answer names (`sourceAddress`);
  *             a target no camera-interface address reaches is a refusal, never a fallback route
  *   point 3   the port from the short stored list (default 80)
@@ -64,7 +66,12 @@ export const DestinationRefusal = {
   HOST_ADDRESS: 'HOST_ADDRESS',
   /** Inside the subnet of an interface that is not the camera interface (DR-4). */
   OTHER_INTERFACE_SUBNET: 'OTHER_INTERFACE_SUBNET',
-  /** No camera interface chosen, no camera subnet, or a context that is not well-formed: nothing is dialled. */
+  /**
+   * A context that is not well-formed or cannot be read: nothing is dialled. For the two
+   * commissioning purposes also no camera interface chosen or no camera subnet; for `TYPED_PROBE`
+   * and `STORED_CAMERA` (R-FLEX, RM-N4) only facts that cannot be read, `interfaceSubnets` absent
+   * included (RF-N7).
+   */
   NOT_CONFIGURED: 'NOT_CONFIGURED',
   /** Outside the configured camera subnet, and not reachable from an alias this purpose may use. */
   OUTSIDE_CAMERA_SUBNET: 'OUTSIDE_CAMERA_SUBNET',
@@ -84,14 +91,27 @@ export const DestinationRefusal = {
   REGISTERED_CAMERA_ADDRESS: 'REGISTERED_CAMERA_ADDRESS',
   /** Set-IP: the gateway given is not a usable address of the camera subnet. */
   GATEWAY_OUTSIDE_SUBNET: 'GATEWAY_OUTSIDE_SUBNET',
+  /**
+   * NW-R1, `TYPED_PROBE` / `STORED_CAMERA`: no eligible interface of the host holds a subnet
+   * containing the target, so no source address is named and nothing is dialled (no silent route
+   * through a gateway; RG-12, on-link only).
+   */
+  NO_SOURCE_INTERFACE: 'NO_SOURCE_INTERFACE',
+  /**
+   * NW-R2, `TYPED_PROBE` / `STORED_CAMERA`: two or more different eligible interfaces hold the
+   * target at the same longest prefix, so no source can be named. Raised even if one of them is the
+   * camera interface (D14).
+   */
+  SOURCE_INTERFACE_AMBIGUOUS: 'SOURCE_INTERFACE_AMBIGUOUS',
 } as const;
 export type DestinationRefusal = (typeof DestinationRefusal)[keyof typeof DestinationRefusal];
 
 /**
- * Who asks. The purpose decides ONE thing: whether a temporary alias address of the camera
- * interface may be the source. A factory address is by its nature outside the camera subnet, so
- * the two commissioning operations may reach it from an alias; a typed address of the search and
- * the stored address of an adopted camera lie inside the camera subnet or are refused.
+ * Who asks. The two commissioning operations stay bound to the camera interface (R-FLEX Q96-04 a):
+ * the camera subnet, or a temporary alias address of the camera interface, since a factory address
+ * is by its nature outside the camera subnet. A typed address of the search and the stored address
+ * of an adopted camera are GLOBAL (D10 ruling 2, RF-N1): reached from whichever eligible interface
+ * holds the target on-link (the source rule of `decideGlobal`), never from an alias (RG-11).
  */
 export const DestinationPurpose = {
   COMMISSIONING_SCAN: 'COMMISSIONING_SCAN',
@@ -102,6 +122,8 @@ export const DestinationPurpose = {
 export type DestinationPurpose = (typeof DestinationPurpose)[keyof typeof DestinationPurpose];
 
 const ALIAS_PURPOSES: readonly DestinationPurpose[] = [DestinationPurpose.COMMISSIONING_SCAN, DestinationPurpose.SET_IP];
+/** The purposes judged by the global source rule (R-FLEX specification section 2.5). */
+const GLOBAL_PURPOSES: readonly DestinationPurpose[] = [DestinationPurpose.TYPED_PROBE, DestinationPurpose.STORED_CAMERA];
 
 // ── The bounds ─────────────────────────────────────────────────────────────────────────────────
 
@@ -159,8 +181,16 @@ export interface DestinationContext {
   readonly cameraSubnet: DestinationSubnet | null;
   /** The addresses the camera interface holds now. Its own lie in `cameraSubnet`; an alias is a /24. */
   readonly cameraAddresses: readonly CameraInterfaceAddress[];
-  /** The subnets of every OTHER interface of the host (DR-4). */
+  /** The subnets of every OTHER interface of the host (DR-4). Read by `COMMISSIONING_SCAN` and `SET_IP` only. */
   readonly otherInterfaceSubnets: readonly DestinationSubnet[];
+  /**
+   * NW-C1: every address of every ELIGIBLE interface (IPv4, not internal, netmask neither /0 nor
+   * /32, hardware address not all zero; the discovery test, RG-13), the camera interface included,
+   * with its interface name and subnet, in the host's order. Read by `TYPED_PROBE` and
+   * `STORED_CAMERA` only. Left out: the host's facts could not be read, so those two purposes are
+   * refused `NOT_CONFIGURED` (RF-N7); present without a candidate: `NO_SOURCE_INTERFACE`.
+   */
+  readonly interfaceSubnets?: readonly { readonly name: string; readonly address: string; readonly network: string; readonly prefixLength: number }[];
   /** Every IPv4 address the host holds, on any interface. */
   readonly hostAddresses: readonly string[];
   /** The stored port list. Left out: `DESTINATION_DEFAULT_PORTS`. */
@@ -314,6 +344,58 @@ function factsOf(context: DestinationContext): Facts | null {
   return { camera, sources, others, host };
 }
 
+interface Candidate {
+  readonly name: string;
+  readonly value: number;
+  readonly prefixLength: number;
+}
+interface GlobalFacts {
+  readonly candidates: readonly Candidate[];
+  readonly host: readonly number[];
+}
+
+/**
+ * The host's facts for `TYPED_PROBE` and `STORED_CAMERA`, or `null` when they cannot be read
+ * (step 0, RF-N7): `interfaceSubnets` absent, or any member not well-formed. The camera subnet may
+ * be `null` here (RM-N4); when it is given it must still be well-formed, and the camera interface's
+ * own addresses must still lie in it (the context is one set of facts, judged whole).
+ */
+function globalFactsOf(context: DestinationContext): GlobalFacts | null {
+  if (context === null || typeof context !== 'object' || !Array.isArray(context.interfaceSubnets)) return null;
+  if (!Array.isArray(context.cameraAddresses) || !Array.isArray(context.otherInterfaceSubnets) || !Array.isArray(context.hostAddresses)) return null;
+  let camera: Subnet | null = null;
+  if (context.cameraSubnet !== null && context.cameraSubnet !== undefined) {
+    camera = subnetOf(context.cameraSubnet, CAMERA_SUBNET_MIN_PREFIX, CAMERA_SUBNET_MAX_PREFIX);
+    if (camera === null || !isPrivate(camera.network)) return null;
+  }
+  const host: number[] = [];
+  const aliases: number[] = [];
+  for (const entry of context.cameraAddresses) {
+    const value = typeof entry?.address === 'string' ? parseDottedQuad(entry.address) : null;
+    if (value === null || typeof entry.alias !== 'boolean' || !isPrivate(value)) return null;
+    if (!entry.alias && camera !== null && !inside(value, camera.network, camera.prefixLength)) return null;
+    if (entry.alias) aliases.push(value);
+    host.push(value);
+  }
+  for (const entry of context.otherInterfaceSubnets) if (subnetOf(entry, 0, 32) === null) return null;
+  for (const entry of context.hostAddresses) {
+    const value = typeof entry === 'string' ? parseDottedQuad(entry) : null;
+    if (value === null) return null;
+    host.push(value);
+  }
+  const candidates: Candidate[] = [];
+  for (const entry of context.interfaceSubnets) {
+    const value = typeof entry?.address === 'string' ? parseDottedQuad(entry.address) : null;
+    const subnet = value === null ? null : subnetOf(entry, 0, 32);
+    if (value === null || subnet === null || typeof entry.name !== 'string' || entry.name.length === 0 || networkOf(value, subnet.prefixLength) !== subnet.network) return null;
+    host.push(value);
+    // Step 3: a source is a non-alias address (RG-11), private, of a subnet that is neither /0 nor /32 (RG-13). Anything else is skipped, not a reason to refuse the context.
+    if (aliases.includes(value) || !isPrivate(value) || subnet.prefixLength === 0 || subnet.prefixLength === 32) continue;
+    candidates.push({ name: entry.name, value, prefixLength: subnet.prefixLength });
+  }
+  return { candidates, host };
+}
+
 /** The first or last address of a block, as a refusal. */
 function edgeRefusal(value: number, prefixLength: number): DestinationRefusal | null {
   const network = networkOf(value, prefixLength);
@@ -346,6 +428,7 @@ export function decideDestination(request: DestinationRequest, context: Destinat
   const classed = classify(request.address);
   if ('refusal' in classed) return refuse(classed.refusal);
   const target = classed.value;
+  if (GLOBAL_PURPOSES.includes(request.purpose)) return decideGlobal(target, request.port, context);
 
   const facts = factsOf(context);
   if (facts === null) return refuse(DestinationRefusal.NOT_CONFIGURED);
@@ -371,6 +454,38 @@ export function decideDestination(request: DestinationRequest, context: Destinat
   const port = decidePort(request.port, context.allowedPorts);
   if ('refusal' in port) return refuse(port.refusal);
   return Object.freeze({ allowed: true, destination: Object.freeze({ address: formatAddress(target), port: port.port, sourceAddress: formatAddress(source.value), viaAlias: source.alias }) });
+}
+
+/**
+ * `TYPED_PROBE` and `STORED_CAMERA` (R-FLEX specification section 2.5, overrides O-4 and O-5): the
+ * source is the eligible interface that holds the target on-link. Step 1 (the class) was decided by
+ * the caller, first, as for every purpose: a loopback or a public address keeps its own code
+ * whatever the host's facts are.
+ */
+function decideGlobal(target: number, requestedPort: unknown, context: DestinationContext): DestinationDecision {
+  // Step 0: facts that cannot be read refuse everything (RF-N7).
+  const facts = globalFactsOf(context);
+  if (facts === null) return refuse(DestinationRefusal.NOT_CONFIGURED);
+  // Step 2.
+  if (facts.host.includes(target)) return refuse(DestinationRefusal.HOST_ADDRESS);
+
+  // Steps 3 and 4: the candidates whose subnet holds the target; the longest prefix wins. None: no route through a gateway (RG-12).
+  const holding = facts.candidates.filter((candidate) => inside(target, networkOf(candidate.value, candidate.prefixLength), candidate.prefixLength));
+  if (holding.length === 0) return refuse(DestinationRefusal.NO_SOURCE_INTERFACE);
+  const longest = Math.max(...holding.map((candidate) => candidate.prefixLength));
+  const best = holding.filter((candidate) => candidate.prefixLength === longest);
+  // Step 5: two different interfaces at that prefix, the camera interface among them or not (O-4, D14). Within one interface, the first address.
+  if (new Set(best.map((candidate) => candidate.name)).size > 1) return refuse(DestinationRefusal.SOURCE_INTERFACE_AMBIGUOUS);
+  const source = best[0] as Candidate;
+
+  // Step 6.
+  const edge = edgeRefusal(target, ALIAS_PREFIX_LENGTH) ?? edgeRefusal(target, source.prefixLength);
+  if (edge !== null) return refuse(edge);
+  // Step 7.
+  const port = decidePort(requestedPort, context.allowedPorts);
+  if ('refusal' in port) return refuse(port.refusal);
+  // Step 8.
+  return Object.freeze({ allowed: true, destination: Object.freeze({ address: formatAddress(target), port: port.port, sourceAddress: formatAddress(source.value), viaAlias: false }) });
 }
 
 // ── Set-IP: the address a camera is given (S13-11, the set-IP paragraph) ───────────────────────

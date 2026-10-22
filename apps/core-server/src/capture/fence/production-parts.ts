@@ -75,7 +75,13 @@ const HOST_NOT_CONFIGURED: DestinationContext = Object.freeze({ cameraSubnet: nu
 
 /**
  * THE BINDING. `decideDestination` with the purpose `STORED_CAMERA` on what the injected reader
- * answers NOW. `unreadable` is told when the reader threw; nothing of what was thrown travels.
+ * answers NOW. The purpose is GLOBAL (R-FLEX row 102): a stored camera on any eligible interface of
+ * the host the facts list in `interfaceSubnets` is judged, the source interface chosen on-link by the
+ * longest prefix; none on-link is `NO_SOURCE_INTERFACE`, a tie of interfaces is
+ * `SOURCE_INTERFACE_AMBIGUOUS`. No reader, a reader that answers nothing or one that throws: the
+ * facts of a host of which nothing is known (`HOST_NOT_CONFIGURED`, which carries no
+ * `interfaceSubnets`), and every address is refused with `NOT_CONFIGURED` (RF-N7, fail-closed: nothing
+ * is dialled). `unreadable` is told when the reader threw; nothing of what was thrown travels.
  */
 export function storedCameraAddressRuleOf(network: CaptureNetworkFactsReader | undefined, unreadable?: () => void): StoredCameraAddressRule {
   return (host, port) => {
@@ -97,10 +103,14 @@ export type TypedProbeRule = (address: string) => DestinationDecision;
 
 /**
  * THE BINDING FOR A TYPED ADDRESS (integration pass I-9a; records 095 and 096). `decideDestination`
- * with the purpose `TYPED_PROBE` - the rule kind record 095 names for it: held to the configured
- * camera subnet, never an alias - on what the SAME injected reader answers NOW. No reader, a reader
+ * with the purpose `TYPED_PROBE` on what the SAME injected reader answers NOW. The purpose is GLOBAL
+ * (R-FLEX row 102), as the stored camera above: no longer held to the configured camera subnet; any
+ * eligible interface in `interfaceSubnets` may be the source, never an alias address, chosen on-link
+ * by the longest prefix (`NO_SOURCE_INTERFACE` when none, `SOURCE_INTERFACE_AMBIGUOUS` on a tie). The
+ * commissioning scan and the set-IP job below stay bound to the camera interface. No reader, a reader
  * that answers nothing or one that throws: the facts of a host of which nothing is known, and every
- * address is refused. `unreadable` is told when the reader threw; nothing of what was thrown travels.
+ * address is refused with `NOT_CONFIGURED` (RF-N7). `unreadable` is told when the reader threw;
+ * nothing of what was thrown travels.
  */
 export function typedProbeRuleOf(network: CaptureNetworkFactsReader | undefined, unreadable?: () => void): TypedProbeRule {
   return (address) => {

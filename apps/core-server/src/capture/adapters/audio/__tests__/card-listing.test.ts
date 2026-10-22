@@ -115,7 +115,7 @@ const oneUsbCard = (product: string, cardName = product, usbId = 'fff0:0001\n'):
 });
 
 /** The answer of operation 98 for one card: the contract of row 63 must accept it. */
-const asAnswer = (card: CaptureCard) => ({ cardId: card.cardId, deviceIndex: card.deviceIndex, usbId: card.usbId, product: card.product, channelCount: card.channelCount, sampleBits: [...card.sampleBits], registered: [] });
+const asAnswer = (card: CaptureCard) => ({ cardId: card.cardId, deviceIndex: card.deviceIndex, usbId: card.usbId, product: card.product, channelCount: card.channelCount, sampleBits: [...card.sampleBits], registered: [], boundTo: null });
 
 describe('fixed listings give the expected cards and inputs', () => {
   it('a card of two inputs: identity, native channel count, format, rates', async () => {

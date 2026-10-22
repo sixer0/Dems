@@ -12,7 +12,7 @@
 // |------|--------------------|
 // | Every registered microphone is offered for the PRIMARY and for the STANDBY line; a Save is ONE operation 78 with the two lines of the new pair | "Simulated mode", "Live mode" |
 // | The simulator (the Core's own rules) takes the pair and writes its `CAPTURE_CONFIG_CHANGED` row with `operationId: updateCaptureConfig` | "Simulated mode" |
-// | The same microphone on both lines is refused on the client: the option of the other line's microphone is disabled and says why | "Simulated mode" |
+// | R-FLEX row 133 (T-14; 88 D-A4.6; D16 Q96-02 (B)): the other line's microphone is an ENABLED move option that says so; its Save is ONE operation 78 edit with `unassign` of the old line, so one microphone is never on both lines | "Simulated mode", "Live mode" |
 // | The controls keep the selector's gates: the role sentence, the lock sentence, disabled - never hidden | "Simulated mode: gates" |
 // | Development wording in real capture: the option says "Development source", this Mac's microphone is named, and its limit sentence stands at the choice | "Live mode" |
 // | A refusal of the Core is worded as the selector words it (409 locked, 422 development only, 422 not accepted) | "Live mode" |
@@ -34,7 +34,7 @@ import { createAppRouter } from '@/router'
 import { createLiveTestBed, type LiveTestBed, SUPERVISOR_SESSION } from '@/runtime/testing/live-harness'
 import { stubMediaForJsdom } from '@/features/session-new/__tests__/live-session-new-bed'
 import { enWeb } from '@/i18n-web'
-import { micPairFor, selectorSlotRows } from '../capture-selector'
+import { micMoveFor, micPairFor, selectorSlotRows } from '../capture-selector'
 import { slotRefusalWording, wordedSlotRefusalReasons } from '../slot-refusal'
 
 describe("the capture selector: every registered microphone and camera on its lines (G70-02)", () => {
@@ -197,16 +197,27 @@ describe("the capture selector: every registered microphone and camera on its li
       expect(rows[0]!.details).toMatchObject({ operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', inputId: 'MIC-03', from: 'MIC-02', to: 'MIC-03' })
     })
 
-    it('the same microphone on both lines is refused here: the other line\'s microphone is a disabled option that says why', async () => {
+    it('T-14: the other line\'s microphone is an ENABLED move option; Save moves it in ONE operation 78 edit that clears the old line (2 audit rows, scope MIC)', async () => {
       const { sim, panel } = await simSelector('idle', OPERATOR_IDS.ANDI)
       fireEvent.click(trigger(panel, 'PRIMARY'))
-      const taken = await screen.findByRole('option', { name: /MIC-02/ })
-      expect(taken).toHaveAttribute('aria-disabled', 'true')
-      expect(taken).toHaveTextContent(M.onOtherLine.STANDBY)
-      expect(await screen.findByRole('option', { name: /MIC-03/ })).not.toHaveAttribute('aria-disabled', 'true')
-      fireEvent.click(taken)
-      expect(save(panel, 'PRIMARY')).toBeDisabled()
+      const other = await screen.findByRole('option', { name: /MIC-02/ })
+      expect(other).not.toHaveAttribute('aria-disabled', 'true')
+      expect(other).toHaveTextContent(M.onOtherLine.STANDBY)
+      fireEvent.click(other)
+      await waitFor(() => expect(save(panel, 'PRIMARY')).toBeEnabled())
+      // Not optimistic: nothing moved before the Save.
       expect(captureAudit(sim)).toHaveLength(0)
+      fireEvent.click(save(panel, 'PRIMARY'))
+      await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(S.role.PRIMARY))
+      expect(within(panel).getByTestId('selector-not-assigned-STANDBY')).toBeInTheDocument()
+      expect(within(panel).queryByTestId('selector-mic-MIC-01')).not.toBeInTheDocument()
+      const mics = sim.store.getState().captureConfig.mics
+      expect(mics).toHaveLength(1)
+      expect(mics[0]).toMatchObject({ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'PRIMARY' })
+      const rows = captureAudit(sim)
+      expect(rows).toHaveLength(2)
+      for (const row of rows) expect(row.details).toMatchObject({ operationId: 'updateCaptureConfig', scope: 'MIC' })
+      expect(getMissingI18nKeys()).toEqual([])
     })
   })
 
@@ -298,6 +309,33 @@ describe("the capture selector: every registered microphone and camera on its li
       expect(requests('updateCaptureConfig')).toHaveLength(3)
       expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(S.role.STANDBY)
       expect(within(panel).queryByTestId('selector-mic-MIC-03')).not.toBeInTheDocument()
+    })
+
+    it('T-14: moving the STANDBY microphone to the PRIMARY line is ONE operation 78 request `{ unassign: [STANDBY], mics: [the line] }`; the old line is then Not assigned', async () => {
+      const { bed: created, panel } = await liveSelector()
+      fireEvent.click(trigger(panel, 'PRIMARY'))
+      const other = await screen.findByRole('option', { name: /MIC-02/ })
+      expect(other).not.toHaveAttribute('aria-disabled', 'true')
+      expect(other).toHaveTextContent(M.onOtherLine.STANDBY)
+      fireEvent.click(other)
+      await waitFor(() => expect(save(panel, 'PRIMARY')).toBeEnabled())
+      const served = clone(created.core.served.captureConfig)
+      const next = {
+        ...served,
+        updatedAt: served.updatedAt + 1,
+        mics: [{ ...served.mics.find((mic) => mic.role === 'STANDBY')!, role: 'PRIMARY' as const }],
+      }
+      created.fake.scriptCommand('updateCaptureConfig', {
+        ops: [{ op: 'replace', slice: 'captureConfig', value: next }] as FakeCommandOptions['ops'],
+        order: 'answer-first',
+        answer: { status: 200, body: next },
+      })
+      fireEvent.click(save(panel, 'PRIMARY'))
+      await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(S.role.PRIMARY))
+      expect(within(panel).getByTestId('selector-not-assigned-STANDBY')).toBeInTheDocument()
+      expect(requests('updateCaptureConfig')).toHaveLength(1)
+      expect((requests('updateCaptureConfig')[0] as { body: unknown }).body).toEqual({ unassign: ['STANDBY'], mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'PRIMARY' }] })
+      expect(requests('setPrimaryMic')).toHaveLength(0)
     })
   })
 
@@ -470,7 +508,8 @@ describe("the capture selector: every registered microphone and camera on its li
       // PRIMARY empty, STANDBY held by MIC-02: the pair, the held line kept; its microphone is not offered twice.
       const second = await liveSlots(['VIDEO-01', 'VIDEO-02', 'STANDBY'])
       fireEvent.click(selectOf(second.panel, 'PRIMARY'))
-      expect(await screen.findByRole('option', { name: /MIC-02/ })).toHaveAttribute('aria-disabled', 'true')
+      // R-FLEX row 133 (T-14): the held line's microphone is offered as a MOVE, not a second place.
+      expect(await screen.findByRole('option', { name: /MIC-02/ })).toHaveTextContent(M.onOtherLine.STANDBY)
       fireEvent.click(await screen.findByRole('option', { name: /MIC-01/ }))
       await waitFor(() => expect(saveOf(second.panel, 'PRIMARY')).toBeEnabled())
       second.bed.fake.answerOnce('updateCaptureConfig', { status: 200, body: clone(second.bed.core.served.captureConfig) })
@@ -584,7 +623,8 @@ describe("the capture selector: every registered microphone and camera on its li
     it('row 234: `slotRefusalWording` words every reason the capture-config routes name, the shared tree first; a microphone row names a microphone', async () => {
       // The closed lists of `apps/core-server/src/modules/capture-config/routes.ts` (`CaptureAssignmentRefusal`, `CaptureProfileRefusal`) and the action's own word.
       // Row W6 (request line 564; row V7c, decision C130): `CAMERA_PROFILE_WITHOUT_STREAM` reached the shared tree.
-      const named = ['DEVELOPMENT_SOURCE_NOT_ALLOWED', 'PRODUCTION_SOURCE_NOT_ALLOWED', 'CAPTURE_DEVICE_NOT_SERVED', 'CAPTURE_DEVICE_CLASS_MISMATCH', 'CAMERA_PROFILE_NOT_STATED', 'CAMERA_PROFILE_NOT_OF_DEVICE', 'CAMERA_PROFILE_WITHOUT_STREAM', 'SLOT_UNASSIGNED_AND_ASSIGNED']
+      const named = ['DEVELOPMENT_SOURCE_NOT_ALLOWED', 'PRODUCTION_SOURCE_NOT_ALLOWED', 'CAPTURE_DEVICE_NOT_SERVED', 'CAPTURE_DEVICE_CLASS_MISMATCH', 'CAMERA_PROFILE_NOT_STATED', 'CAMERA_PROFILE_NOT_OF_DEVICE', 'CAMERA_PROFILE_WITHOUT_STREAM', 'SLOT_UNASSIGNED_AND_ASSIGNED', 'CAPTURE_DEVICE_RETIRED']
+      // R-FLEX row 133: + `CAPTURE_DEVICE_RETIRED`, the action's word for a retired device (task 4 row RD2, `sim/capture-config.ts:99`), worded in the shared group at HEAD; this pin had not followed it.
       for (const reason of named) expect(['DEVELOPMENT_ONLY', 'SHARED'], reason).toContain(slotRefusalWording(reason).kind)
       expect([...wordedSlotRefusalReasons()].sort()).toEqual([...named].sort())
       // The worded reasons are exactly the shared group's keys and the one development word: no table of this console adds one.
@@ -624,6 +664,13 @@ describe("the capture selector: every registered microphone and camera on its li
       // Null only for the other role's microphone.
       expect(micPairFor([standby], 'PRIMARY', 'MIC-02')).toBeNull()
       expect(micPairFor([primary, standby], 'PRIMARY', 'MIC-02')).toBeNull()
+      // R-FLEX row 133 (T-14): exactly there the MOVE applies - the old role cleared, one line by role.
+      expect(micMoveFor([primary, standby], 'PRIMARY', 'MIC-02')).toEqual({ from: 'STANDBY', line: { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'PRIMARY' } })
+      expect(micMoveFor([standby], 'PRIMARY', 'MIC-02')).toEqual({ from: 'STANDBY', line: { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'PRIMARY' } })
+      expect(micMoveFor([primary, standby], 'STANDBY', 'MIC-01')).toEqual({ from: 'PRIMARY', line: { inputId: 'MIC-01', deviceId: 'MIC-01', role: 'STANDBY' } })
+      expect(micMoveFor([primary, standby], 'PRIMARY', 'MIC-03')).toBeNull()
+      expect(micMoveFor([primary], 'PRIMARY', 'MIC-01')).toBeNull()
+      expect(micMoveFor([], 'PRIMARY', 'MIC-01')).toBeNull()
 
       const camera = { trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'H264_1080P25', online: true, streamState: 'LIVE' } as const
       // A lone VIDEO-02 line is the SECOND row, a lone STANDBY line the STANDBY row.

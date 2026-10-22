@@ -31,6 +31,7 @@ import type { CameraCandidate } from '../../../../capture/adapters/types';
 import { DestinationPurpose, decideDestination, type DestinationContext } from '../../../../capture/destination-rule';
 import type { AuditEntry } from '../../../../core';
 import { hostAliasSocketTransportOf } from '../../../../host-alias-socket';
+import { networkFactsOf } from '../../network';
 import { ApiFailure } from '../../../../plugins/error-envelope';
 import {
   FACTORY_SCAN_MIN_INTERVAL_MS,
@@ -168,6 +169,10 @@ async function refusalOf(attempt: Promise<unknown>): Promise<{ readonly answer: 
   if (!(failure instanceof ApiFailure)) throw new Error(`expected a refusal, got ${failure === null ? 'an answer' : String(failure)}`);
   return { answer: [failure.statusCode, failure.code, failure.details?.['reason'] ?? null, failure.details?.['cause'] ?? null], text: JSON.stringify({ message: failure.message, details: failure.details, stack: failure.stack }), failure };
 }
+// Row 143 (fix of row 105, review F1): what the PRODUCT reader answers for a choice on an interface this host
+// does not have - a context without a camera subnet, not null (spec B1, RF-N3).
+const absentInterfaceFacts = (): DestinationContext | null =>
+  networkFactsOf({ interfaceName: 'enp9s9', cameraSubnet: '192.168.50.0/24', onvifPorts: [80] }, [{ name: 'eth0', internal: false, addresses: [{ address: '10.20.0.15', prefixLength: 16, mac: 'aa:bb:cc:dd:ee:01' }] }]);
 const probesOf = (calls: readonly string[]): string[] => calls.filter((call) => call.startsWith('probe '));
 const aliasCallsOf = (calls: readonly string[]): string[] => calls.filter((call) => call.startsWith('add ') || call.startsWith('remove '));
 
@@ -181,6 +186,8 @@ describe('every refusal comes BEFORE anything is asked: 0 probes, 0 calls of the
     ['the helper\'s socket is not as installed', { helper: async () => 'SOCKET_OWNER_OR_MODE' }, undefined, [409, 'INVALID_STATE', 'COMMISSIONING_HELPER_NOT_CONFIGURED', null]],
     ['no interface or subnet is chosen', { settings: { configured: false } }, undefined, [409, 'INVALID_STATE', 'COMMISSIONING_NOT_CONFIGURED', null]],
     ['the host has no such interface (the reader answers null)', { facts: () => null }, undefined, [409, 'INVALID_STATE', 'COMMISSIONING_NOT_CONFIGURED', null]],
+    ['the host has no such interface (the PRODUCT reader: no camera subnet)', { facts: absentInterfaceFacts }, undefined, [409, 'INVALID_STATE', 'COMMISSIONING_NOT_CONFIGURED', null]],
+    ['the host has no such interface, an address typed (the PRODUCT reader)', { facts: absentInterfaceFacts }, { address: '192.168.50.20' }, [409, 'INVALID_STATE', 'COMMISSIONING_NOT_CONFIGURED', null]],
     ['a stored list above the bound', { settings: { factoryAddresses: Array.from({ length: 33 }, (_unused, index) => `192.168.1.${String(index + 1)}`) } }, undefined, [409, 'INVALID_STATE', 'COMMISSIONING_NOT_CONFIGURED', null]],
   ];
   it.each(refusals)('%s', async (_title, options, body, expected) => {
@@ -585,6 +592,7 @@ describe('against the fake ONVIF stub (loopback): a listed address is found with
     ['a session is open', { sessionOpen: () => true }, undefined, 409, null],
     ['the network configuration is absent', { settings: { configured: false } }, undefined, 409, 'COMMISSIONING_NOT_CONFIGURED'],
     ['the host states no camera interface', { facts: () => null }, undefined, 409, 'COMMISSIONING_NOT_CONFIGURED'],
+    ['the host does not have the chosen interface (the PRODUCT reader)', { facts: absentInterfaceFacts }, undefined, 409, 'COMMISSIONING_NOT_CONFIGURED'],
     ['macOS: the helper is not available (the product seam)', { helper: () => hostAliasSocketTransportOf({ platform: 'darwin', socketPath: null }).preflight() }, undefined, 409, 'COMMISSIONING_NOT_AVAILABLE'],
     ['the helper is not configured (the product seam)', { helper: () => hostAliasSocketTransportOf({ platform: 'linux', socketPath: null }).preflight() }, undefined, 409, 'COMMISSIONING_HELPER_NOT_CONFIGURED'],
     ['not a production Core', { available: false }, undefined, 409, 'COMMISSIONING_NOT_AVAILABLE'],

@@ -40,7 +40,7 @@ import { manualTimer } from '../../../../../test/support/engine';
 import { buildGuardApp, deviceOperator, webOperator, type GuardApp } from '../../../../../test/support/guard';
 import { CLOCK_START, WEB_ORIGIN, insertPairedDevice, type Headers } from '../../../../../test/support/identity';
 import { CaptureAdapterKind, judgeStoredCamera, storedCameraCandidate } from '../../../../capture/adapters';
-import { captureFenceControl, storedCameraAddressRuleOf } from '../../../../capture/fence';
+import { cameraNetworkDialRuleOf, captureFenceControl, storedCameraAddressRuleOf } from '../../../../capture/fence';
 import { engineControl } from '../../../../engine';
 import type { Principal } from '../../../../plugins/authenticate';
 import { throttleControl } from '../../../../plugins/throttle';
@@ -58,11 +58,12 @@ const SUPERVISOR = OPERATORS[1]!;
 const TECHNICIAN = OPERATORS[2]!;
 const TABLET = 'DEV-0108';
 const CONFIG = '/api/v1/capture/network/config';
-/** The host of this file: the office network on `eth0`, the camera port `eth1`, a loopback. */
+/** The host of this file: the office network on `eth0`, the camera port `eth1`, a loopback. Row 105: each address states its hardware address (RG-13). */
+const ETH1_MAC = '02:00:00:00:00:e1';
 const HOST: readonly HostInterface[] = [
-  { name: 'lo', internal: true, addresses: [{ address: '127.0.0.1', prefixLength: 8 }] },
-  { name: 'eth0', internal: false, addresses: [{ address: '10.20.0.15', prefixLength: 16 }] },
-  { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24 }] },
+  { name: 'lo', internal: true, addresses: [{ address: '127.0.0.1', prefixLength: 8, mac: '00:00:00:00:00:00' }] },
+  { name: 'eth0', internal: false, addresses: [{ address: '10.20.0.15', prefixLength: 16, mac: '02:00:00:00:00:e0' }] },
+  { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24, mac: ETH1_MAC }] },
 ];
 /** Every value of a body of this file that names the network: none may be in an audit row or a log line. */
 const BODY_TEXT = ['eth1', 'eth9', '192.168.50', '192.168.60', '10.0.0.5'];
@@ -122,8 +123,21 @@ async function storedRow(): Promise<Record<string, unknown> | null> {
   expect(rows.length).toBeLessThanOrEqual(1);
   return (rows[0] as Record<string, unknown> | undefined) ?? null;
 }
-/** What the ONE destination rule decides for a stored camera address on what the BOOTED reader answers now. */
+/**
+ * What the ONE destination rule decides on what the BOOTED reader answers now, for the purpose that still reads the
+ * stored camera subnet: SET_IP (C4; Q96-04 a). Row 105: STORED_CAMERA is global since R-FLEX and no longer shows which
+ * subnet the reader holds (`storedJudged`). The camera interface's temporary addresses are left out (no alias is in
+ * place in this file; the set-IP job's own `withoutAlias` does the same), so the answers are those the stored-camera
+ * binding gave before R-FLEX. No reader answer: `NOT_CONFIGURED`, as the bindings answer it.
+ */
 function judged(address: string): string {
+  const facts = captureNetworkFacts(guard.app)();
+  if (facts === null) return 'NOT_CONFIGURED';
+  const decision = cameraNetworkDialRuleOf()(address, { ...facts, cameraAddresses: facts.cameraAddresses.filter((entry) => !entry.alias) });
+  return decision.allowed ? `ALLOWED from ${decision.destination.sourceAddress}` : decision.refusal;
+}
+/** What the binding of a STORED camera address decides (global: judged on the host's eligible networks). */
+function storedJudged(address: string): string {
   const decision = storedCameraAddressRuleOf(captureNetworkFacts(guard.app))(address, undefined);
   return decision.allowed ? `ALLOWED from ${String(decision.destination?.sourceAddress)}` : decision.refusal;
 }
@@ -171,10 +185,13 @@ describe('the Core this file runs on: nothing is stored, nothing is chosen, a ch
     expect(guard.log.text()).toContain('CAPTURE_NETWORK_CONFIG_LOADED');
     // The same function at every call: the composition is handed ONE reader.
     expect(captureNetworkFacts(guard.app)).toBe(control.facts);
-    // With the interfaces of this file in the place of the machine's: still null, because nothing is stored.
+    // With the interfaces of this file in the place of the machine's. Row 105 (B1, AC-5): nothing stored is a KNOWN
+    // absence - a context without a camera part, the default ports [80]; the bound purpose refuses, a stored camera is
+    // judged on the host's networks.
     control.replaceForTest({ interfaces: () => HOST });
-    expect(captureNetworkFacts(guard.app)()).toBeNull();
+    expect(captureNetworkFacts(guard.app)()).toMatchObject({ cameraSubnet: null, cameraAddresses: [], allowedPorts: [80] });
     expect([judged(INSIDE), judged(OUTSIDE)]).toEqual(['NOT_CONFIGURED', 'NOT_CONFIGURED']);
+    expect([storedJudged(INSIDE), storedJudged(OUTSIDE)]).toEqual(['ALLOWED from 192.168.50.1', 'NO_SOURCE_INTERFACE']);
   });
 
   it('operation 101 answers the defaults with no interface (valid against the contract); operation 102 answers 409 COMMISSIONING_NOT_AVAILABLE and stores nothing, writes no audit row', async () => {
@@ -338,14 +355,14 @@ describe('a committed change: the row, ONE entry, and the reader of the network 
     expect([judged(INSIDE), judged(OUTSIDE)]).toEqual(['OUTSIDE_CAMERA_SUBNET', 'NO_CAMERA_SOURCE']);
     // The host gains the address: read at the next call, with no change of the stored row.
     const control = captureNetworkConfigControl(guard.app);
-    control.replaceForTest({ interfaces: () => HOST.map((entry) => (entry.name === 'eth1' ? { ...entry, addresses: [{ address: '192.168.60.1', prefixLength: 24 }] } : entry)) });
+    control.replaceForTest({ interfaces: () => HOST.map((entry) => (entry.name === 'eth1' ? { ...entry, addresses: [{ address: '192.168.60.1', prefixLength: 24, mac: ETH1_MAC }] } : entry)) });
     expect([judged(INSIDE), judged(OUTSIDE)]).toEqual(['OUTSIDE_CAMERA_SUBNET', 'ALLOWED from 192.168.60.1']);
     control.replaceForTest({ interfaces: () => HOST });
 
     // Cleared: "not configured" at once.
     const cleared = await write(technician, { revision: 3, interfaceName: null });
     expect(cleared.json()).toMatchObject({ configured: false, interfaceName: null, cameraSubnet: '192.168.60.0/24', revision: 4 });
-    expect(captureNetworkFacts(guard.app)()).toBeNull();
+    expect(captureNetworkFacts(guard.app)()?.cameraSubnet).toBeNull();
     expect([judged(INSIDE), judged(OUTSIDE)]).toEqual(['NOT_CONFIGURED', 'NOT_CONFIGURED']);
     // And chosen again, with the first subnet.
     expect((await write(technician, { revision: 4, interfaceName: 'eth1', cameraSubnet: '192.168.50.0/24', aliasMinutes: 45 })).statusCode).toBe(200);
@@ -453,14 +470,14 @@ describe('a committed change: the row, ONE entry, and the reader of the network 
     // The row changed behind the reader (the owner writes it here, as a boot finds a row another process left): `load` is what the boot step runs.
     await owner.query("UPDATE public.capture_network_config SET camera_subnet = '192.168.60.0/24', revision = revision + 1");
     expect(judged(OUTSIDE)).toBe('OUTSIDE_CAMERA_SUBNET');
-    control.replaceForTest({ store, interfaces: () => HOST.map((entry) => (entry.name === 'eth1' ? { ...entry, addresses: [{ address: '192.168.60.1', prefixLength: 24 }] } : entry)) });
+    control.replaceForTest({ store, interfaces: () => HOST.map((entry) => (entry.name === 'eth1' ? { ...entry, addresses: [{ address: '192.168.60.1', prefixLength: 24, mac: ETH1_MAC }] } : entry)) });
     await control.load();
     expect([judged(INSIDE), judged(OUTSIDE)]).toEqual(['OUTSIDE_CAMERA_SUBNET', 'ALLOWED from 192.168.60.1']);
     control.replaceForTest({ interfaces: () => HOST });
-    // A row with no choice loads as "not configured".
+    // A row with no choice loads as "not configured": row 105 (B1) - a context without a camera part, the STORED ports kept.
     await owner.query('UPDATE public.capture_network_config SET interface_name = NULL, revision = revision + 1');
     await control.load();
-    expect([captureNetworkFacts(guard.app)(), judged(INSIDE)]).toEqual([null, 'NOT_CONFIGURED']);
+    expect([captureNetworkFacts(guard.app)()?.cameraSubnet, captureNetworkFacts(guard.app)()?.allowedPorts, judged(INSIDE), storedJudged(INSIDE)]).toEqual([null, [80], 'NOT_CONFIGURED', 'ALLOWED from 192.168.50.1']);
   });
 });
 
@@ -538,7 +555,8 @@ describe('the reader\'s way back to the stored row (S2-01): after every unit of 
     // STATED, NOT HIDDEN: nobody told the reader. This is the state between a reset's commit and its call of the door.
     expect(judged(INSIDE)).toBe('ALLOWED from 192.168.50.1');
     await expect(control.reload()).resolves.toBeUndefined();
-    expect([captureNetworkFacts(guard.app)(), control.loaded(), judged(INSIDE)]).toEqual([null, true, 'NOT_CONFIGURED']);
+    // Row 105 (B1): the emptied table is a known absence - no camera part, the default ports.
+    expect([captureNetworkFacts(guard.app)()?.cameraSubnet, captureNetworkFacts(guard.app)()?.allowedPorts, control.loaded(), judged(INSIDE)]).toEqual([null, [80], true, 'NOT_CONFIGURED']);
     expect((await read(technician)).json()).toMatchObject({ configured: false, revision: 1, interfaceName: null, cameraSubnet: null });
     // The first change after it inserts the row again, at revision 2.
     const again = await write(technician, { revision: 1, interfaceName: 'eth1', cameraSubnet: '192.168.50.0/24' });

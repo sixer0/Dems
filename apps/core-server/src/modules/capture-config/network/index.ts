@@ -26,9 +26,14 @@
  *     The re-load is the only asynchronous part and never runs inside a judgement;
  *   - the interfaces of the host, READ AT EACH CALL through the reader handed in (the product's:
  *     the operating system's table). An address the host gains or loses is seen at the next call.
- * It answers null - and the rule then refuses every address - while no row is stored, while the
- * interface or the subnet is not chosen, and while the host has no such interface. It throws only
- * what the host reader throws: the binding of the rule turns that into a refusal and one line.
+ * It answers null - and the rule then refuses every address (RF-N7) - while the stored choice is
+ * UNKNOWN (before the load, after a load or re-load that failed) and while the host's facts cannot
+ * be read. Since R-FLEX (row 105, spec B1) a KNOWN absence is a context: no row stored, or the
+ * interface or the subnet not chosen, or the host without that interface, gives a context with
+ * `cameraSubnet: null` (the scan and set-IP purposes refuse `NOT_CONFIGURED`) and the host's
+ * `interfaceSubnets` (typed probe and stored camera judge on those); no row gives the ports [80].
+ * It throws only what the host reader throws: the binding of the rule turns that into a refusal
+ * and one line.
  *
  * NOTHING HERE CHOOSES AN INTERFACE. The technician states it; this folder compares the name with
  * the names the host states.
@@ -195,7 +200,8 @@ export function mountCaptureNetworkConfig(app: FastifyInstance): CaptureNetworkC
     accepts: captureOperationOf(app.config) === PRODUCTION,
     interfaces: readHostInterfaces,
     store: createNetworkConfigStore(),
-    facts: () => networkFactsOf(control.stored, control.interfaces()),
+    // Unknown is not "no row" (row 105): a load that has not succeeded refuses every address, as before R-FLEX.
+    facts: () => (control.known ? networkFactsOf(control.stored, control.interfaces()) : null),
     async load() {
       try {
         const row = await control.store.read({ query: (text, values) => app.db.pool.query(text, values) });

@@ -558,13 +558,15 @@ describe('A-10: no permissive destination value under src/; the judgement of a s
   const ADMISSION_VALUE = /(?<!readonly\s)\ballowed\s*:\s*true\b/g;
   /**
    * Where an admission is a value today, with how often, and why it is not a permissive destination:
-   *   destination-rule.ts      the rule itself: the destination it admits after every refusal (1), the address it lets
-   *                            a camera be given (1), the spacing of two attempts (2);
+   *   destination-rule.ts      the rule itself: the destination it admits after every refusal (1), the destination the
+   *                            global source rule of TYPED_PROBE / STORED_CAMERA admits after its own refusals (1; R-FLEX
+   *                            RF-N1, spec 2.5 step 8, `decideGlobal`, row 102), the address it lets a camera be given (1),
+   *                            the spacing of two attempts (2);
    *   camera/stored-address.ts the judgement's own answer, returned only after the handed-in rule admitted that address;
    *   capture-discovery/limits the spacing of two searches; permission-guard/decision the access decision. Neither is a destination.
    */
   const ADMISSION_VALUES: Readonly<Record<string, number>> = {
-    'src/capture/destination-rule.ts': 4,
+    'src/capture/destination-rule.ts': 5,
     [`${ADAPTERS}camera/stored-address.ts`]: 1,
     'src/modules/capture-discovery/limits.ts': 1,
     'src/plugins/permission-guard/decision.ts': 1,
@@ -595,6 +597,13 @@ describe('A-10: no permissive destination value under src/; the judgement of a s
    * rule from it. One more entry is a decision.
    */
   const RULE_BINDERS: readonly string[] = ['src/capture/fence/production-parts.ts'];
+  /**
+   * R-FLEX RF-N1 (spec 2.5, row 102): the rule file names the purpose ONCE, in its own list of the purposes the global
+   * source rule judges. That line declares whom the rule judges globally; it binds nothing to a stored camera's facts.
+   * Exactly that line is set aside, and only there: any other naming of the purpose in the rule file is a binder.
+   */
+  const RULE_DECLARATION = 'src/capture/destination-rule.ts';
+  const GLOBAL_PURPOSE_LIST = /^const GLOBAL_PURPOSES: readonly DestinationPurpose\[\] = \[DestinationPurpose\.TYPED_PROBE, DestinationPurpose\.STORED_CAMERA\];$/m;
   const JUDGEMENT_CALL = /\bjudgeStoredCamera\s*\(/g;
   /** The callers of the judgement, with the line each calls it on and the line that must FOLLOW the judgement somewhere below it. */
   const JUDGEMENT_CALLERS: Readonly<Record<string, { readonly call: RegExp; readonly use: RegExp }>> = {
@@ -646,7 +655,13 @@ describe('A-10: no permissive destination value under src/; the judgement of a s
   it('(b) no production source names a rule of the tests or a permissive value; none gives a stored-address rule a value of its own', () => {
     expect(occurrences(production, TEST_RULE)).toEqual([]);
     // SR-8 (C60 (1)): a file that gives the rule a value of its own OR binds the product's rule is a binder, and the binders are the named list.
-    const pathsOf = (pattern: RegExp): string[] => occurrences(production, pattern).map((place) => place.replace(/:\d+$/, ''));
+    // RF-N1: the rule's own list of the global purposes is its one naming of STORED_CAMERA, and it is the only place set aside.
+    const declared = production.find((file) => file.path === RULE_DECLARATION)?.text ?? '';
+    const listed = GLOBAL_PURPOSE_LIST.exec(declared);
+    expect(listed, `${RULE_DECLARATION}: the list of the global purposes`).not.toBeNull();
+    const listPlace = `${RULE_DECLARATION}:${declared.slice(0, listed?.index ?? 0).split('\n').length}`;
+    expect(occurrences(production, RULE_BINDING, (path) => path === RULE_DECLARATION)).toEqual([listPlace]);
+    const pathsOf = (pattern: RegExp): string[] => occurrences(production, pattern).filter((place) => place !== listPlace).map((place) => place.replace(/:\d+$/, ''));
     expect([...new Set([...pathsOf(RULE_GIVEN_A_VALUE), ...pathsOf(RULE_BINDING)])].sort()).toEqual([...RULE_BINDERS].sort());
     // The one binder binds ONCE, and it is seen by the pattern that names it (the entry is not a name the rule cannot find).
     expect(pathsOf(RULE_BINDING)).toEqual(['src/capture/fence/production-parts.ts']);

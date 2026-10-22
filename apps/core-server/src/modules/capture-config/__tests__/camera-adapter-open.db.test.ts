@@ -106,6 +106,11 @@ const HOST_FACTS: DestinationContext = {
   cameraSubnet: { network: '192.168.50.0', prefixLength: 24 },
   cameraAddresses: [{ address: '192.168.50.1', alias: false }],
   otherInterfaceSubnets: [{ network: '10.20.0.0', prefixLength: 24 }],
+  // R-FLEX NW-C1 (row 136): the eligible interfaces the global STORED_CAMERA rule reads; without them it is NOT_CONFIGURED (RF-N7, RM-N4).
+  interfaceSubnets: [
+    { name: 'eth1', address: '192.168.50.1', network: '192.168.50.0', prefixLength: 24 },
+    { name: 'eth0', address: '10.20.0.5', network: '10.20.0.0', prefixLength: 24 },
+  ],
   hostAddresses: ['192.168.50.1', '10.20.0.5'],
 };
 
@@ -694,8 +699,9 @@ describe('T-2: refusals, the close and the end of a relay, against the sink', ()
       ['224.0.0.251', 'MULTICAST'],
       ['192.168.50.1', 'HOST_ADDRESS'],
       ['8.8.8.8', 'PUBLIC_ADDRESS'],
-      ['192.168.60.20', 'OUTSIDE_CAMERA_SUBNET'],
-      ['10.20.0.77', 'OTHER_INTERFACE_SUBNET'],
+      // R-FLEX (row 136): off-link is NW-R1 NO_SOURCE_INTERFACE, no longer OUTSIDE_CAMERA_SUBNET (RM-N2); 10.20.0.77 on the
+      // office interface is no longer refused OTHER_INTERFACE_SUBNET for STORED_CAMERA (RM-N1) and left this refusal list.
+      ['192.168.60.20', 'NO_SOURCE_INTERFACE'],
     ];
     const seen: string[] = [];
     for (const [address, refusal] of classes) {

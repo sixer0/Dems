@@ -780,7 +780,9 @@ describe('pre-check, enumerate, admitDevice', () => {
   });
 
   it('enumerate: one listing, present / not present by the wire vocabulary; nothing starts', async () => {
-    const r = rig([HEXA], [row('MIC-01', HEXA, 1), row('MIC-02', { ...HEXA, location: 0x01150000 }, 1)], passing());
+    // R-FLEX row 107 (D10 ruling 1, no port lock): a serial-less unit of the same model on another socket IS the
+    // stored card, so the not-present row is another model (another USB id), not another socket.
+    const r = rig([HEXA], [row('MIC-01', HEXA, 1), row('MIC-02', { ...HEXA, product: 0x0016, location: 0x01150000 }, 1)], passing());
     expect(await r.adapter.enumerate()).toEqual([
       { inputId: 'MIC-01', present: true, errorCode: null },
       { inputId: 'MIC-02', present: false, errorCode: AudioInputErrorCode.DEVICE_NOT_FOUND },

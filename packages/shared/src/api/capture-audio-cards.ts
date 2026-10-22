@@ -24,7 +24,8 @@
  * a string that fails by a fixed word before it leaves the adapter; a client draws it as text only.
  *
  * NO DEVICE TEXT IN A REQUEST, AN AUDIT ROW OR A HELPER ARGUMENT (AD-07 (2)). The body of 99 has
- * three members: a card id of the kernel's form and two integers. The audit row of 99 holds a
+ * a card id of the kernel's form, two integers and an optional boolean (`release`, R-FLEX AU-B1).
+ * The audit row of 99 holds a
  * registry id, a change code and two integers. The capture helper's device argument is built by
  * the Core from integers only; nothing a request or a descriptor says forms a part of it.
  */
@@ -90,8 +91,12 @@ export type CaptureAudioSampleBits = (typeof CAPTURE_AUDIO_SAMPLE_BITS)[number];
 /** Least time between two card searches per Core (ms): the spacing of the camera search (AD-07 (3)). */
 export const CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS = CAPTURE_DISCOVERY_MIN_INTERVAL_PER_CORE_MS;
 
-/** What a registration did: the `change` of its answer and of its audit row. A closed set. */
-export const CaptureAudioInputChange = { REGISTERED: 'REGISTERED', CARD_CHANGED: 'CARD_CHANGED', REENABLED: 'REENABLED' } as const;
+/**
+ * The `change` of a CAPTURE_AUDIO_INPUT_CHANGED audit row. A closed set, equal to the Core server's
+ * `CAPTURE_AUDIO_INPUT_CHANGES` (`core/audit-details.ts`). `RELEASED` (R-FLEX AU-A1) is audit-only: the
+ * row of the old input of a microphone moved by `release: true`. Operation 99 answers only the other three.
+ */
+export const CaptureAudioInputChange = { REGISTERED: 'REGISTERED', CARD_CHANGED: 'CARD_CHANGED', REENABLED: 'REENABLED', RELEASED: 'RELEASED' } as const;
 export type CaptureAudioInputChange = (typeof CaptureAudioInputChange)[keyof typeof CaptureAudioInputChange];
 
 /**
@@ -106,6 +111,11 @@ export const CaptureAudioCardReason = {
   AUDIO_INPUT_BEYOND_CARD: 'AUDIO_INPUT_BEYOND_CARD',
   /** The answerer captures from no sound card: the in-app simulator's answer to every well-formed registration. */
   AUDIO_INPUT_NOT_REGISTRABLE: 'AUDIO_INPUT_NOT_REGISTRABLE',
+  /**
+   * The physical card is held by another microphone and the request does not say `release: true`
+   * (R-FLEX AU-R1, decision D10 (1)). `details.deviceId` names the holder (`MIC-NN`).
+   */
+  AUDIO_CARD_ALREADY_BOUND: 'AUDIO_CARD_ALREADY_BOUND',
   // 429 RATE_LIMITED
   AUDIO_CARD_SEARCH_RATE_LIMITED: 'AUDIO_CARD_SEARCH_RATE_LIMITED',
 } as const;
@@ -138,7 +148,7 @@ export const CaptureAudioCardSchema = z
       .regex(CAPTURE_AUDIO_USB_PORT_PATTERN)
       .nullable()
       .optional()
-      .describe('The port a USB card sits on, in the kernel\'s own topological form (e.g. `0000:00:14.0-2.1`); null for a card that is not USB. Read by the Core from the kernel, never from the device. Absent in an answer of the in-app simulator.'),
+      .describe('The port a USB card sits on, in the kernel\'s own topological form (e.g. `0000:00:14.0-2.1`); null for a card that is not USB. Read by the Core from the kernel, never from the device. Informational: it is no longer compared. Absent in an answer of the in-app simulator.'),
     product: z
       .string()
       .regex(CAPTURE_AUDIO_CARD_TEXT_PATTERN)
@@ -154,6 +164,11 @@ export const CaptureAudioCardSchema = z
       )
       .max(CAPTURE_AUDIO_CARD_MAX_CHANNELS)
       .describe('The inputs of this card that are registered microphones, by input number. An input that is not listed is not registered.'),
+    boundTo: z
+      .string()
+      .regex(HARDWARE_DEVICE_ID_PATTERN)
+      .nullable()
+      .describe('The microphone that holds this sound card, by the identity rule (its serial number where it states one, else its USB id; never its port). A card with a microphone is not offered for a new binding: registering another input of it is refused `AUDIO_CARD_ALREADY_BOUND` unless the request releases the holder. Null: no microphone holds the card. With null, `registered` is empty; a holder that `registered` does not name was registered under another kernel card id and is still this physical card.'),
   })
   .describe('One sound card of the Core\'s host as a listing found it (task 4, operation 98). It registers nothing and is in no slice.');
 export type CaptureAudioCard = z.output<typeof CaptureAudioCardSchema>;
@@ -169,7 +184,8 @@ export const CaptureAudioCardSearchSchema = z
 export type CaptureAudioCardSearch = z.output<typeof CaptureAudioCardSearchSchema>;
 
 /**
- * Request body of operation 99: which input of which card. Three members, no text a device chose.
+ * Request body of operation 99: which input of which card, and whether to release the holder of
+ * the card (R-FLEX AU-B1). No text a device chose.
  * The Core reads the channel count, the USB id and the product from its own second listing.
  */
 export const CaptureAudioInputRegisterRequestSchema = z
@@ -177,6 +193,10 @@ export const CaptureAudioInputRegisterRequestSchema = z
     cardId: cardId().describe('A card of the Core\'s own listing, by its card id.'),
     deviceIndex: deviceIndex().describe('The capture device of that card.'),
     inputNumber: inputNumber().describe('The input to register: 1 to the channel count of the card.'),
+    release: z
+      .boolean()
+      .optional()
+      .describe('True: register this input and release the microphone that holds the same sound card (decision D10 (1)). False or absent (the default is false): a card another microphone holds is refused.'),
   })
   .describe('Request body of `POST /api/v1/capture/audio-cards/inputs` (task 4, operation 99). No product name, USB id, channel count, sample size, path or address member exists.');
 export type CaptureAudioInputRegisterRequest = z.output<typeof CaptureAudioInputRegisterRequestSchema>;
@@ -185,9 +205,18 @@ export type CaptureAudioInputRegisterRequest = z.output<typeof CaptureAudioInput
 export const CaptureAudioInputRegistrationSchema = z
   .strictObject({
     deviceId: z.string().regex(HARDWARE_DEVICE_ID_PATTERN).describe('The microphone behind the input, e.g. `MIC-03`: the next free number for a new one, minted by the Core.'),
-    change: z.enum(CaptureAudioInputChange).describe('REGISTERED: a new microphone. REENABLED: the input already had one; no second device was made. CARD_CHANGED: the stored input was found on a card at another place and now names that card.'),
+    // An inline three-value enum, NOT `z.enum(CaptureAudioInputChange)`: that audit list gains
+    // `RELEASED` (R-FLEX AU-A1), which operation 99 never answers.
+    change: z
+      .enum([CaptureAudioInputChange.REGISTERED, CaptureAudioInputChange.CARD_CHANGED, CaptureAudioInputChange.REENABLED])
+      .describe('REGISTERED: a new microphone. REENABLED: the input already had one; no second device was made. CARD_CHANGED: the stored input now has another card behind it (another USB id, or a serial number that differs, appears or disappears). A port move is not a change.'),
     inputNumber: inputNumber(),
     channelCount: channelCount().describe('The native channel count the Core read from its own listing.'),
+    releasedDeviceId: z
+      .string()
+      .regex(HARDWARE_DEVICE_ID_PATTERN)
+      .nullable()
+      .describe('The microphone this registration released (`release: true` and the card was held by another microphone); null otherwise.'),
   })
   .describe('What a registration of a sound-card input did (task 4, operation 99). No device text.');
 export type CaptureAudioInputRegistration = z.output<typeof CaptureAudioInputRegistrationSchema>;
@@ -256,7 +285,7 @@ export const CAPTURE_AUDIO_CARD_OPERATIONS = [
     description: [
       'Lists the sound cards of the host the Core runs on, once, now. **No body.** No card, path, address or filter can be sent. Nothing lists in the background and nothing chooses a card: the listing happens because an operator asked for it, and it is not stored. It opens no card for capture, changes no level and registers nothing.',
       WEB_AND_IDLE,
-      'Per capture device of a card the answer holds the card id, the device index, the USB id, the product name, the native channel count, the sample sizes, and the inputs that are registered microphones with their registry ids. The product name is **untrusted device text**: printable ASCII, at most 64 characters, a name that fails the rule replaced by a fixed word; a client draws it as text and trusts none of it.',
+      'Per capture device of a card the answer holds the card id, the device index, the USB id, the product name, the native channel count, the sample sizes, and the inputs that are registered microphones with their registry ids, and, per card, the microphone that holds it (`boundTo`), or null. The product name is **untrusted device text**: printable ASCII, at most 64 characters, a name that fails the rule replaced by a fixed word; a client draws it as text and trusts none of it.',
       'Writes one CAPTURE_DISCOVERY_SEARCHED row with `scope: AUDIO_CARDS`: a search id and counts, never a product name, a USB id or a card id.',
       `One listing at a time per Core: a second call while one runs answers \`409 INVALID_STATE\` with \`details.reason: ${CaptureAudioCardReason.AUDIO_CARD_SEARCH_IN_PROGRESS}\`. Over the spacing bound the Core answers \`429 RATE_LIMITED\` with \`retry-after\` and \`details.reason: ${CaptureAudioCardReason.AUDIO_CARD_SEARCH_RATE_LIMITED}\`: nothing is listed and no audit row is written.`,
       PRODUCTION_ONLY,
@@ -284,25 +313,25 @@ export const CAPTURE_AUDIO_CARD_OPERATIONS = [
     mode: CoreApiMode.SIMULATED,
     summary: 'Register a sound-card input as a microphone',
     description: [
-      'Registers one input of one sound card as a microphone of the capture devices. The body names the card id, the device index and the input number, and nothing else. **The Core lists the cards again itself** and takes the channel count, the USB id and the product from that listing, never from the body. In one unit it writes the capture device (the next free `MIC-nn`) and its input row; a failure leaves nothing behind.',
+      'Registers one input of one sound card as a microphone of the capture devices. The body names the card id, the device index and the input number, and optionally `release`, and nothing else. **The Core lists the cards again itself** and takes the channel count, the USB id and the product from that listing, never from the body. In one unit it writes the capture device (the next free `MIC-nn`) and its input row; a failure leaves nothing behind.',
       WEB_AND_IDLE,
-      'An input that already has a microphone is **re-enabled, not duplicated**: the answer is `200` with `change: REENABLED` and the existing id. A stored input found on a card at another place answers `200` with `change: CARD_CHANGED`: it is said, never matched silently. **`CARD_CHANGED` stores the card\'s new identity and does not enable the microphone again**: the same call again answers `REENABLED`. A USB card is the stored one by its serial number where it states one (it is then found on any port) and by its port otherwise; a serial that appears or disappears is another card. A new microphone answers `201` with `change: REGISTERED`. The registration decides no role: making the microphone primary or standby is operation 80.',
-      `Refusals, each storing nothing: \`404 NOT_FOUND\` when the Core's own listing has no such card and device; \`409 INVALID_STATE\` with \`details.reason: ${CaptureAudioCardReason.AUDIO_INPUT_BEYOND_CARD}\` when the card has no input of that number, or \`${CaptureAudioCardReason.AUDIO_CARD_SEARCH_IN_PROGRESS}\` while a listing runs. The refusal never quotes the input and carries no device text.`,
-      'Writes one CAPTURE_AUDIO_INPUT_CHANGED row: the device id, the change code, the input number and the channel count. No product name, no USB id and no card id. Publishes the `captureDevices` slice; `captureConfig` is not changed. The new microphone is assignable at once, without a restart.',
+      `An input that already has a microphone is **re-enabled, not duplicated**: the answer is \`200\` with \`change: REENABLED\` and the existing id. A stored input found on a card at another place answers \`200\` with \`change: CARD_CHANGED\`: it is said, never matched silently. **\`CARD_CHANGED\` stores the card's new identity and does not enable the microphone again**: the same call again answers \`REENABLED\`. A USB card is the stored one by its serial number where it states one, and by its USB id otherwise, on any port: moving a card to another port keeps its microphone. A serial number that appears or disappears is another card. **A sound card is held by one microphone at a time** (decision D10 (1)): registering an input of a card another microphone holds is refused \`409 INVALID_STATE\` with \`details.reason: ${CaptureAudioCardReason.AUDIO_CARD_ALREADY_BOUND}\` and the holder's id, unless the body says \`release: true\`; the Core then releases the holder in the same unit and names it in \`releasedDeviceId\`. The holder moves to this input and keeps its id: the answer is \`200\` with \`change: REENABLED\` and \`releasedDeviceId\` equal to \`deviceId\`. When the holder is this same input, \`release: true\` changes nothing and \`releasedDeviceId\` is null. A new microphone answers \`201\` with \`change: REGISTERED\`. The registration decides no role: making the microphone primary or standby is operation 80.`,
+      `Refusals, each storing nothing: \`404 NOT_FOUND\` when the Core's own listing has no such card and device; \`409 INVALID_STATE\` with \`details.reason: ${CaptureAudioCardReason.AUDIO_INPUT_BEYOND_CARD}\` when the card has no input of that number, \`${CaptureAudioCardReason.AUDIO_CARD_SEARCH_IN_PROGRESS}\` while a listing runs, or \`${CaptureAudioCardReason.AUDIO_CARD_ALREADY_BOUND}\` (with \`details.deviceId\`, the holder) when another microphone holds the card and the body does not say \`release: true\`. The refusal never quotes the input and carries no device text.`,
+      'Writes one CAPTURE_AUDIO_INPUT_CHANGED row: the device id, the change code, the input number and the channel count. No product name, no USB id and no card id. A release (`release: true`) writes two rows for the moved microphone: `change: RELEASED` with its old input number, then `change: REENABLED` with the new one. Publishes the `captureDevices` slice; `captureConfig` is not changed. The new microphone is assignable at once, without a restart.',
       PRODUCTION_ONLY,
       `${SIM_V2_NOTE} The simulator captures from no sound card and registers nothing: for a card of its fixed list it answers \`409 INVALID_STATE\` with \`details.reason: ${CaptureAudioCardReason.AUDIO_INPUT_NOT_REGISTRABLE}\` (or \`${CaptureAudioCardReason.AUDIO_INPUT_BEYOND_CARD}\` for an input the test card does not have), and \`404\` for any other card. It writes no audit row and changes no state.`,
     ].join('\n\n'),
     source: 'Task 4, blueprint row 63 (WP-07b); design addendum 4.2, operation 99; plan review P12-F05 (c), P12-F06; security addendum AD-07 (not in the design book)',
     requestBody: { schema: 'CaptureAudioInputRegisterRequest', required: true },
     responses: {
-      200: { description: 'The input already had a microphone: re-enabled, or found on a card at another place. No second device was made.', schema: 'CaptureAudioInputRegistration', services: CORE_SERVER_ONLY },
+      200: { description: 'The input already had a microphone: re-enabled, or found on a card at another place; or the holder of the card was moved to this input (`release: true`, `releasedDeviceId` set). No second device was made.', schema: 'CaptureAudioInputRegistration', services: CORE_SERVER_ONLY },
       201: { description: 'A new microphone was registered for the input.', schema: 'CaptureAudioInputRegistration', services: CORE_SERVER_ONLY },
       400: INVALID_JSON,
       401: NOT_SIGNED_IN,
       403: notPermitted(Permission.CAPTURE_CONFIG, WEB_ONLY_REFUSED),
       404: { description: 'The listing has no card of this id with this device index (NOT_FOUND). Nothing is stored.', schema: 'ApiError' },
       409: {
-        description: `A session is open (CAPTURE_CONFIG_LOCKED; no audit row), or the input cannot be registered (INVALID_STATE, \`details.reason\`: ${CaptureAudioCardReason.AUDIO_INPUT_BEYOND_CARD}, ${CaptureAudioCardReason.AUDIO_CARD_SEARCH_IN_PROGRESS}, or ${CaptureAudioCardReason.AUDIO_INPUT_NOT_REGISTRABLE} from an answerer that captures from no sound card - also for a USB card that states neither a serial number nor a port: it could not be found again). Nothing is stored.`,
+        description: `A session is open (CAPTURE_CONFIG_LOCKED; no audit row), or the input cannot be registered (INVALID_STATE, \`details.reason\`: ${CaptureAudioCardReason.AUDIO_INPUT_BEYOND_CARD}, ${CaptureAudioCardReason.AUDIO_CARD_SEARCH_IN_PROGRESS}, or ${CaptureAudioCardReason.AUDIO_INPUT_NOT_REGISTRABLE} from an answerer that captures from no sound card - also for a USB card the Core could not find again (it states no USB id) - or ${CaptureAudioCardReason.AUDIO_CARD_ALREADY_BOUND} when another microphone holds the physical card and the body does not say \`release: true\` (\`details.deviceId\`: the holder). Nothing is stored.`,
         schema: 'ApiError',
       },
       422: { description: 'The body does not match its schema (INVALID_INPUT). The refusal never quotes the input. Nothing is stored.', schema: 'ApiError' },
@@ -320,7 +349,7 @@ export const CAPTURE_AUDIO_CARD_OPERATIONS = [
 /** The card ids of the in-app simulator's two test cards. */
 export const SIM_CAPTURE_AUDIO_CARD_IDS = { four: 'DEMS_TEST_A', two: 'DEMS_TEST_B' } as const;
 
-/** The simulator's listing: fixed, synthetic, no USB id, no registered input. It reads no host. */
+/** The simulator's listing: fixed, synthetic, no USB id, no registered input, no holder (`boundTo: null`). It reads no host. */
 export function simCaptureAudioCards(): CaptureAudioCard[] {
   return [
     {
@@ -331,6 +360,7 @@ export function simCaptureAudioCards(): CaptureAudioCard[] {
       channelCount: 4,
       sampleBits: [16, 24],
       registered: [],
+      boundTo: null,
     },
     {
       cardId: SIM_CAPTURE_AUDIO_CARD_IDS.two,
@@ -340,6 +370,7 @@ export function simCaptureAudioCards(): CaptureAudioCard[] {
       channelCount: 2,
       sampleBits: [16],
       registered: [],
+      boundTo: null,
     },
   ];
 }
@@ -384,6 +415,7 @@ export const CAPTURE_AUDIO_CARD_EXAMPLES: Readonly<Record<string, OperationExamp
                 channelCount: 8,
                 sampleBits: [16, 24],
                 registered: [{ inputNumber: 1, deviceId: 'MIC-03' }],
+                boundTo: 'MIC-03',
               },
             ],
             truncated: false,
@@ -403,18 +435,26 @@ export const CAPTURE_AUDIO_CARD_EXAMPLES: Readonly<Record<string, OperationExamp
   registerCaptureAudioInput: {
     request: {
       firstInput: { summary: 'The first input of a card of the listing', value: EXAMPLE_REGISTER_REQUEST },
+      release: {
+        summary: 'Another input of a card another microphone holds, releasing the holder',
+        value: { cardId: 'EXAMPLE_CARD', deviceIndex: 0, inputNumber: 2, release: true } satisfies CaptureAudioInputRegisterRequest,
+      },
     },
     responses: {
       200: {
         reenabled: {
           summary: 'The input already had a microphone: no second device',
-          value: { deviceId: 'MIC-03', change: CaptureAudioInputChange.REENABLED, inputNumber: 1, channelCount: 8 } satisfies CaptureAudioInputRegistration,
+          value: { deviceId: 'MIC-03', change: CaptureAudioInputChange.REENABLED, inputNumber: 1, channelCount: 8, releasedDeviceId: null } satisfies CaptureAudioInputRegistration,
+        },
+        released: {
+          summary: 'The holder of the card was released: it moved to this input and kept its id',
+          value: { deviceId: 'MIC-03', change: CaptureAudioInputChange.REENABLED, inputNumber: 2, channelCount: 8, releasedDeviceId: 'MIC-03' } satisfies CaptureAudioInputRegistration,
         },
       },
       201: {
         registered: {
           summary: 'A new microphone',
-          value: { deviceId: 'MIC-03', change: CaptureAudioInputChange.REGISTERED, inputNumber: 1, channelCount: 8 } satisfies CaptureAudioInputRegistration,
+          value: { deviceId: 'MIC-03', change: CaptureAudioInputChange.REGISTERED, inputNumber: 1, channelCount: 8, releasedDeviceId: null } satisfies CaptureAudioInputRegistration,
         },
       },
       400: { invalidJson: ERROR_EXAMPLES.invalidJson },
@@ -425,6 +465,10 @@ export const CAPTURE_AUDIO_CARD_EXAMPLES: Readonly<Record<string, OperationExamp
         locked: LOCKED,
         beyondCard: refusal('The card has no input of this number', 'INVALID_STATE', 'The sound card has no such input.', {
           reason: CaptureAudioCardReason.AUDIO_INPUT_BEYOND_CARD,
+        }),
+        alreadyBound: refusal('Another microphone holds the card', 'INVALID_STATE', 'Another microphone uses this sound card.', {
+          reason: CaptureAudioCardReason.AUDIO_CARD_ALREADY_BOUND,
+          deviceId: 'MIC-03',
         }),
         notRegistrable: refusal('The simulator registers no sound-card input', 'INVALID_STATE', 'A sound-card input can be registered on a production Core only.', {
           reason: CaptureAudioCardReason.AUDIO_INPUT_NOT_REGISTRABLE,

@@ -983,6 +983,32 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
       expect(second.steps).toEqual(expect.arrayContaining(['capture.fence', 'capture.config', 'engine.rehydrate']));
       expect(linesOf(second.app.engine.slice('captureConfig'))).toEqual([]);
     });
+
+    // R-FLEX row 132, open check T-13 (01_specs_rflex_audio.md §10; 01_specs_rflex.md §5.1; D16 Q96-02 (B)):
+    // a microphone MOVES from PRIMARY to STANDBY in ONE edit of operation 78 - `unassign` of PRIMARY and a STANDBY line
+    // naming the microphone PRIMARY held. Risk R-2: refused if the mic rule does not take `unassign` first.
+    it('T-13, SIMULATED: PRIMARY = MIC-01 and STANDBY empty; ONE edit `{unassign: [PRIMARY], STANDBY: MIC-01}` - 200, PRIMARY empty, STANDBY = MIC-01, stored, two CAPTURE_CONFIG_CHANGED rows of scope MIC', async () => {
+      const target = await clone('r132-t13-mic-move', (owner) => unassignStored(owner, ['STANDBY']));
+      const owner = target.ownerPool();
+      const core = await booted(target, SIMULATED);
+      expect(await storedSlots(owner)).toEqual(rowWithout(['STANDBY']));
+      const rowsBefore = (await changedRows(owner)).length;
+
+      const answer = await core.post(CONFIG, { unassign: ['PRIMARY'], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'STANDBY' }] });
+      expect(answer.statusCode, answer.body).toBe(200);
+      expect(validateCoreApiResponse('updateCaptureConfig', 200, bodyOf(answer))).toEqual({ ok: true });
+      expect(linesOf(selectorOf(answer))).toEqual(['STANDBY MIC-01', 'VIDEO-01 CAM-01', 'VIDEO-02 CAM-02']);
+      // The moved line is a new line of the cleared selector: it carries the registered transport (first run: `UNKNOWN` committed, `USB` stored).
+      expect(selectorOf(answer).mics.map((mic) => [mic.inputId, mic.role, mic.transport])).toEqual([['MIC-01', 'STANDBY', 'USB']]);
+      await core.app.pipeline.drain();
+      expect(await storedSlots(owner)).toEqual({ ...SEEDED, mic_primary_id: null, mic_standby_id: 'MIC-01' });
+      const rows = (await changedRows(owner)).slice(rowsBefore);
+      expect(rows).toHaveLength(2);
+      expect(rows.map((row) => row['scope'])).toEqual(['MIC', 'MIC']);
+      expect(rows).toContainEqual(clearedRow('PRIMARY'));
+      expect(rows).toContainEqual(expect.objectContaining({ operationId: 'updateCaptureConfig', scope: 'MIC', to: 'MIC-01' }));
+      expect(await storedSlices(owner)).toStrictEqual(withoutNegativeZeros(core.app.engine.state()));
+    });
   });
 
   describe('3. the lock, and a session on an incomplete selector in Simulated mode', () => {

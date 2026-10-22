@@ -236,6 +236,26 @@ export function micPairFor(mics: readonly CaptureMicLine[], role: CaptureMicLine
   return role === 'PRIMARY' ? [chosen, kept] : [kept, chosen]
 }
 
+/**
+ * R-FLEX row 133 (88 D-A4.6, T-14; D16 Q96-02 (B); spec rflex §2.4 "Selector rule for Q-R5 B"): a
+ * microphone MOVED from the other line to the line of `role`. The old line is cleared, so one
+ * microphone is never on both lines: ONE operation 78 edit `{ unassign: [from], mics: [line] }`
+ * (row 132, T-13, judges it on the selector as the edit leaves it - `unassign` first).
+ */
+export interface MicMove {
+  /** The role the microphone leaves: that slot is cleared (`unassign`). */
+  readonly from: CaptureMicLine['role']
+  /** The one line by role the microphone takes. */
+  readonly line: MicPairLine
+}
+
+/** The move of `deviceId` to the line of `role`, or `null` when `deviceId` is not the other line's microphone (then `micPairFor` applies). */
+export function micMoveFor(mics: readonly CaptureMicLine[], role: CaptureMicLine['role'], deviceId: string): MicMove | null {
+  const other = mics.find((line) => line.role !== role)
+  if (other === undefined || other.deviceId !== deviceId) return null
+  return { from: other.role, line: { inputId: deviceId, deviceId, role } }
+}
+
 // ── One row per slot (task 4 row 31; site W1; decision C18 (3)) ──────────────────────────
 
 /** A video slot of the selector with the line that holds it; `line: null` is the slot NOT ASSIGNED. */
@@ -353,6 +373,8 @@ export interface CaptureSelectorCommands {
   readonly setMicPair: (pair: readonly MicPairLine[]) => Promise<SelectorAnswer>
   /** Operation 78, member `unassign` (task 4 row 31; names register N1): the slot holds no source afterwards. */
   readonly unassign: (slot: CaptureSelectorSlot) => Promise<SelectorAnswer>
+  /** Operation 78, ONE edit (R-FLEX row 133, T-14): `unassign` of the line the microphone leaves and its one line by role (`micMoveFor`). */
+  readonly moveMic: (move: MicMove) => Promise<SelectorAnswer>
   /** Operation 48 for a camera: the confirmed PoE cycle (`{ confirm: true }`, OD-22). */
   readonly poeCycle: (deviceId: string) => Promise<SelectorAnswer>
 }
@@ -420,6 +442,13 @@ export function useCaptureSelectorCommands(): CaptureSelectorCommands {
       unassign: (slot) =>
         guarded('updateCaptureConfig', () => {
           const body = { unassign: [slot] }
+          return live === null
+            ? simAnswer('updateCaptureConfig', sim.request({ method: 'POST', path: '/api/v1/capture/config', body }))
+            : callLive(live, queryClient, 'updateCaptureConfig', () => live.client.call('updateCaptureConfig', { body }))
+        }),
+      moveMic: (move) =>
+        guarded('updateCaptureConfig', () => {
+          const body = { unassign: [move.from], mics: [{ inputId: move.line.inputId, deviceId: move.line.deviceId, role: move.line.role }] }
           return live === null
             ? simAnswer('updateCaptureConfig', sim.request({ method: 'POST', path: '/api/v1/capture/config', body }))
             : callLive(live, queryClient, 'updateCaptureConfig', () => live.client.call('updateCaptureConfig', { body }))

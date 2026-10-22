@@ -18,9 +18,15 @@
  *   1. ONE binding of the destination rule for a STORED camera address, given unchanged to its four
  *      takers: the credential wiring, the stored-credential connection test, and - in the bundles
  *      below - the production camera adapter and the camera watch. The host's facts come from an
- *      INJECTED reader (`network`); WITHOUT ONE, OR WHEN IT ANSWERS NOTHING, EVERY ADDRESS IS
- *      REFUSED. The read operation of `capture_network_config` (row 108) is not built: until it
- *      is, a production Core refuses every stored camera address. Fail-closed, by decision C55.
+ *      INJECTED reader (`network`). SINCE R-FLEX (D10 ruling 2, RF-N1, RM-N4) the rule for a stored
+ *      camera (and for a typed probe) is GLOBAL: an address is reached from whichever ELIGIBLE
+ *      interface of the host holds its subnet (`interfaceSubnets`, NW-C1), the camera interface,
+ *      the office network or Wi-Fi alike; off-link is `NO_SOURCE_INTERFACE`, two interfaces at one
+ *      prefix `SOURCE_INTERFACE_AMBIGUOUS`. NO READER, OR AN UNREADABLE HOST (a reader that throws,
+ *      answers nothing, or states no eligible interfaces): EVERY ADDRESS IS REFUSED (`NOT_CONFIGURED`).
+ *      Fail-closed, by decision C55. "Not configured" no longer means refused for a stored camera:
+ *      no stored camera interface, no camera subnet, no camera-interface address refuse nothing
+ *      (the commissioning scan and set-IP stay bound to the camera interface).
  *      SINCE INTEGRATION PASS I-9a the entry point hands that reader in (`captureNetworkFacts(app)`),
  *      and the app-bound function below gives THE SAME reader to its two other takers: the
  *      confirmed re-address (operation 100) and, bound by the fence for the purpose of a typed
@@ -32,10 +38,16 @@
  *      With nothing attached it reports nothing, so no camera is ever paired: fail-closed.
  *   4. The card enumerator of operations 98 and 99. Where the platform has a reader AND the text
  *      of the listing program is handed in, it is the product's enumerator; otherwise it is an
- *      enumerator that states a NAMED reason and lists nothing - never a made-up card.
+ *      enumerator that states a NAMED reason and lists nothing - never a made-up card. The module
+ *      answers op 98 from it, each card with `boundTo` (the `MIC-nn` that holds it BY IDENTITY, or
+ *      null; R-FLEX AU-L1), and refuses a new binding of a bound card in op 99; this file hands the
+ *      enumerator over and judges nothing of the binding.
  *   5. The stored facts: the camera at its stored address with the stream token of a profile, and
- *      the stored row of a microphone INCLUDING its serial and its port path (row 200: without the
- *      two columns every open of a USB microphone is refused).
+ *      the stored row of a microphone INCLUDING its serial and its port path (row 200). SINCE R-FLEX
+ *      (row 107, RQ-A1 d) there is NO PORT LOCK: a bound card is the same card on any USB port (USB
+ *      id plus serial where one exists, else the one unit of its model); a port move keeps the
+ *      binding, and the stored port is read only as the tie-break of two units with one serial. A
+ *      row without the two columns reads as "no serial", not as refused.
  *
  * WHAT IT DOES NOT DO. It registers no adapter and names no built adapter file (static rule A-9):
  * the two bundles are stated here BY SHAPE. SINCE THE LIFT (task 4 row 88, AM-1) it hands them,
@@ -206,8 +218,8 @@ export const READ_STORED_CAMERA = `SELECT adapter_kind AS "adapterKind", address
 export const READ_STORED_STREAM_TOKEN = 'SELECT onvif_profile_token AS "onvifProfileToken" FROM public.capture_device_streams WHERE device_id = $1 AND profile = $2';
 /**
  * The stored row of a microphone, WITH the serial and the port path it was registered on (row 200,
- * decision C56): a reader that leaves the two columns out yields a row with no stored identity, and
- * every open of a USB microphone is then refused.
+ * decision C56). Since R-FLEX (row 107) the port is no lock: the matcher reads it only as the
+ * tie-break of two units with one serial, and a row without the serial matches by model.
  */
 export const READ_STORED_MICROPHONE =
   'SELECT device_id AS "deviceId", usb_id AS "usbId", card_id AS "cardId", card_device AS "cardDevice", input_number AS "inputNumber", native_channels AS "nativeChannels", usb_serial AS "usbSerial", usb_port AS "usbPort" ' +

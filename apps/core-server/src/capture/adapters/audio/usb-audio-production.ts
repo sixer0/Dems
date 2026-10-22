@@ -19,12 +19,13 @@
  *   3. RE-IDENTIFIES the card by its stored identity and NEVER by a card index
  *      (`identifyRegisteredCard`). A card index is the number of one listing: it moves when cards
  *      are plugged in another order. The identity is the USB id AND THE SERIAL the card stated
- *      at its registration, ELSE THE USB PORT PATH it was registered on (task 4 rows 192, 199,
- *      200): a card of the same model on another port, or with another serial, is NOT the
- *      registered card. A card that is not there is `AUDIO_CARD_ABSENT`; ANOTHER card - under the
- *      registered card's name, or of its model elsewhere - is `AUDIO_CARD_CHANGED`; a stored row
- *      that holds neither a serial nor a port is `AUDIO_CARD_UNIDENTIFIED`; two cards that state
- *      the stored serial, with no port to say which, are `AUDIO_CARD_AMBIGUOUS`. No path of this
+ *      at its registration, ELSE ANY UNIT OF ITS MODEL that states no serial (task 4 rows 192,
+ *      199, 200; R-FLEX row 107: no port lock, a card moved to another port is still the
+ *      registered card). A card that is not there is `AUDIO_CARD_ABSENT`; ANOTHER card - under the
+ *      registered card's name, or of its model with another serial - is `AUDIO_CARD_CHANGED`; a
+ *      stored USB id that could not be read is `AUDIO_CARD_UNIDENTIFIED`; two cards that state
+ *      the stored serial with no port to say which, or two serial-less units of a model stored
+ *      without a serial, are `AUDIO_CARD_AMBIGUOUS`. No path of this
  *      file chooses "a" card: the generic source of input-av, which moved two microphones to a
  *      swapped sound card without a word, is not ported;
  *   4. refuses an input beyond the card's channels by `AUDIO_INPUT_BEYOND_CARD`, a card whose
@@ -86,16 +87,17 @@ export const UsbAudioRefusal = {
   CARD_ABSENT: 'AUDIO_CARD_ABSENT',
   /**
    * Another card sits where the registered one is looked for: under its kernel name with another
-   * USB id, or a card of the SAME MODEL that is not the registered unit - on another port, or with
-   * another serial (row 200). It is not recorded from. The detail word says which.
+   * USB id, or a card of the SAME MODEL that is not the registered unit - it states another
+   * serial (row 200). A move to another port is not a change (R-FLEX row 107). It is not recorded
+   * from. The detail word says which.
    */
   CARD_CHANGED: 'AUDIO_CARD_CHANGED',
-  /** More than one connected card states the stored serial, and the stored port does not say which was registered. */
+  /** More than one connected card states the stored serial and the stored port does not say which was registered, or (no serial stored) more than one unit of the model states none. */
   CARD_AMBIGUOUS: 'AUDIO_CARD_AMBIGUOUS',
   /**
    * There is nothing to re-find the card by: the stored USB id is the fixed word of an id that
-   * could not be read, or the stored row of a USB card holds neither a serial nor a port path (a
-   * row written before those columns existed: it must be registered again).
+   * could not be read. (A stored row with neither a serial nor a port path is read as "no serial"
+   * since R-FLEX row 107, Q96-09.)
    */
   CARD_UNIDENTIFIED: 'AUDIO_CARD_UNIDENTIFIED',
   /** The channel count of the card is a guess: it is not opened with a guessed count. */
@@ -281,14 +283,12 @@ export function isRegisteredAudioInput(row: RegisteredAudioInput | null | undefi
 export const CardMismatch = {
   /** Another USB id under the registered card's kernel name. */
   USB_ID_DIFFERS: 'USB_ID_DIFFERS',
-  /** The model is connected, and no unit of it states the stored serial - or the unit on the stored port states a serial where none was stored. */
+  /** The model is connected, and no unit of it states the stored serial - or no serial was stored and every connected unit of it states one. */
   SERIAL_DIFFERS: 'SERIAL_DIFFERS',
-  /** No serial was stored, the model is connected, and no unit of it sits on the stored port. */
-  PORT_DIFFERS: 'PORT_DIFFERS',
-  /** The stored row of a USB card holds neither a serial nor a port path. */
-  IDENTITY_NOT_STORED: 'IDENTITY_NOT_STORED',
   /** Two connected units state the stored serial and the stored port names neither, or both. */
   SERIAL_SHARED: 'SERIAL_SHARED',
+  /** No serial was stored and two or more connected units of the model state none: the rule cannot say which is the bound one (R-FLEX AU-R2, Q96-03 (iii)). */
+  MODEL_SHARED: 'MODEL_SHARED',
 } as const;
 export type CardMismatch = (typeof CardMismatch)[keyof typeof CardMismatch];
 
@@ -304,15 +304,15 @@ const notFound = (refusal: UsbAudioRefusal, detail?: CardMismatch): CardIdentifi
  * never reads a card index, so a card that came back at another index is found, and a card that
  * sits at the old index is not taken for it. The same rule as the registration's
  * (`modules/capture-inputs/audio-cards/service.ts`, `matchStoredCard`), which this layer does not
- * import: BY THE SERIAL, ELSE BY THE PORT PATH, never by the USB id alone.
+ * import: BY THE USB ID PLUS THE SERIAL where the card states one, ELSE ANY UNIT OF THE MODEL
+ * (R-FLEX row 107, D10 ruling 1 "no port lock"). The stored port path is information only; it is
+ * read solely as the tie-break of two units that state one serial.
  *
  *   stored row of a card that is not USB     the one entry with the stored card id, and only if
  *                                            it is not a USB card; a USB card under that name is
  *                                            `CARD_CHANGED`.
  *   stored USB id is the fixed word          `CARD_UNIDENTIFIED`: two unreadable ids are not one
  *                                            identity.
- *   stored: no serial AND no port path       `CARD_UNIDENTIFIED` (a row of before the columns):
- *                                            the USB id alone finds no card, whatever is connected.
  *   no connected card carries the USB id     `CARD_CHANGED` when an entry carries the stored card
  *                                            id (another card under that name), else `CARD_ABSENT`.
  *   a serial is stored                       the ONE connected unit of the model that states it,
@@ -320,13 +320,16 @@ const notFound = (refusal: UsbAudioRefusal, detail?: CardMismatch): CardIdentifi
  *                                            it: `CARD_CHANGED` - a unit of the model is there and
  *                                            it is not the registered one. Two state it: the one
  *                                            on the stored port, else `CARD_AMBIGUOUS`.
- *   no serial is stored                      the unit of the model ON THE STORED PORT. None there:
- *                                            `CARD_CHANGED` (the same model elsewhere is never
- *                                            opened in its place). The unit there states a serial:
- *                                            `CARD_CHANGED` (the registered card stated none).
+ *   no serial is stored (with or without     the ONE connected unit of the model that states no
+ *   a stored port path)                      serial, on WHATEVER port (a port move keeps the
+ *                                            binding). None states none, but a unit of the model is
+ *                                            there: `CARD_CHANGED` (the registered card stated no
+ *                                            serial). Two or more state none: `CARD_AMBIGUOUS` with
+ *                                            `MODEL_SHARED` - the card is not opened, and the loss
+ *                                            watch reports it undecided, with no fault.
  *
- * NOT DETECTABLE, stated: two units of one model that state no serial, exchanged on the SAME
- * socket, are one identity.
+ * NOT DETECTABLE, stated: two units of one model that state no serial are one identity; while
+ * both are connected neither is opened.
  */
 export function identifyRegisteredCard(listing: CardListing, stored: RegisteredAudioInput): CardIdentification {
   const entries = listing.cards.filter((card) => card.deviceIndex === stored.cardDevice);
@@ -339,7 +342,6 @@ export function identifyRegisteredCard(listing: CardListing, stored: RegisteredA
   if (stored.usbId === CARD_USB_ID_REPLACEMENT) return notFound(UsbAudioRefusal.CARD_UNIDENTIFIED);
   const storedSerial = identityText(stored.usbSerial);
   const storedPort = identityText(stored.usbPort);
-  if (storedSerial === null && storedPort === null) return notFound(UsbAudioRefusal.CARD_UNIDENTIFIED, CardMismatch.IDENTITY_NOT_STORED);
   const same = entries.filter((card) => card.usb && card.usbId === stored.usbId);
   if (same.length === 0) return named.length > 0 ? notFound(UsbAudioRefusal.CARD_CHANGED, CardMismatch.USB_ID_DIFFERS) : notFound(UsbAudioRefusal.CARD_ABSENT);
   const found = (card: CaptureCard): CardIdentification => Object.freeze({ ok: true, card, renamed: card.cardId !== stored.cardId });
@@ -353,13 +355,13 @@ export function identifyRegisteredCard(listing: CardListing, stored: RegisteredA
     const [there] = onPort;
     return there !== undefined && onPort.length === 1 ? found(there) : notFound(UsbAudioRefusal.CARD_AMBIGUOUS, CardMismatch.SERIAL_SHARED);
   }
-  const onPort = same.filter((card) => identityText(card.usbPort) === storedPort);
-  const [there] = onPort;
-  if (there === undefined) return notFound(UsbAudioRefusal.CARD_CHANGED, CardMismatch.PORT_DIFFERS);
-  if (onPort.length > 1) return notFound(UsbAudioRefusal.CARD_AMBIGUOUS);
-  // The registered card stated no serial; the unit on its port states one: not known to be the registered card.
-  if (identityText(there.usbSerial) !== null) return notFound(UsbAudioRefusal.CARD_CHANGED, CardMismatch.SERIAL_DIFFERS);
-  return found(there);
+  // No serial stored: any unit of the model that states none, on any port; the stored port is not compared.
+  const serialLess = same.filter((card) => identityText(card.usbSerial) === null);
+  const [unit] = serialLess;
+  // Every unit of the model there states a serial: not known to be the registered card, which stated none.
+  if (unit === undefined) return notFound(UsbAudioRefusal.CARD_CHANGED, CardMismatch.SERIAL_DIFFERS);
+  if (serialLess.length > 1) return notFound(UsbAudioRefusal.CARD_AMBIGUOUS, CardMismatch.MODEL_SHARED);
+  return found(unit);
 }
 
 // ── Options, limits, the handle ───────────────────────────────────────────────────────────────
@@ -758,7 +760,7 @@ export function createUsbAudioProductionAdapter(options: UsbAudioProductionOptio
         if (launched) throw new UsbAudioError(UsbAudioRefusal.ALREADY_OPEN, inputId);
         launched = true;
         // The cards are listed again: time has passed since the open, and a card index is the number of one listing.
-        // The stored row is matched AGAIN by serial, else by port path (row 200): a card swapped since the open is refused here, before the door is called.
+        // The stored row is matched AGAIN (serial, else any serial-less unit of the model), and the live card must be the one the open found - same serial, port, index (row 200): a card swapped or moved since the open is refused here, before the door is called.
         const now = await locate(inputId);
         const same =
           identityText(now.card.usbSerial) === identityText(opened.card.usbSerial) &&

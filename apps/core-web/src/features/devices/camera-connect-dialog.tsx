@@ -622,7 +622,6 @@ const REFUSAL_TONE: Readonly<Record<RefusalView['kind'], 'warning' | 'danger' | 
   RESULT_GONE: 'warning',
   ALREADY_REGISTERED: 'accent',
   NOT_TESTABLE: 'warning',
-  NETWORK_NOT_CONFIGURED: 'warning',
   IN_PROGRESS: 'accent',
   NOT_TESTED: 'warning',
   FINAL_CHECK_FAILED: 'danger',
@@ -657,12 +656,6 @@ function RefusalNotice({
       break
     case 'NOT_TESTABLE':
       title = t('common.captureSearch.notTestableBody')
-      break
-    case 'NETWORK_NOT_CONFIGURED':
-      // Task 4 row W4 (F3-06 for the operator): the true cause and where it is set, never the general "request failed".
-      // Pass I-9b: the shared sentences (moved from the web's tree, text unchanged).
-      title = t('common.captureConnect.networkNotConfigured')
-      detail = t('common.captureConnect.networkNotConfiguredDetail', { screen: t('web.commissioning.title') })
       break
     case 'IN_PROGRESS':
       title = t('common.captureConnect.inProgress')

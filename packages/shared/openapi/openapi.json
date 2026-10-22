@@ -23404,7 +23404,7 @@
           "Device"
         ],
         "summary": "Search for cameras",
-        "description": "Starts one camera search: an unauthenticated WS-Discovery probe on the network of the Core, for a fixed listening window. **The body is optional**, and without it, or with `{}`, the search is what it always was. No subnet, interface, port, timeout or filter can be sent: a search always probes the fixed multicast group. It opens no connection to any device, authenticates nothing and registers nothing.\n\n**One typed address (optional member `address`).** For a camera that does not answer the multicast probe, the operator may type its address: one dotted IPv4 literal, four decimal parts from 0 to 255 without a leading zero. A host name, a port, a prefix, a URL and an IPv6 literal do not match the schema (`422 INVALID_INPUT`). The search then also sends **one** unicast WS-Discovery probe to that address. Before any packet is built the Core holds the address to its one destination rule: inside `10.0.0.0/8`, `172.16.0.0/12` or `192.168.0.0/16`; reached from the camera interface and from no other; never loopback, link-local, multicast, broadcast, a network or broadcast address, or an address of the Core itself. An address the rule refuses answers `422 INVALID_INPUT` with `details.reason: DISCOVERY_ADDRESS_NOT_ALLOWED`: 0 packets leave for it, no search is started, and the refusal never quotes the address or says which rule refused. A camera that answers is a candidate like any other, built from the probe answer only: no follow-up read of the device, no address sweep, no ping. Nothing is connected, authenticated or registered by it, and the address of a registered camera is never changed by a search.\n\nNeeds CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN), on the web console, a tablet or a phone. **`address` is accepted on the web console only**: a session of a tablet or a phone that sends it is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row; the same session may search without it. Answers `202` with the new search; `200` with the same object and `created: false` when the caller's own search is still RUNNING (no second probe, and a typed address of that request is not probed). The candidates are read with operation 94, by the session that started the search and by no other.\n\nA search is allowed while a session is open. While that session is in `RECORDING` it is allowed only because `CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED` is true (D86 C-4); with the constant off the answer is `409 INVALID_STATE` (`DISCOVERY_NOT_ALLOWED_WHILE_RECORDING`): 0 datagrams, no audit row, no alert. Another operator session's running search answers `409 INVALID_STATE` (`DISCOVERY_IN_PROGRESS`): one socket per Core. Never `409 CAPTURE_CONFIG_LOCKED`.\n\nWrites one CAPTURE_DISCOVERY_SEARCHED row when the window closes or the search fails: the search id, the trigger, the outcome and four counts, never an address or a device text. A search with no responder writes that one row and raises one WARNING alert (`SYSTEM`, `params.reason: CAPTURE_DISCOVERY_EMPTY`); the next search with a responder resolves it.\n\nOver a bound the Core server answers `429 RATE_LIMITED` with `retry-after` and `details.reason` `DISCOVERY_RATE_LIMITED` (a search, or a typed address, sooner than the minimum spacing after the last one): nothing is sent and no audit row is written. `503 NOT_READY` carries `details.reason` `DISCOVERY_NOT_READY` when no discovery adapter is provided or capture is not ready. Both are envelope-level answers of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator opens no socket and waits on no timer: it answers `202` with a search that is already COMPLETE (`windowMs: 0`) and two fixed candidates. With `address` it sends nothing either: it adds a third, synthetic candidate (`CND-000000000003`, adapter `FAKE`, class `DEVELOPMENT`, named \"Test camera at the typed address\") whose `host` is the typed address. It holds the address to the schema and to a stand-in of the rule (the three private ranges; not the first or the last address of its `/24`) and refuses any other with the same `422`; on a tablet or phone it refuses `address` with the same `403`.",
+        "description": "Starts one camera search: an unauthenticated WS-Discovery probe on the network of the Core, for a fixed listening window. **The body is optional**, and without it, or with `{}`, the search is what it always was. No subnet, interface, port, timeout or filter can be sent: a search always probes the fixed multicast group. It opens no connection to any device, authenticates nothing and registers nothing.\n\n**One typed address (optional member `address`).** For a camera that does not answer the multicast probe, the operator may type its address: one dotted IPv4 literal, four decimal parts from 0 to 255 without a leading zero. A host name, a port, a prefix, a URL and an IPv6 literal do not match the schema (`422 INVALID_INPUT`). The search then also sends **one** unicast WS-Discovery probe to that address. Before any packet is built the Core holds the address to its one destination rule: inside `10.0.0.0/8`, `172.16.0.0/12` or `192.168.0.0/16`; on the subnet of an up interface of the host, which is the interface it is asked from (no route through a gateway); never loopback, link-local, multicast, broadcast, a network or broadcast address, or an address of the Core itself. An address the rule refuses answers `422 INVALID_INPUT` with `details.reason: DISCOVERY_ADDRESS_NOT_ALLOWED`: 0 packets leave for it, no search is started, and the refusal never quotes the address or says which rule refused. A camera that answers is a candidate like any other, built from the probe answer only: no follow-up read of the device, no address sweep, no ping. Nothing is connected, authenticated or registered by it, and the address of a registered camera is never changed by a search.\n\nNeeds CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN), on the web console, a tablet or a phone. **`address` is accepted on the web console only**: a session of a tablet or a phone that sends it is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row; the same session may search without it. Answers `202` with the new search; `200` with the same object and `created: false` when the caller's own search is still RUNNING (no second probe, and a typed address of that request is not probed). The candidates are read with operation 94, by the session that started the search and by no other.\n\nA search is allowed while a session is open. While that session is in `RECORDING` it is allowed only because `CAPTURE_DISCOVERY_DURING_RECORDING_ENABLED` is true (D86 C-4); with the constant off the answer is `409 INVALID_STATE` (`DISCOVERY_NOT_ALLOWED_WHILE_RECORDING`): 0 datagrams, no audit row, no alert. Another operator session's running search answers `409 INVALID_STATE` (`DISCOVERY_IN_PROGRESS`): one socket per Core. Never `409 CAPTURE_CONFIG_LOCKED`.\n\nWrites one CAPTURE_DISCOVERY_SEARCHED row when the window closes or the search fails: the search id, the trigger, the outcome and four counts, never an address or a device text. A search with no responder writes that one row and raises one WARNING alert (`SYSTEM`, `params.reason: CAPTURE_DISCOVERY_EMPTY`); the next search with a responder resolves it.\n\nOver a bound the Core server answers `429 RATE_LIMITED` with `retry-after` and `details.reason` `DISCOVERY_RATE_LIMITED` (a search, or a typed address, sooner than the minimum spacing after the last one): nothing is sent and no audit row is written. `503 NOT_READY` carries `details.reason` `DISCOVERY_NOT_READY` when no discovery adapter is provided or capture is not ready. Both are envelope-level answers of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator opens no socket and waits on no timer: it answers `202` with a search that is already COMPLETE (`windowMs: 0`) and two fixed candidates. With `address` it sends nothing either: it adds a third, synthetic candidate (`CND-000000000003`, adapter `FAKE`, class `DEVELOPMENT`, named \"Test camera at the typed address\") whose `host` is the typed address. It holds the address to the schema and to a stand-in of the rule (the three private ranges; not the first or the last address of its `/24`) and refuses any other with the same `422`; on a tablet or phone it refuses `address` with the same `403`.",
         "responses": {
           "200": {
             "description": "The caller's own search is still RUNNING: the same search, `created: false`. No second probe was sent.",
@@ -24930,7 +24930,7 @@
           "Device"
         ],
         "summary": "List the sound cards",
-        "description": "Lists the sound cards of the host the Core runs on, once, now. **No body.** No card, path, address or filter can be sent. Nothing lists in the background and nothing chooses a card: the listing happens because an operator asked for it, and it is not stored. It opens no card for capture, changes no level and registers nothing.\n\n**Web console only, idle only.** Needs CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN) and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row. With a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.\n\nPer capture device of a card the answer holds the card id, the device index, the USB id, the product name, the native channel count, the sample sizes, and the inputs that are registered microphones with their registry ids. The product name is **untrusted device text**: printable ASCII, at most 64 characters, a name that fails the rule replaced by a fixed word; a client draws it as text and trusts none of it.\n\nWrites one CAPTURE_DISCOVERY_SEARCHED row with `scope: AUDIO_CARDS`: a search id and counts, never a product name, a USB id or a card id.\n\nOne listing at a time per Core: a second call while one runs answers `409 INVALID_STATE` with `details.reason: AUDIO_CARD_SEARCH_IN_PROGRESS`. Over the spacing bound the Core answers `429 RATE_LIMITED` with `retry-after` and `details.reason: AUDIO_CARD_SEARCH_RATE_LIMITED`: nothing is listed and no audit row is written.\n\n**Production capture only.** A Core whose capture is simulated, or that runs with development sources, has no sound-card adapter: it answers `503 NOT_READY` with `details.reason: DISCOVERY_NOT_READY`, the answer of a camera search without an adapter. Nothing is listed, nothing is stored and no audit row is written. That is an envelope-level answer of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator reads no host: it answers a fixed list of two cards that are named as test cards, with no registered input. On a tablet or phone the simulator refuses with the same `403`.",
+        "description": "Lists the sound cards of the host the Core runs on, once, now. **No body.** No card, path, address or filter can be sent. Nothing lists in the background and nothing chooses a card: the listing happens because an operator asked for it, and it is not stored. It opens no card for capture, changes no level and registers nothing.\n\n**Web console only, idle only.** Needs CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN) and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row. With a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.\n\nPer capture device of a card the answer holds the card id, the device index, the USB id, the product name, the native channel count, the sample sizes, and the inputs that are registered microphones with their registry ids, and, per card, the microphone that holds it (`boundTo`), or null. The product name is **untrusted device text**: printable ASCII, at most 64 characters, a name that fails the rule replaced by a fixed word; a client draws it as text and trusts none of it.\n\nWrites one CAPTURE_DISCOVERY_SEARCHED row with `scope: AUDIO_CARDS`: a search id and counts, never a product name, a USB id or a card id.\n\nOne listing at a time per Core: a second call while one runs answers `409 INVALID_STATE` with `details.reason: AUDIO_CARD_SEARCH_IN_PROGRESS`. Over the spacing bound the Core answers `429 RATE_LIMITED` with `retry-after` and `details.reason: AUDIO_CARD_SEARCH_RATE_LIMITED`: nothing is listed and no audit row is written.\n\n**Production capture only.** A Core whose capture is simulated, or that runs with development sources, has no sound-card adapter: it answers `503 NOT_READY` with `details.reason: DISCOVERY_NOT_READY`, the answer of a camera search without an adapter. Nothing is listed, nothing is stored and no audit row is written. That is an envelope-level answer of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator reads no host: it answers a fixed list of two cards that are named as test cards, with no registered input. On a tablet or phone the simulator refuses with the same `403`.",
         "responses": {
           "200": {
             "description": "The sound cards as this listing found them. Not stored.",
@@ -24966,7 +24966,8 @@
                             16,
                             24
                           ],
-                          "registered": []
+                          "registered": [],
+                          "boundTo": null
                         },
                         {
                           "cardId": "DEMS_TEST_B",
@@ -24977,7 +24978,8 @@
                           "sampleBits": [
                             16
                           ],
-                          "registered": []
+                          "registered": [],
+                          "boundTo": null
                         }
                       ],
                       "truncated": false
@@ -25003,7 +25005,8 @@
                               "inputNumber": 1,
                               "deviceId": "MIC-03"
                             }
-                          ]
+                          ],
+                          "boundTo": "MIC-03"
                         }
                       ],
                       "truncated": false
@@ -25199,10 +25202,10 @@
           "Device"
         ],
         "summary": "Register a sound-card input as a microphone",
-        "description": "Registers one input of one sound card as a microphone of the capture devices. The body names the card id, the device index and the input number, and nothing else. **The Core lists the cards again itself** and takes the channel count, the USB id and the product from that listing, never from the body. In one unit it writes the capture device (the next free `MIC-nn`) and its input row; a failure leaves nothing behind.\n\n**Web console only, idle only.** Needs CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN) and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row. With a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.\n\nAn input that already has a microphone is **re-enabled, not duplicated**: the answer is `200` with `change: REENABLED` and the existing id. A stored input found on a card at another place answers `200` with `change: CARD_CHANGED`: it is said, never matched silently. **`CARD_CHANGED` stores the card's new identity and does not enable the microphone again**: the same call again answers `REENABLED`. A USB card is the stored one by its serial number where it states one (it is then found on any port) and by its port otherwise; a serial that appears or disappears is another card. A new microphone answers `201` with `change: REGISTERED`. The registration decides no role: making the microphone primary or standby is operation 80.\n\nRefusals, each storing nothing: `404 NOT_FOUND` when the Core's own listing has no such card and device; `409 INVALID_STATE` with `details.reason: AUDIO_INPUT_BEYOND_CARD` when the card has no input of that number, or `AUDIO_CARD_SEARCH_IN_PROGRESS` while a listing runs. The refusal never quotes the input and carries no device text.\n\nWrites one CAPTURE_AUDIO_INPUT_CHANGED row: the device id, the change code, the input number and the channel count. No product name, no USB id and no card id. Publishes the `captureDevices` slice; `captureConfig` is not changed. The new microphone is assignable at once, without a restart.\n\n**Production capture only.** A Core whose capture is simulated, or that runs with development sources, has no sound-card adapter: it answers `503 NOT_READY` with `details.reason: DISCOVERY_NOT_READY`, the answer of a camera search without an adapter. Nothing is listed, nothing is stored and no audit row is written. That is an envelope-level answer of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator captures from no sound card and registers nothing: for a card of its fixed list it answers `409 INVALID_STATE` with `details.reason: AUDIO_INPUT_NOT_REGISTRABLE` (or `AUDIO_INPUT_BEYOND_CARD` for an input the test card does not have), and `404` for any other card. It writes no audit row and changes no state.",
+        "description": "Registers one input of one sound card as a microphone of the capture devices. The body names the card id, the device index and the input number, and optionally `release`, and nothing else. **The Core lists the cards again itself** and takes the channel count, the USB id and the product from that listing, never from the body. In one unit it writes the capture device (the next free `MIC-nn`) and its input row; a failure leaves nothing behind.\n\n**Web console only, idle only.** Needs CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN) and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row. With a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.\n\nAn input that already has a microphone is **re-enabled, not duplicated**: the answer is `200` with `change: REENABLED` and the existing id. A stored input found on a card at another place answers `200` with `change: CARD_CHANGED`: it is said, never matched silently. **`CARD_CHANGED` stores the card's new identity and does not enable the microphone again**: the same call again answers `REENABLED`. A USB card is the stored one by its serial number where it states one, and by its USB id otherwise, on any port: moving a card to another port keeps its microphone. A serial number that appears or disappears is another card. **A sound card is held by one microphone at a time** (decision D10 (1)): registering an input of a card another microphone holds is refused `409 INVALID_STATE` with `details.reason: AUDIO_CARD_ALREADY_BOUND` and the holder's id, unless the body says `release: true`; the Core then releases the holder in the same unit and names it in `releasedDeviceId`. The holder moves to this input and keeps its id: the answer is `200` with `change: REENABLED` and `releasedDeviceId` equal to `deviceId`. When the holder is this same input, `release: true` changes nothing and `releasedDeviceId` is null. A new microphone answers `201` with `change: REGISTERED`. The registration decides no role: making the microphone primary or standby is operation 80.\n\nRefusals, each storing nothing: `404 NOT_FOUND` when the Core's own listing has no such card and device; `409 INVALID_STATE` with `details.reason: AUDIO_INPUT_BEYOND_CARD` when the card has no input of that number, `AUDIO_CARD_SEARCH_IN_PROGRESS` while a listing runs, or `AUDIO_CARD_ALREADY_BOUND` (with `details.deviceId`, the holder) when another microphone holds the card and the body does not say `release: true`. The refusal never quotes the input and carries no device text.\n\nWrites one CAPTURE_AUDIO_INPUT_CHANGED row: the device id, the change code, the input number and the channel count. No product name, no USB id and no card id. A release (`release: true`) writes two rows for the moved microphone: `change: RELEASED` with its old input number, then `change: REENABLED` with the new one. Publishes the `captureDevices` slice; `captureConfig` is not changed. The new microphone is assignable at once, without a restart.\n\n**Production capture only.** A Core whose capture is simulated, or that runs with development sources, has no sound-card adapter: it answers `503 NOT_READY` with `details.reason: DISCOVERY_NOT_READY`, the answer of a camera search without an adapter. Nothing is listed, nothing is stored and no audit row is written. That is an envelope-level answer of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator captures from no sound card and registers nothing: for a card of its fixed list it answers `409 INVALID_STATE` with `details.reason: AUDIO_INPUT_NOT_REGISTRABLE` (or `AUDIO_INPUT_BEYOND_CARD` for an input the test card does not have), and `404` for any other card. It writes no audit row and changes no state.",
         "responses": {
           "200": {
-            "description": "The input already had a microphone: re-enabled, or found on a card at another place. No second device was made.",
+            "description": "The input already had a microphone: re-enabled, or found on a card at another place; or the holder of the card was moved to this input (`release: true`, `releasedDeviceId` set). No second device was made.",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -25226,7 +25229,18 @@
                       "deviceId": "MIC-03",
                       "change": "REENABLED",
                       "inputNumber": 1,
-                      "channelCount": 8
+                      "channelCount": 8,
+                      "releasedDeviceId": null
+                    }
+                  },
+                  "released": {
+                    "summary": "The holder of the card was released: it moved to this input and kept its id",
+                    "value": {
+                      "deviceId": "MIC-03",
+                      "change": "REENABLED",
+                      "inputNumber": 2,
+                      "channelCount": 8,
+                      "releasedDeviceId": "MIC-03"
                     }
                   }
                 }
@@ -25258,7 +25272,8 @@
                       "deviceId": "MIC-03",
                       "change": "REGISTERED",
                       "inputNumber": 1,
-                      "channelCount": 8
+                      "channelCount": 8,
+                      "releasedDeviceId": null
                     }
                   }
                 }
@@ -25422,7 +25437,7 @@
             }
           },
           "409": {
-            "description": "A session is open (CAPTURE_CONFIG_LOCKED; no audit row), or the input cannot be registered (INVALID_STATE, `details.reason`: AUDIO_INPUT_BEYOND_CARD, AUDIO_CARD_SEARCH_IN_PROGRESS, or AUDIO_INPUT_NOT_REGISTRABLE from an answerer that captures from no sound card - also for a USB card that states neither a serial number nor a port: it could not be found again). Nothing is stored.",
+            "description": "A session is open (CAPTURE_CONFIG_LOCKED; no audit row), or the input cannot be registered (INVALID_STATE, `details.reason`: AUDIO_INPUT_BEYOND_CARD, AUDIO_CARD_SEARCH_IN_PROGRESS, or AUDIO_INPUT_NOT_REGISTRABLE from an answerer that captures from no sound card - also for a USB card the Core could not find again (it states no USB id) - or AUDIO_CARD_ALREADY_BOUND when another microphone holds the physical card and the body does not say `release: true` (`details.deviceId`: the holder). Nothing is stored.",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -25455,6 +25470,20 @@
                         "message": "The sound card has no such input.",
                         "details": {
                           "reason": "AUDIO_INPUT_BEYOND_CARD"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "alreadyBound": {
+                    "summary": "Another microphone holds the card",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "Another microphone uses this sound card.",
+                        "details": {
+                          "reason": "AUDIO_CARD_ALREADY_BOUND",
+                          "deviceId": "MIC-03"
                         },
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
@@ -25532,6 +25561,15 @@
                     "deviceIndex": 0,
                     "inputNumber": 1
                   }
+                },
+                "release": {
+                  "summary": "Another input of a card another microphone holds, releasing the holder",
+                  "value": {
+                    "cardId": "EXAMPLE_CARD",
+                    "deviceIndex": 0,
+                    "inputNumber": 2,
+                    "release": true
+                  }
                 }
               }
             }
@@ -25571,7 +25609,7 @@
           "Device"
         ],
         "summary": "Confirm the new address of a registered camera",
-        "description": "Stores the new address of a **registered** camera after an operator confirmed it. A camera search (operation 93) can list a candidate that is a registered camera by its endpoint reference and answers from another address than the stored one (`addressChanged: true`). **The Core never follows such a camera by itself.** This operation is the operator's confirmation: the body names the device, the candidate of the caller's own live search and the address the dialog showed.\n\n**Web console only**, as operation 96 (`WEB_CONSOLE_SESSION`), and idle only (`409 CAPTURE_CONFIG_LOCKED`, no audit row).\n\n**The address in the body is a confirmation, not a target.** The Core takes the new address from its own search state and compares: when the two differ the answer is `409 INVALID_STATE` with `details.reason: READDRESS_CONFIRMATION_MISMATCH` and nothing is stored. A typed address without such a candidate cannot re-address a camera. The stored credential stays with the device (the operator confirmed it is the same camera); nothing is sent to the new address by this operation, and no credential is in the body.\n\nThe new address must pass the Core's destination rule for a stored camera: a private IPv4 address the camera interface reaches, never loopback, never the Core's own, never the subnet of another interface. A refusal of that rule is `422 INVALID_INPUT` with `details.reason: DISCOVERY_ADDRESS_NOT_ALLOWED` - one reason for every rule, never the address.\n\nOther refusals, each storing nothing: `404 NOT_FOUND` for a device that is no registered camera and for a candidate that is unknown, expired or of another session's search (one answer); `409 INVALID_STATE` with `details.reason` READDRESS_NOT_THE_REGISTERED_CAMERA, READDRESS_IDENTITY_CONFLICT, READDRESS_CONFIRMATION_MISMATCH, READDRESS_ADDRESS_UNCHANGED, READDRESS_ADDRESS_TAKEN, READDRESS_STORED_ADDRESS_UNREADABLE.\n\nIn ONE unit the Core writes the device's address and one CAPTURE_DEVICE_ADDRESS_CHANGED row: the device id, the two IP literals, `reason: OPERATOR_CONFIRMED`. No port, no endpoint reference and no announced text is in the row. Either both are written or neither. Publishes the `captureDevices` slice; `captureConfig` is not changed: a track that names the device keeps naming it.\n\n`503 NOT_READY` with `details.reason: DISCOVERY_NOT_READY` when the Core has no camera search (no adapter, or the candidate state is not available). A Core that runs with development sources registers its candidates by their whole address, so none of them has a changed address: it answers `409` with `READDRESS_NOT_THE_REGISTERED_CAMERA` and stores nothing.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator's cameras never move: it stores nothing, writes no audit row and changes no state. For a registered camera and a candidate of its fixed search it answers `409 INVALID_STATE` with `details.reason: READDRESS_NOT_THE_REGISTERED_CAMERA`; `404` for any other device or candidate.",
+        "description": "Stores the new address of a **registered** camera after an operator confirmed it. A camera search (operation 93) can list a candidate that is a registered camera by its endpoint reference and answers from another address than the stored one (`addressChanged: true`). **The Core never follows such a camera by itself.** This operation is the operator's confirmation: the body names the device, the candidate of the caller's own live search and the address the dialog showed.\n\n**Web console only**, as operation 96 (`WEB_CONSOLE_SESSION`), and idle only (`409 CAPTURE_CONFIG_LOCKED`, no audit row).\n\n**The address in the body is a confirmation, not a target.** The Core takes the new address from its own search state and compares: when the two differ the answer is `409 INVALID_STATE` with `details.reason: READDRESS_CONFIRMATION_MISMATCH` and nothing is stored. A typed address without such a candidate cannot re-address a camera. The stored credential stays with the device (the operator confirmed it is the same camera); nothing is sent to the new address by this operation, and no credential is in the body.\n\nThe new address must pass the Core's destination rule for a stored camera: a private IPv4 address on the subnet of an up interface of the host, never loopback, never the Core's own. A refusal of that rule is `422 INVALID_INPUT` with `details.reason: DISCOVERY_ADDRESS_NOT_ALLOWED` - one reason for every rule, never the address.\n\nOther refusals, each storing nothing: `404 NOT_FOUND` for a device that is no registered camera and for a candidate that is unknown, expired or of another session's search (one answer); `409 INVALID_STATE` with `details.reason` READDRESS_NOT_THE_REGISTERED_CAMERA, READDRESS_IDENTITY_CONFLICT, READDRESS_CONFIRMATION_MISMATCH, READDRESS_ADDRESS_UNCHANGED, READDRESS_ADDRESS_TAKEN, READDRESS_STORED_ADDRESS_UNREADABLE.\n\nIn ONE unit the Core writes the device's address and one CAPTURE_DEVICE_ADDRESS_CHANGED row: the device id, the two IP literals, `reason: OPERATOR_CONFIRMED`. No port, no endpoint reference and no announced text is in the row. Either both are written or neither. Publishes the `captureDevices` slice; `captureConfig` is not changed: a track that names the device keeps naming it.\n\n`503 NOT_READY` with `details.reason: DISCOVERY_NOT_READY` when the Core has no camera search (no adapter, or the candidate state is not available). A Core that runs with development sources registers its candidates by their whole address, so none of them has a changed address: it answers `409` with `READDRESS_NOT_THE_REGISTERED_CAMERA` and stores nothing.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator's cameras never move: it stores nothing, writes no audit row and changes no state. For a registered camera and a candidate of its fixed search it answers `409 INVALID_STATE` with `details.reason: READDRESS_NOT_THE_REGISTERED_CAMERA`; `404` for any other device or candidate.",
         "responses": {
           "200": {
             "description": "The camera with its new address. The credential is not returned.",
@@ -25990,7 +26028,7 @@
           "Device"
         ],
         "summary": "Camera network configuration",
-        "description": "The camera network configuration of the Core: the camera interface, the camera subnet, the factory address list, and the three numbers of the temporary address and of the first camera address. One per Core. `configured` is false until both the interface and the subnet are chosen: **the Core never chooses an interface**, and until then the commissioning functions answer `COMMISSIONING_NOT_CONFIGURED`.\n\n**TECHNICIAN only, web console only.** Needs CAPTURE_COMMISSION, which the TECHNICIAN role alone holds, and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row. It can be read while a session is open.\n\nA configuration nobody has written yet answers the stated defaults with `revision: 1`, `updatedAt: null` and no interface. The defaults of the factory list are the reference application's and were tested against no camera.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator holds no host: it answers a fixed configuration whose interface is named `simulated0`, an interface no host has.",
+        "description": "The camera network configuration of the Core: the camera interface, the camera subnet, the factory address list, and the three numbers of the temporary address and of the first camera address. One per Core. `configured` is false until both the interface and the subnet are chosen: **the Core never chooses an interface**, and until then the factory address scan (103) and the camera address change (106) answer `COMMISSIONING_NOT_CONFIGURED`. The camera search (93), a typed address, the connection tests (95, 108) and a stored camera are not bound to this interface (decision D10 (2)).\n\n**TECHNICIAN only, web console only.** Needs CAPTURE_COMMISSION, which the TECHNICIAN role alone holds, and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row. It can be read while a session is open.\n\nA configuration nobody has written yet answers the stated defaults with `revision: 1`, `updatedAt: null` and no interface. The defaults of the factory list are the reference application's and were tested against no camera.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator holds no host: it answers a fixed configuration whose interface is named `simulated0`, an interface no host has.",
         "responses": {
           "200": {
             "description": "The camera network configuration.",
@@ -26220,7 +26258,7 @@
           "Device"
         ],
         "summary": "Change the camera network configuration",
-        "description": "Stores a change of the camera network configuration. The body names `revision` (the optimistic lock) and the settings to change; a setting that is absent is left as it is. `interfaceName` and `cameraSubnet` may be set to null: the commissioning functions then answer \"not configured\". No address of the host is changed by this operation and nothing is sent to any device.\n\n**TECHNICIAN only, web console only.** Needs CAPTURE_COMMISSION, which the TECHNICIAN role alone holds, and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row.\n\n**Idle only.** With a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row: the addresses of the camera port are not touched during a recording.\n\nRefusals, each storing nothing: a stale `revision` answers `409 INVALID_STATE` with `details.reason: REVISION_CONFLICT`; settings that have the form of the schema and are refused as a whole (host bits set in the subnet, an interface the host does not have, a factory address listed twice) answer `422 INVALID_INPUT` with `details.reason: NETWORK_CONFIG_NOT_ALLOWED`.\n\n`onvifPorts` replaces the whole list of allowed ONVIF ports (1 to 8, no port twice, the order kept). From the commit on, a stored camera is dialled only on a listed port; one stored without a port is dialled on 80, which must then be listed.\n\nOn success writes one CAPTURE_NETWORK_CONFIG_CHANGED row whose details are `changedFields` (the NAMES of the changed settings, comma-joined; never a value) and `revision`, and - when `onvifPorts` changed - `onvifPortCount`, the number of ports now listed. An update that changes nothing answers `200` with the unchanged `revision` and writes no row.\n\n**Production capture on the Core's Linux host only.** Anywhere else nothing is changed and no audit row is written: `409 INVALID_STATE` with `details.reason: COMMISSIONING_NOT_AVAILABLE`, or `COMMISSIONING_HELPER_NOT_CONFIGURED` when the Core has no address helper configured.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator stores nothing: a body of the right form answers `409 INVALID_STATE` with `details.reason: COMMISSIONING_NOT_AVAILABLE`.",
+        "description": "Stores a change of the camera network configuration. The body names `revision` (the optimistic lock) and the settings to change; a setting that is absent is left as it is. `interfaceName` and `cameraSubnet` may be set to null: the factory address scan and the camera address change then answer `COMMISSIONING_NOT_CONFIGURED`. No address of the host is changed by this operation and nothing is sent to any device.\n\n**TECHNICIAN only, web console only.** Needs CAPTURE_COMMISSION, which the TECHNICIAN role alone holds, and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row.\n\n**Idle only.** With a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row: the addresses of the camera port are not touched during a recording.\n\nRefusals, each storing nothing: a stale `revision` answers `409 INVALID_STATE` with `details.reason: REVISION_CONFLICT`; settings that have the form of the schema and are refused as a whole (host bits set in the subnet, an interface the host does not have, a factory address listed twice) answer `422 INVALID_INPUT` with `details.reason: NETWORK_CONFIG_NOT_ALLOWED`.\n\n`onvifPorts` replaces the whole list of allowed ONVIF ports (1 to 8, no port twice, the order kept). From the commit on, a stored camera is dialled only on a listed port; one stored without a port is dialled on 80, which must then be listed.\n\nOn success writes one CAPTURE_NETWORK_CONFIG_CHANGED row whose details are `changedFields` (the NAMES of the changed settings, comma-joined; never a value) and `revision`, and - when `onvifPorts` changed - `onvifPortCount`, the number of ports now listed. An update that changes nothing answers `200` with the unchanged `revision` and writes no row.\n\n**Production capture on the Core's Linux host only.** Anywhere else nothing is changed and no audit row is written: `409 INVALID_STATE` with `details.reason: COMMISSIONING_NOT_AVAILABLE`, or `COMMISSIONING_HELPER_NOT_CONFIGURED` when the Core has no address helper configured.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator stores nothing: a body of the right form answers `409 INVALID_STATE` with `details.reason: COMMISSIONING_NOT_AVAILABLE`.",
         "responses": {
           "200": {
             "description": "The configuration after the change.",
@@ -42819,7 +42857,7 @@
             ]
           },
           "usbPort": {
-            "description": "The port a USB card sits on, in the kernel's own topological form (e.g. `0000:00:14.0-2.1`); null for a card that is not USB. Read by the Core from the kernel, never from the device. Absent in an answer of the in-app simulator.",
+            "description": "The port a USB card sits on, in the kernel's own topological form (e.g. `0000:00:14.0-2.1`); null for a card that is not USB. Read by the Core from the kernel, never from the device. Informational: it is no longer compared. Absent in an answer of the in-app simulator.",
             "anyOf": [
               {
                 "type": "string",
@@ -42886,6 +42924,18 @@
               "additionalProperties": false
             },
             "description": "The inputs of this card that are registered microphones, by input number. An input that is not listed is not registered."
+          },
+          "boundTo": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9-]{0,31}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The microphone that holds this sound card, by the identity rule (its serial number where it states one, else its USB id; never its port). A card with a microphone is not offered for a new binding: registering another input of it is refused `AUDIO_CARD_ALREADY_BOUND` unless the request releases the holder. Null: no microphone holds the card. With null, `registered` is empty; a holder that `registered` does not name was registered under another kernel card id and is still this physical card."
           }
         },
         "required": [
@@ -42895,7 +42945,8 @@
           "product",
           "channelCount",
           "sampleBits",
-          "registered"
+          "registered",
+          "boundTo"
         ],
         "additionalProperties": false,
         "description": "One sound card of the Core's host as a listing found it (task 4, operation 98). It registers nothing and is in no slice."
@@ -42947,6 +42998,10 @@
             "minimum": 1,
             "maximum": 64,
             "description": "The input to register: 1 to the channel count of the card."
+          },
+          "release": {
+            "description": "True: register this input and release the microphone that holds the same sound card (decision D10 (1)). False or absent (the default is false): a card another microphone holds is refused.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -42972,7 +43027,7 @@
               "CARD_CHANGED",
               "REENABLED"
             ],
-            "description": "REGISTERED: a new microphone. REENABLED: the input already had one; no second device was made. CARD_CHANGED: the stored input was found on a card at another place and now names that card."
+            "description": "REGISTERED: a new microphone. REENABLED: the input already had one; no second device was made. CARD_CHANGED: the stored input now has another card behind it (another USB id, or a serial number that differs, appears or disappears). A port move is not a change."
           },
           "inputNumber": {
             "type": "integer",
@@ -42984,13 +43039,26 @@
             "minimum": 1,
             "maximum": 64,
             "description": "The native channel count the Core read from its own listing."
+          },
+          "releasedDeviceId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9-]{0,31}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The microphone this registration released (`release: true` and the card was held by another microphone); null otherwise."
           }
         },
         "required": [
           "deviceId",
           "change",
           "inputNumber",
-          "channelCount"
+          "channelCount",
+          "releasedDeviceId"
         ],
         "additionalProperties": false,
         "description": "What a registration of a sound-card input did (task 4, operation 99). No device text."
@@ -43218,7 +43286,7 @@
         "properties": {
           "configured": {
             "type": "boolean",
-            "description": "True when both the camera interface and the camera subnet are set. False: the commissioning functions answer `COMMISSIONING_NOT_CONFIGURED`."
+            "description": "True when both the camera interface and the camera subnet are set. False: the factory address scan and the camera address change answer `COMMISSIONING_NOT_CONFIGURED`; the camera search, a typed address and the connection of a camera do not need them."
           },
           "interfaceName": {
             "anyOf": [

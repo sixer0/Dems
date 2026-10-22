@@ -22,7 +22,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { captureLog, createFakePool, unitTestConfig, type CapturedLog } from '../../../../../test/support/config';
 import { buildApp } from '../../../../app';
 import { CaptureAdapterKind, judgeStoredCamera, storedCameraCandidate } from '../../../../capture/adapters';
-import { storedCameraAddressRuleOf, type CaptureNetworkFactsReader } from '../../../../capture/fence';
+import { DESTINATION_DEFAULT_PORTS } from '../../../../capture/destination-rule';
+import { cameraNetworkDialRuleOf, storedCameraAddressRuleOf, type CaptureNetworkFactsReader } from '../../../../capture/fence';
 import type { AuditEntry } from '../../../../core';
 import { ApiFailure } from '../../../../plugins/error-envelope';
 import {
@@ -45,16 +46,28 @@ import {
 
 // ── The host of this file ──────────────────────────────────────────────────────────────────────
 
-/** A Core host: the office network on `eth0`, the camera port `eth1` inside 192.168.50.0/24, a loopback. */
+/**
+ * A Core host: the office network on `eth0`, the camera port `eth1` inside 192.168.50.0/24, a loopback. Row 105: every
+ * address states its hardware address as the operating system does (RG-13; the loopback's is all zero).
+ */
+const ETH0_MAC = '02:00:00:00:00:e0';
+const ETH1_MAC = '02:00:00:00:00:e1';
 const HOST: readonly HostInterface[] = [
-  { name: 'lo', internal: true, addresses: [{ address: '127.0.0.1', prefixLength: 8 }] },
-  { name: 'eth0', internal: false, addresses: [{ address: '10.20.0.15', prefixLength: 16 }] },
-  { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24 }] },
+  { name: 'lo', internal: true, addresses: [{ address: '127.0.0.1', prefixLength: 8, mac: '00:00:00:00:00:00' }] },
+  { name: 'eth0', internal: false, addresses: [{ address: '10.20.0.15', prefixLength: 16, mac: ETH0_MAC }] },
+  { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24, mac: ETH1_MAC }] },
 ];
 const CHOICE = { interfaceName: 'eth1', cameraSubnet: '192.168.50.0/24', onvifPorts: [80] };
+/** STORED_CAMERA: global since R-FLEX (row 102) - judged on `interfaceSubnets`, not on the camera subnet. */
 const judged = (reader: CaptureNetworkFactsReader | undefined, address: string): string => {
   const decision = storedCameraAddressRuleOf(reader)(address, undefined);
   return decision.allowed ? `ALLOWED from ${String(decision.destination?.sourceAddress)}` : decision.refusal;
+};
+/** SET_IP (C4): still bound to the configured camera subnet and interface (Q96-04 a) - the purpose that shows the camera part of the facts. */
+const boundJudged = (facts: ReturnType<typeof networkFactsOf>, address: string): string => {
+  if (facts === null) return 'NOT_CONFIGURED';
+  const decision = cameraNetworkDialRuleOf()(address, facts);
+  return decision.allowed ? `ALLOWED from ${decision.destination.sourceAddress}${decision.destination.viaAlias ? ' (alias)' : ''}` : decision.refusal;
 };
 
 describe('the network facts: the stored choice joined with the interfaces of the host', () => {
@@ -66,18 +79,25 @@ describe('the network facts: the stored choice joined with the interfaces of the
         { network: '127.0.0.0', prefixLength: 8 },
         { network: '10.20.0.0', prefixLength: 16 },
       ],
+      // Row 105 (NW-C1, O-6: beside `otherInterfaceSubnets`): every eligible address, the camera interface included; the loopback is not eligible.
+      interfaceSubnets: [
+        { name: 'eth0', address: '10.20.0.15', network: '10.20.0.0', prefixLength: 16 },
+        { name: 'eth1', address: '192.168.50.1', network: '192.168.50.0', prefixLength: 24 },
+      ],
       hostAddresses: ['127.0.0.1', '10.20.0.15', '192.168.50.1'],
       allowedPorts: [80],
     });
   });
 
-  it('WITH THE READER HANDED IN, the rule allows a stored camera address inside the configured subnet, from the camera interface, and refuses one outside it', () => {
+  it('WITH THE READER HANDED IN, the rule allows a stored camera address on a network an eligible interface is on (R-FLEX: global), from that interface, and refuses one that is on no such network', () => {
     const reader: CaptureNetworkFactsReader = () => networkFactsOf(CHOICE, HOST);
     expect(judged(reader, '192.168.50.101')).toBe('ALLOWED from 192.168.50.1');
     expect(judged(reader, '192.168.50.254')).toBe('ALLOWED from 192.168.50.1');
-    // Outside the subnet, on the office network, the Core's own address, the edges of the subnet, a public address, a name.
-    expect(judged(reader, '192.168.51.101')).toBe('OUTSIDE_CAMERA_SUBNET');
-    expect(judged(reader, '10.20.0.99')).toBe('OTHER_INTERFACE_SUBNET');
+    // Off-link, on the office network (now a source of its own), the Core's own address, the edges of the subnet, a public address, a name.
+    expect(judged(reader, '192.168.51.101')).toBe('NO_SOURCE_INTERFACE');
+    expect(judged(reader, '10.20.0.99')).toBe('ALLOWED from 10.20.0.15');
+    // The bound purpose keeps the camera subnet (Q96-04 a).
+    expect([boundJudged(reader(), '192.168.50.101'), boundJudged(reader(), '192.168.51.101'), boundJudged(reader(), '10.20.0.99')]).toEqual(['ALLOWED from 192.168.50.1', 'OUTSIDE_CAMERA_SUBNET', 'OTHER_INTERFACE_SUBNET']);
     expect(judged(reader, '192.168.50.1')).toBe('HOST_ADDRESS');
     expect(judged(reader, '192.168.50.0')).toBe('NETWORK_ADDRESS');
     expect(judged(reader, '192.168.50.255')).toBe('SUBNET_BROADCAST');
@@ -104,21 +124,16 @@ describe('the network facts: the stored choice joined with the interfaces of the
     expect(judgeStoredCamera(at('192.168.50.101:8080'), rule([80]))).toEqual({ allowed: false, refusal: 'PORT_NOT_LISTED' });
   });
 
-  it('WITH NULL EVERYTHING IS REFUSED: no reader, a reader that answers null, and every state that is "not configured"', () => {
+  it('WITH NULL EVERYTHING IS REFUSED: no reader, a reader that answers null, and every state whose facts cannot be read (RF-N7)', () => {
     const inside = '192.168.50.101';
     expect(judged(undefined, inside)).toBe('NOT_CONFIGURED');
     expect(judged(() => null, inside)).toBe('NOT_CONFIGURED');
     const unknown: readonly (readonly [string, ReturnType<typeof networkFactsOf>])[] = [
-      ['no row stored', networkFactsOf(null, HOST)],
-      ['no interface chosen', networkFactsOf({ ...CHOICE, interfaceName: null }, HOST)],
-      ['no subnet chosen', networkFactsOf({ ...CHOICE, cameraSubnet: null }, HOST)],
       ['a stored port list that is no list', networkFactsOf({ ...CHOICE, onvifPorts: null as unknown as number[] }, HOST)],
-      ['an interface the host does not have', networkFactsOf({ ...CHOICE, interfaceName: 'eth9' }, HOST)],
-      ['a loopback interface', networkFactsOf({ ...CHOICE, interfaceName: 'lo' }, HOST)],
-      ['a host without interfaces', networkFactsOf(CHOICE, [])],
-      ['a stored subnet that is no subnet', networkFactsOf({ ...CHOICE, cameraSubnet: '192.168.50.0' }, HOST)],
+      ['a host table that is no list', networkFactsOf(CHOICE, null as unknown as HostInterface[])],
       ['a host address that cannot be read', networkFactsOf(CHOICE, [...HOST, { name: 'eth2', internal: false, addresses: [{ address: 'fe80::1', prefixLength: 64 }] }])],
       ['a prefix length that cannot be read', networkFactsOf(CHOICE, [...HOST, { name: 'eth2', internal: false, addresses: [{ address: '172.16.4.2', prefixLength: -1 }] }])],
+      ['no row stored, a host address that cannot be read', networkFactsOf(null, [...HOST, { name: 'eth2', internal: false, addresses: [{ address: 'fe80::1', prefixLength: 64 }] }])],
     ];
     for (const [label, facts] of unknown) {
       expect(facts, label).toBeNull();
@@ -128,19 +143,66 @@ describe('the network facts: the stored choice joined with the interfaces of the
     expect(judged(() => networkFactsOf(CHOICE, HOST), inside)).toBe('ALLOWED from 192.168.50.1');
   });
 
+  // Row 105 (spec B1, RF-N3, AC-5). BEFORE: each of these answered null, so every purpose was refused NOT_CONFIGURED.
+  it('row 105: A KNOWN ABSENCE IS A CONTEXT - no row, no interface or subnet chosen, an interface the host lacks - with no camera part: the bound purpose refuses NOT_CONFIGURED, a stored camera is judged on the host\'s networks', () => {
+    const inside = '192.168.50.101';
+    const absent: readonly (readonly [string, ReturnType<typeof networkFactsOf>, string])[] = [
+      ['no row stored', networkFactsOf(null, HOST), 'ALLOWED from 192.168.50.1'],
+      ['no interface chosen', networkFactsOf({ ...CHOICE, interfaceName: null }, HOST), 'ALLOWED from 192.168.50.1'],
+      ['no subnet chosen', networkFactsOf({ ...CHOICE, cameraSubnet: null }, HOST), 'ALLOWED from 192.168.50.1'],
+      ['an interface the host does not have', networkFactsOf({ ...CHOICE, interfaceName: 'eth9' }, HOST), 'ALLOWED from 192.168.50.1'],
+      ['a loopback interface', networkFactsOf({ ...CHOICE, interfaceName: 'lo' }, HOST), 'ALLOWED from 192.168.50.1'],
+      ['a stored subnet that is no subnet', networkFactsOf({ ...CHOICE, cameraSubnet: '192.168.50.0' }, HOST), 'ALLOWED from 192.168.50.1'],
+      ['a host without interfaces', networkFactsOf(CHOICE, []), 'NO_SOURCE_INTERFACE'],
+    ];
+    for (const [label, facts, stored] of absent) {
+      expect(facts, label).not.toBeNull();
+      expect([facts?.cameraSubnet, facts?.cameraAddresses], label).toEqual([null, []]);
+      expect(boundJudged(facts, inside), label).toBe('NOT_CONFIGURED');
+      expect(judged(() => facts, inside), label).toBe(stored);
+    }
+    // No row: the column's default port list, which is the rule's own default.
+    expect(networkFactsOf(null, HOST)?.allowedPorts).toEqual([80]);
+    expect(networkFactsOf(null, HOST)?.allowedPorts).toEqual(DESTINATION_DEFAULT_PORTS);
+    // With no camera interface every interface is "other" (O-6: the member keeps its meaning for the bound purposes).
+    expect(networkFactsOf(null, HOST)?.otherInterfaceSubnets).toEqual([
+      { network: '127.0.0.0', prefixLength: 8 },
+      { network: '10.20.0.0', prefixLength: 16 },
+      { network: '192.168.50.0', prefixLength: 24 },
+    ]);
+  });
+
+  // Row 105, RG-13 (spec 3.2 step 2). SEEN RED: `eligible` in facts.ts answering true for every address (the interface-name assertion fails: lo, utun3, wg0, eth2 listed).
+  it('row 105, RG-13: interfaceSubnets holds ELIGIBLE addresses only - a tunnel (all-zero hardware address), an address without a stated hardware address, a /32 and a /0 are host addresses and never a source', () => {
+    const host: readonly HostInterface[] = [
+      ...HOST,
+      { name: 'utun3', internal: false, addresses: [{ address: '10.8.0.2', prefixLength: 24, mac: '00:00:00:00:00:00' }] },
+      { name: 'wg0', internal: false, addresses: [{ address: '10.9.0.2', prefixLength: 24 }] },
+      { name: 'eth2', internal: false, addresses: [{ address: '172.16.9.9', prefixLength: 32, mac: '02:00:00:00:00:e2' }, { address: '172.17.0.1', prefixLength: 0, mac: '02:00:00:00:00:e2' }] },
+    ];
+    const facts = networkFactsOf(null, host);
+    expect(facts?.interfaceSubnets?.map((entry) => entry.name)).toEqual(['eth0', 'eth1']);
+    expect(facts?.hostAddresses).toEqual(['127.0.0.1', '10.20.0.15', '192.168.50.1', '10.8.0.2', '10.9.0.2', '172.16.9.9', '172.17.0.1']);
+    expect(judged(() => facts, '10.8.0.50')).toBe('NO_SOURCE_INTERFACE');
+    expect(judged(() => facts, '10.9.0.50')).toBe('NO_SOURCE_INTERFACE');
+    expect(judged(() => facts, '10.8.0.2')).toBe('HOST_ADDRESS');
+  });
+
   it('facts the rule itself refuses: a stored subnet with host bits or outside the private ranges, and a camera interface without an address in the subnet', () => {
     expect(judged(() => networkFactsOf({ ...CHOICE, cameraSubnet: '192.168.50.7/24' }, HOST), '192.168.50.101')).toBe('NOT_CONFIGURED');
     expect(judged(() => networkFactsOf({ ...CHOICE, cameraSubnet: '8.8.8.0/24' }, HOST), '192.168.50.101')).toBe('NOT_CONFIGURED');
     expect(judged(() => networkFactsOf({ ...CHOICE, cameraSubnet: '192.168.0.0/8' }, HOST), '192.168.50.101')).toBe('NOT_CONFIGURED');
     // The interface is there and holds nothing in the camera subnet: no source, never another interface's route.
     const elsewhere = HOST.map((entry) => (entry.name === 'eth1' ? { ...entry, addresses: [] } : entry));
-    expect(judged(() => networkFactsOf(CHOICE, elsewhere), '192.168.50.101')).toBe('NO_CAMERA_SOURCE');
+    expect(boundJudged(networkFactsOf(CHOICE, elsewhere), '192.168.50.101')).toBe('NO_CAMERA_SOURCE');
+    // R-FLEX: a stored camera is judged on the host's networks - none holds it.
+    expect(judged(() => networkFactsOf(CHOICE, elsewhere), '192.168.50.101')).toBe('NO_SOURCE_INTERFACE');
   });
 
   it('what else the camera interface holds: a private address outside the subnet is a temporary address and no source for a stored camera; a link-local address is a host address only', () => {
     const host = HOST.map((entry) =>
       entry.name === 'eth1'
-        ? { ...entry, addresses: [...entry.addresses, { address: '192.168.1.253', prefixLength: 24 }, { address: '169.254.7.9', prefixLength: 16 }] }
+        ? { ...entry, addresses: [...entry.addresses, { address: '192.168.1.253', prefixLength: 24, mac: ETH1_MAC }, { address: '169.254.7.9', prefixLength: 16, mac: ETH1_MAC }] }
         : entry,
     );
     const facts = networkFactsOf(CHOICE, host);
@@ -149,8 +211,9 @@ describe('the network facts: the stored choice joined with the interfaces of the
       { address: '192.168.1.253', alias: true },
     ]);
     expect(facts?.hostAddresses).toEqual(['127.0.0.1', '10.20.0.15', '192.168.50.1', '192.168.1.253', '169.254.7.9']);
-    // A stored camera at a factory address is refused although a temporary address reaches it.
-    expect(judged(() => facts, '192.168.1.64')).toBe('OUTSIDE_CAMERA_SUBNET');
+    // A stored camera at a factory address is refused although a temporary address reaches it (RG-11: an alias is no source).
+    expect(judged(() => facts, '192.168.1.64')).toBe('NO_SOURCE_INTERFACE');
+    expect(boundJudged(facts, '192.168.1.64')).toBe('ALLOWED from 192.168.1.253 (alias)');
     expect(judged(() => facts, '192.168.1.253')).toBe('HOST_ADDRESS');
     expect(judged(() => facts, '192.168.50.101')).toBe('ALLOWED from 192.168.50.1');
   });
@@ -158,7 +221,7 @@ describe('the network facts: the stored choice joined with the interfaces of the
   it('the facts follow the host at each call: an address the camera interface gains is the source of the next judgement', () => {
     let host: readonly HostInterface[] = HOST.map((entry) => (entry.name === 'eth1' ? { ...entry, addresses: [] } : entry));
     const reader: CaptureNetworkFactsReader = () => networkFactsOf(CHOICE, host);
-    expect(judged(reader, '192.168.50.101')).toBe('NO_CAMERA_SOURCE');
+    expect(judged(reader, '192.168.50.101')).toBe('NO_SOURCE_INTERFACE');
     host = HOST;
     expect(judged(reader, '192.168.50.101')).toBe('ALLOWED from 192.168.50.1');
   });
@@ -187,8 +250,20 @@ describe('the network facts: the stored choice joined with the interfaces of the
         expect(Number.isInteger(held.prefixLength) && held.prefixLength >= 0 && held.prefixLength <= 32).toBe(true);
       }
     }
-    // Whatever this machine holds, the join reads it: with no choice stored the answer is "not configured", never a throw.
-    expect(networkFactsOf(null, interfaces)).toBeNull();
+    // Row 105: the hardware address is read per address (RG-13).
+    for (const entry of interfaces) for (const held of entry.addresses) expect(typeof held.mac, entry.name).toBe('string');
+    // AC-5: whatever this machine holds, with no row stored the join is a context with the default ports, never null and never a throw.
+    const facts = networkFactsOf(null, interfaces);
+    expect(facts).not.toBeNull();
+    expect([facts?.cameraSubnet, facts?.allowedPorts]).toEqual([null, [80]]);
+    // Only eligible addresses: never loopback, never /0 or /32, never an all-zero hardware address (tunnels).
+    for (const entry of facts?.interfaceSubnets ?? []) {
+      const held = interfaces.find((candidate) => candidate.name === entry.name)!;
+      const address = held.addresses.find((candidate) => candidate.address === entry.address)!;
+      expect(held.internal, entry.name).toBe(false);
+      expect(entry.prefixLength !== 0 && entry.prefixLength !== 32, entry.name).toBe(true);
+      expect(address.mac, entry.name).toMatch(/[1-9a-f]/i);
+    }
   });
 });
 
@@ -218,7 +293,7 @@ describe('the forms of a write, asked of the destination rule', () => {
       const [network, prefix] = subnet.split('/') as [string, string];
       const own = network.replace(/\d+$/, (last) => String(Number(last) + 1));
       const camera = network.replace(/\d+$/, (last) => String(Number(last) + 2));
-      const host: HostInterface[] = [{ name: 'eth1', internal: false, addresses: [{ address: own, prefixLength: Number(prefix) }] }];
+      const host: HostInterface[] = [{ name: 'eth1', internal: false, addresses: [{ address: own, prefixLength: Number(prefix), mac: ETH1_MAC }] }];
       expect(judged(() => networkFactsOf({ interfaceName: 'eth1', cameraSubnet: subnet, onvifPorts: [80] }, host), camera), subnet).toBe(`ALLOWED from ${own}`);
     }
   });
@@ -727,6 +802,8 @@ interface ReaderApp {
   slow: boolean;
   readonly waiting: { resolve(row: StoredNetworkConfig | null): void; reject(error: unknown): void; readonly row: StoredNetworkConfig | null }[];
   judged(address: string): string;
+  /** The camera subnet the reader's facts hold now (the bound part; row 105: STORED_CAMERA no longer shows it). */
+  subnet(): string | null;
 }
 
 const readerApps: { app: ReturnType<typeof buildApp>; dir: string }[] = [];
@@ -753,6 +830,7 @@ async function readerApp(): Promise<ReaderApp> {
     slow: false,
     waiting: [],
     judged: (address) => judged(captureNetworkFacts(app), address),
+    subnet: () => captureNetworkFacts(app)()?.cameraSubnet?.network ?? null,
   };
   control.replaceForTest({
     interfaces: () => HOST,
@@ -779,7 +857,7 @@ describe('the reader of an app: `reload()` reads the stored row into memory, fai
     expect([reader.control.loaded(), reader.judged('192.168.50.101')]).toEqual([false, 'NOT_CONFIGURED']);
     reader.row = STORED_50;
     await expect(reader.control.reload()).resolves.toBeUndefined();
-    expect([reader.control.loaded(), reader.control.storedInterface(), reader.judged('192.168.50.101'), reader.judged('192.168.60.101')]).toEqual([true, 'eth1', 'ALLOWED from 192.168.50.1', 'OUTSIDE_CAMERA_SUBNET']);
+    expect([reader.control.loaded(), reader.control.storedInterface(), reader.subnet(), reader.judged('192.168.50.101'), reader.judged('192.168.60.101')]).toEqual([true, 'eth1', '192.168.50.0', 'ALLOWED from 192.168.50.1', 'NO_SOURCE_INTERFACE']);
     expect(linesWith(reader.log, NETWORK_FACTS_RELOADED_CODE)).toMatchObject([{ source: 'captureNetworkConfig.reload', stored: true, configured: true }]);
     // The same row again: memory was not behind, nothing is said.
     await reader.control.reload();
@@ -787,13 +865,13 @@ describe('the reader of an app: `reload()` reads the stored row into memory, fai
     // The row moved behind the reader: followed, and said.
     reader.row = STORED_60;
     await reader.control.reload();
-    expect([reader.judged('192.168.50.101'), linesWith(reader.log, NETWORK_FACTS_RELOADED_CODE).length]).toEqual(['OUTSIDE_CAMERA_SUBNET', 2]);
+    expect([reader.subnet(), linesWith(reader.log, NETWORK_FACTS_RELOADED_CODE).length]).toEqual(['192.168.60.0', 2]);
     // (c) THE TABLE EMPTIED BEHIND THE READER, as a demo reset leaves it: until the door is used the reader is stale...
     reader.row = null;
     expect(reader.control.storedInterface()).toBe('eth1');
-    // ...and after it the reader holds nothing.
+    // ...and after it the reader holds nothing: no camera part (row 105: a known absence is a context with the default ports).
     await reader.control.reload();
-    expect([reader.control.loaded(), reader.control.storedInterface(), reader.judged('192.168.60.101')]).toEqual([true, null, 'NOT_CONFIGURED']);
+    expect([reader.control.loaded(), reader.control.storedInterface(), reader.subnet(), reader.control.facts()?.allowedPorts, reader.judged('192.168.60.101')]).toEqual([true, null, null, [80], 'NO_SOURCE_INTERFACE']);
     expect(linesWith(reader.log, NETWORK_FACTS_RELOADED_CODE)[2]).toMatchObject({ stored: false, configured: false });
     // No line of a re-load holds a value of the row.
     expect(JSON.stringify(reader.log.lines().filter((line) => line['source'] === 'captureNetworkConfig.reload'))).not.toMatch(/eth1|192\.168/);
@@ -852,10 +930,10 @@ describe('the reader of an app: `reload()` reads the stored row into memory, fai
     expect([older!.row?.cameraSubnet, newer!.row?.cameraSubnet]).toEqual(['192.168.50.0/24', '192.168.60.0/24']);
     newer!.resolve(newer!.row);
     await second;
-    expect(reader.judged('192.168.50.101')).toBe('OUTSIDE_CAMERA_SUBNET');
+    expect(reader.subnet()).toBe('192.168.60.0');
     older!.resolve(older!.row);
     await first;
-    expect([reader.judged('192.168.50.101'), reader.control.storedInterface()]).toEqual(['OUTSIDE_CAMERA_SUBNET', 'eth1']);
+    expect([reader.subnet(), reader.control.storedInterface()]).toEqual(['192.168.60.0', 'eth1']);
     // A late FAILURE of an overtaken read: logged with the same code, the reader is not cleared.
     const late = reader.control.reload();
     const last = reader.control.reload();
@@ -864,7 +942,7 @@ describe('the reader of an app: `reload()` reads the stored row into memory, fai
     await last;
     lateRead!.reject(Object.assign(new Error('rowNF: late'), { code: 'ROWNF_LATE' }));
     await late;
-    expect([reader.control.loaded(), reader.judged('192.168.50.101')]).toEqual([true, 'OUTSIDE_CAMERA_SUBNET']);
+    expect([reader.control.loaded(), reader.subnet()]).toEqual([true, '192.168.60.0']);
     expect(linesWith(reader.log, NETWORK_FACTS_RELOAD_FAILED_CODE)).toMatchObject([{ readerCleared: false, cause: 'ROWNF_LATE' }]);
   });
 });

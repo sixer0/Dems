@@ -65,6 +65,11 @@ const HOST: DestinationContext = {
   cameraSubnet: { network: '192.168.50.0', prefixLength: 24 },
   cameraAddresses: [{ address: '192.168.50.1', alias: false }],
   otherInterfaceSubnets: [{ network: '10.20.0.0', prefixLength: 24 }],
+  // R-FLEX NW-C1 (row 136): the eligible interfaces the global STORED_CAMERA rule reads; without them it is NOT_CONFIGURED (RF-N7, RM-N4).
+  interfaceSubnets: [
+    { name: 'eth1', address: '192.168.50.1', network: '192.168.50.0', prefixLength: 24 },
+    { name: 'eth0', address: '10.20.0.5', network: '10.20.0.0', prefixLength: 24 },
+  ],
   hostAddresses: ['192.168.50.1', '10.20.0.5'],
 };
 const realRule: CaptureCredentialReaderDependencies['storedAddress'] = (address, port) =>
@@ -365,6 +370,10 @@ describe('AD-03 (4): the reader refuses a device before the reveal (row 144)', (
     const adapter = createCaptureCredentialReaders(built.dependencies).take(CaptureCredentialHolder.CAMERA_ADAPTER);
     expect(await adapter.sessionOpen('CAM-01', SESSION)).toBeInstanceOf(SealedCredential);
     expect([asked, ruled, built.entries.length, built.opened, built.errorLog.entries.length]).toEqual([['CAM-01'], [['192.168.50.21', 80]], 1, 1, 0]);
+    // R-FLEX (row 136, RM-N1 lifted for STORED_CAMERA): a camera on the office interface's subnet is served too.
+    const office = rig({ commits: true, device: async () => ({ ...PRODUCTION_CAMERA, address: '10.20.0.9' }), storedAddress: realRule });
+    expect(await createCaptureCredentialReaders(office.dependencies).take(CaptureCredentialHolder.CAMERA_ADAPTER).sessionOpen('CAM-01', SESSION)).toBeInstanceOf(SealedCredential);
+    expect([office.entries.length, office.opened, office.errorLog.entries.length]).toEqual([1, 1, 0]);
   });
 
   it('a device that is not a registered camera of a production kind: 0 reveal statements, 0 entries', async () => {
@@ -403,8 +412,9 @@ describe('AD-03 (4): the reader refuses a device before the reveal (row 144)', (
       ['8.8.8.8', 'PUBLIC_ADDRESS'],
       ['169.254.10.10', 'LINK_LOCAL'],
       ['192.168.50.1', 'HOST_ADDRESS'],
-      ['10.20.0.9', 'OTHER_INTERFACE_SUBNET'],
-      ['192.168.51.21', 'OUTSIDE_CAMERA_SUBNET'],
+      // R-FLEX (row 136): 10.20.0.9 on the office interface is no longer refused OTHER_INTERFACE_SUBNET (RM-N1, lifted for STORED_CAMERA);
+      // an off-link address is no longer OUTSIDE_CAMERA_SUBNET (RM-N2) but NW-R1 NO_SOURCE_INTERFACE.
+      ['192.168.51.21', 'NO_SOURCE_INTERFACE'],
       ['192.168.50.255', 'SUBNET_BROADCAST'],
       ['192.168.50.21:8080', 'PORT_NOT_LISTED'],
       ['192.168.50.21:0', 'PORT_OUT_OF_RANGE'],

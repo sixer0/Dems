@@ -544,6 +544,8 @@ describe('operations 98 and 99: the sound cards and the registration of an input
     expect(listed).toEqual({ status: 200, body: { searchedAt: AT, cards: simCaptureAudioCards(), truncated: false } });
     expect(CaptureAudioCardSearchSchema.safeParse(listed.body).success).toBe(true);
     expect(validateCoreApiResponse('searchCaptureAudioCards', 200, listed.body)).toEqual({ ok: true });
+    // R-FLEX AU-L1 (row 99): no microphone holds a test card.
+    expect(listed.body.cards.map((card) => card.boundTo)).toEqual([null, null]);
     // Fixed: a second call answers the same cards, and writes its own row.
     h.clock.advance(1_000);
     expect(h.call<CaptureAudioCardSearch>('POST', AUDIO_CARDS).body.cards).toEqual(listed.body.cards);
@@ -580,8 +582,13 @@ describe('operations 98 and 99: the sound cards and the registration of an input
       expect([refused.status, codeOf(refused.body), reasonOf(refused.body)], String(inputNumber)).toEqual([409, 'INVALID_STATE', 'AUDIO_INPUT_NOT_REGISTRABLE']);
       expect(validateCoreApiResponse('registerCaptureAudioInput', 409, refused.body)).toEqual({ ok: true });
     }
+    // R-FLEX AU-B1 / AU-R1 (row 99): `release` is accepted and changes nothing here; the simulator never answers AUDIO_CARD_ALREADY_BOUND.
+    for (const release of [true, false]) {
+      const refused = h.call('POST', AUDIO_INPUTS, { ...FIRST_INPUT, release });
+      expect([refused.status, reasonOf(refused.body)], String(release)).toEqual([409, 'AUDIO_INPUT_NOT_REGISTRABLE']);
+    }
     // A body outside the schema is 422 and names where, never what.
-    for (const body of [{}, { ...FIRST_INPUT, inputNumber: 0 }, { ...FIRST_INPUT, cardId: 'hw:1,0' }, { ...FIRST_INPUT, product: CANARY_USER }]) {
+    for (const body of [{}, { ...FIRST_INPUT, inputNumber: 0 }, { ...FIRST_INPUT, cardId: 'hw:1,0' }, { ...FIRST_INPUT, product: CANARY_USER }, { ...FIRST_INPUT, release: 'true' }]) {
       const answer = h.call('POST', AUDIO_INPUTS, body);
       expect([answer.status, codeOf(answer.body)]).toEqual([422, 'INVALID_INPUT']);
       expect(JSON.stringify(answer.body)).not.toContain(CANARY_USER);

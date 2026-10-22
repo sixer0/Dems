@@ -90,6 +90,39 @@ export const TWO_CARDS_INTERFACE_MOVED: HostTexts = { ...TWO_CARDS_ONE_SERIAL, s
 /** `TWO_CARDS` with the card of two inputs on ANOTHER socket: the same model, no serial, another port path. */
 export const TWO_CARDS_DUO_ELSEWHERE: HostTexts = { ...TWO_CARDS_ONE_SERIAL, streams: { ...TWO_CARDS.streams, '1:0': usbStream(DUO.product, OTHER_PORT, capture('S24_3LE', DUO.channels, 24)) } };
 
+// ── R-FLEX row 131: the USB id that could not be read (RM-A5, T-16) ─────────────────────────────
+/** The multi-input interface with a USB id file outside the form: the listing answers its fixed replacement word. */
+export const INTERFACE_UNREAD_USB_ID: HostTexts = { ...ONE_INTERFACE, usbId: { 2: 'not-a-usb-id\n' } };
+/** The fixed word of a USB id the listing could not read (`CARD_USB_ID_REPLACEMENT`). */
+export const UNREAD_USB_ID = '0000:0000';
+/** The multi-input interface under ANOTHER kernel card id and on another port (a macOS move, `usb_<port>`): the same physical card. */
+export const SIX_MOVED_CARD_ID = 'usb_14200000';
+export const INTERFACE_MOVED_AND_RENAMED: HostTexts = {
+  list: HEADING + listed(2, SIX_MOVED_CARD_ID, SIX.product),
+  usbId: { 2: `${SIX.usbId}\n` },
+  streams: { '2:0': usbStream(SIX.product, OTHER_PORT, capture('S32_LE', SIX.channels, 24)) },
+};
+
+/** The kernel id of the card of two inputs after a macOS-style move (`usb_<port>`). */
+export const DUO_MOVED_CARD_ID = 'usb_14300000';
+/** `TWO_CARDS_ONE_SERIAL` with the card of two inputs under ANOTHER kernel card id and on another port: the same physical card. */
+export const TWO_CARDS_DUO_RENAMED: HostTexts = {
+  list: HEADING + listed(1, DUO_MOVED_CARD_ID, DUO.product) + listed(2, SIX.cardId, SIX.product),
+  usbId: TWO_CARDS.usbId,
+  serials: { 2: `${SIX_SERIAL}\n` },
+  streams: { ...TWO_CARDS.streams, '1:0': usbStream(DUO.product, OTHER_PORT, capture('S24_3LE', DUO.channels, 24)) },
+};
+
+// ── R-FLEX row 108: a third card no row holds, for two registrations begun together (T-11) ─────
+export const TRIO = { cardId: 'DemsTrio', product: 'DEMS Test Trio', usbId: 'fff0:0003', channels: 3 } as const;
+export const TRIO_PORT = '0000:00:14.0-5';
+/** `TWO_CARDS` and a card of three inputs (card 3, no serial) that no microphone holds. */
+export const THREE_CARDS: HostTexts = {
+  list: TWO_CARDS.list + listed(3, TRIO.cardId, TRIO.product),
+  usbId: { ...TWO_CARDS.usbId, 3: `${TRIO.usbId}\n` },
+  streams: { ...TWO_CARDS.streams, '3:0': usbStream(TRIO.product, TRIO_PORT, capture('S24_3LE', TRIO.channels, 24)) },
+};
+
 /** A host without a sound card: the listing program prints its heading and nothing else. */
 export const NO_CARD: HostTexts = { list: HEADING };
 /** Text that is no listing at all, with a hostile entry line among it. */

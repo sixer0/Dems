@@ -390,7 +390,7 @@ const announcedText = () => apiText().min(1).max(CAPTURE_CANDIDATE_TEXT_MAX_LENG
 /** The one row of `capture_network_config` as operations 101 and 102 answer it. */
 export const CaptureNetworkConfigSchema = z
   .strictObject({
-    configured: z.boolean().describe('True when both the camera interface and the camera subnet are set. False: the commissioning functions answer `COMMISSIONING_NOT_CONFIGURED`.'),
+    configured: z.boolean().describe('True when both the camera interface and the camera subnet are set. False: the factory address scan and the camera address change answer `COMMISSIONING_NOT_CONFIGURED`; the camera search, a typed address and the connection of a camera do not need them.'),
     interfaceName: interfaceName().nullable().describe('The network interface the cameras are on, as the operator chose it. Null: not chosen. The Core never chooses one.'),
     cameraSubnet: cameraSubnet().nullable().describe('The camera subnet as `a.b.c.d/n`, prefix length 16 to 30. Null: not chosen.'),
     factoryAddresses: factoryAddresses().describe('The factory addresses a scan asks: at most 32 private IPv4 host addresses. A camera at another address is found only by a typed address.'),
@@ -580,7 +580,7 @@ export const CAPTURE_COMMISSIONING_OPERATIONS = [
     mode: CoreApiMode.SIMULATED,
     summary: 'Camera network configuration',
     description: [
-      'The camera network configuration of the Core: the camera interface, the camera subnet, the factory address list, and the three numbers of the temporary address and of the first camera address. One per Core. `configured` is false until both the interface and the subnet are chosen: **the Core never chooses an interface**, and until then the commissioning functions answer `COMMISSIONING_NOT_CONFIGURED`.',
+      'The camera network configuration of the Core: the camera interface, the camera subnet, the factory address list, and the three numbers of the temporary address and of the first camera address. One per Core. `configured` is false until both the interface and the subnet are chosen: **the Core never chooses an interface**, and until then the factory address scan (103) and the camera address change (106) answer `COMMISSIONING_NOT_CONFIGURED`. The camera search (93), a typed address, the connection tests (95, 108) and a stored camera are not bound to this interface (decision D10 (2)).',
       WHO + ' It can be read while a session is open.',
       'A configuration nobody has written yet answers the stated defaults with `revision: 1`, `updatedAt: null` and no interface. The defaults of the factory list are the reference application\'s and were tested against no camera.',
       `${SIM_V2_NOTE} The simulator holds no host: it answers a fixed configuration whose interface is named \`simulated0\`, an interface no host has.`,
@@ -603,7 +603,7 @@ export const CAPTURE_COMMISSIONING_OPERATIONS = [
     mode: CoreApiMode.SIMULATED,
     summary: 'Change the camera network configuration',
     description: [
-      'Stores a change of the camera network configuration. The body names `revision` (the optimistic lock) and the settings to change; a setting that is absent is left as it is. `interfaceName` and `cameraSubnet` may be set to null: the commissioning functions then answer "not configured". No address of the host is changed by this operation and nothing is sent to any device.',
+      'Stores a change of the camera network configuration. The body names `revision` (the optimistic lock) and the settings to change; a setting that is absent is left as it is. `interfaceName` and `cameraSubnet` may be set to null: the factory address scan and the camera address change then answer `COMMISSIONING_NOT_CONFIGURED`. No address of the host is changed by this operation and nothing is sent to any device.',
       WHO,
       IDLE,
       `Refusals, each storing nothing: a stale \`revision\` answers \`409 INVALID_STATE\` with \`details.reason: ${STT_REVISION_CONFLICT_REASON}\`; settings that have the form of the schema and are refused as a whole (host bits set in the subnet, an interface the host does not have, a factory address listed twice) answer \`422 INVALID_INPUT\` with \`details.reason: ${R.NETWORK_CONFIG_NOT_ALLOWED}\`.`,

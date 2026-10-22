@@ -29,9 +29,10 @@ import {
 } from '../destination-rule';
 
 /**
- * The host of the table: the camera interface holds 192.168.50.1 in the camera subnet
+ * The host of the table: the camera interface eth1 holds 192.168.50.1 in the camera subnet
  * 192.168.50.0/24 and one temporary alias 192.168.1.253 (the factory network); the office
- * interface holds 10.20.0.15 in 10.20.0.0/16.
+ * interface eth0 holds 10.20.0.15 in 10.20.0.0/16. `interfaceSubnets` (NW-C1) lists every eligible
+ * address, the alias included, as the host's interface list shows it.
  */
 const HOST: DestinationContext = {
   cameraSubnet: { network: '192.168.50.0', prefixLength: 24 },
@@ -40,10 +41,21 @@ const HOST: DestinationContext = {
     { address: '192.168.1.253', alias: true },
   ],
   otherInterfaceSubnets: [{ network: '10.20.0.0', prefixLength: 16 }],
+  interfaceSubnets: [
+    { name: 'eth0', address: '10.20.0.15', network: '10.20.0.0', prefixLength: 16 },
+    { name: 'eth1', address: '192.168.50.1', network: '192.168.50.0', prefixLength: 24 },
+    { name: 'eth1', address: '192.168.1.253', network: '192.168.1.0', prefixLength: 24 },
+  ],
   hostAddresses: ['10.20.0.15', '192.168.50.1', '192.168.1.253'],
 };
 
 const ALL_PURPOSES = Object.values(DestinationPurpose);
+/** Bound to the camera interface (R-FLEX Q96-04 a): point 2 as before. */
+const BOUND_PURPOSES = [DestinationPurpose.COMMISSIONING_SCAN, DestinationPurpose.SET_IP];
+/** Global (D10 ruling 2): the on-link source rule of R-FLEX specification section 2.5. */
+const GLOBAL_PURPOSES = [DestinationPurpose.TYPED_PROBE, DestinationPurpose.STORED_CAMERA];
+/** One context, one interface entry per own address: `{ name, address, network, prefixLength }`. */
+const own = (name: string, address: string, network: string, prefixLength: number) => ({ name, address, network, prefixLength });
 const decide = (address: unknown, purpose: DestinationPurpose = DestinationPurpose.STORED_CAMERA, port?: unknown, context: DestinationContext = HOST) =>
   decideDestination(port === undefined ? { purpose, address } : { purpose, address, port }, context);
 const refusalOf = (...args: Parameters<typeof decide>): string => {
@@ -58,7 +70,13 @@ describe('the control: an address of the camera subnet is allowed, from the came
 
   it('the three private ranges are the ones allowed, each from a camera interface inside it', () => {
     const inRange = (network: string, prefixLength: number, own: string, target: string) =>
-      decide(target, DestinationPurpose.STORED_CAMERA, undefined, { cameraSubnet: { network, prefixLength }, cameraAddresses: [{ address: own, alias: false }], otherInterfaceSubnets: [], hostAddresses: [own] });
+      decide(target, DestinationPurpose.STORED_CAMERA, undefined, {
+        cameraSubnet: { network, prefixLength },
+        cameraAddresses: [{ address: own, alias: false }],
+        otherInterfaceSubnets: [],
+        interfaceSubnets: [{ name: 'eth1', address: own, network, prefixLength }],
+        hostAddresses: [own],
+      });
     expect(inRange('10.9.0.0', 16, '10.9.0.1', '10.9.4.7').allowed).toBe(true);
     expect(inRange('172.16.0.0', 16, '172.16.0.1', '172.16.3.9').allowed).toBe(true);
     expect(inRange('172.31.255.0', 24, '172.31.255.1', '172.31.255.9').allowed).toBe(true);
@@ -181,7 +199,7 @@ describe('point 1: the edges of a subnet and the host itself', () => {
   });
 
   it('in a wider camera subnet the edges of each /24 stay refused', () => {
-    const wide: DestinationContext = { cameraSubnet: { network: '10.9.0.0', prefixLength: 16 }, cameraAddresses: [{ address: '10.9.0.1', alias: false }], otherInterfaceSubnets: [], hostAddresses: ['10.9.0.1'] };
+    const wide: DestinationContext = { cameraSubnet: { network: '10.9.0.0', prefixLength: 16 }, cameraAddresses: [{ address: '10.9.0.1', alias: false }], otherInterfaceSubnets: [], interfaceSubnets: [own('eth1', '10.9.0.1', '10.9.0.0', 16)], hostAddresses: ['10.9.0.1'] };
     expect(refusalOf('10.9.4.0', DestinationPurpose.STORED_CAMERA, undefined, wide)).toBe(DestinationRefusal.NETWORK_ADDRESS);
     expect(refusalOf('10.9.4.255', DestinationPurpose.STORED_CAMERA, undefined, wide)).toBe(DestinationRefusal.SUBNET_BROADCAST);
     expect(refusalOf('10.9.255.255', DestinationPurpose.STORED_CAMERA, undefined, wide)).toBe(DestinationRefusal.SUBNET_BROADCAST);
@@ -189,10 +207,17 @@ describe('point 1: the edges of a subnet and the host itself', () => {
   });
 
   it('in a narrower camera subnet the edges of that subnet are refused', () => {
-    const narrow: DestinationContext = { cameraSubnet: { network: '192.168.50.64', prefixLength: 26 }, cameraAddresses: [{ address: '192.168.50.65', alias: false }], otherInterfaceSubnets: [], hostAddresses: ['192.168.50.65'] };
+    const narrow: DestinationContext = {
+      cameraSubnet: { network: '192.168.50.64', prefixLength: 26 },
+      cameraAddresses: [{ address: '192.168.50.65', alias: false }],
+      otherInterfaceSubnets: [],
+      interfaceSubnets: [own('eth1', '192.168.50.65', '192.168.50.64', 26)],
+      hostAddresses: ['192.168.50.65'],
+    };
     expect(refusalOf('192.168.50.64', DestinationPurpose.STORED_CAMERA, undefined, narrow)).toBe(DestinationRefusal.NETWORK_ADDRESS);
     expect(refusalOf('192.168.50.127', DestinationPurpose.STORED_CAMERA, undefined, narrow)).toBe(DestinationRefusal.SUBNET_BROADCAST);
-    expect(refusalOf('192.168.50.128', DestinationPurpose.STORED_CAMERA, undefined, narrow)).toBe(DestinationRefusal.OUTSIDE_CAMERA_SUBNET);
+    expect(refusalOf('192.168.50.128', DestinationPurpose.COMMISSIONING_SCAN, undefined, narrow)).toBe(DestinationRefusal.OUTSIDE_CAMERA_SUBNET);
+    expect(refusalOf('192.168.50.128', DestinationPurpose.STORED_CAMERA, undefined, narrow)).toBe(DestinationRefusal.NO_SOURCE_INTERFACE);
     expect(refusalOf('192.168.50.100', DestinationPurpose.STORED_CAMERA, undefined, narrow)).toBe('ALLOWED 192.168.50.100');
   });
 
@@ -209,30 +234,31 @@ describe('point 1: the edges of a subnet and the host itself', () => {
   });
 });
 
-describe('point 2: the camera interface only', () => {
+describe('point 2: the camera interface only (COMMISSIONING_SCAN and SET_IP, R-FLEX Q96-04 a)', () => {
   it('an address inside the subnet of another interface is refused (DR-4)', () => {
-    for (const purpose of ALL_PURPOSES) expect(refusalOf('10.20.3.4', purpose)).toBe(DestinationRefusal.OTHER_INTERFACE_SUBNET);
+    for (const purpose of BOUND_PURPOSES) expect(refusalOf('10.20.3.4', purpose)).toBe(DestinationRefusal.OTHER_INTERFACE_SUBNET);
   });
 
   it('a camera subnet that another interface also holds refuses its addresses', () => {
     const overlap: DestinationContext = { ...HOST, otherInterfaceSubnets: [{ network: '192.168.50.0', prefixLength: 24 }] };
-    expect(refusalOf('192.168.50.101', DestinationPurpose.STORED_CAMERA, undefined, overlap)).toBe(DestinationRefusal.OTHER_INTERFACE_SUBNET);
+    for (const purpose of BOUND_PURPOSES) expect(refusalOf('192.168.50.101', purpose, undefined, overlap)).toBe(DestinationRefusal.OTHER_INTERFACE_SUBNET);
   });
 
   it.each([
     ['another private network', '192.168.77.5'],
     ['another private range', '10.99.0.5'],
     ['the neighbouring /24', '192.168.51.101'],
-  ])('%s is outside the configured camera subnet, for every purpose', (_case, address) => {
-    for (const purpose of ALL_PURPOSES) expect(refusalOf(address, purpose)).toBe(DestinationRefusal.OUTSIDE_CAMERA_SUBNET);
+  ])('%s is outside the configured camera subnet, for every bound purpose', (_case, address) => {
+    for (const purpose of BOUND_PURPOSES) expect(refusalOf(address, purpose)).toBe(DestinationRefusal.OUTSIDE_CAMERA_SUBNET);
   });
 
   it('a factory address is reached from the alias by the two commissioning purposes only', () => {
     const viaAlias = { allowed: true, destination: { address: '192.168.1.64', port: 80, sourceAddress: '192.168.1.253', viaAlias: true } };
     expect(decide('192.168.1.64', DestinationPurpose.COMMISSIONING_SCAN)).toEqual(viaAlias);
     expect(decide('192.168.1.64', DestinationPurpose.SET_IP)).toEqual(viaAlias);
-    expect(refusalOf('192.168.1.64', DestinationPurpose.TYPED_PROBE)).toBe(DestinationRefusal.OUTSIDE_CAMERA_SUBNET);
-    expect(refusalOf('192.168.1.64', DestinationPurpose.STORED_CAMERA)).toBe(DestinationRefusal.OUTSIDE_CAMERA_SUBNET);
+    // RG-11: the global purposes never take the alias as a source, although the interface list shows it.
+    expect(refusalOf('192.168.1.64', DestinationPurpose.TYPED_PROBE)).toBe(DestinationRefusal.NO_SOURCE_INTERFACE);
+    expect(refusalOf('192.168.1.64', DestinationPurpose.STORED_CAMERA)).toBe(DestinationRefusal.NO_SOURCE_INTERFACE);
   });
 
   it('without the alias the factory address is refused: no route by another interface is taken', () => {
@@ -247,11 +273,14 @@ describe('point 2: the camera interface only', () => {
 
   it('inside the camera subnet with no address of the camera interface in it: refused, not sent from the alias', () => {
     const aliasOnly: DestinationContext = { ...HOST, cameraAddresses: [{ address: '192.168.1.253', alias: true }] };
-    for (const purpose of ALL_PURPOSES) expect(refusalOf('192.168.50.101', purpose, undefined, aliasOnly)).toBe(DestinationRefusal.NO_CAMERA_SOURCE);
+    for (const purpose of BOUND_PURPOSES) expect(refusalOf('192.168.50.101', purpose, undefined, aliasOnly)).toBe(DestinationRefusal.NO_CAMERA_SOURCE);
+  });
+
+  it('no camera subnet refuses the bound purposes', () => {
+    for (const purpose of BOUND_PURPOSES) expect(refusalOf('192.168.50.101', purpose, undefined, { ...HOST, cameraSubnet: null })).toBe(DestinationRefusal.NOT_CONFIGURED);
   });
 
   it.each<[string, Partial<DestinationContext>]>([
-    ['no camera subnet', { cameraSubnet: null }],
     ['a camera subnet whose address is not its network address', { cameraSubnet: { network: '192.168.50.7', prefixLength: 24 } }],
     ['a camera subnet wider than /16', { cameraSubnet: { network: '10.0.0.0', prefixLength: 8 } }],
     ['a camera subnet narrower than /30', { cameraSubnet: { network: '192.168.50.0', prefixLength: 31 } }],
@@ -268,6 +297,192 @@ describe('point 2: the camera interface only', () => {
 
   it('a purpose that is not one of the four is refused', () => {
     expect(decideDestination({ purpose: 'ANYTHING' as DestinationPurpose, address: '192.168.50.101' }, HOST)).toEqual({ allowed: false, refusal: DestinationRefusal.NOT_CONFIGURED });
+  });
+});
+
+describe('R-FLEX: TYPED_PROBE and STORED_CAMERA are global, on-link only (specification section 2.5)', () => {
+  /**
+   * The bench host (93 I10): the camera port enp4s0 holds 192.168.100.1 in the configured camera
+   * subnet and the temporary alias 192.168.1.253; the Wi-Fi wlp3s0 holds 192.168.0.73/24.
+   */
+  const BENCH: DestinationContext = {
+    cameraSubnet: { network: '192.168.100.0', prefixLength: 24 },
+    cameraAddresses: [
+      { address: '192.168.100.1', alias: false },
+      { address: '192.168.1.253', alias: true },
+    ],
+    otherInterfaceSubnets: [{ network: '192.168.0.0', prefixLength: 24 }],
+    interfaceSubnets: [own('enp4s0', '192.168.100.1', '192.168.100.0', 24), own('enp4s0', '192.168.1.253', '192.168.1.0', 24), own('wlp3s0', '192.168.0.73', '192.168.0.0', 24)],
+    hostAddresses: ['192.168.100.1', '192.168.1.253', '192.168.0.73'],
+  };
+  /** No network configuration at all: one eligible Wi-Fi interface (90 AC-1). */
+  const WIFI_ONLY: DestinationContext = { cameraSubnet: null, cameraAddresses: [], otherInterfaceSubnets: [], interfaceSubnets: [own('wlp3s0', '192.168.0.73', '192.168.0.0', 24)], hostAddresses: ['192.168.0.73'] };
+  const onWifi = (purpose: DestinationPurpose, port?: unknown) => decide('192.168.0.50', purpose, port, BENCH);
+  const fromWifi = { allowed: true, destination: { address: '192.168.0.50', port: 80, sourceAddress: '192.168.0.73', viaAlias: false } };
+
+  describe('the lifted refusals: an allow case per code', () => {
+    it.each(GLOBAL_PURPOSES)('RM-N1 OTHER_INTERFACE_SUBNET lifted, %s: a camera on the Wi-Fi subnet is dialled from the Wi-Fi address', (purpose) => {
+      expect(onWifi(purpose)).toEqual(fromWifi);
+      // The same target is still refused for the bound purposes.
+      for (const bound of BOUND_PURPOSES) expect(refusalOf('192.168.0.50', bound, undefined, BENCH)).toBe(DestinationRefusal.OTHER_INTERFACE_SUBNET);
+    });
+
+    it.each(GLOBAL_PURPOSES)('RM-N2 OUTSIDE_CAMERA_SUBNET lifted, %s: a target outside the camera subnet held by another interface (absent from otherInterfaceSubnets)', (purpose) => {
+      const office: DestinationContext = { ...BENCH, otherInterfaceSubnets: [], interfaceSubnets: [...(BENCH.interfaceSubnets ?? []), own('eth2', '10.20.0.15', '10.20.0.0', 16)], hostAddresses: [...BENCH.hostAddresses, '10.20.0.15'] };
+      expect(decide('10.20.3.4', purpose, undefined, office)).toEqual({ allowed: true, destination: { address: '10.20.3.4', port: 80, sourceAddress: '10.20.0.15', viaAlias: false } });
+      for (const bound of BOUND_PURPOSES) expect(refusalOf('10.20.3.4', bound, undefined, office)).toBe(DestinationRefusal.OUTSIDE_CAMERA_SUBNET);
+    });
+
+    it.each(GLOBAL_PURPOSES)('RM-N3 NO_CAMERA_SOURCE lifted, %s: a camera interface without its own address does not stop a target another interface holds', (purpose) => {
+      const aliasOnly: DestinationContext = { ...BENCH, cameraAddresses: [{ address: '192.168.1.253', alias: true }] };
+      expect(decide('192.168.0.50', purpose, undefined, aliasOnly)).toEqual(fromWifi);
+      for (const bound of BOUND_PURPOSES) expect(refusalOf('192.168.100.50', bound, undefined, aliasOnly)).toBe(DestinationRefusal.NO_CAMERA_SOURCE);
+    });
+
+    it.each(GLOBAL_PURPOSES)('RM-N4 NOT_CONFIGURED for "no camera interface / subnet" lifted, %s: 90 AC-1, no configuration and one Wi-Fi interface', (purpose) => {
+      expect(decide('192.168.0.50', purpose, undefined, WIFI_ONLY)).toEqual(fromWifi);
+      for (const bound of BOUND_PURPOSES) expect(refusalOf('192.168.0.50', bound, undefined, WIFI_ONLY)).toBe(DestinationRefusal.NOT_CONFIGURED);
+    });
+
+    it('a target of the camera subnet is dialled from the camera port, as before', () => {
+      for (const purpose of GLOBAL_PURPOSES) expect(decide('192.168.100.50', purpose, undefined, BENCH)).toEqual({ allowed: true, destination: { address: '192.168.100.50', port: 80, sourceAddress: '192.168.100.1', viaAlias: false } });
+    });
+  });
+
+  describe('the source rule', () => {
+    it.each(GLOBAL_PURPOSES)('NW-R1, %s: a target on no eligible interface (off-link) is refused, never routed through a gateway (RG-12)', (purpose) => {
+      expect(refusalOf('192.168.77.5', purpose, undefined, BENCH)).toBe(DestinationRefusal.NO_SOURCE_INTERFACE);
+      expect(refusalOf('10.99.0.5', purpose, undefined, WIFI_ONLY)).toBe(DestinationRefusal.NO_SOURCE_INTERFACE);
+      // Row 16 finding 4: the camera port is down, the stored camera on 192.168.100.x has no on-link interface.
+      const portDown: DestinationContext = { ...WIFI_ONLY };
+      expect(refusalOf('192.168.100.64', purpose, undefined, portDown)).toBe(DestinationRefusal.NO_SOURCE_INTERFACE);
+      // Present but empty: no candidate, not unreadable.
+      expect(refusalOf('192.168.0.50', purpose, undefined, { ...WIFI_ONLY, interfaceSubnets: [] })).toBe(DestinationRefusal.NO_SOURCE_INTERFACE);
+    });
+
+    it.each(GLOBAL_PURPOSES)('NW-R2, %s: the same /24 on two interfaces is refused, the camera interface among them included (O-4, D14)', (purpose) => {
+      const withCamera: DestinationContext = { ...BENCH, interfaceSubnets: [own('enp4s0', '192.168.100.1', '192.168.100.0', 24), own('wlp3s0', '192.168.100.73', '192.168.100.0', 24)], hostAddresses: [...BENCH.hostAddresses, '192.168.100.73'] };
+      expect(refusalOf('192.168.100.50', purpose, undefined, withCamera)).toBe(DestinationRefusal.SOURCE_INTERFACE_AMBIGUOUS);
+      const withoutCamera: DestinationContext = { ...WIFI_ONLY, interfaceSubnets: [own('wlp3s0', '192.168.0.73', '192.168.0.0', 24), own('eth2', '192.168.0.9', '192.168.0.0', 24)], hostAddresses: ['192.168.0.73', '192.168.0.9'] };
+      expect(refusalOf('192.168.0.50', purpose, undefined, withoutCamera)).toBe(DestinationRefusal.SOURCE_INTERFACE_AMBIGUOUS);
+    });
+
+    it('the longest prefix wins; within one interface the first address in the host order', () => {
+      const nested: DestinationContext = { ...WIFI_ONLY, interfaceSubnets: [own('eth2', '10.0.0.2', '10.0.0.0', 16), own('wlp3s0', '10.0.5.73', '10.0.5.0', 24)], hostAddresses: ['10.0.0.2', '10.0.5.73'] };
+      const longer = decide('10.0.5.50', DestinationPurpose.STORED_CAMERA, undefined, nested);
+      expect(longer.allowed && longer.destination.sourceAddress).toBe('10.0.5.73');
+      const shorter = decide('10.0.9.50', DestinationPurpose.STORED_CAMERA, undefined, nested);
+      expect(shorter.allowed && shorter.destination.sourceAddress).toBe('10.0.0.2');
+      const twoOnOne: DestinationContext = { ...WIFI_ONLY, interfaceSubnets: [own('wlp3s0', '192.168.0.73', '192.168.0.0', 24), own('wlp3s0', '192.168.0.74', '192.168.0.0', 24)], hostAddresses: ['192.168.0.73', '192.168.0.74'] };
+      expect(decide('192.168.0.50', DestinationPurpose.TYPED_PROBE, undefined, twoOnOne)).toEqual(fromWifi);
+    });
+
+    it('RG-13: an entry of /0 or /32, or of a public own address, is skipped as a source without making the context unreadable', () => {
+      const skipped: DestinationContext = {
+        ...WIFI_ONLY,
+        interfaceSubnets: [own('tun0', '10.8.0.1', '10.8.0.1', 32), own('any', '10.9.0.1', '0.0.0.0', 0), own('pub0', '100.64.0.2', '100.64.0.0', 10), own('wlp3s0', '192.168.0.73', '192.168.0.0', 24)],
+        hostAddresses: ['10.8.0.1', '10.9.0.1', '100.64.0.2', '192.168.0.73'],
+      };
+      expect(decide('192.168.0.50', DestinationPurpose.STORED_CAMERA, undefined, skipped)).toEqual(fromWifi);
+      expect(refusalOf('10.9.4.4', DestinationPurpose.STORED_CAMERA, undefined, skipped)).toBe(DestinationRefusal.NO_SOURCE_INTERFACE);
+    });
+
+    it('RF-N7: a context without interfaceSubnets is NOT_CONFIGURED for both global purposes (fail-closed, O-5)', () => {
+      const { interfaceSubnets: _dropped, ...withoutList } = BENCH;
+      for (const purpose of GLOBAL_PURPOSES) {
+        expect(refusalOf('192.168.0.50', purpose, undefined, withoutList)).toBe(DestinationRefusal.NOT_CONFIGURED);
+        expect(refusalOf('192.168.100.50', purpose, undefined, withoutList)).toBe(DestinationRefusal.NOT_CONFIGURED);
+      }
+      // The bound purposes do not read the list: unchanged without it.
+      expect(decide('192.168.100.50', DestinationPurpose.COMMISSIONING_SCAN, undefined, withoutList).allowed).toBe(true);
+    });
+
+    it.each<[string, DestinationContext['interfaceSubnets']]>([
+      ['an address that is not a literal', [own('wlp3s0', 'wifi', '192.168.0.0', 24)]],
+      ['a network that is not the network of its address', [own('wlp3s0', '192.168.0.73', '192.168.1.0', 24)]],
+      ['a prefix above 32', [own('wlp3s0', '192.168.0.73', '192.168.0.0', 33)]],
+      ['no interface name', [own('', '192.168.0.73', '192.168.0.0', 24)]],
+    ])('an interface list that is not well-formed is NOT_CONFIGURED: %s', (_case, interfaceSubnets) => {
+      for (const purpose of GLOBAL_PURPOSES) expect(refusalOf('192.168.0.50', purpose, undefined, { ...WIFI_ONLY, interfaceSubnets })).toBe(DestinationRefusal.NOT_CONFIGURED);
+    });
+  });
+
+  describe('the residual guards RG-1..RG-11 still refuse, on the non-camera interface (Q96-05 a)', () => {
+    it.each([
+      ['RG-1 a name', 'camera-1.local', DestinationRefusal.HOST_NAME],
+      ['RG-1 nothing', '', DestinationRefusal.NOT_AN_ADDRESS],
+      ['RG-1 not a strict dotted quad', '192.168.000.50', DestinationRefusal.MALFORMED_IPV4],
+      ['RG-1 an IPv6 literal', 'fd00::50', DestinationRefusal.IPV6_LITERAL],
+      ['RG-1 IPv4-mapped', '::ffff:192.168.0.50', DestinationRefusal.IPV4_MAPPED_IPV6],
+      ['RG-2 loopback', '127.0.0.1', DestinationRefusal.LOOPBACK],
+      ['RG-2 unspecified', '0.0.0.0', DestinationRefusal.UNSPECIFIED],
+      ['RG-2 link-local', '169.254.169.254', DestinationRefusal.LINK_LOCAL],
+      ['RG-2 multicast', '239.255.255.250', DestinationRefusal.MULTICAST],
+      ['RG-2 broadcast', '255.255.255.255', DestinationRefusal.BROADCAST],
+      ['RG-3 public', '8.8.8.8', DestinationRefusal.PUBLIC_ADDRESS],
+      ['RG-4 the Wi-Fi address of the host', '192.168.0.73', DestinationRefusal.HOST_ADDRESS],
+      ['RG-4 the camera-port address of the host', '192.168.100.1', DestinationRefusal.HOST_ADDRESS],
+      ['RG-4 the alias address', '192.168.1.253', DestinationRefusal.HOST_ADDRESS],
+      ['RG-5 the network address of the Wi-Fi /24', '192.168.0.0', DestinationRefusal.NETWORK_ADDRESS],
+      ['RG-5 the broadcast address of the Wi-Fi /24', '192.168.0.255', DestinationRefusal.SUBNET_BROADCAST],
+      ['RG-11 the alias /24, never a source for these purposes', '192.168.1.64', DestinationRefusal.NO_SOURCE_INTERFACE],
+    ])('%s: %s', (_case, address, refusal) => {
+      for (const purpose of GLOBAL_PURPOSES) expect(refusalOf(address, purpose, undefined, BENCH)).toBe(refusal);
+    });
+
+    it('RG-4: a host address absent from the interface list and from hostAddresses is still the host when the camera interface holds it', () => {
+      for (const purpose of GLOBAL_PURPOSES) expect(refusalOf('192.168.1.253', purpose, undefined, { ...BENCH, interfaceSubnets: [own('wlp3s0', '192.168.0.73', '192.168.0.0', 24)], hostAddresses: [] })).toBe(DestinationRefusal.HOST_ADDRESS);
+    });
+
+    it('RG-5: the edges of the chosen prefix, below and above a /24', () => {
+      const narrow: DestinationContext = { ...WIFI_ONLY, interfaceSubnets: [own('wlp3s0', '192.168.0.73', '192.168.0.64', 26)] };
+      for (const purpose of GLOBAL_PURPOSES) {
+        expect(refusalOf('192.168.0.64', purpose, undefined, narrow)).toBe(DestinationRefusal.NETWORK_ADDRESS);
+        expect(refusalOf('192.168.0.127', purpose, undefined, narrow)).toBe(DestinationRefusal.SUBNET_BROADCAST);
+      }
+      const wide: DestinationContext = { ...WIFI_ONLY, interfaceSubnets: [own('wlp3s0', '10.20.0.15', '10.20.0.0', 16)], hostAddresses: ['10.20.0.15'] };
+      expect(refusalOf('10.20.3.0', DestinationPurpose.STORED_CAMERA, undefined, wide)).toBe(DestinationRefusal.NETWORK_ADDRESS);
+      expect(refusalOf('10.20.255.255', DestinationPurpose.TYPED_PROBE, undefined, wide)).toBe(DestinationRefusal.SUBNET_BROADCAST);
+    });
+
+    it.each(GLOBAL_PURPOSES)('RG-6 the port from the short stored list, %s', (purpose) => {
+      expect(refusalOf('192.168.0.50', purpose, 8080, BENCH)).toBe(DestinationRefusal.PORT_NOT_LISTED);
+      expect(refusalOf('192.168.0.50', purpose, 0, BENCH)).toBe(DestinationRefusal.PORT_OUT_OF_RANGE);
+      expect(refusalOf('192.168.0.50', purpose, 80, { ...BENCH, allowedPorts: [] })).toBe(DestinationRefusal.PORT_LIST_INVALID);
+      const listed = decide('192.168.0.50', purpose, 8000, { ...BENCH, allowedPorts: [8899, 8000] });
+      expect(listed.allowed && listed.destination.port).toBe(8000);
+    });
+
+    it('RG-7 the size of a scan and the spacing of typed probes and of attempts on one host are unchanged', () => {
+      expect(scanSizeRefusal(SCAN_MAX_STORED_ADDRESSES + 1, 0)).toBe(ScanSizeRefusal.TOO_MANY_STORED);
+      expect(scanSizeRefusal(0, SCAN_MAX_TYPED_ADDRESSES + 1)).toBe(ScanSizeRefusal.TOO_MANY_TYPED);
+      expect(spacingAllowance(DestinationSpacing.TYPED_PROBE, 1_000, 1_001)).toEqual({ allowed: false, retryAfterMs: DESTINATION_MIN_INTERVAL_MS.TYPED_PROBE - 1 });
+      expect(spacingAllowance(DestinationSpacing.HOST, 1_000, 1_001)).toEqual({ allowed: false, retryAfterMs: DESTINATION_MIN_INTERVAL_MS.HOST - 1 });
+    });
+
+    it('RG-8 the set-IP paragraph stays bound to the camera subnet, whatever the interface list holds', () => {
+      const set: NewCameraAddressContext = { ...BENCH, registeredCameraAddresses: ['192.168.100.101'], gatewayAddress: '192.168.100.254' };
+      expect(decideNewCameraAddress({ address: '192.168.0.50' }, set)).toEqual({ allowed: false, refusal: DestinationRefusal.OTHER_INTERFACE_SUBNET });
+      expect(decideNewCameraAddress({ address: '192.168.77.5' }, set)).toEqual({ allowed: false, refusal: DestinationRefusal.OUTSIDE_CAMERA_SUBNET });
+      expect(decideNewCameraAddress({ address: '192.168.100.50', mode: 'DHCP' }, set)).toEqual({ allowed: false, refusal: DestinationRefusal.DHCP_NOT_CARRIED });
+      expect(decideNewCameraAddress({ address: '192.168.100.254' }, set)).toEqual({ allowed: false, refusal: DestinationRefusal.GATEWAY_ADDRESS });
+      expect(decideNewCameraAddress({ address: '192.168.100.101' }, set)).toEqual({ allowed: false, refusal: DestinationRefusal.REGISTERED_CAMERA_ADDRESS });
+      expect(decideNewCameraAddress({ address: '192.168.100.50', gateway: '192.168.0.1' }, set)).toEqual({ allowed: false, refusal: DestinationRefusal.GATEWAY_OUTSIDE_SUBNET });
+      expect(decideNewCameraAddress({ address: '192.168.0.50' }, { ...WIFI_ONLY, registeredCameraAddresses: [] })).toEqual({ allowed: false, refusal: DestinationRefusal.NOT_CONFIGURED });
+    });
+
+    it('RG-9 AD-02: an interface list that names loopback makes no loopback address a destination', () => {
+      const steered: DestinationContext = { ...WIFI_ONLY, interfaceSubnets: [own('lo', '127.0.0.2', '127.0.0.0', 8)], hostAddresses: [] };
+      for (const purpose of GLOBAL_PURPOSES) {
+        expect(refusalOf('127.0.0.1', purpose, undefined, steered)).toBe(DestinationRefusal.LOOPBACK);
+        expect(refusalOf('127.0.0.1', purpose, undefined, { ...WIFI_ONLY, interfaceSubnets: undefined })).toBe(DestinationRefusal.LOOPBACK);
+      }
+    });
+
+    it('RG-10 the alias is a /24 and reaches its own /24 only, for the commissioning purposes', () => {
+      expect(decide('192.168.1.64', DestinationPurpose.COMMISSIONING_SCAN, undefined, BENCH)).toEqual({ allowed: true, destination: { address: '192.168.1.64', port: 80, sourceAddress: '192.168.1.253', viaAlias: true } });
+      expect(refusalOf('192.168.2.64', DestinationPurpose.COMMISSIONING_SCAN, undefined, BENCH)).toBe(DestinationRefusal.OUTSIDE_CAMERA_SUBNET);
+    });
   });
 });
 
@@ -432,8 +647,11 @@ describe('refused before any packet is built: the file can send nothing', () => 
     };
     const targets: unknown[] = ['', 'localhost', '192.168.050.1', 'fe80::1', '::ffff:10.0.0.1', '127.0.0.1', '0.0.0.0', '169.254.0.1', '224.0.0.1', '255.255.255.255', '8.8.8.8', '192.168.50.0', '192.168.50.255', '192.168.50.1', '10.20.3.4', '192.168.77.5'];
     for (const address of targets) note(decide(address));
-    note(decide('192.168.50.101', DestinationPurpose.STORED_CAMERA, undefined, { ...HOST, cameraSubnet: null }));
-    note(decide('192.168.50.101', DestinationPurpose.STORED_CAMERA, undefined, { ...HOST, cameraAddresses: [] }));
+    note(decide('10.20.3.4', DestinationPurpose.COMMISSIONING_SCAN));
+    note(decide('192.168.77.5', DestinationPurpose.COMMISSIONING_SCAN));
+    note(decide('192.168.50.101', DestinationPurpose.STORED_CAMERA, undefined, { ...HOST, interfaceSubnets: undefined }));
+    note(decide('192.168.50.101', DestinationPurpose.COMMISSIONING_SCAN, undefined, { ...HOST, cameraAddresses: [] }));
+    note(decide('192.168.50.101', DestinationPurpose.STORED_CAMERA, undefined, { ...HOST, interfaceSubnets: [...(HOST.interfaceSubnets ?? []), own('wlan0', '192.168.50.73', '192.168.50.0', 24)] }));
     note(decide('192.168.50.101', DestinationPurpose.STORED_CAMERA, 0));
     note(decide('192.168.50.101', DestinationPurpose.STORED_CAMERA, 81));
     note(decide('192.168.50.101', DestinationPurpose.STORED_CAMERA, 80, { ...HOST, allowedPorts: [] }));

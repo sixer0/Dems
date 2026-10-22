@@ -59,9 +59,14 @@ export interface InterfaceSelection {
 /**
  * DS-4, by property and never by name: IPv4, not internal, a netmask other than a host mask, a
  * hardware address that is not all zero (tunnels have none). Link-local addresses are eligible.
+ *
+ * R-FLEX (network spec 5.2, NW-K1): the bound stays `DISCOVERY_MAX_INTERFACES`. When the search
+ * carries a typed probe, `sourceAddress` (the destination rule's) is the eligible interface placed
+ * FIRST, then the others in table order up to the bound - so a typed address on a fifth interface
+ * is never refused for ordering alone. Absent, or held by no eligible interface: table order.
  */
-export function selectInterfaces(table: InterfaceTable): InterfaceSelection {
-  const probed: ProbedInterface[] = [];
+export function selectInterfaces(table: InterfaceTable, sourceAddress?: string): InterfaceSelection {
+  const eligible: ProbedInterface[] = [];
   const ownAddresses: string[] = [];
   for (const name of Object.keys(table)) {
     for (const entry of table[name] ?? []) {
@@ -72,11 +77,13 @@ export function selectInterfaces(table: InterfaceTable): InterfaceSelection {
       if (!ownAddresses.includes(entry.address)) ownAddresses.push(entry.address);
       if (entry.internal || mask === null || mask === 0xffffffff || mask === 0) continue;
       if (!/[1-9a-f]/i.test(entry.mac)) continue;
-      if (probed.some((known) => known.address === entry.address)) continue;
-      if (probed.length < DISCOVERY_MAX_INTERFACES) probed.push(Object.freeze({ address: entry.address, netmask: entry.netmask }));
+      if (eligible.some((known) => known.address === entry.address)) continue;
+      eligible.push(Object.freeze({ address: entry.address, netmask: entry.netmask }));
     }
   }
-  return { probed: Object.freeze(probed), ownAddresses: Object.freeze(ownAddresses) };
+  const source = eligible.findIndex((known) => known.address === sourceAddress);
+  const ordered = source <= 0 ? eligible : [eligible[source] as ProbedInterface, ...eligible.slice(0, source), ...eligible.slice(source + 1)];
+  return { probed: Object.freeze(ordered.slice(0, DISCOVERY_MAX_INTERFACES)), ownAddresses: Object.freeze(ownAddresses) };
 }
 
 /** Where the answers of a search may come from. */

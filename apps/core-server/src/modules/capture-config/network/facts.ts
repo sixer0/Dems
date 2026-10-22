@@ -4,8 +4,10 @@
  *
  * Two sources, joined at EVERY judgement:
  *   - the STORED choice of the technician: `interface_name` and `camera_subnet` of the one row of
- *     `capture_network_config`. THE CORE NEVER CHOOSES either; a row without both is "not
- *     configured" and the answer is null;
+ *     `capture_network_config`. THE CORE NEVER CHOOSES either. Since R-FLEX (row 105; spec B1,
+ *     RF-N3) a row without both - or no row at all - is still a context: "not configured" then
+ *     means `cameraSubnet: null` (COMMISSIONING_SCAN and SET_IP refuse `NOT_CONFIGURED`), while
+ *     TYPED_PROBE and STORED_CAMERA judge on `interfaceSubnets`;
  *   - the interface list of the host, read through an INJECTED reader (the product's is
  *     `readHostInterfaces`: the operating system's own table, read synchronously).
  *
@@ -14,29 +16,51 @@
  *   cameraAddresses         the IPv4 addresses the camera interface holds: inside the subnet = its
  *                           own; outside it and private = a temporary address (`alias: true`);
  *                           anything else it holds (link-local) is a host address and no source
- *   otherInterfaceSubnets   the subnet of every IPv4 address of every OTHER interface (DR-4)
- *   hostAddresses           every IPv4 address of the host
- *   allowedPorts            the STORED list `onvif_ports` (row V7b; S2-02, C116), in its order
+ *   otherInterfaceSubnets   the subnet of every IPv4 address of every OTHER interface (DR-4);
+ *                           with no usable camera interface, of every interface (O-6: kept)
+ *   interfaceSubnets        NW-C1 (row 105): every IPv4 address of every ELIGIBLE interface, the
+ *                           camera interface included, with name, address, network and prefix
+ *                           length, in the host's order. Eligible = the discovery test (RG-13):
+ *                           not loopback, prefix neither /0 nor /32, hardware address of THAT
+ *                           address stated and not all zero (tunnels and VPN devices have none;
+ *                           an address whose hardware address the reader did not state is left
+ *                           out: unknown is not eligible)
+ *   hostAddresses           every IPv4 address of the host, eligible or not
+ *   allowedPorts            the STORED list `onvif_ports` (row V7b; S2-02, C116), in its order;
+ *                           with no row, the column's default [80] (= `DESTINATION_DEFAULT_PORTS`)
  *
- * NULL - and the rule then refuses every address - when no row is stored, when the interface or
- * the subnet is not chosen, when the host has no interface of that name (or it is a loopback
- * interface), or when a fact of the host cannot be read as an address with a prefix length. This
- * file never guesses a subnet, a source or an interface.
+ * THE CAMERA PART (`cameraSubnet`, `cameraAddresses`) is filled only when the interface AND the
+ * subnet are chosen, the subnet reads as `a.b.c.d/n` and the host has a non-loopback interface of
+ * that name; otherwise `cameraSubnet` is null and `cameraAddresses` empty - so the bound purposes
+ * keep their old answer `NOT_CONFIGURED` (Q96-04 a).
+ *
+ * NULL - and the rule then refuses every address (RF-N7, O-5) - only when the host's facts cannot
+ * be read: the list is no list, an interface's addresses are no list, an address is no IPv4
+ * address with a prefix length; or the stored port list is no list. This file never guesses a
+ * subnet, a source or an interface.
  *
  * THE FORMS OF A WRITE are asked of the rule itself (`cameraSubnetAccepted`,
- * `factoryAddressAccepted`): the stored-address binding of the capture unit is asked about ONE
- * address on a host that holds nothing, and only the rule's own answer "the form is good, no
- * source is there" passes. No range and no bound is restated here for a decision; the three
+ * `factoryAddressAccepted`): the SET_IP binding of the capture fence (`cameraNetworkDialRuleOf`,
+ * C4; RF-N8 - STORED_CAMERA is global since R-FLEX and no longer reads the camera subnet) is asked
+ * about ONE address on a host that holds nothing, and only the rule's own answer "the form is
+ * good, no source is there" passes. No range and no bound is restated here for a decision; the three
  * private ranges below only sort an address the camera interface ALREADY holds into "alias" or
  * "no source", and the rule reads the result again.
  */
 import { networkInterfaces } from 'node:os';
-import { storedCameraAddressRuleOf, type DestinationContext } from '../../../capture/fence';
+import { CAPTURE_NETWORK_CONFIG_DEFAULTS } from '@dems/shared/api';
+import { cameraNetworkDialRuleOf, type DestinationContext } from '../../../capture/fence';
 
 /** One IPv4 address an interface holds, with the prefix length of its subnet. */
 export interface HostInterfaceAddress {
   readonly address: string;
   readonly prefixLength: number;
+  /**
+   * The hardware address the operating system states for THIS address (row 105, RG-13), as it
+   * states it (`aa:bb:cc:dd:ee:ff`). All zero for tunnels and loopback. Left out: not stated, and
+   * the address is then no candidate source of `interfaceSubnets`.
+   */
+  readonly mac?: string;
 }
 
 /** One network interface of the host that holds at least one address. Only its IPv4 addresses are listed. */
@@ -118,7 +142,7 @@ export const readHostInterfaces: HostInterfacesReader = () => {
       // The family is the text `IPv4`; one release line of the runtime answered the number 4.
       if (entry.family !== 'IPv4' && (entry.family as unknown) !== 4) continue;
       const stated = entry.cidr === null ? null : SUBNET.exec(entry.cidr);
-      addresses.push({ address: entry.address, prefixLength: stated === null ? prefixOfMask(entry.netmask) : Number(stated[2]) });
+      addresses.push({ address: entry.address, prefixLength: stated === null ? prefixOfMask(entry.netmask) : Number(stated[2]), mac: entry.mac });
     }
     interfaces.push({ name, internal: entries.length > 0 && entries.every((entry) => entry.internal), addresses });
   }
@@ -130,31 +154,49 @@ export function hostHoldsInterface(interfaces: readonly HostInterface[], name: s
   return interfaces.some((entry) => entry.name === name && !entry.internal);
 }
 
+/** A hardware address with at least one digit that is not zero: the discovery test (`discovery-collector.ts` `selectInterfaces`). */
+const NONZERO_HARDWARE = /[1-9a-f]/i;
+
 /**
- * THE JOIN. The stored choice with the host's interfaces as the rule's context, or null (see the
- * file header). Pure: the caller passes both.
+ * RG-13: an address of an interface that discovery would search from - not loopback, a prefix
+ * that is neither /0 nor /32, a stated hardware address that is not all zero. By property, never
+ * by name.
+ */
+function eligible(entry: HostInterface, held: HostInterfaceAddress): boolean {
+  return entry.internal !== true && held.prefixLength !== 0 && held.prefixLength !== 32 && typeof held.mac === 'string' && NONZERO_HARDWARE.test(held.mac);
+}
+
+/**
+ * THE JOIN. The stored choice with the host's interfaces as the rule's context, or null for
+ * unreadable facts only (see the file header). Pure: the caller passes both. `stored` null: no
+ * row is stored.
  */
 export function networkFactsOf(stored: StoredNetworkChoice | null, interfaces: readonly HostInterface[]): DestinationContext | null {
-  if (stored === null || stored.interfaceName === null || stored.cameraSubnet === null) return null;
-  const subnet = subnetOf(stored.cameraSubnet);
-  if (subnet === null || !Array.isArray(interfaces) || !hostHoldsInterface(interfaces, stored.interfaceName)) return null;
+  if (!Array.isArray(interfaces)) return null;
   // A stored port list that is no list: the facts are unknown (the rule holds the list's own bounds itself, `PORT_LIST_INVALID`).
-  if (!Array.isArray(stored.onvifPorts)) return null;
+  if (stored !== null && !Array.isArray(stored.onvifPorts)) return null;
+  const allowedPorts = stored === null ? CAPTURE_NETWORK_CONFIG_DEFAULTS.onvifPorts : stored.onvifPorts;
+
+  // The camera part: only for a complete choice on an interface this host has (Q96-04 a: the bound purposes unchanged).
+  const subnet = stored === null || stored.interfaceName === null || stored.cameraSubnet === null ? null : subnetOf(stored.cameraSubnet);
+  const cameraInterface = subnet !== null && stored !== null && stored.interfaceName !== null && hostHoldsInterface(interfaces, stored.interfaceName) ? stored.interfaceName : null;
 
   const cameraAddresses: { address: string; alias: boolean }[] = [];
   const otherInterfaceSubnets = new Map<string, { network: string; prefixLength: number }>();
+  const interfaceSubnets: { name: string; address: string; network: string; prefixLength: number }[] = [];
   const hostAddresses: string[] = [];
   for (const entry of interfaces) {
-    if (!Array.isArray(entry.addresses)) return null;
+    if (entry === null || typeof entry !== 'object' || !Array.isArray(entry.addresses)) return null;
     for (const held of entry.addresses) {
-      const value = quad(held.address);
+      const value = quad(held?.address);
       if (value === null || !isPrefix(held.prefixLength)) return null;
       const address = dotted(value);
+      const network = dotted(networkOf(value, held.prefixLength));
       hostAddresses.push(address);
-      if (entry.name !== stored.interfaceName) {
-        const network = dotted(networkOf(value, held.prefixLength));
+      if (eligible(entry, held)) interfaceSubnets.push({ name: entry.name, address, network, prefixLength: held.prefixLength });
+      if (cameraInterface === null || entry.name !== cameraInterface) {
         otherInterfaceSubnets.set(`${network}/${String(held.prefixLength)}`, { network, prefixLength: held.prefixLength });
-      } else if (networkOf(value, subnet.prefixLength) === subnet.value) {
+      } else if (subnet !== null && networkOf(value, subnet.prefixLength) === subnet.value) {
         cameraAddresses.push({ address, alias: false });
       } else if (isPrivate(value)) {
         cameraAddresses.push({ address, alias: true });
@@ -162,20 +204,24 @@ export function networkFactsOf(stored: StoredNetworkChoice | null, interfaces: r
     }
   }
   return Object.freeze({
-    cameraSubnet: Object.freeze({ network: subnet.network, prefixLength: subnet.prefixLength }),
+    cameraSubnet: cameraInterface === null || subnet === null ? null : Object.freeze({ network: subnet.network, prefixLength: subnet.prefixLength }),
     cameraAddresses: Object.freeze(cameraAddresses.map((entry) => Object.freeze(entry))),
     otherInterfaceSubnets: Object.freeze([...otherInterfaceSubnets.values()].map((entry) => Object.freeze(entry))),
+    interfaceSubnets: Object.freeze(interfaceSubnets.map((entry) => Object.freeze(entry))),
     hostAddresses: Object.freeze(hostAddresses),
-    allowedPorts: Object.freeze([...stored.onvifPorts]),
+    allowedPorts: Object.freeze([...allowedPorts]),
   });
 }
 
 /** The rule's word for "the form is good; this host has no source for it": the only answer a form check lets pass. */
 const FORM_ACCEPTED = 'NO_CAMERA_SOURCE';
 
-/** The rule's own answer on ONE address inside `subnet`, on a host that holds nothing. */
+/** The SET_IP binding (C4): bound to the camera subnet, so it still reads the subnet's form (RF-N8). */
+const SET_IP_RULE = cameraNetworkDialRuleOf();
+
+/** The rule's own answer on ONE address inside `subnet`, on a host that holds nothing (purpose SET_IP, RF-N8). */
 function formAccepted(subnet: { readonly network: string; readonly prefixLength: number }, address: string): boolean {
-  const decision = storedCameraAddressRuleOf(() => ({ cameraSubnet: subnet, cameraAddresses: [], otherInterfaceSubnets: [], hostAddresses: [] }))(address, undefined);
+  const decision = SET_IP_RULE(address, { cameraSubnet: subnet, cameraAddresses: [], otherInterfaceSubnets: [], hostAddresses: [] });
   return !decision.allowed && decision.refusal === FORM_ACCEPTED;
 }
 

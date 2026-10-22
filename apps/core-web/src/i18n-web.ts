@@ -9,7 +9,7 @@
  * Wording rule (fix brief): a sentence states what the Core knows. Nothing here says simulated,
  * verified, encrypted, GNSS, live or complete.
  */
-import { en, type ResourceTree } from '@dems/shared/i18n'
+import type { ResourceTree } from '@dems/shared/i18n'
 
 export const enWeb = {
   web: {
@@ -88,21 +88,6 @@ export const enWeb = {
        * nobody reads the camera's stream now (an idle registered camera). Never "Live", "Lost" or "Online".
        */
       streamNotRead: 'Stream not read',
-      /**
-       * Task 4 row W4 (review finding F3-06, the operator's side): the connection test of a found camera is
-       * refused `409 INVALID_STATE` with reason `COMMISSIONING_NOT_CONFIGURED` when no camera network is
-       * configured on the Core. The shared tree has no sentence for it in the connection dialog (the
-       * contract's own, "Choose the camera interface and the camera subnet first.", is the commissioning
-       * screen's): worded here, with a request line of row W4 to move it.
-       *
-       * PASS I-9b: MOVED. The two sentences live in the shared tree beside the dialog's other refusals
-       * (`common.captureConnect.networkNotConfigured`, `.networkNotConfiguredDetail`), text unchanged, and the
-       * dialog reads the shared keys. These two members are a REFERENCE to them, not a second wording.
-       */
-      networkNotConfigured: {
-        title: en.common.captureConnect.networkNotConfigured,
-        detail: en.common.captureConnect.networkNotConfiguredDetail,
-      },
       /** Task 4 row W4 (review 060c R-03): the stored stream statement of a track on the "No preview" tile of a Core in real capture. */
       format: 'Format: {{format}}',
     },
@@ -726,16 +711,17 @@ export const enWeb = {
       readFailed: 'The camera network configuration could not be read.',
       settings: {
         title: 'Network settings',
-        notConfigured: 'No camera interface or no camera subnet is chosen yet. The Core never chooses one: until both are set, a scan is refused.',
+        notConfigured:
+          'No camera interface or no camera subnet is chosen. The camera search and the connection of cameras do not need them; until both are set, a factory address scan and a camera address change are refused.',
         interfaceName: {
           label: 'Camera interface',
           // Row W6 (request line 557 (3), row V7b): the form admits capitals (`CAPTURE_INTERFACE_NAME_PATTERN` widened, e.g. `enP3s0`).
-          hint: 'The network interface of the Core host the cameras are on, for example eth1 or enP3s0: letters of either case, digits, "_", "." and "-", the first a letter or a digit, at most 15 characters. Leave it empty for "not chosen".',
+          hint: 'The network interface the factory address scan and the camera address change use, for example eth1 or enP3s0: letters of either case, digits, "_", "." and "-", the first a letter or a digit, at most 15 characters. Cameras on other interfaces are still found and connected. Leave it empty for "not chosen".',
           error: 'Type an interface name: 1 to 15 letters of either case, digits, ".", "_" or "-", starting with a letter or a digit.',
         },
         cameraSubnet: {
           label: 'Camera subnet',
-          hint: 'A private IPv4 network as a.b.c.d/n with a prefix length of 16 to 30, for example 192.168.10.0/24. Leave it empty for "not chosen".',
+          hint: 'The private IPv4 network a camera address change gives cameras, as a.b.c.d/n with a prefix length of 16 to 30, for example 192.168.10.0/24. Leave it empty for "not chosen".',
           error: 'Type a private IPv4 network as a.b.c.d/n with a prefix length of 16 to 30.',
         },
         factoryAddresses: {

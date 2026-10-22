@@ -24,7 +24,7 @@ import {
   ManifestVideoAbsenceSchema,
   VIDEO_TRACK_IDS,
 } from '@dems/shared/evidence-package';
-import { OPERATOR_PASSWORD_SET_DETAILS_EXAMPLE, SYSTEM_BOOT_DETAILS_EXAMPLE, SYSTEM_BOOT_HOST_DETAILS_EXAMPLE, SYSTEM_BOOT_SIGNING_DETAILS_EXAMPLE, SYSTEM_BOOT_SIGNING_STORE_DETAILS_EXAMPLE, captureDeviceConnectionTestedDetails, captureDeviceRetiredDetails } from '@dems/shared/api';
+import { CaptureAudioInputChange, OPERATOR_PASSWORD_SET_DETAILS_EXAMPLE, SYSTEM_BOOT_DETAILS_EXAMPLE, SYSTEM_BOOT_HOST_DETAILS_EXAMPLE, SYSTEM_BOOT_SIGNING_DETAILS_EXAMPLE, SYSTEM_BOOT_SIGNING_STORE_DETAILS_EXAMPLE, captureDeviceConnectionTestedDetails, captureDeviceRetiredDetails } from '@dems/shared/api';
 import {
   CAPTURE_AUDIO_ABSENT_MAX_MS,
   CAPTURE_AUDIO_ACCOUNT_NUMBER_KEYS,
@@ -47,6 +47,7 @@ import {
   CAPTURE_VIDEO_ABSENT_TRACK_IDS,
   CAPTURE_CREDENTIAL_REVEAL_REASONS,
   CAPTURE_DEVICE_CONNECTION_TEST_OPERATIONS,
+  CAPTURE_AUDIO_INPUT_CHANGES,
   CAPTURE_DISCOVERY_AUDIT_SCOPES,
   HOST_ALIAS_REQUEST_ACTIONS,
   OPERATOR_PASSWORD_SET_METHODS,
@@ -352,6 +353,8 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
     CAPTURE_AUDIO_INPUT_CHANGED: [
       { type: 'CAPTURE_AUDIO_INPUT_CHANGED', actorId: 'OPR-003', deviceId: null, message: 'Microphone input registered', details: { deviceId: 'MIC-03', change: 'REGISTERED', inputNumber: 1, channelCount: 2 } },
       { type: 'CAPTURE_AUDIO_INPUT_CHANGED', actorId: 'OPR-002', deviceId: null, message: 'Microphone input enabled again', details: { deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 2, channelCount: 8, operationId: 'registerCaptureAudioInput', permission: 'CAPTURE_CONFIG' } },
+      // R-FLEX AU-A1 (row 129): the old input of a microphone moved by `release: true`; same keys.
+      { type: 'CAPTURE_AUDIO_INPUT_CHANGED', actorId: 'OPR-002', deviceId: null, message: 'Microphone MIC-03 released from its old input', details: { deviceId: 'MIC-03', change: 'RELEASED', inputNumber: 1, channelCount: 8, operationId: 'registerCaptureAudioInput', permission: 'CAPTURE_CONFIG' } },
     ],
     CAPTURE_NETWORK_CONFIG_CHANGED: [
       { type: 'CAPTURE_NETWORK_CONFIG_CHANGED', actorId: 'OPR-003', deviceId: null, message: 'Camera network configuration changed', details: { changedFields: 'interfaceName', revision: 2 } },
@@ -1210,6 +1213,12 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
     expect([...CAPTURE_DISCOVERY_AUDIT_SCOPES]).toEqual(['CAMERA_NETWORK', 'MIC_LOCAL', 'AUDIO_CARDS']);
     for (const scope of CAPTURE_DISCOVERY_AUDIT_SCOPES) expect(codeOf(() => auditInputOf(withDetail(searched, 'scope', scope))), scope).toBe('accepted');
     expect(codeOf(() => auditInputOf(withDetail(searched, 'scope', 'USB')))).toBe('AUDIT_DETAIL_VALUE_INVALID');
+
+    // R-FLEX AU-A1 (row 129): the `change` list has four values, `RELEASED` among them, and equals the shared list.
+    expect([...CAPTURE_AUDIO_INPUT_CHANGES]).toEqual(['REGISTERED', 'CARD_CHANGED', 'REENABLED', 'RELEASED']);
+    expect([...CAPTURE_AUDIO_INPUT_CHANGES]).toEqual(Object.values(CaptureAudioInputChange));
+    const audioInput = first('CAPTURE_AUDIO_INPUT_CHANGED');
+    for (const change of CAPTURE_AUDIO_INPUT_CHANGES) expect(codeOf(() => auditInputOf(withDetail(audioInput, 'change', change))), change).toBe('accepted');
   });
 
   it('M4-AUD-1: the four types of the camera search refuse a username, a secret, a URL, a label and a value outside their form', () => {

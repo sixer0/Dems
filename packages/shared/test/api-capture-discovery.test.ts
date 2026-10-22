@@ -89,6 +89,7 @@ import {
   CORE_API_OPERATIONS,
   CaptureAudioCardReason,
   CaptureAudioCardSchema,
+  type CaptureAudioCardSearch,
   CaptureAudioCardSearchSchema,
   CaptureAudioInputChange,
   CaptureAudioInputRegisterRequestSchema,
@@ -654,7 +655,13 @@ describe('task 4 row 63: operations 98 and 99, the sound cards and the registrat
     }
     expect(search.description).toContain(CaptureAudioCardReason.AUDIO_CARD_SEARCH_RATE_LIMITED);
     expect(register.description).toContain(CaptureAudioCardReason.AUDIO_INPUT_BEYOND_CARD);
-    expect(Object.values(CaptureAudioCardReason)).toEqual(['AUDIO_CARD_SEARCH_IN_PROGRESS', 'AUDIO_INPUT_BEYOND_CARD', 'AUDIO_INPUT_NOT_REGISTRABLE', 'AUDIO_CARD_SEARCH_RATE_LIMITED']);
+    expect(Object.values(CaptureAudioCardReason)).toEqual(['AUDIO_CARD_SEARCH_IN_PROGRESS', 'AUDIO_INPUT_BEYOND_CARD', 'AUDIO_INPUT_NOT_REGISTRABLE', 'AUDIO_CARD_ALREADY_BOUND', 'AUDIO_CARD_SEARCH_RATE_LIMITED']);
+    // R-FLEX AU-R1 (row 99): a card another microphone holds is a 409 reason of 99, named in its text and its 409 entry.
+    expect(register.description).toContain(CaptureAudioCardReason.AUDIO_CARD_ALREADY_BOUND);
+    expect(register.description).toContain('release: true');
+    expect(register.responses[409]?.description).toContain(CaptureAudioCardReason.AUDIO_CARD_ALREADY_BOUND);
+    expect(register.responses[409]?.description).not.toContain('nor a port');
+    expect(search.description).toContain('`boundTo`');
     expect(CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS).toBe(CAPTURE_DISCOVERY_MIN_INTERVAL_PER_CORE_MS);
   });
 
@@ -674,6 +681,17 @@ describe('task 4 row 63: operations 98 and 99, the sound cards and the registrat
     }
     expect(checked).toBeGreaterThan(15);
     expect(CaptureAudioInputRegisterRequestSchema.safeParse(CORE_API_EXAMPLES.registerCaptureAudioInput?.request?.firstInput?.value).success).toBe(true);
+    // R-FLEX (row 99): the examples carry `boundTo` (AU-L1), `release` (AU-B1), `releasedDeviceId` (AU-B2) and the AU-R1 refusal with the holder.
+    const register = CORE_API_EXAMPLES.registerCaptureAudioInput!;
+    expect(CaptureAudioInputRegisterRequestSchema.safeParse(register.request?.release?.value).success).toBe(true);
+    expect((register.request?.release?.value as { release?: boolean }).release).toBe(true);
+    expect(register.responses[200]?.released?.value).toMatchObject({ change: 'REENABLED', releasedDeviceId: 'MIC-03', deviceId: 'MIC-03' });
+    expect(register.responses[200]?.reenabled?.value).toMatchObject({ releasedDeviceId: null });
+    expect(register.responses[201]?.registered?.value).toMatchObject({ releasedDeviceId: null });
+    expect(register.responses[409]?.alreadyBound?.value).toMatchObject({ error: { code: 'INVALID_STATE', details: { reason: 'AUDIO_CARD_ALREADY_BOUND', deviceId: 'MIC-03' } } });
+    const listing = CORE_API_EXAMPLES.searchCaptureAudioCards!.responses[200]!;
+    expect((listing.registered!.value as CaptureAudioCardSearch).cards.map((card) => card.boundTo)).toEqual(['MIC-03']);
+    expect((listing.simulated!.value as CaptureAudioCardSearch).cards.map((card) => card.boundTo)).toEqual([null, null]);
   });
 
   it('AD-07 (1): device text is held to a closed character rule and a stated length, in the schema', () => {
@@ -713,9 +731,12 @@ describe('task 4 row 63: operations 98 and 99, the sound cards and the registrat
     expect([...CAPTURE_AUDIO_SAMPLE_BITS]).toEqual([16, 24, 32]);
     expect([whole('sampleBits', [16, 24, 32]), whole('sampleBits', []), whole('sampleBits', [8]), whole('sampleBits', ['S24_3LE']), whole('sampleBits', [16, 16, 24, 32])]).toEqual([true, true, false, false, false]);
     expect(whole('registered', [{ inputNumber: 1, deviceId: 'MIC-03' }])).toBe(true);
+    // R-FLEX AU-L1 (row 99): `boundTo` is a registry id or null, required; never device text.
+    expect([whole('boundTo', null), whole('boundTo', 'MIC-03')]).toEqual([true, true]);
+    for (const refused of [undefined, '', 'mic 3', 'MIC-03 ', 'USB Audio CODEC', 'CAM-01x', 3]) expect(whole('boundTo', refused), JSON.stringify(refused)).toBe(false);
     expect([whole('registered', [{ inputNumber: 0, deviceId: 'MIC-03' }]), whole('registered', [{ inputNumber: 1, deviceId: 'mic 3' }]), whole('registered', [{ inputNumber: 1, deviceId: 'MIC-03', product: 'x' }])]).toEqual([false, false, false]);
-    // A strict object: no member beyond the nine (seven, and since row V3 the serial and the port of a USB card; rows 199 / 200, C56).
-    expect(Object.keys(CaptureAudioCardSchema.shape)).toEqual(['cardId', 'deviceIndex', 'usbId', 'usbSerial', 'usbPort', 'product', 'channelCount', 'sampleBits', 'registered']);
+    // A strict object: no member beyond the ten (seven, since row V3 the serial and the port of a USB card; rows 199 / 200, C56; since R-FLEX row 99 `boundTo`, AU-L1).
+    expect(Object.keys(CaptureAudioCardSchema.shape)).toEqual(['cardId', 'deviceIndex', 'usbId', 'usbSerial', 'usbPort', 'product', 'channelCount', 'sampleBits', 'registered', 'boundTo']);
     // The two are OPTIONAL and NULLABLE (an answer without them is what it was: the simulator's), and
     // each is held to the closed form of its column: letters, digits and `: . _ -`, 1 to 64.
     for (const member of ['usbSerial', 'usbPort']) {
@@ -730,11 +751,15 @@ describe('task 4 row 63: operations 98 and 99, the sound cards and the registrat
     expect([CaptureAudioCardSearchSchema.safeParse(many(CAPTURE_AUDIO_CARD_MAX_ENTRIES)).success, CaptureAudioCardSearchSchema.safeParse(many(CAPTURE_AUDIO_CARD_MAX_ENTRIES + 1)).success]).toEqual([true, false]);
   });
 
-  it('AD-07 (2): the request of 99 is a card id of the kernel\'s form and two integers; nothing a device chose can be sent', () => {
-    expect(Object.keys(CaptureAudioInputRegisterRequestSchema.shape)).toEqual(['cardId', 'deviceIndex', 'inputNumber']);
+  it('AD-07 (2): the request of 99 is a card id of the kernel\'s form, two integers and an optional boolean; nothing a device chose can be sent', () => {
+    expect(Object.keys(CaptureAudioInputRegisterRequestSchema.shape)).toEqual(['cardId', 'deviceIndex', 'inputNumber', 'release']);
     const body = { cardId: 'CODEC', deviceIndex: 0, inputNumber: 1 };
     expect(CaptureAudioInputRegisterRequestSchema.safeParse(body).success).toBe(true);
     expect(CaptureAudioInputRegisterRequestSchema.safeParse({ ...body, inputNumber: CAPTURE_AUDIO_CARD_MAX_CHANNELS }).success).toBe(true);
+    // R-FLEX AU-B1 (row 99): `release` is optional (absent = false) and a boolean only.
+    expect([true, false].map((release) => CaptureAudioInputRegisterRequestSchema.safeParse({ ...body, release }).success)).toEqual([true, true]);
+    expect(CaptureAudioInputRegisterRequestSchema.parse(body).release).toBeUndefined();
+    for (const refused of ['true', 1, null, 'MIC-03']) expect(CaptureAudioInputRegisterRequestSchema.safeParse({ ...body, release: refused }).success, JSON.stringify(refused)).toBe(false);
     for (const member of ['product', 'usbId', 'channelCount', 'sampleBits', 'sampleRate', 'model', 'name', 'path', 'device', 'address', 'deviceId', 'role']) {
       expect(CaptureAudioInputRegisterRequestSchema.safeParse({ ...body, [member]: 'x' }).success, member).toBe(false);
     }
@@ -760,9 +785,15 @@ describe('task 4 row 63: operations 98 and 99, the sound cards and the registrat
   });
 
   it('the answer of 99 and its audit row: a registry id, a change code and two integers, no device text', () => {
-    expect(Object.keys(CaptureAudioInputRegistrationSchema.shape)).toEqual(['deviceId', 'change', 'inputNumber', 'channelCount']);
-    expect(Object.values(CaptureAudioInputChange)).toEqual(['REGISTERED', 'CARD_CHANGED', 'REENABLED']);
-    const answer = { deviceId: 'MIC-03', change: 'REGISTERED', inputNumber: 2, channelCount: 4 };
+    expect(Object.keys(CaptureAudioInputRegistrationSchema.shape)).toEqual(['deviceId', 'change', 'inputNumber', 'channelCount', 'releasedDeviceId']);
+    // The audit list has four values (R-FLEX AU-A1, row 129): `RELEASED` is audit-only.
+    expect(Object.values(CaptureAudioInputChange)).toEqual(['REGISTERED', 'CARD_CHANGED', 'REENABLED', 'RELEASED']);
+    // The answer's `change` is an inline enum of exactly three values (R-FLEX row 99): the audit list may grow (AU-A1 `RELEASED`, row 129), the answer does not.
+    expect(CaptureAudioInputRegistrationSchema.shape.change.options).toEqual(['REGISTERED', 'CARD_CHANGED', 'REENABLED']);
+    const answer = { deviceId: 'MIC-03', change: 'REGISTERED', inputNumber: 2, channelCount: 4, releasedDeviceId: null };
+    expect(CaptureAudioInputRegistrationSchema.safeParse({ ...answer, change: 'RELEASED' }).success).toBe(false);
+    // R-FLEX AU-B2: `releasedDeviceId` is a registry id or null, and required.
+    expect([CaptureAudioInputRegistrationSchema.safeParse({ ...answer, change: 'REENABLED', releasedDeviceId: 'MIC-03' }).success, CaptureAudioInputRegistrationSchema.safeParse({ ...answer, releasedDeviceId: undefined }).success, CaptureAudioInputRegistrationSchema.safeParse({ ...answer, releasedDeviceId: 'mic 3' }).success]).toEqual([true, false, false]);
     expect(CaptureAudioInputRegistrationSchema.safeParse(answer).success).toBe(true);
     expect(CaptureAudioInputRegistrationSchema.safeParse({ ...answer, change: 'DELETED' }).success).toBe(false);
     expect(CaptureAudioInputRegistrationSchema.safeParse({ ...answer, product: 'USB Audio CODEC' }).success).toBe(false);
@@ -774,9 +805,9 @@ describe('task 4 row 63: operations 98 and 99, the sound cards and the registrat
 
   it('the simulator\'s listing is fixed and says what it is: two test cards, no USB id, no registered input', () => {
     const cards = simCaptureAudioCards();
-    expect(cards.map((card) => [card.cardId, card.deviceIndex, card.usbId, card.channelCount, card.registered.length])).toEqual([
-      [SIM_CAPTURE_AUDIO_CARD_IDS.four, 0, null, 4, 0],
-      [SIM_CAPTURE_AUDIO_CARD_IDS.two, 0, null, 2, 0],
+    expect(cards.map((card) => [card.cardId, card.deviceIndex, card.usbId, card.channelCount, card.registered.length, card.boundTo])).toEqual([
+      [SIM_CAPTURE_AUDIO_CARD_IDS.four, 0, null, 4, 0, null],
+      [SIM_CAPTURE_AUDIO_CARD_IDS.two, 0, null, 2, 0, null],
     ]);
     for (const card of cards) {
       expect(card.product).toMatch(/^DEMS test sound card [AB] \(simulated\)$/);

@@ -861,20 +861,22 @@ describe('identifyRegisteredCard on a macOS listing: by the serial, else by the 
     expect(await answer([{ location: PORT_C, serial: SERIAL }], stored)).toEqual(['usb_02100000', 1, true]);
   });
 
-  it('a registered card WITHOUT a serial is found by its port, and only there: moved to another socket it is CARD_CHANGED / PORT_DIFFERS until registered again', async () => {
+  // R-FLEX row 107 (T-3; D10 ruling 1, no port lock): the stored port is no lock; the card id follows the socket, so a move is `renamed`.
+  it('a registered card WITHOUT a serial is found on ANY socket: moved to another socket it is the same card, renamed (its card id follows the socket); two serial-less units: AMBIGUOUS / MODEL_SHARED', async () => {
     const stored = await registered({ location: PORT_A });
     expect(await answer([{ location: PORT_A }], stored)).toEqual(['usb_01120000', 1, false]);
-    expect(await answer([{ location: PORT_C }], stored)).toEqual([UsbAudioRefusal.CARD_CHANGED, CardMismatch.PORT_DIFFERS]);
+    expect(await answer([{ location: PORT_C }], stored)).toEqual(['usb_02100000', 1, true]);
+    expect(await answer([{ location: PORT_A }, { location: PORT_C, name: 'DEMS Hexa 2' }], stored)).toEqual([UsbAudioRefusal.CARD_AMBIGUOUS, CardMismatch.MODEL_SHARED]);
   });
 
-  it('a SAME-MODEL device elsewhere is NOT a match, the registered one unplugged: by another serial, by no serial, by another port - never opened in its place', async () => {
+  it('a SAME-MODEL device elsewhere is NOT a match, the registered one unplugged: by another serial, or by a serial where none was registered - never opened in its place', async () => {
     const withSerial = await registered({ location: PORT_A, serial: SERIAL });
     expect(await answer([{ location: PORT_A, serial: 'SN-SYN-OTHER-0002' }], withSerial)).toEqual([UsbAudioRefusal.CARD_CHANGED, CardMismatch.SERIAL_DIFFERS]);
     expect(await answer([{ location: PORT_C, serial: 'SN-SYN-OTHER-0002' }], withSerial)).toEqual([UsbAudioRefusal.CARD_CHANGED, CardMismatch.SERIAL_DIFFERS]);
     // The same socket, a unit that states no serial where one was registered.
     expect(await answer([{ location: PORT_A }], withSerial)).toEqual([UsbAudioRefusal.CARD_CHANGED, CardMismatch.SERIAL_DIFFERS]);
     const plain = await registered({ location: PORT_A });
-    expect(await answer([{ location: PORT_B }], plain)).toEqual([UsbAudioRefusal.CARD_CHANGED, CardMismatch.PORT_DIFFERS]);
+    expect(await answer([{ location: PORT_B, serial: SERIAL }], plain)).toEqual([UsbAudioRefusal.CARD_CHANGED, CardMismatch.SERIAL_DIFFERS]);
     // The registered socket, and the unit there states a serial where none was registered.
     expect(await answer([{ location: PORT_A, serial: SERIAL }], plain)).toEqual([UsbAudioRefusal.CARD_CHANGED, CardMismatch.SERIAL_DIFFERS]);
     // Another model in the registered socket.
@@ -883,11 +885,12 @@ describe('identifyRegisteredCard on a macOS listing: by the serial, else by the 
     expect(await answer([], plain)).toEqual([UsbAudioRefusal.CARD_ABSENT, null]);
   });
 
-  it('a PRE-COLUMN row (neither serial nor port) is refused whatever is connected: the USB id alone finds no card', async () => {
+  it('a PRE-COLUMN row (neither serial nor port) is read as "no serial" (R-FLEX row 107, Q96-09): any serial-less unit of the model, on any socket', async () => {
     for (const patch of [{ usbSerial: null, usbPort: null }, { usbSerial: undefined, usbPort: undefined }] as const) {
       const stored = await registered({ location: PORT_A }, patch);
-      expect(await answer([{ location: PORT_A }], stored)).toEqual([UsbAudioRefusal.CARD_UNIDENTIFIED, CardMismatch.IDENTITY_NOT_STORED]);
-      expect(await answer([], stored)).toEqual([UsbAudioRefusal.CARD_UNIDENTIFIED, CardMismatch.IDENTITY_NOT_STORED]);
+      expect(await answer([{ location: PORT_A }], stored)).toEqual(['usb_01120000', 1, false]);
+      expect(await answer([{ location: PORT_C }], stored)).toEqual(['usb_02100000', 1, true]);
+      expect(await answer([], stored)).toEqual([UsbAudioRefusal.CARD_ABSENT, null]);
     }
   });
 

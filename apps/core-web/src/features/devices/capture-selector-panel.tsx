@@ -9,6 +9,7 @@ import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { usePendingControl } from '@/lib/pending-control'
 import {
   CAPTURE_SELECTOR_ANCHOR,
+  micMoveFor,
   micPairFor,
   poeCycleGate,
   selectorEditGate,
@@ -406,8 +407,10 @@ function CameraSourceRow({
 /**
  * One microphone line of the selector. Wave H (G70-02, ruling D196): the line offers EVERY
  * registered microphone (`mics`) for its role - PRIMARY and STANDBY alike - with one Save, which is
- * operation 78 in its pair-replacement form (`micPairFor`). The other line's microphone is a
- * disabled option that says where it is (the contract refuses one microphone on both lines).
+ * operation 78 in its pair-replacement form (`micPairFor`). R-FLEX row 133 (88 D-A4.6, T-14; D16
+ * Q96-02 (B)): the other line's microphone is an ENABLED option that says where it is and that
+ * choosing it moves it here; its Save is ONE operation 78 edit that clears the old line
+ * (`micMoveFor`: `{ unassign: [old role], mics: [line] }`), so one microphone is never on both lines.
  * "Make primary" (operation 80) stays as it was. Both controls keep the selector's gates.
  *
  * Task 4 row 31 (sites W1, W2; rule MIC-ASSIGN, ruling C21 (8)): the row is a SLOT (a role).
@@ -443,6 +446,7 @@ function MicRow({
   const selected = choice ?? held
   const clears = choice === NOT_ASSIGNED_KEY
   const pair = choice === null || clears ? null : micPairFor(lines, role, choice)
+  const move = choice === null || clears ? null : micMoveFor(lines, role, choice)
   // The id of the row's marks: the input of the line, or the role of an empty slot.
   const rowId = line?.inputId ?? role
   const lineLabel = line === null ? t('common.captureSlot.assignLabel', { slot: t(`common.captureSlot.${role}`) }) : t(`devices.micLines.label.${role}`)
@@ -460,9 +464,9 @@ function MicRow({
   }
 
   const onSavePair = () => {
-    if (pair === null && !clears) return
+    if (pair === null && move === null && !clears) return
     save.run((release) => {
-      void (pair === null ? commands.unassign(role) : commands.setMicPair(pair))
+      void (clears ? commands.unassign(role) : move !== null ? commands.moveMic(move) : commands.setMicPair(pair!))
         .then((answer) => {
           if (answer.ok) {
             setChoice(null)
@@ -551,7 +555,7 @@ function MicRow({
                 <ListBox.ItemIndicator />
               </ListBox.Item>
               {mics.map((entry) => (
-                <ListBox.Item key={entry.id} id={entry.id} textValue={optionText(entry)} isDisabled={other !== undefined && entry.id === other.deviceId}>
+                <ListBox.Item key={entry.id} id={entry.id} textValue={optionText(entry)}>
                   {optionText(entry)}
                   <ListBox.ItemIndicator />
                 </ListBox.Item>
@@ -559,7 +563,7 @@ function MicRow({
             </ListBox>
           </Select.Popover>
         </Select>
-        <Button ref={saveRef} size="sm" variant="primary" isDisabled={block !== null || (pair === null && !clears)} isPending={save.pending} onPress={onSavePair} data-testid={`selector-mic-save-${role}`}>
+        <Button ref={saveRef} size="sm" variant="primary" isDisabled={block !== null || (pair === null && move === null && !clears)} isPending={save.pending} onPress={onSavePair} data-testid={`selector-mic-save-${role}`}>
           {save.pending ? <Spinner size="sm" color="current" aria-hidden="true" /> : null}
           {line === null ? t('common.captureSlot.assign') : t('devices.selector.save')}
         </Button>

@@ -15,6 +15,7 @@ import {
   HOST_ALIAS_REMOVE_RETRIES,
   HOST_ALIAS_REMOVE_RETRY_MS,
   HOST_ALIAS_SWEEP_CANDIDATES_MAX,
+  HostAliasFactsUnknownError,
   REFUSED_WHILE_A_SESSION_IS_OPEN,
   aliasAddressesHeld,
   aliasCandidatesOfConfiguration,
@@ -1003,6 +1004,15 @@ describe('the facts reader and the candidates', () => {
     await expect(broken()).resolves.toMatchObject({ fileInterface: null });
     await expect(hostAliasFactsReaderOf({ network: () => NETWORK, storedInterface: () => null, fileInterface: () => 'eth1' })()).resolves.toMatchObject({ storedInterface: null });
     await expect(hostAliasFactsReaderOf({ network: () => null, storedInterface: () => 'eth1', fileInterface: () => 'eth1' })()).rejects.toMatchObject({ code: 'HOST_ALIAS_FACTS_UNKNOWN' });
+  });
+
+  // Row 141 (decision D23): since row 105 (D-105-2) the network reader answers a context with `cameraSubnet: null`
+  // when an interface is stored but the camera network is not fully chosen. The helper never acts without a camera
+  // subnet (D16 Q96-04 a): that context is "facts unknown", exactly as a null context was before.
+  it('a stored interface whose network facts carry NO camera subnet: facts unknown, never a context without a subnet (row 141, D23)', async () => {
+    const noSubnet: DestinationContext = { ...NETWORK, cameraSubnet: null };
+    await expect(hostAliasFactsReaderOf({ network: () => noSubnet, storedInterface: () => 'eth1', fileInterface: () => 'eth1' })()).rejects.toBeInstanceOf(HostAliasFactsUnknownError);
+    await expect(hostAliasFactsReaderOf({ network: () => noSubnet, storedInterface: () => null, fileInterface: () => 'eth1' })()).resolves.toMatchObject({ storedInterface: null, cameraSubnet: null });
   });
 
   it('held: only what the reader marks as an alias, as strict private quads, each once; unknown facts are null, not "none"', () => {

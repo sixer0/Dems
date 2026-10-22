@@ -5,6 +5,9 @@
 # Never run by a script, in any mode: the address of the camera port (HOST-19, the user
 # confirms it interactively) and turning the firewall on (HOST-22, it can cut the user's own
 # remote administration). UNPROVEN ON LINUX.
+# R-FLEX (D10-D12): the camera port is host hygiene, not the Core's only camera path;
+# the search-answer rule (HOST-23) admits answers on the camera port and the Wi-Fi port
+# (decision D33 M-6 of 2026-10-22, row 144; it replaces D12 U-RF3).
 set -eu
 HP_SCRIPT=40-network-firewall.sh
 HP_ITEMS='HOST-18 to HOST-25'
@@ -13,7 +16,7 @@ case "$0" in */*) HP_DIR=${0%/*} ;; *) HP_DIR=. ;; esac
 # shellcheck source=host-profile-lib.sh
 . "$HP_DIR/host-profile-lib.sh"
 hp_init "$@"
-hp_need service-user camera-interface
+hp_need service-user camera-interface search-interface
 
 item HOST-18 AUTO 'The conflict-check tool is the iputils one; the other package named arping is absent'
 act apt-get install -y iputils-arping iproute2
@@ -23,7 +26,7 @@ dpkg -s arping                   -> "is not installed"
 EOF
 confirm '9A/H-25 (the two packages give -D different meanings; the path printed; open points 4 and 5)'
 
-item HOST-19 MANUAL 'The cameras are on a dedicated port and switch: one static private /24 address, no gateway, no name server, no DHCP'
+item HOST-19 MANUAL 'The camera port is dedicated (host hygiene): one static private /24 address, no gateway, no name server, no DHCP'
 show_file '/etc/netplan/60-dems-camera.yaml, owner root, mode 0600 (file B)' <<'EOF'
 network:
   version: 2
@@ -81,15 +84,20 @@ sudo ufw status verbose   -> "Status: active" and "Default: deny (incoming), all
 EOF
 confirm '9A/H-01'
 
-item HOST-23 AUTO 'Answers to the camera search arrive: datagrams from source port 3702 are admitted on the camera port'
+item HOST-23 AUTO 'Answers to the camera search arrive on the camera port and on the Wi-Fi port: datagrams from source port 3702 are admitted on those two and on no other port'
+note <<'EOF'
+decision D33 M-6 (replaces D12 U-RF3): a Wi-Fi camera is listed by the plain search; the user accepted that the search-answer reader is then reachable from the Wi-Fi network. Answers on any other network of the host are not admitted; a camera there is reached by its typed address
+EOF
 act ufw allow in on "$HP_CAMERA_INTERFACE" proto udp from any port 3702 comment 'DEMS camera search answers'
+act ufw allow in on "$HP_SEARCH_INTERFACE" proto udp from any port 3702 comment 'DEMS camera search answers (Wi-Fi, D33)'
 check <<'EOF'
-sudo ufw status numbered   -> lists the rule with "on <camera-interface>"
+sudo ufw status numbered   -> lists the rule with "on <camera-interface>" and the rule with "on <search-interface>"
+sudo ufw status numbered   -> no other rule names port 3702
 the search in the web console lists at least 1 camera
 EOF
-confirm '9A/H-12 (whether this rule alone suffices) and 9A/H-13 (answers from a factory subnet through a temporary address); open point 8'
+confirm '9A/H-12 (whether this rule alone suffices; that a typed address on another network is answered) and 9A/H-13 (answers from a factory subnet through a temporary address); open point 8'
 
-item HOST-24 NONE 'The services of the Core are not reachable on the camera port or on any temporary address added to it'
+item HOST-24 NONE 'The services of the Core are not reachable from any network of the host: not on the camera port, not on a temporary address added to it, not on the room network'
 why <<'EOF'
 the Core and its database listen on 127.0.0.1 only, and no firewall rule opens their ports
 EOF

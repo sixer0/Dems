@@ -674,9 +674,19 @@ describe('row 143c (C65): in production a candidate is tested from the camera in
     cameraSubnet: { network: '192.168.50.0', prefixLength: 24 },
     cameraAddresses: [{ address: CAMERA_INTERFACE, alias: false }],
     otherInterfaceSubnets: [{ network: '10.20.0.0', prefixLength: 24 }],
+    // R-FLEX NW-C1 (row 104): every eligible interface of the host - STORED_CAMERA is global (RM-N1..RM-N4).
+    interfaceSubnets: [
+      { name: 'eth0', address: CAMERA_INTERFACE, network: '192.168.50.0', prefixLength: 24 },
+      { name: 'eth1', address: OFFICE_ADDRESS, network: '10.20.0.0', prefixLength: 24 },
+    ],
     hostAddresses: [OFFICE_ADDRESS],
   });
   const CONFIGURED = storedCameraAddressRuleOf(() => FACTS);
+  /** R-FLEX 90 AC-1 (row 104): a Core whose camera network is NOT chosen - no camera subnet, no camera address - and one Wi-Fi interface. */
+  const WIFI_ADDRESS = '192.168.0.73';
+  const WIFI_ONLY = storedCameraAddressRuleOf(() =>
+    Object.freeze({ cameraSubnet: null, cameraAddresses: [], otherInterfaceSubnets: [], interfaceSubnets: [{ name: 'wlp3s0', address: WIFI_ADDRESS, network: '192.168.0.0', prefixLength: 24 }], hostAddresses: [WIFI_ADDRESS] }),
+  );
   /** A production Core whose network configuration is absent: the reader answers null. */
   const NOT_CONFIGURED = storedCameraAddressRuleOf(() => null);
 
@@ -739,9 +749,10 @@ describe('row 143c (C65): in production a candidate is tested from the camera in
     expect(b.w.audit.map((entry) => entry.type)).toEqual(['CAPTURE_CONNECTION_TESTED', 'CAPTURE_CONNECTION_TESTED', 'CAPTURE_CREDENTIAL_SET', 'CAPTURE_CANDIDATE_ADOPTED']);
   });
 
-  // Row R2 (review finding F3-06; decision C93): the REASON of this refusal moved from `CANDIDATE_NOT_TESTABLE` to the contract's
-  // `COMMISSIONING_NOT_CONFIGURED` - three expectations below, by that delta. The status, the code, the order and the log line are as they were.
-  it('REAL_PRODUCTION, NO network configuration: the rule refuses (`NOT_CONFIGURED`) - 409 with the TRUE cause (COMMISSIONING_NOT_CONFIGURED and its sentence, never "this device cannot be tested") before the bounds, nothing bound, nothing sent, no audit row; the log names the rule\'s word and no address', async () => {
+  // R-FLEX U4 / RF-N3 (row 104): the F3-06 branch (row R2, C93) is GONE - an empty network configuration no longer refuses
+  // (case below), and a rule that still answers `NOT_CONFIGURED` (host facts that cannot be read) is CANDIDATE_NOT_TESTABLE
+  // like every other refusal. The status, the code, the order and the log line are as they were.
+  it('REAL_PRODUCTION, host facts that cannot be read: the rule refuses (`NOT_CONFIGURED`) - 409 CANDIDATE_NOT_TESTABLE (never COMMISSIONING_NOT_CONFIGURED) before the bounds, nothing bound, nothing sent, no audit row; the log names the rule\'s word and no address', async () => {
     const b = boundWorld({ required: true, rule: NOT_CONFIGURED });
     b.w.add('CND-000000000001', subnetCamera());
     const told = await testCandidate(b.seams, CALLER, 'CND-000000000001', typed()).then(
@@ -749,27 +760,37 @@ describe('row 143c (C65): in production a candidate is tested from the camera in
       (caught: unknown) => caught,
     );
     expect(told).toBeInstanceOf(ApiFailure);
-    expect([(told as ApiFailure).statusCode, (told as ApiFailure).code, (told as ApiFailure).details]).toEqual([409, 'INVALID_STATE', { reason: 'COMMISSIONING_NOT_CONFIGURED' }]);
-    // The sentence names the Core's state and what ends it (the contract's own sentence of the reason); it does not blame the device and quotes no address.
-    expect((told as ApiFailure).message).toBe('This device cannot be tested yet: the camera network of this Core is not set up. Choose the camera interface and the camera subnet first.');
+    expect([(told as ApiFailure).statusCode, (told as ApiFailure).code, (told as ApiFailure).details]).toEqual([409, 'INVALID_STATE', { reason: 'CANDIDATE_NOT_TESTABLE' }]);
+    expect((told as ApiFailure).message).toBe('This device cannot be tested.');
     expect((told as ApiFailure).message.includes(SUBNET_HOST)).toBe(false);
     untouched(b);
     expect(b.w.notes).toEqual([{ code: CANDIDATE_TEST_ADDRESS_REFUSED, source: 'captureConnect', operationId: 'testCaptureCandidateConnection', refusal: 'NOT_CONFIGURED' }]);
     expect(JSON.stringify(b.w.notes).includes(SUBNET_HOST)).toBe(false);
     // The refusal spent nothing: a test straight after it is not "too soon", it is refused the same way.
-    expect(await refusal(testCandidate(b.seams, CALLER, 'CND-000000000001', typed()))).toEqual([409, 'INVALID_STATE', 'COMMISSIONING_NOT_CONFIGURED']);
+    expect(await refusal(testCandidate(b.seams, CALLER, 'CND-000000000001', typed()))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_NOT_TESTABLE']);
     // An adoption is refused at the same place: its re-verification is the same one function.
     const adopting = boundWorld({ required: true, rule: NOT_CONFIGURED });
     adopting.w.add('CND-000000000001', subnetCamera());
     adopting.w.candidates.get('CND-000000000001')!.candidate.lastTest = { outcome: CaptureConnectionOutcome.REACHABLE, authenticated: true, testedAt: adopting.w.now, profiles: ['main'] };
-    expect(await refusal(adoptCandidate(adopting.seams, CALLER, 'CND-000000000001', typed()))).toEqual([409, 'INVALID_STATE', 'COMMISSIONING_NOT_CONFIGURED']);
+    expect(await refusal(adoptCandidate(adopting.seams, CALLER, 'CND-000000000001', typed()))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_NOT_TESTABLE']);
     untouched(adopting);
     expect(adopting.w.notes.map((note) => `${String(note['operationId'])} ${String(note['refusal'])}`)).toEqual(['adoptCaptureCandidate NOT_CONFIGURED']);
   });
 
-  it('REAL_PRODUCTION: every address the rule refuses is refused the same way - another interface\'s subnet, the host itself, outside the camera subnet, a port outside the list', async () => {
+  it('R-FLEX (row 104, RF-N3, 90 AC-1): REAL_PRODUCTION with an EMPTY camera network configuration - a Wi-Fi candidate reaches the tester bound to the Wi-Fi address; ONE bound test, the unbound test never called', async () => {
+    const b = boundWorld({ required: true, rule: WIFI_ONLY });
+    const host = '192.168.0.50';
+    b.w.add('CND-000000000001', camera({ host, serviceAddress: `http://${host}/onvif/device_service` }));
+    expect(await testCandidate(b.seams, CALLER, 'CND-000000000001', typed())).toMatchObject({ outcome: 'REACHABLE', authenticated: true });
+    expect(b.boundTo).toEqual([WIFI_ADDRESS]);
+    expect(b.boundCalls).toEqual([{ host, from: WIFI_ADDRESS, given: 3 }]);
+    expect(b.unboundCalls).toEqual([]);
+    expect(b.w.notes.some((note) => note['code'] === CANDIDATE_TEST_ADDRESS_REFUSED)).toBe(false);
+    expect(b.w.audit.map((entry) => entry.type)).toEqual(['CAPTURE_CONNECTION_TESTED']);
+  });
+
+  it('REAL_PRODUCTION: every address the rule refuses is refused the same way - the host itself, no interface holds it, a port outside the list', async () => {
     const cases: readonly [string, CameraCandidate, string][] = [
-      ['the office subnet', camera({ host: '10.20.0.77', serviceAddress: 'http://10.20.0.77/onvif/device_service' }), 'OTHER_INTERFACE_SUBNET'],
       ['an address of the host', camera({ host: OFFICE_ADDRESS, serviceAddress: `http://${OFFICE_ADDRESS}/onvif/device_service` }), 'HOST_ADDRESS'],
       ['a port that is not listed', subnetCamera({ serviceAddress: `http://${SUBNET_HOST}:8080/onvif/device_service` }), 'PORT_NOT_LISTED'],
       ['a service address on another host', subnetCamera({ serviceAddress: 'http://192.168.50.21/onvif/device_service' }), 'STORED_ADDRESS_MALFORMED'],
@@ -787,6 +808,20 @@ describe('row 143c (C65): in production a candidate is tested from the camera in
     outside.w.add('CND-000000000001', camera({ host: '198.51.100.9', serviceAddress: 'http://198.51.100.9/onvif/device_service' }));
     expect(await refusal(testCandidate(outside.seams, CALLER, 'CND-000000000001', typed()))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_NOT_TESTABLE']);
     untouched(outside);
+    // R-FLEX NW-R1 (row 104): a private address no interface holds on-link - never tested.
+    const offLink = boundWorld({ required: true, rule: CONFIGURED });
+    offLink.w.add('CND-000000000001', camera({ host: '172.16.9.9', serviceAddress: 'http://172.16.9.9/onvif/device_service' }));
+    expect(await refusal(testCandidate(offLink.seams, CALLER, 'CND-000000000001', typed()))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_NOT_TESTABLE']);
+    untouched(offLink);
+    expect(offLink.w.notes.map((note) => note['refusal'])).toEqual(['NO_SOURCE_INTERFACE']);
+  });
+
+  it('R-FLEX (row 104; RM-N1 lifted): a candidate on ANOTHER interface\'s subnet (was OTHER_INTERFACE_SUBNET) is tested from THAT interface\'s address', async () => {
+    const b = boundWorld({ required: true, rule: CONFIGURED });
+    b.w.add('CND-000000000001', camera({ host: '10.20.0.77', serviceAddress: 'http://10.20.0.77/onvif/device_service' }));
+    expect(await testCandidate(b.seams, CALLER, 'CND-000000000001', typed())).toMatchObject({ outcome: 'REACHABLE', authenticated: true });
+    expect(b.boundTo).toEqual([OFFICE_ADDRESS]);
+    expect(b.unboundCalls).toEqual([]);
   });
 
   it('REAL_PRODUCTION: an admission that names no source address, a rule that was never handed in, a tester that cannot be bound and a tester that refuses the address - each makes NO test', async () => {

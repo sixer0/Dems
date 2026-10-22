@@ -51,6 +51,7 @@ import {
   type UsbAudioProductionOptions,
   type UsbAudioStream,
 } from '../usb-audio-production';
+import { STORED_CARD_IDENTITY_CASES } from '../../../../../test/support/stored-card-identity-cases';
 
 // ── The host: fixed texts in the forms of a Linux host ────────────────────────────────────────
 
@@ -447,18 +448,23 @@ describe('open: what is refused, by name, before a pipe or a helper exists', () 
     nothingMade(r);
   });
 
-  // TURNED BY ROW 200 (was: "two connected cards carry the stored USB id: AUDIO_CARD_AMBIGUOUS").
-  // Two units of one model are told apart by the stored port path (or serial): a room with two
-  // identical interfaces can record. AMBIGUOUS is left for two units that state the stored serial
-  // where the port names neither.
-  it('two connected cards carry the stored USB id: the one ON THE STORED PORT is opened; two that state the stored serial with no port to tell them apart: AUDIO_CARD_AMBIGUOUS; the fixed word of an unreadable id: AUDIO_CARD_UNIDENTIFIED', async () => {
+  // TURNED BY ROW 200, TURNED AGAIN BY R-FLEX ROW 107 (D10 ruling 1, no port lock; Q96-03 (iii)).
+  // Two units of one model are told apart by their serials; two that state none are one identity,
+  // so neither is opened (MODEL_SHARED). AMBIGUOUS also stays for two units that state the stored
+  // serial where the port names neither.
+  it('two connected cards carry the stored USB id: two that state their own serials are each opened; two that state none: AUDIO_CARD_AMBIGUOUS / MODEL_SHARED; two that state the stored serial with no port to tell them apart: AUDIO_CARD_AMBIGUOUS; the fixed word of an unreadable id: AUDIO_CARD_UNIDENTIFIED', async () => {
     const twin = { ...DUO, index: 5, id: 'Duo_1', port: '0000:00:14.0-7' };
-    const twins = rig([DUO, twin], [row('MIC-01', DUO, 1), row('MIC-02', twin, 1)]);
+    const serialled = [{ ...DUO, serial: 'SN-ONE' }, { ...twin, serial: 'SN-TWO' }];
+    const twins = rig(serialled, [row('MIC-01', serialled[0] as FixtureCard, 1), row('MIC-02', serialled[1] as FixtureCard, 1)]);
     const first = await twins.adapter.open('MIC-01', target());
     const second = await twins.adapter.open('MIC-02', target());
     expect([first.card.cardIndex, first.card.usbPort, second.card.cardIndex, second.card.usbPort]).toEqual([1, DUO.port, 5, '0000:00:14.0-7']);
     await first.close();
     await second.close();
+    const plain = rig([DUO, twin], [row('MIC-01', DUO, 1)]);
+    const modelShared = await refusalOf(plain.adapter.open('MIC-01', target()));
+    expect([modelShared.code, modelShared.detail, modelShared.wireCode]).toEqual(['AUDIO_CARD_AMBIGUOUS', 'MODEL_SHARED', 'DEVICE_NOT_FOUND']);
+    nothingMade(plain);
     const shared = rig([{ ...DUO, serial: 'SN-SAME' }, { ...twin, serial: 'SN-SAME' }], [row('MIC-01', { ...DUO, serial: 'SN-SAME' }, 1, { usbPort: null })]);
     const ambiguous = await refusalOf(shared.adapter.open('MIC-01', target()));
     expect([ambiguous.code, ambiguous.detail, ambiguous.wireCode]).toEqual(['AUDIO_CARD_AMBIGUOUS', 'SERIAL_SHARED', 'DEVICE_NOT_FOUND']);
@@ -522,14 +528,14 @@ describe('open: what is refused, by name, before a pipe or a helper exists', () 
   });
 });
 
-// ── 2b. Task 4 row 200: the stored row is matched by serial, else by port path ───────────────
+// ── 2b. Task 4 row 200, R-FLEX row 107: matched by serial, else any serial-less unit of the model ─
 //
 // T-1 WITH THE DOOR DOUBLE: the guard is played by a door that starts nothing, so "0 helper
 // starts" is the count of what the door was asked. THE HOST is the fixed listing texts above; a
 // swap, a re-plug and a move are a change of those texts. No sound card, never this Mac's
 // microphone. The incident this reproduces: input-av's handover recorded a sound card silently
 // swapped for another of the same model.
-describe('row 200: at open and again at start the stored row is matched to a live card by serial, else by port path', () => {
+describe('rows 200 / R-FLEX 107: at open and again at start the stored row is matched to a live card by serial, else by any serial-less unit of the model (no port lock)', () => {
   const ELSEWHERE = '0000:00:14.0-7';
   const nothingStarted = (r: Rig): void => {
     expect(r.door.calls).toEqual([]);
@@ -538,11 +544,11 @@ describe('row 200: at open and again at start the stored row is matched to a liv
     expect(existsSync(`${r.runDir}/SES-67`)).toBe(false);
   };
 
-  it('A SWAPPED SAME-MODEL CARD ON ANOTHER PORT is refused by AUDIO_CARD_CHANGED with 0 helper starts, no pipe and no configuration - at the open, at the pre-check and in the enumeration', async () => {
-    // Registered: the Duo on its port, no serial. Connected now: ANOTHER unit of the model - the same kernel name, index, USB id and product - on another port.
-    const r = rig([{ ...DUO, port: ELSEWHERE }], [row('MIC-01', DUO, 1)]);
+  it('A SAME-MODEL CARD THAT STATES A SERIAL, on another port, where none was stored, is refused by AUDIO_CARD_CHANGED with 0 helper starts, no pipe and no configuration - at the open, at the pre-check and in the enumeration', async () => {
+    // Registered: the Duo on its port, no serial. Connected now: ANOTHER unit of the model - the same kernel name, index, USB id and product - on another port, stating a serial.
+    const r = rig([{ ...DUO, port: ELSEWHERE, serial: 'SN-NEW-0003' }], [row('MIC-01', DUO, 1)]);
     const refused = await refusalOf(r.adapter.open('MIC-01', target()));
-    expect([refused.code, refused.detail, refused.wireCode, refused.deviceId]).toEqual(['AUDIO_CARD_CHANGED', 'PORT_DIFFERS', 'DEVICE_NOT_FOUND', 'MIC-01']);
+    expect([refused.code, refused.detail, refused.wireCode, refused.deviceId]).toEqual(['AUDIO_CARD_CHANGED', 'SERIAL_DIFFERS', 'DEVICE_NOT_FOUND', 'MIC-01']);
     expect(refused.message).toBe('another sound card sits where the registered one was');
     nothingStarted(r);
     expect(existsSync(r.configPath)).toBe(false);
@@ -553,7 +559,35 @@ describe('row 200: at open and again at start the stored row is matched to a liv
     expect(r.adapter.sourceFacts('MIC-01')).toBeNull();
     nothingStarted(r);
     // No serial, port or USB id is in the refusal.
-    for (const text of [DUO.port ?? '', ELSEWHERE, DUO.usbId ?? '', DUO.product]) expect(JSON.stringify({ ...refused, message: refused.message })).not.toContain(text);
+    for (const text of [DUO.port ?? '', ELSEWHERE, DUO.usbId ?? '', DUO.product, 'SN-NEW-0003']) expect(JSON.stringify({ ...refused, message: refused.message })).not.toContain(text);
+  });
+
+  it('THE BOMGE CASE (R-FLEX row 107, T-2): a card registered WITHOUT a serial on one port, moved to ANOTHER port, opens - the stored port is not a lock - and the helper starts once', async () => {
+    const BOMGE: FixtureCard = { index: 1, id: 'BOMGE', product: 'BOMGE USB AUDIO', usbId: '3347:2430', port: '1-1', channels: 1 };
+    const r = rig([{ ...BOMGE, port: '1-2' }], [row('MIC-01', BOMGE, 1)]);
+    expect(r.rows.get('MIC-01')?.usbPort).toBe('1-1');
+    const stream = await r.adapter.open('MIC-01', target());
+    expect([stream.card.cardId, stream.card.usbPort, stream.card.usbSerial]).toEqual(['BOMGE', '1-2', null]);
+    // The card id did not change: no renamed notice. The source facts state the live port, the stored row keeps its own.
+    expect(r.notices).toEqual([]);
+    expect(r.adapter.sourceFacts('MIC-01')).toMatchObject({ usbPort: '1-2', usbSerial: null, cardId: 'BOMGE' });
+    expect(r.rows.get('MIC-01')?.usbPort).toBe('1-1');
+    expect(await startAndSettle(stream, r.timers)).toBeNull();
+    expect(r.door.guards).toHaveLength(1);
+    await stream.close();
+  });
+
+  it('TWO SERIAL-LESS UNITS of a model stored without a serial (R-FLEX row 107, T-5, AU-R2): AUDIO_CARD_AMBIGUOUS / MODEL_SHARED, nothing started, enumerated not present', async () => {
+    const r = rig([DUO, { ...DUO, index: 4, id: 'Duo_1', port: ELSEWHERE }], [row('MIC-01', DUO, 1)]);
+    const refused = await refusalOf(r.adapter.open('MIC-01', target()));
+    expect([refused.code, refused.detail, refused.wireCode]).toEqual(['AUDIO_CARD_AMBIGUOUS', 'MODEL_SHARED', 'DEVICE_NOT_FOUND']);
+    nothingStarted(r);
+    expect(await r.adapter.enumerate()).toEqual([{ inputId: 'MIC-01', present: false, errorCode: AudioInputErrorCode.DEVICE_NOT_FOUND }]);
+    // One unit taken away: the other is the bound card again, on whatever port.
+    r.host.cards = [{ ...DUO, index: 4, id: 'Duo_1', port: ELSEWHERE }];
+    const stream = await r.adapter.open('MIC-01', target());
+    expect([stream.card.cardId, stream.card.usbPort]).toEqual(['Duo_1', ELSEWHERE]);
+    await stream.close();
   });
 
   it('THE SAME CARD AFTER A RE-PLUG ON ITS PORT opens - at another card index too - and the helper starts once; CONTROL for the case above', async () => {
@@ -597,22 +631,21 @@ describe('row 200: at open and again at start the stored row is matched to a liv
     await found.close();
   });
 
-  it('the cases left open, each refused before anything starts: a serial where none was registered; a stored row with neither serial nor port (registered before the columns existed)', async () => {
+  it('a serial where none was registered is refused before anything starts; a stored row with neither serial nor port (registered before the columns existed) is read as "no serial" (R-FLEX row 107, Q96-09)', async () => {
     // Registered without a serial; the unit on the stored port states one today.
     const appeared = rig([{ ...DUO, serial: 'SN-NEW-0003' }], [row('MIC-01', DUO, 1)]);
     const first = await refusalOf(appeared.adapter.open('MIC-01', target()));
     expect([first.code, first.detail]).toEqual(['AUDIO_CARD_CHANGED', 'SERIAL_DIFFERS']);
     nothingStarted(appeared);
-    // The row as schema set A left it, and the row of a reader that hands neither value over: the USB id alone finds no card.
+    // The row as schema set A left it, and the row of a reader that hands neither value over: any serial-less unit of the model, on any port.
     for (const patch of [{ usbSerial: null, usbPort: null }, { usbSerial: undefined, usbPort: undefined }] as const) {
-      const before = rig([DUO], [row('MIC-01', DUO, 1, patch)]);
-      const refused = await refusalOf(before.adapter.open('MIC-01', target()));
-      expect([refused.code, refused.detail, refused.wireCode]).toEqual(['AUDIO_CARD_UNIDENTIFIED', 'IDENTITY_NOT_STORED', 'DEVICE_NOT_FOUND']);
-      expect(refused.message).toBe('the registered sound card has no identity to find it by');
-      nothingStarted(before);
-      // Whatever is connected: also with no card at all it is the identity that is missing.
+      const before = rig([{ ...DUO, port: ELSEWHERE }], [row('MIC-01', DUO, 1, patch)]);
+      const stream = await before.adapter.open('MIC-01', target());
+      expect([stream.card.cardId, stream.card.usbPort]).toEqual(['Duo', ELSEWHERE]);
+      await stream.close();
+      // With no card at all it is absent, as any other.
       before.host.cards = [];
-      expect((await refusalOf(before.adapter.open('MIC-01', target()))).code).toBe(UsbAudioRefusal.CARD_UNIDENTIFIED);
+      expect((await refusalOf(before.adapter.open('MIC-01', target()))).code).toBe(UsbAudioRefusal.CARD_ABSENT);
     }
     // A card that is not USB has no serial and no port and is found by its kernel name, as before.
     const onboard: FixtureCard = { index: 0, id: 'PCH', product: 'Onboard', channels: 2 };
@@ -621,12 +654,13 @@ describe('row 200: at open and again at start the stored row is matched to a liv
   });
 
   it('AGAIN AT START: a card swapped between the open and the start is refused before the door is called - 0 helper starts', async () => {
-    // Without a serial: the registered unit is taken away and another of the model is plugged elsewhere.
+    // Without a serial: the registered unit is taken away and a serial-less unit of the model is plugged elsewhere. It is the bound
+    // card by the rule (no port lock), but it is not where the open found it: the start refuses it as moved, and a new open takes it.
     const r = rig([DUO], [row('MIC-01', DUO, 1)]);
     const stream = await r.adapter.open('MIC-01', target());
     r.host.cards = [{ ...DUO, port: ELSEWHERE }];
     const swapped = await refusalOf(stream.start());
-    expect([swapped.code, swapped.detail]).toEqual(['AUDIO_CARD_CHANGED', 'PORT_DIFFERS']);
+    expect(swapped.code).toBe(UsbAudioRefusal.CARD_MOVED);
     expect(r.door.guards).toEqual([]);
     await stream.close();
     // With a serial: another unit in the SAME socket, at the same index, with the same channels - nothing but the serial differs.
@@ -664,12 +698,32 @@ describe('row 200: at open and again at start the stored row is matched to a liv
     expect(await answer([mine, twin])).toEqual([2, false]);
     expect(await answer([{ ...mine, port: '0000:00:14.0-9' }, twin])).toEqual(['AUDIO_CARD_AMBIGUOUS', 'SERIAL_SHARED']);
     expect(await answer([mine, twin], { ...stored, usbPort: null })).toEqual(['AUDIO_CARD_AMBIGUOUS', 'SERIAL_SHARED']);
-    // No serial stored: the port, and only the port.
+    // No serial stored: any serial-less unit of the model, on any port; two of them: shared.
     const plain = row('MIC-02', OCTO, 3);
-    expect(await answer([OCTO, { ...OCTO, index: 5, id: 'Octo_1', port: ELSEWHERE }], plain)).toEqual([2, false]);
-    expect(await answer([{ ...OCTO, index: 5, id: 'Octo_1', port: ELSEWHERE }], plain)).toEqual(['AUDIO_CARD_CHANGED', 'PORT_DIFFERS']);
+    expect(await answer([OCTO, { ...OCTO, index: 5, id: 'Octo_1', port: ELSEWHERE }], plain)).toEqual(['AUDIO_CARD_AMBIGUOUS', 'MODEL_SHARED']);
+    expect(await answer([{ ...OCTO, index: 5, id: 'Octo_1', port: ELSEWHERE }], plain)).toEqual([5, true]);
     expect(await answer([mine], plain)).toEqual(['AUDIO_CARD_CHANGED', 'SERIAL_DIFFERS']);
-    expect(await answer([OCTO], { ...plain, usbPort: null })).toEqual(['AUDIO_CARD_UNIDENTIFIED', 'IDENTITY_NOT_STORED']);
+    expect(await answer([OCTO], { ...plain, usbPort: null })).toEqual([2, false]);
+  });
+
+  // T-1: the shared case table (test/support/stored-card-identity-cases.ts), the same table the registration matcher runs.
+  it.each(STORED_CARD_IDENTITY_CASES.map((entry) => [entry.name, entry] as const))('T-1 shared case: %s', async (_name, entry) => {
+    const cards: FixtureCard[] = entry.live.map((unit, index) => ({
+      index: index + 1,
+      id: unit.cardId,
+      product: `DEMS Case ${index + 1}`,
+      channels: 2,
+      ...(unit.usbId === null ? {} : { usbId: unit.usbId }),
+      ...(unit.usbSerial === null ? {} : { serial: unit.usbSerial }),
+      ...(unit.usbPort === null ? {} : { port: unit.usbPort }),
+    }));
+    const stored: RegisteredAudioInput = { deviceId: 'MIC-01', ...entry.stored, cardDevice: 0, inputNumber: 1, nativeChannels: 2 };
+    const answer = identifyRegisteredCard(await hostOf(cards).enumerator.list(), stored);
+    if (entry.runtime.ok) {
+      expect(answer.ok && [answer.card.cardIndex, answer.renamed]).toEqual([entry.runtime.unit + 1, entry.runtime.renamed]);
+    } else {
+      expect(answer.ok ? null : [answer.refusal, answer.detail ?? null]).toEqual([entry.runtime.refusal, entry.runtime.detail]);
+    }
   });
 });
 
@@ -965,11 +1019,11 @@ describe('row 85d: `admitDevice` - a microphone registered after the build is se
     expect(checking.door.calls.map((call) => [call.command, call.args[0], call.args.includes('dems_1_0')])).toEqual([[GUARD, HELPER, true]]);
   });
 
-  it('the stored identity rules hold for it: a same-model card on ANOTHER port is AUDIO_CARD_CHANGED with nothing started; an admitted id with no stored row is AUDIO_INPUT_NOT_REGISTERED', async () => {
-    const swapped = later([{ ...DUO, port: '0000:00:14.0-7' }, OCTO]);
+  it('the stored identity rules hold for it: a same-model card that states a serial where none was stored is AUDIO_CARD_CHANGED with nothing started; an admitted id with no stored row is AUDIO_INPUT_NOT_REGISTERED', async () => {
+    const swapped = later([{ ...DUO, port: '0000:00:14.0-7', serial: 'SN-NEW-0003' }, OCTO]);
     swapped.adapter.admitDevice(entryOf('MIC-03'));
     const refused = await refusalOf(swapped.adapter.open('MIC-03', target()));
-    expect([refused.code, refused.detail, refused.deviceId]).toEqual(['AUDIO_CARD_CHANGED', 'PORT_DIFFERS', 'MIC-03']);
+    expect([refused.code, refused.detail, refused.deviceId]).toEqual(['AUDIO_CARD_CHANGED', 'SERIAL_DIFFERS', 'MIC-03']);
     expect([swapped.door.calls, swapped.adapter.openSources(), existsSync(swapped.configPath)]).toEqual([[], [], false]);
     expect(await swapped.adapter.enumerate()).toEqual([
       { inputId: 'MIC-02', present: true, errorCode: null },

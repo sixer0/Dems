@@ -8,7 +8,7 @@
  * (`capture_devices`) is NOT written here: it is the registrar's (`service.ts`).
  */
 import type { QueryResultRow } from 'pg';
-import { INSERT_AUDIO_INPUT, READ_AUDIO_INPUT_OF_CARD, READ_REGISTERED_AUDIO_INPUTS, REFRESH_AUDIO_INPUT } from './statements';
+import { INSERT_AUDIO_INPUT, READ_AUDIO_INPUT_OF_CARD, READ_BOUND_AUDIO_INPUTS, READ_REGISTERED_AUDIO_INPUTS, REFRESH_AUDIO_INPUT, REKEY_AUDIO_INPUT } from './statements';
 
 /** A connection that runs one parameterised statement: the pool for a read, a unit of work for a write. */
 export interface Queryable {
@@ -76,13 +76,33 @@ export interface MicrophoneStore {
   /** The second write of a new registration, after the registrar's registry row. */
   insertInput(db: Queryable, input: AudioInputFacts & AudioInputKey): Promise<void>;
   refreshInput(db: Queryable, input: AudioInputFacts): Promise<void>;
+  /**
+   * The live rows of one USB id, in microphone id order (DB-A2 `READ_BOUND_AUDIO_INPUTS`, row 130;
+   * row 108: also a row with neither a serial nor a port): the holders the service holds the
+   * identity rule against (operations 98 and 99, row 131).
+   */
+  boundInputs(db: Queryable, usbId: string): Promise<BoundAudioInput[]>;
+  /** Moves one live row to a new key (DB-A6 `REKEY_AUDIO_INPUT`, row 130): a port move under another kernel key, or a release (row 131). */
+  rekeyInput(db: Queryable, input: AudioInputRekey): Promise<void>;
 }
+
+/** A live input row that holds a card (DB-A2): its microphone, its input and the stored identity. */
+export interface BoundAudioInput {
+  readonly deviceId: string;
+  readonly cardDevice: number;
+  readonly inputNumber: number;
+  readonly usbSerial: string | null;
+  readonly usbPort: string | null;
+}
+
+/** What a re-key writes (DB-A6): the identity of the card, the new key, the operator and the instant. */
+export type AudioInputRekey = Pick<AudioInputFacts, 'deviceId' | 'usbId' | 'usbSerial' | 'usbPort' | 'operatorId' | 'at'> & AudioInputKey;
 
 /** A write that did not change exactly the one row it names. Thrown inside the unit: everything rolls back. */
 export class MicrophoneRowMissing extends Error {
   readonly code = 'CAPTURE_AUDIO_INPUT_ROW_MISSING';
-  readonly statement: 'INSERT_INPUT' | 'REFRESH_INPUT';
-  constructor(statement: 'INSERT_INPUT' | 'REFRESH_INPUT') {
+  readonly statement: 'INSERT_INPUT' | 'REFRESH_INPUT' | 'REKEY_INPUT';
+  constructor(statement: 'INSERT_INPUT' | 'REFRESH_INPUT' | 'REKEY_INPUT') {
     super('a write of the microphone registration did not change exactly one row');
     this.name = 'MicrophoneRowMissing';
     this.statement = statement;
@@ -106,12 +126,12 @@ export function cardIdentityText(value: unknown): string | null {
 }
 
 /**
- * THE CARD IDENTITY VALUES OF AN INPUT ROW, in the order both write statements bind them from
- * `$2` on (task 4 rows 190, 199): the USB id, the USB serial, the USB port path - the columns
- * `usb_id`, `usb_serial`, `usb_port` of `INSERT_AUDIO_INPUT` and `REFRESH_AUDIO_INPUT`
+ * THE CARD IDENTITY VALUES OF AN INPUT ROW, in the order every write statement binds them from
+ * `$2` on (task 4 rows 190, 199; R-FLEX row 130): the USB id, the USB serial, the USB port path - the columns
+ * `usb_id`, `usb_serial`, `usb_port` of `INSERT_AUDIO_INPUT`, `REFRESH_AUDIO_INPUT` and `REKEY_AUDIO_INPUT`
  * (`statements.ts`). No other line of the store binds an identity value.
  */
-export function cardIdentityValuesOf(input: AudioInputFacts): readonly (string | null)[] {
+export function cardIdentityValuesOf(input: Pick<AudioInputFacts, 'usbId' | 'usbSerial' | 'usbPort'>): readonly (string | null)[] {
   return [input.usbId, cardIdentityText(input.usbSerial), cardIdentityText(input.usbPort)];
 }
 
@@ -143,6 +163,14 @@ export function createMicrophoneStore(): MicrophoneStore {
     async refreshInput(db, input) {
       const { rowCount } = await db.query(REFRESH_AUDIO_INPUT, [input.deviceId, ...cardIdentityValuesOf(input), input.nativeChannels, input.sampleBits, input.operatorId, input.at]);
       one(rowCount, 'REFRESH_INPUT');
+    },
+    async boundInputs(db, usbId) {
+      const { rows } = await db.query<{ deviceId: string; cardDevice: number; inputNumber: number; usbSerial: string | null; usbPort: string | null }>(READ_BOUND_AUDIO_INPUTS, [usbId]);
+      return rows.map((row) => ({ deviceId: row.deviceId, cardDevice: Number(row.cardDevice), inputNumber: Number(row.inputNumber), usbSerial: cardIdentityText(row.usbSerial), usbPort: cardIdentityText(row.usbPort) }));
+    },
+    async rekeyInput(db, input) {
+      const { rowCount } = await db.query(REKEY_AUDIO_INPUT, [input.deviceId, ...cardIdentityValuesOf(input), input.cardId, input.cardDevice, input.inputNumber, input.operatorId, input.at]);
+      one(rowCount, 'REKEY_INPUT');
     },
   };
 }

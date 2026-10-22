@@ -64,6 +64,8 @@ const HOST_FACTS: DestinationContext = {
   cameraSubnet: { network: '192.168.50.0', prefixLength: 24 },
   cameraAddresses: [{ address: '192.168.50.1', alias: false }],
   otherInterfaceSubnets: [],
+  // R-FLEX NW-C1 (row 104): every eligible interface of the host - STORED_CAMERA is global.
+  interfaceSubnets: [{ name: 'eth0', address: '192.168.50.1', network: '192.168.50.0', prefixLength: 24 }],
   hostAddresses: ['192.168.50.1'],
 };
 

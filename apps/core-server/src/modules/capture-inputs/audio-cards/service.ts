@@ -32,22 +32,35 @@
  * A REGISTRATION DECIDES NO ROLE (decision C25): making the microphone primary or standby is the
  * selector's (operation 80). `capture_config` is not read and not written here.
  *
- * THE MATCH OF A STORED INPUT TO A LIVE CARD (row 156, AD-07 (4)): an input is found by its exact
- * stored key (card id, device index, input number) and the card behind that key is then held to
- * the identity rule `matchStoredCard` (rows 192, 199): the USB id, then the SERIAL the card states,
- * else the USB PORT PATH. A card of the same product on another port, or with another serial, is
- * NOT the registered card. Anything but the same card is said as CARD_CHANGED, so that no other
- * card is ever taken silently, and (row 199):
- *   - operation 98 lists such a card with NO registered input - it is offered as a new card;
- *   - operation 99 against it answers `200 CARD_CHANGED` with ONE audit entry and does NOT enable
- *     the microphone again (the registrar's re-enable is not called): the stored identity now
- *     names the card the technician registered, said once. The same call again is then a plain
- *     REENABLED. A microphone that was on stays on; one that was off stays off until that second
- *     call;
- *   - a USB card that states neither a serial nor a port path cannot be found again: it is
- *     refused `409 AUDIO_INPUT_NOT_REGISTRABLE` before anything is stored.
- * An input stored BEFORE the two columns existed (a USB id, no serial, no port) is never matched
- * by the USB id alone: `IDENTITY_NOT_STORED`, said as CARD_CHANGED, until it is registered again.
+ * THE MATCH OF A STORED INPUT TO A LIVE CARD (row 156, AD-07 (4); R-FLEX row 131, spec
+ * `01_specs_rflex_audio.md` sections 3, 5, 6): the identity rule `matchStoredCard` - the USB id,
+ * then the SERIAL where the card states one, else ANY unit of the model, on ANY port. The stored
+ * port is information; it is compared only as the tie-break of two units that state one serial.
+ * A card with another USB id or another serial is NOT the registered card: said as CARD_CHANGED
+ * (one audit entry, the microphone not enabled again), never taken silently.
+ *
+ * THE PHYSICAL CARD IS HELD BY ONE MICROPHONE (decision D10 (1), Q96-01 a). The holders of a card
+ * are the LIVE input rows of its USB id (`READ_BOUND_AUDIO_INPUTS`, retired rows never hold) that
+ * the identity rule names this card. Two serial-less units of one model cannot be told apart
+ * (`NOT_TELLABLE`, Q96-03): the stored microphone holds BOTH, so the second unit is not offered.
+ *   - operation 98 answers `boundTo`, the holder, and `registered[]`, the holder's inputs of the
+ *     listed capture device, both by identity over the live rows - not by the key first: a card
+ *     moved under another kernel card id (macOS `usb_<port>`) is still the bound card;
+ *   - operation 99 for an input of a card another microphone holds is refused `409
+ *     AUDIO_CARD_ALREADY_BOUND` with `details.deviceId`, the holder; with `release: true` the
+ *     holder MOVES to the requested input (bundle M, Q96-02-M): its row is re-keyed, two audit
+ *     entries (`RELEASED` for the old input, then `REENABLED`), answer `200 REENABLED` with
+ *     `releasedDeviceId` = the holder;
+ *   - the SAME card at the SAME input under another kernel key is a port move, not a re-bind: the
+ *     holder's row is re-keyed and the answer is `200 REENABLED`, no `release` needed;
+ *   - a move onto a key another row holds rolls back `409 AUDIO_INPUT_NOT_REGISTRABLE`;
+ *   - a card SEVERAL live rows already hold (an older database, spec X-2) is not moved: `409
+ *     AUDIO_CARD_ALREADY_BOUND` naming the first holder, the lowest MIC id, also with `release`;
+ *   - a RETIRED row neither holds a card nor occupies its key (spec D-A3.4);
+ *   - a USB card whose USB id could not be read (the fixed replacement word) would match no card
+ *     again: refused `409 AUDIO_INPUT_NOT_REGISTRABLE` before anything is stored.
+ * Units of work run one at a time (`core/pipeline.ts`, `core/unit-of-work.ts`): the read of the
+ * holders and the write that follows see no other registration in between.
  *
  * WHAT IS NOT HERE (stated, with its row). THE REGISTRY ROW (`capture_devices`) is
  * written by the registrar handed in (`MicrophoneRegistrar`), never by a statement of this module
@@ -77,7 +90,7 @@ import { AuditType, Permission } from '@dems/shared/sim';
 import type { AuditEntry } from '../../../core';
 import type { EngineUnit } from '../../../engine';
 import { ApiFailure } from '../../../plugins/error-envelope';
-import type { MicrophoneStore, Queryable, RegisteredAudioInput, StoredCardIdentity } from './store';
+import type { BoundAudioInput, MicrophoneStore, Queryable, RegisteredAudioInput, StoredCardIdentity } from './store';
 
 // ── The card listing, as this module is HANDED it ──────────────────────────────────────────────
 //
@@ -200,7 +213,10 @@ const invalidState = (reason: CaptureAudioCardReason, text: string): ApiFailure 
 const inProgress = (): ApiFailure => invalidState(CaptureAudioCardReason.AUDIO_CARD_SEARCH_IN_PROGRESS, 'The sound cards are being listed. Try again shortly.');
 const beyondCard = (): ApiFailure => invalidState(CaptureAudioCardReason.AUDIO_INPUT_BEYOND_CARD, 'The sound card has no such input.');
 const notRegistrable = (): ApiFailure => invalidState(CaptureAudioCardReason.AUDIO_INPUT_NOT_REGISTRABLE, 'This sound card does not state its inputs. Its inputs cannot be registered.');
-const notIdentifiable = (): ApiFailure => invalidState(CaptureAudioCardReason.AUDIO_INPUT_NOT_REGISTRABLE, 'This sound card states no serial number and no port. It could not be found again, so its inputs cannot be registered.');
+const notIdentifiable = (): ApiFailure => invalidState(CaptureAudioCardReason.AUDIO_INPUT_NOT_REGISTRABLE, 'This sound card states no USB ID. It could not be found again, so its inputs cannot be registered.');
+const inputTaken = (): ApiFailure => invalidState(CaptureAudioCardReason.AUDIO_INPUT_NOT_REGISTRABLE, 'Another microphone is stored under this input. The microphone of this sound card cannot be moved to it.');
+const alreadyBound = (holder: string): ApiFailure =>
+  new ApiFailure(409, ApiErrorCode.INVALID_STATE, 'Another microphone holds this sound card.', { details: { reason: CaptureAudioCardReason.AUDIO_CARD_ALREADY_BOUND, deviceId: holder } });
 const noCard = (): ApiFailure => new ApiFailure(404, ApiErrorCode.NOT_FOUND, 'No sound card has this ID.');
 const rateLimited = (retryAfterMs: number): ApiFailure =>
   new ApiFailure(429, ApiErrorCode.RATE_LIMITED, 'The sound cards were listed a moment ago. Try again shortly.', {
@@ -282,10 +298,10 @@ async function listed(seams: AudioCardsSeams, enumerator: AudioCardEnumerator, p
 /**
  * One card of the listing as the contract answers it. Every string is the listing's own result.
  *
- * `registered` (row 199): the stored inputs under the card's key WHOSE STORED CARD IS THIS CARD by
- * the identity rule. A card of the same product on another port, or with another serial, sits
- * behind the same key and is listed with no registered input: it is offered as a NEW card, and a
- * registration against it says CARD_CHANGED.
+ * `boundTo` and `registered` (R-FLEX row 131, AU-L1): BY IDENTITY over the live rows of the card's
+ * USB id (`bound`), never by the key first. `boundTo` is the microphone that holds the physical
+ * card (`holdsCard`); `registered` its inputs on this capture device whose stored card IS this card
+ * (`SAME_CARD`). A card that is not USB has nothing but its key: its rows are found by the key.
  *
  * `usbSerial`, `usbPort` (row V3's contract step; the request of rows 199 / 200, served by row 146b's
  * agent): the serial and the port are ANSWERED, so that a console can show WHICH of two cards of
@@ -295,7 +311,22 @@ async function listed(seams: AudioCardsSeams, enumerator: AudioCardEnumerator, p
  * none, a card that is not USB, and a text outside the form are all "none" to a client. Nothing is
  * cut or repaired. They stay out of every log line, error-log entry and audit detail of this file.
  */
-function cardAnswer(card: ListedAudioCard, registered: readonly RegisteredAudioInput[], listing: readonly ListedAudioCard[]): CaptureAudioCard {
+function cardAnswer(card: ListedAudioCard, registered: readonly RegisteredAudioInput[], bound: ReadonlyMap<string, readonly BoundAudioInput[]>, listing: readonly ListedAudioCard[]): CaptureAudioCard {
+  const byNumber = (left: { inputNumber: number }, right: { inputNumber: number }): number => left.inputNumber - right.inputNumber;
+  let inputs: { inputNumber: number; deviceId: string }[];
+  let boundTo: string | null;
+  if (card.usbId === null) {
+    const held = registered.filter((input) => input.cardId === card.cardId && (input.identity === undefined || matchStoredCard(input.identity, card, listing) === StoredCardMatch.SAME_CARD));
+    inputs = held.filter((input) => input.cardDevice === card.deviceIndex).map((input) => ({ inputNumber: input.inputNumber, deviceId: input.deviceId }));
+    boundTo = held[0]?.deviceId ?? null;
+  } else {
+    const usbId = card.usbId;
+    const holding = (bound.get(usbId) ?? []).filter((row) => holdsCard(boundIdentityOf(usbId, row), card, listing));
+    inputs = holding
+      .filter((row) => row.cardDevice === card.deviceIndex && matchStoredCard(boundIdentityOf(usbId, row), card, listing) === StoredCardMatch.SAME_CARD)
+      .map((row) => ({ inputNumber: row.inputNumber, deviceId: row.deviceId }));
+    boundTo = holding[0]?.deviceId ?? null;
+  }
   return {
     cardId: card.cardId,
     deviceIndex: card.deviceIndex,
@@ -305,11 +336,8 @@ function cardAnswer(card: ListedAudioCard, registered: readonly RegisteredAudioI
     product: card.product,
     channelCount: card.channelCount,
     sampleBits: [...card.sampleBits],
-    registered: registered
-      .filter((input) => input.cardId === card.cardId && input.cardDevice === card.deviceIndex)
-      .filter((input) => input.identity === undefined || matchStoredCard(input.identity, card, listing) === StoredCardMatch.SAME_CARD)
-      .map((input) => ({ inputNumber: input.inputNumber, deviceId: input.deviceId }))
-      .sort((left, right) => left.inputNumber - right.inputNumber),
+    registered: inputs.sort(byNumber),
+    boundTo,
   };
 }
 
@@ -326,7 +354,14 @@ export async function searchAudioCards(seams: AudioCardsSeams, caller: AudioCard
   const searchedAt = host.now();
   const listing = await listed(seams, enumerator, 'SEARCH');
   const registered = await host.read(`${SOURCE}.registeredInputs`, (db) => seams.store.registeredInputs(db));
-  const cards = listing.cards.map((card) => cardAnswer(card, registered, listing.cards));
+  // The live holders of every USB id of the listing (DB-A2), one read per USB id.
+  const usbIds = [...new Set(listing.cards.flatMap((card) => (card.usbId === null ? [] : [card.usbId])))];
+  const bound = await host.read(`${SOURCE}.boundInputs`, async (db) => {
+    const rows = new Map<string, readonly BoundAudioInput[]>();
+    for (const usbId of usbIds) rows.set(usbId, await seams.store.boundInputs(db, usbId));
+    return rows;
+  });
+  const cards = listing.cards.map((card) => cardAnswer(card, registered, bound, listing.cards));
   const registeredCount = cards.reduce((sum, card) => sum + card.registered.length, 0);
   const searchId = seams.nextSearchId(searchedAt);
   await host.unit(SEARCH_UNIT_LABEL, async (unit) => {
@@ -366,21 +401,18 @@ const sampleBitsOf = (card: ListedAudioCard): 16 | 24 | 32 => card.sampleBits.re
 // ── The identity of the card behind a stored input (AD-07 (4); task 4 row 156) ─────────────────
 
 /**
- * What the Core can say of the live card behind the key of a stored input. Only `SAME_CARD` is a
- * match; every other answer is SAID (`CARD_CHANGED`, one audit entry) and never taken silently.
+ * What the Core can say of a live card held against a stored input. Only `SAME_CARD` is a match;
+ * every other answer is SAID (`CARD_CHANGED`, one audit entry) and never taken silently. R-FLEX
+ * row 131 removed `PORT_DIFFERS` and `IDENTITY_NOT_STORED` (register RM-A2, RM-A4): a port is no lock.
  */
 export const StoredCardMatch = {
-  /** The USB id is the stored one, and the stored serial is the live one - or, with no serial on either side, the stored port path is the live one. */
+  /** The USB id is the stored one, and the stored serial is the live one - or, with no serial stored, the live card is the one serial-less unit of the model, on any port. */
   SAME_CARD: 'SAME_CARD',
   /** Another USB id behind the key: another product took the place. */
   USB_ID_DIFFERS: 'USB_ID_DIFFERS',
   /** The serial is not the stored one: another serial, a serial where none was stored, or none where one was stored. Another unit of the product. */
   SERIAL_DIFFERS: 'SERIAL_DIFFERS',
-  /** No serial on either side, and the stored USB id sits on ANOTHER port - or the live card states no port to hold the stored one against. */
-  PORT_DIFFERS: 'PORT_DIFFERS',
-  /** The stored row of a USB card holds neither a serial nor a port path (written before the columns existed): the USB id alone identifies no card. */
-  IDENTITY_NOT_STORED: 'IDENTITY_NOT_STORED',
-  /** Two live cards of the USB id state the stored serial, and the port does not say which one was registered. */
+  /** Two live cards of the USB id state the stored serial and the stored port does not say which - or, with no serial stored, two serial-less units of the model are listed (AU-R3, Q96-03). */
   NOT_TELLABLE: 'NOT_TELLABLE',
 } as const;
 export type StoredCardMatch = (typeof StoredCardMatch)[keyof typeof StoredCardMatch];
@@ -395,40 +427,36 @@ function answeredIdentityOf(value: string | null | undefined, form: RegExp): str
 }
 
 /**
- * THE IDENTITY RULE (AD-07 (4); task 4 rows 156, 192, 199). A stored input is matched to a live
- * card by its USB id, THEN BY THE SERIAL the card states, ELSE BY ITS USB PORT PATH. Never by the
- * product text, and never by the card id or the USB id alone: the kernel derives the card id from
- * the product, and every unit of a product carries the same USB id - input-av recorded two
- * microphones from a sound card that had been swapped for another, without a word.
+ * THE IDENTITY RULE (AD-07 (4); task 4 rows 156, 192, 199; R-FLEX rows 107, 131 - spec
+ * `01_specs_rflex_audio.md` section 3, the shared case table `test/support/stored-card-identity-cases.ts`).
+ * A stored input is matched to a live card by its USB id, THEN BY THE SERIAL where the card states
+ * one, ELSE BY THE MODEL: any serial-less unit of the USB id, on any port. Never by the product
+ * text or the card id: the kernel derives the card id from the product (and on macOS from the port).
  *
  *   USB id differs                                        USB_ID_DIFFERS
  *   no USB id on either side (not a USB card)             SAME_CARD: the key is all such a card has
- *   stored: no serial AND no port (an older row)          IDENTITY_NOT_STORED
- *   a serial stored, the live card states the same        SAME_CARD, whatever its port (the card was
- *                                                         moved to another socket) - unless ANOTHER
- *                                                         live card of the USB id states that serial
- *                                                         too (cheap cards share one): then the stored
- *                                                         port must be the live one, else NOT_TELLABLE
+ *   a serial stored, the live card states the same        SAME_CARD, whatever its port - unless
+ *                                                         ANOTHER live card of the USB id states that
+ *                                                         serial too: then the stored port must be the
+ *                                                         live one (a tie-break), else NOT_TELLABLE
  *   a serial stored, the live card states another, or none  SERIAL_DIFFERS
- *   no serial stored, the live card states one            SERIAL_DIFFERS (the card that was registered
- *                                                         stated none: this is not known to be it)
- *   no serial on either side, the ports are equal         SAME_CARD
- *   no serial on either side, the ports differ, or the
- *   live card states no port                              PORT_DIFFERS
+ *   no serial stored, the live card states one            SERIAL_DIFFERS
+ *   no serial stored (with or without a port), the live
+ *   card states none                                      SAME_CARD, on any port - unless ANOTHER card
+ *                                                         of the USB id states no serial either:
+ *                                                         NOT_TELLABLE (AU-R3, Q96-03)
  *
- * WHAT THE RULE CANNOT SEE, stated: two units of one product that state no serial, exchanged ON
- * THE SAME SOCKET, are one identity (USB id and port path are equal). Nothing a host offers tells
- * them apart.
+ * WHAT THE RULE CANNOT SEE, stated: a serial-less unit replaced by another unit of the model while
+ * the first is away is the same identity. Nothing a host offers tells them apart.
  */
 export function matchStoredCard(stored: StoredCardIdentity, card: ListedAudioCard, listing: readonly ListedAudioCard[]): StoredCardMatch {
   if (stored.usbId !== card.usbId) return StoredCardMatch.USB_ID_DIFFERS;
   if (card.usbId === null) return StoredCardMatch.SAME_CARD;
   const storedSerial = identityTextOf(stored.usbSerial);
-  const storedPort = identityTextOf(stored.usbPort);
   const liveSerial = identityTextOf(card.usbSerial);
-  const livePort = identityTextOf(card.usbPort);
-  if (storedSerial === null && storedPort === null) return StoredCardMatch.IDENTITY_NOT_STORED;
   if (storedSerial !== null) {
+    const storedPort = identityTextOf(stored.usbPort);
+    const livePort = identityTextOf(card.usbPort);
     if (liveSerial !== storedSerial) return StoredCardMatch.SERIAL_DIFFERS;
     // Two capture devices of ONE card are not two cards: only another card id counts.
     const shared = listing.some((other) => other.cardId !== card.cardId && other.usbId === card.usbId && identityTextOf(other.usbSerial) === storedSerial);
@@ -436,14 +464,37 @@ export function matchStoredCard(stored: StoredCardIdentity, card: ListedAudioCar
     return storedPort !== null && storedPort === livePort ? StoredCardMatch.SAME_CARD : StoredCardMatch.NOT_TELLABLE;
   }
   if (liveSerial !== null) return StoredCardMatch.SERIAL_DIFFERS;
-  return storedPort === livePort ? StoredCardMatch.SAME_CARD : StoredCardMatch.PORT_DIFFERS;
+  // Any serial-less unit of the model, on any port; a second one on another card id cannot be told apart.
+  const twin = listing.some((other) => other.cardId !== card.cardId && other.usbId === card.usbId && identityTextOf(other.usbSerial) === null);
+  return twin ? StoredCardMatch.NOT_TELLABLE : StoredCardMatch.SAME_CARD;
 }
 
 /**
- * True for a live USB card a later listing could NOT be held against: it states neither a serial
- * nor a port path. Such a card is not registered (row 199): its row would match no card again.
+ * True when the microphone of `stored` HOLDS the live `card` (R-FLEX row 131; Q96-01 a, Q96-03): the
+ * card is its card (`SAME_CARD`), or the rule cannot tell (`NOT_TELLABLE`) and no OTHER card of the
+ * listing is its card. Two serial-less units of one model are both held; of two units that share a
+ * serial, the one on the stored port is held and the other is free.
  */
-const unidentifiable = (card: ListedAudioCard): boolean => card.usbId !== null && identityTextOf(card.usbSerial) === null && identityTextOf(card.usbPort) === null;
+function holdsCard(stored: StoredCardIdentity, card: ListedAudioCard, listing: readonly ListedAudioCard[]): boolean {
+  const match = matchStoredCard(stored, card, listing);
+  if (match === StoredCardMatch.SAME_CARD) return true;
+  if (match !== StoredCardMatch.NOT_TELLABLE) return false;
+  return !listing.some((other) => other.cardId !== card.cardId && matchStoredCard(stored, other, listing) === StoredCardMatch.SAME_CARD);
+}
+
+/** The stored identity of a live row of DB-A2: the USB id it was read by, its serial and its port. */
+const boundIdentityOf = (usbId: string, row: BoundAudioInput): StoredCardIdentity => ({ usbId, usbSerial: row.usbSerial, usbPort: row.usbPort });
+
+/**
+ * True for a live USB card a later listing could NOT be held against (RM-A5, R-FLEX row 131): its
+ * USB id could not be read and was replaced by the listing's fixed word (`CARD_USB_ID_REPLACEMENT`
+ * of `capture/adapters/audio/card-listing.ts`, not imported: static rule A-5). Such a row would
+ * match no card at runtime (`CARD_UNIDENTIFIED`). A serial-less card with no port IS identified: by its model.
+ */
+const unidentifiable = (card: ListedAudioCard): boolean => card.usbId === '0000:0000';
+
+/** The changes operation 99 ANSWERS (`RELEASED` is an audit word only). */
+type AnsweredChange = CaptureAudioInputRegistration['change'];
 
 export interface AudioInputRegistrationOutcome {
   /** True for a new microphone (`201`); false when the input already had one (`200`). */
@@ -455,6 +506,7 @@ const MESSAGE_OF_CHANGE: Readonly<Record<CaptureAudioInputChange, (deviceId: str
   REGISTERED: (deviceId: string) => `Microphone ${deviceId} registered`,
   REENABLED: (deviceId: string) => `Microphone ${deviceId} enabled again`,
   CARD_CHANGED: (deviceId: string) => `Microphone ${deviceId} is on another sound card`,
+  RELEASED: (deviceId: string) => `Microphone ${deviceId} released from its old input`,
 });
 
 export async function registerAudioInput(seams: AudioCardsSeams, caller: AudioCardsCaller, body: CaptureAudioInputRegisterRequest): Promise<AudioInputRegistrationOutcome> {
@@ -475,60 +527,95 @@ export async function registerAudioInput(seams: AudioCardsSeams, caller: AudioCa
   if (!Number.isInteger(body.inputNumber) || body.inputNumber < 1 || body.inputNumber > card.channelCount) throw beyondCard();
   // A count the listing guessed is never stored (row 64, decision DD-6).
   if (card.factsSource === ASSUMED_CARD_FACTS) throw notRegistrable();
-  // A USB card with neither a serial nor a port path could be held against no later listing (row 199): nothing is stored for it.
+  // A USB card whose USB id could not be read could be held against no later listing (RM-A5): nothing is stored for it.
   if (unidentifiable(card)) throw notIdentifiable();
 
   const key = { cardId: card.cardId, cardDevice: card.deviceIndex, inputNumber: body.inputNumber };
   const sampleBits = sampleBitsOf(card);
 
-  // ONE UNIT: the registry row, the input row, the audit row. Anything thrown rolls all of it back.
-  const outcome = await host.unit(REGISTER_UNIT_LABEL, async (unit) => {
+  // ONE UNIT: the registry row, the input row, the audit rows. Anything thrown rolls all of it back.
+  const outcome = await host.unit(REGISTER_UNIT_LABEL, async (unit): Promise<{ deviceId: string; change: AnsweredChange; match: StoredCardMatch | null; releasedDeviceId: string | null }> => {
     if (unit.sessionOpen()) throw locked();
     const at = host.now();
-    const existing = await store.inputOf(unit.db, key);
-    let deviceId: string;
-    let change: CaptureAudioInputChange;
-    let match: StoredCardMatch | null = null;
     // THE IDENTITY THAT IS STORED: the serial and the port path of the Core's own listing (row 199).
     const usbSerial = identityTextOf(card.usbSerial);
     const usbPort = identityTextOf(card.usbPort);
-    if (existing === null) {
-      deviceId = await registrar.register(unit, { model: card.product, at });
-      await store.insertInput(unit.db, { ...key, deviceId, usbId: card.usbId, usbSerial, usbPort, nativeChannels: card.channelCount, sampleBits, operatorId: caller.operatorId, at });
-      change = CaptureAudioInputChange.REGISTERED;
-    } else {
-      // The input has its microphone: never duplicated. The card behind the key is held to the
-      // identity rule (AD-07 (4)).
-      deviceId = existing.deviceId;
-      match = matchStoredCard(existing, card, listing.cards);
-      change = match === StoredCardMatch.SAME_CARD ? CaptureAudioInputChange.REENABLED : CaptureAudioInputChange.CARD_CHANGED;
-      // THE SAME CARD: the microphone is enabled again. ANOTHER CARD - another USB id, the same
-      // product on another port or with another serial, a row with no stored identity - is SAID
-      // and the microphone is NOT enabled again by this call (row 199: 0 re-enabled rows). The
-      // stored identity then names the card the technician registered here, so the change is said
-      // once and the same call again is a plain re-enable.
-      if (match === StoredCardMatch.SAME_CARD) await registrar.reenable(unit, { deviceId, model: card.product, at });
-      await store.refreshInput(unit.db, { deviceId, usbId: card.usbId, usbSerial, usbPort, nativeChannels: card.channelCount, sampleBits, operatorId: caller.operatorId, at });
-    }
-    await unit.audit({
-      type: AuditType.CAPTURE_AUDIO_INPUT_CHANGED,
-      message: MESSAGE_OF_CHANGE[change](deviceId),
-      actorId: caller.operatorId,
-      deviceId,
-      details: captureAudioInputChangedDetails({ deviceId, change, inputNumber: body.inputNumber, channelCount: card.channelCount, permission: Permission.CAPTURE_CONFIG }),
-    });
+    const facts = { usbId: card.usbId, usbSerial, usbPort, nativeChannels: card.channelCount, sampleBits, operatorId: caller.operatorId, at };
+    const said = (deviceId: string, change: CaptureAudioInputChange, inputNumber: number): Promise<void> =>
+      unit.audit({
+        type: AuditType.CAPTURE_AUDIO_INPUT_CHANGED,
+        message: MESSAGE_OF_CHANGE[change](deviceId),
+        actorId: caller.operatorId,
+        deviceId,
+        details: captureAudioInputChangedDetails({ deviceId, change, inputNumber, channelCount: card.channelCount, permission: Permission.CAPTURE_CONFIG }),
+      });
     // The adapter registry of the running operation is told when the unit COMMITTED, never for one that rolled back.
-    unit.afterCommit(() => seams.admit({ id: deviceId, kind: 'MIC', adapterKind: 'USB_AUDIO', model: card.product }));
-    return { deviceId, change, match };
+    const admitAfterCommit = (deviceId: string): void => unit.afterCommit(() => seams.admit({ id: deviceId, kind: 'MIC', adapterKind: 'USB_AUDIO', model: card.product }));
+
+    // Steps 1-6 of spec 5.1 (R-FLEX rows 131, 108). Step 6, a session open, was refused above.
+    const existing = await store.inputOf(unit.db, key);
+    // Step 1: THE HOLDERS OF THE PHYSICAL CARD (DB-A2, live rows only, in MIC id order; Q96-01 a).
+    // `everyHolder` counts the row under the key too (X-2); `holders` are the OTHER microphones.
+    const usbId = card.usbId;
+    const everyHolder = usbId === null ? [] : (await store.boundInputs(unit.db, usbId)).filter((row) => holdsCard(boundIdentityOf(usbId, row), card, listing.cards));
+    const holders = everyHolder.filter((row) => row.deviceId !== existing?.deviceId);
+    const holder = holders[0];
+
+    if (holder === undefined || usbId === null) {
+      let deviceId: string;
+      let change: AnsweredChange;
+      let match: StoredCardMatch | null = null;
+      if (existing === null) {
+        deviceId = await registrar.register(unit, { model: card.product, at });
+        await store.insertInput(unit.db, { ...key, deviceId, ...facts });
+        change = CaptureAudioInputChange.REGISTERED;
+      } else {
+        // The input has its microphone: never duplicated. The card behind the key is held to the
+        // identity rule (AD-07 (4)). THE SAME CARD, on any port: enabled again. ANOTHER CARD (another
+        // USB id, another serial, a twin that cannot be told) is SAID and NOT enabled again by this
+        // call; the stored identity then names this card, so the same call again is a plain re-enable.
+        deviceId = existing.deviceId;
+        match = matchStoredCard(existing, card, listing.cards);
+        change = match === StoredCardMatch.SAME_CARD ? CaptureAudioInputChange.REENABLED : CaptureAudioInputChange.CARD_CHANGED;
+        if (match === StoredCardMatch.SAME_CARD) await registrar.reenable(unit, { deviceId, model: card.product, at });
+        await store.refreshInput(unit.db, { deviceId, ...facts });
+      }
+      await said(deviceId, change, body.inputNumber);
+      admitAfterCommit(deviceId);
+      return { deviceId, change, match, releasedDeviceId: null };
+    }
+
+    // ANOTHER MICROPHONE HOLDS THE CARD. The same card at the same input under another kernel key is
+    // a PORT MOVE (spec 6.1, D-A4.2): the holder's row follows, no release needed. Anything else is a
+    // new binding of a held card: refused, unless the request releases the holder (bundle M, D-A4.4).
+    const match = matchStoredCard(boundIdentityOf(usbId, holder), card, listing.cards);
+    // Step 2: the same card at the same input under another kernel key (RF-A4).
+    const portMove = match === StoredCardMatch.SAME_CARD && holder.cardDevice === key.cardDevice && holder.inputNumber === key.inputNumber;
+    // Step 3: another input, no `release` (AU-R1).
+    if (!portMove && body.release !== true) throw alreadyBound(holder.deviceId);
+    // X-2: SEVERAL microphones already hold the card (an older database). Nothing is moved, so that
+    // no second binding is left behind; refused naming the FIRST holder, the lowest MIC id (DB-A2
+    // order, the rule of operation 98 `boundTo`).
+    if (everyHolder.length > 1) throw alreadyBound(everyHolder[0]?.deviceId ?? holder.deviceId);
+    // Step 5: the holder moves onto the key, so the key must be free (R-3, D-A4.2/D-A4.4).
+    if (existing !== null) throw inputTaken();
+    // Step 4 (or step 2): RELEASED for the old input (a release only), REKEY, REFRESH, REENABLED (RF-A3).
+    if (!portMove) await said(holder.deviceId, CaptureAudioInputChange.RELEASED, holder.inputNumber);
+    await store.rekeyInput(unit.db, { deviceId: holder.deviceId, usbId, usbSerial, usbPort, ...key, operatorId: caller.operatorId, at });
+    await store.refreshInput(unit.db, { deviceId: holder.deviceId, ...facts });
+    await registrar.reenable(unit, { deviceId: holder.deviceId, model: card.product, at });
+    await said(holder.deviceId, CaptureAudioInputChange.REENABLED, body.inputNumber);
+    admitAfterCommit(holder.deviceId);
+    return { deviceId: holder.deviceId, change: CaptureAudioInputChange.REENABLED, match, releasedDeviceId: portMove ? null : holder.deviceId };
   });
 
   // Codes, ids and counts: the match is a code of the identity rule, never a serial, a port or a USB id.
   host.note(
-    { code: AuditType.CAPTURE_AUDIO_INPUT_CHANGED, source: SOURCE, deviceId: outcome.deviceId, change: outcome.change, ...(outcome.match === null ? {} : { match: outcome.match }), inputNumber: body.inputNumber, channelCount: card.channelCount },
+    { code: AuditType.CAPTURE_AUDIO_INPUT_CHANGED, source: SOURCE, deviceId: outcome.deviceId, change: outcome.change, ...(outcome.match === null ? {} : { match: outcome.match }), ...(outcome.releasedDeviceId === null ? {} : { releasedDeviceId: outcome.releasedDeviceId }), inputNumber: body.inputNumber, channelCount: card.channelCount },
     'sound-card input registered',
   );
   return {
     created: outcome.change === CaptureAudioInputChange.REGISTERED,
-    registration: { deviceId: outcome.deviceId, change: outcome.change, inputNumber: body.inputNumber, channelCount: card.channelCount },
+    registration: { deviceId: outcome.deviceId, change: outcome.change, inputNumber: body.inputNumber, channelCount: card.channelCount, releasedDeviceId: outcome.releasedDeviceId },
   };
 }

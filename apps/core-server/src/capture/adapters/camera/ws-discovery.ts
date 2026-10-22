@@ -184,10 +184,11 @@ export function createWsDiscovery(options: WsDiscoveryOptions): WsDiscovery {
           rejectSearch(new CaptureAdapterError(CaptureAdapterRefusal.ABORTED));
           return;
         }
-        const selection = selectInterfaces(readInterfaces());
-        const interfaces: readonly ProbedInterface[] = selection.probed;
         // Row 96: the rule's answer for a typed address, or none. The host must hold the source the rule named on a probed interface.
         const unicast = search.unicast ?? null;
+        // R-FLEX 5.2: the typed probe's source interface is probed FIRST, the bound stays four.
+        const selection = selectInterfaces(readInterfaces(), unicast?.sourceAddress);
+        const interfaces: readonly ProbedInterface[] = selection.probed;
         const sourceHeld = unicast === null || fixture !== null || interfaces.some((probed) => probed.address === unicast.sourceAddress);
         if (interfaces.length === 0 || !sourceHeld) {
           rejectSearch(new DiscoveryNotRunError(DiscoveryNotRun.NO_ELIGIBLE_INTERFACE));

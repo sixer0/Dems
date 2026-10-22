@@ -219,6 +219,9 @@ refuse 20-user-dirs.sh --install-dir '/opt/`touch planted`'
 refuse 30-runtime-media.sh --ffmpeg-prefix /opt/dems/
 refuse 40-network-firewall.sh --camera-interface 'eth0;reboot'
 refuse 40-network-firewall.sh --camera-interface lo
+refuse 40-network-firewall.sh --search-interface 'wlan0;reboot'
+refuse 40-network-firewall.sh --search-interface lo
+refuse 40-network-firewall.sh --search-interface
 refuse 40-network-firewall.sh --camera-address 8.8.8.8
 refuse 40-network-firewall.sh --camera-address 10.0.0.0
 refuse 40-network-firewall.sh --camera-address 10.0.0.1/24
@@ -226,13 +229,17 @@ refuse 40-network-firewall.sh --camera-address 192.168.1.999
 refuse 10-preflight.sh --no-such-option
 expect 'no file was planted by a refused value' empty_dir "$RUN/cwd"
 
-run_script values 40-network-firewall.sh --service-user dems-core --camera-interface enp3s0 --camera-address 192.168.50.1
+run_script values 40-network-firewall.sh --service-user dems-core --camera-interface enp3s0 --camera-address 192.168.50.1 --search-interface wlp3s0
 expect 'given values: the script exits 0 in print-only mode' [ "$(code_of values)" = 0 ]
 expect 'given values replace the placeholders in the rule file' grep -q 'meta skuid != "dems-core" counter' "$RUN/out/values.txt"
 expect 'given values replace the placeholders in the address file' grep -q '        - 192.168.50.1/24' "$RUN/out/values.txt"
 expect 'given values reach the command line of a step' \
   grep -q 'would-run: ufw allow in on enp3s0 proto udp from any port 3702' "$RUN/out/values.txt"
-if grep -qE '<(service-user|camera-interface|camera-address)>' "$RUN/out/values.txt"; then
+expect 'the given Wi-Fi port reaches the second search-answer rule (D33 M-6)' \
+  grep -q 'would-run: ufw allow in on wlp3s0 proto udp from any port 3702' "$RUN/out/values.txt"
+expect 'two firewall rules are printed, the search-answer rules on the camera port and the Wi-Fi port (D33 M-6)' \
+  [ "$(grep -c 'would-run: ufw allow' "$RUN/out/values.txt")" = 2 ]
+if grep -qE '<(service-user|camera-interface|camera-address|search-interface)>' "$RUN/out/values.txt"; then
   bad 'no placeholder of a given value is left'
 else
   ok 'no placeholder of a given value is left'

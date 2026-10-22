@@ -69,10 +69,11 @@ let technicianOnTablet: Headers;
 
 /** The host of this file: the office network on `eth0`, the camera port `eth1`, a loopback. The double below adds to `eth1`. */
 let onPort: string | null = null;
+// R-FLEX row 136: a non-zero `mac` on every non-loopback address - row 105 makes an address without one ineligible as a source (RG-13).
 const hostTable = (): readonly HostInterface[] => [
   { name: 'lo', internal: true, addresses: [{ address: '127.0.0.1', prefixLength: 8 }] },
-  { name: 'eth0', internal: false, addresses: [{ address: '10.20.0.15', prefixLength: 16 }] },
-  { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24 }, ...(onPort === null ? [] : [{ address: onPort, prefixLength: 24 }])] },
+  { name: 'eth0', internal: false, addresses: [{ address: '10.20.0.15', prefixLength: 16, mac: '02:00:00:00:00:e0' }] },
+  { name: 'eth1', internal: false, addresses: [{ address: '192.168.50.1', prefixLength: 24, mac: '02:00:00:00:00:e1' }, ...(onPort === null ? [] : [{ address: onPort, prefixLength: 24, mac: '02:00:00:00:00:e1' }])] },
 ];
 let calls: string[] = [];
 let addAnswer: FactoryScanAliasOutcome = { refusal: null, effect: 'DONE' };

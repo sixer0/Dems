@@ -17,8 +17,9 @@ import type { AuditEntry } from '../../../../core';
 import { ApiFailure } from '../../../../plugins/error-envelope';
 import { createAudioCardSearchIds } from '../index';
 import type { EngineUnit } from '../../../../engine';
+import { STORED_CARD_IDENTITY_CASES } from '../../../../../test/support/stored-card-identity-cases';
 import { createListingGate, matchStoredCard, registerAudioInput, searchAudioCards, type AudioCardsCaller, type AudioCardsSeams, type MicrophoneRegistrar, type RegisteredMicrophone } from '../service';
-import { INSERT_AUDIO_INPUT, READ_AUDIO_INPUT_OF_CARD, READ_REGISTERED_AUDIO_INPUTS, REFRESH_AUDIO_INPUT } from '../statements';
+import { INSERT_AUDIO_INPUT, READ_AUDIO_INPUT_OF_CARD, READ_BOUND_AUDIO_INPUTS, READ_REGISTERED_AUDIO_INPUTS, REFRESH_AUDIO_INPUT, REKEY_AUDIO_INPUT } from '../statements';
 import { cardIdentityText, cardIdentityValuesOf, createMicrophoneStore, type MicrophoneStore } from '../store';
 import {
   DUO,
@@ -30,7 +31,11 @@ import {
   INTERFACE_WITH_SERIAL,
   INTERFACE_WITH_SERIAL_MOVED,
   INTERFACE_WITHOUT_PORT,
+  INTERFACE_MOVED_AND_RENAMED,
+  INTERFACE_UNREAD_USB_ID,
   OTHER_SERIAL,
+  SIX_MOVED_CARD_ID,
+  UNREAD_USB_ID,
   SIX_SERIAL,
   TWO_SHARING_A_SERIAL,
   TWO_SHARING_A_SERIAL_SWAPPED,
@@ -70,6 +75,8 @@ interface StoredInput {
   sampleBits: number;
   operatorId: string;
   at: number;
+  /** `capture_audio_inputs.retired_at`: set, the row is read by no statement of the module (R-FLEX row 108, D-A3.4). */
+  retiredAt?: number;
 }
 
 interface Rig {
@@ -132,14 +139,16 @@ function rig(texts: HostTexts, options: { readonly storesIdentity?: boolean } = 
     failing = null;
     throw Object.assign(new Error(`row070: a failure injected in ${member}`), { code: 'ROW070_INJECTED' });
   };
+  /** The live rows: every read of the module filters `retired_at IS NULL` (R-FLEX row 108, D-A3.4). */
+  const live = (): StoredInput[] => inputs.filter((input) => input.retiredAt === undefined);
   const store: MicrophoneStore = {
     async registeredInputs() {
       trip('registeredInputs');
-      return inputs.map((input) => ({ deviceId: input.deviceId, cardId: input.cardId, cardDevice: input.cardDevice, inputNumber: input.inputNumber, identity: identityOf(input) }));
+      return live().map((input) => ({ deviceId: input.deviceId, cardId: input.cardId, cardDevice: input.cardDevice, inputNumber: input.inputNumber, identity: identityOf(input) }));
     },
     async inputOf(_db, key) {
       trip('inputOf');
-      const found = inputs.find((input) => input.cardId === key.cardId && input.cardDevice === key.cardDevice && input.inputNumber === key.inputNumber);
+      const found = live().find((input) => input.cardId === key.cardId && input.cardDevice === key.cardDevice && input.inputNumber === key.inputNumber);
       return found === undefined ? null : { deviceId: found.deviceId, ...identityOf(found), enabled: devices.get(found.deviceId)?.enabled === true };
     },
     async insertInput(_db, input) {
@@ -153,6 +162,22 @@ function rig(texts: HostTexts, options: { readonly storesIdentity?: boolean } = 
       const held = inputs.find((entry) => entry.deviceId === input.deviceId);
       if (held === undefined) throw new Error('row070: no such input');
       Object.assign(held, { usbId: input.usbId, nativeChannels: input.nativeChannels, sampleBits: input.sampleBits, operatorId: input.operatorId, at: input.at });
+      identities.set(input.deviceId, { usbSerial: input.usbSerial ?? null, usbPort: input.usbPort ?? null });
+    },
+    // R-FLEX row 131: DB-A2 and DB-A6 over the same map. Row 108 (D24): every LIVE row of the USB id, also one with neither
+    // a serial nor a port, in MIC id order - as the statement.
+    async boundInputs(_db, usbId) {
+      trip('boundInputs');
+      return live()
+        .filter((input) => input.usbId === usbId)
+        .map((input) => ({ deviceId: input.deviceId, cardDevice: input.cardDevice, inputNumber: input.inputNumber, usbSerial: identityOf(input).usbSerial, usbPort: identityOf(input).usbPort }))
+        .sort((left, right) => left.deviceId.localeCompare(right.deviceId));
+    },
+    async rekeyInput(_db, input) {
+      trip('rekeyInput');
+      const held = inputs.find((entry) => entry.deviceId === input.deviceId);
+      if (held === undefined) throw new Error('row131: no such input');
+      Object.assign(held, { usbId: input.usbId, cardId: input.cardId, cardDevice: input.cardDevice, inputNumber: input.inputNumber, operatorId: input.operatorId, at: input.at });
       identities.set(input.deviceId, { usbSerial: input.usbSerial ?? null, usbPort: input.usbPort ?? null });
     },
   };
@@ -264,8 +289,8 @@ describe('operation 98: the listing through the injected enumerator', () => {
       truncated: false,
       cards: [
         // Row V3's contract members (the request of rows 199 / 200): the port each card sits on; neither states a serial.
-        { cardId: DUO.cardId, deviceIndex: 0, usbId: DUO.usbId, usbSerial: null, usbPort: DUO_PORT, product: DUO.product, channelCount: 2, sampleBits: [24], registered: [] },
-        { cardId: SIX.cardId, deviceIndex: 0, usbId: SIX.usbId, usbSerial: null, usbPort: SIX_PORT, product: SIX.product, channelCount: 6, sampleBits: [24], registered: [] },
+        { cardId: DUO.cardId, deviceIndex: 0, usbId: DUO.usbId, usbSerial: null, usbPort: DUO_PORT, product: DUO.product, channelCount: 2, sampleBits: [24], registered: [], boundTo: null },
+        { cardId: SIX.cardId, deviceIndex: 0, usbId: SIX.usbId, usbSerial: null, usbPort: SIX_PORT, product: SIX.product, channelCount: 6, sampleBits: [24], registered: [], boundTo: null },
       ],
     });
     expect(usbMicrophones(r.devices)).toEqual([]);
@@ -344,7 +369,7 @@ describe('operation 99: the registration unit', () => {
   it('a multi-input interface: input 4 becomes the next free MIC-nn with the facts of the Core\'s own listing; registered twice it is ONE device, re-enabled', async () => {
     const r = rig(ONE_INTERFACE);
     const first = await registerAudioInput(r.seams, CALLER, { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 4 });
-    expect(first).toEqual({ created: true, registration: { deviceId: 'MIC-03', change: 'REGISTERED', inputNumber: 4, channelCount: 6 } });
+    expect(first).toEqual({ created: true, registration: { deviceId: 'MIC-03', change: 'REGISTERED', inputNumber: 4, channelCount: 6, releasedDeviceId: null } });
     expect(CaptureAudioInputRegistrationSchema.safeParse(first.registration).success).toBe(true);
     expect(r.devices.get('MIC-03')).toEqual({ model: SIX.product, enabled: true, adapterKind: 'USB_AUDIO', lastSeenAt: START });
     expect(r.inputs).toEqual([{ deviceId: 'MIC-03', usbId: SIX.usbId, cardId: SIX.cardId, cardDevice: 0, inputNumber: 4, nativeChannels: 6, sampleBits: 24, operatorId: CALLER.operatorId, at: START }]);
@@ -354,7 +379,7 @@ describe('operation 99: the registration unit', () => {
     r.devices.set('MIC-03', { ...r.devices.get('MIC-03')!, enabled: false });
     r.advance(1_000);
     const second = await registerAudioInput(r.seams, CALLER, { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 4 });
-    expect(second).toEqual({ created: false, registration: { deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 4, channelCount: 6 } });
+    expect(second).toEqual({ created: false, registration: { deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 4, channelCount: 6, releasedDeviceId: null } });
     expect(usbMicrophones(r.devices)).toEqual(['MIC-03']);
     expect(r.inputs).toHaveLength(1);
     expect(r.devices.get('MIC-03')?.enabled).toBe(true);
@@ -369,21 +394,54 @@ describe('operation 99: the registration unit', () => {
     // Operation 98 now names the input as registered, and counts it.
     r.advance(CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS);
     const search = await searchAudioCards(r.seams, CALLER);
-    expect(search.cards.map((card) => card.registered)).toEqual([[{ inputNumber: 4, deviceId: 'MIC-03' }]]);
+    expect(search.cards.map((card) => [card.registered, card.boundTo])).toEqual([[[{ inputNumber: 4, deviceId: 'MIC-03' }], 'MIC-03']]);
     expect(r.audits.at(-1)?.details).toMatchObject({ responderCount: 1, newCount: 0, registeredCount: 1 });
   });
 
-  it('two inputs of one card are two microphones; the body states nothing but the key: the facts are the listing\'s', async () => {
+  // R-FLEX row 131 (D10 (1), Q96-01 a, bundle M Q96-02-M; spec T-9, T-10): THE PHYSICAL CARD IS HELD BY ONE MICROPHONE.
+  // Was: "two inputs of one card are two microphones".
+  it('a second input of a held card is refused 409 AUDIO_CARD_ALREADY_BOUND naming the holder; with `release: true` the holder MOVES to it: 200 REENABLED, releasedDeviceId = the holder, RELEASED then REENABLED', async () => {
     const r = rig(TWO_CARDS);
     const one = await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 1 });
-    const two = await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2 });
-    expect([one.registration.deviceId, two.registration.deviceId]).toEqual(['MIC-03', 'MIC-04']);
-    expect(r.inputs.map((input) => [input.deviceId, input.inputNumber, input.nativeChannels, input.sampleBits, input.usbId])).toEqual([
-      ['MIC-03', 1, 2, 24, DUO.usbId],
-      ['MIC-04', 2, 2, 24, DUO.usbId],
+    expect(one.registration).toEqual({ deviceId: 'MIC-03', change: 'REGISTERED', inputNumber: 1, channelCount: 2, releasedDeviceId: null });
+    // T-9: no release - refused with the holder's id; nothing stored, nothing audited.
+    const refused = await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2 }).catch((error: unknown) => error as ApiFailure);
+    expect(refused).toBeInstanceOf(ApiFailure);
+    expect([(refused as ApiFailure).statusCode, (refused as ApiFailure).code, (refused as ApiFailure).details]).toEqual([409, 'INVALID_STATE', { reason: 'AUDIO_CARD_ALREADY_BOUND', deviceId: 'MIC-03' }]);
+    expect(await refusal(registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2, release: false }))).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_ALREADY_BOUND']);
+    expect([usbMicrophones(r.devices), r.inputs.length, r.audits.length]).toEqual([['MIC-03'], 1, 1]);
+    // T-10: release - the same microphone, its row moved to input 2; two entries, one binding.
+    r.devices.set('MIC-03', { ...r.devices.get('MIC-03')!, enabled: false });
+    const moved = await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2, release: true });
+    expect(moved).toEqual({ created: false, registration: { deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 2, channelCount: 2, releasedDeviceId: 'MIC-03' } });
+    expect(CaptureAudioInputRegistrationSchema.safeParse(moved.registration).success).toBe(true);
+    expect(r.inputs.map((input) => [input.deviceId, input.cardId, input.inputNumber, input.usbId])).toEqual([['MIC-03', DUO.cardId, 2, DUO.usbId]]);
+    expect([usbMicrophones(r.devices), r.devices.get('MIC-03')?.enabled, r.reenables]).toEqual([['MIC-03'], true, ['MIC-03']]);
+    expect(r.audits.slice(1).map((row) => [row.deviceId, row.details?.['change'], row.details?.['inputNumber']])).toEqual([
+      ['MIC-03', 'RELEASED', 1],
+      ['MIC-03', 'REENABLED', 2],
     ]);
-    // The Core listed AGAIN for each registration: two readings of the host.
-    expect(r.host.listings()).toBe(2);
+    // release: true on the holder's OWN input changes nothing: releasedDeviceId is null.
+    expect((await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2, release: true })).registration).toMatchObject({ deviceId: 'MIC-03', change: 'REENABLED', releasedDeviceId: null });
+    // Another card is not held: DemsSix input 1 is a new microphone.
+    expect((await registerAudioInput(r.seams, CALLER, { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 1 })).registration).toMatchObject({ deviceId: 'MIC-04', change: 'REGISTERED' });
+    // The Core listed AGAIN for each registration.
+    expect(r.host.listings()).toBe(6);
+    // Operation 98: the card is bound to the moved microphone, at its new input.
+    const search = await searchAudioCards(r.seams, CALLER);
+    expect(search.cards.map((card) => [card.cardId, card.boundTo, card.registered])).toEqual([
+      [DUO.cardId, 'MIC-03', [{ inputNumber: 2, deviceId: 'MIC-03' }]],
+      [SIX.cardId, 'MIC-04', [{ inputNumber: 1, deviceId: 'MIC-04' }]],
+    ]);
+    expect(CaptureAudioCardSearchSchema.safeParse(search).success).toBe(true);
+  });
+
+  it('a release whose move fails rolls the unit back as a whole: no RELEASED entry, the holder stays where it was', async () => {
+    const r = rig(TWO_CARDS);
+    await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 1 });
+    r.failNext('rekeyInput');
+    await expect(registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2, release: true })).rejects.toMatchObject({ code: 'ROW070_INJECTED' });
+    expect([r.inputs.map((input) => input.inputNumber), r.audits.map((row) => row.details?.['change'])]).toEqual([[1], ['REGISTERED']]);
   });
 
   it('the refusals, each storing nothing and writing no row: an unknown card (404), a device index the card does not have (404), an input beyond the card (409), a card whose count is a guess (409)', async () => {
@@ -428,7 +486,7 @@ describe('operation 99: the registration unit', () => {
     await registerAudioInput(r.seams, CALLER, { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 2 });
     r.host.use(INTERFACE_REPLACED);
     const changed = await registerAudioInput(r.seams, CALLER, { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 2 });
-    expect(changed).toEqual({ created: false, registration: { deviceId: 'MIC-03', change: 'CARD_CHANGED', inputNumber: 2, channelCount: 6 } });
+    expect(changed).toEqual({ created: false, registration: { deviceId: 'MIC-03', change: 'CARD_CHANGED', inputNumber: 2, channelCount: 6, releasedDeviceId: null } });
     expect(usbMicrophones(r.devices)).toEqual(['MIC-03']);
     expect(r.inputs.map((input) => input.usbId)).toEqual(['fff0:0099']);
     expect(r.audits.map((row) => row.details?.['change'])).toEqual(['REGISTERED', 'CARD_CHANGED']);
@@ -436,121 +494,218 @@ describe('operation 99: the registration unit', () => {
   });
 });
 
-// Task 4 row 156 (AD-07 (4)): the match of a stored input to a live card follows the identity
-// rule - the USB id and the USB port path where the system offers one. The double: the real
-// enumerator over fixed host texts that differ in the port path only.
-describe('row 156: the identity of the card behind a stored input (USB id and port path)', () => {
+// Task 4 row 156 (AD-07 (4)), TURNED BY R-FLEX row 131 (spec 01_specs_rflex_audio.md sections 3-6;
+// Q96-01 a, Q96-03, Q96-09): the match of a stored input to a live card - the USB id, the serial
+// where the card states one, else ANY unit of the model on ANY port. The port is no lock. The
+// double: the real enumerator over fixed host texts that differ in the port path or the card id.
+describe('row 156 / R-FLEX row 131: the identity of the card behind a stored input (USB id, serial, else the model)', () => {
   const KEY = { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 2 } as const;
   const changes = (r: Rig) => r.audits.filter((row) => row.type === 'CAPTURE_AUDIO_INPUT_CHANGED').map((row) => row.details?.['change']);
   const matchNotes = (r: Rig) => (r.notes as Array<Record<string, unknown>>).filter((note) => note['code'] === 'CAPTURE_AUDIO_INPUT_CHANGED').map((note) => note['match'] ?? null);
 
-  it('a card of the same product on ANOTHER PORT is CARD_CHANGED with ONE audit entry - no silent match, no second device, no device text written', async () => {
+  it('A PORT MOVE IS NOT A RE-BIND (AC9, D-A4.1): the serial-less card on ANOTHER PORT under its key is the same card - REENABLED, the microphone on again, the stored port follows, no device text written', async () => {
     const r = rig(ONE_INTERFACE);
     await registerAudioInput(r.seams, CALLER, KEY);
-    // The same card id, device index, USB id and product; another port path.
+    r.devices.set('MIC-03', { ...r.devices.get('MIC-03')!, enabled: false });
     r.host.use(INTERFACE_ON_ANOTHER_PORT);
     const moved = await registerAudioInput(r.seams, CALLER, KEY);
-    expect(moved).toEqual({ created: false, registration: { deviceId: 'MIC-03', change: 'CARD_CHANGED', inputNumber: 2, channelCount: 6 } });
-    expect(changes(r)).toEqual(['REGISTERED', 'CARD_CHANGED']);
-    expect(matchNotes(r)).toEqual([null, 'PORT_DIFFERS']);
-    expect(usbMicrophones(r.devices)).toEqual(['MIC-03']);
-    expect(r.inputs).toHaveLength(1);
-    // The six closed keys of the entry, and no port, USB id or product anywhere it is written.
+    expect(moved).toEqual({ created: false, registration: { deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 2, channelCount: 6, releasedDeviceId: null } });
+    expect([changes(r), matchNotes(r), r.reenables, r.devices.get('MIC-03')?.enabled, r.identities.get('MIC-03')]).toEqual([['REGISTERED', 'REENABLED'], [null, 'SAME_CARD'], ['MIC-03'], true, { usbSerial: null, usbPort: OTHER_PORT }]);
+    expect([usbMicrophones(r.devices), r.inputs.length]).toEqual([['MIC-03'], 1]);
     expect(Object.keys(r.audits.at(-1)?.details ?? {}).sort()).toEqual(['change', 'channelCount', 'deviceId', 'inputNumber', 'operationId', 'permission']);
     for (const text of [SIX_PORT, OTHER_PORT, ...DEVICE_TEXT]) expect(written(r)).not.toContain(text);
-    // Row 199: the registrar's re-enable was NOT called for the card that is not the stored one.
-    expect(r.reenables).toEqual([]);
-    // The stored port FOLLOWS the change (it was said once): the same card again is a plain re-enable.
-    expect((await registerAudioInput(r.seams, CALLER, KEY)).registration.change).toBe('REENABLED');
-    expect(r.reenables).toEqual(['MIC-03']);
-    expect(changes(r)).toEqual(['REGISTERED', 'CARD_CHANGED', 'REENABLED']);
-    expect(matchNotes(r).at(-1)).toBe('SAME_CARD');
   });
 
-  it('CONTROL: the same card on the same port is REENABLED; a second card of the product beside it changes nothing, because the port says which is which', async () => {
+  it('T-6 / T-7 / T-8 (macOS move, D-A4.2): the card under ANOTHER kernel card id and port is still bound by identity; operation 99 at the same input RE-KEYS the holder - 200 REENABLED, no release, no new microphone', async () => {
+    const r = rig(ONE_INTERFACE);
+    await registerAudioInput(r.seams, CALLER, { ...KEY, inputNumber: 1 });
+    r.host.use(INTERFACE_MOVED_AND_RENAMED);
+    const search = await searchAudioCards(r.seams, CALLER);
+    expect(search.cards.map((card) => [card.cardId, card.boundTo, card.registered])).toEqual([[SIX_MOVED_CARD_ID, 'MIC-03', [{ inputNumber: 1, deviceId: 'MIC-03' }]]]);
+    expect(CaptureAudioCardSearchSchema.safeParse(search).success).toBe(true);
+    const moved = await registerAudioInput(r.seams, CALLER, { cardId: SIX_MOVED_CARD_ID, deviceIndex: 0, inputNumber: 1 });
+    expect(moved).toEqual({ created: false, registration: { deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 1, channelCount: 6, releasedDeviceId: null } });
+    expect(r.inputs.map((input) => [input.deviceId, input.cardId, input.inputNumber])).toEqual([['MIC-03', SIX_MOVED_CARD_ID, 1]]);
+    expect([r.identities.get('MIC-03'), changes(r), usbMicrophones(r.devices)]).toEqual([{ usbSerial: null, usbPort: OTHER_PORT }, ['REGISTERED', 'REENABLED'], ['MIC-03']]);
+    // Another input of the moved card is a new binding of a held card: refused, naming the holder.
+    expect(await refusal(registerAudioInput(r.seams, CALLER, { cardId: SIX_MOVED_CARD_ID, deviceIndex: 0, inputNumber: 3 }))).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_ALREADY_BOUND']);
+  });
+
+  it('R-3: a move onto a key ANOTHER row already holds rolls back 409 AUDIO_INPUT_NOT_REGISTRABLE - nothing written, nothing said', async () => {
+    const r = rig(ONE_INTERFACE);
+    await registerAudioInput(r.seams, CALLER, { ...KEY, inputNumber: 1 });
+    // A stale row of another card sits under the new key (written before the card moved there).
+    r.inputs.push({ deviceId: 'MIC-01', usbId: 'fff0:0099', cardId: SIX_MOVED_CARD_ID, cardDevice: 0, inputNumber: 1, nativeChannels: 2, sampleBits: 24, operatorId: CALLER.operatorId, at: START });
+    r.identities.set('MIC-01', { usbSerial: null, usbPort: 'p-x' });
+    r.host.use(INTERFACE_MOVED_AND_RENAMED);
+    const audits = r.audits.length;
+    expect(await refusal(registerAudioInput(r.seams, CALLER, { cardId: SIX_MOVED_CARD_ID, deviceIndex: 0, inputNumber: 1 }))).toEqual([409, 'INVALID_STATE', 'AUDIO_INPUT_NOT_REGISTRABLE']);
+    expect(await refusal(registerAudioInput(r.seams, CALLER, { cardId: SIX_MOVED_CARD_ID, deviceIndex: 0, inputNumber: 1, release: true }))).toEqual([409, 'INVALID_STATE', 'AUDIO_INPUT_NOT_REGISTRABLE']);
+    expect([r.audits.length - audits, r.inputs.find((input) => input.deviceId === 'MIC-03')?.cardId]).toEqual([0, SIX.cardId]);
+  });
+
+  it('AU-R3 / Q96-03 (i)+(iii): TWO SERIAL-LESS UNITS OF ONE MODEL cannot be told apart - NOT_TELLABLE: the stored input is CARD_CHANGED, both units are shown bound to the microphone, the second is refused AUDIO_CARD_ALREADY_BOUND', async () => {
     const r = rig(ONE_INTERFACE);
     await registerAudioInput(r.seams, CALLER, KEY);
     expect((await registerAudioInput(r.seams, CALLER, KEY)).registration.change).toBe('REENABLED');
     r.host.use(TWO_OF_ONE_PRODUCT);
-    expect((await registerAudioInput(r.seams, CALLER, KEY)).registration.change).toBe('REENABLED');
-    expect(matchNotes(r)).toEqual([null, 'SAME_CARD', 'SAME_CARD']);
-    // The two cards of one product exchanged their ports: behind the stored key sits the OTHER card.
+    expect((await registerAudioInput(r.seams, CALLER, KEY)).registration.change).toBe('CARD_CHANGED');
     r.host.use(TWO_OF_ONE_PRODUCT_SWAPPED);
     expect((await registerAudioInput(r.seams, CALLER, KEY)).registration.change).toBe('CARD_CHANGED');
-    expect(matchNotes(r).at(-1)).toBe('PORT_DIFFERS');
+    expect(matchNotes(r)).toEqual([null, 'SAME_CARD', 'NOT_TELLABLE', 'NOT_TELLABLE']);
+    // The second unit, under its own key: held by MIC-03 (conservative), never a second microphone.
+    expect(await refusal(registerAudioInput(r.seams, CALLER, { ...KEY, cardId: SIX_SECOND_CARD_ID }))).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_ALREADY_BOUND']);
     expect(usbMicrophones(r.devices)).toEqual(['MIC-03']);
-  });
-
-  it('the second card of the product, under its own key, is a NEW microphone - never the registered one', async () => {
-    const r = rig(TWO_OF_ONE_PRODUCT);
-    await registerAudioInput(r.seams, CALLER, KEY);
-    const second = await registerAudioInput(r.seams, CALLER, { ...KEY, cardId: SIX_SECOND_CARD_ID });
-    expect(second).toMatchObject({ created: true, registration: { deviceId: 'MIC-04', change: 'REGISTERED' } });
-    expect(usbMicrophones(r.devices)).toEqual(['MIC-03', 'MIC-04']);
+    r.advance(CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS);
     const search = await searchAudioCards(r.seams, CALLER);
-    expect(search.cards.map((card) => [card.cardId, card.registered])).toEqual([
-      [SIX.cardId, [{ inputNumber: 2, deviceId: 'MIC-03' }]],
-      [SIX_SECOND_CARD_ID, [{ inputNumber: 2, deviceId: 'MIC-04' }]],
+    // Bound, both; registered (SAME_CARD) on neither: the rule cannot say which unit it is.
+    expect(search.cards.map((card) => [card.cardId, card.boundTo, card.registered])).toEqual([
+      [SIX.cardId, 'MIC-03', []],
+      [SIX_SECOND_CARD_ID, 'MIC-03', []],
     ]);
   });
 
-  // TURNED BY ROW 199 (was: "one card of the USB id matches by the USB id; two cards of it are NOT
-  // TELLABLE"). The USB id alone identifies no card any more: a row that holds neither a serial nor
-  // a port path - every row written before schema set B - is IDENTITY_NOT_STORED, said as
-  // CARD_CHANGED, and the STATED GAP of row 156 (the same product on another port, alone on the
-  // host, re-enabled silently) is closed.
-  it('where NO identity is stored (a row of before the two columns): the USB id alone matches NO card - said as CARD_CHANGED, not enabled again, and the registration then stores the identity', async () => {
+  // TURNED BY R-FLEX row 131 (Q96-09, register RM-A4 removed): a row with neither a serial nor a port
+  // path is read as "no serial" - any serial-less unit of its model. Was: a refusal of its own (register RM-A4).
+  it('where NO identity is stored (a row of before the two columns): read as "no serial" - the one serial-less unit of the model, on any port, is the same card and REENABLED; a twin beside it is NOT_TELLABLE', async () => {
     const before = rig(ONE_INTERFACE, { storesIdentity: false });
     await registerAudioInput(before.seams, CALLER, KEY);
     before.devices.set('MIC-03', { ...before.devices.get('MIC-03')!, enabled: false });
-    // The same card on the same port: it cannot be KNOWN to be the same, so it is not taken as the same.
-    expect((await registerAudioInput(before.seams, CALLER, KEY)).registration.change).toBe('CARD_CHANGED');
-    // THE GAP OF ROW 156, CLOSED: the same product on another port, alone on the host.
+    expect((await registerAudioInput(before.seams, CALLER, KEY)).registration.change).toBe('REENABLED');
     before.host.use(INTERFACE_ON_ANOTHER_PORT);
-    expect((await registerAudioInput(before.seams, CALLER, KEY)).registration.change).toBe('CARD_CHANGED');
+    expect((await registerAudioInput(before.seams, CALLER, KEY)).registration.change).toBe('REENABLED');
     before.host.use(TWO_OF_ONE_PRODUCT);
     expect((await registerAudioInput(before.seams, CALLER, KEY)).registration.change).toBe('CARD_CHANGED');
-    expect(matchNotes(before)).toEqual([null, 'IDENTITY_NOT_STORED', 'IDENTITY_NOT_STORED', 'IDENTITY_NOT_STORED']);
-    // Nothing was enabled again, no second device, one entry per call; the search offers the card as NEW.
-    expect([before.reenables, before.devices.get('MIC-03')?.enabled, usbMicrophones(before.devices), changes(before)]).toEqual([[], false, ['MIC-03'], ['REGISTERED', 'CARD_CHANGED', 'CARD_CHANGED', 'CARD_CHANGED']]);
+    expect(matchNotes(before)).toEqual([null, 'SAME_CARD', 'SAME_CARD', 'NOT_TELLABLE']);
+    expect([before.reenables, before.devices.get('MIC-03')?.enabled, usbMicrophones(before.devices)]).toEqual([['MIC-03', 'MIC-03'], true, ['MIC-03']]);
+    // TURNED BY R-FLEX row 108 (D24, DB-A2 filter dropped): such a row IS a holder for operation 98. The two serial-less
+    // units cannot be told apart, so both are bound to it and neither is `registered` (was: [[null, []], [null, []]]).
     before.advance(CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS);
-    expect((await searchAudioCards(before.seams, CALLER)).cards.map((card) => card.registered)).toEqual([[], []]);
-    // A LIVE card that offers neither a serial nor a port could be found again by nothing: refused, nothing stored, nothing said.
+    expect((await searchAudioCards(before.seams, CALLER)).cards.map((card) => [card.boundTo, card.registered])).toEqual([['MIC-03', []], ['MIC-03', []]]);
+  });
+
+  it('T-16 (RM-A5): a USB card whose USB id could not be read is refused 409 AUDIO_INPUT_NOT_REGISTRABLE; a serial-less card with a USB id and NO port is registered (201)', async () => {
+    const unread = rig(INTERFACE_UNREAD_USB_ID);
+    expect((await unread.host.enumerator.list()).cards.map((card) => card.usbId)).toEqual([UNREAD_USB_ID]);
+    expect(await refusal(registerAudioInput(unread.seams, CALLER, KEY))).toEqual([409, 'INVALID_STATE', 'AUDIO_INPUT_NOT_REGISTRABLE']);
+    expect([unread.inputs, unread.audits, usbMicrophones(unread.devices)]).toEqual([[], [], []]);
+    const portless = rig(INTERFACE_WITHOUT_PORT);
+    const created = await registerAudioInput(portless.seams, CALLER, KEY);
+    expect(created).toEqual({ created: true, registration: { deviceId: 'MIC-03', change: 'REGISTERED', inputNumber: 2, channelCount: 6, releasedDeviceId: null } });
+    expect(portless.identities.get('MIC-03')).toEqual({ usbSerial: null, usbPort: null });
+    // Registered with a port, then listed without one: the same card (the model), REENABLED.
     const offered = rig(ONE_INTERFACE);
     await registerAudioInput(offered.seams, CALLER, KEY);
     offered.host.use(INTERFACE_WITHOUT_PORT);
-    expect(await refusal(registerAudioInput(offered.seams, CALLER, KEY))).toEqual([409, 'INVALID_STATE', 'AUDIO_INPUT_NOT_REGISTRABLE']);
-    expect(await refusal(registerAudioInput(offered.seams, CALLER, { ...KEY, inputNumber: 5 }))).toEqual([409, 'INVALID_STATE', 'AUDIO_INPUT_NOT_REGISTRABLE']);
-    expect([changes(offered), offered.reenables, offered.identities.get('MIC-03'), usbMicrophones(offered.devices)]).toEqual([['REGISTERED'], [], { usbSerial: null, usbPort: SIX_PORT }, ['MIC-03']]);
+    expect((await registerAudioInput(offered.seams, CALLER, KEY)).registration.change).toBe('REENABLED');
   });
 
-  // TURNED BY ROW 199: the table of row 156 with the serial before the port. The rows that changed
-  // are marked; every other row answers what it answered.
-  it('the rule itself, as a table: the USB id first, then the SERIAL, else the port; never the product, never the card id or the USB id alone', () => {
+  // THE GAP FILED BY ROW 131 IS CLOSED (R-FLEX row 108, decision D24): DB-A2 `READ_BOUND_AUDIO_INPUTS` no longer keeps the
+  // bundle-C filter "a serial or a port". A serial-less, port-less row (T-16 makes them; Q96-09 a) holds its card: operation
+  // 98 names it in `boundTo`, and operation 99 refuses another input of the card. Was `it.fails`.
+  it('DB-A2 (row 108): a card stored with neither serial nor port IS held - operation 98 names its holder, another input is refused AUDIO_CARD_ALREADY_BOUND; with `release` the holder moves', async () => {
+    const portless = rig(INTERFACE_WITHOUT_PORT);
+    await registerAudioInput(portless.seams, CALLER, KEY);
+    expect(portless.identities.get('MIC-03')).toEqual({ usbSerial: null, usbPort: null });
+    const search = await searchAudioCards(portless.seams, CALLER);
+    expect(search.cards.map((card) => [card.cardId, card.boundTo, card.registered])).toEqual([[SIX.cardId, 'MIC-03', [{ inputNumber: 2, deviceId: 'MIC-03' }]]]);
+    expect(await refusal(registerAudioInput(portless.seams, CALLER, { ...KEY, inputNumber: 5 }))).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_ALREADY_BOUND']);
+    expect([usbMicrophones(portless.devices), portless.inputs.length]).toEqual([['MIC-03'], 1]);
+    expect((await registerAudioInput(portless.seams, CALLER, { ...KEY, inputNumber: 5, release: true })).registration).toEqual({ deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 5, channelCount: 6, releasedDeviceId: 'MIC-03' });
+    expect(portless.inputs.map((input) => [input.deviceId, input.inputNumber])).toEqual([['MIC-03', 5]]);
+  });
+
+  // R-FLEX row 108 (spec 5.1, D-A3.4): A RETIRED ROW HOLDS NOTHING. It neither blocks another input of its card nor occupies its key.
+  it('a RETIRED holder does not block: its key and its card are free again - a new microphone, 201 REGISTERED; operation 98 names the new holder only', async () => {
+    const r = rig(TWO_CARDS);
+    await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 1 });
+    const retired = r.inputs.find((input) => input.deviceId === 'MIC-03')!;
+    retired.retiredAt = START;
+    // The KEY of the retired row: a new microphone, never a re-enable of the retired one.
+    const again = await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 1 });
+    expect(again).toEqual({ created: true, registration: { deviceId: 'MIC-04', change: 'REGISTERED', inputNumber: 1, channelCount: 2, releasedDeviceId: null } });
+    expect(r.reenables).toEqual([]);
+    // The new microphone holds the card; the retired one is no holder for operation 98 or 99.
+    expect(await refusal(registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2 }))).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_ALREADY_BOUND']);
+    const search = await searchAudioCards(r.seams, CALLER);
+    expect(search.cards.map((card) => [card.cardId, card.boundTo, card.registered])).toEqual([
+      [DUO.cardId, 'MIC-04', [{ inputNumber: 1, deviceId: 'MIC-04' }]],
+      [SIX.cardId, null, []],
+    ]);
+    // Another input of a card whose ONLY holder is retired: not refused.
+    const other = rig(TWO_CARDS);
+    await registerAudioInput(other.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 1 });
+    other.inputs[0]!.retiredAt = START;
+    expect((await registerAudioInput(other.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2 })).registration).toEqual({ deviceId: 'MIC-04', change: 'REGISTERED', inputNumber: 2, channelCount: 2, releasedDeviceId: null });
+  });
+
+  // R-FLEX row 108 (spec X-2): SEVERAL microphones already hold one card (an older database; 01_specs_rflex_database.md 5,
+  // last row). Nothing is moved, also with `release`: refused naming the FIRST holder, the lowest MIC id, which is also
+  // operation 98's `boundTo`. Nothing is written and nothing is said.
+  it('X-2: a card held by SEVERAL live rows - op 99 refuses AUDIO_CARD_ALREADY_BOUND naming the first holder (lowest MIC id), with and without release; op 98 boundTo names the same', async () => {
+    const r = rig(TWO_CARDS);
+    for (const [deviceId, inputNumber] of [['MIC-02', 2], ['MIC-01', 1]] as const) {
+      r.inputs.push({ deviceId, usbId: SIX.usbId, cardId: SIX.cardId, cardDevice: 0, inputNumber, nativeChannels: 6, sampleBits: 24, operatorId: CALLER.operatorId, at: START });
+      r.identities.set(deviceId, { usbSerial: null, usbPort: SIX_PORT });
+    }
+    const failure = async (pending: Promise<unknown>): Promise<unknown> => pending.then(() => 'answered', (error: unknown) => [(error as ApiFailure).statusCode, (error as ApiFailure).details]);
+    const before = structuredClone(r.inputs);
+    for (const release of [false, true]) {
+      expect(await failure(registerAudioInput(r.seams, CALLER, { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 4, release })), String(release)).toEqual([409, { reason: 'AUDIO_CARD_ALREADY_BOUND', deviceId: 'MIC-01' }]);
+    }
+    // The key of one holder, released towards it: still several holders - refused, nothing moved.
+    expect(await failure(registerAudioInput(r.seams, CALLER, { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 2, release: true }))).toEqual([409, { reason: 'AUDIO_CARD_ALREADY_BOUND', deviceId: 'MIC-01' }]);
+    expect([r.inputs, r.audits, r.reenables, usbMicrophones(r.devices)]).toEqual([before, [], [], []]);
+    const search = await searchAudioCards(r.seams, CALLER);
+    expect(search.cards.map((card) => [card.cardId, card.boundTo, card.registered])).toEqual([
+      [DUO.cardId, null, []],
+      [SIX.cardId, 'MIC-01', [{ inputNumber: 1, deviceId: 'MIC-01' }, { inputNumber: 2, deviceId: 'MIC-02' }]],
+    ]);
+  });
+
+  // T-1 (spec 10): THE SHARED CASE TABLE of row 107 pins `matchStoredCard` to the outcome of every case.
+  it('T-1: the shared case table - matchStoredCard answers the registration outcome of every case; no case and no answer is a port refusal (register RM-A2)', () => {
+    let measured = 0;
+    for (const entry of STORED_CARD_IDENTITY_CASES) {
+      if (entry.registration === null) continue;
+      const listing = entry.live.map((unit) => ({ cardId: unit.cardId, deviceIndex: 0, usbId: unit.usbId, usbSerial: unit.usbSerial, usbPort: unit.usbPort, product: 'P', channelCount: 2, factsSource: 'STREAM', sampleBits: [24 as const] }));
+      const candidate = listing[entry.registration.unit];
+      if (candidate === undefined) throw new Error(`case ${entry.name}: no unit ${entry.registration.unit}`);
+      expect(matchStoredCard(entry.stored, candidate, listing), entry.name).toBe(entry.registration.match);
+      measured += 1;
+    }
+    expect(measured).toBe(STORED_CARD_IDENTITY_CASES.filter((entry) => entry.registration !== null).length);
+    expect(JSON.stringify(STORED_CARD_IDENTITY_CASES)).not.toMatch(/PORT_DIFF/);
+    console.info(`[row131] T-1 shared case table | cases=${STORED_CARD_IDENTITY_CASES.length} registration cases=${measured}`);
+  });
+
+  // TURNED BY R-FLEX row 131: the table of rows 156 / 199 under the rule without a port lock. The rows that changed are marked.
+  it('the rule itself, as a table: the USB id first, then the SERIAL (the port a tie-break only), else the model on any port; never the product or the card id', () => {
     type Live = Parameters<typeof matchStoredCard>[1];
     const live = (over: Partial<Live> = {}): Live => ({ cardId: 'Card', deviceIndex: 0, usbId: 'fff0:0006', usbPort: 'p-1', product: 'P', channelCount: 2, factsSource: 'STREAM', sampleBits: [24], ...over });
     const card = live();
     const twin = live({ cardId: 'Card_1', usbPort: 'p-2' });
     const serialled = live({ usbSerial: 'SN-A' });
     const table: Array<[string, Parameters<typeof matchStoredCard>[0], Live, Parameters<typeof matchStoredCard>[2], string]> = [
-      // ── as in row 156 ──
       ['same id, same port', { usbId: 'fff0:0006', usbPort: 'p-1' }, card, [card], 'SAME_CARD'],
-      ['same id, same port, a twin beside it', { usbId: 'fff0:0006', usbPort: 'p-1' }, card, [card, twin], 'SAME_CARD'],
-      ['same id, another port', { usbId: 'fff0:0006', usbPort: 'p-9' }, card, [card], 'PORT_DIFFERS'],
       ['another id, same port', { usbId: 'fff0:0099', usbPort: 'p-1' }, card, [card], 'USB_ID_DIFFERS'],
       ['a stored id, a live card without one', { usbId: 'fff0:0006', usbPort: 'p-1' }, live({ usbId: null, usbPort: null }), [card], 'USB_ID_DIFFERS'],
       ['two capture devices of ONE card are not two cards', { usbId: 'fff0:0006', usbPort: 'p-1' }, card, [card, live({ deviceIndex: 1 })], 'SAME_CARD'],
       ['not a USB card on either side: the key is all it has', { usbId: null }, live({ usbId: null, usbPort: null }), [live({ usbId: null, usbPort: null }), live({ cardId: 'Other', usbId: null, usbPort: null })], 'SAME_CARD'],
-      // ── TURNED: no stored identity is no match (was SAME_CARD by the USB id, or NOT_TELLABLE beside a twin) ──
-      ['no stored port, one card of the id', { usbId: 'fff0:0006' }, card, [card], 'IDENTITY_NOT_STORED'],
-      ['a null stored port, one card of the id', { usbId: 'fff0:0006', usbPort: null }, card, [card], 'IDENTITY_NOT_STORED'],
-      ['an empty stored port is no port', { usbId: 'fff0:0006', usbPort: '' }, card, [card, twin], 'IDENTITY_NOT_STORED'],
-      ['no stored port, two cards of the id', { usbId: 'fff0:0006' }, card, [card, twin], 'IDENTITY_NOT_STORED'],
-      ['no stored identity, a live card with a serial', { usbId: 'fff0:0006', usbSerial: null, usbPort: null }, serialled, [serialled], 'IDENTITY_NOT_STORED'],
-      // ── TURNED: a stored port the live card cannot be held against (was NOT_TELLABLE beside a twin, SAME_CARD alone) ──
-      ['a stored port, no live port, two cards of the id', { usbId: 'fff0:0006', usbPort: 'p-1' }, live({ usbPort: null }), [card, twin], 'PORT_DIFFERS'],
-      ['a stored port, no live port, one card of the id', { usbId: 'fff0:0006', usbPort: 'p-1' }, live({ usbPort: null }), [live({ usbPort: null })], 'PORT_DIFFERS'],
-      // ── NEW: the serial ──
+      // ── TURNED by row 131: no port lock (was the port refusal, RM-A2) ──
+      ['same id, another port', { usbId: 'fff0:0006', usbPort: 'p-9' }, card, [card], 'SAME_CARD'],
+      ['a stored port, no live port, one card of the id', { usbId: 'fff0:0006', usbPort: 'p-1' }, live({ usbPort: null }), [live({ usbPort: null })], 'SAME_CARD'],
+      // ── TURNED by row 131: two serial-less units of the model are not tellable (was SAME_CARD by the port, or the port refusal) ──
+      ['same id, same port, a serial-less twin beside it', { usbId: 'fff0:0006', usbPort: 'p-1' }, card, [card, twin], 'NOT_TELLABLE'],
+      ['a stored port, no live port, two cards of the id', { usbId: 'fff0:0006', usbPort: 'p-1' }, live({ usbPort: null }), [card, twin], 'NOT_TELLABLE'],
+      // ── TURNED by row 131: no stored identity is read as "no serial" (was the refusal of RM-A4) ──
+      ['no stored port, one card of the id', { usbId: 'fff0:0006' }, card, [card], 'SAME_CARD'],
+      ['a null stored port, one card of the id', { usbId: 'fff0:0006', usbPort: null }, card, [card], 'SAME_CARD'],
+      ['an empty stored port is no port', { usbId: 'fff0:0006', usbPort: '' }, card, [card, twin], 'NOT_TELLABLE'],
+      ['no stored port, two cards of the id', { usbId: 'fff0:0006' }, card, [card, twin], 'NOT_TELLABLE'],
+      ['no stored identity, a live card with a serial', { usbId: 'fff0:0006', usbSerial: null, usbPort: null }, serialled, [serialled], 'SERIAL_DIFFERS'],
+      ['no serial stored, a serial-less unit beside one that states a serial', { usbId: 'fff0:0006', usbPort: 'p-1' }, twin, [serialled, twin], 'SAME_CARD'],
+      // ── the serial (unchanged since row 199) ──
       ['the stored serial on the stored port', { usbId: 'fff0:0006', usbSerial: 'SN-A', usbPort: 'p-1' }, serialled, [serialled], 'SAME_CARD'],
       ['THE STORED SERIAL ON ANOTHER PORT: the card was moved, it is the card', { usbId: 'fff0:0006', usbSerial: 'SN-A', usbPort: 'p-9' }, serialled, [serialled], 'SAME_CARD'],
       ['the stored serial, no live port at all', { usbId: 'fff0:0006', usbSerial: 'SN-A', usbPort: 'p-1' }, live({ usbSerial: 'SN-A', usbPort: null }), [live({ usbSerial: 'SN-A', usbPort: null })], 'SAME_CARD'],
@@ -562,7 +717,6 @@ describe('row 156: the identity of the card behind a stored input (USB id and po
       ['NO SERIAL WAS STORED, THE LIVE CARD STATES ONE (same port)', { usbId: 'fff0:0006', usbSerial: null, usbPort: 'p-1' }, serialled, [serialled], 'SERIAL_DIFFERS'],
       ['an empty serial is no serial', { usbId: 'fff0:0006', usbSerial: '', usbPort: 'p-1' }, live({ usbSerial: '' }), [card], 'SAME_CARD'],
       ['the stored serial, the twin beside it states another', { usbId: 'fff0:0006', usbSerial: 'SN-A', usbPort: 'p-9' }, serialled, [serialled, live({ cardId: 'Card_1', usbSerial: 'SN-B', usbPort: 'p-2' })], 'SAME_CARD'],
-      // ── NEW: two live cards that state the SAME serial - then the port must say which ──
       ['a shared serial, the stored port', { usbId: 'fff0:0006', usbSerial: 'SN-A', usbPort: 'p-1' }, serialled, [serialled, live({ cardId: 'Card_1', usbSerial: 'SN-A', usbPort: 'p-2' })], 'SAME_CARD'],
       ['a shared serial, another port', { usbId: 'fff0:0006', usbSerial: 'SN-A', usbPort: 'p-2' }, serialled, [serialled, live({ cardId: 'Card_1', usbSerial: 'SN-A', usbPort: 'p-2' })], 'NOT_TELLABLE'],
       ['a shared serial, no stored port', { usbId: 'fff0:0006', usbSerial: 'SN-A' }, serialled, [serialled, live({ cardId: 'Card_1', usbSerial: 'SN-A', usbPort: 'p-2' })], 'NOT_TELLABLE'],
@@ -571,7 +725,8 @@ describe('row 156: the identity of the card behind a stored input (USB id and po
     for (const [name, stored, liveCard, listing, expected] of table) expect(matchStoredCard(stored, liveCard, listing), name).toBe(expected);
     // The product is no part of the rule: another product text on the same id and port is the same card.
     expect(matchStoredCard({ usbId: 'fff0:0006', usbPort: 'p-1' }, live({ product: 'Another name' }), [card])).toBe('SAME_CARD');
-    console.info(`[row199] the identity rule | rows of the table=${table.length} answers=${[...new Set(table.map((row) => row[4]))].sort().join(',')}`);
+    expect(table.filter((row) => /PORT_DIFF|NOT_STORED/.test(row[4]))).toEqual([]);
+    console.info(`[row131] the identity rule | rows of the table=${table.length} answers=${[...new Set(table.map((row) => row[4]))].sort().join(',')}`);
   });
 });
 
@@ -617,9 +772,9 @@ describe('row 199: the serial and the port path are stored, and a stored input m
     expect([matchNotes(r), r.reenables, r.devices.get('MIC-03')?.enabled, r.identities.get('MIC-03')]).toEqual([[null, 'SAME_CARD'], ['MIC-03'], true, { usbSerial: SIX_SERIAL, usbPort: OTHER_PORT }]);
   });
 
+  // R-FLEX row 131: the case "no serial on either side, another port" left this table (no port lock: a port move is REENABLED, block above).
   it('A SAME-PRODUCT CARD WITH NO MATCHING SERIAL ON ANOTHER PORT is CARD_CHANGED with 1 audit entry and 0 re-enabled rows; operation 98 offers it as a NEW card; registered by the technician, the same call again is REENABLED', async () => {
     for (const [name, registeredOn, swapped, match] of [
-      ['no serial on either side, another port', ONE_INTERFACE, INTERFACE_ON_ANOTHER_PORT, 'PORT_DIFFERS'],
       ['another serial on another port', INTERFACE_WITH_SERIAL, INTERFACE_OTHER_UNIT_ELSEWHERE, 'SERIAL_DIFFERS'],
       ['another serial on the SAME port', INTERFACE_WITH_SERIAL, INTERFACE_OTHER_UNIT_SAME_PORT, 'SERIAL_DIFFERS'],
       ['a serial was stored, the card on another port states none', INTERFACE_WITH_SERIAL, INTERFACE_ON_ANOTHER_PORT, 'SERIAL_DIFFERS'],
@@ -633,12 +788,12 @@ describe('row 199: the serial and the port path are stored, and a stored input m
       // Operation 98, before anything is registered against it: the card is listed with NO registered input.
       r.advance(CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS);
       const offered = await searchAudioCards(r.seams, CALLER);
-      expect(offered.cards.map((card) => [card.cardId, card.registered]), name).toEqual([[SIX.cardId, []]]);
+      expect(offered.cards.map((card) => [card.cardId, card.registered, card.boundTo]), name).toEqual([[SIX.cardId, [], null]]);
       expect(r.audits.at(-1)?.details, name).toMatchObject({ responderCount: 1, newCount: 1, registeredCount: 0 });
       // Operation 99 against it: said, ONE entry, the microphone NOT enabled again, no second device.
       const audits = r.audits.length;
       const changed = await registerAudioInput(r.seams, CALLER, KEY);
-      expect(changed, name).toEqual({ created: false, registration: { deviceId: 'MIC-03', change: 'CARD_CHANGED', inputNumber: 2, channelCount: 6 } });
+      expect(changed, name).toEqual({ created: false, registration: { deviceId: 'MIC-03', change: 'CARD_CHANGED', inputNumber: 2, channelCount: 6, releasedDeviceId: null } });
       expect(r.audits.slice(audits).map((row) => [row.type, row.details?.['change']]), name).toEqual([['CAPTURE_AUDIO_INPUT_CHANGED', 'CARD_CHANGED']]);
       expect([r.reenables, r.devices.get('MIC-03')?.enabled, usbMicrophones(r.devices), r.inputs.length, matchNotes(r).at(-1)], name).toEqual([[], false, ['MIC-03'], 1, match]);
       for (const text of [SIX_SERIAL, OTHER_SERIAL, SIX_PORT, OTHER_PORT, ...DEVICE_TEXT]) expect(written(r), `${name} / ${text}`).not.toContain(text);
@@ -664,7 +819,7 @@ describe('row 199: the serial and the port path are stored, and a stored input m
     await registerAudioInput(r.seams, CALLER, KEY);
     expect((await registerAudioInput(r.seams, CALLER, KEY)).registration.change).toBe('REENABLED');
     r.advance(CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS);
-    expect((await searchAudioCards(r.seams, CALLER)).cards.map((card) => [card.cardId, card.registered.length])).toEqual([[SIX.cardId, 1], [SIX_SECOND_CARD_ID, 0]]);
+    expect((await searchAudioCards(r.seams, CALLER)).cards.map((card) => [card.cardId, card.registered.length, card.boundTo])).toEqual([[SIX.cardId, 1, 'MIC-03'], [SIX_SECOND_CARD_ID, 0, null]]);
     r.host.use(TWO_SHARING_A_SERIAL_SWAPPED);
     expect((await registerAudioInput(r.seams, CALLER, KEY)).registration.change).toBe('CARD_CHANGED');
     expect(matchNotes(r)).toEqual([null, 'SAME_CARD', 'NOT_TELLABLE']);
@@ -688,12 +843,23 @@ describe('row 199: the serial and the port path are stored, and a stored input m
     const real = createMicrophoneStore();
     await real.insertInput(connection, { ...facts, usbSerial: 'SN-A', usbPort: 'p-1', cardId: 'DemsSix', cardDevice: 0, inputNumber: 2 });
     await real.refreshInput(connection, { ...facts, usbSerial: null, usbPort: 'p-2' });
+    // R-FLEX row 131: the two statements of row 130 the service now calls.
+    await real.rekeyInput(connection, { deviceId: 'MIC-03', usbId: 'fff0:0006', usbSerial: 'bad serial', usbPort: 'p-3', cardId: 'usb_1420', cardDevice: 0, inputNumber: 1, operatorId: 'OP-0003', at: 1 });
     expect(calls).toEqual([
       [INSERT_AUDIO_INPUT, ['MIC-03', 'fff0:0006', 'SN-A', 'p-1', 'DemsSix', 0, 2, 6, 24, 'OP-0003', 1]],
       [REFRESH_AUDIO_INPUT, ['MIC-03', 'fff0:0006', null, 'p-2', 6, 24, 'OP-0003', 1]],
+      [REKEY_AUDIO_INPUT, ['MIC-03', 'fff0:0006', null, 'p-3', 'usb_1420', 0, 1, 'OP-0003', 1]],
     ]);
+    expect(await real.boundInputs(connection, 'fff0:0006')).toEqual([{ deviceId: 'MIC-03', cardDevice: 0, inputNumber: 2, usbSerial: 'SN-A', usbPort: null }]);
+    expect(calls.at(-1)).toEqual([READ_BOUND_AUDIO_INPUTS, ['fff0:0006']]);
     expect([INSERT_AUDIO_INPUT.match(/\$\d+/g)?.length, REFRESH_AUDIO_INPUT.match(/\$\d+/g)?.length]).toEqual([11, 8]);
     for (const statement of [INSERT_AUDIO_INPUT, REFRESH_AUDIO_INPUT, READ_AUDIO_INPUT_OF_CARD, READ_REGISTERED_AUDIO_INPUTS]) expect(statement).toMatch(/usb_id.*usb_serial.*usb_port/);
+    // R-FLEX row 108 (D-A3.4, D24): every read of operations 98 and 99 skips retired rows; DB-A2 keeps no serial-or-port filter.
+    for (const statement of [READ_AUDIO_INPUT_OF_CARD, READ_REGISTERED_AUDIO_INPUTS, READ_BOUND_AUDIO_INPUTS]) expect(statement).toMatch(/WHERE .*i\.retired_at IS NULL/);
+    expect(READ_BOUND_AUDIO_INPUTS).not.toMatch(/IS NOT NULL/);
+    expect(READ_BOUND_AUDIO_INPUTS).toMatch(/ORDER BY i\.device_id$/);
+    // REKEY writes only granted columns (migrations 0016, 0018): never device_id, sample_rate or retired_at.
+    expect(REKEY_AUDIO_INPUT.slice(REKEY_AUDIO_INPUT.indexOf(' SET '), REKEY_AUDIO_INPUT.indexOf(' WHERE '))).not.toMatch(/device_id|sample_rate|retired_at/);
     // Read back: a stored value outside the closed form (it cannot be there: the CHECK) is still read as none.
     expect(await real.inputOf(connection, { cardId: 'DemsSix', cardDevice: 0, inputNumber: 2 })).toEqual({ deviceId: 'MIC-03', usbId: 'fff0:0006', usbSerial: 'SN-A', usbPort: null, enabled: true });
     expect(await real.registeredInputs(connection)).toEqual([{ deviceId: 'MIC-03', cardId: 'DemsSix', cardDevice: 0, inputNumber: 2, identity: { usbId: 'fff0:0006', usbSerial: 'SN-A', usbPort: null } }]);

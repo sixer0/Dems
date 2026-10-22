@@ -1,6 +1,6 @@
 import { useId } from 'react'
 import { Alert, Button, Chip, Description, Label, Radio, RadioGroup, Spinner } from '@heroui/react'
-import { ListPlus, Search } from 'lucide-react'
+import { ListPlus, MoveRight, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { CAPTURE_AUDIO_CARD_MAX_ENTRIES } from '@dems/shared/api'
 import { formatClock } from '@dems/shared/realtime'
@@ -8,7 +8,9 @@ import { captureDeviceName } from '@/lib/capture-notices'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import {
   cardKeyOf,
+  inputOffered,
   inputsOf,
+  isAmbiguous,
   isChoiceOf,
   listRefusal,
   registerRefusal,
@@ -34,13 +36,39 @@ function useBlockReason(): (block: AudioCardsBlock | null) => string | null {
  * (untrusted device text: a text node, never markup, never part of a sentence), what the Core read of
  * it, and its inputs 1 to the channel count as ONE single-choice group. An input the listing names a
  * microphone for is shown as registered, with that microphone.
+ *
+ * R-FLEX row 111: a card a microphone holds (`boundTo`) says so in a chip and offers only the holder's
+ * own input (Q96-01 a); "Move {{device}} to another input" puts it in move mode (bundle M), where every
+ * input is offered and the registration says `release: true`. Two serial-less units of one model bound
+ * to one microphone offer nothing and say why (W-A8, Q96-03 a).
  */
-function Card({ card, position, choice, disabled, onChoose }: { card: CaptureAudioCard; position: number; choice: InputChoice | null; disabled: boolean; onChoose: (choice: InputChoice) => void }) {
+function Card({
+  card,
+  position,
+  choice,
+  disabled,
+  moving,
+  ambiguous,
+  onChoose,
+  onMove,
+  onCancelMove,
+}: {
+  card: CaptureAudioCard
+  position: number
+  choice: InputChoice | null
+  disabled: boolean
+  moving: boolean
+  ambiguous: boolean
+  onChoose: (choice: InputChoice) => void
+  onMove: () => void
+  onCancelMove: () => void
+}) {
   const { t } = useTranslation()
   const key = cardKeyOf(card)
   const inputs = inputsOf(card)
+  const holder = card.boundTo === null ? null : captureDeviceName(t, card.boundTo)
   return (
-    <li className="dev-scan-result" data-testid={`audio-card-${key}`} data-inputs={card.channelCount}>
+    <li className="dev-scan-result" data-testid={`audio-card-${key}`} data-inputs={card.channelCount} data-bound-to={card.boundTo ?? undefined} data-moving={moving || undefined} data-ambiguous={ambiguous || undefined}>
       <div className="dev-scan-row">
         <DeviceText text={card.product} className="dev-tile-name" />
         <span className="dev-tile-sub">{t('common.captureAudioCards.card.inputs', { count: card.channelCount })}</span>
@@ -49,7 +77,32 @@ function Card({ card, position, choice, disabled, onChoose }: { card: CaptureAud
           {card.usbId === null ? t('common.captureAudioCards.card.notUsb') : t('common.captureAudioCards.card.usbId', { id: card.usbId })}
         </span>
         {card.sampleBits.length === 0 ? null : <span className="dev-tile-sub">{t('common.captureAudioCards.card.sampleBits', { bits: card.sampleBits.join(', ') })}</span>}
+        {holder === null ? null : (
+          <Chip size="sm" variant="soft" color="accent" data-testid={`audio-card-bound-${key}`} data-bound-to={card.boundTo ?? undefined}>
+            <Chip.Label>{t('common.captureAudioCards.card.boundTo', { device: holder })}</Chip.Label>
+          </Chip>
+        )}
       </div>
+      {ambiguous && holder !== null ? (
+        <p className="dev-sel-reason" role="note" data-testid={`audio-card-not-tellable-${key}`}>
+          {t('common.captureAudioCards.card.notTellable', { device: holder })}
+        </p>
+      ) : null}
+      {holder === null || ambiguous ? null : moving ? (
+        <span className="dev-search-control" data-testid={`audio-card-move-${key}`}>
+          <span className="dev-sel-reason" role="status" data-testid={`audio-card-move-hint-${key}`}>
+            {t('common.captureAudioCards.releaseHint', { device: holder })}
+          </span>
+          <Button size="sm" variant="ghost" isDisabled={disabled} onPress={onCancelMove} data-testid={`audio-card-move-cancel-${key}`}>
+            {t('common.actions.cancel')}
+          </Button>
+        </span>
+      ) : (
+        <Button size="sm" variant="outline" isDisabled={disabled} onPress={onMove} data-testid={`audio-card-move-button-${key}`}>
+          <MoveRight aria-hidden="true" size={14} />
+          {t('common.captureAudioCards.release', { device: holder })}
+        </Button>
+      )}
       <RadioGroup
         orientation="horizontal"
         isDisabled={disabled}
@@ -62,7 +115,13 @@ function Card({ card, position, choice, disabled, onChoose }: { card: CaptureAud
       >
         <Label>{t('common.captureAudioCards.inputsLabel', { position })}</Label>
         {inputs.map((input) => (
-          <Radio key={input.inputNumber} value={String(input.inputNumber)} data-testid={`audio-card-input-${key}-${input.inputNumber}`} data-registered={input.deviceId ?? undefined}>
+          <Radio
+            key={input.inputNumber}
+            value={String(input.inputNumber)}
+            isDisabled={!inputOffered(card, input, { moving, ambiguous })}
+            data-testid={`audio-card-input-${key}-${input.inputNumber}`}
+            data-registered={input.deviceId ?? undefined}
+          >
             <Radio.Content>
               <Radio.Control>
                 <Radio.Indicator />
@@ -88,11 +147,26 @@ function Outcome({ outcome }: { outcome: RegisterOutcome }) {
   const { t } = useTranslation()
   if (outcome.kind === 'DONE') {
     const { registration } = outcome
+    // `releasedDeviceId` may be absent in an answer of a Core before R-FLEX: read as null.
+    const released = registration.releasedDeviceId ?? null
     return (
-      <Alert status="success" role="status" data-testid="audio-cards-registered" data-change={registration.change} data-device={registration.deviceId}>
+      <Alert status="success" role="status" data-testid="audio-cards-registered" data-change={registration.change} data-device={registration.deviceId} data-released={released ?? undefined}>
         <Alert.Indicator />
         <Alert.Content>
           <Alert.Title>{t(`common.captureAudioCards.result.${registration.change}`, { number: registration.inputNumber, device: captureDeviceName(t, registration.deviceId) })}</Alert.Title>
+          {released === null ? null : (
+            <Alert.Description data-testid="audio-cards-released">{t('common.captureAudioCards.released', { released: captureDeviceName(t, released), number: registration.inputNumber })}</Alert.Description>
+          )}
+        </Alert.Content>
+      </Alert>
+    )
+  }
+  if (outcome.refusal === 'ALREADY_BOUND') {
+    return (
+      <Alert status="warning" role="status" data-testid="audio-cards-refused" data-refusal={outcome.refusal} data-holder={outcome.holder}>
+        <Alert.Indicator />
+        <Alert.Content>
+          <Alert.Title>{t('common.captureAudioCards.refusal.AUDIO_CARD_ALREADY_BOUND', { device: captureDeviceName(t, outcome.holder) })}</Alert.Title>
         </Alert.Content>
       </Alert>
     )
@@ -231,7 +305,18 @@ export function AudioCards() {
               {/* The order of the answer, as it is: never re-sorted, filtered or merged. */}
               <ul className="dev-scan-list">
                 {listing.cards.map((card, index) => (
-                  <Card key={cardKeyOf(card)} card={card} position={index + 1} choice={choice} disabled={cards.block !== null || cards.busy !== null} onChoose={cards.choose} />
+                  <Card
+                    key={cardKeyOf(card)}
+                    card={card}
+                    position={index + 1}
+                    choice={choice}
+                    disabled={cards.block !== null || cards.busy !== null}
+                    moving={cards.moving !== null && cardKeyOf(cards.moving) === cardKeyOf(card)}
+                    ambiguous={isAmbiguous(card, listing.cards)}
+                    onChoose={cards.choose}
+                    onMove={() => cards.startMove(card)}
+                    onCancelMove={cards.cancelMove}
+                  />
                 ))}
               </ul>
               <p className="dev-sel-reason" data-testid="audio-cards-trust">

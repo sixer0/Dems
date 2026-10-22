@@ -62,6 +62,10 @@ export function hostAliasFactsReaderOf(sources: HostAliasFactSources): () => Pro
     }
     const network = sources.network();
     if (network === null || typeof network !== 'object') throw new HostAliasFactsUnknownError();
+    // Row 141 (D23): since row 105 (D-105-2) a stored interface whose camera network is not fully chosen reads as a
+    // context with `cameraSubnet: null`, no longer as null. The helper never acts without a camera subnet (D16
+    // Q96-04 a): that context is "facts unknown" too.
+    if (network.cameraSubnet === null || network.cameraSubnet === undefined) throw new HostAliasFactsUnknownError();
     return Object.freeze({
       storedInterface,
       fileInterface,
