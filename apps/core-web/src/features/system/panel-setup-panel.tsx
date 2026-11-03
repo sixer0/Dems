@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { PANEL_CLIENT_MAX_LENGTH, PANEL_LOGO_PNG_MAX_BYTES, PANEL_SATKER_MAX_LENGTH, type PanelLogoTarget, type PanelSetupResponse, type SetPanelSetupRequest } from '@dems/shared/api'
 import { useWebLive } from '@/runtime'
 import { SystemPanel } from './panel'
+import { deferEffectStart } from '@/lib/effect-start'
 
 /** A File read as base64 without the data-URL prefix. */
 async function readFileAsBase64(file: File): Promise<string> {
@@ -56,7 +57,6 @@ export function PanelSetupPanel() {
   // D57c: the one read of the page's life. StrictMode runs effects twice; the second run must not
   // ask again, and the answer of the first run is applied even though its cleanup already fired
   // (React 18 makes a set after a real unmount a no-op — the guard is what keeps the ask at one).
-  const askedRef = useRef(false)
 
   const wordFailure = useCallback((failure: AnswerFailure): string => {
     if (failure.status === 503) return t('system.panelSetup.backendDown')
@@ -70,20 +70,23 @@ export function PanelSetupPanel() {
     return t('system.panelSetup.notStored')
   }, [t])
 
+  // The house rule for Core calls from an effect (`live-strict-mode-starts`): the effect returns
+  // `deferEffectStart` — one task later, the clean-up cancels, StrictMode asks exactly once.
   useEffect(() => {
-    if (live === null || askedRef.current) return
-    askedRef.current = true
-    void (async () => {
-      const answer = await live.client.call('getPanelSetup', {})
-      if (answer.ok) {
-        const data = answer.data as PanelSetupResponse
-        setSetup(data)
-        setSatker(data.satker)
-        setClientWord(data.client)
-      } else {
-        setLoadNote(wordFailure(answer as AnswerFailure))
-      }
-    })()
+    if (live === null) return undefined
+    return deferEffectStart(() => {
+      void (async () => {
+        const answer = await live.client.call('getPanelSetup', {})
+        if (answer.ok) {
+          const data = answer.data as PanelSetupResponse
+          setSetup(data)
+          setSatker(data.satker)
+          setClientWord(data.client)
+        } else {
+          setLoadNote(wordFailure(answer as AnswerFailure))
+        }
+      })()
+    })
   }, [live, wordFailure])
 
   const dirty =
