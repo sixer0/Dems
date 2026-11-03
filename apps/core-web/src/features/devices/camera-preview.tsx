@@ -47,6 +47,16 @@ export function CameraPreview({ livePreview = false, ...props }: CameraPreviewPr
   return <NoPreviewTile {...props} />
 }
 
+/**
+ * 2026-11-03 (bench, the principal's CAM-03): an `<img>` cannot read a status code, so every
+ * refusal the Core makes at stream time (409 `PREVIEW_NOT_AVAILABLE` for a camera it cannot
+ * reach, the credential refused, the limit) arrives here as a bare `error`. Retrying is right -
+ * the camera may come back - but SAYING "Connecting…" forever is not: the Core knows more. After
+ * this many failed attempts without ONE frame, the tile states the unavailable sentence and keeps
+ * retrying at the backoff; the first frame of a returning camera says LIVE again as before.
+ */
+const HONEST_AFTER_FAILURES = 3
+
 /** The state of a live preview as the tile says it. */
 type LivePhase = 'CONNECTING' | 'LIVE' | 'UNAVAILABLE' | 'LIMIT'
 type ShownPhase = LivePhase | 'PAUSED'
@@ -135,7 +145,7 @@ function LivePreview({ cameraId, deviceId, variant = 'feed', recordingSince = nu
           if (answer.ok) {
             const issued = previewPathOf(answer.data.url)
             if (issued !== null) {
-              setPhase('CONNECTING')
+              setPhase(failures.current >= HONEST_AFTER_FAILURES ? 'UNAVAILABLE' : 'CONNECTING')
               setPath(issued)
               return
             }
@@ -179,7 +189,7 @@ function LivePreview({ cameraId, deviceId, variant = 'feed', recordingSince = nu
   const onError = () => {
     failures.current += 1
     setPath(null)
-    setPhase('CONNECTING')
+    setPhase(failures.current >= HONEST_AFTER_FAILURES ? 'UNAVAILABLE' : 'CONNECTING')
     retryLater(previewRetryDelayMs(failures.current))
   }
 

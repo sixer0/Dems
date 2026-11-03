@@ -208,6 +208,38 @@ describe('Devices & Inputs: the live preview of a production camera', () => {
     expect(issued()).toHaveLength(4)
   })
 
+  // 2026-11-03 (bench, the principal's CAM-03): the Core refuses the stream for an unreachable
+  // camera but an <img> cannot read that — three failed pictures without one frame must say the
+  // unavailable sentence, keep the backoff alive, and return to LIVE when a frame finally arrives.
+  it('three failed pictures without a frame: the honest sentence, still retrying; a frame returns it to LIVE', async () => {
+    const { root } = await livePage('/devices', 'page-devices', production())
+    const tile = await within(root).findByTestId('camera-tile-VIDEO-01')
+    await waitFor(() => expect(imageOf(previews(tile)[0]!)).not.toBeNull())
+    pageTimersFake()
+    fireEvent.error(imageOf(previews(tile)[0]!)!) // failure 1: still connecting, retry at 2 s
+    await pass(2_100)
+    await pass(200)
+    expect(imageOf(previews(tile)[0]!)).not.toBeNull()
+    fireEvent.error(imageOf(previews(tile)[0]!)!) // failure 2: connecting, retry at 4 s
+    await pass(4_100)
+    await pass(200)
+    expect(imageOf(previews(tile)[0]!)).not.toBeNull()
+    expect(previews(tile)[0]).toHaveAttribute('data-state', 'CONNECTING')
+    fireEvent.error(imageOf(previews(tile)[0]!)!) // failure 3: the tile now says what the Core knows
+    await pass(50)
+    expect(previews(tile)[0]).toHaveAttribute('data-state', 'UNAVAILABLE')
+    expect(previews(tile)[0]!.textContent).toContain(PV.unavailable)
+    // The retry is not abandoned: at the 8 s step a new token is asked and the picture returns.
+    await pass(8_100)
+    await pass(200)
+    expect(issued().length).toBeGreaterThanOrEqual(4)
+    expect(imageOf(previews(tile)[0]!)).not.toBeNull()
+    expect(previews(tile)[0]).toHaveAttribute('data-state', 'UNAVAILABLE')
+    fireEvent.load(imageOf(previews(tile)[0]!)!)
+    await pass(50)
+    expect(previews(tile)[0]).toHaveAttribute('data-state', 'LIVE')
+  })
+
   // The refusal is answered to the SECOND token: the first one opens the picture, its failure arms a retry on the fake
   // clock (a timer armed on the system clock before `pageTimersFake` stays real), and that retry is refused.
   async function refusedOnRetry(reply: () => unknown) {
