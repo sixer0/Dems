@@ -315,9 +315,11 @@ describe('the model identifier: one shared pattern, used by operation 91', () =>
     // Task 4 row RD2: the two schemas and the one operation of the retirement of a device, 189 -> 191 and 110 -> 111.
     // Task 4 row D53: the two schemas and the two operations of the live preview and the idle meters, 191 -> 193 and 111 -> 113.
     // Task 4 LCD work (2026-10-29): the answer schema and the operation of the panel info, 193 -> 194 and 113 -> 114.
-    // RB-9 as amended (principal PT GSP, 2026-11-02): the three request bodies and the answer of the vendor trio, 194 -> 198; operations 15-17, 114 -> 117.
-    expect(Object.keys(document.components.schemas)).toHaveLength(198);
-    expect(CORE_API_OPERATIONS).toHaveLength(117);
+    // RB-9 as amended (principal PT GSP, 2026-11-02): the three request bodies and the answer of the vendor trio, 194 -
+    // D57 (2026-11-03, principal): + SetPanelSetupRequest and PanelSetupResponse (198 -> 200) and
+    // the two panel-setup operations (117 -> 119).> 198; operations 15-17, 114 -> 117.
+    expect(Object.keys(document.components.schemas)).toHaveLength(200);
+    expect(CORE_API_OPERATIONS).toHaveLength(119);
   });
 });
 

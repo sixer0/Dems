@@ -259,7 +259,7 @@ describe('AC-56: the OpenAPI document', () => {
     expect(OPENAPI_COMMITTED_SCOPE).toBe(CoreApiScope.ALL);
     expect(renderOpenApiJson()).toBe(serializeOpenApiDocument(createOpenApiDocument({ scope: OPENAPI_COMMITTED_SCOPE })));
     expect(committed).toBe(renderOpenApiJson());
-    expect(listOpenApiOperations(JSON.parse(committed) as typeof document)).toHaveLength(117); // task 4 row RD2: + operation 111; row D53: + operations 112-113; REVISED 2026-11-02 (principal): + createUser, updateUser and deleteUser of RB-9 as amended (the file was regenerated with `npm run openapi:gen -w @dems/shared`)
+    expect(listOpenApiOperations(JSON.parse(committed) as typeof document)).toHaveLength(119); // task 4 row RD2: + operation 111; row D53: + operations 112-113; REVISED 2026-11-02 (principal): + createUser, updateUser and deleteUser of RB-9 as amended (the file was regenerated with `npm run openapi:gen -w @dems/shared`)
     expect(renderOpenApiJson(CoreApiScope.OFFLINE)).toBe(serializeOpenApiDocument(document));
   });
 

@@ -110,6 +110,19 @@ export function isVendorRoot(username: string | null | undefined): boolean {
   return username === VENDOR_ROOT_USERNAME;
 }
 
+/**
+ * The vendor accounts of the appliance (D57, 2026-11-03, principal): the two identities the factory
+ * seeds and the only accounts allowed to run the PRE-DELIVERY SETUP module of the console (the
+ * panel's logo and its two identity words). An identity rule, not a permission - the same semantics
+ * as RB-9 (narrower) and D55 (wider). The panel backend holds the same pair in its own file
+ * (`AKUN_VENDOR` in apps/lcd-backend/app/dems_backend.py); the two are one rule told twice.
+ */
+export const VENDOR_ACCOUNTS: readonly [string, string] = [VENDOR_ROOT_USERNAME, 'gsp.teknisi'];
+
+export function isVendorAccount(username: string | null | undefined): boolean {
+  return typeof username === 'string' && (VENDOR_ACCOUNTS as readonly string[]).includes(username);
+}
+
 /** Whether one account holds a permission: its role's grants plus the extras its identity carries. */
 export function operatorHas(operator: Pick<SimOperator, 'role' | 'username'> | null | undefined, permission: Permission): boolean {
   if (!operator) return false;

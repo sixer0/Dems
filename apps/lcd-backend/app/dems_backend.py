@@ -140,6 +140,8 @@ LOGO_REPUSH_MIN_S = float(os.environ.get("DEMS_LOGO_REPUSH_MIN_S", "30"))
 LOGO_WAIT_S   = float(os.environ.get("DEMS_LOGO_WAIT_S", "45"))        # tunggu selesai utk pemanggil
 LOGO_AUTOPUSH = os.environ.get("DEMS_LOGO_AUTOPUSH", "1") not in ("0", "", "false")
 MAX_UPLOAD_B  = int(os.environ.get("DEMS_LOGO_MAX_BYTE", str(6 * 1024 * 1024)))
+# D57: badan JSON modul konsol memuat logo base64 — 4/3 dari batas unggah ditambah ruang medan lain.
+MAX_SETUP_JSON_B = int(MAX_UPLOAD_B * 4 / 3) + 65536
 LOGO_MAX_W    = int(os.environ.get("DEMS_LOGO_MAX_W", "480"))          # penahan anggaran LittleFS
 LOGO_MAX_H    = int(os.environ.get("DEMS_LOGO_MAX_H", "320"))
 # Core produksi (loopback). Halaman setup TIDAK menyimpan sandi: kredensial hanya dilewatkan
@@ -785,6 +787,7 @@ def teknisi_login(user, pw):
                                {"username": str(user)[:64].strip(), "password": str(pw)})
     if code != 200:
         return None, _alasan_core(code, js), {}
+    if not isinstance(js, dict): js = {}
     ses = js.get("session") or {}
     op = ses.get("operator") or {}
     peran = str(op.get("role") or "")
@@ -821,6 +824,7 @@ def teknisi_peran(token):
         with L:
             SETUP.pop(str(token), None)
         return False, _alasan_core(code, js), {}
+    if not isinstance(js, dict): js = {}
     op = js.get("operator") or {}
     peran = str(op.get("role") or "")
     akun = str(op.get("username") or s.get("akun") or "")
@@ -852,7 +856,26 @@ def setup_prune():
                 SETUP.pop(t, None)
 
 
-def gerbang_teknisi(fields, token):
+def teknisi_akun_core(cookie_raw):
+    """D57 (jalur konsol): buktikan header Cookie yang dibawa Core ke endpoint sesi Core sendiri.
+    Tidak ada rahasia baru — kredensial sesi pemanggil lewat apa adanya, dan Core-lah yang
+    menjawab sesi siapa ini. Nama akun dibaca dari jawaban Core, bukan dari badan permintaan."""
+    if not cookie_raw or "=" not in cookie_raw:
+        return False, "tidak ada sesi Core yang dibawa", {}
+    kode, js, _h = _core_call("/api/v1/auth/session", cookie=cookie_raw)
+    if kode != 200 or not isinstance(js, dict):
+        return False, "Core tidak mengenali sesi yang dibawa (HTTP %s)" % kode, {}
+    op = js.get("operator") or {}
+    akun = str(op.get("username") or "")
+    nama = str(op.get("displayName") or op.get("name") or akun)[:40]
+    info = {"peran": str(op.get("role") or ""), "nama": nama, "akun": akun}
+    if akun not in AKUN_VENDOR:
+        return False, ("sesi Core yang dibawa adalah akun %s — operasi pre-delivery hanya untuk "
+                       "akun vendor %s" % (akun or "?", " / ".join(AKUN_VENDOR))), info
+    return True, "", info
+
+
+def gerbang_teknisi(fields, token, core_cookie=None):
     """Kredensial form (login baru) ATAU token sesi yang dibuktikan ulang ke Core."""
     user = str(fields.get("username", "") or "").strip()
     pw = str(fields.get("password", "") or "")
@@ -862,6 +885,12 @@ def gerbang_teknisi(fields, token):
             return False, pesan, info, None
         return True, "", info, tok
     ok, pesan, info = teknisi_peran(token)
+    if not ok and core_cookie:
+        # Jalur D57: permintaan datang lewat Core dengan sesi pemanggil yang asli.
+        ok2, pesan2, info2 = teknisi_akun_core(core_cookie)
+        if ok2:
+            return True, "", info2, None
+        return False, pesan2, info2, None
     if not ok:
         return False, pesan, info, None
     return True, "", info, token
@@ -1341,7 +1370,7 @@ class H(BaseHTTPRequestHandler):
         gid = str(medan.get("id", "client")).strip().lower()
         if gid not in LOGO_IDS:
             return 400, {"error": "id harus client|splash", "dapat": gid or "(kosong)"}
-        ok, pesan, info, tok = gerbang_teknisi(medan, self._sesi(medan))
+        ok, pesan, info, tok = gerbang_teknisi(medan, self._sesi(medan), self.headers.get("Cookie"))
         if not ok:
             log("[logo] unggahan DITOLAK dari %s: %s" % (src, pesan))
             event("-", "LOGO_TAK_BERWEWENANG", src[:12], pesan[:60])
@@ -1673,12 +1702,68 @@ Tautan panel: kirim {tx} · terima {rx} &nbsp;|&nbsp; dir {REKAM_DIR}</p>
     def do_POST(self):
         p = self.path.split("?")[0]
         src0 = self.client_address[0]
+        if p == "/api/dems/setup":
+            # D57: pintu JSON untuk modul konsol. Badan = {satker?, client?, logo_base64?, logo_target?}.
+            # Gerbang sama ketatnya; sesi Core pemanggil ikut dibawa dan dibuktikan balik ke Core.
+            try:
+                panjang = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                panjang = -1
+            if panjang < 0 or panjang > MAX_SETUP_JSON_B:
+                return self._send(413, {"error": "body terlalu besar (maks %d B)" % MAX_SETUP_JSON_B})
+            try:
+                body = json.loads(self.rfile.read(panjang).decode("utf-8"))
+                assert isinstance(body, dict)
+            except Exception:
+                return self._send(400, {"error": "JSON tidak sah"})
+            ok, pesan, info, _tok = gerbang_teknisi({}, "", self.headers.get("Cookie"))
+            if not ok:
+                log("[setup-konsol] DITOLAK dari %s: %s" % (src0, pesan))
+                event("-", "SETUP_TAK_BERWEWENANG", src0[:12], pesan[:60])
+                return self._send(403, {"error": "BUKAN_TEKNISI", "alasan": pesan})
+            ubah = {"satker": False, "client": False, "logo": False}
+            for k, batas in (("satker", 38), ("client", 40)):
+                if k in body:
+                    v = str(body.get(k) or "").strip()[:batas]
+                    with L:
+                        if v != G[k]:
+                            G[k] = v
+                            ubah[k] = True
+            if ubah["satker"] or ubah["client"]:
+                simpan_identitas()
+            logo_out = {}
+            if body.get("logo_base64"):
+                pilih = str(body.get("logo_target") or "client").lower()
+                target = list(LOGO_IDS) if pilih in ("both", "semua", "") else [pilih]
+                if any(g not in LOGO_IDS for g in target):
+                    return self._send(400, {"error": "logo_target harus client|splash|both", "dapat": pilih})
+                try:
+                    import base64 as _b64
+                    isi = _b64.b64decode(str(body["logo_base64"]), validate=True)
+                except Exception:
+                    return self._send(422, {"error": "GAMBAR_GAGAL", "alasan": "base64 tidak sah"})
+                for gid in target:
+                    try:
+                        raw565, w, h = siapkan_logo(isi, gid, None, None, "contain")
+                    except Exception as e:
+                        return self._send(422, {"error": "GAMBAR_GAGAL", "alasan": str(e)[:200]})
+                    simpan_logo(gid, raw565, w, h, "unggah:konsol:%s" % (info.get("nama") or "?"))
+                    logo_antre(gid, "unggah konsol oleh %s" % (info.get("nama") or "?"))
+                    ubah["logo"] = True
+            with L:
+                for gid in LOGO_IDS:
+                    st = dict(LOGO[gid])
+                logo_out = {gid: {"tersimpan": bool(LOGO[gid].get("tersimpan"))} for gid in LOGO_IDS}
+                out = {"ok": True, "satker": G["satker"], "client": G["client"],
+                       "logo": logo_out, "changed": {"satker": ubah["satker"], "client": ubah["client"], "logo": ubah["logo"]}}
+            event("-", "SETUP_KONSOL", "-", "%s%s%s" % ("satker " if ubah["satker"] else "", "client " if ubah["client"] else "", "logo" if ubah["logo"] else ""))
+            return self._send(200, out)
         if p.startswith("/api/dems/logo"):
             raw, medan, berkas = self._form()
             if raw is None:
                 return self._send(413, {"error": "body terlalu besar (maks %d B)" % MAX_UPLOAD_B})
             if p.endswith("/push"):
-                ok, pesan, info, _tok = gerbang_teknisi(medan, self._sesi(medan))
+                ok, pesan, info, _tok = gerbang_teknisi(medan, self._sesi(medan), self.headers.get("Cookie"))
                 if not ok:
                     return self._send(403, {"error": "BUKAN_TEKNISI", "alasan": pesan})
                 pilih = str(medan.get("id", "both")).lower()

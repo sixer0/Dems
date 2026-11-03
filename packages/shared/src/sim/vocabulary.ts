@@ -430,6 +430,9 @@ export const AuditType = {
   USER_CREATED: 'USER_CREATED',
   USER_UPDATED: 'USER_UPDATED',
   USER_DELETED: 'USER_DELETED',
+  // D57 (2026-11-03, principal): the console module of the pre-delivery setup writes
+  // one row naming which panel fields changed; never the image bytes, never the words themselves.
+  PANEL_SETUP_CHANGED: 'PANEL_SETUP_CHANGED',
   BIOMETRIC_ENROLLMENT_CHANGED: 'BIOMETRIC_ENROLLMENT_CHANGED',
   // Task 3 M2-W7 (blueprint row 48; `C3 §5.2`; SEC35-01/02/16/17/22): the nine capture-phase
   // types, in the order of `C3 §5.2`. Written by Core-server modules only (the simulator emits
@@ -602,6 +605,7 @@ export const AUDIT_TYPE_CATEGORY = {
   BIOMETRIC_ENROLLMENT_CHANGED: 'AUTH',
   // Task 3 M2-W7 (`C3 §5.3`): exactly nine entries, each in an EXISTING category.
   CAPTURE_CONFIG_CHANGED: 'DEVICE',
+  PANEL_SETUP_CHANGED: 'DEVICE',
   AUDIO_SOURCE_SWITCHED: 'SESSION',
   CAMERA_POE_CYCLED: 'DEVICE',
   TRANSCRIPT_REVISED: 'EVIDENCE',

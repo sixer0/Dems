@@ -130,7 +130,10 @@ describe('MODG: the route list of the module equals its registry operations', ()
     const PREVIEW_AREA = ['createCameraPreviewSession', 'holdIdleMeters'];
     // LCD bridge task: operation 114 (the firmware word the panel states about itself) carries the
     // Device tag too, and THIS module answers it — beside the bridge it reads the same backend of.
-    const PANEL_AREA = ['getPanelFirmware'];
+    // D57 (2026-11-03, principal): operations 115 and 116 of this file's number space (118, 119 of
+    // §7), the read and the write of the pre-delivery panel setup, carry the Device tag too and are
+    // answered by THIS module, as a proxy with the vendor-identity gate in front of it.
+    const PANEL_AREA = ['getPanelFirmware', 'getPanelSetup', 'setPanelSetup'];
     expect(area.map((operation) => operation.operationId)).toEqual([
       ...DEVICES_OPERATIONS, ...CAPTURE_CONFIG_AREA, ...STT_CONFIG_AREA, ...CAPTURE_DISCOVERY_AREA, ...AUDIO_CARD_AREA, ...READDRESS_AREA, ...COMMISSIONING_AREA, ...DEVICE_TEST_AREA, ...ACCEPTANCE_AREA, ...RETIRE_AREA, ...PREVIEW_AREA, ...PANEL_AREA,
     ]);

@@ -9,12 +9,24 @@
  * | Which audit row belongs to my command? (C-7) | `newestOwnRow(rows, …)`: in Live mode the newest row of the ring may be the engine's or another console's |
  */
 import { CoreMode, useCoreMode, useLiveSelector } from '@dems/shared/live'
-import { Permission, type AuditRow, type AuditType } from '@dems/shared/sim'
+import { Permission, isVendorAccount, type AuditRow, type AuditType } from '@dems/shared/sim'
 import type { WebLive } from '@/runtime'
 
 /** True when the Core server is the Core of this page load (a Live source in the context). */
 export function useSystemLiveMode(): boolean {
   return useCoreMode() === CoreMode.LIVE
+}
+
+/**
+ * May the pre-delivery panel setup be shown? (D57, 2026-11-03) Live mode only — the module proxies
+ * to the panel backend through the Core, and a simulated Core has no panel behind it — and only for
+ * the two vendor accounts, by identity. Cosmetic on the client's side exactly like RB-9's trio:
+ * the Core checks the same rule again on every request and is the authority.
+ */
+export function usePanelSetupVisible(): boolean {
+  const liveMode = useSystemLiveMode()
+  const vendor = useLiveSelector((source: WebLive | null) => isVendorAccount(source?.session?.operator.username))
+  return liveMode && vendor
 }
 
 /** What the gate reads of the server's session: the permission hint and the demo flag (DC-3). */

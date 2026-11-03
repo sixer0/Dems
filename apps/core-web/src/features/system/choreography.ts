@@ -12,7 +12,7 @@ import type { Variants } from 'motion/react'
 import { useRouteEnterDelay } from '@/components/shell'
 import { useMotionPolicy, type MotionPolicyValue } from '@/motion'
 
-export type SystemPanelId = 'quick' | 'services' | 'health' | 'update' | 'maintenance' | 'about' | 'settings' | 'demo'
+export type SystemPanelId = 'quick' | 'services' | 'health' | 'update' | 'maintenance' | 'about' | 'settings' | 'panelSetup' | 'demo'
 
 /** Panel beats in ms after the route enter (reading order). */
 export const PANEL_BEAT_MS: Record<SystemPanelId, number> = {
@@ -23,6 +23,7 @@ export const PANEL_BEAT_MS: Record<SystemPanelId, number> = {
   maintenance: 360,
   about: 420,
   settings: 480,
+  panelSetup: 510,
   demo: 540,
 }
 

@@ -127,8 +127,18 @@ describe('M3: who may call is stage 6, only', () => {
     expect(places(PERMISSION)).toEqual([]);
   });
 
-  it('it reads no session, no operator and no device of the caller', () => {
-    expect(places(SESSION_OR_DEVICE)).toEqual([]);
+  it('it reads no session, no operator and no device of the caller — except the vendor gate of D57', () => {
+    // D57 (2026-11-03, principal): the pre-delivery panel setup is gated on the IDENTITY of the
+    // signed-in account, a rule stage 6 cannot express (the same semantics as RB-9 in the admin
+    // unit). The reads below are the whole of the exception: the import, the gate's own two lines,
+    // and the actor id of the audit row. Nothing else in the folder looks at a session.
+    expect(places(SESSION_OR_DEVICE)).toEqual([
+      'src/modules/devices/index.ts:76',
+      'src/modules/devices/index.ts:144',
+      'src/modules/devices/index.ts:145',
+      'src/modules/devices/index.ts:158',
+      'src/modules/devices/index.ts:158',
+    ]);
   });
 
   it('request.principal is handed to app.engine.command as it is, and used nowhere else', () => {
@@ -151,8 +161,14 @@ describe('M3: who may call is stage 6, only', () => {
 });
 
 describe('M4, M5: a state change is a hosted action; the module writes nothing itself', () => {
-  it('no audit row, no event, no unit of work, no publication, no statement', () => {
-    expect(places(OWN_ROWS)).toEqual([]);
+  it('no audit row, no event, no unit of work, no publication, no statement — except the one row of D57', () => {
+    // D57 (2026-11-03, principal): the panel-setup write is the one change this folder records
+    // itself: the value lives in the panel backend, not in the engine, so there is no hosted
+    // action to audit. The unit of work holds exactly one row, PANEL_SETUP_CHANGED, of facts.
+    expect(places(OWN_ROWS)).toEqual([
+      'src/modules/devices/index.ts:162',
+      'src/modules/devices/index.ts:163',
+    ]);
     expect(places(STATEMENT)).toEqual([]);
   });
 
@@ -225,6 +241,9 @@ describe('M8: time, and what the folder may touch', () => {
       '../../engine',
       // LCD integration (user request 2026-10-19): lifecycle/HTTP stay in the separate lcd unit.
       '../../lcd',
+      // D57 (2026-11-03, principal): the vendor gate reads the session's username through the
+      // authenticate unit's own reader — the one server unit beyond the guard this folder may ask.
+      '../../plugins/authenticate',
       '../../plugins/logger',
       '../../plugins/permission-guard',
       './operations',
@@ -253,14 +272,26 @@ describe('M2, M7: routes and input', () => {
   it('every route is registered from its registry entry: ten routes, no path written in the folder', () => {
     // Seven `route(` calls: four reads, one in the loop over the three device commands, two view commands,
     // and the one read of the panel's own firmware word (LCD bridge task, operation 114).
-    expect(count(ROUTE)).toBe(8);
-    expect(count(ROUTE_FROM_REGISTRY)).toBe(8);
+    // D57 (2026-11-03, principal): + the read and the write of the pre-delivery panel setup (8 -> 10).
+    expect(count(ROUTE)).toBe(10);
+    expect(count(ROUTE_FROM_REGISTRY)).toBe(10);
     expect(places(ROUTE_SHORTHAND)).toEqual([]);
     expect(places(PATH_LITERAL)).toEqual([]);
   });
 
   it('of a request it reads the principal, the validated path ID and the validated body, and nothing else', () => {
     const members = ownCode.flatMap((file) => [...file.text.matchAll(REQUEST_MEMBER)].map((match) => [match[1], match[2]].filter((part) => part !== undefined).join('.')));
-    expect(members.sort()).toEqual(['body.cameraId', 'body.channel', 'params.id', 'principal', 'principal', 'principal']);
+    // D57 (2026-11-03, principal): + the whole validated body of setPanelSetup and the caller's
+    // cookie, which the panel-setup proxy carries to the backend unchanged (no new secret exists).
+    expect(members.sort()).toEqual([
+      'body',
+      'body.cameraId',
+      'body.channel',
+      'headers.cookie',
+      'params.id',
+      'principal',
+      'principal',
+      'principal',
+    ]);
   });
 });

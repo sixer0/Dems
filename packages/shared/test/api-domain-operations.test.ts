@@ -689,7 +689,7 @@ describe('the 53 simulator actions and the operations they reach (01_specs §7.1
     expect(CORE_API_OPERATIONS.filter((operation) => /tablet-?link|security-?key|telemetry|capture-?warning|register/i.test(operation.path))).toEqual([]);
   });
 
-  it('42 actions reach 45 operations, every one of them in the registry; the other 66 are reads and server functions', () => {
+  it('42 actions reach 45 operations, every one of them in the registry; the other 74 are reads and server functions', () => {
     const reaching = names.filter((name) => SIM_ACTION_OPERATIONS[name].operations.length > 0);
     expect(reaching).toHaveLength(42);
     const reached = [...new Set(reaching.flatMap((name) => [...SIM_ACTION_OPERATIONS[name].operations]))];
@@ -712,7 +712,7 @@ describe('the 53 simulator actions and the operations they reach (01_specs §7.1
     // The LCD bridge task adds operation 114 (the panel's own firmware word), live only, reached by no action: 114 - 45 = 69.
     // REVISED 2026-11-02 (principal): RB-9 as amended adds createUser, updateUser and deleteUser, live
     // only and answered by the Core server alone, so no simulator action reaches them: 117 - 45 = 72.
-    expect(CORE_API_OPERATIONS.length - reached.length).toBe(72);
+    expect(CORE_API_OPERATIONS.length - reached.length).toBe(74); // D57 (2026-11-03): + the two panel-setup ops (console reads and server functions, no simulator action)
     // `deviceCommand` is three operations with one permission each; two settings actions share one.
     expect(SIM_ACTION_OPERATIONS.deviceCommand.operations).toEqual(['restartDevice', 'testDeviceSignal', 'identifyDevice']);
     expect(simActionsOfOperation('updateSettings')).toEqual(['setPresentationMode', 'updateSettings']);
@@ -873,11 +873,11 @@ describe('the indexed view of the media session', () => {
       expect([Object.keys(valueOf('video01')).length > 0, MEMBER in valueOf('video01')]).toEqual([true, false]);
     });
 
-    it('the totals do not move with the indexed view: 117 operations (40 GET / 77 POST; 97 + the two of task 4 row 63 + the one of row 194 + the seven of row 102 + the one of row V3 + the two of row 116 + the one of row RD2 + the two of row D53 + the one of the LCD bridge task + the three of RB-9 as amended), 90 audit types (67 + the ten of task 4 row 19 + the one of row 201 + the four of row V3 + the one of row R1b + the two of row N2 + the one of row RD2 + the one of row D53 + the three of RB-9 as amended)', () => {
+    it('the totals do not move with the indexed view: 119 operations (41 GET / 78 POST; 97 + the two of task 4 row 63 + the one of row 194 + the seven of row 102 + the one of row V3 + the two of row 116 + the one of row RD2 + the two of row D53 + the one of the LCD bridge task + the three of RB-9 as amended + the two of D57), 91 audit types (67 + the ten of task 4 row 19 + the one of row 201 + the four of row V3 + the one of row R1b + the two of row N2 + the one of row RD2 + the one of row D53 + the three of RB-9 as amended)', () => {
       // REVISED 2026-11-02 (principal): three user-management operations and audit types added to the registry.
       const methods = CORE_API_OPERATIONS.map((operation) => String(operation.method).toUpperCase());
-      expect([methods.length, methods.filter((method) => method === 'GET').length, methods.filter((method) => method === 'POST').length]).toEqual([117, 40, 77]);
-      expect(Object.keys(AuditType)).toHaveLength(90);
+      expect([methods.length, methods.filter((method) => method === 'GET').length, methods.filter((method) => method === 'POST').length]).toEqual([119, 41, 78]);
+      expect(Object.keys(AuditType)).toHaveLength(91);
     });
   });
 });

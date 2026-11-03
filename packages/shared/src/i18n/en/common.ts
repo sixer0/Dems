@@ -422,6 +422,8 @@ export const common = {
     USER_CREATED: 'User created',
     USER_UPDATED: 'User profile updated',
     USER_DELETED: 'User deleted',
+    // D57 (2026-11-03, principal): the console module of the pre-delivery panel setup.
+    PANEL_SETUP_CHANGED: 'Panel pre-delivery setup changed',
     BIOMETRIC_ENROLLMENT_CHANGED: 'Biometric sign-in changed',
     // Task 3 M2-W7 (blueprint row 48; C3 §5.2): the nine capture-phase types.
     CAPTURE_CONFIG_CHANGED: 'Capture configuration changed',

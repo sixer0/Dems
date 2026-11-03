@@ -165,7 +165,7 @@ describe('the registry: operations 93 to 97 as C3 §2.6 writes them', () => {
     expect(findCoreApiOperation('adoptCaptureCandidate')?.audit.also).toEqual(['CAPTURE_CONNECTION_TESTED', 'CAPTURE_CREDENTIAL_SET']);
   });
 
-  it('M4-PIN-1 (shared half): 117 operations, 40 GET, 77 POST, offline 45, 90 audit types, 40 error codes (unchanged), 6 access conditions', () => {
+  it('M4-PIN-1 (shared half): 119 operations, 41 GET, 78 POST, offline 45, 91 audit types, 40 error codes (unchanged), 6 access conditions', () => {
     // Task 4 row 63: + the two sound-card operations 98-99 (97 -> 99, POST 61 -> 63, offline 31 -> 33).
     // Task 4 row 194: + the confirmed re-address, operation 100 (99 -> 100, POST 63 -> 64, offline 33 -> 34).
     // Task 4 row RD2: + the retirement of a device, operation 111 (110 -> 111, POST 71 -> 72, offline 44 -> 45);
@@ -176,7 +176,9 @@ describe('the registry: operations 93 to 97 as C3 §2.6 writes them', () => {
     // LCD bridge task: + the panel firmware word, operation 114 (113 -> 114, GET 39 -> 40, offline unchanged: it is live).
     // REVISED 2026-11-02 (principal): RB-9 as amended adds createUser, updateUser and deleteUser, three
     // POSTs of area 2 (114 -> 117, POST 74 -> 77); both scopes stay: the three are live, the offline count 45.
-    expect([all.length, all.filter((operation) => operation.method === 'get').length, all.filter((operation) => operation.method === 'post').length]).toEqual([117, 40, 77]);
+    // D57 (2026-11-03, principal): + getPanelSetup (GET) and setPanelSetup (POST), 117 -> 119,
+    // GET 40 -> 41, POST 77 -> 78; both live, so the offline scope stays 45; + PANEL_SETUP_CHANGED (90 -> 91).
+    expect([all.length, all.filter((operation) => operation.method === 'get').length, all.filter((operation) => operation.method === 'post').length]).toEqual([119, 41, 78]);
     // Task 4 row 102: + the seven commissioning operations 101-107 (100 -> 107, GET 36 -> 39, POST 64 -> 68, offline 34 -> 41).
     // Task 4 row V3: + the stored-credential connection test, operation 108 (107 -> 108, POST 68 -> 69, offline 41 -> 42);
     // + the four audit types of the third vocabulary step (78 -> 82).
@@ -186,14 +188,15 @@ describe('the registry: operations 93 to 97 as C3 §2.6 writes them', () => {
     // Task 4 row R1b (decision C99): + CAPTURE_VIDEO_ABSENT_IN_SESSION (82 -> 83); no operation.
     // Task 4 row N2: + CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED, CAPTURE_AUDIO_SILENCE_INSERTED (83 -> 85); no operation.
     // REVISED 2026-11-02 (principal): + USER_CREATED, USER_UPDATED and USER_DELETED (87 -> 90).
-    expect(Object.values(AuditType)).toHaveLength(90);
+    expect(Object.values(AuditType)).toHaveLength(91); // D57: + PANEL_SETUP_CHANGED
     expect(API_ERROR_CODES).toHaveLength(40);
     expect(Object.values(CoreApiAccessCondition)).toHaveLength(6);
     const document = createOpenApiDocument({ scope: 'all' });
     // REVISED 2026-11-02 (principal): the document carries the three new operations (114 -> 117).
-    expect(Object.values(document.paths).flatMap((item) => Object.keys(item))).toHaveLength(117);
+    // D57 (2026-11-03, principal): + the panel-setup pair (117 -> 119).
+    expect(Object.values(document.paths).flatMap((item) => Object.keys(item))).toHaveLength(119);
     // Must FAIL when the registry and the document differ by one operation: a registry without the last one.
-    expect(all.slice(0, -1)).toHaveLength(116);
+    expect(all.slice(0, -1)).toHaveLength(118);
   });
 
   it('the documented statuses are those of C3 §2.6; 429 and 503 are the envelope-level answers, named by their reason in the text', () => {
@@ -271,19 +274,30 @@ describe('who may call (R-9 AC-12; D80(2), D80(3))', () => {
     // commissioning permission; its body is a closed reason and holds no credential.
     const ACCEPTANCE_IDS = ['acceptInstallation', 'revokeInstallationAcceptance', 'retireCaptureDevice'];
     const AUDIO_CARD_IDS = ['searchCaptureAudioCards', 'registerCaptureAudioInput', 'confirmCaptureDeviceAddress', ...COMMISSIONING_IDS.filter((id) => id !== 'setCameraNetwork'), 'testCaptureDeviceConnection', ...ACCEPTANCE_IDS];
+    // D57 (2026-11-03, principal): the two panel-setup operations (118, 119) are web console only
+    // on the plain AUTHENTICATED access plus the vendor-identity gate in the handler; neither body
+    // holds a camera credential, so they join everyWebOnly but not AUDIO_CARD_IDS.
     expect(everyWebOnly.map((operation) => operation.operationId)).toEqual([
       'setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate', 'searchCaptureAudioCards', 'registerCaptureAudioInput', 'confirmCaptureDeviceAddress', ...COMMISSIONING_IDS, 'testCaptureDeviceConnection', ...ACCEPTANCE_IDS,
+      // D57: the panel-setup pair joins the web-console-only set (the vendor gate lives in the handler).
+      'getPanelSetup', 'setPanelSetup',
     ]);
     expect(findCoreApiOperation('testCaptureDeviceConnection')?.requestBody).toBeUndefined();
     expect(CAPTURE_AUDIO_CARD_ACCESS).toEqual(CAPTURE_CREDENTIAL_ACCESS);
-    const webOnly = everyWebOnly.filter((operation) => !AUDIO_CARD_IDS.includes(operation.operationId));
+    // D57: the panel-setup pair is web-console-only without carrying a credential, like the
+    // audio-card list above; drop both before comparing with the credential-carrying four.
+    const NO_CREDENTIAL_IDS = [...AUDIO_CARD_IDS, 'getPanelSetup', 'setPanelSetup'];
+    const webOnly = everyWebOnly.filter((operation) => !NO_CREDENTIAL_IDS.includes(operation.operationId));
     expect(webOnly.map((operation) => operation.operationId)).toEqual([...CREDENTIAL_CARRYING_OPERATIONS]);
     expect(CAPTURE_CREDENTIAL_ACCESS).toEqual({ kind: 'PERMISSION', permission: 'CAPTURE_CONFIG', conditions: ['WEB_CONSOLE_SESSION'] });
     expect(WEB_CONSOLE_ONLY_REASON).toBe('WEB_CONSOLE_ONLY');
     // Exactly the operations whose request schema holds a `credential` pair, or IS one.
+    // The document is built once, not per operation (the old shape rebuilt it 48 times and the
+    // test timed out under the full-suite load when D57 added a body to the filter's reach).
+    const ALL_SCHEMAS = createOpenApiDocument({ scope: 'all' }).components.schemas;
     const carriesCredential = CORE_API_OPERATIONS.filter((operation) => {
       if (operation.requestBody === undefined) return false;
-      const json = JSON.stringify(createOpenApiDocument({ scope: 'all' }).components.schemas[operation.requestBody.schema]);
+      const json = JSON.stringify(ALL_SCHEMAS[operation.requestBody.schema]);
       return json.includes('CaptureCredentialWriteRequest') || operation.requestBody.schema === 'CaptureCredentialWriteRequest';
     });
     expect(carriesCredential.map((operation) => operation.operationId)).toEqual(webOnly.map((operation) => operation.operationId));
@@ -979,7 +993,7 @@ describe('task 4 row V3: operation 108, the connection test of a registered came
     // in area 2, so every table entry from `disableUser` on sits three places further.
     expect(CORE_API_OPERATIONS[110]?.operationId).toBe('testCaptureDeviceConnection');
     // It was the last entry until blueprint row 116 appended operations 109 and 110 after it (and row RD2 operation 111).
-    expect(CORE_API_OPERATIONS.at(-7)?.operationId).toBe('testCaptureDeviceConnection'); // task 4 row D53: + operations 112-113 after it; the LCD bridge task: + operation 114 after them
+    expect(CORE_API_OPERATIONS.at(-9)?.operationId).toBe('testCaptureDeviceConnection'); // task 4 row D53: + operations 112-113 after it; the LCD bridge task: + operation 114 after them; RB-9 as amended and D57 append five more behind it (the three users ops ride area 2, so the tail holds 114, 112, 113, 118, 119).
     // The permission as the candidate test has it: the same access object as operation 95.
     expect(operation.access).toEqual(CAPTURE_CREDENTIAL_ACCESS);
     expect(findCoreApiOperation('testCaptureCandidateConnection')?.access).toEqual(operation.access);

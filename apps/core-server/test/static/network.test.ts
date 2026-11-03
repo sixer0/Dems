@@ -168,8 +168,10 @@ describe('SR-03, P5, P21: nothing leaves the process, nothing comes from mock-co
     // Keep detecting references assigned to an alias, not only direct fetch() calls.
     // LCD bridge task (operation 114): `src/lcd/panel-info.ts` is the unit's SECOND pinned file — the
     // same loopback URL of the same backend, the same one-second bound, and no other destination.
+    // D57 (2026-11-03, principal): `src/lcd/setup.ts` is the THIRD — operations 115/116 proxy the
+    // pre-delivery setup to the same loopback backend, on the same four-second bound, nowhere else.
     const lcdFetchReference = /\bglobalThis\s*\.\s*fetch\b/g;
-    const LCD_FETCH_FILES: readonly string[] = ['src/lcd/bridge.ts', 'src/lcd/panel-info.ts'];
+    const LCD_FETCH_FILES: readonly string[] = ['src/lcd/bridge.ts', 'src/lcd/panel-info.ts', 'src/lcd/setup.ts'];
     expect(occurrences(runtime, lcdFetchReference, (path) => !LCD_FETCH_FILES.includes(path))).toEqual([]);
     for (const path of LCD_FETCH_FILES) {
       expect(runtime.find((file) => file.path === path)?.text.match(lcdFetchReference), path).toHaveLength(2);

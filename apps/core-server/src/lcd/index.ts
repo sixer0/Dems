@@ -6,6 +6,7 @@ import { createLcdBridge, LCD_INTERVAL_MS } from './bridge';
  * because the devices unit imports this index, never a file inside the unit (CPB1-16).
  */
 export { PANEL_FIRMWARE_OPERATION_ID, PANEL_INFO_CACHE_MS, createPanelFirmwareReader } from './panel-info';
+export { createPanelSetupProxy, PANEL_SETUP_OPERATION_IDS, LCD_BACKEND_UNREACHABLE, vendorGateOf, VENDOR_GATE_TEXT } from './setup';
 
 /** Registered within the existing devices unit; disabled means no timer and no HTTP calls. */
 export function mountLcdBridge(app: FastifyInstance) {

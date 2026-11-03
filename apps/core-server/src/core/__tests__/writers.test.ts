@@ -114,7 +114,8 @@ describe('the vocabulary', () => {
     // Task 4 row RD2 (decision C147): + CAPTURE_DEVICE_RETIRED = 86.
     // Task 4 row D53 (decisions D51, D53): + CAMERA_PREVIEW_OPENED = 87.
     // REVISED 2026-11-02 (principal): RB-9 amended — + USER_CREATED, USER_UPDATED, USER_DELETED = 90.
-    expect(types).toHaveLength(90);
+    // REVISED 2026-11-03 (principal): D57 adds PANEL_SETUP_CHANGED = 91.
+    expect(types).toHaveLength(91);
     const typed = new Set<string>(Object.keys(SERVER_AUDIT_DETAIL_RULES));
     for (const type of types.filter((candidate) => !typed.has(candidate))) {
       const input = auditInputOf(audit({ type }));
@@ -317,6 +318,8 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
     USER_CREATED: [{ type: 'USER_CREATED', actorId: 'OPR-004', deviceId: null, message: 'Created', details: { targetOperatorId: 'OPR-006', role: 'TECHNICIAN', reason: 'A new investigator joined' } }],
     USER_UPDATED: [{ type: 'USER_UPDATED', actorId: 'OPR-004', deviceId: null, message: 'Profile updated', details: { targetOperatorId: 'OPR-003', fields: 'name,displayName,initials,rank' } }],
     USER_DELETED: [{ type: 'USER_DELETED', actorId: 'OPR-004', deviceId: null, message: 'Deleted', severity: 'WARNING', details: { targetOperatorId: 'OPR-006', role: 'TECHNICIAN', sessionsEnded: 0, auditRowsRemoved: 2, signInRowsRemoved: 1, recordsLeftUnattributed: 0, credentialsRemoved: 1, reason: 'The account was no longer used' } }],
+    // D57 (2026-11-03): facts of a panel setup change - which fields moved, where the logo went.
+    PANEL_SETUP_CHANGED: [{ type: 'PANEL_SETUP_CHANGED', actorId: 'OPR-004', deviceId: null, message: 'Panel setup changed', severity: 'WARNING', details: { satkerChanged: true, clientChanged: false, logoQueued: true, logoTarget: 'both', reason: 'Handover branding approved' } }],
     BIOMETRIC_ENROLLMENT_CHANGED: [{ type: 'BIOMETRIC_ENROLLMENT_CHANGED', actorId: 'OPR-001', deviceId: 'DEV-0001', message: 'Enrolment changed', details: { enabled: true } }],
     // The nine capture-phase types of task 3 (C3 §5.2; row 48). Example values in each rule's form.
     CAPTURE_CONFIG_CHANGED: [{ type: 'CAPTURE_CONFIG_CHANGED', actorId: 'OPR-002', deviceId: null, message: 'Selector changed', details: { operationId: 'setPrimaryMic', scope: 'MIC', field: 'SOURCE', inputId: 'MIC-01', deviceId: 'MIC-02', from: 'MIC-02', to: 'MIC-01', permission: 'CAPTURE_CONFIG' } }],
@@ -449,7 +452,7 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
   };
 
   // REVISED 2026-11-02 (principal): RB-9 amended — 43 + the three of the vendor-only operations = 46.
-  it('covers exactly the forty-six types the server writes; the simulator\'s 44 have no list', () => {
+  it('covers exactly the forty-seven types the server writes; the simulator\'s 44 have no list', () => {
     const typed = Object.keys(SERVER_AUDIT_DETAIL_RULES).sort();
     expect(typed).toEqual(Object.keys(accepted).sort());
     // Task 4 blueprint row 19: 23 + the ten of the hardware-input port = 33; the simulator's 44 do not move.
@@ -460,7 +463,9 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
     // Task 4 row RD2: + CAPTURE_DEVICE_RETIRED = 42; the 44 still do not move.
     // Task 4 row D53: + CAMERA_PREVIEW_OPENED = 43; the 44 still do not move.
     // REVISED 2026-11-02 (principal): RB-9 amended: + USER_CREATED, USER_UPDATED, USER_DELETED = 46; the 44 still do not move.
-    expect(typed).toHaveLength(46);
+    // D57 (2026-11-03, principal): + PANEL_SETUP_CHANGED = 47; the 44 still do not move (the Core's
+    // console module writes it; the simulator never sees the panel backend).
+    expect(typed).toHaveLength(47);
     expect(Object.values(AuditType).filter((type) => detailRulesOf(type) === undefined)).toHaveLength(44);
     for (const type of typed) expect(Object.values(AuditType)).toContain(type);
   });
@@ -472,6 +477,7 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
     );
     expect(keys).toEqual({
       ACCESS_DENIED: ['operationId', 'permission', 'role', 'reason'],
+      PANEL_SETUP_CHANGED: ['satkerChanged', 'clientChanged', 'logoQueued', 'logoTarget', 'reason'],
       PAIRING_CODE_ISSUED: ['codeId', 'expiresAt'],
       PAIRING_CODE_CLOSED: ['codeId', 'reason'],
       DEVICE_REVOKED: ['reason', 'sessionsEnded', 'deviceId'],
@@ -535,6 +541,8 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
     });
     expect(required).toEqual({
       ACCESS_DENIED: ['operationId'],
+      // D57: the three facts are always told; where the logo went and why are the caller's words.
+      PANEL_SETUP_CHANGED: ['satkerChanged', 'clientChanged', 'logoQueued'],
       PAIRING_CODE_ISSUED: ['codeId', 'expiresAt'],
       PAIRING_CODE_CLOSED: ['codeId', 'reason'],
       DEVICE_REVOKED: ['reason', 'sessionsEnded'],

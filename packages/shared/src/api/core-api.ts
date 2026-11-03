@@ -127,6 +127,7 @@ import { INSTALLATION_ACCEPTANCE_OPERATIONS, INSTALLATION_ACCEPTANCE_SCHEMAS } f
 import { CAPTURE_RETIRE_OPERATIONS, CAPTURE_RETIRE_SCHEMAS } from './capture-retire';
 // LCD bridge task: the panel's own firmware word (operation 114), public so the sign-in screen can read it.
 import { PANEL_FIRMWARE_OPERATIONS, PANEL_SCHEMAS } from './lcd-panel';
+import { PANEL_SETUP_OPERATIONS, PANEL_SETUP_SCHEMAS } from './lcd-setup';
 import { NETWORK_TIME_OPERATIONS, NETWORK_TIME_SCHEMAS } from './network-time';
 import { EXPORT_DENIAL_NOTE, INVALID_INPUT, NOT_SIGNED_IN, forbidden } from './operation-parts';
 import { PAIRING_OPERATIONS, PAIRING_SCHEMAS } from './pairing';
@@ -735,6 +736,7 @@ export const CORE_API_SCHEMAS = {
   ...CAPTURE_PREVIEW_SCHEMAS,
   // LCD bridge task: the one schema of operation 114.
   ...PANEL_SCHEMAS,
+  ...PANEL_SETUP_SCHEMAS,
 } as const;
 export type CoreApiSchemaName = keyof typeof CORE_API_SCHEMAS;
 
@@ -1170,6 +1172,7 @@ const OPERATION_TABLE = [
   // LCD bridge task: the firmware word the panel states about itself, answered by the Core server
   // only and PUBLIC so the sign-in screen can read it. 113 + 1 = 114 operations, 40 GET / 74 POST.
   ...PANEL_FIRMWARE_OPERATIONS, // 114
+  ...PANEL_SETUP_OPERATIONS, // 115 getPanelSetup, 116 setPanelSetup (D57)
 ] as const satisfies readonly CoreApiRegistryOperation[];
 
 /** The type of the table with literal operation IDs and schema names (`CORE_API_OPERATION_TABLE`). */

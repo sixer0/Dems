@@ -44,6 +44,44 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(backend.CH[0]['file'], '')
         self.assertFalse(reply['ch'][0]['cam'])
 
+    def test_d57_login_gate_accepts_vendor_identity_not_role(self):
+        # root berperan SUPERVISOR: gerbang D57 melihat nama akun, bukan peran.
+        ses = {'session': {'operator': {'id': '1', 'role': 'SUPERVISOR', 'username': 'root', 'displayName': 'Root'}}}
+        hdrs = {'Set-Cookie': 'dems_session=abc; HttpOnly'}
+        with patch.object(backend, '_core_call', return_value=(200, ses, hdrs)) as call:
+            token, err, info = backend.teknisi_login('root', 'rahasia')
+        self.assertEqual(err, '')
+        self.assertIsNotNone(token)
+        self.assertEqual(info['akun'], 'root')
+        with backend.L:
+            self.assertEqual(backend.SETUP[token]['akun'], 'root')
+            backend.SETUP.pop(token, None)
+
+    def test_d57_login_gate_rejects_client_account_even_with_technician_role(self):
+        ses = {'session': {'operator': {'id': '2', 'role': 'TECHNICIAN', 'username': 'rina.wijaya'}}}
+        hdrs = {'Set-Cookie': 'dems_session=xyz; HttpOnly'}
+        seen = []
+        def fake_call(path, obj=None, cookie=None, **kw):
+            seen.append(path)
+            return (200, ses, hdrs) if path.endswith('sign-in') else (200, {}, {})
+        with patch.object(backend, '_core_call', side_effect=fake_call):
+            token, err, info = backend.teknisi_login('rina.wijaya', 'rahasia')
+        self.assertIsNone(token)
+        self.assertIn('root / gsp.teknisi', err)
+        self.assertIn('/api/v1/auth/sign-out', seen)  # sesi klien langsung ditutup
+
+    def test_d57_reverification_follows_account_not_role(self):
+        with backend.L:
+            backend.SETUP['t'] = {'core_cookie': 'c', 'peran': 'TECHNICIAN', 'nama': 'Rina',
+                                  'akun': 'rina.wijaya', 'dibuat': time.time(), 'exp': time.time() + 60}
+        ses = {'operator': {'role': 'TECHNICIAN', 'username': 'rina.wijaya'}}
+        with patch.object(backend, '_core_call', return_value=(200, ses, {})):
+            ok, err, _info = backend.teknisi_peran('t')
+        self.assertFalse(ok)
+        self.assertIn('rina.wijaya', err)
+        with backend.L:
+            backend.SETUP.pop('t', None)
+
     def test_initial_cameras_are_never_green(self):
         reply = backend.snapshot()
         self.assertEqual(reply['v'], 2)

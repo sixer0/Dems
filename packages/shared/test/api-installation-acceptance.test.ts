@@ -111,7 +111,7 @@ describe('the registry: operations 109 and 110', () => {
     // REVISED 2026-11-02 (principal): RB-9 as amended inserts createUser, updateUser and deleteUser
     // in area 2, so every table entry from `disableUser` on sits three places further.
     expect(CORE_API_OPERATIONS.slice(111, 113).map((operation) => operation.operationId)).toEqual([...IDS]);
-    expect(CORE_API_OPERATIONS).toHaveLength(117); // REVISED 2026-11-02 (principal): + createUser, updateUser and deleteUser of RB-9 as amended (114 -> 117)
+    expect(CORE_API_OPERATIONS).toHaveLength(119); // REVISED 2026-11-02 (principal): + createUser, updateUser and deleteUser of RB-9 as amended (114 -> 117); D57 (2026-11-03): + the panel-setup pair (117 -> 119)
     // The two audit types exist since the vocabulary step of row 19; this row adds none.
     for (const type of [AuditType.INSTALLATION_ACCEPTED, AuditType.INSTALLATION_ACCEPTANCE_REVOKED]) expect(AUDIT_TYPE_CATEGORY[type]).toBe('SYSTEM');
     // Exactly one audit entry each: no `also`.

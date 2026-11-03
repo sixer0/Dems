@@ -29,7 +29,8 @@ import { ServicesPanel } from './services-panel'
 import { SettingsPanel } from './settings-panel'
 import { SystemBanner } from './status-banner'
 import { UpdatePanel } from './update-panel'
-import { useDemoPanelVisible } from './live'
+import { useDemoPanelVisible, usePanelSetupVisible } from './live'
+import { PanelSetupPanel } from './panel-setup-panel'
 import { useStartDiagnostics } from './use-sim-command'
 import './system.css'
 
@@ -44,6 +45,7 @@ export function SystemPage() {
   const m = useMotionPolicy()
   const { start: startDiagnostics, busy: diagnosticsBusy, pending: diagnosticsPending, ref: diagnosticsRef } = useStartDiagnostics()
   const showDemoPanel = useDemoPanelVisible()
+  const showPanelSetup = usePanelSetupVisible()
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
 
   const openDiagnostics = () => {
@@ -69,6 +71,9 @@ export function SystemPage() {
           runRef={diagnosticsRef} />
         <AboutPanel anchorId={ANCHORS.about} />
         <SettingsPanel maintenanceAnchor={ANCHORS.maintenance} aboutAnchor={ANCHORS.about} />
+        {/* D57 (2026-11-03): the pre-delivery setup module, vendor accounts only (the gate and its
+            rationale live in ./live.ts; the Core repeats the check on every request). */}
+        {showPanelSetup ? <PanelSetupPanel /> : null}
         {showDemoPanel ? <DemoPanel /> : null}
       </div>
       <DiagnosticsModal isOpen={diagnosticsOpen} onOpenChange={setDiagnosticsOpen} />

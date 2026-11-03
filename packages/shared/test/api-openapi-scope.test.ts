@@ -330,20 +330,21 @@ describe('scope all: every operation of the registry, as the Core server answers
     expect(text).not.toBe(renderOpenApiJson('offline'));
   });
 
-  it('AC-B-11: is the committed openapi.json, byte for byte, with 117 operations and two security schemes', () => {
+  it('AC-B-11: is the committed openapi.json, byte for byte, with 119 operations and two security schemes', () => {
     expect(OPENAPI_COMMITTED_SCOPE).toBe(CoreApiScope.ALL);
     const committed = readFileSync(OPENAPI_JSON_PATH, 'utf8');
     expect(committed).toBe(renderOpenApiJson());
     expect(committed).toBe(serializeOpenApiDocument(all));
     const parsed = JSON.parse(committed) as OpenApiDocument;
     // REVISED 2026-11-02 (principal): + createUser, updateUser and deleteUser of RB-9 as amended.
-    expect(listOpenApiOperations(parsed)).toHaveLength(117); // + the two of task 4 row D53; 97 of C3 §10.1 (row 132, D106; was 92 at M6 row 113, 89 at M2 row 50) + the two of task 4 row 63 + the one of row 194 + the seven of row 102 + the one of row V3 + the two of row 116 + the one of row RD2
+    // D57 (2026-11-03, principal): + getPanelSetup and setPanelSetup (117 -> 119).
+    expect(listOpenApiOperations(parsed)).toHaveLength(119); // + the two of task 4 row D53; 97 of C3 §10.1 (row 132, D106; was 92 at M6 row 113, 89 at M2 row 50) + the two of task 4 row 63 + the one of row 194 + the seven of row 102 + the one of row V3 + the two of row 116 + the one of row RD2
     expect(Object.keys(parsed.components.securitySchemes ?? {})).toHaveLength(2);
     expect(parsed.info.version).toBe('0.3.0'); // changed by design (M2 row 50; C3 §8; was 0.2.1 at W83)
     expect(parsed.servers[0]?.url).toBe('http://127.0.0.1:4420');
   });
 
-  it('has 117 operations on 109 paths: 40 GET and 77 POST', () => {
+  it('has 119 operations on 110 paths: 41 GET and 78 POST', () => {
     // C3 §2.5 (M6 row 113): ops 90-92 add two paths (`/transcription/config` GET+POST, `.../test`).
     // C3 §2.6 (row 132, D106): ops 93-97 add four (`/capture/discovery` POST+GET, the candidate's
     // `.../test` and `.../adopt`, `/capture/inputs/rescan`).
@@ -359,11 +360,13 @@ describe('scope all: every operation of the registry, as the Core server answers
     // REVISED 2026-11-02 (principal): RB-9 as amended adds three operations and two paths — `createUser`
     // rides the existing `/api/v1/admin/users`, the profile and the delete add `{id}/profile` and
     // `{id}/delete`; all three are POSTs (74 -> 77).
-    expect(operations).toHaveLength(117);
-    expect(Object.keys(all.paths)).toHaveLength(109);
+    // D57 (2026-11-03, principal): + the panel-setup pair on the new path /api/v1/lcd/setup
+    // (117 -> 119 operations, 109 -> 110 paths, GET 40 -> 41, POST 77 -> 78).
+    expect(operations).toHaveLength(119);
+    expect(Object.keys(all.paths)).toHaveLength(110);
     expect(new Set(operations.map((entry) => entry.operation.operationId))).toEqual(new Set(CORE_API_OPERATIONS.map((operation) => operation.operationId)));
-    expect(operations.filter((entry) => entry.method === 'get')).toHaveLength(40);
-    expect(operations.filter((entry) => entry.method === 'post')).toHaveLength(77);
+    expect(operations.filter((entry) => entry.method === 'get')).toHaveLength(41);
+    expect(operations.filter((entry) => entry.method === 'post')).toHaveLength(78);
     expect(Object.keys(all.paths['/api/v1/pairing/code'] ?? {})).toEqual(['post', 'get']);
     expect(all.tags.map((tag) => tag.name)).toEqual([
       'Service', 'Identity', 'Administration', 'Pairing', 'Session', 'Device', 'Storage', 'Evidence', 'Network', 'Security', 'System', 'Alerts', 'Demo', 'Realtime',
@@ -373,7 +376,7 @@ describe('scope all: every operation of the registry, as the Core server answers
     expect([...used].sort()).toEqual(all.tags.map((tag) => tag.name).filter((name) => name !== 'Realtime').sort());
   });
 
-  it('forty-four can be answered by the in-app simulator, 73 only by a service; "Show simulated endpoints" off keeps the 73', () => {
+  it('forty-four can be answered by the in-app simulator, 75 only by a service; "Show simulated endpoints" off keeps the 75', () => {
     // M6 row 113: the three STT configuration operations are simulated (22 -> 25); row 132 (D106):
     // the five of the camera search are simulated too (25 -> 30); task 4 row 63: the two of the
     // sound cards are simulated too (30 -> 32); task 4 row 194: so is the re-address (32 -> 33).
@@ -386,8 +389,9 @@ describe('scope all: every operation of the registry, as the Core server answers
     // LCD bridge task: the panel firmware word is live too (69 -> 70).
     // REVISED 2026-11-02 (principal): the three user-management operations of RB-9 as amended are live
     // as well — no simulator answers them (70 -> 73), so the simulated count stays 44.
-    expect(operations.filter((entry) => entry.operation['x-dems-mode'] === 'live')).toHaveLength(73);
-    expect(listOpenApiOperations(createOpenApiDocument({ scope: 'all', includeSimulated: false }))).toHaveLength(73);
+    // D57 (2026-11-03, principal): the panel-setup pair is live too (73 -> 75).
+    expect(operations.filter((entry) => entry.operation['x-dems-mode'] === 'live')).toHaveLength(75);
+    expect(listOpenApiOperations(createOpenApiDocument({ scope: 'all', includeSimulated: false }))).toHaveLength(75);
     // AR-3: in this scope every operation carries LIVE, because the Core server answers each one.
     for (const { operation } of operations) {
       const badges = operation['x-badges'].map((badge) => badge.name);
@@ -505,7 +509,7 @@ describe('scope all: every operation of the registry, as the Core server answers
     const shape = (security: unknown) => JSON.stringify(security);
     const count = (expected: unknown) => operations.filter((entry) => shape(entry.operation.security) === shape(expected)).length;
     // Task 4 row 63: + ops 98-99 on the cookie or the bearer (87 -> 89). Task 4 row 194: + op 100 (89 -> 90).
-    expect([count([]), count([{}, { bearerAuth: [] }]), count(bearer), count(cookieOrBearer)]).toEqual([4, 1, 6, 106]); // LCD bridge task: op 114 is PUBLIC, so it names no credential (3 -> 4); row D53: + ops 112-113 (101 -> 103); task 4 row 102: + ops 101-107 (90 -> 97); row V3: + op 108 (97 -> 98); row 116: + ops 109-110 (98 -> 100); row RD2: + op 111 (100 -> 101); REVISED 2026-11-02 (principal): + the three USER_ADMIN operations of RB-9 as amended, each on the session cookie or the bearer (103 -> 106)
+    expect([count([]), count([{}, { bearerAuth: [] }]), count(bearer), count(cookieOrBearer)]).toEqual([4, 1, 6, 108]); // D57 (2026-11-03): + the panel-setup pair on the cookie or the bearer (106 -> 108). LCD bridge task: op 114 is PUBLIC, so it names no credential (3 -> 4); row D53: + ops 112-113 (101 -> 103); task 4 row 102: + ops 101-107 (90 -> 97); row V3: + op 108 (97 -> 98); row 116: + ops 109-110 (98 -> 100); row RD2: + op 111 (100 -> 101); REVISED 2026-11-02 (principal): + the three USER_ADMIN operations of RB-9 as amended, each on the session cookie or the bearer (103 -> 106)
   });
 
   it('API-12: the Core server 127.0.0.1:4420 is the first server, mock-core the second; version 0.3.0 (M2)', () => {
@@ -517,8 +521,9 @@ describe('scope all: every operation of the registry, as the Core server answers
     expect(all.info.version).toBe(OPENAPI_CORE_SERVER_DOCUMENT_VERSION);
     expect(OPENAPI_CORE_SERVER_DOCUMENT_VERSION).toBe('0.3.0');
     // REVISED 2026-11-02 (principal): the registry holds 117 operations, 73 of them service-only.
-    expect(all.info.summary).toContain('117 operations');
-    expect(createOpenApiDocument({ scope: 'all', includeSimulated: false }).info.summary).toContain('73 operations');
+    // D57 (2026-11-03, principal): 119 operations, 75 of them service-only.
+    expect(all.info.summary).toContain('119 operations');
+    expect(createOpenApiDocument({ scope: 'all', includeSimulated: false }).info.summary).toContain('75 operations');
     // Each build is independent: a caller may change the servers of its own copy.
     const mine = createOpenApiDocument({ scope: 'all' });
     mine.servers[0]!.url = 'http://changed';
@@ -612,7 +617,7 @@ describe('scope all: every operation of the registry, as the Core server answers
 
   it('holds one component per registry schema, and the ten existing operations with the schemas of the offline scope', () => {
     expect(Object.keys(all.components.schemas)).toEqual(Object.keys(CORE_API_SCHEMAS));
-    expect(Object.keys(all.components.schemas)).toHaveLength(198); // REVISED 2026-11-02 (principal): 198 = + the four of createUser, updateUser and deleteUser (RB-9 as amended); 194 = + the one of op 114, PanelFirmwareResponse (LCD bridge task); 193 = + the two of ops 112-113 (task 4 row D53); 191 = + the two of op 111 (task 4 row RD2); 189 = + the five of ops 109-110 (task 4 row 116); 184 = + the one of op 108 (task 4 row V3); 183 = + the nine of ops 101-107 (task 4 row 102); 174 = + the two of op 100 (task 4 row 194); 172 = + the optional body of op 93 (task 4 row 94); 171 = + the four of ops 98-99 (task 4 row 63); 167 = 152 + the six STT configuration schemas (M6 row 113) + the eight of ops 93-97 (row 132) + the optional body of op 88 (pass D1b, D140)
+    expect(Object.keys(all.components.schemas)).toHaveLength(200); // REVISED 2026-11-02 (principal): 198 = + the four o (D57 2026-11-03: + SetPanelSetupRequest and PanelSetupResponse, 198 -> 200)f createUser, updateUser and deleteUser (RB-9 as amended); 194 = + the one of op 114, PanelFirmwareResponse (LCD bridge task); 193 = + the two of ops 112-113 (task 4 row D53); 191 = + the two of op 111 (task 4 row RD2); 189 = + the five of ops 109-110 (task 4 row 116); 184 = + the one of op 108 (task 4 row V3); 183 = + the nine of ops 101-107 (task 4 row 102); 174 = + the two of op 100 (task 4 row 194); 172 = + the optional body of op 93 (task 4 row 94); 171 = + the four of ops 98-99 (task 4 row 63); 167 = 152 + the six STT configuration schemas (M6 row 113) + the eight of ops 93-97 (row 132) + the optional body of op 88 (pass D1b, D140)
     const offline = createOpenApiDocument();
     for (const [name, schema] of Object.entries(offline.components.schemas)) expect(all.components.schemas[name], name).toEqual(schema);
     // Changed by design (W27; 01_specs §7.19): in this scope the ten are described as the Core

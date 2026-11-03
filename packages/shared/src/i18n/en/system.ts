@@ -23,6 +23,34 @@ export const system = {
     label: 'System quick actions',
   },
 
+  // D57 (2026-11-03): the pre-delivery setup module of the console. Vendor accounts only - the
+  // server enforces the identity; the page simply does not offer it to anyone else.
+  panelSetup: {
+    title: 'Pre-delivery panel setup',
+    subtitle: 'The LCD front panel shows these words and this logo. Only the vendor accounts can change them.',
+    satkerLabel: 'Unit word (satker)',
+    clientLabel: 'Client word',
+    logoLabel: 'Logo image (PNG)',
+    logoPick: 'Choose a PNG file',
+    logoTargetLabel: 'Logo slot',
+    logoTargetClient: 'Client slot',
+    logoTargetSplash: 'Splash slot',
+    logoTargetBoth: 'Both slots',
+    logoSaved: 'stored',
+    logoEmpty: 'empty',
+    save: 'Save to panel',
+    saving: 'Sending…',
+    loaded: 'Current setup loaded from the panel service.',
+    saved: 'The panel service accepted the change.',
+    notStored: 'The panel service did not answer. Nothing was changed.',
+    refused: 'The panel service refused the change: {{reason}}',
+    noSession: 'Sign in again: the panel service no longer recognises this session.',
+    noPermission: 'This module belongs to the vendor accounts only.',
+    backendDown: 'The front panel service is not answering on this machine.',
+    empty: 'Nothing to send: change a word or pick a logo first.',
+    hint: 'The words reach the panel over its USB link; a queued logo follows when the link is free.',
+  },
+
   services: {
     title: 'Services',
     columns: {

@@ -851,6 +851,20 @@ function buildCaptureActivity(world: World, directory: OperatorDirectory): void 
       details: { deviceId: 'CAM-03', kind: 'CAMERA', reason: 'STATEMENT_CHANGED', credentialDestroyed: true, streamRowsKept: 1, operationId: 'retireCaptureDevice', permission: 'CAPTURE_COMMISSION' },
     },
   });
+  // D57 (2026-11-03, principal): the pre-delivery panel setup changed from the console (operation
+  // 116 of §7); its live writer is the devices module's panel-setup route, gated on the vendor
+  // identity. Facts only: which fields moved and where the logo went - never the words, never bytes.
+  const panelSetupAt = at(34);
+  world.record(panelSetupAt, {
+    audit: {
+      type: 'PANEL_SETUP_CHANGED',
+      message: 'Panel pre-delivery setup changed (logo queued)',
+      severity: 'WARNING',
+      actorId: supervisor(panelSetupAt),
+      deviceId: null,
+      details: { satkerChanged: true, clientChanged: false, logoQueued: true, logoTarget: 'both', reason: 'Handover branding approved' },
+    },
+  });
   // Decisions D51 / D53 (row 90P): a live camera preview session opened (operation 112); its live writer is `src/camera-preview`.
   const previewAt = at(33);
   world.record(previewAt, {

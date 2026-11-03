@@ -272,6 +272,17 @@ const LCD_PANEL_OPERATIONS: typeof M2_OPERATIONS = [
   [114, 'getPanelFirmware', 'get', '/api/v1/lcd/panel-info', 'PUBLIC', 'NONE-R', 'ACCESS_DENIED', 'live'],
 ];
 /**
+ * D57 (2026-11-03, principal): the console module of the pre-delivery panel setup - operations 115
+ * and 116 of this file's number space (118 and 119 of §7's free tail). The access column says
+ * AUTHENTICATED because that is what stage 6 checks; the vendor-identity gate of D57 lives in the
+ * Core's handler, the way RB-9's lives in the admin unit. Both are `live`, so the offline scope
+ * does not move (45).
+ */
+const PANEL_SETUP_TABLE: typeof M2_OPERATIONS = [
+  [118, 'getPanelSetup', 'get', '/api/v1/lcd/setup', 'AUTHENTICATED', 'NONE-R', 'ACCESS_DENIED', 'live'],
+  [119, 'setPanelSetup', 'post', '/api/v1/lcd/setup', 'AUTHENTICATED', 'PANEL_SETUP_CHANGED', 'ACCESS_DENIED', 'live'],
+];
+/**
  * RB-9 as amended by the principal (PT GSP, 02-11-2026): the vendor-only user management of area 2 —
  * `createUser`, `updateUser` and `deleteUser`, the three operations 15 to 17 of the doc table of
  * `src/api/administration.ts`. Same columns. In the registry they sit in area 2, between
@@ -284,6 +295,7 @@ const RB9_USER_OPERATIONS: typeof M2_OPERATIONS = [
   [115, 'createUser', 'post', '/api/v1/admin/users', 'USER_ADMIN', 'USER_CREATED', 'ACCESS_DENIED', 'live'],
   [116, 'updateUser', 'post', '/api/v1/admin/users/{id}/profile', 'USER_ADMIN', 'USER_UPDATED', 'ACCESS_DENIED', 'live'],
   [117, 'deleteUser', 'post', '/api/v1/admin/users/{id}/delete', 'USER_ADMIN', 'USER_DELETED', 'ACCESS_DENIED', 'live'],
+
 ];
 /** The thirteen simulated M2 operations, the three of M6, the five of R-9..R-11, the two of task 4 row 63 and the later ones of task 4, in number order — the ones the `offline` scope gains. */
 const M2_SIMULATED_IDS = [...M2_OPERATIONS, ...M6_OPERATIONS, ...M4_DISCOVERY_OPERATIONS, ...T4_AUDIO_CARD_OPERATIONS, ...T4_LATER_OPERATIONS].filter((entry) => entry[7] === 'simulated').map((entry) => entry[1]);
@@ -390,10 +402,10 @@ function concretePath(operation: CoreApiOperation): string {
   return operation.pathParam ? operation.path.replace('{id}', id ?? 'MISSING') : operation.path;
 }
 
-describe('AC-B-09: the registry holds exactly 117 operations', () => {
-  it('holds the 10 existing operations first, then the 65 that only the Core server answers, then the 22 of task 3 (14 of M2, 3 of M6, 5 of R-9..R-11), the 2 of task 4 row 63, the 1 of row 194, the 7 of row 102, the 1 of row V3, the 2 of row 116, the 1 of row RD2, the 2 of row D53, the 1 of the LCD bridge task and the 3 of RB-9 as amended, by area in spec order', () => {
+describe('AC-B-09: the registry holds exactly 119 operations', () => {
+  it('holds the 10 existing operations first, then the 65 that only the Core server answers, then the 22 of task 3 (14 of M2, 3 of M6, 5 of R-9..R-11), the 2 of task 4 row 63, the 1 of row 194, the 7 of row 102, the 1 of row V3, the 2 of row 116, the 1 of row RD2, the 2 of row D53, the 1 of the LCD bridge task, the 3 of RB-9 as amended and the 2 of D57, by area in spec order', () => {
     // REVISED 2026-11-02 (principal): three user-management operations added to the registry (area 2).
-    expect(CORE_API_OPERATIONS).toHaveLength(117);
+    expect(CORE_API_OPERATIONS).toHaveLength(119);
     expect(CORE_API_OPERATIONS.slice(0, 10).map((operation) => operation.operationId)).toEqual(BASELINE.map(([id]) => id));
     // Areas 1, 2 and 3 (contract A), then areas 4 to 11 (contract C), then area 13 (contract A),
     // then task 3 M2-W7's operations 76-89, M6's 90-92 and the 93-97 of R-9..R-11 appended in number order.
@@ -406,6 +418,7 @@ describe('AC-B-09: the registry holds exactly 117 operations', () => {
       ...T4_AUDIO_CARD_OPERATIONS.map(([number, id]) => [number, id] as const),
       ...T4_LATER_OPERATIONS.map(([number, id]) => [number, id] as const),
       ...LCD_PANEL_OPERATIONS.map(([number, id]) => [number, id] as const),
+      ...PANEL_SETUP_TABLE.map(([number, id]) => [number, id] as const),
     ].sort((a, b) => a[0] - b[0]);
     // The three of RB-9 as amended are the one exception to the number order: they keep the AREA order
     // of the registry, right behind `disableUser`, and carry the next free numbers of §7 (115 to 117).
@@ -430,17 +443,17 @@ describe('AC-B-09: the registry holds exactly 117 operations', () => {
     expect(RB9_USER_OPERATIONS).toHaveLength(3);
     // Every number of 01_specs §7 from 1 to 75 plus task 3's 76 to 97 and task 4's 98 to 111 is one operation of the registry.
     const numbers = [...EXISTING_NUMBERS, ...byNumber.map(([number]) => number), ...RB9_USER_OPERATIONS.map(([number]) => number)].sort((a, b) => a - b);
-    expect(numbers).toEqual([...Array.from({ length: 75 }, (_, index) => index + 1), ...Array.from({ length: 24 + T4_LATER_OPERATIONS.length }, (_, index) => index + 76), ...LCD_PANEL_OPERATIONS.map(([number]) => number), ...RB9_USER_OPERATIONS.map(([number]) => number)]);
+    expect(numbers).toEqual([...Array.from({ length: 75 }, (_, index) => index + 1), ...Array.from({ length: 24 + T4_LATER_OPERATIONS.length }, (_, index) => index + 76), ...LCD_PANEL_OPERATIONS.map(([number]) => number), ...RB9_USER_OPERATIONS.map(([number]) => number), ...PANEL_SETUP_TABLE.map(([number]) => number)]);
     // Areas 4 to 11 are the numbers 24 to 70: 47 operations, 9 of them existing and 38 new.
     expect(numbers.filter((number) => number >= 24 && number <= 70)).toHaveLength(47);
     expect(EXISTING_NUMBERS.filter((number) => number >= 24 && number <= 70)).toHaveLength(9);
   });
 
-  it('names every operation and every method-and-path once; 40 are GET and 77 are POST', () => {
+  it('names every operation and every method-and-path once; 41 are GET and 78 are POST', () => {
     const ids = CORE_API_OPERATIONS.map((operation) => operation.operationId);
-    expect(new Set(ids).size).toBe(117);
+    expect(new Set(ids).size).toBe(119);
     const routes = CORE_API_OPERATIONS.map((operation) => `${operation.method} ${operation.path}`);
-    expect(new Set(routes).size).toBe(117);
+    expect(new Set(routes).size).toBe(119);
     // Task 4 row 102: three of the seven commissioning operations are reads (36 -> 39), four write (64 -> 68).
     // Task 4 row V3: operation 108 is a POST (68 -> 69).
     // Task 4 row 116: operations 109 and 110 are POSTs (69 -> 71).
@@ -449,8 +462,8 @@ describe('AC-B-09: the registry holds exactly 117 operations', () => {
     // LCD bridge task: operation 114 is a GET (39 -> 40).
     // REVISED 2026-11-02 (principal): createUser, updateUser and deleteUser are POSTs (74 -> 77);
     // `createUser` rides the existing `/api/v1/admin/users` path, so no route is named twice.
-    expect(CORE_API_OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(40);
-    expect(CORE_API_OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(77);
+    expect(CORE_API_OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(41);
+    expect(CORE_API_OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(78);
     for (const id of ids) expect(findCoreApiOperation(id)?.operationId).toBe(id);
   });
 
@@ -654,7 +667,7 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
     // Task 4 row D53: + CAMERA_PREVIEW_OPENED, 86 -> 87.
     // REVISED 2026-11-02 (principal): RB-9 as amended adds USER_CREATED, USER_UPDATED and
     // USER_DELETED beside USER_ENABLED and USER_DISABLED, 87 -> 90.
-    expect(AUDIT_TYPES).toHaveLength(90);
+    expect(AUDIT_TYPES).toHaveLength(91); // D57: + PANEL_SETUP_CHANGED
   });
 
   it('counts by access rule: 5 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 74 with one permission, 3 any-of', () => {
@@ -670,7 +683,7 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
     // Task 4 row D53: operations 112 and 113 take ANY-OF three permissions (1 -> 3).
     // LCD bridge task: operation 114 is the fourth PUBLIC read (4 -> 5): the sign-in screen has no session.
     // REVISED 2026-11-02 (principal): createUser, updateUser and deleteUser each need USER_ADMIN (71 -> 74).
-    expect([count('PUBLIC'), count('DEVICE'), count('AUTHENTICATED'), count('PERMISSION'), count('ANY_OF')]).toEqual([5, 5, 30, 74, 3]);
+    expect([count('PUBLIC'), count('DEVICE'), count('AUTHENTICATED'), count('PERMISSION'), count('ANY_OF')]).toEqual([5, 5, 32, 74, 3]); // D57: two more plain-authenticated operations
     // 74 operations carry a permission (task 4 row D53: + the two any-of operations 112 and 113, 72 -> 74): the 40 of contract C plus the one any-of, plus task 3's seventeen
     // permission operations (78/79/80/81/84/85/86/87/88/89, 91/92 and 93-97), plus task 4's fourteen (98/99, 100, 101-107, 108, 109/110, 111).
     // REVISED 2026-11-02 (principal): + the three user-management operations of RB-9 as amended (74 -> 77).
@@ -740,9 +753,11 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
       ...T4_LATER_OPERATIONS.map(([number, id]) => [id, number] as const),
       ...LCD_PANEL_OPERATIONS.map(([number, id]) => [id, number] as const),
       ...RB9_USER_OPERATIONS.map(([number, id]) => [id, number] as const),
+      ...PANEL_SETUP_TABLE.map(([number, id]) => [id, number] as const),
     ]);
     // REVISED 2026-11-02 (principal): + createUser, updateUser and deleteUser (114 -> 117).
-    expect(numberOf.size).toBe(117);
+    // D57 (2026-11-03, principal): + getPanelSetup and setPanelSetup (117 -> 119).
+    expect(numberOf.size).toBe(119);
     for (const [permission, numbers] of ENFORCED_AT) {
       const found = CORE_API_OPERATIONS.filter((operation) => (coreApiAccessPermissions(operation.access) as string[]).includes(permission))
         .map((operation) => numberOf.get(operation.operationId))
@@ -777,10 +792,12 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
       ...T4_ACCEPTANCE_OPERATIONS.map(([, id]) => id),
       // Task 4 row RD2 (decision C147, Q1): the retirement of a device is web console only.
       ...T4_RETIRE_OPERATIONS.map(([, id]) => id),
+      // D57 (2026-11-03): the pre-delivery module is a browser module by the principal's ruling.
+      'getPanelSetup', 'setPanelSetup',
     ]);
     // Twenty-seven operations carry a condition (13 + the two of task 4 row 63 + the one of row 194 + the seven of row 102 + the one of row V3 + the two of row 116 + the one of row RD2), each exactly one; the other 84 carry none.
     const conditioned = CORE_API_OPERATIONS.filter((operation) => operation.access.conditions !== undefined);
-    expect(conditioned).toHaveLength(27);
+    expect(conditioned).toHaveLength(29); // D57: + the two panel-setup operations
     for (const operation of conditioned) expect(operation.access.conditions, operation.operationId).toHaveLength(1);
   });
 
@@ -945,8 +962,8 @@ describe('answering services and the two scopes (AR-1)', () => {
     // LCD bridge task: + operation 114, live (113 -> 114; offline stays 45).
     // REVISED 2026-11-02 (principal): + the three user-management operations of RB-9 as amended
     // (114 -> 117); all three are live, so the offline scope stays 45.
-    expect(listCoreApiOperations(CoreApiScope.ALL)).toHaveLength(117);
-    expect(listCoreApiOperations()).toHaveLength(117);
+    expect(listCoreApiOperations(CoreApiScope.ALL)).toHaveLength(119);
+    expect(listCoreApiOperations()).toHaveLength(119);
     expect(CORE_API_OPERATIONS.filter(isOfflineCoreApiOperation)).toHaveLength(45);
   });
 
@@ -961,11 +978,11 @@ describe('answering services and the two scopes (AR-1)', () => {
     // and row 116 two (109-110: the acceptance of the installation and its revocation, beside the commissioning functions);
     // row RD2 one (111: the retirement of a device); row D53 two (112-113: the live preview and the idle meters);
     // the LCD bridge task one (114: the panel's own firmware word, beside the front panel of area 6).
-    expect([byTag(CoreApiTag.SESSION), byTag(CoreApiTag.EVIDENCE), byTag(CoreApiTag.DEVICE), byTag(CoreApiTag.STORAGE)]).toEqual([4 + 11 + 3, 1 + 4 + 5, 3 + 6 + 6 + 3 + 5 + 2 + 1 + 7 + 1 + 2 + 1 + 2 + 1, 1 + 2]);
+    expect([byTag(CoreApiTag.SESSION), byTag(CoreApiTag.EVIDENCE), byTag(CoreApiTag.DEVICE), byTag(CoreApiTag.STORAGE)]).toEqual([4 + 11 + 3, 1 + 4 + 5, 3 + 6 + 6 + 3 + 5 + 2 + 1 + 7 + 1 + 2 + 1 + 2 + 1 + 2, 1 + 2]); // D57: + the two panel-setup operations
     expect([byTag(CoreApiTag.NETWORK), byTag(CoreApiTag.SECURITY), byTag(CoreApiTag.SYSTEM), byTag(CoreApiTag.ALERTS)]).toEqual([2, 6, 5, 2]);
     expect(byTag(CoreApiTag.SERVICE)).toBe(1);
     expect(byTag(CoreApiTag.REALTIME)).toBe(0);
-    expect(Object.values(CoreApiTag).reduce((sum, tag) => sum + byTag(tag), 0)).toBe(117); // task 4 row RD2: + op 111 (Device); row D53: + ops 112-113 (Device); LCD bridge task: + op 114 (Device); REVISED 2026-11-02 (principal): + ops 15-17 of RB-9 as amended (Administration)
+    expect(Object.values(CoreApiTag).reduce((sum, tag) => sum + byTag(tag), 0)).toBe(119); // task 4 row RD2: + op 111 (Device); row D53: + ops 112-113 (Device); LCD bridge task: + op 114 (Device); REVISED 2026-11-02 (principal): + ops 15-17 of RB-9 as amended (Administration)
   });
 });
 
@@ -1035,7 +1052,7 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
     // REVISED 2026-11-02 (principal): RB-9 as amended adds the four schemas of the three new
     // operations to the contract-A block (CreateUserRequest, UpdateUserRequest, DeleteUserRequest and
     // DeletedUser), 51 -> 55; every slice below moves by that delta of four.
-    expect(Object.keys(CORE_API_SCHEMAS)).toHaveLength(55 + 39 + 11 + 33 + 18 + 6 + 8 + 1 + 4 + 1 + 2 + 9 + 1 + 5 + 2 + 2 + 1); // + 1 of op 114, PanelFirmwareResponse (LCD bridge task); + 2 of ops 112-113 (task 4 row D53); + 2 of op 111 (task 4 row RD2); + EvidenceMediaSessionRequest, the optional body of op 88 (pass D1b, D140); + 4 of task 4 row 63; + 1, the optional body of op 93 (task 4 row 94)
+    expect(Object.keys(CORE_API_SCHEMAS)).toHaveLength(55 + 39 + 11 + 33 + 18 + 6 + 8 + 1 + 4 + 1 + 2 + 9 + 1 + 5 + 2 + 2 + 1 + 2); // + 2 of ops 115-116, D57 panel setup; + 1 of op 114, PanelFirmwareResponse (LCD bridge task); + 2 of ops 112-113 (task 4 row D53); + 2 of op 111 (task 4 row RD2); + EvidenceMediaSessionRequest, the optional body of op 88 (pass D1b, D140); + 4 of task 4 row 63; + 1, the optional body of op 93 (task 4 row 94)
     // The 55 of contract A stay first and in their order, then the socket's schemas.
     expect(Object.keys(CORE_API_SCHEMAS).slice(55, 55 + 39 + 11)).toEqual(socket);
     expect(Object.keys(CORE_API_SCHEMAS).slice(55 + 39 + 11)).toEqual([
@@ -1078,6 +1095,8 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
       'CaptureDeviceRetireRequest', 'CaptureDeviceRetirement',
       // Task 4 (row D53; decisions D51, D53): the schemas of operations 112-113.
       'CameraPreviewSession', 'IdleMeterLease', 'PanelFirmwareResponse',
+      // D57 (2026-11-03): the two schemas of the panel setup module, merged right behind the panel's.
+      'PanelSetupResponse', 'SetPanelSetupRequest',
     ]);
     // API-6: a read of contract C answers slices, so two operations answer a slice component directly.
     // Task 3 M2-W7 (`C3 §2.3`, API-6): the six capture-config/credential operations answer the
@@ -1240,7 +1259,7 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
       // Task 4 row V3 lands operation 108 of blueprint row 146 and names it the same way.
       // Task 4 row 116 names its blueprint row and its operation numbers 109 and 110 the same way.
       // The LCD bridge task names its two code homes and its operation number the same way.
-      expect(operation.source, operation.operationId).toMatch(/^(Backend task 2026-10-04|Task 3 M2-W7|Task 3 M6|Task 3 R-(?:9|10),|Task 4, blueprint row (?:63|194|102|146|116) |Task 4, row RD2 |Task 4, row D53 |LCD bridge task \()/); // rows RD2 and D53 name their row (no blueprint number yet) and their operation
+      expect(operation.source, operation.operationId).toMatch(/^(Backend task 2026-10-04|Task 3 M2-W7|Task 3 M6|Task 3 R-(?:9|10),|Task 4, blueprint row (?:63|194|102|146|116) |Task 4, row RD2 |Task 4, row D53 |LCD bridge task \(|Decision D57 \()/); // rows RD2 and D53 name their row (no blueprint number yet) and their operation
       expect(operation.source, operation.operationId).toMatch(/operation \d+/);
     }
     const secret = CORE_API_OPERATIONS.filter((operation) => operation.description.includes('holds a secret')).map((operation) => operation.operationId);
@@ -1320,7 +1339,7 @@ describe('contract gap 1: CORE_API_OPERATION_TABLE is the table with literal typ
     expectTypeOf(CORE_API_OPERATIONS).toEqualTypeOf<readonly CoreApiRegistryOperation[]>();
     expectTypeOf<Table>().toExtend<readonly CoreApiRegistryOperation[]>();
     expectTypeOf<Table>().toExtend<readonly CoreApiOperation[]>();
-    expectTypeOf<Table['length']>().toEqualTypeOf<117>(); // REVISED 2026-11-02 (principal): RB-9 amended, area 2 gains createUser/updateUser/deleteUser (operations 15-17); every index at 16 and above moves by three.
+    expectTypeOf<Table['length']>().toEqualTypeOf<119>(); // REVISED 2026-11-02 (principal): RB-9 amended, area 2 gains three users ops; D57 (2026-11-03) appends the two panel-setup opsa 2 gains createUser/updateUser/deleteUser (operations 15-17); every index at 16 and above moves by three.
     expectTypeOf<Table[0]['operationId']>().toEqualTypeOf<'getServiceHealth'>();
     expectTypeOf<Table[10]['operationId']>().toEqualTypeOf<'signIn'>();
     // Areas 4 to 11 sit between pairing and the demo controls, which stay last.
@@ -1375,7 +1394,7 @@ describe('contract gap 1: CORE_API_OPERATION_TABLE is the table with literal typ
 
     const client = createCoreClient({ baseUrl: 'http://127.0.0.1:4420', credentials: 'browser-cookie', fetch: noAnswer, operations: CORE_API_OPERATION_TABLE });
     // AC-C-01: the callable operation count of the typed client is the registry's, 110.
-    expect(client.operationIds).toHaveLength(117); // REVISED 2026-11-02 (principal): + createUser, updateUser, deleteUser
+    expect(client.operationIds).toHaveLength(119); // REVISED 2026-11-02 (principal): + createUser, updateUser, deleteUser
     expect(client.operationIds).toEqual(CORE_API_OPERATIONS.map((operation) => operation.operationId));
     const signedOut = await client.call('signOut', { body: { reason: 'LOCK' } });
     expectTypeOf(signedOut).toEqualTypeOf<CoreCallSuccess<204, undefined> | CoreCallFailure>();

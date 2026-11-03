@@ -134,7 +134,7 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
 
   // Backend task W16 (GP-06; 2026-10-04 01_specs §13.1, §19.2): nine audit types the Core server
   // writes, in the existing eight categories; no event type was added.
-  it('AuditType: 90 values (RB-9 as amended: + USER_CREATED, USER_UPDATED, USER_DELETED; task 4 row D53: + CAMERA_PREVIEW_OPENED); the nine task-3 capture types, STT_CONFIG_CHANGED, the four of the camera search, the ten of task 4 row 19, the one of row 201, the four of row V3, the one of row R1b, the two of row N2 and the one of row RD2 sit in the existing categories (M2-W7, M6 row 113, R-9..R-11 row 132)', () => {
+  it('AuditType: 91 values (RB-9 as amended: + USER_CREATED, USER_UPDATED, USER_DELETED; task 4 row D53: + CAMERA_PREVIEW_OPENED); the nine task-3 capture types, STT_CONFIG_CHANGED, the four of the camera search, the ten of task 4 row 19, the one of row 201, the four of row V3, the one of row R1b, the two of row N2 and the one of row RD2 sit in the existing categories (M2-W7, M6 row 113, R-9..R-11 row 132)', () => {
     // Task 3 M2-W7 (blueprint row 48; C3 §5.2/§5.3): 53 -> 62. Each new type joins an EXISTING
     // category (no new AuditCategory), and each is labelled in `common.auditType` (checked above).
     // Task 3 M6 (blueprint row 113; C3 §2.5): 62 -> 63 with STT_CONFIG_CHANGED, category DEVICE.
@@ -158,7 +158,9 @@ describe('i18n ↔ sim/vocabulary.ts (D52)', () => {
     // REVISED 2026-11-02 (principal): RB-9 as amended adds USER_CREATED, USER_UPDATED and USER_DELETED
     // (SECURITY) beside USER_ENABLED and USER_DISABLED, 87 -> 90. They are inserted in the middle of the
     // vocabulary, so every negative position below is unchanged.
-    expect(values(V.AuditType)).toHaveLength(90);
+    // D57 (2026-11-03, principal): + PANEL_SETUP_CHANGED (DEVICE), inserted in the middle beside
+    // CAPTURE_CONFIG_CHANGED, so every position below is unchanged: 90 -> 91.
+    expect(values(V.AuditType)).toHaveLength(91);
     expect(values(V.AuditType).at(-1)).toBe('CAMERA_PREVIEW_OPENED');
     expect(V.AUDIT_TYPE_CATEGORY.CAMERA_PREVIEW_OPENED).toBe('DEVICE');
     expect(values(V.AuditType).at(-2)).toBe('CAPTURE_DEVICE_RETIRED');

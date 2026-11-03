@@ -49,7 +49,7 @@ function firstResponse<T>(operationId: string, status: number, name: string): T 
   return example!.value as T;
 }
 
-describe('the examples of the 100 operations that only the Core server answers', () => {
+describe('the examples of the 109 operations that only the Core server answers', () => {
   it('every operation has examples: a request for each body, an ID for each path parameter, a body for each answer that has one', () => {
     let responses = 0;
     for (const operation of NEW_OPERATIONS) {
@@ -83,7 +83,9 @@ describe('the examples of the 100 operations that only the Core server answers',
     // and the 1 of the panel firmware word of the LCD bridge task (operation 114).
     // REVISED 2026-11-02 (principal): RB-9 as amended adds the three user-management operations of
     // area 2 (createUser, updateUser, deleteUser), each with its own request, path ID and answers.
-    expect(NEW_OPERATIONS).toHaveLength(107);
+    // D57 (2026-11-03, principal): + the two panel-setup operations (107 -> 109), each with its own
+    // request (the write), answers, and the two named refusals of the vendor gate.
+    expect(NEW_OPERATIONS).toHaveLength(109);
     expect(responses).toBeGreaterThan(300);
   });
 

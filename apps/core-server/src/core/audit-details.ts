@@ -621,6 +621,15 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     kind: oneOf(['PACKAGE', 'COMPOSITE'], 'one of PACKAGE, COMPOSITE')(REQUIRED),
     reason: code(REQUIRED),
   },
+  // D57 (2026-11-03): the pre-delivery panel setup. Facts only - which fields moved and where the
+  // logo went; the words themselves and the image bytes stay out of the chain.
+  [AuditType.PANEL_SETUP_CHANGED]: {
+    satkerChanged: flag(REQUIRED),
+    clientChanged: flag(REQUIRED),
+    logoQueued: flag(REQUIRED),
+    logoTarget: oneOf(['client', 'splash', 'both'], 'a panel logo slot')(OPTIONAL),
+    reason: reasonText(OPTIONAL),
+  },
   [AuditType.CAPTURE_CREDENTIAL_SET]: {
     // RK-12 / SEC35-01 / M2-CRD-1: the FACT of the write only. Never the username, the secret,
     // the ciphertext, the nonce or the key.

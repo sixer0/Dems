@@ -71,8 +71,11 @@ import {
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { mountLcdBridge, PANEL_FIRMWARE_OPERATION_ID, createPanelFirmwareReader } from '../../lcd';
+import { mountLcdBridge, PANEL_FIRMWARE_OPERATION_ID, createPanelFirmwareReader, createPanelSetupProxy, vendorGateOf } from '../../lcd';
 import { routeOfOperation } from '../../plugins/permission-guard';
+import { operatorSessionOf } from '../../plugins/authenticate';
+import { PanelSetupResponseSchema, SetPanelSetupRequestSchema, type PanelSetupResponse, type SetPanelSetupRequest } from '@dems/shared/api';
+import { AuditType } from '@dems/shared/sim';
 import { DEVICE_COMMAND_OF_OPERATION, operationOf, type DeviceCommandOperation } from './operations';
 import { inRealCaptureOperation, mountCaptureSourceFacts } from './source-facts';
 import { audioStatusOf, captureSlotsOf, deviceHealthOf, deviceInventoryOf, videoStatusOf } from './status';
@@ -128,6 +131,54 @@ export const devicesModule: FastifyPluginAsync = async (app) => {
     ...routeOfOperation(panelFirmwareOperation),
     schema: { response: { 200: PanelFirmwareResponseSchema } },
     handler: async (): Promise<PanelFirmwareResponse> => panelFirmware.read(),
+  });
+
+  // D57 (2026-11-03, principal): the pre-delivery setup module of the console - the panel's two
+  // identity words and its logos, read and changed by the TWO VENDOR ACCOUNTS only. Stage 6 lets
+  // any signed-in web-console session through these routes (the access of the registry is the
+  // plain authenticated one); the identity gate below is the second gate the matrix cannot
+  // express, and it fires before a byte is forwarded. The caller's session credential rides to
+  // the backend unchanged - the backend proves it back to this same Core (no new secret exists on
+  // the path) - and a change that lands writes one PANEL_SETUP_CHANGED row naming the facts.
+  const panelSetup = createPanelSetupProxy({ url: app.config.lcdBackendUrl ?? '' });
+  const vendorGate = (request: Parameters<typeof operatorSessionOf>[0]): string | undefined =>
+    vendorGateOf(operatorSessionOf(request).operator.username, request.headers.cookie);
+  for (const operationId of ['getPanelSetup', 'setPanelSetup'] as const) {
+    if (findCoreApiOperation(operationId) === undefined) throw new Error(`the contract registry has no operation ${operationId}`);
+  }
+  routes.route({
+    ...routeOfOperation(findCoreApiOperation('getPanelSetup')!),
+    schema: { response: { 200: PanelSetupResponseSchema } },
+    handler: async (request): Promise<PanelSetupResponse> => panelSetup.read(vendorGate(request)),
+  });
+  routes.route({
+    ...routeOfOperation(findCoreApiOperation('setPanelSetup')!),
+    schema: { body: SetPanelSetupRequestSchema, response: { 200: PanelSetupResponseSchema } },
+    handler: async (request): Promise<PanelSetupResponse> => {
+      const actorId = operatorSessionOf(request).operatorId;
+      const cookie = vendorGate(request);
+      const body = request.body as SetPanelSetupRequest;
+      const { after, facts } = await panelSetup.write(body, cookie);
+      await app.pipeline.run('devices.setPanelSetup', async (unit): Promise<void> => {
+        await unit.audit.append({
+          type: AuditType.PANEL_SETUP_CHANGED,
+          // D57: a WARNING, the way the purge of RB-9 and the host password set are: a change to
+          // what the unit shows the world stands out in the security view.
+          severity: 'WARNING',
+          message: `Panel pre-delivery setup changed${facts.logoQueued ? ' (logo queued)' : ''}`,
+          actorId,
+          deviceId: null,
+          details: {
+            satkerChanged: facts.satkerChanged,
+            clientChanged: facts.clientChanged,
+            logoQueued: facts.logoQueued,
+            ...(facts.logoTarget !== undefined ? { logoTarget: facts.logoTarget } : {}),
+            ...(body.reason !== undefined && body.reason !== '' ? { reason: body.reason } : {}),
+          },
+        });
+      });
+      return after;
+    },
   });
 
   // Integration pass D11: the class and the "is on" of the sources of a REAL capture operation go

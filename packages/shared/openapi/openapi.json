@@ -3,7 +3,7 @@
   "info": {
     "title": "DEMS Core API",
     "version": "0.3.0",
-    "summary": "Core API v1 of the DEMS Edge Client demo, as the Core server answers it: 117 operations and one WebSocket channel.",
+    "summary": "Core API v1 of the DEMS Edge Client demo, as the Core server answers it: 119 operations and one WebSocket channel.",
     "description": "Reference for the Core API v1 of the **DEMS Edge Client demo** (device DEMS-IR-01), as the **Core server** answers it. The design book (§21.2) names nine endpoints; this document adds their bodies, and the operations both clients need beyond them: sign-in, user administration, pairing, the session lifecycle, evidence, devices, storage, network and time, security and audit, system, alerts and the demo controls.\n\n### Who answers\n\n| Service | Address | Answers |\n|---|---|---|\n| The Core server (`dems-core-server`) | `http://127.0.0.1:4420` | Every operation of this document and `WS /ws`. It keeps the Core state in PostgreSQL and is the only authority on who may do what. Loopback only. |\n| mock-core (`dems-mock-core`) | `http://127.0.0.1:4400` | `GET /api/v1/health` and a heartbeat-only `WS /ws`. It is the service of Simulated mode and answers no other operation. |\n| The in-app simulator | none | In Simulated mode, the nine design-book operations (`x-dems-mode: simulated`), inside the app and without a request. Its answers carry `x-dems-simulated: 1`; the Core server never sends that header. |\n\nEvery operation carries the badge **LIVE**: the Core server answers it over the network. `x-dems-services` names the services that answer an operation, and `x-dems-mode` says whether the in-app simulator can answer it too (`simulated`) or only a service can (`live`).\n\n### Access\n\nThe Core server decides on every request, before the body is read, from the credential the request carries:\n- a **web console** sends the session cookie that `signIn` set (scheme `sessionCookie`);\n- a **paired device** sends `Authorization: Bearer` (scheme `bearerAuth`): its device credential on the device operations and at sign-in, its session token once an operator is signed in.\n\nA request carries one credential, never both. Each operation states its access rule as `x-dems-access` (PUBLIC, DEVICE, AUTHENTICATED, one permission, or the one any-of) and the audit row it writes as `x-dems-audit`. A refusal for a missing permission answers `403` and writes one audit row; the role and its permissions are read from the database for each request.\n\n### Answers every operation shares\n\nThe answers that do not depend on the operation are defined once, under Responses: a malformed path, an unknown route, a wrong method, a server that is not ready, an Origin outside the allowed lists, two credentials in one request, the request throttle, a body over 65,536 bytes, and an unexpected failure. Every answer carries `x-request-id`, and an error repeats it as `error.requestId`. A 2xx answer of a POST carries `x-dems-epoch` and `x-dems-revision`: the state revision that holds the effect of the command.\n\n### Lists\n\nA list is cursor-paged: `cursor` is the `nextCursor` of the page before, `limit` is 1 to 200 (50 when omitted), and `nextCursor` is null on the last page.\n\n### Not part of this API\n\n- Media and evidence package files are not served: the clients keep their bundled demo media, and the server owns the records, the hashes and the verdicts.\n- No operation creates or deletes a user, changes a password or edits the role matrix.\n- No operation takes a file or resolves a path that a client sent.\n\n### Examples\n\nExamples are frozen at 2026-10-01 10:00:00 WIB and follow the canonical demo dataset: session SES-20261001-0024 (case LP/2026/1001-0007) and evidence EV-20260930-0004, exported by the SUPERVISOR operator. The nine design-book operations write times as ISO-8601 text; every other operation writes epoch milliseconds on the server clock. A password, a pairing code, a session token, a device credential and a biometric token appear only as placeholders that open nothing. All data is synthetic."
   },
   "servers": [
@@ -15843,6 +15843,7 @@
                 "USER_CREATED",
                 "USER_UPDATED",
                 "USER_DELETED",
+                "PANEL_SETUP_CHANGED",
                 "BIOMETRIC_ENROLLMENT_CHANGED",
                 "CAPTURE_CONFIG_CHANGED",
                 "AUDIO_SOURCE_SWITCHED",
@@ -31515,6 +31516,443 @@
           "dems-core-server"
         ]
       }
+    },
+    "/api/v1/lcd/setup": {
+      "get": {
+        "operationId": "getPanelSetup",
+        "tags": [
+          "Device"
+        ],
+        "summary": "Read the pre-delivery panel setup",
+        "description": "The two identity words of the LCD front panel and whether each logo slot holds a stored logo, as the panel backend holds them. The pre-delivery setup module of the console reads them here.\n\n**Vendor accounts only.** Any authenticated operator passes stage 6 (the access is the plain authenticated one), and the Core then requires the session username to be one of the two vendor accounts — `root` or `gsp.teknisi` — the identity rule of decision D57, the same semantics as the narrowed trio of RB-9. A refusal is 403 `NOT_PERMITTED` with no audit row.\n\n**Web console sessions only**: a tablet or phone session is refused before the body is used.\n\n**A missing panel backend answers the global 503** `NOT_READY` with `details.reason: LCD_BACKEND_UNREACHABLE`, never an empty lie: an answer claiming the panel holds nothing when nothing was asked would be a false statement about the device.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "responses": {
+          "200": {
+            "description": "The panel setup as its backend holds it.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanelSetupResponse"
+                },
+                "examples": {
+                  "setUp": {
+                    "summary": "A configured unit",
+                    "description": "Both words are set and the client slot holds a logo.",
+                    "value": {
+                      "satker": "DITRESKRIMUM POLDA METRO JAYA",
+                      "client": "PT GSP",
+                      "clientLogoSaved": true,
+                      "splashLogoSaved": false
+                    }
+                  },
+                  "blank": {
+                    "summary": "Fresh from the factory seed",
+                    "description": "Nothing was ever set: the words are empty and no slot holds a logo.",
+                    "value": {
+                      "satker": "",
+                      "client": "",
+                      "clientLogoSaved": false,
+                      "splashLogoSaved": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session (NOT_SIGNED_IN): none was sent, it expired or ended, or the request carried two credentials (`details.reason: CREDENTIAL_CONFLICT`).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "No valid session",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: the signed-in account is not one of the two vendor accounts, the identity gate of D57 (NOT_PERMITTED; no audit row), or the session is not a web console session (WEB_CONSOLE_ONLY; one ACCESS_DENIED row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "deviceRevoked": {
+                    "summary": "The device is no longer paired",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_REVOKED",
+                        "message": "This device is no longer paired with the Core.",
+                        "details": {
+                          "reason": "DEVICE_REVOKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "originNotAllowed": {
+                    "summary": "An Origin outside the allowed lists",
+                    "value": {
+                      "error": {
+                        "code": "ORIGIN_NOT_ALLOWED",
+                        "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "notPermitted": {
+                    "summary": "A signed-in account that is not a vendor account",
+                    "description": "The identity gate of D57: only the two vendor accounts reach this module. No audit row is written.",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "getPanelSetup",
+                          "reason": "VENDOR_IDENTITY"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "webConsoleOnly": {
+                    "summary": "A tablet or phone session on a web-console-only operation",
+                    "description": "The caller is a vendor account, but the session is bound to a paired device. One ACCESS_DENIED row is written; the body is not used.",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "getPanelSetup",
+                          "reason": "WEB_CONSOLE_ONLY"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "LIVE",
+            "position": "after",
+            "color": "#22C55E"
+          }
+        ],
+        "x-dems-mode": "live",
+        "x-dems-source": "Decision D57 (principal, 2026-11-03): operation 115 and operation 116, the pre-delivery setup moved into the console, gated to the vendor identities",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-dems-access": {
+          "rule": "AUTHENTICATED",
+          "permissions": [],
+          "conditions": [
+            "WEB_CONSOLE_SESSION"
+          ]
+        },
+        "x-dems-audit": {
+          "success": "NONE-R",
+          "denial": "ACCESS_DENIED",
+          "also": []
+        },
+        "x-dems-services": [
+          "dems-core-server"
+        ]
+      },
+      "post": {
+        "operationId": "setPanelSetup",
+        "tags": [
+          "Device"
+        ],
+        "summary": "Change the pre-delivery panel setup",
+        "description": "Sets the unit word, the client word, and queues a PNG logo (base64) for one or both logo slots of the LCD front panel. Absent members change nothing; the answer is the setup as it stands after the change. The values live in the panel backend — the Core forwards and repeats, it stores nothing.\n\nWrites PANEL_SETUP_CHANGED naming which fields changed and whether a logo was queued; the image bytes are never in the audit row.\n\n**Vendor accounts only** (D57): the session username must be `root` or `gsp.teknisi`; any other operator is 403 `NOT_PERMITTED` with no audit row and nothing forwarded. **Web console sessions only.**\n\nAn empty request answers 422 INVALID_INPUT; a body the backend refuses (an image it cannot decode) answers 422 too, with the backend's reason carried in `details.reason`.\n\n**A missing panel backend answers the global 503** `NOT_READY` (`details.reason: LCD_BACKEND_UNREACHABLE`) and nothing is changed.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "responses": {
+          "200": {
+            "description": "The setup after the change.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "x-dems-epoch": {
+                "$ref": "#/components/headers/XDemsEpoch"
+              },
+              "x-dems-revision": {
+                "$ref": "#/components/headers/XDemsRevision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanelSetupResponse"
+                },
+                "examples": {
+                  "after": {
+                    "summary": "The setup after the change",
+                    "description": "Both words set, the client slot now holds a logo.",
+                    "value": {
+                      "satker": "DITRESKRIMUM POLDA METRO JAYA",
+                      "client": "PT GSP",
+                      "clientLogoSaved": true,
+                      "splashLogoSaved": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a JSON object (INVALID_JSON).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidJson": {
+                    "summary": "Not a JSON object",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_JSON",
+                        "message": "The request body must be a JSON object.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session (NOT_SIGNED_IN): none was sent, it expired or ended, or the request carried two credentials (`details.reason: CREDENTIAL_CONFLICT`).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "No valid session",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: the signed-in account is not one of the two vendor accounts, the identity gate of D57 (NOT_PERMITTED; no audit row), or the session is not a web console session (WEB_CONSOLE_ONLY; one ACCESS_DENIED row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "deviceRevoked": {
+                    "summary": "The device is no longer paired",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_REVOKED",
+                        "message": "This device is no longer paired with the Core.",
+                        "details": {
+                          "reason": "DEVICE_REVOKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "originNotAllowed": {
+                    "summary": "An Origin outside the allowed lists",
+                    "value": {
+                      "error": {
+                        "code": "ORIGIN_NOT_ALLOWED",
+                        "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "notPermitted": {
+                    "summary": "A signed-in account that is not a vendor account",
+                    "description": "The identity gate of D57: only the two vendor accounts reach this module. No audit row is written.",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "setPanelSetup",
+                          "reason": "VENDOR_IDENTITY"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "webConsoleOnly": {
+                    "summary": "A tablet or phone session on a web-console-only operation",
+                    "description": "The caller is a vendor account, but the session is bound to a paired device. One ACCESS_DENIED row is written; the body is not used.",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "setPanelSetup",
+                          "reason": "WEB_CONSOLE_ONLY"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The body or the path parameter does not match its schema (INVALID_INPUT). Free text that holds U+0000 or an unpaired surrogate is refused here (API-13).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidInput": {
+                    "summary": "The body does not match its schema",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_INPUT",
+                        "message": "The request does not match the expected input.",
+                        "details": {
+                          "in": "body"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "LIVE",
+            "position": "after",
+            "color": "#22C55E"
+          }
+        ],
+        "x-dems-mode": "live",
+        "x-dems-source": "Decision D57 (principal, 2026-11-03): operation 115 and operation 116, the pre-delivery setup moved into the console, gated to the vendor identities",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPanelSetupRequest"
+              },
+              "examples": {
+                "identityOnly": {
+                  "summary": "Set the two words",
+                  "description": "No logo touched.",
+                  "value": {
+                    "satker": "DITRESKRIMUM POLDA METRO JAYA",
+                    "client": "PT GSP",
+                    "reason": "Commissioning for handover"
+                  }
+                },
+                "logoOnly": {
+                  "summary": "Queue a logo for both slots",
+                  "description": "The words stay. The base64 body is elided in this example; the real one is the whole PNG file.",
+                  "value": {
+                    "logoBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+                    "logoTarget": "both",
+                    "reason": "Client branding approved"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-dems-access": {
+          "rule": "AUTHENTICATED",
+          "permissions": [],
+          "conditions": [
+            "WEB_CONSOLE_SESSION"
+          ]
+        },
+        "x-dems-audit": {
+          "success": "PANEL_SETUP_CHANGED",
+          "denial": "ACCESS_DENIED",
+          "also": []
+        },
+        "x-dems-services": [
+          "dems-core-server"
+        ]
+      }
     }
   },
   "components": {
@@ -39081,6 +39519,7 @@
               "USER_CREATED",
               "USER_UPDATED",
               "USER_DELETED",
+              "PANEL_SETUP_CHANGED",
               "BIOMETRIC_ENROLLMENT_CHANGED",
               "CAPTURE_CONFIG_CHANGED",
               "AUDIO_SOURCE_SWITCHED",
@@ -41753,6 +42192,7 @@
               "USER_CREATED",
               "USER_UPDATED",
               "USER_DELETED",
+              "PANEL_SETUP_CHANGED",
               "BIOMETRIC_ENROLLMENT_CHANGED",
               "CAPTURE_CONFIG_CHANGED",
               "AUDIO_SOURCE_SWITCHED",
@@ -46527,6 +46967,72 @@
         ],
         "additionalProperties": false,
         "description": "What the attached LCD front panel states about itself: its firmware version and the panel link word. No evidence data, no session data."
+      },
+      "PanelSetupResponse": {
+        "type": "object",
+        "properties": {
+          "satker": {
+            "type": "string",
+            "maxLength": 38,
+            "description": "The unit word the panel shows. Empty when none was ever set."
+          },
+          "client": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The client word the panel shows. Empty when none was ever set."
+          },
+          "clientLogoSaved": {
+            "type": "boolean",
+            "description": "Whether a logo is stored for the client slot."
+          },
+          "splashLogoSaved": {
+            "type": "boolean",
+            "description": "Whether a logo is stored for the splash slot."
+          }
+        },
+        "required": [
+          "satker",
+          "client",
+          "clientLogoSaved",
+          "splashLogoSaved"
+        ],
+        "additionalProperties": false,
+        "description": "The pre-delivery setup of the LCD front panel as its backend holds it: the two identity words and whether each logo slot holds an image."
+      },
+      "SetPanelSetupRequest": {
+        "type": "object",
+        "properties": {
+          "satker": {
+            "description": "New unit word; absent leaves the current one.",
+            "type": "string",
+            "maxLength": 38
+          },
+          "client": {
+            "description": "New client word; absent leaves the current one.",
+            "type": "string",
+            "maxLength": 40
+          },
+          "logoBase64": {
+            "description": "A PNG logo, base64-encoded, within the backend upload bound; absent changes no logo.",
+            "type": "string",
+            "maxLength": 8388608
+          },
+          "logoTarget": {
+            "description": "Which slot the logo goes to; default `client`.",
+            "type": "string",
+            "enum": [
+              "client",
+              "splash",
+              "both"
+            ]
+          },
+          "reason": {
+            "description": "Why the setup changes; free text of the audit row.",
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "additionalProperties": false
       }
     },
     "headers": {

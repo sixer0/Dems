@@ -67,3 +67,4 @@ export * from './lcd';
 // LCD bridge task: operation 114 `getPanelFirmware` — the firmware word the panel states about
 // itself, PUBLIC so the sign-in screen can read it (schema, operation, examples, the console reader).
 export * from './lcd-panel';
+export * from './lcd-setup';
