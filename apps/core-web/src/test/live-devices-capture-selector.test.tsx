@@ -51,8 +51,10 @@ const sessionOf = (operatorId: string): Pick<AuthSessionInfo, 'operator' | 'perm
     permissions: [...ROLE_PERMISSIONS[operator.role]],
   }
 }
-/** The seeded SUPERVISOR holds CAPTURE_CONFIG; the seeded INVESTIGATOR does not (OD-10). */
-const SUPERVISOR = sessionOf(OPERATOR_IDS.ANDI)
+// REVOKED 2026-10-29 (0034): CAPTURE_CONFIG is held by TECHNICIAN alone, so the mounts that drive
+// the control surface are the seeded TECHNICIAN (RINA). The seeded INVESTIGATOR never held
+// CAPTURE_CONFIG (OD-10): it stays the mount of the refusal row.
+const TECHNICIAN = sessionOf(OPERATOR_IDS.RINA)
 const INVESTIGATOR = sessionOf(OPERATOR_IDS.BUDI)
 
 const originalMatchMedia = window.matchMedia
@@ -68,7 +70,7 @@ const toastTexts = (): string[] => Array.from(document.querySelectorAll('[data-s
 let bed: LiveTestBed | undefined
 
 async function liveSelector(
-  session: Pick<AuthSessionInfo, 'operator' | 'permissions'> = SUPERVISOR,
+  session: Pick<AuthSessionInfo, 'operator' | 'permissions'> = TECHNICIAN,
   prepare?: (created: LiveTestBed) => void,
 ): Promise<{ bed: LiveTestBed; page: LivePage; panel: HTMLElement }> {
   const created = createLiveTestBed({ session })
@@ -152,7 +154,7 @@ describe('the read (WB-11, E-17; ux §2.5, §2.7)', () => {
   })
 
   it('a 403 on the read is the forbidden state, with no edit control', async () => {
-    const { panel } = await liveSelector(SUPERVISOR, (created) => {
+    const { panel } = await liveSelector(TECHNICIAN, (created) => {
       created.fake.answer('getCaptureConfig', refusal(403, 'NOT_PERMITTED'))
     })
     expect(await within(panel).findByTestId('selector-forbidden')).toHaveTextContent(S.forbidden)
@@ -161,7 +163,7 @@ describe('the read (WB-11, E-17; ux §2.5, §2.7)', () => {
 
   it('a 503 NOT_READY is "Capture is not ready yet" with a Retry that asks again and then shows the lines', async () => {
     let ready = false
-    const { bed, panel } = await liveSelector(SUPERVISOR, (created) => {
+    const { bed, panel } = await liveSelector(TECHNICIAN, (created) => {
       created.fake.answer('getCaptureDevices', () => (ready ? { status: 200, body: clone(created.core.served.captureDevices) } : notReady()))
     })
     const error = await within(panel).findByTestId('selector-error')
@@ -193,7 +195,7 @@ describe('the read (WB-11, E-17; ux §2.5, §2.7)', () => {
 
 describe('an edit (C3 §2.3 ops 79, 80; ux §2.2 steps 4-5; PE-127-07)', () => {
   it('Save: one POST of operation 79 for the added CAM-03 with { trackId }; the line changes when the Core says so', async () => {
-    const { bed, panel } = await liveSelector(SUPERVISOR, withThirdCamera)
+    const { bed, panel } = await liveSelector(TECHNICIAN, withThirdCamera)
     await within(panel).findByTestId('selector-ready')
     const served = clone(bed.core.served.captureConfig)
     const next = { ...served, updatedAt: served.updatedAt + 1, cameras: served.cameras.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, deviceId: 'CAM-03' } : line)) }
@@ -256,7 +258,7 @@ describe('refusals (ux §2.2 step 6, §2.4; C3 §4)', () => {
   it('a session without CAPTURE_CONFIG reads the selector; each edit is disabled with the role sentence and sends nothing', async () => {
     const { panel } = await liveSelector(INVESTIGATOR)
     await within(panel).findByTestId('selector-ready')
-    const sentence = en.common.rbac.requiresRole.replace('{{role}}', 'SUPERVISOR or TECHNICIAN')
+    const sentence = en.common.rbac.requiresRole.replace('{{role}}', 'TECHNICIAN') // 0034: revoked from SUPERVISOR 2026-10-29; TECHNICIAN holds it alone
     expect(within(panel).getByTestId('selector-reason-VIDEO-01')).toHaveTextContent(sentence)
     expect(within(panel).getByTestId('selector-reason-MIC-02')).toHaveTextContent(sentence)
     expect(within(panel).getByTestId('selector-primary-MIC-02')).toBeDisabled()
