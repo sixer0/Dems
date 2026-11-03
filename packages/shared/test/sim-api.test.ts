@@ -399,13 +399,12 @@ describe('POST+GET /session/{id}/audio-source and GET /session/{id}/sealing (ops
 
   it('refuses a capture edit with 409 CAPTURE_CONFIG_LOCKED and writes no audit row (SEC35-19)', () => {
     const h = harness();
-    // A SUPERVISOR holds both SESSION_START and CAPTURE_CONFIG, so only the lock can refuse here.
-    h.sim.actions.signIn('andi.pratama', 'demo-2026');
-    h.sim.request({ method: 'POST', path: '/api/v1/session', body: CREATE_BODY });
-    const id = h.state().session?.id ?? '';
-    h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/start` });
-    h.run(5_000);
-    h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/start` });
+    // TECHNICIAN and the recording scenario, not the manual session: since the 0034 revocation
+    // (2026-10-29) no single role holds SESSION_START and CAPTURE_CONFIG together, and only an
+    // operator that holds the permission can be answered the LOCK rather than the 403.
+    h.sim.actions.signIn('rina.wijaya', 'demo-2026');
+    h.sim.actions.loadScenario('recording');
+    expect(h.state().session?.state).toBe('RECORDING');
     const before = h.state().audit.rows.length;
     for (const request of [
       { method: 'POST' as const, path: CAPTURE_CONFIG_PATH, body: { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01' }] } },

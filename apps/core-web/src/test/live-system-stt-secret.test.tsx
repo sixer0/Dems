@@ -18,6 +18,7 @@ import { Accordion, toast, ToastProvider } from '@heroui/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { I18nextProvider } from 'react-i18next'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { type AuthSessionInfo } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
 import { HeartbeatContext } from '@dems/shared/realtime'
 import { SimProvider } from '@dems/shared/sim'
@@ -48,7 +49,11 @@ const toastTexts = (): string[] => Array.from(document.querySelectorAll('[data-s
 const input = () => screen.getByTestId('stt-credential-input') as HTMLInputElement
 
 async function mountOpen(): Promise<LiveTestBed> {
-  const created = createLiveTestBed({ session: SUPERVISOR_SESSION })
+  // The TECHNICIAN drives this page: CAPTURE_CONFIG is theirs alone since the 0034 revocation
+  // (2026-10-29, re-pinned across the web rows on 2026-11-03).
+  const created = createLiveTestBed({
+    session: { ...SUPERVISOR_SESSION, operator: { ...SUPERVISOR_SESSION.operator, role: 'TECHNICIAN' }, permissions: ['CAPTURE_CONFIG'] as AuthSessionInfo['permissions'] },
+  })
   bed = created
   created.fake.answerFromExample('getSttConfig', 200, 'seeded')
   page = await created.load()

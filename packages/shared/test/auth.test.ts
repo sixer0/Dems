@@ -243,7 +243,7 @@ describe('RBAC (demo roles, 01 G1)', () => {
 
   // Backend task W16 (GP-06; 2026-10-04 01_specs §4.3, §4.4, AC-B-17): the matrix the Core server
   // seeds and enforces. Three permissions and three SUPERVISOR grants were added; nothing else moved.
-  it('pins 15 permissions and 23 grants: INVESTIGATOR 5, SUPERVISOR 12, TECHNICIAN 6 (W16; M2-W6 SH-04; task 4 row 100)', () => {
+  it('pins 15 permissions and 22 grants: INVESTIGATOR 5, SUPERVISOR 11, TECHNICIAN 6 (W16; M2-W6 SH-04; task 4 row 100; 0034 revoked SUPERVISOR\'s CAPTURE_CONFIG on 2026-10-29)', () => {
     expect(Object.values(Permission)).toEqual([
       'SESSION_START',
       'SESSION_NOTE',
@@ -278,14 +278,14 @@ describe('RBAC (demo roles, 01 G1)', () => {
         'PAIRING_MANAGE',
         'USER_ADMIN',
         'DEMO_CONTROL',
-        'CAPTURE_CONFIG',
+        // OD-10 held CAPTURE_CONFIG here; REVOKED 2026-10-29 by the principal (migration 0034).
       ],
       TECHNICIAN: ['EVIDENCE_VIEW', 'DEVICE_MANAGE', 'DIAGNOSTICS_RUN', 'MAINTENANCE', 'CAPTURE_CONFIG', 'CAPTURE_COMMISSION'],
     });
     const grants = Object.values(ROLE_PERMISSIONS).map((list) => list.length);
-    expect(grants).toEqual([5, 12, 6]);
-    // The same numbers the seed writes (`dbc-3 §E.3` + task 4 row 100: 15 permissions, 23 grants; D88 equality).
-    expect(grants.reduce((sum, count) => sum + count, 0)).toBe(23);
+    expect(grants).toEqual([5, 11, 6]);
+    // The same numbers the seed writes (`dbc-3 §E.3` + task 4 row 100 + the 0034 revocation: 15 permissions, 22 grants; D88 equality).
+    expect(grants.reduce((sum, count) => sum + count, 0)).toBe(22);
     for (const list of Object.values(ROLE_PERMISSIONS)) {
       expect(new Set<string>(list).size).toBe(list.length);
     }
@@ -294,8 +294,9 @@ describe('RBAC (demo roles, 01 G1)', () => {
       expect(roleHas('INVESTIGATOR', permission)).toBe(false);
       expect(roleHas('TECHNICIAN', permission)).toBe(false);
     }
-    // OD-10: the selector is a supervisor/technician thing; an investigator never holds it.
-    expect(roleHas('SUPERVISOR', Permission.CAPTURE_CONFIG)).toBe(true);
+    // OD-10 had the selector as a supervisor/technician thing. REVOKED 2026-10-29 (migration 0034,
+    // re-pinned 2026-11-03): the capture topology is the installing technician's layer alone.
+    expect(roleHas('SUPERVISOR', Permission.CAPTURE_CONFIG)).toBe(false);
     expect(roleHas('TECHNICIAN', Permission.CAPTURE_CONFIG)).toBe(true);
     expect(roleHas('INVESTIGATOR', Permission.CAPTURE_CONFIG)).toBe(false);
     // OD-15: an investigator and a supervisor revise transcripts; a technician does not.

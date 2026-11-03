@@ -155,15 +155,20 @@ describe('operations 93 and 94: the search and its candidates', () => {
     h.call('POST', DISCOVERY);
     expect(h.call<CaptureDiscoveryStateBody>('GET', DISCOVERY).body.candidates).toHaveLength(2);
 
-    // Another operator session: its own, empty state; the first session's candidate id is one 404.
+    // Another operator can no longer look: since the 0034 revocation the supervisor holds no
+    // CAPTURE_CONFIG and the refusal happens before the ownership check (the simulator hosts no
+    // role change to promote a second holder). What releases the list is the end of its session:
+    // the sign-in instant is part of the owner identity, so the operator returning one millisecond
+    // later returns as a NEW session — and the old list is gone with the old one.
     h.sim.actions.signOut();
     signIn(h, 'andi.pratama');
-    expect(h.call('GET', DISCOVERY).body).toEqual({ search: null, candidates: [], truncated: false });
-    expect(h.call('POST', `${FRESH}/test`, {}).status).toBe(404);
-    // The same operator signing in again is a new session too: the old list did not survive the sign-out.
+    expect(h.call('GET', DISCOVERY).status).toBe(403);
+    expect(h.call('POST', `${FRESH}/test`, {}).status).toBe(403);
     h.sim.actions.signOut();
+    h.clock.advance(1);
     signIn(h, 'rina.wijaya');
     expect(h.call('GET', DISCOVERY).body).toEqual({ search: null, candidates: [], truncated: false });
+    expect(h.call('POST', `${FRESH}/test`, {}).status).toBe(404);
 
     // The life of the result.
     h.call('POST', DISCOVERY);
@@ -173,8 +178,8 @@ describe('operations 93 and 94: the search and its candidates', () => {
     expect(h.call('GET', DISCOVERY).body).toEqual({ search: null, candidates: [], truncated: false });
     expect(h.call('POST', `${FRESH}/test`, {}).status).toBe(404);
 
-    // A demo reset replaces the dataset: the search is gone with it.
-    signIn(h, 'andi.pratama');
+    // A demo reset replaces the dataset: the search is gone with it. The searcher stays the
+    // technician: since 0034 the supervisor may not even read this corner (re-pinned 2026-11-03).
     h.call('POST', DISCOVERY);
     h.sim.actions.resetDemo();
     expect(h.call('GET', DISCOVERY).body).toEqual({ search: null, candidates: [], truncated: false });
@@ -182,7 +187,8 @@ describe('operations 93 and 94: the search and its candidates', () => {
 
   it('a search is allowed while a session is open; candidates never appear in operation 77', () => {
     const h = harness();
-    signIn(h, 'andi.pratama');
+    // TECHNICIAN since the 0034 revocation: the search names CAPTURE_CONFIG.
+    signIn(h, 'rina.wijaya');
     h.sim.actions.loadScenario('recording');
     expect(h.state().session?.state).toBe('RECORDING');
     expect(h.call('POST', DISCOVERY).status).toBe(202);
@@ -618,7 +624,8 @@ describe('operations 98 and 99: the sound cards and the registration of an input
       [403, 'NOT_PERMITTED', 'WEB_CONSOLE_ONLY'],
     ]);
     const open = harness();
-    signIn(open, 'andi.pratama');
+    // TECHNICIAN since the 0034 revocation: reach the lock (409), not the permission refusal.
+    signIn(open, 'rina.wijaya');
     open.sim.actions.loadScenario('recording');
     expect(open.state().session?.state).toBe('RECORDING');
     expect(calls(open).map((answer) => [answer.status, codeOf(answer.body)])).toEqual([[409, 'CAPTURE_CONFIG_LOCKED'], [409, 'CAPTURE_CONFIG_LOCKED']]);

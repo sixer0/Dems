@@ -119,7 +119,8 @@ describe('setCaptureConfig: the three kinds of change (operations 78, 79, 80)', 
   });
 
   it('a camera goes to a track (79) and the whole selector is written (78): one row per line that changed', () => {
-    const h = harness();
+    // TECHNICIAN since the 0034 revocation: SUPERVISOR no longer holds CAPTURE_CONFIG (2026-10-29).
+    const h = harness('TECHNICIAN');
     // CAM-02 to VIDEO-01 while VIDEO-02 holds CAM-02 with the same profile is one camera on both
     // tracks with one profile: refused, nothing set (the control of the rule below).
     const before = h.state();
@@ -155,7 +156,8 @@ describe('setCaptureConfig: the three kinds of change (operations 78, 79, 80)', 
   });
 
   it('fix wave J (JA2-24): the camera that feeds the other track is refused WITH its reason - `CAMERA_ON_BOTH_TRACKS` - and nothing is changed', () => {
-    const h = harness();
+    // TECHNICIAN since the 0034 revocation (2026-10-29).
+    const h = harness('TECHNICIAN');
     const before = h.state();
     let refused: unknown = null;
     try {
@@ -180,7 +182,8 @@ describe('setCaptureConfig: the three kinds of change (operations 78, 79, 80)', 
   });
 
   it('an edit that changes nothing sets nothing: the same state, no store write, no row', () => {
-    const h = harness();
+    // TECHNICIAN since the 0034 revocation (2026-10-29).
+    const h = harness('TECHNICIAN');
     const before = h.state();
     const sets = h.sets();
     const same: CaptureConfigChange[] = [
@@ -201,7 +204,8 @@ describe('setCaptureConfig: the three kinds of change (operations 78, 79, 80)', 
 
 describe('setCaptureConfig: the order of the mic rows', () => {
   it('a selector whose mic rows came out of input order is put in order by the next mic edit, and left alone by a camera edit', () => {
-    const h = harness();
+    // TECHNICIAN since the 0034 revocation (2026-10-29).
+    const h = harness('TECHNICIAN');
     // What a stored selector reads back as today when MIC-02 is PRIMARY: the PRIMARY row first.
     const reversed = [...h.state().captureConfig.mics].reverse().map((mic) => ({ ...mic, role: mic.inputId === 'MIC-02' ? ('PRIMARY' as const) : ('STANDBY' as const) }));
     h.sim.store.setState({ captureConfig: { ...h.state().captureConfig, mics: reversed } });
@@ -239,7 +243,9 @@ describe('setCaptureConfig: the refusals change nothing', () => {
   });
 
   it.each(['recording', 'finalizing'] as const)('M4-LOCK-1: while a session is open (%s) every kind of edit is refused, with no row and no change', (scenario) => {
-    const h = harness('SUPERVISOR', scenario);
+    // TECHNICIAN: the lock (409) is what this row proves, and only since 0034 must the driver
+    // also hold CAPTURE_CONFIG to be answered the lock rather than the permission refusal (403).
+    const h = harness('TECHNICIAN', scenario);
     expect(h.state().session).not.toBeNull();
     const rows = h.state().audit.rows.length;
     for (const change of [
@@ -1133,7 +1139,8 @@ describe('setCaptureConfig: a selector slot may be unassigned and assigned again
   });
 
   it.each(['recording', 'finalizing'] as const)('AD-10 (2) at the action: `unassign` is refused while a session is open (%s), with no row and no change', (scenario) => {
-    const h = harness('SUPERVISOR', scenario);
+    // TECHNICIAN since the 0034 revocation: reach the lock, not the permission refusal.
+    const h = harness('TECHNICIAN', scenario);
     const before = h.state();
     expect(() => h.sim.actions.setCaptureConfig({ kind: 'UPDATE', unassign: ['STANDBY'] })).toThrow(expect.objectContaining({ code: 'ILLEGAL_STATE', event: 'setCaptureConfig' }));
     expect(h.state()).toBe(before);

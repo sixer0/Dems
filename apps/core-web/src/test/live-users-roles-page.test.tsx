@@ -109,8 +109,9 @@ describe('AC-C-86: the page renders the test IDs of §10.2 from the fake transpo
     // The technician never signed in (the contract's example).
     expect(within(table).getByTestId('ur-last-sign-in-OPR-003')).toHaveTextContent(U.users.neverSignedIn)
 
-    // The matrix: fifteen rows by three roles, read-only, 23 grants as seeded (SH-04, row 47; task 4
-    // row 100 added the commissioning permission, held by the technician only).
+    // The matrix: fifteen rows by three roles, read-only, 22 grants as seeded (SH-04, row 47; task 4
+    // row 100 added the commissioning permission, held by the technician only; migration 0034 revoked
+    // the supervisor's CAPTURE_CONFIG on 2026-10-29 - re-pinned here on 2026-11-03).
     const matrix = within(page).getByTestId('ur-matrix')
     expect(within(page).getByTestId('ur-matrix-readonly')).toHaveTextContent(U.matrix.readOnly)
     expect(within(matrix).getAllByRole('row')).toHaveLength(16)
@@ -125,7 +126,7 @@ describe('AC-C-86: the page renders the test IDs of §10.2 from the fake transpo
         if (expected) granted += 1
       }
     }
-    expect(granted).toBe(23)
+    expect(granted).toBe(22)
     expect(within(matrix).getByTestId('ur-grant-SUPERVISOR-USER_ADMIN')).toHaveAttribute('aria-label', U.matrix.granted)
     expect(within(matrix).getByTestId('ur-grant-TECHNICIAN-USER_ADMIN')).toHaveAttribute('aria-label', U.matrix.notGranted)
 

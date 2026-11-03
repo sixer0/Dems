@@ -35,6 +35,7 @@
  */
 import { z } from 'zod';
 import { AuditType } from '../sim/vocabulary';
+import { apiText } from './text';
 import { API_BASE_PATH, CORE_HTTP_ORIGIN } from './constants';
 import {
   CORE_SERVER_ONLY,
@@ -64,14 +65,12 @@ export const PANEL_VERDICT_MAX_LENGTH = 24;
  */
 export const PanelFirmwareResponseSchema = z
   .strictObject({
-    panelFirmware: z
-      .string()
+    panelFirmware: apiText()
       .max(PANEL_FIRMWARE_MAX_LENGTH)
       .describe(
         'The firmware version the panel reported about itself (e.g. `v3.8`), as the panel backend holds it. Empty when nothing is known: no panel, no backend, or a backend that did not answer.',
       ),
-    verdict: z
-      .string()
+    verdict: apiText()
       .max(PANEL_VERDICT_MAX_LENGTH)
       .describe(
         'The panel link word of the panel backend: `OK` when the panel is talking, `PANEL-DIAM`, `CORE-DIAM` or `PORT-TIDAK-ADA` when something between them is silent, and empty when the backend itself did not answer. An open set of bounded length.',

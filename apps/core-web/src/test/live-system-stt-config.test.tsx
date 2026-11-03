@@ -66,8 +66,10 @@ let page: LivePage | undefined
 let consoleCalls: unknown[][] = []
 const requests = (operationId: string) => bed!.fake.log.requestsOf(operationId)
 
-/** The item inside an accordion and the providers of the root route, around the bed's Live source. */
-async function mountItem(session: Pick<AuthSessionInfo, 'operator' | 'permissions'> = SUPERVISOR_SESSION, script: (bed: LiveTestBed) => void = (b) => b.fake.answerFromExample('getSttConfig', 200, 'seeded')) {
+/** The item inside an accordion and the providers of the root route, around the bed's Live source.
+ *  The default driver is the TECHNICIAN: since the 0034 revocation (2026-10-29, re-pinned across
+ *  the web rows on 2026-11-03) CAPTURE_CONFIG — the gate of this page — is the technician's alone. */
+async function mountItem(session: Pick<AuthSessionInfo, 'operator' | 'permissions'> = TECHNICIAN_SESSION, script: (bed: LiveTestBed) => void = (b) => b.fake.answerFromExample('getSttConfig', 200, 'seeded')) {
   const created = createLiveTestBed({ session })
   bed = created
   script(created)
@@ -164,7 +166,11 @@ describe('gating (G11 Save, G12 Test connection)', () => {
     expect(requests('getSttConfig')).toHaveLength(0)
   })
 
-  it('SUPERVISOR: "Checking your permissions…" with both controls disabled, then enabled', async () => {
+  // SUPERVISOR used to be the enabled half of this row. The 0034 revocation (2026-10-29) moved
+  // CAPTURE_CONFIG to the technician alone, so the gate — read client-side off the session's
+  // permissions — now lands the supervisor on the refused side even when the read answers 200.
+  // The enabled story is the TECHNICIAN row below's.
+  it('SUPERVISOR: "Checking your permissions…" with both controls disabled, then refused (0034)', async () => {
     let held: ReturnType<LiveTestBed['fake']['hold']> | undefined
     const created = await mountItem(SUPERVISOR_SESSION, (b) => {
       held = b.fake.hold('getSttConfig')
@@ -174,11 +180,10 @@ describe('gating (G11 Save, G12 Test connection)', () => {
     expect(disabled('stt-save')).toBe(true)
     expect(disabled('stt-test')).toBe(true)
     await act(async () => held!.release(created.fake.example('getSttConfig', 200, 'seeded')))
-    await waitFor(() => expect(screen.getByTestId('stt-config')).toHaveAttribute('data-access', 'allowed'))
+    await waitFor(() => expect(screen.getByTestId('stt-config')).toHaveAttribute('data-access', 'refused'))
     expect(screen.getByTestId('stt-access')).not.toHaveTextContent(T.checking)
-    expect(disabled('stt-save')).toBe(false)
-    expect(disabled('stt-test')).toBe(false)
-    expect(switchInput('stt-enabled').disabled).toBe(false)
+    expect(disabled('stt-save')).toBe(true)
+    expect(disabled('stt-test')).toBe(true)
   })
 
   it('TECHNICIAN holds CAPTURE_CONFIG: enabled', async () => {
@@ -196,9 +201,10 @@ describe('gating (G11 Save, G12 Test connection)', () => {
     expect(screen.getByTestId('stt-access')).toHaveTextContent(T.checking)
     await act(async () => held!.release(created.fake.example('getSttConfig', 200, 'seeded')))
     await waitFor(() => expect(screen.getByTestId('stt-config')).toHaveAttribute('data-access', 'refused'))
-    // G81-03 (gate 81): the hint names EVERY role the access rule admits (`CAPTURE_CONFIG`: Supervisor and Technician), never the Supervisor alone.
-    expect(screen.getByTestId('stt-access')).toHaveTextContent(`Read-only: ${en.common.rbac.requiresRole.replace('{{role}}', `${en.common.roles.SUPERVISOR} / ${en.common.roles.TECHNICIAN}`)}.`)
-    expect(screen.getByTestId('stt-access').textContent).toBe('Read-only: Requires the Supervisor / Technician role.')
+    // G81-03 (gate 81): the hint names EVERY role the access rule admits - and since the 0034
+    // revocation (2026-10-29, re-pinned 2026-11-03) `CAPTURE_CONFIG` admits the TECHNICIAN alone.
+    expect(screen.getByTestId('stt-access')).toHaveTextContent(`Read-only: ${en.common.rbac.requiresRole.replace('{{role}}', en.common.roles.TECHNICIAN)}.`)
+    expect(screen.getByTestId('stt-access').textContent).toBe('Read-only: Requires the Technician role.')
     for (const control of ['stt-save', 'stt-test', 'stt-credential-change']) expect(disabled(control)).toBe(true)
     expect(switchInput('stt-enabled').disabled).toBe(true)
     expect(switchInput('stt-diarization').disabled).toBe(true)
@@ -270,14 +276,14 @@ describe('G81b-05: the pending-change sentence follows `pendingForNextSession` b
   const answering = (pendingForNextSession: boolean) => (b: LiveTestBed) => b.fake.answer('getSttConfig', () => ({ status: 200, body: { ...seeded, pendingForNextSession } }) as never)
 
   it('the Core says a change is waiting (a session is open): the sentence is shown', async () => {
-    await mountItem(SUPERVISOR_SESSION, answering(true))
+    await mountItem(undefined, answering(true))
     await openItem()
     expect(await screen.findByTestId('stt-pending-next')).toHaveTextContent(T.pendingNextSession)
   })
 
   it('the Core says nothing is waiting (no session is open): no sentence - the contract example itself states `false`', async () => {
     expect(seeded.pendingForNextSession).toBe(false)
-    await mountItem(SUPERVISOR_SESSION, answering(false))
+    await mountItem(undefined, answering(false))
     await openItem()
     expect(screen.queryByTestId('stt-pending-next')).toBeNull()
     expect(screen.getByTestId('stt-config')).not.toHaveTextContent(T.pendingNextSession)
@@ -325,7 +331,7 @@ describe('refusals', () => {
 
 describe('credential (write-only)', () => {
   it('never pre-filled: no field until the operator opens it, and it opens empty also when a credential is set', async () => {
-    await mountItem(SUPERVISOR_SESSION, (b) => b.fake.answerFromExample('getSttConfig', 200, 'edited'))
+    await mountItem(undefined, (b) => b.fake.answerFromExample('getSttConfig', 200, 'edited'))
     await openItem()
     expect(screen.getByTestId('stt-credential-state')).toHaveTextContent(`${T.credentialSet} · ${T.credentialKinds.REFERENCE}`)
     expect(screen.queryByTestId('stt-credential-input')).toBeNull()
@@ -380,7 +386,7 @@ describe('credential (write-only)', () => {
   })
 
   it('Remove sends `credential: { kind: CLEAR }`', async () => {
-    const created = await mountItem(SUPERVISOR_SESSION, (b) => b.fake.answerFromExample('getSttConfig', 200, 'edited'))
+    const created = await mountItem(undefined, (b) => b.fake.answerFromExample('getSttConfig', 200, 'edited'))
     await openItem()
     press('stt-credential-remove')
     expect(screen.getByTestId('stt-credential-remove-pending')).toHaveTextContent(T.credentialRemovePending)

@@ -528,6 +528,11 @@ const ABSOLUTE_MS = 8 * 60 * 60_000;
 /** A web console session of the SUPERVISOR, signed in five minutes before the example instant. */
 const WEB_SESSION: AuthSessionInfo = {
   operator: EXAMPLE_SUPERVISOR,
+  // The SUPERVISOR's grants as the enforced table has them (sim/auth.ts ROLE_PERMISSIONS.SUPERVISOR;
+  // the 0034 revocation of CAPTURE_CONFIG on 2026-10-29 is reflected here). Deliberately a literal:
+  // importing the table would pull sim/dataset into the api barrel, and the Live source must stay
+  // platform-neutral (see live-source-platform-neutral.test.ts). api-examples.test.ts is the pin
+  // that keeps this list from drifting from the table again.
   permissions: [
     'SESSION_START',
     'SESSION_NOTE',
@@ -541,8 +546,6 @@ const WEB_SESSION: AuthSessionInfo = {
     'PAIRING_MANAGE',
     'USER_ADMIN',
     'DEMO_CONTROL',
-    // OD-10 (SH-04): the device selector.
-    'CAPTURE_CONFIG',
   ],
   method: 'PASSWORD',
   issuedAt: exampleTime(-5),

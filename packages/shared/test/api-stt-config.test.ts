@@ -314,8 +314,10 @@ describe('the model identifier: one shared pattern, used by operation 91', () =>
     // Task 4 blueprint row 116: the five schemas and the two operations of the installation acceptance, 184 -> 189 and 108 -> 110.
     // Task 4 row RD2: the two schemas and the one operation of the retirement of a device, 189 -> 191 and 110 -> 111.
     // Task 4 row D53: the two schemas and the two operations of the live preview and the idle meters, 191 -> 193 and 111 -> 113.
-    expect(Object.keys(document.components.schemas)).toHaveLength(193);
-    expect(CORE_API_OPERATIONS).toHaveLength(113);
+    // Task 4 LCD work (2026-10-29): the answer schema and the operation of the panel info, 193 -> 194 and 113 -> 114.
+    // RB-9 as amended (principal PT GSP, 2026-11-02): the three request bodies and the answer of the vendor trio, 194 -> 198; operations 15-17, 114 -> 117.
+    expect(Object.keys(document.components.schemas)).toHaveLength(198);
+    expect(CORE_API_OPERATIONS).toHaveLength(117);
   });
 });
 
@@ -371,16 +373,21 @@ describe('who may call (the simulator, the same code path as Simulated mode)', (
     sim.stop();
   });
 
-  it('SUPERVISOR and TECHNICIAN change and test it', async () => {
-    for (const role of ['SUPERVISOR', 'TECHNICIAN'] as const) {
-      const sim = await simAs(role);
-      const changed = post(sim, { revision: 1, enabled: false });
-      expect(changed.status, role).toBe(200);
-      expect((changed.body as SttConfigUpdateResult).enabled).toBe(false);
-      expect(test(sim).status, role).toBe(200);
-      expect(sttRows(sim)).toHaveLength(1);
-      sim.stop();
-    }
+  it('TECHNICIAN changes and tests it; SUPERVISOR is refused since the 0034 revocation', async () => {
+    const sim = await simAs('TECHNICIAN');
+    const changed = post(sim, { revision: 1, enabled: false });
+    expect(changed.status).toBe(200);
+    expect((changed.body as SttConfigUpdateResult).enabled).toBe(false);
+    expect(test(sim).status).toBe(200);
+    expect(sttRows(sim)).toHaveLength(1);
+    sim.stop();
+    // OD-10 held CAPTURE_CONFIG for the supervisor; REVOKED 2026-10-29 (migration 0034): the
+    // writes of area 11 name the permission and the operating role no longer carries it.
+    const supervisor = await simAs('SUPERVISOR');
+    expect(outcome(post(supervisor, { revision: 1, enabled: false }))).toEqual([403, 'NOT_PERMITTED', undefined]);
+    expect(outcome(test(supervisor))).toEqual([403, 'NOT_PERMITTED', undefined]);
+    expect(sttRows(supervisor)).toEqual([]);
+    supervisor.stop();
   });
 });
 
@@ -453,12 +460,16 @@ describe('the audit row and the refusals', () => {
 
 describe('next session: a change stored while a session is open applies to the next one', () => {
   it('idle: appliesFrom NOW; a session open: appliesFrom NEXT_SESSION and pendingForNextSession', async () => {
-    const sim = await simAs('SUPERVISOR');
+    // TECHNICIAN since the 0034 revocation (2026-10-29): the write names CAPTURE_CONFIG.
+    const sim = await simAs('TECHNICIAN');
     const idle = post(sim, { revision: 1, diarization: false }).body as SttConfigUpdateResult;
     expect([idle.appliesFrom, idle.pendingForNextSession]).toEqual(['NOW', false]);
 
-    const created = sim.request({ method: 'POST', path: '/api/v1/session', body: CORE_API_EXAMPLES.createSession!.request!.recordingScenario!.value });
-    expect(created.status).toBe(201);
+    // The session opens through the recording scenario: since the 0034 revocation (2026-10-29)
+    // no single role holds SESSION_START and CAPTURE_CONFIG together, and loadScenario keeps the
+    // signed-in operator. It re-seeds the audit trail; the stored configuration is a holder of the
+    // store itself and rides the load: the idle write left it at revision 2.
+    sim.actions.loadScenario('recording');
     // The open session started before the change below: the read does not yet call it pending.
     expect((get(sim).body as SttConfig).pendingForNextSession).toBe(false);
     const open = post(sim, { revision: 2, enabled: false });
@@ -468,14 +479,16 @@ describe('next session: a change stored while a session is open applies to the n
     expect([body.appliesFrom, body.pendingForNextSession, body.enabled, body.revision]).toEqual(['NEXT_SESSION', true, false, 3]);
     expect((get(sim).body as SttConfig).pendingForNextSession).toBe(true);
     // The write is NOT refused while a session is open (unlike the selector's 409 CAPTURE_CONFIG_LOCKED).
-    expect(sttRows(sim)).toHaveLength(2);
+    // One row only: the scenario load re-seeded the trail, so the idle write above left no row here.
+    expect(sttRows(sim)).toHaveLength(1);
     sim.stop();
   });
 });
 
 describe('secrecy: a planted credential reaches no answer and no audit row (with a negative control)', () => {
   it('SECRET, REFERENCE and CLEAR writes: 0 hits over every answer, the audit trail and the events', async () => {
-    const sim = await simAs('SUPERVISOR');
+    // TECHNICIAN since the 0034 revocation (2026-10-29): the writes name CAPTURE_CONFIG.
+    const sim = await simAs('TECHNICIAN');
     const seen: unknown[] = [];
     const keep = <T>(value: T): T => (seen.push(value), value);
     keep(post(sim, { revision: 1, credential: { kind: 'SECRET', value: SECRET } }));

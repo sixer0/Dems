@@ -245,9 +245,10 @@ describe('the registry: operations 93 to 97 as C3 §2.6 writes them', () => {
 });
 
 describe('who may call (R-9 AC-12; D80(2), D80(3))', () => {
-  it('CAPTURE_CONFIG is SUPERVISOR and TECHNICIAN: no new permission, and INVESTIGATOR holds none of the five', () => {
+  it('CAPTURE_CONFIG is the TECHNICIAN\'s since the 0034 revocation: no new permission, and the other two roles hold none of the five', () => {
     const holders = Object.values(OperatorRole).filter((role) => (ROLE_PERMISSIONS[role] as readonly Permission[]).includes(Permission.CAPTURE_CONFIG));
-    expect(holders.sort()).toEqual([OperatorRole.SUPERVISOR, OperatorRole.TECHNICIAN].sort());
+    // OD-10 had SUPERVISOR here too; migration 0034 revoked it on 2026-10-29 (re-pinned 2026-11-03).
+    expect(holders).toEqual([OperatorRole.TECHNICIAN]);
     for (const operation of CAPTURE_DISCOVERY_OPERATIONS) expect(describeCoreApiAccess(operation.access), operation.operationId).toBe('CAPTURE_CONFIG');
   });
 
@@ -863,7 +864,7 @@ describe('task 4 row 194: operation 100, the operator-confirmed re-address of a 
     expect(AUDIT_TYPE_CATEGORY[AuditType.CAPTURE_DEVICE_ADDRESS_CHANGED]).toBe('DEVICE');
     expect(CAPTURE_READDRESS_AUDIT_REASON).toBe('OPERATOR_CONFIRMED');
     // TECHNICIAN and SUPERVISOR hold the permission; nobody else.
-    expect(Object.values(OperatorRole).filter((role) => (ROLE_PERMISSIONS[role] as readonly string[]).includes(Permission.CAPTURE_CONFIG)).sort()).toEqual(['SUPERVISOR', 'TECHNICIAN']);
+    expect(Object.values(OperatorRole).filter((role) => (ROLE_PERMISSIONS[role] as readonly string[]).includes(Permission.CAPTURE_CONFIG))).toEqual(['TECHNICIAN']);
   });
 
   it('the documented statuses; the simulator never sends the success; 503 is envelope-level and named in the text', () => {

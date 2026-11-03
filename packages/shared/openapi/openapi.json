@@ -2472,8 +2472,7 @@
                           "AUDIT_EXPORT",
                           "PAIRING_MANAGE",
                           "USER_ADMIN",
-                          "DEMO_CONTROL",
-                          "CAPTURE_CONFIG"
+                          "DEMO_CONTROL"
                         ],
                         "method": "PASSWORD",
                         "issuedAt": 1790823300000,
@@ -2917,8 +2916,7 @@
                         "AUDIT_EXPORT",
                         "PAIRING_MANAGE",
                         "USER_ADMIN",
-                        "DEMO_CONTROL",
-                        "CAPTURE_CONFIG"
+                        "DEMO_CONTROL"
                       ],
                       "method": "PASSWORD",
                       "issuedAt": 1790823300000,
@@ -4223,7 +4221,7 @@
                 },
                 "examples": {
                   "seeded": {
-                    "summary": "The seeded matrix: 3 roles, 15 permissions, 23 grants",
+                    "summary": "The seeded matrix: 3 roles, 15 permissions, 22 grants",
                     "value": {
                       "roles": [
                         "INVESTIGATOR",
@@ -4311,10 +4309,6 @@
                         {
                           "role": "SUPERVISOR",
                           "permission": "DEMO_CONTROL"
-                        },
-                        {
-                          "role": "SUPERVISOR",
-                          "permission": "CAPTURE_CONFIG"
                         },
                         {
                           "role": "TECHNICIAN",
@@ -4738,7 +4732,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks USER_ADMIN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks USER_ADMIN (NOT_PERMITTED; one ACCESS_DENIED audit row); or the signed-in account is not the vendor root account, the second gate of the narrowed rule (NOT_PERMITTED; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -5887,7 +5881,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks USER_ADMIN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks USER_ADMIN (NOT_PERMITTED; one ACCESS_DENIED audit row); or the signed-in account is not the vendor root account, the second gate of the narrowed rule (NOT_PERMITTED; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -6162,7 +6156,7 @@
             }
           },
           "403": {
-            "description": "Refused: the operator's role lacks USER_ADMIN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "description": "Refused: the operator's role lacks USER_ADMIN (NOT_PERMITTED; one ACCESS_DENIED audit row); or the signed-in account is not the vendor root account, the second gate of the narrowed rule (NOT_PERMITTED; no audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -33679,7 +33673,7 @@
                 "permission"
               ]
             },
-            "description": "One entry per role that holds a permission: 18 in the seeded matrix. A set: the order of the entries is not significant."
+            "description": "One entry per role that holds a permission: 22 in the seeded matrix (0034 revoked SUPERVISOR's CAPTURE_CONFIG). A set: the order of the entries is not significant."
           },
           "editable": {
             "type": "boolean",

@@ -907,8 +907,18 @@ describe("the audio card title with the development badge; \"Checking your permi
   type Device = SimState['captureDevices']['devices'][number]
   let bed: LiveTestBed | undefined
 
+  // The seeded TECHNICIAN: since the 0034 revocation (2026-10-29) the only role holding CAPTURE_CONFIG.
+  const RINA = OPERATORS.find((operator) => operator.id === OPERATOR_IDS.RINA)!
+  const technicianSession: Pick<AuthSessionInfo, 'operator' | 'permissions'> = {
+    operator: { id: RINA.id, username: RINA.username, rank: RINA.rank, name: RINA.name, displayName: RINA.displayName, initials: RINA.initials, role: RINA.role },
+    permissions: [...ROLE_PERMISSIONS[RINA.role]],
+  }
+
   async function liveDevices(prepare?: (created: LiveTestBed) => void) {
-    const created = createLiveTestBed({ session: SUPERVISOR_SESSION })
+    // The technician drives this row: the harness supervisor session — the getAuthSession example —
+    // carries exactly the table's grants, and the table revoked the supervisor's CAPTURE_CONFIG.
+    // The row proves the pending state of the selector, not its rights.
+    const created = createLiveTestBed({ session: technicianSession })
     bed = created
     // A Core in real capture: every source carries its class, so the badge is drawn.
     created.core.served.captureDevices = { devices: created.core.served.captureDevices.devices.map((device) => ({ ...device, adapter: 'FAKE', sourceClass: 'DEVELOPMENT' }) as Device) }

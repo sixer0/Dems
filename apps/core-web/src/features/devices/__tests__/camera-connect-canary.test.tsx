@@ -17,7 +17,7 @@
 import { act, cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { toast } from '@heroui/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CaptureCandidate, CaptureDiscoverySearch } from '@dems/shared/api'
+import type { AuthSessionInfo, CaptureCandidate, CaptureDiscoverySearch } from '@dems/shared/api'
 import { en } from '@dems/shared/i18n'
 import { redactCredentials, webErrorSink } from '@/runtime'
 import { resetCoreErrorPresenter } from '@/lib/core-errors'
@@ -106,7 +106,11 @@ afterEach(() => {
 })
 
 async function openDialog(candidate: CaptureCandidate = CANDIDATE): Promise<LiveTestBed> {
-  const created = createLiveTestBed({ session: SUPERVISOR_SESSION })
+  // TECHNICIAN: the typed-credential camera routes name CAPTURE_CONFIG, the technician's alone
+  // since the 0034 revocation (2026-10-29, re-pinned across the web rows on 2026-11-03).
+  const created = createLiveTestBed({
+    session: { ...SUPERVISOR_SESSION, operator: { ...SUPERVISOR_SESSION.operator, role: 'TECHNICIAN' }, permissions: ['CAPTURE_CONFIG'] as AuthSessionInfo['permissions'] },
+  })
   bed = created
   let searched = false
   created.fake.answer('startCaptureDiscovery', () => {

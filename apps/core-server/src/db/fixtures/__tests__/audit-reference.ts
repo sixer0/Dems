@@ -392,8 +392,13 @@ function recordingJourney(host: Host, take: Take): void {
   host.drive(200);
   actions.setTabletLink('CONNECTED');
   host.runAs(technician, () => actions.deviceCommand('CAM-01', 'RESTART'));
+  // The warning form of the completion event: a clipping microphone is the AUDIO row's WARN.
+  // (Task 4 row D53 reset the CLIP latch at the seal, which took away the warning this journey
+  // used to carry into its own state; the clip is injected for the run and cleared after it.)
+  actions.inject(FaultKind.MIC_CLIP);
   host.runAs(technician, () => actions.runDiagnostics());
   host.drive(10_000, 100);
+  actions.clearFault(FaultKind.MIC_CLIP);
   host.runAs(technician, () => actions.setStoragePolicy({ retentionPolicy: RetentionPolicyId.YEAR_1 }));
   take();
 

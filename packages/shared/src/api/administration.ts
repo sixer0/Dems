@@ -72,7 +72,7 @@ export const RoleMatrixSchema = z
     permissions: z.array(z.enum(Permission)),
     grants: z
       .array(z.object({ role: z.enum(OperatorRole), permission: z.enum(Permission) }))
-      .describe('One entry per role that holds a permission: 18 in the seeded matrix. A set: the order of the entries is not significant.'),
+      .describe('One entry per role that holds a permission: 22 in the seeded matrix (0034 revoked SUPERVISOR\'s CAPTURE_CONFIG). A set: the order of the entries is not significant.'),
     editable: z.literal(false).describe('The matrix cannot be changed through the API in this release (RB-9).'),
   })
   .describe('The role and permission matrix the server enforces, read from PostgreSQL.');
@@ -369,9 +369,9 @@ export const ADMINISTRATION_OPERATIONS = [
       200: { description: 'The operator as created.', schema: 'AdminUser' },
       400: INVALID_JSON,
       401: NOT_SIGNED_IN,
-      // The vendor-only identity rule is spelled out in the description above; the 403 itself is
-      // the one every USER_ADMIN operation shares, so the text stays with `notPermitted`.
-      403: notPermitted(Permission.USER_ADMIN),
+      // RB-9 as amended (2026-11-02): this 403 names both gates — stage 6's permission and the
+      // identity rule the unit applies on top of it. The identity refusal writes no audit row.
+      403: notPermitted(Permission.USER_ADMIN, 'or the signed-in account is not the vendor root account, the second gate of the narrowed rule (NOT_PERMITTED; no audit row)'),
       422: INVALID_INPUT,
     },
     access: USER_ADMIN,
@@ -398,9 +398,9 @@ export const ADMINISTRATION_OPERATIONS = [
       200: { description: 'The operator after the change.', schema: 'AdminUser' },
       400: INVALID_JSON,
       401: NOT_SIGNED_IN,
-      // The vendor-only identity rule is spelled out in the description above; the 403 itself is
-      // the one every USER_ADMIN operation shares, so the text stays with `notPermitted`.
-      403: notPermitted(Permission.USER_ADMIN),
+      // RB-9 as amended (2026-11-02): this 403 names both gates — stage 6's permission and the
+      // identity rule the unit applies on top of it. The identity refusal writes no audit row.
+      403: notPermitted(Permission.USER_ADMIN, 'or the signed-in account is not the vendor root account, the second gate of the narrowed rule (NOT_PERMITTED; no audit row)'),
       404: UNKNOWN_OPERATOR,
       422: INVALID_INPUT,
     },
@@ -429,9 +429,9 @@ export const ADMINISTRATION_OPERATIONS = [
       200: { description: 'What was deleted.', schema: 'DeletedUser' },
       400: INVALID_JSON,
       401: NOT_SIGNED_IN,
-      // The vendor-only identity rule is spelled out in the description above; the 403 itself is
-      // the one every USER_ADMIN operation shares, so the text stays with `notPermitted`.
-      403: notPermitted(Permission.USER_ADMIN),
+      // RB-9 as amended (2026-11-02): this 403 names both gates — stage 6's permission and the
+      // identity rule the unit applies on top of it. The identity refusal writes no audit row.
+      403: notPermitted(Permission.USER_ADMIN, 'or the signed-in account is not the vendor root account, the second gate of the narrowed rule (NOT_PERMITTED; no audit row)'),
       404: UNKNOWN_OPERATOR,
       409: { description: 'RB-8: the delete would leave no enabled operator holding USER_ADMIN (LAST_ADMIN); or the username in `confirm` is not the operator of `{id}`; or records of the unit still point at that operator (INVALID_STATE), in which case the refusal text names how many and from which sources. Nothing is deleted in any of these cases.', schema: 'ApiError' },
       422: INVALID_INPUT,
@@ -448,7 +448,8 @@ export const ADMINISTRATION_OPERATIONS = [
 
 /**
  * The seeded matrix (01_specs §4.4; task 3 M2-W6 SH-04; task 4 row 100): INVESTIGATOR 5,
- * SUPERVISOR 12, TECHNICIAN 6 = 23 grants over 15 permissions. Equal to `sim/auth.ts`
+ * SUPERVISOR 11, TECHNICIAN 6 = 22 grants over 15 permissions (0034 revoked SUPERVISOR's
+ * CAPTURE_CONFIG on 2026-10-29). Equal to `sim/auth.ts`
  * `ROLE_PERMISSIONS` by D88 (`specs C-N9`); the seed writes exactly these rows (`dbc-3 §E.3`).
  */
 const SEEDED_GRANTS = {
@@ -465,7 +466,9 @@ const SEEDED_GRANTS = {
     'PAIRING_MANAGE',
     'USER_ADMIN',
     'DEMO_CONTROL',
-    'CAPTURE_CONFIG',
+    // OD-10 held CAPTURE_CONFIG here. REVOKED 2026-10-29 by the principal (migration 0034):
+    // the capture topology is the installing technician's layer. Re-pinned 2026-11-03 (D28
+    // precedent: the revocation was absorbed by the commit, the pins follow it today).
   ],
   TECHNICIAN: ['EVIDENCE_VIEW', 'DEVICE_MANAGE', 'DIAGNOSTICS_RUN', 'MAINTENANCE', 'CAPTURE_CONFIG', 'CAPTURE_COMMISSION'],
 } as const satisfies Record<OperatorRole, readonly Permission[]>;
@@ -547,7 +550,7 @@ const denied = (operationId: string) => ({
 export const ADMINISTRATION_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
   getRoleMatrix: {
     responses: {
-      200: { seeded: { summary: 'The seeded matrix: 3 roles, 15 permissions, 23 grants', value: ROLE_MATRIX } },
+      200: { seeded: { summary: 'The seeded matrix: 3 roles, 15 permissions, 22 grants', value: ROLE_MATRIX } },
       401: { notSignedIn: ERROR_EXAMPLES.notSignedIn },
       403: BASIC_403,
     },

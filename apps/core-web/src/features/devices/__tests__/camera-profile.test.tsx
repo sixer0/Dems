@@ -35,6 +35,7 @@ import { SHELL_INTRO_STORAGE_KEY } from '@/components/shell/shell-entrance'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { enWeb } from '@/i18n-web'
 import { resetCoreErrorPresenter } from '@/lib/core-errors'
+import type { AuthSessionInfo } from '@dems/shared/api'
 import { createLiveTestBed, SUPERVISOR_SESSION, type LiveTestBed } from '@/runtime/testing/live-harness'
 import { stubMediaForJsdom } from '@/features/session-new/__tests__/live-session-new-bed'
 import * as cameraProfile from '../camera-profile'
@@ -70,7 +71,11 @@ let bed: LiveTestBed | undefined
  * CAM-03 a production camera the Core holds no profile for, CAM-04 a generated development source.
  */
 async function liveSelector(held: readonly { readonly trackId: Track; readonly deviceId: string; readonly profile: string }[] = []) {
-  const created = createLiveTestBed({ session: SUPERVISOR_SESSION })
+  // TECHNICIAN: stored profiles are written through operation 108, gated on CAPTURE_CONFIG - the
+  // technician's alone since the 0034 revocation (2026-10-29, re-pinned across the web rows 2026-11-03).
+  const created = createLiveTestBed({
+    session: { ...SUPERVISOR_SESSION, operator: { ...SUPERVISOR_SESSION.operator, role: 'TECHNICIAN' }, permissions: ['CAPTURE_CONFIG'] as AuthSessionInfo['permissions'] },
+  })
   bed = created
   const served = created.core.served
   const camera = served.captureDevices.devices.find((device) => device.kind === 'CAMERA')!

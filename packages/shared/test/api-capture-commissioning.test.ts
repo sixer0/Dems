@@ -537,8 +537,9 @@ describe('task 4 row RD2: operation 111, the retirement of a registered camera o
     ]);
     expect(CAPTURE_DEVICE_RETIRE_PATH).toBe(operation.path);
     expect(operation.access).toEqual(CAPTURE_COMMISSION_ACCESS);
-    // It was the last entry until task 4 row D53 appended operations 112 and 113 after it.
-    expect(CORE_API_OPERATIONS.at(-3)?.operationId).toBe('retireCaptureDevice');
+    // It was the last entry until task 4 row D53 appended two operations and the LCD work the
+    // panel info after it (re-pinned 2026-11-03): three entries stand behind it now.
+    expect(CORE_API_OPERATIONS.at(-4)?.operationId).toBe('retireCaptureDevice');
     expect(Object.keys(CAPTURE_RETIRE_SCHEMAS)).toEqual(['CaptureDeviceRetireRequest', 'CaptureDeviceRetirement']);
     for (const [name, schema] of Object.entries(CAPTURE_RETIRE_SCHEMAS)) expect((CORE_API_SCHEMAS as Record<string, unknown>)[name], name).toBe(schema);
     // SECURITY: a stored credential is destroyed (as CAPTURE_CREDENTIAL_SET / _REVEALED).

@@ -581,10 +581,13 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     expect(d.call('setCaptureDeviceCredential', 'POST', '/api/v1/capture/devices/CAM-01/credential', { username: 'u', secret: 's' }).status).toBe(200);
     d.sim.stop();
 
-    // Flow 5: a SUPERVISOR opens a session; the four selector writes then refuse 409 CAPTURE_CONFIG_LOCKED.
+    // Flow 5: with a session open the four selector writes refuse 409 CAPTURE_CONFIG_LOCKED.
+    // TECHNICIAN and the recording scenario: since the 0034 revocation (2026-10-29) no role holds
+    // SESSION_START and CAPTURE_CONFIG together, and the lock can only be shown to a holder of
+    // the permission; loadScenario keeps the signed-in operator.
     const e = await rig(seen);
-    e.sim.actions.signIn('andi.pratama', DEMO_OPERATOR_PASSWORD);
-    e.sim.request({ method: 'POST', path: SBASE, body: RECORDING_INPUT });
+    e.sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD);
+    e.sim.actions.loadScenario('recording');
     e.call('updateCaptureConfig', 'POST', CFG_PATH, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }] });
     e.call('setCaptureCameraSource', 'POST', '/api/v1/capture/cameras/CAM-01/source', { trackId: 'VIDEO-02' });
     e.call('setPrimaryMic', 'POST', '/api/v1/capture/mics/MIC-02/primary');
@@ -794,10 +797,12 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     const refused = p.call('registerCaptureAudioInput', 'POST', INPUTS_PATH, FIRST_INPUT);
     expect([refused.status, reasonOf(refused)]).toEqual([409, 'AUDIO_INPUT_NOT_REGISTRABLE']);
     p.sim.stop();
-    // A SUPERVISOR with a session open: both are idle only (409 CAPTURE_CONFIG_LOCKED).
+    // A holder of CAPTURE_CONFIG with a session open: both are idle only (409 CAPTURE_CONFIG_LOCKED).
+    // TECHNICIAN and the recording scenario: since the 0034 revocation (2026-10-29) no role holds
+    // SESSION_START and CAPTURE_CONFIG together, and the scenario keeps the signed-in operator.
     const q = await rig(seen);
-    q.sim.actions.signIn('andi.pratama', DEMO_OPERATOR_PASSWORD);
-    q.sim.request({ method: 'POST', path: SBASE, body: RECORDING_INPUT });
+    q.sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD);
+    q.sim.actions.loadScenario('recording');
     expect(audioCalls(q)).toEqual([409, 409]);
     q.sim.stop();
 
