@@ -15,6 +15,9 @@
 // The double: the in-app simulator (two synthetic cards; it registers nothing). The answers only a
 // Core gives (a registered input, 201, 200, 404, 429, 503, the two 409 of a listing) are put in at
 // `sim.request`, in the shapes of the contract's examples.
+//
+// The page mounts are the TECHNICIAN (RINA): CAPTURE_CONFIG revoked from SUPERVISOR 2026-10-29
+// (0034), so only a technician now reaches the control surface; the refusal test keeps a non-holder.
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { CAPTURE_AUDIO_CARD_SEARCH_PATH, CAPTURE_AUDIO_INPUT_REGISTER_PATH, type CaptureAudioCard, type CaptureAudioCardSearch } from '@dems/shared/api'
@@ -25,7 +28,9 @@ import { audioCardsGate, inputOffered, inputsOf, isAmbiguous, listRefusal, regis
 import { installDevicesBed, mountDevices, toastTexts } from './search-bed'
 
 const A = en.common.captureAudioCards
-const ROLE_SENTENCE = en.common.rbac.requiresRole.replace('{{role}}', 'SUPERVISOR or TECHNICIAN')
+// CAPTURE_CONFIG revoked from SUPERVISOR 2026-10-29 (migration 0034): TECHNICIAN holds it alone,
+// so the refusal of a non-holder names TECHNICIAN only.
+const ROLE_SENTENCE = en.common.rbac.requiresRole.replace('{{role}}', 'TECHNICIAN')
 
 const card = (over: Partial<CaptureAudioCard> = {}): CaptureAudioCard => ({
   cardId: 'EXAMPLE_CARD',
@@ -45,7 +50,8 @@ describe('the model', () => {
     const base = { resolved: true, can: true, locked: false, limitedSeconds: null }
     expect(audioCardsGate(base)).toBeNull()
     expect(audioCardsGate({ ...base, resolved: false })).toEqual({ kind: 'CHECKING' })
-    expect(audioCardsGate({ ...base, can: false, locked: true })).toEqual({ kind: 'ROLE', roles: ['SUPERVISOR', 'TECHNICIAN'] })
+    // CAPTURE_CONFIG revoked from SUPERVISOR 2026-10-29 (0034): rolesHolding names TECHNICIAN only.
+    expect(audioCardsGate({ ...base, can: false, locked: true })).toEqual({ kind: 'ROLE', roles: ['TECHNICIAN'] })
     expect(audioCardsGate({ ...base, locked: true, limitedSeconds: 5 })).toEqual({ kind: 'LOCKED' })
     expect(audioCardsGate({ ...base, limitedSeconds: 5 })).toEqual({ kind: 'LIMITED', seconds: 5 })
   })
@@ -144,7 +150,7 @@ const registerButton = () => screen.getByTestId('audio-cards-register-button')
 
 describe('Simulated mode: the two synthetic cards (the fixture cards)', { timeout: 30_000 }, () => {
   it('nothing lists by itself; a press lists both cards with their inputs enabled; ONE input is chosen; the registration sends three members and is refused with its sentence', async () => {
-    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.RINA)
     const spy = vi.spyOn(sim, 'request')
     const block = await screen.findByTestId('audio-cards')
     expect(within(block).getByTestId('audio-cards-description')).toHaveTextContent(A.description)
@@ -214,7 +220,7 @@ describe('Simulated mode: the two synthetic cards (the fixture cards)', { timeou
 
 describe('answers of a Core (put in at the two paths)', { timeout: 30_000 }, () => {
   it('a registered input is shown as registered; 201 REGISTERED, 200 REENABLED and 200 CARD_CHANGED each say what the Core did', async () => {
-    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.RINA)
     const changes = [
       answer(201, { deviceId: 'MIC-04', change: 'REGISTERED', inputNumber: 2, channelCount: 8, releasedDeviceId: null }),
       answer(200, { deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 1, channelCount: 8, releasedDeviceId: null }),
@@ -283,7 +289,7 @@ describe('answers of a Core (put in at the two paths)', { timeout: 30_000 }, () 
   })
 
   it('each refusal of a registration has its sentence, and never the text of the answer', async () => {
-    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.RINA)
     const refusals = [
       refusal(404, 'NOT_FOUND'),
       refusal(409, 'INVALID_STATE', 'AUDIO_INPUT_BEYOND_CARD'),
@@ -325,7 +331,7 @@ describe('answers of a Core (put in at the two paths)', { timeout: 30_000 }, () 
   })
 
   it('a refused listing is an explained state: not ready, another listing running, the spacing of the Core, and "could not be listed"', async () => {
-    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.RINA)
     const answers = [refusal(503, 'NOT_READY', 'DISCOVERY_NOT_READY'), refusal(409, 'INVALID_STATE', 'AUDIO_CARD_SEARCH_IN_PROGRESS'), refusal(500, 'INTERNAL'), refusal(429, 'RATE_LIMITED', 'AUDIO_CARD_SEARCH_RATE_LIMITED')]
     core(sim, { list: () => answers.shift() ?? refusal(500, 'INTERNAL') })
     await list()
@@ -347,7 +353,7 @@ describe('answers of a Core (put in at the two paths)', { timeout: 30_000 }, () 
 
   it('no card is its own state; more cards than the Core lists is a warning; a product name with markup is drawn as text', async () => {
     const hostile = '<img src=x onerror="window.__pwned=1"><b>Card</b>'
-    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.RINA)
     const answers = [answer(200, listingOf([])), answer(200, listingOf([card({ product: hostile, sampleBits: [], registered: [], boundTo: null })], true))]
     core(sim, { list: () => answers.shift() ?? refusal(500, 'INTERNAL') })
     await list()
@@ -368,7 +374,7 @@ describe('answers of a Core (put in at the two paths)', { timeout: 30_000 }, () 
 
 describe('D48: one microphone per input of a card (answers of a Core)', { timeout: 30_000 }, () => {
   it('a second input of a bound card registers a SECOND microphone: the body has no release, 201 REGISTERED, the first holder keeps its input and the chip', async () => {
-    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.RINA)
     const spy = core(sim, {
       list: () => answer(200, listingOf([card({ channelCount: 4 })])),
       register: () => answer(201, { deviceId: 'MIC-04', change: 'REGISTERED', inputNumber: 2, channelCount: 4, releasedDeviceId: null }),
@@ -395,7 +401,7 @@ describe('D48: one microphone per input of a card (answers of a Core)', { timeou
   })
 
   it('409 AUDIO_CARD_ALREADY_BOUND says the holder it names, never the text of the answer; a bound card listed again offers no move control', async () => {
-    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.RINA)
     const listings = [listingOf([card({ registered: [], boundTo: null })]), listingOf([card()])]
     core(sim, {
       list: () => answer(200, listings.shift() ?? listingOf([card()])),
@@ -424,7 +430,7 @@ describe('D48: one microphone per input of a card (answers of a Core)', { timeou
   })
 
   it('W-A8: two serial-less units of one model bound to one microphone are both bound, both say why, and offer nothing', async () => {
-    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.RINA)
     const twinA = card({ cardId: 'TWIN_A', usbSerial: null, channelCount: 2 })
     const twinB = card({ cardId: 'TWIN_B', usbSerial: null, channelCount: 2, registered: [] })
     core(sim, { list: () => answer(200, listingOf([twinA, twinB])) })
@@ -458,7 +464,8 @@ describe('gates', { timeout: 30_000 }, () => {
   })
 
   it('with a session open both operations are idle only: disabled with their sentence, no toast, nothing sent', async () => {
-    const { sim } = await mountDevices('recording', OPERATOR_IDS.ANDI)
+    // Mounted as the TECHNICIAN: the lock is said only by a holder of CAPTURE_CONFIG, revoked from SUPERVISOR 2026-10-29 (0034).
+    const { sim } = await mountDevices('recording', OPERATOR_IDS.RINA)
     const spy = vi.spyOn(sim, 'request')
     const button = await screen.findByTestId('audio-cards-list-button')
     await waitFor(() => expect(screen.getByTestId('audio-cards-list')).toHaveAttribute('data-block', 'LOCKED'))

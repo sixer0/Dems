@@ -48,11 +48,12 @@ describe('the gates (M4-PC-1; ux §2.4, §11: G1-G3 and G9)', () => {
     // Negative control of the inventory: while unresolved, a held permission and an idle Core do NOT enable.
     expect(selectorEditGate({ resolved: false, can: true, locked: false })).toEqual({ kind: 'CHECKING' })
     expect(selectorEditGate({ resolved: true, can: true, locked: false })).toBeNull()
-    expect(selectorEditGate({ resolved: true, can: false, locked: false })).toEqual({ kind: 'ROLE', roles: ['SUPERVISOR', 'TECHNICIAN'] })
+    // CAPTURE_CONFIG revoked from SUPERVISOR 2026-10-29 (0034): rolesHolding names TECHNICIAN only.
+    expect(selectorEditGate({ resolved: true, can: false, locked: false })).toEqual({ kind: 'ROLE', roles: ['TECHNICIAN'] })
     expect(selectorEditGate({ resolved: true, can: true, locked: true })).toEqual({ kind: 'LOCKED' })
     // The role is the lasting reason: it is said before the lock.
     expect(selectorEditGate({ resolved: true, can: false, locked: true })).toMatchObject({ kind: 'ROLE' })
-    expect(rolesHolding('CAPTURE_CONFIG')).toEqual(['SUPERVISOR', 'TECHNICIAN'])
+    expect(rolesHolding('CAPTURE_CONFIG')).toEqual(['TECHNICIAN'])
   })
 
   it('G9: the PoE cycle is offered only for a LOST stream; then Checking, the role, a recording, a command out', () => {
@@ -122,6 +123,8 @@ describe('selectorRefusal (ux §2.2 step 6, §2.5)', () => {
 })
 
 // ── The page in Simulated mode ───────────────────────────────────────────────────────────
+// The edit mounts are the TECHNICIAN (RINA): CAPTURE_CONFIG revoked from SUPERVISOR 2026-10-29
+// (0034), so only a technician now reaches the control surface; the refusal test keeps a non-holder.
 
 class SilentSocket implements SocketLike {
   readyState = 0
@@ -182,7 +185,7 @@ afterEach(() => {
 
 describe('Simulated mode: an edit (R-1 AC-1 in the simulator; PE-127-07)', { timeout: 30_000 }, () => {
   it('the selector shows two camera lines and two microphone lines as text, with 0 missing keys and no search control', async () => {
-    const { panel } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const { panel } = await mountDevices('idle', OPERATOR_IDS.RINA)
     expect(panel).toHaveAttribute('id', 'capture-selector')
     const ready = within(panel).getByTestId('selector-ready')
     expect(ready).toHaveAttribute('data-locked', 'false')
@@ -204,7 +207,7 @@ describe('Simulated mode: an edit (R-1 AC-1 in the simulator; PE-127-07)', { tim
   })
 
   it('assigning an added CAM-03 to VIDEO-01 writes exactly one CAPTURE_CONFIG_CHANGED row with the permission and the changed fields', async () => {
-    const { sim, panel } = await mountDevices('idle', OPERATOR_IDS.ANDI, (created) => {
+    const { sim, panel } = await mountDevices('idle', OPERATOR_IDS.RINA, (created) => {
       const state = created.store.getState()
       created.store.setState({
         captureDevices: { devices: [...state.captureDevices.devices, { ...state.captureDevices.devices[0]!, id: 'CAM-03', model: 'Added camera', host: '127.0.0.1:8559' }] },
@@ -242,7 +245,7 @@ describe('Simulated mode: an edit (R-1 AC-1 in the simulator; PE-127-07)', { tim
 describe('Simulated mode: refusals (OD-10; ux §2.4, §2.5)', { timeout: 30_000 }, () => {
   it('a role without CAPTURE_CONFIG reads the selector; every edit control is disabled with the role sentence, none is hidden', async () => {
     const { sim, panel } = await mountDevices('idle', OPERATOR_IDS.BUDI)
-    const sentence = en.common.rbac.requiresRole.replace('{{role}}', 'SUPERVISOR or TECHNICIAN')
+    const sentence = en.common.rbac.requiresRole.replace('{{role}}', 'TECHNICIAN') // 0034: revoked from SUPERVISOR 2026-10-29; TECHNICIAN holds it alone
     expect(within(panel).getByTestId('selector-camera-VIDEO-01')).toHaveAttribute('data-device', 'CAM-01')
     for (const id of ['VIDEO-01', 'VIDEO-02', 'MIC-02']) {
       expect(within(panel).getByTestId(`selector-reason-${id}`)).toHaveTextContent(sentence)
@@ -257,7 +260,8 @@ describe('Simulated mode: refusals (OD-10; ux §2.4, §2.5)', { timeout: 30_000 
   })
 
   it('with a session open the locked banner and sentence show, the controls are disabled, and nothing is written', async () => {
-    const { sim, panel } = await mountDevices('recording', OPERATOR_IDS.ANDI)
+    // Mounted as the TECHNICIAN: the lock is said only by a holder of CAPTURE_CONFIG, revoked from SUPERVISOR 2026-10-29 (0034).
+    const { sim, panel } = await mountDevices('recording', OPERATOR_IDS.RINA)
     expect(within(panel).getByTestId('selector-ready')).toHaveAttribute('data-locked', 'true')
     expect(within(panel).getByTestId('selector-locked')).toHaveTextContent(S.locked)
     expect(within(panel).getByTestId('selector-reason-VIDEO-01')).toHaveAttribute('data-block', 'LOCKED')
@@ -284,7 +288,8 @@ describe('Simulated mode: refusals (OD-10; ux §2.4, §2.5)', { timeout: 30_000 
 
   // Blueprint row 137 fills the slot row 67 left: the page's ONE camera search (G13). The selector still has no control of its own.
   it('an empty registry shows the empty state, and the marked slot holds the one "Search for cameras" of row 137', async () => {
-    const { panel } = await mountDevices('idle', OPERATOR_IDS.ANDI, (created) => {
+    // Mounted as the TECHNICIAN: the search entry is gated by CAPTURE_CONFIG, revoked from SUPERVISOR 2026-10-29 (0034).
+    const { panel } = await mountDevices('idle', OPERATOR_IDS.RINA, (created) => {
       created.store.setState({ captureDevices: { devices: [] }, captureConfig: { cameras: [], mics: [], locked: false, updatedAt: 0 } })
     })
     const empty = within(panel).getByTestId('selector-empty')

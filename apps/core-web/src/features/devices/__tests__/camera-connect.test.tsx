@@ -11,6 +11,9 @@
 // | M4-CONN-NOCRED-1 (UI half): a stored password is never rendered — the result says the fact only | "adding" |
 // | ux §8d.5: what each refusal is | "the model" |
 // | D117: the password is sent as typed; the check of the form holds no typed character | "the model" |
+//
+// The dialog mounts are the TECHNICIAN (RINA): CAPTURE_CONFIG revoked from SUPERVISOR 2026-10-29
+// (0034), so only a technician now reaches the search list and its Connect control.
 import { fireEvent, screen, waitFor, within, configure } from '@testing-library/react'
 import { describe, expect, it, vi, beforeAll, afterAll } from 'vitest'
 import { expectPressOutsideDismisses, pressOutside } from '@/test/press-outside'
@@ -81,7 +84,7 @@ const username = () => screen.getByTestId('camera-connect-username') as HTMLInpu
 const password = () => screen.getByTestId('camera-connect-password') as HTMLInputElement
 
 async function openConnect(prepare?: (sim: Sim) => void) {
-  const { sim, queryClient } = await mountDevices('idle', OPERATOR_IDS.ANDI, prepare)
+  const { sim, queryClient } = await mountDevices('idle', OPERATOR_IDS.RINA, prepare)
   const original = sim.request.bind(sim)
   const spy = vi.spyOn(sim, 'request')
   fireEvent.click(await screen.findByTestId('search-cameras-button-panel'))
@@ -409,7 +412,7 @@ describe("the wording of a connection attempt (G70b-02; contract note A2)", () =
   installDevicesBed()
 
   async function openConnect() {
-    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.RINA)
     fireEvent.click(await screen.findByTestId('search-cameras-button-panel'))
     fireEvent.click(await screen.findByTestId(`camera-search-connect-${NEW_ID}`))
     await screen.findByTestId('camera-connect-body')

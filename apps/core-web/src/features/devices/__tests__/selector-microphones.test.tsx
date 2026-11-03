@@ -96,7 +96,9 @@ describe("the capture selector: every registered microphone and camera on its li
 
   /** A Live console on a Core in real capture: every device carries its class, MIC-03 is this Mac's microphone. */
   async function liveSelector(prepare?: (created: LiveTestBed) => void) {
-    const created = createLiveTestBed({ session: sessionOf(OPERATOR_IDS.ANDI) })
+    // The rows below drive the edit controls: the seeded TECHNICIAN, the only role holding
+    // CAPTURE_CONFIG since the 2026-10-29 revocation (migration 0034).
+    const created = createLiveTestBed({ session: sessionOf(OPERATOR_IDS.RINA) })
     bed = created
     const devices = created.core.served.captureDevices.devices.map((device) => ({ ...device, adapter: 'FAKE', sourceClass: 'DEVELOPMENT' }) as Device)
     created.core.served.captureDevices = { devices: withThird(devices, 'MIC', { adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT' } as Partial<Device>) }
@@ -165,7 +167,9 @@ describe("the capture selector: every registered microphone and camera on its li
 
   describe('G70-02 Simulated mode: every registered microphone on both lines (operation 78, pair replacement)', () => {
     it('PRIMARY line: MIC-03 is offered, a Save makes it the primary input beside the standby, and ONE audit row names operation 78', async () => {
-      const { sim, panel } = await simSelector('idle', OPERATOR_IDS.ANDI)
+      // 2026-10-29 revocation (`sim/auth.ts`, migration 0034): SUPERVISOR lost CAPTURE_CONFIG; the
+      // seeded TECHNICIAN writes the selector. This row drives the edit controls, so it mounts RINA.
+      const { sim, panel } = await simSelector('idle', OPERATOR_IDS.RINA)
       expect(within(panel).getByTestId('selector-mic-source-PRIMARY')).toHaveTextContent(M.label.PRIMARY)
       expect(within(panel).getByTestId('selector-mic-source-STANDBY')).toHaveTextContent(M.label.STANDBY)
       expect(save(panel, 'PRIMARY')).toBeDisabled()
@@ -198,7 +202,8 @@ describe("the capture selector: every registered microphone and camera on its li
     })
 
     it('T-14: the other line\'s microphone is an ENABLED move option; Save moves it in ONE operation 78 edit that clears the old line (2 audit rows, scope MIC)', async () => {
-      const { sim, panel } = await simSelector('idle', OPERATOR_IDS.ANDI)
+      // The move is an edit: mounted on the TECHNICIAN since the 2026-10-29 CAPTURE_CONFIG revocation.
+      const { sim, panel } = await simSelector('idle', OPERATOR_IDS.RINA)
       fireEvent.click(trigger(panel, 'PRIMARY'))
       const other = await screen.findByRole('option', { name: /MIC-02/ })
       expect(other).not.toHaveAttribute('aria-disabled', 'true')
@@ -224,7 +229,8 @@ describe("the capture selector: every registered microphone and camera on its li
   describe('G70-02 Simulated mode: gates of the new controls (OD-10)', () => {
     it('a role without CAPTURE_CONFIG sees both selects and Saves disabled with the role sentence, none hidden', async () => {
       const { sim, panel } = await simSelector('idle', OPERATOR_IDS.BUDI)
-      const sentence = en.common.rbac.requiresRole.replace('{{role}}', 'SUPERVISOR or TECHNICIAN')
+      // 2026-10-29 revocation (migration 0034): TECHNICIAN is the only holder; the sentence names it alone.
+      const sentence = en.common.rbac.requiresRole.replace('{{role}}', 'TECHNICIAN')
       for (const role of ['PRIMARY', 'STANDBY'] as const) {
         expect(trigger(panel, role)).toBeDisabled()
         expect(save(panel, role)).toBeDisabled()
@@ -237,7 +243,9 @@ describe("the capture selector: every registered microphone and camera on its li
     })
 
     it('with a session open both selects are disabled with the lock sentence', async () => {
-      const { panel } = await simSelector('recording', OPERATOR_IDS.ANDI)
+      // The lock is only said to a holder (the role gate speaks first): mounted on the TECHNICIAN
+      // since the 2026-10-29 CAPTURE_CONFIG revocation stripped the SUPERVISOR's grant.
+      const { panel } = await simSelector('recording', OPERATOR_IDS.RINA)
       for (const role of ['PRIMARY', 'STANDBY'] as const) expect(trigger(panel, role)).toBeDisabled()
       for (const id of ['MIC-01', 'MIC-02']) {
         expect(within(panel).getByTestId(`selector-reason-${id}`)).toHaveTextContent(S.locked)
@@ -344,7 +352,8 @@ describe("the capture selector: every registered microphone and camera on its li
       ['VIDEO-01', 'CAM-01'],
       ['VIDEO-02', 'CAM-02'],
     ] as const)('CAM-03 is saved on %s: one row of operation 79 for that track, the other track untouched', async (trackId, from) => {
-      const { sim, panel } = await simSelector('idle', OPERATOR_IDS.ANDI, 'CAMERA')
+      // Saving a track is an edit: mounted on the TECHNICIAN since the 2026-10-29 CAPTURE_CONFIG revocation.
+      const { sim, panel } = await simSelector('idle', OPERATOR_IDS.RINA, 'CAMERA')
       fireEvent.click(within(within(panel).getByTestId(`selector-source-${trackId}`)).getByRole('button'))
       fireEvent.click(await screen.findByRole('option', { name: /CAM-03/ }))
       const button = within(panel).getByTestId(`selector-save-${trackId}`)
@@ -387,7 +396,9 @@ describe("the capture selector: every registered microphone and camera on its li
       fireEvent.click(await screen.findByRole('option', { name }))
       await waitFor(() => expect(saveOf(panel, slot)).toBeEnabled())
     }
-    async function simSlots(keep: readonly Slot[], operatorId: string = OPERATOR_IDS.ANDI) {
+    async function simSlots(keep: readonly Slot[], operatorId: string = OPERATOR_IDS.RINA) {
+      // Default mount: the seeded TECHNICIAN — these rows drive the slot edits, whose
+      // CAPTURE_CONFIG the SUPERVISOR lost on 2026-10-29 (migration 0034).
       const authStorage = createMemoryAuthStorage()
       authStorage.save({ operatorId, issuedAt: Date.now() })
       const sim = createSim({ scenario: 'idle', storage: null, authStorage, visibility: ALWAYS_VISIBLE, scheduler: () => () => undefined })
@@ -459,7 +470,8 @@ describe("the capture selector: every registered microphone and camera on its li
 
     it('the gates of an empty row: a role without CAPTURE_CONFIG sees the offer disabled with the role sentence, never hidden', async () => {
       const { panel } = await simSlots([], OPERATOR_IDS.BUDI)
-      const sentence = en.common.rbac.requiresRole.replace('{{role}}', 'SUPERVISOR or TECHNICIAN')
+      // 2026-10-29 revocation (migration 0034): TECHNICIAN is the only holder; the sentence names it alone.
+      const sentence = en.common.rbac.requiresRole.replace('{{role}}', 'TECHNICIAN')
       for (const slot of SLOTS) {
         expect(selectOf(panel, slot)).toBeDisabled()
         expect(saveOf(panel, slot)).toBeDisabled()

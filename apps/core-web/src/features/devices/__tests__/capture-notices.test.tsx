@@ -25,7 +25,7 @@ import { installDevicesBed, mountDevices, toastTexts } from './search-bed'
 
 const t = i18n.t.bind(i18n)
 const N = en.common.captureNotice
-const ROLE_SENTENCE = en.common.rbac.requiresRole.replace('{{role}}', 'SUPERVISOR or TECHNICIAN')
+const ROLE_SENTENCE = en.common.rbac.requiresRole.replace('{{role}}', 'TECHNICIAN') // REVOKED 2026-10-29 (0034): CAPTURE_CONFIG is TECHNICIAN-only
 const alert = (id: string, params: SimAlert['params'], over: Partial<SimAlert> = {}): SimAlert => ({
   id,
   at: 1,
@@ -149,7 +149,9 @@ installDevicesBed()
 
 describe('the strip on Devices & Inputs (ux §8e.2 A and B; R-10 AC-5)', { timeout: 30_000 }, () => {
   it('one item per alert the Core raised, each with "Search again"; gone when the Core resolved it', async () => {
-    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    // REVOKED 2026-10-29 (0034): the test presses "Search again" and asks for the search's audit
+    // row — the control surface needs CAPTURE_CONFIG, which only TECHNICIAN holds now.
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.RINA)
     expect(screen.queryByTestId('capture-notices')).not.toBeInTheDocument()
     sim.store.setState({ alerts: [...sim.store.getState().alerts, EMPTY, CAM2, MIC1] })
     const strip = await screen.findByTestId('capture-notices')

@@ -11,6 +11,9 @@
 // | Task 4 row 98 (WP-12): the typed address - an address outside the allowed form is refused in the form and nothing is sent; the Core's refusal has its sentence; no address is asked while a search runs; a search without the member is sent as before | "the typed address" |
 // | Task 4 row 98: a registered camera that answers from another address is said, never followed by the search or the list | "the typed address" |
 // | Task 4 row 198: the confirmation dialog of a re-address (operation 100) - both addresses, no request before the explicit answer and none on a dismissal, every refusal with its sentence | "the confirmation of a camera re-address" |
+//
+// The page mounts are the TECHNICIAN (RINA): CAPTURE_CONFIG revoked from SUPERVISOR 2026-10-29
+// (0034), so only a technician now reaches the control surface; the refusal tests keep a non-holder.
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -43,7 +46,9 @@ import { installDevicesBed, mountDevices, toastTexts } from './search-bed'
 
 const S = en.common.captureSearch
 const C = en.common.captureConnect
-const ROLE_SENTENCE = en.common.rbac.requiresRole.replace('{{role}}', 'SUPERVISOR or TECHNICIAN')
+// CAPTURE_CONFIG revoked from SUPERVISOR 2026-10-29 (migration 0034): TECHNICIAN holds it alone,
+// so the refusal of a non-holder names TECHNICIAN only.
+const ROLE_SENTENCE = en.common.rbac.requiresRole.replace('{{role}}', 'TECHNICIAN')
 
 const SEARCH: CaptureDiscoverySearch = {
   searchId: 'DSC-000001',
@@ -108,7 +113,8 @@ describe('the model (ux §8c.2, §8c.3, §8c.6, §8c.8)', () => {
     const base = { resolved: true, can: true, recording: false, recordingRefused: false, recordingAllowed: true, limitedSeconds: null }
     expect(searchGate(base)).toBeNull()
     expect(searchGate({ ...base, resolved: false })).toEqual({ kind: 'CHECKING' })
-    expect(searchGate({ ...base, can: false, recording: true, recordingAllowed: false })).toEqual({ kind: 'ROLE', roles: ['SUPERVISOR', 'TECHNICIAN'] })
+    // CAPTURE_CONFIG revoked from SUPERVISOR 2026-10-29 (0034): rolesHolding names TECHNICIAN only.
+    expect(searchGate({ ...base, can: false, recording: true, recordingAllowed: false })).toEqual({ kind: 'ROLE', roles: ['TECHNICIAN'] })
     // S14: before the lift, or after the Core's own 409 during this recording. After the lift a recording alone blocks nothing.
     expect(searchGate({ ...base, recording: true })).toBeNull()
     expect(searchGate({ ...base, recording: true, recordingAllowed: false })).toEqual({ kind: 'RECORDING' })
@@ -163,7 +169,7 @@ installDevicesBed()
 
 describe('Simulated mode: a search and its list', { timeout: 30_000 }, () => {
   it('idle → Search for cameras → the list: New with Connect, Already registered with View device, the development group, the freshness line; nothing starts by itself', async () => {
-    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.RINA)
     const request = vi.spyOn(sim, 'request')
     const panel = await screen.findByTestId('camera-search')
     await waitFor(() => expect(panel).toHaveAttribute('data-state', 'IDLE'))
@@ -206,7 +212,7 @@ describe('Simulated mode: a search and its list', { timeout: 30_000 }, () => {
 
   it('a device text that contains markup is drawn literally, as text', async () => {
     const hostile = '<img src=x onerror="window.__pwned=1"><b>Cam</b>'
-    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.RINA)
     const real = sim.request.bind(sim)
     vi.spyOn(sim, 'request').mockImplementation((call) => {
       const response = real(call)
@@ -240,7 +246,7 @@ describe('Simulated mode: gates', { timeout: 30_000 }, () => {
   })
 
   it('M4-CONN-LOCK-W: with a session open Connect is disabled with its sentence, there is no toast, and the search still works', async () => {
-    await mountDevices('recording', OPERATOR_IDS.ANDI)
+    await mountDevices('recording', OPERATOR_IDS.RINA)
     const button = await screen.findByTestId('search-cameras-button-panel')
     await waitFor(() => expect(button).toBeEnabled())
     fireEvent.click(button)
@@ -287,7 +293,7 @@ describe('the typed address (task 4 row 98; operation 93 `address`)', { timeout:
   })
 
   it('an address outside the allowed form is refused in the form and nothing is sent; an address of the form is sent as the one member and its answer is a candidate like any other', async () => {
-    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.RINA)
     const spy = vi.spyOn(sim, 'request')
     const panel = await idle()
     expect(screen.getByTestId('camera-search-address-intro')).toHaveTextContent(T.intro)
@@ -331,7 +337,7 @@ describe('the typed address (task 4 row 98; operation 93 `address`)', { timeout:
   })
 
   it('422 DISCOVERY_ADDRESS_NOT_ALLOWED: the Core\'s refusal has its sentence beside the field; the list and its notices stay as they are', async () => {
-    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.RINA)
     const spy = vi.spyOn(sim, 'request')
     const panel = await idle()
     // Of the form, and outside the simulator's stand-in of the Core's rule.
@@ -348,7 +354,7 @@ describe('the typed address (task 4 row 98; operation 93 `address`)', { timeout:
   })
 
   it('no address is asked while a search runs: disabled with its reason; and a 200 that says "not a new search" is said, never drawn as a search of the address', async () => {
-    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.RINA)
     const real = sim.request.bind(sim)
     let running = false
     const runningSearch: CaptureDiscoverySearch = { ...SEARCH, state: 'RUNNING', startedAt: Date.now(), windowMs: 3_000, responderCount: 0, newCount: 0, registeredCount: 0, created: false }
@@ -387,7 +393,7 @@ describe('the typed address (task 4 row 98; operation 93 `address`)', { timeout:
   })
 
   it('a registered camera that answers from another address is SAID, never followed: the search and the list send nothing but the search; the row OFFERS the confirmation (row 198) and "View device" re-addresses nothing', async () => {
-    const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
+    const { sim } = await mountDevices('idle', OPERATOR_IDS.RINA)
     const real = sim.request.bind(sim)
     const spy = vi.spyOn(sim, 'request').mockImplementation((call) => {
       const response = real(call)
@@ -435,7 +441,7 @@ describe('the confirmation of a camera re-address (task 4 row 198; operation 100
 
   /** Devices & Inputs after a search whose registered candidate answers from another address; `confirm` stands in for the Core's answer to operation 100. */
   async function moved(scenario: 'idle' | 'recording' = 'idle', over: Partial<CaptureCandidate> = {}, confirm?: () => Answer) {
-    const { sim } = await mountDevices(scenario, OPERATOR_IDS.ANDI)
+    const { sim } = await mountDevices(scenario, OPERATOR_IDS.RINA)
     const real = sim.request.bind(sim)
     const spy = vi.spyOn(sim, 'request').mockImplementation((call) => {
       if (call.method === 'POST' && call.path === CAPTURE_READDRESS_PATH && confirm !== undefined) return { ...real({ method: 'GET', path: DISCOVERY }), ...confirm() }
