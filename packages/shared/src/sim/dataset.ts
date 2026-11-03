@@ -110,10 +110,37 @@ export function exportIdFor(seq: number): string {
 export const DATASET_EXPORT_ID = exportIdFor(DATASET_EXPORT_SEQ);
 
 // ── Operators (§14.7, D25, D28/Q14) ──────────────────────────────────────────────────────
+/**
+ * Every identity id the software knows. The three first are the identities of the DEMONSTRATION
+ * dataset (`OPERATORS`); the two last are the vendor accounts of PT GSP that a FACTORY database
+ * holds (`FACTORY_OPERATORS`) and that no demonstration scenario ever acts as. Keeping them in one
+ * table is what stops a demonstration row from taking an id a real unit already uses.
+ */
 export const OPERATOR_IDS = {
   BUDI: 'OPR-001',
   ANDI: 'OPR-002',
   RINA: 'OPR-003',
+  // Akun prinsipal PT GSP (vendor) — ditulis OLEH SEED PABRIK (`db:seed --factory`) supaya
+  // pre-deliver bisa dijalankan: `root` (SUPERVISOR, satu-satunya peran yang boleh mengatur akun
+  // lain) dan `gsp.teknisi` (TECHNICIAN, yang menyusun topologi capture dan menerima pemasangan).
+  // Nama `root` dipakai atas permintaan tegas prinsipal; risiko ambiguitas dengan superuser Linux
+  // pada baris audit sudah dinyatakan dan diterima. Keduanya lahir TANPA baris kredensial:
+  // `operator:set-password` satu-satunya penulis sandi (langkah 2 prosedur §11).
+  VENDOR_ROOT: 'OPR-004',
+  VENDOR_TEKNISI: 'OPR-005',
+} as const;
+
+/** The ids of the demonstration dataset only. A factory database holds none of them. */
+export const DEMO_OPERATOR_IDS = {
+  BUDI: OPERATOR_IDS.BUDI,
+  ANDI: OPERATOR_IDS.ANDI,
+  RINA: OPERATOR_IDS.RINA,
+} as const;
+
+/** The ids a factory database holds, and nothing else. */
+export const FACTORY_OPERATOR_IDS = {
+  VENDOR_ROOT: OPERATOR_IDS.VENDOR_ROOT,
+  VENDOR_TEKNISI: OPERATOR_IDS.VENDOR_TEKNISI,
 } as const;
 
 export const OPERATORS: readonly SimOperator[] = [
@@ -145,6 +172,38 @@ export const OPERATORS: readonly SimOperator[] = [
     role: OperatorRole.TECHNICIAN,
   },
 ];
+
+/**
+ * The identities of the FACTORY database (PT GSP, ruling of 30 Oct 2026): the two vendor accounts a
+ * unit leaving the workshop holds, and the ONLY identities `db:seed --factory` writes. They are not
+ * members of `OPERATORS`: a demonstration identity has no place on a delivered unit, and a factory
+ * account has no place in a demonstration scenario — the mistake of 30 Oct was to answer the second
+ * sentence by making a vendor actor sign demonstration evidence, which forges the vendor's hand on a
+ * row that is not theirs. Their credential rows are written by nobody: `operator:set-password` is.
+ */
+export const FACTORY_OPERATORS: readonly SimOperator[] = [
+  {
+    id: OPERATOR_IDS.VENDOR_ROOT,
+    username: 'root',
+    rank: null,
+    name: 'Vendor Root PT GSP',
+    displayName: 'PT GSP (root)',
+    initials: 'GR',
+    role: OperatorRole.SUPERVISOR,
+  },
+  {
+    id: OPERATOR_IDS.VENDOR_TEKNISI,
+    username: 'gsp.teknisi',
+    rank: null,
+    name: 'Teknisi PT GSP',
+    displayName: 'PT GSP (teknisi)',
+    initials: 'GT',
+    role: OperatorRole.TECHNICIAN,
+  },
+];
+
+/** Every identity the software names: the demonstration dataset and the two factory accounts. */
+export const ALL_OPERATORS: readonly SimOperator[] = [...OPERATORS, ...FACTORY_OPERATORS];
 
 /**
  * Demo password for all three operators. Shown only in the Login "Demo operators"
@@ -426,7 +485,7 @@ export const TODAY_HISTORY: readonly TodaySeed[] = [
 ];
 
 export function operatorName(operatorId: string | null): string {
-  return OPERATORS.find((operator) => operator.id === operatorId)?.displayName ?? 'System';
+  return ALL_OPERATORS.find((operator) => operator.id === operatorId)?.displayName ?? 'System';
 }
 
 const MINUTE_MS = 60_000;

@@ -26,6 +26,7 @@ export * from './dataset';
 export * from './auth';
 export * from './platform';
 export * from './initial-state';
+export * from './factory-state';
 export * from './store';
 export * from './selectors';
 export * from './devices';

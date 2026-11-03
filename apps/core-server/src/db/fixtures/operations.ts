@@ -262,6 +262,11 @@ const GUARDED_OPERATIONS: ReadonlyArray<readonly [readonly Permission[], string]
   [[Permission.MAINTENANCE], 'startSoftwareUpdate'],
   [[Permission.PAIRING_MANAGE], 'issuePairingCode'],
   [[Permission.USER_ADMIN], 'listUsers'],
+  // RB-9 as amended (principal PT GSP, 02-11-2026): the trio exists for USER_ADMIN holders and is
+  // narrowed to the vendor `root` account inside the module. A refusal by permission is a row here.
+  [[Permission.USER_ADMIN], 'createUser'],
+  [[Permission.USER_ADMIN], 'updateUser'],
+  [[Permission.USER_ADMIN], 'deleteUser'],
   [[Permission.DEMO_CONTROL], 'resetDemo'],
 ];
 /** A role is refused when it holds none of the permissions the rule names. */
@@ -844,6 +849,17 @@ function buildCaptureActivity(world: World, directory: OperatorDirectory): void 
       actorId: technician(at(32)),
       deviceId: null,
       details: { deviceId: 'CAM-03', kind: 'CAMERA', reason: 'STATEMENT_CHANGED', credentialDestroyed: true, streamRowsKept: 1, operationId: 'retireCaptureDevice', permission: 'CAPTURE_COMMISSION' },
+    },
+  });
+  // Decisions D51 / D53 (row 90P): a live camera preview session opened (operation 112); its live writer is `src/camera-preview`.
+  const previewAt = at(33);
+  world.record(previewAt, {
+    audit: {
+      type: 'CAMERA_PREVIEW_OPENED',
+      message: 'Live camera preview opened for CAM-01',
+      actorId: technician(previewAt),
+      deviceId: 'CAM-01',
+      details: { deviceId: 'CAM-01', expiresAt: previewAt + 60_000, operationId: 'createCameraPreviewSession', permission: 'CAPTURE_CONFIG' },
     },
   });
 }

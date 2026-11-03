@@ -398,50 +398,77 @@ describe('operation 99: the registration unit', () => {
     expect(r.audits.at(-1)?.details).toMatchObject({ responderCount: 1, newCount: 0, registeredCount: 1 });
   });
 
-  // R-FLEX row 131 (D10 (1), Q96-01 a, bundle M Q96-02-M; spec T-9, T-10): THE PHYSICAL CARD IS HELD BY ONE MICROPHONE.
-  // Was: "two inputs of one card are two microphones".
-  it('a second input of a held card is refused 409 AUDIO_CARD_ALREADY_BOUND naming the holder; with `release: true` the holder MOVES to it: 200 REENABLED, releasedDeviceId = the holder, RELEASED then REENABLED', async () => {
+  // DECISION D48 (2026-10-23, reverses D10 (1) / Q96-01 a of R-FLEX row 131): ONE MICROPHONE PER INPUT of a physical card.
+  // Was: "a second input of a held card is refused 409 AUDIO_CARD_ALREADY_BOUND; with `release: true` the holder MOVES".
+  it('D48: a second input of a held card is a SECOND microphone (201 REGISTERED, no release); the same input again is its microphone (200 REENABLED), never a second; operation 98 names both inputs', async () => {
     const r = rig(TWO_CARDS);
     const one = await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 1 });
     expect(one.registration).toEqual({ deviceId: 'MIC-03', change: 'REGISTERED', inputNumber: 1, channelCount: 2, releasedDeviceId: null });
-    // T-9: no release - refused with the holder's id; nothing stored, nothing audited.
-    const refused = await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2 }).catch((error: unknown) => error as ApiFailure);
-    expect(refused).toBeInstanceOf(ApiFailure);
-    expect([(refused as ApiFailure).statusCode, (refused as ApiFailure).code, (refused as ApiFailure).details]).toEqual([409, 'INVALID_STATE', { reason: 'AUDIO_CARD_ALREADY_BOUND', deviceId: 'MIC-03' }]);
-    expect(await refusal(registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2, release: false }))).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_ALREADY_BOUND']);
-    expect([usbMicrophones(r.devices), r.inputs.length, r.audits.length]).toEqual([['MIC-03'], 1, 1]);
-    // T-10: release - the same microphone, its row moved to input 2; two entries, one binding.
-    r.devices.set('MIC-03', { ...r.devices.get('MIC-03')!, enabled: false });
-    const moved = await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2, release: true });
-    expect(moved).toEqual({ created: false, registration: { deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 2, channelCount: 2, releasedDeviceId: 'MIC-03' } });
-    expect(CaptureAudioInputRegistrationSchema.safeParse(moved.registration).success).toBe(true);
-    expect(r.inputs.map((input) => [input.deviceId, input.cardId, input.inputNumber, input.usbId])).toEqual([['MIC-03', DUO.cardId, 2, DUO.usbId]]);
-    expect([usbMicrophones(r.devices), r.devices.get('MIC-03')?.enabled, r.reenables]).toEqual([['MIC-03'], true, ['MIC-03']]);
-    expect(r.audits.slice(1).map((row) => [row.deviceId, row.details?.['change'], row.details?.['inputNumber']])).toEqual([
-      ['MIC-03', 'RELEASED', 1],
-      ['MIC-03', 'REENABLED', 2],
+    // Input 2 of the card MIC-03 holds: a new microphone, MIC-03 stays where it is.
+    const two = await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2, release: false });
+    expect(two).toEqual({ created: true, registration: { deviceId: 'MIC-04', change: 'REGISTERED', inputNumber: 2, channelCount: 2, releasedDeviceId: null } });
+    expect(CaptureAudioInputRegistrationSchema.safeParse(two.registration).success).toBe(true);
+    expect(r.inputs.map((input) => [input.deviceId, input.cardId, input.inputNumber, input.usbId])).toEqual([
+      ['MIC-03', DUO.cardId, 1, DUO.usbId],
+      ['MIC-04', DUO.cardId, 2, DUO.usbId],
     ]);
-    // release: true on the holder's OWN input changes nothing: releasedDeviceId is null.
-    expect((await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2, release: true })).registration).toMatchObject({ deviceId: 'MIC-03', change: 'REENABLED', releasedDeviceId: null });
-    // Another card is not held: DemsSix input 1 is a new microphone.
-    expect((await registerAudioInput(r.seams, CALLER, { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 1 })).registration).toMatchObject({ deviceId: 'MIC-04', change: 'REGISTERED' });
-    // The Core listed AGAIN for each registration.
-    expect(r.host.listings()).toBe(6);
-    // Operation 98: the card is bound to the moved microphone, at its new input.
+    // THE SAME INPUT TWICE is never a second microphone: input 2 again, with or without `release`, is MIC-04 again; nothing is released.
+    r.devices.set('MIC-04', { ...r.devices.get('MIC-04')!, enabled: false });
+    expect(await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2 })).toEqual({ created: false, registration: { deviceId: 'MIC-04', change: 'REENABLED', inputNumber: 2, channelCount: 2, releasedDeviceId: null } });
+    expect((await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2, release: true })).registration).toEqual({ deviceId: 'MIC-04', change: 'REENABLED', inputNumber: 2, channelCount: 2, releasedDeviceId: null });
+    expect((await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 1 })).registration).toMatchObject({ deviceId: 'MIC-03', change: 'REENABLED', releasedDeviceId: null });
+    expect([usbMicrophones(r.devices), r.inputs.length, r.devices.get('MIC-04')?.enabled]).toEqual([['MIC-03', 'MIC-04'], 2, true]);
+    expect(r.audits.map((row) => [row.deviceId, row.details?.['change'], row.details?.['inputNumber']])).toEqual([
+      ['MIC-03', 'REGISTERED', 1],
+      ['MIC-04', 'REGISTERED', 2],
+      ['MIC-04', 'REENABLED', 2],
+      ['MIC-04', 'REENABLED', 2],
+      ['MIC-03', 'REENABLED', 1],
+    ]);
+    // Another card is another card: DemsSix input 1 is a new microphone.
+    expect((await registerAudioInput(r.seams, CALLER, { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 1 })).registration).toMatchObject({ deviceId: 'MIC-05', change: 'REGISTERED' });
+    // Operation 98: the card names BOTH inputs with their microphones; `boundTo` is its first holder, the lowest MIC id.
     const search = await searchAudioCards(r.seams, CALLER);
     expect(search.cards.map((card) => [card.cardId, card.boundTo, card.registered])).toEqual([
-      [DUO.cardId, 'MIC-03', [{ inputNumber: 2, deviceId: 'MIC-03' }]],
-      [SIX.cardId, 'MIC-04', [{ inputNumber: 1, deviceId: 'MIC-04' }]],
+      [DUO.cardId, 'MIC-03', [{ inputNumber: 1, deviceId: 'MIC-03' }, { inputNumber: 2, deviceId: 'MIC-04' }]],
+      [SIX.cardId, 'MIC-05', [{ inputNumber: 1, deviceId: 'MIC-05' }]],
     ]);
     expect(CaptureAudioCardSearchSchema.safeParse(search).success).toBe(true);
   });
 
+  // D48 keeps the refusal for the SAME input: a microphone another key holds at this input and that the rule cannot tell
+  // from this unit (two serial-less units of one model, NOT_TELLABLE) is refused AUDIO_CARD_ALREADY_BOUND; `release: true`
+  // MOVES that holder here (bundle M): 200 REENABLED, releasedDeviceId = the holder, RELEASED then REENABLED.
+  it('D48: the same input held under another key is refused 409 AUDIO_CARD_ALREADY_BOUND naming the holder; with `release: true` the holder of that input MOVES: 200 REENABLED, RELEASED then REENABLED', async () => {
+    const r = rig(ONE_INTERFACE);
+    const KEY = { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 2 } as const;
+    await registerAudioInput(r.seams, CALLER, KEY);
+    r.host.use(TWO_OF_ONE_PRODUCT);
+    const twin = { ...KEY, cardId: SIX_SECOND_CARD_ID };
+    const refused = await registerAudioInput(r.seams, CALLER, twin).catch((error: unknown) => error as ApiFailure);
+    expect(refused).toBeInstanceOf(ApiFailure);
+    expect([(refused as ApiFailure).statusCode, (refused as ApiFailure).code, (refused as ApiFailure).details]).toEqual([409, 'INVALID_STATE', { reason: 'AUDIO_CARD_ALREADY_BOUND', deviceId: 'MIC-03' }]);
+    expect(await refusal(registerAudioInput(r.seams, CALLER, { ...twin, release: false }))).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_ALREADY_BOUND']);
+    expect([usbMicrophones(r.devices), r.inputs.length, r.audits.length]).toEqual([['MIC-03'], 1, 1]);
+    r.devices.set('MIC-03', { ...r.devices.get('MIC-03')!, enabled: false });
+    const moved = await registerAudioInput(r.seams, CALLER, { ...twin, release: true });
+    expect(moved).toEqual({ created: false, registration: { deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 2, channelCount: 6, releasedDeviceId: 'MIC-03' } });
+    expect(CaptureAudioInputRegistrationSchema.safeParse(moved.registration).success).toBe(true);
+    expect(r.inputs.map((input) => [input.deviceId, input.cardId, input.inputNumber])).toEqual([['MIC-03', SIX_SECOND_CARD_ID, 2]]);
+    expect([usbMicrophones(r.devices), r.devices.get('MIC-03')?.enabled, r.reenables]).toEqual([['MIC-03'], true, ['MIC-03']]);
+    expect(r.audits.slice(1).map((row) => [row.deviceId, row.details?.['change'], row.details?.['inputNumber']])).toEqual([
+      ['MIC-03', 'RELEASED', 2],
+      ['MIC-03', 'REENABLED', 2],
+    ]);
+  });
+
   it('a release whose move fails rolls the unit back as a whole: no RELEASED entry, the holder stays where it was', async () => {
-    const r = rig(TWO_CARDS);
-    await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 1 });
+    const r = rig(ONE_INTERFACE);
+    await registerAudioInput(r.seams, CALLER, { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 2 });
+    r.host.use(TWO_OF_ONE_PRODUCT);
     r.failNext('rekeyInput');
-    await expect(registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2, release: true })).rejects.toMatchObject({ code: 'ROW070_INJECTED' });
-    expect([r.inputs.map((input) => input.inputNumber), r.audits.map((row) => row.details?.['change'])]).toEqual([[1], ['REGISTERED']]);
+    await expect(registerAudioInput(r.seams, CALLER, { cardId: SIX_SECOND_CARD_ID, deviceIndex: 0, inputNumber: 2, release: true })).rejects.toMatchObject({ code: 'ROW070_INJECTED' });
+    expect([r.inputs.map((input) => [input.cardId, input.inputNumber]), r.audits.map((row) => row.details?.['change'])]).toEqual([[[SIX.cardId, 2]], ['REGISTERED']]);
   });
 
   it('the refusals, each storing nothing and writing no row: an unknown card (404), a device index the card does not have (404), an input beyond the card (409), a card whose count is a guess (409)', async () => {
@@ -527,8 +554,9 @@ describe('row 156 / R-FLEX row 131: the identity of the card behind a stored inp
     expect(moved).toEqual({ created: false, registration: { deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 1, channelCount: 6, releasedDeviceId: null } });
     expect(r.inputs.map((input) => [input.deviceId, input.cardId, input.inputNumber])).toEqual([['MIC-03', SIX_MOVED_CARD_ID, 1]]);
     expect([r.identities.get('MIC-03'), changes(r), usbMicrophones(r.devices)]).toEqual([{ usbSerial: null, usbPort: OTHER_PORT }, ['REGISTERED', 'REENABLED'], ['MIC-03']]);
-    // Another input of the moved card is a new binding of a held card: refused, naming the holder.
-    expect(await refusal(registerAudioInput(r.seams, CALLER, { cardId: SIX_MOVED_CARD_ID, deviceIndex: 0, inputNumber: 3 }))).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_ALREADY_BOUND']);
+    // D48: another input of the moved card is a second microphone of the card; MIC-03 keeps its input.
+    expect((await registerAudioInput(r.seams, CALLER, { cardId: SIX_MOVED_CARD_ID, deviceIndex: 0, inputNumber: 3 })).registration).toEqual({ deviceId: 'MIC-04', change: 'REGISTERED', inputNumber: 3, channelCount: 6, releasedDeviceId: null });
+    expect(r.inputs.map((input) => [input.deviceId, input.cardId, input.inputNumber])).toEqual([['MIC-03', SIX_MOVED_CARD_ID, 1], ['MIC-04', SIX_MOVED_CARD_ID, 3]]);
   });
 
   it('R-3: a move onto a key ANOTHER row already holds rolls back 409 AUDIO_INPUT_NOT_REGISTRABLE - nothing written, nothing said', async () => {
@@ -555,6 +583,10 @@ describe('row 156 / R-FLEX row 131: the identity of the card behind a stored inp
     expect(matchNotes(r)).toEqual([null, 'SAME_CARD', 'NOT_TELLABLE', 'NOT_TELLABLE']);
     // The second unit, under its own key: held by MIC-03 (conservative), never a second microphone.
     expect(await refusal(registerAudioInput(r.seams, CALLER, { ...KEY, cardId: SIX_SECOND_CARD_ID }))).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_ALREADY_BOUND']);
+    // D48 scopes the binding to the input, but NOT for twins: the rule cannot tell which unit MIC-03 uses, so it holds both
+    // WHOLE - another input of either unit is refused too, naming MIC-03.
+    expect(await refusal(registerAudioInput(r.seams, CALLER, { ...KEY, cardId: SIX_SECOND_CARD_ID, inputNumber: 3 }))).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_ALREADY_BOUND']);
+    expect(await refusal(registerAudioInput(r.seams, CALLER, { ...KEY, inputNumber: 3 }))).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_ALREADY_BOUND']);
     expect(usbMicrophones(r.devices)).toEqual(['MIC-03']);
     r.advance(CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS);
     const search = await searchAudioCards(r.seams, CALLER);
@@ -602,17 +634,18 @@ describe('row 156 / R-FLEX row 131: the identity of the card behind a stored inp
 
   // THE GAP FILED BY ROW 131 IS CLOSED (R-FLEX row 108, decision D24): DB-A2 `READ_BOUND_AUDIO_INPUTS` no longer keeps the
   // bundle-C filter "a serial or a port". A serial-less, port-less row (T-16 makes them; Q96-09 a) holds its card: operation
-  // 98 names it in `boundTo`, and operation 99 refuses another input of the card. Was `it.fails`.
-  it('DB-A2 (row 108): a card stored with neither serial nor port IS held - operation 98 names its holder, another input is refused AUDIO_CARD_ALREADY_BOUND; with `release` the holder moves', async () => {
+  // 98 names it in `boundTo`. Was `it.fails`. TURNED BY D48: another input of the card is a second microphone (was: refused
+  // AUDIO_CARD_ALREADY_BOUND, and with `release` the holder moved).
+  it('DB-A2 (row 108): a card stored with neither serial nor port IS held - operation 98 names its holder; D48: another input is a second microphone, also with `release`', async () => {
     const portless = rig(INTERFACE_WITHOUT_PORT);
     await registerAudioInput(portless.seams, CALLER, KEY);
     expect(portless.identities.get('MIC-03')).toEqual({ usbSerial: null, usbPort: null });
     const search = await searchAudioCards(portless.seams, CALLER);
     expect(search.cards.map((card) => [card.cardId, card.boundTo, card.registered])).toEqual([[SIX.cardId, 'MIC-03', [{ inputNumber: 2, deviceId: 'MIC-03' }]]]);
-    expect(await refusal(registerAudioInput(portless.seams, CALLER, { ...KEY, inputNumber: 5 }))).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_ALREADY_BOUND']);
-    expect([usbMicrophones(portless.devices), portless.inputs.length]).toEqual([['MIC-03'], 1]);
-    expect((await registerAudioInput(portless.seams, CALLER, { ...KEY, inputNumber: 5, release: true })).registration).toEqual({ deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 5, channelCount: 6, releasedDeviceId: 'MIC-03' });
-    expect(portless.inputs.map((input) => [input.deviceId, input.inputNumber])).toEqual([['MIC-03', 5]]);
+    expect((await registerAudioInput(portless.seams, CALLER, { ...KEY, inputNumber: 5 })).registration).toEqual({ deviceId: 'MIC-04', change: 'REGISTERED', inputNumber: 5, channelCount: 6, releasedDeviceId: null });
+    expect((await registerAudioInput(portless.seams, CALLER, { ...KEY, inputNumber: 6, release: true })).registration).toEqual({ deviceId: 'MIC-05', change: 'REGISTERED', inputNumber: 6, channelCount: 6, releasedDeviceId: null });
+    expect(portless.inputs.map((input) => [input.deviceId, input.inputNumber])).toEqual([['MIC-03', 2], ['MIC-04', 5], ['MIC-05', 6]]);
+    expect(portless.audits.map((row) => row.details?.['change'])).not.toContain('RELEASED');
   });
 
   // R-FLEX row 108 (spec 5.1, D-A3.4): A RETIRED ROW HOLDS NOTHING. It neither blocks another input of its card nor occupies its key.
@@ -625,11 +658,11 @@ describe('row 156 / R-FLEX row 131: the identity of the card behind a stored inp
     const again = await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 1 });
     expect(again).toEqual({ created: true, registration: { deviceId: 'MIC-04', change: 'REGISTERED', inputNumber: 1, channelCount: 2, releasedDeviceId: null } });
     expect(r.reenables).toEqual([]);
-    // The new microphone holds the card; the retired one is no holder for operation 98 or 99.
-    expect(await refusal(registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2 }))).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_ALREADY_BOUND']);
+    // The new microphone holds the card; the retired one is no holder for operation 98 or 99. D48: input 2 is a second microphone.
+    expect((await registerAudioInput(r.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2 })).registration).toEqual({ deviceId: 'MIC-05', change: 'REGISTERED', inputNumber: 2, channelCount: 2, releasedDeviceId: null });
     const search = await searchAudioCards(r.seams, CALLER);
     expect(search.cards.map((card) => [card.cardId, card.boundTo, card.registered])).toEqual([
-      [DUO.cardId, 'MIC-04', [{ inputNumber: 1, deviceId: 'MIC-04' }]],
+      [DUO.cardId, 'MIC-04', [{ inputNumber: 1, deviceId: 'MIC-04' }, { inputNumber: 2, deviceId: 'MIC-05' }]],
       [SIX.cardId, null, []],
     ]);
     // Another input of a card whose ONLY holder is retired: not refused.
@@ -639,27 +672,33 @@ describe('row 156 / R-FLEX row 131: the identity of the card behind a stored inp
     expect((await registerAudioInput(other.seams, CALLER, { cardId: DUO.cardId, deviceIndex: 0, inputNumber: 2 })).registration).toEqual({ deviceId: 'MIC-04', change: 'REGISTERED', inputNumber: 2, channelCount: 2, releasedDeviceId: null });
   });
 
-  // R-FLEX row 108 (spec X-2): SEVERAL microphones already hold one card (an older database; 01_specs_rflex_database.md 5,
-  // last row). Nothing is moved, also with `release`: refused naming the FIRST holder, the lowest MIC id, which is also
-  // operation 98's `boundTo`. Nothing is written and nothing is said.
-  it('X-2: a card held by SEVERAL live rows - op 99 refuses AUDIO_CARD_ALREADY_BOUND naming the first holder (lowest MIC id), with and without release; op 98 boundTo names the same', async () => {
+  // R-FLEX row 108 (spec X-2), SCOPED TO THE INPUT BY D48: several microphones on DIFFERENT inputs of one card are the rule
+  // now (another input is a new microphone). SEVERAL live rows on the SAME input (an older database: one under the old
+  // kernel key, one under the new) are not moved, also with `release`: refused naming the FIRST, the lowest MIC id, which
+  // is also operation 98's `boundTo`. Nothing is written and nothing is said.
+  it('X-2 (D48): several holders on different inputs register another input (201); several live rows on the SAME input are refused AUDIO_CARD_ALREADY_BOUND naming the first (lowest MIC id), with and without release', async () => {
     const r = rig(TWO_CARDS);
     for (const [deviceId, inputNumber] of [['MIC-02', 2], ['MIC-01', 1]] as const) {
       r.inputs.push({ deviceId, usbId: SIX.usbId, cardId: SIX.cardId, cardDevice: 0, inputNumber, nativeChannels: 6, sampleBits: 24, operatorId: CALLER.operatorId, at: START });
       r.identities.set(deviceId, { usbSerial: null, usbPort: SIX_PORT });
     }
     const failure = async (pending: Promise<unknown>): Promise<unknown> => pending.then(() => 'answered', (error: unknown) => [(error as ApiFailure).statusCode, (error as ApiFailure).details]);
+    // Two holders on inputs 1 and 2: input 4 is a third microphone of the card.
+    expect((await registerAudioInput(r.seams, CALLER, { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 4 })).registration).toEqual({ deviceId: 'MIC-03', change: 'REGISTERED', inputNumber: 4, channelCount: 6, releasedDeviceId: null });
+    // A stale row of MIC-09 on input 2 under the card's old kernel key: input 2 is now blocked by MIC-02 (the key) AND MIC-09.
+    r.inputs.push({ deviceId: 'MIC-09', usbId: SIX.usbId, cardId: 'OldKernelKey', cardDevice: 0, inputNumber: 2, nativeChannels: 6, sampleBits: 24, operatorId: CALLER.operatorId, at: START });
+    r.identities.set('MIC-09', { usbSerial: null, usbPort: SIX_PORT });
     const before = structuredClone(r.inputs);
+    const audits = r.audits.length;
     for (const release of [false, true]) {
-      expect(await failure(registerAudioInput(r.seams, CALLER, { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 4, release })), String(release)).toEqual([409, { reason: 'AUDIO_CARD_ALREADY_BOUND', deviceId: 'MIC-01' }]);
+      expect(await failure(registerAudioInput(r.seams, CALLER, { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 2, release })), String(release)).toEqual([409, { reason: 'AUDIO_CARD_ALREADY_BOUND', deviceId: 'MIC-02' }]);
     }
-    // The key of one holder, released towards it: still several holders - refused, nothing moved.
-    expect(await failure(registerAudioInput(r.seams, CALLER, { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 2, release: true }))).toEqual([409, { reason: 'AUDIO_CARD_ALREADY_BOUND', deviceId: 'MIC-01' }]);
-    expect([r.inputs, r.audits, r.reenables, usbMicrophones(r.devices)]).toEqual([before, [], [], []]);
+    expect([r.inputs, r.audits.length - audits]).toEqual([before, 0]);
+    // Operation 98 says what is stored: both rows of input 2 (by identity), the first holder in `boundTo`.
     const search = await searchAudioCards(r.seams, CALLER);
     expect(search.cards.map((card) => [card.cardId, card.boundTo, card.registered])).toEqual([
       [DUO.cardId, null, []],
-      [SIX.cardId, 'MIC-01', [{ inputNumber: 1, deviceId: 'MIC-01' }, { inputNumber: 2, deviceId: 'MIC-02' }]],
+      [SIX.cardId, 'MIC-01', [{ inputNumber: 1, deviceId: 'MIC-01' }, { inputNumber: 2, deviceId: 'MIC-02' }, { inputNumber: 2, deviceId: 'MIC-09' }, { inputNumber: 4, deviceId: 'MIC-03' }]],
     ]);
   });
 

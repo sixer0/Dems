@@ -65,6 +65,9 @@ describe('CPB1-11: one direction, schema <- mapping <- store <- seed, reset, fix
     expect([...new Set(importers)].sort()).toEqual([
       'src/db/fixtures/load.ts',
       'src/db/reset/routine.ts',
+      // REVISED 2026-10-30 (principal): the factory seed writes through the store's index too, like
+      // the demonstration seed — one direction, nothing reaching past the index.
+      'src/db/seed/factory.ts',
       'src/db/seed/seed.ts',
       'src/engine/rehydrate.ts',
       'src/engine/write-plan.ts',

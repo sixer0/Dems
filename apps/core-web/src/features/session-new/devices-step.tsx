@@ -471,6 +471,8 @@ function PreviewTile({ cameraId }: { cameraId: VideoTrackId }) {
       formatLabel={facts.known ? formatChipText(t, facts) : null}
       noSignal={noSignal}
       ariaLabel={label}
+      // Decisions D51 / D53: the camera previews of the device check show the Core's live picture of a production camera.
+      livePreview
       className="sn-preview-feed"
     />
   )

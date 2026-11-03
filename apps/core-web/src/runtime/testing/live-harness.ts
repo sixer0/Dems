@@ -439,6 +439,17 @@ export function createLiveTestBed(options: LiveTestBedOptions = {}): LiveTestBed
   // Row 139: the Devices page's LCD connection card polls `getDeviceHealth`. Default answer = the
   // contract's idle example; a test that scripts `fake.answer('getDeviceHealth', …)` replaces it.
   answered('getDeviceHealth', () => fake.example('getDeviceHealth', 200, 'idle'))
+  // LCD bridge task (operation 114): the Login device strip shows the firmware word the front panel
+  // states about itself. The reader is a global `fetch` like the health one, so the bed answers it by
+  // default too: no Live test reaches a real port through the strip. Default answer = the contract's
+  // panel that is talking; a test scripts `fake.answer('getPanelFirmware', …)` of its own.
+  answered('getPanelFirmware', () => fake.example('getPanelFirmware', 200, 'panelTalking'))
+  // Decisions D51 / D53 (row 92): Devices & Inputs holds the idle microphone meters (operation 113) while no session
+  // is active on a Core in real capture, and a production camera on a track asks for its live preview (operation 112).
+  // Default answers = the contract's examples (the preview URL is the example's placeholder token); a test that
+  // scripts `fake.answer('holdIdleMeters', …)` or `fake.answer('createCameraPreviewSession', …)` replaces them.
+  answered('holdIdleMeters', () => (core.alive() ? fake.example('holdIdleMeters', 200, 'held') : fake.example('holdIdleMeters', 401)))
+  answered('createCameraPreviewSession', () => (core.alive() ? fake.example('createCameraPreviewSession', 201, 'opened') : fake.example('createCameraPreviewSession', 401)))
 
   const flush = async (): Promise<void> => {
     await act(async () => {

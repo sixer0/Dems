@@ -1,5 +1,5 @@
-import { useId, useImperativeHandle } from 'react'
-import { VideoOff } from 'lucide-react'
+import { useCallback, useEffect, useId, useImperativeHandle, useRef, useState } from 'react'
+import { Video, VideoOff } from 'lucide-react'
 import { sourceDeviceText } from './own-core-words'
 import { cameraCaptureFaultOf, trackFaultText, useStatedFormat } from './stream-facts'
 import { checkedAtOf, sourceLineState } from './source-state'
@@ -8,6 +8,10 @@ import { selectIsRecording, useSim, cameraLinesInForce } from '@dems/shared/sim'
 import { CameraFeed, RecIndicator, type CameraFeedProps } from '@/components/media'
 import { cn } from '@/lib/utils'
 import { useRealCaptureCore, useTrackDevice } from './source-class'
+import { useWebLive } from '@/runtime'
+import { isLivePreviewDevice, isSessionStarting, previewPathOf, previewRefusalOf, previewRetryDelayMs } from './camera-live-preview'
+import { reportDevicesError } from './report'
+import { deferEffectStart } from '@/lib/effect-start'
 
 /**
  * Where a camera picture stands on a page (wave H, driver D; gate 70 finding G70-03, repeated as
@@ -17,17 +21,215 @@ import { useRealCaptureCore, useTrackDevice } from './source-class'
  * | The Core this console shows | What is drawn |
  * |-----------------------------|---------------|
  * | Simulated client mode, or a Core in simulated capture | `CameraFeed`, exactly as before: the bundled demo loop with its own DEMO caption |
- * | A Core in real capture (`useRealCaptureCore`) | The neutral "No preview" tile: this build has no live preview of a camera, and a stock picture beside real evidence reads as the camera's picture |
+ * | A Core in real capture, `livePreview` set by the caller and a PRODUCTION camera on the track | `LivePreview`: the Core's live picture (operation 112, decisions D51 / D53) |
+ * | A Core in real capture otherwise | The neutral "No preview" tile: a stock picture beside real evidence reads as the camera's picture |
+ *
+ * `livePreview` is set only by Devices & Inputs (camera tiles), Session New (camera previews) and the
+ * Session Monitor (live session feed). The Dashboard and the inputs thumbnails keep the tile. (It is not
+ * `live`: that prop of `CameraFeed` is the demo loop's decode switch, which the callers already set.)
  *
  * The tile says only what the Core knows: the track, the device the selector names for it, and that
  * device's state as the selector line carries it (not assigned, offline, stream lost, online). Its
- * accessible name says that this build shows no live preview. The REC state of a recording stays
+ * accessible name says that the live preview is not open. The REC state of a recording stays
  * (it is the session's, not the picture's). A snapshot of it is `null`: there is no frame.
  */
-export function CameraPreview(props: CameraFeedProps) {
+export type CameraPreviewProps = CameraFeedProps & {
+  /** Show the Core's live picture where it has one (Live mode, real capture, a production camera). Default false. */
+  livePreview?: boolean
+}
+
+export function CameraPreview({ livePreview = false, ...props }: CameraPreviewProps) {
   const realCapture = useRealCaptureCore()
+  const device = useTrackDevice(props.cameraId)
   if (!realCapture) return <CameraFeed {...props} />
+  // One preview per device: another camera on the track starts its own (the key), never the old stream.
+  if (livePreview && device !== undefined && isLivePreviewDevice(device)) return <LivePreview key={device.id} {...props} deviceId={device.id} />
   return <NoPreviewTile {...props} />
+}
+
+/** The state of a live preview as the tile says it. */
+type LivePhase = 'CONNECTING' | 'LIVE' | 'UNAVAILABLE' | 'LIMIT'
+type ShownPhase = LivePhase | 'PAUSED'
+
+/** The fixed sentences of the page's own record (never the URL: it is a bearer value). */
+const PREVIEW_REFUSED_RECORD = 'The live preview of a camera was not opened.'
+const PREVIEW_THREW_RECORD = 'The live preview of a camera could not be asked for.'
+
+const PHASE_TEXT = {
+  CONNECTING: 'devices.preview.connecting',
+  LIVE: 'devices.preview.live',
+  PAUSED: 'devices.preview.pausedForRecording',
+  UNAVAILABLE: 'devices.preview.unavailable',
+  LIMIT: 'devices.preview.limit',
+} as const satisfies Record<ShownPhase, string>
+
+/**
+ * THE LIVE PREVIEW OF ONE PRODUCTION CAMERA (decisions D51 / D53; plan D53 part (d)). Operation 112 issues a
+ * short-lived token; its PATH is the `src` of an `<img>` that the Core streams as motion JPEG.
+ *
+ * | Event | What happens |
+ * |-------|--------------|
+ * | Mount, or a retry is due | ONE call of operation 112; the answer's path becomes the picture's `src` |
+ * | The first picture arrives (`load`) | "Live preview"; the failure count goes back to 0 |
+ * | The picture fails (`error`) | the `src` goes, and a new token is asked for after 2 s, 4 s, 8 s … at most 30 s |
+ * | `429 PREVIEW_LIMIT` / `409` | the limit or the not-available sentence, and a new token later (`previewRefusalOf`) |
+ * | A session is being started (CREATE, PRECHECK, ARMED) | "Preview paused: the recording has the camera" - the Core yields the camera first; a failing picture is asked for again as above |
+ * | Unmount, or a new token | the old picture's `src` is removed, so the browser ends that stream |
+ *
+ * The accessible name is `devices.preview.aria` (the track, the device, the state). The REC badge and the
+ * caller's actions stay where `NoPreviewTile` has them. A snapshot is `null` (no frame is kept).
+ */
+function LivePreview({ cameraId, deviceId, variant = 'feed', recordingSince = null, actions, className, dimmed = false, dimmedLabel, ref }: CameraFeedProps & { deviceId: string }) {
+  const { t } = useTranslation()
+  const live = useWebLive()
+  const [path, setPath] = useState<string | null>(null)
+  const [phase, setPhase] = useState<LivePhase>('CONNECTING')
+  // A new value asks for a new token (the issue effect depends on it).
+  const [attempt, setAttempt] = useState(0)
+  // Failures in a row (refusals and failed pictures): the backoff step.
+  const failures = useRef(0)
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useImperativeHandle(ref, () => ({ snapshot: () => null }), [])
+  const sessionState = useSim((state) => state.session?.state ?? null)
+  const starting = isSessionStarting(sessionState)
+  const device = useTrackDevice(cameraId)
+  const track = t(`common.tracks.${cameraId}`)
+  const name = device === undefined ? track : `${track} · ${sourceDeviceText(t, device, true)}`
+
+  const clearRetry = useCallback(() => {
+    if (retryTimer.current !== null) clearTimeout(retryTimer.current)
+    retryTimer.current = null
+  }, [])
+  const retryLater = useCallback(
+    (ms: number) => {
+      clearRetry()
+      retryTimer.current = setTimeout(() => {
+        retryTimer.current = null
+        setAttempt((value) => value + 1)
+      }, ms)
+    },
+    [clearRetry],
+  )
+  // The component is mounted, and which issue is the current one: an answer of an earlier issue, or one that
+  // arrives after the unmount, changes nothing (and arms no retry).
+  const mounted = useRef(false)
+  const currentIssue = useRef<object | null>(null)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      clearRetry()
+    }
+  }, [clearRetry])
+
+  useEffect(() => {
+    if (live === null) return undefined
+    const issue = {}
+    currentIssue.current = issue
+    const stale = () => !mounted.current || currentIssue.current !== issue
+    // StrictMode runs a mount effect twice: the helper leaves ONE token request (`lib/effect-start.ts`).
+    return deferEffectStart(() => {
+      live.client.call('createCameraPreviewSession', { params: { id: deviceId } }).then(
+        (answer) => {
+          if (stale()) return
+          if (answer.ok) {
+            const issued = previewPathOf(answer.data.url)
+            if (issued !== null) {
+              setPhase('CONNECTING')
+              setPath(issued)
+              return
+            }
+            failures.current += 1
+            reportDevicesError('features/devices.livePreview', null, PREVIEW_REFUSED_RECORD, { operationId: 'createCameraPreviewSession', deviceId, status: answer.status, code: 'PREVIEW_PATH_UNUSABLE' }, 'warn')
+            setPhase('UNAVAILABLE')
+            retryLater(previewRetryDelayMs(failures.current))
+            return
+          }
+          failures.current += 1
+          const refusal = previewRefusalOf(answer, failures.current)
+          setPhase(refusal.kind === 'LIMIT' ? 'LIMIT' : 'UNAVAILABLE')
+          // One record per run of failures, not one per retry (a retry loop would fill the page's log).
+          if (failures.current === 1) {
+            reportDevicesError('features/devices.livePreview', null, PREVIEW_REFUSED_RECORD, { operationId: 'createCameraPreviewSession', deviceId, status: answer.status, code: answer.error.code, refusal: refusal.kind }, 'warn')
+          }
+          retryLater(refusal.retryMs)
+        },
+        (error: unknown) => {
+          if (stale()) return
+          failures.current += 1
+          reportDevicesError('features/devices.livePreview', error, PREVIEW_THREW_RECORD, { operationId: 'createCameraPreviewSession', deviceId })
+          setPhase('UNAVAILABLE')
+          retryLater(previewRetryDelayMs(failures.current))
+        },
+      )
+    })
+  }, [live, deviceId, attempt, retryLater])
+
+  // The picture's own element per token (`key`): on unmount its `src` is removed, which ends the stream.
+  const releaseOnUnmount = useCallback((node: HTMLImageElement | null) => {
+    if (node === null) return
+    return () => {
+      node.removeAttribute('src')
+    }
+  }, [])
+  const onLoad = () => {
+    failures.current = 0
+    setPhase('LIVE')
+  }
+  const onError = () => {
+    failures.current += 1
+    setPath(null)
+    setPhase('CONNECTING')
+    retryLater(previewRetryDelayMs(failures.current))
+  }
+
+  const shown: ShownPhase = starting && phase !== 'LIMIT' ? 'PAUSED' : phase
+  const stateText = t(PHASE_TEXT[shown])
+  const aria = t('devices.preview.aria', { name, state: stateText })
+  const small = variant === 'thumb'
+  return (
+    <div
+      className={cn('relative isolate aspect-video w-full overflow-hidden rounded-lg border border-border bg-neutral-900 text-neutral-200', className)}
+      data-testid="camera-live-preview-frame"
+      data-camera={cameraId}
+      data-variant={variant}
+    >
+      <div role="img" aria-label={aria} title={small ? aria : undefined} data-testid="camera-live-preview" data-camera={cameraId} data-state={shown} className="absolute inset-0 rounded-[inherit]">
+        {path === null ? null : (
+          <img
+            key={path}
+            ref={releaseOnUnmount}
+            src={path}
+            alt=""
+            aria-hidden="true"
+            decoding="async"
+            data-testid="camera-live-preview-image"
+            onLoad={onLoad}
+            onError={onError}
+            className={cn('h-full w-full object-contain transition-opacity', phase === 'LIVE' ? (dimmed ? 'opacity-40' : 'opacity-100') : 'opacity-0')}
+          />
+        )}
+        {shown === 'LIVE' ? null : (
+          <div className={cn('absolute inset-0 flex flex-col items-center justify-center gap-1 px-2 text-center', phase === 'LIVE' && 'bg-neutral-900/70')}>
+            {shown === 'CONNECTING' || shown === 'PAUSED' ? <Video aria-hidden="true" size={small ? 14 : 24} strokeWidth={1.75} /> : <VideoOff aria-hidden="true" size={small ? 14 : 24} strokeWidth={1.75} />}
+            <span data-part="state" className={cn('font-semibold', small ? 'sr-only' : 'text-sm')}>
+              {stateText}
+            </span>
+            <span data-part="name" className={cn('max-w-full break-words text-[11px] leading-4 text-neutral-400', small && 'sr-only')}>
+              {name}
+            </span>
+          </div>
+        )}
+        {shown === 'LIVE' && dimmed ? (
+          <div className="absolute inset-0 flex items-center justify-center px-2 text-center text-sm font-semibold" data-part="dimmed">
+            {dimmedLabel ?? t('session.feed.monitoringPaused')}
+          </div>
+        ) : null}
+      </div>
+      {recordingSince !== null ? <RecIndicator since={recordingSince} size={variant === 'feed' ? 'md' : 'sm'} className="absolute right-2 top-2" /> : null}
+      {actions ? <div className="absolute bottom-2 right-2 flex items-center gap-1">{actions}</div> : null}
+    </div>
+  )
 }
 
 /**

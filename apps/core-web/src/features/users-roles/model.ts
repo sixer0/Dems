@@ -17,6 +17,19 @@
 import type { AdminUser, AdminUserList, RoleMatrix } from '@dems/shared/api'
 import { OperatorRole, Permission } from '@dems/shared/sim'
 
+/**
+ * RB-9 as amended 02-11-2026: `createUser`, `updateUser` and `deleteUser` need the vendor account on
+ * top of `USER_ADMIN`. The username is the only fact the session carries that names it, so the page
+ * gates its three account actions on it. This is cosmetics only — the Core server checks the same
+ * rule and answers 403 `NOT_PERMITTED` for a caller who holds `USER_ADMIN` without being `root`.
+ */
+export const VENDOR_ROOT_USERNAME = 'root'
+
+/** Whether this username is the vendor `root` account (the comparison the server makes, mirrored). */
+export function isVendorRoot(username: string | null | undefined): boolean {
+  return typeof username === 'string' && username.trim().toLowerCase() === VENDOR_ROOT_USERNAME
+}
+
 /** The three roles in the order of the Core's matrix when it gives none (least privileged first, as the presenter orders them). */
 export const ROLE_ORDER: readonly OperatorRole[] = [OperatorRole.INVESTIGATOR, OperatorRole.SUPERVISOR, OperatorRole.TECHNICIAN]
 

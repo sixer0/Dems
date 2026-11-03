@@ -785,6 +785,9 @@ describe('the INTERNAL action `registerCaptureMicrophone` (the Core runs it insi
     expect(nextCaptureMicrophoneId(after.captureDevices.devices)).toBe('MIC-04');
     expect(nextCaptureMicrophoneId([{ id: 'MIC-09' }, { id: 'MIC-120' }, { id: 'CAM-200' }])).toBe('MIC-121');
     expect(nextCaptureMicrophoneId([])).toBe('MIC-01');
+    // D50: ids the registry table holds outside the slice are taken too; CONTROL: without them the slice alone decides.
+    expect(nextCaptureMicrophoneId([{ id: 'CAM-03' }], ['MIC-01', 'MIC-02'])).toBe('MIC-03');
+    expect(nextCaptureMicrophoneId([{ id: 'CAM-03' }])).toBe('MIC-01');
     // A second NEW microphone is another device; the seeded pair and the first one are untouched.
     h.sim.actions.registerCaptureMicrophone({ deviceId: null, model: MODEL });
     expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'MIC-03', 'MIC-04']);

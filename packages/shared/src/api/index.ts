@@ -62,3 +62,8 @@ export * from './password-policy';
 // Task 3 row 113, fix round 1 (navigator finding N-1): the one rule set of the two client
 // log-blanking lists (web error sink, mobile runtime log). Dependency-free.
 export * from './redaction';
+
+export * from './lcd';
+// LCD bridge task: operation 114 `getPanelFirmware` — the firmware word the panel states about
+// itself, PUBLIC so the sign-in screen can read it (schema, operation, examples, the console reader).
+export * from './lcd-panel';

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type Key } from 'react'
 import { Alert, Avatar, Button, Chip, Dropdown, EmptyState, Label, Skeleton, Table } from '@heroui/react'
 import { AnimatePresence, motion } from 'motion/react'
-import { EllipsisVertical, UserCheck, UserCog, UserX, UsersRound } from 'lucide-react'
+import { EllipsisVertical, Trash, UserCheck, UserCog, UserPlus, UserRoundPen, UserX, UsersRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { AdminUser, RoleMatrix } from '@dems/shared/api'
 import type { OperatorRole } from '@dems/shared/sim'
@@ -11,7 +11,7 @@ import { useMotionPolicy } from '@/motion'
 import { changedRowIds, isLastAdministrator, roleTone } from './model'
 import { Panel } from './panel'
 
-export type UserAction = 'role' | 'disable' | 'enable'
+export type UserAction = 'role' | 'disable' | 'enable' | 'edit' | 'delete'
 
 export interface UsersPanelProps {
   /** The rows of the last answer; `null` before the first answer. */
@@ -23,6 +23,13 @@ export interface UsersPanelProps {
   readonly linkUp: boolean
   readonly onRetry: () => void
   readonly onAction: (action: UserAction, user: AdminUser) => void
+  /**
+   * RB-9 as amended 02-11-2026: the row's "Edit profile…" and "Delete user…" and the panel's
+   * "Add user" belong to the vendor `root` account alone. Cosmetic — the server refuses the same
+   * three for any other caller with 403 `NOT_PERMITTED`.
+   */
+  readonly manageAccounts: boolean
+  readonly onCreate: () => void
 }
 
 const SKELETON_ROWS = 3
@@ -42,11 +49,25 @@ const SKELETON_ROWS = 3
  * - RESIDUAL-W77-1 (W83 ledger #55): a sign-in or a sign-out elsewhere publishes no `admin.changed`, so the active
  *   sessions and the last sign-in are as of the last read (see the page's docblock).
  */
-export function UsersPanel({ users, matrix, failed, selfId, linkUp, onRetry, onAction }: UsersPanelProps) {
+export function UsersPanel({ users, matrix, failed, selfId, linkUp, onRetry, onAction, manageAccounts, onCreate }: UsersPanelProps) {
   const { t } = useTranslation()
   const highlighted = useRowHighlights(users)
   return (
-    <Panel id="users" icon={UsersRound} title={t('usersRoles.users.title')} subtitle={t('usersRoles.users.subtitle')} hero>
+    <Panel
+      id="users"
+      icon={UsersRound}
+      title={t('usersRoles.users.title')}
+      subtitle={t('usersRoles.users.subtitle')}
+      hero
+      action={
+        manageAccounts ? (
+          <Button size="sm" variant="primary" isDisabled={!linkUp} onPress={onCreate} data-testid="ur-create-user">
+            <UserPlus aria-hidden="true" size={16} />
+            {t('usersRoles.actions.createUser')}
+          </Button>
+        ) : undefined
+      }
+    >
       {users === null ? (
         failed ? (
           <ReadError testId="ur" message={t('usersRoles.states.error')} linkUp={linkUp} onRetry={onRetry} />
@@ -133,7 +154,7 @@ export function UsersPanel({ users, matrix, failed, selfId, linkUp, onRetry, onA
                       </span>
                     </Table.Cell>
                     <Table.Cell className="ur-col-actions">
-                      <RowMenu user={user} lastAdministrator={isLastAdministrator(user, users, matrix)} linkUp={linkUp} onAction={onAction} />
+                      <RowMenu user={user} lastAdministrator={isLastAdministrator(user, users, matrix)} linkUp={linkUp} manageAccounts={manageAccounts} onAction={onAction} />
                     </Table.Cell>
                   </Table.Row>
                 ))}
@@ -146,11 +167,27 @@ export function UsersPanel({ users, matrix, failed, selfId, linkUp, onRetry, onA
   )
 }
 
-/** The row menu: "Change role…", then "Disable user…" or "Enable user" (§10.2 Actions column). */
-function RowMenu({ user, lastAdministrator, linkUp, onAction }: { user: AdminUser; lastAdministrator: boolean; linkUp: boolean; onAction: UsersPanelProps['onAction'] }) {
+/**
+ * The row menu: "Change role…", then "Disable user…" or "Enable user" (§10.2 Actions column), and —
+ * for the vendor `root` account only (RB-9 as amended) — "Edit profile…" and "Delete user…".
+ * [SP:RB-8] keeps both the disable and the delete of the last enabled administrator out of reach.
+ */
+function RowMenu({
+  user,
+  lastAdministrator,
+  linkUp,
+  manageAccounts,
+  onAction,
+}: {
+  user: AdminUser
+  lastAdministrator: boolean
+  linkUp: boolean
+  manageAccounts: boolean
+  onAction: UsersPanelProps['onAction']
+}) {
   const { t } = useTranslation()
   const onMenu = (key: Key) => {
-    if (key === 'role' || key === 'disable' || key === 'enable') onAction(key, user)
+    if (key === 'role' || key === 'disable' || key === 'enable' || key === 'edit' || key === 'delete') onAction(key, user)
   }
   return (
     <Dropdown>
@@ -165,7 +202,7 @@ function RowMenu({ user, lastAdministrator, linkUp, onAction }: { user: AdminUse
         <EllipsisVertical aria-hidden="true" size={16} />
       </Button>
       <Dropdown.Popover placement="bottom end" className="min-w-[220px]">
-        <Dropdown.Menu aria-label={t('usersRoles.actions.menuLabel')} disabledKeys={lastAdministrator ? ['disable'] : []} onAction={onMenu}>
+        <Dropdown.Menu aria-label={t('usersRoles.actions.menuLabel')} disabledKeys={lastAdministrator ? ['disable', 'delete'] : []} onAction={onMenu}>
           <Dropdown.Item id="role" textValue={t('usersRoles.actions.changeRole')} data-testid={`ur-change-role-${user.id}`}>
             <UserCog aria-hidden="true" size={16} />
             <Label>{t('usersRoles.actions.changeRole')}</Label>
@@ -184,6 +221,21 @@ function RowMenu({ user, lastAdministrator, linkUp, onAction }: { user: AdminUse
               <Label>{t('usersRoles.actions.enable')}</Label>
             </Dropdown.Item>
           )}
+          {manageAccounts ? (
+            <>
+              <Dropdown.Item id="edit" textValue={t('usersRoles.actions.edit')} data-testid={`ur-edit-user-${user.id}`}>
+                <UserRoundPen aria-hidden="true" size={16} />
+                <Label>{t('usersRoles.actions.edit')}</Label>
+              </Dropdown.Item>
+              <Dropdown.Item id="delete" textValue={t('usersRoles.actions.delete')} data-testid={`ur-delete-user-${user.id}`}>
+                <Trash aria-hidden="true" size={16} />
+                <div className="flex flex-col">
+                  <Label>{t('usersRoles.actions.delete')}</Label>
+                  {lastAdministrator ? <span className="ur-menu-hint">{t('usersRoles.lastAdmin')}</span> : null}
+                </div>
+              </Dropdown.Item>
+            </>
+          ) : null}
         </Dropdown.Menu>
       </Dropdown.Popover>
     </Dropdown>

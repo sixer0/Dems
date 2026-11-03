@@ -234,6 +234,42 @@ static void source_address(void) {
     }
 }
 
+/* ROW 89: preview mode (relay.h "PREVIEW MODE"). The members of a probe and no ingest address; the source address is
+ * REQUIRED, as in record mode. Every refused row on a heap copy of exact length; of a refused message nothing is kept. */
+#define PREVIEW_FROM(more) "{\"type\":\"start\",\"mode\":\"preview\"," more ACCESS "}\n"
+
+static void preview_mode(void) {
+    RelayStart s;
+    static const RelayStart empty;
+    CHECK("preview mode: named, the source address taken, no ingest address", parse_exact(PREVIEW_FROM("\"source\":\"192.168.50.1\","), &s) == RELAY_STOPPED && s.mode == RELAY_MODE_PREVIEW
+          && !strcmp(s.source, "192.168.50.1") && !s.ingest[0] && s.ingest_port == 0 && s.attempt == 0 && !strcmp(s.host, "192.0.2.10") && s.port == 554 && !strcmp(s.account, "u"));
+    CHECK("preview mode with an attempt", parse_exact(PREVIEW_FROM("\"attempt\":12,\"source\":\"10.0.0.7\","), &s) == RELAY_STOPPED && s.mode == RELAY_MODE_PREVIEW && s.attempt == 12 && !strcmp(s.source, "10.0.0.7"));
+    CHECK("preview mode: the source address as the last member", parse_exact("{\"type\":\"start\",\"mode\":\"preview\"," ACCESS ",\"source\":\"10.0.0.7\"}\n", &s) == RELAY_STOPPED && s.mode == RELAY_MODE_PREVIEW);
+    CHECK("the modes stay apart: probe is still probe", parse_exact(PROBE(""), &s) == RELAY_STOPPED && s.mode == RELAY_MODE_PROBE);
+    static const struct { const char *what, *line; } refused[] = {
+        { "preview mode without a source address", PREVIEW_FROM("") },
+        { "preview mode without one, with an attempt", PREVIEW_FROM("\"attempt\":4,") },
+        { "preview mode with an empty source address", PREVIEW_FROM("\"source\":\"\",") },
+        { "preview mode with any address (0.0.0.0)", PREVIEW_FROM("\"source\":\"0.0.0.0\",") },
+        { "preview mode with a name as its source", PREVIEW_FROM("\"source\":\"camera-if\",") },
+        { "preview mode with an ingest address", PREVIEW_FROM("\"source\":\"192.168.50.1\",\"ingest\":\"" INGEST "\",") },
+        { "preview mode with an empty ingest address", PREVIEW_FROM("\"source\":\"192.168.50.1\",\"ingest\":\"\",") },
+        { "preview mode without the access", "{\"type\":\"start\",\"mode\":\"preview\",\"source\":\"192.168.50.1\"}\n" },
+        { "the mode in another case", "{\"type\":\"start\",\"mode\":\"Preview\",\"source\":\"192.168.50.1\"," ACCESS "}\n" },
+        { "the mode with a blank after it", "{\"type\":\"start\",\"mode\":\"preview \",\"source\":\"192.168.50.1\"," ACCESS "}\n" },
+        { "a word that begins like it", "{\"type\":\"start\",\"mode\":\"previews\",\"source\":\"192.168.50.1\"," ACCESS "}\n" },
+        { "the mode twice, preview then probe", "{\"type\":\"start\",\"mode\":\"preview\",\"mode\":\"probe\",\"source\":\"192.168.50.1\"," ACCESS "}\n" },
+        { "the mode twice, record then preview", "{\"type\":\"start\",\"mode\":\"record\",\"mode\":\"preview\",\"source\":\"192.168.50.1\",\"ingest\":\"" INGEST "\"," ACCESS "}\n" },
+        { "preview mode with an unknown member", PREVIEW_FROM("\"source\":\"192.168.50.1\",\"codec\":\"H264\",") },
+        { "preview mode with the source inside the access", "{\"type\":\"start\",\"mode\":\"preview\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\",\"source\":\"192.168.50.1\"}}\n" },
+    };
+    for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
+        RelayCode r = parse_exact(refused[i].line, &s);
+        checks++;
+        if (r != RELAY_START_MESSAGE_INVALID || memcmp(&s, &empty, sizeof s)) { failed++; printf("relay_unit_test: FAILED: row 89, preview mode: %s is not refused, or something of it was kept\n", refused[i].what); }
+    }
+}
+
 #define SDP_RATE(lines)"v=0\r\nm=video 0 RTP/AVP 96\r\na=rtpmap:96 H264/90000\r\n" lines "a=control:t\r\n"
 
 static long rate_stated(const char *text) {
@@ -1576,6 +1612,7 @@ int main(int argc, char **argv) {
     reopened_leg();
     source_address();
     source_dial();
+    preview_mode();
     CHECK("every code has a name of its own word",!strcmp(relay_code_name(RELAY_AUTH_SCHEME_NOT_ALLOWED), "AUTH_SCHEME_NOT_ALLOWED") && !strcmp(relay_code_name((RelayCode)999), "INTERNAL"));
     int named = 0, passed = 0;
     for (int i = 1; i <= CASES; i++) {
@@ -1585,7 +1622,7 @@ int main(int argc, char **argv) {
     }
     if (named != CASES) { failed++; printf("relay_unit_test: FAILED: %d of the %d named malformed-input cases have a row\n", named, CASES); }
     if (failed) { printf("relay_unit_test: %d of %d checks FAILED\n", failed, checks); return 1; }
-    printf("relay_unit_test: %d checks passed; the %d named malformed-input cases of review 06: %d of %d pass (start message, address rules, Digest against RFC 2617 and RFC 7616, challenge reader, stream description, pictures out of RTP, answer heads, interleaved framing, the camera leg on a socket pair; row 42: the two modes and the attempt of the start message, the stated rate, the two report lines; row 43: the retry rule, the announced stream, the lines of a loss and of a re-open, a leg given up and opened again)\n",
+    printf("relay_unit_test: %d checks passed; the %d named malformed-input cases of review 06: %d of %d pass (start message, address rules, Digest against RFC 2617 and RFC 7616, challenge reader, stream description, pictures out of RTP, answer heads, interleaved framing, the camera leg on a socket pair; row 42: the two modes and the attempt of the start message, the stated rate, the two report lines; row 43: the retry rule, the announced stream, the lines of a loss and of a re-open, a leg given up and opened again; row 89: preview mode of the start message)\n",
            checks, CASES, passed, CASES);
     return 0;
 }

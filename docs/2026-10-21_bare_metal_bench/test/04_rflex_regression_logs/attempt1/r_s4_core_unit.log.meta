@@ -1,0 +1,2 @@
+START 19:06:41 npx vitest run --root apps/core-server --project unit --maxWorkers=2 --reporter=default --reporter=json --outputFile.json=/home/gsp-dems/Desktop/DEMS-source/docs/2026-10-21_bare_metal_bench/test/04_rflex_regression_logs/r_s4_core_unit.json
+END 19:10:34 rc=1 duration=233s load=2.54 2.48 2.28

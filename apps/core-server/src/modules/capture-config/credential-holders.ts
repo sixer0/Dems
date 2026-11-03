@@ -12,6 +12,7 @@
  *   |-----------------|------------------------------------------------|---------------------------------|
  *   | `cameraAdapter` | the production camera adapter (`openSource`)   | `SESSION_OPEN`, `RELAY_RESTART` |
  *   | `connectionTest`| the connection test of an ADOPTED camera       | `CONNECTION_TEST`               |
+ *   | `cameraPreview` | the live camera preview (decisions D51 / D53)  | `PREVIEW_OPEN`                  |
  *
  * No member takes a reason; each reader was taken ONCE from the handout, which is then dropped, so
  * nothing can obtain a third reader of this app (a second `take` is refused by the reader itself).
@@ -43,6 +44,7 @@ import {
   CaptureCredentialHolder,
   createCaptureCredentialReaders,
   type CameraAdapterCredentialReader,
+  type CameraPreviewCredentialReader,
   type CaptureCredentialDevice,
   type CaptureCredentialReaderDependencies,
   type ConnectionTestCredentialReader,
@@ -56,10 +58,12 @@ export interface CaptureCredentialHoldersDependencies extends Pick<CaptureCreden
   query(text: string, values: unknown[]): Promise<{ readonly rows: readonly unknown[] }>;
 }
 
-/** The two readers of one app, each for the holder its name says. Frozen. */
+/** The three readers of one app, each for the holder its name says. Frozen. */
 export interface CaptureCredentialHolders {
   readonly cameraAdapter: CameraAdapterCredentialReader;
   readonly connectionTest: ConnectionTestCredentialReader;
+  /** Decisions D51 / D53: the reader of the live camera preview. */
+  readonly cameraPreview: CameraPreviewCredentialReader;
 }
 
 const textOrNull = (value: unknown): string | null => (typeof value === 'string' && value !== '' ? value : null);
@@ -90,5 +94,6 @@ export function wireCaptureCredentialHolders(dependencies: CaptureCredentialHold
   return Object.freeze({
     cameraAdapter: handout.take(CaptureCredentialHolder.CAMERA_ADAPTER),
     connectionTest: handout.take(CaptureCredentialHolder.CONNECTION_TEST),
+    cameraPreview: handout.take(CaptureCredentialHolder.CAMERA_PREVIEW),
   });
 }

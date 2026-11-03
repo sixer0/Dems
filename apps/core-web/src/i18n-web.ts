@@ -13,6 +13,36 @@ import type { ResourceTree } from '@dems/shared/i18n'
 
 export const enWeb = {
   web: {
+    lcd: {
+      title: 'LCD connection',
+      simulated: 'Preview only. Switch the Core link to Live to connect an ESP32 panel.',
+      loading: 'Reading LCD configuration…',
+      readError: 'LCD configuration could not be read. Check the Core connection and sign-in.',
+      disabled: 'LCD backend is not configured on this Core.',
+      configure: 'Set DEMS_LCD_BACKEND_URL on the Core host, then restart Core.',
+      backend: 'Backend',
+      reachable: 'Reachable',
+      unreachable: 'Not reachable',
+      panel: 'USB panel',
+      connected: 'Responding',
+      disconnected: 'No recent response',
+      unknown: 'Not reported',
+      channels: 'Channel mapping',
+      unused: 'Unused',
+      recording: 'Recording',
+      stopped: 'Stopped',
+      health: 'Backend health',
+      status: { ok: 'OK', warn: 'Attention', fail: 'Fault' },
+      lastSync: 'Last synchronization',
+      awaiting: 'Awaiting synchronization',
+      syncError: {
+        UNAVAILABLE: 'The LCD backend is unavailable. Recording status has not been confirmed.',
+        INVALID_RESPONSE: 'The LCD backend returned an unsupported response.',
+        CORE_NOT_READY: 'Core is not ready. LCD channels were stopped.',
+      },
+      startup: 'Configuration is managed on the Core host. Refresh interval: 2 s; recording lease: 6 s.',
+      preview: 'The display above is a console preview. USB connection is reported separately below.',
+    },
     /** G75b-07: the header pill names the critical fault; the integrity sentence stays in the shared tree. */
     securePill: {
       criticalKind: 'Critical fault: {{kind}}',

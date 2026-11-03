@@ -174,6 +174,11 @@ describe('A-2: a credential is read in one file, and no locator is composed with
     expect(relayStart).toMatch(/^ {4}access: credentialAtInjection\(start\.locator, start\.sealed\),$/m);
     // The relay is started with no argument and an empty environment: the message is the one carrier.
     expect(relayStart).toMatch(/return start\.door\(\{ command: start\.program, args: \[\], env: \{\}, message, timers: start\.timers, onOutput: start\.onOutput \}\);/);
+    // Task 4 row 89 (the preview): the one call stands in the ONE maker of the start message, `startMessageOf`, which the door
+    // start of record and probe mode and the preview start both call - the preview adds no second call of the injection point.
+    expect(relayStart.match(/\bstartMessageOf\(/g)).toHaveLength(3);
+    expect(relayStart).toMatch(/^ {2}const message = startMessageOf\(start, mode\);$/m);
+    expect(relayStart).toMatch(/^ {2}const message = startMessageOf\(start, \{ mode: 'preview' \}\);$/m);
     // Control: a second caller would be seen.
     expect(occurrences([{ path: 'x.ts', text: 'const access = credentialAtInjection(locator, sealed);' }], INJECTION)).toEqual(['x.ts:1']);
   });
@@ -437,6 +442,10 @@ describe('A-8: the bytes of a start message are made by the production door only
     expect(door).toMatch(/text: \(\) => blankCredentialLocators\(Buffer\.concat\(kept\)\.toString\('utf8'\)\),/);
     // Every argument of the start is the caller's list, spread once; the door adds none and computes none.
     expect(door).toMatch(/child = spawn\(options\.command, \[\.\.\.options\.args\], \{/);
+    // Task 4 row 89: in a pipeline the message goes to the FIRST child only; the second is started with none (its input is the
+    // first child's output), and a child without an input of the door that was handed a message anyway is refused, never written.
+    expect(door).toMatch(/startChild\(\{ \.\.\.secondOptions, message: null \}, \{ input: joint, readOutput: true \}\)/);
+    expect(door).toMatch(/\} else if \(input === null\) \{\n[^\n]*\n {4}settle\(ProductionDoorRefusal\.START_MESSAGE_NOT_TAKEN\);/);
     expect(door.match(/\boptions\s*\.\s*args\b/g)).toHaveLength(1);
     // A refusal is built from its code alone: no cause, no second argument.
     expect(door.match(/new ProductionDoorError\([^)]*\)/g)?.every((call) => /^new ProductionDoorError\((?:code|spawnFailed \? ProductionDoorRefusal\.PROGRAM_NOT_STARTED : refusal)\)$/.test(call))).toBe(true);
@@ -452,7 +461,7 @@ describe('A-8: the bytes of a start message are made by the production door only
     /** Every line of the file that names the observer, and every `.door(` statement (to its semicolon) that names it. */
     const handsOnDiagnostics = (text: string): string[] => [
       ...text.split('\n').flatMap((line, index) => (/\bonDiagnostics\b/.test(line) ? [`:${index + 1} names onDiagnostics`] : [])),
-      ...[...text.matchAll(/\.door\s*\([^;]*;/g)].filter((call) => /\bonDiagnostics\b/.test(call[0])).map(() => 'a door call carries onDiagnostics'),
+      ...[...text.matchAll(/\.(?:door|pipelineDoor)\s*\([^;]*;/g)].filter((call) => /\bonDiagnostics\b/.test(call[0])).map(() => 'a door call carries onDiagnostics'),
     ];
 
     it('finds a door call that carries onDiagnostics, a spread-in member and a bare name (control)', () => {
@@ -470,6 +479,15 @@ describe('A-8: the bytes of a start message are made by the production door only
       expect(relayStart.match(/\.door\s*\(/g)).toHaveLength(1);
       expect(relayStart).toMatch(/start\.door\(\{ command: start\.program, args: \[\], env: \{\}, message, timers: start\.timers, onOutput: start\.onOutput \}\)/);
       expect(handsOnDiagnostics(relayStart)).toEqual([]);
+      // Task 4 row 89: the preview starts through the door's pipeline, once: the relay as above (the message, no argument, no
+      // environment, no output observer - its output is the encoder's input), the encoder with the fixed list of the codec's closed
+      // set, an empty environment, its own process group and the MJPEG observer; neither carries onDiagnostics (the line above).
+      expect(relayStart.match(/\.pipelineDoor\s*\(/g)).toHaveLength(1);
+      expect(relayStart).toMatch(/^ {4}\{ command: start\.program, args: \[\], env: \{\}, message, timers: start\.timers \},$/m);
+      expect(relayStart).toMatch(/^ {4}\{ command: start\.guard, args: previewEncoderArguments\(start\.ffmpeg, start\.codec\), env: \{\}, timers: start\.timers, onOutput: deliver, processGroup: true \},$/m);
+      expect(relayStart).toMatch(/return Object\.freeze\(\[ffmpeg, '-hide_banner', '-nostdin', '-loglevel', 'error', '-f', PREVIEW_DEMUXER\[codec\], '-i', 'pipe:0', \.\.\.PREVIEW_ENCODER_TAIL\]\);/);
+      expect(relayStart).toMatch(/const PREVIEW_DEMUXER: Readonly<Record<CameraPreviewCodec, 'h264' \| 'hevc'>> = Object\.freeze\(\{ H264: 'h264', HEVC: 'hevc' \}\);/);
+      expect(handsOnDiagnostics('return start.pipelineDoor({ command: start.program, onDiagnostics: x }, second);')).toEqual([':1 names onDiagnostics', 'a door call carries onDiagnostics']);
     });
   });
 });
@@ -484,16 +502,22 @@ const FENCE_INDEX = 'src/capture/fence/index.ts';
 describe('A-9: the built production adapters are named by a closed list of production sources (since the lift: the loader and the fence\'s boot step)', () => {
   /** Each built file, without extension, with the files that may name it. */
   const BUILT: Readonly<Record<string, readonly string[]>> = {
-    [`${ADAPTERS}camera/onvif-relay`]: [`${LOADER}.ts`],
+    // Decisions D51 / D53 (row 90P): the live preview's pipeline and manager take the refusal codes of the camera path, their
+    // error class, `relayEndOf` and the stored stream's type - no adapter of it; they build no adapter and open no source of it.
+    [`${ADAPTERS}camera/onvif-relay`]: [`${LOADER}.ts`, `${ADAPTERS}camera/preview-pipeline.ts`, `${ADAPTERS}camera/preview-manager.ts`],
     // Task 4 row 50 (amendment AM-2): the stream half of the CONNECTION TEST starts the relay in probe mode through the
     // same relay start (the one caller of the injection point, rule A-2). It is no adapter and is registered nowhere:
     // the connect flow hands it its door, and no stream is opened without a credential and a configured relay program.
-    [`${ADAPTERS}camera/relay-start`]: [`${ADAPTERS}camera/onvif-relay.ts`, `${ADAPTERS}camera/stream-probe.ts`],
+    // Decisions D51 / D53 (row 90P): the fence re-exports the preview's starter (`startCameraPreview`) for the composition of
+    // production capture, which names no file of the capture unit; the composition binds it to the door's pipeline and the
+    // three programs of the configuration, and the preview pipeline is handed that binding.
+    [`${ADAPTERS}camera/relay-start`]: [`${ADAPTERS}camera/onvif-relay.ts`, `${ADAPTERS}camera/stream-probe.ts`, FENCE_INDEX],
     // Task 4 row 67 (its request, served by row 46): the production microphone adapter beside the stub `audio/usb-audio`.
     // Task 4 row N9 (design 06 section 4.4: "may be shared AS CODE"): the macOS adapter imports from it the match of a
     // stored row, the refusal codes and their error class, the row's shape rule and the guard's vector - no adapter of it.
     // Row 88: the loader builds it on `linux`; the fence takes its card match for the loss watch.
-    [`${ADAPTERS}audio/usb-audio-production`]: [`${ADAPTERS}audio/usb-audio-macos.ts`, `${LOADER}.ts`, FENCE_INDEX],
+    // Row 91c (decisions D51/D53): the idle meters take the card match, the row's shape rule and the guard's vector - no adapter of it.
+    [`${ADAPTERS}audio/usb-audio-production`]: [`${ADAPTERS}audio/usb-audio-macos.ts`, `${ADAPTERS}audio/idle-meter.ts`, `${LOADER}.ts`, FENCE_INDEX],
     // Task 4 row N9: the macOS production microphone adapter of kind USB_AUDIO, and its pure gate, which only that adapter names.
     // MOVED BY ROW N10 (design 06 row N10; C135 (3)): the loader builds it on `darwin` once its opener is admitted (a type import and
     // the dynamic import of the build); the fence's boot step takes its pure match of the loss watch and the notice's type - no
@@ -513,7 +537,8 @@ describe('A-9: the built production adapters are named by a closed list of produ
   it('finds a planted import by the layer index, by the fence, by the capture unit and by the loader (control)', () => {
     const planted: SourceFile[] = [
       { path: `${ADAPTERS}index.ts`, text: "export { createOnvifRelayCameraAdapter } from './camera/onvif-relay';\n" },
-      { path: FENCE_INDEX, text: "import { startCameraRelay } from '../adapters/camera/relay-start';\n" },
+      // Row 90P: the fence index may name the relay start now (the preview's starter); a sibling of it may not.
+      { path: 'src/capture/fence/boot.ts', text: "import { startCameraRelay } from '../adapters/camera/relay-start';\n" },
       { path: FENCE_INDEX, text: "\nimport { createOnvifRelayCameraAdapter } from '../adapters/camera/onvif-relay';\n" },
       { path: 'src/capture/index.ts', text: "import { createMicLossWatch } from './adapters/audio/mic-loss';\n" },
       // MOVED BY ROW N10: the loader may name the macOS adapter now; the composing file may not.
@@ -526,7 +551,7 @@ describe('A-9: the built production adapters are named by a closed list of produ
     ];
     expect(violations(planted)).toEqual([
       `${ADAPTERS}index.ts:1 names a built production adapter`,
-      `${FENCE_INDEX}:1 names a built production adapter`,
+      'src/capture/fence/boot.ts:1 names a built production adapter',
       `${FENCE_INDEX}:2 names a built production adapter`,
       'src/capture/index.ts:1 names a built production adapter',
       'src/capture-composition.ts:1 names a built production adapter',
@@ -628,6 +653,12 @@ describe('A-10: no permissive destination value under src/; the judgement of a s
       call: /^ {2}const judged = judgeStoredCamera\(resolved\.candidate\.camera, binding\.rule\);$/m,
       use: /^ {2}const turn = limits\.begin\(candidate\.camera\.host, sessionId\);$/m,
     },
+    // Decisions D51 / D53 (row 90P): the live camera preview takes the steps of `openSource` - the judgement stands before the
+    // reveal of its own reader, so before the locator read and the start of the preview.
+    [`${ADAPTERS}camera/preview-pipeline.ts`]: {
+      call: /^ {6}const judged = judgeStoredCamera\(stored\.candidate, dependencies\.storedAddress\);$/m,
+      use: /^ {8}sealed = await until\(credentials\.previewOpen\(deviceId, operatorId\)\);$/m,
+    },
   };
   const DECLARATION = `${ADAPTERS}camera/stored-address.ts`;
 
@@ -727,6 +758,14 @@ describe('A-10: no permissive destination value under src/; the judgement of a s
       refuse: /^ {2}if \(!judged\.allowed \|\| fromAddress === null\) \{$/m,
       dials: [/\bgiven\.boundTo\(fromAddress\)/g],
       unbound: /\b(?:resolved\.tester|given)\.test\(|\bconst \{[^}\n]*\btester\b[^}\n]*\} = resolved;/g,
+    },
+    // Decisions D51 / D53 (row 90P): the live preview's two dials - the locator read and the start of the preview - take the
+    // source of the judgement, as the camera adapter's do.
+    [`${ADAPTERS}camera/preview-pipeline.ts`]: {
+      take: /^ {6}const from = storedCameraSourceOf\(judged\);$/m,
+      refuse: /^ {6}if \('refusal' in from\) throw new CameraOpenError\(CameraOpenRefusal\.ADDRESS_REFUSED, deviceId, from\.refusal\);$/m,
+      dials: [/\blocator\.locate\(stored\.candidate, sealed, stored\.onvifProfileToken, inner\.signal, from\.sourceAddress\)/g, /\bstart\(\{ deviceId, locator: located\.locator, sealed, source: from\.sourceAddress,[^\n]*\}\);/g],
+      unbound: /\blocator\.locate\((?![^\n]*from\.sourceAddress\))|\bstart\(\{(?![^\n]*source: from\.sourceAddress)/g,
     },
   };
   const sourceHalfFaults = (text: string, spec: (typeof SOURCE_TAKERS)[string]): string[] => {

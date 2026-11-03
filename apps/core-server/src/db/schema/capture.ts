@@ -188,13 +188,14 @@ export const captureDevices = pgTable(
     uniqueIndex('capture_devices_onvif_uuid_key')
       .on(t.onvifUuid)
       .where(sql`${t.onvifUuid} IS NOT NULL AND ${t.retiredAt} IS NULL`),
-    // Schema v15: who retired the device. RESTRICT, as every operator reference of this file.
+    // Schema v15: who retired the device. Since migration 0036 the retirement stands even when
+    // the operator who ordered it is purged.
     foreignKey({
       name: 'capture_devices_retired_by_fkey',
       columns: [t.retiredBy],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     // The id prefix is tied to the kind, so a registry row cannot claim to be a camera under a
     // `MIC-` id (dbc-3 §B.2).
@@ -294,12 +295,15 @@ export const captureConfig = pgTable(
     })
       .onDelete('restrict')
       .onUpdate('no action'),
+    // Migration 0036 (principal, 2026-11-02): a reference to a record OF THE UNIT drops its
+    // attribution when the operator goes, instead of holding the record in place. Applies to
+    // every `updated_by` / `retired_by` operator reference of this file.
     foreignKey({
       name: 'capture_config_updated_by_fkey',
       columns: [t.updatedBy],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     check('capture_config_profile_check', sql`${code(t.video01Profile)} AND ${code(t.video02Profile)}`),
     // The two mic slots are two different inputs (OD-09).
@@ -466,7 +470,7 @@ export const captureAudioInputs = pgTable(
       columns: [t.updatedBy],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     // One input IN SERVICE per card input. Until schema v15 a unique CONSTRAINT of the same name;
     // since then a partial unique index, so that a retired input no longer holds it (design 07
@@ -545,7 +549,7 @@ export const captureNetworkConfig = pgTable(
       columns: [t.updatedBy],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     check('capture_network_config_singleton_check', sql`${t.singleton}`),
     check('capture_network_config_interface_name_check', sql`${t.interfaceName} IS NULL OR ${matches(t.interfaceName, INTERFACE_NAME)}`),
@@ -605,7 +609,7 @@ export const hostNetworkAliases = pgTable(
     address: text('address').notNull(),
     reason: text('reason').$type<HostAliasReasonValue>().notNull(),
     addedAt: bigint('added_at', { mode: 'number' }).notNull(),
-    addedBy: text('added_by').notNull(),
+    addedBy: text('added_by'),
     expiresAt: bigint('expires_at', { mode: 'number' }).notNull(),
     removedAt: bigint('removed_at', { mode: 'number' }),
     removeReason: text('remove_reason').$type<HostAliasRemoveReasonValue>(),
@@ -613,19 +617,21 @@ export const hostNetworkAliases = pgTable(
     removeError: text('remove_error'),
   },
   (t) => [
+    // Migration 0036: the alias row records what the Core did to the host, which stays true
+    // after the operator who asked for it is purged; only the name is lost.
     foreignKey({
       name: 'host_network_aliases_added_by_fkey',
       columns: [t.addedBy],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     foreignKey({
       name: 'host_network_aliases_removed_by_fkey',
       columns: [t.removedBy],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     // One alias in place per interface and address (schema design 2.5); also "which are ours".
     uniqueIndex('host_network_aliases_open_address_key')

@@ -838,6 +838,12 @@ export interface RegisterCaptureMicrophoneInput {
   deviceId: string | null;
   /** The product name as the Core's card listing returned it: printable ASCII, 1 to 64 characters (AD-07 (1)). */
   model: string;
+  /**
+   * Ids the registry TABLE already holds that the slice may not (finding D50: a production Core keeps
+   * the seeded development rows out of its slice, so `MIC-01` looked free while its row was a `FAKE`
+   * one). A new microphone takes a number above every one of them. Absent: the slice alone.
+   */
+  takenIds?: readonly string[];
 }
 
 /**
@@ -1476,6 +1482,12 @@ export interface AuditEventBody {
 export interface AuditRow extends AuditEventBody {
   prevHash: string;
   hash: string;
+}
+
+/** One erasure recorded by `audit_purge_log`: the sequences it took, both ends included. */
+export interface PurgedRange {
+  readonly from: number;
+  readonly to: number;
 }
 
 export interface AuditLogSlice {

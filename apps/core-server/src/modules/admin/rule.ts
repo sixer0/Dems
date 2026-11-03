@@ -16,13 +16,30 @@
 import type { OperatorRole } from '@dems/shared/sim';
 import type { LockedOperator } from './statements';
 
+/**
+ * The username of the vendor account that alone may create, edit or delete an operator (RB-9 as
+ * amended by the principal, PT GSP, 02-11-2026). It is an identity, not a permission: the matrix
+ * has no role that means "vendor", and a client's supervisor holds the very same USER_ADMIN that
+ * root does. The check therefore reads the caller's own username, inside the unit, under the same
+ * lock as the change.
+ */
+export const VENDOR_ROOT_USERNAME = 'root';
+
+/** True when the caller of a narrowed operation is the vendor root account. */
+export function isVendorRoot(username: string | null | undefined): boolean {
+  return username === VENDOR_ROOT_USERNAME;
+}
+
 /** What `assignUserRole` or `disableUser` is about to do to one operator. `enableUser` cannot take an administrator away. */
 export type OperatorChange =
   | { readonly kind: 'ROLE'; readonly operatorId: string; readonly role: OperatorRole }
-  | { readonly kind: 'DISABLE'; readonly operatorId: string };
+  | { readonly kind: 'DISABLE'; readonly operatorId: string }
+  /** RB-9 as amended (02-11-2026): a delete takes the row away, so RB-8 counts the rows that stay. */
+  | { readonly kind: 'DELETE'; readonly operatorId: string };
 
 /** The operator rows as they would be once `change` is written. */
 export function applyChange(operators: readonly LockedOperator[], change: OperatorChange): LockedOperator[] {
+  if (change.kind === 'DELETE') return operators.filter((operator) => operator.id !== change.operatorId);
   return operators.map((operator) => {
     if (operator.id !== change.operatorId) return operator;
     return change.kind === 'ROLE' ? { ...operator, role: change.role } : { ...operator, enabled: false };

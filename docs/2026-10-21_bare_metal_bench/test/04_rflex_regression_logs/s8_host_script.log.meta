@@ -1,0 +1,4 @@
+PRE 18:23:07 uptime: 18:23  1 user, load averages: 7.99 7.84 7.44
+START 18:23:07 CMD: bash scripts/host/test_host_profile_scripts.sh
+END 18:23:09 rc=0 duration=2s
+POST uptime: 18:23  1 user, load averages: 7.99 7.85 7.45

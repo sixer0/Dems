@@ -11,6 +11,13 @@ Repositori ini berisi **demo** DEMS Edge Client: konsol web Core, aplikasi opera
 - **Koreksi emulator (sejak 2026-10-04):** emulator yang dipakai sekarang `dems2_phone`, `dems2_tablet` dan `dems2_phone2`. PIN emulator di atas hanya berlaku untuk AVD lama `dems_*` (tidak dinyalakan lagi). Kunci layar `dems2_phone` dan `dems2_tablet` dipasang sendiri oleh pengguna dengan `apps/mobile/scripts/emulator-user-lock.sh`; nilainya tidak ditulis di sini, dan agen tidak pernah mengetik PIN.
 - **Tugas keempat (ditambahkan 2026-10-14; cabang `task4/input-av-core-port`, belum masuk `main`):** kunci tanda tangan produksi (`npm run evidence:production-key -w @dems/core-server`), penggantian kata sandi demo dari host (`npm run operator:set-password -w @dems/core-server`), kamera ONVIF nyata dan fungsi komisioning (Linux saja). Semuanya diuji hanya di Mac ini dengan perangkat pengganti; belum ada sesi dengan kamera produksi yang direkam dan disegel, dan belum ada yang dijalankan di host Ubuntu. Rinciannya di bagian **Task 4** dan Known limits 46 sampai 58.
 
+## LCD ESP32 integration (2026-10-19)
+
+The optional local `backend-lcd` service is in [`apps/lcd-backend`](apps/lcd-backend/README.md).
+Set `DEMS_LCD_BACKEND_URL=http://127.0.0.1:8090` on the Core host and restart Core to publish video-track recording status to it. Inspect **Devices & Inputs → Front Panel → LCD connection** in Live mode. Default is disabled; the in-app Simulated preview never contacts USB. Core uses a six-second recording lease. The Python HTTP integration is tested without USB; the physical ESP32 panel is not yet verified. Installation, serial device settings, channel mapping and Linux Docker bench limits are in that README.
+
+The Linux Docker installer can include LCD directly: see [Docker installer instructions](deploy/docker/installer/INSTALL-ID.md). The bundle carries the LCD runtime and configures the Core connection and USB group during installation; a separate LCD installation is unnecessary.
+
 ## What this is
 
 A demo stack for the DEMS Edge Client. Every name, case, recording, hash, key and credential in it is synthetic and labelled DEMO.

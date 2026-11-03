@@ -239,6 +239,27 @@
       "when": 1791957616783,
       "tag": "0033_capture_device_retirement_privileges",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793275434046,
+      "tag": "0034_capture_config_supervisor_revocation",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793603749855,
+      "tag": "0035_operator_administration_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793686800000,
+      "tag": "0036_operator_purge",
+      "breakpoints": true
     }
   ]
 }

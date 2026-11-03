@@ -68,8 +68,16 @@ export const ROLE_PERMISSIONS = {
     Permission.PAIRING_MANAGE,
     Permission.USER_ADMIN,
     Permission.DEMO_CONTROL,
-    // OD-10: the device selector, editable only while no session is open.
-    Permission.CAPTURE_CONFIG,
+    // OD-10 held CAPTURE_CONFIG here. REVOKED 2026-10-29 by the product principal (PT GSP):
+    // the capture topology is the principal's layer, written by the installing technician
+    // (TECHNICIAN: CAPTURE_CONFIG + CAPTURE_COMMISSION + DEVICE_MANAGE), never by an operating
+    // role. The supervisor keeps operations 76 and 77 (`AUTHENTICATED_ACCESS`: every role may
+    // read the selector and the device registry) - exactly the duty of verifying that a camera is
+    // attached and running - and loses the writes 78 / 79 / 89 / 95 / 96 and the credential and
+    // commissioning probes that name CAPTURE_CONFIG alone (15 operations: denied cells 13 -> 28).
+    // Migration `0034` removes the stored grant from databases seeded before this change (the
+    // `0018` exception class: the boot refuses a stored matrix that differs from this table).
+    // C3 §4's line for CAPTURE_CONFIG now names TECHNICIAN only; see AC-B-16 counts below.
   ],
   TECHNICIAN: [
     Permission.EVIDENCE_VIEW,

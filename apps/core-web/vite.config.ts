@@ -25,8 +25,8 @@ const CORE_PROXY_PORTS = ['4420', '4421', '4422', '4423']
  * (SR-04, OR-5). Without the variable nothing is returned, so Vite's default stays and Simulated-mode
  * dev is unchanged.
  */
-/** A proxied path whose last segment is a signed bearer value: the media session (`mts_`) and the export download (`exs_`). */
-const SIGNED_PATH = /^\/(media|exports)\/.*$/
+/** A proxied path whose last segment is a bearer value: the media session (`mts_`), the export download (`exs_`) and the live camera preview (`cps_`, decisions D51 / D53). */
+const SIGNED_PATH = /^\/(media|exports|preview)\/.*$/
 
 /**
  * Review finding R93-09 (fix pass F-M8). Vite prints `http proxy error: <request url>` for every
@@ -66,6 +66,9 @@ function coreDevProxy(port: string | undefined): Pick<ServerOptions, 'proxy' | '
       '/media': { target, configure: blankSignedPathOnProxyError },
       // Fix pass F-M8 (R93-05): the registry-external download route of a finished export, same-origin like `/media`.
       '^/exports/exs_': { target, configure: blankSignedPathOnProxyError },
+      // Decisions D51 / D53: the registry-external live camera preview stream (`GET /preview/<token>`), same-origin like `/media`.
+      // A preview the Core cuts (the sign-in session ended, the camera was lost) is a proxy error: its token path is blanked too.
+      '/preview': { target, configure: blankSignedPathOnProxyError },
     },
     cors: false,
   }

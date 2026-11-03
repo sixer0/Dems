@@ -776,7 +776,7 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
     await checkHead(scope);
     const { sim } = scope.live;
     counters.commands += 1;
-    const deviceId = microphone.deviceId ?? nextCaptureMicrophoneId(sim.store.getState().captureDevices.devices);
+    const deviceId = microphone.deviceId ?? nextCaptureMicrophoneId(sim.store.getState().captureDevices.devices, microphone.takenIds ?? []);
     try {
       sim.actions.registerCaptureMicrophone(microphone);
     } catch (error) {

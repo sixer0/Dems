@@ -36,8 +36,7 @@ import { CORE_SERVER_ONLY, CoreApiMode, CoreApiTag, WEB_CONSOLE_ONLY_REASON, typ
 import { ERROR_EXAMPLES, EXAMPLE_INSTANT_MS, apiErrorExample, deniedExamples } from './example-parts';
 import type { OperationExamples } from './examples';
 import { INVALID_JSON, NOT_SIGNED_IN, SIM_V2_NOTE, notPermitted } from './operation-parts';
-import { HARDWARE_DEVICE_ID_PATTERN, OPERATOR_ID_PATTERN } from './patterns';
-import { epochMs } from './schema-parts';
+import { HARDWARE_DEVICE_ID_PATTERN } from './patterns';
 import { CaptureDeviceStatusSchema } from './state-slices';
 
 // ═══════════════════════════════════════════════════════════════════════════════════════

@@ -75,6 +75,16 @@ const systemTimer = (run: () => void, ms: number): (() => void) => {
   return () => clearTimeout(handle);
 };
 
+/**
+ * The devices an adapter serves NOW: the list it was built with, then those admitted after the
+ * build (row 85d `admitDevice`; finding D47). An adapter keeps `devices` as its first list, so a
+ * camera adopted or a microphone registered after the boot is only in `admittedDevices()`.
+ */
+function servedDevices(adapter: { readonly devices: readonly { readonly id: string }[] }): readonly { readonly id: string }[] {
+  const later = (adapter as { admittedDevices?: unknown }).admittedDevices;
+  return typeof later === 'function' ? [...adapter.devices, ...(later.call(adapter) as readonly { readonly id: string }[])] : adapter.devices;
+}
+
 export function probeOfAdapters(options: AdapterProbeOptions): CaptureReachabilityProbe {
   const timeoutMs = options.timeoutMs ?? CAPTURE_PRECHECK_PROBE_TIMEOUT_MS;
   const setTimer = options.setTimer ?? systemTimer;
@@ -82,7 +92,7 @@ export function probeOfAdapters(options: AdapterProbeOptions): CaptureReachabili
 
   return {
     async camera(deviceId, signal) {
-      const adapter = options.cameras.find((candidate) => candidate.devices.some((device) => device.id === deviceId));
+      const adapter = options.cameras.find((candidate) => servedDevices(candidate).some((device) => device.id === deviceId));
       // No adapter of the running operation serves it: it cannot answer, and nothing stands in for it.
       if (adapter === undefined) return { reachable: false, cause: CaptureUnreachableCause.UNREACHABLE };
       if (signal.aborted) return { reachable: false, cause: CaptureUnreachableCause.UNREACHABLE };
@@ -123,10 +133,10 @@ export function probeOfAdapters(options: AdapterProbeOptions): CaptureReachabili
           // The list itself could not be read: every microphone of this adapter is absent, with the cause the error names.
           const cause = causeOfProbeError(error);
           const errorCode = cause === CaptureUnreachableCause.UNREACHABLE ? AudioInputErrorCode.OPEN_FAILED : (cause as AudioInputErrorCode);
-          for (const device of adapter.devices) microphones.push({ deviceId: device.id, present: false, errorCode, adapterKind: adapter.kind, sourceClass });
+          for (const device of servedDevices(adapter)) microphones.push({ deviceId: device.id, present: false, errorCode, adapterKind: adapter.kind, sourceClass });
           continue;
         }
-        for (const device of adapter.devices) {
+        for (const device of servedDevices(adapter)) {
           const found = listed.find((entry) => entry.inputId === device.id);
           microphones.push({
             deviceId: device.id,

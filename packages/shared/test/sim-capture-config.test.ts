@@ -95,7 +95,7 @@ describe('setCaptureConfig: the three kinds of change (operations 78, 79, 80)', 
     expect(CAPTURE_CONFIG_CHANGE_OPERATION_ID).toEqual({ UPDATE: 'updateCaptureConfig', CAMERA_SOURCE: 'setCaptureCameraSource', PRIMARY_MIC: 'setPrimaryMic' });
   });
 
-  it.each(['SUPERVISOR', 'TECHNICIAN'] as const)('%s makes a mic input PRIMARY: one audited row, the rows in input order, the mic slice follows', (role) => {
+  it.each(['TECHNICIAN'] as const)('%s makes a mic input PRIMARY: one audited row, the rows in input order, the mic slice follows', (role) => {
     const h = harness(role);
     h.clock.advance(1_000);
     h.sim.actions.setCaptureConfig({ kind: 'PRIMARY_MIC', inputId: 'MIC-02' });

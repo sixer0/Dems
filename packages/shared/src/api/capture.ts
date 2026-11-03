@@ -118,6 +118,20 @@ export const EVIDENCE_MEDIA_TOKEN_PREFIX = 'mts_';
  * shared blanking rule knows it (`redaction.ts`), and it never enters a log or an audit row.
  */
 export const EVIDENCE_EXPORT_DOWNLOAD_TOKEN_PREFIX = 'exs_';
+
+// ── Live camera preview (decisions D51 / D53) ─────────────────────────────────────────────────
+
+/**
+ * Fixed prefix of the token of a live camera preview session (`createCameraPreviewSession`): the
+ * last path segment of the registry-external `GET /preview/<token>`. A random bearer value bound
+ * to one operator, one sign-in session and one camera; the shared blanking rule knows it
+ * (`redaction.ts`), and it never enters a log or an audit row.
+ */
+export const CAMERA_PREVIEW_TOKEN_PREFIX = 'cps_';
+/** How long a preview URL may wait for its first request (ms). A stream already running is not cut by it. */
+export const CAMERA_PREVIEW_SESSION_TTL_MS = 60_000;
+/** Lifetime of a lease of the idle microphone meters (`holdIdleMeters`), in ms. */
+export const IDLE_METER_LEASE_MS = 30_000;
 /** The path the download route is served under: `/exports/<token>`. Same origin as the API. */
 export const EVIDENCE_EXPORT_DOWNLOAD_ROUTE_PREFIX = '/exports';
 /**

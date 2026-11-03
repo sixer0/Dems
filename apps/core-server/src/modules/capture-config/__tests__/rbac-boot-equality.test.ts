@@ -14,7 +14,7 @@
 // WHAT THE COMPARISON QUOTES. The stored grants as the boot read them, and the shared role table
 // `ROLE_PERMISSIONS` the hosted simulator decides from - both as sorted `ROLE: PERMISSION` names,
 // printed by the run and held equal member by member. The negative control then drops one of the
-// TWO NEW grants (SUPERVISOR CAPTURE_CONFIG) and shows the same boot refusing with
+// grants (TECHNICIAN CAPTURE_CONFIG) and shows the same boot refusing with
 // `STORED_GRANTS_MISMATCH` naming it: the equality genuinely bites on the new permission rows,
 // which is what M2-API-3 asks.
 import { ROLE_PERMISSIONS } from '@dems/shared/sim';
@@ -87,7 +87,7 @@ describe('M2-API-3 / M2-MT-7: the rbac.matrix boot passes with D88 equality on t
       expect(booted.queries).toEqual([READ_STORED_MATRIX]);
       expect(loaded.roles).toEqual(['INVESTIGATOR', 'SUPERVISOR', 'TECHNICIAN']);
       expect(loaded.permissions).toHaveLength(15);
-      expect(loaded.grants).toHaveLength(23);
+      expect(loaded.grants).toHaveLength(22);
 
       // THE COMPARISON, quoted for the artifact: stored grants vs the shared role table.
       const stored = grantNames(loaded.grants);
@@ -96,8 +96,7 @@ describe('M2-API-3 / M2-MT-7: the rbac.matrix boot passes with D88 equality on t
       console.info(`[row52] stored grants: ${stored.join(' | ')}`);
       expect(stored).toEqual(shared);
       // The two new grants are inside the equality (SH-04): the rows M2-API-3 names.
-      expect(stored).toContain('SUPERVISOR: CAPTURE_CONFIG');
-      expect(stored).toContain('TECHNICIAN: CAPTURE_CONFIG');
+            expect(stored).toContain('TECHNICIAN: CAPTURE_CONFIG');
       expect(stored).toContain('INVESTIGATOR: TRANSCRIPT_REVISE');
       expect(stored).toContain('SUPERVISOR: TRANSCRIPT_REVISE');
       // Task 4 row 100 (decision U10): the commissioning permission is inside the equality too, and
@@ -109,8 +108,8 @@ describe('M2-API-3 / M2-MT-7: the rbac.matrix boot passes with D88 equality on t
     }
   });
 
-  it('negative control: dropping the new SUPERVISOR CAPTURE_CONFIG grant stops the SAME boot with STORED_GRANTS_MISMATCH naming it', async () => {
-    const booted = await bootGuard({ role: 'SUPERVISOR', permission: 'CAPTURE_CONFIG' });
+  it('negative control: dropping the TECHNICIAN CAPTURE_CONFIG grant stops the SAME boot with STORED_GRANTS_MISMATCH naming it', async () => {
+    const booted = await bootGuard({ role: 'TECHNICIAN', permission: 'CAPTURE_CONFIG' });
     try {
       const guard = permissionGuard(booted.app);
       guard.checkRouter();
@@ -121,7 +120,7 @@ describe('M2-API-3 / M2-MT-7: the rbac.matrix boot passes with D88 equality on t
         refused = cause as AccessRuleError;
       }
       expect(refused, 'the boot must refuse a seed that lost a new grant').toBeDefined();
-      expect(refused?.problems.some((problem) => problem.code === AccessRuleErrorCode.STORED_GRANTS_MISMATCH && problem.detail === 'missing grant: SUPERVISOR CAPTURE_CONFIG')).toBe(true);
+      expect(refused?.problems.some((problem) => problem.code === AccessRuleErrorCode.STORED_GRANTS_MISMATCH && problem.detail === 'missing grant: TECHNICIAN CAPTURE_CONFIG')).toBe(true);
       // The last matrix that passed stays: nothing was loaded from the refusing read.
       expect(guard.matrix()).toBeNull();
     } finally {

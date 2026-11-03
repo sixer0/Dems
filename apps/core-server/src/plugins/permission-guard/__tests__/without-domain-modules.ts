@@ -76,6 +76,8 @@ vi.mock('../../../modules/evidence', stubs.module('evidenceModule'));
 vi.mock('../../../modules/evidence-export', stubs.module('evidenceExportModule'));
 // Task 3 M8, blueprint row 90 (ruling D140): the media-stream module (operation 88 and the evidence media route) is a domain module too.
 vi.mock('../../../modules/media-stream', stubs.module('mediaStreamModule'));
+// Decisions D51 / D53 (row 90P): the camera-preview module (operations 112-113 and the preview route) is a domain module too.
+vi.mock('../../../modules/camera-preview', stubs.module('cameraPreviewModule'));
 vi.mock('../../../modules/network-time', stubs.module('networkTimeModule'));
 vi.mock('../../../modules/pairing', stubs.pairing);
 // Task 3 M7, blueprint row 82b (ruling D147): the sealing module (operation 83 and the mount of the sealing composition) is a domain module too.

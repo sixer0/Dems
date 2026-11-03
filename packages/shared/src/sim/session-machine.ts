@@ -517,7 +517,9 @@ function unassignedSource(state: SimState, slot: CaptureSelectorSlot): PrecheckE
 /**
  * One gate check against the live device state:
  * - BLOCK: Core OFFLINE (the tablet link is the Core link, MA-10), lens FAULT, storage FULL,
- *   security FAULT.
+ *   security FAULT. On a Core in its own capture the tablet link only WARNS (decision D48): that
+ *   Core runs the pre-check itself, so an OFFLINE link means no tablet is connected - a session
+ *   started from the Core console needs none.
  * - WARN: MIC NO SIGNAL or CLIP, storage LOW, time on RTC, enclosure tamper (S32-5).
  * - PASS otherwise. Time on NTP passes and shows its source (informational, §5.3).
  */
@@ -526,7 +528,7 @@ export function evaluatePrecheck(state: SimState, id: PrecheckCheckId): Precheck
   switch (id) {
     case 'CORE':
       return state.tabletLink.state === 'OFFLINE'
-        ? { status: 'BLOCK', value: 'OFFLINE', reason: 'Core link offline', reasonCode: R.CORE_OFFLINE, params: {} }
+        ? { status: isOwnCaptureCoreState(state) ? 'WARN' : 'BLOCK', value: 'OFFLINE', reason: 'Core link offline', reasonCode: R.CORE_OFFLINE, params: {} }
         : { status: 'PASS', value: 'ONLINE', ...PASSED };
     case 'LENS_1':
     case 'LENS_2': {
@@ -1233,6 +1235,16 @@ export function recordingActor(state: Pick<SimState, 'audit'>, session: ActiveSe
   return session.createdBy;
 }
 
+/**
+ * T15 (row 91c): the CLIP latch of every microphone ends with the session that latched it. A clip of
+ * one recording is that recording's (its evidence and its alerts keep it); the next session's
+ * pre-check and the idle meters of the Devices & Inputs page start without it. The latch returns on
+ * the next clipping frame, as after `resetClip`. Untouched rows stay the same objects.
+ */
+function releaseClipLatches(mics: SimState['mics']): SimState['mics'] {
+  return mics.some((mic) => mic.clipLatched) ? mics.map((mic) => (mic.clipLatched ? { ...mic, clipLatched: false } : mic)) : mics;
+}
+
 function seal(state: SimState, session: ActiveSession, at: EpochMs): SimState {
   const evidenceId = session.evidenceId ?? evidenceIdFor(state.meta.counters.evidence, session.createdAt);
   const recordedAt = session.startedAt ?? session.createdAt;
@@ -1267,6 +1279,7 @@ function seal(state: SimState, session: ActiveSession, at: EpochMs): SimState {
   const sealed: ActiveSession = { ...session, state: SessionState.SEALED, sealedAt: at, evidenceId };
   const next: SimState = {
     ...state,
+    mics: releaseClipLatches(state.mics),
     session: sealed,
     evidence: [...state.evidence, item],
     lastSealedSessionId: session.id,
@@ -1622,6 +1635,7 @@ export function completeSealTransition(state: SimState, now: EpochMs, input: Com
   const next: SimState = {
     ...state,
     meta: session.evidenceId ? state.meta : { ...state.meta, counters: { ...state.meta.counters, evidence: state.meta.counters.evidence + 1 } },
+    mics: releaseClipLatches(state.mics),
     session: sealed,
     evidence: [...state.evidence, item],
     lastSealedSessionId: session.id,

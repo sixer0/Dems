@@ -10,7 +10,7 @@
 // | A product name that contains markup is drawn literally, as text | "answers of a Core" |
 // | Each answer of 98 and 99 has its state: registered input, 201 / 200 by change code, every refusal with its sentence, empty, truncated | "answers of a Core" |
 // | Role and idle gating: disabled with the reason, never hidden, nothing sent | "gates" |
-// | R-FLEX row 111: T-15 bound chip and other inputs disabled (Q96-01 a); move mode sends `release: true` and says the released line (bundle M); ALREADY_BOUND refusal with the holder; W-A8 ambiguous note (Q96-03 a) | "R-FLEX" |
+// | R-FLEX row 111 TURNED BY D48 (one microphone per input): T-15 bound chip, EVERY input of a bound card offered, no move control; a second input is a second microphone; ALREADY_BOUND refusal with the holder; W-A8 ambiguous note (Q96-03 a) | "R-FLEX" |
 //
 // The double: the in-app simulator (two synthetic cards; it registers nothing). The answers only a
 // Core gives (a registered input, 201, 200, 404, 429, 503, the two 409 of a listing) are put in at
@@ -90,13 +90,16 @@ describe('the model', () => {
     expect(moved.cards[0]?.boundTo).toBe('MIC-03')
     // A new microphone on a free card holds it from then on.
     expect(withRegistration(listingOf([other]), { cardId: 'OTHER', deviceIndex: 0, inputNumber: 1 }, { deviceId: 'MIC-05', inputNumber: 1 }).cards[0]?.boundTo).toBe('MIC-05')
+    // D48: a second microphone on a held card leaves its first holder in `boundTo`.
+    expect(merged.cards[0]?.boundTo).toBe('MIC-03')
   })
 
-  it('R-FLEX: a bound card offers only its holder\'s input unless it is moved; two serial-less units of one model bound to one microphone are ambiguous', () => {
+  it('D48: a bound card offers every input (one microphone per input); two serial-less units of one model bound to one microphone are ambiguous and offer none', () => {
     const bound = card({ channelCount: 3 })
     const offered = (moving: boolean, ambiguous = false) => inputsOf(bound).map((input) => inputOffered(bound, input, { moving, ambiguous }))
-    expect(offered(false)).toEqual([true, false, false])
+    expect(offered(false)).toEqual([true, true, true])
     expect(offered(true)).toEqual([true, true, true])
+    expect(offered(false, true)).toEqual([false, false, false])
     expect(offered(true, true)).toEqual([false, false, false])
     const free = card({ registered: [], boundTo: null, channelCount: 2 })
     expect(inputsOf(free).map((input) => inputOffered(free, input, { moving: false, ambiguous: false }))).toEqual([true, true])
@@ -230,12 +233,11 @@ describe('answers of a Core (put in at the two paths)', { timeout: 30_000 }, () 
     expect(registered).toHaveAttribute('data-registered', 'MIC-03')
     expect(registered).toHaveTextContent('Registered as MIC 3 (MIC-03)')
     expect(screen.getByTestId('audio-card-input-EXAMPLE_CARD-0-2')).not.toHaveAttribute('data-registered')
-    // T-15 (R-FLEX, Q96-01 a): the card a microphone holds says so; its other inputs are not offered, the holder's own input is.
+    // T-15 TURNED BY D48 (one microphone per input): the card a microphone holds says so; EVERY input is offered, no move control.
     expect(entry).toHaveAttribute('data-bound-to', 'MIC-03')
     expect(screen.getByTestId('audio-card-bound-EXAMPLE_CARD-0')).toHaveTextContent('Bound to MIC 3 (MIC-03)')
-    expect(radio('EXAMPLE_CARD-0', 1)).toBeEnabled()
-    for (let number = 2; number <= 8; number += 1) expect(radio('EXAMPLE_CARD-0', number)).toBeDisabled()
-    expect(screen.getByTestId('audio-card-move-button-EXAMPLE_CARD-0')).toHaveTextContent('Move MIC 3 (MIC-03) to another input')
+    for (let number = 1; number <= 8; number += 1) expect(radio('EXAMPLE_CARD-0', number)).toBeEnabled()
+    expect(screen.queryByTestId('audio-card-move-button-EXAMPLE_CARD-0')).not.toBeInTheDocument()
     // A free card: no chip, no move, every input offered.
     expect(screen.queryByTestId('audio-card-bound-FREE_CARD-0')).not.toBeInTheDocument()
     expect(screen.queryByTestId('audio-card-move-button-FREE_CARD-0')).not.toBeInTheDocument()
@@ -251,7 +253,8 @@ describe('answers of a Core (put in at the two paths)', { timeout: 30_000 }, () 
     expect(screen.getByTestId('audio-card-input-FREE_CARD-0-2')).toHaveAttribute('data-registered', 'MIC-04')
     expect(screen.getByTestId('audio-card-bound-FREE_CARD-0')).toHaveTextContent('Bound to MIC 4 (MIC-04)')
     expect(radio('FREE_CARD-0', 2)).not.toBeChecked()
-    expect(radio('FREE_CARD-0', 1)).toBeDisabled()
+    // D48: the other inputs of the now held card stay offered.
+    expect(radio('FREE_CARD-0', 1)).toBeEnabled()
     expect(registerButton()).toBeDisabled()
     // The Core was not asked for a second listing: nothing lists by itself.
     expect(callsTo(spy, CAPTURE_AUDIO_CARD_SEARCH_PATH)).toHaveLength(1)
@@ -363,48 +366,35 @@ describe('answers of a Core (put in at the two paths)', { timeout: 30_000 }, () 
   })
 })
 
-describe('R-FLEX: a card held by one microphone (answers of a Core)', { timeout: 30_000 }, () => {
-  it('move mode: the hint and Cancel; the registration says release: true; 200 REENABLED with releasedDeviceId says the released line and the holder moves', async () => {
+describe('D48: one microphone per input of a card (answers of a Core)', { timeout: 30_000 }, () => {
+  it('a second input of a bound card registers a SECOND microphone: the body has no release, 201 REGISTERED, the first holder keeps its input and the chip', async () => {
     const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
     const spy = core(sim, {
       list: () => answer(200, listingOf([card({ channelCount: 4 })])),
-      register: () => answer(200, { deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 3, channelCount: 4, releasedDeviceId: 'MIC-03' }),
+      register: () => answer(201, { deviceId: 'MIC-04', change: 'REGISTERED', inputNumber: 2, channelCount: 4, releasedDeviceId: null }),
     })
     await list()
     await screen.findByTestId('audio-card-EXAMPLE_CARD-0')
-    expect(radio('EXAMPLE_CARD-0', 3)).toBeDisabled()
-
-    // Move mode, then Cancel: back to the bound state, nothing sent.
-    fireEvent.click(screen.getByTestId('audio-card-move-button-EXAMPLE_CARD-0'))
-    expect(screen.getByTestId('audio-card-EXAMPLE_CARD-0')).toHaveAttribute('data-moving', 'true')
-    expect(screen.getByTestId('audio-card-move-hint-EXAMPLE_CARD-0')).toHaveTextContent('MIC 3 (MIC-03) will move to the input you choose and stop using its present input. Choose the input, then register it.')
-    for (let number = 1; number <= 4; number += 1) expect(radio('EXAMPLE_CARD-0', number)).toBeEnabled()
-    fireEvent.click(screen.getByTestId('audio-card-move-cancel-EXAMPLE_CARD-0'))
-    expect(screen.getByTestId('audio-card-EXAMPLE_CARD-0')).not.toHaveAttribute('data-moving')
-    expect(radio('EXAMPLE_CARD-0', 3)).toBeDisabled()
-    expect(callsTo(spy, CAPTURE_AUDIO_INPUT_REGISTER_PATH)).toHaveLength(0)
-
-    // Move mode again: choose input 3 and register.
-    fireEvent.click(screen.getByTestId('audio-card-move-button-EXAMPLE_CARD-0'))
-    fireEvent.click(radio('EXAMPLE_CARD-0', 3))
+    expect(screen.queryByTestId('audio-card-move-button-EXAMPLE_CARD-0')).not.toBeInTheDocument()
+    expect(radio('EXAMPLE_CARD-0', 2)).toBeEnabled()
+    fireEvent.click(radio('EXAMPLE_CARD-0', 2))
     fireEvent.click(registerButton())
     const done = await screen.findByTestId('audio-cards-registered')
-    expect(callsTo(spy, CAPTURE_AUDIO_INPUT_REGISTER_PATH).map(([call]) => call.body)).toEqual([{ cardId: 'EXAMPLE_CARD', deviceIndex: 0, inputNumber: 3, release: true }])
-    expect(done).toHaveAttribute('data-change', 'REENABLED')
-    expect(done).toHaveAttribute('data-released', 'MIC-03')
-    expect(screen.getByTestId('audio-cards-released')).toHaveTextContent('MIC 3 (MIC-03) now uses input 3 of this sound card. Its old input was released.')
-    // The holder now sits at input 3; its old input 1 is free but not offered (the card is still held); move mode ended.
-    expect(screen.getByTestId('audio-card-input-EXAMPLE_CARD-0-3')).toHaveAttribute('data-registered', 'MIC-03')
-    expect(screen.getByTestId('audio-card-input-EXAMPLE_CARD-0-1')).not.toHaveAttribute('data-registered')
-    expect(screen.getByTestId('audio-card-EXAMPLE_CARD-0')).not.toHaveAttribute('data-moving')
-    expect(radio('EXAMPLE_CARD-0', 3)).toBeEnabled()
-    expect(radio('EXAMPLE_CARD-0', 1)).toBeDisabled()
+    expect(callsTo(spy, CAPTURE_AUDIO_INPUT_REGISTER_PATH).map(([call]) => call.body)).toEqual([{ cardId: 'EXAMPLE_CARD', deviceIndex: 0, inputNumber: 2 }])
+    expect(done).toHaveAttribute('data-change', 'REGISTERED')
+    expect(done).not.toHaveAttribute('data-released')
+    expect(screen.queryByTestId('audio-cards-released')).not.toBeInTheDocument()
+    // Both microphones on their own inputs; the card's chip still names its first holder.
+    expect(screen.getByTestId('audio-card-input-EXAMPLE_CARD-0-1')).toHaveAttribute('data-registered', 'MIC-03')
+    expect(screen.getByTestId('audio-card-input-EXAMPLE_CARD-0-2')).toHaveAttribute('data-registered', 'MIC-04')
+    expect(screen.getByTestId('audio-card-bound-EXAMPLE_CARD-0')).toHaveTextContent('Bound to MIC 3 (MIC-03)')
+    for (let number = 1; number <= 4; number += 1) expect(radio('EXAMPLE_CARD-0', number)).toBeEnabled()
     expect(callsTo(spy, CAPTURE_AUDIO_CARD_SEARCH_PATH)).toHaveLength(1)
     expect(toastTexts()).toEqual([])
     expect(getMissingI18nKeys()).toEqual([])
   })
 
-  it('409 AUDIO_CARD_ALREADY_BOUND says the holder it names, never the text of the answer; list-again ends move mode', async () => {
+  it('409 AUDIO_CARD_ALREADY_BOUND says the holder it names, never the text of the answer; a bound card listed again offers no move control', async () => {
     const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI)
     const listings = [listingOf([card({ registered: [], boundTo: null })]), listingOf([card()])]
     core(sim, {
@@ -419,18 +409,17 @@ describe('R-FLEX: a card held by one microphone (answers of a Core)', { timeout:
     expect(refused).toHaveAttribute('data-refusal', 'ALREADY_BOUND')
     expect(refused).toHaveAttribute('data-holder', 'MIC-07')
     expect(refused).toHaveTextContent(A.refusal.AUDIO_CARD_ALREADY_BOUND.replaceAll('{{device}}', 'MIC 7 (MIC-07)'))
-    expect(refused).toHaveTextContent(/^This sound card is already used by MIC 7 \(MIC-07\)\./)
+    expect(refused).toHaveTextContent(/^This input of the sound card is already used by MIC 7 \(MIC-07\)\./)
     expect(screen.getByTestId('audio-cards').textContent ?? '').not.toContain('A sentence of the Core')
     expect(document.querySelector('[data-registered]')).toBeNull()
 
-    // List again: the card is now bound; move mode is left by a new listing.
+    // List again: the card is now bound (D48: every input still offered, no move control).
     await list()
     await waitFor(() => expect(screen.getByTestId('audio-card-EXAMPLE_CARD-0')).toHaveAttribute('data-bound-to', 'MIC-03'))
     expect(screen.queryByTestId('audio-cards-refused')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByTestId('audio-card-move-button-EXAMPLE_CARD-0'))
-    expect(screen.getByTestId('audio-card-EXAMPLE_CARD-0')).toHaveAttribute('data-moving', 'true')
-    await list()
-    await waitFor(() => expect(screen.getByTestId('audio-card-EXAMPLE_CARD-0')).not.toHaveAttribute('data-moving'))
+    expect(screen.queryByTestId('audio-card-move-button-EXAMPLE_CARD-0')).not.toBeInTheDocument()
+    expect(screen.getByTestId('audio-card-EXAMPLE_CARD-0')).not.toHaveAttribute('data-moving')
+    expect(radio('EXAMPLE_CARD-0', 2)).toBeEnabled()
     expect(getMissingI18nKeys()).toEqual([])
   })
 

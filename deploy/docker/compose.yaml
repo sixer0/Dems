@@ -31,7 +31,7 @@ x-dems-privileges: &dems-privileges
 
 services:
   db:
-    image: postgres:18.4@sha256:a02db8cac496f15b094798a38254f14d6e00741f709360e5e00bb6668ea31636
+    image: ${DEMS_POSTGRES_IMAGE:-postgres:18.4@sha256:a02db8cac496f15b094798a38254f14d6e00741f709360e5e00bb6668ea31636}
     network_mode: host
     restart: unless-stopped
     environment:
@@ -74,6 +74,41 @@ services:
       retries: 30
       start_period: 120s
     stop_grace_period: 30s
+
+  lcd:
+    profiles: [lcd]
+    <<: *dems-image
+    entrypoint: ["python3", "-B", "/opt/dems/core/apps/lcd-backend/app/dems_backend.py"]
+    user: "10001:10001"
+    group_add: ["${DEMS_LCD_SERIAL_GID:-20}"]
+    devices: ["${DEMS_LCD_SERIAL_DEVICE:-/dev/ttyACM0}:/dev/dems-lcd"]
+    network_mode: host
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      core: { condition: service_healthy }
+    environment:
+      PYTHONUNBUFFERED: "1"
+      DEMS_BIND: "127.0.0.1"
+      DEMS_PORT: "8090"
+      DEMS_DEV: "/dev/dems-lcd"
+      DEMS_BAUD: "${DEMS_LCD_BAUD:-115200}"
+      DEMS_REKAM_DIR: "${DEMS_MEDIA_DIR:-/opt/dems/core/.data/media/sessions}"
+      DEMS_CH_NAMES: "CH1,CH2,CH3,CH4"
+      DEMS_LEASE_S: "6"
+    volumes:
+      - dems-data:/opt/dems/core/.data:ro
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz',timeout=2).read()"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
 
   console:
     profiles: [console]

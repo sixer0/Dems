@@ -58,16 +58,20 @@ import {
   DeviceHealthResponseSchema,
   DeviceInventorySchema,
   MicClipResetRequestSchema,
+  PanelFirmwareResponseSchema,
   VideoStatusResponseSchema,
+  findCoreApiOperation,
   type AudioStatusResponse,
   type CoreApiRegistryOperation,
   type DeviceHealthResponse,
   type DeviceInventory,
+  type PanelFirmwareResponse,
   type VideoStatusResponse,
 } from '@dems/shared/api';
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { mountLcdBridge, PANEL_FIRMWARE_OPERATION_ID, createPanelFirmwareReader } from '../../lcd';
 import { routeOfOperation } from '../../plugins/permission-guard';
 import { DEVICE_COMMAND_OF_OPERATION, operationOf, type DeviceCommandOperation } from './operations';
 import { inRealCaptureOperation, mountCaptureSourceFacts } from './source-facts';
@@ -108,6 +112,23 @@ const commandDone = (reply: FastifyReply): FastifyReply => reply.code(204).send(
 
 export const devicesModule: FastifyPluginAsync = async (app) => {
   const routes = app.withTypeProvider<ZodTypeProvider>();
+  const lcd = mountLcdBridge(app);
+
+  // 114 getPanelFirmware (LCD bridge task): the firmware word the LCD front panel states about
+  // ITSELF, answered PUBLICLY because the sign-in screen shows it before any session exists. The
+  // route is there whether or not this Core has a panel bridge: "nothing is known" is an answer of
+  // this operation, not a missing route. The reader is the LCD unit's (`src/lcd/panel-info.ts`) and
+  // never throws: an unreachable backend is two empty words, so a machine without a front panel
+  // keeps a working sign-in screen.
+  const panelFirmwareOperation = findCoreApiOperation(PANEL_FIRMWARE_OPERATION_ID);
+  if (panelFirmwareOperation === undefined) throw new Error(`the contract registry has no operation ${PANEL_FIRMWARE_OPERATION_ID}`);
+  const panelFirmware = createPanelFirmwareReader({ url: app.config.lcdBackendUrl ?? '' });
+
+  routes.route({
+    ...routeOfOperation(panelFirmwareOperation),
+    schema: { response: { 200: PanelFirmwareResponseSchema } },
+    handler: async (): Promise<PanelFirmwareResponse> => panelFirmware.read(),
+  });
 
   // Integration pass D11: the class and the "is on" of the sources of a REAL capture operation go
   // into slice `captureDevices` through the engine's fact door (`source-facts.ts`). Nothing in SIMULATED.
@@ -126,7 +147,8 @@ export const devicesModule: FastifyPluginAsync = async (app) => {
     schema: { response: { 200: DeviceHealthResponseSchema } },
     handler: async (): Promise<DeviceHealthResponse> => {
       const state = app.engine.state();
-      return deviceHealthOf(state, app.clock.now(), app.engine.meters(), captureSlotsOf(state), streamFacts);
+      const health = deviceHealthOf(state, app.clock.now(), app.engine.meters(), captureSlotsOf(state), streamFacts);
+      return lcd === null ? health : { ...health, lcd: lcd.status() };
     },
   });
 

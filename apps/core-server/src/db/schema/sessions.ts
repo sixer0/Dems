@@ -92,12 +92,14 @@ export const activeSession = pgTable(
     })
       .onDelete('restrict')
       .onUpdate('no action'),
+    // Migration 0036 (principal, 2026-11-02): a reference to a record OF THE UNIT drops its
+    // attribution when the operator goes, instead of holding the record in place.
     foreignKey({
       name: 'active_session_created_by_fkey',
       columns: [t.createdBy],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     // The two actor columns close FXC-1: who started and who stopped the session, not only who
     // created it.
@@ -106,14 +108,14 @@ export const activeSession = pgTable(
       columns: [t.startedBy],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     foreignKey({
       name: 'active_session_stopped_by_fkey',
       columns: [t.stoppedBy],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     check('active_session_id_check', sql`${sessionId(t.id)} AND ${caseNumber(t.caseNumber)}`),
     check('active_session_state_check', oneOf(t.state, SESSION_STATE)),
@@ -146,7 +148,7 @@ export const sessionHistory = pgTable(
     caseNumber: text('case_number').notNull(),
     subjectName: text('subject_name').notNull(),
     subjectType: text('subject_type').$type<SubjectTypeValue>().notNull(),
-    investigatorId: text('investigator_id').notNull(),
+    investigatorId: text('investigator_id'),
     room: text('room').notNull(),
     profileId: text('profile_id').$type<ProfileId>().notNull(),
     createdAt: bigint('created_at', { mode: 'number' }).notNull(),
@@ -160,12 +162,14 @@ export const sessionHistory = pgTable(
   },
   (t) => [
     index('session_history_ended_at_idx').on(t.endedAt.desc().nullsFirst(), t.id.desc().nullsFirst()),
+    // Migration 0036: the same rule for a finished session, whose investigator column is
+    // nullable from then on; the live session keeps RESTRICT - it names the case in progress.
     foreignKey({
       name: 'session_history_investigator_id_fkey',
       columns: [t.investigatorId],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     check('session_history_id_check', sql`${sessionId(t.id)} AND ${caseNumber(t.caseNumber)}`),
     check(

@@ -129,6 +129,15 @@ export {
 export { CAPTURE_FENCE_WRITES, READ_ASSIGNED_SOURCES, READ_STORED_DEVICES, REGISTER_LOCAL_DEVICE } from './statements';
 // The capture unit's own parts of production capture (task 4 row 85b, decision C55), for the composition above the modules.
 export * from './production-parts';
+// Decisions D51 / D53 (row 90P): the live camera preview and the idle microphone meters, for the composition of production
+// capture (`src/capture-composition.ts`), which names no file inside the capture unit. Nothing is built or started here.
+export { PREVIEW_LIMITS, PreviewEndReason, PreviewState, createMpjpegParser, createPreviewManager, type PreviewManager, type PreviewSink, type PreviewViewer } from '../adapters/camera/preview-manager';
+export { createPreviewOpener, type CameraPreviewProcess, type CameraPreviewStarter, type PreviewOpener, type PreviewProcessExit, type PreviewStartRequest, type PreviewStream } from '../adapters/camera/preview-pipeline';
+// The starter of a preview (agent a, row 89): the relay in preview mode into the guarded `mpjpeg` encoder, through the door's pipeline.
+export { CAMERA_PREVIEW_CODECS, startCameraPreview, type CameraPreviewCodec } from '../adapters/camera/relay-start';
+export { startProductionPipeline } from '../adapters/production-door';
+export { IDLE_METER_LEASE_MS, createIdleMeters, type IdleMeterInput, type IdleMeterLevel, type IdleMeterNotice, type IdleMeters } from '../adapters/audio/idle-meter';
+export { createAlsaConfigWriter } from '../adapters/audio/alsa-config-writer';
 
 /**
  * The reader of what a helper program path IS (fix F-M4; review row 69, question 5): the door's
@@ -140,6 +149,8 @@ export type HelperProgramInspector = ProgramInspector;
 
 /** `<dataDir>/run/capture`: where the pipes of the sessions live (spec §A.7.1 ML-2). */
 const RUN_SUBPATH = 'run/capture';
+/** The run directory of the capture unit below the data directory (decisions D51 / D53: the idle meters write the shared capture's configuration there, as the production microphone adapter does). */
+export const CAPTURE_RUN_SUBPATH = RUN_SUBPATH;
 
 export interface DevelopmentRegistryInput {
   /** The registry as stored: every row of a development kind gets its adapter. */

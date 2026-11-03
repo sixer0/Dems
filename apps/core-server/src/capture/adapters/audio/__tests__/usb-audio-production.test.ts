@@ -1136,7 +1136,8 @@ describe('T-3 and the static rules of the row', () => {
     // MOVED BY ROW N9 (design 06 s4.4: the logic "may be shared AS CODE: identifyRegisteredCard, UsbAudioError, the refusal tables,
     // guardedArguments, isRegisteredAudioInput"): the macOS adapter imports those from this file (rule A-9). Row 88: the loader
     // (a type import and the dynamic import of the build) and the fence's boot step (the card match of the loss watch).
-    expect([...new Set(importers.map((entry) => entry.file))].sort()).toEqual(['src/capture/adapters/audio/usb-audio-macos.ts', 'src/capture/adapters/real.ts', 'src/capture/fence/index.ts']);
+    // Row 91c (decisions D51/D53): the idle meters import the card match, the row's shape rule and the guard's vector - no adapter.
+    expect([...new Set(importers.map((entry) => entry.file))].sort()).toEqual(['src/capture/adapters/audio/idle-meter.ts', 'src/capture/adapters/audio/usb-audio-macos.ts', 'src/capture/adapters/real.ts', 'src/capture/fence/index.ts']);
     const loader = tree.find((file) => file.path === 'src/capture/adapters/real.ts')?.text ?? '';
     expect(loader).toMatch(/await import\('\.\/audio\/usb-audio-production'\)/);
     // The adapter without an opener is still what a host without a microphone opener gets.

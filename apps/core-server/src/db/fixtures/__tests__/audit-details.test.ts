@@ -28,19 +28,20 @@ import {
   FAULT_SEVERITY,
   FaultEvt,
   FaultKind,
+  OperatorRole,
   PAIRING_LOCKOUT_MS,
+  Permission,
   PrecheckCheckId,
   PrecheckReasonCode,
   TRACK_ORDER,
   eventCategory,
   roleHas,
   type AuditRow,
-  type OperatorRole,
-  type Permission,
   type SimAlert,
   type SimEvent,
   type SimEventType,
 } from '@dems/shared/sim';
+import { OPERATOR_ID_PATTERN, UpdateUserRequestSchema } from '@dems/shared/api';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { TokenRefusalReason } from '../../../modules/identity/biometric/activity';
 import { permissionsOfDenialCode } from '../../../plugins/permission-guard/access-rules';
@@ -144,9 +145,16 @@ function plantedEvents(type: SimEventType, change: (event: SimEvent) => FixtureE
 }
 
 const HEX64 = /^[0-9a-f]{64}$/;
+/** The roles of the shared vocabulary, and the profile fields an edit may name (the contract's own lists). */
+const ROLE_VALUES: readonly string[] = Object.values(OperatorRole);
+const PROFILE_FIELDS: readonly string[] = Object.keys(UpdateUserRequestSchema.shape).filter((key) => key !== 'reason');
+const OPERATOR_ID_FORM = OPERATOR_ID_PATTERN;
 
 describe('where each audit type is written', () => {
-  it('the fixture writes all 82 types, and each has exactly one reference: the list, a module builder, or the simulator', () => {
+  // REVISED 2026-11-02 (principal): RB-9 amended — AuditType gained USER_CREATED, USER_UPDATED and
+  // USER_DELETED (operations 15 to 17), so the vocabulary has 90 types and the fixture states one
+  // row of each of the three new ones.
+  it('the fixture writes all 90 types, and each has exactly one reference: the list, a module builder, or the simulator', () => {
     const written = [...new Set(rows.map((row) => row.type))].sort();
     expect(written).toEqual(Object.values(AuditType).sort());
     expect(written.filter((type) => sourceOf(type, shapes) === null)).toEqual([]);
@@ -164,7 +172,10 @@ describe('where each audit type is written', () => {
     // Task 4 row R1b (decision C99): CAPTURE_VIDEO_ABSENT_IN_SESSION joins the list, 38 -> 39 (82 -> 83 in all).
     // Task 4 row N2: CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED and CAPTURE_AUDIO_SILENCE_INSERTED join the list, 39 -> 41 (83 -> 85 in all).
     // Task 4 row RD2: CAPTURE_DEVICE_RETIRED joins the list, 41 -> 42 (85 -> 86 in all).
-    expect(bySource).toEqual({ 'ALLOW-LIST': 42, MODULE: 11, SIMULATOR: 33 });
+    // Task 4 row D53 (decisions D51, D53): CAMERA_PREVIEW_OPENED joins the list, 42 -> 43 (86 -> 87 in all).
+    // REVISED 2026-11-02 (principal): RB-9 amended — the three user operations of area 2 write
+    // USER_CREATED, USER_UPDATED and USER_DELETED, all three named by the writer's list: 43 -> 46 (87 -> 90 in all).
+    expect(bySource).toEqual({ 'ALLOW-LIST': 46, MODULE: 11, SIMULATOR: 33 });
     // The nineteen of the list are the nineteen the audit writer names (nine of the backend task,
     // nine of the capture phase, and STT_CONFIG_CHANGED of blueprint row 113, which has a builder:
     // `modules/stt-config`), and the nine older ones mostly have a builder too. A listed type
@@ -225,6 +236,9 @@ describe('where each audit type is written', () => {
         // Task 4 row RD2 (decision C147): the retirement of a device. Its live writer is operation 111's unit
         // (row RD3) with the shared builder `captureDeviceRetiredDetails`; the fixture states one row until then.
         'CAPTURE_DEVICE_RETIRED',
+        // Task 4 row D53 (decisions D51, D53): the opening of a live camera preview. Its live writer is operation 112
+        // (`src/camera-preview`), which states the details itself; the fixture states one row.
+        'CAMERA_PREVIEW_OPENED',
       ].sort(),
     );
   });
@@ -264,10 +278,15 @@ describe('every audit row of the fixture', () => {
 
   it('an administration row has the severity the administration module gives it', () => {
     // Read from the module's source, which builds these rows inside its unit of work.
+    // REVISED 2026-11-02 (principal): RB-9 amended — the module writes six rows inline; the create
+    // and the update carry no severity (the writer's default INFO), the delete is a WARNING.
     expect([...administrationSeverities()]).toEqual([
       ['ROLE_CHANGED', 'INFO'],
       ['USER_DISABLED', 'WARNING'],
       ['USER_ENABLED', 'INFO'],
+      ['USER_CREATED', 'INFO'],
+      ['USER_UPDATED', 'INFO'],
+      ['USER_DELETED', 'WARNING'],
     ]);
     expect(administrationFindings(rows)).toEqual([]);
   });
@@ -311,7 +330,9 @@ describe('every audit row of the fixture', () => {
     // Task 4 row R1b: 82 -> 83 with CAPTURE_VIDEO_ABSENT_IN_SESSION.
     // Task 4 row N2: 83 -> 85 with CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED and CAPTURE_AUDIO_SILENCE_INSERTED.
     // Task 4 row RD2: 85 -> 86 with CAPTURE_DEVICE_RETIRED.
-    expect(lines).toHaveLength(86);
+    // Task 4 row D53: 86 -> 87 with CAMERA_PREVIEW_OPENED.
+    // REVISED 2026-11-02 (principal): RB-9 amended — 87 -> 90 with USER_CREATED, USER_UPDATED and USER_DELETED.
+    expect(lines).toHaveLength(90);
     console.log(['[w25] audit detail keys per type: | type | written by | keys expected | keys written (rows) |', ...lines].join('\n'));
   });
 
@@ -324,7 +345,8 @@ describe('every audit row of the fixture', () => {
       const expected = builder ?? (administration.has(type) ? [administration.get(type) ?? ''] : (shapes.get(type)?.severities ?? []));
       return `| ${type} | ${AUDIT_TYPE_CATEGORY[type]} | ${source} | ${[...expected].sort().join(' or ')} | ${counted(ofType(type).map((row) => row.severity))} |`;
     });
-    expect(lines).toHaveLength(86); // task 4 row RD2: + CAPTURE_DEVICE_RETIRED
+    // REVISED 2026-11-02 (principal): RB-9 amended — + USER_CREATED, USER_UPDATED, USER_DELETED: 87 -> 90.
+    expect(lines).toHaveLength(90); // task 4 row RD2: + CAPTURE_DEVICE_RETIRED; row D53: + CAMERA_PREVIEW_OPENED
     console.log(['[w25] audit severity per type: | type | category | severity from | severity expected | severity written (rows) |', ...lines].join('\n'));
   });
 });
@@ -542,12 +564,23 @@ describe('the comparisons can fail: what the fixture held before, and other drif
     expect(moduleFindings(reuse.map((row) => ({ ...row, severity: 'CRITICAL' as const })), context, severity)).toEqual([expect.stringMatching(/severity CRITICAL; the module writes WARNING$/)]);
 
     expect(administrationFindings(planted('USER_DISABLED', null, { severity: 'INFO' }))).toEqual([expect.stringMatching(/severity INFO; the administration module writes WARNING$/)]);
-    // A source in which the module no longer writes the three rows inline is refused, not guessed at.
+    // A source in which the module no longer writes the six rows inline is refused, not guessed at.
+    // REVISED 2026-11-02 (principal): RB-9 amended — the sample holds all six entries now, so that
+    // the reader of the severities has one entry per type it names.
     expect(() => administrationSeverities('export const nothing = 1;')).toThrow(/does not write ROLE_CHANGED in exactly one entry/);
-    expect([...administrationSeverities("append({ type: 'ROLE_CHANGED', severity: 'CRITICAL' }); append({ type: 'USER_DISABLED' }); append({ type: 'USER_ENABLED' });")]).toEqual([
+    expect(
+      [
+        ...administrationSeverities(
+          "append({ type: 'ROLE_CHANGED', severity: 'CRITICAL' }); append({ type: 'USER_DISABLED' }); append({ type: 'USER_ENABLED' }); append({ type: 'USER_CREATED', severity: 'SUCCESS' }); append({ type: 'USER_UPDATED' }); append({ type: 'USER_DELETED', severity: 'INFO' });",
+        ),
+      ],
+    ).toEqual([
       ['ROLE_CHANGED', 'CRITICAL'],
       ['USER_DISABLED', 'INFO'],
       ['USER_ENABLED', 'INFO'],
+      ['USER_CREATED', 'SUCCESS'],
+      ['USER_UPDATED', 'INFO'],
+      ['USER_DELETED', 'INFO'],
     ]);
 
     expect(simulatorFindings(planted('UPDATE_COMPLETED', null, { severity: 'SUCCESS' }), shapes)).toEqual([expect.stringMatching(/severity SUCCESS; the simulator writes INFO$/)]);
@@ -706,6 +739,57 @@ describe('what a row states agrees with the rows it is about', () => {
       expect(ofType(type).some((row) => row.details['reason'] !== undefined), type).toBe(true);
     }
     for (const row of administration) expect(operators.some((operator) => operator.id === row.details['targetOperatorId']), `sequence ${row.seq}`).toBe(true);
+  });
+
+  // NEW 2026-11-02 (principal): RB-9 amended — nothing guarded the three rows of the vendor-only
+  // operations before. What they state has to agree with the tables the fixture itself fills.
+  it('a row of a vendor-only user operation names an account that agrees with the operators table, and a hand that holds user administration', () => {
+    const { operators } = fixture.rows;
+    const created = ofType('USER_CREATED');
+    const updated = ofType('USER_UPDATED');
+    const deleted = ofType('USER_DELETED');
+    // One row of each: the fixture replays one create, one edit and one delete of its history.
+    expect(created).toHaveLength(1);
+    expect(updated).toHaveLength(1);
+    expect(deleted).toHaveLength(1);
+
+    // The keys are exactly the ones the module writes for these facts (core/audit-details.ts).
+    expect(Object.keys(created[0]!.details).sort()).toEqual(['reason', 'role', 'targetOperatorId']);
+    expect(Object.keys(updated[0]!.details).sort()).toEqual(['fields', 'targetOperatorId']);
+    expect(Object.keys(deleted[0]!.details).sort()).toEqual(['auditRowsRemoved', 'credentialsRemoved', 'reason', 'recordsLeftUnattributed', 'role', 'sessionsEnded', 'signInRowsRemoved', 'targetOperatorId']);
+
+    // A create names the role the account got; an edit names profile field names, each at most once,
+    // and never a value; a delete counts what went with the account.
+    expect(ROLE_VALUES).toContain(created[0]!.details['role']);
+    const fields = String(updated[0]!.details['fields']).split(',');
+    expect(fields.length).toBeGreaterThan(0);
+    expect(fields.every((field) => PROFILE_FIELDS.includes(field))).toBe(true);
+    expect(new Set(fields).size).toBe(fields.length);
+    expect(Number(deleted[0]!.details['sessionsEnded'])).toBeGreaterThanOrEqual(0);
+    expect(Number(deleted[0]!.details['credentialsRemoved'])).toBeGreaterThanOrEqual(0);
+
+    // The account of a create and of an edit is there; the account of a delete is GONE, which is the
+    // whole point of the operation: the row outlives the operator it names (append-only chain).
+    for (const row of [...created, ...updated]) expect(operators.some((operator) => operator.id === row.details['targetOperatorId']), `sequence ${row.seq}`).toBe(true);
+    const goneId = String(deleted[0]!.details['targetOperatorId']);
+    expect(OPERATOR_ID_FORM.test(goneId), goneId).toBe(true);
+    expect(operators.some((operator) => operator.id === goneId)).toBe(false);
+    expect(base.slices.operators.some((operator) => operator.id === goneId)).toBe(false);
+    // The row repeats the role the account had, so that the chain still says who was removed.
+    expect(ROLE_VALUES).toContain(deleted[0]!.details['role']);
+
+    // Every one of the three is written by a hand that holds USER_ADMIN, and by an operator the
+    // database holds (a row of a vendor-only operation is still an actor's row). The role is read
+    // per shape: the seed's slice names it `role`, the fixture's row names it `roleId`.
+    const roleOf = new Map<string, string>();
+    for (const operator of base.slices.operators) roleOf.set(operator.id, operator.role);
+    for (const operator of operators) roleOf.set(operator.id, operator.roleId);
+    for (const row of [...created, ...updated, ...deleted]) {
+      expect(row.actorId, `sequence ${row.seq}`).not.toBeNull();
+      const actorId = String(row.actorId);
+      expect(roleOf.has(actorId), actorId).toBe(true);
+      expect(roleHas(roleOf.get(actorId) as OperatorRole, Permission.USER_ADMIN as Permission), actorId).toBe(true);
+    }
   });
 
   it('a refusal names an operation of the registry, and the role holds none of the permissions it names', () => {

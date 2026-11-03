@@ -33,9 +33,11 @@ import {
   CORE_HTTP_ORIGIN,
   CORE_WS_URL,
   fetchHealth,
+  fetchPanelFirmware,
   WEB_DEV_ORIGINS,
   WS_PATH,
   type HealthResponse,
+  type PanelFirmwareResponse,
 } from '@dems/shared/api'
 import { SAME_ORIGIN_CORE } from './packaged-csp'
 
@@ -99,6 +101,21 @@ export function allowedPageOrigins(location?: PageLocation): readonly string[] {
 }
 
 /**
+ * A `fetch` that moves the shared default origin (`CORE_HTTP_ORIGIN`) onto `origin`: what the
+ * packaged build and Live mode need, because there the Core is served from the page's own origin.
+ * Nothing else of a request is rewritten.
+ */
+function ontoPageOrigin(base: typeof fetch, origin: string): typeof fetch {
+  return (input, init) =>
+    base(
+      typeof input === 'string' && input.startsWith(CORE_HTTP_ORIGIN)
+        ? `${origin}${input.slice(CORE_HTTP_ORIGIN.length)}`
+        : input,
+      init,
+    )
+}
+
+/**
  * `GET {coreHttpOrigin()}/api/v1/health`, validated by the shared `fetchHealth` (one schema check).
  * Dev mode calls `fetchHealth` exactly as before. The packaged build and Live mode pass a
  * `fetchImpl` that moves the shared default origin (`CORE_HTTP_ORIGIN`) onto the page origin;
@@ -108,12 +125,19 @@ export function fetchCoreHealth(fetchImpl?: typeof fetch): Promise<HealthRespons
   const origin = coreHttpOrigin()
   if (origin === CORE_HTTP_ORIGIN) return fetchImpl ? fetchHealth(fetchImpl) : fetchHealth()
   const base: typeof fetch = fetchImpl ?? ((input, init) => globalThis.fetch(input, init))
-  return fetchHealth((input, init) =>
-    base(
-      typeof input === 'string' && input.startsWith(CORE_HTTP_ORIGIN)
-        ? `${origin}${input.slice(CORE_HTTP_ORIGIN.length)}`
-        : input,
-      init,
-    ),
-  )
+  return fetchHealth(ontoPageOrigin(base, origin))
+}
+
+/**
+ * `GET {coreHttpOrigin()}/api/v1/lcd/panel-info` (operation 114), validated by the shared
+ * `fetchPanelFirmware`. The same origin rule as `fetchCoreHealth`, because the same anonymous reader
+ * asks for it: the device strip of the sign-in screen. An empty answer is a success — the Core sends
+ * `200` with empty strings when it knows nothing of a panel — so only a transport or schema failure
+ * reaches the caller as a rejection.
+ */
+export function fetchCorePanelFirmware(fetchImpl?: typeof fetch): Promise<PanelFirmwareResponse> {
+  const origin = coreHttpOrigin()
+  if (origin === CORE_HTTP_ORIGIN) return fetchPanelFirmware(fetchImpl ?? fetch)
+  const base: typeof fetch = fetchImpl ?? ((input, init) => globalThis.fetch(input, init))
+  return fetchPanelFirmware(ontoPageOrigin(base, origin))
 }

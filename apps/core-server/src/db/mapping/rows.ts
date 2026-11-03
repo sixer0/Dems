@@ -32,7 +32,8 @@
  * The shared code reads every one of these with `?? null` or `?? []`, so the two empty forms
  * behave alike; the table only decides which one a rehydrated state holds.
  */
-import { DEFAULT_CAPTURE_DEVICES, EVIDENCE_FILE_TRACKS, SIM_SNAPSHOT_VERSION, captureDeviceProfilesOf, eventCategory, neverSealedShape } from '@dems/shared/sim';
+// UNATTRIBUTED_OPERATOR_ID is imported below with the other vocabulary constants.
+import { DEFAULT_CAPTURE_DEVICES, EVIDENCE_FILE_TRACKS, SIM_SNAPSHOT_VERSION, UNATTRIBUTED_OPERATOR_ID, captureDeviceProfilesOf, eventCategory, neverSealedShape } from '@dems/shared/sim';
 import type {
   ActiveSession,
   AuditRow,
@@ -352,7 +353,10 @@ export function sessionHistoryToRow(entry: SessionHistoryEntry): SessionHistoryR
     caseNumber: storableText(entry.caseNumber, place('case_number')),
     subjectName: storableText(entry.subjectName, place('subject_name')),
     subjectType: entry.subjectType,
-    investigatorId: storableText(entry.investigatorId, place('investigator_id')),
+    investigatorId: storableTextOrNull(
+      entry.investigatorId === UNATTRIBUTED_OPERATOR_ID ? null : entry.investigatorId,
+      place('investigator_id'),
+    ),
     room: storableText(entry.room, place('room')),
     profileId: entry.profileId,
     createdAt: safeInteger(entry.createdAt, place('created_at')),
@@ -373,7 +377,7 @@ export function sessionHistoryFromRow(row: SessionHistoryRow, evidenceId: string
     caseNumber: row.caseNumber,
     subjectName: row.subjectName,
     subjectType: row.subjectType,
-    investigatorId: row.investigatorId,
+    investigatorId: row.investigatorId ?? UNATTRIBUTED_OPERATOR_ID,
     room: row.room,
     profileId: row.profileId,
     createdAt: row.createdAt,
@@ -501,7 +505,10 @@ export function evidenceItemToRow(item: EvidenceItem, context: RowContext): Evid
     caseNumber: storableText(item.caseNumber, place('case_number')),
     subjectName: storableText(item.subjectName, place('subject_name')),
     subjectType: item.subjectType,
-    investigatorId: storableText(item.investigatorId, place('investigator_id')),
+    investigatorId: storableTextOrNull(
+      item.investigatorId === UNATTRIBUTED_OPERATOR_ID ? null : item.investigatorId,
+      place('investigator_id'),
+    ),
     room: storableText(item.room, place('room')),
     profileId: item.profileId,
     recordedAt: safeInteger(item.recordedAt, place('recorded_at')),
@@ -641,7 +648,7 @@ export function evidenceItemFromRows(
     caseNumber: row.caseNumber,
     subjectName: row.subjectName,
     subjectType: row.subjectType,
-    investigatorId: row.investigatorId,
+    investigatorId: row.investigatorId ?? UNATTRIBUTED_OPERATOR_ID,
     room: row.room,
     profileId: row.profileId,
     recordedAt: row.recordedAt,
@@ -1109,7 +1116,7 @@ export function activeSessionFromRow(row: ActiveSessionRow): ActiveSession {
       caseNumber: row.caseNumber,
       subjectType: row.subjectType,
       subjectName: row.subjectName,
-      investigatorId: row.investigatorId,
+      investigatorId: row.investigatorId ?? UNATTRIBUTED_OPERATOR_ID,
       room: row.room,
       profileId: row.profileId,
       notes: row.inputNotes,

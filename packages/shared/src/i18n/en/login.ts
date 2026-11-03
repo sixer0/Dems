@@ -111,6 +111,8 @@ export const login = {
       service: 'Core service',
       database: 'Database',
       engine: 'Engine',
+      /** Operation 114: the firmware version the attached front panel reported about itself. */
+      panelFirmware: 'Panel firmware',
       mode: 'Mode',
       ready: 'Ready',
       notReady: 'Not ready',

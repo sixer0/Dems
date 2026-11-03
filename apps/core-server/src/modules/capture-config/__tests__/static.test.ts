@@ -55,7 +55,8 @@ const CAPTURE_CREDENTIAL_HOLDERS_IMPORTERS: readonly string[] = ['src/capture-co
  * fourth file would be a caller that says a reason.
  */
 const REVEAL_REASON_WRITERS: readonly string[] = ['src/core/audit-details.ts', 'src/db/fixtures/operations.ts', `${READER_MODULE}.ts`];
-const REVEAL_REASON_TEXT = /(['"`])(?:SESSION_OPEN|RELAY_RESTART|CONNECTION_TEST)\1/g;
+// Decisions D51 / D53: + PREVIEW_OPEN, the reason of the third holder (the live camera preview).
+const REVEAL_REASON_TEXT = /(['"`])(?:SESSION_OPEN|RELAY_RESTART|CONNECTION_TEST|PREVIEW_OPEN)\1/g;
 
 const tree = readTree(WORKSPACE).filter((file) => /\.(?:[cm]?tsx?|sql)$/.test(file.path));
 const production = tree.filter((file) => isProductionSource(file.path));
@@ -177,9 +178,9 @@ describe('R-5, R-6: the holders (AD-03 (1), row 144)', () => {
     expect(occurrences(holders, REVEAL_REASON_TEXT)).toEqual([]);
   });
 
-  it('R-6: the wiring is the one file that takes a reader, twice; its production importers are the pinned list (row 85b: the composition, one file), and the module index does not hand it on', () => {
+  it('R-6: the wiring is the one file that takes a reader, three times (decisions D51 / D53: + the live preview); its production importers are the pinned list (row 85b: the composition, one file), and the module index does not hand it on', () => {
     expect(holders).toHaveLength(1);
-    expect(occurrences(productionCode, /\.take\s*\(\s*CaptureCredentialHolder\./g).map((place) => place.replace(/:\d+$/, ''))).toEqual([`${HOLDERS_MODULE}.ts`, `${HOLDERS_MODULE}.ts`]);
+    expect(occurrences(productionCode, /\.take\s*\(\s*CaptureCredentialHolder\./g).map((place) => place.replace(/:\d+$/, ''))).toEqual([`${HOLDERS_MODULE}.ts`, `${HOLDERS_MODULE}.ts`, `${HOLDERS_MODULE}.ts`]);
     expect(occurrences(holders, /\bcreateCaptureCredentialReaders\s*\(/g)).toHaveLength(1);
     const importers = importersOf(productionCode, HOLDERS_MODULE);
     console.info(`[row144] credential-holders importers: ${importers.length === 0 ? '(none: no boot path builds the readers)' : importers.join(', ')} | allowed: ${CAPTURE_CREDENTIAL_HOLDERS_IMPORTERS.join(', ') || '(none yet: rows 85, 50)'}`);

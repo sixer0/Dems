@@ -211,7 +211,7 @@ describe('ST-3: what is stored equals what the shared builders made, member by m
 });
 
 describe('ST-4, AC-B-17: the seeded matrix equals the shared ROLE_PERMISSIONS', () => {
-  it('3 roles and 15 permissions in declaration order, 23 grants (5, 12, 6), role by role equal', async () => {
+  it('3 roles and 15 permissions in declaration order, 22 grants (5, 11, 6), role by role equal', async () => {
     const stored = await readRbacRows(drizzle(db.ownerPool()));
     expect(stored.roles.map((role) => role.id)).toEqual(Object.values(OperatorRole));
     expect(stored.permissions.map((permission) => permission.id)).toEqual(Object.values(Permission));

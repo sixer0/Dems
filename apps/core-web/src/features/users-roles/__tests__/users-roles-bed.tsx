@@ -20,6 +20,19 @@ import { createLiveTestBed, SUPERVISOR_SESSION, type LivePage, type LiveTestBed,
 
 export const PAGE_URL = 'http://127.0.0.1:5178/admin/users'
 
+/**
+ * The vendor account (RB-9 as amended 02-11-2026): `USER_ADMIN` like the SUPERVISOR, but with the
+ * username the Core server and this page require for create, edit and delete. The ID is outside the
+ * seeded list on purpose: the trio is about the gate, not about a row of one's own.
+ */
+export const ROOT_SESSION: Pick<AuthSessionInfo, 'operator' | 'permissions'> = {
+  operator: { ...SUPERVISOR_SESSION.operator, id: 'OPR-009', username: 'root', rank: null, name: 'Vendor Root', displayName: 'Vendor Root', initials: 'VR' },
+  permissions: SUPERVISOR_SESSION.permissions,
+}
+
+/** A holder of `USER_ADMIN` who is NOT the vendor account: the trio must stay out of sight. */
+export const SUPERVISOR_ADMIN_SESSION: Pick<AuthSessionInfo, 'operator' | 'permissions'> = SUPERVISOR_SESSION
+
 export interface OpenOptions {
   readonly session?: Pick<AuthSessionInfo, 'operator' | 'permissions'> | null
   /** Scripts answers before the page loads. */
@@ -93,7 +106,7 @@ export async function openRowMenu(operatorId: string): Promise<HTMLElement> {
 }
 
 /** Opens the row menu and presses the item of `testId`; returns the dialog of `dialogId`. */
-export async function openDialog(operatorId: string, item: 'change-role' | 'disable' | 'enable', dialogId: string): Promise<HTMLElement> {
+export async function openDialog(operatorId: string, item: 'change-role' | 'disable' | 'enable' | 'edit-user' | 'delete-user', dialogId: string): Promise<HTMLElement> {
   const menu = await openRowMenu(operatorId)
   fireEvent.click(within(menu).getByTestId(`ur-${item}-${operatorId}`))
   return screen.findByTestId(dialogId)
@@ -102,6 +115,16 @@ export async function openDialog(operatorId: string, item: 'change-role' | 'disa
 /** Chooses a role in the open role dialog. */
 export function chooseRole(dialog: HTMLElement, role: string): void {
   fireEvent.click(within(within(dialog).getByTestId(`ur-role-option-${role}`)).getByRole('radio'))
+}
+
+/** Types into a kit `TextField` by its test ID (the `Input` or `TextArea` inside it). */
+export function typeField(dialog: HTMLElement, fieldTestId: string, value: string): void {
+  fireEvent.change(within(within(dialog).getByTestId(fieldTestId)).getByRole('textbox'), { target: { value } })
+}
+
+/** Picks a role of a create dialog. */
+export function chooseCreateRole(dialog: HTMLElement, role: string): void {
+  fireEvent.click(within(within(dialog).getByTestId(`ur-create-role-option-${role}`)).getByRole('radio'))
 }
 
 /** Types a reason into a dialog's reason field. */

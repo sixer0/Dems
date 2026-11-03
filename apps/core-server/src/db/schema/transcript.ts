@@ -125,7 +125,7 @@ export const transcriptRevisions = pgTable(
     revisionNo: integer('revision_no').notNull(),
     parentSha256: text('parent_sha256').notNull(),
     sha256: text('sha256').notNull(),
-    authorId: text('author_id').notNull(),
+    authorId: text('author_id'),
     reason: text('reason').notNull(),
     signatureValue: text('signature_value').notNull(),
     signatureKeyId: text('signature_key_id').notNull(),
@@ -143,12 +143,15 @@ export const transcriptRevisions = pgTable(
     })
       .onDelete('restrict')
       .onUpdate('no action'),
+    // Migration 0036 (principal, 2026-11-02): a reference to a record OF THE UNIT drops its
+    // attribution when the operator goes, instead of holding the record in place.
+    // The revision is sealed by its own signature, so it does not fall when the author does.
     foreignKey({
       name: 'transcript_revisions_author_id_fkey',
       columns: [t.authorId],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     check('transcript_revisions_revision_no_check', sql`${t.revisionNo} >= 1`),
     check('transcript_revisions_hashes_check', sql`${hex64(t.parentSha256)} AND ${hex64(t.sha256)}`),

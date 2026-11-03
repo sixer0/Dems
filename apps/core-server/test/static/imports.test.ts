@@ -56,6 +56,8 @@ const CLOSED_UNITS: readonly string[] = [
   'src/core',
   'src/engine',
   'src/realtime',
+  // Optional LCD bridge (2026-10-19): mounted by devices through its public index.
+  'src/lcd',
   // The capture supervisor (task 3 row 57): closed from its first day.
   'src/capture',
   // The Core credential store (task 3 row 84): closed from its first day; not registered by app.ts.
@@ -74,6 +76,8 @@ const CLOSED_UNITS: readonly string[] = [
   'src/capture-session',
   // Media streaming (task 3 row 90): closed from its first day; reached through `mediaStream(app)` / `createMediaStreamService`, its routes (op 88, the media route) are registered by modules/media-stream.
   'src/media-stream',
+  // The live camera preview at the API (decisions D51 / D53, row 90P): closed from its first day; reached through `cameraPreview(app)` / `createCameraPreviewService`, its routes (ops 112-113, the preview route) are registered by modules/camera-preview.
+  'src/camera-preview',
   // What the Core says of an evidence item beyond its rows (task 3 wave H, driver C1): closed from its first day; reached through `evidenceFacts(app)`, mounted by modules/evidence, not registered by app.ts.
   'src/evidence-facts',
   // The transcript files of a sealed package (task 3 integration pass D4): closed from its first day; not registered by app.ts; imported by modules/transcripts (operations 84 to 86).

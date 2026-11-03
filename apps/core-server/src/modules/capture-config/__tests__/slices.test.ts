@@ -224,12 +224,12 @@ describe('runCaptureConfigBoot: the step logs and persists what it decided, and 
 });
 
 describe('M2-MT-7 seed-count clause, read at the seed source (in-memory)', () => {
-  it('the seed writes 15 permissions and 23 grants (5/12/6), equal to ROLE_PERMISSIONS', () => {
+  it('the seed writes 15 permissions and 22 grants (5/11/6), equal to ROLE_PERMISSIONS', () => {
     const rows = rbacRows();
     expect(rows.permissions).toHaveLength(15);
-    expect(rows.rolePermissions).toHaveLength(23);
+    expect(rows.rolePermissions).toHaveLength(22);
     const perRole = Object.fromEntries(Object.values(OperatorRole).map((role) => [role, rows.rolePermissions.filter((grant) => grant.roleId === role).length]));
-    expect(perRole).toEqual({ INVESTIGATOR: 5, SUPERVISOR: 12, TECHNICIAN: 6 });
+    expect(perRole).toEqual({ INVESTIGATOR: 5, SUPERVISOR: 11, TECHNICIAN: 6 });
     for (const role of Object.values(OperatorRole)) {
       const granted = rows.rolePermissions.filter((grant) => grant.roleId === role).map((grant) => grant.permissionId).sort();
       expect(granted).toEqual([...ROLE_PERMISSIONS[role]].sort());

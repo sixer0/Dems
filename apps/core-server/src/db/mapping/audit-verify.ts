@@ -18,7 +18,7 @@
  * Until this round the text was the only form, and the security-audit module read the number
  * back out of it with a regular expression.
  */
-import { verifyAuditChain, type ChainVerifyResult } from '@dems/shared/sim';
+import { verifyAuditChain, type ChainVerifyResult, type PurgedRange } from '@dems/shared/sim';
 import type { AuditLogRow } from '../schema';
 import { auditRowFromRow } from './rows';
 
@@ -40,6 +40,8 @@ export type StoredDigestVerdict =
 export interface StoredDigestContext {
   /** How many older rows were not read (the sequence of the first row read, minus one). */
   readonly dropped: number;
+  /** Erasure ranges from `audit_purge_log`, read from the table by the caller (migration 0036). */
+  readonly purged?: readonly PurgedRange[];
   /** The hash the chain must end in: the newest row's hash, or the chain head's. */
   readonly head: string;
 }
@@ -55,6 +57,6 @@ export function verifyStoredAuditRows(rows: readonly AuditLogRow[], context: Sto
     head: context.head,
     total: context.dropped + rows.length,
     dropped: context.dropped,
-  });
+  }, context.purged);
   return result.ok ? { ok: true } : { ok: false, code: result.reason, seq: result.seq, reason: `${result.reason} at sequence ${result.seq}` };
 }

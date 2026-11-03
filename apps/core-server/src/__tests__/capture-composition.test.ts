@@ -1791,3 +1791,70 @@ describe('row 111b: the neighbour row and the echo row - two fixed rows with ONE
     expect(asked).toEqual([neighbourRow, { command: '/usr/bin/ping', args: ['-n', '-q', '-c', '1', '-W', '1', '192.168.50.21'], env: {}, message: null }, neighbourRow]);
   });
 });
+
+// Decisions D51 / D53 (row 90P): the live camera preview and the idle meters. RECORDING HAS PRIORITY: the preview yields a
+// camera before the camera bundle reads its stored stream (step 1 of `openSource`) and before the pre-check reads it, and
+// comes back on the relay's established push and at the end of a capture. Nothing is started: the opener of the preview
+// reads a statement this rig does not know, so every open is refused, and the timers never fire.
+describe('decisions D51 / D53: the live camera preview and the idle meters in the composition', () => {
+  const sink = () => ({ frame: () => true, end: () => {} });
+
+  it('the preview is handed to the API unit; it yields before the camera bundle reads the stored stream and before the pre-check reads a camera, and resumes on an established push and at the end of a capture', async () => {
+    const provisions: { manager: unknown; idleMeters: unknown }[] = [];
+    const yields: ((deviceId: string) => Promise<void>)[] = [];
+    const built = rig(CaptureOperation.REAL_PRODUCTION, {
+      provideCameraPreview: (provision) => void provisions.push(provision),
+      providePrecheckYield: (beforeCamera) => void yields.push(beforeCamera),
+    });
+    const composition = composed(built, { platform: CARD_LISTING_PLATFORM, network: () => HOST });
+    expect(provisions).toHaveLength(1);
+    expect(provisions[0]?.manager).toBe(composition.preview);
+    // No audio helper and no run directory in this rig: no idle meters.
+    expect([composition.idleMeters, provisions[0]?.idleMeters]).toEqual([null, null]);
+    expect(yields).toHaveLength(1);
+
+    const joined = composition.preview.join('CAM-01', OPERATOR, sink());
+    expect(joined.joined).toBe(true);
+    // The camera bundle's stream: the yield first (the preview is paused), then the stored read, unchanged.
+    const stream = await composition.dependencies.camera.stream('CAM-01', 'H264_1080P25');
+    expect(stream).toMatchObject({ onvifProfileToken: 'Profile_1' });
+    expect(composition.preview.states()['CAM-01']).toBe('PAUSED_FOR_RECORDING');
+    // The relay's established push of that camera (a report without `leg`) ends the pause.
+    type Report = { sessionId: string; deviceId: string; attempt: number; leg?: unknown };
+    const heard: { listener: ((report: Report) => void) | null } = { listener: null };
+    const source = {
+      subscribe: (next: (report: Report) => void): (() => void) => {
+        heard.listener = next;
+        return () => {};
+      },
+    };
+    composition.relayReports.attach(source as never);
+    heard.listener?.({ sessionId: SESSION, deviceId: 'CAM-01', attempt: 1, leg: { event: 'LOST', profile: 'H264_1080P25', loss: 1, cause: 'CAMERA_LOST' } });
+    expect(composition.preview.states()['CAM-01']).toBe('PAUSED_FOR_RECORDING');
+    heard.listener?.({ sessionId: SESSION, deviceId: 'CAM-01', attempt: 1 });
+    expect(composition.preview.states()['CAM-01']).not.toBe('PAUSED_FOR_RECORDING');
+    // The pre-check yield, and the end of a capture that ends every pause.
+    await yields[0]?.('CAM-03');
+    expect(composition.preview.states()['CAM-03']).toBe('PAUSED_FOR_RECORDING');
+    for (const listen of built.captureEndListeners) listen();
+    expect(composition.preview.states()['CAM-03']).toBeUndefined();
+  });
+
+  it('on linux with both programs and a run directory the idle meters exist; while a session is active the audio bundle reads a stored row after they stood down', async () => {
+    let active = false;
+    const built = rig(CaptureOperation.REAL_PRODUCTION, {
+      audioHelperProgram: '/opt/dems/capture/bin/mic-helper',
+      guardProgram: '/opt/dems/capture/bin/capture-guard',
+      runDir: '/var/lib/dems/run/capture',
+      sessionActive: () => active,
+    });
+    const composition = composed(built, { platform: CARD_LISTING_PLATFORM, network: () => HOST });
+    expect(composition.idleMeters).not.toBeNull();
+    expect(await composition.dependencies.audio.registered('MIC-03')).toMatchObject({ deviceId: 'MIC-03' });
+    active = true;
+    expect(await composition.dependencies.audio.registered('MIC-03')).toMatchObject({ deviceId: 'MIC-03' });
+    // Control: off linux there are none, whatever the programs.
+    const darwin = composed(rig(CaptureOperation.REAL_PRODUCTION, { audioHelperProgram: '/x/helper', guardProgram: '/x/guard', runDir: '/x/run' }), { platform: 'darwin', network: () => HOST });
+    expect(darwin.idleMeters).toBeNull();
+  });
+});

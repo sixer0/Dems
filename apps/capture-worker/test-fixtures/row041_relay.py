@@ -14,7 +14,7 @@ argument, three pipes, ONE compact JSON line on standard input, which then stays
     # ps and lsof); `make -C apps/capture-worker` first
     M3_PORTS=8559,8561 /usr/bin/lockf -k -t 1800 .locks/heavy-host.lock \
         python3 -B apps/capture-worker/test-fixtures/row041_relay.py all
-    ... row041_relay.py record | basic | wrong | ends | start | summary
+    ... row041_relay.py record | basic | wrong | ends | start | preview | summary
 
 Cases
   record   h264 and hevc, each with the parameter sets in the description and in the stream; a camera that offers
@@ -31,12 +31,17 @@ Cases
            contract (ten forms), no message inside the bound, a camera that is not there, another host in the
            description's control address, a redirect, and a camera that challenges Digest first and Basic once
            it holds the answer (one Digest answer left, never a Basic one).
+  preview  (task 4 row 89, relay.h "PREVIEW MODE"; no worker) h264 and hevc: the relay in preview mode writes the
+           video ONLY to standard output - Annex-B units, the parameter sets first, no report line - which decodes
+           with 0 errors and goes through the Core's preview argument list of FFmpeg into MJPEG parts; the order to
+           stop ends it with 0. And the reader of standard output going away (the decoder ended) ends it with 0 too.
+           A preview message without the source address is refused.
 
 The account is the test camera's own synthetic constant (imported, never written here). No value of the account,
 the locator or the ingest address is printed or stored by this script: a result holds counts of those texts in
 what the relay wrote, in its argument list and in its environment (0 is required). Everything a run writes lands
 under .cache/row041-relay/ (git-ignored)."""
-import json, os, re, secrets, signal, socket, subprocess, sys, threading, time
+import json, os, re, secrets, select, signal, socket, subprocess, sys, threading, time
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -483,8 +488,130 @@ def start_cases():
     return runs
 
 
+def preview_message(locator, user, secret, **more):
+    """Row 89: the door's bytes of a PREVIEW start (relay-start.ts `startCameraPreview`): the members of a probe, no
+    ingest address, the source address stated. `source=None` states none."""
+    m = {"type": "start", "mode": "preview", "attempt": 7, "source": SOURCE, "access": {"locator": locator, "username": user, "secret": secret}}
+    m.update(more)
+    if m.get("source") is None:
+        del m["source"]
+    return (json.dumps(m, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")
+
+
+# The Core's encoder argument list of a preview, after the input (relay-start.ts PREVIEW_ENCODER_TAIL): the same words.
+PREVIEW_TAIL = ["-an", "-vf", "fps=8,scale=640:-2", "-q:v", "7", "-f", "mpjpeg"]
+
+
+def first_unit_is_a_parameter_set(out, codec):
+    if not out.startswith(b"\x00\x00\x00\x01") or len(out) < 5:
+        return False
+    return (out[4] & 0x1F) == 7 if codec == "h264" else ((out[4] >> 1) & 0x3F) == 32
+
+
+def preview_run(name, codec, sets, end="input"):
+    """Row 89: camera double -> relay in preview mode -> its standard output. `end`: "input" closes the relay's standard
+    input (the Core's order to stop); "reader" closes the READ END of its standard output (the decoder went away)."""
+    d = os.path.join(OUT, "runs", name)
+    os.makedirs(d, exist_ok=True)
+    user, secret = CAM.ACCOUNT_USER, CAM.ACCOUNT_PASSWORD
+    cam, log, path = camera_start(d, codec, sets)
+    locator = "rtsp://127.0.0.1:%d%s" % (CAMERA_PORT, path)
+    texts = {k: v for k, v in texts_of("rtsp://127.0.0.1:1/x/y/none", locator, user, secret).items() if not k.startswith("ingest")}
+    t0 = time.monotonic()
+    out, err = bytearray(), bytearray()
+    p = H.spawn([RELAY], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={}, close_fds=True)
+    errs = threading.Thread(target=lambda: [err.extend(c) for c in iter(lambda: p.stderr.read1(65536), b"")], daemon=True)
+    errs.start()
+    p.stdin.write(preview_message(locator, user, secret))
+    p.stdin.flush()
+    fd = p.stdout.fileno()
+    end_at, closed_at = None, None
+    while time.monotonic() - t0 < 20:
+        if end == "reader" and len(out) >= 64 * 1024:
+            break
+        if end == "input" and b"preview_streaming" in err and end_at is None:
+            end_at = time.monotonic() + 2.0
+        if end_at is not None and time.monotonic() >= end_at:
+            break
+        if p.poll() is not None:
+            break
+        if select.select([fd], [], [], 0.05)[0]:
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                break
+            out.extend(chunk)
+    closed_at = time.monotonic()
+    if end == "input":
+        p.stdin.close()
+        drain_until = time.monotonic() + 8
+        while time.monotonic() < drain_until:             # the rest of the stream, until the relay ends
+            if not select.select([fd], [], [], 0.05)[0]:
+                continue
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                break
+            out.extend(chunk)
+    else:
+        p.stdout.close()
+    try:
+        rc = p.wait(timeout=8)
+    except subprocess.TimeoutExpired:
+        rc = "timeout"
+        os.killpg(p.pid, signal.SIGKILL)
+        p.wait()
+    took = round(time.monotonic() - closed_at, 2)
+    errs.join(3)
+    if end == "input":
+        try:
+            p.stdin.close()
+        except OSError:
+            pass
+    camera = camera_end(cam, log)
+    lines = []
+    for l in bytes(err).decode("utf-8", "replace").splitlines():
+        try:
+            lines.append(json.loads(l))
+        except ValueError:
+            lines.append({"not_json": len(l)})
+    exit_line = next((l for l in lines if l.get("relay") == "exit"), {})
+    stream = os.path.join(d, "preview.%s" % codec)
+    open(stream, "wb").write(bytes(out))
+    decoded = H.sh([E.FF, "-v", "error", "-nostdin", "-f", codec, "-i", stream, "-f", "null", "-"])
+    mjpeg = os.path.join(d, "preview.mjpeg")
+    encoded = H.sh([E.FF, "-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-f", codec, "-i", stream] + PREVIEW_TAIL + [mjpeg])
+    parts = open(mjpeg, "rb").read() if os.path.exists(mjpeg) else b""
+    r = {"run": name, "case": "preview", "relay_rc": rc, "relay_code": exit_line.get("code"), "seconds": took, "stdout_bytes": len(out),
+         "relay_pictures": exit_line.get("pictures"), "lines": lines, "texts_in_relay_output": occurrences(texts, bytes(out), bytes(err)),
+         "decode_error_lines": len([l for l in decoded.stderr.splitlines() if l.strip()]) if decoded.returncode == 0 else -1,
+         "mjpeg_parts": parts.count(b"--ffmpeg"), "jpeg_starts": parts.count(b"\xff\xd8\xff"), "encoder_rc": encoded.returncode,
+         "camera_requests": camera["requests_by_authentication_class"], "double_requests": [], "leftovers": len(H.leftovers()["processes"])}
+    crit = {"relay_exit_is_stopped": rc == 0 and exit_line.get("code") == "STOPPED", "ended_within_3_s": took <= 3.0,
+            "standard_output_is_video_from_a_parameter_set": first_unit_is_a_parameter_set(bytes(out), codec),
+            "no_report_line_on_standard_output": b'{"report"' not in out and b'"relay"' not in out,
+            "the_gate_opened_once": sum(1 for l in lines if l.get("relay") == "preview_streaming") == 1,
+            "every_line_is_fixed_shape": all("not_json" not in l for l in lines), "no_text_of_the_message_in_the_output": sum(r["texts_in_relay_output"].values()) == 0,
+            "a_digest_answer_was_made": sum(n for k, n in camera["requests_by_authentication_class"].items() if k.startswith("digest")) >= 1, "no_leftover": r["leftovers"] == 0}
+    if end == "input":
+        crit["the_video_decodes_with_0_errors"] = r["decode_error_lines"] == 0
+        # Every part is "--ffmpeg" and its headers before one JPEG; the muxer closes the stream with one more boundary.
+        crit["the_preview_argument_list_makes_mjpeg_parts"] = encoded.returncode == 0 and r["jpeg_starts"] >= 4 and r["mjpeg_parts"] == r["jpeg_starts"] + 1
+    r["criteria"], r["verdict"] = crit, "PASS" if all(crit.values()) else "FAIL"
+    json.dump(r, open(os.path.join(d, "result.json"), "w"), indent=1, default=str)
+    os.remove(stream)
+    return r
+
+
 def todo(what):
     out = []
+    if what in ("preview", "all"):
+        for codec in ("h264", "hevc"):
+            out.append(lambda c=codec: preview_run("preview_%s_stopped" % c, c, "sdp"))
+        out.append(lambda: preview_run("preview_h264_inband_stopped", "h264", "inband"))
+        out.append(lambda: preview_run("preview_h264_reader_gone", "h264", "sdp", end="reader"))
+        dead = "rtsp://127.0.0.1:%d/media/video1" % DEAD_PORT
+        out.append(lambda: start_run("preview_without_a_source_address", preview_message(dead, CAM.ACCOUNT_USER, CAM.ACCOUNT_PASSWORD, source=None), "START_MESSAGE_INVALID"))
+        out.append(lambda: start_run("preview_with_an_ingest_address", preview_message(dead, CAM.ACCOUNT_USER, CAM.ACCOUNT_PASSWORD, ingest="rtsp://127.0.0.1:8559/S-ROW41/video-01/Zr41StartRunElement9x"), "START_MESSAGE_INVALID"))
+        out.append(lambda: start_run("preview_camera_not_there", preview_message(dead, CAM.ACCOUNT_USER, CAM.ACCOUNT_PASSWORD), "CAMERA_UNREACHABLE"))
     if what in ("record", "all"):
         for codec in ("h264", "hevc"):
             for sets in ("sdp", "inband"):
@@ -545,7 +672,7 @@ def main(argv):
         sys.exit("no relay: make -C apps/capture-worker")
     runs = todo(what)
     if not runs and what != "summary":
-        sys.exit("usage: row041_relay.py all | record | basic | wrong | ends | start | summary")
+        sys.exit("usage: row041_relay.py all | record | basic | wrong | ends | start | preview | summary")
     for f in runs:
         print(line(f()), flush=True)
         time.sleep(1.0)

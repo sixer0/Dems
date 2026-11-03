@@ -310,12 +310,30 @@ export function linuxMicPrecheckArguments(card: LinuxMicCard): readonly string[]
 }
 
 /**
+ * THE IDLE LEVEL OUTPUT (decisions D51/D53; row 91c): ALL native channels of the card, interleaved,
+ * as 32-bit float little-endian on the helper's OWN standard output. No pipe, no file: the Core
+ * reads the samples in memory, computes a level per window and keeps nothing. No progress report
+ * (standard output carries the samples) and no `-y` (nothing is written that could be replaced).
+ */
+const LEVEL_OUTPUT = ['-vn', '-c:a', 'pcm_f32le', '-f', 'f32le', '-flush_packets', '1', 'pipe:1'] as const;
+
+/**
+ * The idle level meter of the Devices & Inputs page while NO session is active (row 91c): one open
+ * of the shared capture with ALL channels of the card, written to standard output. The input part
+ * is the push and pre-check lists' own, from the same three integers of the live listing, so the
+ * card is opened through the SAME shared capture (same name, same IPC key). Nothing is selected.
+ */
+export function linuxMicLevelArguments(card: LinuxMicCard): readonly string[] {
+  return Object.freeze([...QUIET, ...linuxInputArguments(card), ...LEVEL_OUTPUT]);
+}
+
+/**
  * For the static argument test (G-R12 as amended by SR-4): the literals of the Linux table, the
  * 64 channel selections (the only arguments that may hold a vertical bar) and the shape of the
  * device argument.
  */
 export const MIC_LINUX_HELPER_TABLE = Object.freeze({
-  literals: Object.freeze([...new Set<string>([...QUIET, ...PROGRESS, ...LINUX_INPUT_HEAD, ...LINUX_INPUT_TAIL, ...LINUX_SELECT, ...LINUX_CHANNEL_LAYOUTS, ...OUTPUT, ...PRECHECK_OUTPUT])]),
+  literals: Object.freeze([...new Set<string>([...QUIET, ...PROGRESS, ...LINUX_INPUT_HEAD, ...LINUX_INPUT_TAIL, ...LINUX_SELECT, ...LINUX_CHANNEL_LAYOUTS, ...OUTPUT, ...PRECHECK_OUTPUT, ...LEVEL_OUTPUT])]),
   /** The 64 words that may follow `-ch_layout`, in order: `channelLayouts[n - 1]` opens n channels (row 79b). */
   channelLayouts: Object.freeze([...LINUX_CHANNEL_LAYOUTS]) as readonly string[],
   channelSelections: Object.freeze(Array.from({ length: LINUX_MIC_CHANNEL_INDEX_MAX + 1 }, (_unused, index) => linuxChannelSelection(index))),
@@ -324,6 +342,8 @@ export const MIC_LINUX_HELPER_TABLE = Object.freeze({
   inputLength: LINUX_INPUT_HEAD.length + 1 + LINUX_INPUT_TAIL.length + 1,
   selectLength: LINUX_SELECT.length + 1,
   outputLength: OUTPUT.length,
+  /** Row 91c: the idle level output, in its order (the last word is standard output, `pipe:1`). */
+  levelOutput: Object.freeze([...LEVEL_OUTPUT]) as readonly string[],
 });
 
 // ── The card listing row (task 4 row 85c; decision C60 (3); static rule G-R12 as amended by SR-4) ──

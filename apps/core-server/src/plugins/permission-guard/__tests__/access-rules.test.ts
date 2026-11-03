@@ -15,6 +15,9 @@ import {
   ANY_OF_SEPARATOR,
   AccessRuleError,
   AccessRuleErrorCode,
+  CAMERA_PREVIEW_ROUTE_URL,
+  CAMERA_PREVIEW_SESSION_OPERATION,
+  CAMERA_PREVIEW_STREAM_ID,
   EVIDENCE_MEDIA_ROUTE_URL,
   EVIDENCE_MEDIA_SESSION_OPERATION,
   EVIDENCE_EXPORT_DOWNLOAD_ID,
@@ -59,7 +62,8 @@ function entry(operationId: string, change: Record<string, unknown>): CoreApiOpe
 }
 
 describe('the rule book of the contract registry', () => {
-  it('compiles a rule for every one of the 111 operations: none lacks an access rule or an audit rule', () => {
+  // REVISED 2026-11-02 (principal): RB-9 amended — the registry gains createUser/updateUser/deleteUser (117).
+  it('compiles a rule for every one of the 117 operations: none lacks an access rule or an audit rule', () => {
     // C3 §2.5 (blueprint row 113): 89 + the STT configuration operations 90-92 = 92.
     // C3 §2.6, §10.1 (blueprint row 132, decision D106): + the camera-search operations 93-97 = 97.
     // Task 4 blueprint row 63 (design addendum 4.2): + the sound-card operations 98-99 = 99.
@@ -68,12 +72,18 @@ describe('the rule book of the contract registry', () => {
     // Task 4 row V3 (blueprint row 146): + the stored-credential connection test, operation 108 = 108.
     // Task 4 blueprint row 116: + the installation acceptance and its revocation, operations 109-110 = 110.
     // Task 4 row RD2: + the retirement of a device, operation 111 = 111.
-    expect(book.operationIds).toHaveLength(111);
+    // Task 4 row D53 (decisions D51, D53): + the live preview and the idle meters, operations 112-113 = 113.
+    // LCD bridge task: + the panel firmware word, operation 114 = 114.
+    // REVISED 2026-11-02 (principal): RB-9 amended — + createUser, updateUser, deleteUser = 117.
+    expect(book.operationIds).toHaveLength(117);
     expect(rules.filter((rule) => !isAccessRule(rule))).toEqual([]);
-    expect(new Set(compiled.map((rule) => rule.operationId)).size).toBe(111);
+    expect(new Set(compiled.map((rule) => rule.operationId)).size).toBe(117); // RB-9 as amended 02-11-2026: + createUser, updateUser, deleteUser
   });
 
-  it('holds 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 71 with one permission and 1 any-of (spec §7, D13; C3 §2.5, §2.6; task 4 rows 63, 194, 102, V3, 116 and RD2)', () => {
+  // REVISED 2026-11-02 (principal): RB-9 amended — the three new operations join `with one permission`
+  // (71 -> 74): their registry rule is USER_ADMIN, and the narrowing to the vendor `root` account is
+  // applied inside the unit, which is not something the rule book of stage 6 can count as a kind.
+  it('holds 5 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 74 with one permission and 3 any-of (spec §7, D13; C3 §2.5, §2.6; task 4 rows 63, 194, 102, V3, 116, RD2 and D53; the LCD bridge task; RB-9 as amended)', () => {
     const count = (kind: string): number => compiled.filter((rule) => rule.kind === kind).length;
     expect({
       PUBLIC: count(CoreApiAccessKind.PUBLIC),
@@ -81,7 +91,7 @@ describe('the rule book of the contract registry', () => {
       AUTHENTICATED: count(CoreApiAccessKind.AUTHENTICATED),
       PERMISSION: count(CoreApiAccessKind.PERMISSION),
       ANY_OF: count(CoreApiAccessKind.ANY_OF),
-    }).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 30, PERMISSION: 71, ANY_OF: 1 });
+    }).toEqual({ PUBLIC: 5, DEVICE: 5, AUTHENTICATED: 30, PERMISSION: 74, ANY_OF: 3 }); // LCD bridge task: operation 114 is the fourth PUBLIC rule (4 -> 5); RB-9 as amended: PERMISSION 71 -> 74, no grant moved
   });
 
   it('takes method, path, permissions and conditions from the registry entry, and nothing from anywhere else', () => {
@@ -202,7 +212,8 @@ describe('spec §6.6: what a retired device may still call', () => {
       const documented = operation.responses[403]?.description.includes('DEVICE_REVOKED') ?? false;
       expect([operation.operationId, refuses]).toEqual([operation.operationId, documented]);
     }
-    expect(publicOperations).toEqual(['getServiceHealth', 'signIn', 'getSignInStatus', 'redeemPairingCode']);
+    // LCD bridge task: + getPanelFirmware, the fourth public read that a retired device may not call.
+    expect(publicOperations).toEqual(['getServiceHealth', 'signIn', 'getSignInStatus', 'redeemPairingCode', 'getPanelFirmware']);
   });
 });
 
@@ -363,6 +374,37 @@ describe('which route gets which rule (RB-1: deny by default)', () => {
     // The rule follows the registry.
     const moved = createRuleBook(book.operationIds.map((id) => (id === EVIDENCE_EXPORT_JOB_OPERATION ? { ...operationOf(id), access: operationOf('createEvidenceMediaSession').access } : operationOf(id))));
     expect(moved.ruleAt('GET', EVIDENCE_EXPORT_DOWNLOAD_URL)).toMatchObject({ permissions: ['EVIDENCE_VIEW'], operationId: EVIDENCE_EXPORT_DOWNLOAD_ID });
+  });
+
+  it('decisions D51, D53: the live camera preview route, GET /preview/:token, is outside the registry and gets THE RULE OF OPERATION 112 - ANY-OF the three, never an open one', () => {
+    const session = book.ruleOf(CAMERA_PREVIEW_SESSION_OPERATION);
+    if (!isAccessRule(session)) throw new Error('operation 112 has no rule');
+    expect(CAMERA_PREVIEW_SESSION_OPERATION).toBe('createCameraPreviewSession');
+    expect(CAMERA_PREVIEW_ROUTE_URL).toBe('/preview/:token');
+    const rule = book.ruleAt('GET', CAMERA_PREVIEW_ROUTE_URL);
+    if (!isAccessRule(rule)) throw new Error('the preview route has no rule');
+    for (const operationId of [undefined, 'whatever', CAMERA_PREVIEW_SESSION_OPERATION]) {
+      expect(book.resolve({ method: 'GET', url: CAMERA_PREVIEW_ROUTE_URL, operationId })).toBe(rule);
+    }
+    expect(rule).toEqual({ ...session, operationId: CAMERA_PREVIEW_STREAM_ID, method: 'GET', url: CAMERA_PREVIEW_ROUTE_URL, idPattern: null });
+    expect(rule).toMatchObject({
+      kind: CoreApiAccessKind.ANY_OF,
+      permissions: ['SESSION_START', 'CAPTURE_CONFIG', 'DEVICE_MANAGE'],
+      denial: { auditType: 'ACCESS_DENIED', errorCode: 'NOT_PERMITTED', permission: 'SESSION_START_OR_CAPTURE_CONFIG_OR_DEVICE_MANAGE' },
+    });
+    expect(Object.isFrozen(rule)).toBe(true);
+    expect(book.operationIds).not.toContain(CAMERA_PREVIEW_STREAM_ID);
+    // Only that method on that path: nothing beside it inherits the rule.
+    for (const [method, url] of [['POST', CAMERA_PREVIEW_ROUTE_URL], ['GET', '/preview'], ['GET', '/preview/:token/other'], ['GET', '/preview/:id'], ['GET', '/api/v1/preview/:token']] as const) {
+      expect(problemOf(book.resolve({ method, url, operationId: undefined })).code, `${method} ${url}`).toBe(AccessRuleErrorCode.ROUTE_WITHOUT_RULES);
+    }
+    // A registry WITHOUT operation 112 gives the route no rule at all.
+    const without = createRuleBook(book.operationIds.filter((id) => id !== CAMERA_PREVIEW_SESSION_OPERATION).map((id) => operationOf(id)));
+    expect(problemOf(without.resolve({ method: 'GET', url: CAMERA_PREVIEW_ROUTE_URL, operationId: undefined })).code).toBe(AccessRuleErrorCode.ROUTE_WITHOUT_RULES);
+    expect(problemOf(without.ruleAt('GET', CAMERA_PREVIEW_ROUTE_URL)).code).toBe(AccessRuleErrorCode.ROUTE_WITHOUT_RULES);
+    // The rule follows the registry.
+    const moved = createRuleBook(book.operationIds.map((id) => (id === CAMERA_PREVIEW_SESSION_OPERATION ? { ...operationOf(id), access: operationOf('createEvidenceMediaSession').access } : operationOf(id))));
+    expect(moved.ruleAt('GET', CAMERA_PREVIEW_ROUTE_URL)).toMatchObject({ permissions: ['EVIDENCE_VIEW'], operationId: CAMERA_PREVIEW_STREAM_ID });
   });
 
   it('ruleAt holds a route to the registry by method and path alone, for a route whose configuration cannot be read', () => {

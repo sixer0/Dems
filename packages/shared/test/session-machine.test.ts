@@ -4,14 +4,18 @@
 // D54 (a): every sim here uses storage: null and authStorage: null.
 import { describe, expect, it } from 'vitest';
 import {
+  applySealingProgressTransition,
+  completeSealTransition,
   createManualClock,
   createSim,
+  FINALIZATION_ORDER,
   passCaptureStart,
   PRECHECK_TOTAL_MAX_MS,
   selectSealedHourly,
   selectSealedToday,
   SimTransitionError,
   wibDateParts,
+  type CompleteSealInput,
   type FaultKind,
   type SessionCreateInput,
   type SimState,
@@ -228,6 +232,60 @@ describe('allowed transitions (§14.7 table)', () => {
     const result = h.sim.actions.createSession({ ...INPUT, subjectName: 'Second Saksi' });
     expect(result).toEqual({ ok: true, sessionId: 'SES-20261001-0025', created: true });
     expect(sessionState(h.state())).toBe('CREATE');
+  });
+
+  // T15 (row 91c): a CLIP latched during a recording ends with the session at SEALED; the next pre-check and the idle meters start without it.
+  it('T15: the CLIP latch of a recording is released at SEALED (the simulator\'s seal); the next session\'s pre-check reads no CLIP', () => {
+    const h = harness();
+    h.toRecording();
+    h.sim.actions.applyCaptureTelemetry({ levels: [{ role: 'STANDBY', dbfs: -1, clipped: true }], ingest: [], fragments: [] });
+    h.run(50);
+    expect(h.state().mics.filter((mic) => mic.clipLatched).map((mic) => mic.id)).toEqual(['AUDIO-02']);
+    h.sim.actions.stopRecording('Interview completed');
+    // While the session is not yet sealed the latch stands (STOPPING and FINALIZING keep it).
+    h.run(1_600);
+    expect(sessionState(h.state())).toBe('FINALIZING');
+    expect(h.state().mics.some((mic) => mic.clipLatched)).toBe(true);
+    h.run(10_000);
+    expect(sessionState(h.state())).toBe('SEALED');
+    expect(h.state().mics.some((mic) => mic.clipLatched)).toBe(false);
+    h.run(50);
+    expect(Object.values(h.state().audio.inputs).some((frame) => frame?.clip === true)).toBe(false);
+    // The next session: no MIC check warns of a clip it did not have.
+    h.sim.actions.createSession({ ...INPUT, subjectName: 'Second Saksi' });
+    h.sim.actions.beginPrecheck();
+    h.run(5_000);
+    const checks = h.state().session?.precheck.items ?? [];
+    expect(checks.filter((check) => ['MIC_PRIMARY', 'MIC_STANDBY', 'MIC_1', 'MIC_2'].includes(check.id)).length).toBeGreaterThan(0);
+    expect(checks.filter((check) => check.value === 'CLIP')).toEqual([]);
+  });
+
+  it('T15: the Core-driven seal (completeSeal) releases the latch the same way; a state without a latch keeps its mic rows', () => {
+    const h = harness();
+    h.toRecording();
+    const sessionId = h.state().session?.id ?? '';
+    h.sim.actions.stopRecording('Interview completed');
+    const steps = FINALIZATION_ORDER.map((id, index) => ({ id, status: index < 5 ? 'DONE' : 'RUNNING', progress: index < 5 ? 100 : 90, etaMs: index === 5 ? 900 : null, attempt: 1 }) as const);
+    h.sim.store.setState(applySealingProgressTransition(h.state(), h.clock.now(), { sessionId, steps }), true);
+    const latched: SimState = { ...h.state(), mics: h.state().mics.map((mic) => (mic.id === 'AUDIO-01' ? { ...mic, clipLatched: true } : mic)) };
+    const at = h.clock.now() + 500;
+    const input: CompleteSealInput = {
+      sessionId,
+      sealedAt: at,
+      manifestSha256: 'ab'.repeat(32),
+      signature: { value: 'cd'.repeat(64), keyId: 'CORE-KEY-EVSIGN-01', algorithm: 'Ed25519' as const },
+      tracks: [{ trackId: 'VIDEO-01', sizeBytes: 4_000, sha256: '01'.repeat(32) }],
+      interrupted: false,
+      durableEndAt: at - 2_000,
+      transcriptSha256: null,
+      labelsStatus: null,
+      developmentSources: true,
+    };
+    const sealed = completeSealTransition(latched, at, input);
+    expect(sealed.session?.state).toBe('SEALED');
+    expect(sealed.mics.some((mic) => mic.clipLatched)).toBe(false);
+    const clean = { ...latched, mics: latched.mics.map((mic) => ({ ...mic, clipLatched: false })) };
+    expect(completeSealTransition(clean, at, input).mics).toBe(clean.mics);
   });
 
   const criticalRows: [string, FaultKind][] = [

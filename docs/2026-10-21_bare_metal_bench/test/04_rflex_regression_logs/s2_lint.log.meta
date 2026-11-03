@@ -1,0 +1,4 @@
+PRE 18:02:40 uptime: 18:02  1 user, load averages: 6.53 7.69 7.99
+START 18:02:40 CMD: /usr/bin/lockf -k -t 3600 /Users/gsp-budi/Documents/DEMS/.data/locks/heavy-host.lock npm run lint
+END 18:03:00 rc=0 duration=20s
+POST uptime: 18:03  1 user, load averages: 7.14 7.76 8.01

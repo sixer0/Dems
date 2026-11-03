@@ -19,6 +19,7 @@ import {
   ProductionDoorError,
   ProductionDoorRefusal,
   coreFileLimitOfThisProcess,
+  startProductionPipeline,
   startProductionProcess,
   type ProductionEnvironment,
   type ProductionProcess,
@@ -790,5 +791,109 @@ describe('row N5c: the take-off of a locator left open at the cut is linear, and
     }
     expect(differ).toEqual([]);
     expect(changed).toBeGreaterThan(1_000);
+  });
+});
+
+// Task 4 row 89 (decisions D51, D53: the live preview): TWO CHILDREN AS ONE PIPELINE. Real children (node scripts given
+// with `-e`), joined by the kernel's pipe: the first's standard output is the second's standard input. What is proven: the
+// bytes go from child to child and never through this process (the first child's output is not read by the door), the start
+// message goes to the first only, the end of either ends the other, a kill reaches both, a refusal of either ends the start.
+describe('row 89: startProductionPipeline - the second child reads the first child\'s output, no byte passes the door', () => {
+  const ZERO = (): number => 0;
+  /** The first child: says how many bytes of its input it took at the first line feed, then ticks every 10 ms until its input ends. */
+  const FIRST_TICKS = "let got=0,told=false,i=0;process.stdin.on('data',(c)=>{got+=c.length;if(!told&&c.includes(10)){told=true;process.stdout.write('took '+got+'\\n');}});const t=setInterval(()=>process.stdout.write('tick '+(i++)+'\\n'),10);process.stdin.on('end',()=>{clearInterval(t);process.exit(0);});";
+  /** The first child that never ends by itself and ignores a gone reader: only a signal ends it. */
+  const FIRST_FOREVER = "process.stdout.on('error',()=>{});setInterval(()=>process.stdout.write('tick\\n'),10);";
+  /** The first child that writes once and exits with 4. */
+  const FIRST_QUITS = "process.stdout.write('once\\n',()=>process.exit(4));";
+  /** The second child: what it reads, in capitals, until its input ends. */
+  const SECOND_UPPER = "process.stdin.on('data',(c)=>process.stdout.write(c.toString('latin1').toUpperCase()));process.stdin.on('end',()=>process.exit(0));";
+  /** The second child that exits with 3 at its first chunk. */
+  const SECOND_QUITS = "process.stdin.once('data',()=>process.exit(3));";
+  /** The second child that ignores the end of its input: only a signal ends it. */
+  const SECOND_FOREVER = "process.stdin.resume();process.stdin.on('end',()=>{});setInterval(()=>{},1000);";
+  const node = (script: string): { command: string; args: string[] } => ({ command: NODE, args: ['-e', script] });
+  const until = async (done: () => boolean, turns = 400): Promise<boolean> => {
+    for (let turn = 0; turn < turns && !done(); turn += 1) await new Promise<void>((resolveWait) => timers.after(10, resolveWait));
+    return done();
+  };
+
+  it('the bytes of the first child reach the second through the pipe; the door reads none of them; the message reaches the first only; ending the first\'s input ends both', async () => {
+    const seen: Buffer[] = [];
+    const pipeline = startProductionPipeline(
+      { ...node(FIRST_TICKS), message: access(), timers, coreFileLimit: ZERO },
+      { ...node(SECOND_UPPER), timers, coreFileLimit: ZERO, onOutput: (chunk) => seen.push(chunk) },
+    );
+    await pipeline.started;
+    expect(pipeline.first.pid).not.toBeNull();
+    expect(pipeline.second.pid).not.toBeNull();
+    expect(pipeline.first.pid === pipeline.second.pid).toBe(false);
+    const { copy, handed } = lastHanded();
+    expect(await until(() => Buffer.concat(seen).toString('latin1').includes('TICK 3'))).toBe(true);
+    pipeline.endInput();
+    const ended = await pipeline.ended;
+    const text = Buffer.concat(seen).toString('latin1');
+    // The first child took the whole message (and nothing else); what it wrote arrived, changed by the second child only.
+    expect(text.startsWith(`TOOK ${copy.length}\n`)).toBe(true);
+    expect(/^TOOK \d+\n(TICK \d+\n)+$/.test(text)).toBe(true);
+    expect(cleared(handed)).toBe(true);
+    expect(free(text)).toBe(true);
+    // The door never read the first child's output, and the message never reached the second.
+    expect(ended.first.output).toBe('');
+    expect(ended.second.output.startsWith('TOOK ')).toBe(true);
+    expect(ended.first.exitCode).toBe(0);
+    // The second ends at the end of its input, or by the door's order that follows the first child's end: either is its end.
+    expect(ended.second.exitCode === 0 || ended.second.signal === 'SIGTERM').toBe(true);
+    expect(pipeline.alive()).toBe(false);
+    expect(exists(pipeline.first.pid) || exists(pipeline.second.pid)).toBe(false);
+  });
+
+  it('a kill reaches both children', async () => {
+    const pipeline = startProductionPipeline({ ...node(FIRST_FOREVER), message: null, timers, coreFileLimit: ZERO }, { ...node(SECOND_FOREVER), timers, coreFileLimit: ZERO, onOutput: () => {} });
+    await pipeline.started;
+    expect(pipeline.alive()).toBe(true);
+    pipeline.kill('SIGKILL');
+    const ended = await pipeline.ended;
+    expect([ended.first.signal, ended.second.signal]).toEqual(['SIGKILL', 'SIGKILL']);
+    expect(pipeline.alive()).toBe(false);
+  });
+
+  it('the second child ending by itself ends the first (SIGTERM), and the first ending by itself ends the second', async () => {
+    const one = startProductionPipeline({ ...node(FIRST_FOREVER), message: null, timers, coreFileLimit: ZERO }, { ...node(SECOND_QUITS), timers, coreFileLimit: ZERO });
+    const oneEnded = await one.ended;
+    expect(oneEnded.second.exitCode).toBe(3);
+    expect(oneEnded.first.signal).toBe('SIGTERM');
+    const two = startProductionPipeline({ ...node(FIRST_QUITS), message: null, timers, coreFileLimit: ZERO }, { ...node(SECOND_FOREVER), timers, coreFileLimit: ZERO });
+    const twoEnded = await two.ended;
+    expect(twoEnded.first.exitCode).toBe(4);
+    expect(twoEnded.second.signal).toBe('SIGTERM');
+  });
+
+  it('a refused first child starts no second; a refused second child ends the first; `started` names the refusal', async () => {
+    const noFirst = startProductionPipeline({ command: 'node', args: ['-e', FIRST_FOREVER], message: null, timers, coreFileLimit: ZERO }, { ...node(SECOND_FOREVER), timers, coreFileLimit: ZERO });
+    const firstRefusal = await noFirst.started.then(() => null, (error: unknown) => error);
+    expect(firstRefusal).toBeInstanceOf(ProductionDoorError);
+    expect((firstRefusal as ProductionDoorError).code).toBe(ProductionDoorRefusal.PROGRAM_NOT_ABSOLUTE);
+    expect(noFirst.second.pid).toBeNull();
+    const noFirstEnded = await noFirst.ended;
+    expect(noFirstEnded.first.spawnFailed && noFirstEnded.second.spawnFailed).toBe(true);
+
+    const noSecond = startProductionPipeline(
+      { ...node(FIRST_FOREVER), message: null, timers, coreFileLimit: ZERO },
+      { ...node(SECOND_FOREVER), env: { HOME: '/tmp' } as unknown as ProductionEnvironment, timers, coreFileLimit: ZERO },
+    );
+    const secondRefusal = await noSecond.started.then(() => null, (error: unknown) => error);
+    expect((secondRefusal as ProductionDoorError).code).toBe(ProductionDoorRefusal.ENVIRONMENT_NOT_ALLOWED);
+    const noSecondEnded = await noSecond.ended;
+    expect(noSecondEnded.first.signal).toBe('SIGTERM');
+    expect(noSecondEnded.second.spawnFailed).toBe(true);
+  });
+
+  it('every rule of the one start holds for each child: a core-file limit that is not 0 starts nothing', async () => {
+    const pipeline = startProductionPipeline({ ...node(FIRST_FOREVER), message: null, timers, coreFileLimit: () => 4096 }, { ...node(SECOND_FOREVER), timers, coreFileLimit: ZERO });
+    const refusal = await pipeline.started.then(() => null, (error: unknown) => error);
+    expect((refusal as ProductionDoorError).code).toBe(ProductionDoorRefusal.CORE_FILE_LIMIT_NOT_ZERO);
+    expect(pipeline.first.pid === null && pipeline.second.pid === null).toBe(true);
+    await pipeline.ended;
   });
 });

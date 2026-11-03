@@ -368,6 +368,20 @@ describe('the start rule of the pre-check (M4-PRECHK-RULE-1; D80(6), D83)', () =
 // slot's pre-check item is BLOCK "source not assigned" - all four slots, the STANDBY too (C25
 // corrects C21 (8)). In Simulated mode the SAME selector is answered as before (C21 (6)).
 // The doubles: the bed of WP-13a (seven selector categories of addendum 1.5) put into the state.
+describe('D48: the tablet link at the pre-check of a Core in its own capture', () => {
+  it('an OFFLINE link WARNS on a Core in its own capture (a console start needs no tablet); CONTROL: the simulated Core still BLOCKS, and a connected link passes on both', () => {
+    const base = createSim({ clock: createManualClock(Date.UTC(2026, 9, 23, 9, 0, 0)), storage: null, authStorage: null }).store.getState();
+    const offline: SimState = { ...base, tabletLink: { state: 'OFFLINE', changedAt: 0 } };
+    const own: SimState = { ...offline, time: { ...offline.time, hostClock: true } };
+    expect(isOwnCaptureCoreState(offline)).toBe(false);
+    expect(isOwnCaptureCoreState(own)).toBe(true);
+    expect(evaluatePrecheck(own, 'CORE')).toEqual({ status: 'WARN', value: 'OFFLINE', reason: 'Core link offline', reasonCode: 'CORE_OFFLINE', params: {} });
+    expect(evaluatePrecheck(offline, 'CORE')).toMatchObject({ status: 'BLOCK', value: 'OFFLINE', reasonCode: 'CORE_OFFLINE' });
+    expect(evaluatePrecheck({ ...own, tabletLink: base.tabletLink }, 'CORE')).toMatchObject({ status: 'PASS', value: 'ONLINE' });
+    expect(evaluatePrecheck(base, 'CORE')).toMatchObject({ status: 'PASS', value: 'ONLINE' });
+  });
+});
+
 describe('a selector slot without a source: the pre-check item (task 4 row 163)', () => {
   const { CATEGORIES, SLOTS, SEEDED_CATEGORY, emptySlotsOf, selectorPatch, cam, mic } = selectorBed;
   const CHECK_OF = { 'VIDEO-01': 'LENS_1', 'VIDEO-02': 'LENS_2', PRIMARY: 'MIC_PRIMARY', STANDBY: 'MIC_STANDBY' } as const;

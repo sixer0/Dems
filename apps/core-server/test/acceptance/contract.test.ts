@@ -1221,16 +1221,6 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     spaced();
     const held = bodyOf<Search>(await expectCall(main, 'searchCaptureAudioCards', technician, 'the listing names the registered input and its holder', {}, 200));
     expect(held.cards.map((card) => [card.registered, card.boundTo])).toEqual([[[], null], [[{ inputNumber: 3, deviceId: registered.deviceId }], registered.deviceId]]);
-    // 99, R-FLEX (row 138; AU-R1, AU-B1, AU-B2, bundle M): one microphone per card. Another input of the held card
-    // is refused by name with the holder; with `release: true` the holder MOVES to that input (200 REENABLED,
-    // `releasedDeviceId` = the holder's id, no new microphone).
-    const bound = await expectCall(main, 'registerCaptureAudioInput', technician, 'another input of the card a microphone holds', { payload: { ...payload, inputNumber: 4 } }, 409, 'INVALID_STATE');
-    expect(detailsOf(bound)).toEqual({ reason: 'AUDIO_CARD_ALREADY_BOUND', deviceId: registered.deviceId });
-    const moved = bodyOf<Registration>(await expectCall(main, 'registerCaptureAudioInput', technician, 'the same input with the release of the holder', { payload: { ...payload, inputNumber: 4, release: true } }, 200));
-    expect(moved).toMatchObject({ deviceId: registered.deviceId, change: 'REENABLED', inputNumber: 4, channelCount: 6, releasedDeviceId: registered.deviceId });
-    spaced();
-    const after = bodyOf<Search>(await expectCall(main, 'searchCaptureAudioCards', technician, 'the listing names the moved holder', {}, 200));
-    expect(after.cards.map((card) => [card.registered, card.boundTo])).toEqual([[[], null], [[{ inputNumber: 4, deviceId: registered.deviceId }], registered.deviceId]]);
     // 77 (decision C43 (2), (3)): the registered microphone is in the registry every role reads, once
     // (the repeat made no second device), after the built-in pair and with the capability they state.
     const registry = bodyOf<{ devices: { id: string; kind: string; capabilities: string[]; adapter?: string }[] }>(await expectCall(main, 'getCaptureDevices', web.INVESTIGATOR, 'the registry lists the registered microphone', {}, 200));
@@ -1238,6 +1228,19 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     expect(microphones.map((device) => device.id)).toEqual(['MIC-01', 'MIC-02', registered.deviceId]);
     expect(microphones.map((device) => device.capabilities)).toEqual([['AUDIO'], ['AUDIO'], ['AUDIO']]);
     expect(microphones.at(-1)?.adapter).toBe('USB_AUDIO');
+    // 99, D48 (2026-10-23, reverses D10 (1) / Q96-01 a; was row 138's "one microphone per card": another input refused
+    // AUDIO_CARD_ALREADY_BOUND, the holder moved with `release: true`): ONE MICROPHONE PER INPUT of a card. Another input of the
+    // held card is a SECOND microphone (201, no release); the same input again is its microphone (200 REENABLED, also with
+    // `release: true`, nothing released). Asked AFTER the registry read above, so that AC-B-70 still sees the pair and one
+    // registered microphone there.
+    const second = bodyOf<Registration>(await expectCall(main, 'registerCaptureAudioInput', technician, 'another input of the card a microphone holds', { payload: { ...payload, inputNumber: 4 } }, 201));
+    expect(second).toMatchObject({ change: 'REGISTERED', inputNumber: 4, channelCount: 6, releasedDeviceId: null });
+    expect(second.deviceId).not.toBe(registered.deviceId);
+    const secondAgain = bodyOf<Registration>(await expectCall(main, 'registerCaptureAudioInput', technician, 'the second input again, with a release', { payload: { ...payload, inputNumber: 4, release: true } }, 200));
+    expect(secondAgain).toEqual({ ...second, change: 'REENABLED' });
+    spaced();
+    const both = bodyOf<Search>(await expectCall(main, 'searchCaptureAudioCards', technician, 'the listing names both microphones of the card', {}, 200));
+    expect(both.cards.map((card) => [card.registered, card.boundTo])).toEqual([[[], null], [[{ inputNumber: 3, deviceId: registered.deviceId }, { inputNumber: 4, deviceId: second.deviceId }], registered.deviceId]]);
 
     // Without a session: both.
     await expectCall(main, 'searchCaptureAudioCards', CONSOLE, 'the web console without a session', {}, 401, 'NOT_SIGNED_IN');

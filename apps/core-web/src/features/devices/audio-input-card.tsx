@@ -14,6 +14,7 @@ import { usePendingControl } from '@/lib/pending-control'
 import { useMotionPolicy } from '@/motion'
 import { MicUnreachableMark } from './capture-notices'
 import { useDevicePending } from './context'
+import { useIdleMeterLease } from './idle-meter-lease'
 import { DeviceMenu, IdentifyRing } from './device-menu'
 import { useDeviceLabels } from './labels'
 import { deviceStatus, STATUS_SEVERITY, STATUS_TONE } from './model'
@@ -82,6 +83,9 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
   const tone = STATUS_TONE[status]
   const latched = mic?.clipLatched ?? false
   const noSignal = status === 'NO_SIGNAL'
+  // Decisions D51 / D53: while no session records, the meter shows the level only while this page holds the
+  // idle-meter lease (operation 113, renewed every 10 s; Live mode on a Core in real capture, page visible).
+  const idleLease = useIdleMeterLease()
 
   const resetClip = () => {
     // LB-1: one reset at a time; a press while one is out sends nothing. A Simulated reset settles
@@ -212,6 +216,11 @@ export function AudioInputCard({ channel }: AudioInputCardProps) {
           </div>
         </dl>
       </div>
+      {inputId !== null && (idleLease === 'HELD' || idleLease === 'UNAVAILABLE') ? (
+        <p className="dev-audio-idle text-xs text-foreground-2" data-testid={`audio-idle-${channel}`} data-lease={idleLease}>
+          {idleLease === 'HELD' ? t('devices.audio.idleLevel') : t('devices.audio.idleUnavailable')}
+        </p>
+      ) : null}
 
       <AnimatePresence initial={false}>
         {noSignal ? (

@@ -274,7 +274,11 @@ describe('G-R8: process, timer, time and chance go through one named place each'
 
   // Task 4 row 21 (SR-1, entry 1; the twin of the local door's start line in G-R12). The local door is not edited:
   // its line still closes standard input. This one keeps it open, as the channel of the start message and of liveness.
-  it('the production door: one spawn, no shell, an environment it built itself from its closed list, standard input a pipe; no file system', () => {
+  // MOVED BY TASK 4 ROW 89 (decisions D51, D53: the live preview): the one spawn line now takes its standard input from the
+  // child's `plumbing` - the door's own pipe for every caller of `startProductionProcess` (ALONE), or, for the SECOND child of
+  // `startProductionPipeline`, the standard output of the FIRST child, which the door never reads and closes its end of. Still one
+  // spawn call, started by the one start function from three places (the plain door and the two children of a pipeline).
+  it('the production door: one spawn, no shell, an environment it built itself from its closed list, standard input a pipe (the door\'s, or in a pipeline the first child\'s output); no file system', () => {
     const door = capture.find((file) => file.path === PRODUCTION_DOOR)?.text ?? '';
     expect([...door.matchAll(PROCESS_START)]).toHaveLength(1);
     expect(door).toMatch(/shell: false,/);
@@ -282,7 +286,18 @@ describe('G-R8: process, timer, time and chance go through one named place each'
     expect(door).toMatch(/detached: inOwnGroup,/);
     expect(door).toMatch(/const inOwnGroup = options\.processGroup === true;/);
     expect(door).toMatch(/env: environment,/);
-    expect(door).toMatch(/stdio: \['pipe', 'pipe', 'pipe'\],/);
+    expect(door).toMatch(/stdio: \[plumbing\.input, 'pipe', 'pipe'\],/);
+    // Row 89: the input is one of two forms, and the three starts are pinned: the plain door, and the two children of a pipeline.
+    expect(door).toMatch(/^ {2}readonly input: 'pipe' \| Readable;$/m);
+    expect(door).toMatch(/^const ALONE: Plumbing = Object\.freeze\(\{ input: 'pipe', readOutput: true \}\);$/m);
+    expect(door).toMatch(/^export const startProductionProcess: ProductionDoor = \(options\) => startChild\(options, ALONE\)\.process;$/m);
+    expect(door).toMatch(/startChild\(firstOptions, \{ input: 'pipe', readOutput: false \}\)/);
+    expect(door).toMatch(/startChild\(\{ \.\.\.secondOptions, message: null \}, \{ input: joint, readOutput: true \}\)/);
+    expect(door).toMatch(/^ {2}joint\?\.destroy\(\);$/m);
+    expect(door.match(/\bstartChild\(/g)).toHaveLength(4);
+    // The output of a child is read only when its plumbing says so; the one unread output is handed to the next child alone.
+    expect(door).toMatch(/^ {2}if \(plumbing\.readOutput\) \{\n {4}running\.stdout\?\.on\('data',/m);
+    expect(door).toMatch(/return \{ process: handle, unread: plumbing\.readOutput \? null : running\.stdout \};/);
     // Never the caller's object and never the server's own environment: the one `env:` of the file is the line above.
     expect(door.match(/\benv:/g)).toHaveLength(1);
     expect(door).toMatch(/PRODUCTION_ENVIRONMENT_KEYS = Object\.freeze\(\['ALSA_CONFIG_PATH'\] as const\);/);
@@ -815,6 +830,8 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       "import { evidenceExportModule } from './modules/evidence-export';",
       // Waived edits 25 and 26. Row 90, controller ruling D140: the registration of `modules/media-stream` (operation 88 and the evidence media route) - this import and its unit line below.
       "import { mediaStreamModule } from './modules/media-stream';",
+      // Decisions D51 / D53 (row 90P): the registration of `modules/camera-preview` (operations 112-113 and the preview route) - this import, its comment and its unit line below.
+      "import { cameraPreviewModule } from './modules/camera-preview';",
       // Waived edits 29 and 30. Row 82b, controller ruling D147 (E): the registration of `modules/sealing` (operation 83 and the mount of the sealing composition) - this import and its unit line below.
       "import { sealingModule } from './modules/sealing';",
       "import { sttConfigModule } from './modules/stt-config';",
@@ -832,6 +849,9 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       "  ['modules/evidence-export', evidenceExportModule],",
       // Row 90, controller ruling D140 (see the import above).
       "  ['modules/media-stream', mediaStreamModule],",
+      // Decisions D51 / D53 (see the import above).
+      '  // Decisions D51 / D53 (row 90P): operations 112-113 and the registry-external preview route `GET /preview/:token`.',
+      "  ['modules/camera-preview', cameraPreviewModule],",
       // Integration pass D4, controller decision D146 (see the import above).
       "  ['modules/transcripts', transcriptsModule],",
       // Row 82b, controller ruling D147 (E) (see the import above).
@@ -854,7 +874,8 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
     const current = raw('src/app.ts');
     expect(digest(withoutWaived(current))).toBe(FROZEN_APP_TS);
     // The two lines of the STT configuration module, exactly (edits 13 and 14).
-    expect(current.filter((line) => /stt/i.test(line))).toEqual([WAIVED[3], WAIVED[14], WAIVED[19]]);
+    // Decisions D51 / D53 (row 90P): one waived import stands before the STT import, so its two positions move by one.
+    expect(current.filter((line) => /stt/i.test(line))).toEqual([WAIVED[3], WAIVED[15], WAIVED[20]]);
     // Positive control: one more line, of any kind, anywhere, is seen; so is a waived line that changed.
     const at = current.indexOf("  ['modules/demo', demoModule],");
     expect(at).toBeGreaterThan(0);

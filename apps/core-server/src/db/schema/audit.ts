@@ -8,9 +8,14 @@
  *
  * `session_id`, `evidence_id` and `device_id` are soft references (K-3): an audit row must be
  * insertable whatever became of the thing it names.
+ *
+ * `audit_purge_ticket` is the bookkeeping row of the operator purge (migration 0036): its shape is
+ * declared here and nothing else, because the runtime role holds no grant on it at all. The purge
+ * function, the reseal function and the two guard triggers of that table are the hand-written
+ * `0036_operator_purge`, the same way `0002_audit_guards` holds the guards of the chain.
  */
 import { sql } from 'drizzle-orm';
-import { bigint, boolean, check, foreignKey, index, jsonb, pgTable, text, unique } from 'drizzle-orm/pg-core';
+import { bigint, boolean, check, customType, foreignKey, index, integer, jsonb, pgTable, text, unique } from 'drizzle-orm/pg-core';
 import { code, flat, hex64, noSecretKeys, oneOf } from './checks';
 import { operators } from './rbac';
 import {
@@ -175,6 +180,62 @@ export const auditChainHistory = pgTable(
   ],
 );
 
+/**
+ * The transaction id of a purge (`xid8`). drizzle-orm 0.45.3 has no built-in column for it, so this
+ * is the route `bytea.ts` takes for a type the tool lacks: one declaration, rendering the catalog
+ * name verbatim, and the value travels as its text form (`8.4` transaction id).
+ */
+const xid8 = customType<{ data: string }>({
+  dataType: () => 'xid8',
+});
+
+/**
+ * Migration 0036 (principal, 2026-11-02). One row per operator whose purge resealed the audit
+ * chain: the sequence the resealed tail starts from and the transaction that wrote it. The owner's
+ * purge routine is the only writer and the only reader; `dems_app` holds no grant, so the runtime
+ * role can neither see nor forge a ticket, and a ticket left open freezes the guards (0036).
+ * Declared for the catalog comparison (MG-1), not for use.
+ */
+export const auditPurgeTicket = pgTable('audit_purge_ticket', {
+  operatorId: text('operator_id').notNull(),
+  resealFrom: bigint('reseal_from', { mode: 'number' }),
+  xactId: xid8('xact_id').notNull(),
+});
+
+/**
+ * Migration 0036 (principal, 2026-11-02). The ledger of erasures: one row per purge, written by the
+ * purge function itself in the same transaction, so an erasure that is not recorded cannot commit.
+ * Boot check B-8 reads `first_seq`..`last_seq` and forgives a hole in the sequence numbers ONLY
+ * inside a range named here; outside one, `SEQ_GAP` stays the alarm it was designed to be.
+ *
+ * Unlike the ticket, this table is readable by the runtime role (`GRANT SELECT` in 0036) and written
+ * by nothing else — it cannot be edited from the engine at all. `actor_id` rides the SET NULL rule on
+ * purpose: purging the root that ordered an erasure must not erase the record that an erasure
+ * happened. `purge_no` is `GENERATED ALWAYS AS IDENTITY` in SQL; the plain bigint here is deliberate,
+ * because drizzle's serial helpers render a different mechanism than the migration declares.
+ */
+export const auditPurgeLog = pgTable(
+  'audit_purge_log',
+  {
+    purgeNo: bigint('purge_no', { mode: 'number' }).primaryKey(),
+    operatorId: text('operator_id').notNull(),
+    actorId: text('actor_id'),
+    at: bigint('at', { mode: 'number' }).notNull(),
+    firstSeq: bigint('first_seq', { mode: 'number' }).notNull(),
+    lastSeq: bigint('last_seq', { mode: 'number' }).notNull(),
+    rowsRemoved: integer('rows_removed').notNull(),
+    reason: text('reason').notNull(),
+  },
+  (t) => [
+    foreignKey({ name: 'audit_purge_log_actor_id_fkey', columns: [t.actorId], foreignColumns: [operators.id] })
+      .onDelete('set null')
+      .onUpdate('no action'),
+    check('audit_purge_log_rows_removed_check', sql`${t.rowsRemoved} >= 1`),
+    check('audit_purge_log_reason_check', sql`length(btrim(${t.reason})) BETWEEN 1 AND 500`),
+    check('audit_purge_log_range_check', sql`${t.lastSeq} >= ${t.firstSeq}`),
+  ],
+);
+
 export type AuditLogRow = typeof auditLog.$inferSelect;
 export type NewAuditLogRow = typeof auditLog.$inferInsert;
 export type AuditChainHeadRow = typeof auditChainHead.$inferSelect;
@@ -182,3 +243,5 @@ export type EventRow = typeof events.$inferSelect;
 export type NewEventRow = typeof events.$inferInsert;
 export type AuditChainHistoryRow = typeof auditChainHistory.$inferSelect;
 export type NewAuditChainHistoryRow = typeof auditChainHistory.$inferInsert;
+export type AuditPurgeTicketRow = typeof auditPurgeTicket.$inferSelect;
+export type AuditPurgeLogRow = typeof auditPurgeLog.$inferSelect;

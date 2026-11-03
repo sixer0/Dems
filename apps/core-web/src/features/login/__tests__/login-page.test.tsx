@@ -198,7 +198,9 @@ describe('Login: layout and the Idle state (§14.8)', () => {
     expect(passwordInput()).not.toHaveAttribute('name')
     expect(signInButton()).toBeEnabled()
     expect(screen.getByTestId('login-security-key')).toHaveTextContent('Use security key (simulated)')
-    expect(screen.getByTestId('login-demo-operators')).toBeInTheDocument()
+    // REVISED 2026-10-30 (principal): the "Demo operators" disclosure is REMOVED from the
+    // login card — a shipped unit must not advertise seeded identities or their password.
+    expect(screen.queryByTestId('login-demo-operators')).not.toBeInTheDocument()
     expect(screen.getByTestId('login-trust-line')).toHaveTextContent('Console: DEMS-IR-01 • paired (simulated)')
     expect(page()).toHaveTextContent('v2.4.1')
     expect(getMissingI18nKeys()).toEqual([])
@@ -283,11 +285,12 @@ describe('Login: Validating, Error and the fields (M-C-22)', () => {
     expect(passwordInput()).toHaveAttribute('type', 'text')
     expect(within(page()).getByRole('button', { name: 'Hide password' })).toBeInTheDocument()
 
-    fireEvent.click(within(page()).getByRole('button', { name: /demo operators/i }))
-    fireEvent.click(await screen.findByTestId('login-operator-rina.wijaya'))
+    // REVISED 2026-10-30 (principal): the form is filled directly — the demo list is gone.
+    fireEvent.change(usernameInput(), { target: { value: 'rina.wijaya' } })
+    fireEvent.change(passwordInput(), { target: { value: DEMO_OPERATOR_PASSWORD } })
     expect(usernameInput().value).toBe('rina.wijaya')
     expect(passwordInput().value).toBe(DEMO_OPERATOR_PASSWORD)
-    expect(screen.getByTestId('login-demo-operators')).toHaveTextContent('Technician')
+    expect(screen.queryByTestId('login-demo-operators')).not.toBeInTheDocument()
   })
 
   it('shows the caps-lock hint while Caps Lock is on', async () => {
@@ -510,8 +513,10 @@ describe('Login: presentation mode (ruling M8) and reduced motion (§8, AC-70)',
     await screen.findByTestId('page-login')
     expect(page()).toHaveAttribute('data-presentation', 'true')
     expect(screen.queryByTestId('login-demo-operators')).not.toBeInTheDocument()
+    // REVISED 2026-10-30 (principal): leaving presentation mode no longer brings the demo
+    // list back — it is removed from the product, not merely hidden.
     act(() => setPresentationMode(false))
-    expect(await screen.findByTestId('login-demo-operators')).toBeInTheDocument()
+    expect(screen.queryByTestId('login-demo-operators')).not.toBeInTheDocument()
   })
 
   it('reduced motion: no shared-layout flight, no running loops, no particles or beam; the hand-off still leaves', async () => {

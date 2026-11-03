@@ -221,6 +221,8 @@ describe('the boot steps the core unit registers (decision D40)', () => {
       [/FROM core_state/, [{ rows: '1' }]],
       [/FROM audit_chain_head h/, [{ seq: String(last?.seq ?? 0), hash: last?.hash ?? GENESIS, max_seq: last === undefined ? null : String(last.seq), last_hash: last?.hash ?? null }]],
       [/FROM audit_log ORDER BY seq DESC LIMIT \$1/, stored],
+      // B-8 reads the erasure ledger of migration 0036: this stand-in was never purged.
+      [/FROM public\.audit_purge_log/, []],
       [/FROM audit_chain_history/, []],
       [/WHERE rolname = \$1/, [{ rolsuper: false, rolcreaterole: false, rolreplication: false, rolbypassrls: false }]],
       [/pg_get_userbyid\(datdba\)/, Array.from({ length: 6 }, (_, index) => ({ object: `object ${index}`, owner: 'dems_owner' }))],

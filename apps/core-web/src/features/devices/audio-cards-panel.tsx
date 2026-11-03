@@ -1,6 +1,6 @@
 import { useId } from 'react'
 import { Alert, Button, Chip, Description, Label, Radio, RadioGroup, Spinner } from '@heroui/react'
-import { ListPlus, MoveRight, Search } from 'lucide-react'
+import { ListPlus, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { CAPTURE_AUDIO_CARD_MAX_ENTRIES } from '@dems/shared/api'
 import { formatClock } from '@dems/shared/realtime'
@@ -37,10 +37,11 @@ function useBlockReason(): (block: AudioCardsBlock | null) => string | null {
  * it, and its inputs 1 to the channel count as ONE single-choice group. An input the listing names a
  * microphone for is shown as registered, with that microphone.
  *
- * R-FLEX row 111: a card a microphone holds (`boundTo`) says so in a chip and offers only the holder's
- * own input (Q96-01 a); "Move {{device}} to another input" puts it in move mode (bundle M), where every
- * input is offered and the registration says `release: true`. Two serial-less units of one model bound
- * to one microphone offer nothing and say why (W-A8, Q96-03 a).
+ * R-FLEX row 111, TURNED BY DECISION D48 (one microphone per input of a card): a card a microphone holds
+ * (`boundTo`, its first holder) says so in a chip and offers EVERY input - a free one registers another
+ * microphone of the card, each registered one shows its own microphone. No move control is offered (a
+ * release concerns only the holder of the same input). Two serial-less units of one model bound to one
+ * microphone offer nothing and say why (W-A8, Q96-03 a).
  */
 function Card({
   card,
@@ -50,8 +51,6 @@ function Card({
   moving,
   ambiguous,
   onChoose,
-  onMove,
-  onCancelMove,
 }: {
   card: CaptureAudioCard
   position: number
@@ -60,8 +59,6 @@ function Card({
   moving: boolean
   ambiguous: boolean
   onChoose: (choice: InputChoice) => void
-  onMove: () => void
-  onCancelMove: () => void
 }) {
   const { t } = useTranslation()
   const key = cardKeyOf(card)
@@ -88,21 +85,6 @@ function Card({
           {t('common.captureAudioCards.card.notTellable', { device: holder })}
         </p>
       ) : null}
-      {holder === null || ambiguous ? null : moving ? (
-        <span className="dev-search-control" data-testid={`audio-card-move-${key}`}>
-          <span className="dev-sel-reason" role="status" data-testid={`audio-card-move-hint-${key}`}>
-            {t('common.captureAudioCards.releaseHint', { device: holder })}
-          </span>
-          <Button size="sm" variant="ghost" isDisabled={disabled} onPress={onCancelMove} data-testid={`audio-card-move-cancel-${key}`}>
-            {t('common.actions.cancel')}
-          </Button>
-        </span>
-      ) : (
-        <Button size="sm" variant="outline" isDisabled={disabled} onPress={onMove} data-testid={`audio-card-move-button-${key}`}>
-          <MoveRight aria-hidden="true" size={14} />
-          {t('common.captureAudioCards.release', { device: holder })}
-        </Button>
-      )}
       <RadioGroup
         orientation="horizontal"
         isDisabled={disabled}
@@ -314,8 +296,6 @@ export function AudioCards() {
                     moving={cards.moving !== null && cardKeyOf(cards.moving) === cardKeyOf(card)}
                     ambiguous={isAmbiguous(card, listing.cards)}
                     onChoose={cards.choose}
-                    onMove={() => cards.startMove(card)}
-                    onCancelMove={cards.cancelMove}
                   />
                 ))}
               </ul>

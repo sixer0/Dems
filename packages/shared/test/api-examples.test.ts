@@ -78,8 +78,12 @@ describe('the examples of the 100 operations that only the Core server answers',
     // task 4 row 194 (operation 100), and the 7 of the commissioning functions of task 4 row 102,
     // and the 1 of the stored-credential connection test of task 4 row V3 (operation 108),
     // and the 2 of the installation acceptance of task 4 row 116 (operations 109-110),
-    // and the 1 of the retirement of a device of task 4 row RD2 (operation 111).
-    expect(NEW_OPERATIONS).toHaveLength(101);
+    // and the 1 of the retirement of a device of task 4 row RD2 (operation 111),
+    // and the 2 of the live preview and the idle meters of task 4 row D53 (operations 112-113),
+    // and the 1 of the panel firmware word of the LCD bridge task (operation 114).
+    // REVISED 2026-11-02 (principal): RB-9 as amended adds the three user-management operations of
+    // area 2 (createUser, updateUser, deleteUser), each with its own request, path ID and answers.
+    expect(NEW_OPERATIONS).toHaveLength(107);
     expect(responses).toBeGreaterThan(300);
   });
 
@@ -105,7 +109,7 @@ describe('the examples of the 100 operations that only the Core server answers',
     expect(matrix.roles).toEqual(Object.values(OperatorRole));
     expect(matrix.permissions).toEqual(Object.values(Permission));
     // Task 3 M2-W6 (SH-04; `dbc-3 §E.3`): 22 grants over 14 permissions; task 4 row 100: 23 over 15.
-    expect(matrix.grants).toHaveLength(23);
+    expect(matrix.grants).toHaveLength(22);
     for (const role of Object.values(OperatorRole)) {
       expect(matrix.grants.filter((grant) => grant.role === role).map((grant) => grant.permission)).toEqual([...ROLE_PERMISSIONS[role]]);
     }

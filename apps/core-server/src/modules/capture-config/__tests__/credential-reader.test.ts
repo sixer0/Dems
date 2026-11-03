@@ -144,9 +144,9 @@ const codeOf = async (pending: Promise<unknown>): Promise<unknown> => {
 };
 
 describe('AD-03 (1): a closed list of holders, each bound to its reasons', () => {
-  it('the holders are two; their reasons together are exactly the closed set of the audit writer, each said by one holder', () => {
+  it('the holders are three (decisions D51 / D53: + the live preview); their reasons together are exactly the closed set of the audit writer, each said by one holder', () => {
     expect(Object.keys(CAPTURE_CREDENTIAL_HOLDERS)).toEqual(Object.values(CaptureCredentialHolder));
-    expect(Object.values(CaptureCredentialHolder)).toEqual(['CAMERA_ADAPTER', 'CONNECTION_TEST']);
+    expect(Object.values(CaptureCredentialHolder)).toEqual(['CAMERA_ADAPTER', 'CONNECTION_TEST', 'CAMERA_PREVIEW']);
     const said = Object.values(CAPTURE_CREDENTIAL_HOLDERS).flat();
     expect(said).toEqual([...CAPTURE_CREDENTIAL_REVEAL_REASONS]);
     expect(new Set(said).size).toBe(said.length);
@@ -230,6 +230,33 @@ describe('AD-03 (1): a closed list of holders, each bound to its reasons', () =>
       expect(await codeOf(test.connectionTest('CAM-01', operatorId as never)), String(operatorId)).toBe('CAPTURE_CREDENTIAL_REQUEST_INVALID');
     }
     expect([built.labels.length, built.statements.length, built.entries.length, built.opened]).toEqual([0, 0, 0, 0]);
+  });
+
+  it('decisions D51 / D53: the live preview holder says PREVIEW_OPEN for its operator and names no session; it is taken once; an operator that is none sends nothing', async () => {
+    const built = rig({ commits: true });
+    const handout = createCaptureCredentialReaders(built.dependencies);
+    const preview = handout.take(CaptureCredentialHolder.CAMERA_PREVIEW);
+    expect(Object.keys(preview)).toEqual(['previewOpen']);
+    expect(Object.isFrozen(preview)).toBe(true);
+    expect(preview.previewOpen.length).toBe(2);
+    await preview.previewOpen('CAM-01', 'OPR-001');
+    // A caller that passes a reason and a session anyway is not heard.
+    await (preview.previewOpen as unknown as (...parameters: unknown[]) => Promise<unknown>)('CAM-02', 'OPR-003', 'SESSION_OPEN', SESSION);
+    expect(built.entries.map((entry) => [entry.type, entry.actorId, entry.deviceId, entry.details, entry.sessionId])).toEqual([
+      ['CAPTURE_CREDENTIAL_REVEALED', 'OPR-001', 'CAM-01', { deviceId: 'CAM-01', reason: 'PREVIEW_OPEN' }, undefined],
+      ['CAPTURE_CREDENTIAL_REVEALED', 'OPR-003', 'CAM-02', { deviceId: 'CAM-02', reason: 'PREVIEW_OPEN' }, undefined],
+    ]);
+    for (const operatorId of ['', 'operator', 'OPR-1', 'opr-001', null, undefined, 3]) {
+      expect(await codeOf(preview.previewOpen('CAM-01', operatorId as never)), String(operatorId)).toBe('CAPTURE_CREDENTIAL_REQUEST_INVALID');
+    }
+    expect(built.entries).toHaveLength(2);
+    let thrown: unknown = 'answered';
+    try {
+      handout.take(CaptureCredentialHolder.CAMERA_PREVIEW);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown instanceof CaptureCredentialReadError ? thrown.code : thrown).toBe('CAPTURE_CREDENTIAL_HOLDER_REFUSED');
   });
 });
 
@@ -468,12 +495,12 @@ describe('AD-03 (1): the wiring hands each holder its reader, and no holder pass
   }
   const CAMERA_ROW = { kind: 'CAMERA', adapter_kind: 'ONVIF_RTSP', address: '192.168.50.21' };
 
-  it('the pair is frozen, has the two holders and nothing else; a holder has its own methods, none with a reason parameter', () => {
+  it('the set is frozen, has the three holders and nothing else; a holder has its own methods, none with a reason parameter', () => {
     const { holders } = wired({});
-    expect(Object.keys(holders)).toEqual(['cameraAdapter', 'connectionTest']);
+    expect(Object.keys(holders)).toEqual(['cameraAdapter', 'connectionTest', 'cameraPreview']);
     expect(Object.isFrozen(holders)).toBe(true);
-    expect([Object.keys(holders.cameraAdapter), Object.keys(holders.connectionTest)]).toEqual([['sessionOpen', 'relayRestart'], ['connectionTest']]);
-    expect([holders.cameraAdapter.sessionOpen.length, holders.cameraAdapter.relayRestart.length, holders.connectionTest.connectionTest.length]).toEqual([2, 2, 2]);
+    expect([Object.keys(holders.cameraAdapter), Object.keys(holders.connectionTest), Object.keys(holders.cameraPreview)]).toEqual([['sessionOpen', 'relayRestart'], ['connectionTest'], ['previewOpen']]);
+    expect([holders.cameraAdapter.sessionOpen.length, holders.cameraAdapter.relayRestart.length, holders.connectionTest.connectionTest.length, holders.cameraPreview.previewOpen.length]).toEqual([2, 2, 2, 2]);
     // The types say the same: a holder cannot be written with a reason argument. Row 145: the camera
     // adapter's two methods take the device and the session, exactly; neither can be written without the session.
     const adapterTakesDeviceAndSession: Parameters<CameraAdapterCredentialReader['sessionOpen']> extends [string, string] ? ([string, string] extends Parameters<CameraAdapterCredentialReader['relayRestart']> ? true : false) : false = true;

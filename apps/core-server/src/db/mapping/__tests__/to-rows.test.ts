@@ -413,7 +413,7 @@ describe('export records are derived from audit rows (SD-7)', () => {
 describe('roles, permissions and grants come from the shared vocabulary (SD-5, AC-B-17)', () => {
   const rows = rbacRows();
 
-  it('3 roles, 15 permissions and 23 grants (5, 12, 6), in declaration order', () => {
+  it('3 roles, 15 permissions and 22 grants (5, 11, 6), in declaration order', () => {
     expect(rows.roles).toEqual([
       { id: 'INVESTIGATOR', sortOrder: 1 },
       { id: 'SUPERVISOR', sortOrder: 2 },
@@ -425,9 +425,9 @@ describe('roles, permissions and grants come from the shared vocabulary (SD-5, A
     // database seeded before set 9 gets it from the migration, a new one from here (P12-F07).
     expect(rows.permissions.at(-1)).toEqual({ id: 'CAPTURE_COMMISSION', sortOrder: 15 });
     expect(rows.rolePermissions.filter((grant) => grant.permissionId === 'CAPTURE_COMMISSION')).toEqual([{ roleId: 'TECHNICIAN', permissionId: 'CAPTURE_COMMISSION' }]);
-    expect(rows.rolePermissions).toHaveLength(23);
+    expect(rows.rolePermissions).toHaveLength(22);
     const perRole = (role: string): number => rows.rolePermissions.filter((grant) => grant.roleId === role).length;
-    expect([perRole('INVESTIGATOR'), perRole('SUPERVISOR'), perRole('TECHNICIAN')]).toEqual([5, 12, 6]);
+    expect([perRole('INVESTIGATOR'), perRole('SUPERVISOR'), perRole('TECHNICIAN')]).toEqual([5, 11, 6]);
   });
 
   it('the grants are exactly ROLE_PERMISSIONS, role by role', () => {

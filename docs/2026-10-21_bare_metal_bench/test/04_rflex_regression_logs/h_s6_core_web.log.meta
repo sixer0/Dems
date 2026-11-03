@@ -1,0 +1,4 @@
+PRE 18:48:38 uptime:  18:48:38 up  2:40,  3 users,  load average: 4.96, 2.64, 1.20
+START 18:48:38 CMD: npm run test -w @dems/core-web -- --maxWorkers=2
+END 18:56:10 rc=1 duration=452s
+POST uptime:  18:56:10 up  2:48,  2 users,  load average: 3.06, 2.68, 1.76

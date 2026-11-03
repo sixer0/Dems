@@ -1,0 +1,23 @@
+FROM python:3.12-slim
+
+# pyserial saja — tidak ada framework, tidak ada kompilasi native
+RUN pip install --no-cache-dir --break-system-packages pyserial==3.5
+
+RUN useradd -r -u 1000 -m dems
+WORKDIR /app
+COPY app/dems_backend.py /app/dems_backend.py
+
+USER dems
+ENV PYTHONUNBUFFERED=1 \
+    DEMS_BIND=0.0.0.0 \
+    DEMS_DEV=/dev/ttyACM0 \
+    DEMS_PORT=8090 \
+    DEMS_REKAM_DIR=/data/rekam \
+    DEMS_MIN_FREE_GB=20 \
+    DEMS_CRIT_FREE_GB=5
+
+EXPOSE 8090
+HEALTHCHECK --interval=15s --timeout=3s --start-period=8s --retries=3 \
+  CMD python -c "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8090/healthz',timeout=2).status==200 else 1)"
+
+CMD ["python", "/app/dems_backend.py"]

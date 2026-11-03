@@ -532,25 +532,34 @@ function row199Cases(): void {
     expect([await count('capture_audio_inputs', 'retired_at IS NULL'), await changesSince(from), await usbMicrophones()]).toEqual([live, [['MIC-04', 'REENABLED']], ['MIC-03', 'MIC-04', 'MIC-05']]);
   });
 
-  // R-FLEX row 131 (D10 (1), Q96-01 a, bundle M; spec T-9, T-10): the physical card is held by one microphone.
-  it('T-9 / T-10: another input of the held card is refused 409 AUDIO_CARD_ALREADY_BOUND with details.deviceId (nothing stored, no audit); with release: true the holder MOVES - 200, releasedDeviceId = deviceId, one live row of the card, RELEASED then REENABLED', async () => {
+  // DECISION D48 (2026-10-23, reverses D10 (1) / Q96-01 a of row 131; spec T-9, T-10 as they were): ONE MICROPHONE PER INPUT
+  // of a card. Was: another input of the held card refused 409 AUDIO_CARD_ALREADY_BOUND, and with release: true the holder moved.
+  it('T-9 / T-10 (D48): another input of the held card is a SECOND microphone, as dems_app - 201 REGISTERED, two live rows of the card, the holder stays; the same input again is 200 REENABLED, also with release: true, nothing released', async () => {
     host.use(TWO_CARDS_DUO_RENAMED);
     const from = (await trail()).length;
     const before = await stored();
-    const refused = await post(technician, REGISTER, body(DUO_MOVED_CARD_ID, 2));
-    expect([refused.statusCode, errorOf(refused).code, errorOf(refused).details]).toEqual([409, 'INVALID_STATE', { reason: 'AUDIO_CARD_ALREADY_BOUND', deviceId: 'MIC-04' }]);
-    expect([await stored(), await since(from)]).toEqual([before, []]);
-    const released = await post(technician, REGISTER, { ...body(DUO_MOVED_CARD_ID, 2), release: true });
-    expect([released.statusCode, released.json()]).toEqual([200, { deviceId: 'MIC-04', change: 'REENABLED', inputNumber: 2, channelCount: 2, releasedDeviceId: 'MIC-04' }]);
-    expect(validateCoreApiResponse('registerCaptureAudioInput', 200, released.json())).toMatchObject({ ok: true });
-    expect((await owner.query("SELECT card_id, input_number FROM public.capture_audio_inputs WHERE device_id = 'MIC-04'")).rows).toEqual([{ card_id: DUO_MOVED_CARD_ID, input_number: 2 }]);
-    expect([await stored(), await count('capture_audio_inputs', `usb_id = '${DUO.usbId}' AND retired_at IS NULL`)]).toEqual([before, 1]);
-    expect((await since(from)).filter((row) => row.type === 'CAPTURE_AUDIO_INPUT_CHANGED').map((row) => [row.deviceId, row.details?.['change'], row.details?.['inputNumber']])).toEqual([
-      ['MIC-04', 'RELEASED', 1],
-      ['MIC-04', 'REENABLED', 2],
+    const second = await post(technician, REGISTER, body(DUO_MOVED_CARD_ID, 2));
+    expect([second.statusCode, second.json()]).toEqual([201, { deviceId: 'MIC-06', change: 'REGISTERED', inputNumber: 2, channelCount: 2, releasedDeviceId: null }]);
+    expect(validateCoreApiResponse('registerCaptureAudioInput', 201, second.json())).toMatchObject({ ok: true });
+    expect([await stored(), await count('capture_audio_inputs', `usb_id = '${DUO.usbId}' AND retired_at IS NULL`)]).toEqual([[before[0] + 1, before[1] + 1], 2]);
+    expect((await owner.query('SELECT device_id, card_id, input_number FROM public.capture_audio_inputs WHERE usb_id = $1 AND retired_at IS NULL ORDER BY device_id', [DUO.usbId])).rows).toEqual([
+      { device_id: 'MIC-04', card_id: DUO_MOVED_CARD_ID, input_number: 1 },
+      { device_id: 'MIC-06', card_id: DUO_MOVED_CARD_ID, input_number: 2 },
     ]);
-    // Back to input 1 for the cases below (the same release, the other way).
-    expect((await post(technician, REGISTER, { ...body(DUO_MOVED_CARD_ID, 1), release: true })).json()).toMatchObject({ deviceId: 'MIC-04', inputNumber: 1, releasedDeviceId: 'MIC-04' });
+    // The same input twice is never a second microphone, and a release of it releases nothing.
+    const again = await post(technician, REGISTER, { ...body(DUO_MOVED_CARD_ID, 2), release: true });
+    expect([again.statusCode, again.json()]).toEqual([200, { deviceId: 'MIC-06', change: 'REENABLED', inputNumber: 2, channelCount: 2, releasedDeviceId: null }]);
+    expect(await stored()).toEqual([before[0] + 1, before[1] + 1]);
+    expect((await since(from)).filter((row) => row.type === 'CAPTURE_AUDIO_INPUT_CHANGED').map((row) => [row.deviceId, row.details?.['change'], row.details?.['inputNumber']])).toEqual([
+      ['MIC-06', 'REGISTERED', 2],
+      ['MIC-06', 'REENABLED', 2],
+    ]);
+    // Operation 98: the card names both inputs with their microphones; `boundTo` is the first holder, the lowest MIC id.
+    const search = await post(technician, SEARCH);
+    expect(validateCoreApiResponse('searchCaptureAudioCards', 200, search.json())).toMatchObject({ ok: true });
+    expect((search.json() as { cards: { cardId: string; registered: unknown[]; boundTo: string | null }[] }).cards.filter((card) => card.cardId === DUO_MOVED_CARD_ID).map((card) => [card.boundTo, card.registered])).toEqual([
+      ['MIC-04', [{ inputNumber: 1, deviceId: 'MIC-04' }, { inputNumber: 2, deviceId: 'MIC-06' }]],
+    ]);
   });
 
   // TURNED BY R-FLEX row 131 (Q96-09 a, register RM-A4 removed): a row with neither serial nor port is read as "no serial".
@@ -559,15 +568,19 @@ function row199Cases(): void {
     await off('MIC-04');
     host.use(TWO_CARDS_DUO_RENAMED);
     // R-FLEX row 108 (D24): DB-A2 on PostgreSQL, as dems_app, returns the row with NEITHER serial NOR port - it holds its card:
-    // operation 98 names it, and another input of the card is refused (was invisible under the bundle-C filter).
-    expect(await realStore.boundInputs(guard.app.db.pool, DUO.usbId)).toEqual([{ deviceId: 'MIC-04', cardDevice: 0, inputNumber: 1, usbSerial: null, usbPort: null }]);
+    // operation 98 names it (was invisible under the bundle-C filter). D48: MIC-06, input 2 of the card (T-9 above), holds it too.
+    expect(await realStore.boundInputs(guard.app.db.pool, DUO.usbId)).toEqual([
+      { deviceId: 'MIC-04', cardDevice: 0, inputNumber: 1, usbSerial: null, usbPort: null },
+      { deviceId: 'MIC-06', cardDevice: 0, inputNumber: 2, usbSerial: null, usbPort: OTHER_PORT },
+    ]);
     const held = await post(technician, SEARCH);
     expect((held.json() as { cards: { cardId: string; boundTo: string | null }[] }).cards.map((card) => [card.cardId, card.boundTo])).toEqual([
       [DUO_MOVED_CARD_ID, 'MIC-04'],
       [SIX.cardId, 'MIC-05'],
     ]);
+    // D48: input 2 is MIC-06's own input - its microphone again, never refused for MIC-04's holding of the card.
     const second = await post(technician, REGISTER, body(DUO_MOVED_CARD_ID, 2));
-    expect([second.statusCode, errorOf(second).details]).toEqual([409, { reason: 'AUDIO_CARD_ALREADY_BOUND', deviceId: 'MIC-04' }]);
+    expect([second.statusCode, second.json()]).toEqual([200, { deviceId: 'MIC-06', change: 'REENABLED', inputNumber: 2, channelCount: 2, releasedDeviceId: null }]);
     const from = (await trail()).length;
     const again = await post(supervisor, REGISTER, body(DUO_MOVED_CARD_ID, 1));
     expect([again.statusCode, (again.json() as { change: string }).change]).toEqual([200, 'REENABLED']);
@@ -671,8 +684,8 @@ describe('a session is open: 409 CAPTURE_CONFIG_LOCKED for both operations (idle
     expect(host.listings()).toBe(listings);
     await guard.app.engine.command(principal, 'cancel');
     await guard.app.pipeline.drain();
-    // CONTROL: with no session open the same two calls are accepted. (R-FLEX row 131: the card of two inputs is held by
-    // MIC-04, so the control registers an input of the interface, whose serial-less unit no live row holds.)
+    // CONTROL: with no session open the same two calls are accepted. (Both inputs of the card of two inputs have their
+    // microphones, MIC-04 and MIC-06 (D48), so the control registers a free input of the interface.)
     expect((await post(supervisor, SEARCH)).statusCode).toBe(200);
     expect((await post(technician, REGISTER, body(SIX.cardId, 2))).statusCode).toBe(201);
     // T-12: the holder of the card of two inputs did not move.
@@ -680,27 +693,30 @@ describe('a session is open: 409 CAPTURE_CONFIG_LOCKED for both operations (idle
   });
 });
 
-// R-FLEX row 108 (spec T-11; X-1: no extra gate, the units of work run one at a time): two registrations of two inputs of
-// ONE card no microphone holds, begun together. Exactly one is 201; the other is refused - by the listing gate (one listing
-// at a time) or, when it lists after the first, by the exclusivity check of its unit. Exactly one live row holds the card.
-describe('T-11: two registrations of one unbound card begun together', () => {
-  it('exactly one 201 REGISTERED, the other 409 (AUDIO_CARD_SEARCH_IN_PROGRESS or AUDIO_CARD_ALREADY_BOUND); one live row of the card; one REGISTERED entry', async () => {
+// R-FLEX row 108 (spec T-11; X-1: no extra gate, the units of work run one at a time), TURNED BY D48 (one microphone per
+// input of a card): two registrations of two inputs of ONE card, begun together. Each is 201, or refused by the listing gate
+// (one listing at a time) - never AUDIO_CARD_ALREADY_BOUND: the inputs differ. Was: exactly one 201, one live row of the card.
+describe('T-11 (D48): two registrations of two inputs of one card begun together', () => {
+  it('each is 201 REGISTERED or 409 AUDIO_CARD_SEARCH_IN_PROGRESS; one live row and one REGISTERED entry per accepted input; a refused input registers after; the same input again is 200 REENABLED, never a second microphone', async () => {
     host.use(THREE_CARDS);
     const from = (await trail()).length;
     const before = await stored();
+    const live = (): Promise<number> => count('capture_audio_inputs', `usb_id = '${TRIO.usbId}' AND retired_at IS NULL`);
     const answers = await Promise.all([post(technician, REGISTER, body(TRIO.cardId, 1)), post(supervisor, REGISTER, body(TRIO.cardId, 2))]);
-    const statuses = answers.map((answer) => answer.statusCode).sort();
-    expect(statuses).toEqual([201, 409]);
-    const refused = answers.find((answer) => answer.statusCode === 409)!;
-    expect(['AUDIO_CARD_SEARCH_IN_PROGRESS', 'AUDIO_CARD_ALREADY_BOUND']).toContain(errorOf(refused).details?.['reason']);
-    expect(await count('capture_audio_inputs', `usb_id = '${TRIO.usbId}' AND retired_at IS NULL`)).toBe(1);
-    expect(await stored()).toEqual([before[0] + 1, before[1] + 1]);
-    expect((await since(from)).filter((row) => row.type === 'CAPTURE_AUDIO_INPUT_CHANGED').map((row) => row.details?.['change'])).toEqual(['REGISTERED']);
-    // Begun one after the other, the second is refused by the exclusivity check, naming the first.
-    const winner = (answers.find((answer) => answer.statusCode === 201)!.json() as { deviceId: string; inputNumber: number }).deviceId;
-    const loserInput = (answers.find((answer) => answer.statusCode === 201)!.json() as { inputNumber: number }).inputNumber === 1 ? 2 : 1;
-    const again = await post(supervisor, REGISTER, body(TRIO.cardId, loserInput));
-    expect([again.statusCode, errorOf(again).details]).toEqual([409, { reason: 'AUDIO_CARD_ALREADY_BOUND', deviceId: winner }]);
+    for (const answer of answers) if (answer.statusCode !== 201) expect([answer.statusCode, errorOf(answer).details?.['reason']]).toEqual([409, 'AUDIO_CARD_SEARCH_IN_PROGRESS']);
+    const accepted = answers.filter((answer) => answer.statusCode === 201).length;
+    expect(accepted).toBeGreaterThanOrEqual(1);
+    expect(await live()).toBe(accepted);
+    expect(await stored()).toEqual([before[0] + accepted, before[1] + accepted]);
+    expect((await since(from)).filter((row) => row.type === 'CAPTURE_AUDIO_INPUT_CHANGED').map((row) => row.details?.['change'])).toEqual(Array.from({ length: accepted }, () => 'REGISTERED'));
+    // Begun one after the other, the input the listing gate refused is a second microphone of the card.
+    for (const [index, answer] of answers.entries()) if (answer.statusCode !== 201) expect((await post(supervisor, REGISTER, body(TRIO.cardId, index + 1))).statusCode).toBe(201);
+    const rows = (await owner.query('SELECT device_id, input_number FROM public.capture_audio_inputs WHERE usb_id = $1 AND retired_at IS NULL ORDER BY input_number', [TRIO.usbId])).rows as { device_id: string; input_number: number }[];
+    expect([rows.map((row) => row.input_number), new Set(rows.map((row) => row.device_id)).size]).toEqual([[1, 2], 2]);
+    // The same input twice: its microphone again, no second one.
+    const again = await post(technician, REGISTER, body(TRIO.cardId, 1));
+    expect([again.statusCode, again.json()]).toEqual([200, { deviceId: rows[0]?.device_id, change: 'REENABLED', inputNumber: 1, channelCount: TRIO.channels, releasedDeviceId: null }]);
+    expect(await live()).toBe(2);
   });
 });
 

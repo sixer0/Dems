@@ -30,6 +30,7 @@ import {
   ENV_INSTALLATION_NAME,
   ENV_LISTEN_PORT,
   ENV_LOG_LEVEL,
+  ENV_LCD_BACKEND_URL,
   ENV_MEDIA_DIR,
   RUNTIME_ROLE,
   createConfig,
@@ -43,6 +44,7 @@ import {
   parseDemoControls,
   parseListenPort,
   parseLogLevel,
+  parseLcdBackendUrl,
   type CoreServerConfig,
 } from '../../config';
 import { readConnectionFile } from './connection-file';
@@ -70,6 +72,7 @@ export interface LoadConfigOptions {
  * checked first, so a wrong port or flag is reported before any file is opened.
  */
 export function loadConfig(options: LoadConfigOptions): CoreServerConfig {
+  const lcdBackendUrl = parseLcdBackendUrl(options.env[ENV_LCD_BACKEND_URL]);
   const port = parseListenPort(options.env[ENV_LISTEN_PORT]);
   const demoControls = parseDemoControls(options.env[ENV_DEMO_CONTROLS]);
   const logLevel = parseLogLevel(options.env[ENV_LOG_LEVEL]);
@@ -114,6 +117,7 @@ export function loadConfig(options: LoadConfigOptions): CoreServerConfig {
   }
 
   return createConfig({
+    lcdBackendUrl,
     port,
     demoControls,
     logLevel,

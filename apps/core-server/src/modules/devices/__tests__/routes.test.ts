@@ -125,8 +125,14 @@ describe('MODG: the route list of the module equals its registry operations', ()
     // Task 4 row RD2: operation 111 (the retirement of a device) carries the Device tag too. The contract
     // only: no route answers it yet (row RD3).
     const RETIRE_AREA = ['retireCaptureDevice'];
+    // Task 4 row D53 (decisions D51, D53): operations 112 and 113 (the live camera preview and the lease of
+    // the idle meters) carry the Device tag too and are answered by `modules/camera-preview`, not by this module.
+    const PREVIEW_AREA = ['createCameraPreviewSession', 'holdIdleMeters'];
+    // LCD bridge task: operation 114 (the firmware word the panel states about itself) carries the
+    // Device tag too, and THIS module answers it — beside the bridge it reads the same backend of.
+    const PANEL_AREA = ['getPanelFirmware'];
     expect(area.map((operation) => operation.operationId)).toEqual([
-      ...DEVICES_OPERATIONS, ...CAPTURE_CONFIG_AREA, ...STT_CONFIG_AREA, ...CAPTURE_DISCOVERY_AREA, ...AUDIO_CARD_AREA, ...READDRESS_AREA, ...COMMISSIONING_AREA, ...DEVICE_TEST_AREA, ...ACCEPTANCE_AREA, ...RETIRE_AREA,
+      ...DEVICES_OPERATIONS, ...CAPTURE_CONFIG_AREA, ...STT_CONFIG_AREA, ...CAPTURE_DISCOVERY_AREA, ...AUDIO_CARD_AREA, ...READDRESS_AREA, ...COMMISSIONING_AREA, ...DEVICE_TEST_AREA, ...ACCEPTANCE_AREA, ...RETIRE_AREA, ...PREVIEW_AREA, ...PANEL_AREA,
     ]);
     expect(area.map(operationNumber).slice(0, DEVICES_OPERATIONS.length)).toEqual([null, null, null, 47, 48, 49, 50, 51, 52]);
     expect(area.slice(0, 3).map((operation) => operation.source)).toEqual(['Design book §21.2', 'Design book §21.2', 'Design book §21.2']);

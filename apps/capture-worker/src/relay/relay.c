@@ -4,7 +4,9 @@
  *   standard input   ONE line, the start message, then nothing: its end is the order to stop
  *   standard output  at most ONE line, the report of the mode (row 42; relay.h "THE TWO MODES"): in record mode
  *                    "push established" once the worker answered the record request, in probe mode the stream's
- *                    own statement. Made in relay_core.c from numbers and validated bytes; written by `report`
+ *                    own statement. Made in relay_core.c from numbers and validated bytes; written by `report`.
+ *                    In PREVIEW MODE (row 89; relay.h "PREVIEW MODE") the video only, written by `media`; both
+ *                    through the one writer `out_bytes`
  *   standard error   lines of fixed words and numbers (say); never a text of the library, of the camera, of
  *                    the start message, an address, a path or an account
  *   arguments        none: an argument is refused (nothing of a session may stand in a process listing)
@@ -92,18 +94,18 @@ static void say(const char *event, const char *word, RelayCode code, const Relay
     if (n > 0 && (size_t)n < sizeof line) { ssize_t w = write(STDERR_FILENO, line, (size_t)n); (void)w; }
 }
 
-/* THE ONE WRITER of standard output (row 42; AD-06 (3)): ONE report line, whole or not at all as far as this
- * program can tell. `line` and `n` come straight from relay_established_line or relay_probe_line (relay_core.c):
- * numbers and validated parameter-set bytes, never a text that was read from outside. The write is bounded
- * (RELAY_IO_BOUND_US): a reader that does not take the line cannot hold the relay. */
-static RelayCode report(const char *line, int n) {
+/* THE ONE WRITER of standard output (row 42; AD-06 (3); row 89): `n` bytes, whole or not at all as far as this
+ * program can tell. The write is bounded (RELAY_IO_BOUND_US): a reader that does not take them cannot hold the relay.
+ * Its two callers are `report` (one line of relay_core.c) and `media` (the video of preview mode). `gone` is the code
+ * when the reader is gone (EPIPE): for a report line the same as any failed write, for the video the order to stop. */
+static RelayCode out_bytes(const void *bytes, size_t n, RelayCode gone) {
     int64_t deadline = mono_us() + RELAY_IO_BOUND_US;
-    if (n <= 0 || n > RELAY_REPORT_MAX) return RELAY_INTERNAL;
     int flags = fcntl(STDOUT_FILENO, F_GETFL);
     if (flags < 0 || fcntl(STDOUT_FILENO, F_SETFL, flags | O_NONBLOCK) < 0) return RELAY_REPORT_NOT_WRITTEN;
-    for (int at = 0; at < n;) {
-        ssize_t w = write(STDOUT_FILENO, line + at, (size_t)(n - at));
-        if (w > 0) { at += (int)w; continue; }
+    for (size_t at = 0; at < n;) {
+        ssize_t w = write(STDOUT_FILENO, (const uint8_t *)bytes + at, n - at);
+        if (w > 0) { at += (size_t)w; continue; }
+        if (w < 0 && (errno == EPIPE || errno == ECONNRESET)) return gone;
         if (w < 0 && errno != EAGAIN && errno != EINTR) return RELAY_REPORT_NOT_WRITTEN;
         if (mono_us() > deadline) return RELAY_REPORT_NOT_WRITTEN;
         struct pollfd p = { STDOUT_FILENO, POLLOUT, 0 };
@@ -111,6 +113,18 @@ static RelayCode report(const char *line, int n) {
     }
     return RELAY_STOPPED;
 }
+
+/* ONE report line (row 42). `line` and `n` come straight from relay_established_line, relay_probe_line,
+ * relay_loss_line or relay_reopened_line (relay_core.c): numbers and validated parameter-set bytes, never a text
+ * that was read from outside. */
+static RelayCode report(const char *line, int n) {
+    if (n <= 0 || n > RELAY_REPORT_MAX) return RELAY_INTERNAL;
+    return out_bytes(line, (size_t)n, RELAY_REPORT_NOT_WRITTEN);
+}
+
+/* PREVIEW MODE (row 89; relay.h "PREVIEW MODE"): bytes of the video, through the one writer. Its reader gone (the
+ * decoder ended) is the order to stop: the relay ends with STOPPED. */
+static RelayCode media(const uint8_t *bytes, size_t n) { return out_bytes(bytes, n, RELAY_STOP_ASKED); }
 
 static void on_signal(int number) { (void)number; g_signal = 1; }
 
@@ -281,6 +295,18 @@ static RelayCode probe_report(const RelayDescription *description, const ParamSe
     return report(line, relay_probe_line(&probe, line, sizeof line));
 }
 
+/* PREVIEW MODE (row 89): the gate opens. The stream's facts are read as in the two other modes (each parameter set
+ * held to its kind before the library's stream parser sees it), the socket rule is asked (one socket: the camera's),
+ * and the parameter sets go out first, as relay_extradata made them. The pictures follow (main). */
+static RelayCode preview_sets(RelayCodec codec, const ParamSets *sets, const RelayPicture *keyframe) {
+    uint8_t extra[3 * (RELAY_PSET_MAX + 4)];
+    int width = 0, height = 0, n = 0;
+    RelayCode code = stream_facts(codec, sets, keyframe, extra, sizeof extra, &n, &width, &height);
+    if (code) return code;
+    if (sockets_break_the_rule()) return RELAY_SOCKET_RULE;
+    return media(extra, (size_t)n);
+}
+
 static RelayCode push_open(Push *p, RelayCodec codec, const ParamSets *sets, const RelayPicture *first) {
     uint8_t extra[3 * (RELAY_PSET_MAX + 4)];
     uint32_t first_stamp = first->stamp;
@@ -424,7 +450,7 @@ int main(int argc, char **argv) {
     Push push;
     Again again;
     RelayCode code;
-    int have_picture = 0, gate = 0, probed = 0, waiting = 1;
+    int have_picture = 0, gate = 0, probed = 0, waiting = 1, previewing = 0;
     long losses_seen = 0;
     struct sigaction ignore, stop;
     (void)argv;
@@ -487,7 +513,11 @@ int main(int argc, char **argv) {
                         if (!(code = probe_report(&description, sets, &picture))) { probed = 1; say("probe_reported", "RUNNING", RELAY_STOPPED, &picture, relay_camera_counters(camera)); }
                         break;
                     }
-                    if (!push.open) {
+                    if (g_start.mode == RELAY_MODE_PREVIEW) {
+                        /* Row 89: the same open, the same gate; the parameter sets go out first, then every picture. */
+                        if ((code = preview_sets(description.codec, sets, &picture))) break;
+                        if (!previewing) { previewing = 1; say("preview_streaming", "RUNNING", RELAY_STOPPED, &picture, relay_camera_counters(camera)); }
+                    } else if (!push.open) {
                         static char line[RELAY_REPORT_MAX + 1];
                         if ((code = push_open(&push, description.codec, sets, &picture))) break;
                         if (sockets_break_the_rule()) { code = RELAY_SOCKET_RULE; break; }
@@ -511,7 +541,8 @@ int main(int argc, char **argv) {
                 }
             }
             if (gate) {
-                if ((code = push_write(&push, &picture))) break;
+                if (g_start.mode == RELAY_MODE_PREVIEW) { if ((code = media(picture.unit, picture.length))) break; }
+                else if ((code = push_write(&push, &picture))) break;
                 g_pictures++;
             } else g_held_back++;
             relay_picture_taken(&picture);
@@ -520,8 +551,8 @@ int main(int argc, char **argv) {
         if (code || probed) break;
         if (waiting && mono_us() > keyframe_deadline) { code = RELAY_KEYFRAME_TIMEOUT; break; }
     }
-    /* THE LEG ENDED. Before the push stands, in probe mode, and with every code that is no loss of the camera, the
-     * relay ends as it always did. Else the camera is opened again and the push stays (row 43). */
+    /* THE LEG ENDED. Before the push stands, in probe mode, in preview mode (row 89), and with every code that is no
+     * loss of the camera, the relay ends as it always did. Else the camera is opened again and the push stays (row 43). */
     if (probed || !push.open || g_start.mode != RELAY_MODE_RECORD) break;
     if ((code = camera_again(camera, &description, &again, code, &picture))) break;
     if (description.codec != push.codec) { code = RELAY_STREAM_INVALID; break; }

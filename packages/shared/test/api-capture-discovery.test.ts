@@ -158,18 +158,25 @@ describe('the registry: operations 93 to 97 as C3 §2.6 writes them', () => {
     // They were the last five entries of the table, in number order; task 4 row 63 appends the two
     // sound-card operations 98-99 after them, and row 194 operation 100. Their place is stated from the
     // start of the table now (entries 93 to 97), so that a later operation does not move it.
-    expect(CORE_API_OPERATIONS.slice(92, 97).map((operation) => operation.operationId)).toEqual(rows.map((row) => row[1]));
+    // REVISED 2026-11-02 (principal): RB-9 as amended inserts createUser, updateUser and deleteUser
+    // in area 2, so every table entry from `disableUser` on sits three places further.
+    expect(CORE_API_OPERATIONS.slice(95, 100).map((operation) => operation.operationId)).toEqual(rows.map((row) => row[1]));
     // The adoption also writes the verification row and, with a credential, the credential fact.
     expect(findCoreApiOperation('adoptCaptureCandidate')?.audit.also).toEqual(['CAPTURE_CONNECTION_TESTED', 'CAPTURE_CREDENTIAL_SET']);
   });
 
-  it('M4-PIN-1 (shared half): 111 operations, 39 GET, 72 POST, offline 45, 86 audit types, 40 error codes (unchanged), 6 access conditions', () => {
+  it('M4-PIN-1 (shared half): 117 operations, 40 GET, 77 POST, offline 45, 90 audit types, 40 error codes (unchanged), 6 access conditions', () => {
     // Task 4 row 63: + the two sound-card operations 98-99 (97 -> 99, POST 61 -> 63, offline 31 -> 33).
     // Task 4 row 194: + the confirmed re-address, operation 100 (99 -> 100, POST 63 -> 64, offline 33 -> 34).
     // Task 4 row RD2: + the retirement of a device, operation 111 (110 -> 111, POST 71 -> 72, offline 44 -> 45);
     // + CAPTURE_DEVICE_RETIRED (85 -> 86).
     const all = listCoreApiOperations(CoreApiScope.ALL);
-    expect([all.length, all.filter((operation) => operation.method === 'get').length, all.filter((operation) => operation.method === 'post').length]).toEqual([111, 39, 72]);
+    // Task 4 row D53: + the live preview and the idle meters, operations 112-113 (111 -> 113, POST 72 -> 74, offline unchanged: both live);
+    // + CAMERA_PREVIEW_OPENED (86 -> 87).
+    // LCD bridge task: + the panel firmware word, operation 114 (113 -> 114, GET 39 -> 40, offline unchanged: it is live).
+    // REVISED 2026-11-02 (principal): RB-9 as amended adds createUser, updateUser and deleteUser, three
+    // POSTs of area 2 (114 -> 117, POST 74 -> 77); both scopes stay: the three are live, the offline count 45.
+    expect([all.length, all.filter((operation) => operation.method === 'get').length, all.filter((operation) => operation.method === 'post').length]).toEqual([117, 40, 77]);
     // Task 4 row 102: + the seven commissioning operations 101-107 (100 -> 107, GET 36 -> 39, POST 64 -> 68, offline 34 -> 41).
     // Task 4 row V3: + the stored-credential connection test, operation 108 (107 -> 108, POST 68 -> 69, offline 41 -> 42);
     // + the four audit types of the third vocabulary step (78 -> 82).
@@ -178,13 +185,15 @@ describe('the registry: operations 93 to 97 as C3 §2.6 writes them', () => {
     expect(listCoreApiOperations(CoreApiScope.OFFLINE)).toHaveLength(45);
     // Task 4 row R1b (decision C99): + CAPTURE_VIDEO_ABSENT_IN_SESSION (82 -> 83); no operation.
     // Task 4 row N2: + CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED, CAPTURE_AUDIO_SILENCE_INSERTED (83 -> 85); no operation.
-    expect(Object.values(AuditType)).toHaveLength(86);
+    // REVISED 2026-11-02 (principal): + USER_CREATED, USER_UPDATED and USER_DELETED (87 -> 90).
+    expect(Object.values(AuditType)).toHaveLength(90);
     expect(API_ERROR_CODES).toHaveLength(40);
     expect(Object.values(CoreApiAccessCondition)).toHaveLength(6);
     const document = createOpenApiDocument({ scope: 'all' });
-    expect(Object.values(document.paths).flatMap((item) => Object.keys(item))).toHaveLength(111);
+    // REVISED 2026-11-02 (principal): the document carries the three new operations (114 -> 117).
+    expect(Object.values(document.paths).flatMap((item) => Object.keys(item))).toHaveLength(117);
     // Must FAIL when the registry and the document differ by one operation: a registry without the last one.
-    expect(all.slice(0, -1)).toHaveLength(110);
+    expect(all.slice(0, -1)).toHaveLength(116);
   });
 
   it('the documented statuses are those of C3 §2.6; 429 and 503 are the envelope-level answers, named by their reason in the text', () => {
@@ -628,7 +637,9 @@ describe('task 4 row 63: operations 98 and 99, the sound cards and the registrat
       [98, 'searchCaptureAudioCards', 'post', '/api/v1/capture/audio-cards/search', 'Device', 'simulated', 'CAPTURE_CONFIG', ['WEB_CONSOLE_SESSION'], 'CAPTURE_DISCOVERY_SEARCHED', 'ACCESS_DENIED'],
       [99, 'registerCaptureAudioInput', 'post', '/api/v1/capture/audio-cards/inputs', 'Device', 'simulated', 'CAPTURE_CONFIG', ['WEB_CONSOLE_SESSION'], 'CAPTURE_AUDIO_INPUT_CHANGED', 'ACCESS_DENIED'],
     ]);
-    expect(CORE_API_OPERATIONS.slice(97, 99).map((operation) => operation.operationId)).toEqual(rows.map((row) => row[1]));
+    // REVISED 2026-11-02 (principal): RB-9 as amended inserts createUser, updateUser and deleteUser
+    // in area 2, so every table entry from `disableUser` on sits three places further.
+    expect(CORE_API_OPERATIONS.slice(100, 102).map((operation) => operation.operationId)).toEqual(rows.map((row) => row[1]));
     expect(Object.keys(CAPTURE_AUDIO_CARD_SCHEMAS)).toEqual(['CaptureAudioCard', 'CaptureAudioCardSearch', 'CaptureAudioInputRegisterRequest', 'CaptureAudioInputRegistration']);
     // The audit types and the third search scope exist since row 19 and the integration pass I-1.
     expect(AUDIT_TYPE_CATEGORY[AuditType.CAPTURE_AUDIO_INPUT_CHANGED]).toBe('DEVICE');
@@ -841,7 +852,9 @@ describe('task 4 row 194: operation 100, the operator-confirmed re-address of a 
       operation.audit.denial,
     ]).toEqual([100, 'confirmCaptureDeviceAddress', 'post', '/api/v1/capture/devices/address/confirm', 'Device', 'simulated', 'CAPTURE_CONFIG', ['WEB_CONSOLE_SESSION'], 'CAPTURE_DEVICE_ADDRESS_CHANGED', 'ACCESS_DENIED']);
     expect(CAPTURE_DEVICE_ADDRESS_CONFIRM_PATH).toBe(operation.path);
-    expect(CORE_API_OPERATIONS[99]?.operationId).toBe('confirmCaptureDeviceAddress');
+    // REVISED 2026-11-02 (principal): RB-9 as amended inserts createUser, updateUser and deleteUser
+    // in area 2, so every table entry from `disableUser` on sits three places further.
+    expect(CORE_API_OPERATIONS[102]?.operationId).toBe('confirmCaptureDeviceAddress');
     // The access of operation 96 (row 97's DD-2): the same object, not a look-alike.
     expect(operation.access).toEqual(CAPTURE_CREDENTIAL_ACCESS);
     expect(findCoreApiOperation('adoptCaptureCandidate')?.access).toEqual(operation.access);
@@ -961,9 +974,11 @@ describe('task 4 row V3: operation 108, the connection test of a registered came
       operation.audit.denial,
     ]).toEqual([108, 'testCaptureDeviceConnection', 'post', '/api/v1/capture/devices/{id}/test', 'Device', 'simulated', 'CAPTURE_CONFIG', ['WEB_CONSOLE_SESSION'], 'CAPTURE_DEVICE_CONNECTION_TESTED', 'ACCESS_DENIED']);
     expect(CAPTURE_DEVICE_TEST_PATH).toBe(operation.path);
-    expect(CORE_API_OPERATIONS[107]?.operationId).toBe('testCaptureDeviceConnection');
+    // REVISED 2026-11-02 (principal): RB-9 as amended inserts createUser, updateUser and deleteUser
+    // in area 2, so every table entry from `disableUser` on sits three places further.
+    expect(CORE_API_OPERATIONS[110]?.operationId).toBe('testCaptureDeviceConnection');
     // It was the last entry until blueprint row 116 appended operations 109 and 110 after it (and row RD2 operation 111).
-    expect(CORE_API_OPERATIONS.at(-4)?.operationId).toBe('testCaptureDeviceConnection');
+    expect(CORE_API_OPERATIONS.at(-7)?.operationId).toBe('testCaptureDeviceConnection'); // task 4 row D53: + operations 112-113 after it; the LCD bridge task: + operation 114 after them
     // The permission as the candidate test has it: the same access object as operation 95.
     expect(operation.access).toEqual(CAPTURE_CREDENTIAL_ACCESS);
     expect(findCoreApiOperation('testCaptureCandidateConnection')?.access).toEqual(operation.access);

@@ -1,0 +1,4 @@
+PRE 18:56:10 uptime:  18:56:10 up  2:48,  2 users,  load average: 3.06, 2.68, 1.76
+START 18:56:10 CMD: npx -w apps/mobile jest --maxWorkers=2
+END 19:03:51 rc=0 duration=461s
+POST uptime:  19:03:51 up  2:56,  2 users,  load average: 3.58, 3.24, 2.41

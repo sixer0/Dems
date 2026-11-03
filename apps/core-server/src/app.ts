@@ -98,6 +98,7 @@ import { evidenceExportModule } from './modules/evidence-export';
 import { healthModule } from './modules/health';
 import { identityModule, type SessionRegistry } from './modules/identity';
 import { mediaStreamModule } from './modules/media-stream';
+import { cameraPreviewModule } from './modules/camera-preview';
 import { networkTimeModule } from './modules/network-time';
 import { pairingModule, type DeviceResolver } from './modules/pairing';
 import { rbacModule } from './modules/rbac';
@@ -334,6 +335,8 @@ const UNITS: ReadonlyArray<readonly [name: string, plugin: FastifyPluginAsync]> 
   ['modules/capture-inputs', captureInputsModule],
   ['modules/evidence-export', evidenceExportModule],
   ['modules/media-stream', mediaStreamModule],
+  // Decisions D51 / D53 (row 90P): operations 112-113 and the registry-external preview route `GET /preview/:token`.
+  ['modules/camera-preview', cameraPreviewModule],
   ['modules/transcripts', transcriptsModule],
   ['modules/sealing', sealingModule],
 ];

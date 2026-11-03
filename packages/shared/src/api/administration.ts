@@ -2,9 +2,8 @@
  * Area 2 of the Core API: RBAC and user administration (backend task: 2026-10-04 01_specs §4,
  * §7.6, §7.18).
  *
- * Five operations, answered by the Core server only. None has a simulator action: no action edits
- * an operator or a role. No operation creates or deletes a user, and the role matrix cannot be
- * changed through the API (RB-9).
+ * Eight operations, answered by the Core server only. None has a simulator action: no action edits
+ * an operator or a role. The role matrix still cannot be changed through the API (RB-9).
  *
  * | # | operationId | Access | Audit on success |
  * |--:|-------------|--------|------------------|
@@ -13,8 +12,17 @@
  * | 12 | `assignUserRole` | USER_ADMIN | ROLE_CHANGED (none when the role is unchanged) |
  * | 13 | `enableUser` | USER_ADMIN | USER_ENABLED (none when already enabled) |
  * | 14 | `disableUser` | USER_ADMIN | USER_DISABLED (none when already disabled) |
+ * | 15 | `createUser` | USER_ADMIN + the vendor `root` account | USER_CREATED, then OPERATOR_PASSWORD_SET when a password came with it |
+ * | 16 | `updateUser` | USER_ADMIN + the vendor `root` account | USER_UPDATED (none when nothing changed) |
+ * | 17 | `deleteUser` | USER_ADMIN + the vendor `root` account | USER_DELETED |
  *
  * `{id}` is an operator ID (`OPR-NNN`).
+ *
+ * RB-9 AMENDED (principal PT GSP, 02-11-2026): the rule read "no operation creates or deletes a
+ * user". It is lifted for the vendor `root` account alone, which is why operations 15 to 17 carry
+ * a second gate beyond the `USER_ADMIN` permission: the caller's own username must be `root`
+ * (`src/modules/admin/rule.ts`, `isVendorRoot`). A client supervisor therefore still cannot
+ * create, edit or delete an account, and the matrix stays read-only.
  */
 import { z } from 'zod';
 import { AuditType, OperatorRole, Permission } from '../sim/vocabulary';
@@ -100,6 +108,83 @@ export const UserStatusRequestSchema = z
   .describe('Optional request body of `POST /api/v1/admin/users/{id}/enable` and `.../disable`.');
 export type UserStatusRequest = z.output<typeof UserStatusRequestSchema>;
 
+/**
+ * The username rule of `operators` (the CHECK of migration 0001, re-declared here so the answer to
+ * a bad username is a validation refusal and not a database error): lowercase, starting with an
+ * alphanumeric, then alphanumerics, dot, underscore or dash, at most 64 characters.
+ */
+export const OPERATOR_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+
+/** The bounds PostgreSQL puts on the name and the initials of an operator (the CHECKs of `operators`). */
+export const OPERATOR_NAME_MAX_LENGTH = 120;
+export const OPERATOR_INITIALS_MAX_LENGTH = 4;
+
+const usernameField = () =>
+  apiText()
+    .overwrite((value) => value.trim().toLowerCase())
+    .regex(OPERATOR_USERNAME_PATTERN, 'A username is 1 to 64 characters: lowercase letters, digits, dot, underscore or dash, starting with a letter or a digit.')
+    .describe('The sign-in name, unique. Lower-cased and trimmed by the server.');
+
+const nameField = (label: string) =>
+  apiText()
+    .overwrite((value) => value.trim())
+    .min(1)
+    .max(OPERATOR_NAME_MAX_LENGTH)
+    .describe(`${label}, 1 to ${OPERATOR_NAME_MAX_LENGTH} characters.`);
+
+const initialsField = () =>
+  apiText()
+    .overwrite((value) => value.trim().toUpperCase())
+    .min(1)
+    .max(OPERATOR_INITIALS_MAX_LENGTH)
+    .describe(`At most ${OPERATOR_INITIALS_MAX_LENGTH} characters, upper-cased by the server.`);
+
+export const CreateUserRequestSchema = z
+  .object({
+    username: usernameField(),
+    name: nameField('The name of the operator'),
+    displayName: nameField('The name shown to clients').optional(),
+    initials: initialsField(),
+    rank: apiText().overwrite((value) => value.trim()).max(24).nullable().optional().describe('e.g. `AKP`; null or absent when the operator has no rank.'),
+    role: z.enum(OperatorRole).describe('The one role of the operator.'),
+    reason: optionalReason(),
+  })
+  .describe('Request body of `POST /api/v1/admin/users`. Needs the vendor `root` account.');
+export type CreateUserRequest = z.output<typeof CreateUserRequestSchema>;
+
+export const UpdateUserRequestSchema = z
+  .object({
+    name: nameField('The new name').optional(),
+    displayName: nameField('The new display name').optional(),
+    initials: initialsField().optional(),
+    rank: apiText().overwrite((value) => value.trim()).max(24).nullable().optional(),
+    reason: optionalReason(),
+  })
+  .refine(
+    (body) => body.name !== undefined || body.displayName !== undefined || body.initials !== undefined || body.rank !== undefined,
+    { error: 'Name at least one field to change.' },
+  )
+  .describe('Request body of `POST /api/v1/admin/users/{id}/profile`: the profile only. The role is `assignUserRole`, the state is enable and disable, the password is never changed here.');
+export type UpdateUserRequest = z.output<typeof UpdateUserRequestSchema>;
+
+export const DeleteUserRequestSchema = z
+  .object({
+    confirm: apiText().overwrite((value) => value.trim()).describe('The username of the operator, repeated. A delete that does not repeat it is refused: the account and its credential go, and the row leaves the operator list.'),
+    reason: optionalReason(),
+  })
+  .describe('Request body of `POST /api/v1/admin/users/{id}/delete`. Needs the vendor `root` account.');
+export type DeleteUserRequest = z.output<typeof DeleteUserRequestSchema>;
+
+export const DeletedUserSchema = z
+  .strictObject({
+    operatorId: z.string().regex(OPERATOR_ID_PATTERN).describe('The operator that no longer exists.'),
+    username: apiText().describe('The username that was deleted, for the caller\'s list.'),
+    sessionsEnded: count().describe('Open sessions of that operator ended by this call.'),
+    credentialsRemoved: count().describe('0 or 1: whether a password row went with the account.'),
+  })
+  .describe('Response of `POST /api/v1/admin/users/{id}/delete`.');
+export type DeletedUser = z.output<typeof DeletedUserSchema>;
+
 /** The named schemas of this area, by their `components.schemas` name. */
 export const ADMINISTRATION_SCHEMAS = {
   RoleMatrix: RoleMatrixSchema,
@@ -107,6 +192,10 @@ export const ADMINISTRATION_SCHEMAS = {
   AdminUserList: AdminUserListSchema,
   UserRoleRequest: UserRoleRequestSchema,
   UserStatusRequest: UserStatusRequestSchema,
+  CreateUserRequest: CreateUserRequestSchema,
+  UpdateUserRequest: UpdateUserRequestSchema,
+  DeleteUserRequest: DeleteUserRequestSchema,
+  DeletedUser: DeletedUserSchema,
 } as const;
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
@@ -250,6 +339,105 @@ export const ADMINISTRATION_OPERATIONS = [
     },
     access: USER_ADMIN,
     audit: { success: AuditType.USER_DISABLED, denial: AuditType.ACCESS_DENIED },
+    services: CORE_SERVER_ONLY,
+  },
+
+  // ── The vendor-only trio (RB-9 as amended 02-11-2026) ─────────────────────────────────────
+  //
+  // `access` stays USER_ADMIN because that is what stage 6 of the guard checks and what a refusal
+  // writes as ACCESS_DENIED. On top of it the module applies a second, narrower rule that the
+  // registry cannot express: the caller's own username must be `root`. A caller who passes the
+  // permission and fails the identity never reaches a unit of work and gets 403 NOT_PERMITTED.
+
+  {
+    operationId: 'createUser',
+    method: 'post',
+    path: USERS_PATH,
+    tag: CoreApiTag.ADMINISTRATION,
+    mode: CoreApiMode.LIVE,
+    summary: 'Create a user',
+    description: [
+      'Creates an operator: the next free operator ID, the profile and one role. The account is ENABLED but holds no credential, so it cannot sign in until a password is set with the host command `operator:set-password`, which is the only writer of a password (decision U19): an API that carried one would put a secret in this module, and the module is built to hold none.',
+      'Writes USER_CREATED.',
+      'Needs USER_ADMIN and the vendor `root` account: an operator whose username is not `root` is refused with 403 NOT_PERMITTED and no row (RB-9 as amended).',
+      'A username that is taken or malformed answers 422 INVALID_INPUT; nothing is created.',
+      CORE_SERVER_NOTE,
+    ].join('\n\n'),
+    source: backendSource(SECTION, 15),
+    requestBody: { schema: 'CreateUserRequest', required: true },
+    responses: {
+      200: { description: 'The operator as created.', schema: 'AdminUser' },
+      400: INVALID_JSON,
+      401: NOT_SIGNED_IN,
+      // The vendor-only identity rule is spelled out in the description above; the 403 itself is
+      // the one every USER_ADMIN operation shares, so the text stays with `notPermitted`.
+      403: notPermitted(Permission.USER_ADMIN),
+      422: INVALID_INPUT,
+    },
+    access: USER_ADMIN,
+    audit: { success: AuditType.USER_CREATED, denial: AuditType.ACCESS_DENIED },
+    services: CORE_SERVER_ONLY,
+  },
+  {
+    operationId: 'updateUser',
+    method: 'post',
+    path: `${USERS_PATH}/{id}/profile`,
+    tag: CoreApiTag.ADMINISTRATION,
+    mode: CoreApiMode.LIVE,
+    summary: 'Edit a user profile',
+    description: [
+      'Changes the profile of an operator: name, display name, initials, rank. The role is `assignUserRole`, the enabled state is `enableUser` and `disableUser`, and a password is never carried by this operation.',
+      'Writes USER_UPDATED with the fields that changed; a request that changes nothing writes no row.',
+      'Needs USER_ADMIN and the vendor `root` account (RB-9 as amended).',
+      CORE_SERVER_NOTE,
+    ].join('\n\n'),
+    source: backendSource(SECTION, 16),
+    pathParam: OPERATOR_PARAM,
+    requestBody: { schema: 'UpdateUserRequest', required: true },
+    responses: {
+      200: { description: 'The operator after the change.', schema: 'AdminUser' },
+      400: INVALID_JSON,
+      401: NOT_SIGNED_IN,
+      // The vendor-only identity rule is spelled out in the description above; the 403 itself is
+      // the one every USER_ADMIN operation shares, so the text stays with `notPermitted`.
+      403: notPermitted(Permission.USER_ADMIN),
+      404: UNKNOWN_OPERATOR,
+      422: INVALID_INPUT,
+    },
+    access: USER_ADMIN,
+    audit: { success: AuditType.USER_UPDATED, denial: AuditType.ACCESS_DENIED },
+    services: CORE_SERVER_ONLY,
+  },
+  {
+    operationId: 'deleteUser',
+    method: 'post',
+    path: `${USERS_PATH}/{id}/delete`,
+    tag: CoreApiTag.ADMINISTRATION,
+    mode: CoreApiMode.LIVE,
+    summary: 'Delete a user',
+    description: [
+      'Removes an operator and its credential from the unit, ending the open sessions of that operator in the same transaction. The account is purged: the audit rows it wrote, its sign-in rows, its credential and its biometric tokens are removed with it, and the hash chain is re-sealed over what survives (RB-9 as amended by the principal on 2026-11-02). Records of the UNIT are never removed by this — evidence, custody, session records, exports, transcript revisions, capture configuration and the installation acceptance keep their rows and lose their attribution instead. What the amendment costs is stated plainly: after a purge the chain no longer proves that the erased account never existed.',
+      'Writes USER_DELETED with the number of sessions ended and whether a credential went with the account.',
+      'Needs USER_ADMIN and the vendor `root` account, and the username repeated in `confirm`.',
+      'Refused with `409 LAST_ADMIN` when it would leave no enabled operator holding USER_ADMIN (RB-8), and `409 INVALID_STATE` when the username repeated in `confirm` is not the operator of `{id}`.',
+      CORE_SERVER_NOTE,
+    ].join('\n\n'),
+    source: backendSource(SECTION, 17),
+    pathParam: OPERATOR_PARAM,
+    requestBody: { schema: 'DeleteUserRequest', required: true },
+    responses: {
+      200: { description: 'What was deleted.', schema: 'DeletedUser' },
+      400: INVALID_JSON,
+      401: NOT_SIGNED_IN,
+      // The vendor-only identity rule is spelled out in the description above; the 403 itself is
+      // the one every USER_ADMIN operation shares, so the text stays with `notPermitted`.
+      403: notPermitted(Permission.USER_ADMIN),
+      404: UNKNOWN_OPERATOR,
+      409: { description: 'RB-8: the delete would leave no enabled operator holding USER_ADMIN (LAST_ADMIN); or the username in `confirm` is not the operator of `{id}`; or records of the unit still point at that operator (INVALID_STATE), in which case the refusal text names how many and from which sources. Nothing is deleted in any of these cases.', schema: 'ApiError' },
+      422: INVALID_INPUT,
+    },
+    access: USER_ADMIN,
+    audit: { success: AuditType.USER_DELETED, denial: AuditType.ACCESS_DENIED },
     services: CORE_SERVER_ONLY,
   },
 ] as const satisfies readonly CoreApiRegistryOperation[];
@@ -428,6 +616,90 @@ export const ADMINISTRATION_EXAMPLES: Readonly<Record<string, OperationExamples>
       400: { invalidJson: ERROR_EXAMPLES.invalidJson },
       401: { notSignedIn: ERROR_EXAMPLES.notSignedIn },
       403: denied('disableUser'),
+      404: NOT_FOUND,
+      409: LAST_ADMIN_EXAMPLE,
+      422: { invalidInput: ERROR_EXAMPLES.invalidInput },
+    },
+  },
+
+  // ── The vendor-only trio (RB-9 as amended 02-11-2026) ─────────────────────────────────────
+  createUser: {
+    request: {
+      fieldOfficer: {
+        summary: 'A new investigator with an initial password',
+        value: {
+          username: 'sari.officer',
+          name: 'Sari Melati',
+          displayName: 'Sari Melati',
+          initials: 'SM',
+          role: 'INVESTIGATOR',
+          reason: 'Covers the night shift',
+        } satisfies CreateUserRequest,
+      },
+      technician: {
+        summary: 'A new technician account',
+        value: { username: 'new.tech', name: 'New Technician', initials: 'NT', role: 'TECHNICIAN' } satisfies CreateUserRequest,
+      },
+    },
+    responses: {
+      200: {
+        created: {
+          summary: 'The operator as created, with the next free ID',
+          value: {
+            ...EXAMPLE_INVESTIGATOR,
+            id: 'OPR-006',
+            username: 'sari.officer',
+            name: 'Sari Melati',
+            displayName: 'Sari Melati',
+            initials: 'SM',
+            enabled: true,
+            lastSignInAt: null,
+            activeSessions: 0,
+            roleChangedAt: null,
+          } satisfies AdminUser,
+        },
+      },
+      400: { invalidJson: ERROR_EXAMPLES.invalidJson },
+      401: { notSignedIn: ERROR_EXAMPLES.notSignedIn },
+      403: denied('createUser'),
+      422: { invalidInput: ERROR_EXAMPLES.invalidInput },
+    },
+  },
+  updateUser: {
+    pathParams: OPERATOR_PATH,
+    request: {
+      rename: {
+        summary: 'Correct the spelling of a name',
+        value: { name: 'Sari M. Halim', initials: 'SH', reason: 'Name corrected on the card' } satisfies UpdateUserRequest,
+      },
+    },
+    responses: {
+      200: { updated: { summary: 'The operator after the change', value: USER_INVESTIGATOR } },
+      400: { invalidJson: ERROR_EXAMPLES.invalidJson },
+      401: { notSignedIn: ERROR_EXAMPLES.notSignedIn },
+      403: denied('updateUser'),
+      404: NOT_FOUND,
+      422: { invalidInput: ERROR_EXAMPLES.invalidInput },
+    },
+  },
+  deleteUser: {
+    pathParams: OPERATOR_PATH,
+    request: {
+      gone: {
+        summary: 'Delete the account of a left technician, username repeated',
+        value: { confirm: 'rina.wijaya', reason: 'Left the unit; account removed' } satisfies DeleteUserRequest,
+      },
+    },
+    responses: {
+      200: {
+        deleted: {
+          summary: 'The account and its credential are gone; the audit rows stay',
+          value: { operatorId: 'OPR-003', username: 'rina.wijaya', sessionsEnded: 0, credentialsRemoved: 1 } satisfies DeletedUser,
+        },
+      },
+      400: { invalidJson: ERROR_EXAMPLES.invalidJson },
+      401: { notSignedIn: ERROR_EXAMPLES.notSignedIn },
+      403: denied('deleteUser'),
       404: NOT_FOUND,
       409: LAST_ADMIN_EXAMPLE,
       422: { invalidInput: ERROR_EXAMPLES.invalidInput },

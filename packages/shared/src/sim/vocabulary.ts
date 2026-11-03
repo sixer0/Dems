@@ -425,6 +425,11 @@ export const AuditType = {
   ROLE_CHANGED: 'ROLE_CHANGED',
   USER_ENABLED: 'USER_ENABLED',
   USER_DISABLED: 'USER_DISABLED',
+  // RB-9 as amended by the principal (PT GSP, 02-11-2026): the vendor `root` account may create,
+  // edit and delete an operator. The three types are written by those operations alone.
+  USER_CREATED: 'USER_CREATED',
+  USER_UPDATED: 'USER_UPDATED',
+  USER_DELETED: 'USER_DELETED',
   BIOMETRIC_ENROLLMENT_CHANGED: 'BIOMETRIC_ENROLLMENT_CHANGED',
   // Task 3 M2-W7 (blueprint row 48; `C3 §5.2`; SEC35-01/02/16/17/22): the nine capture-phase
   // types, in the order of `C3 §5.2`. Written by Core-server modules only (the simulator emits
@@ -526,6 +531,13 @@ export const AuditType = {
   // `apps/core-server/src/core/audit-details.ts`: the device id, its kind, a closed reason, one flag
   // and one count - never an address, a hardware id, a serial, a credential or text a device chose.
   CAPTURE_DEVICE_RETIRED: 'CAPTURE_DEVICE_RETIRED',
+  // Decisions D51 / D53 (live camera preview): one type (86 -> 87). An operator opened a live
+  // preview session of one registered camera (`createCameraPreviewSession`, POST
+  // /api/v1/capture/devices/{id}/preview-sessions). Written by the Core only, before the answer: no
+  // preview token exists that the trail does not know of. Its closed detail-key list is in
+  // `apps/core-server/src/core/audit-details.ts`: the device id, the instant the token dies and the
+  // operation - never the token, the URL, an address or a credential.
+  CAMERA_PREVIEW_OPENED: 'CAMERA_PREVIEW_OPENED',
 } as const;
 export type AuditType = ValueOf<typeof AuditType>;
 
@@ -584,6 +596,9 @@ export const AUDIT_TYPE_CATEGORY = {
   ROLE_CHANGED: 'SECURITY',
   USER_ENABLED: 'SECURITY',
   USER_DISABLED: 'SECURITY',
+  USER_CREATED: 'SECURITY',
+  USER_UPDATED: 'SECURITY',
+  USER_DELETED: 'SECURITY',
   BIOMETRIC_ENROLLMENT_CHANGED: 'AUTH',
   // Task 3 M2-W7 (`C3 §5.3`): exactly nine entries, each in an EXISTING category.
   CAPTURE_CONFIG_CHANGED: 'DEVICE',
@@ -635,6 +650,8 @@ export const AUDIT_TYPE_CATEGORY = {
   // Task 4 (row RD2; decision C147): one entry, in an EXISTING category - SECURITY, as
   // `CAPTURE_CREDENTIAL_SET` and `CAPTURE_CREDENTIAL_REVEALED`: a stored credential is destroyed.
   CAPTURE_DEVICE_RETIRED: 'SECURITY',
+  // Decisions D51 / D53: one entry, in an EXISTING category - DEVICE, as the other camera facts.
+  CAMERA_PREVIEW_OPENED: 'DEVICE',
 } as const satisfies Record<AuditType, AuditCategory>;
 
 // ── Operational events (Recent Events, bell, timeline sources) ──────────────────────────

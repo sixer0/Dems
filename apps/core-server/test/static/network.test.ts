@@ -164,6 +164,17 @@ describe('SR-03, P5, P21: nothing leaves the process, nothing comes from mock-co
 
   it('the server runtime calls no global fetch and imports no outbound client, except from the pinned files', () => {
     expect(occurrences(runtime, GLOBAL_FETCH)).toEqual([]);
+    // LCD integration (2026-10-19): one explicit outbound fetch reference in the closed LCD unit.
+    // Keep detecting references assigned to an alias, not only direct fetch() calls.
+    // LCD bridge task (operation 114): `src/lcd/panel-info.ts` is the unit's SECOND pinned file — the
+    // same loopback URL of the same backend, the same one-second bound, and no other destination.
+    const lcdFetchReference = /\bglobalThis\s*\.\s*fetch\b/g;
+    const LCD_FETCH_FILES: readonly string[] = ['src/lcd/bridge.ts', 'src/lcd/panel-info.ts'];
+    expect(occurrences(runtime, lcdFetchReference, (path) => !LCD_FETCH_FILES.includes(path))).toEqual([]);
+    for (const path of LCD_FETCH_FILES) {
+      expect(runtime.find((file) => file.path === path)?.text.match(lcdFetchReference), path).toHaveLength(2);
+    }
+    expect(occurrences([{ path: 'src/planted.ts', text: 'const send = globalThis.fetch;' }], lcdFetchReference)).toEqual(['src/planted.ts:1']);
     expect(occurrences(runtime, OUTBOUND_MODULE, (path) => !(path in OUTBOUND_EXEMPTIONS))).toEqual([]);
     // A pinned file imports exactly its one module, and every pinned file exists.
     for (const [path, modules] of Object.entries(OUTBOUND_EXEMPTIONS)) {

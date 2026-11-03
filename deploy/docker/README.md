@@ -1,5 +1,16 @@
 # DEMS Core as a Docker image (Ubuntu 24.04)
 
+## Offline installer with LCD (2026-10-19)
+
+The Linux Docker installer now includes the LCD service, Python and pyserial **inside the Core image**. It does not require a separate backend installation. Use `release/installers/DEMS-Linux-Docker-LCD-20261019-<amd64|arm64>-unverified.tar.gz` after exporting with `deploy/docker/build-installer.sh <arch> <smoke-tested-image>`.
+
+Extract on the matching Linux host, run `./install.sh verify`, then `./install.sh install --lcd-device /dev/ttyACM0`. The installer imports both bundled images offline, creates a NEW demo installation, derives the USB group, sets the LCD URL and starts Core, console, PostgreSQL and LCD. `--without-lcd` explicitly postpones the physical panel. It refuses existing configuration/data; stop/start never removes volumes. Full instructions: `installer/INSTALL-ID.md`.
+
+The `lcd` Compose profile uses UID 10001, the selected serial-device GID, a read-only media mount and loopback 8090. No USB device is exposed to the Core service. `DEMS_LCD_BACKEND_URL` controls the Core bridge. The added service is available in future full image builds; `build-image.sh` includes authorized, non-ignored new files in its explicit product paths so the LCD integration cannot be omitted simply because it is not committed yet.
+
+The release remains a task-4 WIP: a Docker demo/bench package, not production hardware acceptance. Native Ubuntu production-host restrictions below remain in force. Do not call a successful container smoke test an ESP32 rendering test.
+
+
 **Status: UNVERIFIED.** Built from branch `task4/input-av-core-port` at commit `6d6553e3` (a work-in-progress pause checkpoint, decision C155) plus one uncommitted typecheck fix in `apps/core-server/src/capture-composition.ts` (decision C156). On that tree only the TypeScript compile check ran (`tsc` 0 in every workspace). **No test suite was run.** The image is a package of that tree, not a release. Task record: `docs/2026-10-12_input_av_core_adapter_plan/implementation/dk_docker_image.md`.
 
 ## Ringkasan (Bahasa Indonesia)

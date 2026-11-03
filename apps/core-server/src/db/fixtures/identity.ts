@@ -334,6 +334,54 @@ export function buildIdentity(world: World): IdentityRows {
     }
   }
 
+  // RB-9 as amended by the principal (PT GSP, 02-11-2026): the three vendor-only operations of user
+  // administration (registry operations 15 to 17). One row of each, by a supervisor who could act
+  // then, in the words the module itself uses (`modules/admin/changes.ts`). The created and the
+  // edited account are fixture operators that exist at `now`; the DELETED one is the ID that the
+  // delete took away, so no operator row holds it any more — which is exactly what a delete leaves
+  // behind: the account gone, every row it wrote kept by the append-only chain.
+  const createdAccount = directory.entries.filter((entry) => !entry.seeded)[0];
+  const editedAccount = directory.entries.filter((entry) => !entry.seeded)[3];
+  const deletedAccountId = `OPR-${padded(Math.max(...directory.entries.map((entry) => operatorNumber(entry.operator.id))) + 1, 3)}`;
+  if (createdAccount === undefined || editedAccount === undefined) throw new RangeError('the fixture holds no operator to create or edit');
+  {
+    const at = createdAccount.createdAt;
+    world.record(at, {
+      audit: {
+        type: 'USER_CREATED',
+        message: `Operator ${createdAccount.operator.id} created with role ${createdAccount.operator.role}`,
+        actorId: supervisorAt(directory, adminRng, at).operator.id,
+        details: { targetOperatorId: createdAccount.operator.id, role: createdAccount.operator.role, reason: `Fixture reason: the vendor opened the account ${createdAccount.operator.id}` },
+      },
+    });
+  }
+  {
+    const at = world.dayAt(45, 10, 15);
+    const fields = 'displayName,initials';
+    world.record(at, {
+      audit: {
+        type: 'USER_UPDATED',
+        message: `Profile of operator ${editedAccount.operator.id} updated: ${fields}`,
+        actorId: supervisorAt(directory, adminRng, at).operator.id,
+        details: { targetOperatorId: editedAccount.operator.id, fields },
+      },
+    });
+  }
+  {
+    const at = world.dayAt(30, 11, 30);
+    world.record(at, {
+      audit: {
+        // No open session and one credential: the account had a password of its own and nothing of
+        // it was still running when the vendor deleted it.
+        type: 'USER_DELETED',
+        message: `Operator ${deletedAccountId} deleted with its history: 0 audit row(s) removed, 0 sign-in row(s), chain re-sealed untouched`,
+        severity: 'WARNING',
+        actorId: supervisorAt(directory, adminRng, at).operator.id,
+        details: { targetOperatorId: deletedAccountId, role: OperatorRole.INVESTIGATOR, sessionsEnded: 0, auditRowsRemoved: 0, signInRowsRemoved: 0, recordsLeftUnattributed: 0, credentialsRemoved: 1, reason: `Fixture reason: the account ${deletedAccountId} was no longer used` },
+      },
+    });
+  }
+
   // Pairing codes in the order they were issued, and the device each redeemed code paired.
   const pairingRng = world.rng('pairing');
   const closedStates = expand(CODE_STATES);

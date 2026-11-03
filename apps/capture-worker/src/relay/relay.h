@@ -88,6 +88,24 @@
  * What this does NOT do: it does not choose the interface by name. Which interface a packet leaves by is the
  * host's routing; the address makes the start fail when the host no longer holds it, and makes the camera see
  * that address. The push to the worker is not touched: it is loopback to loopback.
+ *
+ * PREVIEW MODE (task 4 row 89; decisions D51, D53: the live picture of a camera in the web console). The start message
+ * names "preview": the members of a probe - no ingest address, one that comes with it is refused - and `source`, which
+ * preview mode MUST state as record mode does (a preview is of a stored camera). The camera is opened exactly as in the
+ * two other modes (the same client, Digest only, the same keyframe gate) and nothing is pushed:
+ *   output   standard output carries the VIDEO ONLY, as the camera's encoder made it: an elementary stream of Annex-B
+ *            access units (each unit after 00 00 00 01) and nothing else - no report line, no word. When the gate
+ *            opens (the first keyframe, and the first one after every gap) the parameter sets go first, in the form
+ *            relay_extradata makes of them; then every picture the gate passes. The reader is the Core's pipe to the
+ *            decoder that makes the pictures of the console (the capture guard and FFmpeg); no byte passes the Core.
+ *   writes   through the ONE writer of standard output in relay.c, bounded by RELAY_IO_BOUND_US per write: a reader
+ *            that takes nothing for that long ends the relay with REPORT_NOT_WRITTEN. A reader that is GONE (the
+ *            decoder ended: EPIPE) ends it as the order to stop does: STOPPED, code 0.
+ *   words    standard error has the same fixed words as in the other modes ("camera_playing", "preview_streaming"
+ *            once the gate first opened, "exit"), never a byte of the stream.
+ *   re-open  none: the end of the camera leg ends the relay with its code, as in probe mode; the Core starts again.
+ * The bytes of standard output are the camera's units, held to the units of the codec (relay_core.c) and to the
+ * parameter sets the relay validated; no address, account, path or text of the start message is among them.
  */
 #ifndef DEMS_CAPTURE_RELAY_H
 #define DEMS_CAPTURE_RELAY_H
@@ -182,9 +200,9 @@ const char *relay_code_name(RelayCode code);
 void relay_wipe(void *memory, size_t bytes);
 
 /* ---------------------------------------------------------------- the start message */
-typedef enum RelayMode { RELAY_MODE_NONE = 0, RELAY_MODE_RECORD = 1, RELAY_MODE_PROBE = 2 } RelayMode;
+typedef enum RelayMode { RELAY_MODE_NONE = 0, RELAY_MODE_RECORD = 1, RELAY_MODE_PROBE = 2, RELAY_MODE_PREVIEW = 3 } RelayMode;
 typedef struct RelayStart {
-    RelayMode mode;                         /* "record" or "probe" */
+    RelayMode mode;                         /* "record", "probe" or "preview" (row 89) */
     long attempt;                           /* the member `attempt` (a number, 1 to RELAY_ATTEMPT_MAX); 0: not stated */
     char ingest[RELAY_INGEST_CHARS + 1];    /* announced unchanged; record mode only (probe mode takes none) */
     int ingest_port;

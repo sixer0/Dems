@@ -186,3 +186,15 @@ export const RECORDING_BYTES_PER_HOUR = 8.2 * GB;
 /** StorageState thresholds on the evidence volume (demo assumption, 04 gap G8). */
 export const STORAGE_LOW_PERCENT = 85;
 export const STORAGE_FULL_PERCENT = 98;
+
+/**
+ * The investigator a stored record names when nobody is named any more (migration 0036).
+ *
+ * A finished session and its evidence belong to the UNIT, so purging an operator leaves those rows
+ * and drops only their attribution, which is a NULL in the database. The domain shape of both is
+ * frozen by the shared state contract (`api-realtime`, `api-state-slices`), so the mapping answers
+ * the empty column with this reserved ID instead of widening the type: it matches the operator-ID
+ * shape, no real operator can ever be issued it (the sequence starts at OPR-001), and the mapping
+ * writes it back as NULL, so it never reaches a foreign key.
+ */
+export const UNATTRIBUTED_OPERATOR_ID = 'OPR-000';

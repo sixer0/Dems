@@ -61,6 +61,7 @@ export const SERVICE_NAME = 'dems-core-server';
 export const ENV_LISTEN_PORT = 'DEMS_CORE_PORT';
 export const ENV_DEMO_CONTROLS = 'DEMS_DEMO_CONTROLS';
 export const ENV_LOG_LEVEL = 'DEMS_LOG_LEVEL';
+export const ENV_LCD_BACKEND_URL = 'DEMS_LCD_BACKEND_URL';
 export const ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE';
 export const ENV_CAPTURE_WORKER = 'DEMS_CAPTURE_WORKER';
 export const ENV_MEDIA_DIR = 'DEMS_MEDIA_DIR';
@@ -190,6 +191,8 @@ export interface DatabaseConnection {
 }
 
 export interface CoreServerConfig {
+  /** Optional local LCD bridge. Configured at startup; never a browser supplied URL. */
+  readonly lcdBackendUrl?: string | null;
   readonly host: typeof LISTEN_HOST;
   readonly port: ListenPort;
   /** The demo flag: read once at start, never changeable through the API (DC-2, SR-57). */
@@ -327,6 +330,7 @@ export function parseInstallationName(raw: string | undefined): string | null {
 // ── Building the configuration object ──────────────────────────────────────────────────────────
 
 export interface ConfigInput {
+  readonly lcdBackendUrl?: string | null;
   readonly port: ListenPort;
   readonly demoControls: boolean;
   readonly logLevel: LogLevel;
@@ -392,6 +396,7 @@ export function createConfig(input: ConfigInput): CoreServerConfig {
   const mediaStoreDir = parseCapturePath(ENV_MEDIA_DIR, input.mediaStoreDir ?? undefined) ?? `${input.dataDir}/${MEDIA_STORE_SUBPATH}`;
   const captureHelperFfmpegPath = parseCapturePath(ENV_CAPTURE_HELPER_FFMPEG, input.captureHelperFfmpegPath ?? undefined);
   return Object.freeze({
+    lcdBackendUrl: parseLcdBackendUrl(input.lcdBackendUrl ?? undefined),
     host: LISTEN_HOST,
     port: input.port,
     demoControls: input.demoControls,
@@ -420,4 +425,15 @@ export function createConfig(input: ConfigInput): CoreServerConfig {
     captureAliasSocketPath: parseCapturePath(ENV_CAPTURE_ALIAS_SOCKET, input.captureAliasSocketPath ?? undefined),
     captureAudioHelperPath: parseCapturePath(ENV_CAPTURE_AUDIO_HELPER, input.captureAudioHelperPath ?? undefined),
   });
+}
+
+/** LCD integration, user request 2026-10-19: host-only HTTP service, no redirects or remote hosts. */
+export function parseLcdBackendUrl(raw: string | undefined): string | null {
+  if (raw === undefined || raw === '') return null;
+  const matched = /^http:\/\/127\.0\.0\.1:([0-9]{1,5})\/?$/.exec(raw);
+  const port = Number(matched?.[1]);
+  if (matched === null || port < 1 || port > 65_535) {
+    throw new ConfigError('LCD_BACKEND_URL_INVALID', 'DEMS_LCD_BACKEND_URL must be http://127.0.0.1:<port> with a valid port.');
+  }
+  return `http://127.0.0.1:${port}`;
 }

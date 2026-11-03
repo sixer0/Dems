@@ -62,12 +62,15 @@ export const pairingCodes = pgTable(
     })
       .onDelete('restrict')
       .onUpdate('no action'),
+    // Migration 0036 (principal, 2026-11-02): a reference to a record OF THE UNIT drops its
+    // attribution when the operator goes, instead of holding the record in place. The operator
+    // who OPENED or ISSUED something keeps RESTRICT - that act is the credential trail itself.
     foreignKey({
       name: 'pairing_codes_closed_by_operator_id_fkey',
       columns: [t.closedByOperatorId],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     check('pairing_codes_id_check', matches(t.id, '^PCD-[0-9]{6,}$')),
     check('pairing_codes_code_hash_check', sql`octet_length(${t.codeHash}) = 32`),
@@ -116,7 +119,7 @@ export const pairedDevices = pgTable(
       columns: [t.revokedByOperatorId],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     check('paired_devices_id_check', matches(t.id, '^DEV-[0-9]{4,}$')),
     check(

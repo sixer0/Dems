@@ -25,7 +25,7 @@
  * (`../commands/migrations.ts`). B-3 compares the schema version that the last migration file
  * wrote into `schema_meta`.
  */
-import { GENESIS_HASH } from '@dems/shared/sim';
+import { GENESIS_HASH, type PurgedRange } from '@dems/shared/sim';
 import type { Pool } from 'pg';
 import type { AuditLogRow } from './audit';
 import { DB_CONTRACT_REVISION, DB_SCHEMA_VERSION } from './meta';
@@ -277,8 +277,15 @@ export interface StoredChainOptions {
    * that its `hash` is `sha256(prevHash ‖ canonicalJSON(body))` (GD-01); that needs the shared
    * `verifyAuditChain`, which the caller passes in (with the one mapping of rows to the shared
    * shape, MR-1). `dropped` is the number of older rows that were not read.
+   *
+   * `purged` carries the erasure ranges read from `audit_purge_log`: a hole in the sequence numbers
+   * is honest only when the ledger names it (migration 0036), and the check must judge that from the
+   * table rather than from whoever asked.
    */
-  readonly verifyDigests?: (rows: readonly AuditLogRow[], context: { readonly dropped: number; readonly head: string }) => DigestVerdict;
+  readonly verifyDigests?: (
+    rows: readonly AuditLogRow[],
+    context: { readonly dropped: number; readonly head: string; readonly purged?: readonly PurgedRange[] },
+  ) => DigestVerdict;
 }
 
 export interface StoredChainReport {
@@ -353,17 +360,37 @@ export async function checkStoredChain(pool: Queryable, options: StoredChainOpti
   const first = rows[0];
   const last = rows[rows.length - 1];
 
+  // The purge ledger (migration 0036): a hole in the sequence numbers is honest only when a recorded
+  // erasure covers it, and only for the sequences it names. Read here, from the table, because the
+  // judgement must not come from whoever asks the question.
+  let purged: PurgedRange[] = [];
+  try {
+    purged = (
+      await pool.query<{ first_seq: string; last_seq: string }>('SELECT first_seq, last_seq FROM public.audit_purge_log ORDER BY first_seq')
+    ).rows.map((row) => ({ from: Number(row.first_seq), to: Number(row.last_seq) }));
+  } catch (error) {
+    // A database provisioned before migration 0036 has no ledger: nothing was ever purged there,
+    // which is the same answer as an empty table. Any other failure is the database failing and is
+    // left to propagate, exactly as the other reads of this check do.
+    if ((error as { code?: string }).code !== '42P01') throw error;
+  }
+
+  const gapForgiven = (fromSeq: number, toSeq: number): boolean => purged.some((range) => range.from <= fromSeq + 1 && range.to >= toSeq - 1);
+
   let linkBreaks = 0;
   rows.forEach((row, index) => {
     const previous = rows[index - 1];
-    if (previous !== undefined && (row.seq !== previous.seq + 1 || row.prevHash !== previous.hash)) linkBreaks += 1;
+    if (previous === undefined) return;
+    const linkOk = row.prevHash === previous.hash;
+    const seqOk = row.seq === previous.seq + 1 || gapForgiven(previous.seq, row.seq);
+    if (!linkOk || !seqOk) linkBreaks += 1;
   });
   if (first !== undefined && first.seq === 1 && first.prevHash !== GENESIS_HASH) linkBreaks += 1;
   if (linkBreaks > 0) problems.push(`${linkBreaks} stored audit row(s) do not continue their predecessor.`);
 
   let digests: StoredChainReport['digests'] = 'not-checked';
   if (options.verifyDigests !== undefined && first !== undefined && last !== undefined) {
-    const verdict = options.verifyDigests(rows, { dropped: first.seq - 1, head: last.hash });
+    const verdict = options.verifyDigests(rows, { dropped: first.seq - 1, head: last.hash, purged });
     digests = verdict.ok ? 'ok' : 'failed';
     if (!verdict.ok) problems.push(`the stored chain does not verify${verdict.reason === undefined ? '' : ` (${verdict.reason})`}.`);
   } else if (options.verifyDigests !== undefined) {

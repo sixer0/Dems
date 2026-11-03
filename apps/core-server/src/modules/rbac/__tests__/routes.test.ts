@@ -91,12 +91,14 @@ describe('MODG: the route list of the module equals the registry operation it ow
     }
   });
 
-  it('the area has five operations in the registry: 10 is this module\'s, 11 to 14 are the administration row\'s (W33)', () => {
+  // REVISED 2026-11-02 (principal): RB-9 amended — area 2 gains createUser/updateUser/deleteUser
+  // (operations 15-17), all narrowed to the vendor root account inside the unit.
+  it('the area has eight operations in the registry: 10 is this module\'s, 11 to 17 are the administration row\'s (W33)', () => {
     const area = CORE_API_OPERATIONS.filter((operation) => operation.tag === CoreApiTag.ADMINISTRATION).map((operation) => operation.operationId);
-    expect(area).toEqual([...RBAC_OPERATIONS, 'listUsers', 'assignUserRole', 'enableUser', 'disableUser']);
+    expect(area).toEqual([...RBAC_OPERATIONS, 'listUsers', 'assignUserRole', 'enableUser', 'disableUser', 'createUser', 'updateUser', 'deleteUser']);
     const numberOf = (operationId: string): number =>
       Number(/operation (\d+)/.exec(CORE_API_OPERATIONS.find((operation) => operation.operationId === operationId)?.source ?? '')?.[1]);
-    expect(area.map(numberOf)).toEqual([10, 11, 12, 13, 14]);
+    expect(area.map(numberOf)).toEqual([10, 11, 12, 13, 14, 15, 16, 17]);
   });
 
   it('operation 10 is AUTHENTICATED, a read, with no body: the registry rule the guard applies', async () => {

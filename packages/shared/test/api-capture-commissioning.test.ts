@@ -118,7 +118,9 @@ describe('the registry: operations 101 to 107', () => {
       [106, 'setCameraNetwork', 'post', '/api/v1/capture/network/cameras/address', 'Device', 'simulated', 'CAPTURE_COMMISSION', ['WEB_CONSOLE_SESSION'], 'CAMERA_NETWORK_SET', 'ACCESS_DENIED'],
       [107, 'getCameraNetworkJob', 'get', '/api/v1/capture/network/jobs/{id}', 'Device', 'simulated', 'CAPTURE_COMMISSION', ['WEB_CONSOLE_SESSION'], 'NONE-R', 'ACCESS_DENIED'],
     ]);
-    expect(CORE_API_OPERATIONS.slice(100, 107).map((operation) => operation.operationId)).toEqual([...IDS]);
+    // REVISED 2026-11-02 (principal): RB-9 as amended inserts createUser, updateUser and deleteUser
+    // in area 2, so every table entry from `disableUser` on sits three places further.
+    expect(CORE_API_OPERATIONS.slice(103, 110).map((operation) => operation.operationId)).toEqual([...IDS]);
     expect(Object.keys(CAPTURE_COMMISSIONING_SCHEMAS)).toEqual([
       'CaptureNetworkConfig', 'CaptureNetworkConfigUpdateRequest', 'HostAlias', 'HostAliasState', 'CameraFactoryScanRequest', 'FactoryCamera', 'CameraFactoryScan',
       'CameraNetworkSetRequest', 'CameraNetworkJob',
@@ -535,7 +537,8 @@ describe('task 4 row RD2: operation 111, the retirement of a registered camera o
     ]);
     expect(CAPTURE_DEVICE_RETIRE_PATH).toBe(operation.path);
     expect(operation.access).toEqual(CAPTURE_COMMISSION_ACCESS);
-    expect(CORE_API_OPERATIONS.at(-1)?.operationId).toBe('retireCaptureDevice');
+    // It was the last entry until task 4 row D53 appended operations 112 and 113 after it.
+    expect(CORE_API_OPERATIONS.at(-3)?.operationId).toBe('retireCaptureDevice');
     expect(Object.keys(CAPTURE_RETIRE_SCHEMAS)).toEqual(['CaptureDeviceRetireRequest', 'CaptureDeviceRetirement']);
     for (const [name, schema] of Object.entries(CAPTURE_RETIRE_SCHEMAS)) expect((CORE_API_SCHEMAS as Record<string, unknown>)[name], name).toBe(schema);
     // SECURITY: a stored credential is destroyed (as CAPTURE_CREDENTIAL_SET / _REVEALED).

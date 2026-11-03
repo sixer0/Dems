@@ -15,13 +15,18 @@ set -uo pipefail
 
 ROOT=$(git rev-parse --show-toplevel)
 IMAGE=${1:-dems/core:task4-$(git -C "$ROOT" rev-parse --short=8 HEAD)-unverified}
+WITH_LCD=${2:-}
+# Test every service on the image's target CPU, including PostgreSQL, even on an emulated builder.
+export DOCKER_DEFAULT_PLATFORM=$(docker image inspect "$IMAGE" --format '{{.Os}}/{{.Architecture}}')
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 PROJECT="dems-smoke-$(printf '%s' "$STAMP" | tr 'A-Z' 'a-z')"
 DIR="$ROOT/.cache/docker-smoke/$PROJECT"
 LOG="$ROOT/.cache/docker-smoke/$PROJECT.log"
 mkdir -p "$DIR"
 exec > >(tee "$LOG") 2>&1
-dc() { docker compose --project-name "$PROJECT" --project-directory "$DIR" -f "$DIR/compose.yaml" -f "$DIR/compose.isolated.yaml" --profile console --profile tools "$@"; }
+extra=()
+if [ "$WITH_LCD" = --with-lcd ]; then extra=(-f "$DIR/compose.lcd-smoke.yaml" --profile lcd); fi
+dc() { docker compose --project-name "$PROJECT" --project-directory "$DIR" -f "$DIR/compose.yaml" -f "$DIR/compose.isolated.yaml" "${extra[@]}" --profile console --profile tools "$@"; }
 
 say() { printf '[smoke %s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 RESULT=FAIL
@@ -49,6 +54,17 @@ DEMS_DEMO_CONTROLS=0
 DEMS_CAPTURE_MODE=simulated
 DEMS_CAPTURE_DEV_SOURCES=0
 ENV
+if [ "$WITH_LCD" = --with-lcd ]; then
+  printf 'DEMS_LCD_BACKEND_URL=http://127.0.0.1:8090\n' >> "$DIR/.env"
+  cat > "$DIR/compose.lcd-smoke.yaml" <<'LCD'
+services:
+  lcd:
+    # This test never maps or opens a host USB device.
+    devices: !reset []
+    environment:
+      DEMS_DEV: /dev/absent-test-panel
+LCD
+fi
 
 wait_healthy() { # wait_healthy <service> <seconds>
   local svc=$1 limit=$2 t=0 id state
@@ -76,7 +92,7 @@ wait_healthy db 300 || { dc logs db | tail -40; exit 1; }
 dc logs db | grep -E '10-dems-roles|database system is ready|listening on' | sed 's/^/  /'
 for step in "db:create" "db:migrate" "db:seed" "db:status"; do
   say "tools $step --database dems_demo"
-  dc run --rm -T tools "$step" --database dems_demo 2>&1 | tail -n 15 | sed 's/^/  /'
+  dc run --rm -T tools "$step" --database dems_demo 2>&1 | sed 's/^/  /'
   rc=${PIPESTATUS[0]}
   say "$step exit $rc"
   [ "$rc" = 0 ] || exit 1
@@ -95,4 +111,24 @@ t=0; until fetch console http://127.0.0.1:5173/ >/dev/null 2>&1 || [ "$t" -ge 60
 fetch console http://127.0.0.1:5173/ || { dc logs console | tail -40; exit 1; }
 fetch console http://127.0.0.1:5173/api/v1/health || { dc logs console | tail -40; exit 1; }
 dc logs console | tail -n 8 | sed 's/^/  /'
+if [ "$WITH_LCD" = --with-lcd ]; then
+  say 'step 5: included LCD service, no USB device'
+  dc up -d lcd || exit 1
+  wait_healthy lcd 60 || { dc logs lcd | tail -20; exit 1; }
+  dc exec -T core node -e '
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    (async () => {
+      for (let i = 0; i < 20; i++) {
+        const r = await fetch("http://127.0.0.1:8090/api/dems/status");
+        const b = await r.json();
+        if (b.channels.length === 4 && b.channels.every((c) => c.last_post_s !== null)) {
+          if (b.nrec !== 0 || b.last_req_ms !== 0) throw Error("LCD fabricated recording or USB liveness");
+          console.log("LCD PASS: Python+serial installed, four channels synchronized from Core; no recording and no USB claim");
+          return;
+        }
+        await sleep(1000);
+      }
+      throw Error("Core never synchronized to LCD");
+    })().catch((e) => { console.error(e.message); process.exit(1); });' || exit 1
+fi
 RESULT=PASS

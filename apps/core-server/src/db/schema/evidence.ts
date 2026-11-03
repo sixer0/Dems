@@ -71,7 +71,7 @@ export const evidenceItems = pgTable(
     caseNumber: text('case_number').notNull(),
     subjectName: text('subject_name').notNull(),
     subjectType: text('subject_type').$type<SubjectTypeValue>().notNull(),
-    investigatorId: text('investigator_id').notNull(),
+    investigatorId: text('investigator_id'),
     room: text('room').notNull(),
     profileId: text('profile_id').$type<ProfileId>().notNull(),
     recordedAt: bigint('recorded_at', { mode: 'number' }).notNull(),
@@ -121,12 +121,15 @@ export const evidenceItems = pgTable(
     })
       .onDelete('restrict')
       .onUpdate('no action'),
+    // Migration 0036 (principal, 2026-11-02): a reference to a record OF THE UNIT drops its
+    // attribution when the operator goes, instead of holding the record in place.
+    // The evidence itself is never lost: only the name of the investigator becomes unknown.
     foreignKey({
       name: 'evidence_items_investigator_id_fkey',
       columns: [t.investigatorId],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     index('evidence_items_recorded_at_idx').on(t.recordedAt.desc().nullsFirst(), t.id.desc().nullsFirst()),
     index('evidence_items_status_recorded_at_idx').on(
@@ -266,12 +269,14 @@ export const evidenceCustody = pgTable(
     })
       .onDelete('restrict')
       .onUpdate('no action'),
+    // Migration 0036 (principal, 2026-11-02): a reference to a record OF THE UNIT drops its
+    // attribution when the operator goes, instead of holding the record in place.
     foreignKey({
       name: 'evidence_custody_actor_id_fkey',
       columns: [t.actorId],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     check('evidence_custody_values_check', sql`${t.seq} >= 1 AND ${code(t.action)}`),
   ],
@@ -289,7 +294,7 @@ export const exportRecords = pgTable(
     id: text('id').primaryKey(),
     scope: text('scope').$type<ExportScopeValue>().notNull(),
     evidenceId: text('evidence_id'),
-    operatorId: text('operator_id').notNull(),
+    operatorId: text('operator_id'),
     reason: text('reason').notNull(),
     destination: text('destination').notNull(),
     at: bigint('at', { mode: 'number' }).notNull(),
@@ -302,8 +307,10 @@ export const exportRecords = pgTable(
     })
       .onDelete('restrict')
       .onUpdate('no action'),
+    // Migration 0036 (principal, 2026-11-02): a reference to a record OF THE UNIT drops its
+    // attribution when the operator goes, instead of holding the record in place.
     foreignKey({ name: 'exports_operator_id_fkey', columns: [t.operatorId], foreignColumns: [operators.id] })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     index('exports_evidence_id_idx')
       .on(t.evidenceId)

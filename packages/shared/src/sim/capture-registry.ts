@@ -137,9 +137,9 @@ export const REGISTERED_MICROPHONE_MODEL_PATTERN = /^[ -~]{1,64}$/;
 const invalidMicrophone = (detail: string): SimTransitionError => new SimTransitionError(null, REGISTER_CAPTURE_MICROPHONE_ACTION, detail, SimErrorCode.INVALID_INPUT);
 
 /** The next free microphone id: the highest number of the registry plus 1, two digits at least. Never a reused one. */
-export function nextCaptureMicrophoneId(devices: readonly { readonly id: string }[]): string {
-  const highest = devices.reduce((max, device) => {
-    const number = /^MIC-(\d+)$/.exec(device.id)?.[1];
+export function nextCaptureMicrophoneId(devices: readonly { readonly id: string }[], takenIds: readonly string[] = []): string {
+  const highest = [...devices.map((device) => device.id), ...takenIds].reduce((max, id) => {
+    const number = /^MIC-(\d+)$/.exec(id)?.[1];
     return number === undefined ? max : Math.max(max, Number(number));
   }, 0);
   return `MIC-${String(highest + 1).padStart(2, '0')}`;
@@ -154,9 +154,11 @@ export function nextCaptureMicrophoneId(devices: readonly { readonly id: string 
 export function registerCaptureMicrophoneTransition(state: SimState, input: RegisterCaptureMicrophoneInput): { state: SimState; result: CaptureDeviceStatus } {
   if (typeof input.model !== 'string' || !REGISTERED_MICROPHONE_MODEL_PATTERN.test(input.model)) throw invalidMicrophone('the model of a microphone is a product name of 1 to 64 printable characters');
   const devices = state.captureDevices.devices;
+  const takenIds = input.takenIds ?? [];
+  if (!Array.isArray(takenIds) || takenIds.some((id) => typeof id !== 'string')) throw invalidMicrophone('the taken ids of a registration are a list of registry ids');
   if (input.deviceId === null) {
     const device: CaptureDeviceStatus = {
-      id: nextCaptureMicrophoneId(devices),
+      id: nextCaptureMicrophoneId(devices, takenIds),
       kind: 'MIC',
       model: input.model,
       firmware: null,

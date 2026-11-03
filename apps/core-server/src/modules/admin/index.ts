@@ -10,8 +10,11 @@
  *
  * Method, path and schemas are the registry's: each route is built from its registry entry
  * (`routeOfOperation`) and names it in `config.operationId`. Operation 10 of the same area
- * (`getRoleMatrix`) is the RBAC module's. No operation creates or deletes a user, and none sets
- * or resets a password: the specification defines no such operation.
+ * (`getRoleMatrix`) is the RBAC module's. RB-9 as amended by the principal (PT GSP, 02-11-2026)
+ * adds three operations that do create, edit and delete a user; each of them checks, inside its
+ * own unit and under the unit's lock, that the caller's username is the vendor `root` account
+ * (`rule.ts`, `isVendorRoot`). None of them resets the password of an existing operator: that
+ * stays the host command's alone (decision U19), and `createUser` only gives a NEW account one.
  *
  * WHO MAY CALL is not checked here. The access rule of the registry (`USER_ADMIN`) is applied by
  * stage 6 (`plugins/permission-guard`) before the body is read, and the guard writes the one
@@ -48,11 +51,16 @@ import {
   ADMINISTRATION_OPERATIONS,
   AdminUserListSchema,
   AdminUserSchema,
+  CreateUserRequestSchema,
+  DeletedUserSchema,
+  DeleteUserRequestSchema,
+  UpdateUserRequestSchema,
   UserRoleRequestSchema,
   UserStatusRequestSchema,
   type AdminUser,
   type AdminUserList,
   type CoreApiRegistryOperation,
+  type DeletedUser,
 } from '@dems/shared/api';
 import type { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -62,14 +70,14 @@ import { notSignedIn } from '../../plugins/authenticate';
 import { ApiFailure, invalidInput } from '../../plugins/error-envelope';
 import { describeError } from '../../plugins/logger';
 import { routeOfOperation } from '../../plugins/permission-guard';
-import { assignUserRole, disableUser, enableUser, type Actor, type ChangeOutcome } from './changes';
+import { assignUserRole, createUser, deleteUser, disableUser, enableUser, updateUser, type Actor, type ChangeOutcome, type DeletedOutcome } from './changes';
 import { listUsers } from './statements';
 
 export { ADMINISTRATION_PERMISSION, ADMIN_UNIT_LABEL, lastAdministrator, unknownOperator, type Actor, type ChangeOutcome } from './changes';
 export { administratorsOf, applyChange, leavesNoAdministrator, type OperatorChange } from './rule';
 
 /** The operations this module answers, in registry order. */
-export const ADMIN_OPERATIONS = ['listUsers', 'assignUserRole', 'enableUser', 'disableUser'] as const;
+export const ADMIN_OPERATIONS = ['listUsers', 'assignUserRole', 'enableUser', 'disableUser', 'createUser', 'updateUser', 'deleteUser'] as const;
 export type AdminOperation = (typeof ADMIN_OPERATIONS)[number];
 
 /** `source` of the read of operation 11 in a log line and in the persistent error log. */
@@ -178,6 +186,41 @@ export const adminModule: FastifyPluginAsync = async (app: FastifyInstance) => {
     handler: async (request): Promise<AdminUser> => {
       const outcome = await disableUser(app, actorOf(request), request.params.id, reasonOf(request.body.reason));
       return answer(request, 'admin.disableUser', outcome);
+    },
+  });
+
+  // 15 createUser (RB-9 as amended 02-11-2026: USER_ADMIN plus the vendor `root` identity, which
+  // the unit itself checks on the row it holds locked — see changes.ts).
+  const create = operationOf('createUser');
+  routes.route({
+    ...routeOfOperation(create),
+    schema: { body: CreateUserRequestSchema, response: { 200: AdminUserSchema } },
+    handler: async (request): Promise<AdminUser> => {
+      const outcome = await createUser(app, actorOf(request), request.body, reasonOf(request.body.reason));
+      return answer(request, 'admin.createUser', outcome);
+    },
+  });
+
+  // 16 updateUser: the profile only.
+  const update = operationOf('updateUser');
+  routes.route({
+    ...routeOfOperation(update),
+    schema: { params: operatorParams(update), body: UpdateUserRequestSchema, response: { 200: AdminUserSchema } },
+    handler: async (request): Promise<AdminUser> => {
+      const outcome = await updateUser(app, actorOf(request), request.params.id, request.body, reasonOf(request.body.reason));
+      return answer(request, 'admin.updateUser', outcome);
+    },
+  });
+
+  // 17 deleteUser: the account and its credential go; the audit chain keeps every row the operator wrote.
+  const remove = operationOf('deleteUser');
+  routes.route({
+    ...routeOfOperation(remove),
+    schema: { params: operatorParams(remove), body: DeleteUserRequestSchema, response: { 200: DeletedUserSchema } },
+    handler: async (request): Promise<DeletedUser> => {
+      const outcome: DeletedOutcome = await deleteUser(app, actorOf(request), request.params.id, request.body, reasonOf(request.body.reason));
+      await mirrorOperators(request, 'admin.deleteUser');
+      return outcome.deleted;
     },
   });
 };

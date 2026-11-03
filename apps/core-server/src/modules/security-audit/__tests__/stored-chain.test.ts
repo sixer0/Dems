@@ -67,6 +67,8 @@ interface FakeDatabase {
 }
 
 const CHAIN_READ = /FROM \(SELECT \* FROM audit_log ORDER BY seq DESC LIMIT \$1\)/;
+/** The erasure ledger of migration 0036, read by the same check (B-8) right after the rows. */
+const PURGE_LEDGER = 'SELECT first_seq, last_seq FROM public.audit_purge_log ORDER BY first_seq';
 
 function record(row: AuditLogRow): Record<string, unknown> {
   return {
@@ -115,6 +117,9 @@ function fakeDatabase(): FakeDatabase {
     } else if (CHAIN_READ.test(text)) {
       const limit = Number(values[0]);
       rows = (limit <= 0 ? [] : view.rows.slice(-limit)).map(record);
+    } else if (text === PURGE_LEDGER) {
+      // A chain without the ledger has never been purged: no range is named, so no gap is forgiven (0036).
+      rows = [];
     } else if (text.includes('FROM audit_chain_history ORDER BY reset_no DESC LIMIT 1')) {
       rows = view.lineage === null ? [] : [view.lineage];
     } else if (text.includes("WHERE type = 'SCENARIO_LOADED'")) {
@@ -230,6 +235,9 @@ describe('nothing remembered: a full pass from the first row', () => {
       'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY',
       'SELECT seq, hash',
       'SELECT seq, id, at, type, category, severity, actor_id, message, session_id, evidence_id, device_id, details, prev_hash, hash',
+      // REVISED 2026-11-02 (principal): B-8 now reads the erasure ledger of migration 0036 right after
+      // its rows, so the pass sends one statement more — a chain with no ledger has no forgiven gap.
+      'SELECT first_seq, last_seq',
       'SELECT head_hash, row_count',
       'COMMIT',
     ]);

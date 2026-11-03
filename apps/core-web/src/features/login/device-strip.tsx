@@ -9,7 +9,7 @@ import { motion as tokens } from '@dems/shared/tokens'
 import { SlidingNumber } from '@/components/ui/sliding-number'
 import { useAmbientLoop, useMotionPolicy } from '@/motion'
 import { cn } from '@/lib/utils'
-import { useLiveCoreHealth } from './live-adapter'
+import { useLiveCoreHealth, useLivePanelFirmware } from './live-adapter'
 import { LOGIN_ACCENT_LOOP_GROUP } from './login-choreography'
 import { readinessOf, type CoreReadiness } from './login-live-model'
 import { coreLinkKey, type CoreLinkView } from './login-model'
@@ -47,10 +47,11 @@ export interface DeviceStripProps {
  *   `glowBreath` (M-C-22), in the page's accent slot so the ≤ 4 loop cap holds (§9.4).
  *
  * Live mode (backend task 04_client_integration_spec §5.5 WS-5; plan row W55): the same strip, the
- * same six-cell layout. An anonymous client receives no Core state, so the cells show what the
- * Core server makes public: its service name and version and the readiness of its database and
- * engine (the health answer), its time (the Live clock, fed by the heartbeat), the Core link and
- * the data mode. Nothing of the simulator is read.
+ * same layout. An anonymous client receives no Core state, so the cells show what the Core server makes
+ * public: its service name and version and the readiness of its database and engine (the health
+ * answer), the firmware the front panel states about itself (operation 114, also public), its time
+ * (the Live clock, fed by the heartbeat), the Core link and the data mode. Nothing of the simulator is
+ * read.
  */
 export function DeviceStrip({ coreLink, delayMs, leaving, className }: DeviceStripProps) {
   const { t } = useTranslation()
@@ -153,6 +154,8 @@ function LiveCells({ coreLink }: { coreLink: CoreLinkView }) {
         <span>{t(`login.live.deviceStrip.${READINESS_KEY[engine]}`)}</span>
       </StripCell>
       <StripSeparator />
+      <PanelFirmwareCell />
+      <StripSeparator />
       <StripCell label={t('login.deviceStrip.coreLink')} testId="login-core-link" state={coreLink}>
         <StatusDot tone={coreLinkTone(coreLink)} breathe={coreLink === 'offline'} />
         <span>{t(`login.deviceStrip.coreLinkValue.${coreLinkKey(coreLink)}`)}</span>
@@ -163,6 +166,31 @@ function LiveCells({ coreLink }: { coreLink: CoreLinkView }) {
         <span>{t(`common.coreMode.name.${CoreMode.LIVE}`)}</span>
       </StripCell>
     </>
+  )
+}
+
+/** The panel link word of the backend, as a tone. An unknown word is a warning, never a green dot. */
+const PANEL_TONE: Record<string, Tone> = { OK: 'success', 'PANEL-DIAM': 'warning', 'CORE-DIAM': 'warning', 'PORT-TIDAK-ADA': 'danger' }
+
+/**
+ * The seventh cell: what firmware the attached front panel states about ITSELF (operation 114).
+ *
+ * Public, so it is filled before anyone signs in. The Core answers `200` with two empty strings when
+ * it knows nothing — no bridge configured, no backend listening, a backend that did not answer in
+ * time — and this cell shows the same "Unknown" the other public cells fall back to. A failed read
+ * says nothing either: the dot goes muted and the sign-in card is untouched.
+ */
+export function PanelFirmwareCell() {
+  const { t } = useTranslation()
+  const panel = useLivePanelFirmware(true)
+  const answer = panel.isError ? undefined : panel.data
+  const firmware = answer?.panelFirmware ?? ''
+  const verdict = answer?.verdict ?? ''
+  return (
+    <StripCell label={t('login.live.deviceStrip.panelFirmware')} testId="login-panel-firmware" state={verdict === '' ? 'unknown' : verdict}>
+      <StatusDot tone={verdict === '' ? 'muted' : PANEL_TONE[verdict] ?? 'warning'} />
+      <span className="font-mono">{firmware === '' ? t('login.live.deviceStrip.unknown') : firmware}</span>
+    </StripCell>
   )
 }
 

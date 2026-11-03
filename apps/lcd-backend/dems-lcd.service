@@ -1,0 +1,34 @@
+[Unit]
+Description=DEMS LCD backend (panel ESP32 front panel: serial USB + HTTP loopback)
+Documentation=file:///opt/dems/core/apps/lcd-backend/README.md
+After=local-fs.target
+
+[Service]
+Type=simple
+User=dems-core
+Group=dems-core
+# dems-core bukan anggota dialout dan tidak perlu dijadikan begitu: grup tambahan
+# per-unit ini yang memberi hak membuka /dev/ttyACM0.
+SupplementaryGroups=dialout
+WorkingDirectory=/opt/dems/core/apps/lcd-backend
+# File konfigurasi yang SAMA dengan dems-core.service: SATKER dan media root cukup diubah
+# di satu tempat untuk seluruh mesin.
+EnvironmentFile=/etc/dems/core.env
+Environment=DEMS_BIND=127.0.0.1
+Environment=DEMS_PORT=8090
+Environment=DEMS_DEV=/dev/ttyACM0
+Environment=DEMS_BAUD=115200
+Environment=DEMS_LEASE_S=6
+Environment=DEMS_PUSH_S=1.0
+# Sumbernya kini jalur produksi resmi (dipromosikan dari master ~/Desktop/DEMS-source,
+# 29 Okt). Salinan sementara /opt/dems/lcd sudah dihapus supaya tidak ada dua kebenaran.
+ExecStart=/usr/bin/python3 -B /opt/dems/core/apps/lcd-backend/app/dems_backend.py
+Restart=always
+RestartSec=3
+UMask=0077
+NoNewPrivileges=yes
+KillMode=mixed
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

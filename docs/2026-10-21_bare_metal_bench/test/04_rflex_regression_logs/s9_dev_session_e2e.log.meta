@@ -1,0 +1,4 @@
+PRE 18:23:14 uptime: 18:23  up  7:24, 1 user, load averages: 8.15 7.88 7.46
+START 18:23:14 CMD: /usr/bin/lockf -k -t 3600 /Users/gsp-budi/Documents/DEMS/.data/locks/heavy-host.lock /usr/bin/lockf -k -t 3600 /Users/gsp-budi/Documents/DEMS/.data/locks/db-runner.lock npm run test:dev-session-e2e
+END 18:23:31 rc=0 duration=17s
+POST uptime: 18:23  up  7:25, 1 user, load averages: 9.69 8.21 7.58

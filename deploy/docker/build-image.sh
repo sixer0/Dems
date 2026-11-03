@@ -51,7 +51,7 @@ say "verbatim block = $SRC_DF lines 30-107 (sha256 of that file: $(shasum -a 256
 
 # 2. The context.
 PATHS=(package.json package-lock.json .npmrc .node-version tsconfig.base.json THIRD_PARTY_NOTICES.md
-       apps/core-server apps/core-web apps/transcriber apps/capture-worker packages/shared packages/capture-protocol
+       apps/core-server apps/core-web apps/transcriber apps/capture-worker apps/lcd-backend packages/shared packages/capture-protocol
        apps/mobile/package.json apps/mock-core/package.json deploy/docker)
 CTX_PARENT=.cache/docker-context
 CTX="$CTX_PARENT/dems-core-$ARCH"
@@ -59,12 +59,11 @@ rm -rf "$CTX"
 mkdir -p "$CTX"
 LIST="$CTX_PARENT/files-$ARCH.lst"
 : > "$LIST"
-# Tracked files of the paths, plus the not-ignored untracked files of deploy/docker (this folder, before it is
-# committed). Ignored files - .env, ./secrets - are never staged.
+# Tracked files of the paths, plus not-ignored untracked files in those explicit product paths (new LCD integration included). Ignored files - .env, ./secrets - are never staged.
 while IFS= read -r -d '' f; do
   case "$f" in deploy/docker/secrets/.gitignore) continue ;; apps/input-av/*|.data/*|docs/*|scripts/*|deploy/docker/secrets/?*|deploy/docker/.env) echo "[build-image] REFUSED: $f would be staged" >&2; exit 1 ;; esac
   [ -f "$f" ] && printf '%s\0' "$f" >> "$LIST"
-done < <(git ls-files -z -- "${PATHS[@]}"; git ls-files -z --others --exclude-standard -- deploy/docker)
+done < <(git ls-files -z -- "${PATHS[@]}"; git ls-files -z --others --exclude-standard -- "${PATHS[@]}")
 tar -c --null -T "$LIST" -f - | tar -x -f - -C "$CTX"
 rm -f "$CTX/deploy/docker/secrets/.gitignore"
 printf '%s\n' '**/.DS_Store' '**/node_modules' '.git' > "$CTX/.dockerignore"
@@ -74,26 +73,39 @@ printf '%s\n' '**/.DS_Store' '**/node_modules' '.git' > "$CTX/.dockerignore"
 # Dockerfile names the platform's own manifest, read now from the pinned index - the same image the index points to
 # for that platform. The committed Dockerfile and its verbatim block are not changed.
 BASE_INDEX=sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
-BASE_CHILD=$(docker manifest inspect "ubuntu:24.04@$BASE_INDEX" | node -e '
-  const m = JSON.parse(require("fs").readFileSync(0, "utf8"));
-  const [os, arch] = process.argv[1].split("/");
-  const hit = m.manifests.filter((x) => x.platform && x.platform.os === os && x.platform.architecture === arch);
-  if (hit.length !== 1) { console.error("no single manifest for " + process.argv[1]); process.exit(1); }
-  process.stdout.write(hit[0].digest);' "$PLATFORM")
-[[ "$BASE_CHILD" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "[build-image] REFUSED: no manifest of $PLATFORM in the pinned index" >&2; exit 1; }
+# Immutable child manifests recorded and built in task4 DK. Use the exact local digest when available,
+# without depending on a fresh registry index lookup (the Docker CLI's index verification can fail).
+case "$ARCH" in
+  amd64) BASE_CHILD=sha256:f610ab94648195aa356059f5b41d6085c9d4d903c072430cdd1af7bdb646106b ;;
+  arm64) BASE_CHILD=sha256:08571ca13e00ca07a2a84eab83a959b4242e22cceb16486a11bef1428c9e93a7 ;;
+esac
+if ! docker image inspect "ubuntu@$BASE_CHILD" >/dev/null 2>&1; then
+  docker pull --platform "$PLATFORM" "ubuntu@$BASE_CHILD"
+fi
+[ "$(docker image inspect "ubuntu@$BASE_CHILD" --format '{{.Architecture}}')" = "$ARCH" ] || {
+  echo "[build-image] REFUSED: pinned Ubuntu child is not $ARCH" >&2; exit 1;
+}
 sed "s|^FROM ubuntu:24.04@$BASE_INDEX|FROM ubuntu@$BASE_CHILD|" deploy/docker/Dockerfile > "$CTX/Dockerfile.staged"
 [ "$(grep -c "^FROM ubuntu@$BASE_CHILD" "$CTX/Dockerfile.staged")" = 3 ] || { echo "[build-image] REFUSED: base substitution did not hit the three stages" >&2; exit 1; }
 say "base image for $PLATFORM: ubuntu@$BASE_CHILD (manifest of the pinned index ubuntu:24.04@$BASE_INDEX)"
 {
   echo "DEMS Core image - task 4 row DK - UNVERIFIED"
   echo "base commit: $HEAD (branch $(git rev-parse --abbrev-ref HEAD))"
-  echo "built from the working tree: tracked files as they are on disk; uncommitted changes in the staged paths:"
+  echo "built from the working tree: tracked and authorized new product files as they are on disk; uncommitted changes in the staged paths:"
   git status --porcelain=v1 -- "${PATHS[@]}" | sed 's/^/  /'
   echo "staged at (UTC): $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   echo "platform: $PLATFORM; tag: $TAG"
   echo "base image: ubuntu@$BASE_CHILD = the $PLATFORM manifest of the pinned index ubuntu:24.04@$BASE_INDEX"
-  echo "verification: tsc 0 in every workspace (decision C156); NO test suite was run on this tree"
+  echo "verification: WIP task4; LCD integration has targeted software checks; whole-tree/production verification incomplete"
+  echo "source inventory: /opt/dems/core/.dems-source-sha256.txt"
 } > "$CTX/.dems-build-info.txt"
+python3 - "$CTX" <<'MANIFEST'
+from pathlib import Path
+import hashlib, sys
+root = Path(sys.argv[1])
+files = sorted(p for p in root.rglob('*') if p.is_file())
+(root / '.dems-source-sha256.txt').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.relative_to(root).as_posix() + '\n' for p in files))
+MANIFEST
 say "context: $(tr -cd '\0' < "$LIST" | wc -c | tr -d ' ') files, $(du -sh "$CTX" | cut -f1) in $CTX"
 
 # 3. The build.

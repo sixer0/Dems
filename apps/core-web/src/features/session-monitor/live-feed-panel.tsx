@@ -165,6 +165,8 @@ export function LiveFeedPanel({
             noSignal={feed.noSignal}
             dimmed={paused && live}
             live={live && !fullscreen}
+            // Decisions D51 / D53: the live session feed shows the Core's live picture; the full-screen view takes it over (one viewer).
+            livePreview={!fullscreen}
             actions={live ? fullscreenButton : undefined}
             className="sm-feed aspect-auto h-full"
           />
@@ -223,6 +225,7 @@ export function LiveFeedPanel({
                 noSignal={feed.noSignal}
                 dimmed={paused}
                 live
+                livePreview
                 className="sm-feed sm-feed-full aspect-auto h-full"
                 actions={
                   <Button

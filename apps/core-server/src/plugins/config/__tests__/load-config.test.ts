@@ -385,3 +385,16 @@ describe('server constants and the shared contract', () => {
     });
   });
 });
+
+
+describe('optional local LCD backend', () => {
+  it('loads and normalizes the startup URL, including explicit port 80', () => {
+    const dir = dataDir();
+    expect(loadConfig({ env: {}, dataDir: dir }).lcdBackendUrl).toBeNull();
+    expect(loadConfig({ env: { DEMS_LCD_BACKEND_URL: 'http://127.0.0.1:8090/' }, dataDir: dir }).lcdBackendUrl).toBe('http://127.0.0.1:8090');
+    expect(loadConfig({ env: { DEMS_LCD_BACKEND_URL: 'http://127.0.0.1:80' }, dataDir: dir }).lcdBackendUrl).toBe('http://127.0.0.1:80');
+  });
+  it('refuses remote URLs before opening a connection file', () => {
+    expect(failure(() => loadConfig({ env: { DEMS_LCD_BACKEND_URL: 'https://example.com:8090' }, dataDir: '/nonexistent' })).code).toBe('LCD_BACKEND_URL_INVALID');
+  });
+});

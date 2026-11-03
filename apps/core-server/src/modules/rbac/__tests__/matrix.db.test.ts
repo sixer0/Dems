@@ -191,7 +191,7 @@ describe('AC-B-16, unit form: the decision for all 99 operations with a principa
     expect(wrong).toEqual([]);
   });
 
-  it('ops 89 / 95 / 96 (C3 §2.6 access column: CAPTURE_CONFIG + WEB_CONSOLE_SESSION): SUPERVISOR and TECHNICIAN from a web console session only; a device session and INVESTIGATOR stay refused', () => {
+  it('ops 89 / 95 / 96 (C3 §2.6 access column: CAPTURE_CONFIG + WEB_CONSOLE_SESSION): TECHNICIAN from a web console session only; a device session, SUPERVISOR (grant revoked 2026-10-29) and INVESTIGATOR stay refused', () => {
     const cells = ['setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate'].flatMap((operationId) =>
       ROLES.flatMap((role) =>
         [null, 'DEV-0001'].map((deviceId) => {
@@ -209,7 +209,7 @@ describe('AC-B-16, unit form: the decision for all 99 operations with a principa
     );
     expect(cells).toEqual(want);
     // The role table itself, stated: exactly these two roles hold the permission (C3 §4, line "CAPTURE_CONFIG (discovery and connect flow)").
-    expect(ROLES.filter((role) => (ROLE_PERMISSIONS[role] as readonly string[]).includes(Permission.CAPTURE_CONFIG)).sort()).toEqual(['SUPERVISOR', 'TECHNICIAN']);
+    expect(ROLES.filter((role) => (ROLE_PERMISSIONS[role] as readonly string[]).includes(Permission.CAPTURE_CONFIG)).sort()).toEqual(['TECHNICIAN']);
     // Control: an operation with the same permission and no condition is allowed from the device session.
     const tablet = operator(OperatorRole.SUPERVISOR, 'DEV-0001') as Extract<Principal, { kind: 'OPERATOR' }>;
     expect(decideAccess(ruleOf('startCaptureDiscovery'), { principal: tablet, consoleIdentity: true, demoControls: true, sessionCreatorId: tablet.operatorId }).allowed).toBe(true);

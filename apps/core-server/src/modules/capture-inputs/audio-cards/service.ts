@@ -39,23 +39,30 @@
  * A card with another USB id or another serial is NOT the registered card: said as CARD_CHANGED
  * (one audit entry, the microphone not enabled again), never taken silently.
  *
- * THE PHYSICAL CARD IS HELD BY ONE MICROPHONE (decision D10 (1), Q96-01 a). The holders of a card
- * are the LIVE input rows of its USB id (`READ_BOUND_AUDIO_INPUTS`, retired rows never hold) that
- * the identity rule names this card. Two serial-less units of one model cannot be told apart
- * (`NOT_TELLABLE`, Q96-03): the stored microphone holds BOTH, so the second unit is not offered.
- *   - operation 98 answers `boundTo`, the holder, and `registered[]`, the holder's inputs of the
- *     listed capture device, both by identity over the live rows - not by the key first: a card
- *     moved under another kernel card id (macOS `usb_<port>`) is still the bound card;
- *   - operation 99 for an input of a card another microphone holds is refused `409
- *     AUDIO_CARD_ALREADY_BOUND` with `details.deviceId`, the holder; with `release: true` the
- *     holder MOVES to the requested input (bundle M, Q96-02-M): its row is re-keyed, two audit
- *     entries (`RELEASED` for the old input, then `REENABLED`), answer `200 REENABLED` with
- *     `releasedDeviceId` = the holder;
+ * ONE MICROPHONE PER INPUT OF A PHYSICAL CARD (decision D48, 2026-10-23, which reverses D10 (1) /
+ * Q96-01 a "the physical card is held by one microphone"). One card may hold SEVERAL microphones,
+ * each on ANOTHER input (card device and input number): a receiver of two wireless microphones on
+ * one USB capture device is two DEMS microphones, PRIMARY and STANDBY. The holders of a card are
+ * the LIVE input rows of its USB id (`READ_BOUND_AUDIO_INPUTS`, retired rows never hold) that the
+ * identity rule names this card. A holder BLOCKS a registration when it holds THE REQUESTED INPUT,
+ * or when the rule cannot tell its card from another unit: two serial-less units of one model
+ * (`NOT_TELLABLE`, Q96-03) are both held WHOLE by the stored microphone, so neither unit is offered
+ * for any other input.
+ *   - operation 98 answers `registered[]`, the inputs of the listed capture device whose stored
+ *     card IS this card, and `boundTo`, the FIRST holder of the card (the lowest MIC id), both by
+ *     identity over the live rows - not by the key first: a card moved under another kernel card id
+ *     (macOS `usb_<port>`) is still the bound card;
+ *   - operation 99 for ANOTHER input of a held card is a new microphone (`201 REGISTERED`); for an
+ *     input a holder blocks it is refused `409 AUDIO_CARD_ALREADY_BOUND` with `details.deviceId`,
+ *     the holder; with `release: true` that holder MOVES to the requested input (bundle M,
+ *     Q96-02-M): its row is re-keyed, two audit entries (`RELEASED` for the old input, then
+ *     `REENABLED`), answer `200 REENABLED` with `releasedDeviceId` = the holder;
  *   - the SAME card at the SAME input under another kernel key is a port move, not a re-bind: the
  *     holder's row is re-keyed and the answer is `200 REENABLED`, no `release` needed;
+ *   - the same input under the same key is its microphone again (`200 REENABLED`), never a second;
  *   - a move onto a key another row holds rolls back `409 AUDIO_INPUT_NOT_REGISTRABLE`;
- *   - a card SEVERAL live rows already hold (an older database, spec X-2) is not moved: `409
- *     AUDIO_CARD_ALREADY_BOUND` naming the first holder, the lowest MIC id, also with `release`;
+ *   - an input SEVERAL live rows already block (an older database, spec X-2) is not moved: `409
+ *     AUDIO_CARD_ALREADY_BOUND` naming the first of them, the lowest MIC id, also with `release`;
  *   - a RETIRED row neither holds a card nor occupies its key (spec D-A3.4);
  *   - a USB card whose USB id could not be read (the fixed replacement word) would match no card
  *     again: refused `409 AUDIO_INPUT_NOT_REGISTRABLE` before anything is stored.
@@ -216,7 +223,7 @@ const notRegistrable = (): ApiFailure => invalidState(CaptureAudioCardReason.AUD
 const notIdentifiable = (): ApiFailure => invalidState(CaptureAudioCardReason.AUDIO_INPUT_NOT_REGISTRABLE, 'This sound card states no USB ID. It could not be found again, so its inputs cannot be registered.');
 const inputTaken = (): ApiFailure => invalidState(CaptureAudioCardReason.AUDIO_INPUT_NOT_REGISTRABLE, 'Another microphone is stored under this input. The microphone of this sound card cannot be moved to it.');
 const alreadyBound = (holder: string): ApiFailure =>
-  new ApiFailure(409, ApiErrorCode.INVALID_STATE, 'Another microphone holds this sound card.', { details: { reason: CaptureAudioCardReason.AUDIO_CARD_ALREADY_BOUND, deviceId: holder } });
+  new ApiFailure(409, ApiErrorCode.INVALID_STATE, 'Another microphone holds this input of the sound card.', { details: { reason: CaptureAudioCardReason.AUDIO_CARD_ALREADY_BOUND, deviceId: holder } });
 const noCard = (): ApiFailure => new ApiFailure(404, ApiErrorCode.NOT_FOUND, 'No sound card has this ID.');
 const rateLimited = (retryAfterMs: number): ApiFailure =>
   new ApiFailure(429, ApiErrorCode.RATE_LIMITED, 'The sound cards were listed a moment ago. Try again shortly.', {
@@ -299,9 +306,11 @@ async function listed(seams: AudioCardsSeams, enumerator: AudioCardEnumerator, p
  * One card of the listing as the contract answers it. Every string is the listing's own result.
  *
  * `boundTo` and `registered` (R-FLEX row 131, AU-L1): BY IDENTITY over the live rows of the card's
- * USB id (`bound`), never by the key first. `boundTo` is the microphone that holds the physical
- * card (`holdsCard`); `registered` its inputs on this capture device whose stored card IS this card
- * (`SAME_CARD`). A card that is not USB has nothing but its key: its rows are found by the key.
+ * USB id (`bound`), never by the key first. `boundTo` is the FIRST microphone (the lowest MIC id)
+ * that holds the physical card (`holdsCard`; since D48 a card holds one microphone per input, so it
+ * may have several); `registered` the inputs on this capture device whose stored card IS this card
+ * (`SAME_CARD`), each with its microphone. A card that is not USB has nothing but its key: its rows
+ * are found by the key.
  *
  * `usbSerial`, `usbPort` (row V3's contract step; the request of rows 199 / 200, served by row 146b's
  * agent): the serial and the port are ANSWERED, so that a console can show WHICH of two cards of
@@ -554,10 +563,16 @@ export async function registerAudioInput(seams: AudioCardsSeams, caller: AudioCa
 
     // Steps 1-6 of spec 5.1 (R-FLEX rows 131, 108). Step 6, a session open, was refused above.
     const existing = await store.inputOf(unit.db, key);
-    // Step 1: THE HOLDERS OF THE PHYSICAL CARD (DB-A2, live rows only, in MIC id order; Q96-01 a).
+    // Step 1: THE HOLDERS OF THE PHYSICAL CARD THAT BLOCK THIS INPUT (DB-A2, live rows only, in MIC
+    // id order; decision D48): a holder of the SAME input (card device and input number), or one whose
+    // card the rule cannot tell from a twin (`NOT_TELLABLE`, Q96-03: it holds both units whole). A
+    // holder of ANOTHER input of a card it is told apart by is no obstacle: one microphone per input.
     // `everyHolder` counts the row under the key too (X-2); `holders` are the OTHER microphones.
     const usbId = card.usbId;
-    const everyHolder = usbId === null ? [] : (await store.boundInputs(unit.db, usbId)).filter((row) => holdsCard(boundIdentityOf(usbId, row), card, listing.cards));
+    const blocks = (row: BoundAudioInput, identity: StoredCardIdentity): boolean =>
+      holdsCard(identity, card, listing.cards) &&
+      ((row.cardDevice === key.cardDevice && row.inputNumber === key.inputNumber) || matchStoredCard(identity, card, listing.cards) !== StoredCardMatch.SAME_CARD);
+    const everyHolder = usbId === null ? [] : (await store.boundInputs(unit.db, usbId)).filter((row) => blocks(row, boundIdentityOf(usbId, row)));
     const holders = everyHolder.filter((row) => row.deviceId !== existing?.deviceId);
     const holder = holders[0];
 
@@ -585,17 +600,17 @@ export async function registerAudioInput(seams: AudioCardsSeams, caller: AudioCa
       return { deviceId, change, match, releasedDeviceId: null };
     }
 
-    // ANOTHER MICROPHONE HOLDS THE CARD. The same card at the same input under another kernel key is
-    // a PORT MOVE (spec 6.1, D-A4.2): the holder's row follows, no release needed. Anything else is a
-    // new binding of a held card: refused, unless the request releases the holder (bundle M, D-A4.4).
+    // ANOTHER MICROPHONE BLOCKS THIS INPUT. The same card at the same input under another kernel key
+    // is a PORT MOVE (spec 6.1, D-A4.2): the holder's row follows, no release needed. Anything else (a
+    // twin the rule cannot tell apart) is refused, unless the request releases the holder (bundle M).
     const match = matchStoredCard(boundIdentityOf(usbId, holder), card, listing.cards);
     // Step 2: the same card at the same input under another kernel key (RF-A4).
     const portMove = match === StoredCardMatch.SAME_CARD && holder.cardDevice === key.cardDevice && holder.inputNumber === key.inputNumber;
-    // Step 3: another input, no `release` (AU-R1).
+    // Step 3: not a port move, no `release` (AU-R1, scoped to the input by D48).
     if (!portMove && body.release !== true) throw alreadyBound(holder.deviceId);
-    // X-2: SEVERAL microphones already hold the card (an older database). Nothing is moved, so that
-    // no second binding is left behind; refused naming the FIRST holder, the lowest MIC id (DB-A2
-    // order, the rule of operation 98 `boundTo`).
+    // X-2: SEVERAL microphones already block this input (an older database). Nothing is moved, so
+    // that no second binding of the input is left behind; refused naming the FIRST of them, the
+    // lowest MIC id (DB-A2 order, the rule of operation 98 `boundTo`).
     if (everyHolder.length > 1) throw alreadyBound(everyHolder[0]?.deviceId ?? holder.deviceId);
     // Step 5: the holder moves onto the key, so the key must be free (R-3, D-A4.2/D-A4.4).
     if (existing !== null) throw inputTaken();

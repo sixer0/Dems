@@ -35,6 +35,7 @@ import {
   isSpeechFixtureArgument,
   linuxChannelSelection,
   linuxMicDeviceArgument,
+  linuxMicLevelArguments,
   linuxMicPrecheckArguments,
   linuxMicPushArguments,
   micOutputPromise,
@@ -394,6 +395,32 @@ describe('the Linux table: the shared capture of the card with all its channels,
       '-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-ch_layout', '8C', '-sample_rate', '48000', '-i', 'dems_2_0',
       '-t', '0.2', '-vn', '-f', 'null', '-',
     ]);
+  });
+
+  // Row 91c (decisions D51/D53): the idle level meter. The input part of the pre-check, unchanged; ALL channels to standard output.
+  it('row 91c: the idle level list opens the shared capture with all channels of the card and writes them to standard output; it selects nothing and names no file', () => {
+    // The bench: HANMUS BOMGE USB AUDIO, ALSA card 1, 4 channels.
+    const bench = { cardIndex: 1, deviceIndex: 0, channelCount: 4 };
+    expect([...linuxMicLevelArguments(bench)]).toEqual([
+      '-hide_banner', '-nostdin', '-nostats', '-loglevel', 'warning',
+      '-thread_queue_size', '1024', '-f', 'alsa', '-c:a', 'pcm_s24le', '-ch_layout', '4C', '-sample_rate', '48000', '-i', 'dems_1_0',
+      '-vn', '-c:a', 'pcm_f32le', '-f', 'f32le', '-flush_packets', '1', 'pipe:1',
+    ]);
+    // The same input part, word for word, as the pre-check of the same card: the same shared capture.
+    const precheck = [...linuxMicPrecheckArguments(bench)];
+    expect([...linuxMicLevelArguments(bench)].slice(0, precheck.indexOf('-t'))).toEqual(precheck.slice(0, precheck.indexOf('-t')));
+    expect([...linuxMicLevelArguments(bench)].slice(-MIC_LINUX_HELPER_TABLE.levelOutput.length)).toEqual([...MIC_LINUX_HELPER_TABLE.levelOutput]);
+    // No selection, no progress report (standard output carries the samples), no replacement of a file, no pipe of a session.
+    const list = [...linuxMicLevelArguments({ cardIndex: 2, deviceIndex: 0, channelCount: 8 })];
+    expect(list.filter((argument) => ['-af', '-progress', '-y', '-ac', '-t'].includes(argument) || argument.includes('|') || argument.startsWith('/'))).toEqual([]);
+    expect(list.filter((argument) => argument === 'pipe:1')).toHaveLength(1);
+    expect(Object.isFrozen(linuxMicLevelArguments(bench))).toBe(true);
+    // Every word is a literal of the table but the one device argument.
+    expect(list.filter((argument) => !MIC_LINUX_HELPER_TABLE.literals.includes(argument) && !MIC_LINUX_HELPER_TABLE.deviceArgument.test(argument))).toEqual([]);
+    // The same refusals as the pre-check, before any argument is built.
+    for (const outside of [{ ...bench, channelCount: 0 }, { ...bench, channelCount: 65 }, { ...bench, cardIndex: 32 }, { ...bench, deviceIndex: -1 }, { ...bench, cardIndex: '1' as unknown as number }]) {
+      expect(() => linuxMicLevelArguments(outside), JSON.stringify(outside)).toThrow('a value of the Linux microphone helper is not of its shape');
+    }
   });
 
   it('the same integers give the same list, and a list cannot be changed by its reader', () => {

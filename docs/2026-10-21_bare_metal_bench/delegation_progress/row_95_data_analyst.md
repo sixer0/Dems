@@ -1,0 +1,23 @@
+# Row 95 - data-analyst - R-FLEX reconciliation
+
+- Status: complete
+- Output: masterplan/01_specs_rflex.md (Tier 1). Register edit: masterplan/01_specs_rflex_register.md section 11 (additive; sections 0-10 untouched).
+- Verification:
+  - 0 name conflicts: 9 names added (NW-R2, W-A7, W-A8, W-A9, W-N4, DB-A6, DB-A7, DB-M0, RB-1), each grepped in the register and the code first.
+  - D10 rulings mapped: (1) -> RF-A1..A6; (2) -> RF-N1..N9; (3) -> RF-P1..P3; each has acceptance criteria.
+  - Row-96 list: 19 R-FLEX items (Q96-01..19) merging 26 source ids, plus 20 install items, including the controller additions from rows 11, 13, 14 and 16.
+- Key decisions:
+  - Release = bundle M (row 88: move the holder; RELEASED then REENABLED), not row 91's identity clear. Row 91's form stays an option of Q96-02.
+  - Serialisation from the unit pipeline (row 91, verified in pipeline.ts / unit-of-work.ts); row 88's gate wrap is dropped.
+  - Keep `otherInterfaceSubnets` and add `interfaceSubnets` (row 94 I-3).
+  - Overlapping subnets are always refused (row 90 over row 89 step 5).
+  - Unreadable facts give NOT_CONFIGURED (row 89 over row 90).
+  - W-A2, W-A3 and releaseHint re-worded for bundle M.
+  - AC9 re-worded (the bench mic has one input).
+  - Overrides O-1..O-11 are listed in spec section 3.
+- Put to the user: Q-R1 (88 recommends (a), 91 recommends (b)); recommendation (a) with 91's dissent shown.
+- Flags for the controller:
+  - X-4: the RULING says row 95 replaces the REQ in row 89's file, but the brief forbids editing the deltas. The substitution is recorded in spec 4.2 only.
+  - X-5: rows 94 and 16 both use the labels "R-A/R-B" for different rollbacks. Use R-FLEX-R-x / INSTALL-R-x.
+- For row 17: row 91 outcome = no migration (34 files, schema 15, dbc-16); no down migration. The INSTALL-register REQs are listed in spec 9.2.
+- No code, host or git writes. No secret values.

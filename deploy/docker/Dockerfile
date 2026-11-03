@@ -191,7 +191,7 @@ FROM ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884
 ARG DEBIAN_FRONTEND=noninteractive
 ARG DEMS_BASE_COMMIT=unknown
 LABEL org.opencontainers.image.title="DEMS Core (UNVERIFIED)" \
-      org.opencontainers.image.description="DEMS Core server, web console development server, capture worker/relay/guard, FFmpeg 9.0.2 - task 4 work-in-progress checkpoint, compile-checked only, NOT TESTED" \
+      org.opencontainers.image.description="DEMS Core server, web console development server, capture worker/relay/guard, FFmpeg 9.0.2, Python and LCD USB backend - task 4 WIP; production recording unverified" \
       org.opencontainers.image.revision="${DEMS_BASE_COMMIT}" \
       org.opencontainers.image.base.name="ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55" \
       dems.verification="UNVERIFIED"
@@ -200,7 +200,7 @@ LABEL org.opencontainers.image.title="DEMS Core (UNVERIFIED)" \
 # card-listing program (HOST-26). iputils-arping + iproute2 (HOST-18), iputils-ping (profile section 3.11), procps
 # (HOST-17), util-linux (setpriv, used by the entrypoint to drop to the service account), libatomic1 (Node.js).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates libatomic1 libasound2t64 alsa-utils iproute2 iputils-arping iputils-ping procps util-linux \
+ && apt-get install -y --no-install-recommends ca-certificates libatomic1 libasound2t64 alsa-utils iproute2 iputils-arping iputils-ping procps util-linux python3 python3-serial \
  && rm -rf /var/lib/apt/lists/* \
  && ! dpkg -s ffmpeg >/dev/null 2>&1 && ! dpkg -s libavformat-dev >/dev/null 2>&1 && ! dpkg -s arping >/dev/null 2>&1 \
  && dpkg -S /usr/bin/arping | grep -q '^iputils-arping: ' \
@@ -236,6 +236,9 @@ RUN rm -rf /opt/dems/ffmpeg-9.0.2/include /opt/dems/ffmpeg-9.0.2/lib/pkgconfig \
 
 # The took-effect checks of this image. Nothing of the address helper, no key and no credential file is in it.
 RUN set -eu \
+ && python3 -c "import serial; assert serial.__version__ == '3.5'" \
+ && test -f /opt/dems/core/apps/lcd-backend/app/dems_backend.py \
+ && test -f /opt/dems/core/apps/core-server/src/lcd/index.ts \
  && node --version | grep -qx v26.8.2 \
  && /opt/dems/ffmpeg-9.0.2/bin/ffmpeg -hide_banner -version | head -n 1 | grep -q "ffmpeg version 9.0.2 " \
  && /opt/dems/ffmpeg-9.0.2/bin/ffmpeg -hide_banner -version | grep -q "libavformat *63\. *1\.102" \

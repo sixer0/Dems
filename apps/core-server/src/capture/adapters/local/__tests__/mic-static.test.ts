@@ -112,6 +112,33 @@ describe('G-R6, G-R12: the microphone files start no process of their own and to
   });
 });
 
+// Row 91c (decisions D51/D53): G-R12 / SR-4 at the ONE caller of the idle level list, `audio/idle-meter.ts` - "the integers are read
+// from the live listing; no text of it is passed on" - and the guard's vector of the production adapter, unchanged. Additive.
+describe('row 91c: the idle meter calls the level list once, with integers of the live listing, and hands the door the guard\'s vector unchanged', () => {
+  const IDLE_METER = 'src/capture/adapters/audio/idle-meter.ts';
+  const flat = (production.find((file) => file.path === IDLE_METER)?.text ?? '').replace(/\s+/g, ' ');
+
+  it('one call of the table function; its members are three integers of the located card', () => {
+    expect(flat.length).toBeGreaterThan(5_000);
+    expect(places(production, /\blinuxMicLevelArguments\s*\(/g).sort()).toEqual([`${FOLDER}mic-helper-args.ts`, IDLE_METER].sort());
+    expect(flat.match(/\blinuxMicLevelArguments\(\{[^}]*\}\)/g)).toEqual(['linuxMicLevelArguments({ cardIndex: entry.card.cardIndex, deviceIndex: entry.card.deviceIndex, channelCount: entry.card.channelCount })']);
+  });
+
+  it('one door call: the guard, the guard\'s vector of the helper path and the list, the configuration\'s environment, no message; the unit starts no process itself', () => {
+    expect(flat.match(/\bdoor\(\{[^}]*\}\)/g)).toEqual(['door({ command: deps.guardProgram, args: guardedArguments(deps.helperProgram, args), env: environment, message: null, timers, onOutput: (chunk) => reader.push(chunk) })']);
+    expect(flat.match(/\bguardedArguments\([^)]*\)/g)).toEqual(['guardedArguments(deps.helperProgram, args)']);
+    expect(flat.match(/\bargs = [^;]*;/g)?.map((text) => text.slice(0, text.indexOf('(')))).toEqual(['args = linuxMicLevelArguments']);
+    expect([...flat.matchAll(PROCESS_MODULE), ...flat.matchAll(PROCESS_START), ...flat.matchAll(FILE_SYSTEM)]).toEqual([]);
+    expect(occurrences([{ path: IDLE_METER, text: flat }], LOG_CALL)).toEqual([]);
+    expect(occurrences([{ path: IDLE_METER, text: flat }], GLOBAL_TIMER)).toEqual([]);
+    expect(occurrences([{ path: IDLE_METER, text: flat }], SYSTEM_TIME)).toEqual([]);
+    // Control: a card id in a member and a list that was touched are seen by the same patterns.
+    const planted = 'args = linuxMicLevelArguments({ cardIndex: entry.card.cardIndex, deviceIndex: entry.card.deviceIndex, channelCount: entry.card.channelCount, name: entry.card.cardId }); door({ command: deps.guardProgram, args: [deps.helperProgram, ...args, entry.card.product], env: environment, message: null, timers })';
+    expect(planted.match(/\blinuxMicLevelArguments\(\{[^}]*\}\)/g)?.[0]).toContain('entry.card.cardId');
+    expect(planted.match(/\bdoor\(\{[^}]*\}\)/g)?.[0]).toContain('entry.card.product');
+  });
+});
+
 describe('G-R4, G-R8, SEC35-23: no log, no time, no timer, no environment, no chance, no socket, no listen', () => {
   it('holds for every microphone file', () => {
     expect(occurrences(mic, LOG_CALL)).toEqual([]);

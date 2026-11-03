@@ -75,12 +75,14 @@ export const sttConfig = pgTable(
   (t) => [
     // N-2 singleton: one row, PK true, CHECK keeps the PK honest.
     check('stt_config_singleton_check', sql`${t.singleton}`),
+    // Migration 0036 (principal, 2026-11-02): a reference to a record OF THE UNIT drops its
+    // attribution when the operator goes, instead of holding the record in place.
     foreignKey({
       name: 'stt_config_updated_by_fkey',
       columns: [t.updatedBy],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     check('stt_config_backend_check', oneOf(t.backend, STT_BACKEND)),
     // Required for the server backend, null for the local one (§B.13 first endpoint clause).

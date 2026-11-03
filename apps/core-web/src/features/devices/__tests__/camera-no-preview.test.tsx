@@ -13,7 +13,11 @@
 //
 // | Surface | Core in real capture | Core in simulated capture / Simulated mode |
 // |---------|----------------------|--------------------------------------------|
-// | Devices & Inputs camera tiles | "No preview" tile: the track, the device, its state; the accessible name says the build shows no live preview; no picture element | the demo picture, as before |
+// | Devices & Inputs camera tiles | "No preview" tile: the track, the device, its state; the accessible name says the live preview is not open; no picture element | the demo picture, as before |
+//
+// Since decisions D51 / D53 a PRODUCTION camera on a track shows the Core's live preview on Devices & Inputs,
+// Session New and the Session Monitor feed (`camera-live-preview.test.tsx`). The sources of this file are
+// development sources (`FAKE`, class DEVELOPMENT), which have no live preview: their tiles stay "No preview".
 // | Session New pre-check tiles | the same tile | (existing tests) |
 // | Dashboard device tiles | the same tile | (existing tests) |
 // | Session Monitor feed and input thumbs, during a recording | the same tile; the REC state stays | (existing tests) |
@@ -63,7 +67,8 @@ function expectNeutral(tile: HTMLElement) {
   expect(tile.querySelector('video, canvas, img, picture')).toBeNull()
   expect(tile.textContent ?? '').not.toMatch(/\b(LIVE|DEMO)\b/)
   expect(tile).toHaveTextContent(P.title)
-  expect(tile.getAttribute('aria-label') ?? '').toContain('This build shows no live preview.')
+  // Decisions D51 / D53 moved the sentence (OD-12 reversed): a development source has no live preview, so its tile says the preview is not open.
+  expect(tile.getAttribute('aria-label') ?? '').toContain('The live preview is not open.')
 }
 
 class SilentSocket implements SocketLike {

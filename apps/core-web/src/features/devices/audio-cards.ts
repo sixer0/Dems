@@ -19,10 +19,13 @@
  * | `inputsOf`, `withRegistration` | The inputs of a card as the Core stated them; the listing with what an answer of operation 99 stated |
  * | `isAmbiguous`, `inputOffered` | R-FLEX row 111: two serial-less units of one model (W-A8); which inputs of a bound card are offered |
  *
- * R-FLEX (row 111; spec 92 section 3 with the spec section 2.4/6.2 corrections, decision D16): a sound
- * card is held by ONE microphone (`boundTo`, Q96-01 a: the physical card is the unit). Its other
- * inputs are not offered; "Move {{device}} to another input" puts that card in move mode, and the
- * registration then says `release: true` (bundle M: the holder moves to the new input and keeps its id).
+ * R-FLEX (row 111; spec 92 section 3 with the spec section 2.4/6.2 corrections, decision D16), TURNED BY
+ * DECISION D48 (2026-10-23, reverses D10 (1) / Q96-01 a): a sound card holds ONE MICROPHONE PER INPUT.
+ * Every input of a bound card is offered: a free input registers another microphone of the card (a
+ * receiver of two wireless microphones is two microphones), a registered input is its microphone again.
+ * `boundTo` names the card's first holder. The move control (`release: true`, bundle M) is no longer
+ * offered: with one microphone per input the Core releases only the holder of the SAME input, which a
+ * listed card never needs (two serial-less units of one model, W-A8, offer nothing).
  * | `useAudioCards` | The control in both data modes |
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -181,7 +184,8 @@ export function inputsOf(card: Pick<CaptureAudioCard, 'channelCount' | 'register
 
 /**
  * The listing with what an answer of operation 99 stated: the input the request named is the
- * microphone the answer names, and that microphone holds the card (`boundTo`). A microphone is one
+ * microphone the answer names; a card no microphone held is now held by it (`boundTo`), a held card
+ * keeps its first holder (D48: one microphone per input, several per card). A microphone is one
  * input: an entry of it at another input of the card (the old input of a move, bundle M) goes. Two
  * statements of the Core put together; no other card changes, and the Core is not asked again
  * (nothing lists by itself).
@@ -193,7 +197,7 @@ export function withRegistration(listing: CaptureAudioCardSearch, choice: InputC
       isChoiceOf(choice, card)
         ? {
             ...card,
-            boundTo: registration.deviceId,
+            boundTo: card.boundTo ?? registration.deviceId,
             registered: [
               ...card.registered.filter((entry) => entry.inputNumber !== registration.inputNumber && entry.deviceId !== registration.deviceId),
               { inputNumber: registration.inputNumber, deviceId: registration.deviceId },
@@ -215,15 +219,13 @@ export function isAmbiguous(card: Pick<CaptureAudioCard, 'cardId' | 'deviceIndex
 }
 
 /**
- * Whether an input is offered for a registration (Q96-01 a, the physical card is the unit): every
- * input of a free card; of a bound card only the holder's own input (registering it again is
- * REENABLED, not a new binding), unless the card is in move mode, where every input is offered.
- * An ambiguous card offers none.
+ * Whether an input is offered for a registration (decision D48: one microphone per input of a card;
+ * was Q96-01 a, the physical card is the unit): every input of a card, bound or free and in move mode
+ * or not - a free input is a new microphone, a registered input is its microphone again (REENABLED).
+ * An ambiguous card (two serial-less units of one model, W-A8) offers none.
  */
-export function inputOffered(card: Pick<CaptureAudioCard, 'boundTo'>, input: CardInput, state: { readonly moving: boolean; readonly ambiguous: boolean }): boolean {
-  if (state.ambiguous) return false
-  if (card.boundTo === null || state.moving) return true
-  return input.deviceId === card.boundTo
+export function inputOffered(_card: Pick<CaptureAudioCard, 'boundTo'>, _input: CardInput, state: { readonly moving: boolean; readonly ambiguous: boolean }): boolean {
+  return !state.ambiguous
 }
 
 // ── The control ──────────────────────────────────────────────────────────────────────────

@@ -223,6 +223,8 @@ describe('M8: time, and what the folder may touch', () => {
       '../../capture-session',
       '../../capture/fence',
       '../../engine',
+      // LCD integration (user request 2026-10-19): lifecycle/HTTP stay in the separate lcd unit.
+      '../../lcd',
       '../../plugins/logger',
       '../../plugins/permission-guard',
       './operations',
@@ -248,10 +250,11 @@ describe('M8: time, and what the folder may touch', () => {
 });
 
 describe('M2, M7: routes and input', () => {
-  it('every route is registered from its registry entry: nine routes, no path written in the folder', () => {
-    // Seven `route(` calls: four reads, one in the loop over the three device commands, two view commands.
-    expect(count(ROUTE)).toBe(7);
-    expect(count(ROUTE_FROM_REGISTRY)).toBe(7);
+  it('every route is registered from its registry entry: ten routes, no path written in the folder', () => {
+    // Seven `route(` calls: four reads, one in the loop over the three device commands, two view commands,
+    // and the one read of the panel's own firmware word (LCD bridge task, operation 114).
+    expect(count(ROUTE)).toBe(8);
+    expect(count(ROUTE_FROM_REGISTRY)).toBe(8);
     expect(places(ROUTE_SHORTHAND)).toEqual([]);
     expect(places(PATH_LITERAL)).toEqual([]);
   });

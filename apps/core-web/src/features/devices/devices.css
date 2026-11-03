@@ -1519,3 +1519,12 @@
     margin-top: 16px;
   }
 }
+
+@layer components {
+.dev-lcd-connection { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--separator); font-size: 0.8rem; overflow-wrap: anywhere; }
+.dev-lcd-connection h3, .dev-lcd-connection h4 { font-weight: 600; margin-bottom: 0.5rem; }
+.dev-lcd-connection p { margin-block: 0.5rem; }
+.dev-lcd-connection-facts { display: grid; grid-template-columns: minmax(6rem, 1fr) minmax(0, 2fr); gap: 0.4rem 0.75rem; }
+.dev-lcd-connection-facts dd { margin: 0; }
+.dev-lcd-connection ul { padding-inline-start: 1.2rem; }
+}

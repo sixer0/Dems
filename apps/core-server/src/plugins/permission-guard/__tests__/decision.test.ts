@@ -116,7 +116,9 @@ describe('AC-B-16, unit form: all 110 operations for nine callers', () => {
     expect(wrong).toEqual([]);
   });
 
-  it('the cells are 111 x 9 = 999; the denied cells of an operator are re-derived from the registry and the role table (48 INVESTIGATOR, 13 SUPERVISOR, 34 TECHNICIAN at 111 operations), as spec AC-B-16 counts them', () => {
+  // REVISED 2026-11-02 (principal): RB-9 amended — 117 operations: the three new ones need USER_ADMIN,
+  // which SUPERVISOR alone holds, so they add two denied cells each (INVESTIGATOR 48 -> 51, TECHNICIAN 34 -> 37).
+  it('the cells are 117 x 9 = 1053; the denied cells of an operator are re-derived from the registry and the role table (51 INVESTIGATOR, 28 SUPERVISOR, 37 TECHNICIAN at 117 operations), as spec AC-B-16 counts them', () => {
     const cells = CORE_API_OPERATIONS.length * CALLERS.length;
     // C3 §2.5 (blueprint row 113): 92 operations x 9 callers. C3 §10.1 (blueprint row 132, D106): 97 x 9.
     // Task 4 blueprint row 63: 99 x 9. The two sound-card operations need CAPTURE_CONFIG, which an
@@ -128,7 +130,9 @@ describe('AC-B-16, unit form: all 110 operations for nine callers', () => {
     // Task 4 blueprint row 116: 110 x 9. Operations 109 and 110 need CAPTURE_COMMISSION, which the
     // TECHNICIAN alone holds (INVESTIGATOR 45 -> 47, SUPERVISOR 10 -> 12, TECHNICIAN no change).
     // Task 4 row RD2: 111 x 9. Operation 111 needs CAPTURE_COMMISSION (INVESTIGATOR 47 -> 48, SUPERVISOR 12 -> 13, TECHNICIAN no change).
-    expect(cells).toBe(999);
+    // LCD bridge task: 114 x 9. Operations 112-113 (row D53) and 114 joined the grid; 114 is PUBLIC, so it denies nobody and the three counts above do not move.
+    // REVISED 2026-11-02 (principal): RB-9 amended — 117 x 9 (was 114 x 9).
+    expect(cells).toBe(1053);
     const denied = (role: OperatorRole): string[] =>
       CORE_API_OPERATIONS.filter((operation) => outcomeOf(decideAccess(ruleOf(operation.operationId), granted(operator(role, null)))) === '403 NOT_PERMITTED').map(
         (operation) => operation.operationId,
@@ -146,7 +150,8 @@ describe('AC-B-16, unit form: all 110 operations for nine callers', () => {
       }).map((operation) => operation.operationId);
     for (const role of ROLES) expect(denied(role), role).toEqual(deniedByRoleTable(role));
     console.log(`[ac-b-16] denied cells over ${CORE_API_OPERATIONS.length} operations: ${ROLES.map((role) => `${role} ${denied(role).length}`).join(', ')}`);
-    expect(Object.fromEntries(ROLES.map((role) => [role, denied(role).length]))).toEqual({ INVESTIGATOR: 48, SUPERVISOR: 13, TECHNICIAN: 34 });
+    // REVISED 2026-11-02 (principal): RB-9 amended — see the counts of the title.
+    expect(Object.fromEntries(ROLES.map((role) => [role, denied(role).length]))).toEqual({ INVESTIGATOR: 51, SUPERVISOR: 28, TECHNICIAN: 37 });
     // The same on a device: the transport changes no permission. What it adds is the one condition
     // that names the transport (C3 §0 `WEB_CONSOLE_SESSION`, D80(3)): the three operations whose body
     // carries a camera credential refuse a HOLDER of their permission there too, and so do the two
@@ -165,7 +170,7 @@ describe('AC-B-16, unit form: all 110 operations for nine callers', () => {
       );
       expect(onDevice, role).toEqual(inRegistryOrder);
       expect(onDevice.filter((id) => !denied(role).includes(id)), role).toEqual(
-        role === 'INVESTIGATOR' ? [] : role === 'SUPERVISOR' ? [...WEB_ONLY, ...STORED_TEST_WEB_ONLY] : [...WEB_ONLY, ...COMMISSION_WEB_ONLY, ...STORED_TEST_WEB_ONLY, ...ACCEPTANCE_WEB_ONLY],
+        role === 'INVESTIGATOR' ? [] : role === 'SUPERVISOR' ? [] /* CAPTURE_CONFIG revoked from SUPERVISOR by `0034` */ : [...WEB_ONLY, ...COMMISSION_WEB_ONLY, ...STORED_TEST_WEB_ONLY, ...ACCEPTANCE_WEB_ONLY],
       );
     }
   });
@@ -434,7 +439,7 @@ describe('WEB_CONSOLE_SESSION: the operations whose body carries a camera creden
 
   it('a web console session of a holder passes; the same holder on a paired device is refused 403 NOT_PERMITTED with the reason WEB_CONSOLE_ONLY, audited', () => {
     for (const operationId of CONFIG_WEB_ONLY) {
-      for (const role of ['SUPERVISOR', 'TECHNICIAN'] as const) {
+      for (const role of ['TECHNICIAN'] as const) {
         expect(decideAccess(ruleOf(operationId), granted(operator(role, null))).allowed, `${operationId} ${role} web`).toBe(true);
         const refusal = refusalOf(operationId, operator(role, 'DEV-0001'));
         expect(refusal, `${operationId} ${role} device`).toEqual({

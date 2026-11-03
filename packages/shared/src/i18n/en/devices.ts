@@ -98,6 +98,22 @@ export const devices = {
     noSignalHelp: 'No signal on {{port}}. Check the XLR cable and the microphone.',
     recTrack: 'Recording track',
     scaleLabel: 'dBFS scale',
+    /** Decisions D51 / D53: the level of a microphone while no session records (`holdIdleMeters`). */
+    idleLevel: 'Level check – not recording',
+    idleUnavailable: 'The level of this microphone cannot be shown while the Core is idle.',
+  },
+
+  /**
+   * Decisions D51 / D53: the live camera preview (`createCameraPreviewSession`, MJPEG about 8 fps at
+   * 640x360). Recording always has priority: the preview pauses while a session opens the camera.
+   */
+  preview: {
+    connecting: 'Connecting to the camera…',
+    live: 'Live preview',
+    pausedForRecording: 'Preview paused: the recording has the camera',
+    unavailable: 'The live preview of this camera is not available.',
+    limit: 'Too many live previews are open. Close one and try again.',
+    aria: 'Live preview of {{name}}. {{state}}',
   },
 
   other: {
@@ -302,7 +318,8 @@ export const devices = {
 
   /**
    * Task 3 M4 (blueprint row 67; ux §2 flow 1; C3 ops 76-80): the capture device selector of the web
-   * console. State is text only (OD-12: no live preview of a real camera in this phase).
+   * console. OD-12 (no live preview of a real camera) was reversed by decisions D51 / D53: a camera
+   * tile shows the live preview (`preview`), and the selector itself stays state text.
    */
   selector: {
     title: 'Capture Device Selector',
@@ -326,7 +343,7 @@ export const devices = {
     save: 'Save',
     makePrimary: 'Make primary',
     saved: 'Capture configuration saved',
-    noPreview: 'Device state only: no live preview of the cameras is shown here.',
+    noPreview: 'Device state only here: the live preview of a camera is shown in its tile.',
     locked: 'The capture configuration cannot be changed while a session is open.',
     rolesJoin: 'or',
     /** ux §0, §11 (E-16): what a gated control shows while the role or the link is not resolved yet. */
@@ -438,7 +455,7 @@ export const devices = {
   },
   noPreview: {
     title: 'No preview',
-    aria: '{{name}}. This build shows no live preview. {{state}}',
+    aria: '{{name}}. The live preview is not open. {{state}}',
   },
   sourcesCheck: {
     checking: 'Checking the capture sources…',

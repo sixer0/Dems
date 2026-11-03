@@ -35,6 +35,14 @@ export const REGISTERED_MICROPHONE_TRANSPORT = 'USB';
 export const SET_REGISTERED_MICROPHONE_COLUMNS =
   "UPDATE public.capture_devices SET transport = 'USB', enabled = true, last_seen_at = $2 WHERE id = $1 AND kind = 'MIC' AND adapter_kind = 'USB_AUDIO'";
 
+/**
+ * The microphone ids the registry TABLE holds, whatever their adapter kind (finding D50): a
+ * production Core keeps the seeded `FAKE` rows out of its slice, so the slice alone would mint an id
+ * whose row already exists - the UPSERT then keeps that row's adapter kind and the update below
+ * finds no `USB_AUDIO` row. A read only; it adds no row (static rule SEC35-41 (c)).
+ */
+export const READ_TAKEN_MICROPHONE_IDS = "SELECT id FROM public.capture_devices WHERE kind = 'MIC'";
+
 export class MicrophoneRegistryRowMissing extends Error {
   readonly code = 'CAPTURE_MICROPHONE_ROW_MISSING';
   constructor() {
@@ -55,7 +63,8 @@ export function createEngineMicrophoneRegistrar(): MicrophoneRegistrar {
   };
   return {
     async register(unit, device) {
-      const registered = await registerCaptureMicrophoneIn(unit.scope, { deviceId: null, model: device.model });
+      const taken = await unit.db.query<{ id: string }>(READ_TAKEN_MICROPHONE_IDS);
+      const registered = await registerCaptureMicrophoneIn(unit.scope, { deviceId: null, model: device.model, takenIds: taken.rows.map((row) => row.id) });
       await settle(unit, registered.id, device.at);
       return registered.id;
     },

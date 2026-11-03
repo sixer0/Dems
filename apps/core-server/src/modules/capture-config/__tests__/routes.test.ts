@@ -190,7 +190,7 @@ describe('operations 76 and 77: the reads', () => {
 
   it('an engine that is not running is 503 NOT_READY on every operation of the module', async () => {
     const built = await build();
-    built.actAs(operatorOf('SUPERVISOR'));
+    built.actAs(operatorOf('TECHNICIAN'));
     built.engine.running = false;
     expect(outcome(await get(built, CONFIG))).toEqual([503, 'NOT_READY']);
     expect(outcome(await get(built, DEVICES))).toEqual([503, 'NOT_READY']);
@@ -201,7 +201,7 @@ describe('operations 76 and 77: the reads', () => {
 });
 
 describe('operations 78, 79, 80: an edit is one unit of the engine with the hosted action setCaptureConfig', () => {
-  it.each(['SUPERVISOR', 'TECHNICIAN'] as const)('%s edits: the answer is the new selector, one audited row per changed line, the caller is the actor', async (role) => {
+  it.each(['TECHNICIAN'] as const)('%s edits: the answer is the new selector, one audited row per changed line, the caller is the actor', async (role) => {
     const built = await build();
     const principal = operatorOf(role);
     built.actAs(principal);
@@ -289,7 +289,7 @@ describe('operations 78, 79, 80: an edit is one unit of the engine with the host
 
   it('M4-LOCK-1: while a session is open the three edits answer 409 CAPTURE_CONFIG_LOCKED - the action is never called, no row, no change', async () => {
     const built = await build('recording');
-    built.actAs(operatorOf('SUPERVISOR'));
+    built.actAs(operatorOf('TECHNICIAN'));
     const before = built.engine.state();
     const rows = before.audit.rows.length;
     const refused = [
@@ -311,7 +311,7 @@ describe('operations 78, 79, 80: an edit is one unit of the engine with the host
 
     // Control: the same three requests on an idle Core are accepted.
     const idle = await build('idle');
-    idle.actAs(operatorOf('SUPERVISOR'));
+    idle.actAs(operatorOf('TECHNICIAN'));
     expect((await post(idle, primaryMic('MIC-02'))).statusCode).toBe(200);
     expect((await post(idle, CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }] })).statusCode).toBe(200);
     expect(idle.engine.commands).toHaveLength(2);
@@ -425,7 +425,7 @@ describe('operation 78 `unassign`: a selector slot is cleared - same permission,
 
   it('GATE CONDITION: an unassign of two slots writes 2 rows and an unassign of an empty slot writes 0; all four in one body leave an empty selector the contract accepts, and all four come back', async () => {
     const built = await build();
-    built.actAs(operatorOf('SUPERVISOR'));
+    built.actAs(operatorOf('TECHNICIAN'));
     const two = await post(built, CONFIG, { unassign: ['VIDEO-02', 'STANDBY'] });
     expect(two.statusCode, two.body).toBe(200);
     expect(linesOf(selectorOf(two))).toEqual(['PRIMARY MIC-01', 'VIDEO-01 CAM-01']);
@@ -457,7 +457,7 @@ describe('operation 78 `unassign`: a selector slot is cleared - same permission,
 
   it('AD-10 (2), the lock table: in EVERY session state but SEALED an unassign is 409 CAPTURE_CONFIG_LOCKED - the action is never called, 0 rows, no change; with a SEALED session and with none it is accepted', async () => {
     const built = await build('recording');
-    built.actAs(operatorOf('SUPERVISOR'));
+    built.actAs(operatorOf('TECHNICIAN'));
     const open = built.engine.state().session;
     if (open === null) throw new Error('the scenario holds no session');
     const states = Object.values(SessionState);
@@ -492,7 +492,7 @@ describe('operation 78 `unassign`: a selector slot is cleared - same permission,
     expect(changes(built).slice(rowsBefore).map((row) => row.details)).toEqual(SLOTS.map((slot) => clearedRow(slot)));
     // CONTROL 2: with no session at all.
     const idle = await build('idle');
-    idle.actAs(operatorOf('SUPERVISOR'));
+    idle.actAs(operatorOf('TECHNICIAN'));
     expect(idle.engine.state().session).toBeNull();
     expect((await post(idle, CONFIG, { unassign: ['PRIMARY'] })).statusCode).toBe(200);
   });
@@ -557,9 +557,10 @@ describe('operation 78 `unassign`: a selector slot is cleared - same permission,
         return createFakeRegistry({ runDir: '/nonexistent/dems-run/capture' }).registry.assertAssignable(deviceClass, 'CAM-99');
       },
     });
-    for (const role of ['SUPERVISOR', 'TECHNICIAN'] as const) {
+    for (const role of ['TECHNICIAN'] as const) {
       built.actAs(operatorOf(role));
-      const cleared = await post(built, CONFIG, { unassign: role === 'SUPERVISOR' ? ['VIDEO-01', 'PRIMARY'] : ['VIDEO-02', 'STANDBY'] });
+      const cleared = await post(built, CONFIG, { unassign: ['VIDEO-01', 'PRIMARY'] });
+      await post(built, CONFIG, { unassign: ['VIDEO-02', 'STANDBY'] }); // one editor does both lines now (`0034`)
       expect(cleared.statusCode, `${role} ${cleared.body}`).toBe(200);
     }
     expect(asked).toEqual([]);
@@ -574,7 +575,7 @@ describe('operation 78 `unassign`: a selector slot is cleared - same permission,
 describe('the seam of the adapter registry (rule RG-3): provided by the wiring, asked for every assignment', () => {
   it('without a registry no assignment is refused by class; with one, a device the running operation does not serve is 422 with the reason of THAT refusal (fix wave I, G70b-01: CAPTURE_DEVICE_NOT_SERVED, no longer DEVELOPMENT_SOURCE_NOT_ALLOWED for every refusal)', async () => {
     const built = await build();
-    built.actAs(operatorOf('SUPERVISOR'));
+    built.actAs(operatorOf('TECHNICIAN'));
     const control = captureConfigControl(built.app);
     expect(control.hasDeviceRegistry()).toBe(false);
     expect((await post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }] })).statusCode).toBe(200);
@@ -618,7 +619,7 @@ describe('the seam of the adapter registry (rule RG-3): provided by the wiring, 
   // (two profiles admit it, OD-05) stands where no registry is provided; with one, the edit is refused before the action.
   it('C93: with a registry, the SAME camera on VIDEO-01 and VIDEO-02 is 422 CAMERA_ON_BOTH_TRACKS by operation 78 and by 79, whatever the profiles - before the action, nothing changed; a swap and a move after a clear pass; without a registry the simulator\'s rule stands (control)', async () => {
     const built = await build();
-    built.actAs(operatorOf('SUPERVISOR'));
+    built.actAs(operatorOf('TECHNICIAN'));
     const control = captureConfigControl(built.app);
     const devicesOf = (): string[][] => built.engine.state().captureConfig.cameras.map((camera) => [camera.trackId, camera.deviceId]);
     expect(devicesOf()).toEqual([['VIDEO-01', 'CAM-01'], ['VIDEO-02', 'CAM-02']]);

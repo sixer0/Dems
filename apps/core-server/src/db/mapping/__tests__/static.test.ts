@@ -100,7 +100,9 @@ describe('the two folders', () => {
       'mapping/to-rows.ts',
     ]);
     // Integration pass E3 added three: the v2 demo items of a seed (pure), the Core a command seeds for, and the command's one-shot helper run.
-    expect(seed.map((file) => file.path)).toEqual(['seed/cli.ts', 'seed/dataset.ts', 'seed/demo-core.ts', 'seed/demo-helper.ts', 'seed/demo-packages.ts', 'seed/index.ts', 'seed/seed.ts']);
+    // REVISED 2026-10-30 (principal): `seed/factory.ts` is one file of this folder more — the writer of a unit's
+    // database (the two vendor identities, no row of the demonstration dataset). It joins the list; nothing else moved.
+    expect(seed.map((file) => file.path)).toEqual(['seed/cli.ts', 'seed/dataset.ts', 'seed/demo-core.ts', 'seed/demo-helper.ts', 'seed/demo-packages.ts', 'seed/factory.ts', 'seed/index.ts', 'seed/seed.ts']);
     expect(sources.filter(isTest).length).toBeGreaterThanOrEqual(8);
   });
 });

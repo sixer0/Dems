@@ -66,7 +66,7 @@ export const installationAcceptances = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     acceptedAt: bigint('accepted_at', { mode: 'number' }).notNull(),
-    acceptedBy: text('accepted_by').notNull(),
+    acceptedBy: text('accepted_by'),
     softwareVersion: text('software_version').notNull(),
     coreDeviceId: text('core_device_id').notNull(),
     siteName: text('site_name').notNull(),
@@ -79,19 +79,23 @@ export const installationAcceptances = pgTable(
     revokeReason: text('revoke_reason'),
   },
   (t) => [
+    // Migration 0036 (principal, 2026-11-02): a reference to a record OF THE UNIT drops its
+    // attribution when the operator goes, instead of holding the record in place.
+    // The acceptance of a site is a fact about the site, so it outlives the operator who signed
+    // it; only the name of who signed or revoked becomes unknown.
     foreignKey({
       name: 'installation_acceptances_accepted_by_fkey',
       columns: [t.acceptedBy],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     foreignKey({
       name: 'installation_acceptances_revoked_by_fkey',
       columns: [t.revokedBy],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     // ONE ACCEPTANCE IN FORCE: every row that is not revoked has the same value of the indexed
     // expression, so a second one is refused (23505) - the form of `host_network_aliases_one_open_key`.

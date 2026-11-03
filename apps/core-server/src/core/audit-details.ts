@@ -158,6 +158,17 @@ const sttFieldNames = (required: boolean): DetailRule => ({
     return names.every((name) => STT_FIELD_NAMES.has(name)) && new Set(names).size === names.length;
   },
 });
+/** The profile fields `updateUser` may change; the audit row names which ones, never their values. */
+const PROFILE_FIELD_NAMES: ReadonlySet<string> = new Set(['name', 'displayName', 'initials', 'rank']);
+const profileFieldNames = (required: boolean): DetailRule => ({
+  required,
+  form: `one or more of ${[...PROFILE_FIELD_NAMES].join(', ')}, comma-separated, each once`,
+  accepts: (value) => {
+    if (typeof value !== 'string' || value === '') return false;
+    const names = value.split(',');
+    return names.every((name) => PROFILE_FIELD_NAMES.has(name)) && new Set(names).size === names.length;
+  },
+});
 /** A revision of an optimistic lock: a whole number of 1 or more. */
 const revisionNumber = (required: boolean): DetailRule => ({
   required,
@@ -190,11 +201,12 @@ const endpointRef = (required: boolean): DetailRule => ({
 // port name. Exported where a writer has to state one of the values, so that it binds to the same
 // list the audit writer checks (the module rows 45, 70, 106 to 111, 115 import them; none adds one).
 /**
- * `reason` of CAPTURE_CREDENTIAL_REVEALED (security addendum 04, AD-03 (1)): the closed set of three.
+ * `reason` of CAPTURE_CREDENTIAL_REVEALED (security addendum 04, AD-03 (1)): the closed set of four.
  * The adapter's reader can say `SESSION_OPEN` and `RELAY_RESTART`, the connection test's
- * `CONNECTION_TEST`; neither takes a reason from its caller, and no other reason exists.
+ * `CONNECTION_TEST`, and - decisions D51 / D53 - the live preview's `PREVIEW_OPEN`; none takes a
+ * reason from its caller, and no other reason exists.
  */
-export const CAPTURE_CREDENTIAL_REVEAL_REASONS = ['SESSION_OPEN', 'RELAY_RESTART', 'CONNECTION_TEST'] as const;
+export const CAPTURE_CREDENTIAL_REVEAL_REASONS = ['SESSION_OPEN', 'RELAY_RESTART', 'CONNECTION_TEST', 'PREVIEW_OPEN'] as const;
 export type CaptureCredentialRevealReason = (typeof CAPTURE_CREDENTIAL_REVEAL_REASONS)[number];
 /**
  * `scope` of CAPTURE_DISCOVERY_SEARCHED: the two of the shared contract and the third of design
@@ -508,6 +520,31 @@ export const SERVER_AUDIT_DETAIL_RULES = {
   [AuditType.USER_DISABLED]: {
     targetOperatorId: operatorId(REQUIRED),
     sessionsEnded: count(REQUIRED),
+    reason: reasonText(OPTIONAL),
+  },
+  // ── RB-9 as amended (principal PT GSP, 02-11-2026): the vendor-only user operations ────────
+  // Membership and IDs only: no list holds a username, a password or a hashed value (E-30/E-31).
+  [AuditType.USER_CREATED]: {
+    targetOperatorId: operatorId(REQUIRED),
+    role: role(REQUIRED),
+    reason: reasonText(OPTIONAL),
+  },
+  [AuditType.USER_UPDATED]: {
+    targetOperatorId: operatorId(REQUIRED),
+    fields: profileFieldNames(REQUIRED),
+    reason: reasonText(OPTIONAL),
+  },
+  [AuditType.USER_DELETED]: {
+    targetOperatorId: operatorId(REQUIRED),
+    role: role(REQUIRED),
+    sessionsEnded: count(REQUIRED),
+    // The purge counts (RB-9 as amended 02-11-2026; migration 0036): the erasure is announced with
+    // its measures so it can be audited later. Fixed 2026-11-03: changes.ts always wrote these and
+    // the writer always refused them — the unit tests bypass the writer, so only the db suite found it.
+    auditRowsRemoved: count(REQUIRED),
+    signInRowsRemoved: count(REQUIRED),
+    recordsLeftUnattributed: count(REQUIRED),
+    credentialsRemoved: count(REQUIRED),
     reason: reasonText(OPTIONAL),
   },
   [AuditType.BIOMETRIC_ENROLLMENT_CHANGED]: {
@@ -974,16 +1011,27 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     operationId: oneOf([CAPTURE_DEVICE_RETIRE_OPERATION_ID], CAPTURE_DEVICE_RETIRE_OPERATION_ID)(REQUIRED),
     permission: code(OPTIONAL),
   },
+  // ── Decisions D51 / D53 (the writer is the live camera preview, `src/camera-preview`, operation 112):
+  // an operator opened a live preview session of one registered camera. The device (also the row's
+  // device), the instant the token stops opening the stream, the operation and the permission the
+  // caller held. NO token, NO URL, NO address and NO credential: no such key exists.
+  [AuditType.CAMERA_PREVIEW_OPENED]: {
+    deviceId: hardwareDeviceId(REQUIRED),
+    expiresAt: count(REQUIRED),
+    operationId: oneOf(['createCameraPreviewSession'], 'createCameraPreviewSession')(REQUIRED),
+    permission: code(OPTIONAL),
+  },
 } as const satisfies Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>;
 
 /**
- * The forty-two types that have a list (nine of the backend task, nine of the capture phase, one
+ * The forty-three types that have a list (nine of the backend task, nine of the capture phase, one
  * of R-8, four of R-9 / R-10, ten of task 4 blueprint row 19, one of task 4 blueprint row 201, four
- * of task 4 row V3, one of task 4 row R1b, two of task 4 row N2, one of task 4 row RD2).
+ * of task 4 row V3, one of task 4 row R1b, two of task 4 row N2, one of task 4 row RD2, one of the
+ * live camera preview of decisions D51 / D53).
  */
 export type ServerAuditType = keyof typeof SERVER_AUDIT_DETAIL_RULES;
 
-/** The list of `type`, or undefined for one of the simulator's 44 types (86 minus the 42 listed here). */
+/** The list of `type`, or undefined for one of the simulator's 44 types (87 minus the 43 listed here). */
 export function detailRulesOf(type: AuditType): Readonly<Record<string, DetailRule>> | undefined {
   return (SERVER_AUDIT_DETAIL_RULES as Partial<Record<AuditType, Readonly<Record<string, DetailRule>>>>)[type];
 }

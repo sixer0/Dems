@@ -708,7 +708,11 @@ describe('the 53 simulator actions and the operations they reach (01_specs §7.1
     // Task 4 row V3 adds operation 108 (the stored-credential connection test), reached by no action: 108 - 45 = 63.
     // Task 4 row 116 adds operations 109-110 (the installation acceptance and its revocation), reached by no action: 110 - 45 = 65.
     // Task 4 row RD2 adds operation 111 (the retirement of a device), answered by the sim route table, reached by no action: 111 - 45 = 66.
-    expect(CORE_API_OPERATIONS.length - reached.length).toBe(66);
+    // Task 4 row D53 adds operations 112-113 (the live preview, the idle meters), live only, reached by no action: 113 - 45 = 68.
+    // The LCD bridge task adds operation 114 (the panel's own firmware word), live only, reached by no action: 114 - 45 = 69.
+    // REVISED 2026-11-02 (principal): RB-9 as amended adds createUser, updateUser and deleteUser, live
+    // only and answered by the Core server alone, so no simulator action reaches them: 117 - 45 = 72.
+    expect(CORE_API_OPERATIONS.length - reached.length).toBe(72);
     // `deviceCommand` is three operations with one permission each; two settings actions share one.
     expect(SIM_ACTION_OPERATIONS.deviceCommand.operations).toEqual(['restartDevice', 'testDeviceSignal', 'identifyDevice']);
     expect(simActionsOfOperation('updateSettings')).toEqual(['setPresentationMode', 'updateSettings']);
@@ -869,10 +873,11 @@ describe('the indexed view of the media session', () => {
       expect([Object.keys(valueOf('video01')).length > 0, MEMBER in valueOf('video01')]).toEqual([true, false]);
     });
 
-    it('the totals do not move with the indexed view: 111 operations (39 GET / 72 POST; 97 + the two of task 4 row 63 + the one of row 194 + the seven of row 102 + the one of row V3 + the two of row 116 + the one of row RD2), 86 audit types (67 + the ten of task 4 row 19 + the one of row 201 + the four of row V3 + the one of row R1b + the two of row N2 + the one of row RD2)', () => {
+    it('the totals do not move with the indexed view: 117 operations (40 GET / 77 POST; 97 + the two of task 4 row 63 + the one of row 194 + the seven of row 102 + the one of row V3 + the two of row 116 + the one of row RD2 + the two of row D53 + the one of the LCD bridge task + the three of RB-9 as amended), 90 audit types (67 + the ten of task 4 row 19 + the one of row 201 + the four of row V3 + the one of row R1b + the two of row N2 + the one of row RD2 + the one of row D53 + the three of RB-9 as amended)', () => {
+      // REVISED 2026-11-02 (principal): three user-management operations and audit types added to the registry.
       const methods = CORE_API_OPERATIONS.map((operation) => String(operation.method).toUpperCase());
-      expect([methods.length, methods.filter((method) => method === 'GET').length, methods.filter((method) => method === 'POST').length]).toEqual([111, 39, 72]);
-      expect(Object.keys(AuditType)).toHaveLength(86);
+      expect([methods.length, methods.filter((method) => method === 'GET').length, methods.filter((method) => method === 'POST').length]).toEqual([117, 40, 77]);
+      expect(Object.keys(AuditType)).toHaveLength(90);
     });
   });
 });

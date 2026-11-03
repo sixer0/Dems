@@ -25,7 +25,7 @@ import { CLOCK_START, standInDatabase, type StandInDatabase } from '../../../../
 import { ANONYMOUS_PRINCIPAL, type Principal } from '../../authenticate';
 import { captureLog, unitTestConfig, type CapturedLog } from '../../../../test/support/config';
 import { throttleControl } from '../../throttle';
-import { EVIDENCE_EXPORT_DOWNLOAD_ID, EVIDENCE_EXPORT_DOWNLOAD_URL, EVIDENCE_EXPORT_JOB_OPERATION, EVIDENCE_MEDIA_ROUTE_URL, EVIDENCE_MEDIA_SESSION_OPERATION, EVIDENCE_MEDIA_STREAM_ID, REALTIME_CHANNEL_ID, REALTIME_CHANNEL_RULE, permissionGuard, routePatternOf, routesOfPrintedTable, type AccessRule } from '../index';
+import { CAMERA_PREVIEW_ROUTE_URL, CAMERA_PREVIEW_SESSION_OPERATION, CAMERA_PREVIEW_STREAM_ID, EVIDENCE_EXPORT_DOWNLOAD_ID, EVIDENCE_EXPORT_DOWNLOAD_URL, EVIDENCE_EXPORT_JOB_OPERATION, EVIDENCE_MEDIA_ROUTE_URL, EVIDENCE_MEDIA_SESSION_OPERATION, EVIDENCE_MEDIA_STREAM_ID, REALTIME_CHANNEL_ID, REALTIME_CHANNEL_RULE, permissionGuard, routePatternOf, routesOfPrintedTable, type AccessRule } from '../index';
 import { MALFORMED_JSON, recordPassed, type PassedRequest } from '../../../../test/support/guard';
 
 let app: FastifyInstance;
@@ -114,6 +114,15 @@ describe('the routes the server registers, whichever modules have landed', () =>
         const session = guard.rules.ruleOf(EVIDENCE_MEDIA_SESSION_OPERATION);
         expect(rule).toBe(guard.rules.ruleAt('GET', EVIDENCE_MEDIA_ROUTE_URL));
         expect(rule).toEqual({ ...session, operationId: EVIDENCE_MEDIA_STREAM_ID, method: 'GET', url: EVIDENCE_MEDIA_ROUTE_URL, idPattern: null });
+        expect(rule.denial).not.toBeNull();
+        continue;
+      }
+      if (rule.operationId === CAMERA_PREVIEW_STREAM_ID) {
+        // Decisions D51, D53: the live camera preview route, the fourth route outside the registry. Its rule
+        // is the rule of operation 112 at its own method and path.
+        const session = guard.rules.ruleOf(CAMERA_PREVIEW_SESSION_OPERATION);
+        expect(rule).toBe(guard.rules.ruleAt('GET', CAMERA_PREVIEW_ROUTE_URL));
+        expect(rule).toEqual({ ...session, operationId: CAMERA_PREVIEW_STREAM_ID, method: 'GET', url: CAMERA_PREVIEW_ROUTE_URL, idPattern: null });
         expect(rule.denial).not.toBeNull();
         continue;
       }

@@ -83,18 +83,19 @@ export const CAPTURE_CREDENTIAL_REVEAL_UNIT = 'captureConfig.credentialReveal';
 
 // ── The closed list of holders ─────────────────────────────────────────────────────────────────
 
-/** Who may hold a reader. Two, and no third without a decision (AD-03 (1)). */
-export const CaptureCredentialHolder = { CAMERA_ADAPTER: 'CAMERA_ADAPTER', CONNECTION_TEST: 'CONNECTION_TEST' } as const;
+/** Who may hold a reader. Three: the third, the live camera preview, by decisions D51 / D53 (AD-03 (1): no fourth without a decision). */
+export const CaptureCredentialHolder = { CAMERA_ADAPTER: 'CAMERA_ADAPTER', CONNECTION_TEST: 'CONNECTION_TEST', CAMERA_PREVIEW: 'CAMERA_PREVIEW' } as const;
 export type CaptureCredentialHolder = (typeof CaptureCredentialHolder)[keyof typeof CaptureCredentialHolder];
 
 /**
- * The reasons each holder can say. Together they are the closed set of three the audit writer
+ * The reasons each holder can say. Together they are the closed set of four the audit writer
  * accepts for `reason` (`CAPTURE_CREDENTIAL_REVEAL_REASONS` of `core/audit-details.ts`; the test
  * of this file compares the two). Frozen: nothing adds a reason at run time.
  */
 export const CAPTURE_CREDENTIAL_HOLDERS = Object.freeze({
   CAMERA_ADAPTER: Object.freeze(['SESSION_OPEN', 'RELAY_RESTART'] as const),
   CONNECTION_TEST: Object.freeze(['CONNECTION_TEST'] as const),
+  CAMERA_PREVIEW: Object.freeze(['PREVIEW_OPEN'] as const),
 }) satisfies Readonly<Record<CaptureCredentialHolder, readonly string[]>>;
 export type CaptureCredentialRevealReasonOf<Holder extends CaptureCredentialHolder> = (typeof CAPTURE_CREDENTIAL_HOLDERS)[Holder][number];
 
@@ -116,9 +117,20 @@ export interface ConnectionTestCredentialReader {
   connectionTest(deviceId: string, operatorId: string): Promise<SealedCredential>;
 }
 
+/**
+ * The reader of the live camera preview (decisions D51 / D53): one call per start of a preview
+ * stream, outside any unit of work. Its entry names the operator whose viewer started it and no
+ * session: a preview is no recording.
+ */
+export interface CameraPreviewCredentialReader {
+  /** `operatorId`: the operator of the viewer that started the stream, never a request field. */
+  previewOpen(deviceId: string, operatorId: string): Promise<SealedCredential>;
+}
+
 export interface CaptureCredentialReaderOf {
   readonly CAMERA_ADAPTER: CameraAdapterCredentialReader;
   readonly CONNECTION_TEST: ConnectionTestCredentialReader;
+  readonly CAMERA_PREVIEW: CameraPreviewCredentialReader;
 }
 
 /** What the wiring holds: each holder's reader, once. */
@@ -372,6 +384,11 @@ export function createCaptureCredentialReaders(dependencies: CaptureCredentialRe
       // An operator is required: a connection test without one is not this reason. No session: it is no session's read.
       connectionTest: (deviceId: string, operatorId: string) =>
         typeof operatorId === 'string' ? read(CaptureCredentialHolder.CONNECTION_TEST, 'CONNECTION_TEST', deviceId, operatorId, null) : Promise.reject(new CaptureCredentialReadError(CaptureCredentialReadFailure.REQUEST_INVALID)),
+    }),
+    CAMERA_PREVIEW: Object.freeze({
+      // Decisions D51 / D53: an operator is required, as for the connection test; no session (a preview records nothing).
+      previewOpen: (deviceId: string, operatorId: string) =>
+        typeof operatorId === 'string' ? read(CaptureCredentialHolder.CAMERA_PREVIEW, 'PREVIEW_OPEN', deviceId, operatorId, null) : Promise.reject(new CaptureCredentialReadError(CaptureCredentialReadFailure.REQUEST_INVALID)),
     }),
   });
 

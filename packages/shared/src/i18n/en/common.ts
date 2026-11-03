@@ -417,6 +417,11 @@ export const common = {
     ROLE_CHANGED: 'Role changed',
     USER_ENABLED: 'User enabled',
     USER_DISABLED: 'User disabled',
+    // RB-9 as amended by the principal (PT GSP, 02-11-2026): the three types of the vendor-only
+    // user management operations (`createUser`, `updateUser`, `deleteUser`).
+    USER_CREATED: 'User created',
+    USER_UPDATED: 'User profile updated',
+    USER_DELETED: 'User deleted',
     BIOMETRIC_ENROLLMENT_CHANGED: 'Biometric sign-in changed',
     // Task 3 M2-W7 (blueprint row 48; C3 §5.2): the nine capture-phase types.
     CAPTURE_CONFIG_CHANGED: 'Capture configuration changed',
@@ -459,6 +464,8 @@ export const common = {
     CAPTURE_AUDIO_SILENCE_INSERTED: 'Silence inserted into the audio track',
     // Task 4 (row RD2): the retirement of a camera or microphone (operation 111).
     CAPTURE_DEVICE_RETIRED: 'Capture device retired',
+    // Decisions D51 / D53: a live camera preview session was opened.
+    CAMERA_PREVIEW_OPENED: 'Live camera preview opened',
   },
 
   /** Audit filter categories (sim `AuditCategory`). */
@@ -1079,7 +1086,7 @@ export const common = {
       NOT_FOUND: 'The Core no longer finds this sound card. List the sound cards again.',
       AUDIO_INPUT_BEYOND_CARD: 'This sound card has no input of that number. List the sound cards again.',
       AUDIO_INPUT_NOT_REGISTRABLE: 'This Core cannot capture from this sound card, or cannot find it again, so the input was not registered. Nothing was saved.',
-      AUDIO_CARD_ALREADY_BOUND: 'This sound card is already used by {{device}}. List the sound cards again, or move {{device}} to another input first. Nothing was saved.',
+      AUDIO_CARD_ALREADY_BOUND: 'This input of the sound card is already used by {{device}}. List the sound cards again, or choose another input. Nothing was saved.',
       FAILED: 'The input could not be registered. Nothing was saved.',
     },
   },

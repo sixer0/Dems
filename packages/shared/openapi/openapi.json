@@ -3,7 +3,7 @@
   "info": {
     "title": "DEMS Core API",
     "version": "0.3.0",
-    "summary": "Core API v1 of the DEMS Edge Client demo, as the Core server answers it: 111 operations and one WebSocket channel.",
+    "summary": "Core API v1 of the DEMS Edge Client demo, as the Core server answers it: 117 operations and one WebSocket channel.",
     "description": "Reference for the Core API v1 of the **DEMS Edge Client demo** (device DEMS-IR-01), as the **Core server** answers it. The design book (§21.2) names nine endpoints; this document adds their bodies, and the operations both clients need beyond them: sign-in, user administration, pairing, the session lifecycle, evidence, devices, storage, network and time, security and audit, system, alerts and the demo controls.\n\n### Who answers\n\n| Service | Address | Answers |\n|---|---|---|\n| The Core server (`dems-core-server`) | `http://127.0.0.1:4420` | Every operation of this document and `WS /ws`. It keeps the Core state in PostgreSQL and is the only authority on who may do what. Loopback only. |\n| mock-core (`dems-mock-core`) | `http://127.0.0.1:4400` | `GET /api/v1/health` and a heartbeat-only `WS /ws`. It is the service of Simulated mode and answers no other operation. |\n| The in-app simulator | none | In Simulated mode, the nine design-book operations (`x-dems-mode: simulated`), inside the app and without a request. Its answers carry `x-dems-simulated: 1`; the Core server never sends that header. |\n\nEvery operation carries the badge **LIVE**: the Core server answers it over the network. `x-dems-services` names the services that answer an operation, and `x-dems-mode` says whether the in-app simulator can answer it too (`simulated`) or only a service can (`live`).\n\n### Access\n\nThe Core server decides on every request, before the body is read, from the credential the request carries:\n- a **web console** sends the session cookie that `signIn` set (scheme `sessionCookie`);\n- a **paired device** sends `Authorization: Bearer` (scheme `bearerAuth`): its device credential on the device operations and at sign-in, its session token once an operator is signed in.\n\nA request carries one credential, never both. Each operation states its access rule as `x-dems-access` (PUBLIC, DEVICE, AUTHENTICATED, one permission, or the one any-of) and the audit row it writes as `x-dems-audit`. A refusal for a missing permission answers `403` and writes one audit row; the role and its permissions are read from the database for each request.\n\n### Answers every operation shares\n\nThe answers that do not depend on the operation are defined once, under Responses: a malformed path, an unknown route, a wrong method, a server that is not ready, an Origin outside the allowed lists, two credentials in one request, the request throttle, a body over 65,536 bytes, and an unexpected failure. Every answer carries `x-request-id`, and an error repeats it as `error.requestId`. A 2xx answer of a POST carries `x-dems-epoch` and `x-dems-revision`: the state revision that holds the effect of the command.\n\n### Lists\n\nA list is cursor-paged: `cursor` is the `nextCursor` of the page before, `limit` is 1 to 200 (50 when omitted), and `nextCursor` is null on the last page.\n\n### Not part of this API\n\n- Media and evidence package files are not served: the clients keep their bundled demo media, and the server owns the records, the hashes and the verdicts.\n- No operation creates or deletes a user, changes a password or edits the role matrix.\n- No operation takes a file or resolves a path that a client sent.\n\n### Examples\n\nExamples are frozen at 2026-10-01 10:00:00 WIB and follow the canonical demo dataset: session SES-20261001-0024 (case LP/2026/1001-0007) and evidence EV-20260930-0004, exported by the SUPERVISOR operator. The nine design-book operations write times as ISO-8601 text; every other operation writes epoch milliseconds on the server clock. A password, a pairing code, a session token, a device credential and a biometric token appear only as placeholders that open nothing. All data is synthetic."
   },
   "servers": [
@@ -4635,6 +4635,258 @@
         "x-dems-services": [
           "dems-core-server"
         ]
+      },
+      "post": {
+        "operationId": "createUser",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Create a user",
+        "description": "Creates an operator: the next free operator ID, the profile and one role. The account is ENABLED but holds no credential, so it cannot sign in until a password is set with the host command `operator:set-password`, which is the only writer of a password (decision U19): an API that carried one would put a secret in this module, and the module is built to hold none.\n\nWrites USER_CREATED.\n\nNeeds USER_ADMIN and the vendor `root` account: an operator whose username is not `root` is refused with 403 NOT_PERMITTED and no row (RB-9 as amended).\n\nA username that is taken or malformed answers 422 INVALID_INPUT; nothing is created.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "responses": {
+          "200": {
+            "description": "The operator as created.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "x-dems-epoch": {
+                "$ref": "#/components/headers/XDemsEpoch"
+              },
+              "x-dems-revision": {
+                "$ref": "#/components/headers/XDemsRevision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                },
+                "examples": {
+                  "created": {
+                    "summary": "The operator as created, with the next free ID",
+                    "value": {
+                      "id": "OPR-006",
+                      "username": "sari.officer",
+                      "rank": "AKP",
+                      "name": "Sari Melati",
+                      "displayName": "Sari Melati",
+                      "initials": "SM",
+                      "role": "INVESTIGATOR",
+                      "enabled": true,
+                      "lastSignInAt": null,
+                      "activeSessions": 0,
+                      "roleChangedAt": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a JSON object (INVALID_JSON).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidJson": {
+                    "summary": "Not a JSON object",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_JSON",
+                        "message": "The request body must be a JSON object.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session (NOT_SIGNED_IN): none was sent, it expired or ended, or the request carried two credentials (`details.reason: CREDENTIAL_CONFLICT`).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "No valid session",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: the operator's role lacks USER_ADMIN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notPermitted": {
+                    "summary": "INVESTIGATOR lacks USER_ADMIN",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "createUser",
+                          "permission": "USER_ADMIN",
+                          "role": "INVESTIGATOR"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "deviceRevoked": {
+                    "summary": "The device is no longer paired",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_REVOKED",
+                        "message": "This device is no longer paired with the Core.",
+                        "details": {
+                          "reason": "DEVICE_REVOKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "originNotAllowed": {
+                    "summary": "An Origin outside the allowed lists",
+                    "value": {
+                      "error": {
+                        "code": "ORIGIN_NOT_ALLOWED",
+                        "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The body or the path parameter does not match its schema (INVALID_INPUT). Free text that holds U+0000 or an unpaired surrogate is refused here (API-13).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidInput": {
+                    "summary": "The body does not match its schema",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_INPUT",
+                        "message": "The request does not match the expected input.",
+                        "details": {
+                          "in": "body"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "LIVE",
+            "position": "after",
+            "color": "#22C55E"
+          }
+        ],
+        "x-dems-mode": "live",
+        "x-dems-source": "Backend task 2026-10-04, 01_specs §7.6, operation 15 (not in the design book)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserRequest"
+              },
+              "examples": {
+                "fieldOfficer": {
+                  "summary": "A new investigator with an initial password",
+                  "value": {
+                    "username": "sari.officer",
+                    "name": "Sari Melati",
+                    "displayName": "Sari Melati",
+                    "initials": "SM",
+                    "role": "INVESTIGATOR",
+                    "reason": "Covers the night shift"
+                  }
+                },
+                "technician": {
+                  "summary": "A new technician account",
+                  "value": {
+                    "username": "new.tech",
+                    "name": "New Technician",
+                    "initials": "NT",
+                    "role": "TECHNICIAN"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-dems-access": {
+          "rule": "USER_ADMIN",
+          "permissions": [
+            "USER_ADMIN"
+          ],
+          "conditions": []
+        },
+        "x-dems-audit": {
+          "success": "USER_CREATED",
+          "denial": "ACCESS_DENIED",
+          "also": []
+        },
+        "x-dems-services": [
+          "dems-core-server"
+        ]
       }
     },
     "/api/v1/admin/users/{id}/role": {
@@ -5524,6 +5776,589 @@
         },
         "x-dems-audit": {
           "success": "USER_DISABLED",
+          "denial": "ACCESS_DENIED",
+          "also": []
+        },
+        "x-dems-services": [
+          "dems-core-server"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{id}/profile": {
+      "post": {
+        "operationId": "updateUser",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Edit a user profile",
+        "description": "Changes the profile of an operator: name, display name, initials, rank. The role is `assignUserRole`, the enabled state is `enableUser` and `disableUser`, and a password is never carried by this operation.\n\nWrites USER_UPDATED with the fields that changed; a request that changes nothing writes no row.\n\nNeeds USER_ADMIN and the vendor `root` account (RB-9 as amended).\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "responses": {
+          "200": {
+            "description": "The operator after the change.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "x-dems-epoch": {
+                "$ref": "#/components/headers/XDemsEpoch"
+              },
+              "x-dems-revision": {
+                "$ref": "#/components/headers/XDemsRevision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUser"
+                },
+                "examples": {
+                  "updated": {
+                    "summary": "The operator after the change",
+                    "value": {
+                      "id": "OPR-001",
+                      "username": "budi.santoso",
+                      "rank": "AKP",
+                      "name": "Budi Santoso",
+                      "displayName": "AKP Budi Santoso",
+                      "initials": "BS",
+                      "role": "INVESTIGATOR",
+                      "enabled": true,
+                      "lastSignInAt": 1790823600000,
+                      "activeSessions": 1,
+                      "roleChangedAt": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a JSON object (INVALID_JSON).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidJson": {
+                    "summary": "Not a JSON object",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_JSON",
+                        "message": "The request body must be a JSON object.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session (NOT_SIGNED_IN): none was sent, it expired or ended, or the request carried two credentials (`details.reason: CREDENTIAL_CONFLICT`).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "No valid session",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: the operator's role lacks USER_ADMIN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notPermitted": {
+                    "summary": "INVESTIGATOR lacks USER_ADMIN",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "updateUser",
+                          "permission": "USER_ADMIN",
+                          "role": "INVESTIGATOR"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "deviceRevoked": {
+                    "summary": "The device is no longer paired",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_REVOKED",
+                        "message": "This device is no longer paired with the Core.",
+                        "details": {
+                          "reason": "DEVICE_REVOKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "originNotAllowed": {
+                    "summary": "An Origin outside the allowed lists",
+                    "value": {
+                      "error": {
+                        "code": "ORIGIN_NOT_ALLOWED",
+                        "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No operator has this ID (NOT_FOUND).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notFound": {
+                    "summary": "Unknown operator ID",
+                    "value": {
+                      "error": {
+                        "code": "NOT_FOUND",
+                        "message": "No operator has this ID.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The body or the path parameter does not match its schema (INVALID_INPUT). Free text that holds U+0000 or an unpaired surrogate is refused here (API-13).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidInput": {
+                    "summary": "The body does not match its schema",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_INPUT",
+                        "message": "The request does not match the expected input.",
+                        "details": {
+                          "in": "body"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "LIVE",
+            "position": "after",
+            "color": "#22C55E"
+          }
+        ],
+        "x-dems-mode": "live",
+        "x-dems-source": "Backend task 2026-10-04, 01_specs §7.6, operation 16 (not in the design book)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operator ID `OPR-NNN`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^OPR-\\d{3}$"
+            },
+            "example": "OPR-003"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserRequest"
+              },
+              "examples": {
+                "rename": {
+                  "summary": "Correct the spelling of a name",
+                  "value": {
+                    "name": "Sari M. Halim",
+                    "initials": "SH",
+                    "reason": "Name corrected on the card"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-dems-access": {
+          "rule": "USER_ADMIN",
+          "permissions": [
+            "USER_ADMIN"
+          ],
+          "conditions": []
+        },
+        "x-dems-audit": {
+          "success": "USER_UPDATED",
+          "denial": "ACCESS_DENIED",
+          "also": []
+        },
+        "x-dems-services": [
+          "dems-core-server"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{id}/delete": {
+      "post": {
+        "operationId": "deleteUser",
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Delete a user",
+        "description": "Removes an operator and its credential from the unit, ending the open sessions of that operator in the same transaction. The account is purged: the audit rows it wrote, its sign-in rows, its credential and its biometric tokens are removed with it, and the hash chain is re-sealed over what survives (RB-9 as amended by the principal on 2026-11-02). Records of the UNIT are never removed by this — evidence, custody, session records, exports, transcript revisions, capture configuration and the installation acceptance keep their rows and lose their attribution instead. What the amendment costs is stated plainly: after a purge the chain no longer proves that the erased account never existed.\n\nWrites USER_DELETED with the number of sessions ended and whether a credential went with the account.\n\nNeeds USER_ADMIN and the vendor `root` account, and the username repeated in `confirm`.\n\nRefused with `409 LAST_ADMIN` when it would leave no enabled operator holding USER_ADMIN (RB-8), and `409 INVALID_STATE` when the username repeated in `confirm` is not the operator of `{id}`.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "responses": {
+          "200": {
+            "description": "What was deleted.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "x-dems-epoch": {
+                "$ref": "#/components/headers/XDemsEpoch"
+              },
+              "x-dems-revision": {
+                "$ref": "#/components/headers/XDemsRevision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedUser"
+                },
+                "examples": {
+                  "deleted": {
+                    "summary": "The account and its credential are gone; the audit rows stay",
+                    "value": {
+                      "operatorId": "OPR-003",
+                      "username": "rina.wijaya",
+                      "sessionsEnded": 0,
+                      "credentialsRemoved": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body is not a JSON object (INVALID_JSON).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidJson": {
+                    "summary": "Not a JSON object",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_JSON",
+                        "message": "The request body must be a JSON object.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session (NOT_SIGNED_IN): none was sent, it expired or ended, or the request carried two credentials (`details.reason: CREDENTIAL_CONFLICT`).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "No valid session",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: the operator's role lacks USER_ADMIN (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notPermitted": {
+                    "summary": "INVESTIGATOR lacks USER_ADMIN",
+                    "value": {
+                      "error": {
+                        "code": "NOT_PERMITTED",
+                        "message": "Your role does not allow this action. The attempt was audited.",
+                        "details": {
+                          "operationId": "deleteUser",
+                          "permission": "USER_ADMIN",
+                          "role": "INVESTIGATOR"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "deviceRevoked": {
+                    "summary": "The device is no longer paired",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_REVOKED",
+                        "message": "This device is no longer paired with the Core.",
+                        "details": {
+                          "reason": "DEVICE_REVOKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "originNotAllowed": {
+                    "summary": "An Origin outside the allowed lists",
+                    "value": {
+                      "error": {
+                        "code": "ORIGIN_NOT_ALLOWED",
+                        "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No operator has this ID (NOT_FOUND).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notFound": {
+                    "summary": "Unknown operator ID",
+                    "value": {
+                      "error": {
+                        "code": "NOT_FOUND",
+                        "message": "No operator has this ID.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "RB-8: the delete would leave no enabled operator holding USER_ADMIN (LAST_ADMIN); or the username in `confirm` is not the operator of `{id}`; or records of the unit still point at that operator (INVALID_STATE), in which case the refusal text names how many and from which sources. Nothing is deleted in any of these cases.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "lastAdmin": {
+                    "summary": "The only enabled operator holding USER_ADMIN",
+                    "value": {
+                      "error": {
+                        "code": "LAST_ADMIN",
+                        "message": "At least one enabled operator must keep user administration.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The body or the path parameter does not match its schema (INVALID_INPUT). Free text that holds U+0000 or an unpaired surrogate is refused here (API-13).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidInput": {
+                    "summary": "The body does not match its schema",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_INPUT",
+                        "message": "The request does not match the expected input.",
+                        "details": {
+                          "in": "body"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "LIVE",
+            "position": "after",
+            "color": "#22C55E"
+          }
+        ],
+        "x-dems-mode": "live",
+        "x-dems-source": "Backend task 2026-10-04, 01_specs §7.6, operation 17 (not in the design book)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Operator ID `OPR-NNN`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^OPR-\\d{3}$"
+            },
+            "example": "OPR-003"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteUserRequest"
+              },
+              "examples": {
+                "gone": {
+                  "summary": "Delete the account of a left technician, username repeated",
+                  "value": {
+                    "confirm": "rina.wijaya",
+                    "reason": "Left the unit; account removed"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-dems-access": {
+          "rule": "USER_ADMIN",
+          "permissions": [
+            "USER_ADMIN"
+          ],
+          "conditions": []
+        },
+        "x-dems-audit": {
+          "success": "USER_DELETED",
           "denial": "ACCESS_DENIED",
           "also": []
         },
@@ -15011,6 +15846,9 @@
                 "ROLE_CHANGED",
                 "USER_ENABLED",
                 "USER_DISABLED",
+                "USER_CREATED",
+                "USER_UPDATED",
+                "USER_DELETED",
                 "BIOMETRIC_ENROLLMENT_CHANGED",
                 "CAPTURE_CONFIG_CHANGED",
                 "AUDIO_SOURCE_SWITCHED",
@@ -15044,7 +15882,8 @@
                 "CAPTURE_VIDEO_ABSENT_IN_SESSION",
                 "CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED",
                 "CAPTURE_AUDIO_SILENCE_INSERTED",
-                "CAPTURE_DEVICE_RETIRED"
+                "CAPTURE_DEVICE_RETIRED",
+                "CAMERA_PREVIEW_OPENED"
               ]
             }
           },
@@ -19256,7 +20095,7 @@
           "Device"
         ],
         "summary": "Capture devices",
-        "description": "The capture-device registry: id, kind, model, firmware, host, PoE port, online flag, stream state and capabilities — the field list of `C3 §2.3` op 77. **No credential member exists** (RK-12), and a host is a host only, never a `user:password@` URL (specs C-N8).\n\nFed by supervisor telemetry (`applyCaptureTelemetry`, SH-18). The answer is the `captureDevices` slice in its wire form (API-6); it is its own slice, never the paired-client registry (E-04).\n\nFix wave J round two (finding JW-23): `online` is the registry flag of a device, not a statement that it is reachable now. A Core in its own capture asks a source only in a pre-check, at a session start and in a microphone re-scan; a device nobody has asked (a camera registered on a port where nothing answers) reads `online: true` until one of them finds it unreachable. Clients show such a device as \"Not checked\" at rest.\n\nNeeds a signed-in operator. Every role may read it.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "description": "The capture-device registry: id, kind, model, firmware, host, PoE port, online flag, stream state and capabilities — the field list of `C3 §2.3` op 77. **No credential member exists** (RK-12), and a host is a host only, never a `user:password@` URL (specs C-N8).\n\nFed by supervisor telemetry (`applyCaptureTelemetry`, SH-18). The answer is the `captureDevices` slice in its wire form (API-6); it is its own slice, never the paired-client registry (E-04).\n\nFix wave J round two (finding JW-23): `online` is the registry flag of a device, not a statement that it is reachable now. A Core in its own capture asks a source in a pre-check, at a session start, in a microphone re-scan and - since decisions D51 / D53 - while an operator watches its live preview (`createCameraPreviewSession`) or holds the idle microphone meters (`holdIdleMeters`); a device nobody has asked (a camera registered on a port where nothing answers) reads `online: true` until one of them finds it unreachable. Neither the preview nor the idle meters change this flag. Clients show such a device as \"Not checked\" at rest.\n\nNeeds a signed-in operator. Every role may read it.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
         "responses": {
           "200": {
             "description": "The capture-devices slice.",
@@ -30156,6 +30995,532 @@
           "dems-core-server"
         ]
       }
+    },
+    "/api/v1/capture/devices/{id}/preview-sessions": {
+      "post": {
+        "operationId": "createCameraPreviewSession",
+        "tags": [
+          "Device"
+        ],
+        "summary": "Open a live camera preview",
+        "description": "Returns a short-lived URL of the registry-external route `GET /preview/{token}`, which streams the camera in the path as motion JPEG (`multipart/x-mixed-replace`, about 8 pictures per second at 640x360; `Cache-Control: no-store`). The token (prefix `cps_`) is a random bearer value bound to the operator, the sign-in session and the camera; it must be opened within 60 s and never enters a log or an audit row. A stream that is open is cut when its sign-in session ends (checked every 10 s).\n\nNeeds SESSION_START, CAPTURE_CONFIG or DEVICE_MANAGE (decision D53: everyone who can start a session). The route `GET /preview/{token}` has the same rule. The camera must be a registered production camera: the Core reads its stored credential for the preview (one CAPTURE_CREDENTIAL_REVEALED row, `reason: PREVIEW_OPEN`, when the stream is started), never returns it.\n\n**Recording always has priority.** A preview yields its camera before a pre-check and before a session opens it, and resumes after the recording's push stands, while viewers remain. Bounds: 1 stream per camera, 2 in all, 4 viewers per camera and 8 in all; over a bound the Core answers `429 RATE_LIMITED` with `details.reason: PREVIEW_LIMIT` (an envelope-level answer) and writes no row. A Core without a live preview answers `409 INVALID_STATE` with `details.reason: PREVIEW_NOT_AVAILABLE`.\n\nWrites CAMERA_PREVIEW_OPENED before the answer: the device, `expiresAt` and the operation - never the token or the URL.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "responses": {
+          "201": {
+            "description": "The live preview session.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "x-dems-epoch": {
+                "$ref": "#/components/headers/XDemsEpoch"
+              },
+              "x-dems-revision": {
+                "$ref": "#/components/headers/XDemsRevision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CameraPreviewSession"
+                },
+                "examples": {
+                  "opened": {
+                    "summary": "Sixty seconds to open the live preview of CAM-01 (token placeholder)",
+                    "value": {
+                      "url": "http://127.0.0.1:4420/preview/cps_0000000000000000000000000000000000000000000",
+                      "expiresAt": 1790825000000
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session (NOT_SIGNED_IN): none was sent, it expired or ended, or the request carried two credentials (`details.reason: CREDENTIAL_CONFLICT`).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "No valid session",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: the operator's role holds none of SESSION_START, CAPTURE_CONFIG, DEVICE_MANAGE (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "deviceRevoked": {
+                    "summary": "The device is no longer paired",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_REVOKED",
+                        "message": "This device is no longer paired with the Core.",
+                        "details": {
+                          "reason": "DEVICE_REVOKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "originNotAllowed": {
+                    "summary": "An Origin outside the allowed lists",
+                    "value": {
+                      "error": {
+                        "code": "ORIGIN_NOT_ALLOWED",
+                        "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The capture registry has no device with this ID (NOT_FOUND).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notFound": {
+                    "summary": "Unknown device",
+                    "value": {
+                      "error": {
+                        "code": "NOT_FOUND",
+                        "message": "Device CAM-09 not found.",
+                        "details": {
+                          "simCode": "NOT_FOUND"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This Core has no live preview of this device (INVALID_STATE, `details.reason: PREVIEW_NOT_AVAILABLE`): not a production Core, or not a registered production camera. No row is written.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notAvailable": {
+                    "summary": "No live preview of this device",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "There is no live preview of this device on this Core.",
+                        "details": {
+                          "reason": "PREVIEW_NOT_AVAILABLE"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The path parameter does not match its pattern (INVALID_INPUT).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "invalidPathParameter": {
+                    "summary": "The path parameter does not match its pattern",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_INPUT",
+                        "message": "The request does not match the expected input.",
+                        "details": {
+                          "in": "params"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "LIVE",
+            "position": "after",
+            "color": "#22C55E"
+          }
+        ],
+        "x-dems-mode": "live",
+        "x-dems-source": "Task 4, row D53 (bare-metal bench; decisions D51, D53): operation 112, the live camera preview",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "A registered capture device (`dbc-4 §N`): a built-in one (`CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`, `POE-SWITCH`) or one that operation 96 added (`CAM-03` and up). Never a candidate id of a camera search.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9-]{0,31}$"
+            },
+            "example": "CAM-01"
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-dems-access": {
+          "rule": "ANY-OF(SESSION_START, CAPTURE_CONFIG, DEVICE_MANAGE)",
+          "permissions": [
+            "SESSION_START",
+            "CAPTURE_CONFIG",
+            "DEVICE_MANAGE"
+          ],
+          "conditions": []
+        },
+        "x-dems-audit": {
+          "success": "CAMERA_PREVIEW_OPENED",
+          "denial": "ACCESS_DENIED",
+          "also": []
+        },
+        "x-dems-services": [
+          "dems-core-server"
+        ]
+      }
+    },
+    "/api/v1/capture/idle-meters/lease": {
+      "post": {
+        "operationId": "holdIdleMeters",
+        "tags": [
+          "Device"
+        ],
+        "summary": "Hold the idle microphone meters",
+        "description": "Asks the Core to show the level of the registered microphones while no session records (\"Level check - not recording\"), for 30 s from the call. A client that shows the meters holds the lease again before it ends; when no lease is held the Core closes the cards. The levels arrive on the realtime channel as meters do; nothing is recorded, nothing is stored.\n\nNeeds CAPTURE_CONFIG, DEVICE_MANAGE or SESSION_START. A session that records has priority: the idle meters stand down while it runs. Writes no audit row (a level is no fact of the trail).\n\nA Core without idle meters answers `409 INVALID_STATE` with `details.reason: IDLE_METERS_NOT_AVAILABLE`.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "responses": {
+          "200": {
+            "description": "The lease, and when it ends.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              },
+              "x-dems-epoch": {
+                "$ref": "#/components/headers/XDemsEpoch"
+              },
+              "x-dems-revision": {
+                "$ref": "#/components/headers/XDemsRevision"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdleMeterLease"
+                },
+                "examples": {
+                  "held": {
+                    "summary": "The meters are held for thirty seconds",
+                    "value": {
+                      "expiresAt": 1790825030000
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session (NOT_SIGNED_IN): none was sent, it expired or ended, or the request carried two credentials (`details.reason: CREDENTIAL_CONFLICT`).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notSignedIn": {
+                    "summary": "No valid session",
+                    "value": {
+                      "error": {
+                        "code": "NOT_SIGNED_IN",
+                        "message": "Sign in first.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: the operator's role holds none of CAPTURE_CONFIG, DEVICE_MANAGE, SESSION_START (NOT_PERMITTED; one ACCESS_DENIED audit row); the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "deviceRevoked": {
+                    "summary": "The device is no longer paired",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_REVOKED",
+                        "message": "This device is no longer paired with the Core.",
+                        "details": {
+                          "reason": "DEVICE_REVOKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "originNotAllowed": {
+                    "summary": "An Origin outside the allowed lists",
+                    "value": {
+                      "error": {
+                        "code": "ORIGIN_NOT_ALLOWED",
+                        "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This Core has no idle meters (INVALID_STATE, `details.reason: IDLE_METERS_NOT_AVAILABLE`).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "notAvailable": {
+                    "summary": "No idle meters on this Core",
+                    "value": {
+                      "error": {
+                        "code": "INVALID_STATE",
+                        "message": "This Core shows no microphone level while it is idle.",
+                        "details": {
+                          "reason": "IDLE_METERS_NOT_AVAILABLE"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "LIVE",
+            "position": "after",
+            "color": "#22C55E"
+          }
+        ],
+        "x-dems-mode": "live",
+        "x-dems-source": "Task 4, row D53 (bare-metal bench; decisions D51, D53): operation 113, the idle microphone meters",
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-dems-access": {
+          "rule": "ANY-OF(CAPTURE_CONFIG, DEVICE_MANAGE, SESSION_START)",
+          "permissions": [
+            "CAPTURE_CONFIG",
+            "DEVICE_MANAGE",
+            "SESSION_START"
+          ],
+          "conditions": []
+        },
+        "x-dems-audit": {
+          "success": "NONE-P",
+          "denial": "ACCESS_DENIED",
+          "also": []
+        },
+        "x-dems-services": [
+          "dems-core-server"
+        ]
+      }
+    },
+    "/api/v1/lcd/panel-info": {
+      "get": {
+        "operationId": "getPanelFirmware",
+        "tags": [
+          "Device"
+        ],
+        "summary": "Panel firmware version",
+        "description": "The firmware version the LCD front panel reported **about itself**, plus the panel link word of the panel backend. Distinct from `GET /api/v1/device/health`, which is the Core state and needs a signed-in operator.\n\n**Public: it answers a caller with no session.** The screen that shows it is the sign-in screen, which has no credential yet. It is the third public read, beside `getServiceHealth` and `getSignInStatus`.\n\n**What the answer holds, and nothing else:** two short strings — the version the panel stated in a line of its own over USB, and the backend's word for the panel link. No evidence data, no session data, no operator, no channel list, no serial, port or path. This extends the disclosure `GET /api/v1/health` already makes of the service name and version by one string; the extension is small and is taken on purpose, because the alternative is a sign-in screen that cannot say which front panel is attached.\n\n**An absent panel is a `200`, never a failure.** No bridge configured, no backend listening, a backend slower than one second, or a body that is not what the backend's schema says: all four answer `200` with both strings empty, so the sign-in screen keeps working while the front panel is not plugged in. The Core asks the backend at most once per five seconds and gives the call one second, so a polling screen cannot flood it.\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "responses": {
+          "200": {
+            "description": "The panel firmware word and the panel link word. Both are empty when nothing is known, and the status is still `200`.",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanelFirmwareResponse"
+                },
+                "examples": {
+                  "panelTalking": {
+                    "summary": "A panel that stated its own version",
+                    "description": "The panel is talking to the backend and said `v3.8` about itself.",
+                    "value": {
+                      "panelFirmware": "v3.8",
+                      "verdict": "OK"
+                    }
+                  },
+                  "panelAbsent": {
+                    "summary": "Nothing behind the answer",
+                    "description": "The backend holds no version word and says its port is not there. Still `200`: the sign-in screen shows the cell as unknown.",
+                    "value": {
+                      "panelFirmware": "",
+                      "verdict": "PORT-TIDAK-ADA"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refused: the device of the credential or of the session is no longer paired (DEVICE_REVOKED; one ACCESS_DENIED audit row, none when the device was retired while the request was in flight); the `Origin` is not on the list that fits the credential (ORIGIN_NOT_ALLOWED).",
+            "headers": {
+              "x-request-id": {
+                "$ref": "#/components/headers/XRequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "deviceRevoked": {
+                    "summary": "The device is no longer paired",
+                    "value": {
+                      "error": {
+                        "code": "DEVICE_REVOKED",
+                        "message": "This device is no longer paired with the Core.",
+                        "details": {
+                          "reason": "DEVICE_REVOKED"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "originNotAllowed": {
+                    "summary": "An Origin outside the allowed lists",
+                    "value": {
+                      "error": {
+                        "code": "ORIGIN_NOT_ALLOWED",
+                        "message": "This origin may not call the Core server.",
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-badges": [
+          {
+            "name": "LIVE",
+            "position": "after",
+            "color": "#22C55E"
+          }
+        ],
+        "x-dems-mode": "live",
+        "x-dems-source": "LCD bridge task (apps/core-server/src/lcd; apps/lcd-backend), operation 114: the panel's own version word on the sign-in screen (not in the design book)",
+        "security": [],
+        "x-dems-access": {
+          "rule": "PUBLIC",
+          "permissions": [],
+          "conditions": []
+        },
+        "x-dems-audit": {
+          "success": "NONE-R",
+          "denial": "ACCESS_DENIED",
+          "also": []
+        },
+        "x-dems-services": [
+          "dems-core-server"
+        ]
+      }
     }
   },
   "components": {
@@ -31379,6 +32744,121 @@
       "DeviceHealthResponse": {
         "type": "object",
         "properties": {
+          "lcd": {
+            "description": "Optional local LCD bridge; absent when not configured. HTTP reachability is separate from USB panel liveness.",
+            "type": "object",
+            "properties": {
+              "backendUrl": {
+                "type": "string",
+                "format": "uri"
+              },
+              "reachable": {
+                "type": "boolean"
+              },
+              "panelConnected": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "lastSyncAt": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "health": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "ok",
+                      "warn",
+                      "fail"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "error": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "UNAVAILABLE",
+                      "INVALID_RESPONSE",
+                      "CORE_NOT_READY"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "channels": {
+                "maxItems": 4,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "channel": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 4
+                    },
+                    "track": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "VIDEO-01",
+                            "VIDEO-02"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deviceId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "recording": {
+                      "type": "boolean"
+                    },
+                    "cameraConnected": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "channel",
+                    "track",
+                    "recording",
+                    "cameraConnected"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "backendUrl",
+              "reachable",
+              "panelConnected",
+              "lastSyncAt",
+              "health",
+              "error",
+              "channels"
+            ]
+          },
           "device": {
             "type": "object",
             "properties": {
@@ -32353,6 +33833,157 @@
           }
         },
         "description": "Optional request body of `POST /api/v1/admin/users/{id}/enable` and `.../disable`."
+      },
+      "CreateUserRequest": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+            "description": "The sign-in name, unique. Lower-cased and trimmed by the server."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "The name of the operator, 1 to 120 characters."
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "The name shown to clients, 1 to 120 characters."
+          },
+          "initials": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4,
+            "description": "At most 4 characters, upper-cased by the server."
+          },
+          "rank": {
+            "description": "e.g. `AKP`; null or absent when the operator has no rank.",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 24
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "INVESTIGATOR",
+              "SUPERVISOR",
+              "TECHNICIAN"
+            ],
+            "description": "The one role of the operator."
+          },
+          "reason": {
+            "description": "Optional free text for the audit row, at most 500 characters after trimming. Empty means none.",
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "username",
+          "name",
+          "initials",
+          "role"
+        ],
+        "description": "Request body of `POST /api/v1/admin/users`. Needs the vendor `root` account."
+      },
+      "UpdateUserRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "The new name, 1 to 120 characters."
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "The new display name, 1 to 120 characters."
+          },
+          "initials": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4,
+            "description": "At most 4 characters, upper-cased by the server."
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 24
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "description": "Optional free text for the audit row, at most 500 characters after trimming. Empty means none.",
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "description": "Request body of `POST /api/v1/admin/users/{id}/profile`: the profile only. The role is `assignUserRole`, the state is enable and disable, the password is never changed here."
+      },
+      "DeleteUserRequest": {
+        "type": "object",
+        "properties": {
+          "confirm": {
+            "type": "string",
+            "description": "The username of the operator, repeated. A delete that does not repeat it is refused: the account and its credential go, and the row leaves the operator list."
+          },
+          "reason": {
+            "description": "Optional free text for the audit row, at most 500 characters after trimming. Empty means none.",
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "confirm"
+        ],
+        "description": "Request body of `POST /api/v1/admin/users/{id}/delete`. Needs the vendor `root` account."
+      },
+      "DeletedUser": {
+        "type": "object",
+        "properties": {
+          "operatorId": {
+            "type": "string",
+            "pattern": "^OPR-\\d{3}$",
+            "description": "The operator that no longer exists."
+          },
+          "username": {
+            "type": "string",
+            "description": "The username that was deleted, for the caller's list."
+          },
+          "sessionsEnded": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Open sessions of that operator ended by this call."
+          },
+          "credentialsRemoved": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "0 or 1: whether a password row went with the account."
+          }
+        },
+        "required": [
+          "operatorId",
+          "username",
+          "sessionsEnded",
+          "credentialsRemoved"
+        ],
+        "additionalProperties": false,
+        "description": "Response of `POST /api/v1/admin/users/{id}/delete`."
       },
       "PairingCodeIssued": {
         "type": "object",
@@ -37453,6 +39084,9 @@
               "ROLE_CHANGED",
               "USER_ENABLED",
               "USER_DISABLED",
+              "USER_CREATED",
+              "USER_UPDATED",
+              "USER_DELETED",
               "BIOMETRIC_ENROLLMENT_CHANGED",
               "CAPTURE_CONFIG_CHANGED",
               "AUDIO_SOURCE_SWITCHED",
@@ -37486,7 +39120,8 @@
               "CAPTURE_VIDEO_ABSENT_IN_SESSION",
               "CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED",
               "CAPTURE_AUDIO_SILENCE_INSERTED",
-              "CAPTURE_DEVICE_RETIRED"
+              "CAPTURE_DEVICE_RETIRED",
+              "CAMERA_PREVIEW_OPENED"
             ]
           },
           "category": {
@@ -40121,6 +41756,9 @@
               "ROLE_CHANGED",
               "USER_ENABLED",
               "USER_DISABLED",
+              "USER_CREATED",
+              "USER_UPDATED",
+              "USER_DELETED",
               "BIOMETRIC_ENROLLMENT_CHANGED",
               "CAPTURE_CONFIG_CHANGED",
               "AUDIO_SOURCE_SWITCHED",
@@ -40154,7 +41792,8 @@
               "CAPTURE_VIDEO_ABSENT_IN_SESSION",
               "CAPTURE_AUDIO_SAMPLES_NOT_RECEIVED",
               "CAPTURE_AUDIO_SILENCE_INSERTED",
-              "CAPTURE_DEVICE_RETIRED"
+              "CAPTURE_DEVICE_RETIRED",
+              "CAMERA_PREVIEW_OPENED"
             ]
           },
           "actorId": {
@@ -44837,6 +46476,63 @@
         ],
         "additionalProperties": false,
         "description": "The answer of operation 111: the retired device entry."
+      },
+      "CameraPreviewSession": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "pattern": "^http:\\/\\/127\\.0\\.0\\.1(?::\\d{1,5})?\\/preview\\/cps_[A-Za-z0-9_-]{43}$",
+            "description": "Loopback URL of the live preview stream with the cps_ token. Bearer value: never logged, never audited, never replicated."
+          },
+          "expiresAt": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Core instant until which the URL may be opened (60 s). A stream already open is cut when the sign-in session ends, not by this instant."
+          }
+        },
+        "required": [
+          "url",
+          "expiresAt"
+        ],
+        "additionalProperties": false,
+        "description": "A live camera preview session (op 112; LIVE only - Simulated mode has no camera to show)."
+      },
+      "IdleMeterLease": {
+        "type": "object",
+        "properties": {
+          "expiresAt": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Core instant the lease ends (30 s after the call) unless it is held again."
+          }
+        },
+        "required": [
+          "expiresAt"
+        ],
+        "additionalProperties": false,
+        "description": "The lease of the idle microphone meters (op 113)."
+      },
+      "PanelFirmwareResponse": {
+        "type": "object",
+        "properties": {
+          "panelFirmware": {
+            "type": "string",
+            "maxLength": 12,
+            "description": "The firmware version the panel reported about itself (e.g. `v3.8`), as the panel backend holds it. Empty when nothing is known: no panel, no backend, or a backend that did not answer."
+          },
+          "verdict": {
+            "type": "string",
+            "maxLength": 24,
+            "description": "The panel link word of the panel backend: `OK` when the panel is talking, `PANEL-DIAM`, `CORE-DIAM` or `PORT-TIDAK-ADA` when something between them is silent, and empty when the backend itself did not answer. An open set of bounded length."
+          }
+        },
+        "required": [
+          "panelFirmware",
+          "verdict"
+        ],
+        "additionalProperties": false,
+        "description": "What the attached LCD front panel states about itself: its firmware version and the panel link word. No evidence data, no session data."
       }
     },
     "headers": {

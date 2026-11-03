@@ -22,11 +22,13 @@
 import { z } from 'zod';
 import { MicRole, TrackId } from '../domain/enums';
 import { AuditType, DeviceCommand, Permission } from '../sim/vocabulary';
+import { CAMERA_PREVIEW_SESSION_TTL_MS, CAMERA_PREVIEW_TOKEN_PREFIX, IDLE_METER_LEASE_MS } from './capture';
 import { API_BASE_PATH } from './constants';
 import {
   AUTHENTICATED_ACCESS,
   CORE_SERVER_ONLY,
   CoreApiAccessCondition,
+  CoreApiAccessKind,
   CoreApiAuditNone,
   CoreApiMode,
   CoreApiTag,
@@ -39,6 +41,7 @@ import type { OperationExamples } from './examples';
 import {
   INVALID_INPUT,
   INVALID_JSON,
+  CORE_SERVER_NOTE,
   INVALID_PATH_PARAMETER,
   NOT_SIGNED_IN,
   SIM_V2_NOTE,
@@ -49,7 +52,7 @@ import {
   notPermitted,
 } from './operation-parts';
 import { HARDWARE_DEVICE_ID_PATTERN, MIC_INPUT_ID_PATTERN } from './patterns';
-import { trimmedText } from './schema-parts';
+import { epochMs, trimmedText } from './schema-parts';
 import { apiText } from './text';
 import { EXAMPLE_SLICES, STATE_EXAMPLE_IDS } from './state-examples';
 import { REPLICATED_SLICE_SCHEMAS } from './state-slices';
@@ -259,6 +262,45 @@ export const CAPTURE_CONFIG_SCHEMAS = {
   CaptureConfigUpdateRequest: CaptureConfigUpdateRequestSchema,
   CaptureCameraSourceRequest: CaptureCameraSourceRequestSchema,
   CaptureCredentialWriteRequest: CaptureCredentialWriteRequestSchema,
+} as const;
+
+// ── Decisions D51 / D53: the live camera preview and the lease of the idle microphone meters ──
+
+/** `details.reason` of the `429 RATE_LIMITED` of operation 112: the bound of the live previews is reached. */
+export const CAMERA_PREVIEW_LIMIT_REASON = 'PREVIEW_LIMIT';
+/** `details.reason` of the `409 INVALID_STATE` of operation 112: this Core has no live preview for this device. */
+export const CAMERA_PREVIEW_NOT_AVAILABLE_REASON = 'PREVIEW_NOT_AVAILABLE';
+/** `details.reason` of the `409 INVALID_STATE` of operation 113: this Core has no idle meters. */
+export const IDLE_METERS_NOT_AVAILABLE_REASON = 'IDLE_METERS_NOT_AVAILABLE';
+/** The bounds of the live preview (decision D53): pipelines per camera and in all, viewers per camera and in all. */
+export const CAMERA_PREVIEW_LIMITS = Object.freeze({ pipelinesPerCamera: 1, pipelines: 2, viewersPerCamera: 4, viewers: 8 });
+/** What the stream of a preview is: motion JPEG of about this rate and size (decision D53). */
+export const CAMERA_PREVIEW_PICTURE = Object.freeze({ fps: 8, width: 640, height: 360 });
+
+/** Success of op 112: a live preview session of one camera. The URL is a BEARER value. */
+export const CameraPreviewSessionSchema = z
+  .strictObject({
+    url: z
+      .string()
+      .regex(new RegExp(`^http://127\\.0\\.0\\.1(?::\\d{1,5})?/preview/${CAMERA_PREVIEW_TOKEN_PREFIX}[A-Za-z0-9_-]{43}$`))
+      .describe(`Loopback URL of the live preview stream with the ${CAMERA_PREVIEW_TOKEN_PREFIX} token. Bearer value: never logged, never audited, never replicated.`),
+    expiresAt: epochMs().describe(`Core instant until which the URL may be opened (${String(CAMERA_PREVIEW_SESSION_TTL_MS / 1000)} s). A stream already open is cut when the sign-in session ends, not by this instant.`),
+  })
+  .describe('A live camera preview session (op 112; LIVE only - Simulated mode has no camera to show).');
+export type CameraPreviewSessionBody = z.output<typeof CameraPreviewSessionSchema>;
+
+/** Success of op 113: the lease of the idle microphone meters. */
+export const IdleMeterLeaseSchema = z
+  .strictObject({
+    expiresAt: epochMs().describe(`Core instant the lease ends (${String(IDLE_METER_LEASE_MS / 1000)} s after the call) unless it is held again.`),
+  })
+  .describe('The lease of the idle microphone meters (op 113).');
+export type IdleMeterLeaseBody = z.output<typeof IdleMeterLeaseSchema>;
+
+/** The schemas operations 112 and 113 add (merged into `CORE_API_SCHEMAS`). */
+export const CAPTURE_PREVIEW_SCHEMAS = {
+  CameraPreviewSession: CameraPreviewSessionSchema,
+  IdleMeterLease: IdleMeterLeaseSchema,
 } as const;
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
@@ -494,7 +536,7 @@ export const CAPTURE_CONFIG_OPERATIONS = [
     description: [
       'The capture-device registry: id, kind, model, firmware, host, PoE port, online flag, stream state and capabilities — the field list of `C3 §2.3` op 77. **No credential member exists** (RK-12), and a host is a host only, never a `user:password@` URL (specs C-N8).',
       'Fed by supervisor telemetry (`applyCaptureTelemetry`, SH-18). The answer is the `captureDevices` slice in its wire form (API-6); it is its own slice, never the paired-client registry (E-04).',
-      'Fix wave J round two (finding JW-23): `online` is the registry flag of a device, not a statement that it is reachable now. A Core in its own capture asks a source only in a pre-check, at a session start and in a microphone re-scan; a device nobody has asked (a camera registered on a port where nothing answers) reads `online: true` until one of them finds it unreachable. Clients show such a device as "Not checked" at rest.',
+      'Fix wave J round two (finding JW-23): `online` is the registry flag of a device, not a statement that it is reachable now. A Core in its own capture asks a source in a pre-check, at a session start, in a microphone re-scan and - since decisions D51 / D53 - while an operator watches its live preview (`createCameraPreviewSession`) or holds the idle microphone meters (`holdIdleMeters`); a device nobody has asked (a camera registered on a port where nothing answers) reads `online: true` until one of them finds it unreachable. Neither the preview nor the idle meters change this flag. Clients show such a device as "Not checked" at rest.',
       'Needs a signed-in operator. Every role may read it.',
       SIM_V2_NOTE,
     ].join('\n\n'),
@@ -640,6 +682,74 @@ export const CAPTURE_CREDENTIAL_OPERATION = {
   audit: { success: AuditType.CAPTURE_CREDENTIAL_SET, ...DENIED },
   services: CORE_SERVER_ONLY,
 } as const satisfies CoreApiRegistryOperation;
+
+/** Who may watch a live preview (decision D53, answer "Semua yang bisa mulai sesi"): any one of the three. */
+const PREVIEW_VIEWERS = { kind: CoreApiAccessKind.ANY_OF, permissions: [Permission.SESSION_START, Permission.CAPTURE_CONFIG, Permission.DEVICE_MANAGE] } as const;
+/** Who may hold the idle microphone meters (decision D53): any one of the three. */
+const IDLE_METER_HOLDERS = { kind: CoreApiAccessKind.ANY_OF, permissions: [Permission.CAPTURE_CONFIG, Permission.DEVICE_MANAGE, Permission.SESSION_START] } as const;
+const notPermittedAnyOfThree = (permissions: readonly [Permission, Permission, Permission]) =>
+  forbidden(`the operator's role holds none of ${permissions.join(', ')} (NOT_PERMITTED; one ACCESS_DENIED audit row)`);
+
+/**
+ * Operations 112 and 113 (decisions D51 / D53): the live camera preview and the lease of the idle
+ * microphone meters. Both are LIVE only and answered by the Core server only. RECORDING ALWAYS HAS
+ * PRIORITY: a preview yields its camera before a pre-check and before a session opens the camera,
+ * and comes back after the recording's push stands, while viewers remain.
+ */
+export const CAPTURE_PREVIEW_OPERATIONS = [
+  {
+    operationId: 'createCameraPreviewSession',
+    method: 'post',
+    path: `${CAPTURE_PATH}/devices/{id}/preview-sessions`,
+    tag: CoreApiTag.DEVICE,
+    mode: CoreApiMode.LIVE,
+    summary: 'Open a live camera preview',
+    description: [
+      `Returns a short-lived URL of the registry-external route \`GET /preview/{token}\`, which streams the camera in the path as motion JPEG (\`multipart/x-mixed-replace\`, about ${String(CAMERA_PREVIEW_PICTURE.fps)} pictures per second at ${String(CAMERA_PREVIEW_PICTURE.width)}x${String(CAMERA_PREVIEW_PICTURE.height)}; \`Cache-Control: no-store\`). The token (prefix \`${CAMERA_PREVIEW_TOKEN_PREFIX}\`) is a random bearer value bound to the operator, the sign-in session and the camera; it must be opened within ${String(CAMERA_PREVIEW_SESSION_TTL_MS / 1000)} s and never enters a log or an audit row. A stream that is open is cut when its sign-in session ends (checked every 10 s).`,
+      'Needs SESSION_START, CAPTURE_CONFIG or DEVICE_MANAGE (decision D53: everyone who can start a session). The route `GET /preview/{token}` has the same rule. The camera must be a registered production camera: the Core reads its stored credential for the preview (one CAPTURE_CREDENTIAL_REVEALED row, `reason: PREVIEW_OPEN`, when the stream is started), never returns it.',
+      `**Recording always has priority.** A preview yields its camera before a pre-check and before a session opens it, and resumes after the recording's push stands, while viewers remain. Bounds: ${String(CAMERA_PREVIEW_LIMITS.pipelinesPerCamera)} stream per camera, ${String(CAMERA_PREVIEW_LIMITS.pipelines)} in all, ${String(CAMERA_PREVIEW_LIMITS.viewersPerCamera)} viewers per camera and ${String(CAMERA_PREVIEW_LIMITS.viewers)} in all; over a bound the Core answers \`429 RATE_LIMITED\` with \`details.reason: ${CAMERA_PREVIEW_LIMIT_REASON}\` (an envelope-level answer) and writes no row. A Core without a live preview answers \`409 INVALID_STATE\` with \`details.reason: ${CAMERA_PREVIEW_NOT_AVAILABLE_REASON}\`.`,
+      'Writes CAMERA_PREVIEW_OPENED before the answer: the device, `expiresAt` and the operation - never the token or the URL.',
+      CORE_SERVER_NOTE,
+    ].join('\n\n'),
+    source: 'Task 4, row D53 (bare-metal bench; decisions D51, D53): operation 112, the live camera preview',
+    pathParam: CAPTURE_DEVICE_PARAM,
+    responses: {
+      201: { description: 'The live preview session.', schema: 'CameraPreviewSession' },
+      401: NOT_SIGNED_IN,
+      403: notPermittedAnyOfThree(PREVIEW_VIEWERS.permissions),
+      404: UNKNOWN_CAPTURE_DEVICE,
+      409: { description: `This Core has no live preview of this device (INVALID_STATE, \`details.reason: ${CAMERA_PREVIEW_NOT_AVAILABLE_REASON}\`): not a production Core, or not a registered production camera. No row is written.`, schema: 'ApiError' },
+      422: INVALID_PATH_PARAMETER,
+    },
+    access: PREVIEW_VIEWERS,
+    audit: { success: AuditType.CAMERA_PREVIEW_OPENED, ...DENIED },
+    services: CORE_SERVER_ONLY,
+  },
+  {
+    operationId: 'holdIdleMeters',
+    method: 'post',
+    path: `${CAPTURE_PATH}/idle-meters/lease`,
+    tag: CoreApiTag.DEVICE,
+    mode: CoreApiMode.LIVE,
+    summary: 'Hold the idle microphone meters',
+    description: [
+      `Asks the Core to show the level of the registered microphones while no session records ("Level check - not recording"), for ${String(IDLE_METER_LEASE_MS / 1000)} s from the call. A client that shows the meters holds the lease again before it ends; when no lease is held the Core closes the cards. The levels arrive on the realtime channel as meters do; nothing is recorded, nothing is stored.`,
+      'Needs CAPTURE_CONFIG, DEVICE_MANAGE or SESSION_START. A session that records has priority: the idle meters stand down while it runs. Writes no audit row (a level is no fact of the trail).',
+      `A Core without idle meters answers \`409 INVALID_STATE\` with \`details.reason: ${IDLE_METERS_NOT_AVAILABLE_REASON}\`.`,
+      CORE_SERVER_NOTE,
+    ].join('\n\n'),
+    source: 'Task 4, row D53 (bare-metal bench; decisions D51, D53): operation 113, the idle microphone meters',
+    responses: {
+      200: { description: 'The lease, and when it ends.', schema: 'IdleMeterLease' },
+      401: NOT_SIGNED_IN,
+      403: notPermittedAnyOfThree(IDLE_METER_HOLDERS.permissions),
+      409: { description: `This Core has no idle meters (INVALID_STATE, \`details.reason: ${IDLE_METERS_NOT_AVAILABLE_REASON}\`).`, schema: 'ApiError' },
+    },
+    access: IDLE_METER_HOLDERS,
+    audit: { success: CoreApiAuditNone.PARITY, ...DENIED },
+    services: CORE_SERVER_ONLY,
+  },
+] as const satisfies readonly CoreApiRegistryOperation[];
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // Examples
@@ -868,6 +978,32 @@ export const DEVICE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
           'CAPTURE_CONFIG_LOCKED',
         ),
       },
+    },
+  },
+  createCameraPreviewSession: {
+    pathParams: { id: STATE_EXAMPLE_IDS.cameraDeviceId },
+    responses: {
+      201: {
+        // The token is a PLACEHOLDER: a real preview URL is a bearer value and never an example body.
+        opened: {
+          summary: 'Sixty seconds to open the live preview of CAM-01 (token placeholder)',
+          value: { url: `http://127.0.0.1:4420/preview/${CAMERA_PREVIEW_TOKEN_PREFIX}${'0'.repeat(43)}`, expiresAt: 1_790_825_000_000 } satisfies CameraPreviewSessionBody,
+        },
+      },
+      401: SIGNED_OUT,
+      // Every seeded role holds one of the three permissions: no seeded operator can be shown as refused for them.
+      403: BASIC_403_EXAMPLES,
+      404: NOT_FOUND,
+      409: { notAvailable: { summary: 'No live preview of this device', value: apiErrorExample('INVALID_STATE', 'There is no live preview of this device on this Core.', { reason: CAMERA_PREVIEW_NOT_AVAILABLE_REASON }) } },
+      422: BAD_PATH,
+    },
+  },
+  holdIdleMeters: {
+    responses: {
+      200: { held: { summary: 'The meters are held for thirty seconds', value: { expiresAt: 1_790_825_030_000 } satisfies IdleMeterLeaseBody } },
+      401: SIGNED_OUT,
+      403: BASIC_403_EXAMPLES,
+      409: { notAvailable: { summary: 'No idle meters on this Core', value: apiErrorExample('INVALID_STATE', 'This Core shows no microphone level while it is idle.', { reason: IDLE_METERS_NOT_AVAILABLE_REASON }) } },
     },
   },
 };

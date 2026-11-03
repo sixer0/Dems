@@ -40,7 +40,8 @@
  *      of the listing program is handed in, it is the product's enumerator; otherwise it is an
  *      enumerator that states a NAMED reason and lists nothing - never a made-up card. The module
  *      answers op 98 from it, each card with `boundTo` (the `MIC-nn` that holds it BY IDENTITY, or
- *      null; R-FLEX AU-L1), and refuses a new binding of a bound card in op 99; this file hands the
+ *      null; R-FLEX AU-L1), and refuses in op 99 a second microphone on an input that has one (one
+ *      microphone per INPUT of a card, decision D48); this file hands the
  *      enumerator over and judges nothing of the binding.
  *   5. The stored facts: the camera at its stored address with the stream token of a profile, and
  *      the stored row of a microphone INCLUDING its serial and its port path (row 200). SINCE R-FLEX
@@ -72,15 +73,44 @@
  *   9. `superseded` for the microphone loss watch: true while the session is replacing its worker,
  *      so that the end of a helper of the earlier attempt raises nothing (row 191).
  *
+ * THE LIVE CAMERA PREVIEW AND THE IDLE METERS (decisions D51 / D53; row 90P). RECORDING ALWAYS HAS
+ * PRIORITY:
+ *
+ *  12. THE PREVIEW MANAGER, over the opener of the preview pipeline: the THIRD credential reader
+ *      (`cameraPreview`, reason `PREVIEW_OPEN`), the same locator door, the same binding of the
+ *      destination rule, and the stored stream of the camera's smallest stored profile. The STARTER
+ *      of the pipeline (the capture relay in preview mode into the guarded `mpjpeg` encoder) is the
+ *      camera layer's; until it is handed in (`input.previewStarter`) every open is refused
+ *      `CAPTURE_CAMERA_RELAY_NOT_CONFIGURED`. The manager YIELDS a camera - stops and reaps its
+ *      preview - BEFORE the pre-check reads it (`providePrecheckYield`) and BEFORE a session opens it
+ *      (the camera bundle's `stream`, step 1 of `openSource`), and RESUMES it after the recording's
+ *      push stands (a report of the relay hub without `leg`) and at every end of a capture;
+ *  13. THE IDLE METERS (`createIdleMeters` of the capture unit), on `linux` with both programs and a
+ *      run directory only: the same stored rows, card listing, shared-capture writer of the run
+ *      directory, helper and guard programs as the production microphone adapter. They stand down
+ *      (`stopAndWait`) when a session becomes active and before the session's audio reads a stored
+ *      row, and come back (`resume`) when no session is active. Their levels go to the engine as the
+ *      supervisor's telemetry does; their notices to the log and the persistent error log;
+ *  14. both are handed to the API unit (`provideCameraPreview`), which closes them at the close of
+ *      the app.
+ *
  * It logs codes and device ids only: never an address, a path or a credential.
  */
-import { isSessionActive } from '@dems/shared/sim';
+import { CaptureUnreachableCause, isSessionActive } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
 import { CapturePhase, INTERFACE_FILE_COMMAND, createSystemTimers, type CaptureTimers, type HostCommandRunner } from './capture';
 import {
+  CAPTURE_RUN_SUBPATH,
   aliasCandidatesOfConfiguration,
   cameraNetworkCameraOf,
   captureFenceControl,
+  createAlsaConfigWriter,
+  createIdleMeters,
+  createPreviewManager,
+  createPreviewOpener,
+  CAMERA_PREVIEW_CODECS,
+  startCameraPreview,
+  startProductionPipeline,
   cardEnumeratorOf,
   createHostAliasLifecycle,
   factoryScanProbeOf,
@@ -101,18 +131,27 @@ import {
   type CardEnumerator,
   type CardListingPrograms,
   type CardListingUnavailable,
+  type CameraPreviewStarter,
   type CommissioningHostInputs,
   type HostAliasHost,
   type HostAliasJobPort,
   type HostAliasLifecycle,
   type HostAliasTransport,
+  type IdleMeterInput,
+  type IdleMeterLevel,
+  type IdleMeters,
   type OnvifStreamLocator,
+  type CameraPreviewCodec,
+  type PreviewManager,
+  type PreviewStream,
   type ProductionCaptureParts,
   type ProductionDoor,
   type StoredCameraAddressRule,
   type WatchFaultEngine,
   type WatchFaultSink,
 } from './capture/fence';
+import { cameraPreview, type CameraPreviewProvision } from './camera-preview';
+import { captureNotices, probeOfAdapters } from './capture-notices';
 import { sessionCapture, type RelayIngestReport, type RelayIngestReports } from './capture-session';
 import { coreCredentialStore } from './credential-store';
 import { hostAliasSocketTransportOf } from './host-alias-socket';
@@ -148,6 +187,12 @@ export const CaptureCompositionCode = {
   WATCH_FAULT_NOTE: 'CAPTURE_COMPOSITION_WATCH_FAULT_NOTE',
   /** Decision C154: a report of the microphone loss watch (its own `MIC_LOSS_*` code and a closed detail word are in the context). */
   MIC_LOSS_WATCH_REPORT: 'CAPTURE_COMPOSITION_MIC_LOSS_WATCH_REPORT',
+  /** Decisions D51 / D53: a note of the preview manager (its own `PREVIEW_*` code, the device and a code word are in the context). */
+  PREVIEW_NOTE: 'CAPTURE_COMPOSITION_PREVIEW_NOTE',
+  /** Decisions D51 / D53: a notice of the idle meters (its own code, the device and a detail word are in the context). */
+  IDLE_METER_NOTICE: 'CAPTURE_COMPOSITION_IDLE_METER_NOTICE',
+  /** The pre-check asked a camera before the capture fence offered its adapters: the camera reads as unreachable. */
+  PROBE_NOT_READY: 'CAPTURE_COMPOSITION_PROBE_NOT_READY',
 } as const;
 export type CaptureCompositionCode = (typeof CaptureCompositionCode)[keyof typeof CaptureCompositionCode];
 
@@ -216,6 +261,8 @@ export function createRelayReportHub(failed: (error: unknown) => void): RelayRep
 export const READ_STORED_CAMERA = `SELECT adapter_kind AS "adapterKind", address, onvif_uuid AS "endpointRef" FROM public.capture_devices WHERE id = $1 AND kind = 'CAMERA'`;
 /** The ONVIF token stored for one profile code of one camera. One row or none: the pair is the primary key. */
 export const READ_STORED_STREAM_TOKEN = 'SELECT onvif_profile_token AS "onvifProfileToken" FROM public.capture_device_streams WHERE device_id = $1 AND profile = $2';
+/** Decisions D51 / D53: the profile a live preview is made from - the camera's smallest stored stream (the least to decode) - and its stored codec. One row or none. */
+export const READ_PREVIEW_PROFILE = 'SELECT profile, codec FROM public.capture_device_streams WHERE device_id = $1 ORDER BY width ASC NULLS LAST, profile ASC LIMIT 1';
 /**
  * The stored row of a microphone, WITH the serial and the port path it was registered on (row 200,
  * decision C56). Since R-FLEX (row 107) the port is no lock: the matcher reads it only as the
@@ -254,6 +301,8 @@ export interface StoredProductionFacts {
   stream(deviceId: string, profile: string): Promise<StoredProductionStream | null>;
   /** The stored row of a microphone; null when it has none or a column is not of its type. */
   microphone(deviceId: string): Promise<StoredProductionMicrophone | null>;
+  /** Decisions D51 / D53: the stored stream a live preview of the camera is made from (its smallest stored profile) with its stored codec; null when it has none. */
+  previewStream(deviceId: string): Promise<PreviewStream | null>;
 }
 
 export function storedProductionFactsOf(query: Query): StoredProductionFacts {
@@ -262,13 +311,21 @@ export function storedProductionFactsOf(query: Query): StoredProductionFacts {
     if (row === null) return null;
     return productionCameraCandidateOf({ adapterKind: row['adapterKind'], address: textOrNull(row['address']), endpointRef: textOrNull(row['endpointRef']) });
   };
+  const stream = async (deviceId: string, profile: string): Promise<StoredProductionStream | null> => {
+    const camera = await candidate(deviceId);
+    if (camera === null) return null;
+    const token = textOrNull(rowOf((await query(READ_STORED_STREAM_TOKEN, [deviceId, profile])).rows)?.['onvifProfileToken']);
+    return token === null ? null : Object.freeze({ candidate: camera, onvifProfileToken: token });
+  };
   return Object.freeze({
     candidate,
-    async stream(deviceId: string, profile: string): Promise<StoredProductionStream | null> {
-      const camera = await candidate(deviceId);
-      if (camera === null) return null;
-      const token = textOrNull(rowOf((await query(READ_STORED_STREAM_TOKEN, [deviceId, profile])).rows)?.['onvifProfileToken']);
-      return token === null ? null : Object.freeze({ candidate: camera, onvifProfileToken: token });
+    stream,
+    async previewStream(deviceId: string): Promise<PreviewStream | null> {
+      const row = rowOf((await query(READ_PREVIEW_PROFILE, [deviceId])).rows);
+      const profile = textOrNull(row?.['profile']);
+      if (profile === null) return null;
+      const found = await stream(deviceId, profile);
+      return found === null ? null : Object.freeze({ ...found, codec: textOrNull(row?.['codec']) });
     },
     async microphone(deviceId: string): Promise<StoredProductionMicrophone | null> {
       const row = rowOf((await query(READ_STORED_MICROPHONE, [deviceId])).rows);
@@ -360,6 +417,35 @@ export interface MicLossWatchBundle {
   readonly report: (entry: { readonly code: string; readonly deviceId: string | null; readonly detail: string }) => void;
 }
 
+// ── The starter of a live preview (decisions D51 / D53) ───────────────────────────────────────
+
+const isPreviewCodec = (codec: string | null): codec is CameraPreviewCodec => codec !== null && (CAMERA_PREVIEW_CODECS as readonly string[]).includes(codec);
+
+/**
+ * The product's starter of a live preview: `startCameraPreview` of the camera layer over the production door's
+ * pipeline, with the three programs of the configuration, attempt 1 (a preview pushes nothing; the relay names it in
+ * its lines only). Null without the three programs. A stream whose stored codec is none the encoder decodes is refused
+ * by the relay start itself (`CAPTURE_START_MESSAGE_INVALID`), before anything runs.
+ */
+export function productPreviewStarterOf(ports: Pick<ProductionCapturePorts, 'relayProgram' | 'guardProgram' | 'ffmpegProgram'>, timers: CaptureTimers): CameraPreviewStarter | null {
+  const { relayProgram, guardProgram } = ports;
+  const ffmpeg = ports.ffmpegProgram ?? null;
+  if (relayProgram === null || guardProgram === null || ffmpeg === null) return null;
+  return (request) =>
+    startCameraPreview({
+      pipelineDoor: startProductionPipeline,
+      program: relayProgram,
+      guard: guardProgram,
+      ffmpeg,
+      timers,
+      locator: request.locator,
+      sealed: request.sealed,
+      attempt: 1,
+      source: request.source,
+      codec: (isPreviewCodec(request.codec) ? request.codec : request.codec ?? 'NONE') as CameraPreviewCodec,
+    });
+}
+
 // ── The composition ────────────────────────────────────────────────────────────────────────────
 
 /** What the entry point states of its own process, and what a later row injects. */
@@ -407,6 +493,14 @@ export interface ProductionCaptureInput {
    * programs.
    */
   readonly commissioningInputs?: CommissioningHostInputs;
+  /**
+   * Decisions D51 / D53: THE STARTER OF A LIVE PREVIEW, IN THE PLACE OF the product's. The entry point hands in nothing:
+   * the product's is `startCameraPreview` of the camera layer (the capture relay in preview mode into the guarded
+   * `mpjpeg` encoder) over the production door's pipeline, with the relay, guard and FFmpeg programs of the
+   * configuration. Without the three programs every preview open is refused `CAPTURE_CAMERA_RELAY_NOT_CONFIGURED`
+   * before a credential is read. A test hands in a starter that starts nothing.
+   */
+  readonly previewStarter?: CameraPreviewStarter;
 }
 
 /** The doors and facts of ONE app, as this file uses them. The app-bound function below makes them; a test hands in doubles. */
@@ -437,7 +531,25 @@ export interface ProductionCapturePorts extends Pick<CaptureCredentialHoldersDep
   onCaptureEnd(listener: () => void): () => void;
   /** One line of the log and of the persistent error log: a code and identifiers. */
   report(level: 'warn' | 'error', code: CaptureCompositionCode, context: Readonly<Record<string, string | number | null>>): void;
+  // ── Decisions D51 / D53 (row 90P). Optional: a composition without them has a preview no one sees and no idle meters. ──
+  /** `<dataDir>/run/capture`, or null: no idle meters. */
+  readonly runDir?: string | null;
+  /** `config.captureHelperFfmpegPath`: the encoder of a live preview. Null or absent: no preview starts. */
+  readonly ffmpegProgram?: string | null;
+  /** The PRIMARY and the STANDBY microphone of the selector in force (the committed `captureConfig`). */
+  micSelection?(): readonly IdleMeterInput[];
+  /** True while a session is active (CREATE to SEALED). A throw counts as active. */
+  sessionActive?(): boolean;
+  /** The levels of the idle meters to the engine, as the supervisor's telemetry. Must not throw. */
+  publishLevels?(levels: readonly IdleMeterLevel[]): void;
+  /** `cameraPreview(app).provide`: the manager and the meters to the API unit. */
+  provideCameraPreview?(provision: CameraPreviewProvision): void;
+  /** Called before the pre-check reads a camera: the pre-check waits for it. */
+  providePrecheckYield?(beforeCamera: (deviceId: string) => Promise<void>): void;
 }
+
+/** How often the composition looks whether a session became active or ended (the idle meters stand down and come back). */
+export const SESSION_WATCH_MS = 1_000;
 
 export interface ComposedProductionCapture {
   readonly composed: true;
@@ -459,6 +571,10 @@ export interface ComposedProductionCapture {
   attachCameraWatch(watch: AttachedCameraWatch): void;
   /** The microphone loss watch, once it is built. Once. */
   attachMicLossWatch(watch: AttachedMicLossWatch): void;
+  /** Decisions D51 / D53: the live camera previews of this Core. */
+  readonly preview: PreviewManager;
+  /** Decisions D51 / D53: the idle microphone meters, or null where the production microphone adapter has no opener (not `linux`, a program or the run directory missing). */
+  readonly idleMeters: IdleMeters | null;
 }
 
 export type ProductionCaptureComposition = ComposedProductionCapture | { readonly composed: false; readonly operation: CaptureOperation };
@@ -545,13 +661,54 @@ export function composeProductionCapture(ports: ProductionCapturePorts, input: P
     }
   };
 
+  // 12. THE LIVE CAMERA PREVIEW (decisions D51 / D53). Built before the bundles: the camera bundle's stream yields to it.
+  const preview = createPreviewManager({
+    timers,
+    now: ports.now,
+    open: createPreviewOpener({ timers, credentials: holders.cameraPreview, locator, stream: stored.previewStream, storedAddress, start: input.previewStarter ?? productPreviewStarterOf(ports, timers) }),
+    report: (entry) => ports.report('warn', CaptureCompositionCode.PREVIEW_NOTE, { note: entry.code, deviceId: entry.deviceId, reason: entry.reason }),
+  });
+  /** True while a session is active; a port that throws counts as active, a composition without the port as idle. */
+  const sessionActiveNow = (): boolean => {
+    if (ports.sessionActive === undefined) return false;
+    try {
+      return ports.sessionActive();
+    } catch {
+      return true;
+    }
+  };
+
+  // 13. THE IDLE METERS (decisions D51 / D53): only where the production microphone adapter can open a card.
+  const runDir = ports.runDir ?? null;
+  const idleMeters: IdleMeters | null =
+    input.platform === 'linux' && ports.audioHelperProgram !== null && ports.guardProgram !== null && runDir !== null
+      ? createIdleMeters({
+          selection: async () => ports.micSelection?.() ?? [],
+          registered: stored.microphone,
+          cards,
+          configWriter: createAlsaConfigWriter(runDir),
+          helperProgram: ports.audioHelperProgram,
+          guardProgram: ports.guardProgram,
+          runDir,
+          timers,
+          now: ports.now,
+          sessionActive: sessionActiveNow,
+          publish: (levels) => ports.publishLevels?.(levels),
+          onNotice: (notice) => ports.report('warn', CaptureCompositionCode.IDLE_METER_NOTICE, { note: notice.code, deviceId: notice.deviceId, detail: notice.detail }),
+        })
+      : null;
+
   const camera: ProductionCameraBundle = Object.freeze({
     door,
     relayProgram: ports.relayProgram,
     timers,
     credentials: holders.cameraAdapter,
     locator,
-    stream: stored.stream,
+    // RECORDING HAS PRIORITY: step 1 of `openSource` waits until the camera's live preview is stopped and reaped.
+    stream: async (deviceId: string, profile: string): Promise<StoredProductionStream | null> => {
+      await preview.yieldForRecording(deviceId);
+      return stored.stream(deviceId, profile);
+    },
     storedAddress,
     relayEnded: (end: unknown): void =>
       cameraWatch !== null
@@ -561,7 +718,11 @@ export function composeProductionCapture(ports: ProductionCapturePorts, input: P
     clock: (deviceId: string): Promise<number> => (cameraWatch === null ? Promise.reject(new CaptureCompositionError(CaptureCompositionCode.CAMERA_WATCH_NOT_ATTACHED)) : cameraWatch.clockOffsetMs(deviceId)),
   });
   const audio: ProductionAudioBundle = Object.freeze({
-    registered: stored.microphone,
+    // RECORDING HAS PRIORITY: while a session is active, the stored row of a microphone is read after the idle meters stood down.
+    registered: async (deviceId: string): Promise<StoredProductionMicrophone | null> => {
+      if (idleMeters !== null && sessionActiveNow()) await idleMeters.stopAndWait();
+      return stored.microphone(deviceId);
+    },
     cards,
     helperProgram: ports.audioHelperProgram,
     guardProgram: ports.guardProgram,
@@ -613,7 +774,46 @@ export function composeProductionCapture(ports: ProductionCapturePorts, input: P
   // camera watch forgets the losses of that capture and ends the faults it raised itself. The watch is attached before the
   // registry exists, so before any start. WHO READS `lost()`: no product file today (a test, and the watch's own state);
   // the session states a camera's absence from the relay's reports, not from the watch.
-  ports.onCaptureEnd(() => cameraWatch?.captureEnded());
+  ports.onCaptureEnd(() => {
+    cameraWatch?.captureEnded();
+    // Decisions D51 / D53: a capture that ended holds no camera any more.
+    preview.resumeAll();
+  });
+
+  // 12. The preview comes back after the recording's push stands (a report without `leg`), and yields before the pre-check reads a camera.
+  relayReports.subscribe((report) => {
+    if (report.leg === undefined) preview.resumeAfterRecording(report.deviceId);
+  });
+  ports.providePrecheckYield?.((deviceId) => preview.yieldForRecording(deviceId));
+
+  // 13. The idle meters stand down when a session becomes active and come back when none is.
+  let watching = true;
+  if (idleMeters !== null && ports.sessionActive !== undefined) {
+    let wasActive = sessionActiveNow();
+    const look = (): void => {
+      if (!watching) return;
+      const active = sessionActiveNow();
+      if (active && !wasActive) void idleMeters.stopAndWait();
+      if (!active && wasActive) {
+        idleMeters.resume();
+        preview.resumeAll();
+      }
+      wasActive = active;
+      timers.after(SESSION_WATCH_MS, look);
+    };
+    timers.after(SESSION_WATCH_MS, look);
+  }
+
+  // 14. Both to the API unit, which closes them with the app.
+  ports.provideCameraPreview?.({
+    manager: preview,
+    idleMeters,
+    close: async () => {
+      watching = false;
+      await preview.close();
+      await idleMeters?.close();
+    },
+  });
 
   return Object.freeze({
     composed: true,
@@ -628,6 +828,8 @@ export function composeProductionCapture(ports: ProductionCapturePorts, input: P
     faults,
     attachCameraWatch,
     attachMicLossWatch,
+    preview,
+    idleMeters,
   });
 }
 
@@ -869,6 +1071,51 @@ export function composeProductionCaptureOf(app: FastifyInstance, input: Producti
           if (event.type === 'STOPPED' || event.type === 'INTERRUPTED' || event.type === 'FAILED_START') listener();
         }),
       report,
+      // Decisions D51 / D53 (row 90P): the live camera preview and the idle meters.
+      runDir: `${app.config.dataDir}/${CAPTURE_RUN_SUBPATH}`,
+      ffmpegProgram: app.config.captureHelperFfmpegPath,
+      micSelection: () => {
+        if (!app.seams.has('engine') || !app.engine.running) return [];
+        return app.engine
+          .state()
+          .captureConfig.mics.filter((mic) => mic.role === 'PRIMARY' || mic.role === 'STANDBY')
+          .map((mic) => ({ deviceId: mic.deviceId, role: mic.role }));
+      },
+      sessionActive: () => app.seams.has('engine') && app.engine.running && isSessionActive(app.engine.state().session),
+      publishLevels: (levels) => {
+        if (!app.seams.has('engine') || !app.engine.running) return;
+        // The engine logs and persists a frame it could not apply itself.
+        void app.engine.applyCaptureTelemetry({ levels: levels.map((level) => ({ role: level.role, dbfs: level.dbfs, clipped: level.clipped })), ingest: [], fragments: [] }).catch(() => undefined);
+      },
+      provideCameraPreview: (provision) => cameraPreview(app).provide(provision),
+      // THE PRE-CHECK YIELD: the probe the pre-check reads is the fence's of this moment (as `registerCaptureNotices` hands it),
+      // with the yield of the camera's live preview before each camera read. A fence that offers no adapters yet: unreachable.
+      providePrecheckYield: (beforeCamera) => {
+        const probeNow = (): ReturnType<typeof probeOfAdapters> | null => {
+          try {
+            const adapters = captureFenceControl(app).probeAdapters();
+            return adapters === null ? null : probeOfAdapters(adapters);
+          } catch {
+            return null;
+          }
+        };
+        captureNotices(app).provideProbe({
+          async camera(deviceId, signal) {
+            await beforeCamera(deviceId);
+            const probe = probeNow();
+            if (probe === null) {
+              report('warn', CaptureCompositionCode.PROBE_NOT_READY, { deviceId });
+              return { reachable: false, cause: CaptureUnreachableCause.UNREACHABLE };
+            }
+            return probe.camera(deviceId, signal);
+          },
+          async microphones() {
+            const probe = probeNow();
+            if (probe === null) throw new CaptureCompositionError(CaptureCompositionCode.PROBE_NOT_READY);
+            return probe.microphones();
+          },
+        });
+      },
     },
     input,
   );

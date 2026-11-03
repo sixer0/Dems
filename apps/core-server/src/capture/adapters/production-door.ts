@@ -34,7 +34,16 @@
  *   - a refusal is a code (`ProductionDoorRefusal`) with a fixed sentence: no part of the message,
  *     of the argument list or of the system's error text is in it;
  *   - every child is waited for (`ended` settles when it has ended and its streams are closed), a
- *     child of a refused start is killed, and every live child is killed when the server exits.
+ *     child of a refused start is killed, and every live child is killed when the server exits;
+ *   - TWO CHILDREN AS ONE PIPELINE (`startProductionPipeline`, task 4 row 89; decisions D51, D53: the
+ *     live preview of a camera). The second child's standard input IS the first child's standard
+ *     output: the kernel's pipe joins them and no byte of it passes through this process (the door's
+ *     end of that pipe is closed as soon as the second child holds it). Each child is started by the
+ *     same one start below, under every rule above (absolute path, closed environment, core-file
+ *     limit 0, its own process group on ask, killed at the server's exit); the first takes the start
+ *     message, the second none. The end of either child is the order to the other: its standard
+ *     input is ended and it is sent SIGTERM. Standard error of both is read as for one child;
+ *     standard output of the second is handed to its `onOutput`.
  *
  * It knows nothing about cameras or sound cards: which program, which arguments, what a line of
  * output or an exit means, and the bound within which a stopped child must have ended are the
@@ -42,6 +51,7 @@
  */
 import { spawn } from 'node:child_process';
 import { isAbsolute } from 'node:path';
+import type { Readable } from 'node:stream';
 import type { CaptureTimers } from '../types';
 import { blankCredentialLocators, startMessageBytes, type StartMessage } from './credential';
 
@@ -249,6 +259,53 @@ export interface ProductionProcess {
 
 /** Starts a production program. Used through this type, so that a test passes a door that starts nothing. */
 export type ProductionDoor = (options: ProductionProcessOptions) => ProductionProcess;
+
+/**
+ * Row 89: the FIRST child of a pipeline. Its standard output is the second child's standard input, so
+ * it is never read here and has no `onOutput`.
+ */
+export type ProductionPipelineFirst = Omit<ProductionProcessOptions, 'onOutput'>;
+/** Row 89: the SECOND child of a pipeline. Its standard input is the first child's output: it takes no start message. */
+export type ProductionPipelineSecond = Omit<ProductionProcessOptions, 'message'>;
+
+/** Row 89: two production children joined by one pipe. */
+export interface ProductionPipeline {
+  /** The first child: `output` of its exit is always empty (its standard output is not read here). */
+  readonly first: ProductionProcess;
+  /** The second child: its standard output goes to its `onOutput`. */
+  readonly second: ProductionProcess;
+  /** Resolves when both have started (the first has taken its start message). Rejects with the refusal of the first that was refused; both are then ended. */
+  readonly started: Promise<void>;
+  /** Settles once, when BOTH children have ended and their streams are closed. Never rejects. */
+  readonly ended: Promise<{ readonly first: ProductionExit; readonly second: ProductionExit }>;
+  /** True until both have ended. */
+  alive(): boolean;
+  /** Ends the first child's standard input: its order to stop (the second then ends with it). */
+  endInput(): void;
+  /** Signals both children. */
+  kill(signal: 'SIGTERM' | 'SIGKILL'): void;
+}
+
+/** Starts a pipeline. Used through this type, so that a test passes one that starts nothing. */
+export type ProductionPipelineDoor = (first: ProductionPipelineFirst, second: ProductionPipelineSecond) => ProductionPipeline;
+
+/**
+ * How one child's standard input and output are joined (row 89). `'pipe'`: the door holds the input,
+ * writes the start message to it and keeps it open, and reads the output. A stream: the standard output
+ * of the first child of a pipeline, handed to this child as its standard input; the door writes nothing to
+ * it. `readOutput` false: the child's standard output is not read here, it is the next child's input.
+ */
+interface Plumbing {
+  readonly input: 'pipe' | Readable;
+  readonly readOutput: boolean;
+}
+const ALONE: Plumbing = Object.freeze({ input: 'pipe', readOutput: true });
+
+/** What the one start answers inside this file: the process, and its standard output when the door did not read it (the next child's input). */
+interface Started {
+  readonly process: ProductionProcess;
+  readonly unread: Readable | null;
+}
 
 /** `capBytes`: the call's cap, already held to 1 byte to `PRODUCTION_OUTPUT_CAP_MAX_BYTES` (row N5b). */
 function boundedText(capBytes: number): { push(chunk: Buffer): void; text(): string } {
@@ -473,14 +530,20 @@ function refused(code: ProductionDoorRefusal): ProductionProcess {
   };
 }
 
-export const startProductionProcess: ProductionDoor = (options) => {
-  if (!isAbsolute(options.command)) return refused(ProductionDoorRefusal.PROGRAM_NOT_ABSOLUTE);
+export const startProductionProcess: ProductionDoor = (options) => startChild(options, ALONE).process;
+
+/** A start that was refused before a process existed. */
+const notStarted = (code: ProductionDoorRefusal): Started => ({ process: refused(code), unread: null });
+
+/** THE ONE START of a production child (one process, one `spawn`); `plumbing` joins its standard input and output (row 89). */
+function startChild(options: ProductionProcessOptions, plumbing: Plumbing): Started {
+  if (!isAbsolute(options.command)) return notStarted(ProductionDoorRefusal.PROGRAM_NOT_ABSOLUTE);
   const environment = environmentOf(options.env);
-  if (environment === null) return refused(ProductionDoorRefusal.ENVIRONMENT_NOT_ALLOWED);
-  if ((options.coreFileLimit ?? coreFileLimitOfThisProcess)() !== 0) return refused(ProductionDoorRefusal.CORE_FILE_LIMIT_NOT_ZERO);
+  if (environment === null) return notStarted(ProductionDoorRefusal.ENVIRONMENT_NOT_ALLOWED);
+  if ((options.coreFileLimit ?? coreFileLimitOfThisProcess)() !== 0) return notStarted(ProductionDoorRefusal.CORE_FILE_LIMIT_NOT_ZERO);
   // Row N5b: the call's cap of each output stream, the default unless named; a cap outside 1 byte to 1 MiB starts nothing.
   const capBytes = options.outputCapBytes ?? PRODUCTION_OUTPUT_CAP_BYTES;
-  if (!Number.isSafeInteger(capBytes) || capBytes < 1 || capBytes > PRODUCTION_OUTPUT_CAP_MAX_BYTES) return refused(ProductionDoorRefusal.OUTPUT_CAP_NOT_ALLOWED);
+  if (!Number.isSafeInteger(capBytes) || capBytes < 1 || capBytes > PRODUCTION_OUTPUT_CAP_MAX_BYTES) return notStarted(ProductionDoorRefusal.OUTPUT_CAP_NOT_ALLOWED);
   // Row N5b: a group of its own only when asked for with `true`; anything else is the door of before.
   const inOwnGroup = options.processGroup === true;
 
@@ -490,7 +553,7 @@ export const startProductionProcess: ProductionDoor = (options) => {
     try {
       startBytes = startMessageBytes(options.message);
     } catch {
-      return refused(ProductionDoorRefusal.START_MESSAGE_INVALID);
+      return notStarted(ProductionDoorRefusal.START_MESSAGE_INVALID);
     }
   }
 
@@ -502,11 +565,12 @@ export const startProductionProcess: ProductionDoor = (options) => {
       // Row N5b: `true` only on the caller's ask - the child then leads a new session and its own process group (ID = its process ID).
       detached: inOwnGroup,
       windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      // Row 89: standard input is the door's pipe, or the first child's standard output in a pipeline (`plumbing`).
+      stdio: [plumbing.input, 'pipe', 'pipe'],
     });
   } catch {
     startBytes?.fill(0);
-    return refused(ProductionDoorRefusal.PROGRAM_NOT_STARTED);
+    return notStarted(ProductionDoorRefusal.PROGRAM_NOT_STARTED);
   }
   const running = child;
   const input = running.stdin;
@@ -552,14 +616,17 @@ export const startProductionProcess: ProductionDoor = (options) => {
       // The reading of the stream never depends on the observer's side.
     }
   });
-  running.stdout?.on('data', (chunk: Buffer) => {
-    output.push(chunk);
-    try {
-      options.onOutput?.(chunk);
-    } catch {
-      // An observer never stops the reading of the stream.
-    }
-  });
+  // Row 89: the standard output of the first child of a pipeline is the second's input: it is not read here.
+  if (plumbing.readOutput) {
+    running.stdout?.on('data', (chunk: Buffer) => {
+      output.push(chunk);
+      try {
+        options.onOutput?.(chunk);
+      } catch {
+        // An observer never stops the reading of the stream.
+      }
+    });
+  }
   running.stderr?.on('error', () => {});
   running.stdout?.on('error', () => {});
 
@@ -618,16 +685,20 @@ export const startProductionProcess: ProductionDoor = (options) => {
 
   // A write to a child that is gone fails here, also long after the start: it is never thrown.
   input?.on('error', () => settle(ProductionDoorRefusal.START_MESSAGE_NOT_TAKEN));
-  if (spawnFailed || input === null) {
+  // Row 89: the second child of a pipeline has no input of the door (it is the first child's output) and no message.
+  if (spawnFailed || (input === null && plumbing.input === 'pipe')) {
     settle(ProductionDoorRefusal.PROGRAM_NOT_STARTED);
   } else if (startBytes === null) {
     settle(null);
+  } else if (input === null) {
+    // Row 89: a child without an input of the door (the second of a pipeline) cannot take a message: refused, the bytes cleared.
+    settle(ProductionDoorRefusal.START_MESSAGE_NOT_TAKEN);
   } else {
     cancelBound = options.timers.after(options.writeBoundMs ?? START_MESSAGE_WRITE_BOUND_MS, () => settle(ProductionDoorRefusal.START_MESSAGE_TIMEOUT));
     input.write(startBytes, (error) => settle(error ? ProductionDoorRefusal.START_MESSAGE_NOT_TAKEN : null));
   }
 
-  return {
+  const handle: ProductionProcess = {
     get pid() {
       return running.pid ?? null;
     },
@@ -638,5 +709,47 @@ export const startProductionProcess: ProductionDoor = (options) => {
       if (!over && input !== null && !input.destroyed) input.end();
     },
     kill: signalChild,
+  };
+  return { process: handle, unread: plumbing.readOutput ? null : running.stdout };
+}
+
+/**
+ * Starts TWO production programs as one pipeline (task 4 row 89; the module text above): the second
+ * child's standard input is the first child's standard output, joined by the kernel. Both are started by
+ * the one start of this file. A first child that is refused starts no second; a second that is refused
+ * ends the first. The end of either is the order to the other (its input ended, SIGTERM).
+ */
+export const startProductionPipeline: ProductionPipelineDoor = (firstOptions, secondOptions) => {
+  const head = startChild(firstOptions, { input: 'pipe', readOutput: false });
+  const joint = head.unread;
+  const tail = joint === null || head.process.pid === null ? notStarted(ProductionDoorRefusal.PROGRAM_NOT_STARTED) : startChild({ ...secondOptions, message: null }, { input: joint, readOutput: true });
+  // The second child holds the pipe now (or never will): the door's end of it is closed, so that the
+  // first child's write fails once the second is gone and the second sees the end once the first is gone.
+  joint?.destroy();
+  const first = head.process;
+  const second = tail.process;
+  // The end of one is the order to the other. A child that is already over takes no signal (the door's own rule).
+  void first.ended.then(() => {
+    second.endInput();
+    second.kill('SIGTERM');
+  });
+  void second.ended.then(() => {
+    first.endInput();
+    first.kill('SIGTERM');
+  });
+  const started = Promise.all([first.started, second.started]).then(() => undefined);
+  // A caller that reads `ended` only must not turn a refusal into an unhandled rejection; the caller of `started` still sees it.
+  started.catch(() => {});
+  return {
+    first,
+    second,
+    started,
+    ended: Promise.all([first.ended, second.ended]).then(([firstExit, secondExit]) => ({ first: firstExit, second: secondExit })),
+    alive: () => first.alive() || second.alive(),
+    endInput: () => first.endInput(),
+    kill(signal) {
+      first.kill(signal);
+      second.kill(signal);
+    },
   };
 };

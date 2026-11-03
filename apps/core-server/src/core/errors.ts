@@ -79,6 +79,12 @@ export const CoreErrorCode = {
   AUDIT_SECRET_SHAPED_VALUE: 'AUDIT_SECRET_SHAPED_VALUE',
   AUDIT_ROW_INVALID: 'AUDIT_ROW_INVALID',
   AUDIT_ROW_HASH_MISMATCH: 'AUDIT_ROW_HASH_MISMATCH',
+  // The operator purge (migration 0036): a function that answered with something other than what
+  // the unit counted and announced. Both are the unit's own refusal to commit an erasure it cannot
+  // account for, so they are engine faults rather than anything an administrator can cause.
+  AUDIT_PURGE_ANSWER_INVALID: 'AUDIT_PURGE_ANSWER_INVALID',
+  AUDIT_PURGE_FORECAST_MISMATCH: 'AUDIT_PURGE_FORECAST_MISMATCH',
+  AUDIT_RESEAL_ANSWER_INVALID: 'AUDIT_RESEAL_ANSWER_INVALID',
   // The event writer.
   EVENT_ENTRY_INVALID: 'EVENT_ENTRY_INVALID',
   EVENT_TYPE_UNKNOWN: 'EVENT_TYPE_UNKNOWN',

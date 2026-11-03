@@ -3,6 +3,8 @@
  * §10.1 PG-10, §10.2). Live mode only. Plan row W54 wrote the words of the page stub; the page row
  * (W77) adds the key families of §10.2: `summary`, `users.*`, `actions.*`, `roleDialog.*`,
  * `disableDialog.*`, `enableDialog.*`, `lastAdmin`, `matrix.*`, `toasts.*` and the other `states.*`.
+ * The vendor-only account actions (RB-9 as amended 02-11-2026) add `fields.*`, `createDialog.*`,
+ * `editDialog.*` and `deleteDialog.*`, and the `toasts.*` of create, update and delete.
  * Role labels are `common.roles.*`; permission labels are `securityAudit.rbac.permissions.*`, which
  * holds all twelve (the three newer ones were added there and in `common.rbac.permissions.*` by
  * W16). The navigation label is `shell.nav.usersRoles`.
@@ -47,6 +49,10 @@ export const usersRoles = {
     changeRole: 'Change role…',
     disable: 'Disable user…',
     enable: 'Enable user',
+    /** RB-9 as amended: these three are offered to the vendor `root` account only. */
+    createUser: 'Add user',
+    edit: 'Edit profile…',
+    delete: 'Delete user…',
   },
 
   roleDialog: {
@@ -83,6 +89,69 @@ export const usersRoles = {
     confirm: 'Enable user',
   },
 
+  /**
+   * The field words of the create and edit dialogs (RB-9 as amended: the vendor `root` account
+   * alone). The bounds repeat the contract's (`OPERATOR_NAME_MAX_LENGTH`,
+   * `OPERATOR_INITIALS_MAX_LENGTH`, `OPERATOR_USERNAME_PATTERN`, the 24 of `rank`) and are passed as
+   * `{{max}}` by the dialogs, so a page never carries a number of its own.
+   */
+  fields: {
+    usernameLabel: 'Username',
+    usernameHint: 'The sign-in name, unique. Lowercase letters, digits, dot, underscore or dash; at most {{max}} characters.',
+    nameLabel: 'Full name',
+    nameHint: 'As written on the card; 1 to {{max}} characters.',
+    displayNameLabel: 'Display name',
+    displayNameHint: 'Shown to clients. Left empty, the full name is used.',
+    displayNameKeepHint: 'Shown to clients. Left empty, the current name is kept.',
+    initialsLabel: 'Initials',
+    initialsHint: 'Shown in the avatar; 1 to {{max}} characters.',
+    rankLabel: 'Rank (optional)',
+    rankHint: 'For example AKP; at most {{max}} characters. Cleared here, the operator has no rank.',
+    roleLabel: 'Role',
+    passwordLabel: 'Initial password (optional)',
+    passwordHint: 'Left empty, the account exists but cannot sign in until a password is set.',
+    reasonLabel: 'Reason (optional)',
+    reasonHint: 'Kept in the audit log. At most {{max}} characters.',
+    errors: {
+      required: 'Enter {{label}}.',
+      username: 'A username is 1 to {{max}} characters: lowercase letters, digits, dot, underscore or dash, starting with a letter or a digit.',
+      name: '{{label}} is 1 to {{max}} characters.',
+      initials: 'The initials are 1 to {{max}} characters.',
+      rank: 'The rank is at most {{max}} characters.',
+      usernameTaken: 'An operator already signs in with this username.',
+      confirmMismatch: 'This is not the username of the account.',
+    },
+  },
+
+  createDialog: {
+    title: 'Add user',
+    intro: 'The account is created on the Core server and appears in the list at once.',
+    confirm: 'Create user',
+    invalid: 'The Core server did not accept this account. Check the values and try again.',
+  },
+
+  editDialog: {
+    title: 'Edit profile',
+    target: '{{name}} ({{username}})',
+    /** The role is `assignUserRole`, the enabled state is enable and disable: neither is offered here. */
+    note: 'The role and the enabled state are changed from their own actions. A password is never carried here.',
+    confirm: 'Save changes',
+    untouched: 'Change at least one field to save.',
+    invalid: 'The Core server did not accept this change. Check the values and try again.',
+  },
+
+  deleteDialog: {
+    title: 'Delete user',
+    body: 'Delete {{name}} ({{username}})? The account and its password are removed and their open sessions end. The audit rows this operator wrote stay.',
+    ownRow: 'You are deleting your own account. You will be signed out.',
+    confirmLabel: 'Type the username to confirm',
+    confirmHint: 'Must be exactly {{username}}.',
+    confirm: 'Delete user',
+    invalid: 'The Core server did not accept this delete. Nothing was removed.',
+    /** 409 `INVALID_STATE`: the account is still named by a row the database points at. */
+    invalidState: 'This account is still named by an open session or a live custody row, so it cannot be removed. Nothing was deleted.',
+  },
+
   /** Shown as the hint on the options and menu item, and as the inline Alert of the server's 409 `LAST_ADMIN`. */
   lastAdmin: 'At least one enabled user must keep user administration.',
 
@@ -102,6 +171,12 @@ export const usersRoles = {
     disabledBody: 'Their sessions have ended.',
     enabled: '{{name}} is enabled',
     enabledBody: 'They can sign in again.',
+    created: '{{name}} is created',
+    createdWithPassword: 'They can sign in with the initial password.',
+    createdNoPassword: 'The account cannot sign in until a password is set.',
+    updated: 'The profile of {{name}} is saved',
+    deleted: '{{username}} is deleted',
+    deletedBody: 'Their open sessions ended and the password was removed.',
     notFound: 'This operator no longer exists on the Core server.',
     notFoundBody: 'The list has been read again.',
     failed: 'The change was not carried out.',

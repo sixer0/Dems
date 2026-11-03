@@ -104,7 +104,9 @@ describe('the registry: operations 90 to 92 as C3 §2.5 writes them', () => {
       [92, 'testSttConnection', 'post', '/api/v1/transcription/config/test', 'Device', 'simulated', 'CAPTURE_CONFIG', CoreApiAuditNone.PARITY, 'ACCESS_DENIED'],
     ]);
     // They are entries 90 to 92 of the table, in number order (the five of the camera search, 93-97, follow: row 132).
-    expect(CORE_API_OPERATIONS.slice(89, 92).map((operation) => operation.operationId)).toEqual(['getSttConfig', 'updateSttConfig', 'testSttConnection']);
+    // REVISED 2026-11-02 (principal): RB-9 as amended inserts createUser, updateUser and deleteUser
+    // in area 2, so every table entry from `disableUser` on sits three places further.
+    expect(CORE_API_OPERATIONS.slice(92, 95).map((operation) => operation.operationId)).toEqual(['getSttConfig', 'updateSttConfig', 'testSttConnection']);
   });
 
   it('the documented statuses are those of C3 §2.5; no operation documents a status of its own for the credential', () => {
@@ -120,7 +122,7 @@ describe('the registry: operations 90 to 92 as C3 §2.5 writes them', () => {
     expect(AuditType.STT_CONFIG_CHANGED).toBe('STT_CONFIG_CHANGED');
     expect(AUDIT_TYPE_CATEGORY.STT_CONFIG_CHANGED).toBe('DEVICE');
     const holders = Object.values(OperatorRole).filter((role) => (ROLE_PERMISSIONS[role] as readonly string[]).includes(Permission.CAPTURE_CONFIG));
-    expect(holders.sort()).toEqual(['SUPERVISOR', 'TECHNICIAN']);
+    expect(holders.sort()).toEqual(['TECHNICIAN']);
   });
 });
 
@@ -311,8 +313,9 @@ describe('the model identifier: one shared pattern, used by operation 91', () =>
     // Task 4 row V3: the one schema and the one operation of the stored-credential connection test, 183 -> 184 and 107 -> 108.
     // Task 4 blueprint row 116: the five schemas and the two operations of the installation acceptance, 184 -> 189 and 108 -> 110.
     // Task 4 row RD2: the two schemas and the one operation of the retirement of a device, 189 -> 191 and 110 -> 111.
-    expect(Object.keys(document.components.schemas)).toHaveLength(191);
-    expect(CORE_API_OPERATIONS).toHaveLength(111);
+    // Task 4 row D53: the two schemas and the two operations of the live preview and the idle meters, 191 -> 193 and 111 -> 113.
+    expect(Object.keys(document.components.schemas)).toHaveLength(193);
+    expect(CORE_API_OPERATIONS).toHaveLength(113);
   });
 });
 

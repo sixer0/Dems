@@ -32,6 +32,13 @@
  *      names the signed path it serves) - EVIDENCE_EXPORT, with its conditions and its denial -
  *      at its own method and path. A registry without operation 87 gives the route no rule.
  *
+ *   5. it is the live camera preview route, `GET /preview/:token` (`CAMERA_PREVIEW_ROUTE_URL`): the
+ *      registry-external route that streams the live preview of one camera (decisions D51, D53).
+ *      Like entries 3 and 4 it has no rule of its own making: it gets THE RULE OF OPERATION 112
+ *      (`createCameraPreviewSession`, the operation that issues the token it serves) - ANY-OF
+ *      SESSION_START, CAPTURE_CONFIG, DEVICE_MANAGE, with its denial - at its own method and path. A
+ *      registry without operation 112 gives the route no rule.
+ *
  * Every other route has no rule: `resolve` answers with a problem instead, the boot check stops
  * the start with it, and a request that reaches such a route all the same is refused.
  *
@@ -375,6 +382,23 @@ export function evidenceExportDownloadRuleOf(job: AccessRule | AccessRuleProblem
   return Object.freeze({ ...job, operationId: EVIDENCE_EXPORT_DOWNLOAD_ID, method: 'GET', url: EVIDENCE_EXPORT_DOWNLOAD_URL, idPattern: null });
 }
 
+/** `operationId` of the rule of the live camera preview route in log lines and denial rows. It is no registry operation. */
+export const CAMERA_PREVIEW_STREAM_ID = 'cameraPreviewStream';
+/** The live camera preview route as the router holds it (the last path segment is the preview token). */
+export const CAMERA_PREVIEW_ROUTE_URL = '/preview/:token';
+/** The registry operation whose rule the preview route gets: the one that issues the token (decisions D51, D53). */
+export const CAMERA_PREVIEW_SESSION_OPERATION = 'createCameraPreviewSession' satisfies RegistryOperationId;
+
+/**
+ * The rule of the live camera preview route, from the rule of operation 112 as this registry
+ * compiled it: everything of that rule but its name, its method, its path and its path parameter.
+ * Null when the registry has no usable rule for operation 112: the route then has no rule at all.
+ */
+export function cameraPreviewStreamRuleOf(session: AccessRule | AccessRuleProblem | undefined): AccessRule | null {
+  if (session === undefined || !isAccessRule(session) || session.denial === null) return null;
+  return Object.freeze({ ...session, operationId: CAMERA_PREVIEW_STREAM_ID, method: 'GET', url: CAMERA_PREVIEW_ROUTE_URL, idPattern: null });
+}
+
 export function isAccessRule(resolved: AccessRule | AccessRuleProblem): resolved is AccessRule {
   return 'kind' in resolved;
 }
@@ -431,6 +455,9 @@ export function createRuleBook(operations: readonly CoreApiOperation[] = CORE_AP
   // Registry-external entry 4 of the header (ruling D178): made once, from this registry's operation 87.
   const exportDownload = evidenceExportDownloadRuleOf(byId.get(EVIDENCE_EXPORT_JOB_OPERATION));
   const isExportDownload = (method: string, url: string): boolean => exportDownload !== null && method.toUpperCase() === exportDownload.method && url === exportDownload.url;
+  // Registry-external entry 5 of the header (decisions D51, D53): made once, from this registry's operation 112.
+  const previewStream = cameraPreviewStreamRuleOf(byId.get(CAMERA_PREVIEW_SESSION_OPERATION));
+  const isPreviewStream = (method: string, url: string): boolean => previewStream !== null && method.toUpperCase() === previewStream.method && url === previewStream.url;
 
   return {
     operationIds: operations.map((operation) => operation.operationId),
@@ -439,6 +466,7 @@ export function createRuleBook(operations: readonly CoreApiOperation[] = CORE_AP
       if (isChannel(method, url)) return REALTIME_CHANNEL_RULE;
       if (mediaStream !== null && isMediaStream(method, url)) return mediaStream;
       if (exportDownload !== null && isExportDownload(method, url)) return exportDownload;
+      if (previewStream !== null && isPreviewStream(method, url)) return previewStream;
       const name = routeName(method, url);
       return byRoute.get(name) ?? withoutRules(name);
     },
@@ -448,6 +476,7 @@ export function createRuleBook(operations: readonly CoreApiOperation[] = CORE_AP
       if (isChannel(route.method, route.url)) return REALTIME_CHANNEL_RULE;
       if (mediaStream !== null && isMediaStream(route.method, route.url)) return mediaStream;
       if (exportDownload !== null && isExportDownload(route.method, route.url)) return exportDownload;
+      if (previewStream !== null && isPreviewStream(route.method, route.url)) return previewStream;
       const compiled = byRoute.get(name);
       if (compiled === undefined) {
         const claimed = route.operationId === undefined ? undefined : byId.get(route.operationId);

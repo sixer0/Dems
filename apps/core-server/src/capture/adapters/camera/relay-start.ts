@@ -27,11 +27,23 @@
  * established push, and since row 43 the loss of the camera leg inside a session and its re-open.
  * The reader judges the FORM of one line; which report may follow which, and whose attempt is in
  * force, is the adapter's (`onvif-relay.ts`).
+ *
+ * THE PREVIEW (task 4 row 89; decisions D51, D53: the live picture of a camera in the web console,
+ * MJPEG of about 8 pictures a second, 640 wide). `startCameraPreview` starts the relay in PREVIEW
+ * MODE (relay.h "PREVIEW MODE": the members of a probe, no ingest address, the source address
+ * required) through the SAME start message as the two other modes - so the injection point keeps its
+ * one call - and joins its standard output, the camera's video as Annex-B units, to the standard input
+ * of the capture guard running FFmpeg with a FIXED argument list (`previewEncoderArguments`: literal
+ * words and the demuxer of a closed set of two codecs). The production door's pipeline does the
+ * joining: no byte of the video passes this process; what comes back is FFmpeg's `mpjpeg` stream
+ * (parts that begin `--ffmpeg`, each with its `Content-type: image/jpeg` and `Content-length`
+ * headers before one JPEG). The credential reaches only the relay, through its start message: the
+ * encoder is given no part of the message, no locator and no environment.
  */
 import type { CaptureTimers } from '../../types';
 import { credentialAtInjection, type SealedCredential, type StartMessage } from '../credential';
 import { CaptureAdapterError, CaptureAdapterRefusal } from '../errors';
-import type { ProductionDoor, ProductionProcess } from '../production-door';
+import type { ProductionDoor, ProductionExit, ProductionPipelineDoor, ProductionProcess } from '../production-door';
 import { isSourceAddress } from './stored-address';
 
 /** What a start of the relay needs. Nothing of it is kept after the call. */
@@ -98,8 +110,14 @@ export function startCameraProbe(start: CameraProbeStart): ProductionProcess {
   return launch(start, { mode: 'probe' });
 }
 
-/** The one start of the relay, for both modes: ONE call of the injection point, one door line. `mode`: the members a mode adds, in their place. */
+/** The one start of the relay by the door, for record and probe mode: one door line. `mode`: the members a mode adds, in their place. */
 function launch(start: CameraProbeStart, mode: Readonly<Record<string, string>>): ProductionProcess {
+  const message = startMessageOf(start, mode);
+  return start.door({ command: start.program, args: [], env: {}, message, timers: start.timers, onOutput: start.onOutput });
+}
+
+/** THE START MESSAGE of the relay, for every mode (row 89: also the preview): ONE call of the injection point. */
+function startMessageOf(start: Pick<CameraProbeStart, 'locator' | 'sealed' | 'attempt' | 'source'>, mode: Readonly<Record<string, string>>): StartMessage {
   // The member names and their order are the relay's contract: a closed set per mode, an unknown member is refused there.
   // `source` (row 143b) stands before the access when it is stated: the address the relay's camera socket is given before it connects.
   const message: StartMessage = {
@@ -109,7 +127,161 @@ function launch(start: CameraProbeStart, mode: Readonly<Record<string, string>>)
     ...(start.source === undefined ? {} : { source: start.source }),
     access: credentialAtInjection(start.locator, start.sealed),
   };
-  return start.door({ command: start.program, args: [], env: {}, message, timers: start.timers, onOutput: start.onOutput });
+  return message;
+}
+
+/** The codecs a preview decodes (the relay's two: `codec` of its probe line). A closed set: another word starts nothing. */
+export const CAMERA_PREVIEW_CODECS = Object.freeze(['H264', 'HEVC'] as const);
+export type CameraPreviewCodec = (typeof CAMERA_PREVIEW_CODECS)[number];
+
+/** The FFmpeg demuxer of each codec: the elementary stream the relay writes. */
+const PREVIEW_DEMUXER: Readonly<Record<CameraPreviewCodec, 'h264' | 'hevc'>> = Object.freeze({ H264: 'h264', HEVC: 'hevc' });
+
+/** The pictures of a preview: about 8 a second, 640 wide (the height kept in proportion, even), JPEG quality 7, as `mpjpeg` parts. */
+export const PREVIEW_ENCODER_TAIL = Object.freeze(['-an', '-vf', 'fps=8,scale=640:-2', '-q:v', '7', '-f', 'mpjpeg', 'pipe:1'] as const);
+
+/**
+ * The guard's WHOLE argument list for the encoder of a preview: the FFmpeg program, then literal
+ * words only - the one word chosen by the codec comes from the closed table above. No address, no
+ * path but the program's, nothing of the start message.
+ */
+export function previewEncoderArguments(ffmpeg: string, codec: CameraPreviewCodec): readonly string[] {
+  return Object.freeze([ffmpeg, '-hide_banner', '-nostdin', '-loglevel', 'error', '-f', PREVIEW_DEMUXER[codec], '-i', 'pipe:0', ...PREVIEW_ENCODER_TAIL]);
+}
+
+/** What a preview needs. Nothing of it is kept after the call but the handle's own state. */
+export interface CameraPreviewStart {
+  /** The production door's pipeline (`startProductionPipeline`), handed in by the composition. */
+  readonly pipelineDoor: ProductionPipelineDoor;
+  /** The relay program: an absolute path. */
+  readonly program: string;
+  /** The capture guard (configuration key DEMS_CAPTURE_GUARD): an absolute path. It starts FFmpeg and ends it with its input. */
+  readonly guard: string;
+  /** The FFmpeg program: an absolute path. */
+  readonly ffmpeg: string;
+  readonly timers: CaptureTimers;
+  readonly locator: string;
+  readonly sealed: SealedCredential;
+  readonly attempt: number;
+  /** REQUIRED: the source address the judgement of the stored camera names (row 143b), as in a record start. */
+  readonly source: string;
+  /** The camera's codec, as its probe stated it. */
+  readonly codec: CameraPreviewCodec;
+}
+
+/** Why a preview ended. */
+export const CameraPreviewEndReason = {
+  /** `stop()` was called. */
+  STOPPED: 'STOPPED',
+  /** The door refused the start (`started` rejected with the door's code); nothing ran, or what ran was ended. */
+  START_REFUSED: 'START_REFUSED',
+  /** The relay ended first, by itself: the camera leg ended (`code` is the relay's exit code: 20 unreachable, 22 not Digest, 23 refused, 31 stalled, 32 lost, ...). */
+  RELAY_ENDED: 'RELAY_ENDED',
+  /** The encoder (the guard and FFmpeg) ended first, by itself (`code` is the guard's exit code). */
+  ENCODER_ENDED: 'ENCODER_ENDED',
+} as const;
+export type CameraPreviewEndReason = (typeof CameraPreviewEndReason)[keyof typeof CameraPreviewEndReason];
+
+export interface CameraPreviewExit {
+  /** The exit code of the child that ended first (the relay's for STOPPED, which is 0 on a clean stop); null when it was ended by a signal or never started. */
+  readonly code: number | null;
+  readonly reason: CameraPreviewEndReason;
+  /** Both exits as the door saw them: codes and signals only are meant to be read (the bounded heads of standard error are for classification and are never logged). */
+  readonly relay: ProductionExit;
+  readonly encoder: ProductionExit;
+}
+
+/** The handle of one running preview. */
+export interface CameraPreview {
+  /** The relay's process ID, or null when it never started. */
+  readonly relayPid: number | null;
+  /** The guard's process ID (the leader of the encoder's process group), or null. */
+  readonly encoderPid: number | null;
+  /** Resolves when the relay took its start message and the encoder started; rejects with the door's `ProductionDoorError`. */
+  readonly started: Promise<void>;
+  /** Adds a listener of the MJPEG bytes (`mpjpeg` parts, chunked as the pipe gave them). Returns its removal. A listener must not throw; one that does is dropped from nothing and changes nothing. */
+  onChunk(listener: (chunk: Buffer) => void): () => void;
+  /** Ends the preview: the relay's order to stop, then after `PREVIEW_STOP_BOUND_MS` a SIGKILL of both. Resolves when both have ended. Idempotent. */
+  stop(): Promise<void>;
+  /** Settles once, when both have ended. Never rejects. */
+  readonly exited: Promise<CameraPreviewExit>;
+}
+
+/** From the order to stop to the SIGKILL of what is left. */
+export const PREVIEW_STOP_BOUND_MS = 3_000;
+
+/**
+ * Starts the live preview of one stored camera. Throws `START_MESSAGE_INVALID` before anything is
+ * started for a source that is no source address and a codec outside the closed set, and
+ * `CAPTURE_LOCATOR_INVALID` for a locator the injection point refuses; every refusal of the door
+ * arrives through `started`.
+ */
+export function startCameraPreview(start: CameraPreviewStart): CameraPreview {
+  if (!isSourceAddress(start.source)) throw new CaptureAdapterError(CaptureAdapterRefusal.START_MESSAGE_INVALID);
+  if (!CAMERA_PREVIEW_CODECS.some((codec) => codec === start.codec)) throw new CaptureAdapterError(CaptureAdapterRefusal.START_MESSAGE_INVALID);
+  const listeners = new Set<(chunk: Buffer) => void>();
+  const deliver = (chunk: Buffer): void => {
+    for (const listener of listeners) {
+      try {
+        listener(chunk);
+      } catch {
+        // A listener never stops the stream or the other listeners.
+      }
+    }
+  };
+  const message = startMessageOf(start, { mode: 'preview' });
+  const running = start.pipelineDoor(
+    { command: start.program, args: [], env: {}, message, timers: start.timers },
+    { command: start.guard, args: previewEncoderArguments(start.ffmpeg, start.codec), env: {}, timers: start.timers, onOutput: deliver, processGroup: true },
+  );
+  let stopAsked = false;
+  /** Which child ended first, and whether the stop had been asked by then: fixed at the first end. */
+  let firstEnd: { readonly who: 'relay' | 'encoder'; readonly stopped: boolean } | null = null;
+  void running.first.ended.then(() => {
+    firstEnd ??= { who: 'relay', stopped: stopAsked };
+  });
+  void running.second.ended.then(() => {
+    firstEnd ??= { who: 'encoder', stopped: stopAsked };
+  });
+  const startedWell = running.started.then(
+    () => true,
+    () => false,
+  );
+  const exited: Promise<CameraPreviewExit> = Promise.all([running.ended, startedWell]).then(([{ first, second }, wasStarted]) => {
+    listeners.clear();
+    const reason = !wasStarted
+      ? CameraPreviewEndReason.START_REFUSED
+      : firstEnd === null || firstEnd.stopped
+        ? CameraPreviewEndReason.STOPPED
+        : firstEnd.who === 'encoder'
+          ? CameraPreviewEndReason.ENCODER_ENDED
+          : CameraPreviewEndReason.RELAY_ENDED;
+    const code = reason === CameraPreviewEndReason.ENCODER_ENDED ? second.exitCode : first.exitCode;
+    return Object.freeze({ code, reason, relay: first, encoder: second });
+  });
+  let stopping: Promise<void> | null = null;
+  return {
+    relayPid: running.first.pid,
+    encoderPid: running.second.pid,
+    started: running.started,
+    onChunk(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    stop() {
+      if (stopping !== null) return stopping;
+      stopAsked = true;
+      running.endInput();
+      const cancel = start.timers.after(PREVIEW_STOP_BOUND_MS, () => running.kill('SIGKILL'));
+      stopping = exited.then(() => {
+        cancel();
+      });
+      return stopping;
+    },
+    exited,
+  };
 }
 
 /** The longest report line this file reads. A longer line is dropped whole, to its line feed. */

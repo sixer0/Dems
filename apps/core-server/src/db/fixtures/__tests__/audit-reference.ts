@@ -286,10 +286,12 @@ export const MODULE_WRITERS: Readonly<Partial<Record<AuditType, (row: FixtureAud
 // ── The administration module: no builder ──────────────────────────────────────────────────────
 
 const ADMINISTRATION_SOURCE = resolve(dirname(fileURLToPath(import.meta.url)), '../../../modules/admin/changes.ts');
-export const ADMINISTRATION_TYPES = ['ROLE_CHANGED', 'USER_DISABLED', 'USER_ENABLED'] as const satisfies readonly AuditType[];
+// REVISED 2026-11-02 (principal): RB-9 amended — the module now writes six rows inline, the three
+// older ones plus USER_CREATED, USER_UPDATED and USER_DELETED of operations 15 to 17.
+export const ADMINISTRATION_TYPES = ['ROLE_CHANGED', 'USER_DISABLED', 'USER_ENABLED', 'USER_CREATED', 'USER_UPDATED', 'USER_DELETED'] as const satisfies readonly AuditType[];
 
 /**
- * The severity the administration module gives each of its three rows. It builds them inside its
+ * The severity the administration module gives each of its rows. It builds them inside its
  * unit of work, not in a pure function, so the severity is read from its source: the one entry
  * that states the type, and the `severity` member of that entry (none: the writer's default).
  * A source that no longer has that form is refused, so that a change there is noticed here.

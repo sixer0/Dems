@@ -64,6 +64,7 @@ import { CAPTURE_AUDIO_CARD_EXAMPLES } from './capture-audio-cards';
 import { CAPTURE_COMMISSIONING_EXAMPLES } from './capture-commissioning';
 import { INSTALLATION_ACCEPTANCE_EXAMPLES } from './installation-acceptance';
 import { CAPTURE_RETIRE_EXAMPLES } from './capture-retire';
+import { PANEL_EXAMPLES } from './lcd-panel';
 
 /** The instant every example describes: 2026-10-01 10:00:00 WIB (UTC+07:00). */
 export const OPENAPI_EXAMPLE_INSTANT = '2026-10-01T03:00:00.000Z';
@@ -590,4 +591,6 @@ export const CORE_API_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
   ...INSTALLATION_ACCEPTANCE_EXAMPLES,
   // Task 4 (row RD2; design 07): operation 111.
   ...CAPTURE_RETIRE_EXAMPLES,
+  // LCD bridge task: operation 114.
+  ...PANEL_EXAMPLES,
 };

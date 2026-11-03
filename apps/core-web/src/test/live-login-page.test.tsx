@@ -392,8 +392,10 @@ describe('the device strip (WS-5): what the Core server makes public', () => {
     expect(screen.getByTestId('login-core-link')).toHaveAttribute('data-state', 'online')
     expect(screen.getByTestId('login-core-mode')).toHaveTextContent('Live')
     expect(within(strip).getByTestId('login-clock')).toBeInTheDocument()
-    // Six cells, as on the simulator.
-    expect(strip.querySelectorAll('.dems-login-strip-cell')).toHaveLength(6)
+    // Seven cells since the LCD bridge task: the panel's own firmware word joined the public strip.
+    expect(strip.querySelectorAll('.dems-login-strip-cell')).toHaveLength(7)
+    await waitFor(() => expect(screen.getByTestId('login-panel-firmware')).toHaveTextContent('v3.8'))
+    expect(screen.getByTestId('login-panel-firmware')).toHaveAttribute('data-state', 'OK')
     expect(strip.textContent).not.toMatch(/DEMS-IR|Interview Room|GNSS|RTC|simulat/i)
     // The health answer came from the page's own origin (AC-C-37), and from nowhere else. Since
     // CPW1-3 it arrives on the bed's fake transport: the reader's global `fetch` reaches no real port.

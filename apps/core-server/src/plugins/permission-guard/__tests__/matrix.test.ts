@@ -30,9 +30,10 @@ const book = createRuleBook();
 const RULES: AccessRule[] = book.operationIds.map((operationId) => book.ruleOf(operationId)).filter(isAccessRule);
 
 describe('the stored matrix that passes', () => {
-  it('is the shared vocabulary with exactly the 23 grants of the shared role table, for the rules of all 111 operations', () => {
-    expect(SHARED_GRANTS).toHaveLength(23);
-    expect(RULES).toHaveLength(111); // task 4 row RD2: + operation 111
+  // REVISED 2026-11-02 (principal): RB-9 amended — the rules are those of the 117 operations of the registry.
+  it('is the shared vocabulary with exactly the 22 grants of the shared role table, for the rules of all 117 operations', () => {
+    expect(SHARED_GRANTS).toHaveLength(22);
+    expect(RULES).toHaveLength(117); // task 4 rows D53: + operations 112-113; LCD bridge task: + operation 114; RB-9 as amended: + 15, 16 and 17
     expect(checkStoredMatrix(matrix(), RULES)).toEqual([]);
     expect(firstGrantDifference(SHARED_GRANTS)).toBeNull();
   });
@@ -87,7 +88,7 @@ describe('decision D88: the stored grants must be exactly the shared role table'
         expect(firstGrantDifference([...SHARED_GRANTS, { role, permission }])).toEqual({ direction: 'extra', role, permission });
       }
     }
-    expect(extras).toBe(3 * 15 - 23);
+    expect(extras).toBe(3 * 15 - 22); // 22 grants since `0034`
   });
 
   it('a grant of a role or a permission the vocabulary does not hold is an extra one', () => {
@@ -117,7 +118,9 @@ describe('the other two checks, as before', () => {
       ...users.map((rule) => [AccessRuleErrorCode.PERMISSION_NOT_STORED, rule.operationId]),
       [AccessRuleErrorCode.STORED_MATRIX_MISMATCH, null],
     ]);
-    expect(users.map((rule) => rule.operationId)).toEqual(['listUsers', 'assignUserRole', 'enableUser', 'disableUser']);
+    // REVISED 2026-11-02 (principal): RB-9 amended — the three vendor-only operations are guarded by
+    // USER_ADMIN too (the narrowing to `root` is inside the unit), so they name the same permission.
+    expect(users.map((rule) => rule.operationId)).toEqual(['listUsers', 'assignUserRole', 'enableUser', 'disableUser', 'createUser', 'updateUser', 'deleteUser']);
   });
 
   it('a stored name the server does not know, and an empty matrix', () => {

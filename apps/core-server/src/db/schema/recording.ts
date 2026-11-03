@@ -66,12 +66,14 @@ export const sessionAudioIntervals = pgTable(
     })
       .onDelete('restrict')
       .onUpdate('no action'),
+    // Migration 0036 (principal, 2026-11-02): a reference to a record OF THE UNIT drops its
+    // attribution when the operator goes, instead of holding the record in place.
     foreignKey({
       name: 'session_audio_intervals_switched_by_fkey',
       columns: [t.switchedBy],
       foreignColumns: [operators.id],
     })
-      .onDelete('restrict')
+      .onDelete('set null')
       .onUpdate('no action'),
     check('session_audio_intervals_session_check', sessionId(t.sessionId)),
     check('session_audio_intervals_seq_check', sql`${t.seq} >= 1`),

@@ -1,0 +1,722 @@
+#!/usr/bin/env python3
+"""
+BACKEND DEMS-EDGE — N kanal rekam, satu panel ESP32 lewat USB.
+
+Kebenaran status ada di mesin rekam; backend hanya menjembatani dan menghitung
+kesehatan. Panel melihat AGREGAT (ada/tidak ada kanal yang merekam) + strip per-kanal.
+
+KANAL
+  Nama dari env DEMS_CH_NAMES (default "CH1,CH2,CH3,CH4"); id = 1..N.
+
+API (JSON; tanpa autentikasi — jangan dibuka ke jaringan)
+  GET  /                          halaman pantau (tabel per-kanal)
+  GET  /api/dems/status           semua kanal + agregat + health + statistik
+  POST /api/dems/status           {"channel":1,"rec":"start","file":"CH1_0845.wav"}
+                                  "channel" boleh 1..N, "CH1", daftar, atau "all"
+  GET|POST /api/dems/ch/<id>/status   bentuk pendek, id di path
+  POST /api/dems/ch/<id>/cam      {"connected":true|false}   kabar kehadiran kamera
+  GET  /api/dems/log              jejak kejadian (audit: waktu, kanal, aksi, sumber)
+  POST /api/dems/health           {"health":"warn|fail","note":"..."}; "auto"/"ok" = lepas
+  GET  /healthz                   ok|warn|fail (HTTP 503 saat fail) -> healthcheck Docker
+
+Field lain pada POST /status: "ups":"online|battery|fault", "clear_file":true,
+"lease":<detik> — lihat catatan Lease di bawah. "cam":true|false (kehadiran kamera).
+Kamera yang belum dilaporkan dianggap BELUM
+TERCOLOK (merah) — panel tidak pernah mengarang hijau.
+
+**Lease (TTL) untuk pemicu eksternal.** Karena yang mengirim status adalah sistem
+lain di mesin ini, kegagalan mereka tidak boleh membuat panel berbohong:
+`{"rec":"start","lease":120}` berarti "anggap REKAM sampai 120 detik ke depan,
+kecuali kau kabar lagi". Setiap POST start memperbarui jatuh tempo. Habis lease
+-> kanal jadi STOP sendiri dan tercatat sebagai `STOP_LEASE_HABIS`. Default dari
+env `DEMS_LEASE_S` (0 = tanpa jatuh tempo, untuk operator yang menekan manual).
+Kanal berstatus REKAM tanpa
+kamera terhitung gejala nyata: health turun ke WASPADA ("CHn rekam tanpa kamera").
+
+PANEL (USB /dev/ttyACM0; satu baris JSON + \n, hanya baris berawalan '{' = protokol)
+  alat -> backend : {"v":1,"req":"status","dev":"DEMS-EDGE","up":12345}
+  backend -> alat : {"v":2,"rec":"start","nrec":2,"n":4,"health":"ok","ups":"online",
+                     "ch":[{"c":1,"rec":"start","file":"CH1_0845.wav"}, ...],
+                     "satker":"DITRESKRIMUM POLDA METRO JAYA"}   # opsional, dari DEMS_SATKER
+"""
+import collections
+import glob
+import json, os, shutil, threading, time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import serial
+
+# Port serial: JANGAN bergantung pada indeks /dev/ttyACMx. Nomor itu berpindah setiap
+# kabel dicabut-pasang (terbukti 29 Okt: ttyACM0 -> ttyACM1), dan proses yang memegang nama
+# lama tetap hidup sambil gagal membuka port — korbannya panel menampilkan BACKEND DIAM.
+# Urutan pemilihan: (1) DEMS_DEV kalau masih ada, (2) cari lewat IDENTITAS perangkat
+# (DEMS_USB_SERIAL, opsional dipersempit DEMS_USB_VIDPID), (3) glob /dev/serial/by-id.
+# Perangkat lain di mesin yang sama (Uno R3, antarmuka audio USB) tidak pernah dibuka:
+# yang tidak cocok identitasnya dilewati, bukan dicoba.
+DEV          = os.environ.get("DEMS_DEV", "/dev/ttyACM0")
+WANT_SERIAL  = os.environ.get("DEMS_USB_SERIAL", "").strip()
+WANT_VIDPID  = os.environ.get("DEMS_USB_VIDPID", "").strip().lower()
+RETRY_S      = float(os.environ.get("DEMS_USB_RETRY_S", "2"))      # backoff sampai 10 dtk
+# Line DTR/RTS: dipasang SATU KALI setelah open dan tidak pernah diutak-atik lagi, supaya
+# reconnect tidak memancing rangkaian auto-reset ESP32 (EN/GPIO0). Bisa diubah kalau papan
+# tertentu butuh keadaan lain; efeknya dipantau lewat penghitung uptime panel (lihat "up").
+DTR_ON       = os.environ.get("DEMS_DTR", "1") not in ("0", "", "false")
+RTS_ON       = os.environ.get("DEMS_RTS", "1") not in ("0", "", "false")
+BAUD         = int(os.environ.get("DEMS_BAUD", "115200"))
+PORT       = int(os.environ.get("DEMS_PORT", "8090"))
+# Default AMAN: loopback saja. API ini tidak punya autentikasi, dan di deploy native
+# (mesin DEMS Edge) ia ikut terpapar ke LAN kalau bind melebar. Jalur Docker menutupinya
+# lewat publish "127.0.0.1:8090:8090" + DEMS_BIND=0.0.0.0 eksplisit di docker-compose.yml
+# (di dalam network namespace kontainer, bind loopback justru membuat port publish mati).
+BIND       = os.environ.get("DEMS_BIND", "127.0.0.1")
+# Sumber kebenaran sisa ruang rekam. Di mesin DEMS Edge variabel ini bernama
+# DEMS_MEDIA_DIR (dipakai Core, ada di /etc/dems/core.env); DEMS_REKAM_DIR tetap
+# diterima untuk kompatibilitas deployment lama & kontainer. Kalau keduanya kosong,
+# /data/rekam (jalur Docker). Yang penting direktorinya bisa di-stat oleh user
+# service — kalau tidak, health() melapor "dir tak terbaca" dan layar WASPADA selamanya.
+REKAM_DIR  = (os.environ.get("DEMS_REKAM_DIR") or os.environ.get("DEMS_MEDIA_DIR")
+              or "/data/rekam")
+MIN_FREE_GB  = float(os.environ.get("DEMS_MIN_FREE_GB", "20"))
+CRIT_FREE_GB = float(os.environ.get("DEMS_CRIT_FREE_GB", "5"))
+CH_STALE_S = int(os.environ.get("DEMS_CH_STALE_S", "0"))    # >0: REC tanpa kabar = WASPADA
+LEASE_DEFAULT = float(os.environ.get("DEMS_LEASE_S", "0"))   # TTL default 'start' (0 = tanpa)
+PANEL_SILENT_S = float(os.environ.get("DEMS_PANEL_SILENT_S", "10"))
+PUSH_S     = float(os.environ.get("DEMS_PUSH_S", "1.0"))    # dorong status tiap sekian detik
+# Satu sesi DEMS Edge = SATU kamera; dua view yang tampil di layar adalah dua LENSA pada
+# kamera yang sama (VIDEO-01 + VIDEO-02 menunjuk ke perangkat yang sama, profil berbeda).
+# Jembatan LCD DEMS Core mengirim satu entri per TREK, jadi mode 'device' menggabungkan trek
+# yang perangkatnya sama -> satu kanal panel = satu kamera fisik = satu relay.
+# 'track' = perilaku lama (satu trek = satu kanal), dipakai kalau dua kamera memang terpasang.
+CH_MODE    = (os.environ.get("DEMS_CH_MODE", "track").strip().lower() or "track")
+NAMES      = [s.strip() for s in
+              os.environ.get("DEMS_CH_NAMES", "CH1,CH2,CH3,CH4").split(",") if s.strip()]
+N = len(NAMES)
+# ── Identitas layar, dan LAPISANNYA (ditegaskan prinsipal DEMS Edge, 29 Okt) ──────────
+#   DEMS_CLIENT  = nama client/pemakai produk (baris ke-2 header, dulu "BARESKRIM - POLRI"
+#                  yang dipatenkan di firmware). Diisi saat PROSES PRE-DELIVER oleh prinsipal
+#                  → penulisannya dijaga DEMS_PROVISION_KEY.
+#   DEMS_SATKER  = satuan kerja tempat mesin terpasang (baris ke-3). Boleh diisi/diubah
+#                  SETELAH serah-terima → tidak dikunci kunci provisi.
+# Nilai runtime disimpan di file (DEMS_IDENTITY_FILE) supaya bertahan lewat restart service;
+# env hanya nilai awal. Panel membacanya dari payload yang sama seperti field lain.
+SATKER_DEFAULT  = os.environ.get("DEMS_SATKER", "").strip()
+# Bawaan HARUS kosong: dengan nilai contoh di sini, unit baru akan terlihat "sudah disetup"
+# padahal belum, dan layar keadaan pabrik tidak pernah muncul. Nama instansi hanya datang dari
+# DEMS_CLIENT (bawaan pabrik lama) atau dari setup pre-deliver lewat /api/dems/identity.
+CLIENT_DEFAULT  = os.environ.get("DEMS_CLIENT", "").strip()
+IDENTITY_FILE   = os.environ.get("DEMS_IDENTITY_FILE", "").strip()
+PROVISION_KEY   = os.environ.get("DEMS_PROVISION_KEY", "").strip()
+
+L = threading.RLock()          # reentrant: helper saling memanggil
+CH = [{"rec": False, "cam": False, "file": "", "set_at": 0.0, "last_post": 0.0,
+       "expires_at": 0.0, "src": "-", "dev": ""} for _ in range(N)]
+EVENTS = collections.deque(maxlen=300)      # jejak audit: siapa men-set apa, kapan
+G = {"ups": "online", "health_override": None, "health_note": "",
+     "last_req_ms": 0.0, "tx": 0, "rx": 0, "opens": 0, "last_err": "",
+     "started_at": time.time(),
+     # diagnostik USB — supaya "BACKEND DIAM" bisa dibaca lapis mana yang putus dari satu GET
+     "port": "", "port_cara": "", "port_since": 0.0, "port_changes": 0,
+     "down_s": 0, "panel_up_s": 0, "resets": 0,
+     "satker": SATKER_DEFAULT, "client": CLIENT_DEFAULT}
+
+
+def log(*a):
+    print(time.strftime("[%d-%m %H:%M:%S]"), *a, flush=True)
+
+
+def event(chn, action, src, detail=""):
+    """Catat kejadian untuk audit. chn = nama kanal atau '-'."""
+    with L:
+        EVENTS.append({"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "epoch": time.time(),
+                       "channel": chn, "action": action, "src": src, "detail": detail[:60]})
+
+
+def chan_of(v):
+    """Terima 1, '1', 'CH1', 'ch01', 'all', '*'. Return daftar indeks atau 'BAD'."""
+    if v is None: return None
+    s = str(v).strip().lower()
+    if s in ("all", "*", "semua", "keempat"):
+        return list(range(N))
+    low = {n.lower(): i for i, n in enumerate(NAMES)}
+    if s in low: return [low[s]]
+    digits = "".join(c for c in s if c.isdigit())
+    if digits:
+        i = int(digits) - 1
+        if 0 <= i < N: return [i]
+    return "BAD"
+
+
+def health():
+    """Kesehatan dihitung dari gejala nyata; hanya warn/fail yang bisa dipaku."""
+    lvl, alasan = "ok", []
+    try:
+        gb = shutil.disk_usage(REKAM_DIR).free / 1e9
+        if gb < CRIT_FREE_GB:  lvl, _ = "fail", alasan.append(f"disk {gb:.1f}GB")
+        elif gb < MIN_FREE_GB: lvl, _ = "warn", alasan.append(f"disk {gb:.1f}GB")
+    except Exception:
+        lvl, _ = "warn", alasan.append(f"dir {REKAM_DIR} tak terbaca")
+    with L:
+        if CH_STALE_S:
+            for i, c in enumerate(CH):
+                if c["rec"] and c["last_post"] and time.time() - c["last_post"] > CH_STALE_S:
+                    alasan.append(f"{NAMES[i]} tanpa kabar")
+                    lvl = "warn" if lvl == "ok" else lvl
+        for i, c in enumerate(CH):
+            if c["rec"] and not c["cam"]:
+                alasan.append(f"{NAMES[i]} rekam tanpa kamera")
+                lvl = "warn" if lvl == "ok" else lvl
+        if G["last_req_ms"] and time.time() * 1000 - G["last_req_ms"] > PANEL_SILENT_S * 1000:
+            alasan.append("panel diam")
+            lvl = "warn" if lvl == "ok" else lvl
+        if G["health_override"]:
+            lvl = G["health_override"]
+            alasan = [f"OVERRIDE: {G['health_note'] or G['health_override']}"]
+    return lvl, alasan
+
+
+def muat_identitas():
+    """Nilai identitas tersimpan menggantikan default env (dipakai saat pre-deliver)."""
+    if not IDENTITY_FILE or not os.path.exists(IDENTITY_FILE):
+        return
+    try:
+        with open(IDENTITY_FILE, encoding="utf8") as f: isi = json.load(f)
+        for k in ("satker", "client"):
+            if isinstance(isi.get(k), str): G[k] = isi[k][:38]
+        log("[identitas] dimuat dari", IDENTITY_FILE, "->", {k: G[k] for k in ("satker", "client")})
+    except Exception as e:
+        log("[identitas] gagal membaca", IDENTITY_FILE, ":", str(e)[:60])
+
+
+def simpan_identitas():
+    if not IDENTITY_FILE:
+        return
+    try:
+        d = os.path.dirname(IDENTITY_FILE)
+        if d: os.makedirs(d, exist_ok=True)
+        sementara = IDENTITY_FILE + ".tmp"
+        with open(sementara, "w", encoding="utf8") as f:
+            json.dump({"satker": G["satker"], "client": G["client"]}, f, ensure_ascii=False)
+        os.replace(sementara, IDENTITY_FILE)
+    except Exception as e:
+        log("[identitas] GAGAL menyimpan", IDENTITY_FILE, ":", str(e)[:60])
+
+
+def efektif():
+    """Keadaan keluaran per kanAL PANEL. Mode 'track' = apa adanya (satu trek satu kanal).
+    Mode 'device' = trek-trek yang perangkatnya sama dilebur ke kanal terkecil perangkat itu:
+    satu kamera dual-lens menggerakkan SATU relay. Dalam satu grup: rec = salah satu trek
+    merekam, cam = SEMUA lensa trek-nya tersambung (satu lensa putus -> titik kamera padam dan
+    firmware membunyikan pola 800 Hz, karena itu memang peristiwa yang harus terdengar).
+    Dipanggil dengan L sudah dipegang."""
+    if CH_MODE != "device":
+        return [(c["rec"], bool(c["cam"]), c["file"], c["dev"]) for c in CH]
+    out = [(False, False, "", "") for _ in CH]
+    selesai = set()
+    for i, c in enumerate(CH):
+        d = c["dev"]
+        if not d:
+            out[i] = (c["rec"], bool(c["cam"]), c["file"], "")
+            continue
+        if d in selesai:
+            continue
+        selesai.add(d)
+        anggota = [j for j, x in enumerate(CH) if x["dev"] == d]
+        slot = min(anggota)
+        out[slot] = (any(CH[j]["rec"] for j in anggota),
+                     all(bool(CH[j]["cam"]) for j in anggota),
+                     next((CH[j]["file"] for j in anggota if CH[j]["rec"] and CH[j]["file"]), ""),
+                     d)
+    return out
+
+
+def ip_unit():
+    """IPv4 utama mesin ini, untuk baris identitas di layar keadaan pabrik."""
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))            # tidak mengirim apa pun; cukup memicu pemilihan rute
+        return s.getsockname()[0]
+    except Exception:
+        return ""
+    finally:
+        s.close()
+
+
+def snapshot():
+    lvl = health()[0]              # di luar kunci: health() memanggil stat() disk
+    with L:
+        # nama berkas dipangkas 24 char: payload panel harus muat di buffer 640 B
+        eff = efektif()
+        chs = [{"c": i + 1, "rec": "start" if rec else "stop", "cam": bool(cam),
+                **({"file": f[:24]} if f else {})}
+               for i, (rec, cam, f, dv) in enumerate(eff)]
+        nrec = sum(1 for rec, cam, f, dv in eff if rec)
+        msg = {"v": 2, "evt": "status", "rec": "start" if nrec else "stop",
+               "nrec": nrec, "n": N, "health": lvl, "ups": G["ups"], "ch": chs}
+        if G["satker"]: msg["satker"] = G["satker"][:38]
+        if G["client"]: msg["client"] = G["client"][:38]
+        # Keadaan pabrik: belum ada client (L1) dan belum ada SATKER (L2). Alat memakai tanda
+        # ini untuk MENAHAN halaman utama — layar operasi tidak boleh terlihat sebelum setup.
+        if not (G["satker"] or G["client"]):
+            msg["fresh"] = 1
+            ipu = ip_unit()
+            if ipu: msg["ip"] = ipu
+        # Anggaran buffer panel 640 B: kalau identitas membuat payload melewatinya,
+        # buang client dulu lalu satker — status alat tidak boleh dikorbankan demi hiasan.
+        if len(json.dumps(msg, separators=(",", ":")).encode()) > 600 and G["client"]:
+            msg.pop("client", None)
+            if len(json.dumps(msg, separators=(",", ":")).encode()) > 600: msg.pop("satker", None)
+            msg.pop("ip", None)          # `fresh` bertahan: ia penahan halaman, bukan hiasan
+        aktif = next((c["file"] for c in CH if c["rec"] and c["file"]), "")
+        if aktif: msg["file"] = aktif
+    return msg
+
+
+def truthy(v):
+    if isinstance(v, bool): return v
+    return str(v).strip().lower() in ("1", "true", "on", "yes", "tercolok", "online",
+                                      "terpasang", "ada", "connected")
+
+
+def set_channel(idx, body, src):
+    """Terapkan satu objek status ke daftar indeks kanal."""
+    rec = str(body.get("rec", "")).lower()
+    if rec in ("start", "rekam", "on", "rec", "1", "true"): new = True
+    elif rec in ("stop", "idle", "off", "0", "false"):      new = False
+    else: return None
+    lease = body.get("lease", body.get("ttl", LEASE_DEFAULT))
+    try: lease = float(lease)
+    except Exception: lease = 0.0
+    if lease < 0: lease = 0.0
+    with L:
+        for i in idx:
+            berubah = CH[i]["rec"] != new
+            CH[i]["rec"] = new
+            CH[i]["last_post"] = time.time()
+            CH[i]["src"] = src
+            if new:
+                # set_at HANYA saat transisi stop->start. Jembatan LCD DEMS Core mengirim
+                # POST start tiap 2 detik untuk kanal yang sedang merekam; kalau set_at
+                # diperbarui tiap POST, jam durasi di layar panel terpaku 0-2 detik selamanya.
+                # Yang harus diperbarui tiap POST hanyalah expires_at (lease) — lihat di bawah.
+                if berubah: CH[i]["set_at"] = time.time()
+                CH[i]["expires_at"] = (time.time() + lease) if lease > 0 else 0.0
+            else:
+                CH[i]["expires_at"] = 0.0
+            dev = str(body.get("dev", body.get("deviceId", CH[i]["dev"])) or "")[:24]
+            if dev and dev != CH[i]["dev"]:
+                CH[i]["dev"] = dev
+                log(f"[peta] {NAMES[i]} = perangkat {dev} (mode kanal {CH_MODE})")
+            if "file" in body: CH[i]["file"] = str(body["file"])[:40]
+            elif not new:      CH[i]["file"] = ""
+            if body.get("clear_file"): CH[i]["file"] = ""
+            if berubah:
+                log(f"{NAMES[i]} -> {'REKAM' if new else 'STOP'}"
+                    f"{(' file=' + CH[i]['file']) if CH[i]['file'] else ''} dari {src}")
+                event(NAMES[i], "REKAM" if new else "STOP", src,
+                      (CH[i]["file"] + (" " if CH[i]["file"] else "")) +
+                      (f"lease={lease:.0f}s" if new and lease > 0 else ""))
+        if "ups" in body: G["ups"] = str(body["ups"])[:12]
+    if "cam" in body or "camera" in body:
+        on = truthy(body.get("cam", body.get("camera")))
+        with L:
+            for i in idx:
+                if CH[i]["cam"] != on:
+                    log(f"{NAMES[i]} kamera -> {'TERCOLOK' if on else 'LEPAS'} dari {src}")
+                    event(NAMES[i], "KAMERA_" + ("TERCOLOK" if on else "LEPAS"), src)
+                CH[i]["cam"] = on
+    return snapshot()
+
+
+def reaper():
+    """Pemicu luar bisa crash setelah mengirim 'start'. Lease habis -> STOP sendiri,
+    supaya panel tidak pernah menampilkan REKAM yang tidak lagi terjadi."""
+    while True:
+        time.sleep(1.0)
+        now = time.time()
+        with L:
+            for i, c in enumerate(CH):
+                if c["rec"] and c["expires_at"] and now > c["expires_at"]:
+                    c["rec"] = False
+                    c["expires_at"] = 0.0
+                    log(f"{NAMES[i]} -> STOP (lease habis)")
+                    event(NAMES[i], "STOP_LEASE_HABIS", "-", "pemicu berhenti mengirim")
+
+
+def _comports():
+    """Daftar port yang terlihat OS. pyserial memberi nomor seri + VID:PID tanpa perlu sysfs."""
+    try:
+        from serial.tools import list_ports
+        return list(list_ports.comports())
+    except Exception as e:
+        log("[usb] list_ports gagal:", str(e)[:60])
+        return []
+
+
+def resolve_port():
+    """Pilih port berDASARKAN IDENTITAS perangkat, bukan indeksnya. Return (path|None, cara).
+
+    Keamanan perangkat: kalau identitas diset, port yang nomornya cocok tapi serinya beda
+    DILEWATI. Backend tidak pernah membuka alat lain yang kebetulan ada di mesin (board
+    Arduino lain, antarmuka audio USB)."""
+    if DEV and os.path.exists(DEV):
+        return DEV, "eksplisit"
+    if WANT_SERIAL or WANT_VIDPID:
+        for p in _comports():
+            sn = (getattr(p, "serial_number", "") or "").strip()
+            vp = "%04x:%04x" % (getattr(p, "vendor_id", 0) or 0, getattr(p, "product_id", 0) or 0)
+            if WANT_SERIAL and sn.lower() != WANT_SERIAL.lower():
+                continue
+            if WANT_VIDPID and vp != WANT_VIDPID:
+                continue
+            return p.device, "identitas"
+        for c in sorted(glob.glob("/dev/serial/by-id/*")):      # udev belum tentu menyiapkan
+            if WANT_SERIAL and WANT_SERIAL.lower() in c.lower():
+                return c, "by-id"
+        return None, "tak-ditemukan"
+    return None, "tanpa-identitas"
+
+
+BOOT_MARK = ("rst:", "boot:", "Guru Meditation", "ets(", "panik", "panic")
+
+
+def note_panel_up(req):
+    """Pantau penghitung uptime alat. Firmware mengirim `up` dalam DETIK (now/1000),
+    bukan milidetik. Kalau angka itu melompat mundur, panel REBOOT — itu gangguan hardware,
+    dan reconnect yang memancingnya harus ketahuan, bukan diam-diam."""
+    up = req.get("up")
+    if not isinstance(up, (int, float)):
+        return
+    up = int(up)
+    old = G["panel_up_s"]
+    if old and up < old - 5:
+        G["resets"] += 1
+        log("[hw] PANEL REBOOT terdeteksi (up %d -> %d dtk, buka ke-%d) — periksa catu / DTR-RTS; "
+            "backend tidak mengirim perintah apa pun saat reboot" % (old, up, G["opens"]))
+        G["panel_up_s"] = up          # baseline baru: satu reboot = satu catatan, bukan tiap poll
+    elif up > old:
+        G["panel_up_s"] = up
+
+
+def serial_worker():
+    retry, down_since, last_report = RETRY_S, 0.0, 0.0
+    while True:
+        path, cara = resolve_port()
+        if path is None:
+            now = time.time()
+            if not down_since:
+                down_since = now
+            G["down_s"] = int(now - down_since)
+            G["last_err"] = ("panel %s tidak ditemukan (DEV %s tidak ada; cara: %s)"
+                             % (WANT_SERIAL or WANT_VIDPID or "?", DEV, cara))
+            if now - last_report >= 30:
+                log("[usb] TIDAK ADA PORT selama %d dtk — %s; relay & layar alat tidak disentuh"
+                    % (G["down_s"], G["last_err"]))
+                last_report = now
+            time.sleep(retry)
+            retry = min(retry * 2, 10.0)
+            continue
+        gap = int(time.time() - down_since) if down_since else 0
+        try:
+            s = serial.Serial(path, BAUD, timeout=0.2, dsrdtr=False, rtscts=False)
+            s.dtr = DTR_ON; s.rts = RTS_ON          # sekali saja: jangan memancing reset
+            G["opens"] += 1
+            prev = G["port"]
+            G["port"], G["port_cara"] = path, cara
+            G["port_since"] = time.time()
+            if prev and prev != path:
+                G["port_changes"] += 1
+                log("[usb] indeks berpindah %s -> %s (identitas %s tetap) — keadaan alat tidak diubah"
+                    % (prev, path, WANT_SERIAL or WANT_VIDPID))
+            if gap:
+                log("[usb] PULIH OTOMATIS setelah %d dtk tanpa panel (buka ke-%d di %s, cara %s)"
+                    % (gap, G["opens"], path, cara))
+            down_since, retry, last_report, G["down_s"] = 0.0, RETRY_S, 0.0, 0
+            log("USB terbuka di %s (sesi #%d, cara %s) — %d kanal: %s"
+                % (path, G["opens"], cara, N, ", ".join(NAMES)))
+            time.sleep(0.4); s.reset_input_buffer()
+            buf, last_push = b"", 0.0
+            while True:
+                r = s.read(256)
+                if r:
+                    buf += r
+                    while b"\n" in buf:
+                        line, buf = buf.split(b"\n", 1)
+                        line = line.strip()
+                        if not line.startswith(b"{"):
+                            if line:
+                                txt = line.decode("utf8", "replace")
+                                print("   panel:", txt, flush=True)
+                                low = txt.lower()
+                                if any(m in low for m in BOOT_MARK):
+                                    G["resets"] += 1
+                                    log("[hw] baris boot dari alat: " + txt[:90])
+                            continue
+                        G["rx"] += 1
+                        G["last_req_ms"] = time.time() * 1000
+                        try: req = json.loads(line)
+                        except Exception: continue
+                        note_panel_up(req)
+                        # Versi firmware yang dilaporkan alat sendiri — bukan tebakan kita.
+                        fw_panel = str(req.get("fw") or "").strip()[:12]
+                        if fw_panel and fw_panel != G.get("panel_fw"):
+                            G["panel_fw"] = fw_panel
+                        if req.get("req") == "status":
+                            s.write(json.dumps(snapshot(), separators=(",", ":")).encode() + b"\n")
+                            G["tx"] += 1
+                if time.time() - last_push > PUSH_S:
+                    last_push = time.time()
+                    s.write(json.dumps(snapshot(), separators=(",", ":")).encode() + b"\n")
+                    G["tx"] += 1
+        except Exception as e:
+            G["last_err"] = str(e)[:90]
+            if not down_since:
+                down_since = time.time()
+            log("USB putus:", G["last_err"], "— cari ulang port, jeda %d dtk" % retry)
+            time.sleep(retry)
+            retry = min(retry * 2, 10.0)
+
+
+class H(BaseHTTPRequestHandler):
+    def _send(self, code, body, ctype="application/json"):
+        raw = body.encode() if isinstance(body, str) else json.dumps(body).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def _body(self):
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            return json.loads(self.rfile.read(n) or b"{}")
+        except Exception:
+            return None
+
+    def do_GET(self):
+        p = self.path.split("?")[0]
+        if p.startswith("/api/dems/ch/"):
+            idx = chan_of(p.split("/")[4])
+            if not idx or idx == "BAD":
+                return self._send(404, {"error": f"kanal harus 1..{N} atau {NAMES}"})
+            i = idx[0]
+            with L:
+                c = dict(CH[i])
+            c.update({"c": i + 1, "name": NAMES[i],
+                      "rec": "start" if c["rec"] else "stop",
+                      "durasi_s": int(time.time() - c["set_at"]) if c["rec"] else 0,
+                      "last_post_s": int(time.time() - c["last_post"]) if c["last_post"] else None})
+            return self._send(200, c)
+        if p.startswith("/api/dems/log"):
+            try:
+                n = int(self.path.split("n=")[1].split("&")[0]) if "n=" in self.path else 50
+            except Exception:
+                n = 50
+            n = max(1, min(n, 300))
+            with L:
+                ev = list(EVENTS)
+            return self._send(200, {"jumlah_tersimpan": len(ev), "kejadian": ev[-n:]})
+        if p.startswith("/api/dems/identity"):
+            with L:
+                return self._send(200, {"satker": G["satker"], "client": G["client"],
+                                        "tersimpan_di": IDENTITY_FILE or "(tidak ada file state)",
+                                        "kunci_provisi": "aktif" if PROVISION_KEY else "kosong"})
+        if p.startswith("/api/dems/status"):
+            with L:
+                chans = [{"c": i + 1, "name": NAMES[i],
+                          "rec": "start" if c["rec"] else "stop", "cam": bool(c["cam"]),
+                          "dev": c["dev"], "trek": c["dev"] or "-",
+                          "file": c["file"],
+                          "durasi_s": int(time.time() - c["set_at"]) if c["rec"] else 0,
+                          "lease_tinggal_s": (max(0, int(c["expires_at"] - time.time()))
+                                              if c["rec"] and c["expires_at"] else None),
+                          "last_post_s": int(time.time() - c["last_post"]) if c["last_post"] else None,
+                          "src": c["src"]} for i, c in enumerate(CH)]
+                d = dict(G)
+                eff = efektif()          # di dalam kunci: dibaca bersama daftar kanal
+                # --- pembacaan satu lapis: siapa yang diam, alat atau mesin? ---
+                now = time.time()
+                posts = [c["last_post"] for c in CH if c["last_post"]]
+                core_s = int(now - max(posts)) if posts else None
+                bisu = int(now - G["last_req_ms"] / 1000) if G["last_req_ms"] else None
+                if not G["port"]:
+                    verdict = "PORT-TIDAK-ADA"          # backend tidak sampai ke alat
+                elif bisu is None or bisu > PANEL_SILENT_S:
+                    verdict = "PANEL-DIAM"              # port dipegang, alat tidak bertanya
+                elif core_s is not None and core_s > 30:
+                    verdict = "CORE-DIAM"               # alat & backend sehat, produk upstream berhenti
+                else:
+                    verdict = "OK"
+            lvl, alasan = health()
+            d.update({"channels": chans, "n": N, "names": NAMES,
+                      "satker": G["satker"], "client": G["client"],
+                      "lapisan": {"client": "prinsipal (pre-deliver, dikunci kunci provisi)",
+                                  "satker": "operasional (boleh setelah serah-terima)",
+                                  "kunci_provisi": "aktif" if PROVISION_KEY else "kosong: pagar = akses loopback/USB"},
+                      "nrec": sum(1 for c in CH if c["rec"]),
+                      "rec": "start" if any(c["rec"] for c in CH) else "stop",
+                      "health": lvl, "alasan": alasan, "rekam_dir": REKAM_DIR,
+                      "ch_stale_s": CH_STALE_S,
+                      "uptime_s": int(time.time() - G["started_at"]),
+                      "verdict": verdict,
+                      "port": G["port"] or "(belum terbuka)", "port_cara": G["port_cara"] or "-",
+                      "port_sejak_s": int(now - G["port_since"]) if G["port_since"] else None,
+                      "ganti_indeks": G["port_changes"], "tanpa_panel_s": G["down_s"],
+                      "buka": G["opens"],
+                      "panel_up_s": G["panel_up_s"] or None,
+                      "panel_reboot": G["resets"], "panel_bisu_s": bisu, "core_bisu_s": core_s,
+                      "usb_target": WANT_SERIAL or WANT_VIDPID or "(kosong: hanya DEMS_DEV)",
+                      # keadaan per TREK apa adanya + mode penggabungan, supaya keputusan
+                      # "1 kamera = 1 relay" bisa dibaca orang lain tanpa menebak
+                      "ch_mode": CH_MODE,
+                      "kanal_keluaran": [{"c": i + 1, "rec": "start" if rec else "stop",
+                                          "cam": bool(cam), "dev": dv}
+                                         for i, (rec, cam, f, dv) in enumerate(eff)]})
+            d.pop("health_override_note", None)
+            for mentah in ("port_since", "down_s", "started_at"):
+                d.pop(mentah, None)
+            return self._send(200, d)
+        if p.startswith("/healthz"):
+            lvl, alasan = health()
+            body = (lvl + (" " + ",".join(alasan) if alasan else "")).encode() + b"\n"
+            self.close_connection = True
+            try:
+                self.send_response(503 if lvl == "fail" else 200)
+                self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers(); self.wfile.write(body)
+            except Exception:
+                pass
+            return
+        if p == "/":
+            return self._send(200, self._page(), "text/html")
+        self._send(404, {"error": "endpoint tidak dikenal",
+                         "coba": ["/api/dems/status", "/api/dems/ch/1/status", "/healthz"]})
+
+    def _page(self):
+        lvl, alasan = health()
+        warna = {"ok": "#16a34a", "warn": "#ea580c", "fail": "#dc2626"}[lvl]
+        rows = ""
+        for i, c in enumerate(CH):
+            if c["rec"]:
+                st = '<b style="color:#dc2626">REKAM</b>'
+                dur = f"{int(time.time() - c['set_at'])}s"
+                if c["expires_at"]:
+                    dur += f" <span style='color:#8891a5'>(lease {max(0,int(c['expires_at']-time.time()))}s)</span>"
+            else:
+                st = '<span style="color:#8891a5">STOP</span>'; dur = "-"
+            dot = ('<span style="display:inline-block;width:13px;height:13px;'
+                   'border-radius:50%;background:#16a34a"></span>' if c["cam"] else
+                   '<span style="display:inline-block;width:13px;height:13px;'
+                   'border-radius:50%;background:#dc2626"></span>')
+            rows += (f"<tr><td>{NAMES[i]}</td><td>{dot}</td><td>{st}</td>"
+                     f"<td><code>{c['file'] or '-'}</code></td><td>{dur}</td>"
+                     f"<td style='color:#8891a5'>{c['src']}</td></tr>")
+        with L: tx, rx = G["tx"], G["rx"]
+        return f"""<!doctype html><meta charset=utf-8><title>DEMS EDGE backend</title>
+<body style="font:15px system-ui;background:#0b0b12;color:#e8e8f0;padding:26px">
+<h1 style="font-size:21px">DEMS EDGE — backend {N} kanal</h1>
+<p>HEALTH: <b style="color:{warna}">{lvl.upper()}</b> {', '.join(alasan)} &nbsp;|&nbsp;
+Tautan panel: kirim {tx} · terima {rx} &nbsp;|&nbsp; dir {REKAM_DIR}</p>
+<table cellpadding=7 style="border-collapse:collapse;width:100%">
+<tr style="color:#8891a5;text-align:left;border-bottom:1px solid #2a2a3a">
+<th>KANAL</th><th>KAMERA</th><th>STATUS</th><th>BERKAS</th><th>DURASI</th><th>SUMBER</th></tr>{rows}</table>
+<h2 style="font-size:16px;color:#8891a5">Jejak kejadian (terbaru)</h2>
+<table cellpadding=4 style="border-collapse:collapse;font-size:13px">
+<tr style="color:#8891a5;text-align:left"><th>WAKTU</th><th>KANAL</th><th>AKSI</th><th>SUMBER</th><th>KETERANGAN</th></tr>
+{"".join(f"<tr><td style='color:#8891a5'>{e['ts']}</td><td>{e['channel']}</td><td>{e['action']}</td><td>{e['src']}</td><td><code>{e['detail']}</code></td></tr>" for e in list(EVENTS)[-12:][::-1])}</table>
+<p style="color:#8891a5;font-size:13px">Auto-segar 3 detik · jejak lengkap: GET /api/dems/log</p>
+<meta http-equiv=refresh content=3>
+"""
+
+    def do_POST(self):
+        p = self.path.split("?")[0]
+        body = self._body()
+        if body is None:
+            return self._send(400, {"error": "JSON tidak sah / body kosong"})
+        src = self.client_address[0]
+        if p.startswith("/api/dems/ch/") and p.endswith("/cam"):
+            idx = chan_of(p.split("/")[4])
+            if not idx or idx == "BAD":
+                return self._send(404, {"error": f"kanal harus 1..{N} atau {NAMES}"})
+            v = body.get("connected", body.get("cam", body.get("value", True)))
+            on = truthy(v)
+            with L:
+                for i in idx:
+                    if CH[i]["cam"] != on:
+                        event(NAMES[i], "KAMERA_" + ("TERCOLOK" if on else "LEPAS"), src,
+                              "endpoint /cam")
+                    CH[i]["cam"] = on
+                    CH[i]["last_post"] = time.time()
+                    CH[i]["src"] = src
+            log(f"kamera {'semua kanal' if len(idx)>1 else NAMES[idx[0]]} -> "
+                f"{'TERCOLOK' if on else 'LEPAS'} dari {src}")
+            return self._send(200, snapshot())
+        if p.startswith("/api/dems/ch/"):
+            idx = chan_of(p.split("/")[4])
+            if not idx or idx == "BAD":
+                return self._send(404, {"error": f"kanal harus 1..{N} atau {NAMES}"})
+            out = set_channel(idx, body, src)
+            return (self._send(200, out) if out else
+                    self._send(400, {"error": 'pakai "rec":"start" atau "rec":"stop"'}))
+        if p.startswith("/api/dems/identity"):
+            # Lapisan: "client" = prinsipal (diisi saat pre-deliver, dikunci kunci provisi);
+            # "satker" = operasional (boleh setelah serah-terima). Pagar terendah tetap
+            # loopback: endpoint ini tanpa autentikasi, jadi penulisannya = siapa pun yang
+            # mencolokkan USB ke mesin ini.  (`body` sudah dibaca di awal do_POST.)
+            src = self.client_address[0]
+            kunci = str(self.headers.get("X-Provision-Key", "") or body.get("key", ""))
+            ubah = {}
+            with L:
+                for k, lapisan in (("satker", "operasional"), ("client", "prinsipal")):
+                    if k not in body: continue
+                    if lapisan == "prinsipal" and PROVISION_KEY and kunci != PROVISION_KEY:
+                        log(f"[identitas] DITOLAK: '{k}' lapisan prinsipal, kunci provisi salah dari {src}")
+                        return self._send(403, {"error": "PROVISION_KEY_REQUIRED", "field": k,
+                                                "lapisan": "prinsipal (pre-deliver)"})
+                    G[k] = str(body[k]).strip()[:38]
+                    ubah[k] = G[k]
+                if not ubah:
+                    return self._send(400, {"error": "TIDAK ADA FIELD", "diterima": ["satker", "client"]})
+                simpan_identitas()
+            log(f"[identitas] {ubah} dari {src}")
+            event("-", "IDENTITAS", src, json.dumps(ubah, ensure_ascii=False))
+            return self._send(200, {"ok": True, **ubah, "tersimpan_di": IDENTITY_FILE or "(env saja)"})
+        if p.startswith("/api/dems/status"):
+            v = body.get("channel", body.get("ch", body.get("channels")))
+            if v is None:
+                return self._send(400, {"error": f'"channel" wajib (1..{N}, nama kanal, atau "all")',
+                                        "names": NAMES})
+            idx = []
+            for item in (v if isinstance(v, list) else [v]):
+                got = chan_of(item)
+                if got == "BAD" or not got:
+                    return self._send(400, {"error": f"kanal tak dikenal: {item!r}", "names": NAMES})
+                idx += got
+            out = set_channel(sorted(set(idx)), body, src)
+            return (self._send(200, out) if out else
+                    self._send(400, {"error": 'pakai "rec":"start" atau "rec":"stop"'}))
+        if p.startswith("/api/dems/health"):
+            h = str(body.get("health", "")).lower()
+            # Hanya warn|fail yang bisa dipaku; "ok"/"auto" melepas kembali ke
+            # perhitungan otomatis, supaya kegagalan nyata tak bisa disembunyikan.
+            with L:
+                G["health_override"] = h if h in ("warn", "fail") else None
+                G["health_note"] = str(body.get("note", ""))[:40]
+            log("health override ->", G["health_override"] or "OTOMATIS (hitung dari gejala)")
+            lvl, alasan = health()
+            return self._send(200, {"health": lvl, "override": G["health_override"],
+                                    "alasan": alasan})
+        self._send(404, {"error": "endpoint tidak dikenal"})
+
+    def log_message(self, *a): pass
+
+
+if __name__ == "__main__":
+    log(f"backend DEMS-EDGE | {N} kanal {NAMES} | USB {DEV}@{BAUD} | HTTP {BIND}:{PORT} | "
+        f"disk {REKAM_DIR} (kuning <{MIN_FREE_GB}GB, merah <{CRIT_FREE_GB}GB)"
+        + (f" | REC tanpa kabar >{CH_STALE_S}s = WASPADA" if CH_STALE_S else ""))
+    muat_identitas()
+    threading.Thread(target=serial_worker, daemon=True).start()
+    threading.Thread(target=reaper, daemon=True).start()
+    ThreadingHTTPServer((BIND, PORT), H).serve_forever()

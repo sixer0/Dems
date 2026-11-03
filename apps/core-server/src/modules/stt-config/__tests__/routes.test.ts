@@ -126,7 +126,11 @@ describe('MODG: the route list of the module equals the registry operations it o
     // 107, 39, 68 until task 4 row V3 added operation 108, the stored-credential connection test (POST).
     // 108, 39, 69 until task 4 blueprint row 116 added operations 109 and 110, the installation acceptance and its revocation (both POST).
     // 110, 39, 71 until task 4 row RD2 added operation 111, the retirement of a device (POST).
-    expect([CORE_API_OPERATIONS.length, gets, posts]).toEqual([111, 39, 72]);
+    // 111, 39, 72 until task 4 row D53 added operations 112-113 (both POST) — the pin stayed here.
+    // 113, 39, 74 until the LCD bridge task added operation 114, the panel firmware word (GET).
+    // 114, 40, 74 until RB-9 as amended by the principal (PT GSP, 02-11-2026) added operations 15 to 17,
+    // the three user operations of area 2 (all POST): 114 + 3 = 117, 40 GET / 77 POST.
+    expect([CORE_API_OPERATIONS.length, gets, posts]).toEqual([117, 40, 77]);
   });
 
   it('the guard holds the registry rule for each: AUTHENTICATED for 90, CAPTURE_CONFIG for 91 and 92', async () => {

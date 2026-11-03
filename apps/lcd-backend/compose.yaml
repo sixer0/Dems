@@ -1,0 +1,30 @@
+# Optional Linux bench/demo service. See README.md for native installation and host-profile limits.
+# DEMS_LCD_RECORDINGS_DIR must point to this Core's media root.
+# docker compose -f apps/lcd-backend/compose.yaml up -d --build
+services:
+  dems-edge-backend:
+    build: .
+    image: dems-edge-backend:1.0
+    container_name: dems-edge-backend
+    restart: unless-stopped
+    user: "${DEMS_LCD_UID:-1000}:${DEMS_LCD_GID:-1000}"
+    # Panel ESP32 dicolok di USB ini. Kalau portnya berpindah (cabut-colok),
+    # kontainer otomatis membuka ulang — lihat serial_worker().
+    devices:
+      - ${DEMS_LCD_SERIAL_DEVICE:-/dev/ttyACM0}:/dev/ttyACM0
+    group_add:
+      - "${DEMS_LCD_DIALOUT_GID:-20}" # gid dialout: akses /dev/tty* tanpa --privileged
+    ports:
+      - "127.0.0.1:8090:8090"   # hanya lokal; ganti ke 0.0.0.0 bila mesin rekam di host lain
+    volumes:
+      - ${DEMS_LCD_RECORDINGS_DIR:?Set DEMS_LCD_RECORDINGS_DIR to the Core media root}:/data/rekam:ro
+    environment:
+      DEMS_MIN_FREE_GB: "20"      # kuning kalau sisa ruang rekam < 20 GB
+      DEMS_CRIT_FREE_GB: "5"      # merah  < 5 GB
+      DEMS_CH_NAMES: "CH1,CH2,CH3,CH4"   # ganti sesuai penamaan SOP; jumlah kanal = panjang daftar
+      DEMS_CH_STALE_S: "0"        # >0 butuh mesin rekam mengirim ulang status (heartbeat)
+      DEMS_LEASE_S: "6"           # >0: 'start' otomatis kedaluwarsa bila pemicu macet
+      DEMS_PANEL_SILENT_S: "10"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }

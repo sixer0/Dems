@@ -262,6 +262,38 @@ describe('the probe: adapters only, no socket, no substitute', () => {
     expect(aborted).toBe(true);
   });
 
+  it('D47: a camera and a microphone admitted AFTER the build (only in `admittedDevices()`, `devices` stays the first list) are read through their adapter; CONTROL: before the admission the camera is UNREACHABLE and the microphone is not listed', async () => {
+    const fakes = createFakeRegistry({ runDir: '/nonexistent/row133' });
+    const laterCameras: { id: string }[] = [];
+    const laterMics: { id: string }[] = [];
+    const camera = fakes.cameras[0] as CameraAdapter;
+    const mic = fakes.mics[0] as AudioInputAdapter;
+    // The production adapters' shape: the first list frozen at the build, the later ones apart.
+    const productionCamera = { ...camera, devices: [], admittedDevices: () => [...laterCameras] } as unknown as CameraAdapter;
+    const productionMic = {
+      ...mic,
+      devices: [],
+      admittedDevices: () => [...laterMics],
+      enumerate: async () => [{ inputId: 'MIC-05', present: true, errorCode: null }],
+    } as unknown as AudioInputAdapter;
+    const reads: string[] = [];
+    const probe = probeOfAdapters({
+      cameras: [productionCamera],
+      microphones: [productionMic],
+      readCamera: async (_adapter, deviceId) => void reads.push(deviceId),
+    });
+    const signal = new AbortController().signal;
+    expect(await probe.camera('CAM-03', signal)).toEqual({ reachable: false, cause: 'UNREACHABLE' });
+    expect(reads).toEqual([]);
+    expect((await probe.microphones()).microphones).toEqual([]);
+
+    laterCameras.push({ id: 'CAM-03' });
+    laterMics.push({ id: 'MIC-05' });
+    expect(await probe.camera('CAM-03', signal)).toEqual({ reachable: true });
+    expect(reads).toEqual(['CAM-03']);
+    expect((await probe.microphones()).microphones).toEqual([{ deviceId: 'MIC-05', present: true, errorCode: null, adapterKind: 'FAKE', sourceClass: 'DEVELOPMENT' }]);
+  });
+
   it('a microphone list that cannot be read makes every microphone of that adapter absent, never present', async () => {
     const fakes = createFakeRegistry({ runDir: '/nonexistent/row133' });
     const broken: AudioInputAdapter = { ...(fakes.mics[0] as AudioInputAdapter), enumerate: async () => Promise.reject(Object.assign(new Error('x'), { code: 'HELPER_EXITED' })) };

@@ -9,7 +9,12 @@
  * |------|---------------------|
  * | Simulated (a direct URL: the sidebar hides the entry) | The header and the shared "Live mode only" state `ur-live-only` (W54's `LiveOnlyState`), centred in this page's own grid (F76-12) |
  * | Live, the users read answered 403 | The header and the page-level Forbidden state `ur-forbidden` with a link to the Dashboard |
- * | Live | The header with the summary chip `ur-summary`; the hero panel "Operators" (`panel-users`) and the panel "Roles and permissions" (`panel-matrix`), each with its Loading, Empty / Error states; the three dialogs |
+ * | Live | The header with the summary chip `ur-summary`; the hero panel "Operators" (`panel-users`) and the panel "Roles and permissions" (`panel-matrix`), each with its Loading, Empty / Error states; the dialogs |
+ *
+ * **RB-9 as amended 02-11-2026.** "Add user" (`ur-create-user`), a row's "Edit profile…"
+ * (`ur-edit-user-<id>`) and "Delete user…" (`ur-delete-user-<id>`) are offered only when the signed-in
+ * operator's username is the vendor `root` account (`model.ts` `isVendorRoot`), not to every holder of
+ * `USER_ADMIN`. The Core server enforces the same rule, so this is a hidden control, not a permission.
  *
  * Data (PG-6, PG-6a; rule 3): operations 11 and 10 in TanStack Query under `CORE_QUERY_KEYS`; W50's
  * bridge refetches the list on `admin.changed` USERS and REMOVES both entries on a sign-out, on any
@@ -42,9 +47,10 @@ import { PageHeader } from '@/components/shell/page-header'
 import { AnimatedNumber } from '@/components/ui/animated-number'
 import { retryCoreQuery } from '@/lib/core-queries'
 import { CORE_QUERY_KEYS, type WebLive } from '@/runtime'
-import { matrixOf, summaryOf, usersOf } from './model'
+import { isVendorRoot, matrixOf, summaryOf, usersOf } from './model'
 import { MatrixPanel } from './matrix-panel'
 import { isForbiddenRead, useRoleMatrixQuery, useUsersQuery } from './queries'
+import { CreateUserDialog, DeleteUserDialog, EditUserDialog } from './account-dialogs'
 import { RoleDialog } from './role-dialog'
 import { DisableDialog, EnableDialog } from './status-dialogs'
 import { UsersPanel, type UserAction } from './users-panel'
@@ -69,8 +75,11 @@ export function UsersRolesPage() {
   )
 }
 
+/** The dialogs of the page: the three rows' actions plus the vendor trio's create ("Add user" has no target). */
+type DialogKind = UserAction | 'create'
+
 interface DialogState {
-  readonly kind: UserAction | null
+  readonly kind: DialogKind | null
   readonly target: AdminUser | null
   readonly open: boolean
   /** Counts the openings: each opening gets a fresh dialog (its own pending control, choice and reason). */
@@ -87,6 +96,9 @@ function UsersRolesLive() {
   const matrixQuery = useRoleMatrixQuery()
   const linkUp = useLiveLink() === LiveLinkState.ONLINE
   const selfId = useLiveSelector((live: WebLive | null) => live?.session?.operator.id ?? null)
+  // RB-9 as amended: add, edit and delete are the vendor account's. The server checks it itself;
+  // what the page does with the username is hide what would only be refused.
+  const manageAccounts = useLiveSelector((live: WebLive | null) => isVendorRoot(live?.session?.operator.username))
   const [dialog, setDialog] = useState<DialogState>(CLOSED)
 
   const users = usersQuery.data === undefined ? null : usersOf(usersQuery.data)
@@ -114,9 +126,9 @@ function UsersRolesLive() {
     )
   }
 
-  const open = (kind: UserAction, target: AdminUser) => setDialog((current) => ({ kind, target, open: true, seq: current.seq + 1 }))
+  const open = (kind: DialogKind, target: AdminUser | null = null) => setDialog((current) => ({ kind, target, open: true, seq: current.seq + 1 }))
   const close = () => setDialog((current) => ({ ...current, open: false }))
-  const targetOf = (kind: UserAction) => (dialog.kind === kind ? dialog.target : null)
+  const targetOf = (kind: DialogKind) => (dialog.kind === kind ? dialog.target : null)
 
   return (
     <>
@@ -130,6 +142,8 @@ function UsersRolesLive() {
           linkUp={linkUp}
           onRetry={() => retryCoreQuery(queryClient, CORE_QUERY_KEYS.users)}
           onAction={open}
+          manageAccounts={manageAccounts}
+          onCreate={() => open('create')}
         />
         <MatrixPanel matrix={matrix} failed={matrixQuery.isError} linkUp={linkUp} onRetry={() => retryCoreQuery(queryClient, CORE_QUERY_KEYS.roleMatrix)} />
       </div>
@@ -145,6 +159,10 @@ function UsersRolesLive() {
       />
       <DisableDialog key={`disable-${dialog.seq}`} isOpen={dialog.open && dialog.kind === 'disable'} target={targetOf('disable')} selfId={selfId} linkUp={linkUp} onClose={close} />
       <EnableDialog key={`enable-${dialog.seq}`} isOpen={dialog.open && dialog.kind === 'enable'} target={targetOf('enable')} linkUp={linkUp} onClose={close} />
+      {/* The vendor trio (RB-9 as amended): rendered only for the `root` account, fresh per opening like the three above. */}
+      <CreateUserDialog key={`create-${dialog.seq}`} isOpen={dialog.open && dialog.kind === 'create'} users={users ?? []} matrix={matrix} linkUp={linkUp} onClose={close} />
+      <EditUserDialog key={`edit-${dialog.seq}`} isOpen={dialog.open && dialog.kind === 'edit'} target={targetOf('edit')} linkUp={linkUp} onClose={close} />
+      <DeleteUserDialog key={`delete-${dialog.seq}`} isOpen={dialog.open && dialog.kind === 'delete'} target={targetOf('delete')} selfId={selfId} linkUp={linkUp} onClose={close} />
     </>
   )
 }

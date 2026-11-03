@@ -14,6 +14,7 @@ import { AUDIT_RING_SIZE, EVENT_RING_SIZE, GENESIS_HASH } from './constants';
 import type {
   AuditEventBody,
   AuditLogSlice,
+  PurgedRange,
   AuditRow,
   ChainVerifyResult,
   Details,
@@ -163,7 +164,12 @@ export function appendAuditMany(
  *   SEQ_GAP), and its stored hash must equal the recomputed one (else HASH_MISMATCH).
  * - The last row's hash must equal `head`.
  */
-export function verifyAuditChain(log: AuditLogSlice): ChainVerifyResult {
+function insidePurge(purged: readonly PurgedRange[] | undefined, fromSeq: number, toSeq: number): boolean {
+  if (purged === undefined) return false;
+  return purged.some((range) => range.from <= fromSeq + 1 && range.to >= toSeq - 1);
+}
+
+export function verifyAuditChain(log: AuditLogSlice, purged?: readonly PurgedRange[]): ChainVerifyResult {
   const { rows } = log;
   for (let index = 0; index < rows.length; index += 1) {
     const row = rows[index] as AuditRow;
@@ -172,7 +178,7 @@ export function verifyAuditChain(log: AuditLogSlice): ChainVerifyResult {
       if (row.prevHash !== previous.hash) {
         return { ok: false, checked: index, index, seq: row.seq, reason: 'PREV_LINK_BROKEN' };
       }
-      if (row.seq !== previous.seq + 1) {
+      if (row.seq !== previous.seq + 1 && !insidePurge(purged, previous.seq, row.seq)) {
         return { ok: false, checked: index, index, seq: row.seq, reason: 'SEQ_GAP' };
       }
     } else if (log.dropped === 0 && row.prevHash !== GENESIS_HASH) {

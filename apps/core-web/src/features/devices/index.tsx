@@ -64,6 +64,7 @@ import {
 import { DeviceDrawer } from './device-drawer'
 import { DevicesBanner } from './devices-banner'
 import { FrontPanel } from './front-panel'
+import { LcdConnection } from './lcd-connection'
 import { useDeviceLabels } from './labels'
 import { DEVICE_COMMAND_OF, useDeviceWords } from './live'
 import { MicRescan } from './mic-rescan'
@@ -292,6 +293,7 @@ export function DevicesPage() {
 
               <DevicesPanel id="front" icon={MonitorCog} title={t('devices.front.title')} subtitle={t('devices.front.subtitle')}>
                 <FrontPanel />
+                <LcdConnection />
               </DevicesPanel>
 
               <DevicesPanel id="ports" icon={Cable} title={t('devices.ports.title')} subtitle={t('devices.ports.subtitle')}>

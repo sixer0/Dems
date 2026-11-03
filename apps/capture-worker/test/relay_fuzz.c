@@ -343,15 +343,16 @@ static int fuzz_start(const uint8_t *data, size_t n) {
     if (r == RELAY_STOPPED) {
         char line[RELAY_REPORT_MAX + 1];
         must(ends_inside(s.ingest, sizeof s.ingest) && ends_inside(s.locator, sizeof s.locator) && ends_inside(s.host, sizeof s.host) && ends_inside(s.account, sizeof s.account) && ends_inside(s.secret, sizeof s.secret), "every member ends inside its array");
-        must(s.mode == RELAY_MODE_RECORD || s.mode == RELAY_MODE_PROBE, "a start message that is taken names one of the two modes");
+        must(s.mode == RELAY_MODE_RECORD || s.mode == RELAY_MODE_PROBE || s.mode == RELAY_MODE_PREVIEW, "a start message that is taken names one of the three modes");
         must(s.port >= 1 && s.port <= 65535, "the camera's port inside its range");
         if (s.mode == RELAY_MODE_RECORD) must(s.ingest_port >= RELAY_INGEST_PORT_MIN && s.ingest_port <= RELAY_INGEST_PORT_MAX, "record mode: the ingest port inside its range");
-        else must(!s.ingest[0] && s.ingest_port == 0, "probe mode: no ingest address is taken");
+        else must(!s.ingest[0] && s.ingest_port == 0, "probe and preview mode: no ingest address is taken");
         must(s.attempt >= 0 && s.attempt <= RELAY_ATTEMPT_MAX, "the attempt is 0 (not stated) or inside its bound");
         /* Row 143b: the source address. Record mode always holds one; one that is held is the canonical dotted
          * literal of four numbers, the first 1 to 223 - written again from its numbers it is the same text. */
         must(ends_inside(s.source, sizeof s.source), "the source address ends inside its array");
         must(s.mode != RELAY_MODE_RECORD || s.source[0], "record mode: a source address is held");
+        must(s.mode != RELAY_MODE_PREVIEW || s.source[0], "preview mode (row 89): a source address is held");
         if (s.source[0]) {
             unsigned a = 999, b = 999, c = 999, d = 999;
             char again[32], tail = 0;
@@ -508,6 +509,9 @@ static const Seed seed_start[] = {
     /* row 143b: the source address - the largest literal, probe mode with one, and forms that are refused */
     S("{\"type\":\"start\",\"mode\":\"record\",\"source\":\"223.255.255.255\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n"),
     S("{\"type\":\"start\",\"mode\":\"probe\",\"source\":\"192.168.50.1\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n"),
+    /* row 89: preview mode, with its source address and without */
+    S("{\"type\":\"start\",\"mode\":\"preview\",\"attempt\":3,\"source\":\"192.168.50.1\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n"),
+    S("{\"type\":\"start\",\"mode\":\"preview\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n"),
     S("{\"type\":\"start\",\"mode\":\"record\",\"source\":\"0.0.0.0\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n"),
     S("{\"type\":\"start\",\"mode\":\"record\",\"source\":\"192.168.050.1\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n"),
     S("{\"type\":\"start\",\"mode\":\"record\",\"ingest\":\"" INGEST "\",\"access\":{\"locator\":\"rtsp://192.0.2.10/a\",\"username\":\"u\",\"secret\":\"s\"}}\n"),

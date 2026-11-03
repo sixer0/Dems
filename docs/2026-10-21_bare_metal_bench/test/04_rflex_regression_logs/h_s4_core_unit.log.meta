@@ -1,0 +1,4 @@
+PRE 18:44:42 uptime:  18:44:42 up  2:37,  3 users,  load average: 2.49, 1.16, 0.48
+START 18:44:42 CMD: npx vitest run --root apps/core-server --project unit --maxWorkers=2
+END 18:48:38 rc=1 duration=236s
+POST uptime:  18:48:38 up  2:40,  3 users,  load average: 4.96, 2.64, 1.20

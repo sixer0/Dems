@@ -33,6 +33,12 @@ describe('R93-09: a proxy error of a signed path is printed without the path', (
     for (const line of [media, download]) expect(line).not.toMatch(/CANARY|mts_|exs_/)
   })
 
+  it('the live camera preview path is blanked; the route name stays (decisions D51 / D53)', () => {
+    const preview = proxyErrorLine('/preview/cps_CANARYthree9Zx1vBn3Hd5', blankSignedPathOnProxyError as (proxy: EventEmitter) => void)
+    expect(preview).toBe('http proxy error: /preview/[signed path not printed]')
+    expect(preview).not.toMatch(/CANARY|cps_/)
+  })
+
   it('a path that carries no signed value is printed as it is', () => {
     expect(proxyErrorLine('/api/v1/evidence/EV-20261009-0001', blankSignedPathOnProxyError as (proxy: EventEmitter) => void)).toBe('http proxy error: /api/v1/evidence/EV-20261009-0001')
   })

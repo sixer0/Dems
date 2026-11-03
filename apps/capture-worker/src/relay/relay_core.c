@@ -251,6 +251,7 @@ RelayCode relay_start_parse(const char *line, size_t length, RelayStart *out) {
             if (text(&c, word, sizeof word) < 0) goto refused;
             if (!strcmp(word, "record")) out->mode = RELAY_MODE_RECORD;
             else if (!strcmp(word, "probe")) out->mode = RELAY_MODE_PROBE;
+            else if (!strcmp(word, "preview")) out->mode = RELAY_MODE_PREVIEW;
             else goto refused;
         }
         else if (!strcmp(key, "attempt")) { bit = 16; if ((out->attempt = attempt_of(&c)) < 0) goto refused; }
@@ -285,11 +286,13 @@ RelayCode relay_start_parse(const char *line, size_t length, RelayStart *out) {
      * probe pushes nothing, so it is given no ingest address and one that comes with it is refused. `attempt`
      * may stand in both and is the one member that may be absent (then 0: "not stated").
      * Row 143b: `source`, the address the camera leg leaves from. Record mode MUST state it (a recording is of a
-     * stored camera, and its dial is never made without the source the Core's rule named); probe mode may. */
+     * stored camera, and its dial is never made without the source the Core's rule named); probe mode may.
+     * Row 89 (relay.h "PREVIEW MODE"): preview = the members of probe, and it MUST state `source` as record mode does. */
     with_source = seen & 32;
     seen &= ~(16 | 32);
-    if (c.p != c.end || inner != 7 || seen != (out->mode == RELAY_MODE_PROBE ? 11 : 15)) goto refused;
+    if (c.p != c.end || inner != 7 || seen != (out->mode == RELAY_MODE_PROBE || out->mode == RELAY_MODE_PREVIEW ? 11 : 15)) goto refused;
     if (out->mode == RELAY_MODE_RECORD && !with_source) goto refused;
+    if (out->mode == RELAY_MODE_PREVIEW && !with_source) goto refused;
     if (with_source && !source_ok(out->source)) goto refused;
     if ((out->mode == RELAY_MODE_RECORD && !ingest_ok(out)) || !locator_ok(out)) goto refused;
     /* The account name is written into a header: no control character may be in it. The password is only hashed. */

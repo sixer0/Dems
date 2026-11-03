@@ -314,6 +314,7 @@ describe('part 2: every POST operation of the contract registry, on the real app
       'signInWithBiometric',
       'reportBiometricFailure',
     ]);
+    // Operation 114 `getPanelFirmware` is NOT in this list: this app is built without the domain modules, so the devices unit registers no route and the operation keeps its stand-in.
     expect(real.filter((operation) => operation.method === 'get').map((operation) => operation.operationId)).toEqual(['getServiceHealth', 'getSignInStatus', 'getAuthSession', 'getRoleMatrix']);
     expect(standIns).toHaveLength(CORE_API_OPERATIONS.length - 10);
     console.info(`[b2a] API-7 table: ${POSTS.length} POST and ${GETS.length} GET operations in the registry; stand-ins for ${standIns.length}; real in this app: ${real.map((operation) => `${operation.method.toUpperCase()} ${operation.operationId}`).join(', ')}`);

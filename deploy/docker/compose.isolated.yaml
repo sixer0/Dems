@@ -12,3 +12,5 @@ services:
     network_mode: "service:db"
   tools:
     network_mode: "service:db"
+  lcd:
+    network_mode: "service:db"

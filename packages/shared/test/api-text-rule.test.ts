@@ -164,7 +164,9 @@ describe('API-13 over the whole registry', () => {
     // Task 4 row V3: op 108 `testCaptureDeviceConnection` has NO body, so the count does not move.
     // Task 4 row 116 adds the bodies of ops 109 and 110; their free texts (a step's note, the site address, the reason) carry the rule: 41 -> 43 bodies.
     // Task 4 row RD2 adds the body of op 111 (one member, a closed reason; no free text): 43 -> 44 bodies.
-    expect(CORE_API_OPERATIONS.filter((operation) => operation.requestBody).map((operation) => operation.operationId)).toHaveLength(44);
+    // REVISED 2026-11-02 (principal): RB-9 as amended adds the bodies of createUser, updateUser and
+    // deleteUser (free text of the profile and the reason, each under API-13), 44 -> 47.
+    expect(CORE_API_OPERATIONS.filter((operation) => operation.requestBody).map((operation) => operation.operationId)).toHaveLength(47);
     expect(CORE_API_OPERATIONS.filter((operation) => operation.query).map((operation) => operation.operationId)).toHaveLength(6);
     expect(new Set(checked).size).toBeGreaterThanOrEqual(30);
     expect(checked).toContain('SignInRequest(root).password');
@@ -237,7 +239,12 @@ describe('API-13 over the whole registry', () => {
     // Task 4 row V3 adds the one schema of op 108 (an answer; the operation has no body): 165 -> 166.
     // Task 4 row 116 adds the five schemas of ops 109-110: 166 -> 171.
     // Task 4 row RD2 adds the two schemas of op 111: 171 -> 173.
-    expect(added).toHaveLength(173);
+    // Task 4 row D53 adds the two schemas of ops 112-113: 173 -> 175.
+    // REVISED 2026-11-02 (principal): RB-9 as amended adds the four schemas of createUser, updateUser
+    // and deleteUser (CreateUserRequest, UpdateUserRequest, DeleteUserRequest, DeletedUser): 175 -> 180.
+    // The step counts above leave out the one schema of op 114 (PanelFirmwareResponse, LCD bridge task),
+    // which the registry already carried: the same document pins it at 194 components - 18 = 176.
+    expect(added).toHaveLength(180);
     let leaves = 0;
     const open: string[] = [];
     for (const name of added) {

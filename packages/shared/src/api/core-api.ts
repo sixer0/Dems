@@ -1,3 +1,4 @@
+import { LcdIntegrationStatusSchema } from './lcd';
 /**
  * Core API v1 contract: the registry of its 89 REST operations (75 through task 2; operations
  * 76-89 added by task 3 M2-W7, blueprint row 48, `C3 §2.2`), and the zod schemas of the ten
@@ -113,6 +114,8 @@ import { DEMO_OPERATIONS, DEMO_SCHEMAS } from './demo-controls';
 import {
   CAPTURE_CONFIG_OPERATIONS,
   CAPTURE_CONFIG_SCHEMAS,
+  CAPTURE_PREVIEW_OPERATIONS,
+  CAPTURE_PREVIEW_SCHEMAS,
   CAPTURE_CREDENTIAL_OPERATION,
   DEVICE_OPERATIONS,
   DEVICE_SCHEMAS,
@@ -122,6 +125,8 @@ import { HealthResponseSchema } from './health';
 import { IDENTITY_OPERATIONS, IDENTITY_SCHEMAS } from './identity';
 import { INSTALLATION_ACCEPTANCE_OPERATIONS, INSTALLATION_ACCEPTANCE_SCHEMAS } from './installation-acceptance';
 import { CAPTURE_RETIRE_OPERATIONS, CAPTURE_RETIRE_SCHEMAS } from './capture-retire';
+// LCD bridge task: the panel's own firmware word (operation 114), public so the sign-in screen can read it.
+import { PANEL_FIRMWARE_OPERATIONS, PANEL_SCHEMAS } from './lcd-panel';
 import { NETWORK_TIME_OPERATIONS, NETWORK_TIME_SCHEMAS } from './network-time';
 import { EXPORT_DENIAL_NOTE, INVALID_INPUT, NOT_SIGNED_IN, forbidden } from './operation-parts';
 import { PAIRING_OPERATIONS, PAIRING_SCHEMAS } from './pairing';
@@ -528,6 +533,7 @@ export type StorageStatusResponse = z.output<typeof StorageStatusResponseSchema>
 
 export const DeviceHealthResponseSchema = z
   .object({
+    lcd: LcdIntegrationStatusSchema.optional().describe('Optional local LCD bridge; absent when not configured. HTTP reachability is separate from USB panel liveness.'),
     device: z.object({
       id: z.string().min(1).describe('e.g. DEMS-IR-01.'),
       name: z.string().min(1),
@@ -725,6 +731,10 @@ export const CORE_API_SCHEMAS = {
   ...INSTALLATION_ACCEPTANCE_SCHEMAS,
   // Task 4 (row RD2; design 07): the two schemas of operation 111.
   ...CAPTURE_RETIRE_SCHEMAS,
+  // Task 4 bare-metal bench (decisions D51, D53): the two schemas of operations 112-113.
+  ...CAPTURE_PREVIEW_SCHEMAS,
+  // LCD bridge task: the one schema of operation 114.
+  ...PANEL_SCHEMAS,
 } as const;
 export type CoreApiSchemaName = keyof typeof CORE_API_SCHEMAS;
 
@@ -1154,6 +1164,12 @@ const OPERATION_TABLE = [
   // Task 4 (row RD2; design 07; decisions C146, C147): the retirement of a registered camera or
   // microphone. 110 + 1 = 111 operations, 39 GET / 72 POST.
   ...CAPTURE_RETIRE_OPERATIONS, // 111
+  // Task 4 bare-metal bench (decisions D51, D53): the live camera preview session and the lease of
+  // the idle microphone meters, both LIVE only. 111 + 2 = 113 operations, 39 GET / 74 POST.
+  ...CAPTURE_PREVIEW_OPERATIONS, // 112-113
+  // LCD bridge task: the firmware word the panel states about itself, answered by the Core server
+  // only and PUBLIC so the sign-in screen can read it. 113 + 1 = 114 operations, 40 GET / 74 POST.
+  ...PANEL_FIRMWARE_OPERATIONS, // 114
 ] as const satisfies readonly CoreApiRegistryOperation[];
 
 /** The type of the table with literal operation IDs and schema names (`CORE_API_OPERATION_TABLE`). */
