@@ -113,7 +113,7 @@ IDENTITY_FILE   = os.environ.get("DEMS_IDENTITY_FILE", "").strip()
 PROVISION_KEY   = os.environ.get("DEMS_PROVISION_KEY", "").strip()
 
 # ═══════════════════════════════════════════════════════════════════════════════════════
-# LOGO PRE-DELIVER (lapisan L1) + GERBANG TECHNICIAN
+# LOGO PRE-DELIVER (lapisan L1) + GERBANG IDENTITAS AKUN VENDOR (D57)
 # ───────────────────────────────────────────────────────────────────────────────────────
 # Kontrak ke alat (ditetapkan prinsipal, sama persis dengan firmware):
 #   {"evt":"logo","id":"client|splash","seq":N,"of":M,"bytes":len,"crc":CRC16,"data":"<b64>"}
@@ -146,7 +146,10 @@ LOGO_MAX_H    = int(os.environ.get("DEMS_LOGO_MAX_H", "320"))
 # sekali ke sign-in Core, dan peran dibaca dari jawaban sesi Core yang SUDAH ADA.
 CORE_URL      = (os.environ.get("DEMS_CORE_URL") or "http://127.0.0.1:4420").rstrip("/")
 CORE_ORIGIN   = os.environ.get("DEMS_CORE_CONSOLE_ORIGIN", "http://127.0.0.1:5173").rstrip("/")
-PERAN_SETUP   = "TECHNICIAN"
+# D57 (2026-11-03, principal): gerbang pre-delivery adalah IDENTITAS akun vendor, bukan peran -
+# root berperan SUPERVISOR (peran justru tidak membedakan dia dari supervisor klien), dan
+# teknisi klien tidak boleh masuk. Nama akun dibaca dari jawaban sesi Core, bukan dari form.
+AKUN_VENDOR   = ("root", "gsp.teknisi")
 SETUP_TTL_S   = float(os.environ.get("DEMS_SETUP_TTL_S", "900"))
 try:                                                        # PIL sudah ada di interpreter service
     from PIL import Image as _PILImage                       # (diperiksa: 10.2.0 / 3.12.3)
@@ -785,17 +788,18 @@ def teknisi_login(user, pw):
     ses = js.get("session") or {}
     op = ses.get("operator") or {}
     peran = str(op.get("role") or "")
+    akun = str(op.get("username") or "")
     nama = str(op.get("displayName") or op.get("name") or op.get("username") or user)[:40]
     cookie = _cookie_set(hdrs)
-    info = {"peran": peran, "nama": nama, "operator": str(op.get("id") or "")}
-    if peran != PERAN_SETUP:
+    info = {"peran": peran, "nama": nama, "akun": akun, "operator": str(op.get("id") or "")}
+    if akun not in AKUN_VENDOR:
         if cookie:
             _core_call("/api/v1/auth/sign-out", {"reason": "USER"}, cookie=cookie)
-        return None, ("Core menerima login akun %s, tapi perannya %s — operasi pre-deliver "
-                      "hanya untuk %s" % (nama or "?", peran or "TANPA PERAN", PERAN_SETUP)), info
+        return None, ("Core menerima login akun %s, tapi operasi pre-delivery hanya untuk akun "
+                      "vendor %s" % (nama or "?", " / ".join(AKUN_VENDOR))), info
     token = secrets.token_urlsafe(24)
     with L:
-        SETUP[token] = {"core_cookie": cookie, "peran": peran, "nama": nama,
+        SETUP[token] = {"core_cookie": cookie, "peran": peran, "nama": nama, "akun": akun,
                         "dibuat": time.time(), "exp": time.time() + SETUP_TTL_S}
     log("[setup] %s masuk sebagai %s (sesi Core disimpan di memori, sandi tidak)" % (nama, peran))
     event("-", "SETUP_MASUK", "-", nama[:60])
@@ -803,11 +807,11 @@ def teknisi_login(user, pw):
 
 
 def teknisi_peran(token):
-    """Buktikan ulang lewat Core bahwa token ini masih sesi TECHNICIAN (dipanggil tiap operasi)."""
+    """Buktikan ulang lewat Core bahwa token ini masih sesi akun vendor (dipanggil tiap operasi; D57)."""
     with L:
         s = SETUP.get(str(token or ""))
     if not s:
-        return False, "belum ada sesi TECHNICIAN — login dulu di halaman setup", {}
+        return False, "belum ada sesi akun vendor — login dulu di halaman setup", {}
     if s["exp"] < time.time():
         with L:
             SETUP.pop(str(token), None)
@@ -819,14 +823,15 @@ def teknisi_peran(token):
         return False, _alasan_core(code, js), {}
     op = js.get("operator") or {}
     peran = str(op.get("role") or "")
+    akun = str(op.get("username") or s.get("akun") or "")
     nama = str(op.get("displayName") or op.get("name") or s.get("nama") or "")[:40]
-    if peran != PERAN_SETUP:
-        return False, ("sesi Core ini berperan %s — operasi pre-deliver butuh %s"
-                       % (peran or "?", PERAN_SETUP)), {"peran": peran, "nama": nama}
+    if akun not in AKUN_VENDOR:
+        return False, ("sesi Core ini akun %s — operasi pre-deliver butuh akun vendor %s"
+                       % (akun or "?", " / ".join(AKUN_VENDOR))), {"peran": peran, "nama": nama}
     with L:
         if str(token) in SETUP:
             SETUP[str(token)]["exp"] = time.time() + SETUP_TTL_S
-    return True, "", {"peran": peran, "nama": nama}
+    return True, "", {"peran": peran, "nama": nama, "akun": akun}
 
 
 def teknisi_logout(token):
@@ -1286,7 +1291,7 @@ class H(BaseHTTPRequestHandler):
         except Exception:
             return None
 
-    # ── unggah logo + halaman setup (semua operasi dijaga peran TECHNICIAN dari Core) ──
+    # ── unggah logo + halaman setup (semua operasi dijaga identitas akun vendor dari Core; D57) ──
     def _cookies(self):
         out = {}
         for bagian in (self.headers.get("Cookie") or "").split(";"):
@@ -1387,7 +1392,7 @@ class H(BaseHTTPRequestHandler):
                               "text/html", [("Set-Cookie",
                               "dems_setup=; Path=/; HttpOnly; Max-Age=0")])
 
-        # semua operasi berikut butuh TECHNICIAN yang dibuktikan ulang ke Core
+        # semua operasi berikut butuh akun vendor yang dibuktikan ulang ke Core (D57)
         if aksi == "logo":
             kode, out = self.proses_unggah(medan, berkas, src)
             if kode in (400, 403, 422):
@@ -1468,7 +1473,7 @@ class H(BaseHTTPRequestHandler):
 
         if not sesi_ok:
             isi = (
-                "<h2>1 · Masuk sebagai TECHNICIAN</h2>"
+                "<h2>1 · Masuk sebagai akun vendor (root / gsp.teknisi)</h2>"
                 "<p style='color:#8891a5'>Kredensial dikirim ke Core (<code>%s</code>, jalur resmi "
                 "<code>POST /api/v1/auth/sign-in</code>) hanya untuk membuktikan peran. Sandi tidak "
                 "pernah disimpan, tidak masuk log, dan tidak muncul di URL.</p>"
@@ -1505,7 +1510,7 @@ class H(BaseHTTPRequestHandler):
 <body style="font:15px system-ui;background:#0b0b12;color:#e8e8f0;padding:26px;max-width:980px">
 <h1 style="font-size:21px">DEMS EDGE — setup pre-deliver</h1>
 <p style="color:#8891a5">Layar ini hanya melayani 127.0.0.1. Setiap operasi dibuktikan dulu ke
-DEMS Core bahwa pemanggilnya berperan <b>TECHNICIAN</b>; kalau bukan, alasan Core ditampilkan apa
+DEMS Core bahwa pemanggilnya adalah akun vendor <b>root</b> atau <b>gsp.teknisi</b>; kalau bukan, alasan Core ditampilkan apa
 adanya.</p>
 %s%s<h2 style="font-size:16px;color:#8891a5">Keadaan logo di alat</h2>
 <table cellpadding=6 style="border-collapse:collapse;font-size:13px;width:100%%">
@@ -1780,10 +1785,10 @@ if __name__ == "__main__":
     muat_identitas()
     muat_logo()
     log("[logo] olahan gambar: %s | direktori state %s | Core %s (origin konsol %s) | "
-        "gerbang peran %s | halaman setup http://%s:%d/setup"
+        "gerbang identitas akun vendor %s | halaman setup http://%s:%d/setup"
         % ("PIL " + (_PILImage.__version__ if hasattr(_PILImage, "__version__") else "?")
            if PUNYA_PIL else "PNG murni tanpa PIL", LOGO_DIR, CORE_URL, CORE_ORIGIN,
-           PERAN_SETUP, BIND, PORT))
+           "/".join(AKUN_VENDOR), BIND, PORT))
     threading.Thread(target=setup_prune, daemon=True).start()
     threading.Thread(target=serial_worker, daemon=True).start()
     threading.Thread(target=reaper, daemon=True).start()
