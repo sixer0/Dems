@@ -6,7 +6,7 @@
  * | # | operationId | Access | Audit on success |
  * |--:|-------------|--------|------------------|
  * | 90 | `getSttConfig` | AUTHENTICATED (every role) | NONE-R |
- * | 91 | `updateSttConfig` | CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN); a body with `credential`: a web console session only (S99-09) | STT_CONFIG_CHANGED; none when nothing changed |
+ * | 91 | `updateSttConfig` | CAPTURE_CONFIG (TECHNICIAN; vendor root by identity, D55); a body with `credential`: a web console session only (S99-09) | STT_CONFIG_CHANGED; none when nothing changed |
  * | 92 | `testSttConnection` | CAPTURE_CONFIG | none (no state change) |
  *
  * THE CREDENTIAL IS WRITE-ONLY (E-30/E-31; SEC35-14; the RK-12 pattern of op 89). A request may
@@ -490,7 +490,7 @@ export const STT_CONFIG_OPERATIONS = [
     mode: CoreApiMode.SIMULATED,
     summary: 'Change the STT configuration',
     description: [
-      'Stores a change of the STT configuration. Needs CAPTURE_CONFIG — SUPERVISOR and TECHNICIAN hold it (the permission of the device selector). The body names `revision` (the optimistic lock) and the members to change.',
+      'Stores a change of the STT configuration. Needs CAPTURE_CONFIG (TECHNICIAN holds it since the 0034 revocation, and the vendor `root` account holds it by identity too (D55) — the permission of the device selector). The body names `revision` (the optimistic lock) and the members to change.',
       '**Accepted while a session is open, applied to the next one.** The open session keeps the snapshot taken at its start; the answer carries `appliesFrom: NEXT_SESSION` (and `pendingForNextSession: true`). When idle the answer carries `appliesFrom: NOW`.',
       NEVER_RETURNED,
       STT_CREDENTIAL_WEB_CONSOLE_ONLY,

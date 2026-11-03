@@ -270,7 +270,7 @@ const DENIED = { denial: AuditType.ACCESS_DENIED } as const;
 
 const WEB_ONLY_REFUSED = `the operator's session is bound to a paired tablet or phone (NOT_PERMITTED, \`details.reason: ${WEB_CONSOLE_ONLY_REASON}\`; one ACCESS_DENIED audit row; refused before the body is used)`;
 const WEB_AND_IDLE =
-  '**Web console only, idle only.** Needs CAPTURE_CONFIG (SUPERVISOR, TECHNICIAN) and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row. With a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.';
+  '**Web console only, idle only.** Needs CAPTURE_CONFIG (TECHNICIAN holds it since the 0034 revocation, and the vendor `root` account holds it by identity too (D55)) and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row. With a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.';
 const PRODUCTION_ONLY =
   `**Production capture only.** A Core whose capture is simulated, or that runs with development sources, has no sound-card adapter: it answers \`503 NOT_READY\` with \`details.reason: ${CaptureDiscoveryReason.DISCOVERY_NOT_READY}\`, the answer of a camera search without an adapter. Nothing is listed, nothing is stored and no audit row is written. That is an envelope-level answer of the contract.`;
 

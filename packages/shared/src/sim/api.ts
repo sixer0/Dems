@@ -114,7 +114,7 @@ import { captureMicLines, meterInputOfChannel } from './audio';
 import { selectorOfSession } from './selector-in-force';
 import { SEALING_ETA_STEP_MS, SEALING_FIRST_ATTEMPT } from './constants';
 import { toWibIso } from './clock';
-import { findOperatorById, roleHas } from './auth';
+import { findOperatorById, operatorHas, roleHas } from './auth';
 import { setCaptureConfigTransition } from './capture-config';
 import { RETIRE_REFUSAL, nextCaptureCameraId, registerCaptureDeviceTransition, retireCaptureDeviceTransition, selectorSlotOfDevice } from './capture-registry';
 import { describeError, SimErrorCode, SimNotFoundError, SimPermissionError, SimTransitionError } from './errors';
@@ -733,7 +733,8 @@ function requireOperator(state: SimState): SimApiResponse | null {
 function capabilityRefusal(state: SimState, permission: Permission, deniedMessage: string): SimApiResponse | null {
   const operator = operatorOf(state);
   if (!operator) return fail(401, 'NOT_SIGNED_IN', 'Sign in first.');
-  if (!roleHas(operator.role, permission)) return fail(403, 'NOT_PERMITTED', deniedMessage);
+  // D55: the check is per ACCOUNT, not per role - the vendor root holds CAPTURE_CONFIG by identity.
+  if (!operatorHas(operator, permission)) return fail(403, 'NOT_PERMITTED', deniedMessage);
   return null;
 }
 

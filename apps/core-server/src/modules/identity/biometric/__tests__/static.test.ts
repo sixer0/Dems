@@ -104,7 +104,10 @@ describe('rule 1 (M3): who may call is stage 6, only', () => {
     expect(occurrences(code, ACCESS_CHECK)).toEqual([]);
     // The one role that is read is the operator's who just signed in, to answer the permissions of the new session.
     expect(occurrences(code, /\.\s*role\b/g)).toHaveLength(1);
-    expect(textOf('sign-in.ts')).toMatch(/const permissions = await readRolePermissions\(unit, operator\.role\);/);
+    // D55 (2026-11-03): the answered list is the ACCOUNT's - the role's grants plus the vendor
+    // root's identity carry, wrapped by the shared `effectivePermissions`. It still READS, never
+    // checks: the ACCESS_CHECK above stays empty and stage 6 stays the only gate.
+    expect(textOf('sign-in.ts')).toMatch(/const permissions = effectivePermissions\(operator\.username, await readRolePermissions\(unit, operator\.role\)\);/);
   });
 
   it('no file writes or answers a denial of the guard', () => {

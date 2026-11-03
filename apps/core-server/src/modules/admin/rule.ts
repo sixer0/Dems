@@ -13,6 +13,7 @@
  * It is not an access check. Who may call the operations is the access rule of the registry,
  * applied by stage 6; this is a rule about the data the operations change.
  */
+import { isVendorRoot, VENDOR_ROOT_USERNAME } from '@dems/shared/sim';
 import type { OperatorRole } from '@dems/shared/sim';
 import type { LockedOperator } from './statements';
 
@@ -21,14 +22,10 @@ import type { LockedOperator } from './statements';
  * amended by the principal, PT GSP, 02-11-2026). It is an identity, not a permission: the matrix
  * has no role that means "vendor", and a client's supervisor holds the very same USER_ADMIN that
  * root does. The check therefore reads the caller's own username, inside the unit, under the same
- * lock as the change.
+ * lock as the change. The identity itself lives in `@dems/shared/sim` (D55, 2026-11-03), because
+ * the same username now also CARRIES a permission - re-exported here for the module's callers.
  */
-export const VENDOR_ROOT_USERNAME = 'root';
-
-/** True when the caller of a narrowed operation is the vendor root account. */
-export function isVendorRoot(username: string | null | undefined): boolean {
-  return username === VENDOR_ROOT_USERNAME;
-}
+export { VENDOR_ROOT_USERNAME, isVendorRoot };
 
 /** What `assignUserRole` or `disableUser` is about to do to one operator. `enableUser` cannot take an administrator away. */
 export type OperatorChange =

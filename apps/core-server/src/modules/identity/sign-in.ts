@@ -50,6 +50,7 @@
  * lower-cased for the lookup and is never written to a row or a log line (SR-54).
  */
 import { ApiErrorCode, type AuthSessionInfo } from '@dems/shared/api';
+import { effectivePermissions } from '@dems/shared/sim';
 import type { Permission } from '@dems/shared/sim';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { authenticationOf } from '../../plugins/authenticate';
@@ -228,7 +229,8 @@ export async function signInWithPassword(
     const operator = await markSignedIn(unit, candidate.operatorId, now);
     // No row: the operator is disabled. Nothing was changed; the attempt fails like any other.
     if (operator === null) return null;
-    const permissions = await readRolePermissions(unit, operator.role);
+    // D55: the sign-in answer names the account's permissions (vendor root carries CAPTURE_CONFIG).
+    const permissions = effectivePermissions(operator.username, await readRolePermissions(unit, operator.role));
     const replaced = presented === null ? null : await endSession(unit, presented.id, now, 'ROTATED');
     const issued = await issueSession(unit, { operatorId: operator.id, deviceId, method: PASSWORD, now });
     await appendActivity(

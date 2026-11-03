@@ -85,7 +85,7 @@
  * reaches a row, an event, a publication or a log line.
  */
 import { ApiErrorCode, type AuthSessionInfo } from '@dems/shared/api';
-import { AuthMethod } from '@dems/shared/sim';
+import { AuthMethod, effectivePermissions } from '@dems/shared/sim';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { ApiFailure } from '../../../plugins/error-envelope';
 import { appendActivity } from '../activity';
@@ -220,7 +220,7 @@ export async function signInWithBiometricToken(
       const deviceState = await app.deviceResolver.deviceState(unit, deviceId);
       const operator = deviceState === 'PAIRED' ? await markSignedIn(unit, claimed.operatorId, now) : null;
       if (operator !== null) {
-        const permissions = await readRolePermissions(unit, operator.role);
+        const permissions = effectivePermissions(operator.username, await readRolePermissions(unit, operator.role));
         const biometricToken = newBiometricToken();
         await insertToken(unit, {
           tokenHash: biometricTokenHash(biometricToken),

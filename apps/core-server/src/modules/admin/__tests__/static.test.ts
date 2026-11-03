@@ -163,11 +163,14 @@ describe('rule 2 (M3): who may call is stage 6, only', () => {
     // Read by one statement, of one column, of the caller's own row; no other column of operators is.
     expect(files(/\breadUsername\b/g)).toEqual([`${FOLDER}changes.ts`, `${FOLDER}statements.ts`]);
     expect(textOf('statements.ts')).toMatch(/export const READ_USERNAME = 'SELECT username FROM public\.operators WHERE id = \$1';/);
-    // The identity is a constant of the rule file, and the test of it is one comparison with that constant.
+    // The identity is a constant - and since D55 (2026-11-03) it lives in `@dems/shared/sim`, the
+    // one place that knows what the username means (RB-9 narrows by it, D55 grants by it). The
+    // module re-exports it and may not define its own copy; the test of it stays one comparison.
     const rule = textOf('rule.ts');
-    expect(rule).toMatch(/export const VENDOR_ROOT_USERNAME = 'root';/);
+    expect(rule).toMatch(/import \{ isVendorRoot, VENDOR_ROOT_USERNAME \} from '@dems\/shared\/sim';/);
     expect(count(rule, /\bVENDOR_ROOT_USERNAME\b/g)).toBe(2);
-    expect(rule).toMatch(/return username === VENDOR_ROOT_USERNAME;/);
+    expect(rule).toMatch(/export \{ VENDOR_ROOT_USERNAME, isVendorRoot \};/);
+    expect(rule).not.toMatch(/= 'root'/);
     // No permission, role, session or device of the caller is read anywhere in the folder, and the
     // narrowed refusal names the account that may act, never the caller who did not.
     expect(places(/\bprincipal\s*\.\s*(?:username|name)\b/g)).toEqual([]);

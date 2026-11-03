@@ -15,6 +15,7 @@
  * whose returned rows decide. The server never decides from a value that an earlier statement
  * read without a lock: who ends a session, and why, is decided by the statement that ends it.
  */
+import { effectivePermissions } from '@dems/shared/sim';
 import type { OperatorRole, Permission } from '@dems/shared/sim';
 import type { QueryResultRow } from 'pg';
 import type { AuthMethodValue, SessionEndReason } from '../../db/schema';
@@ -140,7 +141,8 @@ export async function findSession(db: Queryable, tokenHash: Buffer, transport: S
       role: row.role_id,
     },
     operatorEnabled: row.enabled,
-    permissions: row.permissions,
+    // D55: the list a session ANSWERS with is the account's, not only the role's (vendor root).
+    permissions: effectivePermissions(row.username, row.permissions),
   };
 }
 

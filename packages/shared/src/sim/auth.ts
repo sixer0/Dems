@@ -97,6 +97,31 @@ export function roleHas(role: OperatorRole | null | undefined, permission: Permi
   return (ROLE_PERMISSIONS[role] as readonly Permission[]).includes(permission);
 }
 
+// D55 (2026-11-03, principal's ruling): the vendor `root` account must be able to search cameras
+// on any bench whatever role it carries, so CAPTURE_CONFIG rides the IDENTITY, not the seeded
+// matrix - the same RB-9 pattern of an identity rule beside the table, in the grant direction.
+// The matrix itself is unchanged (still 22 grants; migration 0034 still holds for every client
+// supervisor), and no stored grant expresses this row: it is a fact about one username.
+export const VENDOR_ROOT_USERNAME = 'root';
+export const VENDOR_ROOT_EXTRA_PERMISSIONS: readonly Permission[] = Object.freeze([Permission.CAPTURE_CONFIG]);
+
+/** RB-9's identity test, shared by every layer (the admin rule re-exports it). */
+export function isVendorRoot(username: string | null | undefined): boolean {
+  return username === VENDOR_ROOT_USERNAME;
+}
+
+/** Whether one account holds a permission: its role's grants plus the extras its identity carries. */
+export function operatorHas(operator: Pick<SimOperator, 'role' | 'username'> | null | undefined, permission: Permission): boolean {
+  if (!operator) return false;
+  return roleHas(operator.role, permission) || (isVendorRoot(operator.username) && VENDOR_ROOT_EXTRA_PERMISSIONS.includes(permission));
+}
+
+/** The effective permission list of one account, for the answers that name it (RB-3 reads). */
+export function effectivePermissions(username: string, rolePermissions: readonly Permission[]): readonly Permission[] {
+  const extras = isVendorRoot(username) ? VENDOR_ROOT_EXTRA_PERMISSIONS.filter((extra) => !rolePermissions.includes(extra)) : [];
+  return extras.length === 0 ? rolePermissions : [...rolePermissions, ...extras];
+}
+
 /**
  * The signed-in operator, who must hold one of `permissions` (step 54, review 40 M5, W52-6).
  * Throws `SimPermissionError` with code NOT_SIGNED_IN or NOT_PERMITTED; returns the operator.
@@ -110,7 +135,7 @@ export function requirePermission(
   const operator =
     state.auth.status === AuthStatus.SIGNED_IN ? findOperatorById(state.operators, state.auth.operatorId) : null;
   if (!operator) throw new SimPermissionError(action, label, SimErrorCode.NOT_SIGNED_IN);
-  if (!permissions.some((permission) => roleHas(operator.role, permission))) {
+  if (!permissions.some((permission) => operatorHas(operator, permission))) {
     throw new SimPermissionError(action, label, SimErrorCode.NOT_PERMITTED);
   }
   return operator;
