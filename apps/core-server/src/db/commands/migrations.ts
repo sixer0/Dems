@@ -98,6 +98,7 @@ export const INITIAL_MIGRATION_TAGS = [
   '0035_operator_administration_privileges',
   '0036_operator_purge',
   '0037_operator_credential_creation',
+  '0038_operator_purge_reseal_correction',
 ] as const;
 
 export interface MigrationFile {
