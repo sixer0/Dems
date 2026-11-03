@@ -26,6 +26,7 @@ import { GlowLayer, springTransition, tween, useAmbientLoop, useMotionPolicy } f
 import { cn } from '@/lib/utils'
 import { BORDER_BEAM, HANDOFF, LOGIN_ACCENT_LOOP_GROUP, SHEEN_LOOP_MS, type LoginChoreography } from './login-choreography'
 import { LoginAlert } from './login-alert'
+import { ModeSelector } from './mode-selector'
 import type { CoreLinkView } from './login-model'
 import type { LoginController } from './use-login-controller'
 
@@ -216,7 +217,7 @@ export function AuthCard({
                 coreRetry={coreRetry}
                 reconnecting={controller.heartbeatState === 'CONNECTING'}
                 arrivalDelayMs={choreography.noticeMs}
-                onUseSimulated={undefined}
+                onUseSimulated={isLive && modeSwitch.selectable ? () => modeSwitch.request(CoreMode.SIMULATED) : undefined}
               />
               <Form className="dems-login-form" validationBehavior="aria" method="post" onSubmit={onSubmit} aria-labelledby="login-title">
                 <TextField
@@ -323,6 +324,16 @@ export function AuthCard({
                 )}
               </Form>
 
+              {/* WS-9/WS-10 (AC-C-47): restored 2026-11-03 — the disclosure was lost in the
+                  RB-9 WIP checkpoint (f85e9c01); the controller's `fill`, the vocabulary and
+                  the tests never left. Hidden in presentation mode as ruled. */}
+              {presentation ? null : (
+                <DemoOperators operators={operators} disabled={formDisabled} onPick={fill} live={isLive} />
+              )}
+
+              {/* §3.2/§3.3 MD-4 (AC-C-23): restored 2026-11-03 with DemoOperators — the call
+                  site was lost in the same RB-9 WIP checkpoint; the component file never was. */}
+              <ModeSelector modeSwitch={modeSwitch} disabled={pending !== null || accepted !== null} />
 
               {isLive ? <LiveTrustLine coreLink={controller.coreLink} /> : <SimulatedTrustLine paired={paired} />}
             </Card.Content>
@@ -475,6 +486,77 @@ function LiveTrustLine({ coreLink }: { coreLink: CoreLinkView }) {
  * server data and may have changed. The published password is accepted by the Core server only
  * while every listener is on loopback (C4).
  */
+
+function DemoOperators({
+  operators,
+  disabled,
+  onPick,
+  live,
+}: {
+  operators: readonly SimOperator[]
+  disabled: boolean
+  onPick: (operator: SimOperator) => void
+  live: boolean
+}) {
+  const { t } = useTranslation()
+  return (
+    <Disclosure className="dems-login-demo" data-testid="login-demo-operators">
+      <Disclosure.Heading>
+        <Disclosure.Trigger className="dems-login-demo-trigger">
+          <Users size={16} aria-hidden="true" />
+          <span className="text-body">{t('login.demoOperators.title')}</span>
+          <Disclosure.Indicator className="ml-auto" />
+        </Disclosure.Trigger>
+      </Disclosure.Heading>
+      <Disclosure.Content>
+        <Disclosure.Body className="dems-login-demo-body">
+          {live ? (
+            <p className="dems-login-demo-notice" data-testid="login-demo-notice">
+              <span className="text-caption">{t('login.live.demoNotice')}</span>
+            </p>
+          ) : null}
+          <p className="text-foreground-2">
+            <span className="text-caption">{t('login.demoOperators.hint')}</span>
+          </p>
+          <p className="text-muted">
+            <span className="text-caption font-mono">{t('login.demoOperators.password', { password: DEMO_OPERATOR_PASSWORD })}</span>
+          </p>
+          <ul className="dems-login-demo-list">
+            {operators.map((operator) => (
+              <li key={operator.id}>
+                <Button
+                  variant="ghost"
+                  fullWidth
+                  className="dems-login-operator"
+                  onPress={() => onPick(operator)}
+                  isDisabled={disabled}
+                  data-testid={`login-operator-${operator.username}`}
+                >
+                  <span className="dems-login-operator-initials" aria-hidden="true">
+                    {operator.initials}
+                  </span>
+                  <span className="dems-login-operator-text">
+                    <span className="text-foreground">
+                      <span className="text-body">{operator.displayName}</span>
+                    </span>
+                    <span className="text-muted">
+                      <span className="text-caption font-mono">{operator.username}</span>
+                    </span>
+                  </span>
+                  {live ? null : (
+                    <Chip size="sm" variant="soft" color={roleColor(operator.role)} className="ml-auto">
+                      <Chip.Label>{t(`common.roles.${operator.role}`)}</Chip.Label>
+                    </Chip>
+                  )}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Disclosure.Body>
+      </Disclosure.Content>
+    </Disclosure>
+  )
+}
 
 function roleColor(role: SimOperator['role']): 'accent' | 'success' | 'default' {
   if (role === 'SUPERVISOR') return 'accent'
