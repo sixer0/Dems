@@ -277,11 +277,15 @@ describe('the ledger comparison (D38)', () => {
 });
 
 describe('db:status reads the tables of the typed schema', () => {
-  it('43 table names, sorted, each a plain identifier', () => {
+  it('50 table names, sorted, each a plain identifier', () => {
     // 30 in the closed task-2 contract; dbc-3 adds nine (T-31..T-39), R-8 adds T-40 and dbc-4
     // adds T-41 (`session_capture_sources`); PE-129b-01 adds T-42 (`session_stt_config`); PE-0013-01 adds T-43 (`core_media_store`);
-    // (`stt_config`). The count equals the composed inventory the contract-inventory test pins.
-    expect(SCHEMA_TABLE_NAMES).toHaveLength(readInventory().counts.tables);
+    // (`stt_config`). The count equals the composed inventory the contract-inventory test pins —
+    // including the RB-9 purge amendment of 2026-11-02 (decision D54, migration 0036), which the
+    // checked-in JSON holds PRE-amendment on purpose and that test composes onto it: T-49
+    // `audit_purge_ticket` and T-50 `audit_purge_log`, both in the typed schema for the catalog
+    // comparison (MG-1). 48 + 2 = 50.
+    expect(SCHEMA_TABLE_NAMES).toHaveLength(readInventory().counts.tables + 2);
     expect([...SCHEMA_TABLE_NAMES]).toEqual([...SCHEMA_TABLE_NAMES].sort());
     for (const name of SCHEMA_TABLE_NAMES) expect(name).toMatch(/^[a-z][a-z_]*$/);
   });

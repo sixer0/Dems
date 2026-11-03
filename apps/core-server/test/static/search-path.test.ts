@@ -52,6 +52,11 @@ const ALLOWED: Readonly<Record<string, string>> = {
   'src/db/migrations/0007_stt_config_privileges.sql': 'the STT credential reveal function pins its own path (migration, owner role)',
   // Task 4 set 16 (design 07, decision C147), the same pattern: the SECURITY DEFINER destroy
   // function of a retired device's credential and the guard of a retired row pin their own path.
+  // RB-9 as amended (decision D54; migrations 0036 and its 0038 correction), the same pattern: the
+  // purge, the re-seal and the ticket-open functions pin their own search_path (and 0036 says so in
+  // prose at line 46, which an SQL file carries as it is).
+  'src/db/migrations/0036_operator_purge.sql': 'the operator purge, re-seal and ticket functions pin their own path (migration, owner role)',
+  'src/db/migrations/0038_operator_purge_reseal_correction.sql': 'the corrected re-seal function pins its own path (migration, owner role)',
   'src/db/migrations/0033_capture_device_retirement_privileges.sql': 'the capture credential destroy function and the retired-row guard pin their own path (migration, owner role)',
 };
 

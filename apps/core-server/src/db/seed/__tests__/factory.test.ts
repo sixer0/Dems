@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { CommandIo } from '../../commands/cli';
+import { OWNER_FILE_NAME } from '../../commands/owner-connection';
 import { countRows } from '../../mapping';
 import { runSeed } from '../cli';
 import { CERT_FINGERPRINT_PATTERN, ENV_DEVICE_CERT_FINGERPRINT, FACTORY_EMPTY_TABLES, FactorySeedError, factoryIdentityOfEnvironment, prepareFactorySeed } from '../factory';
@@ -149,7 +150,8 @@ describe('db:seed --factory: the wrong calls', () => {
    * because every case below stops before the first pool.
    */
   const ownerDir = mkdtempSync(join(tmpdir(), 'dems-factory-seed-'));
-  const ownerFile = join(ownerDir, 'pg.owner.env');
+  // T-CR-2 (c): the file's name is the command folder's own constant, not a literal of this test.
+  const ownerFile = join(ownerDir, OWNER_FILE_NAME);
   writeFileSync(ownerFile, ['DEMS_PG_HOST=127.0.0.1', 'DEMS_PG_PORT=4432', 'DEMS_PG_DATABASE=dems_demo', 'DEMS_PG_OWNER_ROLE=dems_owner', 'DEMS_PG_OWNER_PASSWORD=tidak-dipakai-tes-ini'].join('\n'), { mode: 0o600 });
   afterAll(() => rmSync(ownerDir, { recursive: true, force: true }));
 

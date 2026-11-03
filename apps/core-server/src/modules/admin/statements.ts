@@ -28,7 +28,7 @@
 import type { AdminUser } from '@dems/shared/api';
 import { GENESIS_HASH, chainHash, type AuditEventBody, type AuditRow, type OperatorRole, type Permission } from '@dems/shared/sim';
 import type { QueryResultRow } from 'pg';
-import { CoreError } from '../../core/errors';
+import { CoreError } from '../../core';
 
 /** A connection that runs one parameterised statement: the runtime pool, or a unit of work. */
 export interface Queryable {

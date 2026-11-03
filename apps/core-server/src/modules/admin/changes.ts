@@ -42,7 +42,7 @@ import { ApiErrorCode, type AdminUser, type CreateUserRequest, type DeleteUserRe
 import { Permission, type OperatorRole } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
 import type { UnitContext } from '../../core';
-import { CoreError } from '../../core/errors';
+import { CoreError } from '../../core';
 import { ApiFailure } from '../../plugins/error-envelope';
 import { revokeBiometricTokens } from '../identity/biometric';
 import { isVendorRoot, leavesNoAdministrator, VENDOR_ROOT_USERNAME } from './rule';

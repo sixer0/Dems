@@ -580,13 +580,14 @@ describe('rule 6: no password handling, no secret', () => {
 
 describe('rule 7: the module reaches other folders only through the seams and the plugins', () => {
   // REVISED 2026-11-02 (principal): RB-9 amended — the narrowed trio throws the core's own error type
-  // for a purge that answered in a form it cannot use, so `../../core/errors` joins the list. The
-  // list stays CLOSED: no other module, not the engine, not the schema, not the mapping.
-  it('imports the contract, the framework, the core and its errors, four plugins, its own files and the one revoke function of identity/biometric (decision D105); no other module, not the engine, not the schema', () => {
+  // for a purge that answered in a form it cannot use. REVISED 2026-11-03: `CoreError` rides the
+  // core's INDEX (which exports it), so `../../core/errors` leaves the list — the closed-unit rule of
+  // `test/static/imports.test.ts` refuses the deep path and this list now agrees with it. The list
+  // stays CLOSED: no other module, not the engine, not the schema, not the mapping.
+  it('imports the contract, the framework, the core, four plugins, its own files and the one revoke function of identity/biometric (decision D105); no other module, not the engine, not the schema', () => {
     const sources = new Set(code.flatMap((file) => [...file.text.matchAll(/\bfrom\s+'([^']+)'/g)].map((match) => match[1] ?? '')));
     expect([...sources].sort()).toEqual([
       '../../core',
-      '../../core/errors',
       '../../plugins/authenticate',
       '../../plugins/error-envelope',
       '../../plugins/logger',

@@ -120,12 +120,18 @@ const CLOSED_UNITS: readonly string[] = [
  *                                    of its own inside the capture unit. The capture-config module
  *                                    reads `captureFenceControl(app).registry()` in its boot step
  *                                    (integration pass C1, decision D115 (3)): the capture unit
- *                                    cannot hand the registry over itself without a unit cycle.
+ *                                    cannot hand the registry over itself without a unit cycle;
+ *   capture/boot/checks              the boot decision, pure (row 61). The seed program
+ *                                    (D54/D56: `db:seed --factory`, task 4 row 228b check 4b-3)
+ *                                    reads `isReservedInstallationId` there and not through the
+ *                                    capture index, which would load the supervisor, the ipc and
+ *                                    the adapters with it — the seed runs as the owner role
+ *                                    without the server, the same reason as password-hash above.
  */
 // Task 4 row 85b (decision C55, entry SR-7 (b); the line row 144 named): `modules/capture-config/credential-holders`, the
 // wiring of the two credential readers. The module's index must NOT hand it on (rule R-6 of that module); its one importer
 // is the composition of production capture, `src/capture-composition.ts`, a file of no unit above the modules.
-const EXPOSED: readonly string[] = ['src/modules/identity/password-hash', 'src/modules/identity/biometric', 'src/db/schema/boot-checks', 'src/capture/adapters', 'src/capture/fence', 'src/modules/capture-config/credential-holders'];
+const EXPOSED: readonly string[] = ['src/modules/identity/password-hash', 'src/modules/identity/biometric', 'src/db/schema/boot-checks', 'src/capture/adapters', 'src/capture/fence', 'src/capture/boot/checks', 'src/modules/capture-config/credential-holders'];
 
 /** The folders whose units are BELOW the modules: none of them imports a value of a module. */
 const BELOW_THE_MODULES: readonly string[] = ['src/core', 'src/engine', 'src/realtime', 'src/plugins/'];
