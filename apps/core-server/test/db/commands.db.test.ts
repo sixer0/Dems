@@ -118,7 +118,7 @@ describe('db:status', () => {
       `database         ${created()} on PostgreSQL 18.4`,
       'owner            dems_owner; encoding UTF8; locale C',
       'schema version   15; contract revision dbc-16; this code expects 15 (dbc-16)',
-      'migrations       34 file(s); ledger matches',
+      `migrations       ${INITIAL_MIGRATION_TAGS.length} file(s); ledger matches`,
       ...files.map((file) => `  ${file.tag.padEnd(20)} applied  file sha256 ${file.sha256}  stored ${file.sha256}`),
     ]);
     expect(result.out).toContain('seeded_at        not seeded');
@@ -158,7 +158,7 @@ describe('db:status', () => {
     const result = await run(runStatus, ['--database', empty.name]);
     expect(result.exitCode).toBe(1);
     expect(result.out).toContain('schema version   none (not migrated); this code expects 15 (dbc-16)');
-    expect(result.out.filter((line) => / pending /.test(line))).toHaveLength(34);
+    expect(result.out.filter((line) => / pending /.test(line))).toHaveLength(INITIAL_MIGRATION_TAGS.length);
     expect(result.err).toEqual([
       `db:status: ${INITIAL_MIGRATION_TAGS.length} migration(s) are not applied: ${INITIAL_MIGRATION_TAGS.join(', ')}. Run "npm run db:migrate".`,
       `db:status: NOT OK: 1 problem(s) on ${empty.name}.`,
@@ -183,9 +183,9 @@ describe('D38: an applied migration file that was edited is noticed by db:status
 
     const status = await run(runStatus, ['--database', created()], { migrationsFolder: folder });
     expect(status.exitCode).toBe(1);
-    expect(status.out).toContain('migrations       34 file(s); ledger DOES NOT MATCH');
+    expect(status.out).toContain(`migrations       ${INITIAL_MIGRATION_TAGS.length} file(s); ledger DOES NOT MATCH`);
     expect(status.out).toContain(`  ${'0001_tables'.padEnd(20)} edited   file sha256 ${edited?.sha256}  stored ${original?.sha256}`);
-    expect(status.out.filter((line) => / applied {2}file sha256 /.test(line))).toHaveLength(33);
+    expect(status.out.filter((line) => / applied {2}file sha256 /.test(line))).toHaveLength(INITIAL_MIGRATION_TAGS.length - 1);
     expect(status.err).toEqual([
       `db:status: 0001_tables.sql was edited after it was applied: the file's SHA-256 is ${edited?.sha256.slice(0, 16)}..., the stored hash is ${original?.sha256.slice(0, 16)}.... An applied file is never edited; a correction is a new file (MG-4).`,
       `db:status: NOT OK: 1 problem(s) on ${created()}.`,

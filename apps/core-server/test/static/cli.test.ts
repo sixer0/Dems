@@ -908,9 +908,12 @@ describe('F. no cryptography, no file read, one written table', () => {
     expect(occurrences(code, /\b(?:unlink|unlinkSync|rm|rmSync|rename|renameSync|rmdirSync)\s*\(/g)).toEqual([]);
   });
 
-  it('the folder holds ONE statement that writes, on one table, and never names the audit table', () => {
-    expect(occurrences(code, WRITING_STATEMENT)).toHaveLength(1);
+  it('the folder holds TWO statements that write, on one table, and never name the audit table', () => {
+    // D56 (2026-11-03): replace and create, the same table, the same eight parameters - the second
+    // one writes the first credential row of an account the factory seed left without one.
+    expect(occurrences(code, WRITING_STATEMENT)).toHaveLength(2);
     expect(fileOf(PASSWORD_COMMAND).text).toMatch(/export const SET_CREDENTIAL =\s*'UPDATE public\.operator_credentials SET /);
+    expect(fileOf(PASSWORD_COMMAND).text).toMatch(/export const CREATE_CREDENTIAL =\s*'INSERT INTO public\.operator_credentials \(operator_id, /);
     expect(occurrences(code, AUDIT_TABLE)).toEqual([]);
     // The audit row goes through the unit's writer.
     expect(count(fileOf(PASSWORD_COMMAND).text, /\bunit\.audit\.append\(/g)).toBe(1);

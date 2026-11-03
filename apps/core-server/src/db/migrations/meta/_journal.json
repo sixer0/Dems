@@ -260,6 +260,13 @@
       "when": 1793686800000,
       "tag": "0036_operator_purge",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793687400000,
+      "tag": "0037_operator_credential_creation",
+      "breakpoints": true
     }
   ]
 }

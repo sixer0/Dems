@@ -94,6 +94,10 @@ export const INITIAL_MIGRATION_TAGS = [
   '0031_network_config_onvif_ports_privileges',
   '0032_capture_device_retirement',
   '0033_capture_device_retirement_privileges',
+  '0034_capture_config_supervisor_revocation',
+  '0035_operator_administration_privileges',
+  '0036_operator_purge',
+  '0037_operator_credential_creation',
 ] as const;
 
 export interface MigrationFile {

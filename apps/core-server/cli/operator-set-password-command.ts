@@ -3,9 +3,11 @@
  * (task 4 row 215, package X2-3; decision U19; design `05_design_x1_x2.md` part B; security review
  * SX-01, SX-02, SX-03, SX-11, SX-12, SX-14, SX-19; requirements R-X2-1 to R-X2-11).
  *
- * WHAT IT DOES. With the Core of that database STOPPED, it replaces the stored password of ONE
- * named operator (`--username`), or of every operator whose stored credential still verifies
- * against the published demo password (`--all-demo`, the walk). Each password is typed twice at
+ * WHAT IT DOES. With the Core of that database STOPPED, it sets the password of ONE
+ * named operator (`--username`): it replaces the stored credential, or - since decision D56
+ * (2026-11-03) - writes the FIRST credential row of an account the factory seed left without
+ * one. With `--all-demo` it walks every operator whose stored credential still verifies
+ * against the published demo password. Each password is typed twice at
  * the terminal, not shown, judged by the password policy, and stored only as the hash set the
  * identity module writes (`hashPassword`). It creates, enables, disables and renames no operator
  * and changes no role: it writes one thing, a credential.
@@ -125,8 +127,6 @@ export const SetPasswordRefusal = {
   /** Another session is connected to this database. */
   DATABASE_IN_USE: 'DATABASE_IN_USE',
   OPERATOR_NOT_FOUND: 'OPERATOR_NOT_FOUND',
-  /** The operator has no credential row. None is created here. */
-  CREDENTIAL_ROW_MISSING: 'CREDENTIAL_ROW_MISSING',
   OPERATORS_UNREADABLE: 'OPERATORS_UNREADABLE',
   NOT_CONFIRMED: 'NOT_CONFIRMED',
   /** The repeat check of the run could not be prepared. */
@@ -214,6 +214,10 @@ export const SELECT_OPERATOR_BY_USERNAME =
 export const SET_CREDENTIAL =
   'UPDATE public.operator_credentials SET algorithm = $2, memory_kib = $3, passes = $4, parallelism = $5, salt = $6, hash = $7, hashed_at = $8 ' +
   'WHERE operator_id = $1 RETURNING operator_id';
+/** The same eight parameters, of an account born without a credential row (D56; migration 0037 opens the gate). */
+export const CREATE_CREDENTIAL =
+  'INSERT INTO public.operator_credentials (operator_id, algorithm, memory_kib, passes, parallelism, salt, hash, hashed_at) ' +
+  'VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING operator_id';
 
 export interface SetPasswordPorts {
   /** The command's clock: the server clock of `core/clock`, which has a floor to raise. */
@@ -266,6 +270,8 @@ interface Target {
   readonly username: string;
   readonly role: string;
   readonly earlierWasDemo: boolean;
+  /** D56 (2026-11-03): the account exists with NO credential row (a factory-born vendor account); this command writes its first one. */
+  readonly create: boolean;
 }
 
 /** A stop of one operator's unit, with the word a line may hold. */
@@ -427,13 +433,16 @@ export async function runSetPasswordCommand(argv: readonly string[], ports: SetP
         const found = (await pool.query<OperatorRow & { has_credential: boolean }>(SELECT_OPERATOR_BY_USERNAME, [args.target.username])).rows;
         const row = found[0];
         if (row === undefined || found.length !== 1) return refuse(SetPasswordRefusal.OPERATOR_NOT_FOUND, 'no operator has that username. This command creates no operator.');
-        if (row.has_credential !== true) return refuse(SetPasswordRefusal.CREDENTIAL_ROW_MISSING, `${row.username} has no stored credential. This command creates none.`);
-        targets = [{ operatorId: row.operator_id, username: row.username, role: row.role, earlierWasDemo: await storedHashSetIsDemoPassword(row) }];
+        // D56 (2026-11-03): an account with no credential row is not refused - a factory seed deliberately
+        // leaves the vendor accounts without one, and this command is the only writer of a credential, so
+        // here it CREATES the row. Still no operator is created (R-X2-10): the person must exist first.
+        const create = row.has_credential !== true;
+        targets = [{ operatorId: row.operator_id, username: row.username, role: row.role, earlierWasDemo: create ? false : await storedHashSetIsDemoPassword(row), create }];
       } else {
         targets = [];
         for (const row of (await pool.query<OperatorRow>(SELECT_OPERATOR_CREDENTIALS)).rows) {
           // The predicate of boot check 4c (R-X2-11), one derivation after another.
-          if (await storedHashSetIsDemoPassword(row)) targets.push({ operatorId: row.operator_id, username: row.username, role: row.role, earlierWasDemo: true });
+          if (await storedHashSetIsDemoPassword(row)) targets.push({ operatorId: row.operator_id, username: row.username, role: row.role, earlierWasDemo: true, create: false });
         }
       }
     } catch (error) {
@@ -465,7 +474,7 @@ export async function runSetPasswordCommand(argv: readonly string[], ports: SetP
     say(`  data directory:  ${dataDir}`);
     say(`  connection file: ${file} (the file this command read; the Core of this data directory reads the same one)`);
     say(`  operators:       ${targets.length}${args.target.kind === 'ALL_DEMO' ? ' (every operator that still has the published demo password)' : ''}`);
-    for (const target of targets) say(`    - ${target.username} (${target.role})`);
+    for (const target of targets) say(`    - ${target.username} (${target.role})${target.create ? ' - no credential yet: one will be created' : ''}`);
     for (const line of STOPPED_LIMIT) say(`  ${line}`);
     say('  Each password is typed twice and is not shown, not even as marks. An empty first entry skips that operator.');
     say('  Every open session of an operator ends when the password is set.');
@@ -567,8 +576,8 @@ export async function runSetPasswordCommand(argv: readonly string[], ports: SetP
           const now = clock.now();
           // b. "No other session", again, behind the chain lock (SX-01).
           if ((await unit.query(OTHER_SESSIONS)).rows.length > 0) throw new UnitStop(SetPasswordRefusal.DATABASE_IN_USE);
-          // c. Exactly one credential row (SX-11).
-          const updated = await unit.query(SET_CREDENTIAL, [target.operatorId, hashSet.algorithm, hashSet.memoryKib, hashSet.passes, hashSet.parallelism, hashSet.salt, hashSet.hash, now]);
+          // c. Exactly one credential row written (SX-11): replaced, or created for a factory-born account (D56).
+          const updated = await unit.query(target.create ? CREATE_CREDENTIAL : SET_CREDENTIAL, [target.operatorId, hashSet.algorithm, hashSet.memoryKib, hashSet.passes, hashSet.parallelism, hashSet.salt, hashSet.hash, now]);
           if (updated.rows.length !== 1) throw new UnitStop(SetPasswordRefusal.CREDENTIAL_ROW_COUNT);
           // d. Replacing a credential ends no session by itself: both, here, with the one reason.
           const ended = await endSessionsOfOperator(unit, target.operatorId, now, REPLACED_REASON);

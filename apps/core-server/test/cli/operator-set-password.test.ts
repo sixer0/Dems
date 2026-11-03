@@ -19,6 +19,7 @@ import type { Pool, QueryConfig } from 'pg';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   AUDIT_MESSAGE,
+  CREATE_CREDENTIAL,
   ConnectionFileProblem,
   OTHER_SESSIONS,
   SELECT_OPERATOR_BY_USERNAME,
@@ -165,6 +166,15 @@ function scripted(state: World): { readonly pool: Pool; readonly inner: StandInD
     if (text === SET_CREDENTIAL) {
       const operator = state.operators.find((candidate) => candidate.operator_id === values[0]);
       const rows = state.updatedRows[String(values[0])] ?? (operator === undefined || operator.set === null ? 0 : 1);
+      if (operator !== undefined && rows === 1) {
+        operator.set = { algorithm: values[1], memoryKib: values[2], passes: values[3], parallelism: values[4], salt: values[5], hash: values[6] } as PasswordHashRecord;
+      }
+      return answer(Array.from({ length: rows }, () => ({ operator_id: values[0] })));
+    }
+    if (text === CREATE_CREDENTIAL) {
+      // D56: the row is created where none was - exactly one, and only for an account without one.
+      const operator = state.operators.find((candidate) => candidate.operator_id === values[0]);
+      const rows = operator !== undefined && operator.set === null ? 1 : 0;
       if (operator !== undefined && rows === 1) {
         operator.set = { algorithm: values[1], memoryKib: values[2], passes: values[3], parallelism: values[4], salt: values[5], hash: values[6] } as PasswordHashRecord;
       }
@@ -358,7 +368,11 @@ describe('the arguments: strict, and never a password (R-X2-1)', () => {
     const entry = readFileSync(join(WORKSPACE, 'cli', 'operator-set.ts'), 'utf8');
     expect(command).not.toMatch(/process\.(env|argv|stdin|stdout)/);
     expect(command).not.toMatch(/console\./);
-    expect(command).not.toMatch(/\baudit_log\b|\bINSERT\b|\bDELETE\b|\bALTER\b|\bTRIGGER\b|\bCREATE\b/);
+    // D56 (2026-11-03): the ban keeps everything it always protected - no audit table, no delete,
+    // no schema words - and narrows only the creation it now allows: exactly ONE INSERT in the file,
+    // the credential row of a factory-born account, whose statement shape its own test pins.
+    expect(command).not.toMatch(/\baudit_log\b|\bDELETE\b|\bALTER\b|\bTRIGGER\b|\bCREATE\b/);
+    expect(command.match(/\bINSERT\b/g)).toEqual(['INSERT']);
     expect(command).not.toMatch(/pg\.owner|owner-connection|dems_owner/);
     expect([...entry.matchAll(/process\.env[^\n]*/g)].map((match) => match[0])).toEqual(['process.env),']);
     expect(entry).toContain('environmentNames: () => Object.keys(process.env),');
@@ -503,17 +517,21 @@ describe('refused before the first prompt (SX-01, SX-12, R-X2-8)', () => {
     expect(wrote(r.database.sent)).toBe(false);
   });
 
-  it('an unknown username, and an operator without a credential row (none is created)', async () => {
+  it('an unknown username is refused; an operator WITHOUT a credential row gets its first one created (D56)', async () => {
     const unknown = rig();
     expect((await runSetPasswordCommand(unknown.args('--username', 'run.nobody'), unknown.ports)).lines.join('\n')).toMatch(/REFUSED \(OPERATOR_NOT_FOUND\)/);
+    expect(unknown.labels).toEqual([]);
+    expect(wrote(unknown.database.sent)).toBe(false);
     const state = world();
     (state.operators[0] as WorldOperator).set = null;
-    const bare = rig({ state });
-    expect((await runSetPasswordCommand(bare.args('--username', 'run.investigator'), bare.ports)).lines.join('\n')).toMatch(/REFUSED \(CREDENTIAL_ROW_MISSING\)/);
-    for (const r of [unknown, bare]) {
-      expect(r.labels).toEqual([]);
-      expect(wrote(r.database.sent)).toBe(false);
-    }
+    const value = runValue();
+    const bare = rig({ state, typed: [value, value] });
+    const run = await runSetPasswordCommand(bare.args('--username', 'run.investigator'), bare.ports);
+    expect(run.code).toBe(SetPasswordExit.DONE);
+    expect(bare.labels).toEqual(['New password for run.investigator (INVESTIGATOR): ', 'Again: ']);
+    expect(run.lines).toContain('run.investigator: password set, 0 session(s) ended');
+    expect(bare.database.sent.filter((statement) => statement.text === CREATE_CREDENTIAL)).toHaveLength(1);
+    expect(bare.database.sent.some((statement) => statement.text === SET_CREDENTIAL)).toBe(false);
   });
 
   it('the word is not typed: database, data directory, operators and the limit of "stopped" were shown first; nothing is prompted or written', async () => {

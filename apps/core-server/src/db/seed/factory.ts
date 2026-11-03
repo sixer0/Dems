@@ -13,7 +13,9 @@
  *                                          the published demo password is what boot check 4c of a
  *                                          REAL_PRODUCTION Core counts (`CAPTURE_DEMO_OPERATOR_PASSWORD_IN_PRODUCTION`,
  *                                          S99-01), and the only writer of a credential is the
- *                                          command a human types (`operator:set-password`). A hash
+ *                                          command a human types (`operator:set-password`), which
+ *                                          since decision D56 (2026-11-03) CREATES this row as the
+ *                                          first thing it writes for such an account. A hash
  *                                          of a thrown-away random value was the other candidate;
  *                                          it would have made an unusable row that still has to be
  *                                          replaced by that command, so the seed writes none.

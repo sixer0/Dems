@@ -137,7 +137,7 @@ describe('M4-MT-9: set 4 applies on a (2, dbc-3) database that holds rows', () =
     expect(result.ledger.ok).toBe(true);
     expect(result.ledger.pending).toEqual([]);
     expect(result.ledger.entries.map((entry) => entry.state)).toEqual(INITIAL_MIGRATION_TAGS.map(() => 'applied'));
-    expect(await readAppliedMigrations(owner)).toHaveLength(34);
+    expect(await readAppliedMigrations(owner)).toHaveLength(INITIAL_MIGRATION_TAGS.length);
     expect(SET_3_TAGS).toHaveLength(8);
   });
 
@@ -385,12 +385,12 @@ describe('M4-MT-16: B-3 across the version step, in both directions', () => {
     });
     expect(exitCode).toBe(1);
     expect(out).toContain('schema version   2; contract revision dbc-3; this code expects 15 (dbc-16)');
-    expect(out).toContain('migrations       34 file(s); ledger matches');
-    expect(out.filter((line) => / pending /.test(line))).toHaveLength(26);
+    expect(out).toContain(`migrations       ${INITIAL_MIGRATION_TAGS.length} file(s); ledger matches`);
+    expect(out.filter((line) => / pending /.test(line))).toHaveLength(INITIAL_MIGRATION_TAGS.length - 8);
     expect(out).toContain('row counts       40 table(s)');
     expect(out.some((line) => line.includes('session_capture_sources'))).toBe(false);
     expect(out.some((line) => line.includes('session_stt_config  '))).toBe(false);
-    expect(err[0]).toContain('26 migration(s) are not applied: 0008_capture_sources, 0009_capture_sources_privileges, 0010_credential_replace_privileges, 0011_session_stt_config, 0012_session_stt_config_privileges, 0013_key_id_fault_reason_media_root, 0014_key_id_fault_reason_media_root_privileges, 0015_capture_streams_audio_inputs, 0016_capture_streams_audio_inputs_privileges, 0017_network_commissioning, 0018_network_commissioning_privileges, ');
+    expect(err[0]).toContain(`${INITIAL_MIGRATION_TAGS.length - 8} migration(s) are not applied: 0008_capture_sources, 0009_capture_sources_privileges, 0010_credential_replace_privileges, 0011_session_stt_config, 0012_session_stt_config_privileges, 0013_key_id_fault_reason_media_root, 0014_key_id_fault_reason_media_root_privileges, 0015_capture_streams_audio_inputs, 0016_capture_streams_audio_inputs_privileges, 0017_network_commissioning, 0018_network_commissioning_privileges, `);
     expect(err[0]).toContain(`, ${INITIAL_MIGRATION_TAGS.slice(19).join(', ')}. Run "npm run db:migrate".`);
     expect(err.at(-1)).toContain(`NOT OK: 2 problem(s) on ${old.name}.`);
   });
