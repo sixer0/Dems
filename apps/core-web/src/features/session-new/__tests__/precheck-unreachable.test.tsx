@@ -118,7 +118,9 @@ describe("the pre-check row of a source that did not answer (D114)", () => {
       // ux §8e.3: the INVESTIGATOR starts sessions and holds no CAPTURE_CONFIG — the control is there, disabled, with the role sentence.
       const again = within(screen.getByTestId('precheck-search-microphone')).getByRole('button')
       expect(again).toBeDisabled()
-      expect(screen.getByTestId('precheck-search-microphone')).toHaveTextContent(en.common.rbac.requiresRole.replace('{{role}}', 'SUPERVISOR or TECHNICIAN'))
+      expect(screen.getByTestId('precheck-search-microphone')).toHaveTextContent(
+        en.common.rbac.requiresRole.replace('{{role}}', 'TECHNICIAN'), // REVOKED 2026-10-29 (0034): CAPTURE_CONFIG is TECHNICIAN-only
+      )
       expect(screen.queryByTestId('precheck-search-camera')).not.toBeInTheDocument()
     })
   })

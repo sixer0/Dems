@@ -212,6 +212,7 @@ function rules(path: string): { readonly selector: string; readonly body: string
 const BREAKS_ANYWHERE: Readonly<Record<string, string>> = {
   '.api-kv dd': 'a value of the API reference: an address, an id',
   '.api-rt-json-wrap': 'a JSON frame of the realtime panel',
+  '.dev-lcd-connection': 'the value line of the panel bridge card (a device path)',
   '.dev-connect-target dd': 'the address a camera was asked at',
   '.dev-cam-meta dd': 'a camera fact: an address, a device id',
   '.dev-facts-row dd': 'a device fact: an address, a serial',
