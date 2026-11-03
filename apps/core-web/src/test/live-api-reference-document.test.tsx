@@ -8,14 +8,20 @@
 //
 // | Criterion | Where it is proven here |
 // |-----------|-------------------------|
-// | AR-1, AC-C-100 Simulated: the ten operations as before; "Show Core-server endpoints" lists 75 (66 without the simulated ones), the 65 with CORE SERVER | "AR-2: the Simulated views" |
+// | AR-1, AC-C-100 Simulated: the ten operations as before; "Show Core-server endpoints" lists 119 (75 without the simulated ones), the 74 with CORE SERVER | "AR-2: the Simulated views" |
 // | AR-2, AC-C-100 Simulated: Try-it of a Core-server operation is rejected without a request, and without asking the simulator; the ten route as before | "AR-2: Try-it in Simulated mode" |
-// | AR-3, AC-C-100 Live: 97 operations, every one LIVE, served from the page origin only | "AR-3: the Live document" |
+// | AR-3, AC-C-100 Live: 119 operations, every one LIVE, served from the page origin only | "AR-3: the Live document" |
 // | AR-5 Live examples take the session and evidence identifiers from the replica | "AR-5" |
 // | AR-3, AC-C-100 Live Try-it: `{page origin}/api/v1/*` to the network with the cookie, never the simulator; a URL outside it rejected | "AR-3: Try-it in Live mode" |
 // | AR-3a, AC-C-103 the ten operations (six of 01_specs §7.7, ops 89, 91, 95 and 96 of task 3) rejected before a request, also when spelled otherwise | "AR-3a" |
 // | AR-9, AC-C-103, AC-C-107 the page's log holds method, path and status only; no marker password, pairing code or bearer value | "AR-9" |
 // | AR-7 the Realtime panel's Live entries: by type, no payload, meters as a rate | "AR-7: the Live frame tap" |
+//
+// 2026-11-03 count sweep: the registry grew 111 -> 119 - the checkpoint f85e9c01 (the RB-9 add-user
+// trio, the camera preview session, the idle-meters lease, the panel firmware read) and D57c
+// 756ef424 (operations 118 getPanelSetup and 119 setPanelSetup, web-console-only, never simulated).
+// All eight are Core-server-only: the simulated set stays 45, the deny list stays 14, so the
+// not-denied count follows the total (97 -> 105). The counts below are pinned to that truth.
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -132,7 +138,7 @@ function assertLogDiscipline(): void {
 }
 
 describe('AR-2: the Simulated views (AC-C-100)', () => {
-  it('the default view is the document of before: 44 operations, byte-equal to `buildApiDocument(true)`', () => {
+  it('the default view is the document of before: 45 operations, byte-equal to `buildApiDocument(true)`', () => {
     const view = buildApiDocumentFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: false })
     // Task 3 M6 row 113 (C3 §2.5): the three simulated STT configuration operations 90-92 join the offline scope, 23 -> 26.
     // Task 3 R-9..R-11, row 132 (C3 §2.6, §10.1): the five simulated operations 93-97 join it, 26 -> 31.
@@ -148,7 +154,7 @@ describe('AR-2: the Simulated views (AC-C-100)', () => {
     expect(apiDocumentJsonFor({ mode: 'simulated', includeSimulated: false, includeCoreServer: false })).toBe(apiDocumentJson(false))
   })
 
-  it('"Show Core-server endpoints" lists 110: the 44 unchanged, the other 66 with CORE SERVER in place of LIVE', () => {
+  it('"Show Core-server endpoints" lists 119: the 45 unchanged, the other 74 with CORE SERVER in place of LIVE', () => {
     const plain = buildApiDocument(true)
     const view = buildApiDocumentFor({ mode: 'simulated', includeSimulated: true, includeCoreServer: true })
     // The registry total of C3 §10.1 (89 + ops 90-92 + ops 93-97) + the two of task 4 row 63 (ops 98-99,
@@ -157,8 +163,10 @@ describe('AR-2: the Simulated views (AC-C-100)', () => {
     // Task 4 row V3: + operation 108 (simulated); the 66 still do not move.
     // Task 4 blueprint row 116: + operations 109-110 (simulated); the 66 still do not move.
     // Task 4 row RD2: + operation 111 (simulated); the 66 still do not move.
-    expect(countOperations(view)).toBe(111)
-    expect(CORE_SERVER_ONLY_OPERATIONS).toHaveLength(66)
+    // 2026-11-03 sweep: + the eight Core-server-only operations of f85e9c01 and D57c (ops 118/119,
+    // getPanelSetup/setPanelSetup), none simulated: 111 -> 119, the 66 -> 74.
+    expect(countOperations(view)).toBe(119)
+    expect(CORE_SERVER_ONLY_OPERATIONS).toHaveLength(74)
     const coreOnly = new Set(CORE_SERVER_ONLY_OPERATIONS.map((operation) => operation.operationId))
     for (const [operationId, badges] of badgesOf(view)) {
       if (coreOnly.has(operationId)) {
@@ -178,9 +186,10 @@ describe('AR-2: the Simulated views (AC-C-100)', () => {
     expect(CORE_SERVER_BADGE.color).toMatch(/^#/)
   })
 
-  it('with "Show simulated endpoints" off as well: health and the 66 (67)', () => {
+  it('with "Show simulated endpoints" off as well: health and the 74 (75)', () => {
     const view = buildApiDocumentFor({ mode: 'simulated', includeSimulated: false, includeCoreServer: true })
-    expect(countOperations(view)).toBe(67)
+    // 2026-11-03 sweep: the eight new Core-server-only operations of f85e9c01 and D57c (ops 118/119): 67 -> 75.
+    expect(countOperations(view)).toBe(75)
     expect(badgesOf(view).filter(([, badges]) => badges.includes('SIMULATED'))).toEqual([])
     expect(unresolvedRefs(view)).toEqual([])
   })
@@ -210,7 +219,7 @@ describe('AR-2: Try-it in Simulated mode (AC-C-100)', () => {
     },
   )
 
-  it('the 43 route as before with the switch on: health to the network, the 42 to the simulator', async () => {
+  it('the 45 route as before with the switch on: health to the network, the 44 to the simulator', async () => {
     const { request, networkFetch, fetch } = await harness(CORE_ONLY)
     await fetch(`${CORE_HTTP_ORIGIN}/api/v1/health`)
     expect(networkFetch).toHaveBeenCalledTimes(1)
@@ -253,9 +262,11 @@ describe('AR-2: Try-it in Simulated mode (AC-C-100)', () => {
 describe('AR-3: the Live document (AC-C-100)', () => {
   beforeEach(() => setCoreEndpointMode('LIVE'))
 
-  it('111 operations, every one LIVE, served from the page\'s own origin and from nowhere else', () => {
+  it('119 operations, every one LIVE, served from the page\'s own origin and from nowhere else', () => {
     const document = buildLiveApiDocument(NO_REPLICA_IDENTIFIERS)
-    expect(countOperations(document)).toBe(111) // task 4 row RD2: + operation 111
+    // 2026-11-03 sweep: + the eight Core-server-only operations of f85e9c01 and D57c (ops 118/119,
+    // getPanelSetup/setPanelSetup - web-console-only, LIVE, never simulated): 111 -> 119.
+    expect(countOperations(document)).toBe(119)
     for (const [operationId, badges] of badgesOf(document)) expect(badges[0], operationId).toBe('LIVE')
     expect(document.servers.map((server) => server.url)).toEqual([PAGE])
     expect(document.info.version).toBe('0.3.0')
@@ -349,7 +360,7 @@ describe('AR-3: Try-it in Live mode (AC-C-100)', () => {
     ])
   })
 
-  it('every one of the 97 operations that are not denied goes to the network (the simulated ones too)', async () => {
+  it('every one of the 105 operations that are not denied goes to the network (the simulated ones too)', async () => {
     const { fetch, networkFetch } = liveHarness()
     const allowed = CORE_API_OPERATIONS.filter((operation) => !(TRY_IT_DENIED_OPERATIONS as readonly string[]).includes(operation.operationId))
     // 97 of the registry (C3 §10.1) minus the ten of AR-3a (six of 01_specs §7.7, operations 89
@@ -371,11 +382,14 @@ describe('AR-3: Try-it in Live mode (AC-C-100)', () => {
     // Task 4 row RD2: 111 minus the same fourteen - operation 111 (the retirement of a device) is not on
     // the deny list yet: 96 -> 97 FOR NOW. It changes a stored record and destroys a credential, as 109 /
     // 110 change one; its deny entry is row RD5's (request line of row RD2), which takes this back to 96.
-    expect(allowed).toHaveLength(97)
+    // 2026-11-03 sweep: 119 minus the same fourteen - the eight operations of f85e9c01 and D57c
+    // (ops 118/119, getPanelSetup/setPanelSetup) carry no secret, no stored credential use and no
+    // stored-record change of the kind the list names, so none joins it: 97 -> 105.
+    expect(allowed).toHaveLength(105)
     for (const operation of allowed) {
       await fetch(new Request(`${PAGE}${operation.path.replace('{id}', 'X-1')}`, { method: operation.method.toUpperCase() }))
     }
-    expect(networkFetch).toHaveBeenCalledTimes(97)
+    expect(networkFetch).toHaveBeenCalledTimes(105)
   })
 
   it.each([

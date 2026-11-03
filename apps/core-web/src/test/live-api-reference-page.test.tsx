@@ -11,12 +11,18 @@
 //
 // | Criterion | Where it is proven here |
 // |-----------|-------------------------|
-// | AC-C-100 Live: 97 operations, all `LIVE`, the page origin as the one server; a Try-it of `getServiceHealth` answered by `dems-core-server`; a URL outside `{page origin}/api/v1` rejected | "Live mode: the document and Try-it" |
+// | AC-C-100 Live: 119 operations, all `LIVE`, the page origin as the one server; a Try-it of `getServiceHealth` answered by `dems-core-server`; a URL outside `{page origin}/api/v1` rejected | "Live mode: the document and Try-it" |
 // | AC-C-103 Live: Try-it of the ten operations (six of 01_specs §7.7, ops 89, 91, 95 and 96 of task 3) sends no request (the fake transport's log); after one GET and one POST no web-storage value holds a request body or an answer; the page's log holds method, path and status only | "AC-C-103" |
 // | AC-C-107 no marker password, no pairing code, no `ses_`/`dvc_`/`bio_` value in the error sink or the page's log | "AC-C-103" (the marked bodies) |
 // | AC-C-18 with the page open, no second socket: one connection, the global `WebSocket` never constructed; the Realtime panel lists the one socket's messages by type, prints no payload and has no Connect switch | "AC-C-18" |
 // | AR-4, AR-6 the warning names the signed-in operator; the banner names `dems-core-server`, its version and its readiness | "Live mode: the document and Try-it" |
-// | AC-C-100 Simulated: ten operations as before; "Show Core-server endpoints" lists 75 and a Try-it of a Core-server operation is rejected without a request | "Simulated mode" |
+// | AC-C-100 Simulated: ten operations as before; "Show Core-server endpoints" lists 119 and a Try-it of a Core-server operation is rejected without a request | "Simulated mode" |
+//
+// 2026-11-03 count sweep: the registry grew 111 -> 119 - the checkpoint f85e9c01 (the RB-9 add-user
+// trio, the camera preview session, the idle-meters lease, the panel firmware read) and D57c
+// 756ef424 (operations 118 getPanelSetup and 119 setPanelSetup, web-console-only, never simulated).
+// All eight are Core-server-only: the simulated view stays 45, the total views and the CORE SERVER
+// badge count follow (66 -> 74).
 import { createElement } from 'react'
 import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
@@ -127,14 +133,14 @@ async function openLive() {
 }
 
 describe('Live mode: the document and Try-it (AC-C-100, AR-4, AR-6)', () => {
-  it('111 operations, every one LIVE, served from the page origin; no switch; the warning names the operator', async () => {
+  it('119 operations, every one LIVE, served from the page origin; no switch; the warning names the operator', async () => {
     const { bed: live } = await openLive()
     expect(screen.getByTestId('page-api-reference')).toHaveAttribute('data-mode', 'live')
     const document = lastConfiguration().content
-    expect(listOpenApiOperations(document)).toHaveLength(111) // + the retirement of task 4 row RD2; 97 +the two sound-card operations of task 4 row 63 + the re-address of row 194 + the seven commissioning operations of row 102 + the stored-credential connection test of row V3 + the two installation-acceptance operations of row 116
+    expect(listOpenApiOperations(document)).toHaveLength(119) // 2026-11-03 sweep: 111 + the eight Core-server-only operations of f85e9c01 (RB-9 trio, preview session, idle-meters lease, panel firmware) and D57c (ops 118/119, getPanelSetup/setPanelSetup - web-console-only, LIVE, never simulated)
     expect(new Set(badgesOf(document))).toEqual(new Set(['LIVE']))
     expect(document.servers.map((server) => server.url)).toEqual([LIVE_TEST_ORIGIN])
-    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('111 operations')
+    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('119 operations')
     expect(screen.getByTestId('api-base-url')).toHaveTextContent(LIVE_TEST_ORIGIN)
     expect(screen.getByTestId('api-spec-version')).toHaveTextContent('v0.3.0')
     expect(screen.queryByTestId('api-show-simulated')).toBeNull()
@@ -296,7 +302,7 @@ async function openSimulated() {
 }
 
 describe('Simulated mode (AC-C-100, AR-2)', () => {
-  it('45 operations as before; "Show Core-server endpoints" lists 111 with CORE SERVER and refuses their Try-it without a request', async () => {
+  it('45 operations as before; "Show Core-server endpoints" lists 119 with CORE SERVER and refuses their Try-it without a request', async () => {
     // Task 4 blueprint row 63: the two simulated sound-card operations 98-99 (31 -> 33, 97 -> 99; the 66 do not move).
     // Task 4 blueprint row 194: the simulated operation 100 (33 -> 34, 99 -> 100; the 66 do not move).
     const { sim, fetched } = await openSimulated()
@@ -305,6 +311,8 @@ describe('Simulated mode (AC-C-100, AR-2)', () => {
     // Task 4 row V3: the simulated operation 108, the stored-credential connection test (41 -> 42, 107 -> 108; the 66 do not move).
     // Task 4 blueprint row 116: the two simulated operations 109-110 of the installation acceptance (42 -> 44, 108 -> 110; the 66 do not move).
     // Task 4 row RD2: the simulated operation 111, the retirement of a device (44 -> 45, 110 -> 111; the 66 do not move).
+    // 2026-11-03 sweep: + the eight Core-server-only operations of f85e9c01 and D57c (ops 118/119,
+    // getPanelSetup/setPanelSetup): 111 -> 119, the 66 -> 74; the simulated 45 do not move.
     expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(45)
     expect(screen.getByTestId('api-operation-count')).toHaveTextContent('45 operations')
     expect(screen.getByTestId('api-spec-version')).toHaveTextContent('v0.2.0')
@@ -315,10 +323,10 @@ describe('Simulated mode (AC-C-100, AR-2)', () => {
     expect(screen.queryByTestId('api-legend-CORE_SERVER')).toBeNull()
 
     fireEvent.click(coreSwitch)
-    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(111))
-    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('111 operations')
+    await waitFor(() => expect(listOpenApiOperations(lastConfiguration().content)).toHaveLength(119))
+    expect(screen.getByTestId('api-operation-count')).toHaveTextContent('119 operations')
     expect(screen.getByTestId('api-legend-CORE_SERVER')).toHaveTextContent(A.badges.CORE_SERVER)
-    expect(badgesOf(lastConfiguration().content).filter((name) => name === 'CORE SERVER')).toHaveLength(66)
+    expect(badgesOf(lastConfiguration().content).filter((name) => name === 'CORE SERVER')).toHaveLength(74)
 
     const request = vi.spyOn(sim, 'request')
     const before = fetched.length
