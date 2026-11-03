@@ -1,3 +1,5 @@
+> **[SUPERSEDED 2026-11-03]** Dokumen ini era Docker/simulasi dan tidak lagi akurat; handoff resmi: docs/2026-10-21_bare_metal_bench/handoff_20261103_komprehensif.md
+
 # HANDOFF — DEMS bare-metal bench + R-FLEX, for the agent ON host .73
 
 Paused 2026-10-22 ~18:30 WIB on the user's word: "stop progres, pindahkan semua progres ke remote host di desktopnya tempat sourcecode beserta dengan handoff progress saat ini" and "tujuannya pekerjaan ini akan dilanjutkan oleh agent yang ada di remote host".

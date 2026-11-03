@@ -1,3 +1,5 @@
+> **[SUPERSEDED 2026-11-03]** Dokumen ini era Docker/simulasi dan tidak lagi akurat; handoff resmi: docs/2026-10-21_bare_metal_bench/handoff_20261103_komprehensif.md
+
 # HANDOFF - DEMS bench .73 install, paused 2026-10-22 ~22:00 WIB
 
 Controller: Claude Code on the Windows workstation over SSH alias `dems` (key `~/.ssh/id_gsp_dems`). Decisions D29-D34 in `decisions/decisions.md`; trail in `status_tasks.md`.
