@@ -34,8 +34,12 @@ async function readFileAsBase64(file: File): Promise<string> {
   return dataUrl.slice(dataUrl.indexOf(',') + 1)
 }
 
-/** The failure half of an answer: the fields every refusal carries. */
-type AnswerFailure = { status?: number | null; code?: string; message?: string; details?: { reason?: string } }
+/** The failure half of an answer: the typed client's envelope (`CoreCallFailure`), narrowed to
+ * what this page words. `details` rides under `error`, exactly as `stt-config-model.ts` reads it. */
+type AnswerFailure = {
+  status?: number | null
+  error?: { code?: string; message?: string; details?: { reason?: unknown } }
+}
 
 export function PanelSetupPanel() {
   const { t } = useTranslation()
@@ -49,21 +53,27 @@ export function PanelSetupPanel() {
   const [saving, setSaving] = useState(false)
   const [saveNote, setSaveNote] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
+  // D57c: the one read of the page's life. StrictMode runs effects twice; the second run must not
+  // ask again, and the answer of the first run is applied even though its cleanup already fired
+  // (React 18 makes a set after a real unmount a no-op — the guard is what keeps the ask at one).
+  const askedRef = useRef(false)
 
   const wordFailure = useCallback((failure: AnswerFailure): string => {
     if (failure.status === 503) return t('system.panelSetup.backendDown')
     if (failure.status === 401) return t('system.panelSetup.noSession')
     if (failure.status === 403) return t('system.panelSetup.noPermission')
-    if (failure.status === 422) return t('system.panelSetup.refused', { reason: failure.details?.reason ?? failure.message ?? '' })
+    if (failure.status === 422)
+      return t('system.panelSetup.refused', {
+        reason: typeof failure.error?.details?.reason === 'string' ? failure.error.details.reason : (failure.error?.message ?? 'the panel'),
+      })
     return t('system.panelSetup.notStored')
   }, [t])
 
   useEffect(() => {
-    if (live === null) return
-    let open = true
+    if (live === null || askedRef.current) return
+    askedRef.current = true
     void (async () => {
       const answer = await live.client.call('getPanelSetup', {})
-      if (!open) return
       if (answer.ok) {
         const data = answer.data as PanelSetupResponse
         setSetup(data)
@@ -73,9 +83,6 @@ export function PanelSetupPanel() {
         setLoadNote(wordFailure(answer as AnswerFailure))
       }
     })()
-    return () => {
-      open = false
-    }
   }, [live, wordFailure])
 
   const dirty =
