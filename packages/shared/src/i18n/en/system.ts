@@ -48,6 +48,7 @@ export const system = {
     noPermission: 'This module belongs to the vendor accounts only.',
     backendDown: 'The front panel service is not answering on this machine.',
     empty: 'Nothing to send: change a word or pick a logo first.',
+    tooLarge: 'That logo is too large for the console link (45 KB at most); pick a smaller PNG or use the panel\'s own setup page.',
     hint: 'The words reach the panel over its USB link; a queued logo follows when the link is free.',
   },
 

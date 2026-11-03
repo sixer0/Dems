@@ -171,6 +171,18 @@ describe('D57c: the pre-delivery panel setup on the System page (Live)', () => {
     expect(held.clientLogoSaved).toBe(false)
   })
 
+  it('a PNG over the console path bound is refused at the pick: its own sentence, nothing sent', async () => {
+    const created = await openSystem(ROOT_SESSION)
+    const block = await panel()
+    const big = new File([new Uint8Array(50_000)], 'big.png', { type: 'image/png' })
+    const input = within(block).getByTestId('panel-setup-logo-file') as HTMLInputElement
+    Object.defineProperty(input, 'files', { value: [big], configurable: true })
+    fireEvent.change(input)
+    await waitFor(() => expect(block.textContent).toContain('too large for the console link'))
+    expect(saveButton().disabled).toBe(true)
+    expect(created.fake.log.requestsOf('setPanelSetup')).toHaveLength(0)
+  })
+
   it('the refusals are worded on the field, not swallowed: 403, 422 with the backend reason, 401', async () => {
     const scripted = [
       [{ status: 403, code: ApiErrorCode.NOT_PERMITTED, message: 'not the vendor' }, 'This module belongs to the vendor accounts only.'],

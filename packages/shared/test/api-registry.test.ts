@@ -52,6 +52,13 @@ import {
   type StoragePolicySliceBody,
   type UserRoleRequest,
 } from '../src/api';
+// D57c: the panel-setup body bound and the API-4 limit it must fit.
+import {
+  API_BODY_LIMIT_BYTES,
+  PANEL_CLIENT_MAX_LENGTH,
+  PANEL_LOGO_BASE64_MAX_LENGTH,
+  PANEL_SATKER_MAX_LENGTH,
+} from '../src/api';
 import {
   createCoreClient,
   type CoreCallFailure,
@@ -1521,5 +1528,28 @@ describe('contract gap 2: an operation may name a query schema', () => {
       ['listAudioSourceIntervals', 'PageQuery'],
       ['listTranscriptRevisions', 'PageQuery'],
     ]);
+  });
+});
+
+/**
+ * D57c (2026-11-03, the principal's own upload): the console path of `setPanelSetup` must fit the
+ * contract's OWN pipeline. The global body limit (API-4, `API_BODY_LIMIT_BYTES`) answers 413 at
+ * the parser, before any handler or gate runs — so a schema bound larger than that is a lie the
+ * contract tells about itself. This pin recomputes the worst-case legal body: every member at its
+ * maximum, the text escaped the way `apiText()` escapes (six characters per non-ASCII character).
+ */
+describe('D57c: the panel-setup body fits the API-4 pipeline bound', () => {
+  it('the largest legal setPanelSetup body, JSON-escaped at its worst, stays within API_BODY_LIMIT_BYTES', () => {
+    const worst = (max: number): number => max * 6; // every character a non-ASCII one
+    const body =
+      2 + // braces
+      '"satker":""'.length + worst(PANEL_SATKER_MAX_LENGTH) + 1 +
+      '"client":""'.length + worst(PANEL_CLIENT_MAX_LENGTH) + 1 +
+      '"logoBase64":""'.length + PANEL_LOGO_BASE64_MAX_LENGTH + 1 +
+      '"logoTarget":"splash"'.length + 1 +
+      '"reason":""'.length + worst(500);
+    expect(body).toBeLessThanOrEqual(API_BODY_LIMIT_BYTES);
+    // And the bound is not needlessly small: half a megabyte of PNG would still overflow.
+    expect(PANEL_LOGO_BASE64_MAX_LENGTH).toBeGreaterThan(40_000);
   });
 });

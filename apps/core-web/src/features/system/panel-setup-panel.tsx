@@ -19,7 +19,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Input, Label, TextField, toast } from '@heroui/react'
 import { MonitorSmartphone } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { PANEL_CLIENT_MAX_LENGTH, PANEL_SATKER_MAX_LENGTH, type PanelLogoTarget, type PanelSetupResponse, type SetPanelSetupRequest } from '@dems/shared/api'
+import { PANEL_CLIENT_MAX_LENGTH, PANEL_LOGO_PNG_MAX_BYTES, PANEL_SATKER_MAX_LENGTH, type PanelLogoTarget, type PanelSetupResponse, type SetPanelSetupRequest } from '@dems/shared/api'
 import { useWebLive } from '@/runtime'
 import { SystemPanel } from './panel'
 
@@ -62,6 +62,7 @@ export function PanelSetupPanel() {
     if (failure.status === 503) return t('system.panelSetup.backendDown')
     if (failure.status === 401) return t('system.panelSetup.noSession')
     if (failure.status === 403) return t('system.panelSetup.noPermission')
+    if (failure.status === 413) return t('system.panelSetup.tooLarge')
     if (failure.status === 422)
       return t('system.panelSetup.refused', {
         reason: typeof failure.error?.details?.reason === 'string' ? failure.error.details.reason : (failure.error?.message ?? 'the panel'),
@@ -146,7 +147,18 @@ export function PanelSetupPanel() {
               type="file"
               accept="image/png"
               data-testid="panel-setup-logo-file"
-              onChange={(event) => setLogoFile(event.target.files?.[0] ?? null)}
+              onChange={(event) => {
+                const picked = event.target.files?.[0] ?? null
+                // D57c (the principal's upload): a PNG over the console path bound can only die
+                // at the API-4 pipeline with a 413 that never reaches the panel; say it here,
+                // where the file still lies in the operator's hand, and take the pick back.
+                if (picked !== null && picked.size > PANEL_LOGO_PNG_MAX_BYTES) {
+                  event.target.value = ''
+                  setSaveNote(t('system.panelSetup.tooLarge'))
+                  return
+                }
+                setLogoFile(picked)
+              }}
             />
           </label>
           <label className="text-sm">

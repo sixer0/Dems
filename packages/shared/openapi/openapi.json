@@ -31918,7 +31918,7 @@
                 },
                 "logoOnly": {
                   "summary": "Queue a logo for both slots",
-                  "description": "The words stay. The base64 body is elided in this example; the real one is the whole PNG file.",
+                  "description": "The words stay. The base64 body is elided in this example; the real one is the whole PNG file, within the console path bound (a PNG of 45,000 bytes).",
                   "value": {
                     "logoBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
                     "logoTarget": "both",
@@ -47013,9 +47013,9 @@
             "maxLength": 40
           },
           "logoBase64": {
-            "description": "A PNG logo, base64-encoded, within the backend upload bound; absent changes no logo.",
+            "description": "A PNG logo, base64-encoded, within the console path bound (the API-4 body limit); absent changes no logo.",
             "type": "string",
-            "maxLength": 8388608
+            "maxLength": 60000
           },
           "logoTarget": {
             "description": "Which slot the logo goes to; default `client`.",

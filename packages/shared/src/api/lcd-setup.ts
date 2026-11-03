@@ -26,8 +26,10 @@
  *
  * WHAT NEVER TRAVELS. The logo body is an image, not text with meaning: it is forwarded to the
  * backend, never written to a log or an audit row — the audit row names WHAT changed (which fields,
- * whether a logo was queued), never the bytes. The size bound below is the backend's own upload
- * bound expressed as base64 characters.
+ * whether a logo was queued), never the bytes. The console's size bound below is NOT the backend's
+ * own upload bound (6 MiB, which the panel's /setup page keeps using direct to the backend): it is
+ * the contract's global API-4 body limit expressed as base64 characters, because a console body
+ * over that limit answers 413 at the pipeline before this operation's handler ever runs.
  */
 import { z } from 'zod';
 import { AuditType } from '../sim/vocabulary';
@@ -54,8 +56,16 @@ export const PANEL_SETUP_PATH = `${API_BASE_PATH}/lcd/setup`;
 export const PANEL_SATKER_MAX_LENGTH = 38;
 /** The same bound for the client word. */
 export const PANEL_CLIENT_MAX_LENGTH = 40;
-/** The backend's upload bound (6 MiB, `DEMS_LOGO_MAX_BYTE`) expressed as base64 characters. */
-export const PANEL_LOGO_BASE64_MAX_LENGTH = 8_388_608;
+/** The backend's upload bound (6 MiB, `DEMS_LOGO_MAX_BYTE`) applies to the panel's OWN /setup page.
+ * The CONSOLE path is tighter by the contract's own pipeline: every body must fit the global
+ * API-4 limit (`API_BODY_LIMIT_BYTES` = 65,536) or the Core answers 413 before any handler runs.
+ * This cap is that limit minus the worst-case rest of the body: `apiText()` escapes a non-ASCII
+ * character as six (`\uXXXX`), so the words and the reason can cost 38×6 + 40×6 + 500×6 plus the
+ * key punctuation (~3.6 KB). Rounded down from 61,989 to 60,000 base64 characters — a 45,000-byte
+ * PNG. `api-registry.test.ts` is the pin that keeps this arithmetic from rotting. */
+export const PANEL_LOGO_BASE64_MAX_LENGTH = 60_000;
+/** The same bound as a file size: the bytes one can base64 into `PANEL_LOGO_BASE64_MAX_LENGTH`. */
+export const PANEL_LOGO_PNG_MAX_BYTES = (PANEL_LOGO_BASE64_MAX_LENGTH / 4) * 3;
 
 /** Which of the panel's two logo slots a queued logo goes to. */
 export const PanelLogoTarget = z.enum(['client', 'splash', 'both']);
@@ -88,7 +98,7 @@ export const SetPanelSetupRequestSchema = z
     logoBase64: apiText()
       .max(PANEL_LOGO_BASE64_MAX_LENGTH)
       .optional()
-      .describe('A PNG logo, base64-encoded, within the backend upload bound; absent changes no logo.'),
+      .describe('A PNG logo, base64-encoded, within the console path bound (the API-4 body limit); absent changes no logo.'),
     logoTarget: PanelLogoTarget.optional().describe('Which slot the logo goes to; default `client`.'),
     reason: apiText().max(500).optional().describe('Why the setup changes; free text of the audit row.'),
   })
@@ -222,7 +232,7 @@ export const PANEL_SETUP_EXAMPLES: Readonly<Record<string, OperationExamples>> =
       },
       logoOnly: {
         summary: 'Queue a logo for both slots',
-        description: 'The words stay. The base64 body is elided in this example; the real one is the whole PNG file.',
+        description: 'The words stay. The base64 body is elided in this example; the real one is the whole PNG file, within the console path bound (a PNG of 45,000 bytes).',
         value: { logoBase64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', logoTarget: 'both', reason: 'Client branding approved' } satisfies SetPanelSetupRequest,
       },
     },
