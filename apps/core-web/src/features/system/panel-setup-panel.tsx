@@ -166,10 +166,10 @@ export function PanelSetupPanel() {
             <select value={logoTarget} onChange={(event) => setLogoTarget(event.target.value as PanelLogoTarget)} disabled={saving}>
               <option value="client">{t('system.panelSetup.logoTargetClient')}</option>
               <option value="splash">{t('system.panelSetup.logoTargetSplash')}</option>
-              <option value="both">{t('system.panelSetup.logoTargetBoth')}</option>
             </select>
           </label>
         </div>
+        <p className="sys-muted sys-small">{t('system.panelSetup.logoSizes')}</p>
         <p className="sys-muted sys-small">
           {t('system.panelSetup.hint')} · client: {setup?.clientLogoSaved ? t('system.panelSetup.logoSaved') : t('system.panelSetup.logoEmpty')} · splash:{' '}
           {setup?.splashLogoSaved ? t('system.panelSetup.logoSaved') : t('system.panelSetup.logoEmpty')}

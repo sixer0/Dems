@@ -35,7 +35,7 @@ export const system = {
     logoTargetLabel: 'Logo slot',
     logoTargetClient: 'Client slot',
     logoTargetSplash: 'Splash slot',
-    logoTargetBoth: 'Both slots',
+    logoSizes: 'Slot sizes: client 85×48 px, splash 227×128 px. PNG up to 45 KB through the console; the image is scaled to fit its slot and the background is flattened (client on black, splash on white).',
     logoSaved: 'stored',
     logoEmpty: 'empty',
     save: 'Save to panel',

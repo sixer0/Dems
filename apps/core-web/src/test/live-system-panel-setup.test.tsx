@@ -132,6 +132,10 @@ describe('D57c: the pre-delivery panel setup on the System page (Live)', () => {
     expect(field('client').value).toBe(SET_UP.client)
     expect(block.textContent).toContain('client: stored')
     expect(block.textContent).toContain('splash: empty')
+    // D57c guidance (principal, 03-11): the form states the slot sizes; `both` is not offered.
+    expect(block.textContent).toContain('client 85×48 px, splash 227×128 px')
+    const slots = within(block).getByRole('combobox') as HTMLSelectElement
+    expect(Array.from(slots.options).map((o) => o.value)).toEqual(['client', 'splash'])
     await waitFor(() => expect(created.fake.log.requestsOf('getPanelSetup')).toHaveLength(1))
   })
 
