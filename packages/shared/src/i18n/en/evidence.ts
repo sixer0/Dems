@@ -487,7 +487,8 @@ export const evidence = {
     reopen: 'Open again',
     reopenIn: 'Open again in {{seconds}} s',
     reopenExhausted: 'Reload the page to try again',
-    oneFile: 'The Core server opened {{track}} only. The other camera file is not shown.',
+    // D60 (2026-11-04): four camera files are expected, so the rest are named in the plural.
+    oneFile: 'The Core server opened {{track}} only. The other camera files are not shown.',
     file: '{{track}} · sealed file',
     band: {
       title: 'Audio source',

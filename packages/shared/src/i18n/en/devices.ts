@@ -45,7 +45,8 @@ export const devices = {
 
   cameras: {
     title: 'Camera Devices',
-    subtitle: 'Dual-lens forensic camera · two logical video tracks',
+    // D60 (2026-11-04): the capture surface carries four logical video tracks.
+    subtitle: 'Dual-lens forensic camera · four logical video tracks',
     lens: 'Lens {{number}}',
     model: 'Dual-lens IP camera DL-2',
     format: 'Format',
@@ -143,6 +144,9 @@ export const devices = {
     subtitle: 'Rear panel connectors with link LEDs',
     poeCam1: 'PoE CAM 1',
     poeCam2: 'PoE CAM 2/AUX',
+    // D60 (2026-11-04): the PoE switch carries four camera ports.
+    poeCam3: 'PoE CAM 3',
+    poeCam4: 'PoE CAM 4',
     mgmtLan: 'MGMT LAN',
     micIn: 'MIC IN 1/2',
     micIn1: 'MIC IN 1',
@@ -159,6 +163,9 @@ export const devices = {
     tip: {
       poeCam1: 'Dual-lens camera · {{watts}} W of the 30 W port budget',
       poeCam2: 'Spare port · 0 W in normal use, reserve up to 30 W',
+      // D60 (2026-11-04): the two further camera ports; no load until a camera feeds the track.
+      poeCam3: 'Camera 3 track · up to the 30 W port budget',
+      poeCam4: 'Camera 4 track · up to the 30 W port budget',
       mgmtLan: 'Tablet dock · HTTPS, WSS and preview · {{speed}} Mbps',
       micIn: 'Balanced XLR input · 48 V phantom',
       gnssSma: 'GNSS antenna · NMEA + PPS',

@@ -4,7 +4,8 @@
  * THE RULES THIS FILE HOLDS.
  *   1. The three manifest values are fixed: PRODUCTION | LOCAL_DEVICE | FAKE.
  *   2. The class comes from the ADAPTER KIND recorded for the session at its start
- *      (`session_capture_sources`, four rows per session), by ONE closed mapping. A kind without a
+ *      (`session_capture_sources`, the session's own planned slot set — four rows before migration
+ *      0039, six after; D60 of 2026-11-04), by ONE closed mapping. A kind without a
  *      class is refused; it is never written as PRODUCTION (rule 2, "fails closed").
  *   3. `developmentSources` is derived: true when at least one class is not PRODUCTION.
  *   4. Absence is never read as PRODUCTION: there is no default anywhere in this unit.
@@ -41,8 +42,8 @@ export function manifestSourceClassOfAdapterKind(kind: string): ManifestSourceCl
   return MANIFEST_SOURCE_CLASS_OF_ADAPTER_KIND[kind as MappedAdapterKind];
 }
 
-/** The four slots of `session_capture_sources` (value set `CAPTURE_SOURCE_SLOT`). */
-export const CAPTURE_SOURCE_SLOTS = ['VIDEO-01', 'VIDEO-02', 'MIC-PRIMARY', 'MIC-STANDBY'] as const;
+/** The six slots of `session_capture_sources` (value set `CAPTURE_SOURCE_SLOT`; D60 of 2026-11-04: four video tracks). */
+export const CAPTURE_SOURCE_SLOTS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-PRIMARY', 'MIC-STANDBY'] as const;
 export type CaptureSourceSlot = (typeof CAPTURE_SOURCE_SLOTS)[number];
 
 /** One row of `session_capture_sources` as the manifest builder needs it. */
@@ -53,28 +54,57 @@ export interface SessionCaptureSourceRow {
 }
 
 export interface SessionSourceClasses {
-  readonly video: Readonly<Record<PackageVideoTrackId, ManifestSourceClass>>;
+  /**
+   * Class by recorded video track. ONLY the tracks the session's own start record carries: a
+   * session planned before D60 has two, one planned after has four (D60 backward compatibility, below).
+   * A manifest track without a row is refused downstream as `SOURCE_NOT_RECORDED` (`build.ts`), never
+   * defaulted.
+   */
+  readonly video: Readonly<Partial<Record<PackageVideoTrackId, ManifestSourceClass>>>;
   /** Class by microphone device id (both `MIC-` rows; a never-selected standby has no interval). */
   readonly micByDeviceId: ReadonlyMap<string, ManifestSourceClass>;
 }
 
+/** The two microphone slots EVERY session plan carries, in both eras (the value set's `MIC-` pair). */
+const MIC_SOURCE_SLOTS = ['MIC-PRIMARY', 'MIC-STANDBY'] as const satisfies readonly CaptureSourceSlot[];
+
 /**
- * The classes of one session from its start record. Exactly four rows, one per slot, or
- * `SOURCE_RECORD_MISSING` (MR-S4: the step fails and nothing is signed). Two `MIC-` rows that
- * name the same device with different kinds are refused as well.
+ * The classes of one session from its start record. The requirement is the session's OWN planned
+ * slot set, never a fixed count (D60 backward compatibility, 2026-11-04): migration 0039 widened the
+ * plan from four rows to six, and a session started BEFORE that migration keeps its four stored rows
+ * forever — demanding six would refuse to seal or verify every legacy session for a shape that was
+ * complete when it was written. So the rows themselves are the plan, held to its rules:
+ *
+ *   - every row names a slot of the value set, and no slot twice (a duplicate is a broken plan);
+ *   - at least one `VIDEO-` row (a session records no camera at all is not a start record);
+ *   - both microphone rows, PRIMARY and STANDBY, exactly as in every plan of both eras;
+ *
+ * and a video slot named WITHOUT its predecessors of the recorded order (a gap, e.g. VIDEO-03 with
+ * no VIDEO-02) is a torn plan, refused like a missing one. Two `MIC-` rows that name the same device
+ * with different kinds are refused as well (the same-class union rule is UNCHANGED by D60). Anything
+ * the plan lacks is `SOURCE_RECORD_MISSING` (MR-S4: the step fails and nothing is signed).
  */
 export function sessionSourceClasses(rows: readonly SessionCaptureSourceRow[]): SessionSourceClasses {
   const bySlot = new Map<string, SessionCaptureSourceRow>();
   for (const row of rows) {
+    if (!(CAPTURE_SOURCE_SLOTS as readonly string[]).includes(row.slot)) throw new EvidencePackageError(EvidencePackageRefusal.SOURCE_RECORD_MISSING, [row.slot]);
     if (bySlot.has(row.slot)) throw new EvidencePackageError(EvidencePackageRefusal.SOURCE_RECORD_MISSING, [row.slot]);
     bySlot.set(row.slot, row);
   }
-  const missing = CAPTURE_SOURCE_SLOTS.filter((slot) => !bySlot.has(slot));
-  if (missing.length > 0 || bySlot.size !== CAPTURE_SOURCE_SLOTS.length) {
-    throw new EvidencePackageError(EvidencePackageRefusal.SOURCE_RECORD_MISSING, missing);
+  const videoSlots = VIDEO_TRACK_IDS.filter((track) => bySlot.has(track));
+  if (videoSlots.length === 0) throw new EvidencePackageError(EvidencePackageRefusal.SOURCE_RECORD_MISSING, ['video']);
+  // D60 (2026-11-04): a recorded track without a recorded track before it is a torn start record.
+  for (let index = 0; index < videoSlots.length; index += 1) {
+    if (videoSlots[index] !== VIDEO_TRACK_IDS[index]) {
+      throw new EvidencePackageError(EvidencePackageRefusal.SOURCE_RECORD_MISSING, [VIDEO_TRACK_IDS[index] ?? 'video']);
+    }
+  }
+  const missing = MIC_SOURCE_SLOTS.filter((slot) => !bySlot.has(slot));
+  if (missing.length > 0) {
+    throw new EvidencePackageError(EvidencePackageRefusal.SOURCE_RECORD_MISSING, [...missing]);
   }
   const classOf = (slot: CaptureSourceSlot): ManifestSourceClass => manifestSourceClassOfAdapterKind(bySlot.get(slot)?.adapterKind ?? '');
-  const video = Object.freeze({ 'VIDEO-01': classOf(VIDEO_TRACK_IDS[0]), 'VIDEO-02': classOf(VIDEO_TRACK_IDS[1]) });
+  const video = Object.freeze(Object.fromEntries(videoSlots.map((track) => [track, classOf(track)]))) as Readonly<Partial<Record<PackageVideoTrackId, ManifestSourceClass>>>;
   const micByDeviceId = new Map<string, ManifestSourceClass>();
   for (const slot of ['MIC-PRIMARY', 'MIC-STANDBY'] as const) {
     const deviceId = bySlot.get(slot)?.deviceId ?? '';

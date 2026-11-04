@@ -32,12 +32,12 @@ function members(error: z.ZodError): string[] {
   return [...new Set(error.issues.map((issue) => issue.path.join('.')))];
 }
 
-/** Validates a fragment table and returns the manifest's `files[]` value (the sealed camera files, VIDEO-01 before VIDEO-02). */
+/** Validates a fragment table and returns the manifest's `files[]` value (the sealed camera files, one to four in track order since D60 of 2026-11-04). */
 export function manifestFilesFromFragmentTable(table: FragmentTableInput): ManifestFile[] {
   const parsed = z.array(ManifestFileSchema).safeParse(table);
   if (!parsed.success) throw new EvidencePackageError(EvidencePackageRefusal.FRAGMENTS_INVALID, members(parsed.error));
   const files = parsed.data;
-  // One record per SEALED camera file: one or two, VIDEO-01 before VIDEO-02 (F-M7 R88-01).
+  // One record per SEALED camera file: one to four in track order, the manifest's own list (F-M7 R88-01; widened by D60 of 2026-11-04 - a two-track package names its two).
   if (!isSealedTrackList(files.map((file) => file.trackId))) {
     throw new EvidencePackageError(EvidencePackageRefusal.FRAGMENTS_INVALID, ['files']);
   }

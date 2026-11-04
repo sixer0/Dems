@@ -571,10 +571,11 @@ type BodyShape = z.output<z.ZodObject<typeof bodyMembers>>;
 
 /** The rules between fields that a per-field type cannot hold. Messages name members, never values. */
 function crossFieldRules(manifest: BodyShape, issue: Issue): void {
-  // §B.4 (erratum F-M7 / D178): the track records of the camera files that EXIST - one or two,
-  // VIDEO-01 before VIDEO-02, each with its file name. A camera that recorded nothing has no record.
+  // §B.4 (erratum F-M7 / D178; widened by D60 of 2026-11-04): the track records of the camera files that
+  // EXIST - one to four in track order (a package sealed under the two-track shape names its own two),
+  // each with its file name. A camera that recorded nothing has no record.
   const trackIds = manifest.tracks.map((track) => track.trackId);
-  if (!isSealedTrackList(trackIds)) issue(['tracks'], '1 or 2 track records, VIDEO-01 before VIDEO-02');
+  if (!isSealedTrackList(trackIds)) issue(['tracks'], '1 to 4 track records (D60), each once, in track order');
   manifest.tracks.forEach((track, index) => {
     if (track.file !== cameraFileName(track.trackId)) issue(['tracks', index, 'file'], 'the camera file is named after its track');
     // §B.12 fields 127 / 128: null together.

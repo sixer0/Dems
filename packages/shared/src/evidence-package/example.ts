@@ -15,7 +15,7 @@ import type { SessionCaptureSourceRow } from './source-class';
 const filler = (label: string): string => bytesToHex(sha256(utf8ToBytes(`dems.example.${label}`)));
 const SESSION_ID = 'SES-20261009-0001';
 
-/** The four session-start source rows of the example: fake sources in every slot. */
+/** The session-start source rows of the example: fake sources in every slot of a TWO-track (pre-D60) plan. */
 export const EXAMPLE_SOURCE_ROWS: readonly SessionCaptureSourceRow[] = Object.freeze([
   { slot: 'VIDEO-01', deviceId: 'CAM-01', adapterKind: 'FAKE' },
   { slot: 'VIDEO-02', deviceId: 'CAM-02', adapterKind: 'FAKE' },

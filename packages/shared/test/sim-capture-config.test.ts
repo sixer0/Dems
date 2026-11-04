@@ -59,6 +59,7 @@ import {
   CAPTURE_CONFIG_MIC_ON_BOTH_INPUTS,
   CAPTURE_CONFIG_SLOT_UNASSIGNED_AND_ASSIGNED,
 } from '../src/sim';
+import type { VideoTrackId } from '../src/domain'; // D60 (2026-11-04): four video slots
 import * as selectorBed from './support/selector-category-bed';
 import * as failedStartBed from './support/failed-start-bed';
 import * as micIdBed from './support/mic-id-bed';
@@ -129,9 +130,12 @@ describe('setCaptureConfig: the three kinds of change (operations 78, 79, 80)', 
 
     // The swap in one edit is two lines, two rows.
     h.sim.actions.setCaptureConfig({ kind: 'UPDATE', cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }] });
+    // D60 (2026-11-04): the seeded selector holds FOUR lines; the swap moves the first two only.
     expect(selector(h).cameras.map(([trackId, deviceId]) => [trackId, deviceId])).toEqual([
       ['VIDEO-01', 'CAM-02'],
       ['VIDEO-02', 'CAM-01'],
+      ['VIDEO-03', 'CAM-03'],
+      ['VIDEO-04', 'CAM-04'],
     ]);
     expect(h.changes().map((row) => row.details)).toEqual([
       { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-01', deviceId: 'CAM-02', from: 'CAM-01', to: 'CAM-02', permission: 'CAPTURE_CONFIG' },
@@ -143,6 +147,8 @@ describe('setCaptureConfig: the three kinds of change (operations 78, 79, 80)', 
     expect(selector(h).cameras).toEqual([
       ['VIDEO-01', 'CAM-02', h.state().captureConfig.cameras[0]?.profile],
       ['VIDEO-02', 'CAM-02', 'H264_720P25'],
+      ['VIDEO-03', 'CAM-03', 'H264_1080P25'], // D60 (2026-11-04): untouched lines stay
+      ['VIDEO-04', 'CAM-04', 'H264_1080P25'],
     ]);
     expect(h.changes()).toHaveLength(3);
     // Now operation 79 may bring CAM-01 back to VIDEO-01.
@@ -871,8 +877,9 @@ describe('operation 78: the member `unassign` of the body (task 4 row 28; the co
     return result.success ? [] : result.error.issues.map((issue) => issue.path.join('.'));
   };
 
-  it('the four slots are the two video tracks and the two microphone roles, in that order; the type of the change is the type of the list', () => {
-    expect(CAPTURE_SELECTOR_SLOTS).toEqual(['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY']);
+  it('the six slots are the four video tracks and the two microphone roles, in that order; the type of the change is the type of the list', () => {
+    // D60 (2026-11-04): the slot list carries all FOUR video tracks.
+    expect(CAPTURE_SELECTOR_SLOTS).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'PRIMARY', 'STANDBY']);
     // `sim/types.ts` states the slot structurally (it imports nothing of `api/`): the two are one type.
     expectTypeOf<CaptureSelectorSlot>().toEqualTypeOf<(typeof CAPTURE_SELECTOR_SLOTS)[number]>();
     // The body and the `UPDATE` kind of the hosted action carry the member with the same element type.
@@ -883,7 +890,7 @@ describe('operation 78: the member `unassign` of the body (task 4 row 28; the co
     expect(CAPTURE_CONFIG_CHANGE_OPERATION_ID).toEqual({ UPDATE: 'updateCaptureConfig', CAMERA_SOURCE: 'setCaptureCameraSource', PRIMARY_MIC: 'setPrimaryMic' });
   });
 
-  it('`unassign` is optional and takes one to four slots, each at most once; a body without it reads as before', () => {
+  it('`unassign` is optional and takes one to six slots, each at most once; a body without it reads as before', () => { // D60: was one to four
     // Without the member: the bodies of today, unchanged.
     expect(accepts({})).toBe(true);
     expect(accepts({ cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }] })).toBe(true);
@@ -892,11 +899,13 @@ describe('operation 78: the member `unassign` of the body (task 4 row 28; the co
     for (const slot of CAPTURE_SELECTOR_SLOTS) expect(CaptureConfigUpdateRequestSchema.parse({ unassign: [slot] }), slot).toStrictEqual({ unassign: [slot] });
     expect(accepts({ unassign: ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] })).toBe(true);
     expect(accepts({ unassign: ['STANDBY', 'VIDEO-02'] })).toBe(true);
-    // Refused: an empty list, a slot twice, more than four, an unknown slot, a stored slot word, another type.
+    // D60 (2026-11-04): all SIX slots in one body are accepted.
+    expect(accepts({ unassign: ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'PRIMARY', 'STANDBY'] })).toBe(true);
+    // Refused: an empty list, a slot twice, an unknown slot, a stored slot word, another type.
     expect(refusedAt({ unassign: [] })).toEqual(['unassign']);
     expect(refusedAt({ unassign: ['VIDEO-01', 'VIDEO-01'] })).toEqual(['unassign']);
     expect(accepts({ unassign: ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY', 'VIDEO-01'] })).toBe(false);
-    for (const bad of ['VIDEO-03', 'AUDIO-01', 'MIC-PRIMARY', 'MIC-01', 'CAM-01', 'primary', '', null, 1]) expect(accepts({ unassign: [bad] }), String(bad)).toBe(false);
+    for (const bad of ['VIDEO-05', 'AUDIO-01', 'MIC-PRIMARY', 'MIC-01', 'CAM-01', 'primary', '', null, 1]) expect(accepts({ unassign: [bad] }), String(bad)).toBe(false);
     for (const bad of ['VIDEO-01', null, {}, 4]) expect(accepts({ unassign: bad }), String(bad)).toBe(false);
     // The body stays strict: no other member came with it.
     expect(accepts({ unassign: ['VIDEO-01'], assign: ['VIDEO-02'] })).toBe(false);
@@ -943,7 +952,7 @@ describe('setCaptureConfig: a selector slot may be unassigned and assigned again
   const { PROFILE, REGISTRY, CATEGORIES, cam, mic, selectorPatch } = selectorBed;
   type Lines = selectorBed.SelectorLines;
   const SLOTS: readonly CaptureSelectorSlot[] = CAPTURE_SELECTOR_SLOTS;
-  const isTrack = (slot: CaptureSelectorSlot): slot is 'VIDEO-01' | 'VIDEO-02' => slot === 'VIDEO-01' || slot === 'VIDEO-02';
+  const isTrack = (slot: CaptureSelectorSlot): slot is VideoTrackId => slot.startsWith('VIDEO-'); // D60 (2026-11-04): four video slots
 
   /** A signed-in simulator state (TECHNICIAN, no session) with the bed's registry and the lines given; its meters agree with its selector. */
   const stateOf = (lines: Lines): SimState => {
@@ -1028,36 +1037,40 @@ describe('setCaptureConfig: a selector slot may be unassigned and assigned again
     }
   });
 
-  it('AD-10 (1): two cleared slots are two rows, an empty slot is none; all four, then nothing is left to clear', () => {
-    const seeded = stateOf(CATEGORIES['5. four assigned, all D (the seeded selector)']!);
+  it('AD-10 (1): two cleared slots are two rows, an empty slot is none; all six (D60), then nothing is left to clear', () => {
+    const seeded = stateOf(CATEGORIES[selectorBed.SEEDED_CATEGORY]!);
     const two = update(seeded, { unassign: ['VIDEO-02', 'STANDBY'] });
     expect(newRows(seeded, two)).toEqual([
       { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-02', from: 'CAM-02', permission: 'CAPTURE_CONFIG' },
       { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', inputId: 'MIC-02', from: 'MIC-02', permission: 'CAPTURE_CONFIG' },
     ]);
-    expect(linesOf(two)).toEqual({ cameras: [['VIDEO-01', 'CAM-01', PROFILE]], mics: [['MIC-01', 'MIC-01', 'PRIMARY']] });
-    // The same two again, with the two still held: only the held ones give a row.
-    const rest = update(two, { unassign: ['VIDEO-02', 'STANDBY', 'VIDEO-01', 'PRIMARY'] }, START + 2);
+    // D60 (2026-11-04): the seeded selector keeps its two further camera lines.
+    expect(linesOf(two)).toEqual({ cameras: [['VIDEO-01', 'CAM-01', PROFILE], ['VIDEO-03', 'CAM-05', PROFILE], ['VIDEO-04', 'CAM-06', PROFILE]], mics: [['MIC-01', 'MIC-01', 'PRIMARY']] });
+    // The same two again, with the others still held: only the held ones give a row.
+    const rest = update(two, { unassign: ['VIDEO-02', 'STANDBY', 'VIDEO-01', 'PRIMARY', 'VIDEO-03', 'VIDEO-04'] }, START + 2);
     expect(newRows(two, rest).map((details) => [details['trackId'] ?? details['inputId'], details['from'], details['to'], details['deviceId']])).toEqual([
       ['VIDEO-01', 'CAM-01', undefined, undefined],
       ['MIC-01', 'MIC-01', undefined, undefined],
+      ['VIDEO-03', 'CAM-05', undefined, undefined],
+      ['VIDEO-04', 'CAM-06', undefined, undefined],
     ]);
     expect(linesOf(rest)).toEqual({ cameras: [], mics: [] });
     expect(rest.audio.inputs).toEqual({});
     // No PRIMARY line: the state holds NO active input (task 4 row 149) - not the input it held,
     // not a line by its place, and no meter is keyed by one.
     expect(rest.audio.activeInputId).toBeNull();
-    // All four on the empty selector: the SAME state - no row, no new `updatedAt`.
-    expect(update(rest, { unassign: ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] }, START + 3)).toBe(rest);
-    expect(rowsOf(rest)).toHaveLength(rowsOf(seeded).length + 4);
+    // All six on the empty selector: the SAME state - no row, no new `updatedAt` (D60).
+    expect(update(rest, { unassign: ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'PRIMARY', 'STANDBY'] }, START + 3)).toBe(rest);
+    expect(rowsOf(rest)).toHaveLength(rowsOf(seeded).length + 6); // D60 (2026-11-04): six cleared slots
   });
 
   it('the order inside one change is unassign, cameras, mics; an assignment over a HELD slot still says what was there', () => {
-    const seeded = stateOf(CATEGORIES['5. four assigned, all D (the seeded selector)']!);
+    const seeded = stateOf(CATEGORIES[selectorBed.SEEDED_CATEGORY]!);
     // VIDEO-01 is cleared, then CAM-01 (which it held) may feed VIDEO-02 with the same profile:
     // the rule "one camera on both tracks" is held on the RESULT, where it is on one track only.
     const moved = update(seeded, { unassign: ['VIDEO-01', 'STANDBY'], cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-01' }], mics: [{ inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' }] });
-    expect(linesOf(moved)).toEqual({ cameras: [['VIDEO-02', 'CAM-01', PROFILE]], mics: [['MIC-03', 'MIC-03', 'PRIMARY']] });
+    // D60 (2026-11-04): the two camera lines the change does not name stay (the seeded four).
+    expect(linesOf(moved)).toEqual({ cameras: [['VIDEO-02', 'CAM-01', PROFILE], ['VIDEO-03', 'CAM-05', PROFILE], ['VIDEO-04', 'CAM-06', PROFILE]], mics: [['MIC-03', 'MIC-03', 'PRIMARY']] });
     expect(newRows(seeded, moved).map((details) => [details['scope'], details['trackId'] ?? details['inputId'], details['from'], details['to']])).toEqual([
       ['CAMERA', 'VIDEO-01', 'CAM-01', undefined],
       ['MIC', 'MIC-02', 'MIC-02', undefined],
@@ -1082,7 +1095,7 @@ describe('setCaptureConfig: a selector slot may be unassigned and assigned again
     expect(() => setCaptureConfigTransition(lone, START + 1, { kind: 'CAMERA_SOURCE', deviceId: 'CAM-02', trackId: 'VIDEO-01' })).toThrow(expect.objectContaining({ code: 'INVALID_INPUT', reason: CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS }));
 
     // The lone STANDBY: the meters have ONE key, and no channel moved a role (a lone line has no meter channel).
-    const cleared = update(stateOf(CATEGORIES['5. four assigned, all D (the seeded selector)']!), { unassign: ['PRIMARY'] });
+    const cleared = update(stateOf(CATEGORIES[selectorBed.SEEDED_CATEGORY]!), { unassign: ['PRIMARY'] });
     expect(linesOf(cleared).mics).toEqual([['MIC-02', 'MIC-02', 'STANDBY']]);
     expect(Object.keys(cleared.audio.inputs)).toEqual(['MIC-02']);
     expect(cleared.mics.map((entry) => [entry.id, entry.micRole])).toEqual([['AUDIO-01', 'PRIMARY'], ['AUDIO-02', 'STANDBY']]);
@@ -1105,7 +1118,7 @@ describe('setCaptureConfig: a selector slot may be unassigned and assigned again
 
   it('AD-10 (3): a change that clears a slot and fills the same slot is refused with its reason, in all three forms, and changes nothing', () => {
     expect(CAPTURE_CONFIG_SLOT_UNASSIGNED_AND_ASSIGNED).toBe('SLOT_UNASSIGNED_AND_ASSIGNED');
-    const seeded = stateOf(CATEGORIES['5. four assigned, all D (the seeded selector)']!);
+    const seeded = stateOf(CATEGORIES[selectorBed.SEEDED_CATEGORY]!);
     const refused: Record<string, Omit<Extract<CaptureConfigChange, { kind: 'UPDATE' }>, 'kind'>> = {
       'a camera line of the cleared track': { unassign: ['VIDEO-01'], cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-03' }] },
       'a mic line of the cleared role': { unassign: ['STANDBY'], mics: [{ inputId: 'MIC-03', deviceId: 'MIC-03', role: 'STANDBY' }] },
@@ -1148,11 +1161,12 @@ describe('setCaptureConfig: a selector slot may be unassigned and assigned again
 
   it('CONTROL: the seeded selector of the simulator is complete, and the simulator action clears and fills it through the same transition', () => {
     const h = harness('TECHNICIAN');
-    expect(selector(h)).toEqual({ cameras: [['VIDEO-01', 'CAM-01', PROFILE], ['VIDEO-02', 'CAM-02', PROFILE]], mics: [['MIC-01', 'MIC-01', 'PRIMARY'], ['MIC-02', 'MIC-02', 'STANDBY']] });
+    // D60 (2026-11-04): the simulator's seeded selector names all FOUR camera lines.
+    expect(selector(h)).toEqual({ cameras: [['VIDEO-01', 'CAM-01', PROFILE], ['VIDEO-02', 'CAM-02', PROFILE], ['VIDEO-03', 'CAM-03', PROFILE], ['VIDEO-04', 'CAM-04', PROFILE]], mics: [['MIC-01', 'MIC-01', 'PRIMARY'], ['MIC-02', 'MIC-02', 'STANDBY']] });
     h.sim.actions.setCaptureConfig({ kind: 'UPDATE', unassign: ['VIDEO-02'] });
-    expect(selector(h).cameras).toEqual([['VIDEO-01', 'CAM-01', PROFILE]]);
+    expect(selector(h).cameras).toEqual([['VIDEO-01', 'CAM-01', PROFILE], ['VIDEO-03', 'CAM-03', PROFILE], ['VIDEO-04', 'CAM-04', PROFILE]]);
     h.sim.actions.setCaptureConfig({ kind: 'CAMERA_SOURCE', deviceId: 'CAM-02', trackId: 'VIDEO-02' });
-    expect(selector(h).cameras).toEqual([['VIDEO-01', 'CAM-01', PROFILE], ['VIDEO-02', 'CAM-02', PROFILE]]);
+    expect(selector(h).cameras).toEqual([['VIDEO-01', 'CAM-01', PROFILE], ['VIDEO-02', 'CAM-02', PROFILE], ['VIDEO-03', 'CAM-03', PROFILE], ['VIDEO-04', 'CAM-04', PROFILE]]);
     expect(h.changes().map((row) => [row.details?.['from'], row.details?.['to']])).toEqual([['CAM-02', undefined], [undefined, 'CAM-02']]);
   });
 });

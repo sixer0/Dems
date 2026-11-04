@@ -39,7 +39,7 @@
  * a list of the two mic inputs is always that ordered pair (acceptance criterion AC-B-70; the
  * simulated operations 76 and 80 answer the same). The role is a member of a row, not its place.
  */
-import { MicRole } from '../domain';
+import { MicRole, VIDEO_TRACK_IDS } from '../domain'; // VIDEO_TRACK_IDS: D60 (2026-11-04), the one source of the four video slots
 import { AUDIO_CHANNELS, meterInputOfChannel, micInputOfRole, noInputFrame } from './audio';
 import { requirePermission } from './auth';
 import { SimErrorCode, SimNotFoundError, SimTransitionError } from './errors';
@@ -110,7 +110,8 @@ const notRetired = (device: CaptureDeviceStatus): CaptureDeviceStatus => {
  */
 export const CAPTURE_CONFIG_EMPTY_SLOT_PROFILE = CAPTURE_PROFILE_1080P25;
 
-const VIDEO_SLOTS: readonly CaptureSelectorSlot[] = ['VIDEO-01', 'VIDEO-02'];
+// D60 (2026-11-04): the four video slots derive from the widened track domain, not a literal pair.
+const VIDEO_SLOTS: readonly CaptureSelectorSlot[] = VIDEO_TRACK_IDS;
 const MIC_SLOTS: readonly CaptureSelectorSlot[] = [MicRole.PRIMARY, MicRole.STANDBY];
 const isVideoSlot = (slot: CaptureSelectorSlot): slot is CaptureConfigCamera['trackId'] => VIDEO_SLOTS.includes(slot);
 const isMicSlot = (slot: CaptureSelectorSlot): slot is MicRole => MIC_SLOTS.includes(slot);

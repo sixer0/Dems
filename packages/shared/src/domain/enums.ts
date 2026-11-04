@@ -131,7 +131,10 @@ export const SecurityStateLabel = { READY: 'READY', FAULT: 'FAULT' } as const sa
 /**
  * §6.3, §11.1 (verbatim IDs), track model v2 per OD-01 ruling T1 (D4; `specs §D`, register SH-01).
  *
- * - `VIDEO-01`/`VIDEO-02` are the two camera tracks (one whole fMP4 file each, D224/D225).
+ * - `VIDEO-01`..`VIDEO-04` are the four camera tracks (one whole fMP4 file each, D224/D225;
+ *   the count was TWO until the principal's ruling D60 of 2026-11-04: four simultaneous video
+ *   tracks, recorded and sealed together; packages sealed under the two-track shape stay valid
+ *   — a manifest names its own track list and the verifier checks it as a prefix of this order).
  * - `AUDIO-01` is **the one session audio track**: it carries whichever mic input is PRIMARY.
  * - `AUDIO-02` is **legacy v1 only**: it exists on items sealed before schema v2 and is never
  *   produced by the v2 capture path (OD-01 T1 with OD-02 L2).
@@ -139,11 +142,15 @@ export const SecurityStateLabel = { READY: 'READY', FAULT: 'FAULT' } as const sa
 export const TrackId = {
   VIDEO_01: 'VIDEO-01',
   VIDEO_02: 'VIDEO-02',
+  VIDEO_03: 'VIDEO-03', // D60 (2026-11-04): four simultaneous camera tracks
+  VIDEO_04: 'VIDEO-04', // D60
   AUDIO_01: 'AUDIO-01',
   AUDIO_02: 'AUDIO-02',
 } as const;
 export type TrackId = ValueOf<typeof TrackId>;
-export type VideoTrackId = typeof TrackId.VIDEO_01 | typeof TrackId.VIDEO_02;
+export type VideoTrackId = typeof TrackId.VIDEO_01 | typeof TrackId.VIDEO_02 | typeof TrackId.VIDEO_03 | typeof TrackId.VIDEO_04;
+/** The four video tracks in their order (D60): the one source every enum, slot list and check derives from. */
+export const VIDEO_TRACK_IDS = [TrackId.VIDEO_01, TrackId.VIDEO_02, TrackId.VIDEO_03, TrackId.VIDEO_04] as const satisfies readonly VideoTrackId[];
 export type AudioTrackId = typeof TrackId.AUDIO_01 | typeof TrackId.AUDIO_02;
 /** The one session audio track of a v2 recording (OD-01 T1). */
 export const SESSION_AUDIO_TRACK_ID: AudioTrackId = TrackId.AUDIO_01;

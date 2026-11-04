@@ -750,7 +750,7 @@ async function checkRevisions(ports: VerifyPorts, manifest: ManifestV2, certific
 
 /**
  * V-14. `transcript`: whether the transcript files are declared; null when the manifest could not
- * say. `tracks`: the camera files the manifest's own track list names (one or two, F-M7 R88-01);
+ * say. `tracks`: the camera files the manifest's own track list names (one to four since D60 of 2026-11-04, F-M7 R88-01);
  * null with an unreadable manifest, where both are held as declared.
  */
 async function checkCompleteness(reader: PackageReader, transcript: boolean | null, tracks: readonly PackageVideoTrackId[] | null, verdict: Verdict, unexpectedExports: string[] = [], pending: { revisionAppend: boolean } = { revisionAppend: false }): Promise<void> {

@@ -189,36 +189,28 @@ export const HEARTBEAT_EXAMPLE: Heartbeat = {
 
 // ── Devices and storage ───────────────────────────────────────────────────────────────────
 
+// D60 (2026-11-04): the demonstration model answers its FOUR camera lines (the seeded selector of
+// `sim/initial-state.ts`: VIDEO-01/CAM-01, VIDEO-02/CAM-02, VIDEO-03/CAM-03, VIDEO-04/CAM-04).
 function videoTracks(recState: VideoTrackStatus['recState']): VideoTrackStatus[] {
+  const camera = (trackId: 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04', deviceId: string, name: string): VideoTrackStatus => ({
+    trackId,
+    deviceId,
+    sourceDeviceId: deviceId,
+    streamState: 'LIVE',
+    name,
+    lens: 'READY',
+    online: true,
+    recState,
+    resolution: '1080p',
+    fps: 25,
+    codec: 'H.264',
+    bitrateMbps: 9,
+  });
   return [
-    {
-      trackId: 'VIDEO-01',
-      deviceId: 'CAM-01',
-      sourceDeviceId: 'CAM-01',
-      streamState: 'LIVE',
-      name: 'Camera 1',
-      lens: 'READY',
-      online: true,
-      recState,
-      resolution: '1080p',
-      fps: 25,
-      codec: 'H.264',
-      bitrateMbps: 9,
-    },
-    {
-      trackId: 'VIDEO-02',
-      deviceId: 'CAM-02',
-      sourceDeviceId: 'CAM-02',
-      streamState: 'LIVE',
-      name: 'Camera 2',
-      lens: 'READY',
-      online: true,
-      recState,
-      resolution: '1080p',
-      fps: 25,
-      codec: 'H.264',
-      bitrateMbps: 9,
-    },
+    camera('VIDEO-01', 'CAM-01', 'Camera 1'),
+    camera('VIDEO-02', 'CAM-02', 'Camera 2'),
+    camera('VIDEO-03', 'CAM-03', 'Camera 3'), // D60
+    camera('VIDEO-04', 'CAM-04', 'Camera 4'), // D60
   ];
 }
 
@@ -516,7 +508,7 @@ export const CORE_API_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
   getVideoStatus: {
     responses: {
       200: {
-        recording: { summary: 'Both tracks recording', value: { tracks: videoTracks('REC') } satisfies VideoStatusResponse },
+        recording: { summary: 'All four tracks recording', value: { tracks: videoTracks('REC') } satisfies VideoStatusResponse }, // D60 (2026-11-04)
       },
       ...CORE_SERVER_READ_REFUSALS,
     },

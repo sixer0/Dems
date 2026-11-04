@@ -34,14 +34,18 @@ export const TRACK_SEGMENT_MS = 5 * 60_000;
 export const TRACK_LABELS = {
   'VIDEO-01': 'Camera 1',
   'VIDEO-02': 'Camera 2',
+  'VIDEO-03': 'Camera 3', // D60 (2026-11-04)
+  'VIDEO-04': 'Camera 4',
   'AUDIO-01': 'MIC 1 – Interviewer',
   'AUDIO-02': 'MIC 2 – Subject',
 } as const satisfies Record<TrackId, string>;
 
 /** Share of the recording bytes per track (two 1080p video tracks dominate). */
 const TRACK_SHARE = {
-  'VIDEO-01': 0.49,
-  'VIDEO-02': 0.49,
+  'VIDEO-01': 0.245,
+  'VIDEO-02': 0.245,
+  'VIDEO-03': 0.245, // D60: four 1080p video tracks dominate
+  'VIDEO-04': 0.245,
   'AUDIO-01': 0.01,
   'AUDIO-02': 0.01,
 } as const satisfies Record<TrackId, number>;
@@ -247,14 +251,18 @@ export function verificationOfRecordFailed(item: unknown): boolean {
 /**
  * The sealed FILES of a v2 item (register SH-07; D224/D225; C3 §3 row 39: "`files[]` (one whole
  * fMP4 per camera ...)"; evidence package spec §A.1: the package holds `fragments/VIDEO-01.mp4`
- * and `fragments/VIDEO-02.mp4` and no audio file - the session audio track is muxed into the
- * camera files). So the list is the two camera files and nothing else.
+ * through `fragments/VIDEO-04.mp4` and no audio file - the session audio track is muxed into the
+ * camera files). So the list is the camera files and nothing else.
+ *
+ * D60 (2026-11-04): FOUR tracks. A simulated session records all four camera lines its default
+ * selector assigns, and seals the four files at once; the byte shares of `TRACK_SHARE` already
+ * carry four 1080p streams (0.245 each).
  *
  * Until integration pass D4 this list also held `AUDIO-01` as a third "file": a file no v2
  * package has, and the one member of an answer that listed half of an audio pair (AC-B-70). The
  * session audio is reported by `tracks` (v1 view) and `audioSourceIntervals`, never by `files`.
  */
-export const EVIDENCE_FILE_TRACKS = [TrackId.VIDEO_01, TrackId.VIDEO_02] as const satisfies readonly TrackId[];
+export const EVIDENCE_FILE_TRACKS = [TrackId.VIDEO_01, TrackId.VIDEO_02, TrackId.VIDEO_03, TrackId.VIDEO_04] as const satisfies readonly TrackId[]; // D60 (2026-11-04): was the two-track pair
 
 /** The fragment quantum used to derive a synthetic fragment count for the running chain. */
 const FRAGMENT_MS = 2_000;

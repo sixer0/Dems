@@ -131,6 +131,39 @@ const CAMERAS: CamerasSliceBody = [
     model: 'Dual-lens IP camera DL-2 (lens 2)',
     firmware: '3.8.14',
   },
+  // D60 (2026-11-04): the two further built-in cameras of the four-track capture surface.
+  {
+    id: 'VIDEO-03',
+    deviceId: 'CAM-03',
+    name: 'Camera 3',
+    room: 'Interview Room 1',
+    lens: 'READY',
+    online: true,
+    recState: null,
+    resolution: '1080p',
+    fps: 25,
+    codec: 'H.264',
+    bitrateMbps: 9,
+    poePort: 'POE_CAM_3',
+    model: 'IP camera IP-3',
+    firmware: '3.8.14',
+  },
+  {
+    id: 'VIDEO-04',
+    deviceId: 'CAM-04',
+    name: 'Camera 4',
+    room: 'Interview Room 1',
+    lens: 'READY',
+    online: true,
+    recState: null,
+    resolution: '1080p',
+    fps: 25,
+    codec: 'H.264',
+    bitrateMbps: 9,
+    poePort: 'POE_CAM_4',
+    model: 'IP camera IP-4',
+    firmware: '3.8.14',
+  },
 ];
 
 /** Slice `mics`. */
@@ -165,7 +198,7 @@ const MICS: MicsSliceBody = [
 
 /** Slice `otherDevices`. */
 const OTHER_DEVICES: OtherDevicesSliceBody = [
-  { id: 'POE-SWITCH', name: 'PoE Switch', online: true, status: '2/2 Ports Active' },
+  { id: 'POE-SWITCH', name: 'PoE Switch', online: true, status: '4/4 Ports Active' }, // D60 (2026-11-04): four camera-side PoE ports
   { id: 'REC-INDICATOR', name: 'Recording Indicator', online: true, status: 'Standby' },
   { id: 'TABLET', name: 'Tablet Control', online: true, status: 'CONNECTED' },
 ];
@@ -174,6 +207,8 @@ const OTHER_DEVICES: OtherDevicesSliceBody = [
 const PORTS: PortsSliceBody = [
   { id: 'POE_CAM_1', label: 'PoE CAM 1', link: true },
   { id: 'POE_CAM_2_AUX', label: 'PoE CAM 2 / AUX', link: true, spare: true },
+  { id: 'POE_CAM_3', label: 'PoE CAM 3', link: true }, // D60 (2026-11-04): the two further camera ports
+  { id: 'POE_CAM_4', label: 'PoE CAM 4', link: true }, // D60
   { id: 'MGMT_LAN', label: 'MGMT LAN', link: true },
   { id: 'MIC_IN_1', label: 'MIC IN 1', link: true },
   { id: 'MIC_IN_2', label: 'MIC IN 2', link: true },
@@ -219,7 +254,8 @@ const NETWORK: NetworkSliceBody = {
   gateway: '192.168.10.1',
   linkUp: true,
   linkSpeedMbps: 1000,
-  poe: { activePorts: 2, totalPorts: 2, budgetW: 60, drawW: 18.6, poweredPorts: 1, sparePorts: 1 },
+  // D60 (2026-11-04): three powered camera ports (CAM 1 dual-lens, CAM 3, CAM 4) plus the spare.
+  poe: { activePorts: 4, totalPorts: 4, budgetW: 120, drawW: 37.2, poweredPorts: 3, sparePorts: 1 },
   bandwidth: {
     downMbps: 12.4,
     upMbps: 3.1,
@@ -335,6 +371,9 @@ const CAPTURE_CONFIG: CaptureConfigSliceBody = {
   cameras: [
     { trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_1080P25', online: true, streamState: 'LIVE' },
     { trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'H264_1080P25', online: true, streamState: 'LIVE' },
+    // D60 (2026-11-04): all four video tracks are assigned by default.
+    { trackId: 'VIDEO-03', deviceId: 'CAM-03', profile: 'H264_1080P25', online: true, streamState: 'LIVE' },
+    { trackId: 'VIDEO-04', deviceId: 'CAM-04', profile: 'H264_1080P25', online: true, streamState: 'LIVE' },
   ],
   mics: [
     { inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY', transport: 'USB', online: true },
@@ -345,8 +384,9 @@ const CAPTURE_CONFIG: CaptureConfigSliceBody = {
 };
 
 /**
- * Slice 30 `captureDevices` (SH-16, E-04): the five built-in capture devices of the seeded registry
- * (`dbc-3 §E.3`). Hosts are loopback addresses of the fake sources; **no** credential appears here
+ * Slice 30 `captureDevices` (SH-16, E-04): the seven built-in capture devices of the seeded registry
+ * (`dbc-3 §E.3`; D60 of 2026-11-04 widened the seed to four cameras, two microphones, one switch).
+ * Hosts are loopback addresses of the fake sources; **no** credential appears here
  * (RK-12) and this slice is not the paired-client registry (E-04).
  */
 const CAPTURE_DEVICES: CaptureDevicesSliceBody = {
@@ -369,6 +409,29 @@ const CAPTURE_DEVICES: CaptureDevicesSliceBody = {
       firmware: '3.8.14',
       host: '127.0.0.1:8555',
       poePort: 'POE_CAM_1',
+      online: true,
+      streamState: 'LIVE',
+      capabilities: ['VIDEO', 'PULL'],
+    },
+    // D60 (2026-11-04): the two further built-in cameras of the four-track capture surface.
+    {
+      id: 'CAM-03',
+      kind: 'CAMERA',
+      model: 'IP camera IP-3',
+      firmware: '3.8.14',
+      host: '127.0.0.1:8556',
+      poePort: 'POE_CAM_3',
+      online: true,
+      streamState: 'LIVE',
+      capabilities: ['VIDEO', 'PULL'],
+    },
+    {
+      id: 'CAM-04',
+      kind: 'CAMERA',
+      model: 'IP camera IP-4',
+      firmware: '3.8.14',
+      host: '127.0.0.1:8557',
+      poePort: 'POE_CAM_4',
       online: true,
       streamState: 'LIVE',
       capabilities: ['VIDEO', 'PULL'],
@@ -495,13 +558,14 @@ export const EXAMPLE_EVIDENCE_ITEM: EvidenceItemBody = {
     {
       trackId: 'VIDEO-01',
       label: 'Camera 1',
-      sizeBytes: 2_477_766_667,
+      // D60 (2026-11-04): four 1080p tracks at 0.245 of the item each (TRACK_SHARE widened).
+      sizeBytes: 1_238_883_333,
       sha256: '8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a',
     },
     {
       trackId: 'VIDEO-02',
       label: 'Camera 2',
-      sizeBytes: 2_477_766_667,
+      sizeBytes: 1_238_883_333,
       sha256: 'a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9',
     },
     {

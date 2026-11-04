@@ -354,7 +354,7 @@ export type CaptureCandidateAdoptRequest = z.output<typeof CaptureCandidateAdopt
 /** Operation 96's answer: the new capture device. The credential is never echoed. */
 export const CaptureCandidateAdoptionSchema = z
   .strictObject({
-    deviceId: z.string().regex(HARDWARE_DEVICE_ID_PATTERN).describe('The new capture device, e.g. `CAM-03`: the next free number, minted by the Core.'),
+    deviceId: z.string().regex(HARDWARE_DEVICE_ID_PATTERN).describe('The new capture device, e.g. `CAM-05`: the next free number, minted by the Core.'),
     device: CaptureDeviceStatusSchema,
     credentialSet: z.boolean().describe('Whether a credential was stored with the device: a fact, never a value.'),
   })
@@ -745,7 +745,7 @@ export const CAPTURE_DISCOVERY_OPERATIONS = [
       'Other refusals, each storing nothing: `409 INVALID_STATE` with `details.reason` `CANDIDATE_ALREADY_REGISTERED` (plus `details.deviceId`; a repeat of an adoption answers this), `CANDIDATE_NOT_TESTED`, `CONNECTION_TEST_FAILED` (plus `details.outcome`, or `details.cause: DEVICE_CHANGED` when the device answers with other profiles than it did in the test) or `CONNECTION_TEST_IN_PROGRESS`.',
       'Writes CAPTURE_CANDIDATE_ADOPTED, one CAPTURE_CONNECTION_TESTED row for the verification, and CAPTURE_CREDENTIAL_SET (the device id only) when a credential is stored. Publishes the `captureDevices` slice; `captureConfig` is not changed.',
       RATE_AND_READY('as operation 95', '`CREDENTIAL_STORE_NOT_READY` when a credential is in the body and the Core credential store is not available, or `DISCOVERY_NOT_READY`'),
-      `${SIM_V2_NOTE} The simulator registers \`CAM-03\` for the first fixed candidate after a REACHABLE test, stores nothing of a credential and answers \`credentialSet\` as whether one was sent; a demo reset removes the device.`,
+      `${SIM_V2_NOTE} The simulator registers \`CAM-05\` for the first fixed candidate after a REACHABLE test, stores nothing of a credential and answers \`credentialSet\` as whether one was sent; a demo reset removes the device.`,
     ].join('\n\n'),
     source: 'Task 3 R-9, blueprint row 142 (contract landed by row 132, D106); C3 §2.6 operation 96; decisions D80(7), D81, D83 (not in the design book)',
     pathParam: CANDIDATE_PARAM,
@@ -804,7 +804,7 @@ export const CAPTURE_DISCOVERY_OPERATIONS = [
 /** The two candidate ids of the in-app simulator: a new fixture source, and a registered camera. */
 export const SIM_CAPTURE_CANDIDATE_IDS = { fresh: 'CND-000000000001', registered: 'CND-000000000002' } as const;
 /** The device the simulator registers when its first candidate is adopted. */
-export const SIM_ADOPTED_DEVICE_ID = 'CAM-03';
+export const SIM_ADOPTED_DEVICE_ID = 'CAM-05'; // D60 (2026-11-04): CAM-03/04 are built-ins now; the mint lands on CAM-05
 /** The adapter kind of every simulator source: a fixture, never a production device. */
 export const SIM_CAPTURE_ADAPTER = 'FAKE';
 const SIM_HOST = '127.0.0.1';

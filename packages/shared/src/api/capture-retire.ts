@@ -65,7 +65,10 @@ export type CaptureRetirableKind = (typeof CAPTURE_RETIRABLE_KINDS)[number];
  * simulator's. HYPOTHESIS for row RD3: every Core registry holds these five rows, so no adopted
  * device carries one of these ids (adoption mints the highest number plus one).
  */
-export const CAPTURE_BUILT_IN_DEVICE_IDS = ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH'] as const;
+// D60 (2026-11-04): the four-track seed carries FOUR cameras - CAM-03 and CAM-04 join the built-in
+// set and are never retired (held equal to `sim/capture-registry.ts` `RETIRE_BUILT_IN_DEVICE_IDS` and
+// to `DEFAULT_CAPTURE_DEVICES` by tests).
+export const CAPTURE_BUILT_IN_DEVICE_IDS = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH'] as const;
 
 /** A device that can be retired is a registered camera or microphone: `CAM-NN` or `MIC-NN`. The form of `deviceId` of CAPTURE_DEVICE_RETIRED. */
 export const CAPTURE_RETIRABLE_DEVICE_ID_PATTERN = /^(?:CAM|MIC)-\d{2,8}$/;

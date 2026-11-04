@@ -532,16 +532,20 @@ export const common = {
     AUDIT_CHAIN_BROKEN: 'Audit chain broken',
   },
 
-  /** The two tracks per medium (research/04 §9 #8: MIC 1 is the interviewer). */
+  /** The tracks per medium — four video tracks (D60, 2026-11-04), two audio (research/04 §9 #8: MIC 1 is the interviewer). */
   tracks: {
     'VIDEO-01': 'Camera 1',
     'VIDEO-02': 'Camera 2',
+    'VIDEO-03': 'Camera 3', // D60 (2026-11-04): four simultaneous video tracks
+    'VIDEO-04': 'Camera 4', // D60
     'AUDIO-01': 'MIC 1 - Interviewer',
     'AUDIO-02': 'MIC 2 - Subject',
   },
   devices: {
     camera1: 'Camera 1',
     camera2: 'Camera 2',
+    camera3: 'Camera 3', // D60 (2026-11-04)
+    camera4: 'Camera 4', // D60
     mic1: 'MIC 1',
     mic2: 'MIC 2',
     cameraFormat: '{{resolution}} • {{fps}} fps',
@@ -864,7 +868,8 @@ export const common = {
     added: '{{device}} was added.',
     passwordStored: 'Password stored.',
     noPasswordUsed: 'No password is used for this source.',
-    addedNext: 'The camera is registered but not yet used. Assign it to Camera 1 or Camera 2.',
+    // D60 (2026-11-04): four camera slots, not two.
+    addedNext: 'The camera is registered but not yet used. Assign it to Camera 1 through Camera 4.',
     assign: 'Assign to a camera slot',
     storeNotReady: 'This Core cannot store camera passwords yet, so this camera cannot be added. Nothing was saved.',
     testTooOld: 'The connection test is too old. Test the connection again.',
@@ -893,7 +898,8 @@ export const common = {
       },
       sessionStart: {
         title: '{{device}} is not connected',
-        body: 'The session is recording one camera only.',
+        // D60 (2026-11-04): four video tracks — an unreachable camera costs one track, not all but one.
+        body: 'The session is recording with one camera fewer.',
       },
     },
     noCamera: {
@@ -910,7 +916,8 @@ export const common = {
     },
     start: {
       noCamera: 'No camera is reachable. A session cannot start.',
-      oneCamera: '{{device}} is not reachable. The session will record one camera only.',
+      // D60 (2026-11-04): four video tracks — the loss costs one camera, whatever the total.
+      oneCamera: '{{device}} is not reachable. The session will record with one camera fewer.',
       noMicrophone: 'No microphone is reachable. A session cannot start.',
       activeMicrophone:
         '{{device}} is the active microphone and is not reachable. Cancel this session, make {{other}} the primary microphone on Devices, then start again.',
@@ -924,11 +931,14 @@ export const common = {
     },
   },
 
-  // Task 4 row 28 (WP-13a; decision C18 (3); names register N14): the four slots of the device
-  // selector and the words of an empty one. Keyed by the values of `CAPTURE_SELECTOR_SLOTS`.
+  // Task 4 row 28 (WP-13a; decision C18 (3); names register N14): the six slots of the device
+  // selector (D60, 2026-11-04: four video slots) and the words of an empty one. Keyed by the values
+  // of `CAPTURE_SELECTOR_SLOTS`.
   captureSlot: {
     'VIDEO-01': 'Camera 1',
     'VIDEO-02': 'Camera 2',
+    'VIDEO-03': 'Camera 3', // D60 (2026-11-04)
+    'VIDEO-04': 'Camera 4', // D60
     PRIMARY: 'Primary microphone',
     STANDBY: 'Standby microphone',
     notAssigned: 'Not assigned',
@@ -1141,6 +1151,8 @@ export const common = {
     usedAs: {
       'VIDEO-01': 'Feeds Camera 1',
       'VIDEO-02': 'Feeds Camera 2',
+      'VIDEO-03': 'Feeds Camera 3', // D60 (2026-11-04): four video tracks
+      'VIDEO-04': 'Feeds Camera 4', // D60
       PRIMARY: 'Primary microphone',
       STANDBY: 'Standby microphone',
       NONE: 'Not assigned',
@@ -1289,7 +1301,8 @@ export const common = {
   interruptedSeal: INTERRUPTED_SEAL_SENTENCES,
   /**
    * Wave H driver B (gate 75, G75-07 (b)): the system status WHILE A SESSION RECORDS and a critical
-   * fault is active (a degraded recording: one camera lost, the other recording). Nothing is blocked -
+   * fault is active (a degraded recording: a camera lost (D60: four tracks), the others recording).
+   * Nothing is blocked -
    * the Core says the session records - so a status card never reads "Recording Blocked" then.
    */
   criticalWhileRecording: {

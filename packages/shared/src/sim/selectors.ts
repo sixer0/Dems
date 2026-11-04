@@ -334,6 +334,8 @@ export const SYSTEM_FLAG_IDS = [
   'SECURITY_FAULT',
   'CAMERA_VIDEO-01',
   'CAMERA_VIDEO-02',
+  'CAMERA_VIDEO-03', // D60 (2026-11-04)
+  'CAMERA_VIDEO-04',
   'STORAGE_LOW',
   'MIC_AUDIO-01_NO_SIGNAL',
   'MIC_AUDIO-01_CLIP',
@@ -462,6 +464,8 @@ export const FLAG_CHECKLIST_ROW = {
   SECURITY_FAULT: 'platform',
   'CAMERA_VIDEO-01': 'inputs',
   'CAMERA_VIDEO-02': 'inputs',
+  'CAMERA_VIDEO-03': 'inputs', // D60
+  'CAMERA_VIDEO-04': 'inputs',
   STORAGE_LOW: 'storage',
   'MIC_AUDIO-01_NO_SIGNAL': 'inputs',
   'MIC_AUDIO-01_CLIP': 'inputs',

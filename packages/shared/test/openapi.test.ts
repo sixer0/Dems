@@ -976,12 +976,13 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     const r2 = await rig(seen);
     r2.sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD);
     // A camera the simulator registered itself (the transition of operation 96's internal action).
-    r2.sim.actions.registerCaptureDevice({ id: 'CAM-03', model: 'Example camera', host: '192.168.10.101', adapter: 'ONVIF_RTSP' });
+    // D60 (2026-11-04): CAM-03 and CAM-04 are BUILT-IN now - the next free id of the registry is CAM-05.
+    r2.sim.actions.registerCaptureDevice({ id: 'CAM-05', model: 'Example camera', host: '192.168.10.101', adapter: 'ONVIF_RTSP' });
     const beforeRetire = r2.sim.store.getState();
-    expect(r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-03'), '[1]').status).toBe(400);
-    expect(r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-03'), {}).status).toBe(422);
-    expect(r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-03'), { reason: 'BROKEN' }).status).toBe(422);
-    expect(r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-03'), { reason: 'REMOVED', note: 'free text' }).status).toBe(422);
+    expect(r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-05'), '[1]').status).toBe(400);
+    expect(r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-05'), {}).status).toBe(422);
+    expect(r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-05'), { reason: 'BROKEN' }).status).toBe(422);
+    expect(r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-05'), { reason: 'REMOVED', note: 'free text' }).status).toBe(422);
     expect(r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-77'), { reason: 'REMOVED' }).status).toBe(404);
     for (const id of ['CAM-01', 'MIC-02', 'POE-SWITCH']) {
       const builtIn = r2.call('retireCaptureDevice', 'POST', RETIRE(id), { reason: 'REMOVED' });
@@ -989,23 +990,23 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     }
     expect(r2.sim.store.getState()).toBe(beforeRetire);
     // In a slot: refused with the slot named; unassigned, it can be retired.
-    r2.sim.actions.setCaptureConfig({ kind: 'CAMERA_SOURCE', trackId: 'VIDEO-02', deviceId: 'CAM-03' });
-    const assigned = r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-03'), { reason: 'REPLACED' });
+    r2.sim.actions.setCaptureConfig({ kind: 'CAMERA_SOURCE', trackId: 'VIDEO-02', deviceId: 'CAM-05' });
+    const assigned = r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-05'), { reason: 'REPLACED' });
     expect([assigned.status, reasonOf(assigned), (assigned.body as { error: { details?: { slot?: string } } }).error.details?.slot]).toEqual([409, 'CAPTURE_DEVICE_ASSIGNED', 'VIDEO-02']);
     r2.sim.actions.setCaptureConfig({ kind: 'UPDATE', unassign: ['VIDEO-02'] });
     const auditBefore = r2.sim.store.getState().audit.total;
-    const retired = r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-03'), { reason: 'REPLACED' });
+    const retired = r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-05'), { reason: 'REPLACED' });
     expect(retired.status).toBe(200);
-    expect(retired.body).toMatchObject({ deviceId: 'CAM-03', reason: 'REPLACED', credentialDestroyed: false, device: { id: 'CAM-03', retiredAt: AT, retiredBy: 'OPR-003' } });
+    expect(retired.body).toMatchObject({ deviceId: 'CAM-05', reason: 'REPLACED', credentialDestroyed: false, device: { id: 'CAM-05', retiredAt: AT, retiredBy: 'OPR-003' } });
     const auditAfter = r2.sim.store.getState().audit;
     const rows = auditAfter.rows.slice(auditAfter.rows.length - (auditAfter.total - auditBefore));
     expect(rows.map((row) => [row.type, row.deviceId, row.details])).toEqual([
-      ['CAPTURE_DEVICE_RETIRED', 'CAM-03', { deviceId: 'CAM-03', kind: 'CAMERA', reason: 'REPLACED', credentialDestroyed: false, streamRowsKept: 0, operationId: 'retireCaptureDevice', permission: 'CAPTURE_COMMISSION' }],
+      ['CAPTURE_DEVICE_RETIRED', 'CAM-05', { deviceId: 'CAM-05', kind: 'CAMERA', reason: 'REPLACED', credentialDestroyed: false, streamRowsKept: 0, operationId: 'retireCaptureDevice', permission: 'CAPTURE_COMMISSION' }],
     ]);
     // It stays in the registry; a second retirement is refused and changes nothing.
-    expect(r2.sim.store.getState().captureDevices.devices.find((device) => device.id === 'CAM-03')?.retiredAt).toBe(AT);
+    expect(r2.sim.store.getState().captureDevices.devices.find((device) => device.id === 'CAM-05')?.retiredAt).toBe(AT);
     const afterRetire = r2.sim.store.getState();
-    const again = r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-03'), { reason: 'REMOVED' });
+    const again = r2.call('retireCaptureDevice', 'POST', RETIRE('CAM-05'), { reason: 'REMOVED' });
     expect([again.status, reasonOf(again)]).toEqual([409, 'CAPTURE_DEVICE_RETIRED']);
     expect(r2.sim.store.getState()).toBe(afterRetire);
     r2.sim.stop();

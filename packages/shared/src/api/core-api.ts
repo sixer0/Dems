@@ -64,8 +64,8 @@ import {
   SessionState,
   StorageState,
   TimeSource,
-  TrackId,
   TrackRecState,
+  VIDEO_TRACK_IDS, // D60 (2026-11-04): four video tracks
 } from '../domain/enums';
 import { EXPORT_REASON_MIN_LENGTH, STOP_REASON_MIN_LENGTH } from '../sim/constants';
 import {
@@ -406,7 +406,7 @@ export type CurrentSessionResponse = z.output<typeof CurrentSessionResponseSchem
 
 export const VideoTrackStatusSchema = z
   .object({
-    trackId: z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02]),
+    trackId: z.enum(VIDEO_TRACK_IDS), // D60 (2026-11-04): the track domain widened from two to four
     deviceId: z.string().min(1).describe('e.g. CAM-01.'),
     /**
      * Schema v2 (task 3 M2-W7; register SH-05; C3 §3 op 46): the capture-config device feeding
@@ -414,7 +414,8 @@ export const VideoTrackStatusSchema = z
      * maps another device onto the track (OD-05).
      *
      * Task 4 row 28 (WP-13a; decision C25; names register E39): `null` for a track whose selector
-     * slot is not assigned. No device stands in for it; `tracks` stays two entries.
+     * slot is not assigned. No device stands in for it; `tracks` stays one entry per track (D60,
+     * 2026-11-04: the track domain is VIDEO-01 to VIDEO-04).
      */
     sourceDeviceId: z
       .string()
@@ -443,7 +444,7 @@ export const VideoTrackStatusSchema = z
     // Pass I-9b (request line of row W4): nullable, as in the `cameras` slice.
     bitrateMbps: z.number().nonnegative().nullable().describe('Megabits per second; null when no telemetry states a bitrate for the track. Never a default.'),
   })
-  .describe('One video track (VIDEO-01 or VIDEO-02), its source device and its stream state (schema v2).');
+  .describe('One video track (D60, 2026-11-04: the domain is VIDEO-01 to VIDEO-04; the built-in demonstration model answers its camera lines), its source device and its stream state (schema v2).');
 export type VideoTrackStatus = z.output<typeof VideoTrackStatusSchema>;
 
 /**
@@ -477,8 +478,10 @@ export const AudioChannelStatusSchema = z
 export type AudioChannelStatus = z.output<typeof AudioChannelStatusSchema>;
 
 export const VideoStatusResponseSchema = z
-  .object({ tracks: z.array(VideoTrackStatusSchema).length(2) })
-  .describe('Per-track video status (VIDEO-01, VIDEO-02).');
+  // D60 (2026-11-04): one entry per track of the widened domain - the four camera lines VIDEO-01 to
+  // VIDEO-04 (was `.length(2)`; the surrounding rule already says "tracks stays one entry per track").
+  .object({ tracks: z.array(VideoTrackStatusSchema).length(VIDEO_TRACK_IDS.length) })
+  .describe('Per-track video status (D60: VIDEO-01 to VIDEO-04).');
 export type VideoStatusResponse = z.output<typeof VideoStatusResponseSchema>;
 
 /**
@@ -544,7 +547,8 @@ export const DeviceHealthResponseSchema = z
     flags: z
       .array(z.object({ id: z.string().min(1), severity: z.enum(Severity), message: z.string().min(1) }))
       .describe('What makes the state ATTENTION or CRITICAL.'),
-    cameras: z.array(VideoTrackStatusSchema).length(2).describe('Schema v2: each camera carries `streamState` (C3 §3 op 44; OD-22).'),
+    // D60 (2026-11-04): the health answer carries the same four camera lines as operation 46 (was `.length(2)`).
+    cameras: z.array(VideoTrackStatusSchema).length(VIDEO_TRACK_IDS.length).describe('Schema v2: each camera carries `streamState` (C3 §3 op 44; OD-22; D60: four camera lines).'),
     // Task 4 row 28 (DRIVER DECISION, see implementation/028): the two audio members of the health
     // answer are built by the same functions as operation 45 (`audioChannelsOf`, `activeInputOf`),
     // so they take the same widening as `AudioStatusResponseSchema` (register E40).
@@ -823,7 +827,7 @@ const AUDIO_STATUS_TEXT = [
   'Per-channel levels and faults for AUDIO-01 (MIC 1) and AUDIO-02 (MIC 2), reported separately (book §21.2, SYS-003).',
 ];
 
-const VIDEO_STATUS_TEXT = ['Per-track status for VIDEO-01 and VIDEO-02 (book §21.2).'];
+const VIDEO_STATUS_TEXT = ['Per-track status for the recorded video tracks (D60, 2026-11-04: VIDEO-01 to VIDEO-04; book §21.2).']; // D60
 
 const STORAGE_STATUS_TEXT = ['Capacity and health of the evidence storage, including the LOW and FULL states (book §21.2).'];
 

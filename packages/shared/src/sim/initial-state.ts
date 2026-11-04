@@ -69,7 +69,8 @@ export interface InitialStateInput {
   /**
    * Schema v2 (register SH-05): the capture selector this state starts with. A scenario may pin
    * the device/profile/role choices; the default is `DEFAULT_CAPTURE_CONFIG` below, which matches
-   * the five built-in `capture_devices` rows the v2 seed writes (`dbc-3 §B.2`, §E.3).
+   * the seven built-in `capture_devices` rows the v2 seed writes (`dbc-3 §B.2`, §E.3; D60 of
+   * 2026-11-04 widened the seed from five rows to seven: four cameras, two microphones, one switch).
    */
   capture?: Partial<CaptureConfigSeed>;
 }
@@ -92,7 +93,15 @@ export interface CaptureConfigSeed {
  */
 export const CAPTURE_PROFILE_1080P25 = 'H264_1080P25';
 
-/** The five built-in capture devices (`dbc-3 §E.3`); hosts are loopback, never a credential URL. */
+/**
+ * The built-in capture devices (`dbc-3 §E.3`); hosts are loopback, never a credential URL.
+ *
+ * D60 (2026-11-04): four simultaneous video tracks need four built-in cameras — the dual-lens pair
+ * on PoE CAM 1 and two further single-lens cameras on PoE CAM 3 and CAM 4 (`CAMERA_PORT` of
+ * `derive.ts`). Their ids are the next free numbers of the id pattern (`CAM-NN`); a camera the
+ * operator adopts through the search now takes `CAM-05`, since the registry mints the highest number
+ * plus one (`nextCaptureCameraId`).
+ */
 export const DEFAULT_CAPTURE_DEVICES: CaptureDevicesSlice = {
   devices: [
     {
@@ -113,6 +122,29 @@ export const DEFAULT_CAPTURE_DEVICES: CaptureDevicesSlice = {
       firmware: '3.8.14',
       host: '127.0.0.1:8555',
       poePort: 'POE_CAM_1',
+      online: true,
+      streamState: 'LIVE',
+      capabilities: ['VIDEO', 'PULL'],
+    },
+    // D60 (2026-11-04): the two further built-in cameras of the four-track capture surface.
+    {
+      id: 'CAM-03',
+      kind: 'CAMERA',
+      model: 'IP camera IP-3',
+      firmware: '3.8.14',
+      host: '127.0.0.1:8556',
+      poePort: 'POE_CAM_3',
+      online: true,
+      streamState: 'LIVE',
+      capabilities: ['VIDEO', 'PULL'],
+    },
+    {
+      id: 'CAM-04',
+      kind: 'CAMERA',
+      model: 'IP camera IP-4',
+      firmware: '3.8.14',
+      host: '127.0.0.1:8557',
+      poePort: 'POE_CAM_4',
       online: true,
       streamState: 'LIVE',
       capabilities: ['VIDEO', 'PULL'],
@@ -153,11 +185,17 @@ export const DEFAULT_CAPTURE_DEVICES: CaptureDevicesSlice = {
   ],
 };
 
-/** The idle selector: one dual-lens camera pair, MIC-01 primary, MIC-02 hot standby (OD-05/OD-09). */
+/**
+ * The idle selector: FOUR camera lines and MIC-01 primary, MIC-02 hot standby (OD-05/OD-09).
+ * D60 (2026-11-04): all four video tracks are assigned by default, so a simulated session records
+ * four camera files at once; each line holds the seeded 1080p/25 profile of its camera.
+ */
 export const DEFAULT_CAPTURE_CONFIG: CaptureConfigSlice = {
   cameras: [
     { trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: CAPTURE_PROFILE_1080P25, online: true, streamState: 'LIVE' },
     { trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: CAPTURE_PROFILE_1080P25, online: true, streamState: 'LIVE' },
+    { trackId: 'VIDEO-03', deviceId: 'CAM-03', profile: CAPTURE_PROFILE_1080P25, online: true, streamState: 'LIVE' }, // D60
+    { trackId: 'VIDEO-04', deviceId: 'CAM-04', profile: CAPTURE_PROFILE_1080P25, online: true, streamState: 'LIVE' }, // D60
   ],
   mics: [
     { inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY', transport: 'USB', online: true },
@@ -319,6 +357,40 @@ export function createIdleState(input: InitialStateInput): SimState {
         model: 'Dual-lens IP camera DL-2 (lens 2)',
         firmware: '3.8.14',
       },
+      // D60 (2026-11-04): the two further built-in cameras of the four-track capture surface, each
+      // on its own PoE port (`CAMERA_PORT` of `derive.ts`).
+      {
+        id: 'VIDEO-03',
+        deviceId: 'CAM-03',
+        name: 'Camera 3',
+        room: DEVICE_NAME,
+        lens: 'READY',
+        online: true,
+        recState: null,
+        resolution: '1080p',
+        fps: 25,
+        codec: 'H.264',
+        bitrateMbps: 9,
+        poePort: 'POE_CAM_3',
+        model: 'IP camera IP-3',
+        firmware: '3.8.14',
+      },
+      {
+        id: 'VIDEO-04',
+        deviceId: 'CAM-04',
+        name: 'Camera 4',
+        room: DEVICE_NAME,
+        lens: 'READY',
+        online: true,
+        recState: null,
+        resolution: '1080p',
+        fps: 25,
+        codec: 'H.264',
+        bitrateMbps: 9,
+        poePort: 'POE_CAM_4',
+        model: 'IP camera IP-4',
+        firmware: '3.8.14',
+      },
     ],
     mics: [
       {
@@ -399,9 +471,10 @@ export function createIdleState(input: InitialStateInput): SimState {
       gateway: NETWORK.gateway,
       linkUp: true,
       linkSpeedMbps: 1_000,
-      // Design book §4.2/§8 (D79): PoE CAM 1 powers the dual-lens camera, PoE CAM 2/AUX is the
-      // spare (2 × 30 W budget). Both ports are healthy at load.
-      poe: { activePorts: 2, totalPorts: 2, budgetW: 60, drawW: 18.6, poweredPorts: 1, sparePorts: 1 },
+      // Design book §4.2/§8 (D79): PoE CAM 1 powers the dual-lens camera; D60 (2026-11-04) adds
+      // CAM 3 and CAM 4 for the two further built-in cameras (4 × 30 W budget). PoE CAM 2/AUX is
+      // the spare. All ports are healthy at load.
+      poe: { activePorts: 4, totalPorts: 4, budgetW: 120, drawW: 37.2, poweredPorts: 3, sparePorts: 1 },
       bandwidth: { downMbps: 12.4, upMbps: 3.1, history: series.bandwidth },
       domains: [
         { id: 'CAMERA', vlan: 10, active: true },
@@ -475,13 +548,15 @@ export function createIdleState(input: InitialStateInput): SimState {
       micLevels: series.micLevels,
     },
     otherDevices: [
-      { id: 'POE-SWITCH', name: 'PoE Switch', online: true, status: '2/2 Ports Active' },
+      { id: 'POE-SWITCH', name: 'PoE Switch', online: true, status: '4/4 Ports Active' }, // D60 (2026-11-04): four camera-side PoE ports
       { id: 'REC-INDICATOR', name: 'Recording Indicator', online: true, status: 'Standby' },
       { id: 'TABLET', name: 'Tablet Control', online: true, status: 'CONNECTED' },
     ],
     ports: [
       { id: 'POE_CAM_1', label: 'PoE CAM 1', link: true },
       { id: 'POE_CAM_2_AUX', label: 'PoE CAM 2 / AUX', link: true, spare: true },
+      { id: 'POE_CAM_3', label: 'PoE CAM 3', link: true }, // D60 (2026-11-04): the two further camera ports
+      { id: 'POE_CAM_4', label: 'PoE CAM 4', link: true }, // D60
       { id: 'MGMT_LAN', label: 'MGMT LAN', link: true },
       { id: 'MIC_IN_1', label: 'MIC IN 1', link: true },
       { id: 'MIC_IN_2', label: 'MIC IN 2', link: true },

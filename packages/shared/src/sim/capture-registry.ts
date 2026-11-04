@@ -315,8 +315,8 @@ export const RETIRE_REFUSAL = {
   ASSIGNED: 'CAPTURE_DEVICE_ASSIGNED',
 } as const;
 
-/** The built-in devices of the demonstration model (`DEFAULT_CAPTURE_DEVICES`): never retired. Held equal to the contract's `CAPTURE_BUILT_IN_DEVICE_IDS` by a test. */
-export const RETIRE_BUILT_IN_DEVICE_IDS: readonly string[] = ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH'];
+/** The built-in devices of the demonstration model (`DEFAULT_CAPTURE_DEVICES`): never retired. Held equal to the contract's `CAPTURE_BUILT_IN_DEVICE_IDS` by a test. D60 (2026-11-04): seven - the seed carries four cameras. */
+export const RETIRE_BUILT_IN_DEVICE_IDS: readonly string[] = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH'];
 
 const OPERATOR_ID = /^OPR-\d{3}$/;
 

@@ -80,7 +80,7 @@ export type DeviceInventory = z.output<typeof DeviceInventorySchema>;
 
 export const ActiveCameraRequestSchema = z
   .object({
-    cameraId: z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02]).describe('The camera the monitor shows: VIDEO-01 or VIDEO-02.'),
+    cameraId: z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02, TrackId.VIDEO_03, TrackId.VIDEO_04]).describe('The camera the monitor shows: one of the four video tracks (D60, 2026-11-04).'), // D60: the enum was widened; the text still said two
   })
   .describe('Request body of `POST /api/v1/video/active-camera`.');
 export type ActiveCameraRequest = z.output<typeof ActiveCameraRequestSchema>;
@@ -108,7 +108,7 @@ export type RestartDeviceRequest = z.output<typeof RestartDeviceRequestSchema>;
 /** One camera line of the whole-config update (op 78): the device and profile per video track. */
 export const CaptureConfigCameraUpdateSchema = z
   .strictObject({
-    trackId: z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02]),
+    trackId: z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02, TrackId.VIDEO_03, TrackId.VIDEO_04]),
     deviceId: z.string().regex(HARDWARE_DEVICE_ID_PATTERN).describe('A capture device of the registry, e.g. `CAM-01` (`dbc-3 §B.2`).'),
     profile: trimmedText(64)
       .optional()
@@ -147,12 +147,12 @@ export const CaptureConfigMicUpdateSchema = z
 export type CaptureConfigMicUpdate = z.output<typeof CaptureConfigMicUpdateSchema>;
 
 /**
- * The four slots of the device selector, in their order (task 4 row 28; WP-13a; names register
- * N2): the two video tracks, then the two microphone roles. They are the values the member
+ * The six slots of the device selector, in their order (task 4 row 28; WP-13a; names register
+ * N2; D60 of 2026-11-04): the FOUR video tracks, then the two microphone roles. They are the values the member
  * `unassign` of operation 78 takes - the `trackId` of a camera line and the `role` of a mic line
  * of the same body, never the stored value set of `session_capture_sources`.
  */
-export const CAPTURE_SELECTOR_SLOTS = [TrackId.VIDEO_01, TrackId.VIDEO_02, MicRole.PRIMARY, MicRole.STANDBY] as const;
+export const CAPTURE_SELECTOR_SLOTS = [TrackId.VIDEO_01, TrackId.VIDEO_02, TrackId.VIDEO_03, TrackId.VIDEO_04, MicRole.PRIMARY, MicRole.STANDBY] as const;
 
 /** The slots a body of operation 78 assigns: the `trackId` of each camera line and the `role` of each mic line that states one. */
 function slotsAssignedBy(body: {
@@ -182,9 +182,9 @@ export const CaptureConfigUpdateRequestSchema = z
     unassign: z
       .array(z.enum(CAPTURE_SELECTOR_SLOTS))
       .min(1)
-      .max(4)
+      .max(6)
       .optional()
-      .describe('The selector slots this body clears: a video track (`VIDEO-01`, `VIDEO-02`) or a microphone role (`PRIMARY`, `STANDBY`), each at most once. A cleared slot has no line in the answer. A slot that the same body assigns (the `trackId` of a camera line, the `role` of a mic line) is `422 INVALID_INPUT`. Clearing a slot that is already empty changes nothing and writes no audit row.'),
+      .describe('The selector slots this body clears: a video track (`VIDEO-01`..`VIDEO-04`) or a microphone role (`PRIMARY`, `STANDBY`), each at most once. A cleared slot has no line in the answer. A slot that the same body assigns (the `trackId` of a camera line, the `role` of a mic line) is `422 INVALID_INPUT`. Clearing a slot that is already empty changes nothing and writes no audit row.'),
   })
   // Two refinements, like the text rule: the JSON Schema of the component does not change.
   .refine((body) => body.unassign === undefined || new Set(body.unassign).size === body.unassign.length, {
@@ -205,7 +205,7 @@ export type CaptureConfigUpdateRequest = z.output<typeof CaptureConfigUpdateRequ
 /** Request body of op 79: the video track the camera in the path is assigned to. */
 export const CaptureCameraSourceRequestSchema = z
   .strictObject({
-    trackId: z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02]).describe('The video track this camera becomes the source of.'),
+    trackId: z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02, TrackId.VIDEO_03, TrackId.VIDEO_04]).describe('The video track this camera becomes the source of.'),
   })
   .describe('Request body of `POST /api/v1/capture/cameras/{id}/source` (C3 §2.3 op 79).');
 export type CaptureCameraSourceRequest = z.output<typeof CaptureCameraSourceRequestSchema>;

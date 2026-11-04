@@ -154,8 +154,8 @@ describe('connecting -> durable', () => {
     const session = h.state().session;
     if (session === null) throw new Error('no session');
     h.sim.store.setState({ ...h.state(), session: { ...session, captureDurable: false } }, true);
-    h.sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-01' });
-    h.sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-02' });
+    // D60 (2026-11-04): EVERY camera - all four tracks.
+    for (const cameraId of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const) h.sim.actions.inject('CAMERA_LOSS', { cameraId });
     h.run(30_000);
     expect(h.state().session).toMatchObject({ state: 'RECORDING', captureDurable: false });
   });
@@ -165,9 +165,8 @@ describe('failed start: no camera connected', () => {
   const failedStart = () => {
     const h = harness();
     h.toArmed();
-    // The existing demo control, once per camera.
-    h.sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-01' });
-    h.sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-02' });
+    // The existing demo control, once per camera - D60 (2026-11-04): four cameras.
+    for (const cameraId of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const) h.sim.actions.inject('CAMERA_LOSS', { cameraId });
     expect(h.state().session?.state).toBe('ARMED');
     const evidenceBefore = h.state().evidence.length;
     const historyBefore = h.state().sessionHistory.length;
@@ -244,12 +243,11 @@ describe('failed start: no camera connected', () => {
   it('a camera restored while the cameras connect does connect: the control is read when the start is decided', () => {
     const h = harness();
     h.toArmed();
-    h.sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-01' });
-    h.sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-02' });
+    // D60 (2026-11-04): all FOUR cameras are down at the start and restored while it connects.
+    for (const cameraId of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const) h.sim.actions.inject('CAMERA_LOSS', { cameraId });
     h.sim.actions.startRecording();
     h.run(CAPTURE_CONNECT_MS / 2);
-    h.sim.actions.clearFault('CAMERA_LOSS', { cameraId: 'VIDEO-01' });
-    h.sim.actions.clearFault('CAMERA_LOSS', { cameraId: 'VIDEO-02' });
+    for (const cameraId of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const) h.sim.actions.clearFault('CAMERA_LOSS', { cameraId });
     h.run(CAPTURE_CONNECT_MS);
     expect(h.state().session?.state).toBe('RECORDING');
     expect(captureDurableOf(h.state().session)).toBe(true);
@@ -440,8 +438,8 @@ describe('a start that is not decided, and a start that is refused', () => {
       const h = bed({ captureConnectMs: 30_000 });
       h.armed();
       h.sim.actions.startRecording();
-      h.sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-01' });
-      h.sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-02' });
+      // D60 (2026-11-04): a FAILED start loses ALL FOUR tracks.
+      for (const cameraId of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const) h.sim.actions.inject('CAMERA_LOSS', { cameraId });
       h.run(29_000);
       expect(h.state().session).toMatchObject({ state: 'RECORDING', captureDurable: false });
       expect(h.integrityRows()).toEqual([]);
@@ -585,16 +583,19 @@ describe('the start on an incomplete selector (task 4 row 163)', () => {
   };
   const inputsOf = (lines: selectorBed.SelectorLines): string[] => lines.mics.map((line) => line.inputId);
   const roleInput = (lines: selectorBed.SelectorLines, role: 'PRIMARY' | 'STANDBY'): string | undefined => lines.mics.find((line) => line.role === role)?.inputId;
-  /** Each selector that lacks exactly ONE slot of the seeded four. */
+  /** Each selector that lacks exactly ONE slot of the seeded SIX (D60, 2026-11-04). */
   const seeded = CATEGORIES[SEEDED_CATEGORY]!;
   const ONE_SLOT_MISSING: Record<string, selectorBed.SelectorLines> = {
     'only VIDEO-01 unassigned': { cameras: seeded.cameras.filter((line) => line.trackId !== 'VIDEO-01'), mics: seeded.mics },
     'only VIDEO-02 unassigned': { cameras: seeded.cameras.filter((line) => line.trackId !== 'VIDEO-02'), mics: seeded.mics },
+    // D60 (2026-11-04): the two further tracks block the start of a Core in its own capture too.
+    'only VIDEO-03 unassigned': { cameras: seeded.cameras.filter((line) => line.trackId !== 'VIDEO-03'), mics: seeded.mics },
+    'only VIDEO-04 unassigned': { cameras: seeded.cameras.filter((line) => line.trackId !== 'VIDEO-04'), mics: seeded.mics },
     'only PRIMARY unassigned': { cameras: seeded.cameras, mics: seeded.mics.filter((line) => line.role !== 'PRIMARY') },
     'only STANDBY unassigned (C25: it blocks too)': { cameras: seeded.cameras, mics: seeded.mics.filter((line) => line.role !== 'STANDBY') },
   };
 
-  it.each(Object.entries({ ...CATEGORIES, ...ONE_SLOT_MISSING }))('REAL capture, %s: refused while a slot is unassigned, started when all four are assigned', (name, lines) => {
+  it.each(Object.entries({ ...CATEGORIES, ...ONE_SLOT_MISSING }))('REAL capture, %s: refused while a slot is unassigned, started when all six are assigned', (name, lines) => {
     const h = armedOn('external', lines);
     const before = h.state();
     const refused = start(h);

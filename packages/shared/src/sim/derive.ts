@@ -205,22 +205,34 @@ function deriveSecurity(security: SimState['security'], active: readonly ActiveF
 }
 
 /**
- * Both lenses of the one dual-lens camera are on PoE CAM 1 (design book B.01, §4.2; D79, step 54).
- * PoE CAM 2/AUX is the spare port: no device, no load, always healthy.
+ * The camera tracks sit on THREE PoE ports (D60, 2026-11-04): both lenses of the one dual-lens
+ * camera share PoE CAM 1 (design book B.01, §4.2; D79), and the two further built-in cameras of the
+ * four-track surface stand on PoE CAM 3 and CAM 4. PoE CAM 2/AUX stays the spare port: no device,
+ * no load, always healthy.
  */
 export const CAMERA_PORT: Record<VideoTrackId, PortStatus['id']> = {
   'VIDEO-01': 'POE_CAM_1',
   'VIDEO-02': 'POE_CAM_1',
+  'VIDEO-03': 'POE_CAM_3', // D60 (2026-11-04): four camera tracks on the PoE switch
+  'VIDEO-04': 'POE_CAM_4',
 };
 const MIC_PORT: Record<AudioTrackId, PortStatus['id']> = {
   'AUDIO-01': 'MIC_IN_1',
   'AUDIO-02': 'MIC_IN_2',
 };
-/** PoE draw of the dual-lens camera on PoE CAM 1 (W; budget 30 W per port, 60 W in total). */
+/** PoE draw of the dual-lens camera on PoE CAM 1 (W; budget 30 W per port). */
 export const CAMERA_POE_DRAW_W = 18.6;
-/** Ports: PoE CAM 1 (powered) and PoE CAM 2/AUX (spare). */
-export const POE_TOTAL_PORTS = 2;
+/** PoE draw of ONE single-lens built-in camera (D60, 2026-11-04): half the dual-lens draw, on PoE CAM 3 / CAM 4. */
+export const SINGLE_CAMERA_POE_DRAW_W = 9.3;
+/** Ports: PoE CAM 1, CAM 3 and CAM 4 (powered), PoE CAM 2/AUX (spare) — four camera-side ports (D60). */
+export const POE_TOTAL_PORTS = 4; // D60
 export const POE_SPARE_PORTS = 1;
+/** The draw of one powered camera port, by its id (D60). */
+const POE_PORT_DRAW_W: Partial<Record<PortStatus['id'], number>> = {
+  POE_CAM_1: CAMERA_POE_DRAW_W,
+  POE_CAM_3: SINGLE_CAMERA_POE_DRAW_W,
+  POE_CAM_4: SINGLE_CAMERA_POE_DRAW_W,
+};
 
 /**
  * Recomputes every fault- and session-derived field. Pure; returns the same object when
@@ -251,24 +263,29 @@ export function deriveDeviceState(state: SimState): SimState {
     });
   });
 
-  // The camera stays powered while at least one lens streams; losing both takes PoE CAM 1 down.
-  const cameraPowered = state.cameras.some((camera) => !lostCameras.has(camera.id));
-  const poweredPorts = cameraPowered ? 1 : 0;
+  // D60 (2026-11-04): a camera port stays powered while at least one of its tracks streams; every
+  // camera lost takes its own port down. The dual-lens pair shares PoE CAM 1: one lens lost leaves
+  // the port powered, both lost take it down, exactly as before.
+  const poweredPortIds = new Set(
+    state.cameras.filter((camera) => !lostCameras.has(camera.id)).map((camera) => CAMERA_PORT[camera.id as VideoTrackId]),
+  );
+  const poweredPorts = poweredPortIds.size;
   const activePorts = poweredPorts + POE_SPARE_PORTS;
+  const drawW = Number((([...poweredPortIds].reduce((sum, port) => sum + (POE_PORT_DRAW_W[port] ?? 0), 0))).toFixed(1));
   const network = patchIfChanged(state.network, {
     poe: patchIfChanged(state.network.poe, {
       activePorts,
       totalPorts: POE_TOTAL_PORTS,
       poweredPorts,
       sparePorts: POE_SPARE_PORTS,
-      drawW: cameraPowered ? CAMERA_POE_DRAW_W : 0,
+      drawW,
     }),
   });
 
   const gnssLost = active.some((fault) => fault.kind === FaultKind.GNSS_LOSS);
   const ports = mapIfChanged(state.ports, (port) => {
     let link = true;
-    if (port.id === 'POE_CAM_1' && !cameraPowered) link = false;
+    if (port.id in POE_PORT_DRAW_W && !poweredPortIds.has(port.id)) link = false; // D60: every camera port follows its cameras
     for (const mic of state.mics) if (MIC_PORT[mic.id] === port.id && silentMics.has(mic.id)) link = false;
     if (port.id === 'GNSS_SMA' && gnssLost) link = false;
     return patchIfChanged(port, { link });

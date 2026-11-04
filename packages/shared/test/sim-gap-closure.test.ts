@@ -371,15 +371,16 @@ describe('Login: the last sign-out reason (W43-2)', () => {
 });
 
 describe('Devices (W48-1..5)', () => {
-  it('PoE status follows the book: PoE CAM 1 powered, CAM 2/AUX spare', () => {
+  it('PoE status follows the book: three camera ports powered (D60), CAM 2/AUX spare', () => {
+    // D60 (2026-11-04): CAM 1 (dual-lens), CAM 3 and CAM 4 carry the four built-in cameras.
     expect(selectPoeStatus(harness().state())).toMatchObject({
       cam1Link: true,
-      poweredPorts: 1,
+      poweredPorts: 3,
       sparePorts: 1,
-      healthyPorts: 2,
-      totalPorts: 2,
-      budgetW: 60,
-      drawW: 18.6,
+      healthyPorts: 4,
+      totalPorts: 4,
+      budgetW: 120,
+      drawW: 37.2,
       portBudgetW: 30,
     });
   });
@@ -416,7 +417,7 @@ describe('Devices (W48-1..5)', () => {
     const idle = harness();
     expect(selectFrontPanel(idle.state())).toMatchObject({
       leds: { POWER: 'on', RECORD: 'off', NETWORK: 'activity', STORAGE: 'on', FAULT: 'off' },
-      lcd: { mode: 'IDLE', camsOk: 2, micsOk: 2, timeSource: 'GNSS' },
+      lcd: { mode: 'IDLE', camsOk: 4, micsOk: 2, timeSource: 'GNSS' }, // D60 (2026-11-04): four cameras
     });
     const rec = harness('recording');
     rec.sim.actions.inject('STORAGE_FULL');
@@ -433,7 +434,7 @@ describe('Devices (W48-1..5)', () => {
     const live = deviceHealthSeries(h.state(), 'MIC-02').points.at(-1);
     expect(live?.v).toBeGreaterThan(-60);
     expect(deviceHealthSeries(h.state(), 'GNSS').metric).toBe('offset');
-    expect(deviceHealthSeries(h.state(), 'POE-SWITCH').points.at(-1)?.v).toBe(18.6);
+    expect(deviceHealthSeries(h.state(), 'POE-SWITCH').points.at(-1)?.v).toBe(37.2); // D60 (2026-11-04): three camera ports draw 37.2 W
   });
 });
 

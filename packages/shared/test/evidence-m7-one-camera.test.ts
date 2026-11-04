@@ -46,7 +46,12 @@ describe('R88-01: the track list of a sealed package is 1 or 2 camera files', ()
     expect(isSealedTrackList(['VIDEO-01', 'VIDEO-02', 'VIDEO-01'])).toBe(false);
     expect(isSealedTrackList(['VIDEO-01', 'VIDEO-01'])).toBe(false);
     expect(isSealedTrackList(['VIDEO-02', 'VIDEO-01'])).toBe(false);
-    expect(isSealedTrackList(['VIDEO-03'])).toBe(false);
+    // D60 (2026-11-04): the sealed list is any ascending subset of the FOUR tracks - a lone
+    // VIDEO-03 is now a legal one-file package (the order rule, not a prefix rule, decides).
+    expect(isSealedTrackList(['VIDEO-03'])).toBe(true);
+    expect(isSealedTrackList(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'])).toBe(true);
+    expect(isSealedTrackList(['VIDEO-04', 'VIDEO-01'])).toBe(false);
+    expect(isSealedTrackList(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'VIDEO-04'])).toBe(false);
   });
 
   it.each([['VIDEO-01'], ['VIDEO-02']])('a manifest with the one camera file %s builds, signs and parses back', (trackId) => {

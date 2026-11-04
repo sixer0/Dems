@@ -184,7 +184,8 @@ describe('status endpoints', () => {
       ['MIC-02', 'STANDBY'],
     ]);
     const video = h.sim.request({ method: 'GET', path: '/api/v1/video/status' }).body as { tracks: { trackId: string; recState: string | null }[] };
-    expect(video.tracks.map((track) => [track.trackId, track.recState])).toEqual([['VIDEO-01', 'REC'], ['VIDEO-02', 'LOST']]);
+    // D60 (2026-11-04): the four seeded tracks; only VIDEO-02 lost its stream.
+    expect(video.tracks.map((track) => [track.trackId, track.recState])).toEqual([['VIDEO-01', 'REC'], ['VIDEO-02', 'LOST'], ['VIDEO-03', 'REC'], ['VIDEO-04', 'REC']]);
   });
 });
 
@@ -248,9 +249,12 @@ describe('GET /capture/config and /capture/devices (ops 76/77)', () => {
     expect(h.sim.request({ method: 'GET', path: CAPTURE_DEVICES_PATH }).status).toBe(401);
     h.sim.actions.signIn('budi.santoso', 'demo-2026');
     const config = h.sim.request({ method: 'GET', path: CAPTURE_CONFIG_PATH }).body as CaptureConfigBody;
+    // D60 (2026-11-04): the seeded selector names four camera lines.
     expect(config.cameras.map((camera) => [camera.trackId, camera.deviceId, camera.streamState])).toEqual([
       ['VIDEO-01', 'CAM-01', 'LIVE'],
       ['VIDEO-02', 'CAM-02', 'LIVE'],
+      ['VIDEO-03', 'CAM-03', 'LIVE'],
+      ['VIDEO-04', 'CAM-04', 'LIVE'],
     ]);
     expect(config.mics.map((mic) => [mic.inputId, mic.role])).toEqual([
       ['MIC-01', 'PRIMARY'],
@@ -258,9 +262,12 @@ describe('GET /capture/config and /capture/devices (ops 76/77)', () => {
     ]);
     expect(config.locked).toBe(false);
     const devices = h.sim.request({ method: 'GET', path: CAPTURE_DEVICES_PATH }).body as { devices: { id: string; kind: string }[] };
+    // D60 (2026-11-04): the seeded registry carries FOUR cameras.
     expect(devices.devices.map((device) => [device.id, device.kind])).toEqual([
       ['CAM-01', 'CAMERA'],
       ['CAM-02', 'CAMERA'],
+      ['CAM-03', 'CAMERA'],
+      ['CAM-04', 'CAMERA'],
       ['MIC-01', 'MIC'],
       ['MIC-02', 'MIC'],
       ['POE-SWITCH', 'POE'],
@@ -292,7 +299,7 @@ describe('POST /capture/* (ops 78/79/80/89): RBAC, the idle lock, the audit rows
     expect(h.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }] } }).status).toBe(422);
     expect(h.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-02' }] } }).status).toBe(422);
     expect(h.state().audit.rows).toHaveLength(rowsBefore);
-    expect(h.state().captureConfig.cameras.map((camera) => camera.deviceId)).toEqual(['CAM-01', 'CAM-02']);
+    expect(h.state().captureConfig.cameras.map((camera) => camera.deviceId)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']); // D60 (2026-11-04): four seeded lines
 
     // The two cameras swap their tracks: one row per line that changed, with exactly the keys of C3 §5.2.
     const updated = h.sim.request({
@@ -300,7 +307,7 @@ describe('POST /capture/* (ops 78/79/80/89): RBAC, the idle lock, the audit rows
       path: CAPTURE_CONFIG_PATH,
       body: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }] },
     });
-    expect((updated.body as CaptureConfigBody).cameras.map((camera) => camera.deviceId)).toEqual(['CAM-02', 'CAM-01']);
+    expect((updated.body as CaptureConfigBody).cameras.map((camera) => camera.deviceId)).toEqual(['CAM-02', 'CAM-01', 'CAM-03', 'CAM-04']); // D60 (2026-11-04): the untouched lines stay
     expect(h.state().audit.rows).toHaveLength(rowsBefore + 2);
     expect(h.state().audit.rows.slice(-2).map((row) => [row.type, row.actorId, row.details])).toEqual([
       ['CAPTURE_CONFIG_CHANGED', 'OPR-003', { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-01', deviceId: 'CAM-02', from: 'CAM-01', to: 'CAM-02', permission: 'CAPTURE_CONFIG' }],
@@ -575,7 +582,8 @@ describe('the simulator answers for an unassigned selector slot (task 4 row 165)
   it('one video line and a lone STANDBY: no source device for the empty track; no input, device or role for the empty role', () => {
     const h = on({ cameras: [cam('VIDEO-02', 'CAM-02')], mics: [mic('MIC-02', 'STANDBY')] });
     // The empty track states NO source - not the built-in camera of that track (`CAM-01`).
-    expect(tracksOf(h).map((track) => [track.trackId, track.sourceDeviceId])).toEqual([['VIDEO-01', null], ['VIDEO-02', 'CAM-02']]);
+    // D60 (2026-11-04): the two further tracks are empty slots too - NO source.
+    expect(tracksOf(h).map((track) => [track.trackId, track.sourceDeviceId])).toEqual([['VIDEO-01', null], ['VIDEO-02', 'CAM-02'], ['VIDEO-03', null], ['VIDEO-04', null]]);
     expect(VideoStatusResponseSchema.safeParse(h.get('/api/v1/video/status')).success).toBe(true);
     // No entry for the empty role - and none for the lone line either: an entry is a meter channel
     // with an input, and a lone line has no meter channel (register 3.2). No active input: the
@@ -586,7 +594,7 @@ describe('the simulator answers for an unassigned selector slot (task 4 row 165)
     expect(JSON.stringify(audio)).not.toMatch(/MIC-01|PRIMARY/);
     // Operation 44 says the same three things.
     const health = healthOf(h);
-    expect(health.cameras.map((track) => [track.trackId, track.sourceDeviceId])).toEqual([['VIDEO-01', null], ['VIDEO-02', 'CAM-02']]);
+    expect(health.cameras.map((track) => [track.trackId, track.sourceDeviceId])).toEqual([['VIDEO-01', null], ['VIDEO-02', 'CAM-02'], ['VIDEO-03', null], ['VIDEO-04', null]]); // D60
     expect(health.audio).toEqual([]);
     expect(health.activeInputId).toBeNull();
     expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
@@ -597,7 +605,7 @@ describe('the simulator answers for an unassigned selector slot (task 4 row 165)
   it.each(Object.entries(CATEGORIES))('category %s: each track answers the device of ITS line or null; the channels are the complete pair or none; every answer is a body of the contract', (name, lines) => {
     const h = on(lines);
     expect(tracksOf(h).map((track) => [track.trackId, track.sourceDeviceId]), name).toEqual(
-      (['VIDEO-01', 'VIDEO-02'] as const).map((trackId) => [trackId, lines.cameras.find((line) => line.trackId === trackId)?.deviceId ?? null]),
+      (['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const).map((trackId) => [trackId, lines.cameras.find((line) => line.trackId === trackId)?.deviceId ?? null]), // D60 (2026-11-04): four tracks
     );
     const complete = lines.mics.length === 2 && lines.mics.some((line) => line.role === 'PRIMARY') && lines.mics.some((line) => line.role === 'STANDBY');
     const audio = audioOf(h);
@@ -614,7 +622,7 @@ describe('the simulator answers for an unassigned selector slot (task 4 row 165)
 
   it('CONTROL: the seeded selector of the simulator answers as before - two sources, two inputs with their roles, the PRIMARY active', () => {
     const h = on(null);
-    expect(tracksOf(h).map((track) => [track.trackId, track.deviceId, track.sourceDeviceId])).toEqual([['VIDEO-01', 'CAM-01', 'CAM-01'], ['VIDEO-02', 'CAM-02', 'CAM-02']]);
+    expect(tracksOf(h).map((track) => [track.trackId, track.deviceId, track.sourceDeviceId])).toEqual([['VIDEO-01', 'CAM-01', 'CAM-01'], ['VIDEO-02', 'CAM-02', 'CAM-02'], ['VIDEO-03', 'CAM-03', 'CAM-03'], ['VIDEO-04', 'CAM-04', 'CAM-04']]); // D60 (2026-11-04): four sources
     expect(audioOf(h).channels.map((entry) => [entry.inputId, entry.deviceId, entry.role])).toEqual([['MIC-01', 'MIC-01', 'PRIMARY'], ['MIC-02', 'MIC-02', 'STANDBY']]);
     expect(audioOf(h).activeInputId).toBe('MIC-01');
     expect(healthOf(h).activeInputId).toBe('MIC-01');
@@ -642,23 +650,23 @@ describe('the simulator answers for an unassigned selector slot (task 4 row 165)
     // The same body again clears an empty slot: 200, no row.
     expect(h.post({ unassign: ['STANDBY'] }).status).toBe(200);
     expect(h.changes()).toHaveLength(1);
-    // All four in one body, beside nothing else; then the selector is empty and the reads say so.
-    expect(h.post({ unassign: ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] }).status).toBe(200);
+    // All SIX in one body (D60, 2026-11-04), beside nothing else; then the selector is empty and the reads say so.
+    expect(h.post({ unassign: ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'PRIMARY', 'STANDBY'] }).status).toBe(200);
     expect(h.state().captureConfig).toMatchObject({ cameras: [], mics: [] });
-    expect(h.changes()).toHaveLength(4);
-    expect(tracksOf(h).map((track) => track.sourceDeviceId)).toEqual([null, null]);
+    expect(h.changes()).toHaveLength(6);
+    expect(tracksOf(h).map((track) => track.sourceDeviceId)).toEqual([null, null, null, null]);
     expect(audioOf(h)).toEqual({ channels: [], activeInputId: null });
     // ASSIGNED AGAIN through the API: a track by operation 79, a role alone by operation 78, then the other.
     expect(h.sim.request({ method: 'POST', path: '/api/v1/capture/cameras/CAM-02/source', body: { trackId: 'VIDEO-02' } }).status).toBe(200);
     expect(h.post({ cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }] }).status).toBe(200);
     expect(h.post({ mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'PRIMARY' }] }).status).toBe(200);
     expect(h.post({ mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'STANDBY' }] }).status).toBe(200);
-    expect(tracksOf(h).map((track) => track.sourceDeviceId)).toEqual(['CAM-01', 'CAM-02']);
+    expect(tracksOf(h).map((track) => track.sourceDeviceId)).toEqual(['CAM-01', 'CAM-02', null, null]); // D60: the two further tracks stay empty
     expect(audioOf(h).channels.map((entry) => [entry.inputId, entry.role])).toEqual([['MIC-01', 'STANDBY'], ['MIC-02', 'PRIMARY']]);
     expect(audioOf(h).activeInputId).toBe('MIC-02');
     // `unassign` beside an assignment of ANOTHER slot is one body.
     expect(h.post({ unassign: ['VIDEO-01'], cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-01' }] }).status).toBe(200);
-    expect(tracksOf(h).map((track) => track.sourceDeviceId)).toEqual([null, 'CAM-01']);
+    expect(tracksOf(h).map((track) => track.sourceDeviceId)).toEqual([null, 'CAM-01', null, null]); // D60
   });
 
   it('operation 78: what the body check refuses of `unassign` is what the contract schema refuses, as 422 on the path `unassign`, with nothing changed', () => {
@@ -744,14 +752,15 @@ describe('row V7d: operations 44 and 46 say NOT READ for an idle registered came
   it('a registered camera assigned at rest: null on both reads while the hardware slice says online; a track without a line: null; CONTROL: the built-in pair reads LIVE', () => {
     const h = harness('idle');
     expect(h.sim.actions.signIn('rina.wijaya', 'demo-2026')).toMatchObject({ ok: true });
-    expect(read(h)).toEqual([['VIDEO-01', 'CAM-01', 'LIVE'], ['VIDEO-02', 'CAM-02', 'LIVE']]);
+    // D60 (2026-11-04): the CONTROL read answers all four built-in lines.
+    expect(read(h)).toEqual([['VIDEO-01', 'CAM-01', 'LIVE'], ['VIDEO-02', 'CAM-02', 'LIVE'], ['VIDEO-03', 'CAM-03', 'LIVE'], ['VIDEO-04', 'CAM-04', 'LIVE']]);
     h.sim.actions.registerCaptureDevice({ id: CAM, model: null, host: '192.0.2.17', adapter: 'ONVIF_RTSP' });
     h.sim.actions.setCaptureConfig({ kind: 'CAMERA_SOURCE', deviceId: CAM, trackId: 'VIDEO-02' });
     // The flag the old fallback read: the hardware slice's camera of VIDEO-02 is online.
-    expect(h.state().cameras.map((camera) => camera.online)).toEqual([true, true]);
+    expect(h.state().cameras.map((camera) => camera.online)).toEqual([true, true, true, true]);
     expect(h.state().captureConfig.cameras.find((line) => line.trackId === 'VIDEO-02')).toMatchObject({ deviceId: CAM, streamState: null });
-    expect(read(h)).toEqual([['VIDEO-01', 'CAM-01', 'LIVE'], ['VIDEO-02', CAM, null]]);
+    expect(read(h)).toEqual([['VIDEO-01', 'CAM-01', 'LIVE'], ['VIDEO-02', CAM, null], ['VIDEO-03', 'CAM-03', 'LIVE'], ['VIDEO-04', 'CAM-04', 'LIVE']]);
     h.sim.actions.setCaptureConfig({ kind: 'UPDATE', unassign: ['VIDEO-01'] });
-    expect(read(h)).toEqual([['VIDEO-01', null, null], ['VIDEO-02', CAM, null]]);
+    expect(read(h)).toEqual([['VIDEO-01', null, null], ['VIDEO-02', CAM, null], ['VIDEO-03', 'CAM-03', 'LIVE'], ['VIDEO-04', 'CAM-04', 'LIVE']]);
   });
 });

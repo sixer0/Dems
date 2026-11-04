@@ -76,25 +76,26 @@ describe('every fault emits an alert and an audit row, and clears (§6.4, SYS-01
 });
 
 describe('device effects (derived from the active faults)', () => {
-  it('CAMERA_LOSS: lens FAULT; the 2-port PoE (D79) stays up until both lenses are lost; defaults to the active camera', () => {
+  it('CAMERA_LOSS: lens FAULT; the four-port PoE (D79; D60) stays up until both lenses are lost; defaults to the active camera', () => {
     const h = harness();
-    expect(h.state().network.poe).toMatchObject({ activePorts: 2, totalPorts: 2, poweredPorts: 1, sparePorts: 1, drawW: 18.6 });
+    // D60 (2026-11-04): three camera ports (CAM 1 dual-lens, CAM 3, CAM 4) plus the spare.
+    expect(h.state().network.poe).toMatchObject({ activePorts: 4, totalPorts: 4, poweredPorts: 3, sparePorts: 1, drawW: 37.2 });
     h.sim.actions.setActiveCamera('VIDEO-02');
     h.sim.actions.inject('CAMERA_LOSS');
     let state = h.state();
     expect(state.cameras.find((camera) => camera.id === 'VIDEO-02')).toMatchObject({ lens: 'FAULT', online: false });
     // One lens lost: the dual-lens camera is still powered on PoE CAM 1; CAM 2/AUX is the spare.
-    expect(state.network.poe).toMatchObject({ activePorts: 2, totalPorts: 2, poweredPorts: 1, drawW: 18.6 });
-    expect(state.otherDevices.find((device) => device.id === 'POE-SWITCH')?.status).toBe('2/2 Ports Active');
+    expect(state.network.poe).toMatchObject({ activePorts: 4, totalPorts: 4, poweredPorts: 3, drawW: 37.2 });
+    expect(state.otherDevices.find((device) => device.id === 'POE-SWITCH')?.status).toBe('4/4 Ports Active');
     expect(state.ports.find((port) => port.id === 'POE_CAM_1')?.link).toBe(true);
     expect(state.ports.find((port) => port.id === 'POE_CAM_2_AUX')).toMatchObject({ link: true, spare: true });
-    expect(selectDeviceStats(state)).toMatchObject({ camerasOnline: 1, camerasTotal: 2 });
+    expect(selectDeviceStats(state)).toMatchObject({ camerasOnline: 3, camerasTotal: 4 });
     expect(state.services.find((service) => service.name === 'Video Management Service')?.status).toBe('DEGRADED');
-    // Both lenses lost: PoE CAM 1 goes down (0 W), the spare stays ready.
+    // Both lenses of the dual-lens camera lost: PoE CAM 1 goes down (its 18.6 W leave), CAM 3/4 stay.
     h.sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-01' });
     state = h.state();
-    expect(state.network.poe).toMatchObject({ activePorts: 1, totalPorts: 2, poweredPorts: 0, drawW: 0 });
-    expect(state.otherDevices.find((device) => device.id === 'POE-SWITCH')?.status).toBe('1/2 Ports Active');
+    expect(state.network.poe).toMatchObject({ activePorts: 3, totalPorts: 4, poweredPorts: 2, drawW: 18.6 });
+    expect(state.otherDevices.find((device) => device.id === 'POE-SWITCH')?.status).toBe('3/4 Ports Active');
     expect(state.ports.find((port) => port.id === 'POE_CAM_1')?.link).toBe(false);
   });
 

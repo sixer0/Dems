@@ -1366,6 +1366,34 @@
                           "fps": 25,
                           "codec": "H.264",
                           "bitrateMbps": 9
+                        },
+                        {
+                          "trackId": "VIDEO-03",
+                          "deviceId": "CAM-03",
+                          "sourceDeviceId": "CAM-03",
+                          "streamState": "LIVE",
+                          "name": "Camera 3",
+                          "lens": "READY",
+                          "online": true,
+                          "recState": null,
+                          "resolution": "1080p",
+                          "fps": 25,
+                          "codec": "H.264",
+                          "bitrateMbps": 9
+                        },
+                        {
+                          "trackId": "VIDEO-04",
+                          "deviceId": "CAM-04",
+                          "sourceDeviceId": "CAM-04",
+                          "streamState": "LIVE",
+                          "name": "Camera 4",
+                          "lens": "READY",
+                          "online": true,
+                          "recState": null,
+                          "resolution": "1080p",
+                          "fps": 25,
+                          "codec": "H.264",
+                          "bitrateMbps": 9
                         }
                       ],
                       "audio": [
@@ -1807,7 +1835,7 @@
           "Device"
         ],
         "summary": "Video status",
-        "description": "Per-track status for VIDEO-01 and VIDEO-02 (book §21.2).\n\nNeeds a signed-in operator. Every role may read it: the operation needs no permission.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
+        "description": "Per-track status for the recorded video tracks (D60, 2026-11-04: VIDEO-01 to VIDEO-04; book §21.2).\n\nNeeds a signed-in operator. Every role may read it: the operation needs no permission.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
         "responses": {
           "200": {
             "description": "Both video tracks.",
@@ -1823,7 +1851,7 @@
                 },
                 "examples": {
                   "recording": {
-                    "summary": "Both tracks recording",
+                    "summary": "All four tracks recording",
                     "value": {
                       "tracks": [
                         {
@@ -1846,6 +1874,34 @@
                           "sourceDeviceId": "CAM-02",
                           "streamState": "LIVE",
                           "name": "Camera 2",
+                          "lens": "READY",
+                          "online": true,
+                          "recState": "REC",
+                          "resolution": "1080p",
+                          "fps": 25,
+                          "codec": "H.264",
+                          "bitrateMbps": 9
+                        },
+                        {
+                          "trackId": "VIDEO-03",
+                          "deviceId": "CAM-03",
+                          "sourceDeviceId": "CAM-03",
+                          "streamState": "LIVE",
+                          "name": "Camera 3",
+                          "lens": "READY",
+                          "online": true,
+                          "recState": "REC",
+                          "resolution": "1080p",
+                          "fps": 25,
+                          "codec": "H.264",
+                          "bitrateMbps": 9
+                        },
+                        {
+                          "trackId": "VIDEO-04",
+                          "deviceId": "CAM-04",
+                          "sourceDeviceId": "CAM-04",
+                          "streamState": "LIVE",
+                          "name": "Camera 4",
                           "lens": "READY",
                           "online": true,
                           "recState": "REC",
@@ -10799,13 +10855,13 @@
                             {
                               "trackId": "VIDEO-01",
                               "label": "Camera 1",
-                              "sizeBytes": 2477766667,
+                              "sizeBytes": 1238883333,
                               "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
                             },
                             {
                               "trackId": "VIDEO-02",
                               "label": "Camera 2",
-                              "sizeBytes": 2477766667,
+                              "sizeBytes": 1238883333,
                               "sha256": "a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9"
                             },
                             {
@@ -11117,13 +11173,13 @@
                           {
                             "trackId": "VIDEO-01",
                             "label": "Camera 1",
-                            "sizeBytes": 2477766667,
+                            "sizeBytes": 1238883333,
                             "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
                           },
                           {
                             "trackId": "VIDEO-02",
                             "label": "Camera 2",
-                            "sizeBytes": 2477766667,
+                            "sizeBytes": 1238883333,
                             "sha256": "a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9"
                           },
                           {
@@ -11280,13 +11336,13 @@
                           {
                             "trackId": "VIDEO-01",
                             "label": "Camera 1",
-                            "sizeBytes": 2477766667,
+                            "sizeBytes": 1238883333,
                             "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
                           },
                           {
                             "trackId": "VIDEO-02",
                             "label": "Camera 2",
-                            "sizeBytes": 2477766667,
+                            "sizeBytes": 1238883333,
                             "sha256": "a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9"
                           },
                           {
@@ -11383,13 +11439,13 @@
                           {
                             "trackId": "VIDEO-01",
                             "label": "Camera 1",
-                            "sizeBytes": 2477766667,
+                            "sizeBytes": 1238883333,
                             "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
                           },
                           {
                             "trackId": "VIDEO-02",
                             "label": "Camera 2",
-                            "sizeBytes": 2477766667,
+                            "sizeBytes": 1238883333,
                             "sha256": "a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9"
                           }
                         ],
@@ -11557,13 +11613,13 @@
                           {
                             "trackId": "VIDEO-01",
                             "label": "Camera 1",
-                            "sizeBytes": 2477766667,
+                            "sizeBytes": 1238883333,
                             "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
                           },
                           {
                             "trackId": "VIDEO-02",
                             "label": "Camera 2",
-                            "sizeBytes": 2477766667,
+                            "sizeBytes": 1238883333,
                             "sha256": "a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9"
                           }
                         ],
@@ -11709,7 +11765,7 @@
                           {
                             "trackId": "VIDEO-01",
                             "label": "Camera 1",
-                            "sizeBytes": 2477766667,
+                            "sizeBytes": 1238883333,
                             "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
                           }
                         ],
@@ -11844,13 +11900,13 @@
                           {
                             "trackId": "VIDEO-01",
                             "label": "Camera 1",
-                            "sizeBytes": 2477766667,
+                            "sizeBytes": 1238883333,
                             "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
                           },
                           {
                             "trackId": "VIDEO-02",
                             "label": "Camera 2",
-                            "sizeBytes": 2477766667,
+                            "sizeBytes": 1238883333,
                             "sha256": "a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9"
                           }
                         ],
@@ -11941,13 +11997,13 @@
                           {
                             "trackId": "VIDEO-01",
                             "label": "Camera 1",
-                            "sizeBytes": 2477766667,
+                            "sizeBytes": 1238883333,
                             "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
                           },
                           {
                             "trackId": "VIDEO-02",
                             "label": "Camera 2",
-                            "sizeBytes": 2477766667,
+                            "sizeBytes": 1238883333,
                             "sha256": "a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9"
                           }
                         ],
@@ -12092,13 +12148,13 @@
                           {
                             "trackId": "VIDEO-01",
                             "label": "Camera 1",
-                            "sizeBytes": 2477766667,
+                            "sizeBytes": 1238883333,
                             "sha256": "8a118ca0627b9a008ee1152edad540be884e5a232eb2515805912da9deb2c04a"
                           },
                           {
                             "trackId": "VIDEO-02",
                             "label": "Camera 2",
-                            "sizeBytes": 2477766667,
+                            "sizeBytes": 1238883333,
                             "sha256": "a904438e454e860add759306c5de9ced90e05d4e153ed0cf26b8c2909b59dbd9"
                           }
                         ],
@@ -13237,6 +13293,38 @@
                           "poePort": "POE_CAM_1",
                           "model": "Dual-lens IP camera DL-2 (lens 2)",
                           "firmware": "3.8.14"
+                        },
+                        {
+                          "id": "VIDEO-03",
+                          "deviceId": "CAM-03",
+                          "name": "Camera 3",
+                          "room": "Interview Room 1",
+                          "lens": "READY",
+                          "online": true,
+                          "recState": null,
+                          "resolution": "1080p",
+                          "fps": 25,
+                          "codec": "H.264",
+                          "bitrateMbps": 9,
+                          "poePort": "POE_CAM_3",
+                          "model": "IP camera IP-3",
+                          "firmware": "3.8.14"
+                        },
+                        {
+                          "id": "VIDEO-04",
+                          "deviceId": "CAM-04",
+                          "name": "Camera 4",
+                          "room": "Interview Room 1",
+                          "lens": "READY",
+                          "online": true,
+                          "recState": null,
+                          "resolution": "1080p",
+                          "fps": 25,
+                          "codec": "H.264",
+                          "bitrateMbps": 9,
+                          "poePort": "POE_CAM_4",
+                          "model": "IP camera IP-4",
+                          "firmware": "3.8.14"
                         }
                       ],
                       "mics": [
@@ -13272,7 +13360,7 @@
                           "id": "POE-SWITCH",
                           "name": "PoE Switch",
                           "online": true,
-                          "status": "2/2 Ports Active"
+                          "status": "4/4 Ports Active"
                         },
                         {
                           "id": "REC-INDICATOR",
@@ -13298,6 +13386,16 @@
                           "label": "PoE CAM 2 / AUX",
                           "link": true,
                           "spare": true
+                        },
+                        {
+                          "id": "POE_CAM_3",
+                          "label": "PoE CAM 3",
+                          "link": true
+                        },
+                        {
+                          "id": "POE_CAM_4",
+                          "label": "PoE CAM 4",
+                          "link": true
                         },
                         {
                           "id": "MGMT_LAN",
@@ -13342,6 +13440,20 @@
                           {
                             "trackId": "VIDEO-02",
                             "deviceId": "CAM-02",
+                            "profile": "H264_1080P25",
+                            "online": true,
+                            "streamState": "LIVE"
+                          },
+                          {
+                            "trackId": "VIDEO-03",
+                            "deviceId": "CAM-03",
+                            "profile": "H264_1080P25",
+                            "online": true,
+                            "streamState": "LIVE"
+                          },
+                          {
+                            "trackId": "VIDEO-04",
+                            "deviceId": "CAM-04",
                             "profile": "H264_1080P25",
                             "online": true,
                             "streamState": "LIVE"
@@ -15051,11 +15163,11 @@
                         "linkUp": true,
                         "linkSpeedMbps": 1000,
                         "poe": {
-                          "activePorts": 2,
-                          "totalPorts": 2,
-                          "budgetW": 60,
-                          "drawW": 18.6,
-                          "poweredPorts": 1,
+                          "activePorts": 4,
+                          "totalPorts": 4,
+                          "budgetW": 120,
+                          "drawW": 37.2,
+                          "poweredPorts": 3,
                           "sparePorts": 1
                         },
                         "bandwidth": {
@@ -19655,6 +19767,20 @@
                           "profile": "H264_1080P25",
                           "online": true,
                           "streamState": "LIVE"
+                        },
+                        {
+                          "trackId": "VIDEO-03",
+                          "deviceId": "CAM-03",
+                          "profile": "H264_1080P25",
+                          "online": true,
+                          "streamState": "LIVE"
+                        },
+                        {
+                          "trackId": "VIDEO-04",
+                          "deviceId": "CAM-04",
+                          "profile": "H264_1080P25",
+                          "online": true,
+                          "streamState": "LIVE"
                         }
                       ],
                       "mics": [
@@ -19821,6 +19947,20 @@
                         {
                           "trackId": "VIDEO-02",
                           "deviceId": "CAM-02",
+                          "profile": "H264_1080P25",
+                          "online": true,
+                          "streamState": "LIVE"
+                        },
+                        {
+                          "trackId": "VIDEO-03",
+                          "deviceId": "CAM-03",
+                          "profile": "H264_1080P25",
+                          "online": true,
+                          "streamState": "LIVE"
+                        },
+                        {
+                          "trackId": "VIDEO-04",
+                          "deviceId": "CAM-04",
                           "profile": "H264_1080P25",
                           "online": true,
                           "streamState": "LIVE"
@@ -20144,6 +20284,34 @@
                           ]
                         },
                         {
+                          "id": "CAM-03",
+                          "kind": "CAMERA",
+                          "model": "IP camera IP-3",
+                          "firmware": "3.8.14",
+                          "host": "127.0.0.1:8556",
+                          "poePort": "POE_CAM_3",
+                          "online": true,
+                          "streamState": "LIVE",
+                          "capabilities": [
+                            "VIDEO",
+                            "PULL"
+                          ]
+                        },
+                        {
+                          "id": "CAM-04",
+                          "kind": "CAMERA",
+                          "model": "IP camera IP-4",
+                          "firmware": "3.8.14",
+                          "host": "127.0.0.1:8557",
+                          "poePort": "POE_CAM_4",
+                          "online": true,
+                          "streamState": "LIVE",
+                          "capabilities": [
+                            "VIDEO",
+                            "PULL"
+                          ]
+                        },
+                        {
                           "id": "MIC-01",
                           "kind": "MIC",
                           "model": "USB condenser microphone UM-1",
@@ -20332,6 +20500,20 @@
                         {
                           "trackId": "VIDEO-02",
                           "deviceId": "CAM-02",
+                          "profile": "H264_1080P25",
+                          "online": true,
+                          "streamState": "LIVE"
+                        },
+                        {
+                          "trackId": "VIDEO-03",
+                          "deviceId": "CAM-03",
+                          "profile": "H264_1080P25",
+                          "online": true,
+                          "streamState": "LIVE"
+                        },
+                        {
+                          "trackId": "VIDEO-04",
+                          "deviceId": "CAM-04",
                           "profile": "H264_1080P25",
                           "online": true,
                           "streamState": "LIVE"
@@ -20668,6 +20850,20 @@
                         {
                           "trackId": "VIDEO-02",
                           "deviceId": "CAM-02",
+                          "profile": "H264_1080P25",
+                          "online": true,
+                          "streamState": "LIVE"
+                        },
+                        {
+                          "trackId": "VIDEO-03",
+                          "deviceId": "CAM-03",
+                          "profile": "H264_1080P25",
+                          "online": true,
+                          "streamState": "LIVE"
+                        },
+                        {
+                          "trackId": "VIDEO-04",
+                          "deviceId": "CAM-04",
                           "profile": "H264_1080P25",
                           "online": true,
                           "streamState": "LIVE"
@@ -22898,7 +23094,7 @@
           "Evidence"
         ],
         "summary": "Open a signed media session",
-        "description": "Returns a short-lived signed URL to the NM-11 media route, which serves the decrypted camera file with HTTP Range support (M8). The route is registry-external like `/ws`; it carries its own static rule and its token prefix `mts_` joins both log-blanking lists (SEC35-13; E-31; check M8-BLK-1).\n\nThe URL is a bearer value (SEC35-12): HMAC-signed with the SEPARATE media-session signing key (`MEDIA_SESSION_SIGNING_KEY_ID`, never the evidence Signer key), bound to one `(operatorId, sessionId, evidenceId, fileId)` and rejected if any component differs, alive for exactly `EVIDENCE_MEDIA_SESSION_TTL_MS`. It never enters a log, an audit row or a replicated slice (E-31).\n\nLIVE only: Simulated mode plays the bundled demo media and opens no media session (NM-11; MS-1 stays true for Simulated mode). No playable decrypted file answers `409 MEDIA_NOT_AVAILABLE`.\n\nRequest (ruling D140): an OPTIONAL body `{ fileId: VIDEO-01 | VIDEO-02 }`; no body or `{}` plays `VIDEO-01`. Refusals of this operation: `403 NOT_PERMITTED` with `details.reason: EVIDENCE_CASE_SCOPE` (REAL evidence of a case the caller does not hold; one ACCESS_DENIED row); `409 MEDIA_NOT_AVAILABLE`, for a package that cannot be played with `details.reason` one of `NOT_A_SEALED_PACKAGE`, `PACKAGE_MISSING`, `MANIFEST_UNREADABLE`, `MANIFEST_NOT_OF_ITEM`, `CAMERA_FILE_MISSING`, `CAMERA_FILE_SIZE_MISMATCH`, `FRAGMENT_TABLE_INVALID`, `FRAGMENT_TOO_LARGE`, `SESSION_KEY_UNAVAILABLE`, `FRAGMENT_NOT_AUTHENTIC`; `503 NOT_READY` (`details.reason: CREDENTIAL_STORE_NOT_READY`) at envelope level. The media route itself (registry-external, `GET /media/{token}`) refuses with `403 NOT_PERMITTED` and `details.reason: MEDIA_SESSION_INVALID` (not a token of this Core, an altered one, or one bound to another operator or session; one ACCESS_DENIED row) or `MEDIA_SESSION_EXPIRED` (an authentic token past its lifetime; no row - ask operation 88 again).\n\nWrites EVIDENCE_MEDIA_SERVED: fileId, bytesServed, the optional range markers, signed, expiresAt — never the URL and never a byte of media (`C3 §5.2`). For REAL evidence the caller must additionally own the case/session or be a SUPERVISOR once SEC35-16 is confirmed (provisional; M8).\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
+        "description": "Returns a short-lived signed URL to the NM-11 media route, which serves the decrypted camera file with HTTP Range support (M8). The route is registry-external like `/ws`; it carries its own static rule and its token prefix `mts_` joins both log-blanking lists (SEC35-13; E-31; check M8-BLK-1).\n\nThe URL is a bearer value (SEC35-12): HMAC-signed with the SEPARATE media-session signing key (`MEDIA_SESSION_SIGNING_KEY_ID`, never the evidence Signer key), bound to one `(operatorId, sessionId, evidenceId, fileId)` and rejected if any component differs, alive for exactly `EVIDENCE_MEDIA_SESSION_TTL_MS`. It never enters a log, an audit row or a replicated slice (E-31).\n\nLIVE only: Simulated mode plays the bundled demo media and opens no media session (NM-11; MS-1 stays true for Simulated mode). No playable decrypted file answers `409 MEDIA_NOT_AVAILABLE`.\n\nRequest (ruling D140; widened by D60, 2026-11-04): an OPTIONAL body `{ fileId: VIDEO-01 | VIDEO-02 | VIDEO-03 | VIDEO-04 }`; no body or `{}` plays `VIDEO-01` (a legacy two-track package accepts only its own two files). Refusals of this operation: `403 NOT_PERMITTED` with `details.reason: EVIDENCE_CASE_SCOPE` (REAL evidence of a case the caller does not hold; one ACCESS_DENIED row); `409 MEDIA_NOT_AVAILABLE`, for a package that cannot be played with `details.reason` one of `NOT_A_SEALED_PACKAGE`, `PACKAGE_MISSING`, `MANIFEST_UNREADABLE`, `MANIFEST_NOT_OF_ITEM`, `CAMERA_FILE_MISSING`, `CAMERA_FILE_SIZE_MISMATCH`, `FRAGMENT_TABLE_INVALID`, `FRAGMENT_TOO_LARGE`, `SESSION_KEY_UNAVAILABLE`, `FRAGMENT_NOT_AUTHENTIC`; `503 NOT_READY` (`details.reason: CREDENTIAL_STORE_NOT_READY`) at envelope level. The media route itself (registry-external, `GET /media/{token}`) refuses with `403 NOT_PERMITTED` and `details.reason: MEDIA_SESSION_INVALID` (not a token of this Core, an altered one, or one bound to another operator or session; one ACCESS_DENIED row) or `MEDIA_SESSION_EXPIRED` (an authentic token past its lifetime; no row - ask operation 88 again).\n\nWrites EVIDENCE_MEDIA_SERVED: fileId, bytesServed, the optional range markers, signed, expiresAt — never the URL and never a byte of media (`C3 §5.2`). For REAL evidence the caller must additionally own the case/session or be a SUPERVISOR once SEC35-16 is confirmed (provisional; M8).\n\nCore server only: the in-app simulator has no such operation, so it is not available in Simulated mode.",
         "responses": {
           "201": {
             "description": "The signed media session.",
@@ -23270,6 +23466,20 @@
                         {
                           "trackId": "VIDEO-02",
                           "deviceId": "CAM-02",
+                          "profile": "H264_1080P25",
+                          "online": true,
+                          "streamState": "LIVE"
+                        },
+                        {
+                          "trackId": "VIDEO-03",
+                          "deviceId": "CAM-03",
+                          "profile": "H264_1080P25",
+                          "online": true,
+                          "streamState": "LIVE"
+                        },
+                        {
+                          "trackId": "VIDEO-04",
+                          "deviceId": "CAM-04",
                           "profile": "H264_1080P25",
                           "online": true,
                           "streamState": "LIVE"
@@ -30593,7 +30803,7 @@
           "Device"
         ],
         "summary": "Retire a registered camera or microphone",
-        "description": "**Retires ONE registered camera or microphone for good.** Its stored credential is **destroyed** in the same unit of work; its registry row is **kept** with `retiredAt` and `retiredBy` set, together with its stream rows and its audio input row, so every sealed package and every audit row that names its id keeps its meaning. A retired device is **never assigned again**, never tested (operation 108), never given a credential (89) or an address (100), and it is no longer \"registered\" for an adoption: **adopting the same unit again (operations 95/96, or 99 for a microphone) gives a NEW id** - an id is never reused. There is no way back and no hard delete.\n\n**TECHNICIAN only, web console only.** Needs CAPTURE_COMMISSION, which the TECHNICIAN role alone holds, and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row.\n\n**Idle only.** With a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.\n\n**The body is the reason only**: `REMOVED`, `REPLACED` or `STATEMENT_CHANGED` - a closed set, so no free text reaches the audit row. No credential, address or profile member exists.\n\nRefusals, each storing nothing and writing no audit row, in this order after the role, the web console and the idle lock: `422 INVALID_INPUT` for a body of another form; `404 NOT_FOUND` for an id the registry does not hold; `409 INVALID_STATE` with `details.reason` `CAPTURE_DEVICE_BUILT_IN` (a built-in device of the demonstration model - `CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`, `POE-SWITCH` - or any PoE switch), `CAPTURE_DEVICE_RETIRED` (retired already), `CAPTURE_DEVICE_ASSIGNED` (a slot of the device selector names it; `details.slot` names the slot: unassign it first) or `CONNECTION_TEST_IN_PROGRESS` (operation 108 is testing this camera).\n\n**On success writes one CAPTURE_DEVICE_RETIRED row** (category SECURITY): `deviceId`, `kind` (CAMERA or MIC), `reason`, `credentialDestroyed`, `streamRowsKept` (a count), `operationId` and `permission` - never an address, a hardware id, a serial or a credential. The answer is the device entry after the change. The `captureDevices` slice keeps the entry with `retiredAt` set: a client lists it as Retired and leaves it out of every selector and assignment list.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator holds no credential: it retires a device it registered itself (an adopted camera) in its own state and writes the same CAPTURE_DEVICE_RETIRED row with `credentialDestroyed: false` and `streamRowsKept: 0`; its built-in devices answer `CAPTURE_DEVICE_BUILT_IN`. Same order of refusals as the Core server's.",
+        "description": "**Retires ONE registered camera or microphone for good.** Its stored credential is **destroyed** in the same unit of work; its registry row is **kept** with `retiredAt` and `retiredBy` set, together with its stream rows and its audio input row, so every sealed package and every audit row that names its id keeps its meaning. A retired device is **never assigned again**, never tested (operation 108), never given a credential (89) or an address (100), and it is no longer \"registered\" for an adoption: **adopting the same unit again (operations 95/96, or 99 for a microphone) gives a NEW id** - an id is never reused. There is no way back and no hard delete.\n\n**TECHNICIAN only, web console only.** Needs CAPTURE_COMMISSION, which the TECHNICIAN role alone holds, and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row.\n\n**Idle only.** With a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.\n\n**The body is the reason only**: `REMOVED`, `REPLACED` or `STATEMENT_CHANGED` - a closed set, so no free text reaches the audit row. No credential, address or profile member exists.\n\nRefusals, each storing nothing and writing no audit row, in this order after the role, the web console and the idle lock: `422 INVALID_INPUT` for a body of another form; `404 NOT_FOUND` for an id the registry does not hold; `409 INVALID_STATE` with `details.reason` `CAPTURE_DEVICE_BUILT_IN` (a built-in device of the demonstration model - `CAM-01`, `CAM-02`, `CAM-03`, `CAM-04`, `MIC-01`, `MIC-02`, `POE-SWITCH` - or any PoE switch), `CAPTURE_DEVICE_RETIRED` (retired already), `CAPTURE_DEVICE_ASSIGNED` (a slot of the device selector names it; `details.slot` names the slot: unassign it first) or `CONNECTION_TEST_IN_PROGRESS` (operation 108 is testing this camera).\n\n**On success writes one CAPTURE_DEVICE_RETIRED row** (category SECURITY): `deviceId`, `kind` (CAMERA or MIC), `reason`, `credentialDestroyed`, `streamRowsKept` (a count), `operationId` and `permission` - never an address, a hardware id, a serial or a credential. The answer is the device entry after the change. The `captureDevices` slice keeps the entry with `retiredAt` set: a client lists it as Retired and leaves it out of every selector and assignment list.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator holds no credential: it retires a device it registered itself (an adopted camera) in its own state and writes the same CAPTURE_DEVICE_RETIRED row with `credentialDestroyed: false` and `streamRowsKept: 0`; its built-in devices answer `CAPTURE_DEVICE_BUILT_IN`. Same order of refusals as the Core server's.",
         "responses": {
           "200": {
             "description": "The device is retired: its entry with `retiredAt` and `retiredBy`. No credential member exists.",
@@ -32434,7 +32644,9 @@
                       "type": "string",
                       "enum": [
                         "VIDEO-01",
-                        "VIDEO-02"
+                        "VIDEO-02",
+                        "VIDEO-03",
+                        "VIDEO-04"
                       ]
                     },
                     "deviceId": {
@@ -32778,7 +32990,9 @@
             "type": "string",
             "enum": [
               "VIDEO-01",
-              "VIDEO-02"
+              "VIDEO-02",
+              "VIDEO-03",
+              "VIDEO-04"
             ]
           },
           "deviceId": {
@@ -32910,7 +33124,7 @@
           "codec",
           "bitrateMbps"
         ],
-        "description": "One video track (VIDEO-01 or VIDEO-02), its source device and its stream state (schema v2)."
+        "description": "One video track (D60, 2026-11-04: the domain is VIDEO-01 to VIDEO-04; the built-in demonstration model answers its camera lines), its source device and its stream state (schema v2)."
       },
       "AudioChannelStatus": {
         "type": "object",
@@ -33013,8 +33227,8 @@
         "type": "object",
         "properties": {
           "tracks": {
-            "minItems": 2,
-            "maxItems": 2,
+            "minItems": 4,
+            "maxItems": 4,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/VideoTrackStatus"
@@ -33024,7 +33238,7 @@
         "required": [
           "tracks"
         ],
-        "description": "Per-track video status (VIDEO-01, VIDEO-02)."
+        "description": "Per-track video status (D60: VIDEO-01 to VIDEO-04)."
       },
       "AudioStatusResponse": {
         "type": "object",
@@ -33259,7 +33473,9 @@
                           "type": "string",
                           "enum": [
                             "VIDEO-01",
-                            "VIDEO-02"
+                            "VIDEO-02",
+                            "VIDEO-03",
+                            "VIDEO-04"
                           ]
                         },
                         {
@@ -33365,13 +33581,13 @@
             "description": "What makes the state ATTENTION or CRITICAL."
           },
           "cameras": {
-            "minItems": 2,
-            "maxItems": 2,
+            "minItems": 4,
+            "maxItems": 4,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/VideoTrackStatus"
             },
-            "description": "Schema v2: each camera carries `streamState` (C3 §3 op 44; OD-22)."
+            "description": "Schema v2: each camera carries `streamState` (C3 §3 op 44; OD-22; D60: four camera lines)."
           },
           "audio": {
             "maxItems": 2,
@@ -34855,11 +35071,13 @@
             ]
           },
           "cameraId": {
-            "description": "For CAMERA_LOSS (default: the active camera).",
+            "description": "For CAMERA_LOSS (default: the active camera; D60: one of the four video tracks).",
             "type": "string",
             "enum": [
               "VIDEO-01",
-              "VIDEO-02"
+              "VIDEO-02",
+              "VIDEO-03",
+              "VIDEO-04"
             ]
           },
           "auditIndex": {
@@ -34886,6 +35104,8 @@
             "enum": [
               "VIDEO-01",
               "VIDEO-02",
+              "VIDEO-03",
+              "VIDEO-04",
               "AUDIO-01",
               "AUDIO-02"
             ]
@@ -35370,7 +35590,9 @@
         "type": "string",
         "enum": [
           "VIDEO-01",
-          "VIDEO-02"
+          "VIDEO-02",
+          "VIDEO-03",
+          "VIDEO-04"
         ],
         "description": "Slice `activeCameraId`: the camera the monitor shows."
       },
@@ -35383,7 +35605,9 @@
               "type": "string",
               "enum": [
                 "VIDEO-01",
-                "VIDEO-02"
+                "VIDEO-02",
+                "VIDEO-03",
+                "VIDEO-04"
               ]
             },
             "deviceId": {
@@ -35503,7 +35727,7 @@
           ],
           "additionalProperties": false
         },
-        "description": "Slice `cameras`: VIDEO-01 and VIDEO-02."
+        "description": "Slice `cameras`: one entry per video track (D60, 2026-11-04: the track domain is VIDEO-01 to VIDEO-04)."
       },
       "MicsSlice": {
         "type": "array",
@@ -35943,7 +36167,7 @@
               "drawW"
             ],
             "additionalProperties": false,
-            "description": "Two PoE ports: one powers the dual-lens camera, one is the spare."
+            "description": "Four PoE ports (D60, 2026-11-04): the camera lines of the four video tracks and the AUX spare."
           },
           "bandwidth": {
             "type": "object",
@@ -36363,6 +36587,8 @@
               "enum": [
                 "POE_CAM_1",
                 "POE_CAM_2_AUX",
+                "POE_CAM_3",
+                "POE_CAM_4",
                 "MGMT_LAN",
                 "MIC_IN_1",
                 "MIC_IN_2",
@@ -36765,7 +36991,9 @@
                   "type": "string",
                   "enum": [
                     "VIDEO-01",
-                    "VIDEO-02"
+                    "VIDEO-02",
+                    "VIDEO-03",
+                    "VIDEO-04"
                   ]
                 },
                 "deviceId": {
@@ -36808,7 +37036,7 @@
               "additionalProperties": false,
               "description": "One video slot of the device selector."
             },
-            "description": "VIDEO-01 first, then VIDEO-02."
+            "description": "VIDEO-01 first, then VIDEO-02, VIDEO-03, VIDEO-04 (D60, 2026-11-04: four named tracks once)."
           },
           "mics": {
             "type": "array",
@@ -37945,7 +38173,9 @@
                           "type": "string",
                           "enum": [
                             "VIDEO-01",
-                            "VIDEO-02"
+                            "VIDEO-02",
+                            "VIDEO-03",
+                            "VIDEO-04"
                           ]
                         },
                         "deviceId": {
@@ -38545,6 +38775,8 @@
                   "enum": [
                     "VIDEO-01",
                     "VIDEO-02",
+                    "VIDEO-03",
+                    "VIDEO-04",
                     "AUDIO-01",
                     "AUDIO-02"
                   ]
@@ -38693,6 +38925,8 @@
                 "enum": [
                   "VIDEO-01",
                   "VIDEO-02",
+                  "VIDEO-03",
+                  "VIDEO-04",
                   "AUDIO-01",
                   "AUDIO-02"
                 ]
@@ -38795,6 +39029,8 @@
                   "enum": [
                     "VIDEO-01",
                     "VIDEO-02",
+                    "VIDEO-03",
+                    "VIDEO-04",
                     "AUDIO-01",
                     "AUDIO-02"
                   ],
@@ -39007,7 +39243,7 @@
             "properties": {
               "tracks": {
                 "minItems": 1,
-                "maxItems": 2,
+                "maxItems": 4,
                 "type": "array",
                 "items": {
                   "type": "object",
@@ -39016,7 +39252,9 @@
                       "type": "string",
                       "enum": [
                         "VIDEO-01",
-                        "VIDEO-02"
+                        "VIDEO-02",
+                        "VIDEO-03",
+                        "VIDEO-04"
                       ]
                     },
                     "stream": {
@@ -41052,15 +41290,17 @@
             "description": "The join key of the bundled package, e.g. `0004`; null when the source is not DEMO_PACKAGE."
           },
           "fileIds": {
-            "description": "Core server only, with LIVE_STREAM: the camera files the sealed package of the item really holds (one or two), in file order - the `fileId` values operation 88 accepts for it.",
+            "description": "Core server only, with LIVE_STREAM: the camera files the sealed package of the item really holds (one to four, D60 - a package sealed before the widening holds its own two), in file order - the `fileId` values operation 88 accepts for it.",
             "minItems": 1,
-            "maxItems": 2,
+            "maxItems": 4,
             "type": "array",
             "items": {
               "type": "string",
               "enum": [
                 "VIDEO-01",
-                "VIDEO-02"
+                "VIDEO-02",
+                "VIDEO-03",
+                "VIDEO-04"
               ]
             }
           },
@@ -41240,6 +41480,8 @@
                   "enum": [
                     "VIDEO-01",
                     "VIDEO-02",
+                    "VIDEO-03",
+                    "VIDEO-04",
                     "AUDIO-01",
                     "AUDIO-02"
                   ]
@@ -41283,7 +41525,9 @@
                   "type": "string",
                   "enum": [
                     "VIDEO-01",
-                    "VIDEO-02"
+                    "VIDEO-02",
+                    "VIDEO-03",
+                    "VIDEO-04"
                   ]
                 },
                 "storedOk": {
@@ -41501,7 +41745,9 @@
                   "type": "string",
                   "enum": [
                     "VIDEO-01",
-                    "VIDEO-02"
+                    "VIDEO-02",
+                    "VIDEO-03",
+                    "VIDEO-04"
                   ]
                 },
                 "seq": {
@@ -41736,7 +41982,7 @@
                 "description": "The English source line, the first line of a verify report; a client words the state by `code`."
               },
               "tracks": {
-                "maxItems": 2,
+                "maxItems": 4,
                 "type": "array",
                 "items": {
                   "type": "object",
@@ -41745,7 +41991,9 @@
                       "type": "string",
                       "enum": [
                         "VIDEO-01",
-                        "VIDEO-02"
+                        "VIDEO-02",
+                        "VIDEO-03",
+                        "VIDEO-04"
                       ]
                     },
                     "deviceId": {
@@ -41769,7 +42017,7 @@
                   ],
                   "additionalProperties": false
                 },
-                "description": "Manifest field 124 of each camera file; empty when nothing is stated."
+                "description": "Manifest field 124 of each camera file the manifest names (one to four, D60); empty when nothing is stated."
               },
               "audioIntervals": {
                 "maxItems": 4096,
@@ -41918,9 +42166,11 @@
             "type": "string",
             "enum": [
               "VIDEO-01",
-              "VIDEO-02"
+              "VIDEO-02",
+              "VIDEO-03",
+              "VIDEO-04"
             ],
-            "description": "The camera the monitor shows: VIDEO-01 or VIDEO-02."
+            "description": "The camera the monitor shows: one of the four video tracks (D60, 2026-11-04)."
           }
         },
         "required": [
@@ -42862,7 +43112,9 @@
             "type": "string",
             "enum": [
               "VIDEO-01",
-              "VIDEO-02"
+              "VIDEO-02",
+              "VIDEO-03",
+              "VIDEO-04"
             ]
           },
           "deviceId": {
@@ -42939,15 +43191,17 @@
             }
           },
           "unassign": {
-            "description": "The selector slots this body clears: a video track (`VIDEO-01`, `VIDEO-02`) or a microphone role (`PRIMARY`, `STANDBY`), each at most once. A cleared slot has no line in the answer. A slot that the same body assigns (the `trackId` of a camera line, the `role` of a mic line) is `422 INVALID_INPUT`. Clearing a slot that is already empty changes nothing and writes no audit row.",
+            "description": "The selector slots this body clears: a video track (`VIDEO-01`..`VIDEO-04`) or a microphone role (`PRIMARY`, `STANDBY`), each at most once. A cleared slot has no line in the answer. A slot that the same body assigns (the `trackId` of a camera line, the `role` of a mic line) is `422 INVALID_INPUT`. Clearing a slot that is already empty changes nothing and writes no audit row.",
             "minItems": 1,
-            "maxItems": 4,
+            "maxItems": 6,
             "type": "array",
             "items": {
               "type": "string",
               "enum": [
                 "VIDEO-01",
                 "VIDEO-02",
+                "VIDEO-03",
+                "VIDEO-04",
                 "PRIMARY",
                 "STANDBY"
               ]
@@ -42964,7 +43218,9 @@
             "type": "string",
             "enum": [
               "VIDEO-01",
-              "VIDEO-02"
+              "VIDEO-02",
+              "VIDEO-03",
+              "VIDEO-04"
             ],
             "description": "The video track this camera becomes the source of."
           }
@@ -43828,11 +44084,13 @@
         "type": "object",
         "properties": {
           "fileId": {
-            "description": "The camera file to play; absent: `VIDEO-01`.",
+            "description": "The camera file to play (D60: one of the four tracks; a legacy package offers its own two); absent: `VIDEO-01`.",
             "type": "string",
             "enum": [
               "VIDEO-01",
-              "VIDEO-02"
+              "VIDEO-02",
+              "VIDEO-03",
+              "VIDEO-04"
             ]
           },
           "seekIndex": {
@@ -43855,9 +44113,11 @@
             "type": "string",
             "enum": [
               "VIDEO-01",
-              "VIDEO-02"
+              "VIDEO-02",
+              "VIDEO-03",
+              "VIDEO-04"
             ],
-            "description": "Which camera file this session plays."
+            "description": "Which camera file this session plays (D60, 2026-11-04: the package's own list, up to four)."
           },
           "url": {
             "type": "string",

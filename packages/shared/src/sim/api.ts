@@ -109,7 +109,7 @@ import {
   type SttCredentialKind,
   type SttLastTest,
 } from '../api/transcription';
-import { FINALIZATION_STEPS_V2, MicRole, SessionState, TrackId, type MicInputId, type VideoTrackId } from '../domain';
+import { FINALIZATION_STEPS_V2, MicRole, SessionState, TrackId, VIDEO_TRACK_IDS, type VideoTrackId, type MicInputId } from '../domain';
 import { captureMicLines, meterInputOfChannel } from './audio';
 import { selectorOfSession } from './selector-in-force';
 import { SEALING_ETA_STEP_MS, SEALING_FIRST_ATTEMPT } from './constants';
@@ -773,14 +773,14 @@ interface CaptureMicLine {
 
 type BodyCheck = { ok: true } | { ok: false; path: string; message: string };
 
-/** The four slots `unassign` may name: the two video tracks and the two microphone roles (the contract's `CAPTURE_SELECTOR_SLOTS`; held equal by a test). */
-const UNASSIGNABLE_SLOTS: readonly CaptureSelectorSlot[] = [TrackId.VIDEO_01, TrackId.VIDEO_02, MicRole.PRIMARY, MicRole.STANDBY];
+/** The six slots `unassign` may name (D60, 2026-11-04): the four video tracks and the two microphone roles (the contract's `CAPTURE_SELECTOR_SLOTS`; held equal by a test). */
+const UNASSIGNABLE_SLOTS: readonly CaptureSelectorSlot[] = [TrackId.VIDEO_01, TrackId.VIDEO_02, TrackId.VIDEO_03, TrackId.VIDEO_04, MicRole.PRIMARY, MicRole.STANDBY];
 
 /**
  * Validates the op 78 body against `CaptureConfigUpdateRequest` (C3 §2.3): partial, strict, bounded.
  *
  * `unassign` (task 4 row 165; site C25 of row 27; names register N1 and section 4.3; AD-10 (3)):
- * the slots the edit clears - a list of one to four of the four slot names, no slot twice, and no
+ * the slots the edit clears - a list of one to six of the six slot names (D60), no slot twice, and no
  * slot that the same body assigns (the `trackId` of a camera line, the `role` of a mic line). Every
  * refusal of the member is on the path `unassign`, as the contract's schema has it.
  */
@@ -791,12 +791,13 @@ function checkCaptureConfigUpdate(body: Record<string, unknown>): BodyCheck & { 
   const mics: CaptureMicLine[] = [];
   const unassign: CaptureSelectorSlot[] = [];
   if (body.unassign !== undefined) {
-    if (!Array.isArray(body.unassign) || body.unassign.length < 1 || body.unassign.length > 4) {
-      return { ok: false, path: 'unassign', message: 'Expected 1 to 4 selector slots.' };
+    if (!Array.isArray(body.unassign) || body.unassign.length < 1 || body.unassign.length > UNASSIGNABLE_SLOTS.length) {
+      // D60 (2026-11-04): one to SIX slots (the contract's `CaptureConfigUpdateRequest.unassign`, `.max(6)`); was four.
+      return { ok: false, path: 'unassign', message: 'Expected 1 to 6 selector slots.' };
     }
     for (const entry of body.unassign) {
       const slot = UNASSIGNABLE_SLOTS.find((candidate) => candidate === entry);
-      if (slot === undefined) return { ok: false, path: 'unassign', message: 'Expected VIDEO-01, VIDEO-02, PRIMARY or STANDBY.' };
+      if (slot === undefined) return { ok: false, path: 'unassign', message: 'Expected VIDEO-01 to VIDEO-04, PRIMARY or STANDBY.' };
       if (unassign.includes(slot)) return { ok: false, path: 'unassign', message: 'A slot is named at most once.' };
       unassign.push(slot);
     }
@@ -810,8 +811,8 @@ function checkCaptureConfigUpdate(body: Record<string, unknown>): BodyCheck & { 
       if (!item) return { ok: false, path: `cameras.${index}`, message: 'Expected an object.' };
       const extra = Object.keys(item).find((key) => key !== 'trackId' && key !== 'deviceId' && key !== 'profile');
       if (extra !== undefined) return { ok: false, path: `cameras.${index}.${extra}`, message: 'Unknown member.' };
-      if (item.trackId !== TrackId.VIDEO_01 && item.trackId !== TrackId.VIDEO_02) {
-        return { ok: false, path: `cameras.${index}.trackId`, message: 'Expected VIDEO-01 or VIDEO-02.' };
+      if (!VIDEO_TRACK_IDS.includes(item.trackId as VideoTrackId)) {
+        return { ok: false, path: `cameras.${index}.trackId`, message: 'Expected a video track: VIDEO-01 to VIDEO-04.' };
       }
       if (!isCode(item.deviceId, 32) || !HARDWARE_DEVICE_ID_PATTERN.test(item.deviceId.trim())) {
         return { ok: false, path: `cameras.${index}.deviceId`, message: 'Expected a capture device id, e.g. CAM-01.' };
@@ -819,7 +820,7 @@ function checkCaptureConfigUpdate(body: Record<string, unknown>): BodyCheck & { 
       if (item.profile !== undefined && !isCode(item.profile, 64)) {
         return { ok: false, path: `cameras.${index}.profile`, message: 'Expected a media profile code.' };
       }
-      cameras.push({ trackId: item.trackId, deviceId: item.deviceId.trim(), ...(item.profile === undefined ? {} : { profile: item.profile }) });
+      cameras.push({ trackId: item.trackId as VideoTrackId, deviceId: item.deviceId.trim(), ...(item.profile === undefined ? {} : { profile: item.profile }) });
     }
   }
   if (body.mics !== undefined) {
@@ -2001,10 +2002,10 @@ const CAPTURE_ROUTES: readonly Route[] = [
       const locked = captureLockedRefusal(state);
       if (locked) return locked;
       const extra = Object.keys(body).find((key) => key !== 'trackId');
-      if (extra !== undefined || (body.trackId !== TrackId.VIDEO_01 && body.trackId !== TrackId.VIDEO_02)) {
-        return fail(422, 'INVALID_INPUT', 'trackId: Expected VIDEO-01 or VIDEO-02.');
+      if (extra !== undefined || !VIDEO_TRACK_IDS.includes(body.trackId as VideoTrackId)) {
+        return fail(422, 'INVALID_INPUT', 'trackId: Expected a video track, VIDEO-01 to VIDEO-04.');
       }
-      return editCaptureConfig(target, { kind: 'CAMERA_SOURCE', deviceId: device.id, trackId: body.trackId });
+      return editCaptureConfig(target, { kind: 'CAMERA_SOURCE', deviceId: device.id, trackId: body.trackId as VideoTrackId });
     },
   },
   {

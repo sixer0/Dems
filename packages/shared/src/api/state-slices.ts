@@ -55,6 +55,7 @@ import {
   SystemSlot,
   TimeSource,
   TrackId,
+  VIDEO_TRACK_IDS,
   TrackRecState,
   UpdateStep,
 } from '../domain/enums';
@@ -106,7 +107,7 @@ const evidenceId = () => z.string().regex(EVIDENCE_ID_PATTERN);
 const sha256 = () => z.string().regex(SHA256_HEX_PATTERN);
 /** A measurement that is never negative: a rate, a size in a unit, a percentage. */
 const amount = () => z.number().nonnegative();
-const videoTrackId = () => z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02]);
+const videoTrackId = () => z.enum(VIDEO_TRACK_IDS); // D60 (2026-11-04): four video tracks
 const audioTrackId = () => z.enum([TrackId.AUDIO_01, TrackId.AUDIO_02]);
 const timeSource = () => z.enum(TimeSource);
 
@@ -565,7 +566,7 @@ export const CamerasSliceSchema = z
       firmware: text(),
     }),
   )
-  .describe('Slice `cameras`: VIDEO-01 and VIDEO-02.');
+  .describe('Slice `cameras`: one entry per video track (D60, 2026-11-04: the track domain is VIDEO-01 to VIDEO-04).'); // D60
 export type CamerasSliceBody = z.output<typeof CamerasSliceSchema>;
 
 export const MicsSliceSchema = z
@@ -706,7 +707,7 @@ export const NetworkSliceSchema = z
         poweredPorts: count().optional(),
         sparePorts: count().optional(),
       })
-      .describe('Two PoE ports: one powers the dual-lens camera, one is the spare.'),
+      .describe('Four PoE ports (D60, 2026-11-04): the camera lines of the four video tracks and the AUX spare.'), // D60
     bandwidth: z.strictObject({
       downMbps: amount(),
       upMbps: amount(),
@@ -801,7 +802,7 @@ export type OtherDevicesSliceBody = z.output<typeof OtherDevicesSliceSchema>;
 export const PortsSliceSchema = z
   .array(
     z.strictObject({
-      id: z.enum(['POE_CAM_1', 'POE_CAM_2_AUX', 'MGMT_LAN', 'MIC_IN_1', 'MIC_IN_2', 'GNSS_SMA', 'RELAY_IO']),
+      id: z.enum(['POE_CAM_1', 'POE_CAM_2_AUX', 'POE_CAM_3', 'POE_CAM_4', 'MGMT_LAN', 'MIC_IN_1', 'MIC_IN_2', 'GNSS_SMA', 'RELAY_IO']), // D60 (2026-11-04): POE_CAM_3/4 carry the third and fourth camera line; equals the `PortStatus` union of the simulator
       label: text(),
       link: z.boolean().describe('The port is healthy; a spare port reads true while it is ready.'),
       spare: z.boolean().optional(),
@@ -963,13 +964,13 @@ export const EvidenceItemSchema = z
         tracks: z
           .array(
             z.strictObject({
-              trackId: z.enum(['VIDEO-01', 'VIDEO-02']),
+              trackId: z.enum(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04']), // D60 (2026-11-04): the notice covers every recorded track
               stream: z.string().regex(/^[A-Za-z0-9_.-]{1,48}$/).describe('What the recorded stream declared: the value the manifest states.'),
               configured: z.string().regex(/^[A-Za-z0-9_.-]{1,48}$/).describe('What the selector had configured for the track.'),
             }),
           )
           .min(1)
-          .max(2),
+          .max(4),
       })
       .optional()
       .describe('Core server only, operation 40: the session of this item carries the notice `STREAM_PROFILE_DIFFERS` (an alert of kind SYSTEM with that `params.reason`) - the recorded stream of the named tracks was not the configured profile, and the manifest states the stream. Present while the Core\'s alert list holds that notice. ABSENT: the Core holds no such notice for the session - never to be read as "compared and equal" for an item older than the alert list.'),
@@ -1155,7 +1156,7 @@ export type SettingsSliceBody = z.output<typeof SettingsSliceSchema>;
  */
 export const CaptureConfigSliceSchema = z
   .strictObject({
-    cameras: z.array(CaptureConfigCameraSchema).describe('VIDEO-01 first, then VIDEO-02.'),
+    cameras: z.array(CaptureConfigCameraSchema).describe('VIDEO-01 first, then VIDEO-02, VIDEO-03, VIDEO-04 (D60, 2026-11-04: four named tracks once).'), // D60
     mics: z.array(CaptureConfigMicSchema).describe('In input order (ascending input ID): MIC-01, then MIC-02; the role is a member of the row.'),
     locked: z.boolean().describe('True while a session is open: no edit is accepted then (OD-10).'),
     updatedAt: epochMs(),

@@ -1215,7 +1215,7 @@ export interface OtherDevice {
 }
 
 export interface PortStatus {
-  id: 'POE_CAM_1' | 'POE_CAM_2_AUX' | 'MGMT_LAN' | 'MIC_IN_1' | 'MIC_IN_2' | 'GNSS_SMA' | 'RELAY_IO';
+  id: 'POE_CAM_1' | 'POE_CAM_2_AUX' | 'POE_CAM_3' | 'POE_CAM_4' | 'MGMT_LAN' | 'MIC_IN_1' | 'MIC_IN_2' | 'GNSS_SMA' | 'RELAY_IO'; // POE_CAM_3/4: D60 (2026-11-04)
   label: string;
   /** The port is healthy (a spare port reads true while it is ready). */
   link: boolean;

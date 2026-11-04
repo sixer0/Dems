@@ -89,9 +89,12 @@ describe('applyCaptureTelemetry: what is stored (slices 29 and 30)', () => {
     const before = h.state();
     h.sim.actions.applyCaptureTelemetry(frame({ ingest: [{ deviceId: 'CAM-02', state: 'WAITING' }] }));
     const lost = h.state();
+    // D60 (2026-11-04): the seeded registry and selector carry FOUR cameras; one WAITING frame moves only CAM-02.
     expect(lost.captureDevices.devices.map(({ id, online, streamState }) => ({ id, online, streamState }))).toEqual([
       { id: 'CAM-01', online: true, streamState: 'LIVE' },
       { id: 'CAM-02', online: false, streamState: 'LOST' },
+      { id: 'CAM-03', online: true, streamState: 'LIVE' },
+      { id: 'CAM-04', online: true, streamState: 'LIVE' },
       { id: 'MIC-01', online: true, streamState: null },
       { id: 'MIC-02', online: true, streamState: null },
       { id: 'POE-SWITCH', online: true, streamState: null },
@@ -99,6 +102,8 @@ describe('applyCaptureTelemetry: what is stored (slices 29 and 30)', () => {
     expect(lost.captureConfig.cameras.map(({ deviceId, online, streamState }) => ({ deviceId, online, streamState }))).toEqual([
       { deviceId: 'CAM-01', online: true, streamState: 'LIVE' },
       { deviceId: 'CAM-02', online: false, streamState: 'LOST' },
+      { deviceId: 'CAM-03', online: true, streamState: 'LIVE' },
+      { deviceId: 'CAM-04', online: true, streamState: 'LIVE' },
     ]);
     // Telemetry is not an edit of the selector, and it is no audit matter.
     expect(lost.captureConfig.updatedAt).toBe(before.captureConfig.updatedAt);
@@ -838,7 +843,7 @@ describe('row V7c: a registered camera no session reads is NOT READ (null), neve
     expect(of(h.state())).toEqual(NOT_READ);
     // ... and an empty slot (VIDEO-02 cleared first, then filled by operation 78's form).
     h.sim.actions.setCaptureConfig({ kind: 'UPDATE', unassign: ['VIDEO-02'] });
-    expect(h.state().captureConfig.cameras.map((line) => line.trackId)).toEqual(['VIDEO-01']);
+    expect(h.state().captureConfig.cameras.map((line) => line.trackId)).toEqual(['VIDEO-01', 'VIDEO-03', 'VIDEO-04']); // D60 (2026-11-04): the other seeded lines stay
     h.sim.actions.setCaptureConfig({ kind: 'UPDATE', cameras: [{ trackId: 'VIDEO-02', deviceId: CAM }] });
     expect(of(h.state())).toEqual(NOT_READ);
     // CONTROL: the built-in CAM-02 put back on the same slot carries the demonstration model's value.

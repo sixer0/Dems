@@ -132,12 +132,20 @@ describe('layout (spec §A.1, §A.2)', () => {
       'device-certificate.pem',
       'fragments/VIDEO-01.mp4',
       'fragments/VIDEO-02.mp4',
+      // D60 (2026-11-04): the default package carries all FOUR camera files.
+      'fragments/VIDEO-03.mp4',
+      'fragments/VIDEO-04.mp4',
       'fragments/fragments.json',
       'transcript/transcript.json',
       'transcript/transcript.srt',
       'transcript/transcript.vtt',
       'transcript/transcript-revisions.json',
       'audit-session-extract.jsonl',
+    ]);
+    // A two-track (pre-D60) manifest still declares its own two files (the list is the caller's).
+    expect(declaredPackageFiles({ transcript: true, tracks: ['VIDEO-01', 'VIDEO-02'] }).filter((file) => file.startsWith('fragments/VIDEO'))).toEqual([
+      'fragments/VIDEO-01.mp4',
+      'fragments/VIDEO-02.mp4',
     ]);
     expect(declaredPackageFiles({ transcript: false }).some((file) => file.startsWith('transcript/'))).toBe(false);
   });
@@ -473,7 +481,11 @@ describe('source class (spec §B.12, fields 124-126; database contract N.2, N.3)
     expect(buildUnsignedManifest(exampleManifestInput(), rows(production)).developmentSources).toBe(false);
     for (const slot of CAPTURE_SOURCE_SLOTS) {
       for (const kind of ['FAKE', 'LOCAL_DEVICE']) {
-        expect(buildUnsignedManifest(exampleManifestInput(), rows({ ...production, [slot]: kind })).developmentSources, `${slot} ${kind}`).toBe(true);
+        // D60 (2026-11-04): the flag follows the classes the MANIFEST carries. This example is a
+        // two-track (pre-D60) package: the two extra video slots of a six-row plan mark nothing
+        // here — a four-track manifest derives over all four (the widened rows, same rule).
+        const carried = slot === 'VIDEO-01' || slot === 'VIDEO-02' || slot === 'MIC-PRIMARY' || slot === 'MIC-STANDBY';
+        expect(buildUnsignedManifest(exampleManifestInput(), rows({ ...production, [slot]: kind })).developmentSources, `${slot} ${kind}`).toBe(carried);
       }
     }
     // A standby microphone that was never selected has no interval and so no mark (rule 4).
@@ -514,12 +526,17 @@ describe('source class (spec §B.12, fields 124-126; database contract N.2, N.3)
     }
   });
 
-  it('a session without exactly its four source rows builds nothing (MR-S4)', () => {
+  it('a session without its planned source rows builds nothing (MR-S4; D60 2026-11-04: the plan is the session’s own slot set — four rows before migration 0039, six after)', () => {
     const build = (sourceRows: SessionCaptureSourceRow[]) => () => buildUnsignedManifest(exampleManifestInput(), sourceRows);
     expect(build([])).toThrow(/SOURCE_RECORD_MISSING/);
     expect(build(EXAMPLE_SOURCE_ROWS.slice(0, 3))).toThrow(/SOURCE_RECORD_MISSING: MIC-STANDBY/);
     expect(build([...EXAMPLE_SOURCE_ROWS, { slot: 'VIDEO-01', deviceId: 'CAM-01', adapterKind: 'FAKE' }])).toThrow(/SOURCE_RECORD_MISSING/);
-    expect(build([...EXAMPLE_SOURCE_ROWS, { slot: 'VIDEO-03', deviceId: 'CAM-03', adapterKind: 'FAKE' }])).toThrow(/SOURCE_RECORD_MISSING/);
+    // D60 backward compatibility: a TORN plan is still refused - VIDEO-04 named without VIDEO-03
+    // (a gap in the recorded order) is not a start record of either era; an unknown slot neither.
+    expect(build([...EXAMPLE_SOURCE_ROWS, { slot: 'VIDEO-04', deviceId: 'CAM-04', adapterKind: 'FAKE' }])).toThrow(/SOURCE_RECORD_MISSING/);
+    expect(build([...EXAMPLE_SOURCE_ROWS, { slot: 'AUDIO-01', deviceId: 'CAM-03', adapterKind: 'FAKE' }])).toThrow(/SOURCE_RECORD_MISSING/);
+    // A FOUR-row (pre-0039) plan and a SIX-row (D60) plan both build: the example's own four.
+    expect(build([...EXAMPLE_SOURCE_ROWS])).not.toThrow();
     expect(build(rows({ 'VIDEO-02': 'NEW_KIND' }))).toThrow(/SOURCE_CLASS_UNMAPPED/);
     // An interval of a microphone that the session did not record.
     const input = exampleManifestInput();

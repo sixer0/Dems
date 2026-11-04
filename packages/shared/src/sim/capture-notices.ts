@@ -27,7 +27,7 @@
  *    | Reachability | Check rows | Start |
  *    |--------------|-----------|-------|
  *    | every configured camera unreachable | BLOCK (`noCamera`) | blocked |
- *    | one camera of two unreachable | WARN (`oneCamera`) | degraded, after the acknowledgement |
+ *    | one camera of four unreachable | WARN (`oneCamera`) | degraded, after the acknowledgement |
  *    | both microphones unreachable | BLOCK (`noMicrophone`) | blocked |
  *    | the PRIMARY (active) microphone unreachable | BLOCK (`activeMicrophone`) | blocked: no switch at pre-check (D83) |
  *    | the STANDBY microphone unreachable | WARN (`noStandby`) | degraded, after the acknowledgement |
@@ -309,7 +309,7 @@ function advisoryDeviceOf(state: SimState, notice: CaptureAdvisoryNotice): Captu
  * its stream. So for a REGISTERED camera (`cameraNotReadAtRest`) an answer never says `LIVE`: it
  * keeps a `LIVE` the ingest stated, keeps `LOST` while a stream fault of the camera is active, and
  * is NOT READ (null) otherwise - the next `CONNECTED` frame of a reading ingest says `LIVE`. No
- * answer still says `LOST` (a camera that does not answer delivers no stream). The two built-in
+ * answer still says `LOST` (a camera that does not answer delivers no stream). The built-in
  * cameras of the demonstration model keep the model's `LIVE` / `LOST`, as before.
  */
 function withDeviceOnline(state: SimState, device: CaptureDeviceStatus, online: boolean): SimState {
@@ -487,15 +487,17 @@ export type CaptureStartRule = (typeof CaptureStartRule)[keyof typeof CaptureSta
 
 /**
  * The slots without which a Core in its own capture refuses the start, and whose pre-check item is
- * BLOCK (names register N11). ALL FOUR, the STANDBY included (decision C25, which corrects C21 (8)):
- * the pre-check and the Core's plan builder ("exactly four", `SELECTOR_SHAPE`) say the same thing,
- * so an operator never acknowledges a warning only to meet a 409. In the order of the contract's
- * `CAPTURE_SELECTOR_SLOTS` (held equal by a test; this file imports nothing of `api/`).
+ * BLOCK (names register N11). ALL SIX, the STANDBY included (decision C25, which corrects C21 (8);
+ * widened from four to six by D60 of 2026-11-04): the four video tracks and both microphone roles.
+ * The pre-check and the Core's plan builder ("four video tracks and a primary and a standby
+ * microphone", `SELECTOR_SHAPE`) say the same thing, so an operator never acknowledges a warning
+ * only to meet a 409. In the order of the contract's `CAPTURE_SELECTOR_SLOTS` (held equal by a
+ * test; this file imports nothing of `api/`).
  */
-export const CAPTURE_START_REQUIRED_SLOTS: readonly CaptureSelectorSlot[] = ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'];
+export const CAPTURE_START_REQUIRED_SLOTS: readonly CaptureSelectorSlot[] = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'PRIMARY', 'STANDBY']; // D60 (2026-11-04)
 
-/** The four slots of the selector, in the contract's order: what `unassignedSlotsOf` walks. */
-const SELECTOR_SLOT_ORDER: readonly CaptureSelectorSlot[] = ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'];
+/** The six slots of the selector, in the contract's order (D60): what `unassignedSlotsOf` walks. */
+const SELECTOR_SLOT_ORDER: readonly CaptureSelectorSlot[] = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'PRIMARY', 'STANDBY']; // D60 (2026-11-04)
 
 /**
  * The slots of a selector that hold no source, in the contract's order (names register N10). A

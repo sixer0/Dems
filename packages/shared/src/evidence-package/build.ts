@@ -27,7 +27,7 @@ import {
   type ManifestV2,
   type UnsignedManifestV2,
 } from './manifest';
-import { deriveDevelopmentSources, sessionSourceClasses, type SessionCaptureSourceRow } from './source-class';
+import { deriveDevelopmentSources, sessionSourceClasses, type ManifestSourceClass, type SessionCaptureSourceRow } from './source-class';
 
 export type ManifestTrackInput = Omit<ManifestTrack, 'sourceClass'>;
 export type ManifestAudioIntervalInput = Omit<ManifestAudioInterval, 'sourceClass'>;
@@ -54,8 +54,13 @@ export function buildUnsignedManifest(input: ManifestV2Input, sourceRows: readon
     if (sourceClass === undefined) throw new EvidencePackageError(EvidencePackageRefusal.SOURCE_NOT_RECORDED, [`audio.sourceIntervals.${index}.micDeviceId`]);
     return { ...interval, sourceClass };
   });
-  if (tracks.some((track) => track.sourceClass === undefined)) throw new EvidencePackageError(EvidencePackageRefusal.SOURCE_NOT_RECORDED, ['tracks']);
-  const developmentSources = deriveDevelopmentSources([...tracks.map((track) => track.sourceClass), ...sourceIntervals.map((interval) => interval.sourceClass)]);
+  // D60 (2026-11-04): the class map covers the tracks the session's own start record carries - a
+  // manifest naming a track the plan did not record is refused HERE, as SOURCE_NOT_RECORDED.
+  const unclassed = tracks.find((track) => track.sourceClass === undefined);
+  if (unclassed !== undefined) throw new EvidencePackageError(EvidencePackageRefusal.SOURCE_NOT_RECORDED, ['tracks']);
+  const developmentSources = deriveDevelopmentSources(
+    [...tracks.map((track) => track.sourceClass as ManifestSourceClass), ...sourceIntervals.map((interval) => interval.sourceClass)],
+  );
   // Fields 129-132 (row V4): the one optional member. A caller with no restart gap leaves the key
   // out or hands `undefined`; either way the manifest has NO such key (never `undefined`, which has
   // no canonical form, and never an empty list, which the schema refuses).

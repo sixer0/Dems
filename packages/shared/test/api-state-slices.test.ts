@@ -776,9 +776,14 @@ describe('values: time, value sets, identifiers, hashes, levels, text', () => {
 
   // Task 4 row 52 (WP-10b; design addendum 7.3; review P12-F08 rows 5 and 6; AD-06 (1), (2)).
   it('a camera states its stream: picture, rate and codec are the stream\'s facts, each closed or bounded, and the simulator states what it stated', () => {
-    // The simulator's two cameras, in every scenario: the three former literals, unchanged.
+    // The simulator's FOUR cameras (D60, 2026-11-04), in every scenario: the three former literals, unchanged.
     for (const name of SCENARIO_NAMES) {
-      expect(scenarioState(name).cameras.map((camera) => [camera.resolution, camera.fps, camera.codec]), name).toEqual([['1080p', 25, 'H.264'], ['1080p', 25, 'H.264']]);
+      expect(scenarioState(name).cameras.map((camera) => [camera.resolution, camera.fps, camera.codec]), name).toEqual([
+        ['1080p', 25, 'H.264'],
+        ['1080p', 25, 'H.264'],
+        ['1080p', 25, 'H.264'],
+        ['1080p', 25, 'H.264'],
+      ]);
     }
     const [first, second] = state.cameras;
     const withFacts = (facts: Record<string, unknown>) => [{ ...first, ...facts }, second];
@@ -877,10 +882,11 @@ describe('values: time, value sets, identifiers, hashes, levels, text', () => {
     const audioExample = AudioStatusResponseSchema.parse(exampleOf('getAudioStatus', 'recording'));
     const videoExample = VideoStatusResponseSchema.parse(exampleOf('getVideoStatus', 'recording'));
     const healthExample = DeviceHealthResponseSchema.parse(exampleOf('getDeviceHealth', 'idle'));
-    // Complete selector: two entries, an active input, a source device behind each track.
+    // Complete selector: two mic entries, an active input, and a source device behind EACH OF THE
+    // FOUR tracks (D60, 2026-11-04: the status answers carry one entry per track of the widened domain).
     expect([audioExample.channels.length, typeof audioExample.activeInputId]).toEqual([2, 'string']);
-    expect(videoExample.tracks.map((track) => typeof track.sourceDeviceId)).toEqual(['string', 'string']);
-    expect([healthExample.audio.length, typeof healthExample.activeInputId, healthExample.cameras.length]).toEqual([2, 'string', 2]);
+    expect(videoExample.tracks.map((track) => typeof track.sourceDeviceId)).toEqual(['string', 'string', 'string', 'string']);
+    expect([healthExample.audio.length, typeof healthExample.activeInputId, healthExample.cameras.length]).toEqual([2, 'string', 4]);
 
     const [first, second] = audioExample.channels;
     // Operation 45: one entry per meter channel that has an input, so two, one or none.
@@ -894,10 +900,10 @@ describe('values: time, value sets, identifiers, hashes, levels, text', () => {
     expect(AudioStatusResponseSchema.safeParse({ channels: [{ ...first, inputId: null }], activeInputId: null }).success).toBe(false);
     expect(AudioStatusResponseSchema.safeParse({ channels: [{ ...first, role: null }], activeInputId: null }).success).toBe(false);
 
-    const [trackOne, trackTwo] = videoExample.tracks;
-    // Operation 46: `tracks` stays two; a track without a line states `sourceDeviceId: null`.
-    expect(VideoStatusResponseSchema.safeParse({ tracks: [{ ...trackOne, sourceDeviceId: null }, trackTwo] }).success).toBe(true);
-    expect(VideoStatusResponseSchema.safeParse({ tracks: [{ ...trackOne, sourceDeviceId: null }, { ...trackTwo, sourceDeviceId: null }] }).success).toBe(true);
+    const [trackOne, trackTwo, trackThree, trackFour] = videoExample.tracks;
+    // D60 (2026-11-04): operation 46 answers the FOUR tracks; a track without a line states `sourceDeviceId: null`.
+    expect(VideoStatusResponseSchema.safeParse({ tracks: [{ ...trackOne, sourceDeviceId: null }, trackTwo, trackThree, trackFour] }).success).toBe(true);
+    expect(VideoStatusResponseSchema.safeParse({ tracks: videoExample.tracks.map((track) => ({ ...track, sourceDeviceId: null })) }).success).toBe(true);
     expect(VideoStatusResponseSchema.safeParse({ tracks: [{ ...trackOne, sourceDeviceId: null }] }).success).toBe(false);
     expect(VideoStatusResponseSchema.safeParse({ tracks: [{ ...trackOne, sourceDeviceId: '' }, trackTwo] }).success).toBe(false);
     const { sourceDeviceId: _dropped, ...withoutSource } = trackOne as NonNullable<typeof trackOne>;

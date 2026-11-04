@@ -18,7 +18,7 @@
  * `sim/types.ts` `FaultTarget`).
  */
 import { z } from 'zod';
-import { TimeSource, TrackId } from '../domain/enums';
+import { TimeSource, TrackId, VIDEO_TRACK_IDS } from '../domain/enums'; // VIDEO_TRACK_IDS: D60 (2026-11-04), the four-track CAMERA_LOSS target enum
 import { AuditType, FaultKind, Permission, ScenarioName } from '../sim/vocabulary';
 import { API_BASE_PATH } from './constants';
 import {
@@ -58,7 +58,8 @@ export const FaultTargetSchema = z
       .enum([TrackId.AUDIO_01, TrackId.AUDIO_02])
       .optional()
       .describe('For MIC_NO_SIGNAL (default AUDIO-01) and MIC_CLIP (default AUDIO-02).'),
-    cameraId: z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02]).optional().describe('For CAMERA_LOSS (default: the active camera).'),
+    // D60 (2026-11-04): CAMERA_LOSS can target any of the FOUR recorded tracks (was the two-track pair).
+    cameraId: z.enum(VIDEO_TRACK_IDS).optional().describe('For CAMERA_LOSS (default: the active camera; D60: one of the four video tracks).'),
     auditIndex: z
       .int()
       .nonnegative()

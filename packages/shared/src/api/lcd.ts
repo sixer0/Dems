@@ -10,7 +10,7 @@ export const LcdIntegrationStatusSchema = z.object({
   error: z.enum(['UNAVAILABLE', 'INVALID_RESPONSE', 'CORE_NOT_READY']).nullable(),
   channels: z.array(z.object({
     channel: z.number().int().min(1).max(4),
-    track: z.enum(['VIDEO-01', 'VIDEO-02']).nullable(),
+    track: z.enum(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04']).nullable(), // D60 (2026-11-04): four recorded tracks
     /** Dua trek dari satu kamera dual-lens berbagi perangkat yang sama (OD-05). */
     deviceId: z.string().nullable().optional(),
     recording: z.boolean(),

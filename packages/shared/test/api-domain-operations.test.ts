@@ -575,9 +575,9 @@ describe('the other bodies of areas 4 to 11', () => {
     expect(CORE_API_SCHEMAS.SettingsSlice.safeParse({ ...state().settings, theme: 'dark' }).success).toBe(false);
   });
 
-  it('setActiveCamera and resetMicClip: one of the two tracks of their kind', () => {
-    for (const cameraId of ['VIDEO-01', 'VIDEO-02']) expect(ActiveCameraRequestSchema.safeParse({ cameraId }).success, cameraId).toBe(true);
-    for (const cameraId of ['AUDIO-01', 'VIDEO-03', 'CAM-01', '', undefined]) expect(ActiveCameraRequestSchema.safeParse({ cameraId }).success, String(cameraId)).toBe(false);
+  it('setActiveCamera and resetMicClip: one of the four tracks of their kind (D60, 2026-11-04)', () => {
+    for (const cameraId of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04']) expect(ActiveCameraRequestSchema.safeParse({ cameraId }).success, cameraId).toBe(true);
+    for (const cameraId of ['AUDIO-01', 'VIDEO-05', 'CAM-01', '', undefined]) expect(ActiveCameraRequestSchema.safeParse({ cameraId }).success, String(cameraId)).toBe(false);
     for (const channel of ['AUDIO-01', 'AUDIO-02']) expect(MicClipResetRequestSchema.safeParse({ channel }).success, channel).toBe(true);
     for (const channel of ['VIDEO-01', 'MIC-01', 'AUDIO-03', undefined]) expect(MicClipResetRequestSchema.safeParse({ channel }).success, String(channel)).toBe(false);
     const { actions, state } = rig('idle', INVESTIGATOR);
@@ -588,7 +588,8 @@ describe('the other bodies of areas 4 to 11', () => {
   it('the path parameters: every device, alert and run ID the simulator mints fits its pattern', () => {
     const { actions, state } = rig('idle', TECHNICIAN);
     const deviceIds = [...state().cameras.map((camera) => camera.deviceId), ...state().mics.map((mic) => mic.deviceId), ...state().otherDevices.map((device) => device.id), ...Object.keys(PLATFORM_DEVICE_NAMES)];
-    expect(deviceIds).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'REC-INDICATOR', 'TABLET', 'GNSS', 'TPM', 'FRONT-PANEL']);
+    // D60 (2026-11-04): the seeded registry carries four cameras (CAM-03, CAM-04), not two.
+    expect(deviceIds).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'REC-INDICATOR', 'TABLET', 'GNSS', 'TPM', 'FRONT-PANEL']);
     for (const id of deviceIds) {
       expect(id, id).toMatch(HARDWARE_DEVICE_ID_PATTERN);
       // IDENTIFY is the one command every device accepts.
@@ -767,8 +768,9 @@ describe('the export job and the camera file of the media session', () => {
 
   describe('operations 42, 87 and 88: additive and optional (ruling D140; pass D1b, seam 12)', () => {
     it('op 88 takes an optional body that names the camera file, and nothing else', () => {
-      for (const body of [{}, { fileId: 'VIDEO-01' }, { fileId: 'VIDEO-02' }]) expect(EvidenceMediaSessionRequestSchema.safeParse(body).success, JSON.stringify(body)).toBe(true);
-      for (const body of [{ fileId: 'AUDIO-01' }, { fileId: 'VIDEO-03' }, { fileId: 1 }, { fileId: 'VIDEO-01', token: 'x' }, { file: 'VIDEO-01' }, 'VIDEO-01', null]) {
+      // D60 (2026-11-04): the camera file may be any of the FOUR tracks.
+      for (const body of [{}, { fileId: 'VIDEO-01' }, { fileId: 'VIDEO-02' }, { fileId: 'VIDEO-03' }, { fileId: 'VIDEO-04' }]) expect(EvidenceMediaSessionRequestSchema.safeParse(body).success, JSON.stringify(body)).toBe(true);
+      for (const body of [{ fileId: 'AUDIO-01' }, { fileId: 'VIDEO-05' }, { fileId: 1 }, { fileId: 'VIDEO-01', token: 'x' }, { file: 'VIDEO-01' }, 'VIDEO-01', null]) {
         expect(EvidenceMediaSessionRequestSchema.safeParse(body).success, JSON.stringify(body)).toBe(false);
       }
       const operation = findCoreApiOperation('createEvidenceMediaSession');

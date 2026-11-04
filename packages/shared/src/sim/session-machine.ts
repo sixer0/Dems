@@ -13,7 +13,7 @@
  * running while the page or app was hidden). Audit and event rows go through
  * `recordActivity`, which keeps them in time order.
  */
-import { AuditEventKind, FINALIZATION_STEPS_V2, SessionState, type FinalizationStep, type TimeSource } from '../domain';
+import { AuditEventKind, FINALIZATION_STEPS_V2, SessionState, VIDEO_TRACK_IDS, type FinalizationStep, type TimeSource, type VideoTrackId } from '../domain'; // VideoTrackId, VIDEO_TRACK_IDS: D60 (2026-11-04)
 import { DEFAULT_SESSION_ROOM, sessionCreateSchema } from '../api/session-schema';
 import { findOperatorById, requirePermission, roleHas } from './auth';
 import { captureMicLines, channelOfMicLine, micInputOfRole } from './audio';
@@ -58,7 +58,7 @@ import { deriveDeviceState } from './derive';
 import { SEAL_UNSEALABLE_CAUSE_CODE, SEAL_UNSEALABLE_REASON, unsealableSentence } from './seal-unsealable';
 import { SimErrorCode, SimNotFoundError, SimTransitionError } from './errors';
 import { nextItemId, pushRing, recordActivity, type ActivityInput } from './events';
-import { createEvidenceItem, EVIDENCE_STATUS_STAGE } from './evidence';
+import { createEvidenceItem, EVIDENCE_STATUS_STAGE, TRACK_LABELS } from './evidence'; // TRACK_LABELS: D60 (2026-11-04), four camera labels
 import { RngStream, type Rng, type RngStreams } from './rng';
 import { cutText } from './text-cut';
 import type {
@@ -1498,9 +1498,9 @@ export function applySealingProgressTransition(state: SimState, now: EpochMs, in
   return record(next, now, items);
 }
 
-/** One sealed camera file as the item lists it: the stored-bytes hash of the whole file. */
+/** One sealed camera file as the item lists it: the stored-bytes hash of the whole file. D60 (2026-11-04): the item's manifest names its own list - one to four files (a legacy two-track package lists its two). */
 export interface SealedTrackInput {
-  trackId: 'VIDEO-01' | 'VIDEO-02';
+  trackId: VideoTrackId;
   sizeBytes: number;
   /** SHA-256 of the stored bytes of the whole file (`tracks[].sha256` of the manifest). */
   sha256: string;
@@ -1552,9 +1552,22 @@ export function completeSealTransition(state: SimState, now: EpochMs, input: Com
   if (session.finalization.steps.some((step) => step.status === 'error')) refuse('a sealing step failed');
   if (!HEX_64.test(input.manifestSha256)) refuse('the manifest digest is no SHA-256');
   if (input.signature.algorithm !== 'Ed25519' || !HEX_128.test(input.signature.value) || input.signature.keyId.length === 0) refuse('the signature is no Ed25519 signature');
-  // Fix pass F-M7 (R88-01, D178): the camera files that EXIST - one or two, VIDEO-01 before VIDEO-02. A one-camera session is sealed with its one file.
+  // Fix pass F-M7 (R88-01, D178): the camera files that EXIST, in track order. D60 (2026-11-04):
+  // the seal guard follows the widened sealed-track rule of the package layout (`isSealedTrackList`
+  // of `evidence-package/layout.ts`, mirrored here to keep the sim free of that import): one to FOUR
+  // files, each track at most once, VIDEO-01 before VIDEO-02 before VIDEO-03 before VIDEO-04. A
+  // session that lost cameras seals with the files it has.
   const sealedIds = input.tracks.map((track) => track.trackId);
-  if (!(sealedIds.length === 1 ? sealedIds[0] === 'VIDEO-01' || sealedIds[0] === 'VIDEO-02' : sealedIds.length === 2 && sealedIds[0] === 'VIDEO-01' && sealedIds[1] === 'VIDEO-02')) refuse('a sealed package has one or two camera files, VIDEO-01 before VIDEO-02');
+  const trackOrder = (trackId: string): number => (VIDEO_TRACK_IDS as readonly string[]).indexOf(trackId);
+  const sealedPositions = sealedIds.map(trackOrder);
+  if (
+    sealedIds.length < 1 ||
+    sealedIds.length > VIDEO_TRACK_IDS.length ||
+    sealedPositions.some((at) => at < 0) ||
+    sealedPositions.some((at, index) => index > 0 && at <= (sealedPositions[index - 1] ?? -1))
+  ) {
+    refuse(`a sealed package has one to ${VIDEO_TRACK_IDS.length} camera files, each once, in track order (D60)`);
+  }
   for (const track of input.tracks) if (!HEX_64.test(track.sha256) || !Number.isSafeInteger(track.sizeBytes) || track.sizeBytes < 1) refuse('a camera file without its hash or its size');
   if (input.transcriptSha256 !== null && !HEX_64.test(input.transcriptSha256)) refuse('the transcript digest is no SHA-256');
   if (session.startedAt === null) refuse('a session that never recorded has nothing to seal');
@@ -1595,7 +1608,7 @@ export function completeSealTransition(state: SimState, now: EpochMs, input: Com
     sizeBytes,
     status: 'SEALED',
     lifecycleStage: EVIDENCE_STATUS_STAGE.SEALED,
-    tracks: input.tracks.map((track) => ({ trackId: track.trackId, label: track.trackId === 'VIDEO-01' ? 'Camera 1' : 'Camera 2', sizeBytes: track.sizeBytes, sha256: track.sha256 })),
+    tracks: input.tracks.map((track) => ({ trackId: track.trackId, label: TRACK_LABELS[track.trackId], sizeBytes: track.sizeBytes, sha256: track.sha256 })), // D60 (2026-11-04): the label of one of FOUR camera tracks
     manifestHash: input.manifestSha256,
     // A REAL signature. The shared `EvidenceSignature` type still names the simulated stand-in only
     // (the slice schema admits the Ed25519 pair since M2-W7): the widening of the type and of the

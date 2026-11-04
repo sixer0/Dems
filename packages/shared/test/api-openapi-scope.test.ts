@@ -99,7 +99,9 @@ const BASELINE = {
  * `SessionResource`: the session carries the v2 snapshot members (SH-05) and the sealing steps v2).
  * Every other one is byte-equal to acaff20.
  */
-const WIDENED = ['HealthResponse', 'ApiError', 'PrecheckItem', 'SessionResource'];
+// D60 (2026-11-04): VideoStatusResponse joins the widened set - `tracks` answers one entry per
+// track of the four-track domain (`.length(4)`; the two-track baseline diverges by design).
+const WIDENED = ['HealthResponse', 'ApiError', 'PrecheckItem', 'SessionResource', 'VideoStatusResponse'];
 /**
  * OD-17 (D4; C3 §8) supersedes the whole-document byte-for-byte pin to `acaff20`: the in-app
  * simulator emulates v2, so the 13 simulated capture/transcript operations join the ten baseline

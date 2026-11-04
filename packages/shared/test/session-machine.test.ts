@@ -163,7 +163,7 @@ describe('allowed transitions (§14.7 table)', () => {
     expect(session).toMatchObject({ state: 'RECORDING', startedAt: now });
     expect(session?.timeline[0]).toMatchObject({ kind: 'START', at: now });
     expect(h.auditTypes().at(-1)).toBe('RECORDING_STARTED');
-    expect(h.state().cameras.map((camera) => camera.recState)).toEqual(['REC', 'REC']);
+    expect(h.state().cameras.map((camera) => camera.recState)).toEqual(['REC', 'REC', 'REC', 'REC']); // D60 (2026-11-04): four tracks record
     expect(h.state().otherDevices.find((device) => device.id === 'REC-INDICATOR')?.status).toBe('SEDANG MEREKAM');
   });
 

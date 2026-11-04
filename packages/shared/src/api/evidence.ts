@@ -24,7 +24,7 @@
  * to the item or a live session can play it.
  */
 import { z } from 'zod';
-import { TrackId } from '../domain/enums';
+import { TrackId, VIDEO_TRACK_IDS } from '../domain/enums'; // VIDEO_TRACK_IDS: D60 (2026-11-04)
 import { AuditType, CaseType, EvidenceStatus, Permission } from '../sim/vocabulary';
 import { API_BASE_PATH, API_PAGE_LIMIT_DEFAULT } from './constants';
 import {
@@ -103,12 +103,13 @@ export const EvidenceMediaRefSchema = z
       .nullable()
       .describe('The join key of the bundled package, e.g. `0004`; null when the source is not DEMO_PACKAGE.'),
     // Wave H C1 (gate finding G94-01): what a Core states beside the source. Both optional: Simulated mode states neither.
+    // D60 (2026-11-04): the Core records four video tracks; a package sealed under two names two (the manifest's own list).
     fileIds: z
-      .array(z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02]))
+      .array(z.enum(VIDEO_TRACK_IDS))
       .min(1)
-      .max(2)
+      .max(VIDEO_TRACK_IDS.length)
       .optional()
-      .describe('Core server only, with LIVE_STREAM: the camera files the sealed package of the item really holds (one or two), in file order - the `fileId` values operation 88 accepts for it.'),
+      .describe('Core server only, with LIVE_STREAM: the camera files the sealed package of the item really holds (one to four, D60 - a package sealed before the widening holds its own two), in file order - the `fileId` values operation 88 accepts for it.'),
     reason: z
       .string()
       .regex(/^[A-Z][A-Z0-9_]{0,63}$/)
@@ -207,7 +208,9 @@ export const VERIFY_REPORT_MAX_INTERVALS = 4096;
 
 const verifyFailureClass = () => z.enum(VERIFY_REPORT_FAILURE_CLASSES);
 const verifySourceClass = () => z.enum(VERIFY_REPORT_SOURCE_CLASSES);
-const cameraTrackId = () => z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02]);
+// D60 (2026-11-04): the track domain widened to four. The enum is a SUPERSET, so a v2 package whose manifest names
+// its own two-track list still parses and verifies unchanged - the verifier reads that list as a prefix of the order.
+const cameraTrackId = () => z.enum(VIDEO_TRACK_IDS);
 
 const VerifyFindingSchema = z.strictObject({
   code: z.string().regex(/^[A-Z][A-Z0-9_]{2,63}$/).describe('What was found, e.g. `FRAGMENT_TAMPERED`, `SOURCE_CLASS_MISSING`.'),
@@ -262,8 +265,10 @@ const VerifySourcesSchema = z.strictObject({
   report: trimmedText(160).describe('The English source line, the first line of a verify report; a client words the state by `code`.'),
   tracks: z
     .array(z.strictObject({ trackId: cameraTrackId(), deviceId: trimmedText(64), sourceClass: verifySourceClass() }))
-    .max(2)
-    .describe('Manifest field 124 of each camera file; empty when nothing is stated.'),
+    // D60 (2026-11-04): a package holds the manifest's OWN track list - up to four lines now, and a legacy
+    // two-track manifest still answers its two (the list is read as a prefix of VIDEO_TRACK_IDS).
+    .max(VIDEO_TRACK_IDS.length)
+    .describe('Manifest field 124 of each camera file the manifest names (one to four, D60); empty when nothing is stated.'),
   audioIntervals: z
     .array(z.strictObject({ seq: count(), micDeviceId: trimmedText(64), sourceClass: verifySourceClass() }))
     .max(VERIFY_REPORT_MAX_INTERVALS)
@@ -290,7 +295,7 @@ export const EvidenceVerifyResultSchema = z
       .array(
         z.strictObject({
           fileId: trimmedText(64),
-          trackId: z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02]),
+          trackId: cameraTrackId(), // D60 (2026-11-04): the four-track domain; a two-file legacy package answers its own two lines
           storedOk: z.boolean().describe('Hash of the stored bytes matches the sealed value.'),
           plainOk: z.boolean().describe('Hash of the plaintext bytes matches the sealed value.'),
           plainChecked: z
@@ -562,7 +567,7 @@ export type EvidenceExportJobBody = z.output<typeof EvidenceExportJobSchema>;
  */
 export const EvidenceMediaSessionRequestSchema = z
   .strictObject({
-    fileId: z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02]).optional().describe('The camera file to play; absent: `VIDEO-01`.'),
+    fileId: z.enum(VIDEO_TRACK_IDS).optional().describe('The camera file to play (D60: one of the four tracks; a legacy package offers its own two); absent: `VIDEO-01`.'), // D60 (2026-11-04)
     seekIndex: z
       .literal(true)
       .optional()
@@ -582,7 +587,7 @@ export type EvidenceMediaSessionRequest = z.output<typeof EvidenceMediaSessionRe
 export const EvidenceMediaSessionSchema = z
   .strictObject({
     evidenceId: evidenceId(),
-    fileId: z.enum([TrackId.VIDEO_01, TrackId.VIDEO_02]).describe('Which camera file this session plays.'),
+    fileId: z.enum(VIDEO_TRACK_IDS).describe('Which camera file this session plays (D60, 2026-11-04: the package\'s own list, up to four).'), // D60
     url: z
       .string()
       .regex(/^http:\/\/127\.0\.0\.1(?::\d{1,5})?\//)
@@ -899,7 +904,7 @@ export const TRANSCRIPT_MEDIA_OPERATIONS = [
       'Returns a short-lived signed URL to the NM-11 media route, which serves the decrypted camera file with HTTP Range support (M8). The route is registry-external like `/ws`; it carries its own static rule and its token prefix `mts_` joins both log-blanking lists (SEC35-13; E-31; check M8-BLK-1).',
       'The URL is a bearer value (SEC35-12): HMAC-signed with the SEPARATE media-session signing key (`MEDIA_SESSION_SIGNING_KEY_ID`, never the evidence Signer key), bound to one `(operatorId, sessionId, evidenceId, fileId)` and rejected if any component differs, alive for exactly `EVIDENCE_MEDIA_SESSION_TTL_MS`. It never enters a log, an audit row or a replicated slice (E-31).',
       'LIVE only: Simulated mode plays the bundled demo media and opens no media session (NM-11; MS-1 stays true for Simulated mode). No playable decrypted file answers `409 MEDIA_NOT_AVAILABLE`.',
-      'Request (ruling D140): an OPTIONAL body `{ fileId: VIDEO-01 | VIDEO-02 }`; no body or `{}` plays `VIDEO-01`. Refusals of this operation: `403 NOT_PERMITTED` with `details.reason: EVIDENCE_CASE_SCOPE` (REAL evidence of a case the caller does not hold; one ACCESS_DENIED row); `409 MEDIA_NOT_AVAILABLE`, for a package that cannot be played with `details.reason` one of `NOT_A_SEALED_PACKAGE`, `PACKAGE_MISSING`, `MANIFEST_UNREADABLE`, `MANIFEST_NOT_OF_ITEM`, `CAMERA_FILE_MISSING`, `CAMERA_FILE_SIZE_MISMATCH`, `FRAGMENT_TABLE_INVALID`, `FRAGMENT_TOO_LARGE`, `SESSION_KEY_UNAVAILABLE`, `FRAGMENT_NOT_AUTHENTIC`; `503 NOT_READY` (`details.reason: CREDENTIAL_STORE_NOT_READY`) at envelope level. The media route itself (registry-external, `GET /media/{token}`) refuses with `403 NOT_PERMITTED` and `details.reason: MEDIA_SESSION_INVALID` (not a token of this Core, an altered one, or one bound to another operator or session; one ACCESS_DENIED row) or `MEDIA_SESSION_EXPIRED` (an authentic token past its lifetime; no row - ask operation 88 again).',
+      'Request (ruling D140; widened by D60, 2026-11-04): an OPTIONAL body `{ fileId: VIDEO-01 | VIDEO-02 | VIDEO-03 | VIDEO-04 }`; no body or `{}` plays `VIDEO-01` (a legacy two-track package accepts only its own two files). Refusals of this operation: `403 NOT_PERMITTED` with `details.reason: EVIDENCE_CASE_SCOPE` (REAL evidence of a case the caller does not hold; one ACCESS_DENIED row); `409 MEDIA_NOT_AVAILABLE`, for a package that cannot be played with `details.reason` one of `NOT_A_SEALED_PACKAGE`, `PACKAGE_MISSING`, `MANIFEST_UNREADABLE`, `MANIFEST_NOT_OF_ITEM`, `CAMERA_FILE_MISSING`, `CAMERA_FILE_SIZE_MISMATCH`, `FRAGMENT_TABLE_INVALID`, `FRAGMENT_TOO_LARGE`, `SESSION_KEY_UNAVAILABLE`, `FRAGMENT_NOT_AUTHENTIC`; `503 NOT_READY` (`details.reason: CREDENTIAL_STORE_NOT_READY`) at envelope level. The media route itself (registry-external, `GET /media/{token}`) refuses with `403 NOT_PERMITTED` and `details.reason: MEDIA_SESSION_INVALID` (not a token of this Core, an altered one, or one bound to another operator or session; one ACCESS_DENIED row) or `MEDIA_SESSION_EXPIRED` (an authentic token past its lifetime; no row - ask operation 88 again).',
       'Writes EVIDENCE_MEDIA_SERVED: fileId, bytesServed, the optional range markers, signed, expiresAt — never the URL and never a byte of media (`C3 §5.2`). For REAL evidence the caller must additionally own the case/session or be a SUPERVISOR once SEC35-16 is confirmed (provisional; M8).',
       CORE_SERVER_NOTE,
     ].join('\n\n'),

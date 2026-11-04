@@ -12,7 +12,6 @@ import {
   CAPTURE_CONNECTION_TEST_VALIDITY_MS,
   CAPTURE_DISCOVERY_RESULT_TTL_MS,
   CaptureConnectionOutcome,
-  SIM_ADOPTED_DEVICE_ID,
   SIM_CAPTURE_AUDIO_CARD_IDS,
   SIM_CAPTURE_CANDIDATE_IDS,
   SIM_TYPED_ADDRESS_CANDIDATE_ID,
@@ -145,7 +144,7 @@ describe('operations 93 and 94: the search and its candidates', () => {
     expect(h.rows('CAPTURE_DISCOVERY_SEARCHED')).toHaveLength(2);
     expect(JSON.stringify(h.rows('CAPTURE_DISCOVERY_SEARCHED'))).not.toMatch(/127\.0\.0\.1|Test camera|urn:uuid/);
     // A search raises no alert in the simulator (the list is not empty) and registers nothing.
-    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
+    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
     expect(h.state().alerts.filter((alert) => alert.target === 'CAPTURE_DISCOVERY')).toEqual([]);
   });
 
@@ -252,7 +251,7 @@ describe('operations 93 and 94: the search and its candidates', () => {
       permission: 'CAPTURE_CONFIG',
     });
     expect(JSON.stringify(h.state().audit.rows)).not.toContain(SIM_TYPED_ADDRESS_EXAMPLE);
-    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
+    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
 
     // The next search without the member is the old search again: the synthetic candidate is gone.
     const plain = h.call<CaptureDiscoverySearch>('POST', DISCOVERY);
@@ -268,15 +267,15 @@ describe('operations 93 and 94: the search and its candidates', () => {
     const typed = `${DISCOVERY}/candidates/${SIM_TYPED_ADDRESS_CANDIDATE_ID}`;
     expect(h.call<CaptureConnectionTest>('POST', `${typed}/test`, {}).body).toMatchObject({ candidateId: SIM_TYPED_ADDRESS_CANDIDATE_ID, outcome: 'REACHABLE' });
     const adopted = h.call<CaptureCandidateAdoption>('POST', `${typed}/adopt`, {});
-    expect([adopted.status, adopted.body.deviceId, adopted.body.device.host, adopted.body.device.adapter]).toEqual([201, 'CAM-03', address, 'FAKE']);
+    expect([adopted.status, adopted.body.deviceId, adopted.body.device.host, adopted.body.device.adapter]).toEqual([201, 'CAM-05', address, 'FAKE']);
 
     const again = h.call<CaptureDiscoverySearch>('POST', DISCOVERY, { address });
     expect(again.body).toMatchObject({ responderCount: 3, newCount: 1, registeredCount: 2 });
-    expect(h.call<CaptureDiscoveryStateBody>('GET', DISCOVERY).body.candidates.at(-1)).toMatchObject({ candidateId: SIM_TYPED_ADDRESS_CANDIDATE_ID, status: 'REGISTERED', deviceId: 'CAM-03', host: address });
+    expect(h.call<CaptureDiscoveryStateBody>('GET', DISCOVERY).body.candidates.at(-1)).toMatchObject({ candidateId: SIM_TYPED_ADDRESS_CANDIDATE_ID, status: 'REGISTERED', deviceId: 'CAM-05', host: address });
     // Another address is another, new candidate: no address is followed or re-pointed by a search.
     h.call('POST', DISCOVERY, { address: '10.20.30.41' });
     expect(h.call<CaptureDiscoveryStateBody>('GET', DISCOVERY).body.candidates.at(-1)).toMatchObject({ status: 'NEW', deviceId: null, host: '10.20.30.41' });
-    expect(h.state().captureDevices.devices.find((device) => device.id === 'CAM-03')?.host).toBe(address);
+    expect(h.state().captureDevices.devices.find((device) => device.id === 'CAM-05')?.host).toBe(address);
   });
 
   it('row 94: the refusals - outside the form 422, a form the stand-in rule refuses 422 DISCOVERY_ADDRESS_NOT_ALLOWED; each quotes nothing, starts no search and writes no row', () => {
@@ -395,26 +394,27 @@ describe('operations 95 and 96: the connection test and the adoption', () => {
     expect(h.call<CaptureConnectionTest>('POST', `${FRESH}/test`, {}).body.outcome).toBe('REACHABLE');
   });
 
-  it('the adoption: 409 before a test, 201 after one, CAM-03 in `captureDevices`, the selector untouched, a repeat 409', () => {
+  it('the adoption: 409 before a test, 201 after one, CAM-05 in `captureDevices`, the selector untouched, a repeat 409', () => {
     const h = searched();
     const untested = h.call('POST', `${FRESH}/adopt`, {});
     expect([untested.status, reasonOf(untested.body)]).toEqual([409, 'CANDIDATE_NOT_TESTED']);
-    expect(h.state().captureDevices.devices).toHaveLength(5);
+    expect(h.state().captureDevices.devices).toHaveLength(7); // D60 (2026-11-04): seven built-in devices
 
     h.call('POST', `${FRESH}/test`, {});
     const selector = h.state().captureConfig;
     const adopted = h.call<CaptureCandidateAdoption>('POST', `${FRESH}/adopt`, {});
     expect(adopted.status).toBe(201);
     expect(adopted.body).toEqual({
-      deviceId: SIM_ADOPTED_DEVICE_ID,
-      device: { id: 'CAM-03', kind: 'CAMERA', model: 'Test source', firmware: null, host: '127.0.0.1', poePort: null, online: true, streamState: null, capabilities: ['VIDEO'], adapter: 'FAKE', sourceClass: 'DEVELOPMENT', profiles: [] },
+      // D60 (2026-11-04): the mint follows the widened seed - the next free number is CAM-05.
+      deviceId: 'CAM-05',
+      device: { id: 'CAM-05', kind: 'CAMERA', model: 'Test source', firmware: null, host: '127.0.0.1', poePort: null, online: true, streamState: null, capabilities: ['VIDEO'], adapter: 'FAKE', sourceClass: 'DEVELOPMENT', profiles: [] },
       credentialSet: false,
     });
-    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'CAM-03']);
+    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'CAM-05']);
     // Adoption is not assignment: no track changed.
     expect(h.state().captureConfig).toBe(selector);
     expect(h.rows('CAPTURE_CANDIDATE_ADOPTED').map((row) => [row.deviceId, row.details])).toEqual([
-      ['CAM-03', { deviceId: 'CAM-03', candidateId: 'CND-000000000001', searchId: 'DSC-000001', adapter: 'FAKE', sourceClass: 'DEVELOPMENT', credentialSet: false, operationId: 'adoptCaptureCandidate', permission: 'CAPTURE_CONFIG' }],
+      ['CAM-05', { deviceId: 'CAM-05', candidateId: 'CND-000000000001', searchId: 'DSC-000001', adapter: 'FAKE', sourceClass: 'DEVELOPMENT', credentialSet: false, operationId: 'adoptCaptureCandidate', permission: 'CAPTURE_CONFIG' }],
     ]);
     // The verification row of the adoption beside the row of the test; no credential row without a credential.
     expect(h.rows('CAPTURE_CONNECTION_TESTED').map((row) => row.details?.['operationId'])).toEqual(['testCaptureCandidateConnection', 'adoptCaptureCandidate']);
@@ -422,21 +422,21 @@ describe('operations 95 and 96: the connection test and the adoption', () => {
 
     // At most one device per candidate.
     const repeat = h.call('POST', `${FRESH}/adopt`, {});
-    expect([repeat.status, reasonOf(repeat.body), (repeat.body as { error: { details: { deviceId?: string } } }).error.details.deviceId]).toEqual([409, 'CANDIDATE_ALREADY_REGISTERED', 'CAM-03']);
-    expect(h.state().captureDevices.devices).toHaveLength(6);
+    expect([repeat.status, reasonOf(repeat.body), (repeat.body as { error: { details: { deviceId?: string } } }).error.details.deviceId]).toEqual([409, 'CANDIDATE_ALREADY_REGISTERED', 'CAM-05']);
+    expect(h.state().captureDevices.devices).toHaveLength(8);
     // The new device is assignable like any registered camera (operation 79), a candidate id is not.
-    expect(h.call('POST', '/api/v1/capture/cameras/CAM-03/source', { trackId: 'VIDEO-02' }).status).toBe(200);
+    expect(h.call('POST', '/api/v1/capture/cameras/CAM-05/source', { trackId: 'VIDEO-02' }).status).toBe(200);
     expect(h.call('POST', `/api/v1/capture/cameras/${SIM_CAPTURE_CANDIDATE_IDS.fresh}/source`, { trackId: 'VIDEO-02' }).status).toBe(404);
     // A later search lists the adopted candidate as REGISTERED; a demo reset removes the device.
     h.call('POST', DISCOVERY);
     expect(h.call<CaptureDiscoveryStateBody>('GET', DISCOVERY).body.candidates.map((candidate) => [candidate.status, candidate.deviceId])).toEqual([
-      ['REGISTERED', 'CAM-03'],
+      ['REGISTERED', 'CAM-05'],
       ['REGISTERED', 'CAM-01'],
     ]);
     h.sim.actions.signOut();
     signIn(h, 'andi.pratama');
     h.sim.actions.resetDemo();
-    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
+    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
   });
 
   it('with a credential: 201, `credentialSet: true`, one CAPTURE_CREDENTIAL_SET row naming the device only, and the pair is nowhere', () => {
@@ -445,7 +445,7 @@ describe('operations 95 and 96: the connection test and the adoption', () => {
     const adopted = h.call<CaptureCandidateAdoption>('POST', `${FRESH}/adopt`, { credential: { username: CANARY_USER, secret: CANARY_SECRET } });
     expect([adopted.status, adopted.body.credentialSet]).toEqual([201, true]);
     expect(h.rows('CAPTURE_CREDENTIAL_SET').map((row) => [row.deviceId, row.details])).toEqual([
-      ['CAM-03', { operationId: 'adoptCaptureCandidate', deviceId: 'CAM-03', permission: 'CAPTURE_CONFIG' }],
+      ['CAM-05', { operationId: 'adoptCaptureCandidate', deviceId: 'CAM-05', permission: 'CAPTURE_CONFIG' }],
     ]);
     expect(h.rows('CAPTURE_CANDIDATE_ADOPTED')[0]?.details).toMatchObject({ credentialSet: true });
     const everything = JSON.stringify([adopted, h.state()]);
@@ -533,7 +533,7 @@ describe('operation 97: the local inputs, read again', () => {
     // The body is still one of the contract (the two members are optional there).
     expect(CaptureInputScanSchema.safeParse(scan.body).success).toBe(true);
     // It registers nothing and is no camera search: the candidate read stays empty.
-    expect(h.state().captureDevices.devices).toHaveLength(5);
+    expect(h.state().captureDevices.devices).toHaveLength(7); // D60 (2026-11-04): seven built-in devices
     expect(h.call('GET', DISCOVERY).body).toEqual({ search: null, candidates: [], truncated: false });
   });
 });
@@ -567,7 +567,7 @@ describe('operations 98 and 99: the sound cards and the registration of an input
       expect(written).not.toContain(card.product);
     }
     // It registers nothing and is no camera search.
-    expect(h.state().captureDevices.devices).toHaveLength(5);
+    expect(h.state().captureDevices.devices).toHaveLength(7); // D60 (2026-11-04): seven built-in devices
     expect(h.call('GET', DISCOVERY).body).toEqual({ search: null, candidates: [], truncated: false });
   });
 
@@ -602,7 +602,7 @@ describe('operations 98 and 99: the sound cards and the registration of an input
     // Nothing happened: the same state object, so no audit row, no device and no selector change.
     expect(h.state()).toBe(before);
     expect(h.rows('CAPTURE_AUDIO_INPUT_CHANGED')).toEqual([]);
-    expect(h.state().captureDevices.devices).toHaveLength(5);
+    expect(h.state().captureDevices.devices).toHaveLength(7); // D60 (2026-11-04): seven built-in devices
   });
 
   it('who may call: signed out 401, a role without CAPTURE_CONFIG 403, a tablet or phone 403 WEB_CONSOLE_ONLY, a session open 409 CAPTURE_CONFIG_LOCKED - each before the body is used and with no row', () => {
@@ -653,12 +653,12 @@ describe('the INTERNAL action `registerCaptureDevice` (C3 §2.6 "Adoption"; the 
   it('appends the camera to `captureDevices` with its adapter and class, writes no audit row and no event, and leaves the selector alone', () => {
     const h = harness();
     const before = h.state();
-    h.sim.actions.registerCaptureDevice({ id: 'CAM-03', model: null, host: '192.0.2.10:8080', adapter: 'ONVIF_RTSP' });
+    h.sim.actions.registerCaptureDevice({ id: 'CAM-05', model: null, host: '192.0.2.10:8080', adapter: 'ONVIF_RTSP' });
     const after = h.state();
-    expect(after.captureDevices.devices.at(-1)).toEqual({ id: 'CAM-03', kind: 'CAMERA', model: null, firmware: null, host: '192.0.2.10:8080', poePort: null, online: true, streamState: null, capabilities: ['VIDEO'], adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', profiles: [] });
-    expect(after.captureDevices.devices).toHaveLength(6);
+    expect(after.captureDevices.devices.at(-1)).toEqual({ id: 'CAM-05', kind: 'CAMERA', model: null, firmware: null, host: '192.0.2.10:8080', poePort: null, online: true, streamState: null, capabilities: ['VIDEO'], adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', profiles: [] });
+    expect(after.captureDevices.devices).toHaveLength(8);
     expect([after.audit, after.events, after.captureConfig]).toEqual([before.audit, before.events, before.captureConfig]);
-    expect(nextCaptureCameraId(after.captureDevices.devices)).toBe('CAM-04');
+    expect(nextCaptureCameraId(after.captureDevices.devices)).toBe('CAM-06'); // D60: the seed carries CAM-01..CAM-04, the test registered CAM-05
     expect(nextCaptureCameraId([{ id: 'CAM-09' }, { id: 'CAM-120' }, { id: 'MIC-200' }])).toBe('CAM-121');
   });
 
@@ -669,11 +669,11 @@ describe('the INTERNAL action `registerCaptureDevice` (C3 §2.6 "Adoption"; the 
       { id: 'CAM-01', model: null, host: '192.0.2.10', adapter: 'FAKE' },
       { id: 'MIC-03', model: null, host: '192.0.2.10', adapter: 'FAKE' },
       { id: 'CND-000000000001', model: null, host: '192.0.2.10', adapter: 'FAKE' },
-      { id: 'CAM-03', model: null, host: 'http://192.0.2.10/onvif', adapter: 'FAKE' },
-      { id: 'CAM-03', model: null, host: 'admin:pass@192.0.2.10', adapter: 'FAKE' },
-      { id: 'CAM-03', model: null, host: '', adapter: 'FAKE' },
-      { id: 'CAM-03', model: null, host: '192.0.2.10', adapter: 'onvif' },
-      { id: 'CAM-03', model: 'x'.repeat(121), host: '192.0.2.10', adapter: 'FAKE' },
+      { id: 'CAM-05', model: null, host: 'http://192.0.2.10/onvif', adapter: 'FAKE' },
+      { id: 'CAM-05', model: null, host: 'admin:pass@192.0.2.10', adapter: 'FAKE' },
+      { id: 'CAM-05', model: null, host: '', adapter: 'FAKE' },
+      { id: 'CAM-05', model: null, host: '192.0.2.10', adapter: 'onvif' },
+      { id: 'CAM-05', model: 'x'.repeat(121), host: '192.0.2.10', adapter: 'FAKE' },
     ]) {
       expect(() => h.sim.actions.registerCaptureDevice(device), JSON.stringify(device)).toThrow(/Illegal session transition/);
     }
@@ -684,7 +684,7 @@ describe('the INTERNAL action `registerCaptureDevice` (C3 §2.6 "Adoption"; the 
   // list of a camera reaches the clients as the device entry's `profiles`. MUTATIONS SEEN RED: (1) `captureDeviceOf`
   // leaving the member out; (2) `captureProfileFactsOf` answering a rate of 25 where the code states none.
   describe('row V7: the stored profile list travels on the device entry (`profiles`)', () => {
-    const DEVICE = { id: 'CAM-03', model: null, host: '192.0.2.10', adapter: 'ONVIF_RTSP' };
+    const DEVICE = { id: 'CAM-05', model: null, host: '192.0.2.10', adapter: 'ONVIF_RTSP' };
 
     it('an adoption that names its list gives an entry that states each code with what the code states - null where it states none, never a default', () => {
       const h = harness();
@@ -706,10 +706,10 @@ describe('the INTERNAL action `registerCaptureDevice` (C3 §2.6 "Adoption"; the 
       const h = harness();
       h.sim.actions.registerCaptureDevice({ ...DEVICE, profiles: [] });
       expect(h.state().captureDevices.devices.at(-1)?.profiles).toEqual([]);
-      h.sim.actions.registerCaptureDevice({ ...DEVICE, id: 'CAM-04' });
+      h.sim.actions.registerCaptureDevice({ ...DEVICE, id: 'CAM-06' });
       expect(h.state().captureDevices.devices.at(-1)?.profiles).toEqual([]);
       // The built-in devices state none, as before.
-      expect(h.state().captureDevices.devices.filter((device) => Object.hasOwn(device, 'profiles')).map((device) => device.id)).toEqual(['CAM-03', 'CAM-04']);
+      expect(h.state().captureDevices.devices.filter((device) => Object.hasOwn(device, 'profiles')).map((device) => device.id)).toEqual(['CAM-05', 'CAM-06']);
       // The simulated operation 96 goes through the same transition: its camera states the empty list, and its answer is the contract's.
       expect(CaptureDeviceStatusSchema.safeParse(h.state().captureDevices.devices.at(-1)).success).toBe(true);
     });
@@ -746,18 +746,18 @@ describe('the INTERNAL action `registerCaptureDevice` (C3 §2.6 "Adoption"; the 
       const h = harness();
       h.sim.actions.registerCaptureDevice({ ...DEVICE, profiles: [] });
       const before = h.state();
-      const stored = storeCaptureDeviceProfilesTransition(before, { deviceId: 'CAM-03', profiles: ['HEVC_1080P'] });
+      const stored = storeCaptureDeviceProfilesTransition(before, { deviceId: 'CAM-05', profiles: ['HEVC_1080P'] });
       expect(stored.result.profiles).toEqual([{ code: 'HEVC_1080P', codec: 'HEVC', resolution: '1080p', fps: null }]);
       expect({ ...stored.result, profiles: [] }).toEqual(before.captureDevices.devices.at(-1));
       expect(stored.state.captureDevices.devices.slice(0, -1)).toEqual(before.captureDevices.devices.slice(0, -1));
-      expect(storeCaptureDeviceProfilesTransition(stored.state, { deviceId: 'CAM-03', profiles: ['HEVC_1080P'] }).state).toBe(stored.state);
-      for (const input of [{ deviceId: 'MIC-01', profiles: [] }, { deviceId: 'CAM-09', profiles: [] }, { deviceId: 'CAM-03', profiles: ['x'] }]) {
+      expect(storeCaptureDeviceProfilesTransition(stored.state, { deviceId: 'CAM-05', profiles: ['HEVC_1080P'] }).state).toBe(stored.state);
+      for (const input of [{ deviceId: 'MIC-01', profiles: [] }, { deviceId: 'CAM-09', profiles: [] }, { deviceId: 'CAM-05', profiles: ['x'] }]) {
         expect(() => storeCaptureDeviceProfilesTransition(before, input), JSON.stringify(input)).toThrow(/Illegal session transition/);
         expect(() => h.sim.actions.storeCaptureDeviceProfiles(input), JSON.stringify(input)).toThrow(/Illegal session transition/);
       }
       expect(h.state()).toBe(before);
       // THE INTERNAL ACTION (51 -> 52): the same transition; no audit row, no event, the selector alone; no client may call it.
-      h.sim.actions.storeCaptureDeviceProfiles({ deviceId: 'CAM-03', profiles: ['HEVC_1080P'] });
+      h.sim.actions.storeCaptureDeviceProfiles({ deviceId: 'CAM-05', profiles: ['HEVC_1080P'] });
       const after = h.state();
       expect(after.captureDevices.devices.at(-1)).toEqual(stored.result);
       for (const slice of Object.keys(before) as (keyof typeof before)[]) {
@@ -793,11 +793,11 @@ describe('the INTERNAL action `registerCaptureMicrophone` (the Core runs it insi
     expect(nextCaptureMicrophoneId([{ id: 'MIC-09' }, { id: 'MIC-120' }, { id: 'CAM-200' }])).toBe('MIC-121');
     expect(nextCaptureMicrophoneId([])).toBe('MIC-01');
     // D50: ids the registry table holds outside the slice are taken too; CONTROL: without them the slice alone decides.
-    expect(nextCaptureMicrophoneId([{ id: 'CAM-03' }], ['MIC-01', 'MIC-02'])).toBe('MIC-03');
-    expect(nextCaptureMicrophoneId([{ id: 'CAM-03' }])).toBe('MIC-01');
+    expect(nextCaptureMicrophoneId([{ id: 'CAM-05' }], ['MIC-01', 'MIC-02'])).toBe('MIC-03');
+    expect(nextCaptureMicrophoneId([{ id: 'CAM-05' }])).toBe('MIC-01');
     // A second NEW microphone is another device; the seeded pair and the first one are untouched.
     h.sim.actions.registerCaptureMicrophone({ deviceId: null, model: MODEL });
-    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'MIC-03', 'MIC-04']);
+    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'MIC-03', 'MIC-04']); // D60 (2026-11-04): seven built-ins
   });
 
   it('a second registration of the same device enables it again with the model of the new listing and appends none', () => {
@@ -821,7 +821,7 @@ describe('the INTERNAL action `registerCaptureMicrophone` (the Core runs it insi
 
   it('refuses a model that is no product name of a card listing, and an id that is no registered USB audio microphone: nothing changes', () => {
     const h = harness();
-    h.sim.actions.registerCaptureDevice({ id: 'CAM-03', model: null, host: '192.0.2.10', adapter: 'ONVIF_RTSP' });
+    h.sim.actions.registerCaptureDevice({ id: 'CAM-05', model: null, host: '192.0.2.10', adapter: 'ONVIF_RTSP' });
     const before = h.state();
     for (const microphone of [
       { deviceId: null, model: '' },
@@ -832,7 +832,7 @@ describe('the INTERNAL action `registerCaptureMicrophone` (the Core runs it insi
       { deviceId: null, model: 'Mikrofon ä' },
       // A built-in microphone (no adapter member), a camera, an id the registry does not hold, an id of another form.
       { deviceId: 'MIC-01', model: MODEL },
-      { deviceId: 'CAM-03', model: MODEL },
+      { deviceId: 'CAM-05', model: MODEL },
       { deviceId: 'MIC-07', model: MODEL },
       { deviceId: 'MIC-3', model: MODEL },
       { deviceId: '', model: MODEL },
@@ -900,9 +900,9 @@ describe('the INTERNAL action `readdressCaptureDevice` (the Core runs it inside 
     h.sim.actions.readdressCaptureDevice({ deviceId: 'CAM-01', address: ADDRESS });
     expect(h.state()).toBe(after);
     // An adopted camera is re-addressed the same way.
-    h.sim.actions.registerCaptureDevice({ id: 'CAM-03', host: '192.168.10.30', model: null, adapter: 'ONVIF_RTSP' });
-    h.sim.actions.readdressCaptureDevice({ deviceId: 'CAM-03', address: '192.168.10.31' });
-    expect(h.state().captureDevices.devices.find((device) => device.id === 'CAM-03')).toMatchObject({ host: '192.168.10.31', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', online: true });
+    h.sim.actions.registerCaptureDevice({ id: 'CAM-05', host: '192.168.10.30', model: null, adapter: 'ONVIF_RTSP' });
+    h.sim.actions.readdressCaptureDevice({ deviceId: 'CAM-05', address: '192.168.10.31' });
+    expect(h.state().captureDevices.devices.find((device) => device.id === 'CAM-05')).toMatchObject({ host: '192.168.10.31', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', online: true });
   });
 
   it('an unknown id, a microphone, the switch and an address that is no host are refused, and nothing changes', () => {
@@ -987,7 +987,7 @@ describe('an audit row carries an endpoint reference only in the form urn:uuid:<
   const tested = (endpointRef: string | null, sourceClass: 'PRODUCTION' | 'DEVELOPMENT' = 'PRODUCTION') =>
     captureConnectionTestedDetails({ candidateId: 'CND-000001', searchId: 'SRCH-000001', outcome: 'REACHABLE', authenticated: true, adapter: 'ONVIF_RTSP', sourceClass, operationId: 'testCaptureCandidateConnection', host: '192.0.2.7', endpointRef });
   const adopted = (endpointRef: string | null) =>
-    captureCandidateAdoptedDetails({ deviceId: 'CAM-03', candidateId: 'CND-000001', searchId: 'SRCH-000001', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', credentialSet: true, host: '192.0.2.7', endpointRef });
+    captureCandidateAdoptedDetails({ deviceId: 'CAM-05', candidateId: 'CND-000001', searchId: 'SRCH-000001', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', credentialSet: true, host: '192.0.2.7', endpointRef });
 
   it('a valid URN stays, in both rows and in either letter case', () => {
     expect(tested(URN)).toMatchObject({ host: '192.0.2.7', endpointRef: URN });

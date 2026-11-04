@@ -77,9 +77,9 @@ describe('SH-06 session machine (register SH-05/SH-06)', () => {
     h.toRecording();
     const session = h.state().session;
     expect(session?.state).toBe('RECORDING');
-    // The selector as it stood at the start (SH-05/SH-06; OD-10).
+    // The selector as it stood at the start (SH-05/SH-06; OD-10). D60 (2026-11-04): FOUR camera lines.
     expect(session?.captureConfig).not.toBeNull();
-    expect(session?.captureConfig?.cameras).toHaveLength(2);
+    expect(session?.captureConfig?.cameras).toHaveLength(4);
     expect(session?.captureConfig?.mics.map((mic) => mic.role)).toEqual(['PRIMARY', 'STANDBY']);
     // The active input inside AUDIO-01 is the primary; the standby is hot (OD-09).
     expect(session?.audioSource).toMatchObject({
@@ -98,7 +98,7 @@ describe('SH-06 session machine (register SH-05/SH-06)', () => {
     // Mutate the live slice the way op 78 would (a swap of the roles while idle would be refused
     // mid-session, but the snapshot must be independent regardless).
     const next = { ...h.state(), captureConfig: { ...h.state().captureConfig, locked: true } };
-    expect(captureConfigSnapshot(next)?.cameras).toHaveLength(2);
+    expect(captureConfigSnapshot(next)?.cameras).toHaveLength(4); // D60 (2026-11-04)
     expect(h.state().session?.captureConfig?.mics.map((mic) => mic.role)).toEqual(snapshotted);
   });
 
@@ -195,7 +195,7 @@ describe('SH-07 evidence v2 (register SH-07; OD-02 L2)', () => {
     expect(item).toBeDefined();
     // One whole fMP4 per camera and no audio file (C3 §3 row 39; ev §A.1; integration pass D4,
     // AC-B-70): the session audio is inside the camera files. Until pass D4 a third entry `AUDIO-01` stood here.
-    expect(item?.files?.map((file) => file.trackId)).toEqual(['VIDEO-01', 'VIDEO-02']);
+    expect(item?.files?.map((file) => file.trackId)).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04']); // D60 (2026-11-04): four sealed files
     expect(item?.files?.every((file) => /^[0-9a-f]{64}$/.test(file.sha256))).toBe(true);
     expect(item?.fragmentChainHead).toMatch(/^[0-9a-f]{64}$/);
     expect(item?.transcriptSha256).toMatch(/^[0-9a-f]{64}$/);
@@ -212,7 +212,7 @@ describe('SH-07 evidence v2 (register SH-07; OD-02 L2)', () => {
     expect(buildEvidenceFilesV2({
       evidenceId: item!.id, sessionId: item!.sessionId, caseNumber: item!.caseNumber,
       recordedAt: item!.recordedAt, endedAt: item!.endedAt, sizeBytes: item!.sizeBytes,
-    })).toHaveLength(2);
+    })).toHaveLength(4); // D60 (2026-11-04): four camera files
     expect(transcriptSha256({
       evidenceId: item!.id, sessionId: item!.sessionId, caseNumber: item!.caseNumber,
       recordedAt: item!.recordedAt, endedAt: item!.endedAt, sizeBytes: item!.sizeBytes,

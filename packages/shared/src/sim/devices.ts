@@ -238,7 +238,8 @@ export const DEVICE_HEALTH_METRIC: Readonly<Record<string, DeviceHealthMetric>> 
 /** At most this many points per chart (the simulator series hold 120). */
 export const DEVICE_HEALTH_POINTS = 90;
 
-const CAMERA_OF: Readonly<Record<string, VideoTrackId>> = { 'CAM-01': 'VIDEO-01', 'CAM-02': 'VIDEO-02' };
+// D60 (2026-11-04): the two further built-in cameras carry their own track's health chart.
+const CAMERA_OF: Readonly<Record<string, VideoTrackId>> = { 'CAM-01': 'VIDEO-01', 'CAM-02': 'VIDEO-02', 'CAM-03': 'VIDEO-03', 'CAM-04': 'VIDEO-04' };
 const MIC_OF: Readonly<Record<string, AudioTrackId>> = { 'MIC-01': 'AUDIO-01', 'MIC-02': 'AUDIO-02' };
 
 function round1(value: number): number {

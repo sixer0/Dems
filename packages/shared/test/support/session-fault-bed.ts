@@ -56,8 +56,12 @@ export function harness(options: { deviceConsole?: boolean } = {}) {
   const failedStart = (): string => {
     sim.actions.clearFault('CAMERA_LOSS');
     toArmed();
+    // D60 (2026-11-04): NO camera connects means ALL FOUR tracks are lost - the two further
+    // built-in cameras would otherwise carry the start.
     sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-01' });
     sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-02' });
+    sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-03' });
+    sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-04' });
     sim.actions.startRecording();
     run(CAPTURE_CONNECT_MS);
     expect(state().session).toMatchObject({ state: 'FAULT', captureDurable: false });
