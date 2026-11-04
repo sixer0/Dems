@@ -532,7 +532,7 @@ export const common = {
     AUDIT_CHAIN_BROKEN: 'Audit chain broken',
   },
 
-  /** The tracks per medium — four video tracks (D60, 2026-11-04), two audio (research/04 §9 #8: MIC 1 is the interviewer). */
+  /** The tracks per medium — four video tracks (D60, 2026-11-04) and FOUR audio channels (D61, 2026-11-04; research/04 §9 #8: MIC 1 is the interviewer). */
   tracks: {
     'VIDEO-01': 'Camera 1',
     'VIDEO-02': 'Camera 2',
@@ -540,6 +540,8 @@ export const common = {
     'VIDEO-04': 'Camera 4', // D60
     'AUDIO-01': 'MIC 1 - Interviewer',
     'AUDIO-02': 'MIC 2 - Subject',
+    'AUDIO-03': 'MIC 3 - Channel 3', // D61 (2026-11-04): four simultaneous audio channels
+    'AUDIO-04': 'MIC 4 - Channel 4', // D61
   },
   devices: {
     camera1: 'Camera 1',
@@ -548,6 +550,8 @@ export const common = {
     camera4: 'Camera 4', // D60
     mic1: 'MIC 1',
     mic2: 'MIC 2',
+    mic3: 'MIC 3', // D61 (2026-11-04): the third and fourth microphones of the four-channel plane
+    mic4: 'MIC 4', // D61
     cameraFormat: '{{resolution}} • {{fps}} fps',
     cameraFormatCodec: '{{resolution}} • {{fps}} fps • {{codec}}',
     // The same two lines for a stream that states no rate (the slice's `fps` is null): no rate is printed.
@@ -919,11 +923,13 @@ export const common = {
       // D60 (2026-11-04): four video tracks — the loss costs one camera, whatever the total.
       oneCamera: '{{device}} is not reachable. The session will record with one camera fewer.',
       noMicrophone: 'No microphone is reachable. A session cannot start.',
+      // D61 (2026-11-04): the four channels record SIMULTANEOUSLY — the loss of a channel costs that
+      // channel, and the transcribed channel 1 blocks because the transcript would lose its source.
       activeMicrophone:
-        '{{device}} is the active microphone and is not reachable. Cancel this session, make {{other}} the primary microphone on Devices, then start again.',
-      activeMicrophoneFallback: 'Cancel this session, make {{other}} the primary microphone on Devices, then start again.',
-      noStandby: '{{device}} is not reachable. The session will record with no standby microphone.',
-      oneMicrophone: '{{device}} is not reachable. The session will record with one microphone and no standby.',
+        '{{device}} is the microphone of the transcribed channel 1 and is not reachable. Cancel this session, assign another microphone to channel 1 on Devices, then start again.',
+      activeMicrophoneFallback: 'Cancel this session, assign another microphone to the transcribed channel 1 on Devices, then start again.',
+      noStandby: '{{device}} is not reachable. The session will record without that microphone channel.',
+      oneMicrophone: '{{device}} is not reachable. The session will record with one microphone channel fewer.',
       notRecordable: '{{device}} cannot be recorded by this version of the system.',
       // Task 4 row 28 (WP-13a; names register N13): the pre-check item of an unassigned selector
       // slot. One sentence for BLOCK and WARN; it promises nothing about the start.
@@ -931,16 +937,19 @@ export const common = {
     },
   },
 
-  // Task 4 row 28 (WP-13a; decision C18 (3); names register N14): the six slots of the device
-  // selector (D60, 2026-11-04: four video slots) and the words of an empty one. Keyed by the values
-  // of `CAPTURE_SELECTOR_SLOTS`.
+  // Task 4 row 28 (WP-13a; decision C18 (3); names register N14): the EIGHT slots of the device
+  // selector (D60, 2026-11-04: four video slots; D61 of 2026-11-04: the two microphone roles became
+  // the four numbered channels) and the words of an empty one. Keyed by the values of
+  // `CAPTURE_SELECTOR_SLOTS`.
   captureSlot: {
     'VIDEO-01': 'Camera 1',
     'VIDEO-02': 'Camera 2',
     'VIDEO-03': 'Camera 3', // D60 (2026-11-04)
     'VIDEO-04': 'Camera 4', // D60
-    PRIMARY: 'Primary microphone',
-    STANDBY: 'Standby microphone',
+    'MIC-01': 'Microphone 1', // D61 (2026-11-04): the roles became the numbered channels
+    'MIC-02': 'Microphone 2', // D61
+    'MIC-03': 'Microphone 3', // D61
+    'MIC-04': 'Microphone 4', // D61
     notAssigned: 'Not assigned',
     assign: 'Assign',
     assignLabel: 'Assign a source to {{slot}}',
@@ -1153,8 +1162,11 @@ export const common = {
       'VIDEO-02': 'Feeds Camera 2',
       'VIDEO-03': 'Feeds Camera 3', // D60 (2026-11-04): four video tracks
       'VIDEO-04': 'Feeds Camera 4', // D60
-      PRIMARY: 'Primary microphone',
-      STANDBY: 'Standby microphone',
+      // D61 (2026-11-04): the roles became the four numbered channels.
+      'MIC-01': 'Feeds Microphone 1 (transcribed)',
+      'MIC-02': 'Feeds Microphone 2',
+      'MIC-03': 'Feeds Microphone 3',
+      'MIC-04': 'Feeds Microphone 4',
       NONE: 'Not assigned',
     },
     reachable: 'Reachable',
@@ -1278,8 +1290,9 @@ export const common = {
    * Both blocks ARE the tables of `sim/audio-not-continuous.ts` (imported, never copied).
    * `audioNotSampleContinuous`: the statement a client shows at the head of a transcript, of an
    * evidence item and of a session summary, with the fixed sentence (`sentence`) - never collapsed.
-   * `micSameDevice`: what the operator reads INSTEAD of the plain standby words when PRIMARY and
-   * STANDBY are two channels of one device. The five notices of the path are in
+   * `micSameDevice`: what the operator reads INSTEAD of the plain channel-2 words when the
+   * transcribed channel and channel 2 are two channels of one device (D61: the roles became the
+   * numbered channels). The five notices of the path are in
    * `captureFault.reason`.
    */
   audioNotSampleContinuous: AUDIO_NOT_SAMPLE_CONTINUOUS_WORDS,

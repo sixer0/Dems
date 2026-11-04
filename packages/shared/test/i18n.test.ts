@@ -234,8 +234,9 @@ describe('shared i18n resources: language and copy rules', () => {
 
   // Task 4 row 28 (WP-13a; decision C18 (3); names register N13, N14): the words of an unassigned
   // selector slot. Both clients read these keys; their tests pin the key, this test pins the words.
-  it('names the six selector slots and an empty one (`common.captureSlot`), and the pre-check sentence of an unassigned slot', () => {
-    // D60 (2026-11-04): the selector names SIX slots - the four video tracks and the two mic roles.
+  it('names the eight selector slots and an empty one (`common.captureSlot`), and the pre-check sentence of an unassigned slot', () => {
+    // D61 (2026-11-04): the selector names EIGHT slots - the four video tracks and the four
+    // microphone channels (the two roles became the first two channels). Was six (D60).
     // Keyed by the values of `CAPTURE_SELECTOR_SLOTS`, in their order, then the three words.
     expect(Object.keys(en.common.captureSlot)).toEqual([...CAPTURE_SELECTOR_SLOTS, 'notAssigned', 'assign', 'assignLabel']);
     expect(en.common.captureSlot).toEqual({
@@ -243,8 +244,10 @@ describe('shared i18n resources: language and copy rules', () => {
       'VIDEO-02': 'Camera 2',
       'VIDEO-03': 'Camera 3',
       'VIDEO-04': 'Camera 4',
-      PRIMARY: 'Primary microphone',
-      STANDBY: 'Standby microphone',
+      'MIC-01': 'Microphone 1', // D61: the role words PRIMARY/STANDBY left the slot map
+      'MIC-02': 'Microphone 2', // D61
+      'MIC-03': 'Microphone 3', // D61
+      'MIC-04': 'Microphone 4', // D61
       notAssigned: 'Not assigned',
       assign: 'Assign',
       assignLabel: 'Assign a source to {{slot}}',

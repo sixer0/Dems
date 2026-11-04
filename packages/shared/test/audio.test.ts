@@ -17,10 +17,10 @@ import {
   createSim,
   meterAt,
   meterInputOfChannel,
-  micInputOfRole,
+  micInputOfChannel,
   stepMeter,
   type AudioFrame,
-  type RoleMicLine,
+  type ChannelMicLine,
   type ScenarioName,
   type SimState,
 } from '../src/sim';
@@ -30,8 +30,9 @@ const START = Date.UTC(2026, 9, 1, 3, 0, 0); // 10:00 WIB
 function harness(scenario: ScenarioName = 'idle') {
   const clock = createManualClock(START);
   const sim = createSim({ clock, storage: null, authStorage: null, scenario });
-  const frames: Record<AudioTrackId, AudioFrame[]> = { 'AUDIO-01': [], 'AUDIO-02': [] };
-  for (const channel of ['AUDIO-01', 'AUDIO-02'] as const) {
+  // D61 (2026-11-04): four simultaneous channels; the harness subscribes to all four.
+  const frames: Record<AudioTrackId, AudioFrame[]> = { 'AUDIO-01': [], 'AUDIO-02': [], 'AUDIO-03': [], 'AUDIO-04': [] };
+  for (const channel of ['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04'] as const) {
     sim.store.subscribe(
       (state) => state.audio.inputs[DEFAULT_MIC_INPUT_OF_CHANNEL[channel]]!,
       (frame) => frames[channel].push(frame),
@@ -223,81 +224,77 @@ describe('CLIP latch (fault injection only) and NO SIGNAL', () => {
 
 // Task 4 row 164 (WP-13a; decisions C18 (2), C21 (7), AD-04; names register 161 sections 3 and 7):
 // a microphone input is looked up BY ROLE. The double is a hand-built list of selector lines.
-describe('the lookup of a microphone input by role (task 4 row 164)', () => {
-  const line = (inputId: string, role: 'PRIMARY' | 'STANDBY'): RoleMicLine => ({ inputId, role });
+describe('the lookup of a microphone input by channel (task 4 row 164; D61 of 2026-11-04: the roles became the numbered channels)', () => {
+  const line = (inputId: string, channel: 'MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04'): ChannelMicLine => ({ inputId, channel });
   type Answers = {
     primary: string | null;
     standby: string | null;
     meter: readonly [string | null, string | null];
-    channelOf: Readonly<Record<string, 'AUDIO-01' | 'AUDIO-02' | null>>;
+    // D61 (2026-11-04): four channels, so the answers name AUDIO-03/04 too.
+    channelOf: Readonly<Record<string, 'AUDIO-01' | 'AUDIO-02' | 'AUDIO-03' | 'AUDIO-04' | null>>;
   };
-  const table: readonly { name: string; lines: readonly RoleMicLine[]; complete: boolean; answers: Answers }[] = [
+  const table: readonly { name: string; lines: readonly ChannelMicLine[]; answers: Answers }[] = [
     {
-      name: 'complete, MIC-01 PRIMARY (the seeded arrangement)',
-      lines: [line('MIC-01', 'PRIMARY'), line('MIC-02', 'STANDBY')],
-      complete: true,
+      name: 'channels 1 and 2 held, MIC-01 on channel 1 (the seeded arrangement)',
+      lines: [line('MIC-01', 'MIC-01'), line('MIC-02', 'MIC-02')],
       answers: { primary: 'MIC-01', standby: 'MIC-02', meter: ['MIC-01', 'MIC-02'], channelOf: { 'MIC-01': 'AUDIO-01', 'MIC-02': 'AUDIO-02', 'MIC-03': null } },
     },
     {
-      name: 'complete, MIC-02 PRIMARY (the other arrangement, same input order)',
-      lines: [line('MIC-01', 'STANDBY'), line('MIC-02', 'PRIMARY')],
-      complete: true,
-      answers: { primary: 'MIC-02', standby: 'MIC-01', meter: ['MIC-01', 'MIC-02'], channelOf: { 'MIC-01': 'AUDIO-01', 'MIC-02': 'AUDIO-02', 'MIC-03': null } },
+      name: 'channels traded: MIC-02 on channel 1 (the transcription toggle\'s other side)',
+      lines: [line('MIC-01', 'MIC-02'), line('MIC-02', 'MIC-01')],
+      answers: { primary: 'MIC-02', standby: 'MIC-01', meter: ['MIC-02', 'MIC-01'], channelOf: { 'MIC-01': 'AUDIO-02', 'MIC-02': 'AUDIO-01', 'MIC-03': null } },
     },
     {
-      name: 'complete, inputs beyond the built-in pair',
-      lines: [line('MIC-04', 'STANDBY'), line('MIC-03', 'PRIMARY')],
-      complete: true,
-      answers: { primary: 'MIC-03', standby: 'MIC-04', meter: ['MIC-04', 'MIC-03'], channelOf: { 'MIC-04': 'AUDIO-01', 'MIC-03': 'AUDIO-02', 'MIC-01': null, 'MIC-02': null } },
+      name: 'channels 1 and 2 held by inputs beyond the built-in pair',
+      lines: [line('MIC-03', 'MIC-01'), line('MIC-04', 'MIC-02')],
+      answers: { primary: 'MIC-03', standby: 'MIC-04', meter: ['MIC-03', 'MIC-04'], channelOf: { 'MIC-03': 'AUDIO-01', 'MIC-04': 'AUDIO-02', 'MIC-01': null, 'MIC-02': null } },
     },
     {
-      name: 'a lone STANDBY line',
-      lines: [line('MIC-02', 'STANDBY')],
-      complete: false,
-      answers: { primary: null, standby: 'MIC-02', meter: [null, null], channelOf: { 'MIC-01': null, 'MIC-02': null } },
+      name: 'a lone channel-2 line: it has its OWN meter now (D61 per-channel, no pair rule)',
+      lines: [line('MIC-02', 'MIC-02')],
+      answers: { primary: null, standby: 'MIC-02', meter: [null, 'MIC-02'], channelOf: { 'MIC-01': null, 'MIC-02': 'AUDIO-02' } },
     },
     {
-      name: 'a lone PRIMARY line',
-      lines: [line('MIC-03', 'PRIMARY')],
-      complete: false,
-      answers: { primary: 'MIC-03', standby: null, meter: [null, null], channelOf: { 'MIC-03': null, 'MIC-01': null } },
+      name: 'a lone channel-3 line: channel 3 has its input, channels 1 and 2 do not',
+      lines: [line('MIC-03', 'MIC-03')],
+      // D61 (2026-11-04): the lookup answers by STATED channel - channel 1 has no line (primary
+      // null), and the lone line states channel 3, so its channel is AUDIO-03, not "no channel".
+      answers: { primary: null, standby: null, meter: [null, null], channelOf: { 'MIC-03': 'AUDIO-03', 'MIC-01': null } },
     },
     {
       name: 'no microphone line',
       lines: [],
-      complete: false,
       answers: { primary: null, standby: null, meter: [null, null], channelOf: { 'MIC-01': null, 'MIC-02': null } },
     },
     {
-      name: 'two lines of one role (a state put in place otherwise)',
-      lines: [line('MIC-01', 'PRIMARY'), line('MIC-02', 'PRIMARY')],
-      complete: false,
-      answers: { primary: 'MIC-01', standby: null, meter: [null, null], channelOf: { 'MIC-01': null, 'MIC-02': null } },
+      name: 'two lines of one channel (a state put in place otherwise): the first line answers',
+      lines: [line('MIC-01', 'MIC-01'), line('MIC-02', 'MIC-01')],
+      answers: { primary: 'MIC-01', standby: null, meter: ['MIC-01', null], channelOf: { 'MIC-01': 'AUDIO-01', 'MIC-02': 'AUDIO-01' } },
     },
   ];
 
-  it.each(table)('$name: each reader answers as the register states', ({ lines, complete, answers }) => {
-    expect(micInputOfRole(lines, 'PRIMARY')).toBe(answers.primary);
-    expect(micInputOfRole(lines, 'STANDBY')).toBe(answers.standby);
+  it.each(table)('$name: each reader answers as the register states', ({ lines, answers }) => {
+    expect(micInputOfChannel(lines, 'MIC-01')).toBe(answers.primary);
+    expect(micInputOfChannel(lines, 'MIC-02')).toBe(answers.standby);
     expect([meterInputOfChannel(lines, 'AUDIO-01'), meterInputOfChannel(lines, 'AUDIO-02')]).toEqual(answers.meter);
     for (const [inputId, channel] of Object.entries(answers.channelOf)) expect(channelOfMicLine(lines, inputId)).toBe(channel);
     // The pair of `selector-in-force.ts` is the same rule (it imports nothing, so it spells it itself).
     expect(audioPairOfSelector(lines)).toEqual({ activeInputId: answers.primary, standbyInputId: answers.standby });
-    // D137 is kept for a complete pair: channel 1 is the first line as held, channel 2 the second,
-    // in both arrangements (the positional function itself is gone, task 4 row 172).
-    if (complete) {
-      expect(meterInputOfChannel(lines, 'AUDIO-01')).toBe(lines[0]!.inputId);
-      expect(meterInputOfChannel(lines, 'AUDIO-02')).toBe(lines[1]!.inputId);
-    }
   });
 
-  it('a lone STANDBY line is never the active input; without lines the answer is absent, neither MIC-01 nor MIC-02', () => {
-    const lone = [line('MIC-02', 'STANDBY')];
-    expect(micInputOfRole(lone, 'PRIMARY')).toBeNull();
+  it('D61 per-channel: every named channel has its input, independently of the others', () => {
+    const four = [line('MIC-05', 'MIC-01'), line('MIC-06', 'MIC-02'), line('MIC-07', 'MIC-03'), line('MIC-08', 'MIC-04')];
+    expect([meterInputOfChannel(four, 'AUDIO-01'), meterInputOfChannel(four, 'AUDIO-02'), meterInputOfChannel(four, 'AUDIO-03'), meterInputOfChannel(four, 'AUDIO-04')]).toEqual(['MIC-05', 'MIC-06', 'MIC-07', 'MIC-08']);
+    expect(channelOfMicLine(four, 'MIC-07')).toBe('AUDIO-03');
+  });
+
+  it('a lone channel-2 line is never the active input; without lines the answer is absent, neither MIC-01 nor MIC-02', () => {
+    const lone = [line('MIC-02', 'MIC-02')];
+    expect(micInputOfChannel(lone, 'MIC-01')).toBeNull();
     expect(audioPairOfSelector(lone).activeInputId).toBeNull();
     const answers = [
-      micInputOfRole([], 'PRIMARY'),
-      micInputOfRole([], 'STANDBY'),
+      micInputOfChannel([], 'MIC-01'),
+      micInputOfChannel([], 'MIC-02'),
       meterInputOfChannel([], 'AUDIO-01'),
       meterInputOfChannel([], 'AUDIO-02'),
       audioPairOfSelector([]).activeInputId,
@@ -305,11 +302,11 @@ describe('the lookup of a microphone input by role (task 4 row 164)', () => {
     ];
     // Absent is `null`: never undefined, an empty text or a built-in input.
     expect(answers).toEqual([null, null, null, null, null, null]);
-    // `channelOfMicLine` takes lines that STATE their role (register E20; the parameter seam of
-    // row 164 is out, task 4 row 149): a list without roles is a compile error, not an answer by position.
-    // @ts-expect-error a line without a role is not a `RoleMicLine`
-    const unstated: readonly RoleMicLine[] = [{ inputId: 'MIC-01' }, { inputId: 'MIC-02' }];
-    // Whatever reaches it untyped: no complete pair, hence no channel - not channel 1 and 2 by place.
+    // `channelOfMicLine` takes lines that STATE their channel (register E20; D61): a list without
+    // channels is a compile error, not an answer by position.
+    // @ts-expect-error a line without a channel is not a `ChannelMicLine`
+    const unstated: readonly ChannelMicLine[] = [{ inputId: 'MIC-01' }, { inputId: 'MIC-02' }];
+    // Whatever reaches it untyped: no line names the input, so no channel - not channel 1 and 2 by place.
     expect([channelOfMicLine(unstated, 'MIC-01'), channelOfMicLine([], 'MIC-01')]).toEqual([null, null]);
   });
 
@@ -321,27 +318,30 @@ describe('the lookup of a microphone input by role (task 4 row 164)', () => {
     const h = harness('idle');
     expect(activeMeterChannel(h.state())).toBe('AUDIO-01');
     expect(activeMeterChannel({ ...h.state(), audio: { ...h.state().audio, activeInputId: 'MIC-02' } })).toBe('AUDIO-02');
-    // No active input (what the slice holds without a PRIMARY line): no lookup, the label.
+    // No active input (what the slice holds without a channel-1 line): no lookup, the label.
     const noneActive: SimState = { ...h.state(), audio: { ...h.state().audio, activeInputId: null } };
     expect(activeMeterChannel(noneActive)).toBe('AUDIO-01');
-    // A lone line has no channel: the label, and no input behind it.
-    const lone = { ...h.state(), captureConfig: { ...h.state().captureConfig, mics: seeded(h).slice(1) }, audio: { ...h.state().audio, activeInputId: 'MIC-02' } };
+    // An active input that no line carries: no channel, the label (D61: the input of a lone
+    // channel-3 line reads its OWN channel, AUDIO-03 — not the label).
+    const lone = { ...h.state(), captureConfig: { ...h.state().captureConfig, mics: [seeded(h)[2]!] }, audio: { ...h.state().audio, activeInputId: 'MIC-02' } };
     expect(activeMeterChannel(lone)).toBe('AUDIO-01');
     expect(meterInputOfChannel(lone.captureConfig.mics, activeMeterChannel(lone))).toBeNull();
+    const ownChannel = { ...h.state(), captureConfig: { ...h.state().captureConfig, mics: [seeded(h)[2]!] }, audio: { ...h.state().audio, activeInputId: 'MIC-03' } };
+    expect(activeMeterChannel(ownChannel)).toBe('AUDIO-03');
   });
 
-  it('the subsystem: no frame for a channel without an input, and no frame under a built-in name', () => {
+  it('the subsystem: no frame for a channel without a line, and no frame under a built-in name', () => {
     const h = harness('idle');
     h.run(200);
-    expect(Object.keys(h.state().audio.inputs).sort()).toEqual(['MIC-01', 'MIC-02']);
+    expect(Object.keys(h.state().audio.inputs).sort()).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']); // D61: four seeded lines
     expect(h.state().audio.activeInputId).toBe('MIC-01');
 
-    // A lone STANDBY line: no meter channel, hence no frame at all.
-    withSelector(h, seeded(h).filter((mic) => mic.role === 'STANDBY'));
+    // A selector that keeps ONLY channel 2: D61 per-channel — channel 2 has its frame, the others none.
+    withSelector(h, seeded(h).filter((mic) => mic.channel === 'MIC-02'));
     h.run(200);
-    expect(h.state().audio.inputs).toEqual({});
-    // The register's answer (no PRIMARY line): the state holds NO active input. It is not the
-    // input it held, not the lone STANDBY line and not a line by position (task 4 row 149).
+    expect(Object.keys(h.state().audio.inputs)).toEqual(['MIC-02']);
+    // The register's answer (no channel-1 line): the state holds NO active input. It is not the
+    // input it held, not the lone channel-2 line and not a line by position (task 4 row 149).
     expect(h.state().audio.activeInputId).toBeNull();
 
     // No microphone line: no frame either.
@@ -350,41 +350,47 @@ describe('the lookup of a microphone input by role (task 4 row 164)', () => {
     expect(h.state().audio.inputs).toEqual({});
   });
 
-  it('the subsystem: a pair that no longer holds the active input reads its PRIMARY line, by role', () => {
+  it('the subsystem: a selector that no longer holds the active input reads its channel-1 line, by channel', () => {
     const h = harness('idle');
     h.run(100);
-    // MIC-03 / MIC-04 with the PRIMARY role on the SECOND line: position 0 is the STANDBY.
+    // MIC-03 / MIC-04 with channel 1 on the SECOND line: position 0 is channel 2.
     withSelector(h, [
-      { ...seeded(h)[0]!, inputId: 'MIC-04', deviceId: 'MIC-04', role: 'STANDBY' },
-      { ...seeded(h)[1]!, inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' },
+      { ...seeded(h)[0]!, channel: 'MIC-02', inputId: 'MIC-04', deviceId: 'MIC-04' },
+      { ...seeded(h)[1]!, channel: 'MIC-01', inputId: 'MIC-03', deviceId: 'MIC-03' },
     ]);
     h.run(100);
     expect(Object.keys(h.state().audio.inputs).sort()).toEqual(['MIC-03', 'MIC-04']);
     expect(h.state().audio.activeInputId).toBe('MIC-03');
   });
 
-  it('Simulated mode on the seeded selector: the lookup answers the table of the built-in pair, as before', () => {
+  it('Simulated mode on the seeded selector: the lookup answers the table of the four built-in channels, as before', () => {
     const h = harness('recording');
     const lines = seeded(h);
-    expect(lines.map((mic) => [mic.inputId, mic.role])).toEqual([['MIC-01', 'PRIMARY'], ['MIC-02', 'STANDBY']]);
-    for (const channel of ['AUDIO-01', 'AUDIO-02'] as const) {
+    expect(lines.map((mic) => [mic.inputId, mic.channel])).toEqual([['MIC-01', 'MIC-01'], ['MIC-02', 'MIC-02'], ['MIC-03', 'MIC-03'], ['MIC-04', 'MIC-04']]); // D61
+    for (const channel of ['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04'] as const) {
       expect(meterInputOfChannel(lines, channel)).toBe(DEFAULT_MIC_INPUT_OF_CHANNEL[channel]);
     }
     h.run(1_000);
     expect(h.frames['AUDIO-01']).toHaveLength(20);
     expect(h.frames['AUDIO-02']).toHaveLength(20);
-    expect(h.state().audio.activeInputId).toBe(micInputOfRole(lines, 'PRIMARY'));
+    expect(h.frames['AUDIO-03']).toHaveLength(20); // D61
+    expect(h.frames['AUDIO-04']).toHaveLength(20); // D61
+    expect(h.state().audio.activeInputId).toBe(micInputOfChannel(lines, 'MIC-01'));
   });
 });
 
-// Task 4 row 172 (WP-13a; decisions C18 (2); row 27 site C15): the positional function - "the input
-// of a meter channel is the line at that place, else a built-in input" - is DELETED and stays out.
-// The scan reads every source and test file of the four workspaces that resolved a microphone
-// through it (24 non-test files at row 27's measurement) and holds them to 0 names of it, comments
-// included: a name in a comment is how it comes back.
-describe('the positional microphone function stays deleted (static; task 4 row 172)', () => {
-  /** Built from parts, so that this file is not itself an occurrence. */
-  const DELETED_NAME = ['mic', 'Input', 'Of', 'Channel'].join('');
+// Task 4 row 172 (WP-13a; decisions C18 (2); row 27 site C15), re-pinned by D61 (2026-11-04): what
+// stays out is the POSITIONAL FALLBACK call shape - the by-channel lookup applied to a meter TRACK
+// as its second argument ("the input of a meter channel is the line at that place, else a built-in
+// input"). The NAME of the lookup stays: D61 renamed the roles to the numbered channels and the
+// apps lane reads through it. So the scan reads every source and test file of the four workspaces
+// that resolved a microphone through the old function (24 non-test files at row 27's measurement)
+// and holds them to 0 calls of that shape, comments included: a planted call is how it comes back.
+describe('the positional microphone lookup stays deleted (static; task 4 row 172; re-pinned by D61 of 2026-11-04)', () => {
+  /** The lookup's name, built from parts so no line of this file spells the banned call shape. */
+  const LOOKUP_NAME = ['mic', 'Input', 'Of', 'Channel'].join('');
+  /** The banned shape: the lookup applied with an `AUDIO` track as its second argument. */
+  const FORBIDDEN_SHAPE = new RegExp(`\\b${LOOKUP_NAME}\\b\\s*\\([^)]*['"]AUDIO-0`);
   const REPOSITORY = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
   /** The four source trees of row 27: each workspace's sources AND its tests. */
   const TREES = ['apps/core-server', 'apps/core-web', 'apps/mobile', 'packages/shared'] as const;
@@ -403,15 +409,15 @@ describe('the positional microphone function stays deleted (static; task 4 row 1
     walk(join(REPOSITORY, tree));
     return found;
   };
-  /** `file:line` of every place a text names the function as an identifier. */
+  /** `file:line` of every place a text calls the lookup with a meter-track argument. */
   const namesIn = (file: string, text: string): string[] =>
     text
       .split('\n')
-      .flatMap((line, index) => (new RegExp(`\\b${DELETED_NAME}\\b`).test(line) ? [`${file}:${index + 1}`] : []));
+      .flatMap((line, index) => (FORBIDDEN_SHAPE.test(line) ? [`${file}:${index + 1}`] : []));
 
   const scanned = TREES.map((tree) => ({ tree, files: sourcesOf(tree) }));
 
-  it('the scan reads the four trees: hundreds of files each, the definition\'s old home and its three client readers among them', () => {
+  it('the scan reads the four trees: hundreds of files each, the definition\'s home and its three client readers among them', () => {
     for (const { tree, files } of scanned) expect(files.length, tree).toBeGreaterThan(200);
     for (const path of [
       'packages/shared/src/sim/audio.ts',
@@ -424,25 +430,27 @@ describe('the positional microphone function stays deleted (static; task 4 row 1
     }
   });
 
-  it('0 files of the four source trees name it (24 non-test files went through it at row 27)', () => {
+  it('0 files of the four source trees spell the banned call shape (24 non-test files went through it at row 27; D61: the name may stand, the track argument may not)', () => {
     const places = scanned.flatMap(({ files }) => files.flatMap((path) => namesIn(relative(REPOSITORY, path), readFileSync(path, 'utf8'))));
     expect(places).toEqual([]);
   });
 
-  it('the shared sim barrel exports no such member, and the lookups by role and by channel are there', async () => {
+  it('the shared sim barrel exports the by-channel lookup under its name (D61: the name stays) and the track-side reader beside it', async () => {
     const sim: Record<string, unknown> = await import('../src/sim');
-    expect(Object.keys(sim)).not.toContain(DELETED_NAME);
+    // D61 (2026-11-04): the apps lane reads through this name; only the positional call shape is out.
+    expect(typeof sim[LOOKUP_NAME]).toBe('function');
     expect(typeof sim['micInputOfRole']).toBe('function');
     expect(typeof sim['meterInputOfChannel']).toBe('function');
   });
 
-  it('CONTROL: a planted call, a planted import and a planted comment are each found; a longer identifier is not', () => {
+  it('CONTROL: a planted banned call is found; the bare name, a comment, a longer identifier and a by-channel call are not', () => {
     const planted = [
-      `const input = ${DELETED_NAME}(lines, 'AUDIO-01');`,
-      `import { ${DELETED_NAME} } from '@dems/shared/sim';`,
-      `// the input is what ${DELETED_NAME} answers`,
-      `const other = ${DELETED_NAME}Legacy(lines);`,
+      `const input = ${LOOKUP_NAME}(lines, 'AUDIO-01');`,
+      `import { ${LOOKUP_NAME} } from '@dems/shared/sim';`,
+      `// the input is what ${LOOKUP_NAME} answers`,
+      `const other = ${LOOKUP_NAME}Legacy(lines, 'AUDIO-01');`,
+      `const right = ${LOOKUP_NAME}(lines, 'MIC-01');`,
     ].join('\n');
-    expect(namesIn('planted.ts', planted)).toEqual(['planted.ts:1', 'planted.ts:2', 'planted.ts:3']);
+    expect(namesIn('planted.ts', planted)).toEqual(['planted.ts:1']);
   });
 });

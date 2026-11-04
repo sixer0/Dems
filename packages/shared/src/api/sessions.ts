@@ -159,7 +159,7 @@ export const START_REFUSED_SESSION_KEY_EXAMPLE = Object.freeze({
 /** Request body of op 81: the input to make active, with an optional operator reason. */
 export const AudioSourceSwitchRequestSchema = z
   .strictObject({
-    inputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The mic input to move behind AUDIO-01, `MIC-NN`: one of the two inputs of the session (the other becomes STANDBY).'),
+    inputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The mic input to move behind AUDIO-01, `MIC-NN`: one of the two inputs of the transcription pair (channels `MIC-01` and `MIC-02`; D61, 2026-11-04: the other returns to channel 2 — the other two channels record untouched).'),
     reason: boundedText(500).optional().describe('Why the operator switched; audited as text, never as a secret.'),
   })
   .describe('Request body of `POST /api/v1/session/{id}/audio-source` (C3 §2.3 op 81).');
@@ -187,7 +187,7 @@ export const AudioSourceIntervalEntrySchema = z
     sessionId: sessionId(),
     seq: count().min(1).describe('Interval number within the session, from 1: the manifest\'s rule (ev §B.5) and the table\'s (`session_audio_intervals_seq_check`). Pass D6: the text said "from 0"; no Core ever answered 0 in real capture.'),
     inputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The mic device of this interval, `MIC-NN`.'),
-    role: z.enum(MicRole),
+    role: z.enum(MicRole), // D61 (2026-11-04): the transcription-pair word of the interval (channel 1 = PRIMARY, channel 2 = STANDBY)
     fromMs: count().describe('Media-pts start (ms).'),
     toMs: nullableEpochMs().describe('Media-pts end (ms); null while the interval is open.'),
     fromAt: epochMs().describe('UTC-ms record of the start.'),
@@ -574,7 +574,7 @@ export const AUDIO_SOURCE_OPERATIONS = [
     mode: CoreApiMode.SIMULATED,
     summary: 'Switch the active microphone',
     description: [
-      'The in-session toggle (OD-09): moves the active source behind AUDIO-01 to the named input at the next worker input-chunk boundary — one worker input chunk plus IPC latency, at most 21.333 ms with 1024-sample frames (erratum AU2-07; capture-spec §E). It records one audio-source interval and answers the new active/standby state.',
+      'The in-session toggle (OD-09; D61 of 2026-11-04: all FOUR channels record at once — the toggle moves only the TRANSCRIBED source behind AUDIO-01) moves the active source behind AUDIO-01 to the named input at the next worker input-chunk boundary — one worker input chunk plus IPC latency, at most 21.333 ms with 1024-sample frames (erratum AU2-07; capture-spec §E). It records one audio-source interval and answers the new active/standby state.',
       'It **never** auto-switches: sustained silence raises the MIC_SILENT warning and the operator decides (OD-11). Refused when the session is not RECORDING (`409 INVALID_STATE`). Access: SESSION_START **and** the `SESSION_HOLDER` condition — the operator who created the open session, or any SUPERVISOR (D4 OD-09; SEC35-18).',
       'Writes AUDIO_SOURCE_SWITCHED: fromInput, toInput, the media-pts fromMs/toMs of the closed interval, and `sendingDeviceId` — **required when the caller is a paired mobile device** (B15; SEC35-17), optional only for a web operator session. There is no `trigger` key: every switch is operator-initiated.',
       SIM_V2_NOTE,

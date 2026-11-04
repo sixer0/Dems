@@ -9,7 +9,7 @@
  * Step 32 adds sealing, `verify()` and the tamper hook (EVT-13/14) on top of these helpers,
  * so a verify of a dataset item recomputes exactly what the dataset stored.
  */
-import { TrackId, type EvidenceLifecycleStage, type TimeSource } from '../domain';
+import { AUDIO_TRACK_IDS, TrackId, VIDEO_TRACK_IDS, type EvidenceLifecycleStage, type TimeSource } from '../domain'; // AUDIO_TRACK_IDS, VIDEO_TRACK_IDS: D61/D60 (2026-11-04), the eight sealed files
 import { demoPackageIntegrityFor, demoTrackHash, type DemoPackageIntegrity } from './demo-alignment';
 import { canonicalJSON, sha256Hex } from './events';
 import type {
@@ -38,16 +38,25 @@ export const TRACK_LABELS = {
   'VIDEO-04': 'Camera 4',
   'AUDIO-01': 'MIC 1 – Interviewer',
   'AUDIO-02': 'MIC 2 – Subject',
+  'AUDIO-03': 'MIC 3 – Channel 3', // D61 (2026-11-04): four simultaneous audio channels
+  'AUDIO-04': 'MIC 4 – Channel 4', // D61
 } as const satisfies Record<TrackId, string>;
 
-/** Share of the recording bytes per track (two 1080p video tracks dominate). */
+/**
+ * Share of the recording bytes per track (the four 1080p video tracks dominate).
+ * D61 (2026-11-04): the audio plane widened to FOUR files; the four split the same 2 % audio
+ * budget the pair held (0.005 each), so the shares still sum to exactly 1.000 — the invariant
+ * every synthetic file size derives from (`trackSize`).
+ */
 const TRACK_SHARE = {
   'VIDEO-01': 0.245,
   'VIDEO-02': 0.245,
   'VIDEO-03': 0.245, // D60: four 1080p video tracks dominate
   'VIDEO-04': 0.245,
-  'AUDIO-01': 0.01,
-  'AUDIO-02': 0.01,
+  'AUDIO-01': 0.005, // D61: four PCM 48 kHz channels share the audio budget
+  'AUDIO-02': 0.005, // D61
+  'AUDIO-03': 0.005, // D61
+  'AUDIO-04': 0.005, // D61
 } as const satisfies Record<TrackId, number>;
 
 export const TRACK_ORDER = [
@@ -250,19 +259,20 @@ export function verificationOfRecordFailed(item: unknown): boolean {
 
 /**
  * The sealed FILES of a v2 item (register SH-07; D224/D225; C3 §3 row 39: "`files[]` (one whole
- * fMP4 per camera ...)"; evidence package spec §A.1: the package holds `fragments/VIDEO-01.mp4`
- * through `fragments/VIDEO-04.mp4` and no audio file - the session audio track is muxed into the
- * camera files). So the list is the camera files and nothing else.
+ * fMP4 per camera ...)"; evidence package spec §A.1; D60 of 2026-11-04: FOUR camera files).
  *
- * D60 (2026-11-04): FOUR tracks. A simulated session records all four camera lines its default
- * selector assigns, and seals the four files at once; the byte shares of `TRACK_SHARE` already
- * carry four 1080p streams (0.245 each).
+ * D61 (2026-11-04): the microphone plane mirrors the video plane — a v2 session seals EIGHT files,
+ * the four camera files plus one audio file per simultaneous channel (`AUDIO-01`..`AUDIO-04`). The
+ * earlier list carried no audio file at all (the OD-01 T1 session audio was muxed into the camera
+ * files); the manifest of a package names its own track list and the verifier reads it as a prefix
+ * of the widened order, so packages sealed under the older shapes stay valid (prefix rule).
  *
- * Until integration pass D4 this list also held `AUDIO-01` as a third "file": a file no v2
- * package has, and the one member of an answer that listed half of an audio pair (AC-B-70). The
- * session audio is reported by `tracks` (v1 view) and `audioSourceIntervals`, never by `files`.
+ * Until integration pass D4 this list also held `AUDIO-01` as a third "file": a file no pre-D61
+ * v2 package had, and the one member of an answer that listed half of an audio pair (AC-B-70). The
+ * session audio is reported by `tracks` (v1 view) and `audioSourceIntervals` too, never only by
+ * `files`.
  */
-export const EVIDENCE_FILE_TRACKS = [TrackId.VIDEO_01, TrackId.VIDEO_02, TrackId.VIDEO_03, TrackId.VIDEO_04] as const satisfies readonly TrackId[]; // D60 (2026-11-04): was the two-track pair
+export const EVIDENCE_FILE_TRACKS = [...VIDEO_TRACK_IDS, ...AUDIO_TRACK_IDS] as const satisfies readonly TrackId[]; // D61 (2026-11-04): eight files, four per medium
 
 /** The fragment quantum used to derive a synthetic fragment count for the running chain. */
 const FRAGMENT_MS = 2_000;

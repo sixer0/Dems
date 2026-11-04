@@ -412,7 +412,8 @@ describe('the session audio source is the selector\'s pair, whatever its inputs 
     const state = h.state();
     expect(audioSourceAtStart(state, 'SES-20261001-0001')).toMatchObject({ activeInputId: 'MIC-01', standbyInputId: 'MIC-02' });
     const [first, second] = state.captureConfig.mics;
-    const moved: SimState = { ...state, captureConfig: { ...state.captureConfig, mics: [{ ...first!, inputId: 'MIC-01', deviceId: 'MIC-01', role: 'STANDBY' }, { ...second!, inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' }] } };
+    // D61 (2026-11-04): the pair is keyed by channel — MIC-03 on channel 1, MIC-01 on channel 2.
+    const moved: SimState = { ...state, captureConfig: { ...state.captureConfig, mics: [{ ...first!, channel: 'MIC-02', inputId: 'MIC-01', deviceId: 'MIC-01' }, { ...second!, channel: 'MIC-01', inputId: 'MIC-03', deviceId: 'MIC-03' }] } };
     expect(audioSourceAtStart(moved, 'SES-20261001-0001')).toMatchObject({ activeInputId: 'MIC-03', standbyInputId: 'MIC-01' });
   });
 });

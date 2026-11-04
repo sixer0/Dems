@@ -54,8 +54,8 @@ export const MIC_SILENCE_RUN_MAX_MS = 86_400_000;
  * at the pre-check, during the session and in the session's summary; the plain texts stay for two
  * devices. The pair is never called "redundant".
  *
- *   role             the short role label        (plain: `devices.selector.role.STANDBY`)
- *   slot             the long label of the slot  (plain: `common.captureSlot.STANDBY`)
+ *   role             the short role label        (plain: `devices.selector.role.STANDBY`, the word of channel 2)
+ *   slot             the long label of the slot  (plain: `common.captureSlot['MIC-02']`; D61 of 2026-11-04 renamed the slot)
  *   line             the assignment line         (plain: `devices.micLines.label.STANDBY`)
  *   source           the session's source label  (plain: `sessionNew` `MIC_STANDBY`)
  *   joinsAtNextStart a microphone opened after its device's capture program was started is refused

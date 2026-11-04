@@ -20,7 +20,8 @@
  * `MIC-02`, `GNSS`, `TPM`, `FRONT-PANEL`), never a paired device of the registry (`DEV-NNNN`).
  */
 import { z } from 'zod';
-import { MicRole, TrackId } from '../domain/enums';
+import { VIDEO_TRACK_IDS, TrackId } from '../domain/enums';
+import { MIC_CHANNEL_IDS } from '../sim/vocabulary'; // D61 (2026-11-04): the four microphone channels
 import { AuditType, DeviceCommand, Permission } from '../sim/vocabulary';
 import { CAMERA_PREVIEW_SESSION_TTL_MS, CAMERA_PREVIEW_TOKEN_PREFIX, IDLE_METER_LEASE_MS } from './capture';
 import { API_BASE_PATH } from './constants';
@@ -87,7 +88,7 @@ export type ActiveCameraRequest = z.output<typeof ActiveCameraRequestSchema>;
 
 export const MicClipResetRequestSchema = z
   .object({
-    channel: z.enum([TrackId.AUDIO_01, TrackId.AUDIO_02]).describe('The audio channel whose CLIP latch is reset: AUDIO-01 or AUDIO-02.'),
+    channel: z.enum([TrackId.AUDIO_01, TrackId.AUDIO_02, TrackId.AUDIO_03, TrackId.AUDIO_04]).describe('The audio channel whose CLIP latch is reset: `AUDIO-01`..`AUDIO-04` (D61, 2026-11-04: four simultaneous channels).'),
   })
   .describe('Request body of `POST /api/v1/audio/clip/reset`.');
 export type MicClipResetRequest = z.output<typeof MicClipResetRequestSchema>;
@@ -118,16 +119,18 @@ export const CaptureConfigCameraUpdateSchema = z
 export type CaptureConfigCameraUpdate = z.output<typeof CaptureConfigCameraUpdateSchema>;
 
 /**
- * One mic line of the whole-config update (op 78). Two forms (decision D133 (1); task 4 rule
- * MIC-ASSIGN, decision C21 (8), names register of row 161 section 4.2):
+ * One mic line of the whole-config update (op 78). Two forms (decision D133 (1) generalized by
+ * D61 of 2026-11-04: the roles became the four numbered channels; task 4 rule MIC-ASSIGN, decision
+ * C21 (8), names register of row 161 section 4.2):
  *
- *   - WITHOUT `role` (the form published first, still valid): the line edits the input it names,
- *     which must be one of the inputs the selector holds; the PRIMARY role moves through op 80;
- *   - WITH `role` on every line (by role): one line or two, no role twice, each `deviceId` equal to
- *     its `inputId`. Each line puts its input on the slot of its role; the slot of a role the body
- *     does not name keeps what it holds. Two lines are the pair replacement of D133 (1). It is the
- *     only way to put a microphone registered later (`MIC-03`) behind the capture, and the only way
- *     to fill a microphone slot that is not assigned.
+ *   - WITHOUT `channel` (the form published first, still valid): the line edits the input it names,
+ *     which must be one of the inputs the selector holds; the transcription channel moves through op 80;
+ *   - WITH `channel` on every line (by channel): one to four lines, no channel twice, each
+ *     `deviceId` equal to its `inputId`. Each line puts its input on the slot of its channel; the
+ *     slot of a channel the body does not name keeps what it holds. The lines over the channels a
+ *     plan carries are the replacing set of D133 (1). It is the only way to put a microphone
+ *     registered later (`MIC-05` and up) behind the capture, and the only way to fill a microphone
+ *     channel that is not assigned.
  *
  * A body that mixes the two forms is `422 INVALID_INPUT`.
  */
@@ -138,30 +141,31 @@ export const CaptureConfigMicUpdateSchema = z
     transport: trimmedText(32)
       .optional()
       .describe('Transport code (open set, e.g. `POE`, `USB`, `ANALOG`); absent: the device default.'),
-    role: z
-      .enum(MicRole)
+    channel: z
+      .enum(MIC_CHANNEL_IDS)
       .optional()
-      .describe('BY ROLE (D133 (1); a role is assignable alone): when every line carries `role`, each line puts its input on the slot of its role - one line or two, no role twice, each with `deviceId` equal to `inputId`, any registered `MIC-NN`; the slot of a role the body does not name keeps what it holds, and two lines are the replacing pair. Absent on every line: the line edits the input it names (the earlier form).'),
+      .describe('BY CHANNEL (D133 (1) generalized by D61, 2026-11-04: a channel is assignable alone): when every line carries `channel`, each line puts its input on the slot of its channel - one to four lines, no channel twice, each with `deviceId` equal to `inputId`, any registered `MIC-NN`; the slot of a channel the body does not name keeps what it holds, and the named channels are the replacing set. Absent on every line: the line edits the input it names (the earlier form).'),
   })
-  .describe('One mic line of `CaptureConfigUpdate`: which capture device stands behind which input; with `role`, the input that takes the slot of that role.');
+  .describe('One mic line of `CaptureConfigUpdate`: which capture device stands behind which input; with `channel`, the input that takes the slot of that channel (D61: four numbered channels).');
 export type CaptureConfigMicUpdate = z.output<typeof CaptureConfigMicUpdateSchema>;
 
 /**
- * The six slots of the device selector, in their order (task 4 row 28; WP-13a; names register
- * N2; D60 of 2026-11-04): the FOUR video tracks, then the two microphone roles. They are the values the member
- * `unassign` of operation 78 takes - the `trackId` of a camera line and the `role` of a mic line
- * of the same body, never the stored value set of `session_capture_sources`.
+ * The EIGHT slots of the device selector, in their order (task 4 row 28; WP-13a; names register
+ * N2; D60 of 2026-11-04: four video tracks; D61 of 2026-11-04: the two microphone roles became the
+ * four numbered channels): the FOUR video tracks, then the four microphone channels. They are the
+ * values the member `unassign` of operation 78 takes - the `trackId` of a camera line and the
+ * `channel` of a mic line of the same body, never the stored value set of `session_capture_sources`.
  */
-export const CAPTURE_SELECTOR_SLOTS = [TrackId.VIDEO_01, TrackId.VIDEO_02, TrackId.VIDEO_03, TrackId.VIDEO_04, MicRole.PRIMARY, MicRole.STANDBY] as const;
+export const CAPTURE_SELECTOR_SLOTS = [...VIDEO_TRACK_IDS, ...MIC_CHANNEL_IDS] as const; // D61 (2026-11-04): eight slots, four per medium
 
-/** The slots a body of operation 78 assigns: the `trackId` of each camera line and the `role` of each mic line that states one. */
+/** The slots a body of operation 78 assigns: the `trackId` of each camera line and the `channel` of each mic line that states one. */
 function slotsAssignedBy(body: {
   readonly cameras?: readonly { readonly trackId: string }[] | undefined;
-  readonly mics?: readonly { readonly role?: string | undefined }[] | undefined;
+  readonly mics?: readonly { readonly channel?: string | undefined }[] | undefined;
 }): ReadonlySet<string> {
   const slots = new Set<string>();
   for (const camera of body.cameras ?? []) slots.add(camera.trackId);
-  for (const mic of body.mics ?? []) if (mic.role !== undefined) slots.add(mic.role);
+  for (const mic of body.mics ?? []) if (mic.channel !== undefined) slots.add(mic.channel);
   return slots;
 }
 
@@ -172,19 +176,19 @@ function slotsAssignedBy(body: {
  * An unassigned slot is an absent line of the selector. Two rules of the body are held here
  * (AD-10 (3); names register section 4.3), both `422 INVALID_INPUT` on the path `unassign`:
  * no slot twice, and no slot that the same body assigns (the `trackId` of a camera line, the
- * `role` of a mic line). A mic line WITHOUT `role` that edits the input a cleared slot holds is
- * refused by the hosted action, which knows which role holds an input; the schema cannot.
+ * `channel` of a mic line). A mic line WITHOUT `channel` that edits the input a cleared slot holds
+ * is refused by the hosted action, which knows which channel holds an input; the schema cannot.
  */
 export const CaptureConfigUpdateRequestSchema = z
   .strictObject({
-    cameras: z.array(CaptureConfigCameraUpdateSchema).min(1).max(2).optional(),
-    mics: z.array(CaptureConfigMicUpdateSchema).min(1).max(2).optional(),
+    cameras: z.array(CaptureConfigCameraUpdateSchema).min(1).max(VIDEO_TRACK_IDS.length).optional(), // D60: four video lines
+    mics: z.array(CaptureConfigMicUpdateSchema).min(1).max(MIC_CHANNEL_IDS.length).optional(), // D61 (2026-11-04): four mic lines
     unassign: z
       .array(z.enum(CAPTURE_SELECTOR_SLOTS))
       .min(1)
-      .max(6)
+      .max(8) // D61 (2026-11-04): the eight-slot selector
       .optional()
-      .describe('The selector slots this body clears: a video track (`VIDEO-01`..`VIDEO-04`) or a microphone role (`PRIMARY`, `STANDBY`), each at most once. A cleared slot has no line in the answer. A slot that the same body assigns (the `trackId` of a camera line, the `role` of a mic line) is `422 INVALID_INPUT`. Clearing a slot that is already empty changes nothing and writes no audit row.'),
+      .describe('The selector slots this body clears: a video track (`VIDEO-01`..`VIDEO-04`) or a microphone channel (`MIC-01`..`MIC-04`; D61, 2026-11-04: the roles became the numbered channels), each at most once. A cleared slot has no line in the answer. A slot that the same body assigns (the `trackId` of a camera line, the `channel` of a mic line) is `422 INVALID_INPUT`. Clearing a slot that is already empty changes nothing and writes no audit row.'),
   })
   // Two refinements, like the text rule: the JSON Schema of the component does not change.
   .refine((body) => body.unassign === undefined || new Set(body.unassign).size === body.unassign.length, {
@@ -329,7 +333,7 @@ export const DEVICE_OPERATIONS = [
     mode: CoreApiMode.LIVE,
     summary: 'Device inventory',
     description: [
-      'The devices of the Core: the Core itself, the two cameras, the two microphones, the other devices, the ports, the camera the monitor shows, the link of the tablet and — schema v2 (C3 §3 op 47; SH-12) — the `captureConfig` snapshot. Slices `device`, `cameras`, `mics`, `otherDevices`, `ports`, `activeCameraId`, `tabletLink` and `captureConfig`.',
+      'The devices of the Core: the Core itself, the cameras, the four microphones (D61, 2026-11-04), the other devices, the ports, the camera the monitor shows, the link of the tablet and — schema v2 (C3 §3 op 47; SH-12) — the `captureConfig` snapshot. Slices `device`, `cameras`, `mics`, `otherDevices`, `ports`, `activeCameraId`, `tabletLink` and `captureConfig`.',
       'Distinct from `GET /api/v1/device/health`, the design-book snapshot. The inventory never holds the paired-client registry (E-04) and never a credential (RK-12).',
       STATE_READ_NOTE,
     ].join('\n\n'),
@@ -495,7 +499,7 @@ const UNKNOWN_CAPTURE_DEVICE = { description: 'The capture registry has no devic
 const CAPTURE_DEVICE_PARAM = {
   name: 'id',
   description:
-    'A registered capture device (`dbc-4 §N`): a built-in one (`CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`, `POE-SWITCH`) or one that operation 96 added (`CAM-03` and up). Never a candidate id of a camera search.',
+    'A registered capture device (`dbc-4 §N`): a built-in one (`CAM-01`..`CAM-04`, `MIC-01`..`MIC-04`, `POE-SWITCH`; D61, 2026-11-04: four microphones) or one that operation 96 added. Never a candidate id of a camera search.',
   pattern: HARDWARE_DEVICE_ID_PATTERN,
 } as const;
 
@@ -508,7 +512,7 @@ export const CAPTURE_CONFIG_OPERATIONS = [
     mode: CoreApiMode.SIMULATED,
     summary: 'Capture configuration',
     description: [
-      'The device selector: which capture device feeds each video track and which two mic inputs stand PRIMARY and STANDBY inside AUDIO-01 (OD-01 T1), with the `locked` flag — true while a session is open (OD-10).',
+      'The device selector: which capture device feeds each video track and which mic input stands on each of the FOUR microphone channels `MIC-01`..`MIC-04` (D61 of 2026-11-04: four simultaneous audio channels; the OD-01 T1 one-track premise and its PRIMARY/STANDBY roles are superseded — channel 1 keeps the transcription duty), with the `locked` flag — true while a session is open (OD-10).',
       'The answer is the `captureConfig` slice in its wire form (API-6). It never holds a credential: the camera credential store is write-only (RK-12; op 89).',
       'Needs a signed-in operator. Every role may read it: the operation needs no permission.',
       SIM_V2_NOTE,
@@ -560,9 +564,9 @@ export const CAPTURE_CONFIG_OPERATIONS = [
     mode: CoreApiMode.SIMULATED,
     summary: 'Replace the capture configuration',
     description: [
-      'Writes the whole selector at once (both camera lines and both mic lines are optional members of the body). Needs CAPTURE_CONFIG (TECHNICIAN holds it since the 0034 revocation, and the vendor `root` account holds it by identity too (D55); OD-10 before the revocation) — and is **editable only while idle**: with a session open it refuses `409 CAPTURE_CONFIG_LOCKED` with no state change and **no audit row at all** (SEC35-19: neither CAPTURE_CONFIG_CHANGED nor ACCESS_DENIED — the lock is a state refusal, not an access one).',
+      'Writes the whole selector at once (the camera lines and the mic lines over the eight-slot selector are optional members of the body; D61, 2026-11-04: four channels per medium). Needs CAPTURE_CONFIG (TECHNICIAN holds it since the 0034 revocation, and the vendor `root` account holds it by identity too (D55); OD-10 before the revocation) — and is **editable only while idle**: with a session open it refuses `409 CAPTURE_CONFIG_LOCKED` with no state change and **no audit row at all** (SEC35-19: neither CAPTURE_CONFIG_CHANGED nor ACCESS_DENIED — the lock is a state refusal, not an access one).',
       'On success writes one CAPTURE_CONFIG_CHANGED row whose details are exactly the keys of `C3 §5.2` (operationId, scope, field, the optional track/input/device/from/to/permission members) — names and previous/new values, never a credential.',
-      'A selector slot may be unassigned. The optional member `unassign` names the slots to clear (`VIDEO-01`, `VIDEO-02`, `PRIMARY`, `STANDBY`): a cleared slot has no line in the answer, and it is the only way a slot becomes empty. It needs the same permission and is refused by the same lock; each cleared slot writes one CAPTURE_CONFIG_CHANGED row that carries `from` (the device that held the slot) and no `to`, and clearing an empty slot writes none. A body that clears a slot and assigns the same slot is `422 INVALID_INPUT`. A mic line with `role` fills the slot of that role, also alone. A Core in its own capture refuses a session start while a slot is unassigned.',
+      'A selector slot may be unassigned. The optional member `unassign` names the slots to clear (a video track `VIDEO-01`..`VIDEO-04`, a microphone channel `MIC-01`..`MIC-04`; D61, 2026-11-04): a cleared slot has no line in the answer, and it is the only way a slot becomes empty. It needs the same permission and is refused by the same lock; each cleared slot writes one CAPTURE_CONFIG_CHANGED row that carries `from` (the device that held the slot) and no `to`, and clearing an empty slot writes none. A body that clears a slot and assigns the same slot is `422 INVALID_INPUT`. A mic line with `channel` fills the slot of that channel, also alone. A Core in its own capture refuses a session start while a slot is unassigned.',
       'Publishes the `captureConfig` slice. 503 NOT_READY carries `details.reason: CAPTURE_NOT_READY` when the capture stack is not ready (CS-22).',
       SIM_V2_NOTE,
     ].join('\n\n'),
@@ -615,10 +619,10 @@ export const CAPTURE_CONFIG_OPERATIONS = [
     path: `${CAPTURE_PATH}/mics/{id}/primary`,
     tag: CoreApiTag.DEVICE,
     mode: CoreApiMode.SIMULATED,
-    summary: 'Make a mic input PRIMARY',
+    summary: 'Make a mic input the transcribed channel',
     description: [
-      'Makes the mic input named in the path PRIMARY inside AUDIO-01 and the other input STANDBY (OD-01 T1, OD-09 hot standby). No body.',
-      'Needs CAPTURE_CONFIG and is idle-only (`409 CAPTURE_CONFIG_LOCKED`, no audit row — SEC35-19). An unknown `{id}` answers 404. Writes CAPTURE_CONFIG_CHANGED with `scope: MIC`, `field: ROLE`, `inputId` and the previous/new role in `from`/`to`.',
+      'Makes the mic input named in the path the input of channel `MIC-01` — the channel that feeds the transcribed track `AUDIO-01` (D61 of 2026-11-04: the operation keeps its path and its name; what it moves is the transcription channel, and the input that held channel 1 takes the moved input\'s old channel. The earlier wording made it PRIMARY inside one `AUDIO-01` with the other STANDBY, OD-01 T1 / OD-09; all four channels now record simultaneously). No body.',
+      'Needs CAPTURE_CONFIG and is idle-only (`409 CAPTURE_CONFIG_LOCKED`, no audit row — SEC35-19). An unknown `{id}` answers 404. Writes CAPTURE_CONFIG_CHANGED with `scope: MIC`, `field: CHANNEL`, `inputId` and the previous/new channel in `from`/`to`.',
       'Publishes the `captureConfig` slice. The in-session toggle is a different operation (`switchAudioSource`, op 81) with different access.',
       SIM_V2_NOTE,
     ].join('\n\n'),
@@ -864,7 +868,7 @@ export const DEVICE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
   getCaptureDevices: {
     responses: {
       200: {
-        idle: { summary: 'The five built-in capture devices', value: EXAMPLE_SLICES.captureDevices },
+        idle: { summary: 'The nine built-in capture devices (D61: four cameras, four microphones, the PoE switch)', value: EXAMPLE_SLICES.captureDevices },
       },
       401: SIGNED_OUT,
       403: BASIC_403_EXAMPLES,
@@ -884,8 +888,9 @@ export const DEVICE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
       // Task 4 rows 28, 162, 29 (decision C14; AD-10): a slot is cleared by naming it. The in-app
       // answerer and the Core both honour the member; the answer is the selector without that line.
       unassign: {
-        summary: 'Clear the standby microphone slot',
-        value: { unassign: ['STANDBY'] } satisfies CaptureConfigUpdateRequest,
+        // D61 (2026-11-04): the standby role is channel MIC-02.
+        summary: 'Clear the second microphone channel',
+        value: { unassign: ['MIC-02'] } satisfies CaptureConfigUpdateRequest,
       },
     },
     responses: {

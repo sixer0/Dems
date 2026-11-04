@@ -1,11 +1,12 @@
 /**
- * Dual-channel audio level generator (masterplan/01_specs.md §14.7 `audio.ts`; AC-53).
+ * Four-channel audio level generator (masterplan/01_specs.md §14.7 `audio.ts`; AC-53; D61 of
+ * 2026-11-04: the microphone plane mirrors the video plane — FOUR simultaneous channels).
  *
  * - 20 Hz (`AUDIO_FRAME_MS` 50 = `motion.ambient.meterFrameMs`). One frame per channel per
  *   50 ms slot, stamped at the slot boundary, so frame times are deterministic.
- * - Noise floor −52 ± 2 dBFS. While people are in the room (CREATE … STOPPING) the two MICs
- *   take alternating speaker turns of 3-12 s at −24 to −12 dBFS with a 4-6 Hz syllabic
- *   modulation, separated by 0.3-1.2 s pauses. AUDIO-01 is the interviewer, AUDIO-02 the subject.
+ * - Noise floor −52 ± 2 dBFS. While people are in the room (CREATE … STOPPING) the MICs of the
+ *   assigned channels take alternating speaker turns of 3-12 s at −24 to −12 dBFS with a 4-6 Hz
+ *   syllabic modulation, separated by 0.3-1.2 s pauses. AUDIO-01 is the interviewer, AUDIO-02 the subject.
  * - One peak near −3.1 dBFS every 90-180 s on the speaking channel (an AUDIO_PEAK timeline
  *   item while recording).
  * - Ballistics: instant attack, 20 dB/s release. Peak hold 1.5 s, then 20 dB/s decay.
@@ -17,7 +18,8 @@
  * The generator keeps its speaker-turn and ballistic state in a closure (not persisted); a
  * reload restarts the conversation, which only changes what the meters show.
  */
-import { SessionState, type AudioTrackId, type MicInputId, type MicRole } from '../domain';
+import { AUDIO_TRACK_IDS, SessionState, type AudioTrackId, type MicInputId, type MicRole } from '../domain';
+import { PRIMARY_MIC_CHANNEL, SECOND_MIC_CHANNEL, type MicChannel } from './vocabulary'; // D61 (2026-11-04): the four microphone channels
 import { micLinesInForce } from './selector-in-force';
 import {
   AUDIO_CLIP_BURST_DBFS,
@@ -44,23 +46,45 @@ import { addTimelineItem, SPEECH_STATES } from './session-machine';
 import type { AudioFrame, CaptureConfigMic, CaptureLevelSource, CaptureMicInputId, EpochMs, SimState, SimSubsystem } from './types';
 import { FaultKind } from './vocabulary';
 
-export const AUDIO_CHANNELS = ['AUDIO-01', 'AUDIO-02'] as const satisfies readonly AudioTrackId[];
+// D61 (2026-11-04): the four meter channels derive from the widened audio-track domain.
+export const AUDIO_CHANNELS = AUDIO_TRACK_IDS;
 
 /**
- * The pairing of the two meter channels with the BUILT-IN microphone inputs: what
- * `meterInputOfChannel` gives for the seeded selector (`MIC-01`, `MIC-02`). A table of the seeded
- * pair only - no lookup answers from it where a line is missing (task 4 row 172, C18 (2)).
+ * The pairing of the meter channels with the BUILT-IN microphone inputs: what
+ * `meterInputOfChannel` gives for the seeded selector (`MIC-01`..`MIC-04`; D61 widened the pair to
+ * the four channels). A table of the seeded set only - no lookup answers from it where a line is
+ * missing (task 4 row 172, C18 (2)).
  */
-export const DEFAULT_MIC_INPUT_OF_CHANNEL: Readonly<Record<AudioTrackId, MicInputId>> = {
+export const DEFAULT_MIC_INPUT_OF_CHANNEL: Readonly<Record<AudioTrackId, string>> = {
   'AUDIO-01': 'MIC-01',
   'AUDIO-02': 'MIC-02',
+  'AUDIO-03': 'MIC-03', // D61
+  'AUDIO-04': 'MIC-04', // D61
 };
 
 /**
- * One microphone line, as far as the lookups BY ROLE read it: the input and the role it holds
- * (task 4 WP-13a, names register N6). A list of lines without a role does not type-check here.
+ * The selector CHANNEL of a meter track and back (D61 of 2026-11-04: channel `MIC-0N` feeds track
+ * `AUDIO-0N`; the numbering is the one rule of the four-channel plane).
  */
-export type RoleMicLine = Pick<CaptureConfigMic, 'inputId' | 'role'>;
+export function micChannelOfTrack(trackId: AudioTrackId): MicChannel {
+  return `MIC-${trackId.slice(-2)}` as MicChannel;
+}
+export function audioTrackOfMicChannel(channel: MicChannel): AudioTrackId {
+  return `AUDIO-${channel.slice(-2)}` as AudioTrackId;
+}
+/** The worker protocol's two transcription roles as channels (capture-protocol v4; D61 mapping). */
+export function channelOfWorkerMicRole(role: MicRole): MicChannel {
+  return role === 'PRIMARY' ? PRIMARY_MIC_CHANNEL : SECOND_MIC_CHANNEL;
+}
+
+/**
+ * One microphone line, as far as the lookups BY CHANNEL read it: the input and the channel it
+ * holds (task 4 WP-13a, names register N6; D61 of 2026-11-04: the role became the numbered
+ * channel). A list of lines without a channel does not type-check here.
+ */
+export type ChannelMicLine = Pick<CaptureConfigMic, 'inputId' | 'channel'>;
+/** @deprecated Renamed to `ChannelMicLine` by D61 (2026-11-04); the shape is the same read by channel. */
+export type RoleMicLine = ChannelMicLine;
 
 /**
  * The microphone lines the meters and the session read: the snapshot of the OPEN session when it
@@ -72,46 +96,43 @@ export function captureMicLines(state: Pick<SimState, 'session' | 'captureConfig
 }
 
 /**
- * Which microphone input holds a ROLE (task 4 WP-13a, names register N4; decisions C18 (2), AD-04):
- * the input of the one line whose role is the role asked. `null` when no line holds it - no other
- * line stands in, by position or otherwise, and no built-in input is answered.
+ * Which microphone input holds a CHANNEL (task 4 WP-13a, names register N4; decisions C18 (2),
+ * AD-04; D61 of 2026-11-04: the role lookup became the channel lookup): the input of the one line
+ * whose channel is the channel asked. `null` when no line holds it - no other line stands in, by
+ * position or otherwise, and no built-in input is answered.
  */
-export function micInputOfRole(mics: readonly RoleMicLine[], role: MicRole): CaptureMicInputId | null {
-  return mics.find((line) => line.role === role)?.inputId ?? null;
+export function micInputOfChannel(mics: readonly ChannelMicLine[], channel: MicChannel): CaptureMicInputId | null {
+  return mics.find((line) => line.channel === channel)?.inputId ?? null;
 }
-
-/** A complete pair: exactly two lines, one PRIMARY and one STANDBY, on two different inputs. */
-function isCompleteMicPair(mics: readonly RoleMicLine[]): boolean {
-  if (mics.length !== 2) return false;
-  const primary = micInputOfRole(mics, 'PRIMARY');
-  const standby = micInputOfRole(mics, 'STANDBY');
-  return primary !== null && standby !== null && primary !== standby;
+/** @deprecated Renamed to `micInputOfChannel` by D61 (2026-11-04): the roles became the numbered channels. */
+export function micInputOfRole(mics: readonly ChannelMicLine[], role: MicRole): CaptureMicInputId | null {
+  return micInputOfChannel(mics, channelOfWorkerMicRole(role));
 }
 
 /**
  * Which microphone input a meter channel is, or `null` (names register N5, section 3.2; RULING D137
- * kept by C21 (7); OD-01 T1, register SH-17). For a COMPLETE pair the channel order is the order of
- * the microphone lines as held, which is input order (D106 (1)): channel 1 (`AUDIO-01`) is the first
- * line, channel 2 (`AUDIO-02`) the second, whatever their IDs. The meters slice is keyed by input;
- * the demo controls, the CLIP fault target and the timeline still name a channel, so this function
- * is the single place the two vocabularies meet. For anything else - no line, one
- * line, two lines that are not one of each role - no channel has an input: a lone line has a role
- * (`micInputOfRole` finds it) and no meter channel until the pair is complete. Never a constant of
- * `DEFAULT_MIC_INPUT_OF_CHANNEL`.
+ * generalized by D61 of 2026-11-04; register SH-17). Each of the FOUR simultaneous channels has an
+ * input exactly when a line NAMES that channel: `AUDIO-0N` is the input of the line whose channel
+ * is `MIC-0N` - never a line by its place, never the built-in table. The meters slice is keyed by
+ * input; the demo controls, the CLIP fault target and the timeline still name a channel, so this
+ * function is the single place the two vocabularies meet. A channel without its line has no input.
  */
-export function meterInputOfChannel(mics: readonly RoleMicLine[], channel: AudioTrackId): CaptureMicInputId | null {
-  if (!isCompleteMicPair(mics)) return null;
-  return mics[AUDIO_CHANNELS.indexOf(channel)]?.inputId ?? null;
+export function meterInputOfChannel(mics: readonly ChannelMicLine[], channel: AudioTrackId): CaptureMicInputId | null {
+  return micInputOfChannel(mics, micChannelOfTrack(channel));
 }
 
 /**
  * The inverse of `meterInputOfChannel`: the meter channel of an input of these lines; null for an
- * input that has none. The lines STATE their role (names register E20, N6): a list without roles
- * does not type-check here.
+ * input that has none. The lines STATE their channel (names register E20, N6; D61): a list without
+ * channels does not type-check here.
  */
-export function channelOfMicLine(mics: readonly RoleMicLine[], inputId: string): AudioTrackId | null {
-  for (const channel of AUDIO_CHANNELS) if (meterInputOfChannel(mics, channel) === inputId) return channel;
-  return null;
+export function channelOfMicLine(mics: readonly ChannelMicLine[], inputId: string): AudioTrackId | null {
+  const line = mics.find((entry) => entry.inputId === inputId);
+  if (line === undefined) return null;
+  // D61 (2026-11-04): whatever reaches this untyped: a line that states no channel has NO channel -
+  // the answer is null, never a channel by place and never a crash on the missing statement.
+  const stated = line.channel as MicChannel | undefined;
+  return stated === undefined ? null : audioTrackOfMicChannel(stated);
 }
 
 /**
@@ -131,13 +152,15 @@ export function noInputFrame(at: EpochMs): AudioFrame {
 }
 
 /** @deprecated The inverse of the built-in pair's table; `channelOfMicLine` reads the capture configuration (ruling D137). */
-export const CHANNEL_OF_MIC_INPUT: Readonly<Record<MicInputId, AudioTrackId>> = {
+export const CHANNEL_OF_MIC_INPUT: Readonly<Record<string, AudioTrackId>> = {
   'MIC-01': 'AUDIO-01',
   'MIC-02': 'AUDIO-02',
+  'MIC-03': 'AUDIO-03', // D61 (2026-11-04): the built-in set is the four channels
+  'MIC-04': 'AUDIO-04', // D61
 };
 
 /**
- * The built-in input a selector input is, or null for a `MIC-NN` beyond the built-in pair.
+ * The built-in input a selector input is, or null for a `MIC-NN` beyond the built-in four (D61).
  * @deprecated It says nothing about meters any more: every input of the capture configuration has
  * a meter channel (`channelOfMicLine`, ruling D137). Kept for `session-machine.ts`.
  */
@@ -148,7 +171,7 @@ export function builtInMicInputOf(inputId: string): MicInputId | null {
 /** @deprecated The channel of an input of the BUILT-IN pair only; `channelOfMicLine` reads the capture configuration (ruling D137). */
 export function channelOfMicInput(inputId: string): AudioTrackId | null {
   const builtIn = builtInMicInputOf(inputId);
-  return builtIn === null ? null : CHANNEL_OF_MIC_INPUT[builtIn];
+  return builtIn === null ? null : (CHANNEL_OF_MIC_INPUT[builtIn] ?? null); // D61: the table holds the four built-ins
 }
 
 // ── Meter ballistics (pure; AC-53) ───────────────────────────────────────────────────────
@@ -195,9 +218,9 @@ function round2(value: number): number {
 // ── Conversation model ───────────────────────────────────────────────────────────────────
 
 interface Conversation {
-  /** 0 = pause, else the index of the speaking channel + 1. */
-  speaker: 0 | 1 | 2;
-  lastSpeaker: 1 | 2;
+  /** 0 = pause, else the index of the speaking channel + 1 (D61: one of the FOUR channels). */
+  speaker: 0 | 1 | 2 | 3 | 4;
+  lastSpeaker: 1 | 2 | 3 | 4;
   until: EpochMs;
   /** The loudest syllable level of this turn. */
   level: number;
@@ -211,8 +234,11 @@ function nextTurn(conversation: Conversation, at: EpochMs, rng: Rng): Conversati
   if (conversation.speaker !== 0) {
     return { ...conversation, speaker: 0, until: at + rng.int(300, 1_200) };
   }
+  // D61 (2026-11-04): four channels take the turns. 80% of the turns alternate to another channel,
+  // drawn over the three it is not; 20% let the last speaker hold the floor.
   const alternate = rng.chance(0.8);
-  const speaker: 1 | 2 = alternate ? (conversation.lastSpeaker === 1 ? 2 : 1) : conversation.lastSpeaker;
+  const others: readonly (1 | 2 | 3 | 4)[] = ([1, 2, 3, 4] as const).filter((channel) => channel !== conversation.lastSpeaker);
+  const speaker: 1 | 2 | 3 | 4 = alternate ? (others[rng.int(0, others.length - 1)] ?? conversation.lastSpeaker) : conversation.lastSpeaker;
   return {
     speaker,
     lastSpeaker: speaker,
@@ -309,7 +335,8 @@ export function createAudioSubsystem(engine: EngineContext, runtime: AudioRuntim
       }
       const peakNow = speaking && at >= nextPeakAt;
       if (peakNow) nextPeakAt = at + turns.int(AUDIO_PEAK_MIN_INTERVAL_MS, AUDIO_PEAK_MAX_INTERVAL_MS);
-      const peakChannel: AudioTrackId = conversation.speaker === 2 ? 'AUDIO-02' : 'AUDIO-01';
+      // D61: the peak lands on the speaking channel of the four.
+      const peakChannel: AudioTrackId = conversation.speaker === 0 ? 'AUDIO-01' : (`AUDIO-0${String(conversation.speaker)}` as AudioTrackId);
 
       let next: SimState = state;
       // One frame per meter channel, keyed by the input that channel is NOW (ruling D137): the two
@@ -322,11 +349,11 @@ export function createAudioSubsystem(engine: EngineContext, runtime: AudioRuntim
       for (const channel of AUDIO_CHANNELS) {
         // The frame is stored under the mic input it comes from (SH-17), while the demo controls,
         // the CLIP latch and the timeline keep naming the channel.
-        // A channel without an input (an incomplete pair) has no frame: none is generated under a
-        // built-in input's name (task 4 WP-13a, site C16).
+        // A channel without an input (no line names it; D61: per-channel, not a pair rule) has no
+        // frame: none is generated under a built-in input's name (task 4 WP-13a, site C16).
         const input = meterInputOfChannel(lines, channel);
         if (input === null) continue;
-        const rng = engine.rng.get(channel === 'AUDIO-01' ? 'audio:AUDIO-01' : 'audio:AUDIO-02');
+        const rng = engine.rng.get(`audio:${channel}`); // D61: one stream per simultaneous channel
         const previous = state.audio.inputs[input] ?? noInputFrame(at);
         const mic = mics.find((m) => m.id === channel);
         let current = channels.get(channel) ?? {
@@ -370,7 +397,7 @@ export function createAudioSubsystem(engine: EngineContext, runtime: AudioRuntim
         }
 
         let target = noiseFloor(rng);
-        const index = channel === 'AUDIO-01' ? 1 : 2;
+        const index = Number(channel.slice(-1)); // D61: the speaking channel of the four
         if (speaking && conversation.speaker === index) target = speechLevel(conversation, at, rng);
         const toneUntil = runtime.testToneUntil[channel];
         if (toneUntil !== undefined && at < toneUntil) target = AUDIO_TEST_TONE_DBFS + rng.gauss(0, 0.2);
@@ -404,17 +431,18 @@ export function createAudioSubsystem(engine: EngineContext, runtime: AudioRuntim
       }
 
       // The meters slice is keyed by mic input (SH-17); `activeInputId` is what op 81 moves.
-      // The active input stays what it was while it is one of the two; a pair that no longer
-      // holds it (a state put in place otherwise) reads its PRIMARY line as the active one, by
-      // role: `null` when no line holds PRIMARY, never the line of a position (site C16).
+      // The active input stays what it was while it is one of the assigned channels; a selector
+      // that no longer holds it (a state put in place otherwise) reads its channel-1 line as the
+      // active one, by CHANNEL (D61 of 2026-11-04): `null` when no line holds channel 1, never the
+      // line of a position (site C16).
       const held: CaptureMicInputId | null = state.audio.activeInputId;
-      const active = held !== null && Object.hasOwn(frames, held) ? held : micInputOfRole(lines, 'PRIMARY');
+      const active = held !== null && Object.hasOwn(frames, held) ? held : micInputOfChannel(lines, PRIMARY_MIC_CHANNEL);
       next = {
         ...next,
         audio: {
           inputs: frames,
-          // Without a PRIMARY line the state holds NO active input (task 4 row 149): `null`, never
-          // the input it held before and never a line by its place.
+          // Without a channel-1 line the state holds NO active input (task 4 row 149; D61): `null`,
+          // never the input it held before and never a line by its place.
           activeInputId: active,
         },
         ...(mics !== state.mics ? { mics } : {}),

@@ -620,14 +620,15 @@ export interface MicStatus {
   deviceId: string;
   /** e.g. "MIC 1 – Interviewer" (04 §9 #8). */
   name: string;
-  role: 'Interviewer' | 'Subject';
+  /** D61 (2026-11-04): the interview role of the built-in pair; null for a channel that carries none. */
+  role: 'Interviewer' | 'Subject' | null;
   /**
-   * Schema v2 (register SH-05; OD-01 T1 / OD-09): the role this input holds inside `AUDIO-01`.
-   * `role` above stays the interview role the screens show until SH-08 (blueprint row 51) moves
-   * the copy; `micRole` is the capture role the selector and the toggle work with.
+   * D61 (2026-11-04): the selector CHANNEL this entry is fed by — `MIC-0N` for entry `AUDIO-0N`.
+   * It replaces the schema-v2 capture ROLE (`micRole`: PRIMARY/STANDBY inside `AUDIO-01`, OD-01 T1)
+   * and the numeric meter index (subsumed: the entry ID is the channel). The four channels record
+   * simultaneously; channel 1 keeps the transcription duty.
    */
-  micRole: MicRole;
-  channel: 1 | 2;
+  channel: CaptureMicChannel;
   state: MicState;
   recState: TrackRecState | null;
   /** Read-only in the UI (G13). */
@@ -709,11 +710,23 @@ export interface CaptureConfigCamera {
  */
 export type CaptureMicInputId = string;
 
-/** One mic row of the `captureConfig` slice (`C3 §6` slice 29). A mic line's `deviceId` is its `inputId` (D106 (4)). */
+/**
+ * The microphone CHANNEL a mic row names (D61 of 2026-11-04: the two roles became four numbered
+ * channels). Stated structurally like `CaptureIngestStateName`, so this file imports nothing of
+ * `api/`; `sim/vocabulary.ts` holds the runtime set and a test holds the two equal.
+ */
+export type CaptureMicChannel = 'MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04';
+
+/**
+ * One mic row of the `captureConfig` slice (`C3 §6` slice 29; D61 of 2026-11-04: the row is keyed
+ * by its CHANNEL, as a camera row is keyed by its track — the role member is superseded). A mic
+ * line's `deviceId` is its `inputId` (D106 (4)).
+ */
 export interface CaptureConfigMic {
+  /** The selector channel this row fills (D61): `MIC-01`..`MIC-04`, feeding track `AUDIO-0N`. */
+  channel: CaptureMicChannel;
   inputId: CaptureMicInputId;
   deviceId: string;
-  role: MicRole;
   /** Open set (`CODE`): USB, RTSP-embedded, ... (OD-06). */
   transport: string;
   online: boolean;
@@ -892,7 +905,13 @@ export interface CaptureDevicesSlice {
  */
 export type CaptureIngestStateName = 'WAITING' | 'CONNECTED' | 'ENDED';
 
-/** The level of one mic input, by the role it holds in the capture config (`capture-spec §B.2`). */
+/**
+ * The level of one mic input, by the ROLE the worker protocol names it by (`capture-spec §B.2`;
+ * `packages/capture-protocol` is on wire version 4 and names the two transcription roles). D61 of
+ * 2026-11-04 maps them onto the channel plane: `PRIMARY` is the input on channel `MIC-01`,
+ * `STANDBY` the input on channel `MIC-02` (`sim/audio.ts`, `channelOfWorkerMicRole`). A worker
+ * widened to the four channels is a separate protocol lane.
+ */
 export interface CaptureTelemetryLevel {
   role: MicRole;
   /** dBFS, at most 0. `null`: the input delivers no samples (the meter shows NO SIGNAL). */
@@ -984,22 +1003,23 @@ export interface CaptureConfigMicChange {
   deviceId: string;
   transport?: string | undefined;
   /**
-   * BY ROLE (D133 (1); task 4 rule MIC-ASSIGN, decision C21 (8)): present on EVERY line of the
-   * change (one line or two, no role twice, `deviceId == inputId`), each line puts its input on
-   * the slot of its role; the slot of a role the change does not name keeps what it holds. Two
-   * lines are the pair replacement of D133 (1). Absent on every line: the line edits the input it
-   * names.
+   * BY CHANNEL (D133 (1) generalized by D61 of 2026-11-04: the roles became the numbered channels;
+   * task 4 rule MIC-ASSIGN, decision C21 (8)): present on EVERY line of the change (one to four
+   * lines, no channel twice, `deviceId == inputId`), each line puts its input on the slot of its
+   * channel; the slot of a channel the change does not name keeps what it holds. The lines over the
+   * channels a plan carries are the replacing set of D133 (1). Absent on every line: the line edits
+   * the input it names.
    */
-  role?: MicRole | undefined;
+  channel?: CaptureMicChannel | undefined;
 }
 
 /**
- * One slot of the device selector (task 4 row 28; WP-13a; names register N3): a video track or a
- * microphone role. It is what the member `unassign` of operation 78 names. Stated structurally, so
- * that this file imports nothing of `api/`; a type test holds it equal to the members of
- * `CAPTURE_SELECTOR_SLOTS` (`api/devices.ts`).
+ * One slot of the device selector (task 4 row 28; WP-13a; names register N3; D61 of 2026-11-04:
+ * EIGHT slots): a video track or a microphone CHANNEL. It is what the member `unassign` of
+ * operation 78 names. Stated structurally, so that this file imports nothing of `api/`; a type test
+ * holds it equal to the members of `CAPTURE_SELECTOR_SLOTS` (`api/devices.ts`).
  */
-export type CaptureSelectorSlot = VideoTrackId | MicRole;
+export type CaptureSelectorSlot = VideoTrackId | CaptureMicChannel;
 
 /**
  * The input of the hosted action `setCaptureConfig` (register SH-18; C3 §2.4): one edit of the
@@ -1187,11 +1207,13 @@ export interface HealthPoint {
   fanRpm: number;
 }
 
-/** 1 Hz peak level of both microphone channels (step 54, SIM-GAP-W48-4). */
+/** 1 Hz peak level of the microphone channels (step 54, SIM-GAP-W48-4; D61 of 2026-11-04: FOUR simultaneous channels). */
 export interface MicLevelPoint {
   at: EpochMs;
   'AUDIO-01': number;
   'AUDIO-02': number;
+  'AUDIO-03': number; // D61
+  'AUDIO-04': number; // D61
 }
 
 export interface HealthSlice {
@@ -1215,7 +1237,7 @@ export interface OtherDevice {
 }
 
 export interface PortStatus {
-  id: 'POE_CAM_1' | 'POE_CAM_2_AUX' | 'POE_CAM_3' | 'POE_CAM_4' | 'MGMT_LAN' | 'MIC_IN_1' | 'MIC_IN_2' | 'GNSS_SMA' | 'RELAY_IO'; // POE_CAM_3/4: D60 (2026-11-04)
+  id: 'POE_CAM_1' | 'POE_CAM_2_AUX' | 'POE_CAM_3' | 'POE_CAM_4' | 'MGMT_LAN' | 'MIC_IN_1' | 'MIC_IN_2' | 'MIC_IN_3' | 'MIC_IN_4' | 'GNSS_SMA' | 'RELAY_IO'; // POE_CAM_3/4: D60 (2026-11-04); MIC_IN_3/4: D61 (2026-11-04), the four-channel microphone plane
   label: string;
   /** The port is healthy (a spare port reads true while it is ready). */
   link: boolean;

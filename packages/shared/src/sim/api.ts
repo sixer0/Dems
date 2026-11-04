@@ -110,6 +110,7 @@ import {
   type SttLastTest,
 } from '../api/transcription';
 import { FINALIZATION_STEPS_V2, MicRole, SessionState, TrackId, VIDEO_TRACK_IDS, type VideoTrackId, type MicInputId } from '../domain';
+import { MIC_CHANNEL_IDS, PRIMARY_MIC_CHANNEL, type MicChannel } from './vocabulary'; // D61 (2026-11-04): the four microphone channels
 import { captureMicLines, meterInputOfChannel } from './audio';
 import { selectorOfSession } from './selector-in-force';
 import { SEALING_ETA_STEP_MS, SEALING_FIRST_ATTEMPT } from './constants';
@@ -298,15 +299,16 @@ export interface ApiVideoTrack {
 
 /**
  * One microphone INPUT of the v2 reads (SH-15/SH-17; C3 §3 op 45). The v1 entry named a channel
- * (`AUDIO-01`/`AUDIO-02`); v2 names the input (`MIC-01`/`MIC-02`) and carries its role inside
- * `AUDIO-01` (OD-01 T1). The meters slice is keyed the same way since SH-17.
+ * (`AUDIO-01`/`AUDIO-02`); v2 names the input (`MIC-NN`) and carries the selector CHANNEL it
+ * stands on (D61 of 2026-11-04: four simultaneous channels; the OD-01 T1 role inside `AUDIO-01`
+ * is superseded — channel 1 keeps the transcription duty). The meters slice is keyed the same way since SH-17.
  */
 export interface ApiAudioChannel {
   inputId: CaptureMicInputId;
   deviceId: string;
   name: string;
-  /** PRIMARY feeds `AUDIO-01`; STANDBY is the hot failover (OD-09). */
-  role: MicRole;
+  /** D61 (2026-11-04): the selector channel this input stands on; channel 1 feeds the transcribed AUDIO-01. */
+  channel: MicChannel;
   state: string;
   recState: string | null;
   dbfs: number;
@@ -450,11 +452,12 @@ function audioInputs(state: SimState): ApiAudioChannel[] {
   const lines = captureMicLines(state);
   return state.mics.flatMap((mic): ApiAudioChannel[] => {
     // Schema v2 (SH-15/SH-17): the read is keyed by the microphone INPUT, never by a track, and
-    // names the PRIMARY/STANDBY role the selector holds inside AUDIO-01 (OD-01 T1). The input of a
-    // meter channel is its microphone line of the capture configuration (ruling D137).
+    // names the selector CHANNEL the line holds (D61 of 2026-11-04: four simultaneous channels;
+    // the PRIMARY/STANDBY role of OD-01 T1 is superseded). The input of a
+    // meter channel is its microphone line of the capture configuration (ruling D137 generalized).
     // A channel WITHOUT an input gives NO entry (task 4 row 165; site C24; register E40, D-2): an
-    // entry IS an input, so nothing states an input, a device or a role for a role without a line -
-    // never a built-in input, never the role of the hardware slice.
+    // entry IS an input, so nothing states an input, a device or a channel for a channel without a
+    // line - never a built-in input, never the channel of the hardware slice.
     const inputId = meterInputOfChannel(lines, mic.id);
     const line = inputId === null ? undefined : lines.find((entry) => entry.inputId === inputId);
     if (inputId === null || line === undefined) return [];
@@ -464,7 +467,7 @@ function audioInputs(state: SimState): ApiAudioChannel[] {
       inputId,
       deviceId: line.deviceId,
       name: mic.name,
-      role: line.role,
+      channel: line.channel,
       state: mic.state,
       recState: mic.recState,
       dbfs: frame.dbfs,
@@ -767,21 +770,22 @@ interface CaptureMicLine {
   inputId: string;
   deviceId: string;
   transport?: string;
-  /** Pair replacement (D133 (1)): present on both lines, the lines are the new pair. */
-  role?: MicRole;
+  /** BY CHANNEL (D133 (1) generalized by D61 of 2026-11-04): present on every line or on none; the lines are the replacing set. */
+  channel?: MicChannel;
 }
 
 type BodyCheck = { ok: true } | { ok: false; path: string; message: string };
 
-/** The six slots `unassign` may name (D60, 2026-11-04): the four video tracks and the two microphone roles (the contract's `CAPTURE_SELECTOR_SLOTS`; held equal by a test). */
-const UNASSIGNABLE_SLOTS: readonly CaptureSelectorSlot[] = [TrackId.VIDEO_01, TrackId.VIDEO_02, TrackId.VIDEO_03, TrackId.VIDEO_04, MicRole.PRIMARY, MicRole.STANDBY];
+/** The EIGHT slots `unassign` may name (D61, 2026-11-04): the four video tracks and the four microphone channels (the contract's `CAPTURE_SELECTOR_SLOTS`; held equal by a test). */
+const UNASSIGNABLE_SLOTS: readonly CaptureSelectorSlot[] = [TrackId.VIDEO_01, TrackId.VIDEO_02, TrackId.VIDEO_03, TrackId.VIDEO_04, ...MIC_CHANNEL_IDS];
 
 /**
  * Validates the op 78 body against `CaptureConfigUpdateRequest` (C3 §2.3): partial, strict, bounded.
  *
  * `unassign` (task 4 row 165; site C25 of row 27; names register N1 and section 4.3; AD-10 (3)):
- * the slots the edit clears - a list of one to six of the six slot names (D60), no slot twice, and no
- * slot that the same body assigns (the `trackId` of a camera line, the `role` of a mic line). Every
+ * the slots the edit clears - a list of one to EIGHT of the eight slot names (D61 of 2026-11-04:
+ * the two microphone roles became the four numbered channels; was six, D60), no slot twice, and no
+ * slot that the same body assigns (the `trackId` of a camera line, the `channel` of a mic line). Every
  * refusal of the member is on the path `unassign`, as the contract's schema has it.
  */
 function checkCaptureConfigUpdate(body: Record<string, unknown>): BodyCheck & { cameras?: CaptureCameraLine[]; mics?: CaptureMicLine[]; unassign?: CaptureSelectorSlot[] } {
@@ -792,19 +796,19 @@ function checkCaptureConfigUpdate(body: Record<string, unknown>): BodyCheck & { 
   const unassign: CaptureSelectorSlot[] = [];
   if (body.unassign !== undefined) {
     if (!Array.isArray(body.unassign) || body.unassign.length < 1 || body.unassign.length > UNASSIGNABLE_SLOTS.length) {
-      // D60 (2026-11-04): one to SIX slots (the contract's `CaptureConfigUpdateRequest.unassign`, `.max(6)`); was four.
-      return { ok: false, path: 'unassign', message: 'Expected 1 to 6 selector slots.' };
+      // D61 (2026-11-04): one to EIGHT slots (the contract's `CaptureConfigUpdateRequest.unassign`, `.max(8)`); was six (D60), was four.
+      return { ok: false, path: 'unassign', message: 'Expected 1 to 8 selector slots.' }; // D61
     }
     for (const entry of body.unassign) {
       const slot = UNASSIGNABLE_SLOTS.find((candidate) => candidate === entry);
-      if (slot === undefined) return { ok: false, path: 'unassign', message: 'Expected VIDEO-01 to VIDEO-04, PRIMARY or STANDBY.' };
+      if (slot === undefined) return { ok: false, path: 'unassign', message: 'Expected VIDEO-01 to VIDEO-04 or MIC-01 to MIC-04.' }; // D61: the role words are no longer slots
       if (unassign.includes(slot)) return { ok: false, path: 'unassign', message: 'A slot is named at most once.' };
       unassign.push(slot);
     }
   }
   if (body.cameras !== undefined) {
-    if (!Array.isArray(body.cameras) || body.cameras.length < 1 || body.cameras.length > 2) {
-      return { ok: false, path: 'cameras', message: 'Expected 1 or 2 camera lines.' };
+    if (!Array.isArray(body.cameras) || body.cameras.length < 1 || body.cameras.length > VIDEO_TRACK_IDS.length) { // D60 (2026-11-04): four video tracks
+      return { ok: false, path: 'cameras', message: 'Expected 1 to 4 camera lines.' }; // D60
     }
     for (const [index, line] of body.cameras.entries()) {
       const item = typeof line === 'object' && line !== null ? (line as Record<string, unknown>) : null;
@@ -824,13 +828,14 @@ function checkCaptureConfigUpdate(body: Record<string, unknown>): BodyCheck & { 
     }
   }
   if (body.mics !== undefined) {
-    if (!Array.isArray(body.mics) || body.mics.length < 1 || body.mics.length > 2) {
-      return { ok: false, path: 'mics', message: 'Expected 1 or 2 mic lines.' };
+    if (!Array.isArray(body.mics) || body.mics.length < 1 || body.mics.length > 4) { // D61 (2026-11-04): one to FOUR microphone lines
+      return { ok: false, path: 'mics', message: 'Expected 1 to 4 mic lines.' }; // D61 (2026-11-04)
     }
     for (const [index, line] of body.mics.entries()) {
       const item = typeof line === 'object' && line !== null ? (line as Record<string, unknown>) : null;
       if (!item) return { ok: false, path: `mics.${index}`, message: 'Expected an object.' };
-      const extra = Object.keys(item).find((key) => key !== 'inputId' && key !== 'deviceId' && key !== 'transport' && key !== 'role');
+      // D61 (2026-11-04): the mic line states its `channel` (the contract's strict members); the old `role` word is no longer a member.
+      const extra = Object.keys(item).find((key) => key !== 'inputId' && key !== 'deviceId' && key !== 'transport' && key !== 'channel');
       if (extra !== undefined) return { ok: false, path: `mics.${index}.${extra}`, message: 'Unknown member.' };
       if (typeof item.inputId !== 'string' || !MIC_INPUT_ID_PATTERN.test(item.inputId)) {
         return { ok: false, path: `mics.${index}.inputId`, message: 'Expected a mic input id, e.g. MIC-01.' };
@@ -841,20 +846,20 @@ function checkCaptureConfigUpdate(body: Record<string, unknown>): BodyCheck & { 
       if (item.transport !== undefined && !isCode(item.transport, 32)) {
         return { ok: false, path: `mics.${index}.transport`, message: 'Expected a transport code.' };
       }
-      if (item.role !== undefined && item.role !== MicRole.PRIMARY && item.role !== MicRole.STANDBY) {
-        return { ok: false, path: `mics.${index}.role`, message: 'Expected PRIMARY or STANDBY.' };
+      if (item.channel !== undefined && !(MIC_CHANNEL_IDS as readonly string[]).includes(String(item.channel))) {
+        return { ok: false, path: `mics.${index}.channel`, message: 'Expected a microphone channel: MIC-01, MIC-02, MIC-03 or MIC-04.' }; // D61 (2026-11-04)
       }
       mics.push({
         inputId: item.inputId,
         deviceId: item.deviceId.trim(),
         ...(item.transport === undefined ? {} : { transport: item.transport }),
-        ...(item.role === undefined ? {} : { role: item.role }),
+        ...(item.channel === undefined ? {} : { channel: item.channel as MicChannel }),
       });
     }
   }
   // AD-10 (3): a slot is not cleared and assigned by one body. (A mic line WITHOUT `role` names an
   // input, not a slot: which role holds it is the hosted action's to know, and it refuses it.)
-  const assigned: readonly CaptureSelectorSlot[] = [...cameras.map((line) => line.trackId), ...mics.flatMap((line) => (line.role === undefined ? [] : [line.role]))];
+  const assigned: readonly CaptureSelectorSlot[] = [...cameras.map((line) => line.trackId), ...mics.flatMap((line) => (line.channel === undefined ? [] : [line.channel]))];
   if (unassign.some((slot) => assigned.includes(slot))) {
     return { ok: false, path: 'unassign', message: 'A slot is not unassigned and assigned by the same request.' };
   }
@@ -944,10 +949,11 @@ export function audioSourceIntervalsOf(state: Pick<SimState, 'audit'> & { readon
   // Decision C36 (2), task 4 row 149: where none of them names an input, NO input is in force and
   // the answer is absent - no built-in input is invented for an interval (AD-04, C18 (2)).
   const lines = session.captureConfig?.mics ?? [];
-  const initialInputId: CaptureMicInputId | null = boundaries[0]?.from ?? source?.activeInputId ?? lines.find((mic) => mic.role === MicRole.PRIMARY)?.inputId ?? state.audio?.activeInputId ?? null;
+  const initialInputId: CaptureMicInputId | null = boundaries[0]?.from ?? source?.activeInputId ?? lines.find((mic) => mic.channel === PRIMARY_MIC_CHANNEL)?.inputId ?? state.audio?.activeInputId ?? null; // D61: channel 1 is the transcribed line
   if (initialInputId === null) return [];
   // The role is the one of the input's selector line (the Core's rows say STANDBY for the standby).
-  const roleOf = (inputId: CaptureMicInputId): MicRole => lines.find((mic) => mic.inputId === inputId)?.role ?? MicRole.PRIMARY;
+  // D61 (2026-11-04): the interval table keeps the transcription-pair word of the row — channel 1 reads PRIMARY, another channel STANDBY.
+  const roleOf = (inputId: CaptureMicInputId): MicRole => ((lines.find((mic) => mic.inputId === inputId)?.channel ?? PRIMARY_MIC_CHANNEL) === PRIMARY_MIC_CHANNEL ? MicRole.PRIMARY : MicRole.STANDBY);
   const switchRows = state.audit.rows.filter((row) => row.type === AuditType.AUDIO_SOURCE_SWITCHED && row.sessionId === session.id);
   /** Who made the switch that opened an interval: the row of that boundary (C3 §5.2 `toMs`), else the newest row for a single switch. */
   const switchedByOf = (boundary: Boundary): string | null =>

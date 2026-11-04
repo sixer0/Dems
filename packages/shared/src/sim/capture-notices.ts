@@ -28,14 +28,16 @@
  *    |--------------|-----------|-------|
  *    | every configured camera unreachable | BLOCK (`noCamera`) | blocked |
  *    | one camera of four unreachable | WARN (`oneCamera`) | degraded, after the acknowledgement |
- *    | both microphones unreachable | BLOCK (`noMicrophone`) | blocked |
- *    | the PRIMARY (active) microphone unreachable | BLOCK (`activeMicrophone`) | blocked: no switch at pre-check (D83) |
- *    | the STANDBY microphone unreachable | WARN (`noStandby`) | degraded, after the acknowledgement |
+ *    | all configured microphones unreachable | BLOCK (`noMicrophone`) | blocked |
+ *    | the channel-1 (transcribed) microphone unreachable | BLOCK (`activeMicrophone`) | blocked: no switch at pre-check (D83; D61 of 2026-11-04: one row PER CHANNEL, four simultaneous channels) |
+ *    | another channel's microphone unreachable | WARN (`noStandby`) | degraded, after the acknowledgement |
  *
  *    "Reachable" is `online` of the device in `captureDevices`: the Core server writes it from its
  *    adapters before each pre-check run; the in-app simulator never changes it, so its checks pass.
  */
-import type { MicRole, VideoTrackId } from '../domain';
+import type { VideoTrackId } from '../domain';
+import type { CaptureMicChannel } from './types'; // D61 (2026-11-04): the mic rows are keyed by channel
+import { PRIMARY_MIC_CHANNEL } from './vocabulary';
 import { SimNotFoundError } from './errors';
 import { nextItemId, pushRing, recordActivity } from './events';
 import { ALERT_RING_SIZE } from './constants';
@@ -487,25 +489,25 @@ export type CaptureStartRule = (typeof CaptureStartRule)[keyof typeof CaptureSta
 
 /**
  * The slots without which a Core in its own capture refuses the start, and whose pre-check item is
- * BLOCK (names register N11). ALL SIX, the STANDBY included (decision C25, which corrects C21 (8);
- * widened from four to six by D60 of 2026-11-04): the four video tracks and both microphone roles.
- * The pre-check and the Core's plan builder ("four video tracks and a primary and a standby
- * microphone", `SELECTOR_SHAPE`) say the same thing, so an operator never acknowledges a warning
- * only to meet a 409. In the order of the contract's `CAPTURE_SELECTOR_SLOTS` (held equal by a
- * test; this file imports nothing of `api/`).
+ * BLOCK (names register N11). ALL EIGHT (decision C25, which corrects C21 (8); widened from four to
+ * six by D60 of 2026-11-04 and to EIGHT by D61 of 2026-11-04): the four video tracks and the four
+ * microphone channels. The pre-check and the Core's plan builder ("four video tracks and four
+ * microphone channels", `SELECTOR_SHAPE`) say the same thing, so an operator never acknowledges a
+ * warning only to meet a 409. In the order of the contract's `CAPTURE_SELECTOR_SLOTS` (held equal
+ * by a test; this file imports nothing of `api/`).
  */
-export const CAPTURE_START_REQUIRED_SLOTS: readonly CaptureSelectorSlot[] = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'PRIMARY', 'STANDBY']; // D60 (2026-11-04)
+export const CAPTURE_START_REQUIRED_SLOTS: readonly CaptureSelectorSlot[] = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']; // D61 (2026-11-04): eight slots, four per medium
 
-/** The six slots of the selector, in the contract's order (D60): what `unassignedSlotsOf` walks. */
-const SELECTOR_SLOT_ORDER: readonly CaptureSelectorSlot[] = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'PRIMARY', 'STANDBY']; // D60 (2026-11-04)
+/** The eight slots of the selector, in the contract's order (D61): what `unassignedSlotsOf` walks. */
+const SELECTOR_SLOT_ORDER: readonly CaptureSelectorSlot[] = CAPTURE_START_REQUIRED_SLOTS; // D61 (2026-11-04)
 
 /**
  * The slots of a selector that hold no source, in the contract's order (names register N10). A
- * slot is unassigned when NO line names its track or its role: an unassigned slot is an absent
- * line. Nothing is read by its place in a list.
+ * slot is unassigned when NO line names its track or its channel (D61): an unassigned slot is an
+ * absent line. Nothing is read by its place in a list.
  */
-export function unassignedSlotsOf(selector: { readonly cameras: readonly { readonly trackId: VideoTrackId }[]; readonly mics: readonly { readonly role: MicRole }[] }): CaptureSelectorSlot[] {
-  const held = new Set<string>([...selector.cameras.map((line) => line.trackId), ...selector.mics.map((line) => line.role)]);
+export function unassignedSlotsOf(selector: { readonly cameras: readonly { readonly trackId: VideoTrackId }[]; readonly mics: readonly { readonly channel: CaptureMicChannel }[] }): CaptureSelectorSlot[] {
+  const held = new Set<string>([...selector.cameras.map((line) => line.trackId), ...selector.mics.map((line) => line.channel)]);
   return SELECTOR_SLOT_ORDER.filter((slot) => !held.has(slot));
 }
 
@@ -532,7 +534,7 @@ export function unassignedSlotOfPrecheckItem(item: Pick<PrecheckItem, 'value' | 
 
 /** One configured source of the selector, as the start rule sees it. */
 export interface CaptureSourceReachability {
-  /** The video track (`VIDEO-01`) or the microphone role (`PRIMARY`). */
+  /** The video track (`VIDEO-01`) or the microphone channel (`MIC-01`; D61). */
   slot: string;
   deviceId: string;
   deviceKind: 'CAMERA' | 'MIC';
@@ -548,7 +550,7 @@ export interface CaptureSourceReachability {
 }
 
 /** The selector the OPEN session was created under, else the stored one (the two are equal while a session is open, OD-10; a SEALED session's snapshot is not read: `selector-in-force.ts`). */
-function selectorOf(state: SimState): { cameras: readonly Pick<CaptureConfigCamera, 'trackId' | 'deviceId'>[]; mics: readonly Pick<CaptureConfigMic, 'deviceId' | 'role' | 'inputId'>[] } {
+function selectorOf(state: SimState): { cameras: readonly Pick<CaptureConfigCamera, 'trackId' | 'deviceId'>[]; mics: readonly Pick<CaptureConfigMic, 'deviceId' | 'channel' | 'inputId'>[] } {
   return selectorInForce(state);
 }
 
@@ -577,14 +579,17 @@ export function captureReachabilityOf(state: SimState): CaptureSourceReachabilit
     });
   });
 
+  // D61 (2026-11-04): one row PER CHANNEL over the four simultaneous channels. The transcribed
+  // channel (1) blocks when unreachable (D83: no switch at pre-check); another channel only warns,
+  // as its loss degrades the recording to fewer channels without taking the transcript away.
   const micUp = mics.map((mic) => online(mic.deviceId, 'MIC'));
   const noMic = mics.length > 0 && micUp.every((up) => !up);
   mics.forEach((mic, index) => {
     const reachable = micUp[index] === true;
-    const primary = mic.role === ('PRIMARY' satisfies MicRole);
+    const primary = mic.channel === PRIMARY_MIC_CHANNEL;
     const blocked = noMic || primary;
     rows.push({
-      slot: mic.role,
+      slot: mic.channel,
       deviceId: mic.deviceId,
       deviceKind: 'MIC',
       reachable,

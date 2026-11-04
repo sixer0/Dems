@@ -1,6 +1,6 @@
 // Test bed of the integration-pass-D1b seams (decision D133): a signed-in simulator of a scenario
-// and a role with its REST facade, the local microphone MIC-03 and the readers of the microphone
-// lines and their audit rows. One definition; the test files that use it are `sim-capture-config`,
+// and a role with its REST facade, the local microphone (D61 of 2026-11-04: MIC-05, since
+// MIC-03/MIC-04 are built-ins) and the readers of the microphone lines and their audit rows. One definition; the test files that use it are `sim-capture-config`,
 // `sim-evidence-item-kind`, `sim-capture-telemetry` and `api-domain-operations`.
 import { expect } from 'vitest';
 import { DEMO_OPERATOR_PASSWORD, OPERATORS, createManualClock, createSim, type CaptureDeviceStatus, type ScenarioName, type SimState } from '../../src/sim';
@@ -18,8 +18,8 @@ export function harness(scenario: ScenarioName = 'idle', role: 'TECHNICIAN' | 'I
   return { sim, clock, state: () => sim.store.getState() };
 }
 
-/** The local microphone as row 136 registers it: a NEW device with its own id (D106 (4)). */
-export const LOCAL_MIC: CaptureDeviceStatus = { id: 'MIC-03', kind: 'MIC', model: 'MacBook Air Microphone', firmware: null, host: null, poePort: null, online: true, streamState: null, capabilities: [] };
+/** The local microphone as row 136 registers it: a NEW device with its own id (D106 (4); D61: `MIC-05`). */
+export const LOCAL_MIC: CaptureDeviceStatus = { id: 'MIC-05', kind: 'MIC', model: 'MacBook Air Microphone', firmware: null, host: null, poePort: null, online: true, streamState: null, capabilities: [] };
 
 /** A development registry: the seeded devices and the local microphone. The selector is the seeded one. */
 export function registerLocalMic(h: ReturnType<typeof harness>): void {
@@ -27,13 +27,14 @@ export function registerLocalMic(h: ReturnType<typeof harness>): void {
   h.sim.store.setState({ captureDevices: { devices: [...state.captureDevices.devices, LOCAL_MIC] } });
 }
 
+// D61 (2026-11-04): the by-role pair became the by-channel pair (channels 1 and 2).
 export const pair = (primary: string, standby: string, extra: Record<string, unknown> = {}) => ({
   mics: [
-    { inputId: primary, deviceId: primary, role: 'PRIMARY', ...extra },
-    { inputId: standby, deviceId: standby, role: 'STANDBY' },
+    { inputId: primary, deviceId: primary, channel: 'MIC-01', ...extra },
+    { inputId: standby, deviceId: standby, channel: 'MIC-02' },
   ],
 });
 
-export const micsOf = (state: SimState): (string | boolean)[][] => state.captureConfig.mics.map((mic) => [mic.inputId, mic.deviceId, mic.role, mic.transport]);
+export const micsOf = (state: SimState): (string | boolean)[][] => state.captureConfig.mics.map((mic) => [mic.inputId, mic.deviceId, mic.channel, mic.transport]);
 
 export const changedRows = (state: SimState) => state.audit.rows.filter((row) => row.type === 'CAPTURE_CONFIG_CHANGED');

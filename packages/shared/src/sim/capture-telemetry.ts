@@ -24,7 +24,7 @@
  * (FAULT_CLEARED), so the next episode is a new fault with its own alert and audit row.
  */
 import { SessionState, type MicRole } from '../domain';
-import { activeMeterChannel, captureMicLines, channelOfMicLine, type AudioRuntime } from './audio';
+import { activeMeterChannel, captureMicLines, channelOfMicLine, channelOfWorkerMicRole, type AudioRuntime } from './audio'; // channelOfWorkerMicRole: D61 (2026-11-04) — the worker protocol still names the two transcription roles
 import { cameraNotReadAtRest, cameraStreamFaultActive } from './camera-stream-fault';
 import { SimNotFoundError } from './errors';
 import { clearFaultAtKey, raiseFaultAtKey } from './faults';
@@ -51,11 +51,17 @@ function captureMics(state: SimState): readonly CaptureConfigMic[] {
 }
 
 /**
- * The mic input that holds `role` in the capture configuration, or null when no row names that
- * role. Any `MIC-NN` of the pair: each of the two lines has its meter channel (ruling D137).
+ * The mic input that holds `role` in the capture configuration, or null when no row names it.
+ * D61 of 2026-11-04: the selector is keyed by CHANNEL; the worker protocol (v4, unchanged here)
+ * still names the two transcription roles, and `channelOfWorkerMicRole` maps them to channels 1
+ * and 2. Any `MIC-NN` line: each assigned channel has its meter (ruling D137 generalized).
  */
 export function micInputOfCaptureRole(state: SimState, role: MicRole): CaptureMicInputId | null {
-  return captureMics(state).find((mic) => mic.role === role)?.inputId ?? null;
+  // D61 (2026-11-04): a role word the worker protocol does not define names no channel - it is
+  // ignored (A-1), never answered as channel 2 through the mapping's else branch.
+  if (role !== 'PRIMARY' && role !== 'STANDBY') return null;
+  const channel = channelOfWorkerMicRole(role);
+  return captureMics(state).find((mic) => mic.channel === channel)?.inputId ?? null;
 }
 
 /**
@@ -86,7 +92,7 @@ export function captureDurableTransition(state: SimState, durable: boolean): Sim
 
 /**
  * Hands the measured levels to the audio subsystem. Transient: it touches the runtime only, never
- * the store. A role that no mic row holds is ignored; of two entries for one role the later wins.
+ * the store. A role whose channel no mic row holds is ignored; of two entries for one role the later wins.
  */
 export function feedCaptureLevels(runtime: AudioRuntime, state: SimState, now: EpochMs, levels: readonly CaptureTelemetryLevel[]): void {
   for (const level of levels) {
@@ -169,7 +175,7 @@ export function captureTelemetryChangesState(state: SimState, telemetry: Capture
   return applyCaptureTelemetryTransition(state, telemetry) !== state;
 }
 
-const MIC_ROLES: readonly string[] = ['PRIMARY', 'STANDBY'] satisfies readonly MicRole[];
+const MIC_ROLES: readonly string[] = ['PRIMARY', 'STANDBY'] satisfies readonly MicRole[]; // worker-protocol words (D61 maps them to channels 1 and 2)
 
 /**
  * What a frame names that the Core does not know, so `applyCaptureTelemetry` ignores it: an ingest
@@ -186,11 +192,11 @@ export function captureTelemetryIgnored(state: SimState, telemetry: CaptureTelem
   return ignored;
 }
 
-/** The mic row a warning subject names: by role, by input ID or by device ID. */
+/** The mic row a warning subject names: by worker role word, by CHANNEL, by input ID or by device ID (D61). */
 function micOfSubject(state: SimState, subject: string): CaptureConfigMic | null {
   const mics = captureMics(state);
-  if (MIC_ROLES.includes(subject)) return mics.find((mic) => mic.role === subject) ?? null;
-  return mics.find((mic) => mic.inputId === subject) ?? mics.find((mic) => mic.deviceId === subject) ?? null;
+  if (MIC_ROLES.includes(subject)) return mics.find((mic) => mic.channel === channelOfWorkerMicRole(subject as MicRole)) ?? null;
+  return mics.find((mic) => mic.inputId === subject) ?? mics.find((mic) => mic.deviceId === subject) ?? mics.find((mic) => mic.channel === subject) ?? null;
 }
 
 /**

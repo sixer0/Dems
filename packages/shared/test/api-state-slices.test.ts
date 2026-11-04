@@ -846,9 +846,10 @@ describe('values: time, value sets, identifiers, hashes, levels, text', () => {
     for (const dbfs of [0.1, -90.5, null]) {
       expect(AudioSliceSchema.safeParse({ ...audio, inputs: { ...audio.inputs, 'MIC-01': { ...frame, dbfs } } }).success, String(dbfs)).toBe(false);
     }
-    // Schema v2 keys the meters by input and names the active one (SH-17): a third input, or the
-    // v1 `channels` shape, or a missing `activeInputId`, are all refused.
-    expect(AudioSliceSchema.safeParse({ ...audio, inputs: { ...audio.inputs, 'MIC-03': frame } }).success).toBe(false);
+    // Schema v2 keys the meters by input and names the active one (SH-17): a FIFTH input (D61,
+    // 2026-11-04: the slice holds at most the four channels), the v1 `channels` shape, or a missing
+    // `activeInputId`, are all refused.
+    expect(AudioSliceSchema.safeParse({ ...audio, inputs: { ...audio.inputs, 'MIC-05': frame } }).success).toBe(false);
     expect(AudioSliceSchema.safeParse({ inputs: audio.inputs }).success).toBe(false);
     expect(AudioSliceSchema.safeParse({ channels: audio.inputs, activeInputId: 'MIC-01' }).success).toBe(false);
     expect(AudioSliceSchema.safeParse({ ...audio, inputs: { ...audio.inputs, 'MIC-01': { ...frame, dbfs: -90, peak: 0 } } }).success).toBe(true);
@@ -861,19 +862,21 @@ describe('values: time, value sets, identifiers, hashes, levels, text', () => {
     const audio = state.audio;
     const frame = audio.inputs['MIC-01'];
     // A complete selector: the slice of today parses to itself, member for member.
-    expect(Object.keys(audio.inputs)).toEqual(['MIC-01', 'MIC-02']);
+    expect(Object.keys(audio.inputs)).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']); // D61 (2026-11-04): four seeded frames
     expect(AudioSliceSchema.parse(audio)).toStrictEqual(audio);
     // One microphone line: one frame (this body was refused before the widening).
     expect(AudioSliceSchema.safeParse({ inputs: { 'MIC-01': frame }, activeInputId: 'MIC-01' }).success).toBe(true);
-    // A lone STANDBY line: its frame, and no active input.
+    // A lone channel-2 line: its frame, and no active input (D61: the slot became channel 2).
     expect(AudioSliceSchema.parse({ inputs: { 'MIC-02': frame }, activeInputId: null })).toStrictEqual({ inputs: { 'MIC-02': frame }, activeInputId: null });
     // No microphone line at all.
     expect(AudioSliceSchema.safeParse({ inputs: {}, activeInputId: null }).success).toBe(true);
     // Absent is `null`, never a missing member, an empty text or a word.
     expect(AudioSliceSchema.safeParse({ inputs: {} }).success).toBe(false);
     for (const bad of ['', 'NONE', 'AUDIO-01', 0, false]) expect(AudioSliceSchema.safeParse({ inputs: {}, activeInputId: bad }).success, String(bad)).toBe(false);
-    // Still at most two, and still keyed by `MIC-NN`.
-    expect(AudioSliceSchema.safeParse({ inputs: { 'MIC-01': frame, 'MIC-02': frame, 'MIC-03': frame }, activeInputId: null }).success).toBe(false);
+    // At most FOUR (D61, 2026-11-04: four simultaneous channels), and still keyed by `MIC-NN`.
+    expect(AudioSliceSchema.safeParse({ inputs: { 'MIC-01': frame, 'MIC-02': frame, 'MIC-03': frame }, activeInputId: null }).success).toBe(true); // D61: three of four is a slice
+    expect(AudioSliceSchema.safeParse({ inputs: { 'MIC-01': frame, 'MIC-02': frame, 'MIC-03': frame, 'MIC-04': frame }, activeInputId: null }).success).toBe(true); // D61: the complete four-channel slice
+    expect(AudioSliceSchema.safeParse({ inputs: { 'MIC-01': frame, 'MIC-02': frame, 'MIC-03': frame, 'MIC-04': frame, 'MIC-05': frame }, activeInputId: null }).success).toBe(false); // D61: five keys exceed the four channels
     expect(AudioSliceSchema.safeParse({ inputs: { 'AUDIO-01': frame }, activeInputId: null }).success).toBe(false);
   });
 
@@ -884,21 +887,21 @@ describe('values: time, value sets, identifiers, hashes, levels, text', () => {
     const healthExample = DeviceHealthResponseSchema.parse(exampleOf('getDeviceHealth', 'idle'));
     // Complete selector: two mic entries, an active input, and a source device behind EACH OF THE
     // FOUR tracks (D60, 2026-11-04: the status answers carry one entry per track of the widened domain).
-    expect([audioExample.channels.length, typeof audioExample.activeInputId]).toEqual([2, 'string']);
+    expect([audioExample.channels.length, typeof audioExample.activeInputId]).toEqual([4, 'string']); // D61 (2026-11-04): four mic entries
     expect(videoExample.tracks.map((track) => typeof track.sourceDeviceId)).toEqual(['string', 'string', 'string', 'string']);
-    expect([healthExample.audio.length, typeof healthExample.activeInputId, healthExample.cameras.length]).toEqual([2, 'string', 4]);
+    expect([healthExample.audio.length, typeof healthExample.activeInputId, healthExample.cameras.length]).toEqual([4, 'string', 4]); // D61: four microphone inputs
 
-    const [first, second] = audioExample.channels;
-    // Operation 45: one entry per meter channel that has an input, so two, one or none.
+    const [first, second, third, fourth] = audioExample.channels;
+    // Operation 45: one entry per meter channel that has an input - four, fewer, or none (D61).
     expect(AudioStatusResponseSchema.safeParse({ channels: [first], activeInputId: first?.inputId }).success).toBe(true);
     expect(AudioStatusResponseSchema.safeParse({ channels: [], activeInputId: null }).success).toBe(true);
-    expect(AudioStatusResponseSchema.safeParse({ channels: [first, second], activeInputId: null }).success).toBe(true);
-    expect(AudioStatusResponseSchema.safeParse({ channels: [first, second, first], activeInputId: null }).success).toBe(false);
+    expect(AudioStatusResponseSchema.safeParse({ channels: [first, second, third, fourth], activeInputId: null }).success).toBe(true); // D61 (2026-11-04): the complete four-channel answer
+    expect(AudioStatusResponseSchema.safeParse({ channels: [first, second, third, fourth, first], activeInputId: null }).success).toBe(false); // D61: more entries than the four channels
     expect(AudioStatusResponseSchema.safeParse({ channels: [] }).success).toBe(false);
     expect(AudioStatusResponseSchema.safeParse({ channels: [], activeInputId: '' }).success).toBe(false);
-    // An entry IS an input: its own members did not become nullable.
+    // An entry IS an input: its own members did not become nullable (D61: the identifying member is `channel`, the role word is gone).
     expect(AudioStatusResponseSchema.safeParse({ channels: [{ ...first, inputId: null }], activeInputId: null }).success).toBe(false);
-    expect(AudioStatusResponseSchema.safeParse({ channels: [{ ...first, role: null }], activeInputId: null }).success).toBe(false);
+    expect(AudioStatusResponseSchema.safeParse({ channels: [{ ...first, channel: null }], activeInputId: null }).success).toBe(false); // D61 (2026-11-04): was `role: null`
 
     const [trackOne, trackTwo, trackThree, trackFour] = videoExample.tracks;
     // D60 (2026-11-04): operation 46 answers the FOUR tracks; a track without a line states `sourceDeviceId: null`.

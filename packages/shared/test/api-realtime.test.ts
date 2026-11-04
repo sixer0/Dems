@@ -609,12 +609,15 @@ describe('state: snapshot, then deltas of the real engine', () => {
     expect(WsServerMessageSchema.parse(frame)).toStrictEqual(frame);
     expect(audio.inputs['MIC-01']!.seq).toBeGreaterThan(10);
     expect(MetersMessageSchema.safeParse({ ...frame, revision: 3 }).success).toBe(false);
-    // Task 4 row 28 (register E41): a frame carries one frame per microphone line of the selector,
-    // so one input (and no active input) is a frame; three inputs are not.
+    // Task 4 row 28 (register E41; widened by D61, 2026-11-04): a frame carries one frame per
+    // microphone line of the selector - up to four - so one input (and no active input) is a frame,
+    // and so are three and all four; five keys are not.
     const one = audio.inputs['MIC-01']!;
     expect(MetersMessageSchema.safeParse({ ...frame, audio: { inputs: { 'MIC-01': one }, activeInputId: 'MIC-01' } }).success).toBe(true);
     expect(MetersMessageSchema.safeParse({ ...frame, audio: { inputs: {}, activeInputId: null } }).success).toBe(true);
-    expect(MetersMessageSchema.safeParse({ ...frame, audio: { inputs: { 'MIC-01': one, 'MIC-02': one, 'MIC-03': one }, activeInputId: 'MIC-01' } }).success).toBe(false);
+    expect(MetersMessageSchema.safeParse({ ...frame, audio: { inputs: { 'MIC-01': one, 'MIC-02': one, 'MIC-03': one }, activeInputId: 'MIC-01' } }).success).toBe(true); // D61: three of four channels
+    expect(MetersMessageSchema.safeParse({ ...frame, audio: { inputs: { 'MIC-01': one, 'MIC-02': one, 'MIC-03': one, 'MIC-04': one }, activeInputId: 'MIC-01' } }).success).toBe(true); // D61: the complete slice
+    expect(MetersMessageSchema.safeParse({ ...frame, audio: { inputs: { 'MIC-01': one, 'MIC-02': one, 'MIC-03': one, 'MIC-04': one, 'MIC-05': one }, activeInputId: 'MIC-01' } }).success).toBe(false); // D61: five keys exceed the four channels
   });
 });
 

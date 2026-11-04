@@ -166,15 +166,14 @@ const CAMERAS: CamerasSliceBody = [
   },
 ];
 
-/** Slice `mics`. */
+/** Slice `mics` (D61, 2026-11-04: FOUR simultaneous channels; `channel` is the selector slot, the numeric meter index and `micRole` are superseded). */
 const MICS: MicsSliceBody = [
   {
     id: 'AUDIO-01',
     deviceId: 'MIC-01',
     name: 'MIC 1 – Interviewer',
     role: 'Interviewer',
-    micRole: 'PRIMARY',
-    channel: 1,
+    channel: 'MIC-01',
     state: 'READY',
     recState: null,
     gainDb: 32,
@@ -186,8 +185,31 @@ const MICS: MicsSliceBody = [
     deviceId: 'MIC-02',
     name: 'MIC 2 – Subject',
     role: 'Subject',
-    micRole: 'STANDBY',
-    channel: 2,
+    channel: 'MIC-02',
+    state: 'READY',
+    recState: null,
+    gainDb: 32,
+    phantom: true,
+    clipLatched: false,
+  },
+  {
+    id: 'AUDIO-03',
+    deviceId: 'MIC-03',
+    name: 'MIC 3 – Channel 3', // D61
+    role: null,
+    channel: 'MIC-03',
+    state: 'READY',
+    recState: null,
+    gainDb: 32,
+    phantom: true,
+    clipLatched: false,
+  },
+  {
+    id: 'AUDIO-04',
+    deviceId: 'MIC-04',
+    name: 'MIC 4 – Channel 4', // D61
+    role: null,
+    channel: 'MIC-04',
     state: 'READY',
     recState: null,
     gainDb: 32,
@@ -212,6 +234,8 @@ const PORTS: PortsSliceBody = [
   { id: 'MGMT_LAN', label: 'MGMT LAN', link: true },
   { id: 'MIC_IN_1', label: 'MIC IN 1', link: true },
   { id: 'MIC_IN_2', label: 'MIC IN 2', link: true },
+  { id: 'MIC_IN_3', label: 'MIC IN 3', link: true }, // D61 (2026-11-04): four microphone channels
+  { id: 'MIC_IN_4', label: 'MIC IN 4', link: true }, // D61
   { id: 'GNSS_SMA', label: 'GNSS SMA', link: true },
   { id: 'RELAY_IO', label: 'Relay I/O', link: true },
 ];
@@ -364,7 +388,9 @@ const SETTINGS: SettingsSliceBody = { presentationMode: false, timeFormat: '24',
 
 /**
  * Slice 29 `captureConfig` (SH-16; ops 76/78/79/80/89). The idle selector of the seeded topology:
- * one dual-lens camera pair and MIC-01 PRIMARY with MIC-02 as the hot standby (OD-05, OD-09).
+ * four camera lines and the four microphone channels MIC-01..MIC-04 on the built-in microphones
+ * (OD-05; D61 of 2026-11-04: four simultaneous channels — the OD-09 primary/standby pair is
+ * superseded, channel 1 keeps the transcription duty).
  * `locked` is false because no session is open (OD-10).
  */
 const CAPTURE_CONFIG: CaptureConfigSliceBody = {
@@ -376,16 +402,20 @@ const CAPTURE_CONFIG: CaptureConfigSliceBody = {
     { trackId: 'VIDEO-04', deviceId: 'CAM-04', profile: 'H264_1080P25', online: true, streamState: 'LIVE' },
   ],
   mics: [
-    { inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY', transport: 'USB', online: true },
-    { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY', transport: 'USB', online: true },
+    // D61 (2026-11-04): the row is keyed by its channel, as a camera row is keyed by its track.
+    { channel: 'MIC-01', inputId: 'MIC-01', deviceId: 'MIC-01', transport: 'USB', online: true },
+    { channel: 'MIC-02', inputId: 'MIC-02', deviceId: 'MIC-02', transport: 'USB', online: true },
+    { channel: 'MIC-03', inputId: 'MIC-03', deviceId: 'MIC-03', transport: 'USB', online: true },
+    { channel: 'MIC-04', inputId: 'MIC-04', deviceId: 'MIC-04', transport: 'USB', online: true },
   ],
   locked: false,
   updatedAt: 1_790_823_600_000,
 };
 
 /**
- * Slice 30 `captureDevices` (SH-16, E-04): the seven built-in capture devices of the seeded registry
- * (`dbc-3 §E.3`; D60 of 2026-11-04 widened the seed to four cameras, two microphones, one switch).
+ * Slice 30 `captureDevices` (SH-16, E-04): the nine built-in capture devices of the seeded registry
+ * (`dbc-3 §E.3`; D60 of 2026-11-04 widened the seed to four cameras, two microphones, one switch;
+ * D61 of 2026-11-04 adds the two further microphones).
  * Hosts are loopback addresses of the fake sources; **no** credential appears here
  * (RK-12) and this slice is not the paired-client registry (E-04).
  */
@@ -449,6 +479,29 @@ const CAPTURE_DEVICES: CaptureDevicesSliceBody = {
     },
     {
       id: 'MIC-02',
+      kind: 'MIC',
+      model: 'USB condenser microphone UM-1',
+      firmware: '1.04',
+      host: null,
+      poePort: null,
+      online: true,
+      streamState: null,
+      capabilities: ['AUDIO'],
+    },
+    // D61 (2026-11-04): the two further built-in microphones of the four-channel capture surface.
+    {
+      id: 'MIC-03',
+      kind: 'MIC',
+      model: 'USB condenser microphone UM-1',
+      firmware: '1.04',
+      host: null,
+      poePort: null,
+      online: true,
+      streamState: null,
+      capabilities: ['AUDIO'],
+    },
+    {
+      id: 'MIC-04',
       kind: 'MIC',
       model: 'USB condenser microphone UM-1',
       firmware: '1.04',
@@ -571,13 +624,14 @@ export const EXAMPLE_EVIDENCE_ITEM: EvidenceItemBody = {
     {
       trackId: 'AUDIO-01',
       label: 'MIC 1 – Interviewer',
-      sizeBytes: 50_566_667,
+      // D61 (2026-11-04): four PCM channels share the audio budget - 0.005 of the item each.
+      sizeBytes: 25_283_333,
       sha256: 'ad6aa4e1591259a027c832793f8f784d67fd59f0a092937c059de1caa0577c78',
     },
     {
       trackId: 'AUDIO-02',
       label: 'MIC 2 – Subject',
-      sizeBytes: 50_566_667,
+      sizeBytes: 25_283_333, // D61
       sha256: '728b535907b3cb993941be4554b997d1d26a41301cfc7f5cdd977f8dc16aed0d',
     },
   ],

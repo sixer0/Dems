@@ -58,7 +58,6 @@ import { z } from 'zod';
 import {
   FinalizationStep,
   LensState,
-  MicRole,
   MicState,
   SecurityState,
   SessionState,
@@ -72,6 +71,7 @@ import {
   AuditType,
   CaptureStreamState,
   FaultKind,
+  MIC_CHANNEL_IDS, // D61 (2026-11-04): the four microphone channels
   OperatorRole,
   Permission,
   PrecheckCheckId,
@@ -361,7 +361,7 @@ export const SessionResourceSchema = z
       })
       .nullable()
       .optional()
-      .describe('The active/standby mic pair of this session (op 81 moves it).'),
+      .describe('The transcription pair of this session: the inputs of channels `MIC-01` and `MIC-02` (D61, 2026-11-04: all four channels record; op 81 moves the transcribed one).'),
     captureDurable: z
       .boolean()
       .optional()
@@ -449,17 +449,18 @@ export type VideoTrackStatus = z.output<typeof VideoTrackStatusSchema>;
 
 /**
  * One microphone INPUT (schema v2; task 3 M2-W7; register SH-15/SH-17; C3 §3 op 45; E-02). The
- * v1 entry was keyed by the channel `AUDIO-01`/`AUDIO-02`; v2 keys it by the input `MIC-01`/
- * `MIC-02` and carries the capture role inside `AUDIO-01` (OD-01 T1: `AUDIO-01` is the one
- * session audio track, `AUDIO-02` is legacy v1 only). The components name stays for wire
- * stability of the array member.
+ * v1 entry was keyed by the channel `AUDIO-01`/`AUDIO-02`; v2 keys it by the input `MIC-NN` and
+ * carries the selector CHANNEL it stands on (D61 of 2026-11-04: four simultaneous channels
+ * `MIC-01`..`MIC-04`, each feeding its own track `AUDIO-0N`; the OD-01 T1 one-track premise and
+ * the PRIMARY/STANDBY role it carried here are superseded — channel 1 keeps the transcription
+ * duty). The components name stays for wire stability of the array member.
  */
 export const AudioChannelStatusSchema = z
   .object({
     inputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The physical input, `MIC-NN`: the built-in MIC-01 / MIC-02 or a microphone registered later (never a track).'),
     deviceId: z.string().min(1).describe('e.g. MIC-01.'),
     name: z.string().min(1).describe('e.g. "MIC 1 – Interviewer".'),
-    role: z.enum(MicRole).describe('PRIMARY feeds AUDIO-01; STANDBY is the hot failover (OD-09).'),
+    channel: z.enum(MIC_CHANNEL_IDS).describe('The selector channel this input stands on (D61, 2026-11-04): `MIC-01`..`MIC-04`; channel 1 feeds the transcribed track AUDIO-01.'), // D61: was `role` PRIMARY/STANDBY (OD-01/OD-09, superseded)
     state: z.enum(MicState),
     recState: z.enum(TrackRecState).nullable(),
     dbfs: dbfs().describe('Ballistic level in dBFS; -90 means no signal.'),
@@ -474,7 +475,7 @@ export const AudioChannelStatusSchema = z
     gainDb: z.number().describe('Read-only in the UI (G13).'),
     phantom: z.boolean(),
   })
-  .describe('One mic input keyed by MIC-01/MIC-02 with its PRIMARY/STANDBY role (schema v2).');
+  .describe('One mic input on one of the four selector channels `MIC-01`..`MIC-04` (schema v2; D61, 2026-11-04: the PRIMARY/STANDBY roles became the numbered channels).');
 export type AudioChannelStatus = z.output<typeof AudioChannelStatusSchema>;
 
 export const VideoStatusResponseSchema = z
@@ -494,15 +495,15 @@ export const AudioStatusResponseSchema = z
   .object({
     channels: z
       .array(AudioChannelStatusSchema)
-      .max(2)
-      .describe('The mic inputs of the capture, one entry per meter channel that has an input: two on a complete selector (the built-in MIC-01 and MIC-02 unless the selector holds another `MIC-NN`), fewer while a microphone slot is not assigned. Never merged (SYS-003).'),
+      .max(4) // D61 (2026-11-04): four simultaneous microphone channels
+      .describe('The mic inputs of the capture, one entry per microphone channel that has an input: four on a complete selector (the built-in MIC-01..MIC-04 unless the selector holds another `MIC-NN`; D61, 2026-11-04), fewer while a microphone channel is not assigned. Never merged (SYS-003).'),
     activeInputId: z
       .string()
       .regex(MIC_INPUT_ID_PATTERN)
       .nullable()
-      .describe('The input whose audio is inside AUDIO-01 right now (op 81 moves it; SH-15). Null: the selector holds no PRIMARY microphone.'),
+      .describe('The input whose audio is transcribed on AUDIO-01 right now (op 81 moves it; SH-15; D61: the input of channel `MIC-01` - all four channels record at once). Null: the selector holds no channel-1 microphone.'),
   })
-  .describe('Per-input audio snapshot with the active/standby pair. Meters use it as their initial value; live levels run at 20 Hz in-process.');
+  .describe('Per-input audio snapshot with the transcription pair (D61: four simultaneous channels; op 81 trades channels 1 and 2). Meters use it as their initial value; live levels run at 20 Hz in-process.');
 export type AudioStatusResponse = z.output<typeof AudioStatusResponseSchema>;
 
 export const StorageStatusResponseSchema = z
@@ -554,13 +555,13 @@ export const DeviceHealthResponseSchema = z
     // so they take the same widening as `AudioStatusResponseSchema` (register E40).
     audio: z
       .array(AudioChannelStatusSchema)
-      .max(2)
-      .describe('Schema v2: keyed by the mic inputs (`MIC-NN`) with their roles; two on a complete selector, fewer while a microphone slot is not assigned.'),
+      .max(4) // D61 (2026-11-04): the same four-channel widening as operation 45
+      .describe('Schema v2: keyed by the mic inputs (`MIC-NN`) with their channels (D61: four simultaneous channels); four on a complete selector, fewer while a microphone channel is not assigned.'),
     activeInputId: z
       .string()
       .regex(MIC_INPUT_ID_PATTERN)
       .nullable()
-      .describe('Schema v2 (C3 §3 op 44): the input feeding AUDIO-01 right now. Null: the selector holds no PRIMARY microphone.'),
+      .describe('Schema v2 (C3 §3 op 44; D61, 2026-11-04): the input of channel `MIC-01`, feeding the transcribed track AUDIO-01 right now. Null: the selector holds no channel-1 microphone.'),
     storage: StorageStatusResponseSchema,
     time: z.object({
       source: z.enum(TimeSource).describe('Active source, priority GNSS → NTP → RTC.'),
@@ -824,7 +825,7 @@ const DEVICE_HEALTH_TEXT = [
 ];
 
 const AUDIO_STATUS_TEXT = [
-  'Per-channel levels and faults for AUDIO-01 (MIC 1) and AUDIO-02 (MIC 2), reported separately (book §21.2, SYS-003).',
+  'Per-channel levels and faults for the FOUR simultaneous audio channels AUDIO-01 to AUDIO-04 (D61 of 2026-11-04; the book §21.2 named two), reported separately (book §21.2, SYS-003).',
 ];
 
 const VIDEO_STATUS_TEXT = ['Per-track status for the recorded video tracks (D60, 2026-11-04: VIDEO-01 to VIDEO-04; book §21.2).']; // D60
@@ -1026,7 +1027,7 @@ const OPERATION_TABLE = [
     coreServerDescription: [...AUDIO_STATUS_TEXT, READ_FOR_EVERY_ROLE, CORE_SERVER_ANSWERS].join('\n\n'),
     source: 'Design book §21.2',
     responses: {
-      200: { description: 'Both audio channels.', schema: 'AudioStatusResponse' },
+      200: { description: 'The four audio channels (D61).', schema: 'AudioStatusResponse' },
       ...CORE_SERVER_READ_REFUSALS,
     },
     access: AUTHENTICATED_ACCESS,

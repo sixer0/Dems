@@ -80,7 +80,7 @@ describe('SH-06 session machine (register SH-05/SH-06)', () => {
     // The selector as it stood at the start (SH-05/SH-06; OD-10). D60 (2026-11-04): FOUR camera lines.
     expect(session?.captureConfig).not.toBeNull();
     expect(session?.captureConfig?.cameras).toHaveLength(4);
-    expect(session?.captureConfig?.mics.map((mic) => mic.role)).toEqual(['PRIMARY', 'STANDBY']);
+    expect(session?.captureConfig?.mics.map((mic) => mic.channel)).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']); // D61 (2026-11-04): four channels in the snapshot
     // The active input inside AUDIO-01 is the primary; the standby is hot (OD-09).
     expect(session?.audioSource).toMatchObject({
       sessionId: session?.id,
@@ -94,12 +94,12 @@ describe('SH-06 session machine (register SH-05/SH-06)', () => {
   it('the snapshot is a copy: editing the live selector afterwards never reaches the running session', () => {
     const h = harness();
     h.toRecording();
-    const snapshotted = h.state().session?.captureConfig?.mics.map((mic) => mic.role);
+    const snapshotted = h.state().session?.captureConfig?.mics.map((mic) => mic.channel);
     // Mutate the live slice the way op 78 would (a swap of the roles while idle would be refused
     // mid-session, but the snapshot must be independent regardless).
     const next = { ...h.state(), captureConfig: { ...h.state().captureConfig, locked: true } };
     expect(captureConfigSnapshot(next)?.cameras).toHaveLength(4); // D60 (2026-11-04)
-    expect(h.state().session?.captureConfig?.mics.map((mic) => mic.role)).toEqual(snapshotted);
+    expect(h.state().session?.captureConfig?.mics.map((mic) => mic.channel)).toEqual(snapshotted);
   });
 
   it('advanceFinalization reports per-step progress, ETA and attempt from Core instants (R-6 op 83)', () => {
@@ -193,9 +193,9 @@ describe('SH-07 evidence v2 (register SH-07; OD-02 L2)', () => {
     expect(h.state().session?.state).toBe('SEALED');
     const item = h.state().evidence.at(-1);
     expect(item).toBeDefined();
-    // One whole fMP4 per camera and no audio file (C3 §3 row 39; ev §A.1; integration pass D4,
-    // AC-B-70): the session audio is inside the camera files. Until pass D4 a third entry `AUDIO-01` stood here.
-    expect(item?.files?.map((file) => file.trackId)).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04']); // D60 (2026-11-04): four sealed files
+    // D61 (2026-11-04): the live seal carries EIGHT files - one whole fMP4 per camera AND one PCM
+    // file per microphone channel (the audio plane widened from the two embedded roles to four).
+    expect(item?.files?.map((file) => file.trackId)).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04']); // D60: four video files; D61: plus four audio files
     expect(item?.files?.every((file) => /^[0-9a-f]{64}$/.test(file.sha256))).toBe(true);
     expect(item?.fragmentChainHead).toMatch(/^[0-9a-f]{64}$/);
     expect(item?.transcriptSha256).toMatch(/^[0-9a-f]{64}$/);
@@ -212,7 +212,7 @@ describe('SH-07 evidence v2 (register SH-07; OD-02 L2)', () => {
     expect(buildEvidenceFilesV2({
       evidenceId: item!.id, sessionId: item!.sessionId, caseNumber: item!.caseNumber,
       recordedAt: item!.recordedAt, endedAt: item!.endedAt, sizeBytes: item!.sizeBytes,
-    })).toHaveLength(4); // D60 (2026-11-04): four camera files
+    })).toHaveLength(8); // D60: four camera files; D61 (2026-11-04): plus four audio files
     expect(transcriptSha256({
       evidenceId: item!.id, sessionId: item!.sessionId, caseNumber: item!.caseNumber,
       recordedAt: item!.recordedAt, endedAt: item!.endedAt, sizeBytes: item!.sizeBytes,

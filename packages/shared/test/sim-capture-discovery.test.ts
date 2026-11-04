@@ -144,7 +144,7 @@ describe('operations 93 and 94: the search and its candidates', () => {
     expect(h.rows('CAPTURE_DISCOVERY_SEARCHED')).toHaveLength(2);
     expect(JSON.stringify(h.rows('CAPTURE_DISCOVERY_SEARCHED'))).not.toMatch(/127\.0\.0\.1|Test camera|urn:uuid/);
     // A search raises no alert in the simulator (the list is not empty) and registers nothing.
-    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
+    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'POE-SWITCH']);
     expect(h.state().alerts.filter((alert) => alert.target === 'CAPTURE_DISCOVERY')).toEqual([]);
   });
 
@@ -251,7 +251,7 @@ describe('operations 93 and 94: the search and its candidates', () => {
       permission: 'CAPTURE_CONFIG',
     });
     expect(JSON.stringify(h.state().audit.rows)).not.toContain(SIM_TYPED_ADDRESS_EXAMPLE);
-    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
+    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'POE-SWITCH']);
 
     // The next search without the member is the old search again: the synthetic candidate is gone.
     const plain = h.call<CaptureDiscoverySearch>('POST', DISCOVERY);
@@ -398,7 +398,7 @@ describe('operations 95 and 96: the connection test and the adoption', () => {
     const h = searched();
     const untested = h.call('POST', `${FRESH}/adopt`, {});
     expect([untested.status, reasonOf(untested.body)]).toEqual([409, 'CANDIDATE_NOT_TESTED']);
-    expect(h.state().captureDevices.devices).toHaveLength(7); // D60 (2026-11-04): seven built-in devices
+    expect(h.state().captureDevices.devices).toHaveLength(9); // D61 (2026-11-04): nine built-in devices
 
     h.call('POST', `${FRESH}/test`, {});
     const selector = h.state().captureConfig;
@@ -410,7 +410,7 @@ describe('operations 95 and 96: the connection test and the adoption', () => {
       device: { id: 'CAM-05', kind: 'CAMERA', model: 'Test source', firmware: null, host: '127.0.0.1', poePort: null, online: true, streamState: null, capabilities: ['VIDEO'], adapter: 'FAKE', sourceClass: 'DEVELOPMENT', profiles: [] },
       credentialSet: false,
     });
-    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'CAM-05']);
+    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'POE-SWITCH', 'CAM-05']);
     // Adoption is not assignment: no track changed.
     expect(h.state().captureConfig).toBe(selector);
     expect(h.rows('CAPTURE_CANDIDATE_ADOPTED').map((row) => [row.deviceId, row.details])).toEqual([
@@ -423,7 +423,7 @@ describe('operations 95 and 96: the connection test and the adoption', () => {
     // At most one device per candidate.
     const repeat = h.call('POST', `${FRESH}/adopt`, {});
     expect([repeat.status, reasonOf(repeat.body), (repeat.body as { error: { details: { deviceId?: string } } }).error.details.deviceId]).toEqual([409, 'CANDIDATE_ALREADY_REGISTERED', 'CAM-05']);
-    expect(h.state().captureDevices.devices).toHaveLength(8);
+    expect(h.state().captureDevices.devices).toHaveLength(10);
     // The new device is assignable like any registered camera (operation 79), a candidate id is not.
     expect(h.call('POST', '/api/v1/capture/cameras/CAM-05/source', { trackId: 'VIDEO-02' }).status).toBe(200);
     expect(h.call('POST', `/api/v1/capture/cameras/${SIM_CAPTURE_CANDIDATE_IDS.fresh}/source`, { trackId: 'VIDEO-02' }).status).toBe(404);
@@ -436,7 +436,7 @@ describe('operations 95 and 96: the connection test and the adoption', () => {
     h.sim.actions.signOut();
     signIn(h, 'andi.pratama');
     h.sim.actions.resetDemo();
-    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
+    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'POE-SWITCH']);
   });
 
   it('with a credential: 201, `credentialSet: true`, one CAPTURE_CREDENTIAL_SET row naming the device only, and the pair is nowhere', () => {
@@ -517,14 +517,16 @@ describe('operation 97: the local inputs, read again', () => {
         inputs: [
           // Pin moved by wave H closing pass Z1, item 6 (ruling D206 (2); C3 §2.6 erratum PE-WH-01): simulated
           // capture states NO adapter and NO source class on any operation - the in-app simulator as the SIMULATED Core.
-          { deviceId: 'MIC-01', inputId: 'MIC-01', present: true, errorCode: null },
+          { deviceId: 'MIC-01', inputId: 'MIC-01', present: true, errorCode: null }, // D61 (2026-11-04): four built-in microphones
           { deviceId: 'MIC-02', inputId: 'MIC-02', present: true, errorCode: null },
+          { deviceId: 'MIC-03', inputId: 'MIC-03', present: true, errorCode: null }, // D61 (2026-11-04): four built-in microphones
+          { deviceId: 'MIC-04', inputId: 'MIC-04', present: true, errorCode: null },
         ],
         unregisteredCount: 0,
       },
     });
     expect(h.rows('CAPTURE_DISCOVERY_SEARCHED').map((row) => row.details)).toEqual([
-      { searchId: 'DSC-000001', scope: 'MIC_LOCAL', trigger: 'MANUAL', outcome: 'COMPLETE', responderCount: 2, newCount: 0, registeredCount: 2, interfaceCount: 0, operationId: 'rescanCaptureInputs', permission: 'CAPTURE_CONFIG' },
+      { searchId: 'DSC-000001', scope: 'MIC_LOCAL', trigger: 'MANUAL', outcome: 'COMPLETE', responderCount: 4, newCount: 0, registeredCount: 4, interfaceCount: 0, operationId: 'rescanCaptureInputs', permission: 'CAPTURE_CONFIG' },
     ]);
     for (const entry of scan.body.inputs) {
       expect(entry).not.toHaveProperty('adapter');
@@ -533,7 +535,7 @@ describe('operation 97: the local inputs, read again', () => {
     // The body is still one of the contract (the two members are optional there).
     expect(CaptureInputScanSchema.safeParse(scan.body).success).toBe(true);
     // It registers nothing and is no camera search: the candidate read stays empty.
-    expect(h.state().captureDevices.devices).toHaveLength(7); // D60 (2026-11-04): seven built-in devices
+    expect(h.state().captureDevices.devices).toHaveLength(9); // D61 (2026-11-04): nine built-in devices
     expect(h.call('GET', DISCOVERY).body).toEqual({ search: null, candidates: [], truncated: false });
   });
 });
@@ -567,7 +569,7 @@ describe('operations 98 and 99: the sound cards and the registration of an input
       expect(written).not.toContain(card.product);
     }
     // It registers nothing and is no camera search.
-    expect(h.state().captureDevices.devices).toHaveLength(7); // D60 (2026-11-04): seven built-in devices
+    expect(h.state().captureDevices.devices).toHaveLength(9); // D61 (2026-11-04): nine built-in devices
     expect(h.call('GET', DISCOVERY).body).toEqual({ search: null, candidates: [], truncated: false });
   });
 
@@ -602,7 +604,7 @@ describe('operations 98 and 99: the sound cards and the registration of an input
     // Nothing happened: the same state object, so no audit row, no device and no selector change.
     expect(h.state()).toBe(before);
     expect(h.rows('CAPTURE_AUDIO_INPUT_CHANGED')).toEqual([]);
-    expect(h.state().captureDevices.devices).toHaveLength(7); // D60 (2026-11-04): seven built-in devices
+    expect(h.state().captureDevices.devices).toHaveLength(9); // D61 (2026-11-04): nine built-in devices
   });
 
   it('who may call: signed out 401, a role without CAPTURE_CONFIG 403, a tablet or phone 403 WEB_CONSOLE_ONLY, a session open 409 CAPTURE_CONFIG_LOCKED - each before the body is used and with no row', () => {
@@ -656,7 +658,7 @@ describe('the INTERNAL action `registerCaptureDevice` (C3 §2.6 "Adoption"; the 
     h.sim.actions.registerCaptureDevice({ id: 'CAM-05', model: null, host: '192.0.2.10:8080', adapter: 'ONVIF_RTSP' });
     const after = h.state();
     expect(after.captureDevices.devices.at(-1)).toEqual({ id: 'CAM-05', kind: 'CAMERA', model: null, firmware: null, host: '192.0.2.10:8080', poePort: null, online: true, streamState: null, capabilities: ['VIDEO'], adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION', profiles: [] });
-    expect(after.captureDevices.devices).toHaveLength(8);
+    expect(after.captureDevices.devices).toHaveLength(10);
     expect([after.audit, after.events, after.captureConfig]).toEqual([before.audit, before.events, before.captureConfig]);
     expect(nextCaptureCameraId(after.captureDevices.devices)).toBe('CAM-06'); // D60: the seed carries CAM-01..CAM-04, the test registered CAM-05
     expect(nextCaptureCameraId([{ id: 'CAM-09' }, { id: 'CAM-120' }, { id: 'MIC-200' }])).toBe('CAM-121');
@@ -782,14 +784,14 @@ describe('the INTERNAL action `registerCaptureMicrophone` (the Core runs it insi
     expect(after.captureDevices.devices).toHaveLength(before.captureDevices.devices.length + 1);
     expect(after.captureDevices.devices.slice(0, -1)).toEqual(before.captureDevices.devices);
     // Decision C43 (3), integration pass I-7: the capability of the built-in pair, not an empty list.
-    expect(after.captureDevices.devices.at(-1)).toEqual({ id: 'MIC-03', kind: 'MIC', model: MODEL, firmware: null, host: null, poePort: null, online: true, streamState: null, capabilities: ['AUDIO'], adapter: 'USB_AUDIO', sourceClass: 'PRODUCTION' });
+    expect(after.captureDevices.devices.at(-1)).toEqual({ id: 'MIC-05', kind: 'MIC', model: MODEL, firmware: null, host: null, poePort: null, online: true, streamState: null, capabilities: ['AUDIO'], adapter: 'USB_AUDIO', sourceClass: 'PRODUCTION' });
     expect(after.captureDevices.devices.at(-1)?.capabilities).toEqual(before.captureDevices.devices.find((device) => device.id === 'MIC-01')?.capabilities);
     // Every other slice is the SAME object: no audit row, no event, the selector alone (decision C25).
     for (const slice of Object.keys(before) as (keyof typeof before)[]) {
       if (slice !== 'captureDevices') expect(after[slice], slice).toBe(before[slice]);
     }
     // The next id is the highest number plus 1, never a reused one, and a camera id does not count.
-    expect(nextCaptureMicrophoneId(after.captureDevices.devices)).toBe('MIC-04');
+    expect(nextCaptureMicrophoneId(after.captureDevices.devices)).toBe('MIC-06'); // D61: the built-ins run to MIC-04
     expect(nextCaptureMicrophoneId([{ id: 'MIC-09' }, { id: 'MIC-120' }, { id: 'CAM-200' }])).toBe('MIC-121');
     expect(nextCaptureMicrophoneId([])).toBe('MIC-01');
     // D50: ids the registry table holds outside the slice are taken too; CONTROL: without them the slice alone decides.
@@ -797,7 +799,7 @@ describe('the INTERNAL action `registerCaptureMicrophone` (the Core runs it insi
     expect(nextCaptureMicrophoneId([{ id: 'CAM-05' }])).toBe('MIC-01');
     // A second NEW microphone is another device; the seeded pair and the first one are untouched.
     h.sim.actions.registerCaptureMicrophone({ deviceId: null, model: MODEL });
-    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'MIC-03', 'MIC-04']); // D60 (2026-11-04): seven built-ins
+    expect(h.state().captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'POE-SWITCH', 'MIC-05', 'MIC-06']); // D61 (2026-11-04): nine built-ins + two registered — D60 (2026-11-04): seven built-ins
   });
 
   it('a second registration of the same device enables it again with the model of the new listing and appends none', () => {
@@ -805,11 +807,11 @@ describe('the INTERNAL action `registerCaptureMicrophone` (the Core runs it insi
     h.sim.actions.registerCaptureMicrophone({ deviceId: null, model: MODEL });
     const registered = h.state();
     // Online with the same model: the SAME state object, so the engine writes nothing.
-    h.sim.actions.registerCaptureMicrophone({ deviceId: 'MIC-03', model: MODEL });
+    h.sim.actions.registerCaptureMicrophone({ deviceId: 'MIC-05', model: MODEL });
     expect(h.state()).toBe(registered);
     // Offline (the telemetry of a lost card), then registered again under another product name.
-    const offline = { ...registered, captureDevices: { devices: registered.captureDevices.devices.map((device) => (device.id === 'MIC-03' ? { ...device, online: false } : device)) } };
-    const again = registerCaptureMicrophoneTransition(offline, { deviceId: 'MIC-03', model: 'Other card' });
+    const offline = { ...registered, captureDevices: { devices: registered.captureDevices.devices.map((device) => (device.id === 'MIC-05' ? { ...device, online: false } : device)) } };
+    const again = registerCaptureMicrophoneTransition(offline, { deviceId: 'MIC-05', model: 'Other card' });
     expect(again.state.captureDevices.devices).toHaveLength(registered.captureDevices.devices.length);
     expect(again.result).toEqual({ ...registered.captureDevices.devices.at(-1), online: true, model: 'Other card' });
     expect(again.state.captureDevices.devices.at(-1)).toBe(again.result);
@@ -841,8 +843,8 @@ describe('the INTERNAL action `registerCaptureMicrophone` (the Core runs it insi
     }
     expect(h.state()).toBe(before);
     // A local-device microphone is not this action's either: the adapter is not USB_AUDIO.
-    const local = { ...before, captureDevices: { devices: [...before.captureDevices.devices, { id: 'MIC-03', kind: 'MIC' as const, model: 'Core microphone', firmware: null, host: null, poePort: null, online: false, streamState: null, capabilities: [], adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT' as const }] } };
-    expect(() => registerCaptureMicrophoneTransition(local, { deviceId: 'MIC-03', model: MODEL })).toThrow(/Illegal session transition/);
+    const local = { ...before, captureDevices: { devices: [...before.captureDevices.devices, { id: 'MIC-05', kind: 'MIC' as const, model: 'Core microphone', firmware: null, host: null, poePort: null, online: false, streamState: null, capabilities: [], adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT' as const }] } };
+    expect(() => registerCaptureMicrophoneTransition(local, { deviceId: 'MIC-05', model: MODEL })).toThrow(/Illegal session transition/);
     // The model rule IS the rule of a product name of the card listing (AD-07 (1)).
     expect(REGISTERED_MICROPHONE_MODEL_PATTERN.source).toBe(CAPTURE_AUDIO_CARD_TEXT_PATTERN.source);
     expect(REGISTERED_MICROPHONE_MODEL_PATTERN.flags).toBe(CAPTURE_AUDIO_CARD_TEXT_PATTERN.flags);
@@ -933,7 +935,7 @@ describe('the INTERNAL action `readdressCaptureDevice` (the Core runs it inside 
     // A registered USB microphone is refused as the built-in pair is.
     h.sim.actions.registerCaptureMicrophone({ deviceId: null, model: 'USB Audio CODEC' });
     const withMicrophone = h.state();
-    expect(() => h.sim.actions.readdressCaptureDevice({ deviceId: 'MIC-03', address: ADDRESS })).toThrow(/Illegal session transition/);
+    expect(() => h.sim.actions.readdressCaptureDevice({ deviceId: 'MIC-05', address: ADDRESS })).toThrow(/Illegal session transition/);
     expect(h.state()).toBe(withMicrophone);
   });
 

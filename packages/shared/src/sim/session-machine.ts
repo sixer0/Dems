@@ -13,10 +13,11 @@
  * running while the page or app was hidden). Audit and event rows go through
  * `recordActivity`, which keeps them in time order.
  */
-import { AuditEventKind, FINALIZATION_STEPS_V2, SessionState, VIDEO_TRACK_IDS, type FinalizationStep, type TimeSource, type VideoTrackId } from '../domain'; // VideoTrackId, VIDEO_TRACK_IDS: D60 (2026-11-04)
+import { AUDIO_TRACK_IDS, AuditEventKind, FINALIZATION_STEPS_V2, SessionState, VIDEO_TRACK_IDS, type FinalizationStep, type TimeSource, type TrackId } from '../domain'; // VIDEO_TRACK_IDS: D60 (2026-11-04); AUDIO_TRACK_IDS, TrackId: D61 (2026-11-04), the four-channel seal; D61: the unused `VideoTrackId` type import dropped (core-web tsc noUnusedLocals)
 import { DEFAULT_SESSION_ROOM, sessionCreateSchema } from '../api/session-schema';
 import { findOperatorById, requirePermission, roleHas } from './auth';
-import { captureMicLines, channelOfMicLine, micInputOfRole } from './audio';
+import { captureMicLines, channelOfMicLine, micInputOfChannel } from './audio';
+import { PRIMARY_MIC_CHANNEL, SECOND_MIC_CHANNEL } from './vocabulary'; // D61 (2026-11-04): the transcription pair is channels 1 and 2
 import { selectorInForce, selectorOfSession } from './selector-in-force';
 import {
   CAPTURE_SOURCE_NOT_ASSIGNED_REASON,
@@ -470,7 +471,7 @@ const PASSED = { reason: null, reasonCode: null, params: {} } as const;
 
 /**
  * The check result of a configured source that does not answer, or null when it does (task 3 row
- * 133; C3 §3.1; D80(6), D83). `slot` is a video track or a mic role. The start rule itself is
+ * 133; C3 §3.1; D80(6), D83; D61 of 2026-11-04). `slot` is a video track or a mic channel. The start rule itself is
  * `captureReachabilityOf`. No reason code of the closed set fits, so `reasonCode` is null and the
  * row is read from `value: 'UNREACHABLE'` and `params`: `deviceId`, `deviceKind`, `rule` (the
  * suffix of the text key `captureNotice.start.*`) and, for the active microphone, `other`.
@@ -492,12 +493,12 @@ function unreachableSource(state: SimState, slot: string): PrecheckEvaluation | 
  * decisions C18 (1), C21 (6), C25; names register 5.2; sites C4, C5 of row 27).
  *
  * Only in a state of REAL capture (`isOwnCaptureCoreState`: the one reader of "is this a Core in
- * its own capture"): there the slot's item is BLOCK "source not assigned" - for each of the four
- * slots, the STANDBY too (`CAPTURE_START_REQUIRED_SLOTS`, C25) - where it was PASS READY for a
- * video slot and an acknowledgeable WARN NO_SIGNAL for a microphone role. In Simulated mode and in
+ * its own capture"): there the slot's item is BLOCK "source not assigned" - for each of the
+ * EIGHT slots, every channel too (D61 of 2026-11-04; `CAPTURE_START_REQUIRED_SLOTS`, C25) - where it was PASS READY for a
+ * video slot and an acknowledgeable WARN NO_SIGNAL for a microphone channel. In Simulated mode and in
  * the in-app simulator the answer is null and the item is computed as before (C21 (6)).
  *
- * The slot is found by its track or its role in the selector in force. The item carries no
+ * The slot is found by its track or its channel in the selector in force. The item carries no
  * `deviceId` and no `deviceKind`: there is no device. No reason code of the closed set fits, so
  * `reasonCode` is null and the row is read from `value` and `params.rule` / `params.slot`
  * (`unassignedSlotOfPrecheckItem`).
@@ -545,15 +546,16 @@ export function evaluatePrecheck(state: SimState, id: PrecheckCheckId): Precheck
     }
     case 'MIC_PRIMARY':
     case 'MIC_STANDBY': {
-      // Role-keyed (D101(2)): the input that holds the role, whichever channel it is.
-      const role = id === 'MIC_PRIMARY' ? 'PRIMARY' : 'STANDBY';
-      // Real capture only: a role without a source blocks - the STANDBY too (C25) - before every other rule of the item.
-      const unassigned = unassignedSource(state, role);
+      // D61 (2026-11-04): the stored check IDs name the two transcription roles; the roles became
+      // channels `MIC-01` and `MIC-02` (0040 data migration). The check reads those channels.
+      const channel = id === 'MIC_PRIMARY' ? PRIMARY_MIC_CHANNEL : SECOND_MIC_CHANNEL;
+      // Real capture only: a channel without a source blocks - channels 2 too (C25, eight required slots) - before every other rule of the item.
+      const unassigned = unassignedSource(state, channel);
       if (unassigned !== null) return unassigned;
-      // An unreachable PRIMARY blocks, an unreachable STANDBY warns (D83: no switch at pre-check).
-      const unreachable = unreachableSource(state, role);
+      // An unreachable channel 1 blocks, an unreachable channel 2 warns (D83: no switch at pre-check).
+      const unreachable = unreachableSource(state, channel);
       if (unreachable !== null) return unreachable;
-      const input = captureMicLines(state).find((line) => line.role === role)?.inputId ?? null;
+      const input = captureMicLines(state).find((line) => line.channel === channel)?.inputId ?? null;
       const track = input === null ? null : channelOfMicLine(captureMicLines(state), input);
       const mic = track === null ? undefined : state.mics.find((m) => m.id === track);
       if (!mic || track === null || mic.state === 'NO_SIGNAL') {
@@ -790,23 +792,26 @@ export function captureConfigSnapshot(state: SimState): ActiveSession['captureCo
 
 /**
  * The active/standby pair at recording start (SH-05/SH-06; OD-09). The PRIMARY input feeds
- * `AUDIO-01`; the STANDBY is hot. `intervalFromMs` is the media-pts origin of the first interval
+ * `AUDIO-01`; the second channel stands beside it (D61 of 2026-11-04: the hot-standby premise is
+ * superseded — ALL FOUR channels record at once; this pair is the TRANSCRIPTION pair, channels 1
+ * and 2, the one op 81 trades). `intervalFromMs` is the media-pts origin of the first interval
  * (0 at the start of the recording — never an operator wall clock, S2 §6).
  *
- * BY ROLE, WITH NO STAND-IN (task 4 row 163; decisions C18 (2), AD-04 (2); names register 5.3;
- * site C2 of row 27): the pair is the PRIMARY line and the STANDBY line of the selector, each found
- * by its role (`micInputOfRole`). Where EITHER role has no line the selector names no pair and the
+ * BY CHANNEL, WITH NO STAND-IN (task 4 row 163; decisions C18 (2), AD-04 (2); names register 5.3;
+ * site C2 of row 27; D61: the roles became the numbered channels): the pair is the `MIC-01` line
+ * and the `MIC-02` line of the selector, each found by its channel (`micInputOfChannel`). Where
+ * EITHER channel has no line the selector names no pair and the
  * answer is `null`: the session then states no `audioSource` (the member is nullable and optional
- * on the wire). No line of another role, no line by its place and no built-in input stands in - a
- * lone STANDBY line is never the active input. Reached with `null` only in Simulated mode: a Core
+ * on the wire). No line of another channel, no line by its place and no built-in input stands in - a
+ * lone `MIC-02` line is never the active input. Reached with `null` only in Simulated mode: a Core
  * in its own capture refuses the start before this is read (`startRecordingTransition`).
  */
 export function audioSourceAtStart(state: SimState, sessionId: string): NonNullable<ActiveSession['audioSource']> | null {
   const mics = state.captureConfig.mics;
-  // The pair of the session is the selector's pair, by role, whatever its inputs are named: any
-  // registered `MIC-NN` (D133 (1), ruling D137; request of pass D1b).
-  const primary = micInputOfRole(mics, 'PRIMARY');
-  const standby = micInputOfRole(mics, 'STANDBY');
+  // The transcription pair of the session is the selector's pair of channels 1 and 2, whatever its
+  // inputs are named: any registered `MIC-NN` (D133 (1), ruling D137; D61; request of pass D1b).
+  const primary = micInputOfChannel(mics, PRIMARY_MIC_CHANNEL);
+  const standby = micInputOfChannel(mics, SECOND_MIC_CHANNEL);
   if (primary === null || standby === null) return null;
   return {
     sessionId,
@@ -847,8 +852,9 @@ export function startRecordingTransition(state: SimState, now: EpochMs, capture:
   }
   // Schema v2 (register SH-06; OD-10): the selector is copied into the session the instant
   // recording starts, so a later edit never changes a running session. `audioSource` records which
-  // mic input feeds `AUDIO-01` (PRIMARY) and which is the hot standby (STANDBY); op 81 moves the
-  // active one through `switchAudioSourceTransition`. `null`: the selector names no pair (a role
+  // mic input feeds `AUDIO-01` (channel 1) and which stands on channel 2 (D61: the transcription
+  // pair; all four channels record); op 81 moves the
+  // active one through `switchAudioSourceTransition`. `null`: the selector names no pair (a channel
   // without a line; Simulated mode only) and the session states no audio source.
   const audioSource = audioSourceAtStart(state, session.id);
   // The input whose level is inside `AUDIO-01` from the first sample on is the session's primary.
@@ -1498,9 +1504,9 @@ export function applySealingProgressTransition(state: SimState, now: EpochMs, in
   return record(next, now, items);
 }
 
-/** One sealed camera file as the item lists it: the stored-bytes hash of the whole file. D60 (2026-11-04): the item's manifest names its own list - one to four files (a legacy two-track package lists its two). */
+/** One sealed file as the item lists it: the stored-bytes hash of the whole file. D60 (2026-11-04): the item's manifest names its own list - one to four camera files (a legacy two-track package lists its two). D61 (2026-11-04): beside them, one to FOUR audio files - the sealed track is any track of the eight-track domain. */
 export interface SealedTrackInput {
-  trackId: VideoTrackId;
+  trackId: TrackId;
   sizeBytes: number;
   /** SHA-256 of the stored bytes of the whole file (`tracks[].sha256` of the manifest). */
   sha256: string;
@@ -1552,21 +1558,37 @@ export function completeSealTransition(state: SimState, now: EpochMs, input: Com
   if (session.finalization.steps.some((step) => step.status === 'error')) refuse('a sealing step failed');
   if (!HEX_64.test(input.manifestSha256)) refuse('the manifest digest is no SHA-256');
   if (input.signature.algorithm !== 'Ed25519' || !HEX_128.test(input.signature.value) || input.signature.keyId.length === 0) refuse('the signature is no Ed25519 signature');
-  // Fix pass F-M7 (R88-01, D178): the camera files that EXIST, in track order. D60 (2026-11-04):
+  // Fix pass F-M7 (R88-01, D178): the files that EXIST, in track order. D60 (2026-11-04):
   // the seal guard follows the widened sealed-track rule of the package layout (`isSealedTrackList`
   // of `evidence-package/layout.ts`, mirrored here to keep the sim free of that import): one to FOUR
-  // files, each track at most once, VIDEO-01 before VIDEO-02 before VIDEO-03 before VIDEO-04. A
+  // camera files, each track at most once, VIDEO-01 before VIDEO-02 before VIDEO-03 before VIDEO-04. A
   // session that lost cameras seals with the files it has.
+  // D61 (2026-11-04): the same rule for the audio plane — one to FOUR audio files beside the camera
+  // files, each once, AUDIO-01 before AUDIO-02 before AUDIO-03 before AUDIO-04, all camera files
+  // before all audio files. A session that lost channels seals with the files it has.
   const sealedIds = input.tracks.map((track) => track.trackId);
-  const trackOrder = (trackId: string): number => (VIDEO_TRACK_IDS as readonly string[]).indexOf(trackId);
-  const sealedPositions = sealedIds.map(trackOrder);
+  const cameraIds = sealedIds.filter((trackId) => trackId.startsWith('VIDEO-'));
+  const audioIds = sealedIds.filter((trackId) => trackId.startsWith('AUDIO-'));
+  const trackOrder = (trackId: string, order: readonly string[]): number => order.indexOf(trackId);
+  // `allowEmpty` keeps the old leniency of the audio plane: a Core-driven seal may carry no audio
+  // file at all (R88-01 seals a camera-only recording); the camera plane always needs its one file.
+  const inOrderedPrefix = (ids: readonly string[], order: readonly string[], allowEmpty = false): boolean => {
+    if (ids.length < (allowEmpty ? 0 : 1) || ids.length > order.length) return false;
+    let last = -1;
+    for (const trackId of ids) {
+      const at = trackOrder(trackId, order);
+      if (at <= last) return false;
+      last = at;
+    }
+    return true;
+  };
   if (
-    sealedIds.length < 1 ||
-    sealedIds.length > VIDEO_TRACK_IDS.length ||
-    sealedPositions.some((at) => at < 0) ||
-    sealedPositions.some((at, index) => index > 0 && at <= (sealedPositions[index - 1] ?? -1))
+    cameraIds.length + audioIds.length !== sealedIds.length ||
+    !inOrderedPrefix(cameraIds, VIDEO_TRACK_IDS) ||
+    !inOrderedPrefix(audioIds, AUDIO_TRACK_IDS, true) || // D61 (2026-11-04): one to FOUR audio files; none is the legacy shape
+    (audioIds.length > 0 && cameraIds.length > 0 && sealedIds.indexOf(audioIds[0] as TrackId) < sealedIds.indexOf(cameraIds.at(-1) as TrackId))
   ) {
-    refuse(`a sealed package has one to ${VIDEO_TRACK_IDS.length} camera files, each once, in track order (D60)`);
+    refuse(`a sealed package has one to ${VIDEO_TRACK_IDS.length} camera files and up to ${AUDIO_TRACK_IDS.length} audio files (D61), each once, camera files first, in track order`);
   }
   for (const track of input.tracks) if (!HEX_64.test(track.sha256) || !Number.isSafeInteger(track.sizeBytes) || track.sizeBytes < 1) refuse('a camera file without its hash or its size');
   if (input.transcriptSha256 !== null && !HEX_64.test(input.transcriptSha256)) refuse('the transcript digest is no SHA-256');

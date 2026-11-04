@@ -19,8 +19,9 @@
  *
  * THE AUDIO PAIR IS UNDER THE SAME RULE (fix 157): `session.audioSource` - which input is active
  * inside `AUDIO-01`, which is the hot standby - is a fact of THAT session. It names the pair only
- * while the session is OPEN; otherwise the pair is the one the current selector gives (the PRIMARY
- * line is the active input of the next recording, the STANDBY line its standby). The slice keeps the
+ * while the session is OPEN; otherwise the pair is the one the current selector gives (D61 of
+ * 2026-11-04: the channel-1 line is the TRANSCRIBED input of the next recording, the channel-2 line
+ * its second; all four channels record at once). The slice keeps the
  * pair of the last SEALED session, so a reader that spelled `state.session?.audioSource?.activeInputId`
  * named the OLD inputs after the selector's microphones were changed. `audioPairInForce` below.
  *
@@ -88,10 +89,10 @@ export interface AudioPairInForce<I extends string = string> {
   readonly standbyInputId: I | null;
 }
 
-/** One microphone line of a selector, as far as the pair reads it. */
+/** One microphone line of a selector, as far as the pair reads it (D61: the line states its CHANNEL). */
 export interface PairMicLine<I extends string = string> {
   readonly inputId: I;
-  readonly role?: string | null;
+  readonly channel?: string | null;
 }
 
 /** The two slices the pair is read from. `captureConfig` may be absent in a hand-built state: the selector then names nothing. */
@@ -113,16 +114,18 @@ export function openSessionAudioSource<A>(session: { readonly state?: string | n
 }
 
 /**
- * The pair a selector gives: its PRIMARY line is the active input, its STANDBY line the standby.
- * BY ROLE ONLY (task 4 WP-13a, site C18; decisions C18 (2), AD-04): where no line holds a role that
- * member is `null`. No line stands in by position - a lone STANDBY line is never the active input,
- * and a list of lines without roles names no pair. It is the rule of `micInputOfRole` (`audio.ts`),
- * spelled here because this file imports nothing; `test/audio.test.ts` holds the two equal.
+ * The transcription pair a selector gives (D61 of 2026-11-04): its `MIC-01` line is the transcribed
+ * input, its `MIC-02` line the second — the roles of the earlier eras became those two channels.
+ * BY CHANNEL ONLY (task 4 WP-13a, site C18; decisions C18 (2), AD-04): where no line holds a
+ * channel that member is `null`. No line stands in by position - a lone `MIC-02` line is never the
+ * active input, and a list of lines without channels names no pair. It is the rule of
+ * `micInputOfChannel` (`audio.ts`), spelled here because this file imports nothing;
+ * `test/audio.test.ts` holds the two equal.
  */
 export function audioPairOfSelector<I extends string>(mics: readonly PairMicLine<I>[] | null | undefined): AudioPairInForce<I> {
   const lines = mics ?? [];
-  const active = lines.find((line) => line.role === 'PRIMARY')?.inputId ?? null;
-  const standby = lines.find((line) => line.role === 'STANDBY')?.inputId ?? null;
+  const active = lines.find((line) => line.channel === 'MIC-01')?.inputId ?? null;
+  const standby = lines.find((line) => line.channel === 'MIC-02')?.inputId ?? null;
   return { activeInputId: active, standbyInputId: standby };
 }
 

@@ -159,16 +159,17 @@ function stepNetwork(network: SimState['network'], at: EpochMs, recording: boole
 function micLevelPoint(state: SimState, at: EpochMs): MicLevelPoint {
   // The sample keeps its v1 channel keys (the dashboard series and its i18n read them); the frames
   // themselves are keyed by mic input since schema v2 (SH-17).
-  // An input without a frame yet reads the floor (the slice is keyed by the two inputs of the capture configuration).
+  // An input without a frame yet reads the floor (the slice is keyed by the inputs of the capture configuration).
   const level = (frame: AudioFrame | undefined) => (frame === undefined || frame.noSignal ? -90 : round1(Math.max(frame.dbfs, frame.peak)));
   const lines = captureMicLines(state);
-  // A channel without an input (task 4 row 165; site C17: no complete microphone pair in force) has
+  // A channel without an input (task 4 row 165; site C17; D61: the channel has no line in force) has
   // no frame: it reads the floor, as an input without a frame does. Never the frame of a built-in input.
   const frameOf = (channel: AudioTrackId): AudioFrame | undefined => {
     const input = meterInputOfChannel(lines, channel);
     return input === null ? undefined : state.audio.inputs[input];
   };
-  return { at, 'AUDIO-01': level(frameOf('AUDIO-01')), 'AUDIO-02': level(frameOf('AUDIO-02')) };
+  // D61 (2026-11-04): one reading per simultaneous channel.
+  return { at, 'AUDIO-01': level(frameOf('AUDIO-01')), 'AUDIO-02': level(frameOf('AUDIO-02')), 'AUDIO-03': level(frameOf('AUDIO-03')), 'AUDIO-04': level(frameOf('AUDIO-04')) };
 }
 
 /** One 1 Hz health step at the whole second `at` (pure apart from the RNG draws). */

@@ -97,6 +97,8 @@ describe('applyCaptureTelemetry: what is stored (slices 29 and 30)', () => {
       { id: 'CAM-04', online: true, streamState: 'LIVE' },
       { id: 'MIC-01', online: true, streamState: null },
       { id: 'MIC-02', online: true, streamState: null },
+      { id: 'MIC-03', online: true, streamState: null }, // D61 (2026-11-04): four seeded microphone channels
+      { id: 'MIC-04', online: true, streamState: null }, // D61
       { id: 'POE-SWITCH', online: true, streamState: null },
     ]);
     expect(lost.captureConfig.cameras.map(({ deviceId, online, streamState }) => ({ deviceId, online, streamState }))).toEqual([

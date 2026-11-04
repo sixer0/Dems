@@ -417,7 +417,7 @@ describe('Devices (W48-1..5)', () => {
     const idle = harness();
     expect(selectFrontPanel(idle.state())).toMatchObject({
       leds: { POWER: 'on', RECORD: 'off', NETWORK: 'activity', STORAGE: 'on', FAULT: 'off' },
-      lcd: { mode: 'IDLE', camsOk: 4, micsOk: 2, timeSource: 'GNSS' }, // D60 (2026-11-04): four cameras
+      lcd: { mode: 'IDLE', camsOk: 4, micsOk: 4, timeSource: 'GNSS' }, // D60: four cameras; D61 (2026-11-04): four microphone channels
     });
     const rec = harness('recording');
     rec.sim.actions.inject('STORAGE_FULL');

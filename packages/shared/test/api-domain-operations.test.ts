@@ -578,8 +578,8 @@ describe('the other bodies of areas 4 to 11', () => {
   it('setActiveCamera and resetMicClip: one of the four tracks of their kind (D60, 2026-11-04)', () => {
     for (const cameraId of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04']) expect(ActiveCameraRequestSchema.safeParse({ cameraId }).success, cameraId).toBe(true);
     for (const cameraId of ['AUDIO-01', 'VIDEO-05', 'CAM-01', '', undefined]) expect(ActiveCameraRequestSchema.safeParse({ cameraId }).success, String(cameraId)).toBe(false);
-    for (const channel of ['AUDIO-01', 'AUDIO-02']) expect(MicClipResetRequestSchema.safeParse({ channel }).success, channel).toBe(true);
-    for (const channel of ['VIDEO-01', 'MIC-01', 'AUDIO-03', undefined]) expect(MicClipResetRequestSchema.safeParse({ channel }).success, String(channel)).toBe(false);
+    for (const channel of ['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04']) expect(MicClipResetRequestSchema.safeParse({ channel }).success, channel).toBe(true); // D61 (2026-11-04): the latch resets on all four channels
+    for (const channel of ['VIDEO-01', 'MIC-01', 'AUDIO-05', undefined]) expect(MicClipResetRequestSchema.safeParse({ channel }).success, String(channel)).toBe(false);
     const { actions, state } = rig('idle', INVESTIGATOR);
     actions.setActiveCamera(ActiveCameraRequestSchema.parse({ cameraId: 'VIDEO-02' }).cameraId);
     expect(state().activeCameraId).toBe('VIDEO-02');
@@ -589,7 +589,8 @@ describe('the other bodies of areas 4 to 11', () => {
     const { actions, state } = rig('idle', TECHNICIAN);
     const deviceIds = [...state().cameras.map((camera) => camera.deviceId), ...state().mics.map((mic) => mic.deviceId), ...state().otherDevices.map((device) => device.id), ...Object.keys(PLATFORM_DEVICE_NAMES)];
     // D60 (2026-11-04): the seeded registry carries four cameras (CAM-03, CAM-04), not two.
-    expect(deviceIds).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'REC-INDICATOR', 'TABLET', 'GNSS', 'TPM', 'FRONT-PANEL']);
+    // D61 (2026-11-04): and four microphones (MIC-03, MIC-04), not two.
+    expect(deviceIds).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'POE-SWITCH', 'REC-INDICATOR', 'TABLET', 'GNSS', 'TPM', 'FRONT-PANEL']);
     for (const id of deviceIds) {
       expect(id, id).toMatch(HARDWARE_DEVICE_ID_PATTERN);
       // IDENTIFY is the one command every device accepts.

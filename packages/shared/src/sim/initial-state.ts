@@ -68,9 +68,10 @@ export interface InitialStateInput {
   auth?: AuthSlice;
   /**
    * Schema v2 (register SH-05): the capture selector this state starts with. A scenario may pin
-   * the device/profile/role choices; the default is `DEFAULT_CAPTURE_CONFIG` below, which matches
-   * the seven built-in `capture_devices` rows the v2 seed writes (`dbc-3 §B.2`, §E.3; D60 of
-   * 2026-11-04 widened the seed from five rows to seven: four cameras, two microphones, one switch).
+   * the device/profile/channel choices; the default is `DEFAULT_CAPTURE_CONFIG` below, which matches
+   * the nine built-in `capture_devices` rows the v2 seed writes (`dbc-3 §B.2`, §E.3; D60 of
+   * 2026-11-04 widened the seed from five rows to seven: four cameras, two microphones, one switch;
+   * D61 of 2026-11-04 widened it to nine: the two further microphones of the four-channel plane).
    */
   capture?: Partial<CaptureConfigSeed>;
 }
@@ -171,6 +172,29 @@ export const DEFAULT_CAPTURE_DEVICES: CaptureDevicesSlice = {
       streamState: null,
       capabilities: ['AUDIO'],
     },
+    // D61 (2026-11-04): the two further built-in microphones of the four-channel capture surface.
+    {
+      id: 'MIC-03',
+      kind: 'MIC',
+      model: 'USB condenser microphone UM-1',
+      firmware: '1.04',
+      host: null,
+      poePort: null,
+      online: true,
+      streamState: null,
+      capabilities: ['AUDIO'],
+    },
+    {
+      id: 'MIC-04',
+      kind: 'MIC',
+      model: 'USB condenser microphone UM-1',
+      firmware: '1.04',
+      host: null,
+      poePort: null,
+      online: true,
+      streamState: null,
+      capabilities: ['AUDIO'],
+    },
     {
       id: 'POE-SWITCH',
       kind: 'POE',
@@ -186,7 +210,9 @@ export const DEFAULT_CAPTURE_DEVICES: CaptureDevicesSlice = {
 };
 
 /**
- * The idle selector: FOUR camera lines and MIC-01 primary, MIC-02 hot standby (OD-05/OD-09).
+ * The idle selector: FOUR camera lines and the four microphone channels MIC-01..MIC-04 on the
+ * built-in microphones (OD-05; D61 of 2026-11-04: four simultaneous audio channels mirror the four
+ * video tracks — the OD-09 primary/hot-standby pair is superseded, channel 1 keeps transcription).
  * D60 (2026-11-04): all four video tracks are assigned by default, so a simulated session records
  * four camera files at once; each line holds the seeded 1080p/25 profile of its camera.
  */
@@ -198,8 +224,11 @@ export const DEFAULT_CAPTURE_CONFIG: CaptureConfigSlice = {
     { trackId: 'VIDEO-04', deviceId: 'CAM-04', profile: CAPTURE_PROFILE_1080P25, online: true, streamState: 'LIVE' }, // D60
   ],
   mics: [
-    { inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY', transport: 'USB', online: true },
-    { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY', transport: 'USB', online: true },
+    // D61 (2026-11-04): four mic lines, keyed by channel as the camera lines are keyed by track.
+    { channel: 'MIC-01', inputId: 'MIC-01', deviceId: 'MIC-01', transport: 'USB', online: true },
+    { channel: 'MIC-02', inputId: 'MIC-02', deviceId: 'MIC-02', transport: 'USB', online: true },
+    { channel: 'MIC-03', inputId: 'MIC-03', deviceId: 'MIC-03', transport: 'USB', online: true },
+    { channel: 'MIC-04', inputId: 'MIC-04', deviceId: 'MIC-04', transport: 'USB', online: true },
   ],
   // Idle: nothing is open, so the selector is editable (OD-10).
   locked: false,
@@ -266,10 +295,13 @@ export function backfillSeries(now: EpochMs, bootAt: EpochMs) {
     upMbps: round1(3.1 + timeNoise('up', at) * 0.3),
   }));
   const time: TimeHistoryPoint[] = tens.map((at) => ({ at, offsetMs: round1(1.6 + timeNoise('offset', at) * 2.2), source: 'GNSS' }));
+  // D61 (2026-11-04): the 1 Hz microphone series carries all four channels.
   const micLevels: MicLevelPoint[] = seconds.map((at) => ({
     at,
     'AUDIO-01': round1(AUDIO_NOISE_FLOOR_DBFS + timeNoise('mic1', at) * 2),
     'AUDIO-02': round1(AUDIO_NOISE_FLOOR_DBFS + timeNoise('mic2', at) * 2),
+    'AUDIO-03': round1(AUDIO_NOISE_FLOOR_DBFS + timeNoise('mic3', at) * 2),
+    'AUDIO-04': round1(AUDIO_NOISE_FLOOR_DBFS + timeNoise('mic4', at) * 2),
   }));
   const writeRate: WriteRatePoint[] = seconds.map((at) => ({ at, bytesPerSec: 0 }));
   return { health, bandwidth, time, micLevels, writeRate };
@@ -392,36 +424,16 @@ export function createIdleState(input: InitialStateInput): SimState {
         firmware: '3.8.14',
       },
     ],
+    // D61 (2026-11-04): one entry per audio channel — four simultaneous channels; `channel` names
+    // the selector slot feeding it (the `micRole` of the OD-01 era and the numeric meter index are
+    // superseded; channel 1 keeps the transcription duty).
     mics: [
-      {
-        id: 'AUDIO-01',
-        deviceId: 'MIC-01',
-        name: 'MIC 1 – Interviewer',
-        role: 'Interviewer',
-        // OD-01 T1 / OD-09: MIC-01 is the primary input inside AUDIO-01, MIC-02 the hot standby.
-        micRole: 'PRIMARY',
-        channel: 1,
-        state: 'READY',
-        recState: null,
-        gainDb: 32,
-        phantom: true,
-        clipLatched: false,
-      },
-      {
-        id: 'AUDIO-02',
-        deviceId: 'MIC-02',
-        name: 'MIC 2 – Subject',
-        role: 'Subject',
-        micRole: 'STANDBY',
-        channel: 2,
-        state: 'READY',
-        recState: null,
-        gainDb: 32,
-        phantom: true,
-        clipLatched: false,
-      },
+      { id: 'AUDIO-01', deviceId: 'MIC-01', name: 'MIC 1 – Interviewer', role: 'Interviewer', channel: 'MIC-01', state: 'READY', recState: null, gainDb: 32, phantom: true, clipLatched: false },
+      { id: 'AUDIO-02', deviceId: 'MIC-02', name: 'MIC 2 – Subject', role: 'Subject', channel: 'MIC-02', state: 'READY', recState: null, gainDb: 32, phantom: true, clipLatched: false },
+      { id: 'AUDIO-03', deviceId: 'MIC-03', name: 'MIC 3 – Channel 3', role: null, channel: 'MIC-03', state: 'READY', recState: null, gainDb: 32, phantom: true, clipLatched: false },
+      { id: 'AUDIO-04', deviceId: 'MIC-04', name: 'MIC 4 – Channel 4', role: null, channel: 'MIC-04', state: 'READY', recState: null, gainDb: 32, phantom: true, clipLatched: false },
     ],
-    audio: { inputs: { 'MIC-01': silentFrame(now), 'MIC-02': silentFrame(now) }, activeInputId: 'MIC-01' },
+    audio: { inputs: { 'MIC-01': silentFrame(now), 'MIC-02': silentFrame(now), 'MIC-03': silentFrame(now), 'MIC-04': silentFrame(now) }, activeInputId: 'MIC-01' },
     storage: {
       state: 'READY',
       volumes: [
@@ -560,6 +572,8 @@ export function createIdleState(input: InitialStateInput): SimState {
       { id: 'MGMT_LAN', label: 'MGMT LAN', link: true },
       { id: 'MIC_IN_1', label: 'MIC IN 1', link: true },
       { id: 'MIC_IN_2', label: 'MIC IN 2', link: true },
+      { id: 'MIC_IN_3', label: 'MIC IN 3', link: true }, // D61 (2026-11-04): four microphone channels
+      { id: 'MIC_IN_4', label: 'MIC IN 4', link: true }, // D61
       { id: 'GNSS_SMA', label: 'GNSS SMA', link: true },
       { id: 'RELAY_IO', label: 'Relay I/O', link: true },
     ],

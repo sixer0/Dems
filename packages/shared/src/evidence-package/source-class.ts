@@ -42,8 +42,8 @@ export function manifestSourceClassOfAdapterKind(kind: string): ManifestSourceCl
   return MANIFEST_SOURCE_CLASS_OF_ADAPTER_KIND[kind as MappedAdapterKind];
 }
 
-/** The six slots of `session_capture_sources` (value set `CAPTURE_SOURCE_SLOT`; D60 of 2026-11-04: four video tracks). */
-export const CAPTURE_SOURCE_SLOTS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-PRIMARY', 'MIC-STANDBY'] as const;
+/** The eight slots of `session_capture_sources` (D61 of 2026-11-04: four video tracks and four numbered microphone channels; the two roles of the earlier eras became `MIC-01`/`MIC-02` in the 0040 data migration (value set `CAPTURE_SOURCE_SLOT`; D60 of 2026-11-04: four video tracks). */
+export const CAPTURE_SOURCE_SLOTS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const; // D61 (2026-11-04): four numbered channels
 export type CaptureSourceSlot = (typeof CAPTURE_SOURCE_SLOTS)[number];
 
 /** One row of `session_capture_sources` as the manifest builder needs it. */
@@ -66,7 +66,9 @@ export interface SessionSourceClasses {
 }
 
 /** The two microphone slots EVERY session plan carries, in both eras (the value set's `MIC-` pair). */
-const MIC_SOURCE_SLOTS = ['MIC-PRIMARY', 'MIC-STANDBY'] as const satisfies readonly CaptureSourceSlot[];
+const MIC_SOURCE_SLOTS = ['MIC-01', 'MIC-02'] as const satisfies readonly CaptureSourceSlot[]; // D61: the roles became the first two channels
+/** The full D61 microphone prefix: a plan carrying a later channel carries its predecessor too. */
+const MIC_PREFIX_SLOTS = ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const satisfies readonly CaptureSourceSlot[];
 
 /**
  * The classes of one session from its start record. The requirement is the session's OWN planned
@@ -106,7 +108,7 @@ export function sessionSourceClasses(rows: readonly SessionCaptureSourceRow[]): 
   const classOf = (slot: CaptureSourceSlot): ManifestSourceClass => manifestSourceClassOfAdapterKind(bySlot.get(slot)?.adapterKind ?? '');
   const video = Object.freeze(Object.fromEntries(videoSlots.map((track) => [track, classOf(track)]))) as Readonly<Partial<Record<PackageVideoTrackId, ManifestSourceClass>>>;
   const micByDeviceId = new Map<string, ManifestSourceClass>();
-  for (const slot of ['MIC-PRIMARY', 'MIC-STANDBY'] as const) {
+  for (const slot of MIC_PREFIX_SLOTS.filter((micSlot) => bySlot.has(micSlot))) { // D61: whichever channels the plan carries
     const deviceId = bySlot.get(slot)?.deviceId ?? '';
     const sourceClass = classOf(slot);
     const seen = micByDeviceId.get(deviceId);

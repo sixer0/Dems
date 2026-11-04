@@ -107,12 +107,13 @@ describe('the ONE shared helper (L-Z item 1)', () => {
 describe('the shared readers, sealed session THEN the selector changed (L-Z item 1)', () => {
   it('`captureMicLines` (meters, health, the API read, `useAudioChannel`) names the lines of the current selector', () => {
     const sealed = afterSelectorChange(SessionState.SEALED);
-    expect(captureMicLines(sealed).map((line) => line.inputId)).toEqual(['MIC-04', 'MIC-02']);
+    // D61 (2026-11-04): the changed selector holds FOUR channel lines; the first line became MIC-04.
+    expect(captureMicLines(sealed).map((line) => line.inputId)).toEqual(['MIC-04', 'MIC-02', 'MIC-03', 'MIC-04']);
     // What `useAudioChannel('AUDIO-01')` subscribes to: the frame of the input that channel is NOW.
     expect(meterInputOfChannel(captureMicLines(sealed), 'AUDIO-01')).toBe('MIC-04');
     // CONTROL: the same state with the session still open keeps the session's lines.
     const open = afterSelectorChange(SessionState.RECORDING);
-    expect(captureMicLines(open).map((line) => line.inputId)).toEqual(['MIC-01', 'MIC-02']);
+    expect(captureMicLines(open).map((line) => line.inputId)).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']); // D61: the snapshot of the widened seed
     expect(meterInputOfChannel(captureMicLines(open), 'AUDIO-01')).toBe('MIC-01');
   });
 
@@ -194,13 +195,14 @@ describe('the audio pair in force (sealed session THEN the microphone changed; f
     expect(audioPairInForce({ session: null })).toEqual({ activeInputId: null, standbyInputId: null });
   });
 
-  it('`audioPairOfSelector`: by role only; nothing by position (task 4 row 164, site C18); one line has no standby', () => {
-    expect(audioPairOfSelector([{ inputId: 'MIC-03', role: 'STANDBY' }, { inputId: 'MIC-01', role: 'PRIMARY' }])).toEqual({ activeInputId: 'MIC-01', standbyInputId: 'MIC-03' });
-    // Lines without a role name no pair: before row 164 the first line stood in as the active input.
+  it('`audioPairOfSelector`: by channel only (D61); nothing by position (task 4 row 164, site C18); one line has no standby', () => {
+    // D61 (2026-11-04): the pair is read BY CHANNEL — channel 1 is the transcribed input.
+    expect(audioPairOfSelector([{ inputId: 'MIC-03', channel: 'MIC-02' }, { inputId: 'MIC-01', channel: 'MIC-01' }])).toEqual({ activeInputId: 'MIC-01', standbyInputId: 'MIC-03' });
+    // Lines without a channel name no pair: before row 164 the first line stood in as the active input.
     expect(audioPairOfSelector([{ inputId: 'MIC-03' }, { inputId: 'MIC-01' }])).toEqual({ activeInputId: null, standbyInputId: null });
-    expect(audioPairOfSelector([{ inputId: 'MIC-03', role: 'PRIMARY' }])).toEqual({ activeInputId: 'MIC-03', standbyInputId: null });
-    // A lone STANDBY line is never the active input.
-    expect(audioPairOfSelector([{ inputId: 'MIC-03', role: 'STANDBY' }])).toEqual({ activeInputId: null, standbyInputId: 'MIC-03' });
+    expect(audioPairOfSelector([{ inputId: 'MIC-03', channel: 'MIC-01' }])).toEqual({ activeInputId: 'MIC-03', standbyInputId: null });
+    // A lone channel-2 line is never the active input.
+    expect(audioPairOfSelector([{ inputId: 'MIC-03', channel: 'MIC-02' }])).toEqual({ activeInputId: null, standbyInputId: 'MIC-03' });
     expect(audioPairOfSelector(undefined)).toEqual({ activeInputId: null, standbyInputId: null });
   });
 

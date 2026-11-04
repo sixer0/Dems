@@ -19,8 +19,8 @@ const run = (value: unknown): Promise<PackageVerifyResult> =>
 const DEVELOPMENT_ROWS: readonly SessionCaptureSourceRow[] = [
   { slot: 'VIDEO-01', deviceId: 'CAM-01', adapterKind: 'LOCAL_DEVICE' },
   { slot: 'VIDEO-02', deviceId: 'CAM-02', adapterKind: 'FAKE' },
-  { slot: 'MIC-PRIMARY', deviceId: 'MIC-01', adapterKind: 'LOCAL_DEVICE' },
-  { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'FAKE' },
+  { slot: 'MIC-01', deviceId: 'MIC-01', adapterKind: 'LOCAL_DEVICE' }, // D61 (2026-11-04): the roles became the numbered channels
+  { slot: 'MIC-02', deviceId: 'MIC-02', adapterKind: 'FAKE' }, // D61
 ];
 const PRODUCTION_ROWS = DEVELOPMENT_ROWS.map((row) => ({ ...row, adapterKind: row.slot.startsWith('VIDEO') ? 'ONVIF_RTSP' : 'USB_AUDIO' }));
 

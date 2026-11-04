@@ -16,7 +16,7 @@
  * | The camera of operation 79 and the mic input of operation 80 are in the registry | `SimNotFoundError` |
  * | A line of operation 78 names a registered device of the right class, and a profile that is a code | `SimTransitionError`, code INVALID_INPUT |
  * | The two mic inputs have two devices; one camera on both tracks has two profiles (OD-05) | `SimTransitionError`, code INVALID_INPUT |
- * | Mic lines BY ROLE (lines with `role`; D133 (1), rule MIC-ASSIGN of task 4) are one or two lines, no role twice, each `deviceId == inputId`, each a registered microphone; a single line never names the other role's input | `SimTransitionError`, code INVALID_INPUT |
+ * | Mic lines BY CHANNEL (lines with `channel`; D133 (1) generalized by D61 of 2026-11-04, rule MIC-ASSIGN of task 4) are one to four lines, no channel twice, each `deviceId == inputId`, each a registered microphone; a single line never names the input another assigned channel holds | `SimTransitionError`, code INVALID_INPUT |
  * | A slot is never cleared (`unassign`) and filled by the same change (AD-10 (3)) | `SimTransitionError`, code INVALID_INPUT, reason `SLOT_UNASSIGNED_AND_ASSIGNED` |
  * | A line never names a RETIRED device (task 4 row RD2; operation 111) | `SimTransitionError`, code INVALID_INPUT, reason `CAPTURE_DEVICE_RETIRED` |
  *
@@ -26,7 +26,8 @@
  * A SLOT MAY BE UNASSIGNED (task 4 row 162, WP-13a; decisions C14, C18, C21 (8), C25; requirements
  * AD-04, AD-10; names register of row 161, section 4). An unassigned slot is an ABSENT line. Nothing
  * here finds a line by its place: a camera line is found by its track, a microphone line by its
- * role or by the input it names. Order inside one change: `unassign`, then `cameras`, then `mics`;
+ * channel or by the input it names (D61: the role became the numbered channel). Order inside one
+ * change: `unassign`, then `cameras`, then `mics`;
  * the rules of the selector as a whole are held on the result.
  *
  * | Edit | Audit rows |
@@ -35,12 +36,14 @@
  * | `unassign` of an empty slot | 0, nothing changes |
  * | an assignment into an empty slot | 1, as for a held slot, WITHOUT `from` (nothing was there) |
  *
- * The mic rows are kept in INPUT order (ascending input ID: `MIC-01` then `MIC-02`), whichever holds the PRIMARY role:
- * a list of the two mic inputs is always that ordered pair (acceptance criterion AC-B-70; the
- * simulated operations 76 and 80 answer the same). The role is a member of a row, not its place.
+ * The mic rows are kept in CHANNEL order (`MIC-01`, `MIC-02`, `MIC-03`, `MIC-04`): D61 of
+ * 2026-11-04 widened the ordered pair of AC-B-70 to the ordered four and made the channel the key
+ * of the row, as the track is the key of a camera row. The simulated operations 76 and 80 answer
+ * the same.
  */
-import { MicRole, VIDEO_TRACK_IDS } from '../domain'; // VIDEO_TRACK_IDS: D60 (2026-11-04), the one source of the four video slots
-import { AUDIO_CHANNELS, meterInputOfChannel, micInputOfRole, noInputFrame } from './audio';
+import { VIDEO_TRACK_IDS } from '../domain'; // VIDEO_TRACK_IDS: D60 (2026-11-04), the one source of the four video slots
+import { AUDIO_CHANNELS, meterInputOfChannel, micInputOfChannel, noInputFrame } from './audio';
+import { MIC_CHANNEL_IDS, PRIMARY_MIC_CHANNEL, type MicChannel } from './vocabulary'; // D61 (2026-11-04): the four microphone channels
 import { requirePermission } from './auth';
 import { SimErrorCode, SimNotFoundError, SimTransitionError } from './errors';
 import { recordActivity } from './events';
@@ -82,7 +85,7 @@ type AuditDetails = Record<string, string>;
 const invalid = (detail: string, reason: string | null = null): SimTransitionError => new SimTransitionError(null, SET_CAPTURE_CONFIG_ACTION, detail, SimErrorCode.INVALID_INPUT, reason);
 /** The camera chosen for a track already feeds the other track with the same profile. */
 export const CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS = 'CAMERA_ON_BOTH_TRACKS';
-/** The microphone chosen for an input already is the other input's. */
+/** The microphone chosen for a channel already stands on another channel. */
 export const CAPTURE_CONFIG_MIC_ON_BOTH_INPUTS = 'MIC_ON_BOTH_INPUTS';
 /**
  * One change clears a slot (`unassign`) and fills the same slot (task 4 row 162; names register
@@ -111,21 +114,22 @@ const notRetired = (device: CaptureDeviceStatus): CaptureDeviceStatus => {
 export const CAPTURE_CONFIG_EMPTY_SLOT_PROFILE = CAPTURE_PROFILE_1080P25;
 
 // D60 (2026-11-04): the four video slots derive from the widened track domain, not a literal pair.
+// D61 (2026-11-04): the four microphone slots derive from the channel vocabulary — EIGHT slots.
 const VIDEO_SLOTS: readonly CaptureSelectorSlot[] = VIDEO_TRACK_IDS;
-const MIC_SLOTS: readonly CaptureSelectorSlot[] = [MicRole.PRIMARY, MicRole.STANDBY];
+const MIC_SLOTS: readonly CaptureSelectorSlot[] = MIC_CHANNEL_IDS;
 const isVideoSlot = (slot: CaptureSelectorSlot): slot is CaptureConfigCamera['trackId'] => VIDEO_SLOTS.includes(slot);
-const isMicSlot = (slot: CaptureSelectorSlot): slot is MicRole => MIC_SLOTS.includes(slot);
-const otherRole = (role: MicRole): MicRole => (role === MicRole.PRIMARY ? MicRole.STANDBY : MicRole.PRIMARY);
+const isMicSlot = (slot: CaptureSelectorSlot): slot is MicChannel => MIC_SLOTS.includes(slot);
+/** The channel a camera-line-style mic change names, or null. */
 
 function deviceOf(state: SimState, deviceId: string, kind: CaptureDeviceStatus['kind']): CaptureDeviceStatus | null {
   const device = state.captureDevices.devices.find((candidate) => candidate.id === deviceId);
   return device !== undefined && device.kind === kind ? device : null;
 }
 
-/** The mic rows in input order (`MIC-01`, `MIC-02`); the SAME array when it is in that order already. */
-function inInputOrder(mics: CaptureConfigMic[]): CaptureConfigMic[] {
-  const ordered = mics.every((mic, index) => index === 0 || (mics[index - 1]?.inputId ?? '') <= mic.inputId);
-  return ordered ? mics : [...mics].sort((left, right) => (left.inputId < right.inputId ? -1 : left.inputId > right.inputId ? 1 : 0));
+/** The mic rows in channel order (`MIC-01`..`MIC-04`; D61); the SAME array when it is in that order already. */
+function inChannelOrder(mics: CaptureConfigMic[]): CaptureConfigMic[] {
+  const ordered = mics.every((mic, index) => index === 0 || (mics[index - 1]?.channel ?? '') <= mic.channel);
+  return ordered ? mics : [...mics].sort((left, right) => (left.channel < right.channel ? -1 : left.channel > right.channel ? 1 : 0));
 }
 
 /** The camera rows in track order (`VIDEO-01`, `VIDEO-02`); the SAME array when it is in that order already. */
@@ -144,7 +148,7 @@ function assertSelector(cameras: readonly CaptureConfigCamera[], mics: readonly 
     throw invalid('one camera on both tracks needs two profiles', CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS);
   }
   if (mics.some((mic) => mics.some((other) => other !== mic && other.deviceId === mic.deviceId))) {
-    throw invalid('the two mic inputs need two devices', CAPTURE_CONFIG_MIC_ON_BOTH_INPUTS);
+    throw invalid('two mic channels need two devices', CAPTURE_CONFIG_MIC_ON_BOTH_INPUTS);
   }
 }
 
@@ -156,62 +160,58 @@ function assertSelector(cameras: readonly CaptureConfigCamera[], mics: readonly 
 export const UNKNOWN_MIC_TRANSPORT = 'UNKNOWN';
 
 /**
- * Mic lines BY ROLE of operation 78 (decision D133 (1); task 4 rule MIC-ASSIGN, decision C21 (8);
- * names register section 4.2): every line carries `role` and puts its input on the slot of that
- * role. Two lines are the pair replacement of D133 (1); ONE line assigns a role alone, and the
- * slot of the role it does not name keeps what it holds. Held here, for the simulator and the
- * Core alike:
+ * Mic lines BY CHANNEL of operation 78 (decision D133 (1), generalized by D61 of 2026-11-04: the
+ * roles became the four numbered channels; task 4 rule MIC-ASSIGN, decision C21 (8); names register
+ * section 4.2): every line carries `channel` and puts its input on the slot of that channel. The
+ * lines over the channels a change names are the replacing set; a line assigns its channel ALONE,
+ * and the slot of a channel it does not name keeps what it holds. Held here, for the simulator and
+ * the Core alike:
  *
- *   - one or two lines, each with a role, no role twice (a body that mixes the two forms is refused);
+ *   - one to four lines, each with a channel, no channel twice (a body that mixes the two forms is
+ *     refused);
  *   - `deviceId == inputId` on each line (D106 (4): a microphone is the input of its own ID), so
- *     two inputs are two devices;
- *   - each device is a microphone of the registry (`MIC-NN`, the built-in pair or one registered later);
- *   - a single line never names the input the OTHER role holds (`MIC_ON_BOTH_INPUTS`): two
- *     microphones trade roles through operation 80 or through the two-line form.
+ *     two channels are two devices;
+ *   - each device is a microphone of the registry (`MIC-NN`, a built-in one or one registered later);
+ *   - a line never names the input ANOTHER assigned channel holds (`MIC_ON_BOTH_INPUTS`).
  *
- * The audit rows are those of C3 §5.2, per ROLE: when the same two inputs only trade roles, the one
- * ROLE row operation 80 writes; otherwise one SOURCE row per role whose device (or transport)
- * changed, `from` the device that held the role - ABSENT when the slot of the role was empty
- * (AD-10 (1): `from` is what was there, never the new device). Lines equal to the stored ones give
- * no row.
+ * The audit rows are those of C3 §5.2, per CHANNEL (D61: the field word became `CHANNEL`): one
+ * SOURCE row per channel whose device (or transport) changed, `from` the device that held the
+ * channel - ABSENT when the slot of the channel was empty (AD-10 (1): `from` is what was there,
+ * never the new device). Lines equal to the stored ones give no row.
  */
-function assignMicsByRole(
+function assignMicsByChannel(
   state: SimState,
   current: CaptureConfigMic[],
   lines: readonly CaptureConfigMicChange[],
 ): { mics: CaptureConfigMic[]; rows: AuditDetails[] } {
-  if (lines.length < 1 || lines.length > 2 || lines.some((line) => line.role === undefined)) throw invalid('mic lines by role are one or two lines, each with a role');
-  if (lines.length === 2 && lines[0]?.role === lines[1]?.role) throw invalid('mic lines by role name each role once: one PRIMARY, one STANDBY');
-  const heldBy = (role: MicRole): CaptureConfigMic | undefined => current.find((entry) => entry.role === role);
+  if (lines.length < 1 || lines.length > MIC_CHANNEL_IDS.length || lines.some((line) => line.channel === undefined)) throw invalid('mic lines by channel are one to four lines, each with a channel');
+  const channels = lines.map((line) => line.channel as MicChannel);
+  if (new Set(channels).size !== channels.length) throw invalid(`mic lines by channel name each channel once: ${MIC_CHANNEL_IDS.join(', ')}`);
+  const heldBy = (channel: MicChannel): CaptureConfigMic | undefined => current.find((entry) => entry.channel === channel);
   const built = lines.map((line): CaptureConfigMic => {
     if (line.deviceId !== line.inputId) throw invalid('a mic input holds the microphone of the same ID');
     const device = deviceOf(state, line.deviceId, 'MIC');
     if (device === null) throw invalid('a mic line names no microphone of the registry');
     notRetired(device);
     const held = current.find((entry) => entry.inputId === line.inputId);
-    return { inputId: line.inputId, deviceId: device.id, role: line.role ?? MicRole.STANDBY, transport: line.transport ?? held?.transport ?? UNKNOWN_MIC_TRANSPORT, online: device.online };
+    return { channel: line.channel as MicChannel, inputId: line.inputId, deviceId: device.id, transport: line.transport ?? held?.transport ?? UNKNOWN_MIC_TRANSPORT, online: device.online };
   });
-  const [one, two] = built;
-  if (one === undefined) throw invalid('mic lines by role are one or two lines, each with a role');
-  if (two !== undefined && one.inputId === two.inputId) throw invalid('the two mic inputs need two devices');
-  // The line of the role this change does not name stays as it is (found by its role, never by its place).
-  const kept = two === undefined ? heldBy(otherRole(one.role)) : undefined;
-  if (kept !== undefined && kept.inputId === one.inputId) throw invalid('the microphone chosen is the one the other role holds', CAPTURE_CONFIG_MIC_ON_BOTH_INPUTS);
-  const next = kept === undefined ? built : [...built, kept];
-
-  // A pure trade of roles: two lines over a selector that holds exactly these two inputs.
-  const sameInputs = built.length === 2 && current.length === 2 && built.every((mic) => current.some((entry) => entry.inputId === mic.inputId && entry.deviceId === mic.deviceId));
-  const rows: AuditDetails[] = [];
-  const nextPrimary = built.find((mic) => mic.role === MicRole.PRIMARY);
-  if (sameInputs && nextPrimary !== undefined && heldBy(MicRole.PRIMARY)?.inputId !== nextPrimary.inputId) {
-    rows.push({ scope: 'MIC', field: 'ROLE', inputId: nextPrimary.inputId, deviceId: nextPrimary.deviceId, from: MicRole.STANDBY, to: MicRole.PRIMARY });
+  // A line may not take an input another ASSIGNED channel holds — the untouched lines included.
+  for (const mic of built) {
+    const other = current.find((entry) => entry.inputId === mic.inputId && entry.channel !== mic.channel);
+    if (other !== undefined && !built.some((line) => line.channel === other.channel)) throw invalid('the microphone chosen already stands on another channel', CAPTURE_CONFIG_MIC_ON_BOTH_INPUTS);
   }
-  // The rows in the order PRIMARY, STANDBY, whatever the order of the lines (as the pair replacement always wrote them).
-  for (const mic of [...built].sort((left, right) => (left.role === right.role ? 0 : left.role === MicRole.PRIMARY ? -1 : 1))) {
-    // After a pure trade of roles the comparison is by input (a transport that changed); otherwise by role.
-    const before = sameInputs ? current.find((entry) => entry.inputId === mic.inputId) : heldBy(mic.role);
+  // The lines of channels this change does not name stay as they are (found by their channel, never by their place).
+  const named = new Set(channels);
+  const kept = current.filter((entry) => !named.has(entry.channel));
+  const next = [...built, ...kept];
+
+  const rows: AuditDetails[] = [];
+  // The rows in channel order, whatever the order of the lines (as the replacing set always wrote them).
+  for (const mic of [...built].sort((left, right) => (left.channel < right.channel ? -1 : left.channel > right.channel ? 1 : 0))) {
+    const before = heldBy(mic.channel);
     if (before !== undefined && before.deviceId === mic.deviceId && before.transport === mic.transport) continue;
-    rows.push({ scope: 'MIC', field: 'SOURCE', inputId: mic.inputId, deviceId: mic.deviceId, ...(before === undefined ? {} : { from: before.deviceId }), to: mic.deviceId });
+    rows.push({ scope: 'MIC', field: 'SOURCE', channel: mic.channel, inputId: mic.inputId, deviceId: mic.deviceId, ...(before === undefined ? {} : { from: before.deviceId }), to: mic.deviceId });
   }
   return { mics: rows.length === 0 ? current : next, rows };
 }
@@ -267,11 +267,11 @@ export function setCaptureConfigTransition(state: SimState, now: EpochMs, change
   switch (change.kind) {
     case 'UPDATE': {
       const micLines = change.mics ?? [];
-      const byRole = micLines.some((line) => line.role !== undefined);
+      const byChannel = micLines.some((line) => line.channel !== undefined); // D61 (2026-11-04): the by-role form became the by-channel form
       // 1. `unassign` (AD-10): each slot named loses its line. One row per slot that held a source,
-      //    none for an empty one. The slot is found by its track or its role.
+      //    none for an empty one. The slot is found by its track or its channel (D61).
       const cleared = change.unassign ?? [];
-      /** The inputs the cleared microphone slots held: a line WITHOUT `role` cannot edit one of them. */
+      /** The inputs the cleared microphone slots held: a line WITHOUT `channel` cannot edit one of them. */
       const clearedInputs = new Set<string>();
       for (const slot of cleared) {
         if (isVideoSlot(slot)) {
@@ -281,12 +281,12 @@ export function setCaptureConfigTransition(state: SimState, now: EpochMs, change
           cameras = cameras.filter((entry) => entry !== held);
           rows.push({ operationId, scope: 'CAMERA', field: 'SOURCE', trackId: slot, from: held.deviceId, permission });
         } else if (isMicSlot(slot)) {
-          if (micLines.some((line) => line.role === slot)) throw invalid('a slot is not cleared and assigned by one change', CAPTURE_CONFIG_SLOT_UNASSIGNED_AND_ASSIGNED);
-          const held = mics.find((entry) => entry.role === slot);
+          if (micLines.some((line) => line.channel === slot)) throw invalid('a slot is not cleared and assigned by one change', CAPTURE_CONFIG_SLOT_UNASSIGNED_AND_ASSIGNED);
+          const held = mics.find((entry) => entry.channel === slot);
           if (held === undefined) continue;
           mics = mics.filter((entry) => entry !== held);
           clearedInputs.add(held.inputId);
-          rows.push({ operationId, scope: 'MIC', field: 'SOURCE', inputId: held.inputId, from: held.deviceId, permission });
+          rows.push({ operationId, scope: 'MIC', field: 'SOURCE', channel: slot, inputId: held.inputId, from: held.deviceId, permission }); // D61: the row names the cleared channel
         } else {
           throw invalid('the selector has no such slot');
         }
@@ -298,9 +298,9 @@ export function setCaptureConfigTransition(state: SimState, now: EpochMs, change
         assignCamera(line.trackId, device, line.profile);
       }
       // 3. `mics`.
-      if (byRole) {
-        // BY ROLE (D133 (1); rule MIC-ASSIGN): each line puts its input on the slot of its role.
-        const assigned = assignMicsByRole(state, mics, micLines);
+      if (byChannel) {
+        // BY CHANNEL (D133 (1) generalized by D61; rule MIC-ASSIGN): each line puts its input on the slot of its channel.
+        const assigned = assignMicsByChannel(state, mics, micLines);
         for (const row of assigned.rows) rows.push({ operationId, ...row, permission });
         mics = assigned.mics;
         break;
@@ -316,7 +316,7 @@ export function setCaptureConfigTransition(state: SimState, now: EpochMs, change
         const transport = line.transport ?? slot.transport;
         if (slot.deviceId === device.id && slot.transport === transport) continue;
         mics = mics.map((entry) => (entry === slot ? { ...entry, deviceId: device.id, transport, online: device.online } : entry));
-        rows.push({ operationId, scope: 'MIC', field: 'SOURCE', inputId: line.inputId, deviceId: device.id, from: slot.deviceId, to: device.id, permission });
+        rows.push({ operationId, scope: 'MIC', field: 'SOURCE', channel: slot.channel, inputId: line.inputId, deviceId: device.id, from: slot.deviceId, to: device.id, permission }); // D61: the row names the channel it edited
       }
       break;
     }
@@ -327,11 +327,18 @@ export function setCaptureConfigTransition(state: SimState, now: EpochMs, change
       break;
     }
     case 'PRIMARY_MIC': {
+      // D61 (2026-11-04): the operation moves the TRANSCRIPTION channel. The named input takes
+      // channel `MIC-01`; the input that held channel 1 takes the named input's old channel (the
+      // earlier wording made it PRIMARY and the other STANDBY inside one AUDIO-01).
       const slot = mics.find((entry) => entry.inputId === change.inputId);
       if (slot === undefined) throw new SimNotFoundError('captureMic', change.inputId);
-      if (slot.role === MicRole.PRIMARY) break;
-      mics = mics.map((entry) => ({ ...entry, role: entry === slot ? MicRole.PRIMARY : MicRole.STANDBY }));
-      rows.push({ operationId, scope: 'MIC', field: 'ROLE', inputId: slot.inputId, deviceId: slot.deviceId, from: MicRole.STANDBY, to: MicRole.PRIMARY, permission });
+      if (slot.channel === PRIMARY_MIC_CHANNEL) break;
+      const displaced = mics.find((entry) => entry.channel === PRIMARY_MIC_CHANNEL);
+      const movedChannel = slot.channel;
+      mics = mics.map((entry) =>
+        entry === slot ? { ...entry, channel: PRIMARY_MIC_CHANNEL } : displaced !== undefined && entry === displaced ? { ...entry, channel: movedChannel } : entry,
+      );
+      rows.push({ operationId, scope: 'MIC', field: 'CHANNEL', inputId: slot.inputId, deviceId: slot.deviceId, from: movedChannel, to: PRIMARY_MIC_CHANNEL, permission });
       break;
     }
     default: {
@@ -342,50 +349,50 @@ export function setCaptureConfigTransition(state: SimState, now: EpochMs, change
 
   if (rows.length === 0) return state;
   // Only an edit of the mic rows puts them in order: a camera edit leaves that list alone.
-  if (mics !== state.captureConfig.mics) mics = inInputOrder(mics);
+  if (mics !== state.captureConfig.mics) mics = inChannelOrder(mics);
   assertSelector(cameras, mics);
 
-  // A meter channel is a line of a COMPLETE pair, at its place in the list as held (ruling D137, kept
-  // by C21 (7); `meterInputOfChannel`). Without a complete pair no channel has an input: such a
-  // channel moves no role and names no meter.
-  const roleOfChannel = (channel: (typeof AUDIO_CHANNELS)[number]): MicRole | undefined => {
+  // D61 (2026-11-04): a meter channel is the line that NAMES it (`meterInputOfChannel`, the per-channel
+  // generalization of ruling D137). Without its line a channel has no input and moves nothing.
+  const inputOfMeterChannel = (channel: (typeof AUDIO_CHANNELS)[number]): string | undefined => {
     const inputId = meterInputOfChannel(mics, channel);
-    return inputId === null ? undefined : mics.find((entry) => entry.inputId === inputId)?.role;
+    return inputId === null ? undefined : inputId;
   };
-  const roleMoved = state.mics.some((mic) => {
-    const role = roleOfChannel(mic.id);
-    return role !== undefined && role !== mic.micRole;
+  const channelMoved = state.mics.some((mic) => {
+    const inputId = inputOfMeterChannel(mic.id);
+    return inputId !== undefined && inputId !== mic.deviceId;
   });
   // An edit that changes WHICH inputs the selector holds (or their order) re-keys the meters: one
   // frame per microphone line of the new selector and no other key (names register 4.5; site C12),
-  // and the active input is the PRIMARY of the new selector - the input a recording would start
-  // on. (No session is open here - the selector is locked while one is - so no recording is being
+  // and the active input is the channel-1 line of the new selector - the input the transcription
+  // reads. (No session is open here - the selector is locked while one is - so no recording is being
   // metered. An edit that keeps the inputs leaves the meters slice alone, as before.)
-  //   - two complete pairs, before and after: each CHANNEL keeps its newest frame under the input
-  //     it is now, as before (D137);
-  //   - anything else: a line keeps the frame of ITS OWN input, and an input the meters did not
-  //     hold starts at "no signal". Nothing is keyed by an input the selector does not hold.
+  //   - D61 (2026-11-04): each CHANNEL that had a line before keeps its newest frame under the
+  //     input it is now (the per-channel generalization of D137);
+  //   - a line that moved off its channel keeps the frame of ITS OWN input, and an input the meters
+  //     did not hold starts at "no signal". Nothing is keyed by an input the selector does not hold.
   const before = state.captureConfig.mics;
   const rekeyed = mics.length !== before.length || mics.some((mic, index) => mic.inputId !== before[index]?.inputId);
   const heldFrameOf = (inputId: string): AudioFrame | undefined => {
     for (const channel of AUDIO_CHANNELS) {
       if (meterInputOfChannel(mics, channel) !== inputId) continue;
       const was = meterInputOfChannel(before, channel);
-      // Two complete pairs: the frame of the input this CHANNEL was.
+      // The channel kept an input: the frame of the input this CHANNEL was.
       if (was !== null) return state.audio.inputs[was];
     }
     return state.audio.inputs[inputId];
   };
   const inputs = Object.fromEntries(mics.map((mic) => [mic.inputId, heldFrameOf(mic.inputId) ?? noInputFrame(now)]));
-  // Without a PRIMARY line the state holds NO active input (task 4 row 149): `null` - never the
-  // input it held, never a line by its place, never a built-in input.
-  const activeInputId = micInputOfRole(mics, MicRole.PRIMARY);
+  // Without a channel-1 line the state holds NO active input (task 4 row 149; D61): `null` - never
+  // the input it held, never a line by its place, never a built-in input.
+  const activeInputId = micInputOfChannel(mics, PRIMARY_MIC_CHANNEL);
   let next: SimState = {
     ...state,
     captureConfig: { ...state.captureConfig, cameras, mics, updatedAt: now },
-    // The mic slice carries the same capture role, so that health, audio status and the selector
-    // agree. It is a new slice only when a role moved: a camera edit leaves it alone.
-    ...(roleMoved ? { mics: state.mics.map((mic) => ({ ...mic, micRole: roleOfChannel(mic.id) ?? mic.micRole })) } : {}),
+    // The mic slice carries the input of its own channel, so that health, audio status and the
+    // selector agree (D61). It is a new slice only when a channel moved its input: a camera edit
+    // leaves it alone.
+    ...(channelMoved ? { mics: state.mics.map((mic) => { const inputId = inputOfMeterChannel(mic.id); return inputId === undefined || inputId === mic.deviceId ? mic : { ...mic, deviceId: inputId }; }) } : {}),
     ...(rekeyed ? { audio: { inputs, activeInputId } } : {}),
   };
   for (const details of rows) {

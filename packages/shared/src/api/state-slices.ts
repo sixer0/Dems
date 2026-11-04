@@ -54,6 +54,7 @@ import {
   StorageState,
   SystemSlot,
   TimeSource,
+  AUDIO_TRACK_IDS, // D61 (2026-11-04): the four-channel audio domain
   TrackId,
   VIDEO_TRACK_IDS,
   TrackRecState,
@@ -71,6 +72,7 @@ import {
   EvidenceStatus,
   FaultKind,
   IntegritySource,
+  MIC_CHANNEL_IDS, // D61 (2026-11-04): the four microphone channels of the selector
   PrecheckCheckId,
   PrecheckReasonCode,
   PrecheckStatus,
@@ -108,7 +110,8 @@ const sha256 = () => z.string().regex(SHA256_HEX_PATTERN);
 /** A measurement that is never negative: a rate, a size in a unit, a percentage. */
 const amount = () => z.number().nonnegative();
 const videoTrackId = () => z.enum(VIDEO_TRACK_IDS); // D60 (2026-11-04): four video tracks
-const audioTrackId = () => z.enum([TrackId.AUDIO_01, TrackId.AUDIO_02]);
+// D61 (2026-11-04): the audio domain is FOUR simultaneous channels (AUDIO_TRACK_IDS).
+const audioTrackId = () => z.enum(AUDIO_TRACK_IDS);
 const timeSource = () => z.enum(TimeSource);
 
 /**
@@ -244,12 +247,17 @@ export const CaptureConfigCameraSchema = z
   .describe('One video slot of the device selector.');
 export type CaptureConfigCameraBody = z.output<typeof CaptureConfigCameraSchema>;
 
-/** One mic slot of the selector: which input is PRIMARY and which is the hot standby (OD-09). */
+/**
+ * One mic slot of the selector (D61 of 2026-11-04): FOUR simultaneous channels, each row keyed by
+ * its `channel` as a camera row is keyed by its `trackId`. The PRIMARY/STANDBY role member of the
+ * earlier eras is superseded: the roles became the first two channels (OD-01 T1 superseded; the
+ * in-session toggle of op 81 still trades the transcription pair, channels 1 and 2).
+ */
 export const CaptureConfigMicSchema = z
   .strictObject({
-    inputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The mic input, `MIC-NN`: the built-in `MIC-01` / `MIC-02`, or a microphone registered later (D115 (2)).'),
+    channel: z.enum(MIC_CHANNEL_IDS).describe('The selector channel this row fills (D61): `MIC-01`..`MIC-04`; channel 1 feeds the transcribed track `AUDIO-01`.'),
+    inputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The mic input, `MIC-NN`: a built-in `MIC-01`..`MIC-04`, or a microphone registered later (D115 (2)).'),
     deviceId: label().describe('The microphone behind the input: the device of the same ID (D106 (4)).'),
-    role: z.enum(MicRole),
     transport: label().describe('Open set (`CODE`): USB, embedded RTSP, ... (OD-06).'),
     online: z.boolean().describe('On a Core in its own capture this is the registry flag of the device (`capture_devices.enabled`), NOT a reachability reading: it is true from the moment the device is registered and changes only when a pre-check, a session start or a microphone re-scan has actually asked the source (false: it did not answer; true again: it answered). Outside those moments the Core has not checked the source, so `true` means "registered and not found unreachable at the last check" - never "reachable now": a client at rest says "Not checked", not "Online" or "Ready" (finding JW-23). In Simulated mode it is the demonstration model\'s value.'),
   })
@@ -575,10 +583,9 @@ export const MicsSliceSchema = z
       id: audioTrackId(),
       deviceId: label().describe('e.g. MIC-01.'),
       name: text().describe('e.g. "MIC 1 – Interviewer".'),
-      role: z.enum(['Interviewer', 'Subject']),
-      /** Schema v2 (SH-05): the capture role inside AUDIO-01 (OD-01 T1, OD-09). */
-      micRole: z.enum(MicRole),
-      channel: z.union([z.literal(1), z.literal(2)]),
+      role: z.enum(['Interviewer', 'Subject']).nullable().describe('D61 (2026-11-04): the interview role of the built-in pair; null for a channel that carries none.'),
+      /** D61 (SH-05 superseded): the selector channel feeding this entry (`MIC-0N` for `AUDIO-0N`). */
+      channel: z.enum(MIC_CHANNEL_IDS),
       state: z.enum(MicState),
       recState: z.enum(TrackRecState).nullable(),
       gainDb: z.number(),
@@ -586,7 +593,7 @@ export const MicsSliceSchema = z
       clipLatched: z.boolean().describe('CLIP latch; stays true until the clip is reset.'),
     }),
   )
-  .describe('Slice `mics`: AUDIO-01 and AUDIO-02, never merged (SYS-003).');
+  .describe('Slice `mics`: one entry per audio channel, `AUDIO-01` to `AUDIO-04` (D61, 2026-11-04: four simultaneous channels), never merged (SYS-003).');
 export type MicsSliceBody = z.output<typeof MicsSliceSchema>;
 
 const AudioFrameSchema = z
@@ -607,8 +614,8 @@ const AudioFrameSchema = z
 
 /**
  * The wire form of the `audio` slice (register SH-17; E-02; `C3 §6`). Schema v2 re-keys it from the
- * v1 `AUDIO-01`/`AUDIO-02` **channels** to the two microphone **inputs** `MIC-01`/`MIC-02` and adds
- * `activeInputId`, so the meters show both input levels and which one feeds `AUDIO-01` (OD-01 T1,
+ * v1 `AUDIO-01`/`AUDIO-02` **channels** to the microphone **inputs** `MIC-NN` and adds
+ * `activeInputId`, so the meters show every input level and which one feeds `AUDIO-01` (OD-01 T1,
  * OD-09). This is the E-02 correction: the change is here and in `realtime-messages.ts`, and the
  * fifth call site is `live/source/live-sim.ts` (`onMeters`).
  *
@@ -616,16 +623,17 @@ const AudioFrameSchema = z
  * that subscribed, and is never stored (class X).
  *
  * Task 4 row 28 (WP-13a; decision C25; names register E41): a selector slot may be unassigned, so
- * `inputs` holds one frame per microphone line of the selector - AT MOST two, not exactly two -
- * and `activeInputId` is `null` when no PRIMARY line stands behind `AUDIO-01`. On a complete
- * selector the slice is what it was: two frames and an input.
+ * `inputs` holds one frame per microphone line of the selector - AT MOST FOUR (D61 of 2026-11-04:
+ * four simultaneous channels), not exactly four -
+ * and `activeInputId` is `null` when no channel-1 line stands behind `AUDIO-01`. On a complete
+ * selector the slice is what it was: one frame per assigned channel and an input.
  */
 export const AudioSliceSchema = z
   .strictObject({
     inputs: z
       .record(z.string().regex(MIC_INPUT_ID_PATTERN), AudioFrameSchema)
-      .refine((inputs) => Object.keys(inputs).length <= 2, { message: 'Expected the frames of at most two mic inputs.' })
-      .describe('The newest frame of each mic input of the capture, keyed by input ID `MIC-NN`: the built-in `MIC-01` / `MIC-02`, or the pair the selector holds (D133 (1)). One frame per microphone line of the selector, so at most two; fewer while a microphone slot is not assigned.'),
+      .refine((inputs) => Object.keys(inputs).length <= 4, { message: 'Expected the frames of at most four mic inputs.' })
+      .describe('The newest frame of each mic input of the capture, keyed by input ID `MIC-NN`: a built-in `MIC-01`..`MIC-04`, or another microphone the selector holds (D133 (1) widened by D61, 2026-11-04). One frame per microphone line of the selector, so at most four; fewer while a microphone channel is not assigned.'),
     activeInputId: z
       .string()
       .regex(MIC_INPUT_ID_PATTERN)
@@ -780,9 +788,10 @@ export const HealthSliceSchema = z
     fanOk: z.boolean(),
     series: z.array(z.strictObject({ at: epochMs(), ...healthReading() })),
     micLevels: z
-      .array(z.strictObject({ at: epochMs(), [TrackId.AUDIO_01]: z.number(), [TrackId.AUDIO_02]: z.number() }))
+      // D61 (2026-11-04): four simultaneous microphone channels.
+      .array(z.strictObject({ at: epochMs(), [TrackId.AUDIO_01]: z.number(), [TrackId.AUDIO_02]: z.number(), [TrackId.AUDIO_03]: z.number(), [TrackId.AUDIO_04]: z.number() }))
       .optional()
-      .describe('1 Hz peak level of both microphone channels, at most 120.'),
+      .describe('1 Hz peak level of the four microphone channels (D61), at most 120.'),
   })
   .describe('Slice `health`: load, temperatures and fan, with their 1 Hz series.');
 export type HealthSliceBody = z.output<typeof HealthSliceSchema>;
@@ -802,7 +811,7 @@ export type OtherDevicesSliceBody = z.output<typeof OtherDevicesSliceSchema>;
 export const PortsSliceSchema = z
   .array(
     z.strictObject({
-      id: z.enum(['POE_CAM_1', 'POE_CAM_2_AUX', 'POE_CAM_3', 'POE_CAM_4', 'MGMT_LAN', 'MIC_IN_1', 'MIC_IN_2', 'GNSS_SMA', 'RELAY_IO']), // D60 (2026-11-04): POE_CAM_3/4 carry the third and fourth camera line; equals the `PortStatus` union of the simulator
+      id: z.enum(['POE_CAM_1', 'POE_CAM_2_AUX', 'POE_CAM_3', 'POE_CAM_4', 'MGMT_LAN', 'MIC_IN_1', 'MIC_IN_2', 'MIC_IN_3', 'MIC_IN_4', 'GNSS_SMA', 'RELAY_IO']), // D60 (2026-11-04): POE_CAM_3/4 carry the third and fourth camera line; D61 (2026-11-04): MIC_IN_3/4 the third and fourth microphone channel; equals the `PortStatus` union of the simulator
       label: text(),
       link: z.boolean().describe('The port is healthy; a spare port reads true while it is ready.'),
       spare: z.boolean().optional(),
@@ -934,7 +943,7 @@ export const EvidenceItemSchema = z
         z.strictObject({
           seq: count(),
           inputId: z.string().regex(MIC_INPUT_ID_PATTERN),
-          role: z.enum(MicRole),
+          role: z.enum(MicRole), // D61 (2026-11-04): the transcription-pair word of the interval (channel 1 = PRIMARY, channel 2 = STANDBY); the interval table names the AUDIO-01 source history
           fromMs: count().describe('Media-pts start (S2 §6 finding 3).'),
           toMs: nullableEpochMs().describe('Media-pts end; null for the open interval of a live session.'),
           reason: z.enum(['START', 'MANUAL', 'STOP']),
@@ -1157,7 +1166,7 @@ export type SettingsSliceBody = z.output<typeof SettingsSliceSchema>;
 export const CaptureConfigSliceSchema = z
   .strictObject({
     cameras: z.array(CaptureConfigCameraSchema).describe('VIDEO-01 first, then VIDEO-02, VIDEO-03, VIDEO-04 (D60, 2026-11-04: four named tracks once).'), // D60
-    mics: z.array(CaptureConfigMicSchema).describe('In input order (ascending input ID): MIC-01, then MIC-02; the role is a member of the row.'),
+    mics: z.array(CaptureConfigMicSchema).describe('In channel order (D61, 2026-11-04: four simultaneous channels): `MIC-01`, `MIC-02`, `MIC-03`, `MIC-04`; fewer rows while a channel is not assigned.'),
     locked: z.boolean().describe('True while a session is open: no edit is accepted then (OD-10).'),
     updatedAt: epochMs(),
   })

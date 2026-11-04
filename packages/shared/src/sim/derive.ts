@@ -216,9 +216,12 @@ export const CAMERA_PORT: Record<VideoTrackId, PortStatus['id']> = {
   'VIDEO-03': 'POE_CAM_3', // D60 (2026-11-04): four camera tracks on the PoE switch
   'VIDEO-04': 'POE_CAM_4',
 };
+// D61 (2026-11-04): four simultaneous microphone channels, one input port each.
 const MIC_PORT: Record<AudioTrackId, PortStatus['id']> = {
   'AUDIO-01': 'MIC_IN_1',
   'AUDIO-02': 'MIC_IN_2',
+  'AUDIO-03': 'MIC_IN_3',
+  'AUDIO-04': 'MIC_IN_4',
 };
 /** PoE draw of the dual-lens camera on PoE CAM 1 (W; budget 30 W per port). */
 export const CAMERA_POE_DRAW_W = 18.6;

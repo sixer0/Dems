@@ -591,11 +591,11 @@ describe('platform security not reported, and the restart fault', () => {
 
   // Fix wave J (finding JW-08): both microphones read "NO SIGNAL" beside "READY - PASS" whenever no capture was open.
   describe('fix wave J: a level that is not measured is not NO SIGNAL', () => {
-    it('JW-08: at rest a Core in its own capture states `notMeasured` on both inputs, and never `noSignal`', () => {
+    it('JW-08: at rest a Core in its own capture states `notMeasured` on all four inputs, and never `noSignal`', () => {
       const h = bed({ capture: 'external' });
       h.run(2_000);
       const frames = Object.values(h.state().audio.inputs);
-      expect(frames).toHaveLength(2);
+      expect(frames).toHaveLength(4); // D61 (2026-11-04): four simultaneous channels, four unmeasured frames
       for (const frame of frames) {
         expect(frame).toMatchObject({ notMeasured: true, noSignal: false, dbfs: -90, peak: -90 });
         expect(isLevelNotMeasured(frame)).toBe(true);

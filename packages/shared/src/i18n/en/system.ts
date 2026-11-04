@@ -71,7 +71,7 @@ export const system = {
       'SVC-03': 'Session state machine and orchestration',
       'SVC-04': 'Camera discovery, control and stream ingest',
       'SVC-05': 'Session-based recording of video and audio tracks',
-      'SVC-06': 'Two independent audio channels',
+      'SVC-06': 'Four independent audio channels', // D61 (2026-11-04): four simultaneous channels
       'SVC-07': 'Common session timeline',
       'SVC-08': 'Binds investigative and session metadata to evidence',
       'SVC-09': 'GNSS, NTP and RTC management',

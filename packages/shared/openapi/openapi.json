@@ -1400,7 +1400,7 @@
                         {
                           "inputId": "MIC-01",
                           "deviceId": "MIC-01",
-                          "role": "PRIMARY",
+                          "channel": "MIC-01",
                           "name": "MIC 1 – Interviewer",
                           "state": "READY",
                           "recState": null,
@@ -1414,8 +1414,36 @@
                         {
                           "inputId": "MIC-02",
                           "deviceId": "MIC-02",
-                          "role": "STANDBY",
+                          "channel": "MIC-02",
                           "name": "MIC 2 – Subject",
+                          "state": "READY",
+                          "recState": null,
+                          "dbfs": -52,
+                          "peak": -52,
+                          "clip": false,
+                          "noSignal": false,
+                          "gainDb": 32,
+                          "phantom": true
+                        },
+                        {
+                          "inputId": "MIC-03",
+                          "deviceId": "MIC-03",
+                          "channel": "MIC-03",
+                          "name": "MIC 3 – Channel 3",
+                          "state": "READY",
+                          "recState": null,
+                          "dbfs": -52,
+                          "peak": -52,
+                          "clip": false,
+                          "noSignal": false,
+                          "gainDb": 32,
+                          "phantom": true
+                        },
+                        {
+                          "inputId": "MIC-04",
+                          "deviceId": "MIC-04",
+                          "channel": "MIC-04",
+                          "name": "MIC 4 – Channel 4",
                           "state": "READY",
                           "recState": null,
                           "dbfs": -52,
@@ -1673,10 +1701,10 @@
           "Device"
         ],
         "summary": "Audio status",
-        "description": "Per-channel levels and faults for AUDIO-01 (MIC 1) and AUDIO-02 (MIC 2), reported separately (book §21.2, SYS-003).\n\nNeeds a signed-in operator. Every role may read it: the operation needs no permission.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
+        "description": "Per-channel levels and faults for the FOUR simultaneous audio channels AUDIO-01 to AUDIO-04 (D61 of 2026-11-04; the book §21.2 named two), reported separately (book §21.2, SYS-003).\n\nNeeds a signed-in operator. Every role may read it: the operation needs no permission.\n\nAnswered by the Core server. In Simulated mode the in-app simulator answers the same operation inside the app, without a request, and marks its answer with the header `x-dems-simulated: 1`; the Core server never sends that header.",
         "responses": {
           "200": {
-            "description": "Both audio channels.",
+            "description": "The four audio channels (D61).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -1695,7 +1723,7 @@
                         {
                           "inputId": "MIC-01",
                           "deviceId": "MIC-01",
-                          "role": "PRIMARY",
+                          "channel": "MIC-01",
                           "name": "MIC 1 – Interviewer",
                           "state": "READY",
                           "recState": "REC",
@@ -1709,12 +1737,40 @@
                         {
                           "inputId": "MIC-02",
                           "deviceId": "MIC-02",
-                          "role": "STANDBY",
+                          "channel": "MIC-02",
                           "name": "MIC 2 – Subject",
                           "state": "READY",
                           "recState": "REC",
                           "dbfs": -51.7,
                           "peak": -23.9,
+                          "clip": false,
+                          "noSignal": false,
+                          "gainDb": 32,
+                          "phantom": true
+                        },
+                        {
+                          "inputId": "MIC-03",
+                          "deviceId": "MIC-03",
+                          "channel": "MIC-03",
+                          "name": "MIC 3 – Channel 3",
+                          "state": "READY",
+                          "recState": "REC",
+                          "dbfs": -49.2,
+                          "peak": -21.4,
+                          "clip": false,
+                          "noSignal": false,
+                          "gainDb": 32,
+                          "phantom": true
+                        },
+                        {
+                          "inputId": "MIC-04",
+                          "deviceId": "MIC-04",
+                          "channel": "MIC-04",
+                          "name": "MIC 4 – Channel 4",
+                          "state": "READY",
+                          "recState": "REC",
+                          "dbfs": -53.8,
+                          "peak": -25,
                           "clip": false,
                           "noSignal": false,
                           "gainDb": 32,
@@ -10867,13 +10923,13 @@
                             {
                               "trackId": "AUDIO-01",
                               "label": "MIC 1 – Interviewer",
-                              "sizeBytes": 50566667,
+                              "sizeBytes": 25283333,
                               "sha256": "ad6aa4e1591259a027c832793f8f784d67fd59f0a092937c059de1caa0577c78"
                             },
                             {
                               "trackId": "AUDIO-02",
                               "label": "MIC 2 – Subject",
-                              "sizeBytes": 50566667,
+                              "sizeBytes": 25283333,
                               "sha256": "728b535907b3cb993941be4554b997d1d26a41301cfc7f5cdd977f8dc16aed0d"
                             }
                           ],
@@ -11185,13 +11241,13 @@
                           {
                             "trackId": "AUDIO-01",
                             "label": "MIC 1 – Interviewer",
-                            "sizeBytes": 50566667,
+                            "sizeBytes": 25283333,
                             "sha256": "ad6aa4e1591259a027c832793f8f784d67fd59f0a092937c059de1caa0577c78"
                           },
                           {
                             "trackId": "AUDIO-02",
                             "label": "MIC 2 – Subject",
-                            "sizeBytes": 50566667,
+                            "sizeBytes": 25283333,
                             "sha256": "728b535907b3cb993941be4554b997d1d26a41301cfc7f5cdd977f8dc16aed0d"
                           }
                         ],
@@ -11348,13 +11404,13 @@
                           {
                             "trackId": "AUDIO-01",
                             "label": "MIC 1 – Interviewer",
-                            "sizeBytes": 50566667,
+                            "sizeBytes": 25283333,
                             "sha256": "ad6aa4e1591259a027c832793f8f784d67fd59f0a092937c059de1caa0577c78"
                           },
                           {
                             "trackId": "AUDIO-02",
                             "label": "MIC 2 – Subject",
-                            "sizeBytes": 50566667,
+                            "sizeBytes": 25283333,
                             "sha256": "728b535907b3cb993941be4554b997d1d26a41301cfc7f5cdd977f8dc16aed0d"
                           }
                         ],
@@ -13220,7 +13276,7 @@
           "Device"
         ],
         "summary": "Device inventory",
-        "description": "The devices of the Core: the Core itself, the two cameras, the two microphones, the other devices, the ports, the camera the monitor shows, the link of the tablet and — schema v2 (C3 §3 op 47; SH-12) — the `captureConfig` snapshot. Slices `device`, `cameras`, `mics`, `otherDevices`, `ports`, `activeCameraId`, `tabletLink` and `captureConfig`.\n\nDistinct from `GET /api/v1/device/health`, the design-book snapshot. The inventory never holds the paired-client registry (E-04) and never a credential (RK-12).\n\nCore server only: the answer holds the named slices in their wire form, the same JSON as the `state` topic of the socket (API-6). In Simulated mode a client reads them from its own simulator and sends no request.",
+        "description": "The devices of the Core: the Core itself, the cameras, the four microphones (D61, 2026-11-04), the other devices, the ports, the camera the monitor shows, the link of the tablet and — schema v2 (C3 §3 op 47; SH-12) — the `captureConfig` snapshot. Slices `device`, `cameras`, `mics`, `otherDevices`, `ports`, `activeCameraId`, `tabletLink` and `captureConfig`.\n\nDistinct from `GET /api/v1/device/health`, the design-book snapshot. The inventory never holds the paired-client registry (E-04) and never a credential (RK-12).\n\nCore server only: the answer holds the named slices in their wire form, the same JSON as the `state` topic of the socket (API-6). In Simulated mode a client reads them from its own simulator and sends no request.",
         "responses": {
           "200": {
             "description": "The seven slices.",
@@ -13333,8 +13389,7 @@
                           "deviceId": "MIC-01",
                           "name": "MIC 1 – Interviewer",
                           "role": "Interviewer",
-                          "micRole": "PRIMARY",
-                          "channel": 1,
+                          "channel": "MIC-01",
                           "state": "READY",
                           "recState": null,
                           "gainDb": 32,
@@ -13346,8 +13401,31 @@
                           "deviceId": "MIC-02",
                           "name": "MIC 2 – Subject",
                           "role": "Subject",
-                          "micRole": "STANDBY",
-                          "channel": 2,
+                          "channel": "MIC-02",
+                          "state": "READY",
+                          "recState": null,
+                          "gainDb": 32,
+                          "phantom": true,
+                          "clipLatched": false
+                        },
+                        {
+                          "id": "AUDIO-03",
+                          "deviceId": "MIC-03",
+                          "name": "MIC 3 – Channel 3",
+                          "role": null,
+                          "channel": "MIC-03",
+                          "state": "READY",
+                          "recState": null,
+                          "gainDb": 32,
+                          "phantom": true,
+                          "clipLatched": false
+                        },
+                        {
+                          "id": "AUDIO-04",
+                          "deviceId": "MIC-04",
+                          "name": "MIC 4 – Channel 4",
+                          "role": null,
+                          "channel": "MIC-04",
                           "state": "READY",
                           "recState": null,
                           "gainDb": 32,
@@ -13413,6 +13491,16 @@
                           "link": true
                         },
                         {
+                          "id": "MIC_IN_3",
+                          "label": "MIC IN 3",
+                          "link": true
+                        },
+                        {
+                          "id": "MIC_IN_4",
+                          "label": "MIC IN 4",
+                          "link": true
+                        },
+                        {
                           "id": "GNSS_SMA",
                           "label": "GNSS SMA",
                           "link": true
@@ -13461,16 +13549,30 @@
                         ],
                         "mics": [
                           {
+                            "channel": "MIC-01",
                             "inputId": "MIC-01",
                             "deviceId": "MIC-01",
-                            "role": "PRIMARY",
                             "transport": "USB",
                             "online": true
                           },
                           {
+                            "channel": "MIC-02",
                             "inputId": "MIC-02",
                             "deviceId": "MIC-02",
-                            "role": "STANDBY",
+                            "transport": "USB",
+                            "online": true
+                          },
+                          {
+                            "channel": "MIC-03",
+                            "inputId": "MIC-03",
+                            "deviceId": "MIC-03",
+                            "transport": "USB",
+                            "online": true
+                          },
+                          {
+                            "channel": "MIC-04",
+                            "inputId": "MIC-04",
+                            "deviceId": "MIC-04",
                             "transport": "USB",
                             "online": true
                           }
@@ -19735,7 +19837,7 @@
           "Device"
         ],
         "summary": "Capture configuration",
-        "description": "The device selector: which capture device feeds each video track and which two mic inputs stand PRIMARY and STANDBY inside AUDIO-01 (OD-01 T1), with the `locked` flag — true while a session is open (OD-10).\n\nThe answer is the `captureConfig` slice in its wire form (API-6). It never holds a credential: the camera credential store is write-only (RK-12; op 89).\n\nNeeds a signed-in operator. Every role may read it: the operation needs no permission.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "description": "The device selector: which capture device feeds each video track and which mic input stands on each of the FOUR microphone channels `MIC-01`..`MIC-04` (D61 of 2026-11-04: four simultaneous audio channels; the OD-01 T1 one-track premise and its PRIMARY/STANDBY roles are superseded — channel 1 keeps the transcription duty), with the `locked` flag — true while a session is open (OD-10).\n\nThe answer is the `captureConfig` slice in its wire form (API-6). It never holds a credential: the camera credential store is write-only (RK-12; op 89).\n\nNeeds a signed-in operator. Every role may read it: the operation needs no permission.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
         "responses": {
           "200": {
             "description": "The capture-config slice.",
@@ -19785,16 +19887,30 @@
                       ],
                       "mics": [
                         {
+                          "channel": "MIC-01",
                           "inputId": "MIC-01",
                           "deviceId": "MIC-01",
-                          "role": "PRIMARY",
                           "transport": "USB",
                           "online": true
                         },
                         {
+                          "channel": "MIC-02",
                           "inputId": "MIC-02",
                           "deviceId": "MIC-02",
-                          "role": "STANDBY",
+                          "transport": "USB",
+                          "online": true
+                        },
+                        {
+                          "channel": "MIC-03",
+                          "inputId": "MIC-03",
+                          "deviceId": "MIC-03",
+                          "transport": "USB",
+                          "online": true
+                        },
+                        {
+                          "channel": "MIC-04",
+                          "inputId": "MIC-04",
+                          "deviceId": "MIC-04",
                           "transport": "USB",
                           "online": true
                         }
@@ -19912,7 +20028,7 @@
           "Device"
         ],
         "summary": "Replace the capture configuration",
-        "description": "Writes the whole selector at once (both camera lines and both mic lines are optional members of the body). Needs CAPTURE_CONFIG (TECHNICIAN holds it since the 0034 revocation, and the vendor `root` account holds it by identity too (D55); OD-10 before the revocation) — and is **editable only while idle**: with a session open it refuses `409 CAPTURE_CONFIG_LOCKED` with no state change and **no audit row at all** (SEC35-19: neither CAPTURE_CONFIG_CHANGED nor ACCESS_DENIED — the lock is a state refusal, not an access one).\n\nOn success writes one CAPTURE_CONFIG_CHANGED row whose details are exactly the keys of `C3 §5.2` (operationId, scope, field, the optional track/input/device/from/to/permission members) — names and previous/new values, never a credential.\n\nA selector slot may be unassigned. The optional member `unassign` names the slots to clear (`VIDEO-01`, `VIDEO-02`, `PRIMARY`, `STANDBY`): a cleared slot has no line in the answer, and it is the only way a slot becomes empty. It needs the same permission and is refused by the same lock; each cleared slot writes one CAPTURE_CONFIG_CHANGED row that carries `from` (the device that held the slot) and no `to`, and clearing an empty slot writes none. A body that clears a slot and assigns the same slot is `422 INVALID_INPUT`. A mic line with `role` fills the slot of that role, also alone. A Core in its own capture refuses a session start while a slot is unassigned.\n\nPublishes the `captureConfig` slice. 503 NOT_READY carries `details.reason: CAPTURE_NOT_READY` when the capture stack is not ready (CS-22).\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "description": "Writes the whole selector at once (the camera lines and the mic lines over the eight-slot selector are optional members of the body; D61, 2026-11-04: four channels per medium). Needs CAPTURE_CONFIG (TECHNICIAN holds it since the 0034 revocation, and the vendor `root` account holds it by identity too (D55); OD-10 before the revocation) — and is **editable only while idle**: with a session open it refuses `409 CAPTURE_CONFIG_LOCKED` with no state change and **no audit row at all** (SEC35-19: neither CAPTURE_CONFIG_CHANGED nor ACCESS_DENIED — the lock is a state refusal, not an access one).\n\nOn success writes one CAPTURE_CONFIG_CHANGED row whose details are exactly the keys of `C3 §5.2` (operationId, scope, field, the optional track/input/device/from/to/permission members) — names and previous/new values, never a credential.\n\nA selector slot may be unassigned. The optional member `unassign` names the slots to clear (a video track `VIDEO-01`..`VIDEO-04`, a microphone channel `MIC-01`..`MIC-04`; D61, 2026-11-04): a cleared slot has no line in the answer, and it is the only way a slot becomes empty. It needs the same permission and is refused by the same lock; each cleared slot writes one CAPTURE_CONFIG_CHANGED row that carries `from` (the device that held the slot) and no `to`, and clearing an empty slot writes none. A body that clears a slot and assigns the same slot is `422 INVALID_INPUT`. A mic line with `channel` fills the slot of that channel, also alone. A Core in its own capture refuses a session start while a slot is unassigned.\n\nPublishes the `captureConfig` slice. 503 NOT_READY carries `details.reason: CAPTURE_NOT_READY` when the capture stack is not ready (CS-22).\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
         "responses": {
           "200": {
             "description": "The new capture-config slice.",
@@ -19968,16 +20084,30 @@
                       ],
                       "mics": [
                         {
+                          "channel": "MIC-01",
                           "inputId": "MIC-01",
                           "deviceId": "MIC-01",
-                          "role": "PRIMARY",
                           "transport": "USB",
                           "online": true
                         },
                         {
+                          "channel": "MIC-02",
                           "inputId": "MIC-02",
                           "deviceId": "MIC-02",
-                          "role": "STANDBY",
+                          "transport": "USB",
+                          "online": true
+                        },
+                        {
+                          "channel": "MIC-03",
+                          "inputId": "MIC-03",
+                          "deviceId": "MIC-03",
+                          "transport": "USB",
+                          "online": true
+                        },
+                        {
+                          "channel": "MIC-04",
+                          "inputId": "MIC-04",
+                          "deviceId": "MIC-04",
                           "transport": "USB",
                           "online": true
                         }
@@ -20193,10 +20323,10 @@
                   }
                 },
                 "unassign": {
-                  "summary": "Clear the standby microphone slot",
+                  "summary": "Clear the second microphone channel",
                   "value": {
                     "unassign": [
-                      "STANDBY"
+                      "MIC-02"
                     ]
                   }
                 }
@@ -20252,7 +20382,7 @@
                 },
                 "examples": {
                   "idle": {
-                    "summary": "The five built-in capture devices",
+                    "summary": "The nine built-in capture devices (D61: four cameras, four microphones, the PoE switch)",
                     "value": {
                       "devices": [
                         {
@@ -20326,6 +20456,32 @@
                         },
                         {
                           "id": "MIC-02",
+                          "kind": "MIC",
+                          "model": "USB condenser microphone UM-1",
+                          "firmware": "1.04",
+                          "host": null,
+                          "poePort": null,
+                          "online": true,
+                          "streamState": null,
+                          "capabilities": [
+                            "AUDIO"
+                          ]
+                        },
+                        {
+                          "id": "MIC-03",
+                          "kind": "MIC",
+                          "model": "USB condenser microphone UM-1",
+                          "firmware": "1.04",
+                          "host": null,
+                          "poePort": null,
+                          "online": true,
+                          "streamState": null,
+                          "capabilities": [
+                            "AUDIO"
+                          ]
+                        },
+                        {
+                          "id": "MIC-04",
                           "kind": "MIC",
                           "model": "USB condenser microphone UM-1",
                           "firmware": "1.04",
@@ -20521,16 +20677,30 @@
                       ],
                       "mics": [
                         {
+                          "channel": "MIC-01",
                           "inputId": "MIC-01",
                           "deviceId": "MIC-01",
-                          "role": "PRIMARY",
                           "transport": "USB",
                           "online": true
                         },
                         {
+                          "channel": "MIC-02",
                           "inputId": "MIC-02",
                           "deviceId": "MIC-02",
-                          "role": "STANDBY",
+                          "transport": "USB",
+                          "online": true
+                        },
+                        {
+                          "channel": "MIC-03",
+                          "inputId": "MIC-03",
+                          "deviceId": "MIC-03",
+                          "transport": "USB",
+                          "online": true
+                        },
+                        {
+                          "channel": "MIC-04",
+                          "inputId": "MIC-04",
+                          "deviceId": "MIC-04",
                           "transport": "USB",
                           "online": true
                         }
@@ -20757,7 +20927,7 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "description": "A registered capture device (`dbc-4 §N`): a built-in one (`CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`, `POE-SWITCH`) or one that operation 96 added (`CAM-03` and up). Never a candidate id of a camera search.",
+            "description": "A registered capture device (`dbc-4 §N`): a built-in one (`CAM-01`..`CAM-04`, `MIC-01`..`MIC-04`, `POE-SWITCH`; D61, 2026-11-04: four microphones) or one that operation 96 added. Never a candidate id of a camera search.",
             "schema": {
               "type": "string",
               "pattern": "^[A-Z][A-Z0-9-]{0,31}$"
@@ -20814,8 +20984,8 @@
         "tags": [
           "Device"
         ],
-        "summary": "Make a mic input PRIMARY",
-        "description": "Makes the mic input named in the path PRIMARY inside AUDIO-01 and the other input STANDBY (OD-01 T1, OD-09 hot standby). No body.\n\nNeeds CAPTURE_CONFIG and is idle-only (`409 CAPTURE_CONFIG_LOCKED`, no audit row — SEC35-19). An unknown `{id}` answers 404. Writes CAPTURE_CONFIG_CHANGED with `scope: MIC`, `field: ROLE`, `inputId` and the previous/new role in `from`/`to`.\n\nPublishes the `captureConfig` slice. The in-session toggle is a different operation (`switchAudioSource`, op 81) with different access.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "summary": "Make a mic input the transcribed channel",
+        "description": "Makes the mic input named in the path the input of channel `MIC-01` — the channel that feeds the transcribed track `AUDIO-01` (D61 of 2026-11-04: the operation keeps its path and its name; what it moves is the transcription channel, and the input that held channel 1 takes the moved input's old channel. The earlier wording made it PRIMARY inside one `AUDIO-01` with the other STANDBY, OD-01 T1 / OD-09; all four channels now record simultaneously). No body.\n\nNeeds CAPTURE_CONFIG and is idle-only (`409 CAPTURE_CONFIG_LOCKED`, no audit row — SEC35-19). An unknown `{id}` answers 404. Writes CAPTURE_CONFIG_CHANGED with `scope: MIC`, `field: CHANNEL`, `inputId` and the previous/new channel in `from`/`to`.\n\nPublishes the `captureConfig` slice. The in-session toggle is a different operation (`switchAudioSource`, op 81) with different access.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
         "responses": {
           "200": {
             "description": "The new capture-config slice.",
@@ -20871,16 +21041,30 @@
                       ],
                       "mics": [
                         {
+                          "channel": "MIC-01",
                           "inputId": "MIC-01",
                           "deviceId": "MIC-01",
-                          "role": "PRIMARY",
                           "transport": "USB",
                           "online": true
                         },
                         {
+                          "channel": "MIC-02",
                           "inputId": "MIC-02",
                           "deviceId": "MIC-02",
-                          "role": "STANDBY",
+                          "transport": "USB",
+                          "online": true
+                        },
+                        {
+                          "channel": "MIC-03",
+                          "inputId": "MIC-03",
+                          "deviceId": "MIC-03",
+                          "transport": "USB",
+                          "online": true
+                        },
+                        {
+                          "channel": "MIC-04",
+                          "inputId": "MIC-04",
+                          "deviceId": "MIC-04",
                           "transport": "USB",
                           "online": true
                         }
@@ -21080,7 +21264,7 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "description": "A registered capture device (`dbc-4 §N`): a built-in one (`CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`, `POE-SWITCH`) or one that operation 96 added (`CAM-03` and up). Never a candidate id of a camera search.",
+            "description": "A registered capture device (`dbc-4 §N`): a built-in one (`CAM-01`..`CAM-04`, `MIC-01`..`MIC-04`, `POE-SWITCH`; D61, 2026-11-04: four microphones) or one that operation 96 added. Never a candidate id of a camera search.",
             "schema": {
               "type": "string",
               "pattern": "^[A-Z][A-Z0-9-]{0,31}$"
@@ -21120,7 +21304,7 @@
           "Session"
         ],
         "summary": "Switch the active microphone",
-        "description": "The in-session toggle (OD-09): moves the active source behind AUDIO-01 to the named input at the next worker input-chunk boundary — one worker input chunk plus IPC latency, at most 21.333 ms with 1024-sample frames (erratum AU2-07; capture-spec §E). It records one audio-source interval and answers the new active/standby state.\n\nIt **never** auto-switches: sustained silence raises the MIC_SILENT warning and the operator decides (OD-11). Refused when the session is not RECORDING (`409 INVALID_STATE`). Access: SESSION_START **and** the `SESSION_HOLDER` condition — the operator who created the open session, or any SUPERVISOR (D4 OD-09; SEC35-18).\n\nWrites AUDIO_SOURCE_SWITCHED: fromInput, toInput, the media-pts fromMs/toMs of the closed interval, and `sendingDeviceId` — **required when the caller is a paired mobile device** (B15; SEC35-17), optional only for a web operator session. There is no `trigger` key: every switch is operator-initiated.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "description": "The in-session toggle (OD-09; D61 of 2026-11-04: all FOUR channels record at once — the toggle moves only the TRANSCRIBED source behind AUDIO-01) moves the active source behind AUDIO-01 to the named input at the next worker input-chunk boundary — one worker input chunk plus IPC latency, at most 21.333 ms with 1024-sample frames (erratum AU2-07; capture-spec §E). It records one audio-source interval and answers the new active/standby state.\n\nIt **never** auto-switches: sustained silence raises the MIC_SILENT warning and the operator decides (OD-11). Refused when the session is not RECORDING (`409 INVALID_STATE`). Access: SESSION_START **and** the `SESSION_HOLDER` condition — the operator who created the open session, or any SUPERVISOR (D4 OD-09; SEC35-18).\n\nWrites AUDIO_SOURCE_SWITCHED: fromInput, toInput, the media-pts fromMs/toMs of the closed interval, and `sendingDeviceId` — **required when the caller is a paired mobile device** (B15; SEC35-17), optional only for a web operator session. There is no `trigger` key: every switch is operator-initiated.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
         "responses": {
           "200": {
             "description": "The new active/standby state.",
@@ -23487,16 +23671,30 @@
                       ],
                       "mics": [
                         {
+                          "channel": "MIC-01",
                           "inputId": "MIC-01",
                           "deviceId": "MIC-01",
-                          "role": "PRIMARY",
                           "transport": "USB",
                           "online": true
                         },
                         {
+                          "channel": "MIC-02",
                           "inputId": "MIC-02",
                           "deviceId": "MIC-02",
-                          "role": "STANDBY",
+                          "transport": "USB",
+                          "online": true
+                        },
+                        {
+                          "channel": "MIC-03",
+                          "inputId": "MIC-03",
+                          "deviceId": "MIC-03",
+                          "transport": "USB",
+                          "online": true
+                        },
+                        {
+                          "channel": "MIC-04",
+                          "inputId": "MIC-04",
+                          "deviceId": "MIC-04",
                           "transport": "USB",
                           "online": true
                         }
@@ -23740,7 +23938,7 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "description": "A registered capture device (`dbc-4 §N`): a built-in one (`CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`, `POE-SWITCH`) or one that operation 96 added (`CAM-03` and up). Never a candidate id of a camera search.",
+            "description": "A registered capture device (`dbc-4 §N`): a built-in one (`CAM-01`..`CAM-04`, `MIC-01`..`MIC-04`, `POE-SWITCH`; D61, 2026-11-04: four microphones) or one that operation 96 added. Never a candidate id of a camera search.",
             "schema": {
               "type": "string",
               "pattern": "^[A-Z][A-Z0-9-]{0,31}$"
@@ -25416,7 +25614,7 @@
           "Device"
         ],
         "summary": "Add a tested candidate camera to the capture devices",
-        "description": "Registers the candidate in the path as a capture device. **This is the one place a `capture_devices` row comes into being.** The candidate must be `NEW` and hold a `REACHABLE` test that is still valid; the Core then verifies it once more with the credential of this request and, in one database transaction, writes the device, the credential when one is sent, and the audit rows. Any failure before or inside the transaction leaves nothing behind: there is no pending row.\n\n**Web console only**, as operation 95 (`WEB_CONSOLE_SESSION`), and idle only (`409 CAPTURE_CONFIG_LOCKED`, no audit row).\n\n**The target is the candidate in the path and nothing else** (R-9 AC-10): the Core takes the address from its own search state. A foreign id, an expired id and a candidate that is not testable are refused with 0 outbound requests. The adoption decides no track, no role and no address: assigning the new device to a video track is operation 78 or 79, which accept registered device ids only.\n\n`credential` is the same pair as the body of operation 89 and must be present exactly when the passing test was authenticated: `422 INVALID_INPUT` with `details.reason` `CREDENTIAL_REQUIRED` or `CREDENTIAL_NOT_EXPECTED` otherwise. **The credential is write-only and lives for this one request** (C-N15; SEC35-34): it is not kept in the candidate state, not cached for a later request, and never written to a log line, an audit row, an error or a file. A retry is a new request with a newly sent credential. The answer says `credentialSet` and never echoes either field.\n\nOther refusals, each storing nothing: `409 INVALID_STATE` with `details.reason` `CANDIDATE_ALREADY_REGISTERED` (plus `details.deviceId`; a repeat of an adoption answers this), `CANDIDATE_NOT_TESTED`, `CONNECTION_TEST_FAILED` (plus `details.outcome`, or `details.cause: DEVICE_CHANGED` when the device answers with other profiles than it did in the test) or `CONNECTION_TEST_IN_PROGRESS`.\n\nWrites CAPTURE_CANDIDATE_ADOPTED, one CAPTURE_CONNECTION_TESTED row for the verification, and CAPTURE_CREDENTIAL_SET (the device id only) when a credential is stored. Publishes the `captureDevices` slice; `captureConfig` is not changed.\n\nOver a bound the Core server answers `429 RATE_LIMITED` with `retry-after` and `details.reason` as operation 95: nothing is sent and no audit row is written. `503 NOT_READY` carries `details.reason` `CREDENTIAL_STORE_NOT_READY` when a credential is in the body and the Core credential store is not available, or `DISCOVERY_NOT_READY`. Both are envelope-level answers of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator registers `CAM-03` for the first fixed candidate after a REACHABLE test, stores nothing of a credential and answers `credentialSet` as whether one was sent; a demo reset removes the device.",
+        "description": "Registers the candidate in the path as a capture device. **This is the one place a `capture_devices` row comes into being.** The candidate must be `NEW` and hold a `REACHABLE` test that is still valid; the Core then verifies it once more with the credential of this request and, in one database transaction, writes the device, the credential when one is sent, and the audit rows. Any failure before or inside the transaction leaves nothing behind: there is no pending row.\n\n**Web console only**, as operation 95 (`WEB_CONSOLE_SESSION`), and idle only (`409 CAPTURE_CONFIG_LOCKED`, no audit row).\n\n**The target is the candidate in the path and nothing else** (R-9 AC-10): the Core takes the address from its own search state. A foreign id, an expired id and a candidate that is not testable are refused with 0 outbound requests. The adoption decides no track, no role and no address: assigning the new device to a video track is operation 78 or 79, which accept registered device ids only.\n\n`credential` is the same pair as the body of operation 89 and must be present exactly when the passing test was authenticated: `422 INVALID_INPUT` with `details.reason` `CREDENTIAL_REQUIRED` or `CREDENTIAL_NOT_EXPECTED` otherwise. **The credential is write-only and lives for this one request** (C-N15; SEC35-34): it is not kept in the candidate state, not cached for a later request, and never written to a log line, an audit row, an error or a file. A retry is a new request with a newly sent credential. The answer says `credentialSet` and never echoes either field.\n\nOther refusals, each storing nothing: `409 INVALID_STATE` with `details.reason` `CANDIDATE_ALREADY_REGISTERED` (plus `details.deviceId`; a repeat of an adoption answers this), `CANDIDATE_NOT_TESTED`, `CONNECTION_TEST_FAILED` (plus `details.outcome`, or `details.cause: DEVICE_CHANGED` when the device answers with other profiles than it did in the test) or `CONNECTION_TEST_IN_PROGRESS`.\n\nWrites CAPTURE_CANDIDATE_ADOPTED, one CAPTURE_CONNECTION_TESTED row for the verification, and CAPTURE_CREDENTIAL_SET (the device id only) when a credential is stored. Publishes the `captureDevices` slice; `captureConfig` is not changed.\n\nOver a bound the Core server answers `429 RATE_LIMITED` with `retry-after` and `details.reason` as operation 95: nothing is sent and no audit row is written. `503 NOT_READY` carries `details.reason` `CREDENTIAL_STORE_NOT_READY` when a credential is in the body and the Core credential store is not available, or `DISCOVERY_NOT_READY`. Both are envelope-level answers of the contract.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator registers `CAM-05` for the first fixed candidate after a REACHABLE test, stores nothing of a credential and answers `credentialSet` as whether one was sent; a demo reset removes the device.",
         "responses": {
           "201": {
             "description": "The new capture device. The credential is never echoed.",
@@ -25440,9 +25638,9 @@
                   "adopted": {
                     "summary": "The new capture device; no credential stored",
                     "value": {
-                      "deviceId": "CAM-03",
+                      "deviceId": "CAM-05",
                       "device": {
-                        "id": "CAM-03",
+                        "id": "CAM-05",
                         "kind": "CAMERA",
                         "model": "Test source",
                         "firmware": null,
@@ -25843,6 +26041,22 @@
                         {
                           "deviceId": "MIC-02",
                           "inputId": "MIC-02",
+                          "present": true,
+                          "adapter": "FAKE",
+                          "sourceClass": "DEVELOPMENT",
+                          "errorCode": null
+                        },
+                        {
+                          "deviceId": "MIC-03",
+                          "inputId": "MIC-03",
+                          "present": true,
+                          "adapter": "FAKE",
+                          "sourceClass": "DEVELOPMENT",
+                          "errorCode": null
+                        },
+                        {
+                          "deviceId": "MIC-04",
+                          "inputId": "MIC-04",
                           "present": true,
                           "adapter": "FAKE",
                           "sourceClass": "DEVELOPMENT",
@@ -30803,7 +31017,7 @@
           "Device"
         ],
         "summary": "Retire a registered camera or microphone",
-        "description": "**Retires ONE registered camera or microphone for good.** Its stored credential is **destroyed** in the same unit of work; its registry row is **kept** with `retiredAt` and `retiredBy` set, together with its stream rows and its audio input row, so every sealed package and every audit row that names its id keeps its meaning. A retired device is **never assigned again**, never tested (operation 108), never given a credential (89) or an address (100), and it is no longer \"registered\" for an adoption: **adopting the same unit again (operations 95/96, or 99 for a microphone) gives a NEW id** - an id is never reused. There is no way back and no hard delete.\n\n**TECHNICIAN only, web console only.** Needs CAPTURE_COMMISSION, which the TECHNICIAN role alone holds, and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row.\n\n**Idle only.** With a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.\n\n**The body is the reason only**: `REMOVED`, `REPLACED` or `STATEMENT_CHANGED` - a closed set, so no free text reaches the audit row. No credential, address or profile member exists.\n\nRefusals, each storing nothing and writing no audit row, in this order after the role, the web console and the idle lock: `422 INVALID_INPUT` for a body of another form; `404 NOT_FOUND` for an id the registry does not hold; `409 INVALID_STATE` with `details.reason` `CAPTURE_DEVICE_BUILT_IN` (a built-in device of the demonstration model - `CAM-01`, `CAM-02`, `CAM-03`, `CAM-04`, `MIC-01`, `MIC-02`, `POE-SWITCH` - or any PoE switch), `CAPTURE_DEVICE_RETIRED` (retired already), `CAPTURE_DEVICE_ASSIGNED` (a slot of the device selector names it; `details.slot` names the slot: unassign it first) or `CONNECTION_TEST_IN_PROGRESS` (operation 108 is testing this camera).\n\n**On success writes one CAPTURE_DEVICE_RETIRED row** (category SECURITY): `deviceId`, `kind` (CAMERA or MIC), `reason`, `credentialDestroyed`, `streamRowsKept` (a count), `operationId` and `permission` - never an address, a hardware id, a serial or a credential. The answer is the device entry after the change. The `captureDevices` slice keeps the entry with `retiredAt` set: a client lists it as Retired and leaves it out of every selector and assignment list.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator holds no credential: it retires a device it registered itself (an adopted camera) in its own state and writes the same CAPTURE_DEVICE_RETIRED row with `credentialDestroyed: false` and `streamRowsKept: 0`; its built-in devices answer `CAPTURE_DEVICE_BUILT_IN`. Same order of refusals as the Core server's.",
+        "description": "**Retires ONE registered camera or microphone for good.** Its stored credential is **destroyed** in the same unit of work; its registry row is **kept** with `retiredAt` and `retiredBy` set, together with its stream rows and its audio input row, so every sealed package and every audit row that names its id keeps its meaning. A retired device is **never assigned again**, never tested (operation 108), never given a credential (89) or an address (100), and it is no longer \"registered\" for an adoption: **adopting the same unit again (operations 95/96, or 99 for a microphone) gives a NEW id** - an id is never reused. There is no way back and no hard delete.\n\n**TECHNICIAN only, web console only.** Needs CAPTURE_COMMISSION, which the TECHNICIAN role alone holds, and a web console session (`WEB_CONSOLE_SESSION`): a session of a tablet or a phone is refused `403 NOT_PERMITTED` with `details.reason: WEB_CONSOLE_ONLY` and one ACCESS_DENIED row.\n\n**Idle only.** With a session open it answers `409 CAPTURE_CONFIG_LOCKED` and writes no audit row.\n\n**The body is the reason only**: `REMOVED`, `REPLACED` or `STATEMENT_CHANGED` - a closed set, so no free text reaches the audit row. No credential, address or profile member exists.\n\nRefusals, each storing nothing and writing no audit row, in this order after the role, the web console and the idle lock: `422 INVALID_INPUT` for a body of another form; `404 NOT_FOUND` for an id the registry does not hold; `409 INVALID_STATE` with `details.reason` `CAPTURE_DEVICE_BUILT_IN` (a built-in device of the demonstration model - `CAM-01`, `CAM-02`, `CAM-03`, `CAM-04`, `MIC-01`, `MIC-02`, `MIC-03`, `MIC-04`, `POE-SWITCH` - or any PoE switch), `CAPTURE_DEVICE_RETIRED` (retired already), `CAPTURE_DEVICE_ASSIGNED` (a slot of the device selector names it; `details.slot` names the slot: unassign it first) or `CONNECTION_TEST_IN_PROGRESS` (operation 108 is testing this camera).\n\n**On success writes one CAPTURE_DEVICE_RETIRED row** (category SECURITY): `deviceId`, `kind` (CAMERA or MIC), `reason`, `credentialDestroyed`, `streamRowsKept` (a count), `operationId` and `permission` - never an address, a hardware id, a serial or a credential. The answer is the device entry after the change. The `captureDevices` slice keeps the entry with `retiredAt` set: a client lists it as Retired and leaves it out of every selector and assignment list.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator. The simulator holds no credential: it retires a device it registered itself (an adopted camera) in its own state and writes the same CAPTURE_DEVICE_RETIRED row with `credentialDestroyed: false` and `streamRowsKept: 0`; its built-in devices answer `CAPTURE_DEVICE_BUILT_IN`. Same order of refusals as the Core server's.",
         "responses": {
           "200": {
             "description": "The device is retired: its entry with `retiredAt` and `retiredBy`. No credential member exists.",
@@ -31418,7 +31632,7 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "description": "A registered capture device (`dbc-4 §N`): a built-in one (`CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`, `POE-SWITCH`) or one that operation 96 added (`CAM-03` and up). Never a candidate id of a camera search.",
+            "description": "A registered capture device (`dbc-4 §N`): a built-in one (`CAM-01`..`CAM-04`, `MIC-01`..`MIC-04`, `POE-SWITCH`; D61, 2026-11-04: four microphones) or one that operation 96 added. Never a candidate id of a camera search.",
             "schema": {
               "type": "string",
               "pattern": "^[A-Z][A-Z0-9-]{0,31}$"
@@ -32695,22 +32909,25 @@
                 "items": {
                   "type": "object",
                   "properties": {
+                    "channel": {
+                      "type": "string",
+                      "enum": [
+                        "MIC-01",
+                        "MIC-02",
+                        "MIC-03",
+                        "MIC-04"
+                      ],
+                      "description": "The selector channel this row fills (D61): `MIC-01`..`MIC-04`; channel 1 feeds the transcribed track `AUDIO-01`."
+                    },
                     "inputId": {
                       "type": "string",
                       "pattern": "^MIC-\\d{2,}$",
-                      "description": "The mic input, `MIC-NN`: the built-in `MIC-01` / `MIC-02`, or a microphone registered later (D115 (2))."
+                      "description": "The mic input, `MIC-NN`: a built-in `MIC-01`..`MIC-04`, or a microphone registered later (D115 (2))."
                     },
                     "deviceId": {
                       "type": "string",
                       "minLength": 1,
                       "description": "The microphone behind the input: the device of the same ID (D106 (4))."
-                    },
-                    "role": {
-                      "type": "string",
-                      "enum": [
-                        "PRIMARY",
-                        "STANDBY"
-                      ]
                     },
                     "transport": {
                       "type": "string",
@@ -32723,9 +32940,9 @@
                     }
                   },
                   "required": [
+                    "channel",
                     "inputId",
                     "deviceId",
-                    "role",
                     "transport",
                     "online"
                   ],
@@ -32752,7 +32969,7 @@
             "additionalProperties": false
           },
           "audioSource": {
-            "description": "The active/standby mic pair of this session (op 81 moves it).",
+            "description": "The transcription pair of this session: the inputs of channels `MIC-01` and `MIC-02` (D61, 2026-11-04: all four channels record; op 81 moves the transcribed one).",
             "anyOf": [
               {
                 "type": "object",
@@ -33144,13 +33361,15 @@
             "minLength": 1,
             "description": "e.g. \"MIC 1 – Interviewer\"."
           },
-          "role": {
+          "channel": {
             "type": "string",
             "enum": [
-              "PRIMARY",
-              "STANDBY"
+              "MIC-01",
+              "MIC-02",
+              "MIC-03",
+              "MIC-04"
             ],
-            "description": "PRIMARY feeds AUDIO-01; STANDBY is the hot failover (OD-09)."
+            "description": "The selector channel this input stands on (D61, 2026-11-04): `MIC-01`..`MIC-04`; channel 1 feeds the transcribed track AUDIO-01."
           },
           "state": {
             "type": "string",
@@ -33211,7 +33430,7 @@
           "inputId",
           "deviceId",
           "name",
-          "role",
+          "channel",
           "state",
           "recState",
           "dbfs",
@@ -33221,7 +33440,7 @@
           "gainDb",
           "phantom"
         ],
-        "description": "One mic input keyed by MIC-01/MIC-02 with its PRIMARY/STANDBY role (schema v2)."
+        "description": "One mic input on one of the four selector channels `MIC-01`..`MIC-04` (schema v2; D61, 2026-11-04: the PRIMARY/STANDBY roles became the numbered channels)."
       },
       "VideoStatusResponse": {
         "type": "object",
@@ -33244,12 +33463,12 @@
         "type": "object",
         "properties": {
           "channels": {
-            "maxItems": 2,
+            "maxItems": 4,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AudioChannelStatus"
             },
-            "description": "The mic inputs of the capture, one entry per meter channel that has an input: two on a complete selector (the built-in MIC-01 and MIC-02 unless the selector holds another `MIC-NN`), fewer while a microphone slot is not assigned. Never merged (SYS-003)."
+            "description": "The mic inputs of the capture, one entry per microphone channel that has an input: four on a complete selector (the built-in MIC-01..MIC-04 unless the selector holds another `MIC-NN`; D61, 2026-11-04), fewer while a microphone channel is not assigned. Never merged (SYS-003)."
           },
           "activeInputId": {
             "anyOf": [
@@ -33261,14 +33480,14 @@
                 "type": "null"
               }
             ],
-            "description": "The input whose audio is inside AUDIO-01 right now (op 81 moves it; SH-15). Null: the selector holds no PRIMARY microphone."
+            "description": "The input whose audio is transcribed on AUDIO-01 right now (op 81 moves it; SH-15; D61: the input of channel `MIC-01` - all four channels record at once). Null: the selector holds no channel-1 microphone."
           }
         },
         "required": [
           "channels",
           "activeInputId"
         ],
-        "description": "Per-input audio snapshot with the active/standby pair. Meters use it as their initial value; live levels run at 20 Hz in-process."
+        "description": "Per-input audio snapshot with the transcription pair (D61: four simultaneous channels; op 81 trades channels 1 and 2). Meters use it as their initial value; live levels run at 20 Hz in-process."
       },
       "StorageStatusResponse": {
         "type": "object",
@@ -33590,12 +33809,12 @@
             "description": "Schema v2: each camera carries `streamState` (C3 §3 op 44; OD-22; D60: four camera lines)."
           },
           "audio": {
-            "maxItems": 2,
+            "maxItems": 4,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AudioChannelStatus"
             },
-            "description": "Schema v2: keyed by the mic inputs (`MIC-NN`) with their roles; two on a complete selector, fewer while a microphone slot is not assigned."
+            "description": "Schema v2: keyed by the mic inputs (`MIC-NN`) with their channels (D61: four simultaneous channels); four on a complete selector, fewer while a microphone channel is not assigned."
           },
           "activeInputId": {
             "anyOf": [
@@ -33607,7 +33826,7 @@
                 "type": "null"
               }
             ],
-            "description": "Schema v2 (C3 §3 op 44): the input feeding AUDIO-01 right now. Null: the selector holds no PRIMARY microphone."
+            "description": "Schema v2 (C3 §3 op 44; D61, 2026-11-04): the input of channel `MIC-01`, feeding the transcribed track AUDIO-01 right now. Null: the selector holds no channel-1 microphone."
           },
           "storage": {
             "$ref": "#/components/schemas/StorageStatusResponse"
@@ -35063,11 +35282,13 @@
         "type": "object",
         "properties": {
           "channel": {
-            "description": "For MIC_NO_SIGNAL (default AUDIO-01) and MIC_CLIP (default AUDIO-02).",
+            "description": "For MIC_NO_SIGNAL (default AUDIO-01) and MIC_CLIP (default AUDIO-02); D61: one of the four channels AUDIO-01..AUDIO-04.",
             "type": "string",
             "enum": [
               "AUDIO-01",
-              "AUDIO-02"
+              "AUDIO-02",
+              "AUDIO-03",
+              "AUDIO-04"
             ]
           },
           "cameraId": {
@@ -35107,7 +35328,9 @@
               "VIDEO-03",
               "VIDEO-04",
               "AUDIO-01",
-              "AUDIO-02"
+              "AUDIO-02",
+              "AUDIO-03",
+              "AUDIO-04"
             ]
           }
         },
@@ -35738,7 +35961,9 @@
               "type": "string",
               "enum": [
                 "AUDIO-01",
-                "AUDIO-02"
+                "AUDIO-02",
+                "AUDIO-03",
+                "AUDIO-04"
               ]
             },
             "deviceId": {
@@ -35751,29 +35976,27 @@
               "description": "e.g. \"MIC 1 – Interviewer\"."
             },
             "role": {
-              "type": "string",
-              "enum": [
-                "Interviewer",
-                "Subject"
-              ]
-            },
-            "micRole": {
-              "type": "string",
-              "enum": [
-                "PRIMARY",
-                "STANDBY"
-              ]
-            },
-            "channel": {
               "anyOf": [
                 {
-                  "type": "number",
-                  "const": 1
+                  "type": "string",
+                  "enum": [
+                    "Interviewer",
+                    "Subject"
+                  ]
                 },
                 {
-                  "type": "number",
-                  "const": 2
+                  "type": "null"
                 }
+              ],
+              "description": "D61 (2026-11-04): the interview role of the built-in pair; null for a channel that carries none."
+            },
+            "channel": {
+              "type": "string",
+              "enum": [
+                "MIC-01",
+                "MIC-02",
+                "MIC-03",
+                "MIC-04"
               ]
             },
             "state": {
@@ -35815,7 +36038,6 @@
             "deviceId",
             "name",
             "role",
-            "micRole",
             "channel",
             "state",
             "recState",
@@ -35825,7 +36047,7 @@
           ],
           "additionalProperties": false
         },
-        "description": "Slice `mics`: AUDIO-01 and AUDIO-02, never merged (SYS-003)."
+        "description": "Slice `mics`: one entry per audio channel, `AUDIO-01` to `AUDIO-04` (D61, 2026-11-04: four simultaneous channels), never merged (SYS-003)."
       },
       "StorageSlice": {
         "type": "object",
@@ -36506,7 +36728,7 @@
             }
           },
           "micLevels": {
-            "description": "1 Hz peak level of both microphone channels, at most 120.",
+            "description": "1 Hz peak level of the four microphone channels (D61), at most 120.",
             "type": "array",
             "items": {
               "type": "object",
@@ -36520,12 +36742,20 @@
                 },
                 "AUDIO-02": {
                   "type": "number"
+                },
+                "AUDIO-03": {
+                  "type": "number"
+                },
+                "AUDIO-04": {
+                  "type": "number"
                 }
               },
               "required": [
                 "at",
                 "AUDIO-01",
-                "AUDIO-02"
+                "AUDIO-02",
+                "AUDIO-03",
+                "AUDIO-04"
               ],
               "additionalProperties": false
             }
@@ -36592,6 +36822,8 @@
                 "MGMT_LAN",
                 "MIC_IN_1",
                 "MIC_IN_2",
+                "MIC_IN_3",
+                "MIC_IN_4",
                 "GNSS_SMA",
                 "RELAY_IO"
               ]
@@ -37043,22 +37275,25 @@
             "items": {
               "type": "object",
               "properties": {
+                "channel": {
+                  "type": "string",
+                  "enum": [
+                    "MIC-01",
+                    "MIC-02",
+                    "MIC-03",
+                    "MIC-04"
+                  ],
+                  "description": "The selector channel this row fills (D61): `MIC-01`..`MIC-04`; channel 1 feeds the transcribed track `AUDIO-01`."
+                },
                 "inputId": {
                   "type": "string",
                   "pattern": "^MIC-\\d{2,}$",
-                  "description": "The mic input, `MIC-NN`: the built-in `MIC-01` / `MIC-02`, or a microphone registered later (D115 (2))."
+                  "description": "The mic input, `MIC-NN`: a built-in `MIC-01`..`MIC-04`, or a microphone registered later (D115 (2))."
                 },
                 "deviceId": {
                   "type": "string",
                   "minLength": 1,
                   "description": "The microphone behind the input: the device of the same ID (D106 (4))."
-                },
-                "role": {
-                  "type": "string",
-                  "enum": [
-                    "PRIMARY",
-                    "STANDBY"
-                  ]
                 },
                 "transport": {
                   "type": "string",
@@ -37071,16 +37306,16 @@
                 }
               },
               "required": [
+                "channel",
                 "inputId",
                 "deviceId",
-                "role",
                 "transport",
                 "online"
               ],
               "additionalProperties": false,
               "description": "One microphone slot of the device selector."
             },
-            "description": "In input order (ascending input ID): MIC-01, then MIC-02; the role is a member of the row."
+            "description": "In channel order (D61, 2026-11-04: four simultaneous channels): `MIC-01`, `MIC-02`, `MIC-03`, `MIC-04`; fewer rows while a channel is not assigned."
           },
           "locked": {
             "type": "boolean",
@@ -37343,7 +37578,7 @@
               "additionalProperties": false,
               "description": "One 20 Hz audio frame: numbers and booleans only."
             },
-            "description": "The newest frame of each mic input of the capture, keyed by input ID `MIC-NN`: the built-in `MIC-01` / `MIC-02`, or the pair the selector holds (D133 (1)). One frame per microphone line of the selector, so at most two; fewer while a microphone slot is not assigned."
+            "description": "The newest frame of each mic input of the capture, keyed by input ID `MIC-NN`: a built-in `MIC-01`..`MIC-04`, or another microphone the selector holds (D133 (1) widened by D61, 2026-11-04). One frame per microphone line of the selector, so at most four; fewer while a microphone channel is not assigned."
           },
           "activeInputId": {
             "anyOf": [
@@ -37969,7 +38204,9 @@
                       "type": "string",
                       "enum": [
                         "AUDIO-01",
-                        "AUDIO-02"
+                        "AUDIO-02",
+                        "AUDIO-03",
+                        "AUDIO-04"
                       ]
                     },
                     {
@@ -38224,22 +38461,25 @@
                     "items": {
                       "type": "object",
                       "properties": {
+                        "channel": {
+                          "type": "string",
+                          "enum": [
+                            "MIC-01",
+                            "MIC-02",
+                            "MIC-03",
+                            "MIC-04"
+                          ],
+                          "description": "The selector channel this row fills (D61): `MIC-01`..`MIC-04`; channel 1 feeds the transcribed track `AUDIO-01`."
+                        },
                         "inputId": {
                           "type": "string",
                           "pattern": "^MIC-\\d{2,}$",
-                          "description": "The mic input, `MIC-NN`: the built-in `MIC-01` / `MIC-02`, or a microphone registered later (D115 (2))."
+                          "description": "The mic input, `MIC-NN`: a built-in `MIC-01`..`MIC-04`, or a microphone registered later (D115 (2))."
                         },
                         "deviceId": {
                           "type": "string",
                           "minLength": 1,
                           "description": "The microphone behind the input: the device of the same ID (D106 (4))."
-                        },
-                        "role": {
-                          "type": "string",
-                          "enum": [
-                            "PRIMARY",
-                            "STANDBY"
-                          ]
                         },
                         "transport": {
                           "type": "string",
@@ -38252,9 +38492,9 @@
                         }
                       },
                       "required": [
+                        "channel",
                         "inputId",
                         "deviceId",
-                        "role",
                         "transport",
                         "online"
                       ],
@@ -38778,7 +39018,9 @@
                     "VIDEO-03",
                     "VIDEO-04",
                     "AUDIO-01",
-                    "AUDIO-02"
+                    "AUDIO-02",
+                    "AUDIO-03",
+                    "AUDIO-04"
                   ]
                 },
                 "label": {
@@ -38928,7 +39170,9 @@
                   "VIDEO-03",
                   "VIDEO-04",
                   "AUDIO-01",
-                  "AUDIO-02"
+                  "AUDIO-02",
+                  "AUDIO-03",
+                  "AUDIO-04"
                 ]
               },
               {
@@ -39032,7 +39276,9 @@
                     "VIDEO-03",
                     "VIDEO-04",
                     "AUDIO-01",
-                    "AUDIO-02"
+                    "AUDIO-02",
+                    "AUDIO-03",
+                    "AUDIO-04"
                   ],
                   "description": "The track the file carries (VIDEO-01, VIDEO-02, AUDIO-01)."
                 },
@@ -41483,7 +41729,9 @@
                     "VIDEO-03",
                     "VIDEO-04",
                     "AUDIO-01",
-                    "AUDIO-02"
+                    "AUDIO-02",
+                    "AUDIO-03",
+                    "AUDIO-04"
                   ]
                 },
                 "expected": {
@@ -42185,9 +42433,11 @@
             "type": "string",
             "enum": [
               "AUDIO-01",
-              "AUDIO-02"
+              "AUDIO-02",
+              "AUDIO-03",
+              "AUDIO-04"
             ],
-            "description": "The audio channel whose CLIP latch is reset: AUDIO-01 or AUDIO-02."
+            "description": "The audio channel whose CLIP latch is reset: `AUDIO-01`..`AUDIO-04` (D61, 2026-11-04: four simultaneous channels)."
           }
         },
         "required": [
@@ -43155,12 +43405,14 @@
             "minLength": 1,
             "maxLength": 32
           },
-          "role": {
-            "description": "BY ROLE (D133 (1); a role is assignable alone): when every line carries `role`, each line puts its input on the slot of its role - one line or two, no role twice, each with `deviceId` equal to `inputId`, any registered `MIC-NN`; the slot of a role the body does not name keeps what it holds, and two lines are the replacing pair. Absent on every line: the line edits the input it names (the earlier form).",
+          "channel": {
+            "description": "BY CHANNEL (D133 (1) generalized by D61, 2026-11-04: a channel is assignable alone): when every line carries `channel`, each line puts its input on the slot of its channel - one to four lines, no channel twice, each with `deviceId` equal to `inputId`, any registered `MIC-NN`; the slot of a channel the body does not name keeps what it holds, and the named channels are the replacing set. Absent on every line: the line edits the input it names (the earlier form).",
             "type": "string",
             "enum": [
-              "PRIMARY",
-              "STANDBY"
+              "MIC-01",
+              "MIC-02",
+              "MIC-03",
+              "MIC-04"
             ]
           }
         },
@@ -43169,14 +43421,14 @@
           "deviceId"
         ],
         "additionalProperties": false,
-        "description": "One mic line of `CaptureConfigUpdate`: which capture device stands behind which input; with `role`, the input that takes the slot of that role."
+        "description": "One mic line of `CaptureConfigUpdate`: which capture device stands behind which input; with `channel`, the input that takes the slot of that channel (D61: four numbered channels)."
       },
       "CaptureConfigUpdateRequest": {
         "type": "object",
         "properties": {
           "cameras": {
             "minItems": 1,
-            "maxItems": 2,
+            "maxItems": 4,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CaptureConfigCameraUpdate"
@@ -43184,16 +43436,16 @@
           },
           "mics": {
             "minItems": 1,
-            "maxItems": 2,
+            "maxItems": 4,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CaptureConfigMicUpdate"
             }
           },
           "unassign": {
-            "description": "The selector slots this body clears: a video track (`VIDEO-01`..`VIDEO-04`) or a microphone role (`PRIMARY`, `STANDBY`), each at most once. A cleared slot has no line in the answer. A slot that the same body assigns (the `trackId` of a camera line, the `role` of a mic line) is `422 INVALID_INPUT`. Clearing a slot that is already empty changes nothing and writes no audit row.",
+            "description": "The selector slots this body clears: a video track (`VIDEO-01`..`VIDEO-04`) or a microphone channel (`MIC-01`..`MIC-04`; D61, 2026-11-04: the roles became the numbered channels), each at most once. A cleared slot has no line in the answer. A slot that the same body assigns (the `trackId` of a camera line, the `channel` of a mic line) is `422 INVALID_INPUT`. Clearing a slot that is already empty changes nothing and writes no audit row.",
             "minItems": 1,
-            "maxItems": 6,
+            "maxItems": 8,
             "type": "array",
             "items": {
               "type": "string",
@@ -43202,8 +43454,10 @@
                 "VIDEO-02",
                 "VIDEO-03",
                 "VIDEO-04",
-                "PRIMARY",
-                "STANDBY"
+                "MIC-01",
+                "MIC-02",
+                "MIC-03",
+                "MIC-04"
               ]
             }
           }
@@ -43262,7 +43516,7 @@
           "inputId": {
             "type": "string",
             "pattern": "^MIC-\\d{2,}$",
-            "description": "The mic input to move behind AUDIO-01, `MIC-NN`: one of the two inputs of the session (the other becomes STANDBY)."
+            "description": "The mic input to move behind AUDIO-01, `MIC-NN`: one of the two inputs of the transcription pair (channels `MIC-01` and `MIC-02`; D61, 2026-11-04: the other returns to channel 2 — the other two channels record untouched)."
           },
           "reason": {
             "description": "Why the operator switched; audited as text, never as a secret.",
@@ -44883,7 +45137,7 @@
           "deviceId": {
             "type": "string",
             "pattern": "^[A-Z][A-Z0-9-]{0,31}$",
-            "description": "The new capture device, e.g. `CAM-03`: the next free number, minted by the Core."
+            "description": "The new capture device, e.g. `CAM-05`: the next free number, minted by the Core."
           },
           "device": {
             "type": "object",

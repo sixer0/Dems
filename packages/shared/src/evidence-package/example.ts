@@ -15,12 +15,17 @@ import type { SessionCaptureSourceRow } from './source-class';
 const filler = (label: string): string => bytesToHex(sha256(utf8ToBytes(`dems.example.${label}`)));
 const SESSION_ID = 'SES-20261009-0001';
 
-/** The session-start source rows of the example: fake sources in every slot of a TWO-track (pre-D60) plan. */
+/**
+ * The session-start source rows of the example: fake sources in every slot of a TWO-track
+ * (pre-D60) plan. D61 (2026-11-04): the two microphone roles became numbered channels — the data
+ * migration renames these rows' slots (`MIC-PRIMARY`→`MIC-01`, `MIC-STANDBY`→`MIC-02`); the
+ * example stays a pre-D60 four-row plan and verifies as one (prefix rule).
+ */
 export const EXAMPLE_SOURCE_ROWS: readonly SessionCaptureSourceRow[] = Object.freeze([
   { slot: 'VIDEO-01', deviceId: 'CAM-01', adapterKind: 'FAKE' },
   { slot: 'VIDEO-02', deviceId: 'CAM-02', adapterKind: 'FAKE' },
-  { slot: 'MIC-PRIMARY', deviceId: 'MIC-01', adapterKind: 'FAKE' },
-  { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'FAKE' },
+  { slot: 'MIC-01', deviceId: 'MIC-01', adapterKind: 'FAKE' }, // D61: was MIC-PRIMARY
+  { slot: 'MIC-02', deviceId: 'MIC-02', adapterKind: 'FAKE' }, // D61: was MIC-STANDBY
 ]);
 
 function exampleFile(trackId: PackageVideoTrackId): ManifestFile {

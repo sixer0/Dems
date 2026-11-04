@@ -582,8 +582,9 @@ describe('the start on an incomplete selector (task 4 row 163)', () => {
     }
   };
   const inputsOf = (lines: selectorBed.SelectorLines): string[] => lines.mics.map((line) => line.inputId);
-  const roleInput = (lines: selectorBed.SelectorLines, role: 'PRIMARY' | 'STANDBY'): string | undefined => lines.mics.find((line) => line.role === role)?.inputId;
-  /** Each selector that lacks exactly ONE slot of the seeded SIX (D60, 2026-11-04). */
+  // D61 (2026-11-04): the roles became the numbered channels.
+  const channelInput = (lines: selectorBed.SelectorLines, channel: 'MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04'): string | undefined => lines.mics.find((line) => line.channel === channel)?.inputId;
+  /** Each selector that lacks exactly ONE slot of the seeded EIGHT (D61, 2026-11-04). */
   const seeded = CATEGORIES[SEEDED_CATEGORY]!;
   const ONE_SLOT_MISSING: Record<string, selectorBed.SelectorLines> = {
     'only VIDEO-01 unassigned': { cameras: seeded.cameras.filter((line) => line.trackId !== 'VIDEO-01'), mics: seeded.mics },
@@ -591,11 +592,13 @@ describe('the start on an incomplete selector (task 4 row 163)', () => {
     // D60 (2026-11-04): the two further tracks block the start of a Core in its own capture too.
     'only VIDEO-03 unassigned': { cameras: seeded.cameras.filter((line) => line.trackId !== 'VIDEO-03'), mics: seeded.mics },
     'only VIDEO-04 unassigned': { cameras: seeded.cameras.filter((line) => line.trackId !== 'VIDEO-04'), mics: seeded.mics },
-    'only PRIMARY unassigned': { cameras: seeded.cameras, mics: seeded.mics.filter((line) => line.role !== 'PRIMARY') },
-    'only STANDBY unassigned (C25: it blocks too)': { cameras: seeded.cameras, mics: seeded.mics.filter((line) => line.role !== 'STANDBY') },
+    'only MIC-01 unassigned': { cameras: seeded.cameras, mics: seeded.mics.filter((line) => line.channel !== 'MIC-01') },
+    'only MIC-02 unassigned (C25 as widened by D61: every channel blocks too)': { cameras: seeded.cameras, mics: seeded.mics.filter((line) => line.channel !== 'MIC-02') },
+    'only MIC-03 unassigned': { cameras: seeded.cameras, mics: seeded.mics.filter((line) => line.channel !== 'MIC-03') }, // D61
+    'only MIC-04 unassigned': { cameras: seeded.cameras, mics: seeded.mics.filter((line) => line.channel !== 'MIC-04') }, // D61
   };
 
-  it.each(Object.entries({ ...CATEGORIES, ...ONE_SLOT_MISSING }))('REAL capture, %s: refused while a slot is unassigned, started when all six are assigned', (name, lines) => {
+  it.each(Object.entries({ ...CATEGORIES, ...ONE_SLOT_MISSING }))('REAL capture, %s: refused while a slot is unassigned, started when all eight are assigned', (name, lines) => {
     const h = armedOn('external', lines);
     const before = h.state();
     const refused = start(h);
@@ -612,7 +615,7 @@ describe('the start on an incomplete selector (task 4 row 163)', () => {
     } else {
       expect(refused, name).toBeNull();
       expect(h.state().session?.state, name).toBe('RECORDING');
-      expect(h.state().session?.audioSource, name).toMatchObject({ activeInputId: roleInput(lines, 'PRIMARY'), standbyInputId: roleInput(lines, 'STANDBY') });
+      expect(h.state().session?.audioSource, name).toMatchObject({ activeInputId: channelInput(lines, 'MIC-01'), standbyInputId: channelInput(lines, 'MIC-02') });
     }
   });
 
@@ -624,9 +627,9 @@ describe('the start on an incomplete selector (task 4 row 163)', () => {
     expect(h.state().audit.rows.filter((row) => row.type === 'RECORDING_STARTED' && row.sessionId === session?.id), name).toHaveLength(1);
     // The snapshot is the selector as it stood: the lines given, nothing added.
     expect(session?.captureConfig?.cameras.map((line) => [line.trackId, line.deviceId]), name).toEqual(lines.cameras.map((line) => [line.trackId, line.deviceId]));
-    expect(session?.captureConfig?.mics.map((line) => [line.inputId, line.role]), name).toEqual(lines.mics.map((line) => [line.inputId, line.role]));
-    const primary = roleInput(lines, 'PRIMARY');
-    const standby = roleInput(lines, 'STANDBY');
+    expect(session?.captureConfig?.mics.map((line) => [line.inputId, line.channel]), name).toEqual(lines.mics.map((line) => [line.inputId, line.channel])); // D61: by channel
+    const primary = channelInput(lines, 'MIC-01');
+    const standby = channelInput(lines, 'MIC-02');
     if (primary !== undefined && standby !== undefined) {
       expect(session?.audioSource, name).toEqual({ sessionId: session?.id, activeInputId: primary, standbyInputId: standby, switchedAt: null, intervalFromMs: 0 });
       expect(h.state().audio.activeInputId, name).toBe(primary);
@@ -651,25 +654,26 @@ describe('the start on an incomplete selector (task 4 row 163)', () => {
     }
   });
 
-  it('`audioSourceAtStart` reads the pair by role with no stand-in: a role without a line gives no pair (AD-04 (2))', () => {
+  it('`audioSourceAtStart` reads the transcription pair by channel with no stand-in: a channel without a line gives no pair (AD-04 (2); D61)', () => {
     const state = ownCaptureBed.bed().state();
     const on = (lines: selectorBed.SelectorLines): SimState => ({ ...state, ...selectorPatch(state, lines) });
     const pair = (lines: selectorBed.SelectorLines) => audioSourceAtStart(on(lines), 'SES-20261001-0001');
-    // Complete, in both arrangements: by role, whichever line is first.
-    expect(pair({ cameras: [], mics: [mic('MIC-01', 'PRIMARY'), mic('MIC-02', 'STANDBY')] })).toEqual({ sessionId: 'SES-20261001-0001', activeInputId: 'MIC-01', standbyInputId: 'MIC-02', switchedAt: null, intervalFromMs: 0 });
-    expect(pair({ cameras: [], mics: [mic('MIC-02', 'STANDBY'), mic('MIC-03', 'PRIMARY')] })).toMatchObject({ activeInputId: 'MIC-03', standbyInputId: 'MIC-02' });
+    // Complete, in both arrangements: by channel, whichever line is first.
+    expect(pair({ cameras: [], mics: [mic('MIC-01', 'MIC-01'), mic('MIC-02', 'MIC-02')] })).toEqual({ sessionId: 'SES-20261001-0001', activeInputId: 'MIC-01', standbyInputId: 'MIC-02', switchedAt: null, intervalFromMs: 0 });
+    expect(pair({ cameras: [], mics: [mic('MIC-02', 'MIC-02'), mic('MIC-03', 'MIC-01')] })).toMatchObject({ activeInputId: 'MIC-03', standbyInputId: 'MIC-02' });
     // No line: no pair - not `MIC-01` / `MIC-02`.
     expect(pair({ cameras: [cam('VIDEO-01', 'CAM-01')], mics: [] })).toBeNull();
-    // A lone STANDBY line is never the active input; a lone PRIMARY has no standby invented beside it.
-    expect(pair({ cameras: [], mics: [mic('MIC-04', 'STANDBY')] })).toBeNull();
-    expect(pair({ cameras: [], mics: [mic('MIC-03', 'PRIMARY')] })).toBeNull();
-    // Two lines of ONE role are no pair either (a hand-built state): the other role has no line.
-    expect(pair({ cameras: [], mics: [mic('MIC-01', 'STANDBY'), mic('MIC-02', 'STANDBY')] })).toBeNull();
+    // A lone channel-2 line is never the active input; a lone channel 1 has no second invented beside it.
+    expect(pair({ cameras: [], mics: [mic('MIC-04', 'MIC-02')] })).toBeNull();
+    expect(pair({ cameras: [], mics: [mic('MIC-03', 'MIC-01')] })).toBeNull();
+    // Two lines of ONE channel are no pair either (a hand-built state): the other channel has no line.
+    expect(pair({ cameras: [], mics: [mic('MIC-01', 'MIC-02'), mic('MIC-02', 'MIC-02')] })).toBeNull();
   });
 
   it('a switch of the audio source needs an input to switch FROM: a session without a pair and without an active line refuses it, writing nothing', () => {
-    // Simulated, a lone STANDBY line (category 3): the session started and states no pair.
-    const h = armedOn('simulated', CATEGORIES['3. some U, the rest P (VIDEO-01 and a lone STANDBY held)']!);
+    // Simulated, a lone channel-4 line (category 3; D61 renamed the slot from the STANDBY role):
+    // the session started and states no pair.
+    const h = armedOn('simulated', CATEGORIES['3. some U, the rest P (VIDEO-01 and a lone MIC-04 held)']!);
     expect(start(h)).toBeNull();
     const before = h.state();
     expect(before.session?.audioSource ?? null).toBeNull();

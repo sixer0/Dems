@@ -178,7 +178,8 @@ describe('worded by its reason', () => {
       expect(AUDIO_NOT_SAMPLE_CONTINUOUS_WORDS.sentence).toBe(AUDIO_INSERTED_SILENCE_SENTENCE);
       expect(Object.keys(AUDIO_NOT_SAMPLE_CONTINUOUS_WORDS)).toEqual(['title', 'sentence', 'measured', 'measuredTo', 'notMeasured', 'runs', 'segment', 'transcript']);
       // The plain words for two devices did not move.
-      expect([en.devices.selector.role.STANDBY, en.common.captureSlot.STANDBY, en.devices.micLines.label.STANDBY]).toEqual(['Standby', 'Standby microphone', 'Microphone for the standby line']);
+      // D61 (2026-11-04): the roles became the numbered channels — the plain words of channel 2.
+      expect([en.devices.selector.role.STANDBY, en.common.captureSlot['MIC-02'], en.devices.micLines.label['MIC-02']]).toEqual(['Channel 2', 'Microphone 2', 'Microphone for channel 2']);
     });
 
     it('the i18n block IS the table: a client that translates and one that calls the function read the same words', () => {

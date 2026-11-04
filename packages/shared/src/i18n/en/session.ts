@@ -146,8 +146,10 @@ export const session = {
    */
   audioSource: {
     role: {
-      ACTIVE: 'Active',
-      STANDBY: 'Standby',
+      // D61 (2026-11-04): all four channels record at once - the pair words describe the
+      // transcription slot only: channel 1 is transcribed into AUDIO-01, channel 2 records beside it.
+      ACTIVE: 'Channel 1 (transcribed)',
+      STANDBY: 'Channel 2 (recorded)',
     },
     switchTo: 'Switch to {{mic}}',
     checking: 'Checking your permissions…',
@@ -158,7 +160,7 @@ export const session = {
     },
     confirm: {
       title: 'Switch the active microphone to {{mic}}?',
-      body: 'Recording continues. {{from}} becomes the standby microphone. The switch is written to the audit log.',
+      body: 'Recording continues on all four channels. {{from}} moves to channel 2 as the transcription switches. The switch is written to the audit log.', // D61 (2026-11-04): simultaneous recording — the toggle moves the transcribed source only
       action: 'Switch microphone',
     },
     switched: 'Active microphone: {{mic}}',
@@ -171,7 +173,7 @@ export const session = {
     silent: {
       title: '{{mic}} is silent',
       body: 'Below {{dbfs}} dBFS for {{seconds}} s. Recording continues. The microphone is never switched automatically.',
-      action: 'Switch to standby',
+      action: 'Switch to channel 2', // D61 (2026-11-04): the standby word became the second channel
     },
     band: {
       label: 'Audio source over time',

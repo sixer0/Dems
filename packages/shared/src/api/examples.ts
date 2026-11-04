@@ -215,11 +215,12 @@ function videoTracks(recState: VideoTrackStatus['recState']): VideoTrackStatus[]
 }
 
 const AUDIO_RECORDING: AudioStatusResponse = {
+  // D61 (2026-11-04): FOUR simultaneous channels, each entry naming its selector channel.
   channels: [
     {
       inputId: 'MIC-01',
       deviceId: 'MIC-01',
-      role: 'PRIMARY',
+      channel: 'MIC-01', // D61 (2026-11-04): the selector channel, was `role` PRIMARY/STANDBY
       name: 'MIC 1 – Interviewer',
       state: 'READY',
       recState: 'REC',
@@ -233,12 +234,40 @@ const AUDIO_RECORDING: AudioStatusResponse = {
     {
       inputId: 'MIC-02',
       deviceId: 'MIC-02',
-      role: 'STANDBY',
+      channel: 'MIC-02', // D61 (2026-11-04): the selector channel, was `role` PRIMARY/STANDBY
       name: 'MIC 2 – Subject',
       state: 'READY',
       recState: 'REC',
       dbfs: -51.7,
       peak: -23.9,
+      clip: false,
+      noSignal: false,
+      gainDb: 32,
+      phantom: true,
+    },
+    {
+      inputId: 'MIC-03',
+      deviceId: 'MIC-03',
+      channel: 'MIC-03', // D61 (2026-11-04): the selector channel, was `role` PRIMARY/STANDBY
+      name: 'MIC 3 – Channel 3',
+      state: 'READY',
+      recState: 'REC',
+      dbfs: -49.2,
+      peak: -21.4,
+      clip: false,
+      noSignal: false,
+      gainDb: 32,
+      phantom: true,
+    },
+    {
+      inputId: 'MIC-04',
+      deviceId: 'MIC-04',
+      channel: 'MIC-04', // D61 (2026-11-04): the selector channel, was `role` PRIMARY/STANDBY
+      name: 'MIC 4 – Channel 4',
+      state: 'READY',
+      recState: 'REC',
+      dbfs: -53.8,
+      peak: -25.0,
       clip: false,
       noSignal: false,
       gainDb: 32,
@@ -291,35 +320,12 @@ const DEVICE_HEALTH_IDLE: DeviceHealthResponse = {
   systemState: 'READY',
   flags: [],
   cameras: videoTracks(null),
+  // D61 (2026-11-04): the health answer carries the same four channel lines as operation 45.
   audio: [
-    {
-      inputId: 'MIC-01',
-      deviceId: 'MIC-01',
-      role: 'PRIMARY',
-      name: 'MIC 1 – Interviewer',
-      state: 'READY',
-      recState: null,
-      dbfs: -52,
-      peak: -52,
-      clip: false,
-      noSignal: false,
-      gainDb: 32,
-      phantom: true,
-    },
-    {
-      inputId: 'MIC-02',
-      deviceId: 'MIC-02',
-      role: 'STANDBY',
-      name: 'MIC 2 – Subject',
-      state: 'READY',
-      recState: null,
-      dbfs: -52,
-      peak: -52,
-      clip: false,
-      noSignal: false,
-      gainDb: 32,
-      phantom: true,
-    },
+    { inputId: 'MIC-01', deviceId: 'MIC-01', channel: 'MIC-01', name: 'MIC 1 – Interviewer', state: 'READY', recState: null, dbfs: -52, peak: -52, clip: false, noSignal: false, gainDb: 32, phantom: true },
+    { inputId: 'MIC-02', deviceId: 'MIC-02', channel: 'MIC-02', name: 'MIC 2 – Subject', state: 'READY', recState: null, dbfs: -52, peak: -52, clip: false, noSignal: false, gainDb: 32, phantom: true },
+    { inputId: 'MIC-03', deviceId: 'MIC-03', channel: 'MIC-03', name: 'MIC 3 – Channel 3', state: 'READY', recState: null, dbfs: -52, peak: -52, clip: false, noSignal: false, gainDb: 32, phantom: true },
+    { inputId: 'MIC-04', deviceId: 'MIC-04', channel: 'MIC-04', name: 'MIC 4 – Channel 4', state: 'READY', recState: null, dbfs: -52, peak: -52, clip: false, noSignal: false, gainDb: 32, phantom: true },
   ],
   activeInputId: 'MIC-01',
   storage: STORAGE_AT_LOAD,

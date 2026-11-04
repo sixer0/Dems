@@ -454,7 +454,9 @@ describe('a selector edit', () => {
   const CHANGES: readonly (readonly [string, CaptureConfigChange, number])[] = [
     ['operation 80, the primary microphone', { kind: 'PRIMARY_MIC', inputId: 'MIC-02' }, 1],
     ['operation 79, a camera source', { kind: 'UPDATE', cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }] }, 2],
-    ['operation 78, the microphone pair', { kind: 'UPDATE', mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'STANDBY' }, { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'PRIMARY' }] }, 1],
+    // D61 (2026-11-04): the by-role pair became the by-channel set; a pure trade of channels 1 and 2
+    // changes both lines, so it writes one SOURCE row per channel.
+    ['operation 78, the microphone pair', { kind: 'UPDATE', mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', channel: 'MIC-02' }, { inputId: 'MIC-02', deviceId: 'MIC-02', channel: 'MIC-01' }] }, 2],
   ];
 
   describe('G70-05: a selector edit names the device that sent it', () => {

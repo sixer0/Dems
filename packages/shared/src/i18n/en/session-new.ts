@@ -86,9 +86,10 @@ export const sessionNew = {
       LENS_2: 'Video Lens 2',
       MIC_1: 'MIC 1',
       MIC_2: 'MIC 2',
-      // Schema v2 (SH-03): the role-keyed pair — the input that is PRIMARY / STANDBY right now.
-      MIC_PRIMARY: 'MIC (primary)',
-      MIC_STANDBY: 'MIC (standby)',
+      // Schema v2 (SH-03): the stored check IDs of the transcription pair — D61 of 2026-11-04:
+      // the roles became the numbered channels; these checks read channels 1 and 2.
+      MIC_PRIMARY: 'MIC (channel 1, transcribed)',
+      MIC_STANDBY: 'MIC (channel 2)',
       STORAGE: 'Storage',
       TIME: 'Time Sync',
       SECURITY: 'Security',

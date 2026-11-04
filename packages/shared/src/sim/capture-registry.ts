@@ -315,8 +315,8 @@ export const RETIRE_REFUSAL = {
   ASSIGNED: 'CAPTURE_DEVICE_ASSIGNED',
 } as const;
 
-/** The built-in devices of the demonstration model (`DEFAULT_CAPTURE_DEVICES`): never retired. Held equal to the contract's `CAPTURE_BUILT_IN_DEVICE_IDS` by a test. D60 (2026-11-04): seven - the seed carries four cameras. */
-export const RETIRE_BUILT_IN_DEVICE_IDS: readonly string[] = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH'];
+/** The built-in devices of the demonstration model (`DEFAULT_CAPTURE_DEVICES`): never retired. Held equal to the contract's `CAPTURE_BUILT_IN_DEVICE_IDS` by a test. D60 (2026-11-04): seven - the seed carries four cameras. D61 (2026-11-04): nine - the seed carries four microphone channels too. */
+export const RETIRE_BUILT_IN_DEVICE_IDS: readonly string[] = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'POE-SWITCH']; // D61
 
 const OPERATOR_ID = /^OPR-\d{3}$/;
 
@@ -330,13 +330,14 @@ export function isCaptureDeviceRetired(device: Pick<CaptureDeviceStatus, 'retire
 
 /**
  * The selector slot that names `deviceId`, or null: `VIDEO-01` / `VIDEO-02` for a camera line, the
- * ROLE (`PRIMARY` / `STANDBY`) for a microphone line - the slot names of `CAPTURE_SELECTOR_SLOTS`.
+ * CHANNEL (`MIC-01`..`MIC-04`) for a microphone line - the slot names of `CAPTURE_SELECTOR_SLOTS`
+ * (D61 of 2026-11-04: the role word became the numbered channel).
  */
 export function selectorSlotOfDevice(state: SimState, deviceId: string): string | null {
   const camera = state.captureConfig.cameras.find((line) => line.deviceId === deviceId);
   if (camera !== undefined) return camera.trackId;
   const mic = state.captureConfig.mics.find((line) => line.deviceId === deviceId);
-  return mic === undefined ? null : mic.role;
+  return mic === undefined ? null : mic.channel;
 }
 
 /**

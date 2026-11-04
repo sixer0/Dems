@@ -467,7 +467,7 @@ describe('source class (spec §B.12, fields 124-126; database contract N.2, N.3)
   });
 
   it('writes the class of each slot on the tracks and of each microphone on its intervals', () => {
-    const manifest = buildUnsignedManifest(exampleManifestInput(), rows({ 'VIDEO-01': 'LOCAL_DEVICE', 'MIC-PRIMARY': 'LOCAL_DEVICE' }));
+    const manifest = buildUnsignedManifest(exampleManifestInput(), rows({ 'VIDEO-01': 'LOCAL_DEVICE', 'MIC-01': 'LOCAL_DEVICE' }));
     expect(manifest.tracks.map((track) => track.sourceClass)).toEqual(['LOCAL_DEVICE', 'FAKE']);
     expect(manifest.audio.sourceIntervals.map((interval) => [interval.micDeviceId, interval.sourceClass])).toEqual([
       ['MIC-01', 'LOCAL_DEVICE'],
@@ -477,21 +477,22 @@ describe('source class (spec §B.12, fields 124-126; database contract N.2, N.3)
   });
 
   it('developmentSources is derived: false only when every class is PRODUCTION', () => {
-    const production = { 'VIDEO-01': 'ONVIF_RTSP', 'VIDEO-02': 'ONVIF_RTSP', 'MIC-PRIMARY': 'USB_AUDIO', 'MIC-STANDBY': 'USB_AUDIO' } as const;
+    const production = { 'VIDEO-01': 'ONVIF_RTSP', 'VIDEO-02': 'ONVIF_RTSP', 'MIC-01': 'USB_AUDIO', 'MIC-02': 'USB_AUDIO' } as const;
     expect(buildUnsignedManifest(exampleManifestInput(), rows(production)).developmentSources).toBe(false);
     for (const slot of CAPTURE_SOURCE_SLOTS) {
       for (const kind of ['FAKE', 'LOCAL_DEVICE']) {
         // D60 (2026-11-04): the flag follows the classes the MANIFEST carries. This example is a
-        // two-track (pre-D60) package: the two extra video slots of a six-row plan mark nothing
-        // here — a four-track manifest derives over all four (the widened rows, same rule).
-        const carried = slot === 'VIDEO-01' || slot === 'VIDEO-02' || slot === 'MIC-PRIMARY' || slot === 'MIC-STANDBY';
+        // two-track (pre-D60) package: the extra slots of an eight-row plan mark nothing here — a
+        // four-track manifest derives over all four (the widened rows, same rule; D61 of 2026-11-04
+        // widened the plan to eight slots, four microphone channels included).
+        const carried = slot === 'VIDEO-01' || slot === 'VIDEO-02' || slot === 'MIC-01' || slot === 'MIC-02';
         expect(buildUnsignedManifest(exampleManifestInput(), rows({ ...production, [slot]: kind })).developmentSources, `${slot} ${kind}`).toBe(carried);
       }
     }
     // A standby microphone that was never selected has no interval and so no mark (rule 4).
     const example = exampleManifestInput();
     const input = { ...example, audio: { ...example.audio, sourceIntervals: [{ seq: 1, micDeviceId: 'MIC-01', role: 'PRIMARY' as const, fromMs: 21, toMs: 4_000, reason: 'START' as const, switchedBy: null }] } };
-    expect(buildUnsignedManifest(input, rows({ ...production, 'MIC-STANDBY': 'FAKE' })).developmentSources).toBe(false);
+    expect(buildUnsignedManifest(input, rows({ ...production, 'MIC-02': 'FAKE' })).developmentSources).toBe(false);
   });
 
   it('the flag cannot disagree with the classes, in either direction', () => {
@@ -499,7 +500,7 @@ describe('source class (spec §B.12, fields 124-126; database contract N.2, N.3)
     expect(sealed.developmentSources).toBe(true);
     expect(ManifestV2Schema.safeParse({ ...sealed, developmentSources: false }).success).toBe(false);
     const production = attachSignature(
-      buildUnsignedManifest(exampleManifestInput(), rows({ 'VIDEO-01': 'ONVIF_RTSP', 'VIDEO-02': 'ONVIF_RTSP', 'MIC-PRIMARY': 'USB_AUDIO', 'MIC-STANDBY': 'USB_AUDIO' })),
+      buildUnsignedManifest(exampleManifestInput(), rows({ 'VIDEO-01': 'ONVIF_RTSP', 'VIDEO-02': 'ONVIF_RTSP', 'MIC-01': 'USB_AUDIO', 'MIC-02': 'USB_AUDIO' })),
       FILLER_SIGNATURE,
     );
     expect(ManifestV2Schema.safeParse(production).success).toBe(true);
@@ -529,7 +530,7 @@ describe('source class (spec §B.12, fields 124-126; database contract N.2, N.3)
   it('a session without its planned source rows builds nothing (MR-S4; D60 2026-11-04: the plan is the session’s own slot set — four rows before migration 0039, six after)', () => {
     const build = (sourceRows: SessionCaptureSourceRow[]) => () => buildUnsignedManifest(exampleManifestInput(), sourceRows);
     expect(build([])).toThrow(/SOURCE_RECORD_MISSING/);
-    expect(build(EXAMPLE_SOURCE_ROWS.slice(0, 3))).toThrow(/SOURCE_RECORD_MISSING: MIC-STANDBY/);
+    expect(build(EXAMPLE_SOURCE_ROWS.slice(0, 3))).toThrow(/SOURCE_RECORD_MISSING: MIC-02/); // D61 (2026-11-04): the missing required row is channel 2
     expect(build([...EXAMPLE_SOURCE_ROWS, { slot: 'VIDEO-01', deviceId: 'CAM-01', adapterKind: 'FAKE' }])).toThrow(/SOURCE_RECORD_MISSING/);
     // D60 backward compatibility: a TORN plan is still refused - VIDEO-04 named without VIDEO-03
     // (a gap in the recorded order) is not a start record of either era; an unknown slot neither.

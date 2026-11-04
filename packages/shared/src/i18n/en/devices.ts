@@ -80,9 +80,12 @@ export const devices = {
 
   audio: {
     title: 'Audio Inputs',
-    subtitle: 'Two independent balanced inputs · sample-synchronous 24-bit / 48 kHz',
+    // D61 (2026-11-04): the microphone plane mirrors the video plane — four simultaneous channels.
+    subtitle: 'Four independent balanced inputs · sample-synchronous 24-bit / 48 kHz',
     mic1: 'MIC 1 - Interviewer (Ch 1)',
     mic2: 'MIC 2 - Subject (Ch 2)',
+    mic3: 'MIC 3 - Channel 3 (Ch 3)', // D61 (2026-11-04): the two further microphones
+    mic4: 'MIC 4 - Channel 4 (Ch 4)', // D61
     gain: 'Gain',
     phantom: 'Phantom power',
     readOnly: 'Gain and phantom power are read-only in this demo.',
@@ -330,7 +333,8 @@ export const devices = {
    */
   selector: {
     title: 'Capture Device Selector',
-    subtitle: 'Which camera feeds each video track, and which microphone is primary',
+    // D61 (2026-11-04): four simultaneous channels - the panel names the channel of every microphone, it no longer crowns a primary.
+    subtitle: 'Which camera feeds each video track, and which microphone stands on each channel',
     cameras: 'Cameras',
     mics: 'Microphones',
     sourceLabel: 'Camera for {{track}}',
@@ -343,12 +347,14 @@ export const devices = {
       LIVE: 'Stream live',
       LOST: 'Stream lost',
     },
+    // D61 (2026-11-04): the roles became the numbered channels; the two keys name the
+    // transcription pair (channels 1 and 2) the toggle trades.
     role: {
-      PRIMARY: 'Primary',
-      STANDBY: 'Standby',
+      PRIMARY: 'Channel 1 (transcribed)',
+      STANDBY: 'Channel 2',
     },
     save: 'Save',
-    makePrimary: 'Make primary',
+    makePrimary: 'Make transcribed channel 1',
     saved: 'Capture configuration saved',
     noPreview: 'Device state only here: the live preview of a camera is shown in its tile.',
     locked: 'The capture configuration cannot be changed while a session is open.',
@@ -445,19 +451,25 @@ export const devices = {
 
   /**
    * Wave H, driver D, web console (gate 70; decision D196). `micLines`: G70-02, every registered
-   * microphone on the primary and on the standby line (operation 78, pair replacement). `noPreview`:
+   * microphone on each of the four channels (operation 78, the replacing set; D61 of 2026-11-04:
+   * the primary/standby lines became the four numbered channels). `noPreview`:
    * G70-03, the tile that stands where a camera picture would be on a Core in real capture.
    * `sourcesCheck`: G70-08, the reason of a pre-check / start control while the console does not
    * know the selector's device classes.
    */
   micLines: {
+    // D61 (2026-11-04): keyed by the four numbered channels.
     label: {
-      PRIMARY: 'Microphone for the primary line',
-      STANDBY: 'Microphone for the standby line',
+      'MIC-01': 'Microphone for channel 1 (transcribed)',
+      'MIC-02': 'Microphone for channel 2',
+      'MIC-03': 'Microphone for channel 3',
+      'MIC-04': 'Microphone for channel 4',
     },
     onOtherLine: {
-      PRIMARY: 'on the primary line - choose to move it here',
-      STANDBY: 'on the standby line - choose to move it here',
+      'MIC-01': 'on channel 1 - choose to move it here',
+      'MIC-02': 'on channel 2 - choose to move it here',
+      'MIC-03': 'on channel 3 - choose to move it here',
+      'MIC-04': 'on channel 4 - choose to move it here',
     },
   },
   noPreview: {

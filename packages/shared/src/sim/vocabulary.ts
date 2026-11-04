@@ -99,11 +99,13 @@ export const SessionOutcome = { SEALED: 'SEALED', INCOMPLETE: 'INCOMPLETE' } as 
 export type SessionOutcome = ValueOf<typeof SessionOutcome>;
 
 /**
- * The 8 §5.3 gate checks, in display order, plus the role-keyed mic pair of the v2 track model
- * (register SH-03; OD-01 T1). `MIC_PRIMARY`/`MIC_STANDBY` check the input that holds each role
- * rather than a fixed channel. Since blueprint row 133 (decision D101(2)) `PRECHECK_ORDER` — still
- * eight checks — holds the role-keyed pair; `MIC_1`/`MIC_2` stay in the ID set because stored
- * pre-check items and older clients name them, and `evaluatePrecheck` still answers them.
+ * The 8 §5.3 gate checks, in display order, plus the first-two-channel mic pair of the v2 track
+ * model (register SH-03; OD-01 T1; D61 of 2026-11-04). `MIC_PRIMARY`/`MIC_STANDBY` are kept as the
+ * IDs of stored pre-check items — the data migration renames what they CHECK: the input on channel
+ * `MIC-01` (the transcribed channel, once PRIMARY) and the input on channel `MIC-02` (once STANDBY).
+ * Since blueprint row 133 (decision D101(2)) `PRECHECK_ORDER` — still eight checks — holds the pair;
+ * `MIC_1`/`MIC_2` stay in the ID set because stored pre-check items and older clients name them,
+ * and `evaluatePrecheck` still answers them.
  */
 export const PrecheckCheckId = {
   CORE: 'CORE',
@@ -310,6 +312,25 @@ export type DeviceCommand = ValueOf<typeof DeviceCommand>;
  */
 export const CaptureDeviceKind = { CAMERA: 'CAMERA', MIC: 'MIC', POE: 'POE' } as const;
 export type CaptureDeviceKind = ValueOf<typeof CaptureDeviceKind>;
+
+/**
+ * The four microphone CHANNELS of the device selector (D61 of 2026-11-04: the microphone plane
+ * mirrors the video plane — FOUR simultaneous channels). The two named roles of the earlier eras
+ * became the first two channels (0040 data migration: `MIC-PRIMARY`→`MIC-01`,
+ * `MIC-STANDBY`→`MIC-02`); the values are the `MIC-` prefix of the `session_capture_sources` value
+ * set (`CAPTURE_SOURCE_SLOTS` of `evidence-package/source-class.ts`) and the columns
+ * `mic_01_id`..`mic_04_id` of `capture_config`. Channel `MIC-0N` feeds track `AUDIO-0N`;
+ * `AUDIO-01` keeps the transcription duty (the STT lane reads channel 1 until a separate ruling).
+ * Held equal to that prefix by a test; this file is a leaf so both `api/` and `sim/` import it.
+ */
+export const MicChannel = { MIC_01: 'MIC-01', MIC_02: 'MIC-02', MIC_03: 'MIC-03', MIC_04: 'MIC-04' } as const;
+export type MicChannel = ValueOf<typeof MicChannel>;
+/** The four channels in their order (D61): the one source every slot list and check derives from. */
+export const MIC_CHANNEL_IDS = [MicChannel.MIC_01, MicChannel.MIC_02, MicChannel.MIC_03, MicChannel.MIC_04] as const satisfies readonly MicChannel[];
+/** The transcribed channel: what the old PRIMARY role became (D61; AUDIO-01 keeps the STT lane). */
+export const PRIMARY_MIC_CHANNEL: MicChannel = MicChannel.MIC_01;
+/** The second channel: what the old STANDBY role became; the in-session toggle (op 81) trades these two. */
+export const SECOND_MIC_CHANNEL: MicChannel = MicChannel.MIC_02;
 
 /**
  * Stream state of a capture device (register SH-16; op 44 `cameras[].streamState`). A lost stream

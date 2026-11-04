@@ -337,10 +337,15 @@ export const SYSTEM_FLAG_IDS = [
   'CAMERA_VIDEO-03', // D60 (2026-11-04)
   'CAMERA_VIDEO-04',
   'STORAGE_LOW',
+  // D61 (2026-11-04): one pair of alert keys PER CHANNEL of the four simultaneous channels.
   'MIC_AUDIO-01_NO_SIGNAL',
   'MIC_AUDIO-01_CLIP',
   'MIC_AUDIO-02_NO_SIGNAL',
   'MIC_AUDIO-02_CLIP',
+  'MIC_AUDIO-03_NO_SIGNAL', // D61
+  'MIC_AUDIO-03_CLIP', // D61
+  'MIC_AUDIO-04_NO_SIGNAL', // D61
+  'MIC_AUDIO-04_CLIP', // D61
   'TIME_FALLBACK',
   'FAN_STALL',
   'TAMPER',
@@ -471,6 +476,11 @@ export const FLAG_CHECKLIST_ROW = {
   'MIC_AUDIO-01_CLIP': 'inputs',
   'MIC_AUDIO-02_NO_SIGNAL': 'inputs',
   'MIC_AUDIO-02_CLIP': 'inputs',
+  // D61 (2026-11-04): the two further channels.
+  'MIC_AUDIO-03_NO_SIGNAL': 'inputs',
+  'MIC_AUDIO-03_CLIP': 'inputs',
+  'MIC_AUDIO-04_NO_SIGNAL': 'inputs',
+  'MIC_AUDIO-04_CLIP': 'inputs',
   TIME_FALLBACK: 'timeSource',
   FAN_STALL: 'platform',
   TAMPER: 'tamper',
