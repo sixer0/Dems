@@ -34,7 +34,7 @@ import { throttleControl } from '../../../plugins/throttle';
 import { TRANSCRIBER_BOOT_STEP, transcriptionControl } from '../../../transcription';
 import { KEY_CANARY, REFERENCE, SERVER_MODEL, closedPort, makeDataDir, startFakeOmlx, type FakeOmlx } from '../../../transcription/__tests__/support';
 import { identityControl } from '../../identity';
-import { SUPERVISOR, WEB_ORIGIN } from '../../storage/__tests__/support';
+import { TECHNICIAN, WEB_ORIGIN } from '../../storage/__tests__/support'; // REVOKED 2026-10-29 (0034): CAPTURE_CONFIG is TECHNICIAN-only
 import { sttConfigControl } from '../index';
 
 const db = useTestDatabase({ template: 'seed', slug: 'row115' });
@@ -92,7 +92,7 @@ beforeAll(async () => {
   await engineControl(guard.app).idle();
   await guard.app.listen({ host: '127.0.0.1', port: 0 });
   base = `http://127.0.0.1:${(guard.app.server.address() as AddressInfo).port}`;
-  session = await webOperator(guard, SUPERVISOR.username);
+  session = await webOperator(guard, TECHNICIAN.username);
   fake = await startFakeOmlx();
   await guard.app.pipeline.drain();
 });

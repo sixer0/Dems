@@ -104,11 +104,36 @@ const STORED_TEST_WEB_ONLY = ['testCaptureDeviceConnection'];
  * Task 4 row RD2 (decision C147, Q1): the retirement of a device (operation 111) has the same access and follows them; the last three of the registry.
  */
 const ACCEPTANCE_WEB_ONLY = ['acceptInstallation', 'revokeInstallationAcceptance', 'retireCaptureDevice'];
+/**
+ * D59 (principal, 2026-11-04): the D57 pair — operations 118 and 119. Their rule carries
+ * WEB_CONSOLE_SESSION and VENDOR_ACCOUNT; the vendor gate is enforced in the panel proxy
+ * (`src/lcd/setup.ts`, `vendorGateOf`) before anything is forwarded: 403 NOT_PERMITTED, no audit row.
+ * Stage 6 alone therefore allows a web console session. On a paired-device session the fence is the
+ * guard's and it answers AUDITED although the AUTHENTICATED rule names no permission: 403
+ * NOT_PERMITTED with `details.reason: WEB_CONSOLE_ONLY` and an ACCESS_DENIED row whose details carry
+ * the fact without the permission slot (D59 follow-up of 2026-11-04 — before it this cell threw a
+ * 500, latent since D57c; the shape is pinned where the grid used to throw).
+ */
+const DELEGATED_TO_PROXY = ['getPanelSetup', 'setPanelSetup'];
 
-describe('AC-B-16, unit form: all 110 operations for nine callers', () => {
+describe('AC-B-16, unit form: all 119 operations for nine callers', () => {
   it.each(CALLERS)('%s: every operation answers what its access rule and the role matrix say', (_label, principal) => {
     const wrong: string[] = [];
+    const pairedSession = principal.kind === 'OPERATOR' && principal.deviceId !== null;
     for (const operation of CORE_API_OPERATIONS) {
+      // D59: the delegated pair leaves the grid for a paired-device session — stage 6 has no permission
+      // to name on its AUTHENTICATED rule refused to answer; the D59 follow-up audits the fence with a
+      // permission-less row instead. Pinned here.
+      if (DELEGATED_TO_PROXY.includes(operation.operationId) && pairedSession) {
+        // D59 follow-up: the permission-less WEB_CONSOLE_ONLY refusal — audited, denial: null.
+        const d = decideAccess(ruleOf(operation.operationId), granted(principal))
+        if (d.allowed === true) throw new Error(`${operation.operationId} allowed a paired-device session`)
+        expect(d.refusal.kind, operation.operationId).toBe('NOT_PERMITTED')
+        const np = d.refusal as { readonly denial: unknown; readonly reason?: string }
+        expect(np.denial ?? null, operation.operationId).toBeNull()
+        expect(np.reason, operation.operationId).toBe('WEB_CONSOLE_ONLY')
+        continue;
+      }
       const got = outcomeOf(decideAccess(ruleOf(operation.operationId), granted(principal)));
       const want = expected(operation, principal);
       if (got !== want) wrong.push(`${operation.operationId}: ${got}, expected ${want}`);
@@ -118,7 +143,9 @@ describe('AC-B-16, unit form: all 110 operations for nine callers', () => {
 
   // REVISED 2026-11-02 (principal): RB-9 amended — 117 operations: the three new ones need USER_ADMIN,
   // which SUPERVISOR alone holds, so they add two denied cells each (INVESTIGATOR 48 -> 51, TECHNICIAN 34 -> 37).
-  it('the cells are 117 x 9 = 1053; the denied cells of an operator are re-derived from the registry and the role table (51 INVESTIGATOR, 28 SUPERVISOR, 37 TECHNICIAN at 117 operations), as spec AC-B-16 counts them', () => {
+  // REVISED 2026-11-04 (principal): D59 — 119 operations: the D57 pair are AUTHENTICATED rules whose gates the
+  // proxy applies, so they deny no role and the three counts below do not move.
+  it('the cells are 119 x 9 = 1071; the denied cells of an operator are re-derived from the registry and the role table (51 INVESTIGATOR, 28 SUPERVISOR, 37 TECHNICIAN at 119 operations), as spec AC-B-16 counts them', () => {
     const cells = CORE_API_OPERATIONS.length * CALLERS.length;
     // C3 §2.5 (blueprint row 113): 92 operations x 9 callers. C3 §10.1 (blueprint row 132, D106): 97 x 9.
     // Task 4 blueprint row 63: 99 x 9. The two sound-card operations need CAPTURE_CONFIG, which an
@@ -132,7 +159,8 @@ describe('AC-B-16, unit form: all 110 operations for nine callers', () => {
     // Task 4 row RD2: 111 x 9. Operation 111 needs CAPTURE_COMMISSION (INVESTIGATOR 47 -> 48, SUPERVISOR 12 -> 13, TECHNICIAN no change).
     // LCD bridge task: 114 x 9. Operations 112-113 (row D53) and 114 joined the grid; 114 is PUBLIC, so it denies nobody and the three counts above do not move.
     // REVISED 2026-11-02 (principal): RB-9 amended — 117 x 9 (was 114 x 9).
-    expect(cells).toBe(1053);
+    // REVISED 2026-11-04 (principal): D59 — 119 x 9 (the D57 pair joins as operations 118-119).
+    expect(cells).toBe(1071);
     const denied = (role: OperatorRole): string[] =>
       CORE_API_OPERATIONS.filter((operation) => outcomeOf(decideAccess(ruleOf(operation.operationId), granted(operator(role, null)))) === '403 NOT_PERMITTED').map(
         (operation) => operation.operationId,
@@ -158,7 +186,9 @@ describe('AC-B-16, unit form: all 110 operations for nine callers', () => {
     // sound-card operations of task 4 row 63 (design addendum 4.2, "Role").
     const WEB_ONLY = ['setCaptureDeviceCredential', 'testCaptureCandidateConnection', 'adoptCaptureCandidate', 'searchCaptureAudioCards', 'registerCaptureAudioInput', 'confirmCaptureDeviceAddress'];
     for (const role of ROLES) {
-      const onDevice = CORE_API_OPERATIONS.filter(
+      // D59: the delegated pair is not in this walk — a paired-device session throws in stage 6 (no permission
+      // to name) and the proxy refuses before forwarding, so stage 6 answers no refusal cell for them here.
+      const onDevice = CORE_API_OPERATIONS.filter((operation) => !DELEGATED_TO_PROXY.includes(operation.operationId)).filter(
         (operation) => outcomeOf(decideAccess(ruleOf(operation.operationId), granted(operator(role, 'DEV-0001')))) === '403 NOT_PERMITTED',
       ).map((operation) => operation.operationId);
       // Task 4 row 102: the seven commissioning operations carry the condition on their own permission.
@@ -400,9 +430,11 @@ describe('WEB_CONSOLE_SESSION: the operations whose body carries a camera creden
     return decision.allowed ? null : decision.refusal;
   };
 
-  it('operations 89, 95, 96, 98, 99, 100 and 108 carry it, each on the permission CAPTURE_CONFIG; operations 101 to 107, 109 and 110 carry it on CAPTURE_COMMISSION; no other operation does', () => {
+  // REVISED 2026-11-04 (principal): D59 — operations 118 and 119 (the D57 pair) carry the condition too,
+  // beside VENDOR_ACCOUNT, on an AUTHENTICATED rule; both gates are applied by the panel proxy, not here.
+  it('operations 89, 95, 96, 98, 99, 100 and 108 carry it, each on the permission CAPTURE_CONFIG; operations 101 to 107, 109 and 110 carry it on CAPTURE_COMMISSION; operations 118 and 119 carry it delegated to the proxy (D59); no other operation does', () => {
     const carriers = CORE_API_OPERATIONS.filter((operation) => ruleOf(operation.operationId).conditions.includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION));
-    expect(carriers.map((operation) => operation.operationId)).toEqual([...WEB_ONLY, ...COMMISSION_WEB_ONLY, ...STORED_TEST_WEB_ONLY, ...ACCEPTANCE_WEB_ONLY]);
+    expect(carriers.map((operation) => operation.operationId)).toEqual([...WEB_ONLY, ...COMMISSION_WEB_ONLY, ...STORED_TEST_WEB_ONLY, ...ACCEPTANCE_WEB_ONLY, ...DELEGATED_TO_PROXY]);
     for (const operationId of [...WEB_ONLY, ...STORED_TEST_WEB_ONLY]) {
       expect(ruleOf(operationId).kind).toBe(CoreApiAccessKind.PERMISSION);
       expect(ruleOf(operationId).permissions).toEqual([Permission.CAPTURE_CONFIG]);
@@ -410,6 +442,40 @@ describe('WEB_CONSOLE_SESSION: the operations whose body carries a camera creden
     for (const operationId of [...COMMISSION_WEB_ONLY, ...ACCEPTANCE_WEB_ONLY]) {
       expect(ruleOf(operationId).kind).toBe(CoreApiAccessKind.PERMISSION);
       expect(ruleOf(operationId).permissions).toEqual([Permission.CAPTURE_COMMISSION]);
+    }
+    // D59: the pair names no permission — the proxy gate (src/lcd/setup.ts, vendorGateOf) is the enforcement
+    // point for WEB_CONSOLE_SESSION and VENDOR_ACCOUNT alike, so stage 6 holds nothing to refuse with.
+    for (const operationId of DELEGATED_TO_PROXY) {
+      expect(ruleOf(operationId).kind).toBe(CoreApiAccessKind.AUTHENTICATED);
+      expect(ruleOf(operationId).permissions).toEqual([]);
+      expect(ruleOf(operationId).conditions).toEqual([CoreApiAccessCondition.WEB_CONSOLE_SESSION, CoreApiAccessCondition.VENDOR_ACCOUNT]);
+    }
+  });
+
+  it('D59: the five gated operations are PASS at stage 6 alone — the unit and the proxy refuse later (403 NOT_PERMITTED, no audit row)', () => {
+    // RB-9 trio: stage 6 decides the USER_ADMIN marker and passes VENDOR_ROOT — it never sees a username.
+    for (const operationId of ['createUser', 'updateUser', 'deleteUser']) {
+      expect(decideAccess(ruleOf(operationId), granted(operator('SUPERVISOR', null))).allowed, operationId).toBe(true);
+      expect(outcomeOf(decideAccess(ruleOf(operationId), granted(operator('INVESTIGATOR', null)))), operationId).toBe('403 NOT_PERMITTED');
+      expect(outcomeOf(decideAccess(ruleOf(operationId), granted(operator('TECHNICIAN', null)))), operationId).toBe('403 NOT_PERMITTED');
+    }
+    // D57 pair: a web console session passes stage 6; the proxy applies both gates before forwarding.
+    for (const operationId of DELEGATED_TO_PROXY) {
+      for (const role of ROLES) expect(decideAccess(ruleOf(operationId), granted(operator(role, null))).allowed, `${operationId} ${role}`).toBe(true);
+      expect(outcomeOf(decideAccess(ruleOf(operationId), granted(ANONYMOUS))), operationId).toBe('401');
+      expect(outcomeOf(decideAccess(ruleOf(operationId), granted(DEVICE))), operationId).toBe('401');
+      expect(outcomeOf(decideAccess(ruleOf(operationId), granted(RETIRED))), operationId).toBe('403 DEVICE_REVOKED');
+      // The seam: on a paired-device session the generic WEB_CONSOLE_SESSION case has no permission to
+      // D59 follow-up (the owning lane amended the seam on 2026-11-04): the fence answers AUDITED
+      // without a permission slot — 403 NOT_PERMITTED, reason WEB_CONSOLE_ONLY, denial: null.
+      for (const role of ROLES) {
+        const d = decideAccess(ruleOf(operationId), granted(operator(role, 'DEV-0001')))
+        if (d.allowed === true) throw new Error(`${operationId} allowed ${role}@DEVICE`)
+        expect(d.refusal.kind, operationId).toBe('NOT_PERMITTED')
+        const np = d.refusal as { readonly denial: unknown; readonly reason?: string }
+        expect(np.denial ?? null, operationId).toBeNull()
+        expect(np.reason, operationId).toBe('WEB_CONSOLE_ONLY')
+      }
     }
   });
 

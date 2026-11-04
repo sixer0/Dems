@@ -159,7 +159,13 @@ describe('the answer of a refusal (spec §7.2)', () => {
     ];
     let refusals = 0;
     for (const operation of CORE_API_OPERATIONS) {
+      // D59 (principal, 2026-11-04): the D57 pair delegates WEB_CONSOLE_SESSION + VENDOR_ACCOUNT to the panel
+      // proxy (src/lcd/setup.ts, vendorGateOf); its AUTHENTICATED rule names no permission, so a paired-device
+      // session throws in stage 6 instead of answering (the seam is pinned in decision.test.ts) — no answer to
+      // validate here. Every other caller of this walk is answered by the marker or passes.
+      const delegated = operation.operationId === 'getPanelSetup' || operation.operationId === 'setPanelSetup';
       for (const caller of callers) {
+        if (delegated && caller.principal.kind === 'OPERATOR' && caller.principal.deviceId !== null) continue;
         const decision = decideAccess(ruleOf(operation.operationId), { consoleIdentity: true, demoControls: true, sessionCreatorId: null, ...caller });
         if (decision.allowed) continue;
         refusals += 1;
@@ -252,6 +258,10 @@ describe('the row of an audited refusal (RB-4, RB-6; spec §13.1)', () => {
       const rule = ruleOf(operation.operationId);
       const principals = [RETIRED, ...Object.values(OperatorRole).map((role) => operator(role, 'DEV-0001'))];
       for (const principal of principals) {
+        // D59 (principal, 2026-11-04): the D57 pair writes no stage-6 OPERATOR row — its gates ride the panel
+        // proxy (vendorGateOf, no row at all), and a paired-device session throws on its permission-less rule
+        // (seam pinned in decision.test.ts). The retired device is answered by the marker and keeps its row.
+        if ((operation.operationId === 'getPanelSetup' || operation.operationId === 'setPanelSetup') && principal.kind === 'OPERATOR') continue;
         const decision = decideAccess(rule, { principal, consoleIdentity: true, demoControls: true, sessionCreatorId: null });
         if (decision.allowed) continue;
         const record = denialRecordOf(rule, decision.refusal, null);

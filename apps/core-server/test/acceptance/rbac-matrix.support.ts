@@ -33,7 +33,7 @@ import {
   coreApiAccessPermissions,
   type CoreApiRegistryOperation,
 } from '@dems/shared/api';
-import { OperatorRole } from '@dems/shared/sim';
+import { OPERATORS, OperatorRole, isVendorAccount, isVendorRoot } from '@dems/shared/sim';
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 // 1. The specification, read mechanically
@@ -267,8 +267,25 @@ export function deniedCellsFromTable(operations: readonly SpecOperation[], grant
       // any permission question - the same cell the guard model counts (ACCESS_DENIED with the
       // holder's reason).
       if (operation.conditions.includes(CoreApiAccessCondition.SESSION_HOLDER) && role !== OperatorRole.SUPERVISOR) return true;
+      // D59: a VENDOR_* gate refuses WITHOUT a row — but only the callers that PASS the permission
+      // question: a role without USER_ADMIN is refused by stage 6 with its ACCESS_DENIED row like
+      // on any other gated operation; only a holder walks into the delegated identity refusal.
+      if (operation.conditions.includes(CoreApiAccessCondition.VENDOR_ROOT)
+        || operation.conditions.includes(CoreApiAccessCondition.VENDOR_ACCOUNT)) {
+        const held = markerPermissions(operation.access);
+        return held.length > 0 && !passesMarker(held, operation.access);
+      }
+
       const needed = markerPermissions(operation.access);
-      return needed.length > 0 && !needed.every((permission) => grants.some((grant) => grant.role === role && grant.permission === permission));
+      return needed.length > 0 && !passesMarker(needed, operation.access);
+
+      /** D59 follow-up: an ANY-OF row (first in C3 at §2.7's 115 and 116) denies only a role
+       *  holding NONE of the alternatives; a single permission denies its non-holder. */
+      function passesMarker(permissions: readonly string[], access: string): boolean {
+        const holds = (permission: string): boolean =>
+          grants.some((grant) => grant.role === role && grant.permission === permission);
+        return access.startsWith('ANY-OF(') ? permissions.some(holds) : permissions.every(holds);
+      }
     }).length,
   ]));
 }
@@ -278,6 +295,8 @@ interface ApiContractDelta {
   readonly webConsoleOnlyReason: string;
   readonly newPermissions: readonly string[];
   readonly grants: readonly Grant[];
+  /** D59 follow-up: grants a later ratified ruling took away from the closed base's §4.4. */
+  readonly revocations: readonly Grant[];
 }
 
 /**
@@ -374,7 +393,10 @@ function readContractTable(lines: readonly string[], heading: string, section: s
       conditions: [
         ...(/`SESSION_HOLDER`/.test(accessCell) ? [CoreApiAccessCondition.SESSION_HOLDER] : []),
         ...(/`WEB_CONSOLE_SESSION`/.test(accessCell) ? [CoreApiAccessCondition.WEB_CONSOLE_SESSION] : []),
-      ],
+        // D59 (2026-11-04): the two vendor-identity markers of C3 §2.7.
+        ...(/`VENDOR_ROOT`/.test(accessCell) ? [CoreApiAccessCondition.VENDOR_ROOT] : []),
+        ...(/`VENDOR_ACCOUNT`/.test(accessCell) ? [CoreApiAccessCondition.VENDOR_ACCOUNT] : []),
+      ].sort() as CoreApiAccessCondition[],
       auditSuccess: auditSuccessOf(auditCell, row[1] ?? ''),
       auditDenial: /EXPORT_DENIED/.test(auditCell) ? 'EXPORT_DENIED' : 'ACCESS_DENIED',
       denialCode: 'NOT_PERMITTED',
@@ -388,13 +410,25 @@ function readContractTable(lines: readonly string[], heading: string, section: s
  * The new permissions of C3 §2.1 and the roles that hold them: the two of task 3
  * (`CAPTURE_CONFIG`, `TRANSCRIPT_REVISE`) and, since task 4 row 100, `CAPTURE_COMMISSION`.
  */
-function readNewPermissions(lines: readonly string[]): Pick<ApiContractDelta, 'newPermissions' | 'grants'> {
+function readNewPermissions(lines: readonly string[]): Pick<ApiContractDelta, 'newPermissions' | 'grants' | 'revocations'> {
   const newPermissions: string[] = [];
   const grants: Grant[] = [];
+  const revocations: Grant[] = [];
   for (const { text } of sectionOf(lines, '### 2.1 ')) {
     if (!text.startsWith('| `')) continue;
     const cells = cellsOf(text);
-    if (!/\(new/.test(cells[0] ?? '')) continue; // existing permissions restate their holders; not a grant to add
+    const revoked = /^\| `([A-Z_]+)` \(revoked from ([A-Z, ]+)\)/.exec(text)
+    if (revoked !== null) {
+      // D59 follow-up: a revocation row takes the named grant(s) away from the composed matrix
+      // (the production ruling of 2026-10-29, migration 0034, revoked CAPTURE_CONFIG from
+      // SUPERVISOR; the closed base cannot be edited, so C3 §2.1 carries the patch as a row).
+      const permission = revoked[1] ?? ''
+      for (const role of (revoked[2] ?? '').split(',').map((name) => name.trim()))
+        if (role.length > 0 && !revocations.some((g) => g.role === role && g.permission === permission))
+          revocations.push({ role, permission })
+      continue
+    }
+    if (!/\(new/.test(cells[0] ?? '')) continue; // existing permissions restate their holders; not a grant
     const permission = firstCode(cells[0], 'a new permission of C3 §2.1');
     if (!newPermissions.includes(permission)) newPermissions.push(permission);
     for (const role of (cells[1] ?? '').split(',').map((name) => name.trim())) {
@@ -403,7 +437,7 @@ function readNewPermissions(lines: readonly string[]): Pick<ApiContractDelta, 'n
     }
   }
   if (newPermissions.length !== 3) unreadable(`the new permissions of C3 §2.1 (read ${newPermissions.join(', ')})`);
-  return { newPermissions, grants };
+  return { newPermissions, grants, revocations };
 }
 
 /** Reads the specification. Every member comes from a table or a rule of the document. */
@@ -433,7 +467,9 @@ export function readSpecification(): Specification {
 
   const roleMatrix = readRoleMatrix(lines);
   const permissions = [...roleMatrix.permissions, ...delta.newPermissions];
-  const grants = [...roleMatrix.grants, ...delta.grants];
+  const grants = [...roleMatrix.grants, ...delta.grants].filter(
+    (grant) => !delta.revocations.some((r) => r.role === grant.role && r.permission === grant.permission),
+  );
   const statedGrantCounts = Object.fromEntries(roleMatrix.roles.map((role) => [role, grants.filter((grant) => grant.role === role).length]));
   // C3 §2.1/§2.2 also grow the enforcement map: every composed row's marker names its permission
   // at its number (SESSION_START gains operation 81, EVIDENCE_VIEW 84/86/88, EVIDENCE_EXPORT 87).
@@ -527,6 +563,8 @@ export type Expectation =
       readonly details: Readonly<Record<string, string>>;
       /** Null: the refusal writes no row. */
       readonly row: ExpectedRow | null;
+      /** D59 (2026-11-04): stage 6 passes; the unit or the proxy refuses later, with no row. */
+      readonly delegated?: boolean;
     };
 
 const ALLOWED: Expectation = { allowed: true };
@@ -665,7 +703,7 @@ export function expectationOf(input: ExpectationInput): Expectation {
           identity.role === OperatorRole.SUPERVISOR || (caller.sessionCreatorId != null && identity.operatorId === caller.sessionCreatorId);
         if (!holds) {
           const permission = denialPermissionOf(operation);
-          const named = { operationId: operation.operationId, permission, role: identity.role, reason: CoreApiAccessCondition.SESSION_HOLDER };
+          const named = { operationId: operation.operationId, permission, role: identity.role, reason: CoreApiAccessCondition.SESSION_HOLDER }
           return refused(403, input.denialCode, named, {
             type: operation.audit.denial,
             actorId: identity.operatorId,
@@ -683,7 +721,14 @@ export function expectationOf(input: ExpectationInput): Expectation {
         if (identity.kind !== 'OPERATOR') break; // the marker refused others before this loop
         if (identity.deviceId !== null) {
           const permission = denialPermissionOf(operation);
-          const named = { operationId: operation.operationId, permission, role: identity.role, reason: input.webConsoleOnlyReason };
+          const named = {
+            operationId: operation.operationId,
+            // D59 follow-up: an AUTHENTICATED rule (the panel pair) names no permission — the
+            // row and the answer carry the fact without the permission slot (decision.ts).
+            ...(permission.length === 0 ? {} : { permission }),
+            role: identity.role,
+            reason: input.webConsoleOnlyReason,
+          };
           return refused(403, input.denialCode, named, {
             type: operation.audit.denial,
             actorId: identity.operatorId,
@@ -691,6 +736,23 @@ export function expectationOf(input: ExpectationInput): Expectation {
             details: named,
           });
         }
+        break;
+      }
+      case CoreApiAccessCondition.VENDOR_ROOT: {
+        // D59 (principal, 2026-11-04); RB-9 as amended (D54): the unit applies the vendor-root
+        // identity rule AFTER the permission (changes.ts): any other account is refused 403
+        // NOT_PERMITTED naming both gates, and the identity refusal writes NO audit row.
+        if (identity.kind !== 'OPERATOR') break; // the marker refused others before this loop
+        const rootName = OPERATORS.find((operator) => operator.id === identity.operatorId)?.username ?? ''
+        if (!isVendorRoot(rootName)) return { allowed: false, status: 403, code: input.denialCode, details: {}, row: null, delegated: true }
+        break;
+      }
+      case CoreApiAccessCondition.VENDOR_ACCOUNT: {
+        // D59; D57: the panel-setup proxy refuses every authenticated account outside the two
+        // vendor ones before forwarding (setup.ts vendorGateOf): 403 NOT_PERMITTED, no row.
+        if (identity.kind !== 'OPERATOR') break; // the marker refused others before this loop
+        const gateName = OPERATORS.find((operator) => operator.id === identity.operatorId)?.username ?? ''
+        if (!isVendorAccount(gateName)) return { allowed: false, status: 403, code: input.denialCode, details: {}, row: null, delegated: true }
         break;
       }
       default: {

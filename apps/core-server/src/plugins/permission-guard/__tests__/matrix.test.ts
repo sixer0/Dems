@@ -31,9 +31,11 @@ const RULES: AccessRule[] = book.operationIds.map((operationId) => book.ruleOf(o
 
 describe('the stored matrix that passes', () => {
   // REVISED 2026-11-02 (principal): RB-9 amended — the rules are those of the 117 operations of the registry.
-  it('is the shared vocabulary with exactly the 22 grants of the shared role table, for the rules of all 117 operations', () => {
+  // REVISED 2026-11-04 (principal): D59 — 119 operations: the D57 pair joins as operations 118-119; neither names
+  // a permission and the trio's USER_ADMIN is already granted to SUPERVISOR, so the 22 grants do not move.
+  it('is the shared vocabulary with exactly the 22 grants of the shared role table, for the rules of all 119 operations', () => {
     expect(SHARED_GRANTS).toHaveLength(22);
-    expect(RULES).toHaveLength(117); // task 4 rows D53: + operations 112-113; LCD bridge task: + operation 114; RB-9 as amended: + 15, 16 and 17
+    expect(RULES).toHaveLength(119); // task 4 rows D53: + operations 112-113; LCD bridge task: + operation 114; RB-9 as amended: + 15, 16 and 17; D59: + operations 118 and 119
     expect(checkStoredMatrix(matrix(), RULES)).toEqual([]);
     expect(firstGrantDifference(SHARED_GRANTS)).toBeNull();
   });

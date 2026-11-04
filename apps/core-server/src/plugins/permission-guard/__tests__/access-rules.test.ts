@@ -63,7 +63,8 @@ function entry(operationId: string, change: Record<string, unknown>): CoreApiOpe
 
 describe('the rule book of the contract registry', () => {
   // REVISED 2026-11-02 (principal): RB-9 amended — the registry gains createUser/updateUser/deleteUser (117).
-  it('compiles a rule for every one of the 117 operations: none lacks an access rule or an audit rule', () => {
+  // REVISED 2026-11-04 (principal): D59 — the D57 panel-setup pair registers as operations 118-119 (119).
+  it('compiles a rule for every one of the 119 operations: none lacks an access rule or an audit rule', () => {
     // C3 §2.5 (blueprint row 113): 89 + the STT configuration operations 90-92 = 92.
     // C3 §2.6, §10.1 (blueprint row 132, decision D106): + the camera-search operations 93-97 = 97.
     // Task 4 blueprint row 63 (design addendum 4.2): + the sound-card operations 98-99 = 99.
@@ -75,15 +76,16 @@ describe('the rule book of the contract registry', () => {
     // Task 4 row D53 (decisions D51, D53): + the live preview and the idle meters, operations 112-113 = 113.
     // LCD bridge task: + the panel firmware word, operation 114 = 114.
     // REVISED 2026-11-02 (principal): RB-9 amended — + createUser, updateUser, deleteUser = 117.
-    expect(book.operationIds).toHaveLength(117);
+    // REVISED 2026-11-04 (principal): D59 — + getPanelSetup, setPanelSetup (the D57 pair) = 119.
+    expect(book.operationIds).toHaveLength(119);
     expect(rules.filter((rule) => !isAccessRule(rule))).toEqual([]);
-    expect(new Set(compiled.map((rule) => rule.operationId)).size).toBe(117); // RB-9 as amended 02-11-2026: + createUser, updateUser, deleteUser
+    expect(new Set(compiled.map((rule) => rule.operationId)).size).toBe(119); // D59 as amended 04-11-2026: + getPanelSetup, setPanelSetup
   });
 
   // REVISED 2026-11-02 (principal): RB-9 amended — the three new operations join `with one permission`
   // (71 -> 74): their registry rule is USER_ADMIN, and the narrowing to the vendor `root` account is
   // applied inside the unit, which is not something the rule book of stage 6 can count as a kind.
-  it('holds 5 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 74 with one permission and 3 any-of (spec §7, D13; C3 §2.5, §2.6; task 4 rows 63, 194, 102, V3, 116, RD2 and D53; the LCD bridge task; RB-9 as amended)', () => {
+  it('holds 5 PUBLIC, 5 DEVICE, 32 AUTHENTICATED, 74 with one permission and 3 any-of (spec §7, D13; C3 §2.5, §2.6; task 4 rows 63, 194, 102, V3, 116, RD2 and D53; the LCD bridge task; RB-9 as amended; the D57 pair of D59)', () => {
     const count = (kind: string): number => compiled.filter((rule) => rule.kind === kind).length;
     expect({
       PUBLIC: count(CoreApiAccessKind.PUBLIC),
@@ -91,7 +93,7 @@ describe('the rule book of the contract registry', () => {
       AUTHENTICATED: count(CoreApiAccessKind.AUTHENTICATED),
       PERMISSION: count(CoreApiAccessKind.PERMISSION),
       ANY_OF: count(CoreApiAccessKind.ANY_OF),
-    }).toEqual({ PUBLIC: 5, DEVICE: 5, AUTHENTICATED: 30, PERMISSION: 74, ANY_OF: 3 }); // LCD bridge task: operation 114 is the fourth PUBLIC rule (4 -> 5); RB-9 as amended: PERMISSION 71 -> 74, no grant moved
+    }).toEqual({ PUBLIC: 5, DEVICE: 5, AUTHENTICATED: 32, PERMISSION: 74, ANY_OF: 3 }); // LCD bridge task: operation 114 is the fourth PUBLIC rule (4 -> 5); RB-9 as amended: PERMISSION 71 -> 74, no grant moved; D59 04-11-2026: AUTHENTICATED 30 -> 32 — the D57 pair are authenticated rules gated by conditions the proxy applies, not by a permission
   });
 
   it('takes method, path, permissions and conditions from the registry entry, and nothing from anywhere else', () => {
@@ -113,7 +115,7 @@ describe('the rule book of the contract registry', () => {
     }
   });
 
-  it('the conditions are those of the registry, in its order: CONSOLE_IDENTITY on signIn, DEVICE_SESSION on setBiometricEnrollment, DEVICE_CREDENTIAL on rotateDeviceCredential, DEMO_FLAG on the five demo operations', () => {
+  it('the conditions are those of the registry, in its order: CONSOLE_IDENTITY on signIn, DEVICE_SESSION on setBiometricEnrollment, VENDOR_ROOT on the RB-9 trio (D59), DEVICE_CREDENTIAL on rotateDeviceCredential, DEMO_FLAG on the five demo operations', () => {
     const conditioned = compiled.filter((rule) => rule.conditions.length > 0).map((rule) => [rule.operationId, ...rule.conditions]);
     // The registry is the one source: a rule carries exactly the conditions of its entry, in the registry's order.
     expect(conditioned).toEqual(
@@ -132,6 +134,12 @@ describe('the rule book of the contract registry', () => {
     expect(conditioned.filter(([, condition]) => condition !== CoreApiAccessCondition.DEVICE_CREDENTIAL)).toEqual([
       ['signIn', CoreApiAccessCondition.CONSOLE_IDENTITY],
       ['setBiometricEnrollment', CoreApiAccessCondition.DEVICE_SESSION],
+      // D59 (principal, 2026-11-04): the RB-9 trio names the vendor-root identity rule. Stage 6 knows it
+      // as a known-but-delegated condition and passes: the unit (src/modules/admin/changes.ts) applies it
+      // after the USER_ADMIN permission, 403 NOT_PERMITTED with no audit row.
+      ['createUser', CoreApiAccessCondition.VENDOR_ROOT],
+      ['updateUser', CoreApiAccessCondition.VENDOR_ROOT],
+      ['deleteUser', CoreApiAccessCondition.VENDOR_ROOT],
       ['getDemoStatus', CoreApiAccessCondition.DEMO_FLAG],
       ['loadScenario', CoreApiAccessCondition.DEMO_FLAG],
       ['injectFault', CoreApiAccessCondition.DEMO_FLAG],
@@ -162,6 +170,11 @@ describe('the rule book of the contract registry', () => {
       ['revokeInstallationAcceptance', CoreApiAccessCondition.WEB_CONSOLE_SESSION],
       // Task 4 row RD2 (decision C147, Q1): the retirement of a device, web console only.
       ['retireCaptureDevice', CoreApiAccessCondition.WEB_CONSOLE_SESSION],
+      // D59 (principal, 2026-11-04): the D57 pair carries the web-console condition AND the vendor-account
+      // identity rule; both are enforced in the panel proxy (src/lcd/setup.ts, vendorGateOf) before forwarding,
+      // 403 NOT_PERMITTED with no audit row — known-but-delegated for stage 6, which passes a web console session.
+      ['getPanelSetup', CoreApiAccessCondition.WEB_CONSOLE_SESSION, CoreApiAccessCondition.VENDOR_ACCOUNT],
+      ['setPanelSetup', CoreApiAccessCondition.WEB_CONSOLE_SESSION, CoreApiAccessCondition.VENDOR_ACCOUNT],
     ]);
   });
 

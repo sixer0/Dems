@@ -249,7 +249,8 @@ describe('RB-1, AC-B-12: the boot check of app.ready()', () => {
     // What is registered is exactly the registry and the socket route, each once.
     expect(registered.map((rule) => rule.operationId).sort()).toEqual([...ALL_OPERATIONS, REALTIME_CHANNEL_ID].sort());
     // REVISED 2026-11-02 (principal): RB-9 amended — + createUser, updateUser, deleteUser.
-    expect(ALL_OPERATIONS).toHaveLength(117); // LCD bridge task: + the panel firmware word of operation 114; + the live preview and the idle meters of task 4 row D53; + the retirement of task 4 row RD2; 97 +the two sound-card operations of task 4 row 63 + the re-address of row 194 + the seven commissioning operations of row 102 + the stored-credential connection test of row V3 + the two installation-acceptance operations of row 116
+    // REVISED 2026-11-04 (principal): D59 — + getPanelSetup, setPanelSetup (the D57 pair registers as operations 118-119).
+    expect(ALL_OPERATIONS).toHaveLength(119); // LCD bridge task: + the panel firmware word of operation 114; + the live preview and the idle meters of task 4 row D53; + the retirement of task 4 row RD2; 97 +the two sound-card operations of task 4 row 63 + the re-address of row 194 + the seven commissioning operations of row 102 + the stored-credential connection test of row V3 + the two installation-acceptance operations of row 116
     // Each one with the rule of its registry entry, at its registry route.
     for (const operationId of ALL_OPERATIONS) expect(registered.find((rule) => rule.operationId === operationId)).toBe(guard.rules.ruleOf(operationId));
     // The stand-ins and the routes of the real units make up the registry, and no operation is in both.

@@ -938,8 +938,13 @@ async function runCell(server: Server, caller: Caller, operation: CoreApiRegistr
     } else if (!Object.keys(operation.responses).includes(String(status))) say(`answered ${status} ${code}, which the registry does not document for the operation`);
     const denials = rows.filter((entry) => DENIAL_ROW_TYPES.includes(entry.type));
     if (denials.length > 0) say(`a permitted call wrote ${denials.map((entry) => entry.type).join(', ')}`);
+  } else if (expectation.delegated === true && mode === 'PROBE') {
+    // D59 follow-up: a delegated refusal lives in the unit or the proxy — BEHIND the body
+    // pipeline. A probe's invalid body is answered 400 INVALID_JSON before the identity gate
+    // ever runs: the refusal this cell expects was never reached, and the probe proves it.
+    if (status !== 400 || code !== 'INVALID_JSON') say(`a delegated refusal probed behind the body pipeline was answered ${status} ${code}`);
   } else {
-    if (passed) say('stage 6 let the request through');
+    if (passed && expectation.delegated !== true) say('stage 6 let the request through'); // D59: a delegated refusal passes stage 6 by contract
     if (status !== expectation.status || code !== expectation.code) say(`answered ${status} ${code}`);
     // The reason is part of the answer: where the specification names one it must be that one, and
     // where it names none the answer must carry none (it tells a refusal of a condition from the marker's).
@@ -1154,17 +1159,28 @@ describe('the contract registry against the composed operation tables: all 119 r
       [110, 'revokeInstallationAcceptance'],
       // Task 4 row RD2: the row of the retirement of a device, web console only (decision C147, Q1).
       [111, 'retireCaptureDevice'],
+      // C3 §2.7 (D57, transcribed 2026-11-04): the panel-setup pair carries the fence too.
+      [118, 'getPanelSetup'],
+      [119, 'setPanelSetup'],
     ]);
     expect(carrying.map((operation) => operation.operationId).sort()).toEqual(documented.map((operation) => operation.operationId).sort());
     // It adds to a permission: CAPTURE_CONFIG, or CAPTURE_COMMISSION for the seven of task 4 row 102
     // and the two of row 116 (109, 110). It is defined on no marker without one.
-    expect(carrying.filter((operation) => !['CAPTURE_CONFIG', 'CAPTURE_COMMISSION'].includes(describeCoreApiAccess(operation.access))).map((operation) => operation.operationId)).toEqual([]);
+    // D59 follow-up: the panel-setup pair (D57) carries the fence on an AUTHENTICATED marker —
+    // the only operations where it is defined without a permission; decision.ts answers that
+    // combination audited with denial: null (the row names the fact, not a permission).
+    expect(carrying.filter((operation) => !['CAPTURE_CONFIG', 'CAPTURE_COMMISSION'].includes(describeCoreApiAccess(operation.access))
+      && !['getPanelSetup', 'setPanelSetup'].includes(operation.operationId)).map((operation) => operation.operationId)).toEqual([]);
     expect(carrying.filter((operation) => describeCoreApiAccess(operation.access) === 'CAPTURE_COMMISSION').map((operation) => specRowOf(operation).number)).toEqual([101, 102, 103, 104, 105, 106, 107, 109, 110, 111]); // + 111 (task 4 row RD2)
     // The model of this file: a holder of the permission on the web console is allowed, the same holder
     // on a paired device is refused 403 NOT_PERMITTED with the reason and one ACCESS_DENIED row.
     const technicianWeb = world.callers['TECHNICIAN'] ?? ANONYMOUS;
     const technicianDevice = world.callers['TECHNICIAN@DEVICE'] ?? ANONYMOUS;
-    for (const operation of carrying) {
+    // D59 follow-up: the panel-setup pair carries the fence on an AUTHENTICATED marker and adds
+    // the VENDOR_ACCOUNT identity rule on top — the walk's 'a holder is allowed' premise is about
+    // PERMISSIONS; the pair's web cell is refused by the proxy's identity gate (no row), which is
+    // the subject of its own pins (decision.test.ts and the live panel suite), not of this walk.
+    for (const operation of carrying.filter((op) => !['getPanelSetup', 'setPanelSetup'].includes(op.operationId))) {
       expect(expectationFor(operation, technicianWeb, world.stored, true).allowed, operation.operationId).toBe(true);
       const onDevice = expectationFor(operation, technicianDevice, world.stored, true);
       expect(onDevice.allowed, operation.operationId).toBe(false);
@@ -1212,7 +1228,9 @@ describe('the role matrix the server decides from (spec §4.4 composed with C3 �
     expect(grantNames(world.stored)).toEqual(grantNames(spec.grants));
     const shared: Grant[] = Object.entries(ROLE_PERMISSIONS).flatMap(([role, held]) => held.map((permission) => ({ role, permission })));
     expect(grantNames(world.stored)).toEqual(grantNames(shared));
-    expect([spec.roles.length, spec.permissions.length, world.stored.length]).toEqual([3, 15, 23]);
+        // D59 follow-up: migration 0034 (ratified revocation, 2026-10-29) takes the stored grants to 22;
+    // C3 §2.1 now carries the revocation row so the composed table says the same 22.
+    expect([spec.roles.length, spec.permissions.length, world.stored.length]).toEqual([3, 15, 22]);
     // Task 4 row 100 (decision U10): the commissioning permission is held by ONE role, the technician.
     expect(world.stored.filter((grant) => grant.permission === 'CAPTURE_COMMISSION').map((grant) => grant.role)).toEqual(['TECHNICIAN']);
     // The count the document states under its table, per role.
@@ -1241,7 +1259,8 @@ describe('the role matrix the server decides from (spec §4.4 composed with C3 �
     // Task 4 row V3: and the row of 108, 32 + 1.
     // Task 4 row 116: and the two rows of 109 and 110, 33 + 2.
     // Task 4 row RD2: and the row of 111, 35 + 1.
-    expect(deltaRows).toHaveLength(36);
+    // C3 §2.7 (2026-11-04): the eight rows of RB-9 as amended and D57: 36 + 8.
+    expect(deltaRows).toHaveLength(44);
     const deniedDelta = deniedCellsFromTable(deltaRows, spec.grants, spec.roles);
     expect(denied).toEqual(Object.fromEntries(spec.roles.map((role) => [role, (deniedBase[role] ?? 0) + (deniedDelta[role] ?? 0)])));
     console.info(`[w47] denied cells over the composed 97: ${JSON.stringify(denied)} (base ${JSON.stringify(deniedBase)} + C3 delta ${JSON.stringify(deniedDelta)})`);
@@ -1294,7 +1313,7 @@ describe('the matrix as a whole', () => {
     }
   });
 
-  it('89 routed cells for each of the five callers of AC-B-15, and 89 for the brief columns: each equal to the specification', () => {
+  it('118 routed cells for each of the five callers of AC-B-15, and 89 for the brief columns: each equal to the specification', () => {
     // The 75 of the closed base and the three STT configuration operations (C3 §2.5), which are
     // routed since task 3 row 113; the fourteen of C3 §2.2 join as their rows land (DEFERRED_ROUTE):
     // blueprint row 66 landed the five selector operations 76 to 80, 78 + 5 = 83; rows 132, 133 and
@@ -1310,7 +1329,8 @@ describe('the matrix as a whole', () => {
     // Task 4 row 117 routed operations 109 and 110 (the installation acceptance and its revocation), 104 + 2 = 106. (Moved by this row's delta only.)
     // Task 4 row 106b routed operations 104 and 105 (the alias state and its removal), 106 + 2 = 108. (Moved by this row's delta only.)
     // Task 4 row 111 routed operations 106 and 107 (the set-IP job and its state), 108 + 2 = 110. (Moved by this row's delta only.)
-    expect(routedOperations()).toHaveLength(110);
+    // C3 §2.7 (2026-11-04): eight routes landed since the 110: 110 + 8.
+    expect(routedOperations()).toHaveLength(118);
     expect(routedOperations()).toHaveLength(CORE_API_OPERATIONS.length - Object.keys(DEFERRED_ROUTE).length);
     for (const columns of [AC_B_15_COLUMNS, BRIEF_COLUMNS]) {
       const five = of(columns);
@@ -1372,7 +1392,10 @@ describe('the matrix as a whole', () => {
     // and two more a SUPERVISOR is denied, 5 + 2 = 7. (Moved by this row's delta only.)
     // Task 4 row 111 routed operations 106 and 107 on `CAPTURE_COMMISSION` (TECHNICIAN only): two more cells an INVESTIGATOR is denied, 24 + 2 = 26,
     // and two more a SUPERVISOR is denied, 7 + 2 = 9. (Moved by this row's delta only.)
-    expect(routedDelta).toEqual({ INVESTIGATOR: 26, SUPERVISOR: 9, TECHNICIAN: 3 });
+        // D59 follow-up (2026-11-04): the §2.7 rows and the 0034 revocation move the delta —
+    // INVESTIGATOR/TECHNICIAN: the three USER_ADMIN rows they do not hold; SUPERVISOR: the
+    // fifteen CAPTURE_CONFIG delta rows the revocation took away (9 + 15 = 24).
+    expect(routedDelta).toEqual({ INVESTIGATOR: 29, SUPERVISOR: 24, TECHNICIAN: 6 });
     const cellsOf = (role: string): string[] =>
       spec.operations
         .filter((operation) => isApiContractSection(operation.section) && routedIds.has(operation.operationId))
@@ -1381,13 +1404,15 @@ describe('the matrix as a whole', () => {
     // The same account, by name: the cells that joined since the literal read 11 / 0 / 0.
     const sinceEleven = ['switchAudioSource', 'getEvidenceExportJob', 'createTranscriptRevision'];
     expect(cellsOf('INVESTIGATOR').filter((operationId) => sinceEleven.includes(operationId)).sort()).toEqual(['getEvidenceExportJob', 'switchAudioSource']);
-    expect(cellsOf('TECHNICIAN').sort()).toEqual(['createTranscriptRevision', 'getEvidenceExportJob', 'switchAudioSource']);
+    // D59 follow-up (2026-11-04): the three USER_ADMIN rows of C3 §2.7 join the technician's cells.
+    expect(cellsOf('TECHNICIAN').sort()).toEqual(['createTranscriptRevision', 'createUser', 'deleteUser', 'getEvidenceExportJob', 'switchAudioSource', 'updateUser']); // D59 follow-up (2026-11-04): + the three USER_ADMIN rows of C3 §2.7
     // Task 4 row 108: the two configuration operations are the only cells a SUPERVISOR is denied by permission.
     // Task 4 row 107: and the commissioning scan (operation 103).
     // Task 4 row 117: and the installation acceptance and its revocation (operations 109 and 110).
     // Task 4 row 106b: and the alias state and its removal (operations 104 and 105).
     // Task 4 row 111: and the set-IP job and its state (operations 106 and 107).
-    expect(cellsOf('SUPERVISOR').sort()).toEqual(['acceptInstallation', 'getCameraNetworkJob', 'getCaptureNetworkConfig', 'getHostAlias', 'removeHostAlias', 'revokeInstallationAcceptance', 'scanFactoryCameras', 'setCameraNetwork', 'updateCaptureNetworkConfig']);
+    // D59 follow-up (2026-11-04): the 0034 revocation moves every CAPTURE_CONFIG delta cell here.
+    expect(cellsOf('SUPERVISOR').sort()).toEqual(['acceptInstallation', 'adoptCaptureCandidate', 'confirmCaptureDeviceAddress', 'getCameraNetworkJob', 'getCaptureDiscovery', 'getCaptureNetworkConfig', 'getHostAlias', 'registerCaptureAudioInput', 'removeHostAlias', 'rescanCaptureInputs', 'revokeInstallationAcceptance', 'scanFactoryCameras', 'searchCaptureAudioCards', 'setCameraNetwork', 'setCaptureCameraSource', 'setCaptureDeviceCredential', 'setPrimaryMic', 'startCaptureDiscovery', 'testCaptureCandidateConnection', 'testCaptureDeviceConnection', 'testSttConnection', 'updateCaptureConfig', 'updateCaptureNetworkConfig', 'updateSttConfig']); // D59 follow-up: the 0034 revocation moves every CAPTURE_CONFIG delta cell here (ANY-OF counted right)
     // On a paired device the condition WEB_CONSOLE_SESSION (C3 §0; D80(3)) adds one denied cell per
     // ROUTED operation that carries it, for a role that HOLDS its permission. None is routed today
     // (operations 89, 95 and 96 land with row 142): the count is derived, so it follows their routes.
@@ -1395,7 +1420,10 @@ describe('the matrix as a whole', () => {
       routedOperations().filter(
         (operation) =>
           conditionsOf(operation).includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION) &&
-          coreApiAccessPermissions(operation.access).some((permission) => world.stored.some((grant) => grant.role === role && grant.permission === permission)),
+          // D59 follow-up: an AUTHENTICATED rule (the panel pair) names no permission — every
+          // signed-in role holds it, so the fence alone denies the paired-device cell.
+          (coreApiAccessPermissions(operation.access).length === 0 ||
+            coreApiAccessPermissions(operation.access).some((permission) => world.stored.some((grant) => grant.role === role && grant.permission === permission))),
       ).length;
     // Pass D6: a SESSION_HOLDER cell the MODEL allowed (the column created the open session; the fact
     // is read from the database before the call, `runCell`) is no denied cell of that column. Counted
