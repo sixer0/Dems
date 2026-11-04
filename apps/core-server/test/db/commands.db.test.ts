@@ -84,7 +84,7 @@ describe('db:migrate (AC-B-01)', () => {
     ]);
   });
 
-  it('first run on the empty database: applies the thirty-four files; prints the version before and after', async () => {
+  it('first run on the empty database: applies the thirty-nine files; prints the version before and after', async () => {
     const result = await run(runMigrate, ['--database', created()]);
     expect(result.err).toEqual([]);
     expect(result.exitCode).toBe(0);
@@ -109,12 +109,17 @@ describe('db:migrate (AC-B-01)', () => {
 });
 
 describe('db:status', () => {
-  it('a migrated, unseeded database: exit 0; prints version, ledger, owner, triggers, head, lineage and 48 row counts', async () => {
+  // REVISED 2026-11-02 (purge amendment, principal PT GSP, 0036): the typed schema holds 50
+  // tables — `audit_purge_ticket` (T-49) and `audit_purge_log` (T-50) join the row counts; the
+  // ledger prints 39 files since 0038 (RB-9 0035, purge 0036, credential creation 0037, reseal
+  // correction 0038).
+  it('a migrated, unseeded database: exit 0; prints version, ledger, owner, triggers, head, lineage and 50 row counts', async () => {
     const result = await run(runStatus, ['--database', created()]);
     expect(result.err).toEqual([]);
     expect(result.exitCode).toBe(0);
     const files = readMigrationSet();
-    expect(result.out.slice(0, 38)).toEqual([
+    // 4 header lines plus one ledger line per file: 43 since 0038 (was 38 at 34 files).
+    expect(result.out.slice(0, 4 + files.length)).toEqual([
       `database         ${created()} on PostgreSQL 18.4`,
       'owner            dems_owner; encoding UTF8; locale C',
       'schema version   15; contract revision dbc-16; this code expects 15 (dbc-16)',
@@ -126,8 +131,8 @@ describe('db:status', () => {
     expect(result.out).toContain('audit head       seq 0; hash 0000000000000000...');
     expect(result.out).toContain('audit triggers   audit_chain_history_append_only=A, audit_log_append_only=A, audit_log_chain_guard=A');
     expect(result.out).toContain('lineage          0 row(s)');
-    expect(result.out).toContain('row counts       48 table(s)');
-    expect(result.out.filter((line) => /^ {2}[a-z_]+ +\d+$/.test(line))).toHaveLength(48);
+    expect(result.out).toContain('row counts       50 table(s)');
+    expect(result.out.filter((line) => /^ {2}[a-z_]+ +\d+$/.test(line))).toHaveLength(50);
     expect(result.out).toContain('  audit_chain_head         1');
     expect(result.out).toContain('  schema_meta              1');
     expect(result.out.at(-1)).toBe(`db:status: OK: ${created()} is at the schema version this code expects and the ledger matches the files.`);
@@ -153,7 +158,7 @@ describe('db:status', () => {
     expect(result.out).toContain('  audit_chain_history      2');
   });
 
-  it('a database that exists and is not migrated: exit 1, thirty-four pending migrations', async () => {
+  it('a database that exists and is not migrated: exit 1, thirty-nine pending migrations', async () => {
     const empty = await db.another({ template: EMPTY_DATABASE, slug: 'cmd_empty' });
     const result = await run(runStatus, ['--database', empty.name]);
     expect(result.exitCode).toBe(1);

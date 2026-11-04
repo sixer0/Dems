@@ -4,7 +4,7 @@
 // The file's own database is a migrated, empty clone (`tpl_schema`), seeded here ONE DAY after
 // the fixed instant. It is compared with a clone of `tpl_seed` (the fixed instant) and with a
 // second database seeded at the same later instant.
-import { DEFAULT_SEED, DEMO_PACKAGE_INTEGRITY, createIdleState } from '@dems/shared/sim';
+import { DEFAULT_SEED, DEMO_PACKAGE_INTEGRITY, ROLE_PERMISSIONS, createIdleState } from '@dems/shared/sim';
 import { matchDemoPackage } from '@dems/shared/demo-data';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type { Pool } from 'pg';
@@ -16,6 +16,14 @@ import { countAllTables, readStoredRows } from '../../store';
 import { DAY_MS, EXPECTED_SEED_COUNTS, FIXED_NOW, tableChecksums, withoutNegativeZeros } from '../../../../test/support/seed';
 
 const db = useTestDatabase({ template: 'schema' });
+
+// REVISED 2026-10-29 (0034_capture_config_supervisor_revocation, principal PT GSP): SUPERVISOR's
+// CAPTURE_CONFIG grant is revoked — the seed writes the 22 grants of the shared `ROLE_PERMISSIONS`
+// (recomputed FROM SOURCE, R3; the same composition as `seed.db.test.ts`).
+const SEED_COUNTS: Readonly<Record<string, number>> = Object.freeze({
+  ...EXPECTED_SEED_COUNTS,
+  role_permissions: Object.values(ROLE_PERMISSIONS).reduce((sum, grants) => sum + grants.length, 0),
+});
 
 const LATER = FIXED_NOW + DAY_MS;
 
@@ -71,8 +79,8 @@ const without = <R extends Record<string, unknown>>(rows: readonly R[], omit: re
 
 describe('ST-5: a seed with now one day later', () => {
   it('has the same row counts, and the seed reports the later instant', async () => {
-    expect(await countAllTables(drizzle(dayTwoPool))).toEqual(EXPECTED_SEED_COUNTS);
-    expect(report.counts).toEqual(EXPECTED_SEED_COUNTS);
+    expect(await countAllTables(drizzle(dayTwoPool))).toEqual(SEED_COUNTS);
+    expect(report.counts).toEqual(SEED_COUNTS);
     expect(report).toMatchObject({ now: LATER, scenario: 'idle', seed: DEFAULT_SEED, epoch: 0, role: 'dems_owner', database: db.name });
     expect(report.auditHead.seq).toBe(82);
     console.log(

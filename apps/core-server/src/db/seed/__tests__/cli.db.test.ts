@@ -3,7 +3,7 @@
 // The command is proven through the function its entry file calls, with the option
 // `allowTestDatabase`, which no entry point sets and no argument or environment variable
 // reaches. `dems_demo` and the lanes are never touched by a test (TI-17).
-import { DEMO_OPERATOR_PASSWORD } from '@dems/shared/sim';
+import { DEMO_OPERATOR_PASSWORD, ROLE_PERMISSIONS } from '@dems/shared/sim';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { describe, expect, it } from 'vitest';
 import { useTestDatabase, type TemplateDefinition } from '../../../../test/helpers/db';
@@ -13,6 +13,14 @@ import { countAllTables } from '../../store';
 import { EXPECTED_SEED_COUNTS, FIXED_NOW, tableChecksums } from '../../../../test/support/seed';
 
 const db = useTestDatabase({ template: 'schema' });
+
+// REVISED 2026-10-29 (0034_capture_config_supervisor_revocation, principal PT GSP): SUPERVISOR's
+// CAPTURE_CONFIG grant is revoked — the seed writes the 22 grants of the shared `ROLE_PERMISSIONS`
+// and 311 rows in all (recomputed FROM SOURCE, R3; the same composition as `seed.db.test.ts`).
+const SEED_COUNTS: Readonly<Record<string, number>> = Object.freeze({
+  ...EXPECTED_SEED_COUNTS,
+  role_permissions: Object.values(ROLE_PERMISSIONS).reduce((sum, grants) => sum + grants.length, 0),
+});
 
 /** A database with nothing in it: created, never migrated. */
 const NOT_MIGRATED: TemplateDefinition = Object.freeze({ key: 'x_w20empty', base: 'empty', build: async () => {} });
@@ -40,11 +48,11 @@ describe('db:seed on a freshly migrated database', () => {
 
     expect(out[0]).toBe(`db:seed: ${db.name} on PostgreSQL 18.4 as dems_owner`);
     expect(out[1]).toBe('db:seed: dataset as of 2026-10-01T03:00:00.000Z (1790823600000); scenario idle; seed 20261001; epoch 0');
-    expect(out[2]).toMatch(/^db:seed: seeded in \d+ ms \(dataset and hashes \d+ ms, transaction \d+ ms\); the database now holds 312 row\(s\) in 24 of 48 table\(s\)$/);
-    for (const [table, rows] of Object.entries(EXPECTED_SEED_COUNTS)) expect(out).toContain(`  ${table.padEnd(24)} ${rows}`);
+    expect(out[2]).toMatch(/^db:seed: seeded in \d+ ms \(dataset and hashes \d+ ms, transaction \d+ ms\); the database now holds 311 row\(s\) in 24 of 48 table\(s\)$/);
+    for (const [table, rows] of Object.entries(SEED_COUNTS)) expect(out).toContain(`  ${table.padEnd(24)} ${rows}`);
     expect(out.at(-2)).toMatch(/^audit head       seq 82; hash [0-9a-f]{16}\.\.\.$/);
     expect(out.at(-1)).toBe(`db:seed: OK: ${db.name} is seeded. State: npm run db:status -w @dems/core-server -- --database ${db.name}`);
-    expect(await countAllTables(drizzle(db.ownerPool()))).toEqual(EXPECTED_SEED_COUNTS);
+    expect(await countAllTables(drizzle(db.ownerPool()))).toEqual(SEED_COUNTS);
 
     // The output holds neither the password nor any stored salt or hash.
     const printed = out.join('\n');

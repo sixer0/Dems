@@ -68,12 +68,14 @@ describe('the bulk template: the minimums of contract §11 as revised by dbc-3 �
     );
     expect(comparison.filter((entry) => !entry.met)).toEqual([]);
     // The tables the contract leaves as seeded hold exactly one row; the three RBAC tables are
-    // unchanged from the seed, which schema v2 grew to the 14/22 of dbc-3 §G and task 4 row 100
-    // to 15/23 (the commissioning permission and its one grant).
+    // unchanged from the seed, which schema v2 grew to the 14/22 of dbc-3 §G, task 4 row 100 to
+    // 15/23 (the commissioning permission and its one grant), and REVISED 2026-10-29
+    // (0034_capture_config_supervisor_revocation, principal PT GSP) to 15/22 — SUPERVISOR's
+    // CAPTURE_CONFIG grant is revoked.
     for (const table of ['storage_policy', 'console_settings', 'core_device', 'core_state', 'hardware_snapshot', 'schema_meta', 'audit_chain_head', 'capture_config', 'stt_config']) {
       expect(counts[table], table).toBe(1);
     }
-    expect([counts['roles'], counts['permissions'], counts['role_permissions']]).toEqual([3, 15, 23]);
+    expect([counts['roles'], counts['permissions'], counts['role_permissions']]).toEqual([3, 15, 22]);
     expect(counts['active_session']).toBe(0);
   });
 
@@ -486,10 +488,13 @@ describe('the bulk template: every constraint holds, and nothing was switched of
     );
     const byKind = Object.fromEntries(constraints.rows.map((row) => [row.kind, { rows: Number(row.rows), invalid: Number(row.invalid) }]));
     // The contract's counts as landed: 233 named CHECKs, 49 foreign keys, 48 primary keys (the
-    // composed inventory; dbc-3 §0.1 + §B.13 + dbc-4 §N.11; set 16 of task 4: +2 CHECKs, +1 foreign key). None invalid - the loader switched nothing off.
-    expect(byKind['c']).toEqual({ rows: 233, invalid: 0 });
-    expect(byKind['f']).toEqual({ rows: 49, invalid: 0 });
-    expect(byKind['p']).toEqual({ rows: 48, invalid: 0 });
+    // composed inventory; dbc-3 §0.1 + §B.13 + dbc-4 §N.11; set 16 of task 4: +2 CHECKs, +1 foreign
+    // key). REVISED 2026-11-02 (purge amendment, principal PT GSP, 0036): 236 CHECKs, 50 foreign
+    // keys, 49 primary keys — T-49 is deliberately keyless, T-50 brings the pkey, one SET NULL
+    // actor reference and three CHECKs. None invalid - the loader switched nothing off.
+    expect(byKind['c']).toEqual({ rows: 236, invalid: 0 });
+    expect(byKind['f']).toEqual({ rows: 50, invalid: 0 });
+    expect(byKind['p']).toEqual({ rows: 49, invalid: 0 });
     expect(constraints.rows.reduce((sum, row) => sum + Number(row.invalid), 0)).toBe(0);
 
     const triggers = await pool.query<{ name: string; mode: string; internal: boolean }>(
@@ -715,9 +720,12 @@ describe('a clone of the bulk template, read back as the runtime role', () => {
     for (const table of ['roles', 'permissions', 'role_permissions', 'audit_chain_head', 'audit_chain_history', 'schema_meta']) expect(held[table], table).toBe('S');
     // Append-only by privilege: insert and read, nothing else.
     for (const table of ['audit_log', 'events', 'session_history', 'evidence_tracks', 'evidence_custody', 'exports', 'health_snapshots']) expect(held[table], table).toBe('S,I');
-    // No INSERT on the operators (no operation creates a user), and DELETE on the active session only.
-    expect(held['operators']).toBe('S,U');
-    expect(held['operator_credentials']).toBe('S,U');
+    // REVISED 2026-11-02/03 (RB-9 0035, purge amendment 0036, credential creation 0037; principal
+    // PT GSP): the add-user trio writes the account as `dems_app` (INSERT on `operators`), the
+    // first credential row of `operator:set-password` INSERTs into `operator_credentials`, and the
+    // purge erases both (DELETE). DELETE otherwise stays on the active session alone.
+    expect(held['operators']).toBe('S,I,U,D');
+    expect(held['operator_credentials']).toBe('S,I,U,D');
     expect(held['active_session']).toBe('S,I,U,D');
     // schema v2 (dbc-3 §D): the capture selector and devices carry UPDATE only on their own
     // columns; the credential store is INSERT+UPDATE with NO read (the reveal function serves it);
@@ -733,7 +741,11 @@ describe('a clone of the bulk template, read back as the runtime role', () => {
     expect(held['transcript_revisions']).toBe('S,I');
     expect(held['sealing_jobs']).toBe('S,I,U');
     expect(held['stt_config']).toBe('U');
-    expect(Object.entries(held).filter(([, value]) => value.includes('D') || value.includes('T'))).toEqual([['active_session', 'S,I,U,D']]);
+    expect(Object.entries(held).filter(([, value]) => value.includes('D') || value.includes('T'))).toEqual([
+      ['active_session', 'S,I,U,D'],
+      ['operator_credentials', 'S,I,U,D'],
+      ['operators', 'S,I,U,D'],
+    ]);
 
     // The refusals, on rows the fixture wrote. Each is refused by privilege, before any row is touched.
     expect(await sqlStateOf(app, "UPDATE audit_log SET message = 'x' WHERE seq = 5000")).toBe(INSUFFICIENT_PRIVILEGE);

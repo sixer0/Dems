@@ -28,8 +28,11 @@ async function publicTables(): Promise<string[]> {
 }
 
 describe('AC-B-01: the migration set on an empty database', () => {
-  it('the set is the thirty-four files of dbc-3 §A.1, §B.13, dbc-4 §N.8, errata PE-129a-01, PE-129b-01, PE-0013-01, task 4 schema sets A, B and C, task 4 package X-C, the profile-code CHECK, the alias removal reasons (two steps), the allowed ONVIF ports and the retirement of a capture device, in order, with rising journal times', () => {
-    expect(INITIAL_MIGRATION_TAGS).toHaveLength(34);
+  // REVISED 2026-11-02/03 (RB-9 0035, purge amendment 0036 + reseal correction 0038, credential
+  // creation 0037; principal PT GSP): the set grew 34 -> 39 with the operator administration
+  // privileges, the audit purge, the first-credential grant and the purge reseal correction.
+  it('the set is the thirty-nine files of dbc-3 §A.1, §B.13, dbc-4 §N.8, errata PE-129a-01, PE-129b-01, PE-0013-01, task 4 schema sets A, B and C, task 4 package X-C, the profile-code CHECK, the alias removal reasons (two steps), the allowed ONVIF ports, the retirement of a capture device, the supervisor revocation (0034), the RB-9 add-user privileges (0035), the audit purge amendment (0036), the credential creation (0037) and the purge reseal correction (0038), in order, with rising journal times', () => {
+    expect(INITIAL_MIGRATION_TAGS).toHaveLength(39);
     const files = readMigrationSet();
     expect(files.map((file) => file.tag)).toEqual([...INITIAL_MIGRATION_TAGS]);
     expect(files.map((file) => file.idx)).toEqual(Array.from({ length: INITIAL_MIGRATION_TAGS.length }, (_, index) => index));
@@ -52,7 +55,7 @@ describe('AC-B-01: the migration set on an empty database', () => {
     expect(ledger.ok).toBe(true);
   });
 
-  it('first run, as dems_owner: applies the thirty-four files and sets schema version 15 (dbc-16)', async () => {
+  it('first run, as dems_owner: applies the thirty-nine files and sets schema version 15 (dbc-16)', async () => {
     const who = await db.ownerPool().query<{ role: string; superuser: boolean }>(
       'SELECT current_user::text AS role, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS superuser',
     );
@@ -66,14 +69,16 @@ describe('AC-B-01: the migration set on an empty database', () => {
     expect(result.applied).toEqual([...INITIAL_MIGRATION_TAGS]);
     expect(result.versionAfter).toEqual({ schemaVersion: DB_SCHEMA_VERSION, contractRevision: DB_CONTRACT_REVISION });
     expect(result.versionAfter).toEqual({ schemaVersion: 15, contractRevision: 'dbc-16' });
-    expect(await publicTables()).toHaveLength(48);
+    // 48 until set 16; REVISED 2026-11-02 (purge amendment, principal PT GSP, 0036): +2 —
+    // `audit_purge_ticket` (T-49) and `audit_purge_log` (T-50).
+    expect(await publicTables()).toHaveLength(50);
 
     // The migrator stored each file's hash and journal time, in order.
     const files = readMigrationSet();
     const applied = await readAppliedMigrations(db.ownerPool());
     expect(applied?.map((row) => row.hash)).toEqual(files.map((file) => file.sha256));
     expect(applied?.map((row) => row.createdAt)).toEqual(files.map((file) => file.when));
-    console.info(`[w17] first migrate: applied ${result.applied.join(', ')} in ${ms.toFixed(1)} ms; 48 tables`);
+    console.info(`[w17] first migrate: applied ${result.applied.join(', ')} in ${ms.toFixed(1)} ms; 50 tables`);
   });
 
   it('second run: applies nothing and changes nothing (MG-10)', async () => {
@@ -108,9 +113,11 @@ describe('AC-B-01: the migration set on an empty database', () => {
 
     // Since 0018 a hand-written file may also write the two rows of the commissioning permission -
     // into a database that is ALREADY SEEDED only. On this empty one it writes nothing: `permissions`
-    // and `role_permissions` are among the 46 tables counted empty below.
+    // and `role_permissions` are among the 48 tables counted empty below (46 until set 16; +2 with
+    // the purge amendment of 0036, REVISED 2026-11-02 principal PT GSP — both purge tables empty
+    // on a migrated, unseeded database).
     const tables = (await publicTables()).filter((table) => table !== 'audit_chain_head' && table !== 'schema_meta');
-    expect(tables).toHaveLength(46);
+    expect(tables).toHaveLength(48);
     for (const table of tables) {
       const { rows } = await pool.query<{ rows: string }>(`SELECT count(*) AS rows FROM public.${table}`);
       expect(rows[0]?.rows, table).toBe('0');

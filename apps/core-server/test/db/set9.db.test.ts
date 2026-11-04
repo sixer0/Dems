@@ -336,13 +336,15 @@ describe('M9S-4 (d): the commissioning permission is stored data', () => {
         .map((row) => ({ role_id: row.roleId as string, permission_id: row.permissionId as string }))
         .sort((a, b) => (a.role_id !== b.role_id ? (a.role_id < b.role_id ? -1 : 1) : a.permission_id < b.permission_id ? -1 : a.permission_id > b.permission_id ? 1 : 0)),
     };
-    // The template was seeded by this code: it holds the fifteen and the twenty-three already.
+    // The template was seeded by this code: it holds the fifteen and the twenty-two already
+    // (REVISED 2026-10-29, 0034_capture_config_supervisor_revocation, principal PT GSP: SUPERVISOR's
+    // CAPTURE_CONFIG grant is revoked, so the shared matrix has 22 grants, not 23).
     expect(await storedMatrix(owner)).toEqual(seeded);
-    expect([seeded.permissions.length, seeded.grants.length]).toEqual([15, 23]);
+    expect([seeded.permissions.length, seeded.grants.length]).toEqual([15, 22]);
     // Take the two rows away: the stored matrix of a database that was seeded one commit earlier.
     await owner.query(`DELETE FROM public.role_permissions WHERE permission_id = '${PERMISSION}'`);
     await owner.query(`DELETE FROM public.permissions WHERE id = '${PERMISSION}'`);
-    expect([(await storedMatrix(owner)).permissions.length, (await storedMatrix(owner)).grants.length]).toEqual([14, 22]);
+    expect([(await storedMatrix(owner)).permissions.length, (await storedMatrix(owner)).grants.length]).toEqual([14, 21]);
     const inserts = chunksOf(TAGS[1]).filter((chunk) => /INSERT INTO public\.(permissions|role_permissions)/.test(chunk));
     for (const statement of inserts) expect(await outcome(owner.query(statement))).toBe('ok:1');
     expect(await storedMatrix(owner)).toEqual(seeded);

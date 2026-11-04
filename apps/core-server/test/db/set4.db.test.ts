@@ -141,7 +141,7 @@ describe('M4-MT-9: set 4 applies on a (2, dbc-3) database that holds rows', () =
     expect(SET_3_TAGS).toHaveLength(8);
   });
 
-  it('the existing rows after the step: 5 devices read FAKE, 13 items read NULL, 0 source rows, 48 tables (T-42 of set 6, T-43 of set 7, T-44, T-45 of set 8, T-46, T-47 of set 9 and T-48 of set 12 came with the same run)', async () => {
+  it('the existing rows after the step: 5 devices read FAKE, 13 items read NULL, 0 source rows, 50 tables (T-42 of set 6, T-43 of set 7, T-44, T-45 of set 8, T-46, T-47 of set 9 and T-48 of set 12 came with the same run)', async () => {
     const owner = db.ownerPool();
     const devices = await owner.query('SELECT id, kind, adapter_kind FROM capture_devices ORDER BY id');
     expect(devices.rows).toEqual([
@@ -157,7 +157,9 @@ describe('M4-MT-9: set 4 applies on a (2, dbc-3) database that holds rows', () =
               (SELECT count(*)::int FROM session_capture_sources) AS sources,
               (SELECT count(*)::int FROM pg_tables WHERE schemaname = 'public') AS tables`,
     );
-    expect(facts.rows).toEqual([{ items: 13, items_null: 13, sources: 0, tables: 48 }]);
+    // REVISED 2026-11-02 (purge amendment, principal PT GSP, 0036): 48 -> 50 public tables —
+    // `audit_purge_ticket` (T-49) and `audit_purge_log` (T-50).
+    expect(facts.rows).toEqual([{ items: 13, items_null: 13, sources: 0, tables: 50 }]);
     // The physical position of the two columns: last, as the typed schema declares them.
     const last = await owner.query(
       `SELECT table_name::text AS t, column_name::text AS c FROM information_schema.columns AS c

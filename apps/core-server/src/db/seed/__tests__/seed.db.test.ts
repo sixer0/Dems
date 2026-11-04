@@ -45,6 +45,17 @@ const db = useTestDatabase({ template: 'seed' });
 
 const reference = createIdleState({ now: FIXED_NOW, seed: DEFAULT_SEED });
 
+// REVISED 2026-10-29 (0034_capture_config_supervisor_revocation, principal PT GSP): SUPERVISOR's
+// CAPTURE_CONFIG grant is revoked, so the seed of this code writes the 22 grants of the shared
+// `ROLE_PERMISSIONS`, not the 23 of the closed §9.4 table. The closed contract text is never edited
+// (D44 R1) and `test/support/seed.ts` still pins the pre-revocation matrix, so the revocation is
+// composed onto the expected counts HERE, recomputed FROM SOURCE (R3) — the same method as the
+// catalog and privileges files use for the 0035-0038 amendments.
+const SEED_COUNTS: Readonly<Record<string, number>> = Object.freeze({
+  ...EXPECTED_SEED_COUNTS,
+  role_permissions: Object.values(ROLE_PERMISSIONS).reduce((sum, grants) => sum + grants.length, 0),
+});
+
 describe('ST-1: row counts after a first seed at the fixed instant (contract §9.4)', () => {
   it('the template was seeded at 2026-10-01 10:00 WIB', () => {
     expect(SEED_TEMPLATE_NOW).toBe(FIXED_NOW);
@@ -54,14 +65,14 @@ describe('ST-1: row counts after a first seed at the fixed instant (contract §9
   it('all 48 tables hold what the seed of the landed contract states: 24 with rows, 24 empty', async () => {
     const counts = await countAllTables(drizzle(db.ownerPool()));
     console.log(`[w20] ST-1 row counts of ${db.name}:\n${Object.entries(counts).map(([table, rows]) => `  ${table.padEnd(24)} ${rows}`).join('\n')}`);
-    expect(counts).toEqual(EXPECTED_SEED_COUNTS);
+    expect(counts).toEqual(SEED_COUNTS);
     expect(Object.keys(counts)).toHaveLength(48);
     expect(Object.values(counts).filter((rows) => rows > 0)).toHaveLength(24);
     expect(Object.values(counts).filter((rows) => rows === 0)).toHaveLength(24);
   });
 
   // Fix wave J (truth rule 3a): 48 tracks - four for each of the 12 sealed items, none for the one item that was never sealed.
-  it('AC-B-02: 3 operators, 3 roles, 15 permissions, 23 grants, 1 Core device, 13 items with 48 tracks, 13 history entries', async () => {
+  it('AC-B-02: 3 operators, 3 roles, 15 permissions, 22 grants (0034 revocation), 1 Core device, 13 items with 48 tracks, 13 history entries', async () => {
     const counts = await countAllTables(drizzle(db.ownerPool()));
     // R3 (D44): the vocabulary counts are recomputed FROM SOURCE, never hardcoded: the shared
     // permission enum and the shared role table (rows 47/49 grew them 12->14 and 18->22).
@@ -385,7 +396,7 @@ describe('idempotence: a second seed is refused and writes nothing (SD-3)', () =
     expect(await tableChecksums(pool)).toEqual(before);
     const credentialsAfter = await pool.query('SELECT operator_id, salt, hash FROM operator_credentials ORDER BY operator_id');
     expect(credentialsAfter.rows).toEqual(credentialsBefore.rows);
-    expect(await countAllTables(drizzle(pool))).toEqual(EXPECTED_SEED_COUNTS);
+    expect(await countAllTables(drizzle(pool))).toEqual(SEED_COUNTS);
   });
 
   it('refuses under the chain lock too: a seed that got past the first look still writes nothing', async () => {
@@ -451,7 +462,7 @@ describe('two seeds of one database at the same time', () => {
       message: expect.stringContaining('the audit chain holds 82 row(s)'),
     });
     // One whole dataset, not one and a part of another.
-    expect(await countAllTables(drizzle(pool))).toEqual(EXPECTED_SEED_COUNTS);
+    expect(await countAllTables(drizzle(pool))).toEqual(SEED_COUNTS);
     const winner = fulfilled[0]?.status === 'fulfilled' ? fulfilled[0].value : null;
     const seededAt = await pool.query<{ seeded_at: string }>('SELECT seeded_at FROM core_state');
     expect(Number(seededAt.rows[0]?.seeded_at)).toBe(winner?.now);

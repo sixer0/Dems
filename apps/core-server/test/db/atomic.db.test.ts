@@ -493,7 +493,12 @@ describe('T-AT-5 (AT-C5): the last administrator, under the lock on every operat
     );
     expect(rows).toEqual([{ whole_table: false, some_column: true }]);
     await expectRefused(() => app.query("UPDATE operators SET username = 'x' WHERE id = 'OPR-001'"), SQLSTATE.insufficientPrivilege);
-    await expectRefused(() => app.query("DELETE FROM operators WHERE id = 'OPR-001'"), SQLSTATE.insufficientPrivilege);
+    // REVISED 2026-11-02 (RB-9, 0035; purge amendment, principal PT GSP, 0036): the identity column
+    // itself stays closed to the runtime role — `id` joins no UPDATE list — while DELETE is now a
+    // granted privilege (the purge erases the account), so the whole-DELETE probe reaches the
+    // RESTRICT of the credential foreign key instead of the old 42501.
+    await expectRefused(() => app.query("UPDATE operators SET id = 'OPR-009' WHERE id = 'OPR-001'"), SQLSTATE.insufficientPrivilege);
+    await expectRefused(() => app.query("DELETE FROM operators WHERE id = 'OPR-001'"), SQLSTATE.restrictViolation, 'operator_credentials_operator_id_fkey');
   });
 });
 
