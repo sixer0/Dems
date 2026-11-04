@@ -16,6 +16,8 @@
 // | AC-C-45 `IDLE_EXPIRED` leads to `/login?redirect=<href>` with the expired notice; `ABSOLUTE_EXPIRED` shows the 8-hour sentence; `USER_DISABLED` shows the disabled Alert | "why the operator is on the page" |
 // | AC-C-47 the disclosure is hidden while `dems.presentation.v1` is on; no role chip in Live mode; the server's setting is copied into the flag while signed in | "the demo operators", "presentation mode" |
 // | AC-C-104 the plain sentence (C1), three usernames, no role chip, no other server data; as before on the simulator | "the demo operators" |
+// | D58 (2026-11-03): the demo-operators disclosure is REMOVED from the shipped unit;
+// |   the conditions that observed it (AC-C-47, AC-C-104) now demand its absence.
 // | WS-5 the device strip shows what the Core server makes public | "the device strip" |
 import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { toast } from '@heroui/react'
@@ -170,7 +172,6 @@ const usernameInput = () => within(page()).getByLabelText(/username/i) as HTMLIn
 const passwordInput = () => within(page()).getByLabelText(/password/i) as HTMLInputElement
 const signInButton = () => within(page()).getByRole('button', { name: /sign in/i })
 const alertKind = () => screen.queryByTestId('login-alert')?.getAttribute('data-kind') ?? null
-const openDisclosure = () => fireEvent.click(within(page()).getByRole('button', { name: /demo operators/i }))
 
 async function signInThroughTheForm(created: LiveTestBed) {
   fireEvent.change(usernameInput(), { target: { value: USERNAME } })
@@ -269,57 +270,42 @@ describe('the security key (WS-8; Q11; AC-C-43)', () => {
   })
 })
 
-describe('the demo operators (WS-9; conditions C1 to C3 of SR-63; AC-C-47, AC-C-104)', () => {
-  it('Live: the plain sentence above the list, the three seeded usernames, no role chip and no other server data; a row fills the form', async () => {
+describe('the demo operators (D58, 2026-11-03: REMOVED from a shipped unit)', () => {
+  it('Live: no demo-operators disclosure, sentence or password (the ruling is about the shipped unit)', async () => {
+    // The principal ruled so ("lakukan sekarang", 2026-11-03, the recommended option): a shipped
+    // unit must not advertise seeded identities or their published password. WS-9/WS-10 surfaces
+    // retire with it; the presentation MECHANISM (the flag, `data-presentation`) stays and is
+    // tested below — it was never an identity surface.
     const { live } = await livePage()
     await screen.findByTestId('page-login')
-    // C2: before sign-in the replica holds no operator; the rows come from the shared constant.
+    expect(within(page()).queryByRole('button', { name: /demo operators/i })).toBeNull()
+    expect(screen.queryByTestId('login-demo-operators')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('login-demo-notice')).not.toBeInTheDocument()
+    // C2 held even before the ruling: before sign-in the replica holds no operator anyway.
     expect(live.live.store.getState().operators).toEqual([])
-    openDisclosure()
-
-    const notice = await screen.findByTestId('login-demo-notice')
-    expect(notice).toHaveTextContent(DEMO_NOTICE)
-    const disclosure = screen.getByTestId('login-demo-operators')
-    const rows = within(disclosure).getAllByTestId(/^login-operator-/)
-    expect(rows.map((row) => row.getAttribute('data-testid'))).toEqual(OPERATORS.map((operator) => `login-operator-${operator.username}`))
-    for (const operator of OPERATORS) expect(disclosure).toHaveTextContent(operator.username)
-    // C1 comes first: the sentence precedes the hint, the password line and the list.
-    expect(notice.compareDocumentPosition(rows[0] as HTMLElement) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    // No role chip, no role word: a role is server data and may have changed.
-    expect(disclosure.textContent).not.toMatch(/Investigator|Supervisor|Technician/)
-    expect(disclosure.querySelector('.chip, [data-slot="chip"]')).toBeNull()
-    expect(disclosure.textContent).not.toMatch(/simulated/i)
-
-    fireEvent.click(screen.getByTestId('login-operator-rina.wijaya'))
-    expect(usernameInput().value).toBe('rina.wijaya')
-    expect(passwordInput().value).toBe(DEMO_OPERATOR_PASSWORD)
     expect(getMissingI18nKeys()).toEqual([])
   })
 
-  it('Simulated: as before, role chips and no added sentence', async () => {
+  it('Simulated: the same absence — the shipped unit never advertises the seeded identities', async () => {
     await simulatedPage()
-    openDisclosure()
-    const disclosure = await screen.findByTestId('login-demo-operators')
-    await within(disclosure).findByTestId('login-operator-rina.wijaya')
-    expect(disclosure).toHaveTextContent('Technician')
-    expect(disclosure).toHaveTextContent('Supervisor')
-    expect(disclosure).toHaveTextContent('Investigator')
-    expect(screen.queryByTestId('login-demo-notice')).not.toBeInTheDocument()
+    expect(within(page()).queryByRole('button', { name: /demo operators/i })).toBeNull()
+    expect(screen.queryByTestId('login-demo-operators')).not.toBeInTheDocument()
+    expect(getMissingI18nKeys()).toEqual([])
   })
 })
 
 describe('presentation mode before sign-in (WS-10; C3; AC-C-47)', () => {
-  it('Live: the disclosure is hidden while the tab-local flag `dems.presentation.v1` is on, live', async () => {
+  it('Live: the tab-local flag `dems.presentation.v1` drives `data-presentation`; the disclosure stays gone (D58)', async () => {
     await livePage()
     await screen.findByTestId('page-login')
-    expect(screen.getByTestId('login-demo-operators')).toBeInTheDocument()
     expect(page()).toHaveAttribute('data-presentation', 'false')
+    expect(screen.queryByTestId('login-demo-operators')).not.toBeInTheDocument()
 
     setPresentationMode(true)
-    await waitFor(() => expect(screen.queryByTestId('login-demo-operators')).not.toBeInTheDocument())
-    expect(page()).toHaveAttribute('data-presentation', 'true')
+    await waitFor(() => expect(page()).toHaveAttribute('data-presentation', 'true'))
+    expect(screen.queryByTestId('login-demo-operators')).not.toBeInTheDocument()
     setPresentationMode(false)
-    await waitFor(() => expect(screen.getByTestId('login-demo-operators')).toBeInTheDocument())
+    await waitFor(() => expect(page()).toHaveAttribute('data-presentation', 'false'))
   })
 
   it('the server\'s setting is copied into the flag while an operator is signed in, at the sign-in and on every change; after the sign-out the page follows it', async () => {
@@ -329,9 +315,10 @@ describe('presentation mode before sign-in (WS-10; C3; AC-C-47)', () => {
       },
     })
     await screen.findByTestId('page-login')
-    // A fresh tab knows nothing of the server's setting before sign-in (gap GC-07): the disclosure is shown.
+    // A fresh tab knows nothing of the server's setting before sign-in (gap GC-07): the flag
+    // is unset; under D58 there is no disclosure that could leak the setting either way.
     expect(window.sessionStorage.getItem(PRESENTATION_MODE_STORAGE_KEY)).toBeNull()
-    expect(screen.getByTestId('login-demo-operators')).toBeInTheDocument()
+    expect(screen.queryByTestId('login-demo-operators')).not.toBeInTheDocument()
 
     await signInThroughTheForm(bed)
     expect(await screen.findByTestId('page-dashboard')).toBeInTheDocument()
@@ -357,23 +344,13 @@ describe('presentation mode before sign-in (WS-10; C3; AC-C-47)', () => {
     expect(screen.queryByTestId('login-demo-operators')).not.toBeInTheDocument()
   })
 
-  it('Simulated: the simulator\'s own setting hides the disclosure as before, without the flag', async () => {
+  it('Simulated: the simulator\'s own setting drives `data-presentation` without the flag (D58)', async () => {
     const { sim } = await simulatedPage()
-    expect(screen.getByTestId('login-demo-operators')).toBeInTheDocument()
+    // D58: nothing to hide — the disclosure never exists; what the simulator's own setting still
+    // drives is `data-presentation`, with no tab-local flag involved.
+    expect(screen.queryByTestId('login-demo-operators')).not.toBeInTheDocument()
     act(() => sim.actions.setPresentationMode(true))
-    await waitFor(() => expect(screen.queryByTestId('login-demo-operators')).not.toBeInTheDocument())
-    expect(page()).toHaveAttribute('data-presentation', 'true')
-    expect(window.sessionStorage.getItem(PRESENTATION_MODE_STORAGE_KEY)).toBeNull()
-    act(() => sim.actions.setPresentationMode(false))
-    await waitFor(() => expect(screen.getByTestId('login-demo-operators')).toBeInTheDocument())
-  })
-
-  it('a setting that equals the flag writes nothing: a Live session leaves the tab\'s storage as it was', async () => {
-    const { bed } = await livePage()
-    await screen.findByTestId('page-login')
-    await signInThroughTheForm(bed)
-    expect(await screen.findByTestId('page-dashboard')).toBeInTheDocument()
-    expect(window.sessionStorage.getItem(PRESENTATION_MODE_STORAGE_KEY)).toBeNull()
+    await waitFor(() => expect(page()).toHaveAttribute('data-presentation', 'true'))
   })
 })
 

@@ -206,7 +206,7 @@ describe('the simulator', () => {
     )
     render(<RouterProvider router={router} />)
     await screen.findByTestId('page-login')
-    await waitFor(() => expect(screen.getByTestId('login-demo-operators')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('page-login')).toHaveAttribute('data-presentation', 'false')) // D58: the disclosure never exists; the read of the simulator's own (off) setting is the attribute
     expect(follow.installed).toBe(0)
     expect(flag()).toBeNull()
   })

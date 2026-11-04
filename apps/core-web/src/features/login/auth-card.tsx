@@ -324,12 +324,10 @@ export function AuthCard({
                 )}
               </Form>
 
-              {/* WS-9/WS-10 (AC-C-47): restored 2026-11-03 — the disclosure was lost in the
-                  RB-9 WIP checkpoint (f85e9c01); the controller's `fill`, the vocabulary and
-                  the tests never left. Hidden in presentation mode as ruled. */}
-              {presentation ? null : (
-                <DemoOperators operators={operators} disabled={formDisabled} onPick={fill} live={isLive} />
-              )}
+              {/* D58 (2026-11-03, principal: "lakukan sekarang" atas opsi yang direkomendasikan): the
+                  "Demo operators" disclosure is REMOVED from a shipped unit — it must not advertise
+                  seeded identities or their password. The WS-9/WS-10 live tests now demand absence.
+                  ModeSelector and the offline Use-Simulated escape stay: they are not identity surfaces. */}
 
               {/* §3.2/§3.3 MD-4 (AC-C-23): restored 2026-11-03 with DemoOperators — the call
                   site was lost in the same RB-9 WIP checkpoint; the component file never was. */}
@@ -474,87 +472,6 @@ function LiveTrustLine({ coreLink }: { coreLink: CoreLinkView }) {
         {t('login.live.trustTooltip')}
       </Tooltip.Content>
     </Tooltip>
-  )
-}
-
-/**
- * "Demo operators" (§14.8, D25, D28/Q14): collapsed by default; each row fills the form with the
- * operator's username and the published demo password. Roles are a demo assumption (book gap G1).
- *
- * `live` (WS-9; conditions C1 and C2 of SR-63): one plain sentence above everything says what the
- * disclosure is, and no row shows a role chip or anything else the Core server holds: a role is
- * server data and may have changed. The published password is accepted by the Core server only
- * while every listener is on loopback (C4).
- */
-
-function DemoOperators({
-  operators,
-  disabled,
-  onPick,
-  live,
-}: {
-  operators: readonly SimOperator[]
-  disabled: boolean
-  onPick: (operator: SimOperator) => void
-  live: boolean
-}) {
-  const { t } = useTranslation()
-  return (
-    <Disclosure className="dems-login-demo" data-testid="login-demo-operators">
-      <Disclosure.Heading>
-        <Disclosure.Trigger className="dems-login-demo-trigger">
-          <Users size={16} aria-hidden="true" />
-          <span className="text-body">{t('login.demoOperators.title')}</span>
-          <Disclosure.Indicator className="ml-auto" />
-        </Disclosure.Trigger>
-      </Disclosure.Heading>
-      <Disclosure.Content>
-        <Disclosure.Body className="dems-login-demo-body">
-          {live ? (
-            <p className="dems-login-demo-notice" data-testid="login-demo-notice">
-              <span className="text-caption">{t('login.live.demoNotice')}</span>
-            </p>
-          ) : null}
-          <p className="text-foreground-2">
-            <span className="text-caption">{t('login.demoOperators.hint')}</span>
-          </p>
-          <p className="text-muted">
-            <span className="text-caption font-mono">{t('login.demoOperators.password', { password: DEMO_OPERATOR_PASSWORD })}</span>
-          </p>
-          <ul className="dems-login-demo-list">
-            {operators.map((operator) => (
-              <li key={operator.id}>
-                <Button
-                  variant="ghost"
-                  fullWidth
-                  className="dems-login-operator"
-                  onPress={() => onPick(operator)}
-                  isDisabled={disabled}
-                  data-testid={`login-operator-${operator.username}`}
-                >
-                  <span className="dems-login-operator-initials" aria-hidden="true">
-                    {operator.initials}
-                  </span>
-                  <span className="dems-login-operator-text">
-                    <span className="text-foreground">
-                      <span className="text-body">{operator.displayName}</span>
-                    </span>
-                    <span className="text-muted">
-                      <span className="text-caption font-mono">{operator.username}</span>
-                    </span>
-                  </span>
-                  {live ? null : (
-                    <Chip size="sm" variant="soft" color={roleColor(operator.role)} className="ml-auto">
-                      <Chip.Label>{t(`common.roles.${operator.role}`)}</Chip.Label>
-                    </Chip>
-                  )}
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </Disclosure.Body>
-      </Disclosure.Content>
-    </Disclosure>
   )
 }
 
