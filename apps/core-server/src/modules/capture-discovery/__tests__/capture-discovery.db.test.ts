@@ -40,7 +40,7 @@ import { useFurtherDatabase, useTestDatabase } from '../../../../test/helpers/db
 import { capturePlan, fakeLauncher, manualCaptureTimers } from '../../../../test/support/capture';
 import { linkProblems, readHead, readTrail, verifyTrail } from '../../../../test/support/core';
 import { createFakeOnvifStub, freeFakeOnvifPorts, type FakeOnvifDiscoveryMode, type FakeOnvifStub } from '../../../../test/support/fake-onvif-stub';
-import { SIGN_OUT, TOUCH, WEB_ORIGIN, signInOnWeb, type IdentityApp } from '../../../../test/support/identity';
+import { SIGN_OUT, TOUCH, WEB_ORIGIN, signInOnWeb, type Headers, type IdentityApp } from '../../../../test/support/identity';
 import { createCaptureSupervisor, createSystemTimers } from '../../../capture';
 import { CaptureAdapterKind, DiscoveryNotRunError, createOnvifDiscoveryAdapter, type OnvifCandidate, type OnvifDiscoveryAdapter, type RegisteredLookup, type WsDiscoveryResult } from '../../../capture/adapters';
 import { WS_DISCOVERY_REPEAT_MS } from '../../../capture/adapters/camera/ws-discovery';
@@ -126,6 +126,8 @@ beforeAll(async () => {
   captureDiscoveryControl(server.app).provideAdapter((lookup) =>
     stub === null ? scripted(lookup) : createOnvifDiscoveryAdapter({ timers: systemWindow ? createSystemTimers() : windowClock.timers, newMessageId: randomUUID, registered: lookup, loopbackFixture: stub.addresses().discovery }),
   );
+  // The second permitted web session: see `otherCookie` above (the 0034 revocation left TECHNICIAN the sole holder).
+  otherCookie = (await signInOnWeb(server.identity, 'rina.wijaya')).cookie;
 });
 afterAll(async () => {
   await stub?.stop();
@@ -133,8 +135,19 @@ afterAll(async () => {
 });
 
 type Role = 'INVESTIGATOR' | 'SUPERVISOR' | 'TECHNICIAN';
-const start = (role: Role | null): Promise<LightMyRequestResponse> => server.post(role, DISCOVERY);
-const read = async (role: Role | null): Promise<CaptureDiscoveryStateBody> => (await server.get(role, DISCOVERY)).json<CaptureDiscoveryStateBody>();
+/** A caller of 93/94: a seeded role's session of the harness, or a raw cookie set of one's own. */
+type Caller = Role | Headers;
+/**
+ * SUPERVISOR's CAPTURE_CONFIG was REVOKED 2026-10-29 (PT GSP; migration 0034), so every
+ * "another permitted session" of this file is a SECOND web session of the installing technician
+ * (the pattern of `capture-config/camera-network`): the store and the bounds key on the SESSION,
+ * not on the operator, so another session of the same technician is another session.
+ */
+let otherCookie: Headers;
+const start = (caller: Caller | null): Promise<LightMyRequestResponse> =>
+  typeof caller === 'string' ? server.post(caller, DISCOVERY) : server.app.inject({ method: 'POST', url: DISCOVERY, headers: { ...caller, origin: WEB_ORIGIN } });
+const read = async (caller: Caller | null): Promise<CaptureDiscoveryStateBody> =>
+  (await (typeof caller === 'string' ? server.get(caller, DISCOVERY) : server.app.inject({ method: 'GET', url: DISCOVERY, headers: caller ?? {} }))).json<CaptureDiscoveryStateBody>();
 const searchRows = (rows: readonly AuditRow[]): AuditRow[] => rows.filter((row) => row.type === 'CAPTURE_DISCOVERY_SEARCHED');
 const emptyAlerts = (active?: boolean) =>
   server.engine.slice('alerts').filter((alert) => alert.kind === 'SYSTEM' && alert.params?.['reason'] === 'CAPTURE_DISCOVERY_EMPTY' && (active === undefined || alert.active === active));
@@ -157,6 +170,7 @@ async function settled(): Promise<void> {
 async function farLater(): Promise<void> {
   server.clock.advance(130_000);
   for (const role of ['INVESTIGATOR', 'SUPERVISOR', 'TECHNICIAN'] as const) expect((await server.post(role, TOUCH)).statusCode, `touch ${role}`).toBeLessThan(300);
+  expect((await server.app.inject({ method: 'POST', url: TOUCH, headers: { ...otherCookie, origin: WEB_ORIGIN } })).statusCode, 'touch other technician session').toBeLessThan(300);
 }
 
 /**
@@ -196,9 +210,9 @@ async function closeStubWindow(): Promise<void> {
 }
 
 /** One whole search on the scripted adapter: start, the window, its end. */
-async function search(role: Role, result: WsDiscoveryResult | Error): Promise<{ response: LightMyRequestResponse; body: CaptureDiscoverySearch }> {
+async function search(caller: Caller, result: WsDiscoveryResult | Error): Promise<{ response: LightMyRequestResponse; body: CaptureDiscoverySearch }> {
   const before = scriptedCalls;
-  const response = await start(role);
+  const response = await start(caller);
   expect(response.statusCode, response.body).toBe(202);
   await reachAdapter(before + 1);
   server.clock.advance(3_000);
@@ -225,8 +239,9 @@ describe('M4-DISC-TRIG-1: no search at boot, on a timer or on a read; one after 
     // Ten minutes: longer than every bound of a search but the hourly one, shorter than a session's idle limit.
     server.clock.advance(600_000);
     await server.drive(500);
-    for (const url of ['/api/v1/capture/config', '/api/v1/capture/devices', DISCOVERY]) expect((await server.get('SUPERVISOR', url)).statusCode, url).toBe(200);
-    expect(await read('SUPERVISOR')).toEqual(NONE);
+    // Since 0034 only the technician may read 94; 76 and 77 stay open to every role. The subject here is that NO read starts a search, whatever the role it is allowed to.
+    for (const url of ['/api/v1/capture/config', '/api/v1/capture/devices', DISCOVERY]) expect((await server.get('TECHNICIAN', url)).statusCode, url).toBe(200);
+    expect(await read('TECHNICIAN')).toEqual(NONE);
     await settled();
     expect([control.searchesStarted(), scriptedCalls]).toEqual([0, 0]);
     expect(searchRows(await server.since(trail))).toEqual([]);
@@ -234,7 +249,7 @@ describe('M4-DISC-TRIG-1: no search at boot, on a timer or on a read; one after 
   });
 });
 
-describe('M4-DISC-RBAC-1: CAPTURE_CONFIG is SUPERVISOR and TECHNICIAN', () => {
+describe('M4-DISC-RBAC-1: CAPTURE_CONFIG is the TECHNICIAN\'s alone since the 0034 revocation', () => {
   it('no session: 401; INVESTIGATOR: 403 NOT_PERMITTED with ONE ACCESS_DENIED row per call and 0 searches, on 93 and on 94', async () => {
     const trail = await server.trailLength();
     expect(outcome(await start(null))).toEqual([401, 'NOT_SIGNED_IN']);
@@ -275,10 +290,10 @@ describe('operation 93 and 94 through the real pipeline (M4-AUD-1, M4-DISC-LIFE-
     const again = await start('TECHNICIAN');
     expect([again.statusCode, again.json<CaptureDiscoverySearch>()]).toMatchObject([200, { searchId: 'DSC-000001', state: 'RUNNING', created: false }]);
     expect(validateCoreApiResponse('startCaptureDiscovery', 200, again.json())).toEqual({ ok: true });
-    const other = await start('SUPERVISOR');
+    const other = await start(otherCookie);
     expect([outcome(other), errorOf(other).details]).toEqual([[409, 'INVALID_STATE'], { reason: 'DISCOVERY_IN_PROGRESS' }]);
     expect(validateCoreApiResponse('startCaptureDiscovery', 409, other.json())).toEqual({ ok: true });
-    expect(await read('SUPERVISOR')).toEqual(NONE);
+    expect(await read(otherCookie)).toEqual(NONE);
     expect(scriptedCalls).toBe(1);
     expect(searchRows(await server.since(trail))).toEqual([]);
 
@@ -326,8 +341,8 @@ describe('operation 93 and 94 through the real pipeline (M4-AUD-1, M4-DISC-LIFE-
     expect(emptyAlerts(true)).toEqual([]);
   });
 
-  it('owner only: a SUPERVISOR in another session reads `search: null`; so does the SAME operator in a second session; the owner still reads its list', async () => {
-    expect(await read('SUPERVISOR')).toEqual(NONE);
+  it('owner only: another permitted session reads `search: null` — since 0034 that means a SECOND session of the technician; so does a third one; the owner still reads its list', async () => {
+    expect(await read(otherCookie)).toEqual(NONE);
     const second = await signInOnWeb(server.identity, 'rina.wijaya');
     const sameOperator = await server.app.inject({ method: 'GET', url: DISCOVERY, headers: second.cookie });
     expect([sameOperator.statusCode, sameOperator.json()]).toEqual([200, NONE]);
@@ -347,7 +362,7 @@ describe('operation 93 and 94 through the real pipeline (M4-AUD-1, M4-DISC-LIFE-
     const own = await start('TECHNICIAN');
     expect([outcome(own), errorOf(own).details, own.headers['retry-after']]).toEqual([[429, 'RATE_LIMITED'], { reason: 'DISCOVERY_RATE_LIMITED', retryInMs: 7_000 }, '7']);
     expect(validateCoreApiResponse('startCaptureDiscovery', 429, own.json())).toEqual({ ok: true });
-    const core = await start('SUPERVISOR');
+    const core = await start(otherCookie);
     expect([outcome(core), errorOf(core).details, core.headers['retry-after']]).toEqual([[429, 'RATE_LIMITED'], { reason: 'DISCOVERY_RATE_LIMITED', retryInMs: 2_000 }, '2']);
     await settled();
     expect(scriptedCalls).toBe(calls);
@@ -356,7 +371,7 @@ describe('operation 93 and 94 through the real pipeline (M4-AUD-1, M4-DISC-LIFE-
     expect((await read('TECHNICIAN')).search?.searchId).toBe('DSC-000001');
     // At the Core's bound the other session's search starts (5 s after the last start).
     server.clock.advance(2_000);
-    const allowed = await search('SUPERVISOR', found([answer('192.0.2.21')]));
+    const allowed = await search(otherCookie, found([answer('192.0.2.21')]));
     expect(allowed.body.searchId).toBe('DSC-000002');
     expect(searchRows(await server.since(trail)).map((row) => row.details['searchId'])).toEqual(['DSC-000002']);
   });
@@ -385,7 +400,7 @@ describe('operation 93 and 94 through the real pipeline (M4-AUD-1, M4-DISC-LIFE-
 
     // A search of ANOTHER session with a responder resolves it; a registered-only answer is not empty either.
     server.clock.advance(20_000);
-    await search('SUPERVISOR', found([answer('127.0.0.1', { adapterKind: CaptureAdapterKind.FAKE, serviceAddress: 'http://127.0.0.1:8554/onvif/device_service' })]));
+    await search(otherCookie, found([answer('127.0.0.1', { adapterKind: CaptureAdapterKind.FAKE, serviceAddress: 'http://127.0.0.1:8554/onvif/device_service' })]));
     expect(emptyAlerts(true)).toEqual([]);
     expect(emptyAlerts(false)).toHaveLength(1);
 
@@ -444,7 +459,7 @@ describe('the second trigger: the pre-check\'s one search (R-9 AC-1 (b); D80(2);
     const investigator = { operatorId: server.operatorId('INVESTIGATOR'), authSessionId: 'AS-PRECHECK-OWNER', deviceId: null };
     // A manual search of the technician first: every spacing bound now holds for a manual start.
     await search('TECHNICIAN', found([answer('192.0.2.40')]));
-    expect(outcome(await start('SUPERVISOR'))).toEqual([429, 'RATE_LIMITED']);
+    expect(outcome(await start(otherCookie))).toEqual([429, 'RATE_LIMITED']);
 
     const calls = scriptedCalls;
     const run = seam.runPrecheckSearch(investigator, { sessionId: 'SES-20261001-0001' });
@@ -568,10 +583,11 @@ describe('M4-DISC-STUB-1 (run 1 and run 2), M4-SEC-DISC-2 shape: the real adapte
     await server.owner.query("UPDATE capture_devices SET onvif_uuid = $1 WHERE id = 'CAM-02'", [reference]);
     try {
       const registry = await registryDigest();
-      expect((await start('SUPERVISOR')).statusCode).toBe(202);
+      // Only the technician holds CAPTURE_CONFIG since 0034: the owner's own session reads the REGISTERED match.
+      expect((await start('TECHNICIAN')).statusCode).toBe(202);
       await openStubWindow();
       await closeStubWindow();
-      const state = await read('SUPERVISOR');
+      const state = await read('TECHNICIAN');
       expect(state.search).toMatchObject({ responderCount: 1, newCount: 0, registeredCount: 1 });
       expect(state.candidates.map((candidate) => [candidate.status, candidate.deviceId, candidate.endpointRef])).toEqual([['REGISTERED', 'CAM-02', reference]]);
       expect(await registryDigest()).toEqual(registry);
@@ -616,9 +632,9 @@ describe('the whole flow once on the booted Core, against the fake ONVIF stub wi
       expect(tested.json()).toMatchObject({ candidateId: candidate.candidateId, outcome: 'REACHABLE', authenticated: true });
       expect(validateCoreApiResponse('testCaptureCandidateConnection', 200, tested.json())).toEqual({ ok: true });
       expect((await read('TECHNICIAN')).candidates[0]).toMatchObject({ adoptable: true, lastTest: { outcome: 'REACHABLE', authenticated: true } });
-      // Another session cannot act on the candidate: one 404, and nothing reached the stub for it.
+      // Another session cannot act on the candidate (a second technician session: the only other permitted one since 0034): one 404, and nothing reached the stub for it.
       const requests = stub.requestLog().length;
-      expect(outcome(await server.post('SUPERVISOR', `${base}/test`, { credential: account }))).toEqual([404, 'NOT_FOUND']);
+      expect(outcome(await server.app.inject({ method: 'POST', url: `${base}/test`, headers: { ...otherCookie, origin: WEB_ORIGIN }, payload: { credential: account } }))).toEqual([404, 'NOT_FOUND']);
       expect(stub.requestLog().length).toBe(requests);
 
       // ADOPT (96): the device, its credential and the audit rows in one unit.
@@ -792,7 +808,7 @@ describe('M4-DISC-REC-1 (c) and M4-SEC-DISC-3, booted-Core form: searches during
 });
 
 describe('the answer on a real listener (an ephemeral port on loopback)', () => {
-  it('operation 94 over HTTP: 401 without a cookie, 200 with the supervisor\'s session, the five headers of the server', async () => {
+  it('operation 94 over HTTP: 401 without a cookie, 200 with the technician session (the only holder of CAPTURE_CONFIG since 0034), the five headers of the server', async () => {
     // The guard stays on (pass D1a, D134; pass C2 narrowed it so the HTTP client's way of naming loopback passes).
     expect(guard.refused()).toEqual([]);
     await server.app.listen({ host: '127.0.0.1', port: 0 });
@@ -807,7 +823,7 @@ describe('the answer on a real listener (an ephemeral port on loopback)', () => 
         }).on('error', reject);
       });
     expect((await call({})).status).toBe(401);
-    const session = await signInOnWeb(server.identity, 'andi.pratama');
+    const session = await signInOnWeb(server.identity, 'rina.wijaya');
     const answered = await call(session.cookie);
     expect(answered.status).toBe(200);
     expect(answered.requestId).toEqual(expect.any(String));

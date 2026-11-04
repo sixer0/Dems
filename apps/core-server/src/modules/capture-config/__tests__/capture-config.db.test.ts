@@ -92,7 +92,7 @@ describe('operations 76 and 77: the reads answer the committed slices', () => {
   });
 });
 
-describe('operations 78, 79, 80: SUPERVISOR and TECHNICIAN edit, audited; INVESTIGATOR is refused, audited', () => {
+describe('operations 78, 79, 80: TECHNICIAN edits, audited; SUPERVISOR (`0034`) and INVESTIGATOR are refused, audited', () => {
   it('an edit is one committed unit: the answer, the stored row, ONE CAPTURE_CONFIG_CHANGED row and ONE publication of slice captureConfig', async () => {
     forgetCounters(server.identity);
     await expectStoredEqualsCommitted();
@@ -128,25 +128,27 @@ describe('operations 78, 79, 80: SUPERVISOR and TECHNICIAN edit, audited; INVEST
     expect(server.engine.slice('captureConfig').mics.map((mic) => mic.inputId)).toEqual(['MIC-01', 'MIC-02']);
     console.info(`[row66] stored selector reads its mic rows back in another order than the engine holds: ${String(storedMicOrderDiffers)}`);
 
-    // 78 as SUPERVISOR: the two cameras change tracks in one edit, two lines, two rows, one publication.
+    // 78 as TECHNICIAN — the ONE editor since `0034` (OD-10 revoked SUPERVISOR's CAPTURE_CONFIG on
+    // 2026-10-29: the topology is the installing technician's layer, the supervisor keeps the reads).
+    // The two cameras change tracks in one edit, two lines, two rows, one publication.
     before = await server.trailLength();
     publications = selectorPublications().length;
-    const swapped = await server.post('SUPERVISOR', CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }] });
+    const swapped = await server.post('TECHNICIAN', CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }] });
     expect(swapped.statusCode).toBe(200);
     expect(validateCoreApiResponse('updateCaptureConfig', 200, bodyOf(swapped))).toEqual({ ok: true });
     rows = await server.since(before);
     expect(rows.map((row) => [row.type, row.actorId, row.details])).toEqual([
-      ['CAPTURE_CONFIG_CHANGED', operatorId('SUPERVISOR'), { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-01', deviceId: 'CAM-02', from: 'CAM-01', to: 'CAM-02', permission: 'CAPTURE_CONFIG' }],
-      ['CAPTURE_CONFIG_CHANGED', operatorId('SUPERVISOR'), { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-02', deviceId: 'CAM-01', from: 'CAM-02', to: 'CAM-01', permission: 'CAPTURE_CONFIG' }],
+      ['CAPTURE_CONFIG_CHANGED', operatorId('TECHNICIAN'), { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-01', deviceId: 'CAM-02', from: 'CAM-01', to: 'CAM-02', permission: 'CAPTURE_CONFIG' }],
+      ['CAPTURE_CONFIG_CHANGED', operatorId('TECHNICIAN'), { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-02', deviceId: 'CAM-01', from: 'CAM-02', to: 'CAM-01', permission: 'CAPTURE_CONFIG' }],
     ]);
     expect(selectorPublications()).toHaveLength(publications + 1);
     await expectStoredEqualsCommitted();
 
-    // 79 as SUPERVISOR, after 78 gave VIDEO-01 a second profile (one camera on both tracks, OD-05).
-    expect(outcome(await server.post('SUPERVISOR', cameraSource('CAM-01'), { trackId: 'VIDEO-01' }))).toEqual([422, 'INVALID_INPUT']);
-    expect((await server.post('SUPERVISOR', CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_720P25' }] })).statusCode).toBe(200);
+    // 79 as TECHNICIAN, after 78 gave VIDEO-01 a second profile (one camera on both tracks, OD-05).
+    expect(outcome(await server.post('TECHNICIAN', cameraSource('CAM-01'), { trackId: 'VIDEO-01' }))).toEqual([422, 'INVALID_INPUT']);
+    expect((await server.post('TECHNICIAN', CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_720P25' }] })).statusCode).toBe(200);
     before = await server.trailLength();
-    const source = await server.post('SUPERVISOR', cameraSource('CAM-02'), { trackId: 'VIDEO-02' });
+    const source = await server.post('TECHNICIAN', cameraSource('CAM-02'), { trackId: 'VIDEO-02' });
     expect(source.statusCode).toBe(200);
     expect(validateCoreApiResponse('setCaptureCameraSource', 200, bodyOf(source))).toEqual({ ok: true });
     expect(selectorOf(source).cameras.map((camera) => [camera.trackId, camera.deviceId, camera.profile])).toEqual([
@@ -154,7 +156,7 @@ describe('operations 78, 79, 80: SUPERVISOR and TECHNICIAN edit, audited; INVEST
       ['VIDEO-02', 'CAM-02', 'H264_1080P25'],
     ]);
     expect((await server.since(before)).map((row) => [row.type, row.actorId, row.details])).toEqual([
-      ['CAPTURE_CONFIG_CHANGED', operatorId('SUPERVISOR'), { operationId: 'setCaptureCameraSource', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-02', deviceId: 'CAM-02', from: 'CAM-01', to: 'CAM-02', permission: 'CAPTURE_CONFIG' }],
+      ['CAPTURE_CONFIG_CHANGED', operatorId('TECHNICIAN'), { operationId: 'setCaptureCameraSource', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-02', deviceId: 'CAM-02', from: 'CAM-01', to: 'CAM-02', permission: 'CAPTURE_CONFIG' }],
     ]);
     await expectStoredEqualsCommitted();
 
@@ -174,7 +176,8 @@ describe('operations 78, 79, 80: SUPERVISOR and TECHNICIAN edit, audited; INVEST
     const revision = server.engine.revision;
     const current = selectorOf(await server.get('SUPERVISOR', CONFIG));
     const primaryInput = current.mics.find((mic) => mic.role === 'PRIMARY')?.inputId ?? '';
-    const same = await server.post('SUPERVISOR', primaryMic(primaryInput));
+    // The write is TECHNICIAN's (`0034`); the read above stays the supervisor's - the revocation kept 76 and 77.
+    const same = await server.post('TECHNICIAN', primaryMic(primaryInput));
     expect(same.statusCode).toBe(200);
     expect(selectorOf(same)).toEqual(current);
     expect(await server.trailLength()).toBe(before);
@@ -248,7 +251,9 @@ describe('M4-LOCK-1: the selector is locked while a session is open', () => {
       ['setCaptureCameraSource', cameraSource('CAM-01'), { trackId: 'VIDEO-01' }],
       ['updateCaptureConfig', CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02', profile: 'H264_720P25' }] }],
     ];
-    for (const role of ['SUPERVISOR', 'TECHNICIAN'] as const) {
+    // TECHNICIAN alone: SUPERVISOR lost CAPTURE_CONFIG with `0034`, and the permission guard answers
+    // BEFORE the lock - its 403 is an ACCESS_DENIED row, not the state refusal this case is about.
+    for (const role of ['TECHNICIAN'] as const) {
       for (const [operationId, url, payload] of edits) {
         const response = await server.post(role, url, payload);
         expect(outcome(response), `${role} ${operationId}`).toEqual([409, 'CAPTURE_CONFIG_LOCKED']);
@@ -278,7 +283,7 @@ describe('M4-LOCK-1: the selector is locked while a session is open', () => {
     await server.engine.command(investigator, 'cancel');
     expect(server.engine.slice('session')).toBeNull();
     const after = await server.trailLength();
-    const accepted = await server.post('SUPERVISOR', primaryMic(primaryInput));
+    const accepted = await server.post('TECHNICIAN', primaryMic(primaryInput));
     expect(accepted.statusCode).toBe(200);
     expect(selectorOf(accepted).locked).toBe(false);
     expect(changed(await server.since(after))).toHaveLength(1);
@@ -1200,9 +1205,21 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
           expect(await storedSlots(owner), label).toEqual(rowWithout(cleared));
         }
       }
-      // The role table of the contract (OD-10): SUPERVISOR and TECHNICIAN hold the permission, INVESTIGATOR does not - on either kind of client.
-      expect(table).toEqual(['INVESTIGATOR WEB 403', 'SUPERVISOR WEB 200', 'TECHNICIAN WEB 200', 'INVESTIGATOR DEV-0001 403', 'SUPERVISOR DEV-0001 200', 'TECHNICIAN DEV-0001 200']);
-      // Four allowed calls cleared the four slots, one each: every slot has its stored row (the closed keys were held per row above).
+      // The role table of the contract after `0034` (OD-10 as amended 2026-10-29): TECHNICIAN alone holds
+      // CAPTURE_CONFIG - SUPERVISOR and INVESTIGATOR are refused on either kind of client.
+      expect(table).toEqual(['INVESTIGATOR WEB 403', 'SUPERVISOR WEB 403', 'TECHNICIAN WEB 200', 'INVESTIGATOR DEV-0001 403', 'SUPERVISOR DEV-0001 403', 'TECHNICIAN DEV-0001 200']);
+      // Two allowed calls cleared two slots, one each. The two remaining slots are cleared by TECHNICIAN alone
+      // (the one editor since `0034`), so every slot still has its ONE stored row with the closed keys.
+      expect(cleared).toEqual(['VIDEO-01', 'VIDEO-02']);
+      for (const slot of [...free] as Slot[]) {
+        const beforeSlot = (await readTrail(owner)).length;
+        const answer = await post({ kind: 'OPERATOR', operatorId: operatorIdOf('TECHNICIAN'), sessionId: 'row158-session', deviceId: null, role: 'TECHNICIAN', permissions: ROLE_PERMISSIONS.TECHNICIAN }, { unassign: [slot] });
+        expect(answer.statusCode, slot).toBe(200);
+        const rows = await rowsFrom(beforeSlot);
+        expect(rows.map((row) => [row.type, row.details]), slot).toEqual([['CAPTURE_CONFIG_CHANGED', clearedRow(slot)]]);
+        expectClosedKeys(rows[0]?.details ?? {});
+        cleared.push(slot);
+      }
       expect(cleared).toEqual([...SLOTS]);
       expect(await storedSlots(owner)).toEqual(rowWithout(SLOTS));
 

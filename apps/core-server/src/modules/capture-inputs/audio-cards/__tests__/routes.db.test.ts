@@ -70,6 +70,8 @@ let owner: Pool;
 let host: FakeHost;
 let supervisor: Headers;
 let technician: Headers;
+/** A second web console session of the TECHNICIAN: SUPERVISOR's CAPTURE_CONFIG was REVOKED 2026-10-29 (PT GSP; migration 0034), so the file's second permitted web caller is another session of the installing technician (the pattern of `capture-config/camera-network`). */
+let otherTechnician: Headers;
 let investigator: Headers;
 let technicianOnTablet: Headers;
 /** The clock of the listing gate alone: moving it expires no operator session. */
@@ -134,6 +136,7 @@ beforeAll(async () => {
   const tablet = guard.devices.pair(TABLET);
   supervisor = await webOperator(guard, SUPERVISOR.username);
   technician = await webOperator(guard, TECHNICIAN.username);
+  otherTechnician = await webOperator(guard, TECHNICIAN.username);
   investigator = await webOperator(guard, INVESTIGATOR.username);
   technicianOnTablet = await deviceOperator(guard, tablet, TECHNICIAN.username);
   await guard.app.pipeline.drain();
@@ -166,7 +169,7 @@ describe('the database and the Core this file runs on', () => {
     expect(control.ready()).toBe(false);
     const from = (await trail()).length;
     const before = await stored();
-    for (const session of [supervisor, technician]) {
+    for (const session of [otherTechnician, technician]) {
       expect(reasonOf(await post(session, SEARCH))).toEqual([503, 'NOT_READY', 'DISCOVERY_NOT_READY']);
       expect(reasonOf(await post(session, REGISTER, body(DUO.cardId, 1)))).toEqual([503, 'NOT_READY', 'DISCOVERY_NOT_READY']);
     }
@@ -206,7 +209,7 @@ describe('the database and the Core this file runs on', () => {
 });
 
 describe('who may call: CAPTURE_CONFIG on a web console session, and nobody else', () => {
-  it('401 without a session; 403 NOT_PERMITTED for a role without the permission; 403 WEB_CONSOLE_ONLY for a tablet session, also with a malformed body: one ACCESS_DENIED row each, the host is never read', async () => {
+  it('401 without a session; 403 NOT_PERMITTED for the INVESTIGATOR and for the SUPERVISOR, whose CAPTURE_CONFIG was REVOKED on 2026-10-29; 403 WEB_CONSOLE_ONLY for a tablet session, also with a malformed body: one ACCESS_DENIED row each, the host is never read', async () => {
     const listings = host.listings();
     const before = await stored();
     for (const [url, payload] of [
@@ -218,15 +221,20 @@ describe('who may call: CAPTURE_CONFIG on a web console session, and nobody else
       expect(reasonOf(await post(null, url, payload)), operationId).toEqual([401, 'NOT_SIGNED_IN', null]);
       expect(await since(from), operationId).toEqual([]);
 
-      const denied = await post(investigator, url, payload);
-      expect([denied.statusCode, errorOf(denied).code, errorOf(denied).details?.['permission']], operationId).toEqual([403, 'NOT_PERMITTED', 'CAPTURE_CONFIG']);
-      let rows = await since(from);
-      expect(rows.map((row) => row.type), operationId).toEqual(['ACCESS_DENIED']);
-      expect(rows[0], operationId).toMatchObject({ actorId: INVESTIGATOR.id, details: { operationId, permission: 'CAPTURE_CONFIG' } });
+      // SUPERVISOR's CAPTURE_CONFIG was REVOKED 2026-10-29 by the product principal (PT GSP;
+      // migration 0034): the capture topology is the installing technician's layer alone.
+      for (const [deniedSession, deniedOperator] of [[investigator, INVESTIGATOR], [supervisor, SUPERVISOR]] as const) {
+        from = (await trail()).length;
+        const denied = await post(deniedSession, url, payload);
+        expect([denied.statusCode, errorOf(denied).code, errorOf(denied).details?.['permission']], `${operationId} ${deniedOperator.role}`).toEqual([403, 'NOT_PERMITTED', 'CAPTURE_CONFIG']);
+        const deniedRows = await since(from);
+        expect(deniedRows.map((row) => row.type), operationId).toEqual(['ACCESS_DENIED']);
+        expect(deniedRows[0], operationId).toMatchObject({ actorId: deniedOperator.id, details: { operationId, permission: 'CAPTURE_CONFIG' } });
+      }
 
       from = (await trail()).length;
       expect(reasonOf(await post(technicianOnTablet, url, payload)), operationId).toEqual([403, 'NOT_PERMITTED', 'WEB_CONSOLE_ONLY']);
-      rows = await since(from);
+      const rows = await since(from);
       expect(rows.map((row) => row.type), operationId).toEqual(['ACCESS_DENIED']);
       expect(rows[0], operationId).toMatchObject({ actorId: TECHNICIAN.id, deviceId: TABLET, details: { operationId, reason: 'WEB_CONSOLE_ONLY' } });
     }
@@ -234,9 +242,9 @@ describe('who may call: CAPTURE_CONFIG on a web console session, and nobody else
     expect(reasonOf(await post(technicianOnTablet, REGISTER, `{"cardId": "${DUO.cardId}"`))).toEqual([403, 'NOT_PERMITTED', 'WEB_CONSOLE_ONLY']);
     expect(host.listings()).toBe(listings);
     expect(await stored()).toEqual(before);
-    // CONTROL: the same TECHNICIAN on the web console, and the SUPERVISOR, pass both rules.
+    // CONTROL: both web console sessions of the same TECHNICIAN pass both rules (the SUPERVISOR lost CAPTURE_CONFIG on 2026-10-29, above).
     expect((await post(technician, SEARCH)).statusCode).toBe(200);
-    expect((await post(supervisor, SEARCH)).statusCode).toBe(200);
+    expect((await post(otherTechnician, SEARCH)).statusCode).toBe(200);
     expect(host.listings()).toBe(listings + 2);
   });
 });
@@ -267,7 +275,7 @@ describe('operation 98 searchCaptureAudioCards', () => {
   it('a host without a card: 200 with an empty list and a row with 0 responders', async () => {
     host.use(NO_CARD);
     const from = (await trail()).length;
-    const response = await post(supervisor, SEARCH);
+    const response = await post(otherTechnician, SEARCH);
     expect([response.statusCode, response.json()]).toMatchObject([200, { cards: [], truncated: false }]);
     expect((await since(from)).map((row) => [row.type, row.details?.['responderCount']])).toEqual([['CAPTURE_DISCOVERY_SEARCHED', 0]]);
   });
@@ -280,8 +288,8 @@ describe('operation 98 searchCaptureAudioCards', () => {
     // The first request is inside its listing once the host was asked.
     for (let turn = 0; turn < 200 && host.listings() === listings; turn += 1) await new Promise((resolve) => setTimeout(resolve, 5));
     expect(host.listings()).toBe(listings + 1);
-    expect(reasonOf(await post(supervisor, SEARCH))).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_SEARCH_IN_PROGRESS']);
-    expect(reasonOf(await post(supervisor, REGISTER, body(DUO.cardId, 1)))).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_SEARCH_IN_PROGRESS']);
+    expect(reasonOf(await post(otherTechnician, SEARCH))).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_SEARCH_IN_PROGRESS']);
+    expect(reasonOf(await post(otherTechnician, REGISTER, body(DUO.cardId, 1)))).toEqual([409, 'INVALID_STATE', 'AUDIO_CARD_SEARCH_IN_PROGRESS']);
     release();
     expect((await running).statusCode).toBe(200);
     expect(host.listings()).toBe(listings + 1);
@@ -289,7 +297,7 @@ describe('operation 98 searchCaptureAudioCards', () => {
     expect(await usbMicrophones()).toEqual([]);
 
     // The spacing: `post` moves the gate's clock one step before each call; taken back to 2 s short of the interval, the search is refused.
-    expect((await post(supervisor, SEARCH)).statusCode).toBe(200);
+    expect((await post(otherTechnician, SEARCH)).statusCode).toBe(200);
     const rows = (await trail()).length;
     const back = GATE_STEP_MS - CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS + 2_000;
     gateClock -= back;
@@ -339,7 +347,7 @@ describe('operation 99 registerCaptureAudioInput', () => {
     await owner.query("UPDATE public.capture_devices SET enabled = false WHERE id = 'MIC-03'");
     const from = (await trail()).length;
     const before = await stored();
-    const response = await post(supervisor, REGISTER, body(SIX.cardId, 4));
+    const response = await post(otherTechnician, REGISTER, body(SIX.cardId, 4));
     expect(response.statusCode).toBe(200);
     expect(validateCoreApiResponse('registerCaptureAudioInput', 200, response.json())).toMatchObject({ ok: true });
     expect(response.json()).toEqual({ deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 4, channelCount: 6, releasedDeviceId: null });
@@ -347,7 +355,7 @@ describe('operation 99 registerCaptureAudioInput', () => {
     expect(await usbMicrophones()).toEqual(['MIC-03']);
     // ONE device in the engine too: the action enabled the registered one and appended none.
     expect(guard.app.engine.state().captureDevices.devices.filter((device) => device.adapter === 'USB_AUDIO').map((device) => [device.id, device.online])).toEqual([['MIC-03', true]]);
-    expect((await owner.query("SELECT d.enabled, i.updated_by FROM public.capture_devices d JOIN public.capture_audio_inputs i ON i.device_id = d.id WHERE d.id = 'MIC-03'")).rows).toEqual([{ enabled: true, updated_by: SUPERVISOR.id }]);
+    expect((await owner.query("SELECT d.enabled, i.updated_by FROM public.capture_devices d JOIN public.capture_audio_inputs i ON i.device_id = d.id WHERE d.id = 'MIC-03'")).rows).toEqual([{ enabled: true, updated_by: TECHNICIAN.id }]);
     expect((await since(from)).map((row) => [row.type, row.details])).toEqual([['CAPTURE_AUDIO_INPUT_CHANGED', { deviceId: 'MIC-03', change: 'REENABLED', inputNumber: 4, channelCount: 6, operationId: 'registerCaptureAudioInput', permission: 'CAPTURE_CONFIG' }]]);
 
     const search = await post(technician, SEARCH);
@@ -582,7 +590,7 @@ function row199Cases(): void {
     const second = await post(technician, REGISTER, body(DUO_MOVED_CARD_ID, 2));
     expect([second.statusCode, second.json()]).toEqual([200, { deviceId: 'MIC-06', change: 'REENABLED', inputNumber: 2, channelCount: 2, releasedDeviceId: null }]);
     const from = (await trail()).length;
-    const again = await post(supervisor, REGISTER, body(DUO_MOVED_CARD_ID, 1));
+    const again = await post(otherTechnician, REGISTER, body(DUO_MOVED_CARD_ID, 1));
     expect([again.statusCode, (again.json() as { change: string }).change]).toEqual([200, 'REENABLED']);
     expect([await changesSince(from), await enabled('MIC-04'), await identityRow('MIC-04')]).toEqual([[['MIC-04', 'REENABLED']], true, { usb_id: DUO.usbId, usb_serial: null, usb_port: OTHER_PORT }]);
     // The match is logged as a CODE of the rule, never a serial or a port; the port refusal and the no-identity refusal are gone.
@@ -677,7 +685,7 @@ describe('a session is open: 409 CAPTURE_CONFIG_LOCKED for both operations (idle
       [REGISTER, { ...body(DUO_MOVED_CARD_ID, 2), release: true }],
       [REGISTER, { ...body(DUO.cardId, 2), release: true }],
     ] as const) {
-      for (const session of [supervisor, technician]) expect(reasonOf(await post(session, url, payload)), url).toEqual([409, 'CAPTURE_CONFIG_LOCKED', null]);
+      for (const session of [otherTechnician, technician]) expect(reasonOf(await post(session, url, payload)), url).toEqual([409, 'CAPTURE_CONFIG_LOCKED', null]);
     }
     expect((await trail()).length).toBe(rows);
     expect(await stored()).toEqual(before);
@@ -686,7 +694,7 @@ describe('a session is open: 409 CAPTURE_CONFIG_LOCKED for both operations (idle
     await guard.app.pipeline.drain();
     // CONTROL: with no session open the same two calls are accepted. (Both inputs of the card of two inputs have their
     // microphones, MIC-04 and MIC-06 (D48), so the control registers a free input of the interface.)
-    expect((await post(supervisor, SEARCH)).statusCode).toBe(200);
+    expect((await post(otherTechnician, SEARCH)).statusCode).toBe(200);
     expect((await post(technician, REGISTER, body(SIX.cardId, 2))).statusCode).toBe(201);
     // T-12: the holder of the card of two inputs did not move.
     expect((await owner.query("SELECT input_number FROM public.capture_audio_inputs WHERE device_id = 'MIC-04'")).rows).toEqual([{ input_number: 1 }]);
@@ -702,7 +710,7 @@ describe('T-11 (D48): two registrations of two inputs of one card begun together
     const from = (await trail()).length;
     const before = await stored();
     const live = (): Promise<number> => count('capture_audio_inputs', `usb_id = '${TRIO.usbId}' AND retired_at IS NULL`);
-    const answers = await Promise.all([post(technician, REGISTER, body(TRIO.cardId, 1)), post(supervisor, REGISTER, body(TRIO.cardId, 2))]);
+    const answers = await Promise.all([post(technician, REGISTER, body(TRIO.cardId, 1)), post(otherTechnician, REGISTER, body(TRIO.cardId, 2))]);
     for (const answer of answers) if (answer.statusCode !== 201) expect([answer.statusCode, errorOf(answer).details?.['reason']]).toEqual([409, 'AUDIO_CARD_SEARCH_IN_PROGRESS']);
     const accepted = answers.filter((answer) => answer.statusCode === 201).length;
     expect(accepted).toBeGreaterThanOrEqual(1);
@@ -710,7 +718,7 @@ describe('T-11 (D48): two registrations of two inputs of one card begun together
     expect(await stored()).toEqual([before[0] + accepted, before[1] + accepted]);
     expect((await since(from)).filter((row) => row.type === 'CAPTURE_AUDIO_INPUT_CHANGED').map((row) => row.details?.['change'])).toEqual(Array.from({ length: accepted }, () => 'REGISTERED'));
     // Begun one after the other, the input the listing gate refused is a second microphone of the card.
-    for (const [index, answer] of answers.entries()) if (answer.statusCode !== 201) expect((await post(supervisor, REGISTER, body(TRIO.cardId, index + 1))).statusCode).toBe(201);
+    for (const [index, answer] of answers.entries()) if (answer.statusCode !== 201) expect((await post(otherTechnician, REGISTER, body(TRIO.cardId, index + 1))).statusCode).toBe(201);
     const rows = (await owner.query('SELECT device_id, input_number FROM public.capture_audio_inputs WHERE usb_id = $1 AND retired_at IS NULL ORDER BY input_number', [TRIO.usbId])).rows as { device_id: string; input_number: number }[];
     expect([rows.map((row) => row.input_number), new Set(rows.map((row) => row.device_id)).size]).toEqual([[1, 2], 2]);
     // The same input twice: its microphone again, no second one.

@@ -69,7 +69,6 @@ const logDir = mkdtempSync(join(tmpdir(), 'dems-row142-log-'));
 const errorLogFile = join(logDir, 'errors.log');
 
 const INVESTIGATOR = OPERATORS[0]!;
-const SUPERVISOR = OPERATORS[1]!;
 const TECHNICIAN = OPERATORS[2]!;
 const TABLET = 'DEV-0142';
 
@@ -84,7 +83,8 @@ let guard: GuardApp;
 let owner: Pool;
 let stub: FakeOnvifStub;
 let store: CoreCredentialStore;
-let supervisor: Headers;
+/** A second web console session of the TECHNICIAN: SUPERVISOR's CAPTURE_CONFIG was REVOKED 2026-10-29 (PT GSP; migration 0034), so the file's second permitted web caller is another session of the installing technician (the pattern of `capture-config/camera-network`). */
+let otherTechnician: Headers;
 let technician: Headers;
 let technicianOnTablet: Headers;
 let limits: ConnectionTestLimits;
@@ -250,8 +250,8 @@ beforeAll(async () => {
 
   await insertPairedDevice(owner, TABLET, TECHNICIAN.id, CLOCK_START);
   const tablet = guard.devices.pair(TABLET);
-  supervisor = await webOperator(guard, SUPERVISOR.username);
   technician = await webOperator(guard, TECHNICIAN.username);
+  otherTechnician = await webOperator(guard, TECHNICIAN.username);
   technicianOnTablet = await deviceOperator(guard, tablet, TECHNICIAN.username);
   await guard.app.pipeline.drain();
 });
@@ -349,7 +349,7 @@ describe('M4-CONN-OUT-1: the five outcomes through operation 95, on the stub', (
       forgetGuard();
       const id = candidate();
       const from = (await trail()).length;
-      const response = await post(supervisor, testPath(id), { credential });
+      const response = await post(technician, testPath(id), { credential });
       expect(response.statusCode, expected).toBe(200);
       expect(validateCoreApiResponse('testCaptureCandidateConnection', 200, response.json()), expected).toMatchObject({ ok: true });
       expect(response.json(), expected).toMatchObject({ candidateId: id, outcome: expected, authenticated: true, usableProfileCount: expected === 'REACHABLE' ? 1 : 0 });
@@ -367,7 +367,7 @@ describe('M4-CONN-OUT-1: the five outcomes through operation 95, on the stub', (
         ...(expected === 'AUTHENTICATION_FAILED' ? { guardTripped: false } : {}),
         permission: 'CAPTURE_CONFIG',
       });
-      expect(rows[0]).toMatchObject({ actorId: SUPERVISOR.id, deviceId: null });
+      expect(rows[0]).toMatchObject({ actorId: TECHNICIAN.id, deviceId: null });
       seen.push((response.json() as { outcome: string }).outcome);
     };
     await run('NORMAL', ACCOUNT, 'REACHABLE');
@@ -393,16 +393,16 @@ describe('M4-CONN-OUT-1: the five outcomes through operation 95, on the stub', (
 
   it('M4-SEC-CONN-4 / M4-SEC-AUD-1 through the route: the second refused credential carries guardTripped: true; the third test is 429 with 0 requests and no row', async () => {
     const id = candidate();
-    const first = await post(supervisor, testPath(id), { credential: WRONG });
+    const first = await post(technician, testPath(id), { credential: WRONG });
     expect(first.json()).toMatchObject({ outcome: 'AUTHENTICATION_FAILED', failedAttemptsRemaining: 1 });
     const from = (await trail()).length;
-    const second = await post(supervisor, testPath(id), { credential: WRONG });
+    const second = await post(technician, testPath(id), { credential: WRONG });
     expect(second.json()).toMatchObject({ outcome: 'AUTHENTICATION_FAILED', failedAttemptsRemaining: 0 });
     expect((await since(from)).map((row) => [row.type, row.details['guardTripped']])).toEqual([['CAPTURE_CONNECTION_TESTED', true]]);
     stub.resetLog();
     const rows = (await trail()).length;
-    // Another candidate, another operator session, the right password: the host is closed all the same.
-    const third = await post(technician, testPath(candidate()), { credential: ACCOUNT });
+    // Another candidate, another web session (a second technician session: the only other permitted one since the 0034 revocation), the right password: the host is closed all the same.
+    const third = await post(otherTechnician, testPath(candidate()), { credential: ACCOUNT });
     expect(reasonOf(third)).toEqual([429, 'RATE_LIMITED', 'CONNECTION_TEST_LOCKOUT_GUARD']);
     expect(Number(third.headers['retry-after'])).toBeGreaterThan(0);
     expect(stub.requestLog()).toEqual([]);
@@ -424,14 +424,14 @@ describe('M4-SEC-CRED-2: a credential outside the accepted characters is refused
       { username: `${ACCOUNT.username}${'a'.repeat(120)}`, secret: ACCOUNT.secret },
     ];
     for (const credential of bad) {
-      for (const response of [await post(supervisor, testPath(id), { credential }), await post(supervisor, adoptPath(id), { credential }), await post(supervisor, credentialPath('CAM-01'), credential)]) {
+      for (const response of [await post(technician, testPath(id), { credential }), await post(technician, adoptPath(id), { credential }), await post(technician, credentialPath('CAM-01'), credential)]) {
         expect([response.statusCode, errorOf(response).code]).toEqual([422, 'INVALID_INPUT']);
         for (const canary of CANARIES) expect(response.body.includes(canary)).toBe(false);
       }
     }
     // An unknown member (a typed address) is refused by the strict schema: no operation takes a target.
     for (const extra of [{ host: '192.0.2.9' }, { port: 80 }, { url: 'http://192.0.2.9/' }, { address: '192.0.2.9' }]) {
-      expect((await post(supervisor, testPath(id), { credential: ACCOUNT, ...extra })).statusCode).toBe(422);
+      expect((await post(technician, testPath(id), { credential: ACCOUNT, ...extra })).statusCode).toBe(422);
     }
     expect(stub.requestLog()).toEqual([]);
     expect((await trail()).length).toBe(rows);
@@ -444,12 +444,12 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
     // Task 4 rows 50 and 51: the two-half test. The stub ANNOUNCES H264 with the lower-case token `profile_1`; the stream is H.264.
     useStreamTester('H264');
     const id = candidate();
-    expect((await post(supervisor, testPath(id), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE', usableProfileCount: 1 });
+    expect((await post(technician, testPath(id), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE', usableProfileCount: 1 });
     // What the candidate keeps of the test is the Core's CODE, never the token.
     expect(held.get(id)?.candidate.lastTest?.profiles).toEqual(['H264_1080P25']);
     const before = await rowCounts();
     const from = (await trail()).length;
-    const response = await post(supervisor, adoptPath(id), { credential: ACCOUNT });
+    const response = await post(technician, adoptPath(id), { credential: ACCOUNT });
     expect(response.statusCode, guard.log.lines().filter((line) => Number(line['level']) >= 50).map((line) => JSON.stringify(line)).join('\n')).toBe(201);
     const adoption = response.json() as { deviceId: string; credentialSet: boolean; device: { id: string; kind: string } };
     expect(validateCoreApiResponse('adoptCaptureCandidate', 201, adoption)).toMatchObject({ ok: true });
@@ -484,8 +484,8 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
     }
     // A repeat: the candidate is registered; nothing is contacted and nothing is written.
     stub.resetLog();
-    expect(reasonOf(await post(supervisor, adoptPath(id), { credential: ACCOUNT }))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_ALREADY_REGISTERED']);
-    expect(reasonOf(await post(supervisor, testPath(id), { credential: ACCOUNT }))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_ALREADY_REGISTERED']);
+    expect(reasonOf(await post(technician, adoptPath(id), { credential: ACCOUNT }))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_ALREADY_REGISTERED']);
+    expect(reasonOf(await post(technician, testPath(id), { credential: ACCOUNT }))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_ALREADY_REGISTERED']);
     expect(stub.requestLog()).toEqual([]);
   });
 
@@ -496,11 +496,11 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
       held.get(id)!.candidate.camera = { ...held.get(id)!.candidate.camera, serviceAddress: stub.addresses().deviceServiceUrl };
       await owner.query("DELETE FROM public.capture_device_credentials WHERE device_id = 'CAM-03'");
       await dropCamera03();
-      expect((await post(supervisor, testPath(id), { credential: ACCOUNT })).json(), `round ${round}`).toMatchObject({ outcome: 'REACHABLE' });
+      expect((await post(technician, testPath(id), { credential: ACCOUNT })).json(), `round ${round}`).toMatchObject({ outcome: 'REACHABLE' });
       const before = await rowCounts();
       const from = (await trail()).length;
       failAfterDeviceInsert = true;
-      const failed = await post(supervisor, adoptPath(id), { credential: ACCOUNT });
+      const failed = await post(technician, adoptPath(id), { credential: ACCOUNT });
       failAfterDeviceInsert = false;
       expect(failed.statusCode, `round ${round}`).toBeGreaterThanOrEqual(500);
       for (const canary of CANARIES) expect(failed.body.includes(canary)).toBe(false);
@@ -509,7 +509,7 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
       expect((await since(from)).map((row) => row.type), `round ${round}`).toEqual(['CAPTURE_CONNECTION_TESTED']);
       expect(held.get(id)?.candidate.registeredDeviceId).toBeNull();
       // Control: without the injected failure the same candidate IS adopted - the count moves.
-      const adopted = await post(supervisor, adoptPath(id), { credential: ACCOUNT });
+      const adopted = await post(technician, adoptPath(id), { credential: ACCOUNT });
       expect(adopted.statusCode, `round ${round}`).toBe(201);
       expect(await rowCounts(), `round ${round}`).toEqual([before[0] + 1, before[1] + 1]);
     }
@@ -519,7 +519,7 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
     await owner.query("DELETE FROM public.capture_device_credentials WHERE device_id = 'CAM-03'");
     await dropCamera03();
     const id = candidate();
-    await post(supervisor, testPath(id), { credential: ACCOUNT });
+    await post(technician, testPath(id), { credential: ACCOUNT });
     const before = await rowCounts();
     // The statement itself, as dems_app, with a nonce the CHECK refuses: 23514, and the unit is gone.
     // Row T3 (review 060c T-05; survivor 12 of its section 6): the case took ANY failure - a registrar that failed for
@@ -547,35 +547,35 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
     await dropCamera03();
     const before = await rowCounts();
     const untested = candidate();
-    expect(reasonOf(await post(supervisor, adoptPath(untested), { credential: ACCOUNT }))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_NOT_TESTED']);
+    expect(reasonOf(await post(technician, adoptPath(untested), { credential: ACCOUNT }))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_NOT_TESTED']);
     const failed = candidate();
-    await post(supervisor, testPath(failed), { credential: WRONG });
+    await post(technician, testPath(failed), { credential: WRONG });
     forgetGuard();
-    expect(reasonOf(await post(supervisor, adoptPath(failed), { credential: ACCOUNT }))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_NOT_TESTED']);
+    expect(reasonOf(await post(technician, adoptPath(failed), { credential: ACCOUNT }))).toEqual([409, 'INVALID_STATE', 'CANDIDATE_NOT_TESTED']);
     const tested = candidate();
-    await post(supervisor, testPath(tested), { credential: ACCOUNT });
+    await post(technician, testPath(tested), { credential: ACCOUNT });
     stub.resetLog();
-    expect(reasonOf(await post(supervisor, adoptPath(tested)))).toEqual([422, 'INVALID_INPUT', 'CREDENTIAL_REQUIRED']);
+    expect(reasonOf(await post(technician, adoptPath(tested)))).toEqual([422, 'INVALID_INPUT', 'CREDENTIAL_REQUIRED']);
     expect(stub.requestLog()).toEqual([]);
     // The re-verification fails with the credential of THIS request: 409 with the outcome, one audited attempt, nothing stored.
     const from = (await trail()).length;
-    const refused = await post(supervisor, adoptPath(tested), { credential: WRONG });
+    const refused = await post(technician, adoptPath(tested), { credential: WRONG });
     expect(reasonOf(refused)).toEqual([409, 'INVALID_STATE', 'CONNECTION_TEST_FAILED']);
     expect(errorOf(refused).details).toMatchObject({ outcome: 'AUTHENTICATION_FAILED' });
     expect((await since(from)).map((row) => row.type)).toEqual(['CAPTURE_CONNECTION_TESTED']);
-    // A candidate of another operator session: 404, one answer for unknown and foreign.
-    expect(reasonOf(await post(technician, adoptPath(tested), { credential: ACCOUNT }))[0]).toBe(404);
-    expect(reasonOf(await post(supervisor, testPath('CND-FFFFFFFFFFFF'), { credential: ACCOUNT }))[0]).toBe(404);
+    // A candidate of another web session (a second technician session since 0034): 404, one answer for unknown and foreign.
+    expect(reasonOf(await post(otherTechnician, adoptPath(tested), { credential: ACCOUNT }))[0]).toBe(404);
+    expect(reasonOf(await post(technician, testPath('CND-FFFFFFFFFFFF'), { credential: ACCOUNT }))[0]).toBe(404);
     expect(await rowCounts()).toEqual(before);
   });
 
   it('M4-SEC-ADOPT-1: the profiles changed between the test and the adoption: 409 CONNECTION_TEST_FAILED (DEVICE_CHANGED), 0 rows', async () => {
     const id = candidate();
-    await post(supervisor, testPath(id), { credential: ACCOUNT });
+    await post(technician, testPath(id), { credential: ACCOUNT });
     // The passing test read another profile set than the device lists now.
     held.get(id)!.candidate.lastTest = { ...held.get(id)!.candidate.lastTest!, profiles: ['profile_1', 'profile_2'] };
     const before = await rowCounts();
-    const response = await post(supervisor, adoptPath(id), { credential: ACCOUNT });
+    const response = await post(technician, adoptPath(id), { credential: ACCOUNT });
     expect(reasonOf(response)).toEqual([409, 'INVALID_STATE', 'CONNECTION_TEST_FAILED']);
     expect(errorOf(response).details).toMatchObject({ cause: 'DEVICE_CHANGED' });
     expect(await rowCounts()).toEqual(before);
@@ -583,7 +583,7 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
 
   it('a one-character secret is stored (the sealer frames it past the 33-byte CHECK) and opens', async () => {
     const short = { username: ACCOUNT.username, secret: 'k' };
-    const written = await post(supervisor, credentialPath('CAM-02'), short);
+    const written = await post(technician, credentialPath('CAM-02'), short);
     // The status and the error code in the failure text: this case failed once in eight runs, beside a parallel acceptance run, unexplained.
     expect([written.statusCode, errorOf(written).code, errorOf(written).details?.['reason']]).toEqual([200, undefined, undefined]);
     const stored = (await owner.query('SELECT secret_ciphertext, nonce, key_ref FROM public.capture_device_credentials WHERE device_id = $1', ['CAM-02'])).rows[0] as { secret_ciphertext: Buffer; nonce: Buffer; key_ref: string };
@@ -595,13 +595,13 @@ describe('M4-CONN-ATOM-1 / M7-CONN-CRED-1: adoption is one transaction, as dems_
 describe('operation 89: the credential of a registered camera, set and REPLACED (D103, F-129a-1)', () => {
   it('the second write replaces the first: one row, a new key reference, the new secret opens; the answer is the capture-config snapshot; the secret column is still 42501', async () => {
     const from = (await trail()).length;
-    const first = await post(supervisor, credentialPath('CAM-01'), WRONG);
+    const first = await post(technician, credentialPath('CAM-01'), WRONG);
     expect(first.statusCode).toBe(200);
     expect(validateCoreApiResponse('setCaptureDeviceCredential', 200, first.json())).toMatchObject({ ok: true });
     expect(first.json()).toMatchObject({ locked: false });
     const one = (await owner.query('SELECT key_ref, rotated_at::text AS rotated_at FROM public.capture_device_credentials WHERE device_id = $1', ['CAM-01'])).rows[0] as { key_ref: string; rotated_at: string };
     guard.clock.advance(1_000);
-    const second = await post(supervisor, credentialPath('CAM-01'), ACCOUNT);
+    const second = await post(technician, credentialPath('CAM-01'), ACCOUNT);
     expect(second.statusCode).toBe(200);
     expect(await count('capture_device_credentials', "device_id = 'CAM-01'")).toBe(1);
     const two = (await owner.query('SELECT username, secret_ciphertext, nonce, key_ref, rotated_at::text AS rotated_at FROM public.capture_device_credentials WHERE device_id = $1', ['CAM-01'])).rows[0] as { username: string; secret_ciphertext: Buffer; nonce: Buffer; key_ref: string; rotated_at: string };
@@ -623,8 +623,8 @@ describe('operation 89: the credential of a registered camera, set and REPLACED 
 
   it('404 for a device the registry does not hold, for a microphone and for a candidate id; nothing is stored', async () => {
     const before = await count('capture_device_credentials');
-    for (const id of ['CAM-99', 'MIC-01']) expect((await post(supervisor, credentialPath(id), ACCOUNT)).statusCode, id).toBe(404);
-    expect([404, 422]).toContain((await post(supervisor, credentialPath('CND-000000000001'), ACCOUNT)).statusCode);
+    for (const id of ['CAM-99', 'MIC-01']) expect((await post(technician, credentialPath(id), ACCOUNT)).statusCode, id).toBe(404);
+    expect([404, 422]).toContain((await post(technician, credentialPath('CND-000000000001'), ACCOUNT)).statusCode);
     expect(await count('capture_device_credentials')).toBe(before);
   });
 });
@@ -644,7 +644,7 @@ describe('409 CAPTURE_CONFIG_LOCKED while a session is open, for every connect s
       [adoptPath(id), { credential: ACCOUNT }],
       [credentialPath('CAM-01'), ACCOUNT],
     ] as const) {
-      const response = await post(supervisor, url, payload);
+      const response = await post(technician, url, payload);
       expect([response.statusCode, errorOf(response).code], url).toEqual([409, 'CAPTURE_CONFIG_LOCKED']);
     }
     expect((await trail()).length).toBe(rows);
@@ -653,7 +653,7 @@ describe('409 CAPTURE_CONFIG_LOCKED while a session is open, for every connect s
     await guard.app.engine.command(investigator, 'cancel');
     await guard.app.pipeline.drain();
     // Control: with no session open the same test is accepted.
-    expect((await post(supervisor, testPath(id), { credential: ACCOUNT })).statusCode).toBe(200);
+    expect((await post(technician, testPath(id), { credential: ACCOUNT })).statusCode).toBe(200);
   });
 });
 
@@ -662,9 +662,9 @@ describe('task 4 rows 50 and 51: the codec is judged from the stream, and an ado
     useStreamTester('HEVC');
     const id = candidate();
     const starts = relayStarts.length;
-    expect((await post(supervisor, testPath(id), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE', authenticated: true, usableProfileCount: 1 });
+    expect((await post(technician, testPath(id), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE', authenticated: true, usableProfileCount: 1 });
     expect(held.get(id)?.candidate.lastTest).toMatchObject({ outcome: 'REACHABLE', profiles: ['HEVC_1080P'] });
-    const response = await post(supervisor, adoptPath(id), { credential: ACCOUNT });
+    const response = await post(technician, adoptPath(id), { credential: ACCOUNT });
     expect(response.statusCode, response.body).toBe(201);
     const { deviceId } = response.json() as { deviceId: string };
     // One relay per probed stream: the test and the re-verification of the adoption.
@@ -678,20 +678,20 @@ describe('task 4 rows 50 and 51: the codec is judged from the stream, and an ado
   it('the announcement is advice in the other direction too: a device that announces H265 only is NOT_H264 without a stream half, and REACHABLE with one', async () => {
     stub.setDeviceMode('H265_ONLY');
     const plain = candidate();
-    expect((await post(supervisor, testPath(plain), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'NOT_H264', usableProfileCount: 0 });
+    expect((await post(technician, testPath(plain), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'NOT_H264', usableProfileCount: 0 });
     useStreamTester('HEVC');
     const judged = candidate();
-    expect((await post(supervisor, testPath(judged), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE', usableProfileCount: 1 });
+    expect((await post(technician, testPath(judged), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE', usableProfileCount: 1 });
     expect(held.get(judged)?.candidate.lastTest?.profiles).toEqual(['HEVC_1080P']);
   });
 
   it('a stream that changed between the test and the adoption (H.264 then HEVC): 409 CONNECTION_TEST_FAILED (DEVICE_CHANGED), nothing stored', async () => {
     useStreamTester('H264');
     const id = candidate();
-    expect((await post(supervisor, testPath(id), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE' });
+    expect((await post(technician, testPath(id), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE' });
     streamSent = 'HEVC';
     const before = [...(await rowCounts()), await count('capture_device_streams')];
-    const response = await post(supervisor, adoptPath(id), { credential: ACCOUNT });
+    const response = await post(technician, adoptPath(id), { credential: ACCOUNT });
     expect(reasonOf(response)).toEqual([409, 'INVALID_STATE', 'CONNECTION_TEST_FAILED']);
     expect(errorOf(response).details).toMatchObject({ cause: 'DEVICE_CHANGED' });
     expect([...(await rowCounts()), await count('capture_device_streams')]).toEqual(before);
@@ -699,9 +699,9 @@ describe('task 4 rows 50 and 51: the codec is judged from the stream, and an ado
 
   it('an adoption whose test had NO stream half stores no code and no stream row: no default profile stands in, and the ONVIF token is stored nowhere (C36)', async () => {
     const id = candidate();
-    expect((await post(supervisor, testPath(id), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE', usableProfileCount: 1 });
+    expect((await post(technician, testPath(id), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE', usableProfileCount: 1 });
     const streams = await count('capture_device_streams');
-    const response = await post(supervisor, adoptPath(id), { credential: ACCOUNT });
+    const response = await post(technician, adoptPath(id), { credential: ACCOUNT });
     expect(response.statusCode, response.body).toBe(201);
     const { deviceId } = response.json() as { deviceId: string };
     expect((await owner.query('SELECT profiles FROM public.capture_devices WHERE id = $1', [deviceId])).rows).toEqual([{ profiles: [] }]);
@@ -712,10 +712,10 @@ describe('task 4 rows 50 and 51: the codec is judged from the stream, and an ado
   it('a failure after the stream rows were written rolls them back with the device row', async () => {
     useStreamTester('HEVC');
     const id = candidate();
-    await post(supervisor, testPath(id), { credential: ACCOUNT });
+    await post(technician, testPath(id), { credential: ACCOUNT });
     const before = [...(await rowCounts()), await count('capture_device_streams')];
     failAfterDeviceInsert = true;
-    expect((await post(supervisor, adoptPath(id), { credential: ACCOUNT })).statusCode).toBe(500);
+    expect((await post(technician, adoptPath(id), { credential: ACCOUNT })).statusCode).toBe(500);
     expect([...(await rowCounts()), await count('capture_device_streams')]).toEqual(before);
   });
 
@@ -776,8 +776,8 @@ describe('task 4 rows 50 and 51: the codec is judged from the stream, and an ado
   it('with the module\'s REAL registrar: the camera whose token is lower-case is in the registry, and its minted code is assigned to a video slot (operation 78)', async () => {
     useStreamTester('HEVC', true);
     const id = candidate();
-    expect((await post(supervisor, testPath(id), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE' });
-    const response = await post(supervisor, adoptPath(id), { credential: ACCOUNT });
+    expect((await post(technician, testPath(id), { credential: ACCOUNT })).json()).toMatchObject({ outcome: 'REACHABLE' });
+    const response = await post(technician, adoptPath(id), { credential: ACCOUNT });
     expect(response.statusCode, response.body).toBe(201);
     const { deviceId } = response.json() as { deviceId: string };
     await guard.app.pipeline.drain();
@@ -785,14 +785,14 @@ describe('task 4 rows 50 and 51: the codec is judged from the stream, and an ado
     expect((await owner.query('SELECT profiles FROM public.capture_devices WHERE id = $1', [deviceId])).rows).toEqual([{ profiles: ['HEVC_1080P'] }]);
     expect(await streamRows(deviceId)).toEqual([{ profile: 'HEVC_1080P', onvif_profile_token: 'profile_1', video_source_token: 'vs_1', lens: 1, stream_role: 'MAIN', codec: 'HEVC', width: 1920, height: 1080 }]);
     // The selector takes the camera with the Core's code. The token would be refused by the selector's own form.
-    const assigned = await post(supervisor, '/api/v1/capture/config', { cameras: [{ trackId: 'VIDEO-02', deviceId, profile: 'HEVC_1080P' }] });
+    const assigned = await post(technician, '/api/v1/capture/config', { cameras: [{ trackId: 'VIDEO-02', deviceId, profile: 'HEVC_1080P' }] });
     expect(assigned.statusCode, assigned.body).toBe(200);
     await guard.app.pipeline.drain();
     expect((await owner.query('SELECT video_02_device_id, video_02_profile FROM public.capture_config')).rows).toEqual([{ video_02_device_id: deviceId, video_02_profile: 'HEVC_1080P' }]);
-    const refused = await post(supervisor, '/api/v1/capture/config', { cameras: [{ trackId: 'VIDEO-02', deviceId, profile: 'profile_1' }] });
+    const refused = await post(technician, '/api/v1/capture/config', { cameras: [{ trackId: 'VIDEO-02', deviceId, profile: 'profile_1' }] });
     expect(refused.statusCode).toBeGreaterThanOrEqual(400);
     // Back to the built-in camera: the blocks after this one read the selector as it was.
-    expect((await post(supervisor, '/api/v1/capture/config', { cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-02' }] })).statusCode).toBe(200);
+    expect((await post(technician, '/api/v1/capture/config', { cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-02' }] })).statusCode).toBe(200);
     await guard.app.pipeline.drain();
   });
 });
@@ -815,7 +815,9 @@ describe('M4-SEC-CRED-1: the two canaries through every channel (this block runs
     expect(hits(JSON.stringify([...held.values()].map((entry) => entry.candidate)))).toEqual([]);
 
     const tables = ((await owner.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY 1")).rows as { table_name: string }[]).map((row) => row.table_name);
-    expect(tables).toHaveLength(48);
+    // 50 since migration `0036_operator_purge` (B-8): the sweep walks every base table it finds, the count only
+    // notices when the set changes underneath it (48 before; 0036 added `audit_purge_ticket` and `audit_purge_log`).
+    expect(tables).toHaveLength(50);
     const found: string[] = [];
     for (const table of tables) {
       const dump = ((await owner.query(`SELECT row_to_json(t)::text AS row FROM public.${table} t`)).rows as { row: string }[]).map((row) => row.row).join('\n');

@@ -23,7 +23,7 @@
 //
 // THE DOUBLES, all on loopback:
 //   - the camera: `apps/capture-worker/test-fixtures/rtsp_test_camera.py` on 8569;
-//   - the ONVIF device: the scripted device of `test/support/onvif-odd-device.ts` on 8555;
+//   - the ONVIF device: the scripted device of `test/support/onvif-odd-device.ts` on ONE operating-system-handed port taken in `beforeAll`;
 //   - the replicated state (no open session, two cameras): an object of this file. The registry
 //     rows themselves are the clone's;
 //   - the destination rule of the working cases: the test-only rule of `test/support` (AD-02 (2):
@@ -55,11 +55,15 @@
 //   - a test called from inside a unit of work: the reader refuses AND the outcome unit cannot be opened - the
 //     fault of the unrecorded outcome travels on (was `503`), 0 entries.
 // Refused before the reader (the address rule, 401 / 403 / 422 / 404, the guard): 0 entries, unchanged.
-// The ONVIF double moved from 8557 to 8555: the scripted device of `test/support` binds only the ports of its own
-// closed list (8561, 8560, 8559, 8557, 8555), none of which lies in 8565-8574 (decision C33); 8557 is not used by
-// this row's brief, 8559 to 8561 are the worker's ingest listeners. The test camera stays on 8565.
+// THE ONVIF PORT IS THE OPERATING SYSTEM'S NOW (bench finding, 2026-11-04): the host profile item HOST-25 installs the
+// nft table `dems_loopback`, which REJECTS loopback TCP to 8554-8564 for every account but the service's - the worker's
+// camera listeners (the hardware-acceptance docs tell every probe to stay off that range). The fixed ports of the
+// device's closed list (8555, 8557) lie INSIDE the guarded range, so a db suite on a HOST-25-prepared Linux bench can
+// no longer dial its own double there; this file therefore asks `freeOddDevicePort()` (the support file's own sanctioned
+// door for "a file that needs no fixed port") and writes the judged address into the clone's rows from that one number.
+// The test camera keeps its own ports 8569 / 8571 (8565-8574, decision C33, outside the guard).
 // ROW T3 (review 060c T-01, T-03, T-04, T-09; C61 (4), C98). The ports are THIS FILE'S OWN now: camera 8569 (was 8565,
-// which three more files named), ONVIF device 8555 (the fixed list of the device no longer holds the worker's three).
+// which three more files named), ONVIF device one OS-handed port of this run (see the HOST-25 paragraph above).
 // Every case that starts the camera or the relay holds `.locks/heavy-host.lock` while it runs
 // (`itUnderHeavyHostLock`). The tester of `bounds()` hands the SOURCE ADDRESS on (it dropped it) and one case proves it
 // on the wire; the camera's `end()` throws without its exit line; the last block's control plants what it searches.
@@ -69,7 +73,7 @@
 // (`host.settle`: one unit of the app's ENGINE), then (c) the same test again: nothing; (b) a stored statement the
 // stream no longer makes: nothing stored, `STREAM_PROFILE_DIFFERS` in counts; and the fixture's hostile description at
 // a camera with no stored profile. Their test camera binds 8571 (`PROFILE_CAMERA_PORT`), a port no other test file
-// names; the ONVIF device stays this file's 8555. `bounds()` hands the function the same engine unit as the plugin.
+// names; the ONVIF device stays this file's one OS-handed port of the run. `bounds()` hands the function the same engine unit as the plugin.
 //
 // RUN: sandbox off, under the database lock (a case takes the heavy-host lock itself; a run started under it is not
 // asked again), with a core-file limit of 0 (the door refuses otherwise):
@@ -91,7 +95,7 @@ import { readTrail, recordingErrorLog, type RecordingErrorLog } from '../../../.
 import { FIXED_NOW, manualTimer } from '../../../../test/support/engine';
 import { itUnderHeavyHostLock } from '../../../../test/support/heavy-host-lock';
 import { WEB_ORIGIN, signInOnWeb, type IdentityApp } from '../../../../test/support/identity';
-import { createOddOnvifDevice, dateAnswer, notAuthorizedFault, profilesAnswer, servicesAnswer, streamAnswer, tokenHolds, type OddDeviceReply, type OddDeviceRequest, type OddOnvifDevice } from '../../../../test/support/onvif-odd-device';
+import { createOddOnvifDevice, dateAnswer, freeOddDevicePort, notAuthorizedFault, profilesAnswer, servicesAnswer, streamAnswer, tokenHolds, type OddDeviceReply, type OddDeviceRequest, type OddOnvifDevice } from '../../../../test/support/onvif-odd-device';
 import { loopbackStoredCameraAddress } from '../../../../test/support/stored-camera-address';
 import { buildApp } from '../../../app';
 import { avcDeclaredFrameRate, createSystemTimers } from '../../../capture';
@@ -114,8 +118,10 @@ const CAMERA_SCRIPT = join(WORKER_APP, 'test-fixtures/rtsp_test_camera.py');
 const OUT = join(REPOSITORY, '.cache/task4-row146');
 
 const HOST = '127.0.0.1';
-// Row T3: this file's own ports (see the header). No other test file of the Core names 8555 or 8569.
-const ONVIF_PORT = 8555;
+// Row T3 with the HOST-25 amendment above: the camera ports are this file's own constants; the ONVIF device takes ONE
+// operating-system-handed port in `beforeAll` (the fixed list of the support lies inside the range HOST-25 rejects for
+// non-service accounts). Every user of this number reads it after `beforeAll` set it - no case runs before that.
+let ONVIF_PORT = 0;
 const CAMERA_PORT = 8569;
 /** Row PR (wave 12; decision C117): the test camera of the three cases of that row - a port of 8571-8574 no other test file binds. */
 const PROFILE_CAMERA_PORT = 8571;
@@ -338,6 +344,9 @@ async function storeCredential(deviceId: string, account: { readonly username: s
 beforeAll(async () => {
   expect(existsSync(RELAY), 'the relay binary of the worker build').toBe(true);
   expect(ACCOUNT.username.length > 0 && ACCOUNT.secret.length > 0).toBe(true);
+  // HOST-25 amendment (header): the device takes an OS-handed port, OUTSIDE the guarded 8554-8564; every row and
+  // every answer of this file that names the ONVIF address reads this one number.
+  ONVIF_PORT = await freeOddDevicePort();
   owner = db.ownerPool();
   const log = captureLog();
   // Row 146b: the relay of the worker build is this app's relay program, so the tester the MODULE composes (the one the
