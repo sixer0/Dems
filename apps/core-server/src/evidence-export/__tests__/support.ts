@@ -89,8 +89,8 @@ export function standInEncoder(name = 'stand-in-encoder'): CompositeEncoder & { 
 const PRODUCTION_ROWS: readonly SessionCaptureSourceRow[] = [
   { slot: 'VIDEO-01', deviceId: 'CAM-07', adapterKind: 'ONVIF_RTSP' },
   { slot: 'VIDEO-02', deviceId: 'CAM-08', adapterKind: 'ONVIF_RTSP' },
-  { slot: 'MIC-PRIMARY', deviceId: 'MIC-07', adapterKind: 'USB_AUDIO' },
-  { slot: 'MIC-STANDBY', deviceId: 'MIC-08', adapterKind: 'USB_AUDIO' },
+  { slot: 'MIC-01', deviceId: 'MIC-07', adapterKind: 'USB_AUDIO' },
+  { slot: 'MIC-02', deviceId: 'MIC-08', adapterKind: 'USB_AUDIO' },
 ];
 
 type Loose = { tracks: { deviceId: string }[]; audio: { sourceIntervals: { micDeviceId: string }[] } };
@@ -103,7 +103,7 @@ export function productionPackage(): Promise<BuiltPackage> {
     beforeSeal: (input: ManifestV2Input) => {
       const loose = input as unknown as Loose;
       loose.tracks.forEach((track, index) => (track.deviceId = id(index === 0 ? 'VIDEO-01' : 'VIDEO-02')));
-      loose.audio.sourceIntervals.forEach((interval, index) => (interval.micDeviceId = id(index === 0 ? 'MIC-PRIMARY' : 'MIC-STANDBY')));
+      loose.audio.sourceIntervals.forEach((interval, index) => (interval.micDeviceId = id(index === 0 ? 'MIC-01' : 'MIC-02')));
     },
   });
 }

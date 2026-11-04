@@ -259,8 +259,8 @@ export const captureConfig = pgTable(
     video01Profile: text('video_01_profile'),
     video02DeviceId: text('video_02_device_id'),
     video02Profile: text('video_02_profile'),
-    micPrimaryId: text('mic_primary_id'),
-    micStandbyId: text('mic_standby_id'),
+    mic01Id: text('mic_01_id'), // D61 (2026-11-04): the roles became numbered channels (0040 renames)
+    mic02Id: text('mic_02_id'), // D61
     revision: bigint('revision', { mode: 'number' }).notNull().default(1),
     updatedBy: text('updated_by'),
     updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
@@ -270,6 +270,10 @@ export const captureConfig = pgTable(
     video03Profile: text('video_03_profile'),
     video04DeviceId: text('video_04_device_id'),
     video04Profile: text('video_04_profile'),
+    // D61 (2026-11-04): `0040` appends the two new channels after the D60 four: the physical order
+    // of the table puts them at the end, so they are declared LAST.
+    mic03Id: text('mic_03_id'), // D61
+    mic04Id: text('mic_04_id'), // D61
   },
   (t) => [
     check('capture_config_singleton_check', sql`${t.singleton}`),
@@ -302,15 +306,29 @@ export const captureConfig = pgTable(
       .onDelete('restrict')
       .onUpdate('no action'),
     foreignKey({
-      name: 'capture_config_mic_primary_id_fkey',
-      columns: [t.micPrimaryId],
+      name: 'capture_config_mic_01_id_fkey', // D61 rename follows 0040
+      columns: [t.mic01Id],
       foreignColumns: [captureDevices.id],
     })
       .onDelete('restrict')
       .onUpdate('no action'),
     foreignKey({
-      name: 'capture_config_mic_standby_id_fkey',
-      columns: [t.micStandbyId],
+      name: 'capture_config_mic_02_id_fkey', // D61
+      columns: [t.mic02Id],
+      foreignColumns: [captureDevices.id],
+    })
+      .onDelete('restrict')
+      .onUpdate('no action'),
+    foreignKey({
+      name: 'capture_config_mic_03_id_fkey', // D61
+      columns: [t.mic03Id],
+      foreignColumns: [captureDevices.id],
+    })
+      .onDelete('restrict')
+      .onUpdate('no action'),
+    foreignKey({
+      name: 'capture_config_mic_04_id_fkey', // D61
+      columns: [t.mic04Id],
       foreignColumns: [captureDevices.id],
     })
       .onDelete('restrict')
@@ -327,8 +345,9 @@ export const captureConfig = pgTable(
       .onUpdate('no action'),
     check('capture_config_profile_check', sql`${code(t.video01Profile)} AND ${code(t.video02Profile)}`),
     check('capture_config_profile_34_check', sql`${code(t.video03Profile)} AND ${code(t.video04Profile)}`), // D60
-    // The two mic slots are two different inputs (OD-09).
-    check('capture_config_mic_check', sql`${t.micStandbyId} <> ${t.micPrimaryId}`),
+    // D61 (2026-11-04): four microphone channels, two different inputs pairwise (OD-09 generalized;
+    // NULL on either side passes, as the old two-sided check did).
+    check('capture_config_mic_check', sql`(${t.mic01Id} <> ${t.mic02Id}) AND (${t.mic01Id} <> ${t.mic03Id}) AND (${t.mic01Id} <> ${t.mic04Id}) AND (${t.mic02Id} <> ${t.mic03Id}) AND (${t.mic02Id} <> ${t.mic04Id}) AND (${t.mic03Id} <> ${t.mic04Id})`),
     // A dual-lens single camera is legal only with two distinct profiles (OD-05, D-DB-10).
     // D60 (2026-11-04): the no-collision rule, pairwise over the four tracks.
     check(
@@ -446,7 +465,7 @@ export const captureDeviceStreams = pgTable(
  *
  * An input is allocated once: `(card_id, card_device, input_number)` is unique, enforced by the
  * database as the ONVIF endpoint is for cameras. Not here: the product name (it is
- * `capture_devices.model`) and the role (it is `capture_config.mic_primary_id` / `mic_standby_id`).
+ * `capture_devices.model`) and the channel it fills (it is `capture_config.mic_01_id` .. `mic_04_id` — D61, 2026-11-04: the roles became numbered channels).
  * The Core's audio contract is ONE rate, so `sample_rate` is a one-value CHECK and the runtime role
  * holds no UPDATE on it (`0016`). Every text column is held to a pattern: no descriptor string a
  * USB device chose is stored here (AD-07 (1)).

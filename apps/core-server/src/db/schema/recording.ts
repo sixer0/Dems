@@ -222,7 +222,7 @@ export const sessionCaptureSources = pgTable(
     // A video slot is fed by a camera kind and a mic slot by a microphone kind; `SNMP_POE` feeds none.
     check(
       'session_capture_sources_pairing_check',
-      sql`(${t.slot} IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04') AND // D60 ${oneOf(t.adapterKind, CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND.CAMERA)}) OR (${t.slot} IN ('MIC-PRIMARY', 'MIC-STANDBY') AND ${oneOf(t.adapterKind, CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND.MIC)})`,
+      sql`(${t.slot} IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04') AND ${oneOf(t.adapterKind, CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND.CAMERA)}) OR (${t.slot} IN ('MIC-01', 'MIC-02', 'MIC-03', 'MIC-04') AND ${oneOf(t.adapterKind, CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND.MIC)}) // D61 (2026-11-04): numbered channels`,
     ),
     // Schema v7: a flat map with none of the 28 denied key names, as an audit detail is - so no
     // user name, no locator and no ONVIF endpoint reference can be a fact (S13-13: no free JSON).

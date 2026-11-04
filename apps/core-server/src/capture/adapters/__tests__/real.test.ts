@@ -50,6 +50,9 @@ const STORED_ROWS = [
   { id: 'MIC-01', kind: 'MIC', adapterKind: 'LOCAL_DEVICE', model: 'This Mac' },
   { id: 'MIC-11', kind: 'MIC', adapterKind: 'USB_AUDIO', model: 'Interface input 1' },
   { id: 'MIC-12', kind: 'MIC', adapterKind: 'USB_AUDIO', model: 'Interface input 2' },
+  // D61 (2026-11-04): FOUR microphone channels are recorded at once, so the room has four inputs.
+  { id: 'MIC-13', kind: 'MIC', adapterKind: 'USB_AUDIO', model: 'Interface input 3' },
+  { id: 'MIC-14', kind: 'MIC', adapterKind: 'USB_AUDIO', model: 'Interface input 4' },
   { id: 'POE-SWITCH', kind: 'POE', adapterKind: 'FAKE', model: 'Switch' },
 ];
 
@@ -99,7 +102,7 @@ function rig() {
 }
 
 const PROFILE = 'H264_1080P25';
-/** The six slots of a production room (D60, 2026-11-04: four video tracks), as operation 78 / 79 would have assigned them. */
+/** The eight slots of a production room (D60, 2026-11-04: four video tracks; D61, 2026-11-04: four numbered microphone channels), as operation 78 / 79 would have assigned them. */
 const PRODUCTION_SELECTOR = {
   cameras: [
     { trackId: 'VIDEO-01' as const, deviceId: 'CAM-11', profile: PROFILE },
@@ -107,7 +110,13 @@ const PRODUCTION_SELECTOR = {
     { trackId: 'VIDEO-03' as const, deviceId: 'CAM-13', profile: PROFILE },
     { trackId: 'VIDEO-04' as const, deviceId: 'CAM-14', profile: PROFILE },
   ],
-  mics: [{ deviceId: 'MIC-11', role: 'PRIMARY' as const }, { deviceId: 'MIC-12', role: 'STANDBY' as const }],
+  // D61 (2026-11-04): the mic half of the selector is keyed by NUMBERED CHANNEL (was the PRIMARY/STANDBY roles).
+  mics: [
+    { deviceId: 'MIC-11', channel: 'MIC-01' as const },
+    { deviceId: 'MIC-12', channel: 'MIC-02' as const },
+    { deviceId: 'MIC-13', channel: 'MIC-03' as const },
+    { deviceId: 'MIC-14', channel: 'MIC-04' as const },
+  ],
 };
 const SESSION = 'SES-20261014-0088';
 const codeOf = (work: () => unknown): string => {
@@ -119,8 +128,8 @@ const codeOf = (work: () => unknown): string => {
   }
 };
 /**
- * THE SESSION START'S ADMISSION, on a built registry: the plan builder's check of the six slots (D60, 2026-11-04: `assertRecordableSelector`),
- * the six source rows (`buildSessionCaptureSources`) and their read-back (`assertSessionSourcesOfOperation`) - the three lines
+ * THE SESSION START'S ADMISSION, on a built registry: the plan builder's check of the eight slots (D60, 2026-11-04: four video tracks; D61, 2026-11-04: four numbered microphone channels; `assertRecordableSelector`),
+ * the eight source rows (`buildSessionCaptureSources`) and their read-back (`assertSessionSourcesOfOperation`) - the three lines
  * a REAL_PRODUCTION start passes before the worker is asked. 'ADMITTED', or the code of the first refusal.
  */
 const admissionOf = (registry: CaptureDeviceRegistry): string =>
@@ -223,8 +232,8 @@ describe('task 4 row 85: the production registry builder (WP-13b)', () => {
     expect(queries.filter((text) => /\bd\.profiles\b/.test(text))).toHaveLength(1);
     expect(handed).toEqual([dependencies]);
     expect(handed[0]).toBe(dependencies);
-    // The expected devices: the six production rows (D60: four cameras); no development row, and the FAKE switch of the seed is none of them.
-    expect(built.devices().map((device) => `${device.id}:${device.adapterKind}`)).toEqual(['CAM-11:ONVIF_RTSP', 'CAM-12:ONVIF_RTSP', 'CAM-13:ONVIF_RTSP', 'CAM-14:ONVIF_RTSP', 'MIC-11:USB_AUDIO', 'MIC-12:USB_AUDIO']);
+    // The expected devices: the eight production rows (D60: four cameras; D61: four microphones); no development row, and the FAKE switch of the seed is none of them.
+    expect(built.devices().map((device) => `${device.id}:${device.adapterKind}`)).toEqual(['CAM-11:ONVIF_RTSP', 'CAM-12:ONVIF_RTSP', 'CAM-13:ONVIF_RTSP', 'CAM-14:ONVIF_RTSP', 'MIC-11:USB_AUDIO', 'MIC-12:USB_AUDIO', 'MIC-13:USB_AUDIO', 'MIC-14:USB_AUDIO']);
     expect(built.registry.operation).toBe('REAL_PRODUCTION');
     expect(built.registry.list().map((device) => [device.id, device.deviceClass, device.adapterKind, device.sourceClass, device.label, device.hasOpener])).toEqual([
       ['CAM-11', 'CAMERA', 'ONVIF_RTSP', 'PRODUCTION', 'Room camera A', true],
@@ -233,13 +242,15 @@ describe('task 4 row 85: the production registry builder (WP-13b)', () => {
       ['CAM-14', 'CAMERA', 'ONVIF_RTSP', 'PRODUCTION', 'Room camera D', true],
       ['MIC-11', 'MIC', 'USB_AUDIO', 'PRODUCTION', 'Interface input 1', true],
       ['MIC-12', 'MIC', 'USB_AUDIO', 'PRODUCTION', 'Interface input 2', true],
+      ['MIC-13', 'MIC', 'USB_AUDIO', 'PRODUCTION', 'Interface input 3', true],
+      ['MIC-14', 'MIC', 'USB_AUDIO', 'PRODUCTION', 'Interface input 4', true],
     ]);
     // Assignable (the class is the operation's) and - SINCE THE LIFT (row 88, AM-1) - recordable: both kinds state their opener.
     expect(built.registry.assertAssignable('CAMERA', 'CAM-11').id).toBe('CAM-11');
     expect(built.registry.assertAssignable('MIC', 'MIC-12').id).toBe('MIC-12');
-    for (const deviceId of ['CAM-11', 'CAM-12', 'CAM-13', 'CAM-14', 'MIC-11', 'MIC-12']) expect(built.registry.assertRecordable(deviceId).id).toBe(deviceId);
+    for (const deviceId of ['CAM-11', 'CAM-12', 'CAM-13', 'CAM-14', 'MIC-11', 'MIC-12', 'MIC-13', 'MIC-14']) expect(built.registry.assertRecordable(deviceId).id).toBe(deviceId);
     expect(built.registry.openerKinds()).toEqual(['ONVIF_RTSP', 'USB_AUDIO']);
-    // THE LINUX PROOF on doubles: a six-slot REAL_PRODUCTION session start (D60) is ADMITTED through the builder's registry.
+    // THE LINUX PROOF on doubles: an eight-slot REAL_PRODUCTION session start (D60 four video, D61 four numbered microphones) is ADMITTED through the builder's registry.
     expect(admissionOf(built.registry)).toBe('ADMITTED');
     expect(() => built.registry.assertAssignable('CAMERA', 'CAM-01')).toThrow(expect.objectContaining({ code: 'CAPTURE_DEVICE_UNKNOWN' }));
     // What a built registry supplies (addendum 6.1 fact 4), plus the card listing.
@@ -290,13 +301,13 @@ describe('task 4 row 85: the production registry builder (WP-13b)', () => {
     const { dependencies, executor, calls } = rig();
     const load: ProductionAdapterLoader<CameraBundle, ProductionAdapterDependencies['audio']> = (operation, devices, bundle) => loadProductionAdapters(operation, devices, bundle);
     const built = await buildProductionRegistryOf({ operation: CaptureOperation.REAL_PRODUCTION, executor, dependencies: { camera: dependencies.camera, audio: null }, load, audioCards: async () => null });
-    expect(built.registry.list().map((device) => `${device.id}:${String(device.hasOpener)}`)).toEqual(['CAM-11:true', 'CAM-12:true', 'CAM-13:true', 'CAM-14:true', 'MIC-11:false', 'MIC-12:false']);
+    expect(built.registry.list().map((device) => `${device.id}:${String(device.hasOpener)}`)).toEqual(['CAM-11:true', 'CAM-12:true', 'CAM-13:true', 'CAM-14:true', 'MIC-11:false', 'MIC-12:false', 'MIC-13:false', 'MIC-14:false']);
     expect(built.registry.assertAssignable('MIC', 'MIC-11').sourceClass).toBe('PRODUCTION');
     expect(codeOf(() => built.registry.assertRecordable('MIC-11'))).toBe('SOURCE_KIND_NOT_RECORDABLE');
     expect(built.registry.openerKinds()).toEqual(['ONVIF_RTSP']);
     expect(admissionOf(built.registry)).not.toBe('ADMITTED');
     // A microphone without an opener has no door of a later device either: it is served after a restart.
-    expect(built.admit({ id: 'MIC-13', kind: 'MIC', adapterKind: 'USB_AUDIO', model: null })).toBe(CaptureDeviceAdmission.NOT_SERVED);
+    expect(built.admit({ id: 'MIC-15', kind: 'MIC', adapterKind: 'USB_AUDIO', model: null })).toBe(CaptureDeviceAdmission.NOT_SERVED); // D61: MIC-13/14 are stored rows of the room now; the later device is a new one
     await built.closeAll();
     expect(calls).toEqual([]);
   });
@@ -371,7 +382,7 @@ function wiringRig(platform: string, audio: Partial<Pick<ProductionCaptureParts[
 }
 
 describe('task 4 row 88: THE LIFT - the boot step wiring of the production registry (`wireProductionRegistry`), on doubles', () => {
-  it('linux: both kinds open; the camera watch is attached BEFORE the registry and the loss watch after it; the adapter\'s reports go to the hub; a heartbeat per stored camera; a six-slot session start (D60) is ADMITTED', async () => {
+  it('linux: both kinds open; the camera watch is attached BEFORE the registry and the loss watch after it; the adapter\'s reports go to the hub; a heartbeat per stored camera; an eight-slot session start (D60, D61) is ADMITTED', async () => {
     const { parts, environment, seen, calls } = wiringRig('linux');
     const built = await wireProductionRegistry(parts, environment);
     expect(built.registry.openerKinds()).toEqual(['ONVIF_RTSP', 'USB_AUDIO']);
@@ -408,7 +419,7 @@ describe('task 4 row 88: THE LIFT - the boot step wiring of the production regis
     const { parts, environment, seen, calls } = wiringRig('darwin', {}, async () => tiedOf('PRESENT'));
     const built = await wireProductionRegistry(parts, environment);
     expect(built.registry.openerKinds()).toEqual(['ONVIF_RTSP']);
-    expect(built.registry.list().map((device) => `${device.id}:${String(device.hasOpener)}`)).toEqual(['CAM-11:true', 'CAM-12:true', 'CAM-13:true', 'CAM-14:true', 'MIC-11:false', 'MIC-12:false']);
+    expect(built.registry.list().map((device) => `${device.id}:${String(device.hasOpener)}`)).toEqual(['CAM-11:true', 'CAM-12:true', 'CAM-13:true', 'CAM-14:true', 'MIC-11:false', 'MIC-12:false', 'MIC-13:false', 'MIC-14:false']);
     expect(codeOf(() => built.registry.assertRecordable('MIC-11'))).toBe('SOURCE_KIND_NOT_RECORDABLE');
     expect(admissionOf(built.registry)).toBe('SOURCE_KIND_NOT_RECORDABLE');
     expect(seen.attached).toEqual(['CAMERA']);
@@ -437,7 +448,7 @@ describe('task 4 row N10: the microphone by platform - linux the Linux adapter, 
   const ADMITTED = { admitMacosMicrophoneOpener: true } as const;
   const isMacos = (adapter: unknown): boolean => typeof (adapter as { groupOf?: unknown }).groupOf === 'function';
 
-  it('darwin, ADMITTED by the test: the macOS adapter states its opener, a six-slot start (D60) is ADMITTED, the loss watch is attached after the camera watch; nothing was started', async () => {
+  it('darwin, ADMITTED by the test: the macOS adapter states its opener, an eight-slot start (D60, D61) is ADMITTED, the loss watch is attached after the camera watch; nothing was started', async () => {
     const { parts, environment, seen, calls } = wiringRig('darwin', {}, async () => tiedOf('PRESENT'));
     const built = await wireProductionRegistry(parts, environment, ADMITTED);
     expect(built.registry.openerKinds()).toEqual(['ONVIF_RTSP', 'USB_AUDIO']);

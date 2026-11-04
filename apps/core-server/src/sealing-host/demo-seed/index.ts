@@ -89,8 +89,10 @@ export const DEMO_TAMPERED_FRAGMENT = Object.freeze({ trackId: DEMO_TAMPERED_FRA
 export const DEMO_SOURCE_ROWS = Object.freeze([
   Object.freeze({ slot: 'VIDEO-01', deviceId: 'CAM-01', adapterKind: 'FAKE' }),
   Object.freeze({ slot: 'VIDEO-02', deviceId: 'CAM-02', adapterKind: 'FAKE' }),
-  Object.freeze({ slot: 'MIC-PRIMARY', deviceId: 'MIC-01', adapterKind: 'FAKE' }),
-  Object.freeze({ slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'FAKE' }),
+  // D61 (2026-11-04): the two mic roles became numbered channels (0040 renames `MIC-PRIMARY`/`MIC-STANDBY` to these names);
+  // the demo corpus is history of the two-channel shape and seals its own list (prefix rule).
+  Object.freeze({ slot: 'MIC-01', deviceId: 'MIC-01', adapterKind: 'FAKE' }),
+  Object.freeze({ slot: 'MIC-02', deviceId: 'MIC-02', adapterKind: 'FAKE' }),
 ] as const);
 /** The session's own STT snapshot of a demo item: transcription off, so the package seals with the declared state DISABLED. */
 const DEMO_STT_SNAPSHOT = Object.freeze({ enabled: false, backend: 'cpu-local', model: 'none', diarization: false, revision: 1 }) satisfies SealSessionFacts['sttSnapshot'];

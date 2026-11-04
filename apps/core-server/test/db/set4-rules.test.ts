@@ -43,14 +43,14 @@ describe('dbc-4 §N.2: the adapter kind in the mapping', () => {
     expect([...new Set(Object.values(CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND).flat())].sort()).toEqual([...CAPTURE_ADAPTER_KIND].sort());
     expect(CAPTURE_ADAPTER_KIND).toEqual(['ONVIF_RTSP', 'USB_AUDIO', 'SNMP_POE', 'FAKE', 'LOCAL_DEVICE']);
     // D60 (2026-11-04): the selector has six slots - four video tracks and the two microphones.
-    expect(CAPTURE_SOURCE_SLOT).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-PRIMARY', 'MIC-STANDBY']);
+    expect(CAPTURE_SOURCE_SLOT).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']); // D61 (2026-11-04): the roles became the four numbered channels
   });
 
   it('a slice that names no adapter maps to FAKE (the safe default); a named adapter is carried into the row', () => {
     const base = durable();
     expect(DEFAULT_CAPTURE_ADAPTER_KIND).toBe('FAKE');
     // D60 (2026-11-04): the seed's seven built-ins - four cameras, two mics, one switch.
-    expect(captureDevicesToRows(base.captureDevices, base.captureConfig).map((row) => row.adapterKind)).toEqual(['FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE']);
+    expect(captureDevicesToRows(base.captureDevices, base.captureConfig).map((row) => row.adapterKind)).toEqual(['FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE']); // D61 (2026-11-04): nine built-ins
     const local = withDevice(base, 'CAM-01', { adapter: 'LOCAL_DEVICE' });
     expect(captureDevicesToRows(local.captureDevices, local.captureConfig).find((row) => row.id === 'CAM-01')?.adapterKind).toBe('LOCAL_DEVICE');
   });
@@ -164,36 +164,36 @@ describe('M4-SEC-RESET-1 (rule): the exemption of the reset guard', () => {
     expect([...DEVELOPMENT_ADAPTER_KINDS].sort()).toEqual(CAPTURE_ADAPTER_KIND.filter((kind) => !(CAPTURE_PRODUCTION_ADAPTER_KINDS as readonly string[]).includes(kind)).sort());
   });
 
-  it('only flag = true with exactly six development source rows is exempt (D60); every other row blocks', () => {
+  it('only flag = true with exactly eight development source rows is exempt (D61); every other row blocks', () => {
     const split = classifyRealSealedRows([
-      row('S-NULL', null, 6, 6), // development_sources NULL: `IS TRUE` is false (D60: six slots)
-      row('S-FALSE', false, 6, 6),
-      row('S-MISSING', undefined, 6, 6), // a row without the member at all (an older reader)
-      row('S-ONE-PRODUCTION', true, 6, 5),
+      row('S-NULL', null, 8, 8), // development_sources NULL: `IS TRUE` is false (D61: eight slots)
+      row('S-FALSE', false, 8, 8),
+      row('S-MISSING', undefined, 8, 8), // a row without the member at all (an older reader)
+      row('S-ONE-PRODUCTION', true, 8, 7),
       row('S-THREE-ROWS', true, 3, 3),
       row('S-FIVE-ROWS', true, 5, 5),
       row('S-NO-ROWS', true, 0, 0),
-      row('S-DEV', true, 6, 6),
+      row('S-DEV', true, 8, 8),
     ]);
     expect(split.development).toEqual(['S-DEV']);
     expect(split.blocking).toEqual(['S-NULL', 'S-FALSE', 'S-MISSING', 'S-ONE-PRODUCTION', 'S-THREE-ROWS', 'S-FIVE-ROWS', 'S-NO-ROWS']);
     expect(split.unproven).toEqual(['S-ONE-PRODUCTION', 'S-THREE-ROWS', 'S-FIVE-ROWS', 'S-NO-ROWS']);
     // A truthy value that is not the boolean true is not the flag.
-    expect(classifyRealSealedRows([{ session_id: 'S-TEXT', development_flag: 't' as unknown as boolean, source_rows: 6, development_rows: 6 }]).development).toEqual([]);
+    expect(classifyRealSealedRows([{ session_id: 'S-TEXT', development_flag: 't' as unknown as boolean, source_rows: 8, development_rows: 8 }]).development).toEqual([]);
   });
 
   it('exempt items do not block and are counted; an unproven one blocks and the message says how many', () => {
     const scan = { root: '/store', present: false, packages: [] };
-    const allowed = classifyRealSealedRows([row('S-DEV-1', true, 6, 6), row('S-DEV-2', true, 6, 6)]);
+    const allowed = classifyRealSealedRows([row('S-DEV-1', true, 8, 8), row('S-DEV-2', true, 8, 8)]);
     const facts = evaluateRealEvidence('dems_lane_2', '/store', allowed.blocking, scan, allowed);
     expect(facts.blocked).toBe(false);
     expect(facts.developmentSessions).toEqual(['S-DEV-1', 'S-DEV-2']);
     expect(developmentPackagesMessage(facts)).toContain('this reset erases 2 development-source package record(s) of dems_lane_2 (S-DEV-1, S-DEV-2)');
 
-    const refused = classifyRealSealedRows([row('S-DEV-1', true, 6, 6), row('S-BAD', true, 6, 5)]);
+    const refused = classifyRealSealedRows([row('S-DEV-1', true, 8, 8), row('S-BAD', true, 8, 7)]);
     const blockedFacts = evaluateRealEvidence('dems_lane_2', '/store', refused.blocking, scan, refused);
     expect(blockedFacts.blocked).toBe(true);
-    expect(realEvidenceMessage(blockedFacts)).toContain('1 REAL sealed item(s), 1 of them flagged as development sources without six development source rows');
+    expect(realEvidenceMessage(blockedFacts)).toContain('1 REAL sealed item(s), 1 of them flagged as development sources without eight development source rows');
     expect(developmentPackagesMessage(evaluateRealEvidence('dems_lane_2', '/store', [], scan))).toBe('');
   });
 

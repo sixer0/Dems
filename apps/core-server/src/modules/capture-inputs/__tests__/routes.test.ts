@@ -67,11 +67,14 @@ describe('M4-MIC-RESCAN-1: one call re-reads the local inputs', () => {
       inputs: [
         { deviceId: 'MIC-01', inputId: 'MIC-01', present: true, adapter: 'FAKE', sourceClass: 'DEVELOPMENT', errorCode: null },
         { deviceId: 'MIC-02', inputId: 'MIC-02', present: true, adapter: 'FAKE', sourceClass: 'DEVELOPMENT', errorCode: null },
+        // D61 (2026-11-04): the four numbered channels are all registered and all read.
+        { deviceId: 'MIC-03', inputId: 'MIC-03', present: true, adapter: 'FAKE', sourceClass: 'DEVELOPMENT', errorCode: null },
+        { deviceId: 'MIC-04', inputId: 'MIC-04', present: true, adapter: 'FAKE', sourceClass: 'DEVELOPMENT', errorCode: null },
       ],
       unregisteredCount: 0,
     });
     // The re-read is enumerate and nothing else: no camera was asked, no search was run.
-    expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([1, 1]);
+    expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([1, 1, 1, 1]); // D61 (2026-11-04): four channels
     expect(built.adapters.fakes.mics.flatMap((mic) => mic.calls.opened)).toEqual([]);
     expect(built.adapters.reads).toEqual([]);
     expect(built.adapters.fakes.cameras.map((camera) => camera.calls.discover)).toEqual([0, 0, 0, 0]); // D60 (2026-11-04): four fake cameras registered, none asked
@@ -85,9 +88,9 @@ describe('M4-MIC-RESCAN-1: one call re-reads the local inputs', () => {
       scope: 'MIC_LOCAL',
       trigger: 'MANUAL',
       outcome: 'COMPLETE',
-      responderCount: 2,
+      responderCount: 4, // D61 (2026-11-04): the four numbered channels all answer
       newCount: 0,
-      registeredCount: 2,
+      registeredCount: 4,
       interfaceCount: 0,
       operationId: 'rescanCaptureInputs',
       permission: 'CAPTURE_CONFIG',
@@ -107,9 +110,11 @@ describe('M4-MIC-RESCAN-1: one call re-reads the local inputs', () => {
     expect(first.inputs).toEqual([
       { deviceId: 'MIC-01', inputId: 'MIC-01', present: true, adapter: 'FAKE', sourceClass: 'DEVELOPMENT', errorCode: null },
       { deviceId: 'MIC-02', inputId: 'MIC-02', present: false, adapter: 'FAKE', sourceClass: 'DEVELOPMENT', errorCode: 'PERMISSION_DENIED' },
-    ]);
-    expect(online()).toEqual([['MIC-01', true], ['MIC-02', false]]);
-    expect(built.appended.at(-1)?.details).toMatchObject({ responderCount: 1, registeredCount: 2 });
+      { deviceId: 'MIC-03', inputId: 'MIC-03', present: true, adapter: 'FAKE', sourceClass: 'DEVELOPMENT', errorCode: null },
+      { deviceId: 'MIC-04', inputId: 'MIC-04', present: true, adapter: 'FAKE', sourceClass: 'DEVELOPMENT', errorCode: null },
+    ]); // D61 (2026-11-04): four channels
+    expect(online()).toEqual([['MIC-01', true], ['MIC-02', false], ['MIC-03', true], ['MIC-04', true]]); // D61 (2026-11-04)
+    expect(built.appended.at(-1)?.details).toMatchObject({ responderCount: 3, registeredCount: 4 }); // D61 (2026-11-04): four channels registered, the removed one answers as absent (was one of two)
     // Presence only: the alert of an unreachable microphone belongs to a pre-check run.
     expect(built.sim.store.getState().alerts.filter((alert) => alert.kind === 'SYSTEM')).toEqual([]);
     expect(built.sim.store.getState().audit.rows.filter((row) => row.type === 'CAPTURE_DEVICE_UNREACHABLE')).toEqual([]);
@@ -117,8 +122,8 @@ describe('M4-MIC-RESCAN-1: one call re-reads the local inputs', () => {
     built.adapters.fakes.mics[1]?.setPresent(true);
     built.clock.advance(CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS);
     const second = (await built.post()).json() as Scan;
-    expect(second.inputs.map((input) => [input.deviceId, input.present, input.errorCode])).toEqual([['MIC-01', true, null], ['MIC-02', true, null]]);
-    expect(online()).toEqual([['MIC-01', true], ['MIC-02', true]]);
+    expect(second.inputs.map((input) => [input.deviceId, input.present, input.errorCode])).toEqual([['MIC-01', true, null], ['MIC-02', true, null], ['MIC-03', true, null], ['MIC-04', true, null]]); // D61 (2026-11-04)
+    expect(online()).toEqual([['MIC-01', true], ['MIC-02', true], ['MIC-03', true], ['MIC-04', true]]); // D61 (2026-11-04)
   });
 
   it('allowed while a session is open, and the row names that session', async () => {
@@ -142,7 +147,7 @@ describe('M4-MIC-RESCAN-1: one call re-reads the local inputs', () => {
     expect(errorOf(limited).details).toEqual({ reason: 'INPUT_RESCAN_RATE_LIMITED' });
     expect(limited.headers['retry-after']).toBe('2');
     expect(built.appended).toHaveLength(1);
-    expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([1, 1]);
+    expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([1, 1, 1, 1]); // D61 (2026-11-04): four channels
     // Another operator is the same Core: still limited. (A supervisor WITH the permission granted by hand: the revocation of 0034 stands, the limiter is what this case judges.)
     built.actAs(operatorOf('SUPERVISOR', [Permission.CAPTURE_CONFIG]));
     expect(outcome(await built.post())).toEqual([429, 'RATE_LIMITED']);
@@ -151,7 +156,7 @@ describe('M4-MIC-RESCAN-1: one call re-reads the local inputs', () => {
     built.clock.advance(1_500);
     expect((await built.post()).statusCode).toBe(200);
     expect(built.appended).toHaveLength(2);
-    expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([2, 2]);
+    expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([2, 2, 2, 2]); // D61 (2026-11-04)
   });
 });
 
@@ -166,7 +171,7 @@ describe('who may call, and when it is not ready', () => {
       // the 403 of the database test (`no-device.db.test.ts`); what holds in both is that the handler
       // does not run.
       expect((await built.post()).statusCode, denied).toBeGreaterThanOrEqual(400);
-      expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate), denied).toEqual([0, 0]);
+      expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate), denied).toEqual([0, 0, 0, 0]); // D61 (2026-11-04)
       expect(built.appended, denied).toEqual([]);
       expect(built.units, denied).toEqual([]);
     }
@@ -200,11 +205,13 @@ describe('who may call, and when it is not ready', () => {
     expect((response.json() as Scan).inputs).toEqual([
       { deviceId: 'MIC-01', inputId: 'MIC-01', present: true, errorCode: null },
       { deviceId: 'MIC-02', inputId: 'MIC-02', present: false, errorCode: null },
+      { deviceId: 'MIC-03', inputId: 'MIC-03', present: true, errorCode: null }, // D61 (2026-11-04): four channels
+      { deviceId: 'MIC-04', inputId: 'MIC-04', present: true, errorCode: null },
     ]);
     expect(response.body).not.toMatch(/"adapter"|"sourceClass"|DEVELOPMENT|FAKE/);
     expect(built.appended.map((row) => row.details['scope'])).toEqual(['MIC_LOCAL']);
     // No adapter was asked.
-    expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([0, 0]);
+    expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([0, 0, 0, 0]); // D61 (2026-11-04)
   });
 
   it('G70-01 - simulated capture with a probe handed in (a test rig; the product hands none): the adapters are asked, and the answer still states no adapter and no class', async () => {
@@ -217,8 +224,10 @@ describe('who may call, and when it is not ready', () => {
     expect((response.json() as Scan).inputs).toEqual([
       { deviceId: 'MIC-01', inputId: 'MIC-01', present: true, errorCode: null },
       { deviceId: 'MIC-02', inputId: 'MIC-02', present: false, errorCode: 'DEVICE_BUSY' },
+      { deviceId: 'MIC-03', inputId: 'MIC-03', present: true, errorCode: null }, // D61 (2026-11-04): four channels
+      { deviceId: 'MIC-04', inputId: 'MIC-04', present: true, errorCode: null },
     ]);
-    expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([1, 1]);
+    expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([1, 1, 1, 1]); // D61 (2026-11-04): four channels
   });
 
   it('the engine is not running: 503, nothing read, no spacing slot taken', async () => {
@@ -226,7 +235,7 @@ describe('who may call, and when it is not ready', () => {
     built.actAs(operatorOf('TECHNICIAN')); // REVOKED 2026-10-29 (0034)
     built.running = false;
     expect(outcome(await built.post())).toEqual([503, 'NOT_READY']);
-    expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([0, 0]);
+    expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([0, 0, 0, 0]); // D61 (2026-11-04)
     built.running = true;
     expect((await built.post()).statusCode).toBe(200);
   });

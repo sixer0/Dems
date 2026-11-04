@@ -255,8 +255,8 @@ describe('rules (12) to (15): the unsealed recordings of generated sources (wave
   });
 
   const S = 'SES-20261010-0025';
-  // D60 (2026-11-04): six source slots - a generated session holds exactly six development source rows.
-  const fakeRow = (sessionId: string, sourceRows = 6, fakeRows = 6): RealSealedEvidenceRow => ({ session_id: sessionId, evidence_id: null, manifest_hash: null, integrity_source: UNSEALED_FAKE_SOURCE, development_flag: false, source_rows: sourceRows, development_rows: fakeRows });
+  // D61 (2026-11-04): eight source slots - a generated session holds exactly eight development source rows.
+  const fakeRow = (sessionId: string, sourceRows = 8, fakeRows = 8): RealSealedEvidenceRow => ({ session_id: sessionId, evidence_id: null, manifest_hash: null, integrity_source: UNSEALED_FAKE_SOURCE, development_flag: false, source_rows: sourceRows, development_rows: fakeRows });
   const clientOf = (rows: readonly RealSealedEvidenceRow[]) => ({ query: async () => ({ rows: [...rows] }) }) as never;
 
   /** A store on disk as lane 2 was left: the recording folder of the session whose seal failed, no manifest in it. */
@@ -272,7 +272,7 @@ describe('rules (12) to (15): the unsealed recordings of generated sources (wave
   describe('rules (12) + (13): the database side', () => {
     it('the statement asks for sessions of exactly four source rows, all FAKE, without a sealed item - on the snapshot of the other rules; it stays one SELECT', () => {
       expect(REAL_SEALED_EVIDENCE_STATEMENT).toContain(`'${UNSEALED_FAKE_SOURCE}'`);
-      expect(REAL_SEALED_EVIDENCE_STATEMENT).toContain("HAVING count(*) = 6 AND count(*) FILTER (WHERE f.adapter_kind = 'FAKE') = 6"); // D60: six slots
+      expect(REAL_SEALED_EVIDENCE_STATEMENT).toContain("HAVING count(*) = 8 AND count(*) FILTER (WHERE f.adapter_kind = 'FAKE') = 8"); // D60: six slots
       expect(REAL_SEALED_EVIDENCE_STATEMENT).toContain('NOT EXISTS (SELECT 1 FROM public.evidence_items AS j WHERE j.session_id = f.session_id AND j.sealed_at IS NOT NULL)');
       expect(REAL_SEALED_EVIDENCE_STATEMENT.match(/UNION ALL/g)).toHaveLength(2);
       expect(REAL_SEALED_EVIDENCE_STATEMENT).toMatch(/^SELECT\b/);

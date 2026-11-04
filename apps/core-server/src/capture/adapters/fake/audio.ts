@@ -1,7 +1,8 @@
 /**
  * The fake microphone adapter (blueprint row 65; check M4-FAKE-1; capture spec §A.7 "Test hook",
  * §A.7.1). Adapter kind `FAKE`: one instance is one microphone with a level of its own, so that
- * two of them are told apart by ear and by meter (S2 used a 0.3 gain on the standby).
+ * two of them are told apart by ear and by meter (S2 used a 0.3 gain on the standby - D61,
+ * 2026-11-04: the standby is the legacy name of channel 2; every numbered channel records).
  *
  * `open` hands out the transport the worker reads — the row-58 pipe kind — as a NAME only: the
  * fake creates no pipe and writes no sample. Whoever needs sound behind it (the worker harness of

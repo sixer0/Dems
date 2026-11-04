@@ -51,13 +51,15 @@ import { guardedArguments, identifyRegisteredCard, isRegisteredAudioInput, type 
 
 /** A lease lives this long from its last `hold`. */
 export const IDLE_METER_LEASE_MS = 30_000;
-/** At most this many helpers run: one per card of the PRIMARY and the STANDBY input. */
+/** At most this many helpers run: one per card of the two inputs the worker's role lane names (D61, 2026-11-04: the transcription pair; the selector plane carries four channels). */
 export const IDLE_METER_HELPERS_MAX = 2;
 
+// D61 (2026-11-04): the roles are the worker's two-role lane's names of the transcription pair (channels 1 and 2 of the
+// numbered selector plane); the idle meters report on that lane until the worker's own D61 wave. The selector names channels.
 export const IdleMeterRole = { PRIMARY: 'PRIMARY', STANDBY: 'STANDBY' } as const;
 export type IdleMeterRole = (typeof IdleMeterRole)[keyof typeof IdleMeterRole];
 
-/** One input of the selector in force: the microphone (`MIC-NN`) and its role. Only PRIMARY and STANDBY are read. */
+/** One input of the selector in force: the microphone (`MIC-NN`) and its legacy role name on the worker's two-role lane (D61, 2026-11-04). Only PRIMARY and STANDBY are read. */
 export interface IdleMeterInput {
   readonly deviceId: string;
   readonly role: IdleMeterRole;

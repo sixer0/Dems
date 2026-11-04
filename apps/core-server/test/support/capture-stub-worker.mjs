@@ -7,11 +7,13 @@
 //
 // THE AUDIO SOURCE, AS THE REAL WORKER SAYS IT (fix pass F-M5, review R74-17; protocol 4, `audio.c`):
 //   START                  after its ACK: the record AUDIO_SOURCE_INTERVAL of the start (index 1, sample 0,
-//                          reason SESSION_START) for the microphone that holds the plan's active role
-//   SWITCH_AUDIO_SOURCE    to another role: the record AUDIO_SOURCE_INTERVAL (reason OPERATOR_SWITCH, the
-//                          command's correlation ID) BEFORE the ACK; to the role that feeds the track
-//                          already: the ACK alone, no record; a role no microphone of the plan holds:
-//                          ACK ok=false NO_SUCH_MIC
+//                          reason SESSION_START) for the microphone that holds the plan's transcribed
+//                          CHANNEL (D61, 2026-11-04: `activeMic` names a channel; the record lane still
+//                          names the role of that channel - MIC-01 is PRIMARY, MIC-02 is STANDBY)
+//   SWITCH_AUDIO_SOURCE    to another role (the LEGACY two-role lane survives on this command): the record
+//                          AUDIO_SOURCE_INTERVAL (reason OPERATOR_SWITCH, the command's correlation ID)
+//                          BEFORE the ACK; to the role whose channel feeds the track already: the ACK
+//                          alone, no record; a role no microphone of the plan holds: ACK ok=false NO_SUCH_MIC
 //   STOP                   the record AUDIO_TIMELINE_END, then the ACK
 // So an operation 81 through this stub runs the real path. `fromSample` is the wall time since the
 // start in samples, on the 480-sample input grid: the stub has no audio, only the clock.
@@ -62,6 +64,10 @@ const SAMPLE_RATE_HZ = 48_000;
 const QUANTUM_SAMPLES = 480;
 let recordSeq = 0;
 let mics = [];
+// D61 (2026-11-04): the plan keys its microphone rows by NUMBERED CHANNEL; the switch command and the
+// interval record still speak the two-role lane. The two words of the transcription pair:
+const CHANNEL_OF_ROLE = { PRIMARY: 'MIC-01', STANDBY: 'MIC-02' };
+const ROLE_OF_CHANNEL = { 'MIC-01': 'PRIMARY', 'MIC-02': 'STANDBY' };
 let activeRole = null;
 let intervals = 0;
 let startedAtMs = 0;
@@ -100,12 +106,13 @@ lines.on('line', (line) => {
       ack(true);
       // T0: the interval of the start, before any camera record can exist.
       mics = Array.isArray(command.plan.mics) ? command.plan.mics : [];
-      activeRole = command.plan.activeMic ?? 'PRIMARY';
+      // D61 (2026-11-04): `activeMic` of the plan is the TRANSCRIBED CHANNEL (`MIC-01`), not a role.
+      activeRole = ROLE_OF_CHANNEL[command.plan.activeMic ?? 'MIC-01'] ?? 'PRIMARY';
       startedAtMs = Date.now();
-      const first = mics.find((mic) => mic.role === activeRole);
+      const first = mics.find((mic) => mic.channel === CHANNEL_OF_ROLE[activeRole]);
       if (first !== undefined) {
         intervals = 1;
-        record(command.sessionId, { kind: 'AUDIO_SOURCE_INTERVAL', deviceId: first.deviceId, role: first.role, index: 1, fromSample: 0, sampleRateHz: SAMPLE_RATE_HZ, capturedAtMs: startedAtMs, reason: 'SESSION_START', correlationId: null, appliedDelayUs: null });
+        record(command.sessionId, { kind: 'AUDIO_SOURCE_INTERVAL', deviceId: first.deviceId, role: activeRole, index: 1, fromSample: 0, sampleRateHz: SAMPLE_RATE_HZ, capturedAtMs: startedAtMs, reason: 'SESSION_START', correlationId: null, appliedDelayUs: null });
       }
       if (args.includes('--durable')) {
         record(command.sessionId, { kind: 'FIRST_DURABLE_FRAGMENT', deviceId: command.plan.cameras[0].deviceId, bytes: 1, syncLevel: 'F_FULLFSYNC' });
@@ -124,7 +131,7 @@ lines.on('line', (line) => {
       for (let step = 0; step < flood; step += 1) write({ type: 'PROGRESS', sessionId: command.sessionId, step: `S${step}`, progress: 0, etaMs: null });
     }
   } else if (command.type === 'SWITCH_AUDIO_SOURCE') {
-    const to = mics.find((mic) => mic.role === command.to);
+    const to = mics.find((mic) => mic.channel === CHANNEL_OF_ROLE[command.to]); // D61 (2026-11-04): the role of the legacy lane names a CHANNEL of the plan
     if (to === undefined) ack(false, 'NO_SUCH_MIC');
     else if (command.to === activeRole) ack(true);
     else {
@@ -132,7 +139,7 @@ lines.on('line', (line) => {
       activeRole = command.to;
       intervals += 1;
       lastFromSample = sampleNow();
-      record(command.sessionId, { kind: 'AUDIO_SOURCE_INTERVAL', deviceId: to.deviceId, role: to.role, index: intervals, fromSample: lastFromSample, sampleRateHz: SAMPLE_RATE_HZ, capturedAtMs: startedAtMs + Math.floor((lastFromSample * 1000) / SAMPLE_RATE_HZ), reason: 'OPERATOR_SWITCH', correlationId: command.correlationId, appliedDelayUs: 0 });
+      record(command.sessionId, { kind: 'AUDIO_SOURCE_INTERVAL', deviceId: to.deviceId, role: command.to, index: intervals, fromSample: lastFromSample, sampleRateHz: SAMPLE_RATE_HZ, capturedAtMs: startedAtMs + Math.floor((lastFromSample * 1000) / SAMPLE_RATE_HZ), reason: 'OPERATOR_SWITCH', correlationId: command.correlationId, appliedDelayUs: 0 }); // D61 (2026-11-04): the row names its CHANNEL; the record of this lane names the ROLE
       ack(true);
     }
   } else if (command.type === 'STOP') {

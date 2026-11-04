@@ -43,7 +43,8 @@
  *             then the pipes are removed, and the instant starts the pause of the device.
  *   end       the helper ends by itself: EVERY live handle of the group is told once,
  *             `AUDIO_HELPER_EXITED` - both microphones are lost in the same instant (design 6.2:
- *             the standby guards a microphone and its cable, not the device).
+ *             the standby guards a microphone and its cable, not the device; D61, 2026-11-04: the
+ *             failover concept is superseded - every numbered channel records on its own).
  *
  * STOPPING A HELPER. The end of the guard's input; the guard sends SIGTERM and, 2,000 ms later, a
  * SIGKILL (its `GUARD_TERM_BOUND_MS`). A helper whose pipe was never opened by a reader IGNORES

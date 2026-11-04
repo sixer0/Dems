@@ -145,7 +145,7 @@ describe('listing and resolving (RG-2, OD-10)', () => {
     const development = createFakeRegistry({ runDir: RUN_DIR }).registry;
     // D60 (2026-11-04): the seed now carries CAM-03/CAM-04 as fakes — an adopted production row is CAM-05+.
     development.register(productionCamera('CAM-05'));
-    expect(development.list().map((device) => `${device.id} ${device.sourceClass}`)).toEqual(['CAM-01 DEVELOPMENT', 'CAM-02 DEVELOPMENT', 'CAM-03 DEVELOPMENT', 'CAM-04 DEVELOPMENT', 'CAM-05 PRODUCTION', 'MIC-01 DEVELOPMENT', 'MIC-02 DEVELOPMENT', 'POE-SWITCH DEVELOPMENT']);
+    expect(development.list().map((device) => `${device.id} ${device.sourceClass}`)).toEqual(['CAM-01 DEVELOPMENT', 'CAM-02 DEVELOPMENT', 'CAM-03 DEVELOPMENT', 'CAM-04 DEVELOPMENT', 'CAM-05 PRODUCTION', 'MIC-01 DEVELOPMENT', 'MIC-02 DEVELOPMENT', 'MIC-03 DEVELOPMENT', 'MIC-04 DEVELOPMENT', 'POE-SWITCH DEVELOPMENT']); // D61 (2026-11-04): the four numbered channels of the development bed
     const production = createCaptureDeviceRegistry({ operation: 'REAL_PRODUCTION' });
     production.register(productionCamera('CAM-03'));
     expect(production.list().filter((device) => device.sourceClass === 'DEVELOPMENT')).toEqual([]);
@@ -164,7 +164,7 @@ describe('listing and resolving (RG-2, OD-10)', () => {
     expect(codeOf(() => registry.resolve('CAMERA', 'CAM-02'))).toBe('CAPTURE_REGISTRY_LOCKED');
     expect(codeOf(() => registry.assertAssignable('CAMERA', 'CAM-02'))).toBe('CAPTURE_REGISTRY_LOCKED');
     // Reading stays possible while a session is open. D60 (2026-11-04): the seed's seven built-ins.
-    expect(registry.list()).toHaveLength(7);
+    expect(registry.list()).toHaveLength(9); // D61 (2026-11-04): nine built-ins
     expect(registry.describe('CAM-02').id).toBe('CAM-02');
     open = false;
     expect(registry.resolve('CAMERA', 'CAM-02')).toBe(cameras[1]);

@@ -54,11 +54,14 @@ describe('F-1: back-pressure never hides a sign of life or an acknowledgement', 
     supervisor.on('progress', never);
     for (let step = 0; step < 12; step += 1) fake.last().progress(`S${step}`, 0);
     await expect(supervisor.switchAudioSource(SESSION, CaptureMicRole.STANDBY)).resolves.toBeNull();
-    // The next worker of the session starts with the source the operator chose.
+    // The next worker of the session starts with the source the operator chose. D61 (2026-11-04): the plan
+    // cannot carry it (`activeMic` is the transcribed channel and the protocol validates `MIC-01`), so the
+    // choice is re-said to that worker by the legacy lane's own command once it accepted its plan.
     fake.last().exit(1);
     clock.advance(LIMITS.backoffBaseMs);
     await flush();
-    expect(fake.last().commands(SupervisorMessageType.START)[0]?.plan.activeMic).toBe('STANDBY');
+    expect(fake.last().commands(SupervisorMessageType.START)[0]?.plan.activeMic).toBe('MIC-01');
+    expect(fake.last().commands(SupervisorMessageType.SWITCH_AUDIO_SOURCE)).toMatchObject([{ to: 'STANDBY' }]);
   });
 });
 

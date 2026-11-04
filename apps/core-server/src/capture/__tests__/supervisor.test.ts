@@ -83,7 +83,9 @@ describe('a session', () => {
       expect(JSON.stringify([(error as Error).message, (error as CaptureSupervisorError).detail])).not.toMatch(/hunter2|192\.168|rtsp/);
     }
     expect(await refusalOf(supervisor.start('bad id with spaces', plan))).toBe(CaptureRefusal.PLAN_INVALID);
-    expect(await refusalOf(supervisor.start(SESSION, { ...plan, activeMic: CaptureMicRole.STANDBY, mics: [plan.mics[0]!] }))).toBe(`${CaptureRefusal.PLAN_INVALID}/activeMic`);
+    // D61 (2026-11-04): `activeMic` is the TRANSCRIBED CHANNEL of `AUDIO-01` - the protocol validates exactly
+    // `MIC-01`, so any other channel word is a plan that states no truth about the session.
+    expect(await refusalOf(supervisor.start(SESSION, { ...plan, activeMic: 'MIC-02' }))).toBe(`${CaptureRefusal.PLAN_INVALID}/activeMic`);
     expect(fake.calls()).toBe(0);
     expect(supervisor.status().phase).toBe(CapturePhase.IDLE);
     // Control: the unchanged plan is taken.
@@ -402,11 +404,15 @@ describe('correlation IDs', () => {
     const session = worker.launch.correlationId;
     expect(session).toBe(`cap:${SESSION}:1`);
     const commands = fake.workers.flatMap((each) => each.received);
+    // D61 (2026-11-04): the later worker is RE-SAID the operator's choice (the plan cannot carry it:
+    // `activeMic` is the transcribed channel and the protocol validates `MIC-01`), so its own
+    // `SWITCH_AUDIO_SOURCE` stands between its `START` and the `STOP`.
     expect(commands.map((command) => `${command.type} ${command.correlationId}`)).toEqual([
       `START ${session}:1`,
       `SWITCH_AUDIO_SOURCE ${session}:2`,
       `START ${session}:3`,
-      `STOP ${session}:4`,
+      `SWITCH_AUDIO_SOURCE ${session}:4`,
+      `STOP ${session}:5`,
     ]);
     expect(commands.every((command) => command.sessionId === SESSION)).toBe(true);
     expect(new Set([...named('phase'), ...named('telemetry'), ...named('workerDown')].map((event) => event.correlationId))).toEqual(new Set([session]));
@@ -438,7 +444,12 @@ describe('switchAudioSource (the operator\'s switch; never automatic, OD-11)', (
     fake.last().exit(1);
     clock.advance(LIMITS.backoffBaseMs);
     await flush();
-    expect(fake.last().commands(SupervisorMessageType.START)[0]?.plan.activeMic).toBe('STANDBY');
+    // D61 (2026-11-04): the plan of the later worker names the TRANSCRIBED CHANNEL - `MIC-01`, which the
+    // protocol validates - and the operator's choice on the legacy two-role lane is RE-SAID to that worker
+    // by a `SWITCH_AUDIO_SOURCE` of its own (the choice cannot travel on the plan: the role member is gone).
+    const later = fake.last();
+    expect(later.commands(SupervisorMessageType.START)[0]?.plan.activeMic).toBe('MIC-01');
+    expect(later.commands(SupervisorMessageType.SWITCH_AUDIO_SOURCE)).toMatchObject([{ to: 'STANDBY' }]);
   });
 
   it('a MIC_SILENT warning is handed on as a warning and sends NO command to the worker', async () => {
@@ -454,10 +465,12 @@ describe('switchAudioSource (the operator\'s switch; never automatic, OD-11)', (
     const idle = await setup();
     expect(await refusalOf(idle.supervisor.switchAudioSource(SESSION, CaptureMicRole.STANDBY))).toBe(CaptureRefusal.SESSION_UNKNOWN);
 
+    // D61 (2026-11-04): a plan of the protocol holds FOUR channels, so every legacy role word names a channel
+    // that a valid plan always holds - the refusal of THIS sub-case moves from "a role no mic holds" to a word
+    // that is no role at all (channels 3 and 4 are recorded at once and are not selectable on this lane).
     const one = await setup();
-    const plan = capturePlan();
-    await one.supervisor.start(SESSION, { ...plan, mics: [plan.mics[0]!] });
-    expect(await refusalOf(one.supervisor.switchAudioSource(SESSION, CaptureMicRole.STANDBY))).toBe(CaptureRefusal.PLAN_INVALID);
+    await one.supervisor.start(SESSION, capturePlan());
+    expect(await refusalOf(one.supervisor.switchAudioSource(SESSION, 'MIC-03' as unknown as CaptureMicRole))).toBe(CaptureRefusal.PLAN_INVALID);
 
     const silent = await recording({}, { ackSwitch: false });
     const switching = refusalOf(silent.supervisor.switchAudioSource(SESSION, CaptureMicRole.STANDBY));
@@ -1000,7 +1013,9 @@ describe('task 4 row 179 (BR-07 (2)): a later worker of a session is sent ingest
     await context.supervisor.switchAudioSource(SESSION, CaptureMicRole.STANDBY);
     await restart(context, LIMITS.backoffBaseMs);
     const second = planOf(context.fake.last());
-    expect(second.activeMic).toBe('STANDBY');
+    // D61 (2026-11-04): the renewed plan keeps the transcribed channel; the chosen source is re-said by the lane's own command.
+    expect(second.activeMic).toBe('MIC-01');
+    expect(context.fake.last().commands(SupervisorMessageType.SWITCH_AUDIO_SOURCE)).toMatchObject([{ to: 'STANDBY' }]);
     expect(addressesOf(second)).toEqual(session.told[0]!.addresses);
   });
 });
@@ -1135,27 +1150,35 @@ describe('task 4 row 191: a later worker of a session waits for the session\'s a
     expect(context.clock.armed()).toEqual([]);
   });
 
-  it('WHICH MICROPHONES THE LATER PLAN HOLDS: the STANDBY not open - a plan with the PRIMARY alone, and a switch to the standby is refused; the microphone of the ACTIVE role not open - no plan, no worker (PLAN_INVALID); a device that is no microphone of the plan is ignored', async () => {
+  it('WHICH MICROPHONES THE LATER PLAN HOLDS (D61, 2026-11-04): ALL FOUR CHANNELS - a microphone that is not open again is no plan and no worker (PLAN_INVALID); the renewed plan holds every channel with its own input and its own audio file, and a device that is no microphone of the plan is ignored', async () => {
     const plan = capturePlan(SESSION);
-    const primaryOnly = await setup();
-    const withStranger = new Map([...inputsOf(plan)].filter(([deviceId]) => deviceId === 'MIC-01'));
+    // D61: the plan of the protocol names FOUR channels (min = max = 4), so a later worker whose session
+    // holds three of them starts nothing - the two-role era's "a plan with the PRIMARY alone" is gone with
+    // the failover concept. The stranger device is no microphone of the plan and is ignored either way.
+    const oneShort = await setup();
+    const withStranger = new Map([...inputsOf(plan)].filter(([deviceId]) => deviceId !== 'MIC-04'));
     withStranger.set('MIC-09', { kind: 'PCM_FIFO', path: '/nonexistent/stranger.pcm' });
-    await primaryOnly.supervisor.start(SESSION, plan, sources().attempts(primaryOnly.fake, withStranger));
-    primaryOnly.fake.last().exit(1);
-    primaryOnly.clock.advance(LIMITS.backoffBaseMs);
+    await oneShort.supervisor.start(SESSION, plan, sources().attempts(oneShort.fake, withStranger));
+    oneShort.fake.last().exit(1);
+    oneShort.clock.advance(LIMITS.backoffBaseMs);
     await flush();
-    expect(startPlans(primaryOnly.fake)[1]?.plan.mics).toEqual([plan.mics[0]]);
-    expect(primaryOnly.supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, attempt: 2 });
-    expect(await refusalOf(primaryOnly.supervisor.switchAudioSource(SESSION, CaptureMicRole.STANDBY))).toBe(CaptureRefusal.PLAN_INVALID);
+    expect(oneShort.fake.workers).toHaveLength(1);
+    expect(oneShort.supervisor.status().phase).toBe(CapturePhase.FAULTED);
+    expect(oneShort.reports.map((report) => [report.code, (report.err as CaptureSupervisorError).detail])).toEqual([['CAPTURE_SOURCES_NOT_READY', 'PLAN_INVALID']]);
 
-    const noActive = await setup();
-    await noActive.supervisor.start(SESSION, plan, sources().attempts(noActive.fake, new Map([...inputsOf(plan)].filter(([deviceId]) => deviceId === 'MIC-02'))));
-    noActive.fake.last().exit(1);
-    noActive.clock.advance(LIMITS.backoffBaseMs);
+    // All four open again: the later plan holds the four rows, each with the input the session gave for it
+    // and the audio file the plan of the start named (D61: `outputPath` survives the renewal).
+    const allFour = await setup();
+    await allFour.supervisor.start(SESSION, plan, sources().attempts(allFour.fake, new Map([...inputsOf(plan, '.again'), ['MIC-09', { kind: 'PCM_FIFO' as const, path: '/nonexistent/stranger.pcm' }]])));
+    allFour.fake.last().exit(1);
+    allFour.clock.advance(LIMITS.backoffBaseMs);
     await flush();
-    expect(noActive.fake.workers).toHaveLength(1);
-    expect(noActive.supervisor.status().phase).toBe(CapturePhase.FAULTED);
-    expect(noActive.reports.map((report) => [report.code, (report.err as CaptureSupervisorError).detail])).toEqual([['CAPTURE_SOURCES_NOT_READY', 'PLAN_INVALID']]);
+    const later = startPlans(allFour.fake)[1]!.plan;
+    expect(later.mics.map((mic) => [mic.deviceId, mic.channel, mic.input.path, mic.outputPath])).toEqual(
+      plan.mics.map((mic) => [mic.deviceId, mic.channel, `${mic.input.path}.again`, mic.outputPath]),
+    );
+    expect(allFour.supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, attempt: 2 });
+    await allFour.supervisor.stop(SESSION, 'STOPPED');
   });
 
   it('WHILE IT WAITS nothing is held but the phase: a stop ends the session and the sources that become ready afterwards start no worker; a record that makes the session durable calls the restart off', async () => {

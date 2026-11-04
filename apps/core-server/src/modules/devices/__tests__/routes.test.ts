@@ -351,7 +351,7 @@ describe('operations 44 to 47: a read answers from the committed state of the en
 
     built.engine.state = committedOf({ ...scenarioState('fault-demo'), activeCameraId: 'VIDEO-02' });
     expect((await get(built, VIDEO)).json()).toMatchObject({ tracks: [{ recState: 'REC', online: true }, { recState: 'LOST', online: false, lens: 'FAULT' }, { recState: 'REC', online: true }, { recState: 'REC', online: true }] }); // D60: four tracks (the fault stays on VIDEO-02)
-    expect((await get(built, AUDIO)).json()).toMatchObject({ channels: [{ state: 'READY', clip: false }, { state: 'CLIP', clip: true }] });
+    expect((await get(built, AUDIO)).json()).toMatchObject({ channels: [{ state: 'READY', clip: false }, { state: 'CLIP', clip: true }, { state: 'READY', clip: false }, { state: 'READY', clip: false }] }); // D61 (2026-11-04): four numbered channels
     expect((await get(built, HEALTH)).json()).toMatchObject({ systemState: 'CRITICAL' });
     expect((await get(built, INVENTORY)).json()).toMatchObject({ activeCameraId: 'VIDEO-02' });
   });
@@ -388,6 +388,9 @@ describe('operations 44 to 47: a read answers from the committed state of the en
     expect(levels(audio)).toEqual([
       [-18.5, -17.25],
       [-33.75, -30.5],
+      // D61 (2026-11-04): the frame names channels 1 and 2; the committed state decides 3 and 4.
+      [-52, -52],
+      [-52, -52],
     ]);
     expect(audio).toEqual(audioStatusOf(state, 0, frame));
     expect(validateCoreApiResponse('getAudioStatus', 200, audio)).toEqual({ ok: true });
@@ -620,7 +623,7 @@ describe('stage 7: a malformed path ID or body is refused before the engine is r
       ['setActiveCamera', ACTIVE_CAMERA, '{"cameraId":', [400, 'INVALID_JSON']],
       ['resetMicClip', CLIP_RESET, undefined, [422, 'INVALID_INPUT']],
       ['resetMicClip', CLIP_RESET, {}, [422, 'INVALID_INPUT']],
-      ['resetMicClip', CLIP_RESET, { channel: 'AUDIO-03' }, [422, 'INVALID_INPUT']],
+      ['resetMicClip', CLIP_RESET, { channel: 'AUDIO-05' }, [422, 'INVALID_INPUT']], // D61 (2026-11-04): AUDIO-03 joined the four audio tracks; only a fifth is refused
       ['resetMicClip', CLIP_RESET, { channel: 'VIDEO-01' }, [422, 'INVALID_INPUT']],
       ['resetMicClip', CLIP_RESET, { channel: 'MIC-01' }, [422, 'INVALID_INPUT']],
       ['resetMicClip', CLIP_RESET, { channel: true }, [422, 'INVALID_INPUT']],

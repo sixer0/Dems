@@ -220,8 +220,8 @@ describe('clearedDevelopmentPackages: which folders a signed development mark cl
 
   it('findRealSealedEvidence hands the row\'s anchors to the reader and leaves a non-exempt row\'s folder alone', async () => {
     const rows = [
-      { session_id: 'S-DEV', evidence_id: 'EV-1', manifest_hash: DIGEST, development_flag: true, source_rows: 6, development_rows: 6 }, // D60 (2026-11-04): six slots
-      { session_id: 'S-FLAG-ONLY', evidence_id: 'EV-2', manifest_hash: DIGEST, development_flag: true, source_rows: 6, development_rows: 5 },
+      { session_id: 'S-DEV', evidence_id: 'EV-1', manifest_hash: DIGEST, development_flag: true, source_rows: 8, development_rows: 8 }, // D60 (2026-11-04): six slots
+      { session_id: 'S-FLAG-ONLY', evidence_id: 'EV-2', manifest_hash: DIGEST, development_flag: true, source_rows: 8, development_rows: 5 },
     ];
     const asked: string[] = [];
     const facts = await findRealSealedEvidence({ query: async () => ({ rows }) } as unknown as RealEvidenceQueryable, {
@@ -244,7 +244,7 @@ describe('clearedDevelopmentPackages: which folders a signed development mark cl
 // the folder - and to nothing looser. Their rows never block; their folders block unless cleared.
 describe('PASS E3: seed-sealed demo packages are exempt exactly like development items', () => {
   const HASH = 'ab'.repeat(32);
-  const demo = (sessionId: string, more: Record<string, unknown> = {}) => ({ session_id: sessionId, evidence_id: `EV-${sessionId}`, manifest_hash: HASH, integrity_source: 'DEMO_PACKAGE', development_flag: true, source_rows: 6, development_rows: 6, ...more }); // D60 (2026-11-04): six slots
+  const demo = (sessionId: string, more: Record<string, unknown> = {}) => ({ session_id: sessionId, evidence_id: `EV-${sessionId}`, manifest_hash: HASH, integrity_source: 'DEMO_PACKAGE', development_flag: true, source_rows: 8, development_rows: 8, ...more }); // D60 (2026-11-04): six slots
   const run = (rows: readonly Record<string, unknown>[], packages: EvidenceStoreScan['packages'], signed: (dir: string) => boolean = () => true) => {
     const asked: { dir: string; anchors: unknown }[] = [];
     return findRealSealedEvidence({ query: async () => ({ rows }) } as unknown as RealEvidenceQueryable, {
@@ -285,7 +285,7 @@ describe('PASS E3: seed-sealed demo packages are exempt exactly like development
   });
 
   it('a REAL row is judged as before, beside a demo row: an unflagged REAL item blocks and is named; a row without the member reads as REAL', async () => {
-    const { facts } = await run([demo('S-DEMO'), { session_id: 'S-REAL', evidence_id: 'EV-R', manifest_hash: HASH, integrity_source: 'REAL', development_flag: false, source_rows: 6, development_rows: 0 }, { session_id: 'S-OLD' }], [pkg('S-DEMO', 'UNKNOWN')]);
+    const { facts } = await run([demo('S-DEMO'), { session_id: 'S-REAL', evidence_id: 'EV-R', manifest_hash: HASH, integrity_source: 'REAL', development_flag: false, source_rows: 8, development_rows: 0 }, { session_id: 'S-OLD' }], [pkg('S-DEMO', 'UNKNOWN')]);
     expect(facts).toMatchObject({ blocked: true, dbSessions: ['S-OLD', 'S-REAL'], seedSealedDemoSessions: ['S-DEMO'] });
   });
 });

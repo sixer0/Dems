@@ -310,6 +310,15 @@ interface Session {
   readonly ingestElements: Set<string>;
   /** Row 191: the microphones of the plan the session was started with. A later worker's plan holds those of them that are open for it. */
   readonly micsOfStart: CapturePlan['mics'];
+  /**
+   * D61 (2026-11-04): the microphone the OPERATOR chose on the legacy two-role lane, as long as the
+   * session holds that choice. It no longer travels on the plan: `activeMic` is the TRANSCRIBED CHANNEL
+   * of `AUDIO-01` and the protocol validates `MIC-01` (the failover concept died with the decision), so
+   * a later worker of the session is told the choice by a `SWITCH_AUDIO_SOURCE` of its own after its
+   * `START` - which keeps row 179's rule ("a worker that restarts later starts with the source the
+   * operator chose") without putting a word on the wire that the protocol refuses.
+   */
+  micRole: CaptureMicRole;
 }
 
 interface DownCause {
@@ -871,6 +880,30 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
           const waiter = current.startWaiter;
           current.startWaiter = null;
           waiter?.resolve();
+          // D61 (2026-11-04): THE OPERATOR'S CHOICE ON THE LEGACY TWO-ROLE LANE IS RE-Said TO A LATER
+          // WORKER. The choice cannot travel on the plan - `activeMic` is the transcribed channel of
+          // `AUDIO-01` and the protocol validates `MIC-01` - so row 179's rule ("a worker that restarts
+          // later starts with the source the operator chose") is carried by the lane's own command.
+          // Nothing waits on its acknowledgement: the worker's interval record says what it realised.
+          if (current.attempt > 1 && current.micRole !== CaptureMicRole.PRIMARY) {
+            const role = current.micRole;
+            let resaid = '';
+            sendCommand(
+              current,
+              from,
+              (envelope) => {
+                resaid = envelope.correlationId;
+                return { ...envelope, type: SupervisorMessageType.SWITCH_AUDIO_SOURCE, to: role };
+              },
+              (result) => {
+                // The record the worker wrote before this ACK reached the listeners with the `RECORD` frame; nothing waits on it here.
+                current.switchRecords.delete(resaid);
+                if ('ack' in result && result.ack.ok) return;
+                // Refused or timed out: the worker keeps the channel its plan named. Said, never guessed.
+                report({ source: 'capture.supervisor.switch', code: 'CAPTURE_SWITCH_NOT_RESAID', sessionId: current.id, correlationId: current.correlationId, err: new CaptureSupervisorError(CaptureRefusal.COMMAND_REFUSED, 'the audio source the operator chose could be re-said to the later capture worker', 'refusal' in result ? result.refusal.detail : (result.ack.code ?? null)) });
+              },
+            );
+          }
         },
       );
       return;
@@ -1077,7 +1110,7 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
             const input = given.get(mic.deviceId);
             return input === undefined ? [] : [{ ...mic, input }];
           });
-          // The same schema as the plan of the start: at least one microphone, and one in the role that feeds the track.
+          // The same schema as the plan of the start: FOUR channels (D61, 2026-11-04), each with its renewed input.
           const next = CapturePlanSchema.safeParse({ ...current.plan, mics });
           if (next.success) current.plan = next.data;
           else failure = IngestRenewalFailure.PLAN_INVALID;
@@ -1259,6 +1292,7 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
         ingest,
         ingestElements: new Set(parsed.data.cameras.map((camera) => ingestElementOf(camera.ingestUrl))),
         micsOfStart: parsed.data.mics,
+        micRole: CaptureMicRole.PRIMARY, // D61 (2026-11-04): the plan starts on the transcribed channel; the operator may move the legacy lane
       };
       setPhase(CapturePhase.STARTING);
       launch();
@@ -1329,7 +1363,11 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
     if (to !== CaptureMicRole.PRIMARY && to !== CaptureMicRole.STANDBY) {
       return Promise.reject(new CaptureSupervisorError(CaptureRefusal.PLAN_INVALID, 'the audio source is not a mic role'));
     }
-    if (!current.plan.mics.some((mic) => mic.role === to)) {
+    // D61 (2026-11-04): the plan keys microphones by numbered channel; the switch is the legacy two-role lane's
+    // command and names the TRANSCRIPTION PAIR - PRIMARY is channel MIC-01, STANDBY channel MIC-02. Channels 3
+    // and 4 are recorded at once and are not selectable on this lane (the failover concept died with D61).
+    const CHANNEL_OF_ROLE: Readonly<Record<CaptureMicRole, 'MIC-01' | 'MIC-02'>> = { PRIMARY: 'MIC-01', STANDBY: 'MIC-02' };
+    if (!current.plan.mics.some((mic) => mic.channel === CHANNEL_OF_ROLE[to])) {
       return Promise.reject(new CaptureSupervisorError(CaptureRefusal.PLAN_INVALID, 'no mic of this session holds that role'));
     }
     const live = worker;
@@ -1356,8 +1394,10 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
           } else if (!result.ack.ok) {
             reject(new CaptureSupervisorError(CaptureRefusal.COMMAND_REFUSED, 'the capture worker refused the switch', result.ack.code ?? null));
           } else {
-            // A worker that restarts later starts with the source the operator chose.
-            current.plan = { ...current.plan, activeMic: to };
+            // A worker that restarts later starts with the source the operator chose. D61 (2026-11-04): the choice
+            // is NOT put into the plan - `activeMic` is the transcribed channel of `AUDIO-01` and the protocol
+            // validates `MIC-01` - it is held on the session and RE-Said to the later worker by the command below.
+            current.micRole = to;
             resolve(interval);
           }
         },

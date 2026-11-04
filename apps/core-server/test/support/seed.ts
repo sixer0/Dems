@@ -47,7 +47,7 @@ export const EXPECTED_SEED_COUNTS: Readonly<Record<string, number>> = Object.fre
   // devices; the credential table stays empty (SD-8).
   capture_config: 1,
   capture_device_credentials: 0,
-  capture_devices: 7, // D60 (2026-11-04): four built-in cameras, two microphones, the switch (was five)
+  capture_devices: 9, // D60: four built-in cameras; D61 (2026-11-04): four numbered microphones, the switch (was seven)
   console_settings: 1,
   core_device: 1,
   core_state: 1,

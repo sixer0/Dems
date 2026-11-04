@@ -53,8 +53,8 @@ function developmentRows(): SessionCaptureSourceRow[] {
   return [
     { slot: 'VIDEO-01', deviceId: 'CAM-03', adapterKind: 'LOCAL_DEVICE' },
     { slot: 'VIDEO-02', deviceId: 'CAM-02', adapterKind: 'FAKE' },
-    { slot: 'MIC-PRIMARY', deviceId: 'MIC-03', adapterKind: 'LOCAL_DEVICE' },
-    { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'FAKE' },
+    { slot: 'MIC-01', deviceId: 'MIC-03', adapterKind: 'LOCAL_DEVICE' },
+    { slot: 'MIC-02', deviceId: 'MIC-02', adapterKind: 'FAKE' },
   ];
 }
 
@@ -62,8 +62,8 @@ function developmentRows(): SessionCaptureSourceRow[] {
 const PRODUCTION_ROWS: readonly SessionCaptureSourceRow[] = [
   { slot: 'VIDEO-01', deviceId: 'CAM-07', adapterKind: 'ONVIF_RTSP' },
   { slot: 'VIDEO-02', deviceId: 'CAM-08', adapterKind: 'ONVIF_RTSP' },
-  { slot: 'MIC-PRIMARY', deviceId: 'MIC-07', adapterKind: 'USB_AUDIO' },
-  { slot: 'MIC-STANDBY', deviceId: 'MIC-08', adapterKind: 'USB_AUDIO' },
+  { slot: 'MIC-01', deviceId: 'MIC-07', adapterKind: 'USB_AUDIO' },
+  { slot: 'MIC-02', deviceId: 'MIC-08', adapterKind: 'USB_AUDIO' },
 ];
 
 type Loose = { tracks: { deviceId: string }[]; audio: { sourceIntervals: { micDeviceId: string }[] } };
@@ -74,7 +74,7 @@ const devicesOf =
     const loose = input as unknown as Loose;
     const id = (name: string): string => rows.find((row) => row.slot === name)?.deviceId ?? '';
     loose.tracks.forEach((track, index) => (track.deviceId = id(index === 0 ? 'VIDEO-01' : 'VIDEO-02')));
-    loose.audio.sourceIntervals.forEach((interval, index) => (interval.micDeviceId = id(index === 0 ? 'MIC-PRIMARY' : 'MIC-STANDBY')));
+    loose.audio.sourceIntervals.forEach((interval, index) => (interval.micDeviceId = id(index === 0 ? 'MIC-01' : 'MIC-02')));
   };
 
 const developmentPackage = (options: BuildOptions = {}): Promise<BuiltPackage> => {
@@ -111,7 +111,7 @@ function expectNotTrustworthy(result: PackageVerifyResult): void {
 describe('M7-DEVSRC-SEAL-1: a package sealed from a development plan carries the classes and verifies PASS, the development line first', () => {
   it('the manifest carries one class per camera file and per audio interval, from the adapter kinds of the four source rows', async () => {
     const rows = developmentRows();
-    expect(rows.map((row) => `${row.slot} ${row.deviceId} ${row.adapterKind}`)).toEqual(['VIDEO-01 CAM-03 LOCAL_DEVICE', 'VIDEO-02 CAM-02 FAKE', 'MIC-PRIMARY MIC-03 LOCAL_DEVICE', 'MIC-STANDBY MIC-02 FAKE']);
+    expect(rows.map((row) => `${row.slot} ${row.deviceId} ${row.adapterKind}`)).toEqual(['VIDEO-01 CAM-03 LOCAL_DEVICE', 'VIDEO-02 CAM-02 FAKE', 'MIC-01 MIC-03 LOCAL_DEVICE', 'MIC-02 MIC-02 FAKE']);
     const built = await developmentPackage();
     expect(built.manifest.tracks.map((track) => `${track.trackId} ${track.deviceId} ${track.sourceClass}`)).toEqual(['VIDEO-01 CAM-03 LOCAL_DEVICE', 'VIDEO-02 CAM-02 FAKE']);
     // A microphone switch from the local to the fake one: two intervals, two classes (rule 4).

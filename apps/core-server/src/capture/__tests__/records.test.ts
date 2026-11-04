@@ -355,14 +355,14 @@ describe('N-3: a warning of the worker is about a device of the plan (protocol 4
     expect(supervisor.status().queuedEvents).toBe(0);
   });
 
-  it('a role no mic of the plan holds is no subject either', async () => {
+  // D61 (2026-11-04): the plan carries exactly the four channels, so the case drops a device NO channel holds.
+  it('a device no mic of the plan holds is no subject either', async () => {
     const clock = manualCaptureTimers();
     const fake = fakeLauncher();
     const supervisor = createCaptureSupervisor({ now: clock.now, timers: clock.timers, launcher: fake.launcher });
     await supervisor.boot();
-    const plan = capturePlan(SESSION);
-    await supervisor.start(SESSION, { ...plan, mics: [plan.mics[0]!] });
-    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'MIC-02');
+    await supervisor.start(SESSION, capturePlan(SESSION));
+    fake.last().warning(CaptureWarningCode.MIC_SILENT, 'MIC-05');
     expect(supervisor.status().lastCrash).toMatchObject({ detail: 'WARNING_SUBJECT_UNKNOWN' });
   });
 });

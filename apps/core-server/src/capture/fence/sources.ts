@@ -1,28 +1,29 @@
 /**
- * The six `session_capture_sources` rows of a session (D60, 2026-11-04: four video tracks and two
- * mic roles; was four rows), and what a client is told about a source
+ * The eight `session_capture_sources` rows of a session (D61, 2026-11-04: four video tracks and
+ * four numbered microphone channels; D60: six rows, two mic roles; was four rows), and what a
+ * client is told about a source
  * (blueprint row 136; `dbc-4` §N.3 rules MR-S1, MR-S3, MR-S6; capture spec §A.1.1 rules RG-2,
  * RG-3; SEC35-40 (1), (2), (4); decisions D82, D86 C-5, D91 R-2; checks `M4-LOCAL-PLAN-1`,
  * `M4-DEVSRC-*` data half).
  *
- * PURE: no statement, no clock, no flag. The WRITE of the six rows is the session start's (row
+ * PURE: no statement, no clock, no flag. The WRITE of the eight rows is the session start's (row
  * 71), in the transaction that persists `RECORDING`; this file builds what it writes and checks
  * what it reads back.
  *
  * NO LISTENER AND NO SESSION START FOR A SOURCE KIND WITHOUT AN OPENER (SEC35-40). The session
  * start calls `assertRecordableSelector` of the plan builder (row 66) and hands its result - the
- * six slots (D60) with the descriptor of each device - to `buildSessionCaptureSources`. The builder
- * TRUSTS NONE OF IT: it holds every rule again on what it was given (six slots, an opener behind
- * each, one source class, the class of the running operation), so a caller that skipped row 66's
- * check, or a registry that was talked into something, still gets a refusal and no row.
- * Beyond row 66:
+ * eight slots (D61) with the descriptor of each device - to `buildSessionCaptureSources`. The
+ * builder TRUSTS NONE OF IT: it holds every rule again on what it was given (eight slots, an
+ * opener behind each, one source class, the class of the running operation), so a caller that
+ * skipped row 66's check, or a registry that was talked into something, still gets a refusal and
+ * no row. Beyond row 66:
  *   - `assertOperationRecordable`: `REAL_PRODUCTION` is refused outright while no production kind
  *     is opener-capable, so no all-`PRODUCTION` package can be produced in this phase;
  *   - `assertSessionSourcesOfOperation`: the re-read of MR-S6 (the fence is otherwise checked at
  *     boot only).
  *
  * Refusals are `CaptureAdapterError`s of the adapter layer: `SOURCE_KIND_NOT_RECORDABLE` (no
- * opener, a mixed selector, a shape that is not six slots) and `DEVELOPMENT_SOURCE_NOT_ALLOWED`
+ * opener, a mixed selector, a shape that is not eight slots (D61)) and `DEVELOPMENT_SOURCE_NOT_ALLOWED`
  * (a class that is not the running operation's). This unit imports nothing of a module: the
  * capture-config module imports the adapter layer, never the other way round.
  */
@@ -32,8 +33,8 @@ import { CaptureAdapterKind, CaptureOperation, CaptureSourceClass, sourceClassOf
 import { OPENER_CAPABLE_KINDS } from '../adapters/registry';
 import type { CaptureDeviceDescriptor } from '../adapters/types';
 
-/** The value set `CAPTURE_SOURCE_SLOT` (`session_capture_sources_slot_check`). D60 (2026-11-04): the Core records four video tracks at once, so the set carries six slots. */
-export const CAPTURE_SOURCE_SLOTS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-PRIMARY', 'MIC-STANDBY'] as const;
+/** The value set `CAPTURE_SOURCE_SLOT` (`session_capture_sources_slot_check`). D61 (2026-11-04): the two mic roles became four numbered channels, so the set carries eight slots (D60: six). */
+export const CAPTURE_SOURCE_SLOTS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const;
 export type CaptureSourceSlot = (typeof CAPTURE_SOURCE_SLOTS)[number];
 
 /** One row of `session_capture_sources`, plus the class derived from its kind (never stored). */
@@ -46,9 +47,9 @@ export interface SessionCaptureSource {
   readonly sourceClass: CaptureSourceClass;
 }
 
-/** One slot as `assertRecordableSelector` answers it (`RecordableSlot` of the plan builder, read structurally). D60 (2026-11-04): four video slots and the two mic roles. */
+/** One slot as `assertRecordableSelector` answers it (`RecordableSlot` of the plan builder, read structurally). D61 (2026-11-04): four video slots and the four numbered microphone channels (was the two mic roles). */
 export interface RecordedSlot {
-  readonly slot: 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04' | 'PRIMARY' | 'STANDBY'; // D60
+  readonly slot: 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04' | 'MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04'; // D61
   readonly descriptor: Pick<CaptureDeviceDescriptor, 'id' | 'deviceClass' | 'adapterKind' | 'hasOpener'>;
 }
 
@@ -56,24 +57,27 @@ export interface SessionCaptureSourcesInput {
   readonly sessionId: string;
   /** The capture operation of the running Core: the result of the one function. */
   readonly operation: CaptureOperation;
-  /** The six slots (D60, 2026-11-04): `assertRecordableSelector(selector, registry).slots`. In `SIMULATED` only the device ids are read. */
+  /** The eight slots (D61, 2026-11-04): `assertRecordableSelector(selector, registry).slots`. In `SIMULATED` only the device ids are read. */
   readonly slots: readonly RecordedSlot[];
   /** The server clock at the write. */
   readonly recordedAt: number;
 }
 
 const SESSION_ID = /^SES-[0-9]{8}-[0-9]{4}$/;
-// D60 (2026-11-04): the two extra video slots map to themselves; the mic roles keep their stored names.
-const SLOT_OF = Object.freeze({ 'VIDEO-01': 'VIDEO-01', 'VIDEO-02': 'VIDEO-02', 'VIDEO-03': 'VIDEO-03', 'VIDEO-04': 'VIDEO-04', PRIMARY: 'MIC-PRIMARY', STANDBY: 'MIC-STANDBY' } as const);
-/** `session_capture_sources_pairing_check`: the device class and the kinds a slot may carry. */
+// D61 (2026-11-04): the plan names the stored slots directly - all eight map to themselves (the two mic roles of the earlier eras became `MIC-01`/`MIC-02` in the 0040 data migration).
+const SLOT_OF = Object.freeze({ 'VIDEO-01': 'VIDEO-01', 'VIDEO-02': 'VIDEO-02', 'VIDEO-03': 'VIDEO-03', 'VIDEO-04': 'VIDEO-04', 'MIC-01': 'MIC-01', 'MIC-02': 'MIC-02', 'MIC-03': 'MIC-03', 'MIC-04': 'MIC-04' } as const);
+/** `session_capture_sources_pairing_check`: the device class and the kinds a slot may carry. D61 (2026-11-04): the four numbered channels pair like the two roles did. */
 const RULE_OF_SLOT: Readonly<Record<CaptureSourceSlot, { readonly deviceClass: CaptureDeviceClass; readonly kinds: readonly CaptureAdapterKind[] }>> = Object.freeze({
   'VIDEO-01': { deviceClass: 'CAMERA', kinds: [CaptureAdapterKind.ONVIF_RTSP, CaptureAdapterKind.FAKE, CaptureAdapterKind.LOCAL_DEVICE] },
   'VIDEO-02': { deviceClass: 'CAMERA', kinds: [CaptureAdapterKind.ONVIF_RTSP, CaptureAdapterKind.FAKE, CaptureAdapterKind.LOCAL_DEVICE] },
   // D60 (2026-11-04): the third and fourth recorded track pair like the first two (`session_capture_sources_pairing_check` of migration 0039).
   'VIDEO-03': { deviceClass: 'CAMERA', kinds: [CaptureAdapterKind.ONVIF_RTSP, CaptureAdapterKind.FAKE, CaptureAdapterKind.LOCAL_DEVICE] },
   'VIDEO-04': { deviceClass: 'CAMERA', kinds: [CaptureAdapterKind.ONVIF_RTSP, CaptureAdapterKind.FAKE, CaptureAdapterKind.LOCAL_DEVICE] },
-  'MIC-PRIMARY': { deviceClass: 'MIC', kinds: [CaptureAdapterKind.USB_AUDIO, CaptureAdapterKind.FAKE, CaptureAdapterKind.LOCAL_DEVICE] },
-  'MIC-STANDBY': { deviceClass: 'MIC', kinds: [CaptureAdapterKind.USB_AUDIO, CaptureAdapterKind.FAKE, CaptureAdapterKind.LOCAL_DEVICE] },
+  // D61 (2026-11-04): the roles became four numbered channels; each takes a microphone kind (`session_capture_sources_pairing_check` of migration 0040).
+  'MIC-01': { deviceClass: 'MIC', kinds: [CaptureAdapterKind.USB_AUDIO, CaptureAdapterKind.FAKE, CaptureAdapterKind.LOCAL_DEVICE] },
+  'MIC-02': { deviceClass: 'MIC', kinds: [CaptureAdapterKind.USB_AUDIO, CaptureAdapterKind.FAKE, CaptureAdapterKind.LOCAL_DEVICE] },
+  'MIC-03': { deviceClass: 'MIC', kinds: [CaptureAdapterKind.USB_AUDIO, CaptureAdapterKind.FAKE, CaptureAdapterKind.LOCAL_DEVICE] },
+  'MIC-04': { deviceClass: 'MIC', kinds: [CaptureAdapterKind.USB_AUDIO, CaptureAdapterKind.FAKE, CaptureAdapterKind.LOCAL_DEVICE] },
 });
 
 function notRecordable(deviceId: string | null = null): never {
@@ -93,10 +97,10 @@ export function assertOperationRecordable(operation: CaptureOperation): void {
 }
 
 /**
- * The six rows of a session (D60), in slot order. Throws `CaptureAdapterError`.
+ * The eight rows of a session (D61), in slot order. Throws `CaptureAdapterError`.
  *
  * MR-S3: in a real operation the kind is the kind of the adapter that serves the device; in
- * `SIMULATED` it is `FAKE` for all six whatever the registry holds (the simulator generates the
+ * `SIMULATED` it is `FAKE` for all eight whatever the registry holds (the simulator generates the
  * media, the stored kinds are inert).
  */
 export function buildSessionCaptureSources(input: SessionCaptureSourcesInput): readonly SessionCaptureSource[] {
@@ -120,9 +124,9 @@ export function buildSessionCaptureSources(input: SessionCaptureSourcesInput): r
 }
 
 /**
- * MR-S6 (SEC35-40 (4)): the rows a session start wrote, read back, are exactly the six slots (D60), of
- * ONE source class, and of the class the running operation records. Called by the session start
- * with what it re-read; also the builder's own last step.
+ * MR-S6 (SEC35-40 (4)): the rows a session start wrote, read back, are exactly the eight slots
+ * (D61, 2026-11-04; D60: six), of ONE source class, and of the class the running operation records.
+ * Called by the session start with what it re-read; also the builder's own last step.
  */
 export function assertSessionSourcesOfOperation(rows: readonly Pick<SessionCaptureSource, 'slot' | 'deviceId' | 'adapterKind'>[], operation: CaptureOperation): void {
   if (rows.length !== CAPTURE_SOURCE_SLOTS.length || !CAPTURE_SOURCE_SLOTS.every((slot) => rows.filter((row) => row.slot === slot).length === 1)) notRecordable();
@@ -137,7 +141,7 @@ export function assertSessionSourcesOfOperation(rows: readonly Pick<SessionCaptu
 // ── The source facts of a session start (task 4 row 71; schema design 2.3; AD-07 (1), S13-13) ────
 // `session_capture_sources.source_facts`: a point-in-time copy of WHICH physical device fed a
 // slot when the session started (input-av kept it per session as `audio_devices`). Written once,
-// in the INSERT of the six rows (D60); the runtime role cannot update it (`0016`).
+// in the INSERT of the eight rows (D61; D60: six); the runtime role cannot update it (`0016`).
 //
 // NO FREE JSON (S13-13). The keys are the closed list below and nothing else is ever a key. Every
 // TEXT value has passed `cardListingText` of the card listing (row 155) HERE, whatever the adapter

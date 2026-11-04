@@ -352,7 +352,8 @@ describe('operations 73 and 74: one hosted command with the caller\'s principal,
   it.each([
     ['an unknown kind', { kind: 'NOT_A_FAULT' }, 422, 'INVALID_INPUT'],
     ['no kind', { target: { channel: 'AUDIO-01' } }, 422, 'INVALID_INPUT'],
-    ['a target member outside its value set', { kind: 'MIC_CLIP', target: { channel: 'AUDIO-03' } }, 422, 'INVALID_INPUT'],
+    // D61 (2026-11-04): AUDIO-03 joined the four sealed audio tracks; only a fifth channel is outside the set.
+    ['a target member outside its value set', { kind: 'MIC_CLIP', target: { channel: 'AUDIO-05' } }, 422, 'INVALID_INPUT'],
     ['a negative audit index', { kind: 'AUDIT_TAMPER', target: { auditIndex: -1 } }, 422, 'INVALID_INPUT'],
     ['an evidence ID that is not one', { kind: 'TAMPER', target: { evidenceId: '../etc' } }, 422, 'INVALID_INPUT'],
     // Wave H closing pass Z1, item 5 (ruling D206 (3); gate findings G70-09 / G75-14): the body is STRICT.

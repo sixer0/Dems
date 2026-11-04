@@ -86,7 +86,8 @@
  * builder's start rule refuses it, `assertRecordableSelector`).
  *
  * `unassign` OF OPERATION 78 (task 4 row 29; decisions C14, C18, C25; security requirement AD-10).
- * The member names the slots the edit CLEARS (`VIDEO-01`, `VIDEO-02`, `PRIMARY`, `STANDBY`); the
+ * The member names the slots the edit CLEARS (`VIDEO-01` to `VIDEO-04`, `MIC-01` to `MIC-04` — the
+ * eight-slot selector of D61, 2026-11-04; was the two mic roles `PRIMARY`/`STANDBY`); the
  * route hands it to the hosted action unchanged and adds no rule of its own:
  *   - the SAME permission (`CAPTURE_CONFIG`) and the same client kinds as every body of
  *     operation 78: the registry entry is not changed;
@@ -284,7 +285,8 @@ export function captureConfigAnswer(state: Pick<DurableSlices, 'captureConfig' |
 }
 
 /**
- * What the selector's stored row cannot hold (`dbc-3 §B.1`: `mic_primary_id` / `mic_standby_id`
+ * What the selector's stored row cannot hold (`dbc-3 §B.1`: `mic_01_id` .. `mic_04_id` — D61,
+ * 2026-11-04, was `mic_primary_id` / `mic_standby_id` —
  * are DEVICE IDs; the input of a slot is read back as that ID). A mic line whose device is not
  * the microphone of the input's own ID would be stored, and then refused by the next start of the
  * server (`CAPTURE_MIC_INPUT_UNKNOWN`). Refused here, before the unit, until the stored selector
@@ -398,21 +400,22 @@ function assertOwnProfile(
 }
 
 /**
- * PAIR REPLACEMENT (operation 78 with `role` on its mic lines; decision D133 (1)): a line that
+ * PAIR REPLACEMENT (operation 78 with `channel` on its mic lines; decision D133 (1), carried onto the
+ * numbered channels by D61 of 2026-11-04): a line that
  * names no transport, for an input the selector does not hold yet, takes the transport of its
  * registry row. The replicated device slice has no transport member, so without this the new slot
  * would say a code the stored row does not - and a restarted Core would publish another selector.
  * One read of the registry, only for such a line; a line of the earlier form is returned as it is.
  * R-FLEX row 132 (T-13, risk R-2; D16 Q96-02 (B)): "held" is judged on the selector as the edit
- * would leave it - the roles the edit clears (`unassign`) first, as the action orders them and as
- * the camera rule does (`assertOneSlotPerCamera`). A microphone MOVED from PRIMARY to STANDBY in one
+ * would leave it - the channels the edit clears (`unassign`) first, as the action orders them and as
+ * the camera rule does (`assertOneSlotPerCamera`). A microphone MOVED from one channel to another in one
  * edit is a new line of the cleared selector and takes its registered transport; before this, it
  * kept none (`UNKNOWN` committed, the registry's code stored).
  */
 async function withRegisteredTransports(app: FastifyInstance, change: CaptureConfigChange): Promise<CaptureConfigChange> {
-  if (change.kind !== 'UPDATE' || change.mics === undefined || !change.mics.some((line) => line.role !== undefined)) return change;
+  if (change.kind !== 'UPDATE' || change.mics === undefined || !change.mics.some((line) => line.channel !== undefined)) return change; // D61 (2026-11-04): the role member became the channel member
   const cleared: ReadonlySet<string> = new Set(change.unassign ?? []);
-  const held = new Set(app.engine.slice('captureConfig').mics.filter((mic) => !cleared.has(mic.role)).map((mic) => mic.inputId));
+  const held = new Set(app.engine.slice('captureConfig').mics.filter((mic) => !cleared.has(mic.channel)).map((mic) => mic.inputId));
   if (change.mics.every((line) => line.transport !== undefined || held.has(line.inputId))) return change;
   const transports = await readMicTransports(app.db.pool);
   return {

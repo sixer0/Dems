@@ -86,9 +86,9 @@ function riggedDevelopmentSources() {
   const said: string[] = [];
   // D60 (2026-11-04): the four built-in cameras of the seed are the generated sources the rig switches; the local pair
   // moves up the id pattern (the registry mints the highest number free, `CAM-05`).
-  const rig = createLaneSourceRig({ read: () => text, generated: () => ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02'], report: (_level, code, _message, context) => void said.push(`${code} ${String(context['deviceId'])}`) });
+  const rig = createLaneSourceRig({ read: () => text, generated: () => ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-04'], report: (_level, code, _message, context) => void said.push(`${code} ${String(context['deviceId'])}`) }); // D61 (2026-11-04): the fourth channel's generated source joins the rig (MIC-03 is the local pair)
   const built = buildDevelopmentRegistry({
-    devices: [...SEEDED, { id: 'CAM-03', kind: 'CAMERA', adapterKind: 'FAKE', model: 'test camera 3' }, { id: 'CAM-04', kind: 'CAMERA', adapterKind: 'FAKE', model: 'test camera 4' }, { id: 'CAM-05', kind: 'CAMERA', adapterKind: 'LOCAL_DEVICE', model: 'MacBook Air Camera' }, { id: 'MIC-03', kind: 'MIC', adapterKind: 'LOCAL_DEVICE', model: 'MacBook Air Microphone' }],
+    devices: [...SEEDED, { id: 'CAM-03', kind: 'CAMERA', adapterKind: 'FAKE', model: 'test camera 3' }, { id: 'CAM-04', kind: 'CAMERA', adapterKind: 'FAKE', model: 'test camera 4' }, { id: 'CAM-05', kind: 'CAMERA', adapterKind: 'LOCAL_DEVICE', model: 'MacBook Air Camera' }, { id: 'MIC-03', kind: 'MIC', adapterKind: 'LOCAL_DEVICE', model: 'MacBook Air Microphone' }, { id: 'MIC-04', kind: 'MIC', adapterKind: 'FAKE', model: 'test microphone 4' }], // D61 (2026-11-04): the fourth channel of the selector-in-force needs a device to reach
     local: { cameraId: 'CAM-05', micId: 'MIC-03' },
     program: HELPER,
     runDir: '/nonexistent/wave-m/run',
@@ -219,6 +219,9 @@ describe('the probe: adapters only, no socket, no substitute', () => {
       microphones: [
         { deviceId: 'MIC-01', present: true, errorCode: null, adapterKind: 'FAKE', sourceClass: 'DEVELOPMENT' },
         { deviceId: 'MIC-02', present: false, errorCode: 'DEVICE_BUSY', adapterKind: 'FAKE', sourceClass: 'DEVELOPMENT' },
+        // D61 (2026-11-04): the four numbered channels are all registered and all answer.
+        { deviceId: 'MIC-03', present: true, errorCode: null, adapterKind: 'FAKE', sourceClass: 'DEVELOPMENT' },
+        { deviceId: 'MIC-04', present: true, errorCode: null, adapterKind: 'FAKE', sourceClass: 'DEVELOPMENT' },
       ],
       unregisteredCount: 0,
     });

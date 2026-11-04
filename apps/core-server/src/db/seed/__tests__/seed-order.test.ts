@@ -102,7 +102,7 @@ describe('the write order of the seed is the contract\'s (§9.5)', () => {
     // devices and the one selector, dbc-3 §E.3).
     // Fix wave J (truth rule 3a): 308 since the seed's one never-sealed item writes no track row (4 fewer).
     // Task 4 row 100: 310 - the commissioning permission and its one grant (15 permissions + 23 grants).
-    expect(log.filter((entry) => entry.statement === "insert").reduce((sum, entry) => sum + entry.rows, 0)).toBe(311); // D60 (2026-11-04): 311 - the four-track capture seed writes one insert row more than the two-track set (four built-in cameras on the widened selector row)
+    expect(log.filter((entry) => entry.statement === "insert").reduce((sum, entry) => sum + entry.rows, 0)).toBe(313); // D61 (2026-11-04): 313 - the four-channel microphone plane adds its two built-in rows to the 311 of the D60 set
   });
 
   it('the chain lock is the first statement (AP-2), before the "not seeded yet" check and before any write (AP-7)', async () => {

@@ -215,12 +215,12 @@ describe('SIMULATED: every stored kind is inert and the database keeps booting',
     const target = await clone('fence-sim-mic');
     const owner = target.ownerPool();
     await addLocalRows(owner);
-    await owner.query("UPDATE public.capture_config SET mic_primary_id = 'MIC-03'");
+    await owner.query("UPDATE public.capture_config SET mic_01_id = 'MIC-03'"); // D61 (2026-11-04): 0040 renamed the role columns to the channel columns
     const booted = await boot(target, { demoControls: true });
     try {
       expect(booted.failure).toBeNull();
       expect(captureFenceControl(booted.app).operation).toBe('SIMULATED');
-      expect(engineControl(booted.app).state().captureConfig.mics.map((mic) => [mic.inputId, mic.role]).sort()).toEqual([['MIC-02', 'STANDBY'], ['MIC-03', 'PRIMARY']]);
+      expect(engineControl(booted.app).state().captureConfig.mics.map((mic) => [mic.inputId, mic.channel]).sort()).toEqual([['MIC-02', 'MIC-02'], ['MIC-03', 'MIC-01']]); // D61: the numbered channel replaced the role
     } finally {
       await booted.app.close();
     }
@@ -231,7 +231,7 @@ describe('SIMULATED: every stored kind is inert and the database keeps booting',
     const target = await clone('fence-sim-mic-cam');
     const owner = target.ownerPool();
     await addLocalRows(owner);
-    await owner.query("UPDATE public.capture_config SET mic_primary_id = 'CAM-01'");
+    await owner.query("UPDATE public.capture_config SET mic_01_id = 'CAM-01'");
     const booted = await boot(target, { demoControls: true });
     expect(booted.failure?.stepId).toBe('engine.rehydrate');
     expect(await bootAuditsOf(owner)).toEqual([]);
@@ -553,29 +553,30 @@ describe('REAL_DEVELOPMENT: the selector line of a generated test source states 
 // A selector that names a production device is written by the owner into the clone BEFORE the
 // boot; a development Core would refuse to assign one and a production Core has no adapter yet.
 describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categories by the three capture operations; "the remedy is executable"; "no recording without sources" (addendum 1.5, 1.7)', () => {
-  type Slot = 'VIDEO-01' | 'VIDEO-02' | 'PRIMARY' | 'STANDBY';
+  // D61 (2026-11-04): the two mic roles became the four numbered channels; this walk holds the four slots the seed assigns.
+  type Slot = 'VIDEO-01' | 'VIDEO-02' | 'MIC-01' | 'MIC-02';
   type Lines = Readonly<Record<Slot, string | null>>;
   type Category = '1' | '2' | '3' | '4' | '5' | '6' | '7' | '2 (S-5)' | '3 (S-5)';
   type Operation = 'SIMULATED' | 'REAL_DEVELOPMENT' | 'REAL_PRODUCTION';
-  const SLOT_ORDER: readonly Slot[] = ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'];
+  const SLOT_ORDER: readonly Slot[] = ['VIDEO-01', 'VIDEO-02', 'MIC-01', 'MIC-02'];
   const U = null;
   const PROFILE = 'H264_1080P25';
   /** D: CAM-01, CAM-02, MIC-01, MIC-02 (the seed's FAKE rows). P: CAM-11, CAM-12 (ONVIF_RTSP), MIC-11, MIC-12 (USB_AUDIO). */
   const CATEGORY: Readonly<Record<Category, { readonly title: string; readonly lines: Lines }>> = {
-    '1': { title: 'all four U', lines: { 'VIDEO-01': U, 'VIDEO-02': U, PRIMARY: U, STANDBY: U } },
-    '2': { title: 'some U, the rest D', lines: { 'VIDEO-01': U, 'VIDEO-02': 'CAM-02', PRIMARY: 'MIC-01', STANDBY: U } },
-    '3': { title: 'some U, the rest P', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': U, PRIMARY: U, STANDBY: 'MIC-12' } },
-    '4': { title: 'some U, D and P', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-12', PRIMARY: 'MIC-11', STANDBY: U } },
-    '5': { title: 'four assigned, all D (the seed)', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', PRIMARY: 'MIC-01', STANDBY: 'MIC-02' } },
-    '6': { title: 'four assigned, all P', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': 'CAM-12', PRIMARY: 'MIC-11', STANDBY: 'MIC-12' } },
-    '7': { title: 'four assigned, D and P', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-12', PRIMARY: 'MIC-11', STANDBY: 'MIC-02' } },
-    // State S-5 of the security addendum (AD-10 (4)): only the STANDBY microphone is unassigned.
-    '2 (S-5)': { title: 'three D, a lone unassigned STANDBY', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', PRIMARY: 'MIC-01', STANDBY: U } },
-    '3 (S-5)': { title: 'three P, a lone unassigned STANDBY', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': 'CAM-12', PRIMARY: 'MIC-11', STANDBY: U } },
+    '1': { title: 'all four U', lines: { 'VIDEO-01': U, 'VIDEO-02': U, 'MIC-01': U, 'MIC-02': U } },
+    '2': { title: 'some U, the rest D', lines: { 'VIDEO-01': U, 'VIDEO-02': 'CAM-02', 'MIC-01': 'MIC-01', 'MIC-02': U } },
+    '3': { title: 'some U, the rest P', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': U, 'MIC-01': U, 'MIC-02': 'MIC-12' } },
+    '4': { title: 'some U, D and P', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-12', 'MIC-01': 'MIC-11', 'MIC-02': U } },
+    '5': { title: 'four assigned, all D (the seed)', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', 'MIC-01': 'MIC-01', 'MIC-02': 'MIC-02' } },
+    '6': { title: 'four assigned, all P', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': 'CAM-12', 'MIC-01': 'MIC-11', 'MIC-02': 'MIC-12' } },
+    '7': { title: 'four assigned, D and P', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-12', 'MIC-01': 'MIC-11', 'MIC-02': 'MIC-02' } },
+    // State S-5 of the security addendum (AD-10 (4); channel 2 under D61 of 2026-11-04): only that microphone channel is unassigned.
+    '2 (S-5)': { title: 'three D, a lone unassigned channel 2', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', 'MIC-01': 'MIC-01', 'MIC-02': U } },
+    '3 (S-5)': { title: 'three P, a lone unassigned channel 2', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': 'CAM-12', 'MIC-01': 'MIC-11', 'MIC-02': U } },
   };
   const unassignedOf = (lines: Lines): Slot[] => SLOT_ORDER.filter((slot) => lines[slot] === null);
-  const linesOf = (selector: { readonly cameras: readonly { readonly trackId: string; readonly deviceId: string }[]; readonly mics: readonly { readonly role: string; readonly deviceId: string }[] }): string[] =>
-    [...selector.cameras.map((camera) => `${camera.trackId} ${camera.deviceId}`), ...selector.mics.map((mic) => `${mic.role} ${mic.deviceId}`)].sort();
+  const linesOf = (selector: { readonly cameras: readonly { readonly trackId: string; readonly deviceId: string }[]; readonly mics: readonly { readonly channel: string; readonly deviceId: string }[] }): string[] =>
+    [...selector.cameras.map((camera) => `${camera.trackId} ${camera.deviceId}`), ...selector.mics.map((mic) => `${mic.channel} ${mic.deviceId}`)].sort(); // D61 (2026-11-04): the channel labels the line
   const heldOf = (lines: Lines): string[] => SLOT_ORDER.flatMap((slot) => (lines[slot] === null ? [] : [`${slot} ${String(lines[slot])}`])).sort();
 
   const CONFIG_OF: Readonly<Record<Operation, Partial<ConfigInput>>> = { SIMULATED: { demoControls: true }, REAL_DEVELOPMENT: DEVELOPMENT, REAL_PRODUCTION: REAL };
@@ -590,16 +591,16 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
     );
   /** The stored selector of a category: NULL in the columns of an unassigned slot (device and profile of a video slot together). */
   const storeSelector = (owner: Pool, lines: Lines): Promise<unknown> =>
-    owner.query('UPDATE public.capture_config SET video_01_device_id = $1, video_01_profile = $2, video_02_device_id = $3, video_02_profile = $4, mic_primary_id = $5, mic_standby_id = $6', [
+    owner.query('UPDATE public.capture_config SET video_01_device_id = $1, video_01_profile = $2, video_02_device_id = $3, video_02_profile = $4, mic_01_id = $5, mic_02_id = $6', [
       lines['VIDEO-01'],
       lines['VIDEO-01'] === null ? null : PROFILE,
       lines['VIDEO-02'],
       lines['VIDEO-02'] === null ? null : PROFILE,
-      lines.PRIMARY,
-      lines.STANDBY,
+      lines['MIC-01'],
+      lines['MIC-02'],
     ]);
   const storedSlots = async (owner: Pool): Promise<(string | null)[]> => {
-    const row = (await owner.query('SELECT video_01_device_id AS a, video_02_device_id AS b, mic_primary_id AS c, mic_standby_id AS d FROM public.capture_config')).rows[0] as Record<string, string | null>;
+    const row = (await owner.query('SELECT video_01_device_id AS a, video_02_device_id AS b, mic_01_id AS c, mic_02_id AS d FROM public.capture_config')).rows[0] as Record<string, string | null>;
     return [row['a'] ?? null, row['b'] ?? null, row['c'] ?? null, row['d'] ?? null];
   };
   const sourceRowsOf = async (owner: Pool, sessionId: string | null = null): Promise<string[]> =>
@@ -789,7 +790,7 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
     readonly workers: number | null;
   }
   const state = (category: Category, operation: Operation, boot: string, named: readonly string[] = [], start: State['start'] = null, sourceRows: readonly string[] = [], workers: number | null = null): State => ({ category, operation, boot, named, start, sourceRows, workers });
-  const FOUR_FAKE = ['MIC-PRIMARY MIC-01 FAKE', 'MIC-STANDBY MIC-02 FAKE', 'VIDEO-01 CAM-01 FAKE', 'VIDEO-02 CAM-02 FAKE'];
+  const FOUR_FAKE = ['MIC-01 MIC-01 FAKE', 'MIC-02 MIC-02 FAKE', 'VIDEO-01 CAM-01 FAKE', 'VIDEO-02 CAM-02 FAKE']; // D61 (2026-11-04): the fence read labels the mic slots by their numbered channel
 
   /** THE TABLE: 7 categories x 3 operations = 21 states, in the order of addendum 1.5. */
   const TABLE: readonly State[] = [
@@ -868,7 +869,7 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
       );
       // From CREATE a start is the pre-check run, in every operation.
       expect(attempt.first.slice(0, 2), label).toEqual([202, 'PRECHECK']);
-      // "Source not assigned": one BLOCK item per unassigned slot in real capture (C18 (1), C25: the STANDBY too); none in SIMULATED (C21 (6)).
+      // "Source not assigned": one BLOCK item per unassigned slot in real capture (C18 (1), C25: every channel too under D61 of 2026-11-04); none in SIMULATED (C21 (6)).
       expect(attempt.notAssigned, label).toEqual(of.operation === 'SIMULATED' ? [] : unassignedOf(lines).map((slot) => `${slot} BLOCK`));
       if (of.start === null) throw new Error(`${label}: the table states no start for a Core that boots`);
       expect(attempt.second.slice(0, of.start.length), label).toEqual([...of.start]);
@@ -898,7 +899,7 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
     await run(of);
   });
 
-  it.each(S5.map((of) => [CATEGORY[of.category].title, of.operation, of] as const))('state S-5 (AD-10 (4), C25) - %s x %s: the Core boots and the start is refused on the one unassigned STANDBY', async (_title, _operation, of) => {
+  it.each(S5.map((of) => [CATEGORY[of.category].title, of.operation, of] as const))('state S-5 (AD-10 (4), C25) - %s x %s: the Core boots and the start is refused on the one unassigned channel 2', async (_title, _operation, of) => {
     await run(of);
   });
 
@@ -951,7 +952,7 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
       const served = (captureFenceControl(production.host.app).registry()?.list() ?? []).map((entry) => entry.id);
       const own = await signIn(production.host, 'TECHNICIAN', OWN_PASSWORD);
       const camera = await post(production.host, own, SELECTOR_URL, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-11', profile: PROFILE }] });
-      const microphone = await post(production.host, own, SELECTOR_URL, { mics: [{ inputId: 'MIC-11', deviceId: 'MIC-11', role: 'PRIMARY' }] });
+      const microphone = await post(production.host, own, SELECTOR_URL, { mics: [{ inputId: 'MIC-11', deviceId: 'MIC-11', channel: 'MIC-01' }] }); // D61 (2026-11-04): the line names its channel
       // A development source stays refused for a production Core, whatever the registry serves.
       const fake = await post(production.host, own, SELECTOR_URL, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: PROFILE }] });
       await settled(production.host);
@@ -979,7 +980,7 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
     }
   });
 
-  it('NO PATH RECORDS WITH A SLOT MISSING (the question of row 158): a session ARMED on the complete selector, the STANDBY slot emptied behind the Core, a restart - the open session is FAULT and its start is refused 409 in REAL_DEVELOPMENT and, with all four emptied, in REAL_PRODUCTION; no row, no worker', async () => {
+  it('NO PATH RECORDS WITH A SLOT MISSING (the question of row 158): a session ARMED on the complete selector, the channel 2 slot emptied behind the Core, a restart - the open session is FAULT and its start is refused 409 in REAL_DEVELOPMENT and, with all four emptied, in REAL_PRODUCTION; no row, no worker', async () => {
     // Through the product a slot cannot leave an open session: the session holds the lock from its creation (row 158, cases 2, 5, 6),
     // and a session OPENED on a selector that already lacks a slot stops at the pre-check (the table above). What is left is a change
     // of the stored row behind the Core, which reaches the engine at a restart. That is the state this case builds.
@@ -1006,22 +1007,22 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
     expect(first.host.engine.slice('session')?.state).toBe('ARMED');
     // The lock holds for the product: the operator cannot clear the slot now.
     const technician = await signIn(first.host, 'TECHNICIAN', undefined);
-    expect(answerOf(await post(first.host, technician, SELECTOR_URL, { unassign: ['STANDBY'] })).slice(0, 2)).toEqual([409, 'CAPTURE_CONFIG_LOCKED']);
+    expect(answerOf(await post(first.host, technician, SELECTOR_URL, { unassign: ['MIC-02'] })).slice(0, 2)).toEqual([409, 'CAPTURE_CONFIG_LOCKED']);
     await settled(first.host);
     await first.host.app.close();
 
-    // BEHIND THE CORE: the owner empties the STANDBY slot of the stored row.
-    await owner.query('UPDATE public.capture_config SET mic_standby_id = NULL');
+    // BEHIND THE CORE: the owner empties the channel 2 slot of the stored row (D61, 2026-11-04).
+    await owner.query('UPDATE public.capture_config SET mic_02_id = NULL');
     const second = await coreOn(target, 'REAL_DEVELOPMENT', FIXED_NOW + 300_000);
     try {
       expect(second.failure).toBeNull();
-      expect(linesOf(second.host.engine.slice('captureConfig'))).toEqual(['PRIMARY MIC-01', 'VIDEO-01 CAM-01', 'VIDEO-02 CAM-02']);
+      expect(linesOf(second.host.engine.slice('captureConfig'))).toEqual(['MIC-01 MIC-01', 'VIDEO-01 CAM-01', 'VIDEO-02 CAM-02']);
       const state = second.host.engine.slice('session')?.state;
       const again = await signIn(second.host, 'INVESTIGATOR', undefined);
       await second.host.engine.setTabletLink('CONNECTED');
       const answer = answerOf(await post(second.host, again, on(sessionId, 'start'), { acknowledgeWarnings: true }));
       await settled(second.host);
-      seen.push(`armed, STANDBY emptied behind the Core, REAL_DEVELOPMENT restart | session ${String(state)} | start ${answer.filter((part) => part !== null).join(' ')} | source rows ${(await sourceRowsOf(owner)).length} | workers ${String(second.fake?.calls())}`);
+      seen.push(`armed, channel 2 emptied behind the Core, REAL_DEVELOPMENT restart | session ${String(state)} | start ${answer.filter((part) => part !== null).join(' ')} | source rows ${(await sourceRowsOf(owner)).length} | workers ${String(second.fake?.calls())}`);
       expect(state).toBe('FAULT');
       expect(answer.slice(0, 2)).toEqual([409, 'INVALID_STATE']);
       expect(second.host.engine.slice('session')?.state).toBe('FAULT');
@@ -1032,7 +1033,7 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
     }
 
     // The same session under a PRODUCTION boot of the emptied selector (the remedy carried out while a session is armed).
-    await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, mic_primary_id = NULL, mic_standby_id = NULL');
+    await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, mic_01_id = NULL, mic_02_id = NULL');
     await ownCredentials(owner);
     const third = await coreOn(target, 'REAL_PRODUCTION', FIXED_NOW + 600_000);
     try {
@@ -1060,7 +1061,7 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
   it('C46 / F-07: a REAL_PRODUCTION start through the capture unit\'s own mount runs steps 4d and 4e - no host facts: refused; the entry point\'s facts without a relay program: refused CAPTURE_HOST_RELAY_PROGRAM_UNUSABLE; a prepared host: both steps pass, by their lines', async () => {
     const target = await clone('r85-c46');
     const owner = target.ownerPool();
-    await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, mic_primary_id = NULL, mic_standby_id = NULL');
+    await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, mic_01_id = NULL, mic_02_id = NULL');
     await ownCredentials(owner);
     const codesOf = (core: Core): unknown[] => core.host.log.lines().map((line) => line['code']).filter((code) => /^CAPTURE_(?:HOST|PROGRAM)_|^CAPTURE_BOOT_CHECKS_PASSED$/.test(String(code)));
     const refusalOf = (core: Core): unknown => [core.failure?.stepId, (core.failure?.cause as { code?: unknown } | undefined)?.code, (core.failure?.cause as { reason?: unknown } | undefined)?.reason];
@@ -1127,7 +1128,7 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
     } finally {
       await development.host.app.close();
     }
-    await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, mic_primary_id = NULL, mic_standby_id = NULL');
+    await owner.query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, mic_01_id = NULL, mic_02_id = NULL');
     await ownCredentials(owner);
     expect(await bootRows()).toBe(1);
 

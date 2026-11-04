@@ -75,9 +75,11 @@ export interface PipelineRows {
 }
 
 /**
- * The source shape of one session (dbc-4 §N.10): which device feeds each of the four slots, with
- * the adapter kind the row records. No shape mixes a production kind with a development kind
- * (row 123 RG-3).
+ * The source shape of one session (dbc-4 §N.10): which device feeds each of its start-record slots,
+ * with the adapter kind the row records. No shape mixes a production kind with a development kind
+ * (row 123 RG-3). The seeded corpus is HISTORY: these sessions started under the earlier shapes -
+ * four slots (D60) plus the two microphone roles, which migration 0040 renamed `MIC-01`/`MIC-02`
+ * (D61, 2026-11-04); a freshly recorded session writes all eight.
  */
 export interface SourceShape {
   readonly name: 'FAKE' | 'DEVELOPMENT' | 'PRODUCTION';
@@ -94,8 +96,8 @@ export const FAKE_SOURCE_SHAPE: SourceShape = {
   slots: [
     { slot: 'VIDEO-01', deviceId: 'CAM-01', adapterKind: 'FAKE' },
     { slot: 'VIDEO-02', deviceId: 'CAM-02', adapterKind: 'FAKE' },
-    { slot: 'MIC-PRIMARY', deviceId: 'MIC-01', adapterKind: 'FAKE' },
-    { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'FAKE' },
+    { slot: 'MIC-01', deviceId: 'MIC-01', adapterKind: 'FAKE' }, // D61 (2026-11-04): the roles became numbered channels (0040)
+    { slot: 'MIC-02', deviceId: 'MIC-02', adapterKind: 'FAKE' }, // D61
   ],
 };
 /** The development shape of D74(2): this Mac's camera and microphone in slots 1, fakes in slots 2. */
@@ -104,8 +106,8 @@ export const DEVELOPMENT_SOURCE_SHAPE: SourceShape = {
   slots: [
     { slot: 'VIDEO-01', deviceId: 'CAM-06', adapterKind: 'LOCAL_DEVICE' },
     { slot: 'VIDEO-02', deviceId: 'CAM-02', adapterKind: 'FAKE' },
-    { slot: 'MIC-PRIMARY', deviceId: 'MIC-05', adapterKind: 'LOCAL_DEVICE' },
-    { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'FAKE' },
+    { slot: 'MIC-01', deviceId: 'MIC-05', adapterKind: 'LOCAL_DEVICE' }, // D61: the slot name is the channel, the device may be any registered microphone
+    { slot: 'MIC-02', deviceId: 'MIC-02', adapterKind: 'FAKE' }, // D61
   ],
 };
 /** All-production: two discovered cameras and two USB microphones. */
@@ -114,8 +116,8 @@ export const PRODUCTION_SOURCE_SHAPE: SourceShape = {
   slots: [
     { slot: 'VIDEO-01', deviceId: 'CAM-03', adapterKind: 'ONVIF_RTSP' },
     { slot: 'VIDEO-02', deviceId: 'CAM-04', adapterKind: 'ONVIF_RTSP' },
-    { slot: 'MIC-PRIMARY', deviceId: 'MIC-03', adapterKind: 'USB_AUDIO' },
-    { slot: 'MIC-STANDBY', deviceId: 'MIC-04', adapterKind: 'USB_AUDIO' },
+    { slot: 'MIC-01', deviceId: 'MIC-03', adapterKind: 'USB_AUDIO' }, // D61 (2026-11-04): numbered channels
+    { slot: 'MIC-02', deviceId: 'MIC-04', adapterKind: 'USB_AUDIO' }, // D61
   ],
 };
 /** All-production on the dual-lens camera: one device in both VIDEO rows (OD-05). */
@@ -124,12 +126,12 @@ export const PRODUCTION_DUAL_LENS_SOURCE_SHAPE: SourceShape = {
   slots: [
     { slot: 'VIDEO-01', deviceId: 'CAM-03', adapterKind: 'ONVIF_RTSP' },
     { slot: 'VIDEO-02', deviceId: 'CAM-03', adapterKind: 'ONVIF_RTSP' },
-    { slot: 'MIC-PRIMARY', deviceId: 'MIC-03', adapterKind: 'USB_AUDIO' },
-    { slot: 'MIC-STANDBY', deviceId: 'MIC-04', adapterKind: 'USB_AUDIO' },
+    { slot: 'MIC-01', deviceId: 'MIC-03', adapterKind: 'USB_AUDIO' }, // D61 (2026-11-04): numbered channels
+    { slot: 'MIC-02', deviceId: 'MIC-04', adapterKind: 'USB_AUDIO' }, // D61
   ],
 };
 
-const micOf = (shape: SourceShape, slot: 'MIC-PRIMARY' | 'MIC-STANDBY'): string =>
+const micOf = (shape: SourceShape, slot: 'MIC-01' | 'MIC-02'): string =>
   (shape.slots.find((entry) => entry.slot === slot) as SourceShape['slots'][number]).deviceId;
 
 /** A sealed session with a timeline: the unit the intervals and the jobs are built on. */
@@ -346,11 +348,13 @@ function buildAudioIntervals(
   // The switched sessions: a deterministic draw of 50 from the sealed timeline.
   const switched = new Set(rng.shuffle(sealed.map((session) => session.sessionId)).slice(0, mix.switchedSessions));
   for (const session of sealed) {
-    // MR-S2 (dbc-4 §N.3): every interval of a session names one of the two mics its
+    // MR-S2 (dbc-4 §N.3): every interval of a session names one of the mics its
     // `session_capture_sources` rows record, so the class of an interval is read from that row.
+    // D61 (2026-11-04): the corpus is history of the transcription pair - the stored `role` is the
+    // two-role worker lane's name of channels 1 and 2 (`session_audio_intervals_role_check` unchanged).
     const shape = shapeOf(session.sessionId);
-    const primary = micOf(shape, 'MIC-PRIMARY');
-    const standby = micOf(shape, 'MIC-STANDBY');
+    const primary = micOf(shape, 'MIC-01');
+    const standby = micOf(shape, 'MIC-02');
     const span = (fromMediaMs: number, toMediaMs: number): void => {
       rows.push({
         sessionId: session.sessionId,
@@ -410,7 +414,7 @@ function buildAudioIntervals(
     rows.push({
       sessionId: active.sessionId,
       seq: 1,
-      micDeviceId: micOf(shapeOf(active.sessionId), 'MIC-PRIMARY'),
+      micDeviceId: micOf(shapeOf(active.sessionId), 'MIC-01'), // D61 (2026-11-04): the channel-1 slot of the session's shape
       role: 'PRIMARY',
       fromMediaMs: 0,
       toMediaMs: null,

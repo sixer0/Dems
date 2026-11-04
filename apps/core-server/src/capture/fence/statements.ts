@@ -22,7 +22,7 @@
 export const READ_ASSIGNED_SOURCES =
   'SELECT s.slot, d.id, d.kind, d.adapter_kind AS "adapterKind" ' +
   'FROM public.capture_config c ' +
-  "CROSS JOIN LATERAL (VALUES ('VIDEO-01', c.video_01_device_id), ('VIDEO-02', c.video_02_device_id), ('VIDEO-03', c.video_03_device_id), ('VIDEO-04', c.video_04_device_id), ('MIC-PRIMARY', c.mic_primary_id), ('MIC-STANDBY', c.mic_standby_id)) AS s(slot, device_id) " + // D60 (2026-11-04): the two further camera lines are read too - a dev source on VIDEO-03/04 must reach the class check
+  "CROSS JOIN LATERAL (VALUES ('VIDEO-01', c.video_01_device_id), ('VIDEO-02', c.video_02_device_id), ('VIDEO-03', c.video_03_device_id), ('VIDEO-04', c.video_04_device_id), ('MIC-01', c.mic_01_id), ('MIC-02', c.mic_02_id), ('MIC-03', c.mic_03_id), ('MIC-04', c.mic_04_id)) AS s(slot, device_id) " + // D61 (2026-11-04): the two mic roles became four numbered channels (0040); D60 (2026-11-04): the two further camera lines are read too - a dev source on VIDEO-03/04 must reach the class check
   'JOIN public.capture_devices d ON d.id = s.device_id ' +
   'ORDER BY s.slot';
 

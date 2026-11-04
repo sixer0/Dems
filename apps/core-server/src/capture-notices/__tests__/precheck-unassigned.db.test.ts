@@ -30,16 +30,18 @@ const fixture = realBootFixture('row30');
 fixture.provisionKey();
 afterAll(() => fixture.remove());
 
-const SLOTS = ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] as const;
+// D61 (2026-11-04): the two mic roles became the four numbered channels; the seed still assigns
+// only channels 1 and 2, so this unit walks the four slots it always walked, now by their names.
+const SLOTS = ['VIDEO-01', 'VIDEO-02', 'MIC-01', 'MIC-02'] as const;
 type Slot = (typeof SLOTS)[number];
 const COLUMNS_OF: Readonly<Record<Slot, readonly string[]>> = {
   'VIDEO-01': ['video_01_device_id', 'video_01_profile'],
   'VIDEO-02': ['video_02_device_id', 'video_02_profile'],
-  PRIMARY: ['mic_primary_id'],
-  STANDBY: ['mic_standby_id'],
+  'MIC-01': ['mic_01_id'], // D61: 0040 renamed the role columns to the channel columns
+  'MIC-02': ['mic_02_id'], // D61
 };
-/** The pre-check item that speaks for a slot, and the device the seed assigns to it. */
-const ITEM_OF: Readonly<Record<Slot, PrecheckItem['id']>> = { 'VIDEO-01': 'LENS_1', 'VIDEO-02': 'LENS_2', PRIMARY: 'MIC_PRIMARY', STANDBY: 'MIC_STANDBY' };
+/** The pre-check item that speaks for a slot (the stored check IDs keep the role names), and the device the seed assigns to it. */
+const ITEM_OF: Readonly<Record<Slot, PrecheckItem['id']>> = { 'VIDEO-01': 'LENS_1', 'VIDEO-02': 'LENS_2', 'MIC-01': 'MIC_PRIMARY', 'MIC-02': 'MIC_STANDBY' };
 const SESSION_INPUT = { caseNumber: 'LP/2026/1001-0030', subjectType: 'SAKSI', subjectName: 'Test Subject', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' } as const;
 
 const DEVELOPMENT = (slug: string) =>
@@ -75,7 +77,7 @@ async function precheckOn(slug: string, unassigned: readonly Slot[], mode: 'REAL
   expect(operation).toBe(mode === 'SIMULATED' ? CaptureOperation.SIMULATED : CaptureOperation.REAL_DEVELOPMENT);
   // The selector the Core holds is the stored one: the lines of the assigned slots and no other.
   const held = core.engine.slice('captureConfig');
-  expect([...held.cameras.map((camera) => camera.trackId as string), ...held.mics.map((mic) => mic.role as string)].sort()).toEqual(SLOTS.filter((slot) => !unassigned.includes(slot)).sort());
+  expect([...held.cameras.map((camera) => camera.trackId as string), ...held.mics.map((mic) => mic.channel as string)].sort()).toEqual(SLOTS.filter((slot) => !unassigned.includes(slot)).sort());
 
   const investigator = core.principal('INVESTIGATOR');
   const created = await core.engine.command(investigator, 'createSession', { ...SESSION_INPUT, investigatorId: investigator.operatorId });
@@ -116,8 +118,10 @@ const UNREACHABLE_ROWS = "SELECT details FROM public.audit_log WHERE type = 'CAP
 const ENDINGS = "SELECT type FROM public.audit_log WHERE type IN ('PRECHECK_PASSED', 'PRECHECK_BLOCKED') AND session_id = $1 ORDER BY seq";
 
 describe('task 4 row 30 (C18, C25): in real capture an unassigned selector slot is ONE BLOCK item of the pre-check, decided by the shared session machine; the gate of this unit asks nothing for it', () => {
-  it('the four slots a start needs are the four slots of the selector, the STANDBY included (C25)', () => {
-    expect([...CAPTURE_START_REQUIRED_SLOTS].sort()).toEqual([...SLOTS].sort());
+  // D61 (2026-11-04): a start needs EIGHT slots - four video tracks and four numbered microphone
+  // channels; this unit walks the four the seed assigns (VIDEO-03/04 and MIC-03/04 stay NULL in it).
+  it('the slots a start needs are the eight of the selector, every channel included (C25, D61)', () => {
+    expect([...CAPTURE_START_REQUIRED_SLOTS].sort()).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04', 'VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'].sort());
   });
 
   it.each(SLOTS)('REAL_DEVELOPMENT on generated sources, %s unassigned: the answer holds ONE BLOCK item, for that slot, worded "source not assigned"; the pre-check does not end passed and cannot be acknowledged into a start', async (slot) => {

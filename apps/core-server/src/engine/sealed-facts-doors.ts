@@ -33,7 +33,7 @@ import type { VideoTrackId } from '@dems/shared/domain';
 import { EngineError } from './errors';
 import type { EngineHost, EngineOutcome } from './types';
 
-/** One audio-source interval as the item carries it (`EvidenceItemSchema.audioSourceIntervals`). */
+/** One audio-source interval as the item carries it (`EvidenceItemSchema.audioSourceIntervals`). D61 (2026-11-04): the role is the two-role worker lane's name of the transcription pair (channels 1 and 2 of the numbered plane); sealed facts keep the vocabulary they were sealed with. */
 export interface SealedAudioInterval {
   readonly seq: number;
   readonly inputId: string;

@@ -492,6 +492,12 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
       // which BUILD_MANIFEST refuses for the missing source rows anyway - fall back to the full value set.
       const sealedTracks: readonly (typeof TRACKS)[number][] = TRACKS.filter((trackId) => sourceRows.some((row) => row.slot === trackId));
       const sealTrackIds = sealedTracks.length > 0 ? sealedTracks : TRACKS;
+      // D61 (2026-11-04): the SAME rule on the microphone plane. The channels this package seals are the mic slots of THIS
+      // session's start records: a session that started under the two-role shape (0040 renamed them `MIC-01`/`MIC-02`) still
+      // seals exactly its own audio - the manifest names its own list and the verifier reads it as a prefix of the new order -
+      // and a four-channel session seals four. The signed manifest's single `audio` member (the transcription track `AUDIO-01`)
+      // is the two-role worker lane's form until the protocol's own D61 wave; the channel plane is held by the start rows.
+      const sealedMicSlots = ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'].filter((slot) => sourceRows.some((row) => row.slot === slot));
       // The capture facts are THIS session's only when they name the instant of its own start rows (a reset reuses session IDs).
       let captureFacts = (await options.captureFacts?.(sessionId)) ?? null;
       if (captureFacts !== null && (captureFacts.sessionId !== sessionId || !storedSources.some((row) => row.recorded_at !== undefined && whole(row.recorded_at) === captureFacts?.startRecordedAt))) {
@@ -513,7 +519,7 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
       const audioIntervals: ManifestAudioIntervalInput[] = intervalRows.map((row, index) => ({
         seq: whole(row.seq),
         micDeviceId: row.mic_device_id,
-        role: row.role === 'STANDBY' ? 'STANDBY' : 'PRIMARY',
+        role: row.role === 'STANDBY' ? 'STANDBY' : 'PRIMARY', // D61 (2026-11-04): the stored role is the two-role worker lane's name of the transcription pair (channels 1 and 2); the numbered channels are the start records'
         fromMs: index < lastStart ? 0 : whole(row.from_media_ms),
         toMs: index < lastStart ? 0 : row.to_media_ms === null ? null : whole(row.to_media_ms),
         reason: oneOf(INTERVAL_REASONS, row.reason, 'START'),

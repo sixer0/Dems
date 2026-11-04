@@ -150,7 +150,7 @@ export function createGeneratedCameraAdapter(options: GeneratedCameraOptions): G
 export interface GeneratedMicOptions extends GeneratedSourceOptions {
   /** `<dataDir>/run/capture`. */
   readonly runDir: string;
-  /** Default: 880 Hz, the standby tone (audibly not a voice). */
+  /** Default: 880 Hz, the standby tone - the worker lane's legacy name of channel 2 (D61, 2026-11-04); audibly not a voice. */
   readonly tone?: MicGeneratedTone;
   /**
    * The speech fixture the boot fence vouched for (fix wave H; `fake-mic.ts`). When set, this

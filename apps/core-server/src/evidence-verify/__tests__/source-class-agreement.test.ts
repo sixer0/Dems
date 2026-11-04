@@ -59,8 +59,8 @@ describe('M7-DEVSRC-BUILD-1: the two mappings are of the same kinds and agree on
     const rows = [
       { slot: 'VIDEO-01', deviceId: 'CAM-01', adapterKind: 'NEW_KIND' },
       { slot: 'VIDEO-02', deviceId: 'CAM-02', adapterKind: 'FAKE' },
-      { slot: 'MIC-PRIMARY', deviceId: 'MIC-01', adapterKind: 'FAKE' },
-      { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'FAKE' },
+      { slot: 'MIC-01', deviceId: 'MIC-01', adapterKind: 'FAKE' },
+      { slot: 'MIC-02', deviceId: 'MIC-02', adapterKind: 'FAKE' },
     ];
     expect(() => sessionSourceClasses(rows)).toThrowError(expect.objectContaining({ code: 'SOURCE_CLASS_UNMAPPED' }));
     // Fewer than four rows: no class is assumed for the missing slot.

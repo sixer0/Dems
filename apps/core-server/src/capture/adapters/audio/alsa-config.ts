@@ -2,7 +2,8 @@
  * The generator of the shared-capture configuration of the sound cards (task 4 row 65, WP-08;
  * specification S3-4; hardware logic H-15; requirement AD-07 of the security addendum).
  *
- * WHY IT EXISTS. One ALSA card admits one opener. The primary and the standby microphone of a room
+ * WHY IT EXISTS. One ALSA card admits one opener. Two microphones of a room - the primary and the
+ * standby of the earlier eras, any two of the four numbered channels since D61 (2026-11-04) -
  * can be two inputs of one interface, each with its own helper and its own pipe, so the card is
  * opened through a SHARED capture: per card a `dsnoop` device that opens the hardware once, with
  * ALL its channels, in its NATIVE format, at ONE rate, and a `plug` device above it that converts

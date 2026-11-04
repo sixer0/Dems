@@ -37,7 +37,8 @@ export const LOCAL_MIC_DEVICE_NAME = 'MacBook Air Microphone';
 
 /**
  * The generated inputs of the development microphones that open no device: the standby tone of slot 2
- * (880 Hz, audibly different from a voice) and the primary fixture tone. The closed set IS the
+ * (880 Hz, audibly different from a voice) and the primary fixture tone. The names are the worker's
+ * two-role lane's (D61, 2026-11-04: channel 2 keeps the tone). The closed set IS the
  * table: a tone is chosen by key, never typed.
  */
 export const MicGeneratedTone = { TONE_880: 'TONE_880', TONE_440: 'TONE_440' } as const;

@@ -99,9 +99,13 @@ describe('operations 44, 45, 46: the answer is the in-app simulator\'s on the sa
       ['VIDEO-03', 'CAM-03', 'READY', true, null],
       ['VIDEO-04', 'CAM-04', 'READY', true, null],
     ]);
-    expect(idle.audio.map((channel) => [channel.inputId, channel.deviceId, channel.role, channel.state, channel.recState, channel.clip, channel.noSignal])).toEqual([
-      ['MIC-01', 'MIC-01', 'PRIMARY', 'READY', null, false, false],
-      ['MIC-02', 'MIC-02', 'STANDBY', 'READY', null, false, false],
+    // D61 (2026-11-04): FOUR meter channels, each naming its selector CHANNEL (the capture role of the
+    // two-role era left this read with the decision; the entry's key stays its input `MIC-NN`).
+    expect(idle.audio.map((channel) => [channel.inputId, channel.deviceId, channel.channel, channel.state, channel.recState, channel.clip, channel.noSignal])).toEqual([
+      ['MIC-01', 'MIC-01', 'MIC-01', 'READY', null, false, false],
+      ['MIC-02', 'MIC-02', 'MIC-02', 'READY', null, false, false],
+      ['MIC-03', 'MIC-03', 'MIC-03', 'READY', null, false, false],
+      ['MIC-04', 'MIC-04', 'MIC-04', 'READY', null, false, false],
     ]);
     expect(idle.activeInputId).toBe('MIC-01');
     expect(idle.services).toHaveLength(17);
@@ -109,7 +113,7 @@ describe('operations 44, 45, 46: the answer is the in-app simulator\'s on the sa
     const recording = deviceHealthOf(committedOf(scenarioState('recording')), NOW);
     expect(recording.systemState).toBe('RECORDING');
     expect(recording.cameras.map((camera) => camera.recState)).toEqual(['REC', 'REC', 'REC', 'REC']); // D60 (2026-11-04): four tracks record at once
-    expect(recording.audio.map((channel) => channel.recState)).toEqual(['REC', 'REC']);
+    expect(recording.audio.map((channel) => channel.recState)).toEqual(['REC', 'REC', 'REC', 'REC']); // D61 (2026-11-04): four channels record at once
 
     const faults = deviceHealthOf(committedOf(scenarioState('fault-demo')), NOW);
     expect(faults.systemState).toBe('CRITICAL');
@@ -127,9 +131,11 @@ describe('operations 44, 45, 46: the answer is the in-app simulator\'s on the sa
     expect(health).toEqual(simulatorAnswer(own, HEALTH));
     expect(validateCoreApiResponse('getDeviceHealth', 200, health)).toEqual({ ok: true });
     // The meter frame of a Core at rest: not measured - and the answer says so, never "no signal".
-    const frame = { audio: { inputs: { 'MIC-01': { ...AUDIO_FRAME_NOT_MEASURED_EXAMPLE }, 'MIC-02': { ...AUDIO_FRAME_NOT_MEASURED_EXAMPLE } }, activeInputId: 'MIC-01' } } as unknown as Parameters<typeof audioStatusOf>[2];
+    // D61 (2026-11-04): the frame of a Core at rest names the FOUR channels.
+    const notMeasuredInputs = Object.fromEntries(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'].map((inputId) => [inputId, { ...AUDIO_FRAME_NOT_MEASURED_EXAMPLE }]));
+    const frame = { audio: { inputs: notMeasuredInputs, activeInputId: 'MIC-01' } } as unknown as Parameters<typeof audioStatusOf>[2];
     const audio = audioStatusOf(committed, NOW, frame);
-    expect(audio.channels.map((channel) => [channel.notMeasured, channel.noSignal])).toEqual([[true, false], [true, false]]);
+    expect(audio.channels.map((channel) => [channel.notMeasured, channel.noSignal])).toEqual([[true, false], [true, false], [true, false], [true, false]]);
     expect(validateCoreApiResponse('getAudioStatus', 200, audio)).toEqual({ ok: true });
     // CONTROL: the simulated device states neither member.
     const simulated = deviceHealthOf(committedOf(scenarioState('idle')), NOW);
@@ -161,9 +167,12 @@ describe('operations 44, 45, 46: the answer is the in-app simulator\'s on the sa
     expect(health.security).toMatchObject({ tpmOk: false, tamper: true });
     expect(health.cameras[0]).toMatchObject({ trackId: 'VIDEO-01', online: false, lens: 'FAULT' });
     expect(health.cameras[1]).toMatchObject({ trackId: 'VIDEO-02', online: true, lens: 'READY' });
+    // D61 (2026-11-04): the faults of the scenario touch channels 1 and 2; the two further channels record on, READY.
     expect(health.audio.map((channel) => [channel.state, channel.noSignal, channel.clip])).toEqual([
       ['NO_SIGNAL', true, false],
       ['CLIP', false, true],
+      ['READY', false, false],
+      ['READY', false, false],
     ]);
     expect(health.time.source).toBe('RTC');
     expect(health.services.some((service) => service.status !== 'RUNNING')).toBe(true);
@@ -240,7 +249,10 @@ describe('the recorded difference of D89 (formerly BE-GAP-W36-1): the 20 Hz mete
     // Positive control: the difference this test is about exists.
     const moved = simulators.channels.filter((channel, index) => channel.dbfs !== mine.channels[index]?.dbfs || channel.peak !== mine.channels[index]?.peak);
     expect(moved.length).toBeGreaterThan(0);
+    // D61 (2026-11-04): four channels, all of them at the module's noise floor while the simulator's levels move.
     expect(mine.channels.map((channel) => [channel.dbfs, channel.peak])).toEqual([
+      [AUDIO_NOISE_FLOOR_DBFS, AUDIO_NOISE_FLOOR_DBFS],
+      [AUDIO_NOISE_FLOOR_DBFS, AUDIO_NOISE_FLOOR_DBFS],
       [AUDIO_NOISE_FLOOR_DBFS, AUDIO_NOISE_FLOOR_DBFS],
       [AUDIO_NOISE_FLOOR_DBFS, AUDIO_NOISE_FLOOR_DBFS],
     ]);
@@ -283,10 +295,13 @@ describe('the newest meter frame of the engine (decisions D89, D122): with it, t
     const frame = {
       at: NOW,
       seq: 7,
+      // D61 (2026-11-04): the frame carries the four channels of the numbered plane.
       audio: {
         inputs: {
           'MIC-01': { seq: 7, at: NOW, dbfs: -18.25, peak: -12.5, clip: true, noSignal: false },
           'MIC-02': { seq: 7, at: NOW, dbfs: -90, peak: -90, clip: false, noSignal: true },
+          'MIC-03': { seq: 7, at: NOW, dbfs: -33.5, peak: -30, clip: false, noSignal: false },
+          'MIC-04': { seq: 7, at: NOW, dbfs: -44, peak: -40, clip: false, noSignal: false },
         },
         activeInputId: 'MIC-01',
       },
@@ -295,6 +310,8 @@ describe('the newest meter frame of the engine (decisions D89, D122): with it, t
     expect(channels.map((channel) => [channel.inputId, channel.dbfs, channel.peak, channel.clip, channel.noSignal])).toEqual([
       ['MIC-01', -18.25, -12.5, false, false],
       ['MIC-02', -90, -90, false, true],
+      ['MIC-03', -33.5, -30, false, false],
+      ['MIC-04', -44, -40, false, false],
     ]);
     // Every other member is the committed state's, with and without a frame.
     expect(withoutLevels(audioStatusOf(committed, NOW, frame)).channels.map(({ noSignal: _noSignal, ...rest }) => rest)).toEqual(
@@ -393,10 +410,9 @@ describe('row 140: the four reads name the devices of the stored selector (an ad
       captureConfig: {
         ...state.captureConfig,
         cameras: state.captureConfig.cameras.map((camera) => (camera.trackId === 'VIDEO-01' ? { ...camera, deviceId: 'CAM-03' } : camera)),
-        mics: [
-          { ...state.captureConfig.mics[0]!, inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' },
-          { ...state.captureConfig.mics[1]!, inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' },
-        ],
+        // D61 (2026-11-04): the line names its CHANNEL; the swap is of the device behind channel 1 (an input
+        // outside the built-in four, as D133 (1) states).
+        mics: state.captureConfig.mics.map((mic) => (mic.channel === 'MIC-01' ? { ...mic, inputId: 'MIC-05' as typeof mic.inputId, deviceId: 'MIC-05' } : mic)),
       },
     } as SimState;
   };
@@ -409,16 +425,22 @@ describe('row 140: the four reads name the devices of the stored selector (an ad
     expect(VideoStatusResponseSchema.safeParse(video).success).toBe(true);
   });
 
-  it('operations 45 and 44: the microphone lines are MIC-03 (PRIMARY, active) and MIC-02 (STANDBY)', () => {
+  it('operations 45 and 44: channel 1 is fed by MIC-05 (the active input) and the rest by their built-ins (D61)', () => {
     const state = developmentState();
     const audio = audioStatusOf(committedOf(state), NOW);
-    expect(audio.channels.map((channel) => [channel.inputId, channel.deviceId, channel.role])).toEqual([['MIC-03', 'MIC-03', 'PRIMARY'], ['MIC-02', 'MIC-02', 'STANDBY']]);
-    expect(audio.activeInputId).toBe('MIC-03');
+    // D61: every assigned channel is an entry, in the order of the meter slice, and each names ITS channel.
+    expect(audio.channels.map((channel) => [channel.inputId, channel.deviceId, channel.channel])).toEqual([
+      ['MIC-05', 'MIC-05', 'MIC-01'],
+      ['MIC-02', 'MIC-02', 'MIC-02'],
+      ['MIC-03', 'MIC-03', 'MIC-03'],
+      ['MIC-04', 'MIC-04', 'MIC-04'],
+    ]);
+    expect(audio.activeInputId).toBe('MIC-05');
     expect(AudioStatusResponseSchema.safeParse(audio).success).toBe(true);
     const health = deviceHealthOf(committedOf(state), NOW);
     expect(health.cameras.map((camera) => camera.sourceDeviceId)).toEqual(['CAM-03', 'CAM-02', 'CAM-03', 'CAM-04']); // D60 (2026-11-04): four lines
-    expect(health.audio.map((channel) => channel.inputId)).toEqual(['MIC-03', 'MIC-02']);
-    expect(health.activeInputId).toBe('MIC-03');
+    expect(health.audio.map((channel) => channel.inputId)).toEqual(['MIC-05', 'MIC-02', 'MIC-03', 'MIC-04']);
+    expect(health.activeInputId).toBe('MIC-05');
     expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
   });
 
@@ -434,7 +456,7 @@ describe('row 140: the four reads name the devices of the stored selector (an ad
     const state = developmentState();
     const builtin = { cameras: scenarioState('idle').captureConfig.cameras, mics: scenarioState('idle').captureConfig.mics };
     expect(videoStatusOf(committedOf(state), builtin).tracks.map((track) => track.sourceDeviceId)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']); // D60 (2026-11-04)
-    expect(audioStatusOf(committedOf(state), NOW, null, builtin).channels.map((channel) => channel.inputId)).toEqual(['MIC-01', 'MIC-02']);
+    expect(audioStatusOf(committedOf(state), NOW, null, builtin).channels.map((channel) => channel.inputId)).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']); // D61 (2026-11-04): the built-in four channels
   });
 });
 
@@ -451,15 +473,16 @@ describe('row 150: a selector line that is not there is answered "absent", never
     const state = scenarioState('idle');
     return { ...state, captureConfig: { ...state.captureConfig, ...change(state.captureConfig) } } as SimState;
   };
-  const primaryOf = (selector: Selector) => selector.mics.find((line) => line.role === 'PRIMARY')!;
-  const standbyOf = (selector: Selector) => selector.mics.find((line) => line.role === 'STANDBY')!;
+  // D61 (2026-11-04): the transcription pair is the first two NUMBERED CHANNELS (was the two roles).
+  const primaryOf = (selector: Selector) => selector.mics.find((line) => line.channel === 'MIC-01')!;
+  const standbyOf = (selector: Selector) => selector.mics.find((line) => line.channel === 'MIC-02')!;
   /** Every identifier of a microphone the hardware slice or the built-in table could lend. */
-  const BUILTIN_INPUTS = ['MIC-01', 'MIC-02'];
+  const BUILTIN_INPUTS = ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']; // D61 (2026-11-04): the four built-in channels
 
   it('CONTROL: the hardware slices of the seed hold what a stand-in would answer - four cameras with a device (D60), a PRIMARY microphone first', () => {
     const state = scenarioState('idle');
     expect(state.cameras.map((camera) => camera.deviceId)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']); // D60 (2026-11-04)
-    expect(state.mics.map((mic) => mic.micRole)).toEqual(['PRIMARY', 'STANDBY']);
+    expect(state.mics.map((mic) => mic.channel)).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']); // D61 (2026-11-04): the hardware slice names its channel (was its capture role)
     expect(state.mics.every((mic) => mic.deviceId.length > 0)).toBe(true);
   });
 
@@ -482,26 +505,29 @@ describe('row 150: a selector line that is not there is answered "absent", never
     expect(videoStatusOf(committedOf(none)).tracks.map((track) => track.sourceDeviceId)).toEqual([null, null, null, null]); // D60 (2026-11-04)
   });
 
-  it('B12, the audio channels: with only a STANDBY line no meter channel has an input, so there is NO entry - no built-in input, no device and no role of the hardware slice', () => {
-    for (const mics of [
-      (selector: Selector) => [standbyOf(selector)],
-      (selector: Selector) => [primaryOf(selector)],
-      () => [],
-      // Two lines that are not one of each role are no pair either.
-      (selector: Selector) => [primaryOf(selector), { ...standbyOf(selector), role: 'PRIMARY' as const }],
-    ]) {
-      const state = withSelector((selector) => ({ cameras: selector.cameras, mics: mics(selector) }));
+  it('B12, the audio channels (D61, 2026-11-04): an entry stands for an ASSIGNED CHANNEL only - no built-in input, no device and no name of the hardware slice stands in for one', () => {
+    // The two-role era's rule ("no entry until the pair is complete") died with the decision: four channels
+    // record at once, so every line of the selector is an entry and an unassigned channel is absent.
+    const cases: [(selector: Selector) => Selector['mics'], string[]][] = [
+      [(selector) => [standbyOf(selector)], ['MIC-02']], // channel 2 alone: one entry, on its own input
+      [(selector) => [primaryOf(selector)], ['MIC-01']],
+      [() => [], []],
+      [(selector) => [selector.mics[2]!, selector.mics[3]!], ['MIC-03', 'MIC-04']], // the two later channels, no transcription line
+    ];
+    for (const [micsOf, inputs] of cases) {
+      const state = withSelector((selector) => ({ cameras: selector.cameras, mics: micsOf(selector) }));
       const audio = audioStatusOf(committedOf(state), NOW);
-      expect(audio.channels).toEqual([]);
+      expect(audio.channels.map((channel) => channel.inputId), inputs.join('+')).toEqual(inputs);
       expect(AudioStatusResponseSchema.safeParse(audio).success).toBe(true);
       const health = deviceHealthOf(committedOf(state), NOW);
-      expect(health.audio).toEqual([]);
+      expect(health.audio.map((channel) => channel.inputId), inputs.join('+')).toEqual(inputs);
       expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
     }
   });
 
   it('B12: a frame of the engine does not bring an entry back - a level without a selector line belongs to no input of the answer', () => {
-    const state = withSelector((selector) => ({ cameras: selector.cameras, mics: [standbyOf(selector)] }));
+    // D61: the frame names the inputs of channels 1 and 2 while the selector holds NEITHER - no entry stands.
+    const state = withSelector((selector) => ({ cameras: selector.cameras, mics: [] }));
     const frame = {
       at: NOW,
       seq: 3,
@@ -513,17 +539,18 @@ describe('row 150: a selector line that is not there is answered "absent", never
     expect(audioStatusOf(committedOf(state), NOW, frame)).toEqual({ channels: [], activeInputId: null });
   });
 
-  it('B12: on a complete pair the device and the role of an entry are its LINE\'s, in both role arrangements - never the hardware slice\'s own', () => {
+  it('B12: on a complete pair the device and the channel of an entry are its LINE\'s, in both arrangements - never the hardware slice\'s own (D61)', () => {
     const state = withSelector((selector) => ({
       cameras: selector.cameras,
-      // The STANDBY line stands first: meter channel 1 is a STANDBY input (D137: input order), while the hardware slice's first microphone calls itself PRIMARY.
+      // D61 (2026-11-04): the entry of meter channel AUDIO-0N is the selector LINE of channel MIC-0N -
+      // listed here with the later channel first, on inputs the hardware slice does not hold.
       mics: [
         { ...standbyOf(selector), inputId: 'MIC-07', deviceId: 'USB-CARD-B' },
         { ...primaryOf(selector), inputId: 'MIC-04', deviceId: 'USB-CARD-A' },
       ],
     }));
     const audio = audioStatusOf(committedOf(state), NOW);
-    expect(audio.channels.map((channel) => [channel.inputId, channel.deviceId, channel.role])).toEqual([['MIC-07', 'USB-CARD-B', 'STANDBY'], ['MIC-04', 'USB-CARD-A', 'PRIMARY']]);
+    expect(audio.channels.map((channel) => [channel.inputId, channel.deviceId, channel.channel])).toEqual([['MIC-04', 'USB-CARD-A', 'MIC-01'], ['MIC-07', 'USB-CARD-B', 'MIC-02']]);
     expect(audio.activeInputId).toBe('MIC-04');
     expect(AudioStatusResponseSchema.safeParse(audio).success).toBe(true);
   });
@@ -537,12 +564,12 @@ describe('row 150: a selector line that is not there is answered "absent", never
     }
   });
 
-  it('B13: the PRIMARY line is found by its ROLE wherever it stands, also alone (a role is assignable alone, C21 (8)); a frame that names an input is the engine\'s word', () => {
+  it('B13: the transcribed line is found by its CHANNEL NUMBER wherever it stands, also alone (D61); a frame that names an input is the engine\'s word', () => {
     const alone = withSelector((selector) => ({ cameras: selector.cameras, mics: [{ ...primaryOf(selector), inputId: 'MIC-09', deviceId: 'USB-CARD-C' }] }));
     const answer = audioStatusOf(committedOf(alone), NOW);
     expect(answer.activeInputId).toBe('MIC-09');
-    // ... and it has no meter channel until the pair is complete (register section 3.2).
-    expect(answer.channels).toEqual([]);
+    // D61: an assigned channel is an entry on its own - the pair premise of the two-role era is gone, so channel 1 alone answers its meter channel.
+    expect(answer.channels.map((channel) => [channel.inputId, channel.channel])).toEqual([['MIC-09', 'MIC-01']]);
     const second = withSelector((selector) => ({ cameras: selector.cameras, mics: [standbyOf(selector), { ...primaryOf(selector), inputId: 'MIC-05' }] }));
     expect(audioStatusOf(committedOf(second), NOW).activeInputId).toBe('MIC-05');
     const slots = { cameras: second.captureConfig.cameras, mics: second.captureConfig.mics };
@@ -563,7 +590,8 @@ describe('row 150: a selector line that is not there is answered "absent", never
         // The lines carry identifiers no hardware slice and no built-in table holds, so a stand-in shows.
         const state = withSelector(() => ({
           cameras: cameras.map((line) => ({ ...line, deviceId: `LINE-${line.trackId}` })),
-          mics: mics.map((line, index) => ({ ...line, inputId: `MIC-${31 + index}` as typeof line.inputId, deviceId: `LINE-${line.role}` })),
+          // D61 (2026-11-04): the identifier of a mic line is its channel, not its role.
+          mics: mics.map((line, index) => ({ ...line, inputId: `MIC-${31 + index}` as typeof line.inputId, deviceId: `LINE-${line.channel}` })),
         }));
         const health = deviceHealthOf(committedOf(state), NOW);
         expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
@@ -572,10 +600,11 @@ describe('row 150: a selector line that is not there is answered "absent", never
         for (const camera of health.cameras) if (camera.sourceDeviceId !== null && !heldDevices.has(camera.sourceDeviceId)) invented += 1;
         for (const channel of health.audio) if (!heldInputs.has(channel.inputId) || !heldDevices.has(channel.deviceId) || BUILTIN_INPUTS.includes(channel.inputId)) invented += 1;
         if (health.activeInputId !== null && !heldInputs.has(health.activeInputId)) invented += 1;
-        // The count of what IS answered follows the lines: a source per camera line, two channels only for the pair, an active input only with a PRIMARY.
+        // The count of what IS answered follows the lines (D61): a source per camera line, an entry per assigned
+        // channel - every channel of the built-in four that the selector holds - and an active input only with a channel-1 line.
         expect(health.cameras.filter((camera) => camera.sourceDeviceId !== null)).toHaveLength(cameras.length);
-        expect(health.audio).toHaveLength(mics.length === 2 ? 2 : 0);
-        expect(health.activeInputId === null).toBe(!mics.some((line) => line.role === 'PRIMARY'));
+        expect(health.audio).toHaveLength(mics.length);
+        expect(health.activeInputId === null).toBe(!mics.some((line) => line.channel === 'MIC-01'));
       }
     }
     expect(states).toBe(16);
@@ -585,13 +614,15 @@ describe('row 150: a selector line that is not there is answered "absent", never
   it('names of the positional function left in the file: 0 - and none of the three stand-ins it served (the source of status.ts, read as text)', () => {
     const source = readFileSync(fileURLToPath(new URL('../status.ts', import.meta.url)), 'utf8');
     const count = (pattern: RegExp): number => (source.match(pattern) ?? []).length;
-    expect(count(new RegExp(`micInputOf${'Channel'}`, 'g'))).toBe(0);
+    // D61 (2026-11-04): the positional ROLE helper is gone; the CHANNEL-keyed shared rule took its place, so the
+    // name this row searched for by construction is now the one the module calls (counted by the assertion below).
+    expect(count(new RegExp(`micInputOf${'Role'}`, 'g'))).toBe(0);
     // The built-in table of the positional function and a literal built-in input.
     expect(count(/DEFAULT_MIC_INPUT_OF_CHANNEL/g)).toBe(0);
     // A literal built-in input, and the hardware slice's own device, role and first microphone as an answer: in the CODE (the comments name them).
     const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     expect(code.match(/['"`]MIC-\d+['"`]/g)).toBeNull();
-    expect(count(/micInputOfRole\(|meterInputOfChannel\(/g)).toBe(2);
+    expect(count(/micInputOfChannel\(|meterInputOfChannel\(/g)).toBe(2); // D61: the two shared channel-keyed rules, one per read
     expect(/\bmic\.deviceId\b|\bmicRole\b|\bmics\[0\]|\?\?\s*camera\.deviceId/.test(code)).toBe(false);
     // POSITIVE CONTROL: the same search finds each of them in the text this row replaced.
     const before = "sourceDeviceId: slot?.deviceId ?? camera.deviceId, deviceId: slotDeviceOf.get(inputId) ?? mic.deviceId, const mic = mics.find((candidate) => candidate.micRole === 'PRIMARY') ?? mics[0];";

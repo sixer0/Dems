@@ -224,6 +224,7 @@ describe('row 47, AD-05 (1) and BR-07 (4): where an ingest address is built, and
     const planUses = lines.filter((line) => /\bplan\b/.test(line) && !/\bplan\.cameras\.map\(\(camera\) => (?:\[camera\.deviceId, camera\.trackId as VideoTrackId\]|camera\.deviceId)\)/.test(line) && !line.startsWith('for (const camera of plan.cameras)'));
     // Row 179: also where the addresses in force are first filled, and where the cameras are opened AGAIN for a later worker.
     expect(planUses).toEqual([
+      "import { CapturePlanError, MIC_CHANNEL_IDS, assertRecordableSelector, buildCapturePlan, type CapturePlanMicSource, type CapturePlanSelector, type MicChannelId, type RecordableSelector } from '../modules/capture-config'; // MIC_CHANNEL_IDS / MicChannelId / CapturePlanMicSource: D61 (2026-11-04) \u2014 the per-channel audio file of the plan",
       'function openCameras(current: Live, registry: CaptureDeviceRegistry, plan: CapturePlan, round: CameraRound): Promise<void> {',
       'function cameraRoundAgain(current: Live, registry: CaptureDeviceRegistry, plan: CapturePlan): void {',
       'track(round.closing.then(() => openCameras(current, registry, plan, round)).then(round.settle));',

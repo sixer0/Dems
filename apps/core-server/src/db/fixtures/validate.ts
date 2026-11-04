@@ -476,7 +476,7 @@ export function validateBulkFixture(rows: BulkFixtureRows, updates: BulkFixtureU
     must(!(anyProduction && anyDevelopment), 'session_capture_sources', 'a session mixes a production kind with a development kind (row 123 RG-3)');
     if (anyProduction) productionShaped += 1;
     const bySlot = new Map(sources.map((row) => [row.slot as string, row.adapterKind as string] as const));
-    if (bySlot.get('VIDEO-01') === 'LOCAL_DEVICE' && bySlot.get('VIDEO-02') === 'FAKE' && bySlot.get('MIC-PRIMARY') === 'LOCAL_DEVICE' && bySlot.get('MIC-STANDBY') === 'FAKE') developmentShaped += 1;
+    if (bySlot.get('VIDEO-01') === 'LOCAL_DEVICE' && bySlot.get('VIDEO-02') === 'FAKE' && bySlot.get('MIC-01') === 'LOCAL_DEVICE' && bySlot.get('MIC-02') === 'FAKE') developmentShaped += 1; // D61 (2026-11-04): the roles became the numbered channels `MIC-01`/`MIC-02`
   }
   must(
     developmentShaped >= BULK_MIX.sessionCaptureSources.developmentSessions && productionShaped >= BULK_MIX.sessionCaptureSources.productionSessions,

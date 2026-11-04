@@ -109,10 +109,10 @@ const finiteNumber = (required: boolean): DetailRule => ({
   form: 'a finite number',
   accepts: (value) => typeof value === 'number' && Number.isFinite(value),
 });
-/** The `from`/`to` of CAPTURE_CONFIG_CHANGED: the previous/new value — a mic role or a capture device id (C3 §5.2). */
+/** The `from`/`to` of CAPTURE_CONFIG_CHANGED: the previous/new value — a mic role or a capture device id (C3 §5.2). D61 (2026-11-04): the PRIMARY/STANDBY roles are superseded vocabulary - old rows keep them, and a numbered channel (`MIC-01`..`MIC-04`) passes as a Core hardware device id; `field: ROLE` stays legal for the same reason (history is never re-written). */
 const configValue = (required: boolean): DetailRule => ({
   required,
-  form: 'the previous or new value: PRIMARY, STANDBY, or a Core hardware device id',
+  form: 'the previous or new value: a legacy mic role (PRIMARY, STANDBY) or a Core hardware device id',
   accepts: (value) => typeof value === 'string' && (value === 'PRIMARY' || value === 'STANDBY' || HARDWARE_DEVICE_ID_PATTERN.test(value)),
 });
 
@@ -560,8 +560,10 @@ export const SERVER_AUDIT_DETAIL_RULES = {
   [AuditType.CAPTURE_CONFIG_CHANGED]: {
     operationId: operationId(REQUIRED),
     scope: oneOf(['CONFIG', 'CAMERA', 'MIC'], 'one of CONFIG, CAMERA, MIC')(REQUIRED),
-    field: oneOf(['CAMERAS', 'MICS', 'SOURCE', 'ROLE'], 'one of CAMERAS, MICS, SOURCE, ROLE')(REQUIRED),
+    field: oneOf(['CAMERAS', 'MICS', 'SOURCE', 'ROLE', 'CHANNEL'], 'one of CAMERAS, MICS, SOURCE, ROLE, CHANNEL')(REQUIRED), // `ROLE` is the legacy op-80 field name of the transcription-pair toggle (D61, 2026-11-04: roles superseded by channels; the vocabulary keeps it for the rows already written); `CHANNEL` is the new one
     trackId: oneOf(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'], 'one of VIDEO-01 to VIDEO-04')(OPTIONAL), // D60 (2026-11-04): a selector edit may name any of the four tracks
+    // D61 (2026-11-04): a mic row names the numbered CHANNEL it edited (`MIC-01`..`MIC-04`).
+    channel: oneOf(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'], 'one of MIC-01 to MIC-04')(OPTIONAL),
     // D145: the numbered mic rule of the shared contract (`MIC-NN`).
     inputId: micInputId(OPTIONAL),
     deviceId: hardwareDeviceId(OPTIONAL),

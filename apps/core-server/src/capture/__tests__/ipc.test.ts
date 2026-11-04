@@ -225,8 +225,10 @@ describe('the stub speaks the switch of protocol 4 as the worker does', () => {
     supervisor.on('record', (event) => void records.push(event));
     const plan = capturePlan(SESSION);
     await supervisor.start(SESSION, plan);
-    const standby = plan.mics.find((mic) => mic.role === 'STANDBY');
-    const primary = plan.mics.find((mic) => mic.role === 'PRIMARY');
+    // D61 (2026-11-04): the plan rows are keyed by numbered CHANNEL; the legacy two-role lane names the
+    // transcription pair - PRIMARY is channel MIC-01, STANDBY channel MIC-02 (the switch below is that lane).
+    const standby = plan.mics.find((mic) => mic.channel === 'MIC-02');
+    const primary = plan.mics.find((mic) => mic.channel === 'MIC-01');
     const kinds = () => records.map((event) => (event.name === 'record' ? `${event.record.kind}${'reason' in event.record ? `:${String(event.record.reason)}` : ''}` : ''));
     await vi.waitFor(() => expect(kinds()).toEqual(['AUDIO_SOURCE_INTERVAL:SESSION_START']), WAIT);
     const first = await supervisor.switchAudioSource(SESSION, 'STANDBY');

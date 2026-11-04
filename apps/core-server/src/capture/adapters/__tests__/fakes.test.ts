@@ -110,7 +110,7 @@ async function audioContract(adapter: AudioInputAdapter): Promise<string[]> {
     const handle = await adapter.open(device.id, { sessionId: 'SES-000123', signal: live() });
     if (handle.deviceId !== device.id) wrong.push(`${device.id}: the handle names another device`);
     // The input goes into the plan unchanged: the protocol's own schema must take it.
-    if (!CapturePlanMicSchema.safeParse({ deviceId: handle.deviceId, role: 'PRIMARY', input: handle.input }).success) wrong.push(`${device.id}: the plan refuses the input`);
+    if (!CapturePlanMicSchema.safeParse({ deviceId: handle.deviceId, channel: 'MIC-01', input: handle.input }).success) wrong.push(`${device.id}: the plan refuses the input`); // D61 (2026-11-04): the plan line names its numbered channel
     if (handle.transport.kind !== handle.input.kind) wrong.push(`${device.id}: the statement is of another transport`);
     if (handle.transport.clockCompensationPpm !== MIC_CLOCK_COMPENSATION_PPM) wrong.push(`${device.id}: the clock range is not stated`);
     if (!(handle.transport.latenessBeyondRangeMs > 0)) wrong.push(`${device.id}: no lateness bound stated`);
@@ -198,11 +198,11 @@ describe('M4-FAKE-1: four fakes emulate four cameras (D60), and one fake a dual-
     expect(await cameraContract(camera)).toEqual([]);
   });
 
-  it('the fake registry holds the seed\'s seven devices, two microphones 10.5 dB apart and the switch with the cameras\' port', async () => {
+  it('the fake registry holds the seed\'s nine devices (D61), two microphones 10.5 dB apart and the switch with the cameras\' port', async () => {
     const { registry, mics, poe } = createFakeRegistry({ runDir: RUN_DIR });
     // D60 (2026-11-04): the seed's built-ins are seven — four cameras, two mics, one switch.
-    expect(registry.list().map((device) => `${device.id} ${device.deviceClass} ${device.adapterKind}`)).toEqual(['CAM-01 CAMERA FAKE', 'CAM-02 CAMERA FAKE', 'CAM-03 CAMERA FAKE', 'CAM-04 CAMERA FAKE', 'MIC-01 MIC FAKE', 'MIC-02 MIC FAKE', 'POE-SWITCH POE FAKE']);
-    expect(await Promise.all(mics.map((mic) => mic.level(mic.devices[0]?.id ?? '')))).toEqual([FAKE_MIC_PRIMARY_DBFS, FAKE_MIC_STANDBY_DBFS]);
+    expect(registry.list().map((device) => `${device.id} ${device.deviceClass} ${device.adapterKind}`)).toEqual(['CAM-01 CAMERA FAKE', 'CAM-02 CAMERA FAKE', 'CAM-03 CAMERA FAKE', 'CAM-04 CAMERA FAKE', 'MIC-01 MIC FAKE', 'MIC-02 MIC FAKE', 'MIC-03 MIC FAKE', 'MIC-04 MIC FAKE', 'POE-SWITCH POE FAKE']); // D61 (2026-11-04): nine built-ins
+    expect(await Promise.all(mics.map((mic) => mic.level(mic.devices[0]?.id ?? '')))).toEqual([FAKE_MIC_PRIMARY_DBFS, FAKE_MIC_STANDBY_DBFS, FAKE_MIC_STANDBY_DBFS, FAKE_MIC_STANDBY_DBFS]); // D61 (2026-11-04): four channel fakes, the standby level on 3 and 4
     expect(FAKE_MIC_PRIMARY_DBFS - FAKE_MIC_STANDBY_DBFS).toBeCloseTo(10.5);
     expect(await poeContract(poe, 'POE_CAM_1')).toEqual([]);
     expect(poe.cycles).toEqual(['POE_CAM_1']);

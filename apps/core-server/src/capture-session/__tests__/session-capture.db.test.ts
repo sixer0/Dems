@@ -321,7 +321,8 @@ describe('a real recording: start, the first durable fragment, the switch, the s
     ]);
     expect(starts[0]?.plan.cameras.map((camera) => INGEST_ELEMENT.test(elementOf(camera.ingestUrl)))).toEqual([true, true]);
     expect(starts[0]?.plan.cameras.every((camera) => camera.outputPath.startsWith(`${fixture.mediaStoreDir}/SESSION-${id}/`))).toBe(true);
-    expect(starts[0]?.plan.mics.map((mic) => [mic.deviceId, mic.role])).toEqual([['MIC-01', 'PRIMARY'], ['MIC-02', 'STANDBY']]);
+    // D61 (2026-11-04): the plan rows carry the numbered CHANNEL; the two-role lane survives only on SWITCH_AUDIO_SOURCE.to, telemetry and interval records.
+    expect(starts[0]?.plan.mics.map((mic) => [mic.deviceId, mic.channel])).toEqual([['MIC-01', 'MIC-01'], ['MIC-02', 'MIC-02']]);
     // The microphones are opened before the plan, the cameras only when the worker listens.
     expect(of.order).toEqual(['open MIC-01', 'open MIC-02', 'open CAM-01', 'open CAM-02']);
     expect(of.events.map((event) => event.type)).toEqual(['CONNECTING', 'STARTED']);
@@ -2485,7 +2486,7 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
     };
     return { log, registry, follow };
   }
-  const micsOfWorker = (of: Rig, index: number): string[] => (of.fake.workers[index]?.commands('START')[0]?.plan.mics ?? []).map((mic) => `${mic.deviceId} ${mic.role}`);
+  const micsOfWorker = (of: Rig, index: number): string[] => (of.fake.workers[index]?.commands('START')[0]?.plan.mics ?? []).map((mic) => `${mic.deviceId} ${mic.channel}`); // D61 (2026-11-04): the plan line names its numbered channel
   const micEntries = (appended: { mock: { calls: Array<[{ code?: string; level: string; context?: Record<string, unknown> }]> } }, code: string) =>
     appended.mock.calls.map(([entry]) => entry).filter((entry) => entry.code === code).map((entry) => [entry.level, entry.context?.['deviceId'], entry.context?.['role'], entry.context?.['attempt'] ?? null, entry.context?.['cause'] ?? null]);
   const secondRecords = async (of: Rig): Promise<void> => {
@@ -2523,7 +2524,7 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
       'camera CAM-02',
     ]);
     // The plan of the later worker names both microphones, with the pipes of the handles that were opened for it.
-    expect(micsOfWorker(of, 1)).toEqual(['MIC-01 PRIMARY', 'MIC-02 STANDBY']);
+    expect(micsOfWorker(of, 1)).toEqual(['MIC-01 MIC-01', 'MIC-02 MIC-02']);
     expect(of.fake.workers[1]?.commands('START')[0]?.plan.mics).toEqual(of.fake.workers[0]?.commands('START')[0]?.plan.mics);
     expect(of.log.lines().filter((line) => ['CAPTURE_MIC_NOT_OPENED', 'CAPTURE_MIC_NOT_STARTED', 'CAPTURE_SOURCE_NOT_CLOSED', 'CAPTURE_MIC_REPORT_SUPERSEDED'].includes(String(line.code)))).toEqual([]);
     expect(of.events.filter((event) => event.type === 'STARTED')).toHaveLength(1);
@@ -2567,7 +2568,7 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
     withPrimary.fake.last().exit(1);
     await secondRecords(withPrimary);
     expect(micEntries(appended, 'CAPTURE_MIC_NOT_OPENED')).toEqual([['warn', 'MIC-02', 'STANDBY', 2, null]]);
-    expect(micsOfWorker(withPrimary, 1)).toEqual(['MIC-01 PRIMARY']);
+    expect(micsOfWorker(withPrimary, 1)).toEqual(['MIC-01 MIC-01']);
     expect(standby.log.filter((entry) => entry.startsWith('start') && entry.includes('#2'))).toEqual(['start MIC-01#2 w2']);
     expect(withPrimary.fake.last().commands('SWITCH_AUDIO_SOURCE')).toEqual([]);
     expect(sessionCapture(withPrimary.app).liveSessionId()).toBe(id);

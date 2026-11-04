@@ -507,6 +507,7 @@ function buildCaptureActivity(world: World, directory: OperatorDirectory): void 
   world.record(at(0), {
     audit: {
       type: 'CAPTURE_CONFIG_CHANGED',
+      // D61 (2026-11-04): history says `SOURCE` for what op 80 became - moving the transcription pair's PRIMARY name; the selector plane now keys its microphones by channel.
       message: 'Primary microphone source set to MIC-02',
       actorId: supervisor(at(0)),
       deviceId: null,

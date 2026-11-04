@@ -41,7 +41,8 @@ beforeAll(async () => {
 
 interface Selector {
   cameras: { trackId: string; deviceId: string; profile: string; online: boolean; streamState: string | null }[];
-  mics: { inputId: string; deviceId: string; role: string; transport: string; online: boolean }[];
+  // D61 (2026-11-04): the mic lines of the selector plane are keyed by the numbered CHANNEL (0040); the two-role lane survives only on SWITCH_AUDIO_SOURCE.to, telemetry and interval records.
+  mics: { channel: string; inputId: string; deviceId: string; transport: string; online: boolean }[];
   locked: boolean;
   updatedAt: number;
 }
@@ -57,7 +58,8 @@ const selectorPublications = () => server.stateChanges().filter((change) => chan
  *
  * NO difference is taken out any more (row 129b, decision D106 (1)): the durable mapping reads the
  * two mic rows of the selector back in input order (`db/mapping/rows.ts`, `captureConfigFromRow`),
- * as the engine holds them (AC-B-70), also while MIC-02 is PRIMARY. The exclusion that sorted both
+ * as the engine holds them (AC-B-70, the channel keying generalized by D61), also while MIC-02
+ * fills the transcribed channel. The exclusion that sorted both
  * sides by input id before comparing is removed; `storedMicOrderDiffers` stays as the printed fact.
  */
 let storedMicOrderDiffers = false;
@@ -104,15 +106,15 @@ describe('operations 78, 79, 80: TECHNICIAN edits, audited; SUPERVISOR (`0034`) 
     const primary = await server.post('TECHNICIAN', primaryMic('MIC-02'));
     expect(primary.statusCode).toBe(200);
     expect(validateCoreApiResponse('setPrimaryMic', 200, bodyOf(primary))).toEqual({ ok: true });
-    // AC-B-70: the two mic inputs are listed MIC-01, MIC-02, whichever holds the PRIMARY role.
-    expect(selectorOf(primary).mics.map((mic) => [mic.inputId, mic.deviceId, mic.role])).toEqual([
-      ['MIC-01', 'MIC-01', 'STANDBY'],
-      ['MIC-02', 'MIC-02', 'PRIMARY'],
+    // AC-B-70 (generalized by D61, 2026-11-04): the two mic inputs are listed in input order, whichever numbered channel each fills.
+    expect(selectorOf(primary).mics.map((mic) => [mic.inputId, mic.deviceId, mic.channel])).toEqual([
+      ['MIC-01', 'MIC-01', 'MIC-02'],
+      ['MIC-02', 'MIC-02', 'MIC-01'],
     ]);
     expect(selectorOf(primary)).toEqual({ ...server.engine.slice('captureConfig'), locked: false });
     let rows = await server.since(before);
     expect(rows.map((row) => [row.type, row.actorId, row.details])).toEqual([
-      ['CAPTURE_CONFIG_CHANGED', operatorId('TECHNICIAN'), { operationId: 'setPrimaryMic', scope: 'MIC', field: 'ROLE', inputId: 'MIC-02', deviceId: 'MIC-02', from: 'STANDBY', to: 'PRIMARY', permission: 'CAPTURE_CONFIG' }],
+      ['CAPTURE_CONFIG_CHANGED', operatorId('TECHNICIAN'), { operationId: 'setPrimaryMic', scope: 'MIC', field: 'CHANNEL', inputId: 'MIC-02', deviceId: 'MIC-02', from: 'MIC-02', to: 'MIC-01', permission: 'CAPTURE_CONFIG' }], // D61: the operation moves the transcribed channel
     ]);
     // Published once, in the SAME change as its audit row (one cut of the state), at the revision the answer names.
     expect(selectorPublications()).toHaveLength(publications + 1);
@@ -122,8 +124,9 @@ describe('operations 78, 79, 80: TECHNICIAN edits, audited; SUPERVISOR (`0034`) 
     expect(Number(primary.headers['x-dems-revision'])).toBe(change?.revision);
     expect(Number(primary.headers['x-dems-revision'])).toBe(server.engine.revision);
     await expectStoredEqualsCommitted();
-    // The engine holds input order. The stored row reads back PRIMARY first: with MIC-02 PRIMARY
-    // that is the other order, until the mapping reads back in input order (row 129, requested).
+    // The engine holds input order. The stored row reads back the transcribed channel first: with
+    // MIC-02 on channel MIC-01 that is the other order, until the mapping reads back in input order
+    // (row 129, requested; the channel keying is D61's).
     // Printed, not asserted: a test must not turn red because a defect was fixed.
     expect(server.engine.slice('captureConfig').mics.map((mic) => mic.inputId)).toEqual(['MIC-01', 'MIC-02']);
     console.info(`[row66] stored selector reads its mic rows back in another order than the engine holds: ${String(storedMicOrderDiffers)}`);
@@ -164,9 +167,9 @@ describe('operations 78, 79, 80: TECHNICIAN edits, audited; SUPERVISOR (`0034`) 
     // and forms the same selector (no edit may store what the boot step would refuse).
     const reloaded = await createCaptureConfigStore().load({ query: async <Row>(text: string) => ({ rows: (await server.owner.query(text)).rows as Row[] }) });
     expect(reloaded.builtInBaseline).toBe(false);
-    expect({ cameras: reloaded.captureConfig.cameras.map((camera) => [camera.trackId, camera.deviceId, camera.profile]), mics: reloaded.captureConfig.mics.map((mic) => [mic.inputId, mic.deviceId, mic.role]) }).toEqual({
+    expect({ cameras: reloaded.captureConfig.cameras.map((camera) => [camera.trackId, camera.deviceId, camera.profile]), mics: reloaded.captureConfig.mics.map((mic) => [mic.inputId, mic.deviceId, mic.channel]) }).toEqual({
       cameras: server.engine.slice('captureConfig').cameras.map((camera) => [camera.trackId, camera.deviceId, camera.profile]),
-      mics: server.engine.slice('captureConfig').mics.map((mic) => [mic.inputId, mic.deviceId, mic.role]),
+      mics: server.engine.slice('captureConfig').mics.map((mic) => [mic.inputId, mic.deviceId, mic.channel]),
     });
   });
 
@@ -175,7 +178,7 @@ describe('operations 78, 79, 80: TECHNICIAN edits, audited; SUPERVISOR (`0034`) 
     const publications = selectorPublications().length;
     const revision = server.engine.revision;
     const current = selectorOf(await server.get('SUPERVISOR', CONFIG));
-    const primaryInput = current.mics.find((mic) => mic.role === 'PRIMARY')?.inputId ?? '';
+    const primaryInput = current.mics.find((mic) => mic.channel === 'MIC-01')?.inputId ?? ''; // D61: the transcribed channel
     // The write is TECHNICIAN's (`0034`); the read above stays the supervisor's - the revocation kept 76 and 77.
     const same = await server.post('TECHNICIAN', primaryMic(primaryInput));
     expect(same.statusCode).toBe(200);
@@ -245,7 +248,7 @@ describe('M4-LOCK-1: the selector is locked while a session is open', () => {
     const publications = selectorPublications().length;
     const revision = server.engine.revision;
     const selector = server.engine.slice('captureConfig');
-    const primaryInput = selector.mics.find((mic) => mic.role === 'STANDBY')?.inputId ?? '';
+    const primaryInput = selector.mics.find((mic) => mic.channel === 'MIC-02')?.inputId ?? ''; // D61: the channel behind the transcribed one (was STANDBY)
     const edits: [string, string, object | undefined][] = [
       ['setPrimaryMic', primaryMic(primaryInput), undefined],
       ['setCaptureCameraSource', cameraSource('CAM-01'), { trackId: 'VIDEO-01' }],
@@ -299,7 +302,7 @@ describe('M4-LOCK-1: the selector is locked while a session is open', () => {
 describe('G70-05: the row of a selector edit names the paired device that sent it', () => {
   it('an edit of a device session carries its device; the same edit of a web console session carries none (control); the details are the same', async () => {
     const technician = server.principal('TECHNICIAN');
-    const current = server.engine.slice('captureConfig').mics.find((mic) => mic.role === 'STANDBY')?.inputId ?? 'MIC-02';
+    const current = server.engine.slice('captureConfig').mics.find((mic) => mic.channel === 'MIC-02')?.inputId ?? 'MIC-02'; // D61: was the STANDBY role
     let before = await server.trailLength();
     // A principal as stage 4 resolves it for a paired device's session: the same operator, bound to DEV-0001.
     await server.engine.command({ ...technician, deviceId: 'DEV-0001' }, 'setCaptureConfig', { kind: 'PRIMARY_MIC', inputId: current });
@@ -307,7 +310,7 @@ describe('G70-05: the row of a selector edit names the paired device that sent i
     const fromDevice = changed(await server.since(before));
     expect(fromDevice.map((row) => [row.actorId, row.deviceId, row.details['operationId'], row.details['deviceId']])).toEqual([[technician.operatorId, 'DEV-0001', 'setPrimaryMic', current]]);
 
-    const other = server.engine.slice('captureConfig').mics.find((mic) => mic.role === 'STANDBY')?.inputId ?? 'MIC-01';
+    const other = server.engine.slice('captureConfig').mics.find((mic) => mic.channel === 'MIC-02')?.inputId ?? 'MIC-01'; // D61: was the STANDBY role
     before = await server.trailLength();
     await server.engine.command(technician, 'setCaptureConfig', { kind: 'PRIMARY_MIC', inputId: other });
     await server.app.pipeline.drain();
@@ -321,8 +324,8 @@ describe('G70-05: the row of a selector edit names the paired device that sent i
 // ═══ Moved here from `integration-c1.db.test.ts` (test-suite consolidation, D233): the cases as they were, under one describe. ═══
 // Integration pass C1 (decision D120) on PostgreSQL, AS THE RUNTIME ROLE, on throw-away clones.
 //
-//   1. THE MIC INPUT ID RULE (decisions D106 (4), D115 (2)): a stored selector whose PRIMARY is the
-//      local microphone row `MIC-03` REHYDRATES (it stopped the boot at `engine.rehydrate` while the
+//   1. THE MIC INPUT ID RULE (decisions D106 (4), D115 (2)): a stored selector whose transcribed
+//      channel `MIC-01` (D61, 2026-11-04: was the PRIMARY role) is the local microphone row `MIC-03` REHYDRATES (it stopped the boot at `engine.rehydrate` while the
 //      shared contract named a mic input by exactly `MIC-01` / `MIC-02`), an edit of it is
 //      published and stored, and a restarted Core holds the same selector.
 //   2. OPERATIONS 78 / 79 ASK THE ADAPTER REGISTRY (decision D115 (3); check M4-LOCAL-SEL-1, API
@@ -352,27 +355,27 @@ describe('D130 (integration C1): MIC-03 in the selector, and the adapter registr
   const addLocalRows = (owner: Pool): Promise<unknown> =>
     owner.query("INSERT INTO public.capture_devices (id, kind, transport, model, enabled, adapter_kind) VALUES ('CAM-03', 'CAMERA', 'AVFOUNDATION', 'MacBook Air Camera', false, 'LOCAL_DEVICE'), ('MIC-03', 'MIC', 'AVFOUNDATION', 'MacBook Air Microphone', false, 'LOCAL_DEVICE')");
   const storedSelector = async (owner: Pool): Promise<Record<string, unknown> | undefined> =>
-    (await owner.query('SELECT video_01_device_id, video_02_device_id, mic_primary_id, mic_standby_id FROM public.capture_config')).rows[0] as Record<string, unknown> | undefined;
+    (await owner.query('SELECT video_01_device_id, video_02_device_id, mic_01_id, mic_02_id FROM public.capture_config')).rows[0] as Record<string, unknown> | undefined; // D61 (2026-11-04): 0040 renamed the role columns to the channel columns
   const changedRows = async (owner: Pool): Promise<number> => Number((await owner.query("SELECT count(*)::int AS n FROM public.audit_log WHERE type = 'CAPTURE_CONFIG_CHANGED'")).rows[0]?.n);
 
-  describe('1. a capture configuration with MIC-03 as PRIMARY rehydrates and replicates', () => {
+  describe('1. a capture configuration with MIC-03 on the transcribed channel MIC-01 rehydrates and replicates (D61)', () => {
     it('boot, the selector in input order, an edit published and stored, and the same selector after a restart', async () => {
       const target = await db.another({ template: 'seed', slug: 'c1-mic03' });
       const owner = target.ownerPool();
       await addLocalRows(owner);
-      await owner.query("UPDATE public.capture_config SET mic_primary_id = 'MIC-03'");
+      await owner.query("UPDATE public.capture_config SET mic_01_id = 'MIC-03'");
 
       const first = await engineApp(target, db.run.dataDir, { startAt: FIXED_NOW + 60_000 });
       // RED BEFORE THIS PASS: BootError at step `engine.rehydrate` (ENGINE_SNAPSHOT_REJECTED).
       await first.app.readiness.boot();
       await first.engine.idle();
       const rehydrated = first.engine.slice('captureConfig');
-      expect(rehydrated.mics.map((mic) => [mic.inputId, mic.deviceId, mic.role, mic.transport])).toEqual([
-        ['MIC-02', 'MIC-02', 'STANDBY', 'USB'],
-        ['MIC-03', 'MIC-03', 'PRIMARY', 'AVFOUNDATION'],
-      ]);
-      // The rules that stay: exactly one PRIMARY and one STANDBY line; a mic line's device is its input (D106 (4)).
-      expect(rehydrated.mics.map((mic) => mic.role).sort()).toEqual(['PRIMARY', 'STANDBY']);
+      expect(rehydrated.mics.map((mic) => [mic.inputId, mic.deviceId, mic.channel, mic.transport])).toEqual([
+        ['MIC-02', 'MIC-02', 'MIC-02', 'USB'],
+        ['MIC-03', 'MIC-03', 'MIC-01', 'AVFOUNDATION'],
+      ]); // D61 (2026-11-04): the numbered channels replaced the roles
+      // The rules that stay: one line per assigned channel, no channel twice; a mic line's device is its input (D106 (4)).
+      expect(rehydrated.mics.map((mic) => mic.channel).sort()).toEqual(['MIC-01', 'MIC-02']);
       expect(rehydrated.mics.every((mic) => mic.deviceId === mic.inputId)).toBe(true);
       expect(CaptureConfigSliceSchema.safeParse(rehydrated).success).toBe(true);
       // The module's own boot step (`capture.config`) read the same rows into the same selector.
@@ -391,16 +394,16 @@ describe('D130 (integration C1): MIC-03 in the selector, and the adapter registr
         .flatMap((change) => change.ops.flatMap((op) => (op.op === 'replace' && op.slice === 'captureConfig' ? [op.value] : [])));
       expect(replaced).toHaveLength(1);
       expect(CaptureConfigSliceSchema.safeParse(replaced[0]).success).toBe(true);
-      expect((replaced[0] as typeof rehydrated).mics.map((mic) => [mic.inputId, mic.role])).toEqual([
-        ['MIC-02', 'PRIMARY'],
-        ['MIC-03', 'STANDBY'],
-      ]);
-      expect(await storedSelector(owner)).toMatchObject({ mic_primary_id: 'MIC-02', mic_standby_id: 'MIC-03' });
-      // And back to the local microphone as PRIMARY: the state a restart must bring back.
+      expect((replaced[0] as typeof rehydrated).mics.map((mic) => [mic.inputId, mic.channel])).toEqual([
+        ['MIC-02', 'MIC-02'],
+        ['MIC-03', 'MIC-01'],
+      ]); // D61: the swap moved the transcribed channel
+      expect(await storedSelector(owner)).toMatchObject({ mic_01_id: 'MIC-02', mic_02_id: 'MIC-03' });
+      // And back to the local microphone on the transcribed channel: the state a restart must bring back.
       first.clock.advance(1_000);
       await first.engine.run('test.c1.primaryMic', (scope) => scope.command(technician, 'setCaptureConfig', { kind: 'PRIMARY_MIC', inputId: 'MIC-03' }));
       await first.app.pipeline.drain();
-      expect(await storedSelector(owner)).toMatchObject({ mic_primary_id: 'MIC-03', mic_standby_id: 'MIC-02' });
+      expect(await storedSelector(owner)).toMatchObject({ mic_01_id: 'MIC-03', mic_02_id: 'MIC-02' });
       expect(await storedSlices(owner)).toStrictEqual(withoutNegativeZeros(first.engine.state()));
       const held = first.engine.slice('captureConfig');
       await first.app.close();
@@ -418,7 +421,7 @@ describe('D130 (integration C1): MIC-03 in the selector, and the adapter registr
       const target = await db.another({ template: 'seed', slug: 'c1-mic-control' });
       const owner = target.ownerPool();
       // The stored CHECKs and keys are the owner's to bend for a fixture: the engine must refuse what they would let through.
-      const bent = await owner.query("UPDATE public.capture_config SET mic_primary_id = 'CAM-02'").then(
+      const bent = await owner.query("UPDATE public.capture_config SET mic_01_id = 'CAM-02'").then(
         () => true,
         () => false,
       );
@@ -514,9 +517,9 @@ describe('D130 (integration C1): MIC-03 in the selector, and the adapter registr
 // ═══ Moved here from `integration-d1b.db.test.ts` (test-suite consolidation, D233): the cases as they were, under one describe. ═══
 // Integration pass D1b (decision D133 (1)) on PostgreSQL, AS THE RUNTIME ROLE, on throw-away clones.
 //
-// OPERATION 78 ASSIGNS THE MICROPHONE INPUTS BY PAIR REPLACEMENT. The mic lines carry `role` and
-// are the new pair (`deviceId == inputId`, exactly one PRIMARY and one STANDBY, any `MIC-NN` the
-// adapter registry of the running capture operation accepts).
+// OPERATION 78 ASSIGNS THE MICROPHONE INPUTS BY CHANNEL REPLACEMENT (D61, 2026-11-04: the lines
+// carry `channel` - was `role` - and are the new pair (`deviceId == inputId`, at most one line per
+// channel, any `MIC-NN` the adapter registry of the running capture operation accepts).
 //
 //   1. REAL_DEVELOPMENT: the local microphone the boot registered (`MIC-03` on the seed) is put
 //      behind the capture THROUGH THE API - no fixture writes the selector. The slot carries the
@@ -527,7 +530,7 @@ describe('D130 (integration C1): MIC-03 in the selector, and the adapter registr
 //      registry of the running operation refuses (a production microphone in REAL_DEVELOPMENT,
 //      `details.reason: PRODUCTION_SOURCE_NOT_ALLOWED` - the registry check of pass C1 stays; fix
 //      wave I, finding G70b-01: the reason is the refusal's own, not the development one).
-//   3. The form without `role` is still accepted and still cannot name a new input.
+//   3. The form without `channel` is still accepted and still cannot name a new input (D61).
 //
 // The helper program of the development boots is `/bin/echo` (row 136's fixture): a root-owned
 // program that passes the path rule and is never asked to capture.
@@ -547,18 +550,19 @@ describe('D133 (1) (integration D1b): operation 78 replaces the microphone pair'
     error: { code: string; details?: Record<string, unknown> };
   }
   interface SelectorBody {
-    mics: { inputId: string; deviceId: string; role: string; transport: string }[];
+    mics: { channel: string; inputId: string; deviceId: string; transport: string }[]; // D61 (2026-11-04): the line names its channel
   }
 
   const storedSelector = async (owner: Pool): Promise<Record<string, unknown> | undefined> =>
-    (await owner.query('SELECT mic_primary_id, mic_standby_id FROM public.capture_config')).rows[0] as Record<string, unknown> | undefined;
+    (await owner.query('SELECT mic_01_id, mic_02_id FROM public.capture_config')).rows[0] as Record<string, unknown> | undefined; // D61 (2026-11-04): the role columns became the channel columns
   const changedRows = async (owner: Pool): Promise<Record<string, unknown>[]> =>
     (await owner.query("SELECT details FROM public.audit_log WHERE type = 'CAPTURE_CONFIG_CHANGED' ORDER BY seq")).rows.map((row: { details: Record<string, unknown> }) => row.details);
 
+  // D61 (2026-11-04): the pair is assigned BY CHANNEL (rule MIC-ASSIGN of task 4 generalized by D61).
   const pair = (primary: string, standby: string) => ({
     mics: [
-      { inputId: primary, deviceId: primary, role: 'PRIMARY' },
-      { inputId: standby, deviceId: standby, role: 'STANDBY' },
+      { inputId: primary, deviceId: primary, channel: 'MIC-01' },
+      { inputId: standby, deviceId: standby, channel: 'MIC-02' },
     ],
   });
 
@@ -632,37 +636,37 @@ describe('D133 (1) (integration D1b): operation 78 replaces the microphone pair'
       expect(captureFenceControl(server.app).operation).toBe('REAL_DEVELOPMENT');
       // The boot registered this Mac's microphone as a NEW device with its own id (D106 (4)).
       expect(captureFenceControl(server.app).outcome()?.local?.micId).toBe('MIC-03');
-      expect(await storedSelector(owner)).toEqual({ mic_primary_id: 'MIC-01', mic_standby_id: 'MIC-02' });
+      expect(await storedSelector(owner)).toEqual({ mic_01_id: 'MIC-01', mic_02_id: 'MIC-02' });
       const rowsBefore = (await changedRows(owner)).length;
 
       const answer = await server.post(CONFIG, pair('MIC-03', 'MIC-02'));
       expect(answer.statusCode, answer.body).toBe(200);
       expect(CaptureConfigSliceSchema.safeParse(answer.json()).success).toBe(true);
       // In input order; the new slot says the transport of its registry row, which the line did not name.
-      expect((answer.json() as SelectorBody).mics.map((mic) => [mic.inputId, mic.deviceId, mic.role, mic.transport])).toEqual([
-        ['MIC-02', 'MIC-02', 'STANDBY', 'USB'],
-        ['MIC-03', 'MIC-03', 'PRIMARY', 'AVFOUNDATION'],
-      ]);
+      expect((answer.json() as SelectorBody).mics.map((mic) => [mic.inputId, mic.deviceId, mic.channel, mic.transport])).toEqual([
+        ['MIC-02', 'MIC-02', 'MIC-02', 'USB'],
+        ['MIC-03', 'MIC-03', 'MIC-01', 'AVFOUNDATION'],
+      ]); // D61 (2026-11-04): input order, the channel a member of the line
       await server.app.pipeline.drain();
-      expect(await storedSelector(owner)).toEqual({ mic_primary_id: 'MIC-03', mic_standby_id: 'MIC-02' });
+      expect(await storedSelector(owner)).toEqual({ mic_01_id: 'MIC-03', mic_02_id: 'MIC-02' });
       expect((await changedRows(owner)).slice(rowsBefore)).toEqual([
-        { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', inputId: 'MIC-03', deviceId: 'MIC-03', from: 'MIC-01', to: 'MIC-03', permission: 'CAPTURE_CONFIG' },
+        { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', channel: 'MIC-01', inputId: 'MIC-03', deviceId: 'MIC-03', from: 'MIC-01', to: 'MIC-03', permission: 'CAPTURE_CONFIG' }, // D61: the row names the channel it edited
       ]);
       expect(await storedSlices(owner)).toStrictEqual(withoutBootDerivedSourceFacts(server.app.engine.state()));
       // CONTROL of the exclusion: without it the comparison is NOT equal - the members are there.
       expect(await storedSlices(owner)).not.toStrictEqual(withoutNegativeZeros(server.app.engine.state()));
 
       // REFUSED on the same server, nothing written: a pair that is not a pair, a microphone that is not registered.
-      // (Task 4 row 29: until decision C21 (8) this list began with ONE line by role,
-      // `{ mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY' }] }`. A microphone role is assignable
-      // alone since the contract of row 28 and the hosted action of row 162 (rule MIC-ASSIGN of the names register,
-      // "one line: was 422, now valid"), so that body is no refusal any more; the block "task 4 row 29" below holds it.)
+      // (Task 4 row 29: until decision C21 (8) this list began with ONE line by role - the channel
+      // of D61, 2026-11-04. A microphone channel is assignable alone since the contract of row 28 and
+      // the hosted action of row 162 (rule MIC-ASSIGN of the names register, "one line: was 422, now
+      // valid"), so that body is no refusal any more; the block "task 4 row 29" below holds it.)
       for (const body of [
-        { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', deviceId: 'MIC-02' }] },
-        { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'PRIMARY' }] },
-        { mics: [{ inputId: 'MIC-03', deviceId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' }] },
+        { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', channel: 'MIC-01' }, { inputId: 'MIC-02', deviceId: 'MIC-02' }] },
+        { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', channel: 'MIC-01' }, { inputId: 'MIC-02', deviceId: 'MIC-02', channel: 'MIC-01' }] }, // the same channel twice
+        { mics: [{ inputId: 'MIC-03', deviceId: 'MIC-01', channel: 'MIC-01' }, { inputId: 'MIC-02', deviceId: 'MIC-02', channel: 'MIC-02' }] },
         pair('MIC-07', 'MIC-02'),
-        // The earlier form edits an input the selector holds: MIC-01 is not one any more.
+        // The earlier form (no `channel`, D61) edits an input the selector holds: MIC-01 is not one any more.
         { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01' }] },
       ]) {
         const refused = await server.post(CONFIG, body);
@@ -671,7 +675,7 @@ describe('D133 (1) (integration D1b): operation 78 replaces the microphone pair'
       // The earlier form is still accepted for an input the selector holds (a line that changes nothing: 200, no row).
       expect((await server.post(CONFIG, { mics: [{ inputId: 'MIC-03', deviceId: 'MIC-03' }] })).statusCode).toBe(200);
       await server.app.pipeline.drain();
-      expect(await storedSelector(owner)).toEqual({ mic_primary_id: 'MIC-03', mic_standby_id: 'MIC-02' });
+      expect(await storedSelector(owner)).toEqual({ mic_01_id: 'MIC-03', mic_02_id: 'MIC-02' });
       expect(await changedRows(owner)).toHaveLength(rowsBefore + 1);
 
       const held = server.app.engine.slice('captureConfig');
@@ -682,7 +686,7 @@ describe('D133 (1) (integration D1b): operation 78 replaces the microphone pair'
       expect(await storedSlices(owner)).toStrictEqual(withoutBootDerivedSourceFacts(restarted.app.engine.state()));
     });
 
-    it('ELSEWHERE, SIMULATED on the seed: the registry holds no MIC-03 - 422 INVALID_INPUT, nothing stored; CONTROL: the built-in pair trades roles by the same body', async () => {
+    it('ELSEWHERE, SIMULATED on the seed: the registry holds no MIC-03 - 422 INVALID_INPUT, nothing stored; CONTROL: the built-in pair trades channels by the same body (D61)', async () => {
       const target = await clone('d1b-pair-sim');
       const owner = target.ownerPool();
       const server = await booted(target, { demoControls: true });
@@ -691,15 +695,17 @@ describe('D133 (1) (integration D1b): operation 78 replaces the microphone pair'
       const refused = await server.post(CONFIG, pair('MIC-03', 'MIC-02'));
       expect([refused.statusCode, (refused.json() as ErrorBody).error.code], refused.body).toEqual([422, 'INVALID_INPUT']);
       await server.app.pipeline.drain();
-      expect(await storedSelector(owner)).toEqual({ mic_primary_id: 'MIC-01', mic_standby_id: 'MIC-02' });
+      expect(await storedSelector(owner)).toEqual({ mic_01_id: 'MIC-01', mic_02_id: 'MIC-02' });
       expect(await changedRows(owner)).toHaveLength(rowsBefore);
 
       const traded = await server.post(CONFIG, pair('MIC-02', 'MIC-01'));
       expect(traded.statusCode, traded.body).toBe(200);
       await server.app.pipeline.drain();
-      expect(await storedSelector(owner)).toEqual({ mic_primary_id: 'MIC-02', mic_standby_id: 'MIC-01' });
+      expect(await storedSelector(owner)).toEqual({ mic_01_id: 'MIC-02', mic_02_id: 'MIC-01' });
+      // D61 (2026-11-04): trading the pair is TWO channel replacements, in channel order (was ONE row by role).
       expect((await changedRows(owner)).slice(rowsBefore)).toEqual([
-        { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'ROLE', inputId: 'MIC-02', deviceId: 'MIC-02', from: 'STANDBY', to: 'PRIMARY', permission: 'CAPTURE_CONFIG' },
+        { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', channel: 'MIC-01', inputId: 'MIC-02', deviceId: 'MIC-02', from: 'MIC-01', to: 'MIC-02', permission: 'CAPTURE_CONFIG' },
+        { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', channel: 'MIC-02', inputId: 'MIC-01', deviceId: 'MIC-01', from: 'MIC-02', to: 'MIC-01', permission: 'CAPTURE_CONFIG' },
       ]);
       expect(await storedSlices(owner)).toStrictEqual(withoutNegativeZeros(server.app.engine.state()));
     });
@@ -717,7 +723,7 @@ describe('D133 (1) (integration D1b): operation 78 replaces the microphone pair'
       expect(error.code).toBe('INVALID_INPUT');
       expect(error.details).toMatchObject({ reason: 'PRODUCTION_SOURCE_NOT_ALLOWED', deviceId: 'MIC-11' });
       await server.app.pipeline.drain();
-      expect(await storedSelector(owner)).toEqual({ mic_primary_id: 'MIC-01', mic_standby_id: 'MIC-02' });
+      expect(await storedSelector(owner)).toEqual({ mic_01_id: 'MIC-01', mic_02_id: 'MIC-02' });
       expect(await changedRows(owner)).toHaveLength(rowsBefore);
     });
   });
@@ -756,16 +762,17 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
   const SIMULATED = { demoControls: true } as const;
 
   type Clone = Awaited<ReturnType<typeof db.another>>;
-  const SLOTS = ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] as const;
+  // D61 (2026-11-04): the two mic roles became the four numbered channels; this walk holds the four slots the seed assigns.
+  const SLOTS = ['VIDEO-01', 'VIDEO-02', 'MIC-01', 'MIC-02'] as const;
   type Slot = (typeof SLOTS)[number];
-  const SEEDED = { video_01_device_id: 'CAM-01', video_01_profile: 'H264_1080P25', video_02_device_id: 'CAM-02', video_02_profile: 'H264_1080P25', mic_primary_id: 'MIC-01', mic_standby_id: 'MIC-02' } as const;
+  const SEEDED = { video_01_device_id: 'CAM-01', video_01_profile: 'H264_1080P25', video_02_device_id: 'CAM-02', video_02_profile: 'H264_1080P25', mic_01_id: 'MIC-01', mic_02_id: 'MIC-02' } as const; // D61: the role columns became the channel columns
   const COLUMNS_OF: Readonly<Record<Slot, readonly (keyof typeof SEEDED)[]>> = {
     'VIDEO-01': ['video_01_device_id', 'video_01_profile'],
     'VIDEO-02': ['video_02_device_id', 'video_02_profile'],
-    PRIMARY: ['mic_primary_id'],
-    STANDBY: ['mic_standby_id'],
+    'MIC-01': ['mic_01_id'], // D61 (2026-11-04): the roles became the numbered channels (0040 renames)
+    'MIC-02': ['mic_02_id'], // D61
   };
-  const HELD: Readonly<Record<Slot, string>> = { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', PRIMARY: 'MIC-01', STANDBY: 'MIC-02' };
+  const HELD: Readonly<Record<Slot, string>> = { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', 'MIC-01': 'MIC-01', 'MIC-02': 'MIC-02' };
   /** The seeded row with the columns of the named slots NULL. */
   const rowWithout = (unassigned: readonly Slot[]): Record<string, string | null> => {
     const row: Record<string, string | null> = { ...SEEDED };
@@ -776,10 +783,10 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
   const clearedRow = (slot: Slot, from: string = HELD[slot]) =>
     slot === 'VIDEO-01' || slot === 'VIDEO-02'
       ? { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: slot, from, permission: 'CAPTURE_CONFIG' }
-      : { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', inputId: from, from, permission: 'CAPTURE_CONFIG' };
+      : { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', channel: slot, inputId: from, from, permission: 'CAPTURE_CONFIG' }; // D61 (2026-11-04): the row names the cleared channel
 
   const storedSlots = async (owner: Pool): Promise<Record<string, unknown> | undefined> =>
-    (await owner.query('SELECT video_01_device_id, video_01_profile, video_02_device_id, video_02_profile, mic_primary_id, mic_standby_id FROM public.capture_config')).rows[0] as Record<string, unknown> | undefined;
+    (await owner.query('SELECT video_01_device_id, video_01_profile, video_02_device_id, video_02_profile, mic_01_id, mic_02_id FROM public.capture_config')).rows[0] as Record<string, unknown> | undefined; // D61 (2026-11-04): the role columns became the channel columns
   const changedRows = async (owner: Pool): Promise<Record<string, unknown>[]> =>
     (await owner.query("SELECT details FROM public.audit_log WHERE type = 'CAPTURE_CONFIG_CHANGED' ORDER BY seq")).rows.map((row: { details: Record<string, unknown> }) => row.details);
   /** The fixture of a stored unassigned slot: the owner writes NULL into the columns of the named slots. */
@@ -832,7 +839,7 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
       post: (url: string, payload: object) => app.inject({ method: 'POST', url, headers, payload }),
     };
   }
-  const linesOf = (selector: Pick<Selector, 'cameras' | 'mics'>): string[] => [...selector.cameras.map((camera) => `${camera.trackId} ${camera.deviceId}`), ...selector.mics.map((mic) => `${mic.role} ${mic.deviceId}`)].sort();
+  const linesOf = (selector: Pick<Selector, 'cameras' | 'mics'>): string[] => [...selector.cameras.map((camera) => `${camera.trackId} ${camera.deviceId}`), ...selector.mics.map((mic) => `${mic.channel} ${mic.deviceId}`)].sort(); // D61 (2026-11-04): the channel labels the line
   const ALL_LINES = SLOTS.map((slot) => `${slot} ${HELD[slot]}`).sort();
 
   describe('1. a stored selector with NULL slots boots: the steps `capture.config` and `engine.rehydrate` pass, by name', () => {
@@ -868,16 +875,16 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
       expect(await storedSlots(owner)).toEqual(rowWithout(SLOTS));
     });
 
-    it.each([OPERATIONS[0], OPERATIONS[1]])('AD-04 (2), %s: only VIDEO-02 and only a STANDBY microphone stored - those two lines and no other, in the load and in the engine (nothing by position)', async (operation, config) => {
-      const target = await clone(`r29-two-${operation.toLowerCase().replace('_', '-')}`, (owner) => unassignStored(owner, ['VIDEO-01', 'PRIMARY']));
+    it.each([OPERATIONS[0], OPERATIONS[1]])('AD-04 (2), %s: only VIDEO-02 and only a channel-2 microphone stored (D61) - those two lines and no other, in the load and in the engine (nothing by position)', async (operation, config) => {
+      const target = await clone(`r29-two-${operation.toLowerCase().replace('_', '-')}`, (owner) => unassignStored(owner, ['VIDEO-01', 'MIC-01'])); // D61 (2026-11-04): the slot is the numbered channel
       const core = await booted(target, config);
       expect(captureFenceControl(core.app).operation).toBe(operation);
       expect(core.steps).toEqual(expect.arrayContaining(['capture.config', 'engine.rehydrate']));
-      const expected = ['STANDBY MIC-02', 'VIDEO-02 CAM-02'];
+      const expected = ['MIC-02 MIC-02', 'VIDEO-02 CAM-02']; // D61: the channel labels the line
       expect(linesOf(captureConfigControl(core.app).snapshot().captureConfig)).toEqual(expected);
       expect(linesOf(core.app.engine.slice('captureConfig'))).toEqual(expected);
       expect(linesOf(selectorOf(await core.get(CONFIG)))).toEqual(expected);
-      expect(core.app.engine.slice('captureConfig').mics.map((mic) => [mic.inputId, mic.role])).toEqual([['MIC-02', 'STANDBY']]);
+      expect(core.app.engine.slice('captureConfig').mics.map((mic) => [mic.inputId, mic.channel])).toEqual([['MIC-02', 'MIC-02']]);
     });
   });
 
@@ -901,7 +908,7 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
         // PERSISTED: NULL in the columns of that slot (device and profile of a video slot together), nothing else moved.
         expect(await storedSlots(owner), slot).toEqual(rowWithout(cleared));
       }
-      // AD-10 (1): one stored row per cleared slot, with the closed keys the trail accepts (the engine refuses any other).
+      // AD-10 (1): one stored row per cleared slot, with the closed keys the trail accepts (the engine refuses any other; the mic rows name their channel since D61).
       expect((await changedRows(owner)).slice(rowsBefore)).toEqual(SLOTS.map((slot) => clearedRow(slot)));
       // Clearing empty slots: 200, the same selector, 0 rows, nothing written.
       const again = await first.post(CONFIG, { unassign: [...SLOTS] });
@@ -920,22 +927,22 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
       expect(linesOf(second.app.engine.slice('captureConfig'))).toEqual([]);
       expect(linesOf(captureConfigControl(second.app).snapshot().captureConfig)).toEqual([]);
 
-      // RE-ASSIGNING: each slot by its track or its role; a microphone role alone (C21 (8)).
+      // RE-ASSIGNING: each slot by its track or its channel (D61, 2026-11-04); a microphone channel alone (C21 (8)).
       const camera1 = await second.post(CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_1080P25' }] });
       expect(camera1.statusCode, camera1.body).toBe(200);
       expect(linesOf(selectorOf(camera1))).toEqual(['VIDEO-01 CAM-01']);
-      const standby = await second.post(CONFIG, { mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' }] });
+      const standby = await second.post(CONFIG, { mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', channel: 'MIC-02' }] }); // D61: the line names its channel
       expect(standby.statusCode, standby.body).toBe(200);
-      expect(linesOf(selectorOf(standby))).toEqual(['STANDBY MIC-02', 'VIDEO-01 CAM-01']);
+      expect(linesOf(selectorOf(standby))).toEqual(['MIC-02 MIC-02', 'VIDEO-01 CAM-01']);
       await second.app.pipeline.drain();
-      expect(await storedSlots(owner)).toEqual(rowWithout(['VIDEO-02', 'PRIMARY']));
-      const rest = await second.post(CONFIG, { cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'H264_1080P25' }], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY' }] });
+      expect(await storedSlots(owner)).toEqual(rowWithout(['VIDEO-02', 'MIC-01']));
+      const rest = await second.post(CONFIG, { cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'H264_1080P25' }], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', channel: 'MIC-01' }] });
       expect(rest.statusCode, rest.body).toBe(200);
       expect(linesOf(selectorOf(rest))).toEqual(ALL_LINES);
-      expect(selectorOf(rest).mics.map((mic) => [mic.inputId, mic.role, mic.transport])).toEqual([
-        ['MIC-01', 'PRIMARY', 'USB'],
-        ['MIC-02', 'STANDBY', 'USB'],
-      ]);
+      expect(selectorOf(rest).mics.map((mic) => [mic.inputId, mic.channel, mic.transport])).toEqual([
+        ['MIC-01', 'MIC-01', 'USB'],
+        ['MIC-02', 'MIC-02', 'USB'],
+      ]); // D61 (2026-11-04): the channel replaced the role
       await second.app.pipeline.drain();
       // The stored row is the seeded one again, column for column.
       expect(await storedSlots(owner)).toEqual(SEEDED);
@@ -953,11 +960,11 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
       expect(verifyTrail(after, await readHead(owner))).toMatchObject({ ok: true });
     });
 
-    it('REAL_PRODUCTION: a Core with one production camera assigned and three slots unassigned boots; the camera is unassigned through operation 78 (one row), a development source is still refused, and the restarted Core boots on six NULLs', async () => {
+    it('REAL_PRODUCTION: a Core with one production camera assigned and three slots unassigned boots; the camera is unassigned through operation 78 (one row), a development source is still refused, and the restarted Core boots on the empty selector', async () => {
       const target = await clone('r29-unassign-prod', async (owner) => {
         await owner.query("INSERT INTO public.capture_devices (id, kind, transport, enabled, adapter_kind) VALUES ('CAM-11', 'CAMERA', 'RTSP', true, 'ONVIF_RTSP')");
         await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-11'");
-        await unassignStored(owner, ['VIDEO-02', 'PRIMARY', 'STANDBY']);
+        await unassignStored(owner, ['VIDEO-02', 'MIC-01', 'MIC-02']);
         await ownCredentials(owner);
       });
       const owner = target.ownerPool();
@@ -967,7 +974,7 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
       expect(linesOf(first.app.engine.slice('captureConfig'))).toEqual(['VIDEO-01 CAM-11']);
       const rowsBefore = (await changedRows(owner)).length;
 
-      const answer = await first.post(CONFIG, { unassign: ['VIDEO-01', 'STANDBY'] });
+      const answer = await first.post(CONFIG, { unassign: ['VIDEO-01', 'MIC-02'] });
       expect(answer.statusCode, answer.body).toBe(200);
       expect(selectorOf(answer)).toMatchObject({ cameras: [], mics: [] });
       await first.app.pipeline.drain();
@@ -990,27 +997,27 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
     });
 
     // R-FLEX row 132, open check T-13 (01_specs_rflex_audio.md §10; 01_specs_rflex.md §5.1; D16 Q96-02 (B)):
-    // a microphone MOVES from PRIMARY to STANDBY in ONE edit of operation 78 - `unassign` of PRIMARY and a STANDBY line
-    // naming the microphone PRIMARY held. Risk R-2: refused if the mic rule does not take `unassign` first.
-    it('T-13, SIMULATED: PRIMARY = MIC-01 and STANDBY empty; ONE edit `{unassign: [PRIMARY], STANDBY: MIC-01}` - 200, PRIMARY empty, STANDBY = MIC-01, stored, two CAPTURE_CONFIG_CHANGED rows of scope MIC', async () => {
-      const target = await clone('r132-t13-mic-move', (owner) => unassignStored(owner, ['STANDBY']));
+    // a microphone MOVES from channel 1 to channel 2 in ONE edit of operation 78 - `unassign` of MIC-01 and a MIC-02 line
+    // naming the microphone channel 1 held (D61, 2026-11-04: was the roles). Risk R-2: refused if the mic rule does not take `unassign` first.
+    it('T-13, SIMULATED: MIC-01 = MIC-01 and MIC-02 empty; ONE edit `{unassign: [MIC-01], MIC-02-line: MIC-01}` - 200, channel 1 empty, channel 2 = MIC-01, stored, two CAPTURE_CONFIG_CHANGED rows of scope MIC', async () => {
+      const target = await clone('r132-t13-mic-move', (owner) => unassignStored(owner, ['MIC-02']));
       const owner = target.ownerPool();
       const core = await booted(target, SIMULATED);
-      expect(await storedSlots(owner)).toEqual(rowWithout(['STANDBY']));
+      expect(await storedSlots(owner)).toEqual(rowWithout(['MIC-02']));
       const rowsBefore = (await changedRows(owner)).length;
 
-      const answer = await core.post(CONFIG, { unassign: ['PRIMARY'], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'STANDBY' }] });
+      const answer = await core.post(CONFIG, { unassign: ['MIC-01'], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', channel: 'MIC-02' }] }); // D61 (2026-11-04): the move is by channel
       expect(answer.statusCode, answer.body).toBe(200);
       expect(validateCoreApiResponse('updateCaptureConfig', 200, bodyOf(answer))).toEqual({ ok: true });
-      expect(linesOf(selectorOf(answer))).toEqual(['STANDBY MIC-01', 'VIDEO-01 CAM-01', 'VIDEO-02 CAM-02']);
+      expect(linesOf(selectorOf(answer))).toEqual(['MIC-02 MIC-01', 'VIDEO-01 CAM-01', 'VIDEO-02 CAM-02']);
       // The moved line is a new line of the cleared selector: it carries the registered transport (first run: `UNKNOWN` committed, `USB` stored).
-      expect(selectorOf(answer).mics.map((mic) => [mic.inputId, mic.role, mic.transport])).toEqual([['MIC-01', 'STANDBY', 'USB']]);
+      expect(selectorOf(answer).mics.map((mic) => [mic.inputId, mic.channel, mic.transport])).toEqual([['MIC-01', 'MIC-02', 'USB']]);
       await core.app.pipeline.drain();
-      expect(await storedSlots(owner)).toEqual({ ...SEEDED, mic_primary_id: null, mic_standby_id: 'MIC-01' });
+      expect(await storedSlots(owner)).toEqual({ ...SEEDED, mic_01_id: null, mic_02_id: 'MIC-01' });
       const rows = (await changedRows(owner)).slice(rowsBefore);
       expect(rows).toHaveLength(2);
       expect(rows.map((row) => row['scope'])).toEqual(['MIC', 'MIC']);
-      expect(rows).toContainEqual(clearedRow('PRIMARY'));
+      expect(rows).toContainEqual(clearedRow('MIC-01'));
       expect(rows).toContainEqual(expect.objectContaining({ operationId: 'updateCaptureConfig', scope: 'MIC', to: 'MIC-01' }));
       expect(await storedSlices(owner)).toStrictEqual(withoutNegativeZeros(core.app.engine.state()));
     });
@@ -1019,7 +1026,7 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
   describe('3. the lock, and a session on an incomplete selector in Simulated mode', () => {
     const SESSION_INPUT = { caseNumber: 'LP/2026/1001-0029', subjectType: 'SAKSI', subjectName: 'Test Subject', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' } as const;
 
-    it('SIMULATED: the STANDBY slot is unassigned; a session is created and STARTS as before (C21 (6)); created and RECORDING, every unassign is 409 CAPTURE_CONFIG_LOCKED with 0 rows and nothing stored (AD-10 (2))', async () => {
+    it('SIMULATED: the channel-2 slot is unassigned (D61); a session is created and STARTS as before (C21 (6)); created and RECORDING, every unassign is 409 CAPTURE_CONFIG_LOCKED with 0 rows and nothing stored (AD-10 (2))', async () => {
       const target = await clone('r29-lock-sim');
       const owner = target.ownerPool();
       const core = await engineApp(target, db.run.dataDir, { startAt: FIXED_NOW + 60_000, logLevel: 'info', config: SIMULATED });
@@ -1032,9 +1039,9 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
       const headers = { cookie: `${core.app.config.sessionCookieName}=${token}`, origin: WEB_ORIGIN };
       const post = (payload: object) => core.app.inject({ method: 'POST', url: CONFIG, headers, payload });
 
-      expect((await post({ unassign: ['STANDBY'] })).statusCode).toBe(200);
+      expect((await post({ unassign: ['MIC-02'] })).statusCode).toBe(200);
       await core.app.pipeline.drain();
-      expect(await storedSlots(owner)).toEqual(rowWithout(['STANDBY']));
+      expect(await storedSlots(owner)).toEqual(rowWithout(['MIC-02'])); // D61 (2026-11-04): channel 2 (was STANDBY)
       const rows = (await changedRows(owner)).length;
       const held = core.engine.slice('captureConfig');
 
@@ -1051,7 +1058,7 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
         expect((await readTrail(owner)).length, label).toBe(trail);
         expect(await changedRows(owner), label).toHaveLength(rows);
         expect(core.engine.slice('captureConfig'), label).toBe(held);
-        expect(await storedSlots(owner), label).toEqual(rowWithout(['STANDBY']));
+        expect(await storedSlots(owner), label).toEqual(rowWithout(['MIC-02']));
       };
 
       const investigator = core.principal('INVESTIGATOR');
@@ -1059,12 +1066,12 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
       expect(created.value).toMatchObject({ ok: true, created: true });
       await expectLocked('CREATE');
 
-      // The session starts on the selector with the unassigned STANDBY slot, as it did before WP-13a in Simulated mode.
+      // The session starts on the selector with the unassigned channel-2 slot, as it did before WP-13a in Simulated mode.
       // (A tablet is "connected" by the engine's own door, as the session tests do: the pre-check item CORE needs the link.)
       await core.engine.setTabletLink('CONNECTED');
       await core.engine.command(investigator, 'beginPrecheck');
       await core.drive(5_000);
-      // The pre-check of a Simulated Core says of the unassigned role what it said before WP-13a: a WARN, never the BLOCK of real capture.
+      // The pre-check of a Simulated Core says of the unassigned channel what it said before WP-13a: a WARN, never the BLOCK of real capture (the stored check ID keeps the role name, D61).
       const items = core.engine.slice('session')?.precheck?.items ?? [];
       expect(items.filter((item) => item.status === 'BLOCK')).toEqual([]);
       expect(items.filter((item) => item.value === 'NOT_ASSIGNED')).toEqual([]);
@@ -1081,7 +1088,7 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
   // PostgreSQL as the runtime role. Row 29 holds, and this block does not repeat: the cleared slot and its row per slot
   // through a web console session; 0 rows for an empty slot; the lock in a unit table of eight states and on PostgreSQL
   // for CREATE and RECORDING; the 422 of a body that clears and fills one slot against the simulator double;
-  // `SELECTOR_SHAPE` for every incomplete selector, S-5 (three slots assigned, the STANDBY not) by name (`plan.test.ts`).
+  // `SELECTOR_SHAPE` for every incomplete selector, S-5 (three slots assigned, channel 2 not - D61) by name (`plan.test.ts`).
   describe('4. task 4 row 158 (AD-10): who may unassign, the lock in every session state, the stored row per slot, an unassign against a session that is being opened', () => {
     const SESSION_INPUT = { caseNumber: 'LP/2026/1001-0158', subjectType: 'SAKSI', subjectName: 'Test Subject', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' } as const;
     const BODIES = [...SLOTS.map((slot) => ({ unassign: [slot] })), { unassign: [...SLOTS] }];
@@ -1228,7 +1235,7 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
       expect((await post({ kind: 'OPERATOR', operatorId: operatorIdOf('TECHNICIAN'), sessionId: 'row158-session', deviceId: null, role: 'TECHNICIAN', permissions: ROLE_PERMISSIONS.TECHNICIAN }, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_1080P25' }] })).statusCode).toBe(200);
       const rowsBefore = (await changedRows(owner)).length;
       const held = await storedSlots(owner);
-      expect(held).toEqual(rowWithout(['VIDEO-02', 'PRIMARY', 'STANDBY']));
+      expect(held).toEqual(rowWithout(['VIDEO-02', 'MIC-01', 'MIC-02'])); // D61: the numbered channels
       let before = (await readTrail(owner)).length;
       const anonymous = await post({ kind: 'ANONYMOUS', retiredDeviceId: null }, { unassign: ['VIDEO-01'] });
       expect(outcome(anonymous)).toEqual([401, 'NOT_SIGNED_IN']);
@@ -1287,8 +1294,8 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
       const cleanWatch = watch(clean);
       // CONTROL, no session: accepted (and put back, so that the session below starts on the seeded selector).
       expect(stateOf(clean)).toBe('NONE');
-      expect((await clean.post({ unassign: ['STANDBY'] })).statusCode).toBe(200);
-      expect((await clean.post({ mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' }] })).statusCode).toBe(200);
+      expect((await clean.post({ unassign: ['MIC-02'] })).statusCode).toBe(200);
+      expect((await clean.post({ mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', channel: 'MIC-02' }] })).statusCode).toBe(200); // D61 (2026-11-04): the line names its channel
       await clean.core.app.pipeline.drain();
       expect(await storedSlots(clean.owner)).toEqual(SEEDED);
       await armed(clean, cleanWatch.check);
@@ -1302,11 +1309,11 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
       // CONTROL, SEALED: the session is still the Core's session, and the same call is accepted - one row.
       expect(stateOf(clean)).toBe(SessionState.SEALED);
       const rowsBefore = (await changedRows(clean.owner)).length;
-      const sealed = await clean.post({ unassign: ['STANDBY'] });
+      const sealed = await clean.post({ unassign: ['MIC-02'] });
       expect(sealed.statusCode, sealed.body).toBe(200);
       await clean.core.app.pipeline.drain();
-      expect((await changedRows(clean.owner)).slice(rowsBefore)).toEqual([clearedRow('STANDBY')]);
-      expect(await storedSlots(clean.owner)).toEqual(rowWithout(['STANDBY']));
+      expect((await changedRows(clean.owner)).slice(rowsBefore)).toEqual([clearedRow('MIC-02')]);
+      expect(await storedSlots(clean.owner)).toEqual(rowWithout(['MIC-02']));
 
       // THE OTHER PATH: a critical fault while recording, then the recovery.
       const faulted = await consoleCore('r158-lock-fault');
@@ -1335,11 +1342,11 @@ describe('task 4 row 29: an unassigned selector slot - the boot, operation 78 `u
       const of = await consoleCore('r158-both');
       const trail = await of.trailLength();
       const refused: [object, string | null][] = [
-        // The schema sees it: the slot is the track of a camera line, or the role of a mic line.
+        // The schema sees it: the slot is the track of a camera line, or the channel of a mic line (D61, 2026-11-04).
         [{ unassign: ['VIDEO-01'], cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02', profile: 'H264_1080P25' }] }, null],
-        [{ unassign: ['STANDBY'], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', role: 'STANDBY' }] }, null],
-        // The schema cannot see it: a mic line without `role` edits the input the cleared role holds. The action refuses, and its unit is rolled back.
-        [{ unassign: ['PRIMARY'], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01' }] }, 'SLOT_UNASSIGNED_AND_ASSIGNED'],
+        [{ unassign: ['MIC-02'], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', channel: 'MIC-02' }] }, null],
+        // The schema cannot see it: a mic line without `channel` edits the input the cleared channel holds. The action refuses, and its unit is rolled back.
+        [{ unassign: ['MIC-01'], mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01' }] }, 'SLOT_UNASSIGNED_AND_ASSIGNED'],
       ];
       for (const [body, reason] of refused) {
         const answer = await of.post(body);

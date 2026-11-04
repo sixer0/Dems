@@ -9,13 +9,15 @@
  * (the session start, row 71), which decides them per session.
  *
  * WHAT THE WIRE NAMES (D72(g)). Every subject of the plan is a DEVICE ID of the registry: a camera
- * is `deviceId: CAM-nn`, a microphone `deviceId: MIC-nn` with its role. `VIDEO-01` / `VIDEO-02`
- * appear in ONE member only, `trackId`: the name of the output the camera records to. Nothing the
- * worker reports back names a track.
+ * is `deviceId: CAM-nn`, a microphone `deviceId: MIC-nn` keyed by its numbered CHANNEL. `VIDEO-01`
+ * to `VIDEO-04` appear in ONE member only, `trackId`: the name of the output the camera records to.
+ * Nothing the worker reports back names a track. D61 (2026-11-04): the microphone plane is the four
+ * numbered channels `MIC-01`..`MIC-04` on the wire too (the protocol's D61 wave landed the `channel`
+ * member; the two-role lane survives only on `SWITCH_AUDIO_SOURCE` and the record/telemetry `role`).
  *
  * WHAT IS REFUSED, BEFORE ANYTHING IS OPENED (D86 C-5, D82; C3 §4 `SOURCE_KIND_NOT_RECORDABLE`).
- * `assertRecordableSelector` looks at ALL FOUR slots of the selector, whether or not the caller
- * will record them:
+ * `assertRecordableSelector` looks at ALL EIGHT slots of the selector (D61: four video, four
+ * microphone; D60: six), whether or not the caller will record them:
  *   - a device no registered adapter serves (in `SIMULATED` that is every device: no adapter is
  *     registered there, rule RG-1), or whose adapter has no opener (`ONVIF_RTSP`, `USB_AUDIO` in
  *     this phase): no listener and no session for it;
@@ -29,6 +31,7 @@
  * logged, `packages/capture-protocol`).
  */
 import { VIDEO_TRACK_IDS, type VideoTrackId } from '@dems/shared/domain';
+import { MIC_CHANNEL_IDS as SHARED_MIC_CHANNEL_IDS, PRIMARY_MIC_CHANNEL, type MicChannel } from '@dems/shared/sim'; // D61 (2026-11-04): the four numbered microphone channels
 import { CapturePlanSchema, type CapturePlan, type CapturePlanCamera, type CapturePlanConstants, type CapturePlanMic } from '@dems/capture-protocol';
 import {
   CAPTURE_AUDIO_CHANNELS,
@@ -58,9 +61,9 @@ export const CapturePlanReason = {
   MIXED_SOURCE_CLASSES: 'MIXED_SOURCE_CLASSES',
   /** The sources are not of the class the running capture operation records (rule RG-3). */
   CLASS_NOT_OF_OPERATION: 'CLASS_NOT_OF_OPERATION',
-  /** The selector is not four video tracks (D60) and a PRIMARY and a STANDBY microphone. */
+  /** The selector is not four video tracks (D60) and four numbered microphone channels (D61, 2026-11-04). */
   SELECTOR_SHAPE: 'SELECTOR_SHAPE',
-  /** The caller gave no source for any camera, or none for the PRIMARY microphone. */
+  /** The caller gave no source for any camera, or none for the first microphone channel (D61: the transcription channel). */
   SOURCE_MISSING: 'SOURCE_MISSING',
   /** The assembled plan is not a `CapturePlan` of the protocol (a path or an address used twice, a camera named twice). */
   PROTOCOL_SHAPE: 'PROTOCOL_SHAPE',
@@ -73,8 +76,9 @@ const TEXT: Readonly<Record<CapturePlanReason, string>> = Object.freeze({
   MIXED_SOURCE_CLASSES: 'the selector mixes production and development sources',
   CLASS_NOT_OF_OPERATION: 'the assigned sources are not of the class the running capture operation records',
   // D60 (2026-11-04): the Core records FOUR video tracks at once - the shape text names four tracks (was two).
-  SELECTOR_SHAPE: 'the selector does not name four video tracks and a primary and a standby microphone',
-  SOURCE_MISSING: 'no source was given for a camera, or for the primary microphone',
+  // D61 (2026-11-04): and FOUR numbered microphone channels (was a primary and a standby role).
+  SELECTOR_SHAPE: 'the selector does not name four video tracks and four numbered microphones',
+  SOURCE_MISSING: 'no source was given for a camera, or for the first microphone channel',
   PROTOCOL_SHAPE: 'the plan is not a capture plan of the protocol',
 });
 
@@ -98,16 +102,29 @@ export type CapturePlanRegistry = Pick<CaptureDeviceRegistry, 'operation' | 'ass
 /** The selector as the builder reads it: slice 29, or the copy a session took (`session.captureConfig`). */
 export interface CapturePlanSelector {
   readonly cameras: readonly Pick<CaptureConfigSliceBody['cameras'][number], 'trackId' | 'deviceId' | 'profile'>[];
-  readonly mics: readonly Pick<CaptureConfigSliceBody['mics'][number], 'deviceId' | 'role'>[];
+  // D61 (2026-11-04): the mic row is keyed by its CHANNEL, as a camera row is by its track; the role member of the earlier eras is superseded.
+  readonly mics: readonly Pick<CaptureConfigSliceBody['mics'][number], 'channel' | 'deviceId'>[];
 }
+
+/**
+ * The four numbered microphone channels (D61, 2026-11-04): the microphone half of the eight slots,
+ * the columns `mic_01_id`..`mic_04_id` of the selector row and the `MIC-01`..`MIC-04` values of
+ * `session_capture_sources_slot_check` (migration 0040). The shared vocabulary is the one source;
+ * the fence and the row mapping read the same list. The protocol's own D61 wave (2026-11-04) landed
+ * the `channel` member on the plan: the LEGACY_ROLE_OF shim that bridged the two-role lane during
+ * the split is dead and removed - the wire names the channel directly.
+ */
+export const MIC_CHANNEL_IDS = SHARED_MIC_CHANNEL_IDS;
+export type MicChannelId = MicChannel;
 
 /** One slot of the selector with the descriptor of the device assigned to it. */
 export interface RecordableSlot {
-  readonly slot: 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04' | 'PRIMARY' | 'STANDBY'; // D60
+  // D61 (2026-11-04): the eight slots - four video tracks (D60) and four numbered microphone channels (was the two mic roles).
+  readonly slot: 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04' | MicChannelId;
   readonly descriptor: CaptureDeviceDescriptor;
 }
 
-/** What `assertRecordableSelector` found: the six slots (D60: four video, two mic), and the one source class they share. */
+/** What `assertRecordableSelector` found: the eight slots (D61: four video, four microphone), and the one source class they share. */
 export interface RecordableSelector {
   readonly slots: readonly RecordableSlot[];
   readonly sourceClass: CaptureSourceClass;
@@ -120,7 +137,8 @@ export interface RecordableSelector {
  * or a listener address is chosen: it needs nothing of a session.
  */
 export function assertRecordableSelector(selector: CapturePlanSelector, registry: CapturePlanRegistry): RecordableSelector {
-  // D60 (2026-11-04): the selector names FOUR video tracks once each (was two) and one PRIMARY and one STANDBY microphone.
+  // D60 (2026-11-04): the selector names FOUR video tracks once each (was two).
+  // D61 (2026-11-04): and FOUR numbered microphone channels once each (was one PRIMARY and one STANDBY role) - symmetric with the video plane.
   const cameraOf = new Map<string, CapturePlanSelector['cameras'][number]>();
   for (const camera of selector.cameras) {
     if (!(VIDEO_TRACK_IDS as readonly string[]).includes(camera.trackId) || cameraOf.has(camera.trackId)) {
@@ -128,9 +146,15 @@ export function assertRecordableSelector(selector: CapturePlanSelector, registry
     }
     cameraOf.set(camera.trackId, camera);
   }
-  const primary = selector.mics.find((mic) => mic.role === 'PRIMARY');
-  const standby = selector.mics.find((mic) => mic.role === 'STANDBY');
-  if (cameraOf.size !== VIDEO_TRACK_IDS.length || selector.mics.length !== 2 || primary === undefined || standby === undefined) {
+  const micOf = new Map<MicChannelId, CapturePlanSelector['mics'][number]>();
+  for (const mic of selector.mics) {
+    const channel = mic.channel as MicChannelId | undefined;
+    if (channel === undefined || !(MIC_CHANNEL_IDS as readonly string[]).includes(channel) || micOf.has(channel)) {
+      throw new CapturePlanError(CapturePlanRefusal.PLAN_INVALID, CapturePlanReason.SELECTOR_SHAPE);
+    }
+    micOf.set(channel, mic);
+  }
+  if (cameraOf.size !== VIDEO_TRACK_IDS.length || micOf.size !== MIC_CHANNEL_IDS.length) {
     throw new CapturePlanError(CapturePlanRefusal.PLAN_INVALID, CapturePlanReason.SELECTOR_SHAPE);
   }
   const cameras = VIDEO_TRACK_IDS.map((trackId) => cameraOf.get(trackId) as CapturePlanSelector['cameras'][number]);
@@ -151,8 +175,7 @@ export function assertRecordableSelector(selector: CapturePlanSelector, registry
   }
   const assigned: readonly { readonly slot: RecordableSlot['slot']; readonly deviceId: string }[] = [
     ...cameras.map((camera) => ({ slot: camera.trackId as RecordableSlot['slot'], deviceId: camera.deviceId })), // D60: all four video slots
-    { slot: 'PRIMARY', deviceId: primary.deviceId },
-    { slot: 'STANDBY', deviceId: standby.deviceId },
+    ...MIC_CHANNEL_IDS.map((channel) => ({ slot: channel as RecordableSlot['slot'], deviceId: (micOf.get(channel) as CapturePlanSelector['mics'][number]).deviceId })), // D61: all four numbered microphone channels
   ];
   const slots = assigned.map(({ slot, deviceId }): RecordableSlot => {
     try {
@@ -193,6 +216,14 @@ export function capturePlanConstants(): CapturePlanConstants {
 /** Where one camera of the session pushes and records. Chosen by the caller, per session. */
 export type CapturePlanCameraSource = Pick<CapturePlanCamera, 'ingestUrl' | 'outputPath'>;
 
+/**
+ * Where one microphone channel of the session takes its samples and — D61 (2026-11-04) — where its
+ * OWN audio file goes: the microphone twin of `CapturePlanCameraSource`, chosen by the caller per
+ * session. `outputPath` stays optional on the member: a channel without one is read, metered and
+ * warned for but not recorded on a file of its own (the protocol's D61 wave keeps the member optional).
+ */
+export type CapturePlanMicSource = Pick<CapturePlanMic, 'input' | 'outputPath'>;
+
 export interface CapturePlanInput {
   readonly selector: CapturePlanSelector;
   readonly registry: CapturePlanRegistry;
@@ -203,11 +234,15 @@ export interface CapturePlanInput {
    */
   readonly cameras: Readonly<Partial<Record<VideoTrackId, CapturePlanCameraSource>>>;
   /**
-   * Per microphone DEVICE ID, the input of its opened stream (`AudioStreamHandle.input`, taken
-   * unchanged: D72(e)). A microphone without an entry is left out; the PRIMARY one must have one
-   * (D83: an unreachable active microphone blocks the start).
+   * Per microphone CHANNEL (D61, 2026-11-04: the four numbered channels, was per device with the
+   * PRIMARY rule), the source of its opened stream: the input of `AudioStreamHandle.input` (taken
+   * unchanged: D72(e)) and the channel's OWN audio file (`outputPath`, D61: the microphone twin of a
+   * camera's, named per channel by the caller). A channel WITHOUT an entry is left out; channel 1
+   * must have one - it feeds the transcription track `AUDIO-01` (D83's rule, carried onto the numbered
+   * plane: an unreachable transcription channel blocks the start; a later channel no longer guards
+   * anything, the failover concept dying with D61).
    */
-  readonly mics: Readonly<Record<string, CapturePlanMic['input']>>;
+  readonly mics: Readonly<Partial<Record<MicChannelId, CapturePlanMicSource>>>;
   /** The PCM tap of the transcriber, or null. */
   readonly pcmTapPath: string | null;
   /** Default: the contract's constants. */
@@ -229,19 +264,28 @@ export function buildCapturePlan(input: CapturePlanInput): CapturePlan {
     cameras.push({ deviceId: camera.deviceId, trackId: camera.trackId, profile: camera.profile, ingestUrl: source.ingestUrl, outputPath: source.outputPath });
   }
   const mics: CapturePlanMic[] = [];
+  let channelOneGiven = false;
   for (const mic of input.selector.mics) {
-    const source = Object.hasOwn(input.mics, mic.deviceId) ? input.mics[mic.deviceId] : undefined;
+    // D61 (2026-11-04): the sources arrive keyed by CHANNEL; the row names its own.
+    const channel = mic.channel as MicChannelId | undefined;
+    if (channel === undefined || !(MIC_CHANNEL_IDS as readonly string[]).includes(channel)) continue; // unreachable: `assertRecordableSelector` above refused such a selector
+    const source = Object.hasOwn(input.mics, channel) ? input.mics[channel] : undefined;
     if (source === undefined) continue;
-    mics.push({ deviceId: mic.deviceId, role: mic.role, input: source });
+    if (channel === PRIMARY_MIC_CHANNEL) channelOneGiven = true;
+    // D61 (2026-11-04): the wire names the CHANNEL (protocol wave of the same date): the row is keyed like a camera row,
+    // and carries the channel's own audio file when the caller named one (optional on the protocol member, so a channel
+    // without one is put on the wire without the member rather than with an empty path).
+    mics.push({ deviceId: mic.deviceId, channel, input: source.input, ...(source.outputPath === undefined ? {} : { outputPath: source.outputPath }) });
   }
-  if (cameras.length === 0 || !mics.some((mic) => mic.role === 'PRIMARY')) {
+  // D61 (2026-11-04): channel 1 is the transcription channel of `AUDIO-01`; without it the plan has no audio to transcribe.
+  if (cameras.length === 0 || !channelOneGiven) {
     throw new CapturePlanError(CapturePlanRefusal.PLAN_INVALID, CapturePlanReason.SOURCE_MISSING);
   }
   const parsed = CapturePlanSchema.safeParse({
     cameras,
     mics,
-    // The session starts on the PRIMARY input; the operator switches (operation 81), never the Core (OD-11).
-    activeMic: 'PRIMARY',
+    // D61 (2026-11-04): `activeMic` is the TRANSCRIBED CHANNEL of `AUDIO-01` - always channel 1 now (the failover concept died with the decision; the protocol validates the value). The operator switches (operation 81), never the Core (OD-11).
+    activeMic: PRIMARY_MIC_CHANNEL,
     pcmTapPath: input.pcmTapPath,
     constants: input.constants ?? capturePlanConstants(),
   });
@@ -249,7 +293,7 @@ export function buildCapturePlan(input: CapturePlanInput): CapturePlan {
   return parsed.data;
 }
 
-/** Every subject the worker may name about this plan: its device IDs and its microphone roles (spec §B.2 R-5). */
+/** Every subject the worker may name about this plan: its device IDs (D61, 2026-11-04: the microphone rows are keyed by their numbered channel; the two-role lane's words are no longer plan members and are never warning subjects). */
 export function capturePlanSubjects(plan: CapturePlan): string[] {
-  return [...plan.cameras.map((camera) => camera.deviceId), ...plan.mics.map((mic) => mic.deviceId), ...plan.mics.map((mic) => mic.role)];
+  return [...plan.cameras.map((camera) => camera.deviceId), ...plan.mics.map((mic) => mic.deviceId), ...plan.mics.map((mic) => mic.channel)];
 }

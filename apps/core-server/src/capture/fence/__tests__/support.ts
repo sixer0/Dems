@@ -8,26 +8,28 @@ import type { StoredCaptureDevice } from '../registration';
 import { CORRECT_GENERATED_SOURCE_PROFILES } from '../fake-profile';
 import { READ_ASSIGNED_SOURCES, READ_STORED_DEVICES, REGISTER_LOCAL_DEVICE } from '../statements';
 
-/** One member per slot. `null` is an UNASSIGNED slot (task 4 row 33; schema set A made the columns nullable): the statement's JOIN yields no row for it. D60 (2026-11-04): the two further camera lines are OPTIONAL - absent means unassigned, as the seed leaves them. */
+/** One member per slot. `null` is an UNASSIGNED slot (task 4 row 33; schema set A made the columns nullable): the statement's JOIN yields no row for it. D60 (2026-11-04): the two further camera lines are OPTIONAL - absent means unassigned, as the seed leaves them. D61 (2026-11-04): the two mic roles became the four numbered CHANNELS (`mic_01_id`..`mic_04_id`), all OPTIONAL. */
 export interface Selector {
   readonly video01: string | null;
   readonly video02: string | null;
   readonly video03?: string | null;
   readonly video04?: string | null;
-  readonly primary: string | null;
-  readonly standby: string | null;
+  readonly mic01?: string | null;
+  readonly mic02?: string | null;
+  readonly mic03?: string | null;
+  readonly mic04?: string | null;
 }
 
 const device = (id: string, kind: StoredCaptureDevice['kind'], adapterKind: CaptureAdapterKind, model: string | null = null): StoredCaptureDevice => ({ id, kind, adapterKind, model });
 
 /** The five built-ins of the seed: all `FAKE`. */
 export const SEEDED: readonly StoredCaptureDevice[] = [device('CAM-01', 'CAMERA', 'FAKE'), device('CAM-02', 'CAMERA', 'FAKE'), device('MIC-01', 'MIC', 'FAKE'), device('MIC-02', 'MIC', 'FAKE'), device('POE-SWITCH', 'POE', 'FAKE')];
-export const SEEDED_SELECTOR: Selector = { video01: 'CAM-01', video02: 'CAM-02', primary: 'MIC-01', standby: 'MIC-02' };
+export const SEEDED_SELECTOR: Selector = { video01: 'CAM-01', video02: 'CAM-02', mic01: 'MIC-01', mic02: 'MIC-02' };
 /** A site with adopted production devices, assigned. D60 (2026-11-04): four adopted cameras - every video line can name its own device. */
-export const PRODUCTION: readonly StoredCaptureDevice[] = [device('CAM-11', 'CAMERA', 'ONVIF_RTSP'), device('CAM-12', 'CAMERA', 'ONVIF_RTSP'), device('CAM-13', 'CAMERA', 'ONVIF_RTSP'), device('CAM-14', 'CAMERA', 'ONVIF_RTSP'), device('MIC-11', 'MIC', 'USB_AUDIO'), device('MIC-12', 'MIC', 'USB_AUDIO')];
+export const PRODUCTION: readonly StoredCaptureDevice[] = [device('CAM-11', 'CAMERA', 'ONVIF_RTSP'), device('CAM-12', 'CAMERA', 'ONVIF_RTSP'), device('CAM-13', 'CAMERA', 'ONVIF_RTSP'), device('CAM-14', 'CAMERA', 'ONVIF_RTSP'), device('MIC-11', 'MIC', 'USB_AUDIO'), device('MIC-12', 'MIC', 'USB_AUDIO'), device('MIC-13', 'MIC', 'USB_AUDIO'), device('MIC-14', 'MIC', 'USB_AUDIO')]; // D61 (2026-11-04): the four channels of a commissioned room
 /** Two further generated test sources of a development site (D60, 2026-11-04): the third and fourth camera lines of a fully assigned selector. */
-export const EXTRA: readonly StoredCaptureDevice[] = [device('CAM-04', 'CAMERA', 'FAKE'), device('CAM-05', 'CAMERA', 'FAKE')];
-export const PRODUCTION_SELECTOR: Selector = { video01: 'CAM-11', video02: 'CAM-12', primary: 'MIC-11', standby: 'MIC-12' };
+export const EXTRA: readonly StoredCaptureDevice[] = [device('CAM-04', 'CAMERA', 'FAKE'), device('CAM-05', 'CAMERA', 'FAKE'), device('MIC-04', 'MIC', 'FAKE')]; // D60: the third and fourth camera lines; D61: the fourth microphone channel
+export const PRODUCTION_SELECTOR: Selector = { video01: 'CAM-11', video02: 'CAM-12', mic01: 'MIC-11', mic02: 'MIC-12' };
 export const LOCAL: readonly StoredCaptureDevice[] = [device('CAM-03', 'CAMERA', 'LOCAL_DEVICE', 'MacBook Air Camera'), device('MIC-03', 'MIC', 'LOCAL_DEVICE', 'MacBook Air Microphone')];
 
 export interface FakeTables {
@@ -59,7 +61,8 @@ export function fakeTables(devices: readonly StoredCaptureDevice[], selector: Se
         if (text === READ_ASSIGNED_SOURCES) {
           if (tables.selector === null) return { rows: [] };
           // D60 (2026-11-04): the two further camera lines join the read (an absent member is an unassigned slot, as the seed leaves it).
-          const slots: readonly (readonly [string, string | null])[] = [['MIC-PRIMARY', tables.selector.primary], ['MIC-STANDBY', tables.selector.standby], ['VIDEO-01', tables.selector.video01], ['VIDEO-02', tables.selector.video02], ['VIDEO-03', tables.selector.video03 ?? null], ['VIDEO-04', tables.selector.video04 ?? null]];
+          // D61 (2026-11-04): the read holds EIGHT slots - the two mic roles became the four numbered channels.
+          const slots: readonly (readonly [string, string | null])[] = [['MIC-01', tables.selector.mic01 ?? null], ['MIC-02', tables.selector.mic02 ?? null], ['MIC-03', tables.selector.mic03 ?? null], ['MIC-04', tables.selector.mic04 ?? null], ['VIDEO-01', tables.selector.video01], ['VIDEO-02', tables.selector.video02], ['VIDEO-03', tables.selector.video03 ?? null], ['VIDEO-04', tables.selector.video04 ?? null]];
           return { rows: slots.flatMap(([slot, id]) => sorted.filter((row) => row.id === id).map((row) => ({ slot, id, kind: row.kind, adapterKind: row.adapterKind }))) as unknown as Row[] };
         }
         if (text === REGISTER_LOCAL_DEVICE) {

@@ -31,7 +31,9 @@
  *   stop     `afterStopCommitted`: `app.capture.stop`, the recorder's last rows, `STOPPED`;
  *   switch   operation 81 (`switchAudioSource`): the command to the worker; its acknowledgement
  *            carries the interval record (media time from the capture side); ONE unit then holds
- *            the session's new active / standby pair, the closed and the opened
+ *            the session's new active / standby pair on the worker's two-role lane (D61, 2026-11-04:
+ *            the selector plane records four numbered channels; the toggle trades channels 1 and 2,
+ *            the transcription pair), the closed and the opened
  *            `session_audio_intervals` rows and the `AUDIO_SOURCE_SWITCHED` row with the keys of
  *            C3 §5.2 and the sending device ID. Never automatic (OD-11).
  *
@@ -153,18 +155,18 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir, stat } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { AudioSourceIntervalReason, CaptureIngestState, CaptureRecordKind, CaptureStopReason, CaptureSyncLevel, CaptureWarningState, type AudioSourceIntervalRecord, type CapturePlan, type FirstVideoSampleRecord } from '@dems/capture-protocol';
+import { AudioSourceIntervalReason, CaptureIngestState, CaptureMicRole, CaptureRecordKind, CaptureStopReason, CaptureSyncLevel, CaptureWarningState, type AudioSourceIntervalRecord, type CapturePlan, type FirstVideoSampleRecord } from '@dems/capture-protocol'; // CaptureMicRole: D61 (2026-11-04) - the worker's two-role lane, traded by op 81
 import { INGEST_PAIRING_BOUND_MS, createIngestPairing, type IngestPairing, type IngestPairingFailure, type RelayIngestReport, type RelayIngestReports } from './ingest-pairing';
 export { INGEST_PAIRING_BOUND_MS, IngestPairingFault, type IngestPairingFailure, type RelayIngestReport, type RelayIngestReports } from './ingest-pairing';
 import { ApiErrorCode, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES, type AudioSourceStateBody } from '@dems/shared/api';
 import { SessionState, VIDEO_TRACK_IDS } from '@dems/shared/domain'; // VIDEO_TRACK_IDS: D60 (2026-11-04)
-import { CaptureAdvisoryReason, CaptureNoticeReason, type ActiveSession, type CaptureAdvisoryNotice, type CaptureVolumeSyncNotice } from '@dems/shared/sim';
+import { CaptureAdvisoryReason, CaptureNoticeReason, PRIMARY_MIC_CHANNEL, type ActiveSession, type CaptureAdvisoryNotice, type CaptureVolumeSyncNotice } from '@dems/shared/sim'; // PRIMARY_MIC_CHANNEL: D61 (2026-11-04)
 import type { FastifyInstance } from 'fastify';
 import { CapturePhase, CaptureSupervisorError, captureIngestAddress, isCameraAbsentReason, isCameraIntegrityReason, type CaptureCameraEnd, type CaptureEventOf, type CaptureStopOutcome, type CaptureSupervisor } from '../capture';
 import { CaptureAdapterError, CaptureAdapterKind, CaptureOperation, type AudioStreamHandle, type CameraSourceTarget, type CaptureDeviceRegistry, type SourceHandle } from '../capture/adapters';
 import { NO_SOURCE_FACTS, assertSessionSourcesOfOperation, audioCardStatementOf, buildSessionCaptureSources, captureFenceControl, captureOperationOf, micSourceFactsOf, type CaptureSourceSlot, type SessionCaptureSource, type SessionSourceFacts } from '../capture/fence';
 import { captureCheckpointDoorsOf, captureDoorsOf, markCaptureConnectingIn, switchCaptureAudioSourceIn, type EngineUnit, type HostedActionArguments } from '../engine';
-import { CapturePlanError, assertRecordableSelector, buildCapturePlan, type CapturePlanSelector, type RecordableSelector } from '../modules/capture-config';
+import { CapturePlanError, MIC_CHANNEL_IDS, assertRecordableSelector, buildCapturePlan, type CapturePlanMicSource, type CapturePlanSelector, type MicChannelId, type RecordableSelector } from '../modules/capture-config'; // MIC_CHANNEL_IDS / MicChannelId / CapturePlanMicSource: D61 (2026-11-04) — the per-channel audio file of the plan
 import { createFragmentRecorder, createRecordingFragmentStore, type FragmentRecorder, type VideoTrackId } from '../modules/recording-fragments';
 import type { Principal } from '../plugins/authenticate';
 import { ApiFailure } from '../plugins/error-envelope';
@@ -248,6 +250,12 @@ export const INGEST_ADDRESS_UNKNOWN = 'INGEST_ADDRESS_UNKNOWN';
 /** The folder of a session below the media root, and its camera files (evidence spec §A: `SESSION-<id>/VIDEO-0n.mp4`). */
 export const sessionMediaFolder = (sessionId: string): string => `SESSION-${sessionId}`;
 export const cameraFileName = (trackId: VideoTrackId): string => `${trackId}.mp4`;
+/**
+ * D61 (2026-11-04): the standalone audio file of one microphone CHANNEL, named after the channel as a
+ * camera file is named after its track (`SESSION-<id>/MIC-0n.m4a`). The worker creates it by the same
+ * never-overwrite rule; a channel the plan does not name one for is metered but not recorded on its own file.
+ */
+export const micFileName = (channel: MicChannelId): string => `${channel}.m4a`;
 
 /** File (media) time in ms of a sample counted from T0 (protocol 4, `AUDIO_SOURCE_INTERVAL`; dbc-3 §B.5 erratum PE-128-44). */
 export function mediaMsOfSample(sample: number, sampleRateHz: number): number {
@@ -265,7 +273,7 @@ const TEXT = Object.freeze({
   NOT_RECORDING: 'The session is not recording.',
   NOT_DURABLE: 'Nothing is recorded yet: the cameras are still connecting. The session ends by itself when no camera connects.',
   NOT_OPEN: 'This session is not the open session.',
-  NO_SUCH_INPUT: 'The requested microphone is not one of the two inputs of this session.',
+  NO_SUCH_INPUT: 'The requested microphone is not one of the four inputs of this session.', // D61 (2026-11-04): four numbered channels (was two)
   SWITCH_REFUSED: 'The requested microphone cannot become the active source now.',
   SWITCH_NOT_RECORDED: 'The microphone was switched, but the switch could not be recorded. It is in the error log.',
 });
@@ -884,7 +892,8 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
    * the error log with the session and the device, and the row stores `{}`. No text of a device is put into that entry.
    */
   function sourceFactsOf(registry: CaptureDeviceRegistry, row: SessionCaptureSource): SessionSourceFacts {
-    if (row.slot !== 'MIC-PRIMARY' && row.slot !== 'MIC-STANDBY') return NO_SOURCE_FACTS;
+    // D61 (2026-11-04): the four numbered microphone channels carry card facts (was the two roles `MIC-PRIMARY`/`MIC-STANDBY`).
+    if (!(MIC_CHANNEL_IDS as readonly string[]).includes(row.slot)) return NO_SOURCE_FACTS;
     try {
       const facts = micSourceFactsOf(audioCardStatementOf(registry.resolve('MIC', row.deviceId), row.deviceId));
       if (row.adapterKind === CaptureAdapterKind.USB_AUDIO && Object.keys(facts).length === 0) {
@@ -926,7 +935,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     await markCaptureConnectingIn(scope, sessionId);
     const first = sources[0];
     if (first === undefined) throw notRecordable(undefined, null, 'SELECTOR_SHAPE');
-    // MR-S1 (D60, 2026-11-04): six rows (four video slots, two mic roles; was four), one statement, in the transaction that persists RECORDING. Each row carries its source facts
+    // MR-S1 (D61, 2026-11-04): eight rows (four video slots, four numbered microphone channels; D60: six, was four), one statement, in the transaction that persists RECORDING. Each row carries its source facts
     // (task 4 row 71): they are written here or never, the runtime role cannot update the column.
     await scope.unit.query(INSERT_SESSION_CAPTURE_SOURCES, [sessionId, first.recordedAt, ...sources.flatMap((row) => [row.slot, row.deviceId, row.adapterKind, JSON.stringify(sourceFactsOf(registry, row))])]);
     // MR-S6: what was written is read back and held against the running operation again.
@@ -1061,7 +1070,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     const unit = (): Promise<unknown> =>
       app.engine.run('captureSession.audioAbsentOnRestart', async (scope) => {
         const lines = scope.pending().session?.captureConfig?.mics ?? [];
-        const named = lines.length === 0 ? `${record.deviceId} ${record.role}` : lines.map((line) => `${line.deviceId} ${line.role}`).join(', ');
+        const named = lines.length === 0 ? `${record.deviceId} ${record.role}` : lines.map((line) => `${line.deviceId} ${line.channel}`).join(', '); // D61 (2026-11-04): the selector names channels, not roles
         await scope.unit.query(CLOSE_SUPERSEDED_AUDIO_INTERVAL, [sessionId, gap.earlierEndAt]);
         await scope.unit.query(INSERT_AUDIO_INTERVAL, [...row]);
         await scope.unit.audit.append({
@@ -1670,10 +1679,10 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     for (const handle of current.handles) {
       const launch = (handle as { start?: (signal?: AbortSignal) => Promise<void> }).start;
       if (typeof launch !== 'function' || current.ended || current.leaving) continue;
-      const role = ready.selector.mics.find((mic) => mic.deviceId === handle.deviceId)?.role ?? null;
-      // D80(6) / ML-7: the standby alone missing warns; a primary that does not start is an error. Neither is replaced.
+      const channel = ready.selector.mics.find((mic) => mic.deviceId === handle.deviceId)?.channel ?? null;
+      // D80(6) / ML-7, carried onto the numbered plane by D61 (2026-11-04): a later channel alone missing warns; the transcription channel (1, feeding `AUDIO-01`) that does not start is an error. Neither is replaced.
       const failed = (err: unknown, cause: string): void =>
-        persist(role === 'PRIMARY' ? 'error' : 'warn', 'CAPTURE_MIC_NOT_STARTED', 'a microphone of the session could not be started', err, { sessionId: current.sessionId, deviceId: handle.deviceId, role, cause });
+        persist(channel === PRIMARY_MIC_CHANNEL ? 'error' : 'warn', 'CAPTURE_MIC_NOT_STARTED', 'a microphone of the session could not be started', err, { sessionId: current.sessionId, deviceId: handle.deviceId, channel, cause });
       let bound: ReturnType<typeof setTimeout> | undefined;
       let launched: Promise<void>;
       try {
@@ -1700,7 +1709,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
           if (current.micAttempt !== attempt) {
             current.micReportsDropped += 1;
             app.log.info(
-              { code: 'CAPTURE_MIC_REPORT_SUPERSEDED', sessionId: current.sessionId, deviceId: handle.deviceId, role, attempt, attemptInForce: current.micAttempt, dropped: current.micReportsDropped },
+              { code: 'CAPTURE_MIC_REPORT_SUPERSEDED', sessionId: current.sessionId, deviceId: handle.deviceId, channel, attempt, attemptInForce: current.micAttempt, dropped: current.micReportsDropped }, // D61 (2026-11-04): the selector names channels now
               'the outcome of a microphone start of an attempt this Core has superseded was dropped: its worker was replaced and the microphone is started again; no fault',
             );
             return;
@@ -1795,7 +1804,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         if (!earlier.some((handle) => handle.deviceId === mic.deviceId)) continue;
         if (current.ended || current.leaving || current.abort.signal.aborted) break;
         const failed = (err: unknown, cause: string | null): void =>
-          persist(mic.role === 'PRIMARY' ? 'error' : 'warn', 'CAPTURE_MIC_NOT_OPENED', 'a microphone of the session could not be opened again for a later capture worker', err, { sessionId, deviceId: mic.deviceId, role: mic.role, attempt, ...(cause === null ? {} : { cause }) });
+          persist(mic.channel === PRIMARY_MIC_CHANNEL ? 'error' : 'warn', 'CAPTURE_MIC_NOT_OPENED', 'a microphone of the session could not be opened again for a later capture worker', err, { sessionId, deviceId: mic.deviceId, channel: mic.channel, attempt, ...(cause === null ? {} : { cause }) }); // D61 (2026-11-04): the transcription channel (1) is the error; a later channel warns
         let asked: Promise<AudioStreamHandle>;
         try {
           asked = Promise.resolve(registry.resolve('MIC', mic.deviceId).open(mic.deviceId, { sessionId, signal: current.abort.signal }));
@@ -1819,9 +1828,9 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
           failed(err, null);
         }
       }
-      const primary = ready.selector.mics.find((mic) => mic.role === 'PRIMARY');
-      // Said above with the microphone and its role; the supervisor reads only that the sources are not ready.
-      if (primary === undefined || !inputs.has(primary.deviceId)) throw new Error('the primary microphone of the session is not open for the later capture worker');
+      const transcription = ready.selector.mics.find((mic) => mic.channel === PRIMARY_MIC_CHANNEL); // D61 (2026-11-04): channel 1 feeds `AUDIO-01`, the transcribed track (was the PRIMARY role)
+      // Said above with the microphone and its channel; the supervisor reads only that the sources are not ready.
+      if (transcription === undefined || !inputs.has(transcription.deviceId)) throw new Error('the channel-1 microphone of the session is not open for the later capture worker');
       return inputs as ReadonlyMap<string, AudioStreamHandle['input']>;
     });
     // Asked for by the supervisor a back-off later: a rejection is not unhandled meanwhile.
@@ -2071,8 +2080,9 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       const folder = `${app.config.mediaStoreDir}/${sessionMediaFolder(sessionId)}`;
       await ports.ensureDir(folder);
 
-      // The microphones first: the plan names where each one's samples come from.
-      const mics: Record<string, AudioStreamHandle['input']> = {};
+      // The microphones first: the plan names where each one's samples come from AND the channel's own audio file
+      // (D61, 2026-11-04: one entry per numbered channel; `outputPath` is the twin of a camera's, named per channel).
+      const mics: Partial<Record<MicChannelId, CapturePlanMicSource>> = {};
       for (const mic of ready.selector.mics) {
         try {
           const handle = await registry.resolve('MIC', mic.deviceId).open(mic.deviceId, { sessionId, signal: current.abort.signal });
@@ -2080,10 +2090,10 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
           current.micHandles.set(mic.deviceId, handle);
           // The unit was shut down while this source was being opened: `release` has run and will not see the handle.
           if (current.abort.signal.aborted) await release(current);
-          mics[mic.deviceId] = handle.input;
+          mics[mic.channel] = { input: handle.input, outputPath: `${folder}/${micFileName(mic.channel)}` }; // D61 (2026-11-04): opened, so its file is named
         } catch (err) {
-          // The standby may be missing (D80(6)); without the PRIMARY the plan builder refuses below.
-          persist(mic.role === 'PRIMARY' ? 'error' : 'warn', 'CAPTURE_MIC_NOT_OPENED', 'a microphone of the session could not be opened', err, { sessionId, deviceId: mic.deviceId, role: mic.role });
+          // A later channel may be missing (D80(6) generalized by D61, 2026-11-04); without channel 1 - the transcription channel - the plan builder refuses below.
+          persist(mic.channel === PRIMARY_MIC_CHANNEL ? 'error' : 'warn', 'CAPTURE_MIC_NOT_OPENED', 'a microphone of the session could not be opened', err, { sessionId, deviceId: mic.deviceId, channel: mic.channel });
         }
       }
       const cameras: Partial<Record<VideoTrackId, { ingestUrl: string; outputPath: string }>> = {};
@@ -2327,10 +2337,14 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       sendingDeviceId: principal.kind === 'OPERATOR' ? principal.deviceId : null,
     };
     of.switchAskedBy.set(mic.deviceId, actor);
+    // D61 (2026-11-04): the worker's two-role lane trades the transcription pair - channel 1 is `PRIMARY`, channel 2 `STANDBY`
+    // (`sim/types.ts`); a later channel has no role on that lane until the worker's own D61 wave, and cannot be switched to.
+    const workerRole = mic.channel === 'MIC-01' ? CaptureMicRole.PRIMARY : mic.channel === 'MIC-02' ? CaptureMicRole.STANDBY : null;
+    if (workerRole === null) throw conflict('SWITCH_REFUSED');
     let record: AudioSourceIntervalRecord | null;
     of.switchesWaiting += 1;
     try {
-      record = await of.supervisor.switchAudioSource(sessionId, mic.role);
+      record = await of.supervisor.switchAudioSource(sessionId, workerRole);
     } catch (cause) {
       if (!(cause instanceof CaptureSupervisorError)) throw cause;
       // The command was not acknowledged in time or was refused. A record of THAT microphone that

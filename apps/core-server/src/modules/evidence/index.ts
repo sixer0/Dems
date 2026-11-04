@@ -44,7 +44,9 @@
  * or the signature of an item. A verification, an export and an archive add a custody entry and
  * an audit row and change the status or the verification state; the sealed columns cannot be
  * updated by the runtime role at all (database contract §7.3). AUDIO-01 and AUDIO-02 are two
- * tracks in every answer that lists tracks (AC-B-70).
+ * tracks in every answer that lists tracks (AC-B-70). D61 (2026-11-04): a v2 session seals FOUR
+ * audio tracks `AUDIO-01`..`AUDIO-04`; an item names its own track list and the older items keep
+ * the pair they were sealed with (prefix rule).
  *
  * WHAT IS NOT HERE (SR-66, MS-1 to MS-4): no route returns a file or takes one, and no value of
  * a request is ever used as a path.

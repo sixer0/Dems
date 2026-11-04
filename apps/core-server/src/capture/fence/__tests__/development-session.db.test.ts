@@ -90,7 +90,7 @@ async function rig(slug: string): Promise<Rig> {
   // `CAM-03` / `MIC-03`, listed) and an operator assigned them: camera 1 and the primary microphone
   // are this Mac's, slot 2 keeps the test sources (D74(2)). Written by the owner, as a fixture.
   await owner.query("INSERT INTO public.capture_devices (id, kind, transport, model, enabled, adapter_kind) VALUES ('CAM-03', 'CAMERA', 'AVFOUNDATION', 'MacBook Air Camera', true, 'LOCAL_DEVICE'), ('MIC-03', 'MIC', 'AVFOUNDATION', 'MacBook Air Microphone', true, 'LOCAL_DEVICE')");
-  await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-03', mic_primary_id = 'MIC-03', mic_standby_id = 'MIC-02'");
+  await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-03', mic_01_id = 'MIC-03', mic_02_id = 'MIC-02' -- D61 (2026-11-04): 0040 renamed the role columns to the channel columns");
 
   const log = captureLog();
   const app = buildApp({
@@ -286,8 +286,8 @@ describe('M5-LOCAL-E2E-1 (Core half, scripted helpers): a development session on
     const elements = ingest.map((address) => address.slice(address.lastIndexOf('/') + 1));
     expect(elements.map((element) => /^[A-Za-z0-9_-]{22}$/.test(element))).toEqual([true, true]);
     expect(new Set(elements).size).toBe(2);
-    // The microphone lines keep the selector's input order (ascending input ID); the role is a member of the line.
-    expect(starts[0]?.plan.mics.map((mic) => [mic.deviceId, mic.role, mic.input.kind])).toEqual([['MIC-02', 'STANDBY', 'PCM_FIFO'], ['MIC-03', 'PRIMARY', 'PCM_FIFO']]);
+    // The microphone lines keep the selector's input order (ascending input ID); the CHANNEL is a member of the line (D61, 2026-11-04).
+    expect(starts[0]?.plan.mics.map((mic) => [mic.deviceId, mic.channel, mic.input.kind])).toEqual([['MIC-02', 'MIC-02', 'PCM_FIFO'], ['MIC-03', 'MIC-01', 'PCM_FIFO']]);
     const pipes = (starts[0]?.plan.mics ?? []).map((mic) => (mic.input as { path?: string }).path ?? '');
     expect(pipes.every((path) => path.startsWith(`${fixture.dataDir}/run/capture/${id}/`))).toBe(true);
     expect(of.events.map((event) => event.type)).toEqual(['CONNECTING', 'STARTED']);

@@ -18,6 +18,7 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  CAPTURE_MIC_CHANNELS,
   CAPTURE_PROTOCOL_VERSION,
   CaptureIngestState,
   CaptureMicRole,
@@ -418,8 +419,9 @@ export function fakeLauncher(behaviour: Partial<FakeWorkerBehaviour> = {}): Fake
 // ── A plan ─────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * A valid plan of two cameras and two mics. The addresses and paths are text only: nothing here
- * listens on a port or writes a file.
+ * A valid plan of two cameras and the FOUR numbered microphone channels (D61, 2026-11-04: the
+ * protocol's plan holds exactly four mic rows, one per channel, each with its own audio file). The
+ * addresses and paths are text only: nothing here listens on a port or writes a file.
  */
 export function capturePlan(sessionId = 'S-TEST-0001', overrides: Partial<CapturePlan> = {}): CapturePlan {
   const root = `/nonexistent/dems-unit-test-data/media/sessions/${sessionId}`;
@@ -428,11 +430,9 @@ export function capturePlan(sessionId = 'S-TEST-0001', overrides: Partial<Captur
       { deviceId: 'CAM-01', trackId: 'VIDEO-01', profile: null, ingestUrl: 'rtsp://127.0.0.1:8554/video01', outputPath: `${root}/VIDEO-01.mp4` },
       { deviceId: 'CAM-02', trackId: 'VIDEO-02', profile: null, ingestUrl: 'rtsp://127.0.0.1:8555/video02', outputPath: `${root}/VIDEO-02.mp4` },
     ],
-    mics: [
-      { deviceId: 'MIC-01', role: CaptureMicRole.PRIMARY, input: { kind: 'PCM_FIFO', path: `${root}/MIC-01.pcm` } },
-      { deviceId: 'MIC-02', role: CaptureMicRole.STANDBY, input: { kind: 'PCM_FIFO', path: `${root}/MIC-02.pcm` } },
-    ],
-    activeMic: CaptureMicRole.PRIMARY,
+    // D61 (2026-11-04): the four numbered channels, each with its own file (the twin of a camera's outputPath).
+    mics: CAPTURE_MIC_CHANNELS.map((channel, index) => ({ deviceId: channel, channel, input: { kind: 'PCM_FIFO' as const, path: `${root}/MIC-0${index + 1}.pcm` }, outputPath: `${root}/MIC-0${index + 1}.m4a` })),
+    activeMic: 'MIC-01', // D61 (2026-11-04): the TRANSCRIBED channel of `AUDIO-01`, not the head of a failover pair
     pcmTapPath: null,
     constants: {
       fragmentTargetMs: CAPTURE_FRAGMENT_TARGET_MS,

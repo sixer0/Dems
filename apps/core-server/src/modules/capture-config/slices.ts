@@ -13,10 +13,11 @@
  *     caller passes it in; the tables hold no lock column;
  *   - the slice field list is `C3 §2.3`: no credential member exists anywhere (RK-12), `host` is
  *     the registry's `address` only, never a `user:password@` URL (C-N8);
- *   - the mics travel in INPUT order, `MIC-01` then `MIC-02`, whichever holds the PRIMARY role: a
- *     list of the two mic inputs is always that ordered pair (acceptance criterion AC-B-70; the
- *     simulator's operation 76 answers the same). Until blueprint row 66 this builder put the
- *     PRIMARY row first, which is the same list only while MIC-01 is PRIMARY;
+ *   - the mics travel in INPUT order, `MIC-01` then `MIC-02` (and `MIC-03`, `MIC-04` since D61,
+ *     2026-11-04: four numbered channels), whichever channel each line fills: the list is the
+ *     inputs ordered (acceptance criterion AC-B-70 generalized by D61; the simulator's operation 76
+ *     answers the same). Until blueprint row 66 this builder put the PRIMARY row first, which was
+ *     the same list only while MIC-01 held that role;
  *   - `capabilities` are "codes the adapters reported" (telemetry, SH-18): the registry table has
  *     no capabilities column (`profiles` holds MEDIA profiles for OD-05, dbc-3 §B.2), so a row
  *     maps to an empty list until supervisor telemetry lands (row 57 `applyCaptureTelemetry`).
@@ -28,8 +29,9 @@ import { CaptureConfigSliceSchema, CaptureDevicesSliceSchema, MIC_INPUT_ID_PATTE
 import { DEFAULT_CAPTURE_CONFIG, DEFAULT_CAPTURE_DEVICES } from '@dems/shared/sim';
 
 /**
- * The selector row as the store reads it (T-31, all runtime-relevant columns). The six slot
- * members are `null` for an UNASSIGNED slot (task 4 row 29, site A2; names register E15): the
+ * The selector row as the store reads it (T-31, all runtime-relevant columns). The eight slot
+ * members (D61, 2026-11-04: four video pairs and four numbered mic channels; six under D60) are
+ * `null` for an UNASSIGNED slot (task 4 row 29, site A2; names register E15): the
  * columns are nullable since schema set A.
  */
 export interface CaptureConfigRecord {
@@ -42,8 +44,10 @@ export interface CaptureConfigRecord {
   readonly video03Profile: string | null;
   readonly video04DeviceId: string | null;
   readonly video04Profile: string | null;
-  readonly micPrimaryId: string | null;
-  readonly micStandbyId: string | null;
+  readonly mic01Id: string | null; // D61 (2026-11-04): the two roles became four numbered channels
+  readonly mic02Id: string | null; // D61
+  readonly mic03Id: string | null; // D61
+  readonly mic04Id: string | null; // D61
   readonly revision: number;
   readonly updatedAt: number;
 }
@@ -120,9 +124,10 @@ function micInputOf(deviceId: string): string {
  * AN UNASSIGNED SLOT (task 4 row 29, site A2; decisions C14, C18 (2); AD-04). A slot whose member
  * is `null` is an ABSENT line of the slice, never a line with an empty device and never the line
  * of another slot: a camera line is made for ITS track from the columns of that track, a mic line
- * for ITS role from the column of that role. Nothing is placed by position, so a row that holds
- * only `VIDEO-02` and only a STANDBY microphone answers exactly those two lines, and a row of ten
- * NULLs (D60, 2026-11-04: four video pairs and two mics) answers two empty lists. This is not the built-in baseline: that one stands for a table
+ * for ITS channel from the column of that channel (D61, 2026-11-04: the roles became the numbered
+ * channels). Nothing is placed by position, so a row that holds
+ * only `VIDEO-02` and only a channel-2 microphone answers exactly those two lines, and a row of twelve
+ * NULLs (D61, 2026-11-04: four video pairs and four mic channels; ten under D60) answers two empty lists. This is not the built-in baseline: that one stands for a table
  * WITHOUT a row (`config === null`). A video slot is a pair: a device without a profile, or a
  * profile without a device, is refused by the member that is missing (the CHECK
  * `capture_config_slot_pair_check` cannot hold it; the row mapping refuses it the same way).
@@ -143,14 +148,15 @@ export function captureConfigSliceOf(config: CaptureConfigRecord | null, devices
     }
     return [{ trackId, deviceId, profile, online: device.enabled, streamState: streamStateAtRest(device) }];
   };
-  const mic = (deviceId: string | null, role: 'PRIMARY' | 'STANDBY'): MicLine[] => {
+  const mic = (channel: 'MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04', deviceId: string | null): MicLine[] => {
     if (deviceId === null) return [];
     const inputId = micInputOf(deviceId);
     const device = byId.get(deviceId);
     if (device === undefined || device.kind !== 'MIC') {
       throw new CaptureSliceError('CAPTURE_DEVICE_UNKNOWN', 'the selector names a mic the registry does not hold', { inputId, deviceId });
     }
-    return [{ inputId, deviceId, role, transport: device.transport, online: device.enabled }];
+    // D61 (2026-11-04): the line names its CHANNEL - the column it was read from - as a camera line names its track (was the PRIMARY/STANDBY role).
+    return [{ channel, inputId, deviceId, transport: device.transport, online: device.enabled }];
   };
   const slice: CaptureConfigSliceBody = {
     cameras: [
@@ -160,7 +166,7 @@ export function captureConfigSliceOf(config: CaptureConfigRecord | null, devices
       ...camera('VIDEO-03', config.video03DeviceId, config.video03Profile, ['video03DeviceId', 'video03Profile']),
       ...camera('VIDEO-04', config.video04DeviceId, config.video04Profile, ['video04DeviceId', 'video04Profile']),
     ],
-    mics: [...mic(config.micPrimaryId, 'PRIMARY'), ...mic(config.micStandbyId, 'STANDBY')].sort((left, right) =>
+    mics: [...mic('MIC-01', config.mic01Id), ...mic('MIC-02', config.mic02Id), ...mic('MIC-03', config.mic03Id), ...mic('MIC-04', config.mic04Id)].sort((left, right) => // D61 (2026-11-04): four numbered channels
       left.inputId < right.inputId ? -1 : left.inputId > right.inputId ? 1 : 0,
     ),
     locked,

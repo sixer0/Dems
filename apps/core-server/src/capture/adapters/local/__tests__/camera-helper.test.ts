@@ -37,6 +37,7 @@ import {
   type HelperDoor,
   type HelperExit,
   type HelperProcessOptions,
+  type PathStepFacts,
   type ProgramFacts,
 } from '../index';
 import { LEFTOVER_CANDIDATE_LIMIT, LEFTOVER_TABLE_LIMIT_BYTES, leftoverPrograms, linuxProgramPathReader, processShortName, programPathReaderFor } from '../leftover';
@@ -357,8 +358,10 @@ describe('the helper program path (M4-SEC-HELPER-1; SEC35-43)', () => {
     // Hermetic on any host (bench fix 2026-11-04): the fixture's chain names uid 501, the real
     // directory carries THIS process's uid - the refusal under test is the WRITABLE of the last
     // step, so the joined chain is normalized to the fixture's serverUid, its mode kept real.
-    const lastStep = facts.directoriesResolved.at(-1) ?? { ownerUid: 0, mode: 0 };
-    expect(helperProgramRefusal({ ...facts, file: { ...facts.file, ownerUid: TRUSTED.serverUid }, serverUid: TRUSTED.serverUid, directoriesAsWritten: TRUSTED.directoriesAsWritten, directoriesResolved: [...TRUSTED.directoriesResolved, { ...lastStep, ownerUid: TRUSTED.serverUid }] })).toBe(HelperProgramRefusal.DIRECTORY_WRITABLE); // bench fix 2026-11-04: the FILE too joins the fixture uid
+    // (Bench fix 2, same date: the fallback is TYPED - a spread of `A | {literal}` would make every
+    // member optional and no longer be a `PathStepFacts`.)
+    const lastStep: PathStepFacts = facts.directoriesResolved.at(-1) ?? { ownerUid: 0, mode: 0 };
+    expect(helperProgramRefusal({ ...facts, file: { ...(facts.file ?? { ownerUid: 0, mode: 0 }), ownerUid: TRUSTED.serverUid }, serverUid: TRUSTED.serverUid, directoriesAsWritten: TRUSTED.directoriesAsWritten, directoriesResolved: [...TRUSTED.directoriesResolved, { ...lastStep, ownerUid: TRUSTED.serverUid }] })).toBe(HelperProgramRefusal.DIRECTORY_WRITABLE); // bench fix 2026-11-04: the FILE too joins the fixture uid
     expect(inspectProgram('tool').absolute).toBe(false);
     expect(inspectProgram(join(scratch, 'nothing')).exists).toBe(false);
     expect(helperProgramRefusal(inspectProgram(scratch))).not.toBeNull();

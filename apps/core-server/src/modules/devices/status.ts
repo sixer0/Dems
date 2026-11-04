@@ -12,7 +12,7 @@
  *
  * Schema v2 (task 3 M2-W10; blueprint row 52): the four reads answer the v2 shapes of C3 §3 -
  * cameras with `sourceDeviceId` and `streamState`, audio keyed by the mic INPUTS with their
- * PRIMARY/STANDBY roles, `activeInputId` on the two audio-bearing answers, and the selector
+ * numbered CHANNELS (D61, 2026-11-04: was the PRIMARY/STANDBY roles), `activeInputId` on the two audio-bearing answers, and the selector
  * snapshot on operation 47. The selector slots come from the caller (the capture-config store of
  * the sibling module, row 52); a caller that passes none gets the built-in baseline, which is
  * what the simulator itself holds on an unedited state, so the parity rule keeps its force.
@@ -34,8 +34,9 @@ import { MicState } from '@dems/shared/domain';
 import {
   AUDIO_CLIP_BURST_DBFS,
   DEFAULT_CAPTURE_CONFIG,
+  PRIMARY_MIC_CHANNEL, // D61 (2026-11-04): channel 1 is the transcription channel (was the PRIMARY role)
   meterInputOfChannel,
-  micInputOfRole,
+  micInputOfChannel,
   noSignalFrame,
   silentFrame,
   storageSummary,
@@ -251,19 +252,20 @@ export function videoTracksOf(cameras: CommittedState['cameras'], slots: Capture
 /**
  * Operation 45, and `audio` of operation 44: one entry per mic INPUT, never merged (SYS-003).
  *
- * Schema v2 (C3 §3 ops 44/45; SH-15/SH-17; OD-01 T1; E-02): the entry is keyed by the input
- * `MIC-01`/`MIC-02` - never by a track - and carries the PRIMARY/STANDBY role the selector holds
- * inside `AUDIO-01` (`AUDIO-01` itself is the one session track, not a channel). The committed
- * `mics` slice is still the two meter channels of v1, so the input of a mic is the microphone line
- * its meter channel has in the selector slots (the shared `meterInputOfChannel`, names register N5;
- * ruling D137 kept by C21 (7): on a COMPLETE pair channel 1 is the first line, channel 2 the second,
- * whatever their IDs - `MIC-03` among them, D133 (1)).
+ * Schema v2 (C3 §3 ops 44/45; SH-15/SH-17; E-02): the entry is keyed by the input `MIC-NN` - never
+ * by a track - and carries the selector CHANNEL it stands on (D61, 2026-11-04: four simultaneous
+ * channels `MIC-01`..`MIC-04`, each feeding its own track `AUDIO-0N`; the PRIMARY/STANDBY role the
+ * OD-01 T1 one-track premise carried here is superseded, channel 1 keeps the transcription duty).
+ * The committed `mics` slice is the FOUR meter channels of D61, so the input of a mic is the
+ * microphone line its meter channel names in the selector slots (the shared `meterInputOfChannel`,
+ * names register N5; ruling D137 generalized by D61: `AUDIO-0N` is the input of the line whose
+ * channel is `MIC-0N`, whatever the device's ID - `MIC-05` among them, D133 (1)).
  *
  * Task 4 row 150 (AD-04 (2); site B12; names register E40): a meter channel WITHOUT an input - a
- * microphone slot is not assigned, so the lines are no complete pair - has NO entry: an entry IS an
- * input. No built-in input is answered for it, and the device and the capture role of an entry are
- * its selector line's, never the hardware slice's own (`mic.deviceId`, `mic.micRole`): the entry
- * exists only because that line does. At most two entries, two on a complete selector.
+ * microphone channel is not assigned - has NO entry: an entry IS an input. No built-in input is
+ * answered for it, and the device and the channel of an entry are its selector line's, never the
+ * hardware slice's own (`mic.deviceId`, the line's `channel`): the entry exists only because that
+ * line does. At most four entries, four on a complete selector (D61; was two).
  *
  * `frame` is the engine's newest meter frame (`app.engine.meters()`), or null before the first
  * tick of a start. With a frame, `dbfs`, `peak` and `noSignal` of an input are the frame's, as
@@ -271,10 +273,10 @@ export function videoTracksOf(cameras: CommittedState['cameras'], slots: Capture
  * command changes between two frames. Without one: `stateLevelsOf`.
  */
 export function audioChannelsOf(mics: CommittedState['mics'], at: number, frame: EngineMeterFrame | null = null, slots: CaptureSlots = BUILTIN_SLOTS): AudioChannelStatus[] {
-  // The slot's capture role is read through a destructured map, not a `.role` member access: the
+  // The slot's channel is read through a destructured map, not a member access on the line: the
   // static guard of the folder (M3) forbids the token that could be read as naming an RBAC role,
-  // and the mic's PRIMARY/STANDBY is a capture fact of the selector, never an access rule (row 52).
-  const lineOf = new Map(slots.mics.map(({ inputId, deviceId, role }) => [inputId, { deviceId, lineRole: role }] as const));
+  // and the mic's numbered channel is a capture fact of the selector, never an access rule (row 52).
+  const lineOf = new Map(slots.mics.map(({ inputId, deviceId, channel }) => [inputId, { deviceId, lineChannel: channel }] as const));
   return mics.flatMap((mic): AudioChannelStatus[] => {
     const inputId = meterInputOfChannel(slots.mics, mic.id);
     // Row 150: no input behind this meter channel, hence no entry. Nothing stands in for the line.
@@ -287,7 +289,7 @@ export function audioChannelsOf(mics: CommittedState['mics'], at: number, frame:
       inputId,
       deviceId: line.deviceId,
       name: mic.name,
-      role: line.lineRole,
+      channel: line.lineChannel, // D61 (2026-11-04): the entry names its channel (was the PRIMARY/STANDBY capture role)
       state: mic.state,
       recState: mic.recState,
       dbfs: levels.dbfs,
@@ -304,11 +306,12 @@ export function audioChannelsOf(mics: CommittedState['mics'], at: number, frame:
 
 /**
  * The input feeding `AUDIO-01` right now: the frame's when the engine has produced one that names
- * an input (the switch of op 81 moves it between frames), else the PRIMARY line of the selector
- * slots, whatever its ID (`MIC-NN`; D133 (1)).
+ * an input (the switch of op 81 moves it between frames), else the CHANNEL-1 line of the selector
+ * slots, whatever its ID (`MIC-NN`; D133 (1), re-keyed onto the numbered plane by D61, 2026-11-04:
+ * channel 1 keeps the transcription duty; the PRIMARY role that named it is superseded).
  *
- * Task 4 row 150 (AD-04 (2); site B13; names register N4, E40): the line is found BY ITS ROLE
- * (the shared `micInputOfRole`), and with no PRIMARY line and no frame that names an input the
+ * Task 4 row 150 (AD-04 (2); site B13; names register N4, E40): the line is found BY ITS CHANNEL
+ * (the shared `micInputOfChannel`), and with no channel-1 line and no frame that names an input the
  * answer is `null`. The three stand-ins this function had are gone: the hardware slice's microphone
  * whose own capture role is PRIMARY, the first microphone of that slice, and a built-in input. The
  * hardware slice is therefore no parameter any more.
@@ -316,7 +319,7 @@ export function audioChannelsOf(mics: CommittedState['mics'], at: number, frame:
 export function activeInputOf(frame: EngineMeterFrame | null = null, slots: CaptureSlots = BUILTIN_SLOTS): AudioStatusResponse['activeInputId'] {
   const fromFrame = frame?.audio.activeInputId;
   if (fromFrame !== undefined && fromFrame !== null) return fromFrame;
-  return micInputOfRole(slots.mics, 'PRIMARY');
+  return micInputOfChannel(slots.mics, PRIMARY_MIC_CHANNEL); // D61 (2026-11-04): the transcription channel, by number
 }
 
 /** `storage` of operation 44: the evidence volume, the write rate and the retention policy. */
@@ -346,7 +349,7 @@ export function storageStatusOf(state: Pick<CommittedState, 'storage' | 'storage
   };
 }
 
-/** Operation 45: the two mic inputs and the input whose audio is inside `AUDIO-01` right now. */
+/** Operation 45: the four mic inputs (D61, 2026-11-04) and the input whose audio feeds the transcribed track `AUDIO-01` right now. */
 export function audioStatusOf(state: Pick<CommittedState, 'mics'> & Partial<Pick<CommittedState, 'captureConfig'>>, now: number, frame: EngineMeterFrame | null = null, slots: CaptureSlots = captureSlotsOf(state)): AudioStatusResponse {
   return { channels: audioChannelsOf(state.mics, now, frame, slots), activeInputId: activeInputOf(frame, slots) };
 }
@@ -359,7 +362,7 @@ export function videoStatusOf(state: Pick<CommittedState, 'cameras'> & Partial<P
 /**
  * Operation 44: the health of camera, audio, storage, time and security, and the services.
  * Schema v2 (C3 §3 op 44): the cameras carry their stream state, the audio is keyed by the mic
- * inputs with their roles, and `activeInputId` names the input feeding `AUDIO-01` right now.
+ * inputs with their channels (D61, 2026-11-04: was their roles), and `activeInputId` names the input feeding `AUDIO-01` right now.
  */
 export function deviceHealthOf(state: CommittedState, now: number, frame: EngineMeterFrame | null = null, slots: CaptureSlots = captureSlotsOf(state), streamFacts = false): DeviceHealthResponse {
   // The shared rule of the Dashboard ring. It is typed for the whole simulator state and reads

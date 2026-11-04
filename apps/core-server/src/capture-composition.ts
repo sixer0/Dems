@@ -1078,8 +1078,8 @@ export function composeProductionCaptureOf(app: FastifyInstance, input: Producti
         if (!app.seams.has('engine') || !app.engine.running) return [];
         return app.engine
           .state()
-          .captureConfig.mics.filter((mic) => mic.role === 'PRIMARY' || mic.role === 'STANDBY')
-          .map((mic) => ({ deviceId: mic.deviceId, role: mic.role }));
+          // D61 (2026-11-04): every numbered channel of the selector is selected (was the two-role pair); the idle meters report on the worker's two-role lane until its own D61 wave, so each line keeps its legacy role name for that plumbing (`MIC-01`=`PRIMARY`, a later channel=`STANDBY`).
+          .captureConfig.mics.map((mic) => ({ deviceId: mic.deviceId, role: mic.channel === 'MIC-01' ? ('PRIMARY' as const) : ('STANDBY' as const) }));
       },
       sessionActive: () => app.seams.has('engine') && app.engine.running && isSessionActive(app.engine.state().session),
       publishLevels: (levels) => {

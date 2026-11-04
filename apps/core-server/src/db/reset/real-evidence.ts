@@ -144,8 +144,8 @@ export interface RealEvidenceQueryable {
   query<R extends QueryResultRow = QueryResultRow>(text: string, values?: unknown[]): Promise<{ rows: R[] }>;
 }
 
-/** The source rows a session holds, exactly (`dbc-4` MR-S1): one per slot. D60 (2026-11-04): the selector has six slots, so a session holds six. */
-export const SOURCE_ROWS_PER_SESSION = 6;
+/** The source rows a session holds, exactly (`dbc-4` MR-S1): one per slot. D60: six slots; D61 (2026-11-04): the selector has EIGHT slots - four video tracks and four numbered microphone channels - so a session holds eight. */
+export const SOURCE_ROWS_PER_SESSION = 8;
 /**
  * The adapter kinds that make a source a DEVELOPMENT source (`dbc-4` §N.2). The cross-check counts
  * these, never "everything that is not production": an unknown kind is not exempt.
@@ -460,7 +460,7 @@ export function realEvidenceMessage(facts: RealEvidenceFacts): string {
       (facts.unsealedSessions.length === 0 ? '' : `, ${String(facts.unsealedSessions.length)} session(s) that recorded from a production source and are not sealed (${named(facts.unsealedSessions)})`) +
       (facts.developmentUnproven.length === 0
         ? ''
-        : `, ${String(facts.developmentUnproven.length)} of them flagged as development sources without six development source rows`),
+        : `, ${String(facts.developmentUnproven.length)} of them flagged as development sources without eight development source rows`),
     `evidence store ${facts.storeRoot} ${facts.storePresent ? 'holds' : 'does not exist;'} ${String(facts.diskSessions.length)} REAL package(s)` +
       (facts.unprovablePackages.length === 0 ? '' : ` and ${String(facts.unprovablePackages.length)} unreadable package director(y/ies) [${named(facts.unprovablePackages)}]`) +
       (facts.quarantinedSessions.length === 0 ? '' : ` and ${String(facts.quarantinedSessions.length)} quarantined recording folder(s) [${named(facts.quarantinedSessions)}]`) +

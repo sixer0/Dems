@@ -1,5 +1,5 @@
 {
-  "source": "docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts; erratum PE-0013-01; delta module contract-v6-delta.ts; task 4 schema set A, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md sections 2.1 to 2.3 with 04_design_addendum.md sections 1.4 and 7.2; delta module contract-v7-delta.ts; task 4 schema set B, the same document sections 2.4 and 2.5; delta module contract-v8-delta.ts; task 4 package X-C, docs/2026-10-12_input_av_core_adapter_plan/masterplan/05_design_x1_x2.md section 3.6; delta module contract-v9-delta.ts; task 4 requirement AD-06 (4), docs/2026-10-12_input_av_core_adapter_plan/verification/04_security_addendum.md; delta module contract-v10-delta.ts; task 4 schema set C, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md section 2.6; delta module contract-v11-delta.ts; task 4 honest removal reasons of a temporary host address, docs/2026-10-12_input_av_core_adapter_plan/decisions/decisions.md C74 D-2 and D-3; delta module contract-v12-delta.ts; task 4 further removal reason ADD_UNCONFIRMED, docs/2026-10-12_input_av_core_adapter_plan/verification/119_commissioning_security.md caution R119-05 answer (d) with decisions/decisions.md C94 (d); delta module contract-v13-delta.ts; task 4 allowed ONVIF ports of the network settings and the widened form of an interface name, docs/2026-10-12_input_av_core_adapter_plan/verification/120_m10_review.md finding F-4 and 120b_m10_review_second_pass.md finding S2-02 with decisions/decisions.md C114 and C116; delta module contract-v14-delta.ts; task 4 retiring a capture device, docs/2026-10-12_input_av_core_adapter_plan/masterplan/07_design_retire_readopt.md section 4.1 with decisions/decisions.md C147; delta module contract-v15-delta.ts; D60 of 2026-11-04, four simultaneous video tracks, docs/2026-10-21_bare_metal_bench/decisions/decisions.md D60 with migration 0039_four_video_tracks and the five widened track CHECKs; delta module contract-v16-delta.ts)",
+  "source": "docs/2026-10-04_dems_backend_rbac_pairing/masterplan/03_database_contract.md (sections 2.4 and 4) composed with docs/2026-10-07_dems_real_capture_sealing/masterplan/04_database_contract.md (dbc-3 sections A.2, B, C, E.3; delta module contract-v2-delta.ts; dbc-4 section N; delta module contract-v3-delta.ts; erratum PE-129b-01; delta module contract-v5-delta.ts; erratum PE-0013-01; delta module contract-v6-delta.ts; task 4 schema set A, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md sections 2.1 to 2.3 with 04_design_addendum.md sections 1.4 and 7.2; delta module contract-v7-delta.ts; task 4 schema set B, the same document sections 2.4 and 2.5; delta module contract-v8-delta.ts; task 4 package X-C, docs/2026-10-12_input_av_core_adapter_plan/masterplan/05_design_x1_x2.md section 3.6; delta module contract-v9-delta.ts; task 4 requirement AD-06 (4), docs/2026-10-12_input_av_core_adapter_plan/verification/04_security_addendum.md; delta module contract-v10-delta.ts; task 4 schema set C, docs/2026-10-12_input_av_core_adapter_plan/masterplan/03_db_schema_extension.md section 2.6; delta module contract-v11-delta.ts; task 4 honest removal reasons of a temporary host address, docs/2026-10-12_input_av_core_adapter_plan/decisions/decisions.md C74 D-2 and D-3; delta module contract-v12-delta.ts; task 4 further removal reason ADD_UNCONFIRMED, docs/2026-10-12_input_av_core_adapter_plan/verification/119_commissioning_security.md caution R119-05 answer (d) with decisions/decisions.md C94 (d); delta module contract-v13-delta.ts; task 4 allowed ONVIF ports of the network settings and the widened form of an interface name, docs/2026-10-12_input_av_core_adapter_plan/verification/120_m10_review.md finding F-4 and 120b_m10_review_second_pass.md finding S2-02 with decisions/decisions.md C114 and C116; delta module contract-v14-delta.ts; task 4 retiring a capture device, docs/2026-10-12_input_av_core_adapter_plan/masterplan/07_design_retire_readopt.md section 4.1 with decisions/decisions.md C147; delta module contract-v15-delta.ts; D60 of 2026-11-04, four simultaneous video tracks, docs/2026-10-21_bare_metal_bench/decisions/decisions.md D60 with migration 0039_four_video_tracks and the five widened track CHECKs; delta module contract-v16-delta.ts; D61 of 2026-11-04, four simultaneous microphone channels, docs/2026-10-21_bare_metal_bench/decisions/decisions.md D61 with migration 0040_four_audio_channels, the renamed role columns, the pairwise mic rule and the widened slot, pairing, track and tamper CHECKs; delta module contract-v17-delta.ts)",
   "valueSets": {
     "ROLE": [
       "INVESTIGATOR",
@@ -68,7 +68,9 @@
       "VIDEO-03",
       "VIDEO-04",
       "AUDIO-01",
-      "AUDIO-02"
+      "AUDIO-02",
+      "AUDIO-03",
+      "AUDIO-04"
     ],
     "VIDEO_TRACK_ID": [
       "VIDEO-01",
@@ -271,8 +273,10 @@
       "VIDEO-02",
       "VIDEO-03",
       "VIDEO-04",
-      "MIC-PRIMARY",
-      "MIC-STANDBY"
+      "MIC-01",
+      "MIC-02",
+      "MIC-03",
+      "MIC-04"
     ],
     "CAPTURE_STREAM_ROLE": [
       "MAIN",
@@ -2294,7 +2298,7 @@
         {
           "name": "evidence_items_tamper_check",
           "kind": "CHECK",
-          "definition": "tampered_track_id IS NULL OR tampered_track_id IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-02')"
+          "definition": "\\\"evidence_items\\\".\\\"tampered_track_id\\\" IS NULL OR \\\"evidence_items\\\".\\\"tampered_track_id\\\" IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04')"
         }
       ]
     },
@@ -2415,7 +2419,7 @@
         {
           "name": "evidence_tracks_track_check",
           "kind": "CHECK",
-          "definition": "track_id IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-02') AND position BETWEEN 1 AND 6"
+          "definition": "track_id IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04') AND position BETWEEN 1 AND 8"
         }
       ]
     },
@@ -3671,13 +3675,13 @@
           "default": null
         },
         {
-          "name": "mic_primary_id",
+          "name": "mic_01_id",
           "type": "text",
           "notNull": false,
           "default": null
         },
         {
-          "name": "mic_standby_id",
+          "name": "mic_02_id",
           "type": "text",
           "notNull": false,
           "default": null
@@ -3723,6 +3727,18 @@
           "type": "text",
           "notNull": false,
           "default": null
+        },
+        {
+          "name": "mic_03_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
+        },
+        {
+          "name": "mic_04_id",
+          "type": "text",
+          "notNull": false,
+          "default": null
         }
       ],
       "constraints": [
@@ -3742,11 +3758,6 @@
           "definition": "\"capture_config\".\"video_01_profile\" ~ '^[A-Z][A-Z0-9_]{0,63}$' AND \"capture_config\".\"video_02_profile\" ~ '^[A-Z][A-Z0-9_]{0,63}$'"
         },
         {
-          "name": "capture_config_mic_check",
-          "kind": "CHECK",
-          "definition": "\"capture_config\".\"mic_standby_id\" <> \"capture_config\".\"mic_primary_id\""
-        },
-        {
           "name": "capture_config_revision_check",
           "kind": "CHECK",
           "definition": "\"capture_config\".\"revision\" >= 1"
@@ -3760,16 +3771,6 @@
           "name": "capture_config_video_02_device_id_fkey",
           "kind": "FOREIGN KEY",
           "definition": "(video_02_device_id) REFERENCES capture_devices (id)"
-        },
-        {
-          "name": "capture_config_mic_primary_id_fkey",
-          "kind": "FOREIGN KEY",
-          "definition": "(mic_primary_id) REFERENCES capture_devices (id)"
-        },
-        {
-          "name": "capture_config_mic_standby_id_fkey",
-          "kind": "FOREIGN KEY",
-          "definition": "(mic_standby_id) REFERENCES capture_devices (id)"
         },
         {
           "name": "capture_config_updated_by_fkey",
@@ -3800,6 +3801,31 @@
           "name": "capture_config_slot_pair_check",
           "kind": "CHECK",
           "definition": "((\"capture_config\".\"video_01_device_id\" IS NULL) = (\"capture_config\".\"video_01_profile\" IS NULL)) AND ((\"capture_config\".\"video_02_device_id\" IS NULL) = (\"capture_config\".\"video_02_profile\" IS NULL)) AND ((\"capture_config\".\"video_03_device_id\" IS NULL) = (\"capture_config\".\"video_03_profile\" IS NULL)) AND ((\"capture_config\".\"video_04_device_id\" IS NULL) = (\"capture_config\".\"video_04_profile\" IS NULL))"
+        },
+        {
+          "name": "capture_config_mic_01_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(mic_01_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "capture_config_mic_02_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(mic_02_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "capture_config_mic_03_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(mic_03_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "capture_config_mic_04_id_fkey",
+          "kind": "FOREIGN KEY",
+          "definition": "(mic_04_id) REFERENCES capture_devices (id)"
+        },
+        {
+          "name": "capture_config_mic_check",
+          "kind": "CHECK",
+          "definition": "((\\\"capture_config\\\".\\\"mic_01_id\\\" <> \\\"capture_config\\\".\\\"mic_02_id\\\") AND (\\\"capture_config\\\".\\\"mic_01_id\\\" <> \\\"capture_config\\\".\\\"mic_03_id\\\")) AND ((\\\"capture_config\\\".\\\"mic_01_id\\\" <> \\\"capture_config\\\".\\\"mic_04_id\\\") AND (\\\"capture_config\\\".\\\"mic_02_id\\\" <> \\\"capture_config\\\".\\\"mic_03_id\\\")) AND ((\\\"capture_config\\\".\\\"mic_02_id\\\" <> \\\"capture_config\\\".\\\"mic_04_id\\\") AND (\\\"capture_config\\\".\\\"mic_03_id\\\" <> \\\"capture_config\\\".\\\"mic_04_id\\\"))"
         }
       ]
     },
@@ -4767,12 +4793,12 @@
         {
           "name": "session_capture_sources_slot_check",
           "kind": "CHECK",
-          "definition": "\"session_capture_sources\".\"slot\" IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-PRIMARY', 'MIC-STANDBY')"
+          "definition": "\\\"session_capture_sources\\\".\\\"slot\\\" IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04')"
         },
         {
           "name": "session_capture_sources_pairing_check",
           "kind": "CHECK",
-          "definition": "(\"session_capture_sources\".\"slot\" IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04') AND \"session_capture_sources\".\"adapter_kind\" IN ('ONVIF_RTSP', 'FAKE', 'LOCAL_DEVICE')) OR (\"session_capture_sources\".\"slot\" IN ('MIC-PRIMARY', 'MIC-STANDBY') AND \"session_capture_sources\".\"adapter_kind\" IN ('USB_AUDIO', 'FAKE', 'LOCAL_DEVICE'))"
+          "definition": "(\\\"session_capture_sources\\\".\\\"slot\\\" IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04') AND \\\"session_capture_sources\\\".\\\"adapter_kind\\\" IN ('ONVIF_RTSP', 'FAKE', 'LOCAL_DEVICE')) OR (\\\"session_capture_sources\\\".\\\"slot\\\" IN ('MIC-01', 'MIC-02', 'MIC-03', 'MIC-04') AND \\\"session_capture_sources\\\".\\\"adapter_kind\\\" IN ('USB_AUDIO', 'FAKE', 'LOCAL_DEVICE'))"
         }
       ]
     },
@@ -5626,9 +5652,9 @@
   ],
   "counts": {
     "tables": 48,
-    "columns": 505,
+    "columns": 507,
     "primaryKeys": 48,
-    "foreignKeys": 51,
+    "foreignKeys": 53,
     "uniques": 15,
     "uniqueIndexes": 8,
     "indexes": 24,

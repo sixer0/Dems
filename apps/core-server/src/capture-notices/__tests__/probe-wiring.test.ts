@@ -84,8 +84,8 @@ describe('pass D9, item 5: the notices unit reads the probe from the capture fen
     const response = await built.post();
     expect(response.statusCode).toBe(200);
     const scan = response.json() as { inputs: { deviceId: string; present: boolean; adapter: string; sourceClass: string; errorCode: string | null }[] };
-    // The registered microphones of this engine are the two test sources: each is read from ITS adapter of the running operation.
-    expect(scan.inputs.map((input) => [input.deviceId, input.present, input.sourceClass, input.errorCode])).toEqual([['MIC-01', true, 'DEVELOPMENT', null], ['MIC-02', true, 'DEVELOPMENT', null]]);
+    // The registered microphones of this engine are the test sources (D61, 2026-11-04: the third channel joins): each is read from ITS adapter of the running operation.
+    expect(scan.inputs.map((input) => [input.deviceId, input.present, input.sourceClass, input.errorCode])).toEqual([['MIC-01', true, 'DEVELOPMENT', null], ['MIC-02', true, 'DEVELOPMENT', null], ['MIC-03', true, 'DEVELOPMENT', null]]);
     expect(new Set(scan.inputs.map((input) => input.adapter))).not.toContain('STATE');
     // The probe as wired also reads this Mac's microphone (registered on a development Core as MIC-03): present, by the listing alone.
     const reading = await captureNotices(built.app).probe()?.microphones();

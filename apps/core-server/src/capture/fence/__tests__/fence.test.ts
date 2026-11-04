@@ -553,7 +553,7 @@ describe('M4-SEC-FENCE-1: every cell of the allowed-combinations table', () => {
   });
 
   it('row 1: simulated with demo controls boots SIMULATED, whatever is stored, and reads no registry', async () => {
-    for (const [devices, selector] of [[SEEDED, SEEDED_SELECTOR], [[...SEEDED, ...LOCAL], { ...SEEDED_SELECTOR, video01: 'CAM-03', primary: 'MIC-03' }], [[...SEEDED, ...PRODUCTION], PRODUCTION_SELECTOR], [[], null]] as const) {
+    for (const [devices, selector] of [[SEEDED, SEEDED_SELECTOR], [[...SEEDED, ...LOCAL], { ...SEEDED_SELECTOR, video01: 'CAM-03', mic01: 'MIC-03' } /* D61 (2026-11-04): the channel column is `mic01` */], [[...SEEDED, ...PRODUCTION], PRODUCTION_SELECTOR], [[], null]] as const) {
       const booted = await boot(configOf(), fakeTables(devices, selector));
       expectBooted(booted, 'SIMULATED');
       // Inert: not one statement ran, nothing was registered.
@@ -570,7 +570,7 @@ describe('M4-SEC-FENCE-1: every cell of the allowed-combinations table', () => {
     const assigned = await boot(configOf(REAL), fakeTables([...SEEDED, ...PRODUCTION], PRODUCTION_SELECTOR));
     expectBooted(assigned, 'REAL_PRODUCTION');
     expect(assigned.outcome).toMatchObject({ local: null, inserted: [], helperProgram: null });
-    expect(assigned.tables.devices).toHaveLength(11); // D60 (2026-11-04): the bed holds four adopted cameras now
+    expect(assigned.tables.devices).toHaveLength(13); // D60: four adopted cameras; D61 (2026-11-04): four adopted microphones
     expectBooted(await boot(configOf(REAL), fakeTables(SEEDED, null)), 'REAL_PRODUCTION');
   });
 
@@ -610,7 +610,7 @@ describe('M4-SEC-FENCE-1: every cell of the allowed-combinations table', () => {
   it('row 8: the flag with an assigned production source is refused (DEV_FLAG_WITH_PRODUCTION_SOURCE) and registers nothing', async () => {
     const booted = await boot(configOf(DEVELOPMENT), fakeTables([...SEEDED, ...PRODUCTION], { ...SEEDED_SELECTOR, video02: 'CAM-12' }));
     expectRefused(booted, 'DEV_FLAG_WITH_PRODUCTION_SOURCE', ['CAM-12']);
-    expect(booted.tables.devices).toHaveLength(11); // D60 (2026-11-04): the bed holds four adopted cameras now
+    expect(booted.tables.devices).toHaveLength(13); // D60: four adopted cameras; D61 (2026-11-04): four adopted microphones
     expect(booted.tables.statements.some((text) => text.startsWith('INSERT'))).toBe(false);
   });
 
@@ -805,7 +805,9 @@ function development(door: HelperDoor = scriptedDoor(LIST, () => LIVING).door) {
 const DEVELOPMENT_SELECTOR = {
   // D60 (2026-11-04): four camera lines - this Mac's camera plus three test sources - and the two microphone roles.
   cameras: [{ trackId: 'VIDEO-01' as const, deviceId: 'CAM-03', profile: 'H264_720P30' }, { trackId: 'VIDEO-02' as const, deviceId: 'CAM-02', profile: 'H264_720P30' }, { trackId: 'VIDEO-03' as const, deviceId: 'CAM-04', profile: 'H264_720P30' }, { trackId: 'VIDEO-04' as const, deviceId: 'CAM-05', profile: 'H264_720P30' }],
-  mics: [{ deviceId: 'MIC-03', role: 'PRIMARY' as const }, { deviceId: 'MIC-02', role: 'STANDBY' as const }],
+  // D61 (2026-11-04): four microphone lines on the numbered channels - this Mac's microphone on channel 1,
+  // two test sources and the fourth built-in on the channels behind it.
+  mics: [{ channel: 'MIC-01' as const, deviceId: 'MIC-03' }, { channel: 'MIC-02' as const, deviceId: 'MIC-02' }, { channel: 'MIC-03' as const, deviceId: 'MIC-01' }, { channel: 'MIC-04' as const, deviceId: 'MIC-04' }],
 };
 const SESSION = 'SES-20261009-0001';
 
@@ -821,6 +823,7 @@ describe('M4-LOCAL-SEL-1 (registry half): development sources exist in REAL_DEVE
       'MIC-01 FAKE DEVELOPMENT true',
       'MIC-02 FAKE DEVELOPMENT true',
       'MIC-03 LOCAL_DEVICE DEVELOPMENT true',
+      'MIC-04 FAKE DEVELOPMENT true', // D61 (2026-11-04): the fourth channel's built-in
       'POE-SWITCH FAKE DEVELOPMENT false',
     ]);
     expect(registry.openerKinds()).toEqual(['FAKE', 'LOCAL_DEVICE']);
@@ -919,30 +922,41 @@ describe('the development test sources (kind FAKE) feed the worker from a genera
   });
 });
 
-describe('M4-LOCAL-PLAN-1: the development plan and the six session_capture_sources rows (D60, 2026-11-04)', () => {
+describe('M4-LOCAL-PLAN-1: the development plan and the eight session_capture_sources rows (D60, D61 of 2026-11-04)', () => {
   const rowsOf = (registry: CaptureDeviceRegistry, selector: typeof DEVELOPMENT_SELECTOR = DEVELOPMENT_SELECTOR) =>
     buildSessionCaptureSources({ sessionId: SESSION, operation: registry.operation, slots: assertRecordableSelector(selector, registry).slots, recordedAt: 1_760_000_000_000 });
 
-  it('camera 1 = this Mac\'s camera, cameras 2 to 4 = test sources, microphone 1 = this Mac\'s microphone, microphone 2 = test source (D60)', () => {
+  it('camera 1 = this Mac\'s camera, cameras 2 to 4 = test sources, channel 1 = this Mac\'s microphone, the rest test sources (D60, D61)', () => {
     const { registry } = development();
     expect(rowsOf(registry).map((row) => `${row.slot} ${row.deviceId} ${row.adapterKind} ${row.sourceClass}`)).toEqual([
       'VIDEO-01 CAM-03 LOCAL_DEVICE DEVELOPMENT',
       'VIDEO-02 CAM-02 FAKE DEVELOPMENT',
       'VIDEO-03 CAM-04 FAKE DEVELOPMENT', // D60 (2026-11-04): the two further camera rows
       'VIDEO-04 CAM-05 FAKE DEVELOPMENT',
-      'MIC-PRIMARY MIC-03 LOCAL_DEVICE DEVELOPMENT',
-      'MIC-STANDBY MIC-02 FAKE DEVELOPMENT',
+      // D61 (2026-11-04): the four numbered channels, in slot order.
+      'MIC-01 MIC-03 LOCAL_DEVICE DEVELOPMENT',
+      'MIC-02 MIC-02 FAKE DEVELOPMENT',
+      'MIC-03 MIC-01 FAKE DEVELOPMENT',
+      'MIC-04 MIC-04 FAKE DEVELOPMENT',
     ]);
     expect(rowsOf(registry).every((row) => row.sessionId === SESSION && row.recordedAt === 1_760_000_000_000)).toBe(true);
-    // The plan of row 66 names the same six subjects, by device id (D60).
+    // The plan of row 66 names the same eight subjects, by device id (D60, D61).
     const plan = buildCapturePlan({
       selector: DEVELOPMENT_SELECTOR,
       registry,
       cameras: { 'VIDEO-01': { ingestUrl: 'rtsp://127.0.0.1:8555/live/a', outputPath: '/data/dems/media/a.mp4' }, 'VIDEO-02': { ingestUrl: 'rtsp://127.0.0.1:8556/live/b', outputPath: '/data/dems/media/b.mp4' }, 'VIDEO-03': { ingestUrl: 'rtsp://127.0.0.1:8557/live/c', outputPath: '/data/dems/media/c.mp4' }, 'VIDEO-04': { ingestUrl: 'rtsp://127.0.0.1:8558/live/d', outputPath: '/data/dems/media/d.mp4' } }, // D60 (2026-11-04)
-      mics: { 'MIC-03': { kind: 'PCM_FIFO', path: '/data/dems/run/capture/a.pcm' }, 'MIC-02': { kind: 'PCM_FIFO', path: '/data/dems/run/capture/b.pcm' } },
+      // D61 (2026-11-04): the sources are keyed by CHANNEL and each names its own audio file.
+      mics: {
+        'MIC-01': { input: { kind: 'PCM_FIFO', path: '/data/dems/run/capture/a.pcm' }, outputPath: '/data/dems/media/MIC-01.m4a' },
+        'MIC-02': { input: { kind: 'PCM_FIFO', path: '/data/dems/run/capture/b.pcm' }, outputPath: '/data/dems/media/MIC-02.m4a' },
+        'MIC-03': { input: { kind: 'PCM_FIFO', path: '/data/dems/run/capture/c.pcm' }, outputPath: '/data/dems/media/MIC-03.m4a' },
+        'MIC-04': { input: { kind: 'PCM_FIFO', path: '/data/dems/run/capture/d.pcm' }, outputPath: '/data/dems/media/MIC-04.m4a' },
+      },
       pcmTapPath: null,
     });
-    expect([...plan.cameras.map((camera) => camera.deviceId), ...plan.mics.map((mic) => mic.deviceId)]).toEqual(['CAM-03', 'CAM-02', 'CAM-04', 'CAM-05', 'MIC-03', 'MIC-02']); // D60 (2026-11-04): six subjects
+    expect([...plan.cameras.map((camera) => camera.deviceId), ...plan.mics.map((mic) => mic.deviceId)]).toEqual(['CAM-03', 'CAM-02', 'CAM-04', 'CAM-05', 'MIC-03', 'MIC-02', 'MIC-01', 'MIC-04']); // D60: four cameras; D61: four channels
+    // D61 (2026-11-04): the plan carries the file of every channel the caller named.
+    expect(plan.mics.map((mic) => [mic.channel, mic.outputPath])).toEqual([['MIC-01', '/data/dems/media/MIC-01.m4a'], ['MIC-02', '/data/dems/media/MIC-02.m4a'], ['MIC-03', '/data/dems/media/MIC-03.m4a'], ['MIC-04', '/data/dems/media/MIC-04.m4a']]);
   });
 
   it('a mixed production plan is refused: by the plan builder, and by the builder of the rows on its own', () => {
@@ -950,27 +964,27 @@ describe('M4-LOCAL-PLAN-1: the development plan and the six session_capture_sour
     // Row 66's check, on a registry that holds no production source: the production camera is not recordable.
     expect(() => assertRecordableSelector({ ...DEVELOPMENT_SELECTOR, cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-11', profile: 'H264_1080P25' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'H264_720P30' }, { trackId: 'VIDEO-03', deviceId: 'CAM-04', profile: 'H264_720P30' }, { trackId: 'VIDEO-04', deviceId: 'CAM-05', profile: 'H264_720P30' }] }, development().registry)).toThrow(CapturePlanError); // D60 (2026-11-04): four lines, one of them production
     // The builder trusts no caller: handed six slots (D60) that mix the classes, it writes no row.
-    const slot = (name: 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04' | 'PRIMARY' | 'STANDBY', id: string, deviceClass: 'CAMERA' | 'MIC', adapterKind: 'FAKE' | 'LOCAL_DEVICE' | 'ONVIF_RTSP' | 'USB_AUDIO', hasOpener = true) => ({ slot: name, descriptor: { id, deviceClass, adapterKind, hasOpener } });
-    const mixed = [slot('VIDEO-01', 'CAM-11', 'CAMERA', 'ONVIF_RTSP'), slot('VIDEO-02', 'CAM-02', 'CAMERA', 'FAKE'), slot('VIDEO-03', 'CAM-04', 'CAMERA', 'FAKE'), slot('VIDEO-04', 'CAM-05', 'CAMERA', 'FAKE'), slot('PRIMARY', 'MIC-03', 'MIC', 'LOCAL_DEVICE'), slot('STANDBY', 'MIC-02', 'MIC', 'FAKE')];
+    const slot = (name: 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04' | 'MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04', id: string, deviceClass: 'CAMERA' | 'MIC', adapterKind: 'FAKE' | 'LOCAL_DEVICE' | 'ONVIF_RTSP' | 'USB_AUDIO', hasOpener = true) => ({ slot: name, descriptor: { id, deviceClass, adapterKind, hasOpener } }); // D61 (2026-11-04): eight slots
+    const mixed = [slot('VIDEO-01', 'CAM-11', 'CAMERA', 'ONVIF_RTSP'), slot('VIDEO-02', 'CAM-02', 'CAMERA', 'FAKE'), slot('VIDEO-03', 'CAM-04', 'CAMERA', 'FAKE'), slot('VIDEO-04', 'CAM-05', 'CAMERA', 'FAKE'), slot('MIC-01', 'MIC-03', 'MIC', 'LOCAL_DEVICE'), slot('MIC-02', 'MIC-02', 'MIC', 'FAKE'), slot('MIC-03', 'MIC-01', 'MIC', 'FAKE'), slot('MIC-04', 'MIC-04', 'MIC', 'FAKE')];
     for (const operation of [CaptureOperation.REAL_DEVELOPMENT, CaptureOperation.REAL_PRODUCTION]) {
       expect(() => buildSessionCaptureSources({ sessionId: SESSION, operation, slots: mixed, recordedAt: 1 })).toThrow('no opener exists for this source kind');
     }
     // An all-production set (task 4 row 88, THE LIFT; specification 6.3 "Test: fence ... rewritten for REAL_PRODUCTION, kept
     // for REAL_DEVELOPMENT"): refused in REAL_DEVELOPMENT, as before; in REAL_PRODUCTION six PRODUCTION rows (D60) once each source
     // states its opener - and still refused where one of them states none (SEC35-40 (1): no opener, no row).
-    const production = [slot('VIDEO-01', 'CAM-11', 'CAMERA', 'ONVIF_RTSP'), slot('VIDEO-02', 'CAM-12', 'CAMERA', 'ONVIF_RTSP'), slot('VIDEO-03', 'CAM-13', 'CAMERA', 'ONVIF_RTSP'), slot('VIDEO-04', 'CAM-14', 'CAMERA', 'ONVIF_RTSP'), slot('PRIMARY', 'MIC-11', 'MIC', 'USB_AUDIO'), slot('STANDBY', 'MIC-12', 'MIC', 'USB_AUDIO')];
+    const production = [slot('VIDEO-01', 'CAM-11', 'CAMERA', 'ONVIF_RTSP'), slot('VIDEO-02', 'CAM-12', 'CAMERA', 'ONVIF_RTSP'), slot('VIDEO-03', 'CAM-13', 'CAMERA', 'ONVIF_RTSP'), slot('VIDEO-04', 'CAM-14', 'CAMERA', 'ONVIF_RTSP'), slot('MIC-01', 'MIC-11', 'MIC', 'USB_AUDIO'), slot('MIC-02', 'MIC-12', 'MIC', 'USB_AUDIO'), slot('MIC-03', 'MIC-13', 'MIC', 'USB_AUDIO'), slot('MIC-04', 'MIC-14', 'MIC', 'USB_AUDIO')];
     expect(() => buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.REAL_DEVELOPMENT, slots: production, recordedAt: 1 })).toThrow(CaptureAdapterError);
-    expect(buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.REAL_PRODUCTION, slots: production, recordedAt: 1 }).map((row) => `${row.slot} ${row.adapterKind} ${row.sourceClass}`)).toEqual(['VIDEO-01 ONVIF_RTSP PRODUCTION', 'VIDEO-02 ONVIF_RTSP PRODUCTION', 'VIDEO-03 ONVIF_RTSP PRODUCTION', 'VIDEO-04 ONVIF_RTSP PRODUCTION', 'MIC-PRIMARY USB_AUDIO PRODUCTION', 'MIC-STANDBY USB_AUDIO PRODUCTION']); // D60 (2026-11-04): six rows
-    expect(() => buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.REAL_PRODUCTION, slots: [...production.slice(0, 4), slot('PRIMARY', 'MIC-11', 'MIC', 'USB_AUDIO', false), production[5]!], recordedAt: 1 })).toThrow('no opener exists for this source kind'); // D60 (2026-11-04): six slots, one without an opener
+    expect(buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.REAL_PRODUCTION, slots: production, recordedAt: 1 }).map((row) => `${row.slot} ${row.adapterKind} ${row.sourceClass}`)).toEqual(['VIDEO-01 ONVIF_RTSP PRODUCTION', 'VIDEO-02 ONVIF_RTSP PRODUCTION', 'VIDEO-03 ONVIF_RTSP PRODUCTION', 'VIDEO-04 ONVIF_RTSP PRODUCTION', 'MIC-01 USB_AUDIO PRODUCTION', 'MIC-02 USB_AUDIO PRODUCTION', 'MIC-03 USB_AUDIO PRODUCTION', 'MIC-04 USB_AUDIO PRODUCTION']); // D60: four cameras; D61 (2026-11-04): eight rows
+    expect(() => buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.REAL_PRODUCTION, slots: [...production.slice(0, 4), slot('MIC-01', 'MIC-11', 'MIC', 'USB_AUDIO', false), ...production.slice(5)], recordedAt: 1 })).toThrow('no opener exists for this source kind'); // D61: eight slots, one without an opener
     // A development set in REAL_PRODUCTION, a source that states no opener, three slots, a microphone in a video slot: refused.
-    const good = [slot('VIDEO-01', 'CAM-03', 'CAMERA', 'LOCAL_DEVICE'), slot('VIDEO-02', 'CAM-02', 'CAMERA', 'FAKE'), slot('VIDEO-03', 'CAM-04', 'CAMERA', 'FAKE'), slot('VIDEO-04', 'CAM-05', 'CAMERA', 'FAKE'), slot('PRIMARY', 'MIC-03', 'MIC', 'LOCAL_DEVICE'), slot('STANDBY', 'MIC-02', 'MIC', 'FAKE')]; // D60 (2026-11-04): six slots
+    const good = [slot('VIDEO-01', 'CAM-03', 'CAMERA', 'LOCAL_DEVICE'), slot('VIDEO-02', 'CAM-02', 'CAMERA', 'FAKE'), slot('VIDEO-03', 'CAM-04', 'CAMERA', 'FAKE'), slot('VIDEO-04', 'CAM-05', 'CAMERA', 'FAKE'), slot('MIC-01', 'MIC-03', 'MIC', 'LOCAL_DEVICE'), slot('MIC-02', 'MIC-02', 'MIC', 'FAKE'), slot('MIC-03', 'MIC-01', 'MIC', 'FAKE'), slot('MIC-04', 'MIC-04', 'MIC', 'FAKE')]; // D60, D61 (2026-11-04): eight slots
     expect(() => buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.REAL_PRODUCTION, slots: good, recordedAt: 1 })).toThrow(CaptureAdapterError);
     expect(() => buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.REAL_DEVELOPMENT, slots: [slot('VIDEO-01', 'CAM-03', 'CAMERA', 'LOCAL_DEVICE', false), ...good.slice(1)], recordedAt: 1 })).toThrow(CaptureAdapterError);
-    expect(() => buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.REAL_DEVELOPMENT, slots: good.slice(0, 5), recordedAt: 1 })).toThrow(CaptureAdapterError); // D60: five of the six slots
+    expect(() => buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.REAL_DEVELOPMENT, slots: good.slice(0, 7), recordedAt: 1 })).toThrow(CaptureAdapterError); // D61: seven of the eight slots
     expect(() => buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.REAL_DEVELOPMENT, slots: [slot('VIDEO-01', 'MIC-03', 'MIC', 'LOCAL_DEVICE'), ...good.slice(1)], recordedAt: 1 })).toThrow(CaptureAdapterError);
     expect(() => buildSessionCaptureSources({ sessionId: 'SES-1', operation: CaptureOperation.REAL_DEVELOPMENT, slots: good, recordedAt: 1 })).toThrow(CaptureAdapterError);
-    // CONTROL: the good set in REAL_DEVELOPMENT is six rows (D60).
-    expect(buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.REAL_DEVELOPMENT, slots: good, recordedAt: 1 })).toHaveLength(6);
+    // CONTROL: the good set in REAL_DEVELOPMENT is eight rows (D60, D61).
+    expect(buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.REAL_DEVELOPMENT, slots: good, recordedAt: 1 })).toHaveLength(8);
     expect(registry.list()).toEqual([]);
   });
 
@@ -980,10 +994,12 @@ describe('M4-LOCAL-PLAN-1: the development plan and the six session_capture_sour
       { slot: 'VIDEO-02' as const, descriptor: { id: 'CAM-03', deviceClass: 'CAMERA' as const, adapterKind: 'LOCAL_DEVICE' as const, hasOpener: false } },
       { slot: 'VIDEO-03' as const, descriptor: { id: 'CAM-13', deviceClass: 'CAMERA' as const, adapterKind: 'ONVIF_RTSP' as const, hasOpener: false } },
       { slot: 'VIDEO-04' as const, descriptor: { id: 'CAM-05', deviceClass: 'CAMERA' as const, adapterKind: 'FAKE' as const, hasOpener: false } },
-      { slot: 'PRIMARY' as const, descriptor: { id: 'MIC-01', deviceClass: 'MIC' as const, adapterKind: 'FAKE' as const, hasOpener: false } },
-      { slot: 'STANDBY' as const, descriptor: { id: 'MIC-12', deviceClass: 'MIC' as const, adapterKind: 'USB_AUDIO' as const, hasOpener: false } },
-    ];
-    expect(buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.SIMULATED, slots, recordedAt: 5 }).map((row) => `${row.slot} ${row.deviceId} ${row.adapterKind}`)).toEqual(['VIDEO-01 CAM-11 FAKE', 'VIDEO-02 CAM-03 FAKE', 'VIDEO-03 CAM-13 FAKE', 'VIDEO-04 CAM-05 FAKE', 'MIC-PRIMARY MIC-01 FAKE', 'MIC-STANDBY MIC-12 FAKE']);
+      { slot: 'MIC-01' as const, descriptor: { id: 'MIC-01', deviceClass: 'MIC' as const, adapterKind: 'FAKE' as const, hasOpener: false } },
+      { slot: 'MIC-02' as const, descriptor: { id: 'MIC-12', deviceClass: 'MIC' as const, adapterKind: 'USB_AUDIO' as const, hasOpener: false } },
+      { slot: 'MIC-03' as const, descriptor: { id: 'MIC-13', deviceClass: 'MIC' as const, adapterKind: 'USB_AUDIO' as const, hasOpener: false } },
+      { slot: 'MIC-04' as const, descriptor: { id: 'MIC-14', deviceClass: 'MIC' as const, adapterKind: 'USB_AUDIO' as const, hasOpener: false } },
+    ]; // D61 (2026-11-04): the eight slots
+    expect(buildSessionCaptureSources({ sessionId: SESSION, operation: CaptureOperation.SIMULATED, slots, recordedAt: 5 }).map((row) => `${row.slot} ${row.deviceId} ${row.adapterKind}`)).toEqual(['VIDEO-01 CAM-11 FAKE', 'VIDEO-02 CAM-03 FAKE', 'VIDEO-03 CAM-13 FAKE', 'VIDEO-04 CAM-05 FAKE', 'MIC-01 MIC-01 FAKE', 'MIC-02 MIC-12 FAKE', 'MIC-03 MIC-13 FAKE', 'MIC-04 MIC-14 FAKE']);
   });
 
   it('MR-S6: the rows read back are held to the running operation', () => {
@@ -993,7 +1009,7 @@ describe('M4-LOCAL-PLAN-1: the development plan and the six session_capture_sour
     expect(() => assertSessionSourcesOfOperation(rows, CaptureOperation.REAL_PRODUCTION)).toThrow('the source class of the device is not the class of the running capture operation');
     expect(() => assertSessionSourcesOfOperation(rows, CaptureOperation.SIMULATED)).toThrow(CaptureAdapterError);
     expect(() => assertSessionSourcesOfOperation(rows.slice(1), CaptureOperation.REAL_DEVELOPMENT)).toThrow(CaptureAdapterError);
-    expect(() => assertSessionSourcesOfOperation([...rows.slice(0, 5), { slot: 'MIC-STANDBY', deviceId: 'MIC-12', adapterKind: 'USB_AUDIO' }], CaptureOperation.REAL_DEVELOPMENT)).toThrow('no opener exists for this source kind'); // D60 (2026-11-04): six rows, one of them of another class
+    expect(() => assertSessionSourcesOfOperation([...rows.slice(0, 7), { slot: 'MIC-04', deviceId: 'MIC-12', adapterKind: 'USB_AUDIO' }], CaptureOperation.REAL_DEVELOPMENT)).toThrow('no opener exists for this source kind'); // D61 (2026-11-04): eight rows, one of them of another class
   });
 });
 
@@ -1231,24 +1247,24 @@ describe('task 4 row 71: the source facts of a microphone slot (closed keys, eve
 // null and the session start returns before it asks); the empty registry of that operation stands
 // in here to show that nothing could be recorded there even if it were asked.
 describe('task 4 row 33: the 21-state table - seven selector categories by the three capture operations (addendum 1.5, 1.7; AD-10 (4); C21 (6), C25)', () => {
-  type Slot = 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04' | 'PRIMARY' | 'STANDBY'; // D60 (2026-11-04): six selector slots
+  type Slot = 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04' | 'MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04'; // D60 (2026-11-04): four video slots; D61 (2026-11-04): four numbered microphone channels - eight slots
   type Lines = Readonly<Record<Slot, string | null>>;
   type Category = '1' | '2' | '3' | '4' | '5' | '6' | '7' | '2 (S-5)' | '3 (S-5)';
-  const SLOT_ORDER: readonly Slot[] = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'PRIMARY', 'STANDBY']; // D60 (2026-11-04)
+  const SLOT_ORDER: readonly Slot[] = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']; // D60, D61 (2026-11-04)
   const STORED = [...SEEDED, ...EXTRA, ...LOCAL, ...PRODUCTION]; // D60 (2026-11-04): EXTRA carries the two further generated test sources
   const U = null;
-  /** D: CAM-01 to CAM-05, MIC-01, MIC-02 (FAKE; CAM-03 is the local one). P: CAM-11 to CAM-14 (ONVIF_RTSP), MIC-11, MIC-12 (USB_AUDIO). D60 (2026-11-04): four camera lines. */
+  /** D: CAM-01 to CAM-05, MIC-01, MIC-02, MIC-04 (FAKE; CAM-03 and MIC-03 are the local ones). P: CAM-11 to CAM-14 (ONVIF_RTSP), MIC-11 to MIC-14 (USB_AUDIO). D60 (2026-11-04): four camera lines; D61 (2026-11-04): four numbered channels. */
   const CATEGORY: Readonly<Record<Category, { readonly title: string; readonly lines: Lines }>> = {
-    '1': { title: 'all six U', lines: { 'VIDEO-01': U, 'VIDEO-02': U, 'VIDEO-03': U, 'VIDEO-04': U, PRIMARY: U, STANDBY: U } }, // D60 (2026-11-04)
-    '2': { title: 'some U, the rest D (VIDEO-02 and PRIMARY held)', lines: { 'VIDEO-01': U, 'VIDEO-02': 'CAM-02', 'VIDEO-03': U, 'VIDEO-04': U, PRIMARY: 'MIC-01', STANDBY: U } }, // D60
-    '3': { title: 'some U, the rest P (VIDEO-01 and a lone STANDBY held)', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': U, 'VIDEO-03': U, 'VIDEO-04': U, PRIMARY: U, STANDBY: 'MIC-12' } }, // D60
-    '4': { title: 'some U, D and P (STANDBY empty)', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-12', 'VIDEO-03': U, 'VIDEO-04': U, PRIMARY: 'MIC-11', STANDBY: U } }, // D60
-    '5': { title: 'six assigned, all D (the full development selector)', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', 'VIDEO-03': 'CAM-04', 'VIDEO-04': 'CAM-05', PRIMARY: 'MIC-01', STANDBY: 'MIC-02' } }, // D60 (2026-11-04): four camera lines, each its own device
-    '6': { title: 'six assigned, all P', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': 'CAM-12', 'VIDEO-03': 'CAM-13', 'VIDEO-04': 'CAM-14', PRIMARY: 'MIC-11', STANDBY: 'MIC-12' } }, // D60 (2026-11-04)
-    '7': { title: 'six assigned, D and P', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-12', 'VIDEO-03': 'CAM-04', 'VIDEO-04': 'CAM-13', PRIMARY: 'MIC-11', STANDBY: 'MIC-02' } }, // D60 (2026-11-04): mixed on every line kind
-    // State S-5 of the security addendum (AD-10 (4)): five slots assigned, ONLY the STANDBY microphone not (D60: was three of four). Members of categories 2 and 3.
-    '2 (S-5)': { title: 'five D, a lone unassigned STANDBY', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', 'VIDEO-03': 'CAM-04', 'VIDEO-04': 'CAM-05', PRIMARY: 'MIC-01', STANDBY: U } },
-    '3 (S-5)': { title: 'five P, a lone unassigned STANDBY', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': 'CAM-12', 'VIDEO-03': 'CAM-13', 'VIDEO-04': 'CAM-14', PRIMARY: 'MIC-11', STANDBY: U } },
+    '1': { title: 'all eight U', lines: { 'VIDEO-01': U, 'VIDEO-02': U, 'VIDEO-03': U, 'VIDEO-04': U, 'MIC-01': U, 'MIC-02': U, 'MIC-03': U, 'MIC-04': U } }, // D60, D61 (2026-11-04)
+    '2': { title: 'some U, the rest D (VIDEO-02 and channel 1 held)', lines: { 'VIDEO-01': U, 'VIDEO-02': 'CAM-02', 'VIDEO-03': U, 'VIDEO-04': U, 'MIC-01': 'MIC-01', 'MIC-02': U, 'MIC-03': U, 'MIC-04': U } }, // D60, D61
+    '3': { title: 'some U, the rest P (VIDEO-01 and a lone channel 4 held)', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': U, 'VIDEO-03': U, 'VIDEO-04': U, 'MIC-01': U, 'MIC-02': U, 'MIC-03': U, 'MIC-04': 'MIC-14' } }, // D60, D61
+    '4': { title: 'some U, D and P (channel 4 empty)', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-12', 'VIDEO-03': U, 'VIDEO-04': U, 'MIC-01': 'MIC-11', 'MIC-02': U, 'MIC-03': U, 'MIC-04': U } }, // D60, D61
+    '5': { title: 'eight assigned, all D (the full development selector)', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', 'VIDEO-03': 'CAM-04', 'VIDEO-04': 'CAM-05', 'MIC-01': 'MIC-01', 'MIC-02': 'MIC-02', 'MIC-03': 'MIC-03', 'MIC-04': 'MIC-04' } }, // D60: four camera lines; D61: four numbered channels
+    '6': { title: 'eight assigned, all P', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': 'CAM-12', 'VIDEO-03': 'CAM-13', 'VIDEO-04': 'CAM-14', 'MIC-01': 'MIC-11', 'MIC-02': 'MIC-12', 'MIC-03': 'MIC-13', 'MIC-04': 'MIC-14' } }, // D60, D61
+    '7': { title: 'eight assigned, D and P', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-12', 'VIDEO-03': 'CAM-04', 'VIDEO-04': 'CAM-13', 'MIC-01': 'MIC-11', 'MIC-02': 'MIC-02', 'MIC-03': 'MIC-13', 'MIC-04': 'MIC-04' } }, // D60, D61: mixed on every line kind
+    // State S-5 of the security addendum (AD-10 (4)): seven slots assigned, ONLY the LAST microphone channel not (D60: was five of six with the standby out). Members of categories 2 and 3.
+    '2 (S-5)': { title: 'seven D, a lone unassigned channel 4', lines: { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', 'VIDEO-03': 'CAM-04', 'VIDEO-04': 'CAM-05', 'MIC-01': 'MIC-01', 'MIC-02': 'MIC-02', 'MIC-03': 'MIC-03', 'MIC-04': U } },
+    '3 (S-5)': { title: 'seven P, a lone unassigned channel 4', lines: { 'VIDEO-01': 'CAM-11', 'VIDEO-02': 'CAM-12', 'VIDEO-03': 'CAM-13', 'VIDEO-04': 'CAM-14', 'MIC-01': 'MIC-11', 'MIC-02': 'MIC-12', 'MIC-03': 'MIC-13', 'MIC-04': U } },
   };
 
   const SIM = CaptureOperation.SIMULATED;
@@ -1302,28 +1318,28 @@ describe('task 4 row 33: the 21-state table - seven selector categories by the t
     state('2', DEV, BOOTS, [], SHAPE, null, NOT_FOUR),
     state('2', SIM, BOOTS, [], SHAPE, null, NOT_FOUR),
     state('3', PROD, BOOTS, [], SHAPE, null, NOT_FOUR),
-    state('3', DEV, WITH_FLAG, ['CAM-11', 'MIC-12'], SHAPE, null, NOT_FOUR),
+    state('3', DEV, WITH_FLAG, ['CAM-11', 'MIC-14'], SHAPE, null, NOT_FOUR), // D61 (2026-11-04): the lone production microphone stands on channel 4
     state('3', SIM, BOOTS, [], SHAPE, null, NOT_FOUR),
     state('4', PROD, NO_FLAG, ['CAM-01'], SHAPE, null, NOT_FOUR),
     state('4', DEV, WITH_FLAG, ['CAM-12', 'MIC-11'], SHAPE, null, NOT_FOUR),
     state('4', SIM, BOOTS, [], SHAPE, null, NOT_FOUR),
-    state('5', PROD, NO_FLAG, ['CAM-01', 'CAM-02', 'CAM-04', 'CAM-05', 'MIC-01', 'MIC-02'], NO_ADAPTER, 'CAM-01', REFUSED), // D60 (2026-11-04): the two further dev cameras are named too
+    state('5', PROD, NO_FLAG, ['CAM-01', 'CAM-02', 'CAM-04', 'CAM-05', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'], NO_ADAPTER, 'CAM-01', REFUSED), // D60: the two further dev cameras; D61 (2026-11-04): the two further channels are named too
     state('5', DEV, BOOTS, [], RECORDABLE, null, FOUR_DEVELOPMENT),
     state('5', SIM, BOOTS, [], NO_ADAPTER, 'CAM-01', FOUR_FAKE),
     state('6', PROD, BOOTS, [], NO_ADAPTER, 'CAM-11', PRODUCTION_ONCE_LIFTED),
-    state('6', DEV, WITH_FLAG, ['CAM-11', 'CAM-12', 'CAM-13', 'CAM-14', 'MIC-11', 'MIC-12'], NO_ADAPTER, 'CAM-11', REFUSED), // D60 (2026-11-04)
+    state('6', DEV, WITH_FLAG, ['CAM-11', 'CAM-12', 'CAM-13', 'CAM-14', 'MIC-11', 'MIC-12', 'MIC-13', 'MIC-14'], NO_ADAPTER, 'CAM-11', REFUSED), // D60: four adopted cameras; D61 (2026-11-04): four adopted microphones
     state('6', SIM, BOOTS, [], NO_ADAPTER, 'CAM-11', FOUR_FAKE),
-    state('7', PROD, NO_FLAG, ['CAM-01', 'CAM-04', 'MIC-02'], NO_ADAPTER, 'CAM-01', REFUSED), // D60 (2026-11-04): VIDEO-03 is a dev line here
-    state('7', DEV, WITH_FLAG, ['CAM-12', 'CAM-13', 'MIC-11'], NO_ADAPTER, 'CAM-12', REFUSED), // D60 (2026-11-04): VIDEO-04 is a production line here
+    state('7', PROD, NO_FLAG, ['CAM-01', 'CAM-04', 'MIC-02', 'MIC-04'], NO_ADAPTER, 'CAM-01', REFUSED), // D60: VIDEO-03 is a dev line here; D61 (2026-11-04): so is channel 4
+    state('7', DEV, WITH_FLAG, ['CAM-12', 'CAM-13', 'MIC-11', 'MIC-13'], NO_ADAPTER, 'CAM-12', REFUSED), // D60: VIDEO-04 is a production line here; D61 (2026-11-04): so is channel 3
     state('7', SIM, BOOTS, [], NO_ADAPTER, 'CAM-01', FOUR_FAKE),
   ];
   /** State S-5 in each operation: beside the 21, not counted with them. */
   const S5: readonly State[] = [
-    state('2 (S-5)', PROD, NO_FLAG, ['CAM-01', 'CAM-02', 'CAM-04', 'CAM-05', 'MIC-01'], SHAPE, null, NOT_FOUR), // D60 (2026-11-04)
+    state('2 (S-5)', PROD, NO_FLAG, ['CAM-01', 'CAM-02', 'CAM-04', 'CAM-05', 'MIC-01', 'MIC-02', 'MIC-03'], SHAPE, null, NOT_FOUR), // D60; D61 (2026-11-04): seven held D lines, channel 4 alone empty
     state('2 (S-5)', DEV, BOOTS, [], SHAPE, null, NOT_FOUR),
     state('2 (S-5)', SIM, BOOTS, [], SHAPE, null, NOT_FOUR),
     state('3 (S-5)', PROD, BOOTS, [], SHAPE, null, NOT_FOUR),
-    state('3 (S-5)', DEV, WITH_FLAG, ['CAM-11', 'CAM-12', 'CAM-13', 'CAM-14', 'MIC-11'], SHAPE, null, NOT_FOUR), // D60 (2026-11-04)
+    state('3 (S-5)', DEV, WITH_FLAG, ['CAM-11', 'CAM-12', 'CAM-13', 'CAM-14', 'MIC-11', 'MIC-12', 'MIC-13'], SHAPE, null, NOT_FOUR), // D60; D61 (2026-11-04): seven held P lines, channel 4 alone empty
     state('3 (S-5)', SIM, BOOTS, [], SHAPE, null, NOT_FOUR),
   ];
 
@@ -1340,7 +1356,7 @@ describe('task 4 row 33: the 21-state table - seven selector categories by the t
   /** The selector as the engine holds it: a line per ASSIGNED slot and none for an empty one (rows 29, 166). */
   const selectorOf = (lines: Lines) => ({
     cameras: assignedOf(lines).filter(({ slot }) => slot.startsWith('VIDEO')).map(({ slot, id }) => ({ trackId: slot as 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04', deviceId: id, profile: 'H264_1080P25' })), // D60 (2026-11-04): four video lines
-    mics: assignedOf(lines).filter(({ slot }) => slot === 'PRIMARY' || slot === 'STANDBY').map(({ slot, id }) => ({ deviceId: id, role: slot as 'PRIMARY' | 'STANDBY' })),
+    mics: assignedOf(lines).filter(({ slot }) => slot.startsWith('MIC')).map(({ slot, id }) => ({ channel: slot as 'MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04', deviceId: id })), // D61 (2026-11-04): the line names its channel
   });
   /** The registry the product builds for an operation (`fence/index.ts`); for `SIMULATED`, where it builds none, the empty registry of that operation. */
   const registryOf = (operation: CaptureOperation): CaptureDeviceRegistry => {
@@ -1364,7 +1380,7 @@ describe('task 4 row 33: the 21-state table - seven selector categories by the t
   async function observe(of: State): Promise<Observed> {
     const { lines } = CATEGORY[of.category];
     // 1. The boot.
-    const tables = fakeTables(STORED, { video01: lines['VIDEO-01'], video02: lines['VIDEO-02'], video03: lines['VIDEO-03'], video04: lines['VIDEO-04'], primary: lines.PRIMARY, standby: lines.STANDBY }); // D60 (2026-11-04)
+    const tables = fakeTables(STORED, { video01: lines['VIDEO-01'], video02: lines['VIDEO-02'], video03: lines['VIDEO-03'], video04: lines['VIDEO-04'], mic01: lines['MIC-01'], mic02: lines['MIC-02'], mic03: lines['MIC-03'], mic04: lines['MIC-04'] }); // D60, D61 (2026-11-04): the eight slots
     const booted = await boot(CONFIG_OF[of.operation], tables);
     if (of.boot === BOOTS) expectBooted(booted, of.operation);
     else expectRefused(booted, of.boot, of.named);
@@ -1412,13 +1428,13 @@ describe('task 4 row 33: the 21-state table - seven selector categories by the t
       // TODAY (no production kind has an opener): the refusal is "no opener", before the class is even looked at.
       if (!productionOpens && of.operation === PROD) expect(seen.rowsRefusal, label).toBe(CaptureAdapterRefusal.SOURCE_KIND_NOT_RECORDABLE);
     } else if (of.rows === FOUR_FAKE) {
-      expect(seen.rows, label).toHaveLength(6); // D60 (2026-11-04): six rows
+      expect(seen.rows, label).toHaveLength(8); // D60: four video slots; D61 (2026-11-04): four numbered channels
       expect(kindsOf(seen.rows), label).toEqual(['FAKE']);
     } else if (of.rows === FOUR_DEVELOPMENT) {
-      expect(seen.rows, label).toEqual(['VIDEO-01 CAM-01 FAKE DEVELOPMENT', 'VIDEO-02 CAM-02 FAKE DEVELOPMENT', 'VIDEO-03 CAM-04 FAKE DEVELOPMENT', 'VIDEO-04 CAM-05 FAKE DEVELOPMENT', 'MIC-PRIMARY MIC-01 FAKE DEVELOPMENT', 'MIC-STANDBY MIC-02 FAKE DEVELOPMENT']); // D60 (2026-11-04): six rows
+      expect(seen.rows, label).toEqual(['VIDEO-01 CAM-01 FAKE DEVELOPMENT', 'VIDEO-02 CAM-02 FAKE DEVELOPMENT', 'VIDEO-03 CAM-04 FAKE DEVELOPMENT', 'VIDEO-04 CAM-05 FAKE DEVELOPMENT', 'MIC-01 MIC-01 FAKE DEVELOPMENT', 'MIC-02 MIC-02 FAKE DEVELOPMENT', 'MIC-03 MIC-03 LOCAL_DEVICE DEVELOPMENT', 'MIC-04 MIC-04 FAKE DEVELOPMENT']); // D60, D61 (2026-11-04): eight rows
     } else if (productionOpens) {
-      // After the lift: six rows (D60, 2026-11-04) of the stored production kinds.
-      expect(seen.rows, label).toEqual(['VIDEO-01 CAM-11 ONVIF_RTSP PRODUCTION', 'VIDEO-02 CAM-12 ONVIF_RTSP PRODUCTION', 'VIDEO-03 CAM-13 ONVIF_RTSP PRODUCTION', 'VIDEO-04 CAM-14 ONVIF_RTSP PRODUCTION', 'MIC-PRIMARY MIC-11 USB_AUDIO PRODUCTION', 'MIC-STANDBY MIC-12 USB_AUDIO PRODUCTION']);
+      // After the lift: eight rows (D60 four cameras, D61 four channels) of the stored production kinds.
+      expect(seen.rows, label).toEqual(['VIDEO-01 CAM-11 ONVIF_RTSP PRODUCTION', 'VIDEO-02 CAM-12 ONVIF_RTSP PRODUCTION', 'VIDEO-03 CAM-13 ONVIF_RTSP PRODUCTION', 'VIDEO-04 CAM-14 ONVIF_RTSP PRODUCTION', 'MIC-01 MIC-11 USB_AUDIO PRODUCTION', 'MIC-02 MIC-12 USB_AUDIO PRODUCTION', 'MIC-03 MIC-13 USB_AUDIO PRODUCTION', 'MIC-04 MIC-14 USB_AUDIO PRODUCTION']);
     } else {
       // TODAY: `REAL_PRODUCTION` is refused outright while no production kind is opener-capable (`sources.ts` `assertOperationRecordable`).
       expect([seen.rows, seen.rowsRefusal], label).toEqual([[], CaptureAdapterRefusal.SOURCE_KIND_NOT_RECORDABLE]);
@@ -1437,7 +1453,7 @@ describe('task 4 row 33: the 21-state table - seven selector categories by the t
       const d = classes.has(CaptureSourceClass.DEVELOPMENT);
       const p = classes.has(CaptureSourceClass.PRODUCTION);
       if (assigned.length === 0) return '1';
-      if (assigned.length < 6) return d && p ? '4' : d ? '2' : '3'; // D60 (2026-11-04): the complete shape is six slots
+      if (assigned.length < 8) return d && p ? '4' : d ? '2' : '3'; // D60, D61 (2026-11-04): the complete shape is eight slots
       return d && p ? '7' : d ? '5' : '6';
     };
     expect(Object.entries(CATEGORY).map(([name, { lines }]) => [name, shapeOf(lines)])).toEqual([['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '5'], ['6', '6'], ['7', '7'], ['2 (S-5)', '2'], ['3 (S-5)', '3']]);
@@ -1447,7 +1463,7 @@ describe('task 4 row 33: the 21-state table - seven selector categories by the t
     expectState(of, await observe(of));
   });
 
-  it.each(S5.map((of) => [CATEGORY[of.category].title, of.operation, of] as const))('state S-5 (AD-10 (4)) - %s x %s: `SELECTOR_SHAPE` stays "exactly four video tracks and both mic roles" (D60), and the builder of the rows writes none', async (_title, _operation, of) => {
+  it.each(S5.map((of) => [CATEGORY[of.category].title, of.operation, of] as const))('state S-5 (AD-10 (4)) - %s x %s: `SELECTOR_SHAPE` stays "four video tracks and four numbered microphones" (D60, D61), and the builder of the rows writes none', async (_title, _operation, of) => {
     const seen = await observe(of);
     expectState(of, seen);
     expect([seen.plan, seen.rowsRefusal]).toEqual([SHAPE, NOT_FOUR]);
@@ -1465,7 +1481,7 @@ describe('task 4 row 33: the 21-state table - seven selector categories by the t
 
     for (const { of, seen } of all) {
       const label = `${of.category} x ${of.operation}`;
-      const incomplete = assignedOf(CATEGORY[of.category].lines).length < 6; // D60 (2026-11-04)
+      const incomplete = assignedOf(CATEGORY[of.category].lines).length < 8; // D60, D61 (2026-11-04)
       // A SLOT UNASSIGNED: neither line lets it through, in any operation - the STANDBY alone included (C25, S-5).
       if (incomplete) expect([seen.plan, seen.rows, seen.rowsRefusal], label).toEqual([SHAPE, [], NOT_FOUR]);
       // ONE CLASS: whatever rows a state yields are of one class ...
@@ -1482,8 +1498,8 @@ describe('task 4 row 33: the 21-state table - seven selector categories by the t
       if (seen.boot !== BOOTS) expect(seen.plan, label).not.toBe(RECORDABLE);
     }
     // THE STATES IN WHICH A REAL SOURCE IS RECORDED: the boot passes AND the plan builder admits AND the rows are written.
-    // D60 (2026-11-04): a recorded session writes six rows.
-    const recording = table.filter(({ of, seen }) => of.operation !== SIM && seen.boot === BOOTS && seen.plan === RECORDABLE && seen.rows.length === 6).map(({ of, seen }) => `${of.category} ${of.operation} ${classesOf(seen.rows).join()}`);
+    // D60 (2026-11-04): four cameras; D61 (2026-11-04): a recorded session writes eight rows.
+    const recording = table.filter(({ of, seen }) => of.operation !== SIM && seen.boot === BOOTS && seen.plan === RECORDABLE && seen.rows.length === 8).map(({ of, seen }) => `${of.category} ${of.operation} ${classesOf(seen.rows).join()}`);
     // Development sources record in exactly one state. Production sources: in none TODAY - state 6 x REAL_PRODUCTION boots and its
     // start is refused, because the production registry serves no device yet (`buildProductionRegistry`: NO adapter) and no production
     // kind is in `OPENER_CAPABLE_KINDS`. It is the one state the lift moves, and the only one that may join this list.
@@ -1491,9 +1507,9 @@ describe('task 4 row 33: the 21-state table - seven selector categories by the t
     if (!productionOpens) expect(recording).toEqual(['5 REAL_DEVELOPMENT DEVELOPMENT']);
   });
 
-  it('the read-back of the written rows (MR-S6) refuses fewer than six rows in every operation (D60): the third line behind the plan builder and the builder of the rows', () => {
+  it('the read-back of the written rows (MR-S6) refuses fewer than eight rows in every operation (D60, D61): the third line behind the plan builder and the builder of the rows', () => {
     for (const category of ['1', '2', '3', '4', '2 (S-5)', '3 (S-5)'] as const) {
-      const rows = assignedOf(CATEGORY[category].lines).map(({ slot, id }) => ({ slot: ({ 'VIDEO-01': 'VIDEO-01', 'VIDEO-02': 'VIDEO-02', 'VIDEO-03': 'VIDEO-03', 'VIDEO-04': 'VIDEO-04', PRIMARY: 'MIC-PRIMARY', STANDBY: 'MIC-STANDBY' } as const)[slot], deviceId: id, adapterKind: kindOf(id) })); // D60 (2026-11-04)
+      const rows = assignedOf(CATEGORY[category].lines).map(({ slot, id }) => ({ slot, deviceId: id, adapterKind: kindOf(id) })); // D60, D61 (2026-11-04): the stored slot of every line is the slot word itself
       for (const operation of [PROD, DEV, SIM]) {
         let refusal: unknown = null;
         try {

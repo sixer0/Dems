@@ -137,7 +137,9 @@ export function markCaptureConnectingIn(unit: EngineUnit, sessionId: string): Pr
 
 /**
  * Blueprint row 71 (operation 81 in capture mode `real`): the switch the worker ACKNOWLEDGED becomes
- * the state of the open session - the active / standby pair, the media time of the boundary, the
+ * the state of the open session - the active / standby pair on the worker's two-role lane (D61,
+ * 2026-11-04: the selector plane records four numbered channels; op 81 trades the transcription pair,
+ * channels 1 and 2), the media time of the boundary, the
  * timeline item - in the unit in which the caller writes the interval rows and the
  * `AUDIO_SOURCE_SWITCHED` row. Writes no audit row itself. Resolves null when nothing changed.
  */

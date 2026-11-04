@@ -490,7 +490,7 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
       USER_UPDATED: ['targetOperatorId', 'fields', 'reason'],
       USER_DELETED: ['targetOperatorId', 'role', 'sessionsEnded', 'auditRowsRemoved', 'signInRowsRemoved', 'recordsLeftUnattributed', 'credentialsRemoved', 'reason'],
       BIOMETRIC_ENROLLMENT_CHANGED: ['enabled', 'deviceId'],
-      CAPTURE_CONFIG_CHANGED: ['operationId', 'scope', 'field', 'trackId', 'inputId', 'deviceId', 'from', 'to', 'permission'],
+      CAPTURE_CONFIG_CHANGED: ['operationId', 'scope', 'field', 'trackId', 'channel', 'inputId', 'deviceId', 'from', 'to', 'permission'], // D61 (2026-11-04): a mic row names its numbered channel
       AUDIO_SOURCE_SWITCHED: ['fromInput', 'toInput', 'fromMs', 'toMs', 'sendingDeviceId'],
       CAMERA_POE_CYCLED: ['deviceId', 'poePort', 'streamWasLost', 'confirmed', 'gapFromMs', 'gapToMs'],
       TRANSCRIPT_REVISED: ['revisionId', 'authorId', 'number', 'baseRevision', 'changeCount', 'machineTranscriptHash', 'reason', 'permission'],

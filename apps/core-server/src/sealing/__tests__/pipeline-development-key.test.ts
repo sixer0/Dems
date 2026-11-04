@@ -24,8 +24,8 @@ afterAll(() => {
 const PRODUCTION_ROWS: readonly SessionCaptureSourceRow[] = [
   { slot: 'VIDEO-01', deviceId: 'CAM-01', adapterKind: 'ONVIF_RTSP' },
   { slot: 'VIDEO-02', deviceId: 'CAM-02', adapterKind: 'ONVIF_RTSP' },
-  { slot: 'MIC-PRIMARY', deviceId: 'MIC-01', adapterKind: 'USB_AUDIO' },
-  { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'USB_AUDIO' },
+  { slot: 'MIC-01', deviceId: 'MIC-01', adapterKind: 'USB_AUDIO' },
+  { slot: 'MIC-02', deviceId: 'MIC-02', adapterKind: 'USB_AUDIO' },
 ];
 const developmentSigner = () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'dems-fm7-devkey-'));

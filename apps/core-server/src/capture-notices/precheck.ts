@@ -10,7 +10,8 @@
  *      pre-check alert, if one is active, is resolved (no audit row). A device that does not
  *      answer reads not online. The session machine's start rule then decides each row
  *      (`captureReachabilityOf`): both cameras or the active microphone block, one camera or the
- *      standby microphone warn.
+ *      later channels warn (D61, 2026-11-04: the standby microphone of the two-role era became the
+ *      numbered channels - the transcription channel blocks, a channel behind it warns).
  *   3. RAISE. An unreachable MICROPHONE raises its alert and its `CAPTURE_DEVICE_UNREACHABLE` row
  *      at once (0 probes: a microphone is no network device). An unreachable CAMERA starts the
  *      ONE search of this run - under the pre-check's own allowance, owned by the operator session

@@ -29,7 +29,8 @@
  * line, no error-log entry and no audit detail of this file carries a product, a USB id or a card
  * id: they carry a registry id, a code and integers. Nothing here builds a helper argument.
  *
- * A REGISTRATION DECIDES NO ROLE (decision C25): making the microphone primary or standby is the
+ * A REGISTRATION DECIDES NO ROLE (decision C25): making the microphone primary or standby - since
+ * D61 (2026-11-04) assigning it to one of the four numbered channels - is the
  * selector's (operation 80). `capture_config` is not read and not written here.
  *
  * THE MATCH OF A STORED INPUT TO A LIVE CARD (row 156, AD-07 (4); R-FLEX row 131, spec
