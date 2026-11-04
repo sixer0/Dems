@@ -264,6 +264,12 @@ export const captureConfig = pgTable(
     revision: bigint('revision', { mode: 'number' }).notNull().default(1),
     updatedBy: text('updated_by'),
     updatedAt: bigint('updated_at', { mode: 'number' }).notNull(),
+    // D60 (2026-11-04): four simultaneous video tracks. Declared LAST: `0039` appends them (the
+    // physical order of the table is the order of the contract and of the live catalog).
+    video03DeviceId: text('video_03_device_id'),
+    video03Profile: text('video_03_profile'),
+    video04DeviceId: text('video_04_device_id'),
+    video04Profile: text('video_04_profile'),
   },
   (t) => [
     check('capture_config_singleton_check', sql`${t.singleton}`),
@@ -277,6 +283,20 @@ export const captureConfig = pgTable(
     foreignKey({
       name: 'capture_config_video_02_device_id_fkey',
       columns: [t.video02DeviceId],
+      foreignColumns: [captureDevices.id],
+    })
+      .onDelete('restrict')
+      .onUpdate('no action'),
+    foreignKey({
+      name: 'capture_config_video_03_device_id_fkey', // D60 (2026-11-04)
+      columns: [t.video03DeviceId],
+      foreignColumns: [captureDevices.id],
+    })
+      .onDelete('restrict')
+      .onUpdate('no action'),
+    foreignKey({
+      name: 'capture_config_video_04_device_id_fkey', // D60
+      columns: [t.video04DeviceId],
       foreignColumns: [captureDevices.id],
     })
       .onDelete('restrict')
@@ -306,18 +326,20 @@ export const captureConfig = pgTable(
       .onDelete('set null')
       .onUpdate('no action'),
     check('capture_config_profile_check', sql`${code(t.video01Profile)} AND ${code(t.video02Profile)}`),
+    check('capture_config_profile_34_check', sql`${code(t.video03Profile)} AND ${code(t.video04Profile)}`), // D60
     // The two mic slots are two different inputs (OD-09).
     check('capture_config_mic_check', sql`${t.micStandbyId} <> ${t.micPrimaryId}`),
     // A dual-lens single camera is legal only with two distinct profiles (OD-05, D-DB-10).
+    // D60 (2026-11-04): the no-collision rule, pairwise over the four tracks.
     check(
       'capture_config_selector_check',
-      sql`(${t.video01DeviceId} <> ${t.video02DeviceId}) OR (${t.video01Profile} <> ${t.video02Profile})`,
+      sql`((${t.video01DeviceId}<>${t.video02DeviceId})OR(${t.video01Profile}<>${t.video02Profile})) AND ((${t.video01DeviceId}<>${t.video03DeviceId})OR(${t.video01Profile}<>${t.video03Profile})) AND ((${t.video01DeviceId}<>${t.video04DeviceId})OR(${t.video01Profile}<>${t.video04Profile})) AND ((${t.video02DeviceId}<>${t.video03DeviceId})OR(${t.video02Profile}<>${t.video03Profile})) AND ((${t.video02DeviceId}<>${t.video04DeviceId})OR(${t.video02Profile}<>${t.video04Profile})) AND ((${t.video03DeviceId}<>${t.video04DeviceId})OR(${t.video03Profile}<>${t.video04Profile}))`,
     ),
     check('capture_config_revision_check', sql`${t.revision} >= 1`),
     // Schema v7. Declared LAST: `0015` adds it. A video slot is assigned as a pair or not at all.
     check(
       'capture_config_slot_pair_check',
-      sql`((${t.video01DeviceId} IS NULL) = (${t.video01Profile} IS NULL)) AND ((${t.video02DeviceId} IS NULL) = (${t.video02Profile} IS NULL))`,
+      sql`((${t.video01DeviceId} IS NULL) = (${t.video01Profile} IS NULL)) AND ((${t.video02DeviceId} IS NULL) = (${t.video02Profile} IS NULL)) AND ((${t.video03DeviceId} IS NULL) = (${t.video03Profile} IS NULL)) AND ((${t.video04DeviceId} IS NULL) = (${t.video04Profile} IS NULL))`,
     ),
   ],
 );

@@ -143,8 +143,9 @@ describe('registration (RG-1, duplicates, D86 C-5)', () => {
 describe('listing and resolving (RG-2, OD-10)', () => {
   it('RG-2: a development source is never listed outside REAL_DEVELOPMENT; the development operation lists the search half of the production camera kind too', () => {
     const development = createFakeRegistry({ runDir: RUN_DIR }).registry;
-    development.register(productionCamera('CAM-03'));
-    expect(development.list().map((device) => `${device.id} ${device.sourceClass}`)).toEqual(['CAM-01 DEVELOPMENT', 'CAM-02 DEVELOPMENT', 'CAM-03 PRODUCTION', 'MIC-01 DEVELOPMENT', 'MIC-02 DEVELOPMENT', 'POE-SWITCH DEVELOPMENT']);
+    // D60 (2026-11-04): the seed now carries CAM-03/CAM-04 as fakes — an adopted production row is CAM-05+.
+    development.register(productionCamera('CAM-05'));
+    expect(development.list().map((device) => `${device.id} ${device.sourceClass}`)).toEqual(['CAM-01 DEVELOPMENT', 'CAM-02 DEVELOPMENT', 'CAM-03 DEVELOPMENT', 'CAM-04 DEVELOPMENT', 'CAM-05 PRODUCTION', 'MIC-01 DEVELOPMENT', 'MIC-02 DEVELOPMENT', 'POE-SWITCH DEVELOPMENT']);
     const production = createCaptureDeviceRegistry({ operation: 'REAL_PRODUCTION' });
     production.register(productionCamera('CAM-03'));
     expect(production.list().filter((device) => device.sourceClass === 'DEVELOPMENT')).toEqual([]);
@@ -162,8 +163,8 @@ describe('listing and resolving (RG-2, OD-10)', () => {
     open = true;
     expect(codeOf(() => registry.resolve('CAMERA', 'CAM-02'))).toBe('CAPTURE_REGISTRY_LOCKED');
     expect(codeOf(() => registry.assertAssignable('CAMERA', 'CAM-02'))).toBe('CAPTURE_REGISTRY_LOCKED');
-    // Reading stays possible while a session is open.
-    expect(registry.list()).toHaveLength(5);
+    // Reading stays possible while a session is open. D60 (2026-11-04): the seed's seven built-ins.
+    expect(registry.list()).toHaveLength(7);
     expect(registry.describe('CAM-02').id).toBe('CAM-02');
     open = false;
     expect(registry.resolve('CAMERA', 'CAM-02')).toBe(cameras[1]);
@@ -173,24 +174,25 @@ describe('listing and resolving (RG-2, OD-10)', () => {
 describe('M4-SEL-W, registry half: what an assignment may name (RG-3, RG-4)', () => {
   it('any registered device of the right class and of the operation\'s class is assignable, an adopted camera included', () => {
     const { registry } = createFakeRegistry({ runDir: RUN_DIR });
-    // An adopted development camera: a third row, as operation 96 mints it.
-    registry.register(createFakeCameraAdapter({ id: 'CAM-03' }));
-    expect(['CAM-01', 'CAM-02', 'CAM-03'].map((id) => registry.assertAssignable('CAMERA', id).sourceClass)).toEqual(['DEVELOPMENT', 'DEVELOPMENT', 'DEVELOPMENT']);
+    // An adopted development camera: a fifth row — D60 (2026-11-04) seeds four cameras, adoption mints CAM-05+.
+    registry.register(createFakeCameraAdapter({ id: 'CAM-05' }));
+    expect(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'CAM-05'].map((id) => registry.assertAssignable('CAMERA', id).sourceClass)).toEqual(['DEVELOPMENT', 'DEVELOPMENT', 'DEVELOPMENT', 'DEVELOPMENT', 'DEVELOPMENT']);
     expect(['MIC-01', 'MIC-02'].map((id) => registry.assertAssignable('MIC', id).id)).toEqual(['MIC-01', 'MIC-02']);
     // Each line of the selector can carry the class: it is a member of what the registry answers.
-    expect(registry.assertAssignable('CAMERA', 'CAM-03')).toMatchObject({ id: 'CAM-03', adapterKind: 'FAKE', sourceClass: 'DEVELOPMENT' });
+    expect(registry.assertAssignable('CAMERA', 'CAM-05')).toMatchObject({ id: 'CAM-05', adapterKind: 'FAKE', sourceClass: 'DEVELOPMENT' });
   });
 
   it('refused: a candidate ID, an unknown ID, a device of another class, and a source class that is not the operation\'s (no mixed configuration)', () => {
     const { registry } = createFakeRegistry({ runDir: RUN_DIR });
-    registry.register(productionCamera('CAM-04'));
+    // D60 (2026-11-04): CAM-04 is a seeded fake, so the production stand-in is CAM-05.
+    registry.register(productionCamera('CAM-05'));
     // RG-4: a candidate of a search is never a device, whatever a search returned.
     expect(codeOf(() => registry.assertAssignable('CAMERA', 'CND-0123456789AB'))).toBe('CAPTURE_DEVICE_UNKNOWN');
     expect(codeOf(() => registry.assertAssignable('CAMERA', 'CAM-09'))).toBe('CAPTURE_DEVICE_UNKNOWN');
     expect(codeOf(() => registry.assertAssignable('CAMERA', 'MIC-01'))).toBe('CAPTURE_DEVICE_CLASS_MISMATCH');
     expect(codeOf(() => registry.assertAssignable('MIC', 'CAM-01'))).toBe('CAPTURE_DEVICE_CLASS_MISMATCH');
     // RG-3: a production camera is never recorded beside a fake microphone.
-    expect(codeOf(() => registry.assertAssignable('CAMERA', 'CAM-04'))).toBe('DEVELOPMENT_SOURCE_NOT_ALLOWED');
+    expect(codeOf(() => registry.assertAssignable('CAMERA', 'CAM-05'))).toBe('DEVELOPMENT_SOURCE_NOT_ALLOWED');
     const production = createCaptureDeviceRegistry({ operation: 'REAL_PRODUCTION' });
     production.register(productionCamera('CAM-04'));
     expect(production.assertAssignable('CAMERA', 'CAM-04').sourceClass).toBe('PRODUCTION');

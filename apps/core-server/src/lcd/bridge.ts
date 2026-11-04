@@ -1,5 +1,5 @@
 import type { LcdIntegrationStatus } from '@dems/shared/api';
-import { SessionState, TrackRecState } from '@dems/shared/domain';
+import { SessionState, TrackRecState, VIDEO_TRACK_IDS } from '@dems/shared/domain'; // VIDEO_TRACK_IDS: D60 (2026-11-04)
 import { z } from 'zod';
 import type { EngineHost } from '../engine';
 
@@ -15,12 +15,13 @@ const BackendStatus = z.object({
   tx: z.number().int().nonnegative(),
 });
 const PanelReply = z.object({ v: z.literal(2), n: z.number().int(), health: z.enum(['ok', 'warn', 'fail']) });
-const TRACKS = ['VIDEO-01', 'VIDEO-02'] as const;
+const TRACKS = VIDEO_TRACK_IDS; // D60 (2026-11-04): the panel's channels follow the four recorded tracks (was two)
 
 /**
- * CH1/CH2 are DEMS video tracks, not physical device ids; CH3/CH4 remain unused. Each line
- * also carries the DEVICE behind the track (`deviceId`), because one dual-lens camera fills
- * both tracks (OD-05) and a panel may want one output per physical camera, not per lens.
+ * CH1 to CH4 are DEMS video tracks (D60, 2026-11-04: four recorded tracks; before, CH3/CH4 were
+ * unused), not physical device ids. Each line also carries the DEVICE behind the track
+ * (`deviceId`), because one dual-lens camera fills two of its tracks (OD-05) and a panel may
+ * want one output per physical camera, not per lens.
  * Grouping is the panel's choice: the bridge keeps reporting per track, truthfully.
  */
 export function lcdChannelsOf(state: CommittedState | null, count: number, real: boolean): LcdIntegrationStatus['channels'] {
@@ -70,20 +71,20 @@ export function createLcdBridge(options: {
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (!response.ok) throw new Error('LCD_HTTP_FAILURE');
-    const reader = response.body?.getReader();
-    if (!reader) throw new InvalidResponse();
+    const streamReader = response.body?.getReader(); // an HTTP body reader: NOT the ONVIF time reader of SR-5
+    if (!streamReader) throw new InvalidResponse();
     const chunks: Uint8Array[] = [];
     let length = 0;
     try {
       for (;;) {
-        const { done, value } = await reader.read();
+        const { done, value } = await streamReader.read();
         if (done) break;
         length += value.length;
         if (length > 16_384) throw new InvalidResponse();
         chunks.push(value);
       }
     } finally {
-      await reader.cancel();
+      await streamReader.cancel();
     }
     try { return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown; }
     catch { throw new InvalidResponse(); }

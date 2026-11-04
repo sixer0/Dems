@@ -55,7 +55,7 @@ describe('R88-01: a session that recorded with one camera is sealed with the one
     expect(manifest.files.map((file) => file.trackId)).toEqual([present]);
     expect(manifest.audio.containsIn).toEqual([present]);
     expect(manifest.timeline).toMatchObject({ interrupted: false, stoppedAt: h.facts.stoppedAt });
-    expect(manifest.tracks[0]).toMatchObject({ sha256Plain: sha256Hex(plain), fragmentCount: 5, deviceId: h.facts.tracks[present === 'VIDEO-01' ? 0 : 1].deviceId });
+    expect(manifest.tracks[0]).toMatchObject({ sha256Plain: sha256Hex(plain), fragmentCount: 5, deviceId: h.facts.tracks[present === 'VIDEO-01' ? 0 : 1]!.deviceId }); // D60 (2026-11-04): tracks is a 1..4 array, indexed read needs the pin
     // The camera that is absent is stated under the signature, by an existing member (the step's checkpoint record).
     expect(manifest.sealing.steps[0]).toMatchObject({ step: 'CLOSE_TRACKS', checkpoint: { tracks: 1, absentTracks: absent } });
 

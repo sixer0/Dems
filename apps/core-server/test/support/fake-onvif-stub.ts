@@ -742,7 +742,10 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
     });
   }
 
-  function onDatagram(message: Buffer, remote: RemoteInfo): void {
+  // D60 sweep (2026-11-04): sends are awaited one by one — firing 300 unicast answers per
+  // probe unawaited overflowed the probe socket's receive buffer under load (FLOOD_300).
+  async function onDatagram(message: Buffer, remote: RemoteInfo): Promise<void> {
+    let sentSinceYield = 0;
     const text = message.toString('utf8');
     const isProbe = elementText(text, 'Action') === WS_DISCOVERY_PROBE_ACTION;
     log.push({ channel: 'discovery', method: 'UDP', operation: isProbe ? 'Probe' : '?', authPresent: /<(?:[\w.-]+:)?Security[\s>]/.test(text) });
@@ -752,9 +755,19 @@ export function createFakeOnvifStub(options: FakeOnvifStubOptions): FakeOnvifStu
     const types = elementText(text, 'Types') ?? '';
     if (types !== '' && !/(?:^|[\s:])(?:Device|NetworkVideoTransmitter)(?:\s|$)/.test(types)) return;
     for (const answer of answersFor(messageId)) {
-      // Unicast to the source address and port of the Probe (WS-Discovery 1.1 §5.3.1). A send that the
-      // operating system refuses (a datagram above its limit) is nothing the stub can report to a test.
-      void sendDatagram(answer, remote.port, remote.address).catch(() => undefined);
+      // Unicast to the source address and port of the Probe (WS-Discovery 1.1 §5.3.1), awaited in
+      // sequence so the receive buffer drains.
+      // Every eighth answer yields a macrotask so the probe socket can drain — loopback has no
+      // wire pacing and Linux drops deterministically at ~180 queued datagrams (bench 2026-11-04).
+      if (++sentSinceYield % 8 === 0) await new Promise((tick) => setTimeout(tick, 0));
+      try {
+        await sendDatagram(answer, remote.port, remote.address);
+      } catch {
+        // A full send buffer on loopback is retried once after a tick (bench 2026-11-04: Linux
+        // refuses rather than queues when the receiver's datagram queue is momentarily deep).
+        await new Promise((tick) => setImmediate(tick));
+        await sendDatagram(answer, remote.port, remote.address).catch(() => undefined);
+      }
     }
   }
 

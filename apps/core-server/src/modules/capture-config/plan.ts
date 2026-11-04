@@ -28,6 +28,7 @@
  * sentences below: no path and no address is ever put into a message (a path of the plan is never
  * logged, `packages/capture-protocol`).
  */
+import { VIDEO_TRACK_IDS, type VideoTrackId } from '@dems/shared/domain';
 import { CapturePlanSchema, type CapturePlan, type CapturePlanCamera, type CapturePlanConstants, type CapturePlanMic } from '@dems/capture-protocol';
 import {
   CAPTURE_AUDIO_CHANNELS,
@@ -57,7 +58,7 @@ export const CapturePlanReason = {
   MIXED_SOURCE_CLASSES: 'MIXED_SOURCE_CLASSES',
   /** The sources are not of the class the running capture operation records (rule RG-3). */
   CLASS_NOT_OF_OPERATION: 'CLASS_NOT_OF_OPERATION',
-  /** The selector is not two video tracks and a PRIMARY and a STANDBY microphone. */
+  /** The selector is not four video tracks (D60) and a PRIMARY and a STANDBY microphone. */
   SELECTOR_SHAPE: 'SELECTOR_SHAPE',
   /** The caller gave no source for any camera, or none for the PRIMARY microphone. */
   SOURCE_MISSING: 'SOURCE_MISSING',
@@ -71,7 +72,8 @@ const TEXT: Readonly<Record<CapturePlanReason, string>> = Object.freeze({
   NO_OPENER: 'no opener exists for the source kind of an assigned device',
   MIXED_SOURCE_CLASSES: 'the selector mixes production and development sources',
   CLASS_NOT_OF_OPERATION: 'the assigned sources are not of the class the running capture operation records',
-  SELECTOR_SHAPE: 'the selector does not name two video tracks and a primary and a standby microphone',
+  // D60 (2026-11-04): the Core records FOUR video tracks at once - the shape text names four tracks (was two).
+  SELECTOR_SHAPE: 'the selector does not name four video tracks and a primary and a standby microphone',
   SOURCE_MISSING: 'no source was given for a camera, or for the primary microphone',
   PROTOCOL_SHAPE: 'the plan is not a capture plan of the protocol',
 });
@@ -101,11 +103,11 @@ export interface CapturePlanSelector {
 
 /** One slot of the selector with the descriptor of the device assigned to it. */
 export interface RecordableSlot {
-  readonly slot: 'VIDEO-01' | 'VIDEO-02' | 'PRIMARY' | 'STANDBY';
+  readonly slot: 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04' | 'PRIMARY' | 'STANDBY'; // D60
   readonly descriptor: CaptureDeviceDescriptor;
 }
 
-/** What `assertRecordableSelector` found: the four slots, and the one source class they share. */
+/** What `assertRecordableSelector` found: the six slots (D60: four video, two mic), and the one source class they share. */
 export interface RecordableSelector {
   readonly slots: readonly RecordableSlot[];
   readonly sourceClass: CaptureSourceClass;
@@ -118,23 +120,37 @@ export interface RecordableSelector {
  * or a listener address is chosen: it needs nothing of a session.
  */
 export function assertRecordableSelector(selector: CapturePlanSelector, registry: CapturePlanRegistry): RecordableSelector {
-  const [first, second] = selector.cameras;
+  // D60 (2026-11-04): the selector names FOUR video tracks once each (was two) and one PRIMARY and one STANDBY microphone.
+  const cameraOf = new Map<string, CapturePlanSelector['cameras'][number]>();
+  for (const camera of selector.cameras) {
+    if (!(VIDEO_TRACK_IDS as readonly string[]).includes(camera.trackId) || cameraOf.has(camera.trackId)) {
+      throw new CapturePlanError(CapturePlanRefusal.PLAN_INVALID, CapturePlanReason.SELECTOR_SHAPE);
+    }
+    cameraOf.set(camera.trackId, camera);
+  }
   const primary = selector.mics.find((mic) => mic.role === 'PRIMARY');
   const standby = selector.mics.find((mic) => mic.role === 'STANDBY');
-  if (selector.cameras.length !== 2 || first?.trackId !== 'VIDEO-01' || second?.trackId !== 'VIDEO-02' || selector.mics.length !== 2 || primary === undefined || standby === undefined) {
+  if (cameraOf.size !== VIDEO_TRACK_IDS.length || selector.mics.length !== 2 || primary === undefined || standby === undefined) {
     throw new CapturePlanError(CapturePlanRefusal.PLAN_INVALID, CapturePlanReason.SELECTOR_SHAPE);
   }
-  // Row R2 (ruling C93 on review finding F3-11): ONE CAMERA ON BOTH VIDEO TRACKS IS NOT A PLAN. The selector's edit refuses that
-  // state on a Core in real capture (`routes.ts`, `CAMERA_ON_BOTH_TRACKS`); this is the second line of defence, for a selector that
-  // held it before that rule or was put in place otherwise. The protocol refuses a camera named twice, so `buildCapturePlan` below
-  // would refuse it too (`PROTOCOL_SHAPE`) - but only after the sources were opened. Here it is refused under the same existing
-  // reason BEFORE the registry is asked and before anything is opened, and the refusal names the device.
-  if (first.deviceId === second.deviceId) {
-    throw new CapturePlanError(CapturePlanRefusal.PLAN_INVALID, CapturePlanReason.PROTOCOL_SHAPE, first.deviceId);
+  const cameras = VIDEO_TRACK_IDS.map((trackId) => cameraOf.get(trackId) as CapturePlanSelector['cameras'][number]);
+  // Row R2 (ruling C93 on review finding F3-11; D60 of 2026-11-04 makes it PAIRWISE over the four tracks, as
+  // `capture_config_selector_check` of migration 0039 states): ONE DEVICE ON TWO TRACKS WITH THE SAME PROFILE IS
+  // NOT A PLAN - two lines of one device are legal only as the dual-lens case, distinct profiles (OD-05). The
+  // selector's edit refuses that state on a Core in real capture (`routes.ts`, `CAMERA_ON_BOTH_TRACKS`); this is
+  // the second line of defence, for a selector that held it before that rule or was put in place otherwise. The
+  // protocol holds the matching rule over the assembled plan (`CapturePlanSchema`), so `buildCapturePlan` below
+  // would refuse it too (`PROTOCOL_SHAPE`) - but only after the sources were opened. Here it is refused under the
+  // same existing reason BEFORE the registry is asked and before anything is opened, and the refusal names the device.
+  for (const [leftIndex, left] of cameras.entries()) {
+    for (const right of cameras.slice(leftIndex + 1)) {
+      if (left.deviceId === right.deviceId && left.profile === right.profile) {
+        throw new CapturePlanError(CapturePlanRefusal.PLAN_INVALID, CapturePlanReason.PROTOCOL_SHAPE, left.deviceId);
+      }
+    }
   }
   const assigned: readonly { readonly slot: RecordableSlot['slot']; readonly deviceId: string }[] = [
-    { slot: 'VIDEO-01', deviceId: first.deviceId },
-    { slot: 'VIDEO-02', deviceId: second.deviceId },
+    ...cameras.map((camera) => ({ slot: camera.trackId as RecordableSlot['slot'], deviceId: camera.deviceId })), // D60: all four video slots
     { slot: 'PRIMARY', deviceId: primary.deviceId },
     { slot: 'STANDBY', deviceId: standby.deviceId },
   ];
@@ -182,10 +198,10 @@ export interface CapturePlanInput {
   readonly registry: CapturePlanRegistry;
   /**
    * Per output track, where its camera pushes and where its file goes. A track WITHOUT an entry is
-   * left out of the plan: the session start decides that a session records with one camera of two
-   * (D72(k), D84; row 71). At least one track must have one.
+   * left out of the plan: the session start decides which of the four cameras (D60, 2026-11-04; was one
+   * camera of two, D72(k), D84; row 71) a session records with. At least one track must have one.
    */
-  readonly cameras: Readonly<Partial<Record<'VIDEO-01' | 'VIDEO-02', CapturePlanCameraSource>>>;
+  readonly cameras: Readonly<Partial<Record<VideoTrackId, CapturePlanCameraSource>>>;
   /**
    * Per microphone DEVICE ID, the input of its opened stream (`AudioStreamHandle.input`, taken
    * unchanged: D72(e)). A microphone without an entry is left out; the PRIMARY one must have one

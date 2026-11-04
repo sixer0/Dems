@@ -102,7 +102,7 @@ describe('R88-05 (i): the boot sweep finishes the pending removal of a sealed se
 
     expect(done).toMatchObject({ touched: true, recordingsRemoved: 2, recordingsKept: 0, journalClosed: true });
     for (const trackId of TRACKS) expect(existsSync(h.recording.recordingFile(trackId))).toBe(false);
-    expect(await listPackageFiles(h.recording.packageDir)).toEqual([...declaredPackageFiles({ transcript: false })].sort());
+    expect(await listPackageFiles(h.recording.packageDir)).toEqual([...declaredPackageFiles({ transcript: false, tracks: TRACKS })].sort()); // D60 (2026-11-04): the camera files are the manifest's own list - the default without one declares all four
     expect(SEALING_STEP_ORDER.map((step) => rowOf(h, step)?.status)).toEqual(Array.from({ length: 6 }, () => 'DONE'));
     expect(rowOf(h, 'STORE_SEALED_PACKAGE')).toMatchObject({ attempt: 2, checkpoint: { committed: 'ALREADY_SEALED', recordingsRemoved: 2, recordingsKept: 0, finishedBy: 'BOOT_SWEEP' } });
     expect(n.told).toEqual([]);

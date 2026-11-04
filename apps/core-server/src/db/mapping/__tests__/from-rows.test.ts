@@ -310,14 +310,14 @@ describe('capture_devices: a device the state holds no transport for keeps the r
   // Task 4 row V7 (decisions C36, C117; the blocking request lines of row W5): the profile list a camera's row holds
   // comes back on its device entry. MUTATION SEEN RED: `captureDeviceFromRow` without the `profiles` member.
   it('row V7: a registered camera reads back with the profile list its row holds, each code with what it states; an empty or unreadable list is an empty list; the engine never writes the column', () => {
-    const CAMERA = { id: 'CAM-03', kind: 'CAMERA', model: null, firmware: null, host: '192.0.2.10', poePort: null, online: true, streamState: null, capabilities: ['VIDEO'], adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION' };
+    const CAMERA = { id: 'CAM-05', kind: 'CAMERA', model: null, firmware: null, host: '192.0.2.10', poePort: null, online: true, streamState: null, capabilities: ['VIDEO'], adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION' };
     const LISTED = [{ code: 'HEVC_2560X1920P', codec: 'HEVC', resolution: '2560x1920', fps: null }, { code: 'H264_720P30', codec: 'H.264', resolution: '720p', fps: 30 }];
     const state = { ...base, captureDevices: { devices: [...base.captureDevices.devices, { ...CAMERA, profiles: LISTED }] } } as unknown as SimState;
     const written = asStored(toRows(state, context));
     // The engine's row keeps the empty form whatever the entry lists: the adoption's own statement is the one writer.
-    expect(written.captureDevices.find((row) => row.id === 'CAM-03')?.profiles).toEqual([]);
-    const withList = (profiles: unknown) => ({ ...written, captureDevices: written.captureDevices.map((row) => (row.id === 'CAM-03' ? { ...row, profiles } : row)) });
-    const cameraOf = (profiles: unknown) => fromRows(withList(profiles)).captureDevices.devices.find((device) => device.id === 'CAM-03');
+    expect(written.captureDevices.find((row) => row.id === 'CAM-05')?.profiles).toEqual([]);
+    const withList = (profiles: unknown) => ({ ...written, captureDevices: written.captureDevices.map((row) => (row.id === 'CAM-05' ? { ...row, profiles } : row)) });
+    const cameraOf = (profiles: unknown) => fromRows(withList(profiles)).captureDevices.devices.find((device) => device.id === 'CAM-05');
     expect(cameraOf(['HEVC_2560X1920P', 'H264_720P30'])).toEqual({ ...CAMERA, profiles: LISTED });
     expect(cameraOf([])).toEqual({ ...CAMERA, profiles: [] });
     // A stored value that is no list of codes within the bound states nothing: never cut, never cleaned, no refusal of the rehydration.
@@ -325,7 +325,7 @@ describe('capture_devices: a device the state holds no transport for keeps the r
       expect(cameraOf(stored)?.profiles, JSON.stringify(stored)).toEqual([]);
     }
     // The built-in devices, the microphones and the switch state no member, as before.
-    expect(fromRows(withList(['HEVC_1080P'])).captureDevices.devices.filter((device) => Object.hasOwn(device, 'profiles')).map((device) => device.id)).toEqual(['CAM-03']);
+    expect(fromRows(withList(['HEVC_1080P'])).captureDevices.devices.filter((device) => Object.hasOwn(device, 'profiles')).map((device) => device.id)).toEqual(['CAM-05']);
   });
 });
 
@@ -337,25 +337,25 @@ describe('capture_devices: the device-list rule of the reader (R69-03)', () => {
   const all = ids(fromRows(rows));
 
   it('CONTROL - without a rule every stored device is listed, as before', () => {
-    expect(all).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
+    expect(all).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH']); // D60 (2026-11-04): four built-in cameras
     expect(fromRows(rows, {})).toEqual(fromRows(rows));
   });
 
   it('a row the rule refuses is not in the slice; the rule is asked with the id, the kind and the stored adapter kind', () => {
     const asked: string[] = [];
     const slices = fromRows(
-      { ...rows, captureDevices: [...rows.captureDevices, { ...rows.captureDevices.find((row) => row.kind === 'CAMERA')!, id: 'CAM-03', adapterKind: 'LOCAL_DEVICE' }] },
+      { ...rows, captureDevices: [...rows.captureDevices, { ...rows.captureDevices.find((row) => row.kind === 'CAMERA')!, id: 'CAM-05', adapterKind: 'LOCAL_DEVICE' }] },
       { captureDeviceListing: (device) => (asked.push(`${device.id} ${device.kind} ${device.adapterKind}`), device.adapterKind !== 'LOCAL_DEVICE') },
     );
     expect(ids(slices)).toEqual(all);
-    expect(asked).toContain('CAM-03 CAMERA LOCAL_DEVICE');
+    expect(asked).toContain('CAM-05 CAMERA LOCAL_DEVICE');
   });
 
   it('a device the selector names is never left out (its refusal is the capture fence\'s, at boot), and the selector is read against every stored row', () => {
     const slices = fromRows(rows, { captureDeviceListing: () => false });
     const named = [...slices.captureConfig.cameras.map((line) => line.deviceId), ...slices.captureConfig.mics.map((line) => line.deviceId)].sort();
     expect(ids(slices)).toEqual(named);
-    expect(named).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02']);
+    expect(named).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02'].sort()); // D60: the seeded selector names six devices
   });
 });
 
@@ -366,7 +366,7 @@ describe('capture_devices: the device-list rule of the reader (R69-03)', () => {
 // stays complete and no fixture of another suite holds a NULL.
 describe('capture_config: an unassigned slot is NULL in the row and an absent line in the slice (task 4 row 166)', () => {
   type Selector = SimState['captureConfig'];
-  const SLOT_COLUMNS = ['video01DeviceId', 'video01Profile', 'video02DeviceId', 'video02Profile', 'micPrimaryId', 'micStandbyId'] as const;
+  const SLOT_COLUMNS = ['video01DeviceId', 'video01Profile', 'video02DeviceId', 'video02Profile', 'video03DeviceId', 'video03Profile', 'video04DeviceId', 'video04Profile', 'micPrimaryId', 'micStandbyId'] as const; // D60 (2026-11-04): ten slot columns (was six)
   const seeded = (): Selector => idle().captureConfig;
   /** The seeded selector with only the lines of the slots named. */
   const holding = (slots: readonly string[]): Selector => {
@@ -383,61 +383,60 @@ describe('capture_config: an unassigned slot is NULL in the row and an absent li
     const rows = asStored(toRows(idle(), context));
     return { ...rows, captureConfig: rows.captureConfig.map((row) => ({ ...row, ...columns })) } as typeof rows;
   };
-  const SIX_NULLS = Object.fromEntries(SLOT_COLUMNS.map((column) => [column, null]));
+  const TEN_NULLS = Object.fromEntries(SLOT_COLUMNS.map((column) => [column, null])); // D60: a row without a line is ten NULLs
   const PROFILE = seeded().cameras[0]?.profile ?? '';
 
   it('GATE AD-04 (2): only VIDEO-02 and only a STANDBY microphone - written with video_01_* and mic_primary_id NULL, and read back as the same two lines', () => {
     const selector = holding(['VIDEO-02', 'STANDBY']);
     expect(selector.cameras.map((line) => line.trackId)).toEqual(['VIDEO-02']);
     expect(selector.mics.map((line) => line.role)).toEqual(['STANDBY']);
-    expect(slotsOf(selector)).toEqual({ video01DeviceId: null, video01Profile: null, video02DeviceId: 'CAM-02', video02Profile: PROFILE, micPrimaryId: null, micStandbyId: 'MIC-02' });
+    expect(slotsOf(selector)).toEqual({ video01DeviceId: null, video01Profile: null, video02DeviceId: 'CAM-02', video02Profile: PROFILE, video03DeviceId: null, video03Profile: null, video04DeviceId: null, video04Profile: null, micPrimaryId: null, micStandbyId: 'MIC-02' }); // D60: the two further slots NULL too
 
     const back = fromRows(asStored(toRows(withSelector(selector), context))).captureConfig;
     expect(back).toStrictEqual(selector);
     // The mirror image, so that neither half passes by the place of a line.
-    expect(slotsOf(holding(['VIDEO-01', 'PRIMARY']))).toEqual({ video01DeviceId: 'CAM-01', video01Profile: PROFILE, video02DeviceId: null, video02Profile: null, micPrimaryId: 'MIC-01', micStandbyId: null });
+    expect(slotsOf(holding(['VIDEO-01', 'PRIMARY']))).toEqual({ video01DeviceId: 'CAM-01', video01Profile: PROFILE, video02DeviceId: null, video02Profile: null, video03DeviceId: null, video03Profile: null, video04DeviceId: null, video04Profile: null, micPrimaryId: 'MIC-01', micStandbyId: null });
     // Control: the seeded selector is written whole, as before.
-    expect(slotsOf(seeded())).toEqual({ video01DeviceId: 'CAM-01', video01Profile: PROFILE, video02DeviceId: 'CAM-02', video02Profile: PROFILE, micPrimaryId: 'MIC-01', micStandbyId: 'MIC-02' });
+    expect(slotsOf(seeded())).toEqual({ video01DeviceId: 'CAM-01', video01Profile: PROFILE, video02DeviceId: 'CAM-02', video02Profile: PROFILE, video03DeviceId: 'CAM-03', video03Profile: PROFILE, video04DeviceId: 'CAM-04', video04Profile: PROFILE, micPrimaryId: 'MIC-01', micStandbyId: 'MIC-02' }); // D60: the seeded selector is four tracks and two mics
   });
 
-  it('GATE AD-04 (2): a row of six NULLs rehydrates to two empty lists without a throw, and names no device', () => {
-    const slices = fromRows(storedWith(SIX_NULLS));
+  it('GATE AD-04 (2): a row of ten NULLs (D60, 2026-11-04: four video pairs and two mics) rehydrates to two empty lists without a throw, and names no device', () => {
+    const slices = fromRows(storedWith(TEN_NULLS));
     expect(slices.captureConfig.cameras).toEqual([]);
     expect(slices.captureConfig.mics).toEqual([]);
     expect(slices.captureConfig.locked).toBe(false);
     // The registry is still read whole; with a rule that lists nothing, no slot keeps a device in.
-    expect(slices.captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
-    expect(fromRows(storedWith(SIX_NULLS), { captureDeviceListing: () => false }).captureDevices.devices).toEqual([]);
-    expect([...selectorDeviceIds({ video01DeviceId: null, video02DeviceId: null, micPrimaryId: null, micStandbyId: null } as never)]).toEqual([]);
-    // And the way there: a selector without a line is six NULLs.
-    expect(slotsOf(holding([]))).toEqual(SIX_NULLS);
+    expect(slices.captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH']); // D60: seven built-ins
+    expect(fromRows(storedWith(TEN_NULLS), { captureDeviceListing: () => false }).captureDevices.devices).toEqual([]);
+    expect([...selectorDeviceIds({ video01DeviceId: null, video02DeviceId: null, video03DeviceId: null, video04DeviceId: null, micPrimaryId: null, micStandbyId: null } as never)]).toEqual([]);
+    // And the way there: a selector without a line is ten NULLs.
+    expect(slotsOf(holding([]))).toEqual(TEN_NULLS);
   });
 
-  it('each of the 16 selectors of four slots goes to its own columns and comes back equal; a NULL slot names no device', () => {
-    const SLOTS = ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] as const;
-    const DEVICE_COLUMN = { 'VIDEO-01': 'video01DeviceId', 'VIDEO-02': 'video02DeviceId', PRIMARY: 'micPrimaryId', STANDBY: 'micStandbyId' } as const;
-    const DEVICE = { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', PRIMARY: 'MIC-01', STANDBY: 'MIC-02' } as const;
+  it('each of the 64 selectors of six slots (D60, 2026-11-04) goes to its own columns and comes back equal; a NULL slot names no device', () => {
+    const SLOTS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'PRIMARY', 'STANDBY'] as const; // D60
+    const DEVICE_COLUMN = { 'VIDEO-01': 'video01DeviceId', 'VIDEO-02': 'video02DeviceId', 'VIDEO-03': 'video03DeviceId', 'VIDEO-04': 'video04DeviceId', PRIMARY: 'micPrimaryId', STANDBY: 'micStandbyId' } as const;
+    const DEVICE = { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', 'VIDEO-03': 'CAM-03', 'VIDEO-04': 'CAM-04', PRIMARY: 'MIC-01', STANDBY: 'MIC-02' } as const;
     let checked = 0;
-    for (let mask = 0; mask < 16; mask += 1) {
+    for (let mask = 0; mask < 64; mask += 1) { // D60: 2^6
       const held = SLOTS.filter((_slot, index) => (mask & (1 << index)) !== 0);
       const selector = holding(held);
       const row = slotsOf(selector);
       for (const slot of SLOTS) expect(row[DEVICE_COLUMN[slot]], `${held.join('+')} ${slot}`).toBe(held.includes(slot) ? DEVICE[slot] : null);
       // The pair rule of a video slot: device and profile NULL together.
-      expect(row.video01Profile === null, held.join('+')).toBe(row.video01DeviceId === null);
-      expect(row.video02Profile === null, held.join('+')).toBe(row.video02DeviceId === null);
+      for (const pair of ['video01', 'video02', 'video03', 'video04'] as const) expect(row[`${pair}Profile`] === null, `${held.join('+')} ${pair}`).toBe(row[`${pair}DeviceId`] === null); // D60: the pair rule on all four slots
       const stored = asStored(toRows(withSelector(selector), context));
       expect(fromRows(stored).captureConfig, held.join('+')).toStrictEqual(selector);
       expect([...selectorDeviceIds(stored.captureConfig[0] as never)].sort(), held.join('+')).toEqual(held.map((slot) => DEVICE[slot]).sort());
       checked += 1;
     }
-    expect(checked).toBe(16);
+    expect(checked).toBe(64); // D60
   });
 
   it('nothing goes by position: lines listed in the other order reach the same columns', () => {
     const selector = seeded();
     const reversed: Selector = { ...selector, cameras: [...selector.cameras].reverse(), mics: [...selector.mics].reverse() };
-    expect(reversed.cameras[0]?.trackId).toBe('VIDEO-02');
+    expect(reversed.cameras[0]?.trackId).toBe('VIDEO-04'); // D60: four lines reversed
     expect(reversed.mics[0]?.role).toBe('STANDBY');
     expect(slotsOf(reversed)).toEqual(slotsOf(selector));
     // A lone PRIMARY that is the SECOND input (MIC-02) is the primary column, not the standby one.
@@ -450,7 +449,7 @@ describe('capture_config: an unassigned slot is NULL in the row and an absent li
     const before = withSelector(seeded());
     const after = withSelector(holding(['VIDEO-02', 'STANDBY']));
     expect(diffSlices(before, after, FIXED_NOW).filter((change) => change.table === 'captureConfig')).toEqual([
-      { op: 'update', table: 'captureConfig', key: { singleton: true }, set: { video01DeviceId: null, video01Profile: null, micPrimaryId: null } },
+      { op: 'update', table: 'captureConfig', key: { singleton: true }, set: { video01DeviceId: null, video01Profile: null, video03DeviceId: null, video03Profile: null, video04DeviceId: null, video04Profile: null, micPrimaryId: null } }, // D60: three video pairs and the PRIMARY cleared
     ]);
   });
 
@@ -462,7 +461,7 @@ describe('capture_config: an unassigned slot is NULL in the row and an absent li
     const refusals: Selector[] = [
       { ...selector, cameras: [camera01, { ...camera02, trackId: 'VIDEO-01' }] },
       { ...selector, cameras: [camera01, camera02, { ...camera02, deviceId: 'CAM-03' }] },
-      { ...selector, cameras: [{ ...camera01, trackId: 'VIDEO-03' as never }] },
+      { ...selector, cameras: [{ ...camera01, trackId: 'VIDEO-05' as never }] },
       { ...selector, mics: [primary, { ...standby, role: 'PRIMARY' }] },
       { ...selector, mics: [primary, standby, { ...standby, inputId: 'MIC-03', deviceId: 'MIC-03' }] },
       { ...selector, mics: [{ ...primary, role: undefined as never }, standby] },
@@ -480,7 +479,7 @@ describe('capture_config: an unassigned slot is NULL in the row and an absent li
     expect(half({ micPrimaryId: null, micStandbyId: 'MIC-09' })).toThrowError(expect.objectContaining({ code: 'ROW_SHAPE', place:'capture_config.mic_standby_id' }));
     expect(half({ video01DeviceId: null, video01Profile: null, video02Profile: 'h264-1080p25' })).toThrowError(expect.objectContaining({ code: 'ROW_SHAPE', place:'capture_config.video_02_profile' }));
     // Control: the same hand-written form with a whole NULL slot is read.
-    expect(half({ video01DeviceId: null, video01Profile: null })().captureConfig.cameras.map((line) => line.trackId)).toEqual(['VIDEO-02']);
+    expect(half({ video01DeviceId: null, video01Profile: null })().captureConfig.cameras.map((line) => line.trackId)).toEqual(['VIDEO-02', 'VIDEO-03', 'VIDEO-04']); // D60: the other three lines ride on
   });
 });
 
@@ -499,9 +498,12 @@ describe('capture_config: a registered camera\'s line comes back NOT READ (row V
     expect(back.captureConfig.cameras.map((line) => [line.trackId, line.deviceId, line.online, line.streamState])).toEqual([
       ['VIDEO-01', 'CAM-01', false, 'LOST'],
       ['VIDEO-02', 'CAM-07', true, null],
+      // D60 (2026-11-04): the two further built-in lines come back LIVE from the model.
+      ['VIDEO-03', 'CAM-03', true, 'LIVE'],
+      ['VIDEO-04', 'CAM-04', true, 'LIVE'],
     ]);
     expect(back.captureDevices.devices.find((device) => device.id === 'CAM-07')?.streamState).toBeNull();
     // CONTROL: the seeded selector of the built-in pair reads back LIVE, the demonstration model's value.
-    expect(fromRows(asStored(toRows(base, context))).captureConfig.cameras.map((line) => line.streamState)).toEqual(['LIVE', 'LIVE']);
+    expect(fromRows(asStored(toRows(base, context))).captureConfig.cameras.map((line) => line.streamState)).toEqual(['LIVE', 'LIVE', 'LIVE', 'LIVE']); // D60: four built-in lines
   });
 });

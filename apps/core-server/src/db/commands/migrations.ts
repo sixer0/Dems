@@ -99,6 +99,7 @@ export const INITIAL_MIGRATION_TAGS = [
   '0036_operator_purge',
   '0037_operator_credential_creation',
   '0038_operator_purge_reseal_correction',
+  '0039_four_video_tracks', // D60 (2026-11-04): four simultaneous video tracks
 ] as const;
 
 export interface MigrationFile {

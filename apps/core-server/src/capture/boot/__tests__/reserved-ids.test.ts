@@ -19,7 +19,7 @@ import { join, resolve } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, describe, expect, it } from 'vitest';
 import { CAPTURE_PROTOCOL_VERSION } from '@dems/capture-protocol';
-import { TEST_CAPTURE_HOST, testHostPrograms } from '../../../../test/support/capture-host';
+import { TEST_CAPTURE_HOST, testHostPrograms, testListingStandIns } from '../../../../test/support/capture-host';
 import { unitTestConfig } from '../../../../test/support/config';
 import { REPOSITORY, WORKSPACE, isTestFile, readTree, stripComments, type SourceFile } from '../../../../test/static/scan';
 import { parseInstallationDeviceId } from '../../../config';
@@ -180,7 +180,7 @@ describe('row 228b, check 4b-3 as mounted: the fixture\'s default key and the te
     const log = { info() {} } as unknown as Parameters<typeof createReadiness>[0];
     const config = unitTestConfig({ dataDir: fixture.dataDir, mediaStoreDir: fixture.mediaStoreDir, captureMode: 'real', captureDevSources, captureWorkerPath: fixture.worker('worker-row228b'), ...testHostPrograms(fixture.programsDir) });
     const app = { config, stages: {}, readiness: createReadiness(log), clock: { now: () => FIXTURE_NOW + 1_000 } } as unknown as FastifyInstance;
-    const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, host: TEST_CAPTURE_HOST, demoPasswordOperators: async () => 0, ...seams });
+    const control = mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, host: { ...TEST_CAPTURE_HOST, systemListingPrograms: testListingStandIns(fixture.dataDir) }, /* bench-port seam 2026-11-04: the faked darwin host needs the listing pair as stand-ins */ demoPasswordOperators: async () => 0, ...seams });
     const refusal = (): Promise<[string, string | null]> =>
       app.readiness.boot().then(
         () => ['NOT REFUSED', null],

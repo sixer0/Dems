@@ -8,7 +8,7 @@
 import { chmodSync, readdirSync, statSync, writeFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, describe, expect, it } from 'vitest';
-import { TEST_CAPTURE_HOST, testHostPrograms } from '../../../../test/support/capture-host';
+import { TEST_CAPTURE_HOST, testHostPrograms, testListingStandIns } from '../../../../test/support/capture-host';
 import { unitTestConfig } from '../../../../test/support/config';
 import type { ConfigInput } from '../../../config';
 import { BootError, createReadiness } from '../../../plugins/readiness';
@@ -49,7 +49,9 @@ const SUITE_INSTALLATION_ID = 'DEMS-TEST-BOOT';
 const TEST_INSTALLATION = Object.freeze({ installationId: SUITE_INSTALLATION_ID });
 const fixture = realBootFixture('boot', SUITE_INSTALLATION_ID);
 /** Task 4 row 85 (C46): the explicit TEST host of the mounts below, and its two stand-in programs in the fixture's own directory. */
-const TEST_HOST = { host: TEST_CAPTURE_HOST };
+// Bench-port seam 2026-11-04: the test host fakes `darwin` (the product's platform); on a Linux machine none of
+// row N13's system programs exists on disk, so the fixture hands in two stand-ins - same rule, nothing started.
+const TEST_HOST = { host: { ...TEST_CAPTURE_HOST, systemListingPrograms: testListingStandIns(fixture.dataDir) } };
 const TEST_HOST_PROGRAMS = testHostPrograms(fixture.programsDir);
 /** What a production start on the test host persists before the worker is asked: the host is not Linux, so the profile's questions were not asked (step 4d). */
 const TEST_HOST_NOT_LINUX = { level: 'warn', source: 'capture.boot', code: 'CAPTURE_HOST_PROFILE_NOT_ASKED' };
@@ -484,7 +486,9 @@ describe('row 81: the mount hands the host facts to the boot checks - a REAL_PRO
       ...(options.coreFileLimit === undefined ? {} : { coreFileLimit: options.coreFileLimit }),
     });
     // What the entry point hands in: the facts of the process and the runner. NO program path: the mount adds the configuration's.
-    const facts: CaptureBootHostFacts = { platform: host.deps.platform, coreFileLimit: host.deps.coreFileLimit, startArguments: host.deps.startArguments, nodeOptionsSet: host.deps.nodeOptionsSet, run: host.deps.run };
+    // Bench-port seam 2026-11-04: this bed's test host fakes `darwin`, which has no /usr/sbin/ioreg on a Linux
+    // machine - the two microphone-listing stand-ins of the shared seam stand in for row N13's pair (same rule, nothing started).
+    const facts: CaptureBootHostFacts = { platform: host.deps.platform, coreFileLimit: host.deps.coreFileLimit, startArguments: host.deps.startArguments, nodeOptionsSet: host.deps.nodeOptionsSet, run: host.deps.run, systemListingPrograms: testListingStandIns(fixture.dataDir) };
     let reads = 0;
     const recorded = recordedSinks();
     const log = { info() {} } as unknown as Parameters<typeof createReadiness>[0];
@@ -613,7 +617,7 @@ describe('row 81: the mount hands the host facts to the boot checks - a REAL_PRO
   it('C46: the facts go through ONE door, once, before the boot steps - `provideHost`; with the test host a production start runs BOTH steps and passes; a second hand-over and one after the step are refused', async () => {
     keyThere();
     const provided = bare({ captureMode: 'real', captureWorkerPath: fixture.worker('worker-host-13'), ...TEST_HOST_PROGRAMS });
-    provided.control.provideHost(TEST_CAPTURE_HOST);
+    provided.control.provideHost({ ...TEST_CAPTURE_HOST, systemListingPrograms: testListingStandIns(fixture.dataDir) }); // bench-port seam 2026-11-04: the faked darwin host needs the listing pair as stand-ins
     expect(() => provided.control.provideHost(TEST_CAPTURE_HOST)).toThrow(CaptureHostFactsError);
     await provided.boot();
     expect(provided.control.outcome()?.operation).toBe(CaptureOperation.REAL_PRODUCTION);
@@ -635,7 +639,7 @@ describe('row 81: the mount hands the host facts to the boot checks - a REAL_PRO
     keyThere();
     const started = (captureAliasSocketPath: string | null, name: string, development = false) => {
       const app = bare({ captureMode: 'real', captureWorkerPath: fixture.worker(name), ...TEST_HOST_PROGRAMS, captureAliasSocketPath, ...(development ? { captureDevSources: true } : {}) });
-      app.control.provideHost(TEST_CAPTURE_HOST);
+      app.control.provideHost({ ...TEST_CAPTURE_HOST, systemListingPrograms: testListingStandIns(fixture.dataDir) }); // bench-port seam 2026-11-04
       return app;
     };
     const other = started(`${fixture.dataDir}/netalias.socket`, 'worker-host-hc-2');
@@ -979,7 +983,9 @@ describe('row NB: the mount hands step 4e the two system programs of the microph
     // fixture (so the case holds on any machine), the second one with its mode made writable by others.
     const standIn = inspectProgram(fixture.worker('listing-stand-in'));
     const inspect = (path: string): ProgramFacts => (inspected.push(path), path === MACOS_SYSTEM_AUDIO_PROGRAM ? { ...standIn, file: { ownerUid: 0, mode: 0o777 } } : path === MACOS_USB_TREE_PROGRAM ? standIn : inspectProgram(path));
-    mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, ...TEST_INSTALLATION, ...NO_DEMO_PASSWORD, ...TEST_HOST, inspect });
+    // Bench-port seam 2026-11-04: THIS case judges row N4's REAL pair - the stand-ins of the suite's test host are
+    // overridden back to the literals; the `inspect` above answers their facts, so nothing is read from the machine.
+    mountCaptureBootChecks(app, { sinks: recorded.sinks, timers: createSystemTimers(), helloTimeoutMs: 3_000, ...TEST_INSTALLATION, ...NO_DEMO_PASSWORD, ...TEST_HOST, host: { ...TEST_CAPTURE_HOST, systemListingPrograms: SYSTEM_LISTING_PROGRAMS }, inspect });
     const failure = await app.readiness.boot().then(
       () => null,
       (error: unknown) => (error instanceof BootError ? error.cause : error),

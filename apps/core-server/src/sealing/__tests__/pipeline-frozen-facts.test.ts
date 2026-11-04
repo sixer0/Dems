@@ -35,13 +35,13 @@ function afterRestart(h: Harness): void {
     device: { ...h.facts.device, softwareVersion: '9.9.9-upgraded' },
     timeSource: { ...h.facts.timeSource, state: 'UNLOCKED' },
     operator: { ...h.facts.operator, displayName: 'Renamed Operator' },
-    tracks: [{ ...h.facts.tracks[0], name: 'Renamed camera' }, h.facts.tracks[1]],
+    tracks: [{ ...h.facts.tracks[0]!, name: 'Renamed camera' }, h.facts.tracks[1]!], // D60 (2026-11-04): tracks is a 1..4 array now, not a fixed pair
   };
 }
 async function stoppedThenResumed(step: SealingStepId, phase: SealingHookPoint['phase']) {
   const recording = recordSession();
   const h = harnessOf(recording);
-  const before = structuredClone({ device: h.facts.device, timeSource: h.facts.timeSource, operator: h.facts.operator, name: h.facts.tracks[0].name });
+  const before = structuredClone({ device: h.facts.device, timeSource: h.facts.timeSource, operator: h.facts.operator, name: h.facts.tracks[0]!.name }); // D60: indexed read of the 1..4 track array
   h.hook = stopAt(step, phase);
   await expect(h.again().run({ sessionId: recording.sessionId, cause: 'STOPPED' })).rejects.toBeInstanceOf(SealingStop);
   afterRestart(h);

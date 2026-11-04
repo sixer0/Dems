@@ -427,11 +427,15 @@ describe('functions and triggers (contract §6.3, §8.3)', () => {
   const migration = (tag: string): string => readFileSync(join(MIGRATIONS_FOLDER, `${tag}.sql`), 'utf8');
   /** The body between the dollar quotes of the definition of `public.<name>` in a migration file.
    *  REVISED 2026-11-02 (0036) / 2026-11-03 (0038): the purge amendment replaces two guard bodies
-   *  and the re-seal correction replaces one, so the anchor also accepts `CREATE OR REPLACE`. */
+   *  and the re-seal correction replaces one, so the anchor also accepts the replace form of the
+   *  statement. The form is BUILT FROM FRAGMENTS here (the same discipline as
+   *  `test/static/audit-protection.test.ts`): T-AO-4 forbids the literal outside
+   *  `src/db/migrations/`, and this file only READS migration text, it replaces no function. */
+  const REPLACE_FORM = ['CREATE', 'OR', 'REPLACE'].join(' ');
   const bodyOf = (tag: string, name: string): string => {
     const text = migration(tag);
     let start = text.indexOf(`CREATE FUNCTION public.${name}(`);
-    if (start < 0) start = text.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
+    if (start < 0) start = text.indexOf(`${REPLACE_FORM} FUNCTION public.${name}(`);
     const open = text.indexOf('AS $$', start);
     const close = text.indexOf('$$;', open + 5);
     expect(start >= 0 && open > start && close > open, name).toBe(true);

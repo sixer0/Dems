@@ -1,8 +1,9 @@
 // The development-source mark in verify v2 (blueprint row 141, R-11; evidence package spec §B.12,
 // §D V-15, §D.1, §H.5; test strategy §A.4a).
 //
-//   M7-DEVSRC-SEAL-1    a package built from a DEVELOPMENT plan - the four `session_capture_sources`
-//                       rows of row 136's builder: this Mac's camera and microphone in slot 1, the
+//   M7-DEVSRC-SEAL-1    a package built from a DEVELOPMENT plan - the four LEGACY `session_capture_sources`
+//                       rows of a two-track start (D60, 2026-11-04: a NEW start writes six): this Mac's
+//                       camera and microphone in slot 1, the
 //                       test sources in slot 2 - carries the classes, verifies PASS on 15 checks,
 //                       and its report starts with the development line
 //   M7-DEVSRC-TAMPER-1  an edited mark fails: a raw edit -> the manifest hash (V-03); re-hashed
@@ -28,8 +29,6 @@ import {
 } from '@dems/shared/evidence-verify';
 import { rmSync, writeFileSync } from 'node:fs';
 import { afterAll, describe, expect, it } from 'vitest';
-import { CaptureOperation, type CaptureAdapterKind } from '../../capture/adapters';
-import { buildSessionCaptureSources, type RecordedSlot } from '../../capture/fence';
 import { contractBodyOf, corePorts, readSealedSourceMark } from '../index';
 import { buildPackage, editManifest, flipByte, removeScratch, throwAwaySigner, type BuildOptions, type BuiltPackage } from './support';
 
@@ -42,17 +41,21 @@ const SESSION_ID = 'SES-20261009-0001';
 const EVIDENCE_ID = 'EV-20261009-0001';
 const ALL: VerifyCheckId[] = VERIFY_V2_CHECKS.map((check) => check.id);
 
-const slot = (name: RecordedSlot['slot'], id: string, deviceClass: 'CAMERA' | 'MIC', adapterKind: CaptureAdapterKind): RecordedSlot => ({ slot: name, descriptor: { id, deviceClass, adapterKind, hasOpener: true } });
-
-/** The development plan of D74(2), as ROW 136's builder writes it for a session start in `REAL_DEVELOPMENT`. */
+/**
+ * The development plan of D74(2) as a LEGACY two-track session holds it (D60, 2026-11-04: the
+ * start builder now writes SIX rows - migration 0039 widened the plan - while a session started
+ * before it keeps its four stored rows forever and still seals and verifies, `sessionSourceClasses`
+ * of the shared source-class accepting the session's OWN planned slot set). Written by hand like
+ * `PRODUCTION_ROWS`; the classes are still DERIVED from the kinds by the manifest builder, which
+ * is what this file proves. The builder of six rows is proven by `capture/fence`'s own tests.
+ */
 function developmentRows(): SessionCaptureSourceRow[] {
-  const rows = buildSessionCaptureSources({
-    sessionId: SESSION_ID,
-    operation: CaptureOperation.REAL_DEVELOPMENT,
-    slots: [slot('VIDEO-01', 'CAM-03', 'CAMERA', 'LOCAL_DEVICE'), slot('VIDEO-02', 'CAM-02', 'CAMERA', 'FAKE'), slot('PRIMARY', 'MIC-03', 'MIC', 'LOCAL_DEVICE'), slot('STANDBY', 'MIC-02', 'MIC', 'FAKE')],
-    recordedAt: 1_791_500_000_000,
-  });
-  return rows.map((row) => ({ slot: row.slot, deviceId: row.deviceId, adapterKind: row.adapterKind }));
+  return [
+    { slot: 'VIDEO-01', deviceId: 'CAM-03', adapterKind: 'LOCAL_DEVICE' },
+    { slot: 'VIDEO-02', deviceId: 'CAM-02', adapterKind: 'FAKE' },
+    { slot: 'MIC-PRIMARY', deviceId: 'MIC-03', adapterKind: 'LOCAL_DEVICE' },
+    { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'FAKE' },
+  ];
 }
 
 /** No builder of this phase makes these rows (D86 C-5: a production session cannot start): written by hand, for the wording of §H.5 only. */
@@ -241,7 +244,7 @@ describe('M7-DEVSRC-TAMPER-1: changing or removing a class or the flag fails, at
     const built = await developmentPackage();
     editManifest(built, (manifest) => delete manifest.tracks[1].sourceClass);
     const result = await atCore(built);
-    expect(failing(result)).toEqual(['V-01', 'V-03', 'V-15']);
+    expect(failing(result)).toEqual(['V-01', 'V-03', 'V-14', 'V-15']); // D60 (2026-11-04): an unparseable manifest names no track list, so V-14 holds all four camera files declared and cannot pass
     expect(v15(result)).toEqual({ status: 'FAIL', failureClass: 'MISSING', skipped: null, found: ['SOURCE_CLASS_MISSING MISSING tracks.1.sourceClass'] });
     expectNotTrustworthy(result);
   });
@@ -264,7 +267,7 @@ describe('M7-DEVSRC-TAMPER-1: changing or removing a class or the flag fails, at
     const built = await developmentPackage();
     editManifest(built, (manifest) => delete manifest.developmentSources, { recomputeHash: true });
     const result = await alone(built);
-    expect(failing(result)).toEqual(['V-01', 'V-15']);
+    expect(failing(result)).toEqual(['V-01', 'V-14', 'V-15']); // D60 (2026-11-04): no readable manifest, no track list - V-14 holds all four declared and fails
     expect(v15(result)).toEqual({ status: 'FAIL', failureClass: 'MISSING', skipped: null, found: ['DEVELOPMENT_FLAG_MISSING MISSING developmentSources'] });
     // V-09 cannot run without a manifest that parsed: SKIPPED, which is not a pass.
     expect(statusOf(result, 'V-09')).toBe('SKIPPED');
@@ -301,10 +304,10 @@ describe('M7-DEVSRC-TAMPER-1: changing or removing a class or the flag fails, at
     // so the signature and the certificate are not even asked (SKIPPED, not a pass); V-15 names why.
     expect(statusOf(held, 'V-03')).toBe('PASS');
     expect([statusOf(held, 'V-09'), statusOf(held, 'V-13')]).toEqual(['SKIPPED', 'SKIPPED']);
-    expect(failing(held)).toEqual(['V-01', 'V-15']);
+    expect(failing(held)).toEqual(['V-01', 'V-14', 'V-15']); // D60 (2026-11-04): the refused manifest names no track list either - V-14 holds all four declared and fails
     expect(held.checks.find((check) => check.id === 'V-01')?.findings.map((finding) => `${finding.code} ${finding.member ?? ''}`)).toEqual(['MANIFEST_FIELD_INVALID developmentSources']);
     expect(v15(held)).toEqual({ status: 'FAIL', failureClass: 'CORRUPT', skipped: null, found: ['DEVELOPMENT_FLAG_INCONSISTENT CORRUPT developmentSources'] });
-    expect(held.overall).toBe('CORRUPT');
+    expect(held.overall).toBe('MISSING'); // D60: V-14's MISSING outranks V-15's CORRUPT in the GRAVITY order
     expectNotTrustworthy(held);
   });
 

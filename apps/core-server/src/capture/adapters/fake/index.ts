@@ -6,7 +6,7 @@
  *
  * Two topologies (OD-05): `TWO_CAMERAS` — `CAM-01` and `CAM-02`, one profile each (two fakes
  * emulate two cameras); `DUAL_LENS` — one camera with two profiles, which the selector assigns to
- * both tracks.
+ * two of the four tracks (D60, 2026-11-04: was both of the two).
  */
 import { DEFAULT_CAPTURE_DEVICES } from '@dems/shared/sim';
 import { CaptureOperation } from '../kinds';

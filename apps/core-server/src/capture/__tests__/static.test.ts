@@ -935,7 +935,7 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
   // plan row W08 froze. A line nobody waived, of any kind, changes the digest and fails here.
   // Row 136 (spec §I edits 15 to 18; decision D108 (b): the same category of OD-14): the two keys of
   // the development fence stand in the same four places and are waived lines of the same list.
-  it('config.ts: every added line is one of the capture keys (spec §I edits 7 to 10 and 15 to 18); without them the file is the frozen one', () => {
+  it('config.ts: every added line is a waived one - the capture keys (spec §I edits 7 to 10 and 15 to 18) and the LCD backend URL (2026-11-03); without them the file is the frozen one', () => {
     /** SHA-256 of `src/config.ts` as plan row W08 froze it (unchanged up to commit 101ce62, 271 lines). */
     const FROZEN_CONFIG_TS = 'de6f7bc958d84649aff0d8e248ef534e167f3639afd46a6f3e36c590cf7154f9';
     const WAIVED_CONFIG: readonly string[] = [
@@ -968,6 +968,10 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       ' * WAIVED EDIT (task 4 row 85c, decision C60 (3); the category of OD-14): the audio helper of production',
       ' * capture. `DEMS_CAPTURE_AUDIO_HELPER` is an absolute path; unset, no production microphone can be',
       ' * opened. It is started by the guard of production capture, never directly and never by a development door.',
+      // LCD integration (user request 2026-10-19; the key joined config.ts with the task-4
+      // checkpoint f85e9c01 of 2026-11-03, outside the capture family - same category of OD-14):
+      // the backend URL of the panel bridge, five places in the file.
+      "export const ENV_LCD_BACKEND_URL = 'DEMS_LCD_BACKEND_URL';",
       "export const ENV_CAPTURE_MODE = 'DEMS_CAPTURE_MODE';",
       "export const ENV_CAPTURE_WORKER = 'DEMS_CAPTURE_WORKER';",
       "export const ENV_MEDIA_DIR = 'DEMS_MEDIA_DIR';",
@@ -988,6 +992,8 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '/** Where the camera files live below the data directory when `DEMS_MEDIA_DIR` is unset (capture spec §H). */',
       "export const MEDIA_STORE_SUBPATH = 'media/sessions';",
       '',
+      '  /** Optional local LCD bridge. Configured at startup; never a browser supplied URL. */',
+      '  readonly lcdBackendUrl?: string | null;',
       '  /** `real`: sessions record through the capture worker. `simulated`: no worker is ever started. */',
       '  readonly captureMode: CaptureMode;',
       '  /** Absolute path of the capture worker program, or null when none is configured. */',
@@ -1056,6 +1062,7 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '  return raw;',
       '}',
       '',
+      '  readonly lcdBackendUrl?: string | null;',
       '  /** Default: `simulated`. */',
       '  readonly captureMode?: CaptureMode;',
       '  /** Default: null (no worker program). */',
@@ -1083,6 +1090,7 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '  const captureWorkerPath = parseCapturePath(ENV_CAPTURE_WORKER, input.captureWorkerPath ?? undefined);',
       '  const mediaStoreDir = parseCapturePath(ENV_MEDIA_DIR, input.mediaStoreDir ?? undefined) ?? `${input.dataDir}/${MEDIA_STORE_SUBPATH}`;',
       '  const captureHelperFfmpegPath = parseCapturePath(ENV_CAPTURE_HELPER_FFMPEG, input.captureHelperFfmpegPath ?? undefined);',
+      '    lcdBackendUrl: parseLcdBackendUrl(input.lcdBackendUrl ?? undefined),',
       '    captureMode: input.captureMode ?? DEFAULT_CAPTURE_MODE,',
       '    captureWorkerPath,',
       '    mediaStoreDir,',
@@ -1095,6 +1103,17 @@ describe('P25: the edits OD-14 waives, and no other mention of capture (spec §I
       '    captureGuardPath: parseCapturePath(ENV_CAPTURE_GUARD, input.captureGuardPath ?? undefined),',
       '    captureAliasSocketPath: parseCapturePath(ENV_CAPTURE_ALIAS_SOCKET, input.captureAliasSocketPath ?? undefined),',
       '    captureAudioHelperPath: parseCapturePath(ENV_CAPTURE_AUDIO_HELPER, input.captureAudioHelperPath ?? undefined),',
+      '/** LCD integration, user request 2026-10-19: host-only HTTP service, no redirects or remote hosts. */',
+      'export function parseLcdBackendUrl(raw: string | undefined): string | null {',
+      "  if (raw === undefined || raw === '') return null;",
+      '  const matched = /^http:\\/\\/127\\.0\\.0\\.1:([0-9]{1,5})\\/?$/.exec(raw);',
+      '  const port = Number(matched?.[1]);',
+      '  if (matched === null || port < 1 || port > 65_535) {',
+      "    throw new ConfigError('LCD_BACKEND_URL_INVALID', 'DEMS_LCD_BACKEND_URL must be http://127.0.0.1:<port> with a valid port.');",
+      '  }',
+      '  return `http://127.0.0.1:${port}`;',
+      '}',
+      '',
     ];
     const withoutWaived = (lines: readonly string[]): string | null => {
       const rest = [...lines];
@@ -2624,7 +2643,8 @@ describe('row 157 / AD-08: no seam for the full-session test - mount members, no
 
   /**
    * (c) THE CLOSED LIST of the configuration keys: every `DEMS_*` name a production source of the server writes in its
-   * code (declaration, parser, a sentence of a refusal), with the row that admitted it. As it stands at row 157: 22.
+   * code (declaration, parser, a sentence of a refusal), with the row that admitted it. As it stands at row 157: 22;
+   * +2 on 2026-11-04: the panel bridge URL and the installer's certificate fingerprint (checkpoint f85e9c01).
    */
   const CONFIGURATION_KEYS: readonly (readonly [key: string, admittedBy: string])[] = [
     ['DEMS_CAPTURE_ALIAS_SOCKET', 'task 4 row 105 (WP-19b): the socket of the address helper'],
@@ -2638,8 +2658,10 @@ describe('row 157 / AD-08: no seam for the full-session test - mount members, no
     ['DEMS_CAPTURE_WORKER', 'task 3 row 58 (decision OD-14)'],
     ['DEMS_CORE_PORT', 'plan row W08 (the frozen configuration)'],
     ['DEMS_DEMO_CONTROLS', 'plan row W08'],
+    ['DEMS_DEVICE_CERT_FINGERPRINT', 'the seed factory of the bare-metal installer (`src/db/seed/factory.ts`, 2026-11-03): the fingerprint the pairing screen shows'],
     ['DEMS_INSTALLATION_DEVICE_ID', 'task 3 wave H closing pass Z1 (decision D207)'],
     ['DEMS_INSTALLATION_NAME', 'task 3 wave H closing pass Z1 (decision D207)'],
+    ['DEMS_LCD_BACKEND_URL', 'LCD integration (user request 2026-10-19; joined the tree with the task-4 checkpoint f85e9c01 of 2026-11-03): the backend URL of the panel bridge'],
     ['DEMS_LOG_LEVEL', 'plan row W08'],
     ['DEMS_MEDIA_DIR', 'task 3 row 58 (decision OD-14)'],
     ['DEMS_PG_APP_PASSWORD', 'plan row W08: the connection of the app role'],
@@ -2677,7 +2699,7 @@ describe('row 157 / AD-08: no seam for the full-session test - mount members, no
     expect(keyViolations(production)).toEqual([]);
     const named = [...new Set(production.flatMap((file) => file.text.match(KEY_NAME) ?? []))].sort();
     expect(named).toEqual(CONFIGURATION_KEYS.map(([key]) => key));
-    expect(named).toHaveLength(22);
+    expect(named).toHaveLength(24); // two keys joined with the task-4 checkpoint of 2026-11-03
     expect(named.filter((key) => SAYS_TEST.test(key))).toEqual([]);
     // The sources of src/ that are not TypeScript name no key either (a script, a JSON file, a statement file).
     expect(tree.filter((file) => isProductionSource(file.path) && !file.path.endsWith('.ts') && KEY_NAME.test(file.text)).map((file) => file.path)).toEqual([]);

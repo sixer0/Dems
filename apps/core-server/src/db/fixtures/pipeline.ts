@@ -12,7 +12,7 @@
  * a gap; fragment chains recompute (`chain_hash` of the first row is `SHA-256("")`, then
  * `sha256(prevChain ‖ fragmentHash)`, the fold of the shared simulator's file chain, see
  * `@dems/shared/sim` `evidence.ts` and the note on `recording.ts:91`), and the 40 newest fixture
- * recordings carry their head and row count onto their two VIDEO track rows exactly as §G
+ * recordings (recorded before D60 of 2026-11-04 widened the tracks to four) carry their head and row count onto their two VIDEO track rows exactly as §G
  * requires ("head equals `fragment_chain_head`"); DONE chunks hold a segments array and their
  * instant; every transcript hangs on a SEALED item and every SEALED item on a sealed session;
  * revisions chain through `parent_sha256` from the transcript's `json_sha256` and sign in the
@@ -152,7 +152,12 @@ interface RecordedSession {
 
 /** The ids of the seed's five built-in capture devices (`seed/seed.ts` `device()` rows). */
 export const BUILT_IN_CAPTURE_DEVICE_IDS = ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH'] as const;
-/** The two camera files a recording closes (`VIDEO_TRACK_ID`; the fragments' whole domain). */
+/**
+ * The camera files each SEEDED recording closes. The value set `VIDEO_TRACK_ID` widened to FOUR
+ * tracks on D60 (2026-11-04); this corpus is history that predates the ruling - every session
+ * here was recorded and sealed under the two-track shape, which stays valid untouched (a manifest
+ * names its own list, read as a prefix of the new order). A freshly recorded session writes four.
+ */
 const CAMERA_TRACKS = ['VIDEO-01', 'VIDEO-02'] as const;
 /** One fragment every 30 s on a full chain (§G's 40 newest), every 75 s on a sampled session. */
 const FULL_CHAIN_PERIOD_MS = 30_000;
@@ -467,7 +472,7 @@ function buildFragments(recorded: readonly RecordedSession[], fullChains: Readon
   return { rows, chains };
 }
 
-/** §G's "head equals fragment_chain_head": the two VIDEO rows of a full-chain session. */
+/** §G's "head equals fragment_chain_head": the VIDEO rows of a full-chain session (two in this pre-D60 corpus). */
 function patchTrackChainHearts(tracks: EvidenceTrackRow[], byEvidence: ReadonlyMap<string, string>, chains: ReadonlyMap<string, TrackChain[]>): void {
   for (const row of tracks) {
     const sessionId = byEvidence.get(row.evidenceId);
@@ -644,8 +649,8 @@ function buildSealingJobs(world: World, identity: IdentityRows, sealed: readonly
 /**
  * Builds the §G v2 rows. `recordings` is the already-built v1 fixture corpus: its sealed plans
  * anchor the intervals, its recorded plans the fragments and chunks, its SEALED items the
- * transcripts; the seeded slices add their sealed sessions and items. The two VIDEO track rows of
- * the 40 newest fixture recordings are patched in place with their fragment count and chain head.
+ * transcripts; the seeded slices add their sealed sessions and items. The VIDEO track rows of
+ * the 40 newest fixture recordings (two each in this pre-D60 corpus) are patched in place with their fragment count and chain head.
  */
 export function buildPipeline(world: World, identity: IdentityRows, recordings: RecordingRows): PipelineRows {
   const { captureDevices, captureDeviceCredentials } = buildCaptureWorld(world);

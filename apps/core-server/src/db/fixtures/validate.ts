@@ -530,7 +530,7 @@ export function validateBulkFixture(rows: BulkFixtureRows, updates: BulkFixtureU
     fragmentByTrack.set(key, { seq: row.seq, head: row.chainHash });
   }
   const patched = rows.evidenceTracks.filter((row) => row.fragmentChainHead !== null && row.fragmentChainHead !== undefined);
-  must(patched.length === BULK_MIX.recordingFragments.fullChainSessions * BULK_MIX.recordingFragments.tracksPerChain, 'evidence_tracks', 'the fragment chain heads must cover exactly the 40 newest sessions times the two camera tracks');
+  must(patched.length === BULK_MIX.recordingFragments.fullChainSessions * BULK_MIX.recordingFragments.tracksPerChain, 'evidence_tracks', 'the fragment chain heads must cover exactly the 40 newest sessions times the two camera tracks of their pre-D60 recordings');
   for (const row of patched) {
     const chain = fragmentByTrack.get(`${rows.evidenceItems.find((item) => item.id === row.evidenceId)?.sessionId}|${row.trackId}`);
     must(

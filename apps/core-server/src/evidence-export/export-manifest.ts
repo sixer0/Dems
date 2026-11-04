@@ -63,12 +63,12 @@ export const ExportManifestSchema = z.strictObject({
   /** §19.2 item 1: the decrypted camera files, each with the plaintext hash the SEALED manifest records. */
   payload: z.strictObject({
     representation: z.literal(EXPORT_REPRESENTATION),
-    // ONE OR TWO camera files, as the sealed package holds them (R88-01, decision D178): the shared rule of the sealed track list.
+    // ONE TO FOUR camera files, as the sealed package holds them (R88-01, decision D178; D60 of 2026-11-04 widened the shared rule of the sealed track list to four - a two-track package still lists its own two).
     files: z
       .array(z.strictObject({ trackId: z.enum(VIDEO_TRACK_IDS), path: entryPath, bytes: count, sha256Plain: hex64 }))
       .min(1)
       .max(VIDEO_TRACK_IDS.length)
-      .refine((files) => isSealedTrackList(files.map((file) => file.trackId)), 'the camera files of a sealed package: one or two, each once, in file order'),
+      .refine((files) => isSealedTrackList(files.map((file) => file.trackId)), 'the camera files of a sealed package: one to four (D60), each once, in file order'),
   }),
   /** §19.2 item 2: the sealed manifest, carried byte for byte (§G.2). */
   sessionManifest: z.strictObject({

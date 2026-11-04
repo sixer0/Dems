@@ -64,7 +64,7 @@ describe('the first product-sealed package (M7-REF-1, function half)', () => {
 
     // The package folder holds exactly what the package declares, in the D133 form.
     expect(recording.packageDir.endsWith(`SESSION-${recording.sessionId}`)).toBe(true);
-    expect(await listPackageFiles(recording.packageDir)).toEqual([...declaredPackageFiles({ transcript: false })].sort());
+    expect(await listPackageFiles(recording.packageDir)).toEqual([...declaredPackageFiles({ transcript: false, tracks: TRACKS })].sort()); // D60 (2026-11-04): the camera files are the manifest's own list - the default without one declares all four
     const manifest = manifestOf(recording);
     expect(fragmentsJsonMatchesManifest(readFileSync(recording.path(PackageFile.FRAGMENTS_JSON), 'utf8'), manifest.files)).toBe(true);
     expect(manifest).toMatchObject({ integrity: 'REAL', demo: false, developmentSources: true, sessionId: recording.sessionId, timeline: { interrupted: false, stoppedAt: CLOCK_START - 50_000, sealedAt: CLOCK_START } });
@@ -144,7 +144,7 @@ describe('the first product-sealed package (M7-REF-1, function half)', () => {
     expect(h.engine.sealed[0]?.input).toMatchObject({ transcriptSha256: manifest.transcript.sha256 });
     expect(h.engine.sealed[0]?.transcript.transcriptRow?.jsonSha256).toBe(manifest.transcript.sha256);
     expect(readFileSync(recording.path(PackageFile.TRANSCRIPT_JSON)).equals(readFileSync(session.files.json))).toBe(true);
-    expect(await listPackageFiles(recording.packageDir)).toEqual([...declaredPackageFiles({ transcript: true })].sort());
+    expect(await listPackageFiles(recording.packageDir)).toEqual([...declaredPackageFiles({ transcript: true, tracks: TRACKS })].sort()); // D60 (2026-11-04): the camera files are the manifest's own list - the default without one declares all four
     const result = await verify(h);
     expect([result.ok, result.overall, passing(result)]).toEqual([true, 'PASS', ALL]);
     expect(result.transcriptState.code).toBe('READY');
@@ -296,8 +296,8 @@ describe('task 4 row 191c: audio absent across a worker restart is a SIGNED memb
   ] as const;
   /** The session facts with the absences of the given tracks (index 0 = VIDEO-01); every other fact is the fixture's. */
   const withAbsences = (sessionId: string, first: unknown, second?: unknown): Pick<SealSessionFacts, 'tracks'> => {
-    const [one, two] = sessionFacts(sessionId).tracks;
-    return { tracks: [first === undefined ? one : { ...one, absentInSession: first as never }, second === undefined ? two : { ...two, absentInSession: second as never }] };
+    const [one, two] = sessionFacts(sessionId).tracks; // D60 (2026-11-04): the track list is a 1..4 array; the fixture always holds its two
+    return { tracks: [first === undefined ? one! : { ...one!, absentInSession: first as never }, second === undefined ? two! : { ...two!, absentInSession: second as never }] };
   };
 
   it('row R1b: a session with a camera that was absent seals `tracks[].absentInSession` on THAT track - one record per absence, the attempt, the relay\'s loss number, both bounds, how it ended - and the Core\'s verify passes all 15 checks and SAYS it; one changed number or word is refused under the signature', async () => {
@@ -739,7 +739,7 @@ describe('what must never seal, does not (each fails closed, with its row and it
   });
 
   it('field 50 `keyframeAligned` is what the box walk found of the sealed fragments, not a statement of the session record', async () => {
-    const h = harnessOf(recordSession(), { facts: { tracks: [{ ...sessionFacts('SES-20261009-0001').tracks[0], keyframeAligned: false }, { ...sessionFacts('SES-20261009-0001').tracks[1], keyframeAligned: false }] } });
+    const h = harnessOf(recordSession(), { facts: { tracks: [{ ...sessionFacts('SES-20261009-0001').tracks[0]!, keyframeAligned: false }, { ...sessionFacts('SES-20261009-0001').tracks[1]!, keyframeAligned: false }] } }); // D60: indexed reads of the 1..4 track array
     sealedOf(await h.pipeline.run({ sessionId: h.recording.sessionId, cause: 'STOPPED' }));
     const manifest = manifestOf(h.recording);
     expect(manifest.files.flatMap((file) => file.fragments.map((fragment) => fragment.keyframe)).every(Boolean)).toBe(true);
@@ -861,7 +861,7 @@ describe('`.part` names beside a camera file (pair-58 R-5)', () => {
     expect(existsSync(orphan)).toBe(false);
     expect(rowOf(h, 'STORE_SEALED_PACKAGE')?.checkpoint).toMatchObject({ orphansRemoved: 1 });
     expect((await verify(h)).ok).toBe(true);
-    expect(await listPackageFiles(recording.packageDir)).toEqual([...declaredPackageFiles({ transcript: false })].sort());
+    expect(await listPackageFiles(recording.packageDir)).toEqual([...declaredPackageFiles({ transcript: false, tracks: TRACKS })].sort()); // D60 (2026-11-04): the camera files are the manifest's own list - the default without one declares all four
   });
 });
 
@@ -1150,7 +1150,7 @@ describe('a Core that ended after the commit of the item is FINISHED at the next
     expect([PackageFile.MANIFEST, PackageFile.SIGNATURE].map((name) => sha256Hex(readFileSync(h.recording.path(name))))).toEqual(signedBefore);
     // The recordings are gone; the folder is the package and nothing else; the journal is closed.
     for (const trackId of TRACKS) expect(existsSync(h.recording.recordingFile(trackId))).toBe(false);
-    expect(await listPackageFiles(h.recording.packageDir)).toEqual([...declaredPackageFiles({ transcript: false })].sort());
+    expect(await listPackageFiles(h.recording.packageDir)).toEqual([...declaredPackageFiles({ transcript: false, tracks: TRACKS })].sort()); // D60 (2026-11-04): the camera files are the manifest's own list - the default without one declares all four
     expect(SEALING_STEP_ORDER.map((step) => rowOf(h, step)?.status)).toEqual(Array.from({ length: 6 }, () => 'DONE'));
     expect(rowOf(h, 'STORE_SEALED_PACKAGE')).toMatchObject({ attempt: 2, checkpoint: { committed: 'ALREADY_SEALED', recordingsRemoved: 2, recordingsKept: 0 } });
     expect(h.log.entries.filter((entry) => entry.level === 'error')).toEqual([]);

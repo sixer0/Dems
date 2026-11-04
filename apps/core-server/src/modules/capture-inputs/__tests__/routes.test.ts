@@ -5,6 +5,7 @@
 // seam `engine`, a stand-in on a real shared simulator (`support.ts`). What is STORED is the
 // database test's (`no-device.db.test.ts`). Each `it` holds its negative control.
 import { CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS, CAPTURE_SEARCH_ID_PATTERN, CORE_API_OPERATIONS, CoreApiAccessKind, validateCoreApiResponse } from '@dems/shared/api';
+import { Permission } from '@dems/shared/sim'; // the capture-lane driver turned TECHNICIAN: REVOKED 2026-10-29 (0034), re-pinned 2026-11-04
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import { captureNotices } from '../../../capture-notices';
@@ -55,7 +56,7 @@ describe('M4-MIC-RESCAN-1: one call re-reads the local inputs', () => {
   // SIMULATED Core answers is pinned by the two cases at the end of this block.
   it('one entry per registered microphone, the shape of the contract, ONE search row with scope MIC_LOCAL, 0 camera probes and 0 searches', async () => {
     const built = await build({ captureMode: 'real' });
-    built.actAs(operatorOf('SUPERVISOR'));
+    built.actAs(operatorOf('TECHNICIAN')); // REVOKED 2026-10-29 (0034): CAPTURE_CONFIG is the installing technician's
     const devicesBefore = built.sim.store.getState().captureDevices.devices.map((device) => device.id);
     const response = await built.post();
     expect(response.statusCode).toBe(200);
@@ -73,12 +74,12 @@ describe('M4-MIC-RESCAN-1: one call re-reads the local inputs', () => {
     expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([1, 1]);
     expect(built.adapters.fakes.mics.flatMap((mic) => mic.calls.opened)).toEqual([]);
     expect(built.adapters.reads).toEqual([]);
-    expect(built.adapters.fakes.cameras.map((camera) => camera.calls.discover)).toEqual([0, 0]);
+    expect(built.adapters.fakes.cameras.map((camera) => camera.calls.discover)).toEqual([0, 0, 0, 0]); // D60 (2026-11-04): four fake cameras registered, none asked
 
     expect(built.units).toEqual([CAPTURE_INPUTS_UNIT_LABEL]);
     expect(built.appended).toHaveLength(1);
     const [row] = built.appended;
-    expect(row).toMatchObject({ type: 'CAPTURE_DISCOVERY_SEARCHED', actorId: operatorOf('SUPERVISOR').kind === 'OPERATOR' ? 'OPR-002' : null, deviceId: null });
+    expect(row).toMatchObject({ type: 'CAPTURE_DISCOVERY_SEARCHED', actorId: operatorOf('TECHNICIAN').kind === 'OPERATOR' ? 'OPR-003' : null, deviceId: null }); // D60 sweep 2026-11-04: the driver is the technician (RINA)
     expect(row?.details).toEqual({
       searchId: rescanSearchId(built.clock.now()),
       scope: 'MIC_LOCAL',
@@ -125,14 +126,14 @@ describe('M4-MIC-RESCAN-1: one call re-reads the local inputs', () => {
     built.sim.actions.signIn('budi.santoso', 'demo-2026');
     built.sim.actions.createSession({ caseNumber: 'LP/2026/1001-0008', subjectType: 'SAKSI', subjectName: 'Test Saksi', investigatorId: 'OPR-001', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' });
     const sessionId = built.sim.store.getState().session?.id;
-    built.actAs(operatorOf('SUPERVISOR'));
+    built.actAs(operatorOf('TECHNICIAN')); // REVOKED 2026-10-29 (0034)
     expect((await built.post()).statusCode).toBe(200);
     expect(built.appended.at(-1)?.details).toMatchObject({ sessionId });
   });
 
   it('the spacing limit: a second re-read inside the interval is 429 with retry-after, reads nothing and writes no row; after it, 200', async () => {
     const built = await build();
-    built.actAs(operatorOf('SUPERVISOR'));
+    built.actAs(operatorOf('TECHNICIAN')); // REVOKED 2026-10-29 (0034)
     expect((await built.post()).statusCode).toBe(200);
 
     built.clock.advance(CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS - 1_500);
@@ -142,8 +143,8 @@ describe('M4-MIC-RESCAN-1: one call re-reads the local inputs', () => {
     expect(limited.headers['retry-after']).toBe('2');
     expect(built.appended).toHaveLength(1);
     expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([1, 1]);
-    // Another operator is the same Core: still limited.
-    built.actAs(operatorOf('TECHNICIAN'));
+    // Another operator is the same Core: still limited. (A supervisor WITH the permission granted by hand: the revocation of 0034 stands, the limiter is what this case judges.)
+    built.actAs(operatorOf('SUPERVISOR', [Permission.CAPTURE_CONFIG]));
     expect(outcome(await built.post())).toEqual([429, 'RATE_LIMITED']);
 
     // Control: once the interval has passed the same request is a re-read again.
@@ -155,30 +156,31 @@ describe('M4-MIC-RESCAN-1: one call re-reads the local inputs', () => {
 });
 
 describe('who may call, and when it is not ready', () => {
-  it('INVESTIGATOR never reaches the handler: nothing is read, no unit runs; no session is 401; SUPERVISOR and TECHNICIAN pass', async () => {
+  it('INVESTIGATOR never reaches the handler: nothing is read, no unit runs; no session is 401; SUPERVISOR never reaches it either since the capture-lane revocation, and TECHNICIAN passes', async () => {
     const built = await build();
-    built.actAs(operatorOf('INVESTIGATOR'));
-    // Without a database the guard cannot write its ACCESS_DENIED row, so its answer here is not
-    // the 403 of the database test (`no-device.db.test.ts`); what holds in both is that the
-    // handler does not run.
-    expect((await built.post()).statusCode).toBeGreaterThanOrEqual(400);
-    expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([0, 0]);
-    expect(built.appended).toEqual([]);
-    expect(built.units).toEqual([]);
+    // D60 sweep 2026-11-04: SUPERVISOR joined the refusal side - CAPTURE_CONFIG was revoked from it on 2026-10-29 (0034),
+    // so the guard stops it before the handler exactly as it stops the INVESTIGATOR.
+    for (const denied of ['INVESTIGATOR', 'SUPERVISOR'] as const) {
+      built.actAs(operatorOf(denied));
+      // Without a database the guard cannot write its ACCESS_DENIED row, so its answer here is not
+      // the 403 of the database test (`no-device.db.test.ts`); what holds in both is that the handler
+      // does not run.
+      expect((await built.post()).statusCode, denied).toBeGreaterThanOrEqual(400);
+      expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate), denied).toEqual([0, 0]);
+      expect(built.appended, denied).toEqual([]);
+      expect(built.units, denied).toEqual([]);
+    }
 
     built.actAs({ kind: 'ANONYMOUS', retiredDeviceId: null });
     expect(outcome(await built.post())).toEqual([401, 'NOT_SIGNED_IN']);
 
     built.actAs(operatorOf('TECHNICIAN'));
     expect((await built.post()).statusCode).toBe(200);
-    built.clock.advance(CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS);
-    built.actAs(operatorOf('SUPERVISOR'));
-    expect((await built.post()).statusCode).toBe(200);
   });
 
   it('real capture with no probe wired: 503 NOT_READY (CAPTURE_NOT_READY), no row; the refusal takes no spacing slot', async () => {
     const built = await build({ captureMode: 'real' }, false);
-    built.actAs(operatorOf('SUPERVISOR'));
+    built.actAs(operatorOf('TECHNICIAN')); // REVOKED 2026-10-29 (0034): the refusal under test is the ROUTE's, so the caller must reach the handler
     const refused = await built.post();
     expect(outcome(refused)).toEqual([503, 'NOT_READY']);
     expect(errorOf(refused).details).toEqual({ reason: 'CAPTURE_NOT_READY' });
@@ -190,7 +192,7 @@ describe('who may call, and when it is not ready', () => {
 
   it('G70-01 - simulated capture with no probe: the device state, NO adapter and NO source class, and still one search row', async () => {
     const built = await build({}, false);
-    built.actAs(operatorOf('SUPERVISOR'));
+    built.actAs(operatorOf('TECHNICIAN')); // REVOKED 2026-10-29 (0034)
     built.sim.actions.raiseCaptureWarning({ code: 'CAPTURE_DEVICE_UNREACHABLE', subject: 'MIC-02', phase: 'PRESENCE' });
     const response = await built.post();
     expect(response.statusCode).toBe(200);
@@ -207,7 +209,7 @@ describe('who may call, and when it is not ready', () => {
 
   it('G70-01 - simulated capture with a probe handed in (a test rig; the product hands none): the adapters are asked, and the answer still states no adapter and no class', async () => {
     const built = await build();
-    built.actAs(operatorOf('SUPERVISOR'));
+    built.actAs(operatorOf('TECHNICIAN')); // REVOKED 2026-10-29 (0034)
     built.adapters.fakes.mics[1]?.setPresent(false, AudioInputErrorCode.DEVICE_BUSY);
     const response = await built.post();
     expect(response.statusCode).toBe(200);
@@ -221,7 +223,7 @@ describe('who may call, and when it is not ready', () => {
 
   it('the engine is not running: 503, nothing read, no spacing slot taken', async () => {
     const built = await build();
-    built.actAs(operatorOf('SUPERVISOR'));
+    built.actAs(operatorOf('TECHNICIAN')); // REVOKED 2026-10-29 (0034)
     built.running = false;
     expect(outcome(await built.post())).toEqual([503, 'NOT_READY']);
     expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([0, 0]);

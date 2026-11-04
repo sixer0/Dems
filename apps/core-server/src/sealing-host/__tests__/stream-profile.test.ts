@@ -127,7 +127,7 @@ const view = {
 const viewWith = (profile: string): SealStateView =>
   ({ ...view, session: { ...view.session, captureConfig: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile }, { trackId: 'VIDEO-02', deviceId: 'CAM-02', profile }] } } }) as unknown as SealStateView;
 
-async function read(files: Partial<Record<'VIDEO-01' | 'VIDEO-02', Uint8Array>> | null, state: SealStateView = view) {
+async function read(files: Partial<Record<'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04', Uint8Array>> | null, state: SealStateView = view) { // D60 (2026-11-04): the reader hands the callback the four-track union now
   const rows: Record<string, unknown[]> = {
     [READ_SEAL_SOURCE_ROWS]: [
       { slot: 'MIC-PRIMARY', device_id: 'MIC-01', adapter_kind: 'FAKE' },
@@ -424,7 +424,7 @@ describe('fix 151: the format a camera file declares', () => {
       },
     }) as unknown as SealStateView;
 
-  async function read(files: Partial<Record<'VIDEO-01' | 'VIDEO-02', Uint8Array>>, state: SealStateView) {
+  async function read(files: Partial<Record<'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04', Uint8Array>>, state: SealStateView) { // D60 (2026-11-04): the reader hands the callback the four-track union now
     const rows: Record<string, unknown[]> = {
       [READ_SEAL_SOURCE_ROWS]: [
         { slot: 'MIC-PRIMARY', device_id: 'MIC-01', adapter_kind: 'FAKE' },

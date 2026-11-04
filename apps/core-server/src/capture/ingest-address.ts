@@ -23,11 +23,11 @@
  * This file starts nothing, logs nothing, reads no clock, no file and no environment.
  */
 
-/** The camera tracks that have an ingest listener. */
-export type CaptureIngestTrackId = 'VIDEO-01' | 'VIDEO-02';
+/** The camera tracks that have an ingest listener. D60 (2026-11-04): four tracks record at once (was two); the literals stand here because this unit imports nothing. */
+export type CaptureIngestTrackId = 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04';
 
-/** The loopback port of each track's ingest: inside the protocol's media range, one per camera. */
-export const CAPTURE_INGEST_PORT: Readonly<Record<CaptureIngestTrackId, number>> = Object.freeze({ 'VIDEO-01': 8554, 'VIDEO-02': 8556 });
+/** The loopback port of each track's ingest: inside the protocol's media range, one per camera. D60 (2026-11-04): VIDEO-03/04 join on the next even ports, clear of the fixture camera addresses (8556 to 8558). */
+export const CAPTURE_INGEST_PORT: Readonly<Record<CaptureIngestTrackId, number>> = Object.freeze({ 'VIDEO-01': 8554, 'VIDEO-02': 8556, 'VIDEO-03': 8560, 'VIDEO-04': 8562 });
 
 /**
  * How many bytes of the system's random source the last path element of an ingest address holds

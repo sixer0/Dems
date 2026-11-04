@@ -97,7 +97,7 @@ const hexOf = (bytes: Uint8Array): string => Buffer.from(bytes).toString('hex');
 
 interface ClosedCheckpoint {
   readonly interrupted: boolean;
-  /** The camera files that ARE sealed: one or two, VIDEO-01 before VIDEO-02 (F-M7 R88-01). */
+  /** The camera files that ARE sealed: the session's own list, one to four in track order (F-M7 R88-01; D60 of 2026-11-04 widened the domain - a pre-D60 session names its two). */
   readonly tracks: readonly ClosedTrack[];
   /** The cameras of the session that are not in the seal, and why. Absent in a checkpoint written before fix pass F-M7 (then: none). */
   readonly omitted?: readonly OmittedTrack[];
@@ -212,6 +212,10 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
     const attempt = known.reduce((highest, row) => Math.max(highest, row.attempt), 0) + 1;
     const facts = await ports.session.read(sessionId);
     if (facts === null) throw new SealingError(SealingFailure.INPUT_INVALID, 'the Core holds no such session', { sessionId });
+    // D60 (2026-11-04): THE MANIFEST NAMES ITS OWN LIST. The camera files this run seals are the tracks the session itself
+    // named at its start (`facts.tracks` - the video slots of its own start record), not the widened value set: a pre-D60
+    // two-file session seals byte-identically and is never told of a track it never planned.
+    const plannedTracks = (facts as SealSessionFacts).tracks.map((track) => track.trackId) as readonly VideoTrackId[];
 
     const states = new Map<SealingStepId, StepState>(
       SEALING_STEP_ORDER.map((step) => {
@@ -288,9 +292,10 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
     // sealed camera file is WRITTEN: the init segment clear, then each whole fragment (`moof` +
     // `mdat`) as one AES-256-GCM message at the same offset. The recording file is not changed by
     // this step: it is removed by the last step, after the item is committed. A run that was
-    // stopped inside this step starts both sealed files again (new IVs: nothing was checkpointed).
+    // stopped inside this step starts every sealed file again (new IVs: nothing was checkpointed).
     //
-    // ONE OR TWO CAMERA FILES (fix pass F-M7; decision D178). A camera that never recorded - no
+    // ONE TO FOUR CAMERA FILES (fix pass F-M7; decision D178; D60 of 2026-11-04 widened the seal to
+    // the four simultaneous tracks - the session's own start record names the list). A camera that never recorded - no
     // recording file and no fragment row - has no track in the seal (R88-01: a one-camera session
     // is valid and is sealed). A failure CONFINED to one camera file leaves that file out, is said
     // in the persistent log and the checkpoint, and makes the seal an INTERRUPTED one (R88-02 (b));
@@ -300,10 +305,10 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
       const tracks: ClosedTrack[] = [];
       const files: ManifestFile[] = [];
       const omitted: OmittedTrack[] = [];
-      const total = VIDEO_TRACK_IDS.length;
+      const total = plannedTracks.length; // D60 (2026-11-04): the session's own list, one to four
       const progress = progressOf('CLOSE_TRACKS', () => null);
       await ensureDirectory(fragmentsDir);
-      for (const trackId of VIDEO_TRACK_IDS) {
+      for (const trackId of plannedTracks) { // D60 (2026-11-04): was VIDEO_TRACK_IDS - the seal walks the tracks THIS session named, never the widened value set
         const fileName = cameraFileName(trackId);
         // The `.part` names the WORKER left beside its recording: a second name of the file is only
         // a name; a file of its own was never evidence and is moved out, its bytes kept (pair-58 R-5).
@@ -547,7 +552,7 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
       const table = parseFragmentsJson(Buffer.from(text).toString('utf8')).files as ManifestFile[];
       if (ports.opener === null) throw new SealingError(SealingFailure.FRAGMENT_NOT_OPENABLE, 'the Core holds no session key', {});
       const tracks: HashedTrack[] = [];
-      // The camera files CLOSE_TRACKS sealed: one or two (F-M7 R88-01).
+      // The camera files CLOSE_TRACKS sealed: one to four (F-M7 R88-01; D60 widened the domain).
       for (const { trackId } of before.tracks) {
         const was = before.tracks.find((track) => track.trackId === trackId);
         const records = table.find((entry) => entry.trackId === trackId)?.fragments;
@@ -707,7 +712,7 @@ export function createSealingPipeline(ports: SealingPorts): SealingPipeline {
       const files = await fragmentTable();
       const mediaEndMs = Math.max(...hashedTracks.tracks.map((track) => track.mediaEndMs));
       const interrupted = closedTracks.interrupted;
-      // The camera files of THIS package: one or two (F-M7 R88-01).
+      // The camera files of THIS package: one to four (F-M7 R88-01; D60 widened the domain - the manifest names its own list).
       const sealedIds = closedTracks.tracks.map((track) => track.trackId);
       // Where the sealed media ends on the Core clock: the operator's stop, or - for a durable
       // prefix - the end of the last durable fragment counted from the start of the recording.

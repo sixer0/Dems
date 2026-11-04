@@ -247,7 +247,8 @@ describe('row 53: operations 44, 46 and 47 of a Core in REAL capture state the s
     const seeded = committedOf(scenarioState('idle'));
     const state = { ...seeded, captureConfig: { ...seeded.captureConfig, cameras: seeded.captureConfig.cameras.map((camera) => ({ ...camera, profile: camera.trackId === 'VIDEO-01' ? 'HEVC_1080P' : 'H264_1080P25' })) } };
     const facts = (cameras: readonly { readonly resolution: string | null; readonly fps: number | null; readonly codec: string | null }[]): unknown[] => cameras.map((camera) => [camera.resolution, camera.fps, camera.codec]);
-    const STREAM = [['1080p', null, 'HEVC'], ['1080p', 25, 'H.264']];
+    // D60 (2026-11-04): the selector is four tracks - VIDEO-01 HEVC, the rest H.264.
+    const STREAM = [['1080p', null, 'HEVC'], ['1080p', 25, 'H.264'], ['1080p', 25, 'H.264'], ['1080p', 25, 'H.264']];
     const SLICE = facts(seeded.cameras);
     // A real capture operation (the demo controls off, as the one function of the flags requires); then a SIMULATED Core.
     for (const [config, expected] of [[{ captureMode: 'real', demoControls: false }, STREAM], [{}, SLICE]] as const) {
@@ -272,9 +273,10 @@ describe('row 53: operations 44, 46 and 47 of a Core in REAL capture state the s
   // `deviceHealthOf(...)` without it, `deviceInventoryOf(app.engine.state())`) - that read then answers 9 in real capture.
   it('row CB (R-01): on a Core in REAL capture each of the three reads that carry a camera\'s bitrate answers null, valid against the contract; a SIMULATED Core on the same state answers the simulator\'s 9', async () => {
     const state = committedOf(scenarioState('idle'));
-    expect(state.cameras.map((camera) => camera.bitrateMbps)).toEqual([9, 9]);
+    expect(state.cameras.map((camera) => camera.bitrateMbps)).toEqual([9, 9, 9, 9]); // D60 (2026-11-04): four tracks
     const bitrates = (entries: readonly { readonly bitrateMbps: number | null }[]): unknown[] => entries.map((entry) => entry.bitrateMbps);
-    for (const [config, expected] of [[{ captureMode: 'real', demoControls: false }, [null, null]], [{}, [9, 9]]] as const) {
+    // D60 (2026-11-04): four camera entries answer at once.
+    for (const [config, expected] of [[{ captureMode: 'real', demoControls: false }, [null, null, null, null]], [{}, [9, 9, 9, 9]]] as const) {
       const built = await build(state, config);
       built.actAs(operatorOf('SUPERVISOR'));
       const video = await get(built, VIDEO);
@@ -343,11 +345,12 @@ describe('operations 44 to 47: a read answers from the committed state of the en
   it('a read follows the committed state: what the engine holds at the call is what is answered', async () => {
     const built = await build(committedOf(scenarioState('idle')));
     built.actAs(operatorOf('TECHNICIAN'));
-    expect((await get(built, VIDEO)).json()).toMatchObject({ tracks: [{ recState: null }, { recState: null }] });
+    // D60 (2026-11-04): the idle Core answers four tracks.
+    expect((await get(built, VIDEO)).json()).toMatchObject({ tracks: [{ recState: null }, { recState: null }, { recState: null }, { recState: null }] });
     expect((await get(built, INVENTORY)).json()).toMatchObject({ activeCameraId: 'VIDEO-01' });
 
     built.engine.state = committedOf({ ...scenarioState('fault-demo'), activeCameraId: 'VIDEO-02' });
-    expect((await get(built, VIDEO)).json()).toMatchObject({ tracks: [{ recState: 'REC', online: true }, { recState: 'LOST', online: false, lens: 'FAULT' }] });
+    expect((await get(built, VIDEO)).json()).toMatchObject({ tracks: [{ recState: 'REC', online: true }, { recState: 'LOST', online: false, lens: 'FAULT' }, { recState: 'REC', online: true }, { recState: 'REC', online: true }] }); // D60: four tracks (the fault stays on VIDEO-02)
     expect((await get(built, AUDIO)).json()).toMatchObject({ channels: [{ state: 'READY', clip: false }, { state: 'CLIP', clip: true }] });
     expect((await get(built, HEALTH)).json()).toMatchObject({ systemState: 'CRITICAL' });
     expect((await get(built, INVENTORY)).json()).toMatchObject({ activeCameraId: 'VIDEO-02' });
@@ -606,7 +609,8 @@ describe('stage 7: a malformed path ID or body is refused before the engine is r
     const cases: ReadonlyArray<readonly [operationId: 'setActiveCamera' | 'resetMicClip', url: string, payload: object | string | undefined, expected: [number, string]]> = [
       ['setActiveCamera', ACTIVE_CAMERA, undefined, [422, 'INVALID_INPUT']],
       ['setActiveCamera', ACTIVE_CAMERA, {}, [422, 'INVALID_INPUT']],
-      ['setActiveCamera', ACTIVE_CAMERA, { cameraId: 'VIDEO-03' }, [422, 'INVALID_INPUT']],
+      // D60 (2026-11-04): VIDEO-03 is a legal slot now; the refused id is outside the four.
+      ['setActiveCamera', ACTIVE_CAMERA, { cameraId: 'VIDEO-05' }, [422, 'INVALID_INPUT']],
       ['setActiveCamera', ACTIVE_CAMERA, { cameraId: 'AUDIO-01' }, [422, 'INVALID_INPUT']],
       ['setActiveCamera', ACTIVE_CAMERA, { cameraId: 'video-01' }, [422, 'INVALID_INPUT']],
       ['setActiveCamera', ACTIVE_CAMERA, { cameraId: 1 }, [422, 'INVALID_INPUT']],

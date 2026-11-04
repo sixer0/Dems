@@ -204,7 +204,9 @@ describe('write-through along a driven journey (model check)', () => {
     expect(summariseChanges(sealedChanges)).toMatchObject({
       sessionHistory: { inserted: 1 },
       evidenceItems: { inserted: 1 },
-      evidenceTracks: { inserted: 4 },
+      // D60 (2026-11-04): the live v2 seal names four camera files beside the v1 track view -
+      // four `TRACK_ORDER` rows plus two file-only rows (was 4).
+      evidenceTracks: { inserted: 6 },
       coreState: { updated: 1 },
     });
     expectModelIsState(model, host.state());

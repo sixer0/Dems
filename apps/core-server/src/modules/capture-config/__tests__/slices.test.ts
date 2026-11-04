@@ -30,17 +30,24 @@ import {
 const seededDevices: readonly CaptureDeviceRecord[] = [
   { id: 'CAM-01', kind: 'CAMERA', transport: 'RTSP', model: 'Dual-lens IP camera DL-2', firmware: '3.8.14', address: '127.0.0.1:8554', poePort: 'POE_CAM_1', enabled: true },
   { id: 'CAM-02', kind: 'CAMERA', transport: 'RTSP', model: 'Dual-lens IP camera DL-2', firmware: '3.8.14', address: '127.0.0.1:8555', poePort: 'POE_CAM_1', enabled: true },
+  // D60 (2026-11-04): the seed writes FOUR built-in cameras - the two single-lens lines of the four-track capture surface.
+  { id: 'CAM-03', kind: 'CAMERA', transport: 'RTSP', model: 'IP camera IP-3', firmware: '3.8.14', address: '127.0.0.1:8556', poePort: 'POE_CAM_3', enabled: true },
+  { id: 'CAM-04', kind: 'CAMERA', transport: 'RTSP', model: 'IP camera IP-4', firmware: '3.8.14', address: '127.0.0.1:8557', poePort: 'POE_CAM_4', enabled: true },
   { id: 'MIC-01', kind: 'MIC', transport: 'USB', model: 'USB condenser microphone UM-1', firmware: '1.04', address: null, poePort: null, enabled: true },
   { id: 'MIC-02', kind: 'MIC', transport: 'USB', model: 'USB condenser microphone UM-1', firmware: '1.04', address: null, poePort: null, enabled: true },
   { id: 'POE-SWITCH', kind: 'POE', transport: 'SNMP', model: 'PoE+ switch PS-8', firmware: '2.4.1', address: '127.0.0.1', poePort: null, enabled: true },
 ];
 
-/** The selector row as the seed writes it (CODE-valid profile; dbc-3 §E.3 site config). */
+/** The selector row as the seed writes it (CODE-valid profile; dbc-3 §E.3 site config; D60 (2026-11-04): all four video slots). */
 const seededConfig = {
   video01DeviceId: 'CAM-01',
   video01Profile: 'H264_1080P25',
   video02DeviceId: 'CAM-02',
   video02Profile: 'H264_1080P25',
+  video03DeviceId: 'CAM-03', // D60
+  video03Profile: 'H264_1080P25',
+  video04DeviceId: 'CAM-04',
+  video04Profile: 'H264_1080P25',
   micPrimaryId: 'MIC-01',
   micStandbyId: 'MIC-02',
   revision: 1,
@@ -76,6 +83,9 @@ describe('captureConfigSliceOf: the selector row plus the registry make slice 29
     expect(slice.cameras.map((camera) => [camera.trackId, camera.deviceId, camera.profile, camera.online, camera.streamState])).toEqual([
       ['VIDEO-01', 'CAM-01', 'H264_1080P25', true, 'LIVE'],
       ['VIDEO-02', 'CAM-02', 'H264_1080P25', true, 'LIVE'],
+      // D60 (2026-11-04): the seeded selector assigns all four tracks.
+      ['VIDEO-03', 'CAM-03', 'H264_1080P25', true, 'LIVE'],
+      ['VIDEO-04', 'CAM-04', 'H264_1080P25', true, 'LIVE'],
     ]);
     expect(slice.mics.map((mic) => [mic.inputId, mic.deviceId, mic.role, mic.transport, mic.online])).toEqual([
       ['MIC-01', 'MIC-01', 'PRIMARY', 'USB', true],
@@ -126,7 +136,7 @@ describe('captureConfigSliceOf: the selector row plus the registry make slice 29
 describe('captureDevicesSliceOf: the registry rows make slice 30 (their own kind, never AdminResource - E-04)', () => {
   it('rows map in id order; host is the address only; capabilities wait for telemetry (SH-18)', () => {
     const slice = captureDevicesSliceOf(seededDevices);
-    expect(slice.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
+    expect(slice.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH']); // D60 (2026-11-04): four seeded cameras
     expect(slice.devices[0]).toEqual({
       id: 'CAM-01',
       kind: 'CAMERA',
@@ -138,9 +148,9 @@ describe('captureDevicesSliceOf: the registry rows make slice 30 (their own kind
       streamState: 'LIVE',
       capabilities: [],
     });
-    // A mic and the switch carry no stream state (slice schema: null for a device with no stream).
-    expect(slice.devices[2]).toMatchObject({ id: 'MIC-01', streamState: null });
-    expect(slice.devices[4]).toMatchObject({ id: 'POE-SWITCH', streamState: null });
+    // A mic and the switch carry no stream state (slice schema: null for a device with no stream). D60: the four cameras come first.
+    expect(slice.devices[4]).toMatchObject({ id: 'MIC-01', streamState: null });
+    expect(slice.devices[6]).toMatchObject({ id: 'POE-SWITCH', streamState: null });
     // RK-12: no member of any device is named like a credential.
     for (const device of slice.devices) {
       expect(Object.keys(device)).not.toContain('credential');
@@ -148,9 +158,9 @@ describe('captureDevicesSliceOf: the registry rows make slice 30 (their own kind
     }
   });
 
-  it('an empty registry answers the five built-ins of dbc-3 §E.3', () => {
+  it('an empty registry answers the seven built-ins of dbc-3 §E.3 (D60, 2026-11-04: four cameras, two mics, the switch)', () => {
     expect(captureDevicesSliceOf([])).toEqual(baselineCaptureDevices());
-    expect(baselineCaptureDevices().devices).toHaveLength(5);
+    expect(baselineCaptureDevices().devices).toHaveLength(7);
   });
 });
 
@@ -236,10 +246,10 @@ describe('M2-MT-7 seed-count clause, read at the seed source (in-memory)', () =>
     }
   });
 
-  it('the capture tables carry 1 selector row, 5 built-in devices, 0 credentials (dbc-3 §E.3)', () => {
+  it('the capture tables carry 1 selector row, 7 built-in devices, 0 credentials (dbc-3 §E.3; D60, 2026-11-04: four cameras)', () => {
     // The baseline the boot serves when the seed has not written the rows yet is exactly the E.3 set.
-    expect(baselineCaptureDevices().devices).toHaveLength(5);
-    expect(baselineCaptureConfig(false).cameras).toHaveLength(2);
+    expect(baselineCaptureDevices().devices).toHaveLength(7);
+    expect(baselineCaptureConfig(false).cameras).toHaveLength(4); // D60: four video lines at the default selector
     expect(baselineCaptureConfig(false).mics).toHaveLength(2);
     // A credential is never seeded (SD-8) and never readable by this module: the load statement
     // above proves the absence; here, the baseline holds no credential member either.
@@ -254,26 +264,28 @@ describe('M2-MT-7 seed-count clause, read at the seed source (in-memory)', () =>
 });
 
 // Task 4 row 29 (WP-13a; sites A1 and A2 of research/027; decisions C14, C18; security requirement
-// AD-04). The six slot columns are nullable since schema set A. Until this row `recordOf` threw
+// AD-04). The slot columns (D60, 2026-11-04: ten - four video pairs and two mics) are nullable since schema set A. Until this row `recordOf` threw
 // `CAPTURE_ROW_INVALID` for a NULL slot and the slice builder threw for a device it could not find,
 // each of which stopped the boot at the step `capture.config`. No seed writes a NULL: the rows
 // below are written by hand, as the aggregate of the load statement gives them (a JSON null).
 describe('an unassigned selector slot is an absent line, and the boot step passes on it (task 4 row 29)', () => {
-  const SLOTS = ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] as const;
+  const SLOTS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'PRIMARY', 'STANDBY'] as const; // D60 (2026-11-04): six selector slots (was four)
   type Slot = (typeof SLOTS)[number];
   /** The seeded row with the columns of the named slots NULL. */
   const rowWithout = (unassigned: readonly Slot[]) => ({
     ...seededConfig,
     ...(unassigned.includes('VIDEO-01') ? { video01DeviceId: null, video01Profile: null } : {}),
     ...(unassigned.includes('VIDEO-02') ? { video02DeviceId: null, video02Profile: null } : {}),
+    ...(unassigned.includes('VIDEO-03') ? { video03DeviceId: null, video03Profile: null } : {}), // D60
+    ...(unassigned.includes('VIDEO-04') ? { video04DeviceId: null, video04Profile: null } : {}),
     ...(unassigned.includes('PRIMARY') ? { micPrimaryId: null } : {}),
     ...(unassigned.includes('STANDBY') ? { micStandbyId: null } : {}),
   });
-  /** Every set of unassigned slots: 16, the complete selector (none) included. */
-  const SUBSETS: Slot[][] = Array.from({ length: 16 }, (_unused, bits) => SLOTS.filter((_slot, index) => (bits & (1 << index)) !== 0));
-  const SEEDED_DEVICE_OF: Readonly<Record<Slot, string>> = { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', PRIMARY: 'MIC-01', STANDBY: 'MIC-02' };
+  /** Every set of unassigned slots: 64, the complete selector (none) included (D60: six slots). */
+  const SUBSETS: Slot[][] = Array.from({ length: 64 }, (_unused, bits) => SLOTS.filter((_slot, index) => (bits & (1 << index)) !== 0));
+  const SEEDED_DEVICE_OF: Readonly<Record<Slot, string>> = { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', 'VIDEO-03': 'CAM-03', 'VIDEO-04': 'CAM-04', PRIMARY: 'MIC-01', STANDBY: 'MIC-02' }; // D60
 
-  it('each of the 16 selectors of four slots: exactly the lines of the assigned slots, each on ITS track or role, and the slice is the contract\'s', () => {
+  it('each of the 64 selectors of six slots (D60, 2026-11-04): exactly the lines of the assigned slots, each on ITS track or role, and the slice is the contract\'s', () => {
     for (const unassigned of SUBSETS) {
       const slice = captureConfigSliceOf(rowWithout(unassigned), seededDevices, false);
       const assigned = SLOTS.filter((slot) => !unassigned.includes(slot));
@@ -283,23 +295,23 @@ describe('an unassigned selector slot is an absent line, and the boot step passe
       // No line with an empty device, and no member that reads "null": an unassigned slot is ABSENT.
       expect(JSON.stringify(slice)).not.toMatch(/null|""/);
     }
-    // CONTROL: the complete row is the first of the 16 and answers what it answered before this row.
+    // CONTROL: the complete row is the first of the 64 and answers what it answered before this row.
     expect(SUBSETS[0]).toEqual([]);
     expect(captureConfigSliceOf(rowWithout([]), seededDevices, false)).toEqual(captureConfigSliceOf(seededConfig, seededDevices, false));
   });
 
   it('AD-04 (2), nothing by position: only VIDEO-02 and only a STANDBY microphone answer those two lines - VIDEO-02 is not read as the first track, the standby not as the primary', () => {
-    const slice = captureConfigSliceOf(rowWithout(['VIDEO-01', 'PRIMARY']), seededDevices, true);
+    const slice = captureConfigSliceOf(rowWithout(['VIDEO-01', 'VIDEO-03', 'VIDEO-04', 'PRIMARY']), seededDevices, true); // D60 (2026-11-04): six slots - leave exactly VIDEO-02 and STANDBY assigned
     expect(slice.cameras).toEqual([{ trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'H264_1080P25', online: true, streamState: 'LIVE' }]);
     expect(slice.mics).toEqual([{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY', transport: 'USB', online: true }]);
     expect(slice.locked).toBe(true);
     // The mirror image, and a lone PRIMARY that is the SECOND input: the role is the column's, never the input's place.
-    const mirror = captureConfigSliceOf({ ...rowWithout(['VIDEO-02', 'STANDBY']), micPrimaryId: 'MIC-02' }, seededDevices, false);
+    const mirror = captureConfigSliceOf({ ...rowWithout(['VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'STANDBY']), micPrimaryId: 'MIC-02' }, seededDevices, false); // D60
     expect(mirror.cameras.map((camera) => camera.trackId)).toEqual(['VIDEO-01']);
     expect(mirror.mics.map((mic) => [mic.inputId, mic.role])).toEqual([['MIC-02', 'PRIMARY']]);
   });
 
-  it('a row of six NULLs is two empty lists: NOT the built-in baseline (that is a table without a row), and it invents no device', () => {
+  it('a row of ten NULLs is two empty lists (D60, 2026-11-04: four video pairs and two mics): NOT the built-in baseline (that is a table without a row), and it invents no device', () => {
     const empty = captureConfigSliceOf(rowWithout(SLOTS), seededDevices, false);
     expect(empty).toEqual({ cameras: [], mics: [], locked: false, updatedAt: seededConfig.updatedAt });
     expect(empty).not.toEqual(baselineCaptureConfig(false));
@@ -307,23 +319,23 @@ describe('an unassigned selector slot is an absent line, and the boot step passe
     expect(captureConfigSliceOf(rowWithout(SLOTS), [], false)).toEqual(empty);
   });
 
-  it('GATE CONDITION AD-04: the store loads, and the boot step `capture.config` passes, on a selector row of six NULLs - in the form the load statement gives it (JSON nulls)', async () => {
-    const sixNulls = JSON.parse(JSON.stringify(rowWithout(SLOTS))) as Record<string, unknown>;
-    expect(Object.entries(sixNulls).filter(([, value]) => value === null).map(([member]) => member).sort()).toEqual(['micPrimaryId', 'micStandbyId', 'video01DeviceId', 'video01Profile', 'video02DeviceId', 'video02Profile']);
+  it('GATE CONDITION AD-04: the store loads, and the boot step `capture.config` passes, on a selector row of ten NULLs (D60, 2026-11-04) - in the form the load statement gives it (JSON nulls)', async () => {
+    const tenNulls = JSON.parse(JSON.stringify(rowWithout(SLOTS))) as Record<string, unknown>; // D60: four video pairs and two mics
+    expect(Object.entries(tenNulls).filter(([, value]) => value === null).map(([member]) => member).sort()).toEqual(['micPrimaryId', 'micStandbyId', 'video01DeviceId', 'video01Profile', 'video02DeviceId', 'video02Profile', 'video03DeviceId', 'video03Profile', 'video04DeviceId', 'video04Profile']);
     const store = createCaptureConfigStore();
     const sinks = silentSinks();
-    await runCaptureConfigBoot(store, readerReturning({ config: sixNulls, devices: seededDevices, session_open: false }), sinks);
+    await runCaptureConfigBoot(store, readerReturning({ config: tenNulls, devices: seededDevices, session_open: false }), sinks);
     // No warn, no error, nothing in the persistent error log: an unassigned selector is not a fault of the boot.
     expect(sinks.lines).toEqual([]);
     const snapshot = store.snapshot();
     expect(snapshot.captureConfig).toEqual({ cameras: [], mics: [], locked: false, updatedAt: seededConfig.updatedAt });
     expect([snapshot.builtInBaseline, snapshot.revision, snapshot.locked]).toEqual([false, 1, false]);
-    expect(snapshot.captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
+    expect(snapshot.captureDevices.devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH']); // D60: seven built-ins
 
-    // Every one of the 16 loads, and a member the aggregate left out reads as the same "nothing assigned".
+    // Every one of the 64 loads, and a member the aggregate left out reads as the same "nothing assigned".
     for (const unassigned of SUBSETS) {
       const loaded = await createCaptureConfigStore().load(readerReturning({ config: rowWithout(unassigned), devices: seededDevices, session_open: false }));
-      expect(loaded.captureConfig.cameras.length + loaded.captureConfig.mics.length, unassigned.join('+')).toBe(4 - unassigned.length);
+      expect(loaded.captureConfig.cameras.length + loaded.captureConfig.mics.length, unassigned.join('+')).toBe(6 - unassigned.length); // D60: six slots
     }
     const { micStandbyId: _left, ...withoutMember } = seededConfig;
     expect((await createCaptureConfigStore().load(readerReturning({ config: withoutMember, devices: seededDevices, session_open: false }))).captureConfig.mics.map((mic) => mic.role)).toEqual(['PRIMARY']);
@@ -370,11 +382,16 @@ describe('row V7d: a registered camera is NOT READ (null) on both slices the bui
       expect(config.cameras.map((line) => [line.trackId, line.deviceId, line.online, line.streamState]), `enabled ${enabled}`).toEqual([
         ['VIDEO-01', 'CAM-01', enabled, enabled ? 'LIVE' : 'LOST'],
         ['VIDEO-02', 'CAM-07', enabled, null],
+        // D60 (2026-11-04): the two further built-in lines ride along untouched.
+        ['VIDEO-03', 'CAM-03', true, 'LIVE'],
+        ['VIDEO-04', 'CAM-04', true, 'LIVE'],
       ]);
       const entries = captureDevicesSliceOf(devices).devices.filter((device) => device.kind === 'CAMERA');
       expect(entries.map((device) => [device.id, device.online, device.streamState]), `enabled ${enabled}`).toEqual([
         ['CAM-01', enabled, enabled ? 'LIVE' : 'LOST'],
         ['CAM-02', true, 'LIVE'],
+        ['CAM-03', true, 'LIVE'], // D60
+        ['CAM-04', true, 'LIVE'],
         ['CAM-07', enabled, null],
       ]);
     }

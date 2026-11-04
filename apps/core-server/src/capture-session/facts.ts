@@ -53,7 +53,7 @@ import { constants as FS } from 'node:fs';
 import { lstat, open, readFile, rename, rm, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CaptureSyncLevel } from '@dems/capture-protocol';
-import { cameraFileName, cameraFilePath, type PackageVideoTrackId } from '@dems/shared/evidence-package';
+import { cameraFileName, cameraFilePath, VIDEO_TRACK_IDS, type PackageVideoTrackId } from '@dems/shared/evidence-package'; // VIDEO_TRACK_IDS: D60 (2026-11-04)
 import { videoSampleEntryOf, videoStreamFormatOf, type VideoSampleEntryRead, type VideoStreamFormat } from '../capture';
 
 export const SESSION_CAPTURE_FACTS_FOLDER = '.capture-session';
@@ -62,7 +62,7 @@ export const SESSION_CAPTURE_FACTS_VERSION = 1;
 const FACTS_FILE_MAX_BYTES = 16_384;
 
 const SESSION_ID = /^SES-[0-9]{8}-[0-9]{4}$/;
-const TRACK_IDS: readonly string[] = ['VIDEO-01', 'VIDEO-02'];
+const TRACK_IDS: readonly string[] = VIDEO_TRACK_IDS; // D60 (2026-11-04): the widened domain also accepts facts of VIDEO-03/04; a two-track session's file still parses (superset, never a narrowing)
 const DEVICE_ID = /^[A-Z][A-Z0-9]{1,15}-[0-9]{2,4}$/;
 const SYNC_LEVELS: readonly CaptureSyncLevel[] = Object.values(CaptureSyncLevel);
 

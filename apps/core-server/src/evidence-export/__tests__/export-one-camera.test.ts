@@ -165,8 +165,8 @@ describe('task 4 row 191c: a package whose signed manifest states audio absent a
   it('row R1b: a package whose signed manifest states a camera absent inside the session (`tracks[].absentInSession`) is exported whole and verifies at the destination; the received manifest holds the member, byte for byte the sealed one; the receiver\'s command and the Core\'s verifier SAY it', async () => {
     const absences = [{ attempt: 1, loss: 1, absentAtLeastMs: 3048, absentAtMostMs: 8049, ended: 'RE_OPENED' }];
     const recording = recordSession();
-    const [one, two] = sessionFacts(recording.sessionId).tracks;
-    const h = harnessOf(recording, { facts: { tracks: [{ ...one, absentInSession: absences as never }, two] } });
+    const [one, two] = sessionFacts(recording.sessionId).tracks; // D60 (2026-11-04): the track list is a 1..4 array; the fixture always holds its two
+    const h = harnessOf(recording, { facts: { tracks: [{ ...one!, absentInSession: absences as never }, two!] } });
     const sealed = await h.pipeline.run({ sessionId: recording.sessionId, cause: 'STOPPED' });
     if (sealed.status !== 'SEALED') throw new Error(`not sealed: ${JSON.stringify(sealed)}`);
     const anchors = h.anchors();

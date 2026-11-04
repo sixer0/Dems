@@ -28,6 +28,7 @@ function built(): DemoSealOptions['synthesise'] {
   let recording = recordSession({ fragments: 4 });
   return async (request) => {
     if (request.trackId === 'VIDEO-01') recording = recordSession({ fragments: 4 });
+    // D60 (2026-11-04): the demonstration corpus is the PRE-D60 two-file recording - the generator seals the tracks its own start record names.
     copyFileSync(recording.recordingFile(request.trackId), request.outPath);
   };
 }

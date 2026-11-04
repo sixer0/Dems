@@ -34,7 +34,7 @@ server.serve_forever()
     await bridge.tick();
     expect(bridge.status()).toMatchObject({ reachable: true, panelConnected: false });
     const read = async () => await (await fetch(`${url}/api/dems/status`)).json() as { nrec: number; channels: Array<{ rec: string; file: string }> };
-    expect((await read()).nrec).toBe(2);
+    expect((await read()).nrec).toBe(4); // D60 (2026-11-04): the durable recording now spans four camera tracks
     await bridge.close();
     expect((await read()).nrec).toBe(0);
     await fetch(`${url}/api/dems/ch/1/status`, {

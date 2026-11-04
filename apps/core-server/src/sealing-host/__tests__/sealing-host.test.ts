@@ -678,15 +678,15 @@ describe('G89-01: the manifest of a real session states only facts (wave H, driv
       expect(Buffer.from(superseded.facts.auditExtract).toString('utf8')).toContain('CAPTURE_VIDEO_ABSENT_IN_SESSION');
       // Absences of two attempts: the later one is the files'.
       const two = await readWithAudit([absence(89, 'CAM-01', FULL), absence(95, 'CAM-01', { ...FULL, attempt: 2, videoAbsentAtLeastMs: 12 })]);
-      expect(two.facts.tracks[0].absentInSession).toEqual([{ attempt: 2, loss: 1, absentAtLeastMs: 12, absentAtMostMs: 8049, ended: 'RE_OPENED' }]);
+      expect(two.facts.tracks[0]!.absentInSession).toEqual([{ attempt: 2, loss: 1, absentAtLeastMs: 12, absentAtMostMs: 8049, ended: 'RE_OPENED' }]); // D60 (2026-11-04): the track list is a 1..4 array
       // An absence of the attempt the restart led to IS stated.
       const later = await readWithAudit([gap(90, { earlierAttempt: 1, laterAttempt: 2 }), absence(95, 'CAM-01', { ...FULL, attempt: 2 })]);
-      expect(later.facts.tracks[0].absentInSession).toHaveLength(1);
+      expect(later.facts.tracks[0]!.absentInSession).toHaveLength(1);
     });
 
     it('row R1b: an entry that is not of the form its writer enforces - or that names another device than its row, or than the track\'s start record - is neither skipped nor repaired: the read throws and no seal starts on it', async () => {
       const malformed: Record<string, unknown>[] = [
-        { ...FULL, trackId: 'VIDEO-03' },
+        { ...FULL, trackId: 'VIDEO-05' }, // D60 (2026-11-04): VIDEO-03 is of the form now - the outside-the-form case needs an id beyond the four tracks
         { ...FULL, trackId: undefined },
         { ...FULL, attempt: 0 },
         { ...FULL, attempt: '1' },
@@ -812,7 +812,7 @@ describe('G89-01: the manifest of a real session states only facts (wave H, driv
       const facts = await read(viewOf(), sources('FAKE', 'FAKE'));
       const recording = recordSession();
       const h = harnessOf(recording);
-      h.facts = { ...h.facts, timeSource: facts.timeSource, device: facts.device, tracks: [{ ...h.facts.tracks[0], model: facts.tracks[0].model, firmware: facts.tracks[0].firmware }, { ...h.facts.tracks[1], model: facts.tracks[1].model, firmware: facts.tracks[1].firmware }] };
+      h.facts = { ...h.facts, timeSource: facts.timeSource, device: facts.device, tracks: [{ ...h.facts.tracks[0]!, model: facts.tracks[0]!.model, firmware: facts.tracks[0]!.firmware }, { ...h.facts.tracks[1]!, model: facts.tracks[1]!.model, firmware: facts.tracks[1]!.firmware }] }; // D60 (2026-11-04): the track list is a 1..4 array; the two-file harness grafts the first two lines
       const outcome = await h.again().run({ sessionId: recording.sessionId, cause: 'STOPPED' });
       expect(outcome.status).toBe('SEALED');
       const raw = readFileSync(recording.path(PackageFile.MANIFEST), 'utf8');

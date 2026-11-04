@@ -37,6 +37,11 @@ export interface CaptureConfigRecord {
   readonly video01Profile: string | null;
   readonly video02DeviceId: string | null;
   readonly video02Profile: string | null;
+  // D60 (2026-11-04): the third and fourth video slots of the selector row (migration 0039).
+  readonly video03DeviceId: string | null;
+  readonly video03Profile: string | null;
+  readonly video04DeviceId: string | null;
+  readonly video04Profile: string | null;
   readonly micPrimaryId: string | null;
   readonly micStandbyId: string | null;
   readonly revision: number;
@@ -116,8 +121,8 @@ function micInputOf(deviceId: string): string {
  * is `null` is an ABSENT line of the slice, never a line with an empty device and never the line
  * of another slot: a camera line is made for ITS track from the columns of that track, a mic line
  * for ITS role from the column of that role. Nothing is placed by position, so a row that holds
- * only `VIDEO-02` and only a STANDBY microphone answers exactly those two lines, and a row of six
- * NULLs answers two empty lists. This is not the built-in baseline: that one stands for a table
+ * only `VIDEO-02` and only a STANDBY microphone answers exactly those two lines, and a row of ten
+ * NULLs (D60, 2026-11-04: four video pairs and two mics) answers two empty lists. This is not the built-in baseline: that one stands for a table
  * WITHOUT a row (`config === null`). A video slot is a pair: a device without a profile, or a
  * profile without a device, is refused by the member that is missing (the CHECK
  * `capture_config_slot_pair_check` cannot hold it; the row mapping refuses it the same way).
@@ -127,7 +132,7 @@ export function captureConfigSliceOf(config: CaptureConfigRecord | null, devices
   const byId = new Map(devices.map((device) => [device.id, device]));
   type CameraLine = CaptureConfigSliceBody['cameras'][number];
   type MicLine = CaptureConfigSliceBody['mics'][number];
-  const camera = (trackId: 'VIDEO-01' | 'VIDEO-02', deviceId: string | null, profile: string | null, members: readonly [string, string]): CameraLine[] => {
+  const camera = (trackId: 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04', deviceId: string | null, profile: string | null, members: readonly [string, string]): CameraLine[] => { // D60 (2026-11-04): four video slots
     if (deviceId === null && profile === null) return [];
     if (deviceId === null || profile === null) {
       throw new CaptureSliceError('CAPTURE_ROW_INVALID', 'a video slot of the selector row holds half a pair', { trackId, member: deviceId === null ? members[0] : members[1] });
@@ -151,6 +156,9 @@ export function captureConfigSliceOf(config: CaptureConfigRecord | null, devices
     cameras: [
       ...camera('VIDEO-01', config.video01DeviceId, config.video01Profile, ['video01DeviceId', 'video01Profile']),
       ...camera('VIDEO-02', config.video02DeviceId, config.video02Profile, ['video02DeviceId', 'video02Profile']),
+      // D60 (2026-11-04): the slice carries every assigned camera line - an unassigned slot stays an ABSENT line (site A2).
+      ...camera('VIDEO-03', config.video03DeviceId, config.video03Profile, ['video03DeviceId', 'video03Profile']),
+      ...camera('VIDEO-04', config.video04DeviceId, config.video04Profile, ['video04DeviceId', 'video04Profile']),
     ],
     mics: [...mic(config.micPrimaryId, 'PRIMARY'), ...mic(config.micStandbyId, 'STANDBY')].sort((left, right) =>
       left.inputId < right.inputId ? -1 : left.inputId > right.inputId ? 1 : 0,

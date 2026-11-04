@@ -255,7 +255,8 @@ describe('rules (12) to (15): the unsealed recordings of generated sources (wave
   });
 
   const S = 'SES-20261010-0025';
-  const fakeRow = (sessionId: string, sourceRows = 4, fakeRows = 4): RealSealedEvidenceRow => ({ session_id: sessionId, evidence_id: null, manifest_hash: null, integrity_source: UNSEALED_FAKE_SOURCE, development_flag: false, source_rows: sourceRows, development_rows: fakeRows });
+  // D60 (2026-11-04): six source slots - a generated session holds exactly six development source rows.
+  const fakeRow = (sessionId: string, sourceRows = 6, fakeRows = 6): RealSealedEvidenceRow => ({ session_id: sessionId, evidence_id: null, manifest_hash: null, integrity_source: UNSEALED_FAKE_SOURCE, development_flag: false, source_rows: sourceRows, development_rows: fakeRows });
   const clientOf = (rows: readonly RealSealedEvidenceRow[]) => ({ query: async () => ({ rows: [...rows] }) }) as never;
 
   /** A store on disk as lane 2 was left: the recording folder of the session whose seal failed, no manifest in it. */
@@ -271,7 +272,7 @@ describe('rules (12) to (15): the unsealed recordings of generated sources (wave
   describe('rules (12) + (13): the database side', () => {
     it('the statement asks for sessions of exactly four source rows, all FAKE, without a sealed item - on the snapshot of the other rules; it stays one SELECT', () => {
       expect(REAL_SEALED_EVIDENCE_STATEMENT).toContain(`'${UNSEALED_FAKE_SOURCE}'`);
-      expect(REAL_SEALED_EVIDENCE_STATEMENT).toContain("HAVING count(*) = 4 AND count(*) FILTER (WHERE f.adapter_kind = 'FAKE') = 4");
+      expect(REAL_SEALED_EVIDENCE_STATEMENT).toContain("HAVING count(*) = 6 AND count(*) FILTER (WHERE f.adapter_kind = 'FAKE') = 6"); // D60: six slots
       expect(REAL_SEALED_EVIDENCE_STATEMENT).toContain('NOT EXISTS (SELECT 1 FROM public.evidence_items AS j WHERE j.session_id = f.session_id AND j.sealed_at IS NOT NULL)');
       expect(REAL_SEALED_EVIDENCE_STATEMENT.match(/UNION ALL/g)).toHaveLength(2);
       expect(REAL_SEALED_EVIDENCE_STATEMENT).toMatch(/^SELECT\b/);
@@ -283,7 +284,7 @@ describe('rules (12) to (15): the unsealed recordings of generated sources (wave
     it('such a row never blocks and is proven AGAIN on its counts: three rows, or one row of another kind, is no proof (negative controls)', () => {
       expect(classifyRealSealedRows([fakeRow(S)])).toMatchObject({ blocking: [], unsealedFake: [S] });
       expect(classifyRealSealedRows([fakeRow(S, 3, 3)])).toMatchObject({ blocking: [], unsealedFake: [] });
-      expect(classifyRealSealedRows([fakeRow(S, 4, 3)])).toMatchObject({ blocking: [], unsealedFake: [] });
+      expect(classifyRealSealedRows([fakeRow(S, 6, 5)])).toMatchObject({ blocking: [], unsealedFake: [] });
       expect(classifyRealSealedRows([fakeRow(S, 5, 5)])).toMatchObject({ blocking: [], unsealedFake: [] });
     });
   });
@@ -321,7 +322,7 @@ describe('rules (12) to (15): the unsealed recordings of generated sources (wave
       // No row at all (a production recording that never reached the database, a folder of another database).
       expect(await withWord([], storeOf())).toMatchObject({ blocked: true, unsealedFakeFolders: [] });
       // One of the four sources is this computer's camera: LOCAL_DEVICE is a recording of a person.
-      expect(await withWord([fakeRow(S, 4, 3)], storeOf())).toMatchObject({ blocked: true, unsealedFakeFolders: [] });
+      expect(await withWord([fakeRow(S, 6, 5)], storeOf())).toMatchObject({ blocked: true, unsealedFakeFolders: [] });
       // A v2 manifest in the folder: it is a package, judged by its SIGNED manifest (rule (5)), never by this rule.
       const v2 = storeOf();
       writeFileSync(join(v2, `SESSION-${S}`, 'session-manifest.json'), '{}');
@@ -331,7 +332,7 @@ describe('rules (12) to (15): the unsealed recordings of generated sources (wave
       writeFileSync(join(v1, `SESSION-${S}`, 'manifest.json'), JSON.stringify({ integrity: 'REAL' }));
       expect(await withWord([fakeRow(S)], v1)).toMatchObject({ blocked: true, unsealedFakeFolders: [] });
       // The same session is ALSO named by a blocking row (a REAL sealed item without the development proof).
-      const real: RealSealedEvidenceRow = { session_id: S, evidence_id: 'EV-20261010-0014', manifest_hash: 'a'.repeat(64), integrity_source: 'REAL', development_flag: false, source_rows: 4, development_rows: 4 };
+      const real: RealSealedEvidenceRow = { session_id: S, evidence_id: 'EV-20261010-0014', manifest_hash: 'a'.repeat(64), integrity_source: 'REAL', development_flag: false, source_rows: 6, development_rows: 6 };
       expect(await withWord([real, fakeRow(S)], storeOf())).toMatchObject({ blocked: true, unsealedFakeFolders: [] });
       // A folder whose name is not exactly SESSION-<that session>.
       const other = storeOf();

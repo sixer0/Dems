@@ -56,6 +56,8 @@ function builtSynthesiser(fragments = 4): { readonly synthesise: DemoSealOptions
     synthesise: async (request) => {
       calls.push({ ...request });
       if (request.trackId === 'VIDEO-01') recording = recordSession({ fragments });
+      // D60 (2026-11-04): the demonstration corpus is the PRE-D60 two-file recording - the session's own start record names its two
+      // camera lines and the generator seals exactly those (`db/seed/demo-packages.ts` holds the seed-time check of this shape).
       copyFileSync(recording.recordingFile(request.trackId), request.outPath);
     },
   };
@@ -114,7 +116,9 @@ describe('the seed-time generator: generate -> verify clean PASS -> tamper -> ve
     const [clean, tampered] = await sealDemoPackages({ ...core.options(), synthesise: source.synthesise }, [demoItem(1), demoItem(5)]);
     if (clean === undefined || tampered === undefined) throw new Error('two items were asked');
 
-    // Nothing recorded live: four files asked of the helper door, each with the argument table and its own path in the session folder.
+    // Nothing recorded live: two files asked of the helper door per package, each with the argument table and its own path in the
+    // session folder. D60 (2026-11-04) records four tracks at once, but the demonstration corpus is the pre-D60 pair: THE MANIFEST
+    // NAMES ITS OWN LIST and a two-track recording is generated and sealed as it always was (the seed-time check of `db/seed/demo-packages.ts`).
     expect(source.calls.map((call) => [call.trackId, call.outPath])).toEqual([
       ['VIDEO-01', join(core.packageDir('SES-20261009-0001'), 'VIDEO-01.mp4')],
       ['VIDEO-02', join(core.packageDir('SES-20261009-0001'), 'VIDEO-02.mp4')],
@@ -137,6 +141,7 @@ describe('the seed-time generator: generate -> verify clean PASS -> tamper -> ve
     expect(verdict.files.map((file) => [file.trackId, file.storedOk, file.chainBrokenFromSeq])).toEqual([
       ['VIDEO-01', true, null],
       ['VIDEO-02', false, 3],
+      // D60 (2026-11-04): the demo package names its OWN two-file list (the corpus predates the four-track widening); the tamper is confined to VIDEO-02.
     ]);
     const failed = verdict.checks.filter((check) => check.status === 'FAIL').map((check) => check.id);
     expect(failed).toEqual(['V-04', 'V-06', 'V-08']);
@@ -161,8 +166,8 @@ describe('the seed-time generator: generate -> verify clean PASS -> tamper -> ve
       expect(sealed.seal.developmentSources).toBe(true);
       expect(sealed.verify).toMatchObject({ developmentSources: true, developmentKey: true });
       expect(sealed.fragmentsPerFile).toEqual([4, 4]);
-      // The package folder is the package: no plaintext recording, nothing undeclared.
-      expect(sealed.files).toEqual([...declaredPackageFiles({ transcript: false })].sort());
+      // The package folder is the package: no plaintext recording, nothing undeclared. D60 (2026-11-04): the declaration takes the package's OWN track list - the demonstration corpus names its pre-D60 pair.
+      expect(sealed.files).toEqual([...declaredPackageFiles({ transcript: false, tracks: ['VIDEO-01', 'VIDEO-02'] })].sort());
       expect(tree(core.packageDir(sealed.sessionId))).toEqual(sealed.files);
     }
 

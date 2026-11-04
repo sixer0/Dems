@@ -42,6 +42,9 @@ const SEEDED: CapturePlanSelector = DEFAULT_CAPTURE_CONFIG;
 const CAMERA_SOURCES: CapturePlanInput['cameras'] = {
   'VIDEO-01': { ingestUrl: 'rtsp://127.0.0.1:8554/cam1', outputPath: `${MEDIA}/VIDEO-01.mp4` },
   'VIDEO-02': { ingestUrl: 'rtsp://127.0.0.1:8555/cam2', outputPath: `${MEDIA}/VIDEO-02.mp4` },
+  // D60 (2026-11-04): the seeded selector plans FOUR tracks, so the caller must bring four sources.
+  'VIDEO-03': { ingestUrl: 'rtsp://127.0.0.1:8556/cam3', outputPath: `${MEDIA}/VIDEO-03.mp4` },
+  'VIDEO-04': { ingestUrl: 'rtsp://127.0.0.1:8557/cam4', outputPath: `${MEDIA}/VIDEO-04.mp4` },
 };
 
 /** The inputs of the two fake microphones, taken from their opened handles and from nowhere else (D72(e)). */
@@ -89,13 +92,15 @@ describe('the plan of the seeded configuration', () => {
     expect(plan.cameras.map((camera) => [camera.deviceId, camera.trackId])).toEqual([
       ['CAM-01', 'VIDEO-01'],
       ['CAM-02', 'VIDEO-02'],
+      ['CAM-03', 'VIDEO-03'], // D60 (2026-11-04): four tracks at once
+      ['CAM-04', 'VIDEO-04'],
     ]);
     expect(plan.mics.map((mic) => [mic.deviceId, mic.role])).toEqual([
       ['MIC-01', 'PRIMARY'],
       ['MIC-02', 'STANDBY'],
     ]);
     const subjects = capturePlanSubjects(plan);
-    expect(subjects).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'PRIMARY', 'STANDBY']);
+    expect(subjects).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'PRIMARY', 'STANDBY']); // D60
     expect(subjects.filter((subject) => subject.startsWith('VIDEO-'))).toEqual([]);
     // Every `VIDEO-0x` of the whole plan is the value of a `trackId` or part of an output path the
     // caller chose: no other member of the plan holds one.
@@ -103,7 +108,7 @@ describe('the plan of the seeded configuration', () => {
     expect(elsewhere).not.toMatch(/VIDEO-0/);
     // Control: the check can fail. A plan that named the track as its subject is found.
     const wrong = { ...plan, cameras: plan.cameras.map((camera) => ({ ...camera, deviceId: camera.trackId })) };
-    expect(capturePlanSubjects(wrong).filter((subject) => subject.startsWith('VIDEO-'))).toEqual(['VIDEO-01', 'VIDEO-02']);
+    expect(capturePlanSubjects(wrong).filter((subject) => subject.startsWith('VIDEO-'))).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04']); // D60
   });
 
   it('is a plan of the protocol: it is the payload of START, with the contract constants and the PRIMARY input active', async () => {
@@ -125,6 +130,9 @@ describe('the plan of the seeded configuration', () => {
       cameras: [
         { trackId: 'VIDEO-01', deviceId: 'CAM-02', profile: 'H264_1080P25' },
         { trackId: 'VIDEO-02', deviceId: 'CAM-01', profile: 'H264_1080P25' },
+        // D60 (2026-11-04): the selector names four tracks; only the first pair is swapped.
+        { trackId: 'VIDEO-03', deviceId: 'CAM-03', profile: 'H264_1080P25' },
+        { trackId: 'VIDEO-04', deviceId: 'CAM-04', profile: 'H264_1080P25' },
       ],
       mics: [
         { deviceId: 'MIC-02', role: 'PRIMARY' },
@@ -135,6 +143,8 @@ describe('the plan of the seeded configuration', () => {
     expect(plan.cameras.map((camera) => [camera.deviceId, camera.trackId, camera.outputPath])).toEqual([
       ['CAM-02', 'VIDEO-01', `${MEDIA}/VIDEO-01.mp4`],
       ['CAM-01', 'VIDEO-02', `${MEDIA}/VIDEO-02.mp4`],
+      ['CAM-03', 'VIDEO-03', `${MEDIA}/VIDEO-03.mp4`], // D60
+      ['CAM-04', 'VIDEO-04', `${MEDIA}/VIDEO-04.mp4`],
     ]);
     expect(plan.mics.map((mic) => [mic.deviceId, mic.role])).toEqual([
       ['MIC-02', 'PRIMARY'],
@@ -161,29 +171,28 @@ describe('what is refused before anything is opened (D86 C-5, D82): SOURCE_KIND_
 
   it('a source kind without an opener: a production camera in the selector, in either real operation', async () => {
     const base = await seededInput();
-    // REAL_DEVELOPMENT registers the production camera kind for its search and test half only.
+    // REAL_DEVELOPMENT registers the production camera kind for its search and test half only. D60 (2026-11-04): the fake registry now holds CAM-03/04 too - the candidate is CAM-07.
     const development = createFakeRegistry({ runDir: RUN_DIR });
-    development.registry.register(productionCamera('CAM-03'));
-    const selector: CapturePlanSelector = { ...SEEDED, cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-03', profile: 'H264_1080P25' }, SEEDED.cameras[1]!] };
-    const refused = { code: 'SOURCE_KIND_NOT_RECORDABLE', reason: 'NO_OPENER', deviceId: 'CAM-03' };
+    development.registry.register(productionCamera('CAM-07'));
+    const selector: CapturePlanSelector = { ...SEEDED, cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-07', profile: 'H264_1080P25' }, SEEDED.cameras[1]!, SEEDED.cameras[2]!, SEEDED.cameras[3]!] };
+    const refused = { code: 'SOURCE_KIND_NOT_RECORDABLE', reason: 'NO_OPENER', deviceId: 'CAM-07' };
     expect(refusalOf(() => assertRecordableSelector(selector, development.registry))).toEqual(refused);
     expect(refusalOf(() => buildCapturePlan({ ...base, selector, registry: development.registry }))).toEqual(refused);
 
     // REAL_PRODUCTION (task 4 row 88, THE LIFT; specification 6.3 "Test: plan builder ... rewritten"): a production source whose
     // adapter states NO opener is still refused by name - the adapter's word decides (on `darwin` the microphone's, AM-1 (3)(h)).
     const production = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION });
-    production.register(productionCamera('CAM-01'));
-    production.register(productionCamera('CAM-02'));
+    for (const id of ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']) production.register(productionCamera(id)); // D60: four camera lines
     expect(refusalOf(() => buildCapturePlan({ ...base, registry: production }))).toEqual({ code: 'SOURCE_KIND_NOT_RECORDABLE', reason: 'NO_OPENER', deviceId: 'CAM-01' });
-    // ... and four production sources that state their opener ARE a plan since the lift (before it: refused at registration).
+    // ... and the six production sources that state their opener ARE a plan since the lift (before it: refused at registration).
     const lifted = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION });
-    for (const id of ['CAM-01', 'CAM-02']) lifted.register({ ...createFakeCameraAdapter({ id }), kind: CaptureAdapterKind.ONVIF_RTSP });
+    for (const id of ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']) lifted.register({ ...createFakeCameraAdapter({ id }), kind: CaptureAdapterKind.ONVIF_RTSP }); // D60
     for (const id of ['MIC-01', 'MIC-02']) lifted.register({ ...createFakeAudioInputAdapter({ id, runDir: RUN_DIR }), kind: CaptureAdapterKind.USB_AUDIO });
     expect(assertRecordableSelector(SEEDED, lifted).sourceClass).toBe('PRODUCTION');
-    expect(capturePlanSubjects(buildCapturePlan({ ...base, registry: lifted }))).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'PRIMARY', 'STANDBY']);
-    // ... unless ONE of the four states none (the darwin microphone): refused by that device.
+    expect(capturePlanSubjects(buildCapturePlan({ ...base, registry: lifted }))).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'PRIMARY', 'STANDBY']); // D60
+    // ... unless ONE of the six states none (the darwin microphone): refused by that device.
     const darwin = createCaptureDeviceRegistry({ operation: CaptureOperation.REAL_PRODUCTION });
-    for (const id of ['CAM-01', 'CAM-02']) darwin.register({ ...createFakeCameraAdapter({ id }), kind: CaptureAdapterKind.ONVIF_RTSP });
+    for (const id of ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']) darwin.register({ ...createFakeCameraAdapter({ id }), kind: CaptureAdapterKind.ONVIF_RTSP }); // D60
     darwin.register({ ...createFakeAudioInputAdapter({ id: 'MIC-01', runDir: RUN_DIR }), kind: CaptureAdapterKind.USB_AUDIO, hasOpener: false });
     darwin.register({ ...createFakeAudioInputAdapter({ id: 'MIC-02', runDir: RUN_DIR }), kind: CaptureAdapterKind.USB_AUDIO, hasOpener: false });
     expect(refusalOf(() => buildCapturePlan({ ...base, registry: darwin }))).toEqual({ code: 'SOURCE_KIND_NOT_RECORDABLE', reason: 'NO_OPENER', deviceId: 'MIC-01' });
@@ -203,26 +212,27 @@ describe('what is refused before anything is opened (D86 C-5, D82): SOURCE_KIND_
 
   it('a mixed selector, one production and one development source, is refused (D82), and so is a class the operation does not record', async () => {
     const base = await seededInput();
-    const allFake = { 'CAM-01': CaptureAdapterKind.FAKE, 'CAM-02': CaptureAdapterKind.FAKE, 'MIC-01': CaptureAdapterKind.FAKE, 'MIC-02': CaptureAdapterKind.FAKE };
+    const allFake = { 'CAM-01': CaptureAdapterKind.FAKE, 'CAM-02': CaptureAdapterKind.FAKE, 'CAM-03': CaptureAdapterKind.FAKE, 'CAM-04': CaptureAdapterKind.FAKE, 'MIC-01': CaptureAdapterKind.FAKE, 'MIC-02': CaptureAdapterKind.FAKE }; // D60 (2026-11-04): the selector names six devices
     // Control: the table registry is no refusal by itself.
     expect(refusalOf(() => buildCapturePlan({ ...base, registry: tableRegistry(CaptureOperation.REAL_DEVELOPMENT, allFake) }))).toBe('no refusal');
     for (const [deviceId, kind] of [
       ['CAM-01', CaptureAdapterKind.ONVIF_RTSP],
       ['CAM-02', CaptureAdapterKind.ONVIF_RTSP],
+      ['CAM-03', CaptureAdapterKind.ONVIF_RTSP],
       ['MIC-01', CaptureAdapterKind.USB_AUDIO],
       ['MIC-02', CaptureAdapterKind.USB_AUDIO],
     ] as const) {
       const mixed = tableRegistry(CaptureOperation.REAL_DEVELOPMENT, { ...allFake, [deviceId]: kind });
       expect(refusalOf(() => buildCapturePlan({ ...base, registry: mixed })), deviceId).toEqual({ code: 'SOURCE_KIND_NOT_RECORDABLE', reason: 'MIXED_SOURCE_CLASSES', deviceId: null });
     }
-    // The local camera beside the fakes is ONE class (development): the four slots of spec §A.1.1.
-    const local = tableRegistry(CaptureOperation.REAL_DEVELOPMENT, { 'CAM-03': CaptureAdapterKind.LOCAL_DEVICE, 'CAM-02': CaptureAdapterKind.FAKE, 'MIC-03': CaptureAdapterKind.LOCAL_DEVICE, 'MIC-02': CaptureAdapterKind.FAKE });
+    // The local camera beside the fakes is ONE class (development): the six slots of spec §A.1.1 (D60).
+    const local = tableRegistry(CaptureOperation.REAL_DEVELOPMENT, { 'CAM-03': CaptureAdapterKind.LOCAL_DEVICE, 'CAM-02': CaptureAdapterKind.FAKE, 'CAM-04': CaptureAdapterKind.LOCAL_DEVICE, 'CAM-05': CaptureAdapterKind.FAKE, 'MIC-03': CaptureAdapterKind.LOCAL_DEVICE, 'MIC-02': CaptureAdapterKind.FAKE }); // D60
     const fourSlots: CapturePlanSelector = {
-      cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-03', profile: 'H264_1080P25' }, SEEDED.cameras[1]!],
+      cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-03', profile: 'H264_1080P25' }, SEEDED.cameras[1]!, { trackId: 'VIDEO-03', deviceId: 'CAM-04', profile: 'H264_1080P25' }, { trackId: 'VIDEO-04', deviceId: 'CAM-05', profile: 'H264_1080P25' }],
       mics: [{ deviceId: 'MIC-03', role: 'PRIMARY' }, { deviceId: 'MIC-02', role: 'STANDBY' }],
     };
     const plan = buildCapturePlan({ ...base, selector: fourSlots, registry: local, mics: { 'MIC-03': { kind: 'PCM_FIFO', path: `${RUN_DIR}/${SESSION}/mic-03.pcm` }, 'MIC-02': base.mics['MIC-02']! } });
-    expect(capturePlanSubjects(plan)).toEqual(['CAM-03', 'CAM-02', 'MIC-03', 'MIC-02', 'PRIMARY', 'STANDBY']);
+    expect(capturePlanSubjects(plan)).toEqual(['CAM-03', 'CAM-02', 'CAM-04', 'CAM-05', 'MIC-03', 'MIC-02', 'PRIMARY', 'STANDBY']); // D60
     expect(assertRecordableSelector(fourSlots, local).sourceClass).toBe('DEVELOPMENT');
     // All four of one class, but not the class of the operation.
     expect(refusalOf(() => buildCapturePlan({ ...base, registry: tableRegistry(CaptureOperation.REAL_PRODUCTION, allFake) }))).toEqual({ code: 'SOURCE_KIND_NOT_RECORDABLE', reason: 'CLASS_NOT_OF_OPERATION', deviceId: null });
@@ -245,11 +255,11 @@ describe('what is no plan: CAPTURE_PLAN_INVALID', () => {
   // Task 4 row 29 (decisions C14, C18 (1), C25; security requirement AD-10 (4); addendum 1.5).
   // `plan.ts` is NOT edited by that row: this case states what it already says about an unassigned
   // slot (an ABSENT line of the selector), and holds it equal to the shared pre-check. C25: in real
-  // capture ALL FOUR slots must be assigned - the STANDBY included (state S-5 of the security
-  // check) - so the pre-check and the plan builder never disagree.
-  it('AD-10 (4), C25: any unassigned slot - each of the four alone, and every one of the 15 incomplete selectors - is refused SELECTOR_SHAPE before the registry is asked; the shared pre-check names the same selectors', async () => {
+  // capture ALL SIX slots must be assigned - the STANDBY included (state S-5 of the security
+  // check) - so the pre-check and the plan builder never disagree. D60 (2026-11-04): four video slots and two mic roles (was two and two).
+  it('AD-10 (4), C25: any unassigned slot - each of the six alone, and every one of the 63 incomplete selectors - is refused SELECTOR_SHAPE before the registry is asked; the shared pre-check names the same selectors', async () => {
     const base = await seededInput();
-    const SLOTS = ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] as const;
+    const SLOTS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'PRIMARY', 'STANDBY'] as const; // D60
     const without = (unassigned: readonly string[]): CapturePlanSelector => ({
       cameras: SEEDED.cameras.filter((camera) => !unassigned.includes(camera.trackId)),
       mics: SEEDED.mics.filter((mic) => !unassigned.includes(mic.role)),
@@ -260,7 +270,7 @@ describe('what is no plan: CAPTURE_PLAN_INVALID', () => {
     expect([...CAPTURE_START_REQUIRED_SLOTS]).toEqual([...SLOTS]);
 
     const outcomes: [string, boolean, boolean][] = [];
-    for (let bits = 0; bits < 16; bits += 1) {
+    for (let bits = 0; bits < 64; bits += 1) { // D60: 2^6 selectors
       const unassigned = SLOTS.filter((_slot, index) => (bits & (1 << index)) !== 0);
       const selector = without(unassigned);
       // The shared rule (`startRecordingTransition`, `evaluatePrecheck`): a required slot that no line names.
@@ -277,14 +287,14 @@ describe('what is no plan: CAPTURE_PLAN_INVALID', () => {
       }
       outcomes.push([unassigned.join('+'), sharedRefuses, planRefusesByShape]);
     }
-    // The two rules agree on all 16: 15 refused, the complete selector not.
+    // The two rules agree on all 64: 63 refused, the complete selector not.
     expect(outcomes.filter(([, shared, plan]) => shared !== plan)).toEqual([]);
-    expect(outcomes.filter(([, shared]) => shared)).toHaveLength(15);
+    expect(outcomes.filter(([, shared]) => shared)).toHaveLength(63);
     expect(outcomes[0]).toEqual(['', false, false]);
-    // Each slot alone, by name (S-5 is the last): four refusals.
-    expect(SLOTS.map((slot) => refusalOf(() => assertRecordableSelector(without([slot]), untouched))).map((refusal) => (refusal === 'no refusal' ? refusal : refusal.reason))).toEqual(['SELECTOR_SHAPE', 'SELECTOR_SHAPE', 'SELECTOR_SHAPE', 'SELECTOR_SHAPE']);
-    // No device was asked for an incomplete selector: only the complete one reached the registry (its four devices, once).
-    expect(asked).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02']);
+    // Each slot alone, by name (S-5 is the last): six refusals.
+    expect(SLOTS.map((slot) => refusalOf(() => assertRecordableSelector(without([slot]), untouched))).map((refusal) => (refusal === 'no refusal' ? refusal : refusal.reason))).toEqual(['SELECTOR_SHAPE', 'SELECTOR_SHAPE', 'SELECTOR_SHAPE', 'SELECTOR_SHAPE', 'SELECTOR_SHAPE', 'SELECTOR_SHAPE']); // D60
+    // No device was asked for an incomplete selector: only the complete one reached the registry (its six devices, once).
+    expect(asked).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02']); // D60
   });
 
   it('sources the protocol refuses: an address outside loopback, one path twice; and the text of a refusal holds none of them', async () => {
@@ -307,6 +317,10 @@ describe('what is no plan: CAPTURE_PLAN_INVALID', () => {
       cameras: [
         { trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_1080P25' },
         { trackId: 'VIDEO-02', deviceId: 'CAM-01', profile: 'H264_720P25' },
+        // D60 (2026-11-04): the shape rule answers first, so the selector names its four tracks; the refusal is still the device on BOTH of two lines -
+        // the dual-lens fake serves CAM-01 alone, so the third and fourth lines repeat it and the first SAME-profile pair is what the pairwise rule names.
+        { trackId: 'VIDEO-03', deviceId: 'CAM-01', profile: 'H264_1080P25' },
+        { trackId: 'VIDEO-04', deviceId: 'CAM-01', profile: 'H264_720P25' },
       ],
       mics: SEEDED.mics,
     };
@@ -322,7 +336,7 @@ describe('what is no plan: CAPTURE_PLAN_INVALID', () => {
     for (const operation of [CaptureOperation.SIMULATED, CaptureOperation.REAL_DEVELOPMENT, CaptureOperation.REAL_PRODUCTION]) {
       const untouched: CapturePlanRegistry = { operation, assertRecordable: (deviceId) => (asked.push(deviceId), fake.registry.assertRecordable(deviceId)) };
       for (const profile of ['H264_720P25', 'H264_1080P25']) {
-        const cameras = [selector.cameras[0]!, { ...selector.cameras[1]!, profile }];
+        const cameras = [selector.cameras[0]!, { ...selector.cameras[1]!, profile }, selector.cameras[2]!, selector.cameras[3]!]; // D60 (2026-11-04): the shape names four tracks; the colliding pair is still the first two
         expect(refusalOf(() => assertRecordableSelector({ ...selector, cameras }, untouched)), `${operation} ${profile}`).toEqual(refused);
       }
     }

@@ -51,8 +51,8 @@ export const SESSION_OUTCOME = ['SEALED', 'INCOMPLETE'] as const;
 export const SUBJECT_TYPE = ['TERSANGKA', 'SAKSI', 'LAINNYA'] as const;
 export const PROFILE = ['STANDARD_1080P25'] as const;
 export const TIME_SOURCE = ['GNSS', 'NTP', 'RTC'] as const;
-export const TRACK_ID = ['VIDEO-01', 'VIDEO-02', 'AUDIO-01', 'AUDIO-02'] as const;
-export const VIDEO_TRACK_ID = ['VIDEO-01', 'VIDEO-02'] as const;
+export const TRACK_ID = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-02'] as const; // D60 (2026-11-04)
+export const VIDEO_TRACK_ID = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const; // D60
 /**
  * Fourteen kinds in schema v2 (dbc-3 §C.1-§C.3). `MIC_SILENT` and `CAPTURE_FAULT` are appended in
  * the order the contract writes them, and the shared enum `FaultKind` grows in the same order so
@@ -162,8 +162,8 @@ export const CAPTURE_ADAPTER_KINDS_BY_DEVICE_KIND = {
   MIC: ['USB_AUDIO', 'FAKE', 'LOCAL_DEVICE'],
   POE: ['SNMP_POE', 'FAKE'],
 } as const;
-/** The four source slots of a session (`session_capture_sources.slot`, T-41; dbc-4 §N.3). */
-export const CAPTURE_SOURCE_SLOT = ['VIDEO-01', 'VIDEO-02', 'MIC-PRIMARY', 'MIC-STANDBY'] as const;
+/** The six source slots of a session (`session_capture_sources.slot`, T-41; dbc-4 §N.3; D60 of 2026-11-04). */
+export const CAPTURE_SOURCE_SLOT = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-PRIMARY', 'MIC-STANDBY'] as const;
 /** The production adapter kinds: what the reset-guard cross-check refuses to exempt (§N.10). */
 export const CAPTURE_PRODUCTION_ADAPTER_KINDS = ['ONVIF_RTSP', 'USB_AUDIO', 'SNMP_POE'] as const;
 /**

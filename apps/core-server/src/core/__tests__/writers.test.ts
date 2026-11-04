@@ -848,7 +848,7 @@ describe('the allow-list of the thirty-eight server-written types (spec §13.1; 
       ['sessionId', 'session 24'],
       ['deviceId', 'MIC-01'],
       ['deviceId', '192.168.1.64'],
-      ['trackId', 'VIDEO-03'],
+      ['trackId', 'VIDEO-05'],
       ['trackId', 'AUDIO-01'],
       ['attempt', 0],
       ['attempt', '1'],

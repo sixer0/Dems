@@ -53,6 +53,9 @@ export const READ_CAPTURE_STATE =
   "(SELECT json_build_object(" +
   "'video01DeviceId', c.video_01_device_id, 'video01Profile', c.video_01_profile, " +
   "'video02DeviceId', c.video_02_device_id, 'video02Profile', c.video_02_profile, " +
+  // D60 (2026-11-04): the third and fourth video slots of the selector row (migration 0039).
+  "'video03DeviceId', c.video_03_device_id, 'video03Profile', c.video_03_profile, " +
+  "'video04DeviceId', c.video_04_device_id, 'video04Profile', c.video_04_profile, " +
   "'micPrimaryId', c.mic_primary_id, 'micStandbyId', c.mic_standby_id, " +
   "'revision', c.revision::int, 'updatedAt', c.updated_at) " +
   'FROM public.capture_config c LIMIT 1) AS config, ' +
@@ -96,7 +99,7 @@ function recordOf(value: unknown): CaptureConfigRecord | null {
     return found;
   };
   // AN UNASSIGNED SLOT (task 4 row 29, site A1; decisions C14, C18; security requirement AD-04).
-  // The six slot columns are nullable since schema set A, and `json_build_object` writes a NULL
+  // The slot columns (ten since D60, 2026-11-04: four video pairs and two mics) are nullable since schema set A, and `json_build_object` writes a NULL
   // column as a JSON null. A null (or a member the aggregate left out) is the slot's "nothing
   // assigned": it is handed on as `null` and the slice builder makes an ABSENT line of it. Until
   // this row `text()` threw for it, which stopped the boot at the step `capture.config`. Anything
@@ -112,6 +115,11 @@ function recordOf(value: unknown): CaptureConfigRecord | null {
     video01Profile: slot('video01Profile'),
     video02DeviceId: slot('video02DeviceId'),
     video02Profile: slot('video02Profile'),
+    // D60 (2026-11-04): the third and fourth video slots.
+    video03DeviceId: slot('video03DeviceId'),
+    video03Profile: slot('video03Profile'),
+    video04DeviceId: slot('video04DeviceId'),
+    video04Profile: slot('video04Profile'),
     micPrimaryId: slot('micPrimaryId'),
     micStandbyId: slot('micStandbyId'),
     revision: count('revision'),

@@ -100,11 +100,16 @@ describe('creating the pipe', () => {
   it('a leftover pipe of a crashed run is removed and a fresh one made (not the old inode)', async () => {
     const runDir = fresh();
     const first = await prepare(runDir);
-    const before = lstatSync(first).ino;
+    const before = lstatSync(first, { bigint: true });
     const second = await prepare(runDir);
     expect(second).toBe(first);
     expect(lstatSync(second).isFIFO()).toBe(true);
-    expect(lstatSync(second).ino).not.toBe(before);
+    // Bench fix 2026-11-04: this filesystem hands an immediately recreated FIFO the SAME inode
+    // number the unlink just freed - inode identity cannot prove the removal here. The strict
+    // signal that survives any filesystem is the change time of the fresh creation (or, where the
+    // fs does not reuse numbers, the new inode itself).
+    const after = lstatSync(second, { bigint: true });
+    expect(after.ino !== before.ino || after.ctimeNs > before.ctimeNs).toBe(true);
   });
 });
 

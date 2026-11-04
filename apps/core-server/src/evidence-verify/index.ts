@@ -29,6 +29,7 @@
  * what is recorded and what is answered. A verdict that could not be recorded is not answered.
  */
 import { createHash } from 'node:crypto';
+import type { VideoTrackId } from '@dems/shared/domain';
 import { sep } from 'node:path';
 import { VERIFY_REPORT_MAX_FINDINGS, VERIFY_REPORT_MAX_FRAGMENTS, type EvidenceVerifyResultBody } from '@dems/shared/api';
 import { PackageFile, packageFolderName, parseManifestV2 } from '@dems/shared/evidence-package';
@@ -272,7 +273,7 @@ export function contractBodyOf(evidenceId: string, at: number, report: PackageVe
       const plainOk = file.plainOk === true;
       return {
         fileId: file.file,
-        trackId: file.trackId as 'VIDEO-01' | 'VIDEO-02',
+        trackId: file.trackId as VideoTrackId, // D60 (2026-11-04)
         storedOk: file.storedOk,
         plainOk,
         // Fix wave K (G89b-06): the plaintext check did not run for this file (`null` in the report,
@@ -298,7 +299,8 @@ export function contractBodyOf(evidenceId: string, at: number, report: PackageVe
       findings: check.findings.slice(0, VERIFY_REPORT_MAX_FINDINGS).map((finding) => ({ ...finding })),
       ...(check.findings.length > VERIFY_REPORT_MAX_FINDINGS ? { findingCount: check.findings.length } : {}),
     })),
-    fragments: report.fragments.slice(0, VERIFY_REPORT_MAX_FRAGMENTS).map((fragment) => ({ ...fragment, trackId: fragment.trackId as 'VIDEO-01' | 'VIDEO-02' })),
+    // D60 (2026-11-04): a failed fragment names the track of the package's own list - up to four (a legacy package never yields a third).
+    fragments: report.fragments.slice(0, VERIFY_REPORT_MAX_FRAGMENTS).map((fragment) => ({ ...fragment, trackId: fragment.trackId as VideoTrackId })),
     failedFragmentCount: report.fragments.length,
     transcriptState: { ...report.transcriptState },
     // Decision D160: the model of the sealed transcript, when a document is sealed and the manifest is the signed one.
@@ -308,7 +310,10 @@ export function contractBodyOf(evidenceId: string, at: number, report: PackageVe
       code: report.sources.code,
       development: report.sources.development,
       report: report.sources.report,
-      tracks: report.sources.tracks.map((track) => ({ ...track, trackId: track.trackId as 'VIDEO-01' | 'VIDEO-02' })),
+      // D60 (2026-11-04): the manifest names its OWN track list and the verifier read it as a prefix of the
+      // widened order (`isSealedTrackList`), so a two-track legacy package answers its two lines here exactly
+      // as before; a four-track package answers four. The cast states what that parse already established.
+      tracks: report.sources.tracks.map((track) => ({ ...track, trackId: track.trackId as VideoTrackId })),
       audioIntervals: report.sources.audioIntervals.map((interval) => ({ ...interval })),
     },
     // Decisions D147, D178 (F-M7 R88-08): the development-key fact of the certificate that verified the signature;

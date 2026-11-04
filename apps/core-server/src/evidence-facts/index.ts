@@ -9,7 +9,7 @@
  *     LIVE_STREAM   an item whose sealed v2 package lies in this Core's store - a product seal
  *                   (`integritySource: REAL`) or, since decision D205, a demonstration item the
  *                   seed sealed here - and plays NOW by the same plan operation 88 makes, with the
- *                   camera files it really holds (`fileIds`: one or two IDs);
+ *                   camera files it really holds (`fileIds`: one to four IDs, D60 of 2026-11-04; a legacy package its own two);
  *     DEMO_PACKAGE  a v1 demonstration item the bundled package belongs to (the shared join, done
  *                   by the caller). Never an item with a sealed package here;
  *     NONE          with `reason`: the package of a REAL item cannot be played (`PACKAGE_MISSING`
@@ -42,6 +42,7 @@
  * the request and the item.
  */
 import { EvidenceMediaSource, type EvidenceDetail, type EvidenceMediaRef } from '@dems/shared/api';
+import type { VideoTrackId } from '@dems/shared/domain';
 import { AuditType, Permission, type EvidenceItem } from '@dems/shared/sim';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { captureOperationOf } from '../capture/fence';
@@ -102,7 +103,7 @@ const controls = new WeakMap<object, EvidenceFactsControl>();
 
 /** One track of the notice `STREAM_PROFILE_DIFFERS` as the item of operation 40 carries it. */
 export interface StreamProfileNoticeTrack {
-  readonly trackId: 'VIDEO-01' | 'VIDEO-02';
+  readonly trackId: VideoTrackId; // D60 (2026-11-04)
   readonly stream: string;
   readonly configured: string;
 }

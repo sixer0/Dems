@@ -197,7 +197,8 @@ export const evidenceItems = pgTable(
 );
 
 /**
- * T-18. In v2, one row per FILE of the item — the two camera files, each carrying the single
+ * T-18. In v2, one row per FILE of the item — the camera files its manifest names (one to four
+ * since D60 of 2026-11-04; a two-track package its own two), each carrying the single
  * `AUDIO-01` session track (OD-01 T1, R-4) — where v1 held up to four rows including separate
  * audio rows. The runtime role may insert and read only.
  *
@@ -236,7 +237,7 @@ export const evidenceTracks = pgTable(
       .onDelete('restrict')
       .onUpdate('no action'),
     // :353 stays exactly as v1 wrote it (D-DB-05); the v2 two-row shape is a mapping rule (CS-18).
-    check('evidence_tracks_track_check', sql`${oneOf(t.trackId, TRACK_ID)} AND ${t.position} BETWEEN 1 AND 4`),
+    check('evidence_tracks_track_check', sql`${oneOf(t.trackId, TRACK_ID)} AND ${t.position} BETWEEN 1 AND 6`), // D60 (2026-11-04): up to four camera files plus the two microphone tracks (was 1 AND 4)
     check('evidence_tracks_kind_check', oneOf(t.kind, TRACK_KIND)),
     // R-4: both camera files carry the single session audio track, so a row without it is a bug.
     check('evidence_tracks_audio_check', sql`${t.containsAudio}`),

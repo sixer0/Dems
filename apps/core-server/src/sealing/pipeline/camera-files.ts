@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto';
 import { constants as FS } from 'node:fs';
 import { chmod, lstat, mkdir, open, readdir, rename, unlink, type FileHandle } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { cameraFileName, type PackageVideoTrackId } from '@dems/shared/evidence-package';
+import { cameraFileName, VIDEO_TRACK_IDS, type PackageVideoTrackId } from '@dems/shared/evidence-package'; // VIDEO_TRACK_IDS: D60 (2026-11-04)
 import { walkCameraFile, type ByteSource, type NameFacts, type Sha256Factory } from '../../capture';
 
 export const nodeSha256: Sha256Factory = () => {
@@ -205,6 +205,7 @@ export async function wholeFragmentsOnDisk(packageDir: string, trackId: PackageV
  * answers true here: that session is an interrupted recording, never a failed start.
  */
 export async function durableMediaOnDisk(packageDir: string): Promise<boolean> {
-  for (const trackId of ['VIDEO-01', 'VIDEO-02'] as const) if ((await wholeFragmentsOnDisk(packageDir, trackId)) > 0) return true;
+  // D60 (2026-11-04): any of the FOUR camera files makes the media durable (was two); a legacy package simply has no VIDEO-03/04 file to find.
+  for (const trackId of VIDEO_TRACK_IDS) if ((await wholeFragmentsOnDisk(packageDir, trackId)) > 0) return true;
   return false;
 }

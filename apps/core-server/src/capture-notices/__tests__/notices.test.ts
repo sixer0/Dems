@@ -84,10 +84,12 @@ function riggedDevelopmentSources() {
   let text: string | null = null;
   const scripted = scriptedDoor(deviceListText(['MacBook Air Microphone'], ['MacBook Air Camera']), () => ({ lives: true, reports: LIVING_PROGRESS }));
   const said: string[] = [];
-  const rig = createLaneSourceRig({ read: () => text, generated: () => ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02'], report: (_level, code, _message, context) => void said.push(`${code} ${String(context['deviceId'])}`) });
+  // D60 (2026-11-04): the four built-in cameras of the seed are the generated sources the rig switches; the local pair
+  // moves up the id pattern (the registry mints the highest number free, `CAM-05`).
+  const rig = createLaneSourceRig({ read: () => text, generated: () => ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02'], report: (_level, code, _message, context) => void said.push(`${code} ${String(context['deviceId'])}`) });
   const built = buildDevelopmentRegistry({
-    devices: [...SEEDED, ...LOCAL],
-    local: { cameraId: 'CAM-03', micId: 'MIC-03' },
+    devices: [...SEEDED, { id: 'CAM-03', kind: 'CAMERA', adapterKind: 'FAKE', model: 'test camera 3' }, { id: 'CAM-04', kind: 'CAMERA', adapterKind: 'FAKE', model: 'test camera 4' }, { id: 'CAM-05', kind: 'CAMERA', adapterKind: 'LOCAL_DEVICE', model: 'MacBook Air Camera' }, { id: 'MIC-03', kind: 'MIC', adapterKind: 'LOCAL_DEVICE', model: 'MacBook Air Microphone' }],
+    local: { cameraId: 'CAM-05', micId: 'MIC-03' },
     program: HELPER,
     runDir: '/nonexistent/wave-m/run',
     now: () => START,
@@ -221,7 +223,7 @@ describe('the probe: adapters only, no socket, no substitute', () => {
       unregisteredCount: 0,
     });
     // 0 probes: a re-read of the microphones searches nothing and asks no camera.
-    expect(h.fakes.cameras.map((camera) => camera.calls.discover)).toEqual([0, 0]);
+    expect(h.fakes.cameras.map((camera) => camera.calls.discover)).toEqual([0, 0, 0, 0]); // D60 (2026-11-04): four fake cameras registered, none asked
     expect(h.cameras.reads).toEqual([]);
 
     const signal = new AbortController().signal;
@@ -471,11 +473,13 @@ describe('situation B: the pre-check gate (M4-NODEV-B-1, M4-PRECHK-RULE-1)', () 
     expect(h.state().session?.state).toBe('RECORDING');
   });
 
-  it('both cameras stopped: BLOCK, still ONE search, two alerts, both rows degraded false, and a start is refused', async () => {
+  it('all four cameras stopped: BLOCK, still ONE search, four alerts, all rows degraded false, and a start is refused (D60)', async () => {
     const service = searchService(() => closed(4, { trigger: 'PRECHECK' }));
     const h = harness({ discovery: service.seam });
     h.cameras.stop('CAM-01');
     h.cameras.stop('CAM-02');
+    h.cameras.stop('CAM-03'); // D60 (2026-11-04): the plan holds four cameras - nothing starts only when NONE answers
+    h.cameras.stop('CAM-04');
     const { outcome, item } = await h.precheck();
     await outcome.settled;
     expect(service.calls).toHaveLength(1);
@@ -485,8 +489,10 @@ describe('situation B: the pre-check gate (M4-NODEV-B-1, M4-PRECHK-RULE-1)', () 
     expect(h.notices('CAPTURE_DEVICE_UNREACHABLE', true).map((alert) => [alert.target, alert.params?.['searchResponderCount']])).toEqual([
       ['CAM-01', 4],
       ['CAM-02', 4],
+      ['CAM-03', 4], // D60 (2026-11-04): one alert per stopped camera of the plan
+      ['CAM-04', 4],
     ]);
-    expect(h.rowsOf('CAPTURE_DEVICE_UNREACHABLE').map((row) => row.details['degraded'])).toEqual([false, false]);
+    expect(h.rowsOf('CAPTURE_DEVICE_UNREACHABLE').map((row) => row.details['degraded'])).toEqual([false, false, false, false]);
     expect(h.rowsOf('PRECHECK_BLOCKED')).toHaveLength(1);
     expect(() => h.sim.actions.startRecording()).toThrow();
     // Four responders: no empty-search alert.
@@ -501,7 +507,7 @@ describe('situation B: the pre-check gate (M4-NODEV-B-1, M4-PRECHK-RULE-1)', () 
     await outcome.settled;
     expect(outcome).toMatchObject({ unreachable: ['MIC-01'], search: 'NOT_NEEDED' });
     expect(service.calls).toEqual([]);
-    expect(h.fakes.cameras.map((camera) => camera.calls.discover)).toEqual([0, 0]);
+    expect(h.fakes.cameras.map((camera) => camera.calls.discover)).toEqual([0, 0, 0, 0]); // D60 (2026-11-04): four fake cameras registered, none asked
     expect(item('MIC_PRIMARY')).toMatchObject({ status: 'BLOCK', value: 'UNREACHABLE', params: { deviceId: 'MIC-01', rule: 'activeMicrophone', other: 'MIC-02' } });
     expect(h.state().session?.precheck.outcome).toBe('BLOCK');
     expect(h.notices('CAPTURE_DEVICE_UNREACHABLE', true).map((alert) => alert.params)).toEqual([{ reason: 'CAPTURE_DEVICE_UNREACHABLE', deviceId: 'MIC-01', deviceKind: 'MIC', phase: 'PRECHECK', cause: 'DEVICE_NOT_FOUND' }]);
@@ -582,16 +588,16 @@ describe('situation B: the pre-check gate (M4-NODEV-B-1, M4-PRECHK-RULE-1)', () 
     expect(h.rowsOf('CAPTURE_DEVICE_UNREACHABLE')).toHaveLength(2);
   });
 
-  it('THE SOURCE RIG, the other cases of the start rule: BOTH generated cameras switched block the start; a switched STANDBY microphone warns with DEVICE_NOT_FOUND and no search; the ACTIVE one blocks', async () => {
+  it('THE SOURCE RIG, the other cases of the start rule: ALL FOUR generated cameras switched block the start (D60); a switched STANDBY microphone warns with DEVICE_NOT_FOUND and no search; the ACTIVE one blocks', async () => {
     const service = searchService(() => closed(1, { trigger: 'PRECHECK' }));
     const lane = riggedDevelopmentSources();
     const h = harness({ discovery: service.seam, probe: lane.probe });
 
-    lane.set('UNREACHABLE CAM-01 CAM-02\n');
+    lane.set('UNREACHABLE CAM-01 CAM-02 CAM-03 CAM-04\n'); // D60 (2026-11-04): the plan's four generated cameras all switch off
     const both = await h.precheck();
     await both.outcome.settled;
     expect([both.item('LENS_1')?.status, both.item('LENS_2')?.status, h.state().session?.precheck.outcome]).toEqual(['BLOCK', 'BLOCK', 'BLOCK']);
-    expect(h.notices('CAPTURE_DEVICE_UNREACHABLE', true).map((alert) => alert.target)).toEqual(['CAM-01', 'CAM-02']);
+    expect(h.notices('CAPTURE_DEVICE_UNREACHABLE', true).map((alert) => alert.target)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']);
     expect(service.calls).toHaveLength(1);
     expect(() => h.sim.actions.startRecording()).toThrow();
 

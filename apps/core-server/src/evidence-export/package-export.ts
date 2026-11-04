@@ -408,8 +408,9 @@ export async function exportPackage(
     } catch {
       throw new ExportFailure(ExportFailureCode.SOURCE_UNREADABLE);
     }
-    // A composite is made of TWO camera files; a package of one camera has none to compose. Refused
-    // here, BEFORE anything is written (its PACKAGE export is whole).
+    // A composite is made of TWO camera files (the first two of the package's own list - a four-track
+    // package since D60 of 2026-11-04 composes its first pair); a package of one camera has none to
+    // compose. Refused here, BEFORE anything is written (its PACKAGE export is whole).
     if (withComposite && manifest.tracks.length < 2) throw new ExportFailure(ExportFailureCode.COMPOSITE_FAILED);
     // R93-19: the manifest that is read AGAIN here is held to the digest of record a second time
     // (the verification above read its own copy): a file swapped between the two reads is not exported.
@@ -477,7 +478,7 @@ export async function exportPackage(
     let composite: ExportManifest['composite'] = null;
     if (encoder !== null) {
       const [first, second] = manifest.tracks;
-      // A composite is made of TWO camera files; a package of one camera has none to compose (its PACKAGE export is whole).
+      // A composite is made of TWO camera files (the first two of the package's own list, D60); a package of one camera has none to compose (its PACKAGE export is whole).
       if (first === undefined || second === undefined) throw new ExportFailure(ExportFailureCode.COMPOSITE_FAILED);
       const sourceOf = (track: ManifestTrack, index: number): CompositeSource => ({
         trackId: track.trackId,

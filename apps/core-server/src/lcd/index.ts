@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { captureOperationOf } from '../capture/fence';
 import { createLcdBridge, LCD_INTERVAL_MS } from './bridge';
 
 /**
@@ -13,7 +14,8 @@ export function mountLcdBridge(app: FastifyInstance) {
   const url = app.config.lcdBackendUrl;
   if (!url) return null;
   const bridge = createLcdBridge({
-    url, real: app.config.captureMode === 'real',
+    // G-R16 (static): the mode is never compared here - the one function is asked (2026-11-04).
+    url, real: captureOperationOf(app.config) !== 'SIMULATED',
     readState: () => app.engine.running ? app.engine.state() : null,
   });
   let timer: ReturnType<typeof setInterval> | undefined;

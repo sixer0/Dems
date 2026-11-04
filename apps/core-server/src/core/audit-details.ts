@@ -291,8 +291,8 @@ export const CAPTURE_VIDEO_ABSENT_MAX_MS = 86_400_000;
 /** `ended` of CAPTURE_VIDEO_ABSENT_IN_SESSION: the relay opened the camera again, or the capture ended with the camera still away. The manifest's own two words (held equal by a test). */
 export const CAPTURE_VIDEO_ABSENCE_ENDS = ['RE_OPENED', 'NOT_RE_OPENED'] as const;
 export type CaptureVideoAbsenceEnd = (typeof CAPTURE_VIDEO_ABSENCE_ENDS)[number];
-/** `trackId` of CAPTURE_VIDEO_ABSENT_IN_SESSION: the camera tracks of a sealed package (the manifest's closed list; held equal by a test). */
-export const CAPTURE_VIDEO_ABSENT_TRACK_IDS = ['VIDEO-01', 'VIDEO-02'] as const;
+/** `trackId` of CAPTURE_VIDEO_ABSENT_IN_SESSION: the camera tracks of a sealed package (the manifest's own list - a prefix of this one; held equal by a test). D60 (2026-11-04): the domain widened from two tracks to four. */
+export const CAPTURE_VIDEO_ABSENT_TRACK_IDS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const;
 /** A measured bound of a video absence in milliseconds: a whole number of 0 to `CAPTURE_VIDEO_ABSENT_MAX_MS`. */
 const videoAbsentMs = (required: boolean): DetailRule => ({
   required,
@@ -561,7 +561,7 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     operationId: operationId(REQUIRED),
     scope: oneOf(['CONFIG', 'CAMERA', 'MIC'], 'one of CONFIG, CAMERA, MIC')(REQUIRED),
     field: oneOf(['CAMERAS', 'MICS', 'SOURCE', 'ROLE'], 'one of CAMERAS, MICS, SOURCE, ROLE')(REQUIRED),
-    trackId: oneOf(['VIDEO-01', 'VIDEO-02'], 'VIDEO-01 or VIDEO-02')(OPTIONAL),
+    trackId: oneOf(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'], 'one of VIDEO-01 to VIDEO-04')(OPTIONAL), // D60 (2026-11-04): a selector edit may name any of the four tracks
     // D145: the numbered mic rule of the shared contract (`MIC-NN`).
     inputId: micInputId(OPTIONAL),
     deviceId: hardwareDeviceId(OPTIONAL),
@@ -582,7 +582,7 @@ export const SERVER_AUDIT_DETAIL_RULES = {
   },
   [AuditType.CAMERA_POE_CYCLED]: {
     deviceId: hardwareDeviceId(REQUIRED),
-    poePort: oneOf(['POE_CAM_1', 'POE_CAM_2_AUX'], 'one of POE_CAM_1, POE_CAM_2_AUX')(REQUIRED),
+    poePort: oneOf(['POE_CAM_1', 'POE_CAM_2_AUX', 'POE_CAM_3', 'POE_CAM_4'], 'one of POE_CAM_1, POE_CAM_2_AUX, POE_CAM_3, POE_CAM_4')(REQUIRED), // D60 (2026-11-04): the form text follows the widened list
     streamWasLost: flag(REQUIRED),
     confirmed: flag(REQUIRED),
     gapFromMs: count(OPTIONAL),
@@ -609,7 +609,7 @@ export const SERVER_AUDIT_DETAIL_RULES = {
     active: flag(REQUIRED),
   },
   [AuditType.EVIDENCE_MEDIA_SERVED]: {
-    fileId: oneOf(['VIDEO-01', 'VIDEO-02'], 'VIDEO-01 or VIDEO-02')(REQUIRED),
+    fileId: oneOf(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'], 'one of VIDEO-01 to VIDEO-04')(REQUIRED), // D60 (2026-11-04): a media session serves any camera file the package holds
     bytesServed: count(REQUIRED),
     rangeStart: count(OPTIONAL),
     rangeEnd: count(OPTIONAL),

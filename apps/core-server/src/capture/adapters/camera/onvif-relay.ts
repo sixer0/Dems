@@ -407,7 +407,7 @@ const PROFILE_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
 export function createOnvifRelayCameraAdapter(devices: readonly CaptureDeviceEntry[], dependencies: OnvifRelayCameraDependencies): OnvifRelayCameraAdapter {
   const { door, relayProgram, timers, credentials, locator, stream } = dependencies;
   const served = new Set(devices.map((device) => device.id));
-  /** The live relays, keyed by device AND profile: one camera may fill both tracks with two profiles. */
+  /** The live relays, keyed by device AND profile: one camera may fill two of the four tracks (D60, 2026-11-04) with two profiles. */
   const live = new Map<string, Slot>();
   /** The highest attempt this adapter opened a source for, per session with a live relay. */
   const attemptInForce = new Map<string, number>();

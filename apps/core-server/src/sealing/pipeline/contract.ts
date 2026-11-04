@@ -403,8 +403,8 @@ export interface SealSessionFacts {
   readonly device: Omit<ManifestV2Input['device'], 'certificate'>;
   readonly operator: ManifestV2Input['operator'];
   readonly subject: ManifestV2Input['subject'];
-  /** VIDEO-01, then VIDEO-02. */
-  readonly tracks: readonly [SealTrackFacts, SealTrackFacts];
+  /** The camera files the session named at its start, in track order: a NON-EMPTY PREFIX of VIDEO_TRACK_IDS, one to four entries (D60, 2026-11-04: was exactly VIDEO-01 and VIDEO-02). */
+  readonly tracks: readonly SealTrackFacts[]; // D60
   readonly audioCodec: string;
   /** The rows of `session_audio_intervals` in FILE time; the last may be open (`toMs` null). */
   readonly audioIntervals: readonly ManifestAudioIntervalInput[];
@@ -425,7 +425,7 @@ export interface SealSessionFacts {
    * byte for byte the manifest of before this row.
    */
   readonly hostProfileNotAsked?: ManifestHostProfileNotAsked;
-  /** The four rows of `session_capture_sources` (T-41). Fewer, or an unknown kind: BUILD_MANIFEST fails (ev §E.6). */
+  /** The six rows of `session_capture_sources` (T-41; D60, 2026-11-04: four video slots and two mic roles; was four). Fewer, or an unknown kind: BUILD_MANIFEST fails (ev §E.6). */
   readonly sourceRows: readonly SessionCaptureSourceRow[];
   /** The session's own STT snapshot (R-8). */
   readonly sttSnapshot: SttConfigSnapshot;

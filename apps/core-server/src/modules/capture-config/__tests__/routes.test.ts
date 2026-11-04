@@ -75,6 +75,9 @@ describe('MODG: the route list of the module', () => {
       'GET /api/v1/capture/network/jobs/:id getCameraNetworkJob',
       // Task 4 row 146b: the stored-credential connection test, mounted by `modules/capture-discovery` (operation 108; `adopted-test-route.ts`).
       'POST /api/v1/capture/devices/:id/test testCaptureDeviceConnection',
+      // The live-preview session and the idle microphone-meter lease (bench rows of 2026-11-03/04): mounted by their own modules under /capture.
+      'POST /api/v1/capture/devices/:id/preview-sessions createCameraPreviewSession',
+      'POST /api/v1/capture/idle-meters/lease holdIdleMeters',
     ];
     const under = registered.filter((route) => route.url.startsWith('/api/v1/capture/')).map((route) => signature(String(route.method), route.url, String(route.config?.operationId)));
     expect(under.filter((route) => OTHER_UNITS.includes(route)).sort()).toEqual([...OTHER_UNITS].sort());
@@ -146,8 +149,8 @@ describe('operations 76 and 77: the reads', () => {
       expect([config.statusCode, devices.statusCode], role).toEqual([200, 200]);
       expect(validateCoreApiResponse('getCaptureConfig', 200, bodyOf(config)), role).toEqual({ ok: true });
       expect(validateCoreApiResponse('getCaptureDevices', 200, bodyOf(devices)), role).toEqual({ ok: true });
-      expect(selectorOf(config)).toMatchObject({ locked: false, cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }], mics: [{ inputId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', role: 'STANDBY' }] });
-      expect((devices.json() as { devices: { id: string }[] }).devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH']);
+      expect(selectorOf(config)).toMatchObject({ locked: false, cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }, { trackId: 'VIDEO-03', deviceId: 'CAM-03' }, { trackId: 'VIDEO-04', deviceId: 'CAM-04' }], mics: [{ inputId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', role: 'STANDBY' }] }); // D60 (2026-11-04): the seed names four built-in cameras
+      expect((devices.json() as { devices: { id: string }[] }).devices.map((device) => device.id)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH']); // D60 (2026-11-04): seven built-in devices - four cameras, two microphones, the switch
       expect(`${config.body}${devices.body}`).not.toMatch(/secret|password|username|credential|rtsp:\/\/[^"]*@/i);
     }
     expect(built.engine.units).toEqual([]);
@@ -222,6 +225,9 @@ describe('operations 78, 79, 80: an edit is one unit of the engine with the host
     expect(selectorOf(swapped).cameras.map((camera) => [camera.trackId, camera.deviceId])).toEqual([
       ['VIDEO-01', 'CAM-02'],
       ['VIDEO-02', 'CAM-01'],
+      // D60 (2026-11-04): the two further lines are untouched by this body and keep their built-ins.
+      ['VIDEO-03', 'CAM-03'],
+      ['VIDEO-04', 'CAM-04'],
     ]);
 
     // One camera on both tracks needs two profiles (OD-05): 79 alone is refused here, 78 can say it.
@@ -360,11 +366,12 @@ describe('operations 78, 79, 80: an edit is one unit of the engine with the host
 // member to the hosted action (`setCaptureConfig`, row 162), under the rules every body of
 // operation 78 has: the permission, the lock read before the action, the audit type.
 describe('operation 78 `unassign`: a selector slot is cleared - same permission, same lock, same audit type (task 4 row 29, AD-10)', () => {
-  const SLOTS = ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] as const;
-  const HELD = { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', PRIMARY: 'MIC-01', STANDBY: 'MIC-02' } as const;
+  // D60 (2026-11-04): the selector has SIX slots - four video tracks and two microphone roles (`unassign` 1..6).
+  const SLOTS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'PRIMARY', 'STANDBY'] as const;
+  const HELD = { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', 'VIDEO-03': 'CAM-03', 'VIDEO-04': 'CAM-04', PRIMARY: 'MIC-01', STANDBY: 'MIC-02' } as const;
   /** The row of a cleared slot (names register 4.4): the track or the input, and `from`; no `to`, no `deviceId`. */
   const clearedRow = (slot: (typeof SLOTS)[number]) =>
-    slot === 'VIDEO-01' || slot === 'VIDEO-02'
+    slot.startsWith('VIDEO') // D60 (2026-11-04): four video slots
       ? { operationId: 'updateCaptureConfig', scope: 'CAMERA', field: 'SOURCE', trackId: slot, from: HELD[slot], permission: 'CAPTURE_CONFIG' }
       : { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', inputId: HELD[slot], from: HELD[slot], permission: 'CAPTURE_CONFIG' };
   /** The lines a selector holds, as `slot device`. */
@@ -412,7 +419,7 @@ describe('operation 78 `unassign`: a selector slot is cleared - same permission,
 
     // RE-ASSIGNING WORKS (the hosted action finds the slot by its track or its role): the line is back, its row states no `from`.
     const device = HELD[slot];
-    const body = slot === 'VIDEO-01' || slot === 'VIDEO-02' ? { cameras: [{ trackId: slot, deviceId: device, profile: 'H264_1080P25' }] } : { mics: [{ inputId: device, deviceId: device, role: slot }] };
+    const body = slot.startsWith('VIDEO') ? { cameras: [{ trackId: slot, deviceId: device, profile: 'H264_1080P25' }] } : { mics: [{ inputId: device, deviceId: device, role: slot }] }; // D60 (2026-11-04): four video slots
     const assigned = await post(built, CONFIG, body);
     expect(assigned.statusCode, assigned.body).toBe(200);
     expect(validateCoreApiResponse('updateCaptureConfig', 200, bodyOf(assigned))).toEqual({ ok: true });
@@ -423,12 +430,12 @@ describe('operation 78 `unassign`: a selector slot is cleared - same permission,
     expect(changes(built)).toHaveLength(2);
   });
 
-  it('GATE CONDITION: an unassign of two slots writes 2 rows and an unassign of an empty slot writes 0; all four in one body leave an empty selector the contract accepts, and all four come back', async () => {
+  it('GATE CONDITION: an unassign of two slots writes 2 rows and an unassign of an empty slot writes 0; all six in one body leave an empty selector the contract accepts, and they all come back (D60)', async () => {
     const built = await build();
     built.actAs(operatorOf('TECHNICIAN'));
     const two = await post(built, CONFIG, { unassign: ['VIDEO-02', 'STANDBY'] });
     expect(two.statusCode, two.body).toBe(200);
-    expect(linesOf(selectorOf(two))).toEqual(['PRIMARY MIC-01', 'VIDEO-01 CAM-01']);
+    expect(linesOf(selectorOf(two))).toEqual(['PRIMARY MIC-01', 'VIDEO-01 CAM-01', 'VIDEO-03 CAM-03', 'VIDEO-04 CAM-04']); // D60 (2026-11-04): the two further lines are untouched
     expect(changes(built).map((row) => row.details)).toEqual([clearedRow('VIDEO-02'), clearedRow('STANDBY')]);
     // The same two again, both empty now: 0 rows, the same state.
     const held = built.engine.state().captureConfig;
@@ -438,7 +445,7 @@ describe('operation 78 `unassign`: a selector slot is cleared - same permission,
     // One empty and one held: only the held one is a row.
     const rest = await post(built, CONFIG, { unassign: [...SLOTS] });
     expect(rest.statusCode, rest.body).toBe(200);
-    expect(changes(built).slice(2).map((row) => row.details)).toEqual([clearedRow('VIDEO-01'), clearedRow('PRIMARY')]);
+    expect(changes(built).slice(2).map((row) => row.details)).toEqual([clearedRow('VIDEO-01'), clearedRow('VIDEO-03'), clearedRow('VIDEO-04'), clearedRow('PRIMARY')]); // D60 (2026-11-04): four lines were still held when the six-slot body ran
     expect(selectorOf(rest)).toMatchObject({ cameras: [], mics: [], locked: false });
     expect(validateCoreApiResponse('updateCaptureConfig', 200, bodyOf(rest))).toEqual({ ok: true });
     expect(validateCoreApiResponse('getCaptureConfig', 200, bodyOf(await get(built, CONFIG)))).toEqual({ ok: true });
@@ -452,6 +459,8 @@ describe('operation 78 `unassign`: a selector slot is cleared - same permission,
     expect(mixed.statusCode, mixed.body).toBe(200);
     expect(linesOf(selectorOf(mixed))).toEqual(['PRIMARY MIC-01', 'STANDBY MIC-02', 'VIDEO-01 CAM-01']);
     expect((await post(built, cameraSource('CAM-02'), { trackId: 'VIDEO-02' })).statusCode).toBe(200);
+    // D60 (2026-11-04): VIDEO-03 and VIDEO-04 went with the six-slot clear above and are filled again before the closed comparison.
+    expect((await post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-03', deviceId: 'CAM-03', profile: 'H264_1080P25' }, { trackId: 'VIDEO-04', deviceId: 'CAM-04', profile: 'H264_1080P25' }] })).statusCode).toBe(200);
     expect(linesOf(selectorOf(await get(built, CONFIG)))).toEqual(allLines);
   });
 
@@ -483,7 +492,7 @@ describe('operation 78 `unassign`: a selector slot is cleared - same permission,
     expect(built.engine.commands).toEqual([]);
     expect(linesOf(built.engine.state().captureConfig)).toEqual(allLines);
 
-    // CONTROL 1: the same body once the session is SEALED - accepted, four rows.
+    // CONTROL 1: the same body once the session is SEALED - accepted, six rows (D60).
     built.engine.sim.store.setState({ session: { ...open, state: SessionState.SEALED } });
     const rowsBefore = changes(built).length;
     const sealed = await post(built, CONFIG, { unassign: [...SLOTS] });
@@ -506,7 +515,7 @@ describe('operation 78 `unassign`: a selector slot is cleared - same permission,
       { unassign: ['PRIMARY'], mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'PRIMARY' }, { inputId: 'MIC-01', deviceId: 'MIC-01', role: 'STANDBY' }] },
       { unassign: ['STANDBY', 'STANDBY'] },
       { unassign: [] },
-      { unassign: ['VIDEO-03'] },
+      // D60 (2026-11-04): 'VIDEO-03' left this list - it is a slot the widened schema admits.
       { unassign: ['MIC-01'] },
       { unassign: 'VIDEO-01' },
       { unassign: ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY', 'VIDEO-01'] },
@@ -560,11 +569,11 @@ describe('operation 78 `unassign`: a selector slot is cleared - same permission,
     for (const role of ['TECHNICIAN'] as const) {
       built.actAs(operatorOf(role));
       const cleared = await post(built, CONFIG, { unassign: ['VIDEO-01', 'PRIMARY'] });
-      await post(built, CONFIG, { unassign: ['VIDEO-02', 'STANDBY'] }); // one editor does both lines now (`0034`)
+      await post(built, CONFIG, { unassign: ['VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'STANDBY'] }); // one editor does both lines now (`0034`); D60: the two further camera lines go with it
       expect(cleared.statusCode, `${role} ${cleared.body}`).toBe(200);
     }
     expect(asked).toEqual([]);
-    expect(changes(built)).toHaveLength(4);
+    expect(changes(built)).toHaveLength(6); // D60 (2026-11-04): six cleared slots, six rows
     // CONTROL: the same registry IS asked for an assignment, and refuses it - the slot stays empty.
     expect(outcome(await post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_1080P25' }] }))).toEqual([422, 'INVALID_INPUT']);
     expect(asked).toEqual(['CAMERA CAM-01']);
@@ -615,60 +624,70 @@ describe('the seam of the adapter registry (rule RG-3): provided by the wiring, 
     expect(asked).not.toContain('CAMERA CAM-99');
   });
 
-  // Row R2 (ruling C93 on review finding F3-11): on a Core in real capture one camera fills one video slot. The simulator's rule
-  // (two profiles admit it, OD-05) stands where no registry is provided; with one, the edit is refused before the action.
-  it('C93: with a registry, the SAME camera on VIDEO-01 and VIDEO-02 is 422 CAMERA_ON_BOTH_TRACKS by operation 78 and by 79, whatever the profiles - before the action, nothing changed; a swap and a move after a clear pass; without a registry the simulator\'s rule stands (control)', async () => {
+  // Row R2 (ruling C93 on review finding F3-11; D60 of 2026-11-04: the rule is PAIRWISE on the pair (device, profile) over the four tracks):
+  // on a Core with a device registry one camera fills a second video track ONLY with a distinct profile (the dual-lens case, OD-05); the same
+  // profile twice is refused before the action. The simulator's rule (two profiles admit it) stands where no registry is provided - it now agrees.
+  it('C93 (D60, pairwise): with a registry, the SAME camera on two tracks WITH THE SAME PROFILE is 422 CAMERA_ON_BOTH_TRACKS by operation 78 and by 79 - before the action, nothing changed; distinct profiles admit it, a swap and a move after a clear pass; without a registry the simulator\'s rule stands (control)', async () => {
     const built = await build();
     built.actAs(operatorOf('TECHNICIAN'));
     const control = captureConfigControl(built.app);
     const devicesOf = (): string[][] => built.engine.state().captureConfig.cameras.map((camera) => [camera.trackId, camera.deviceId]);
-    expect(devicesOf()).toEqual([['VIDEO-01', 'CAM-01'], ['VIDEO-02', 'CAM-02']]);
+    expect(devicesOf()).toEqual([['VIDEO-01', 'CAM-01'], ['VIDEO-02', 'CAM-02'], ['VIDEO-03', 'CAM-03'], ['VIDEO-04', 'CAM-04']]); // D60 (2026-11-04): four built-in lines
 
     // CONTROL, no registry (Simulated mode): one camera on both tracks with two profiles is the simulator's admitted state, as before.
     expect(control.hasDeviceRegistry()).toBe(false);
     expect((await post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-01', profile: 'H264_720P25' }] })).statusCode).toBe(200);
-    expect(devicesOf()).toEqual([['VIDEO-01', 'CAM-01'], ['VIDEO-02', 'CAM-01']]);
+    expect(devicesOf()).toEqual([['VIDEO-01', 'CAM-01'], ['VIDEO-02', 'CAM-01'], ['VIDEO-03', 'CAM-03'], ['VIDEO-04', 'CAM-04']]);
 
     // A registry that serves both cameras and both microphones: every refusal below is this rule's, none the registry's.
     control.provideDeviceRegistry(createFakeRegistry({ runDir: '/nonexistent/dems-run/capture', operation: CaptureOperation.REAL_DEVELOPMENT }).registry);
     // A selector that held the state BEFORE the rule: an edit elsewhere is not refused (the start rule of the plan builder holds it) ...
     expect((await post(built, primaryMic('MIC-02'))).statusCode).toBe(200);
-    // ... a line that names the camera again is, and the edit that ends the state passes.
-    const again = await post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_1080P25' }] });
+    // ... D60: the line that names the camera again UNDER ITS OWN PROFILE passes (the dual-lens pair stands) ...
+    expect((await post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_1080P25' }] })).statusCode).toBe(200);
+    // ... and the edit that would leave the SAME profile behind two tracks is refused, naming the line that does it.
+    const again = await post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_720P25' }] });
     expect(outcome(again)).toEqual([422, 'INVALID_INPUT']);
     expect(errorOf(again).details).toEqual({ in: 'body', reason: 'CAMERA_ON_BOTH_TRACKS', deviceId: 'CAM-01', trackId: 'VIDEO-01' });
-    expect((await post(built, cameraSource('CAM-02'), { trackId: 'VIDEO-02' })).statusCode).toBe(200);
-    expect(devicesOf()).toEqual([['VIDEO-01', 'CAM-01'], ['VIDEO-02', 'CAM-02']]);
+    // The dual-lens state ends: VIDEO-02 takes its own camera at the seeded profile.
+    expect((await post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'H264_1080P25' }] })).statusCode).toBe(200);
+    expect(devicesOf()).toEqual([['VIDEO-01', 'CAM-01'], ['VIDEO-02', 'CAM-02'], ['VIDEO-03', 'CAM-03'], ['VIDEO-04', 'CAM-04']]);
 
-    // THE REFUSALS. Each leaves the committed selector the same object and calls no action.
+    // THE REFUSALS - each one the SAME profile on two tracks. Each leaves the committed selector the same object and calls no action.
     const before = built.engine.state().captureConfig;
     const commands = built.engine.commands.length;
     const refusals: readonly [string, () => Promise<Awaited<ReturnType<typeof post>>>, string, string][] = [
-      ['79: the camera of VIDEO-01 into VIDEO-02', () => post(built, cameraSource('CAM-01'), { trackId: 'VIDEO-02' }), 'CAM-01', 'VIDEO-02'],
+      ['79: the camera of VIDEO-01 into VIDEO-02 (the slot keeps its profile, the pair collides)', () => post(built, cameraSource('CAM-01'), { trackId: 'VIDEO-02' }), 'CAM-01', 'VIDEO-02'],
       ['79: the camera of VIDEO-02 into VIDEO-01', () => post(built, cameraSource('CAM-02'), { trackId: 'VIDEO-01' }), 'CAM-02', 'VIDEO-01'],
-      ['78: one line, a second profile (the simulator would admit it)', () => post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-01', profile: 'H264_720P25' }] }), 'CAM-01', 'VIDEO-02'],
-      ['78: two lines, one camera, two profiles', () => post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02', profile: 'H264_1080P25' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'H264_720P25' }] }), 'CAM-02', 'VIDEO-01'],
+      ['78: one line, the profile the other track already states for it', () => post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-01', profile: 'H264_1080P25' }] }), 'CAM-01', 'VIDEO-02'],
+      ['78: two lines, one camera, one profile', () => post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02', profile: 'H264_1080P25' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'H264_1080P25' }] }), 'CAM-02', 'VIDEO-01'],
       ['78: the other slot cleared in the same body is NOT the slot the line fills twice', () => post(built, CONFIG, { unassign: ['PRIMARY'], cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }] }), 'CAM-02', 'VIDEO-01'],
+      // D60 (2026-11-04): the rule is pairwise OVER THE FOUR - a third track colliding like the second did.
+      ['78: VIDEO-03 against VIDEO-01, the same camera and profile', () => post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-03', deviceId: 'CAM-01', profile: 'H264_1080P25' }] }), 'CAM-01', 'VIDEO-03'],
     ];
     for (const [label, send, deviceId, trackId] of refusals) {
       const refused = await send();
       expect(outcome(refused), label).toEqual([422, 'INVALID_INPUT']);
       expect(errorOf(refused).details, label).toEqual({ in: 'body', reason: CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS, deviceId, trackId });
-      expect(errorOf(refused).message, label).toBe('One camera fills one video slot: this camera is already assigned to the other video slot.');
+      expect(errorOf(refused).message, label).toBe('One camera fills one video slot with one profile: this camera is already assigned to another track with this profile (the dual-lens case needs two profiles).'); // D60 (2026-11-04): the pairwise wording
     }
     expect(CAPTURE_CONFIG_CAMERA_ON_BOTH_TRACKS).toBe('CAMERA_ON_BOTH_TRACKS');
     expect(built.engine.commands).toHaveLength(commands);
     expect(built.engine.state().captureConfig).toBe(before);
 
-    // NOT REFUSED: the two cameras swapped in one body; a camera moved into the other slot after its own slot was cleared by the same body.
+    // NOT REFUSED: the two cameras swapped in one body; the dual-lens pair with DISTINCT profiles (D60: the registry now admits what the simulator admits); a camera moved into the other slot after its own slot was cleared by the same body.
     expect((await post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }] })).statusCode).toBe(200);
-    expect(devicesOf()).toEqual([['VIDEO-01', 'CAM-02'], ['VIDEO-02', 'CAM-01']]);
+    expect(devicesOf()).toEqual([['VIDEO-01', 'CAM-02'], ['VIDEO-02', 'CAM-01'], ['VIDEO-03', 'CAM-03'], ['VIDEO-04', 'CAM-04']]);
+    expect((await post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_720P25' }] })).statusCode).toBe(200); // D60: same device as VIDEO-02, distinct profile
+    expect((await post(built, CONFIG, { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02', profile: 'H264_1080P25' }] })).statusCode).toBe(200);
     expect((await post(built, CONFIG, { unassign: ['VIDEO-01'], cameras: [{ trackId: 'VIDEO-02', deviceId: 'CAM-02' }] })).statusCode).toBe(200);
-    expect(devicesOf()).toEqual([['VIDEO-02', 'CAM-02']]);
-    // And the cleared slot takes the other camera, not the same one.
-    expect(errorOf(await post(built, cameraSource('CAM-02'), { trackId: 'VIDEO-01' })).details).toMatchObject({ reason: 'CAMERA_ON_BOTH_TRACKS', deviceId: 'CAM-02', trackId: 'VIDEO-01' });
+    expect(devicesOf()).toEqual([['VIDEO-02', 'CAM-02'], ['VIDEO-03', 'CAM-03'], ['VIDEO-04', 'CAM-04']]); // D60: the two further lines stand
+    // And the cleared slot takes the other camera, not the same one at the same profile.
+    // D60: operation 79 states no profile and the empty slot holds none, so the gate cannot name the colliding pair - the ACTION's own
+    // dual-lens rule refuses it, under the same reason and without the pair in its details.
+    expect(errorOf(await post(built, cameraSource('CAM-02'), { trackId: 'VIDEO-01' })).details).toMatchObject({ reason: 'CAMERA_ON_BOTH_TRACKS' });
     expect((await post(built, cameraSource('CAM-01'), { trackId: 'VIDEO-01' })).statusCode).toBe(200);
-    expect(devicesOf()).toEqual([['VIDEO-01', 'CAM-01'], ['VIDEO-02', 'CAM-02']]);
+    expect(devicesOf()).toEqual([['VIDEO-01', 'CAM-01'], ['VIDEO-02', 'CAM-02'], ['VIDEO-03', 'CAM-03'], ['VIDEO-04', 'CAM-04']]);
   });
 });
 

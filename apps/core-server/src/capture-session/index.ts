@@ -157,7 +157,7 @@ import { AudioSourceIntervalReason, CaptureIngestState, CaptureRecordKind, Captu
 import { INGEST_PAIRING_BOUND_MS, createIngestPairing, type IngestPairing, type IngestPairingFailure, type RelayIngestReport, type RelayIngestReports } from './ingest-pairing';
 export { INGEST_PAIRING_BOUND_MS, IngestPairingFault, type IngestPairingFailure, type RelayIngestReport, type RelayIngestReports } from './ingest-pairing';
 import { ApiErrorCode, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES, type AudioSourceStateBody } from '@dems/shared/api';
-import { SessionState } from '@dems/shared/domain';
+import { SessionState, VIDEO_TRACK_IDS } from '@dems/shared/domain'; // VIDEO_TRACK_IDS: D60 (2026-11-04)
 import { CaptureAdvisoryReason, CaptureNoticeReason, type ActiveSession, type CaptureAdvisoryNotice, type CaptureVolumeSyncNotice } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
 import { CapturePhase, CaptureSupervisorError, captureIngestAddress, isCameraAbsentReason, isCameraIntegrityReason, type CaptureCameraEnd, type CaptureEventOf, type CaptureStopOutcome, type CaptureSupervisor } from '../capture';
@@ -256,7 +256,7 @@ export function mediaMsOfSample(sample: number, sampleRateHz: number): number {
 
 const SOURCE = 'captureSession';
 const SESSION_ID = /^SES-[0-9]{8}-[0-9]{4}$/;
-const TRACKS: readonly VideoTrackId[] = ['VIDEO-01', 'VIDEO-02'];
+const TRACKS: readonly VideoTrackId[] = VIDEO_TRACK_IDS; // D60 (2026-11-04): four recorded tracks (was two)
 
 const TEXT = Object.freeze({
   NOT_RECORDABLE: 'This capture configuration cannot be recorded: an assigned source cannot be opened in the running capture operation.',
@@ -926,7 +926,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     await markCaptureConnectingIn(scope, sessionId);
     const first = sources[0];
     if (first === undefined) throw notRecordable(undefined, null, 'SELECTOR_SHAPE');
-    // MR-S1: four rows, one statement, in the transaction that persists RECORDING. Each row carries its source facts
+    // MR-S1 (D60, 2026-11-04): six rows (four video slots, two mic roles; was four), one statement, in the transaction that persists RECORDING. Each row carries its source facts
     // (task 4 row 71): they are written here or never, the runtime role cannot update the column.
     await scope.unit.query(INSERT_SESSION_CAPTURE_SOURCES, [sessionId, first.recordedAt, ...sources.flatMap((row) => [row.slot, row.deviceId, row.adapterKind, JSON.stringify(sourceFactsOf(registry, row))])]);
     // MR-S6: what was written is read back and held against the running operation again.
@@ -1876,7 +1876,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       if (current.ended || current.leaving || round.over.signal.aborted) break;
       const { deviceId } = camera;
       const failed = (err: unknown, cause: string | null): void => {
-        // One camera of two is a degraded session (D72(k)); with none the worker ends the session itself (`NO_CAMERA_CONNECTED`).
+        // One camera short of the four the plan names (D60, 2026-11-04; was: one of two) is a degraded session (D72(k)); with none the worker ends the session itself (`NO_CAMERA_CONNECTED`).
         notOpened.push(deviceId);
         persist('warn', 'CAPTURE_CAMERA_NOT_OPENED', 'a camera of the session could not be opened', err, { sessionId, deviceId, ...(cause === null ? {} : { cause }) });
       };

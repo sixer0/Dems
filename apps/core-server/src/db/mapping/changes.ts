@@ -66,7 +66,8 @@ export const RUNTIME_UPDATABLE_COLUMNS = {
   // dbc-3 §D (migration 0005): every column of the selector but its PK. The engine's own writes
   // name only the four device/profile columns and `updated_at`; `revision` and `updated_by` belong
   // to operation 77 (the module), which is why the row builder never varies them.
-  captureConfig: ['video01DeviceId', 'video01Profile', 'video02DeviceId', 'video02Profile', 'micPrimaryId', 'micStandbyId', 'revision', 'updatedBy', 'updatedAt'],
+  // D60 (2026-11-04): the two further camera pairs join the writable columns of the selector singleton.
+  captureConfig: ['video01DeviceId', 'video01Profile', 'video02DeviceId', 'video02Profile', 'video03DeviceId', 'video03Profile', 'video04DeviceId', 'video04Profile', 'micPrimaryId', 'micStandbyId', 'revision', 'updatedBy', 'updatedAt'],
   // Pass D4: the columns of a registry row the engine state models, for a device whose TRANSPORT
   // the state does not hold (see `diffCapture`). `transport` is deliberately not here: on that
   // path the registry's own value stays. `kind` and `adapter_kind` are never updated (dbc-4 §N.2).

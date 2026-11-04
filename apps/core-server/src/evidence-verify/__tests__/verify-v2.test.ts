@@ -122,17 +122,17 @@ describe('V-01 manifest structure', () => {
     const built = await buildPackage();
     writeFileSync(built.path(PackageFile.MANIFEST), '{"schema":');
     const result = await verify(built);
-    expectFailed(result, ['V-01']);
+    expectFailed(result, ['V-01', 'V-14']); // D60 (2026-11-04): with no readable manifest the camera-file set is unknowable and ALL FOUR are held declared - V-14 cannot be called a pass
     expect(check(result, 'V-01')).toMatchObject({ failureClass: 'UNREADABLE', findings: [{ code: 'MANIFEST_UNREADABLE' }] });
     expect(skipped(result)).toEqual(['V-02', 'V-03', 'V-04', 'V-05', 'V-06', 'V-07', 'V-08', 'V-09', 'V-10', 'V-11', 'V-12', 'V-13', 'V-15']);
-    expect(result.overall).toBe('UNREADABLE');
+    expect(result.overall).toBe('MISSING'); // D60: V-14's MISSING findings outrank UNREADABLE in the GRAVITY order - the two camera files a legacy session holds are held undeclarable
   });
 
   it('a required field removed: MISSING with the name of the field (and the hash no longer matches)', async () => {
     const built = await buildPackage();
     editManifest(built, (manifest) => delete manifest.caseNumber);
     const result = await verify(built);
-    expectFailed(result, ['V-01', 'V-03']);
+    expectFailed(result, ['V-01', 'V-03', 'V-14']); // D60 (2026-11-04): a manifest without its structure names no track list, so V-14 has no declared set to check
     expect(check(result, 'V-01').findings).toEqual([{ code: 'MANIFEST_FIELD_MISSING', failureClass: 'MISSING', member: 'caseNumber' }]);
   });
 

@@ -230,10 +230,10 @@ describe('M7-STTCFG-VERIFY: a tampered state FAILS — layer 1, the manifest has
     const sealed = await packageOf(on);
     tamperManifest(sealed, 'RAW', edit);
     const result = await verifyAtCore(sealed);
-    expect(failing(result)).toEqual(['V-01', 'V-03']);
+    expect(failing(result)).toEqual(['V-01', 'V-03', 'V-14']); // D60 (2026-11-04): V-14 needs the manifest too now - the camera file count is the session's own (one to four), no longer a layout constant
     expect(result.checks.find((check) => check.id === 'V-01')?.findings.map((finding) => finding.member)).toContain(member);
-    // V-14 counts the files that every package has; it needs no manifest for that. Everything else is BLOCKED.
-    expect(passing(result)).toEqual(['V-14']);
+    // Nothing that needs the manifest is called a pass: with no readable manifest the declared set is unknown, so even V-14 has no verdict to give. Everything else is BLOCKED.
+    expect(passing(result)).toEqual([]);
     expectNotTrusted(result);
   });
 });
@@ -287,10 +287,10 @@ describe('M7-STTCFG-VERIFY: a tampered state FAILS — layer 2, the signature (t
     const sealed = await packageOf(on);
     tamperManifest(sealed, 'REHASHED', edit);
     const result = await verifyAlone(sealed);
-    expect(failing(result)).toEqual(['V-01']);
+    expect(failing(result)).toEqual(['V-01', 'V-14']); // D60 (2026-11-04): a structurally invalid manifest names no track list, so V-14 cannot declare the camera files any more
     expect(result.ok).toBe(false);
-    // The hash of the edited text agrees with itself, and the files every package has are there: nothing else is a pass.
-    expect(passing(result)).toEqual(['V-03', 'V-14']);
+    // The hash of the edited text agrees with itself; the fixed two-camera layout that let V-14 pass without a manifest is gone (D60): only V-03 is a pass.
+    expect(passing(result)).toEqual(['V-03']);
     expect(result.transcriptState).toEqual({ code: 'UNKNOWN', report: 'Transcript state: unknown — the manifest cannot be read', ...UNTOLD });
   });
 });

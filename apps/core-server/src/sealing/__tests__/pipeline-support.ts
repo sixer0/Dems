@@ -307,11 +307,13 @@ export function harnessOf(recording: Recording, options: HarnessOptions = {}): H
   const ports: SealingPorts = {
     journal,
     fragments: {
-      read: async (_sessionId, trackId) => recording.tracks[trackId].rows.map((row) => ({ ...row })),
+      // D60 (2026-11-04): the pipeline's first-run probe (D84) reads every possible track - VIDEO-01..04 - and the row store answers NONE for a track the session does not hold; the fake says the same for a track this two-file fixture lacks.
+      read: async (_sessionId, trackId) => (recording.tracks[trackId]?.rows ?? []).map((row) => ({ ...row })),
       async insertMissing(rows) {
         let inserted = 0;
         for (const row of rows) {
-          const stored = recording.tracks[row.trackId].rows;
+          const stored = recording.tracks[row.trackId]?.rows;
+          if (stored === undefined) throw new Error(`the fixture holds no track ${row.trackId}`);
           if (stored.some((existing) => existing.seq === row.seq)) continue;
           stored.push({ ...row });
           inserted += 1;

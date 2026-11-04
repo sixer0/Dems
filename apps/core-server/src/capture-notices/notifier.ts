@@ -15,7 +15,7 @@
  *   B  a configured device at a pre-check         the pre-check gate (`precheck.ts`) unreachable: alert + CAPTURE_DEVICE_UNREACHABLE;
  *                                                                                    reachable: resolved, no row
  *   C  no camera connected at session start       the session start (rows 71 / 139)  CAPTURE_FAULT, the capture as a whole (FAULT_RAISED)
- *   C  degraded: one camera of two connected      the session start (rows 71 / 139)  alert + CAPTURE_DEVICE_UNREACHABLE, phase SESSION_START
+ *   C  degraded: a camera of the plan did not connect (D60, 2026-11-04: of four; was one of two)   the session start (rows 71 / 139)  alert + CAPTURE_DEVICE_UNREACHABLE, phase SESSION_START
  *
  * IT NEVER THROWS INTO ITS CALLER. A search, a pre-check and a session start must not fail
  * because an alert could not be written: every method resolves `true` when the engine took the
@@ -95,7 +95,7 @@ export interface NoDeviceNotifier {
    * and `evidenceFiles: 0` (C3 §5.3) are written by the capture side with its raise (row 71c).
    */
   notifyNoCameraConnected(session: { readonly sessionId: string }): Promise<boolean>;
-  /** Situation C, degraded: one camera of two connected. One WARNING naming the missing camera. */
+  /** Situation C, degraded: a camera of the plan did not connect (D60: of the four tracks; was one of two). One WARNING naming the missing camera. */
   notifyCameraNotConnected(camera: { readonly deviceId: string; readonly sessionId: string }): Promise<boolean>;
   /** The capture side, when that camera connects in a later session: resolves its degraded warning (D72(h)). */
   cameraConnected(deviceId: string): Promise<boolean>;

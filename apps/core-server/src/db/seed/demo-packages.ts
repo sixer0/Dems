@@ -154,7 +154,9 @@ export function seedDemoSealProblem(items: readonly SeedDemoItem[], packages: re
     const sealed = packages[index];
     if (sealed === undefined || sealed.evidenceId !== item.evidenceId || sealed.sessionId !== item.sessionId || sealed.seal.sessionId !== item.sessionId) return 'a package is not the package of its item';
     if (sealed.seal.developmentSources !== true) return 'a package is not marked as recorded from development sources';
-    if (sealed.seal.tracks.length !== 2 || sealed.seal.tracks[0]?.trackId !== 'VIDEO-01' || sealed.seal.tracks[1]?.trackId !== 'VIDEO-02') return 'a package does not hold the two camera files';
+    // The seeded demonstration corpus predates D60 (2026-11-04): its packages hold the two camera files
+    // of the built-in pair and stay valid as-is (a manifest names its own list, read as a prefix).
+    if (sealed.seal.tracks.length !== 2 || sealed.seal.tracks[0]?.trackId !== 'VIDEO-01' || sealed.seal.tracks[1]?.trackId !== 'VIDEO-02') return 'a package does not hold the two camera files of its pre-D60 recording';
     if (!Number.isSafeInteger(sealed.mediaMs) || sealed.mediaMs < 1) return 'a package states no media length';
     if (sealed.sourceRows.length !== 4) return 'a package does not state its four sources';
     if (sealed.tampered !== (sequenceOf(item.evidenceId) === DEMO_TAMPERED_EVIDENCE_SEQ)) return 'the tamper mark is on the wrong item';

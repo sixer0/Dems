@@ -22,7 +22,8 @@ describe('LCD configuration and truth', () => {
 
   it('reports durable recording per track; clears lost, unused and stopped channels', () => {
     const state = stateOf();
-    expect(lcdChannelsOf(state, 4, false).map((c) => c.recording)).toEqual([true, true, false, false]);
+    expect(lcdChannelsOf(state, 4, false).map((c) => c.recording)).toEqual([true, true, true, true]); // D60 (2026-11-04): the model records four cameras at once - four busy channels; the unused ones follow:
+    expect(lcdChannelsOf(state, 6, false).map((c) => c.recording)).toEqual([true, true, true, true, false, false]); // two unused channels beyond the four tracks
     state.cameras[0]!.recState = 'DEGRADED';
     expect(lcdChannelsOf(state, 2, false)[0]?.recording).toBe(true);
     state.cameras[0]!.recState = 'LOST';
@@ -76,7 +77,7 @@ describe('LCD bridge HTTP integration', () => {
     await Promise.all([bridge.tick(), bridge.tick()]);
     expect(r.posts).toHaveLength(4);
     expect(r.posts[0]).toMatchObject({ path: '/api/dems/ch/1/status', body: { rec: 'start', cam: true, lease: 6, clear_file: true } });
-    expect(r.posts[2]?.body).toMatchObject({ rec: 'stop', cam: false });
+    expect(r.posts[2]?.body).toMatchObject({ rec: 'start', cam: true }); // D60 (2026-11-04): the third channel carries the third camera - no unused channel inside four; the stops come on state loss below
     expect(bridge.status()).toMatchObject({ reachable: true, panelConnected: true, error: null });
     now += 7_000;
     expect(bridge.status()).toMatchObject({ reachable: false, channels: [], error: 'UNAVAILABLE' });

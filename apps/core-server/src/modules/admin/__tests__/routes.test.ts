@@ -10,6 +10,7 @@ import {
   AdminUserSchema,
   CORE_API_OPERATIONS,
   DeletedUserSchema,
+  CoreApiAccessCondition,
   CoreApiAccessKind,
   CoreApiAuditNone,
   matchCoreApiOperation,
@@ -146,7 +147,12 @@ describe('MODG: the route list of the module equals the registry operations it o
     const audit: Record<string, string> = {};
     for (const operationId of ADMIN_OPERATIONS) {
       const entry = ADMINISTRATION_OPERATIONS.find((candidate) => candidate.operationId === operationId);
-      expect(entry?.access).toEqual({ kind: CoreApiAccessKind.PERMISSION, permission: 'USER_ADMIN' });
+      // D59 (2026-11-04, principal): the RB-9 user trio carries the vendor `root` gate - USER_ADMIN
+      // plus the VENDOR_ROOT condition; the reads stay plain USER_ADMIN.
+      const rootTrio = operationId === 'createUser' || operationId === 'updateUser' || operationId === 'deleteUser';
+      expect(entry?.access).toEqual(rootTrio
+        ? { kind: CoreApiAccessKind.PERMISSION, permission: 'USER_ADMIN', conditions: [CoreApiAccessCondition.VENDOR_ROOT] }
+        : { kind: CoreApiAccessKind.PERMISSION, permission: 'USER_ADMIN' });
       expect(rules.find((rule) => rule.operationId === operationId)).toMatchObject({ kind: CoreApiAccessKind.PERMISSION, permissions: ['USER_ADMIN'] });
       audit[operationId] = String(entry?.audit.success);
     }

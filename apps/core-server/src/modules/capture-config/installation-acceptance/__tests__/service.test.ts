@@ -732,7 +732,10 @@ describe('what the folder does NOT have: a read of the table, a reader for anoth
 
   it('RECORDING IS NOT GATED ON AN ACCEPTANCE: outside the schema folder the table is named by this folder\'s store alone, the folder is imported by its mount alone, and it exports no function that reads an acceptance', () => {
     const outsideSchema = production.filter((file) => !file.path.startsWith('src/db/'));
-    expect(files(occurrences(outsideSchema, /installation_acceptances|installationAcceptances\b/g))).toEqual([`${FOLDER}store.ts`]);
+    // The table is named by this folder's store alone - and, since the RB-9 operator purge of
+    // 2026-11-02, by the admin purge's reference count (a COUNT of an operator's acceptances and
+    // revocations before the delete; it gates nothing and reads no acceptance into a decision).
+    expect(files(occurrences(outsideSchema, /installation_acceptances|installationAcceptances\b/g))).toEqual([`${FOLDER}store.ts`, 'src/modules/admin/statements.ts'].sort());
     const importers = production.filter((file) => !file.path.startsWith(FOLDER) && /from\s+'[^']*installation-acceptance'/.test(file.text)).map((file) => file.path);
     expect(importers).toEqual(['src/modules/capture-config/index.ts']);
     // Nothing of the capture session, the recording engine or the sealing names an acceptance at all.

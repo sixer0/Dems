@@ -274,6 +274,13 @@
       "when": 1793688000000,
       "tag": "0038_operator_purge_reseal_correction",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1793779200000,
+      "tag": "0039_four_video_tracks",
+      "breakpoints": true
     }
   ]
 }

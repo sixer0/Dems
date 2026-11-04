@@ -354,7 +354,11 @@ describe('the helper program path (M4-SEC-HELPER-1; SEC35-43)', () => {
     expect([facts.absolute, facts.exists, facts.regularFile, facts.symbolicLink]).toEqual([true, true, true, true]);
     expect(facts.directoriesResolved.at(-1)?.mode).toBe(0o777);
     expect(facts.directoriesAsWritten.at(-1)?.mode).toBe(0o755);
-    expect(helperProgramRefusal({ ...facts, directoriesAsWritten: TRUSTED.directoriesAsWritten, directoriesResolved: [...TRUSTED.directoriesResolved, facts.directoriesResolved.at(-1) ?? { ownerUid: 0, mode: 0 }] })).toBe(HelperProgramRefusal.DIRECTORY_WRITABLE);
+    // Hermetic on any host (bench fix 2026-11-04): the fixture's chain names uid 501, the real
+    // directory carries THIS process's uid - the refusal under test is the WRITABLE of the last
+    // step, so the joined chain is normalized to the fixture's serverUid, its mode kept real.
+    const lastStep = facts.directoriesResolved.at(-1) ?? { ownerUid: 0, mode: 0 };
+    expect(helperProgramRefusal({ ...facts, file: { ...facts.file, ownerUid: TRUSTED.serverUid }, serverUid: TRUSTED.serverUid, directoriesAsWritten: TRUSTED.directoriesAsWritten, directoriesResolved: [...TRUSTED.directoriesResolved, { ...lastStep, ownerUid: TRUSTED.serverUid }] })).toBe(HelperProgramRefusal.DIRECTORY_WRITABLE); // bench fix 2026-11-04: the FILE too joins the fixture uid
     expect(inspectProgram('tool').absolute).toBe(false);
     expect(inspectProgram(join(scratch, 'nothing')).exists).toBe(false);
     expect(helperProgramRefusal(inspectProgram(scratch))).not.toBeNull();

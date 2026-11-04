@@ -66,7 +66,7 @@ async function build(audioDevices: readonly string[]) {
 describe('pass D9, item 5: the notices unit reads the probe from the capture fence', () => {
   it('CONTROL: while the fence offers no adapters (before its boot step) operation 97 answers 503 CAPTURE_NOT_READY; it is asked again at the next use, and from then on operation 97 answers 200', async () => {
     const { built, registry, offered } = await build(['MacBook Air Microphone']);
-    built.actAs(operatorOf('SUPERVISOR'));
+    built.actAs(operatorOf('TECHNICIAN')); // REVOKED 2026-10-29 (0034): the capture lane is the technician's - re-pinned 2026-11-04 so this case reaches its own 503
     // This app's fence has not booted: it offers null.
     expect(captureNotices(built.app).probe()).toBeNull();
     const refused = await built.post();

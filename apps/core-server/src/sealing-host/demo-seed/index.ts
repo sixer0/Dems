@@ -48,6 +48,9 @@ import { verifyPackageV2, type FragmentOpener, type PackageVerifyResult } from '
 import { DEMO_TAMPERED_EVIDENCE_SEQ, DEMO_TAMPERED_FRAGMENT_SEQ, DEMO_TAMPERED_FRAGMENT_TRACK, type CompleteSealInput } from '@dems/shared/sim';
 import { corePorts, sessionPackageDir } from '../../evidence-verify';
 import { VIDEO_TRACK_IDS, type RecordingFragment, type VideoTrackId } from '../../modules/recording-fragments';
+
+/** D60 (2026-11-04): the camera files the demonstration corpus records - the pre-D60 built-in pair, the list THIS corpus names at its start (a manifest names its own list and stays valid). */
+const DEMO_SEAL_TRACKS: readonly VideoTrackId[] = [VIDEO_TRACK_IDS[0]!, VIDEO_TRACK_IDS[1]!];
 import { describeError, type ErrorLog } from '../../plugins/logger';
 import {
   SEALING_QUARANTINE_DIR,
@@ -344,8 +347,11 @@ export async function sealDemoPackages(options: DemoSealOptions, items: readonly
 
     async function generate(): Promise<DemoSealedPackage> {
       // 1. The two generated camera files, where a worker would have left its recordings.
+      // D60 (2026-11-04): the demonstration corpus is the pre-D60 two-file recording (the seed's own check in
+      // `db/seed/demo-packages.ts`): the synthesis walks the session's OWN track list, not the widened value set -
+      // a third and fourth clip would sit undeclared in the package folder (verify V-14).
       await mkdir(packageDir, { recursive: true, mode: 0o700 });
-      for (const trackId of VIDEO_TRACK_IDS) {
+      for (const trackId of DEMO_SEAL_TRACKS) {
         const outPath = join(packageDir, cameraFileName(trackId));
         try {
           await options.synthesise({ trackId, args: demoCameraFileArguments({ seconds, outPath }), outPath });
@@ -356,7 +362,7 @@ export async function sealDemoPackages(options: DemoSealOptions, items: readonly
       }
 
       // 2. The product pipeline, with the journal, the rows and the engine of this one run in memory.
-      const rows = new Map<VideoTrackId, RecordingFragment[]>(VIDEO_TRACK_IDS.map((trackId) => [trackId, []]));
+      const rows = new Map<VideoTrackId, RecordingFragment[]>(DEMO_SEAL_TRACKS.map((trackId) => [trackId, []])); // D60 (2026-11-04): the session's own two tracks
       const commits: CompleteSealInput[] = [];
       const journal = memoryJournal();
       const facts = factsOf(item, seconds);

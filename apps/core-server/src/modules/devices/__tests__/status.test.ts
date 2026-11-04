@@ -95,6 +95,9 @@ describe('operations 44, 45, 46: the answer is the in-app simulator\'s on the sa
     expect(idle.cameras.map((camera) => [camera.trackId, camera.deviceId, camera.lens, camera.online, camera.recState])).toEqual([
       ['VIDEO-01', 'CAM-01', 'READY', true, null],
       ['VIDEO-02', 'CAM-02', 'READY', true, null],
+      // D60 (2026-11-04): the seed now carries four built-in cameras on four video tracks.
+      ['VIDEO-03', 'CAM-03', 'READY', true, null],
+      ['VIDEO-04', 'CAM-04', 'READY', true, null],
     ]);
     expect(idle.audio.map((channel) => [channel.inputId, channel.deviceId, channel.role, channel.state, channel.recState, channel.clip, channel.noSignal])).toEqual([
       ['MIC-01', 'MIC-01', 'PRIMARY', 'READY', null, false, false],
@@ -105,7 +108,7 @@ describe('operations 44, 45, 46: the answer is the in-app simulator\'s on the sa
 
     const recording = deviceHealthOf(committedOf(scenarioState('recording')), NOW);
     expect(recording.systemState).toBe('RECORDING');
-    expect(recording.cameras.map((camera) => camera.recState)).toEqual(['REC', 'REC']);
+    expect(recording.cameras.map((camera) => camera.recState)).toEqual(['REC', 'REC', 'REC', 'REC']); // D60 (2026-11-04): four tracks record at once
     expect(recording.audio.map((channel) => channel.recState)).toEqual(['REC', 'REC']);
 
     const faults = deviceHealthOf(committedOf(scenarioState('fault-demo')), NOW);
@@ -401,7 +404,7 @@ describe('row 140: the four reads name the devices of the stored selector (an ad
   it('operation 46: track 1 is fed by CAM-03, track 2 by CAM-02 - the simulator\'s own answer on the same state', () => {
     const state = developmentState();
     const video = videoStatusOf(committedOf(state));
-    expect(video.tracks.map((track) => [track.trackId, track.sourceDeviceId])).toEqual([['VIDEO-01', 'CAM-03'], ['VIDEO-02', 'CAM-02']]);
+    expect(video.tracks.map((track) => [track.trackId, track.sourceDeviceId])).toEqual([['VIDEO-01', 'CAM-03'], ['VIDEO-02', 'CAM-02'], ['VIDEO-03', 'CAM-03'], ['VIDEO-04', 'CAM-04']]); // D60 (2026-11-04): the untouched seed lines answer their built-in cameras
     expect(video).toEqual(simulatorAnswer(state, VIDEO));
     expect(VideoStatusResponseSchema.safeParse(video).success).toBe(true);
   });
@@ -413,7 +416,7 @@ describe('row 140: the four reads name the devices of the stored selector (an ad
     expect(audio.activeInputId).toBe('MIC-03');
     expect(AudioStatusResponseSchema.safeParse(audio).success).toBe(true);
     const health = deviceHealthOf(committedOf(state), NOW);
-    expect(health.cameras.map((camera) => camera.sourceDeviceId)).toEqual(['CAM-03', 'CAM-02']);
+    expect(health.cameras.map((camera) => camera.sourceDeviceId)).toEqual(['CAM-03', 'CAM-02', 'CAM-03', 'CAM-04']); // D60 (2026-11-04): four lines
     expect(health.audio.map((channel) => channel.inputId)).toEqual(['MIC-03', 'MIC-02']);
     expect(health.activeInputId).toBe('MIC-03');
     expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
@@ -427,10 +430,10 @@ describe('row 140: the four reads name the devices of the stored selector (an ad
     expect(DeviceInventorySchema.safeParse(JSON.parse(JSON.stringify(inventory))).success).toBe(true);
   });
 
-  it('CONTROL: with the built-in slots handed in, the same state answers the built-in pair - the default is what changed', () => {
+  it('CONTROL: with the built-in slots handed in, the same state answers the built-in four (D60) - the default is what changed', () => {
     const state = developmentState();
     const builtin = { cameras: scenarioState('idle').captureConfig.cameras, mics: scenarioState('idle').captureConfig.mics };
-    expect(videoStatusOf(committedOf(state), builtin).tracks.map((track) => track.sourceDeviceId)).toEqual(['CAM-01', 'CAM-02']);
+    expect(videoStatusOf(committedOf(state), builtin).tracks.map((track) => track.sourceDeviceId)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']); // D60 (2026-11-04)
     expect(audioStatusOf(committedOf(state), NOW, null, builtin).channels.map((channel) => channel.inputId)).toEqual(['MIC-01', 'MIC-02']);
   });
 });
@@ -453,30 +456,30 @@ describe('row 150: a selector line that is not there is answered "absent", never
   /** Every identifier of a microphone the hardware slice or the built-in table could lend. */
   const BUILTIN_INPUTS = ['MIC-01', 'MIC-02'];
 
-  it('CONTROL: the hardware slices of the seed hold what a stand-in would answer - two cameras with a device, a PRIMARY microphone first', () => {
+  it('CONTROL: the hardware slices of the seed hold what a stand-in would answer - four cameras with a device (D60), a PRIMARY microphone first', () => {
     const state = scenarioState('idle');
-    expect(state.cameras.map((camera) => camera.deviceId)).toEqual(['CAM-01', 'CAM-02']);
+    expect(state.cameras.map((camera) => camera.deviceId)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']); // D60 (2026-11-04)
     expect(state.mics.map((mic) => mic.micRole)).toEqual(['PRIMARY', 'STANDBY']);
     expect(state.mics.every((mic) => mic.deviceId.length > 0)).toBe(true);
   });
 
-  it('B11, the video tracks: a selector with only VIDEO-02 answers two tracks, VIDEO-01 with NO source - not its built-in camera', () => {
+  it('B11, the video tracks: a selector with only VIDEO-02 answers four tracks (D60), VIDEO-01 with NO source - not its built-in camera', () => {
     const state = withSelector((selector) => ({ cameras: selector.cameras.filter((line) => line.trackId === 'VIDEO-02'), mics: selector.mics }));
     const video = videoStatusOf(committedOf(state));
-    expect(video.tracks.map((track) => [track.trackId, track.sourceDeviceId])).toEqual([['VIDEO-01', null], ['VIDEO-02', 'CAM-02']]);
+    expect(video.tracks.map((track) => [track.trackId, track.sourceDeviceId])).toEqual([['VIDEO-01', null], ['VIDEO-02', 'CAM-02'], ['VIDEO-03', null], ['VIDEO-04', null]]); // D60 (2026-11-04): every track is answered, absent lines included
     // The unit's own port fact is still stated, as a fact of the port: it is not the track's source.
     expect(video.tracks[0]?.deviceId).toBe('CAM-01');
     expect(VideoStatusResponseSchema.safeParse(video).success).toBe(true);
     const health = deviceHealthOf(committedOf(state), NOW);
-    expect(health.cameras.map((camera) => camera.sourceDeviceId)).toEqual([null, 'CAM-02']);
+    expect(health.cameras.map((camera) => camera.sourceDeviceId)).toEqual([null, 'CAM-02', null, null]); // D60 (2026-11-04)
     expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
   });
 
   it('B11: the line is found by its TRACK, not by its place - the one line of VIDEO-02 standing first does not become the source of VIDEO-01; no line at all: no source at all', () => {
     const swapped = withSelector((selector) => ({ cameras: [...selector.cameras].reverse().map((line) => ({ ...line, deviceId: `SRC-OF-${line.trackId}` })), mics: selector.mics }));
-    expect(videoStatusOf(committedOf(swapped)).tracks.map((track) => [track.trackId, track.sourceDeviceId])).toEqual([['VIDEO-01', 'SRC-OF-VIDEO-01'], ['VIDEO-02', 'SRC-OF-VIDEO-02']]);
+    expect(videoStatusOf(committedOf(swapped)).tracks.map((track) => [track.trackId, track.sourceDeviceId])).toEqual([['VIDEO-01', 'SRC-OF-VIDEO-01'], ['VIDEO-02', 'SRC-OF-VIDEO-02'], ['VIDEO-03', 'SRC-OF-VIDEO-03'], ['VIDEO-04', 'SRC-OF-VIDEO-04']]); // D60 (2026-11-04)
     const none = withSelector((selector) => ({ cameras: [], mics: selector.mics }));
-    expect(videoStatusOf(committedOf(none)).tracks.map((track) => track.sourceDeviceId)).toEqual([null, null]);
+    expect(videoStatusOf(committedOf(none)).tracks.map((track) => track.sourceDeviceId)).toEqual([null, null, null, null]); // D60 (2026-11-04)
   });
 
   it('B12, the audio channels: with only a STANDBY line no meter channel has an input, so there is NO entry - no built-in input, no device and no role of the hardware slice', () => {
@@ -616,20 +619,23 @@ describe('row 53: the camera facts of a real capture operation are the stored st
     expect(factsOf(video)).toEqual([
       ['VIDEO-01', '1080p', null, 'HEVC'],
       ['VIDEO-02', '1080p', 25, 'H.264'],
+      // D60 (2026-11-04): the helper slots the second code on every other track - they state it too.
+      ['VIDEO-03', '1080p', 25, 'H.264'],
+      ['VIDEO-04', '1080p', 25, 'H.264'],
     ]);
     expect(VideoStatusResponseSchema.safeParse(video).success).toBe(true);
     expect(validateCoreApiResponse('getVideoStatus', 200, video)).toMatchObject({ ok: true });
     const health = deviceHealthOf(real, NOW, null, undefined, true);
-    expect(health.cameras.map((camera) => [camera.resolution, camera.fps, camera.codec])).toEqual([['1080p', null, 'HEVC'], ['1080p', 25, 'H.264']]);
+    expect(health.cameras.map((camera) => [camera.resolution, camera.fps, camera.codec])).toEqual([['1080p', null, 'HEVC'], ['1080p', 25, 'H.264'], ['1080p', 25, 'H.264'], ['1080p', 25, 'H.264']]); // D60 (2026-11-04)
     expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
     const inventory = deviceInventoryOf(real, undefined, true);
-    expect(inventory.cameras.map((camera) => [camera.id, camera.resolution, camera.fps, camera.codec])).toEqual([['VIDEO-01', '1080p', null, 'HEVC'], ['VIDEO-02', '1080p', 25, 'H.264']]);
+    expect(inventory.cameras.map((camera) => [camera.id, camera.resolution, camera.fps, camera.codec])).toEqual([['VIDEO-01', '1080p', null, 'HEVC'], ['VIDEO-02', '1080p', 25, 'H.264'], ['VIDEO-03', '1080p', 25, 'H.264'], ['VIDEO-04', '1080p', 25, 'H.264']]); // D60 (2026-11-04)
     expect(DeviceInventorySchema.safeParse(inventory).success).toBe(true);
     // Every other member of a track is as it was: the three facts are the stream's - and, since row CB (finding R-01),
     // the bitrate is null: no real source states one (this line pinned the simulator's 9 in real capture before).
     const plain = videoStatusOf(real);
     expect(video.tracks.map(({ resolution: _r, fps: _f, codec: _c, bitrateMbps: _b, ...rest }) => rest)).toEqual(plain.tracks.map(({ resolution: _r, fps: _f, codec: _c, bitrateMbps: _b, ...rest }) => rest));
-    expect(video.tracks.map((track) => track.bitrateMbps)).toEqual([null, null]);
+    expect(video.tracks.map((track) => track.bitrateMbps)).toEqual([null, null, null, null]); // D60 (2026-11-04)
   });
 
   it('the H.264 baseline is unchanged, member for member, and the state is not touched: the same slice object when nothing differs', () => {
@@ -644,7 +650,7 @@ describe('row 53: the camera facts of a real capture operation are the stored st
     const withoutBitrate = (answer: ReturnType<typeof videoStatusOf>): unknown[] => answer.tracks.map(({ bitrateMbps: _b, ...rest }) => rest);
     expect(withoutBitrate(videoStatusOf(state, undefined, true))).toEqual(withoutBitrate(videoStatusOf(state)));
     const frozen = deepFreeze(slotted('HEVC_1080P', 'HEVC_2560X1920P'));
-    expect(withCameraStreamFacts(frozen.cameras, frozen.captureConfig).map((camera) => [camera.resolution, camera.fps, camera.codec])).toEqual([['1080p', null, 'HEVC'], ['2560x1920', null, 'HEVC']]);
+    expect(withCameraStreamFacts(frozen.cameras, frozen.captureConfig).map((camera) => [camera.resolution, camera.fps, camera.codec])).toEqual([['1080p', null, 'HEVC'], ['2560x1920', null, 'HEVC'], ['2560x1920', null, 'HEVC'], ['2560x1920', null, 'HEVC']]); // D60 (2026-11-04)
     expect(frozen.cameras.map((camera) => [camera.resolution, camera.fps, camera.codec])).toEqual(state.cameras.map((camera) => [camera.resolution, camera.fps, camera.codec]));
   });
 
@@ -658,19 +664,19 @@ describe('row 53: the camera facts of a real capture operation are the stored st
   // `withCameraStreamFacts` (`{ ...camera, resolution, fps, codec }` and the `=== null` of its identity test) - the
   // three real answers then read 9. (The flag's wiring, and a Core that is not real, are held in `routes.test.ts`.)
   it('row CB (R-01): a camera\'s bitrate is NULL on the three reads of a real capture operation, whatever the slot holds and whatever number the slice holds; a SIMULATED Core answers the simulator\'s own', () => {
-    // The simulator's one writer: its initial 9 on both tracks. It is what a seed, a reset or an older stored state hands in.
-    expect(state.cameras.map((camera) => camera.bitrateMbps)).toEqual([9, 9]);
+    // The simulator's one writer: its initial 9 on all four tracks (D60). It is what a seed, a reset or an older stored state hands in.
+    expect(state.cameras.map((camera) => camera.bitrateMbps)).toEqual([9, 9, 9, 9]); // D60 (2026-11-04)
     // An assigned H.264 slot, an assigned HEVC slot, a code that is no statement, and another number in the slice.
     const other: CommittedState = { ...slotted('HEVC_1080P', 'NOT_A_STATEMENT'), cameras: state.cameras.map((camera, at) => ({ ...camera, bitrateMbps: at === 0 ? 4.5 : 0 })) };
     for (const real of [state, slotted('HEVC_1080P', 'H264_720P30'), slotted('NOT_A_STATEMENT', 'H264_1080P25'), other]) {
       const video = videoStatusOf(real, undefined, true);
-      expect(video.tracks.map((track) => track.bitrateMbps)).toEqual([null, null]);
+      expect(video.tracks.map((track) => track.bitrateMbps)).toEqual([null, null, null, null]); // D60 (2026-11-04)
       expect(validateCoreApiResponse('getVideoStatus', 200, video)).toMatchObject({ ok: true });
       const health = deviceHealthOf(real, NOW, null, undefined, true);
-      expect(health.cameras.map((camera) => camera.bitrateMbps)).toEqual([null, null]);
+      expect(health.cameras.map((camera) => camera.bitrateMbps)).toEqual([null, null, null, null]); // D60 (2026-11-04)
       expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
       const inventory = deviceInventoryOf(real, undefined, true);
-      expect(inventory.cameras.map((camera) => camera.bitrateMbps)).toEqual([null, null]);
+      expect(inventory.cameras.map((camera) => camera.bitrateMbps)).toEqual([null, null, null, null]); // D60 (2026-11-04)
       expect(DeviceInventorySchema.safeParse(inventory).success).toBe(true);
       // The state handed in is not written: its own numbers are still there.
       expect(real.cameras.map((camera) => camera.bitrateMbps)).not.toContain(null);
@@ -710,7 +716,7 @@ describe('row 53: the camera facts of a real capture operation are the stored st
     const kept = videoStatusOf(slotted('profile_1', 'H264_1080P25<script>'), undefined, true);
     // Rows B2 and V6 (S-01): the picture, the rate and the codec are each NOT STATED (null) - never the simulator's `1080p / 25 / H.264`.
     expect(factsOf(kept)).toEqual(factsOf(videoStatusOf(state)).map((track) => [(track as unknown[])[0], null, null, null]));
-    expect(state.cameras.map((camera) => camera.fps)).toEqual([25, 25]);
+    expect(state.cameras.map((camera) => camera.fps)).toEqual([25, 25, 25, 25]); // D60 (2026-11-04)
     expect(JSON.stringify(kept.tracks.map(({ resolution, fps, codec }) => [resolution, fps, codec]))).not.toMatch(/script|profile_1/);
   });
 
@@ -721,6 +727,9 @@ describe('row 53: the camera facts of a real capture operation are the stored st
       // Rows B2 and V6 (S-01): a track without a statement states nothing - null, not the slice's `1080p / 25 / H.264`.
       ['VIDEO-01', true, null, null, null],
       ['VIDEO-02', false, '1080p', null, 'HEVC'],
+      // D60 (2026-11-04): the two further lines are gone with it - no statement, no source.
+      ['VIDEO-03', true, null, null, null],
+      ['VIDEO-04', true, null, null, null],
     ]);
   });
 
@@ -735,26 +744,26 @@ describe('row 53: the camera facts of a real capture operation are the stored st
         const video = videoStatusOf(real, captureSlotsOf(real), true);
         const health = deviceHealthOf(real, NOW, null, captureSlotsOf(real), true);
         const inventory = deviceInventoryOf(real, undefined, true);
-        expect([video.tracks.map((track) => track.fps), health.cameras.map((camera) => camera.fps), inventory.cameras.map((camera) => camera.fps)]).toEqual([[null, null], [null, null], [null, null]]);
+        expect([video.tracks.map((track) => track.fps), health.cameras.map((camera) => camera.fps), inventory.cameras.map((camera) => camera.fps)]).toEqual([[null, null, null, null], [null, null, null, null], [null, null, null, null]]); // D60 (2026-11-04)
         expect(VideoStatusResponseSchema.safeParse(video).success).toBe(true);
         expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
         expect(DeviceInventorySchema.safeParse(inventory).success).toBe(true);
       }
       // One track with a statement beside one without: each says its own.
       const mixed = videoStatusOf(slotted('H264_720P30', 'MAIN'), undefined, true);
-      expect(factsOf(mixed)).toEqual([['VIDEO-01', '720p', 30, 'H.264'], ['VIDEO-02', null, null, null]]);
+      expect(factsOf(mixed)).toEqual([['VIDEO-01', '720p', 30, 'H.264'], ['VIDEO-02', null, null, null], ['VIDEO-03', null, null, null], ['VIDEO-04', null, null, null]]); // D60 (2026-11-04)
     });
 
     it('the state is not written, and a track whose rate is null already is the SAME object (identity kept)', () => {
       const frozen = deepFreeze(unassigned);
       const once = withCameraStreamFacts(frozen.cameras, frozen.captureConfig);
       expect(once).not.toBe(frozen.cameras);
-      expect(frozen.cameras.map((camera) => camera.fps)).toEqual([25, 25]);
+      expect(frozen.cameras.map((camera) => camera.fps)).toEqual([25, 25, 25, 25]); // D60 (2026-11-04)
       expect(withCameraStreamFacts(once, frozen.captureConfig)).toBe(once);
     });
 
     it('CONTROL: a SIMULATED Core (no flag) answers its slice for the same state - 25 stays, as the simulator answers', () => {
-      expect(videoStatusOf(unassigned, captureSlotsOf(unassigned)).tracks.map((track) => track.fps)).toEqual([25, 25]);
+      expect(videoStatusOf(unassigned, captureSlotsOf(unassigned)).tracks.map((track) => track.fps)).toEqual([25, 25, 25, 25]); // D60 (2026-11-04)
       expect(deviceInventoryOf(unassigned).cameras).toBe(unassigned.cameras);
     });
 
@@ -762,10 +771,10 @@ describe('row 53: the camera facts of a real capture operation are the stored st
     // and the codec, and the slice's `1080p` and `H.264` were still answered for such a track.
     it('THE GAP IS CLOSED (row V6): a track without a stream statement answers the picture, the rate AND the codec as NOT STATED (null) - the slice\'s `1080p / 25 / H.264` is never handed on; the contract takes null for each, and still refuses an absent member, an invented word and an empty text', () => {
       const video = videoStatusOf(unassigned, captureSlotsOf(unassigned), true);
-      expect(state.cameras.map((camera) => [camera.resolution, camera.fps, camera.codec])).toEqual([['1080p', 25, 'H.264'], ['1080p', 25, 'H.264']]);
-      expect(video.tracks.map((track) => [track.sourceDeviceId, track.resolution, track.fps, track.codec])).toEqual([[null, null, null, null], [null, null, null, null]]);
+      expect(state.cameras.map((camera) => [camera.resolution, camera.fps, camera.codec])).toEqual([['1080p', 25, 'H.264'], ['1080p', 25, 'H.264'], ['1080p', 25, 'H.264'], ['1080p', 25, 'H.264']]); // D60 (2026-11-04)
+      expect(video.tracks.map((track) => [track.sourceDeviceId, track.resolution, track.fps, track.codec])).toEqual([[null, null, null, null], [null, null, null, null], [null, null, null, null], [null, null, null, null]]); // D60 (2026-11-04)
       expect(VideoStatusResponseSchema.safeParse(video).success).toBe(true);
-      expect(withCameraStreamFacts(unassigned.cameras, captureSlotsOf(unassigned)).map((camera) => [camera.resolution, camera.fps, camera.codec])).toEqual([[null, null, null], [null, null, null]]);
+      expect(withCameraStreamFacts(unassigned.cameras, captureSlotsOf(unassigned)).map((camera) => [camera.resolution, camera.fps, camera.codec])).toEqual([[null, null, null], [null, null, null], [null, null, null], [null, null, null]]); // D60 (2026-11-04)
       // Said once: a slice that already says "not stated" is the SAME array (nothing to say).
       const stated = withCameraStreamFacts(unassigned.cameras, captureSlotsOf(unassigned));
       expect(withCameraStreamFacts(stated, captureSlotsOf(unassigned))).toBe(stated);
@@ -774,10 +783,10 @@ describe('row 53: the camera facts of a real capture operation are the stored st
       const { codec: _codec, ...withoutCodec } = track;
       // "Not stated" is NULL and nothing else: no absent member, no invented word, no empty text, no default.
       for (const candidate of [withoutResolution, withoutCodec, { ...track, codec: 'UNKNOWN' }, { ...track, resolution: '' }, { ...track, resolution: 'unknown' }, { ...track, codec: '' }]) {
-        expect(VideoStatusResponseSchema.safeParse({ tracks: [candidate, video.tracks[1]] }).success).toBe(false);
+        expect(VideoStatusResponseSchema.safeParse({ tracks: [candidate, ...video.tracks.slice(1)] }).success).toBe(false);
       }
       for (const candidate of [{ ...track, resolution: '1080p', codec: null }, { ...track, resolution: null, codec: 'HEVC' }, { ...track, resolution: '720p', fps: 25, codec: 'H.264' }]) {
-        expect(VideoStatusResponseSchema.safeParse({ tracks: [candidate, video.tracks[1]] }).success).toBe(true);
+        expect(VideoStatusResponseSchema.safeParse({ tracks: [candidate, ...video.tracks.slice(1)] }).success).toBe(true);
       }
     });
   });
@@ -797,17 +806,17 @@ describe('row V7d: operations 44 and 46 say NOT READ where the line does, and fo
       ...idle,
       captureConfig: { ...idle.captureConfig, cameras: idle.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-02' ? { ...line, deviceId: 'CAM-07', streamState: null } : line)) },
     } as SimState;
-    // The flag the old fallback read: both cameras of the hardware slice are online.
-    expect(state.cameras.map((camera) => camera.online)).toEqual([true, true]);
+    // The flag the old fallback read: all four cameras of the hardware slice are online (D60).
+    expect(state.cameras.map((camera) => camera.online)).toEqual([true, true, true, true]); // D60 (2026-11-04)
     const video = videoStatusOf(committedOf(state));
     const health = deviceHealthOf(committedOf(state), NOW);
-    expect(stated(video.tracks)).toEqual([['VIDEO-01', 'CAM-01', 'LIVE'], ['VIDEO-02', 'CAM-07', null]]);
+    expect(stated(video.tracks)).toEqual([['VIDEO-01', 'CAM-01', 'LIVE'], ['VIDEO-02', 'CAM-07', null], ['VIDEO-03', 'CAM-03', 'LIVE'], ['VIDEO-04', 'CAM-04', 'LIVE']]); // D60 (2026-11-04)
     expect(stated(health.cameras)).toEqual(stated(video.tracks));
     expect(VideoStatusResponseSchema.safeParse(video).success).toBe(true);
     expect(DeviceHealthResponseSchema.safeParse(health).success).toBe(true);
 
     const none = { ...state, captureConfig: { ...state.captureConfig, cameras: state.captureConfig.cameras.filter((line) => line.trackId === 'VIDEO-02') } } as SimState;
-    expect(stated(videoStatusOf(committedOf(none)).tracks)).toEqual([['VIDEO-01', null, null], ['VIDEO-02', 'CAM-07', null]]);
-    expect(stated(deviceHealthOf(committedOf(none), NOW).cameras)).toEqual([['VIDEO-01', null, null], ['VIDEO-02', 'CAM-07', null]]);
+    expect(stated(videoStatusOf(committedOf(none)).tracks)).toEqual([['VIDEO-01', null, null], ['VIDEO-02', 'CAM-07', null], ['VIDEO-03', null, null], ['VIDEO-04', null, null]]); // D60 (2026-11-04)
+    expect(stated(deviceHealthOf(committedOf(none), NOW).cameras)).toEqual([['VIDEO-01', null, null], ['VIDEO-02', 'CAM-07', null], ['VIDEO-03', null, null], ['VIDEO-04', null, null]]); // D60 (2026-11-04)
   });
 });

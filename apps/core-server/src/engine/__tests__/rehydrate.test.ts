@@ -843,14 +843,14 @@ describe('row CB (R-01): a Core in its own capture states no bitrate of a camera
     const host = await createHost({ scenario: 'recording' });
     const before = host.state();
     // The simulator's one writer: its initial 9.
-    expect(before.cameras.map((camera) => camera.bitrateMbps)).toEqual([9, 9]);
+    expect(before.cameras.map((camera) => camera.bitrateMbps)).toEqual([9, 9, 9, 9]); // D60 (2026-11-04): four seeded cameras
     expect(isCameraBitrateNotStated(before.cameras)).toBe(false);
     const stated = cameraBitrateNotStatedTransition(before);
-    expect(stated.cameras.map((camera) => camera.bitrateMbps)).toEqual([null, null]);
+    expect(stated.cameras.map((camera) => camera.bitrateMbps)).toEqual([null, null, null, null]); // D60: four cameras
     expect(isCameraBitrateNotStated(stated.cameras)).toBe(true);
     expect(stated.cameras.map(({ bitrateMbps: _b, ...rest }) => rest)).toEqual(before.cameras.map(({ bitrateMbps: _b, ...rest }) => rest));
     // The state handed in is not written, and every other slice is the same object.
-    expect(before.cameras.map((camera) => camera.bitrateMbps)).toEqual([9, 9]);
+    expect(before.cameras.map((camera) => camera.bitrateMbps)).toEqual([9, 9, 9, 9]); // D60 (2026-11-04): four seeded cameras
     for (const key of Object.keys(before) as (keyof SimState)[]) if (key !== 'cameras') expect(stated[key], key).toBe(before[key]);
     // The storage volume's own bitrate is another member and no part of this statement.
     expect(stated.storage.bitrateMbps).toBe(before.storage.bitrateMbps);
@@ -858,7 +858,7 @@ describe('row CB (R-01): a Core in its own capture states no bitrate of a camera
     // Stored and read back (the rows of the one mapping module): still null, and no slice is rejected.
     const again = storedStateOf(rowsOf(stated, host.now()));
     expect(rejectedSlices(again.slices)).toEqual([]);
-    expect(again.slices.cameras.map((camera) => camera.bitrateMbps)).toEqual([null, null]);
+    expect(again.slices.cameras.map((camera) => camera.bitrateMbps)).toEqual([null, null, null, null]); // D60 (2026-11-04): four camera lines
   });
 
   it('the SAME state when every track already says null: no write, no statement, no revision', async () => {
@@ -872,7 +872,7 @@ describe('row CB (R-01): a Core in its own capture states no bitrate of a camera
     const state = host.state();
     const mixed: SimState = { ...state, cameras: state.cameras.map((camera, at) => (at === 0 ? { ...camera, bitrateMbps: null } : { ...camera, bitrateMbps: 4.5 })) };
     const stated = cameraBitrateNotStatedTransition(mixed);
-    expect(stated.cameras.map((camera) => camera.bitrateMbps)).toEqual([null, null]);
+    expect(stated.cameras.map((camera) => camera.bitrateMbps)).toEqual([null, null, null, null]); // D60: four cameras
     expect(stated.cameras[0]).toBe(mixed.cameras[0]);
   });
 });

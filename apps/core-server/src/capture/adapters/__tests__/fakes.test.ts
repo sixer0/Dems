@@ -161,13 +161,16 @@ describe('M4-FAKE-1: the fakes satisfy the device contract', () => {
   });
 });
 
-describe('M4-FAKE-1: two fakes emulate two cameras, and one fake a dual-lens camera (OD-05)', () => {
-  it('two cameras: two adapters, two devices, one profile each, each with its own locator and its own source', async () => {
+describe('M4-FAKE-1: four fakes emulate four cameras (D60), and one fake a dual-lens camera (OD-05)', () => {
+  it('four cameras: four adapters, four devices, one profile each, each with its own locator and its own source', async () => {
     const { registry, cameras } = createFakeRegistry({ runDir: RUN_DIR });
-    expect(cameras.map((camera) => camera.devices.map((device) => device.id))).toEqual([['CAM-01'], ['CAM-02']]);
+    // D60 (2026-11-04): four video tracks — the seed carries CAM-01..CAM-04.
+    expect(cameras.map((camera) => camera.devices.map((device) => device.id))).toEqual([['CAM-01'], ['CAM-02'], ['CAM-03'], ['CAM-04']]);
     expect(registry.list().filter((device) => device.deviceClass === 'CAMERA').map((device) => [device.id, device.adapterKind, device.sourceClass, device.profiles, device.hasOpener])).toEqual([
       ['CAM-01', 'FAKE', 'DEVELOPMENT', [FAKE_CAMERA_PROFILE], true],
       ['CAM-02', 'FAKE', 'DEVELOPMENT', [FAKE_CAMERA_PROFILE], true],
+      ['CAM-03', 'FAKE', 'DEVELOPMENT', [FAKE_CAMERA_PROFILE], true],
+      ['CAM-04', 'FAKE', 'DEVELOPMENT', [FAKE_CAMERA_PROFILE], true],
     ]);
     const first = registry.resolve('CAMERA', 'CAM-01');
     const second = registry.resolve('CAMERA', 'CAM-02');
@@ -195,9 +198,10 @@ describe('M4-FAKE-1: two fakes emulate two cameras, and one fake a dual-lens cam
     expect(await cameraContract(camera)).toEqual([]);
   });
 
-  it('the fake registry holds the seed\'s five devices, two microphones 10.5 dB apart and the switch with the cameras\' port', async () => {
+  it('the fake registry holds the seed\'s seven devices, two microphones 10.5 dB apart and the switch with the cameras\' port', async () => {
     const { registry, mics, poe } = createFakeRegistry({ runDir: RUN_DIR });
-    expect(registry.list().map((device) => `${device.id} ${device.deviceClass} ${device.adapterKind}`)).toEqual(['CAM-01 CAMERA FAKE', 'CAM-02 CAMERA FAKE', 'MIC-01 MIC FAKE', 'MIC-02 MIC FAKE', 'POE-SWITCH POE FAKE']);
+    // D60 (2026-11-04): the seed's built-ins are seven — four cameras, two mics, one switch.
+    expect(registry.list().map((device) => `${device.id} ${device.deviceClass} ${device.adapterKind}`)).toEqual(['CAM-01 CAMERA FAKE', 'CAM-02 CAMERA FAKE', 'CAM-03 CAMERA FAKE', 'CAM-04 CAMERA FAKE', 'MIC-01 MIC FAKE', 'MIC-02 MIC FAKE', 'POE-SWITCH POE FAKE']);
     expect(await Promise.all(mics.map((mic) => mic.level(mic.devices[0]?.id ?? '')))).toEqual([FAKE_MIC_PRIMARY_DBFS, FAKE_MIC_STANDBY_DBFS]);
     expect(FAKE_MIC_PRIMARY_DBFS - FAKE_MIC_STANDBY_DBFS).toBeCloseTo(10.5);
     expect(await poeContract(poe, 'POE_CAM_1')).toEqual([]);

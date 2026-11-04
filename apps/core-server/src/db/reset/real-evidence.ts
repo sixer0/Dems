@@ -29,7 +29,7 @@
  *   (1) `development_sources IS TRUE` - the predicate is `IS TRUE`, so `NULL` (every v1 item and
  *       every row older than migration 0008) and `false` BLOCK. A "not false" form would unprotect
  *       every legacy item; it is the one mistake this guard must never make.
- *   (2) the cross-check: the item's session holds EXACTLY four `session_capture_sources` rows and
+ *   (2) the cross-check: the item's session holds EXACTLY six `session_capture_sources` rows and (D60, 2026-11-04; was four)
  *       every one of them is a development kind (`FAKE`, `LOCAL_DEVICE`). The count is of
  *       development kinds, not of "non-production" ones, so an adapter kind added later blocks
  *       until this list names it (fail closed). A single summary column never decides destruction.
@@ -109,7 +109,7 @@
  * UNSEALABLE outcome moves to the quarantine (rule (11)). Such a folder holds test pictures of the
  * FAKE (generated) sources and nothing else, and there is no signed manifest that could prove it.
  * So the proof is the DATABASE's, and the exemption is narrower than every other one:
- *   (12) the session holds EXACTLY four `session_capture_sources` rows and EVERY one is of kind
+ *   (12) the session holds EXACTLY six `session_capture_sources` rows (D60) and EVERY one is of kind
  *        `FAKE` - generated sources only. A `LOCAL_DEVICE` row (this computer's camera or
  *        microphone: a recording of a person) is NOT exempt, and no production kind ever is;
  *   (13) the session has NO sealed item (a sealed one is judged by rules (1) to (5));
@@ -144,8 +144,8 @@ export interface RealEvidenceQueryable {
   query<R extends QueryResultRow = QueryResultRow>(text: string, values?: unknown[]): Promise<{ rows: R[] }>;
 }
 
-/** The source rows a session holds, exactly (`dbc-4` MR-S1): one per slot. */
-export const SOURCE_ROWS_PER_SESSION = 4;
+/** The source rows a session holds, exactly (`dbc-4` MR-S1): one per slot. D60 (2026-11-04): the selector has six slots, so a session holds six. */
+export const SOURCE_ROWS_PER_SESSION = 6;
 /**
  * The adapter kinds that make a source a DEVELOPMENT source (`dbc-4` §N.2). The cross-check counts
  * these, never "everything that is not production": an unknown kind is not exempt.
@@ -240,7 +240,7 @@ export interface DevelopmentItem {
 
 /**
  * The exemption, pure. Exempt only when the flag is strictly `true` AND the session holds exactly
- * four source rows AND all four are development kinds; everything else blocks.
+ * six source rows AND all six are development kinds (D60); everything else blocks.
  */
 export function classifyRealSealedRows(rows: readonly RealSealedEvidenceRow[]): RealSealedRows {
   const blocking: string[] = [];
@@ -251,7 +251,7 @@ export function classifyRealSealedRows(rows: readonly RealSealedEvidenceRow[]): 
   const unsealed: string[] = [];
   const unsealedFake: string[] = [];
   for (const row of rows) {
-    // Rules (12) + (13): proven again here, on the counts of the row - exactly four rows, all four generated. Never blocking.
+    // Rules (12) + (13): proven again here, on the counts of the row - exactly six rows (D60), all generated. Never blocking.
     if (row.integrity_source === UNSEALED_FAKE_SOURCE) {
       if (row.source_rows === SOURCE_ROWS_PER_SESSION && row.development_rows === SOURCE_ROWS_PER_SESSION) unsealedFake.push(row.session_id);
       continue;
@@ -460,7 +460,7 @@ export function realEvidenceMessage(facts: RealEvidenceFacts): string {
       (facts.unsealedSessions.length === 0 ? '' : `, ${String(facts.unsealedSessions.length)} session(s) that recorded from a production source and are not sealed (${named(facts.unsealedSessions)})`) +
       (facts.developmentUnproven.length === 0
         ? ''
-        : `, ${String(facts.developmentUnproven.length)} of them flagged as development sources without four development source rows`),
+        : `, ${String(facts.developmentUnproven.length)} of them flagged as development sources without six development source rows`),
     `evidence store ${facts.storeRoot} ${facts.storePresent ? 'holds' : 'does not exist;'} ${String(facts.diskSessions.length)} REAL package(s)` +
       (facts.unprovablePackages.length === 0 ? '' : ` and ${String(facts.unprovablePackages.length)} unreadable package director(y/ies) [${named(facts.unprovablePackages)}]`) +
       (facts.quarantinedSessions.length === 0 ? '' : ` and ${String(facts.quarantinedSessions.length)} quarantined recording folder(s) [${named(facts.quarantinedSessions)}]`) +

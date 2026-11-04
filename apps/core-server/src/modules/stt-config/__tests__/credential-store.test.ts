@@ -11,7 +11,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { coreCredentialStore, type CoreCredentialStore } from '../../../credential-store';
 import { SEEDED_ROW, STT_PATH, haystacksOf, hitsOf, operator, outcome, sttApp, testSealer, type SttApp } from './support';
 
-const SUPERVISOR = operator(OperatorRole.SUPERVISOR, 'OPR-003');
+// REVOKED 2026-10-29 (PT GSP): CAPTURE_CONFIG left SUPERVISOR - the writer of record is TECHNICIAN.
+const WRITER = operator(OperatorRole.TECHNICIAN, 'OPR-003');
 /** Planted in requests only. Built from parts, so that no other file of the repository holds it. */
 const CANARY = ['stt', 'CANARY', 'row84', 'Vb6Jn3Rc8Yd1'].join('-');
 
@@ -44,7 +45,7 @@ describe('a SECRET write with the Core credential store', () => {
   it('answers 200 with credentialKind ENCRYPTED; the row holds a key reference, a nonce and a padded envelope the store opens', async () => {
     const { stt, dataDir } = await build();
     expect(stt.control.hasCredentialSealer()).toBe(true);
-    stt.actAs(SUPERVISOR);
+    stt.actAs(WRITER);
     const response = await stt.post(STT_PATH, { revision: 1, credential: { kind: 'SECRET', value: CANARY } });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({ credentialSet: true, credentialKind: 'ENCRYPTED', revision: 2 });
@@ -60,7 +61,7 @@ describe('a SECRET write with the Core credential store', () => {
 
   it('a one-character secret is stored as 80 bytes of ciphertext (F-122-2), and opens', async () => {
     const { stt } = await build();
-    stt.actAs(SUPERVISOR);
+    stt.actAs(WRITER);
     expect((await stt.post(STT_PATH, { revision: 1, credential: { kind: 'SECRET', value: 'k' } })).statusCode).toBe(200);
     const row = stt.db.row();
     expect(row?.secret_ciphertext?.byteLength).toBe(80);
@@ -69,7 +70,7 @@ describe('a SECRET write with the Core credential store', () => {
 
   it('the canary is in no answer, no log line at trace level, no error-log entry, no audit row, no event, and not in the stored row or the key file', async () => {
     const { stt, dataDir, errorLogFile } = await build();
-    stt.actAs(SUPERVISOR);
+    stt.actAs(WRITER);
     expect((await stt.post(STT_PATH, { revision: 1, credential: { kind: 'SECRET', value: CANARY } })).statusCode).toBe(200);
     // Refusals that carry the canary too: a stale revision, a value outside the contract.
     expect(outcome(await stt.post(STT_PATH, { revision: 1, credential: { kind: 'SECRET', value: CANARY } }))[0]).toBe(409);
@@ -97,7 +98,7 @@ describe('a SECRET write with the Core credential store', () => {
 
   it('a refused body seals nothing: no key is left in the store', async () => {
     const { stt, dataDir } = await build();
-    stt.actAs(SUPERVISOR);
+    stt.actAs(WRITER);
     expect(outcome(await stt.post(STT_PATH, { revision: 9, credential: { kind: 'SECRET', value: CANARY } }))[0]).toBe(409);
     expect(outcome(await stt.post(STT_PATH, { revision: 1, backend: 'cloud', credential: { kind: 'SECRET', value: CANARY } }))[0]).toBe(422);
     expect(keyFiles(dataDir)).toEqual([]);
@@ -106,7 +107,7 @@ describe('a SECRET write with the Core credential store', () => {
 
   it('writing the secret again is its rotation: a new key and a new reference; the hook destroys the replaced key', async () => {
     const { stt, dataDir } = await build();
-    stt.actAs(SUPERVISOR);
+    stt.actAs(WRITER);
     await stt.post(STT_PATH, { revision: 1, credential: { kind: 'SECRET', value: 'first-secret' } });
     const first = stt.db.row()?.credential_ref ?? '';
     await stt.post(STT_PATH, { revision: 2, credential: { kind: 'SECRET', value: 'second-secret' } });
@@ -121,7 +122,7 @@ describe('a SECRET write with the Core credential store', () => {
     const { stt, dataDir } = await build();
     const sealer = testSealer();
     stt.control.provideCredentialSealer(sealer);
-    stt.actAs(SUPERVISOR);
+    stt.actAs(WRITER);
     expect((await stt.post(STT_PATH, { revision: 1, credential: { kind: 'SECRET', value: CANARY } })).statusCode).toBe(200);
     expect(stt.db.row()?.credential_ref).toBe('TEST_STT_KEY_1');
     expect(keyFiles(dataDir)).toEqual([]);
@@ -134,7 +135,7 @@ describe('without a usable store the write answers as before', () => {
     apps.push(stt);
     expect(coreCredentialStore(stt.app)).toEqual({ status: 'ABSENT' });
     expect(stt.control.hasCredentialSealer()).toBe(false);
-    stt.actAs(SUPERVISOR);
+    stt.actAs(WRITER);
     expect(outcome(await stt.post(STT_PATH, { revision: 1, credential: { kind: 'SECRET', value: CANARY } }))).toEqual([503, 'NOT_READY', 'CREDENTIAL_STORE_NOT_READY']);
     expect(stt.db.updates).toEqual([]);
     expect(stt.log.text()).not.toContain('CREDENTIAL_STORE_UNSAFE');
@@ -146,7 +147,7 @@ describe('without a usable store the write answers as before', () => {
       chmodSync(join(folder, 'credential-store'), 0o755);
     });
     expect(stt.control.hasCredentialSealer()).toBe(false);
-    stt.actAs(SUPERVISOR);
+    stt.actAs(WRITER);
     expect(outcome(await stt.post(STT_PATH, { revision: 1, credential: { kind: 'SECRET', value: CANARY } }))).toEqual([503, 'NOT_READY', 'CREDENTIAL_STORE_NOT_READY']);
     expect(stt.db.row()).toEqual(SEEDED_ROW);
     expect(keyFiles(dataDir)).toEqual([]);

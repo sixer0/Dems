@@ -35,11 +35,14 @@ export interface Queryable {
 }
 
 /**
- * The two camera tracks (`recording_fragments_track_check`, dbc-3 §B.6). Written here and not
+ * The camera tracks (`recording_fragments_track_check`, dbc-3 §B.6). Written here and not
  * imported from the typed schema: a module does not reach into `db/schema` (import guard, rule 5).
  * The unit test of this folder holds the list to the schema's value set.
+ *
+ * D60 (2026-11-04): the Core records FOUR video tracks at once - the check of migration 0039 names
+ * VIDEO-01 to VIDEO-04; fragments of older two-track sessions keep their rows (a widening, not a rewrite).
  */
-export const VIDEO_TRACK_IDS = ['VIDEO-01', 'VIDEO-02'] as const;
+export const VIDEO_TRACK_IDS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const;
 export type VideoTrackId = (typeof VIDEO_TRACK_IDS)[number];
 
 /** `chain_0`: SHA-256 of nothing (spec §C.3; S1 §3.1). The fifth test of this folder holds it to the protocol's constant. */

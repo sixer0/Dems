@@ -29,6 +29,7 @@
  * nothing about it. A call that changes nothing returns the SAME state and sends no statement.
  */
 import type { EvidenceItem, SimState } from '@dems/shared/sim';
+import type { VideoTrackId } from '@dems/shared/domain';
 import { EngineError } from './errors';
 import type { EngineHost, EngineOutcome } from './types';
 
@@ -45,7 +46,7 @@ export interface SealedAudioInterval {
 
 /** One camera file as the sealed manifest records it (`EvidenceItemSchema.files`). */
 export interface SealedFileFact {
-  readonly trackId: 'VIDEO-01' | 'VIDEO-02';
+  readonly trackId: VideoTrackId; // D60
   readonly fileName: string;
   readonly sizeBytes: number;
   /** SHA-256 of the STORED bytes of the whole file. */

@@ -33,7 +33,7 @@
  * behave alike; the table only decides which one a rehydrated state holds.
  */
 // UNATTRIBUTED_OPERATOR_ID is imported below with the other vocabulary constants.
-import { DEFAULT_CAPTURE_DEVICES, EVIDENCE_FILE_TRACKS, SIM_SNAPSHOT_VERSION, UNATTRIBUTED_OPERATOR_ID, captureDeviceProfilesOf, eventCategory, neverSealedShape } from '@dems/shared/sim';
+import { DEFAULT_CAPTURE_DEVICES, EVIDENCE_FILE_TRACKS, SIM_SNAPSHOT_VERSION, TRACK_LABELS, TRACK_ORDER, UNATTRIBUTED_OPERATOR_ID, captureDeviceProfilesOf, eventCategory, neverSealedShape } from '@dems/shared/sim';
 import type {
   ActiveSession,
   AuditRow,
@@ -561,7 +561,7 @@ export function evidenceTracksToRows(item: EvidenceItem): EvidenceTrackRow[] {
   // does not model them (the SH-24 dataset writer supplies its own).
   const fileOf = new Map((item.files ?? []).map((file) => [file.trackId, file] as const));
   const v2 = item.files !== undefined && item.files.length > 0;
-  return item.tracks.map((track, index) => {
+  const rows: EvidenceTrackRow[] = item.tracks.map((track, index) => {
     const file = fileOf.get(track.trackId);
     return {
       evidenceId: item.id,
@@ -585,6 +585,31 @@ export function evidenceTracksToRows(item: EvidenceItem): EvidenceTrackRow[] {
       sha256Plain: file === undefined ? null : storableText(file.sha256, `evidence_tracks.sha256_plain (${item.id})`),
     };
   });
+  // D60 (2026-11-04): a live v2 seal names FOUR camera files (`EVIDENCE_FILE_TRACKS`) while the v1
+  // track view stays the shared `TRACK_ORDER` pair of cameras and pair of microphones. A file with
+  // no track of its own gets a row of its own, LAST in the table's order: the way back reads the
+  // track view as the rows of the `TRACK_ORDER` ids and the file view as every row that carries its
+  // fragment data, so both lists survive the store untouched and `toRow(fromRow(row))` is stable.
+  const sealedTrackIds = new Set(item.tracks.map((track) => track.trackId));
+  for (const file of item.files ?? []) {
+    if (sealedTrackIds.has(file.trackId)) continue;
+    rows.push({
+      evidenceId: item.id,
+      trackId: file.trackId,
+      position: rows.length + 1,
+      label: storableText(TRACK_LABELS[file.trackId as keyof typeof TRACK_LABELS] ?? file.trackId, `evidence_tracks.label (${item.id})`),
+      sizeBytes: safeInteger(file.sizeBytes, `evidence_tracks.size_bytes (${item.id})`),
+      sha256: storableText(file.sha256, `evidence_tracks.sha256 (${item.id})`),
+      kind: 'FILE',
+      containsAudio: true,
+      codec: null,
+      durationMs: safeInteger(item.durationMs, `evidence_tracks.duration_ms (${item.id})`),
+      fragmentCount: safeInteger(file.fragmentCount, `evidence_tracks.fragment_count (${item.id})`),
+      fragmentChainHead: item.fragmentChainHead === undefined || item.fragmentChainHead === null ? null : storableText(item.fragmentChainHead, `evidence_tracks.fragment_chain_head (${item.id})`),
+      sha256Plain: storableText(file.sha256, `evidence_tracks.sha256_plain (${item.id})`),
+    });
+  }
+  return rows;
 }
 
 /** `seq` is the 1-based place in the item's custody list. `from` skips the entries already stored. */
@@ -611,7 +636,10 @@ export function evidenceItemFromRows(
   custody: readonly EvidenceCustodyRow[],
 ): EvidenceItem {
   const signature = signatureFromRow(row);
+  // D60 (2026-11-04): the v1 track view is the rows of the `TRACK_ORDER` ids; a file-only row (the
+  // third or fourth camera file of a live seal) carries the file view and joins no track.
   const orderedTracks: EvidenceTrack[] = [...tracks]
+    .filter((track) => (TRACK_ORDER as readonly string[]).includes(track.trackId))
     .sort((a, b) => a.position - b.position)
     .map((track) => ({ trackId: track.trackId, label: track.label, sizeBytes: track.sizeBytes, sha256: track.sha256 }));
   const orderedCustody: CustodyEntry[] = [...custody]
@@ -802,11 +830,11 @@ const BUILT_IN_CAPABILITIES: ReadonlyMap<string, readonly string[]> = new Map(
  */
 export function captureConfigToRow(slice: CaptureConfigSlice): CaptureConfigRow {
   const place = (column: string): string => `capture_config.${column}`;
-  const cameraOf = (trackId: 'VIDEO-01' | 'VIDEO-02') => slice.cameras.filter((camera) => camera.trackId === trackId);
+  const cameraOf = (trackId: 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04') => slice.cameras.filter((camera) => camera.trackId === trackId);
   const micOf = (role: 'PRIMARY' | 'STANDBY') => slice.mics.filter((mic) => mic.role === role);
-  const [camera01, camera02, primary, standby] = [cameraOf('VIDEO-01'), cameraOf('VIDEO-02'), micOf('PRIMARY'), micOf('STANDBY')];
-  if (camera01.length > 1 || camera02.length > 1 || camera01.length + camera02.length !== slice.cameras.length) {
-    throw new MappingError('ROW_SHAPE', 'capture_config', 'the selector slice names at most one camera line per track, VIDEO-01 and VIDEO-02, and no other line.');
+  const [camera01, camera02, camera03, camera04, primary, standby] = [cameraOf('VIDEO-01'), cameraOf('VIDEO-02'), cameraOf('VIDEO-03'), cameraOf('VIDEO-04'), micOf('PRIMARY'), micOf('STANDBY')]; // D60
+  if ([camera01, camera02, camera03, camera04].some((lines) => lines.length > 1) || camera01.length + camera02.length + camera03.length + camera04.length !== slice.cameras.length) {
+    throw new MappingError('ROW_SHAPE', 'capture_config', 'the selector slice names at most one camera line per track, VIDEO-01 to VIDEO-04 (D60), and no other line.');
   }
   if (primary.length > 1 || standby.length > 1 || primary.length + standby.length !== slice.mics.length) {
     throw new MappingError('ROW_SHAPE', 'capture_config', 'the selector slice names at most one mic line per role, PRIMARY and STANDBY, and no other line.');
@@ -815,12 +843,18 @@ export function captureConfigToRow(slice: CaptureConfigSlice): CaptureConfigRow 
     camera === undefined ? [null, null] : [storableText(camera.deviceId, place(device)), profileToCode(camera.profile, place(profile))];
   const [video01DeviceId, video01Profile] = video(camera01[0], 'video_01_device_id', 'video_01_profile');
   const [video02DeviceId, video02Profile] = video(camera02[0], 'video_02_device_id', 'video_02_profile');
+  const [video03DeviceId, video03Profile] = video(camera03[0], 'video_03_device_id', 'video_03_profile');
+  const [video04DeviceId, video04Profile] = video(camera04[0], 'video_04_device_id', 'video_04_profile');
   return {
     singleton: true,
     video01DeviceId,
     video01Profile,
     video02DeviceId,
     video02Profile,
+    video03DeviceId,
+    video03Profile,
+    video04DeviceId,
+    video04Profile,
     micPrimaryId: storableTextOrNull(primary[0]?.deviceId, place('mic_primary_id')),
     micStandbyId: storableTextOrNull(standby[0]?.deviceId, place('mic_standby_id')),
     revision: 1,
@@ -985,9 +1019,9 @@ export function captureConfigFromRow(row: CaptureConfigRow, devices: readonly Ca
     return device;
   };
   // The row as the database holds it: a slot may be NULL, and the row type says so.
-  const slots: Pick<CaptureConfigRow, 'video01DeviceId' | 'video01Profile' | 'video02DeviceId' | 'video02Profile' | 'micPrimaryId' | 'micStandbyId'> = row;
-  const camera = (trackId: 'VIDEO-01' | 'VIDEO-02', deviceId: string | null, code: string | null): CaptureConfigSlice['cameras'] => {
-    const columns = trackId === 'VIDEO-01' ? (['video_01_device_id', 'video_01_profile'] as const) : (['video_02_device_id', 'video_02_profile'] as const);
+  const slots: Pick<CaptureConfigRow, 'video01DeviceId' | 'video01Profile' | 'video02DeviceId' | 'video02Profile' | 'video03DeviceId' | 'video03Profile' | 'video04DeviceId' | 'video04Profile' | 'micPrimaryId' | 'micStandbyId'> = row;
+  const camera = (trackId: 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04', deviceId: string | null, code: string | null): CaptureConfigSlice['cameras'] => {
+    const columns = ({ 'VIDEO-01': ['video_01_device_id', 'video_01_profile'], 'VIDEO-02': ['video_02_device_id', 'video_02_profile'], 'VIDEO-03': ['video_03_device_id', 'video_03_profile'], 'VIDEO-04': ['video_04_device_id', 'video_04_profile'] } as const)[trackId]; // D60
     if (deviceId === null && code === null) return [];
     if (deviceId === null || code === null) {
       throw new MappingError('ROW_SHAPE', `capture_config.${deviceId === null ? columns[0] : columns[1]}`, `the slot ${trackId} holds a device without a profile or a profile without a device.`);
@@ -1008,7 +1042,7 @@ export function captureConfigFromRow(row: CaptureConfigRow, devices: readonly Ca
     return [{ inputId: deviceId, deviceId, role, transport: device.transport, online: device.enabled }];
   };
   return {
-    cameras: [...camera('VIDEO-01', slots.video01DeviceId, slots.video01Profile), ...camera('VIDEO-02', slots.video02DeviceId, slots.video02Profile)],
+    cameras: [...camera('VIDEO-01', slots.video01DeviceId, slots.video01Profile), ...camera('VIDEO-02', slots.video02DeviceId, slots.video02Profile), ...camera('VIDEO-03', slots.video03DeviceId, slots.video03Profile), ...camera('VIDEO-04', slots.video04DeviceId, slots.video04Profile)],
     mics: [...mic('PRIMARY', slots.micPrimaryId), ...mic('STANDBY', slots.micStandbyId)].sort((left, right) => compareIds(left.inputId, right.inputId)),
     locked: false,
     updatedAt: row.updatedAt,
@@ -1038,9 +1072,10 @@ export function captureDevicesFromRows(rows: readonly CaptureDeviceRow[], listin
 
 const NO_DEVICE_IDS: ReadonlySet<string> = new Set();
 
-/** The device ids the selector row names: its four slots, an UNASSIGNED (NULL) slot names none (task 4 row 166, site A5). */
-export function selectorDeviceIds(row: Pick<CaptureConfigRow, 'video01DeviceId' | 'video02DeviceId' | 'micPrimaryId' | 'micStandbyId'>): ReadonlySet<string> {
-  return new Set([row.video01DeviceId, row.video02DeviceId, row.micPrimaryId, row.micStandbyId].filter((deviceId): deviceId is string => deviceId !== null));
+/** The device ids the selector row names: its six slots (D60), an UNASSIGNED (NULL) slot names none (task 4 row 166, site A5). */
+export function selectorDeviceIds(row: Pick<CaptureConfigRow, 'video01DeviceId' | 'video02DeviceId' | 'video03DeviceId' | 'video04DeviceId' | 'micPrimaryId' | 'micStandbyId'>): ReadonlySet<string> {
+  // The device ids the selector row names: its six slots (D60), an UNASSIGNED (NULL) slot names none.
+  return new Set([row.video01DeviceId, row.video02DeviceId, row.video03DeviceId, row.video04DeviceId, row.micPrimaryId, row.micStandbyId].filter((deviceId): deviceId is string => deviceId !== null));
 }
 
 function compareIds(a: string, b: string): number {

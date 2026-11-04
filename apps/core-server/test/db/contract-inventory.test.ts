@@ -197,7 +197,7 @@ describe('the inventory is the contract (sections 2.4 and 4)', () => {
     expect(serialise(parseContract(contractText))).toBe(serialise(inventory));
   });
 
-  it("holds the composed counts: the closed §4 base plus the dbc-3, dbc-4, dbc-6, dbc-7, dbc-8, dbc-9, dbc-10, dbc-11, dbc-12, dbc-13, dbc-14, dbc-15, dbc-16 deltas and the purge amendment of 2026-11-02 = 50 tables, 512 columns, 236 CHECKs, 50 foreign keys", () => {
+  it("holds the composed counts: the closed §4 base plus the dbc-3, dbc-4, dbc-6, dbc-7, dbc-8, dbc-9, dbc-10, dbc-11, dbc-12, dbc-13, dbc-14, dbc-15, dbc-16, dbc-17 deltas and the purge amendment of 2026-11-02 = 50 tables, 516 columns, 237 CHECKs, 52 foreign keys", () => {
     // The base is the CLOSED task-2 contract (§15.6 states its own totals — re-pinned in
     // contract-inventory.ts's composition header); the delta is dbc-3 §A/§B/§B.13/§C transcribed
     // in contract-v2-delta.ts. The per-kind totals below are the composition's measured output;
@@ -229,28 +229,32 @@ describe('the inventory is the contract (sections 2.4 and 4)', () => {
       // `capture_devices`, `retired_at` of `capture_audio_inputs`), +1 FK (`retired_by`), +2 CHECKs
       // on `capture_devices`; `capture_audio_inputs_card_input_key` goes from a unique constraint
       // to a partial unique index under its name (-1 unique, +1 unique index).
+      // D60 (2026-11-04), contract revision dbc-17 (set 17, migration 0039): +4 columns and
+      // +2 foreign keys on `capture_config` (the video_03/video_04 pair), +1 CHECK
+      // (`capture_config_profile_34_check`); the selector, slot-pair and five track CHECKs keep
+      // their names; three value sets widen in place.
       // The checked-in base, before the amendment below.
       tables: 48,
-      columns: 501,
+      columns: 505,
       primaryKeys: 48,
-      foreignKeys: 49,
+      foreignKeys: 51,
       uniques: 15,
       uniqueIndexes: 8,
       indexes: 24,
-      checks: 233,
+      checks: 234,
     });
     // REVISED 2026-11-02 (principal): the purge amendment (migration 0036) adds T-49
     // `audit_purge_ticket` (3 columns, no key of its own) and T-50 `audit_purge_log` (8 columns,
     // 1 PK, 1 FK, 3 CHECKs); no column, CHECK or key of an existing table changes its kind or count.
     expect(amendedInventory.counts).toEqual({
       tables: 50,
-      columns: 512,
+      columns: 516,
       primaryKeys: 49,
-      foreignKeys: 50,
+      foreignKeys: 52,
       uniques: 15,
       uniqueIndexes: 8,
       indexes: 24,
-      checks: 236,
+      checks: 237,
     });
     expect(amendedInventory.tables.map((table) => table.id).sort()).toEqual(
       Array.from({ length: 50 }, (_, index) => `T-${String(index + 1).padStart(2, '0')}`),
@@ -480,7 +484,7 @@ describe('the hand-written migration files are the statements of the contract', 
     expect(text).toContain("VALUES (true, 1, 'dbc-2')");
   });
 
-  it('the set is thirty-nine files; the twenty-one hand-written ones never hold the marker inside a comment or a string (D38; dbc-3 §A.1; dbc-4 §N.8; errata PE-129a-01, PE-129b-01, PE-0013-01; task 4 schema sets A, B and C; task 4 package X-C; the profile-code CHECK; the alias removal reasons, both steps; the allowed ONVIF ports; retiring a capture device; the supervisor revocation of the capture lane; the operator-administration privileges and the operator purge of the RB-9 amendment of 2026-11-02)', () => {
+  it('the set is forty files; the twenty-one hand-written ones never hold the marker inside a comment or a string (D38; dbc-3 §A.1; dbc-4 §N.8; errata PE-129a-01, PE-129b-01, PE-0013-01; task 4 schema sets A, B and C; task 4 package X-C; the profile-code CHECK; the alias removal reasons, both steps; the allowed ONVIF ports; retiring a capture device; the supervisor revocation of the capture lane; the operator-administration privileges and the operator purge of the RB-9 amendment of 2026-11-02; the four video tracks of D60)', () => {
     // REVISED 2026-11-03 (D56b): the constant in src now carries the whole set through 0038 — the
     // RB-9 trio (0034 to 0036), the credential-creation grant of D56 (0037) and the re-seal
     // correction of D56b (0038) — so the separate tail this row used to name is retired: the set
@@ -490,8 +494,8 @@ describe('the hand-written migration files are the statements of the contract', 
     // Hand-written: the v1 trio plus the two privilege migrations row 46/row 112 wrote by hand
     // and the privilege migration of set 4, row 129, and of set 5, row 129a (0004, 0006 and 0008 are drizzle-generated
     // and legitimately carry the marker as lines).
-    // D56/D56b (2026-11-03): 0037 and 0038 land, 37 -> 39.
-    expect(readMigrationSet()).toHaveLength(39);
+    // D56/D56b (2026-11-03): 0037 and 0038 land, 37 -> 39. D60 (2026-11-04): 0039 lands, 39 -> 40.
+    expect(readMigrationSet()).toHaveLength(40);
     // REVISED 2026-11-02 (principal): 0034 and 0036 join the scanned list. 0035 is NOT added yet: its
     // comment block holds three non-ASCII lines (an em dash and a section sign), and the plain-ASCII
     // rule below exists because the migrator hashes the decoded text — so the file has to be corrected
@@ -519,7 +523,8 @@ describe('CL-12: the closed value sets equal the shared vocabulary', () => {
     PROFILE: Object.values(RecordingProfileId),
     TIME_SOURCE: Object.values(TimeSource),
     TRACK_ID: Object.values(TrackId),
-    VIDEO_TRACK_ID: [TrackId.VIDEO_01, TrackId.VIDEO_02],
+    // D60 (2026-11-04): four video tracks.
+    VIDEO_TRACK_ID: [TrackId.VIDEO_01, TrackId.VIDEO_02, TrackId.VIDEO_03, TrackId.VIDEO_04],
     FAULT_KIND: Object.values(FaultKind),
     EVIDENCE_STATUS: Object.values(EvidenceStatus),
     LIFECYCLE_STAGE: Object.values(EvidenceLifecycleStage),

@@ -115,8 +115,9 @@ describe('MODG: the route list of the module equals the registry operations it o
   it('the three are operations 90, 91 and 92 of the registry, whose totals are those of C3 §10.1', () => {
     const numberOf = (operationId: string): number => Number(/operation (\d+)/.exec(CORE_API_OPERATIONS.find((operation) => operation.operationId === operationId)?.source ?? '')?.[1]);
     expect(STT_CONFIG_MODULE_OPERATIONS.map(numberOf)).toEqual([90, 91, 92]);
-    // Entries 90 to 92; the five of the camera search (93 to 97; row 132, D106) follow them.
-    expect(CORE_API_OPERATIONS.slice(89, 92).map((operation) => operation.operationId)).toEqual([...STT_CONFIG_MODULE_OPERATIONS]);
+    // The three entries of the registry that carry the numbers 90 to 92 are the module's three; the camera search (93 to 97; row 132, D106) follows them. (D60 era fix: the table is no longer strictly positional - locate by the first of the three rather than by a hand-counted slice.)
+    const at = CORE_API_OPERATIONS.findIndex((operation) => operation.operationId === 'getSttConfig');
+    expect(CORE_API_OPERATIONS.slice(at, at + 3).map((operation) => operation.operationId)).toEqual([...STT_CONFIG_MODULE_OPERATIONS]);
     const gets = CORE_API_OPERATIONS.filter((operation) => operation.method === 'get').length;
     const posts = CORE_API_OPERATIONS.filter((operation) => operation.method === 'post').length;
     console.info(`[row113] registry totals | operations=${CORE_API_OPERATIONS.length} GET=${gets} POST=${posts}`);
@@ -130,7 +131,8 @@ describe('MODG: the route list of the module equals the registry operations it o
     // 113, 39, 74 until the LCD bridge task added operation 114, the panel firmware word (GET).
     // 114, 40, 74 until RB-9 as amended by the principal (PT GSP, 02-11-2026) added operations 15 to 17,
     // the three user operations of area 2 (all POST): 114 + 3 = 117, 40 GET / 77 POST.
-    expect([CORE_API_OPERATIONS.length, gets, posts]).toEqual([117, 40, 77]);
+    // 117, 40, 77 until D57c added operations 118 and 119, the pre-delivery panel setup and its answer (one GET, one POST): 119, 41, 78.
+    expect([CORE_API_OPERATIONS.length, gets, posts]).toEqual([119, 41, 78]);
   });
 
   it('the guard holds the registry rule for each: AUTHENTICATED for 90, CAPTURE_CONFIG for 91 and 92', async () => {
@@ -211,17 +213,23 @@ describe('who may call: read for every role, CAPTURE_CONFIG for the write and th
     expect((await stt.get()).statusCode).toBe(200);
   });
 
-  it.each([
-    ['SUPERVISOR', SUPERVISOR],
-    ['TECHNICIAN', TECHNICIAN],
-  ] as const)('%s changes and tests the configuration', async (_role, principal) => {
+  // REVOKED 2026-10-29 by the product principal (PT GSP): CAPTURE_CONFIG left SUPERVISOR - the writer of record is TECHNICIAN, and SUPERVISOR is denied like INVESTIGATOR.
+  it('TECHNICIAN changes and tests the configuration', async () => {
     const stt = await build();
     stt.control.provideProbe(async () => ({ reachable: true, modelAvailable: true, detailCode: 'OK' }));
-    stt.actAs(principal);
+    stt.actAs(TECHNICIAN);
     expect((await stt.post(STT_PATH, { revision: 1, enabled: false })).statusCode).toBe(200);
     expect((await stt.post(STT_TEST_PATH)).statusCode).toBe(200);
     expect(stt.db.row()?.enabled).toBe(false);
     expect(auditRowsOf(stt, 'ACCESS_DENIED')).toEqual([]);
+  });
+
+  it('SUPERVISOR is refused 403 NOT_PERMITTED on 91 and on 92 since the revocation of CAPTURE_CONFIG (2026-10-29); the read stays open', async () => {
+    const stt = await build();
+    stt.actAs(SUPERVISOR);
+    expect(outcome(await stt.post(STT_PATH, { revision: 1, enabled: false }))).toEqual([403, 'NOT_PERMITTED', null]);
+    expect(outcome(await stt.post(STT_TEST_PATH))).toEqual([403, 'NOT_PERMITTED', null]);
+    expect((await stt.get()).statusCode).toBe(200);
   });
 });
 
@@ -230,7 +238,8 @@ describe('who may call: read for every role, CAPTURE_CONFIG for the write and th
 // the row of the condition WEB_CONSOLE_SESSION; a body without it stays open to a tablet (gate 81).
 describe('S99-09: a credential in the body of operation 91 is web-console only', () => {
   const ON_TABLET = operator(OperatorRole.TECHNICIAN, 'OPR-003', 'TAB-01');
-  const SUPERVISOR_ON_PHONE = operator(OperatorRole.SUPERVISOR, 'OPR-002', 'PHN-01');
+  // REVOKED 2026-10-29: SUPERVISOR no longer holds CAPTURE_CONFIG at all, so the permission refusal would answer before the console condition. The second bound session is a TECHNICIAN's phone (the rule under test is the console binding, not the role).
+  const TECHNICIAN_ON_PHONE = operator(OperatorRole.TECHNICIAN, 'OPR-004', 'PHN-01');
 
   it.each([
     ['SECRET', { kind: 'SECRET', value: SECRET }],
@@ -240,7 +249,7 @@ describe('S99-09: a credential in the body of operation 91 is web-console only',
     const stt = await build();
     const sealer = testSealer();
     stt.control.provideCredentialSealer(sealer);
-    for (const principal of [ON_TABLET, SUPERVISOR_ON_PHONE]) {
+    for (const principal of [ON_TABLET, TECHNICIAN_ON_PHONE]) {
       stt.actAs(principal);
       const refused = await stt.post(STT_PATH, { revision: 1, enabled: false, credential });
       expect(outcome(refused)).toEqual([403, 'NOT_PERMITTED', 'WEB_CONSOLE_ONLY']);
@@ -250,7 +259,7 @@ describe('S99-09: a credential in the body of operation 91 is web-console only',
     // The same answer and row as the condition on operations 89 / 95 / 96 (the guard's own builders).
     expect(auditRowsOf(stt, 'ACCESS_DENIED')).toEqual([
       { operationId: 'updateSttConfig', permission: 'CAPTURE_CONFIG', role: 'TECHNICIAN', reason: 'WEB_CONSOLE_ONLY' },
-      { operationId: 'updateSttConfig', permission: 'CAPTURE_CONFIG', role: 'SUPERVISOR', reason: 'WEB_CONSOLE_ONLY' },
+      { operationId: 'updateSttConfig', permission: 'CAPTURE_CONFIG', role: 'TECHNICIAN', reason: 'WEB_CONSOLE_ONLY' },
     ]);
     expect(auditRowsOf(stt, 'STT_CONFIG_CHANGED')).toEqual([]);
     expect(stt.db.updates).toEqual([]);
@@ -326,7 +335,7 @@ describe('operation 90: the stored configuration, without any credential', () =>
     const stt = await build({
       row: { ...SEEDED_ROW, backend: 'omlx-server', endpoint: 'http://127.0.0.1:9000', credential_kind: 'ENCRYPTED', credential_ref: 'PLANTED_KEY_REF', secret_ciphertext: Buffer.alloc(40, 7), nonce: Buffer.alloc(12, 9), revision: 4, updated_by: 'OPR-003' },
     });
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     const response = await stt.get();
     const body = response.json() as SttConfig;
     expect(body).toMatchObject({ credentialSet: true, credentialKind: 'ENCRYPTED', endpoint: 'http://127.0.0.1:9000', revision: 4, updatedBy: 'OPR-003' });
@@ -341,7 +350,7 @@ describe('operation 90: the stored configuration, without any credential', () =>
     folders.push(folder);
     const errorLogFile = join(folder, 'error.log');
     const stt = await build({ row: null, errorLogFile });
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     expect(outcome(await stt.get())).toEqual([503, 'NOT_READY', 'STT_CONFIG_NOT_SEEDED']);
     expect(outcome(await stt.post(STT_PATH, { revision: 1, enabled: false }))).toEqual([503, 'NOT_READY', 'STT_CONFIG_NOT_SEEDED']);
     expect(stt.log.lines().some((line) => line['code'] === 'STT_CONFIG_NOT_SEEDED' && line['level'] === 50)).toBe(true);
@@ -390,7 +399,7 @@ describe('operation 91: the change, its audit row and when it applies', () => {
 
   it('an update that changes nothing sends no statement, writes no row and keeps the revision', async () => {
     const stt = await build();
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     const response = await stt.post(STT_PATH, { revision: 1, enabled: true, language: 'id', model: SEEDED_ROW.model });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({ revision: 1, appliesFrom: 'NOW' });
@@ -400,7 +409,7 @@ describe('operation 91: the change, its audit row and when it applies', () => {
 
   it('the unit is one transaction of the pipeline: the lock, the update and the audit insert, then COMMIT', async () => {
     const stt = await build();
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     const before = stt.db.standIn.statements.length;
     await stt.post(STT_PATH, { revision: 1, enabled: false });
     const sent = stt.db.standIn.statements.slice(before);
@@ -507,7 +516,7 @@ describe('operation 91: the refusals change nothing and write no row', () => {
 
   it('a stale revision: 409 INVALID_STATE (REVISION_CONFLICT) with the current revision, nothing stored', async () => {
     const stt = await build();
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     const response = await stt.post(STT_PATH, { revision: 7, enabled: false });
     expect(outcome(response)).toEqual([409, 'INVALID_STATE', 'REVISION_CONFLICT']);
     expect(response.json().error.details).toEqual({ reason: 'REVISION_CONFLICT', currentRevision: 1 });
@@ -523,7 +532,7 @@ describe('operation 91: the refusals change nothing and write no row', () => {
 describe('next session: a change stored while a session is open applies to the next one', () => {
   it('idle: appliesFrom NOW. A session open: the write is accepted, appliesFrom NEXT_SESSION, pendingForNextSession true', async () => {
     const stt = await build();
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     const idle = (await stt.post(STT_PATH, { revision: 1, diarization: false })).json() as SttConfigUpdateResult;
     expect([idle.appliesFrom, idle.pendingForNextSession]).toEqual(['NOW', false]);
 
@@ -566,7 +575,7 @@ describe('the credential is write-only', () => {
 
   it('SECRET without a credential store: 503 NOT_READY (CREDENTIAL_STORE_NOT_READY), nothing stored in any form', async () => {
     const stt = await build();
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     expect(stt.control.hasCredentialSealer()).toBe(false);
     const response = await stt.post(STT_PATH, { revision: 1, enabled: false, credential: { kind: 'SECRET', value: SECRET } });
     expect(outcome(response)).toEqual([503, 'NOT_READY', 'CREDENTIAL_STORE_NOT_READY']);
@@ -579,7 +588,7 @@ describe('the credential is write-only', () => {
     const stt = await build();
     const sealer = testSealer();
     stt.control.provideCredentialSealer(sealer);
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     const response = await stt.post(STT_PATH, { revision: 1, credential: { kind: 'SECRET', value: SECRET } });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({ credentialSet: true, credentialKind: 'ENCRYPTED', revision: 2 });
@@ -602,7 +611,7 @@ describe('the credential is write-only', () => {
   it('a sealer that does not seal is refused: 500, nothing stored, the plaintext never sent to the table', async () => {
     const stt = await build();
     stt.control.provideCredentialSealer({ seal: async (plaintext) => ({ keyRef: 'TEST_STT_KEY_1', ciphertext: new Uint8Array(Buffer.from(`${plaintext}-padding-to-17-bytes`)), nonce: new Uint8Array(12) }) });
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     const response = await stt.post(STT_PATH, { revision: 1, credential: { kind: 'SECRET', value: SECRET } });
     expect(outcome(response)).toEqual([500, 'INTERNAL_ERROR', null]);
     expect(stt.db.updates).toEqual([]);
@@ -618,7 +627,7 @@ describe('the credential is write-only', () => {
     for (const [value, expected] of [['k', 200], ['seven77', 200], ['eight888', 500]] as const) {
       const stt = await build();
       stt.control.provideCredentialSealer({ seal: async (plaintext) => envelopeWith(plaintext) });
-      stt.actAs(SUPERVISOR);
+      stt.actAs(TECHNICIAN);
       const response = await stt.post(STT_PATH, { revision: 1, credential: { kind: 'SECRET', value } });
       expect(response.statusCode, value).toBe(expected);
       expect(stt.db.updates.length, value).toBe(expected === 200 ? 1 : 0);
@@ -686,7 +695,7 @@ const serverRow = (endpoint: string, model = 'whisper-large-v3-turbo') => ({ ...
 describe('operation 92: a test of the stored configuration through the provided probe', () => {
   it('no probe provided: 503 NOT_READY with details.reason TRANSCRIBER_NOT_READY', async () => {
     const stt = await build();
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     expect(stt.control.hasProbe()).toBe(false);
     const response = await stt.post(STT_TEST_PATH);
     expect(outcome(response)).toEqual([503, 'NOT_READY', 'TRANSCRIBER_NOT_READY']);
@@ -723,7 +732,7 @@ describe('operation 92: a test of the stored configuration through the provided 
     const fake = await fakeSttServer(['some-other-model']);
     const stt = await build({ row: serverRow(fake.endpoint) });
     stt.control.provideProbe(loopbackProbe);
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     expect((await stt.post(STT_TEST_PATH)).json()).toEqual({ reachable: true, modelAvailable: false, backend: 'omlx-server', detailCode: 'MODEL_NOT_AVAILABLE' });
   });
 
@@ -733,7 +742,7 @@ describe('operation 92: a test of the stored configuration through the provided 
     await new Promise<void>((resolve) => server?.close(() => resolve()));
     const stt = await build({ row: serverRow(fake.endpoint) });
     stt.control.provideProbe(loopbackProbe);
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     const response = await stt.post(STT_TEST_PATH);
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ reachable: false, modelAvailable: false, backend: 'omlx-server', detailCode: 'UNREACHABLE' });
@@ -748,7 +757,7 @@ describe('operation 92: a test of the stored configuration through the provided 
     stt.control.provideProbe(async () => {
       throw Object.assign(new Error(`connect failed with key ${SECRET}`), { code: 'ECONNRESET' });
     });
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     const response = await stt.post(STT_TEST_PATH);
     expect(response.json()).toEqual({ reachable: false, modelAvailable: false, backend: 'cpu-local', detailCode: 'UNREACHABLE' });
     const persisted = readFileSync(errorLogFile, 'utf8');
@@ -769,7 +778,7 @@ describe('operation 92: a test of the stored configuration through the provided 
           signal.addEventListener('abort', () => void (aborted = true));
         }),
     );
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const pending = stt.post(STT_TEST_PATH);
     await vi.advanceTimersByTimeAsync(STT_TEST_TIMEOUT_MS + 1);
@@ -785,7 +794,7 @@ describe('operation 92: a test of the stored configuration through the provided 
   it('N-5: a change of what was tested (backend, endpoint, model or credential) forgets lastTest; a change of anything else keeps it', async () => {
     const stt = await build();
     stt.control.provideProbe(async () => ({ reachable: true, modelAvailable: true, detailCode: 'OK' }));
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     const lastTest = async (): Promise<unknown> => ((await stt.get()).json() as SttConfig).lastTest;
     const tested = { reachable: true, modelAvailable: true, testedAt: CLOCK_START };
     let revision = 1;
@@ -822,7 +831,7 @@ describe('operation 92: a test of the stored configuration through the provided 
     const stt = await build();
     const sealer = testSealer();
     stt.control.provideCredentialSealer(sealer);
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     // The body is made from revision 2. The preview reads revision 1 (stale: nothing is sealed);
     // then another writer brings the row to revision 2, which is what the unit locks.
     stt.db.afterNextPoolRead((row) => {
@@ -846,7 +855,7 @@ describe('operation 92: a test of the stored configuration through the provided 
     const stt = await build();
     const sealer = testSealer();
     stt.control.provideCredentialSealer(sealer);
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     stt.db.afterNextPoolRead((row) => void (row.revision = 2));
     const response = await stt.post(STT_PATH, { revision: 1, credential: { kind: 'SECRET', value: SECRET } });
     expect(outcome(response)).toEqual([409, 'INVALID_STATE', 'REVISION_CONFLICT']);
@@ -860,7 +869,7 @@ describe('operation 92: a test of the stored configuration through the provided 
     let release: (() => void) | undefined;
     const held = new Promise<void>((resolve) => void (release = resolve));
     stt.control.provideProbe(async () => (await held, { reachable: true, modelAvailable: true, detailCode: 'OK' }));
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     const test = stt.post(STT_TEST_PATH);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect((await stt.post(STT_PATH, { revision: 1, model: 'another-model' })).statusCode).toBe(200);
@@ -900,7 +909,7 @@ describe('operation 92: a test of the stored configuration through the provided 
     const held = new Promise<void>((resolve) => void (release = resolve));
     const sealer = testSealer();
     stt.control.provideCredentialSealer({ seal: async (plaintext) => (await held, sealer.seal(plaintext)) });
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     const secret = stt.post(STT_PATH, { revision: 1, credential: { kind: 'SECRET', value: SECRET } });
     await new Promise((resolve) => setTimeout(resolve, 20));
     // Another unit (an audited refusal of stage 6) commits while the sealer is still waiting.
@@ -927,7 +936,7 @@ describe('operation 92: a test of the stored configuration through the provided 
       if (calls === 1) throw new Error('first probe fails');
       return { reachable: true, modelAvailable: true, detailCode: 'OK' };
     });
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     const answers = await Promise.all([stt.post(STT_TEST_PATH), stt.post(STT_TEST_PATH), stt.post(STT_TEST_PATH)]);
     expect(answers.map((answer) => answer.statusCode)).toEqual([200, 200, 200]);
     expect(calls).toBe(3);
@@ -952,7 +961,7 @@ describe('secrecy: a planted credential reaches no response, no log line, no err
     await stt.post(STT_PATH, { revision: 1, credential: { kind: 'SECRET', value: SECRET } });
     await stt.post(STT_PATH, { revision: 1, credential: { kind: 'REFERENCE', ref: REFERENCE } });
     // Accepted writes, and every refusal of the operation itself, each with the credential in the body.
-    stt.actAs(SUPERVISOR);
+    stt.actAs(TECHNICIAN);
     await stt.post(STT_PATH, { revision: 1, backend: 'omlx-server', endpoint: fake.endpoint, credential: { kind: 'SECRET', value: SECRET } });
     await stt.get();
     await stt.post(STT_PATH, { revision: 2, credential: { kind: 'REFERENCE', ref: REFERENCE } });

@@ -65,6 +65,7 @@ import {
   MANIFEST_HOST_PROFILE_NOT_ASKED_PLATFORMS,
   MANIFEST_VIDEO_ABSENCE_ENDS,
   MANIFEST_VIDEO_ABSENT_MAX_MS,
+  VIDEO_TRACK_IDS, // D60 (2026-11-04)
   type ManifestAudioIntervalInput,
   type ManifestAudioRestartGap,
   type ManifestHostProfileNotAsked,
@@ -140,7 +141,10 @@ export const SEAL_NOTICE = Object.freeze({
   REAL_PRODUCTION: 'Sealed by the DEMS Core.',
 });
 
-const TRACKS = ['VIDEO-01', 'VIDEO-02'] as const;
+// D60 (2026-11-04): the value set of camera tracks, widened from two to four. What ONE session seals is its
+// OWN start record (`sealedTracks` below): a session that started under the two-track shape still seals exactly
+// its two files - the manifest names its own list and the verifier reads it as a prefix of this order.
+const TRACKS = VIDEO_TRACK_IDS;
 const OPERATOR_ROLES = ['INVESTIGATOR', 'SUPERVISOR', 'TECHNICIAN'] as const;
 const SUBJECT_TYPES = ['TERSANGKA', 'SAKSI', 'LAINNYA'] as const;
 const INTERVAL_REASONS = ['START', 'MANUAL', 'STOP'] as const;
@@ -482,6 +486,12 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
       const db = options.db();
       const storedSources = (await db.query<{ slot: string; device_id: string; adapter_kind: string; recorded_at?: string | number }>(READ_SEAL_SOURCE_ROWS, [sessionId])).rows;
       const sourceRows: SessionCaptureSourceRow[] = storedSources.map((row) => ({ slot: row.slot, deviceId: row.device_id, adapterKind: row.adapter_kind }));
+      // D60 (2026-11-04): THE MANIFEST NAMES ITS OWN LIST. The tracks this package seals are the video slots of THIS session's
+      // start records (T-41): a session that started under the two-track shape still seals exactly its two files, a four-track
+      // session seals four (the verifier reads the list as a prefix of VIDEO_TRACK_IDS). Start rows naming no video slot at all -
+      // which BUILD_MANIFEST refuses for the missing source rows anyway - fall back to the full value set.
+      const sealedTracks: readonly (typeof TRACKS)[number][] = TRACKS.filter((trackId) => sourceRows.some((row) => row.slot === trackId));
+      const sealTrackIds = sealedTracks.length > 0 ? sealedTracks : TRACKS;
       // The capture facts are THIS session's only when they name the instant of its own start rows (a reset reuses session IDs).
       let captureFacts = (await options.captureFacts?.(sessionId)) ?? null;
       if (captureFacts !== null && (captureFacts.sessionId !== sessionId || !storedSources.some((row) => row.recorded_at !== undefined && whole(row.recorded_at) === captureFacts?.startRecordedAt))) {
@@ -546,7 +556,7 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
       // CLOSE_TRACKS names that file (MISSING / NO_INIT_SEGMENT). An init segment whose video sample entry
       // is absent or has no name here is an unusable camera file (ev §E.1): the seal stops, by name.
       const codecs = new Map<string, string | null>();
-      for (const trackId of TRACKS) {
+      for (const trackId of sealTrackIds) { // D60: the session's own list
         const entry = (await options.videoSampleEntry?.(sessionId, trackId)) ?? null;
         if (entry !== null && (entry.state === 'UNKNOWN_SAMPLE_ENTRY' || entry.state === 'NO_VIDEO_SAMPLE_ENTRY')) {
           throw new SealingError(SealingFailure.CAMERA_FILE_UNUSABLE, 'the init segment of a recording file names no video codec this Core knows', { trackId, reason: entry.state === 'UNKNOWN_SAMPLE_ENTRY' ? 'VIDEO_SAMPLE_ENTRY_UNKNOWN' : 'NO_VIDEO_SAMPLE_ENTRY', sampleEntry: entry.sampleEntry });
@@ -557,7 +567,7 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
       // Field 36 (fix wave K, G89b-01; fix 151): what each camera file's own stream DECLARES. Only for a file whose codec the
       // init segment named: the text starts with it. No file / no picture size: null, and field 36 is the configured profile.
       const streamProfiles = new Map<string, { readonly text: string; readonly codec: string; readonly format: SealVideoFormat } | null>();
-      for (const trackId of TRACKS) {
+      for (const trackId of sealTrackIds) { // D60: the session's own list
         const codec = codecs.get(trackId) ?? null;
         const format = codec === null ? null : ((await options.videoFormat?.(sessionId, trackId)) ?? null);
         streamProfiles.set(trackId, codec === null || format === null ? null : { text: streamProfileOf(codec, format), codec, format });
@@ -606,10 +616,11 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
         }
       }
 
-      const tracks = [track('VIDEO-01'), track('VIDEO-02')] as const;
+      // D60 (2026-11-04): one entry per track the session named at its start (was exactly VIDEO-01 and VIDEO-02).
+      const tracks = sealTrackIds.map(track);
       if (profileDifferences.length > 0) options.onProfileDiffers?.(sessionId, profileDifferences);
 
-      const cameraEnds = TRACKS.flatMap((trackId) => {
+      const cameraEnds = sealTrackIds.flatMap((trackId) => { // D60: the session's own list
         const deviceId = sourceRows.find((row) => row.slot === trackId)?.deviceId;
         const ended = captureFacts?.cameras.find((entry) => entry.trackId === trackId && entry.deviceId === deviceId)?.ended ?? null;
         return ended === null ? [] : [{ trackId, reason: ended.reason }];
