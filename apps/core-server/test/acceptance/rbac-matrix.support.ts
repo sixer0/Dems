@@ -299,6 +299,7 @@ export const API_CONTRACT_SECTIONS: ReadonlyArray<{ readonly heading: string; re
   // Task 4 (blueprint row 116, WP-26b): and the two rows of operations 109 and 110, the installation acceptance and its revocation.
   // Task 4 (row RD2; decision C147): and the row of operation 111, the retirement of a device.
   { heading: '### 2.6 ', section: 'C3 §2.6', rows: 19, what: 'the nineteen of operations 93 to 111' },
+  { heading: '### 2.7 ', section: 'C3 §2.7', rows: 8, what: 'the eight of operations 112 to 119 (RB-9 as amended, D54; D57)' },
 ];
 
 /** True for a row the composed table takes from C3, not from the closed task-2 base. */

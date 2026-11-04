@@ -519,7 +519,7 @@ afterAll(async () => {
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
 describe('AC-B-09: every registered route is an operation, every operation is registered', () => {
-  it('the registry holds exactly 110 operations, 39 GET and 71 POST, each with one access rule and one audit rule', () => {
+  it('the registry holds exactly 119 operations, 41 GET and 78 POST, each with one access rule and one audit rule', () => {
     // 75 in the closed task-2 contract; C3 grew the registry to 89 with schema v2 (ops 76 to 89:
     // the six capture-config and credential operations, the three audio-source and sealing ones,
     // the five transcript, media-session and export-job ones), and to 92 with the confirmed R-8
@@ -536,12 +536,15 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     // Task 4 (blueprint row 116): the installation acceptance and its revocation, operations 109 and
     // 110, both POST: 108 + 2 = 110, 39 GET / 71 POST.
     // Task 4 row RD2: the retirement of a device, operation 111, POST: 110 + 1 = 111, 39 GET / 72 POST.
-    expect(CORE_API_OPERATION_TABLE).toHaveLength(111);
-    expect(OPERATIONS).toHaveLength(111);
-    expect(new Set(OPERATIONS.map((operation) => operation.operationId)).size).toBe(111);
-    expect(new Set(REGISTRY_ROUTES).size).toBe(111);
-    expect(OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(39);
-    expect(OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(72);
+    // C3 §2.7 (transcribed 2026-11-04 by the first full db-suite run): the six of RB-9 as amended
+    // (D54: 112-117, two GET among them) and the D57 pair (118 GET, 119 POST): 111 + 8 = 119,
+    // 41 GET / 78 POST.
+    expect(CORE_API_OPERATION_TABLE).toHaveLength(119);
+    expect(OPERATIONS).toHaveLength(119);
+    expect(new Set(OPERATIONS.map((operation) => operation.operationId)).size).toBe(119);
+    expect(new Set(REGISTRY_ROUTES).size).toBe(119);
+    expect(OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(41);
+    expect(OPERATIONS.filter((operation) => operation.method === 'post')).toHaveLength(78);
     // Task 4 row 70: the named deferral of operations 98 and 99 is gone.
     // Task 4 row 194: ONE named deferral, pinned by literal - operation 100 has no route until row 197.
     // Task 4 row 102: SEVEN more, pinned by literal - operations 101 to 107 have no route until rows 106, 107, 108 and 111.
@@ -627,7 +630,7 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     expect(missing).toEqual(UNROUTED_OPERATIONS.map((operation) => operation.operationId));
   });
 
-  it('the committed openapi.json lists the same 111 operations with two security schemes, and equals what the generator produces now', () => {
+  it('the committed openapi.json lists the same 119 operations with two security schemes, and equals what the generator produces now', () => {
     const text = readFileSync(COMMITTED_OPENAPI, 'utf8');
     const committed = JSON.parse(text) as OpenApiDocument;
     const documented = listOpenApiOperations(committed).map((entry) => routeKey(entry.method, entry.path));

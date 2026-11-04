@@ -748,6 +748,28 @@ in the chain with it). No table, column or migration was added.
 
 ---
 
+### 2.7 Console administration, preview, meters and panel operations — operations 112-119 (RB-9 as amended by the principal, D54; D57; transcribed 2026-11-04 by the first db-suite run)
+
+> **Status: the delta that the first full db-suite run (bench 2026-11-04) demanded.** The registry
+> grew by eight operations while §7 stayed at 111: six landed with the RB-9 add-user trio checkpoint
+> (`f85e9c01`, ratified as amended by D54) and two with D57c. `rbac-matrix` refused every cell of
+> them ("spec §7 has no row for the registry operation createUser"). This table transcribes the
+> registry entries as they are BUILT and verified on real PostgreSQL; it amends nothing semantic.
+> The pinned totals move once, in §10.1: 111 -> 119 operations, 41 GET, 78 POST, 91 audit types.
+
+**Identity.**
+
+| # | operationId | Method | Path | Tag | Mode | Access (marker + condition) | Audit success / denial | Requirement |
+|--:|---|---|---|---|---|---|---|---|
+| 112 | `createUser` | POST | `/api/v1/admin/users` | Administration | live | `PERMISSION USER_ADMIN` | `USER_CREATED` / `ACCESS_DENIED` | RB-9 (D54); §19.1 |
+| 113 | `updateUser` | POST | `/api/v1/admin/users/{id}/profile` | Administration | live | `PERMISSION USER_ADMIN` | `USER_UPDATED` / `ACCESS_DENIED` | RB-9 (D54); §19.1 |
+| 114 | `deleteUser` | POST | `/api/v1/admin/users/{id}/delete` | Administration | live | `PERMISSION USER_ADMIN` | `USER_DELETED` / `ACCESS_DENIED` | RB-9 (D54); §19.1 last-admin rule RB-8 |
+| 115 | `createCameraPreviewSession` | POST | `/api/v1/capture/devices/{id}/preview-sessions` | Device | live | `ANY-OF(SESSION_START, CAPTURE_CONFIG, DEVICE_MANAGE)` | `CAMERA_PREVIEW_OPENED` / `ACCESS_DENIED` | RB-9 preview session (D54) |
+| 116 | `holdIdleMeters` | POST | `/api/v1/capture/idle-meters/lease` | Device | live | `ANY-OF(CAPTURE_CONFIG, DEVICE_MANAGE, SESSION_START)` | `NONE-P` / `ACCESS_DENIED` | RB-9 idle-meters lease (D54) |
+| 117 | `getPanelFirmware` | GET | `/api/v1/lcd/panel-info` | Device | live | `PUBLIC` | `NONE-R` / `ACCESS_DENIED` | RB-9 panel-firmware read (D54); the proxy answers without a session |
+| 118 | `getPanelSetup` | GET | `/api/v1/lcd/setup` | Device | live | `AUTHENTICATED` + `WEB_CONSOLE_SESSION` (**web console only**, D57) | `NONE-R` / `ACCESS_DENIED` | D57; the vendor gate is the backend's (identity, not role) |
+| 119 | `setPanelSetup` | POST | `/api/v1/lcd/setup` | Device | live | `AUTHENTICATED` + `WEB_CONSOLE_SESSION` (**web console only**, D57) | `PANEL_SETUP_CHANGED` / `ACCESS_DENIED` | D57; body limit API-4 (D57d) |
+
 ## 3. Modified operations (of the existing 75)
 
 Each row: **Before** (current contract) → **After**. `file:line` is the current source. (The

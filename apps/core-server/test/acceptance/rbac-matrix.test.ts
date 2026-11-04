@@ -1020,8 +1020,8 @@ function summaryOf(column: readonly Cell[]): string {
 // The registry against the specification (an independent check of the registry itself)
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-describe('the contract registry against the composed operation tables: all 111 rows, read from the documents', () => {
-  it('the composed document holds operations 1 to 111 and the registry holds the same 111, each once', () => {
+describe('the contract registry against the composed operation tables: all 119 rows, read from the documents', () => {
+  it('the composed document holds operations 1 to 119 and the registry holds the same 119, each once', () => {
     // R1 (D44): 75 rows of the closed task-2 §7 base + 14 rows of C3 §2.2 + 3 rows of C3 §2.5 (the
     // STT configuration operations 90 to 92, task 3 row 113) + 5 rows of C3 §2.6 (the camera search,
     // the connection test, the adoption and the local-input re-read, 93 to 97; task 3 row 132,
@@ -1032,10 +1032,12 @@ describe('the contract registry against the composed operation tables: all 111 r
     // Task 4 (row V3; blueprint row 146) added the row of operation 108, the stored-credential connection test: 108.
     // Task 4 (blueprint row 116) added the two rows of operations 109 and 110, the installation acceptance and its revocation: 110.
     // Task 4 (row RD2) added the row of operation 111, the retirement of a device: 111.
-    expect(spec.operations.map((operation) => operation.number)).toEqual(Array.from({ length: 111 }, (_unused, index) => index + 1));
-    expect(CORE_API_OPERATIONS).toHaveLength(111);
+    // C3 §2.7 (transcribed 2026-11-04 by the first full db-suite run) added the six rows of
+    // RB-9 as amended (D54: 112 to 117) and the two of D57c (118, 119): 119.
+    expect(spec.operations.map((operation) => operation.number)).toEqual(Array.from({ length: 119 }, (_unused, index) => index + 1));
+    expect(CORE_API_OPERATIONS).toHaveLength(119);
     expect(CORE_API_OPERATIONS.map((operation) => operation.operationId).sort()).toEqual(spec.operations.map((operation) => operation.operationId).sort());
-    expect(new Set(CORE_API_OPERATIONS.map((operation) => operation.operationId)).size).toBe(111);
+    expect(new Set(CORE_API_OPERATIONS.map((operation) => operation.operationId)).size).toBe(119);
   });
 
   it('every registry entry has the method, the path, the access rule, the conditions and the audit rule of its row', () => {
@@ -1062,7 +1064,7 @@ describe('the contract registry against the composed operation tables: all 111 r
     expect(registry).toEqual(document);
   });
 
-  it('the access rules are 4 PUBLIC, 5 DEVICE, 30 AUTHENTICATED, 67 with one permission and 1 any-of, in the registry and in the composed document', () => {
+  it('the access rules are 5 PUBLIC, 5 DEVICE, 32 AUTHENTICATED, 74 with one permission and 3 any-of, in the registry and in the composed document', () => {
     const kindOfMarker = (marker: string): string => {
       if (marker === 'PUBLIC' || marker === 'DEVICE' || marker === 'AUTHENTICATED') return marker;
       return marker.startsWith('ANY-OF(') ? CoreApiAccessKind.ANY_OF : CoreApiAccessKind.PERMISSION;
@@ -1078,7 +1080,9 @@ describe('the contract registry against the composed operation tables: all 111 r
     // Task 4 row V3: operation 108 needs CAPTURE_CONFIG (67 -> 68).
     // Task 4 row 116: operations 109 and 110 need CAPTURE_COMMISSION (68 -> 70).
     // Task 4 row RD2: operation 111 needs CAPTURE_COMMISSION (70 -> 71).
-    expect(registry).toEqual({ PUBLIC: 4, DEVICE: 5, AUTHENTICATED: 30, PERMISSION: 71, ANY_OF: 1 });
+    // C3 §2.7 (2026-11-04): 117 PUBLIC (4 -> 5), 118 and 119 AUTHENTICATED (30 -> 32), the USER_ADMIN
+    // trio (71 -> 74) and the two any-of 115 and 116 (1 -> 3).
+    expect(registry).toEqual({ PUBLIC: 5, DEVICE: 5, AUTHENTICATED: 32, PERMISSION: 74, ANY_OF: 3 });
     // Every permission a rule names is one of the fifteen of the composed matrix (C3 §2.1).
     for (const operation of CORE_API_OPERATIONS) {
       for (const permission of coreApiAccessPermissions(operation.access)) expect(spec.permissions, operation.operationId).toContain(permission);
