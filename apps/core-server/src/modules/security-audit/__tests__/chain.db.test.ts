@@ -67,6 +67,13 @@ const auditStatements = (from: number): Array<[string, number]> =>
     .filter((entry) => NAMES_AUDIT_LOG.test(entry.text))
     .map((entry) => [entry.text.slice(0, 24), entry.rows]);
 
+/** Waits up to `budgetMs` for `ready`, yielding one I/O turn at a time. Says whether it happened. */
+async function until(ready: () => boolean, budgetMs: number): Promise<boolean> {
+  const deadline = Date.now() + budgetMs;
+  while (!ready() && Date.now() < deadline) await new Promise((resolve) => setImmediate(resolve));
+  return ready();
+}
+
 describe('operation 60: the first call after the boot is the full pass, and later calls read only what was appended', () => {
   it('nothing is remembered before the first call', () => {
     expect(host.chainStats()).toMatchObject({ calls: 0, runs: 0, fullPasses: 0, incrementalPasses: 0, rowsRead: 0, verifiedThrough: 0 });
@@ -141,6 +148,10 @@ describe('operation 60: the first call after the boot is the full pass, and late
       'SELECT seq, hash FROM public.audit',
       'SELECT EXISTS (SELECT 1 FROM publi',
       'SELECT seq, id, at, type, category',
+      // REVISED 2026-11-02 (principal PT GSP; migration 0036_operator_purge): every pass of the
+      // stored check now reads the purge ledger inside its snapshot — the judgement over a hole
+      // in the sequences must come from the table, not from whoever asks the question.
+      'SELECT first_seq, last_seq FROM pu',
       'SELECT head_hash, row_count FROM a',
       'COMMIT',
       'select "epoch", "row_count", "head',
@@ -183,7 +194,14 @@ describe('operation 60: two calls that arrive together run ONE verification', ()
     await held.reached();
     // The first call's pass waits for its rows. The second call arrives, runs its own view and reaches the stored check.
     const second = host.get(AUDIT_CHAIN, supervisor);
-    for (let turn = 0; turn < 500 && host.chainStats().calls < before.calls + 2; turn += 1) await new Promise((resolve) => setImmediate(resolve));
+    // REVISED 2026-11-04: the arrival of the second call at the stored check is bounded by wall
+    // clock, not by a fixed turn budget. The arriving request does real round-trips before the
+    // verifier sees it (the session read, its own hosted view unit: BEGIN, head, actor, COMMIT on
+    // the real cluster), and measured at HEAD those outlast 500 `setImmediate` turns — the spin
+    // ended while the request was still in flight, and the abandoned gate then timed out every
+    // later call of the file. The assertion itself is unchanged: the call must have reached the
+    // verifier (`calls` +2) while the FIRST pass still holds its rows.
+    await until(() => host.chainStats().calls >= before.calls + 2, 10_000);
     expect(host.chainStats()).toMatchObject({ calls: before.calls + 2, runs: before.runs + 1 });
     held.release();
 
@@ -206,7 +224,9 @@ describe('operation 60: two calls that arrive together run ONE verification', ()
     const held = host.database.hold(CHAIN_READ);
     const pending = Array.from({ length: 10 }, (_, index) => host.get(AUDIT_CHAIN, [investigator, supervisor, technician][index % 3]));
     await held.reached();
-    for (let turn = 0; turn < 2_000 && host.chainStats().calls < before.calls + 10; turn += 1) await new Promise((resolve) => setImmediate(resolve));
+    // REVISED 2026-11-04: wall-clock bound, as in the two-call test above — ten arriving requests
+    // each do their real round-trips before the verifier counts them.
+    await until(() => host.chainStats().calls >= before.calls + 10, 30_000);
     held.release();
     const answers = await Promise.all(pending);
     expect(answers.map((answer) => answer.statusCode)).toEqual(Array<number>(10).fill(200));

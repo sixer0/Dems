@@ -3,7 +3,7 @@
 // The expected matrix below is written from the table of contract §7.3, not from the migration
 // file. T-PV-1 compares it with the catalog (`has_table_privilege`, `has_column_privilege`) and
 // then with LIVE statements as `dems_app`: for every table one SELECT, INSERT, DELETE and
-// TRUNCATE, and one UPDATE for each of the 501 columns. The statements match no row
+// TRUNCATE, and one UPDATE for each of the 512 columns. The statements match no row
 // (`WHERE false`), so an allowed one changes nothing; a privilege is checked before any row is
 // looked at, so a forbidden one fails with 42501 all the same.
 import type { Pool } from 'pg';
@@ -14,6 +14,21 @@ import { SQLSTATE, connect, expectRefused, refusalOf } from './support';
 
 const db = useTestDatabase({ template: 'schema' });
 const inventory = readInventory();
+
+// ── The purge amendment (principal PT GSP, 2026-11-02: amandemen RB-9, migration 0036_operator_purge) ──
+// The closed contract text is never edited (D44 R1) and the checked-in `contract-inventory.json`
+// is still the pre-amendment 48 tables, so the amendment's two tables are composed onto the
+// inventory HERE — the same transcription `contract-inventory.test.ts` and `catalog.db.test.ts`
+// carry, from the migration and the live catalog. Every comparison below runs against `tables`.
+const PURGE_TABLES: Readonly<Record<string, readonly string[]>> = {
+  audit_purge_ticket: ['operator_id', 'reseal_from', 'xact_id'],
+  audit_purge_log: ['purge_no', 'operator_id', 'actor_id', 'at', 'first_seq', 'last_seq', 'rows_removed', 'reason'],
+};
+const tables: Array<{ name: string; columns: Array<{ name: string }> }> = [
+  ...inventory.tables.map((table) => ({ name: table.name, columns: table.columns.map((column) => ({ name: column.name })) })),
+  ...Object.entries(PURGE_TABLES).map(([name, columns]) => ({ name, columns: columns.map((column) => ({ name: column })) })),
+];
+
 let app: Pool;
 let owner: Pool;
 
@@ -40,14 +55,24 @@ interface Grant {
 /**
  * Contract §7.3 composed with dbc-3 §D/§B.13 (ruling D44 R1: the closed task-2 table is the base;
  * 0005/0007 write the v2 rows). SELECT is granted on every table except the two write-only secret
- * stores; TRUNCATE, REFERENCES and TRIGGER on none.
+ * stores and the purge ticket (0036, 2026-11-02: no grant at all on T-49); TRUNCATE, REFERENCES and
+ * TRIGGER on none.
  */
 const MATRIX: Readonly<Record<string, Grant>> = {
   roles: {},
   permissions: {},
   role_permissions: {},
-  operators: { update: ['role_id', 'enabled', 'last_sign_in_at', 'role_changed_at', 'updated_at'] },
-  operator_credentials: { update: ['algorithm', 'memory_kib', 'passes', 'parallelism', 'salt', 'hash', 'hashed_at'] },
+  operators: {
+    insert: true, // REVISED 2026-11-02 (RB-9, 0035): the add-user trio writes the account as `dems_app`.
+    delete: true, // REVISED 2026-11-02 (principal PT GSP, 0036): the purge erases the account.
+    // REVISED 2026-11-02 (RB-9, 0035): the four identity columns join the update list.
+    update: ['role_id', 'enabled', 'last_sign_in_at', 'role_changed_at', 'updated_at', 'name', 'display_name', 'initials', 'rank'],
+  },
+  operator_credentials: {
+    insert: true, // REVISED 2026-11-03 (D56, 0037): operator:set-password creates the first credential row.
+    delete: true, // REVISED 2026-11-02 (principal PT GSP, 0036): what the account IS goes with it.
+    update: ['algorithm', 'memory_kib', 'passes', 'parallelism', 'salt', 'hash', 'hashed_at'],
+  },
   auth_sessions: { insert: true, update: ['last_seen_at', 'ended_at', 'end_reason'] },
   pairing_codes: { insert: true, update: ['state', 'failed_attempts', 'closed_at', 'closed_by_operator_id'] },
   paired_devices: {
@@ -168,9 +193,16 @@ const MATRIX: Readonly<Record<string, Grant>> = {
     insert: true,
     update: ['revoked_at', 'revoked_by', 'revoke_reason'],
   },
+  // ── The purge amendment (principal PT GSP, 2026-11-02, `0036`). T-50 is the ledger of erasures:
+  //    SELECT for the runtime role (boot check B-8 judges a hole in the sequences from the table),
+  //    written only by the SECURITY DEFINER purge function — no INSERT, no UPDATE, no DELETE. ──
+  audit_purge_log: {},
+  // T-49 is the transaction ticket: `dems_app` holds NO privilege at all, so the runtime role
+  // cannot buy one — only the purge function, running as the schema owner, writes it (0036 :55-61).
+  audit_purge_ticket: { select: false },
 };
 
-const columnsOf = (table: string): string[] => inventory.tables.find((entry) => entry.name === table)?.columns.map((column) => column.name) ?? [];
+const columnsOf = (table: string): string[] => tables.find((entry) => entry.name === table)?.columns.map((column) => column.name) ?? [];
 const mayUpdate = (table: string, column: string): boolean => {
   const update = MATRIX[table]?.update;
   return update === 'all' || (update?.includes(column) ?? false);
@@ -182,10 +214,12 @@ const readable = (table: string, column: string): boolean => {
 };
 
 describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3', () => {
-  it('the matrix names all 48 tables; INSERT on 32 of them, not on audit_chain_history (D18; dbc-3 §D; dbc-4 §N.11; PE-129b-01; PE-0013-01; task 4 schema sets A, B and C)', () => {
-    expect(Object.keys(MATRIX).sort()).toEqual(inventory.tables.map((table) => table.name).sort());
+  it('the matrix names all 50 tables; INSERT on 34 of them, not on audit_chain_history (D18; dbc-3 §D; dbc-4 §N.11; PE-129b-01; PE-0013-01; task 4 schema sets A, B and C; RB-9/0035; purge/0036)', () => {
+    expect(Object.keys(MATRIX).sort()).toEqual(tables.map((table) => table.name).sort());
     const insertable = Object.entries(MATRIX).filter(([, grant]) => grant.insert === true).map(([table]) => table);
-    expect(insertable).toHaveLength(32);
+    // 32 until set 16; REVISED 2026-11-02 (RB-9, 0035): `operators` joins the list with the add-user
+    // trio; REVISED 2026-11-03 (D56, 0037): so does `operator_credentials` with the first credential row.
+    expect(insertable).toHaveLength(34);
     expect(insertable).not.toContain('audit_chain_history');
     for (const [table, grant] of Object.entries(MATRIX)) {
       if (Array.isArray(grant.update)) for (const column of grant.update) expect(columnsOf(table), `${table}.${column}`).toContain(column);
@@ -227,7 +261,7 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
     expect(rows).toEqual(expected);
   });
 
-  it('catalog: for each of the 501 columns, has_column_privilege(UPDATE) equals the matrix', async () => {
+  it('catalog: for each of the 512 columns, has_column_privilege(UPDATE) equals the matrix', async () => {
     const { rows } = await owner.query<{ table_name: string; column_name: string; can_update: boolean }>(
       `SELECT c.relname::text AS table_name, a.attname::text AS column_name,
               has_column_privilege('dems_app', c.oid, a.attnum, 'UPDATE') AS can_update
@@ -235,14 +269,26 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
         WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' AND a.attnum > 0 AND NOT a.attisdropped
         ORDER BY 1, a.attnum`,
     );
-    expect(rows).toHaveLength(501);
+    expect(rows).toHaveLength(512);
     const wrong = rows.filter((row) => row.can_update !== mayUpdate(row.table_name, row.column_name));
     expect(wrong).toEqual([]);
     const granted = rows.filter((row) => row.can_update).length;
-    console.info(`[w17] T-PV-1: UPDATE is granted on ${granted} of 501 columns (30 of them are every column of active_session, 14 every column of stt_config)`);
+    console.info(`[w17] T-PV-1: UPDATE is granted on ${granted} of 512 columns (30 of them are every column of active_session, 14 every column of stt_config)`);
   });
 
   it('LIVE as dems_app: SELECT, INSERT, DELETE and TRUNCATE on every table behave as the matrix says', async () => {
+    // REVISED 2026-11-02 (principal PT GSP, 0036): `audit_purge_log.purge_no` is GENERATED ALWAYS
+    // AS IDENTITY. The whole-row form `INSERT ... SELECT *` names that column and PostgreSQL
+    // refuses it at rewrite (428C9) BEFORE the privilege check — so for a table holding an identity
+    // column the probe lists the columns a writer would fill. The probe still asks exactly the
+    // privilege question it is here to ask; the grant itself is pinned by the catalog test above.
+    const identityColumns: Readonly<Record<string, readonly string[]>> = { audit_purge_log: ['purge_no'] };
+    const insertProbe = (table: string): string => {
+      const skip = identityColumns[table];
+      if (skip === undefined) return `INSERT INTO public.${table} SELECT * FROM public.${table} WHERE false`;
+      const columns = columnsOf(table).filter((column) => !skip.includes(column)).join(', ');
+      return `INSERT INTO public.${table} (${columns}) SELECT ${columns} FROM public.${table} WHERE false`;
+    };
     const outcomes: string[] = [];
     const attempt = async (statement: string): Promise<string> => {
       try {
@@ -256,7 +302,7 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
       const grant = MATRIX[table] ?? {};
       const got = {
         select: await attempt(`SELECT count(*) FROM public.${table}`),
-        insert: await attempt(`INSERT INTO public.${table} SELECT * FROM public.${table} WHERE false`),
+        insert: await attempt(insertProbe(table)),
         delete: await attempt(`DELETE FROM public.${table} WHERE false`),
         truncate: await attempt(`TRUNCATE public.${table}`),
       };
@@ -285,7 +331,7 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
     await expectRefused(() => app.query('SELECT secret_ciphertext FROM public.capture_device_credentials'), SQLSTATE.insufficientPrivilege);
   });
 
-  it('catalog + LIVE: has_column_privilege(SELECT) equals the matrix on all 501 columns; of the credential store only device_id is readable (0010, PE-129a-01)', async () => {
+  it('catalog + LIVE: has_column_privilege(SELECT) equals the matrix on all 512 columns; of the credential store only device_id is readable (0010, PE-129a-01)', async () => {
     const { rows } = await owner.query<{ table_name: string; column_name: string; can_select: boolean }>(
       `SELECT c.relname::text AS table_name, a.attname::text AS column_name,
               has_column_privilege('dems_app', c.oid, a.attnum, 'SELECT') AS can_select
@@ -293,10 +339,14 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
         WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' AND a.attnum > 0 AND NOT a.attisdropped
         ORDER BY 1, a.attnum`,
     );
-    expect(rows).toHaveLength(501);
+    expect(rows).toHaveLength(512);
     expect(rows.filter((row) => row.can_select !== readable(row.table_name, row.column_name))).toEqual([]);
-    // The unreadable columns of the whole schema are exactly these nine: six of T-33, three of T-40.
+    // The unreadable columns of the whole schema are exactly these twelve: six of T-33, three of
+    // T-40, and the three of the purge ticket T-49 (0036: `dems_app` holds no privilege on it at all).
     expect(rows.filter((row) => !row.can_select).map((row) => `${row.table_name}.${row.column_name}`).sort()).toEqual([
+      'audit_purge_ticket.operator_id',
+      'audit_purge_ticket.reseal_from',
+      'audit_purge_ticket.xact_id',
       'capture_device_credentials.encryption',
       'capture_device_credentials.key_ref',
       'capture_device_credentials.nonce',
@@ -316,11 +366,12 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
     await expectRefused(() => app.query('SELECT * FROM public.capture_device_credentials'), SQLSTATE.insufficientPrivilege);
   });
 
-  it('LIVE as dems_app: one UPDATE per column, 501 statements; allowed exactly where the matrix grants it', async () => {
+  it('LIVE as dems_app: one UPDATE per column, 512 statements; allowed exactly where the matrix grants it', async () => {
     const wrong: string[] = [];
     let allowed = 0;
     let refused = 0;
-    for (const table of inventory.tables) {
+    const identityColumns: Readonly<Record<string, readonly string[]>> = { audit_purge_log: ['purge_no'] };
+    for (const table of tables) {
       for (const column of table.columns) {
         let outcome = 'ok';
         try {
@@ -331,18 +382,22 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
         // The probe reads the column itself (`SET x = x WHERE false`), so a column with an UPDATE
         // grant the role cannot read is refused by the privilege algebra (measured: stt_config's
         // three credential columns). The catalog test pins the grant; this test pins the statement.
-        const want = mayUpdate(table.name, column.name) && readable(table.name, column.name) ? 'ok' : SQLSTATE.insufficientPrivilege;
+        // REVISED 2026-11-02 (0036): a GENERATED ALWAYS identity column answers 428C9 to EVERY
+        // role, privilege or none — "no UPDATE grant" and "never updatable" coincide here, and the
+        // catalog test above pins the grant itself.
+        const identity = identityColumns[table.name]?.includes(column.name) === true;
+        const want = mayUpdate(table.name, column.name) && readable(table.name, column.name) ? 'ok' : identity ? '428C9' : SQLSTATE.insufficientPrivilege;
         if (outcome === 'ok') allowed += 1;
         else refused += 1;
         if (outcome !== want) wrong.push(`${table.name}.${column.name}: ${outcome}, expected ${want}`);
       }
     }
     expect(wrong).toEqual([]);
-    expect(allowed + refused).toBe(501);
+    expect(allowed + refused).toBe(512);
     console.info(`[w17] T-PV-1 live: ${allowed} column UPDATEs allowed, ${refused} refused with 42501, 0 unexpected`);
   });
 
-  it('functions: dems_app may execute audit_chain_lock(), dems_jsonb_is_flat(jsonb), the two reveal functions and (since set 16) the credential-destroy function only; PUBLIC none (OW-4, PG-17; dbc-3 §B.3, §B.13)', async () => {
+  it('functions: dems_app may execute audit_chain_lock(), dems_jsonb_is_flat(jsonb), the two reveal functions, the credential-destroy function (set 16) and the purge pair (0036) only; PUBLIC none of them but the ticket probe (OW-4, PG-17; dbc-3 §B.3, §B.13)', async () => {
     const { rows } = await owner.query(
       `SELECT p.proname::text AS name, has_function_privilege('dems_app', p.oid, 'EXECUTE') AS app,
               has_function_privilege('public', p.oid, 'EXECUTE') AS everyone
@@ -353,6 +408,12 @@ describe('T-PV-1: the privileges of dems_app equal the matrix of contract §7.3'
       { name: 'audit_chain_lock', app: true, everyone: false },
       { name: 'audit_log_guard_insert', app: false, everyone: false },
       { name: 'audit_log_refuse_change', app: false, everyone: false },
+      // REVISED 2026-11-02 (principal PT GSP, 0036): the purge pair is EXECUTE for the runtime role
+      // and REVOKED from PUBLIC — SECURITY DEFINER paths owned by the schema owner. The ticket
+      // probe answers EXECUTE to PUBLIC on purpose: it reads its own transaction id and nothing else.
+      { name: 'audit_purge_operator', app: true, everyone: false },
+      { name: 'audit_purge_reseal', app: true, everyone: false },
+      { name: 'audit_purge_ticket_open', app: true, everyone: true },
       { name: 'dems_capture_credential_destroy', app: true, everyone: false },
       { name: 'dems_capture_credential_reveal', app: true, everyone: false },
       { name: 'dems_capture_retired_row_guard', app: false, everyone: false },
@@ -537,10 +598,18 @@ describe('T-PV-2: roles, memberships and ownership (OW-1, OW-2, OW-9; SR-68)', (
       { kind: 'drizzle index', owner: 'dems_owner', total: 1 },
       { kind: 'drizzle sequence', owner: 'dems_owner', total: 1 },
       { kind: 'drizzle table', owner: 'dems_owner', total: 1 },
-      // 9 since set 16 (task 4 design 07): the guard of a retired row and the credential-destroy function.
-      { kind: 'public function', owner: 'dems_owner', total: 9 },
-      { kind: 'public index', owner: 'dems_owner', total: 95 },
-      { kind: 'public table', owner: 'dems_owner', total: 48 },
+      // 9 since set 16 (task 4 design 07): the guard of a retired row and the credential-destroy
+      // function. REVISED 2026-11-02 (principal PT GSP, 0036): +3 — the purge pair and the ticket probe.
+      { kind: 'public function', owner: 'dems_owner', total: 12 },
+      // REVISED 2026-11-02 (0036): + the primary key index of `audit_purge_log`.
+      { kind: 'public index', owner: 'dems_owner', total: 96 },
+      // REVISED 2026-11-02 (0036): the one sequence of the schema is the IDENTITY column of the
+      // purge ledger (`purge_no GENERATED ALWAYS AS IDENTITY`): PostgreSQL stores it as a relation
+      // of its own. It belongs to the schema owner, like everything else; no other sequence exists
+      // (the guard on the kind list lives in `catalog.db.test.ts`).
+      { kind: 'public relation S', owner: 'dems_owner', total: 1 },
+      // 48 until set 16; REVISED 2026-11-02 (0036): +2 — T-49 `audit_purge_ticket`, T-50 `audit_purge_log`.
+      { kind: 'public table', owner: 'dems_owner', total: 50 },
       { kind: 'schema drizzle', owner: 'dems_owner', total: 1 },
     ]);
     // Schema public itself belongs to the pseudo-role "the owner of the database" (PG-15).

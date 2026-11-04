@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { MIGRATIONS_FOLDER } from '../../src/db/commands/migrations';
 import { useTestDatabase } from '../helpers/db';
-import { readInventory, type ContractTable } from './contract-inventory';
+import { readInventory, type ContractConstraint, type ContractTable } from './contract-inventory';
 
 const db = useTestDatabase({ template: 'schema' });
 const inventory = readInventory();
@@ -151,11 +151,16 @@ function difference(
           }
         }
       } else if (wanted.kind === 'FOREIGN KEY') {
-        // `FOREIGN KEY (a) REFERENCES t(b) ON DELETE RESTRICT`; ON UPDATE NO ACTION is the default and is not printed.
-        const body = constraint.definition.replace(/^FOREIGN KEY /, '').replace(/ ON DELETE RESTRICT$/, '');
-        if (squeezed(body) !== squeezed(wanted.definition)) lines.push(`${wanted.name}: expected ${wanted.definition}, found ${constraint.definition}`);
-        if (constraint.on_delete !== 'r' || constraint.on_update !== 'a') {
-          lines.push(`${wanted.name}: expected ON DELETE RESTRICT ON UPDATE NO ACTION (K-2), found ${constraint.on_delete}/${constraint.on_update}`);
+        // K-2: `FOREIGN KEY (a) REFERENCES t(b) ON DELETE RESTRICT`; ON UPDATE NO ACTION is the
+        // default and is not printed. REVISED 2026-11-02 (principal PT GSP, migration 0036): the
+        // purge amendment names its exceptions — a reference to an actor of a record that survives
+        // the erasure answers SET NULL, never CASCADE. The wanted definition carries the action.
+        const wantedAction = / ON DELETE SET NULL$/.test(wanted.definition) ? 'SET NULL' : 'RESTRICT';
+        const body = constraint.definition.replace(/^FOREIGN KEY /, '').replace(/ ON DELETE (RESTRICT|SET NULL|NO ACTION|CASCADE|SET DEFAULT)$/, '');
+        if (squeezed(body) !== squeezed(wanted.definition.replace(/ ON DELETE (RESTRICT|SET NULL)$/, ''))) lines.push(`${wanted.name}: expected ${wanted.definition}, found ${constraint.definition}`);
+        const wantedDelete = wantedAction === 'SET NULL' ? 'n' : 'r';
+        if (constraint.on_delete !== wantedDelete || constraint.on_update !== 'a') {
+          lines.push(`${wanted.name}: expected ON DELETE ${wantedAction} ON UPDATE NO ACTION (K-2), found ${constraint.on_delete}/${constraint.on_update}`);
         }
       } else {
         const body = constraint.definition.replace(/^(PRIMARY KEY|UNIQUE) /, '');
@@ -166,10 +171,146 @@ function difference(
   return lines;
 }
 
+// ── The purge amendment (principal PT GSP, 2026-11-02: amandemen RB-9 + aturan K-2 kontrak
+// database, migration 0036_operator_purge) ─────────────────────────────────────────────────────
+// `deleteUser` now erases an account instead of refusing the delete, so the database holds two new
+// tables, six unit-record columns that can hold "it is no longer known who" and twenty-one foreign
+// keys to an actor that answer SET NULL instead of RESTRICT. The closed contract text is never
+// edited (D44 R1) and the checked-in `contract-inventory.json` is still the pre-amendment 48
+// tables, so the amendment is composed onto the expected side HERE — the same transcription
+// `contract-inventory.test.ts` carries for the typed schema, transcribed from the migration and
+// from the live catalog. A drift of the database away from it still fails. Handing this block to a
+// regenerated `contract-v16-delta.ts` is the durable home of the same facts.
+const PURGE_NEW_TABLES: readonly ContractTable[] = [
+  {
+    // The bookkeeping row that opens the append-only guards for the length of one purge
+    // transaction. Deliberately keyless: `dems_app` holds no grant on it at all.
+    id: 'T-49',
+    name: 'audit_purge_ticket',
+    columns: [
+      { name: 'operator_id', type: 'text', notNull: true, default: null },
+      { name: 'reseal_from', type: 'bigint', notNull: false, default: null },
+      { name: 'xact_id', type: 'xid8', notNull: true, default: null },
+    ],
+    constraints: [],
+  },
+  {
+    // The ledger of erasures: boot check B-8 forgives a hole in the sequence numbers ONLY inside a
+    // range named here. `purge_no` is GENERATED ALWAYS AS IDENTITY in SQL and a plain bigint in the
+    // typed schema on purpose (drizzle's serial helpers render another mechanism).
+    id: 'T-50',
+    name: 'audit_purge_log',
+    columns: [
+      { name: 'purge_no', type: 'bigint', notNull: true, default: null },
+      { name: 'operator_id', type: 'text', notNull: true, default: null },
+      { name: 'actor_id', type: 'text', notNull: false, default: null },
+      { name: 'at', type: 'bigint', notNull: true, default: null },
+      { name: 'first_seq', type: 'bigint', notNull: true, default: null },
+      { name: 'last_seq', type: 'bigint', notNull: true, default: null },
+      { name: 'rows_removed', type: 'integer', notNull: true, default: null },
+      { name: 'reason', type: 'text', notNull: true, default: null },
+    ],
+    constraints: [
+      { name: 'audit_purge_log_pkey', kind: 'PRIMARY KEY', definition: '(purge_no)' },
+      { name: 'audit_purge_log_actor_id_fkey', kind: 'FOREIGN KEY', definition: '(actor_id) REFERENCES operators (id) ON DELETE SET NULL' },
+      { name: 'audit_purge_log_rows_removed_check', kind: 'CHECK', definition: '"audit_purge_log"."rows_removed" >= 1' },
+      { name: 'audit_purge_log_reason_check', kind: 'CHECK', definition: 'length(btrim("audit_purge_log"."reason")) BETWEEN 1 AND 500' },
+      { name: 'audit_purge_log_range_check', kind: 'CHECK', definition: '"audit_purge_log"."last_seq" >= "audit_purge_log"."first_seq"' },
+    ],
+  },
+];
+
+// REVISED 2026-11-02 (principal): purge drops attribution instead of refusing the delete. These six
+// columns of unit records become able to hold "it is no longer known who"; nothing else loses NOT NULL.
+const PURGE_NULLABLE_COLUMNS: Readonly<Record<string, readonly string[]>> = {
+  session_history: ['investigator_id'],
+  evidence_items: ['investigator_id'],
+  exports: ['operator_id'],
+  transcript_revisions: ['author_id'],
+  host_network_aliases: ['added_by'],
+  installation_acceptances: ['accepted_by'],
+};
+
+/** K-2 exception, named constraint by constraint: the 21 references to an actor of a record that
+ *  survives the purge. They go from RESTRICT to SET NULL, never to CASCADE or DELETE. */
+const PURGE_SET_NULL_FKEYS: readonly string[] = [
+  'active_session_created_by_fkey',
+  'active_session_started_by_fkey',
+  'active_session_stopped_by_fkey',
+  'audit_purge_log_actor_id_fkey',
+  'capture_audio_inputs_updated_by_fkey',
+  'capture_config_updated_by_fkey',
+  'capture_devices_retired_by_fkey',
+  'capture_network_config_updated_by_fkey',
+  'evidence_custody_actor_id_fkey',
+  'evidence_items_investigator_id_fkey',
+  'exports_operator_id_fkey',
+  'host_network_aliases_added_by_fkey',
+  'host_network_aliases_removed_by_fkey',
+  'installation_acceptances_accepted_by_fkey',
+  'installation_acceptances_revoked_by_fkey',
+  'paired_devices_revoked_by_operator_id_fkey',
+  'pairing_codes_closed_by_operator_id_fkey',
+  'session_audio_intervals_switched_by_fkey',
+  'session_history_investigator_id_fkey',
+  'stt_config_updated_by_fkey',
+  'transcript_revisions_author_id_fkey',
+];
+
+/** The writable shape of `ContractTable`: the inventory's own fields, minus the `readonly`s. */
+type MutableColumn = { name: string; type: string; notNull: boolean; default: string | null };
+type MutableConstraint = { name: string; kind: ContractConstraint['kind']; definition: string };
+type MutableTable = { id: string; name: string; columns: MutableColumn[]; constraints: MutableConstraint[] };
+
+/** Composes the purge amendment onto a copy of the checked-in inventory (0036, 2026-11-02). */
+function composePurgeAmendment(baseTables: readonly ContractTable[]): MutableTable[] {
+  const tables = structuredClone(baseTables) as unknown as MutableTable[];
+  for (const [name, columns] of Object.entries(PURGE_NULLABLE_COLUMNS)) {
+    const table = tables.find((candidate) => candidate.name === name);
+    // A column that is not there at all is a transcription error and must say so rather than pass quietly.
+    if (table === undefined) throw new Error(`purge amendment: the composed inventory has no table ${name}`);
+    for (const column of columns) {
+      const found = table.columns.find((candidate) => candidate.name === column);
+      if (found === undefined) throw new Error(`purge amendment: ${name}.${column} is not a column of the composed inventory`);
+      found.notNull = false;
+    }
+  }
+  for (const table of tables) {
+    for (const constraint of table.constraints) {
+      if (constraint.kind === 'FOREIGN KEY' && PURGE_SET_NULL_FKEYS.includes(constraint.name) && !constraint.definition.endsWith('ON DELETE SET NULL')) {
+        constraint.definition = `${constraint.definition} ON DELETE SET NULL`;
+      }
+    }
+  }
+  for (const added of PURGE_NEW_TABLES) {
+    if (tables.some((table) => table.name === added.name)) continue;
+    tables.push(structuredClone(added) as unknown as MutableTable);
+  }
+  return tables;
+}
+
+const amendedTables = composePurgeAmendment(inventory.tables);
+
+/** The per-kind totals of the composed contract — what the live catalog must equal. */
+const amendedCounts = (() => {
+  const all = amendedTables.flatMap((table) => table.constraints);
+  const count = (kind: ContractConstraint['kind']): number => all.filter((constraint) => constraint.kind === kind).length;
+  return {
+    tables: amendedTables.length,
+    columns: amendedTables.reduce((sum, table) => sum + table.columns.length, 0),
+    primaryKeys: count('PRIMARY KEY'),
+    foreignKeys: count('FOREIGN KEY'),
+    uniques: count('UNIQUE'),
+    uniqueIndexes: count('UNIQUE INDEX'),
+    indexes: count('INDEX'),
+    checks: count('CHECK'),
+  };
+})();
+
 describe('the live catalog equals the database contract (section 4)', () => {
-  it('48 tables, 501 columns, 233 named CHECKs, 49 foreign keys: the difference is empty', async () => {
+  it('50 tables, 512 columns, 236 named CHECKs, 50 foreign keys: the difference is empty', async () => {
     const live = await readCatalog();
-    const lines = difference(inventory.tables, live);
+    const lines = difference(amendedTables as unknown as ContractTable[], live);
     const count = (type: string): number => live.constraints.filter((constraint) => constraint.type === type).length;
     const plainIndexes = live.indexes.filter((index) => !index.backs_constraint);
     const counts = {
@@ -184,12 +325,12 @@ describe('the live catalog equals the database contract (section 4)', () => {
     };
     console.info(
       `[w17] catalog of ${db.name}\n` +
-        `  contract: ${JSON.stringify(inventory.counts)}\n` +
+        `  contract: ${JSON.stringify(amendedCounts)}\n` +
         `  catalog : ${JSON.stringify(counts)}\n` +
         `  diff (${lines.length} line(s)): ${lines.length === 0 ? '(empty)' : `\n    ${lines.join('\n    ')}`}`,
     );
     expect(lines).toEqual([]);
-    expect(counts).toEqual(inventory.counts);
+    expect(counts).toEqual(amendedCounts);
     // R1 (D44): the closed task-2 totals 30/302/98/25 are the v1 base of the composition; the
     // landed dbc-3 contract is 39 tables (§0.1) plus the R-8 singleton stt_config (T-40).
     // dbc-4 §N.11 (set 4, row 129): +1 table (T-41), +7 columns, +6 CHECKs, +1 foreign key.
@@ -204,12 +345,14 @@ describe('the live catalog equals the database contract (section 4)', () => {
     // Task 4 schema set C (set 12, dbc-12): +1 table (T-48), +13 columns, +11 CHECKs, +2 foreign keys.
     // Task 4 findings F-4 and S2-02 (set 15, dbc-15): +1 column and +2 CHECKs on `capture_network_config`.
     // Task 4 design 07, decision C147 (set 16, dbc-16): +3 columns, +2 CHECKs, +1 foreign key (retirement).
-    expect(counts).toMatchObject({ tables: 48, columns: 501, checks: 233, foreignKeys: 49 });
+    // Principal PT GSP 2026-11-02 (0036, the purge amendment): +2 tables (T-49: 3 columns, keyless;
+    // T-50: 8 columns, 1 PK, 1 FK, 3 CHECKs), +11 columns, +3 CHECKs, +1 foreign key.
+    expect(counts).toMatchObject({ tables: 50, columns: 512, checks: 236, foreignKeys: 50 });
   });
 
   it('the comparison is not vacuous: a changed inventory produces a difference of each kind', async () => {
     const live = await readCatalog();
-    const altered = structuredClone(inventory.tables) as unknown as Array<{
+    const altered = structuredClone(amendedTables) as unknown as Array<{
       name: string;
       columns: Array<{ name: string; type: string; notNull: boolean; default: string | null }>;
       constraints: Array<{ name: string; kind: string; definition: string }>;
@@ -247,9 +390,13 @@ describe('the live catalog equals the database contract (section 4)', () => {
       "SELECT contype::text AS type, count(*) AS total FROM pg_constraint WHERE connamespace = 'public'::regnamespace GROUP BY 1 ORDER BY 1",
     );
     const byType = Object.fromEntries(rows.map((row) => [row.type, Number(row.total)]));
-    const notNullColumns = inventory.tables.reduce((sum, table) => sum + table.columns.filter((column) => column.notNull).length, 0);
+    const notNullColumns = amendedTables.reduce((sum, table) => sum + table.columns.filter((column) => column.notNull).length, 0);
     // Set 16 (dbc-16): the unique constraint on a sound-card input became a partial unique index (u 16 -> 15).
-    expect(byType).toEqual({ c: 233, f: 49, n: notNullColumns, p: 48, u: 15 });
+    // REVISED 2026-11-02 (principal PT GSP, 0036): +3 CHECKs (the ledger's own), +1 foreign key
+    // (`audit_purge_log_actor_id_fkey`), +1 primary key (T-50; T-49 is keyless on purpose). `n` is
+    // the count of NOT NULL columns of the composed contract: 6 unit-record columns lost it to the
+    // purge amendment, 9 of the two new tables brought it.
+    expect(byType).toEqual({ c: 236, f: 50, n: notNullColumns, p: 49, u: 15 });
     console.info(`[w17] pg_constraint in public by contype: ${JSON.stringify(byType)} (n = NOT NULL constraints of PostgreSQL 18)`);
   });
 });
@@ -278,17 +425,20 @@ describe('measurement for later rows (the helper row asked for it with the real 
 
 describe('functions and triggers (contract §6.3, §8.3)', () => {
   const migration = (tag: string): string => readFileSync(join(MIGRATIONS_FOLDER, `${tag}.sql`), 'utf8');
-  /** The body between the dollar quotes of `CREATE FUNCTION public.<name>(` in a migration file. */
+  /** The body between the dollar quotes of the definition of `public.<name>` in a migration file.
+   *  REVISED 2026-11-02 (0036) / 2026-11-03 (0038): the purge amendment replaces two guard bodies
+   *  and the re-seal correction replaces one, so the anchor also accepts `CREATE OR REPLACE`. */
   const bodyOf = (tag: string, name: string): string => {
     const text = migration(tag);
-    const start = text.indexOf(`CREATE FUNCTION public.${name}(`);
+    let start = text.indexOf(`CREATE FUNCTION public.${name}(`);
+    if (start < 0) start = text.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
     const open = text.indexOf('AS $$', start);
     const close = text.indexOf('$$;', open + 5);
     expect(start >= 0 && open > start && close > open, name).toBe(true);
     return text.slice(open + 5, close);
   };
 
-  it('9 functions, each with the body of its migration file (GD-13), the language, the security mode and the settings of the contract', async () => {
+  it('12 functions, each with the body of its migration file (GD-13), the language, the security mode and the settings of the contract', async () => {
     const { rows } = await db.ownerPool().query(
       `SELECT p.proname::text AS name, pg_get_function_identity_arguments(p.oid) AS arguments,
               pg_get_function_result(p.oid) AS result, l.lanname::text AS language, p.prosecdef AS security_definer,
@@ -298,11 +448,23 @@ describe('functions and triggers (contract §6.3, §8.3)', () => {
         WHERE p.pronamespace = 'public'::regnamespace ORDER BY 1`,
     );
     const pinned = ['search_path=pg_catalog, public, pg_temp'];
+    // REVISED 2026-11-02 (principal PT GSP, 0036): the purge trio pins a search path WITHOUT the
+    // public schema — every object it touches is named fully, so nothing can shadow it there.
+    const purgePinned = ['search_path=pg_catalog, pg_temp'];
     expect(rows).toEqual([
-      { name: 'audit_chain_history_refuse_change', arguments: '', result: 'trigger', language: 'plpgsql', security_definer: false, volatility: 'v', parallel: 'u', settings: null, owner: 'dems_owner', body: bodyOf('0002_audit_guards', 'audit_chain_history_refuse_change') },
+      // REVISED 2026-11-02 (0036): both append-only guards answer through the purge ticket now —
+      // their bodies moved from 0002 to the amendment that lets the erasure pass.
+      { name: 'audit_chain_history_refuse_change', arguments: '', result: 'trigger', language: 'plpgsql', security_definer: false, volatility: 'v', parallel: 'u', settings: null, owner: 'dems_owner', body: bodyOf('0036_operator_purge', 'audit_chain_history_refuse_change') },
       { name: 'audit_chain_lock', arguments: '', result: 'TABLE(seq bigint, hash text)', language: 'sql', security_definer: true, volatility: 'v', parallel: 'u', settings: pinned, owner: 'dems_owner', body: bodyOf('0002_audit_guards', 'audit_chain_lock') },
       { name: 'audit_log_guard_insert', arguments: '', result: 'trigger', language: 'plpgsql', security_definer: true, volatility: 'v', parallel: 'u', settings: pinned, owner: 'dems_owner', body: bodyOf('0002_audit_guards', 'audit_log_guard_insert') },
-      { name: 'audit_log_refuse_change', arguments: '', result: 'trigger', language: 'plpgsql', security_definer: false, volatility: 'v', parallel: 'u', settings: null, owner: 'dems_owner', body: bodyOf('0002_audit_guards', 'audit_log_refuse_change') },
+      { name: 'audit_log_refuse_change', arguments: '', result: 'trigger', language: 'plpgsql', security_definer: false, volatility: 'v', parallel: 'u', settings: null, owner: 'dems_owner', body: bodyOf('0036_operator_purge', 'audit_log_refuse_change') },
+      // The purge trio of 0036: the erasure and the re-seal are the only paths this database lets
+      // an audit row disappear or change (SECURITY DEFINER, EXECUTE revoked from PUBLIC, granted to
+      // the runtime role); the ticket probe only reads its own transaction id and is PUBLIC-safe.
+      { name: 'audit_purge_operator', arguments: 'p_operator_id text, p_actor_id text, p_reason text', result: 'jsonb', language: 'plpgsql', security_definer: true, volatility: 'v', parallel: 'u', settings: purgePinned, owner: 'dems_owner', body: bodyOf('0036_operator_purge', 'audit_purge_operator') },
+      // D56b (2026-11-03, 0038) corrected the re-seal in place: the live body is the one of that file.
+      { name: 'audit_purge_reseal', arguments: 'p_operator_id text, p_rows jsonb', result: 'jsonb', language: 'plpgsql', security_definer: true, volatility: 'v', parallel: 'u', settings: purgePinned, owner: 'dems_owner', body: bodyOf('0038_operator_purge_reseal_correction', 'audit_purge_reseal') },
+      { name: 'audit_purge_ticket_open', arguments: '', result: 'boolean', language: 'sql', security_definer: true, volatility: 's', parallel: 'u', settings: purgePinned, owner: 'dems_owner', body: bodyOf('0036_operator_purge', 'audit_purge_ticket_open') },
       // The two write-only secret reveal functions of dbc-3 §B.3/§B.13 (SEC35-02, Q-SEC-3 default).
       // Set 16 (dbc-16, design 07): the destroy path of a retired device's credential, the mirror of the reveal.
       { name: 'dems_capture_credential_destroy', arguments: 'p_device_id text', result: 'integer', language: 'sql', security_definer: true, volatility: 'v', parallel: 'u', settings: pinned, owner: 'dems_owner', body: bodyOf('0033_capture_device_retirement_privileges', 'dems_capture_credential_destroy') },
@@ -370,7 +532,7 @@ describe('functions and triggers (contract §6.3, §8.3)', () => {
 });
 
 describe('what the schema must not contain (CL-01, CL-07, CL-09, N-1)', () => {
-  it('schema public holds tables, their indexes and nine functions: no sequence, view, enum or domain', async () => {
+  it('schema public holds tables, their indexes and twelve functions: the one identity sequence of the purge ledger, no view, enum or domain', async () => {
     const { rows } = await db.ownerPool().query<{ kind: string; total: string }>(
       `SELECT relkind::text AS kind, count(*) AS total FROM pg_class WHERE relnamespace = 'public'::regnamespace GROUP BY 1
        UNION ALL
@@ -389,10 +551,19 @@ describe('what the schema must not contain (CL-01, CL-07, CL-09, N-1)', () => {
     // indexes on an open alias (one per interface and address, one at all).
     // Task 4 schema set C: + T-48, + its primary key, + the partial unique index on the one
     // acceptance in force.
-    expect(Object.fromEntries(rows.map((row) => [row.kind, Number(row.total)]))).toEqual({ i: 95, r: 48 });
+    // REVISED 2026-11-02 (principal PT GSP, 0036): + T-49 (keyless) and T-50 with its primary key
+    // (i: 95 -> 96, r: 48 -> 50) — and the ONE sequence the schema has ever held: the IDENTITY
+    // column `purge_no` renders as a relation of kind S. The CL-01 rule "no sequence" named
+    // hand-created sequences and defaults; this one is the identity of the ratified ledger, and it
+    // is pinned by name below so no other sequence can enter unnoticed.
+    expect(Object.fromEntries(rows.map((row) => [row.kind, Number(row.total)]))).toEqual({ i: 96, r: 50, S: 1 });
+    const sequences = await db.ownerPool().query<{ name: string }>(
+      "SELECT relname::text AS name FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relkind = 'S' ORDER BY 1",
+    );
+    expect(sequences.rows).toEqual([{ name: 'audit_purge_log_purge_no_seq' }]);
   });
 
-  it('every table has exactly one primary key; a single-row table has the key singleton with default true and CHECK (singleton)', async () => {
+  it('every table has exactly one primary key — the keyless exception being the purge ticket of 0036; a single-row table has the key singleton with default true and CHECK (singleton)', async () => {
     const singletons = inventory.tables.filter((table) => table.columns[0]?.name === 'singleton').map((table) => table.name);
     expect(singletons.sort()).toEqual(
       ['active_session', 'audit_chain_head', 'capture_config', 'console_settings', 'core_device', 'core_state',
@@ -401,8 +572,15 @@ describe('what the schema must not contain (CL-01, CL-07, CL-09, N-1)', () => {
     const { rows } = await db.ownerPool().query<{ table_name: string; definition: string }>(
       "SELECT conrelid::regclass::text AS table_name, pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE connamespace = 'public'::regnamespace AND contype = 'p' ORDER BY 1",
     );
-    expect(rows).toHaveLength(48);
-    expect(new Set(rows.map((row) => row.table_name)).size).toBe(48);
+    // REVISED 2026-11-02 (principal PT GSP, 0036): 49 keys over 50 tables. The one table without a
+    // key is `audit_purge_ticket` — deliberately keyless, a transaction-scoped marker row that
+    // `dems_app` holds no privilege on at all. Named here so no second keyless table can slip in.
+    expect(rows).toHaveLength(49);
+    expect(new Set(rows.map((row) => row.table_name)).size).toBe(49);
+    const allTables = await db.ownerPool().query<{ name: string }>(
+      "SELECT relname::text AS name FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relkind = 'r' ORDER BY 1",
+    );
+    expect(allTables.rows.map((row) => row.name).filter((name) => !rows.some((row) => row.table_name === name))).toEqual(['audit_purge_ticket']);
     for (const name of singletons) {
       expect(rows.find((row) => row.table_name === name)?.definition, name).toBe('PRIMARY KEY (singleton)');
     }
@@ -417,7 +595,9 @@ describe('what the schema must not contain (CL-01, CL-07, CL-09, N-1)', () => {
     expect(rows.filter((row) => row.column_name.endsWith('_at') && row.data_type !== 'bigint')).toEqual([]);
     expect(rows.filter((row) => /nextval/i.test(row.column_default ?? ''))).toEqual([]);
     const types = [...new Set(rows.map((row) => row.data_type))].sort();
-    expect(types).toEqual(['bigint', 'boolean', 'bytea', 'double precision', 'integer', 'jsonb', 'smallint', 'text', 'uuid']);
+    // REVISED 2026-11-02 (principal PT GSP, 0036): `xid8` joins the list — the transaction id of
+    // the purge ticket, the only non-time database-clock type the amendment needed (a time never does).
+    expect(types).toEqual(['bigint', 'boolean', 'bytea', 'double precision', 'integer', 'jsonb', 'smallint', 'text', 'uuid', 'xid8']);
     // CL-09 (2): the tables whose rows change in place and have no domain column for the change.
     for (const table of ['operators', 'paired_devices', 'active_session', 'evidence_items', 'storage_policy', 'console_settings', 'core_device', 'core_state']) {
       expect(rows.some((row) => row.table_name === table && row.column_name === 'updated_at'), table).toBe(true);
