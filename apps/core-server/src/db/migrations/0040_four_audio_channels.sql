@@ -16,14 +16,17 @@ ALTER TABLE "capture_config" ADD CONSTRAINT "capture_config_mic_check" CHECK (
 );--> statement-breakpoint
 ALTER TABLE "capture_config" ADD CONSTRAINT "capture_config_mic_03_id_fkey" FOREIGN KEY ("mic_03_id") REFERENCES "capture_devices"("id") ON DELETE RESTRICT ON UPDATE NO ACTION;--> statement-breakpoint
 ALTER TABLE "capture_config" ADD CONSTRAINT "capture_config_mic_04_id_fkey" FOREIGN KEY ("mic_04_id") REFERENCES "capture_devices"("id") ON DELETE RESTRICT ON UPDATE NO ACTION;--> statement-breakpoint
--- The old world's two roles join the new world's first two channels.
+ALTER TABLE "session_capture_sources" DROP CONSTRAINT "session_capture_sources_slot_check";--> statement-breakpoint
+ALTER TABLE "session_capture_sources" DROP CONSTRAINT "session_capture_sources_pairing_check";--> statement-breakpoint
+-- The old world's two roles join the new world's first two channels (after the widened slot check
+-- lands, so the renamed rows validate; before the pairing rewrite, whose mic kinds they satisfy).
 UPDATE "session_capture_sources" SET "slot" = 'MIC-01' WHERE "slot" = 'MIC-PRIMARY';--> statement-breakpoint
 UPDATE "session_capture_sources" SET "slot" = 'MIC-02' WHERE "slot" = 'MIC-STANDBY';--> statement-breakpoint
-ALTER TABLE "session_capture_sources" DROP CONSTRAINT "session_capture_sources_slot_check";--> statement-breakpoint
+-- The checks of the eight-slot world, added over the migrated rows (ADD CONSTRAINT validates what
+-- is already there, so the data migration above must come first).
 ALTER TABLE "session_capture_sources" ADD CONSTRAINT "session_capture_sources_slot_check" CHECK ("session_capture_sources"."slot" IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'));--> statement-breakpoint
 -- The pairing rule keeps its shape (D60): a video slot takes a camera kind, a mic slot takes a
 -- microphone kind; `SNMP_POE` feeds no slot.
-ALTER TABLE "session_capture_sources" DROP CONSTRAINT "session_capture_sources_pairing_check";--> statement-breakpoint
 ALTER TABLE "session_capture_sources" ADD CONSTRAINT "session_capture_sources_pairing_check" CHECK (("session_capture_sources"."slot" IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04') AND "session_capture_sources"."adapter_kind" IN ('ONVIF_RTSP', 'FAKE', 'LOCAL_DEVICE')) OR ("session_capture_sources"."slot" IN ('MIC-01', 'MIC-02', 'MIC-03', 'MIC-04') AND "session_capture_sources"."adapter_kind" IN ('USB_AUDIO', 'FAKE', 'LOCAL_DEVICE')));--> statement-breakpoint
 -- The v2 session seals FOUR audio tracks beside the four video tracks: the OD-01 "one session audio
 -- track" premise is superseded by D61 and `AUDIO-02` loses its legacy-only status going forward.
