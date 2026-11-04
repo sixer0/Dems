@@ -112,7 +112,7 @@ export type AccessRefusal =
       readonly role: OperatorRole;
       /** The device the operator's session is bound to; null for a web console session. */
       readonly deviceId: string | null;
-      readonly denial: PermissionDenial;
+      readonly denial: PermissionDenial | null; /** Null on a permission-less rule whose condition refusal is still audited (D59 follow-up). */
       /**
        * Task 3 M2-W7 (C3 §5.3): why the rule did not hold, when the refusal is not about the
        * permission itself: `SESSION_HOLDER` (the name of that condition) or `WEB_CONSOLE_ONLY` (the
@@ -215,9 +215,6 @@ function decideConditions(rule: AccessRule, caller: AccessCaller): AccessDecisio
         const holds =
           principal.role === OperatorRole.SUPERVISOR || (caller.sessionCreatorId !== null && principal.operatorId === caller.sessionCreatorId);
         if (!holds) {
-          if (rule.denial === null) {
-            throw new Error(`the access rule of ${rule.operationId} carries SESSION_HOLDER without a permission to name in its refusal`);
-          }
           return refuse({
             kind: AccessRefusalKind.NOT_PERMITTED,
             operatorId: principal.operatorId,
@@ -229,7 +226,7 @@ function decideConditions(rule: AccessRule, caller: AccessCaller): AccessDecisio
         }
         break;
       }
-      case CoreApiAccessCondition.WEB_CONSOLE_SESSION: {
+      case CoreApiAccessCondition.WEB_CONSOLE_SESSION: { // (permission-less rules: D59 follow-up)
         // D80(3); SEC35-45; C3 §0, §2.6: a web console session, which is one that is bound to no
         // paired device. The permission of the marker has already been checked; this condition
         // only keeps the tablet and the phone out. The principal is all that is read: stage 6 runs
@@ -237,7 +234,18 @@ function decideConditions(rule: AccessRule, caller: AccessCaller): AccessDecisio
         if (principal.kind !== 'OPERATOR') break; // the marker refused others before this loop
         if (principal.deviceId !== null) {
           if (rule.denial === null) {
-            throw new Error(`the access rule of ${rule.operationId} carries WEB_CONSOLE_SESSION without a permission to name in its refusal`);
+            // D59 follow-up (found by the guard sweep of 2026-11-04; latent since D57c): an
+            // AUTHENTICATED rule names no permission, so the row cannot point at one — yet the
+            // fence itself is auditable and its documented answer is the 403 NOT_PERMITTED with
+            // the WEB_CONSOLE_ONLY reason. The row carries the fact without the permission slot.
+            return refuse({
+              kind: AccessRefusalKind.NOT_PERMITTED,
+              operatorId: principal.operatorId,
+              role: principal.role,
+              deviceId: principal.deviceId,
+              denial: null,
+              reason: WEB_CONSOLE_ONLY_REASON,
+            })
           }
           return refuse({
             kind: AccessRefusalKind.NOT_PERMITTED,
@@ -250,6 +258,14 @@ function decideConditions(rule: AccessRule, caller: AccessCaller): AccessDecisio
         }
         break;
       }
+      case CoreApiAccessCondition.VENDOR_ROOT:
+      case CoreApiAccessCondition.VENDOR_ACCOUNT:
+        // D59 (principal, 2026-11-04): an identity rule is a fact of the ACCOUNT and stage 6
+        // decides on the SESSION (it sees operatorId and role, never a username): the guard
+        // passes and names the enforcement point for the record — the RB-9 trio applies
+        // VENDOR_ROOT in its unit (changes.ts), the D57 pair applies VENDOR_ACCOUNT in the
+        // panel proxy (lcd/setup.ts). Both refuse 403 NOT_PERMITTED with no audit row.
+        break;
       default: {
         // A condition without a case above: nobody is let through on a rule that was not decided.
         const unevaluated: never = condition;

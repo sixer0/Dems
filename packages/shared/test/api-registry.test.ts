@@ -804,8 +804,16 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
     ]);
     // Twenty-seven operations carry a condition (13 + the two of task 4 row 63 + the one of row 194 + the seven of row 102 + the one of row V3 + the two of row 116 + the one of row RD2), each exactly one; the other 84 carry none.
     const conditioned = CORE_API_OPERATIONS.filter((operation) => operation.access.conditions !== undefined);
-    expect(conditioned).toHaveLength(29); // D57: + the two panel-setup operations
-    for (const operation of conditioned) expect(operation.access.conditions, operation.operationId).toHaveLength(1);
+    expect(conditioned).toHaveLength(32); // D59 (2026-11-04): + the three of the vendor-root trio (the pair
+    // was counted since D57). // D57: + the two panel-setup operations
+    // One condition per operation stands since v1, with ONE named pair of exceptions (D59,
+    // 2026-11-04): the panel-setup operations carry the web-console fence AND the vendor-account
+    // identity rule — two facts no one of which implies the other. A third two-condition
+    // operation is a finding, not a pattern to follow.
+    for (const operation of conditioned)
+      expect(operation.access.conditions, operation.operationId).toHaveLength(
+        operation.operationId === 'getPanelSetup' || operation.operationId === 'setPanelSetup' ? 2 : 1,
+      );
   });
 
   it('the marker text is the one of 01_specs §4.2, the any-of included', () => {
@@ -859,8 +867,8 @@ describe('decision D113 (finding CPS1-3): operations 23 and 8 need the device cr
   const biometric = findCoreApiOperation('signInWithBiometric')!;
   const NEEDS_CREDENTIAL = [biometric, rotate];
 
-  it('the vocabulary of conditions has six members, DEVICE_CREDENTIAL among them (C3 §10.1: 5 -> 6 with WEB_CONSOLE_SESSION)', () => {
-    expect(Object.values(CoreApiAccessCondition)).toEqual(['CONSOLE_IDENTITY', 'DEVICE_SESSION', 'DEVICE_CREDENTIAL', 'DEMO_FLAG', 'SESSION_HOLDER', 'WEB_CONSOLE_SESSION']);
+  it('the vocabulary of conditions has eight members (D59: 6 -> 8, 2026-11-04), DEVICE_CREDENTIAL among them (C3 §10.1: 5 -> 6 with WEB_CONSOLE_SESSION)', () => {
+    expect(Object.values(CoreApiAccessCondition)).toEqual(['CONSOLE_IDENTITY', 'DEVICE_SESSION', 'DEVICE_CREDENTIAL', 'DEMO_FLAG', 'SESSION_HOLDER', 'WEB_CONSOLE_SESSION', 'VENDOR_ROOT', 'VENDOR_ACCOUNT']);
     expect(Object.keys(CoreApiAccessCondition)).toEqual(Object.values(CoreApiAccessCondition));
     expect(CoreApiAccessCondition.DEVICE_CREDENTIAL).toBe('DEVICE_CREDENTIAL');
     expect(DEVICE_CREDENTIAL_REQUIRED_REASON).toBe('DEVICE_CREDENTIAL_REQUIRED');

@@ -130,6 +130,23 @@ export const CoreApiAccessCondition = {
    * credential holds it.
    */
   WEB_CONSOLE_SESSION: 'WEB_CONSOLE_SESSION',
+  /**
+   * D59 (principal, 2026-11-04): the signed-in account itself is the vendor root (`root`).
+   * The three user-management operations of RB-9 as amended (112 to 114) apply it in the unit,
+   * AFTER stage 6's `USER_ADMIN` permission: any other account is refused `403 NOT_PERMITTED`
+   * naming both gates, and the identity refusal writes NO audit row. Descriptive for the
+   * pipeline (the unit enforces); the matrix and the document must still state it, because an
+   * expectation derived without it is wrong for every seeded role.
+   */
+  VENDOR_ROOT: 'VENDOR_ROOT',
+  /**
+   * D59 (principal, 2026-11-04): the signed-in account is one of the vendor accounts (root or
+   * gsp.teknisi). The panel-setup proxy (118, 119) applies it before forwarding to the panel's
+   * own backend: any other authenticated web-console account is refused `403 NOT_PERMITTED`
+   * with the gate's own text, and nothing reaches the panel. Same standing as `VENDOR_ROOT`:
+   * descriptive for the pipeline, mandatory for expectations and for §7.
+   */
+  VENDOR_ACCOUNT: 'VENDOR_ACCOUNT',
 } as const;
 export type CoreApiAccessCondition = (typeof CoreApiAccessCondition)[keyof typeof CoreApiAccessCondition];
 

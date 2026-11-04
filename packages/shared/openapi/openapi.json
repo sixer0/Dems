@@ -4871,7 +4871,9 @@
           "permissions": [
             "USER_ADMIN"
           ],
-          "conditions": []
+          "conditions": [
+            "VENDOR_ROOT"
+          ]
         },
         "x-dems-audit": {
           "success": "USER_CREATED",
@@ -6048,7 +6050,9 @@
           "permissions": [
             "USER_ADMIN"
           ],
-          "conditions": []
+          "conditions": [
+            "VENDOR_ROOT"
+          ]
         },
         "x-dems-audit": {
           "success": "USER_UPDATED",
@@ -6349,7 +6353,9 @@
           "permissions": [
             "USER_ADMIN"
           ],
-          "conditions": []
+          "conditions": [
+            "VENDOR_ROOT"
+          ]
         },
         "x-dems-audit": {
           "success": "USER_DELETED",
@@ -31669,7 +31675,7 @@
           }
         ],
         "x-dems-mode": "live",
-        "x-dems-source": "Decision D57 (principal, 2026-11-03): operation 115 and operation 116, the pre-delivery setup moved into the console, gated to the vendor identities",
+        "x-dems-source": "Decision D57 (principal, 2026-11-03): operation 118 and operation 119, the pre-delivery setup moved into the console, gated to the vendor identities",
         "security": [
           {
             "sessionCookie": []
@@ -31682,7 +31688,8 @@
           "rule": "AUTHENTICATED",
           "permissions": [],
           "conditions": [
-            "WEB_CONSOLE_SESSION"
+            "WEB_CONSOLE_SESSION",
+            "VENDOR_ACCOUNT"
           ]
         },
         "x-dems-audit": {
@@ -31898,7 +31905,7 @@
           }
         ],
         "x-dems-mode": "live",
-        "x-dems-source": "Decision D57 (principal, 2026-11-03): operation 115 and operation 116, the pre-delivery setup moved into the console, gated to the vendor identities",
+        "x-dems-source": "Decision D57 (principal, 2026-11-03): operation 118 and operation 119, the pre-delivery setup moved into the console, gated to the vendor identities",
         "requestBody": {
           "required": true,
           "content": {
@@ -31941,7 +31948,8 @@
           "rule": "AUTHENTICATED",
           "permissions": [],
           "conditions": [
-            "WEB_CONSOLE_SESSION"
+            "WEB_CONSOLE_SESSION",
+            "VENDOR_ACCOUNT"
           ]
         },
         "x-dems-audit": {

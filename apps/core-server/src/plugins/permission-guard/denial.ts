@@ -62,8 +62,8 @@ export function refusalAnswer(rule: AccessRule, refusal: AccessRefusal): ApiFail
     case AccessRefusalKind.NOT_PERMITTED:
       return new ApiFailure(
         403,
-        refusal.denial.errorCode,
-        refusal.denial.errorCode === ApiErrorCode.FORBIDDEN
+        refusal.denial?.errorCode ?? ApiErrorCode.NOT_PERMITTED,
+        refusal.denial?.errorCode === ApiErrorCode.FORBIDDEN
           ? EXPORT_FORBIDDEN_TEXT
           : refusal.reason === WEB_CONSOLE_ONLY_REASON
             ? WEB_CONSOLE_ONLY_TEXT
@@ -71,7 +71,7 @@ export function refusalAnswer(rule: AccessRule, refusal: AccessRefusal): ApiFail
         {
           details: {
             operationId: rule.operationId,
-            permission: refusal.denial.permission,
+            ...(refusal.denial === null ? {} : { permission: refusal.denial.permission }),
             role: refusal.role,
             // C3 §5.3, §4: why the rule refused when it was not the permission (SESSION_HOLDER, WEB_CONSOLE_ONLY).
             ...(refusal.reason === undefined ? {} : { reason: refusal.reason }),
@@ -127,16 +127,20 @@ export function denialRecordOf(rule: AccessRule, refusal: AccessRefusal, pathId:
   // C3 §5.1: a camera-credential-style refusal audits the FACT with `details.reason` only. The
   // SESSION_HOLDER refusal (C3 §5.3) names the condition as reason; the permission and role stay
   // in the row because the rule's permission was held — the CONDITION refused, not the permission.
-  const named = { operationId: rule.operationId, permission: denial.permission, role };
+  const named = {
+    operationId: rule.operationId,
+    ...(denial === null ? {} : { permission: denial.permission }),
+    role,
+  };
 
-  if (denial.export === null) {
+  if (denial === null || denial.export === null) {
     return {
       audit: {
         type: AuditType.ACCESS_DENIED,
         severity: Severity.WARNING,
         message:
           refusal.reason === undefined
-            ? `Access denied: role ${role} ${lacking(denial.permission)} (${rule.operationId})`
+            ? `Access denied: role ${role} ${denial === null ? 'does not hold the identity this operation requires' : lacking(denial.permission)} (${rule.operationId})`
             : refusal.reason === WEB_CONSOLE_ONLY_REASON
               ? `Access denied: a session of a paired device called a web-console-only operation (${rule.operationId})`
               : `Access denied: the ${refusal.reason} condition does not hold (${rule.operationId})`,

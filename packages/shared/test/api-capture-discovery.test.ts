@@ -190,7 +190,7 @@ describe('the registry: operations 93 to 97 as C3 §2.6 writes them', () => {
     // REVISED 2026-11-02 (principal): + USER_CREATED, USER_UPDATED and USER_DELETED (87 -> 90).
     expect(Object.values(AuditType)).toHaveLength(91); // D57: + PANEL_SETUP_CHANGED
     expect(API_ERROR_CODES).toHaveLength(40);
-    expect(Object.values(CoreApiAccessCondition)).toHaveLength(6);
+    expect(Object.values(CoreApiAccessCondition)).toHaveLength(8); // D59 (2026-11-04): + VENDOR_ROOT and VENDOR_ACCOUNT
     const document = createOpenApiDocument({ scope: 'all' });
     // REVISED 2026-11-02 (principal): the document carries the three new operations (114 -> 117).
     // D57 (2026-11-03, principal): + the panel-setup pair (117 -> 119).

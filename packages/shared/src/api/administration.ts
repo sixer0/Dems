@@ -28,6 +28,7 @@ import { z } from 'zod';
 import { AuditType, OperatorRole, Permission } from '../sim/vocabulary';
 import { API_BASE_PATH } from './constants';
 import {
+  CoreApiAccessCondition,
   AUTHENTICATED_ACCESS,
   CORE_SERVER_ONLY,
   CoreApiAuditNone,
@@ -205,6 +206,9 @@ export const ADMINISTRATION_SCHEMAS = {
 const SECTION = '§7.6';
 const USERS_PATH = `${API_BASE_PATH}/admin/users`;
 const USER_ADMIN = permissionAccess(Permission.USER_ADMIN);
+/** D59 (principal, 2026-11-04): the RB-9 trio is USER_ADMIN **and** the vendor-root identity
+ *  rule the unit applies on top; the registry states both so §7 and the matrix can see it. */
+const USER_ADMIN_ROOT = { ...USER_ADMIN, conditions: [CoreApiAccessCondition.VENDOR_ROOT] } as const;
 const OPERATOR_PARAM = { name: 'id', description: 'Operator ID `OPR-NNN`.', pattern: OPERATOR_ID_PATTERN } as const;
 
 const UNKNOWN_OPERATOR = { description: 'No operator has this ID (NOT_FOUND).', schema: 'ApiError' } as const;
@@ -374,7 +378,7 @@ export const ADMINISTRATION_OPERATIONS = [
       403: notPermitted(Permission.USER_ADMIN, 'or the signed-in account is not the vendor root account, the second gate of the narrowed rule (NOT_PERMITTED; no audit row)'),
       422: INVALID_INPUT,
     },
-    access: USER_ADMIN,
+    access: USER_ADMIN_ROOT,
     audit: { success: AuditType.USER_CREATED, denial: AuditType.ACCESS_DENIED },
     services: CORE_SERVER_ONLY,
   },
@@ -404,7 +408,7 @@ export const ADMINISTRATION_OPERATIONS = [
       404: UNKNOWN_OPERATOR,
       422: INVALID_INPUT,
     },
-    access: USER_ADMIN,
+    access: USER_ADMIN_ROOT,
     audit: { success: AuditType.USER_UPDATED, denial: AuditType.ACCESS_DENIED },
     services: CORE_SERVER_ONLY,
   },
@@ -436,7 +440,7 @@ export const ADMINISTRATION_OPERATIONS = [
       409: { description: 'RB-8: the delete would leave no enabled operator holding USER_ADMIN (LAST_ADMIN); or the username in `confirm` is not the operator of `{id}`; or records of the unit still point at that operator (INVALID_STATE), in which case the refusal text names how many and from which sources. Nothing is deleted in any of these cases.', schema: 'ApiError' },
       422: INVALID_INPUT,
     },
-    access: USER_ADMIN,
+    access: USER_ADMIN_ROOT,
     audit: { success: AuditType.USER_DELETED, denial: AuditType.ACCESS_DENIED },
     services: CORE_SERVER_ONLY,
   },

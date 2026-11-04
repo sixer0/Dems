@@ -218,6 +218,7 @@ or `EXPORT_DENIED` on the export command, `contract-model.ts:200-211`).
 | Permission | Roles | Authority | Note |
 |---|---|---|---|
 | `CAPTURE_CONFIG` (new) | SUPERVISOR, TECHNICIAN | D4 OD-10; register SH-04/CS-12; `sim/auth.ts` (SH-04); `specs §D` | editable **only while idle** (OD-10) → 409 `CAPTURE_CONFIG_LOCKED` |
+| `CAPTURE_CONFIG` (revoked from SUPERVISOR) | TECHNICIAN | production ruling 2026-10-29, migration `0034`; `sim/auth.ts` REVOKED note; the closed base's §4.4 row stands as written and this row takes the grant away at composition (D59 follow-up, 2026-11-04) |
 | `TRANSCRIPT_REVISE` (new) | INVESTIGATOR, SUPERVISOR | D4 OD-15; register SH-04/CS-12; `specs §D` | Core key signs; author recorded; no approval flow |
 | `SESSION_START` (existing) | INVESTIGATOR, SUPERVISOR | `sessions.ts:133`; predecessor `specs §4.4` | op 81 adds the `SESSION_HOLDER` condition |
 | `EVIDENCE_VIEW` (existing) | every role | `evidence.ts:147`; `evidence.ts` (VIEW_DENIED note) | reads 84/86/88; **REAL evidence additionally needs case/session scope (SEC35-16, §2.4) — flagged for the second blueprint gate** |
@@ -761,14 +762,14 @@ in the chain with it). No table, column or migration was added.
 
 | # | operationId | Method | Path | Tag | Mode | Access (marker + condition) | Audit success / denial | Requirement |
 |--:|---|---|---|---|---|---|---|---|
-| 112 | `createUser` | POST | `/api/v1/admin/users` | Administration | live | `PERMISSION USER_ADMIN` | `USER_CREATED` / `ACCESS_DENIED` | RB-9 (D54); §19.1 |
-| 113 | `updateUser` | POST | `/api/v1/admin/users/{id}/profile` | Administration | live | `PERMISSION USER_ADMIN` | `USER_UPDATED` / `ACCESS_DENIED` | RB-9 (D54); §19.1 |
-| 114 | `deleteUser` | POST | `/api/v1/admin/users/{id}/delete` | Administration | live | `PERMISSION USER_ADMIN` | `USER_DELETED` / `ACCESS_DENIED` | RB-9 (D54); §19.1 last-admin rule RB-8 |
+| 112 | `createUser` | POST | `/api/v1/admin/users` | Administration | live | `PERMISSION USER_ADMIN` + `VENDOR_ROOT` (**vendor root only**, D54 as amended; D59) | `USER_CREATED` / `ACCESS_DENIED` | RB-9 (D54); §19.1 |
+| 113 | `updateUser` | POST | `/api/v1/admin/users/{id}/profile` | Administration | live | `PERMISSION USER_ADMIN` + `VENDOR_ROOT` (**vendor root only**, D54 as amended; D59) | `USER_UPDATED` / `ACCESS_DENIED` | RB-9 (D54); §19.1 |
+| 114 | `deleteUser` | POST | `/api/v1/admin/users/{id}/delete` | Administration | live | `PERMISSION USER_ADMIN` + `VENDOR_ROOT` (**vendor root only**, D54 as amended; D59) | `USER_DELETED` / `ACCESS_DENIED` | RB-9 (D54); §19.1 last-admin rule RB-8 |
 | 115 | `createCameraPreviewSession` | POST | `/api/v1/capture/devices/{id}/preview-sessions` | Device | live | `ANY-OF(SESSION_START, CAPTURE_CONFIG, DEVICE_MANAGE)` | `CAMERA_PREVIEW_OPENED` / `ACCESS_DENIED` | RB-9 preview session (D54) |
 | 116 | `holdIdleMeters` | POST | `/api/v1/capture/idle-meters/lease` | Device | live | `ANY-OF(CAPTURE_CONFIG, DEVICE_MANAGE, SESSION_START)` | `NONE-P` / `ACCESS_DENIED` | RB-9 idle-meters lease (D54) |
 | 117 | `getPanelFirmware` | GET | `/api/v1/lcd/panel-info` | Device | live | `PUBLIC` | `NONE-R` / `ACCESS_DENIED` | RB-9 panel-firmware read (D54); the proxy answers without a session |
-| 118 | `getPanelSetup` | GET | `/api/v1/lcd/setup` | Device | live | `AUTHENTICATED` + `WEB_CONSOLE_SESSION` (**web console only**, D57) | `NONE-R` / `ACCESS_DENIED` | D57; the vendor gate is the backend's (identity, not role) |
-| 119 | `setPanelSetup` | POST | `/api/v1/lcd/setup` | Device | live | `AUTHENTICATED` + `WEB_CONSOLE_SESSION` (**web console only**, D57) | `PANEL_SETUP_CHANGED` / `ACCESS_DENIED` | D57; body limit API-4 (D57d) |
+| 118 | `getPanelSetup` | GET | `/api/v1/lcd/setup` | Device | live | `AUTHENTICATED` + `WEB_CONSOLE_SESSION` (**web console only**, D57) + `VENDOR_ACCOUNT` (**vendor accounts only**, D57; D59) | `NONE-R` / `ACCESS_DENIED` | D57; the vendor gate is the backend's (identity, not role) |
+| 119 | `setPanelSetup` | POST | `/api/v1/lcd/setup` | Device | live | `AUTHENTICATED` + `WEB_CONSOLE_SESSION` (**web console only**, D57) + `VENDOR_ACCOUNT` (**vendor accounts only**, D57; D59) | `PANEL_SETUP_CHANGED` / `ACCESS_DENIED` | D57; body limit API-4 (D57d) |
 
 ## 3. Modified operations (of the existing 75)
 
