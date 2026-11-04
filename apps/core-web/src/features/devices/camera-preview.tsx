@@ -9,7 +9,7 @@ import { CameraFeed, RecIndicator, type CameraFeedProps } from '@/components/med
 import { cn } from '@/lib/utils'
 import { useRealCaptureCore, useTrackDevice } from './source-class'
 import { useWebLive } from '@/runtime'
-import { isLivePreviewDevice, isSessionStarting, previewPathOf, previewRefusalOf, previewRetryDelayMs } from './camera-live-preview'
+import { isLivePreviewDevice, isSessionStarting, PREVIEW_FIRST_FRAME_MS, previewPathOf, previewRefusalOf, previewRetryDelayMs } from './camera-live-preview'
 import { reportDevicesError } from './report'
 import { deferEffectStart } from '@/lib/effect-start'
 
@@ -192,12 +192,25 @@ function LivePreview({ cameraId, deviceId, variant = 'feed', recordingSince = nu
     failures.current = 0
     setPhase('LIVE')
   }
-  const onError = () => {
+  // One failed picture, whoever reported it: the `error` event, or the silence of a host that never
+  // answers at all (the watchdog below) — the bench's CAM-03 of 2026-11-04 proved the event alone is
+  // not enough: a silent TCP keeps the `<img>` pending for minutes over a stream the Core ended.
+  const failPicture = useCallback(() => {
     failures.current += 1
     setPath(null)
     setPhase(failures.current >= HONEST_AFTER_FAILURES ? 'UNAVAILABLE' : 'CONNECTING')
     retryLater(previewRetryDelayMs(failures.current))
+  }, [retryLater])
+  const onError = () => {
+    failPicture()
   }
+  // The first-frame watchdog: armed while a src stands set and no frame has arrived; disarmed by the
+  // first frame (the phase leaves CONNECTING), by its removal, and by the unmount.
+  useEffect(() => {
+    if (path === null || phase !== 'CONNECTING') return undefined
+    const timer = setTimeout(failPicture, PREVIEW_FIRST_FRAME_MS)
+    return () => clearTimeout(timer)
+  }, [path, phase, failPicture])
 
   const shown: ShownPhase = starting && phase !== 'LIMIT' ? 'PAUSED' : phase
   const stateText = t(PHASE_TEXT[shown])

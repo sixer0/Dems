@@ -231,6 +231,29 @@ describe('Devices & Inputs: the live preview of a production camera', () => {
   // 2026-11-03 (bench, the principal's CAM-03): the Core refuses the stream for an unreachable
   // camera but an <img> cannot read that — three failed pictures without one frame must say the
   // unavailable sentence, keep the backoff alive, and return to LIVE when a frame finally arrives.
+  // 2026-11-04 (bench, CAM-03 moved to a dead PoE port): a SILENT host never fires `error` either —
+  // the first-frame watchdog counts the missing frame as the failure the events failed to report.
+  it('a silent picture (no load, no error, host unreachable): the watchdog fails it at 10 s and three of them say unavailable', async () => {
+    const { root } = await livePage('/devices', 'page-devices', production())
+    const tile = await within(root).findByTestId('camera-tile-VIDEO-01')
+    await waitFor(() => expect(imageOf(previews(tile)[0]!)).not.toBeNull())
+    pageTimersFake()
+    // The mount's own timer predates the fake clock, so failure one arrives as an event; from the
+    // SECOND picture on, nothing is fired at all — the watchdog alone must carry it to the sentence.
+    fireEvent.error(imageOf(previews(tile)[0]!)!) // failure 1: retry at 2 s
+    await pass(2_100)
+    expect(issued()).toHaveLength(2)
+    await pass(10_050) // silence two: the watchdog fails it, no event fired; retry at 4 s
+    expect(previews(tile)[0]).toHaveAttribute('data-state', 'CONNECTING')
+    expect(issued()).toHaveLength(2)
+    await pass(4_100)
+    expect(issued()).toHaveLength(3)
+    await pass(10_050) // silence three: the honest sentence
+    expect(previews(tile)[0]).toHaveAttribute('data-state', 'UNAVAILABLE')
+    expect(previews(tile)[0]).toHaveTextContent(PV.unavailable)
+    pageTimersReal()
+  })
+
   it('three failed pictures without a frame: the honest sentence, still retrying; a frame returns it to LIVE', async () => {
     const { root } = await livePage('/devices', 'page-devices', production())
     const tile = await within(root).findByTestId('camera-tile-VIDEO-01')

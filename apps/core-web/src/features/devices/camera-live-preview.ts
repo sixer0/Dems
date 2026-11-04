@@ -27,6 +27,14 @@ export const PREVIEW_RETRY_MAX_MS = 30_000
 export const PREVIEW_AUTH_REFUSED_RETRY_MS = 5 * 60_000
 /** After `409 PREVIEW_NOT_AVAILABLE` without a cause. */
 export const PREVIEW_NOT_AVAILABLE_RETRY_MS = 60_000
+/**
+ * 2026-11-04 (bench, CAM-03 after its PoE port moved): a host that is SILENT — not refusing — keeps
+ * an `<img>` pending for minutes (SYN retransmits, and the dev proxy holds the half-open stream), so
+ * neither `load` nor `error` ever arrives and the tile lies "Connecting…" while the Core already
+ * ended the stream. A picture with no FIRST FRAME this long after its src was set counts as the
+ * failure its events failed to report; the honest sentence and the backoff then follow as usual.
+ */
+export const PREVIEW_FIRST_FRAME_MS = 10_000
 /** `details.cause` of the 409 for a camera that refused the stored password. */
 export const PREVIEW_AUTH_REFUSED_CAUSE = 'AUTH_REFUSED'
 
