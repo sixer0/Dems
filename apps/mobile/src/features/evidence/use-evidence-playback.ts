@@ -19,7 +19,7 @@ import { useVideoPlayer, type VideoPlayer, type VideoSource } from 'expo-video';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
-import type { DemoMediaItem } from '@/components/media';
+import { demoVideoAssetOf, type DemoMediaItem } from '@/components/media';
 import { reportRuntimeIssue } from '@/runtime';
 import { clampPosition, excerptOffsetMs, needsResync } from './evidence-model';
 
@@ -85,7 +85,8 @@ export function useEvidencePlayback({
   active,
   evidenceId,
 }: EvidencePlaybackOptions): EvidencePlayback {
-  const [initialVideo] = useState<VideoSource>(() => media.video[initialCamera]);
+  // D60 (2026-11-04): four video tracks; a track the demo corpus does not ship yet plays the first loop.
+  const [initialVideo] = useState<VideoSource>(() => demoVideoAssetOf(media, 'video', initialCamera));
   const videoPlayer = useVideoPlayer(initialVideo, setupLoop(true));
   const mic1 = useVideoPlayer(media.audio['AUDIO-01'], setupLoop(initialMic !== 'AUDIO-01'));
   const mic2 = useVideoPlayer(media.audio['AUDIO-02'], setupLoop(initialMic !== 'AUDIO-02'));
@@ -162,7 +163,7 @@ export function useEvidencePlayback({
   const setCamera = useCallback(
     (next: VideoTrackId) => {
       setCameraState(next);
-      const source = media.video[next];
+      const source = demoVideoAssetOf(media, 'video', next);
       void videoPlayer
         .replaceAsync(source)
         .then(() => {

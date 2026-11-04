@@ -48,7 +48,7 @@ import { Permission, selectRole, useSim, type AuditRow, type DeviceCommand } fro
 import { derived, fontFamily, palette, radius, spacing, toneHex, typography } from '@dems/shared/tokens';
 import { KeyValueList, type KeyValueItem } from '@/components/kit';
 import { CameraPreview, useRealCaptureView } from './camera-preview';
-import { DEMO_MEDIA_LIVE } from '@/components/media/demo-media';
+import { DEMO_MEDIA_LIVE, demoVideoAssetOf } from '@/components/media/demo-media';
 import { useLayoutClass } from '@/layout';
 import { crossFadeIn, enterRise, triggerHaptic, useMotionPolicy, useMotionSettings, useMotionState } from '@/motion';
 import { PendingSpinner, busyState, reportRuntimeIssue, useCoreErrorPresenter, useCoreLink } from '@/runtime';
@@ -77,7 +77,7 @@ import { HealthChart } from './health-chart';
 import { RegisteredDeviceDetail } from './registered-device-detail';
 import { useRegisteredDevice } from './registered-device-rows';
 import { rosterDeviceName } from './registered-devices-model';
-import { CAMERA_POE_PORT_KEY, channelOf } from './sim-adapter';
+import { cameraPoePortKey, channelOf } from './sim-adapter';
 import { statedFormatText, statedTrackOf } from './stream-facts';
 import { usePendingPress } from './use-pending-press';
 import {
@@ -397,7 +397,8 @@ function CameraHero({ deviceId, status }: { deviceId: DeviceId; status: DeviceSt
   const focused = useIsFocused();
   const testSwitch = useMotionState((s) => s.linkMotion === 'off');
   const trackId = DEVICE_CAMERA[deviceId] ?? 'VIDEO-01';
-  const index = trackId === 'VIDEO-02' ? 2 : 1;
+  // D60 (2026-11-04): four camera tracks — the index is the track number (VIDEO-0n → n).
+  const index = Number(trackId.slice(-1)) as 1 | 2 | 3 | 4;
   const name = t(DEVICE_NAME_KEY[deviceId]);
   return (
     <View style={styles.feedWrap}>
@@ -409,7 +410,7 @@ function CameraHero({ deviceId, status }: { deviceId: DeviceId; status: DeviceSt
         cameraId={`CAM-${index}`}
         cameraLabel={`CAM ${index}`}
         mode={testSwitch ? 'poster' : 'live'}
-        {...(testSwitch ? { image: DEMO_MEDIA_LIVE.poster[trackId] } : {})}
+        {...(testSwitch ? { image: demoVideoAssetOf(DEMO_MEDIA_LIVE, 'poster', trackId) } : {})}
         motion={policy}
         paused={!focused}
         noSignal={status === 'FAULT'}
@@ -563,7 +564,7 @@ function CameraOverview({ deviceId, statusLabel }: { deviceId: DeviceId; statusL
           { id: 'deviceId', label: label('deviceId'), value: deviceId, mono: true },
           { id: 'model', label: label('model'), value: camera.model },
           { id: 'firmware', label: label('firmware'), value: camera.firmware, mono: true },
-          { id: 'port', label: label('port'), value: t(CAMERA_POE_PORT_KEY), testID: 'device-fact-port' },
+          { id: 'port', label: label('port'), value: t(cameraPoePortKey(deviceId)), testID: 'device-fact-port' },
           {
             id: 'format',
             label: label('format'),
@@ -654,6 +655,9 @@ function PoeOverview({ status }: { status: DeviceStatus }) {
           { id: 'ports', label: label('ports'), value: t('devices.other.poeSummary', { active: poe.active, spare: poe.spare }), testID: 'device-fact-ports' },
           { id: 'cam1', label: t('devices.ports.poeCam1'), value: poe.cam1Link ? t('devices.ports.linkUp') : t('devices.ports.linkDown') },
           { id: 'cam2', label: t('devices.ports.poeCam2'), value: t('devices.ports.spare') },
+          // D60 (2026-11-04): the two further camera ports on the switch.
+          { id: 'cam3', label: t('devices.ports.poeCam3'), value: poe.cam3Link ? t('devices.ports.linkUp') : t('devices.ports.linkDown') },
+          { id: 'cam4', label: t('devices.ports.poeCam4'), value: poe.cam4Link ? t('devices.ports.linkUp') : t('devices.ports.linkDown') },
           { id: 'power', label: label('power'), value: t('features.devices.detail.watts', { value: poe.drawW.toFixed(1) }) },
           { id: 'budget', label: label('budget'), value: t('features.devices.detail.watts', { value: poe.budgetW }) },
         ]}

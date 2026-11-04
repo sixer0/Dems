@@ -19,6 +19,7 @@
  * Never throws: a transport that throws is an `offline` answer. Pure of React.
  */
 import type { Sim } from '@dems/shared/sim';
+import type { VideoTrackId } from '@dems/shared/domain';
 import type { MobileCoreClient } from '@/runtime';
 import { classifyAnswer, factsOfEnvelope, updatedAtOf, type AnswerClass, type AnswerFacts, type SelectorCommand } from './capture-selector-model';
 
@@ -81,8 +82,8 @@ export function micRoleBody(command: Extract<SelectorCommand, { kind: 'micRole' 
  * strict `{ trackId }` - it cannot name a profile, and the Core assigns a production camera only with one of
  * its own. The other track's line and the microphone lines are not named and keep what they hold.
  */
-export function cameraProfileBody(command: { readonly trackId: 'VIDEO-01' | 'VIDEO-02'; readonly deviceId: string; readonly profile: string }): {
-  cameras: { trackId: 'VIDEO-01' | 'VIDEO-02'; deviceId: string; profile: string }[];
+export function cameraProfileBody(command: { readonly trackId: VideoTrackId; readonly deviceId: string; readonly profile: string }): {
+  cameras: { trackId: VideoTrackId; deviceId: string; profile: string }[];
 } {
   return { cameras: [{ trackId: command.trackId, deviceId: command.deviceId, profile: command.profile }] };
 }

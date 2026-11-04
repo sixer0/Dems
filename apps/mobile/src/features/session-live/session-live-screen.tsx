@@ -334,7 +334,7 @@ export function SessionLiveScreen() {
             removal happen inside it and never shift the index of the monitor's other children. */}
         <View style={styles.banner} collapsable={false} testID="monitor-banner-slot">
           <ConnectionBanner />
-          {/* Row 139 (ux §8e.2 "C, degraded"): one camera of two connected. Drawn from the Core's alert; cleared by the Core only. */}
+          {/* Row 139 (ux §8e.2 "C, degraded"): a camera the session lost, one of the four tracks (D60, 2026-11-04). Drawn from the Core's alert; cleared by the Core only. */}
           <CaptureStartNotice />
           {/* Fix F-M4 (R69-02): the "is on" line of an open local device that no tile draws (the camera of the track not on screen). */}
           <OpenLocalSourcesOffScreen />

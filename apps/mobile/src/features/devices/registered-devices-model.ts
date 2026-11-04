@@ -25,7 +25,8 @@ import { captureNoticesOf, developmentSourceOf, localDeviceStateOf, type Develop
 import { micInputName, type MicNameTranslate } from '@/features/capture-selector/mic-input-name';
 
 /** The four ids the screens' own rows already draw. */
-export const BUILT_IN_SOURCE_IDS: readonly string[] = ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02'];
+// D60 (2026-11-04): the built-in set is the seed's — four cameras and two microphones; the roster lists what the Core holds beyond these.
+export const BUILT_IN_SOURCE_IDS: readonly string[] = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02'];
 
 /** `params.reason` of the advisory alert of a microphone whose rate controller is at its limit (capture protocol 4). */
 export const MIC_RATE_AT_LIMIT = 'MIC_RATE_AT_LIMIT';

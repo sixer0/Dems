@@ -164,7 +164,7 @@ describe('Home (Dashboard) screen', () => {
     listen.mockRestore();
   });
 
-  it('phone portrait: MB 2 regions H1–H5 in order, READY copy, 2/2, 2/2, 20% used, three recent rows', async () => {
+  it('phone portrait: MB 2 regions H1–H5 in order, READY copy, 4/4, 2/2, 20% used, three recent rows', async () => {
     const test = await mount();
     expect(screen.getByTestId('screen-home')).toBeTruthy();
     expect(orderOf(['home-header', 'home-status', 'home-tiles', 'home-actions', 'home-recent'])).toEqual([
@@ -183,7 +183,7 @@ describe('Home (Dashboard) screen', () => {
     expect(textOf('home-status-subtitle')).toBe('All systems operational');
     expect(label('home-status-ring')).toBe('System status: READY');
     // H3: the dataset values (04 §9 #7, D28/Q1).
-    expect(label('home-tile-camera-value')).toBe('2/2');
+    expect(label('home-tile-camera-value')).toBe('4/4'); // D60 (2026-11-04): four video tracks
     expect(label('home-tile-microphone-value')).toBe('2/2');
     expect(label('home-tile-storage-value')).toBe('20%');
     expect(textOf('home-tile-camera-state')).toBe('Online');

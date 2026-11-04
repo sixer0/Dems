@@ -45,10 +45,12 @@ describe('phone portrait (MB 7)', () => {
     expect(within(sections[1]!).getByText('Audio Inputs')).toBeTruthy();
     expect(within(sections[2]!).getByText('Other Devices')).toBeTruthy();
 
-    // V2: both cameras (canonical 2, 04 §9 #7) with the room and an Online chip.
+    // V2: all four cameras (D60, 2026-11-04) with the room and an Online chip.
     expect(within(sections[0]!).getByText('Camera 1')).toBeTruthy();
     expect(within(sections[0]!).getByText('Camera 2')).toBeTruthy();
-    expect(within(sections[0]!).getAllByText('Interview Room 1')).toHaveLength(2);
+    expect(within(sections[0]!).getByText('Camera 3')).toBeTruthy(); // D60
+    expect(within(sections[0]!).getByText('Camera 4')).toBeTruthy(); // D60
+    expect(within(sections[0]!).getAllByText('Interview Room 1')).toHaveLength(4);
     expect(screen.getByTestId('device-status-CAM-01').props.accessibilityLabel).toBe('Online');
     // V3: canonical mic labels (04 §9 #8) and channels.
     expect(within(sections[1]!).getByText('MIC 1 – Interviewer')).toBeTruthy();
@@ -56,8 +58,8 @@ describe('phone portrait (MB 7)', () => {
     expect(within(sections[1]!).getByText('Channel 1')).toBeTruthy();
     expect(within(sections[1]!).getByText('Channel 2')).toBeTruthy();
     expect(screen.getByTestId('device-status-MIC-02').props.accessibilityLabel).toBe('Online');
-    // V4: PoE in the design book's 2-port view (D79), lamp relay Active, tablet Connected.
-    expect(within(screen.getByTestId('device-status-POE-SWITCH')).getByText('1 active · 1 spare')).toBeTruthy();
+    // V4: PoE in the design book's camera-port view (D60: four camera ports) (D79), lamp relay Active, tablet Connected.
+    expect(within(screen.getByTestId('device-status-POE-SWITCH')).getByText('3 active · 1 spare')).toBeTruthy();
     // Fix wave J (JA2-33): at rest the indicator's ONE statement is "Lamp off" (it read "Active" beside a red beacon).
     expect(screen.getByTestId('device-status-REC-INDICATOR').props.accessibilityLabel).toBe('Lamp off');
     expect(screen.getByTestId('device-status-TABLET').props.accessibilityLabel).toBe('Connected');
@@ -193,7 +195,7 @@ describe('phone portrait (MB 7)', () => {
     const h = renderDevicesApp();
     await settle();
     await openDetail(h, 'POE-SWITCH');
-    expect(within(screen.getByTestId('device-fact-ports')).getByText('1 active · 1 spare')).toBeTruthy();
+    expect(within(screen.getByTestId('device-fact-ports')).getByText('3 active · 1 spare')).toBeTruthy();
     fireEvent.press(screen.getByTestId('device-action-diagnostics'));
     await settle();
     const sheet = screen.getByTestId('device-diagnostics-sheet');
@@ -222,7 +224,7 @@ describe('faults escalate calmly (03M P7)', () => {
     const alert = screen.getByTestId('devices-attention');
     expect(within(alert).getByText('1 device needs attention')).toBeTruthy();
     expect(within(alert).getByText(/Camera 2: Fault/)).toBeTruthy();
-    expect(within(screen.getByTestId('device-status-POE-SWITCH')).getByText('1 active · 1 spare')).toBeTruthy();
+    expect(within(screen.getByTestId('device-status-POE-SWITCH')).getByText('3 active · 1 spare')).toBeTruthy();
 
     h.sim.actions.setTabletLink('OFFLINE');
     await settle();
@@ -310,7 +312,7 @@ describe('G70-04: a control whose command ended says so', () => {
   });
 
   it.each(['tabletLandscape', 'phonePortrait'] as const)('%s: microphone "Search again" - after the result is drawn the state holds `busy: false` and the label is the plain one', async (window) => {
-    renderDevicesApp({ user: 'andi.pratama', window });
+    renderDevicesApp({ user: 'rina.wijaya', window });
     await settle();
     fireEvent.press(screen.getByTestId(ACTION));
     await settle();

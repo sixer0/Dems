@@ -18,14 +18,14 @@ import { ListGroup, PressableFeedback, Separator, Typography } from 'heroui-nati
 import { Fragment, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
-import type { AudioTrackId } from '@dems/shared/domain';
+import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
 import { settle, useCoreActions } from '@dems/shared/live';
 import { isLevelNotMeasured, meterInputOfChannel, useSim, type SimState } from '@dems/shared/sim';
 import { micLinesInForce } from '@/features/capture-selector/selector-in-force';
 import { spacing } from '@dems/shared/tokens';
 import { DbfsMeter } from '@/components/composed/dbfs-meter';
 import { SectionCard, StatusChip } from '@/components/kit';
-import { DEMO_MEDIA_LIVE } from '@/components/media';
+import { DEMO_MEDIA_LIVE, demoVideoAssetOf } from '@/components/media';
 // Fix wave H (G70-03, G75-13; D196): `CameraPreview` = this feed for a simulated Core, the "No preview" tile for a Core in real capture.
 import { CameraPreview } from '@/features/devices/camera-preview';
 import { triggerHaptic, useMotionPolicy, useMotionState } from '@/motion';
@@ -37,9 +37,11 @@ import { useLiveEvaluations, useMicSignals } from './use-session-new';
 const selectCameraSignals = (s: SimState): string[] => s.cameras.map((camera) => (camera.online && camera.lens !== 'FAULT' ? 'OK' : 'NO_SIGNAL'));
 
 const CAMERAS = [
+  // D60 (2026-11-04): four video tracks exist, but this is the speak-to-test preview: one tile per
+  // MICROPHONE (still two), each showing the lens beside that mic. The selector holds all four lines.
   { cameraId: 'CAM-1', track: 'VIDEO-01', labelKey: 'common.devices.camera1', channel: 'AUDIO-01', micKey: 'common.devices.mic1' },
   { cameraId: 'CAM-2', track: 'VIDEO-02', labelKey: 'common.devices.camera2', channel: 'AUDIO-02', micKey: 'common.devices.mic2' },
-] as const satisfies readonly { cameraId: string; track: 'VIDEO-01' | 'VIDEO-02'; labelKey: string; channel: AudioTrackId; micKey: string }[];
+] as const satisfies readonly { cameraId: string; track: VideoTrackId; labelKey: string; channel: AudioTrackId; micKey: string }[];
 
 export interface DevicePreviewsProps {
   /** `row`: the two tiles side by side (phone, tablet portrait). `column`: stacked (device column). */
@@ -66,7 +68,7 @@ export function DevicePreviews({ layout, live, paused, testID = 'session-new-pre
           <View key={camera.cameraId} style={layout === 'row' ? styles.tileRow : styles.tileColumn}>
             <PreviewTile
               cameraId={camera.cameraId}
-              poster={testSwitch || (live === 'one' && index !== liveIndex) ? DEMO_MEDIA_LIVE.poster[camera.track] : null}
+              poster={testSwitch || (live === 'one' && index !== liveIndex) ? demoVideoAssetOf(DEMO_MEDIA_LIVE, 'poster', camera.track) : null}
               onMakeLive={
                 live === 'one' && !testSwitch && index !== liveIndex
                   ? () => {

@@ -84,12 +84,18 @@ describe('cameras', () => {
   it('reads the camera number from the track id', () => {
     expect(cameraIndexOf('VIDEO-01')).toBe(1);
     expect(cameraIndexOf('VIDEO-02')).toBe(2);
+    // D60 (2026-11-04): four tracks.
+    expect(cameraIndexOf('VIDEO-03')).toBe(3);
+    expect(cameraIndexOf('VIDEO-04')).toBe(4);
   });
 
   it('switches to the other camera of the pair', () => {
     expect(otherCameraId('VIDEO-01', ['VIDEO-01', 'VIDEO-02'])).toBe('VIDEO-02');
     expect(otherCameraId('VIDEO-02', ['VIDEO-01', 'VIDEO-02'])).toBe('VIDEO-01');
     expect(otherCameraId('VIDEO-01', ['VIDEO-01'])).toBe('VIDEO-01');
+    // D60 (2026-11-04): four lines cycle; the last returns to the first.
+    expect(otherCameraId('VIDEO-02', ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'])).toBe('VIDEO-03');
+    expect(otherCameraId('VIDEO-04', ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'])).toBe('VIDEO-01');
   });
 });
 

@@ -14,7 +14,7 @@
  *
  * OD-12: nothing here names a frame or a preview; a row is text and an icon state only.
  */
-import { TrackId, type MicRole, type VideoTrackId } from '@dems/shared/domain';
+import { VIDEO_TRACK_IDS, type MicRole, type VideoTrackId } from '@dems/shared/domain';
 import { CaptureDeviceKind, CaptureStreamState, type CaptureConfigSlice, type CaptureDeviceStatus, type CaptureDevicesSlice } from '@dems/shared/sim';
 import { storedProfilesOf } from './camera-profile';
 
@@ -94,7 +94,8 @@ function sourceOf(devices: readonly CaptureDeviceStatus[], deviceId: string): { 
   return { sourceClass: device?.sourceClass ?? null, adapter: device?.adapter ?? null };
 }
 
-const TRACK_ORDER: readonly VideoTrackId[] = [TrackId.VIDEO_01, TrackId.VIDEO_02];
+// D60 (2026-11-04): four simultaneous video tracks — the selector holds a line for each.
+const TRACK_ORDER: readonly VideoTrackId[] = VIDEO_TRACK_IDS;
 
 const ROLE_ORDER: readonly MicRole[] = ['PRIMARY', 'STANDBY'];
 

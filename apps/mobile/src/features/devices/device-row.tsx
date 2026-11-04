@@ -19,7 +19,7 @@ import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanima
 import { derived, fontFamily, palette, radius, spacing, toneHex, typography } from '@dems/shared/tokens';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { withAlpha } from '@/components/media';
-import { DEMO_MEDIA_LIVE } from '@/components/media/demo-media';
+import { DEMO_MEDIA_LIVE, demoVideoAssetOf } from '@/components/media/demo-media';
 import { DevelopmentSourceBadge } from '@/features/capture-selector/development-source-badge';
 import { useLayoutClass } from '@/layout';
 import { animateBreath, animateFade, useAmbientLoop, useMotionSettings, useMotionState } from '@/motion';
@@ -67,7 +67,8 @@ function CameraRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
   // Fix wave M (G70d-02): the one wording rule of a capture source (never "Online" beside "Not checked").
   const row = useSourceRow(deviceId, status);
   const name = row.name;
-  const poster = DEMO_MEDIA_LIVE.poster[DEVICE_CAMERA[deviceId] ?? 'VIDEO-01'];
+  // D60 (2026-11-04): four camera tracks; a track the demo corpus does not ship yet shows the first loop.
+  const poster = demoVideoAssetOf(DEMO_MEDIA_LIVE, 'poster', DEVICE_CAMERA[deviceId] ?? 'VIDEO-01');
   return (
     <RowFrame
       deviceId={deviceId}
@@ -94,7 +95,7 @@ function MicRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
   const name = row.name;
   // The mockup's mic thumbnails are room photos: MIC 1 sits on the interviewer's side (lens 1),
   // MIC 2 on the subject's side (lens 2). A mic badge marks them as inputs, not cameras.
-  const poster = DEMO_MEDIA_LIVE.poster[deviceId === 'MIC-02' ? 'VIDEO-02' : 'VIDEO-01'];
+  const poster = demoVideoAssetOf(DEMO_MEDIA_LIVE, 'poster', deviceId === 'MIC-02' ? 'VIDEO-02' : 'VIDEO-01');
   return (
     <RowFrame
       deviceId={deviceId}

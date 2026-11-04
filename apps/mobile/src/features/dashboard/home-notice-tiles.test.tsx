@@ -4,7 +4,7 @@
 // | Finding | Seen at the re-check | Held here |
 // |---|---|---|
 // | G75d-01 (ruling D228 (2)) | With the UNSEALABLE alert active, Home read "READY / SECURE • HEALTHY • OPERATIONAL / All systems operational" with a "1" on the bell | READY with an open unsealable notice is stated as an OPEN NOTICE that does not block recording: header chip, ring, title, the sentence of ITS session, who closes it. The bell offers the supervisor "Acknowledge and close" (operation 70) also for a notice somebody already acknowledged; the resolved alert brings plain READY back |
-// | G70c-02 (mobile half) | Phone Home tiles "Cameras: 2 of 2 online. Online", "Microphones: 2 of 2 ready. Online"; tablet camera tiles "READY" | A Core in real capture: the tiles say what the Core REPORTED for the sources on the lines in force. Controller ruling: at rest, without a checked fact of the Core, "Not checked"; "n not reachable" for a negative fact; "Reachable" only with a checked fact; "Live" only while a session records |
+// | G70c-02 (mobile half) | Phone Home tiles "Cameras: 4 of 4 online. Online" (D60: four tracks), "Microphones: 2 of 2 ready. Online"; tablet camera tiles "READY" | A Core in real capture: the tiles say what the Core REPORTED for the sources on the lines in force. Controller ruling: at rest, without a checked fact of the Core, "Not checked"; "n not reachable" for a negative fact; "Reachable" only with a checked fact; "Live" only while a session records |
 //
 // The Core's payloads are the contract's OWN examples (`contract_wave_l.md` section 1), imported by name.
 import 'react-native-gesture-handler/jestSetup';
@@ -162,7 +162,7 @@ describe('G70c-02 on Home: a Core in real capture says what it reported, never "
   it('phone tiles at rest: "Not checked" (the Core states no checked fact of the sources) - not "Online", not "Reachable"', async () => {
     await home('phonePortrait', []);
     expect(textOf('home-tile-camera-state')).toBe('Not checked');
-    expect(label('home-tile-camera')).toBe('Cameras: 2 of 2. Not checked');
+    expect(label('home-tile-camera')).toBe('Cameras: 4 of 4. Not checked');
     expect(textOf('home-tile-microphone-state')).toBe('Primary not checked');
     expect(label('home-tile-microphone')).toBe('Microphones: 2 of 2. Primary not checked');
   });
@@ -170,7 +170,7 @@ describe('G70c-02 on Home: a Core in real capture says what it reported, never "
   it('phone tiles: a camera the Core reports gone is "1 not reachable"', async () => {
     await home('phonePortrait', [], { ...REAL_CAPTURE, 'CAM-02': { ...FAKE, online: false } });
     expect(textOf('home-tile-camera-state')).toBe('1 not reachable');
-    expect(label('home-tile-camera')).toBe('Cameras: 1 of 2. 1 not reachable');
+    expect(label('home-tile-camera')).toBe('Cameras: 3 of 4. 1 not reachable');
   });
 
   // Fix wave J (JT-01 (b); truth rule 3c): "SYSTEM READY / All systems operational" stood beside a camera tile "Not reachable".
@@ -201,7 +201,7 @@ describe('G70c-02 on Home: a Core in real capture says what it reported, never "
   it('CONTROL - a Core in SIMULATED capture keeps "Online" and "n of m online"', async () => {
     await home('phonePortrait', [], {});
     expect(textOf('home-tile-camera-state')).toBe('Online');
-    expect(label('home-tile-camera')).toBe('Cameras: 2 of 2 online. Online');
+    expect(label('home-tile-camera')).toBe('Cameras: 4 of 4 online. Online');
   });
 
   it('the pure rule: "Live" only while a session records; the microphone tile says "Reachable" where it said "Online"', () => {
@@ -246,8 +246,8 @@ describe('G75e-01: the phone tiles while a session records - never an empty box'
     const parts = tileParts();
     expect(parts.name).not.toBeNull();
     expect(parts.state).toBe('Live');
-    expect(parts.value).toBe('2/2');
-    expect(label('home-tile-camera')).toBe('Cameras: 2 of 2. Live');
+    expect(parts.value).toBe('4/4');
+    expect(label('home-tile-camera')).toBe('Cameras: 4 of 4. Live');
     expect(screen.getByTestId('home-tile-camera')).not.toBe(before);
   });
 
@@ -265,7 +265,7 @@ describe('G75e-01: the phone tiles while a session records - never an empty box'
     const parts = tileParts();
     expect(parts.name).not.toBeNull();
     expect(parts.state).toBe('Live');
-    expect(parts.value).toBe('2/2');
+    expect(parts.value).toBe('4/4');
     expect(textOf('home-tile-microphone-state')).toBe('Reachable');
   });
 

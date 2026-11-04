@@ -171,7 +171,8 @@ export function useMonitorStrip(): StripChip[] {
   const hostClock = useSim((s) => isHostClockTime(s.time));
   return statusStrip({
     cameras: cameras.map((camera, i) => ({
-      index: (i === 0 ? 1 : 2) as 1 | 2,
+      // D60 (2026-11-04): one strip chip per video track — the line's number, not a pair position.
+      index: (i + 1) as 1 | 2 | 3 | 4,
       online: camera.online,
       recState: camera.recState,
       notConnected: missing !== '' && missing.split(',').includes(camera.deviceId),

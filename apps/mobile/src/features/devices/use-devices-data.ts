@@ -117,7 +117,7 @@ export function useMic(deviceId: DeviceId): MicStatus | null {
   return useSim((s) => s.mics.find((mic) => mic.deviceId === deviceId) ?? null);
 }
 
-/** PoE in the design book's 2-port view (SIM-GAP-M84-1); a flat record of primitives. */
+/** PoE in the design book's camera-port view (SIM-GAP-M84-1; D60, 2026-11-04: four camera tracks); a flat record of primitives. */
 export function useBookPoe(): BookPoe {
   return useSim((s) => bookPoe(s));
 }

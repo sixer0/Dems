@@ -5,7 +5,8 @@
  */
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
 
-export const DEVICE_IDS = ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'REC-INDICATOR', 'TABLET'] as const;
+// D60 (2026-11-04): the simulator seeds four cameras (CAM-01..CAM-04), one track each.
+export const DEVICE_IDS = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'POE-SWITCH', 'REC-INDICATOR', 'TABLET'] as const;
 export type DeviceId = (typeof DEVICE_IDS)[number];
 
 export type DeviceKind = 'camera' | 'microphone' | 'poe' | 'relay' | 'tablet';
@@ -13,6 +14,8 @@ export type DeviceKind = 'camera' | 'microphone' | 'poe' | 'relay' | 'tablet';
 export const DEVICE_KIND: Readonly<Record<DeviceId, DeviceKind>> = {
   'CAM-01': 'camera',
   'CAM-02': 'camera',
+  'CAM-03': 'camera', // D60 (2026-11-04)
+  'CAM-04': 'camera', // D60
   'MIC-01': 'microphone',
   'MIC-02': 'microphone',
   'POE-SWITCH': 'poe',
@@ -20,7 +23,8 @@ export const DEVICE_KIND: Readonly<Record<DeviceId, DeviceKind>> = {
   TABLET: 'tablet',
 };
 
-export const DEVICE_CAMERA: Readonly<Partial<Record<DeviceId, VideoTrackId>>> = { 'CAM-01': 'VIDEO-01', 'CAM-02': 'VIDEO-02' };
+// D60 (2026-11-04): four camera tracks — CAM-03 and CAM-04 join the pair.
+export const DEVICE_CAMERA: Readonly<Partial<Record<DeviceId, VideoTrackId>>> = { 'CAM-01': 'VIDEO-01', 'CAM-02': 'VIDEO-02', 'CAM-03': 'VIDEO-03', 'CAM-04': 'VIDEO-04' };
 export const DEVICE_MIC: Readonly<Partial<Record<DeviceId, AudioTrackId>>> = { 'MIC-01': 'AUDIO-01', 'MIC-02': 'AUDIO-02' };
 
 export function isDeviceId(value: string | null | undefined): value is DeviceId {

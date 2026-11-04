@@ -19,7 +19,8 @@ beforeEach(() => resetMissingKeys());
 // MA-21: every string the card renders comes from an i18n key.
 afterEach(() => expect(getMissingKeys()).toEqual([]));
 
-const EDIT_IDS = ['VIDEO-01', 'VIDEO-02', 'MIC-01', 'MIC-02'] as const;
+// D60 (2026-11-04): the selector holds four camera lines and two microphone lines - six edit controls.
+const EDIT_IDS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02'] as const;
 const editDisabled = (id: string) => screen.getByTestId(`capture-selector-edit-${id}`).props.accessibilityState?.disabled === true;
 const configAudit = (h: DevicesHarness) => h.sim.store.getState().audit.rows.filter((row) => row.type === 'CAPTURE_CONFIG_CHANGED');
 const glowOpacity = (testID: string) => {
@@ -29,7 +30,7 @@ const glowOpacity = (testID: string) => {
 
 describe('rows (ux §2.2 step 2)', () => {
   it('shows two camera rows and two microphone rows from the replicated slices, status as text, no preview', async () => {
-    renderDevicesApp({ user: 'andi.pratama' });
+    renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
     const card = screen.getByTestId('capture-selector');
     expect(within(card).getByText('Capture Sources')).toBeTruthy();
@@ -47,7 +48,7 @@ describe('rows (ux §2.2 step 2)', () => {
   });
 
   it('E-15: every row keeps a 1 dp border and an always-mounted glow that React hides while nothing is open', async () => {
-    renderDevicesApp({ user: 'andi.pratama' });
+    renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
     for (const key of ['VIDEO-01', 'VIDEO-02', 'MIC-01', 'MIC-02']) {
       expect(glowOpacity(`capture-selector-glow-${key}`)).toBe(selectionGlowOpacity(false));
@@ -58,8 +59,10 @@ describe('rows (ux §2.2 step 2)', () => {
 });
 
 describe('the gate of G1-G3 (ux §2.4, §11; M4-PC-1)', () => {
-  it('SUPERVISOR and TECHNICIAN, idle: every Change control is enabled and no gate line is shown', async () => {
-    for (const user of ['andi.pratama', 'rina.wijaya'] as const) {
+  // RB revocation (2026-10-29, carried by checkpoint f85e9c01; D60 sweep 2026-11-04): CAPTURE_CONFIG —
+  // and every Change control — is the TECHNICIAN's alone; the supervisor keeps the read-only duty.
+  it('TECHNICIAN, idle: every Change control is enabled and no gate line is shown', async () => {
+    for (const user of ['rina.wijaya'] as const) {
       const h = renderDevicesApp({ user });
       await settle();
       for (const id of EDIT_IDS) expect(editDisabled(id)).toBe(false);
@@ -83,7 +86,7 @@ describe('the gate of G1-G3 (ux §2.4, §11; M4-PC-1)', () => {
   });
 
   it('an unknown role reads "Checking your permissions…": disabled, never the role sentence, never enabled', async () => {
-    const h = renderDevicesApp({ user: 'andi.pratama' });
+    const h = renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
     act(() => h.sim.actions.signOut('USER'));
     await settle();
@@ -97,7 +100,7 @@ describe('the gate of G1-G3 (ux §2.4, §11; M4-PC-1)', () => {
   });
 
   it('OD-10: while a session is open the selector is locked with the sentence, for a role that may edit', async () => {
-    renderDevicesApp({ user: 'andi.pratama', recording: true });
+    renderDevicesApp({ user: 'rina.wijaya', recording: true });
     await settle();
     expect(screen.getByTestId('capture-selector-locked')).toBeTruthy();
     expect(screen.getByTestId('capture-selector-gate')).toHaveTextContent('The capture configuration cannot be changed while a session is open.');
@@ -107,7 +110,7 @@ describe('the gate of G1-G3 (ux §2.4, §11; M4-PC-1)', () => {
 
 describe('editing (ux §2.2 steps 4-5; R-1 AC-1, AC-2)', () => {
   it('primary microphone: the sheet lists both inputs, Save is disabled until the choice changes, then one audit row and the roles swap', async () => {
-    const h = renderDevicesApp({ user: 'andi.pratama' });
+    const h = renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
     fireEvent.press(screen.getByTestId('capture-selector-edit-MIC-01'));
     await settle();
@@ -175,7 +178,7 @@ describe('editing (ux §2.2 steps 4-5; R-1 AC-1, AC-2)', () => {
   });
 
   it('§2.2 step 6: a session that opens while the sheet is open — Save is refused as locked, drawn in place, NO audit row', async () => {
-    const h = renderDevicesApp({ user: 'andi.pratama' });
+    const h = renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
     fireEvent.press(screen.getByTestId('capture-selector-edit-MIC-01'));
     await settle();
@@ -209,7 +212,7 @@ describe('fix wave J - the picker and the selector rows', () => {
 
   it.each(['phonePortrait', 'tabletLandscape'] as const)('JA2-24 / JA2-16 on %s: the camera of the other track says "In use by …" BEFORE it is chosen; the radio rows expose their checked state; the sheet is modal; Android Back closes it and stays on Devices', async (window) => {
     const pressBack = captureBack();
-    renderDevicesApp({ user: 'andi.pratama', window });
+    renderDevicesApp({ user: 'rina.wijaya', window });
     await settle();
     // Nothing is open: the selector consumes no Back.
     expect(pressBack()).toBe(false);
@@ -235,7 +238,7 @@ describe('fix wave J - the picker and the selector rows', () => {
   });
 
   it('JT-13 / JT-12: a selector row does what its "Change" control does (it is no dead button); for a role that may not change it the row is DISABLED with the role sentence; the track name may take two lines', async () => {
-    const h = renderDevicesApp({ user: 'andi.pratama' });
+    const h = renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
     const row = screen.getByTestId('capture-selector-row-VIDEO-02');
     expect(row.props.accessibilityState).toMatchObject({ disabled: false });
@@ -258,7 +261,7 @@ describe('fix wave J - the picker and the selector rows', () => {
   });
 
   it('JA2-33 / JA2-29: one wording of the picture - "This build shows no live picture of the cameras."; no specification language', async () => {
-    renderDevicesApp({ user: 'andi.pratama' });
+    renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
     expect(screen.getByTestId('capture-selector-no-preview')).toHaveTextContent('Status only. This build shows no live picture of the cameras.');
     expect(screen.queryByText(/this phase|Searching connects to nothing|\(SYS-|§/)).toBeNull();
@@ -287,7 +290,7 @@ describe('task 4 row 32: one row per slot - an empty slot is drawn "Not assigned
   const rowCount = () => screen.getAllByTestId(/^capture-selector-row-(?!wrap-)/).length;
 
   it.each(['phonePortrait', 'tabletLandscape'] as const)('%s, 0 lines of each kind: four rows, each "Not assigned" with "Assign"; not the empty state', async (window) => {
-    const h = renderDevicesApp({ user: 'andi.pratama', window });
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
     await settle();
     keepLines(h, [], []);
     await settle();
@@ -306,7 +309,7 @@ describe('task 4 row 32: one row per slot - an empty slot is drawn "Not assigned
   });
 
   it('1 line of each kind: four rows - the held slots as before, the two empty ones with their offer', async () => {
-    const h = renderDevicesApp({ user: 'andi.pratama' });
+    const h = renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
     keepLines(h, ['VIDEO-01'], ['STANDBY']);
     await settle();
@@ -323,7 +326,7 @@ describe('task 4 row 32: one row per slot - an empty slot is drawn "Not assigned
   });
 
   it('2 lines of each kind (the seeded selector): four rows, no "Assign", no "Not assigned" - as before', async () => {
-    renderDevicesApp({ user: 'andi.pratama' });
+    renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
     expect(rowCount()).toBe(4);
     for (const id of EDIT_IDS) expect(within(screen.getByTestId(`capture-selector-edit-${id}`)).getByText('Change')).toBeTruthy();
@@ -333,7 +336,7 @@ describe('task 4 row 32: one row per slot - an empty slot is drawn "Not assigned
   });
 
   it('the offer opens the sheet of the slot with nothing chosen; a choice builds a command (Save is enabled)', async () => {
-    const h = renderDevicesApp({ user: 'andi.pratama' });
+    const h = renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
     keepLines(h, [], []);
     await settle();

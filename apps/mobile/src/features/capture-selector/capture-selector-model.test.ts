@@ -42,7 +42,7 @@ function signedIn(username: string) {
 const configAudit = (test: ReturnType<typeof createTestSim>) => test.sim.store.getState().audit.rows.filter((row) => row.type === 'CAPTURE_CONFIG_CHANGED');
 
 describe('rows and options', () => {
-  it('camera rows are VIDEO-01 then VIDEO-02; microphone rows are PRIMARY first', () => {
+  it('camera rows are VIDEO-01 to VIDEO-04 (D60, 2026-11-04); microphone rows are PRIMARY first', () => {
     const swapped = {
       cameras: [...DEFAULT_CAPTURE_CONFIG.cameras].reverse(),
       mics: DEFAULT_CAPTURE_CONFIG.mics.map((mic) => ({ ...mic, role: mic.role === 'PRIMARY' ? ('STANDBY' as const) : ('PRIMARY' as const) })),
@@ -50,6 +50,8 @@ describe('rows and options', () => {
     expect(cameraRows(swapped, DEFAULT_CAPTURE_DEVICES).map((row) => [row.trackId, row.deviceId, row.model])).toEqual([
       ['VIDEO-01', 'CAM-01', 'Dual-lens IP camera DL-2'],
       ['VIDEO-02', 'CAM-02', 'Dual-lens IP camera DL-2'],
+      ['VIDEO-03', 'CAM-03', 'IP camera IP-3'], // D60 (2026-11-04): four video tracks
+      ['VIDEO-04', 'CAM-04', 'IP camera IP-4'], // D60
     ]);
     expect(micRows(swapped, DEFAULT_CAPTURE_DEVICES).map((row) => [row.inputId, row.role])).toEqual([
       ['MIC-02', 'PRIMARY'],
@@ -59,8 +61,9 @@ describe('rows and options', () => {
 
   it('PE-127-07: an adopted CAM-NN is an option; a microphone, the PoE switch and an unregistered id are not', () => {
     const options = cameraOptions(DEFAULT_CAPTURE_CONFIG, withAdopted);
-    expect(options.map((option) => option.deviceId)).toEqual(['CAM-01', 'CAM-02', 'CAM-07']);
-    expect(options.map((option) => option.assignedTo)).toEqual(['VIDEO-01', 'VIDEO-02', null]);
+    // D60 (2026-11-04): four built-in cameras are offered, then the adopted one.
+    expect(options.map((option) => option.deviceId)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'CAM-07']);
+    expect(options.map((option) => option.assignedTo)).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', null]);
     // Negative control: without the registry row the camera is not offered.
     expect(cameraOptions(DEFAULT_CAPTURE_CONFIG, DEFAULT_CAPTURE_DEVICES).map((option) => option.deviceId)).not.toContain('CAM-07');
   });
@@ -75,7 +78,7 @@ describe('rows and options', () => {
 });
 
 describe('task 4 row 32: one row per SLOT, and a command for an empty one (sites M1, M2; decision C18 (3))', () => {
-  const [cam1, cam2] = DEFAULT_CAPTURE_CONFIG.cameras as [(typeof DEFAULT_CAPTURE_CONFIG.cameras)[number], (typeof DEFAULT_CAPTURE_CONFIG.cameras)[number]];
+  const [cam1, cam2, cam3, cam4] = DEFAULT_CAPTURE_CONFIG.cameras as [(typeof DEFAULT_CAPTURE_CONFIG.cameras)[number], (typeof DEFAULT_CAPTURE_CONFIG.cameras)[number], (typeof DEFAULT_CAPTURE_CONFIG.cameras)[number], (typeof DEFAULT_CAPTURE_CONFIG.cameras)[number]];
   const primaryLine = DEFAULT_CAPTURE_CONFIG.mics.find((mic) => mic.role === 'PRIMARY')!;
   const standbyLine = DEFAULT_CAPTURE_CONFIG.mics.find((mic) => mic.role === 'STANDBY')!;
 
@@ -87,19 +90,20 @@ describe('task 4 row 32: one row per SLOT, and a command for an empty one (sites
     readonly micInputs: (string | null)[];
   }
   const SLOT_CASES: SlotCase[] = [
-    { name: '0 camera lines, 0 microphone lines', cameras: [], mics: [], cameraDevices: [null, null], micInputs: [null, null] },
-    { name: '1 camera line (VIDEO-01), 1 microphone line (PRIMARY)', cameras: [cam1], mics: [primaryLine], cameraDevices: ['CAM-01', null], micInputs: ['MIC-01', null] },
-    { name: '1 camera line (VIDEO-02), 1 microphone line (STANDBY)', cameras: [cam2], mics: [standbyLine], cameraDevices: [null, 'CAM-02'], micInputs: [null, 'MIC-02'] },
-    { name: '2 camera lines, 2 microphone lines (the seeded selector)', cameras: [cam1, cam2], mics: [primaryLine, standbyLine], cameraDevices: ['CAM-01', 'CAM-02'], micInputs: ['MIC-01', 'MIC-02'] },
-    { name: '2 camera lines, 0 microphone lines', cameras: [cam2, cam1], mics: [], cameraDevices: ['CAM-01', 'CAM-02'], micInputs: [null, null] },
-    { name: '0 camera lines, 2 microphone lines', cameras: [], mics: [standbyLine, primaryLine], cameraDevices: [null, null], micInputs: ['MIC-01', 'MIC-02'] },
+    // D60 (2026-11-04): four camera slots and two microphone slots - six rows, the camera column reads four deep.
+    { name: '0 camera lines, 0 microphone lines', cameras: [], mics: [], cameraDevices: [null, null, null, null], micInputs: [null, null] },
+    { name: '1 camera line (VIDEO-01), 1 microphone line (PRIMARY)', cameras: [cam1], mics: [primaryLine], cameraDevices: ['CAM-01', null, null, null], micInputs: ['MIC-01', null] },
+    { name: '1 camera line (VIDEO-02), 1 microphone line (STANDBY)', cameras: [cam2], mics: [standbyLine], cameraDevices: [null, 'CAM-02', null, null], micInputs: [null, 'MIC-02'] },
+    { name: '4 camera lines, 2 microphone lines (the seeded selector)', cameras: [cam1, cam2, cam3, cam4], mics: [primaryLine, standbyLine], cameraDevices: ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04'], micInputs: ['MIC-01', 'MIC-02'] },
+    { name: '2 camera lines, 0 microphone lines', cameras: [cam2, cam1], mics: [], cameraDevices: ['CAM-01', 'CAM-02', null, null], micInputs: [null, null] },
+    { name: '0 camera lines, 2 microphone lines', cameras: [], mics: [standbyLine, primaryLine], cameraDevices: [null, null, null, null], micInputs: ['MIC-01', 'MIC-02'] },
   ];
-  it.each(SLOT_CASES)('$name: four rows, in the order of the slots', ({ cameras, mics, cameraDevices, micInputs }) => {
+  it.each(SLOT_CASES)('$name: six rows, in the order of the slots', ({ cameras, mics, cameraDevices, micInputs }) => {
     const cameraResult = cameraRows({ cameras }, DEFAULT_CAPTURE_DEVICES);
     const micResult = micRows({ mics }, DEFAULT_CAPTURE_DEVICES);
-    expect(cameraResult).toHaveLength(2);
+    expect(cameraResult).toHaveLength(4);
     expect(micResult).toHaveLength(2);
-    expect(cameraResult.map((row) => row.trackId)).toEqual(['VIDEO-01', 'VIDEO-02']);
+    expect(cameraResult.map((row) => row.trackId)).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04']);
     expect(micResult.map((row) => row.role)).toEqual(['PRIMARY', 'STANDBY']);
     expect(cameraResult.map((row) => row.deviceId)).toEqual(cameraDevices);
     expect(micResult.map((row) => row.inputId)).toEqual(micInputs);

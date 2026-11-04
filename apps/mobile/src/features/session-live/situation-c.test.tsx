@@ -6,7 +6,7 @@
 // store as the Core would send it.
 //
 // What is held: before the first durable fragment nothing reads as recording (no REC, no timer, no
-// "VIDEO n REC") and End Session is disabled WITH its reason; one camera of two is a warning naming
+// "VIDEO n REC") and End Session is disabled WITH its reason; a lost camera (D60, 2026-11-04: one of four) is a warning naming
 // the missing camera, whose rows read offline / NO SIGNAL while the timer runs; a failed start is
 // read from the session (`FAULT` + `captureDurable: false`) and says "Nothing was recorded." in full.
 //
@@ -199,7 +199,7 @@ describe('connecting cameras: between the accepted start and the first durable f
   });
 });
 
-describe('one camera of two: a degraded session (WARNING)', () => {
+describe('situation C — a degraded session: one camera fewer than the tracks (D60, 2026-11-04)', () => {
   it('a banner names the missing camera by label and id; its strip row reads offline; the recording runs; cleared by the Core only', async () => {
     const h = await open();
     expect(screen.queryByTestId('monitor-camera-not-connected')).toBeNull();
@@ -207,7 +207,8 @@ describe('one camera of two: a degraded session (WARNING)', () => {
 
     const banner = within(screen.getByTestId('monitor-camera-not-connected-CAM-02'));
     expect(banner.getByText('Camera 2 (CAM-02) is not connected')).toBeTruthy();
-    expect(banner.getByText('The session is recording one camera only. It did not connect in time.')).toBeTruthy();
+    // D60 (2026-11-04): the capture notice was reworded — the loss costs one camera, whatever the total.
+    expect(banner.getByText('The session is recording with one camera fewer. It did not connect in time.')).toBeTruthy();
     const root = within(screen.getByTestId('screen-session-live'));
     expect(root.getByText('VIDEO 1 REC')).toBeTruthy();
     expect(root.queryByText('VIDEO 2 REC')).toBeNull();

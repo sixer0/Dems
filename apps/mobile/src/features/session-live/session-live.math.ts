@@ -90,15 +90,17 @@ export { SECOND_TICK_MARGIN_MS, SECOND_TICK_MIN_MS, elapsedSecondsAt, msToNextSe
 // Camera identity
 // ---------------------------------------------------------------------------------------------
 
-/** `VIDEO-01` → 1, `VIDEO-02` → 2 (the CameraFeed framing reads the same trailing digit). */
-export function cameraIndexOf(cameraId: string): 1 | 2 {
-  return /2\s*$/.test(cameraId) ? 2 : 1;
+/** `VIDEO-01` → 1 … `VIDEO-04` → 4 (D60, 2026-11-04: four tracks; the CameraFeed framing reads the same trailing digit). */
+export function cameraIndexOf(cameraId: string): 1 | 2 | 3 | 4 {
+  const digit = /([1-4])\s*$/.exec(cameraId)?.[1];
+  return digit === undefined ? 1 : (Number(digit) as 1 | 2 | 3 | 4);
 }
 
-/** The other camera of the pair (phone tap-to-switch). */
+/** The camera tap-to-switch shows next: D60 (2026-11-04) cycles the selector's four lines; with two it is still "the other one". */
 export function otherCameraId(cameraId: string, cameraIds: readonly string[]): string {
-  const other = cameraIds.find((id) => id !== cameraId);
-  return other ?? cameraId;
+  if (cameraIds.length <= 1) return cameraId;
+  const at = cameraIds.indexOf(cameraId);
+  return cameraIds[(at + 1) % cameraIds.length] ?? cameraId;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -110,7 +112,8 @@ export type StorageStateName = 'READY' | 'LOW' | 'FULL';
 export type TimeSourceName = 'GNSS' | 'NTP' | 'RTC';
 
 export interface StripTrackInput {
-  index: 1 | 2;
+  // D60 (2026-11-04): the strip carries one chip per video track — up to four.
+  index: 1 | 2 | 3 | 4;
   online: boolean;
   recState: TrackRecState | null;
   /** Row 139: the Core named this camera as not connected at the session start. */
@@ -133,7 +136,7 @@ export interface StripInput {
 
 /** One chip of the strip; `value` is a key into the shared enum labels (the screen translates it). */
 export type StripChip =
-  | { kind: 'video'; id: string; index: 1 | 2; value: TrackRecState | 'OFFLINE' | 'CONNECTING'; tone: StatusTone }
+  | { kind: 'video'; id: string; index: 1 | 2 | 3 | 4; value: TrackRecState | 'OFFLINE' | 'CONNECTING'; tone: StatusTone }
   | { kind: 'storage'; id: 'storage'; value: StorageStateName; tone: StatusTone }
   | { kind: 'time'; id: 'time'; value: TimeSourceName; locked: boolean; host: boolean; tone: StatusTone };
 
@@ -142,7 +145,7 @@ const STORAGE_TONE: Record<StorageStateName, StatusTone> = { READY: 'success', L
 const TIME_TONE: Record<TimeSourceName, StatusTone> = { GNSS: 'success', NTP: 'info', RTC: 'warning' };
 
 /**
- * The strip in book order: VIDEO 1, VIDEO 2, STORAGE, TIME (research 01 §5.4; the MIC rows are the
+ * The strip in book order: VIDEO 1 … VIDEO 4 (D60, 2026-11-04: four tracks), STORAGE, TIME (research 01 §5.4; the MIC rows are the
  * meter cards). The track's own state wins (REC, DEGRADED, LOST: the simulator derives LOST from a
  * camera loss); without one, an online camera reads REC (the monitor opens only during RECORDING)
  * and an offline one OFFLINE. An unlocked clock keeps its source and turns amber.

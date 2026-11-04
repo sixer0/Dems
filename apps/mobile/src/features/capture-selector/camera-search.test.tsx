@@ -69,9 +69,11 @@ const action = () => screen.getByTestId('camera-search-action');
 const disabled = (testID: string) => screen.getByTestId(testID).props.accessibilityState?.disabled === true;
 const searchAudit = (h: DevicesHarness) => h.sim.store.getState().audit.rows.filter((row) => row.type === 'CAPTURE_DISCOVERY_SEARCHED');
 
-/** Opens Devices AFTER the watcher is in place, so the entry read is counted too. */
+/** Opens Devices AFTER the watcher is in place, so the entry read is counted too.
+ *  RB (revocation of 2026-10-29, carried by checkpoint f85e9c01; D60 sweep 2026-11-04): CAPTURE_CONFIG
+ *  is the TECHNICIAN's alone now - the search-gated tests sign in as rina, not the supervisor. */
 async function openDevices(options: Parameters<typeof renderDevicesApp>[0] = {}) {
-  const h = renderDevicesApp({ user: 'andi.pratama', ...options, initialUrl: '/' });
+  const h = renderDevicesApp({ user: 'rina.wijaya', ...options, initialUrl: '/' });
   const requests = watch(h);
   h.navigate('/devices');
   await settle();
@@ -471,7 +473,8 @@ const respond = (status: number, body: unknown): SimResponse => ({ status, heade
 const action = () => screen.getByTestId('camera-search-action');
 
 async function openDevicesOnPhone() {
-  const h = renderDevicesApp({ user: 'andi.pratama', window: PHONE, initialUrl: '/' });
+  // RB revocation (2026-10-29; D60 sweep 2026-11-04): CAPTURE_CONFIG is the technician's alone.
+  const h = renderDevicesApp({ user: 'rina.wijaya', window: PHONE, initialUrl: '/' });
   const requests = watch(h);
   h.navigate('/devices');
   await settle();

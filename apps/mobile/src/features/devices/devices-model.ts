@@ -17,7 +17,8 @@ export { DEVICE_CAMERA, DEVICE_IDS, DEVICE_KIND, DEVICE_MIC, isDeviceId, type De
 /** MB 7 sections in order (V2, V3, V4). */
 export type DeviceSection = 'cameras' | 'audio' | 'other';
 export const SECTIONS: readonly { id: DeviceSection; titleKey: string; devices: readonly DeviceId[] }[] = [
-  { id: 'cameras', titleKey: 'devices.cameras.title', devices: ['CAM-01', 'CAM-02'] },
+  // D60 (2026-11-04): four camera tracks — the roster lists all four built-in cameras.
+  { id: 'cameras', titleKey: 'devices.cameras.title', devices: ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04'] },
   { id: 'audio', titleKey: 'devices.audio.title', devices: ['MIC-01', 'MIC-02'] },
   { id: 'other', titleKey: 'devices.other.title', devices: ['POE-SWITCH', 'REC-INDICATOR', 'TABLET'] },
 ];
@@ -26,6 +27,8 @@ export const SECTIONS: readonly { id: DeviceSection; titleKey: string; devices: 
 export const DEVICE_NAME_KEY: Readonly<Record<DeviceId, string>> = {
   'CAM-01': 'common.devices.camera1',
   'CAM-02': 'common.devices.camera2',
+  'CAM-03': 'common.devices.camera3', // D60 (2026-11-04): four camera tracks
+  'CAM-04': 'common.devices.camera4', // D60
   'MIC-01': 'features.devices.mic.title1',
   'MIC-02': 'features.devices.mic.title2',
   'POE-SWITCH': 'devices.other.poeSwitch',
@@ -95,8 +98,11 @@ export function deviceStatus(state: StatusInput, deviceId: DeviceId): DeviceStat
       if (mic.state === 'CLIP' || mic.clipLatched) return 'CLIP';
       return 'ONLINE';
     }
-    case 'poe':
-      return bookPoe(state).cam1Link ? 'ACTIVE' : 'FAULT';
+    case 'poe': {
+      // D60 (2026-11-04): the switch reads ACTIVE while ANY camera port feeds — not only the dual-lens CAM 1.
+      const poe = bookPoe(state);
+      return poe.cam1Link || poe.cam3Link || poe.cam4Link ? 'ACTIVE' : 'FAULT';
+    }
     case 'relay': {
       const relay = state.otherDevices.find((entry) => entry.id === 'REC-INDICATOR');
       return relay?.online === false ? 'FAULT' : 'ACTIVE';

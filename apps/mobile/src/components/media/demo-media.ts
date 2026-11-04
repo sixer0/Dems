@@ -21,18 +21,23 @@
  * here unchanged (P6: only step 72 writes `apps/mobile/assets/media/**`). `demo-media.test.ts`
  * fails if a file is missing from this map, or if the map names a file that is not there.
  */
+import type { VideoTrackId } from '@dems/shared/domain';
 
-export type DemoVideoTrack = 'VIDEO-01' | 'VIDEO-02';
+// D60 (2026-11-04): four simultaneous video tracks. The bundled corpus still ships VIDEO-01/02
+// (step 92 regenerates it); tracks 3 and 4 join these records when their files arrive, exactly as
+// core-web's resolver merges them (`demo-media.ts`, "join the set when the corpus carries them").
+export type DemoVideoTrack = VideoTrackId;
 export type DemoAudioTrack = 'AUDIO-01' | 'AUDIO-02';
 
 /** A Metro asset id (the value of `require('…')`). */
 export type DemoMediaAsset = number;
 
 export interface DemoMediaItem {
-  readonly video: Readonly<Record<DemoVideoTrack, DemoMediaAsset>>;
+  /** Partial: the corpus carries one entry per video track it ships (01/02 today, up to four since D60). */
+  readonly video: Readonly<Partial<Record<DemoVideoTrack, DemoMediaAsset>>>;
   readonly audio: Readonly<Record<DemoAudioTrack, DemoMediaAsset>>;
-  /** Frame at 1 s of each video (640 × 360 JPEG). */
-  readonly poster: Readonly<Record<DemoVideoTrack, DemoMediaAsset>>;
+  /** Frame at 1 s of each video the corpus ships (640 × 360 JPEG). */
+  readonly poster: Readonly<Partial<Record<DemoVideoTrack, DemoMediaAsset>>>;
 }
 
 /** Evidence items with bundled media (EV 0001–0013; D61). */
@@ -261,7 +266,13 @@ export function demoMediaForEvidence(suffix: string): DemoMediaItem | undefined 
     : undefined;
 }
 
-/** The live-feed loop for camera 1 or 2 (Cam 2 is the mirrored reverse angle, baked into the clip). */
-export function liveLoopFor(cameraIndex: 1 | 2): DemoMediaAsset {
-  return DEMO_MEDIA_LIVE.video[cameraIndex === 2 ? 'VIDEO-02' : 'VIDEO-01'];
+/** The live-feed loop of a camera (D60, 2026-11-04: four tracks). The corpus ships loops for 01/02
+ * today; a track it does not ship yet shows the first loop — a placeholder, never a claim about the camera. */
+export function liveLoopFor(cameraIndex: 1 | 2 | 3 | 4): DemoMediaAsset {
+  return DEMO_MEDIA_LIVE.video[`VIDEO-0${cameraIndex}`] ?? DEMO_MEDIA_LIVE.video['VIDEO-01'] ?? 0;
+}
+
+/** The video or poster asset of a track, with the same D60 placeholder rule as `liveLoopFor`. */
+export function demoVideoAssetOf(item: DemoMediaItem, kind: 'video' | 'poster', track: DemoVideoTrack): DemoMediaAsset {
+  return item[kind][track] ?? item[kind]['VIDEO-01'] ?? 0;
 }

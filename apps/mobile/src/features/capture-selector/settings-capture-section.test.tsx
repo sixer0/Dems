@@ -53,11 +53,13 @@ describe('Settings → Capture', () => {
     expect(SECTION_TITLE_KEYS.capture).toBe('features.capture-selector.settings.title');
   });
 
-  it('holds the device selector: the four rows, editable for a SUPERVISOR', async () => {
-    await mount('andi.pratama');
+  // D60 (2026-11-04): four camera lines and two microphone lines - six rows. RB revocation (2026-10-29):
+  // the edit controls are the TECHNICIAN's alone.
+  it('holds the device selector: the six rows, editable for a TECHNICIAN', async () => {
+    await mount('rina.wijaya');
     expect(screen.getByTestId('settings-section-capture')).toBeTruthy();
     expect(screen.getByTestId('settings-capture-selector')).toBeTruthy();
-    for (const key of ['VIDEO-01', 'VIDEO-02', 'MIC-01', 'MIC-02']) {
+    for (const key of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02']) {
       expect(screen.getByTestId(`capture-selector-row-${key}`)).toBeTruthy();
       expect(screen.getByTestId(`capture-selector-edit-${key}`).props.accessibilityState?.disabled).not.toBe(true);
     }

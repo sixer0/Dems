@@ -77,14 +77,14 @@ export const STEP_STAGE: Readonly<Record<RecoveryStepKey, 'RECOVERY_SCAN' | 'INC
   analysis: 'INCOMPLETE_SESSION_ANALYSIS',
 };
 
-/** The four §4.2 tracks in display order (VIDEO-01/02, AUDIO-01/02). */
-export const RECOVERY_TRACKS = ['VIDEO-01', 'VIDEO-02', 'AUDIO-01', 'AUDIO-02'] as const satisfies readonly (VideoTrackId | AudioTrackId)[];
+/** The §4.2 tracks in display order (D60, 2026-11-04: four video tracks and two microphone tracks). */
+export const RECOVERY_TRACKS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-02'] as const satisfies readonly (VideoTrackId | AudioTrackId)[];
 export type RecoveryTrackId = (typeof RECOVERY_TRACKS)[number];
 
 /**
  * Milestones on the simulator clock, ms after `recover()` (SIM-GAP-M81-3): the scan closes at 0.5 s,
- * the four tracks resolve 0.25 s apart up to the end of RECOVERY_SCAN (1.5 s), then the last good
- * segment (2.0 s), the time source (2.5 s) and the analysis itself at RECOVERY_MS (3.0 s).
+ * the six tracks (D60) resolve 0.25 s apart from 0.75 s to 2.0 s, then the time source (2.5 s) and
+ * the analysis itself at RECOVERY_MS (3.0 s).
  */
 export const RECOVERY_MILESTONES_MS: readonly number[] = [
   500,
@@ -92,6 +92,7 @@ export const RECOVERY_MILESTONES_MS: readonly number[] = [
   1_000,
   1_250,
   RECOVERY_SCAN_MS,
+  1_750,
   2_000,
   2_500,
   RECOVERY_MS,
@@ -99,9 +100,9 @@ export const RECOVERY_MILESTONES_MS: readonly number[] = [
 export const MILESTONE_COUNT = RECOVERY_MILESTONES_MS.length;
 
 /** Milestone index at which each step is finished (index into the passed-milestone count). */
-const STEP_DONE_AT: Readonly<Record<RecoveryStepKey, number>> = { scan: 1, tracks: 5, segment: 6, time: 7, analysis: 8 };
-/** Milestones passed when each track is resolved. */
-const TRACK_DONE_AT: Readonly<Record<RecoveryTrackId, number>> = { 'VIDEO-01': 2, 'VIDEO-02': 3, 'AUDIO-01': 4, 'AUDIO-02': 5 };
+const STEP_DONE_AT: Readonly<Record<RecoveryStepKey, number>> = { scan: 1, tracks: 7, segment: 7, time: 8, analysis: 9 };
+/** Milestones passed when each track is resolved (D60, 2026-11-04: six tracks). */
+const TRACK_DONE_AT: Readonly<Record<RecoveryTrackId, number>> = { 'VIDEO-01': 2, 'VIDEO-02': 3, 'VIDEO-03': 4, 'VIDEO-04': 5, 'AUDIO-01': 6, 'AUDIO-02': 7 };
 
 export interface RecoveryProgressInput {
   stage: 'RECOVERY_SCAN' | 'INCOMPLETE_SESSION_ANALYSIS';

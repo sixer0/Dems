@@ -25,7 +25,7 @@ import { StatusChip, SubjectTypeChip } from '@/components/kit';
 // Direct module imports: the media barrel also loads the Skia renderers.
 import { HERO_FOCUS, HERO_STILL } from '@/components/media/brand-assets';
 import { withAlpha } from '@/components/media/color';
-import { DEMO_MEDIA_LIVE, demoMediaForEvidence, type DemoMediaAsset } from '@/components/media/demo-media';
+import { DEMO_MEDIA_LIVE, demoMediaForEvidence, demoVideoAssetOf, type DemoMediaAsset } from '@/components/media/demo-media';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { PreviewThumb, useRealCaptureView } from '@/features/devices/camera-preview';
 import { DemonstrationChip, useSimulatedCoreLink } from '@/features/evidence/evidence-chips';
@@ -46,7 +46,7 @@ export function posterForRow(row: Pick<SessionRowModel, 'evidenceId' | 'active'>
   const suffix = evidenceSuffix(row.evidenceId);
   const poster = suffix ? demoMediaForEvidence(suffix)?.poster['VIDEO-01'] : undefined;
   if (poster) return { source: poster, still: false };
-  if (row.active) return { source: DEMO_MEDIA_LIVE.poster['VIDEO-01'], still: false };
+  if (row.active) return { source: demoVideoAssetOf(DEMO_MEDIA_LIVE, 'poster', 'VIDEO-01'), still: false };
   return { source: HERO_STILL, still: true };
 }
 

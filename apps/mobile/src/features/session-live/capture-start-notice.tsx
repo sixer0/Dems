@@ -44,7 +44,7 @@ export function useFailedStartClosing(): FailedStart | null {
   return useSim(selectFailedStartClosing);
 }
 
-/** "Camera 2 (CAM-02) is not connected" / "The session is recording one camera only." One banner per missing camera. */
+/** "Camera 2 (CAM-02) is not connected" / "The session is recording with one camera fewer." (D60 wording). One banner per missing camera. */
 export function CaptureStartNotice() {
   const { t } = useTranslation();
   const missing = useCamerasNotConnected();

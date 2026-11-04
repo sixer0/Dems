@@ -23,6 +23,8 @@ export const captureSelectorEn = {
     track: {
       'VIDEO-01': 'Video track 1',
       'VIDEO-02': 'Video track 2',
+      'VIDEO-03': 'Video track 3', // D60 (2026-11-04): four simultaneous video tracks
+      'VIDEO-04': 'Video track 4', // D60
     },
     role: {
       PRIMARY: 'Primary',
@@ -217,7 +219,8 @@ export const captureSelectorEn = {
       },
       sessionStart: {
         title: '{{device}} is not connected',
-        body: 'The session is recording one camera only.',
+        // D60 (2026-11-04): four video tracks — the loss costs one camera, whatever the total (shared rewording).
+        body: 'The session is recording with one camera fewer.',
       },
     },
     cause: {
@@ -232,7 +235,8 @@ export const captureSelectorEn = {
     },
     start: {
       noCamera: 'No camera is reachable. A session cannot start.',
-      oneCamera: '{{device}} is not reachable. The session will record one camera only.',
+      // D60 (2026-11-04): the pre-check sentence follows the shared rewording (one camera fewer, of four).
+      oneCamera: '{{device}} is not reachable. The session will record with one camera fewer.',
       noMicrophone: 'No microphone is reachable. A session cannot start.',
       activeMicrophone: '{{device}} is the active microphone and is not reachable. Cancel this session, make {{other}} the primary microphone on Devices, then start again.',
       activeMicrophoneFallback: '{{device}} is the active microphone and is not reachable. Cancel this session, make the other microphone the primary microphone on Devices, then start again.',

@@ -10,6 +10,7 @@ export {
   DEMO_MEDIA_EVIDENCE,
   DEMO_MEDIA_LIVE,
   demoMediaForEvidence,
+  demoVideoAssetOf,
   liveLoopFor,
   type DemoAudioTrack,
   type DemoEvidenceSuffix,

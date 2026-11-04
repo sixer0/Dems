@@ -79,16 +79,16 @@ const value = (id: string) => screen.getByTestId(`session-new-check-${id}-value`
 const status = (id: string) => screen.getByTestId(`session-new-check-${id}-status`).props.accessibilityLabel as string;
 const disabled = (testID: string) => screen.getByTestId(testID).props.accessibilityState?.disabled === true;
 
-describe('one camera of two unreachable: a warning, a degraded start after the acknowledgement (D80(6))', () => {
+describe('a camera unreachable at pre-check: a warning, a degraded start after the acknowledgement (D80(6); D60, 2026-11-04: one of four tracks)', () => {
   it('the row names the device from `params.rule` — never "lens fault" / "no signal" — with the count of the one search of the pre-check', async () => {
     const { h } = await openGate(['CAM-02'], { alerts: [atPrecheck('CAM-02', { searchResponderCount: 1, degraded: true })] });
     expect(h.state().session!.precheck.outcome).toBe('WARN');
     expect(status('LENS_2')).toBe('WARN');
-    expect(value('LENS_2')).toHaveTextContent('Camera 2 (CAM-02) is not reachable. The session will record one camera only.');
+    expect(value('LENS_2')).toHaveTextContent('Camera 2 (CAM-02) is not reachable. The session will record with one camera fewer.');
     expect(value('LENS_2')).not.toHaveTextContent(/fault|no signal|UNREACHABLE/i);
     expect(status('LENS_1')).toBe('PASS');
     const notices = screen.getByTestId('session-new-capture-notices');
-    expect(within(notices).getByTestId('session-new-capture-notices-sentence-LENS_2')).toHaveTextContent('Camera 2 (CAM-02) is not reachable. The session will record one camera only.');
+    expect(within(notices).getByTestId('session-new-capture-notices-sentence-LENS_2')).toHaveTextContent('Camera 2 (CAM-02) is not reachable. The session will record with one camera fewer.');
     expect(within(notices).getByTestId('session-new-capture-notices-count-LENS_2')).toHaveTextContent('A search found 1 camera.');
     // Start is allowed, degraded, only after the operator acknowledges.
     expect(disabled('session-new-next')).toBe(true);
@@ -113,9 +113,23 @@ describe('one camera of two unreachable: a warning, a degraded start after the a
   });
 });
 
-describe('both cameras unreachable: blocked', () => {
-  it('both rows BLOCK, the blocked text says a session cannot start, Next stays disabled', async () => {
+describe('two of four cameras unreachable: degraded, not blocked (D60, 2026-11-04)', () => {
+  it('both named rows WARN with the one-camera-fewer sentence; Next stays disabled until the acknowledgement', async () => {
     const { h } = await openGate(['CAM-01', 'CAM-02']);
+    // D60: the loss of two of FOUR tracks still leaves a recording camera - a degraded start, not a block.
+    expect(h.state().session!.precheck.outcome).toBe('WARN');
+    expect(status('LENS_1')).toBe('WARN');
+    expect(status('LENS_2')).toBe('WARN');
+    expect(value('LENS_1')).toHaveTextContent('Camera 1 (CAM-01) is not reachable. The session will record with one camera fewer.');
+    expect(value('LENS_2')).toHaveTextContent('Camera 2 (CAM-02) is not reachable. The session will record with one camera fewer.');
+    expect(disabled('session-new-next')).toBe(true);
+    fireEvent.press(screen.getByTestId('session-new-acknowledge'));
+    expect(disabled('session-new-next')).toBe(false);
+  });
+
+  it('every camera unreachable: both rows BLOCK, the blocked text says a session cannot start, Next stays disabled', async () => {
+    // D60 (2026-11-04): the block needs ALL FOUR camera lines down (NO_CAMERA), not just the named two.
+    const { h } = await openGate(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']);
     expect(h.state().session!.precheck.outcome).toBe('BLOCK');
     expect(status('LENS_1')).toBe('BLOCK');
     expect(status('LENS_2')).toBe('BLOCK');
@@ -159,7 +173,7 @@ describe('the operator without CAPTURE_CONFIG (§8e.3; D80(2); M4-NODEV-NOCFG-T)
   it('sees the outcome as the notification only: the sentence and the count, "Search again" disabled with the role sentence, Retry works, no list is requested', async () => {
     // Operator 0 is the INVESTIGATOR: SESSION_START without CAPTURE_CONFIG.
     const { h, seen } = await openGate(['CAM-02'], { operator: 0, alerts: [atPrecheck('CAM-02', { searchResponderCount: 2, degraded: true })] });
-    expect(value('LENS_2')).toHaveTextContent('Camera 2 (CAM-02) is not reachable. The session will record one camera only.');
+    expect(value('LENS_2')).toHaveTextContent('Camera 2 (CAM-02) is not reachable. The session will record with one camera fewer.');
     expect(screen.getByTestId('session-new-capture-notices-count-LENS_2')).toHaveTextContent('A search found 2 cameras.');
     expect(disabled('session-new-capture-notices-search')).toBe(true);
     expect(screen.getByTestId('session-new-capture-notices-search-gate')).toHaveTextContent('Requires the Supervisor or Technician role');
@@ -177,14 +191,16 @@ describe('the operator without CAPTURE_CONFIG (§8e.3; D80(2); M4-NODEV-NOCFG-T)
     expect(status('LENS_2')).toBe('WARN');
   });
 
-  it('an operator WITH the permission may search again from here: one search, its summary, and the list stays on Devices', async () => {
+  it('the SUPERVISOR who started the session is gated too since the RB revocation: disabled with the role sentence, no search sent', async () => {
+    // RB revocation (2026-10-29, carried by checkpoint f85e9c01; D60 sweep 2026-11-04): CAPTURE_CONFIG —
+    // and with it the notice's "Search again" — is the TECHNICIAN's alone, and a technician never
+    // starts a session (OD-10). No demonstration identity both starts the session and may search here.
     const { seen } = await openGate(['CAM-02'], { operator: 1, alerts: [atPrecheck('CAM-02', { searchResponderCount: 0, degraded: true })] });
-    expect(disabled('session-new-capture-notices-search')).toBe(false);
+    expect(disabled('session-new-capture-notices-search')).toBe(true);
     fireEvent.press(screen.getByTestId('session-new-capture-notices-search'));
     await settle();
-    expect(seen.filter((line) => line === 'POST /api/v1/capture/discovery')).toHaveLength(1);
-    expect(screen.getByTestId('session-new-capture-notices-search-summary')).toHaveTextContent('2 found · 1 new · 1 already registered');
-    expect(screen.queryByTestId(/^camera-candidate-/)).toBeNull();
+    expect(seen.filter((line) => line === 'POST /api/v1/capture/discovery')).toHaveLength(0);
+    expect(screen.queryByTestId('session-new-capture-notices-search-summary')).toBeNull();
   });
 });
 

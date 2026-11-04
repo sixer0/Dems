@@ -25,7 +25,7 @@ import { Pause, Play } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
-import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
+import { VIDEO_TRACK_IDS, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain';
 import { formatDuration } from '@dems/shared/realtime';
 import { derived, fontFamily, palette, radius, spacing, statusText, typography } from '@dems/shared/tokens';
 import { StatusChip } from '@/components/kit';
@@ -112,7 +112,8 @@ function PlayerBody({ evidenceId, media, durationMs, clipMs, active, initialCame
       >
         <Tabs.List accessibilityLabel={t('features.evidence.play.camera')}>
           <Tabs.Indicator />
-          {(['VIDEO-01', 'VIDEO-02'] as const).map((camera, index) => (
+          {/* D60 (2026-11-04): four video tracks — the tabs name the tracks the bundled package actually carries. */}
+          {VIDEO_TRACK_IDS.filter((track) => media.video[track] !== undefined).map((camera, index) => (
             <Tabs.Trigger key={camera} value={camera} testID={`evidence-play-camera-${index + 1}`}>
               <Tabs.Label>{t('features.evidence.play.cameraShort', { index: index + 1 })}</Tabs.Label>
             </Tabs.Trigger>

@@ -6,7 +6,7 @@
  * | Spec | Here |
  * |---|---|
  * | §2.2 step 1, §2.5 "Loading" | until the runtime has hydrated: the skeleton, and the gate line reads "Checking your permissions…" (a gated read, E-16) |
- * | §2.2 step 2 | two camera rows (`VIDEO-01`, `VIDEO-02` → the device behind each, any registered `CAM-NN`) and two microphone rows (PRIMARY first). Task 4 row 32 (decision C18 (3)): one row per SLOT - a slot the selector holds no line for is drawn "Not assigned" with an "Assign" control that opens the same sheet |
+ * | §2.2 step 2 | four camera rows (D60, 2026-11-04: `VIDEO-01`..`VIDEO-04` → the device behind each, any registered `CAM-NN`) and two microphone rows (PRIMARY first). Task 4 row 32 (decision C18 (3)): one row per SLOT - a slot the selector holds no line for is drawn "Not assigned" with an "Assign" control that opens the same sheet |
  * | §2.2 step 3, §2.4 G1-G3 | every "Change" control is ALWAYS drawn; outside `allowed` it is disabled and the gate line says why: checking, waiting for the link, "Requires the Supervisor or Technician role", or the OD-10 sentence. Never hidden, never enabled on an unknown role (P-13) |
  * | §2.2 steps 4, 5 | a bottom sheet per field (`CaptureSourceSheet`); nothing is written locally, the row reads "Saving…" until `captureConfig` republishes |
  * | §2.2 step 6, §2.5 | a refusal is drawn in place as an `Alert` (locked, not permitted, unknown device, not accepted, development-only source, capture not ready with a rate-limited Retry, no answer); no toast, no raw error |

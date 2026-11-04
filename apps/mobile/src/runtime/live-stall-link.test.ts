@@ -25,7 +25,9 @@ beforeEach(() => {
   const realSetTimeout = globalThis.setTimeout;
   budgetTimers = jest.spyOn(globalThis, 'setTimeout').mockImplementation(((...args: Parameters<typeof setTimeout>) => {
     const handle = realSetTimeout(...args);
-    handle.unref();
+    // The RN tsconfig types the global `setTimeout` through the DOM lib (a number handle) while the
+    // Node runtime hands back a Timeout; unref it through that narrow view (environmental, not D60).
+    (handle as unknown as { unref?: () => void }).unref?.();
     return handle;
   }) as typeof setTimeout);
 });

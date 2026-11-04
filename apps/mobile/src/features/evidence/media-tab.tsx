@@ -15,13 +15,13 @@ import { PressableFeedback } from 'heroui-native';
 import { AudioLines, Play } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
+import { VIDEO_TRACK_IDS, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain';
 import { formatDuration } from '@dems/shared/realtime';
 import { derived, fontFamily, palette, radius, spacing, statusText, typography } from '@dems/shared/tokens';
-import type { DemoMediaItem } from '@/components/media';
-import { withAlpha } from '@/components/media';
+import { demoVideoAssetOf, withAlpha, type DemoMediaItem } from '@/components/media';
 
-const CAMERAS: readonly VideoTrackId[] = ['VIDEO-01', 'VIDEO-02'];
+// D60 (2026-11-04): four video tracks — the strip renders the tracks the demo corpus actually carries for this item.
+const cameraTracksOf = (item: DemoMediaItem): readonly VideoTrackId[] => VIDEO_TRACK_IDS.filter((track) => item.poster[track] !== undefined);
 const MICS: readonly AudioTrackId[] = ['AUDIO-01', 'AUDIO-02'];
 
 export interface MediaTabProps {
@@ -52,7 +52,7 @@ export function MediaTab({ media, durationMs, clipMs, onOpenCamera, onOpenMic, d
         </Text>
       ) : null}
       <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
-        {CAMERAS.map((camera) => (
+        {cameraTracksOf(media).map((camera) => (
           <PressableFeedback
             key={camera}
             testID={`evidence-media-${camera}`}
@@ -61,7 +61,7 @@ export function MediaTab({ media, durationMs, clipMs, onOpenCamera, onOpenMic, d
             onPress={() => onOpenCamera(camera)}
             style={styles.poster}
           >
-            <Image source={media.poster[camera]} style={StyleSheet.absoluteFill} contentFit="cover" accessible={false} transition={0} />
+            <Image source={demoVideoAssetOf(media, 'poster', camera)} style={StyleSheet.absoluteFill} contentFit="cover" accessible={false} transition={0} />
             <View style={styles.playRing}>
               <Play size={18} color={palette.foreground} fill={palette.foreground} />
             </View>

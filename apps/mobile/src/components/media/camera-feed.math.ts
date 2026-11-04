@@ -31,7 +31,8 @@ export const CAM2_PHASE_MS = 11_000;
 export const FEED_UTC_OFFSET_MINUTES: number = DISPLAY_UTC_OFFSET_MINUTES;
 
 export interface CameraFraming {
-  index: 1 | 2;
+  // D60 (2026-11-04): four camera tracks — the index follows the track number (1..4).
+  index: 1 | 2 | 3 | 4;
   phaseMs: number;
   /** Cam 2 is a mirrored reverse-angle crop (01_specs §14.10). */
   mirror: boolean;
@@ -40,12 +41,15 @@ export interface CameraFraming {
   focalY: number;
 }
 
-/** `CAM-2`, `cam2`, `2` → the second camera; anything else frames as Cam 1. */
+/** `CAM-2`, `cam2`, `2` → the second camera; D60: any trailing digit 1..4 frames that camera, anything else frames as Cam 1. */
 export function cameraFraming(cameraId: string): CameraFraming {
-  const second = /2\s*$/.test(cameraId);
-  return second
-    ? { index: 2, phaseMs: CAM2_PHASE_MS, mirror: true, focalX: 0.58, focalY: 0.46 }
-    : { index: 1, phaseMs: 0, mirror: false, focalX: 0.5, focalY: 0.42 };
+  const digit = /([1-4])\s*$/.exec(cameraId)?.[1];
+  const index = digit === undefined ? 1 : (Number(digit) as 1 | 2 | 3 | 4);
+  if (index === 2) return { index, phaseMs: CAM2_PHASE_MS, mirror: true, focalX: 0.58, focalY: 0.46 };
+  // D60: cameras 3 and 4 join as plain front angles (no baked mirror; the corpus ships no clip for them yet).
+  if (index === 3) return { index, phaseMs: 0, mirror: false, focalX: 0.5, focalY: 0.42 };
+  if (index === 4) return { index, phaseMs: 0, mirror: false, focalX: 0.5, focalY: 0.42 };
+  return { index: 1, phaseMs: 0, mirror: false, focalX: 0.5, focalY: 0.42 };
 }
 
 /** 1.00 → 1.06 → 1.00, eased, one push-in per `KEN_BURNS_MS`. */

@@ -25,13 +25,16 @@ import { channelOfMicLine, FaultKind, type AudioFrame, type AuditRow, type Bandw
 import { DEVICE_CAMERA, isDeviceId, type DeviceId } from './device-ids';
 
 // ── SIM-GAP-M84-1: PoE, book view ────────────────────────────────────────────────────────
-/** Book §8: PoE CAM 1 "up to a 30 W budget"; PoE port 2 "0 W normal / reserve up to 30 W". */
+/** Book §8: every camera PoE port runs "up to a 30 W budget"; PoE CAM 2/AUX is the spare. */
 export const POE_PORT_BUDGET_W = 30;
 
 export interface BookPoe {
-  /** PoE CAM 1 carries power and data while at least one lens streams. */
+  /** PoE CAM 1 carries power and data while at least one of its two lenses streams. */
   readonly cam1Link: boolean;
-  /** Ports delivering power (0 or 1) and spare ports (always 1: CAM 2/AUX). */
+  /** D60 (2026-11-04): the two further camera ports, each carrying its own track. */
+  readonly cam3Link: boolean;
+  readonly cam4Link: boolean;
+  /** Ports delivering power, spare ports and the total (the Core's own switch facts since D60). */
   readonly active: number;
   readonly spare: number;
   readonly total: number;
@@ -40,19 +43,28 @@ export interface BookPoe {
 }
 
 export function bookPoe(state: Pick<SimState, 'cameras' | 'network'>): BookPoe {
-  const cam1Link = state.cameras.some((camera) => camera.online);
+  const online = (trackId: VideoTrackId) => state.cameras.some((camera) => camera.id === trackId && camera.online);
+  const cam1Link = online('VIDEO-01') || online('VIDEO-02');
+  // D60 (2026-11-04): four camera tracks — CAM 3 and CAM 4 feed their own ports; the counts come from the switch.
+  const cam3Link = online('VIDEO-03');
+  const cam4Link = online('VIDEO-04');
+  const poe = state.network.poe;
   return {
     cam1Link,
-    active: cam1Link ? 1 : 0,
-    spare: 1,
-    total: 2,
-    budgetW: state.network.poe.budgetW,
-    drawW: cam1Link ? state.network.poe.drawW : 0,
+    cam3Link,
+    cam4Link,
+    active: poe.poweredPorts ?? (cam1Link ? 1 : 0),
+    spare: poe.sparePorts ?? 1,
+    total: poe.totalPorts,
+    budgetW: poe.budgetW,
+    drawW: cam1Link || cam3Link || cam4Link ? poe.drawW : 0,
   };
 }
 
-/** Both lenses share PoE CAM 1 (book B.01, §4.2), whatever the simulator's `poePort` says. */
-export const CAMERA_POE_PORT_KEY = 'devices.ports.poeCam1';
+/** D60 (2026-11-04): CAM-01/02 share PoE CAM 1 (dual-lens, book B.01); CAM-03 and CAM-04 hold their own port. */
+export function cameraPoePortKey(deviceId: DeviceId): string {
+  return deviceId === 'CAM-03' ? 'devices.ports.poeCam3' : deviceId === 'CAM-04' ? 'devices.ports.poeCam4' : 'devices.ports.poeCam1';
+}
 
 // ── SIM-GAP-M84-2: health series ─────────────────────────────────────────────────────────
 /** Points shown on a device's health line (one per simulator second). */
@@ -63,6 +75,8 @@ export type HealthMetric = 'linkQuality' | 'signal' | 'poeDraw' | 'relay';
 export const HEALTH_METRIC: Readonly<Record<DeviceId, HealthMetric>> = {
   'CAM-01': 'linkQuality',
   'CAM-02': 'linkQuality',
+  'CAM-03': 'linkQuality', // D60 (2026-11-04): four cameras
+  'CAM-04': 'linkQuality', // D60
   'MIC-01': 'signal',
   'MIC-02': 'signal',
   'POE-SWITCH': 'poeDraw',
@@ -198,7 +212,8 @@ export class MicLevelSampler {
 
 // ── Device log ───────────────────────────────────────────────────────────────────────────
 const FAULT_DEVICE: Partial<Record<string, (target: string | null) => DeviceId | null>> = {
-  [FaultKind.CAMERA_LOSS]: (target) => (target === 'VIDEO-02' ? 'CAM-02' : target === 'VIDEO-01' ? 'CAM-01' : null),
+  // D60 (2026-11-04): four camera tracks — VIDEO-0n faults name CAM-0n.
+  [FaultKind.CAMERA_LOSS]: (target) => (/^VIDEO-0[1-4]$/.test(target ?? '') ? (`CAM-${(target as string).slice(-2)}` as DeviceId) : null),
   [FaultKind.MIC_NO_SIGNAL]: (target) => micDevice(target),
   [FaultKind.MIC_CLIP]: (target) => micDevice(target),
 };

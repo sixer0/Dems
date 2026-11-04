@@ -58,7 +58,7 @@ import {
 } from './recovery.model';
 import { assertCanViewEvidence, recoverySignatureOf, startRecovery } from './sim-adapter';
 
-/** The followed session at the interruption, as flat values (the four tracks spelt out). */
+/** The followed session at the interruption, as flat values (D60, 2026-11-04: the six tracks spelt out). */
 export interface RecoveryInputs {
   readonly id: string;
   readonly state: SessionState;
@@ -76,6 +76,10 @@ export interface RecoveryInputs {
   readonly video1Since: number | null;
   readonly video2: TrackIntegrity;
   readonly video2Since: number | null;
+  readonly video3: TrackIntegrity; // D60 (2026-11-04): four video tracks
+  readonly video3Since: number | null; // D60
+  readonly video4: TrackIntegrity; // D60
+  readonly video4Since: number | null; // D60
   readonly audio1: TrackIntegrity;
   readonly audio1Since: number | null;
   readonly audio2: TrackIntegrity;
@@ -96,7 +100,8 @@ export function selectRecoveryInputs(s: SimState): RecoveryInputs | null {
     if (item.kind !== 'AUTOSAVE' || (faultAt !== null && item.at > faultAt)) continue;
     if (lastAutosaveAt === null || item.at > lastAutosaveAt) lastAutosaveAt = item.at;
   }
-  const [v1, v2, a1, a2] = tracks;
+  // D60 (2026-11-04): six tracks — VIDEO-01..04 then AUDIO-01..02.
+  const [v1, v2, v3, v4, a1, a2] = tracks;
   return {
     id: session.id,
     state: session.state,
@@ -114,6 +119,10 @@ export function selectRecoveryInputs(s: SimState): RecoveryInputs | null {
     video1Since: v1?.since ?? null,
     video2: v2?.integrity ?? 'noMedia',
     video2Since: v2?.since ?? null,
+    video3: v3?.integrity ?? 'noMedia', // D60 (2026-11-04)
+    video3Since: v3?.since ?? null, // D60
+    video4: v4?.integrity ?? 'noMedia', // D60
+    video4Since: v4?.since ?? null, // D60
     audio1: a1?.integrity ?? 'noMedia',
     audio1Since: a1?.since ?? null,
     audio2: a2?.integrity ?? 'noMedia',
@@ -131,8 +140,9 @@ export interface RecoveryAnalysis {
 }
 
 export function analysisOf(inputs: RecoveryInputs): RecoveryAnalysis {
-  const integrity = [inputs.video1, inputs.video2, inputs.audio1, inputs.audio2];
-  const since = [inputs.video1Since, inputs.video2Since, inputs.audio1Since, inputs.audio2Since];
+  // D60 (2026-11-04): six tracks (VIDEO-01..04, AUDIO-01..02).
+  const integrity = [inputs.video1, inputs.video2, inputs.video3, inputs.video4, inputs.audio1, inputs.audio2];
+  const since = [inputs.video1Since, inputs.video2Since, inputs.video3Since, inputs.video4Since, inputs.audio1Since, inputs.audio2Since];
   return {
     tracks: RECOVERY_TRACKS.map((track, i) => ({ track, integrity: integrity[i] ?? 'noMedia', since: since[i] ?? null })),
     segment: segmentFinding(inputs.startedAt, inputs.lastAutosaveAt),

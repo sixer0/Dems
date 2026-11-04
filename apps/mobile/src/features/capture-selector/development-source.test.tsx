@@ -37,9 +37,10 @@ describe('Simulated client mode never badges a device (D83)', () => {
   it('a registered camera that carries `sourceClass: DEVELOPMENT` draws no badge on the Devices rows, the selector or its sheet', async () => {
     const h = renderDevicesApp({ user: 'andi.pratama' });
     await settle();
-    act(() => h.sim.actions.registerCaptureDevice({ id: 'CAM-03', model: 'Test source', host: '127.0.0.1', adapter: 'FAKE' }));
+    // D60 (2026-11-04): CAM-03/04 are built-ins now — the registered test source mints as CAM-05.
+    act(() => h.sim.actions.registerCaptureDevice({ id: 'CAM-05', model: 'Test source', host: '127.0.0.1', adapter: 'FAKE' }));
     await settle();
-    expect(h.sim.store.getState().captureDevices.devices.find((device) => device.id === 'CAM-03')?.sourceClass).toBe('DEVELOPMENT');
+    expect(h.sim.store.getState().captureDevices.devices.find((device) => device.id === 'CAM-05')?.sourceClass).toBe('DEVELOPMENT');
     expect(screen.queryByText('Development source')).toBeNull();
     expect(screen.queryByTestId(/source-(?:CAM|MIC|VIDEO)/)).toBeNull();
   });

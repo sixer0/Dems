@@ -53,7 +53,7 @@ const disabled = (testID: string) => screen.getByTestId(testID).props.accessibil
 
 describe('situation A — a search found nothing (§8e.2, §8e.4; R-10 AC-1, AC-5)', () => {
   it('one banner for one alert however many empty searches ran; "Search again" is the panel\'s own control; a later search with a responder leaves 0 banners', async () => {
-    const h = renderDevicesApp({ user: 'andi.pratama' });
+    const h = renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
     expect(screen.queryByTestId('capture-notices')).toBeNull();
     // Five empty searches: the Core keeps ONE active alert (row 133); the screen draws what the slice holds.
@@ -81,7 +81,7 @@ describe('situation A — a search found nothing (§8e.2, §8e.4; R-10 AC-1, AC-
 
   it('no client control hides a banner: it has no dismiss action and survives time passing', async () => {
     jest.useFakeTimers();
-    const h = renderDevicesApp({ user: 'andi.pratama' });
+    const h = renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
     act(() => h.sim.actions.raiseCaptureWarning(EMPTY));
     await settle();
@@ -96,7 +96,7 @@ describe('situation A — a search found nothing (§8e.2, §8e.4; R-10 AC-1, AC-
 
 describe('situation B — a configured device is unreachable at pre-check (§8e.2; R-10 AC-2, AC-6)', () => {
   it('names the device by label and id with the count of the one search; a named cause is added; one banner per device', async () => {
-    const h = renderDevicesApp({ user: 'andi.pratama' });
+    const h = renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
     act(() => h.sim.actions.raiseCaptureWarning(unreachable('CAM-02', { searchResponderCount: 1 })));
     act(() => h.sim.actions.raiseCaptureWarning(unreachable('MIC-01', { cause: 'PERMISSION_DENIED' })));
@@ -121,7 +121,7 @@ describe('situation B — a configured device is unreachable at pre-check (§8e.
   });
 
   it('a later reachable pre-check clears it: 0 stale banners; a later occurrence is a NEW alert, drawn again', async () => {
-    const h = renderDevicesApp({ user: 'andi.pratama' });
+    const h = renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
     act(() => h.sim.actions.raiseCaptureWarning(unreachable('CAM-02', { searchResponderCount: 0 })));
     await settle();
@@ -219,7 +219,7 @@ describe('microphones: "Search again" re-reads the local inputs (§8g; M4-MIC-RE
 
   it('too soon (429): the fixed seconds, disabled until then, re-enabled by itself, nothing re-read by itself; not ready (503): the sentence + Retry', async () => {
     jest.useFakeTimers();
-    const h = renderDevicesApp({ user: 'andi.pratama', initialUrl: '/' });
+    const h = renderDevicesApp({ user: 'rina.wijaya', initialUrl: '/' });
     const requests = watch(h);
     h.navigate('/devices');
     await settle();

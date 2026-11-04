@@ -31,6 +31,7 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSim, type SimState } from '@dems/shared/sim';
+import type { VideoTrackId } from '@dems/shared/domain';
 import { derived, fontFamily, palette, radius, spacing, typography } from '@dems/shared/tokens';
 import { CameraFeed, type CameraFeedProps } from '@/components/media';
 import { captureNoticesOf, developmentSourceOf } from '@/features/capture-selector/capture-notices-model';
@@ -55,11 +56,13 @@ export function useRealCaptureView(): boolean {
   return useSim((s) => realCaptureView(s.captureDevices.devices, live));
 }
 
-export type PreviewTrackId = 'VIDEO-01' | 'VIDEO-02';
+// D60 (2026-11-04): four simultaneous video tracks — the preview speaks the shared track id.
+export type PreviewTrackId = VideoTrackId;
 
-/** `CAM-2`, `VIDEO-02`, `CAM-02` → the second video track; anything else the first (the rule of `cameraFraming`). */
+/** `CAM-2`, `VIDEO-02`, `CAM-03` → that video track (D60: one of four); anything else the first (the rule of `cameraFraming`). */
 export function previewTrackOf(cameraId: string): PreviewTrackId {
-  return /2\s*$/.test(cameraId) ? 'VIDEO-02' : 'VIDEO-01';
+  const digit = /([1-4])\s*$/.exec(cameraId)?.[1];
+  return digit === undefined ? 'VIDEO-01' : (`VIDEO-0${digit}` as PreviewTrackId);
 }
 
 type PreviewState = Pick<SimState, 'captureDevices' | 'captureConfig' | 'alerts' | 'session'>;

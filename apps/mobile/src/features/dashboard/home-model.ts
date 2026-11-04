@@ -71,10 +71,12 @@ export interface HomeStatus {
   startBlock: 'OFFLINE' | 'CRITICAL' | null;
 }
 
-/** Track ids → the shared short device names (`common.devices.*`). */
+/** Track ids → the shared short device names (`common.devices.*`). D60 (2026-11-04): four camera tracks. */
 export const TRACK_NAME_KEY: Readonly<Record<string, string>> = {
   'VIDEO-01': 'common.devices.camera1',
   'VIDEO-02': 'common.devices.camera2',
+  'VIDEO-03': 'common.devices.camera3', // D60 (2026-11-04)
+  'VIDEO-04': 'common.devices.camera4', // D60
   'AUDIO-01': 'common.devices.mic1',
   'AUDIO-02': 'common.devices.mic2',
 };

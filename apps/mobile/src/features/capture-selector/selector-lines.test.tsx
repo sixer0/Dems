@@ -78,7 +78,7 @@ async function chooseAndSave(id: string): Promise<void> {
 
 describe.each(WINDOWS)('G70-02 on %s: every registered microphone on both lines', (window) => {
   it('PRIMARY line: the sheet offers MIC-01, MIC-02 and MIC-03; MIC-03 saved becomes PRIMARY, the standby stays', async () => {
-    const h = renderDevicesApp({ user: 'andi.pratama', window });
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
     await settle();
     register(h);
     await openLine('MIC-01');
@@ -93,7 +93,7 @@ describe.each(WINDOWS)('G70-02 on %s: every registered microphone on both lines'
   });
 
   it('PRIMARY line: choosing the standby microphone still trades the two roles (operation 80, one audit row)', async () => {
-    const h = renderDevicesApp({ user: 'andi.pratama', window });
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
     await settle();
     register(h);
     await openLine('MIC-01');
@@ -117,7 +117,7 @@ describe.each(WINDOWS)('G70-02 on %s: every registered microphone on both lines'
   });
 
   it('STANDBY line: the primary microphone is refused there — the option is disabled with its reason, a press changes nothing', async () => {
-    const h = renderDevicesApp({ user: 'andi.pratama', window });
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
     await settle();
     register(h);
     await openLine('MIC-02');
@@ -142,7 +142,7 @@ describe.each(WINDOWS)('G70-02 on %s: every registered microphone on both lines'
     expect(screen.queryByTestId('capture-source-sheet')).toBeNull();
     first.app.unmount();
 
-    renderDevicesApp({ user: 'andi.pratama', window, recording: true });
+    renderDevicesApp({ user: 'rina.wijaya', window, recording: true });
     await settle();
     expect(disabled('capture-selector-edit-MIC-02')).toBe(true);
     expect(screen.getByTestId('capture-selector-edit-MIC-02').props.accessibilityHint).toBe('The capture configuration cannot be changed while a session is open.');
@@ -151,7 +151,7 @@ describe.each(WINDOWS)('G70-02 on %s: every registered microphone on both lines'
   it('real capture (Live): the option of the Core Mac\'s microphone carries the badge and the limit sentence; Save sends ONE operation 78 with the pair by role', async () => {
     const call = liveAnswering(() => ({ ok: true, status: 200, data: { updatedAt: 0 } }));
     mockLive = { client: { call } };
-    const h = renderDevicesApp({ user: 'andi.pratama', window });
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
     await settle();
     register(h);
     await openLine('MIC-01');
@@ -171,7 +171,7 @@ describe.each(WINDOWS)('G70-02 on %s: every registered microphone on both lines'
     ];
     const call = liveAnswering(() => answers.shift());
     mockLive = { client: { call } };
-    const h = renderDevicesApp({ user: 'andi.pratama', window });
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
     await settle();
     register(h);
     await openLine('MIC-02');
@@ -184,7 +184,7 @@ describe.each(WINDOWS)('G70-02 on %s: every registered microphone on both lines'
   });
 
   it('Simulated client mode: no badge and no limit sentence on any microphone option', async () => {
-    const h = renderDevicesApp({ user: 'andi.pratama', window });
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
     await settle();
     register(h);
     await openLine('MIC-01');
@@ -259,7 +259,7 @@ describe('row W5 (Q-02): a production camera is assigned with one of its stored 
     ];
     const call = liveAnswering(() => answers.shift());
     mockLive = { client: { call } };
-    const h = renderDevicesApp({ user: 'andi.pratama', window: 'tabletLandscape' });
+    const h = renderDevicesApp({ user: 'rina.wijaya', window: 'tabletLandscape' });
     await settle();
     register(h);
     act(() => h.sim.store.setState((s) => ({ captureDevices: { ...s.captureDevices, devices: [...s.captureDevices.devices, ADOPTED] } })));
@@ -293,7 +293,7 @@ describe('row W5 (Q-02): a production camera is assigned with one of its stored 
     const answers: unknown[] = [{ ok: false, status: 422, error: { code: 'INVALID_INPUT', details: { reason: 'CAMERA_PROFILE_WITHOUT_STREAM', deviceId: 'CAM-07', trackId: 'VIDEO-01' } } }];
     const call = liveAnswering(() => answers.shift());
     mockLive = { client: { call } };
-    const h = renderDevicesApp({ user: 'andi.pratama', window: 'tabletLandscape' });
+    const h = renderDevicesApp({ user: 'rina.wijaya', window: 'tabletLandscape' });
     await settle();
     register(h);
     act(() => h.sim.store.setState((s) => ({ captureDevices: { ...s.captureDevices, devices: [...s.captureDevices.devices, ADOPTED] } })));
@@ -359,7 +359,7 @@ const ROWS = ['VIDEO-01', 'VIDEO-02', 'MIC-01', 'MIC-02'] as const;
 
 describe.each(['tabletLandscape', 'phonePortrait'] as const)('G70b-03 on %s: a selector row keeps its own accessibility label', (window) => {
   it('before any save: each row is labelled with its name, its device and its state; none is busy', async () => {
-    renderDevicesApp({ user: 'andi.pratama', window });
+    renderDevicesApp({ user: 'rina.wijaya', window });
     await settle();
     expect(label('VIDEO-01')).toMatch(/^Video track 1, CAM-01.*, Live$/);
     expect(label('VIDEO-02')).toMatch(/^Video track 2, CAM-02.*, Live$/);
@@ -369,7 +369,7 @@ describe.each(['tabletLandscape', 'phonePortrait'] as const)('G70b-03 on %s: a s
   });
 
   it('after a Save in the microphone sheet: both microphone rows still carry name and state, and are not busy', async () => {
-    const h = renderDevicesApp({ user: 'andi.pratama', window });
+    const h = renderDevicesApp({ user: 'rina.wijaya', window });
     await settle();
     fireEvent.press(screen.getByTestId('capture-selector-edit-MIC-01'));
     await settle();
@@ -398,7 +398,7 @@ describe.each(['tabletLandscape', 'phonePortrait'] as const)('G70b-03 on %s: a s
           })
         : Promise.resolve({ ok: false, status: 503, error: { code: 'NOT_READY' } }),
     );
-    renderDevicesApp({ user: 'andi.pratama', window });
+    renderDevicesApp({ user: 'rina.wijaya', window });
     await settle();
     mockLive = { client: { call } };
     act(() => undefined);
@@ -433,7 +433,7 @@ describe('G70b-06 (contract note A2 §4): a camera line of a Core in REAL captur
   const chip = (track: string): unknown => screen.getByTestId(`capture-selector-stream-${track}`).props.accessibilityLabel;
 
   it('idle Core: "Reachable" / "Not reachable" / "Not checked" from what the Core reported - never "Live"', async () => {
-    const h = renderDevicesApp({ user: 'andi.pratama', window: 'tabletLandscape' });
+    const h = renderDevicesApp({ user: 'rina.wijaya', window: 'tabletLandscape' });
     await settle();
     mockLive = { client: { call: jest.fn<Call>(async () => NOT_READY) } };
     markRealCapture(h, { 'CAM-02': { online: false } });
@@ -450,7 +450,7 @@ describe('G70b-06 (contract note A2 §4): a camera line of a Core in REAL captur
   });
 
   it('while a session of the Core is RECORDING: the stream word, as before', async () => {
-    const h = renderDevicesApp({ user: 'andi.pratama', window: 'tabletLandscape', recording: true });
+    const h = renderDevicesApp({ user: 'rina.wijaya', window: 'tabletLandscape', recording: true });
     await settle();
     mockLive = { client: { call: jest.fn<Call>(async () => NOT_READY) } };
     markRealCapture(h);
@@ -460,7 +460,7 @@ describe('G70b-06 (contract note A2 §4): a camera line of a Core in REAL captur
   });
 
   it('CONTROL - the in-app simulator and a Core in SIMULATED capture keep "Live" on an idle line', async () => {
-    renderDevicesApp({ user: 'andi.pratama', window: 'tabletLandscape' });
+    renderDevicesApp({ user: 'rina.wijaya', window: 'tabletLandscape' });
     await settle();
     expect(chip('VIDEO-01')).toBe('Live');
     mockLive = { client: { call: jest.fn<Call>(async () => NOT_READY) } };

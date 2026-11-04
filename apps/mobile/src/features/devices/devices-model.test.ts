@@ -39,7 +39,8 @@ describe('device status', () => {
   it('idle: every device is ready (Online / Active / Connected) and nothing needs attention', () => {
     const { sim } = createTestSim();
     const state = sim.store.getState();
-    expect(DEVICE_IDS.map((id) => deviceStatus(state, id))).toEqual(['ONLINE', 'ONLINE', 'ONLINE', 'ONLINE', 'ACTIVE', 'ACTIVE', 'CONNECTED']);
+    // D60 (2026-11-04): four cameras (CAM-03/04 join), two microphones, switch, relay, tablet.
+    expect(DEVICE_IDS.map((id) => deviceStatus(state, id))).toEqual(['ONLINE', 'ONLINE', 'ONLINE', 'ONLINE', 'ONLINE', 'ONLINE', 'ACTIVE', 'ACTIVE', 'CONNECTED']);
     expect(attentionDevices(parseStatusLine(statusLine(state)))).toEqual([]);
   });
 
@@ -58,18 +59,23 @@ describe('device status', () => {
 });
 
 describe('SIM-GAP-M84-1: PoE in the design book view (D79)', () => {
-  it('shows 2 ports: PoE CAM 1 active, CAM 2/AUX spare, whatever port count the simulator models', () => {
+  it('shows the switch’s four camera ports (D60, 2026-11-04): CAM 1 active with its lenses, CAM 3 and CAM 4 on their own ports, CAM 2/AUX spare', () => {
     const { sim } = createTestSim();
-    expect(bookPoe(sim.store.getState())).toMatchObject({ cam1Link: true, active: 1, spare: 1, total: 2 });
+    expect(bookPoe(sim.store.getState())).toMatchObject({ cam1Link: true, cam3Link: true, cam4Link: true, active: 3, spare: 1, total: 4 });
   });
 
-  it('PoE CAM 1 stays up while one lens streams, and drops only when both are lost', () => {
+  it('PoE CAM 1 stays up while one lens streams; the switch stays ACTIVE while CAM 3 or CAM 4 feeds and faults only when all four are lost (D60, 2026-11-04)', () => {
     const { sim } = createTestSim();
     sim.actions.inject(FaultKind.CAMERA_LOSS, { cameraId: 'VIDEO-02' });
-    expect(bookPoe(sim.store.getState())).toMatchObject({ cam1Link: true, active: 1 });
+    expect(bookPoe(sim.store.getState())).toMatchObject({ cam1Link: true, active: 3 });
     expect(deviceStatus(sim.store.getState(), 'POE-SWITCH')).toBe('ACTIVE');
     sim.actions.inject(FaultKind.CAMERA_LOSS, { cameraId: 'VIDEO-01' });
-    expect(bookPoe(sim.store.getState())).toMatchObject({ cam1Link: false, active: 0, drawW: 0 });
+    // D60: the dual-lens port drops, but the switch still powers CAM 3 and CAM 4.
+    expect(bookPoe(sim.store.getState())).toMatchObject({ cam1Link: false, cam3Link: true, cam4Link: true });
+    expect(deviceStatus(sim.store.getState(), 'POE-SWITCH')).toBe('ACTIVE');
+    sim.actions.inject(FaultKind.CAMERA_LOSS, { cameraId: 'VIDEO-03' });
+    sim.actions.inject(FaultKind.CAMERA_LOSS, { cameraId: 'VIDEO-04' });
+    expect(bookPoe(sim.store.getState())).toMatchObject({ cam1Link: false, cam3Link: false, cam4Link: false, drawW: 0 });
     expect(deviceStatus(sim.store.getState(), 'POE-SWITCH')).toBe('FAULT');
   });
 });

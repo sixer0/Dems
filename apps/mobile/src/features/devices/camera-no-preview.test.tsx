@@ -65,7 +65,8 @@ describe('realCaptureView: the one rule', () => {
     expect(realCaptureView([], true)).toBe(true);
   });
   it('the track of a tile', () => {
-    expect(['CAM-1', 'CAM-2', 'VIDEO-01', 'VIDEO-02', 'CAM-02'].map(previewTrackOf)).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-01', 'VIDEO-02', 'VIDEO-02']);
+    // D60 (2026-11-04): four tracks — CAM-03/CAM-04 resolve to their own, not to the first.
+    expect(['CAM-1', 'CAM-2', 'VIDEO-01', 'VIDEO-02', 'CAM-02', 'CAM-03', 'CAM-04', 'VIDEO-04', 'FRONT'].map(previewTrackOf)).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-01', 'VIDEO-02', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'VIDEO-04', 'VIDEO-01']);
   });
 });
 

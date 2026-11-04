@@ -16,8 +16,10 @@
  * | `developmentSources` | `true` / `false` exactly as sent; anything else, also absent, is `null` = NOT RECORDED, which is never read as production (R-11) |
  */
 import { TRANSCRIPT_MODEL_MEMBER, readTranscriptModel, type ItemTranscriptModel } from '@dems/shared/evidence-rules';
+import { VIDEO_TRACK_IDS } from '@dems/shared/domain';
 
-export const CAMERA_FILE_IDS = ['VIDEO-01', 'VIDEO-02'] as const;
+// D60 (2026-11-04): a sealed package carries one to four camera files (shared fragments.ts, F-M7 R88-01 widened).
+export const CAMERA_FILE_IDS = VIDEO_TRACK_IDS;
 export type CameraFileId = (typeof CAMERA_FILE_IDS)[number];
 
 export interface ItemFileV2 {
