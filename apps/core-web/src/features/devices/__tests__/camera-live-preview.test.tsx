@@ -177,6 +177,26 @@ describe('Devices & Inputs: the live preview of a production camera', () => {
     expect(issued().every((call) => call.params.id === 'CAM-01')).toBe(true)
   })
 
+  it('StrictMode (main.tsx, and this console is a dev build): the fake unmount takes the src away and the re-attach gives ' +
+     'it back — one token, one picture, no eternal "Connecting…" (the bench finding of 2026-11-04)', async () => {
+    const created = createLiveTestBed({ session: SUPERVISOR_SESSION })
+    bed = created
+    created.core.served = production()(created.core.served)
+    const page = await created.load()
+    const entry = await created.mount(page, '/devices', { strict: true })
+    const root = await screen.findByTestId('page-devices', {}, { timeout: 15_000 })
+    const tile = await within(root).findByTestId('camera-tile-VIDEO-01')
+    await waitFor(() => expect(previews(tile)).toHaveLength(1))
+    const [preview] = previews(tile)
+    await waitFor(() => expect(imageOf(preview!)).not.toBeNull())
+    // The double mount stays ONE token (deferEffectStart) — and the double ref-attach keeps the src SET (the ref applies it).
+    await waitFor(() => expect(issued()).toHaveLength(1))
+    expect(imageOf(preview!)!.getAttribute('src')).toBe(EXAMPLE_PATH)
+    fireEvent.load(imageOf(preview!)!)
+    await waitFor(() => expect(preview).toHaveAttribute('data-state', 'LIVE'))
+    entry.unmount()
+  })
+
   it('a failed picture: the src goes, a new token after 2 s, then after 4 s (backoff); a picture that loads resets it', async () => {
     const { root } = await livePage('/devices', 'page-devices', production())
     const tile = await within(root).findByTestId('camera-tile-VIDEO-01')

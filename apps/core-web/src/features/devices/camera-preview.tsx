@@ -175,13 +175,19 @@ function LivePreview({ cameraId, deviceId, variant = 'feed', recordingSince = nu
     })
   }, [live, deviceId, attempt, retryLater])
 
-  // The picture's own element per token (`key`): on unmount its `src` is removed, which ends the stream.
+  // The picture's own element per token (`key`). The `src` is applied IN the ref, not only by React:
+  // StrictMode's fake unmount runs this cleanup and re-attaches the SAME node without re-applying the
+  // attribute (React never re-sets an unchanged prop) — a src owned only by React would stay removed,
+  // no request would ever go out, neither `load` nor `error` would ever fire, and the tile would say
+  // "Connecting…" forever over a perfectly issued token (the bench finding of 2026-11-04). Setting it
+  // here makes every attach complete; the cleanup still ends the stream at every detach.
   const releaseOnUnmount = useCallback((node: HTMLImageElement | null) => {
     if (node === null) return
+    if (path !== null) node.setAttribute('src', path)
     return () => {
       node.removeAttribute('src')
     }
-  }, [])
+  }, [path])
   const onLoad = () => {
     failures.current = 0
     setPhase('LIVE')
