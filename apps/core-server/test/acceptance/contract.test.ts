@@ -36,6 +36,8 @@
 // code are taken from an answer and handed on. None is printed, logged, put into a test name or
 // compared in an assertion whose failure message would show it.
 import { randomUUID } from 'node:crypto';
+// 2026-11-04 (D57c/D59 follow-through): the fake LCD panel backend of this file (the §2.7 pair below).
+import { createServer as createHttpTestServer } from 'node:http';
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,11 +63,12 @@ import {
   type OpenApiDocument,
 } from '@dems/shared/api';
 import { CAPTURE_AUDIO_CARD_SEARCH_MIN_INTERVAL_MS, CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS, INSTALLATION_ACCEPTANCE_STEP_IDS } from '@dems/shared/api';
-import { DEMO_OPERATOR_PASSWORD, OPERATORS, ROLE_PERMISSIONS, createManualClock, type ControllableClock, type OperatorRole } from '@dems/shared/sim';
+import { DEMO_OPERATOR_PASSWORD, OPERATORS, ROLE_PERMISSIONS, VENDOR_ROOT_EXTRA_PERMISSIONS, createManualClock, type ControllableClock, type OperatorRole } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app';
+import { cameraPreview } from '../../src/camera-preview';
 import type { DatabaseConnection } from '../../src/config';
 import { BULK_TEMPLATE_NOW } from '../../src/db/fixtures/__tests__/template-hook.bulk';
 import { createSystemTimers } from '../../src/capture';
@@ -150,7 +153,14 @@ const MEDIA_ROUTE = routeKey('GET', '/media/{token}');
  * rule of operation 87, the operation that names the signed path.
  */
 const EXPORT_DOWNLOAD_ROUTE = routeKey('GET', '/exports/{token}');
-const EXTERNAL_ROUTES: readonly string[] = [CHANNEL_ROUTE, MEDIA_ROUTE, EXPORT_DOWNLOAD_ROUTE];
+/**
+ * Decisions D51 / D53 (row 90P, carried by the RB-9 checkpoint `f85e9c01`; pinned by this sweep on
+ * 2026-11-04): `GET /preview/{token}`, the live camera preview stream, is the fourth route outside
+ * the registry. The guard gives it the rule of operation 115, the operation that issues its tokens
+ * (entry 5 of `plugins/permission-guard/access-rules.ts`; the module is `src/modules/camera-preview`).
+ */
+const PREVIEW_ROUTE = routeKey('GET', '/preview/{token}');
+const EXTERNAL_ROUTES: readonly string[] = [CHANNEL_ROUTE, MEDIA_ROUTE, EXPORT_DOWNLOAD_ROUTE, PREVIEW_ROUTE];
 
 /**
  * The 14 registry routes whose handlers land with later rows (R4, ruling D44): ops 76-80 and 89
@@ -279,10 +289,81 @@ interface Target {
 const mediaScratch = (): string => join(db.run.dataDir, `test-contract-media-${process.pid}`);
 const ownMediaRoot = (server: string): string => join(mediaScratch(), server.replace(/[^A-Za-z0-9]+/g, '-'), 'sessions');
 
+/**
+ * THE FAKE LCD PANEL BACKEND OF THIS FILE (2026-11-04; D57c/D59 follow-through). The panel proxy of
+ * `src/lcd/setup.ts` and the firmware reader of `src/lcd/panel-info.ts` ask the backend over the
+ * loopback bridge URL, and the bridge of `src/lcd/bridge.ts` heartbeats there while the engine runs.
+ * Every server of this file stands behind one fake backend, so the §2.7 pair answers through the
+ * real handler chain and the bridge finds a panel that answers. It holds the two identity words and
+ * the logo queue in memory and nothing else; no production value passes through it.
+ */
+interface PanelBackend {
+  readonly url: string;
+  close(): Promise<void>;
+}
+let panelBackend: PanelBackend | null = null;
+
+async function startPanelBackend(): Promise<PanelBackend> {
+  const identity = { satker: 'LP acceptance', client: 'W52' };
+  const logos = { client: true, splash: false };
+  const server = createHttpTestServer((request, response) => {
+    const url = request.url ?? '';
+    const send = (status: number, value: unknown): void => {
+      response.writeHead(status, { 'content-type': 'application/json' });
+      response.end(JSON.stringify(value));
+    };
+    if (url === '/api/dems/status') {
+      // The bridge's status (n, health, last_req_ms, tx) and the firmware words of operation 117 together.
+      send(200, { n: 2, health: 'ok', last_req_ms: Date.now(), tx: 1, panel_fw: 'FW-TEST', verdict: 'ok' });
+      return;
+    }
+    if (url === '/api/dems/identity') {
+      send(200, { satker: identity.satker, client: identity.client });
+      return;
+    }
+    if (url === '/api/dems/logo') {
+      send(200, { logo: { client: { tersimpan: logos.client }, splash: { tersimpan: logos.splash } } });
+      return;
+    }
+    if (url === '/api/dems/setup' && request.method === 'POST') {
+      let text = '';
+      request.on('data', (chunk: Buffer) => { text += String(chunk); });
+      request.on('end', () => {
+        const body = JSON.parse(text) as { satker?: string; client?: string; logo_base64?: string; logo_target?: string };
+        const changed = { satker: body.satker !== undefined, client: body.client !== undefined, logo: body.logo_base64 !== undefined };
+        if (body.satker !== undefined) identity.satker = body.satker;
+        if (body.client !== undefined) identity.client = body.client;
+        if (body.logo_base64 !== undefined) {
+          const target = body.logo_target ?? 'client';
+          if (target === 'client' || target === 'both') logos.client = true;
+          if (target === 'splash' || target === 'both') logos.splash = true;
+        }
+        send(200, { ok: true, satker: identity.satker, client: identity.client, logo: { client: { tersimpan: logos.client }, splash: { tersimpan: logos.splash } }, changed });
+      });
+      return;
+    }
+    if (/^\/api\/dems\/ch\/[1-4]\/status$/.test(url) && request.method === 'POST') {
+      request.resume();
+      send(200, { v: 2, n: 2, health: 'ok' });
+      return;
+    }
+    send(404, { error: 'unknown route of the fake panel backend' });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  const port = typeof address === 'object' && address !== null ? address.port : 0;
+  return {
+    url: `http://127.0.0.1:${String(port)}`,
+    close: () => new Promise<void>((resolve, reject) => server.close((error) => (error === undefined ? resolve() : reject(error)))),
+  };
+}
+
 /** A process start: the real app factory on the database, as `dems_app`, booted as the entry point boots it. */
 async function startServer(name: string, target: Target, options: { demoControls: boolean; at?: number }): Promise<Server> {
   const app = buildApp({
-    config: unitTestConfig({ database: target.runtime, dataDir: db.run.dataDir, mediaStoreDir: ownMediaRoot(name), logLevel: 'info', port: 4420, demoControls: options.demoControls }),
+    // 2026-11-04 (§2.7 sweep): every server of this file stands behind the fake panel backend — the panel pair of
+    // D57c reads it through the real proxy, and the LCD bridge of `mountLcdBridge` heartbeats there as on a panel unit.
+    config: unitTestConfig({ database: target.runtime, dataDir: db.run.dataDir, mediaStoreDir: ownMediaRoot(name), logLevel: 'info', port: 4420, demoControls: options.demoControls, lcdBackendUrl: panelBackend?.url ?? null }),
     logStream: captureLog().stream,
   });
   await app.ready();
@@ -351,6 +432,13 @@ const usernameOf = (role: OperatorRole): string => {
 const operatorIdOf = (role: OperatorRole): string => OPERATORS.find((candidate) => candidate.role === role)?.id ?? '';
 /** True when the shared role table grants the role one of the permissions. */
 const holdsOneOf = (role: OperatorRole, permissions: readonly string[]): boolean => permissions.some((permission) => (ROLE_PERMISSIONS[role] as readonly string[]).includes(permission));
+/**
+ * True when a caller of that role is refused every one of the permissions. D55 (as amended): the vendor root
+ * holds `VENDOR_ROOT_EXTRA_PERMISSIONS` by IDENTITY, and the §2.7 area of this file renames the seeded SUPERVISOR
+ * into `root` - from that area on, that account is no longer lacking where its role is (2026-11-04).
+ */
+const lacksAllOf = (role: OperatorRole, permissions: readonly string[]): boolean =>
+  !holdsOneOf(role, permissions) && !(role === 'SUPERVISOR' && VENDOR_ROOT_EXTRA_PERMISSIONS.some((extra) => permissions.includes(String(extra))));
 
 // ── Requests: every one goes through the ledger ────────────────────────────────────────────────
 
@@ -505,12 +593,15 @@ function exampleBody(operation: CoreApiRegistryOperation): Record<string, unknow
 }
 
 beforeAll(async () => {
+  panelBackend = await startPanelBackend(); // the §2.7 panel pair reads and changes it through the real proxy
   main = await startServer('main', db.database, { demoControls: true });
 });
 
 afterAll(async () => {
   transcriptItem?.remove();
   await main?.app.close();
+  await panelBackend?.close();
+  panelBackend = null;
   rmSync(mediaScratch(), { recursive: true, force: true });
 });
 
@@ -567,7 +658,7 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     }
   });
 
-  it('the router of the booted server and the guard register exactly the registry\'s routes; `GET /ws` is the one exception', () => {
+  it('the router of the booted server and the guard register exactly the registry\'s routes; the four routes outside it are the named ones', () => {
     // The router's own table: every route of the router, whenever and by whomever it was added.
     const router = routesOfPrintedTable(main.app.printRoutes()).map((route) => routeKey(route.method, templateOf(route.url)));
     // The guard's table (decision D83 DN-11): the rule of every route registered once it was loaded.
@@ -581,7 +672,7 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     console.info(`[w52] undocumented routes (guard against registry): ${JSON.stringify(byGuard.undocumented)}`);
     console.info(`[w52] unregistered operations (registry against router): ${JSON.stringify(byRouter.unregistered)}`);
     console.info(`[w52] unregistered operations (registry against guard): ${JSON.stringify(byGuard.unregistered)}`);
-    console.info(`[w52] the one route outside the registry: ${router.filter((route) => !REGISTRY_ROUTES.includes(route)).join(', ')}`);
+    console.info(`[w52] the routes outside the registry: ${router.filter((route) => !REGISTRY_ROUTES.includes(route)).join(', ')}`);
     // Task 4 row 63: the two sound-card operations have no route until row 70 (LANDED_UNROUTED).
     expect(byRouter).toEqual({ undocumented: [], unregistered: LANDED_UNROUTED });
     expect(byGuard).toEqual({ undocumented: [], unregistered: LANDED_UNROUTED });
@@ -602,8 +693,10 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     // Task 4 row 117: the two acceptance routes landed (operations 109 and 110), 107 + 2 = 109. (Both lines, by this row's delta only.)
     // Task 4 row 106b: the two alias routes landed (operations 104 and 105), 109 + 2 = 111. (Both lines, by this row's delta only.)
     // Task 4 row 111: the two routes of the set-IP job landed (operations 106 and 107), 111 + 2 = 113. (Both lines, by this row's delta only.)
-    expect(router).toHaveLength(113);
-    expect(new Set(router).size).toBe(113); // moved with the line above by row 116's pin pass: row 107's delta (106 -> 107) had reached one of the two lines only
+    // C3 §2.7 + the RB-9 checkpoint (D54 as amended, D57c; pinned by this sweep 2026-11-04): the registry holds 119
+    // with one unrouted (operation 111), and the preview route joined the outside - 119 - 1 + 4 = 122.
+    expect(router).toHaveLength(122);
+    expect(new Set(router).size).toBe(122); // moved with the line above by row 116's pin pass: row 107's delta (106 -> 107) had reached one of the two lines only
     expect(router.filter((route) => !REGISTRY_ROUTES.includes(route)).sort()).toEqual([...EXTERNAL_ROUTES].sort());
     expect([...guarded].sort()).toEqual([...router].sort());
     expect(permissionGuard(main.app).routeProblems()).toEqual([]);
@@ -619,6 +712,11 @@ describe('AC-B-09: every registered route is an operation, every operation is re
       if (routeKey(rule.method, templateOf(rule.url)) === EXPORT_DOWNLOAD_ROUTE) {
         // Ruling D178: the rule of operation 87, under the route's own name.
         expect(rule.marker).toBe(describeCoreApiAccess(operationOf('getEvidenceExportJob').access));
+        continue;
+      }
+      if (routeKey(rule.method, templateOf(rule.url)) === PREVIEW_ROUTE) {
+        // Decisions D51 / D53 (rule entry 5): the rule of operation 115, under the route's own name.
+        expect(rule.marker).toBe(describeCoreApiAccess(operationOf('createCameraPreviewSession').access));
         continue;
       }
       const operation = operationOf(rule.operationId);
@@ -646,7 +744,7 @@ describe('AC-B-09: every registered route is an operation, every operation is re
     // refused outright), and unregistered must be precisely the fourteen, so one more or one less
     // unrouted operation fails here. The calls themselves stay red as their own deferrals.
     expect(comparison).toEqual({ undocumented: [], unregistered: LANDED_UNROUTED });
-    expect(documented).toHaveLength(111); // task 4 row RD2: + operation 111
+    expect(documented).toHaveLength(119); // C3 §2.7 (transcribed 2026-11-04): the document holds the eight of RB-9 as amended and D57c with the rest
     expect([...documented].sort()).toEqual([...REGISTRY_ROUTES].sort());
     // The same operation ID on the same method and path.
     for (const entry of listOpenApiOperations(committed)) {
@@ -864,11 +962,12 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     const changed = await expectCall(main, 'updateSttConfig', technician, 'a holder of CAPTURE_CONFIG turns speaker labelling off', { payload: { revision, diarization: false } }, 200);
     // No session is open in this file at this point: the change applies at once.
     expect(bodyOf<{ appliesFrom?: string; revision?: number }>(changed)).toMatchObject({ appliesFrom: 'NOW', revision: revision + 1 });
-    const stale = await expectCall(main, 'updateSttConfig', supervisor, 'the revision of the body is the one before', { payload: { revision, enabled: false } }, 409, 'INVALID_STATE');
+    // D59 (revocation row of §2.1, 2026-11-04): CAPTURE_CONFIG went from SUPERVISOR - the holder that edits is the TECHNICIAN.
+    const stale = await expectCall(main, 'updateSttConfig', technician, 'the revision of the body is the one before', { payload: { revision, enabled: false } }, 409, 'INVALID_STATE');
     expect(detailsOf(stale)['reason']).toBe('REVISION_CONFLICT');
-    const lan = await expectCall(main, 'updateSttConfig', supervisor, 'an endpoint that is not on loopback', { payload: { revision: revision + 1, backend: 'omlx-server', endpoint: 'http://192.168.1.20:8000' } }, 422, 'INVALID_INPUT');
+    const lan = await expectCall(main, 'updateSttConfig', technician, 'an endpoint that is not on loopback', { payload: { revision: revision + 1, backend: 'omlx-server', endpoint: 'http://192.168.1.20:8000' } }, 422, 'INVALID_INPUT');
     expect(detailsOf(lan)['reason']).toBe('ENDPOINT_NOT_LOOPBACK');
-    await expectCall(main, 'updateSttConfig', supervisor, 'a body without its revision', { payload: { enabled: false } }, 422, 'INVALID_INPUT');
+    await expectCall(main, 'updateSttConfig', technician, 'a body without its revision', { payload: { enabled: false } }, 422, 'INVALID_INPUT');
     const denied = await expectCall(main, 'updateSttConfig', web.INVESTIGATOR, 'a role without CAPTURE_CONFIG', { payload: { revision: revision + 1, enabled: false } }, 403, 'NOT_PERMITTED');
     expect(detailsOf(denied)['permission']).toBe('CAPTURE_CONFIG');
     await expectCall(main, 'testSttConnection', technician, 'a test of the stored configuration (a stand-in probe: nothing is contacted)', {}, 200);
@@ -882,7 +981,7 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     settle();
   });
 
-  it('the capture selector (operations 76 to 80; C3 §2.4, task 3 row 66): the reads, the edits of SUPERVISOR and TECHNICIAN, their refusals', async () => {
+  it('the capture selector (operations 76 to 80; C3 §2.4, task 3 row 66; D59): the reads, the edits of the holder of CAPTURE_CONFIG, their refusals', async () => {
     fresh(main);
     const supervisor = web.SUPERVISOR;
     const technician = web.TECHNICIAN;
@@ -899,15 +998,16 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     expect(bodyOf<Selector>(primary).mics).toMatchObject([{ inputId: 'MIC-01', role: 'STANDBY' }, { inputId: 'MIC-02', role: 'PRIMARY' }]);
     await expectCall(main, 'setPrimaryMic', technician, 'an input the selector does not hold', { id: 'MIC-09' }, 404, 'NOT_FOUND');
     await expectCall(main, 'setPrimaryMic', technician, 'a malformed {id}', { id: 'mic-02' }, 422, 'INVALID_INPUT');
-    // 78: the whole selector; here the two cameras change tracks in one edit.
-    const swapped = await expectCall(main, 'updateCaptureConfig', supervisor, 'a SUPERVISOR swaps the two cameras', { payload: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }] } }, 200);
+    // 78: the whole selector; here the two cameras change tracks in one edit. D59 (revocation row of §2.1):
+    // the grant went from SUPERVISOR on 2026-10-29 (migration 0034) - the editor of the topology is the TECHNICIAN.
+    const swapped = await expectCall(main, 'updateCaptureConfig', technician, 'a TECHNICIAN swaps the two cameras', { payload: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }] } }, 200);
     expect(bodyOf<Selector>(swapped).cameras).toMatchObject([{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }]);
-    await expectCall(main, 'updateCaptureConfig', supervisor, 'a device the capture registry does not hold (a discovery candidate is never one)', { payload: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-77' }] } }, 422, 'INVALID_INPUT');
-    await expectCall(main, 'updateCaptureConfig', supervisor, 'a track outside the value set', { payload: { cameras: [{ trackId: 'VIDEO-09', deviceId: 'CAM-01' }] } }, 422, 'INVALID_INPUT');
+    await expectCall(main, 'updateCaptureConfig', technician, 'a device the capture registry does not hold (a discovery candidate is never one)', { payload: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-77' }] } }, 422, 'INVALID_INPUT');
+    await expectCall(main, 'updateCaptureConfig', technician, 'a track outside the value set', { payload: { cameras: [{ trackId: 'VIDEO-09', deviceId: 'CAM-01' }] } }, 422, 'INVALID_INPUT');
     // 79: a camera device to a video track.
-    await expectCall(main, 'setCaptureCameraSource', supervisor, 'one camera on both tracks with one profile', { id: 'CAM-01', payload: { trackId: 'VIDEO-01' } }, 422, 'INVALID_INPUT');
-    await expectCall(main, 'setCaptureCameraSource', supervisor, 'a camera the capture registry does not hold', { id: 'CAM-99', payload: { trackId: 'VIDEO-01' } }, 404, 'NOT_FOUND');
-    await expectCall(main, 'setCaptureCameraSource', supervisor, 'a track outside the value set', { id: 'CAM-01', payload: { trackId: 'VIDEO-09' } }, 422, 'INVALID_INPUT');
+    await expectCall(main, 'setCaptureCameraSource', technician, 'one camera on both tracks with one profile', { id: 'CAM-01', payload: { trackId: 'VIDEO-01' } }, 422, 'INVALID_INPUT');
+    await expectCall(main, 'setCaptureCameraSource', technician, 'a camera the capture registry does not hold', { id: 'CAM-99', payload: { trackId: 'VIDEO-01' } }, 404, 'NOT_FOUND');
+    await expectCall(main, 'setCaptureCameraSource', technician, 'a track outside the value set', { id: 'CAM-01', payload: { trackId: 'VIDEO-09' } }, 422, 'INVALID_INPUT');
     // The INVESTIGATOR lacks CAPTURE_CONFIG on all three edits.
     for (const [operationId, options] of [
       ['setPrimaryMic', { id: 'MIC-01' }],
@@ -923,18 +1023,21 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     // Back to the seeded selector: the walks after this one read the state the seed gave. (The 409
     // CAPTURE_CONFIG_LOCKED of an open session is produced where a session is open: the module's
     // own database test today, area 4 of this file once its route walk is whole again.)
-    await expectCall(main, 'updateCaptureConfig', supervisor, 'the two cameras back on their tracks', { payload: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }] } }, 200);
-    const restored = await expectCall(main, 'setPrimaryMic', supervisor, 'MIC-01 is the primary input again', { id: 'MIC-01' }, 200);
+    await expectCall(main, 'updateCaptureConfig', technician, 'the two cameras back on their tracks', { payload: { cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }] } }, 200);
+    const restored = await expectCall(main, 'setPrimaryMic', technician, 'MIC-01 is the primary input again', { id: 'MIC-01' }, 200);
     expect(bodyOf<Selector>(restored)).toMatchObject({ cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }], mics: [{ inputId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', role: 'STANDBY' }] });
     // 79, accepted (integration pass D4: the cell was never produced): the camera on the track it holds.
-    await expectCall(main, 'setCaptureCameraSource', supervisor, 'a camera on the track it already feeds', { id: 'CAM-01', payload: { trackId: 'VIDEO-01' } }, 200);
+    await expectCall(main, 'setCaptureCameraSource', technician, 'a camera on the track it already feeds', { id: 'CAM-01', payload: { trackId: 'VIDEO-01' } }, 200);
     settle();
   });
 
   it('camera search, connect and the mic re-read (operations 89 and 93 to 97; C3 §2.6, task 3 rows 132, 133, 142): one search, one test, one adoption against the fake ONVIF stub on loopback', async () => {
     fresh(main);
-    const supervisor = web.SUPERVISOR;
     const technician = web.TECHNICIAN;
+    // D59 (revocation row of §2.1, migration 0034): SUPERVISOR no longer holds CAPTURE_CONFIG, so the cells that
+    // name "another session" of a CAPTURE_CONFIG holder take a second web session of the TECHNICIAN - the state of
+    // the discovery flow is keyed by the sign-in session, not by the operator.
+    const spareTechnician = await signInWeb(main, 'TECHNICIAN');
     interface Discovery { search: { searchId: string; state: string; created?: boolean } | null; candidates: { candidateId: string; status: string; testable: boolean; adapter: string; sourceClass: string; deviceId: string | null }[] }
     // THE ONLY NETWORK OF THIS AREA IS LOOPBACK. The module's own adapter (which probes the LAN of
     // the host) is never built here: its place is taken, once, by the real adapter of row 131 on the
@@ -965,8 +1068,8 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     };
     let guard: LoopbackGuard | null = installLoopbackGuard();
     try {
-      // 94 before any search: nothing, for every holder of CAPTURE_CONFIG.
-      for (const caller of [supervisor, technician]) expect(bodyOf<Discovery>(await expectCall(main, 'getCaptureDiscovery', caller, 'no search was started', {}, 200))).toMatchObject({ search: null, candidates: [] });
+      // 94 before any search: nothing, for every holder of CAPTURE_CONFIG - since D59 the seeded holder and a second session of it.
+      for (const caller of [technician, spareTechnician]) expect(bodyOf<Discovery>(await expectCall(main, 'getCaptureDiscovery', caller, 'a holder of CAPTURE_CONFIG reads the empty state', {}, 200))).toMatchObject({ search: null, candidates: [] });
 
       // 93 with a typed address (task 4 row 96; the 422 the contract documents since row 94). A body outside its
       // schema, then an address of the form that the Core may not dial: refused before anything is built - no
@@ -986,7 +1089,7 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       expect(bodyOf<{ created: boolean }>(started).created).toBe(true);
       const again = await expectCall(main, 'startCaptureDiscovery', technician, 'the same session while its search runs', {}, 200);
       expect(bodyOf<{ searchId: string; created: boolean }>(again)).toMatchObject({ searchId, created: false });
-      const busy = await expectCall(main, 'startCaptureDiscovery', supervisor, 'another session while that search runs', {}, 409, 'INVALID_STATE');
+      const busy = await expectCall(main, 'startCaptureDiscovery', spareTechnician, 'another session while that search runs', {}, 409, 'INVALID_STATE');
       expect(detailsOf(busy)['reason']).toBe('DISCOVERY_IN_PROGRESS');
       // The window is three seconds of the capture timers (real time): the one wait of this area.
       await delay(3_400);
@@ -1000,7 +1103,7 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       const listed = bodyOf<Discovery>(await expectCall(main, 'getCaptureDiscovery', technician, 'the list of the caller\'s own search', {}, 200));
       expect(listed.search).toMatchObject({ searchId, state: 'COMPLETE' });
       expect(listed.candidates.map((candidate) => [candidate.status, candidate.testable, candidate.adapter, candidate.sourceClass, candidate.deviceId])).toEqual([['NEW', true, 'FAKE', 'DEVELOPMENT', null]]);
-      expect(bodyOf<Discovery>(await expectCall(main, 'getCaptureDiscovery', supervisor, 'another session reads its own (empty) state', {}, 200)).candidates).toEqual([]);
+      expect(bodyOf<Discovery>(await expectCall(main, 'getCaptureDiscovery', spareTechnician, 'another session reads its own (empty) state', {}, 200)).candidates).toEqual([]);
       const candidateId = listed.candidates[0]?.candidateId ?? '';
       const unknownId = candidateId === 'CND-0000000000AA' ? 'CND-0000000000AB' : 'CND-0000000000AA';
 
@@ -1010,7 +1113,7 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       expect(detailsOf(untested)['reason']).toBe('CANDIDATE_NOT_TESTED');
       await expectCall(main, 'testCaptureCandidateConnection', technician, 'an id no search listed', { id: unknownId, payload: { credential: account } }, 404, 'NOT_FOUND');
       await expectCall(main, 'adoptCaptureCandidate', technician, 'an id no search listed', { id: unknownId, payload: { credential: account } }, 404, 'NOT_FOUND');
-      await expectCall(main, 'testCaptureCandidateConnection', supervisor, 'the candidate of another session\'s search', { id: candidateId, payload: { credential: account } }, 404, 'NOT_FOUND');
+      await expectCall(main, 'testCaptureCandidateConnection', spareTechnician, 'the candidate of another session\'s search', { id: candidateId, payload: { credential: account } }, 404, 'NOT_FOUND');
       await expectCall(main, 'testCaptureCandidateConnection', technician, 'a malformed {id}', { id: 'cnd-1', payload: { credential: account } }, 422, 'INVALID_INPUT');
       expect(stub.requestLog().length).toBe(requests);
 
@@ -1037,9 +1140,9 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       expect(bodyOf<Discovery>(await expectCall(main, 'getCaptureDiscovery', technician, 'the candidate reads REGISTERED', {}, 200)).candidates.map((candidate) => [candidate.status, candidate.deviceId])).toEqual([['REGISTERED', 'CAM-03']]);
 
       // 89: the credential of a registered camera is replaced; the answer is the selector and echoes neither field.
-      const replaced = await expectCall(main, 'setCaptureDeviceCredential', supervisor, 'a SUPERVISOR replaces the credential of the adopted camera', { id: 'CAM-03', payload: account }, 200);
-      await expectCall(main, 'setCaptureDeviceCredential', supervisor, 'a device the capture registry does not hold', { id: 'CAM-99', payload: account }, 404, 'NOT_FOUND');
-      await expectCall(main, 'setCaptureDeviceCredential', supervisor, 'a malformed {id}', { id: 'cam 03', payload: account }, 422, 'INVALID_INPUT');
+      const replaced = await expectCall(main, 'setCaptureDeviceCredential', technician, 'the holder of CAPTURE_CONFIG replaces the credential of the adopted camera', { id: 'CAM-03', payload: account }, 200);
+      await expectCall(main, 'setCaptureDeviceCredential', technician, 'a device the capture registry does not hold', { id: 'CAM-99', payload: account }, 404, 'NOT_FOUND');
+      await expectCall(main, 'setCaptureDeviceCredential', technician, 'a malformed {id}', { id: 'cam 03', payload: account }, 422, 'INVALID_INPUT');
       // (Its 409 CAPTURE_CONFIG_LOCKED needs an open session: produced by the connect flow's own
       // database test today, and by area 4 of this file once its route walk is whole again - the
       // same place the selector's 409 of operations 78 to 80 waits for.)
@@ -1100,7 +1203,7 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       const unmoved = await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'the registered camera answers from its stored address', readdress(candidateId), 409, 'INVALID_STATE');
       expect(detailsOf(unmoved)).toEqual({ reason: 'READDRESS_NOT_THE_REGISTERED_CAMERA' });
       await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'an id no search listed', readdress(unknownId), 404, 'NOT_FOUND');
-      await expectCall(main, 'confirmCaptureDeviceAddress', supervisor, 'the candidate of another session\'s search', readdress(candidateId), 404, 'NOT_FOUND');
+      await expectCall(main, 'confirmCaptureDeviceAddress', spareTechnician, 'the candidate of another session\'s search', readdress(candidateId), 404, 'NOT_FOUND');
       await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'a device the capture registry does not hold', readdress(candidateId, 'CAM-99'), 404, 'NOT_FOUND');
       await expectCall(main, 'confirmCaptureDeviceAddress', technician, 'an address that is a name', readdress(candidateId, 'CAM-03', 'camera.example'), 422, 'INVALID_INPUT');
       // THE CAMERA "MOVES" (fixture): its stored address becomes another one through the engine's own door, in the
@@ -1136,7 +1239,7 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
       expect(stub.requestLog().slice(sentBeforeReaddress).every((entry) => entry.channel === 'discovery')).toBe(true);
 
       // 97: the registered microphones re-read; no network is involved.
-      for (const caller of [supervisor, technician]) {
+      for (const caller of [technician, spareTechnician]) {
         // One accepted re-read per interval of the Core (the server clock decides).
         main.clock.advance(CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS);
         const rescanned = await expectCall(main, 'rescanCaptureInputs', caller, 'a holder of CAPTURE_CONFIG re-reads the local inputs', {}, 200);
@@ -1173,7 +1276,6 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
 
   it('the sound cards (operations 98 and 99; task 4 row 70, decision C31): one listing, one registration, its repeat and their refusals, on fixed listing texts', async () => {
     fresh(main);
-    const supervisor = web.SUPERVISOR;
     const technician = web.TECHNICIAN;
     // THIS CORE IS SIMULATED: of itself the module has no enumerator and answers the envelope's 503.
     // Its place is taken, once, by the real enumerator of row 64 over a table of fixed texts (no
@@ -1192,9 +1294,10 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     interface Search { cards: { cardId: string; channelCount: number; registered: { inputNumber: number; deviceId: string }[]; boundTo: string | null }[]; truncated: boolean }
     interface Registration { deviceId: string; change: string; inputNumber: number; channelCount: number; releasedDeviceId: string | null }
 
-    // 98: the listing, for each holder of CAPTURE_CONFIG on the web console. R-FLEX (row 138, AU-L1): every card
+    // 98: the listing, for the holder of CAPTURE_CONFIG on the web console (D59: SUPERVISOR's grant is revoked,
+    // the refusal cell is held by the generated walk of AC-B-14). R-FLEX (row 138, AU-L1): every card
     // names the microphone that holds it (`boundTo`), here none.
-    for (const caller of [supervisor, technician]) {
+    for (const caller of [technician]) {
       spaced();
       const listed = bodyOf<Search>(await expectCall(main, 'searchCaptureAudioCards', caller, 'a holder of CAPTURE_CONFIG lists the sound cards', {}, 200));
       expect(listed.cards.map((card) => [card.cardId, card.channelCount, card.registered, card.boundTo])).toEqual([[DUO.cardId, 2, [], null], [SIX.cardId, 6, [], null]]);
@@ -1205,7 +1308,7 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     const release = host.holdOnce();
     const running = expectCall(main, 'searchCaptureAudioCards', technician, 'a listing that is held by the host', {}, 200);
     for (let turn = 0; turn < 200 && host.listings() === before; turn += 1) await delay(5);
-    const busy = await expectCall(main, 'searchCaptureAudioCards', supervisor, 'another call while that listing runs', {}, 409, 'INVALID_STATE');
+    const busy = await expectCall(main, 'searchCaptureAudioCards', technician, 'another call while that listing runs (the gate is one per Core)', {}, 409, 'INVALID_STATE');
     expect(detailsOf(busy)['reason']).toBe('AUDIO_CARD_SEARCH_IN_PROGRESS');
     release();
     await running;
@@ -1214,7 +1317,7 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     const payload = { cardId: SIX.cardId, deviceIndex: 0, inputNumber: 3 };
     const registered = bodyOf<Registration>(await expectCall(main, 'registerCaptureAudioInput', technician, 'the third input of the six-input interface', { payload }, 201));
     expect(registered).toMatchObject({ change: 'REGISTERED', inputNumber: 3, channelCount: 6, releasedDeviceId: null });
-    const again = bodyOf<Registration>(await expectCall(main, 'registerCaptureAudioInput', supervisor, 'the same input again', { payload }, 200));
+    const again = bodyOf<Registration>(await expectCall(main, 'registerCaptureAudioInput', technician, 'the same input again', { payload }, 200));
     expect(again).toEqual({ ...registered, change: 'REENABLED' });
     await expectCall(main, 'registerCaptureAudioInput', technician, 'a card the listing does not hold', { payload: { ...payload, cardId: 'NoSuchCard' } }, 404, 'NOT_FOUND');
     const beyond = await expectCall(main, 'registerCaptureAudioInput', technician, 'an input beyond the card', { payload: { ...payload, inputNumber: 7 } }, 409, 'INVALID_STATE');
@@ -1668,12 +1771,13 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     await expectCall(main, 'startSoftwareUpdate', technician, 'a software update during a session', {}, 409, 'SESSION_ACTIVE');
     await expectCall(main, 'restartDevice', technician, 'a camera restart during a recording', { id: 'CAM-01' }, 409, 'RECORDING_ACTIVE');
     // C3 §2.4 (OD-10): the selector and the camera credential are locked while a session is open.
-    await expectCall(main, 'updateCaptureConfig', supervisor, 'a selector edit during a session', { payload: { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01' }] } }, 409, 'CAPTURE_CONFIG_LOCKED');
-    await expectCall(main, 'setCaptureCameraSource', supervisor, 'a camera assignment during a session', { id: 'CAM-01', payload: { trackId: 'VIDEO-01' } }, 409, 'CAPTURE_CONFIG_LOCKED');
-    await expectCall(main, 'setPrimaryMic', supervisor, 'a primary microphone change during a session', { id: 'MIC-01' }, 409, 'CAPTURE_CONFIG_LOCKED');
-    await expectCall(main, 'setCaptureDeviceCredential', supervisor, 'a camera credential during a session', { id: 'CAM-03', payload: exampleBody(operationOf('setCaptureDeviceCredential')) }, 409, 'CAPTURE_CONFIG_LOCKED');
+    // D59 (revocation row of §2.1): the holder that reaches the lock is the TECHNICIAN - SUPERVISOR is refused by stage 6 first.
+    await expectCall(main, 'updateCaptureConfig', technician, 'a selector edit during a session', { payload: { mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01' }] } }, 409, 'CAPTURE_CONFIG_LOCKED');
+    await expectCall(main, 'setCaptureCameraSource', technician, 'a camera assignment during a session', { id: 'CAM-01', payload: { trackId: 'VIDEO-01' } }, 409, 'CAPTURE_CONFIG_LOCKED');
+    await expectCall(main, 'setPrimaryMic', technician, 'a primary microphone change during a session', { id: 'MIC-01' }, 409, 'CAPTURE_CONFIG_LOCKED');
+    await expectCall(main, 'setCaptureDeviceCredential', technician, 'a camera credential during a session', { id: 'CAM-03', payload: exampleBody(operationOf('setCaptureDeviceCredential')) }, 409, 'CAPTURE_CONFIG_LOCKED');
     // Task 4 row 146b: and the stored-credential connection test (operation 108) - a second connection to a camera that may be recording.
-    await expectCall(main, 'testCaptureDeviceConnection', supervisor, 'a stored-credential connection test during a session', { id: 'CAM-03' }, 409, 'CAPTURE_CONFIG_LOCKED');
+    await expectCall(main, 'testCaptureDeviceConnection', technician, 'a stored-credential connection test during a session', { id: 'CAM-03' }, 409, 'CAPTURE_CONFIG_LOCKED');
     // Task 4 row 117: and the installation acceptance and its revocation (operations 109 and 110) - idle only.
     await expectCall(main, 'acceptInstallation', web.TECHNICIAN, 'an installation acceptance during a session', { payload: { steps: INSTALLATION_ACCEPTANCE_STEP_IDS.map((id) => ({ id, result: 'PASS', detail: null })) } }, 409, 'CAPTURE_CONFIG_LOCKED');
     await expectCall(main, 'revokeInstallationAcceptance', web.TECHNICIAN, 'a revocation of the acceptance during a session', { payload: { reason: 'The Core was moved to another room.' } }, 409, 'CAPTURE_CONFIG_LOCKED');
@@ -1847,6 +1951,81 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     await main.drive(30 * SECOND, SECOND);
     settle();
   });
+
+  it('C3 §2.7 (operations 112 to 119; RB-9 as amended by D54, the D57c panel pair, D59): the vendor trio, the preview session and its refusals, the idle-meters lease, the panel words', async () => {
+    fresh(main);
+    const supervisor = web.SUPERVISOR;
+    const technician = web.TECHNICIAN;
+    // THE SEED HOLDS NO VENDOR ACCOUNT, so this file renames the seeded SUPERVISOR into `root` - the pattern of
+    // `modules/admin/__tests__/vendor-trio.db.test.ts` (RB-9 as amended; D59: the identity rules are facts of the
+    // ACCOUNT, applied by the handler units, not by stage 6). The rename stands for the rest of the file: block 4
+    // reads the panel setup as the same account, and no later walk names the old username.
+    await owner().query("UPDATE public.operators SET username = 'root' WHERE id = $1", [operatorIdOf('SUPERVISOR')]);
+
+    // ── 112 to 114: the vendor trio. A created account is born without a credential (U19) and is deleted again.
+    const NEW = { username: 'w52.vendor', name: 'Vendor Testaccount', displayName: 'Vendor Testaccount', initials: 'VT', role: 'INVESTIGATOR', reason: 'Acceptance walk of the RB-9 trio' };
+    const created = await expectCall(main, 'createUser', supervisor, 'the vendor root creates an account', { payload: NEW }, 200);
+    expect(bodyOf<{ username: string; enabled: boolean }>(created)).toMatchObject({ username: 'w52.vendor', enabled: true });
+    const newId = bodyOf<{ id: string }>(created).id;
+    const profiled = await expectCall(main, 'updateUser', supervisor, 'the profile of the new account', { id: newId, payload: { name: 'Vendor Renamed', reason: 'Acceptance walk of the RB-9 trio' } }, 200);
+    expect(bodyOf<{ name: string }>(profiled).name).toBe('Vendor Renamed');
+    await expectCall(main, 'updateUser', supervisor, 'an operator the Core does not have', { id: 'OPR-999', payload: { name: 'Nobody' } }, 404, 'NOT_FOUND');
+    // The second gate of D54 as amended: a holder of USER_ADMIN whose account is not `root` never reaches a unit.
+    await expectCall(main, 'assignUserRole', supervisor, 'the INVESTIGATOR covers as a SUPERVISOR', { id: operatorIdOf('INVESTIGATOR'), payload: { role: 'SUPERVISOR', reason: 'Covers the interview shift this week' } }, 200);
+    const gated = await expectCall(main, 'createUser', web.INVESTIGATOR, 'USER_ADMIN without the root username is the identity refusal (no row)', { payload: { ...NEW, username: 'w52.gate' } }, 403, 'NOT_PERMITTED');
+    expect(bodyOf<{ error: { message: string } }>(gated).error.message).toBe('Only the root account may create, edit or delete an operator.');
+    await expectCall(main, 'assignUserRole', supervisor, 'and an INVESTIGATOR again', { id: operatorIdOf('INVESTIGATOR'), payload: { role: 'INVESTIGATOR' } }, 200);
+    const removed = await expectCall(main, 'deleteUser', supervisor, 'the test account goes again', { id: newId, payload: { confirm: 'w52.vendor', reason: 'Acceptance walk of the RB-9 trio' } }, 200);
+    expect(bodyOf<{ operatorId: string; username: string; credentialsRemoved: number }>(removed)).toMatchObject({ operatorId: newId, username: 'w52.vendor', credentialsRemoved: 0 });
+    await expectCall(main, 'deleteUser', supervisor, 'an operator the Core does not have', { id: 'OPR-999', payload: { confirm: 'nobody' } }, 404, 'NOT_FOUND');
+    // RB-8 stands over the delete too: the last enabled USER_ADMIN holder cannot go.
+    await expectCall(main, 'deleteUser', supervisor, 'the last holder of USER_ADMIN cannot be deleted', { id: operatorIdOf('SUPERVISOR'), payload: { confirm: 'root', reason: 'Acceptance walk of the RB-9 trio' } }, 409, 'LAST_ADMIN');
+
+    // ── 115 and the preview route's issuer: refusals first, then one session with the manager of production
+    // capture taken from the composition's place (its parts are doubles of this file; the stream itself, the
+    // token's binding and the cut rules are `src/camera-preview`'s own tests).
+    await expectCall(main, 'createCameraPreviewSession', technician, 'a malformed {id}', { id: 'cam 01' }, 422, 'INVALID_INPUT');
+    await expectCall(main, 'createCameraPreviewSession', technician, 'a device the capture registry does not hold', { id: 'CAM-99' }, 404, 'NOT_FOUND');
+    const noPreview = await expectCall(main, 'createCameraPreviewSession', technician, 'a Core with no live preview (nothing was provided)', { id: 'CAM-01' }, 409, 'INVALID_STATE');
+    expect(detailsOf(noPreview)['reason']).toBe('PREVIEW_NOT_AVAILABLE');
+    // ── 113: the lease of the idle meters - the same order: refused on this Core of itself, then with the double.
+    const noMeters = await expectCall(main, 'holdIdleMeters', supervisor, 'a Core with no idle meters (nothing was provided)', {}, 409, 'INVALID_STATE');
+    expect(detailsOf(noMeters)['reason']).toBe('IDLE_METERS_NOT_AVAILABLE');
+    cameraPreview(main.app).replaceForTest({
+      manager: () => ({ join: () => ({ joined: false, reason: 'IDLE' }), wouldRefuse: () => null }),
+      idleMeters: () => ({ hold: () => ({ expiresAt: main.clock.now() + 60_000 }) }),
+    });
+    // AS A FIXTURE the built-in camera takes the production adapter kind for this call (the same fixture the
+    // stored-credential test of operation 108 uses above): a live preview is made of an ONVIF_RTSP camera.
+    await owner().query("UPDATE public.capture_devices SET adapter_kind = 'ONVIF_RTSP' WHERE id = 'CAM-01'");
+    try {
+      const opened = await expectCall(main, 'createCameraPreviewSession', technician, 'a preview session of the production camera', { id: 'CAM-01' }, 201);
+      expect(String(bodyOf<{ url: string }>(opened).url)).toMatch(/^http:\/\/127\.0\.0\.1:4420\/preview\/cps_[A-Za-z0-9_-]{43}$/);
+      expect(typeof bodyOf<{ expiresAt: number }>(opened).expiresAt).toBe('number');
+      const lease = await expectCall(main, 'holdIdleMeters', supervisor, 'the idle-meters lease of the operator', {}, 200);
+      expect(typeof bodyOf<{ expiresAt: number }>(lease).expiresAt).toBe('number');
+    } finally {
+      await owner().query("UPDATE public.capture_devices SET adapter_kind = 'FAKE' WHERE id = 'CAM-01'");
+      cameraPreview(main.app).replaceForTest({ manager: () => null, idleMeters: () => null }); // the Core is as it booted
+    }
+    // (The preview route `GET /preview/{token}` streams what the manager joins: registry-external, held to the
+    // rule of operation 115 by block 1, and walked by `src/camera-preview`'s own tests - no documented status
+    // of the registry waits on it here.)
+
+    // ── 117 to 119: the panel words, through the fake backend every server of this file stands behind.
+    const firmware = await expectCall(main, 'getPanelFirmware', CONSOLE, 'the panel states its own word (no session: PUBLIC)', {}, 200);
+    expect(bodyOf<{ panelFirmware: string; verdict: string }>(firmware)).toEqual({ panelFirmware: 'FW-TEST', verdict: 'ok' });
+    const setup = await expectCall(main, 'getPanelSetup', supervisor, 'the vendor account reads the pre-delivery setup', {}, 200);
+    expect(bodyOf<{ satker: string; clientLogoSaved: boolean }>(setup)).toMatchObject({ satker: 'LP acceptance', clientLogoSaved: true });
+    const changed = await expectCall(main, 'setPanelSetup', supervisor, 'the vendor account changes the unit word', { payload: { satker: 'LP W52', reason: 'Acceptance walk of the panel module' } }, 200);
+    expect(bodyOf<{ satker: string }>(changed).satker).toBe('LP W52');
+    expect(bodyOf<{ satker: string }>(await expectCall(main, 'getPanelSetup', supervisor, 'the read after the change', {}, 200)).satker).toBe('LP W52');
+    // The identity gate of D57c on the panel pair: a signed-in web console that is no vendor account is refused
+    // before a byte is forwarded (no row) - the INVESTIGATOR reaches the route and stops at the gate.
+    await expectCall(main, 'getPanelSetup', web.INVESTIGATOR, 'a signed-in account that is no vendor account', {}, 403, 'NOT_PERMITTED');
+    await main.app.pipeline.drain();
+    settle();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -1856,10 +2035,12 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
 describe('AC-B-14: the refusals of the stages, generated for every operation of the registry', () => {
   it('401 NOT_SIGNED_IN: every operation that is not PUBLIC, called without a credential', async () => {
     const guarded = OPERATIONS.filter((operation) => operation.access.kind !== CoreApiAccessKind.PUBLIC);
-    // 110 operations, four of them PUBLIC (the pin read 71 of the 75 of the base; 103 of 107 until task 4 row V3 added operation 108;
-    // 104 of 108 until task 4 row 116 added operations 109 and 110; 106 of 110 until task 4 row RD2 added operation 111).
-    expect(OPERATIONS.length - guarded.length).toBe(4);
-    expect(guarded).toHaveLength(107);
+    // 119 operations, five of them PUBLIC since the D54 panel-firmware read joined them (C3 §2.7, operation 117):
+    // the pin read 71 of the 75 of the base; 103 of 107 until task 4 row V3 added operation 108;
+    // 104 of 108 until task 4 row 116 added operations 109 and 110; 106 of 110 until task 4 row RD2 added operation 111;
+    // 114 of 119 since C3 §2.7 (the eight of RB-9 as amended and D57c, one PUBLIC among them).
+    expect(OPERATIONS.length - guarded.length).toBe(5);
+    expect(guarded).toHaveLength(114);
     // The two unrouted operations (task 4 row 70) answer the router's 404: they are not called.
     for (const operation of guarded.filter((entry) => !UNROUTED_OPERATIONS.includes(entry))) {
       fresh(main);
@@ -1888,7 +2069,7 @@ describe('AC-B-14: the refusals of the stages, generated for every operation of 
       const { access, operationId } = operation;
       const conditions: readonly string[] = access.conditions ?? [];
       const permissions = coreApiAccessPermissions(access);
-      const lacking = ROLES.find((role) => permissions.length > 0 && !holdsOneOf(role, permissions));
+      const lacking = ROLES.find((role) => permissions.length > 0 && lacksAllOf(role, permissions));
       const payload = operation.requestBody === undefined ? {} : { payload: exampleBody(operation) };
       let answer: Answer;
       if (operationId === 'signIn') {
@@ -2102,7 +2283,7 @@ describe('AC-B-14: the refusals of the stages, generated for every operation of 
     settle();
   });
 
-  it('403 DEMO_DISABLED: the five demo operations on a server whose demo flag is off; 403 NOT_PERMITTED on the six operations whose permission every seeded role holds, with the grant taken away in the clone', async () => {
+  it('403 DEMO_DISABLED: the five demo operations on a server whose demo flag is off; 403 NOT_PERMITTED on the eleven operations whose permission every seeded role holds, with the grant taken away in the clone', async () => {
     const target = await db.another({ slug: 'w52off' });
     const off = await startServer('demo flag off', target, { demoControls: false });
     target.onCleanup(() => off.app.close());
@@ -2119,9 +2300,12 @@ describe('AC-B-14: the refusals of the stages, generated for every operation of 
     const investigator = await signInWeb(off, 'INVESTIGATOR');
     await expectCall(off, 'getDemoStatus', investigator, 'a role without DEMO_CONTROL while the flag is off', {}, 403, 'NOT_PERMITTED');
 
-    // Finding F49: every seeded role holds EVIDENCE_VIEW and DIAGNOSTICS_RUN, so six operations
-    // have no denied caller on a seeded server. The grants are read from PostgreSQL with every
-    // request (RB-2): taken away in THIS clone, as `dems_owner`, the next request is refused.
+    // Finding F49: every seeded role holds EVIDENCE_VIEW and DIAGNOSTICS_RUN, and since C3 §2.7 the two
+    // any-of cells of D54 (the preview session, the idle-meters lease) are reachable by every role on one of
+    // SESSION_START, CAPTURE_CONFIG or DEVICE_MANAGE - eleven operations have no denied caller on a seeded
+    // server. The grants are read from PostgreSQL with every request (RB-2): taken away in THIS clone, as
+    // `dems_owner` - EVIDENCE_VIEW, DIAGNOSTICS_RUN and SESSION_START from the INVESTIGATOR, the three that
+    // close all eleven rules - the next request is refused.
     const everyRole = OPERATIONS.filter((operation) => {
       const permissions = coreApiAccessPermissions(operation.access);
       return permissions.length > 0 && ROLES.every((role) => holdsOneOf(role, permissions));
@@ -2139,8 +2323,11 @@ describe('AC-B-14: the refusals of the stages, generated for every operation of 
       'getTranscript',
       'listTranscriptRevisions',
       'createEvidenceMediaSession',
+      // C3 §2.7 (D54): the two any-of cells every role reaches on one of its permissions.
+      'createCameraPreviewSession',
+      'holdIdleMeters',
     ]);
-    for (const permission of ['EVIDENCE_VIEW', 'DIAGNOSTICS_RUN']) {
+    for (const permission of ['EVIDENCE_VIEW', 'DIAGNOSTICS_RUN', 'SESSION_START']) {
       const removed = await target.ownerPool().query('DELETE FROM public.role_permissions WHERE role_id = $1 AND permission_id = $2', ['INVESTIGATOR', permission]);
       expect(removed.rowCount, permission).toBe(1);
     }
@@ -2161,18 +2348,20 @@ describe('AC-B-09, SR-20: no GET handler writes', () => {
 
   it('every GET operation, as each kind of caller its rule lets through: the audit count, the event count and the digest of every table are equal before and after', async () => {
     fresh(main);
-    // Task 4 row 102: the registry holds 39 GET operations; three of them (the configuration read, the
-    // alias state and the job state: operations 101, 104, 107) have no route yet (`LANDED_UNROUTED`,
-    // rows 108, 106 and 111) and answer the router's 404, which is no answer of a handler. The walk is
+    // Task 4 row 102: the registry held 39 GET operations; three of them (the configuration read, the
+    // alias state and the job state: operations 101, 104, 107) had no route yet (`LANDED_UNROUTED`,
+    // rows 108, 106 and 111) and answered the router's 404, which is no answer of a handler. The walk is
     // over the ROUTED reads, and both counts are pinned: a read that gains its route joins the walk.
-    expect(OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(39);
+    // C3 §2.7 (2026-11-04): the panel pair of D54/D57c - operations 117 and 118 - are two more reads, 41;
+    // the registry holds one unrouted operation and it is a POST, so all 41 are walked.
+    expect(OPERATIONS.filter((operation) => operation.method === 'get')).toHaveLength(41);
     // Task 4 row 108: the configuration read (operation 101) has its route and joined the walk: two unrouted reads, 37 walked.
     // Task 4 row 106b: the alias state (operation 104) has its route and joined the walk: one unrouted read, 38 walked.
     // Task 4 row 111: the job state (operation 107) has its route and joined the walk: no unrouted read, 39 walked.
     expect(UNROUTED_OPERATIONS.filter((operation) => operation.method === 'get').map((operation) => operation.operationId)).toEqual([]);
     const reads = ROUTED_OPERATIONS.filter((operation) => operation.method === 'get');
-    // The 39 routed GET operations (the pin read 27, the base's; AC-B-09's first block holds 39 / 68 for the registry).
-    expect(reads).toHaveLength(39);
+    // The 41 routed GET operations (the pin read 27, the base's; AC-B-09's first block holds 41 / 78 for the registry).
+    expect(reads).toHaveLength(41);
     // Operations 82 and 83 read the OPEN session, and 83 one whose sealing has started: a session is
     // recorded and sealed for this walk (before the first reading) and its summary is acknowledged
     // after it. Operations 84 and 86 read the REAL item with a sealed transcript.
@@ -2201,7 +2390,10 @@ describe('AC-B-09, SR-20: no GET handler writes', () => {
       for (const operation of reads) {
         const callers = [allowedCaller(operation)];
         // The reads any operator may call are read from the tablet session too (a bearer value, stage 4's device path).
-        if (operation.access.kind === CoreApiAccessKind.AUTHENTICATED) callers.push(tabletSession);
+        // C3 §2.7 (2026-11-04): a rule whose conditions refuse a tablet session is not read from one - the panel
+        // setup of D57c is web-console-only and vendor-account-only, and the rule itself says so.
+        const refusesTablet = (operation.access.conditions ?? []).some((condition) => condition === CoreApiAccessCondition.WEB_CONSOLE_SESSION || condition === CoreApiAccessCondition.VENDOR_ACCOUNT || condition === CoreApiAccessCondition.DEVICE_SESSION);
+        if (operation.access.kind === CoreApiAccessKind.AUTHENTICATED && !refusesTablet) callers.push(tabletSession);
         for (const caller of callers) {
           const before = await readTables(owner());
           const answer = await call(main, operation.operationId, caller, 'a read between two readings of every table', { id: ids[operation.operationId] ?? exampleId(operation), query: queries[operation.operationId] ?? '' });

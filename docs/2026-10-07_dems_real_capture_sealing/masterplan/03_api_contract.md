@@ -771,6 +771,10 @@ in the chain with it). No table, column or migration was added.
 | 118 | `getPanelSetup` | GET | `/api/v1/lcd/setup` | Device | live | `AUTHENTICATED` + `WEB_CONSOLE_SESSION` (**web console only**, D57) + `VENDOR_ACCOUNT` (**vendor accounts only**, D57; D59) | `NONE-R` / `ACCESS_DENIED` | D57; the vendor gate is the backend's (identity, not role) |
 | 119 | `setPanelSetup` | POST | `/api/v1/lcd/setup` | Device | live | `AUTHENTICATED` + `WEB_CONSOLE_SESSION` (**web console only**, D57) + `VENDOR_ACCOUNT` (**vendor accounts only**, D57; D59) | `PANEL_SETUP_CHANGED` / `ACCESS_DENIED` | D57; body limit API-4 (D57d) |
 
+**Registry-external route (line added 2026-11-04 by the contract-conformance sweep, which found the §2.7 transcription had forgotten it).** The preview token of operation 115 is served at
+`GET /preview/{token}` — the fourth route outside the registry, after `/ws`, `GET /media/{token}` and `GET /exports/{token}`; the guard's rule book holds it as entry 5 of
+`apps/core-server/src/plugins/permission-guard/access-rules.ts` and gives it THE RULE OF OPERATION 115 itself, the operation that issues the token (decisions D51, D53; module `src/modules/camera-preview`). No totals move.
+
 ## 3. Modified operations (of the existing 75)
 
 Each row: **Before** (current contract) → **After**. `file:line` is the current source. (The
