@@ -3,7 +3,7 @@
  *
  * Every selector returns primitives (or `null`), so `useSim`'s shallow compare keeps the screen quiet
  * while the simulator ticks audio at 20 Hz: it re-renders when the state, a finding or a pipeline
- * milestone changes (8 milestones in the 3 s recovery), not per frame. Time-based values read the
+ * milestone changes (11 milestones in the 3 s recovery; D61 of 2026-11-04: the eight-track table), not per frame. Time-based values read the
  * simulator clock (F74-09). Every function that calls a hook is named `use*` (D66).
  *
  * **Live mode** (backend task, plan row W73; 04_client_integration_spec §8.6 S2-3, §8.7 S4-8 and
@@ -58,7 +58,7 @@ import {
 } from './recovery.model';
 import { assertCanViewEvidence, recoverySignatureOf, startRecovery } from './sim-adapter';
 
-/** The followed session at the interruption, as flat values (D60, 2026-11-04: the six tracks spelt out). */
+/** The followed session at the interruption, as flat values (D61, 2026-11-04: the eight sealed files spelt out). */
 export interface RecoveryInputs {
   readonly id: string;
   readonly state: SessionState;
@@ -84,6 +84,10 @@ export interface RecoveryInputs {
   readonly audio1Since: number | null;
   readonly audio2: TrackIntegrity;
   readonly audio2Since: number | null;
+  readonly audio3: TrackIntegrity; // D61 (2026-11-04): four simultaneous microphone channels
+  readonly audio3Since: number | null; // D61
+  readonly audio4: TrackIntegrity; // D61
+  readonly audio4Since: number | null; // D61
   readonly timeTo: TimeFinding['to'];
   readonly timeAt: number | null;
 }
@@ -100,8 +104,8 @@ export function selectRecoveryInputs(s: SimState): RecoveryInputs | null {
     if (item.kind !== 'AUTOSAVE' || (faultAt !== null && item.at > faultAt)) continue;
     if (lastAutosaveAt === null || item.at > lastAutosaveAt) lastAutosaveAt = item.at;
   }
-  // D60 (2026-11-04): six tracks — VIDEO-01..04 then AUDIO-01..02.
-  const [v1, v2, v3, v4, a1, a2] = tracks;
+  // D61 (2026-11-04): eight tracks — VIDEO-01..04 then AUDIO-01..04.
+  const [v1, v2, v3, v4, a1, a2, a3, a4] = tracks;
   return {
     id: session.id,
     state: session.state,
@@ -127,6 +131,10 @@ export function selectRecoveryInputs(s: SimState): RecoveryInputs | null {
     audio1Since: a1?.since ?? null,
     audio2: a2?.integrity ?? 'noMedia',
     audio2Since: a2?.since ?? null,
+    audio3: a3?.integrity ?? 'noMedia', // D61 (2026-11-04)
+    audio3Since: a3?.since ?? null, // D61
+    audio4: a4?.integrity ?? 'noMedia', // D61
+    audio4Since: a4?.since ?? null, // D61
     timeTo: time.to,
     timeAt: time.at,
   };
@@ -140,9 +148,9 @@ export interface RecoveryAnalysis {
 }
 
 export function analysisOf(inputs: RecoveryInputs): RecoveryAnalysis {
-  // D60 (2026-11-04): six tracks (VIDEO-01..04, AUDIO-01..02).
-  const integrity = [inputs.video1, inputs.video2, inputs.video3, inputs.video4, inputs.audio1, inputs.audio2];
-  const since = [inputs.video1Since, inputs.video2Since, inputs.video3Since, inputs.video4Since, inputs.audio1Since, inputs.audio2Since];
+  // D61 (2026-11-04): eight tracks (VIDEO-01..04, AUDIO-01..04).
+  const integrity = [inputs.video1, inputs.video2, inputs.video3, inputs.video4, inputs.audio1, inputs.audio2, inputs.audio3, inputs.audio4];
+  const since = [inputs.video1Since, inputs.video2Since, inputs.video3Since, inputs.video4Since, inputs.audio1Since, inputs.audio2Since, inputs.audio3Since, inputs.audio4Since];
   return {
     tracks: RECOVERY_TRACKS.map((track, i) => ({ track, integrity: integrity[i] ?? 'noMedia', since: since[i] ?? null })),
     segment: segmentFinding(inputs.startedAt, inputs.lastAutosaveAt),
@@ -164,7 +172,7 @@ export function useFollowedRecovery(): RecoveryInputs | null {
   return live ?? latched;
 }
 
-/** Pipeline milestones passed (0 … 8) on the simulator clock; 0 outside RECOVERY. */
+/** Pipeline milestones passed (0 … 11; D61) on the simulator clock; 0 outside RECOVERY. */
 export function useRecoveryMilestone(): number {
   return useSim((s) => recoveryMilestone(s.session?.recovery ?? null, s.clock.now));
 }

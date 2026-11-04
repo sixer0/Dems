@@ -240,22 +240,22 @@ export function valueKey(id: PrecheckCheckId, value: string): string {
 
 /** The microphone input a channel-keyed check stands for (`MIC_1` = `MIC-01`, `MIC_2` = `MIC-02`). */
 const CHECK_MIC_INPUT: Readonly<Partial<Record<PrecheckCheckId, string>>> = { MIC_1: 'MIC-01', MIC_2: 'MIC-02' };
-/** The role a role-keyed check stands for. */
-const CHECK_MIC_ROLE: Readonly<Partial<Record<PrecheckCheckId, 'PRIMARY' | 'STANDBY'>>> = { MIC_PRIMARY: 'PRIMARY', MIC_STANDBY: 'STANDBY' };
+/** D61 (2026-11-04): the role-keyed checks stand for the transcription channels 1 and 2. */
+const CHECK_MIC_CHANNEL: Readonly<Partial<Record<PrecheckCheckId, 'MIC-01' | 'MIC-02'>>> = { MIC_PRIMARY: 'MIC-01', MIC_STANDBY: 'MIC-02' };
 
 /**
- * Flat encoding of the selector's microphone lines for `useSim` (F74-13): `MIC-01:PRIMARY|MIC-02:STANDBY`.
- * The lines are the open session's own snapshot when it holds one (the selector may not change under
- * a session, OD-10), else the Core's current selector.
+ * Flat encoding of the selector's microphone lines for `useSim` (F74-13; D61: by CHANNEL):
+ * `MIC-01:MIC-01|MIC-02:MIC-02|…`. The lines are the open session's own snapshot when it holds one
+ * (the selector may not change under a session, OD-10), else the Core's current selector.
  */
-export function micRoleLine(state: { session: { state?: string | null; captureConfig?: { mics: readonly { inputId: string; role: string }[] } | null } | null; captureConfig: { mics: readonly { inputId: string; role: string }[] } }): string {
+export function micRoleLine(state: { session: { state?: string | null; captureConfig?: { mics: readonly { inputId: string; channel: string }[] } | null } | null; captureConfig: { mics: readonly { inputId: string; channel: string }[] } }): string {
   const mics = micLinesInForce(state);
-  return mics.map((mic) => `${mic.inputId}:${mic.role}`).join('|');
+  return mics.map((mic) => `${mic.inputId}:${mic.channel}`).join('|');
 }
 
 export interface CheckMicBinding {
-  /** The role the checked input holds in the selector. */
-  readonly role: 'PRIMARY' | 'STANDBY';
+  /** D61: the CHANNEL the checked line holds (`MIC-01`, `MIC-02`). */
+  readonly channel: 'MIC-01' | 'MIC-02';
   /** The input that holds it (`MIC-01`, `MIC-02`). */
   readonly inputId: string;
 }
@@ -263,18 +263,19 @@ export interface CheckMicBinding {
 /**
  * Which selector line a microphone check is about, or null for any other check and for a selector
  * that does not hold the line (an empty selector before the first snapshot). `MIC_1`/`MIC_2` are
- * looked up by input, `MIC_PRIMARY`/`MIC_STANDBY` by role, so the row reads the same whichever pair
- * the Core sends.
+ * looked up by input, `MIC_PRIMARY`/`MIC_STANDBY` by CHANNEL (D61), so the row reads the same
+ * whichever lines the Core sends.
  */
 export function checkMicBinding(id: PrecheckCheckId, roleLine: string): CheckMicBinding | null {
+  // D61 (2026-11-04): the encoding names the CHANNEL of each line.
   const lines = roleLine
     .split('|')
     .map((part) => part.split(':'))
-    .filter((parts): parts is [string, string] => parts.length === 2 && (parts[1] === 'PRIMARY' || parts[1] === 'STANDBY'));
+    .filter((parts): parts is [string, string] => parts.length === 2 && /^MIC-0[1-4]$/.test(parts[1]));
   const input = CHECK_MIC_INPUT[id];
-  const role = CHECK_MIC_ROLE[id];
-  const found = input !== undefined ? lines.find(([inputId]) => inputId === input) : role !== undefined ? lines.find(([, held]) => held === role) : undefined;
-  return found ? { inputId: found[0], role: found[1] as 'PRIMARY' | 'STANDBY' } : null;
+  const channel = CHECK_MIC_CHANNEL[id];
+  const found = input !== undefined ? lines.find(([inputId]) => inputId === input) : channel !== undefined ? lines.find(([, held]) => held === channel) : undefined;
+  return found ? { inputId: found[0], channel: found[1] as 'MIC-01' | 'MIC-02' } : null;
 }
 
 /** The eight checks in the book's order (§5.3), for rows that have not been created yet. */

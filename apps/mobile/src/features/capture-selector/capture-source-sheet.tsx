@@ -5,7 +5,7 @@
  * | Field | Options | Operation on Save |
  * |---|---|---|
  * | the camera of a video track | every REGISTERED camera (`cameraOptions`; a search candidate is never one, PE-125-04) | 79 `setCaptureCameraSource` |
- * | the microphone of the PRIMARY or of the STANDBY line (fix wave H, G70-02; ruling D196) | every REGISTERED microphone (`micOptions`) | `micLineCommand`: 80 `setPrimaryMic` when the two lines trade roles; 78 `updateCaptureConfig` (pair replacement, D133 (1)) for a microphone that is on no line. The primary microphone is refused on the standby line (`micOptionRefusal`): the option is disabled and says why |
+ * | the microphone of any of the FOUR channels (fix wave H, G70-02; ruling D196; D61 of 2026-11-04) | every REGISTERED microphone (`micOptions`) | `micLineCommand`: 78 `updateCaptureConfig` with ONE line by channel, or ONE edit `{ unassign: [from], mics: [line] }` when the microphone moves from another channel (`micOptionMoveHint` says so on the option) |
  *
  * The sheet is portalled above the simulator's provider, so it reads no store: the options and the
  * current choice come in as props, and Save hands the command to the caller, which holds the port.
@@ -31,7 +31,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { ReduceMotion } from 'react-native-reanimated';
-import type { MicRole, VideoTrackId } from '@dems/shared/domain';
+import type { VideoTrackId } from '@dems/shared/domain';
+import type { MicChannel } from '@dems/shared/sim'; // D61 (2026-11-04)
 import { fontFamily, palette, radius, spacing, typography, type StatusTone } from '@dems/shared/tokens';
 import { ROW_CARD_BORDER, SelectionGlow } from '@/components/composed/selection-glow';
 import { StatusChip } from '@/components/kit';
@@ -40,7 +41,8 @@ import { REDUCED_FADE_MS, useMotionPolicy } from '@/motion';
 import { PendingSpinner, busyState } from '@/runtime';
 import { cameraAssignmentOf, profileWords, type CameraAssignment } from './camera-profile';
 import { developmentSourceOf, type DevelopmentSourceKind } from './capture-notices-model';
-import { cameraLineStatus, micLineCommand, micOptionRefusal, type CameraOption, type MicOption, type SelectorCommand } from './capture-selector-model';
+// D61 (2026-11-04): the microphone sheet is per CHANNEL; a held microphone moves here.
+import { cameraLineStatus, micLineCommand, micOptionMoveHint, type CameraOption, type MicOption, type SelectorCommand } from './capture-selector-model';
 import { MicrophoneLimitLine, SourceBadge } from './development-source-badge';
 import { SheetContentSignal, useSheetBack, useSheetPresence } from '@/features/devices/use-sheet-presence';
 import { useConfirmedOpen } from '@/lib/sheet-open';
@@ -72,7 +74,7 @@ export type SourceSheetRequest =
       /** Wave L (G70c-02): a session of the Core is RECORDING, so "Live" / "Lost" are true of the cameras ON a track. */
       readonly recording?: boolean;
     }
-  | { readonly kind: 'mic'; readonly role: MicRole; readonly currentInputId: string | null; readonly options: readonly MicOption[]; readonly badgeMode?: SourceBadgeMode };
+  | { readonly kind: 'mic'; readonly channel: MicChannel; readonly currentInputId: string | null; readonly options: readonly MicOption[]; readonly badgeMode?: SourceBadgeMode };
 
 const NO_BADGE: SourceBadgeMode = { live: false };
 
@@ -117,7 +119,7 @@ export function CaptureSourceSheet({ request, fullHeight, busy, pending, onSave,
           {...(reduced ? { animationConfigs: { duration: REDUCED_FADE_MS } } : {})}
         >
           <SheetContentSignal onChange={presence.setContentMounted}>
-            <SheetBody key={shown.kind === 'camera' ? shown.trackId : shown.role} request={shown} busy={busy} pending={pending} onSave={onSave} onClose={close} />
+            <SheetBody key={shown.kind === 'camera' ? shown.trackId : shown.channel} request={shown} busy={busy} pending={pending} onSave={onSave} onClose={close} />
           </SheetContentSignal>
         </BottomSheet.Content>
       </BottomSheet.Portal>
@@ -170,9 +172,12 @@ function SheetBody({ request, busy, pending, onSave, onClose }: SheetBodyProps) 
         ? cameraCommand(request.trackId, draft)
         : draft === current
           ? null
-          : micLineCommand(request.role, draft, { mics: request.options.flatMap((option) => (option.role === null ? [] : [{ inputId: option.deviceId, role: option.role }])) });
+          : micLineCommand(request.channel, draft, { mics: request.options.flatMap((option) => (option.channel === null ? [] : [{ inputId: option.deviceId, channel: option.channel }])) });
   const unchanged = command === null;
-  const sheetKey = request.kind === 'camera' ? 'camera' : request.role === 'PRIMARY' ? 'mic' : 'standbyMic';
+  // D61 (2026-11-04): one microphone sheet, worded by the channel number.
+  const sheetKey = request.kind === 'camera' ? 'camera' : 'micChannel';
+  const channelNumber = request.kind === 'mic' ? Number(request.channel.slice(-2)) : 0;
+  const titleArgs = request.kind === 'camera' ? { track } : { n: channelNumber };
 
   const save = () => {
     if (command === null || busy) return;
@@ -184,15 +189,15 @@ function SheetBody({ request, busy, pending, onSave, onClose }: SheetBodyProps) 
       <View style={styles.header}>
         <View style={styles.headerText}>
           <BottomSheet.Title>
-            {t(`features.capture-selector.selector.sheet.${sheetKey}Title`, { track })}
+            {t(`features.capture-selector.selector.sheet.${sheetKey}Title`, titleArgs)}
           </BottomSheet.Title>
           <BottomSheet.Description>
-            {t(`features.capture-selector.selector.sheet.${sheetKey}Body`)}
+            {t(`features.capture-selector.selector.sheet.${sheetKey}Body`, titleArgs)}
           </BottomSheet.Description>
         </View>
         <BottomSheet.Close accessibilityLabel={t('features.capture-selector.selector.sheet.close')} testID="capture-source-close" onPress={onClose} />
       </View>
-      <ListGroup variant="transparent" accessibilityRole="radiogroup" accessibilityLabel={t(`features.capture-selector.selector.sheet.${sheetKey}Title`, { track })}>
+      <ListGroup variant="transparent" accessibilityRole="radiogroup" accessibilityLabel={t(`features.capture-selector.selector.sheet.${sheetKey}Title`, titleArgs)}>
         {request.kind === 'camera'
           ? request.options.map((option) => {
               // Row W6 (line 569 (3)): the Core's null is passed through - "Not read", never a LIVE the Core did not state.
@@ -228,7 +233,8 @@ function SheetBody({ request, busy, pending, onSave, onClose }: SheetBodyProps) 
               );
             })
           : request.options.map((option) => {
-              const refusal = micOptionRefusal(request.role, option);
+              // D61 (2026-11-04): a microphone another channel holds is an ENABLED move option that says where it stands.
+              const moveFrom = micOptionMoveHint(request.channel, option);
               return (
                 <OptionRow
                   key={option.deviceId}
@@ -240,14 +246,14 @@ function SheetBody({ request, busy, pending, onSave, onClose }: SheetBodyProps) 
                   chip={
                     <StatusChip
                       size="sm"
-                      tone={option.role === 'PRIMARY' ? 'success' : 'default'}
-                      label={option.role === null ? t('features.capture-selector.selector.sheet.notAssigned') : t(`features.capture-selector.selector.role.${option.role}`)}
+                      tone={option.channel === 'MIC-01' ? 'success' : 'default'}
+                      label={option.channel === null ? t('features.capture-selector.selector.sheet.notAssigned') : t(`features.capture-selector.selector.channel.${option.channel}`)}
                       icon={null}
                     />
                   }
-                  refusal={refusal === null ? null : t(`features.capture-selector.selector.sheet.refusal.${refusal}`)}
+                  warning={moveFrom === null ? null : t('features.capture-selector.selector.sheet.onOtherChannel', { n: Number(moveFrom.slice(-2)) })}
                   selected={draft === option.deviceId}
-                  disabled={busy || refusal !== null}
+                  disabled={busy}
                   onPress={setDraft}
                 />
               );

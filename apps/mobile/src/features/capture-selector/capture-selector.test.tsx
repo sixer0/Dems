@@ -19,8 +19,8 @@ beforeEach(() => resetMissingKeys());
 // MA-21: every string the card renders comes from an i18n key.
 afterEach(() => expect(getMissingKeys()).toEqual([]));
 
-// D60 (2026-11-04): the selector holds four camera lines and two microphone lines - six edit controls.
-const EDIT_IDS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02'] as const;
+// D61 (2026-11-04): the selector holds four camera lines AND FOUR microphone channels - eight edit controls.
+const EDIT_IDS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const;
 const editDisabled = (id: string) => screen.getByTestId(`capture-selector-edit-${id}`).props.accessibilityState?.disabled === true;
 const configAudit = (h: DevicesHarness) => h.sim.store.getState().audit.rows.filter((row) => row.type === 'CAPTURE_CONFIG_CHANGED');
 const glowOpacity = (testID: string) => {
@@ -29,7 +29,7 @@ const glowOpacity = (testID: string) => {
 };
 
 describe('rows (ux §2.2 step 2)', () => {
-  it('shows two camera rows and two microphone rows from the replicated slices, status as text, no preview', async () => {
+  it('shows four camera rows and four microphone rows from the replicated slices, status as text, no preview', async () => {
     renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
     const card = screen.getByTestId('capture-selector');
@@ -38,8 +38,11 @@ describe('rows (ux §2.2 step 2)', () => {
     expect(screen.getByTestId('capture-selector-detail-VIDEO-01')).toHaveTextContent('CAM-01 · Dual-lens IP camera DL-2');
     expect(screen.getByTestId('capture-selector-detail-VIDEO-02')).toHaveTextContent('CAM-02 · Dual-lens IP camera DL-2');
     expect(screen.getByTestId('capture-selector-stream-VIDEO-01').props.accessibilityLabel).toBe('Live');
-    expect(screen.getByTestId('capture-selector-role-MIC-01').props.accessibilityLabel).toBe('Primary');
-    expect(screen.getByTestId('capture-selector-role-MIC-02').props.accessibilityLabel).toBe('Standby');
+    // D61 (2026-11-04): the rows are CHANNELS - channel 1 carries the transcribed word, channels 2..4 their number.
+    expect(screen.getByTestId('capture-selector-channel-MIC-01').props.accessibilityLabel).toBe('Channel 1 (transcribed)');
+    expect(screen.getByTestId('capture-selector-channel-MIC-02').props.accessibilityLabel).toBe('Channel 2');
+    expect(screen.getByTestId('capture-selector-channel-MIC-03').props.accessibilityLabel).toBe('Channel 3');
+    expect(screen.getByTestId('capture-selector-channel-MIC-04').props.accessibilityLabel).toBe('Channel 4');
     // OD-12: the card says so and holds no image.
     expect(screen.getByTestId('capture-selector-no-preview')).toBeTruthy();
     expect(within(card).queryAllByRole('image')).toHaveLength(0);
@@ -50,7 +53,7 @@ describe('rows (ux §2.2 step 2)', () => {
   it('E-15: every row keeps a 1 dp border and an always-mounted glow that React hides while nothing is open', async () => {
     renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
-    for (const key of ['VIDEO-01', 'VIDEO-02', 'MIC-01', 'MIC-02']) {
+    for (const key of ['VIDEO-01', 'VIDEO-02', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) { // D61: four microphone rows
       expect(glowOpacity(`capture-selector-glow-${key}`)).toBe(selectionGlowOpacity(false));
       const style = [screen.getByTestId(`capture-selector-row-${key}`).props.style].flat(Infinity) as { borderWidth?: number }[];
       expect(style.some((part) => part?.borderWidth === 1)).toBe(true);
@@ -96,7 +99,7 @@ describe('the gate of G1-G3 (ux §2.4, §11; M4-PC-1)', () => {
       expect(gate).toHaveTextContent('Checking your permissions…');
       for (const id of EDIT_IDS) expect(editDisabled(id)).toBe(true);
     }
-    expect(h.sim.store.getState().captureConfig.mics.find((mic) => mic.inputId === 'MIC-01')?.role).toBe('PRIMARY');
+    expect(h.sim.store.getState().captureConfig.mics.find((mic) => mic.inputId === 'MIC-01')?.channel).toBe('MIC-01'); // D61: the role became the channel
   });
 
   it('OD-10: while a session is open the selector is locked with the sentence, for a role that may edit', async () => {
@@ -109,22 +112,25 @@ describe('the gate of G1-G3 (ux §2.4, §11; M4-PC-1)', () => {
 });
 
 describe('editing (ux §2.2 steps 4-5; R-1 AC-1, AC-2)', () => {
-  it('primary microphone: the sheet lists both inputs, Save is disabled until the choice changes, then one audit row and the roles swap', async () => {
+  it('transcribed channel 1: the sheet lists every registered microphone, Save is disabled until the choice changes, then one audit row and the line takes channel 1 alone (D61)', async () => {
     const h = renderDevicesApp({ user: 'rina.wijaya' });
+    await settle();
+    // D61: all four built-ins stand on a channel - an adopted microphone mints above them (MIC-05).
+    act(() => h.sim.actions.registerCaptureMicrophone({ deviceId: null, model: 'Test source' }));
     await settle();
     fireEvent.press(screen.getByTestId('capture-selector-edit-MIC-01'));
     await settle();
     expect(screen.getByTestId('capture-source-sheet')).toBeTruthy();
-    expect(screen.getByText('Primary microphone')).toBeTruthy();
+    expect(screen.getByText('Microphone for channel 1')).toBeTruthy();
     // The open field's rows are the selected ones (E-15: an opacity change, nothing mounted).
     expect(glowOpacity('capture-selector-glow-MIC-01')).toBe(selectionGlowOpacity(true));
     expect(glowOpacity('capture-selector-glow-VIDEO-01')).toBe(selectionGlowOpacity(false));
     expect(screen.getByTestId('capture-source-option-MIC-01').props.accessibilityState).toMatchObject({ selected: true });
     expect(screen.getByTestId('capture-source-save').props.accessibilityState?.disabled).toBe(true);
 
-    fireEvent.press(screen.getByTestId('capture-source-option-MIC-02'));
+    fireEvent.press(screen.getByTestId('capture-source-option-MIC-05'));
     await settle();
-    expect(glowOpacity('capture-source-glow-MIC-02')).toBe(selectionGlowOpacity(true));
+    expect(glowOpacity('capture-source-glow-MIC-05')).toBe(selectionGlowOpacity(true));
     expect(glowOpacity('capture-source-glow-MIC-01')).toBe(selectionGlowOpacity(false));
     // A draft changes nothing on the Core.
     expect(configAudit(h)).toHaveLength(0);
@@ -132,8 +138,9 @@ describe('editing (ux §2.2 steps 4-5; R-1 AC-1, AC-2)', () => {
     fireEvent.press(screen.getByTestId('capture-source-save'));
     await settle();
     expect(configAudit(h)).toHaveLength(1);
-    expect(screen.getByTestId('capture-selector-role-MIC-02').props.accessibilityLabel).toBe('Primary');
-    expect(screen.getByTestId('capture-selector-role-MIC-01').props.accessibilityLabel).toBe('Standby');
+    // D61: a line assigns its channel ALONE - channel 1 reads MIC-05, the other channels keep their inputs.
+    expect(screen.getByTestId('capture-selector-channel-MIC-05').props.accessibilityLabel).toBe('Channel 1 (transcribed)');
+    expect(screen.getByTestId('capture-selector-channel-MIC-02').props.accessibilityLabel).toBe('Channel 2');
     expect(screen.queryByTestId(/^capture-selector-notice-/)).toBeNull();
   });
 
@@ -142,23 +149,23 @@ describe('editing (ux §2.2 steps 4-5; R-1 AC-1, AC-2)', () => {
   // BOTH tracks with ONE profile (OD-05; `capture_config` CHECK): the Core answers 422 and changes nothing.
   // The production code was right (the refusal is drawn in place); the test's scenario was not a legal edit.
   // It is now two tests: a legal assignment (a camera added later), and that refusal.
-  it('camera source: assigning a camera added later (CAM-03) to video track 2 shows on the row after the republish, one audit row', async () => {
+  it('camera source: assigning a camera added later (CAM-05, D60: CAM-03/CAM-04 are built-ins) to video track 2 shows on the row after the republish, one audit row', async () => {
     const h = renderDevicesApp({ user: 'rina.wijaya', window: 'tabletLandscape' });
     await settle();
     // What the web console's "Add as camera" leaves in the registry (operation 96 → `registerCaptureDevice`).
-    act(() => h.sim.actions.registerCaptureDevice({ id: 'CAM-03', model: 'Test source', host: '127.0.0.1', adapter: 'FAKE' }));
+    act(() => h.sim.actions.registerCaptureDevice({ id: 'CAM-05', model: 'Test source', host: '127.0.0.1', adapter: 'FAKE' }));
     await settle();
     fireEvent.press(screen.getByTestId('capture-selector-edit-VIDEO-02'));
     await settle();
     expect(screen.getByText('Camera for Video track 2')).toBeTruthy();
     expect(screen.getByTestId('capture-source-option-CAM-02').props.accessibilityState).toMatchObject({ selected: true });
-    fireEvent.press(screen.getByTestId('capture-source-option-CAM-03'));
+    fireEvent.press(screen.getByTestId('capture-source-option-CAM-05'));
     fireEvent.press(screen.getByTestId('capture-source-save'));
     await settle();
     // Fix wave L (contract_wave_l.md section 5): `model` of a device with `adapter: 'FAKE'` is a model value and is not drawn.
-    expect(screen.getByTestId('capture-selector-detail-VIDEO-02')).toHaveTextContent('CAM-03');
+    expect(screen.getByTestId('capture-selector-detail-VIDEO-02')).toHaveTextContent('CAM-05');
     expect(configAudit(h)).toHaveLength(1);
-    expect(h.sim.store.getState().captureConfig.cameras.find((line) => line.trackId === 'VIDEO-02')?.deviceId).toBe('CAM-03');
+    expect(h.sim.store.getState().captureConfig.cameras.find((line) => line.trackId === 'VIDEO-02')?.deviceId).toBe('CAM-05');
     expect(screen.queryByTestId(/^capture-selector-notice-/)).toBeNull();
   });
 
@@ -192,7 +199,7 @@ describe('editing (ux §2.2 steps 4-5; R-1 AC-1, AC-2)', () => {
     await settle();
     expect(screen.getByTestId('capture-selector-notice-locked')).toHaveTextContent(/The capture configuration cannot be changed while a session is open\./);
     expect(configAudit(h)).toHaveLength(0);
-    expect(h.sim.store.getState().captureConfig.mics.find((mic) => mic.inputId === 'MIC-01')?.role).toBe('PRIMARY');
+    expect(h.sim.store.getState().captureConfig.mics.find((mic) => mic.inputId === 'MIC-01')?.channel).toBe('MIC-01'); // D61: the role became the channel
   });
 });
 
@@ -268,13 +275,13 @@ describe('fix wave J - the picker and the selector rows', () => {
   });
 });
 
-describe('task 4 row 32: one row per slot - an empty slot is drawn "Not assigned" with the offer to assign (decision C18 (3))', () => {
-  const SLOT_NAME = { 'VIDEO-01': 'Camera 1', 'VIDEO-02': 'Camera 2', PRIMARY: 'Primary microphone', STANDBY: 'Standby microphone' } as const;
+describe('task 4 row 32: one row per slot - an empty slot is drawn "Not assigned" with the offer to assign (decision C18 (3); D61 of 2026-11-04: eight slots - four camera tracks and four microphone channels)', () => {
+  const SLOT_NAME = { 'VIDEO-01': 'Camera 1', 'VIDEO-02': 'Camera 2', 'VIDEO-03': 'Camera 3', 'VIDEO-04': 'Camera 4', 'MIC-01': 'Microphone 1', 'MIC-02': 'Microphone 2', 'MIC-03': 'Microphone 3', 'MIC-04': 'Microphone 4' } as const;
   /** The selector with only the lines named: the registry keeps every device, so the slots can be assigned. */
-  function keepLines(h: DevicesHarness, tracks: readonly string[], roles: readonly string[]) {
+  function keepLines(h: DevicesHarness, tracks: readonly string[], channels: readonly string[]) {
     act(() =>
       h.sim.store.setState((s) => ({
-        captureConfig: { ...s.captureConfig, cameras: s.captureConfig.cameras.filter((line) => tracks.includes(line.trackId)), mics: s.captureConfig.mics.filter((line) => roles.includes(line.role)) },
+        captureConfig: { ...s.captureConfig, cameras: s.captureConfig.cameras.filter((line) => tracks.includes(line.trackId)), mics: s.captureConfig.mics.filter((line) => channels.includes(line.channel)) },
       })),
     );
   }
@@ -289,46 +296,43 @@ describe('task 4 row 32: one row per slot - an empty slot is drawn "Not assigned
   }
   const rowCount = () => screen.getAllByTestId(/^capture-selector-row-(?!wrap-)/).length;
 
-  it.each(['phonePortrait', 'tabletLandscape'] as const)('%s, 0 lines of each kind: four rows, each "Not assigned" with "Assign"; not the empty state', async (window) => {
+  it.each(['phonePortrait', 'tabletLandscape'] as const)('%s, 0 lines of each kind: eight rows, each "Not assigned" with "Assign"; not the empty state', async (window) => {
     const h = renderDevicesApp({ user: 'rina.wijaya', window });
     await settle();
     keepLines(h, [], []);
     await settle();
     expect(screen.queryByTestId('capture-selector-empty')).toBeNull();
-    expect(rowCount()).toBe(4);
-    for (const slot of ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] as const) {
+    expect(rowCount()).toBe(8); // D61: four camera tracks and four microphone channels
+    for (const slot of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const) {
       expectEmptySlot(slot);
       expect(editDisabled(slot)).toBe(false);
     }
     expect(within(screen.getByTestId('capture-selector-row-VIDEO-02')).getByText('Video track 2')).toBeTruthy();
-    expect(within(screen.getByTestId('capture-selector-row-PRIMARY')).getByText('Primary microphone')).toBeTruthy();
-    expect(screen.getByTestId('capture-selector-role-STANDBY').props.accessibilityLabel).toBe('Standby');
+    expect(within(screen.getByTestId('capture-selector-row-MIC-01')).getByText('Microphone 1')).toBeTruthy(); // D61: the empty channel is named by its slot
     // No stream word is said of a track without a camera.
     expect(screen.queryByTestId('capture-selector-stream-VIDEO-01')).toBeNull();
     h.app.unmount();
   });
 
-  it('1 line of each kind: four rows - the held slots as before, the two empty ones with their offer', async () => {
+  it('1 line of each kind: eight rows - the held slots as before, the six empty ones with their offer', async () => {
     const h = renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
-    keepLines(h, ['VIDEO-01'], ['STANDBY']);
+    keepLines(h, ['VIDEO-01'], ['MIC-02']);
     await settle();
-    expect(rowCount()).toBe(4);
+    expect(rowCount()).toBe(8);
     expect(screen.getByTestId('capture-selector-detail-VIDEO-01')).toHaveTextContent('CAM-01 · Dual-lens IP camera DL-2');
     expect(within(screen.getByTestId('capture-selector-edit-VIDEO-01')).getByText('Change')).toBeTruthy();
-    expectEmptySlot('VIDEO-02');
-    // A lone STANDBY line is the standby row; the primary row is the empty one (found by role, never by place).
-    expectEmptySlot('PRIMARY');
-    expect(screen.getByTestId('capture-selector-role-MIC-02').props.accessibilityLabel).toBe('Standby');
+    for (const slot of ['VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-03', 'MIC-04'] as const) expectEmptySlot(slot);
+    // A lone channel-2 line is the channel-2 row; the transcribed row is the empty one (found by CHANNEL, never by place; D61).
+    expect(screen.getByTestId('capture-selector-channel-MIC-02').props.accessibilityLabel).toBe('Channel 2');
     expect(within(screen.getByTestId('capture-selector-edit-MIC-02')).getByText('Change')).toBeTruthy();
-    expect(screen.queryByTestId('capture-selector-row-STANDBY')).toBeNull();
     h.app.unmount();
   });
 
-  it('2 lines of each kind (the seeded selector): four rows, no "Assign", no "Not assigned" - as before', async () => {
+  it('4 lines of each kind (the seeded selector): eight rows, no "Assign", no "Not assigned" - as before (D61)', async () => {
     renderDevicesApp({ user: 'rina.wijaya' });
     await settle();
-    expect(rowCount()).toBe(4);
+    expect(rowCount()).toBe(8); // D61: the seeded selector holds all eight slots
     for (const id of EDIT_IDS) expect(within(screen.getByTestId(`capture-selector-edit-${id}`)).getByText('Change')).toBeTruthy();
     const card = screen.getByTestId('capture-selector');
     expect(within(card).queryByText('Assign')).toBeNull();
@@ -340,10 +344,10 @@ describe('task 4 row 32: one row per slot - an empty slot is drawn "Not assigned
     await settle();
     keepLines(h, [], []);
     await settle();
-    fireEvent.press(screen.getByTestId('capture-selector-edit-STANDBY'));
+    fireEvent.press(screen.getByTestId('capture-selector-edit-MIC-02')); // D61: the standby offer is the channel-2 slot
     await settle();
     expect(screen.getByTestId('capture-source-sheet')).toBeTruthy();
-    for (const id of ['MIC-01', 'MIC-02']) expect(screen.getByTestId(`capture-source-option-${id}`).props.accessibilityState).toMatchObject({ selected: false, disabled: false });
+    for (const id of ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) expect(screen.getByTestId(`capture-source-option-${id}`).props.accessibilityState).toMatchObject({ selected: false, disabled: false });
     expect(screen.getByTestId('capture-source-save').props.accessibilityState?.disabled).toBe(true);
     fireEvent.press(screen.getByTestId('capture-source-option-MIC-02'));
     await settle();
@@ -362,16 +366,16 @@ describe('task 4 row 32: one row per slot - an empty slot is drawn "Not assigned
     h.app.unmount();
   });
 
-  it('the gate holds for the offer: INVESTIGATOR sees the four rows, each "Assign" disabled with the role sentence', async () => {
+  it('the gate holds for the offer: INVESTIGATOR sees the eight rows, each "Assign" disabled with the role sentence', async () => {
     const h = renderDevicesApp({ user: 'budi.santoso' });
     await settle();
     keepLines(h, [], []);
     await settle();
-    for (const slot of ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] as const) {
+    for (const slot of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const) {
       expect(editDisabled(slot)).toBe(true);
       expect(screen.getByTestId(`capture-selector-edit-${slot}`).props.accessibilityHint).toBe('Requires the Supervisor or Technician role');
     }
-    fireEvent.press(screen.getByTestId('capture-selector-edit-PRIMARY'));
+    fireEvent.press(screen.getByTestId('capture-selector-edit-MIC-01')); // D61: the former PRIMARY offer is the channel-1 slot
     await settle();
     expect(screen.queryByTestId('capture-source-sheet')).toBeNull();
     h.app.unmount();

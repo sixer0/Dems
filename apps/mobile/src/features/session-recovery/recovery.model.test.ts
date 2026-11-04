@@ -40,7 +40,8 @@ describe('phase', () => {
 });
 
 describe('milestones on the simulator clock (SIM-GAP-M81-3)', () => {
-  it('counts 8 milestones over the 3 s and never lags the simulator stage', () => {
+  it('counts 11 milestones over the 3 s and never lags the simulator stage', () => {
+    // D61 (2026-11-04): the eight sealed files (4 video + 4 audio) resolve 0.25 s apart from 0.75 s to 2.5 s.
     expect(recoveryMilestone(null, T0)).toBe(0);
     expect(recoveryMilestone(scan, T0)).toBe(0);
     expect(recoveryMilestone(scan, T0 + 499)).toBe(0);
@@ -48,19 +49,21 @@ describe('milestones on the simulator clock (SIM-GAP-M81-3)', () => {
     expect(recoveryMilestone(scan, T0 + 1_000)).toBe(3);
     expect(recoveryMilestone(scan, T0 + RECOVERY_SCAN_MS)).toBe(5);
     // The simulator already reports the second stage: every scan milestone counts as passed.
-    expect(recoveryMilestone({ ...scan, stage: 'INCOMPLETE_SESSION_ANALYSIS' }, T0 + 100)).toBe(5);
+    expect(recoveryMilestone({ ...scan, stage: 'INCOMPLETE_SESSION_ANALYSIS' }, T0 + 100)).toBe(9);
     expect(recoveryMilestone(scan, T0 + RECOVERY_MS)).toBe(MILESTONE_COUNT);
-    expect(stageFor(4)).toBe('RECOVERY_SCAN');
-    expect(stageFor(5)).toBe('INCOMPLETE_SESSION_ANALYSIS');
+    expect(stageFor(8)).toBe('RECOVERY_SCAN');
+    expect(stageFor(9)).toBe('INCOMPLETE_SESSION_ANALYSIS');
   });
 
-  it('resolves the four tracks in order, one checking at a time', () => {
+  it('resolves the eight tracks in order, one checking at a time', () => {
     expect(trackChecking('VIDEO-01', 0, 'analysing')).toBe(false);
     expect(trackChecking('VIDEO-01', 1, 'analysing')).toBe(true);
     expect(trackResolved('VIDEO-01', 2)).toBe(true);
     expect(trackChecking('VIDEO-02', 2, 'analysing')).toBe(true);
     expect(trackChecking('AUDIO-01', 2, 'analysing')).toBe(false);
-    expect(trackResolved('AUDIO-02', 5)).toBe(true);
+    expect(trackResolved('AUDIO-02', 7)).toBe(true);
+    expect(trackResolved('AUDIO-03', 7)).toBe(false); // D61 (2026-11-04): channels 3 and 4 close the table
+    expect(trackResolved('AUDIO-04', 9)).toBe(true); // D61
     expect(trackChecking('VIDEO-01', 1, 'fault')).toBe(false);
   });
 });
@@ -70,14 +73,15 @@ describe('pipeline statuses', () => {
     expect(pipelineStatuses('fault', 0, NO_FINDINGS)).toEqual(['pending', 'pending', 'pending', 'pending', 'pending']);
     expect(pipelineStatuses('analysing', 0, NO_FINDINGS)).toEqual(['running', 'pending', 'pending', 'pending', 'pending']);
     expect(pipelineStatuses('analysing', 1, NO_FINDINGS)).toEqual(['done', 'running', 'pending', 'pending', 'pending']);
-    expect(pipelineStatuses('analysing', 5, NO_FINDINGS)).toEqual(['done', 'done', 'running', 'pending', 'pending']);
+    expect(pipelineStatuses('analysing', 5, NO_FINDINGS)).toEqual(['done', 'running', 'pending', 'pending', 'pending']); // D61: five milestones in, the eight tracks are still resolving
+    expect(pipelineStatuses('analysing', 9, NO_FINDINGS)).toEqual(['done', 'done', 'done', 'running', 'pending']); // D61: tracks AND segment close at the stage-2 floor (9), time runs
     expect(pipelineStatuses('complete', 0, NO_FINDINGS)).toEqual(['done', 'done', 'done', 'done', 'done']);
   });
 
   it('marks a finished step with a finding as warn (one halo, then steady amber; P7)', () => {
     const findings = { ...NO_FINDINGS, tracks: true, time: true };
     expect(pipelineStatuses('complete', 0, findings)).toEqual(['done', 'warn', 'done', 'warn', 'done']);
-    expect(pipelineStatuses('analysing', 5, findings)).toEqual(['done', 'warn', 'running', 'pending', 'pending']);
+    expect(pipelineStatuses('analysing', 9, findings)).toEqual(['done', 'warn', 'done', 'running', 'pending']); // D61: tracks (warn) and segment close at 9, time runs
   });
 });
 
@@ -93,11 +97,16 @@ describe('analysis from the state at the interruption', () => {
 
   it('tracks: GAP for a lost source, FLAGGED for clipping, INTACT otherwise, NO MEDIA before recording', () => {
     const tracks = trackFindings(true, faultAt, flags);
+    // D61 (2026-11-04): the eight sealed files — channels 3 and 4 carry no flag here and read INTACT.
     expect(tracks.map((f) => [f.track, f.integrity, f.since])).toEqual([
       ['VIDEO-01', 'intact', null],
       ['VIDEO-02', 'gap', T0 - 95_000],
+      ['VIDEO-03', 'intact', null],
+      ['VIDEO-04', 'intact', null],
       ['AUDIO-01', 'intact', null],
       ['AUDIO-02', 'degraded', T0 - 60_000],
+      ['AUDIO-03', 'intact', null],
+      ['AUDIO-04', 'intact', null],
     ]);
     expect(trackIssueCount(tracks)).toBe(2);
     expect(trackFindings(false, faultAt, flags).every((f) => f.integrity === 'noMedia')).toBe(true);

@@ -102,10 +102,12 @@ export function useMicSource(): MicSourceView {
 
 /**
  * What one MIC card says about its input: "Active" or "Standby" while a session records, `null`
- * otherwise. A primitive selector, so a card renders again only when its own word changes.
+ * otherwise - and `null` for a channel outside the transcription pair (D61 of 2026-11-04: all four
+ * channels record, the pair words belong to channels 1 and 2 alone). A primitive selector, so a
+ * card renders again only when its own word changes.
  */
 export function useMicSourceRole(channel: AudioTrackId): MicSourceRole | null {
-  return useSim((s) => (s.session?.state === 'RECORDING' ? micSourceRole(inputOfChannel(channel, micLinesInForce(s)), selectActiveInputId(s)) : null));
+  return useSim((s) => (s.session?.state === 'RECORDING' ? micSourceRole(inputOfChannel(channel, micLinesInForce(s)), selectActiveInputId(s), selectStandbyInputId(s)) : null));
 }
 
 export interface MicSwitchControl {

@@ -50,7 +50,9 @@ const toneOf = (tone: number): string => TONES[tone % TONES.length] ?? palette.g
 
 export function AudioSourceBand({ segments, totalMs, positionMs, sources, itemIntervals }: AudioSourceBandProps) {
   const { t } = useTranslation();
-  const micName = (inputId: string): string => (inputId === 'MIC-01' ? t('common.devices.mic1') : inputId === 'MIC-02' ? t('common.devices.mic2') : inputId);
+  // D61 (2026-11-04): any of the four channels can feed the band; the names come from the shared catalog.
+  const micName = (inputId: string): string =>
+    inputId === 'MIC-01' ? t('common.devices.mic1') : inputId === 'MIC-02' ? t('common.devices.mic2') : inputId === 'MIC-03' ? t('common.devices.mic3') : inputId === 'MIC-04' ? t('common.devices.mic4') : inputId;
   if (segments.length === 0) {
     return (
       <Text maxFontSizeMultiplier={1.2} style={styles.caption} testID="evidence-band-none">

@@ -46,8 +46,10 @@ describe('phone portrait (MB 4, compact)', () => {
     expect(screen.getByText('1080p • 25 fps')).toBeTruthy();
     expect(within(screen.getByTestId('monitor-feed-rec')).getByText('REC')).toBeTruthy();
     // S4, S5, S6.
-    expect(screen.getByTestId('monitor-mic-1')).toBeTruthy();
-    expect(screen.getByTestId('monitor-mic-2')).toBeTruthy();
+    expect(screen.getByTestId('monitor-mic-MIC-01')).toBeTruthy(); // D61 (2026-11-04): the card is keyed by the CHANNEL code
+    expect(screen.getByTestId('monitor-mic-MIC-02')).toBeTruthy(); // D61
+    expect(screen.getByTestId('monitor-mic-MIC-03')).toBeTruthy(); // D61: four simultaneous channels draw four cards
+    expect(screen.getByTestId('monitor-mic-MIC-04')).toBeTruthy(); // D61
     for (const label of ['Snapshot', 'Bookmark', 'Audio Monitor', 'Settings']) expect(screen.getByText(label)).toBeTruthy();
     expect(within(screen.getByTestId('monitor-end-session')).getByText('End Session')).toBeTruthy();
     expect(screen.queryByText(/Stop Session/i)).toBeNull();
@@ -128,30 +130,30 @@ describe('phone portrait (MB 4, compact)', () => {
     expect(screen.queryByTestId('monitor-timeline-sheet-list')).toBeNull();
   });
 
-  it('Audio Monitor opens two separate large meters (MIC 1, MIC 2; never mixed)', async () => {
+  // D61 (2026-11-04): FOUR simultaneous microphone channels - the sheet opens four separate large meters.
+  it('Audio Monitor opens four separate large meters (MIC 1..MIC 4; never mixed)', async () => {
     await openPhone();
     fireEvent.press(screen.getByTestId('monitor-action-audio'));
-    expect(screen.getByTestId('monitor-audio-sheet-meter-1')).toBeTruthy();
-    expect(screen.getByTestId('monitor-audio-sheet-meter-2')).toBeTruthy();
+    for (const channel of ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) expect(screen.getByTestId(`monitor-audio-sheet-meter-${channel}`)).toBeTruthy();
     expect(screen.getByText('MIC 1 - Interviewer')).toBeTruthy();
     expect(screen.getByText('MIC 2 - Subject')).toBeTruthy();
-    // CONTROL of JT-07: the simulated lane keeps its own sentence (two tracks there).
-    expect(screen.getByText('MIC 1 and MIC 2 are separate tracks and are never mixed.')).toBeTruthy();
+    // CONTROL of JT-07: the simulated lane keeps its own sentence (the four tracks there).
+    expect(screen.getByText('The four microphone channels are separate tracks and are never mixed.')).toBeTruthy();
   });
 
   // Fix wave J, JT-07: on a Core in its own capture the sheet said "MIC 1 and MIC 2 are separate tracks and are
-  // never mixed" and named them "Interviewer" / "Subject" - a recording that Core does not make (one audio track,
-  // from the active microphone; the standby only after a switch). The simulated wording stays where it is true.
-  it('JT-07 - own capture: the Audio Monitor says ONE audio track from the active microphone, and names no "Interviewer" / "Subject"', async () => {
+  // never mixed" and named them "Interviewer" / "Subject" - a recording that Core does not make.
+  // D61 (2026-11-04): it records FOUR simultaneous channels; the switch moves the transcribed source alone.
+  // The simulated wording stays where it is true.
+  it('JT-07 - own capture: the Audio Monitor says FOUR simultaneous channels, and names no "Interviewer" / "Subject"', async () => {
     const h = await openPhone();
     act(() => h.sim.store.setState((s) => ({ session: { ...s.session!, captureDurable: true } as typeof s.session })));
     fireEvent.press(screen.getByTestId('monitor-action-audio'));
-    expect(screen.getByText(/This Core records one audio track, from the active microphone\./)).toBeTruthy();
-    expect(screen.queryByText('MIC 1 and MIC 2 are separate tracks and are never mixed.')).toBeNull();
+    expect(screen.getByText(/This Core records four simultaneous microphone channels\./)).toBeTruthy();
+    expect(screen.queryByText('The four microphone channels are separate tracks and are never mixed.')).toBeNull();
     expect(screen.queryByText('MIC 1 - Interviewer')).toBeNull();
     expect(screen.queryByText('MIC 2 - Subject')).toBeNull();
-    expect(screen.getByTestId('monitor-audio-sheet-meter-1')).toBeTruthy();
-    expect(screen.getByTestId('monitor-audio-sheet-meter-2')).toBeTruthy();
+    for (const channel of ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) expect(screen.getByTestId(`monitor-audio-sheet-meter-${channel}`)).toBeTruthy();
   });
 
   it('Settings: Pause monitoring is UI-only (the recording continues), camera and meter size apply', async () => {
@@ -169,7 +171,7 @@ describe('phone portrait (MB 4, compact)', () => {
     const h = await openPhone();
     act(() => h.sim.actions.inject('MIC_CLIP', { channel: 'AUDIO-02' }));
     expect(h.sim.store.getState().mics.find((m) => m.id === 'AUDIO-02')?.clipLatched).toBe(true);
-    const card = screen.getByTestId('monitor-mic-2');
+    const card = screen.getByTestId('monitor-mic-MIC-02'); // D61 (2026-11-04): the card is keyed by the CHANNEL code
     fireEvent.press(within(card).getByHintText('Reset clip'));
     expect(h.sim.store.getState().mics.find((m) => m.id === 'AUDIO-02')?.clipLatched).toBe(false);
   });
@@ -178,8 +180,8 @@ describe('phone portrait (MB 4, compact)', () => {
     const h = await openPhone();
     act(() => h.sim.actions.inject('MIC_NO_SIGNAL', { channel: 'AUDIO-01' }));
     act(() => h.advance(200, 50));
-    expect(within(screen.getByTestId('monitor-mic-1')).getByText('NO SIGNAL')).toBeTruthy();
-    expect(within(screen.getByTestId('monitor-mic-2')).queryByText('NO SIGNAL')).toBeNull();
+    expect(within(screen.getByTestId('monitor-mic-MIC-01')).getByText('NO SIGNAL')).toBeTruthy(); // D61 (2026-11-04): the card is keyed by the CHANNEL code
+    expect(within(screen.getByTestId('monitor-mic-MIC-02')).queryByText('NO SIGNAL')).toBeNull();
     expect(h.sim.store.getState().session?.state).toBe('RECORDING');
   });
 

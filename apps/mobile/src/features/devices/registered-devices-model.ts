@@ -26,13 +26,15 @@ import { micInputName, type MicNameTranslate } from '@/features/capture-selector
 
 /** The four ids the screens' own rows already draw. */
 // D60 (2026-11-04): the built-in set is the seed's — four cameras and two microphones; the roster lists what the Core holds beyond these.
-export const BUILT_IN_SOURCE_IDS: readonly string[] = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02'];
+// D61 (2026-11-04): the four-channel microphone plane seeds MIC-03/MIC-04 as built-ins too (nine built-ins).
+export const BUILT_IN_SOURCE_IDS: readonly string[] = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'];
 
 /** `params.reason` of the advisory alert of a microphone whose rate controller is at its limit (capture protocol 4). */
 export const MIC_RATE_AT_LIMIT = 'MIC_RATE_AT_LIMIT';
 
 export type RosterKind = 'CAMERA' | 'MIC';
-export type RosterSlot = 'VIDEO-01' | 'VIDEO-02' | 'PRIMARY' | 'STANDBY';
+// D60 (2026-11-04): four video slots; D61 (2026-11-04): the microphone roles became the four numbered channels.
+export type RosterSlot = 'VIDEO-01' | 'VIDEO-02' | 'VIDEO-03' | 'VIDEO-04' | 'MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04';
 
 export interface RegisteredDevice {
   readonly id: string;
@@ -65,7 +67,8 @@ export function registeredDevicesOf(state: RosterState): RegisteredDevice[] {
     const kind: RosterKind = device.kind;
     const camera = kind === 'CAMERA' ? state.captureConfig.cameras.find((line) => line.deviceId === device.id) : undefined;
     const mic = kind === 'MIC' ? state.captureConfig.mics.find((line) => line.deviceId === device.id) : undefined;
-    const slot: RosterSlot | null = camera !== undefined ? (camera.trackId === 'VIDEO-01' || camera.trackId === 'VIDEO-02' ? camera.trackId : null) : mic !== undefined ? (mic.role === 'PRIMARY' ? 'PRIMARY' : 'STANDBY') : null;
+    // D60/D61: any of the four video tracks or four microphone channels is a slot the roster can name.
+    const slot: RosterSlot | null = camera !== undefined ? camera.trackId : mic !== undefined ? mic.channel : null;
     const notice = notices.find((entry) => entry.kind === 'unreachable' && entry.deviceId === device.id);
     out.push({
       id: device.id,

@@ -23,7 +23,7 @@
  */
 import { micLinesInForce, selectorInForce } from '@/features/capture-selector/selector-in-force';
 import type { AudioTrackId } from '@dems/shared/domain';
-import { meterInputOfChannel, type SimState } from '@dems/shared/sim';
+import { meterInputOfChannel, PRIMARY_MIC_CHANNEL, type SimState } from '@dems/shared/sim'; // D61 (2026-11-04): the transcribed channel
 import type { StatusTone } from '@dems/shared/tokens';
 import { NOT_CHECKED_KEY, rosterDeviceState, rosterStateLabelKey, sourceChecked, sourceOnKeyOf } from '@/features/devices/registered-devices-model';
 import { captureNoticesOf, developmentSourceOf } from './capture-notices-model';
@@ -93,9 +93,9 @@ export function cameraLineReportOf(state: ReportState, trackId: string): SourceR
   return reportOfDevice(state, selector.cameras.find((line) => line.trackId === trackId)?.deviceId ?? null, 'CAMERA');
 }
 
-/** The microphone on the PRIMARY line. */
+/** The microphone on the TRANSCRIBED channel 1 (D61 of 2026-11-04: the PRIMARY role became the numbered channel). */
 export function primaryMicReportOf(state: ReportState): SourceReport {
-  const line = micLinesInForce(state).find((candidate) => candidate.role === 'PRIMARY');
+  const line = micLinesInForce(state).find((candidate) => candidate.channel === PRIMARY_MIC_CHANNEL);
   return reportOfDevice(state, line?.deviceId ?? null, 'MIC');
 }
 

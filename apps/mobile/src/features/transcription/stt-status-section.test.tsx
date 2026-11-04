@@ -136,7 +136,9 @@ describe('SIMULATED source: operation 90 answered by the in-app simulator', () =
   }
 
   it('follows a web edit: one saved change (op 91) appends its audit row and the status reads again', async () => {
-    signIn('andi.pratama'); // SUPERVISOR: this device is only the reader; the writer is "the web console"
+    // Ruling 0034 of 2026-10-29: op 91 needs CAPTURE_CONFIG (TECHNICIAN only). This device stays
+    // only the reader; the "web console" writer that the save emulates holds the grant.
+    signIn('rina.wijaya');
     const { unmount } = mount();
     await flushAsync();
     await flushAsync();
@@ -159,7 +161,9 @@ describe('SIMULATED source: operation 90 answered by the in-app simulator', () =
   });
 
   it('a credential is never shown, only "set": neither a secret value nor a reference target reaches the screen', async () => {
-    signIn('andi.pratama');
+    // Ruling 0034 of 2026-10-29: op 91 needs CAPTURE_CONFIG (TECHNICIAN only); this bed is the web
+    // default (no deviceConsole), so the credential-carrying body answers as the web console's.
+    signIn('rina.wijaya');
     const SECRET = ['secret', 'value', 'marker'].join('-');
     const REFERENCE = 'omlx-settings:auth.api_key';
     const { unmount } = mount();
@@ -260,8 +264,9 @@ describe('LIVE source: operation 90 through the typed client of the Live source'
     resetDebugLaunchForTests();
     fake = createFakeTransport({ epoch: 2, revision: 10 });
     engine = createTestSim({ start: fake.clock.now() });
-    // The Core's engine is signed in as the operator who saves on the web console (SUPERVISOR).
-    expect(engine.sim.actions.signIn('andi.pratama', DEMO_OPERATOR_PASSWORD).ok).toBe(true);
+    // The Core's engine is signed in as the operator who saves on the web console — TECHNICIAN since
+    // ruling 0034 of 2026-10-29 revoked CAPTURE_CONFIG from SUPERVISOR (op 91 needs it).
+    expect(engine.sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD).ok).toBe(true);
     fake.scriptSignedInStart(wire());
     fake.onConnect((connection) => {
       if (connection.state === 'OPEN') connection.heartbeat();

@@ -23,10 +23,10 @@ import {
 type Device = SimState['captureDevices']['devices'][number];
 const device = (id: string, kind: Device['kind'], over: Partial<Device> & { sourceOpen?: boolean } = {}): Device => ({ id, kind, model: null, firmware: null, host: null, poePort: null, online: true, streamState: kind === 'CAMERA' ? 'LIVE' : null, capabilities: [], ...over }) as Device;
 const LOCAL_CAMERA = device('CAM-05', 'CAMERA', { model: 'MacBook Air Camera', adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT' });
-const LOCAL_MIC = device('MIC-03', 'MIC', { model: 'MacBook Air Microphone', adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT' });
+const LOCAL_MIC = device('MIC-05', 'MIC', { model: 'MacBook Air Microphone', adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT' }); // D61 (2026-11-04): MIC-03/MIC-04 are built-ins of the four-channel plane; an adopted microphone mints as MIC-05
 const ADDED = device('CAM-06', 'CAMERA', { model: 'Vendor PTZ-9000', host: '192.168.10.44', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION' });
 const alert = (id: string, target: string, params: SimAlert['params'], over: Partial<SimAlert> = {}): SimAlert => ({ id, at: 1, severity: 'INFO', kind: 'SYSTEM', message: 'core text', active: true, acknowledged: false, resolvedAt: null, target, params, ...over });
-const RATE = alert('ALR-9', 'MIC-03', { reason: 'MIC_RATE_AT_LIMIT', deviceId: 'MIC-03', deviceKind: 'MIC' });
+const RATE = alert('ALR-9', 'MIC-05', { reason: 'MIC_RATE_AT_LIMIT', deviceId: 'MIC-05', deviceKind: 'MIC' }); // D61: the adopted microphone's id
 
 /** A development Core's state: camera 1 and the primary microphone are the Core Mac's; slot 2 keeps the built-ins. */
 function developmentState(extra: readonly Device[] = [LOCAL_CAMERA, LOCAL_MIC, ADDED], alerts: readonly SimAlert[] = []): SimState {
@@ -38,24 +38,24 @@ function developmentState(extra: readonly Device[] = [LOCAL_CAMERA, LOCAL_MIC, A
     captureConfig: {
       ...state.captureConfig,
       cameras: state.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, deviceId: 'CAM-05' } : line)),
-      mics: [{ ...state.captureConfig.mics[1]! }, { ...state.captureConfig.mics[0]!, inputId: 'MIC-03', deviceId: 'MIC-03' }],
+      mics: state.captureConfig.mics.map((line) => (line.channel === 'MIC-01' ? { ...line, inputId: 'MIC-05', deviceId: 'MIC-05' } : line)), // D61 (2026-11-04): the channel-1 line carries the Mac's microphone; all four lines stand
     },
   } as SimState;
 }
 const t = (key: string, options?: Record<string, unknown>): string => `${key}${options === undefined ? '' : JSON.stringify(options)}`;
 
-describe('the roster (D137 (2)): the Core\'s device list minus the built-in ids (six since D60, 2026-11-04)', () => {
+describe('the roster (D137 (2)): the Core\'s device list minus the built-in ids (eight since D61, 2026-11-04)', () => {
   it('an unedited simulator lists none: the screens are as before', () => {
     expect(registeredDevicesOf(createTestSim().sim.store.getState())).toEqual([]);
-    // D60 (2026-11-04): four cameras and two microphones are built-in; a registered camera mints as CAM-05.
-    expect(BUILT_IN_SOURCE_IDS).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02']);
+    // D61 (2026-11-04): four cameras and four microphones are built-in; a registered microphone mints as MIC-05.
+    expect(BUILT_IN_SOURCE_IDS).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']);
   });
 
   it('the Core\'s order; what each is used as from the selector; the PoE switch is no row', () => {
     const roster = registeredDevicesOf(developmentState());
     expect(roster.map((entry) => [entry.id, entry.kind, entry.adapter, entry.sourceClass, entry.slot])).toEqual([
       ['CAM-05', 'CAMERA', 'LOCAL_DEVICE', 'DEVELOPMENT', 'VIDEO-01'],
-      ['MIC-03', 'MIC', 'LOCAL_DEVICE', 'DEVELOPMENT', 'PRIMARY'],
+      ['MIC-05', 'MIC', 'LOCAL_DEVICE', 'DEVELOPMENT', 'MIC-01'], // D61 (2026-11-04): the slot names the CHANNEL, not a role
       ['CAM-06', 'CAMERA', 'ONVIF_RTSP', 'PRODUCTION', null],
     ]);
   });
@@ -80,11 +80,12 @@ describe('names (D83, OP-125-7): "Core Mac\'s ..." only for the Core\'s local de
   it('Live: the local camera and microphone by the tablet wording; an added camera by its id, never by its announced model', () => {
     expect(rosterDeviceName(t, camera!, true)).toBe('features.capture-selector.source.kind.localCamera');
     expect(rosterDeviceName(t, mic!, true)).toBe('features.capture-selector.source.kind.localMicrophone');
-    expect(rosterDeviceName(t, added!, true)).toBe('common.developmentRoster.name{"kind":"common.developmentRoster.kind.CAMERA","id":"CAM-04"}');
+    // D60/D61 (2026-11-04): the built-ins occupy CAM-01..04 and MIC-01..04; the fixture's added camera is CAM-06 and its local microphone MIC-05.
+    expect(rosterDeviceName(t, added!, true)).toBe('common.developmentRoster.name{"kind":"common.developmentRoster.kind.CAMERA","id":"CAM-06"}');
   });
-  it('Simulated client mode: the id rule only ("MIC 3", "Camera CAM-05")', () => {
-    expect(rosterDeviceName(t, mic!, false)).toBe('common.captureDeviceName.microphone{"number":3}');
-    expect(rosterDeviceName(t, camera!, false)).toContain('"id":"CAM-03"');
+  it('Simulated client mode: the id rule only ("MIC 5", "Camera CAM-05")', () => {
+    expect(rosterDeviceName(t, mic!, false)).toBe('common.captureDeviceName.microphone{"number":5}'); // D61: an adopted microphone mints past the four built-ins
+    expect(rosterDeviceName(t, camera!, false)).toContain('"id":"CAM-05"'); // D60: an adopted camera mints past the four built-ins
   });
   it('a device that is local only by its id is not local: the class and the adapter decide', () => {
     const plain = registeredDevicesOf(developmentState([device('CAM-05', 'CAMERA')]))[0]!;
@@ -95,8 +96,9 @@ describe('names (D83, OP-125-7): "Core Mac\'s ..." only for the Core\'s local de
 describe('known state (a), D128: the microphone limit and the named rate warning', () => {
   it('`rateAtLimit` only for the microphone the active advisory alert targets; never for a camera, a resolved alert or another reason', () => {
     const flags = (alerts: SimAlert[]) => registeredDevicesOf(developmentState(undefined, alerts)).map((entry) => `${entry.id}:${entry.rateAtLimit}`);
-    expect(flags([RATE])).toEqual(['CAM-03:false', 'MIC-03:true', 'CAM-04:false']);
-    expect(flags([{ ...RATE, active: false }, { ...RATE, id: 'ALR-10', target: 'CAM-05' }, alert('ALR-11', 'MIC-03', { reason: 'AV_OFFSET_NEAR_BOUND' })])).toEqual(['CAM-05:false', 'MIC-03:false', 'CAM-06:false']);
+    // D60/D61 (2026-11-04): the fixture's roster is CAM-05, MIC-05, CAM-06 (the built-ins CAM-01..04 / MIC-01..04 are no rows).
+    expect(flags([RATE])).toEqual(['CAM-05:false', 'MIC-05:true', 'CAM-06:false']);
+    expect(flags([{ ...RATE, active: false }, { ...RATE, id: 'ALR-10', target: 'CAM-05' }, alert('ALR-11', 'MIC-05', { reason: 'AV_OFFSET_NEAR_BOUND' })])).toEqual(['CAM-05:false', 'MIC-05:false', 'CAM-06:false']);
   });
 
   it('the limits are stated for a development source in Live mode only; the local microphone reads "not fit for recording yet"', () => {

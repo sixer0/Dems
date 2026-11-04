@@ -146,7 +146,7 @@ describe('the active microphone unreachable: blocked, with no switch at pre-chec
     const { h } = await openGate(['MIC-01']);
     expect(h.state().session!.precheck.outcome).toBe('BLOCK');
     expect(status('MIC_PRIMARY')).toBe('BLOCK');
-    expect(value('MIC_PRIMARY')).toHaveTextContent('MIC 1 (MIC-01) is the active microphone and is not reachable. Cancel this session, make MIC 2 (MIC-02) the primary microphone on Devices, then start again.');
+    expect(value('MIC_PRIMARY')).toHaveTextContent('MIC 1 (MIC-01) is the microphone of the transcribed channel 1 and is not reachable. Cancel this session, assign another microphone to channel 1 on Devices, then start again.'); // D61 (2026-11-04): the active role became the transcribed channel
     expect(status('MIC_STANDBY')).toBe('PASS');
     expect(disabled('session-new-next')).toBe(true);
     // The only actions of the block: the microphone re-read (G17). No toggle, no "use the other one".
@@ -155,15 +155,15 @@ describe('the active microphone unreachable: blocked, with no switch at pre-chec
     expect(within(notices).queryByTestId('session-new-capture-notices-search')).toBeNull();
     expect(screen.queryByTestId(/capture-selector-edit|mic-source|make-primary|use-other/)).toBeNull();
     expect(screen.queryByText(/Use MIC 2|Switch to MIC 2|Make MIC 2 primary/i)).toBeNull();
-    // The roles of the selector are untouched by the pre-check.
-    expect(h.state().captureConfig.mics.find((mic) => mic.inputId === 'MIC-01')?.role).toBe('PRIMARY');
+    // The channels of the selector are untouched by the pre-check (D61, 2026-11-04: roles became numbered channels).
+    expect(h.state().captureConfig.mics.find((mic) => mic.inputId === 'MIC-01')?.channel).toBe('MIC-01');
   });
 
   it('the standby microphone unreachable is a warning: "no standby microphone", a degraded start after the acknowledgement', async () => {
     const { h } = await openGate(['MIC-02']);
     expect(h.state().session!.precheck.outcome).toBe('WARN');
     expect(status('MIC_STANDBY')).toBe('WARN');
-    expect(value('MIC_STANDBY')).toHaveTextContent('MIC 2 (MIC-02) is not reachable. The session will record with no standby microphone.');
+    expect(value('MIC_STANDBY')).toHaveTextContent('MIC 2 (MIC-02) is not reachable. The session will record without that microphone channel.'); // D61 (2026-11-04): channel 2 records beside the transcribed one; its loss is no longer "no standby"
     fireEvent.press(screen.getByTestId('session-new-acknowledge'));
     expect(disabled('session-new-next')).toBe(false);
   });
@@ -222,13 +222,14 @@ describe('nothing unreachable: the step is as before', () => {
   });
 });
 
-describe('task 4 row 169: an unassigned selector slot is a BLOCK item - all four slots, the standby microphone too (decisions C18 (1), C25)', () => {
-  const SLOT_OF = { LENS_1: 'VIDEO-01', LENS_2: 'VIDEO-02', MIC_PRIMARY: 'PRIMARY', MIC_STANDBY: 'STANDBY' } as const;
+describe('task 4 row 169: an unassigned selector slot is a BLOCK item - the transcription slots, channel 2 too (decisions C18 (1), C25; D61, 2026-11-04)', () => {
+  // D61 (2026-11-04): the roles became the numbered channels; the pre-check rows MIC_PRIMARY/MIC_STANDBY check channels 1 and 2.
+  const SLOT_OF = { LENS_1: 'VIDEO-01', LENS_2: 'VIDEO-02', MIC_PRIMARY: 'MIC-01', MIC_STANDBY: 'MIC-02' } as const;
   const SENTENCE = {
     LENS_1: 'Camera 1 has no source assigned. Assign one on Devices.',
     LENS_2: 'Camera 2 has no source assigned. Assign one on Devices.',
-    MIC_PRIMARY: 'Primary microphone has no source assigned. Assign one on Devices.',
-    MIC_STANDBY: 'Standby microphone has no source assigned. Assign one on Devices.',
+    MIC_PRIMARY: 'Microphone 1 has no source assigned. Assign one on Devices.', // D61: `common.captureSlot.MIC-01`
+    MIC_STANDBY: 'Microphone 2 has no source assigned. Assign one on Devices.', // D61
   } as const;
   type SlotCheck = keyof typeof SLOT_OF;
   const isSlotCheck = (id: string): id is SlotCheck => id in SLOT_OF;
@@ -246,7 +247,7 @@ describe('task 4 row 169: an unassigned selector slot is a BLOCK item - all four
         captureConfig: {
           ...s.captureConfig,
           cameras: s.captureConfig.cameras.filter((line) => !checks.some((id) => SLOT_OF[id] === line.trackId)),
-          mics: s.captureConfig.mics.filter((line) => !checks.some((id) => SLOT_OF[id] === line.role)),
+          mics: s.captureConfig.mics.filter((line) => !checks.some((id) => SLOT_OF[id] === line.channel)), // D61 (2026-11-04): the line is found by CHANNEL
         },
         session:
           s.session === null
@@ -291,11 +292,15 @@ describe('task 4 row 169: an unassigned selector slot is a BLOCK item - all four
     expect(screen.queryByTestId('session-new-capture-notices')).toBeNull();
   });
 
-  it('with no microphone line no level of MIC-01 or MIC-02 is read: each preview meter says "Not measured", no bars and no number', async () => {
+  it('with no microphone line no level of any channel is read: each preview meter says "Not measured", no bars and no number', async () => {
     const h = await openUnassigned();
+    // D61 (2026-11-04): the unassigned slots above empty channels 1 and 2; the plane holds four lines, so clear the rest too.
+    act(() => h.sim.store.setState((s) => ({ captureConfig: { ...s.captureConfig, mics: [] } })));
+    await settle();
     expect(h.state().captureConfig.mics).toHaveLength(0);
     // The meters slice still holds frames under the built-in inputs: the screen does not read them.
     expect(Object.keys(h.state().audio.inputs).length).toBeGreaterThan(0);
+    // The speak-to-test preview stays a two-tile surface (device-previews CAMERAS, D60 ruling) — the four-channel claim of the plane is proven on Session Live.
     for (const channel of ['AUDIO-01', 'AUDIO-02']) {
       expect(screen.getByTestId(`session-new-meter-${channel}-not-measured`)).toHaveTextContent('Not measured');
       expect(screen.queryByTestId(`session-new-meter-${channel}`)).toBeNull();
@@ -315,16 +320,18 @@ describe('task 4 row 169: an unassigned selector slot is a BLOCK item - all four
     expect(disabled('session-new-next')).toBe(true);
   });
 
-  it('the standby microphone ALONE unassigned blocks as the others do (C25): its row, its sentence, Next disabled, nothing to acknowledge', async () => {
+  it('the channel-2 microphone ALONE unassigned blocks as the others do (C25): its row, its sentence, Next disabled, nothing to acknowledge', async () => {
     await openUnassigned(['MIC_STANDBY']);
     expect(status('MIC_STANDBY')).toBe('BLOCK');
     expect(value('MIC_STANDBY')).toHaveTextContent(SENTENCE.MIC_STANDBY);
     expect(status('MIC_PRIMARY')).toBe('PASS');
     expect(status('LENS_1')).toBe('PASS');
-    expect(screen.getByTestId('session-new-gate-block')).toHaveTextContent(/Standby microphone has no source assigned\. Assign one on Devices\./);
+    expect(screen.getByTestId('session-new-gate-block')).toHaveTextContent(/Microphone 2 has no source assigned\. Assign one on Devices\./); // D61 (2026-11-04): the slot word is the numbered channel
     expect(disabled('session-new-next')).toBe(true);
     expect(screen.queryByTestId('session-new-acknowledge')).toBeNull();
-    // A lone PRIMARY line is no complete pair: no meter channel has an input, so no level is read either.
-    for (const channel of ['AUDIO-01', 'AUDIO-02']) expect(screen.getByTestId(`session-new-meter-${channel}-not-measured`)).toBeTruthy();
+    // D61: every HELD channel reads its own level - only the empty channel 2 has no input and no level.
+    expect(screen.getByTestId('session-new-meter-AUDIO-02-not-measured')).toBeTruthy();
+    expect(screen.queryByTestId('session-new-meter-AUDIO-01-not-measured')).toBeNull();
+    expect(screen.getByTestId('session-new-meter-AUDIO-01')).toBeTruthy();
   });
 });

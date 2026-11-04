@@ -59,7 +59,7 @@ export function sourceRowLine(state: SimState, deviceId: DeviceId, live: boolean
   if (report.deviceId === null) return null;
   const word = sourceStateWord(report, live, recording);
   const source = developmentSourceOf({ sourceClass: report.sourceClass ?? undefined, adapter: report.adapter ?? undefined, deviceKind: 'MIC', live });
-  return `${word.key}|${word.tone}|${line.role ?? ''}|${source ?? ''}`;
+  return `${word.key}|${word.tone}|${line.channel ?? ''}|${source ?? ''}`; // D61 (2026-11-04): the line states its channel
 }
 
 export interface SourceRow {
@@ -83,11 +83,11 @@ export function useSourceRow(deviceId: DeviceId, status: DeviceStatus): SourceRo
   return useMemo(() => {
     const model = { name: t(DEVICE_NAME_KEY[deviceId]), statusLabel: t(STATUS_LABEL_KEY[status]), word: null };
     if (line === null) return model;
-    const [key = '', tone = 'default', role = '', source = ''] = line.split('|');
-    // The simulator's room roles ("Interviewer", "Subject") are no fact of this Core: the line is named by its input and its role in force.
+    const [key = '', tone = 'default', channel = '', source = ''] = line.split('|');
+    // The simulator's room roles ("Interviewer", "Subject") are no fact of this Core: the line is named by its input and its CHANNEL in force (D61 of 2026-11-04).
     const name =
       DEVICE_KIND[deviceId] === 'microphone'
-        ? [micInputName(t, deviceId, source === '' ? null : (source as Parameters<typeof micInputName>[2])), role === '' ? null : t(`features.capture-selector.selector.role.${role}`)].filter((part) => part !== null).join(' · ')
+        ? [micInputName(t, deviceId, source === '' ? null : (source as Parameters<typeof micInputName>[2])), channel === '' ? null : t(`features.capture-selector.selector.channel.${channel}`)].filter((part) => part !== null).join(' · ')
         : model.name;
     if (STATUS_RANK[status] > 0) return { ...model, name };
     const label = t(key);

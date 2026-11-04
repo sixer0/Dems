@@ -206,15 +206,22 @@ describe('no raw request to the Core server (D69, D34-6 a)', () => {
     expect(adapterProblems(adapters.replace(/enumerable:\s*false/g, 'enumerable: true'))).toEqual(['the media transport does not hide its header']);
   });
 
-  it('the shared package: outside the typed client, the only raw `fetch` is the health read of mock-core', () => {
+  it('the shared package: outside the typed client, the only raw `fetch` reads are built from the mock-core origin', () => {
     const shared = production(SHARED_SRC).filter((file) => !file.path.startsWith('live/testing/'));
     expect(shared.length).toBeGreaterThan(80);
     const callers = shared.filter((file) => new RegExp(`(?<![.\\w$])${FETCH}(?:Impl)?\\s*\\(`).test(file.text)).map((file) => file.path);
-    expect(callers).toEqual(['api/health.ts']);
+    // D61 leftover (2026-11-04): `api/lcd-panel.ts` (operation 114, added in 1358318d) joins the allow-list
+    // exactly as `api/health.ts` does: it is the public mock-core read (port 4400, `CORE_HTTP_ORIGIN`),
+    // never the Core server's address, and the mobile app calls neither — the two are exempt by the same rule.
+    expect(callers).toEqual(['api/health.ts', 'api/lcd-panel.ts'].sort());
     const health = shared.find((file) => file.path === 'api/health.ts')!.text;
     // Built from the mock-core origin (port 4400), never from the Core server's.
     expect(health).toContain(`${FETCH}Impl(\`\${CORE_HTTP_ORIGIN}\${HEALTH_PATH}\`)`);
     expect(/CORE_SERVER_(?:HTTP_ORIGIN|WS_URL|HOST|PORT)/.test(health)).toBe(false);
+    // The panel read of operation 114: the same shape, the same origin, no Core-server constant.
+    const panel = shared.find((file) => file.path === 'api/lcd-panel.ts')!.text;
+    expect(panel).toContain(`${FETCH}Impl(\`\${CORE_HTTP_ORIGIN}\${PANEL_FIRMWARE_PATH}\`)`);
+    expect(/CORE_SERVER_(?:HTTP_ORIGIN|WS_URL|HOST|PORT)/.test(panel)).toBe(false);
     // The typed client calls the transport it was given, or looks the global up by name.
     const client = shared.find((file) => file.path === 'client/core-client.ts')!.text;
     expect(client).toContain(`(globalThis as { ${FETCH}?: unknown }).${FETCH}`);

@@ -79,7 +79,18 @@ export const TRACK_NAME_KEY: Readonly<Record<string, string>> = {
   'VIDEO-04': 'common.devices.camera4', // D60
   'AUDIO-01': 'common.devices.mic1',
   'AUDIO-02': 'common.devices.mic2',
+  'AUDIO-03': 'common.devices.mic3', // D61 (2026-11-04): four simultaneous microphone channels
+  'AUDIO-04': 'common.devices.mic4', // D61
 };
+
+// D61 (2026-11-04): the mics slice states the CHANNEL code (`MIC-0N` for `AUDIO-0N`); the meters and
+// cards name themselves from this map — one rule for the dashboard, the devices page and the monitor.
+export const MIC_CHANNEL_NAME_KEY = {
+  'MIC-01': 'common.devices.mic1',
+  'MIC-02': 'common.devices.mic2',
+  'MIC-03': 'common.devices.mic3',
+  'MIC-04': 'common.devices.mic4',
+} as const;
 
 // ── Tablet device tiles: the level line of a MIC tile (task 3 M5, row 73; MB-01, B15, E-14) ──
 
@@ -120,10 +131,15 @@ export const MIC_NO_LEVEL_TEXT = '— dBFS';
  * Task 4 row 171 (site M5): also `null` when the tile's channel has NO input (`inputId` null: the
  * selector in force holds no complete microphone pair) and when no input is active - an absent
  * input has no role, and nothing is "Standby" to an active input that is absent.
+ *
+ * D61 (2026-11-04): FOUR simultaneous channels - the pair words belong to the transcription pair
+ * alone. A tile whose input is neither the transcribed channel nor its standby (channel 3 or 4)
+ * records without a pair word: `null`, never a blanket "STANDBY" for every non-active input.
  */
-export function micTileSourceRole(input: { readonly recording: boolean; readonly inputId: string | null | undefined; readonly activeInputId: string | null }): 'ACTIVE' | 'STANDBY' | null {
+export function micTileSourceRole(input: { readonly recording: boolean; readonly inputId: string | null | undefined; readonly activeInputId: string | null; readonly standbyInputId: string | null }): 'ACTIVE' | 'STANDBY' | null {
   if (!input.recording || input.inputId === undefined || input.inputId === null || input.activeInputId === null) return null;
-  return input.inputId === input.activeInputId ? 'ACTIVE' : 'STANDBY';
+  if (input.inputId === input.activeInputId) return 'ACTIVE';
+  return input.inputId === input.standbyInputId ? 'STANDBY' : null;
 }
 
 const FIXED_FLAGS = new Set([

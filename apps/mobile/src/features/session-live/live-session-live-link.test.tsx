@@ -101,16 +101,16 @@ describe('the meters come from the socket (I8; CL-11b; [CS:S4-9])', () => {
     const at = b.fake.clock.now();
 
     b.sendMeters({ 'AUDIO-01': meterFrame(-18, at, 1), 'AUDIO-02': meterFrame(-42, at, 1) });
-    expect(levelOf('monitor-meter-1')).toBe(-18);
-    expect(levelOf('monitor-meter-2')).toBe(-42);
+    expect(levelOf('monitor-meter-MIC-01')).toBe(-18);
+    expect(levelOf('monitor-meter-MIC-02')).toBe(-42);
     b.sendMeters({ 'AUDIO-01': meterFrame(-12, at + 50, 2), 'AUDIO-02': meterFrame(-30, at + 50, 2) });
-    expect(levelOf('monitor-meter-1')).toBe(-12);
-    expect(levelOf('monitor-meter-2')).toBe(-30);
+    expect(levelOf('monitor-meter-MIC-01')).toBe(-12);
+    expect(levelOf('monitor-meter-MIC-02')).toBe(-30);
     expect(b.fake.calls.length).toBe(calls);
 
     await waitA11yTick();
-    expect(a11yOf('monitor-meter-1')).toMatchObject({ now: -12, text: '-12 dBFS' });
-    expect(a11yOf('monitor-meter-2')).toMatchObject({ now: -30, text: '-30 dBFS' });
+    expect(a11yOf('monitor-meter-MIC-01')).toMatchObject({ now: -12, text: '-12 dBFS' });
+    expect(a11yOf('monitor-meter-MIC-02')).toMatchObject({ now: -30, text: '-30 dBFS' });
     expect(b.fake.calls.length).toBe(calls);
   });
 
@@ -120,15 +120,15 @@ describe('the meters come from the socket (I8; CL-11b; [CS:S4-9])', () => {
   it('JM-05 - each microphone card states its input in words from its first render, before the meter has drawn anything', async () => {
     const b = await openMonitor();
     const WORDS = ['Waiting for the first level reading', 'Receiving audio', 'No signal', 'Not measured'];
-    for (const channel of [1, 2]) {
+    for (const channel of ['MIC-01', 'MIC-02'] as const) { // D61 (2026-11-04): the meter and the card are keyed by the CHANNEL code
       const line = screen.getByTestId(`monitor-mic-level-state-${channel}`);
       expect(WORDS).toContain(String(line.props.children));
     }
     const at = b.fake.clock.now();
     b.sendMeters({ 'AUDIO-01': meterFrame(-18, at, 1), 'AUDIO-02': meterFrame(-42, at, 1) });
     await b.flush();
-    expect(screen.getByTestId('monitor-mic-level-state-1')).toHaveTextContent('Receiving audio');
-    expect(screen.getByTestId('monitor-mic-level-state-2')).toHaveTextContent('Receiving audio');
+    expect(screen.getByTestId('monitor-mic-level-state-MIC-01')).toHaveTextContent('Receiving audio');
+    expect(screen.getByTestId('monitor-mic-level-state-MIC-02')).toHaveTextContent('Receiving audio');
   });
 
   it('20 frames cost no React render (the shared-value path; MA-16 in LIVE)', async () => {
@@ -140,7 +140,7 @@ describe('the meters come from the socket (I8; CL-11b; [CS:S4-9])', () => {
     for (let seq = 2; seq <= 21; seq += 1) {
       b.sendMeters({ 'AUDIO-01': meterFrame(-40 + seq, at + seq * 50, seq), 'AUDIO-02': meterFrame(-50 + seq, at + seq * 50, seq) });
     }
-    expect(levelOf('monitor-meter-1')).toBe(-19);
+    expect(levelOf('monitor-meter-MIC-01')).toBe(-19);
     // At most the 1 Hz accessible value may commit; twenty frames must not.
     expect(commits).toBeLessThanOrEqual(2);
   });
@@ -163,10 +163,10 @@ describe('the Core link (the runtime\'s one rule; [CS:§3.5] mobile: the banner 
     fireEvent.press(screen.getByTestId('monitor-end-session'));
     expect(screen.queryByTestId('monitor-end-dialog')).toBeNull();
     // §2.3: a meter never freezes on a stale level.
-    expect(levelOf('monitor-meter-1')).toBe(AUDIO_FLOOR_DBFS);
-    expect(levelOf('monitor-meter-2')).toBe(AUDIO_FLOOR_DBFS);
+    expect(levelOf('monitor-meter-MIC-01')).toBe(AUDIO_FLOOR_DBFS);
+    expect(levelOf('monitor-meter-MIC-02')).toBe(AUDIO_FLOOR_DBFS);
     await waitA11yTick();
-    expect(a11yOf('monitor-meter-1').text).toBe('NO SIGNAL');
+    expect(a11yOf('monitor-meter-MIC-01').text).toBe('NO SIGNAL');
     // The replica keeps the last state received: still the recording.
     expect(b.state().session?.state).toBe('RECORDING');
     expect(MONITOR_OPERATIONS.map((operation) => b.requests(operation).length)).toEqual(sent);
@@ -312,13 +312,13 @@ describe('camera and CLIP reset (results ignored, as before; a refusal is still 
     expect(b.state().mics.find((mic) => mic.id === 'AUDIO-02')?.clipLatched).toBe(true);
 
     b.fake.failOnce('resetMicClip');
-    fireEvent.press(within(screen.getByTestId('monitor-mic-2')).getByHintText('Reset clip'));
+    fireEvent.press(within(screen.getByTestId('monitor-mic-MIC-02')).getByHintText('Reset clip'));
     await b.flush();
     await b.elapse(200);
     expect(toastShown(OFFLINE)).toBe(true);
     expect(b.state().mics.find((mic) => mic.id === 'AUDIO-02')?.clipLatched).toBe(true);
 
-    fireEvent.press(within(screen.getByTestId('monitor-mic-2')).getByHintText('Reset clip'));
+    fireEvent.press(within(screen.getByTestId('monitor-mic-MIC-02')).getByHintText('Reset clip'));
     await b.flush();
     await b.elapse(200);
     expect(b.requests('resetMicClip')).toHaveLength(2);
@@ -331,7 +331,7 @@ describe('CLIP reset, one at a time', () => {
   it('two quick taps on one meter\'s CLIP chip while the Core has not answered send one reset', async () => {
     const b = await openMonitor({ answerDelayMs: 1_000 });
     await b.changeOnCore((engine) => engine.sim.actions.inject('MIC_CLIP', { channel: 'AUDIO-01' }));
-    const chip = () => within(screen.getByTestId('monitor-mic-1')).getByHintText('Reset clip');
+    const chip = () => within(screen.getByTestId('monitor-mic-MIC-01')).getByHintText('Reset clip');
     fireEvent.press(chip());
     await b.flush();
     fireEvent.press(chip());

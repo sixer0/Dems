@@ -6,7 +6,7 @@
  * | Spec | Here |
  * |---|---|
  * | §2.2 step 1, §2.5 "Loading" | until the runtime has hydrated: the skeleton, and the gate line reads "Checking your permissions…" (a gated read, E-16) |
- * | §2.2 step 2 | four camera rows (D60, 2026-11-04: `VIDEO-01`..`VIDEO-04` → the device behind each, any registered `CAM-NN`) and two microphone rows (PRIMARY first). Task 4 row 32 (decision C18 (3)): one row per SLOT - a slot the selector holds no line for is drawn "Not assigned" with an "Assign" control that opens the same sheet |
+ * | §2.2 step 2 | four camera rows (D60, 2026-11-04: `VIDEO-01`..`VIDEO-04` → the device behind each, any registered `CAM-NN`) and four microphone rows (D61, 2026-11-04: `MIC-01`..`MIC-04` → the device behind each channel, channel 1 first). Task 4 row 32 (decision C18 (3)): one row per SLOT - a slot the selector holds no line for is drawn "Not assigned" with an "Assign" control that opens the same sheet |
  * | §2.2 step 3, §2.4 G1-G3 | every "Change" control is ALWAYS drawn; outside `allowed` it is disabled and the gate line says why: checking, waiting for the link, "Requires the Supervisor or Technician role", or the OD-10 sentence. Never hidden, never enabled on an unknown role (P-13) |
  * | §2.2 steps 4, 5 | a bottom sheet per field (`CaptureSourceSheet`); nothing is written locally, the row reads "Saving…" until `captureConfig` republishes |
  * | §2.2 step 6, §2.5 | a refusal is drawn in place as an `Alert` (locked, not permitted, unknown device, not accepted, development-only source, capture not ready with a rate-limited Retry, no answer); no toast, no raw error |
@@ -52,7 +52,8 @@ export interface CaptureSelectorProps {
 const STREAM_TONE = { LIVE: 'success', LOST: 'danger', OFFLINE: 'warning', NOT_READ: 'default' } as const;
 const MIC_ROW_KEY = 'MIC';
 /** The i18n key of the Change control of a microphone line (fix wave H, G70-02: each line has its own sheet). */
-const MIC_CHANGE_LABEL = { PRIMARY: 'changeMicLabel', STANDBY: 'changeStandbyMicLabel' } as const;
+// D61 (2026-11-04): every microphone row uses the one channel-labelled key.
+const MIC_CHANGE_LABEL = 'changeMicLabel' as const;
 
 export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelectorProps) {
   const { t } = useTranslation();
@@ -64,7 +65,7 @@ export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelector
   const [request, setRequest] = useState<SourceSheetRequest | null>(null);
   const editable = selector.gate === 'allowed' && !selector.busy;
   const openKey = request === null ? null : request.kind === 'camera' ? request.trackId : null;
-  const openRole = request !== null && request.kind === 'mic' ? request.role : null;
+  const openChannel = request !== null && request.kind === 'mic' ? request.channel : null; // D61
 
   const save = (command: SelectorCommand) => {
     press.run((release) => {
@@ -237,35 +238,37 @@ export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelector
                 );
               })}
               {selector.mics.map((row) => {
-                // Task 4 row 32 (decision C18 (3)): a role no line holds is still a row, keyed by its ROLE (there is no
-                // input to key it by): the slot's name, "Not assigned", the role chip, and the offer to assign.
+                // Task 4 row 32 (decision C18 (3); D61 of 2026-11-04): a CHANNEL no line holds is still a row, keyed by
+                // its channel (there is no input to key it by): the slot's name, "Not assigned", the channel chip, and the offer to assign.
                 const inputId = row.inputId;
-                const rowKey = inputId ?? row.role;
-                const roleLabel = t(`features.capture-selector.selector.role.${row.role}`);
+                const rowKey = inputId ?? row.channel;
+                const roleLabel = t(`features.capture-selector.selector.channel.${row.channel}`);
                 return (
                   <Fragment key={rowKey}>
                     <Separator />
                     <SelectorRow
                       rowKey={rowKey}
                       icon="mic"
-                      title={inputId ?? t(`common.captureSlot.${row.role}`)}
+                      title={inputId ?? t(`common.captureSlot.${row.channel}`)}
                       detail={
                         inputId === null
                           ? t('common.captureSlot.notAssigned')
                           : [row.model, row.transport, row.online ? null : t('features.capture-selector.selector.stream.OFFLINE')].filter((part): part is string => part !== null && part !== '').join(' · ')
                       }
-                      chip={<StatusChip size="sm" tone={inputId !== null && row.role === 'PRIMARY' ? 'success' : 'default'} label={roleLabel} icon={null} testID={`capture-selector-role-${rowKey}`} />}
+                      chip={<StatusChip size="sm" tone={inputId !== null && row.channel === 'MIC-01' ? 'success' : 'default'} label={roleLabel} icon={null} testID={`capture-selector-channel-${rowKey}`} />}
                       stateLabel={roleLabel}
                       empty={inputId === null}
-                      selected={openRole === row.role}
+                      selected={openChannel === row.channel}
                       pending={selector.pendingKey === MIC_ROW_KEY}
                       editable={editable}
                       gateHint={gateLine}
                       editLabel={
-                        inputId === null ? t('common.captureSlot.assignLabel', { slot: t(`common.captureSlot.${row.role}`) }) : t(`features.capture-selector.selector.${MIC_CHANGE_LABEL[row.role]}`)
+                        inputId === null
+                          ? t('common.captureSlot.assignLabel', { slot: t(`common.captureSlot.${row.channel}`) })
+                          : t(`features.capture-selector.selector.${MIC_CHANGE_LABEL}`, { n: Number(row.channel.slice(-2)) }) // D61: one key, the channel number
                       }
                       // Fix wave H (G70-02): the line's own sheet, with every registered microphone.
-                      onEdit={() => setRequest({ kind: 'mic', role: row.role, currentInputId: inputId, options: selector.micOptions, badgeMode: selector.badgeMode })}
+                      onEdit={() => setRequest({ kind: 'mic', channel: row.channel, currentInputId: inputId, options: selector.micOptions, badgeMode: selector.badgeMode })}
                     />
                     {inputId === null ? null : (
                       <LineBadge sourceClass={row.sourceClass} adapter={row.adapter} deviceKind="MIC" mode={selector.badgeMode} testID={`capture-selector-source-${inputId}`} />
@@ -273,7 +276,7 @@ export function CaptureSelector({ testID = 'capture-selector' }: CaptureSelector
                   </Fragment>
                 );
               })}
-              {/* Row 138 (flow 13, G17): "Search again" for microphones, under the microphone rows (always two since task 4 row 32). */}
+              {/* Row 138 (flow 13, G17): "Search again" for microphones, under the microphone rows (always FOUR since D61, 2026-11-04). */}
               <Separator />
               {/* Fix wave H (G70-06): the card's gate line already says why; the same sentence is not drawn a second time here. */}
               <MicRescanControl testID="capture-selector-mic-rescan" gateShownAs={gateLine} />

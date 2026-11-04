@@ -1,8 +1,9 @@
 /**
- * The one way the device selector sends operations 79 `setCaptureCameraSource`, 80 `setPrimaryMic`
- * and - for a microphone that is on no line yet (fix wave H, G70-02) - the pair replacement of
- * operation 78 `updateCaptureConfig`, or ONE line by role while the other slot is empty (task 4 row 32,
- * `micRoleBody`) (task 3, blueprint row 68; `masterplan/03_api_contract.md` §2.2-§2.4). Both are
+ * The one way the device selector sends operations 79 `setCaptureCameraSource` and 78
+ * `updateCaptureConfig` — the microphone lines BY CHANNEL of D61 (2026-11-04): ONE line by channel
+ * (`micLineBody`), or ONE edit `{ unassign: [from], mics: [line] }` when the microphone moves from
+ * another channel (`micMoveBody`, R-FLEX row 133) (task 3, blueprint row 68;
+ * `masterplan/03_api_contract.md` §2.2-§2.4). Both are
  * operations a tablet or phone session may call (`PERMISSION CAPTURE_CONFIG`; only 89, 95 and 96 are
  * web-console-only), and neither is a simulator action, so there are two ways in:
  *
@@ -18,7 +19,7 @@
  *
  * Never throws: a transport that throws is an `offline` answer. Pure of React.
  */
-import type { Sim } from '@dems/shared/sim';
+import type { Sim, MicChannel } from '@dems/shared/sim'; // D61 (2026-11-04): the four microphone channels
 import type { VideoTrackId } from '@dems/shared/domain';
 import type { MobileCoreClient } from '@/runtime';
 import { classifyAnswer, factsOfEnvelope, updatedAtOf, type AnswerClass, type AnswerFacts, type SelectorCommand } from './capture-selector-model';
@@ -44,36 +45,28 @@ function answerOf(facts: AnswerFacts, body: unknown): SelectorAnswer {
 
 /** The path of the operation a command maps to (C3 §2.2). Ids are path segments, so they are encoded. */
 export function selectorPath(command: SelectorCommand): string {
-  if (command.kind === 'micPair' || command.kind === 'micRole') return '/api/v1/capture/config';
-  // Row W5 (Q-02): a camera with a chosen stream profile is a camera line of operation 78.
-  if (command.kind === 'camera' && command.profile !== undefined) return '/api/v1/capture/config';
-  return command.kind === 'camera'
-    ? `/api/v1/capture/cameras/${encodeURIComponent(command.deviceId)}/source`
-    : `/api/v1/capture/mics/${encodeURIComponent(command.inputId)}/primary`;
+  // D61 (2026-11-04): every microphone edit is operation 78 by channel; the role trade of operation 80 left the selector with D61.
+  if (command.kind === 'camera' && command.profile === undefined) return `/api/v1/capture/cameras/${encodeURIComponent(command.deviceId)}/source`;
+  return '/api/v1/capture/config';
 }
 
 /**
- * The body of operation 78 for a pair replacement (C3 §2.3, D133 (1); fix wave H, G70-02): two lines,
- * each with its role, each `deviceId == inputId` (D106 (4)). No transport is sent: the Core takes it
- * from its registry row.
+ * The body of operation 78 for ONE microphone line by CHANNEL (D61 of 2026-11-04, superseding the
+ * pair replacement D133 (1) and the lone line by role N16): `mics: [{ channel, inputId, deviceId }]`
+ * with `deviceId == inputId` (D106 (4)). The line assigns its channel ALONE; the slots of the
+ * channels it does not name keep what they hold (rule MIC-ASSIGN, decision C21 (8), generalized).
  */
-export function micPairBody(command: Extract<SelectorCommand, { kind: 'micPair' }>): { mics: { inputId: string; deviceId: string; role: 'PRIMARY' | 'STANDBY' }[] } {
-  return {
-    mics: [
-      { inputId: command.primaryId, deviceId: command.primaryId, role: 'PRIMARY' },
-      { inputId: command.standbyId, deviceId: command.standbyId, role: 'STANDBY' },
-    ],
-  };
+export function micLineBody(command: Extract<SelectorCommand, { kind: 'micLine' }>): { mics: { channel: MicChannel; inputId: string; deviceId: string }[] } {
+  return { mics: [{ channel: command.channel, inputId: command.inputId, deviceId: command.inputId }] };
 }
 
 /**
- * The body of operation 78 for ONE microphone line by role (task 4 row 32; names register N16; rule
- * MIC-ASSIGN, decision C21 (8)): the input is put on the slot of its role, `deviceId == inputId`
- * (D106 (4)); the slot of the other role is not named and keeps what it holds. Sent only while that
- * other slot is empty (`micLineCommand`).
+ * The body of operation 78 for ONE microphone MOVE (R-FLEX row 133, T-14; D61): the microphone
+ * leaves the channel `from` (`unassign`) and takes the channel `channel` — one edit, so one
+ * microphone never stands on two channels.
  */
-export function micRoleBody(command: Extract<SelectorCommand, { kind: 'micRole' }>): { mics: { inputId: string; deviceId: string; role: 'PRIMARY' | 'STANDBY' }[] } {
-  return { mics: [{ inputId: command.inputId, deviceId: command.inputId, role: command.role }] };
+export function micMoveBody(command: Extract<SelectorCommand, { kind: 'micMove' }>): { unassign: MicChannel[]; mics: { channel: MicChannel; inputId: string; deviceId: string }[] } {
+  return { unassign: [command.from], mics: [{ channel: command.channel, inputId: command.inputId, deviceId: command.inputId }] };
 }
 
 /**
@@ -91,8 +84,8 @@ export function cameraProfileBody(command: { readonly trackId: VideoTrackId; rea
 function simBody(command: SelectorCommand): { body?: unknown } {
   if (command.kind === 'camera' && command.profile !== undefined) return { body: cameraProfileBody({ trackId: command.trackId, deviceId: command.deviceId, profile: command.profile }) };
   if (command.kind === 'camera') return { body: { trackId: command.trackId } };
-  if (command.kind === 'micRole') return { body: micRoleBody(command) };
-  return command.kind === 'micPair' ? { body: micPairBody(command) } : {};
+  if (command.kind === 'micLine') return { body: micLineBody(command) };
+  return { body: micMoveBody(command) }; // D61: micMove
 }
 
 /** SIMULATED and HEARTBEAT: the in-app simulator answers the request synchronously. */
@@ -123,11 +116,9 @@ export function liveSelectorPort(client: Pick<MobileCoreClient, 'call'>): Select
             ? await client.call('updateCaptureConfig', { body: cameraProfileBody({ trackId: command.trackId, deviceId: command.deviceId, profile: command.profile }) })
             : command.kind === 'camera'
             ? await client.call('setCaptureCameraSource', { params: { id: command.deviceId }, body: { trackId: command.trackId } })
-            : command.kind === 'micPair'
-              ? await client.call('updateCaptureConfig', { body: micPairBody(command) })
-              : command.kind === 'micRole'
-                ? await client.call('updateCaptureConfig', { body: micRoleBody(command) })
-                : await client.call('setPrimaryMic', { params: { id: command.inputId } });
+            : command.kind === 'micLine'
+              ? await client.call('updateCaptureConfig', { body: micLineBody(command) })
+              : await client.call('updateCaptureConfig', { body: micMoveBody(command) }); // D61 (2026-11-04): micMove; the selector no longer trades roles (op 81 stays the session's toggle)
         if (answer.ok) return answerOf({ status: answer.status, code: null, reason: null }, answer.data);
         const reason = answer.error.details?.reason;
         return answerOf({ status: answer.status, code: answer.error.code, reason: typeof reason === 'string' ? reason : null }, null);

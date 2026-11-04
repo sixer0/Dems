@@ -189,7 +189,8 @@ export function MicInputSourceBadge({ inputId, testID }: { inputId: string; test
  */
 export function precheckDeviceOf(
   checkId: string,
-  selector: { readonly cameras: readonly { trackId: string; deviceId: string }[]; readonly mics: readonly { inputId: string; role: string; deviceId: string }[] },
+  // D61 (2026-11-04): a microphone line states its CHANNEL.
+  selector: { readonly cameras: readonly { trackId: string; deviceId: string }[]; readonly mics: readonly { inputId: string; channel: string; deviceId: string }[] },
 ): string | null {
   switch (checkId) {
     case 'LENS_1':
@@ -197,9 +198,10 @@ export function precheckDeviceOf(
     case 'LENS_2':
       return selector.cameras.find((line) => line.trackId === 'VIDEO-02')?.deviceId ?? null;
     case 'MIC_PRIMARY':
-      return selector.mics.find((line) => line.role === 'PRIMARY')?.deviceId ?? null;
+      // D61 (2026-11-04): the stored MIC_PRIMARY/MIC_STANDBY ids CHECK channels 1 and 2.
+      return selector.mics.find((line) => line.channel === 'MIC-01')?.deviceId ?? null;
     case 'MIC_STANDBY':
-      return selector.mics.find((line) => line.role === 'STANDBY')?.deviceId ?? null;
+      return selector.mics.find((line) => line.channel === 'MIC-02')?.deviceId ?? null;
     case 'MIC_1':
       return selector.mics.find((line) => line.inputId === 'MIC-01')?.deviceId ?? null;
     case 'MIC_2':

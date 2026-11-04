@@ -187,8 +187,8 @@ export function isUnreachableItem(item: Pick<PrecheckItem, 'value'> | null): boo
 /*
  * The selector slot a pre-check item says is NOT ASSIGNED (names register 5.2): `value:
  * 'NOT_ASSIGNED'`, `reasonCode: null`, `params { rule: 'sourceNotAssigned', slot }` - and NO
- * `deviceId`, because there is no device. The status is the Core's (BLOCK for all four slots in
- * real capture, the standby microphone too: decision C25). It is recognised by the ONE recogniser
+ * `deviceId`, because there is no device. The status is the Core's (BLOCK for every slot in
+ * real capture, the second microphone channel too: decision C25, renumbered by D61 of 2026-11-04). It is recognised by the ONE recogniser
  * of both clients, `unassignedSlotOfPrecheckItem` of `@dems/shared/sim` (N12; integration pass I-6
  * removed the local form this file held until the shared one landed). Its caller here is
  * `precheckSentence` of `capture-notices.tsx`, which keeps the guard for "no item".

@@ -79,6 +79,8 @@ export const HEALTH_METRIC: Readonly<Record<DeviceId, HealthMetric>> = {
   'CAM-04': 'linkQuality', // D60
   'MIC-01': 'signal',
   'MIC-02': 'signal',
+  'MIC-03': 'signal', // D61 (2026-11-04): four microphone channels
+  'MIC-04': 'signal', // D61
   'POE-SWITCH': 'poeDraw',
   'REC-INDICATOR': 'relay',
   TABLET: 'linkQuality',
@@ -218,9 +220,12 @@ const FAULT_DEVICE: Partial<Record<string, (target: string | null) => DeviceId |
   [FaultKind.MIC_CLIP]: (target) => micDevice(target),
 };
 
+// D61 (2026-11-04): any of the four meter channels names its built-in microphone.
 function micDevice(target: string | null): DeviceId | null {
   if (target === 'AUDIO-01') return 'MIC-01';
   if (target === 'AUDIO-02') return 'MIC-02';
+  if (target === 'AUDIO-03') return 'MIC-03';
+  if (target === 'AUDIO-04') return 'MIC-04';
   return null;
 }
 

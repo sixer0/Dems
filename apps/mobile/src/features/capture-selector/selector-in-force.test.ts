@@ -27,7 +27,9 @@ jest.mock('@shopify/react-native-skia', () =>
 
 const idle = (): SimState => createIdleState({ now: 1_791_636_968_000, seed: DEFAULT_SEED });
 
-/** The registry of a Core in real capture: two generated cameras, a third generated one, the Mac's own devices. */
+/** The registry of a Core in real capture: the nine built-ins (D60/D61), a further generated camera
+ * (CAM-05) and the Mac's own devices (CAM-06, MIC-05 — the built-ins CAM-03/04 and MIC-03/04 are
+ * seeded since D60/D61, so an adopted device mints past them). */
 function registry(state: SimState): SimState {
   const base = state.captureDevices.devices;
   const camera = base.find((device) => device.kind === 'CAMERA')!;
@@ -40,8 +42,8 @@ function registry(state: SimState): SimState {
       devices: [
         ...marked,
         { ...camera, id: 'CAM-05', sourceClass: 'DEVELOPMENT', adapter: 'FAKE' } as typeof camera,
-        { ...camera, id: 'CAM-03', sourceClass: 'DEVELOPMENT', adapter: 'LOCAL_DEVICE' } as typeof camera,
-        { ...mic, id: 'MIC-03', sourceClass: 'DEVELOPMENT', adapter: 'LOCAL_DEVICE' } as typeof mic,
+        { ...camera, id: 'CAM-06', sourceClass: 'DEVELOPMENT', adapter: 'LOCAL_DEVICE' } as typeof camera, // D60: the local one is past the built-ins
+        { ...mic, id: 'MIC-05', sourceClass: 'DEVELOPMENT', adapter: 'LOCAL_DEVICE' } as typeof mic, // D61 (2026-11-04): MIC-03/MIC-04 are built-ins of the four-channel plane
       ],
     },
   };
@@ -49,8 +51,9 @@ function registry(state: SimState): SimState {
 
 type Session = NonNullable<SimState['session']>;
 /**
- * `state`: the session's state. The session recorded with CAM-01 / CAM-02 and MIC-01 primary / MIC-02
- * standby (its snapshot); AFTER it the selector was changed to `CAM-05` on VIDEO-02 and `MIC-03` on standby.
+ * `state`: the session's state. The session recorded with the four built-in cameras and the four
+ * built-in microphones by channel (its snapshot); AFTER it the selector was changed to `CAM-05` on
+ * VIDEO-02 and to `MIC-05` on channel 2 (D61, 2026-11-04: the standby role became the numbered channel).
  */
 function afterSelectorChange(sessionState: Session['state'] | null): SimState {
   const base = registry(idle());
@@ -58,7 +61,7 @@ function afterSelectorChange(sessionState: Session['state'] | null): SimState {
   const changed = {
     ...base.captureConfig,
     cameras: base.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-02' ? { ...line, deviceId: 'CAM-05' } : line)),
-    mics: base.captureConfig.mics.map((line) => (line.role === 'STANDBY' ? { ...line, inputId: 'MIC-03', deviceId: 'MIC-03' } : line)),
+    mics: base.captureConfig.mics.map((line) => (line.channel === 'MIC-02' ? { ...line, inputId: 'MIC-05', deviceId: 'MIC-05' } : line)), // D61: the line is found by CHANNEL
     updatedAt: base.captureConfig.updatedAt + 60_000,
   };
   const session = sessionState === null ? null : ({ id: 'SES-20261011-0043', state: sessionState, startedAt: 1, captureConfig: snapshot } as unknown as Session);
@@ -80,15 +83,15 @@ describe('G70c-01 - the ONE helper', () => {
     expect(state.session?.captureConfig?.cameras.find((line) => line.trackId === 'VIDEO-02')?.deviceId).toBe('CAM-02');
     expect(openSessionSnapshot(state.session)).toBeNull();
     expect(selectorInForce(state)).toBe(state.captureConfig);
-    expect(cameraLinesInForce(state).map((line) => line.deviceId)).toEqual(['CAM-01', 'CAM-05']);
-    expect(micLinesInForce(state).map((line) => line.inputId)).toEqual(['MIC-01', 'MIC-03']);
+    expect(cameraLinesInForce(state).map((line) => line.deviceId)).toEqual(['CAM-01', 'CAM-05', 'CAM-03', 'CAM-04']); // D60: four lines; only VIDEO-02 changed
+    expect(micLinesInForce(state).map((line) => line.inputId)).toEqual(['MIC-01', 'MIC-05', 'MIC-03', 'MIC-04']); // D61 (2026-11-04): four channels; only channel 2 changed
   });
 
   it('CONTROL - while that session is OPEN its snapshot is in force, whatever the stored selector says', () => {
     const state = afterSelectorChange('RECORDING');
     expect(selectorInForce(state)).toBe(state.session?.captureConfig);
-    expect(cameraLinesInForce(state).map((line) => line.deviceId)).toEqual(['CAM-01', 'CAM-02']);
-    expect(micLinesInForce(state).map((line) => line.inputId)).toEqual(['MIC-01', 'MIC-02']);
+    expect(cameraLinesInForce(state).map((line) => line.deviceId)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']); // D60: the snapshot holds all four tracks
+    expect(micLinesInForce(state).map((line) => line.inputId)).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']); // D61: and all four channels
   });
 
   it('no session, and an open session without a snapshot: the current selector', () => {
@@ -113,33 +116,35 @@ describe('G70c-01 - every reader, in the order of the defect (sealed session, TH
   it('the state word of a camera line and of the microphone lines follows the same selector', () => {
     expect(cameraLineReportOf(sealed, 'VIDEO-02').deviceId).toBe('CAM-05');
     expect(cameraLineReportOf(open, 'VIDEO-02').deviceId).toBe('CAM-02');
-    expect(micLineDeviceIdOf(sealed, 'AUDIO-02')).toBe('MIC-03');
+    expect(micLineDeviceIdOf(sealed, 'AUDIO-02')).toBe('MIC-05'); // D61 (2026-11-04): channel 2 moved to the Mac's microphone
     expect(micLineDeviceIdOf(open, 'AUDIO-02')).toBe('MIC-02');
     expect(primaryMicReportOf(sealed).deviceId).toBe('MIC-01');
   });
 
   it('the badge of a pre-check row and the microphone roles of Session New', () => {
     expect(precheckDeviceOf('LENS_2', selectorInForce(sealed))).toBe('CAM-05');
-    expect(precheckDeviceOf('MIC_STANDBY', selectorInForce(sealed))).toBe('MIC-03');
+    expect(precheckDeviceOf('MIC_STANDBY', selectorInForce(sealed))).toBe('MIC-05'); // D61: the stored MIC_STANDBY check reads channel 2
     expect(precheckDeviceOf('LENS_2', selectorInForce(open))).toBe('CAM-02');
-    expect(micRoleLine(sealed)).toBe('MIC-01:PRIMARY|MIC-03:STANDBY');
-    expect(micRoleLine(open)).toBe('MIC-01:PRIMARY|MIC-02:STANDBY');
+    // D61 (2026-11-04): the encoding names the CHANNEL of each line; all four lines are held.
+    expect(micRoleLine(sealed)).toBe('MIC-01:MIC-01|MIC-05:MIC-02|MIC-03:MIC-03|MIC-04:MIC-04');
+    expect(micRoleLine(open)).toBe('MIC-01:MIC-01|MIC-02:MIC-02|MIC-03:MIC-03|MIC-04:MIC-04');
   });
 
   it('the hot standby of Session Live', () => {
-    expect(selectStandbyInputId({ ...sealed, audio: { ...sealed.audio, activeInputId: 'MIC-01' } })).toBe('MIC-03');
+    // D61: the hot standby is the channel-2 line (the transcription pair is channels 1 and 2).
+    expect(selectStandbyInputId({ ...sealed, audio: { ...sealed.audio, activeInputId: 'MIC-01' } })).toBe('MIC-05');
   });
 
   it('THE LOCAL-DEVICE NOTICE names the devices of the selector in force only: a sealed session that recorded the Mac\'s camera raises no notice once the selector names generated sources again', () => {
-    // The sealed session recorded with CAM-03 (this Mac's camera); the selector was put back to CAM-01 afterwards.
+    // The sealed session recorded with CAM-06 (this Mac's camera; D60: CAM-03 is a built-in); the selector was put back to CAM-01 afterwards.
     const base = registry(idle());
-    const local = { cameras: base.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, deviceId: 'CAM-03' } : line)), mics: base.captureConfig.mics, revision: 3, updatedAt: base.captureConfig.updatedAt };
+    const local = { cameras: base.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, deviceId: 'CAM-06' } : line)), mics: base.captureConfig.mics, revision: 3, updatedAt: base.captureConfig.updatedAt };
     const wasLocal = { ...base, session: { id: 'SES-20261011-0044', state: 'SEALED', startedAt: 1, captureConfig: local } as unknown as Session };
     expect(localSourceNoticeLine(wasLocal, true)).toBe('');
-    // And the reverse (the gate's own picture): the last sealed session used CAM-01, the selector now names CAM-03.
+    // And the reverse (the gate's own picture): the last sealed session used CAM-01, the selector now names CAM-06.
     const nowLocal = { ...base, captureConfig: { ...base.captureConfig, cameras: local.cameras }, session: { id: 'SES-20261011-0043', state: 'SEALED', startedAt: 1, captureConfig: { ...local, cameras: base.captureConfig.cameras } } as unknown as Session };
     expect(localSourceNoticeLine(nowLocal, true)).not.toBe('');
-    expect(noPreviewFactsOf(nowLocal, 'VIDEO-01')).toMatchObject({ deviceId: 'CAM-03', adapter: 'LOCAL_DEVICE' });
+    expect(noPreviewFactsOf(nowLocal, 'VIDEO-01')).toMatchObject({ deviceId: 'CAM-06', adapter: 'LOCAL_DEVICE' });
     // CONTROL: while the session that records the Mac's camera is OPEN, the notice is its own.
     expect(localSourceNoticeLine({ ...wasLocal, session: { ...wasLocal.session, state: 'ARMED' } as unknown as Session }, true)).not.toBe('');
   });

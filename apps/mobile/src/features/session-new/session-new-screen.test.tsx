@@ -422,13 +422,13 @@ describe('round two: New Session says what is true at each step', () => {
       }));
     });
     expect(screen.queryByTestId('session-new-profile')).toBeNull();
-    expect(screen.getByTestId('session-new-profile-lines')).toHaveTextContent('VIDEO-01: H264_720P30 · VIDEO-02: H264_720P30');
+    expect(screen.getByTestId('session-new-profile-lines')).toHaveTextContent('VIDEO-01: H264_720P30 · VIDEO-02: H264_720P30 · VIDEO-03: H264_720P30 · VIDEO-04: H264_720P30'); // D60 (2026-11-04): four video tracks in force
     expect(screen.queryByText('Standard (1080p / 25 fps)')).toBeNull();
     expect(screen.queryByText(/1080p/)).toBeNull();
 
     await goToReady(h);
     expect(screen.getByTestId('session-new-step-3')).toBeTruthy();
-    expect(within(screen.getByTestId('session-new-summary-profile')).getByText('VIDEO-01: H264_720P30 · VIDEO-02: H264_720P30')).toBeTruthy();
+    expect(within(screen.getByTestId('session-new-summary-profile')).getByText('VIDEO-01: H264_720P30 · VIDEO-02: H264_720P30 · VIDEO-03: H264_720P30 · VIDEO-04: H264_720P30')).toBeTruthy(); // D60 (2026-11-04): four tracks in the summary too
     expect(screen.queryByText(/1080p/)).toBeNull();
 
     // A selector that states no profile: "Not reported", never a model figure.

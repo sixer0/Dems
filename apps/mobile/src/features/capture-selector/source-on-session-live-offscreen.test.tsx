@@ -79,7 +79,8 @@ describe('Session Live: an open local device that is not on screen (LIVE)', () =
     bed = b;
     await b.openMonitor();
     expect(screen.getByTestId('monitor-feed-source-on')).toHaveTextContent(CAMERA_ON);
-    expect(screen.getByTestId('monitor-mic-source-1-on')).toBeTruthy();
+    // D61 (2026-11-04): the badge testID is channel-keyed (`monitor-mic-source-MIC-01-on`).
+    expect(screen.getByTestId('monitor-mic-source-MIC-01-on')).toBeTruthy();
     expect(screen.queryByTestId(SLOT)).toBeNull();
     expect(screen.getAllByText(CAMERA_ON)).toHaveLength(1);
     expect(screen.getAllByText("Core Mac's microphone is on")).toHaveLength(1);

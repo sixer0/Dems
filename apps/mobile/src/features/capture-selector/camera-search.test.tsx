@@ -222,7 +222,10 @@ describe('the gate of G13 (§8c.6; M4-DISC-RBAC)', () => {
 
   it('S14 by the answer: 409 DISCOVERY_NOT_ALLOWED_WHILE_RECORDING is drawn as that disabled state, not as a note', async () => {
     const { h, requests } = await openDevices();
-    act(() => h.sim.actions.createSession({ caseNumber: 'LP/2026/1001-0009', subjectType: 'SAKSI', subjectName: 'Rahmat Hidayat', investigatorId: h.sim.store.getState().auth.operatorId ?? '', room: 'Interview Room 1', profileId: 'STANDARD_1080P25' }));
+    // D60/D61 re-pin: the TECHNICIAN who holds the search right does NOT hold SESSION_START (`requirePermission`), so
+    // `actions.createSession` was a silent no-op here. The S14-by-the-answer scenario is a session ANOTHER console
+    // opened: the store states an OPEN, not-yet-RECORDING session and the Core answers the search with its 409.
+    act(() => h.sim.store.setState({ session: { id: 'SES-S14', state: 'ARMED', createdBy: 'OPR-001', captureDurable: true, audioSource: null, captureConfig: null } as never }));
     await settle();
     requests.answer((request) => (request.method === 'POST' && request.path === DISCOVERY ? refusal(409, 'INVALID_STATE', 'DISCOVERY_NOT_ALLOWED_WHILE_RECORDING') : undefined));
     fireEvent.press(action());

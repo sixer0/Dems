@@ -152,7 +152,8 @@ function OpenSearch({ testID, label }: { testID: string; label: string }) {
  * Task 4 row 169 (decisions C18 (1), C25; names register 5.2, N15): the item of an UNASSIGNED
  * selector slot is worded here too - "Camera 1 has no source assigned. Assign one on Devices." It
  * carries no device id (there is no device), so it is named by its SLOT; without this it read the
- * raw value. One sentence for all four slots, the standby microphone included. The slot is read by
+ * raw value. One sentence for all eight slots (D61 of 2026-11-04: four camera and four microphone
+ * channels), the second microphone channel included. The slot is read by
  * the shared recogniser of both clients (`unassignedSlotOfPrecheckItem`, names register N12), which
  * also reads the item's status; "no item" is answered here.
  */

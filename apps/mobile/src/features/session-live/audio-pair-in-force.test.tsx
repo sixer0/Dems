@@ -5,10 +5,10 @@
 //
 // Rule (ONE helper, `audioPairInForce` of `@dems/shared/sim`, through the app's door
 // `capture-selector/selector-in-force.ts`): the session's own pair only while that session is OPEN;
-// otherwise the pair the current selector gives (PRIMARY = active, STANDBY = standby).
+// otherwise the pair the current selector gives (channel 1 = active, channel 2 = standby; D61: the roles became the numbered channels).
 //
 // Order of the defect: the session recorded MIC-01 / MIC-02 and was switched to MIC-02 (pair: active
-// MIC-02, standby MIC-01); it is SEALED; THEN the selector's first line becomes MIC-04. The control is the
+// MIC-02, standby MIC-01); it is SEALED; THEN the selector's first line becomes MIC-05 (D61, 2026-11-04: MIC-03/MIC-04 are built-ins of the four-channel plane; a changed line names an adopted microphone). The control is the
 // same state with the session still RECORDING.
 //
 // The mobile screens DRAW the pair only while a session records (the toggle, the Active / Standby chips),
@@ -33,7 +33,7 @@ afterEach(() => resetMotionStateForTests());
 type Session = NonNullable<SimState['session']>;
 const PAIR = { activeInputId: 'MIC-02', standbyInputId: 'MIC-01', switchedAt: 5_000, intervalFromMs: 4_000 };
 
-/** The recording scenario, switched to MIC-02; then (`sealed`) sealed; then the first microphone line changed to MIC-04. */
+/** The recording scenario, switched to MIC-02; then (`sealed`) sealed; then the first microphone line changed to MIC-05 (D61: the adopted id). */
 function afterMicrophoneChange(base: SimState, sealed: boolean): Partial<SimState> {
   const session = base.session as Session;
   const snapshot = { cameras: base.captureConfig.cameras, mics: base.captureConfig.mics, revision: 2, updatedAt: base.captureConfig.updatedAt };
@@ -41,7 +41,7 @@ function afterMicrophoneChange(base: SimState, sealed: boolean): Partial<SimStat
   return {
     captureConfig: {
       ...base.captureConfig,
-      mics: base.captureConfig.mics.map((line, index) => (index === 0 ? { ...line, inputId: 'MIC-04', deviceId: 'MIC-04' } : line)),
+      mics: base.captureConfig.mics.map((line, index) => (index === 0 ? { ...line, inputId: 'MIC-05', deviceId: 'MIC-05' } : line)), // D61: MIC-05 mints above the four built-ins
       updatedAt: base.captureConfig.updatedAt + 60_000,
     } as SimState['captureConfig'],
     session: sealed ? ({ ...held, state: 'SEALED' } as unknown as Session) : held,
@@ -74,18 +74,18 @@ function draw(sealed: boolean): SimState {
 const textOf = (testID: string): string => String(screen.getByTestId(testID).props.children);
 
 describe('fix 157 - the pair a mobile screen names after a sealed session and a microphone change', () => {
-  it('SEALED: the pair is the current selector\'s - the NEW microphone MIC-04 is the active one, MIC-02 the standby; the sealed session\'s MIC-01 is named nowhere', () => {
+  it('SEALED: the pair is the current selector\'s - the NEW microphone MIC-05 holds channel 1, MIC-02 channel 2; the sealed session\'s MIC-01 is named nowhere (D61)', () => {
     const state = draw(true);
     // The slice still HOLDS the old pair - that is the state the defect needs.
     expect(state.session?.state).toBe('SEALED');
     expect((state.session as unknown as { audioSource: typeof PAIR }).audioSource).toMatchObject({ activeInputId: 'MIC-02', standbyInputId: 'MIC-01' });
-    expect(textOf('pair-active').split('|')[0]).toBe('MIC-04');
-    expect(textOf('pair-active').split('|')[1]).toMatch(/4/);
+    expect(textOf('pair-active').split('|')[0]).toBe('MIC-05');
+    expect(textOf('pair-active').split('|')[1]).toMatch(/5/);
     expect(textOf('pair-standby').split('|')[0]).toBe('MIC-02');
     expect(`${textOf('pair-active')} ${textOf('pair-standby')}`).not.toContain('MIC-01');
     // No word on a card: nothing records.
     expect(textOf('card-1-role')).toBe('none');
-    expect([selectActiveInputId(state), selectStandbyInputId(state)]).toEqual(['MIC-04', 'MIC-02']);
+    expect([selectActiveInputId(state), selectStandbyInputId(state)]).toEqual(['MIC-05', 'MIC-02']);
   });
 
   it('CONTROL - the same pair while that session still records: its own pair (MIC-02 active, MIC-01 standby), and card 1 (MIC-01) says Standby', () => {
@@ -101,11 +101,11 @@ describe('fix 157 - the pair a mobile screen names after a sealed session and a 
 // Task 4 row 170 (site M4; decision C18 (2)): the hook every screen reads (`useMicSource`, `useMicSourceRole`)
 // states "absent" for a role without a line. The double: the recording scenario with the selector's lines cut
 // down through the store and no pair stated by the session.
-describe('task 4 row 170 - the hook states "absent" (null) for a role without a line', () => {
-  function drawWithRoles(roles: readonly string[]): SimState {
+describe('task 4 row 170 (D61) - the hook states "absent" (null) for a CHANNEL without a line', () => {
+  function drawWithChannels(channels: readonly string[]): SimState {
     const test = createTestSim({ scenario: 'recording' });
     const base = test.sim.store.getState();
-    const mics = base.captureConfig.mics.filter((line) => roles.includes(line.role));
+    const mics = base.captureConfig.mics.filter((line) => channels.includes(line.channel)); // D61: the lines are keyed by CHANNEL
     const session = base.session as Session;
     test.sim.store.setState({
       captureConfig: { ...base.captureConfig, mics } as SimState['captureConfig'],
@@ -119,17 +119,19 @@ describe('task 4 row 170 - the hook states "absent" (null) for a role without a 
     return test.sim.store.getState();
   }
 
-  it('a lone PRIMARY line: the active input is that line, the standby is ABSENT (never MIC-02), and card 1 says no role (no meter channel has an input)', () => {
-    const state = drawWithRoles(['PRIMARY']);
+  // D61 (2026-11-04): a line assigns its OWN channel (the complete-pair rule of D137 is superseded) -
+  // the lone channel-1 line HAS its input, and the card of that input says ACTIVE, not "no role".
+  it('a lone channel-1 line: the active input is that line, the standby is ABSENT (never MIC-02), and card 1 says ACTIVE', () => {
+    const state = drawWithChannels(['MIC-01']);
     expect(state.session?.state).toBe('RECORDING');
     expect(textOf('pair-active').split('|')[0]).toBe('MIC-01');
     expect(textOf('pair-standby')).toBe('null|');
-    expect(textOf('card-1-role')).toBe('none');
+    expect(textOf('card-1-role')).toBe('ACTIVE');
     expect([selectActiveInputId(state), selectStandbyInputId(state)]).toEqual(['MIC-01', null]);
   });
 
-  it('CONTROL - both lines, no pair stated by the session: the pair is read from the selector by role, as before', () => {
-    const state = drawWithRoles(['PRIMARY', 'STANDBY']);
+  it('CONTROL - all four lines, no pair stated by the session: the pair is read from the selector by channel, as before (D61)', () => {
+    const state = drawWithChannels(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']);
     expect(textOf('pair-active').split('|')[0]).toBe('MIC-01');
     expect(textOf('pair-standby').split('|')[0]).toBe('MIC-02');
     expect(textOf('card-1-role')).toBe('ACTIVE');

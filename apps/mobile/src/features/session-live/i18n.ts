@@ -79,11 +79,12 @@ export const sessionLiveEn = {
   sheets: {
     close: 'Close',
     audioTitle: 'Audio Monitor',
-    audioDescription: 'MIC 1 and MIC 2 are separate tracks and are never mixed.',
-    // Fix wave J (JT-07): what a Core in its own capture records - ONE audio track, fed by the active microphone;
-    // the standby is recorded only from a switch on (the sealed item lists the intervals). The sentence above and
-    // the names "Interviewer" / "Subject" describe the simulated lane's two tracks and stay there only.
-    audioDescriptionOwnCapture: 'This Core records one audio track, from the active microphone. The standby microphone is recorded only after you switch to it; the sealed item lists which microphone fed the track, and when. The two are never mixed.',
+    audioDescription: 'The four microphone channels are separate tracks and are never mixed.', // D61 (2026-11-04): four simultaneous channels
+    // Fix wave J (JT-07): what a Core in its own capture records. D61 (2026-11-04): FOUR simultaneous
+    // channels - the switch moves the TRANSCRIBED source alone; recording never stops on any channel
+    // (the sealed item lists the intervals). The sentence above and
+    // the names "Interviewer" / "Subject" describe the simulated lane's tracks and stay there only.
+    audioDescriptionOwnCapture: 'This Core records four simultaneous microphone channels. The active microphone is the one transcribed into the session track; switching moves the transcription while recording continues on all four channels. The sealed item lists which microphone fed the track, and when. The channels are never mixed.',
     settingsTitle: 'Monitor settings',
     settingsDescription: 'Display only. Recording on the Core is not affected.',
     pauseDescription: 'Pauses the preview and dims the meters. Recording continues.',
@@ -123,16 +124,19 @@ export const sessionLiveEn = {
   },
 
   // Round two (JA2-06): a microphone the Core reports without a signal, said above the switch.
+  // D61 (2026-11-04): all four channels record at once - "active" is the TRANSCRIBED channel, and any
+  // other silent channel records beside it without touching the transcript.
   micNoSignal: {
     title: '{{mic}}: no signal',
-    activeBody: 'The active microphone delivers no audio. The recording continues without sound from it until the signal returns or you switch.',
-    standbyBody: 'The standby microphone delivers no audio. The active microphone is not affected.',
+    activeBody: 'The transcribed microphone delivers no audio. The recording continues without sound from it until the signal returns or you switch.',
+    standbyBody: 'This microphone channel records beside the transcribed one, which is not affected.',
   },
 
-  // Task 4 row 170 (site M4): the selector in force holds no complete microphone pair, so there is nothing to
-  // switch from or to. Said where the toggle would be; reachable only in Simulated mode (a Core in its own
-  // capture refuses the start of a session while a slot is unassigned, decision C25).
-  micPairIncomplete: 'The microphone pair is not complete. There is nothing to switch.',
+  // Task 4 row 170 (site M4): the selector in force holds no complete TRANSCRIPTION PAIR (channels 1
+  // and 2; D61 of 2026-11-04), so there is nothing to switch from or to. Said where the toggle would
+  // be; reachable only in Simulated mode (a Core in its own capture refuses the start of a session
+  // while a slot is unassigned, decision C25).
+  micPairIncomplete: 'The transcription pair (channels 1 and 2) is not complete. There is nothing to switch.',
 
   // Toasts for refused simulator actions (SimTransitionError, D61).
   errors: {

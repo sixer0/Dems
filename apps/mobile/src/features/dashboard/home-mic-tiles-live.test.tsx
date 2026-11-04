@@ -103,7 +103,7 @@ describe('B15: the tablet Home MIC tiles never read "No signal" beside a READY c
     expect(getMissingKeys()).toEqual([]);
   });
 
-  it('under the `?motion=off` test switch (as the device runs): a recording starts and the tiles show the level of each input, with "Active" / "Standby"', async () => {
+  it('under the `?motion=off` test switch (as the device runs): a recording starts and the tiles show the level of each input, with the channel words (D61)', async () => {
     const b = await tabletHome(true);
     const now = b.fake.clock.now();
     await b.pushState({ ...b.state, session: recordingSession(now) });
@@ -112,7 +112,8 @@ describe('B15: the tablet Home MIC tiles never read "No signal" beside a READY c
     // Was: "No signal" on both tiles for the whole recording (D249 O-3).
     expect(lines()).toEqual(['-18 dBFS', '-42 dBFS']);
     expect(screen.getByTestId('home-device-AUDIO-01-meter').props.accessibilityValue).toMatchObject({ now: -18, text: '-18 dBFS' });
-    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual(['Active', 'Standby']);
+    // D61 (2026-11-04): the pair words became the channel words — channel 1 is transcribed, channel 2 records beside it.
+    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual(['Channel 1 (transcribed)', 'Channel 2 (recorded)']);
 
     // The test switch still holds the number between flips (uiautomator idle): later frames do not move it.
     b.sendMeters({ 'MIC-01': frame(-9, now + 50, 2), 'MIC-02': frame(-30, now + 50, 2) });
@@ -192,30 +193,31 @@ describe('MB-01: the tiles say which input is active while a session records (ux
     const now = b.fake.clock.now();
     const session = recordingSession(now);
     await b.pushState({ ...b.state, session });
-    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual(['Active', 'Standby']);
+    // D61 (2026-11-04): the pair words became the channel words.
+    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual(['Channel 1 (transcribed)', 'Channel 2 (recorded)']);
 
     // Another console switched (operation 81): the session slice carries the new pair.
     await b.pushState({
       ...b.state,
       session: { ...session, audioSource: { sessionId: session.id, activeInputId: 'MIC-02', standbyInputId: 'MIC-01', switchedAt: now + 5_000, intervalFromMs: 5_000 } },
     });
-    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual(['Standby', 'Active']);
+    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual(['Channel 2 (recorded)', 'Channel 1 (transcribed)']);
 
     await b.pushState({ ...b.state, session: null });
     expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual([null, null]);
     expect(getMissingKeys()).toEqual([]);
   });
 
-  // Task 4 row 171 (site M5; decision C18 (2)): the tiles and the Home data find the input of a channel by the
-  // lookup of row 164. The double: the Core's state as the bed replicates it, with a lone PRIMARY line.
-  it('task 4 row 171: the selector holds no complete microphone pair - both tiles show no level and no role, and read no frame of MIC-01 / MIC-02; the complete pair brings both back', async () => {
+  // Task 4 row 171 (site M5; decision C18 (2); D61 of 2026-11-04 generalized D137): the tiles find the input of a
+  // channel by the lookup of row 164 - a channel WITHOUT its line has no input, while a held channel records.
+  it('task 4 row 171: the selector holds no complete transcription pair - the held channel 1 reads its level, the channels without their line show none; the complete plane brings all back', async () => {
     const b = await tabletHome(true);
     const now = b.fake.clock.now();
     const session = recordingSession(now);
     const complete = b.state.captureConfig;
-    const lone = complete.mics.filter((entry) => entry.role === 'PRIMARY');
+    const lone = complete.mics.filter((entry) => entry.channel === 'MIC-01'); // D61 (2026-11-04): the line is found by CHANNEL; channels 2..4 stand empty
     const snapshot = (mics: typeof lone) => (session.captureConfig ? { ...session.captureConfig, mics } : session.captureConfig);
-    // A session that states no pair, recording under a selector with the PRIMARY line only.
+    // A session that states no pair, recording under a selector with the channel-1 line only.
     await b.pushState({
       ...b.state,
       captureConfig: { ...complete, mics: lone },
@@ -223,17 +225,17 @@ describe('MB-01: the tiles say which input is active while a session records (ux
     });
     b.sendMeters({ 'MIC-01': frame(-18, now, 1), 'MIC-02': frame(-42, now, 1) });
     await flush();
-    // The frames are in the store under the built-in inputs; no meter channel has an input, so no tile reads them.
-    expect(lines()).toEqual(['— dBFS', '— dBFS']);
-    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual([null, null]);
-    expect(lines().some((text) => /no signal|-18|-42/i.test(text))).toBe(false);
+    // D61: channel 1 names its input and reads its frame; the empty channels have no input and read none.
+    expect(lines()).toEqual(['-18 dBFS', '— dBFS']);
+    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual(['Channel 1 (transcribed)', null]);
+    expect(lines().some((text) => /no signal|-42/i.test(text))).toBe(false);
 
-    // CONTROL - the same recording under the complete pair: the levels and the words, as before.
+    // CONTROL - the same recording under the complete plane: the levels and the words, as before.
     await b.pushState({ ...b.state, captureConfig: complete, session: { ...session, captureConfig: snapshot(complete.mics) } as NonNullable<SimState['session']> });
     b.sendMeters({ 'MIC-01': frame(-18, now + 50, 2), 'MIC-02': frame(-42, now + 50, 2) });
     await flush();
     expect(lines()).toEqual(['-18 dBFS', '-42 dBFS']);
-    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual(['Active', 'Standby']);
+    expect([role('AUDIO-01'), role('AUDIO-02')]).toEqual(['Channel 1 (transcribed)', 'Channel 2 (recorded)']); // D61 (2026-11-04): the channel words
     expect(getMissingKeys()).toEqual([]);
   });
 });
@@ -359,32 +361,32 @@ describe('Home microphone state in REAL capture: what the Core reported for the 
   // "Not checked" (`checkedAt: null`, a PLANNED member the contract-checked transport of this bed does not
   // carry yet) is held on the pure rule: `capture-selector/source-state.test.ts`.
 
-  it('tablet: the tile and its badge follow the SELECTED primary microphone - the Core Mac\'s microphone on the line, not the built-in one', async () => {
+  it('tablet: the tile and its badge follow the SELECTED transcribed microphone - the Core Mac\'s microphone on channel 1, not the built-in one', async () => {
     bed = createHomeBed();
-    const local = { id: 'MIC-03', kind: 'MIC', model: 'MacBook Air Microphone', firmware: null, host: null, poePort: null, online: false, streamState: null, capabilities: [], ...LOCAL };
+    const local = { id: 'MIC-05', kind: 'MIC', model: 'MacBook Air Microphone', firmware: null, host: null, poePort: null, online: false, streamState: null, capabilities: [], ...LOCAL }; // D61 (2026-11-04): MIC-03/04 are built-ins; an adopted microphone mints as MIC-05
     const real = marked(bed.state, REAL_CAPTURE);
     bed.state = {
       ...real,
       captureDevices: { ...real.captureDevices, devices: [...real.captureDevices.devices, local as unknown as (typeof real.captureDevices.devices)[number]] },
-      captureConfig: { ...real.captureConfig, mics: real.captureConfig.mics.map((line) => (line.role === 'PRIMARY' ? { ...line, inputId: 'MIC-03', deviceId: 'MIC-03' } : line)) },
+      captureConfig: { ...real.captureConfig, mics: real.captureConfig.mics.map((line) => (line.channel === 'MIC-01' ? { ...line, inputId: 'MIC-05', deviceId: 'MIC-05' } : line)) }, // D61: the line is keyed by CHANNEL
     };
     bed.mount(<DashboardScreen />, 'tabletLandscape');
     await bed.signIn();
-    // MIC-01 (reachable) is on no line any more: the tile of line 1 says what the Core reported for MIC-03.
+    // MIC-01 (reachable) is on no line any more: the tile of channel 1 says what the Core reported for MIC-05.
     expect(label('home-device-AUDIO-01')).toBe('MIC 1, Not found');
     expect(textOf('home-device-AUDIO-01-source-kind')).toBe("Core Mac's microphone");
     expect(label('home-device-AUDIO-02')).toBe('MIC 2, Not checked');
     // The Core says the microphone is there and open: "On" (the badge beside it carries the fixed sentence).
-    await bed.pushState(marked(bed.state, { 'MIC-03': { online: true, sourceOpen: true } }));
+    await bed.pushState(marked(bed.state, { 'MIC-05': { online: true, sourceOpen: true } }));
     expect(label('home-device-AUDIO-01')).toBe('MIC 1, On');
   });
 
-  it('phone: the Microphone tile counts the reachable lines and its state is the PRIMARY line\'s', async () => {
+  it('phone: the Microphone tile counts the reachable lines and its state is the transcribed channel\'s', async () => {
     bed = createHomeBed();
     bed.state = marked(bed.state, { ...REAL_CAPTURE, 'MIC-01': { ...FAKE, online: false } });
     bed.mount(<DashboardScreen />, 'phonePortrait');
     await bed.signIn();
-    expect(label('home-tile-microphone-value')).toBe('1/2');
+    expect(label('home-tile-microphone-value')).toBe('3/4'); // D61 (2026-11-04): four channels; MIC-01 is the one the Core reports gone
     expect(textOf('home-tile-microphone-state')).toBe('Primary not reachable');
   });
 

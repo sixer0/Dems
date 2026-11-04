@@ -163,13 +163,14 @@ export function useCaptureSelector(): CaptureSelector {
         reportRuntimeIssue(isExpectedRefusal(answer.result) ? 'warn' : 'error', 'devices.captureSelector', `selector command -> ${answer.result}`, {
           kind: command.kind,
           target:
+            // D61 (2026-11-04): the microphone commands name channels, not roles.
             command.kind === 'camera'
               ? command.trackId
-              : command.kind === 'micPair'
-                ? `${command.primaryId}+${command.standbyId}`
-                : command.kind === 'micRole'
-                  ? `${command.role}:${command.inputId}`
-                  : command.inputId,
+              : command.kind === 'micLine'
+                ? `${command.channel}:${command.inputId}`
+                : command.kind === 'micMove'
+                  ? `${command.from}->${command.channel}`
+                  : 'MIC',
           deviceId: command.kind === 'camera' ? command.deviceId : null,
           result: answer.result,
           status: answer.facts.status,

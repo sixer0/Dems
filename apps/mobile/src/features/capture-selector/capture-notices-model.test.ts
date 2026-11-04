@@ -80,9 +80,10 @@ describe('an unreachable pre-check row is read from `params.rule` (D114)', () =>
     expect(precheckUnreachableOf(null)).toBeNull();
   });
 
-  it('every rule has its sentence in the copy, and the active-microphone sentence tells the operator to cancel (no switch at pre-check, D83)', () => {
+  it('every rule has its sentence in the copy, and the active-microphone sentence tells the operator to cancel (no switch at pre-check, D83; D61: the transcribed channel 1)', () => {
     for (const rule of START_RULES) expect(typeof captureSelectorEn.notice.start[rule]).toBe('string');
-    expect(captureSelectorEn.notice.start.activeMicrophone).toMatch(/Cancel this session, make \{\{other\}\} the primary microphone on Devices, then start again\./);
+    // D61 (2026-11-04): the sentence follows the shared rewording - channel 1, not the "primary" role.
+    expect(captureSelectorEn.notice.start.activeMicrophone).toMatch(/Cancel this session, assign another microphone to channel 1 on Devices, then start again\./);
   });
 });
 
@@ -98,10 +99,12 @@ describe('task 4 row 169: the pre-check item of an UNASSIGNED selector slot (nam
     expect(captureSelectorEn.notice.start.sourceNotAssigned).toBe('{{slot}} has no source assigned. Assign one on Devices.');
   });
 
-  it('is recognised for each of the four slots - the standby microphone too - although it carries NO device id', () => {
-    for (const slot of ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY']) expect(unassignedSlotOfPrecheckItem(item(slot))).toBe(slot);
+  it('is recognised for each of the eight slots - every mic channel too - although it carries NO device id', () => {
+    // D61 (2026-11-04): the shared recogniser takes the eight channel-keyed slot codes
+    // (CAPTURE_START_REQUIRED_SLOTS); the old PRIMARY/STANDBY role names are gone.
+    for (const slot of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) expect(unassignedSlotOfPrecheckItem(item(slot))).toBe(slot);
     // A blocking item or a warning one: the status is the Core's, the slot is read from value, rule and slot.
-    expect(unassignedSlotOfPrecheckItem({ ...item('STANDBY'), status: 'WARN' })).toBe('STANDBY');
+    expect(unassignedSlotOfPrecheckItem({ ...item('MIC-02'), status: 'WARN' })).toBe('MIC-02');
   });
 
   it('nothing is guessed: another value, another rule, an unknown or missing slot, no params', () => {

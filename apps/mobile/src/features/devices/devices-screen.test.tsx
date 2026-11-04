@@ -52,9 +52,11 @@ describe('phone portrait (MB 7)', () => {
     expect(within(sections[0]!).getByText('Camera 4')).toBeTruthy(); // D60
     expect(within(sections[0]!).getAllByText('Interview Room 1')).toHaveLength(4);
     expect(screen.getByTestId('device-status-CAM-01').props.accessibilityLabel).toBe('Online');
-    // V3: canonical mic labels (04 §9 #8) and channels.
+    // V3: canonical mic labels (04 §9 #8) and channels (D61, 2026-11-04: four simultaneous channels; the row says the ordinal of the channel code).
     expect(within(sections[1]!).getByText('MIC 1 – Interviewer')).toBeTruthy();
     expect(within(sections[1]!).getByText('MIC 2 – Subject')).toBeTruthy();
+    expect(within(sections[1]!).getByText('MIC 3')).toBeTruthy(); // D61
+    expect(within(sections[1]!).getByText('MIC 4')).toBeTruthy(); // D61
     expect(within(sections[1]!).getByText('Channel 1')).toBeTruthy();
     expect(within(sections[1]!).getByText('Channel 2')).toBeTruthy();
     expect(screen.getByTestId('device-status-MIC-02').props.accessibilityLabel).toBe('Online');

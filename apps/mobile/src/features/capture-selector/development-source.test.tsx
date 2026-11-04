@@ -53,11 +53,13 @@ describe('which device a pre-check row is about', () => {
       { trackId: 'VIDEO-02', deviceId: 'CAM-02' },
     ],
     mics: [
-      { inputId: 'MIC-01', role: 'STANDBY', deviceId: 'MIC-01' },
-      { inputId: 'MIC-02', role: 'PRIMARY', deviceId: 'MIC-02' },
+      // D61 (2026-11-04): the lines state their CHANNEL; the arrangement stays the crossed one — the
+      // role-keyed checks read channels 1 and 2, the input-keyed ones the ids.
+      { inputId: 'MIC-01', channel: 'MIC-02', deviceId: 'MIC-01' },
+      { inputId: 'MIC-02', channel: 'MIC-01', deviceId: 'MIC-02' },
     ],
   };
-  it('lens rows by track, microphone rows by role or by input; other checks are about no capture device', () => {
+  it('lens rows by track, microphone rows by channel or by input; other checks are about no capture device', () => {
     expect(precheckDeviceOf('LENS_1', selector)).toBe('CAM-03');
     expect(precheckDeviceOf('LENS_2', selector)).toBe('CAM-02');
     expect(precheckDeviceOf('MIC_PRIMARY', selector)).toBe('MIC-02');

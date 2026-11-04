@@ -229,13 +229,16 @@ describe('device console: operations 89, 95 and 96 are web-console-only', () => 
     '/api/v1/capture/discovery/candidates/CND-000000000001/test',
     '/api/v1/capture/discovery/candidates/CND-000000000001/adopt',
   ];
-  const signInSupervisor = (sim: Sim): void => {
-    expect(sim.actions.signIn('andi.pratama', DEMO_OPERATOR_PASSWORD).ok).toBe(true);
+  // Ruling 0034 of 2026-10-29 revoked CAPTURE_CONFIG from SUPERVISOR (packages/shared/sim/auth.ts);
+  // operations 93/94/95/96/97 need it, so the bed signs in as the TECHNICIAN that holds the grant.
+  // The WEB_CONSOLE_ONLY refusal this file proves is a session-condition, role-independent as before.
+  const signInTechnician = (sim: Sim): void => {
+    expect(sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD).ok).toBe(true);
   };
 
   it('the mobile simulator answers 403 NOT_PERMITTED / WEB_CONSOLE_ONLY and writes nothing; search, read and re-read still answer', () => {
     const { sim } = mobileSim();
-    signInSupervisor(sim);
+    signInTechnician(sim);
     expect(sim.request({ method: 'POST', path: '/api/v1/capture/discovery' }).status).toBe(202);
     const devices = sim.store.getState().captureDevices.devices.length;
     for (const path of WEB_ONLY) {
@@ -251,13 +254,13 @@ describe('device console: operations 89, 95 and 96 are web-console-only', () => 
   it('no caller can turn it off; and the web default does not refuse (negative control)', () => {
     const forced = createMobileSim({ clock: createManualClock(TEST_START), scheduler: createManualScheduler().scheduler, storage: null, deviceConsole: false });
     built.push(forced);
-    signInSupervisor(forced);
+    signInTechnician(forced);
     forced.request({ method: 'POST', path: '/api/v1/capture/discovery' });
     expect(forced.request({ method: 'POST', path: WEB_ONLY[1]!, body: {} }).status).toBe(403);
 
     const web = createSim({ clock: createManualClock(TEST_START), scheduler: createManualScheduler().scheduler, storage: null, authStorage: null });
     built.push(web);
-    signInSupervisor(web);
+    signInTechnician(web);
     web.request({ method: 'POST', path: '/api/v1/capture/discovery' });
     expect(web.request({ method: 'POST', path: WEB_ONLY[1]!, body: {} }).status).toBe(200);
   });

@@ -189,17 +189,20 @@ describe('H3 tiles', () => {
     expect(micReadoutKind({ frameFlat: false, state: 'READY', notMeasured: false })).toBe('LEVEL');
   });
 
-  it('MIC tile source role: Active / Standby only while a session records', () => {
-    expect(micTileSourceRole({ recording: true, inputId: 'MIC-01', activeInputId: 'MIC-01' })).toBe('ACTIVE');
-    expect(micTileSourceRole({ recording: true, inputId: 'MIC-02', activeInputId: 'MIC-01' })).toBe('STANDBY');
-    expect(micTileSourceRole({ recording: false, inputId: 'MIC-01', activeInputId: 'MIC-01' })).toBeNull();
-    expect(micTileSourceRole({ recording: true, inputId: undefined, activeInputId: 'MIC-01' })).toBeNull();
+  it('MIC tile source role: Active / Standby only while a session records (D61: the pair words belong to the transcription pair alone)', () => {
+    expect(micTileSourceRole({ recording: true, inputId: 'MIC-01', activeInputId: 'MIC-01', standbyInputId: 'MIC-02' })).toBe('ACTIVE');
+    expect(micTileSourceRole({ recording: true, inputId: 'MIC-02', activeInputId: 'MIC-01', standbyInputId: 'MIC-02' })).toBe('STANDBY');
+    expect(micTileSourceRole({ recording: false, inputId: 'MIC-01', activeInputId: 'MIC-01', standbyInputId: 'MIC-02' })).toBeNull();
+    expect(micTileSourceRole({ recording: true, inputId: undefined, activeInputId: 'MIC-01', standbyInputId: 'MIC-02' })).toBeNull();
+    // D61 (2026-11-04): four simultaneous channels - a tile outside the transcription pair records without a pair word.
+    expect(micTileSourceRole({ recording: true, inputId: 'MIC-03', activeInputId: 'MIC-01', standbyInputId: 'MIC-02' })).toBeNull();
+    expect(micTileSourceRole({ recording: true, inputId: 'MIC-04', activeInputId: 'MIC-01', standbyInputId: 'MIC-02' })).toBeNull();
   });
 
   it('task 4 row 171: a tile whose channel has no input says no role, and nothing is "Standby" to an absent active input', () => {
-    expect(micTileSourceRole({ recording: true, inputId: null, activeInputId: 'MIC-01' })).toBeNull();
-    expect(micTileSourceRole({ recording: true, inputId: 'MIC-02', activeInputId: null })).toBeNull();
-    expect(micTileSourceRole({ recording: true, inputId: null, activeInputId: null })).toBeNull();
+    expect(micTileSourceRole({ recording: true, inputId: null, activeInputId: 'MIC-01', standbyInputId: 'MIC-02' })).toBeNull();
+    expect(micTileSourceRole({ recording: true, inputId: 'MIC-02', activeInputId: null, standbyInputId: null })).toBeNull();
+    expect(micTileSourceRole({ recording: true, inputId: null, activeInputId: null, standbyInputId: null })).toBeNull();
   });
 
   it('storage: USED percent (D28/Q1) with READY / LOW / FULL tones', () => {

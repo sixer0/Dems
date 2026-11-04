@@ -74,7 +74,9 @@ describe('selectSttAuditMark', () => {
 
   it('moves when the simulator saves the configuration (the web-edit signal) and not when it only tests it', () => {
     const { sim } = createTestSim();
-    expect(sim.actions.signIn('andi.pratama', DEMO_OPERATOR_PASSWORD).ok).toBe(true);
+    // Ruling 0034 of 2026-10-29 (packages/shared/sim/auth.ts): op 91 needs CAPTURE_CONFIG,
+    // which only TECHNICIAN holds — the writer signs in as `rina.wijaya`.
+    expect(sim.actions.signIn('rina.wijaya', DEMO_OPERATOR_PASSWORD).ok).toBe(true);
     const before = selectSttAuditMark(sim.store.getState());
     expect(before).toBe(0);
     sim.request({ method: 'POST', path: '/api/v1/transcription/config/test' });

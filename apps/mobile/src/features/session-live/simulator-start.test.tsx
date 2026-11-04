@@ -69,13 +69,13 @@ describe('Session Live on the simulator itself: a recording start', () => {
     expect(getMissingKeys()).toEqual([]);
   });
 
-  it('connecting -> failed start: with the demo fault CAMERA_LOSS on both cameras the start ends as "No camera connected" / "Nothing was recorded."', () => {
+  it('connecting -> failed start: with the demo fault CAMERA_LOSS on every camera the start ends as "No camera connected" / "Nothing was recorded."', () => {
     const test = createTestSim();
     const signIn = test.sim.actions.signIn(OPERATORS[0]!.username, DEMO_OPERATOR_PASSWORD);
     expect(signIn.ok).toBe(true);
     arm(test);
-    test.sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-01' });
-    test.sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-02' });
+    // D60 (2026-11-04): the BLOCK is "every configured camera unreachable" and the plane holds FOUR tracks.
+    for (const cameraId of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const) test.sim.actions.inject('CAMERA_LOSS', { cameraId });
     const evidenceBefore = test.sim.store.getState().evidence.length;
     test.sim.actions.startRecording();
     // Connecting first: the failed start is not decided at the start.

@@ -67,6 +67,8 @@ import {
   cameraDetailFactsOf,
   detailFactsOf,
   isDeviceId,
+  // D61 (2026-11-04): the "Channel" fact names the ordinal of the channel code the mics slice states.
+  micChannelNumber,
   relayWords,
   type DetailFacts,
   type DeviceId,
@@ -626,7 +628,7 @@ function MicOverview({ deviceId, statusLabel, onClipReset }: { deviceId: DeviceI
         items={[
           { id: 'status', label: label('status'), value: statusLabel, testID: 'device-fact-status' },
           { id: 'deviceId', label: label('deviceId'), value: deviceId, mono: true },
-          { id: 'channel', label: label('channel'), value: t('devices.drawer.value.channel', { channel: mic.channel }) },
+          { id: 'channel', label: label('channel'), value: t('devices.drawer.value.channel', { channel: micChannelNumber(mic.channel) }) }, // D61 (2026-11-04): the slice states the code; the fact keeps the ordinal
           { id: 'gain', label: label('gain'), value: t('devices.audio.gainValue', { value: mic.gainDb }), testID: 'device-fact-gain' },
           { id: 'phantom', label: label('phantom'), value: mic.phantom ? t('devices.audio.phantomOn') : t('devices.audio.phantomOff'), testID: 'device-fact-phantom' },
           clip,

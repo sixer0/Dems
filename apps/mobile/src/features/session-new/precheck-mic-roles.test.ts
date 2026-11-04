@@ -1,7 +1,8 @@
 /**
- * Session New pre-check: the selector mapping of the microphone checks and the role-keyed check ids
- * (task 3 row 68; register MB-02; ux spec §2, §8). Pure model. The rendered value line of a check row is
- * unchanged (`precheck.test.tsx` holds it); the role line is a second line under it.
+ * Session New pre-check: the selector mapping of the microphone checks and the channel-keyed check ids
+ * (task 3 row 68; register MB-02; ux spec §2, §8; D61 of 2026-11-04: the PRIMARY/STANDBY roles became
+ * the numbered channels MIC-01..MIC-04). Pure model. The rendered value line of a check row is
+ * unchanged (`precheck.test.tsx` holds it); the channel line is a second line under it.
  */
 import { describe, expect, it } from '@jest/globals';
 import { DEFAULT_CAPTURE_CONFIG, PRECHECK_ORDER, PrecheckCheckId } from '@dems/shared/sim';
@@ -9,28 +10,30 @@ import { CHECK_ORDER, checkMicBinding, micRoleLine, valueKey, liveCheckWhileLink
 import { FEATURE_RESOURCES } from '@/i18n/features';
 
 const idle = { session: null, captureConfig: DEFAULT_CAPTURE_CONFIG };
-const swappedMics = DEFAULT_CAPTURE_CONFIG.mics.map((mic) => ({ ...mic, role: mic.role === 'PRIMARY' ? 'STANDBY' : 'PRIMARY' }));
+// D61 (2026-11-04): the swap trades the two TRANSCRIPTION channels; channels 3 and 4 keep theirs.
+const swappedMics = DEFAULT_CAPTURE_CONFIG.mics.map((mic) => ({ ...mic, channel: mic.channel === 'MIC-01' ? 'MIC-02' as const : mic.channel === 'MIC-02' ? 'MIC-01' as const : mic.channel }));
 
 describe('microphone checks and the selector (MB-02)', () => {
   it('the encoded line is the Core\'s current selector while idle, and the session\'s own snapshot once it holds one', () => {
-    expect(micRoleLine(idle)).toBe('MIC-01:PRIMARY|MIC-02:STANDBY');
+    // D61 (2026-11-04): the encoding names the CHANNEL of each line; the seeded plane holds all four.
+    expect(micRoleLine(idle)).toBe('MIC-01:MIC-01|MIC-02:MIC-02|MIC-03:MIC-03|MIC-04:MIC-04');
     // The selector may not change under a session (OD-10); if the store's did, the session's snapshot wins.
-    expect(micRoleLine({ session: { state: 'ARMED', captureConfig: { mics: DEFAULT_CAPTURE_CONFIG.mics } }, captureConfig: { mics: swappedMics } })).toBe('MIC-01:PRIMARY|MIC-02:STANDBY');
-    expect(micRoleLine({ session: { captureConfig: null }, captureConfig: { mics: swappedMics } })).toBe('MIC-01:STANDBY|MIC-02:PRIMARY');
+    expect(micRoleLine({ session: { state: 'ARMED', captureConfig: { mics: DEFAULT_CAPTURE_CONFIG.mics } }, captureConfig: { mics: swappedMics } })).toBe('MIC-01:MIC-01|MIC-02:MIC-02|MIC-03:MIC-03|MIC-04:MIC-04');
+    expect(micRoleLine({ session: { captureConfig: null }, captureConfig: { mics: swappedMics } })).toBe('MIC-01:MIC-02|MIC-02:MIC-01|MIC-03:MIC-03|MIC-04:MIC-04');
   });
 
-  it('MIC_1 / MIC_2 are bound by input; MIC_PRIMARY / MIC_STANDBY by role', () => {
+  it('MIC_1 / MIC_2 are bound by input; MIC_PRIMARY / MIC_STANDBY by CHANNEL (D61)', () => {
     const line = micRoleLine(idle);
-    expect(checkMicBinding('MIC_1', line)).toEqual({ inputId: 'MIC-01', role: 'PRIMARY' });
-    expect(checkMicBinding('MIC_2', line)).toEqual({ inputId: 'MIC-02', role: 'STANDBY' });
-    expect(checkMicBinding('MIC_PRIMARY', line)).toEqual({ inputId: 'MIC-01', role: 'PRIMARY' });
-    expect(checkMicBinding('MIC_STANDBY', line)).toEqual({ inputId: 'MIC-02', role: 'STANDBY' });
+    expect(checkMicBinding('MIC_1', line)).toEqual({ inputId: 'MIC-01', channel: 'MIC-01' });
+    expect(checkMicBinding('MIC_2', line)).toEqual({ inputId: 'MIC-02', channel: 'MIC-02' });
+    expect(checkMicBinding('MIC_PRIMARY', line)).toEqual({ inputId: 'MIC-01', channel: 'MIC-01' });
+    expect(checkMicBinding('MIC_STANDBY', line)).toEqual({ inputId: 'MIC-02', channel: 'MIC-02' });
   });
 
-  it('follows a selector edit: after MIC-02 became primary, MIC_1 reads standby and MIC_PRIMARY names MIC-02', () => {
+  it('follows a selector edit: after MIC-02 took the transcribed channel, MIC_1 reads channel 2 and MIC_PRIMARY names MIC-02', () => {
     const line = micRoleLine({ session: null, captureConfig: { mics: swappedMics } });
-    expect(checkMicBinding('MIC_1', line)).toEqual({ inputId: 'MIC-01', role: 'STANDBY' });
-    expect(checkMicBinding('MIC_PRIMARY', line)).toEqual({ inputId: 'MIC-02', role: 'PRIMARY' });
+    expect(checkMicBinding('MIC_1', line)).toEqual({ inputId: 'MIC-01', channel: 'MIC-02' });
+    expect(checkMicBinding('MIC_PRIMARY', line)).toEqual({ inputId: 'MIC-02', channel: 'MIC-01' });
   });
 
   it('no binding for a check that is no microphone, for an empty selector, and for a malformed line', () => {

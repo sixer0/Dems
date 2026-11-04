@@ -149,7 +149,8 @@ export interface LiveMonitorBed {
   /** Another console changes the Core (for example another operator stops the session): the engine runs `change`, the delta follows. */
   changeOnCore(change: (engine: TestSim) => void): Promise<void>;
   /** One `meters` frame on the signed-in socket (both channels); it names the engine's active input. */
-  sendMeters(frames: Readonly<Record<AudioTrackId, AudioFrame>>): void;
+  /** D61 (2026-11-04): the plane holds four channels; this bed's socket lane drives the two interview mics, so the map may name a subset. */
+  sendMeters(frames: Readonly<Partial<Record<AudioTrackId, AudioFrame>>>): void;
   /** The Core's warning raiser reports `MIC_SILENT` for `inputId` (it never switches, OD-11); the delta follows. */
   raiseMicSilent(inputId: MicInputId): Promise<void>;
   /** The condition is over: the warning is cleared on the Core; the delta follows. */
@@ -277,9 +278,11 @@ export async function renderLiveMonitor({
     sendMeters(frames) {
       // The meters slice is keyed by mic input since schema v2 (SH-17): the caller still names a
       // channel, so map each to the input that feeds it and mark the primary input active.
+      // D61 (2026-11-04): a channel the bed does not name sends no member at all (as the old `undefined` did on the wire).
+      const named = (track: 'AUDIO-01' | 'AUDIO-02', input: 'MIC-01' | 'MIC-02') => (frames[track] === undefined ? {} : { [input]: frames[track] });
       act(() =>
         void bed.connection().meters({
-          inputs: { 'MIC-01': frames['AUDIO-01'], 'MIC-02': frames['AUDIO-02'] },
+          inputs: { ...named('AUDIO-01', 'MIC-01'), ...named('AUDIO-02', 'MIC-02') },
           // The Core's own member (row 73): `MIC-01` until the engine switched.
           activeInputId: engine.sim.store.getState().audio.activeInputId,
         }),

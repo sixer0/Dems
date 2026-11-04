@@ -247,7 +247,8 @@ function CheckRow({ item, id, settings }: CheckRowProps) {
   const binding = checkMicBinding(id, roleLine);
   // Round two (JT-13): the NOTE chip of the host-clock row is explained in the row - it was a word nobody explained.
   const noteText = !note ? null : id === 'TIME' ? t('features.session-new.devices.noteTime') : id === 'SECURITY' ? t('features.session-new.devices.noteSecurity') : null;
-  const roleText = binding ? t('features.capture-selector.precheck.micRole', { role: t(`features.capture-selector.selector.role.${binding.role}`), input: binding.inputId }) : null;
+  // D61 (2026-11-04): the row names the CHANNEL of the checked line.
+  const roleText = binding ? t('features.capture-selector.precheck.micRole', { role: t(`features.capture-selector.selector.channel.${binding.channel}`), input: binding.inputId }) : null;
 
   return (
     <ListGroup.Item testID={`session-new-check-${id}`} accessibilityRole="text" accessibilityLabel={`${t(`sessionNew.devices.checks.${id}`)}, ${description}, ${note ? t('sessionNew.precheckNote.chip') : t(`common.precheckStatus.${status}`)}`}>

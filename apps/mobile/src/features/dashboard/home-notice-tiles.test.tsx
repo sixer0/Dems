@@ -164,7 +164,7 @@ describe('G70c-02 on Home: a Core in real capture says what it reported, never "
     expect(textOf('home-tile-camera-state')).toBe('Not checked');
     expect(label('home-tile-camera')).toBe('Cameras: 4 of 4. Not checked');
     expect(textOf('home-tile-microphone-state')).toBe('Primary not checked');
-    expect(label('home-tile-microphone')).toBe('Microphones: 2 of 2. Primary not checked');
+    expect(label('home-tile-microphone')).toBe('Microphones: 4 of 4. Primary not checked'); // D61 (2026-11-04): four simultaneous microphone channels
   });
 
   it('phone tiles: a camera the Core reports gone is "1 not reachable"', async () => {

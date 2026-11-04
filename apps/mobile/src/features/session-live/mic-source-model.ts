@@ -25,13 +25,15 @@ import { ApiErrorCode } from '@dems/shared/api';
 import { SessionState, type AudioTrackId, type MicInputId } from '@dems/shared/domain';
 import {
   meterInputOfChannel,
-  micInputOfRole,
+  micInputOfChannel, // D61 (2026-11-04): the role lookup became the channel lookup
+  PRIMARY_MIC_CHANNEL,
+  SECOND_MIC_CHANNEL,
   OperatorRole,
   Permission,
   ROLE_PERMISSIONS,
   SimNotFoundError,
   SimTransitionError,
-  type RoleMicLine,
+  type ChannelMicLine, // D61 (2026-11-04): the role alias became the channel line
   type SimState,
 } from '@dems/shared/sim';
 import { isMicInputId } from '@/features/capture-selector/mic-input-name';
@@ -122,7 +124,8 @@ export function switchFailureFacts(error: unknown): Readonly<Record<string, stri
 // ── The view ─────────────────────────────────────────────────────────────────────────────
 
 // Task 4 row 170 (site M4; decision C18 (2); names register section 7, files 16-18): an input is found by
-// the lookups of row 164 - `meterInputOfChannel` for a meter channel, `micInputOfRole` for a role - and
+// the lookups of row 164 - `meterInputOfChannel` for a meter channel, `micInputOfChannel` for a channel
+// (D61 of 2026-11-04: the role lookup became the channel lookup) - and
 // every answer here may be `null`: ABSENT. No line stands in for another, and no built-in input
 // (`MIC-01`, `MIC-02`) is answered for a channel or a role the selector holds no line for. Integration
 // pass D2 (D133 (1)) stays: a mic input id is the Core's `MIC-NN` text, typed `string`.
@@ -133,14 +136,14 @@ export const MIC_INPUT_LABEL_KEY: Readonly<Record<MicInputId, string>> = {
   'MIC-02': 'common.devices.mic2',
 };
 
-/** One microphone line of the capture configuration, as the lookups read it: its input AND its role (shared `RoleMicLine`). */
-export type MicLine = RoleMicLine;
+/** One microphone line of the capture configuration, as the lookups read it: its input AND its channel (shared `ChannelMicLine`; D61 of 2026-11-04: the role became the numbered channel). */
+export type MicLine = ChannelMicLine;
 
 /**
  * The mic input behind a meter channel (SH-17: the meters are keyed by input since schema v2), or
- * `null`. Ruling D137, kept by C21 (7): for a COMPLETE pair it is the microphone line at the
- * channel's position in the capture configuration (input order), whatever its id. For anything
- * else - no line, one line - no channel has an input: `null`, never an input of the built-in pair.
+ * `null`. Ruling D137 generalized by D61 (2026-11-04): each of the FOUR simultaneous channels has
+ * an input exactly when a line NAMES that channel - never a line by its place, never the built-in
+ * table. A channel without its line has no input: `null`.
  * The lines are stated by the caller (`micLinesInForce(state)`); there is no default list.
  */
 export const inputOfChannel = (channel: AudioTrackId, mics: readonly MicLine[]): string | null => meterInputOfChannel(mics, channel);
@@ -162,33 +165,34 @@ const linesInForce = (s: SimState): readonly MicLine[] => (selectorInForce(s) as
 
 /**
  * The hot standby, or `null`: the pair in force (the OPEN session's; with no open session the current
- * selector's STANDBY line). An open session that states no pair is read from the selector it
- * records under (its snapshot, else the stored one) BY ROLE: the STANDBY line - or the PRIMARY line
- * when the active input is the one the STANDBY line holds (the two traded roles in a switch the
- * holder did not state). A role without a line is absent: no other line stands in, and the other
- * input of the built-in pair is not answered.
+ * selector's channel-2 line). An open session that states no pair is read from the selector it
+ * records under (its snapshot, else the stored one) BY CHANNEL (D61 of 2026-11-04): the line of the
+ * SECOND channel - or the line of the transcribed channel when the active input is the one that
+ * channel holds (the two traded places in a switch the holder did not state). A channel without a
+ * line is absent: no other line stands in, and the other input of the built-in pair is not answered.
  */
 export const selectStandbyInputId = (s: SimState): string | null => {
   const named = audioPairInForce(s).standbyInputId;
   if (named !== null) return named;
   const lines = linesInForce(s);
-  const standby = micInputOfRole(lines, 'STANDBY');
+  const standby = micInputOfChannel(lines, SECOND_MIC_CHANNEL); // D61: the former STANDBY role is the second channel
   const active = selectActiveInputId(s);
-  return active !== null && active === standby ? micInputOfRole(lines, 'PRIMARY') : standby;
+  return active !== null && active === standby ? micInputOfChannel(lines, PRIMARY_MIC_CHANNEL) : standby;
 };
 
 /** What a mic card or tile says about its input while a session records. */
 export type MicSourceRole = 'ACTIVE' | 'STANDBY';
 
 /**
- * The role of `inputId` in the pair, or `null`; pure. A card whose channel has no input says no
- * role, and no input is "Standby" to an active input that is absent.
+ * The role of `inputId` in the TRANSCRIPTION PAIR, or `null`; pure. D61 (2026-11-04): FOUR
+ * simultaneous channels - an input that is neither the transcribed one nor its standby (channel 3
+ * or 4) records without a pair word. A card whose channel has no input says no role, and no input
+ * is "Standby" to an active input that is absent.
  */
-export function micSourceRole(inputId: string, activeInputId: string): MicSourceRole;
-export function micSourceRole(inputId: string | null, activeInputId: string | null): MicSourceRole | null;
-export function micSourceRole(inputId: string | null, activeInputId: string | null): MicSourceRole | null {
+export function micSourceRole(inputId: string | null, activeInputId: string | null, standbyInputId: string | null): MicSourceRole | null {
   if (inputId === null || activeInputId === null) return null;
-  return inputId === activeInputId ? 'ACTIVE' : 'STANDBY';
+  if (inputId === activeInputId) return 'ACTIVE';
+  return inputId === standbyInputId ? 'STANDBY' : null;
 }
 
 /**

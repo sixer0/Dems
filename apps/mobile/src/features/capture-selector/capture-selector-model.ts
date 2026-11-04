@@ -6,15 +6,17 @@
  *
  * | What | Function | Spec |
  * |---|---|---|
- * | The two camera rows and the two microphone rows: one row per SLOT, an empty slot included (task 4 row 32; decision C18 (3)) | `cameraRows`, `micRows` | §2.2 step 2 |
+ * | The four camera rows and the four microphone rows: one row per SLOT, an empty slot included (task 4 row 32; decision C18 (3); D60/D61 widened both planes) | `cameraRows`, `micRows` | §2.2 step 2 |
  * | The cameras an operator may assign to a track | `cameraOptions` | §2.6 "Source options" (PE-125-04): every registered camera of op 77, never a search candidate |
  * | The state of the edit controls G1-G3 | `selectorGate` | §2.4; §11 (E-16): checking, waiting, denied, locked, allowed |
- * | What a refused operation 79 / 80 means | `classifyAnswer` | §2.5: 403, 404, 409 `CAPTURE_CONFIG_LOCKED`, 422, 503 `CAPTURE_NOT_READY`, no answer |
+ * | What a refused operation 78 / 79 means | `classifyAnswer` | §2.5: 403, 404, 409 `CAPTURE_CONFIG_LOCKED`, 422, 503 `CAPTURE_NOT_READY`, no answer |
  * | Whether a saved change is still on its way | `isAwaitingRepublish` | §2.2 step 4 ("optimistic-free"), §2.7 (no client countdown) |
  *
  * OD-12: nothing here names a frame or a preview; a row is text and an icon state only.
  */
-import { VIDEO_TRACK_IDS, type MicRole, type VideoTrackId } from '@dems/shared/domain';
+import { VIDEO_TRACK_IDS, type VideoTrackId } from '@dems/shared/domain';
+// D61 (2026-11-04): the microphone plane mirrors the video plane — the roles became the four numbered channels.
+import { MIC_CHANNEL_IDS, type MicChannel } from '@dems/shared/sim';
 import { CaptureDeviceKind, CaptureStreamState, type CaptureConfigSlice, type CaptureDeviceStatus, type CaptureDevicesSlice } from '@dems/shared/sim';
 import { storedProfilesOf } from './camera-profile';
 
@@ -40,14 +42,15 @@ export interface CameraSelectorRow {
 
 export interface MicSelectorRow {
   /**
-   * The mic input (`MIC-01`, `MIC-02`, or an input added later): the shared contract's open id (D115, pass C1).
-   * `null`: the slot of `role` is NOT ASSIGNED - the selector holds no line with this role (task 4 row 32).
+   * The mic input (`MIC-01`..`MIC-04`, or an input added later): the shared contract's open id (D115, pass C1).
+   * `null`: the slot of `channel` is NOT ASSIGNED - the selector holds no line with this channel (task 4 row 32; D61).
    */
   readonly inputId: string | null;
   /** The registered microphone on the line; null with `inputId` for a slot that is not assigned. */
   readonly deviceId: string | null;
   readonly model: string | null;
-  readonly role: MicRole;
+  /** The selector CHANNEL this row fills (`MIC-01`..`MIC-04`; D61 superseded the PRIMARY/STANDBY roles). */
+  readonly channel: MicChannel;
   /** The line's transport word; null for a GENERATED source (`statedTransportOf`). */
   readonly transport: string | null;
   readonly online: boolean;
@@ -97,10 +100,12 @@ function sourceOf(devices: readonly CaptureDeviceStatus[], deviceId: string): { 
 // D60 (2026-11-04): four simultaneous video tracks — the selector holds a line for each.
 const TRACK_ORDER: readonly VideoTrackId[] = VIDEO_TRACK_IDS;
 
-const ROLE_ORDER: readonly MicRole[] = ['PRIMARY', 'STANDBY'];
+// D61 (2026-11-04): four simultaneous microphone channels — the one order the rows derive from.
+const CHANNEL_ORDER: readonly MicChannel[] = MIC_CHANNEL_IDS;
 
 /**
- * One row per VIDEO SLOT, always two: VIDEO-01 first, then VIDEO-02, whatever order the slice carries
+ * One row per VIDEO SLOT, always four (D60, 2026-11-04): VIDEO-01 first, then VIDEO-02, VIDEO-03 and
+ * VIDEO-04, whatever order the slice carries
  * (task 4 row 32; decision C18 (3); names register E38). A track the selector holds no line for is a
  * row with `deviceId: null`: the screen draws it "Not assigned" with the offer to assign. A line is
  * found by its track, never by its place in the list.
@@ -121,20 +126,21 @@ export function cameraRows(config: Pick<CaptureConfigSlice, 'cameras'>, registry
 }
 
 /**
- * One row per MICROPHONE SLOT, always two: the PRIMARY role first, then the STANDBY (task 4 row 32;
- * decision C18 (3); names register E38). A role no line holds is a row with `inputId: null`. A line
- * is found by its role, never by its place in the list; should a slice carry one role twice, the
- * row is the line with the lowest input id.
+ * One row per MICROPHONE SLOT, always four (D61, 2026-11-04): channel `MIC-01` first, then
+ * `MIC-02`, `MIC-03`, `MIC-04`, whatever order the slice carries (task 4 row 32; decision C18 (3);
+ * names register E38). A channel no line holds is a row with `inputId: null`. A line is found by
+ * its CHANNEL, never by its place in the list; should a slice carry one channel twice, the row is
+ * the line with the lowest input id.
  */
 export function micRows(config: Pick<CaptureConfigSlice, 'mics'>, registry: CaptureDevicesSlice): MicSelectorRow[] {
-  return ROLE_ORDER.map((role) => {
-    const [line] = config.mics.filter((candidate) => candidate.role === role).sort((a, b) => a.inputId.localeCompare(b.inputId));
-    if (line === undefined) return { inputId: null, deviceId: null, model: null, role, transport: null, online: false, sourceClass: null, adapter: null };
+  return CHANNEL_ORDER.map((channel) => {
+    const [line] = config.mics.filter((candidate) => candidate.channel === channel).sort((a, b) => a.inputId.localeCompare(b.inputId));
+    if (line === undefined) return { inputId: null, deviceId: null, model: null, channel, transport: null, online: false, sourceClass: null, adapter: null };
     return {
       inputId: line.inputId,
       deviceId: line.deviceId,
       model: modelOf(registry.devices, line.deviceId),
-      role,
+      channel,
       transport: statedTransportOf(line.transport, sourceOf(registry.devices, line.deviceId).adapter),
       online: line.online,
       ...sourceOf(registry.devices, line.deviceId),
@@ -193,17 +199,17 @@ export function cameraOptions(config: Pick<CaptureConfigSlice, 'cameras'>, regis
     });
 }
 
-/**
- * One registered microphone as an option of a microphone line (fix wave H, gate 70 finding G70-02;
- * ruling D196: the selector offers EVERY registered microphone on both lines).
+/** One registered microphone as an option of a microphone channel (fix wave H, gate 70 finding
+ * G70-02; ruling D196 widened by D61 of 2026-11-04: the selector offers EVERY registered microphone
+ * on each of the four channels).
  */
 export interface MicOption {
-  /** The registered microphone (`MIC-01`, `MIC-03`, …): the input of the same id (D106 (4)). */
+  /** The registered microphone (`MIC-01`, `MIC-05`, …): the input of the same id (D106 (4)). */
   readonly deviceId: string;
   readonly model: string | null;
   readonly online: boolean;
-  /** The line this microphone holds right now, or null ("not assigned"). */
-  readonly role: MicRole | null;
+  /** D61 (2026-11-04): the CHANNEL this microphone holds right now, or null ("not assigned"). */
+  readonly channel: MicChannel | null;
   /** `sourceClass` as the Core sent it on the device (flow 12); null when the device carries none. */
   readonly sourceClass: string | null;
   /** `adapter` as the Core sent it on the device; null when the device carries none. */
@@ -211,10 +217,10 @@ export interface MicOption {
 }
 
 /**
- * Every REGISTERED microphone of the registry (op 77), in registry order: the built-in pair and any
- * microphone registered later (`MIC-03`, the Core Mac's microphone of a development configuration).
- * Whether the Core accepts one on a line is the Core's decision (a development source on a production
- * Core is refused with 422 `DEVELOPMENT_SOURCE_NOT_ALLOWED`, drawn in place).
+ * Every REGISTERED microphone of the registry (op 77), in registry order: the four built-ins (D61)
+ * and any microphone registered later (`MIC-05`, the Core Mac's microphone of a development
+ * configuration). Whether the Core accepts one on a channel is the Core's decision (a development
+ * source on a production Core is refused with 422 `DEVELOPMENT_SOURCE_NOT_ALLOWED`, drawn in place).
  */
 export function micOptions(config: Pick<CaptureConfigSlice, 'mics'>, registry: CaptureDevicesSlice): MicOption[] {
   return registry.devices
@@ -223,53 +229,50 @@ export function micOptions(config: Pick<CaptureConfigSlice, 'mics'>, registry: C
       deviceId: device.id,
       model: statedModelOf(device),
       online: device.online,
-      role: config.mics.find((line) => line.deviceId === device.id)?.role ?? null,
+      channel: config.mics.find((line) => line.deviceId === device.id)?.channel ?? null,
       sourceClass: device.sourceClass ?? null,
       adapter: device.adapter ?? null,
     }));
 }
 
-/** Why an option of a microphone line cannot be chosen; null when it can. */
+/** Why an option of a microphone row cannot be chosen; null when it can. */
 export type MicOptionRefusal = 'onOtherLine';
 
 /**
- * The same microphone cannot be on both lines (C3 §2.4: "the two mic inputs need two devices").
- * On the PRIMARY line the standby microphone stays choosable: that is the trade of roles operation 80
- * has always done. On the STANDBY line the primary microphone is refused, with its reason: taking it
- * there would leave no primary.
+ * D61 (2026-11-04): one microphone never stands on two channels, but a microphone another channel
+ * holds is an ENABLED MOVE option (R-FLEX row 133, T-14 — the same rule the web console follows):
+ * nothing is refused any more, and `micLineCommand` answers the move. The refusal vocabulary stays
+ * for the one case that is no edit at all: the microphone already on THIS channel.
  */
-export function micOptionRefusal(role: MicRole, option: Pick<MicOption, 'role'>): MicOptionRefusal | null {
-  return role === 'STANDBY' && option.role === 'PRIMARY' ? 'onOtherLine' : null;
+export function micOptionRefusal(channel: MicChannel, option: Pick<MicOption, 'channel'>): MicOptionRefusal | null {
+  void channel;
+  void option;
+  return null; // D61: every option is choosable; a held one moves (`micLineCommand`).
+}
+
+/** D61: the channel an option already holds that the sheet is NOT about — choosing it moves it here. */
+export function micOptionMoveHint(channel: MicChannel, option: Pick<MicOption, 'channel'>): MicChannel | null {
+  return option.channel !== null && option.channel !== channel ? option.channel : null;
 }
 
 /**
- * The command that puts microphone `chosenId` on the `role` line, or null when nothing is to send
- * (the line already holds it, or the choice is refused).
+ * The command that puts microphone `chosenId` on the `channel` row, or null when nothing is to send
+ * (the channel already holds it). D61 (2026-11-04) generalizes decision D133 (1) and task 4 row 32:
+ * the pair replacement is GONE — operation 78's mic lines are keyed by CHANNEL and a line assigns
+ * its channel ALONE, the slots it does not name keeping what they hold.
  *
- * | Line | Choice | Command |
- * |---|---|---|
- * | PRIMARY | the standby microphone | operation 80 `setPrimaryMic`: the two trade roles (as before) |
- * | PRIMARY | a microphone on no line, the standby slot held | operation 78, pair replacement (D133 (1)): it becomes PRIMARY, the standby stays |
- * | PRIMARY | a microphone on no line, the standby slot EMPTY | operation 78, ONE line by role (`micRole`) |
- * | STANDBY | a microphone on no line, the primary slot held | operation 78, pair replacement: it becomes STANDBY, the primary stays |
- * | STANDBY | a microphone on no line, the primary slot EMPTY | operation 78, ONE line by role (`micRole`) |
- * | STANDBY | the primary microphone | none (`micOptionRefusal`) |
- *
- * Task 4 row 32 (decisions C18 (3), C21 (8); names register E37, N16, rule MIC-ASSIGN): a role is
- * assignable ALONE. The two cases with an empty other slot answered null before, so a microphone
- * could not be put into an empty selector at all. While the other role holds a line the command is
- * the two-line pair of before, so nothing changes on a complete selector.
+ * | The choice | Command |
+ * |---|---|
+ * | the microphone already on this channel | none (no change) |
+ * | a microphone on no channel | operation 78, ONE line by channel (`micLine`) |
+ * | a microphone another channel holds | ONE operation 78 edit `{ unassign: [from], mics: [line] }` (`micMove`, R-FLEX row 133 / T-14) — one microphone never stands on two channels |
  */
-export function micLineCommand(role: MicRole, chosenId: string, config: { readonly mics: readonly { readonly inputId: string; readonly role: MicRole }[] }): SelectorCommand | null {
-  const primary = config.mics.find((line) => line.role === 'PRIMARY')?.inputId ?? null;
-  const standby = config.mics.find((line) => line.role === 'STANDBY')?.inputId ?? null;
-  if (role === 'PRIMARY') {
-    if (chosenId === primary) return null;
-    if (chosenId === standby) return { kind: 'primaryMic', inputId: chosenId };
-    return standby === null ? { kind: 'micRole', role, inputId: chosenId } : { kind: 'micPair', primaryId: chosenId, standbyId: standby };
-  }
-  if (chosenId === standby || chosenId === primary) return null;
-  return primary === null ? { kind: 'micRole', role, inputId: chosenId } : { kind: 'micPair', primaryId: primary, standbyId: chosenId };
+export function micLineCommand(channel: MicChannel, chosenId: string, config: { readonly mics: readonly { readonly inputId: string; readonly channel: MicChannel }[] }): SelectorCommand | null {
+  const held = config.mics.find((line) => line.channel === channel)?.inputId ?? null;
+  if (chosenId === held) return null;
+  const other = config.mics.find((line) => line.channel !== channel && line.inputId === chosenId);
+  if (other !== undefined) return { kind: 'micMove', from: other.channel, channel, inputId: chosenId };
+  return { kind: 'micLine', channel, inputId: chosenId };
 }
 
 /** True when the Core holds no selector line and no capture device at all (§2.5 "Empty device list"). */
@@ -328,7 +331,7 @@ export function selectorGate(input: SelectorGateInput): SelectorGateState {
 /** The gated controls of flow 1 this row draws on the tablet and the phone (§11; check M4-PC-1). */
 export const SELECTOR_GATED_CONTROLS = ['G1', 'G2', 'G3'] as const;
 
-// ── Commands and their answers (ops 79, 80) ──────────────────────────────────────────────
+// ── Commands and their answers (ops 78, 79; D61: the selector edits lines by channel) ────
 
 export type SelectorCommand =
   /**
@@ -337,14 +340,17 @@ export type SelectorCommand =
    * production camera is assigned with one of its own.
    */
   | { readonly kind: 'camera'; readonly trackId: VideoTrackId; readonly deviceId: string; readonly profile?: string }
-  | { readonly kind: 'primaryMic'; readonly inputId: string }
-  /** Operation 78, pair replacement (D133 (1); fix wave H, G70-02): the two microphones of the selector, by role. */
-  | { readonly kind: 'micPair'; readonly primaryId: string; readonly standbyId: string }
   /**
-   * Operation 78, ONE line by role (task 4 row 32; names register N16; rule MIC-ASSIGN, C21 (8)):
-   * `mics: [{ inputId, deviceId: inputId, role }]`. Built only while the OTHER role's slot is empty.
+   * Operation 78, ONE line by CHANNEL (D61 of 2026-11-04, superseding the pair replacement D133 (1)
+   * and the lone-line-by-role N16): `mics: [{ channel, inputId, deviceId: inputId }]`. A line assigns
+   * its channel alone; the slots it does not name keep what they hold (rule MIC-ASSIGN, C21 (8)).
    */
-  | { readonly kind: 'micRole'; readonly role: MicRole; readonly inputId: string };
+  | { readonly kind: 'micLine'; readonly channel: MicChannel; readonly inputId: string }
+  /**
+   * Operation 78, ONE edit (R-FLEX row 133, T-14; D61): `{ unassign: [from], mics: [line] }` — the
+   * microphone leaves the channel `from` and takes the channel `channel`.
+   */
+  | { readonly kind: 'micMove'; readonly from: MicChannel; readonly channel: MicChannel; readonly inputId: string };
 
 /** What an operation answered, reduced to the three members both sources carry. */
 export interface AnswerFacts {
@@ -425,12 +431,7 @@ export function isNoChange(command: SelectorCommand, config: Pick<CaptureConfigS
   if (command.kind === 'camera') {
     return config.cameras.some((line) => line.trackId === command.trackId && line.deviceId === command.deviceId && (command.profile === undefined || command.profile === line.profile));
   }
-  if (command.kind === 'micPair') {
-    return (
-      config.mics.some((line) => line.inputId === command.primaryId && line.role === 'PRIMARY') &&
-      config.mics.some((line) => line.inputId === command.standbyId && line.role === 'STANDBY')
-    );
-  }
-  if (command.kind === 'micRole') return config.mics.some((line) => line.inputId === command.inputId && line.role === command.role);
-  return config.mics.some((line) => line.inputId === command.inputId && line.role === 'PRIMARY');
+  // D61 (2026-11-04): a line by channel; a move is always a change (the channel it names differs).
+  if (command.kind === 'micMove') return false;
+  return config.mics.some((line) => line.inputId === command.inputId && line.channel === command.channel);
 }

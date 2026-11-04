@@ -5,32 +5,39 @@
  * Real simulator state from `createTestSim` (manual clock); no React.
  */
 import { describe, expect, it } from '@jest/globals';
-import { DEFAULT_CAPTURE_CONFIG, DEMO_OPERATOR_PASSWORD, FaultKind, ScenarioName, type AuditRow, type RoleMicLine } from '@dems/shared/sim';
+import { DEFAULT_CAPTURE_CONFIG, DEMO_OPERATOR_PASSWORD, FaultKind, ScenarioName, type AuditRow, type ChannelMicLine } from '@dems/shared/sim';
 import { createTestSim } from '@/runtime/testing/test-sim';
 import { DEVICE_IDS, attentionDevices, deviceStatus, parseStatusLine, statusLine } from './devices-model';
 import { HEALTH_POINTS, MicLevelSampler, auditRowDevice, bookPoe, channelOf, deviceLog, healthSeries, seriesInputOf } from './sim-adapter';
 
 // Task 4 row 171 (site M6; decision C18 (2); row 164's request): the meter channel of a microphone device is read
-// through the shared `channelOfMicLine` from lines that STATE their role; there is no default list.
+// through the shared `channelOfMicLine` from lines that STATE their CHANNEL (D61, 2026-11-04: the role
+// became the numbered channel); there is no default list.
 describe('task 4 row 171: `channelOf` - the meter channel of a microphone device', () => {
-  const SEEDED: RoleMicLine[] = DEFAULT_CAPTURE_CONFIG.mics.map((line) => ({ inputId: line.inputId, role: line.role }));
+  const SEEDED: ChannelMicLine[] = DEFAULT_CAPTURE_CONFIG.mics.map((line) => ({ inputId: line.inputId, channel: line.channel }));
 
-  it('the seeded, complete pair: each microphone has the channel of its line, in both role arrangements (D137 kept)', () => {
+  it('the seeded, complete four-channel plane (D61): each microphone has the channel of its line, whatever the order of the lines', () => {
     expect(channelOf('MIC-01', SEEDED)).toBe('AUDIO-01');
     expect(channelOf('MIC-02', SEEDED)).toBe('AUDIO-02');
+    expect(channelOf('MIC-03', SEEDED)).toBe('AUDIO-03'); // D61 (2026-11-04)
+    expect(channelOf('MIC-04', SEEDED)).toBe('AUDIO-04'); // D61
+    // D61 (2026-11-04): the line is read by its STATED channel, never by its place — a reordered slice answers the same.
     const reversed = [...SEEDED].reverse();
-    expect(channelOf('MIC-01', reversed)).toBe('AUDIO-02');
-    expect(channelOf('MIC-02', reversed)).toBe('AUDIO-01');
-    // A device that is neither line (a camera) has no meter channel.
+    expect(channelOf('MIC-01', reversed)).toBe('AUDIO-01');
+    expect(channelOf('MIC-04', reversed)).toBe('AUDIO-04');
+    // A device that is no line (a camera) has no meter channel.
     expect(channelOf('CAM-01', SEEDED)).toBeNull();
   });
 
-  it('an ABSENT line: no microphone has a meter channel while the selector holds no complete pair - no line, a lone line', () => {
-    const lonePrimary = SEEDED.filter((line) => line.role === 'PRIMARY');
-    const loneStandby = SEEDED.filter((line) => line.role === 'STANDBY');
-    for (const lines of [[], lonePrimary, loneStandby]) {
-      expect(channelOf('MIC-01', lines)).toBeNull();
-      expect(channelOf('MIC-02', lines)).toBeNull();
+  it('an ABSENT line: a channel without its line has no input (D61) — no line, a lone line', () => {
+    const loneChannel1 = SEEDED.filter((line) => line.channel === 'MIC-01'); // D61: the roles became the numbered channels
+    const loneChannel2 = SEEDED.filter((line) => line.channel === 'MIC-02');
+    for (const lines of [[], loneChannel1, loneChannel2]) {
+      // D61 (rule D137 generalized): each channel has an input exactly when a line NAMES it.
+      expect(channelOf('MIC-01', lines)).toBe(lines.length === 1 && lines[0]!.channel === 'MIC-01' ? 'AUDIO-01' : null);
+      expect(channelOf('MIC-02', lines)).toBe(lines.length === 1 && lines[0]!.channel === 'MIC-02' ? 'AUDIO-02' : null);
+      expect(channelOf('MIC-03', lines)).toBeNull();
+      expect(channelOf('MIC-04', lines)).toBeNull();
     }
   });
 });
@@ -39,8 +46,8 @@ describe('device status', () => {
   it('idle: every device is ready (Online / Active / Connected) and nothing needs attention', () => {
     const { sim } = createTestSim();
     const state = sim.store.getState();
-    // D60 (2026-11-04): four cameras (CAM-03/04 join), two microphones, switch, relay, tablet.
-    expect(DEVICE_IDS.map((id) => deviceStatus(state, id))).toEqual(['ONLINE', 'ONLINE', 'ONLINE', 'ONLINE', 'ONLINE', 'ONLINE', 'ACTIVE', 'ACTIVE', 'CONNECTED']);
+    // D61 (2026-11-04): four cameras, four microphones (MIC-03/04 join), switch, relay, tablet.
+    expect(DEVICE_IDS.map((id) => deviceStatus(state, id))).toEqual(['ONLINE', 'ONLINE', 'ONLINE', 'ONLINE', 'ONLINE', 'ONLINE', 'ONLINE', 'ONLINE', 'ACTIVE', 'ACTIVE', 'CONNECTED']);
     expect(attentionDevices(parseStatusLine(statusLine(state)))).toEqual([]);
   });
 

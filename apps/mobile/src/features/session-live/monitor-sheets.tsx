@@ -13,6 +13,7 @@
 import { BottomSheet, Description, Label, Switch, Tabs } from 'heroui-native';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { MIC_CHANNEL_NAME_KEY } from '@/features/dashboard/home-model'; // D61 (2026-11-04)
 import { useOwnCapture } from './own-capture';
 import { StyleSheet, Text, View } from 'react-native';
 import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
@@ -120,7 +121,8 @@ export function AudioMonitorSheet({ isOpen, onClose, mics, monitoringPaused, onC
         {mics.map((mic) => (
           <View key={mic.id} style={styles.largeMeter}>
             <Text maxFontSizeMultiplier={1.2} style={styles.meterTitle}>
-              {ownCapture ? (mic.channel === 2 ? t('common.devices.mic2') : t('common.devices.mic1')) : t(`common.tracks.${mic.id}`)}
+              {/* D61 (2026-11-04): any of the four channels; the names come from the shared catalog. */}
+              {ownCapture ? t(MIC_CHANNEL_NAME_KEY[mic.channel]) : t(`common.tracks.${mic.id}`)}
             </Text>
             <MicMeter
               mic={mic}

@@ -27,7 +27,8 @@ import { useSim } from '@dems/shared/sim';
 import { PreviewThumb, useRealCaptureView } from './camera-preview';
 import { DeviceMicMeter } from './device-mic-meter';
 import { DeviceStatusChip, DeviceStatusDot } from './device-status-chip';
-import { DEVICE_CAMERA, DEVICE_KIND, DEVICE_NAME_KEY, STATUS_LABEL_KEY, STATUS_TONE, detailFactsOf, relayWords, type DeviceId, type DeviceStatus } from './devices-model';
+// D61 (2026-11-04): `micChannelNumber` reads the ordinal out of the channel code the mics slice states.
+import { DEVICE_CAMERA, DEVICE_KIND, DEVICE_NAME_KEY, STATUS_LABEL_KEY, STATUS_TONE, detailFactsOf, micChannelNumber, relayWords, type DeviceId, type DeviceStatus } from './devices-model';
 import { useBookPoe, useCamera, useIsRecording, useMic, useSourceRow } from './use-devices-data';
 
 export interface DeviceRowProps {
@@ -102,7 +103,8 @@ function MicRow({ deviceId, status, selected, onPress }: DeviceRowProps) {
       selected={selected}
       onPress={onPress}
       name={name}
-      detail={generated ? t('common.developmentRoster.source.FAKE') : t('devices.drawer.value.channel', { channel: mic?.channel ?? 1 })}
+      // D61 (2026-11-04): the mics slice states the channel CODE; the row keeps the book's ordinal word.
+      detail={generated ? t('common.developmentRoster.source.FAKE') : t('devices.drawer.value.channel', { channel: micChannelNumber(mic?.channel ?? 'MIC-01') })}
       statusText={row.statusLabel}
       prefix={
         <PreviewThumb kind="microphone" name={name} source={poster} label={t('features.devices.list.thumbnail', { name })} dim={status === 'NO_SIGNAL'} testID={`device-thumb-${deviceId}`}>

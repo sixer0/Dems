@@ -21,6 +21,7 @@
  * leaves when the Core's delta clears the latch.
  */
 import { micLinesInForce } from '@/features/capture-selector/selector-in-force';
+import { MIC_CHANNEL_NAME_KEY } from '@/features/dashboard/home-model'; // D61 (2026-11-04): the channel-name map
 import { Chip, Surface } from 'heroui-native';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -59,7 +60,7 @@ export function MicMeter({ mic, variant, paused, monitoringPaused, onClipReset, 
   const noSignalText = t('session.feed.noSignal');
   const a11y = useAudioAccessibilityValue(mic.id, { noSignalText });
   const clipPress = usePendingPress();
-  const shortName = mic.channel === 2 ? t('common.devices.mic2') : t('common.devices.mic1');
+  const shortName = t(MIC_CHANNEL_NAME_KEY[mic.channel]); // D61 (2026-11-04): four channels
   // Integration pass D7 item 4 (row 139's leftover; ux §8e.2 "no meter presented as recording", D84): before the
   // first durable fragment no live level is drawn — real capture sends no meter then, and a moving bar would read
   // as a recording. The card and the Audio sheet show the connecting state in the meter's place.
@@ -167,7 +168,7 @@ export interface MicCardProps extends Omit<MicMeterProps, 'testID'> {
 export function MicCard({ mic, style, ...meter }: MicCardProps) {
   const { t } = useTranslation();
   const tone = MicStateTone[mic.state];
-  const label = mic.channel === 2 ? t('common.devices.mic2') : t('common.devices.mic1');
+  const label = t(MIC_CHANNEL_NAME_KEY[mic.channel]); // D61 (2026-11-04): four channels
   const sourceRole = useMicSourceRole(mic.id);
   // Wave H closing pass Z2 (ruling D137): the card is a LINE. The microphone on it is the one the capture
   // configuration names for this channel (the open session's snapshot first) - not `mic.deviceId`, the

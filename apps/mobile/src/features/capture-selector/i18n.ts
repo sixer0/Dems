@@ -18,7 +18,7 @@ import type { ResourceTree } from '@/i18n/resources';
 export const captureSelectorEn = {
   selector: {
     title: 'Capture Sources',
-    subtitle: 'Which camera feeds each video track, and which microphones are primary and standby.',
+    subtitle: 'Which camera feeds each video track, and which microphone stands on each of the four channels.', // D61 (2026-11-04)
     label: 'Capture sources',
     track: {
       'VIDEO-01': 'Video track 1',
@@ -26,9 +26,12 @@ export const captureSelectorEn = {
       'VIDEO-03': 'Video track 3', // D60 (2026-11-04): four simultaneous video tracks
       'VIDEO-04': 'Video track 4', // D60
     },
-    role: {
-      PRIMARY: 'Primary',
-      STANDBY: 'Standby',
+    // D61 (2026-11-04): the roles became the four numbered channels; channel 1 feeds the transcript.
+    channel: {
+      'MIC-01': 'Channel 1 (transcribed)',
+      'MIC-02': 'Channel 2',
+      'MIC-03': 'Channel 3',
+      'MIC-04': 'Channel 4',
     },
     stream: {
       LIVE: 'Live',
@@ -39,8 +42,8 @@ export const captureSelectorEn = {
     },
     change: 'Change',
     changeCameraLabel: 'Change the camera of {{track}}',
-    changeMicLabel: 'Change the primary microphone',
-    changeStandbyMicLabel: 'Change the standby microphone',
+    // D61 (2026-11-04): one label for each of the four channels.
+    changeMicLabel: 'Change the microphone on channel {{n}}',
     pending: 'Saving…',
     empty: 'No capture devices configured',
     noPreview: 'Status only. This build shows no live picture of the cameras.',
@@ -78,14 +81,14 @@ export const captureSelectorEn = {
     sheet: {
       cameraTitle: 'Camera for {{track}}',
       cameraBody: 'Registered cameras only. A camera found by a search is added on the web console first.',
-      micTitle: 'Primary microphone',
-      micBody: 'Every registered microphone. Choosing the standby microphone trades the two roles.',
-      standbyMicTitle: 'Standby microphone',
-      standbyMicBody: 'Every registered microphone. The primary microphone stays as it is.',
+      // D61 (2026-11-04): the sheet is per CHANNEL; a microphone another channel holds moves here.
+      micChannelTitle: 'Microphone for channel {{n}}',
+      micChannelBody: 'Every registered microphone. A microphone on another channel moves here, and its old channel becomes Not assigned.',
       notAssigned: 'Not assigned',
       refusal: {
-        onOtherLine: 'This is the primary microphone. One microphone cannot be on both lines.',
+        onOtherLine: 'This is the primary microphone. One microphone cannot be on both lines.', // superseded by D61; kept until the wording pass removes it
       },
+      onOtherChannel: 'On channel {{n}}. Choosing it moves the microphone here.',
       feeds: 'Feeds {{track}}',
       // Fix wave J (JA2-24): said on the option BEFORE it is chosen.
       inUseByOtherTrack: 'In use by {{track}}. The Core accepts one camera on both tracks only with a different profile on each; otherwise it refuses the choice.',
@@ -122,7 +125,7 @@ export const captureSelectorEn = {
     devicesLink: 'Open Devices & Inputs',
     devicesHint: 'Device status, health and diagnostics',
   },
-  /** Session New pre-check (MB-02): the selector role of a microphone check, and the input that holds it. */
+  /** Session New pre-check (MB-02; D61): the selector CHANNEL of a microphone check, and the input that holds it. */
   precheck: {
     micRole: '{{role}} microphone · {{input}}',
   },
@@ -238,10 +241,14 @@ export const captureSelectorEn = {
       // D60 (2026-11-04): the pre-check sentence follows the shared rewording (one camera fewer, of four).
       oneCamera: '{{device}} is not reachable. The session will record with one camera fewer.',
       noMicrophone: 'No microphone is reachable. A session cannot start.',
-      activeMicrophone: '{{device}} is the active microphone and is not reachable. Cancel this session, make {{other}} the primary microphone on Devices, then start again.',
-      activeMicrophoneFallback: '{{device}} is the active microphone and is not reachable. Cancel this session, make the other microphone the primary microphone on Devices, then start again.',
-      noStandby: '{{device}} is not reachable. The session will record with no standby microphone.',
-      oneMicrophone: '{{device}} is not reachable. The session will record with one microphone and no standby.',
+      // D61 (2026-11-04): the four channels record SIMULTANEOUSLY - the loss of a channel costs that
+      // channel, and the transcribed channel 1 blocks because the transcript would lose its source.
+      // These sentences follow the shared rewording (`common.captureNotice.start`) word for word.
+      activeMicrophone:
+        '{{device}} is the microphone of the transcribed channel 1 and is not reachable. Cancel this session, assign another microphone to channel 1 on Devices, then start again.',
+      activeMicrophoneFallback: 'Cancel this session, assign another microphone to the transcribed channel 1 on Devices, then start again.',
+      noStandby: '{{device}} is not reachable. The session will record without that microphone channel.',
+      oneMicrophone: '{{device}} is not reachable. The session will record with one microphone channel fewer.',
       notRecordable: '{{device}} cannot be recorded by this version of the system.',
       // Task 4 row 169 (names register N15): the mobile copy of `common.captureNotice.start.sourceNotAssigned` (N13),
       // word for word. The pre-check item of an unassigned selector slot; it names the slot, never a device.

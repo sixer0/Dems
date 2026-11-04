@@ -197,7 +197,7 @@ describe('Network & Time (04 §4.14, MB 9)', () => {
     expect(sheet.getByText('LAN Connection')).toBeTruthy();
     expect(screen.getByText('192.168.10.21')).toBeTruthy();
     expect(screen.getByText('1 Gbps')).toBeTruthy();
-    expect(screen.getByText('18.6 W of 60 W budget')).toBeTruthy();
+    expect(screen.getByText('37.2 W of 120 W budget')).toBeTruthy(); // D60 (2026-11-04): four cameras on four ports — 4 × 9.3 W of the 120 W budget
     expect(getMissingKeys()).toEqual([]);
   });
 

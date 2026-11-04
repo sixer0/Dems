@@ -203,10 +203,10 @@ describe('the session', () => {
     expect(videoSourceOf(session, { origin: OWN_ORIGIN, headers: { Authorization: 'Bearer x' } })).toEqual({ uri: `${OWN_ORIGIN}${PATH_1}`, headers: { Authorization: 'Bearer x' } });
     expect(mediaSessionStale({ expiresAt: 60_000 }, 60_000 - MEDIA_SESSION_RENEW_MARGIN_MS - 1)).toBe(false);
     expect(mediaSessionStale({ expiresAt: 60_000 }, 60_000 - MEDIA_SESSION_RENEW_MARGIN_MS)).toBe(true);
-    // Fix F-M8: the camera files of an item are the ones it names (one or two); an item that names none is asked for both.
+    // Fix F-M8: the camera files of an item are the ones it names (one or two); an item that names none is asked for ALL FOUR (D60, 2026-11-04: four simultaneous video tracks).
     expect(cameraFilesOf({ files: [{ trackId: 'VIDEO-01' }, { trackId: 'VIDEO-02' }] })).toEqual(['VIDEO-01', 'VIDEO-02']);
     expect(cameraFilesOf({ files: [{ trackId: 'VIDEO-02' }] })).toEqual(['VIDEO-02']);
-    expect(cameraFilesOf({ files: [] })).toEqual(['VIDEO-01', 'VIDEO-02']);
+    expect(cameraFilesOf({ files: [] })).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04']); // D60: the fallback is the whole four-track plane
     // The transport is the runtime's: anything that is not an origin with an Authorization header is no transport.
     expect(mediaTransportOf(null)).toBeNull();
     expect(mediaTransportOf({} as never)).toBeNull();

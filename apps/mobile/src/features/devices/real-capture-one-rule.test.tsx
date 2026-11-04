@@ -50,7 +50,7 @@ type Device = SimState['captureDevices']['devices'][number];
 type Mark = Partial<Pick<Device, 'sourceClass' | 'adapter'>>;
 const FAKE: Mark = { sourceClass: 'DEVELOPMENT', adapter: 'FAKE' };
 const PRODUCTION: Mark = { sourceClass: 'PRODUCTION', adapter: 'ONVIF_RTSP' };
-const ALL_FAKE = { 'CAM-01': FAKE, 'CAM-02': FAKE, 'MIC-01': FAKE, 'MIC-02': FAKE } as const;
+const ALL_FAKE = { 'CAM-01': FAKE, 'CAM-02': FAKE, 'CAM-03': FAKE, 'CAM-04': FAKE, 'MIC-01': FAKE, 'MIC-02': FAKE, 'MIC-03': FAKE, 'MIC-04': FAKE } as const; // D60/D61 (2026-11-04): the built-in set is the eight sources of the four-track, four-channel plane
 const WINDOWS = ['tabletLandscape', 'phonePortrait'] as const;
 const CHIP = 'Synthetic demo values';
 /** Words of the simulator's model that a generated source must not be described with. */
@@ -156,9 +156,11 @@ describe('the two rules (pure)', () => {
     expect(generated.map((row) => [row.inputId, row.model, row.transport])).toEqual([
       ['MIC-01', null, null],
       ['MIC-02', null, null],
+      ['MIC-03', null, null], // D61 (2026-11-04): four simultaneous channels — four rows
+      ['MIC-04', null, null], // D61
     ]);
     const simulated = micRows(base.captureConfig, registry({}));
-    expect(simulated.map((row) => row.transport)).toEqual(['USB', 'USB']);
+    expect(simulated.map((row) => row.transport)).toEqual(['USB', 'USB', 'USB', 'USB']); // D61: four lines
     expect(simulated.every((row) => typeof row.model === 'string' && row.model !== '')).toBe(true);
   });
 });
@@ -169,7 +171,7 @@ describe.each(WINDOWS)('a Core in real capture on %s', (window) => {
     const h = renderDevicesApp({ user: 'rina.wijaya', window });
     mark(h, ALL_FAKE);
     await settle();
-    for (const input of ['MIC-01', 'MIC-02']) {
+    for (const input of ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) { // D61 (2026-11-04): all four channels of the plane
       const row = text(`capture-selector-row-${input}`);
       expect(row).not.toMatch(/USB|UM-1|condenser/);
       // Nothing is left to say under the input's name: the detail line is not drawn empty.
@@ -290,10 +292,11 @@ describe.each(WINDOWS)('a Core in real capture on %s', (window) => {
     const h = renderDevicesApp({ user: 'rina.wijaya', window });
     mark(h, ALL_FAKE);
     await settle();
-    for (const id of ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02']) {
+    for (const id of ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) { // D61 (2026-11-04): all four channels carry the chip's name
       const label = String(screen.getByTestId(`device-row-${id}`).props.accessibilityLabel);
       expect(label).toMatch(/Generated test source/);
-      expect(label).not.toMatch(/Channel \d|Interview Room/);
+      // D61 (2026-11-04): the channel word IS the row's name now ("Channel 1 (transcribed)") - what stays hidden is the room role.
+      expect(label).not.toMatch(/Interview Room|Interviewer|Subject/);
     }
     expect(within(screen.getByTestId('devices-section-other')).getByTestId('synthetic-values-other')).toHaveTextContent(CHIP);
     expect(within(screen.getByTestId('devices-section-cameras')).queryByText(CHIP)).toBeNull();
@@ -320,13 +323,14 @@ describe.each(WINDOWS)('G70d-02 - the Devices rows and the detail of a selected 
       expect(label).toMatch(/Not checked/);
       expect(label).not.toMatch(/Online|Interviewer|Subject/);
     }
-    expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/MIC 1 · Primary/);
-    expect(String(screen.getByTestId('device-row-MIC-02').props.accessibilityLabel)).toMatch(/MIC 2 · Standby/);
-    // The selector in force names the line: with MIC-02 made primary the names follow.
-    act(() => h.sim.store.setState((s) => ({ captureConfig: { ...s.captureConfig, mics: s.captureConfig.mics.map((line) => ({ ...line, role: line.role === 'PRIMARY' ? 'STANDBY' : 'PRIMARY' })) } as SimState['captureConfig'] })));
+    // D61 (2026-11-04): the role words became the channel words (`capture-selector.selector.channel`).
+    expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/MIC 1 · Channel 1 \(transcribed\)/);
+    expect(String(screen.getByTestId('device-row-MIC-02').props.accessibilityLabel)).toMatch(/MIC 2 · Channel 2(,|$)/);
+    // The selector in force names the line: with the two transcription channels traded the names follow.
+    act(() => h.sim.store.setState((s) => ({ captureConfig: { ...s.captureConfig, mics: s.captureConfig.mics.map((line) => ({ ...line, channel: line.channel === 'MIC-01' ? 'MIC-02' : line.channel === 'MIC-02' ? 'MIC-01' : line.channel })) } as SimState['captureConfig'] })));
     await settle();
-    expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/MIC 1 · Standby/);
-    expect(String(screen.getByTestId('device-row-MIC-02').props.accessibilityLabel)).toMatch(/MIC 2 · Primary/);
+    expect(String(screen.getByTestId('device-row-MIC-01').props.accessibilityLabel)).toMatch(/MIC 1 · Channel 2(,|$)/); // D61 (2026-11-04)
+    expect(String(screen.getByTestId('device-row-MIC-02').props.accessibilityLabel)).toMatch(/MIC 2 · Channel 1 \(transcribed\)/); // D61
   });
 
   it('a checked fact of the Core: "Reachable"; a camera on a line while a session records: "Live"', async () => {
@@ -354,7 +358,7 @@ describe.each(WINDOWS)('G70d-02 - the Devices rows and the detail of a selected 
     expect(text('device-fact-status')).toMatch(/Not checked/);
     expect(text('device-fact-status')).not.toMatch(/Online/);
     expect(screen.queryByText(/Interviewer|– Subject/)).toBeNull();
-    if (id === 'MIC-02') expect(screen.getAllByText('MIC 2 · Standby').length).toBeGreaterThan(0);
+    if (id === 'MIC-02') expect(screen.getAllByText('MIC 2 · Channel 2').length).toBeGreaterThan(0); // D61 (2026-11-04): the channel word, never the room role
   });
 });
 
@@ -575,17 +579,17 @@ describe.each(WINDOWS)('fix wave J CONTROL - the simulated lane on %s is what it
     expect((screen.getByTestId('device-detail-meter').props.accessibilityValue as { text: string }).text).toMatch(/^-\d+ dBFS$/);
   });
 
-  // Task 4 row 171 (site M6; decision C18 (2)): the input of the meter's channel is found by the lookup of row 164.
-  it('task 4 row 171: a microphone whose channel has NO input (the selector holds a lone line) - the meter reads no frame: "— dBFS" and "Not measured", never the level of MIC-01', async () => {
-    const m = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/MIC-01' });
+  // Task 4 row 171 (site M6; decision C18 (2); D61 of 2026-11-04 generalized D137): the input of a meter channel is its line, by the lookup of row 164.
+  it('task 4 row 171: a microphone whose channel has NO line (the selector holds the channel-1 line alone) - the meter reads no frame: "— dBFS" and "Not measured", never the level of MIC-01', async () => {
+    const m = renderDevicesApp({ user: 'rina.wijaya', window, initialUrl: '/devices/MIC-02' }); // D61: the card of the CHANNELLESS device says it
     act(() =>
       m.sim.store.setState((s) => ({
         audio: { ...s.audio, inputs: { ...s.audio.inputs, 'MIC-01': { seq: 1, at: 1, dbfs: -18, peak: -18, clip: false, noSignal: false } } } as SimState['audio'],
-        captureConfig: { ...s.captureConfig, mics: s.captureConfig.mics.filter((line) => line.role === 'PRIMARY') } as SimState['captureConfig'],
+        captureConfig: { ...s.captureConfig, mics: s.captureConfig.mics.filter((line) => line.channel === 'MIC-01') } as SimState['captureConfig'], // D61 (2026-11-04): the lone line is the transcribed channel; channel 2 has none
       })),
     );
     await settle();
-    // The frame of MIC-01 with a level is still in the slice; the lone PRIMARY line gives no meter channel an input.
+    // The frame of MIC-01 with a level is still in the slice; the channel without its line has no input to read.
     expect(m.sim.store.getState().audio.inputs['MIC-01']?.dbfs).toBe(-18);
     expect(screen.getByTestId('device-detail-meter-readout')).toHaveTextContent('— dBFS');
     expect(text('device-detail-meter-not-measured')).toMatch(/Not measured/);

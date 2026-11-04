@@ -16,7 +16,7 @@ import { isLevelNotMeasured, meterInputOfChannel, useSim, type MicStatus } from 
 import { fontFamily, palette, typography } from '@dems/shared/tokens';
 import { DbfsMeter, type MeterVariant } from '@/components/composed/dbfs-meter';
 import { micLinesInForce } from '@/features/capture-selector/selector-in-force';
-import { MIC_NO_LEVEL_TEXT } from '@/features/dashboard/home-model';
+import { MIC_CHANNEL_NAME_KEY, MIC_NO_LEVEL_TEXT } from '@/features/dashboard/home-model'; // D61: the channel-name map
 import { useMotionPolicy } from '@/motion';
 import { useAudioAccessibilityValue, useAudioSharedValues } from '@/runtime';
 
@@ -68,7 +68,8 @@ export function DeviceMicMeter({ mic, variant, paused, onClipReset, style, testI
   const ticking = useAudioAccessibilityValue(mic.id);
   const text = kind === 'LEVEL' ? `${ticking.now} dBFS` : kind === 'NO_SIGNAL' ? t('common.status.noSignal') : MIC_NO_LEVEL_TEXT;
   const a11y = { min: ticking.min, max: ticking.max, now: ticking.now, text };
-  const name = mic.channel === 2 ? t('common.devices.mic2') : t('common.devices.mic1');
+  // D61 (2026-11-04): the slice states the CHANNEL code; every channel has its word in the shared catalog.
+  const name = t(MIC_CHANNEL_NAME_KEY[mic.channel]);
   const label = t('features.devices.mic.meterLabel', { name });
   // The large meter draws its own number; with nothing measured it would read the floor as if it were a
   // level. The plate says what is true. The CLIP latch keeps the meter (its chip is the reset control).

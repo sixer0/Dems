@@ -19,12 +19,12 @@ unmountBeforeTheHooksOfThisGroup();
 beforeEach(() => resetMissingKeys());
 afterEach(() => expect(getMissingKeys()).toEqual([]));
 
-// Fix wave H (G70-02): the sheet takes the registered microphones (`MicOption`), not the two selector rows; the assertions are unchanged.
-const row = (deviceId: string, role: MicOption['role'], over: Partial<MicOption> = {}): MicOption => ({ deviceId, model: null, role, online: true, sourceClass: null, adapter: null, ...over });
+// Fix wave H (G70-02): the sheet takes the registered microphones (`MicOption`), not the selector rows; D61 (2026-11-04): the option names the CHANNEL it holds.
+const row = (deviceId: string, channel: MicOption['channel'], over: Partial<MicOption> = {}): MicOption => ({ deviceId, model: null, channel, online: true, sourceClass: null, adapter: null, ...over });
 const INPUTS: readonly MicOption[] = [
-  row('MIC-01', 'PRIMARY', { sourceClass: 'PRODUCTION', adapter: 'USB_AUDIO' }),
-  row('MIC-02', 'STANDBY', { sourceClass: 'DEVELOPMENT', adapter: 'FAKE' }),
-  row('MIC-03', null, { sourceClass: 'DEVELOPMENT', adapter: 'LOCAL_DEVICE' }),
+  row('MIC-01', 'MIC-01', { sourceClass: 'PRODUCTION', adapter: 'USB_AUDIO' }),
+  row('MIC-02', 'MIC-02', { sourceClass: 'DEVELOPMENT', adapter: 'FAKE' }),
+  row('MIC-05', null, { sourceClass: 'DEVELOPMENT', adapter: 'LOCAL_DEVICE' }), // D61: an adopted microphone mints past the four built-ins
 ];
 const LIMIT = 'Not fit for recording yet. Use it for development checks only.';
 
@@ -37,16 +37,16 @@ async function open(request: SourceSheetRequest) {
 
 describe('the primary-microphone sheet: the limit of the Core Mac\'s microphone', () => {
   it('Live: the option of the local microphone carries the sentence; a test source and a production microphone do not', async () => {
-    await open({ kind: 'mic', role: 'PRIMARY', currentInputId: 'MIC-01', options: INPUTS, badgeMode: { live: true } });
-    expect(screen.getByTestId('capture-source-option-MIC-03')).toBeTruthy();
-    expect(screen.getByTestId('capture-source-limit-MIC-03')).toHaveTextContent(LIMIT);
+    await open({ kind: 'mic', channel: 'MIC-01', currentInputId: 'MIC-01', options: INPUTS, badgeMode: { live: true } }); // D61 (2026-11-04): the sheet opens for a CHANNEL
+    expect(screen.getByTestId('capture-source-option-MIC-05')).toBeTruthy();
+    expect(screen.getByTestId('capture-source-limit-MIC-05')).toHaveTextContent(LIMIT);
     expect(screen.queryByTestId('capture-source-limit-MIC-01')).toBeNull();
     expect(screen.queryByTestId('capture-source-limit-MIC-02')).toBeNull();
   });
 
   it('CONTROL: Simulated client mode draws no limit sentence (nothing is opened there)', async () => {
-    await open({ kind: 'mic', role: 'PRIMARY', currentInputId: 'MIC-01', options: INPUTS, badgeMode: { live: false } });
-    expect(screen.getByTestId('capture-source-option-MIC-03')).toBeTruthy();
+    await open({ kind: 'mic', channel: 'MIC-01', currentInputId: 'MIC-01', options: INPUTS, badgeMode: { live: false } }); // D61 (2026-11-04)
+    expect(screen.getByTestId('capture-source-option-MIC-05')).toBeTruthy();
     expect(screen.queryByText(LIMIT)).toBeNull();
   });
 

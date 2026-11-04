@@ -58,27 +58,28 @@ describe('sourceStateWord: what the Core reported for the microphone on a line',
     expect(word(marked(idle(), { 'MIC-01': { ...FAKE, sourceOpen: true } }), 'AUDIO-01').kind).toBe('REACHABLE');
   });
 
-  it('the report follows the SELECTOR: a microphone the registry does not hold is "State not known"; the primary report is the PRIMARY line\'s', () => {
+  it('the report follows the SELECTOR: a microphone the registry does not hold is "State not known"; the transcribed report is the channel-1 line\'s', () => {
     const base = marked(idle(), { 'MIC-01': FAKE, 'MIC-02': FAKE });
-    const state: SimState = { ...base, captureConfig: { ...base.captureConfig, mics: base.captureConfig.mics.map((line) => (line.role === 'PRIMARY' ? { ...line, inputId: 'MIC-09', deviceId: 'MIC-09' } : line)) } };
+    // D61 (2026-11-04): the line is keyed by CHANNEL; the transcribed channel 1 moves to a microphone the registry does not hold.
+    const state: SimState = { ...base, captureConfig: { ...base.captureConfig, mics: base.captureConfig.mics.map((line) => (line.channel === 'MIC-01' ? { ...line, inputId: 'MIC-09', deviceId: 'MIC-09' } : line)) } };
     expect(primaryMicReportOf(state).deviceId).toBeNull();
-    const channel = state.captureConfig.mics[0]?.role === 'PRIMARY' ? 'AUDIO-01' : 'AUDIO-02';
+    const channel = state.captureConfig.mics[0]?.channel === 'MIC-01' ? 'AUDIO-01' : 'AUDIO-02';
     expect(word(state, channel)).toMatchObject({ kind: 'UNKNOWN', key: 'features.capture-selector.preview.stateUnknown' });
-    expect(primaryMicReportOf(base).deviceId).toBe(base.captureConfig.mics.find((line) => line.role === 'PRIMARY')?.deviceId);
+    expect(primaryMicReportOf(base).deviceId).toBe(base.captureConfig.mics.find((line) => line.channel === 'MIC-01')?.deviceId);
   });
 });
 
-// Task 4 row 171 (site M5; decision C18 (2)): the microphone of a meter channel is found by the lookup of row 164.
-describe('task 4 row 171: a meter channel WITHOUT an input names no device (never the device behind MIC-01 / MIC-02)', () => {
+// Task 4 row 171 (site M5; decision C18 (2); D61 of 2026-11-04): the microphone of a meter channel is found by the lookup of row 164 - a channel WITHOUT its line.
+describe('task 4 row 171: a meter channel WITHOUT its line names no device (never the device behind MIC-01 / MIC-02)', () => {
   const base = marked(idle(), { 'MIC-01': { ...FAKE, checkedAt: 1_791_636_968_000 }, 'MIC-02': { ...FAKE, checkedAt: 1_791_636_968_000 } });
-  const withRoles = (roles: readonly string[]): SimState => ({ ...base, captureConfig: { ...base.captureConfig, mics: base.captureConfig.mics.filter((line) => roles.includes(line.role)) } });
+  // D61 (2026-11-04): the filter names the CHANNELS the selector still holds.
+  const withChannels = (channels: readonly string[]): SimState => ({ ...base, captureConfig: { ...base.captureConfig, mics: base.captureConfig.mics.filter((line) => channels.includes(line.channel)) } });
 
   it.each([
     ['no microphone line', []],
-    ['a lone PRIMARY line', ['PRIMARY']],
-    ['a lone STANDBY line', ['STANDBY']],
-  ])('%s: both channels report the unknown source - no device id, "State not known"', (_name, roles) => {
-    const state = withRoles(roles);
+    ['a lone channel-3 line (D61: the other channels have no input of their own)', ['MIC-03']],
+  ])('%s: channels 1 and 2 report the unknown source - no device id, "State not known"', (_name, channels) => {
+    const state = withChannels(channels);
     for (const channel of ['AUDIO-01', 'AUDIO-02'] as const) {
       expect(micLineDeviceIdOf(state, channel)).toBeNull();
       expect(micLineReportOf(state, channel)).toMatchObject({ deviceId: null, kind: 'MIC', online: false, sourceOpen: false, checked: null });
@@ -88,12 +89,13 @@ describe('task 4 row 171: a meter channel WITHOUT an input names no device (neve
     expect(state.captureDevices.devices.filter((device) => device.id === 'MIC-01' || device.id === 'MIC-02')).toHaveLength(2);
   });
 
-  it('a lone line keeps its ROLE: the primary report still names the PRIMARY line\'s microphone', () => {
-    expect(primaryMicReportOf(withRoles(['PRIMARY'])).deviceId).toBe('MIC-01');
-    expect(primaryMicReportOf(withRoles(['STANDBY'])).deviceId).toBeNull();
+  it('a lone line keeps its CHANNEL: the transcribed report still names the channel-1 line\'s microphone', () => {
+    // D61 (2026-11-04): the roles became the numbered channels; PRIMARY is the channel-1 line.
+    expect(primaryMicReportOf(withChannels(['MIC-01'])).deviceId).toBe('MIC-01');
+    expect(primaryMicReportOf(withChannels(['MIC-02'])).deviceId).toBeNull();
   });
 
-  it('CONTROL - the seeded, complete pair: each channel names the microphone of its line, as before', () => {
+  it('CONTROL - the seeded, complete four-channel plane: each channel names the microphone of its line, as before', () => {
     expect(micLineDeviceIdOf(base, 'AUDIO-01')).toBe('MIC-01');
     expect(micLineDeviceIdOf(base, 'AUDIO-02')).toBe('MIC-02');
     expect(word(base, 'AUDIO-01').kind).toBe('REACHABLE');

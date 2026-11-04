@@ -746,9 +746,9 @@ interface DetailsCardProps {
   analysis: RecoveryAnalysis;
 }
 
-/** Milestones after which the segment and time-source rows show their finding. */
-const SEGMENT_KNOWN_AT = 6;
-const TIME_KNOWN_AT = 7;
+/** Milestones after which the segment and time-source rows show their finding (D61, 2026-11-04: the eight-track table shifts them to 8 and 9 — the stage-2 floor). */
+const SEGMENT_KNOWN_AT = 8;
+const TIME_KNOWN_AT = 9;
 
 function DetailsCard({ inputs, phase, milestone, analysis }: DetailsCardProps) {
   const { t } = useTranslation();

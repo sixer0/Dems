@@ -54,7 +54,8 @@ function mark(engine: TestSim, marks: Readonly<Record<string, Mark>>): void {
 }
 
 const LOCAL: Mark = { sourceClass: 'DEVELOPMENT', adapter: 'LOCAL_DEVICE' };
-const ON = ['monitor-feed-source-on', 'monitor-mic-source-1-on', 'monitor-mic-source-2-on'] as const;
+// D61 (2026-11-04): the badge testIDs are channel-keyed (`monitor-mic-source-${mic.channel}`) — MIC-01..04, not 1..N slots.
+const ON = ['monitor-feed-source-on', 'monitor-mic-source-MIC-01-on', 'monitor-mic-source-MIC-02-on'] as const;
 const on = () => ON.filter((id) => screen.queryByTestId(id) !== null);
 
 describe('Session Live: the "is on" state of the Core Mac\'s devices (LIVE)', () => {
@@ -69,9 +70,10 @@ describe('Session Live: the "is on" state of the Core Mac\'s devices (LIVE)', ()
     expect(on()).toEqual([]);
 
     await b.changeOnCore((engine) => mark(engine, { 'CAM-01': { ...LOCAL, sourceOpen: true }, 'MIC-01': { ...LOCAL, sourceOpen: true } }));
-    expect(on()).toEqual(['monitor-feed-source-on', 'monitor-mic-source-1-on']);
+    // D61 (2026-11-04): channel-keyed badge testIDs (`monitor-mic-source-MIC-01-on`).
+    expect(on()).toEqual(['monitor-feed-source-on', 'monitor-mic-source-MIC-01-on']);
     expect(screen.getByTestId('monitor-feed-source-on')).toHaveTextContent("Core Mac's camera is on");
-    expect(screen.getByTestId('monitor-mic-source-1-on')).toHaveTextContent("Core Mac's microphone is on");
+    expect(screen.getByTestId('monitor-mic-source-MIC-01-on')).toHaveTextContent("Core Mac's microphone is on");
 
     await b.changeOnCore((engine) => mark(engine, { 'CAM-01': { ...LOCAL, sourceOpen: false }, 'MIC-01': LOCAL }));
     expect(on()).toEqual([]);

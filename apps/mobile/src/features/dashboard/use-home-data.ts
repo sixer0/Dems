@@ -210,7 +210,8 @@ export function useHomeTiles(): readonly HomeTile[] {
       // Task 4 row 171 (site M5): the input of the channel by the lookup of row 164; `null` (no complete pair): the
       // channel names no line, so it is not the primary one and its source reads as unknown (`micLineReportOf`).
       const inputId = meterInputOfChannel(lines, m.id);
-      const primary = inputId !== null && lines.find((line) => line.inputId === inputId)?.role === 'PRIMARY';
+      // D61 (2026-11-04): the transcribed channel is MIC-01 (the former PRIMARY role).
+      const primary = inputId !== null && lines.find((line) => line.inputId === inputId)?.channel === 'MIC-01';
       return `${sourceStateWord(micLineReportOf(s, m.id), live, s.session?.state === 'RECORDING').kind}|${primary ? 'P' : ''}`;
     });
   });
@@ -341,10 +342,12 @@ export function useDeviceTiles(): DeviceTileInfo[] {
     // `AudioSliceInState` is out - `null` when no input is active; compiles with the seam in and out.
     const meters: string | null = s.audio.activeInputId;
     const activeInputId = audioPairInForce(s).activeInputId ?? meters;
+    // D61 (2026-11-04): the STANDBY word belongs to the transcription pair alone - channels 3 / 4 record without a pair word.
+    const standbyInputId = audioPairInForce(s).standbyInputId;
     const lines = micLinesInForce(s);
     return s.mics.map((m) => {
       // A channel without an input (`null`), or no active input: no role for the tile.
-      const role = micTileSourceRole({ recording, inputId: meterInputOfChannel(lines, m.id), activeInputId });
+      const role = micTileSourceRole({ recording, inputId: meterInputOfChannel(lines, m.id), activeInputId, standbyInputId });
       const word = realCapture ? sourceStateWord(micLineReportOf(s, m.id), live, recording) : null;
       const line = word === null ? '' : `${micLineDeviceIdOf(s, m.id) ?? ''}~${word.key}~${word.tone}`;
       return `${m.id}|${m.deviceId}|${m.clipLatched ? 'CLIP' : m.state}|${role ?? ''}|${line}`;

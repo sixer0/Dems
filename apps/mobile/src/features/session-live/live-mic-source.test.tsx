@@ -47,9 +47,10 @@ const OP = 'switchAudioSource';
 const isDisabled = (testID: string) => screen.getByTestId(testID).props.accessibilityState?.disabled === true;
 const isBusy = (testID: string) => screen.getByTestId(testID).props.accessibilityState?.busy === true;
 const toastShown = (text: string) => screen.queryAllByText(text).length > 0;
+// D61 (2026-11-04): the cards are keyed by CHANNEL; the chip words are the shared channel words.
 const chipText = (channel: 1 | 2) => {
-  const card = within(screen.getByTestId(`monitor-mic-${channel}`));
-  return card.queryByText('Active') !== null ? 'Active' : card.queryByText('Standby') !== null ? 'Standby' : null;
+  const card = within(screen.getByTestId(`monitor-mic-MIC-0${channel}`));
+  return card.queryByText('Channel 1 (transcribed)') !== null ? 'Active' : card.queryByText('Channel 2 (recorded)') !== null ? 'Standby' : null;
 };
 const chips = () => [chipText(1), chipText(2)];
 const coreSwitches = (b: LiveMonitorBed) => b.engine.sim.store.getState().audit.rows.filter((row) => row.type === 'AUDIO_SOURCE_SWITCHED');

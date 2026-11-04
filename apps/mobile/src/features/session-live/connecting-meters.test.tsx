@@ -35,6 +35,9 @@ afterEach(() => {
 
 const setDurable = (h: MonitorHarness, captureDurable: boolean) => act(() => h.sim.store.setState((s) => ({ session: { ...s.session!, captureDurable } })));
 const count = (testID: string): number => screen.queryAllByTestId(testID).length;
+// D61 (2026-11-04): the audio slice names the CHANNEL code of each meter (`MIC-0N`), and all four
+// channels of the plane draw a card and a meter — the loop runs over the codes, not 1..2.
+const MIC_CHANNEL_CODES = ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const;
 
 describe('the audio meters while the cameras connect (pass D7 item 4)', () => {
   for (const window of ['phonePortrait', 'tabletLandscape'] as const) {
@@ -44,13 +47,13 @@ describe('the audio meters while the cameras connect (pass D7 item 4)', () => {
       h.openMonitor();
       expect(screen.getByTestId('screen-session-live')).toBeTruthy();
       // CONTROL: the session without the member draws both meters.
-      for (const channel of [1, 2]) {
+      for (const channel of MIC_CHANNEL_CODES) {
         expect(count(`monitor-meter-${channel}`)).toBeGreaterThan(0);
         expect(count(`monitor-meter-${channel}-connecting`)).toBe(0);
       }
 
       setDurable(h, false);
-      for (const channel of [1, 2]) {
+      for (const channel of MIC_CHANNEL_CODES) {
         expect(count(`monitor-meter-${channel}`)).toBe(0);
         const place = screen.getAllByTestId(`monitor-meter-${channel}-connecting`)[0]!;
         expect(within(place).getByText('CONNECTING')).toBeTruthy();
@@ -61,7 +64,7 @@ describe('the audio meters while the cameras connect (pass D7 item 4)', () => {
       }
 
       setDurable(h, true);
-      for (const channel of [1, 2]) {
+      for (const channel of MIC_CHANNEL_CODES) {
         expect(count(`monitor-meter-${channel}`)).toBeGreaterThan(0);
         expect(count(`monitor-meter-${channel}-connecting`)).toBe(0);
       }

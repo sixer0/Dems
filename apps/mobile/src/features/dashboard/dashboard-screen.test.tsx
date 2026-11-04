@@ -184,7 +184,7 @@ describe('Home (Dashboard) screen', () => {
     expect(label('home-status-ring')).toBe('System status: READY');
     // H3: the dataset values (04 §9 #7, D28/Q1).
     expect(label('home-tile-camera-value')).toBe('4/4'); // D60 (2026-11-04): four video tracks
-    expect(label('home-tile-microphone-value')).toBe('2/2');
+    expect(label('home-tile-microphone-value')).toBe('4/4'); // D61 (2026-11-04): four simultaneous microphone channels
     expect(label('home-tile-storage-value')).toBe('20%');
     expect(textOf('home-tile-camera-state')).toBe('Online');
     expect(textOf('home-tile-storage-state')).toBe('Healthy');

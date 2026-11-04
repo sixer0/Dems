@@ -95,6 +95,8 @@ describe('Recovery Status (04 §4.8)', () => {
     expect(screen.getByTestId('recovery-analysing')).toBeTruthy();
     expect(screen.getByTestId('recovery-stage')).toHaveTextContent('Recovery scan · stage 1 of 2');
     expect(stepLabel(0)).toBe('Step 1 of 5, Recovery marker and journal, in progress');
+    // D60 (2026-11-04): the time row says "Pending" while NO milestone has passed (stage 1, elapsed 0).
+    expect(within(screen.getByTestId('recovery-time-source')).getByText('Pending')).toBeTruthy();
 
     h.run(600);
     expect(stepLabel(0)).toBe('Step 1 of 5, Recovery marker and journal, completed');
@@ -118,7 +120,9 @@ describe('Recovery Status (04 §4.8)', () => {
     expect(trackResult('AUDIO-01').getByText('INTACT')).toBeTruthy();
     expect(trackResult('AUDIO-02').getByText('FLAGGED')).toBeTruthy();
     expect(trackResult('AUDIO-02').getByText(`Clipped segments flagged from ${formatClock(clip.since)}`)).toBeTruthy();
-    expect(within(screen.getByTestId('recovery-time-source')).getByText('Pending')).toBeTruthy();
+    // D61 (2026-11-04): the stage-2 floor (STEP_DONE_AT.tracks = 9 milestones for the eight tracks) already passes TIME_KNOWN_AT (9),
+    // so the time row states its finding here - "Pending" belongs to stage 1 (asserted above), never to stage 2.
+    expect(within(screen.getByTestId('recovery-time-source')).queryByText('Pending')).toBeNull();
 
     h.run(RECOVERY_MS - 1_600 + 100); // past 3 s: the simulator keeps the session INCOMPLETE
     const after = h.sim.store.getState();

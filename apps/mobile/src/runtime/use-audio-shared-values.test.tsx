@@ -93,10 +93,10 @@ describe('useAudioSharedValues', () => {
     expect(values!.level.value).toBeGreaterThan(AUDIO_FLOOR_DBFS);
     const rendersBefore = renders;
 
-    // The selector keeps its PRIMARY line only (the open session's snapshot too): no meter channel has an input.
+    // D61 (2026-11-04): the selector keeps the CHANNEL-2 line only — channel 1, the meter under test, has no input of its own.
     act(() => {
       const state = sim.store.getState();
-      const mics = state.captureConfig.mics.filter((line) => line.role === 'PRIMARY');
+      const mics = state.captureConfig.mics.filter((line) => line.channel === 'MIC-02');
       sim.store.setState({
         captureConfig: { ...state.captureConfig, mics },
         session: state.session === null ? null : { ...state.session, captureConfig: state.session.captureConfig ? { ...state.session.captureConfig, mics } : state.session.captureConfig },

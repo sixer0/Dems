@@ -16,10 +16,16 @@ export { DEVICE_CAMERA, DEVICE_IDS, DEVICE_KIND, DEVICE_MIC, isDeviceId, type De
 
 /** MB 7 sections in order (V2, V3, V4). */
 export type DeviceSection = 'cameras' | 'audio' | 'other';
+
+/**
+ * D61 (2026-11-04): the mics slice states the CHANNEL CODE (`MIC-0N` for `AUDIO-0N`); the Devices
+ * rows and the detail's "Channel" fact keep the book's ordinal word — the number of the code.
+ */
+export const micChannelNumber = (channel: string): number => Number(channel.slice(-1)) || 1;
 export const SECTIONS: readonly { id: DeviceSection; titleKey: string; devices: readonly DeviceId[] }[] = [
   // D60 (2026-11-04): four camera tracks — the roster lists all four built-in cameras.
   { id: 'cameras', titleKey: 'devices.cameras.title', devices: ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04'] },
-  { id: 'audio', titleKey: 'devices.audio.title', devices: ['MIC-01', 'MIC-02'] },
+  { id: 'audio', titleKey: 'devices.audio.title', devices: ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] }, // D61 (2026-11-04): four simultaneous microphone channels — the roster lists all four built-in microphones
   { id: 'other', titleKey: 'devices.other.title', devices: ['POE-SWITCH', 'REC-INDICATOR', 'TABLET'] },
 ];
 
@@ -31,6 +37,10 @@ export const DEVICE_NAME_KEY: Readonly<Record<DeviceId, string>> = {
   'CAM-04': 'common.devices.camera4', // D60
   'MIC-01': 'features.devices.mic.title1',
   'MIC-02': 'features.devices.mic.title2',
+  // D61 (2026-11-04): the two further built-in microphones of the four-channel plane; the dataset
+  // names no interview role for them, so they read by their shared channel word.
+  'MIC-03': 'common.devices.mic3',
+  'MIC-04': 'common.devices.mic4',
   'POE-SWITCH': 'devices.other.poeSwitch',
   'REC-INDICATOR': 'devices.other.recordingIndicator',
   // Fix wave J (JA2-13): the row stands for THIS device - a phone or a tablet.
@@ -42,6 +52,8 @@ export const DEVICE_SHORT_NAME_KEY: Readonly<Record<DeviceId, string>> = {
   ...DEVICE_NAME_KEY,
   'MIC-01': 'common.devices.mic1',
   'MIC-02': 'common.devices.mic2',
+  'MIC-03': 'common.devices.mic3', // D61 (2026-11-04)
+  'MIC-04': 'common.devices.mic4', // D61
 };
 
 // ── Status ───────────────────────────────────────────────────────────────────────────────
