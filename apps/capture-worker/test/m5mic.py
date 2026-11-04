@@ -253,7 +253,7 @@ def cmd_warn(a, M):
     fixture_sources = M.start_sources
 
     def scripted_sources(d_, truth_, plan, procs, mic_seconds, mic_extra=()):
-        mic = M.spawn([os.path.join(M.BUILD, "m5_mic"), "--out1", plan["mics"][0]["input"]["path"], "--out2", plan["mics"][1]["input"]["path"], "--manifest", os.path.join(d_, "mic.jsonl"),
+        mic = M.spawn([os.path.join(M.BUILD, "m5_mic")] + M.mic_out_args(plan) + ["--manifest", os.path.join(d_, "mic.jsonl"),   # D61 (2026-11-04): all FOUR channels are fed
                        "--plan1", PLAN1, "--plan2", PLAN2, "--seconds", "%.3f" % mic_seconds], stdin=subprocess.DEVNULL, stderr=open(os.path.join(d_, "mic.err"), "w"))
         procs.append(mic)
         # The cameras are the NM-14 fake cameras, started exactly as m3worker.start_sources starts them.

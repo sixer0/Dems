@@ -4,8 +4,9 @@
  * and, with --ppm, its own SAMPLE clock. The beep half of the flash+beep generator. Test fixture
  * only. It opens no socket: its only outputs are the named pipes and the manifest it is given.
  *
- * It writes raw PCM (32-bit float, little-endian, 48 kHz, mono) into one or two named pipes, one
- * 10 ms chunk every 10 ms, the way a capture device hands samples over: chunk i is written when
+ * It writes raw PCM (32-bit float, little-endian, 48 kHz, mono) into one to four named pipes (D61,
+ * 2026-11-04: the four numbered microphone channels of a plan are recorded at once; was one or two),
+ * one 10 ms chunk every 10 ms, the way a capture device hands samples over: chunk i is written when
  * its last sample has been "captured", at e0 + (i + 1) * 10 ms on this process's own clock.
  *
  *   mic 1  quiet noise (0.01, a fixed pseudo-random sequence) so that every encoder packet differs
@@ -13,7 +14,10 @@
  *          1 kHz bursts of 100 ms at 0.5 whose first sample is the first sample at or after each
  *          absolute instant of --beep-at-us, counted from e0 = this process's own read of the
  *          wall clock when it starts. Nothing the worker knows enters that placement.
- *   mic 2  880 Hz at 0.1 (the hot standby, audibly different).
+ *   mic 2  880 Hz at 0.1 (the hot standby of the legacy two-role lane, audibly different).
+ *   mic 3  660 Hz at 0.1, mic 4  440 Hz at 0.1 (D61, 2026-11-04: the two further channels, each
+ *          audibly different from every other row; the --stop2-after / --start2-after rule stays the
+ *          lane's channel-2 rule).
  *
  * The manifest (JSON lines) states e0 and the onset sample of every beep: the truth an analyser
  * compares the recorded file against.
@@ -54,7 +58,7 @@ static int write_all(int fd, const void *buf, size_t n) {
 }
 
 int main(int argc, char **argv) {
-    const char *out[2] = { NULL, NULL }, *manifest_path = NULL;
+    const char *out[4] = { NULL, NULL, NULL, NULL }, *manifest_path = NULL;   /* D61: four channels */
     double seconds = 10, stop2_after = -1, start2_after = 0, ppm = 0, stop_at = -1, resume_at = -1;
     long long late_us = 0;
     int64_t beep_at[MAX_BEEPS], onset[MAX_BEEPS];
@@ -63,6 +67,8 @@ int main(int argc, char **argv) {
         const char *k = argv[i], *v = argv[i + 1];
         if (!strcmp(k, "--out1")) out[0] = v;
         else if (!strcmp(k, "--out2")) out[1] = v;
+        else if (!strcmp(k, "--out3")) out[2] = v;                                  /* D61 (2026-11-04): channels 3 and 4 */
+        else if (!strcmp(k, "--out4")) out[3] = v;
         else if (!strcmp(k, "--seconds")) seconds = atof(v);
         else if (!strcmp(k, "--manifest")) manifest_path = v;
         else if (!strcmp(k, "--stop2-after")) stop2_after = atof(v);        /* mic 2 falls silent (no samples) after this many seconds */
@@ -81,14 +87,14 @@ int main(int argc, char **argv) {
         } else { fprintf(stderr, "FAKE_MIC unknown argument %s\n", k); return 2; }
     }
     if (!out[0] || !manifest_path || seconds <= 0) {
-        fprintf(stderr, "usage: fake_mic --out1 <fifo> [--out2 <fifo>] --manifest <file.jsonl> [--seconds S] [--beep-at-us t1,t2,...] [--stop2-after S] [--start2-after S] [--ppm P] [--stop-at S --resume-at S] [--deliver-late-us D]\n");
+        fprintf(stderr, "usage: fake_mic --out1 <fifo> [--out2 <fifo>] [--out3 <fifo>] [--out4 <fifo>] --manifest <file.jsonl> [--seconds S] [--beep-at-us t1,t2,...] [--stop2-after S] [--start2-after S] [--ppm P] [--stop-at S --resume-at S] [--deliver-late-us D]\n");
         return 2;
     }
     signal(SIGPIPE, SIG_IGN);
     FILE *mf = fopen(manifest_path, "w");
     if (!mf) { fprintf(stderr, "FAKE_MIC cannot write the manifest\n"); return 1; }
-    int fd[2] = { -1, -1 };
-    for (int m = 0; m < 2; m++) {
+    int fd[4] = { -1, -1, -1, -1 };                        /* D61 (2026-11-04): one per numbered channel */
+    for (int m = 0; m < 4; m++) {
         if (!out[m]) continue;
         fd[m] = open(out[m], O_WRONLY);                     /* waits until the worker reads the pipe */
         if (fd[m] < 0) { fprintf(stderr, "FAKE_MIC cannot open pipe %d: %s\n", m + 1, strerror(errno)); return 1; }
@@ -106,8 +112,8 @@ int main(int argc, char **argv) {
     fflush(mf);
 
     int64_t total = (int64_t)(seconds * SR), n = 0, max_late = 0, written2 = 0;
-    float a[CHUNK], s[CHUNK];
-    int alive[2] = { 1, fd[1] >= 0 };
+    float a[CHUNK], s[CHUNK], x[CHUNK], y[CHUNK];          /* D61: channels 3 and 4 join */
+    int alive[4] = { 1, fd[1] >= 0, fd[2] >= 0, fd[3] >= 0 };
     uint64_t lcg = 0x9E3779B97F4A7C15ULL;
     while (n < total && alive[0]) {
         for (int i = 0; i < CHUNK; i++) {
@@ -120,6 +126,8 @@ int main(int argc, char **argv) {
             }
             a[i] = v;
             s[i] = (float)(0.1 * sin(2 * M_PI * 880.0 * (double)k / SR));
+            x[i] = (float)(0.1 * sin(2 * M_PI * 660.0 * (double)k / SR));           /* D61: channel 3 */
+            y[i] = (float)(0.1 * sin(2 * M_PI * 440.0 * (double)k / SR));           /* D61: channel 4 */
         }
         /* Hand the chunk over ON its instant: sleep to 1.5 ms before it, then watch the clock (a
          * plain sleep overshoots by most of a millisecond on this host, which would be a constant
@@ -135,10 +143,13 @@ int main(int argc, char **argv) {
         if (alive[1] && t >= start2_after && (stop2_after < 0 || t < stop2_after)) {
             if (write_all(fd[1], s, sizeof s) < 0) alive[1] = 0; else written2 += CHUNK;
         }
+        /* D61 (2026-11-04): channels 3 and 4 have no silence rule of their own - they deliver while the fixture runs. */
+        if (alive[2] && write_all(fd[2], x, sizeof x) < 0) alive[2] = 0;
+        if (alive[3] && write_all(fd[3], y, sizeof y) < 0) alive[3] = 0;
         n += CHUNK;
     }
     fprintf(mf, "{\"type\":\"end\",\"samples\":%lld,\"samples_mic2\":%lld,\"max_late_us\":%lld,\"reader_gone\":%s}\n", (long long)n, (long long)written2, (long long)max_late, alive[0] ? "false" : "true");
     fclose(mf);
-    for (int m = 0; m < 2; m++) if (fd[m] >= 0) close(fd[m]);
+    for (int m = 0; m < 4; m++) if (fd[m] >= 0) close(fd[m]);
     return 0;
 }

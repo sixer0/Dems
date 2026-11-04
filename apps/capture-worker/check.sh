@@ -68,12 +68,15 @@ rules() {
     [ "$(count "$option")" = "0" ] || say "W1-C1: non-existent mux option $(echo "$option" | tr -d '[]') in the worker"
   done
   # The mux options of the camera files are the decided ones (row 58 part P4), in one place.
+  # D61 (2026-11-04): the channel files of the microphone plane set the SAME options (flush_packets twice now: camera muxer and mic muxer).
   [ "$(count '#define DEMS_MOVFLAGS "+frag_keyframe+empty_moov+default_base_moof+skip_trailer"')" = "1" ] || say "C.4: the default movflags are not the decided set"
-  [ "$(count '"flush_packets", "1"')" = "1" ] || say "C.2 (W-2): flush_packets=1 is not set on the output"
+  [ "$(count '"flush_packets", "1"')" = "2" ] || say "C.2 (W-2): flush_packets=1 is not set on the camera output and the D61 channel output"
 
-  # H-4: ONE audio encoder. One place finds it, one place opens a codec.
-  [ "$(count 'avcodec_find_encoder')" = "1" ] || say "H-4: expected exactly 1 encoder lookup, found $(count 'avcodec_find_encoder')"
-  [ "$(count 'avcodec_open2(')" = "1" ] || say "H-4: expected exactly 1 codec open, found $(count 'avcodec_open2(')"
+  # H-4 was ONE audio encoder (row 58). D61 (2026-11-04) replaces the rule: ONE ENCODER INSTANCE PER FILE - the
+  # legacy lane's encoder (ingest.c open_encoder, feeding every camera file) plus one per microphone channel that
+  # names an outputPath (audio.c mic_rec_open): two places find the encoder and open a codec; a third is a bug.
+  [ "$(count 'avcodec_find_encoder')" = "2" ] || say "H-4/D61: expected exactly 2 encoder lookups (lane + channel files), found $(count 'avcodec_find_encoder')"
+  [ "$(count 'avcodec_open2(')" = "2" ] || say "H-4/D61: expected exactly 2 codec opens (lane + channel files), found $(count 'avcodec_open2(')"
 
   # W-1 / SEC35-23: TCP only on the ingest, and no wildcard address anywhere.
   [ "$(count '"protocol_whitelist", "tcp"')" = "1" ] || say "W-1: the ingest does not restrict its protocols to tcp"
@@ -373,4 +376,4 @@ grep -q 'DEMS_PROOF_MUX_EXTRA=.*use_editlis[t]=1.*capture-worker-negctl' Makefil
 fixture_rules test-fixtures || exit 1
 proof_rule Makefile "$1" || exit 1
 version_rule test/static/libavformat.pin "$(${PKG_CONFIG:-pkg-config} --modversion libavformat 2>/dev/null)" || exit 1
-echo "check.sh: $1: static rules OK (AU2-07, N-10, C.4 forbidden options, W1-C1, SR-3 mux options, H-4 one encoder, W-1, W-4, B.2, D58-1/2 exclusive create, D59-2 sync, D59-3 one truncation, D59-4 fault seam, F-2, BR-01 one open + one probe + the announce gate between them and no switch around it, BR-03 per-camera interrupt, BR-04 no av_log_set_level + the words of a refusal fixed (each code and frame member a literal of one line, no frame reason from a text), R-6 pinned file calls + no digraph / assembler name, F-10 pinned mux calls + one muxer name + proof builds marked, R63-06 every proof switch marks, R63-09 sync seam, N3-GAP the gapped kind: one place sets it, a closed set reads it, no resampler call reachable for it, D85 libavformat $(${PKG_CONFIG:-pkg-config} --modversion libavformat); fixtures: SEC35-23)"
+echo "check.sh: $1: static rules OK (AU2-07, N-10, C.4 forbidden options, W1-C1, SR-3 mux options, H-4/D61 one encoder per file, W-1, W-4, B.2, D58-1/2 exclusive create, D59-2 sync, D59-3 one truncation, D59-4 fault seam, F-2, BR-01 one open + one probe + the announce gate between them and no switch around it, BR-03 per-camera interrupt, BR-04 no av_log_set_level + the words of a refusal fixed (each code and frame member a literal of one line, no frame reason from a text), R-6 pinned file calls + no digraph / assembler name, F-10 pinned mux calls + one muxer name + proof builds marked, R63-06 every proof switch marks, R63-09 sync seam, N3-GAP the gapped kind: one place sets it, a closed set reads it, no resampler call reachable for it, D85 libavformat $(${PKG_CONFIG:-pkg-config} --modversion libavformat); fixtures: SEC35-23)"

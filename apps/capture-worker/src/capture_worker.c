@@ -16,8 +16,10 @@
  *
  * WHAT A SESSION IS. For every camera of the plan one RTSP/TCP listen ingest on 127.0.0.1 whose
  * video is copied into that camera's fMP4 (D60, 2026-11-04: the plan carries up to FOUR camera
- * entries, was two); two mic inputs through one selector into ONE AAC
- * encoder whose packets go into every camera file; meters at the plan's rate; a PCM tap.
+ * entries, was two); the legacy two-role lane runs two mic inputs through one selector into ONE AAC
+ * encoder whose packets go into every camera file; since D61 (2026-11-04) the plan carries FOUR
+ * numbered microphone channels and EVERY one whose row names an outputPath is ALSO recorded on its
+ * own fMP4 through an encoder of its own (audio.c); meters at the plan's rate; a PCM tap.
  *
  * EXIT CODES. 0 = a clean stop, and only that. A fatal error (mux write, encoder, selector, file
  * create, a socket that is not a loopback stream socket) is sticky: it is logged, sent as CRASH
@@ -140,7 +142,10 @@ static int parent_is_directory(const char *path) {
 static const char *take_plan(Session *s, const JNode *plan) {
     if (!plan || plan->t != J_OBJ || plan->n != 5) return "PLAN_INVALID";
     const JNode *cams = jget(plan, "cameras"), *mics = jget(plan, "mics"), *active = jget(plan, "activeMic"), *tap = jget(plan, "pcmTapPath"), *k = jget(plan, "constants");
-    if (!cams || cams->t != J_ARR || cams->n < 1 || cams->n > NCAM || !mics || mics->t != J_ARR || mics->n < 1 || mics->n > NMIC) return "PLAN_INVALID";
+    /* D61 (2026-11-04): EXACTLY FOUR microphone lines, one per numbered channel (was 1..2 keyed by role): the
+     * shape rule is the server's (`assertRecordableSelector` names all four once) and the protocol's
+     * (min = max = 4), mirrored here as D60 mirrored the camera rule. */
+    if (!cams || cams->t != J_ARR || cams->n < 1 || cams->n > NCAM || !mics || mics->t != J_ARR || mics->n != NMIC) return "PLAN_INVALID";
     /* D60 (2026-11-04): the shape rule is the server's, mirrored: AT LEAST ONE camera, every track named ONCE,
      * NO DUPLICATE DEVICE - and one RTSP port and one output file per camera (was: exactly two, checked pairwise). */
     s->ncam = cams->n;
@@ -180,20 +185,33 @@ static const char *take_plan(Session *s, const JNode *plan) {
                 !strcmp(s->cam[a].sink.path, s->cam[b].sink.path) ||
                 (!strcmp(s->cam[a].device_id, s->cam[b].device_id) && !strcmp(s->cam[a].profile, s->cam[b].profile))) return "PLAN_INVALID";
 
+    /* D61 (2026-11-04): the microphone row is keyed by its numbered CHANNEL ("MIC-0n" -> index n-1; was the
+     * two-role lane's `role` member), and may name its OWN audio file (`outputPath`, optional until the session
+     * start wires the four outputs): a channel with one is recorded on it simultaneously with the others. */
     for (const JNode *m = mics->child; m; m = m->next) {
-        const JNode *id = jget(m, "deviceId"), *role = jget(m, "role"), *input = jget(m, "input");
-        if (m->t != J_OBJ || m->n != 3 || !id_ok(id, ID_CHARS) || !role || role->t != J_STR || !input || input->t != J_OBJ || input->n != 2) return "PLAN_INVALID";
-        int at = !strcmp(role->str, "PRIMARY") ? 0 : !strcmp(role->str, "STANDBY") ? 1 : -1;
+        const JNode *id = jget(m, "deviceId"), *chan = jget(m, "channel"), *input = jget(m, "input"), *out = jget(m, "outputPath");
+        if (m->t != J_OBJ || m->n < 3 || m->n > 4 || !id_ok(id, ID_CHARS) || !chan || chan->t != J_STR || !input || input->t != J_OBJ || input->n != 2) return "PLAN_INVALID";
+        int at = -1;
+        if (!strncmp(chan->str, "MIC-0", 5) && chan->str[5] >= '1' && chan->str[5] <= '0' + NMIC && chan->str[6] == 0) at = chan->str[5] - '1';
         const JNode *kind = jget(input, "kind"), *path = jget(input, "path");
         /* Protocol version 5: two words, any other is PLAN_INVALID. PCM_FIFO_GAPPED is the same bytes from a writer that
          * does not promise every sample (design 06 s7.2a): the ONE place that sets the predicate the audio thread reads. */
         if (at < 0 || s->mic[at].present || !kind || kind->t != J_STR || (strcmp(kind->str, "PCM_FIFO") && strcmp(kind->str, "PCM_FIFO_GAPPED")) || !is_path(path)) return "PLAN_INVALID";
+        if ((m->n == 4 && !out) || (out && !is_path(out))) return "PLAN_INVALID";   /* a fourth member that is no outputPath: strict */
         s->mic[at].gapped = !strcmp(kind->str, "PCM_FIFO_GAPPED");
         s->mic[at].present = 1;
         snprintf(s->mic[at].device_id, sizeof s->mic[at].device_id, "%s", id->str);
+        snprintf(s->mic[at].channel, sizeof s->mic[at].channel, "%s", chan->str);
         snprintf(s->mic[at].path, sizeof s->mic[at].path, "%s", path->str);
+        if (out) snprintf(s->mic[at].out_path, sizeof s->mic[at].out_path, "%s", out->str);
     }
-    if (s->mic[0].present && s->mic[1].present && (!strcmp(s->mic[0].device_id, s->mic[1].device_id) || !strcmp(s->mic[0].path, s->mic[1].path))) return "PLAN_INVALID";
+    /* D61 (2026-11-04): pairwise over the FOUR channels (was the one check of the role pair): one device, one
+     * input pipe and one output file each - the same rules `CapturePlanSchema` holds on the wire. */
+    for (int a = 0; a < NMIC; a++)
+        for (int b = a + 1; b < NMIC; b++)
+            if (s->mic[a].present && s->mic[b].present &&
+                (!strcmp(s->mic[a].device_id, s->mic[b].device_id) || !strcmp(s->mic[a].path, s->mic[b].path) ||
+                 (s->mic[a].out_path[0] && !strcmp(s->mic[a].out_path, s->mic[b].out_path)))) return "PLAN_INVALID";
     /* Protocol version 4 (D84 R-2): a role is never an identity, and one ID names one device of the plan.
      * D60 (2026-11-04): over the plan's camera count, not the compiled cap (a 2-entry plan has no cam[2]). */
     for (i = 0; i < s->ncam + NMIC; i++) {
@@ -202,7 +220,10 @@ static const char *take_plan(Session *s, const JNode *plan) {
         if (!strcmp(device, "PRIMARY") || !strcmp(device, "STANDBY")) return "PLAN_INVALID";
         for (int m = 0; i < s->ncam && m < NMIC; m++) if (s->mic[m].present && !strcmp(device, s->mic[m].device_id)) return "PLAN_INVALID";
     }
-    s->active_mic = !strcmp(active->str, "PRIMARY") ? 0 : !strcmp(active->str, "STANDBY") ? 1 : -1;
+    /* D61 (2026-11-04): `activeMic` is the TRANSCRIBED CHANNEL of AUDIO-01 (was the failover pair's start role):
+     * the plan starts on MIC-01; the legacy two-role lane may restart the worker on MIC-02 (the supervisor maps
+     * the role word). Any other word - the old role names among them - refuses the plan. */
+    s->active_mic = !strcmp(active->str, "MIC-01") ? 0 : !strcmp(active->str, "MIC-02") ? 1 : -1;
     if (s->active_mic < 0 || !s->mic[s->active_mic].present) return "PLAN_INVALID";
     if (tap->t == J_STR) snprintf(s->tap_path, sizeof s->tap_path, "%s", tap->str);
 
@@ -214,6 +235,16 @@ static const char *take_plan(Session *s, const JNode *plan) {
         if (sink_path_occupied(s->cam[i].sink.path)) return "OUTPUT_EXISTS";
         if (!parent_is_directory(s->cam[i].sink.path)) return "OUTPUT_DIR_MISSING";
         if (s->tap_path[0] && !strcmp(s->tap_path, s->cam[i].sink.path)) return "PLAN_INVALID";
+    }
+    /* D61 (2026-11-04): a channel's own audio file follows the SAME never-overwrite rule as a camera file:
+     * the bytes already there are evidence. One file per channel that names one; no path twice. */
+    for (i = 0; i < NMIC; i++) {
+        if (!s->mic[i].present || !s->mic[i].out_path[0]) continue;
+        if (sink_path_occupied(s->mic[i].out_path)) return "OUTPUT_EXISTS";
+        if (!parent_is_directory(s->mic[i].out_path)) return "OUTPUT_DIR_MISSING";
+        if (s->tap_path[0] && !strcmp(s->tap_path, s->mic[i].out_path)) return "PLAN_INVALID";
+        for (int c = 0; c < s->ncam; c++)
+            if (s->cam[c].present && !strcmp(s->cam[c].sink.path, s->mic[i].out_path)) return "PLAN_INVALID";
     }
     for (i = 0; i < NMIC; i++)
         if (s->mic[i].present && (stat(s->mic[i].path, &st) != 0 || !S_ISFIFO(st.st_mode))) return "MIC_INPUT_NOT_FIFO";
@@ -251,6 +282,8 @@ static const char *session_start(const JNode *msg) {
      * it on a copied stream (spec C.1; review R63-18) - the observed interval is measured and reported instead.
      * D60 (2026-11-04): the ports are listed per plan (`"ports":[...]`), was the fixed `port1`/`port2` pair. */
     char ports[128] = "";
+    int n_mics = 0;                           /* D61 (2026-11-04): the plan's microphone lines - four by rule, counted, not summed from two (was `mic[0].present + mic[1].present`) */
+    for (int i = 0; i < NMIC; i++) n_mics += S.mic[i].present;
     {
         size_t used = 0;
         for (int i = 0; i < S.ncam; i++)
@@ -258,7 +291,7 @@ static const char *session_start(const JNode *msg) {
     }
     logj("info", "main", "session_starting", "\"attempt\":%d,\"cameras\":%d,\"ports\":[%s],\"mics\":%d,\"tap\":%s,\"lavf\":\"%s\",\"sync_wanted\":\"%s\",\"gop_bound_ms\":%d,\"gop_frames_target\":%d,"
          "\"ingest_open_window_ms\":%d,\"mic_silence_dbfs\":%d,\"mic_silence_ms\":%d,\"mic_disconnect_ms\":%d,\"max_fragment_bytes\":%d",
-         S.attempt, S.ncam, ports, S.mic[0].present + S.mic[1].present, S.tap_path[0] ? "true" : "false", av_version_info(), sink_sync_wanted(), S.fragment_target_ms, S.gop_frames,
+         S.attempt, S.ncam, ports, n_mics, S.tap_path[0] ? "true" : "false", av_version_info(), sink_sync_wanted(), S.fragment_target_ms, S.gop_frames,
          g_listen_timeout_s * 1000, g_mic_silence_dbfs, g_mic_silence_ms, g_mic_disconnect_ms, g_max_fragment_bytes);
     for (int i = 0; i < S.ncam; i++) {      /* D60 (2026-11-04): one ingest thread per camera OF THE PLAN */
         Cam *c = &S.cam[i];
@@ -351,6 +384,9 @@ static int on_line(char *line) {
         return 0;
     }
     if (!strcmp(type->str, "SWITCH_AUDIO_SOURCE")) {
+        /* LEGACY two-role lane (D61, 2026-11-04): the command still names the TRANSCRIPTION PAIR by role word -
+         * PRIMARY is channel 1, STANDBY channel 2. Channels 3 and 4 are recorded at once and never selectable
+         * here (the failover concept died with the decision; retiring this command is a later wave). */
         const JNode *to = jget(msg, "to");
         int at = to && to->t == J_STR ? (!strcmp(to->str, "PRIMARY") ? 0 : !strcmp(to->str, "STANDBY") ? 1 : -1) : -1;
         if (msg->n != 5 || at < 0) return -1;

@@ -346,7 +346,7 @@ class Worker:
             return [r for r, (_, f) in zip(self.raw, self.frames) if f is None or f.get("v") != V or "type" not in f]
 
 
-def make_plan(d, sid, cams=2, mics=2, tap=None, names=None):      # D60 (2026-11-04): up to NCAM=4 camera entries
+def make_plan(d, sid, cams=2, mics=4, tap=None, names=None, mic_out=False):      # D61 (2026-11-04): FOUR numbered channels by default - the worker mirrors the protocol's min(4).max(4); `mic_out` gives every channel its own audio file. D60 (2026-11-04): up to NCAM=4 camera entries
     os.makedirs(os.path.join(d, "media"), exist_ok=True)
     names = tuple(names or ["cam%d" % (i + 1) for i in range(cams)])      # the ingest path of camera i (default: cam1..cam4)
     ports = list(PORTS) + [p for p in range(PORT_MIN + 1, PORT_MAX + 1) if p not in PORTS and p not in RESERVED_PORTS]   # a 4-camera plan takes four distinct ports
@@ -359,8 +359,11 @@ def make_plan(d, sid, cams=2, mics=2, tap=None, names=None):      # D60 (2026-11
     return {
         "cameras": [{"deviceId": "CAM-0%d" % (i + 1), "trackId": "VIDEO-0%d" % (i + 1), "profile": None, "ingestUrl": "rtsp://127.0.0.1:%d/%s" % (ports[i], names[i]),
                      "outputPath": os.path.join(d, "media", "VIDEO-0%d.mp4" % (i + 1))} for i in range(cams)],
-        "mics": [{"deviceId": "MIC-0%d" % (i + 1), "role": ("PRIMARY", "STANDBY")[i], "input": {"kind": "PCM_FIFO", "path": fifos[i]}} for i in range(mics)],
-        "activeMic": "PRIMARY",
+        # D61 (2026-11-04): the microphone row is keyed by its numbered CHANNEL (was the two-role lane's `role`);
+        # `outputPath` is the channel's own audio file, named only when the caller asks (the Core wires it in its wave).
+        "mics": [dict({"deviceId": "MIC-0%d" % (i + 1), "channel": "MIC-0%d" % (i + 1), "input": {"kind": "PCM_FIFO", "path": fifos[i]}},
+                      **({"outputPath": os.path.join(d, "media", "MIC-0%d.m4a" % (i + 1))} if mic_out else {})) for i in range(mics)],
+        "activeMic": "MIC-01",      # D61: the transcribed channel of AUDIO-01 (was the failover pair's start role, "PRIMARY")
         "pcmTapPath": tap,
         "constants": {"fragmentTargetMs": 2000, "minFragDurationMs": 2000, "gopFrames": 50, "meterRateHz": 20, "audioSampleRateHz": 48000, "audioChannels": 1},
     }
@@ -386,9 +389,14 @@ def build_truth(case_name, lead_us=5_000_000, frames_override=None, gop=FPS):
     return {"case": case_name, "epoch_us": c0, "frames": frames, "gop": gop, "cams": cams, "beeps": sorted(beeps)}
 
 
+def mic_out_args(plan):
+    """--out<k> for EVERY microphone line of the plan (D61, 2026-11-04: four numbered channels; was out1/out2)."""
+    return sum([["--out%d" % (i + 1), m["input"]["path"]] for i, m in enumerate(plan["mics"])], [])
+
+
 def start_sources(d, truth, plan, procs, mic_seconds, mic_extra=()):
     """The fake mics first (they define T0), then the cameras. Each is a process of its own."""
-    mic = spawn([MIC, "--out1", plan["mics"][0]["input"]["path"]] + (["--out2", plan["mics"][1]["input"]["path"]] if len(plan["mics"]) > 1 else []) +
+    mic = spawn([MIC] + mic_out_args(plan) +
                 ["--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "%.3f" % mic_seconds, "--beep-at-us", ",".join(str(b) for b in truth["beeps"])] + list(mic_extra),
                 stdin=subprocess.DEVNULL, stderr=open(os.path.join(d, "mic.err"), "w"))
     procs.append(mic)
@@ -978,7 +986,7 @@ def cmd_plan4(a):
     allp = list(PORTS) + sorted(extra)
     names = ("cam1", "cam2", "cam3", "cam4")
 
-    def plan4(cams=None, mics=2):
+    def plan4(cams=None, mics=4):      # D61 (2026-11-04): the worker now takes exactly FOUR microphone lines
         p = make_plan(d, sid, cams=4, mics=mics, names=names)
         for c, port, nm in zip(p["cameras"], allp, names):
             c.update(ingestUrl="rtsp://127.0.0.1:%d/%s" % (port, nm))
@@ -1056,6 +1064,96 @@ def cmd_plan4(a):
         ok &= rc == 0 and not w.not_frames() and not any(os.path.exists(c["outputPath"]) for c in plan["cameras"])
     finally:
         w.kill()
+    time.sleep(0.3)
+    res["leftovers"] = leftovers()
+    ok &= not res["leftovers"]["processes"] and not res["leftovers"]["listeners"]
+    finish(res, ok, a.expect_fail, d)
+
+
+# ------------------------------------------------------------------ four-channel audio plan (D61, 2026-11-04)
+def cmd_plan4mics(a):
+    """D61 (2026-11-04): the worker takes a plan of FOUR numbered microphone channels - all recorded at once,
+    one file and one encoder per channel that names an outputPath - and refuses a doubled channel, a doubled
+    device, THREE lines, FIVE lines and the old role member. The fake mics drive the four pipes; no camera is
+    pushed (the session ends with the close of standard input, far before the no-camera bound)."""
+    d = rundir(a.name, fresh=True)
+    res, ok = {"check": "D61 four-channel audio plan", "run": a.name}, True
+    sid = "S-M3W-PLAN4M"
+    ports_free_or_exit()
+    # 1. The four-channel plan is taken: ACK ok, FIVE encoders (the legacy lane's plus one per channel), the
+    #    four channel files land, TELEMETRY carries one level per channel, and the end is clean.
+    plan = make_plan(d, sid, mic_out=True)
+    procs = []
+    w = Worker(d, heartbeat_ms=200, manifest=False)
+    try:
+        w.wait(lambda f: f.get("type") == "HELLO", 5, "HELLO")
+        _, f = w.ack(w.command(sid, "START", attempt=1, plan=plan))
+        res["start_ack"] = f
+        ok &= f["ok"] is True
+        mic = spawn([MIC] + mic_out_args(plan) + ["--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "12"],
+                    stdin=subprocess.DEVNULL, stderr=open(os.path.join(d, "mic.err"), "w"))
+        procs.append(mic)
+        started, starting = [], []
+        t = time.monotonic()
+        while time.monotonic() - t < 15:
+            logs = worker_log(d)
+            started = [l for l in logs if l["message"] == "audio_started"]
+            starting = [l for l in logs if l["message"] == "session_starting"]
+            if started:
+                break
+            time.sleep(0.1)
+        files = [m["outputPath"] for m in plan["mics"]]
+        t = time.monotonic()
+        while time.monotonic() - t < 15 and not all(os.path.exists(p) and os.path.getsize(p) > 0 for p in files):
+            time.sleep(0.2)
+        tel = [fr for _, fr in w.of("TELEMETRY") if fr.get("levels")]
+        levels = tel[-1]["levels"] if tel else []
+        res["audio_started"] = started[0] if started else None
+        res["session_starting_mics"] = starting[0].get("mics") if starting else None
+        res["channel_files"] = {os.path.basename(p): (os.path.getsize(p) if os.path.exists(p) else None) for p in files}
+        res["telemetry_levels"] = [(lv.get("deviceId"), lv.get("role")) for lv in levels]
+        ok &= bool(started) and started[0].get("encoders") == 5 and bool(starting) and starting[0].get("mics") == 4 \
+            and all(os.path.exists(p) and os.path.getsize(p) > 0 for p in files) \
+            and [lv.get("deviceId") for lv in levels] == ["MIC-01", "MIC-02", "MIC-03", "MIC-04"] \
+            and [lv.get("role") for lv in levels] == ["PRIMARY", "STANDBY", "STANDBY", "STANDBY"]     # the legacy two-role lane's words (D61)
+        w.p.stdin.close()
+        res["exit_after_input_ended"] = rc = w.exit(20)
+        ok &= rc == 0 and not w.not_frames()
+    finally:
+        killall(procs)
+        w.kill()
+    # 2. Refusals of the channel-keyed reader: doubled channel, doubled device, THREE lines, FIVE lines, and the
+    #    old role member. Each is PLAN_INVALID at the START; nothing is created.
+    bad = {}
+    for label, change in (
+            ("doubled channel", lambda p: p["mics"][2].update(channel="MIC-01")),
+            ("doubled device", lambda p: p["mics"][1].update(deviceId="MIC-01")),
+            ("three mics", lambda p: p["mics"].pop()),
+            ("five mics", lambda p: p["mics"].append(dict(p["mics"][3], deviceId="MIC-09",
+                                                          input=dict(p["mics"][3]["input"], path=os.path.join(d, "mic9.pcm")),
+                                                          outputPath=os.path.join(d, "media", "MIC-09.m4a")))),
+            ("old role member", lambda p: (p["mics"][0].update(role="PRIMARY"), p["mics"][0].pop("channel")))):
+        wb = Worker(rundir(a.name + "/bad"), manifest=False)
+        try:
+            wb.wait(lambda f3: f3.get("type") == "HELLO", 5, "HELLO")
+            p2 = make_plan(d, sid, mic_out=True)
+            change(p2)
+            _, f3 = wb.ack(wb.command(sid, "START", attempt=1, plan=p2))
+            bad[label] = [f3["ok"], f3.get("code")]
+        finally:
+            wb.kill()
+    res["refused_plans"] = bad
+    ok &= all(v == [False, "PLAN_INVALID"] for v in bad.values())
+    # 3. CONTROL of the never-overwrite rule on the new files: the SAME plan again is OUTPUT_EXISTS (the four
+    #    channel files of part 1 are evidence; a restarted worker never writes into them).
+    wb = Worker(rundir(a.name + "/replay"), manifest=False)
+    try:
+        wb.wait(lambda f4: f4.get("type") == "HELLO", 5, "HELLO")
+        _, f4 = wb.ack(wb.command(sid, "START", attempt=1, plan=make_plan(d, sid, mic_out=True)))
+        res["output_exists_replay"] = [f4["ok"], f4.get("code")]
+        ok &= f4["ok"] is False and f4.get("code") == "OUTPUT_EXISTS"
+    finally:
+        wb.kill()
     time.sleep(0.3)
     res["leftovers"] = leftovers()
     ok &= not res["leftovers"]["processes"] and not res["leftovers"]["listeners"]
@@ -1186,7 +1284,7 @@ def cmd_udp(a):
         snaps.append(["listening", sockets_of(pid)])
         mic = None
         if w:
-            mic = spawn([MIC, "--out1", plan["mics"][0]["input"]["path"], "--out2", plan["mics"][1]["input"]["path"], "--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "14"],
+            mic = spawn([MIC] + mic_out_args(plan) + ["--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "14"],
                         stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             procs.append(mic)
         push = lambda url, transport: spawn([FF, "-hide_banner", "-loglevel", "error", "-re", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25", "-t", "7", "-c:v", "libx264", "-preset", "ultrafast",
@@ -1346,7 +1444,7 @@ def cmd_nocam(a):
         _, f = w.ack(w.command(sid, "START", attempt=1, plan=plan))
         assert f["ok"], f
         truth = build_truth("zero", lead_us=2_000_000, frames_override=(450, 450))
-        mic = spawn([MIC, "--out1", plan["mics"][0]["input"]["path"], "--out2", plan["mics"][1]["input"]["path"], "--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "20",
+        mic = spawn([MIC] + mic_out_args(plan) + ["--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "20",
                      "--beep-at-us", ",".join(str(b) for b in truth["beeps"])], stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         procs.append(mic)
         if a.mode == "one":
@@ -1642,7 +1740,7 @@ def cmd_sup(a):
             plan = make_plan(d, "S-M3SUP-NOCAM")
             drv.say(cmd="start", sessionId="S-M3SUP-NOCAM", plan=plan)
             drv.wait(lambda e: e.get("event") == "started", 15, "started")
-            mic = spawn([MIC, "--out1", plan["mics"][0]["input"]["path"], "--out2", plan["mics"][1]["input"]["path"], "--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "20"],
+            mic = spawn([MIC] + mic_out_args(plan) + ["--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "20"],
                         stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             procs.append(mic)
             t = time.monotonic()
@@ -1674,7 +1772,7 @@ def cmd_sup(a):
             if e["event"] == "started":
                 # The worker was accepted (the control runs the release build): the session is ended, nothing else is judged.
                 res["status_after_start"] = drv.status()
-                mic = spawn([MIC, "--out1", plan["mics"][0]["input"]["path"], "--out2", plan["mics"][1]["input"]["path"], "--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "20"],
+                mic = spawn([MIC] + mic_out_args(plan) + ["--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "20"],
                             stdin=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 procs.append(mic)
                 drv.say(cmd="stop", sessionId=sid, reason="CRASH")
@@ -1780,7 +1878,7 @@ def cmd_srcam(a):
     truth["case"] = "srcam-%s" % a.mode
 
     def sources(d_, truth_, plan, procs, mic_seconds, mic_extra=()):
-        mic = spawn([MIC, "--out1", plan["mics"][0]["input"]["path"], "--out2", plan["mics"][1]["input"]["path"], "--manifest", os.path.join(d_, "mic.jsonl"),
+        mic = spawn([MIC] + mic_out_args(plan) + ["--manifest", os.path.join(d_, "mic.jsonl"),
                      "--seconds", "%.3f" % mic_seconds, "--beep-at-us", ",".join(str(b) for b in truth_["beeps"])] + list(mic_extra),
                     stdin=subprocess.DEVNULL, stderr=open(os.path.join(d_, "mic.err"), "w"))
         procs.append(mic)
@@ -2417,6 +2515,7 @@ def main():
     case("h4neg", cmd_h4neg)
     case("proto", cmd_proto)
     case("plan4", cmd_plan4)          # D60 (2026-11-04): the four-camera plan of the widened reader
+    case("plan4mics", cmd_plan4mics)  # D61 (2026-11-04): the four-channel audio plan, one file and encoder each
     case("camstop", cmd_camstop)
     case("fatal", cmd_fatal, mode={"choices": ["rmdir", "planted", "exists", "clean"], "required": True})
     case("udp", cmd_udp)

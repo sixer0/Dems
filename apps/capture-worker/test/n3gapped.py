@@ -42,8 +42,10 @@ G, F = "PCM_FIFO_GAPPED", "PCM_FIFO"
 PRODUCT_BOUND_MS = 40.0                 # av_analyse.PRODUCT_MS: the bound of the offset between sound and picture
 LONG_ID = "MIC-" + "L" * 121 + "-01"    # 128 characters: the longest device ID of the protocol (telemetry and record must fit)
 LONG_ID2 = "MIC-" + "L" * 121 + "-02"
+# D61 (2026-11-04): the plan carries FOUR channels - one longest ID each (the level list must hold four of them).
+LONG_IDS = ["MIC-" + "L" * 121 + "-0%d" % (i + 1) for i in range(4)]
 
-# kinds: the two microphones' input kinds. args: the stand-in's pattern (seconds of its own clock). frames: the cameras' length
+# kinds: the microphone input kinds, CYCLED over the plan's FOUR rows (D61, 2026-11-04; was the pair). args: the stand-in's pattern (seconds of its own clock). frames: the cameras' length
 # (50 per second, after a 5 s lead). outlive: the writer runs until the worker is gone (a whole pipe to the end).
 MODES = {
     "measured": {"kinds": (G, G), "args": ["--skip-every", "10"], "frames": 750, "switch": True,
@@ -75,9 +77,9 @@ def plan_with(M, mode):
     def make_plan(d, sid, *args, **kw):
         plan = original(d, sid, *args, **kw)
         for i, mic in enumerate(plan["mics"]):
-            mic["input"]["kind"] = mode["kinds"][i]
+            mic["input"]["kind"] = mode["kinds"][i % len(mode["kinds"])]      # D61: cycled over the four rows
             if mode.get("long_ids"):
-                mic["deviceId"] = (LONG_ID, LONG_ID2)[i]
+                mic["deviceId"] = LONG_IDS[i]
         return plan
     return original, make_plan
 
@@ -88,8 +90,8 @@ def sources_with(M, mode, d):
         # the mode lets it outlive the worker (a whole pipe to the end).
         cams_end_s = truth["epoch_us"] / 1e6 - time.time() + max(c["frames"] for c in truth["cams"]) / M.FPS
         seconds = cams_end_s + 30 if mode.get("outlive") else cams_end_s - 1.0
-        mic = M.spawn([os.path.join(M.BUILD, "gapped_mic"), "--out1", plan["mics"][0]["input"]["path"], "--out2", plan["mics"][1]["input"]["path"],
-                       "--manifest", os.path.join(d_, "gapped.jsonl"), "--seconds", "%.3f" % seconds] + list(mode["args"]),
+        mic = M.spawn([os.path.join(M.BUILD, "gapped_mic")] + M.mic_out_args(plan) +      # D61 (2026-11-04): all FOUR channels are fed
+                      ["--manifest", os.path.join(d_, "gapped.jsonl"), "--seconds", "%.3f" % seconds] + list(mode["args"]),
                       stdin=subprocess.DEVNULL, stderr=open(os.path.join(d_, "mic.err"), "w"))
         procs.append(mic)
         cps = []

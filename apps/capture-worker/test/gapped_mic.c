@@ -13,7 +13,9 @@
  * every zero in the worker's PCM tap is a zero the worker made, and every other value names its device sample
  * (the tap is s16 at x * 32767, which these values reach exactly).
  *
- *   --out1 F [--out2 F] --manifest M --seconds S   the pipes, the manifest, and how long it writes (then it ends)
+ *   --out1 F [--out2 F] [--out3 F] [--out4 F] --manifest M --seconds S   the pipes, the manifest, and how long it writes (then it ends)
+ *   D61 (2026-11-04): the stand-in feeds all FOUR numbered channels of a plan; the pattern, the manifest and the
+ *   span accounting stay the first channel's (the gapped checks read channels 1 and 2; 3 and 4 mirror 2).
  *   --skip-every K      leave out packet k when k % K == K - 1 (K = 10: the measured pattern); 0: a whole pipe
  *   --start1-after S / --start2-after S   that output writes nothing before second S (a writer that starts late)
  *   --stop-at S --resume-at S             no output writes between these seconds (a writer that stops)
@@ -56,13 +58,15 @@ static int64_t spans[MAX_SPANS][2];
 static int n_spans;
 
 int main(int argc, char **argv) {
-    const char *out[2] = { NULL, NULL }, *manifest_path = NULL;
-    double seconds = 10, start_after[2] = { 0, 0 }, stop_at = -1, resume_at = -1, cycle_from = -1, on_ms = 0, off_ms = 0;
+    const char *out[4] = { NULL, NULL, NULL, NULL }, *manifest_path = NULL;   /* D61: four channels */
+    double seconds = 10, start_after[4] = { 0, 0, 0, 0 }, stop_at = -1, resume_at = -1, cycle_from = -1, on_ms = 0, off_ms = 0;
     long long skip_every = 0, cycles = 0, nan_at = -1;
     for (int i = 1; i + 1 < argc; i += 2) {
         const char *k = argv[i], *v = argv[i + 1];
         if (!strcmp(k, "--out1")) out[0] = v;
         else if (!strcmp(k, "--out2")) out[1] = v;
+        else if (!strcmp(k, "--out3")) out[2] = v;                                   /* D61 (2026-11-04) */
+        else if (!strcmp(k, "--out4")) out[3] = v;
         else if (!strcmp(k, "--manifest")) manifest_path = v;
         else if (!strcmp(k, "--seconds")) seconds = atof(v);
         else if (!strcmp(k, "--skip-every")) skip_every = atoll(v);
@@ -78,20 +82,20 @@ int main(int argc, char **argv) {
         else { fprintf(stderr, "GAPPED_MIC unknown argument %s\n", k); return 2; }
     }
     if (!out[0] || !manifest_path || seconds <= 0 || skip_every < 0 || skip_every == 1) {
-        fprintf(stderr, "usage: gapped_mic --out1 <fifo> [--out2 <fifo>] --manifest <file.jsonl> [--seconds S] [--skip-every K] [--start1-after S] [--start2-after S] [--stop-at S --resume-at S] [--cycles N --cycle-from S --on-ms A --off-ms B] [--nan-at J]\n");
+        fprintf(stderr, "usage: gapped_mic --out1 <fifo> [--out2 <fifo>] [--out3 <fifo>] [--out4 <fifo>] --manifest <file.jsonl> [--seconds S] [--skip-every K] [--start1-after S] [--start2-after S] [--stop-at S --resume-at S] [--cycles N --cycle-from S --on-ms A --off-ms B] [--nan-at J]\n");
         return 2;
     }
     signal(SIGPIPE, SIG_IGN);
     FILE *mf = fopen(manifest_path, "w");
     if (!mf) return 3;
-    int fd[2] = { -1, -1 };
-    for (int o = 0; o < 2; o++)
+    int fd[4] = { -1, -1, -1, -1 };   /* D61 (2026-11-04): one per numbered channel */
+    for (int o = 0; o < 4; o++)
         if (out[o] && (fd[o] = open(out[o], O_WRONLY)) < 0) { fprintf(stderr, "GAPPED_MIC open %s: %s\n", out[o], strerror(errno)); return 4; }
     int64_t e0_mono = now_us(CLOCK_MONOTONIC), e0_real = now_us(CLOCK_REALTIME);
     fprintf(mf, "{\"type\":\"mic\",\"pid\":%d,\"e0_real_us\":%lld,\"sr\":%d,\"packet\":%d,\"skip_every\":%lld,\"start_after\":[%.3f,%.3f],\"stop_at\":%.3f,\"resume_at\":%.3f,\"cycles\":%lld,\"cycle_from\":%.3f,\"on_ms\":%.1f,\"off_ms\":%.1f,\"nan_at\":%lld}\n",
             (int)getpid(), (long long)e0_real, SR, PACKET, skip_every, start_after[0], start_after[1], stop_at, resume_at, cycles, cycle_from, on_ms, off_ms, nan_at);
     fflush(mf);
-    int64_t written[2] = { 0, 0 }, packets = (int64_t)(seconds * SR / PACKET), left_out = 0;
+    int64_t written[4] = { 0, 0, 0, 0 }, packets = (int64_t)(seconds * SR / PACKET), left_out = 0;
     float buf[PACKET];
     for (int64_t k = 0; k < packets; k++) {
         int64_t due = e0_mono + (k + 1) * PACKET * US / SR;
@@ -107,7 +111,7 @@ int main(int argc, char **argv) {
             if (in < cycles * period && fmod(in, period) >= on_ms) gone = 1;
         }
         if (gone) { left_out++; continue; }
-        for (int o = 0; o < 2; o++) {
+        for (int o = 0; o < 4; o++) {   /* D61: channels 3 and 4 mirror channel 2's sign; the manifest and the spans stay the first channel's */
             if (fd[o] < 0 || at < start_after[o]) continue;
             for (int i = 0; i < PACKET; i++) {
                 int64_t j = k * PACKET + i;
@@ -123,8 +127,8 @@ int main(int argc, char **argv) {
         }
     }
 done:
-    for (int o = 0; o < 2; o++) if (fd[o] >= 0) close(fd[o]);
-    fprintf(mf, "{\"type\":\"end\",\"written\":[%lld,%lld],\"packets\":%lld,\"left_out\":%lld,\"spans1\":[", (long long)written[0], (long long)written[1], (long long)packets, (long long)left_out);
+    for (int o = 0; o < 4; o++) if (fd[o] >= 0) close(fd[o]);
+    fprintf(mf, "{\"type\":\"end\",\"written\":[%lld,%lld,%lld,%lld],\"packets\":%lld,\"left_out\":%lld,\"spans1\":[", (long long)written[0], (long long)written[1], (long long)written[2], (long long)written[3], (long long)packets, (long long)left_out);   /* D61 (2026-11-04): one count per numbered channel */
     for (int s = 0; s < n_spans; s++) fprintf(mf, "%s[%lld,%lld]", s ? "," : "", (long long)spans[s][0], (long long)spans[s][1]);
     fprintf(mf, "]}\n");
     fclose(mf);

@@ -11,6 +11,14 @@ audio.c	open	call	plan->path, O_RDONLY|O_NONBLOCK|O_CLOEXEC
 audio.c	open	call	s->tap_path, O_WRONLY|O_CREAT|O_EXCL|O_APPEND|O_CLOEXEC, 0600
 audio.c	open	call	s->tap_path, O_WRONLY|O_NONBLOCK|O_CLOEXEC
 audio.c	open	call	s->tap_path, O_WRONLY|O_NONBLOCK|O_CLOEXEC
+# D61 (2026-11-04): the channel files of the microphone plane (audio.c, mic_rec_open): one muxer and one option set
+# per recorded channel - the same pinned forms as the camera files; the encoder count moved from one to one-per-file
+# (check.sh H-4 updated with the decision).
+audio.c	av_dict_set	call	"flush_packets" = "1"
+audio.c	av_dict_set	call	"movflags" = MUX_MOVFLAGS
+audio.c	av_dict_set_int	call	"min_frag_duration" = *
+audio.c	avformat_alloc_output_context2	call	&m->out, NULL, "mp4", NULL
+audio.c	avformat_write_header	call	*
 capture_worker.c	open	call	"/dev/null", fd==0?O_RDONLY:O_WRONLY
 ingest.c	av_dict_parse_string	call	&o, g_mux_extra, "=", ":", 0
 ingest.c	av_dict_set	call	"flush_packets" = "1"

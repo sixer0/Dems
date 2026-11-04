@@ -11,9 +11,11 @@
  *                     checkpoint per durable fragment.
  *   ingest.c          one RTSP/TCP listen ingest per camera, video stream copy, PRFT anchoring,
  *                     the fMP4 muxer of the camera file.
- *   audio.c           THE filtering thread: two mic inputs -> selector -> ONE AAC encoder -> every
- *                     camera file, meters, PCM tap, the operator's switch and its interval
- *                     records. The only unit that names libavfilter.
+ *   audio.c           THE filtering thread: FOUR mic inputs (D61, 2026-11-04; was two): the legacy
+ *                     two-role lane still runs two inputs through one selector into ONE AAC encoder
+ *                     into every camera file, and every channel that names an outputPath is ALSO
+ *                     recorded on its own file through an encoder of its own. Meters, PCM tap, the
+ *                     operator's switch and its interval records. The only unit that names libavfilter.
  *   micwatch.c        the microphone warning raiser (silence, disconnect, rate limit): pure.
  *   anchor.c          video anchoring arithmetic and the camera-clock rules: pure.
  *   announce.c        the announced address of an ingest: the expected message and its whole-message
@@ -92,9 +94,15 @@
 #define AAC_FRAME 1024
 /* D60 (2026-11-04): the plan carries up to FOUR camera entries (VIDEO-01..VIDEO-04), was two. NCAM is the
  * compiled sanity cap only - the number a session records is the plan's (`Session.ncam`), and every loop
- * below runs over that. The mics stay two (the roles PRIMARY/STANDBY are the protocol's). */
+ * below runs over that. */
 #define NCAM 4
-#define NMIC 2              /* index 0 = role PRIMARY, index 1 = role STANDBY */
+/* D61 (2026-11-04): the plan carries FOUR numbered microphone channels at once (MIC-01..MIC-04), was the
+ * two-role PRIMARY/STANDBY pair; the failover concept died with the decision. A mic's INDEX is its channel
+ * number minus one (channel "MIC-0n" -> index n-1); NMIC is both cap and the plan's count (the protocol
+ * holds min = max = 4, mirroring `assertRecordableSelector`). The legacy two-role lane (the camera files'
+ * audio track, `SWITCH_AUDIO_SOURCE`) still spans indices 0 and 1 only. */
+#define NMIC 4
+#define NLANE 2               /* D61 (2026-11-04): the two-role lane's width: channels MIC-01 and MIC-02 feed the selector */
 #define US 1000000LL
 #define ID_CHARS 128
 #define PATH_CHARS 1024
@@ -305,6 +313,12 @@ typedef struct Mic {
     int gapped;
     char device_id[ID_CHARS + 1];
     char path[PATH_CHARS + 1];
+    /* D61 (2026-11-04): the numbered CHANNEL of the plan row ("MIC-0n", = index n+1) - the identity the wire
+     * carries since the decision replaced the role member. */
+    char channel[8];
+    /* D61 (2026-11-04): this channel's own audio file, "" when the plan names none: a channel with one is
+     * RECORDED SIMULTANEOUSLY with the others (one fMP4 per channel, its own encoder - audio.c). */
+    char out_path[PATH_CHARS + 1];
 } Mic;
 
 typedef struct Session {
@@ -313,7 +327,7 @@ typedef struct Session {
     int ncam;                       /* D60 (2026-11-04): the camera entries of THIS plan (1..NCAM); every per-session loop runs over this, never over the cap */
     Cam cam[NCAM];
     Mic mic[NMIC];
-    int active_mic;                 /* index of the role that feeds the encoder at the start */
+    int active_mic;                 /* D61 (2026-11-04): the TRANSCRIBED CHANNEL's index (the plan sends MIC-01 -> 0; the legacy lane may restart on MIC-02 -> 1). Was the failover pair's start role. */
     char tap_path[PATH_CHARS + 1];  /* "" when the plan has no tap */
     int fragment_target_ms, min_frag_duration_ms, gop_frames, meter_rate_hz;
     AVCodecContext *enc;            /* the ONE AAC encoder (H-4) */
