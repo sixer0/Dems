@@ -83,6 +83,14 @@ const CAMERA_SCRIPT = join(WORKER_APP, 'test-fixtures/rtsp_test_camera.py');
 const LISTENER_SCRIPT = join(WORKER_APP, 'test-fixtures/row046_adapter_listener.py');
 const OUT = join(REPOSITORY, '.cache/row046-camera-adapter');
 
+// HOST-25 ruling (2026-11-04, PT GSP): this bench carries the PRODUCTION loopback guard — the nft
+// table dems_loopback rejects loopback tcp 8554-8564 for every uid but the Core's (997), and the
+// guard is exactly what the host profile promises. The T-2 family below pushes its doubles INTO
+// that range (the locator read answers on 8557, the relay ingests on 8559-8563) and the range is
+// PINNED twice over — the worker's parse_listen_url (SEC35-23) and RELAY_INGEST_PORT_MIN/MAX — so
+// the ports cannot move. The firewall stands; the family is ASKED only, like first-full-session.
+const ASKED = process.env.DEMS_CAMERA_ADAPTER_OPEN === '1';
+
 const HOST = '127.0.0.1';
 // Row T3 (review 060c T-01; C61 (4)): THIS FILE'S OWN PORTS. The ONVIF device keeps 8557 and is its only user now
 // (`stream-test.db.test.ts` moved to 8575, `minted-code.db.test.ts` to 8576, `adopted-camera-test.db.test.ts` is on
@@ -543,7 +551,7 @@ async function recordedThroughTheWorker(codec: 'h264' | 'hevc', profile: string,
   return { result, listing, pid, camera: cameraFacts, openedInMs, closedInMs };
 }
 
-describe('T-2: a camera through the adapter, the real relay and the real worker', () => {
+describe.skipIf(!ASKED)('T-2: a camera through the adapter, the real relay and the real worker', () => {
   it('H.264: the open resolves, video reaches the worker at the session\'s address as a decodable file; one audited reveal; nothing of the start message in the process listing', async () => {
     const run = await underHeavyHostLock(() => recordedThroughTheWorker('h264', 'H264_1080P', SESSION_H264));
     console.info(`[row46] h264: opened in ${run.openedInMs} ms, closed in ${run.closedInMs} ms, ${JSON.stringify({ ...run.result, run_folder: undefined })}`);
@@ -578,7 +586,7 @@ describe('T-2: a camera through the adapter, the real relay and the real worker'
   }, 180_000 + HEAVY_LOCK_WAIT_S * 1_000);
 });
 
-describe('T-2: refusals, the close and the end of a relay, against the sink', () => {
+describe.skipIf(!ASKED)('T-2: refusals, the close and the end of a relay, against the sink', () => {
   let sink: Sink;
   let camera: TestCamera;
   /** Row T3: the block holds the heavy-host lock while its sink (8563) and its camera (8570) stand. */
@@ -798,7 +806,7 @@ describe('T-2: refusals, the close and the end of a relay, against the sink', ()
 // BEFORE this row the reader dropped both lines: the first word the Core had of such a loss was the relay's end, and in
 // this scenario - the camera comes back - there was NEVER one: 0 faults, 0 rows. With a camera that stays away the end
 // came 62.14 s after the loss line (implementation/043, section 5: the six waits sum to 62 s).
-describe('finding F3-01 (T-2): a camera lost INSIDE a session - the real relay, the test camera\'s drop switch, the real worker, the camera watch and the fence\'s fault sink on the real engine', () => {
+describe.skipIf(!ASKED)('finding F3-01 (T-2): a camera lost INSIDE a session - the real relay, the test camera\'s drop switch, the real worker, the camera watch and the fence\'s fault sink on the real engine', () => {
   it('the fault of THAT camera is raised by the relay\'s first line of the loss and cleared at its re-open; the relay is not ended, the worker keeps its ONE connection and refuses nothing, the file decodes', async () => {
     const run = await underHeavyHostLock(async () => {
       const app = core.app;
@@ -945,7 +953,7 @@ describe('finding F3-01 (T-2): a camera lost INSIDE a session - the real relay, 
   }, 240_000 + HEAVY_LOCK_WAIT_S * 1_000);
 });
 
-describe('T-2: nothing of a credential, a locator or an ingest address is written anywhere', () => {
+describe.skipIf(!ASKED)('T-2: nothing of a credential, a locator or an ingest address is written anywhere', () => {
   it('the log sink, the persistent error log, the audit trail, every error, report, note and end of this file: 0 occurrences; no relay of this file is left', async () => {
     expect(needles.size).toBeGreaterThan(40);
     /** THE SWEEP: every place read anew, and how many of the texts stand in each. The control below uses THIS function. */
