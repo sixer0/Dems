@@ -16,7 +16,7 @@ import type { Pool } from 'pg';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
 import { fakeLauncher, flush, type FakeLauncher } from '../../../../test/support/capture';
-import { TEST_CAPTURE_HOST, provideTestCaptureHost, testHostPrograms } from '../../../../test/support/capture-host';
+import { TEST_CAPTURE_HOST, provideTestCaptureHost, testHostPrograms, testListingStandIns } from '../../../../test/support/capture-host';
 import { captureLog, unitTestConfig, type CapturedLog } from '../../../../test/support/config';
 import { FIXED_NOW, engineApp, type EngineApp } from '../../../../test/support/engine';
 import { WEB_ORIGIN, cookieValue, webSignIn } from '../../../../test/support/identity';
@@ -649,7 +649,7 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
    * `startAt`: where the manual clock of this process start stands - a RESTART on a clone whose earlier Core moved its clock
    * names a later instant (a server clock never runs behind the stored state).
    */
-  async function coreOn(target: Clone, operation: Operation, startAt: number = FIXED_NOW + 60_000, hostFacts: CaptureBootHostFacts | null = TEST_CAPTURE_HOST, config: Partial<ConfigInput> = CONFIG_OF[operation]): Promise<Core> {
+  async function coreOn(target: Clone, operation: Operation, startAt: number = FIXED_NOW + 60_000, hostFacts: CaptureBootHostFacts | null = { ...TEST_CAPTURE_HOST, systemListingPrograms: testListingStandIns(db.run.dataDir) }, /* bench-port seam 2026-11-04: the faked darwin host needs the listing pair as stand-ins */ config: Partial<ConfigInput> = CONFIG_OF[operation]): Promise<Core> {
     const owner = target.ownerPool();
     const host = await engineApp(target, db.run.dataDir, { startAt, logLevel: 'info', config });
     // Task 4 row 85 (C46): the explicit TEST host, through the entry point's door; null hands NOTHING in (the case of the mount as the capture unit makes it).

@@ -47,9 +47,26 @@ export const TEST_CAPTURE_HOST: CaptureBootHostFacts = Object.freeze({
     command.args.length === 0 ? ({ outcome: 'RAN', exitCode: RELAY_PAST_LIBRARY_STATEMENT, output: '' } as const) : ({ outcome: 'NOT_STARTED' } as const),
 });
 
+/** The file names of the two microphone-listing stand-ins (bench-port seam, 2026-11-04): a test
+ * host that fakes `darwin` on a Linux machine has none of the system programs of row N13 on disk,
+ * so the fixture hands in two stand-ins of its own — same rule, nothing started. */
+export const TEST_LISTING_NAMES = Object.freeze(['test-listing-usb', 'test-listing-audio']);
+
+/** Writes the two microphone-listing stand-ins (row N13's pair) into an existing private directory
+ * of the suite and returns their paths — the bench-port seam of 2026-11-04: a test host that fakes
+ * `darwin` on a Linux machine has none of the system programs on disk; same rule, nothing started. */
+export function testListingStandIns(directory: string): readonly string[] {
+  return TEST_LISTING_NAMES.map((name) => {
+    const path = `${directory}/${name}`;
+    writeFileSync(path, `#!/bin/sh\nexit 0\n`, { mode: 0o700 });
+    chmodSync(path, 0o700);
+    return path;
+  });
+}
+
 /** Hands the test host to the boot checks of `app`: after `app.ready()`, before `app.readiness.boot()`. */
 export function provideTestCaptureHost(app: FastifyInstance): void {
-  captureBootControl(app).provideHost(TEST_CAPTURE_HOST);
+  captureBootControl(app).provideHost({ ...TEST_CAPTURE_HOST, systemListingPrograms: testListingStandIns(app.config.dataDir) });
 }
 
 /** The file names of the two stand-ins inside a suite's data directory. */

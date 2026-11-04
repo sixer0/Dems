@@ -145,7 +145,14 @@ export { captureHostOfProcess, captureHostRunnerOf, coreFileLimitOf, type OwnPro
  * knows, and the runner of the questions. The two program paths are NOT here: they are the
  * configuration's (`captureRelayPath`, `captureGuardPath`) and the mount adds them.
  */
-export type CaptureBootHostFacts = Omit<CaptureHostDeps, 'relayProgram' | 'guardProgram'>;
+// Bench-port seam (2026-11-04, Linux): the two system listing programs are FIXED for the product
+// (row N13: "no key of the configuration") — but a TEST host that fakes `darwin` on a Linux machine
+// has no /System binaries to hold to the rule, and REAL_PRODUCTION boots refused CAPTURE_HOST_
+// LISTING_PROGRAM_UNUSABLE. The facts object may carry the pair (test support and the lane launcher
+// already hand in their own facts through `provideHost`); absent, the constant stands.
+export type CaptureBootHostFacts = Omit<CaptureHostDeps, 'relayProgram' | 'guardProgram'> & {
+  readonly systemListingPrograms?: readonly string[];
+};
 
 /**
  * A HOST THAT CANNOT BE SEEN (row 85, C46): what the boot step asks when no facts were handed in.
@@ -669,8 +676,9 @@ export function mountCaptureBootChecks(app: FastifyInstance, mount: CaptureBootM
       relayProgram: captureRelayPath,
       run: facts.run,
       storedInterface: () => (mount.storedCameraInterface ?? (() => storedCameraInterface(app)))(),
-      // Row NB (design 06 row N13): held to the path rule on `darwin` only (`program-checks.ts` decides by the platform); never started.
-      systemListingPrograms: SYSTEM_LISTING_PROGRAMS,
+      // Row NB (design 06 row N13): held to the path rule on `darwin` only (`program-checks.ts` decides). Bench-port
+      // seam 2026-11-04: the handed-in facts may carry the pair (a test host fakes `darwin` without macOS binaries).
+      systemListingPrograms: facts.systemListingPrograms ?? SYSTEM_LISTING_PROGRAMS,
     },
   });
   const handshake = (): Promise<WorkerHandshake> => {

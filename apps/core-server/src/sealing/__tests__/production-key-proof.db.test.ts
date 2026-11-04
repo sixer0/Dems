@@ -330,7 +330,9 @@ describe('row 208: the store of evidence:production-key against the real boot fu
       expect([(cause as CaptureBootError).code, (cause as CaptureBootError).reason]).toEqual(['CAPTURE_DEVELOPMENT_SIGNING_KEY_IN_PRODUCTION', null]);
       expect((cause as CaptureBootError).code).toBe(CaptureBootRefusal.DEVELOPMENT_SIGNING_KEY);
       // The refusal is the ONE line of the boot checks: nothing after 4b ran (no host line, no program line, no pass), and the fence had passed.
-      expect(booted.codes.filter((code) => code !== 'CAPTURE_FENCE_PASSED' && !code.startsWith('CAPTURE_FENCE_'))).toEqual(['CAPTURE_DEVELOPMENT_SIGNING_KEY_IN_PRODUCTION']);
+      // Bench-port 2026-11-04: on a Core that records nothing, the production wiring WARNS `PARTS_NOT_PROVIDED` (fence/index.ts:1126) — a
+      // composition observation, not a boot-check line; the assertions below still prove that 4b stopped everything after it.
+      expect(booted.codes.filter((code) => code !== 'CAPTURE_FENCE_PASSED' && code !== 'CAPTURE_PRODUCTION_PARTS_NOT_PROVIDED' && !code.startsWith('CAPTURE_FENCE_'))).toEqual(['CAPTURE_DEVELOPMENT_SIGNING_KEY_IN_PRODUCTION']);
       expect(booted.steps).toContain(CAPTURE_FENCE_BOOT_STEP);
       expect(booted.steps).not.toContain(CAPTURE_BOOT_STEP);
       expect(captureBootControl(booted.host.app).outcome()).toBeNull();
@@ -365,7 +367,7 @@ describe('row 208: the store of evidence:production-key against the real boot fu
       expect(cause).toBeInstanceOf(CaptureBootError);
       expect([(cause as CaptureBootError).code, (cause as CaptureBootError).reason]).toEqual(['CAPTURE_SIGNING_KEY_INSTALLATION_MISMATCH', 'OTHER_INSTALLATION']);
       // The one line of the boot checks: the key loaded and has no development mark (4, 4b passed); nothing after 4b-2 ran.
-      expect(booted.codes.filter((code) => !code.startsWith('CAPTURE_FENCE_'))).toEqual(['CAPTURE_SIGNING_KEY_INSTALLATION_MISMATCH']);
+      expect(booted.codes.filter((code) => !code.startsWith('CAPTURE_FENCE_') && code !== 'CAPTURE_PRODUCTION_PARTS_NOT_PROVIDED')).toEqual(['CAPTURE_SIGNING_KEY_INSTALLATION_MISMATCH']); // PARTS warn excluded: same bench-port note as PROOF 2
       expect(captureBootControl(booted.host.app).outcome()).toBeNull();
       // Neither id is in a line of the log.
       expect(JSON.stringify(booted.host.log.lines().filter((line) => line['code'] === 'CAPTURE_SIGNING_KEY_INSTALLATION_MISMATCH'))).not.toMatch(/DEMS-TEST-2[02]8/);
