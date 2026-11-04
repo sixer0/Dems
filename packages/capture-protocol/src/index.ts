@@ -65,7 +65,8 @@
  * each other on the one track, so at most ten a second). Checkpoints of fragments that were
  * written while one disk sync ran leave together when the next sync returned: after a sync that
  * took t seconds, about t / 2 checkpoints per camera arrive at once, far below the ceiling. A fragment is a camera GOP of about 2 s (never shorter than a
- * stall cut every `fragmentTargetMs`), so two cameras write about 2 records a second at most.
+ * stall cut every `fragmentTargetMs`), so the four cameras of a D60 plan write about 4 records a second at most
+ * (D60, 2026-11-04: was two).
  * The supervisor does not queue records and waits for no listener, so a record flood would grow
  * memory in whoever consumes them: more than `recordBurstLimit` records inside `recordWindowMs`
  * is therefore a PROTOCOL VIOLATION that ends the worker. A consumer still bounds its own
@@ -74,8 +75,8 @@
  * IDENTITIES (decision D72, navigator finding A-1). Every device a frame names - the `deviceId`
  * of an ingest state, a fragment counter, a clock entry, a level or a record, and the `subject` of
  * a warning - is a CAPTURE DEVICE ID, the vocabulary of the capture-config tables and of the
- * engine (`CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`). `VIDEO-01` / `VIDEO-02` are names of output
- * TRACKS: a plan carries one per camera as `trackId`, and no frame carries it. A MIC ROLE IS NOT
+ * engine (`CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`). `VIDEO-01` to `VIDEO-04` are names of output
+ * TRACKS (D60, 2026-11-04: four): a plan carries one per camera as `trackId`, and no frame carries it. A MIC ROLE IS NOT
  * AN IDENTITY (version 4, D84 R-2): a role says which place of the plan a microphone holds; it is
  * the argument of `SWITCH_AUDIO_SOURCE` and a member beside the device ID, never a subject. A
  * plan whose device is named like a role is refused, so the two can never be confused.
@@ -543,9 +544,9 @@ export const CAPTURE_IPC_DEFAULTS = {
   /** Commands awaiting their `ACK` before a new command is refused (back-pressure). */
   commandQueueLimit: 16,
   /**
-   * Most records inside `recordWindowMs`. The contract rate is about 2 a second (two cameras,
+   * Most records inside `recordWindowMs`. The contract rate is about 4 a second (the four cameras of D60, 2026-11-04,
    * one checkpoint per fragment of about 2 s, plus the one-off records and one interval record per
-   * operator switch, which no person makes faster than a few a second); 64 in a second is 32
+   * operator switch, which no person makes faster than a few a second); 64 in a second is 16
    * times that and still a finite inflow for a consumer. One more ends the worker.
    */
   recordBurstLimit: 64,
@@ -596,7 +597,7 @@ const absolutePath = z.string().min(1).max(1024).startsWith('/');
 export const CapturePlanCameraSchema = z.strictObject({
   /** The capture device: `CAM-01` or `CAM-02`. What every frame about this camera names. */
   deviceId: id,
-  /** The output track this camera records: `VIDEO-01` or `VIDEO-02`. A name in the plan only. */
+  /** The output track this camera records: one of `VIDEO-01` to `VIDEO-04` (D60, 2026-11-04). A name in the plan only. */
   trackId: id,
   /** The profile of a dual-lens camera, or null (OD-05). */
   profile: z.string().min(1).max(64).nullable(),
@@ -639,7 +640,8 @@ export type CapturePlanConstants = z.infer<typeof CapturePlanConstantsSchema>;
  */
 export const CapturePlanSchema = z
   .strictObject({
-    cameras: z.array(CapturePlanCameraSchema).min(1).max(2),
+    // D60 (2026-11-04): the Core records FOUR video tracks at once - a plan carries up to four camera lines (was two).
+    cameras: z.array(CapturePlanCameraSchema).min(1).max(4),
     mics: z.array(CapturePlanMicSchema).min(1).max(2),
     /** The role whose input feeds the one audio encoder at the start. */
     activeMic: z.enum(CaptureMicRole),
@@ -654,7 +656,10 @@ export const CapturePlanSchema = z
   })
   .superRefine((plan, context) => {
     const unique = (values: readonly string[]): boolean => new Set(values).size === values.length;
-    if (!unique(plan.cameras.map((camera) => camera.deviceId))) context.addIssue({ code: 'custom', message: 'a camera is named twice', path: ['cameras'] });
+    // D60 (2026-11-04): C93's no-doubled-device becomes PAIRWISE over the four tracks (as `capture_config_selector_check`
+    // of migration 0039 states it): one device may feed two tracks only as the dual-lens case, with distinct profiles (OD-05).
+    const deviceProfiles = plan.cameras.map((camera) => `${camera.deviceId}\u0000${camera.profile ?? ''}`);
+    if (!unique(deviceProfiles)) context.addIssue({ code: 'custom', message: 'a camera is named twice with the same profile', path: ['cameras'] });
     if (!unique(plan.cameras.map((camera) => camera.trackId))) context.addIssue({ code: 'custom', message: 'a track is recorded twice', path: ['cameras'] });
     if (!unique(plan.cameras.map((camera) => camera.ingestUrl))) context.addIssue({ code: 'custom', message: 'two cameras share an ingest address', path: ['cameras'] });
     if (!unique(plan.cameras.map((camera) => camera.outputPath))) context.addIssue({ code: 'custom', message: 'two cameras share an output file', path: ['cameras'] });
@@ -749,16 +754,17 @@ export const TelemetryMessageSchema = z.strictObject({
         .refine((level) => level.insertedSamples <= level.timelineSamples, { message: 'more samples inserted than the timeline holds', path: ['insertedSamples'] }),
     )
     .max(2),
-  ingest: z.array(z.strictObject({ deviceId: id, state: z.enum(CaptureIngestState) })).max(2),
+  // D60 (2026-11-04): one entry per camera of the plan - up to FOUR (the mic list above stays two).
+  ingest: z.array(z.strictObject({ deviceId: id, state: z.enum(CaptureIngestState) })).max(4),
   /** Fragments written so far, per camera file. */
-  fragments: z.array(z.strictObject({ deviceId: id, count: wholeNumber, bytes: wholeNumber })).max(2),
+  fragments: z.array(z.strictObject({ deviceId: id, count: wholeNumber, bytes: wholeNumber })).max(4),
   /**
    * Per camera that delivers video: arrival time minus camera time of the newest packet (`lagMs`),
    * and the fitted trend of that difference in parts per million (null until enough of the session
    * was seen). TELEMETRY ONLY (spec §F, erratum PE-111-01): nothing is corrected from it.
    * `nearBound`: the trend, over the time seen, has reached three quarters of the AV product bound.
    */
-  clocks: z.array(z.strictObject({ deviceId: id, lagMs: z.number(), trendPpm: z.number().nullable(), nearBound: z.boolean() })).max(2),
+  clocks: z.array(z.strictObject({ deviceId: id, lagMs: z.number(), trendPpm: z.number().nullable(), nearBound: z.boolean() })).max(4),
   /** True while the PCM tap of the plan is being written. False: the plan has none, it ended, or a restarted worker found its file and left it alone. */
   tapActive: z.boolean(),
 });
