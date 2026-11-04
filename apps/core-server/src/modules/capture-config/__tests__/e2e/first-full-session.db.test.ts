@@ -253,6 +253,9 @@ describe('row 89 / C-2 of 088b: the fence door `provideProductionParts` - REAL_P
     expect(captureFenceControl(app).operation).toBe('REAL_PRODUCTION');
     // The seed's selector names its development sources, which a production fence refuses; with all four slots unassigned the fence step PASSES (category 1).
     await target.ownerPool().query('UPDATE public.capture_config SET video_01_device_id = NULL, video_01_profile = NULL, video_02_device_id = NULL, video_02_profile = NULL, mic_primary_id = NULL, mic_standby_id = NULL');
+    // REVISED 2026-11-04 (S99-01, D241): check 4c refuses the PUBLISHED demo password of the seed BEFORE 4d-0 asks the
+    // host facts — the case names the host facts as the refusal, so the operators get a password of their own first.
+    await ownCredentials(target.ownerPool());
     const refused = await app.readiness.boot().then(() => null, (error: unknown) => error);
     expect(refused).toBeInstanceOf(BootError);
     const passed = log.lines().filter((line) => line['msg'] === 'boot step passed').map((line) => String(line['step']));

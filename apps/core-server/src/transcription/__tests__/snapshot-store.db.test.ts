@@ -21,7 +21,7 @@ import { useTestDatabase } from '../../../test/helpers/db';
 import type { Headers } from '../../../test/support/identity';
 import { webOperator } from '../../../test/support/guard';
 import { identityControl } from '../../modules/identity';
-import { SUPERVISOR, WEB_ORIGIN, bootedApp, type BootedApp } from '../../modules/storage/__tests__/support';
+import { TECHNICIAN, WEB_ORIGIN, bootedApp, type BootedApp } from '../../modules/storage/__tests__/support'; // REVOKED 2026-10-29 (0034, D59 follow-up 2026-11-04): operation 91 needs CAPTURE_CONFIG, which is TECHNICIAN-only
 import { throttleControl } from '../../plugins/throttle';
 import { createDatabaseSnapshotStore, transcriptionControl, type SttSessionSnapshot } from '../index';
 
@@ -134,18 +134,18 @@ describe('the store as dems_app', () => {
 
 describe('M6-STTCFG-NEXT across a restart of the Core on the same database', () => {
   let booted: BootedApp | null = null;
-  let supervisor: Headers;
+  let technician: Headers;
 
   async function start(): Promise<BootedApp> {
     const app = await bootedApp(db);
-    supervisor = await webOperator(app, SUPERVISOR.username);
+    technician = await webOperator(app, TECHNICIAN.username);
     await app.app.pipeline.drain();
     booted = app;
     return app;
   }
   const post = (app: BootedApp, payload: unknown): Promise<LightMyRequestResponse> =>
-    app.app.inject({ method: 'POST', url: PATH, headers: { ...supervisor, origin: WEB_ORIGIN }, payload: payload as object });
-  const revisionNow = async (app: BootedApp): Promise<number> => ((await app.app.inject({ method: 'GET', url: PATH, headers: supervisor })).json() as SttConfig).revision;
+    app.app.inject({ method: 'POST', url: PATH, headers: { ...technician, origin: WEB_ORIGIN }, payload: payload as object });
+  const revisionNow = async (app: BootedApp): Promise<number> => ((await app.app.inject({ method: 'GET', url: PATH, headers: technician })).json() as SttConfig).revision;
 
   beforeEach(() => {
     if (booted === null) return;

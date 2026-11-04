@@ -275,7 +275,7 @@ describe('situation B through the sessions routes (M4-NODEV-B-1, M4-PRECHK-RULE-
 });
 
 describe('operation 97 through the real pipeline (M4-MIC-RESCAN-1)', () => {
-  it('SUPERVISOR and TECHNICIAN re-read the inputs, one CAPTURE_DISCOVERY_SEARCHED row each with scope MIC_LOCAL; INVESTIGATOR is refused 403 with ONE ACCESS_DENIED row; the spacing answers 429 with no row', async () => {
+  it('TECHNICIAN re-reads the inputs twice, one CAPTURE_DISCOVERY_SEARCHED row each with scope MIC_LOCAL; SUPERVISOR (CAPTURE_CONFIG REVOKED, 0034) and INVESTIGATOR are refused 403 with ONE ACCESS_DENIED row each; the spacing answers 429 with no row', async () => {
     server.clock.advance(60_000);
     adapters.fakes.mics[1]?.setPresent(false, AudioInputErrorCode.PERMISSION_DENIED);
     let before = await server.trailLength();
@@ -284,7 +284,9 @@ describe('operation 97 through the real pipeline (M4-MIC-RESCAN-1)', () => {
     const alertsBefore = server.engine.slice('alerts');
     expect(alerts('CAPTURE_DEVICE_UNREACHABLE', true).map((alert) => alert.target)).toEqual(['MIC-02']);
 
-    const first = await server.post('SUPERVISOR', RESCAN);
+    // REVISED 2026-11-04 (migration 0034, ratified 2026-10-29): CAPTURE_CONFIG was REVOKED from SUPERVISOR —
+    // the re-read is the installing technician's (the idiom of the audio-cards routes and camera-network files).
+    const first = await server.post('TECHNICIAN', RESCAN);
     expect(first.statusCode).toBe(200);
     expect(validateCoreApiResponse('rescanCaptureInputs', 200, bodyOf(first))).toEqual({ ok: true });
     // Fix wave H (G70-01, decision D196): this server runs SIMULATED capture (the probe is the test's), so no entry
@@ -295,7 +297,7 @@ describe('operation 97 through the real pipeline (M4-MIC-RESCAN-1)', () => {
     ]);
     await server.app.pipeline.drain();
     let rows = await server.since(before);
-    expect(rows.map((row) => [row.type, row.category, row.actorId])).toEqual([['CAPTURE_DISCOVERY_SEARCHED', 'DEVICE', server.operatorId('SUPERVISOR')]]);
+    expect(rows.map((row) => [row.type, row.category, row.actorId])).toEqual([['CAPTURE_DISCOVERY_SEARCHED', 'DEVICE', server.operatorId('TECHNICIAN')]]);
     expect(rows[0]?.details).toMatchObject({ scope: 'MIC_LOCAL', trigger: 'MANUAL', outcome: 'COMPLETE', responderCount: 1, registeredCount: 2, newCount: 0, interfaceCount: 0, operationId: 'rescanCaptureInputs', permission: 'CAPTURE_CONFIG' });
     expect(String(rows[0]?.details['searchId'])).toMatch(/^DSC-[0-9]{6,}$/);
     // `captureDevices` is published and stored: MIC-02 reads not online. No alert: that is a pre-check's.
@@ -313,15 +315,19 @@ describe('operation 97 through the real pipeline (M4-MIC-RESCAN-1)', () => {
     expect(await server.trailLength()).toBe(before);
     expect(adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual(enumerated.map((count) => count + 1));
 
-    // INVESTIGATOR: refused and audited, nothing read. The refusal takes no spacing slot.
+    // INVESTIGATOR and SUPERVISOR: refused and audited, nothing read. The refusal takes no spacing slot.
+    // (SUPERVISOR since 2026-10-29: its CAPTURE_CONFIG is REVOKED, migration 0034 — the guard got stronger.)
     server.clock.advance(60_000);
-    const denied = await server.post('INVESTIGATOR', RESCAN);
-    expect(outcome(denied)).toEqual([403, 'NOT_PERMITTED']);
-    await server.app.pipeline.drain();
-    rows = await server.since(before);
-    expect(rows.map((row) => [row.type, row.actorId])).toEqual([['ACCESS_DENIED', server.operatorId('INVESTIGATOR')]]);
-    expect(rows[0]?.details).toMatchObject({ operationId: 'rescanCaptureInputs', permission: 'CAPTURE_CONFIG', role: 'INVESTIGATOR' });
-    expect(adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual(enumerated.map((count) => count + 1));
+    for (const deniedRole of ['INVESTIGATOR', 'SUPERVISOR'] as const) {
+      const from = await server.trailLength();
+      const denied = await server.post(deniedRole, RESCAN);
+      expect(outcome(denied)).toEqual([403, 'NOT_PERMITTED']);
+      await server.app.pipeline.drain();
+      rows = await server.since(from);
+      expect(rows.map((row) => [row.type, row.actorId]), deniedRole).toEqual([['ACCESS_DENIED', server.operatorId(deniedRole)]]);
+      expect(rows[0]?.details).toMatchObject({ operationId: 'rescanCaptureInputs', permission: 'CAPTURE_CONFIG', role: deniedRole });
+      expect(adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual(enumerated.map((count) => count + 1));
+    }
     expect(outcome(await server.post(null, RESCAN))).toEqual([401, 'NOT_SIGNED_IN']);
 
     // TECHNICIAN, the microphone plugged back: present, online again, its own row.

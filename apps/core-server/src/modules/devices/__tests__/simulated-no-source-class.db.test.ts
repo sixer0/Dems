@@ -94,7 +94,9 @@ describe('G70-01: a Core in SIMULATED capture states no source class and no adap
 
   it('operation 97 names each registered microphone with what a simulated Core knows: its ids, whether it is there - and no class', async () => {
     server.clock.advance(20_000);
-    const response = await server.post('SUPERVISOR', pathOf('rescanCaptureInputs'));
+    // REVISED 2026-11-04 (migration 0034, ratified 2026-10-29): CAPTURE_CONFIG was REVOKED from SUPERVISOR —
+    // the re-read is the installing technician's; the table above already drives it as TECHNICIAN.
+    const response = await server.post('TECHNICIAN', pathOf('rescanCaptureInputs'));
     expect(response.statusCode, response.body).toBe(200);
     expect(response.json<{ inputs: unknown[] }>().inputs).toEqual([
       { deviceId: 'MIC-01', inputId: 'MIC-01', present: true, errorCode: null },

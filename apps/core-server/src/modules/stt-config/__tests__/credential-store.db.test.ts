@@ -30,7 +30,7 @@ import type { Headers } from '../../../../test/support/identity';
 import { coreCredentialStore, type CoreCredentialStore } from '../../../credential-store';
 import { throttleControl } from '../../../plugins/throttle';
 import { identityControl } from '../../identity';
-import { SUPERVISOR, WEB_ORIGIN, bootedApp, type BootedApp } from '../../storage/__tests__/support';
+import { TECHNICIAN, WEB_ORIGIN, bootedApp, type BootedApp } from '../../storage/__tests__/support'; // REVOKED 2026-10-29 (0034, D59 follow-up 2026-11-04): operation 91 needs CAPTURE_CONFIG, which is TECHNICIAN-only now
 import { sttConfigControl } from '../index';
 
 const db = useTestDatabase({ template: 'seed', slug: 'row84' });
@@ -50,8 +50,8 @@ const INSERT_CREDENTIAL =
 const UPSERT_SET = 'username = EXCLUDED.username, secret_ciphertext = EXCLUDED.secret_ciphertext, nonce = EXCLUDED.nonce, key_ref = EXCLUDED.key_ref, rotated_at = EXCLUDED.rotated_at';
 
 const post = (payload: unknown): Promise<LightMyRequestResponse> =>
-  booted.app.inject({ method: 'POST', url: PATH, headers: { ...sessions.SUPERVISOR, origin: WEB_ORIGIN }, payload: payload as object });
-const revisionNow = async (): Promise<number> => ((await booted.app.inject({ method: 'GET', url: PATH, headers: sessions.SUPERVISOR ?? {} })).json() as { revision: number }).revision;
+  booted.app.inject({ method: 'POST', url: PATH, headers: { ...sessions.TECHNICIAN, origin: WEB_ORIGIN }, payload: payload as object });
+const revisionNow = async (): Promise<number> => ((await booted.app.inject({ method: 'GET', url: PATH, headers: sessions.TECHNICIAN ?? {} })).json() as { revision: number }).revision;
 const sqlstate = (pending: Promise<unknown>): Promise<string | undefined> =>
   pending.then(
     () => 'answered',
@@ -64,7 +64,7 @@ beforeAll(async () => {
   const opened = coreCredentialStore(booted.app);
   if (opened.status !== 'READY') throw new Error(`the store is ${opened.status}`);
   store = opened.store;
-  sessions = { SUPERVISOR: await webOperator(booted, SUPERVISOR.username) };
+  sessions = { TECHNICIAN: await webOperator(booted, TECHNICIAN.username) };
   await booted.app.pipeline.drain();
 });
 

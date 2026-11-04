@@ -76,7 +76,8 @@ let stub: LaneCameraStub;
 let guard: LoopbackGuard;
 let clock: ReturnType<typeof createManualClock>;
 let technician: Record<string, string>;
-let supervisor: Record<string, string>;
+/** A second web console session of TECHNICIAN: SUPERVISOR's CAPTURE_CONFIG was REVOKED 2026-10-29 (PT GSP; migration 0034), so the file's second permitted caller is another session of the installing technician (the candidate is bounded on the sessionId, not the operator — the idiom of `camera-network` / `audio-cards routes`). */
+let otherTechnician: Record<string, string>;
 let investigator: Record<string, string>;
 /** The camera the first case adds, the address the search shows for it, and the candidate of the technician's live search. */
 let deviceId = '';
@@ -150,7 +151,7 @@ beforeAll(async () => {
   await app.pipeline.drain();
   const identity = { app, cookieName: app.config.sessionCookieName } as unknown as IdentityApp;
   technician = (await signInOnWeb(identity, 'rina.wijaya')).cookie;
-  supervisor = (await signInOnWeb(identity, 'andi.pratama')).cookie;
+  otherTechnician = (await signInOnWeb(identity, 'rina.wijaya')).cookie;
   investigator = (await signInOnWeb(identity, 'budi.santoso')).cookie;
 });
 afterAll(() => {
@@ -234,8 +235,8 @@ describe('row 197: operation 100 on a booted Core with the fake ONVIF device', (
     // From here the rule is the test's permissive one: every refusal below is NOT the rule's.
     control.replaceForTest({ addressRule: (host, port) => loopbackDestination(host, port ?? 80) });
 
-    // (c) A CANDIDATE THAT IS NOT THE CALLER'S: the supervisor holds CAPTURE_CONFIG and names the technician's candidate.
-    const notOwn = await confirm(supervisor, body);
+    // (c) A CANDIDATE THAT IS NOT THE CALLER'S: a second TECHNICIAN session holds CAPTURE_CONFIG and names the first session's candidate (REVISED 2026-11-04, migration 0034: SUPERVISOR lost the permission).
+    const notOwn = await confirm(otherTechnician, body);
     expect(notOwn.statusCode, notOwn.body).toBe(404);
     expect(errorOf(notOwn)).toEqual({ code: 'NOT_FOUND', reason: null, message: 'No camera or candidate has this ID.' });
     expect(await stored()).toEqual(before);

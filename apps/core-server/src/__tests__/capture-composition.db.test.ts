@@ -19,7 +19,7 @@ import { captureAudioCardsControl } from '../modules/capture-inputs';
 // Integration pass I-9a: the network facts through the real composition (the block at the end of this file).
 import type { LightMyRequestResponse } from 'fastify';
 import { afterAll } from 'vitest';
-import { TEST_CAPTURE_HOST, testHostPrograms } from '../../test/support/capture-host';
+import { TEST_CAPTURE_HOST, testHostPrograms, testListingStandIns } from '../../test/support/capture-host';
 import { readTrail } from '../../test/support/core';
 import { FIXED_NOW, engineApp } from '../../test/support/engine';
 import { WEB_ORIGIN, cookieValue, webSignIn } from '../../test/support/identity';
@@ -448,7 +448,8 @@ describe('integration pass I-9a: the network facts through the real composition'
     // THE ENTRY POINT'S ORDER: the composition with the module's reader, the host facts, then the boot steps.
     const composition = composeProductionCaptureOf(app, { platform: 'darwin', network: captureNetworkFacts(app) });
     expect(composition.composed).toBe(true);
-    captureBootControl(app).provideHost(TEST_CAPTURE_HOST);
+    // Bench-port seam 2026-11-04 (row N13, as in `fence.db.test.ts`): the faked darwin host carries the two microphone-listing stand-ins.
+    captureBootControl(app).provideHost({ ...TEST_CAPTURE_HOST, systemListingPrograms: testListingStandIns(fixture.dataDir) });
     try {
       await app.readiness.boot();
     } catch (error) {
@@ -599,7 +600,8 @@ describe('row 106b: the alias of the camera port through the real composition, o
     // THE ENTRY POINT'S ORDER: the composition with the module's reader, the host facts, then the boot steps.
     const composition = composeProductionCaptureOf(app, { ...input(owner, { transport }), network: captureNetworkFacts(app) });
     expect(composition.composed).toBe(true);
-    captureBootControl(app).provideHost(TEST_CAPTURE_HOST);
+    // Bench-port seam 2026-11-04 (row N13, as in `fence.db.test.ts`): the faked darwin host carries the two microphone-listing stand-ins.
+    captureBootControl(app).provideHost({ ...TEST_CAPTURE_HOST, systemListingPrograms: testListingStandIns(fixture.dataDir) });
     // Nothing was asked of the helper at composition, and nothing was read of the alias table.
     expect(seen).toEqual([]);
     try {

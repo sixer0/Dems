@@ -164,6 +164,10 @@ describe('AC-B-16, unit form: the decision for all 99 operations with a principa
       return principal.deviceId === null || ownCredential ? 'DEVICE_NOT_PAIRED' : 'ALLOW';
     }
     if (access.kind === CoreApiAccessKind.AUTHENTICATED) {
+      // D59 follow-up (2026-11-04): the fence WEB_CONSOLE_SESSION stands on permission-less rules
+      // too — the D57 panel pair (118/119) is AUTHENTICATED, every signed-in role holds it, so
+      // the fence alone denies the paired-device cell (decision.ts, WEB_CONSOLE_ONLY_REASON).
+      if ((access.conditions ?? []).includes(CoreApiAccessCondition.WEB_CONSOLE_SESSION) && principal.deviceId !== null) return 'NOT_PERMITTED';
       return (access.conditions ?? []).includes(CoreApiAccessCondition.DEVICE_SESSION) && principal.deviceId === null ? 'DEVICE_NOT_PAIRED' : 'ALLOW';
     }
     const needed: readonly string[] = access.kind === CoreApiAccessKind.PERMISSION ? [access.permission] : access.permissions;
@@ -208,10 +212,14 @@ describe('AC-B-16, unit form: the decision for all 99 operations with a principa
       }),
     );
     expect(cells).toEqual(want);
-    // The role table itself, stated: exactly these two roles hold the permission (C3 §4, line "CAPTURE_CONFIG (discovery and connect flow)").
+    // The role table itself, stated: exactly one role holds the permission — C3 §4, line "CAPTURE_CONFIG (discovery and connect flow)", after migration 0034 (ratified revocation, 2026-10-29) took SUPERVISOR's grant away.
     expect(ROLES.filter((role) => (ROLE_PERMISSIONS[role] as readonly string[]).includes(Permission.CAPTURE_CONFIG)).sort()).toEqual(['TECHNICIAN']);
     // Control: an operation with the same permission and no condition is allowed from the device session.
-    const tablet = operator(OperatorRole.SUPERVISOR, 'DEV-0001') as Extract<Principal, { kind: 'OPERATOR' }>;
+    // D59 follow-up (2026-11-04): migration 0034 (ratified revocation, 2026-10-29) took
+    // CAPTURE_CONFIG away from SUPERVISOR — the holder side of this control moves to TECHNICIAN,
+    // the one role the stored table now grants it to (the identity extra for root is code-side,
+    // D55, and never enters the stored matrix).
+    const tablet = operator(OperatorRole.TECHNICIAN, 'DEV-0001') as Extract<Principal, { kind: 'OPERATOR' }>;
     expect(decideAccess(ruleOf('startCaptureDiscovery'), { principal: tablet, consoleIdentity: true, demoControls: true, sessionCreatorId: tablet.operatorId }).allowed).toBe(true);
   });
 

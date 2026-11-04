@@ -148,9 +148,12 @@ describe('operation 91 against the table', () => {
     expect(verifyTrail(await readTrail(owner), await readHead(owner))).toMatchObject({ ok: true });
   });
 
-  it('SUPERVISOR stores a SECRET: the table holds AES-256-GCM ciphertext the key holder opens; a stale revision is refused 409', async () => {
+  // REVOKED 2026-10-29 (migration 0034, ratified; D59 follow-up 2026-11-04): CAPTURE_CONFIG left
+  // SUPERVISOR, so the holder side of operation 91 is TECHNICIAN. SUPERVISOR's refusal is pinned
+  // by the rbac-matrix acceptance sweep; storing the SECRET here is the holder's coverage.
+  it('TECHNICIAN stores a SECRET: the table holds AES-256-GCM ciphertext the key holder opens; a stale revision is refused 409', async () => {
     const revision = await revisionNow();
-    const response = await post(sessions.SUPERVISOR, { revision, credential: { kind: 'SECRET', value: SECRET } });
+    const response = await post(sessions.TECHNICIAN, { revision, credential: { kind: 'SECRET', value: SECRET } });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({ credentialSet: true, credentialKind: 'ENCRYPTED', revision: revision + 1 });
     const row = await storedRow();
@@ -161,7 +164,7 @@ describe('operation 91 against the table', () => {
     expect(ciphertext.includes(Buffer.from(SECRET))).toBe(false);
     expect(open(ciphertext, nonce)).toBe(SECRET);
     expect(sealed).toHaveLength(1);
-    expect(outcome(await post(sessions.SUPERVISOR, { revision, enabled: false }))).toEqual([409, 'INVALID_STATE', 'REVISION_CONFLICT']);
+    expect(outcome(await post(sessions.TECHNICIAN, { revision, enabled: false }))).toEqual([409, 'INVALID_STATE', 'REVISION_CONFLICT']); // the holder side, too (0034): the stale-revision check runs past the gate
     // And the runtime role still cannot read back what it just wrote.
     await expect(booted.app.db.pool.query('SELECT secret_ciphertext, nonce FROM public.stt_config')).rejects.toMatchObject({ code: '42501' });
   });

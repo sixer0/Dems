@@ -392,8 +392,10 @@ describe('row 214: the grants of the runtime role, as the catalog of a migrated 
       superuser: false,
       'credential: update of the seven columns': true,
       'credential: select': true,
-      'credential: insert': false,
-      'credential: delete': false,
+      // REVISED 2026-11-04 (RB-9/0035, D56/0037): the runtime role may DELETE a credential (the account's row goes with
+      // the account) and INSERT one (operator:set-password creates the first credential row of a factory-born account).
+      'credential: insert': true,
+      'credential: delete': true,
       'credential: update of operator_id': false,
       'sessions: update of ended_at, end_reason': true,
       'tokens: update of revoked_at, revoke_reason': true,
@@ -403,8 +405,9 @@ describe('row 214: the grants of the runtime role, as the catalog of a migrated 
       'audit: chain lock': true,
       'audit: chain head update': false,
       'operators: select': true,
-      'operators: insert': false,
-      'operators: delete': false,
+      // REVISED 2026-11-04 (RB-9/0035): the add-user trio writes and removes account rows as `dems_app`.
+      'operators: insert': true,
+      'operators: delete': true,
       'operators: update of username': false,
       'schema: create': false,
     });
@@ -412,9 +415,10 @@ describe('row 214: the grants of the runtime role, as the catalog of a migrated 
     // the runtime role owns no table (the statement itself is not written here: static rule T-AO-4).
     const owned = await app.query<{ tables: number }>("SELECT count(*)::int AS tables FROM pg_tables WHERE schemaname = 'public' AND tableowner = current_user");
     expect(owned.rows[0]?.tables).toBe(0);
-    // No INSERT of a credential (SX-11): the database itself refuses the runtime role.
+    // The identity column stays closed (SX-11 as amended by RB-9/0035 and D56/0037): the command may create, replace
+    // and delete a credential row, but the database itself refuses to MOVE one to another operator.
     await expectRefused(
-      () => app.query("INSERT INTO public.operator_credentials (operator_id, algorithm, memory_kib, passes, parallelism, salt, hash, hashed_at) SELECT operator_id, algorithm, memory_kib, passes, parallelism, salt, hash, hashed_at FROM public.operator_credentials LIMIT 1"),
+      () => app.query('UPDATE public.operator_credentials SET operator_id = operator_id'),
       SQLSTATE.insufficientPrivilege,
     );
   });
