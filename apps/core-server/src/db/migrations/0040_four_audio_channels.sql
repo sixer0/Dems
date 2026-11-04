@@ -32,5 +32,35 @@ ALTER TABLE "session_capture_sources" ADD CONSTRAINT "session_capture_sources_pa
 -- track" premise is superseded by D61 and `AUDIO-02` loses its legacy-only status going forward.
 ALTER TABLE "evidence_tracks" DROP CONSTRAINT "evidence_tracks_track_check";--> statement-breakpoint
 ALTER TABLE "evidence_tracks" ADD CONSTRAINT "evidence_tracks_track_check" CHECK ("evidence_tracks"."track_id" IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04') AND "evidence_tracks"."position" BETWEEN 1 AND 8);--> statement-breakpoint
+-- The stored health series carries one level per audio channel: the two new channels join
+-- every sample at the noise floor (-90 dBFS), which is what an unopened channel reads as.
+UPDATE "hardware_snapshot"
+   SET "health" = jsonb_set(
+         "health",
+         '{micLevels}',
+         COALESCE((
+           SELECT jsonb_agg(
+                    (elem || '{"AUDIO-03": -90}'::jsonb) || '{"AUDIO-04": -90}'::jsonb
+                    ORDER BY x.ord)
+           FROM jsonb_array_elements("health" -> 'micLevels') WITH ORDINALITY AS x(elem, ord)
+         ),
+         "health" -> 'micLevels')
+       )
+   WHERE jsonb_typeof("health" -> 'micLevels') = 'array';--> statement-breakpoint
 ALTER TABLE "evidence_items" DROP CONSTRAINT "evidence_items_tamper_check";--> statement-breakpoint
+-- The hardware snapshot's mic lines follow the same renaming: the stored `micRole` of the
+-- two-role era becomes the `channel` word of the numbered era (position 1 -> MIC-01, 2 ->
+-- MIC-02, and so on); the member `micRole` itself dies with the failover concept.
+UPDATE "hardware_snapshot"
+   SET "mics" = COALESCE((
+     SELECT jsonb_agg(
+              jsonb_set((elem - 'micRole'), '{channel}',
+                        to_jsonb(CASE (elem ->> 'micRole')
+                                   WHEN 'PRIMARY' THEN 'MIC-01'
+                                   WHEN 'STANDBY' THEN 'MIC-02'
+                                   ELSE 'MIC-0' || (x.ord)::text
+                                 END))
+              ORDER BY x.ord)
+     FROM jsonb_array_elements("mics") WITH ORDINALITY AS x(elem, ord)
+   ), "mics");--> statement-breakpoint
 ALTER TABLE "evidence_items" ADD CONSTRAINT "evidence_items_tamper_check" CHECK ("evidence_items"."tampered_track_id" IS NULL OR "evidence_items"."tampered_track_id" IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04'));--> statement-breakpoint
