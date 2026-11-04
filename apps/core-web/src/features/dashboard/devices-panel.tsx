@@ -4,7 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { Activity, Cpu, EllipsisVertical, Info, Mic, RotateCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain'
+import { VIDEO_TRACK_IDS, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain'
 import { CoreMode, settle, useCoreActions, useCoreMode } from '@dems/shared/live'
 import { audioPairInForce, DeviceCommand, noLiveLevelsOf, useSim, type SimState } from '@dems/shared/sim'
 import { motion as tokens, type StatusTone } from '@dems/shared/tokens'
@@ -22,9 +22,15 @@ import { DASH_BEATS, useBeatDelay } from './dashboard-motion'
 import { reportDashboardError } from './report'
 import { StatusDot } from './status-bits'
 
-const CAMERAS: readonly VideoTrackId[] = ['VIDEO-01', 'VIDEO-02']
+// D60 (2026-11-04): the panel iterates the four video tracks from the shared truth.
+const CAMERAS: readonly VideoTrackId[] = VIDEO_TRACK_IDS
 const MICS: readonly AudioTrackId[] = ['AUDIO-01', 'AUDIO-02']
-const CAMERA_NAME_KEY = { 'VIDEO-01': 'common.devices.camera1', 'VIDEO-02': 'common.devices.camera2' } as const
+const CAMERA_NAME_KEY = {
+  'VIDEO-01': 'common.devices.camera1',
+  'VIDEO-02': 'common.devices.camera2',
+  'VIDEO-03': 'common.devices.camera3', // D60
+  'VIDEO-04': 'common.devices.camera4', // D60
+} as const satisfies Record<VideoTrackId, string>
 const MIC_NAME_KEY = { 'AUDIO-01': 'common.devices.mic1', 'AUDIO-02': 'common.devices.mic2' } as const
 
 const selectCamera = (id: VideoTrackId) => (s: SimState) => {
@@ -372,10 +378,10 @@ function MicTile({ channel, index, beatMs }: { channel: AudioTrackId; index: num
 }
 
 /**
- * Panel E, Devices & Inputs (01_specs §14.5.1 E; research/04 §3.1 E): Camera 1 and Camera 2 play
- * the step-92 live-feed loops through CameraFeed (D50; muted, looped, procedural fallback), and
- * MIC 1 and MIC 2 show the tile DbfsMeter (20 Hz, zero React renders per frame). Tiles enter 60 ms
- * apart on the row-2 beat; meters are live from the first frame (M-PG-DASH t = 450).
+ * Panel E, Devices & Inputs (01_specs §14.5.1 E; research/04 §3.1 E): the four video tracks (D60,
+ * 2026-11-04) play the step-92 live-feed loops through CameraFeed (D50; muted, looped, procedural
+ * fallback), and MIC 1 and MIC 2 show the tile DbfsMeter (20 Hz, zero React renders per frame).
+ * Tiles enter 60 ms apart on the row-2 beat; meters are live from the first frame (M-PG-DASH t = 450).
  */
 export function DevicesPanel() {
   const { t } = useTranslation()

@@ -90,7 +90,8 @@ describe('the pre-check (ux §8g.3; D83, D114)', () => {
   it('each rule has its sentence; the active microphone names the cancel → Devices → start again path', () => {
     const text = (rule: string, deviceId: string, kind: string, other?: string) => unreachablePrecheckText(t, unreachablePrecheckOf(item(rule, 'BLOCK', deviceId, kind, other))!)
     expect(text('noCamera', 'CAM-01', 'CAMERA')).toBe(N.start.noCamera)
-    expect(text('oneCamera', 'CAM-02', 'CAMERA')).toBe('Camera 2 (CAM-02) is not reachable. The session will record one camera only.')
+    // D60 (2026-11-04): 'one camera only' reworded — with four tracks a lost camera means fewer, not one.
+    expect(text('oneCamera', 'CAM-02', 'CAMERA')).toBe('Camera 2 (CAM-02) is not reachable. The session will record with one camera fewer.')
     expect(text('noMicrophone', 'MIC-01', 'MIC')).toBe(N.start.noMicrophone)
     expect(text('noStandby', 'MIC-02', 'MIC')).toBe('MIC 2 (MIC-02) is not reachable. The session will record with no standby microphone.')
     expect(text('activeMicrophone', 'MIC-01', 'MIC', 'MIC-02')).toBe(

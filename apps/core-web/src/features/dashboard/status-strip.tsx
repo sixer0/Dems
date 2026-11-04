@@ -4,6 +4,7 @@ import { Link } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { Clock, Database, Mic, Network, ShieldCheck, Video, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { VIDEO_TRACK_IDS } from '@dems/shared/domain' // D60 (2026-11-04)
 import { selectDeviceStats, storageSummary, useSim, type SimState } from '@dems/shared/sim'
 import type { StatusTone } from '@dems/shared/tokens'
 import { motion as tokens } from '@dems/shared/tokens'
@@ -84,9 +85,12 @@ export function StatusStripPanel() {
   const freeText = t('common.units.tb', { value: formatOneDecimal(freeTb) })
   // Fix wave J (JW-23 (4) / rule 3c): the strip said "2 Cameras: Ready" above two tiles that said "Not checked". ONE
   // statement per fact: a source the Core never checked is "Not checked" here too (the rule of `source-state.ts`).
-  const reach1 = useTrackReach('VIDEO-01')
-  const reach2 = useTrackReach('VIDEO-02')
-  const camerasNotChecked = devices.camerasOnline === devices.camerasTotal && (reach1 === 'NOT_CHECKED' || reach2 === 'NOT_CHECKED')
+  // D60 (2026-11-04): the reach of all four video tracks is consulted — fixed-length hook calls, one per track.
+  const reach1 = useTrackReach(VIDEO_TRACK_IDS[0])
+  const reach2 = useTrackReach(VIDEO_TRACK_IDS[1])
+  const reach3 = useTrackReach(VIDEO_TRACK_IDS[2])
+  const reach4 = useTrackReach(VIDEO_TRACK_IDS[3])
+  const camerasNotChecked = devices.camerasOnline === devices.camerasTotal && [reach1, reach2, reach3, reach4].some((reach) => reach === 'NOT_CHECKED')
   const camerasValue = camerasNotChecked
     ? t('web.source.notChecked')
     : devices.camerasOnline === devices.camerasTotal

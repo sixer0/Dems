@@ -61,7 +61,9 @@ describe("the capture selector: every registered microphone and camera on its li
 
   const withThird = (devices: readonly Device[], kind: 'CAMERA' | 'MIC', extra: Partial<Device> = {}): Device[] => {
     const like = devices.find((device) => device.kind === kind)!
-    return [...devices, { ...like, id: kind === 'CAMERA' ? 'CAM-03' : 'MIC-03', model: kind === 'CAMERA' ? 'Added camera' : 'Added microphone', ...extra } as Device]
+    // D60 (2026-11-04): CAM-03/CAM-04 are built-ins of the four-track surface; an adopted camera is
+    // minted above them (capture-registry: highest + 1), so the added one is CAM-05.
+    return [...devices, { ...like, id: kind === 'CAMERA' ? 'CAM-05' : 'MIC-03', model: kind === 'CAMERA' ? 'Added camera' : 'Added microphone', ...extra } as Device]
   }
 
   async function simSelector(scenario: ScenarioName, operatorId: string, kind: 'CAMERA' | 'MIC' = 'MIC') {
@@ -351,18 +353,18 @@ describe("the capture selector: every registered microphone and camera on its li
     it.each([
       ['VIDEO-01', 'CAM-01'],
       ['VIDEO-02', 'CAM-02'],
-    ] as const)('CAM-03 is saved on %s: one row of operation 79 for that track, the other track untouched', async (trackId, from) => {
+    ] as const)('CAM-05 is saved on %s: one row of operation 79 for that track, the other track untouched', async (trackId, from) => { // D60: the added camera is CAM-05 now
       // Saving a track is an edit: mounted on the TECHNICIAN since the 2026-10-29 CAPTURE_CONFIG revocation.
       const { sim, panel } = await simSelector('idle', OPERATOR_IDS.RINA, 'CAMERA')
       fireEvent.click(within(within(panel).getByTestId(`selector-source-${trackId}`)).getByRole('button'))
-      fireEvent.click(await screen.findByRole('option', { name: /CAM-03/ }))
+      fireEvent.click(await screen.findByRole('option', { name: /CAM-05/ })) // D60 (2026-11-04): the added camera
       const button = within(panel).getByTestId(`selector-save-${trackId}`)
       await waitFor(() => expect(button).toBeEnabled())
       fireEvent.click(button)
-      await waitFor(() => expect(within(panel).getByTestId(`selector-camera-${trackId}`)).toHaveAttribute('data-device', 'CAM-03'))
+      await waitFor(() => expect(within(panel).getByTestId(`selector-camera-${trackId}`)).toHaveAttribute('data-device', 'CAM-05')) // D60
       const other = trackId === 'VIDEO-01' ? 'VIDEO-02' : 'VIDEO-01'
       expect(within(panel).getByTestId(`selector-camera-${other}`)).toHaveAttribute('data-device', other === 'VIDEO-01' ? 'CAM-01' : 'CAM-02')
-      expect(captureAudit(sim).map((row) => row.details)).toEqual([expect.objectContaining({ operationId: 'setCaptureCameraSource', trackId, from, to: 'CAM-03' })])
+      expect(captureAudit(sim).map((row) => row.details)).toEqual([expect.objectContaining({ operationId: 'setCaptureCameraSource', trackId, from, to: 'CAM-05' })]) // D60
     })
   })
 
@@ -379,7 +381,8 @@ describe("the capture selector: every registered microphone and camera on its li
   describe('task 4 row 31: one row per SLOT - an empty slot is drawn with its offer, a held one can be cleared', () => {
     const SLOT = en.common.captureSlot
     type Config = SimState['captureConfig']
-    const SLOTS = ['VIDEO-01', 'VIDEO-02', 'PRIMARY', 'STANDBY'] as const
+    // D60 (2026-11-04): the selector carries SIX slots — four video tracks and two microphone roles.
+    const SLOTS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'PRIMARY', 'STANDBY'] as const
     type Slot = (typeof SLOTS)[number]
     /** The seeded selector with only the lines of `keep`. */
     const only = (config: Config, keep: readonly Slot[]): Config => ({
@@ -388,7 +391,7 @@ describe("the capture selector: every registered microphone and camera on its li
       mics: config.mics.filter((line) => keep.includes(line.role)),
     })
     const rowOf = (panel: HTMLElement, slot: Slot) => panel.querySelector<HTMLElement>(`[data-selector-slot="${slot}"]`)!
-    const isVideo = (slot: Slot) => slot === 'VIDEO-01' || slot === 'VIDEO-02'
+    const isVideo = (slot: Slot) => (slot as string).startsWith('VIDEO-') // D60: any of the four video slots
     const selectOf = (panel: HTMLElement, slot: Slot) => within(within(panel).getByTestId(isVideo(slot) ? `selector-source-${slot}` : `selector-mic-source-${slot}`)).getByRole('button')
     const saveOf = (panel: HTMLElement, slot: Slot) => within(panel).getByTestId(isVideo(slot) ? `selector-save-${slot}` : `selector-mic-save-${slot}`)
     async function pick(panel: HTMLElement, slot: Slot, name: RegExp | string) {
@@ -416,11 +419,12 @@ describe("the capture selector: every registered microphone and camera on its li
       ['0 lines of each kind', [] as readonly Slot[]],
       ['1 line of each kind (the second camera, the STANDBY microphone alone)', ['VIDEO-02', 'STANDBY'] as readonly Slot[]],
       ['1 line of each kind (the first camera, the PRIMARY microphone alone)', ['VIDEO-01', 'PRIMARY'] as readonly Slot[]],
-      ['2 lines of each kind (the seeded selector)', SLOTS as readonly Slot[]],
-    ])('one row per slot with %s: 4 rows, each empty one says "Not assigned" and offers "Assign"', async (_name, keep) => {
+      ['all lines of the seeded selector (four cameras, two microphones — D60, 2026-11-04)', SLOTS as readonly Slot[]],
+    ])('one row per slot with %s: 6 rows, each empty one says "Not assigned" and offers "Assign"', async (_name, keep) => { // D60 (2026-11-04): six slots
       const { panel } = await simSlots(keep)
       const rows = [...panel.querySelectorAll<HTMLElement>('[data-selector-slot]')]
-      expect(rows).toHaveLength(4)
+      // D60 (2026-11-04): one row per slot — four video tracks and two microphone roles.
+      expect(rows).toHaveLength(6)
       expect(rows.map((row) => row.getAttribute('data-selector-slot')).sort()).toEqual([...SLOTS].sort())
       for (const slot of SLOTS) {
         const row = rowOf(panel, slot)
@@ -459,13 +463,14 @@ describe("the capture selector: every registered microphone and camera on its li
     it('the seeded selector is drawn in the order the Core sent its lines, also after the roles traded places (unchanged)', async () => {
       const { sim, panel } = await simSlots(SLOTS)
       const order = () => [...panel.querySelectorAll<HTMLElement>('[data-selector-slot]')].map((row) => row.getAttribute('data-testid'))
-      expect(order()).toEqual(['selector-camera-VIDEO-01', 'selector-camera-VIDEO-02', 'selector-mic-MIC-01', 'selector-mic-MIC-02'])
+      // D60 (2026-11-04): a fully held kind keeps the Core's line order — four camera rows now.
+      expect(order()).toEqual(['selector-camera-VIDEO-01', 'selector-camera-VIDEO-02', 'selector-camera-VIDEO-03', 'selector-camera-VIDEO-04', 'selector-mic-MIC-01', 'selector-mic-MIC-02'])
       const config = sim.store.getState().captureConfig
       await act(async () => {
         sim.store.setState({ captureConfig: { ...config, mics: config.mics.map((mic) => ({ ...mic, role: mic.role === 'PRIMARY' ? 'STANDBY' : 'PRIMARY' })) } })
       })
       await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(S.role.PRIMARY))
-      expect(order()).toEqual(['selector-camera-VIDEO-01', 'selector-camera-VIDEO-02', 'selector-mic-MIC-01', 'selector-mic-MIC-02'])
+      expect(order()).toEqual(['selector-camera-VIDEO-01', 'selector-camera-VIDEO-02', 'selector-camera-VIDEO-03', 'selector-camera-VIDEO-04', 'selector-mic-MIC-01', 'selector-mic-MIC-02']) // D60: six rows
     })
 
     it('the gates of an empty row: a role without CAPTURE_CONFIG sees the offer disabled with the role sentence, never hidden', async () => {
@@ -686,12 +691,13 @@ describe("the capture selector: every registered microphone and camera on its li
 
       const camera = { trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'H264_1080P25', online: true, streamState: 'LIVE' } as const
       // A lone VIDEO-02 line is the SECOND row, a lone STANDBY line the STANDBY row.
+      // D60 (2026-11-04): four video rows per contract, empty tracks drawn as null lines.
       expect(selectorSlotRows({ cameras: [camera], mics: [standby] })).toEqual({
-        cameras: [{ slot: 'VIDEO-01', line: null }, { slot: 'VIDEO-02', line: camera }],
+        cameras: [{ slot: 'VIDEO-01', line: null }, { slot: 'VIDEO-02', line: camera }, { slot: 'VIDEO-03', line: null }, { slot: 'VIDEO-04', line: null }],
         mics: [{ slot: 'PRIMARY', line: null }, { slot: 'STANDBY', line: standby }],
       })
       expect(selectorSlotRows({ cameras: [], mics: [] })).toEqual({
-        cameras: [{ slot: 'VIDEO-01', line: null }, { slot: 'VIDEO-02', line: null }],
+        cameras: [{ slot: 'VIDEO-01', line: null }, { slot: 'VIDEO-02', line: null }, { slot: 'VIDEO-03', line: null }, { slot: 'VIDEO-04', line: null }],
         mics: [{ slot: 'PRIMARY', line: null }, { slot: 'STANDBY', line: null }],
       })
       // A complete kind keeps the order of its lines (input order: the STANDBY line may be the first).

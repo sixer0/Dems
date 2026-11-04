@@ -200,13 +200,14 @@ describe('Session Monitor: recording scenario (row 44 render test)', () => {
     const inputs = screen.getByTestId('sm-inputs')
     const formats = (): (string | null)[] => [...inputs.querySelectorAll('[data-device^="VIDEO-"] .sm-input-meta')].map((line) => line.textContent)
     // CONTROL: the rate the slice states is printed as stated, one line per camera.
-    expect(formats()).toEqual(['1080p • 25 fps', '1080p • 25 fps'])
+    // D60 (2026-11-04): one line per camera of the four-track Inputs panel.
+    expect(formats()).toEqual(['1080p • 25 fps', '1080p • 25 fps', '1080p • 25 fps', '1080p • 25 fps'])
     act(() =>
       sim.store.setState((state) => ({
         cameras: state.cameras.map((camera) => ({ ...camera, resolution: '2160p', fps: null, codec: 'HEVC' as const })),
       })),
     )
-    await waitFor(() => expect(formats()).toEqual(['2160p', '2160p']))
+    await waitFor(() => expect(formats()).toEqual(['2160p', '2160p', '2160p', '2160p'])) // D60
     expect(getMissingI18nKeys()).toEqual([])
   })
 })

@@ -44,6 +44,24 @@ export const CAMERA_FRAMING: Record<VideoTrackId, CameraFraming> = {
     origin: { x: 0.45, y: 0.4 },
     seed: 20261002,
   },
+  // D60 (2026-11-04): framing for the two further video tracks (distinct crops, phases and seeds
+  // so the demo loops never read as the same picture).
+  'VIDEO-03': {
+    crop: { x: 320, y: 96, w: 1920, h: 1080 },
+    mirror: false,
+    grade: 'brightness(0.82) sepia(0.18) saturate(0.76) contrast(1.06)',
+    phaseMs: 22_000,
+    origin: { x: 0.55, y: 0.45 },
+    seed: 20261104,
+  },
+  'VIDEO-04': {
+    crop: { x: 960, y: 240, w: 1600, h: 900 },
+    mirror: true,
+    grade: 'brightness(0.80) sepia(0.20) saturate(0.78) contrast(1.04)',
+    phaseMs: 33_000,
+    origin: { x: 0.5, y: 0.5 },
+    seed: 20261105,
+  },
 }
 
 /** M-C-12: push-in amplitude (scale 1.00 → 1.06). */

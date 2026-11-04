@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Button, Slider, Spinner } from '@heroui/react'
 import { Pause, Play, RotateCcw, Video } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { VIDEO_TRACK_IDS, type VideoTrackId } from '@dems/shared/domain' // D60 (2026-11-04): four video tracks
 import { Permission, selectCan, selectOperator, selectRole, useSim, useSimInstance } from '@dems/shared/sim'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { deferEffectStart } from '@/lib/effect-start'
@@ -692,7 +693,7 @@ export function SealedPlayer({ evidenceId, durationMs, item, sources, failedFrag
   const nothingPlays = playable.length === 0
   // Wave K (G94b-07): the item's own mark (`developmentSources === true`, Live data only) where no verify result states a class per file.
   const developmentItem = itemDevelopmentBadge(item, live !== null)
-  const trackName = (fileId: string): string => (fileId === 'VIDEO-01' || fileId === 'VIDEO-02' ? t(`common.tracks.${fileId}`) : fileId)
+  const trackName = (fileId: string): string => ((VIDEO_TRACK_IDS as readonly string[]).includes(fileId) ? t(`common.tracks.${fileId as VideoTrackId}`) : fileId)
   return (
     <div className="evi-sealed" data-testid="evidence-playback" data-phase="ready" data-playing={playing ? 'true' : 'false'} data-files={opened.join(' ')} data-leading={leading ?? undefined} aria-busy={phase.renewing || undefined}>
       <div className="evi-sealed-stages" data-files={opened.length}>

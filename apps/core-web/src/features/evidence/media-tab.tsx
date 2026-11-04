@@ -4,7 +4,7 @@ import type { Key } from '@heroui/react'
 import { motion } from 'motion/react'
 import { AudioLines, Film, Mic, Pause, Play, Video } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain'
+import { VIDEO_TRACK_IDS, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain'
 import { CoreMode, useCoreMode } from '@dems/shared/live'
 import type { DemoTrackEntry } from '@dems/shared/demo-data'
 import { excerptPositionSec } from '@/components/media/demo-media'
@@ -14,7 +14,8 @@ import { useEvidenceAssets } from './demo-assets'
 import { logEvidence } from './log'
 import { formatPlayerTime, type EvidenceRow } from './model'
 
-const VIDEO_TRACKS: VideoTrackId[] = ['VIDEO-01', 'VIDEO-02']
+// D60 (2026-11-04): the camera tabs are the four video tracks, derived from the shared truth.
+const VIDEO_TRACKS: readonly VideoTrackId[] = VIDEO_TRACK_IDS
 const AUDIO_TRACKS: AudioTrackId[] = ['AUDIO-01', 'AUDIO-02']
 /** Drift beyond this (s) re-aligns a MIC track to the video. */
 export const AUDIO_SYNC_TOLERANCE_S = 0.25
@@ -53,7 +54,7 @@ function playSafely(element: HTMLMediaElement | null, source: string): void {
 /**
  * Media tab (01_specs §14.5.3 "Media: track list + player"; research/04 §5.1; D50; review 40 R2).
  *
- * - Plays VIDEO-01 or VIDEO-02 from the package's `tracks[].stored.path` (muted: the videos carry no
+ * - Plays any of the four video tracks (D60, 2026-11-04) from the package's `tracks[].stored.path` (muted: the videos carry no
  *   audio stream) and the separate MIC tracks AUDIO-01 and AUDIO-02, both loaded and kept in sync
  *   with the video; the MIC switch unmutes one of them (a gapless switch). For EV 0005 the AUDIO-02
  *   file is the package's stored (altered) copy.
@@ -328,7 +329,7 @@ export function MediaTab({ row, playToken, onPlayHandled, mediaUnavailable = fal
 
       <ol className="evi-tracks" aria-label={t('evidence.detail.media.tracks')}>
         {pkg.tracks.map((entry) => {
-          const isVideo = entry.trackId === 'VIDEO-01' || entry.trackId === 'VIDEO-02'
+          const isVideo = (VIDEO_TRACK_IDS as readonly string[]).includes(entry.trackId) // D60: any of the four video tracks
           const active = entry.trackId === camera || entry.trackId === mic
           const thumb = urlFor(entry.thumbnail?.path)
           return (

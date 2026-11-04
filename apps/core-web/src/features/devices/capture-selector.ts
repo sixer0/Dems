@@ -26,7 +26,7 @@ import { useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { ApiErrorCode, type CaptureConfigSliceBody, type CaptureDevicesSliceBody } from '@dems/shared/api'
 import type { CoreCallFailure } from '@dems/shared/client'
-import { MicRole, TrackId, type VideoTrackId } from '@dems/shared/domain'
+import { MicRole, VIDEO_TRACK_IDS, type VideoTrackId } from '@dems/shared/domain'
 import { useCoreActions, useCorePermission } from '@dems/shared/live'
 import {
   DeviceCommand,
@@ -270,18 +270,18 @@ export interface MicSlotRow {
   readonly line: CaptureMicLine | null
 }
 
-const VIDEO_SLOTS = [TrackId.VIDEO_01, TrackId.VIDEO_02] as const
+const VIDEO_SLOTS = VIDEO_TRACK_IDS // D60 (2026-11-04): four video slots, derived from the shared truth
 const MIC_SLOTS = [MicRole.PRIMARY, MicRole.STANDBY] as const
 
 /**
- * The rows of the selector panel: ALWAYS two video rows and two microphone rows, found by track and
- * by role and never by position (decision C18 (2), (3)). A slot no line names is a row with
- * `line: null`.
+ * The rows of the selector panel: ALWAYS four video rows (D60) and two microphone rows, found by
+ * track and by role and never by position (decision C18 (2), (3)). A slot no line names is a row
+ * with `line: null`.
  *
- * Order: a kind whose two slots are both held is drawn in the order the Core sent its lines - what
+ * Order: a kind whose slots are all held is drawn in the order the Core sent its lines - what
  * the panel drew before this row, so a complete selector reads as it did (the microphone lines are
  * in input order, ruling D137). A kind with an empty slot is drawn in the order of the contract's
- * slot list (`CAPTURE_SELECTOR_SLOTS`: VIDEO-01, VIDEO-02, PRIMARY, STANDBY).
+ * slot list (`CAPTURE_SELECTOR_SLOTS`: VIDEO-01 … VIDEO-04, PRIMARY, STANDBY).
  */
 export function selectorSlotRows(config: Pick<CaptureConfig, 'cameras' | 'mics'>): { readonly cameras: readonly CameraSlotRow[]; readonly mics: readonly MicSlotRow[] } {
   const cameras = VIDEO_SLOTS.map((slot): CameraSlotRow => ({ slot, line: config.cameras.find((line) => line.trackId === slot) ?? null }))

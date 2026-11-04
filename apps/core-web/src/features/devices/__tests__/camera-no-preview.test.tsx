@@ -214,7 +214,8 @@ describe('row W4: the readers of a Core in real capture state the stored stream 
       expect(within(tile).queryByTestId('camera-no-preview-format')).toBeNull()
     }
     // The slice the page was served still holds the simulator's record: it is what must not be read.
-    expect(bed!.core.served.cameras.map((camera) => [camera.resolution, camera.fps, camera.codec, camera.bitrateMbps])).toEqual([['1080p', 25, 'H.264', 9], ['1080p', 25, 'H.264', 9]])
+    // D60 (2026-11-04): the served slice carries four cameras; none of their words may be read.
+    expect(bed!.core.served.cameras.map((camera) => [camera.resolution, camera.fps, camera.codec, camera.bitrateMbps])).toEqual([['1080p', 25, 'H.264', 9], ['1080p', 25, 'H.264', 9], ['1080p', 25, 'H.264', 9], ['1080p', 25, 'H.264', 9]])
     // The drawer's Overview: the stored facts in the Format row; the bitrate, the model, the firmware and the port stay "Not reported".
     fireEvent.click(first.querySelector<HTMLElement>('button.dev-cam-media')!)
     const overview = within(await screen.findByTestId('device-drawer')).getByTestId('device-overview')
@@ -284,7 +285,8 @@ describe('row W4: the readers of a Core in real capture state the stored stream 
     const core = coreWithSession(CORE_START_MS, 'ARMED')
     const page = await livePage('/session/new?step=2', 'page-session-new', () => profiles('HEVC_2160P', 'STANDARD')(core.state()))
     const step = await within(page).findByTestId('sn-step-devices')
-    await waitFor(() => expect(tiles(step)).toHaveLength(2))
+    // D60 (2026-11-04): one pre-check preview tile per video track — four.
+    await waitFor(() => expect(tiles(step)).toHaveLength(4))
     await waitFor(() => expect(within(tiles(step)[0]!).getByTestId('camera-no-preview-format')).toHaveTextContent('Format: 2160p'))
     expect(within(tiles(step)[1]!).getByTestId('camera-no-preview-format')).toHaveTextContent(`Format: ${en.common.devices.cameraFormatNotStated}`)
     for (const tile of tiles(step)) expect(tile).not.toHaveTextContent(/1080p|25 fps/)
@@ -316,11 +318,11 @@ describe('row W4: the readers of a Core in real capture state the stored stream 
 })
 
 describe('G70-03 the other surfaces, real capture', () => {
-  it('Session New, device check: both pre-check tiles are "No preview"', async () => {
+  it('Session New, device check: all four pre-check tiles are "No preview"', async () => { // D60 (2026-11-04): four video tracks
     const core = coreWithSession(CORE_START_MS, 'ARMED')
     const page = await livePage('/session/new?step=2', 'page-session-new', () => realCapture(core.state()))
     const step = await within(page).findByTestId('sn-step-devices')
-    await waitFor(() => expect(tiles(step)).toHaveLength(2))
+    await waitFor(() => expect(tiles(step)).toHaveLength(4))
     expect(feeds(page)).toHaveLength(0)
     tiles(step).forEach(expectNeutral)
   })

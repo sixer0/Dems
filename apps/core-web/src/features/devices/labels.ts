@@ -25,6 +25,11 @@ export function useDeviceLabels(): DeviceLabels {
           return t('common.devices.camera1')
         case 'CAM-02':
           return t('common.devices.camera2')
+        // D60 (2026-11-04): the two further built-in cameras.
+        case 'CAM-03':
+          return t('common.devices.camera3')
+        case 'CAM-04':
+          return t('common.devices.camera4')
         case 'MIC-01':
           return t('common.devices.mic1')
         case 'MIC-02':
@@ -52,6 +57,8 @@ export function useDeviceLabels(): DeviceLabels {
       switch (id) {
         case 'CAM-01':
         case 'CAM-02':
+        case 'CAM-03': // D60 (2026-11-04)
+        case 'CAM-04': // D60
           return t('devices.drawer.kind.camera')
         case 'MIC-01':
         case 'MIC-02':
@@ -78,6 +85,11 @@ export function useDeviceLabels(): DeviceLabels {
           return t('devices.ports.poeCam1')
         case 'POE_CAM_2_AUX':
           return t('devices.ports.poeCam2')
+        // D60 (2026-11-04): the two further camera ports.
+        case 'POE_CAM_3':
+          return t('devices.ports.poeCam3')
+        case 'POE_CAM_4':
+          return t('devices.ports.poeCam4')
         case 'MGMT_LAN':
           return t('devices.ports.mgmtLan')
         case 'MIC_IN_1':

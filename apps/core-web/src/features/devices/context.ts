@@ -24,8 +24,10 @@ const NONE: ReadonlySet<DeviceId> = new Set()
 export const DeviceActionsContext = createContext<DeviceActionsValue>({ open: noop, run: noop, pending: NONE })
 
 /** Whether `deviceId` has a command out (LB-1). */
-export function useDevicePending(deviceId: DeviceId): boolean {
-  return useContext(DeviceActionsContext).pending.has(deviceId)
+export function useDevicePending(deviceId: DeviceId | null | undefined): boolean {
+  // D60 (2026-11-04): a video track with no built-in device has nothing that can pend.
+  const pending = useContext(DeviceActionsContext).pending
+  return deviceId === null || deviceId === undefined ? false : pending.has(deviceId)
 }
 
 export function useDeviceActions(): DeviceActionsValue {

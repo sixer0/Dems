@@ -96,7 +96,7 @@ describe('demo media resolver (D50, D61; implementation/64 §5)', () => {
       ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013'],
     )
     const ev = evidenceMedia('EV-20261001-0007')
-    expect(ev?.video['VIDEO-02'].src).toMatch(/demo-media\/evidence\/0007\/VIDEO-02\.mp4$/)
+    expect(ev?.video['VIDEO-02']?.src).toMatch(/demo-media\/evidence\/0007\/VIDEO-02\.mp4$/) // D60: video is Partial<Record<VideoTrackId, …>> now
     expect(ev?.audio['AUDIO-01']).toMatch(/demo-media\/evidence\/0007\/AUDIO-01\.m4a$/)
     expect(evidenceMedia('EV-20261001-0014')).toBeNull()
     expect(demoMediaPaths().some((path) => path.startsWith('mobile/'))).toBe(false)

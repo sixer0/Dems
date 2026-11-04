@@ -31,7 +31,7 @@ import {
   type PrecheckItem,
   type SimState,
 } from '@dems/shared/sim'
-import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain'
+import { VIDEO_TRACK_IDS, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain' // D60 (2026-11-04)
 import { CameraPreview } from '@/features/devices/camera-preview'
 import { PrecheckSearchActions } from '@/features/devices/precheck-search'
 import { isGeneratedSource } from '@/features/devices/own-core-words'
@@ -262,7 +262,8 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry,
             <DemoMark block="precheck-previews" />
           </header>
           <motion.div className="sn-previews" initial="hidden" animate="visible" variants={{ hidden: {}, visible: { transition: { staggerChildren: m.flags.stagger ? m.seconds(80) : 0 } } }}>
-            {(['VIDEO-01', 'VIDEO-02'] as const).map((cameraId) => (
+            {VIDEO_TRACK_IDS.map((cameraId) => (
+              // D60 (2026-11-04): one preview per video track — four.
               <motion.div key={cameraId} variants={mediaIn} className="sn-preview">
                 <PreviewTile cameraId={cameraId} />
               </motion.div>

@@ -206,26 +206,27 @@ describe('Simulated mode: an edit (R-1 AC-1 in the simulator; PE-127-07)', { tim
     expect(getMissingI18nKeys()).toEqual([])
   })
 
-  it('assigning an added CAM-03 to VIDEO-01 writes exactly one CAPTURE_CONFIG_CHANGED row with the permission and the changed fields', async () => {
+  // D60 (2026-11-04): CAM-03/CAM-04 are built-ins of the four tracks; the added camera is CAM-05.
+  it('assigning an added CAM-05 to VIDEO-01 writes exactly one CAPTURE_CONFIG_CHANGED row with the permission and the changed fields', async () => {
     const { sim, panel } = await mountDevices('idle', OPERATOR_IDS.RINA, (created) => {
       const state = created.store.getState()
       created.store.setState({
-        captureDevices: { devices: [...state.captureDevices.devices, { ...state.captureDevices.devices[0]!, id: 'CAM-03', model: 'Added camera', host: '127.0.0.1:8559' }] },
+        captureDevices: { devices: [...state.captureDevices.devices, { ...state.captureDevices.devices[0]!, id: 'CAM-05', model: 'Added camera', host: '127.0.0.1:8559' }] }, // D60: an added camera is minted above the four built-ins
       })
     })
     expect(captureAudit(sim)).toHaveLength(0)
     fireEvent.click(within(within(panel).getByTestId('selector-source-VIDEO-01')).getByRole('button'))
-    fireEvent.click(await screen.findByRole('option', { name: /CAM-03/ }))
+    fireEvent.click(await screen.findByRole('option', { name: /CAM-05/ })) // D60: the added camera
     const save = within(panel).getByTestId('selector-save-VIDEO-01')
     await waitFor(() => expect(save).toBeEnabled())
     // Not optimistic: the line still names the Core's device until the answer.
     expect(within(panel).getByTestId('selector-camera-VIDEO-01')).toHaveAttribute('data-device', 'CAM-01')
     fireEvent.click(save)
-    await waitFor(() => expect(within(panel).getByTestId('selector-camera-VIDEO-01')).toHaveAttribute('data-device', 'CAM-03'))
+    await waitFor(() => expect(within(panel).getByTestId('selector-camera-VIDEO-01')).toHaveAttribute('data-device', 'CAM-05')) // D60
     const rows = captureAudit(sim)
     expect(rows).toHaveLength(1)
-    expect(rows[0]!.details).toMatchObject({ operationId: 'setCaptureCameraSource', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-01', deviceId: 'CAM-03', from: 'CAM-01', to: 'CAM-03' })
-    expect(sim.store.getState().captureConfig.cameras[0]).toMatchObject({ trackId: 'VIDEO-01', deviceId: 'CAM-03' })
+    expect(rows[0]!.details).toMatchObject({ operationId: 'setCaptureCameraSource', scope: 'CAMERA', field: 'SOURCE', trackId: 'VIDEO-01', deviceId: 'CAM-05', from: 'CAM-01', to: 'CAM-05' }) // D60
+    expect(sim.store.getState().captureConfig.cameras[0]).toMatchObject({ trackId: 'VIDEO-01', deviceId: 'CAM-05' }) // D60
     await waitFor(() => expect(save).toBeDisabled())
   })
 

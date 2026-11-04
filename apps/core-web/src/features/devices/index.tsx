@@ -38,6 +38,7 @@ import { AlertDialog, Button, toast } from '@heroui/react'
 import { AudioLines, Cable, Camera, Cpu, LayoutGrid, MonitorCog, Video } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
+import { VIDEO_TRACK_IDS } from '@dems/shared/domain'
 import { settle, useCoreActions } from '@dems/shared/live'
 import { DeviceCommand } from '@dems/shared/sim'
 import { useRealCaptureCore } from './source-class'
@@ -251,10 +252,12 @@ export function DevicesPage() {
             <div className="dev-grid">
               <DevicesPanel id="cameras" icon={Video} title={t('devices.cameras.title')} subtitle={realCaptureCore ? t('web.realCore.devices.camerasSubtitle') : t('devices.cameras.subtitle')}>
                 <motion.div className="dev-cams" variants={camerasStagger} initial="hidden" animate="visible">
-                  <CameraTile cameraId="VIDEO-01" lens={1} />
-                  <CameraTile cameraId="VIDEO-02" lens={2} />
+                  {/* D60 (2026-11-04): one tile per video track — four, derived from the shared truth. */}
+                  {VIDEO_TRACK_IDS.map((cameraId, index) => (
+                    <CameraTile key={cameraId} cameraId={cameraId} lens={index + 1} />
+                  ))}
                 </motion.div>
-                {/* Row 140 (D137 (2); ux §8f.3): the cameras the Core registered beyond the two built-in ids; nothing when there is none. */}
+                {/* Row 140 (D137 (2); ux §8f.3): the cameras the Core registered beyond the built-in ids; nothing when there is none. */}
                 <RegisteredDevices kind="CAMERA" onView={setRegisteredId} />
               </DevicesPanel>
 

@@ -23,6 +23,8 @@ const ICONS: Record<RearPortId, LucideIcon> = {
   AC_INPUT: Plug,
   POE_CAM_1: Cable,
   POE_CAM_2_AUX: Cable,
+  POE_CAM_3: Cable, // D60 (2026-11-04)
+  POE_CAM_4: Cable, // D60
   MGMT_LAN: RadioTower,
   MIC_IN_1: Mic,
   MIC_IN_2: Mic,
@@ -58,6 +60,11 @@ export function PortMap() {
         return t('devices.ports.tip.poeCam1', { watts: poeDraw.toFixed(1) })
       case 'POE_CAM_2_AUX':
         return t('devices.ports.tip.poeCam2')
+      // D60 (2026-11-04): the two further camera ports of the four-track capture surface.
+      case 'POE_CAM_3':
+        return t('devices.ports.tip.poeCam3')
+      case 'POE_CAM_4':
+        return t('devices.ports.tip.poeCam4')
       case 'MGMT_LAN':
         return t('devices.ports.tip.mgmtLan', { speed: speed })
       case 'MIC_IN_1':

@@ -25,6 +25,7 @@
  */
 import type { TFunction } from 'i18next'
 import { useMemo } from 'react'
+import type { VideoTrackId } from '@dems/shared/domain'
 import { useSim, type SimAlert } from '@dems/shared/sim'
 import { activeCaptureNotices, micInputName } from '@/lib/capture-notices'
 import { localDeviceState, type LocalDeviceState } from './capture-inputs'
@@ -32,13 +33,17 @@ import type { CaptureConfig, CaptureDevice } from './capture-selector'
 import { restingSourceChecked } from './own-core-words'
 import { LOCAL_DEVICE_ADAPTER, TEST_SOURCE_ADAPTER, isDevelopmentSource, isLocalSourceOn, type SourceDeviceKind } from './source-class'
 
-/** The four ids the page's own tiles and audio cards already draw. Every other camera or microphone of the Core's list is a roster card. */
-export const BUILT_IN_SOURCE_IDS: readonly string[] = ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02']
+/** The ids the page's own tiles and audio cards already draw (D60, 2026-11-04: four cameras, two microphones). Every other camera or microphone of the Core's list is a roster card. */
+// D60 (2026-11-04): the four-track capture surface ships four built-in cameras — the simulator seeds
+// CAM-03/CAM-04 as built-ins (`sim/initial-state.ts`, and `RETIRE_BUILT_IN_DEVICE_IDS` names them).
+// Without them here the Devices page drew a roster card beside the track's own tile (Fix wave L's rule).
+export const BUILT_IN_SOURCE_IDS: readonly string[] = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02']
 
 /** `params.reason` of the advisory alert of a microphone whose rate controller is at its limit (capture protocol 4; `sim/capture-notices.ts`). */
 export const MIC_RATE_AT_LIMIT = 'MIC_RATE_AT_LIMIT'
 
-export type RosterSlot = 'VIDEO-01' | 'VIDEO-02' | 'PRIMARY' | 'STANDBY'
+// D60 (2026-11-04): the roster names any of the four video slots or the two microphone roles.
+export type RosterSlot = VideoTrackId | 'PRIMARY' | 'STANDBY'
 
 export interface RosterCard {
   readonly id: string
@@ -62,7 +67,8 @@ type AlertLike = Pick<SimAlert, 'id' | 'kind' | 'active' | 'params' | 'target'>
 export function rosterSlotOf(config: Pick<CaptureConfig, 'cameras' | 'mics'>, device: Pick<CaptureDevice, 'id' | 'kind'>): RosterSlot | null {
   if (device.kind === 'CAMERA') {
     const line = config.cameras.find((camera) => camera.deviceId === device.id)
-    return line?.trackId === 'VIDEO-01' || line?.trackId === 'VIDEO-02' ? line.trackId : null
+    // D60 (2026-11-04): any of the four video tracks is a slot the roster can name.
+    return line?.trackId ?? null
   }
   const line = config.mics.find((mic) => mic.deviceId === device.id)
   return line === undefined ? null : line.role === 'PRIMARY' ? 'PRIMARY' : 'STANDBY'
@@ -168,6 +174,8 @@ export function rosterLimitKey(card: Pick<RosterCard, 'device' | 'kind' | 'local
 export const ROSTER_SLOT_KEY = {
   'VIDEO-01': 'common.developmentRoster.usedAs.VIDEO-01',
   'VIDEO-02': 'common.developmentRoster.usedAs.VIDEO-02',
+  'VIDEO-03': 'common.developmentRoster.usedAs.VIDEO-03', // D60 (2026-11-04)
+  'VIDEO-04': 'common.developmentRoster.usedAs.VIDEO-04', // D60
   PRIMARY: 'common.developmentRoster.usedAs.PRIMARY',
   STANDBY: 'common.developmentRoster.usedAs.STANDBY',
 } as const satisfies Record<RosterSlot, string>

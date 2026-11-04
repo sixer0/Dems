@@ -725,8 +725,9 @@ function SelectorBody({ view, commands }: { view: CaptureSelectorView; commands:
 }
 
 /**
- * The capture device selector (ux §2 flow 1; WB-05): which registered camera feeds `VIDEO-01` and
- * `VIDEO-02`, which registered microphone is on the PRIMARY and on the STANDBY line (wave H, G70-02:
+ * The capture device selector (ux §2 flow 1; WB-05): which registered camera feeds each of the four
+ * video tracks `VIDEO-01` … `VIDEO-04` (D60, 2026-11-04), which registered microphone is on the
+ * PRIMARY and on the STANDBY line (wave H, G70-02:
  * operation 78, pair replacement), and which microphone input is PRIMARY. Reads are open to every role; the edit controls
  * need `CAPTURE_CONFIG` and no open session, and show "Checking your permissions..." until the role,
  * the link and the read are resolved (E-16) — a control is disabled with its reason, never hidden.

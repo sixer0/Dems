@@ -43,7 +43,7 @@ import { DevicesErrorBoundary } from './panel'
 import { reportDevicesError } from './report'
 import {
   bookPoe,
-  CAMERA_POE_PORT,
+  CAMERA_TRACK_POE_PORT, // D60 (2026-11-04): the tile shows its own port
   DEVICE_CAMERA,
   DEVICE_MIC,
   deviceLog,
@@ -61,6 +61,8 @@ type DrawerTab = 'overview' | 'health' | 'log'
 const ICONS: Record<DeviceId, LucideIcon> = {
   'CAM-01': Camera,
   'CAM-02': Camera,
+  'CAM-03': Camera, // D60 (2026-11-04)
+  'CAM-04': Camera, // D60
   'MIC-01': Mic,
   'MIC-02': Mic,
   'POE-SWITCH': Network,
@@ -215,7 +217,7 @@ function useFieldLabel(): (key: FieldKey) => string {
   return (key) => t(`devices.drawer.field.${key}`)
 }
 
-function CameraOverview({ deviceId }: { deviceId: 'CAM-01' | 'CAM-02' }) {
+function CameraOverview({ deviceId }: { deviceId: 'CAM-01' | 'CAM-02' | 'CAM-03' | 'CAM-04' }) { // D60 (2026-11-04): four built-in cameras
   const { t } = useTranslation()
   const label = useFieldLabel()
   const labels = useDeviceLabels()
@@ -255,7 +257,7 @@ function CameraOverview({ deviceId }: { deviceId: 'CAM-01' | 'CAM-02' }) {
         ],
         // Pass I-9b: null = no telemetry states a bitrate - "Not reported", never a figure.
         [label('bitrate'), realCapture || camera.bitrateMbps === null ? notReported : t('common.units.mbps', { value: camera.bitrateMbps })],
-        [label('port'), realCapture ? notReported : labels.port(CAMERA_POE_PORT)],
+        [label('port'), realCapture ? notReported : labels.port(CAMERA_TRACK_POE_PORT[trackId])], // D60 (2026-11-04): each track's own port
         [label('recState'), camera.recState ? t(`common.enums.trackRecState.${camera.recState}`) : EMPTY_DATE_TEXT],
       ]}
     />

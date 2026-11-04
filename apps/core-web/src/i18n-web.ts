@@ -144,7 +144,7 @@ export const enWeb = {
         gnssNotConfigured: 'No GNSS receiver is configured. The time is the host system clock.',
         lcdRemaining: 'REMAINING TIME NOT REPORTED',
         lcdPlatform: 'TPM NOT REPORTED · SECURE BOOT NOT REPORTED',
-        camerasSubtitle: 'The camera sources of the two video tracks',
+        camerasSubtitle: 'The camera sources of the four video tracks', // D60 (2026-11-04)
       },
       networkTime: {
         avSync: 'This Core reports no A/V sync figure here. Source metadata: host system clock. A capture that nears its A/V bound raises a capture notice.',
@@ -311,7 +311,7 @@ export const enWeb = {
       },
       /** G75d-06 / -07: the Devices summary and audio block of a Core in its own capture. */
       summary: {
-        cameras: 'The sources on the two video tracks',
+        cameras: 'The sources on the four video tracks', // D60 (2026-11-04)
         microphones: 'The sources on the two microphone lines',
         other: 'PoE · relay · tablet link',
         audioSubtitle: 'The microphone sources of the primary and the standby line',
@@ -680,7 +680,8 @@ export const enWeb = {
       profilesLabel: 'Stored stream profiles',
       profilesNone: 'None stored yet',
       result: {
-        PROFILES_STORED: 'The connection works. The Core stored the stream profiles this camera states: it can now be assigned to Camera 1 or Camera 2.',
+        // D60 (2026-11-04): four camera slots, not two.
+        PROFILES_STORED: 'The connection works. The Core stored the stream profiles this camera states: it can now be assigned to Camera 1 through Camera 4.',
         STREAM_PROFILE_DIFFERS:
           'The camera now states other stream profiles than the ones stored for it. Nothing was stored: the stored profiles stand, and a connection test does not replace them. To use what the camera states now, adopt the camera again.',
         REACHABLE: 'The connection works with the stored password. No stream profile was stored.',

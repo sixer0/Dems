@@ -114,12 +114,12 @@ describe('Session Monitor on the simulator itself: a recording start', () => {
     expect(getMissingI18nKeys()).toEqual([])
   })
 
-  it('connecting -> failed start: with the demo fault CAMERA_LOSS on both cameras the start ends as "No camera connected. Nothing was recorded."', async () => {
+  it('connecting -> failed start: with the demo fault CAMERA_LOSS on all four cameras the start ends as "No camera connected. Nothing was recorded."', async () => { // D60 (2026-11-04): four tracks
     const { sim, run } = mountArmed()
     await banner()
     await act(async () => {
-      sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-01' })
-      sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-02' })
+      // D60: the failed start needs every track lost — two were not enough since the fourth track.
+      for (const cameraId of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const) sim.actions.inject('CAMERA_LOSS', { cameraId })
     })
     const evidenceBefore = sim.store.getState().evidence.length
     await act(async () => sim.actions.startRecording())

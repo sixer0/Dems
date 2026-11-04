@@ -5,7 +5,7 @@
  * so `useSim` (zustand `useShallow`) re-renders a panel only when one of its own fields changes,
  * never on the 10 Hz clock or the 20 Hz audio slice (03_motion_spec §9.3; D70 page rule).
  */
-import { SessionState, type BootRecoveryState } from '@dems/shared/domain'
+import { SessionState, type BootRecoveryState, type VideoTrackId } from '@dems/shared/domain'
 import {
   Permission,
   recordingEndOf,
@@ -367,7 +367,7 @@ export function selectIntegrity(s: SimState): IntegrityModel {
 
 // ── O and R: devices ─────────────────────────────────────────────────────────────────────
 export interface CameraTileModel {
-  id: 'VIDEO-01' | 'VIDEO-02'
+  id: VideoTrackId // D60 (2026-11-04): four video tracks
   name: string
   room: string
   ready: boolean
@@ -420,7 +420,7 @@ export function micTone(mic: MicTileModel): 'success' | 'warning' | 'danger' | '
 
 /** L: the active camera and its feed state (flat primitives). */
 export interface FeedModel {
-  activeCameraId: 'VIDEO-01' | 'VIDEO-02'
+  activeCameraId: VideoTrackId // D60 (2026-11-04): one of the four video tracks
   cameraName: string
   room: string
   noSignal: boolean

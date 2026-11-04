@@ -143,9 +143,10 @@ describe('Network & Time page (01_specs §14.5.6)', { timeout: 30_000 }, () => {
     // Network status and the four §21.1 domains.
     expect(screen.getByTestId('network-time-row-lan')).toHaveTextContent('Connected')
     expect(screen.getByTestId('network-time-row-lan')).toHaveTextContent('192.168.10.21 · Interview LAN · 1 Gbps')
-    // D79 (step 54): the design book's 2 PoE ports, both healthy (CAM 1 powered, CAM 2/AUX spare).
-    expect(screen.getByTestId('network-time-row-poe')).toHaveTextContent('2/2 ports')
-    expect(screen.getByTestId('network-time-row-poe')).toHaveTextContent('18.6 W of 60 W budget')
+    // D79 (step 54): the design book's PoE ports, both healthy. D60 (2026-11-04): the switch carries
+    // four camera ports and the budget doubled — three powered (CAM 1, 3, 4), CAM 2/AUX spare.
+    expect(screen.getByTestId('network-time-row-poe')).toHaveTextContent('4/4 ports')
+    expect(screen.getByTestId('network-time-row-poe')).toHaveTextContent('37.2 W of 120 W budget')
     expect(screen.getByTestId('network-time-tablet-state')).toHaveTextContent('Connected')
     expect(screen.getByTestId('network-time-domain-CAMERA')).toHaveTextContent('Camera ↔ Core only')
     expect(screen.getByTestId('network-time-domain-CAMERA')).toHaveTextContent('Active')
@@ -215,12 +216,13 @@ describe('Network & Time page (01_specs §14.5.6)', { timeout: 30_000 }, () => {
 
     act(() => sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-02' }))
     await waitFor(() => expect(screen.getByTestId('network-time-domain-CAMERA')).toHaveTextContent('Degraded'))
-    // D79: one lens lost keeps the dual-lens camera powered on PoE CAM 1 (2/2 ports, network UP; the
-    // Camera domain shows the loss). Losing both lenses takes PoE CAM 1 down: 1/2 ports, DEGRADED.
-    expect(screen.getByTestId('network-time-row-poe')).toHaveTextContent('2/2 ports')
+    // D79: one lens lost keeps the dual-lens camera powered on PoE CAM 1 (network UP; the Camera
+    // domain shows the loss). D60: the other two tracks keep their ports up — 4/4 healthy. Losing
+    // every camera takes CAM 1, 3 and 4 down: 1/4 ports (the spare stands), DEGRADED.
+    expect(screen.getByTestId('network-time-row-poe')).toHaveTextContent('4/4 ports')
     expect(screen.getByTestId('network-time-banner')).toHaveAttribute('data-network', 'UP')
-    act(() => sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-01' }))
-    await waitFor(() => expect(screen.getByTestId('network-time-row-poe')).toHaveTextContent('1/2 ports'))
+    for (const cameraId of ['VIDEO-01', 'VIDEO-03', 'VIDEO-04'] as const) sim.actions.inject('CAMERA_LOSS', { cameraId })
+    await waitFor(() => expect(screen.getByTestId('network-time-row-poe')).toHaveTextContent('1/4 ports'))
     expect(screen.getByTestId('network-time-banner')).toHaveAttribute('data-network', 'DEGRADED')
     expect(screen.getByTestId('network-time-domain-CAMERA')).toHaveTextContent('Down')
     expect(getMissingI18nKeys()).toEqual([])

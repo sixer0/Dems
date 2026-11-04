@@ -136,7 +136,7 @@ describe('the page on the Core\'s data (G5; §3.2)', () => {
     page.sockets.at(-1)!.delta([{ op: 'replace', slice: 'cameras', value: cameras }] as FakeCommandOptions['ops'])
     await bed.flush()
     await waitFor(() => expect(screen.getByTestId('tile-state-CAM-02')).toHaveTextContent(en.common.status.noSignal))
-    expect(screen.getByTestId('strip-cameras')).toHaveTextContent('1 of 2 online')
+    expect(screen.getByTestId('strip-cameras')).toHaveTextContent('3 of 4 online') // D60 (2026-11-04): four tracks
     expect(screen.getByTestId('tile-state-CAM-01')).not.toHaveTextContent(en.common.status.noSignal)
   })
 })

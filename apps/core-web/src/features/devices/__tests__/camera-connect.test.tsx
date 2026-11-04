@@ -237,7 +237,7 @@ describe('the five outcomes (ux §8d.4; D86 C-2)', { timeout: 60_000 }, () => {
     expect(toastTexts()).toEqual([])
     expect(posts(sim, spy, TEST_PATH)).toHaveLength(5)
     expect(posts(sim, spy, ADOPT_PATH)).toHaveLength(0)
-    expect(cameras(sim)).toEqual(['CAM-01', 'CAM-02'])
+    expect(cameras(sim)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']) // D60 (2026-11-04): the sim seeds four built-in cameras
   })
 
   it('the lock-out guard: at 0 attempts left Test is disabled with the sentence, and no label counts down', async () => {
@@ -265,23 +265,23 @@ describe('adding (ux §8d.6) and abandon (ux §8d.7)', { timeout: 60_000 }, () =
     fireEvent.click(screen.getByTestId('camera-connect-test'))
     await waitFor(() => expect(screen.getByTestId('camera-connect-outcome')).toHaveAttribute('data-outcome', 'REACHABLE'))
     expect(posts(sim, spy, TEST_PATH)[0]![0].body).toEqual({})
-    expect(cameras(sim)).toEqual(['CAM-01', 'CAM-02'])
+    expect(cameras(sim)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']) // D60 (2026-11-04): the sim seeds four built-in cameras
     fireEvent.click(screen.getByTestId('camera-connect-add'))
     const added = await screen.findByTestId('camera-connect-added')
-    expect(added).toHaveAttribute('data-device', 'CAM-03')
+    expect(added).toHaveAttribute('data-device', 'CAM-05') // D60: adoption mints above the four built-ins
     expect(screen.getByTestId('camera-connect-credential-fact')).toHaveTextContent(C.noPasswordUsed)
     expect(added).toHaveTextContent(C.addedNext)
     expect(added.querySelector('input')).toBeNull()
     expect(posts(sim, spy, ADOPT_PATH)).toHaveLength(1)
-    expect(cameras(sim)).toEqual(['CAM-01', 'CAM-02', 'CAM-03'])
+    expect(cameras(sim)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'CAM-05']) // D60: four seeded + the adopted one
     // Adoption is not assignment: no track changed.
-    expect(sim.store.getState().captureConfig.cameras.map((line) => line.deviceId)).toEqual(['CAM-01', 'CAM-02'])
+    expect(sim.store.getState().captureConfig.cameras.map((line) => line.deviceId)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']) // D60 (2026-11-04): four seeded lines
     fireEvent.click(screen.getByTestId('camera-connect-assign'))
     await waitFor(() => expect(screen.queryByTestId('camera-connect-added')).not.toBeInTheDocument())
     // The row now reads as registered, and the existing selector offers the new device.
     await waitFor(() => expect(screen.getByTestId(`camera-search-row-${NEW_ID}`)).toHaveAttribute('data-kind', 'REGISTERED'))
     fireEvent.click(within(screen.getByTestId('selector-source-VIDEO-01')).getByRole('button'))
-    expect(await screen.findByRole('option', { name: /CAM-03/ })).toBeInTheDocument()
+    expect(await screen.findByRole('option', { name: /CAM-05/ })).toBeInTheDocument() // D60: the newly adopted camera is CAM-05 now
   })
 
   it('added with a password: "Password stored." and no value anywhere in the result', async () => {
@@ -354,7 +354,7 @@ describe('adding (ux §8d.6) and abandon (ux §8d.7)', { timeout: 60_000 }, () =
     await waitFor(() => expect(screen.getByTestId(`camera-search-last-test-${NEW_ID}`)).toHaveTextContent(C.outcomeShort.REACHABLE))
     await reopen()
     expect(posts(sim, spy, ADOPT_PATH)).toHaveLength(0)
-    expect(cameras(sim)).toEqual(['CAM-01', 'CAM-02'])
+    expect(cameras(sim)).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04']) // D60 (2026-11-04): the sim seeds four built-in cameras
     expect(sim.store.getState().audit.rows.filter((row) => row.type === 'CAPTURE_CANDIDATE_ADOPTED')).toHaveLength(0)
     expect(document.body.innerHTML).not.toContain('typed-then-left')
   })

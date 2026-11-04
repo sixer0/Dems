@@ -117,7 +117,7 @@ describe("Live mode: verifying an evidence item (A6)", () => {
   const demoRequests = () => opened!.bed.fake.log.requests.filter((call) => call.operationId !== null && DEMO_OPERATIONS.includes(call.operationId))
 
   describe('A6 success (§8.2; AC-C-61)', () => {
-    it('one POST to operation 41; the chip, the six checks and the custody entry are the server\'s; no demo operation; no "simulated" word', async () => {
+    it('one POST to operation 41; the chip, the eight checks and the custody entry are the server\'s; no demo operation; no "simulated" word', async () => { // D60 (2026-11-04): six track checks
       const { bed } = await openIntegrity(EV.sealed)
       expect(screen.getByTestId('evidence-integrity')).toHaveAttribute('data-mode', 'core')
       // MS-2: operation 40 answered NONE, so no bundled package and the Core's values carry the Live label.
@@ -134,7 +134,8 @@ describe("Live mode: verifying an evidence item (A6)", () => {
       expect(demoRequests()).toEqual([])
 
       const rows = checkRows()
-      expect(rows.map((row) => row.dataset.check)).toEqual(['track:VIDEO-01', 'track:VIDEO-02', 'track:AUDIO-01', 'track:AUDIO-02', 'manifest', 'signature'])
+      // D60 (2026-11-04): the verification checks every track of the package — four video, two audio.
+      expect(rows.map((row) => row.dataset.check)).toEqual(['track:VIDEO-01', 'track:VIDEO-02', 'track:VIDEO-03', 'track:VIDEO-04', 'track:AUDIO-01', 'track:AUDIO-02', 'manifest', 'signature'])
       expect(rows.every((row) => row.dataset.source === 'core' && row.dataset.phase === 'pass')).toBe(true)
       // The custody entry the Core wrote arrived with the answer's delta (CL-16).
       const custody = screen.getByTestId('evidence-custody')

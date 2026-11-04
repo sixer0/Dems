@@ -69,7 +69,7 @@ function stateOf(scenario: 'idle' | 'recording'): SimState {
 /**
  * A Core in real capture after the order of the defect. `session`: `'SEALED'` = the last session is
  * sealed and still in the slice with its snapshot; `'OPEN'` = the control (a recording session with
- * the same snapshot). `local`: the changed selector names this Mac's camera on VIDEO-02 instead of CAM-05.
+ * the same snapshot). `local`: the changed selector names this Mac's camera on VIDEO-02 instead of CAM-05. // D60: the local camera is CAM-06, the added FAKE one CAM-05.
  */
 function afterSelectorChange(session: 'SEALED' | 'OPEN', local = false): SimState {
   const base = stateOf('recording')
@@ -78,11 +78,11 @@ function afterSelectorChange(session: 'SEALED' | 'OPEN', local = false): SimStat
   const devices = [
     ...base.captureDevices.devices.map((device) => ({ ...device, adapter: 'FAKE', sourceClass: 'DEVELOPMENT' }) as Device),
     { ...camera, id: 'CAM-05', adapter: 'FAKE', sourceClass: 'DEVELOPMENT' } as Device,
-    { ...camera, id: 'CAM-03', adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT' } as Device,
+    { ...camera, id: 'CAM-06', adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT' } as Device, // D60 (2026-11-04): CAM-03/04 are built-ins; the local one is CAM-06
     { ...mic, id: 'MIC-04', adapter: 'FAKE', sourceClass: 'DEVELOPMENT' } as Device,
   ]
   const snapshot = { cameras: base.captureConfig.cameras, mics: base.captureConfig.mics, revision: 2, updatedAt: base.captureConfig.updatedAt }
-  const newCamera = local ? 'CAM-03' : 'CAM-05'
+  const newCamera = local ? 'CAM-06' : 'CAM-05'
   const captureConfig = {
     ...base.captureConfig,
     cameras: base.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-02' ? { ...line, deviceId: newCamera } : line)),
@@ -207,12 +207,12 @@ describe('Session New: the readers of the pre-check rows and of the local-device
   })
 
   it('the local-device notice: a selector that names this Mac\'s camera AFTER a sealed session is asked about - the sealed snapshot (no local device) does not hide it', () => {
-    expect(localSourcesInForce(afterSelectorChange('SEALED', true))).toEqual({ camera: 'CAM-03', microphone: null })
+    expect(localSourcesInForce(afterSelectorChange('SEALED', true))).toEqual({ camera: 'CAM-06', microphone: null }) // D60
     // CONTROL: the open session was created under a selector without a local device - nothing of it is opened.
     expect(localSourcesInForce(afterSelectorChange('OPEN', true))).toBeNull()
     // And the other way round: a sealed session that RECORDED with the local camera names nothing once the selector left it.
     const sealed = afterSelectorChange('SEALED')
-    const recordedLocal = { ...sealed, session: { ...sealed.session!, captureConfig: { ...sealed.session!.captureConfig!, cameras: sealed.session!.captureConfig!.cameras.map((line) => ({ ...line, deviceId: 'CAM-03' })) } } as Session }
+    const recordedLocal = { ...sealed, session: { ...sealed.session!, captureConfig: { ...sealed.session!.captureConfig!, cameras: sealed.session!.captureConfig!.cameras.map((line) => ({ ...line, deviceId: 'CAM-06' })) } } as Session }
     expect(localSourcesInForce(recordedLocal)).toBeNull()
   })
 })

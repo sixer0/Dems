@@ -86,7 +86,8 @@ describe("the pre-check row of a source that did not answer (D114)", () => {
       const row = screen.getByTestId('sn-check-LENS_2')
       expect(row).toHaveAttribute('data-status', 'WARN')
       expect(row).toHaveAttribute('data-rule', 'oneCamera')
-      expect(row).toHaveTextContent('Camera 2 (CAM-02) is not reachable. The session will record one camera only. It did not answer the pre-check. A search found 1 camera.')
+      // D60 (2026-11-04): the oneCamera sentence reworded to "with one camera fewer".
+      expect(row).toHaveTextContent('Camera 2 (CAM-02) is not reachable. The session will record with one camera fewer. It did not answer the pre-check. A search found 1 camera.')
       expect(row.textContent ?? '').not.toMatch(/lens fault|no signal|core text/i)
       // Fix wave Q (CW-03): the row asked the tree for `common.enums.lensState.UNREACHABLE` - a key that does not exist
       // (one "missing i18n key" warning in the console of lane 2) - although the row draws its sentence, not the value.
@@ -183,8 +184,8 @@ describe("the pre-check row of a source that did not answer (D114)", () => {
       expect(CAPTURE_START_RULES).toContain(CaptureStartRule.SOURCE_NOT_ASSIGNED)
       expect(unassignedSlotOfPrecheckItem(unassigned('MIC_STANDBY', 'STANDBY'))).toBe('STANDBY')
       expect(unassignedSlotOfPrecheckItem(unassigned('LENS_1', 'VIDEO-01'))).toBe('VIDEO-01')
-      // An unknown slot, a passing item: not this item.
-      expect(unassignedSlotOfPrecheckItem(unassigned('LENS_1', 'VIDEO-03'))).toBeNull()
+      // An unknown slot, a passing item: not this item. (D60, 2026-11-04: VIDEO-03 became a known slot — the unknown is now VIDEO-05.)
+      expect(unassignedSlotOfPrecheckItem(unassigned('LENS_1', 'VIDEO-05'))).toBeNull()
       expect(unassignedSlotOfPrecheckItem(pass('LENS_1'))).toBeNull()
       // The unreachable form does not claim it (it needs a device id) - also not when the value were UNREACHABLE - and the unreachable item is not this one.
       expect(unreachablePrecheckOf(unassigned('LENS_1', 'VIDEO-01'))).toBeNull()

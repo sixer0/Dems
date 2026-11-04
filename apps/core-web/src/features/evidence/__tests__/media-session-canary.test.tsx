@@ -248,10 +248,11 @@ describe('the media path', () => {
     }
     expect(mediaSessionStale({ expiresAt: 60_000 }, 60_000 - MEDIA_SESSION_RENEW_MARGIN_MS - 1)).toBe(false)
     expect(mediaSessionStale({ expiresAt: 60_000 }, 60_000 - MEDIA_SESSION_RENEW_MARGIN_MS)).toBe(true)
-    // Fix F-M8: the camera files of an item are the ones it names (one or two); an item that names none is asked for both.
+    // Fix F-M8: the camera files of an item are the ones it names; an item that names none is asked for all of them.
+    // D60 (2026-11-04): the unnamed default widened with the truth — four tracks, not both.
     expect(cameraFilesOf({ files: [{ trackId: 'VIDEO-01' }, { trackId: 'VIDEO-02' }] })).toEqual(['VIDEO-01', 'VIDEO-02'])
     expect(cameraFilesOf({ files: [{ trackId: 'VIDEO-02' }] })).toEqual(['VIDEO-02'])
-    expect(cameraFilesOf({ files: [] })).toEqual(['VIDEO-01', 'VIDEO-02'])
+    expect(cameraFilesOf({ files: [] })).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'])
   })
 })
 

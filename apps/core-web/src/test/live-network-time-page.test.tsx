@@ -148,7 +148,7 @@ describe('the page on the Core\'s data (G9; §3.2)', () => {
     expect(screen.getByTestId('network-time-last-sync')).toHaveTextContent(wibClock(served.time.lastSyncAt))
     // Network: the Core's address and LAN name, and its PoE port count.
     expect(screen.getByTestId('network-time-row-lan')).toHaveTextContent('192.168.10.77 · Core LAN B')
-    expect(screen.getByTestId('network-time-row-poe')).toHaveTextContent('1/2 ports')
+    expect(screen.getByTestId('network-time-row-poe')).toHaveTextContent('1/4 ports') // D60 (2026-11-04): four camera ports on the switch
     expect(screen.getByTestId('network-time-tablet-state')).toHaveTextContent('Connected')
     // Events: the Core's network and time events, newest first.
     const rows = within(screen.getByTestId('page-network-time')).getAllByTestId('network-time-log-row')

@@ -21,10 +21,10 @@ import { useScrollEdges } from './scroll-edges'
 const MIC_SHORT = { 'AUDIO-01': 'common.devices.mic1', 'AUDIO-02': 'common.devices.mic2' } as const
 
 /**
- * R: CAMERA & INPUT STATUS (01_specs §14.5.2 R; research/04 §3.2 R). A 2×2 grid of kit
- * `Card variant="tertiary"` tiles: the two cameras (poster thumbnails, `live={false}` so only the
- * main feed decodes video, D70) and the two microphones with a DbfsMeter `compact` on the
- * transient channel. Tiles reveal 60 ms apart (M-PG-SM t = 460).
+ * R: CAMERA & INPUT STATUS (01_specs §14.5.2 R; research/04 §3.2 R). A grid of kit
+ * `Card variant="tertiary"` tiles: one per camera track (D60, 2026-11-04: four; poster thumbnails,
+ * `live={false}` so only the main feed decodes video, D70) and the two microphones with a DbfsMeter
+ * `compact` on the transient channel. Tiles reveal 60 ms apart (M-PG-SM t = 460).
  */
 /** The stored stream statement of a track on a Core in real capture, or its fault (`features/devices/stream-facts.ts`). Nothing off such a Core. */
 function StatedFormat({ cameraId }: { cameraId: VideoTrackId }) {

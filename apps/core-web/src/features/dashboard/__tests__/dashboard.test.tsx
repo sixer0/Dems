@@ -205,7 +205,7 @@ describe('Dashboard, idle scenario (row 42; AC-60 panel IDs; AC-75)', () => {
     mount()
     const strip = await findPanel('c')
     const expected: Array<[string, string, RegExp]> = [
-      ['cameras', '/devices', /2 Cameras: Ready/],
+      ['cameras', '/devices', /4 Cameras: Ready/], // D60 (2026-11-04): four video tracks
       ['mics', '/devices', /2 Microphones: Ready/],
       ['storage', '/storage', /Storage: 3\.2 TB Free/],
       ['time', '/network-time', /GNSS \/ Time: Synchronized/],

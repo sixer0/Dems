@@ -34,8 +34,7 @@ import {
   AuthStatus,
   createMemoryAuthStorage,
   createSim,
-  DEMO_OPERATOR_PASSWORD,
-  OPERATORS,
+  // D58 (2026-11-03): the demo-credentials disclosure left the login card; its test fixtures went with it.
   selectAuth,
   selectIsSignedIn,
   SOFTWARE_VERSION,
@@ -82,7 +81,7 @@ const healthOf = (ready: HealthResponse['ready']): HealthResponse => ({
 const TYPED = ['not', 'a', 'real', 'password'].join('-')
 const USERNAME = SUPERVISOR_SESSION.operator.username
 const LIVE_TRUST_LINE = 'Core server on this computer • web console, no pairing required'
-const DEMO_NOTICE = 'Published demo credentials for synthetic accounts on this local demo. They are not a secret.'
+// D58: DEMO_NOTICE removed with the disclosure it described.
 
 const originalMatchMedia = window.matchMedia
 function stubMatchMedia(width = 1920) {

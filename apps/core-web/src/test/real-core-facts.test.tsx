@@ -1359,9 +1359,10 @@ describe("the Core's own fact, \"Not reported\", or nothing: hashes, verify rows
       expect(field).toHaveTextContent(L.profile.configuredLabel)
       // One whole token per track (a line never breaks inside "VIDEO-02: H264_720P30").
       const lines = (root: HTMLElement) => Array.from(root.querySelectorAll('.sn-profile-line')).map((line) => line.textContent)
-      expect(lines(within(field).getByTestId('sn-profile-lines'))).toEqual(['VIDEO-01: H264_720P30', 'VIDEO-02: H264_720P30'])
+      // D60 (2026-11-04): the seeded selector carries four video lines — one profile token per track.
+      expect(lines(within(field).getByTestId('sn-profile-lines'))).toEqual(['VIDEO-01: H264_720P30', 'VIDEO-02: H264_720P30', 'VIDEO-03: H264_720P30', 'VIDEO-04: H264_720P30'])
       expect(field.querySelector('button, select, [role=combobox]')).toBeNull()
-      expect(lines(screen.getByTestId('sn-preview-profile'))).toEqual(['VIDEO-01: H264_720P30', 'VIDEO-02: H264_720P30'])
+      expect(lines(screen.getByTestId('sn-preview-profile'))).toEqual(['VIDEO-01: H264_720P30', 'VIDEO-02: H264_720P30', 'VIDEO-03: H264_720P30', 'VIDEO-04: H264_720P30']) // D60
       expect(screen.getByTestId('sn-step-info')).not.toHaveTextContent('1080p / 25 fps')
       expect(getMissingI18nKeys()).toEqual([])
     })

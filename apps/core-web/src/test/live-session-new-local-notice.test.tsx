@@ -59,14 +59,14 @@ function withThirdSources(state: SimState, adapter: 'LOCAL_DEVICE' | 'FAKE', whi
   const camera = state.captureDevices.devices.find((device) => device.kind === 'CAMERA')!
   const mic = state.captureDevices.devices.find((device) => device.kind === 'MIC')!
   const added: Device[] = []
-  if (which.camera) added.push({ ...camera, id: 'CAM-03', adapter, sourceClass: 'DEVELOPMENT' } as Device)
+  if (which.camera) added.push({ ...camera, id: 'CAM-05', adapter, sourceClass: 'DEVELOPMENT' } as Device) // D60 (2026-11-04): CAM-03/04 are built-ins now
   if (which.microphone) added.push({ ...mic, id: 'MIC-03', adapter, sourceClass: 'DEVELOPMENT' } as Device)
   return {
     ...state,
     captureDevices: { ...state.captureDevices, devices: [...state.captureDevices.devices, ...added] },
     captureConfig: {
       ...state.captureConfig,
-      cameras: state.captureConfig.cameras.map((line) => (which.camera && line.trackId === 'VIDEO-01' ? { ...line, deviceId: 'CAM-03' } : line)),
+      cameras: state.captureConfig.cameras.map((line) => (which.camera && line.trackId === 'VIDEO-01' ? { ...line, deviceId: 'CAM-05' } : line)),
       mics: state.captureConfig.mics.map((line) => (which.microphone && line.role === 'PRIMARY' ? { ...line, inputId: 'MIC-03', deviceId: 'MIC-03' } : line)) as SimState['captureConfig']['mics'],
     },
   }
@@ -124,7 +124,7 @@ describe('R69-01 (a) step 1 -> 2 with a local device in the selector', () => {
     fireEvent.click(next())
     const dialog = await screen.findByTestId('local-source-notice')
     expect(dialog).toHaveTextContent(N.title)
-    expect(screen.getByTestId('local-source-notice-devices')).toHaveTextContent(N.web.both.replace('{{camera}}', 'CAM-03').replace('{{microphone}}', 'MIC-03'))
+    expect(screen.getByTestId('local-source-notice-devices')).toHaveTextContent(N.web.both.replace('{{camera}}', 'CAM-05').replace('{{microphone}}', 'MIC-03'))
     expect(dialog).toHaveTextContent(N.body)
     await quiet()
     expect(sent()).toEqual([])
@@ -320,7 +320,7 @@ describe('D181 Start Recording with a local device in the selector', () => {
     const dialog = await screen.findByTestId('local-source-notice')
     expect(dialog).toHaveAttribute('data-kind', 'START')
     expect(dialog).toHaveTextContent(START.title)
-    expect(screen.getByTestId('local-source-notice-devices')).toHaveTextContent(START.web.both.replace('{{camera}}', 'CAM-03').replace('{{microphone}}', 'MIC-03'))
+    expect(screen.getByTestId('local-source-notice-devices')).toHaveTextContent(START.web.both.replace('{{camera}}', 'CAM-05').replace('{{microphone}}', 'MIC-03'))
     expect(dialog).toHaveTextContent(START.body)
     expect(screen.getByTestId('local-source-notice-confirm')).toHaveTextContent(START.confirm)
     await quiet()

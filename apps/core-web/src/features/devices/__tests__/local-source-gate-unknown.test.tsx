@@ -49,13 +49,14 @@ type Device = SimState['captureDevices']['devices'][number]
 function thirdCamera(state: SimState, adapter: 'LOCAL_DEVICE' | 'FAKE'): { devices: Device[]; config: SimState['captureConfig'] } {
   const camera = state.captureDevices.devices.find((device) => device.kind === 'CAMERA')!
   return {
-    devices: [...state.captureDevices.devices, { ...camera, id: 'CAM-03', adapter, sourceClass: 'DEVELOPMENT' } as Device],
-    config: { ...state.captureConfig, cameras: state.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, deviceId: 'CAM-03' } : line)) },
+    // D60 (2026-11-04): CAM-03/CAM-04 are built-ins; the added third camera is minted above them.
+    devices: [...state.captureDevices.devices, { ...camera, id: 'CAM-05', adapter, sourceClass: 'DEVELOPMENT' } as Device],
+    config: { ...state.captureConfig, cameras: state.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-01' ? { ...line, deviceId: 'CAM-05' } : line)) },
   }
 }
 
 /**
- * A Core whose selector names CAM-03 while the console's replica holds NO registry (the value a
+ * A Core whose selector names CAM-05 while the console's replica holds NO registry (the value a
  * Live client holds before the Core's device list reached it: `captureDevices: { devices: [] }`).
  * The list itself is what operation 77 answers - which the test holds, fails or releases.
  */
@@ -141,7 +142,8 @@ describe('G70-08 Session New while the device list is not known', () => {
     await waitFor(() => expect(isDisabled(next())).toBe(false))
     fireEvent.click(next())
     await screen.findByTestId('local-source-notice')
-    expect(screen.getByTestId('local-source-notice-devices')).toHaveTextContent(N.web.camera.replace('{{camera}}', 'CAM-03'))
+    // D60 (2026-11-04): the added local camera is CAM-05 — CAM-03/04 are built-ins.
+    expect(screen.getByTestId('local-source-notice-devices')).toHaveTextContent(N.web.camera.replace('{{camera}}', 'CAM-05'))
     await quiet()
     expect(sent()).toEqual([])
   })

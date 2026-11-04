@@ -63,6 +63,8 @@ export const STATUS_SEVERITY: Record<DeviceStatusCode, 0 | 1 | 2> = {
 export const COUNTED_DEVICES = [
   'CAM-01',
   'CAM-02',
+  'CAM-03', // D60 (2026-11-04): the banner counts all four built-in cameras
+  'CAM-04', // D60
   'MIC-01',
   'MIC-02',
   'POE-SWITCH',
@@ -81,7 +83,10 @@ type StatusInput = Pick<SimState, 'cameras' | 'mics' | 'network' | 'session' | '
 export function deviceStatus(state: StatusInput, id: DeviceId): DeviceStatusCode {
   switch (id) {
     case 'CAM-01':
-    case 'CAM-02': {
+    case 'CAM-02':
+    // D60 (2026-11-04): the two further built-in cameras read their own track's row.
+    case 'CAM-03':
+    case 'CAM-04': {
       const camera = state.cameras.find((entry) => entry.deviceId === id)
       return camera && camera.online && camera.lens === 'READY' ? 'READY' : 'FAULT'
     }
@@ -216,7 +221,8 @@ export function selectSummary(state: SimState): SummaryModel {
   const ports = rearPorts(state)
   const monitored = ports.filter((port) => port.link === 'up' || port.link === 'down')
   const portsUp = monitored.filter((port) => port.link === 'up').length
-  const cams = ['CAM-01', 'CAM-02'] as const
+  // D60 (2026-11-04): the summary counts the four built-in cameras of the four-track surface.
+  const cams = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04'] as const
   const mics = ['MIC-01', 'MIC-02'] as const
   const counted: readonly string[] = countedDevicesOf(state)
   const otherCounted = OTHER_DEVICES.filter((id) => counted.includes(id))

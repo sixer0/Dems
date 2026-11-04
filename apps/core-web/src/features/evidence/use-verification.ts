@@ -135,9 +135,9 @@ export function isV2Item(row: EvidenceRow | null): boolean {
   return (Array.isArray(row.item.files) && row.item.files.length > 0) || isCoreSealedItem(row.item) || isRealItem(row.item)
 }
 
-const SIM_CHECK_ORDER: DemoCheckId[] = ['track:VIDEO-01', 'track:VIDEO-02', 'track:AUDIO-01', 'track:AUDIO-02', 'manifest', 'signature']
+const SIM_CHECK_ORDER: DemoCheckId[] = ['track:VIDEO-01', 'track:VIDEO-02', 'track:VIDEO-03', 'track:VIDEO-04', 'track:AUDIO-01', 'track:AUDIO-02', 'manifest', 'signature'] // D60 (2026-11-04): six track checks
 
-/** The checks shown: the package's in Simulated mode, the Core's six (four tracks, manifest, signature) in Live mode. */
+/** The checks shown: the package's in Simulated mode, the Core's track checks plus manifest and signature in Live mode. */
 function orderFor(row: EvidenceRow | null, live: boolean): DemoCheckId[] {
   return !live && row?.pkg ? checkOrder(row.pkg) : SIM_CHECK_ORDER
 }

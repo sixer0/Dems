@@ -169,7 +169,8 @@ describe('session start on the web console (pass D7 items 3 and 5)', () => {
     const lines = within(list).getAllByRole('listitem').map((item) => item.querySelector('.dems-alert-message')!)
     const byNotice = (kind: string) => lines.filter((line) => line.getAttribute('data-notice') === kind).map((line) => line.textContent)
     expect(byNotice('FAILED_START')).toEqual(['No camera connected. Nothing was recorded.'])
-    expect(byNotice('UNREACHABLE')).toEqual(['Camera 2 (CAM-02) is not connected. The session is recording one camera only. It did not connect in time.'])
+    // D60 (2026-11-04): the session-start unreachable body reworded — four tracks, so a lost camera is "one fewer", not "one only".
+    expect(byNotice('UNREACHABLE')).toEqual(['Camera 2 (CAM-02) is not connected. The session is recording with one camera fewer. It did not connect in time.'])
     // CONTROL: a capture fault that names no cause, on a session that is not a failed start, keeps its own text.
     expect(lines.filter((line) => line.getAttribute('data-notice') === null).map((line) => line.textContent)).toContain('Capture fault')
     expect(getMissingI18nKeys()).toEqual([])

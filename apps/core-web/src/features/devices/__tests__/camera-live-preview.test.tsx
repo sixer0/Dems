@@ -358,9 +358,10 @@ describe('Devices & Inputs: the live preview of a production camera', () => {
 describe('the other surfaces', () => {
   it('Session New while the session is being started (ARMED): the live preview says it is paused for the recording', async () => {
     const core = coreWithSession(CORE_START_MS, 'ARMED')
-    const { root } = await livePage('/session/new?step=2', 'page-session-new', () => production(['CAM-01', 'CAM-02'])(core.state()))
+    // D60 (2026-11-04): all four built-in cameras are production here — four preview tiles pause.
+    const { root } = await livePage('/session/new?step=2', 'page-session-new', () => production(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04'])(core.state()))
     const step = await within(root).findByTestId('sn-step-devices')
-    await waitFor(() => expect(previews(step)).toHaveLength(2))
+    await waitFor(() => expect(previews(step)).toHaveLength(4))
     for (const preview of previews(step)) {
       expect(preview).toHaveAttribute('data-state', 'PAUSED')
       expect(preview).toHaveTextContent(PV.pausedForRecording)

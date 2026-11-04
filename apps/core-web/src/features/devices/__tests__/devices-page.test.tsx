@@ -121,15 +121,16 @@ describe('Devices & Inputs: idle scenario (row 48 render test)', () => {
     const { page } = await mountDevices()
     for (const id of PANELS) expect(within(page).getByTestId(`panel-${id}`)).toBeInTheDocument()
 
-    // Camera Devices: both lenses of the dual-lens camera, live through CameraFeed.
-    for (const cameraId of ['VIDEO-01', 'VIDEO-02']) {
+    // Camera Devices: both lenses of the dual-lens camera and the two further built-in cameras
+    // (D60, 2026-11-04), live through CameraFeed — each on its own PoE port.
+    for (const [cameraId, poeName] of [['VIDEO-01', 'PoE CAM 1'], ['VIDEO-02', 'PoE CAM 1'], ['VIDEO-03', 'PoE CAM 3'], ['VIDEO-04', 'PoE CAM 4']] as const) {
       const tile = screen.getByTestId(`camera-tile-${cameraId}`)
       expect(tile).toHaveAttribute('data-status', 'READY')
       const feed = within(tile).getByTestId('camera-feed')
       expect(feed).toHaveAttribute('data-camera', cameraId)
       expect(feed).toHaveAttribute('data-live', 'true')
       expect(within(tile).getByText('1080p • 25 fps • H.264')).toBeInTheDocument()
-      expect(within(tile).getByText('PoE CAM 1')).toBeInTheDocument()
+      expect(within(tile).getByText(poeName)).toBeInTheDocument()
     }
 
     // Audio Inputs: two large meters with read-only gain and phantom.
@@ -145,18 +146,18 @@ describe('Devices & Inputs: idle scenario (row 48 render test)', () => {
       'MIC 2 - Subject (Ch 2)',
     ])
 
-    // Summary metric cards and the banner (9 devices).
-    expect(screen.getByTestId('summary-cameras')).toHaveAttribute('data-value', '2')
+    // Summary metric cards and the banner (11 devices — D60, 2026-11-04: four cameras, four PoE ports).
+    expect(screen.getByTestId('summary-cameras')).toHaveAttribute('data-value', '4')
     expect(screen.getByTestId('summary-microphones')).toHaveAttribute('data-value', '2')
     expect(screen.getByTestId('summary-other')).toHaveAttribute('data-value', '5')
-    expect(screen.getByTestId('summary-ports')).toHaveAttribute('data-value', '7')
-    expect(screen.getByTestId('summary-ports')).toHaveAttribute('data-total', '7')
+    expect(screen.getByTestId('summary-ports')).toHaveAttribute('data-value', '9')
+    expect(screen.getByTestId('summary-ports')).toHaveAttribute('data-total', '9')
     const banner = screen.getByTestId('devices-banner')
     expect(banner).toHaveAttribute('data-kind', 'READY')
-    expect(banner).toHaveTextContent('All devices ready 9/9')
+    expect(banner).toHaveTextContent('All devices ready 11/11')
 
-    // Other Devices: PoE (book view, 1 active + 1 spare), relay lamp, tablet, GNSS, TPM.
-    expect(screen.getByTestId('other-POE-SWITCH')).toHaveTextContent('1 active · 1 spare')
+    // Other Devices: PoE (book view, 3 active + 1 spare since D60), relay lamp, tablet, GNSS, TPM.
+    expect(screen.getByTestId('other-POE-SWITCH')).toHaveTextContent('3 active · 1 spare')
     expect(screen.getByTestId('recording-lamp')).toHaveAttribute('data-lit', 'false')
     expect(screen.getByTestId('other-status-TABLET')).toHaveTextContent('CONNECTED')
     expect(screen.getByTestId('other-GNSS')).toHaveTextContent(/Locked · \d+ satellites/)
@@ -377,16 +378,21 @@ describe('Reduced motion (§8, AC-70)', () => {
 describe('Simulator device views (W48-1..4, step 54)', () => {
   it('presents the book PoE view: PoE CAM 1 active while either lens streams, CAM 2/AUX spare', () => {
     const sim = newSim()
-    expect(bookPoe(sim.store.getState())).toMatchObject({ cam1Link: true, active: 1, spare: 1, total: 2, drawW: 18.6 })
+    // D60 (2026-11-04): four camera ports on the switch — CAM 1, CAM 3 and CAM 4 powered, CAM 2/AUX spare.
+    expect(bookPoe(sim.store.getState())).toMatchObject({ cam1Link: true, active: 3, spare: 1, total: 4, drawW: 37.2 })
     sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-02' })
-    expect(bookPoe(sim.store.getState())).toMatchObject({ cam1Link: true, active: 1 })
-    sim.actions.inject('CAMERA_LOSS', { cameraId: 'VIDEO-01' })
+    // D60: lens 2 shares PoE CAM 1 — its loss leaves the other three tracks powered.
+    expect(bookPoe(sim.store.getState())).toMatchObject({ cam1Link: true, active: 3 })
+    for (const cameraId of ['VIDEO-01', 'VIDEO-03', 'VIDEO-04'] as const) sim.actions.inject('CAMERA_LOSS', { cameraId })
     const poe = bookPoe(sim.store.getState())
     expect(poe).toMatchObject({ cam1Link: false, active: 0, spare: 1, drawW: 0 })
     const ports = rearPorts(sim.store.getState())
     expect(ports.map((port) => port.id)).toEqual(REAR_PORT_ORDER)
     expect(ports.find((port) => port.id === 'POE_CAM_1')?.link).toBe('down')
     expect(ports.find((port) => port.id === 'POE_CAM_2_AUX')?.link).toBe('spare')
+    // D60 (2026-11-04): the two further camera ports go down with their cameras.
+    expect(ports.find((port) => port.id === 'POE_CAM_3')?.link).toBe('down')
+    expect(ports.find((port) => port.id === 'POE_CAM_4')?.link).toBe('down')
   })
 
   it('derives the five front-panel LEDs from the simulator state', () => {
@@ -452,9 +458,10 @@ describe('Simulator device views (W48-1..4, step 54)', () => {
     expect(auditRowDevice(boot)).toBe('FRONT-PANEL')
   })
 
-  it('counts 9 devices and summarises faults for the banner and the metric cards', () => {
+  // D60 (2026-11-04): the banner counts eleven devices — the four built-in cameras join the tally.
+  it('counts 11 devices and summarises faults for the banner and the metric cards', () => {
     const sim = newSim()
-    expect(selectBanner(sim.store.getState())).toMatchObject({ kind: 'READY', ready: 9, total: 9, issues: 0 })
+    expect(selectBanner(sim.store.getState())).toMatchObject({ kind: 'READY', ready: 11, total: 11, issues: 0 })
     sim.actions.inject('TPM_FAILURE')
     const state = sim.store.getState()
     expect(selectStatusMap(state).TPM).toBe('FAILED')

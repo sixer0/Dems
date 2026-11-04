@@ -413,6 +413,9 @@ export function CameraFeed({
                 ref={canvasRef}
                 data-testid="camera-feed-canvas"
                 data-ambient={kenBurns.attrs['data-ambient']}
+                // D60 (2026-11-04): a track with no demo loop falls back to this canvas, so it must carry
+                // the policy attribute too — the dashboard's reduced-motion rule reads it on every [data-ambient].
+                data-motion={kenBurns.attrs['data-motion']}
                 className="size-full"
                 aria-hidden="true"
               />

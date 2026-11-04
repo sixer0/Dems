@@ -4,7 +4,7 @@ import { Link } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'motion/react'
 import { Maximize2, Minimize2, Video } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { SessionState, type VideoTrackId } from '@dems/shared/domain'
+import { SessionState, VIDEO_TRACK_IDS, type VideoTrackId } from '@dems/shared/domain'
 import { formatDuration } from '@dems/shared/realtime'
 import { useCoreActions } from '@dems/shared/live'
 import { selectSystemState, useSim } from '@dems/shared/sim'
@@ -21,7 +21,8 @@ import { captureFailedStartText, type CaptureFailedStart } from '@/lib/capture-n
 import { selectCoreSealsInterrupted, selectFeed, type SessionPhase } from './model'
 import { Panel } from './panel'
 
-const CAMERA_IDS: readonly VideoTrackId[] = ['VIDEO-01', 'VIDEO-02']
+// D60 (2026-11-04): the switch iterates the four video tracks from the shared truth.
+const CAMERA_IDS: readonly VideoTrackId[] = VIDEO_TRACK_IDS
 /** M-C-18: one white shutter flash, 0 → 0.85 → 0 in 180 ms (P8: a single flash). */
 const SHUTTER_MS = 180
 
@@ -48,8 +49,8 @@ export interface LiveFeedPanelProps {
  * - The step-92 live loop of the active camera through CameraFeed (D50), with the kit Chip
  *   overlays: "Camera 1 - Interview Room 1", REC + SlidingNumber timer, "1080p • 25 fps • H.264",
  *   and the fullscreen button.
- * - Camera switch: kit ToggleButtonGroup (Camera 1 | Camera 2), not in the mockup (04 §3.2 L
- *   proposal); the feed cross-fades 320 ms (M-C-12).
+ * - Camera switch: kit ToggleButtonGroup, one button per video track (D60, 2026-11-04: four), not
+ *   in the mockup (04 §3.2 L proposal); the feed cross-fades 320 ms (M-C-12).
  * - Fullscreen: kit Modal with its own enter transition (M-C-15, D6). DR-44-5: the R5
  *   `layoutId="feed-<cameraId>"` flight did not play into the kit Modal's portal in the browser
  *   check, so it is not used; the page feed stops decoding while the fullscreen copy plays.
@@ -96,12 +97,14 @@ export function LiveFeedPanel({
   const switchCamera = (keys: Set<string | number> | 'all') => {
     if (keys === 'all') return
     const next = [...keys][0]
-    if (next !== 'VIDEO-01' && next !== 'VIDEO-02') return
+    // D60 (2026-11-04): any of the four video tracks may be switched to.
+    if (typeof next !== 'string' || !(VIDEO_TRACK_IDS as readonly string[]).includes(next)) return
+    const trackId = next as VideoTrackId
     // LB-1: a second choice while the first is out is ignored (the toggle keeps the pending one).
-    cameraPress.settle(() => actions.setActiveCamera(next), {
-      onWait: () => setPendingCamera(next),
+    cameraPress.settle(() => actions.setActiveCamera(trackId), {
+      onWait: () => setPendingCamera(trackId),
       fail: (error) => {
-        logSessionMonitorError('LiveFeedPanel.switchCamera', error, { cameraId: next })
+        logSessionMonitorError('LiveFeedPanel.switchCamera', error, { cameraId: trackId })
         // The page's own branch is the log line above, as before; the presenter words an outage,
         // a limit or a refusal of the Core.
         presentCoreError(error)

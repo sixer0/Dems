@@ -45,6 +45,9 @@ export {
 export const DEVICE_IDS = [
   'CAM-01',
   'CAM-02',
+  // D60 (2026-11-04): the simulator seeds CAM-03/CAM-04 as built-in cameras of the four-track surface.
+  'CAM-03',
+  'CAM-04',
   'MIC-01',
   'MIC-02',
   'POE-SWITCH',
@@ -56,15 +59,20 @@ export const DEVICE_IDS = [
 ] as const
 export type DeviceId = (typeof DEVICE_IDS)[number]
 
-export const CAMERA_DEVICE: Record<VideoTrackId, 'CAM-01' | 'CAM-02'> = { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02' }
+// D60 (2026-11-04): four video tracks, each with its built-in camera in the demonstration model
+// (`sim/initial-state.ts` seeds CAM-01..CAM-04 on VIDEO-01..VIDEO-04). A track an assignment leaves
+// empty is still drawn OFFLINE by `camera-tile.tsx` through the slice, not through this map.
+export const CAMERA_DEVICE: Record<VideoTrackId, 'CAM-01' | 'CAM-02' | 'CAM-03' | 'CAM-04'> = { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', 'VIDEO-03': 'CAM-03', 'VIDEO-04': 'CAM-04' }
 export const MIC_DEVICE: Record<AudioTrackId, 'MIC-01' | 'MIC-02'> = { 'AUDIO-01': 'MIC-01', 'AUDIO-02': 'MIC-02' }
-export const DEVICE_CAMERA: Partial<Record<DeviceId, VideoTrackId>> = { 'CAM-01': 'VIDEO-01', 'CAM-02': 'VIDEO-02' }
+export const DEVICE_CAMERA: Partial<Record<DeviceId, VideoTrackId>> = { 'CAM-01': 'VIDEO-01', 'CAM-02': 'VIDEO-02', 'CAM-03': 'VIDEO-03', 'CAM-04': 'VIDEO-04' } // D60 (2026-11-04)
 export const DEVICE_MIC: Partial<Record<DeviceId, AudioTrackId>> = { 'MIC-01': 'AUDIO-01', 'MIC-02': 'AUDIO-02' }
 
 /** Devices the simulator's `deviceCommand` accepts (TEST_SIGNAL, RESTART). */
 export const COMMANDABLE: ReadonlySet<DeviceId> = new Set([
   'CAM-01',
   'CAM-02',
+  'CAM-03', // D60 (2026-11-04): the two further built-in cameras
+  'CAM-04', // D60
   'MIC-01',
   'MIC-02',
   'POE-SWITCH',
@@ -108,11 +116,16 @@ export function bookPoe(state: Pick<SimState, 'cameras' | 'network'>): BookPoe {
 /** The PoE port shown on each lens tile: both lenses share PoE CAM 1 (book B.01, §4.2). */
 export const CAMERA_POE_PORT = 'POE_CAM_1' as const
 
+// D60 (2026-11-04): each further built-in camera states its own port (`sim/initial-state.ts`).
+export const CAMERA_TRACK_POE_PORT: Record<VideoTrackId, RearPortId> = { 'VIDEO-01': 'POE_CAM_1', 'VIDEO-02': 'POE_CAM_1', 'VIDEO-03': 'POE_CAM_3', 'VIDEO-04': 'POE_CAM_4' }
+
 // ── Rear-panel ports (book §4.2) ─────────────────────────────────────────────────────────
 export type RearPortId =
   | 'AC_INPUT'
   | 'POE_CAM_1'
   | 'POE_CAM_2_AUX'
+  | 'POE_CAM_3' // D60 (2026-11-04): the PoE switch carries four camera ports
+  | 'POE_CAM_4' // D60
   | 'MGMT_LAN'
   | 'MIC_IN_1'
   | 'MIC_IN_2'
@@ -137,6 +150,8 @@ export const REAR_PORT_ORDER: readonly RearPortId[] = [
   'AC_INPUT',
   'POE_CAM_1',
   'POE_CAM_2_AUX',
+  'POE_CAM_3', // D60 (2026-11-04): four camera ports on the PoE switch
+  'POE_CAM_4', // D60
   'MGMT_LAN',
   'MIC_IN_1',
   'MIC_IN_2',
@@ -158,6 +173,8 @@ export const REAR_PORT_DEVICE: Record<RearPortId, DeviceId | null> = {
   AC_INPUT: 'FRONT-PANEL',
   POE_CAM_1: 'POE-SWITCH',
   POE_CAM_2_AUX: 'POE-SWITCH',
+  POE_CAM_3: 'POE-SWITCH', // D60 (2026-11-04)
+  POE_CAM_4: 'POE-SWITCH', // D60
   MGMT_LAN: 'TABLET',
   MIC_IN_1: 'MIC-01',
   MIC_IN_2: 'MIC-02',
@@ -181,6 +198,9 @@ export function rearPorts(state: Pick<SimState, 'cameras' | 'network' | 'ports' 
     port('AC_INPUT', up(!faultActive(state, FaultKind.POWER_FAIL))),
     port('POE_CAM_1', up(poe.cam1Link), poe.cam1Link ? (recording ? 'fast' : 'slow') : 'none'),
     port('POE_CAM_2_AUX', 'spare'),
+    // D60 (2026-11-04): the two further camera ports; down until a camera feeds the track.
+    port('POE_CAM_3', up(simPortLink(state, 'POE_CAM_3'))),
+    port('POE_CAM_4', up(simPortLink(state, 'POE_CAM_4'))),
     port(
       'MGMT_LAN',
       up(simPortLink(state, 'MGMT_LAN') && state.network.linkUp),

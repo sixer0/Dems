@@ -20,7 +20,7 @@
 import { CaptureSourceClass } from '@dems/shared/api'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { VideoTrackId } from '@dems/shared/domain'
+import { VIDEO_TRACK_IDS, type VideoTrackId } from '@dems/shared/domain' // D60 (2026-11-04)
 import { useSim, selectorInForce } from '@dems/shared/sim'
 import { micInputName } from '@/lib/capture-notices'
 import { useWebLive } from '@/runtime'
@@ -139,11 +139,11 @@ export function usePrecheckDevice(checkId: string): CaptureDevice | undefined {
     const config = selectorInForce(state)
     let deviceId: string | undefined
     switch (checkId) {
+      // D60 (2026-11-04): a LENS_<n> row stands for video track <n> of the four; the mapping is
+      // derived, so a widened pre-check vocabulary needs no second edit here.
       case 'LENS_1':
-        deviceId = config.cameras.find((camera) => camera.trackId === 'VIDEO-01')?.deviceId
-        break
       case 'LENS_2':
-        deviceId = config.cameras.find((camera) => camera.trackId === 'VIDEO-02')?.deviceId
+        deviceId = config.cameras.find((camera) => camera.trackId === VIDEO_TRACK_IDS[Number(checkId.slice('LENS_'.length)) - 1])?.deviceId
         break
       case 'MIC_1':
         deviceId = config.mics.find((mic) => mic.inputId === 'MIC-01')?.deviceId

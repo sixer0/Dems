@@ -12,7 +12,7 @@ import { DeviceMenu, IdentifyRing } from './device-menu'
 import { useDeviceLabels } from './labels'
 import { useDeviceWords } from './live'
 import { deviceStatus, STATUS_SEVERITY, STATUS_TONE } from './model'
-import { CAMERA_DEVICE, CAMERA_POE_PORT } from './sim-adapter'
+import { CAMERA_DEVICE, CAMERA_TRACK_POE_PORT } from './sim-adapter'
 import { TrackSourceMarks } from './source-badge'
 import { useRealCaptureCore } from './source-class'
 import { measuredFiguresShown } from './source-state'
@@ -21,8 +21,8 @@ import { useStatedFormat } from './stream-facts'
 
 export interface CameraTileProps {
   cameraId: VideoTrackId
-  /** 1 or 2: the lens number of the dual-lens camera. */
-  lens: 1 | 2
+  /** 1 to 4: the lens number shown on the tile (D60, 2026-11-04: four video tracks, one tile each). */
+  lens: number
 }
 
 /**
@@ -43,12 +43,14 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
   const m = useMotionPolicy()
   const labels = useDeviceLabels()
   const { open } = useDeviceActions()
+  // D60 (2026-11-04): tracks 3 and 4 have no built-in device in the demonstration model; their tile
+  // then reads OFFLINE under the track's own name until the selector assigns a source.
   const deviceId = CAMERA_DEVICE[cameraId]
   // LB-1 (plan row W70): the kebab's Button drops `aria-busy`, so the head that holds it carries it.
   const busy = useDevicePending(deviceId)
   const camera = useSim((s) => selectCameraById(s, cameraId))
-  const status = useSim((s) => deviceStatus(s, deviceId))
-  const name = labels.name(deviceId)
+  const status = useSim((s) => (deviceId ? deviceStatus(s, deviceId) : 'OFFLINE'))
+  const name = deviceId ? labels.name(deviceId) : t(`common.tracks.${cameraId}`)
   const tone = STATUS_TONE[status]
   // Row 54 (P12-F08): the format is what the camera slice states. A stream that states no rate (`fps` null)
   // reads its picture and codec without one; a track the slice does not carry states no format at all.
@@ -118,13 +120,18 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
           <TrackUnreachableMark trackId={cameraId} />
           <TrackSourceMarks trackId={cameraId} place={cameraId} />
         </div>
-        <DeviceMenu deviceId={deviceId} name={name} />
+        {/* D60 (2026-11-04): an unassigned track has no built-in device, so no menu. */}
+        {deviceId ? <DeviceMenu deviceId={deviceId} name={name} /> : null}
       </header>
 
       <button
         type="button"
         className="dev-cam-media"
-        onClick={() => open(deviceId)}
+        // D60: the drawer of a track with no built-in device has nothing to show.
+        disabled={!deviceId}
+        onClick={() => {
+          if (deviceId) open(deviceId)
+        }}
         aria-label={t('devices.cameras.openDetails', { name })}
       >
         {/* Wave H (G70-03): on a Core in real capture this is the neutral "No preview" tile, never the demo loop. */}
@@ -134,13 +141,13 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
           label={null}
           formatLabel={realCapture ? '' : formatChip}
           recordingSince={null}
-          noSignal={status === 'FAULT'}
+          noSignal={status === 'FAULT' || status === 'OFFLINE'}
           // Decisions D51 / D53: on a Core in real capture a production camera shows its live preview here.
           livePreview
           // Live mode: the picture is the bundled demo loop, not a live preview (plan row W0, item 7).
           ariaLabel={t(words.feedAria, { name })}
         />
-        <IdentifyRing deviceId={deviceId} />
+        {deviceId ? <IdentifyRing deviceId={deviceId} /> : null}
       </button>
 
       <dl className="dev-cam-meta">
@@ -156,10 +163,12 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
             <dd>{formatLine}</dd>
           </div>
         )}
-        {figures.poePort ? (
+        {/* D60 (2026-11-04): no port of a device the track does not hold. */}
+        {figures.poePort && deviceId ? (
           <div data-testid={`camera-poe-${cameraId}`}>
             <dt>{t('devices.cameras.poePort')}</dt>
-            <dd>{labels.port(CAMERA_POE_PORT)}</dd>
+            {/* D60 (2026-11-04): each built-in camera states its own port — VIDEO-03/04 read POE_CAM_3/4. */}
+            <dd>{labels.port(CAMERA_TRACK_POE_PORT[cameraId])}</dd>
           </div>
         ) : null}
         {/* Task 4 row W4 (review 060c R-01, R-06): never on a Core in real capture (`measuredFiguresShown`), and no literal for a track the slice does not carry. */}

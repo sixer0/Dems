@@ -75,7 +75,8 @@ export function liveAudio(channel: AudioTrackId): string | null {
 
 export interface EvidenceMedia {
   evidenceSuffix: string
-  video: Record<VideoTrackId, VideoMedia>
+  /** D60 (2026-11-04): one entry per video track the demo corpus carries; the generator ships 01/02 today. */
+  video: Partial<Record<VideoTrackId, VideoMedia>>
   audio: Record<AudioTrackId, string>
 }
 
@@ -108,12 +109,16 @@ export function evidenceMedia(evidenceIdOrSuffix: string): EvidenceMedia | null 
   }
   const v1 = video('VIDEO-01')
   const v2 = video('VIDEO-02')
+  // D60 (2026-11-04): tracks 3 and 4 join the set when the corpus carries their files; the demo
+  // baseline (01/02 + both MIC tracks) stays the completeness bound.
+  const v3 = video('VIDEO-03')
+  const v4 = video('VIDEO-04')
   const a1 = demoMediaUrl(`evidence/${suffix}/AUDIO-01.m4a`)
   const a2 = demoMediaUrl(`evidence/${suffix}/AUDIO-02.m4a`)
   if (!v1 || !v2 || !a1 || !a2) return null
   return {
     evidenceSuffix: suffix,
-    video: { 'VIDEO-01': v1, 'VIDEO-02': v2 },
+    video: { 'VIDEO-01': v1, 'VIDEO-02': v2, ...(v3 ? { 'VIDEO-03': v3 } : {}), ...(v4 ? { 'VIDEO-04': v4 } : {}) },
     audio: { 'AUDIO-01': a1, 'AUDIO-02': a2 },
   }
 }

@@ -16,8 +16,10 @@
  * | `developmentSources` | `true` / `false` exactly as sent; anything else, also absent, is `null` = NOT RECORDED, which is never read as production (R-11) |
  */
 import { readTranscriptModel, type ItemTranscriptModel } from '@dems/shared/evidence-rules'
+import { VIDEO_TRACK_IDS } from '@dems/shared/domain'
 
-export const CAMERA_FILE_IDS = ['VIDEO-01', 'VIDEO-02'] as const
+// D60 (2026-11-04): the sealed camera files are the four video tracks, derived from the shared truth.
+export const CAMERA_FILE_IDS = VIDEO_TRACK_IDS
 export type CameraFileId = (typeof CAMERA_FILE_IDS)[number]
 
 export interface ItemFileV2 {
