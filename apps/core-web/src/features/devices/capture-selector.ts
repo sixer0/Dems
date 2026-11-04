@@ -10,8 +10,8 @@
  * | `selectorEditGate` | G1-G3 (ux §2.4): Checking → allowed, or refused with its reason (role, open session) |
  * | `poeCycleGate` | G9 (ux §2.4): offered only for a LOST stream; the role and recording rules are the one gate of `lib/device-command-gate.ts` |
  * | `useCaptureSelector` | The read in both data modes |
- * | `useCaptureSelectorCommands` | Operations 78 (the microphone lines by role; `unassign`), 79, 80 and the camera PoE cycle (48) in both data modes |
- * | `micPairFor` | Wave H (G70-02): the lines of operation 78 for "this microphone on this line" - the pair replacement (D133 (1)), or ONE line by role beside an empty slot (task 4 row 31) |
+ * | `useCaptureSelectorCommands` | Operations 78 (the microphone lines by CHANNEL, D61; `unassign`), 79, 81 and the camera PoE cycle (48) in both data modes |
+ * | `micLineFor` | D61 (2026-11-04): the line of operation 78 for "this microphone on this channel" - ONE line by channel (a line assigns its channel ALONE; the slots it does not name keep what they hold) |
  * | `selectorSlotRows` | Task 4 row 31 (decision C18 (3)): one row per SLOT of the selector - an absent line is a row too |
  *
  * **Two data modes, one shape.** In Live mode the read is operations 76 and 77 through the two
@@ -26,20 +26,24 @@ import { useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { ApiErrorCode, type CaptureConfigSliceBody, type CaptureDevicesSliceBody } from '@dems/shared/api'
 import type { CoreCallFailure } from '@dems/shared/client'
-import { MicRole, VIDEO_TRACK_IDS, type VideoTrackId } from '@dems/shared/domain'
+import { VIDEO_TRACK_IDS, type VideoTrackId } from '@dems/shared/domain' // D61 (2026-11-04): MicRole superseded — the roles became the numbered channels
 import { useCoreActions, useCorePermission } from '@dems/shared/live'
 import {
   DeviceCommand,
   hasActiveSession,
+  MIC_CHANNEL_IDS,
   OperatorRole,
   Permission,
+  PRIMARY_MIC_CHANNEL,
+  SECOND_MIC_CHANNEL,
   ROLE_PERMISSIONS,
   selectCan,
   selectIsRecording,
   useSim,
   useSimInstance,
   type CaptureSelectorSlot,
-} from '@dems/shared/sim'
+  type MicChannel,
+} from '@dems/shared/sim' // D61 (2026-11-04): the four microphone channels of the selector
 import {
   captureConfigQueryOptions,
   captureDevicesQueryOptions,
@@ -207,53 +211,43 @@ export function useCaptureSelector(): CaptureSelectorView {
 
 export type SelectorOperation = 'updateCaptureConfig' | 'setCaptureCameraSource' | 'setPrimaryMic' | 'restartDevice'
 
-/** One line of the replacing microphone pair of operation 78 (D133 (1)): `deviceId` equals `inputId`. */
-export interface MicPairLine {
+/** One microphone line of operation 78 (D61 of 2026-11-04): `deviceId` equals `inputId` and the line names its CHANNEL. */
+export interface MicChannelLine {
   readonly inputId: string
   readonly deviceId: string
-  readonly role: CaptureMicLine['role']
+  readonly channel: MicChannel
 }
 
 /**
- * Wave H (G70-02): the body of "microphone `deviceId` on the line of `role`" for operation 78
- * (C3 §2.3), each line `deviceId == inputId`. Task 4 row 31 (site W2; names register E36, rule
- * MIC-ASSIGN, ruling C21 (8)): the answer no longer needs both roles to be held.
- *
- * | The OTHER role | Answer |
- * |----------------|--------|
- * | holds a line | the PAIR REPLACEMENT (decision D133 (1)): two lines, PRIMARY first; the other line keeps its microphone. This is the body a complete selector always sent |
- * | is empty | ONE line by role: the slot of the other role keeps what it holds, which is nothing |
- * | holds `deviceId` itself | `null`: the contract refuses one microphone on both lines - nothing is sent |
- *
- * The line of `role` itself may be absent: that is the assignment of an empty slot.
+ * D61 (2026-11-04) generalizes wave H (G70-02) and decision D133 (1): the pair replacement became
+ * the per-channel line. Operation 78's mic lines are keyed by CHANNEL — "microphone `deviceId` on
+ * channel `channel`" — and a line assigns its channel ALONE: the slots of the channels the change
+ * does not name keep what they hold (`assignMicsByChannel` of `sim/capture-config.ts`). One
+ * microphone never stands on two channels: choosing a device another ASSIGNED channel holds is a
+ * MOVE (`micMoveFor`), not a bare line.
  */
-export function micPairFor(mics: readonly CaptureMicLine[], role: CaptureMicLine['role'], deviceId: string): readonly MicPairLine[] | null {
-  const other = mics.find((line) => line.role !== role)
-  const chosen: MicPairLine = { inputId: deviceId, deviceId, role }
-  if (other === undefined) return [chosen]
-  if (other.deviceId === deviceId) return null
-  const kept: MicPairLine = { inputId: other.deviceId, deviceId: other.deviceId, role: other.role }
-  return role === 'PRIMARY' ? [chosen, kept] : [kept, chosen]
+export function micLineFor(channel: MicChannel, deviceId: string): readonly MicChannelLine[] {
+  return [{ inputId: deviceId, deviceId, channel }]
 }
 
 /**
- * R-FLEX row 133 (88 D-A4.6, T-14; D16 Q96-02 (B); spec rflex §2.4 "Selector rule for Q-R5 B"): a
- * microphone MOVED from the other line to the line of `role`. The old line is cleared, so one
- * microphone is never on both lines: ONE operation 78 edit `{ unassign: [from], mics: [line] }`
+ * R-FLEX row 133 (88 D-A4.6, T-14; D16 Q96-02 (B); generalized by D61 of 2026-11-04): a microphone
+ * MOVED from the channel that holds it to the channel of `channel`. The old channel is cleared, so
+ * one microphone is never on two channels: ONE operation 78 edit `{ unassign: [from], mics: [line] }`
  * (row 132, T-13, judges it on the selector as the edit leaves it - `unassign` first).
  */
 export interface MicMove {
-  /** The role the microphone leaves: that slot is cleared (`unassign`). */
-  readonly from: CaptureMicLine['role']
-  /** The one line by role the microphone takes. */
-  readonly line: MicPairLine
+  /** The channel the microphone leaves: that slot is cleared (`unassign`). */
+  readonly from: MicChannel
+  /** The one line by channel the microphone takes. */
+  readonly line: MicChannelLine
 }
 
-/** The move of `deviceId` to the line of `role`, or `null` when `deviceId` is not the other line's microphone (then `micPairFor` applies). */
-export function micMoveFor(mics: readonly CaptureMicLine[], role: CaptureMicLine['role'], deviceId: string): MicMove | null {
-  const other = mics.find((line) => line.role !== role)
-  if (other === undefined || other.deviceId !== deviceId) return null
-  return { from: other.role, line: { inputId: deviceId, deviceId, role } }
+/** The move of `deviceId` to the channel `channel`, or `null` when `deviceId` holds no other assigned channel (then a bare `micLineFor` applies). */
+export function micMoveFor(mics: readonly CaptureMicLine[], channel: MicChannel, deviceId: string): MicMove | null {
+  const other = mics.find((line) => line.channel !== channel && line.deviceId === deviceId)
+  if (other === undefined) return null
+  return { from: other.channel, line: { inputId: deviceId, deviceId, channel } }
 }
 
 // ── One row per slot (task 4 row 31; site W1; decision C18 (3)) ──────────────────────────
@@ -264,31 +258,42 @@ export interface CameraSlotRow {
   readonly line: CaptureCameraLine | null
 }
 
-/** A microphone slot of the selector (a ROLE) with the line that holds it; `line: null` is the slot NOT ASSIGNED. */
+/** A microphone slot of the selector (a CHANNEL, D61) with the line that holds it; `line: null` is the slot NOT ASSIGNED. */
 export interface MicSlotRow {
-  readonly slot: CaptureMicLine['role']
+  readonly slot: MicChannel
   readonly line: CaptureMicLine | null
 }
 
 const VIDEO_SLOTS = VIDEO_TRACK_IDS // D60 (2026-11-04): four video slots, derived from the shared truth
-const MIC_SLOTS = [MicRole.PRIMARY, MicRole.STANDBY] as const
+const MIC_SLOTS = MIC_CHANNEL_IDS // D61 (2026-11-04): four microphone channels, derived from the shared truth
 
 /**
- * The rows of the selector panel: ALWAYS four video rows (D60) and two microphone rows, found by
- * track and by role and never by position (decision C18 (2), (3)). A slot no line names is a row
- * with `line: null`.
+ * The rows of the selector panel: ALWAYS four video rows (D60) and FOUR microphone rows (D61,
+ * 2026-11-04), found by track and by CHANNEL and never by position (decision C18 (2), (3)). A slot
+ * no line names is a row with `line: null`.
  *
  * Order: a kind whose slots are all held is drawn in the order the Core sent its lines - what
  * the panel drew before this row, so a complete selector reads as it did (the microphone lines are
  * in input order, ruling D137). A kind with an empty slot is drawn in the order of the contract's
- * slot list (`CAPTURE_SELECTOR_SLOTS`: VIDEO-01 … VIDEO-04, PRIMARY, STANDBY).
+ * slot list (`CAPTURE_SELECTOR_SLOTS`: VIDEO-01 … VIDEO-04, MIC-01 … MIC-04).
  */
 export function selectorSlotRows(config: Pick<CaptureConfig, 'cameras' | 'mics'>): { readonly cameras: readonly CameraSlotRow[]; readonly mics: readonly MicSlotRow[] } {
   const cameras = VIDEO_SLOTS.map((slot): CameraSlotRow => ({ slot, line: config.cameras.find((line) => line.trackId === slot) ?? null }))
-  const mics = MIC_SLOTS.map((slot): MicSlotRow => ({ slot, line: config.mics.find((line) => line.role === slot) ?? null }))
+  const mics = MIC_SLOTS.map((slot): MicSlotRow => ({ slot, line: config.mics.find((line) => line.channel === slot) ?? null }))
   const asHeld = <Row extends { readonly line: object | null }>(rows: readonly Row[], lines: readonly object[]): readonly Row[] =>
     rows.every((row) => row.line !== null) ? [...rows].sort((a, b) => lines.indexOf(a.line!) - lines.indexOf(b.line!)) : rows
   return { cameras: asHeld(cameras, config.cameras), mics: asHeld(mics, config.mics) }
+}
+
+/**
+ * D61 (2026-11-04): the chip of a microphone channel. Channels 1 and 2 keep the two role words of
+ * the shared catalog (`devices.selector.role.*`, the transcription pair operation 81 trades);
+ * channels 3 and 4 are named by the shared slot list.
+ */
+export function micChannelChipKey(channel: MicChannel): 'devices.selector.role.PRIMARY' | 'devices.selector.role.STANDBY' | 'common.captureSlot.MIC-03' | 'common.captureSlot.MIC-04' {
+  if (channel === PRIMARY_MIC_CHANNEL) return 'devices.selector.role.PRIMARY'
+  if (channel === SECOND_MIC_CHANNEL) return 'devices.selector.role.STANDBY'
+  return channel === 'MIC-03' ? 'common.captureSlot.MIC-03' : 'common.captureSlot.MIC-04'
 }
 
 /** A command that was refused or not answered: the status and the code, never the answer's text. */
@@ -367,13 +372,13 @@ export interface CaptureSelectorCommands {
    * profile - operation 79's body has no profile member, and a production camera is assigned with one.
    */
   readonly setCameraSource: (deviceId: string, trackId: VideoTrackId, profile?: string) => Promise<SelectorAnswer>
-  /** Operation 80: `inputId` becomes PRIMARY, the other input STANDBY. */
+  /** Operation 81 (D61): the named input takes the transcribed channel 1; the input that held it takes the named input's old channel. */
   readonly setPrimaryMic: (inputId: string) => Promise<SelectorAnswer>
-  /** Operation 78 by role (wave H, G70-02; task 4 row 31): `pair` (of `micPairFor`) is the new pair of microphone inputs, or the one line of a role beside an empty slot. */
-  readonly setMicPair: (pair: readonly MicPairLine[]) => Promise<SelectorAnswer>
+  /** Operation 78 by channel (D61, 2026-11-04): `lines` (of `micLineFor`) are microphone lines each naming its channel; a line assigns its channel alone. */
+  readonly setMicLine: (lines: readonly MicChannelLine[]) => Promise<SelectorAnswer>
   /** Operation 78, member `unassign` (task 4 row 31; names register N1): the slot holds no source afterwards. */
   readonly unassign: (slot: CaptureSelectorSlot) => Promise<SelectorAnswer>
-  /** Operation 78, ONE edit (R-FLEX row 133, T-14): `unassign` of the line the microphone leaves and its one line by role (`micMoveFor`). */
+  /** Operation 78, ONE edit (R-FLEX row 133, T-14; D61): `unassign` of the channel the microphone leaves and its one line by channel (`micMoveFor`). */
   readonly moveMic: (move: MicMove) => Promise<SelectorAnswer>
   /** Operation 48 for a camera: the confirmed PoE cycle (`{ confirm: true }`, OD-22). */
   readonly poeCycle: (deviceId: string) => Promise<SelectorAnswer>
@@ -432,9 +437,10 @@ export function useCaptureSelectorCommands(): CaptureSelectorCommands {
             ? simAnswer('setPrimaryMic', sim.request({ method: 'POST', path: `/api/v1/capture/mics/${encodeURIComponent(inputId)}/primary` }))
             : callLive(live, queryClient, 'setPrimaryMic', () => live.client.call('setPrimaryMic', { params: { id: inputId } })),
         ),
-      setMicPair: (pair) =>
+      setMicLine: (lines) =>
         guarded('updateCaptureConfig', () => {
-          const body = { mics: pair.map((line) => ({ inputId: line.inputId, deviceId: line.deviceId, role: line.role })) }
+          // D61 (2026-11-04): the lines are keyed by channel (the role member is superseded).
+          const body = { mics: lines.map((line) => ({ inputId: line.inputId, deviceId: line.deviceId, channel: line.channel })) }
           return live === null
             ? simAnswer('updateCaptureConfig', sim.request({ method: 'POST', path: '/api/v1/capture/config', body }))
             : callLive(live, queryClient, 'updateCaptureConfig', () => live.client.call('updateCaptureConfig', { body }))
@@ -448,7 +454,7 @@ export function useCaptureSelectorCommands(): CaptureSelectorCommands {
         }),
       moveMic: (move) =>
         guarded('updateCaptureConfig', () => {
-          const body = { unassign: [move.from], mics: [{ inputId: move.line.inputId, deviceId: move.line.deviceId, role: move.line.role }] }
+          const body = { unassign: [move.from], mics: [{ inputId: move.line.inputId, deviceId: move.line.deviceId, channel: move.line.channel }] } // D61: by channel
           return live === null
             ? simAnswer('updateCaptureConfig', sim.request({ method: 'POST', path: '/api/v1/capture/config', body }))
             : callLive(live, queryClient, 'updateCaptureConfig', () => live.client.call('updateCaptureConfig', { body }))

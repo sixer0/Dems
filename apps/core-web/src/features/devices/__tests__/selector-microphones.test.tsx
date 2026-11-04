@@ -3,16 +3,16 @@
  * @vitest-environment-options { "url": "http://127.0.0.1:5178/" }
  */
 // Wave H, driver D (gate 70, finding G70-02, MAJOR; ruling D196: "the selector offers every
-// registered microphone on both lines"). Before this the microphone section had only "Make
-// primary", so `MIC-03` could be selected by API only. The new control is operation 78 of contract
-// C3 in its PAIR-REPLACEMENT form (decision D133 (1)): two lines, each with a role, `deviceId ==
-// inputId`.
+// registered microphone on both lines"), widened by D61 (2026-11-04): FOUR simultaneous channels
+// MIC-01..MIC-04 — the roles became the numbered channels and the pair replacement of decision
+// D133 (1) became the per-channel line of operation 78: ONE line per named channel, `deviceId ==
+// inputId`, the slots a change does not name keeping what they hold.
 //
 // | Rule | Where it is proven |
 // |------|--------------------|
-// | Every registered microphone is offered for the PRIMARY and for the STANDBY line; a Save is ONE operation 78 with the two lines of the new pair | "Simulated mode", "Live mode" |
-// | The simulator (the Core's own rules) takes the pair and writes its `CAPTURE_CONFIG_CHANGED` row with `operationId: updateCaptureConfig` | "Simulated mode" |
-// | R-FLEX row 133 (T-14; 88 D-A4.6; D16 Q96-02 (B)): the other line's microphone is an ENABLED move option that says so; its Save is ONE operation 78 edit with `unassign` of the old line, so one microphone is never on both lines | "Simulated mode", "Live mode" |
+// | Every registered microphone is offered on EACH of the four channels; a Save is ONE operation 78 line by channel | "Simulated mode", "Live mode" |
+// | The simulator (the Core's own rules) takes the line and writes its `CAPTURE_CONFIG_CHANGED` row with `operationId: updateCaptureConfig` | "Simulated mode" |
+// | R-FLEX row 133 (T-14; 88 D-A4.6; D16 Q96-02 (B)): a microphone another channel holds is an ENABLED move option that says so; its Save is ONE operation 78 edit with `unassign` of the old channel, so one microphone never stands on two channels | "Simulated mode", "Live mode" |
 // | The controls keep the selector's gates: the role sentence, the lock sentence, disabled - never hidden | "Simulated mode: gates" |
 // | Development wording in real capture: the option says "Development source", this Mac's microphone is named, and its limit sentence stands at the choice | "Live mode" |
 // | A refusal of the Core is worded as the selector words it (409 locked, 422 development only, 422 not accepted) | "Live mode" |
@@ -34,10 +34,10 @@ import { createAppRouter } from '@/router'
 import { createLiveTestBed, type LiveTestBed } from '@/runtime/testing/live-harness'
 import { stubMediaForJsdom } from '@/features/session-new/__tests__/live-session-new-bed'
 import { enWeb } from '@/i18n-web'
-import { micMoveFor, micPairFor, selectorSlotRows } from '../capture-selector'
+import { micLineFor, micMoveFor, selectorSlotRows } from '../capture-selector' // D61 (2026-11-04): the pair builder became the line builder
 import { slotRefusalWording, wordedSlotRefusalReasons } from '../slot-refusal'
 
-describe("the capture selector: every registered microphone and camera on its lines (G70-02)", () => {
+describe("the capture selector: every registered microphone and camera on its lines (G70-02; D61: four channels)", () => {
   configure({ asyncUtilTimeout: 8_000 })
   vi.setConfig({ testTimeout: 30_000 })
 
@@ -61,9 +61,10 @@ describe("the capture selector: every registered microphone and camera on its li
 
   const withThird = (devices: readonly Device[], kind: 'CAMERA' | 'MIC', extra: Partial<Device> = {}): Device[] => {
     const like = devices.find((device) => device.kind === kind)!
-    // D60 (2026-11-04): CAM-03/CAM-04 are built-ins of the four-track surface; an adopted camera is
-    // minted above them (capture-registry: highest + 1), so the added one is CAM-05.
-    return [...devices, { ...like, id: kind === 'CAMERA' ? 'CAM-05' : 'MIC-03', model: kind === 'CAMERA' ? 'Added camera' : 'Added microphone', ...extra } as Device]
+    // D60 (2026-11-04): CAM-03/CAM-04 are built-ins of the four-track surface; D61 (2026-11-04):
+    // MIC-03/MIC-04 are built-ins of the four-channel plane. An adopted device is minted above the
+    // built-ins (capture-registry: highest + 1), so the added one is CAM-05 / MIC-05.
+    return [...devices, { ...like, id: kind === 'CAMERA' ? 'CAM-05' : 'MIC-05', model: kind === 'CAMERA' ? 'Added camera' : 'Added microphone', ...extra } as Device]
   }
 
   async function simSelector(scenario: ScenarioName, operatorId: string, kind: 'CAMERA' | 'MIC' = 'MIC') {
@@ -116,12 +117,14 @@ describe("the capture selector: every registered microphone and camera on its li
   const captureAudit = (sim: Sim) => sim.store.getState().audit.rows.filter((row) => row.type === 'CAPTURE_CONFIG_CHANGED')
   const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
   const requests = (operationId: string) => bed!.fake.log.requestsOf(operationId)
-  const trigger = (panel: HTMLElement, role: 'PRIMARY' | 'STANDBY') => within(within(panel).getByTestId(`selector-mic-source-${role}`)).getByRole('button')
-  const save = (panel: HTMLElement, role: 'PRIMARY' | 'STANDBY') => within(panel).getByTestId(`selector-mic-save-${role}`)
-  async function choose(panel: HTMLElement, role: 'PRIMARY' | 'STANDBY', name: RegExp) {
-    fireEvent.click(trigger(panel, role))
+  // D61 (2026-11-04): the microphone rows are keyed by CHANNEL (MIC-01..MIC-04), not by role.
+  type MicSlot = 'MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04'
+  const trigger = (panel: HTMLElement, slot: MicSlot) => within(within(panel).getByTestId(`selector-mic-source-${slot}`)).getByRole('button')
+  const save = (panel: HTMLElement, slot: MicSlot) => within(panel).getByTestId(`selector-mic-save-${slot}`)
+  async function choose(panel: HTMLElement, slot: MicSlot, name: RegExp) {
+    fireEvent.click(trigger(panel, slot))
     fireEvent.click(await screen.findByRole('option', { name }))
-    await waitFor(() => expect(save(panel, role)).toBeEnabled())
+    await waitFor(() => expect(save(panel, slot)).toBeEnabled())
   }
 
   const originalMatchMedia = window.matchMedia
@@ -167,60 +170,62 @@ describe("the capture selector: every registered microphone and camera on its li
     vi.restoreAllMocks()
   })
 
-  describe('G70-02 Simulated mode: every registered microphone on both lines (operation 78, pair replacement)', () => {
-    it('PRIMARY line: MIC-03 is offered, a Save makes it the primary input beside the standby, and ONE audit row names operation 78', async () => {
+  describe('G70-02 Simulated mode: every registered microphone on its channel (operation 78, the line by channel; D61)', () => {
+    it('channel 1 (transcribed): MIC-05 is offered, a Save puts it on channel 1 alone, and ONE audit row names operation 78', async () => {
       // 2026-10-29 revocation (`sim/auth.ts`, migration 0034): SUPERVISOR lost CAPTURE_CONFIG; the
       // seeded TECHNICIAN writes the selector. This row drives the edit controls, so it mounts RINA.
       const { sim, panel } = await simSelector('idle', OPERATOR_IDS.RINA)
-      expect(within(panel).getByTestId('selector-mic-source-PRIMARY')).toHaveTextContent(M.label.PRIMARY)
-      expect(within(panel).getByTestId('selector-mic-source-STANDBY')).toHaveTextContent(M.label.STANDBY)
-      expect(save(panel, 'PRIMARY')).toBeDisabled()
-      await choose(panel, 'PRIMARY', /MIC-03/)
-      // Not optimistic: the line names the Core's input until the answer.
-      expect(sim.store.getState().captureConfig.mics.map((mic) => mic.inputId)).toEqual(['MIC-01', 'MIC-02'])
-      fireEvent.click(save(panel, 'PRIMARY'))
-      await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-03')).toHaveTextContent(S.role.PRIMARY))
+      expect(within(panel).getByTestId('selector-mic-source-MIC-01')).toHaveTextContent(M.label['MIC-01'])
+      expect(within(panel).getByTestId('selector-mic-source-MIC-02')).toHaveTextContent(M.label['MIC-02'])
+      expect(save(panel, 'MIC-01')).toBeDisabled()
+      await choose(panel, 'MIC-01', /MIC-05/)
+      // Not optimistic: the lines name the Core's inputs until the answer (D61: four of them).
+      expect(sim.store.getState().captureConfig.mics.map((mic) => mic.inputId)).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'])
+      fireEvent.click(save(panel, 'MIC-01'))
+      await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-05')).toHaveTextContent(S.role.PRIMARY))
       expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(S.role.STANDBY)
       expect(within(panel).queryByTestId('selector-mic-MIC-01')).not.toBeInTheDocument()
+      // D61: the Save names channel 1 ALONE — channels 2..4 keep their lines.
       expect(sim.store.getState().captureConfig.mics).toEqual(
-        expect.arrayContaining([expect.objectContaining({ inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' }), expect.objectContaining({ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' })]),
+        expect.arrayContaining([expect.objectContaining({ inputId: 'MIC-05', deviceId: 'MIC-05', channel: 'MIC-01' }), expect.objectContaining({ inputId: 'MIC-02', deviceId: 'MIC-02', channel: 'MIC-02' })]),
       )
       const rows = captureAudit(sim)
       expect(rows).toHaveLength(1)
-      expect(rows[0]!.details).toMatchObject({ operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', inputId: 'MIC-03', from: 'MIC-01', to: 'MIC-03' })
-      await waitFor(() => expect(save(panel, 'PRIMARY')).toBeDisabled())
+      expect(rows[0]!.details).toMatchObject({ operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', channel: 'MIC-01', inputId: 'MIC-05', from: 'MIC-01', to: 'MIC-05' })
+      await waitFor(() => expect(save(panel, 'MIC-01')).toBeDisabled())
       expect(getMissingI18nKeys()).toEqual([])
     })
 
-    it('STANDBY line: MIC-03 becomes the standby input; the primary stays', async () => {
+    it('channel 2: MIC-05 becomes the channel 2 input; the transcribed channel stays (D61: a line assigns its channel alone)', async () => {
       const { sim, panel } = await simSelector('idle', OPERATOR_IDS.RINA)
-      await choose(panel, 'STANDBY', /MIC-03/)
-      fireEvent.click(save(panel, 'STANDBY'))
-      await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-03')).toHaveTextContent(S.role.STANDBY))
+      await choose(panel, 'MIC-02', /MIC-05/)
+      fireEvent.click(save(panel, 'MIC-02'))
+      await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-05')).toHaveTextContent(S.role.STANDBY))
       expect(within(panel).getByTestId('selector-role-MIC-01')).toHaveTextContent(S.role.PRIMARY)
       const rows = captureAudit(sim)
       expect(rows).toHaveLength(1)
-      expect(rows[0]!.details).toMatchObject({ operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', inputId: 'MIC-03', from: 'MIC-02', to: 'MIC-03' })
+      expect(rows[0]!.details).toMatchObject({ operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', channel: 'MIC-02', inputId: 'MIC-05', from: 'MIC-02', to: 'MIC-05' })
     })
 
-    it('T-14: the other line\'s microphone is an ENABLED move option; Save moves it in ONE operation 78 edit that clears the old line (2 audit rows, scope MIC)', async () => {
+    it('T-14 (D61): a microphone another channel holds is an ENABLED move option; Save moves it in ONE operation 78 edit that clears the old channel (2 audit rows, scope MIC)', async () => {
       // The move is an edit: mounted on the TECHNICIAN since the 2026-10-29 CAPTURE_CONFIG revocation.
       const { sim, panel } = await simSelector('idle', OPERATOR_IDS.RINA)
-      fireEvent.click(trigger(panel, 'PRIMARY'))
+      fireEvent.click(trigger(panel, 'MIC-01'))
       const other = await screen.findByRole('option', { name: /MIC-02/ })
       expect(other).not.toHaveAttribute('aria-disabled', 'true')
-      expect(other).toHaveTextContent(M.onOtherLine.STANDBY)
+      expect(other).toHaveTextContent(M.onOtherLine['MIC-02'])
       fireEvent.click(other)
-      await waitFor(() => expect(save(panel, 'PRIMARY')).toBeEnabled())
+      await waitFor(() => expect(save(panel, 'MIC-01')).toBeEnabled())
       // Not optimistic: nothing moved before the Save.
       expect(captureAudit(sim)).toHaveLength(0)
-      fireEvent.click(save(panel, 'PRIMARY'))
+      fireEvent.click(save(panel, 'MIC-01'))
       await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(S.role.PRIMARY))
-      expect(within(panel).getByTestId('selector-not-assigned-STANDBY')).toBeInTheDocument()
+      expect(within(panel).getByTestId('selector-not-assigned-MIC-02')).toBeInTheDocument()
       expect(within(panel).queryByTestId('selector-mic-MIC-01')).not.toBeInTheDocument()
       const mics = sim.store.getState().captureConfig.mics
-      expect(mics).toHaveLength(1)
-      expect(mics[0]).toMatchObject({ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'PRIMARY' })
+      // D61: channel 1 now names MIC-02, channel 2 is empty, and channels 3 and 4 keep their lines.
+      expect(mics).toHaveLength(3)
+      expect(mics.find((mic) => mic.channel === 'MIC-01')).toMatchObject({ inputId: 'MIC-02', deviceId: 'MIC-02' })
       const rows = captureAudit(sim)
       expect(rows).toHaveLength(2)
       for (const row of rows) expect(row.details).toMatchObject({ operationId: 'updateCaptureConfig', scope: 'MIC' })
@@ -229,15 +234,16 @@ describe("the capture selector: every registered microphone and camera on its li
   })
 
   describe('G70-02 Simulated mode: gates of the new controls (OD-10)', () => {
-    it('a role without CAPTURE_CONFIG sees both selects and Saves disabled with the role sentence, none hidden', async () => {
+    it('a role without CAPTURE_CONFIG sees every channel select and Save disabled with the role sentence, none hidden', async () => {
       const { sim, panel } = await simSelector('idle', OPERATOR_IDS.BUDI)
       // 2026-10-29 revocation (migration 0034): TECHNICIAN is the only holder; the sentence names it alone.
       const sentence = en.common.rbac.requiresRole.replace('{{role}}', 'TECHNICIAN')
-      for (const role of ['PRIMARY', 'STANDBY'] as const) {
-        expect(trigger(panel, role)).toBeDisabled()
-        expect(save(panel, role)).toBeDisabled()
+      for (const slot of ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const) {
+        // D61 (2026-11-04): four channel rows, each with its select and Save.
+        expect(trigger(panel, slot)).toBeDisabled()
+        expect(save(panel, slot)).toBeDisabled()
       }
-      for (const id of ['MIC-01', 'MIC-02']) {
+      for (const id of ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) {
         expect(within(panel).getByTestId(`selector-reason-${id}`)).toHaveTextContent(sentence)
         expect(within(panel).getByTestId(`selector-reason-${id}`)).toHaveAttribute('data-block', 'ROLE')
       }
@@ -248,8 +254,8 @@ describe("the capture selector: every registered microphone and camera on its li
       // The lock is only said to a holder (the role gate speaks first): mounted on the TECHNICIAN
       // since the 2026-10-29 CAPTURE_CONFIG revocation stripped the SUPERVISOR's grant.
       const { panel } = await simSelector('recording', OPERATOR_IDS.RINA)
-      for (const role of ['PRIMARY', 'STANDBY'] as const) expect(trigger(panel, role)).toBeDisabled()
-      for (const id of ['MIC-01', 'MIC-02']) {
+      for (const slot of ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const) expect(trigger(panel, slot)).toBeDisabled() // D61: four channels
+      for (const id of ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) {
         expect(within(panel).getByTestId(`selector-reason-${id}`)).toHaveTextContent(S.locked)
         expect(within(panel).getByTestId(`selector-reason-${id}`)).toHaveAttribute('data-block', 'LOCKED')
       }
@@ -257,24 +263,81 @@ describe("the capture selector: every registered microphone and camera on its li
   })
 
   describe('G70-02 Live mode (a Core in real capture): wording, the one request, refusals', () => {
-    it('the option of this Mac\'s microphone says so and "Development source"; choosing it shows the limit sentence; Save is ONE operation 78 with the pair', async () => {
+    it('the option of this Mac\'s microphone says so and "Development source"; choosing it shows the limit sentence; Save is ONE operation 78 line by channel (D61)', async () => {
       const { bed: created, panel } = await liveSelector()
-      fireEvent.click(trigger(panel, 'PRIMARY'))
-      const option = await screen.findByRole('option', { name: /MIC-03/ })
+      fireEvent.click(trigger(panel, 'MIC-01'))
+      const option = await screen.findByRole('option', { name: /MIC-05/ }) // D61: the added microphone is MIC-05 (MIC-03/04 are built-ins now)
       expect(option).toHaveTextContent(en.common.sourceClass.kind.localMicrophone)
       expect(option).toHaveTextContent(en.common.sourceClass.badge)
       fireEvent.click(option)
-      await waitFor(() => expect(save(panel, 'PRIMARY')).toBeEnabled())
-      expect(within(panel).getByTestId('source-limit-choice-PRIMARY')).toHaveTextContent(en.common.localSourceNotice.microphoneLimit)
+      await waitFor(() => expect(save(panel, 'MIC-01')).toBeEnabled())
+      expect(within(panel).getByTestId('source-limit-choice-MIC-01')).toHaveTextContent(en.common.localSourceNotice.microphoneLimit)
       expect(requests('updateCaptureConfig')).toHaveLength(0)
 
       const served = clone(created.core.served.captureConfig)
       const next = {
         ...served,
         updatedAt: served.updatedAt + 1,
+        mics: served.mics.map((mic) => (mic.channel === 'MIC-01' ? { ...mic, inputId: 'MIC-05', deviceId: 'MIC-05' } : mic)),
+      }
+      created.fake.scriptCommand('updateCaptureConfig', {
+        ops: [{ op: 'replace', slice: 'captureConfig', value: next }] as FakeCommandOptions['ops'],
+        order: 'answer-first',
+        answer: { status: 200, body: next },
+      })
+      fireEvent.click(save(panel, 'MIC-01'))
+      await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-05')).toHaveTextContent(S.role.PRIMARY))
+      expect(requests('updateCaptureConfig')).toHaveLength(1)
+      // D61 (2026-11-04): ONE line by channel — the pair replacement of D133 (1) is superseded.
+      expect(requests('updateCaptureConfig')[0]).toMatchObject({
+        method: 'POST',
+        path: '/api/v1/capture/config',
+        body: {
+          mics: [{ inputId: 'MIC-05', deviceId: 'MIC-05', channel: 'MIC-01' }],
+        },
+      })
+      expect(requests('setPrimaryMic')).toHaveLength(0)
+      // The saved line carries the badge and the limit, as built.
+      expect(within(panel).getByTestId('selector-badge-MIC-05')).toHaveTextContent(en.common.sourceClass.badge)
+      expect(within(panel).getByTestId('source-limit-selector-MIC-05')).toHaveTextContent(en.common.localSourceNotice.microphoneLimit)
+    })
+
+    it('refusals keep the selector\'s words: 409 locked, 422 development only, another 422 "not accepted"; no line changes', async () => {
+      const { bed: created, panel } = await liveSelector()
+      const message = () => within(panel).findByTestId('selector-mic-message-MIC-02')
+      await choose(panel, 'MIC-02', /MIC-05/) // D61: the added microphone is MIC-05; the row is channel 2
+      created.fake.answerOnce('updateCaptureConfig', created.fake.example('updateCaptureConfig', 409, 'locked'))
+      fireEvent.click(save(panel, 'MIC-02'))
+      expect(await message()).toHaveTextContent(S.locked)
+      created.fake.answerOnce('updateCaptureConfig', refusal(422, 'INVALID_INPUT', 'Refused.', { in: 'body', reason: 'DEVELOPMENT_SOURCE_NOT_ALLOWED', deviceId: 'MIC-05' }))
+      await waitFor(() => expect(save(panel, 'MIC-02')).toBeEnabled())
+      fireEvent.click(save(panel, 'MIC-02'))
+      await waitFor(async () => expect(await message()).toHaveTextContent(S.developmentOnly))
+      created.fake.answerOnce('updateCaptureConfig', refusal(422, 'INVALID_INPUT'))
+      await waitFor(() => expect(save(panel, 'MIC-02')).toBeEnabled())
+      fireEvent.click(save(panel, 'MIC-02'))
+      await waitFor(async () => expect(await message()).toHaveTextContent(S.invalid))
+      expect(requests('updateCaptureConfig')).toHaveLength(3)
+      expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(S.role.STANDBY)
+      expect(within(panel).queryByTestId('selector-mic-MIC-05')).not.toBeInTheDocument()
+    })
+
+    it('T-14 (D61): moving the channel 2 microphone to channel 1 is ONE operation 78 request `{ unassign: [MIC-02], mics: [the line] }`; the old channel is then Not assigned', async () => {
+      const { bed: created, panel } = await liveSelector()
+      fireEvent.click(trigger(panel, 'MIC-01'))
+      const other = await screen.findByRole('option', { name: /MIC-02/ })
+      expect(other).not.toHaveAttribute('aria-disabled', 'true')
+      expect(other).toHaveTextContent(M.onOtherLine['MIC-02'])
+      fireEvent.click(other)
+      await waitFor(() => expect(save(panel, 'MIC-01')).toBeEnabled())
+      const served = clone(created.core.served.captureConfig)
+      // D61: the move clears channel 2 and names channel 1; channels 3 and 4 keep their lines.
+      const next = {
+        ...served,
+        updatedAt: served.updatedAt + 1,
         mics: [
-          { ...served.mics.find((mic) => mic.role === 'PRIMARY')!, inputId: 'MIC-03', deviceId: 'MIC-03' },
-          served.mics.find((mic) => mic.role === 'STANDBY')!,
+          { ...served.mics.find((mic) => mic.channel === 'MIC-02')!, channel: 'MIC-01' as const },
+          ...served.mics.filter((mic) => mic.channel === 'MIC-03' || mic.channel === 'MIC-04'),
         ],
       }
       created.fake.scriptCommand('updateCaptureConfig', {
@@ -282,69 +345,11 @@ describe("the capture selector: every registered microphone and camera on its li
         order: 'answer-first',
         answer: { status: 200, body: next },
       })
-      fireEvent.click(save(panel, 'PRIMARY'))
-      await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-03')).toHaveTextContent(S.role.PRIMARY))
-      expect(requests('updateCaptureConfig')).toHaveLength(1)
-      expect(requests('updateCaptureConfig')[0]).toMatchObject({
-        method: 'POST',
-        path: '/api/v1/capture/config',
-        body: {
-          mics: [
-            { inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' },
-            { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' },
-          ],
-        },
-      })
-      expect(requests('setPrimaryMic')).toHaveLength(0)
-      // The saved line carries the badge and the limit, as built.
-      expect(within(panel).getByTestId('selector-badge-MIC-03')).toHaveTextContent(en.common.sourceClass.badge)
-      expect(within(panel).getByTestId('source-limit-selector-MIC-03')).toHaveTextContent(en.common.localSourceNotice.microphoneLimit)
-    })
-
-    it('refusals keep the selector\'s words: 409 locked, 422 development only, another 422 "not accepted"; no line changes', async () => {
-      const { bed: created, panel } = await liveSelector()
-      const message = () => within(panel).findByTestId('selector-mic-message-STANDBY')
-      await choose(panel, 'STANDBY', /MIC-03/)
-      created.fake.answerOnce('updateCaptureConfig', created.fake.example('updateCaptureConfig', 409, 'locked'))
-      fireEvent.click(save(panel, 'STANDBY'))
-      expect(await message()).toHaveTextContent(S.locked)
-      created.fake.answerOnce('updateCaptureConfig', refusal(422, 'INVALID_INPUT', 'Refused.', { in: 'body', reason: 'DEVELOPMENT_SOURCE_NOT_ALLOWED', deviceId: 'MIC-03' }))
-      await waitFor(() => expect(save(panel, 'STANDBY')).toBeEnabled())
-      fireEvent.click(save(panel, 'STANDBY'))
-      await waitFor(async () => expect(await message()).toHaveTextContent(S.developmentOnly))
-      created.fake.answerOnce('updateCaptureConfig', refusal(422, 'INVALID_INPUT'))
-      await waitFor(() => expect(save(panel, 'STANDBY')).toBeEnabled())
-      fireEvent.click(save(panel, 'STANDBY'))
-      await waitFor(async () => expect(await message()).toHaveTextContent(S.invalid))
-      expect(requests('updateCaptureConfig')).toHaveLength(3)
-      expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(S.role.STANDBY)
-      expect(within(panel).queryByTestId('selector-mic-MIC-03')).not.toBeInTheDocument()
-    })
-
-    it('T-14: moving the STANDBY microphone to the PRIMARY line is ONE operation 78 request `{ unassign: [STANDBY], mics: [the line] }`; the old line is then Not assigned', async () => {
-      const { bed: created, panel } = await liveSelector()
-      fireEvent.click(trigger(panel, 'PRIMARY'))
-      const other = await screen.findByRole('option', { name: /MIC-02/ })
-      expect(other).not.toHaveAttribute('aria-disabled', 'true')
-      expect(other).toHaveTextContent(M.onOtherLine.STANDBY)
-      fireEvent.click(other)
-      await waitFor(() => expect(save(panel, 'PRIMARY')).toBeEnabled())
-      const served = clone(created.core.served.captureConfig)
-      const next = {
-        ...served,
-        updatedAt: served.updatedAt + 1,
-        mics: [{ ...served.mics.find((mic) => mic.role === 'STANDBY')!, role: 'PRIMARY' as const }],
-      }
-      created.fake.scriptCommand('updateCaptureConfig', {
-        ops: [{ op: 'replace', slice: 'captureConfig', value: next }] as FakeCommandOptions['ops'],
-        order: 'answer-first',
-        answer: { status: 200, body: next },
-      })
-      fireEvent.click(save(panel, 'PRIMARY'))
+      fireEvent.click(save(panel, 'MIC-01'))
       await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(S.role.PRIMARY))
-      expect(within(panel).getByTestId('selector-not-assigned-STANDBY')).toBeInTheDocument()
+      expect(within(panel).getByTestId('selector-not-assigned-MIC-02')).toBeInTheDocument()
       expect(requests('updateCaptureConfig')).toHaveLength(1)
-      expect((requests('updateCaptureConfig')[0] as { body: unknown }).body).toEqual({ unassign: ['STANDBY'], mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'PRIMARY' }] })
+      expect((requests('updateCaptureConfig')[0] as { body: unknown }).body).toEqual({ unassign: ['MIC-02'], mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', channel: 'MIC-01' }] })
       expect(requests('setPrimaryMic')).toHaveLength(0)
     })
   })
@@ -378,17 +383,18 @@ describe("the capture selector: every registered microphone and camera on its li
   // | not assigned: the row is drawn, says so, and offers the sources with "Assign" | "one row per slot" |
   // | assigning: the row is busy until the Core answers; nothing is optimistic | "an empty slot is assigned" |
   // | refused: the field keeps the Core's reason in the selector's words | "a refused assignment" |
-  describe('task 4 row 31: one row per SLOT - an empty slot is drawn with its offer, a held one can be cleared', () => {
+  describe('task 4 row 31 (D61: eight slots): one row per SLOT - an empty slot is drawn with its offer, a held one can be cleared', () => {
     const SLOT = en.common.captureSlot
     type Config = SimState['captureConfig']
-    // D60 (2026-11-04): the selector carries SIX slots — four video tracks and two microphone roles.
-    const SLOTS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'PRIMARY', 'STANDBY'] as const
+    // D60 (2026-11-04): four video slots. D61 (2026-11-04): EIGHT slots — four video tracks and
+    // four microphone channels.
+    const SLOTS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const
     type Slot = (typeof SLOTS)[number]
     /** The seeded selector with only the lines of `keep`. */
     const only = (config: Config, keep: readonly Slot[]): Config => ({
       ...config,
       cameras: config.cameras.filter((line) => keep.includes(line.trackId as Slot)),
-      mics: config.mics.filter((line) => keep.includes(line.role)),
+      mics: config.mics.filter((line) => keep.includes(line.channel as Slot)),
     })
     const rowOf = (panel: HTMLElement, slot: Slot) => panel.querySelector<HTMLElement>(`[data-selector-slot="${slot}"]`)!
     const isVideo = (slot: Slot) => (slot as string).startsWith('VIDEO-') // D60: any of the four video slots
@@ -417,14 +423,14 @@ describe("the capture selector: every registered microphone and camera on its li
 
     it.each([
       ['0 lines of each kind', [] as readonly Slot[]],
-      ['1 line of each kind (the second camera, the STANDBY microphone alone)', ['VIDEO-02', 'STANDBY'] as readonly Slot[]],
-      ['1 line of each kind (the first camera, the PRIMARY microphone alone)', ['VIDEO-01', 'PRIMARY'] as readonly Slot[]],
-      ['all lines of the seeded selector (four cameras, two microphones — D60, 2026-11-04)', SLOTS as readonly Slot[]],
-    ])('one row per slot with %s: 6 rows, each empty one says "Not assigned" and offers "Assign"', async (_name, keep) => { // D60 (2026-11-04): six slots
+      ['1 line of each kind (the second camera, channel 2 alone)', ['VIDEO-02', 'MIC-02'] as readonly Slot[]],
+      ['1 line of each kind (the first camera, channel 1 alone)', ['VIDEO-01', 'MIC-01'] as readonly Slot[]],
+      ['all lines of the seeded selector (four cameras, four microphones — D61, 2026-11-04)', SLOTS as readonly Slot[]],
+    ])('one row per slot with %s: 8 rows, each empty one says "Not assigned" and offers "Assign"', async (_name, keep) => { // D61 (2026-11-04): eight slots
       const { panel } = await simSlots(keep)
       const rows = [...panel.querySelectorAll<HTMLElement>('[data-selector-slot]')]
-      // D60 (2026-11-04): one row per slot — four video tracks and two microphone roles.
-      expect(rows).toHaveLength(6)
+      // D61 (2026-11-04): one row per slot — four video tracks and four microphone channels.
+      expect(rows).toHaveLength(8)
       expect(rows.map((row) => row.getAttribute('data-selector-slot')).sort()).toEqual([...SLOTS].sort())
       for (const slot of SLOTS) {
         const row = rowOf(panel, slot)
@@ -451,26 +457,26 @@ describe("the capture selector: every registered microphone and camera on its li
         expect(saveOf(panel, slot)).toBeDisabled()
         expect(within(row).queryByTestId(`selector-reason-${slot}`)).toBeNull()
       }
-      // A lone STANDBY line is not drawn as the primary one, and "Make primary" belongs to a held standby only.
-      if (keep.includes('STANDBY') && !keep.includes('PRIMARY')) {
-        expect(within(rowOf(panel, 'STANDBY')).getByTestId('selector-role-MIC-02')).toHaveTextContent(S.role.STANDBY)
-        expect(within(rowOf(panel, 'PRIMARY')).queryByRole('button', { name: S.makePrimary })).toBeNull()
+      // A lone channel 2 line is not drawn as the transcribed one, and "Make transcribed channel 1" belongs to a held channel other than 1 (D61).
+      if (keep.includes('MIC-02') && !keep.includes('MIC-01')) {
+        expect(within(rowOf(panel, 'MIC-02')).getByTestId('selector-role-MIC-02')).toHaveTextContent(S.role.STANDBY)
+        expect(within(rowOf(panel, 'MIC-01')).queryByRole('button', { name: S.makePrimary })).toBeNull()
       }
       expect(within(panel).queryByTestId('selector-empty')).toBeNull()
       expect(getMissingI18nKeys()).toEqual([])
     })
 
-    it('the seeded selector is drawn in the order the Core sent its lines, also after the roles traded places (unchanged)', async () => {
+    it('the seeded selector is drawn in the order the Core sent its lines, also after two channels traded places (unchanged; D61)', async () => {
       const { sim, panel } = await simSlots(SLOTS)
       const order = () => [...panel.querySelectorAll<HTMLElement>('[data-selector-slot]')].map((row) => row.getAttribute('data-testid'))
-      // D60 (2026-11-04): a fully held kind keeps the Core's line order — four camera rows now.
-      expect(order()).toEqual(['selector-camera-VIDEO-01', 'selector-camera-VIDEO-02', 'selector-camera-VIDEO-03', 'selector-camera-VIDEO-04', 'selector-mic-MIC-01', 'selector-mic-MIC-02'])
+      // D61 (2026-11-04): a fully held kind keeps the Core's line order — four camera and four microphone rows.
+      expect(order()).toEqual(['selector-camera-VIDEO-01', 'selector-camera-VIDEO-02', 'selector-camera-VIDEO-03', 'selector-camera-VIDEO-04', 'selector-mic-MIC-01', 'selector-mic-MIC-02', 'selector-mic-MIC-03', 'selector-mic-MIC-04'])
       const config = sim.store.getState().captureConfig
       await act(async () => {
-        sim.store.setState({ captureConfig: { ...config, mics: config.mics.map((mic) => ({ ...mic, role: mic.role === 'PRIMARY' ? 'STANDBY' : 'PRIMARY' })) } })
+        sim.store.setState({ captureConfig: { ...config, mics: config.mics.map((mic) => ({ ...mic, channel: mic.channel === 'MIC-01' ? 'MIC-02' : mic.channel === 'MIC-02' ? 'MIC-01' : mic.channel })) } })
       })
       await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(S.role.PRIMARY))
-      expect(order()).toEqual(['selector-camera-VIDEO-01', 'selector-camera-VIDEO-02', 'selector-camera-VIDEO-03', 'selector-camera-VIDEO-04', 'selector-mic-MIC-01', 'selector-mic-MIC-02']) // D60: six rows
+      expect(order()).toEqual(['selector-camera-VIDEO-01', 'selector-camera-VIDEO-02', 'selector-camera-VIDEO-03', 'selector-camera-VIDEO-04', 'selector-mic-MIC-01', 'selector-mic-MIC-02', 'selector-mic-MIC-03', 'selector-mic-MIC-04']) // D61: eight rows
     })
 
     it('the gates of an empty row: a role without CAPTURE_CONFIG sees the offer disabled with the role sentence, never hidden', async () => {
@@ -486,7 +492,7 @@ describe("the capture selector: every registered microphone and camera on its li
     })
 
     it('an empty video slot is assigned: ONE operation 79 for that track; the row is busy until the Core answers, then it is the Core\'s line', async () => {
-      const { bed: created, panel } = await liveSlots(['VIDEO-02', 'PRIMARY', 'STANDBY'])
+      const { bed: created, panel } = await liveSlots(['VIDEO-02', 'MIC-01', 'MIC-02'])
       expect(rowOf(panel, 'VIDEO-01')).toHaveAttribute('data-state', 'NOT_ASSIGNED')
       const held = created.fake.hold('setCaptureCameraSource')
       await pick(panel, 'VIDEO-01', /CAM-01/)
@@ -510,34 +516,31 @@ describe("the capture selector: every registered microphone and camera on its li
       expect(requests('updateCaptureConfig')).toHaveLength(0)
     })
 
-    it('an empty microphone slot is assigned: operation 78 with ONE line by role beside an empty slot, with the pair beside a held one', async () => {
-      // Both roles empty: the command is built (not "nothing to send") - one line, the role it is for.
+    it('an empty microphone slot is assigned: operation 78 with ONE line by channel, whatever the other channels hold (D61)', async () => {
+      // No channel held: the command is built (not "nothing to send") - one line, the channel it is for.
       const first = await liveSlots(['VIDEO-01', 'VIDEO-02'])
-      await pick(first.panel, 'STANDBY', /MIC-03/)
+      await pick(first.panel, 'MIC-02', /MIC-03/)
       first.bed.fake.answerOnce('updateCaptureConfig', { status: 200, body: clone(first.bed.core.served.captureConfig) })
-      fireEvent.click(saveOf(first.panel, 'STANDBY'))
+      fireEvent.click(saveOf(first.panel, 'MIC-02'))
       await waitFor(() => expect(requests('updateCaptureConfig')).toHaveLength(1))
-      expect(requests('updateCaptureConfig')[0]).toMatchObject({ method: 'POST', path: '/api/v1/capture/config', body: { mics: [{ inputId: 'MIC-03', deviceId: 'MIC-03', role: 'STANDBY' }] } })
+      expect(requests('updateCaptureConfig')[0]).toMatchObject({ method: 'POST', path: '/api/v1/capture/config', body: { mics: [{ inputId: 'MIC-03', deviceId: 'MIC-03', channel: 'MIC-02' }] } })
       expect((requests('updateCaptureConfig')[0] as { body: { mics: unknown[] } }).body.mics).toHaveLength(1)
       cleanup()
       first.bed.dispose()
 
-      // PRIMARY empty, STANDBY held by MIC-02: the pair, the held line kept; its microphone is not offered twice.
-      const second = await liveSlots(['VIDEO-01', 'VIDEO-02', 'STANDBY'])
-      fireEvent.click(selectOf(second.panel, 'PRIMARY'))
-      // R-FLEX row 133 (T-14): the held line's microphone is offered as a MOVE, not a second place.
-      expect(await screen.findByRole('option', { name: /MIC-02/ })).toHaveTextContent(M.onOtherLine.STANDBY)
+      // Channel 1 empty, channel 3 held by MIC-03: still ONE line (a line assigns its channel ALONE); the held microphone is offered as a MOVE, not a second place.
+      const second = await liveSlots(['VIDEO-01', 'VIDEO-02', 'MIC-03'])
+      fireEvent.click(selectOf(second.panel, 'MIC-01'))
+      // R-FLEX row 133 (T-14; D61): the other channel's microphone says where it stands.
+      expect(await screen.findByRole('option', { name: /MIC-03/ })).toHaveTextContent(M.onOtherLine['MIC-03'])
       fireEvent.click(await screen.findByRole('option', { name: /MIC-01/ }))
-      await waitFor(() => expect(saveOf(second.panel, 'PRIMARY')).toBeEnabled())
+      await waitFor(() => expect(saveOf(second.panel, 'MIC-01')).toBeEnabled())
       second.bed.fake.answerOnce('updateCaptureConfig', { status: 200, body: clone(second.bed.core.served.captureConfig) })
-      fireEvent.click(saveOf(second.panel, 'PRIMARY'))
+      fireEvent.click(saveOf(second.panel, 'MIC-01'))
       await waitFor(() => expect(requests('updateCaptureConfig')).toHaveLength(1))
       expect(requests('updateCaptureConfig')[0]).toMatchObject({
         body: {
-          mics: [
-            { inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY' },
-            { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' },
-          ],
+          mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', channel: 'MIC-01' }],
         },
       })
     })
@@ -562,38 +565,38 @@ describe("the capture selector: every registered microphone and camera on its li
       expect(saveOf(panel, 'VIDEO-02')).toHaveTextContent(SLOT.assign)
       expect(rowOf(panel, 'VIDEO-01')).toHaveAttribute('data-device', 'CAM-01')
 
-      // A microphone role: the same member, the role as the slot.
-      await pick(panel, 'STANDBY', SLOT.notAssigned)
+      // A microphone channel (D61): the same member, the channel as the slot.
+      await pick(panel, 'MIC-02', SLOT.notAssigned)
       created.fake.answerOnce('updateCaptureConfig', { status: 200, body: next })
-      fireEvent.click(saveOf(panel, 'STANDBY'))
+      fireEvent.click(saveOf(panel, 'MIC-02'))
       await waitFor(() => expect(requests('updateCaptureConfig')).toHaveLength(2))
-      expect((requests('updateCaptureConfig')[1] as { body: unknown }).body).toEqual({ unassign: ['STANDBY'] })
+      expect((requests('updateCaptureConfig')[1] as { body: unknown }).body).toEqual({ unassign: ['MIC-02'] })
     })
 
     it('a refused assignment of an empty slot keeps the Core\'s reason at the field and the slot empty', async () => {
-      const { bed: created, panel } = await liveSlots(['VIDEO-02', 'STANDBY'])
+      const { bed: created, panel } = await liveSlots(['VIDEO-02', 'MIC-02'])
       await pick(panel, 'VIDEO-01', /CAM-01/)
       created.fake.answerOnce('setCaptureCameraSource', created.fake.example('updateCaptureConfig', 409, 'locked'))
       fireEvent.click(saveOf(panel, 'VIDEO-01'))
       expect(await within(panel).findByTestId('selector-message-VIDEO-01')).toHaveTextContent(S.locked)
       expect(rowOf(panel, 'VIDEO-01')).toHaveAttribute('data-state', 'NOT_ASSIGNED')
 
-      await pick(panel, 'PRIMARY', /MIC-03/)
-      created.fake.answerOnce('updateCaptureConfig', refusal(422, 'INVALID_INPUT', 'Refused.', { in: 'body', reason: 'DEVELOPMENT_SOURCE_NOT_ALLOWED', deviceId: 'MIC-03' }))
-      fireEvent.click(saveOf(panel, 'PRIMARY'))
-      expect(await within(panel).findByTestId('selector-mic-message-PRIMARY')).toHaveTextContent(S.developmentOnly)
+      await pick(panel, 'MIC-01', /MIC-05/) // D61: the added microphone is MIC-05; the row is channel 1
+      created.fake.answerOnce('updateCaptureConfig', refusal(422, 'INVALID_INPUT', 'Refused.', { in: 'body', reason: 'DEVELOPMENT_SOURCE_NOT_ALLOWED', deviceId: 'MIC-05' }))
+      fireEvent.click(saveOf(panel, 'MIC-01'))
+      expect(await within(panel).findByTestId('selector-mic-message-MIC-01')).toHaveTextContent(S.developmentOnly)
       created.fake.answerOnce('updateCaptureConfig', refusal(422, 'INVALID_INPUT', 'Refused.', { in: 'body', reason: 'MIC_ON_BOTH_INPUTS' }))
-      await waitFor(() => expect(saveOf(panel, 'PRIMARY')).toBeEnabled())
-      fireEvent.click(saveOf(panel, 'PRIMARY'))
-      await waitFor(async () => expect(await within(panel).findByTestId('selector-mic-message-PRIMARY')).toHaveTextContent(S.invalid))
-      expect(rowOf(panel, 'PRIMARY')).toHaveAttribute('data-state', 'NOT_ASSIGNED')
-      expect(within(panel).queryByTestId('selector-mic-MIC-03')).not.toBeInTheDocument()
+      await waitFor(() => expect(saveOf(panel, 'MIC-01')).toBeEnabled())
+      fireEvent.click(saveOf(panel, 'MIC-01'))
+      await waitFor(async () => expect(await within(panel).findByTestId('selector-mic-message-MIC-01')).toHaveTextContent(S.invalid))
+      expect(rowOf(panel, 'MIC-01')).toHaveAttribute('data-state', 'NOT_ASSIGNED')
+      expect(within(panel).queryByTestId('selector-mic-MIC-05')).not.toBeInTheDocument()
     })
 
     // Task 4 row 234 (the user's run on real cameras; decision C60): the Core answered
     // `422 INVALID_INPUT` with a word in `details.reason` and the console said "not accepted".
     it('row 234: a refused camera assignment states the reason of EVERY word the Core answers - the production camera on a development Core, the camera no adapter serves, the class, the two profile words, an unworded code; the slot stays empty', async () => {
-      const { bed: created, panel } = await liveSlots(['VIDEO-02', 'PRIMARY', 'STANDBY'])
+      const { bed: created, panel } = await liveSlots(['VIDEO-02', 'MIC-01', 'MIC-02'])
       const R = enWeb.web.captureSlotRefusal
       // Row V4 (decision C80) and its clean-up: ONE SOURCE - the sentences and the two nouns are the shared tree's, and this console's tree
       // holds NO copy of them, not even by reference: what is left under `web.captureSlotRefusal` is the code sentence alone.
@@ -652,73 +655,64 @@ describe("the capture selector: every registered microphone and camera on its li
       expect(slotRefusalWording(null)).toEqual({ kind: 'PLAIN' })
       expect(slotRefusalWording('lower case')).toEqual({ kind: 'PLAIN' })
 
-      const { bed: created, panel } = await liveSlots(['VIDEO-01', 'VIDEO-02', 'STANDBY'])
-      await pick(panel, 'PRIMARY', /MIC-03/)
-      created.fake.answerOnce('updateCaptureConfig', refusal(422, 'INVALID_INPUT', 'Refused.', { in: 'body', reason: 'CAPTURE_DEVICE_NOT_SERVED', deviceId: 'MIC-03' }))
-      fireEvent.click(saveOf(panel, 'PRIMARY'))
-      const message = await within(panel).findByTestId('selector-mic-message-PRIMARY')
+      const { bed: created, panel } = await liveSlots(['VIDEO-01', 'VIDEO-02', 'MIC-03'])
+      await pick(panel, 'MIC-01', /MIC-05/) // D61: the added microphone is MIC-05
+      created.fake.answerOnce('updateCaptureConfig', refusal(422, 'INVALID_INPUT', 'Refused.', { in: 'body', reason: 'CAPTURE_DEVICE_NOT_SERVED', deviceId: 'MIC-05' }))
+      fireEvent.click(saveOf(panel, 'MIC-01'))
+      const message = await within(panel).findByTestId('selector-mic-message-MIC-01')
       expect(message.textContent).toBe(en.common.captureSlotRefusal.CAPTURE_DEVICE_NOT_SERVED.replaceAll('{{source}}', 'microphone'))
     })
 
-    it('`micPairFor` builds a command for every slot state; `selectorSlotRows` finds a line by track and by role, never by position', () => {
-      const [primary, standby] = [
-        { inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY', transport: 'USB', online: true },
-        { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY', transport: 'USB', online: true },
-      ] as const
-      // Both roles held: the pair of before, PRIMARY first.
-      expect(micPairFor([primary, standby], 'STANDBY', 'MIC-03')).toEqual([
-        { inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY' },
-        { inputId: 'MIC-03', deviceId: 'MIC-03', role: 'STANDBY' },
-      ])
-      // No line at all, and a lone line of the role itself: ONE line by role - built, not null.
-      expect(micPairFor([], 'PRIMARY', 'MIC-03')).toEqual([{ inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' }])
-      expect(micPairFor([standby], 'STANDBY', 'MIC-03')).toEqual([{ inputId: 'MIC-03', deviceId: 'MIC-03', role: 'STANDBY' }])
-      // The role is empty and the other one is held: the pair, the held line kept.
-      expect(micPairFor([standby], 'PRIMARY', 'MIC-03')).toEqual([
-        { inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' },
-        { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' },
-      ])
-      // Null only for the other role's microphone.
-      expect(micPairFor([standby], 'PRIMARY', 'MIC-02')).toBeNull()
-      expect(micPairFor([primary, standby], 'PRIMARY', 'MIC-02')).toBeNull()
-      // R-FLEX row 133 (T-14): exactly there the MOVE applies - the old role cleared, one line by role.
-      expect(micMoveFor([primary, standby], 'PRIMARY', 'MIC-02')).toEqual({ from: 'STANDBY', line: { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'PRIMARY' } })
-      expect(micMoveFor([standby], 'PRIMARY', 'MIC-02')).toEqual({ from: 'STANDBY', line: { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'PRIMARY' } })
-      expect(micMoveFor([primary, standby], 'STANDBY', 'MIC-01')).toEqual({ from: 'PRIMARY', line: { inputId: 'MIC-01', deviceId: 'MIC-01', role: 'STANDBY' } })
-      expect(micMoveFor([primary, standby], 'PRIMARY', 'MIC-03')).toBeNull()
-      expect(micMoveFor([primary], 'PRIMARY', 'MIC-01')).toBeNull()
-      expect(micMoveFor([], 'PRIMARY', 'MIC-01')).toBeNull()
+    it('`micLineFor` builds one line by channel; `selectorSlotRows` finds a line by track and by CHANNEL, never by position (D61)', () => {
+      const l1 = { channel: 'MIC-01', inputId: 'MIC-01', deviceId: 'MIC-01', transport: 'USB', online: true } as const
+      const l2 = { channel: 'MIC-02', inputId: 'MIC-02', deviceId: 'MIC-02', transport: 'USB', online: true } as const
+      const l3 = { channel: 'MIC-03', inputId: 'MIC-03', deviceId: 'MIC-03', transport: 'USB', online: true } as const
+      const l4 = { channel: 'MIC-04', inputId: 'MIC-04', deviceId: 'MIC-04', transport: 'USB', online: true } as const
+      // D61 (2026-11-04): a line assigns its channel ALONE — ONE line, whatever the other channels hold.
+      expect(micLineFor('MIC-02', 'MIC-05')).toEqual([{ inputId: 'MIC-05', deviceId: 'MIC-05', channel: 'MIC-02' }])
+      expect(micLineFor('MIC-01', 'MIC-05')).toEqual([{ inputId: 'MIC-05', deviceId: 'MIC-05', channel: 'MIC-01' }])
+      expect(micLineFor('MIC-04', 'MIC-09')).toEqual([{ inputId: 'MIC-09', deviceId: 'MIC-09', channel: 'MIC-04' }])
+      // R-FLEX row 133 (T-14; D61): the MOVE applies exactly when the device holds ANOTHER channel — the old channel cleared, one line by channel.
+      expect(micMoveFor([l1, l2, l3, l4], 'MIC-01', 'MIC-02')).toEqual({ from: 'MIC-02', line: { inputId: 'MIC-02', deviceId: 'MIC-02', channel: 'MIC-01' } })
+      expect(micMoveFor([l2], 'MIC-01', 'MIC-02')).toEqual({ from: 'MIC-02', line: { inputId: 'MIC-02', deviceId: 'MIC-02', channel: 'MIC-01' } })
+      expect(micMoveFor([l1, l2, l3, l4], 'MIC-04', 'MIC-03')).toEqual({ from: 'MIC-03', line: { inputId: 'MIC-03', deviceId: 'MIC-03', channel: 'MIC-04' } })
+      // Not a move: an unheld device, and the channel the device already holds (a no-op line, not an unassign).
+      expect(micMoveFor([l1, l2, l3, l4], 'MIC-01', 'MIC-05')).toBeNull()
+      expect(micMoveFor([l1, l2, l3, l4], 'MIC-02', 'MIC-02')).toBeNull()
+      expect(micMoveFor([l1], 'MIC-01', 'MIC-01')).toBeNull()
+      expect(micMoveFor([], 'MIC-01', 'MIC-01')).toBeNull()
 
       const camera = { trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'H264_1080P25', online: true, streamState: 'LIVE' } as const
-      // A lone VIDEO-02 line is the SECOND row, a lone STANDBY line the STANDBY row.
-      // D60 (2026-11-04): four video rows per contract, empty tracks drawn as null lines.
-      expect(selectorSlotRows({ cameras: [camera], mics: [standby] })).toEqual({
+      // A lone VIDEO-02 line is the SECOND row, a lone channel 2 line the SECOND microphone row.
+      // D60/D61: four video and four microphone rows per contract, empty slots drawn as null lines.
+      expect(selectorSlotRows({ cameras: [camera], mics: [l2] })).toEqual({
         cameras: [{ slot: 'VIDEO-01', line: null }, { slot: 'VIDEO-02', line: camera }, { slot: 'VIDEO-03', line: null }, { slot: 'VIDEO-04', line: null }],
-        mics: [{ slot: 'PRIMARY', line: null }, { slot: 'STANDBY', line: standby }],
+        mics: [{ slot: 'MIC-01', line: null }, { slot: 'MIC-02', line: l2 }, { slot: 'MIC-03', line: null }, { slot: 'MIC-04', line: null }],
       })
       expect(selectorSlotRows({ cameras: [], mics: [] })).toEqual({
         cameras: [{ slot: 'VIDEO-01', line: null }, { slot: 'VIDEO-02', line: null }, { slot: 'VIDEO-03', line: null }, { slot: 'VIDEO-04', line: null }],
-        mics: [{ slot: 'PRIMARY', line: null }, { slot: 'STANDBY', line: null }],
+        mics: [{ slot: 'MIC-01', line: null }, { slot: 'MIC-02', line: null }, { slot: 'MIC-03', line: null }, { slot: 'MIC-04', line: null }],
       })
-      // A complete kind keeps the order of its lines (input order: the STANDBY line may be the first).
-      expect(selectorSlotRows({ cameras: [], mics: [{ ...primary, role: 'STANDBY' }, { ...standby, role: 'PRIMARY' }] }).mics.map((row) => [row.slot, row.line?.inputId])).toEqual([
-        ['STANDBY', 'MIC-01'],
-        ['PRIMARY', 'MIC-02'],
+      // A complete kind keeps the order of its lines (input order: the channel 2 line may be the first).
+      expect(selectorSlotRows({ cameras: [], mics: [l2, l1, l4, l3] }).mics.map((row) => [row.slot, row.line?.inputId])).toEqual([
+        ['MIC-02', 'MIC-02'],
+        ['MIC-01', 'MIC-01'],
+        ['MIC-04', 'MIC-04'],
+        ['MIC-03', 'MIC-03'],
       ])
     })
   })
 })
 
-// Fix wave H, closing pass Z2 (driver D's note 124, section 4 item 2; decision D206): the two audio
-// cards of Devices & Inputs mapped AUDIO-01 / AUDIO-02 to `MIC-01` / `MIC-02` by a constant
-// (`sim-adapter.ts` `MIC_DEVICE`), so with another pair on the selector's lines the badge, the
-// "is on" mark and the unreachable mark of a card were those of the wrong microphone - or missing.
-// A card is a LINE (ruling D137: channel 1 is the first microphone line, channel 2 the second,
-// whatever their ids): its marks are those of the microphone that IS on that line.
+// Fix wave H, closing pass Z2 (driver D's note 124, section 4 item 2; decision D206; generalized by
+// D61 of 2026-11-04): an audio card may not map its channel to a built-in id by a constant — the
+// card of meter channel `AUDIO-0N` follows the SELECTOR LINE that names channel `MIC-0N`
+// (`meterInputOfChannel`), and its badge, "is on" mark and unreachable mark are those of the
+// microphone that IS on that line.
 //
-// Proven with the pair MIC-03 (PRIMARY, line 1, this Mac's microphone, open) / MIC-01 (STANDBY,
-// line 2, a generated source): the AUDIO-01 card carries MIC-03's marks, the AUDIO-02 card MIC-01's.
-// CONTROL: the built-in pair reads as before.
+// Proven with the lines MIC-05 (channel 1, this Mac's microphone, open) / MIC-01 (channel 2, a
+// generated source): the AUDIO-01 card carries MIC-05's marks, the AUDIO-02 card MIC-01's.
+// CONTROL: the built-in set reads as before.
 describe("the audio cards follow the selector's lines (driver D's note 124)", () => {
   vi.resetConfig()
   beforeAll(() => void configure({ asyncUtilTimeout: 8_000 }))
@@ -743,10 +737,10 @@ describe("the audio cards follow the selector's lines (driver D's note 124)", ()
   const sims: Sim[] = []
   let bed: LiveTestBed | undefined
 
-  /** The pair MIC-03 (PRIMARY) / MIC-01 (STANDBY), in input order as the Core sends the lines. */
+  /** D61 (2026-11-04): the lines MIC-05 (channel 1) / MIC-01 (channel 2); channels 3 and 4 name none. */
   const pairOf = (mics: readonly MicLine[]): MicLine[] => [
-    { ...mics[0]!, inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' } as MicLine,
-    { ...mics[0]!, inputId: 'MIC-01', deviceId: 'MIC-01', role: 'STANDBY' } as MicLine,
+    { ...mics[0]!, inputId: 'MIC-05', deviceId: 'MIC-05', channel: 'MIC-01' } as MicLine,
+    { ...mics[0]!, inputId: 'MIC-01', deviceId: 'MIC-01', channel: 'MIC-02' } as MicLine,
   ]
 
   function sessionOf(operatorId: string): Pick<AuthSessionInfo, 'operator' | 'permissions'> {
@@ -764,7 +758,8 @@ describe("the audio cards follow the selector's lines (driver D's note 124)", ()
     const served = created.core.served
     const devices = served.captureDevices.devices.map((device) => ({ ...device, adapter: 'FAKE', sourceClass: 'DEVELOPMENT' }) as Device)
     const like = devices.find((device) => device.kind === 'MIC')!
-    served.captureDevices = { devices: [...devices, { ...like, id: 'MIC-03', model: 'Added microphone', adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT', sourceOpen: true } as Device] }
+    // D61 (2026-11-04): the added microphone is MIC-05 — MIC-03/MIC-04 are built-ins of the four-channel plane.
+    served.captureDevices = { devices: [...devices, { ...like, id: 'MIC-05', model: 'Added microphone', adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT', sourceOpen: true } as Device] }
     if (pair) served.captureConfig = { ...served.captureConfig, mics: pairOf(served.captureConfig.mics) }
     const page = await created.load()
     await created.mount(page, '/devices')
@@ -772,7 +767,7 @@ describe("the audio cards follow the selector's lines (driver D's note 124)", ()
     return created
   }
 
-  const card = (channel: 'AUDIO-01' | 'AUDIO-02') => screen.findByTestId(`audio-input-${channel}`)
+  const card = (channel: 'AUDIO-01' | 'AUDIO-02' | 'AUDIO-03' | 'AUDIO-04') => screen.findByTestId(`audio-input-${channel}`)
 
   const originalPlay = HTMLMediaElement.prototype.play
   const originalPause = HTMLMediaElement.prototype.pause
@@ -807,18 +802,18 @@ describe("the audio cards follow the selector's lines (driver D's note 124)", ()
     vi.restoreAllMocks()
   })
 
-  describe('the audio cards follow the selector\'s lines (pair MIC-03 / MIC-01)', () => {
-    it('real capture: the AUDIO-01 card carries the badge and the "is on" mark of MIC-03, the AUDIO-02 card the badge of MIC-01', async () => {
+  describe('the audio cards follow the selector\'s lines (D61: MIC-05 on channel 1, MIC-01 on channel 2)', () => {
+    it('real capture: the AUDIO-01 card carries the badge and the "is on" mark of MIC-05, the AUDIO-02 card the badge of MIC-01', async () => {
       await liveDevices(true)
       const first = await card('AUDIO-01')
       const second = await card('AUDIO-02')
-      expect(first).toHaveAttribute('data-mic-input', 'MIC-03')
+      expect(first).toHaveAttribute('data-mic-input', 'MIC-05')
       expect(second).toHaveAttribute('data-mic-input', 'MIC-01')
-      // Line 1: this Mac's microphone (LOCAL_DEVICE), and it is open.
+      // Channel 1: this Mac's microphone (LOCAL_DEVICE), and it is open.
       expect(await within(first).findByTestId('source-badge-AUDIO-01')).toHaveAttribute('data-adapter', 'LOCAL_DEVICE')
       expect(within(first).getByTestId('source-on-AUDIO-01')).toHaveTextContent(en.common.sourceClass.microphoneOn.web)
       expect(within(first).getByTestId('audio-line-input-AUDIO-01')).toHaveTextContent(en.common.sourceClass.kind.localMicrophone)
-      // Line 2: MIC-01, a generated source that is not this Mac's - and nothing says it is on.
+      // Channel 2: MIC-01, a generated source that is not this Mac's - and nothing says it is on.
       expect(within(second).getByTestId('source-badge-AUDIO-02')).toHaveAttribute('data-adapter', 'FAKE')
       expect(within(second).queryByTestId('source-on-AUDIO-02')).toBeNull()
       expect(within(second).getByTestId('audio-line-input-AUDIO-02')).toHaveTextContent(en.common.devices.mic1)
@@ -849,8 +844,8 @@ describe("the audio cards follow the selector's lines (driver D's note 124)", ()
       const router = createAppRouter({ sim, queryClient, socketFactory: () => new SilentSocket() }, { history: createMemoryHistory({ initialEntries: ['/devices'] }) })
       render(<RouterProvider router={router} />)
       const first = await card('AUDIO-01')
-      expect(first).toHaveAttribute('data-mic-input', 'MIC-03')
-      expect(within(first).getByTestId('audio-line-input-AUDIO-01')).toHaveTextContent('MIC 3')
+      expect(first).toHaveAttribute('data-mic-input', 'MIC-05') // D61: the added microphone is MIC-05
+      expect(within(first).getByTestId('audio-line-input-AUDIO-01')).toHaveTextContent('MIC 5')
       expect(within(first).queryByTestId('source-badge-AUDIO-01')).toBeNull()
       expect(await card('AUDIO-02')).toHaveAttribute('data-mic-input', 'MIC-01')
     })
@@ -858,21 +853,23 @@ describe("the audio cards follow the selector's lines (driver D's note 124)", ()
     // Task 4 row 168 (WP-13a; row 27 site W5; decision C18 (2)): the card finds its input by `meterInputOfChannel`.
     // The double is a hand-built selector slice (the simulator's store; the served slice of the fake Core).
     it.each([
-      ['no microphone line', [] as readonly ('PRIMARY' | 'STANDBY')[]],
-      ['the PRIMARY line alone', ['PRIMARY'] as const],
-      ['the STANDBY line alone', ['STANDBY'] as const],
-    ])('task 4 row 168, Simulated mode with %s: both cards draw the empty state - "Not assigned", no input named, no peak', async (_name, roles) => {
+      ['no microphone line', [] as readonly ('MIC-01' | 'MIC-02')[]],
+      ['the channel 1 line alone', ['MIC-01'] as const],
+      ['the channel 2 line alone', ['MIC-02'] as const],
+    ])('task 4 row 168 (D61), Simulated mode with %s: the cards of the channels that name no line draw the empty state - "Not assigned", no input named, no peak', async (_name, channels) => {
       resetMissingI18nKeys()
       const authStorage = createMemoryAuthStorage()
       authStorage.save({ operatorId: OPERATOR_IDS.ANDI, issuedAt: Date.now() })
       const sim = createSim({ scenario: 'idle', storage: null, authStorage, visibility: ALWAYS_VISIBLE, scheduler: () => () => undefined })
       sims.push(sim)
       const state = sim.store.getState()
-      sim.store.setState({ captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.filter((line) => (roles as readonly string[]).includes(line.role)) } })
+      sim.store.setState({ captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.filter((line) => (channels as readonly string[]).includes(line.channel)) } })
       const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
       const router = createAppRouter({ sim, queryClient, socketFactory: () => new SilentSocket() }, { history: createMemoryHistory({ initialEntries: ['/devices'] }) })
       render(<RouterProvider router={router} />)
-      for (const channel of ['AUDIO-01', 'AUDIO-02'] as const) {
+      // D61: the channels the kept lines do not name draw the empty state (with no line kept, all four).
+      const keptChannel = _name === 'the channel 1 line alone' ? 'AUDIO-01' : _name === 'the channel 2 line alone' ? 'AUDIO-02' : null
+      for (const channel of (['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04'] as const).filter((id) => id !== keptChannel)) {
         const empty = await card(channel)
         expect(empty).toHaveAttribute('data-input-state', 'NOT_ASSIGNED')
         expect(empty).not.toHaveAttribute('data-mic-input')
@@ -887,16 +884,17 @@ describe("the audio cards follow the selector's lines (driver D's note 124)", ()
       expect(getMissingI18nKeys()).toEqual([])
     })
 
-    it('task 4 row 168, real capture with the STANDBY line alone: a card names "Not assigned" where it named the input, and carries no mark of a microphone', async () => {
+    it('task 4 row 168 (D61), real capture with the channel 2 line alone: a card names "Not assigned" where it named the input, and carries no mark of a microphone', async () => {
       const created = createLiveTestBed({ session: sessionOf(OPERATOR_IDS.ANDI) })
       bed = created
       const served = created.core.served
       served.captureDevices = { devices: served.captureDevices.devices.map((device) => ({ ...device, adapter: 'FAKE', sourceClass: 'DEVELOPMENT' }) as Device) }
-      served.captureConfig = { ...served.captureConfig, mics: served.captureConfig.mics.filter((line) => line.role === 'STANDBY') }
+      served.captureConfig = { ...served.captureConfig, mics: served.captureConfig.mics.filter((line) => line.channel === 'MIC-02') }
       const page = await created.load()
       await created.mount(page, '/devices')
       await screen.findByTestId('page-devices')
-      for (const channel of ['AUDIO-01', 'AUDIO-02'] as const) {
+      // D61: only channel 2 names a line — the other three cards are empty.
+      for (const channel of ['AUDIO-01', 'AUDIO-03', 'AUDIO-04'] as const) {
         const empty = await card(channel)
         await waitFor(() => expect(empty).toHaveAttribute('data-input-state', 'NOT_ASSIGNED'))
         expect(empty).not.toHaveAttribute('data-mic-input')

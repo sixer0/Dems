@@ -5,7 +5,7 @@
  * so `useSim` (zustand `useShallow`) re-renders a panel only when one of its own fields changes,
  * never on the 10 Hz clock or the 20 Hz audio slice (03_motion_spec §9.3; D70 page rule).
  */
-import { SessionState, type BootRecoveryState, type VideoTrackId } from '@dems/shared/domain'
+import { SessionState, type AudioTrackId, type BootRecoveryState, type VideoTrackId } from '@dems/shared/domain' // D61 (2026-11-04): the four audio channels
 import {
   Permission,
   recordingEndOf,
@@ -399,7 +399,8 @@ export function cameraTiles(cameras: SimState['cameras']): CameraTileModel[] {
 }
 
 export interface MicTileModel {
-  id: 'AUDIO-01' | 'AUDIO-02'
+  /** D61 (2026-11-04): the four simultaneous audio channels of the four-channel microphone plane. */
+  id: AudioTrackId
   /** The simulator's track name, "MIC 1 – Interviewer", the same label as the step-92/93 demo tracks (D50). */
   name: string
   state: 'READY' | 'NO_SIGNAL' | 'CLIP'

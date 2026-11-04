@@ -12,7 +12,7 @@
 //
 // The order held here is the one of the defect: a session is SEALED with CAM-01 / CAM-02 and
 // MIC-01 / MIC-02, THEN the selector is changed (`CAM-05` on VIDEO-02; the first microphone line is
-// `MIC-04`; in the local-device case the selector names this Mac's camera). The control of each
+// `MIC-05`; in the local-device case the selector names this Mac's camera). The control of each
 // case is the same state with the session still OPEN - its snapshot is the truth then (OD-10).
 //
 // | Surface | Reader | Case |
@@ -79,14 +79,14 @@ function afterSelectorChange(session: 'SEALED' | 'OPEN', local = false): SimStat
     ...base.captureDevices.devices.map((device) => ({ ...device, adapter: 'FAKE', sourceClass: 'DEVELOPMENT' }) as Device),
     { ...camera, id: 'CAM-05', adapter: 'FAKE', sourceClass: 'DEVELOPMENT' } as Device,
     { ...camera, id: 'CAM-06', adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT' } as Device, // D60 (2026-11-04): CAM-03/04 are built-ins; the local one is CAM-06
-    { ...mic, id: 'MIC-04', adapter: 'FAKE', sourceClass: 'DEVELOPMENT' } as Device,
+    { ...mic, id: 'MIC-05', adapter: 'FAKE', sourceClass: 'DEVELOPMENT' } as Device,
   ]
   const snapshot = { cameras: base.captureConfig.cameras, mics: base.captureConfig.mics, revision: 2, updatedAt: base.captureConfig.updatedAt }
   const newCamera = local ? 'CAM-06' : 'CAM-05'
   const captureConfig = {
     ...base.captureConfig,
     cameras: base.captureConfig.cameras.map((line) => (line.trackId === 'VIDEO-02' ? { ...line, deviceId: newCamera } : line)),
-    mics: base.captureConfig.mics.map((line, index) => (index === 0 ? { ...line, inputId: 'MIC-04', deviceId: 'MIC-04' } : line)),
+    mics: base.captureConfig.mics.map((line, index) => (index === 0 ? { ...line, inputId: 'MIC-05', deviceId: 'MIC-05' } : line)),
     updatedAt: base.captureConfig.updatedAt + 60_000,
   } as SimState['captureConfig']
   const { audioSource: _pair, ...open } = base.session as Session & { audioSource?: unknown }
@@ -197,7 +197,7 @@ describe('Session New: the readers of the pre-check rows and of the local-device
   it('`usePrecheckDevice`: after a sealed session the rows stand for the sources of the current selector', () => {
     probe(afterSelectorChange('SEALED'))
     expect(screen.getByTestId('probe-LENS_2')).toHaveTextContent('CAM-05')
-    expect(screen.getByTestId('probe-MIC_PRIMARY')).toHaveTextContent('MIC-04')
+    expect(screen.getByTestId('probe-MIC_PRIMARY')).toHaveTextContent('MIC-05')
   })
 
   it('CONTROL - `usePrecheckDevice` under an OPEN session: the sources of its snapshot', () => {
@@ -220,18 +220,20 @@ describe('Session New: the readers of the pre-check rows and of the local-device
 describe('Session Monitor / the meters: the microphone lines', () => {
   it('the standby of the pair and the input of a meter channel follow the current selector after a sealed session', () => {
     const sealed = afterSelectorChange('SEALED')
-    expect(captureMicLines(sealed).map((line) => line.inputId)).toEqual(['MIC-04', 'MIC-02'])
-    expect(meterInputOfChannel(captureMicLines(sealed), 'AUDIO-01')).toBe('MIC-04')
-    // Moved by fix 157 (was `'MIC-04'`, read as "the other line than the meters' MIC-02"): with no open session the pair
-    // is the current selector's - MIC-04 is its PRIMARY (active), MIC-02 its STANDBY - whatever the meters' member still says.
+    // D61 (2026-11-04): FOUR lines - only the first changed; channels 2..4 keep their inputs.
+    expect(captureMicLines(sealed).map((line) => line.inputId)).toEqual(['MIC-05', 'MIC-02', 'MIC-03', 'MIC-04'])
+    expect(meterInputOfChannel(captureMicLines(sealed), 'AUDIO-01')).toBe('MIC-05')
+    // Moved by fix 157 (was read as "the other line than the meters' MIC-02"): with no open session the pair
+    // is the current selector's - MIC-05 holds its channel 1 (active), MIC-02 channel 2 (standby) - whatever the meters' member still says.
     const stale = { ...sealed, audio: { ...sealed.audio, activeInputId: 'MIC-02' } } as SimState
-    expect(selectActiveInputId(stale)).toBe('MIC-04')
+    expect(selectActiveInputId(stale)).toBe('MIC-05')
     expect(selectStandbyInputId(stale)).toBe('MIC-02')
   })
 
   it('CONTROL - under an OPEN session: the lines of its snapshot', () => {
     const open = afterSelectorChange('OPEN')
-    expect(captureMicLines(open).map((line) => line.inputId)).toEqual(['MIC-01', 'MIC-02'])
+    // D61 (2026-11-04): the snapshot of the seeded recording session holds all four channels.
+    expect(captureMicLines(open).map((line) => line.inputId)).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'])
     expect(selectStandbyInputId({ ...open, audio: { ...open.audio, activeInputId: 'MIC-02' } } as SimState)).toBe('MIC-01')
   })
 
@@ -245,18 +247,18 @@ describe('Session Monitor / the meters: the microphone lines', () => {
 
 // Fix 157 - the same class, another member: `session.audioSource`, the active / standby pair. The sealed session was
 // switched to MIC-02 (pair: active MIC-02, standby MIC-01) and stays in the slice with that pair; THEN the selector's first
-// microphone line became MIC-04. The Monitor's audio panel is drawn in every state of the page.
+// microphone line became MIC-05. The Monitor's audio panel is drawn in every state of the page.
 describe('fix 157 - Session Monitor: the pair of the audio panel after a sealed session and a microphone change', () => {
   const PAIR = { sessionId: 'SES-20261011-0043', activeInputId: 'MIC-02', standbyInputId: 'MIC-01', switchedAt: 5_000, intervalFromMs: 4_000 }
   const withPair = (state: SimState): SimState => ({ ...state, session: { ...state.session!, audioSource: PAIR } as unknown as Session })
 
-  it('the panel names MIC-04 (the selector\'s PRIMARY) as the active input, not the sealed session\'s MIC-02', async () => {
+  it('the panel names MIC-05 (the selector\'s PRIMARY) as the active input, not the sealed session\'s MIC-02', async () => {
     const served = withPair(afterSelectorChange('SEALED'))
     expect(served.session?.audioSource).toMatchObject({ activeInputId: 'MIC-02', standbyInputId: 'MIC-01' })
     const page = await livePage('/session', 'page-session-monitor', served)
     const audio = await within(page).findByTestId('panel-O')
-    await waitFor(() => expect(audio.querySelector('.sm-audio-body')).toHaveAttribute('data-active-input', 'MIC-04'))
-    expect(within(audio).getByTestId('sm-audio-role-MIC-04')).toHaveAttribute('data-role', 'ACTIVE')
+    await waitFor(() => expect(audio.querySelector('.sm-audio-body')).toHaveAttribute('data-active-input', 'MIC-05'))
+    expect(within(audio).getByTestId('sm-audio-role-MIC-05')).toHaveAttribute('data-role', 'ACTIVE')
     expect(within(audio).getByTestId('sm-audio-role-MIC-02')).toHaveAttribute('data-role', 'STANDBY')
     // The input that left the selector has no chip any more.
     expect(within(audio).queryByTestId('sm-audio-role-MIC-01')).not.toBeInTheDocument()
@@ -272,7 +274,7 @@ describe('fix 157 - Session Monitor: the pair of the audio panel after a sealed 
 
   it('the selectors of the pair, both ways', () => {
     const sealed = withPair(afterSelectorChange('SEALED'))
-    expect([selectActiveInputId(sealed), selectStandbyInputId(sealed)]).toEqual(['MIC-04', 'MIC-02'])
+    expect([selectActiveInputId(sealed), selectStandbyInputId(sealed)]).toEqual(['MIC-05', 'MIC-02'])
     const open = withPair(afterSelectorChange('OPEN'))
     expect([selectActiveInputId(open), selectStandbyInputId(open)]).toEqual(['MIC-02', 'MIC-01'])
   })

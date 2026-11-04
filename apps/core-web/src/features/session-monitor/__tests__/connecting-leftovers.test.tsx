@@ -94,7 +94,7 @@ describe('the Session Monitor while the cameras connect (pass D7 item 4)', () =>
     const sim = mount()
     const [integrity, audio] = [await panel('N'), await panel('O')]
     // CONTROL: the session without the member is a recording — two meters, the write verified.
-    expect(within(audio).getAllByTestId('dbfs-meter')).toHaveLength(2)
+    expect(within(audio).getAllByTestId('dbfs-meter')).toHaveLength(4) // D61 (2026-11-04): four simultaneous channels
     expect(within(audio).queryByTestId('sm-audio-connecting-AUDIO-01')).toBeNull()
     expect(storageWrite(integrity)).toHaveAttribute('data-status', 'pass')
     expect(storageWrite(integrity)).toHaveTextContent('Continuous')
@@ -118,7 +118,7 @@ describe('the Session Monitor while the cameras connect (pass D7 item 4)', () =>
     for (const claim of ACTIVITY_CLAIMS) expect(integrity, claim).not.toHaveTextContent(claim)
 
     setDurable(sim, true)
-    await waitFor(() => expect(within(audio).getAllByTestId('dbfs-meter')).toHaveLength(2))
+    await waitFor(() => expect(within(audio).getAllByTestId('dbfs-meter')).toHaveLength(4)) // D61 (2026-11-04): four simultaneous channels
     expect(capture(integrity)).toHaveAttribute('data-status', 'pass')
     expect(passing(integrity)).toEqual(['capture', 'hashChain'])
     for (const claim of ACTIVITY_CLAIMS) expect(integrity, claim).not.toHaveTextContent(claim)

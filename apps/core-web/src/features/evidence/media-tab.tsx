@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Chip, EmptyState, Slider, ToggleButton, ToggleButtonGroup } from '@heroui/react'
 import type { Key } from '@heroui/react'
 import { motion } from 'motion/react'
 import { AudioLines, Film, Mic, Pause, Play, Video } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { VIDEO_TRACK_IDS, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain'
+import { AUDIO_TRACK_IDS, VIDEO_TRACK_IDS, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain' // D61 (2026-11-04): four simultaneous audio channels
 import { CoreMode, useCoreMode } from '@dems/shared/live'
 import type { DemoTrackEntry } from '@dems/shared/demo-data'
 import { excerptPositionSec } from '@/components/media/demo-media'
@@ -16,7 +16,9 @@ import { formatPlayerTime, type EvidenceRow } from './model'
 
 // D60 (2026-11-04): the camera tabs are the four video tracks, derived from the shared truth.
 const VIDEO_TRACKS: readonly VideoTrackId[] = VIDEO_TRACK_IDS
-const AUDIO_TRACKS: AudioTrackId[] = ['AUDIO-01', 'AUDIO-02']
+// D61 (2026-11-04): the audio plane is the four simultaneous channels; the player and its switch
+// follow the tracks the PACKAGE holds (a sealed two-track package still plays its two).
+const MIC_NAME_KEY = { 'AUDIO-01': 'common.devices.mic1', 'AUDIO-02': 'common.devices.mic2', 'AUDIO-03': 'common.devices.mic3', 'AUDIO-04': 'common.devices.mic4' } as const satisfies Record<AudioTrackId, string>
 /** Drift beyond this (s) re-aligns a MIC track to the video. */
 export const AUDIO_SYNC_TOLERANCE_S = 0.25
 /** M-C-12 camera switch cross-fade (spec literal). */
@@ -77,6 +79,11 @@ export function MediaTab({ row, playToken, onPlayHandled, mediaUnavailable = fal
   const pkg = row.pkg
   const [camera, setCamera] = useState<VideoTrackId>('VIDEO-01')
   const [mic, setMic] = useState<AudioTrackId>('AUDIO-01')
+  // D61: the package's own audio tracks, in channel order — never a fixed pair.
+  const audioTracks = useMemo(
+    () => AUDIO_TRACK_IDS.filter((id) => pkg?.tracks.some((entry) => entry.trackId === id) ?? false),
+    [pkg],
+  )
   const [playing, setPlaying] = useState(false)
   const [position, setPosition] = useState(0)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -93,7 +100,7 @@ export function MediaTab({ row, playToken, onPlayHandled, mediaUnavailable = fal
   const poster = urlFor(videoTrack?.poster?.path)
 
   const syncAudio = useCallback((mediaTime: number, force = false) => {
-    for (const audio of AUDIO_TRACKS.map((id) => audioRefs.current[id])) {
+    for (const audio of audioTracks.map((id) => audioRefs.current[id])) {
       if (!audio) continue
       if (force || Math.abs(audio.currentTime - mediaTime) > AUDIO_SYNC_TOLERANCE_S) {
         try {
@@ -103,22 +110,22 @@ export function MediaTab({ row, playToken, onPlayHandled, mediaUnavailable = fal
         }
       }
     }
-  }, [])
+  }, [audioTracks])
 
   const play = useCallback(() => {
     const video = videoRef.current
     if (!video) return
     syncAudio(video.currentTime, true)
     playSafely(video, 'media.playVideo')
-    for (const id of AUDIO_TRACKS) playSafely(audioRefs.current[id] ?? null, 'media.playAudio')
+    for (const id of audioTracks) playSafely(audioRefs.current[id] ?? null, 'media.playAudio')
     setPlaying(true)
-  }, [syncAudio])
+  }, [syncAudio, audioTracks])
 
   const pause = useCallback(() => {
     videoRef.current?.pause()
-    for (const id of AUDIO_TRACKS) audioRefs.current[id]?.pause()
+    for (const id of audioTracks) audioRefs.current[id]?.pause()
     setPlaying(false)
-  }, [])
+  }, [audioTracks])
 
   // Header "Play" button (it may have switched to this tab first).
   useEffect(() => {
@@ -133,7 +140,7 @@ export function MediaTab({ row, playToken, onPlayHandled, mediaUnavailable = fal
     const videoHolder = videoRef
     return () => {
       videoHolder.current?.pause()
-      for (const id of AUDIO_TRACKS) audios[id]?.pause()
+      for (const id of audioTracks) audios[id]?.pause()
     }
   }, [])
 
@@ -248,7 +255,7 @@ export function MediaTab({ row, playToken, onPlayHandled, mediaUnavailable = fal
             onTimeUpdate={onTimeUpdate}
             onLoadedMetadata={onLoadedMetadata}
           />
-          {AUDIO_TRACKS.map((id) => {
+          {audioTracks.map((id) => {
             const entry = track(id)
             return (
               <audio
@@ -313,10 +320,10 @@ export function MediaTab({ row, playToken, onPlayHandled, mediaUnavailable = fal
           <div className="evi-switch-group">
             <span className="evi-label">{t('evidence.media.audio')}</span>
             <ToggleButtonGroup aria-label={t('evidence.media.audio')} selectionMode="single" disallowEmptySelection selectedKeys={new Set<Key>([mic])} onSelectionChange={onMic} size="sm" data-testid="evidence-mic-switch">
-              {AUDIO_TRACKS.map((id) => (
+              {audioTracks.map((id) => (
                 <ToggleButton key={id} id={id} data-testid={`evidence-mic-${id}`}>
                   <Mic className="size-3.5" aria-hidden="true" />
-                  {id === 'AUDIO-01' ? t('common.devices.mic1') : t('common.devices.mic2')}
+                  {t(MIC_NAME_KEY[id])}
                 </ToggleButton>
               ))}
             </ToggleButtonGroup>

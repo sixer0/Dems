@@ -26,24 +26,26 @@
 import type { TFunction } from 'i18next'
 import { useMemo } from 'react'
 import type { VideoTrackId } from '@dems/shared/domain'
-import { useSim, type SimAlert } from '@dems/shared/sim'
+import { useSim, type MicChannel, type SimAlert } from '@dems/shared/sim' // D61 (2026-11-04): the four microphone channels
 import { activeCaptureNotices, micInputName } from '@/lib/capture-notices'
 import { localDeviceState, type LocalDeviceState } from './capture-inputs'
 import type { CaptureConfig, CaptureDevice } from './capture-selector'
 import { restingSourceChecked } from './own-core-words'
 import { LOCAL_DEVICE_ADAPTER, TEST_SOURCE_ADAPTER, isDevelopmentSource, isLocalSourceOn, type SourceDeviceKind } from './source-class'
 
-/** The ids the page's own tiles and audio cards already draw (D60, 2026-11-04: four cameras, two microphones). Every other camera or microphone of the Core's list is a roster card. */
+/** The ids the page's own tiles and audio cards already draw (D60, 2026-11-04: four cameras; D61, 2026-11-04: four microphones). Every other camera or microphone of the Core's list is a roster card. */
 // D60 (2026-11-04): the four-track capture surface ships four built-in cameras — the simulator seeds
 // CAM-03/CAM-04 as built-ins (`sim/initial-state.ts`, and `RETIRE_BUILT_IN_DEVICE_IDS` names them).
 // Without them here the Devices page drew a roster card beside the track's own tile (Fix wave L's rule).
-export const BUILT_IN_SOURCE_IDS: readonly string[] = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02']
+// D61 (2026-11-04): the four-channel microphone plane seeds MIC-03/MIC-04 the same way (nine built-ins).
+export const BUILT_IN_SOURCE_IDS: readonly string[] = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']
 
 /** `params.reason` of the advisory alert of a microphone whose rate controller is at its limit (capture protocol 4; `sim/capture-notices.ts`). */
 export const MIC_RATE_AT_LIMIT = 'MIC_RATE_AT_LIMIT'
 
-// D60 (2026-11-04): the roster names any of the four video slots or the two microphone roles.
-export type RosterSlot = VideoTrackId | 'PRIMARY' | 'STANDBY'
+// D60 (2026-11-04): four video slots. D61 (2026-11-04): the roster names any of the four microphone
+// CHANNELS — the PRIMARY/STANDBY roles of the earlier eras became the numbered channels.
+export type RosterSlot = VideoTrackId | MicChannel
 
 export interface RosterCard {
   readonly id: string
@@ -71,7 +73,8 @@ export function rosterSlotOf(config: Pick<CaptureConfig, 'cameras' | 'mics'>, de
     return line?.trackId ?? null
   }
   const line = config.mics.find((mic) => mic.deviceId === device.id)
-  return line === undefined ? null : line.role === 'PRIMARY' ? 'PRIMARY' : 'STANDBY'
+  // D61 (2026-11-04): the slot of a microphone line is its channel.
+  return line?.channel ?? null
 }
 
 /** True while an active advisory alert says the rate correction of this microphone is at its limit. */
@@ -176,8 +179,11 @@ export const ROSTER_SLOT_KEY = {
   'VIDEO-02': 'common.developmentRoster.usedAs.VIDEO-02',
   'VIDEO-03': 'common.developmentRoster.usedAs.VIDEO-03', // D60 (2026-11-04)
   'VIDEO-04': 'common.developmentRoster.usedAs.VIDEO-04', // D60
-  PRIMARY: 'common.developmentRoster.usedAs.PRIMARY',
-  STANDBY: 'common.developmentRoster.usedAs.STANDBY',
+  // D61 (2026-11-04): the four microphone channels (the shared usedAs list names channel 1 as the transcribed one).
+  'MIC-01': 'common.developmentRoster.usedAs.MIC-01',
+  'MIC-02': 'common.developmentRoster.usedAs.MIC-02',
+  'MIC-03': 'common.developmentRoster.usedAs.MIC-03',
+  'MIC-04': 'common.developmentRoster.usedAs.MIC-04',
 } as const satisfies Record<RosterSlot, string>
 
 /**

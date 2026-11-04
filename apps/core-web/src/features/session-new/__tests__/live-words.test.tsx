@@ -115,7 +115,7 @@ describe('Simulated mode keeps its words (the steps without `live`, as the page 
 // "MIC 2 - Subject" - the roles of the simulator's room - and named no primary.
 describe('G75e-02: the microphone meters of step 2 are named from the selector in force', () => {
   const step = (sim: Sim) => render(withProviders(<DevicesStep gate={gateView(null, null, false)} acknowledged={false} onAcknowledgedChange={() => undefined} onRetry={() => undefined} live />, { sim }))
-  /** A Core in its own capture whose two microphone lines are generated sources; `primary` names the PRIMARY line. */
+  /** A Core in its own capture whose four microphone lines are generated sources; `primary` names the line of the TRANSCRIBED channel 1 (D61 of 2026-11-04: the PRIMARY role became the numbered channel). */
   function ownCore(primary: 'MIC-01' | 'MIC-02'): Sim {
     const sim = createTestSim()
     sims.push(sim)
@@ -123,20 +123,24 @@ describe('G75e-02: the microphone meters of step 2 are named from the selector i
     sim.store.setState({
       security: { ...state.security, ...SECURITY_PLATFORM_NOT_REPORTED_EXAMPLE },
       time: { ...HOST_CLOCK_TIME },
-      captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.map((mic) => ({ ...mic, role: mic.inputId === primary ? 'PRIMARY' : 'STANDBY' })) },
+      // D61: the lines are keyed by CHANNEL - `primary` takes channel 1, the line that held it takes `primary`'s old channel.
+      captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.map((mic) => ({ ...mic, channel: mic.inputId === primary ? 'MIC-01' : mic.channel === 'MIC-01' ? primary : mic.channel })) },
       captureDevices: { ...state.captureDevices, devices: state.captureDevices.devices.map((device) => (device.kind === 'MIC' ? { ...device, adapter: 'FAKE', sourceClass: 'DEVELOPMENT' } : device)) },
     } as Partial<ReturnType<typeof sim.store.getState>>)
     return sim
   }
   const W = enWeb.web
+  // D61 (2026-11-04): the meter names the CHANNEL - the chip words are the selector's (devices.selector.role).
+  const CH1 = en.devices.selector.role.PRIMARY
+  const CH2 = en.devices.selector.role.STANDBY
 
-  it('a Core in its own capture: the input, the source on it, its role and "Generated test source" - no dataset role', () => {
+  it('a Core in its own capture: the input, the source on it, its channel and "Generated test source" - no dataset role', () => {
     step(ownCore('MIC-01'))
     const first = screen.getByTestId('sn-meter-AUDIO-01')
     const second = screen.getByTestId('sn-meter-AUDIO-02')
-    expect(first).toHaveTextContent(`MIC 1 · MIC-01 · ${W.waveM.micLine.PRIMARY} · ${W.waveL.source.generatedMic}`)
-    expect(second).toHaveTextContent(`MIC 2 · MIC-02 · ${W.waveM.micLine.STANDBY} · ${W.waveL.source.generatedMic}`)
-    expect(first).toHaveAttribute('data-role', 'PRIMARY')
+    expect(first).toHaveTextContent(`MIC 1 · MIC-01 · ${CH1} · ${W.waveL.source.generatedMic}`)
+    expect(second).toHaveTextContent(`MIC 2 · MIC-02 · ${CH2} · ${W.waveL.source.generatedMic}`)
+    expect(first).toHaveAttribute('data-channel', 'MIC-01')
     for (const meter of [first, second]) {
       expect(meter).not.toHaveTextContent('Interviewer')
       expect(meter).not.toHaveTextContent('Subject')
@@ -144,11 +148,13 @@ describe('G75e-02: the microphone meters of step 2 are named from the selector i
     expect(getMissingI18nKeys()).toEqual([])
   })
 
-  it('with MIC-02 made primary the two labels say which line is primary', () => {
+  it('with MIC-02 made the transcribed channel the two labels say which line holds channel 1 (D61)', () => {
     step(ownCore('MIC-02'))
-    expect(screen.getByTestId('sn-meter-AUDIO-01')).toHaveTextContent(`MIC 1 · MIC-01 · ${W.waveM.micLine.STANDBY}`)
-    expect(screen.getByTestId('sn-meter-AUDIO-02')).toHaveTextContent(`MIC 2 · MIC-02 · ${W.waveM.micLine.PRIMARY}`)
-    expect(screen.getByTestId('sn-meter-AUDIO-02')).toHaveAttribute('data-role', 'PRIMARY')
+    // D61: each meter names the LINE inside its channel - the labels trade with the lines.
+    expect(screen.getByTestId('sn-meter-AUDIO-01')).toHaveTextContent(`MIC 2 · MIC-02 · ${CH1}`)
+    expect(screen.getByTestId('sn-meter-AUDIO-02')).toHaveTextContent(`MIC 1 · MIC-01 · ${CH2}`)
+    expect(screen.getByTestId('sn-meter-AUDIO-01')).toHaveAttribute('data-channel', 'MIC-01')
+    expect(screen.getByTestId('sn-meter-AUDIO-02')).toHaveAttribute('data-channel', 'MIC-02')
   })
 
   it('CONTROL - the simulated lane keeps its track labels', () => {
@@ -157,7 +163,7 @@ describe('G75e-02: the microphone meters of step 2 are named from the selector i
     step(sim)
     expect(screen.getByTestId('sn-meter-AUDIO-01')).toHaveTextContent(en.common.tracks['AUDIO-01'])
     expect(screen.getByTestId('sn-meter-AUDIO-02')).toHaveTextContent(en.common.tracks['AUDIO-02'])
-    expect(screen.getByTestId('sn-meter-AUDIO-01')).not.toHaveAttribute('data-role')
+    expect(screen.getByTestId('sn-meter-AUDIO-01')).not.toHaveAttribute('data-channel') // D61: the channel mark belongs to a Core in its own capture
     expect(screen.getByTestId('sn-meter-AUDIO-01')).not.toHaveTextContent(W.waveL.source.generatedMic)
   })
 })

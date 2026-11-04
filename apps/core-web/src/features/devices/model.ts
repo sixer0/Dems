@@ -67,6 +67,8 @@ export const COUNTED_DEVICES = [
   'CAM-04', // D60
   'MIC-01',
   'MIC-02',
+  'MIC-03', // D61 (2026-11-04): the banner counts all four built-in microphones
+  'MIC-04', // D61
   'POE-SWITCH',
   'REC-INDICATOR',
   'TABLET',
@@ -90,8 +92,11 @@ export function deviceStatus(state: StatusInput, id: DeviceId): DeviceStatusCode
       const camera = state.cameras.find((entry) => entry.deviceId === id)
       return camera && camera.online && camera.lens === 'READY' ? 'READY' : 'FAULT'
     }
+    // D61 (2026-11-04): any of the four built-in microphones reads its own meter row.
     case 'MIC-01':
-    case 'MIC-02': {
+    case 'MIC-02':
+    case 'MIC-03':
+    case 'MIC-04': {
       const mic = state.mics.find((entry) => entry.deviceId === id)
       if (!mic) return 'FAULT'
       if (mic.state === 'NO_SIGNAL') return 'NO_SIGNAL'
@@ -223,7 +228,8 @@ export function selectSummary(state: SimState): SummaryModel {
   const portsUp = monitored.filter((port) => port.link === 'up').length
   // D60 (2026-11-04): the summary counts the four built-in cameras of the four-track surface.
   const cams = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04'] as const
-  const mics = ['MIC-01', 'MIC-02'] as const
+  // D61 (2026-11-04): the summary counts the four simultaneous microphone channels.
+  const mics = ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const
   const counted: readonly string[] = countedDevicesOf(state)
   const otherCounted = OTHER_DEVICES.filter((id) => counted.includes(id))
   return {

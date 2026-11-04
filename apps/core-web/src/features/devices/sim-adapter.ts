@@ -50,6 +50,9 @@ export const DEVICE_IDS = [
   'CAM-04',
   'MIC-01',
   'MIC-02',
+  // D61 (2026-11-04): the simulator seeds MIC-03/MIC-04 as built-in microphones of the four-channel plane.
+  'MIC-03', // D61
+  'MIC-04', // D61
   'POE-SWITCH',
   'REC-INDICATOR',
   'TABLET',
@@ -63,9 +66,11 @@ export type DeviceId = (typeof DEVICE_IDS)[number]
 // (`sim/initial-state.ts` seeds CAM-01..CAM-04 on VIDEO-01..VIDEO-04). A track an assignment leaves
 // empty is still drawn OFFLINE by `camera-tile.tsx` through the slice, not through this map.
 export const CAMERA_DEVICE: Record<VideoTrackId, 'CAM-01' | 'CAM-02' | 'CAM-03' | 'CAM-04'> = { 'VIDEO-01': 'CAM-01', 'VIDEO-02': 'CAM-02', 'VIDEO-03': 'CAM-03', 'VIDEO-04': 'CAM-04' }
-export const MIC_DEVICE: Record<AudioTrackId, 'MIC-01' | 'MIC-02'> = { 'AUDIO-01': 'MIC-01', 'AUDIO-02': 'MIC-02' }
+// D61 (2026-11-04): four audio channels, each with its built-in microphone in the demonstration
+// model (`sim/initial-state.ts` seeds MIC-01..MIC-04 on AUDIO-01..AUDIO-04).
+export const MIC_DEVICE: Record<AudioTrackId, 'MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04'> = { 'AUDIO-01': 'MIC-01', 'AUDIO-02': 'MIC-02', 'AUDIO-03': 'MIC-03', 'AUDIO-04': 'MIC-04' }
 export const DEVICE_CAMERA: Partial<Record<DeviceId, VideoTrackId>> = { 'CAM-01': 'VIDEO-01', 'CAM-02': 'VIDEO-02', 'CAM-03': 'VIDEO-03', 'CAM-04': 'VIDEO-04' } // D60 (2026-11-04)
-export const DEVICE_MIC: Partial<Record<DeviceId, AudioTrackId>> = { 'MIC-01': 'AUDIO-01', 'MIC-02': 'AUDIO-02' }
+export const DEVICE_MIC: Partial<Record<DeviceId, AudioTrackId>> = { 'MIC-01': 'AUDIO-01', 'MIC-02': 'AUDIO-02', 'MIC-03': 'AUDIO-03', 'MIC-04': 'AUDIO-04' } // D61 (2026-11-04)
 
 /** Devices the simulator's `deviceCommand` accepts (TEST_SIGNAL, RESTART). */
 export const COMMANDABLE: ReadonlySet<DeviceId> = new Set([
@@ -75,6 +80,8 @@ export const COMMANDABLE: ReadonlySet<DeviceId> = new Set([
   'CAM-04', // D60
   'MIC-01',
   'MIC-02',
+  'MIC-03', // D61 (2026-11-04): the four-channel microphone plane
+  'MIC-04', // D61
   'POE-SWITCH',
   'REC-INDICATOR',
   'TABLET',
@@ -129,6 +136,8 @@ export type RearPortId =
   | 'MGMT_LAN'
   | 'MIC_IN_1'
   | 'MIC_IN_2'
+  | 'MIC_IN_3' // D61 (2026-11-04): the four-channel microphone plane
+  | 'MIC_IN_4' // D61
   | 'GNSS_SMA'
   | 'RELAY_IO'
   | 'SERVICE_USB'
@@ -155,6 +164,8 @@ export const REAR_PORT_ORDER: readonly RearPortId[] = [
   'MGMT_LAN',
   'MIC_IN_1',
   'MIC_IN_2',
+  'MIC_IN_3', // D61 (2026-11-04): the third and fourth microphone ports
+  'MIC_IN_4', // D61
   'GNSS_SMA',
   'RELAY_IO',
   'SERVICE_USB',
@@ -178,6 +189,8 @@ export const REAR_PORT_DEVICE: Record<RearPortId, DeviceId | null> = {
   MGMT_LAN: 'TABLET',
   MIC_IN_1: 'MIC-01',
   MIC_IN_2: 'MIC-02',
+  MIC_IN_3: 'MIC-03', // D61 (2026-11-04)
+  MIC_IN_4: 'MIC-04', // D61
   GNSS_SMA: 'GNSS',
   RELAY_IO: 'REC-INDICATOR',
   SERVICE_USB: null,
@@ -208,6 +221,9 @@ export function rearPorts(state: Pick<SimState, 'cameras' | 'network' | 'ports' 
     ),
     port('MIC_IN_1', up(simPortLink(state, 'MIC_IN_1'))),
     port('MIC_IN_2', up(simPortLink(state, 'MIC_IN_2'))),
+    // D61 (2026-11-04): the third and fourth microphone channels of the four-channel plane.
+    port('MIC_IN_3', up(simPortLink(state, 'MIC_IN_3'))),
+    port('MIC_IN_4', up(simPortLink(state, 'MIC_IN_4'))),
     port('GNSS_SMA', up(simPortLink(state, 'GNSS_SMA'))),
     port('RELAY_IO', up(simPortLink(state, 'RELAY_IO'))),
     port('SERVICE_USB', 'disabled'),
@@ -241,14 +257,14 @@ function round1(value: number): number {
 }
 
 /**
- * 1 s peak sampler for both microphone channels (the page's live view; the simulator keeps its own
+ * 1 s peak sampler for the four microphone channels (D61, 2026-11-04; the page's live view; the simulator keeps its own
  * 1 Hz history since step 54). Feed it every audio frame
  * (`push`), it closes one point per simulator second. Holds `DEVICE_HEALTH_POINTS` points per channel.
  * Framework-free, so it is unit-testable; the page wraps it in a hook.
  */
 export class MicLevelSampler {
-  private readonly points: Record<AudioTrackId, HealthPoint[]> = { 'AUDIO-01': [], 'AUDIO-02': [] }
-  private readonly open: Record<AudioTrackId, { second: number; peak: number } | null> = { 'AUDIO-01': null, 'AUDIO-02': null }
+  private readonly points: Record<AudioTrackId, HealthPoint[]> = { 'AUDIO-01': [], 'AUDIO-02': [], 'AUDIO-03': [], 'AUDIO-04': [] } // D61 (2026-11-04): four channels
+  private readonly open: Record<AudioTrackId, { second: number; peak: number } | null> = { 'AUDIO-01': null, 'AUDIO-02': null, 'AUDIO-03': null, 'AUDIO-04': null } // D61
   private readonly listeners = new Set<() => void>()
   private version = 0
 

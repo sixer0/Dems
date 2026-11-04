@@ -269,6 +269,11 @@ export const enWeb = {
         localMic: 'Microphone of this computer',
         cameraOf: '{{name}} · {{id}}',
       },
+      /** D61 (2026-11-04): the third and fourth rear microphone ports; web-local until the shared rewording lands. */
+      ports: {
+        micIn3: 'MIC IN 3',
+        micIn4: 'MIC IN 4',
+      },
       /** G70c-02: states of a source nobody opened are not checked facts. */
       state: {
         notChecked: 'Not checked',
@@ -312,9 +317,9 @@ export const enWeb = {
       /** G75d-06 / -07: the Devices summary and audio block of a Core in its own capture. */
       summary: {
         cameras: 'The sources on the four video tracks', // D60 (2026-11-04)
-        microphones: 'The sources on the two microphone lines',
+        microphones: 'The sources on the four microphone channels', // D61 (2026-11-04): four simultaneous channels
         other: 'PoE · relay · tablet link',
-        audioSubtitle: 'The microphone sources of the primary and the standby line',
+        audioSubtitle: 'The microphone sources of the four channels', // D61 (2026-11-04): the primary/standby pair became the numbered channels
       },
       dashboardNetwork: 'This Core reports no network status here.',
       networkBannerDetail: 'Host system clock · no time service configured',

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, type RefObject } from 'react'
+import type { AudioTrackId } from '@dems/shared/domain' // D61 (2026-11-04): the four audio channels
 import { ScrollShadow } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
 import { ArrowRight, Clock } from 'lucide-react'
@@ -28,6 +29,9 @@ const EMPTY: readonly TimelineEvent[] = []
  * the item carries), any other fault by its name - never the code of the item's fallback label
  * ("Critical fault: CAPTURE_FAULT").
  */
+// D61 (2026-11-04): the four microphone channels of the timeline's AUDIO_PEAK rows.
+const TIMELINE_MIC_KEY = { 'AUDIO-01': 'common.devices.mic1', 'AUDIO-02': 'common.devices.mic2', 'AUDIO-03': 'common.devices.mic3', 'AUDIO-04': 'common.devices.mic4' } as const satisfies Partial<Record<AudioTrackId, string>>
+
 export function TimelinePanel({ listRef }: { listRef: RefObject<HTMLDivElement | null> }) {
   const { t } = useTranslation()
   const micName = useMicInputName()
@@ -61,7 +65,8 @@ export function TimelinePanel({ listRef }: { listRef: RefObject<HTMLDivElement |
     (event: TimelineEvent): string | null => {
       if (event.kind === 'AUDIO_PEAK') {
         const level = audioPeakLevel(event)
-        const mic = event.channel === 'AUDIO-02' ? t('common.devices.mic2') : t('common.devices.mic1')
+        // D61 (2026-11-04): any of the four channels can peak; the names come from the shared catalog.
+        const mic = t(TIMELINE_MIC_KEY[event.channel as keyof typeof TIMELINE_MIC_KEY] ?? 'common.devices.mic1')
         return level === null ? event.detail : t('session.timeline.audioPeakDetail', { mic, value: level.toFixed(1) })
       }
       if (event.kind === 'AUTOSAVE') {

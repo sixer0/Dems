@@ -77,7 +77,8 @@ export interface EvidenceMedia {
   evidenceSuffix: string
   /** D60 (2026-11-04): one entry per video track the demo corpus carries; the generator ships 01/02 today. */
   video: Partial<Record<VideoTrackId, VideoMedia>>
-  audio: Record<AudioTrackId, string>
+  /** D61 (2026-11-04): one entry per audio channel the corpus carries; the completeness bound stays 01/02 until the generator ships the four-channel set. */
+  audio: Partial<Record<AudioTrackId, string>>
 }
 
 const SUFFIX_PATTERN = /^EV-\d{8}-(\d{4})$/

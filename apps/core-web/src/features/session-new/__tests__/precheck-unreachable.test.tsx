@@ -107,7 +107,8 @@ describe("the pre-check row of a source that did not answer (D114)", () => {
         [...OTHERS, pass('LENS_2'), unreachable('MIC_PRIMARY', 'BLOCK', { deviceId: 'MIC-01', deviceKind: 'MIC', rule: 'activeMicrophone', other: 'MIC-02' }), pass('MIC_STANDBY')],
         { phase: 'block', done: 8, total: 8, warnings: 0, needsAck: false, canRetry: true } as GateView,
       )
-      const sentence = 'MIC 1 (MIC-01) is the active microphone and is not reachable. Cancel this session, make MIC 2 (MIC-02) the primary microphone on Devices, then start again.'
+      // D61 (2026-11-04): the shared sentence names the transcribed CHANNEL, not a primary role.
+      const sentence = 'MIC 1 (MIC-01) is the microphone of the transcribed channel 1 and is not reachable. Cancel this session, assign another microphone to channel 1 on Devices, then start again.'
       expect(screen.getByTestId('sn-check-MIC_PRIMARY')).toHaveAttribute('data-status', 'BLOCK')
       expect(screen.getByTestId('sn-check-MIC_PRIMARY')).toHaveTextContent(sentence)
       expect(screen.getByTestId('sn-gate-blocked')).toHaveTextContent(sentence)
@@ -138,22 +139,24 @@ describe("the pre-check row of a source that did not answer (D114)", () => {
   // | CONTROL: on the seeded selector a Core in its own capture names MIC-01 and MIC-02 as before | "the meters" |
   describe('task 4 row 167: the pre-check row of a selector slot with no source', () => {
     const SLOT = en.common.captureSlot
-    const sentenceOf = (slot: 'VIDEO-01' | 'VIDEO-02' | 'PRIMARY' | 'STANDBY') => en.common.captureNotice.start.sourceNotAssigned.replace('{{slot}}', SLOT[slot])
+    // D61 (2026-11-04): the microphone slots are the numbered channels.
+    const sentenceOf = (slot: 'VIDEO-01' | 'VIDEO-02' | 'MIC-01' | 'MIC-02') => en.common.captureNotice.start.sourceNotAssigned.replace('{{slot}}', SLOT[slot])
     const unassigned = (id: PrecheckItem['id'], slot: string, status: 'WARN' | 'BLOCK' = 'BLOCK'): PrecheckItem =>
       ({ id, status, value: 'NOT_ASSIGNED', reason: `${slot}: source not assigned`, reasonCode: null, params: { rule: 'sourceNotAssigned', slot } }) as unknown as PrecheckItem
     const ROWS = [
       ['LENS_1', 'VIDEO-01'],
       ['LENS_2', 'VIDEO-02'],
-      ['MIC_PRIMARY', 'PRIMARY'],
-      ['MIC_STANDBY', 'STANDBY'],
+      ['MIC_PRIMARY', 'MIC-01'], // D61: the stored ids check channels 1 and 2
+      ['MIC_STANDBY', 'MIC-02'],
     ] as const
     const BLOCKED = { phase: 'block', done: 8, total: 8, warnings: 0, needsAck: false, canRetry: true } as GateView
-    /** A Core in its own capture (the state says `security.platformNotReported`) with only the microphone lines of `roles`. */
-    const ownCore = (sim: Sim, roles: readonly ('PRIMARY' | 'STANDBY')[]) => {
+    /** A Core in its own capture (the state says `security.platformNotReported`) with only the microphone lines of `channels`. */
+    const ownCore = (sim: Sim, channels: readonly ('MIC-01' | 'MIC-02')[]) => {
       const state = sim.store.getState()
       sim.store.setState({
         security: { ...state.security, platformNotReported: true } as typeof state.security,
-        captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.filter((mic) => roles.includes(mic.role)) },
+        // D61 (2026-11-04): the lines are kept by channel; channels 3 and 4 go with them (the double holds only the pair).
+        captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.filter((mic) => channels.includes(mic.channel as 'MIC-01' | 'MIC-02')) },
         // No session copy of the selector: the selector in force is the slice.
         session: null,
       })
@@ -172,7 +175,7 @@ describe("the pre-check row of a source that did not answer (D114)", () => {
         expect(row.textContent ?? '').not.toMatch(/lens fault|no signal|not reachable|NOT_ASSIGNED|: source not assigned/i)
         expect(screen.getByTestId('sn-gate-blocked')).toHaveTextContent(sentenceOf(slot))
       }
-      expect(sentenceOf('STANDBY')).toBe('Standby microphone has no source assigned. Assign one on Devices.')
+      expect(sentenceOf('MIC-02')).toBe('Microphone 2 has no source assigned. Assign one on Devices.') // D61: the slot word is the shared channel name
       // Not an unreachable source: nothing to search for.
       expect(screen.queryByTestId('precheck-search-camera')).not.toBeInTheDocument()
       expect(screen.queryByTestId('precheck-search-microphone')).not.toBeInTheDocument()
@@ -182,7 +185,7 @@ describe("the pre-check row of a source that did not answer (D114)", () => {
     it('the rules (pure): the closed list holds the rule; the shared recogniser finds the item by rule and slot; the unreachable form does not claim it', () => {
       expect(CAPTURE_START_RULES).toHaveLength(8)
       expect(CAPTURE_START_RULES).toContain(CaptureStartRule.SOURCE_NOT_ASSIGNED)
-      expect(unassignedSlotOfPrecheckItem(unassigned('MIC_STANDBY', 'STANDBY'))).toBe('STANDBY')
+      expect(unassignedSlotOfPrecheckItem(unassigned('MIC_STANDBY', 'MIC-02'))).toBe('MIC-02') // D61: the slot is a channel
       expect(unassignedSlotOfPrecheckItem(unassigned('LENS_1', 'VIDEO-01'))).toBe('VIDEO-01')
       // An unknown slot, a passing item: not this item. (D60, 2026-11-04: VIDEO-03 became a known slot — the unknown is now VIDEO-05.)
       expect(unassignedSlotOfPrecheckItem(unassigned('LENS_1', 'VIDEO-05'))).toBeNull()
@@ -194,31 +197,33 @@ describe("the pre-check row of a source that did not answer (D114)", () => {
     })
 
     it.each([
-      ['no microphone line', [] as const],
-      ['the PRIMARY line alone', ['PRIMARY'] as const],
-      ['the STANDBY line alone', ['STANDBY'] as const],
-    ])('the meters with %s: no meter names an input - the screen shows neither MIC-01 nor MIC-02', (_name, roles) => {
+      ['no microphone line', [] as const, [] as readonly ('AUDIO-01' | 'AUDIO-02')[]],
+      ['the channel 1 line alone', ['MIC-01'] as const, ['AUDIO-01'] as const],
+      ['the channel 2 line alone', ['MIC-02'] as const, ['AUDIO-02'] as const],
+    ])('the meters with %s: every meter of a channel that names no line shows "Not assigned" (D61)', (_name, channels, held) => {
       resetMissingI18nKeys()
-      const items = [pass('CORE'), pass('LENS_1'), pass('LENS_2'), ...(['PRIMARY', 'STANDBY'] as const).map((role) => (roles as readonly string[]).includes(role) ? pass(`MIC_${role}`) : unassigned(`MIC_${role}`, role)), pass('STORAGE'), pass('TIME'), pass('SECURITY')]
+      const items = [pass('CORE'), pass('LENS_1'), pass('LENS_2'), ...([['MIC_PRIMARY', 'MIC-01'], ['MIC_STANDBY', 'MIC-02']] as const).map(([id, slot]) => (channels as readonly string[]).includes(slot) ? pass(id) : unassigned(id, slot)), pass('STORAGE'), pass('TIME'), pass('SECURITY')]
       const sim = mountStep(OPERATOR_IDS.ANDI, items, BLOCKED)
-      act(() => ownCore(sim, roles))
+      act(() => ownCore(sim, channels))
       for (const channel of ['AUDIO-01', 'AUDIO-02'] as const) {
         const meter = screen.getByTestId(`sn-meter-${channel}`)
+        if ((held as readonly string[]).includes(channel)) continue
         expect(meter).not.toHaveAttribute('data-input')
-        expect(meter).not.toHaveAttribute('data-role')
+        expect(meter).not.toHaveAttribute('data-channel')
         expect(meter.querySelector('.sn-meter-label')).toHaveTextContent(SLOT.notAssigned)
       }
-      expect(screen.getByTestId('sn-step-devices').textContent ?? '').not.toMatch(/MIC-01|MIC-02/)
+      if (channels.length === 0) expect(screen.getByTestId('sn-step-devices').textContent ?? '').not.toMatch(/MIC-01|MIC-02/)
       expect(getMissingI18nKeys()).toEqual([])
     })
 
     it('CONTROL - the seeded pair on a Core in its own capture: each meter names its line as before', () => {
       const sim = mountStep(OPERATOR_IDS.ANDI, [...OTHERS, pass('LENS_2'), pass('MIC_PRIMARY'), pass('MIC_STANDBY')], { phase: 'pass', done: 8, total: 8, warnings: 0, needsAck: false, canRetry: false } as GateView)
-      act(() => ownCore(sim, ['PRIMARY', 'STANDBY']))
+      act(() => ownCore(sim, ['MIC-01', 'MIC-02']))
+      // D61 (2026-11-04): the meter states the CHANNEL of its line (data-role became data-channel).
       expect(screen.getByTestId('sn-meter-AUDIO-01')).toHaveAttribute('data-input', 'MIC-01')
-      expect(screen.getByTestId('sn-meter-AUDIO-01')).toHaveAttribute('data-role', 'PRIMARY')
+      expect(screen.getByTestId('sn-meter-AUDIO-01')).toHaveAttribute('data-channel', 'MIC-01')
       expect(screen.getByTestId('sn-meter-AUDIO-02')).toHaveAttribute('data-input', 'MIC-02')
-      expect(screen.getByTestId('sn-meter-AUDIO-02')).toHaveAttribute('data-role', 'STANDBY')
+      expect(screen.getByTestId('sn-meter-AUDIO-02')).toHaveAttribute('data-channel', 'MIC-02')
       expect(screen.getByTestId('sn-meter-AUDIO-01').querySelector('.sn-meter-label')).toHaveTextContent('MIC-01')
     })
   })

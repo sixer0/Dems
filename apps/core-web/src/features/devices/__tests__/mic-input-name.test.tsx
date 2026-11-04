@@ -42,9 +42,10 @@ describe('the name of a microphone input', () => {
 
 describe('the pair of the session, by the ids the Core sends', () => {
   const state = (over: Record<string, unknown>): SimState => ({ session: null, audio: { activeInputId: 'MIC-01' }, captureConfig: { cameras: [], mics: [] }, ...over }) as unknown as SimState
+  // D61 (2026-11-04): the lines state their CHANNEL; the transcription pair sits on channels 1 and 2.
   const lines = [
-    { inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' },
-    { inputId: 'MIC-01', deviceId: 'MIC-01', role: 'STANDBY' },
+    { inputId: 'MIC-03', deviceId: 'MIC-03', channel: 'MIC-01' },
+    { inputId: 'MIC-01', deviceId: 'MIC-01', channel: 'MIC-02' },
   ]
 
   it('the session names the pair: both ids pass through as sent', () => {
@@ -69,7 +70,8 @@ describe('the pair of the session, by the ids the Core sends', () => {
   it('a silence warning that names MIC-03 is about MIC-03', () => {
     const fault = (target: string | null) => [{ kind: 'MIC_SILENT', since: 1, target }] as unknown as SimState['faults']['active']
     // Task 4 row 168: the lines are given - a channel is a line of the selector (here the built-in pair), never a table.
-    const builtIn = [{ inputId: 'MIC-01', role: 'PRIMARY' }, { inputId: 'MIC-02', role: 'STANDBY' }] as const
+    // D61 (2026-11-04): the lines are given by channel - a meter channel is the line that NAMES it.
+    const builtIn = [{ inputId: 'MIC-01', channel: 'MIC-01' }, { inputId: 'MIC-02', channel: 'MIC-02' }] as const
     expect(silentInputOf(fault('MIC-03'), 'MIC-01', builtIn)).toBe('MIC-03')
     expect(silentInputOf(fault('AUDIO-02'), 'MIC-03', builtIn)).toBe('MIC-02')
     expect(silentInputOf(fault(null), 'MIC-03', builtIn)).toBe('MIC-03')

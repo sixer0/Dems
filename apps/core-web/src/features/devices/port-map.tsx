@@ -28,6 +28,8 @@ const ICONS: Record<RearPortId, LucideIcon> = {
   MGMT_LAN: RadioTower,
   MIC_IN_1: Mic,
   MIC_IN_2: Mic,
+  MIC_IN_3: Mic, // D61 (2026-11-04): the four-channel microphone plane
+  MIC_IN_4: Mic, // D61
   GNSS_SMA: SatelliteDish,
   RELAY_IO: ToggleRight,
   SERVICE_USB: Usb,
@@ -69,6 +71,8 @@ export function PortMap() {
         return t('devices.ports.tip.mgmtLan', { speed: speed })
       case 'MIC_IN_1':
       case 'MIC_IN_2':
+      case 'MIC_IN_3': // D61 (2026-11-04): every balanced input says the same
+      case 'MIC_IN_4': // D61
         return t('devices.ports.tip.micIn')
       case 'GNSS_SMA':
         return t('devices.ports.tip.gnssSma')

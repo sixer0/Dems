@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import type { AudioTrackId } from '@dems/shared/domain' // D61 (2026-11-04): the four microphone channels
 import { Mic, Volume2 } from 'lucide-react'
 import { useSelfCaptureCore } from '@/lib/own-capture'
 import { useTranslation } from 'react-i18next'
@@ -10,6 +11,9 @@ import { useAudioSource, useAudioSourceIntervals, useAudioSourceSwitch } from '.
 import { AudioSilentWarning, AudioSourceConfirm, AudioSourceFooter, AudioSourceRoleChip, AudioSourceToggle } from './audio-source-controls'
 import { micTiles, micTone, selectConnectingCameras } from './model'
 import { Panel } from './panel'
+
+// D61 (2026-11-04): on a Core in its own capture a meter half is named by the shared catalog, by its channel.
+const MIC_OWN_CORE_KEY = { 'AUDIO-01': 'common.devices.mic1', 'AUDIO-02': 'common.devices.mic2', 'AUDIO-03': 'common.devices.mic3', 'AUDIO-04': 'common.devices.mic4' } as const satisfies Record<AudioTrackId, string>
 
 /**
  * O: AUDIO MONITOR (01_specs §14.5.2 O; research/04 §3.2 O; M-C-04). Two halves, MIC 1 -
@@ -55,7 +59,8 @@ export function AudioPanel({ paused }: { paused: boolean }) {
       <div className="sm-audio-body" data-active-input={source.activeInputId ?? undefined}>
       {mics.map((mic) => {
         // Fix wave L (G75d-06): "Interviewer" / "Subject" are roles of the dataset's microphones; a Core in its own capture names the line only.
-        const name = ownCore ? t(mic.id === 'AUDIO-01' ? 'common.devices.mic1' : 'common.devices.mic2') : mic.name
+        // D61 (2026-11-04): any of the four channels; the names come from the shared catalog.
+        const name = ownCore ? t(MIC_OWN_CORE_KEY[mic.id]) : mic.name
         // Task 4 row 168 (site W4; decision C18 (2)): the input behind this meter channel, or `null` when the
         // selector holds no complete microphone pair. An absent input is the half's empty state: it is neither
         // the active source nor the standby, and it carries no role chip and no source marks.
@@ -66,7 +71,8 @@ export function AudioPanel({ paused }: { paused: boolean }) {
             className="sm-audio-half"
             data-channel={mic.id}
             data-state={mic.state}
-            data-source={inputId === null ? undefined : source.activeInputId === inputId ? 'ACTIVE' : 'STANDBY'}
+            /* D61 (2026-11-04): all four channels record; ACTIVE/STANDBY belong to the transcription pair alone. */
+            data-source={inputId === null ? undefined : source.activeInputId === inputId ? 'ACTIVE' : source.standbyInputId === inputId ? 'STANDBY' : undefined}
             data-no-input={inputId === null ? 'true' : undefined}
           >
             <p className="sm-audio-name" title={name}>

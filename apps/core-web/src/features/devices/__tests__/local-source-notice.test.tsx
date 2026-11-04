@@ -24,7 +24,8 @@ vi.mock('../source-class', async (original) => ({ ...(await original<typeof impo
 const LIMIT = en.common.localSourceNotice.microphoneLimit
 const device = (id: string, kind: CaptureDevice['kind'], over: Partial<CaptureDevice> = {}): CaptureDevice => ({ id, kind, model: null, firmware: null, host: null, poePort: null, online: true, streamState: kind === 'CAMERA' ? 'LIVE' : null, capabilities: [], ...over })
 const LOCAL_CAMERA = device('CAM-03', 'CAMERA', { adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT' })
-const LOCAL_MIC = device('MIC-03', 'MIC', { adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT' })
+// D61 (2026-11-04): MIC-03/MIC-04 are built-ins - a development fixture takes the next free id.
+const LOCAL_MIC = device('MIC-05', 'MIC', { adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT' })
 const BUILT_INS = [device('CAM-01', 'CAMERA'), device('CAM-02', 'CAMERA', { adapter: 'FAKE', sourceClass: 'DEVELOPMENT' }), device('MIC-01', 'MIC'), device('MIC-02', 'MIC')]
 const config = (cameras: string[], mics: string[]) => ({ cameras: cameras.map((deviceId) => ({ deviceId })), mics: mics.map((deviceId) => ({ deviceId })) })
 
@@ -32,9 +33,9 @@ describe('localSourcesOf: which of this Mac\'s devices a pre-check under the sel
   const registry = { devices: [...BUILT_INS, LOCAL_CAMERA, LOCAL_MIC] }
 
   it('names the local camera and the local microphone of the selector lines, by the id the Core sent', () => {
-    expect(localSourcesOf(config(['CAM-03', 'CAM-02'], ['MIC-03', 'MIC-02']), registry)).toEqual({ camera: 'CAM-03', microphone: 'MIC-03' })
+    expect(localSourcesOf(config(['CAM-03', 'CAM-02'], ['MIC-05', 'MIC-02']), registry)).toEqual({ camera: 'CAM-03', microphone: 'MIC-05' }) // D61: MIC-03/04 are built-ins - the local fixture is MIC-05
     expect(localSourcesOf(config(['CAM-03', 'CAM-02'], ['MIC-01', 'MIC-02']), registry)).toEqual({ camera: 'CAM-03', microphone: null })
-    expect(localSourcesOf(config(['CAM-01', 'CAM-02'], ['MIC-02', 'MIC-03']), registry)).toEqual({ camera: null, microphone: 'MIC-03' })
+    expect(localSourcesOf(config(['CAM-01', 'CAM-02'], ['MIC-02', 'MIC-05']), registry)).toEqual({ camera: null, microphone: 'MIC-05' })
   })
 
   it('CONTROL: a selector without a local device is `null` — a registered local device no line names opens nothing', () => {
@@ -69,15 +70,15 @@ describe('localSourcesOf: which of this Mac\'s devices a pre-check under the sel
 describe('R69-07 the selector line of a local microphone (Devices & Inputs)', () => {
   installDevicesBed()
 
-  /** Camera 1 and the primary microphone are this Mac's; MIC-02 stays the standby. */
+  /** Camera 1 and the transcribed channel are this Mac's; channel 2 stays the built-in. (D61) */
   const development = (sim: Sim): void => {
     const state = sim.store.getState()
     sim.store.setState({
       captureDevices: { devices: [...state.captureDevices.devices, LOCAL_CAMERA, LOCAL_MIC] },
       captureConfig: {
         ...state.captureConfig,
-        cameras: state.captureConfig.cameras.map((camera) => (camera.trackId === 'VIDEO-01' ? { ...camera, deviceId: 'CAM-03' } : camera)),
-        mics: [{ ...state.captureConfig.mics[1]! }, { ...state.captureConfig.mics[0]!, inputId: 'MIC-03', deviceId: 'MIC-03' }],
+        cameras: state.captureConfig.cameras.map((camera) => (camera.trackId === 'VIDEO-01' ? { ...camera, deviceId: 'CAM-05' } : camera)), // D61: CAM-03/04 are built-ins
+        mics: [{ ...state.captureConfig.mics[1]! }, { ...state.captureConfig.mics[0]!, inputId: 'MIC-05', deviceId: 'MIC-05' }],
       },
     })
   }
@@ -85,8 +86,8 @@ describe('R69-07 the selector line of a local microphone (Devices & Inputs)', ()
   it('real capture: the line of the local microphone says the limit sentence; the other microphone line and the camera lines do not', async () => {
     mode.realCapture = true
     await mountDevices('idle', OPERATOR_IDS.ANDI, development)
-    const local = within(await screen.findByTestId('selector-mic-MIC-03'))
-    expect(local.getByTestId('source-limit-selector-MIC-03').textContent).toBe(LIMIT)
+    const local = within(await screen.findByTestId('selector-mic-MIC-05'))
+    expect(local.getByTestId('source-limit-selector-MIC-05').textContent).toBe(LIMIT)
     expect(within(screen.getByTestId('selector-mic-MIC-02')).queryByText(LIMIT)).toBeNull()
     expect(document.querySelectorAll('[data-testid^="source-limit-selector-"]')).toHaveLength(1)
     expect(screen.getByTestId('selector-camera-VIDEO-01').textContent).not.toContain(LIMIT)
@@ -95,7 +96,7 @@ describe('R69-07 the selector line of a local microphone (Devices & Inputs)', ()
   it('CONTROL: Simulated client mode: no limit sentence on any selector line', async () => {
     mode.realCapture = false
     await mountDevices('idle', OPERATOR_IDS.ANDI, development)
-    await screen.findByTestId('selector-mic-MIC-03')
+    await screen.findByTestId('selector-mic-MIC-05')
     expect(document.querySelectorAll('[data-testid^="source-limit-"]')).toHaveLength(0)
   })
 })

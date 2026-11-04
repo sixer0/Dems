@@ -4,13 +4,14 @@ import { Camera, Mic, Power, SlidersHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { VideoTrackId } from '@dems/shared/domain'
 import { useRetryCooldown } from '@dems/shared/realtime'
-import { selectIsRecording, useSim } from '@dems/shared/sim'
+import { PRIMARY_MIC_CHANNEL, selectIsRecording, useSim, type MicChannel } from '@dems/shared/sim' // D61 (2026-11-04): the four microphone channels
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import { usePendingControl } from '@/lib/pending-control'
 import {
   CAPTURE_SELECTOR_ANCHOR,
+  micChannelChipKey,
+  micLineFor,
   micMoveFor,
-  micPairFor,
   poeCycleGate,
   selectorEditGate,
   selectorRefusal,
@@ -22,6 +23,7 @@ import {
   type CaptureMicLine,
   type CaptureSelectorCommands,
   type CaptureSelectorView,
+  type MicChannelLine,
   type PoeCycleGate,
   type SelectorAnswer,
   type SelectorEditBlock,
@@ -405,28 +407,31 @@ function CameraSourceRow({
 }
 
 /**
- * One microphone line of the selector. Wave H (G70-02, ruling D196): the line offers EVERY
- * registered microphone (`mics`) for its role - PRIMARY and STANDBY alike - with one Save, which is
- * operation 78 in its pair-replacement form (`micPairFor`). R-FLEX row 133 (88 D-A4.6, T-14; D16
- * Q96-02 (B)): the other line's microphone is an ENABLED option that says where it is and that
- * choosing it moves it here; its Save is ONE operation 78 edit that clears the old line
- * (`micMoveFor`: `{ unassign: [old role], mics: [line] }`), so one microphone is never on both lines.
- * "Make primary" (operation 80) stays as it was. Both controls keep the selector's gates.
+ * One microphone CHANNEL of the selector (D61 of 2026-11-04: four simultaneous channels — the
+ * PRIMARY/STANDBY lines became the numbered channels MIC-01..MIC-04). The row offers EVERY
+ * registered microphone (`mics`) for its channel, with one Save, which is operation 78 as ONE line
+ * by channel (`micLineFor`: a line assigns its channel ALONE; the other channels keep what they
+ * hold). R-FLEX row 133 (88 D-A4.6, T-14; D16 Q96-02 (B)): a microphone another channel holds is an
+ * ENABLED option that says where it is and that choosing it moves it here; its Save is ONE
+ * operation 78 edit that clears the old channel (`micMoveFor`: `{ unassign: [from], mics: [line] }`),
+ * so one microphone never stands on two channels. "Make transcribed channel 1" (operation 81) moves
+ * the named input to channel 1 and gives it the channel 1 input took; it is offered on every held
+ * channel except channel 1 itself. Both controls keep the selector's gates.
  *
- * Task 4 row 31 (sites W1, W2; rule MIC-ASSIGN, ruling C21 (8)): the row is a SLOT (a role).
- * `line: null` is the role not assigned: the row is drawn, says so, and its Save is "Assign" - one
- * line by role when the other role is empty too, the pair when it is held (`micPairFor`). A held
- * slot offers "Not assigned" among its microphones; saving that choice is `unassign`.
+ * Task 4 row 31 (sites W1, W2; rule MIC-ASSIGN, ruling C21 (8), generalized by D61): the row is a
+ * SLOT (a channel). `line: null` is the channel not assigned: the row is drawn, says so, and its
+ * Save is "Assign". A held slot offers "Not assigned" among its microphones; saving that choice is
+ * `unassign`.
  */
 function MicRow({
-  slot: role,
+  slot: channel,
   line,
   device,
   mics,
   lines,
   block,
   commands,
-}: RowShared & { slot: CaptureMicLine['role']; line: CaptureMicLine | null; device: CaptureDevice | undefined; mics: readonly CaptureDevice[]; lines: readonly CaptureMicLine[] }) {
+}: RowShared & { slot: MicChannel; line: CaptureMicLine | null; device: CaptureDevice | undefined; mics: readonly CaptureDevice[]; lines: readonly CaptureMicLine[] }) {
   const { t } = useTranslation()
   const reasonOf = useBlockReason()
   const notice = useFailureNotice('MIC')
@@ -439,34 +444,35 @@ function MicRow({
   // `null`: the control follows the Core's line. Nothing is optimistic (ux §2.2 step 4).
   const [choice, setChoice] = useState<string | null>(null)
   const [pairMessage, setPairMessage] = useState<string | null>(null)
-  const primary = role === 'PRIMARY'
+  const transcribed = channel === PRIMARY_MIC_CHANNEL // D61: channel 1 feeds the transcribed track AUDIO-01
   const reason = reasonOf(block)
-  const other = lines.find((entry) => entry.role !== role)
   const held = line?.deviceId ?? NOT_ASSIGNED_KEY
   const selected = choice ?? held
   const clears = choice === NOT_ASSIGNED_KEY
-  const pair = choice === null || clears ? null : micPairFor(lines, role, choice)
-  const move = choice === null || clears ? null : micMoveFor(lines, role, choice)
-  // The id of the row's marks: the input of the line, or the role of an empty slot.
-  const rowId = line?.inputId ?? role
-  const lineLabel = line === null ? t('common.captureSlot.assignLabel', { slot: t(`common.captureSlot.${role}`) }) : t(`devices.micLines.label.${role}`)
+  // D61: one line by channel; a device another ASSIGNED channel holds is a MOVE, not a bare line.
+  const move = choice === null || clears ? null : micMoveFor(lines, channel, choice)
+  const assignment: readonly MicChannelLine[] | null = choice === null || clears || move !== null ? null : micLineFor(channel, choice)
+  // The id of the row's marks: the input of the line, or the channel of an empty slot.
+  const rowId = line?.inputId ?? channel
+  const lineLabel = line === null ? t('common.captureSlot.assignLabel', { slot: t(`common.captureSlot.${channel}`) }) : t(`devices.micLines.label.${channel}`)
   const deviceText = useDeviceText()
   const transportShown = micTransportShown(useRealCaptureCore(), device)
-  // An option says what the Core says of the microphone (the development class, this Mac's microphone) and where it already is.
+  // An option says what the Core says of the microphone (the development class, this Mac's microphone) and where it already is (D61: by channel).
   const optionText = (entry: CaptureDevice): string => {
     const parts = [deviceText(entry)]
     if (realCapture && isDevelopmentSource(entry)) {
       if (entry.adapter === LOCAL_DEVICE_ADAPTER) parts.push(t('common.sourceClass.kind.localMicrophone'))
       parts.push(t('common.sourceClass.badge'))
     }
-    if (other !== undefined && entry.id === other.deviceId) parts.push(t(`devices.micLines.onOtherLine.${other.role}`))
+    const otherLine = lines.find((entry2) => entry2.channel !== channel && entry2.deviceId === entry.id)
+    if (otherLine !== undefined) parts.push(t(`devices.micLines.onOtherLine.${otherLine.channel}`))
     return parts.join(' · ')
   }
 
-  const onSavePair = () => {
-    if (pair === null && move === null && !clears) return
+  const onSaveLine = () => {
+    if (assignment === null && move === null && !clears) return
     save.run((release) => {
-      void (clears ? commands.unassign(role) : move !== null ? commands.moveMic(move) : commands.setMicPair(pair!))
+      void (clears ? commands.unassign(channel) : move !== null ? commands.moveMic(move) : commands.setMicLine(assignment!))
         .then((answer) => {
           if (answer.ok) {
             setChoice(null)
@@ -496,18 +502,18 @@ function MicRow({
   return (
     <li
       className="dev-sel-row"
-      data-testid={`selector-mic-${rowId}`}
-      data-selector-slot={role}
+      data-testid={`selector-mic-${line?.inputId ?? `slot-${channel}`}`} // D61 (2026-11-04): an empty slot's row is marked, so a moved microphone never shares a row id with the empty channel it left
+      data-selector-slot={channel}
       data-state={line === null ? 'NOT_ASSIGNED' : 'ASSIGNED'}
-      data-role={role}
+      data-channel={channel}
       aria-busy={control.busy || save.busy || undefined}
     >
       <div className="dev-sel-head">
         <Mic className="dev-sel-icon" aria-hidden="true" strokeWidth={1.75} />
         {line === null ? (
           <div className="dev-sel-titles">
-            <span className="dev-tile-name">{t(`common.captureSlot.${role}`)}</span>
-            <span className="dev-tile-sub" data-testid={`selector-not-assigned-${role}`}>
+            <span className="dev-tile-name">{t(`common.captureSlot.${channel}`)}</span>
+            <span className="dev-tile-sub" data-testid={`selector-not-assigned-${channel}`}>
               {t('common.captureSlot.notAssigned')}
             </span>
           </div>
@@ -523,8 +529,11 @@ function MicRow({
           </div>
         )}
         <span className="dev-sel-chips">
-          <Chip size="sm" variant="soft" color={primary ? 'accent' : 'default'} data-testid={`selector-role-${rowId}`}>
-            <Chip.Label>{t(`devices.selector.role.${role}`)}</Chip.Label>
+          {/* D61 (2026-11-04): the chip is keyed by the INPUT of a held line - an empty slot keys it by its
+              CHANNEL with a marker, so a microphone moved onto channel 1 never collides with the empty row it left. */}
+          <Chip size="sm" variant="soft" color={transcribed ? 'accent' : 'default'} data-testid={`selector-role-${line?.inputId ?? `slot-${channel}`}`}>
+            {/* D61: channels 1 and 2 keep the two role words (the transcription pair op 81 trades); 3 and 4 are named by the shared slot list. */}
+            <Chip.Label>{t(micChannelChipKey(channel))}</Chip.Label>
           </Chip>
         </span>
         {/* An empty slot has no device: no state is said of it and no badge is drawn. */}
@@ -541,7 +550,7 @@ function MicRow({
           }}
           isDisabled={block !== null || save.busy}
           className="dev-sel-select"
-          data-testid={`selector-mic-source-${role}`}
+          data-testid={`selector-mic-source-${channel}`}
         >
           <Label>{lineLabel}</Label>
           <Select.Trigger>
@@ -563,11 +572,12 @@ function MicRow({
             </ListBox>
           </Select.Popover>
         </Select>
-        <Button ref={saveRef} size="sm" variant="primary" isDisabled={block !== null || (pair === null && move === null && !clears)} isPending={save.pending} onPress={onSavePair} data-testid={`selector-mic-save-${role}`}>
+        <Button ref={saveRef} size="sm" variant="primary" isDisabled={block !== null || (assignment === null && move === null && !clears)} isPending={save.pending} onPress={onSaveLine} data-testid={`selector-mic-save-${channel}`}>
           {save.pending ? <Spinner size="sm" color="current" aria-hidden="true" /> : null}
           {line === null ? t('common.captureSlot.assign') : t('devices.selector.save')}
         </Button>
-        {primary || line === null ? null : (
+        {/* D61 (2026-11-04): operation 81 moves ANY held channel other than 1 to the transcribed channel 1. */}
+        {transcribed || line === null ? null : (
           <Button
             ref={controlRef}
             size="sm"
@@ -583,7 +593,7 @@ function MicRow({
         )}
       </div>
       {/* The limit of this Mac's microphone at the moment it is chosen, before the Save (R69-07, D161). */}
-      {choice === null ? null : <LocalMicrophoneLimit device={mics.find((entry) => entry.id === choice)} place={`choice-${role}`} className="dev-sel-reason" />}
+      {choice === null ? null : <LocalMicrophoneLimit device={mics.find((entry) => entry.id === choice)} place={`choice-${channel}`} className="dev-sel-reason" />}
       {reason ? (
         <p className="dev-sel-reason" data-testid={`selector-reason-${rowId}`} data-block={block?.kind}>
           {reason}
@@ -595,7 +605,7 @@ function MicRow({
         </p>
       ) : null}
       {pairMessage ? (
-        <p className="dev-sel-message" role="alert" data-testid={`selector-mic-message-${role}`}>
+        <p className="dev-sel-message" role="alert" data-testid={`selector-mic-message-${channel}`}>
           {pairMessage}
         </p>
       ) : null}
@@ -707,8 +717,10 @@ function SelectorBody({ view, commands }: { view: CaptureSelectorView; commands:
         <h3 className="dev-sel-group">{t('devices.selector.mics')}</h3>
         <ul className="dev-sel-list">
           {rows.mics.map(({ slot, line }) => (
+            // D61 (2026-11-04): the row is the SLOT — keying a moved microphone by its input would
+            // collide with the empty row it left (both named MIC-0N mid-move).
             <MicRow
-              key={line?.inputId ?? slot}
+              key={slot}
               slot={slot}
               line={line}
               device={line === null ? undefined : devices.devices.find((device) => device.id === line.deviceId)}
@@ -726,12 +738,13 @@ function SelectorBody({ view, commands }: { view: CaptureSelectorView; commands:
 
 /**
  * The capture device selector (ux §2 flow 1; WB-05): which registered camera feeds each of the four
- * video tracks `VIDEO-01` … `VIDEO-04` (D60, 2026-11-04), which registered microphone is on the
- * PRIMARY and on the STANDBY line (wave H, G70-02:
- * operation 78, pair replacement), and which microphone input is PRIMARY. Reads are open to every role; the edit controls
+ * video tracks `VIDEO-01` … `VIDEO-04` (D60, 2026-11-04), and which registered microphone stands on
+ * each of the FOUR channels `MIC-01` … `MIC-04` (D61, 2026-11-04: operation 78 by channel — the
+ * PRIMARY/STANDBY pair is superseded), with "Make transcribed channel 1" (operation 81) trading the
+ * transcription. Reads are open to every role; the edit controls
  * need `CAPTURE_CONFIG` and no open session, and show "Checking your permissions..." until the role,
  * the link and the read are resolved (E-16) — a control is disabled with its reason, never hidden.
- * Inline selects with one Save per field (operation 79) and "Make primary" (operation 80); a LOST
+ * Inline selects with one Save per field (operations 78, 79) and "Make transcribed channel 1" (operation 81); a LOST
  * camera stream offers the confirmed PoE cycle (G9, operation 48).
  */
 export function CaptureSelectorPanel() {

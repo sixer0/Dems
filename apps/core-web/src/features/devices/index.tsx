@@ -38,7 +38,7 @@ import { AlertDialog, Button, toast } from '@heroui/react'
 import { AudioLines, Cable, Camera, Cpu, LayoutGrid, MonitorCog, Video } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
-import { VIDEO_TRACK_IDS } from '@dems/shared/domain'
+import { AUDIO_TRACK_IDS, VIDEO_TRACK_IDS } from '@dems/shared/domain' // D61 (2026-11-04): the four audio channels
 import { settle, useCoreActions } from '@dems/shared/live'
 import { DeviceCommand } from '@dems/shared/sim'
 import { useRealCaptureCore } from './source-class'
@@ -273,10 +273,12 @@ export function DevicesPage() {
                 glowPulseKey={bloom}
               >
                 <motion.div className="dev-audios" variants={audioStagger} initial="hidden" animate="visible">
-                  <AudioInputCard channel="AUDIO-01" />
-                  <AudioInputCard channel="AUDIO-02" />
+                  {/* D61 (2026-11-04): one card per microphone channel of the four-channel plane. */}
+                  {AUDIO_TRACK_IDS.map((channel) => (
+                    <AudioInputCard key={channel} channel={channel} />
+                  ))}
                 </motion.div>
-                {/* Row 140: the microphones the Core registered beyond the two built-in ids (this Mac's microphone, `MIC-03`). */}
+                {/* Row 140: the microphones the Core registered beyond the built-in ids (D61: adoption/registration mints MIC-05+). */}
                 <RegisteredDevices kind="MIC" onView={setRegisteredId} />
                 {/* Flow 13 (R-10 AC-2): "Search again" re-reads the microphones connected to the Core (operation 97). */}
                 <MicRescan />

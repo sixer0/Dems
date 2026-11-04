@@ -32,9 +32,10 @@ const CONFIG: CaptureConfig = {
     { trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_1080P25', online: true, streamState: 'LIVE' },
     { trackId: 'VIDEO-02', deviceId: 'CAM-02', profile: 'H264_1080P25', online: true, streamState: 'LIVE' },
   ],
+  // D61 (2026-11-04): the microphone lines are keyed by channel (the role member is superseded).
   mics: [
-    { inputId: 'MIC-01', deviceId: 'MIC-01', role: 'PRIMARY', transport: 'USB', online: true },
-    { inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY', transport: 'USB', online: true },
+    { channel: 'MIC-01', inputId: 'MIC-01', deviceId: 'MIC-01', transport: 'USB', online: true },
+    { channel: 'MIC-02', inputId: 'MIC-02', deviceId: 'MIC-02', transport: 'USB', online: true },
   ],
   locked: false,
   updatedAt: 1,
@@ -239,7 +240,7 @@ describe('Simulated mode: an edit (R-1 AC-1 in the simulator; PE-127-07)', { tim
     expect(within(panel).getByTestId('selector-primary-MIC-01')).toBeEnabled()
     const rows = captureAudit(sim)
     expect(rows).toHaveLength(1)
-    expect(rows[0]!.details).toMatchObject({ operationId: 'setPrimaryMic', scope: 'MIC', field: 'ROLE', inputId: 'MIC-02', from: 'STANDBY', to: 'PRIMARY' })
+    expect(rows[0]!.details).toMatchObject({ operationId: 'setPrimaryMic', scope: 'MIC', field: 'CHANNEL', inputId: 'MIC-02', from: 'MIC-02', to: 'MIC-01' }) // D61 (2026-11-04): the swap moves channels
   })
 })
 
@@ -257,7 +258,7 @@ describe('Simulated mode: refusals (OD-10; ux §2.4, §2.5)', { timeout: 30_000 
     expect(within(panel).getByTestId('selector-primary-MIC-02')).toBeDisabled()
     fireEvent.click(within(panel).getByTestId('selector-primary-MIC-02'))
     expect(captureAudit(sim)).toHaveLength(0)
-    expect(sim.store.getState().captureConfig.mics[0]).toMatchObject({ inputId: 'MIC-01', role: 'PRIMARY' })
+    expect(sim.store.getState().captureConfig.mics[0]).toMatchObject({ inputId: 'MIC-01', channel: 'MIC-01' }) // D61: a line states its channel
   })
 
   it('with a session open the locked banner and sentence show, the controls are disabled, and nothing is written', async () => {

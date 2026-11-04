@@ -21,7 +21,7 @@ import { CaptureSourceClass } from '@dems/shared/api'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { VIDEO_TRACK_IDS, type VideoTrackId } from '@dems/shared/domain' // D60 (2026-11-04)
-import { useSim, selectorInForce } from '@dems/shared/sim'
+import { useSim, selectorInForce, PRIMARY_MIC_CHANNEL, SECOND_MIC_CHANNEL } from '@dems/shared/sim' // D61 (2026-11-04): the two channels the stored pre-check ids check
 import { micInputName } from '@/lib/capture-notices'
 import { useWebLive } from '@/runtime'
 import type { CaptureDevice } from './capture-selector'
@@ -151,11 +151,13 @@ export function usePrecheckDevice(checkId: string): CaptureDevice | undefined {
       case 'MIC_2':
         deviceId = config.mics.find((mic) => mic.inputId === 'MIC-02')?.deviceId
         break
+      // D61 (2026-11-04): the stored MIC_PRIMARY/MIC_STANDBY ids CHECK channels 1 and 2 of the
+      // four-channel plane (vocabulary note: the migration renames what they check).
       case 'MIC_PRIMARY':
-        deviceId = config.mics.find((mic) => mic.role === 'PRIMARY')?.deviceId
+        deviceId = config.mics.find((mic) => mic.channel === PRIMARY_MIC_CHANNEL)?.deviceId
         break
       case 'MIC_STANDBY':
-        deviceId = config.mics.find((mic) => mic.role === 'STANDBY')?.deviceId
+        deviceId = config.mics.find((mic) => mic.channel === SECOND_MIC_CHANNEL)?.deviceId
         break
       default:
         deviceId = undefined

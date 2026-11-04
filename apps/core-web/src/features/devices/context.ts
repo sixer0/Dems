@@ -50,13 +50,15 @@ export function useIdentify(deviceId: DeviceId): number | null {
 export const MicSamplerContext = createContext<MicLevelSampler | null>(null)
 
 /**
- * One sampler per page: both channels feed it through transient 20 Hz subscriptions (no React
- * renders), and it closes one 1 s peak point per simulator second.
+ * One sampler per page: the FOUR channels (D61, 2026-11-04) feed it through transient 20 Hz
+ * subscriptions (no React renders), and it closes one 1 s peak point per simulator second.
  */
 export function usePageMicSampler(): MicLevelSampler {
   const [sampler] = useState(() => new MicLevelSampler())
   useAudioChannel('AUDIO-01', (frame) => sampler.push('AUDIO-01', frame))
   useAudioChannel('AUDIO-02', (frame) => sampler.push('AUDIO-02', frame))
+  useAudioChannel('AUDIO-03', (frame) => sampler.push('AUDIO-03', frame)) // D61
+  useAudioChannel('AUDIO-04', (frame) => sampler.push('AUDIO-04', frame)) // D61
   return sampler
 }
 

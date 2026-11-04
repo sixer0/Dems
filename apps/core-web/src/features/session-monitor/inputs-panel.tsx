@@ -1,5 +1,5 @@
 import { useTrackReach } from '@/features/devices/track-reach'
-import type { VideoTrackId } from '@dems/shared/domain'
+import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain' // D61 (2026-11-04): the four microphone channels
 import { useMemo, useRef } from 'react'
 import { Card } from '@heroui/react'
 import { Link } from '@tanstack/react-router'
@@ -18,7 +18,8 @@ import { cameraTiles, micTiles, micTone } from './model'
 import { Panel } from './panel'
 import { useScrollEdges } from './scroll-edges'
 
-const MIC_SHORT = { 'AUDIO-01': 'common.devices.mic1', 'AUDIO-02': 'common.devices.mic2' } as const
+// D61 (2026-11-04): four microphone channels, named from the shared catalog.
+const MIC_SHORT = { 'AUDIO-01': 'common.devices.mic1', 'AUDIO-02': 'common.devices.mic2', 'AUDIO-03': 'common.devices.mic3', 'AUDIO-04': 'common.devices.mic4' } as const satisfies Record<AudioTrackId, string>
 
 /**
  * R: CAMERA & INPUT STATUS (01_specs §14.5.2 R; research/04 §3.2 R). A grid of kit

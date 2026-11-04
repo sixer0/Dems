@@ -65,6 +65,8 @@ const ICONS: Record<DeviceId, LucideIcon> = {
   'CAM-04': Camera, // D60
   'MIC-01': Mic,
   'MIC-02': Mic,
+  'MIC-03': Mic, // D61 (2026-11-04): the four-channel microphone plane
+  'MIC-04': Mic, // D61
   'POE-SWITCH': Network,
   'REC-INDICATOR': Lightbulb,
   TABLET: TabletSmartphone,

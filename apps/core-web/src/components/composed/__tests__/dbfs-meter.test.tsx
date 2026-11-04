@@ -219,15 +219,17 @@ describe('a level that was not measured (wave J, JW-08)', () => {
   // Task 4 row 168 (WP-13a; row 27 site W5; decision C18 (2)): the input of a meter channel is the selector's line
   // (`meterInputOfChannel`). The double is a hand-built selector slice: the frames of the built-in inputs stay in
   // the slice, as they do on a client whose state still holds them.
+  // D61 (2026-11-04): the meter of AUDIO-01 has an input exactly when a line NAMES channel MIC-01
+  // (the complete-pair rule of D137 is superseded) — the cases name other channels or none.
   it.each([
-    ['no microphone line', [] as readonly ('PRIMARY' | 'STANDBY')[]],
-    ['the PRIMARY line alone', ['PRIMARY'] as const],
-    ['the STANDBY line alone', ['STANDBY'] as const],
-  ])('task 4 row 168: with %s the meter draws no level of a built-in input - it is the no-input drawing', (_name, roles) => {
+    ['no microphone line', [] as readonly ('MIC-01' | 'MIC-02' | 'MIC-03')[]],
+    ['the channel 2 line alone', ['MIC-02'] as const],
+    ['the channel 3 line alone', ['MIC-03'] as const],
+  ])('task 4 row 168 (D61): with %s the meter draws no level of a built-in input - it is the no-input drawing', (_name, channels) => {
     const sim = createTestSim()
     pushAudioFrame(sim, 'AUDIO-01', { dbfs: -18, peak: -12, clip: false, noSignal: false })
     act(() => {
-      sim.store.setState((state) => ({ captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.filter((line) => (roles as readonly string[]).includes(line.role)) } }))
+      sim.store.setState((state) => ({ captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.filter((line) => (channels as readonly string[]).includes(line.channel)) } }))
     })
     expect(meterInputOfChannel(captureMicLines(sim.store.getState()), 'AUDIO-01')).toBeNull()
     // The slice still holds a level under the built-in id: it is not this channel's.
@@ -250,7 +252,8 @@ describe('a level that was not measured (wave J, JW-08)', () => {
     render(withProviders(<DbfsMeter channel="AUDIO-01" variant="panel" />, { sim }))
     expect(screen.getByTestId('dbfs-meter')).not.toHaveAttribute('data-no-signal')
     act(() => {
-      sim.store.setState((state) => ({ captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.filter((line) => line.role === 'PRIMARY') } }))
+      // D61: the input leaves channel 1 — the lines of the other channels stay.
+      sim.store.setState((state) => ({ captureConfig: { ...state.captureConfig, mics: state.captureConfig.mics.filter((line) => line.channel !== 'MIC-01') } }))
     })
     expect(screen.getByTestId('dbfs-meter')).toHaveAttribute('data-no-signal', 'true')
   })

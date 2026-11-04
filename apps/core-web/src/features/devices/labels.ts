@@ -34,6 +34,11 @@ export function useDeviceLabels(): DeviceLabels {
           return t('common.devices.mic1')
         case 'MIC-02':
           return t('common.devices.mic2')
+        // D61 (2026-11-04): the two further built-in microphones of the four-channel plane.
+        case 'MIC-03':
+          return t('common.devices.mic3')
+        case 'MIC-04':
+          return t('common.devices.mic4')
         case 'POE-SWITCH':
           return t('devices.other.poeSwitch')
         case 'REC-INDICATOR':
@@ -51,6 +56,9 @@ export function useDeviceLabels(): DeviceLabels {
     const fullName = (id: DeviceId): string => {
       if (id === 'MIC-01') return t('devices.audio.mic1')
       if (id === 'MIC-02') return t('devices.audio.mic2')
+      // D61 (2026-11-04): channels 3 and 4 of the four-channel microphone plane.
+      if (id === 'MIC-03') return t('devices.audio.mic3')
+      if (id === 'MIC-04') return t('devices.audio.mic4')
       return name(id)
     }
     const kind = (id: DeviceId): string => {
@@ -62,6 +70,8 @@ export function useDeviceLabels(): DeviceLabels {
           return t('devices.drawer.kind.camera')
         case 'MIC-01':
         case 'MIC-02':
+        case 'MIC-03': // D61 (2026-11-04)
+        case 'MIC-04': // D61
           return t('devices.drawer.kind.microphone')
         case 'POE-SWITCH':
           return t('devices.drawer.kind.poe')
@@ -96,6 +106,12 @@ export function useDeviceLabels(): DeviceLabels {
           return t('devices.ports.micIn1')
         case 'MIC_IN_2':
           return t('devices.ports.micIn2')
+        // D61 (2026-11-04): the third and fourth microphone ports; the shared catalog rewording is
+        // pending, so the names ride the web's own catalog until it lands.
+        case 'MIC_IN_3':
+          return t('web.waveL.ports.micIn3')
+        case 'MIC_IN_4':
+          return t('web.waveL.ports.micIn4')
         case 'GNSS_SMA':
           return t('devices.ports.gnssSma')
         case 'RELAY_IO':

@@ -21,7 +21,6 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
-  audioPairOfSelector,
   CaptureStartRule,
   meterInputOfChannel,
   selectorInForce,
@@ -32,6 +31,8 @@ import {
   type SimState,
 } from '@dems/shared/sim'
 import { VIDEO_TRACK_IDS, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain' // D60 (2026-11-04)
+import type { MicChannel } from '@dems/shared/sim' // D61 (2026-11-04): the four microphone channels
+import { micChannelChipKey } from '@/features/devices/capture-selector' // D61: the channel chip words of the selector
 import { CameraPreview } from '@/features/devices/camera-preview'
 import { PrecheckSearchActions } from '@/features/devices/precheck-search'
 import { isGeneratedSource } from '@/features/devices/own-core-words'
@@ -331,28 +332,29 @@ function MicMeter({ channel }: { channel: AudioTrackId }) {
   const { t } = useTranslation()
   const ownCore = useSelfCaptureCore()
   const micName = useMicInputName()
-  // One flat string (input | device | role | generated): the selector's result compares by value.
+  // One flat string (input | device | channel | generated): the selector's result compares by value.
+  // D61 (2026-11-04): the line STATES its channel — the role guess over the transcription pair is gone.
   const line = useSim((s) => {
     const mics = selectorInForce(s).mics
     const inputId = meterInputOfChannel(mics, channel)
     if (inputId === null) return '|||'
     const stated = mics.find((mic) => mic.inputId === inputId)
-    const pair = audioPairOfSelector(mics)
-    const role = stated?.role === 'PRIMARY' || stated?.role === 'STANDBY' ? stated.role : pair.activeInputId === inputId ? 'PRIMARY' : pair.standbyInputId === inputId ? 'STANDBY' : ''
+    const channelCode = stated?.channel ?? ''
     const deviceId = stated?.deviceId ?? ''
     const generated = isGeneratedSource(s.captureDevices.devices.find((device) => device.id === deviceId))
-    return [inputId, deviceId, role, generated ? 'G' : ''].join('|')
+    return [inputId, deviceId, channelCode, generated ? 'G' : ''].join('|')
   })
-  const [inputId = '', deviceId = '', role = '', generated = ''] = line.split('|')
+  const [inputId = '', deviceId = '', channelCode = '', generated = ''] = line.split('|')
   const label = !ownCore
     ? t(`common.tracks.${channel}`)
     : inputId === ''
       ? t('common.captureSlot.notAssigned')
-      : [micName(inputId), deviceId === '' || deviceId === inputId ? inputId : deviceId, role === 'PRIMARY' || role === 'STANDBY' ? t(`web.waveM.micLine.${role}`) : null, generated === 'G' ? t('web.waveL.source.generatedMic') : null]
+      // D61: channels 1 and 2 keep the transcription-pair words; 3 and 4 are named by the shared slot list.
+      : [micName(inputId), deviceId === '' || deviceId === inputId ? inputId : deviceId, channelCode !== '' ? t(micChannelChipKey(channelCode as MicChannel)) : null, generated === 'G' ? t('web.waveL.source.generatedMic') : null]
           .filter((part): part is string => part !== null && part !== '')
           .join(' · ')
   return (
-    <div className="sn-meter" data-testid={`sn-meter-${channel}`} data-input={ownCore && inputId !== '' ? inputId : undefined} data-role={ownCore && role !== '' ? role : undefined}>
+    <div className="sn-meter" data-testid={`sn-meter-${channel}`} data-input={ownCore && inputId !== '' ? inputId : undefined} data-channel={ownCore && channelCode !== '' ? channelCode : undefined}>
       <span className="sn-meter-label">{label}</span>
       <DbfsMeter channel={channel} variant="panel" label={label} />
     </div>

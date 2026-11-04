@@ -87,15 +87,17 @@ describe('the pre-check (ux §8g.3; D83, D114)', () => {
     expect(unreachablePrecheckOf({ ...active, params: { ...active.params, rule: 'madeUp' } })).toBeNull()
   })
 
-  it('each rule has its sentence; the active microphone names the cancel → Devices → start again path', () => {
+  it('each rule has its sentence; the transcribed channel 1 names the cancel → Devices → start again path (D61)', () => {
     const text = (rule: string, deviceId: string, kind: string, other?: string) => unreachablePrecheckText(t, unreachablePrecheckOf(item(rule, 'BLOCK', deviceId, kind, other))!)
     expect(text('noCamera', 'CAM-01', 'CAMERA')).toBe(N.start.noCamera)
     // D60 (2026-11-04): 'one camera only' reworded — with four tracks a lost camera means fewer, not one.
     expect(text('oneCamera', 'CAM-02', 'CAMERA')).toBe('Camera 2 (CAM-02) is not reachable. The session will record with one camera fewer.')
     expect(text('noMicrophone', 'MIC-01', 'MIC')).toBe(N.start.noMicrophone)
-    expect(text('noStandby', 'MIC-02', 'MIC')).toBe('MIC 2 (MIC-02) is not reachable. The session will record with no standby microphone.')
+    // D61 (2026-11-04): the four channels record SIMULTANEOUSLY - the loss costs that channel, and the
+    // transcribed channel 1 no longer names an "other" microphone (the shared sentence dropped {{other}}).
+    expect(text('noStandby', 'MIC-02', 'MIC')).toBe('MIC 2 (MIC-02) is not reachable. The session will record without that microphone channel.')
     expect(text('activeMicrophone', 'MIC-01', 'MIC', 'MIC-02')).toBe(
-      'MIC 1 (MIC-01) is the active microphone and is not reachable. Cancel this session, make MIC 2 (MIC-02) the primary microphone on Devices, then start again.',
+      'MIC 1 (MIC-01) is the microphone of the transcribed channel 1 and is not reachable. Cancel this session, assign another microphone to channel 1 on Devices, then start again.',
     )
   })
 })

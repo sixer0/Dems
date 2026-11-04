@@ -1,5 +1,5 @@
 // Task 3 R-11, blueprint row 140: the cards of the devices the Core registered beyond the built-in
-// ids (this Mac's camera `CAM-05` and microphone `MIC-03`, an added camera — D60 (2026-11-04) made CAM-03/CAM-04 built-ins, so the fixtures live above them), built from the Core's
+// ids (this Mac's camera `CAM-05` and microphone `MIC-05`, an added camera — D60 (2026-11-04) made CAM-03/CAM-04 built-ins and D61 (2026-11-04) made MIC-03/MIC-04 built-ins of the four-channel plane, so the fixtures live above them), built from the Core's
 // device list (ruling D137 (2); `masterplan/08_client_ux_spec.md` §8f flow 12, §8f.3; D83, D91, D128).
 //
 // | Check | Where |
@@ -34,27 +34,29 @@ const L = en.common.localDevice
 
 const device = (id: string, kind: CaptureDevice['kind'], over: Partial<CaptureDevice> = {}): CaptureDevice => ({ id, kind, model: null, firmware: null, host: null, poePort: null, online: true, streamState: kind === 'CAMERA' ? 'LIVE' : null, capabilities: [], ...over })
 const LOCAL_CAMERA = device('CAM-05', 'CAMERA', { model: 'MacBook Air Camera', adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT' })
-const LOCAL_MIC = device('MIC-03', 'MIC', { model: 'MacBook Air Microphone', adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT' })
+// D61 (2026-11-04): the built-in microphones reach MIC-04 — this Mac's microphone is minted as MIC-05.
+const LOCAL_MIC = device('MIC-05', 'MIC', { model: 'MacBook Air Microphone', adapter: 'LOCAL_DEVICE', sourceClass: 'DEVELOPMENT' })
 const ADDED_CAMERA = device('CAM-06', 'CAMERA', { model: '<b>Vendor</b> PTZ-9000 with a very long announced model text', host: '192.168.10.44', adapter: 'ONVIF_RTSP', sourceClass: 'PRODUCTION' })
-const BUILT_INS = [device('CAM-01', 'CAMERA'), device('CAM-02', 'CAMERA'), device('CAM-03', 'CAMERA'), device('CAM-04', 'CAMERA'), device('MIC-01', 'MIC'), device('MIC-02', 'MIC'), device('POE-SWITCH', 'POE', { streamState: null })] // D60: the sim seeds four cameras
+const BUILT_INS = [device('CAM-01', 'CAMERA'), device('CAM-02', 'CAMERA'), device('CAM-03', 'CAMERA'), device('CAM-04', 'CAMERA'), device('MIC-01', 'MIC'), device('MIC-02', 'MIC'), device('MIC-03', 'MIC'), device('MIC-04', 'MIC'), device('POE-SWITCH', 'POE', { streamState: null })] // D60: four cameras; D61 (2026-11-04): four microphones
 const DEVELOPMENT_CONFIG = {
   cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-05' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }],
-  mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', role: 'STANDBY' }, { inputId: 'MIC-03', deviceId: 'MIC-03', role: 'PRIMARY' }],
+  // D61 (2026-11-04): the lines are keyed by channel; the local microphone stands on channel 1.
+  mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', channel: 'MIC-02' }, { inputId: 'MIC-05', deviceId: 'MIC-05', channel: 'MIC-01' }, { inputId: 'MIC-03', deviceId: 'MIC-03', channel: 'MIC-03' }, { inputId: 'MIC-04', deviceId: 'MIC-04', channel: 'MIC-04' }],
 } as unknown as Parameters<typeof rosterSlotOf>[0]
 const alert = (id: string, target: string, params: SimAlert['params'], over: Partial<SimAlert> = {}): SimAlert => ({ id, at: 1, severity: 'INFO', kind: 'SYSTEM', message: 'core text', active: true, acknowledged: false, resolvedAt: null, target, params, ...over })
-const RATE = alert('ALR-9', 'MIC-03', { reason: 'MIC_RATE_AT_LIMIT', deviceId: 'MIC-03', deviceKind: 'MIC' })
+const RATE = alert('ALR-9', 'MIC-05', { reason: 'MIC_RATE_AT_LIMIT', deviceId: 'MIC-05', deviceKind: 'MIC' })
 
 describe('the roster (D137 (2)): built from the Core\'s device list, never from a closed id set', () => {
   const input = { devices: [...BUILT_INS, LOCAL_CAMERA, LOCAL_MIC, ADDED_CAMERA], config: DEVELOPMENT_CONFIG, alerts: [] as SimAlert[] }
 
   it('the cards are the cameras / microphones of the list minus the six built-in ids; the PoE switch is no card', () => {
-    expect(BUILT_IN_SOURCE_IDS).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02']) // D60 (2026-11-04): four built-in cameras
+    expect(BUILT_IN_SOURCE_IDS).toEqual(['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) // D60: four built-in cameras; D61 (2026-11-04): four built-in microphones
     // Fix wave L (G70c-08), pins moved by delta: a built-in source that is on NO line of the selector is a registered source
     // without a tile, so it has its card; a built-in source on a line stays a tile and has none.
     const beyond = (kind: 'CAMERA' | 'MIC', devices = input.devices) => registeredRoster({ ...input, devices }, kind).filter((card) => !BUILT_IN_SOURCE_IDS.includes(card.id))
     const unassignedBuiltIns = (kind: 'CAMERA' | 'MIC', devices = input.devices) => registeredRoster({ ...input, devices }, kind).filter((card) => BUILT_IN_SOURCE_IDS.includes(card.id))
     expect(beyond('CAMERA').map((card) => [card.id, card.local, card.slot, card.state])).toEqual([['CAM-05', true, 'VIDEO-01', 'READY'], ['CAM-06', false, null, 'READY']])
-    expect(beyond('MIC').map((card) => [card.id, card.local, card.slot, card.state])).toEqual([['MIC-03', true, 'PRIMARY', 'READY']])
+    expect(beyond('MIC').map((card) => [card.id, card.local, card.slot, card.state])).toEqual([['MIC-05', true, 'MIC-01', 'READY']]) // D61: the slot is the channel
     expect(beyond('CAMERA', BUILT_INS)).toEqual([])
     expect(beyond('MIC', BUILT_INS)).toEqual([])
     for (const kind of ['CAMERA', 'MIC'] as const) {
@@ -76,8 +78,8 @@ describe('the roster (D137 (2)): built from the Core\'s device list, never from 
     expect(registeredRoster({ ...input, devices: [offline], alerts: [denied] }, 'CAMERA')[0]).toMatchObject({ id: 'CAM-05', local: true, state: 'PERMISSION_DENIED' })
     // A resolved notice says nothing any more.
     expect(registeredRoster({ ...input, devices: [LOCAL_CAMERA], alerts: [{ ...denied, active: false }] }, 'CAMERA')[0]?.state).toBe('READY')
-    const busy = alert('ALR-2', 'MIC-03', { reason: 'CAPTURE_DEVICE_UNREACHABLE', deviceId: 'MIC-03', deviceKind: 'MIC', phase: 'PRECHECK', cause: 'DEVICE_BUSY' })
-    expect(registeredRoster({ ...input, alerts: [busy] }, 'MIC').find((card) => card.id === 'MIC-03')?.state).toBe('DEVICE_BUSY')
+    const busy = alert('ALR-2', 'MIC-05', { reason: 'CAPTURE_DEVICE_UNREACHABLE', deviceId: 'MIC-05', deviceKind: 'MIC', phase: 'PRECHECK', cause: 'DEVICE_BUSY' })
+    expect(registeredRoster({ ...input, alerts: [busy] }, 'MIC').find((card) => card.id === 'MIC-05')?.state).toBe('DEVICE_BUSY')
   })
 
   it('"is on" only from `sourceOpen: true` of a LOCAL device; an absent member, false, or a test source is not on', () => {
@@ -88,11 +90,11 @@ describe('the roster (D137 (2)): built from the Core\'s device list, never from 
 
 describe('the rate warning (known state (a), D128): named, from the Core\'s alert, for that microphone only', () => {
   it('active alert with reason MIC_RATE_AT_LIMIT and this target -> true; another target, another reason, a resolved alert, a fault kind -> false', () => {
-    expect(rateAtLimitOf([RATE], 'MIC-03')).toBe(true)
+    expect(rateAtLimitOf([RATE], 'MIC-05')).toBe(true)
     expect(rateAtLimitOf([RATE], 'MIC-02')).toBe(false)
-    expect(rateAtLimitOf([{ ...RATE, active: false }], 'MIC-03')).toBe(false)
-    expect(rateAtLimitOf([alert('ALR-8', 'MIC-03', { reason: 'AV_OFFSET_NEAR_BOUND' })], 'MIC-03')).toBe(false)
-    expect(rateAtLimitOf([{ ...RATE, kind: 'CAPTURE_FAULT' }], 'MIC-03')).toBe(false)
+    expect(rateAtLimitOf([{ ...RATE, active: false }], 'MIC-05')).toBe(false)
+    expect(rateAtLimitOf([alert('ALR-8', 'MIC-05', { reason: 'AV_OFFSET_NEAR_BOUND' })], 'MIC-05')).toBe(false)
+    expect(rateAtLimitOf([{ ...RATE, kind: 'CAPTURE_FAULT' }], 'MIC-05')).toBe(false)
     const cards = registeredRoster({ devices: [LOCAL_MIC, LOCAL_CAMERA], config: DEVELOPMENT_CONFIG, alerts: [RATE, { ...RATE, id: 'ALR-10', target: 'CAM-05' }] }, 'MIC')
     expect(cards.map((card) => card.rateAtLimit)).toEqual([true])
     // A camera never carries it, whatever an alert says.
@@ -115,7 +117,7 @@ describe('names and words (D83; pass D2\'s id rule)', () => {
     expect(rosterCardName(t, card(LOCAL_CAMERA), true)).toBe(S.kind.localCamera)
     expect(rosterCardName(t, card(LOCAL_MIC), true)).toBe(S.kind.localMicrophone)
     expect(rosterCardName(t, card(LOCAL_CAMERA), false)).toBe('Camera CAM-05')
-    expect(rosterCardName(t, card(LOCAL_MIC), false)).toBe('MIC 3')
+    expect(rosterCardName(t, card(LOCAL_MIC), false)).toBe('MIC 5') // D61: the added microphone is MIC-05
   })
 
   it('an added camera is named by its id; its announced model is never the name', () => {
@@ -146,7 +148,8 @@ describe('the page: Devices & Inputs draws the roster from the Core\'s list', ()
       captureConfig: {
         ...state.captureConfig,
         cameras: state.captureConfig.cameras.map((camera) => (camera.trackId === 'VIDEO-01' ? { ...camera, deviceId: 'CAM-05' } : camera)),
-        mics: [{ ...state.captureConfig.mics[1]! }, { ...state.captureConfig.mics[0]!, inputId: 'MIC-03', deviceId: 'MIC-03' }],
+        // D61 (2026-11-04): channel 1 goes to this Mac's microphone (MIC-05); channels 2..4 keep their built-in lines.
+        mics: state.captureConfig.mics.map((line) => (line.channel === 'MIC-01' ? { ...line, inputId: 'MIC-05', deviceId: 'MIC-05' } : line)),
       },
     })
   }
@@ -167,11 +170,11 @@ describe('the page: Devices & Inputs draws the roster from the Core\'s list', ()
     expect(cameras.getByTestId('registered-device-used-CAM-05').textContent).toBe(R.usedAs['VIDEO-01'])
     expect(cameras.getByTestId('registered-device-used-CAM-06').textContent).toBe(R.usedAs.NONE)
     const microphones = within(screen.getByTestId('registered-devices-MIC'))
-    expect(microphones.getByTestId('registered-device-name-MIC-03').textContent).toBe('MIC 3')
-    expect(microphones.getByTestId('registered-device-used-MIC-03').textContent).toBe(R.usedAs.PRIMARY)
+    expect(microphones.getByTestId('registered-device-name-MIC-05').textContent).toBe('MIC 5') // D61: the added microphone is MIC-05
+    expect(microphones.getByTestId('registered-device-used-MIC-05').textContent).toBe(R.usedAs['MIC-01'])
     expect(document.querySelectorAll('[data-testid^="source-badge-roster-"]')).toHaveLength(0)
     expect(document.querySelectorAll('[data-testid^="source-on-roster-"]')).toHaveLength(0)
-    fireEvent.click(microphones.getByTestId('registered-device-view-MIC-03'))
+    fireEvent.click(microphones.getByTestId('registered-device-view-MIC-05'))
     const drawer = within(await screen.findByTestId('registered-device-drawer'))
     expect(drawer.queryByTestId('registered-drawer-limits')).toBeNull()
     expect(drawer.queryByTestId('source-badge-registered-drawer')).toBeNull()
@@ -190,15 +193,15 @@ describe('the page: Devices & Inputs draws the roster from the Core\'s list', ()
     // The announced model of the added camera is nowhere on its card (untrusted text is not a name).
     expect(cameras.getByTestId('registered-device-CAM-06').textContent).not.toContain('Vendor')
     const microphones = within(screen.getByTestId('registered-devices-MIC'))
-    expect(microphones.getByTestId('registered-device-name-MIC-03').textContent).toBe(S.kind.localMicrophone)
-    expect(microphones.getByTestId('source-badge-roster-MIC-03').textContent).toContain(S.kind.localMicrophone)
+    expect(microphones.getByTestId('registered-device-name-MIC-05').textContent).toBe(S.kind.localMicrophone)
+    expect(microphones.getByTestId('source-badge-roster-MIC-05').textContent).toContain(S.kind.localMicrophone)
     // The shared slice carries no `sourceOpen` yet: nothing is drawn.
     expect(document.querySelectorAll('[data-testid^="source-on-roster-"]')).toHaveLength(0)
     // The Core says the microphone is open (the member the request to pass D4 adds): the fixed line appears, for that device only.
-    sim.store.setState({ captureDevices: { devices: sim.store.getState().captureDevices.devices.map((entry) => (entry.id === 'MIC-03' ? ({ ...entry, sourceOpen: true } as CaptureDevice) : entry)) } })
-    await waitFor(() => expect(screen.getByTestId('source-on-roster-MIC-03').textContent).toBe(S.microphoneOn.web))
+    sim.store.setState({ captureDevices: { devices: sim.store.getState().captureDevices.devices.map((entry) => (entry.id === 'MIC-05' ? ({ ...entry, sourceOpen: true } as CaptureDevice) : entry)) } })
+    await waitFor(() => expect(screen.getByTestId('source-on-roster-MIC-05').textContent).toBe(S.microphoneOn.web))
     expect(screen.queryByTestId('source-on-roster-CAM-05')).toBeNull()
-    expect(screen.getByTestId('source-on-roster-MIC-03').getAttribute('role')).toBe('status')
+    expect(screen.getByTestId('source-on-roster-MIC-05').getAttribute('role')).toBe('status')
   })
 
   it('real capture: a local camera macOS has not allowed keeps its name and badge, reads "Permission needed" with the sentence, and offers no other source', async () => {
@@ -222,26 +225,26 @@ describe('the page: Devices & Inputs draws the roster from the Core\'s list', ()
   it('real capture: MIC_RATE_AT_LIMIT is a NAMED warning on the microphone card while the Core\'s alert is active, and gone when it resolves; "View device" states the limit', async () => {
     mode.realCapture = true
     const { sim } = await mountDevices('idle', OPERATOR_IDS.ANDI, development)
-    await screen.findByTestId('registered-device-MIC-03')
-    expect(screen.queryByTestId('registered-device-rate-MIC-03')).toBeNull()
+    await screen.findByTestId('registered-device-MIC-05')
+    expect(screen.queryByTestId('registered-device-rate-MIC-05')).toBeNull()
     sim.store.setState({ alerts: [...sim.store.getState().alerts, RATE] })
-    await waitFor(() => expect(screen.getByTestId('registered-device-rate-MIC-03').textContent).toContain(R.rateAtLimit.title))
-    expect(screen.getByTestId('registered-device-rate-MIC-03').textContent).toContain('MIC_RATE_AT_LIMIT')
+    await waitFor(() => expect(screen.getByTestId('registered-device-rate-MIC-05').textContent).toContain(R.rateAtLimit.title))
+    expect(screen.getByTestId('registered-device-rate-MIC-05').textContent).toContain('MIC_RATE_AT_LIMIT')
     expect(screen.queryByTestId('registered-device-rate-CAM-05')).toBeNull()
 
-    fireEvent.click(screen.getByTestId('registered-device-view-MIC-03'))
+    fireEvent.click(screen.getByTestId('registered-device-view-MIC-05'))
     const drawer = within(await screen.findByTestId('registered-device-drawer'))
     expect(drawer.getByTestId('source-badge-registered-drawer').textContent).toContain(S.badge)
     expect(drawer.getByTestId('registered-drawer-limits').textContent).toContain(R.limits.localMicrophone)
     const facts = drawer.getByTestId('registered-drawer-facts').textContent ?? ''
-    expect(facts).toContain('MIC-03')
+    expect(facts).toContain('MIC-05')
     expect(facts).toContain(R.source.LOCAL_DEVICE)
-    expect(facts).toContain(R.usedAs.PRIMARY)
+    expect(facts).toContain(R.usedAs['MIC-01']) // D61: the roster names the channel
     // A local device has no address row; nothing in the drawer is an input.
     expect(facts).not.toContain(R.field.address)
     expect(document.querySelectorAll('[data-testid="registered-device-drawer"] input')).toHaveLength(0)
 
     sim.store.setState({ alerts: sim.store.getState().alerts.map((entry) => (entry.id === 'ALR-9' ? { ...entry, active: false, resolvedAt: 2 } : entry)) })
-    await waitFor(() => expect(screen.queryByTestId('registered-device-rate-MIC-03')).toBeNull())
+    await waitFor(() => expect(screen.queryByTestId('registered-device-rate-MIC-05')).toBeNull())
   })
 })

@@ -144,17 +144,20 @@ describe('Devices & Inputs: idle scenario (row 48 render test)', () => {
     expect(within(screen.getByTestId('panel-audio')).getAllByRole('meter').map((m) => m.getAttribute('aria-label'))).toEqual([
       'MIC 1 - Interviewer (Ch 1)',
       'MIC 2 - Subject (Ch 2)',
+      'MIC 3 - Channel 3 (Ch 3)', // D61 (2026-11-04): the four-channel microphone plane
+      'MIC 4 - Channel 4 (Ch 4)', // D61
     ])
 
-    // Summary metric cards and the banner (11 devices — D60, 2026-11-04: four cameras, four PoE ports).
+    // Summary metric cards and the banner (D60, 2026-11-04: four cameras, four PoE ports;
+    // D61, 2026-11-04: four microphones and eleven rear ports - MIC_IN_3/MIC_IN_4 join the plane).
     expect(screen.getByTestId('summary-cameras')).toHaveAttribute('data-value', '4')
-    expect(screen.getByTestId('summary-microphones')).toHaveAttribute('data-value', '2')
+    expect(screen.getByTestId('summary-microphones')).toHaveAttribute('data-value', '4')
     expect(screen.getByTestId('summary-other')).toHaveAttribute('data-value', '5')
-    expect(screen.getByTestId('summary-ports')).toHaveAttribute('data-value', '9')
-    expect(screen.getByTestId('summary-ports')).toHaveAttribute('data-total', '9')
+    expect(screen.getByTestId('summary-ports')).toHaveAttribute('data-value', '11')
+    expect(screen.getByTestId('summary-ports')).toHaveAttribute('data-total', '11')
     const banner = screen.getByTestId('devices-banner')
     expect(banner).toHaveAttribute('data-kind', 'READY')
-    expect(banner).toHaveTextContent('All devices ready 11/11')
+    expect(banner).toHaveTextContent('All devices ready 13/13')
 
     // Other Devices: PoE (book view, 3 active + 1 spare since D60), relay lamp, tablet, GNSS, TPM.
     expect(screen.getByTestId('other-POE-SWITCH')).toHaveTextContent('3 active · 1 spare')
@@ -458,10 +461,11 @@ describe('Simulator device views (W48-1..4, step 54)', () => {
     expect(auditRowDevice(boot)).toBe('FRONT-PANEL')
   })
 
-  // D60 (2026-11-04): the banner counts eleven devices — the four built-in cameras join the tally.
-  it('counts 11 devices and summarises faults for the banner and the metric cards', () => {
+  // D60 (2026-11-04): the four built-in cameras join the tally; D61 (2026-11-04): and so do the
+  // two further microphones - the banner counts thirteen.
+  it('counts 13 devices and summarises faults for the banner and the metric cards', () => {
     const sim = newSim()
-    expect(selectBanner(sim.store.getState())).toMatchObject({ kind: 'READY', ready: 11, total: 11, issues: 0 })
+    expect(selectBanner(sim.store.getState())).toMatchObject({ kind: 'READY', ready: 13, total: 13, issues: 0 })
     sim.actions.inject('TPM_FAILURE')
     const state = sim.store.getState()
     expect(selectStatusMap(state).TPM).toBe('FAILED')

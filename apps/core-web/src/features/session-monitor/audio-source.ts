@@ -24,7 +24,7 @@ import { toast } from '@heroui/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ApiErrorCode, type AudioSourceIntervalEntry } from '@dems/shared/api'
-import { SessionState } from '@dems/shared/domain'
+import { AUDIO_TRACK_IDS, SessionState, type AudioTrackId } from '@dems/shared/domain' // D61 (2026-11-04): the four meter channels
 import { useCoreActions, useCorePermission } from '@dems/shared/live'
 import {
   captureMicLines,
@@ -39,7 +39,7 @@ import {
   SimTransitionError,
   useSim,
   useSimInstance,
-  type RoleMicLine,
+  type ChannelMicLine, // D61 (2026-11-04): the role alias became the channel line
   type SimState,
   audioPairInForce,
   openSessionAudioSource,
@@ -187,12 +187,14 @@ export const selectStandbyInputId = (s: SimState): string | null => {
  * channel's place of a COMPLETE pair (ruling D137, kept by C21 (7)), never a built-in input. A
  * channel without an input names none, and so does a fault without a target when no input is active.
  */
-export function silentInputOf(faults: SimState['faults']['active'], activeInputId: string | null, mics: readonly RoleMicLine[]): string | null {
+export function silentInputOf(faults: SimState['faults']['active'], activeInputId: string | null, mics: readonly ChannelMicLine[]): string | null {
   const fault = faults.find((entry) => entry.kind === 'MIC_SILENT')
   if (!fault) return null
   // The input itself, by the id the Core sent (`MIC-NN`, any number).
   if (isMicInputId(fault.target)) return fault.target
-  if (fault.target === 'AUDIO-01' || fault.target === 'AUDIO-02') return meterInputOfChannel(mics, fault.target)
+  // D61 (2026-11-04): the warning may name any of the four meter channels; each maps to its line's input.
+  const target = fault.target as string | null
+  if (target !== null && (AUDIO_TRACK_IDS as readonly string[]).includes(target)) return meterInputOfChannel(mics, target as AudioTrackId)
   return activeInputId
 }
 

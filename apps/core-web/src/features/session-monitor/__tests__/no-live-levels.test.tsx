@@ -83,20 +83,20 @@ describe('G75-04: the Session Monitor draws no live level it does not have', () 
     const sim = mount('/session')
     const inputs = await screen.findByTestId('sm-inputs', {}, { timeout: 15_000 })
     // CONTROL: a durable recording draws the two microphone meters of the panel.
-    expect(meters(inputs)).toHaveLength(2)
+    expect(meters(inputs)).toHaveLength(4) // D61 (2026-11-04): four simultaneous channels
     setDurable(sim, false)
     await waitFor(() => expect(meters(inputs)).toHaveLength(0))
     expect(within(inputs).queryByRole('meter')).toBeNull()
     expect(within(inputs).getByTestId('sm-input-no-level-AUDIO-01').textContent).toBe(en.common.session.trackConnecting)
     setDurable(sim, true)
-    await waitFor(() => expect(meters(inputs)).toHaveLength(2))
+    await waitFor(() => expect(meters(inputs)).toHaveLength(4)) // D61 (2026-11-04): four simultaneous channels
   })
 
   it('a failed start: neither the Audio Monitor cards nor the status panel draw a meter - nothing was recorded', async () => {
     const sim = mount('/session')
     const audio = await screen.findByTestId('panel-O', {}, { timeout: 15_000 })
     const inputs = await screen.findByTestId('sm-inputs')
-    expect(meters(audio)).toHaveLength(2)
+    expect(meters(audio)).toHaveLength(4) // D61 (2026-11-04): four simultaneous channels
     failStart(sim)
     await waitFor(() => expect(meters(audio)).toHaveLength(0))
     expect(meters(inputs)).toHaveLength(0)

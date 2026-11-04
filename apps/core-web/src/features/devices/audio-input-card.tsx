@@ -24,7 +24,8 @@ import { MicSourceMarks } from './source-badge'
 import { useMicInputName } from './source-class'
 import { StatusChip, StatusDot } from './status-chip'
 
-const MIC_PORT: Record<AudioTrackId, RearPortId> = { 'AUDIO-01': 'MIC_IN_1', 'AUDIO-02': 'MIC_IN_2' }
+// D61 (2026-11-04): the four-channel microphone plane has a rear port per channel (`sim/initial-state.ts` seeds MIC_IN_3/MIC_IN_4).
+const MIC_PORT: Record<AudioTrackId, RearPortId> = { 'AUDIO-01': 'MIC_IN_1', 'AUDIO-02': 'MIC_IN_2', 'AUDIO-03': 'MIC_IN_3', 'AUDIO-04': 'MIC_IN_4' }
 /** P8: fast-changing number text updates at most 4 times per second. */
 const PEAK_TEXT_INTERVAL_MS = 250
 /** The fixed sentence of the page's own record when a clip reset fails for a reason the presenter left to the page. */

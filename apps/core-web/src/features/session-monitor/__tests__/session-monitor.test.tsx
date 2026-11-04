@@ -113,7 +113,7 @@ function findPage() {
 }
 
 describe('Session Monitor: recording scenario (row 44 render test)', () => {
-  it('renders the page and panels K–T, the feed on the step-92 live loop and both MIC track labels', async () => {
+  it('renders the page and panels K–T, the feed on the step-92 live loop and the four MIC track labels (D61)', async () => {
     mountSession()
     const page = await findPage()
     expect(page).toHaveAttribute('data-phase', 'RECORDING')
@@ -128,11 +128,13 @@ describe('Session Monitor: recording scenario (row 44 render test)', () => {
     expect(within(feed).getByTestId('rec-indicator')).toHaveTextContent(/REC 00:18:4\d/)
     expect(within(feed).getByTestId('camera-feed-label')).toHaveTextContent('Camera 1 - Interview Room 1')
 
-    // O: the audio track labels match the step-92/93 demo tracks.
+    // O: the audio track labels match the step-92/93 demo tracks; D61 (2026-11-04) records FOUR channels at once.
     expect(screen.getByTestId('sm-track-label-AUDIO-01')).toHaveTextContent('MIC 1 – Interviewer')
     expect(screen.getByTestId('sm-track-label-AUDIO-02')).toHaveTextContent('MIC 2 – Subject')
+    expect(screen.getByTestId('sm-track-label-AUDIO-03')).toHaveTextContent('MIC 3 – Channel 3')
+    expect(screen.getByTestId('sm-track-label-AUDIO-04')).toHaveTextContent('MIC 4 – Channel 4')
     const meters = within(screen.getByTestId('panel-O')).getAllByRole('meter')
-    expect(meters.map((meter) => meter.getAttribute('aria-label'))).toEqual(['MIC 1 – Interviewer', 'MIC 2 – Subject'])
+    expect(meters.map((meter) => meter.getAttribute('aria-label'))).toEqual(['MIC 1 – Interviewer', 'MIC 2 – Subject', 'MIC 3 – Channel 3', 'MIC 4 – Channel 4'])
 
     // K: SESSION ACTIVE & SECURE.
     const banner = screen.getByTestId('sm-status-banner')
@@ -476,7 +478,7 @@ describe('Session Monitor: other states', () => {
     mountSession()
     const page = await findPage()
     expect(page).toHaveAttribute('data-motion', 'reduced')
-    expect(within(screen.getByTestId('panel-O')).getAllByRole('meter')).toHaveLength(2)
+    expect(within(screen.getByTestId('panel-O')).getAllByRole('meter')).toHaveLength(4) // D61 (2026-11-04): four simultaneous channels
     expect(screen.queryByTestId('sm-title-shimmer')).not.toBeInTheDocument()
     expect(screen.getByTestId('sm-status-banner').querySelector('[data-ambient]')).toHaveAttribute('data-motion', 'reduced')
   })

@@ -3,7 +3,7 @@ import { ArrowLeftRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MIC_SILENCE_DBFS, MIC_SILENCE_DURATION_MS } from '@dems/shared/api'
 import { useRetryCooldown } from '@dems/shared/realtime'
-import { recordingEndOf, useSim } from '@dems/shared/sim'
+import { recordingEndOf, SECOND_MIC_CHANNEL, useSim } from '@dems/shared/sim' // D61 (2026-11-04): the second channel of the transcription pair
 import { AudioSourceBand } from '@/components/composed'
 import { useMicInputName } from '@/features/devices/source-class'
 import { unassignedPrecheckText } from '@/lib/capture-notices'
@@ -26,10 +26,16 @@ function useBlockReason(): (block: AudioSourceToggleBlock | null) => string | nu
   }
 }
 
-/** The chip of one input: Active (inside `AUDIO-01` now) or Standby, as the Core holds the pair. */
+/**
+ * The chip of one input of the TRANSCRIPTION PAIR: Active (inside `AUDIO-01` now) or Standby, as
+ * the Core holds the pair (ux §3.5). D61 (2026-11-04): all four channels record at once — an input
+ * outside the pair (channel 3 or 4) is neither active nor standby and carries no chip.
+ */
 export function AudioSourceRoleChip({ inputId, view }: { inputId: string; view: AudioSourceView }) {
   const { t } = useTranslation()
   const active = view.activeInputId === inputId
+  const standby = !active && view.standbyInputId === inputId
+  if (!active && !standby) return null
   return (
     <Chip
       size="sm"
@@ -148,7 +154,8 @@ export function AudioSourceFooter({
   // Task 4 row 168: a recording with no standby input has no toggle; its reason is the sentence of the
   // unassigned slot (`common.captureNotice.start.sourceNotAssigned`, names register N13).
   const noStandby = view.block === null && view.standbyInputId === null
-  const reason = noStandby ? unassignedPrecheckText(t, 'STANDBY') : reasonOf(view.block)
+  // D61 (2026-11-04): the standby slot is the SECOND channel of the transcription pair the toggle trades.
+  const reason = noStandby ? unassignedPrecheckText(t, SECOND_MIC_CHANNEL) : reasonOf(view.block)
   // Media time of "now", in coarse steps; 0 without a started session.
   const elapsedMs = useSim((s) => {
     const startedAt = s.session?.startedAt ?? null

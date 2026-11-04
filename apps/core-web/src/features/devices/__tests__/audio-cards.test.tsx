@@ -212,7 +212,8 @@ describe('Simulated mode: the two synthetic cards (the fixture cards)', { timeou
     // The simulator registered nothing and the page says nothing else.
     expect(block.querySelector('[data-registered]')).toBeNull()
     expect(screen.queryByTestId('audio-cards-registered')).not.toBeInTheDocument()
-    expect(sim.store.getState().captureDevices.devices.filter((device) => device.kind === 'MIC').map((device) => device.id)).toEqual(['MIC-01', 'MIC-02'])
+    // D61 (2026-11-04): the seeded registry holds the four built-in microphones of the four-channel plane.
+    expect(sim.store.getState().captureDevices.devices.filter((device) => device.kind === 'MIC').map((device) => device.id)).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'])
     expect(toastTexts()).toEqual([])
     expect(getMissingI18nKeys()).toEqual([])
   })

@@ -19,7 +19,9 @@ export interface AudioSourceBandProps {
 /** `MIC 1` / `MIC 2` for the pair every console knows; the Core's own id for any other input. */
 function useMicName(): (inputId: string) => string {
   const { t } = useTranslation()
-  return (inputId) => (inputId === 'MIC-01' ? t('common.devices.mic1') : inputId === 'MIC-02' ? t('common.devices.mic2') : inputId)
+  // D61 (2026-11-04): any of the four channels can feed the band; the names come from the shared catalog.
+  return (inputId) =>
+    inputId === 'MIC-01' ? t('common.devices.mic1') : inputId === 'MIC-02' ? t('common.devices.mic2') : inputId === 'MIC-03' ? t('common.devices.mic3') : inputId === 'MIC-04' ? t('common.devices.mic4') : inputId
 }
 
 /**

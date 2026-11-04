@@ -181,7 +181,8 @@ describe('the read (WB-11, E-17; ux §2.5, §2.7)', () => {
     const { bed, page, panel } = await liveSelector()
     await within(panel).findByTestId('selector-ready')
     const served = clone(bed.core.served.captureConfig)
-    const next = { ...served, locked: true, mics: served.mics.map((mic) => ({ ...mic, role: mic.role === 'PRIMARY' ? 'STANDBY' : 'PRIMARY' })) }
+    // D61 (2026-11-04): the delta trades the transcription pair - channels 1 and 2 change places.
+    const next = { ...served, locked: true, mics: served.mics.map((mic) => ({ ...mic, channel: mic.channel === 'MIC-01' ? 'MIC-02' : mic.channel === 'MIC-02' ? 'MIC-01' : mic.channel })) }
     await act(async () => {
       page.sockets.at(-1)!.delta([{ op: 'replace', slice: 'captureConfig', value: next }] as FakeCommandOptions['ops'])
     })
@@ -224,11 +225,12 @@ describe('an edit (C3 §2.3 ops 79, 80; ux §2.2 steps 4-5; PE-127-07)', () => {
     await waitFor(() => expect(toastTexts().join(' ')).toContain(S.saved))
   })
 
-  it('Make primary: one POST of operation 80 to the input\'s path, without a body', async () => {
+  it('Make transcribed channel 1: one POST of operation 81 to the input\'s path, without a body (D61)', async () => {
     const { bed, panel } = await liveSelector()
     await within(panel).findByTestId('selector-ready')
     const served = clone(bed.core.served.captureConfig)
-    const next = { ...served, updatedAt: served.updatedAt + 1, mics: served.mics.map((mic) => ({ ...mic, role: mic.role === 'PRIMARY' ? 'STANDBY' : 'PRIMARY' })) }
+    // D61 (2026-11-04): the answer trades the transcription pair - channels 1 and 2 change places.
+    const next = { ...served, updatedAt: served.updatedAt + 1, mics: served.mics.map((mic) => ({ ...mic, channel: mic.channel === 'MIC-01' ? 'MIC-02' : mic.channel === 'MIC-02' ? 'MIC-01' : mic.channel })) }
     bed.fake.scriptCommand('setPrimaryMic', {
       ops: [{ op: 'replace', slice: 'captureConfig', value: next }] as FakeCommandOptions['ops'],
       order: 'delta-first',
