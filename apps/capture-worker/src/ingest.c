@@ -218,7 +218,7 @@ static void av_log_cb(void *avcl, int level, const char *fmt, va_list vl) {
      *     address is the session's secret, and a bare path has no "://" to be caught by.
      * The plan's addresses are written once, before any ingest thread exists, and only read here. */
     const char *withheld = strstr(whole, "://") ? "(message with an address withheld)" : NULL;
-    for (int i = 0; i < NCAM && !withheld; i++)
+    for (int i = 0; i < S.ncam && !withheld; i++)   /* D60 (2026-11-04): the plan's cameras, not the cap */
         if (S.cam[i].present && announce_names_path(S.cam[i].url, whole, have)) withheld = "(message naming a session path withheld)";
     char msg[256];
     snprintf(msg, sizeof msg, "%s", withheld ? withheld : whole);

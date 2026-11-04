@@ -11,8 +11,8 @@
  *                     checkpoint per durable fragment.
  *   ingest.c          one RTSP/TCP listen ingest per camera, video stream copy, PRFT anchoring,
  *                     the fMP4 muxer of the camera file.
- *   audio.c           THE filtering thread: two mic inputs -> selector -> ONE AAC encoder -> both
- *                     camera files, meters, PCM tap, the operator's switch and its interval
+ *   audio.c           THE filtering thread: two mic inputs -> selector -> ONE AAC encoder -> every
+ *                     camera file, meters, PCM tap, the operator's switch and its interval
  *                     records. The only unit that names libavfilter.
  *   micwatch.c        the microphone warning raiser (silence, disconnect, rate limit): pure.
  *   anchor.c          video anchoring arithmetic and the camera-clock rules: pure.
@@ -90,7 +90,10 @@
 #define CAPTURE_AUDIO_INSERTED_RUN_MIN_SAMPLES 4800    /* 100 ms: a run this long carries its position */
 #define CAPTURE_AUDIO_INSERTED_RUNS_MAX 1024           /* runs listed per worker; the rest are counted */
 #define AAC_FRAME 1024
-#define NCAM 2
+/* D60 (2026-11-04): the plan carries up to FOUR camera entries (VIDEO-01..VIDEO-04), was two. NCAM is the
+ * compiled sanity cap only - the number a session records is the plan's (`Session.ncam`), and every loop
+ * below runs over that. The mics stay two (the roles PRIMARY/STANDBY are the protocol's). */
+#define NCAM 4
 #define NMIC 2              /* index 0 = role PRIMARY, index 1 = role STANDBY */
 #define US 1000000LL
 #define ID_CHARS 128
@@ -242,6 +245,7 @@ typedef struct Cam {
     int idx, port, present;
     char device_id[ID_CHARS + 1];     /* the capture device (CAM-0x): what every frame names */
     char track_id[ID_CHARS + 1];      /* the output track (VIDEO-0x): a name of the plan only */
+    char profile[65];                 /* the dual-lens profile of the plan, "" when null (D60: one device may feed two tracks with DISTINCT profiles, OD-05) */
     char url[257];
     Sink sink;
     AVFormatContext *in, *out;
@@ -306,6 +310,7 @@ typedef struct Mic {
 typedef struct Session {
     char id[ID_CHARS + 1];
     int attempt;
+    int ncam;                       /* D60 (2026-11-04): the camera entries of THIS plan (1..NCAM); every per-session loop runs over this, never over the cap */
     Cam cam[NCAM];
     Mic mic[NMIC];
     int active_mic;                 /* index of the role that feeds the encoder at the start */

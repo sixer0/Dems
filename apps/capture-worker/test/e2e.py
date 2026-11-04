@@ -71,6 +71,7 @@ def series(runs):
         add("unit_r%d" % r, ["unit"], sensitive=False, kind="make")
         add("harness_leftover_scope_r%d" % r, ["selfcheck"], sensitive=False)
         add("proto_r%d" % r, ["proto"])
+        add("plan4_d60_r%d" % r, ["plan4"], sensitive=False)          # D60 (2026-11-04): the four-camera plan of the widened reader
         # M3-AV-1: 0 / +80 / -80 ms through the worker, incl. across a mic switch; M3-AV-2 (a): the same +-80 on
         # separate-process cameras with their own clocks; (b): +-200 ppm keeps the injected slope.
         add("av1_zero_switch_tap_r%d" % r, ["session", "--case", "zero", "--switch", "--tap"])

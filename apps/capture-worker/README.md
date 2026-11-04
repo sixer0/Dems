@@ -1,7 +1,8 @@
 # DEMS capture worker
 
 A small C program against the installed FFmpeg libraries (9.0.2), started and supervised by the
-Core (`apps/core-server/src/capture`). It records two camera files from RTSP ingests on
+Core (`apps/core-server/src/capture`). It records one camera file per camera of the plan — up to
+FOUR (D60, 2026-11-04: `VIDEO-01`..`VIDEO-04` at once, was two) — from RTSP ingests on
 `127.0.0.1` and one audio track from the microphone inputs. Everything here runs from the
 repository root; nothing is installed.
 

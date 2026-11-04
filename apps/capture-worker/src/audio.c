@@ -301,7 +301,7 @@ static void fanout(Session *s, AVPacket *pkt) {
         }
     }
     a_pkts++;
-    for (int i = 0; i < NCAM; i++) {
+    for (int i = 0; i < s->ncam; i++) {      /* D60 (2026-11-04): the ONE encoder feeds every camera file of the plan */
         if (!s->cam[i].present) continue;
         int r = cam_mux_audio(&s->cam[i], pkt);
         if (r < 0) { fatal("fanout", "AUDIO_MUX_WRITE_FAILED", r); return; }
@@ -539,8 +539,10 @@ static int mic_take(MicIn *m, float *dst, int64_t now_mono, int realtime) {
 static void telemetry(Session *s, int64_t timeline) {
     static const char *const role[NMIC] = { "PRIMARY", "STANDBY" };
     static const char *const state[] = { "WAITING", "CONNECTED", "ENDED" };
-    /* 768 holds two entries of the longest device ID (128) with every count at one day (10 digits): 625 characters. */
-    char levels[768] = "", ingest[512] = "", frags[512] = "", clocks[512] = "";
+    /* 768 holds two mic entries of the longest device ID (128) with every count at one day (10 digits): 625 characters.
+     * D60 (2026-11-04): the three per-camera lists are sized like the mic one — 768 holds FOUR entries of the longest
+     * device ID (128) with every count at one day; a list that still does not fit is sent empty (F-13), never cut. */
+    char levels[768] = "", ingest[768] = "", frags[768] = "", clocks[768] = "";
     size_t l = 0, g = 0, f = 0, k = 0;
     for (int i = 0; i < NMIC; i++) {
         MicIn *m = &mics[i];
@@ -566,7 +568,7 @@ static void telemetry(Session *s, int64_t timeline) {
         m->peak = 0;
         m->n_meter = 0;
     }
-    for (int i = 0; i < NCAM; i++) {
+    for (int i = 0; i < s->ncam; i++) {     /* D60 (2026-11-04): one entry per camera of the plan */
         Cam *c = &s->cam[i];
         if (!c->present) continue;
         g += (size_t)snprintf(ingest + g, sizeof ingest - g, "%s{\"deviceId\":\"%s\",\"state\":\"%s\"}", g ? "," : "", c->device_id, state[atomic_load(&c->state)]);
@@ -771,7 +773,7 @@ void *audio_main(void *arg) {
                 if (s->mic[i].present && s->mic[i].gapped) account(s, i, n, 0);
         if (n - meter_at >= meter_period) { meter_at = n; telemetry(s, n); }
         if (n % (QUANTUM * 10) == 0) {
-            for (int i = 0; i < NCAM; i++)
+            for (int i = 0; i < s->ncam; i++)      /* D60 (2026-11-04): the plan's cameras */
                 if (s->cam[i].present && (r = cam_cut_if_stalled(&s->cam[i], now, stall_us)) < 0) fatal("filter", "STALL_CUT_FAILED", r);
         }
     }

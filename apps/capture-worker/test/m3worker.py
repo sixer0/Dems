@@ -3,7 +3,8 @@
 and 60; checks M3-WI-1, M3-AV-1, M3-AV-2 (a)/(b), M3-RTSP-BIND-1, M3-KC-1 file half, M3-KC-3, the
 H-4 regression, continuity AU2-05, the long-GOP camera, the mux-flag evaluation of row 58 part P4).
 Test code only. It binds two loopback ports of 8554-8564 (default 127.0.0.1:8555 and :8557; set
-M3_PORTS=8559,8561 to use another pair), so it needs the sandbox off.
+M3_PORTS=8559,8561 to use another pair; the D60 `plan4` check takes two further free ports of the
+same range for its four-camera plan), so it needs the sandbox off.
 
     make -C apps/capture-worker e2e                        THE documented entry point (test/e2e.py):
                                                            the whole series, one aggregate exit code
@@ -30,7 +31,7 @@ Leftovers are judged on the processes THIS run started (their process groups and
 never on program names host-wide (pair-58 re-check R-7): another harness on the same host is not
 ours, and ours cannot hide behind it.
 """
-import argparse, hashlib, json, os, shutil, signal, struct, subprocess, sys, threading, time
+import argparse, hashlib, json, os, shutil, signal, socket, struct, subprocess, sys, threading, time
 from fractions import Fraction
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -53,8 +54,9 @@ DRIVER = os.path.join(REPO, "apps", "core-server", "test", "support", "capture-s
 PORT_MIN, PORT_MAX = 8554, 8564                      # CAPTURE_MEDIA_PORT_MIN/MAX: every fixture and worker listener (SEC35-23)
 RESERVED_PORTS = (8554, 8556, 8558)                  # the Android emulators' gRPC endpoints on this host: never touched
 PORTS = tuple(int(x) for x in os.environ.get("M3_PORTS", "8555,8557").split(","))
-if len(PORTS) != 2 or PORTS[0] == PORTS[1] or any(p < PORT_MIN or p > PORT_MAX or p in RESERVED_PORTS for p in PORTS):
-    sys.exit("M3_PORTS must name two different ports of %d-%d other than %r" % (PORT_MIN, PORT_MAX, RESERVED_PORTS))
+# D60 (2026-11-04): two to four ports (the plan may carry up to four cameras); the series still runs on a pair.
+if not 2 <= len(PORTS) <= 4 or len(set(PORTS)) != len(PORTS) or any(p < PORT_MIN or p > PORT_MAX or p in RESERVED_PORTS for p in PORTS):
+    sys.exit("M3_PORTS must name two to four different ports of %d-%d other than %r" % (PORT_MIN, PORT_MAX, RESERVED_PORTS))
 # Ports of other systems on this host that no process of a run may ever hold or reach (the SMART WMS stack and the
 # DEMS dev servers): checked on every socket snapshot.
 FOREIGN_PORTS = frozenset((5173, 5174, 5175, 5176, 5177, 5178, 8000, 5432, 4421, 4422, 4423, 4432, 8081))
@@ -344,8 +346,10 @@ class Worker:
             return [r for r, (_, f) in zip(self.raw, self.frames) if f is None or f.get("v") != V or "type" not in f]
 
 
-def make_plan(d, sid, cams=2, mics=2, tap=None, names=("cam1", "cam2")):
+def make_plan(d, sid, cams=2, mics=2, tap=None, names=None):      # D60 (2026-11-04): up to NCAM=4 camera entries
     os.makedirs(os.path.join(d, "media"), exist_ok=True)
+    names = tuple(names or ["cam%d" % (i + 1) for i in range(cams)])      # the ingest path of camera i (default: cam1..cam4)
+    ports = list(PORTS) + [p for p in range(PORT_MIN + 1, PORT_MAX + 1) if p not in PORTS and p not in RESERVED_PORTS]   # a 4-camera plan takes four distinct ports
     fifos = []
     for i in range(mics):
         p = os.path.join(d, "mic%d.pcm" % (i + 1))
@@ -353,7 +357,7 @@ def make_plan(d, sid, cams=2, mics=2, tap=None, names=("cam1", "cam2")):
             os.mkfifo(p, 0o600)
         fifos.append(p)
     return {
-        "cameras": [{"deviceId": "CAM-0%d" % (i + 1), "trackId": "VIDEO-0%d" % (i + 1), "profile": None, "ingestUrl": "rtsp://127.0.0.1:%d/%s" % (PORTS[i], names[i]),
+        "cameras": [{"deviceId": "CAM-0%d" % (i + 1), "trackId": "VIDEO-0%d" % (i + 1), "profile": None, "ingestUrl": "rtsp://127.0.0.1:%d/%s" % (ports[i], names[i]),
                      "outputPath": os.path.join(d, "media", "VIDEO-0%d.mp4" % (i + 1))} for i in range(cams)],
         "mics": [{"deviceId": "MIC-0%d" % (i + 1), "role": ("PRIMARY", "STANDBY")[i], "input": {"kind": "PCM_FIFO", "path": fifos[i]}} for i in range(mics)],
         "activeMic": "PRIMARY",
@@ -939,6 +943,119 @@ def cmd_proto(a):
         ok &= res["exit_after_sigterm"] == 0
     finally:
         w4.kill()
+    time.sleep(0.3)
+    res["leftovers"] = leftovers()
+    ok &= not res["leftovers"]["processes"] and not res["leftovers"]["listeners"]
+    finish(res, ok, a.expect_fail, d)
+
+
+# ------------------------------------------------------------------ four-camera plan (D60, 2026-11-04)
+def cmd_plan4(a):
+    """D60 (2026-11-04): the worker takes a plan of FOUR camera entries - one listener, one file and one
+    ingest thread each - and refuses a doubled device that is not the dual-lens case. No media is pushed:
+    the check is the plan shape, the four listeners and the clean end at the close of standard input."""
+    d = rundir(a.name, fresh=True)
+    res, ok = {"check": "D60 four-camera plan", "run": a.name}, True
+    sid = "S-M3W-PLAN4"
+    ports_free_or_exit()
+    # Two further free ports of the media range beside the pair of this run (the plan's four ingests).
+    extra = []
+    for p in (8563, 8564, 8562, 8561, 8560, 8559):
+        if p in PORTS or p in RESERVED_PORTS or p in FOREIGN_PORTS:
+            continue
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.bind(("127.0.0.1", p))
+            extra.append(p)
+        except OSError:
+            pass
+        finally:
+            s.close()
+        if len(extra) == 2:
+            break
+    if len(extra) != 2:
+        sys.exit("plan4: no two further free ports of %d-%d" % (PORT_MIN, PORT_MAX))
+    allp = list(PORTS) + sorted(extra)
+    names = ("cam1", "cam2", "cam3", "cam4")
+
+    def plan4(cams=None, mics=2):
+        p = make_plan(d, sid, cams=4, mics=mics, names=names)
+        for c, port, nm in zip(p["cameras"], allp, names):
+            c.update(ingestUrl="rtsp://127.0.0.1:%d/%s" % (port, nm))
+        return p
+
+    # 1. The four-entry plan is taken: ACK ok, FOUR listeners up, the log names the four ports, no file yet.
+    w = Worker(d, heartbeat_ms=200, manifest=False)
+    try:
+        w.wait(lambda f: f.get("type") == "HELLO", 5, "HELLO")
+        plan = plan4()
+        _, f = w.ack(w.command(sid, "START", attempt=1, plan=plan))
+        res["start_ack"] = f
+        listening = []
+        t = time.monotonic()
+        while time.monotonic() - t < 5:
+            txt = sh(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN"]).stdout
+            listening = [p for p in allp if any(l.rstrip().endswith(":%d (LISTEN)" % p) for l in txt.splitlines())]
+            if len(listening) == 4:
+                break
+            time.sleep(0.05)
+        starting = [l for l in worker_log(d) if l["message"] == "session_starting"]
+        res["listeners"] = sorted(listening)
+        res["session_starting"] = starting[0] if starting else None
+        ok &= f["ok"] is True and sorted(listening) == sorted(allp) and bool(starting) and starting[0].get("cameras") == 4 \
+            and starting[0].get("ports") == allp and not any(os.path.exists(c["outputPath"]) for c in plan["cameras"])
+        # CONTROL: a two-entry plan of the same shape is still taken (backward compatibility of the ruling).
+        w2 = Worker(rundir(a.name + "/two"), manifest=False)
+        try:
+            w2.wait(lambda f2: f2.get("type") == "HELLO", 5, "HELLO")
+            _, f2 = w2.ack(w2.command(sid, "START", attempt=1, plan=make_plan(d, sid, cams=2, names=names)))
+            res["control_two_camera_ack"] = f2
+            ok &= f2["ok"] is True
+        finally:
+            w2.kill()
+        # 2. Refusals of the widened reader: doubled track, doubled port, one device twice with ONE profile,
+        #    and a fifth entry (the compiled cap). The dual-lens case - one device on two tracks with DISTINCT
+        #    profiles - is the accepted exception (OD-05, D60).
+        bad = {}
+        for label, change in (
+                ("doubled track", lambda p: p["cameras"][2].update(trackId="VIDEO-02")),
+                ("doubled port", lambda p: p["cameras"][3].update(ingestUrl=p["cameras"][0]["ingestUrl"])),
+                ("device twice one profile", lambda p: p["cameras"][2].update(deviceId="CAM-02", profile=None)),
+                ("five cameras", lambda p: p["cameras"].append(dict(p["cameras"][0], trackId="VIDEO-05", deviceId="CAM-05",
+                                                                    ingestUrl="rtsp://127.0.0.1:%d/cam5" % next(x for x in range(PORT_MIN + 1, PORT_MAX + 1) if x not in allp and x not in RESERVED_PORTS),
+                                                                    outputPath=os.path.join(d, "media", "VIDEO-05.mp4"))))):
+            wb = Worker(rundir(a.name + "/bad"), manifest=False)
+            try:
+                wb.wait(lambda f3: f3.get("type") == "HELLO", 5, "HELLO")
+                p2 = plan4()
+                change(p2)
+                _, f3 = wb.ack(wb.command(sid, "START", attempt=1, plan=p2))
+                bad[label] = [f3["ok"], f3.get("code")]
+            finally:
+                wb.kill()
+        dual = {}
+        for label, change in (
+                ("dual-lens distinct profiles", lambda p: (p["cameras"][1].update(deviceId="CAM-01", profile="tele"),
+                                                           p["cameras"][1].update(outputPath=os.path.join(d, "media", "VIDEO-02.mp4")))),
+                ("four distinct devices", lambda p: None)):
+            wb = Worker(rundir(a.name + "/ok"), manifest=False)
+            try:
+                wb.wait(lambda f3: f3.get("type") == "HELLO", 5, "HELLO")
+                p2 = plan4()
+                if change:
+                    change(p2)
+                _, f3 = wb.ack(wb.command(sid, "START", attempt=1, plan=p2))
+                dual[label] = [f3["ok"], f3.get("code")]
+            finally:
+                wb.kill()
+        res["refused_plans"], res["accepted_plans"] = bad, dual
+        ok &= all(v == [False, "PLAN_INVALID"] for v in bad.values()) and all(v[0] is True for v in dual.values())
+        # 3. The end of standard input ends the four-listener session clean and leaves no file (nothing was pushed).
+        w.p.stdin.close()
+        res["exit_after_input_ended"] = rc = w.exit(15)
+        ok &= rc == 0 and not w.not_frames() and not any(os.path.exists(c["outputPath"]) for c in plan["cameras"])
+    finally:
+        w.kill()
     time.sleep(0.3)
     res["leftovers"] = leftovers()
     ok &= not res["leftovers"]["processes"] and not res["leftovers"]["listeners"]
@@ -2299,6 +2416,7 @@ def main():
     case("selfcheck", cmd_selfcheck)
     case("h4neg", cmd_h4neg)
     case("proto", cmd_proto)
+    case("plan4", cmd_plan4)          # D60 (2026-11-04): the four-camera plan of the widened reader
     case("camstop", cmd_camstop)
     case("fatal", cmd_fatal, mode={"choices": ["rmdir", "planted", "exists", "clean"], "required": True})
     case("udp", cmd_udp)

@@ -15,7 +15,8 @@
  * It reads no environment variable: the supervisor starts it with an empty environment.
  *
  * WHAT A SESSION IS. For every camera of the plan one RTSP/TCP listen ingest on 127.0.0.1 whose
- * video is copied into that camera's fMP4; two mic inputs through one selector into ONE AAC
+ * video is copied into that camera's fMP4 (D60, 2026-11-04: the plan carries up to FOUR camera
+ * entries, was two); two mic inputs through one selector into ONE AAC
  * encoder whose packets go into every camera file; meters at the plan's rate; a PCM tap.
  *
  * EXIT CODES. 0 = a clean stop, and only that. A fatal error (mux write, encoder, selector, file
@@ -140,6 +141,9 @@ static const char *take_plan(Session *s, const JNode *plan) {
     if (!plan || plan->t != J_OBJ || plan->n != 5) return "PLAN_INVALID";
     const JNode *cams = jget(plan, "cameras"), *mics = jget(plan, "mics"), *active = jget(plan, "activeMic"), *tap = jget(plan, "pcmTapPath"), *k = jget(plan, "constants");
     if (!cams || cams->t != J_ARR || cams->n < 1 || cams->n > NCAM || !mics || mics->t != J_ARR || mics->n < 1 || mics->n > NMIC) return "PLAN_INVALID";
+    /* D60 (2026-11-04): the shape rule is the server's, mirrored: AT LEAST ONE camera, every track named ONCE,
+     * NO DUPLICATE DEVICE - and one RTSP port and one output file per camera (was: exactly two, checked pairwise). */
+    s->ncam = cams->n;
     if (!active || active->t != J_STR || !tap || (tap->t != J_NULL && !is_path(tap)) || !k || k->t != J_OBJ || k->n != 6) return "PLAN_INVALID";
 
     const JNode *rate = jget(k, "audioSampleRateHz"), *channels = jget(k, "audioChannels"), *target = jget(k, "fragmentTargetMs"), *minfrag = jget(k, "minFragDurationMs"),
@@ -162,11 +166,19 @@ static const char *take_plan(Session *s, const JNode *plan) {
         cam->present = 1;
         snprintf(cam->device_id, sizeof cam->device_id, "%s", id->str);
         snprintf(cam->track_id, sizeof cam->track_id, "%s", track->str);
+        snprintf(cam->profile, sizeof cam->profile, "%s", profile->t == J_STR ? profile->str : "");     /* D60: kept for the pairwise device rule below */
         snprintf(cam->url, sizeof cam->url, "%s", url->str);
         sink_init(&cam->sink, out->str);
         cam->sink.max_fragment_bytes = (size_t)g_max_fragment_bytes;       /* R63-02: the writer refuses a larger fragment before it writes it */
     }
-    if (s->cam[1].present && (s->cam[0].port == s->cam[1].port || !strcmp(s->cam[0].device_id, s->cam[1].device_id) || !strcmp(s->cam[0].track_id, s->cam[1].track_id) || !strcmp(s->cam[0].sink.path, s->cam[1].sink.path))) return "PLAN_INVALID";
+    /* D60 (2026-11-04): pairwise over the plan's entries, was a single check of camera 1 against camera 2:
+     * one track, one ingest port and one output file each; one device may feed two tracks ONLY as the
+     * dual-lens case, with distinct profiles (OD-05) - the same rule `CapturePlanSchema` holds. */
+    for (int a = 0; a < s->ncam; a++)
+        for (int b = a + 1; b < s->ncam; b++)
+            if (s->cam[a].port == s->cam[b].port || !strcmp(s->cam[a].track_id, s->cam[b].track_id) ||
+                !strcmp(s->cam[a].sink.path, s->cam[b].sink.path) ||
+                (!strcmp(s->cam[a].device_id, s->cam[b].device_id) && !strcmp(s->cam[a].profile, s->cam[b].profile))) return "PLAN_INVALID";
 
     for (const JNode *m = mics->child; m; m = m->next) {
         const JNode *id = jget(m, "deviceId"), *role = jget(m, "role"), *input = jget(m, "input");
@@ -182,12 +194,13 @@ static const char *take_plan(Session *s, const JNode *plan) {
         snprintf(s->mic[at].path, sizeof s->mic[at].path, "%s", path->str);
     }
     if (s->mic[0].present && s->mic[1].present && (!strcmp(s->mic[0].device_id, s->mic[1].device_id) || !strcmp(s->mic[0].path, s->mic[1].path))) return "PLAN_INVALID";
-    /* Protocol version 4 (D84 R-2): a role is never an identity, and one ID names one device of the plan. */
-    for (i = 0; i < NCAM + NMIC; i++) {
-        const char *device = i < NCAM ? (s->cam[i].present ? s->cam[i].device_id : NULL) : (s->mic[i - NCAM].present ? s->mic[i - NCAM].device_id : NULL);
+    /* Protocol version 4 (D84 R-2): a role is never an identity, and one ID names one device of the plan.
+     * D60 (2026-11-04): over the plan's camera count, not the compiled cap (a 2-entry plan has no cam[2]). */
+    for (i = 0; i < s->ncam + NMIC; i++) {
+        const char *device = i < s->ncam ? (s->cam[i].present ? s->cam[i].device_id : NULL) : (s->mic[i - s->ncam].present ? s->mic[i - s->ncam].device_id : NULL);
         if (!device) continue;
         if (!strcmp(device, "PRIMARY") || !strcmp(device, "STANDBY")) return "PLAN_INVALID";
-        for (int m = 0; i < NCAM && m < NMIC; m++) if (s->mic[m].present && !strcmp(device, s->mic[m].device_id)) return "PLAN_INVALID";
+        for (int m = 0; i < s->ncam && m < NMIC; m++) if (s->mic[m].present && !strcmp(device, s->mic[m].device_id)) return "PLAN_INVALID";
     }
     s->active_mic = !strcmp(active->str, "PRIMARY") ? 0 : !strcmp(active->str, "STANDBY") ? 1 : -1;
     if (s->active_mic < 0 || !s->mic[s->active_mic].present) return "PLAN_INVALID";
@@ -196,7 +209,7 @@ static const char *take_plan(Session *s, const JNode *plan) {
     /* What is on the disk. The file is the truth (D67, option C): a path that holds anything is
      * never written to, whatever attempt this is. */
     struct stat st;
-    for (i = 0; i < NCAM; i++) {
+    for (i = 0; i < s->ncam; i++) {          /* D60 (2026-11-04): the plan's entries, not the cap */
         if (!s->cam[i].present) continue;
         if (sink_path_occupied(s->cam[i].sink.path)) return "OUTPUT_EXISTS";
         if (!parent_is_directory(s->cam[i].sink.path)) return "OUTPUT_DIR_MISSING";
@@ -213,7 +226,7 @@ static const char *take_plan(Session *s, const JNode *plan) {
         logj("warn", "main", "pcm_tap_left_alone", "\"attempt\":%d", s->attempt);
         s->tap_path[0] = 0;
     }
-    for (i = 0; i < NCAM; i++) {
+    for (i = 0; i < s->ncam; i++) {      /* D60 (2026-11-04): the plan's entries, not the cap */
         int stale = s->cam[i].present ? sink_stale_parts(s->cam[i].sink.path) : 0;
         /* Temporary files of a worker that died while it wrote its first fragment: reported, never reused, never removed. */
         if (stale) logj("warn", "main", "stale_part_files", "\"cam\":%d,\"count\":%d", i + 1, stale);
@@ -235,12 +248,19 @@ static const char *session_start(const JNode *msg) {
     if (r < 0) { fatal("main", "ENCODER_OPEN_FAILED", r); return "ENCODER_OPEN_FAILED"; }
     /* `sync_wanted` is what the build asks for; the level a file really got is said with its first durable fragment
      * (R63-09). `gop_frames_target` is the plan's target for streams DEMS encodes itself: nothing is enforced from
-     * it on a copied stream (spec C.1; review R63-18) - the observed interval is measured and reported instead. */
-    logj("info", "main", "session_starting", "\"attempt\":%d,\"cameras\":%d,\"port1\":%d,\"port2\":%d,\"mics\":%d,\"tap\":%s,\"lavf\":\"%s\",\"sync_wanted\":\"%s\",\"gop_bound_ms\":%d,\"gop_frames_target\":%d,"
+     * it on a copied stream (spec C.1; review R63-18) - the observed interval is measured and reported instead.
+     * D60 (2026-11-04): the ports are listed per plan (`"ports":[...]`), was the fixed `port1`/`port2` pair. */
+    char ports[128] = "";
+    {
+        size_t used = 0;
+        for (int i = 0; i < S.ncam; i++)
+            used += (size_t)snprintf(ports + used, sizeof ports - used, "%s%d", used ? "," : "", S.cam[i].port);
+    }
+    logj("info", "main", "session_starting", "\"attempt\":%d,\"cameras\":%d,\"ports\":[%s],\"mics\":%d,\"tap\":%s,\"lavf\":\"%s\",\"sync_wanted\":\"%s\",\"gop_bound_ms\":%d,\"gop_frames_target\":%d,"
          "\"ingest_open_window_ms\":%d,\"mic_silence_dbfs\":%d,\"mic_silence_ms\":%d,\"mic_disconnect_ms\":%d,\"max_fragment_bytes\":%d",
-         S.attempt, S.cam[0].present + S.cam[1].present, S.cam[0].port, S.cam[1].port, S.mic[0].present + S.mic[1].present, S.tap_path[0] ? "true" : "false", av_version_info(), sink_sync_wanted(), S.fragment_target_ms, S.gop_frames,
+         S.attempt, S.ncam, ports, S.mic[0].present + S.mic[1].present, S.tap_path[0] ? "true" : "false", av_version_info(), sink_sync_wanted(), S.fragment_target_ms, S.gop_frames,
          g_listen_timeout_s * 1000, g_mic_silence_dbfs, g_mic_silence_ms, g_mic_disconnect_ms, g_max_fragment_bytes);
-    for (int i = 0; i < NCAM; i++) {
+    for (int i = 0; i < S.ncam; i++) {      /* D60 (2026-11-04): one ingest thread per camera OF THE PLAN */
         Cam *c = &S.cam[i];
         if (!c->present) continue;
         if (pthread_create(&c->th, NULL, ingest_main, c)) { fatal("main", "THREAD_CREATE_FAILED", AVERROR(EAGAIN)); return "THREAD_CREATE_FAILED"; }
@@ -270,18 +290,18 @@ static void session_close(void) {
      * closed properly first, then the worker leaves with CRASH (finding F-2 (b), (c)). */
     for (int waited = 0; waited < 300; waited++) {
         int alive = 0;
-        for (int i = 0; i < NCAM; i++) alive += S.cam[i].th_started && !atomic_load(&S.cam[i].th_done);
+        for (int i = 0; i < S.ncam; i++) alive += S.cam[i].th_started && !atomic_load(&S.cam[i].th_done);   /* D60 (2026-11-04): the plan's cameras */
         if (!alive) break;
         struct timespec ts = { 0, 10 * 1000 * 1000 };
         nanosleep(&ts, NULL);
     }
-    for (int i = 0; i < NCAM; i++) {
+    for (int i = 0; i < S.ncam; i++) {
         Cam *c = &S.cam[i];
         if (!c->th_started) continue;
         if (atomic_load(&c->th_done)) pthread_join(c->th, NULL);
         else { atomic_store(&c->abandoned, 1); stuck++; logj("error", "main", "ingest_thread_abandoned", "\"cam\":%d", i + 1); }
     }
-    for (int i = 0; i < NCAM; i++) {
+    for (int i = 0; i < S.ncam; i++) {
         Cam *c = &S.cam[i];
         if (!c->present) continue;
         /* What a thread that is still inside libav holds is not touched: it wrote no file. */
@@ -440,7 +460,7 @@ int main(int argc, char **argv) {
         if (session_running) {
             int64_t age = mono_us() - started_at;
             int waiting = 0, connected = 0;
-            for (int i = 0; i < NCAM; i++) {
+            for (int i = 0; i < S.ncam; i++) {      /* D60 (2026-11-04): the plan's cameras, not the cap */
                 Cam *c = &S.cam[i];
                 if (!c->present) continue;
                 /* An ingest still opening long after its listen timeout: THAT camera is given up; the session goes on. */
