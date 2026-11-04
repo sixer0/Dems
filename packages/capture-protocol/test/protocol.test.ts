@@ -22,6 +22,11 @@
 // Task 4 rows N1 + N3 (design 06 revision 3, section 8.2 (a) to (e); decisions C110, C119 (1)) add:
 // protocol version 5 - the input kind PCM_FIFO_GAPPED, the four required account members of a telemetry
 // level, and the records MIC_SAMPLE_ACCOUNT (with its identity) and AUDIO_INSERTED_RUN.
+//
+// Decision D61 (2026-11-04) changes the PLAN's microphone plane inside version 5 (one tree builds both
+// sides): four numbered CHANNELS keyed by `channel` (was the two roles), exactly four rows, an optional
+// per-channel `outputPath`, `activeMic` as the transcribed channel (must be MIC-01), and a FOUR-entry
+// telemetry level list. The role words survive only on the legacy two-role lane.
 import { describe, expect, it } from 'vitest';
 import {
   ADVISORY_WARNING_REASONS,
@@ -30,6 +35,7 @@ import {
   CAPTURE_AUDIO_INSERTED_RUNS_MAX,
   CAPTURE_MIC_ACCOUNT_PERIOD_SAMPLES,
   CAPTURE_MIC_BUFFER_MAX_SAMPLES,
+  CAPTURE_MIC_CHANNELS,
   CaptureMicInputKind,
   CAMERA_RECORD_KINDS,
   CAPTURE_AUDIO_INPUT_QUANTUM_SAMPLES,
@@ -73,10 +79,15 @@ const plan: CapturePlan = {
     { deviceId: 'CAM-02', trackId: 'VIDEO-02', profile: 'wide', ingestUrl: 'rtsp://127.0.0.1:8555/video02', outputPath: '/data/media/sessions/S-1/VIDEO-02.mp4' },
   ],
   mics: [
-    { deviceId: 'MIC-01', role: 'PRIMARY', input: { kind: 'PCM_FIFO', path: '/data/run/S-1/MIC-01.pcm' } },
-    { deviceId: 'MIC-02', role: 'STANDBY', input: { kind: 'PCM_FIFO', path: '/data/run/S-1/MIC-02.pcm' } },
+    // D61 (2026-11-04): FOUR numbered channels, recorded at once (was the two-role PRIMARY/STANDBY pair).
+    { deviceId: 'MIC-01', channel: 'MIC-01', input: { kind: 'PCM_FIFO', path: '/data/run/S-1/MIC-01.pcm' }, outputPath: '/data/media/sessions/S-1/MIC-01.m4a' },
+    { deviceId: 'MIC-02', channel: 'MIC-02', input: { kind: 'PCM_FIFO', path: '/data/run/S-1/MIC-02.pcm' }, outputPath: '/data/media/sessions/S-1/MIC-02.m4a' },
+    { deviceId: 'MIC-03', channel: 'MIC-03', input: { kind: 'PCM_FIFO', path: '/data/run/S-1/MIC-03.pcm' }, outputPath: '/data/media/sessions/S-1/MIC-03.m4a' },
+    // The per-channel outputPath is optional (D61): a channel without one is metered and warned for, not recorded on its own file.
+    { deviceId: 'MIC-04', channel: 'MIC-04', input: { kind: 'PCM_FIFO', path: '/data/run/S-1/MIC-04.pcm' } },
   ],
-  activeMic: 'PRIMARY',
+  // D61 (2026-11-04): the transcribed channel of AUDIO-01 (was the failover pair's start role, 'PRIMARY').
+  activeMic: 'MIC-01',
   pcmTapPath: null,
   constants: { fragmentTargetMs: 2_000, minFragDurationMs: 2_000, gopFrames: 50, meterRateHz: 20, audioSampleRateHz: 48_000, audioChannels: 1 },
 };
@@ -363,6 +374,11 @@ describe('the messages', () => {
     expect(ok(noDevice)).toBe(false);
     const { ratePpm: _rate, ...noRate } = level;
     expect(ok(noRate)).toBe(false);
+    // D61 (2026-11-04): one entry per numbered channel - FOUR decode, a fifth does not. The role member is the
+    // legacy two-role lane's name of the row (channels 3 and 4 both say STANDBY there).
+    const many = (n: number): boolean => decodeWorkerLine(JSON.stringify({ v, type: 'TELEMETRY', sessionId: 'S-1', levels: Array.from({ length: n }, (_x, i) => ({ deviceId: `MIC-0${i + 1}`, role: i === 0 ? 'PRIMARY' : 'STANDBY', dbfs: -20, clipped: false, ratePpm: null, ...accountOfALevel })), ingest: [], fragments: [], clocks: [], tapActive: false })).ok;
+    expect(many(4)).toBe(true);
+    expect(many(5)).toBe(false);
   });
 
   // ── Version 5 (task 4 rows N1 + N3; design 06 section 8.2 (a) to (e)) ──────────────────────────
@@ -414,16 +430,19 @@ describe('the messages', () => {
 
   it('version 5: the input kind PCM_FIFO_GAPPED - the same bytes, a writer that does not promise every sample', () => {
     expect(Object.values(CaptureMicInputKind)).toEqual(['PCM_FIFO', 'PCM_FIFO_GAPPED']);
-    const gappedPlan = { ...plan, mics: [{ ...plan.mics[0], input: { kind: 'PCM_FIFO_GAPPED', path: '/data/run/S-1/MIC-01.pcm' } }, plan.mics[1]] };
-    expect(CapturePlanSchema.safeParse(gappedPlan).success).toBe(true);
-    // One microphone of each kind, or both gapped.
-    expect(CapturePlanSchema.safeParse({ ...gappedPlan, mics: [gappedPlan.mics[0], { ...plan.mics[1], input: { kind: 'PCM_FIFO_GAPPED', path: '/data/run/S-1/MIC-02.pcm' } }] }).success).toBe(true);
+    // D61 (2026-11-04): the kind of ONE row changes inside the four-row list (was a one- or two-row plan).
+    const row0 = (input: object, extra: object = {}): unknown => ({ deviceId: 'MIC-01', channel: 'MIC-01', input, outputPath: '/data/media/sessions/S-1/MIC-01.m4a', ...extra });
+    const withRow0 = (mic: unknown): unknown => ({ ...plan, mics: [mic, ...plan.mics.slice(1)] });
+    const gapped = { kind: 'PCM_FIFO_GAPPED', path: '/data/run/S-1/MIC-01.pcm' };
+    expect(CapturePlanSchema.safeParse(withRow0(row0(gapped))).success).toBe(true);
+    // Any mix of the two kinds across the four rows is a plan (D61): here channels 1 and 2 gapped, 3 and 4 whole.
+    expect(CapturePlanSchema.safeParse({ ...plan, mics: [{ ...plan.mics[0]!, input: gapped }, { ...plan.mics[1]!, input: { kind: 'PCM_FIFO_GAPPED', path: '/data/run/S-1/MIC-02.pcm' } }, plan.mics[2], plan.mics[3]] }).success).toBe(true);
     // Near misses of the word, and a member more, are no plan.
     for (const kind of ['PCM_FIFO_GAPPED ', 'pcm_fifo_gapped', 'PCM_FIFO_GAP', 'PCM_FIFO-GAPPED', 'GAPPED']) {
-      expect(CapturePlanSchema.safeParse({ ...plan, mics: [{ ...plan.mics[0], input: { kind, path: '/data/run/S-1/MIC-01.pcm' } }] }).success, kind).toBe(false);
+      expect(CapturePlanSchema.safeParse(withRow0(row0({ kind, path: '/data/run/S-1/MIC-01.pcm' }))).success, kind).toBe(false);
     }
-    expect(CapturePlanSchema.safeParse({ ...plan, mics: [{ ...plan.mics[0], input: { kind: 'PCM_FIFO_GAPPED', path: '/data/run/S-1/MIC-01.pcm', sampleRateHz: 48_000 } }] }).success).toBe(false);
-    expect(CapturePlanSchema.safeParse({ ...plan, mics: [{ ...plan.mics[0], input: { kind: 'PCM_FIFO_GAPPED', path: 'relative.pcm' } }] }).success).toBe(false);
+    expect(CapturePlanSchema.safeParse(withRow0(row0({ kind: 'PCM_FIFO_GAPPED', path: '/data/run/S-1/MIC-01.pcm', sampleRateHz: 48_000 }))).success).toBe(false);
+    expect(CapturePlanSchema.safeParse(withRow0(row0({ kind: 'PCM_FIFO_GAPPED', path: 'relative.pcm' }))).success).toBe(false);
   });
 
   it('version 5: MIC_SAMPLE_ACCOUNT holds its identity to the sample, and every cross rule refuses its nearest wrong value', () => {
@@ -656,32 +675,60 @@ describe('the plan', () => {
     expect(CapturePlanSchema.safeParse(withCamera(url)).success).toBe(false);
   });
 
-  it('refuses two cameras on one address or one file, a role held twice, an active role nobody holds, a relative output path and an unknown member', () => {
+  it('refuses two cameras on one address or one file, a doubled microphone row, a relative output path and an unknown member', () => {
     const second = plan.cameras[1]!;
+    // D61 (2026-11-04): every microphone refusal changes ONE row INSIDE the four-row list - a two-row list would
+    // be refused by its size, not by the rule under test. `m(i, over)` gives the list with row i overridden.
+    const m = (i: number, over: object): unknown[] => plan.mics.map((mic, k) => (k === i ? { ...mic, ...over } : mic));
     const bad: unknown[] = [
       { ...plan, cameras: [plan.cameras[0], { ...second, ingestUrl: plan.cameras[0]!.ingestUrl }] },
       { ...plan, cameras: [plan.cameras[0], { ...second, outputPath: plan.cameras[0]!.outputPath }] },
       { ...plan, cameras: [plan.cameras[0], { ...second, deviceId: 'CAM-01' }] },
       { ...plan, cameras: [plan.cameras[0], { ...second, trackId: 'VIDEO-01' }] },
       { ...plan, cameras: [{ deviceId: 'CAM-01', profile: null, ingestUrl: plan.cameras[0]!.ingestUrl, outputPath: plan.cameras[0]!.outputPath }] },
-      { ...plan, mics: [plan.mics[0], { ...plan.mics[1], role: 'PRIMARY' }] },
-      { ...plan, mics: [plan.mics[0], { ...plan.mics[1], input: plan.mics[0]!.input }] },
-      { ...plan, mics: [{ deviceId: 'MIC-01', role: 'PRIMARY' }] },
-      { ...plan, mics: [{ ...plan.mics[0], input: { kind: 'PCM_FIFO', path: 'relative.pcm' } }] },
-      { ...plan, mics: [{ ...plan.mics[0], input: { kind: 'AVFOUNDATION', path: '/dev/x' } }] },
+      // D61 (2026-11-04): the channel is the identity of a microphone row (was the role): doubled channel, doubled
+      // device, doubled input path, doubled per-channel output file - and the old `role` member is now unknown.
+      { ...plan, mics: m(1, { channel: 'MIC-01' }) },
+      { ...plan, mics: m(1, { deviceId: 'MIC-01' }) },
+      { ...plan, mics: m(1, { input: plan.mics[0]!.input }) },
+      { ...plan, mics: m(2, { outputPath: plan.mics[0]!.outputPath }) },
+      { ...plan, mics: m(2, { outputPath: plan.cameras[0]!.outputPath }) },
+      { ...plan, mics: m(3, { outputPath: '/data/media/sessions/S-1/MIC-04.m4a' }), pcmTapPath: '/data/media/sessions/S-1/MIC-04.m4a' },
+      { ...plan, mics: m(0, { role: 'PRIMARY' }) },
+      { ...plan, mics: [{ deviceId: 'MIC-01', role: 'PRIMARY', input: { kind: 'PCM_FIFO', path: '/data/run/S-1/MIC-01.pcm' } }, ...plan.mics.slice(1)] },
+      { ...plan, mics: m(0, { input: { kind: 'PCM_FIFO', path: 'relative.pcm' } }) },
+      { ...plan, mics: m(0, { input: { kind: 'AVFOUNDATION', path: '/dev/x' } }) },
       { ...plan, pcmTapPath: plan.cameras[0]!.outputPath },
       { ...plan, pcmTapPath: 'tap.pcm' },
       { ...plan, pcmTapPath: undefined },
-      { ...plan, mics: [plan.mics[0]], activeMic: 'STANDBY' },
-      { ...plan, cameras: [{ ...plan.cameras[0], outputPath: 'media/VIDEO-01.mp4' }] },
+      // D61 (2026-11-04): `activeMic` is the transcribed channel - the old role word and another channel are both no plan.
+      { ...plan, activeMic: 'PRIMARY' as unknown as CapturePlan['activeMic'] },
+      { ...plan, activeMic: 'MIC-02' as CapturePlan['activeMic'] },
+      { ...plan, cameras: [{ ...plan.cameras[0]!, outputPath: 'media/VIDEO-01.mp4' }] },
       { ...plan, cameras: [] },
       { ...plan, password: 'x' },
       // Version 4 (D84 R-2): a role is no identity, and one ID names one device of the plan.
-      { ...plan, mics: [{ ...plan.mics[0], deviceId: 'PRIMARY' }, plan.mics[1]] },
-      { ...plan, mics: [plan.mics[0], { ...plan.mics[1], deviceId: 'STANDBY' }] },
-      { ...plan, mics: [{ ...plan.mics[0], deviceId: 'CAM-01' }, plan.mics[1]] },
+      { ...plan, mics: m(0, { deviceId: 'PRIMARY' }) },
+      { ...plan, mics: m(1, { deviceId: 'STANDBY' }) },
+      { ...plan, mics: m(0, { deviceId: 'CAM-01' }) },
     ];
     expect(bad.map((value) => CapturePlanSchema.safeParse(value).success)).toEqual(bad.map(() => false));
+  });
+
+  it('D61 (2026-11-04): the plan carries FOUR numbered microphone channels exactly once each - three or five are no plan', () => {
+    expect(CAPTURE_MIC_CHANNELS).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']);
+    expect(CapturePlanSchema.safeParse(plan).success).toBe(true);
+    // CONTROL beside the refusals: every row without an outputPath is still a plan (the member is optional).
+    expect(CapturePlanSchema.safeParse({ ...plan, mics: plan.mics.map(({ outputPath: _out, ...mic }) => mic) }).success).toBe(true);
+    // Three channels: the fourth is missing (the server rule names all four exactly once).
+    expect(CapturePlanSchema.safeParse({ ...plan, mics: plan.mics.slice(0, 3) }).success).toBe(false);
+    expect(CapturePlanSchema.safeParse({ ...plan, mics: plan.mics.slice(1) }).success).toBe(false);
+    expect(CapturePlanSchema.safeParse({ ...plan, mics: [] }).success).toBe(false);
+    // Five rows: no fifth channel word exists, whatever the device.
+    expect(CapturePlanSchema.safeParse({ ...plan, mics: [...plan.mics, { deviceId: 'MIC-09', channel: 'MIC-05' as CapturePlan['mics'][number]['channel'], input: { kind: 'PCM_FIFO', path: '/data/run/S-1/MIC-09.pcm' } }] }).success).toBe(false);
+    expect(CapturePlanSchema.safeParse({ ...plan, mics: [...plan.mics, { ...plan.mics[3]!, deviceId: 'MIC-09', input: { kind: 'PCM_FIFO', path: '/data/run/S-1/MIC-09.pcm' }, outputPath: '/data/media/sessions/S-1/MIC-09.m4a' }] }).success).toBe(false);
+    // An unknown channel word is no row.
+    expect(CapturePlanSchema.safeParse({ ...plan, mics: [{ ...plan.mics[0]!, channel: 'MIC-0A' }, ...plan.mics.slice(1)] }).success).toBe(false);
   });
 });
 

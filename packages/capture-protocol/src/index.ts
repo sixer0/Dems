@@ -79,7 +79,9 @@
  * TRACKS (D60, 2026-11-04: four): a plan carries one per camera as `trackId`, and no frame carries it. A MIC ROLE IS NOT
  * AN IDENTITY (version 4, D84 R-2): a role says which place of the plan a microphone holds; it is
  * the argument of `SWITCH_AUDIO_SOURCE` and a member beside the device ID, never a subject. A
- * plan whose device is named like a role is refused, so the two can never be confused.
+ * plan whose device is named like a role is refused, so the two can never be confused. D61
+ * (2026-11-04): the plan keys its four microphone rows by the numbered CHANNEL instead; the role
+ * words live on only on the legacy two-role lane named above.
  *
  * CORRELATION IDS. Every command carries the `sessionId` and a `correlationId` chosen by the
  * supervisor; the worker copies the correlation ID into the `ACK` of that command. A worker learns
@@ -161,6 +163,16 @@
  *     written for a gapped microphone ONLY: a session without one gets no record of these kinds.
  * A worker of version 4 is refused at `HELLO`, and none of its frames decodes; a Core of version 4
  * refuses a worker of version 5 the same way.
+ *
+ * PLAN MICROPHONES (decision D61, 2026-11-04; BREAKING inside version 5 - the same tree builds the
+ * Core that sends the plan and the worker that reads it, as for the reasons added inside version 4).
+ * The microphone rows of the plan are keyed by the numbered CHANNEL (`CapturePlanMicSchema.channel`,
+ * `MIC-01` to `MIC-04`) and the plan carries EXACTLY FOUR of them: a v2 session records audio from all
+ * four channels at once, one file per channel that names an (optional, D61) `outputPath`. The
+ * PRIMARY/STANDBY failover concept dies with the decision: `activeMic` stays on the wire but says the
+ * TRANSCRIBED CHANNEL of `AUDIO-01` and must equal `MIC-01`. The role words survive only on the
+ * worker's legacy two-role lane: `SWITCH_AUDIO_SOURCE.to`, and the `role` member of a telemetry level
+ * and of the interval / account / inserted-run records. A `TELEMETRY.levels` list holds FOUR entries.
  */
 import { z } from 'zod';
 
@@ -198,9 +210,27 @@ export type WorkerMessageType = (typeof WorkerMessageType)[keyof typeof WorkerMe
 export const CaptureStopReason = { STOPPED: 'STOPPED', CRASH: 'CRASH', SHUTDOWN: 'SHUTDOWN' } as const;
 export type CaptureStopReason = (typeof CaptureStopReason)[keyof typeof CaptureStopReason];
 
-/** The two mic roles (the values of `MicRole` in `@dems/shared/domain`). */
+/**
+ * The two mic roles of the LEGACY TWO-ROLE LANE (the values of `MicRole` in `@dems/shared/domain`).
+ * D61 (2026-11-04): the plan no longer carries roles - its microphone rows are keyed by the numbered
+ * CHANNEL below; the failover concept dies with the decision. The role member survives only on the
+ * worker's two-role lane: the argument of `SWITCH_AUDIO_SOURCE`, and the `role` member beside the
+ * device ID of a telemetry level and of the interval / account / inserted-run records.
+ */
 export const CaptureMicRole = { PRIMARY: 'PRIMARY', STANDBY: 'STANDBY' } as const;
 export type CaptureMicRole = (typeof CaptureMicRole)[keyof typeof CaptureMicRole];
+
+/**
+ * The four numbered microphone channels (D61, 2026-11-04): the microphone half of the eight slots of
+ * the selector - `MIC-01` to `MIC-04`, keyed as the video tracks are by `VIDEO-01` to `VIDEO-04`. A
+ * v2 session records audio from ALL FOUR at once; `MIC-01` is the transcribed channel of `AUDIO-01`.
+ * The shared vocabulary (`@dems/shared/sim`) is the authority of the bench; the protocol restates the
+ * four words so that it imports nothing (same rule as `CaptureMicRole` above).
+ */
+export const CAPTURE_MIC_CHANNELS = ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const;
+export type CaptureMicChannel = (typeof CAPTURE_MIC_CHANNELS)[number];
+/** The transcribed channel of `AUDIO-01` (D61, 2026-11-04): the only value a plan may start active on. */
+export const PRIMARY_MIC_CHANNEL: CaptureMicChannel = 'MIC-01';
 
 /**
  * The warnings a worker raises (spec §B.2). Never an automatic switch (OD-11).
@@ -374,7 +404,7 @@ export type CaptureRecordKind = (typeof CaptureRecordKind)[keyof typeof CaptureR
 export const CaptureSyncLevel = { FULL: 'F_FULLFSYNC', FSYNC: 'FSYNC' } as const;
 export type CaptureSyncLevel = (typeof CaptureSyncLevel)[keyof typeof CaptureSyncLevel];
 
-/** How a mic's samples reach the worker. Two kinds (version 5); a plan may hold one microphone of each. */
+/** How a mic's samples reach the worker. Two kinds (version 5); D61 (2026-11-04): a plan holds FOUR microphones, of either kind each. */
 export const CaptureMicInputKind = {
   /**
    * A named pipe the worker reads raw PCM from: 32-bit float, little-endian, at the plan's sample
@@ -612,14 +642,26 @@ export const CapturePlanCameraSchema = z.strictObject({
 export type CapturePlanCamera = z.infer<typeof CapturePlanCameraSchema>;
 
 export const CapturePlanMicSchema = z.strictObject({
-  /** `MIC-01` or `MIC-02`. */
+  /** The capture device serving this channel. */
   deviceId: id,
-  role: z.enum(CaptureMicRole),
+  /**
+   * `MIC-01` to `MIC-04`: the numbered channel this microphone holds (D61, 2026-11-04). The field is
+   * the identity of the row, as a camera row's `trackId` is - the two-role lane's `role` member left
+   * the plan with the same decision (it survives only on the worker's two-role lane, `CaptureMicRole`).
+   */
+  channel: z.enum(CAPTURE_MIC_CHANNELS),
   /** Where this mic's samples come from: one of two strict forms (version 5), the same members for each. */
   input: z.discriminatedUnion('kind', [
     z.strictObject({ kind: z.literal(CaptureMicInputKind.PCM_FIFO), path: absolutePath }),
     z.strictObject({ kind: z.literal(CaptureMicInputKind.PCM_FIFO_GAPPED), path: absolutePath }),
   ]),
+  /**
+   * D61 (2026-11-04): the standalone audio file of THIS channel, an absolute path under the media
+   * root - the microphone twin of a camera's `outputPath`, named per channel by the caller. Optional
+   * until the session start wires the four outputs (a channel without one is metered and warned for,
+   * but not recorded on its own file). The worker creates it by the same never-overwrite rule.
+   */
+  outputPath: absolutePath.optional(),
 });
 export type CapturePlanMic = z.infer<typeof CapturePlanMicSchema>;
 
@@ -636,15 +678,24 @@ export type CapturePlanConstants = z.infer<typeof CapturePlanConstantsSchema>;
 
 /**
  * What one session records: devices, profiles, outputs, constants (spec §B.2 `START`). One
- * session is one worker process and one output file per camera.
+ * session is one worker process and one output file per camera - and, since D61 (2026-11-04), FOUR
+ * microphone channels recorded at once, each with its own `outputPath` when the plan names one.
  */
 export const CapturePlanSchema = z
   .strictObject({
     // D60 (2026-11-04): the Core records FOUR video tracks at once - a plan carries up to four camera lines (was two).
     cameras: z.array(CapturePlanCameraSchema).min(1).max(4),
-    mics: z.array(CapturePlanMicSchema).min(1).max(2),
-    /** The role whose input feeds the one audio encoder at the start. */
-    activeMic: z.enum(CaptureMicRole),
+    // D61 (2026-11-04): a v2 session records audio from FOUR channels at once - exactly four mic lines, one per
+    // numbered channel (was 1..2 keyed by the PRIMARY/STANDBY roles; `assertRecordableSelector` on the Core side
+    // requires all four named exactly once, so min = max = 4 matches the server rule).
+    mics: z.array(CapturePlanMicSchema).min(4).max(4),
+    /**
+     * The TRANSCRIBED CHANNEL (D61, 2026-11-04): the field stays on the wire for compatibility, but its
+     * semantics changed with the decision - it is the channel of `AUDIO-01`, not the start of a failover
+     * pair. The Core sends `MIC-01` and the schema validates exactly that; the operator's switch of the
+     * legacy two-role lane (`SWITCH_AUDIO_SOURCE`) is a separate, legacy surface.
+     */
+    activeMic: z.enum(CAPTURE_MIC_CHANNELS),
     /**
      * The PCM tap, or null: where the worker also writes the samples that feed the encoder, as
      * signed 16-bit little-endian PCM at the plan's sample rate. Sample `n` of the tap is sample
@@ -664,10 +715,18 @@ export const CapturePlanSchema = z
     if (!unique(plan.cameras.map((camera) => camera.ingestUrl))) context.addIssue({ code: 'custom', message: 'two cameras share an ingest address', path: ['cameras'] });
     if (!unique(plan.cameras.map((camera) => camera.outputPath))) context.addIssue({ code: 'custom', message: 'two cameras share an output file', path: ['cameras'] });
     if (!unique(plan.mics.map((mic) => mic.deviceId))) context.addIssue({ code: 'custom', message: 'a mic is named twice', path: ['mics'] });
-    if (!unique(plan.mics.map((mic) => mic.role))) context.addIssue({ code: 'custom', message: 'a mic role is held twice', path: ['mics'] });
-    const paths = [...plan.cameras.map((camera) => camera.outputPath), ...plan.mics.map((mic) => mic.input.path), ...(plan.pcmTapPath === null ? [] : [plan.pcmTapPath])];
+    // D61 (2026-11-04): the channel is the identity of a microphone row (was the role): one channel, one device,
+    // one input path and one output file each. With exactly four rows over four channel words this also ENFORCES
+    // that every channel is named exactly once - the rule `assertRecordableSelector` states on the Core side.
+    if (!unique(plan.mics.map((mic) => mic.channel))) context.addIssue({ code: 'custom', message: 'a mic channel is named twice', path: ['mics'] });
+    const micOutputs = plan.mics.map((mic) => mic.outputPath).filter((path): path is string => path !== undefined);
+    if (!unique(micOutputs)) context.addIssue({ code: 'custom', message: 'two mic channels share an output file', path: ['mics'] });
+    const paths = [...plan.cameras.map((camera) => camera.outputPath), ...micOutputs, ...plan.mics.map((mic) => mic.input.path), ...(plan.pcmTapPath === null ? [] : [plan.pcmTapPath])];
     if (!unique(paths)) context.addIssue({ code: 'custom', message: 'one path is used twice', path: ['cameras'] });
-    if (!plan.mics.some((mic) => mic.role === plan.activeMic)) context.addIssue({ code: 'custom', message: 'no mic holds the active role', path: ['activeMic'] });
+    // D61 (2026-11-04): `activeMic` is the transcribed channel of `AUDIO-01`; the failover concept died with the
+    // decision, so the only value that states a truth about the session is `MIC-01`.
+    if (plan.activeMic !== PRIMARY_MIC_CHANNEL) context.addIssue({ code: 'custom', message: 'the transcribed channel is MIC-01 (D61)', path: ['activeMic'] });
+    if (!plan.mics.some((mic) => mic.channel === plan.activeMic)) context.addIssue({ code: 'custom', message: 'no mic holds the transcribed channel', path: ['activeMic'] });
     // Version 4 (D84 R-2): a role is never an identity, so no device may be named like one, and a
     // camera and a microphone never share an ID (a warning names ONE device of the plan).
     const devices = [...plan.cameras.map((camera) => camera.deviceId), ...plan.mics.map((mic) => mic.deviceId)];
@@ -691,7 +750,7 @@ export const StartMessageSchema = z.strictObject({
   plan: CapturePlanSchema,
 });
 export const StopMessageSchema = z.strictObject({ ...command, type: z.literal(SupervisorMessageType.STOP), reason: z.enum(CaptureStopReason) });
-export const SwitchAudioSourceMessageSchema = z.strictObject({ ...command, type: z.literal(SupervisorMessageType.SWITCH_AUDIO_SOURCE), to: z.enum(CaptureMicRole) });
+export const SwitchAudioSourceMessageSchema = z.strictObject({ ...command, type: z.literal(SupervisorMessageType.SWITCH_AUDIO_SOURCE), to: z.enum(CaptureMicRole) }); // LEGACY two-role lane (D61, 2026-11-04): the plan keys mics by channel; the switch still names the transcription pair by its role word until that lane retires.
 
 export const SupervisorMessageSchema = z.discriminatedUnion('type', [StartMessageSchema, StopMessageSchema, SwitchAudioSourceMessageSchema]);
 export type SupervisorMessage = z.infer<typeof SupervisorMessageSchema>;
@@ -742,6 +801,7 @@ export const TelemetryMessageSchema = z.strictObject({
       z
         .strictObject({
           deviceId: deviceIdOnWire,
+          /** The legacy two-role lane's name of the channel (D61, 2026-11-04): channels 3 and 4 are both `STANDBY` there. */
           role: z.enum(CaptureMicRole),
           dbfs: z.number().max(0).nullable(),
           clipped: z.boolean(),
@@ -753,8 +813,9 @@ export const TelemetryMessageSchema = z.strictObject({
         })
         .refine((level) => level.insertedSamples <= level.timelineSamples, { message: 'more samples inserted than the timeline holds', path: ['insertedSamples'] }),
     )
-    .max(2),
-  // D60 (2026-11-04): one entry per camera of the plan - up to FOUR (the mic list above stays two).
+    .max(4),
+  // D60 (2026-11-04): one entry per camera of the plan - up to FOUR (the mic list above).
+  // D61 (2026-11-04): the microphone list became FOUR too: one entry per numbered channel of the plan (was two roles).
   ingest: z.array(z.strictObject({ deviceId: id, state: z.enum(CaptureIngestState) })).max(4),
   /** Fragments written so far, per camera file. */
   fragments: z.array(z.strictObject({ deviceId: id, count: wholeNumber, bytes: wholeNumber })).max(4),
@@ -950,7 +1011,7 @@ export const KeyframeIntervalRecordSchema = z.strictObject({
 export const AudioSourceIntervalRecordSchema = z
   .strictObject({
     kind: z.literal(CaptureRecordKind.AUDIO_SOURCE_INTERVAL),
-    /** The microphone that feeds the track from `fromSample` on: its device ID, and the role it holds in the plan. */
+    /** The microphone that feeds the track from `fromSample` on: its device ID, and the legacy two-role lane's name of its channel (D61, 2026-11-04: the plan keys the row by channel; this record lane still speaks roles). */
     deviceId: deviceIdOnWire,
     role: z.enum(CaptureMicRole),
     /** 1, 2, 3 ... of this worker, without a gap. */
