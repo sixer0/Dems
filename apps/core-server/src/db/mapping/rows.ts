@@ -363,6 +363,28 @@ function micsOfSelector(mics: DurableSlices['mics'], selector: Pick<CaptureConfi
   return changed ? next : mics;
 }
 
+/** The hardware slices the boot-load may correct (D64 widening, audit row 92): the only ones `snapshotSlicesFromRow` does not hand on as stored. */
+export const LOAD_CORRECTED_SNAPSHOT_KEYS = ['cameras', 'mics'] as const;
+export type LoadCorrectedSnapshotKey = (typeof LOAD_CORRECTED_SNAPSHOT_KEYS)[number];
+
+/**
+ * Audit row 92 cycle 2 (D80; re-judge 118 F-3-04): the STORED value of each hardware slice that the read corrected,
+ * keyed by slice; an empty object when the read corrected nothing. The write-through writes a snapshot column only
+ * when its slice moved from what the tables hold (`changes.ts` `diffSnapshotInto`, by reference), so a correction made
+ * by the read itself is never written unless the first plan of the boot starts from these stored values
+ * (`engine/rehydrate.ts` `StoredState.tableSlices`). A slice counts as corrected when the read added a row or replaced
+ * one: the widening copies the stored array but keeps every stored row by reference, and `micsOfSelector` makes a new
+ * row only for a device it moved, so an untouched slice is never reported.
+ */
+export function storedValuesOfLoadCorrections(row: HardwareSnapshotRow, read: Pick<DurableSlices, LoadCorrectedSnapshotKey>): Partial<Pick<DurableSlices, LoadCorrectedSnapshotKey>> {
+  const corrected = (stored: readonly unknown[] | null | undefined, slice: readonly unknown[]): boolean =>
+    !Array.isArray(stored) || stored.length !== slice.length || slice.some((entry, index) => entry !== stored[index]);
+  return {
+    ...(corrected(row.cameras, read.cameras) ? { cameras: row.cameras } : {}),
+    ...(corrected(row.mics, read.mics) ? { mics: row.mics } : {}),
+  };
+}
+
 export function snapshotSlicesFromRow(row: HardwareSnapshotRow, selector: Pick<CaptureConfigSlice, 'mics'>): Pick<DurableSlices, (typeof SNAPSHOT_SLICE_KEYS)[number]> {
   if (row.simSchemaVersion !== SIM_SNAPSHOT_VERSION) {
     throw new MappingError(

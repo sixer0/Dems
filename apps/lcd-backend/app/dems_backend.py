@@ -1732,35 +1732,49 @@ Tautan panel: kirim {tx} · terima {rx} &nbsp;|&nbsp; dir {REKAM_DIR}</p>
                 event("-", "SETUP_TAK_BERWEWENANG", src0[:12], pesan[:60])
                 return self._send(403, {"error": "BUKAN_TEKNISI", "alasan": pesan})
             ubah = {"satker": False, "client": False, "logo": False}
-            for k, batas in (("satker", 38), ("client", 40)):
-                if k in body:
-                    v = str(body.get(k) or "").strip()[:batas]
-                    with L:
-                        if v != G[k]:
-                            G[k] = v
-                            ubah[k] = True
-            if ubah["satker"] or ubah["client"]:
-                simpan_identitas()
-            logo_out = {}
+            # C2-1 (D77): pintu ini SEMUA-ATAU-TIDAK-SAMA-SEKALI. Tahap 1 hanya memeriksa dan
+            # menyiapkan (target, base64, konversi gambar) tanpa menyentuh G, berkas, atau antrean;
+            # penolakan apa pun (400/422/500) berarti tidak ada yang berubah. Dulu nama disimpan
+            # dulu lalu logo ditolak 422 -> nama berubah tanpa baris audit Core (F-6-07/F-6-01).
+            logo_siap = None                                   # (gid, raw565, w, h) bila ada logo
             if body.get("logo_base64"):
                 # DF-36 (D20c, D57e, D29 Q3): satu slot per permintaan; "both" ditolak.
                 pilih = str(body.get("logo_target") or "client").strip().lower()
                 if pilih not in LOGO_IDS:
                     return self._send(400, {"error": "logo_target harus client|splash", "dapat": pilih})
-                target = [pilih]
                 try:
                     import base64 as _b64
                     isi = _b64.b64decode(str(body["logo_base64"]), validate=True)
                 except Exception:
                     return self._send(422, {"error": "GAMBAR_GAGAL", "alasan": "base64 tidak sah"})
-                for gid in target:
-                    try:
-                        raw565, w, h = siapkan_logo(isi, gid, None, None, "contain")
-                    except Exception as e:
-                        return self._send(422, {"error": "GAMBAR_GAGAL", "alasan": str(e)[:200]})
-                    simpan_logo(gid, raw565, w, h, "unggah:konsol:%s" % (info.get("nama") or "?"))
-                    logo_antre(gid, "unggah konsol oleh %s" % (info.get("nama") or "?"))
-                    ubah["logo"] = True
+                try:
+                    raw565, w, h = siapkan_logo(isi, pilih, None, None, "contain")
+                except Exception as e:
+                    return self._send(422, {"error": "GAMBAR_GAGAL", "alasan": str(e)[:200]})
+                logo_siap = (pilih, raw565, w, h)
+            nama_baru = {k: str(body.get(k) or "").strip()[:batas]
+                         for k, batas in (("satker", 38), ("client", 40)) if k in body}
+            # Tahap 2: terapkan. Logo disimpan lebih dulu karena hanya langkah itu yang bisa gagal
+            # di disk; bila gagal, identitas belum disentuh.
+            nama_op = info.get("nama") or "?"
+            if logo_siap is not None:
+                gid, raw565, w, h = logo_siap
+                try:
+                    simpan_logo(gid, raw565, w, h, "unggah:konsol:%s" % nama_op)
+                except Exception as e:
+                    log("[setup-konsol] logo '%s' GAGAL disimpan: %s" % (gid, str(e)[:80]))
+                    return self._send(500, {"error": "LOGO_GAGAL_DISIMPAN", "alasan": str(e)[:120]})
+                ubah["logo"] = True
+            with L:
+                for k, v in nama_baru.items():
+                    if v != G[k]:
+                        G[k] = v
+                        ubah[k] = True
+            if ubah["satker"] or ubah["client"]:
+                simpan_identitas()
+            if logo_siap is not None:
+                logo_antre(logo_siap[0], "unggah konsol oleh %s" % nama_op)
+            logo_out = {}
             with L:
                 for gid in LOGO_IDS:
                     st = dict(LOGO[gid])

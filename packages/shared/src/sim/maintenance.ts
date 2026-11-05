@@ -18,7 +18,7 @@ import {
 import { SessionState } from '../domain';
 import type { AudioRuntime } from './audio';
 import { requirePermission } from './auth';
-import { DIAGNOSTIC_NOT_REPORTED_CHECKS, DIAGNOSTIC_NOT_REPORTED_DETAIL, DIAGNOSTIC_NOT_REPORTED_RULE, isDiagnosticNotReported, isPlatformNotReported, isUpdaterNotAvailable, UPDATER_NOT_AVAILABLE_REASON } from './core-facts';
+import { DIAGNOSTIC_NOT_REPORTED_CHECKS, DIAGNOSTIC_NOT_REPORTED_DETAIL, DIAGNOSTIC_NOT_REPORTED_RULE, isDiagnosticNotReported, isPlatformNotReported, isOwnCaptureCoreState, isUpdaterNotAvailable, UPDATER_NOT_AVAILABLE_REASON } from './core-facts';
 import { DEVICE_ID, PRODUCT_NAME } from './dataset';
 import { PLATFORM_DEVICE_NAMES } from './devices';
 import type { EngineContext } from './engine';
@@ -258,12 +258,26 @@ export function deviceCommandTransition(
 export const SERVICES_RESTART_SCOPE = 'CORE_SERVICES';
 
 /**
+ * `details.reason` of the refusal of operation 66 on a Core in its own capture (row 104c2; finding RT-1, ruling D81).
+ * The `services` slice is the simulator's model of an appliance: such a Core has no producer for it and restarts
+ * nothing from the console. The press is refused like operation 67 (`COMMAND_UNSUPPORTED`): no service changes, no
+ * DEVICE_COMMAND row enters the chain, no count is answered.
+ */
+export const SERVICES_RESTART_NOT_AVAILABLE_REASON = 'SERVICES_RESTART_NOT_AVAILABLE';
+
+/**
  * Restarts the Core services (simulated; step 54, SIM-GAP-W52-3). MAINTENANCE; refused while a
- * session is active. One DEVICE_COMMAND row through the hash chain; every service that is not
+ * session is active, and refused on a Core in its own capture (`isOwnCaptureCoreState`; row 104c2).
+ * One DEVICE_COMMAND row through the hash chain; every service that is not
  * STOPPED restarts now (`startedAt = now`). Returns the number restarted.
  */
 export function restartServicesTransition(state: SimState, now: EpochMs): { state: SimState; result: number } {
   const operator = requirePermission(state, 'restartServices', Permission.MAINTENANCE);
+  // Row 104c2 (RT-1, D81): a Core in its own capture restarts nothing from the console - refused like operation 67,
+  // before any change and before any row (the simulated restart and its "(simulated)" row never reach the production chain).
+  if (isOwnCaptureCoreState(state)) {
+    throw new SimTransitionError(state.session?.state ?? null, 'restartServices', 'this Core restarts no services from the console', SimErrorCode.COMMAND_UNSUPPORTED, SERVICES_RESTART_NOT_AVAILABLE_REASON);
+  }
   if (isSessionActive(state.session)) {
     throw new SimTransitionError(state.session.state, 'restartServices', 'a session is active', SimErrorCode.SESSION_ACTIVE);
   }

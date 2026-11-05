@@ -1153,7 +1153,9 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
 
         const state = sim.store.getState();
         const target = durableOf(state);
-        const plan = planWrite(stored.slices, target, { at: now, state });
+        // Audit row 92 cycle 2 (D80): the plan starts from what the TABLES hold, so a slice the read corrected
+        // (`stored.corrected`) is written back in this unit, once; with nothing corrected it is `stored.slices`.
+        const plan = planWrite(stored.tableSlices, target, { at: now, state });
         await applyPlan(unit, plan);
 
         unit.afterCommit(() => {
@@ -1184,6 +1186,9 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
               tabletLinkOfflineUnwritten: effects.tabletLinkOfflineUnwritten === true,
               restartFaultEnded: effects.restartFaultEnded === true,
               auditRows: plan.auditRows.length,
+              // Audit row 92 cycle 3 (D84; SR-48: an engine log key carries a count or a boolean, never text): how many
+              // hardware slices the read corrected and this start wrote back (1 on the bench's first boot after D80, then 0).
+              bootCorrectedSlices: stored.corrected.length,
             },
             'engine started',
           );

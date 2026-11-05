@@ -30,7 +30,7 @@ import {
 import { sql, type AnyColumn, type SQL } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import type { UnitContext } from '../core';
-import { DURABLE_SLICE_KEYS, MappingError, fromRows, type DurableSliceKey, type DurableSlices, type FromRowsOptions, type StoredRows } from '../db/mapping';
+import { DURABLE_SLICE_KEYS, MappingError, fromRows, storedValuesOfLoadCorrections, type DurableSliceKey, type DurableSlices, type FromRowsOptions, type LoadCorrectedSnapshotKey, type StoredRows } from '../db/mapping';
 import { activeSession, auditLog, authSessions, biometricTokens, events, hardwareSnapshot, pairedDevices, pairingCodes } from '../db/schema';
 import { readStoredRows } from '../db/store';
 import { EngineError } from './errors';
@@ -52,6 +52,15 @@ export interface StoredState {
    * D110; security finding CPS1-1, guarantees G1 and G2). Never below `lastCommittedAt`.
    */
   readonly clockFloor: number;
+  /**
+   * Audit row 92 cycle 2 (D80): what the TABLES hold, slice by slice - `slices` itself, except a hardware slice the
+   * read corrected (D64 widening, the mic devices taken from `capture_config`), which holds the stored value here.
+   * The first write of a start plans from this, so a correction of the read reaches `hardware_snapshot` in the
+   * rehydration unit, through the one write-through, exactly once. The same object as `slices` when nothing was corrected.
+   */
+  readonly tableSlices: DurableSlices;
+  /** The hardware slices the read corrected (names only, for the log); empty when none. */
+  readonly corrected: readonly LoadCorrectedSnapshotKey[];
 }
 
 /**
@@ -148,7 +157,12 @@ export function storedStateOf(rows: StoredRows, newestStoredInstant = 0, options
     throw new EngineError('ENGINE_STATE_UNREADABLE', 'the stored rows do not form an engine state: the Core device record is missing', { rule: 'ROW_SHAPE' });
   }
   const lastCommittedAt = lastCommittedInstant(rows);
-  return { slices, certificateFingerprint: device.certificateFingerprint, lastCommittedAt, clockFloor: Math.max(lastCommittedAt, newestStoredInstant) };
+  // Audit row 92 cycle 2 (D80): `fromRows` held the single snapshot row to one, so [0] is that row.
+  const snapshotRow = rows.hardwareSnapshot[0];
+  const storedValues = snapshotRow === undefined ? {} : storedValuesOfLoadCorrections(snapshotRow, slices);
+  const corrected = (Object.keys(storedValues) as LoadCorrectedSnapshotKey[]).sort();
+  const tableSlices = corrected.length === 0 ? slices : { ...slices, ...storedValues };
+  return { slices, certificateFingerprint: device.certificateFingerprint, lastCommittedAt, clockFloor: Math.max(lastCommittedAt, newestStoredInstant), tableSlices, corrected };
 }
 
 /** The greatest stored write instant (see `StoredState.lastCommittedAt`). 0 when the rows hold none. */

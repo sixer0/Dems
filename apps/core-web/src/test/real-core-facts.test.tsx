@@ -1002,6 +1002,31 @@ describe("every page of a Core in its own capture: Security & Audit, Devices, Da
       const root = await page('page-system')
       expect(await within(root).findByTestId('system-quick-softwareUpdate', {}, FIND)).toHaveTextContent(en.common.quickActions.softwareUpdate.title)
     })
+    // Row 104c2 (finding RT-1, ruling D81): operation 66 is refused on a Core in its own capture - the console offers no
+    // press and states no service count; the reason is the action's visible hint.
+    const asTechnician = (sim: Sim) => {
+      sim.actions.signOut()
+      sim.actions.signIn('rina.wijaya', 'demo-2026')
+    }
+    it('System: a Core in its own capture offers "Restart services" disabled with its reason, also to a MAINTENANCE holder', async () => {
+      const sim = mount('/system', 'idle', (s) => {
+        realCore(s)
+        asTechnician(s)
+      })
+      const root = await page('page-system')
+      const marker = await within(root).findByTestId('system-restart-not-available', {}, FIND)
+      expect(within(marker).getByTestId('system-restart-services')).toBeDisabled()
+      expect(root).toHaveTextContent(en.system.maintenance.restartNotAvailable)
+      expect(root).not.toHaveTextContent(en.system.maintenance.restartHint)
+      expect(sim.store.getState().audit.rows.some((row) => row.type === 'DEVICE_COMMAND' && row.message.includes('Core services restarted'))).toBe(false)
+    })
+    it('CONTROL - the simulated lane keeps "Restart services" enabled for a MAINTENANCE holder, with its hint', async () => {
+      mount('/system', 'idle', asTechnician)
+      const root = await page('page-system')
+      expect(await within(root).findByTestId('system-restart-services', {}, FIND)).toBeEnabled()
+      expect(within(root).queryByTestId('system-restart-not-available')).toBeNull()
+      expect(root).toHaveTextContent(en.system.maintenance.restartHint)
+    })
   })
 
   describe('G75c-04: the header checklist', () => {

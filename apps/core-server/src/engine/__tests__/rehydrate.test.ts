@@ -33,6 +33,7 @@ import { CamerasSliceSchema, CORE_NOT_RUNNING_FAULT_EXAMPLE } from '@dems/shared
 import { cameraBitrateNotStatedTransition, isCameraBitrateNotStated } from '../camera-bitrate';
 import { SEALING_STEP_ORDER } from '../../sealing';
 import { RESTART_FAULT_OPEN_STATES, endRestartFaultTransition, hasRestartFault, restartFaultSessionOpen } from '../restart-fault';
+import { planWrite } from '../write-plan';
 
 /** The rows a database holds for `state`, written at `at` (the JSON round trip and a scrambled order included). */
 function rowsOf(state: SimState, at: number): StoredRows {
@@ -874,5 +875,75 @@ describe('row CB (R-01): a Core in its own capture states no bitrate of a camera
     const stated = cameraBitrateNotStatedTransition(mixed);
     expect(stated.cameras.map((camera) => camera.bitrateMbps)).toEqual([null, null, null, null]); // D60: four cameras
     expect(stated.cameras[0]).toBe(mixed.cameras[0]);
+  });
+});
+
+// Audit row 92 cycle 2 (D80; re-judge 118 F-3-04): the boot-load corrections of the hardware snapshot (D64 widening,
+// the mic devices taken from capture_config) were made in memory only - the first plan of the start diffed the corrected
+// slices against themselves, so `hardware_snapshot.mics` kept the drifted devices. The start now plans from what the
+// TABLES hold (`StoredState.tableSlices`): a corrected slice is written once, an uncorrected start plans no snapshot write.
+describe('row 92 cycle 2: a boot-load correction of the hardware snapshot is planned for the tables once', () => {
+  const at = FIXED_NOW + 60_000;
+  const state = scenario('idle');
+  /** The bench of re-judge 118: channels 1..4 on MIC-03, MIC-04, MIC-01, MIC-02; the snapshot names MIC-03/04 twice. */
+  const drifted = (): StoredRows => {
+    const rows = rowsOf(state, FIXED_NOW);
+    const snapshot = rows.hardwareSnapshot[0];
+    if (snapshot === undefined) throw new Error('the idle scenario has a snapshot');
+    const devices = ['MIC-03', 'MIC-04', 'MIC-03', 'MIC-04'];
+    return {
+      ...rows,
+      captureConfig: rows.captureConfig.map((row) => ({ ...row, mic01Id: 'MIC-03', mic02Id: 'MIC-04', mic03Id: 'MIC-01', mic04Id: 'MIC-02' })),
+      hardwareSnapshot: [{ ...snapshot, mics: snapshot.mics.map((mic, index) => ({ ...mic, deviceId: devices[index] as string })) }],
+    } as StoredRows;
+  };
+  const snapshotWrites = (plan: ReturnType<typeof planWrite>) => plan.rowChanges.filter((change) => change.table === 'hardwareSnapshot');
+
+  it('corrected: the mic devices come back on the selector, and exactly one snapshot write is planned, of the mics column only', () => {
+    const stored = storedStateOf(drifted());
+    expect(stored.slices.mics.map((mic) => mic.deviceId)).toEqual(['MIC-03', 'MIC-04', 'MIC-01', 'MIC-02']);
+    expect(stored.corrected).toEqual(['mics']);
+    expect(stored.tableSlices.mics.map((mic) => mic.deviceId)).toEqual(['MIC-03', 'MIC-04', 'MIC-03', 'MIC-04']); // what the table holds
+    const plan = planWrite(stored.tableSlices, stored.slices, { at, state });
+    const writes = snapshotWrites(plan);
+    expect(writes).toHaveLength(1);
+    const set = (writes[0] as { set: Record<string, unknown> }).set;
+    expect(Object.keys(set).sort()).toEqual(['mics', 'writtenAt']);
+    expect((set['mics'] as { id: string; deviceId: string }[]).map((mic) => [mic.id, mic.deviceId])).toEqual([['AUDIO-01', 'MIC-03'], ['AUDIO-02', 'MIC-04'], ['AUDIO-03', 'MIC-01'], ['AUDIO-04', 'MIC-02']]);
+    expect(plan.writesSnapshot).toBe(true);
+    // CONTROL - the cycle-1 defect: a plan from the corrected slices themselves writes nothing.
+    expect(planWrite(stored.slices, stored.slices, { at, state }).empty).toBe(true);
+  });
+
+  it('uncorrected: tableSlices IS the read, nothing is reported, and the plan holds no write at all', () => {
+    const stored = storedStateOf(rowsOf(state, FIXED_NOW));
+    expect(stored.corrected).toEqual([]);
+    expect(stored.tableSlices).toBe(stored.slices);
+    const plan = planWrite(stored.tableSlices, stored.slices, { at, state });
+    expect(snapshotWrites(plan)).toEqual([]);
+    expect(plan.empty).toBe(true);
+  });
+
+  it('a pre-D60 two-row camera slice is a correction too: the widened four rows are planned once', () => {
+    const rows = rowsOf(state, FIXED_NOW);
+    const snapshot = rows.hardwareSnapshot[0];
+    if (snapshot === undefined) throw new Error('the idle scenario has a snapshot');
+    const stored = storedStateOf({ ...rows, hardwareSnapshot: [{ ...snapshot, cameras: snapshot.cameras.slice(0, 2) }] });
+    expect(stored.corrected).toEqual(['cameras']);
+    const writes = snapshotWrites(planWrite(stored.tableSlices, stored.slices, { at, state }));
+    expect(writes).toHaveLength(1);
+    const set = (writes[0] as { set: Record<string, unknown> }).set;
+    expect(Object.keys(set).sort()).toEqual(['cameras', 'writtenAt']);
+    expect((set['cameras'] as unknown[]).length).toBe(4);
+  });
+
+  it('once written, the next start reads nothing to correct (the write closes the drift)', () => {
+    const first = storedStateOf(drifted());
+    const healed = drifted();
+    const snapshot = healed.hardwareSnapshot[0];
+    if (snapshot === undefined) throw new Error('the idle scenario has a snapshot');
+    const again = storedStateOf({ ...healed, hardwareSnapshot: [{ ...snapshot, mics: JSON.parse(JSON.stringify(first.slices.mics)) }] });
+    expect(again.corrected).toEqual([]);
+    expect(again.tableSlices).toBe(again.slices);
   });
 });

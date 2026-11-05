@@ -152,6 +152,61 @@ describe('the boot step (decision D40) and the epoch (spec §8.6, D14)', () => {
   });
 });
 
+// Audit row 92 cycle 2 (D80; re-judge 118 F-3-04): the bench kept `hardware_snapshot.mics` AUDIO-03/04 on MIC-03/04 after
+// the W1 restart although capture_config held MIC-05/06 - the boot-load corrected the mics in memory only. The rehydration
+// unit now writes a corrected slice back once, through the one write-through; a start with nothing to correct writes no mics.
+describe('row 92 cycle 2: a boot-load correction of the hardware snapshot reaches the table in the rehydration unit', () => {
+  const storedMics = async (pool: Pool): Promise<string[][]> =>
+    (await pool.query<{ id: string; device: string }>(`SELECT x->>'id' AS id, x->>'deviceId' AS device FROM public.hardware_snapshot, jsonb_array_elements(mics) AS x ORDER BY 1`)).rows.map((row) => [row.id, row.device]);
+  const selectorMics = async (pool: Pool): Promise<string[][]> => {
+    const row = (await pool.query<Record<string, string>>('SELECT mic_01_id AS "1", mic_02_id AS "2", mic_03_id AS "3", mic_04_id AS "4" FROM public.capture_config')).rows[0] ?? {};
+    return ['1', '2', '3', '4'].map((n) => [`AUDIO-0${n}`, row[n] ?? '']);
+  };
+
+  it('a drifted stored snapshot is stored on capture_config\'s mics after one boot; the next process start finds nothing to correct', async () => {
+    const target = await db.another({ slug: 'r92c2_mic_drift' });
+    const owner = target.ownerPool();
+    // The bench shape on the built-in devices: channels 1..4 on MIC-03, MIC-04, MIC-01, MIC-02 ...
+    await owner.query(`UPDATE public.capture_config SET mic_01_id = 'MIC-03', mic_02_id = 'MIC-04', mic_03_id = 'MIC-01', mic_04_id = 'MIC-02'`);
+    // ... and a snapshot whose mic rows name MIC-03/04 twice (what D64's widening had persisted on the bench).
+    await owner.query(
+      `UPDATE public.hardware_snapshot SET mics = (SELECT jsonb_agg(jsonb_set(x.elem, '{deviceId}', to_jsonb(CASE x.ord WHEN 1 THEN 'MIC-03' WHEN 2 THEN 'MIC-04' WHEN 3 THEN 'MIC-03' ELSE 'MIC-04' END)) ORDER BY x.ord)
+         FROM jsonb_array_elements(mics) WITH ORDINALITY AS x(elem, ord))`,
+    );
+    expect(await storedMics(owner)).toEqual([['AUDIO-01', 'MIC-03'], ['AUDIO-02', 'MIC-04'], ['AUDIO-03', 'MIC-03'], ['AUDIO-04', 'MIC-04']]);
+    const expected = await selectorMics(owner);
+    expect(expected).toEqual([['AUDIO-01', 'MIC-03'], ['AUDIO-02', 'MIC-04'], ['AUDIO-03', 'MIC-01'], ['AUDIO-04', 'MIC-02']]);
+
+    const first = await engineApp(target, db.run.dataDir, { startAt: FIXED_NOW + 60_000 });
+    await first.app.readiness.boot();
+    expect(first.engine.running).toBe(true);
+    expect(first.log.lines().find((line) => line['msg'] === 'engine started')).toMatchObject({ mode: 'boot', bootCorrectedSlices: 1 }); // D84: a count (SR-48), the mics slice
+    // The engine and the TABLE agree with capture_config: the stored hardware_snapshot equals the selector's mics.
+    expect(first.engine.slice('mics').map((mic) => [mic.id, mic.deviceId])).toEqual(expected);
+    expect(await storedMics(owner)).toEqual(expected);
+    await first.app.close();
+
+    // A new process on the same database: nothing to correct, and the stored mics stand.
+    const second = await engineApp(target, db.run.dataDir, { startAt: FIXED_NOW + 120_000 });
+    await second.app.readiness.boot();
+    expect(second.log.lines().find((line) => line['msg'] === 'engine started')).toMatchObject({ mode: 'boot', bootCorrectedSlices: 0 }); // D84
+    expect(await storedMics(owner)).toEqual(expected);
+    await second.app.close();
+  });
+
+  it('a snapshot that already agrees with capture_config: the boot reports no correction and leaves the mics column as stored', async () => {
+    const target = await db.another({ slug: 'r92c2_mic_agrees' });
+    const owner = target.ownerPool();
+    const before = await storedMics(owner);
+    expect(before).toEqual(await selectorMics(owner));
+    const host = await engineApp(target, db.run.dataDir, { startAt: FIXED_NOW + 60_000 });
+    await host.app.readiness.boot();
+    expect(host.log.lines().find((line) => line['msg'] === 'engine started')).toMatchObject({ mode: 'boot', bootCorrectedSlices: 0 }); // D84
+    expect(await storedMics(owner)).toEqual(before);
+    await host.app.close();
+  });
+});
+
 describe('a database the engine cannot start from: the server does not come up on it', () => {
   it('an unseeded database is refused by B-6, before the engine\'s step; asked directly, the engine refuses it by code and writes nothing', async () => {
     const target = await db.another({ template: 'schema', slug: 'w26_unseeded' });

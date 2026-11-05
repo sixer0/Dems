@@ -24,7 +24,7 @@ import {
   validateCoreApiResponse,
   type CoreApiSchemaName,
 } from '@dems/shared/api';
-import { DEFAULT_SETTINGS, Permission, SERVICES_RESTART_SCOPE, type OperatorRole, type SettingsSlice } from '@dems/shared/sim';
+import { DEFAULT_SETTINGS, ownCaptureCoreFactsTransition, Permission, SERVICES_RESTART_NOT_AVAILABLE_REASON, SERVICES_RESTART_SCOPE, type OperatorRole, type SettingsSlice } from '@dems/shared/sim';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
@@ -665,6 +665,26 @@ describe('66 restartServices', () => {
     expect(response.json()).toEqual({ restarted: 16 });
     expect(state(built).services.find((service) => service.id === stopped.id)?.startedAt).toBe(stopped.startedAt);
     expect(lastAudit(built)?.details).toMatchObject({ services: 16 });
+  });
+
+  // Row 104c2 (finding RT-1, ruling D81): a Core in its own capture restarts nothing from the console - refused like operation 67.
+  it('on a Core in its own capture: 409 COMMAND_UNSUPPORTED with reason SERVICES_RESTART_NOT_AVAILABLE, no row, no revision, no service restarted', async () => {
+    const built = await build();
+    built.actAs(operatorOf('TECHNICIAN'));
+    drive(built, 1_000);
+    built.engine.sim.store.setState(ownCaptureCoreFactsTransition(state(built)));
+    const before = state(built);
+    const total = auditTotal(built);
+    const response = await post(built.app, SERVICES_RESTART);
+    expect(outcome(response)).toEqual([409, 'COMMAND_UNSUPPORTED']);
+    expect(errorOf(response).message).toBe('Restarting services is not available on this Core.');
+    expect(errorOf(response).details).toEqual({ simCode: 'COMMAND_UNSUPPORTED', from: null, event: 'restartServices', reason: SERVICES_RESTART_NOT_AVAILABLE_REASON });
+    expect(validateCoreApiResponse('restartServices', 409, response.json())).toEqual({ ok: true });
+    expect(response.headers[REVISION_HEADER_NAME]).toBeUndefined();
+    expect(built.engine.units.at(-1)).toMatchObject({ label: 'engine.restartServices', committed: false });
+    expect(auditTotal(built)).toBe(total);
+    expect(state(built).audit).toBe(before.audit);
+    expect(state(built).services).toBe(before.services);
   });
 
   it.each(['INVESTIGATOR', 'SUPERVISOR'] as const)('%s lacks MAINTENANCE: 403 NOT_PERMITTED by stage 6 with one denial row; the engine is not reached', async (role) => {

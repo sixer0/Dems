@@ -1212,7 +1212,8 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
     expect(codes('archiveEvidence')).toEqual(['RECORDED', 'NOT_SEALED']);
     // Fix wave J (truth rule 3a): a never-sealed item has nothing to verify.
     expect(codes('verifyEvidence')).toEqual(['RECORDED', 'NOT_SEALED']);
-    expect(codes('restartServices')).toEqual(['SESSION_ACTIVE']);
+    // Row 104c2 (RT-1, D81): a Core in its own capture restarts no services from the console.
+    expect(codes('restartServices')).toEqual(['SESSION_ACTIVE', 'COMMAND_UNSUPPORTED', 'SERVICES_RESTART_NOT_AVAILABLE']);
     // Fix wave J (JT-06 / JW-06): a Core in its own capture has no updater.
     expect(codes('startSoftwareUpdate')).toEqual(['SESSION_ACTIVE', 'COMMAND_UNSUPPORTED', 'UPDATER_NOT_AVAILABLE']);
     // Fix wave J (truth rule 3d): an export output the build cannot produce is refused before any job.

@@ -251,6 +251,8 @@ export const system = {
     restartDone: 'Core services restarted (simulated)',
     restartBody: '{{count}} services restarted · audit row written',
     restartBlocked: 'End the active session before restarting services.',
+    /** Row 104c2 (RT-1, D81): a Core in its own capture refuses operation 66; the button is disabled with this reason. */
+    restartNotAvailable: 'Restarting services is not available on this Core.',
     exportLogs: 'Export logs',
     exportLogsHint: 'Downloads the audit and event logs as JSON (simulated export, audited).',
     exportDone: 'Logs exported · {{rows}} audit rows',

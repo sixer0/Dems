@@ -15,7 +15,7 @@ import {
   type SimState,
 } from '@dems/shared/sim'
 import { usePendingControl } from '@/lib/pending-control'
-import { usePlatformNotReported } from '@/lib/own-capture'
+import { usePlatformNotReported, useSelfCaptureCore } from '@/lib/own-capture'
 import { RoleReason } from '@/components/role-reason'
 import { GlowLayer, useMotionPolicy } from '@/motion'
 import { DIAG_BAR_FILL_MS } from './choreography'
@@ -104,10 +104,15 @@ export function MaintenancePanel({
   const canRun = useSim(selectCanRun)
   const canMaintain = useSim(selectCanMaintain)
   const canExport = useSim(selectCanExportAudit)
+  // Row 104c2 (RT-1, D81): a Core in its own capture refuses operation 66 (409 COMMAND_UNSUPPORTED,
+  // SERVICES_RESTART_NOT_AVAILABLE) - its services are not the simulator's model. No press, no count: the action
+  // stays visible, disabled, with the reason as its hint.
+  const noRestart = useSelfCaptureCore()
   const summaryText = useSummaryText()
   const summary = summarizeDiagnostics(run)
 
   const restart = () => {
+    if (noRestart) return
     runCommand(
       () => restartCoreServices(actions),
       { source: 'Maintenance.restart', transitionMessage: t('system.maintenance.restartBlocked') },
@@ -207,8 +212,15 @@ export function MaintenancePanel({
         <MaintenanceAction
           icon={RotateCw}
           title={t('system.maintenance.restart')}
-          hint={live ? t('system.live.restartHint') : t('system.maintenance.restartHint')}
+          hint={noRestart ? t('system.maintenance.restartNotAvailable') : live ? t('system.live.restartHint') : t('system.maintenance.restartHint')}
           button={
+            noRestart ? (
+              <span data-testid="system-restart-not-available">
+                <Button size="sm" variant="outline" isDisabled data-testid="system-restart-services">
+                  {t('system.maintenance.restart')}
+                </Button>
+              </span>
+            ) : (
             <RbacGate allowed={canMaintain} permission={Permission.MAINTENANCE} label={t('system.maintenance.restart')}>
               <Button
                 ref={restartRef}
@@ -223,6 +235,7 @@ export function MaintenancePanel({
                 {t('system.maintenance.restart')}
               </Button>
             </RbacGate>
+            )
           }
         />
         <MaintenanceAction

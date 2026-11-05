@@ -33,6 +33,7 @@ import {
   PLATFORM_DEVICE_NOT_REPORTED,
   SECURITY_NOT_REPORTED_PRECHECK_RULE,
   UPDATER_NOT_AVAILABLE_REASON,
+  SERVICES_RESTART_NOT_AVAILABLE_REASON,
   isDiagnosticNotReported,
   isLevelNotMeasured,
   isOwnCaptureCoreState,
@@ -586,6 +587,44 @@ describe('platform security not reported, and the restart fault', () => {
       expect(h.state().update.state).toBe('RUNNING');
       expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'UPDATE_STARTED' });
       expect(UpdateSliceSchema.safeParse({ ...h.state().update, updaterNotAvailable: false }).success).toBe(false);
+    });
+  });
+
+  // Row 104c2 (finding RT-1, ruling D81): operation 66 ran the simulator's restart on a Core in its own capture and the
+  // console stated the model's service count; a "(simulated)" DEVICE_COMMAND row entered the production chain.
+  describe('row 104c2: no services restart on a Core in its own capture', () => {
+    const technician = (h: ReturnType<typeof bed>): void => {
+      h.sim.actions.signOut();
+      h.sim.actions.signIn('rina.wijaya', 'demo-2026');
+    };
+    const deviceCommands = (h: ReturnType<typeof bed>): number => h.state().audit.rows.filter((row) => row.type === 'DEVICE_COMMAND').length;
+
+    it('RT-1: `restartServices` is refused (COMMAND_UNSUPPORTED, SERVICES_RESTART_NOT_AVAILABLE) - no service restarts, no row, no count', () => {
+      const h = bed({ capture: 'external' });
+      expect(isOwnCaptureCoreState(h.state())).toBe(true);
+      technician(h);
+      const before = h.state();
+      const commands = deviceCommands(h);
+      let thrown: unknown = null;
+      try {
+        h.sim.actions.restartServices();
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toMatchObject({ name: 'SimTransitionError', code: 'COMMAND_UNSUPPORTED', reason: SERVICES_RESTART_NOT_AVAILABLE_REASON });
+      expect(h.state().services).toEqual(before.services);
+      expect(h.state().audit.total).toBe(before.audit.total);
+      expect(deviceCommands(h)).toBe(commands);
+    });
+
+    it('RT-1 CONTROL - the simulated device keeps its demonstration restart: a count and one DEVICE_COMMAND row', () => {
+      const h = bed();
+      expect(isOwnCaptureCoreState(h.state())).toBe(false);
+      technician(h);
+      const before = h.state().audit.total;
+      expect(h.sim.actions.restartServices()).toBeGreaterThan(0);
+      expect(h.state().audit.total).toBe(before + 1);
+      expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'DEVICE_COMMAND', details: { scope: 'CORE_SERVICES' } });
     });
   });
 

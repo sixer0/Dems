@@ -735,6 +735,8 @@ describe('the log of the engine (SR-48)', () => {
       'committed', 'audit', 'events', 'seq', 'type', 'behindMs', 'tabletLinkOfflineUnwritten',
       // Fix wave K (G75c-01, ruling D223): the start line says whether the restart fault of a closed session was ended.
       'restartFaultEnded',
+      // Audit row 92 cycle 3 (D84): the start line counts the hardware slices the read corrected and wrote back - a number.
+      'bootCorrectedSlices',
     ]);
     const engineLines = after.filter(isEngineLine);
     expect(engineLines.length).toBeGreaterThan(20);
@@ -747,6 +749,10 @@ describe('the log of the engine (SR-48)', () => {
     ).toEqual([]);
     // The new member is a flag, never a text: `effects.restartFaultEnded === true` (`engine/host.ts`, the start line).
     expect(engineLines.filter((line) => 'restartFaultEnded' in line).map((line) => typeof line['restartFaultEnded'])).toEqual(['boolean']);
+    // D84: the correction count is a number on every start line, never the slice names.
+    const correctionCounts = engineLines.filter((line) => 'bootCorrectedSlices' in line).map((line) => typeof line['bootCorrectedSlices']);
+    expect(correctionCounts.length).toBeGreaterThan(0);
+    expect(new Set(correctionCounts)).toEqual(new Set(['number']));
 
     // (2) Every other line (readiness, the pipeline's shutdown, whatever a later unit writes when
     // the app closes): no key that names a secret, and no value in the form of one.

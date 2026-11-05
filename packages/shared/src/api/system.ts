@@ -139,7 +139,7 @@ const SYSTEM_PATH = `${API_BASE_PATH}/system`;
 const DENIED = { denial: AuditType.ACCESS_DENIED } as const;
 const MAINTENANCE = permissionAccess(Permission.MAINTENANCE);
 const MAINTENANCE_REFUSED = notPermitted(Permission.MAINTENANCE);
-const SESSION_OPEN = { description: 'A session is open: maintenance waits until it is closed (SESSION_ACTIVE).', schema: 'ApiError' } as const;
+const RESTART_REFUSED = { description: 'A session is open: maintenance waits until it is closed (SESSION_ACTIVE). Or the Core restarts no services from the console (COMMAND_UNSUPPORTED, `details.reason: SERVICES_RESTART_NOT_AVAILABLE`: a Core in its own capture).', schema: 'ApiError' } as const;
 const UPDATE_REFUSED = { description: 'A session is open: maintenance waits until it is closed (SESSION_ACTIVE). Or the Core has no software updater (COMMAND_UNSUPPORTED, `details.reason: UPDATER_NOT_AVAILABLE`: a Core in its own capture).', schema: 'ApiError' } as const;
 
 export const SYSTEM_OPERATIONS = [
@@ -198,6 +198,7 @@ export const SYSTEM_OPERATIONS = [
       'Restarts the Core services (simulated): every service that is not stopped starts again now. It is refused while a session is open. The Core server process itself is not restarted.',
       'Schema v2 (C3 §3 op 66; CS-10; OD-24): the restart also covers the capture worker and the transcriber.',
       'Writes DEVICE_COMMAND with `details.scope: CORE_SERVICES`.',
+      'A Core in its own capture has no producer for the `services` slice and restarts nothing from the console: this operation answers `409 COMMAND_UNSUPPORTED` with `details.reason: SERVICES_RESTART_NOT_AVAILABLE`; nothing is changed, nothing is written and no count is answered.',
       hostedNote('restartServices'),
     ].join('\n\n'),
     source: backendSource(SECTION, 66),
@@ -205,7 +206,7 @@ export const SYSTEM_OPERATIONS = [
       200: { description: 'The services restarted.', schema: 'ServicesRestarted' },
       401: NOT_SIGNED_IN,
       403: MAINTENANCE_REFUSED,
-      409: SESSION_OPEN,
+      409: RESTART_REFUSED,
     },
     access: MAINTENANCE,
     audit: { success: AuditType.DEVICE_COMMAND, ...DENIED },
@@ -321,7 +322,13 @@ export const SYSTEM_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
       200: { restarted: { summary: 'All seventeen services restarted', value: { restarted: 17 } satisfies ServicesRestarted } },
       401: SIGNED_OUT,
       403: MAINTENANCE_DENIED('restartServices'),
-      409: sessionActive('restartServices'),
+      409: {
+        ...sessionActive('restartServices'),
+        // Row 104c2 (RT-1, D81): a Core in its own capture restarts no services from the console.
+        servicesRestartNotAvailable: simRefusalExample('A Core in its own capture: it restarts no services from the console', 'COMMAND_UNSUPPORTED', 'Restarting services is not available on this Core.', 'COMMAND_UNSUPPORTED', {
+          reason: 'SERVICES_RESTART_NOT_AVAILABLE',
+        }),
+      },
     },
   },
   startSoftwareUpdate: {

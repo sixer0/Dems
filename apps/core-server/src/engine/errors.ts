@@ -112,6 +112,8 @@ function isRefusedSimCode(code: SimErrorCode): code is RefusedSimCode {
  */
 export const SIM_REFUSAL_REASON_TEXT: Readonly<Record<string, string>> = Object.freeze({
   UPDATER_NOT_AVAILABLE: 'Software update is not available on this Core.',
+  // Row 104c2 (RT-1, D81): operation 66 on a Core in its own capture.
+  SERVICES_RESTART_NOT_AVAILABLE: 'Restarting services is not available on this Core.',
   COMPOSITE_ENCODER_NOT_SELECTED: 'Composite video is not available in this build.',
 });
 

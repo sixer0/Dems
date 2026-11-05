@@ -17843,7 +17843,7 @@
           "System"
         ],
         "summary": "Restart the Core services",
-        "description": "Restarts the Core services (simulated): every service that is not stopped starts again now. It is refused while a session is open. The Core server process itself is not restarted.\n\nSchema v2 (C3 §3 op 66; CS-10; OD-24): the restart also covers the capture worker and the transcriber.\n\nWrites DEVICE_COMMAND with `details.scope: CORE_SERVICES`.\n\nCore server only: the server runs the shared simulator action `restartServices` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
+        "description": "Restarts the Core services (simulated): every service that is not stopped starts again now. It is refused while a session is open. The Core server process itself is not restarted.\n\nSchema v2 (C3 §3 op 66; CS-10; OD-24): the restart also covers the capture worker and the transcriber.\n\nWrites DEVICE_COMMAND with `details.scope: CORE_SERVICES`.\n\nA Core in its own capture has no producer for the `services` slice and restarts nothing from the console: this operation answers `409 COMMAND_UNSUPPORTED` with `details.reason: SERVICES_RESTART_NOT_AVAILABLE`; nothing is changed, nothing is written and no count is answered.\n\nCore server only: the server runs the shared simulator action `restartServices` under the caller's identity. In Simulated mode a client calls that action in its own simulator and sends no request.",
         "responses": {
           "200": {
             "description": "The services restarted.",
@@ -17957,7 +17957,7 @@
             }
           },
           "409": {
-            "description": "A session is open: maintenance waits until it is closed (SESSION_ACTIVE).",
+            "description": "A session is open: maintenance waits until it is closed (SESSION_ACTIVE). Or the Core restarts no services from the console (COMMAND_UNSUPPORTED, `details.reason: SERVICES_RESTART_NOT_AVAILABLE`: a Core in its own capture).",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -17979,6 +17979,20 @@
                           "simCode": "SESSION_ACTIVE",
                           "from": "RECORDING",
                           "event": "restartServices"
+                        },
+                        "requestId": "00000000-0000-4000-8000-000000000000"
+                      }
+                    }
+                  },
+                  "servicesRestartNotAvailable": {
+                    "summary": "A Core in its own capture: it restarts no services from the console",
+                    "value": {
+                      "error": {
+                        "code": "COMMAND_UNSUPPORTED",
+                        "message": "Restarting services is not available on this Core.",
+                        "details": {
+                          "simCode": "COMMAND_UNSUPPORTED",
+                          "reason": "SERVICES_RESTART_NOT_AVAILABLE"
                         },
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }

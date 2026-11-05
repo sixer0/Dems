@@ -176,5 +176,52 @@ class BackendTests(unittest.TestCase):
         self.assertTrue(h.close_connection)
 
 
+    # ── row 97 cycle 2 (D77, C2-1): the JSON door is all-or-nothing ──
+    def _setup_post(self, body, prep_effect=None):
+        gate = (True, '', {'nama': 'uji'}, None)
+        with patch.object(backend, 'gerbang_teknisi', return_value=gate), \
+             patch.object(backend, 'siapkan_logo', side_effect=prep_effect,
+                          return_value=(b'\x00\x00', 1, 1)) as prep, \
+             patch.object(backend, 'simpan_logo') as keep_logo, \
+             patch.object(backend, 'simpan_identitas') as keep_identity, \
+             patch.object(backend, 'logo_antre') as queue, patch.object(backend, 'event'), \
+             patch.object(backend.H, '_send') as send:
+            _handler('/api/dems/setup', body).do_POST()
+        return send.call_args.args, prep, keep_logo, keep_identity, queue
+
+    def _names(self):
+        return backend.G['satker'], backend.G['client']
+
+    def test_c2_1_name_with_undecodable_logo_changes_nothing(self):
+        backend.G.update(satker='SATKER LAMA', client='KLIEN LAMA')
+        for body, effect in (({'satker': 'BARU', 'logo_base64': '!!bukan-base64!!'}, None),
+                             ({'client': 'BARU', 'logo_base64': 'AA=='}, ValueError('bukan gambar'))):
+            (code, reply), _prep, keep_logo, keep_identity, queue = self._setup_post(body, effect)
+            self.assertEqual(code, 422, body)
+            self.assertEqual(reply['error'], 'GAMBAR_GAGAL')
+            self.assertEqual(self._names(), ('SATKER LAMA', 'KLIEN LAMA'))
+            keep_identity.assert_not_called(); keep_logo.assert_not_called(); queue.assert_not_called()
+
+    def test_c2_1_name_with_both_target_changes_nothing(self):
+        backend.G.update(satker='SATKER LAMA', client='KLIEN LAMA')
+        body = {'satker': 'BARU', 'client': 'BARU', 'logo_base64': 'AA==', 'logo_target': 'both'}
+        (code, _reply), prep, keep_logo, keep_identity, queue = self._setup_post(body)
+        self.assertEqual(code, 400)
+        self.assertEqual(self._names(), ('SATKER LAMA', 'KLIEN LAMA'))
+        prep.assert_not_called(); keep_identity.assert_not_called()
+        keep_logo.assert_not_called(); queue.assert_not_called()
+
+    def test_c2_1_valid_name_and_logo_are_both_applied(self):
+        backend.G.update(satker='SATKER LAMA', client='KLIEN LAMA')
+        body = {'satker': 'SATKER BARU', 'logo_base64': 'AA==', 'logo_target': 'splash'}
+        (code, reply), _prep, keep_logo, keep_identity, queue = self._setup_post(body)
+        self.assertEqual(code, 200)
+        self.assertEqual(self._names(), ('SATKER BARU', 'KLIEN LAMA'))
+        self.assertEqual(reply['changed'], {'satker': True, 'client': False, 'logo': True})
+        keep_identity.assert_called_once()
+        self.assertEqual(keep_logo.call_args.args[0], 'splash')
+        self.assertEqual([c.args[0] for c in queue.call_args_list], ['splash'])
+
+
 if __name__ == '__main__':
     unittest.main()
