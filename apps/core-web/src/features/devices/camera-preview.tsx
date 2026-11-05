@@ -9,7 +9,7 @@ import { CameraFeed, RecIndicator, type CameraFeedProps } from '@/components/med
 import { cn } from '@/lib/utils'
 import { useRealCaptureCore, useTrackDevice } from './source-class'
 import { useWebLive } from '@/runtime'
-import { isLivePreviewDevice, isSessionStarting, PREVIEW_FIRST_FRAME_MS, previewPathOf, previewRefusalOf, previewRetryDelayMs } from './camera-live-preview'
+import { isLivePreviewDevice, isSessionStarting, PREVIEW_FIRST_FRAME_MS, previewPathOf, previewRefusalOf, previewRetryDelayMs, useAutoPreviewOpen } from './camera-live-preview'
 import { reportDevicesError } from './report'
 import { deferEffectStart } from '@/lib/effect-start'
 
@@ -27,6 +27,9 @@ import { deferEffectStart } from '@/lib/effect-start'
  * `livePreview` is set only by Devices & Inputs (camera tiles), Session New (camera previews) and the
  * Session Monitor (live session feed). The Dashboard and the inputs thumbnails keep the tile. (It is not
  * `live`: that prop of `CameraFeed` is the demo loop's decode switch, which the callers already set.)
+ * D62 (2026-11-05) adds `autoPreview`, set only by the Devices tile: its session then opens by itself
+ * while the track's selector line reads online (debounced ~1 s, at most 4 auto sessions, closed on
+ * offline or a hidden tab) - see `AutoLivePreview` and the D62 section of `camera-live-preview.ts`.
  *
  * The tile says only what the Core knows: the track, the device the selector names for it, and that
  * device's state as the selector line carries it (not assigned, offline, stream lost, online). Its
@@ -36,15 +39,39 @@ import { deferEffectStart } from '@/lib/effect-start'
 export type CameraPreviewProps = CameraFeedProps & {
   /** Show the Core's live picture where it has one (Live mode, real capture, a production camera). Default false. */
   livePreview?: boolean
+  /**
+   * D62 (2026-11-05): the Devices tile opens its preview BY ITSELF - gated on the selector line reading
+   * online, debounced ~1 s, at most 4 auto sessions at once, closed when the line goes offline or the
+   * tab hides. Only Devices & Inputs sets it; the other surfaces keep the plain mount rule.
+   */
+  autoPreview?: boolean
 }
 
-export function CameraPreview({ livePreview = false, ...props }: CameraPreviewProps) {
+export function CameraPreview({ livePreview = false, autoPreview = false, ...props }: CameraPreviewProps) {
   const realCapture = useRealCaptureCore()
   const device = useTrackDevice(props.cameraId)
   if (!realCapture) return <CameraFeed {...props} />
   // One preview per device: another camera on the track starts its own (the key), never the old stream.
-  if (livePreview && device !== undefined && isLivePreviewDevice(device)) return <LivePreview key={device.id} {...props} deviceId={device.id} />
+  if (livePreview && device !== undefined && isLivePreviewDevice(device)) {
+    // D62: the Devices tile gates its session (offline / hidden closes it back to the neutral tile).
+    if (autoPreview) return <AutoLivePreview key={device.id} {...props} deviceId={device.id} />
+    return <LivePreview key={device.id} {...props} deviceId={device.id} />
+  }
   return <NoPreviewTile {...props} />
+}
+
+/**
+ * D62 (2026-11-05): the auto-opened session of one Devices tile. The live preview stands only while the
+ * track's selector line reads ONLINE; the session opens ~1 s after that (and after the tab is visible
+ * again), yields to the cap of 4 concurrent auto sessions, and closes the moment the line goes offline or
+ * the tab hides - the neutral tile states the condition meanwhile, and the click still opens the drawer.
+ * The honest UNAVAILABLE / retry rule lives in `LivePreview` and is untouched.
+ */
+function AutoLivePreview({ deviceId, ...feed }: CameraPreviewProps & { deviceId: string }) {
+  const online = useSim((state) => cameraLinesInForce(state).find((line) => line.trackId === feed.cameraId)?.online === true)
+  const open = useAutoPreviewOpen(online)
+  if (!open) return <NoPreviewTile {...feed} />
+  return <LivePreview {...feed} deviceId={deviceId} />
 }
 
 /**

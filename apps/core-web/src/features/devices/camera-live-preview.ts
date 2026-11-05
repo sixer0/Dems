@@ -11,13 +11,16 @@
  * | `429 PREVIEW_LIMIT`: "too many previews", asked again after the Core's `retry-after` (at least the backoff) | `previewRefusalOf` |
  * | `409` with `details.cause: AUTH_REFUSED`: the camera refused the stored password; the Core refuses again for 5 min, so the console waits that long | `previewRefusalOf` |
  * | `409 PREVIEW_NOT_AVAILABLE` without a cause: asked again after a minute | `previewRefusalOf` |
- * | While a session starts (CREATE, PRECHECK, ARMED) the Core yields the camera to the recording: the tile says the preview is paused | `isSessionStarting` |
+ * | While a session is being started (CREATE, PRECHECK, ARMED) the Core yields the camera to the recording: the tile says the preview is paused | `isSessionStarting` |
+ * | D62 (2026-11-05): on a Devices tile the session opens BY ITSELF when the track is assigned and its selector line reads online - debounced, at most 4 at once, closed when the line goes offline or the tab hides | `useAutoPreviewOpen` |
  *
  * THE URL IS A BEARER VALUE: it is set on the `<img>` and nowhere else - never logged, never put in a
  * record, a storage or a test id.
  */
+import { useEffect, useState } from 'react'
 import { SessionState } from '@dems/shared/domain'
 import { CaptureSourceClass } from '@dems/shared/api'
+import { useDocumentVisible } from './idle-meter-lease'
 
 /** The first wait before a failed picture is asked for again. */
 export const PREVIEW_RETRY_FIRST_MS = 2_000
@@ -97,4 +100,102 @@ export function isSessionStarting(state: string | null | undefined): boolean {
 /** Whether the device on a track has a live preview on the Core: a PRODUCTION camera (the Core's own rule of operation 112). */
 export function isLivePreviewDevice(device: { readonly kind?: string; readonly sourceClass?: string | null } | undefined): boolean {
   return device !== undefined && device.sourceClass === CaptureSourceClass.PRODUCTION && (device.kind === undefined || device.kind === 'CAMERA')
+}
+
+// ── D62 (2026-11-05): the Devices tile opens its preview BY ITSELF ──────────────────────────────
+//
+// The principal's ruling: the console auto-opens the live preview of every assigned+online tile. The
+// session itself (`LivePreview` in `camera-preview.tsx`) and its honest rule - the UNAVAILABLE caption
+// after 3 frame-less failures, the backoff retry continuing - stay EXACTLY as they were; this gate sits
+// ABOVE the session and decides only WHEN a tile mounts it:
+//
+// | Rule | Where |
+// |------|-------|
+// | A tile with no device on the track, or one that is not a production camera, never opens anything (Simulated mode asks for nothing at all: no Core, no `LivePreview`) | `CameraPreview` (the caller's `autoPreview`) |
+// | Opens only while the selector line of the track reads online; offline closes the session at once | `AutoLivePreview` |
+// | Opens only while the tab is visible (`visibilitychange`); hidden closes, visible re-opens | `useAutoPreviewOpen` |
+// | ~1 s between the tile becoming eligible and the first token: an offline/online blip costs no request | `PREVIEW_AUTO_OPEN_DEBOUNCE_MS` |
+// | At most 4 auto sessions open across the console at once; the fifth takes the slot that frees next | `claimPreviewSlot` |
+
+/** D62: the wait between a tile becoming eligible and its first token being asked for. */
+export const PREVIEW_AUTO_OPEN_DEBOUNCE_MS = 1_000
+/** D62: how many auto preview sessions the console holds open at once. */
+export const PREVIEW_AUTO_MAX_CONCURRENT = 4
+
+let previewSlotsTaken = 0
+const previewSlotWaiters = new Set<() => void>()
+
+/** D62: whether a free auto-preview slot was taken; the holder releases it with `releasePreviewSlot`. */
+export function claimPreviewSlot(): boolean {
+  if (previewSlotsTaken >= PREVIEW_AUTO_MAX_CONCURRENT) return false
+  previewSlotsTaken += 1
+  return true
+}
+
+/** D62: gives one slot back and tells every waiter, which may take it. */
+export function releasePreviewSlot(): void {
+  if (previewSlotsTaken === 0) return
+  previewSlotsTaken -= 1
+  for (const waiter of [...previewSlotWaiters]) waiter()
+}
+
+/** D62: told whenever a slot comes free; returns the unsubscribe. */
+export function subscribePreviewSlots(listener: () => void): () => void {
+  previewSlotWaiters.add(listener)
+  return () => {
+    previewSlotWaiters.delete(listener)
+  }
+}
+
+/** D62: how many slots stand taken now (the cap rule, read by tests). */
+export function previewSlotsTakenCount(): number {
+  return previewSlotsTaken
+}
+
+/**
+ * D62: when an eligible tile actually opens its session. `true` once `eligible && visible` has stood
+ * for `PREVIEW_AUTO_OPEN_DEBOUNCE_MS` AND the tile holds one of the `PREVIEW_AUTO_MAX_CONCURRENT`
+ * slots; `false` the moment either condition fails or the slot is given up (a waiter takes the next
+ * released slot as soon as one frees). The debounce runs on the page's timers, so a test drives it
+ * with `pageTimersFake` / `pass`.
+ */
+export function useAutoPreviewOpen(eligible: boolean): boolean {
+  const visible = useDocumentVisible()
+  const open = eligible && visible
+  const [debounced, setDebounced] = useState(false)
+  useEffect(() => {
+    if (!open) {
+      setDebounced(false)
+      return undefined
+    }
+    const timer = setTimeout(() => setDebounced(true), PREVIEW_AUTO_OPEN_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [open])
+  const [hasSlot, setHasSlot] = useState(false)
+  useEffect(() => {
+    if (!debounced) {
+      setHasSlot(false)
+      return undefined
+    }
+    let held = false
+    const tryClaim = () => {
+      if (held) return
+      if (claimPreviewSlot()) {
+        held = true
+        setHasSlot(true)
+      } else {
+        setHasSlot(false)
+      }
+    }
+    tryClaim()
+    const unsubscribe = subscribePreviewSlots(tryClaim)
+    return () => {
+      unsubscribe()
+      if (held) {
+        held = false
+        releasePreviewSlot()
+      }
+    }
+  }, [debounced])
+  return debounced && hasSlot
 }

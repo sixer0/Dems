@@ -144,6 +144,9 @@ export function CameraTile({ cameraId, lens }: CameraTileProps) {
           noSignal={status === 'FAULT' || status === 'OFFLINE'}
           // Decisions D51 / D53: on a Core in real capture a production camera shows its live preview here.
           livePreview
+          // D62 (2026-11-05): the Devices tile opens that preview BY ITSELF when the line reads online
+          // (debounced ~1 s, max 4 concurrent, closed on offline / hidden tab); the click still opens the drawer.
+          autoPreview
           // Live mode: the picture is the bundled demo loop, not a live preview (plan row W0, item 7).
           ariaLabel={t(words.feedAria, { name })}
         />
