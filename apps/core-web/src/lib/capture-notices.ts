@@ -18,6 +18,7 @@
  */
 import type { TFunction } from 'i18next'
 import type { CaptureSelectorSlot, SimAlert } from '@dems/shared/sim'
+import { LAST_CHECK_READING, PRIMARY_MIC_CHANNEL } from '@dems/shared/sim'
 
 export const CAPTURE_NOTICE_REASON = {
   DISCOVERY_EMPTY: 'CAPTURE_DISCOVERY_EMPTY',
@@ -232,6 +233,11 @@ export interface UnreachablePrecheck {
   readonly deviceKind: CaptureNoticeDeviceKind
   /** The other microphone, for the sentence that names it; `null` otherwise. */
   readonly otherDeviceId: string | null
+  /**
+   * Audit row 150 (D104, RD-128b-1): present and true only for the LAST-CHECK reading of channel 1 (Pair 1, the
+   * transcribed audio; `params.reading` LAST_CHECK, `params.slot` MIC-01). Its sentence is its own, not `noStandby`'s.
+   */
+  readonly transcribedLastCheck?: true
 }
 
 /**
@@ -247,7 +253,8 @@ export function unreachablePrecheckOf(item: { readonly value?: string | null; re
   const deviceKind = params['deviceKind']
   if (rule === undefined || rule === 'sourceNotAssigned' || typeof deviceId !== 'string' || !DEVICE_ID.test(deviceId) || (deviceKind !== 'CAMERA' && deviceKind !== 'MIC')) return null
   const other = params['other']
-  return { rule, deviceId, deviceKind, otherDeviceId: typeof other === 'string' && DEVICE_ID.test(other) ? other : null }
+  const transcribedLastCheck = deviceKind === 'MIC' && params['reading'] === LAST_CHECK_READING && params['slot'] === PRIMARY_MIC_CHANNEL
+  return { rule, deviceId, deviceKind, otherDeviceId: typeof other === 'string' && DEVICE_ID.test(other) ? other : null, ...(transcribedLastCheck ? { transcribedLastCheck: true as const } : {}) }
 }
 
 /** The sentence of the start rule for an unreachable source (ux §8g.3), with the devices named by label and id. */
@@ -256,6 +263,8 @@ export function unreachablePrecheckText(t: Translate, source: UnreachablePrechec
   const other = source.otherDeviceId === null ? '' : captureDeviceName(t, source.otherDeviceId)
   // The active microphone without a second one to name: the rule still blocks; the sentence says what cannot start.
   if (source.rule === 'activeMicrophone' && source.otherDeviceId === null) return t('common.captureNotice.start.noMicrophone')
+  // Audit row 150 (D104, RD-128b-1): channel 1 read unreachable at the last check - the transcribed pair, which blocks when the checks run.
+  if (source.transcribedLastCheck === true) return t('sessionNew.precheckLastCheck.transcribedMic', { device })
   return t(`common.captureNotice.start.${source.rule}`, { device, other })
 }
 

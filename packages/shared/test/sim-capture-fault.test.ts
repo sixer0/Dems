@@ -114,7 +114,8 @@ describe('worded by its reason', () => {
       expect(CAPTURE_REASON_SEVERITY.CAMERA_NOT_CONNECTED).toBe('WARNING');
       // Task 4 row N2 (SM-32 (5)): the advisory list carries a second level. Advice is INFO, but for the THREE notices of a
       // microphone that loses more audio than it should, which the operator reads as a WARNING; never CRITICAL, never a fault.
-      expect([...CAPTURE_ADVISORY_WARNING_REASONS]).toEqual(['MIC_SAMPLES_SHORT_ABOVE_BOUND', 'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', 'MIC_SILENCE_RUN_INSERTED']);
+      // Audit row 149 (D132): + a camera that records without the microphone of its pair.
+      expect([...CAPTURE_ADVISORY_WARNING_REASONS]).toEqual(['MIC_SAMPLES_SHORT_ABOVE_BOUND', 'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', 'MIC_SILENCE_RUN_INSERTED', 'PAIRED_MIC_MISSING']);
       for (const reason of CAPTURE_ADVISORY_REASONS) expect(CAPTURE_REASON_SEVERITY[reason], reason).toBe(CAPTURE_ADVISORY_WARNING_REASONS.includes(reason) ? 'WARNING' : 'INFO');
       for (const reason of CAPTURE_ADVISORY_WARNING_REASONS) expect(CAPTURE_ADVISORY_REASONS, reason).toContain(reason);
       expect(Object.keys(CAPTURE_REASON_SEVERITY).sort()).toEqual(Object.keys(CAPTURE_FAULT_SENTENCES).sort());
@@ -124,11 +125,13 @@ describe('worded by its reason', () => {
         // The level of the alert (`CAPTURE_ADVISORY_SEVERITY`) is the severity of the wording table: one statement, two tables held equal.
         expect(CAPTURE_ADVISORY_SEVERITY[reason], reason).toBe(CAPTURE_REASON_SEVERITY[reason]);
       }
-      // 5 -> 10 advisory reasons with the five of row N2, appended last in both lists.
-      expect(Object.values(CaptureAdvisoryReason)).toHaveLength(10);
-      expect(CAPTURE_ADVISORY_REASONS).toHaveLength(10);
-      expect(Object.values(CaptureAdvisoryReason).slice(-5)).toEqual(['MIC_PATH_NOT_SAMPLE_CONTINUOUS', 'MIC_SAMPLES_SHORT_ABOVE_BOUND', 'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', 'MIC_SILENCE_RUN_INSERTED', 'STANDBY_ON_PRIMARY_DEVICE']);
-      expect(Object.values(CaptureAdvisoryReason).slice(-5).map((reason) => CAPTURE_ADVISORY_DEVICE_KIND[reason])).toEqual(['MIC', 'MIC', 'MIC', 'MIC', 'MIC']);
+      // 5 -> 10 advisory reasons with the five of row N2; audit row 149 (D132) appends PAIRED_MIC_MISSING last in both lists (10 -> 11).
+      expect(Object.values(CaptureAdvisoryReason)).toHaveLength(11);
+      expect(CAPTURE_ADVISORY_REASONS).toHaveLength(11);
+      expect(Object.values(CaptureAdvisoryReason).at(-1)).toBe('PAIRED_MIC_MISSING');
+      expect(CAPTURE_ADVISORY_DEVICE_KIND.PAIRED_MIC_MISSING).toBe('CAMERA');
+      expect(Object.values(CaptureAdvisoryReason).slice(-6, -1)).toEqual(['MIC_PATH_NOT_SAMPLE_CONTINUOUS', 'MIC_SAMPLES_SHORT_ABOVE_BOUND', 'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', 'MIC_SILENCE_RUN_INSERTED', 'STANDBY_ON_PRIMARY_DEVICE']);
+      expect(Object.values(CaptureAdvisoryReason).slice(-6, -1).map((reason) => CAPTURE_ADVISORY_DEVICE_KIND[reason])).toEqual(['MIC', 'MIC', 'MIC', 'MIC', 'MIC']);
     });
 
     it('task 4 row N2: the five notices of a microphone path that is not sample-continuous - the sentences of the design word for word, the fixed sentence in one place, numbers as whole values or not at all', () => {

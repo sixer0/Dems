@@ -407,7 +407,7 @@ describe('gate 64 C7 and the owner-only folders: the boot probe of the worker (w
       writeWorkerStamp(older, workerStampText({ workerVersion: 'capture-worker/0.6.0', binarySha256: fileSha256(older) }));
       const app = mounted({ captureWorkerPath: older }, SEAMS);
       const failure = await app.refusal();
-      expect([failure.code, failure.reason]).toEqual(['CAPTURE_WORKER_VERSION_MISMATCH', 'expected capture-worker/0.7.0, found capture-worker/0.6.0']);
+      expect([failure.code, failure.reason]).toEqual(['CAPTURE_WORKER_VERSION_MISMATCH', 'expected capture-worker/0.8.0, found capture-worker/0.6.0']);
       expect(app.control.outcome()).toBeNull();
     });
 

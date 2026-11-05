@@ -178,6 +178,15 @@ export const UNKNOWN_MIC_TRANSPORT = 'UNKNOWN';
  * SOURCE row per channel whose device (or transport) changed, `from` the device that held the
  * channel - ABSENT when the slot of the channel was empty (AD-10 (1): `from` is what was there,
  * never the new device). Lines equal to the stored ones give no row.
+ *
+ * A SWAP is ONE row (D30 K-6, blueprint row 155; the op 78 text of row 143): two lines that trade
+ * the two inputs of two assigned channels - each line takes the device (and transport) the other
+ * channel held - write the channel-swap row of operation 80 (`field: 'CHANNEL'`), not two SOURCE
+ * rows. The row names the microphone that lands on the LOWER channel: `from` its old channel, `to`
+ * the channel it took (so a swap onto channel 1 writes the very row operation 80 writes; the other
+ * microphone is the one that held `to`). Any other line (a new device, a rotation over three
+ * channels, a changed transport) keeps its SOURCE row. The Core runs this action in its engine unit
+ * (`modules/capture-config/routes.ts`), so the Core writes the same rows.
  */
 function assignMicsByChannel(
   state: SimState,
@@ -206,11 +215,34 @@ function assignMicsByChannel(
   const kept = current.filter((entry) => !named.has(entry.channel));
   const next = [...built, ...kept];
 
+  /**
+   * The line of the OTHER channel of a swap (D30 K-6), or undefined: `mic` takes the input another
+   * assigned channel held, with its device and transport, and the line of that channel takes back
+   * what `mic`'s channel held, with its device and transport.
+   */
+  const swapPartnerOf = (mic: CaptureConfigMic, before: CaptureConfigMic | undefined): CaptureConfigMic | undefined => {
+    if (before === undefined) return undefined;
+    const origin = current.find((entry) => entry.inputId === mic.inputId && entry.channel !== mic.channel);
+    if (origin === undefined || origin.deviceId !== mic.deviceId || origin.transport !== mic.transport) return undefined;
+    const partner = built.find((line) => line.channel === origin.channel);
+    if (partner === undefined || partner.inputId !== before.inputId || partner.deviceId !== before.deviceId || partner.transport !== before.transport) return undefined;
+    return partner;
+  };
   const rows: AuditDetails[] = [];
+  /** The higher channels of the swaps already written: their line is inside the swap row. */
+  const swappedChannels = new Set<MicChannel>();
   // The rows in channel order, whatever the order of the lines (as the replacing set always wrote them).
   for (const mic of [...built].sort((left, right) => (left.channel < right.channel ? -1 : left.channel > right.channel ? 1 : 0))) {
+    if (swappedChannels.has(mic.channel)) continue;
     const before = heldBy(mic.channel);
     if (before !== undefined && before.deviceId === mic.deviceId && before.transport === mic.transport) continue;
+    const partner = swapPartnerOf(mic, before);
+    if (partner !== undefined) {
+      // D30 K-6 (row 155): ONE channel-swap row of the operation-80 form for the two lines.
+      swappedChannels.add(partner.channel);
+      rows.push({ scope: 'MIC', field: 'CHANNEL', inputId: mic.inputId, deviceId: mic.deviceId, from: partner.channel, to: mic.channel });
+      continue;
+    }
     rows.push({ scope: 'MIC', field: 'SOURCE', channel: mic.channel, inputId: mic.inputId, deviceId: mic.deviceId, ...(before === undefined ? {} : { from: before.deviceId }), to: mic.deviceId });
   }
   return { mics: rows.length === 0 ? current : next, rows };

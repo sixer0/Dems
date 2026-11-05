@@ -5,7 +5,8 @@
  *
  * The engine host runs these inside its own units (`host.ts`, the capture blocks). The five
  * transitions of a capture are the shared simulator's own (re-exported below); what is only the
- * Core's - the rehydrate and the switch given a media time - is written here.
+ * Core's - the rehydrate - is written here. (Audit row W3T, D136: the switch given a media time, op 81 in real
+ * capture, is gone with the retired operation; row 149 removed its last caller.)
  *
  *   captureConnectingTransition   the accepted start: the stored state is RECORDING, the payload
  *                                 says `captureDurable: false` ("connecting cameras");
@@ -22,13 +23,9 @@
  *                                 with its FAULT_CLEARED row (decision D84 R-4: a capture fault
  *                                 that outlived its worker is over when a session records again,
  *                                 or at boot);
- *   audioSourceSwitchTransition   the acknowledged switch of the active microphone: the state of
- *                                 the simulator's own transition WITHOUT its audit row. In real
- *                                 capture the row is written by the session wiring with the keys
- *                                 of contract C3 §5.2 and the media time the worker acknowledged.
  */
-import { SessionState } from '@dems/shared/domain';
-import { FaultKind, applyAudioSourceSwitch, type ActiveSession, type CaptureMicInputId, type EpochMs, type SimState } from '@dems/shared/sim';
+import { SessionState, VIDEO_TRACK_IDS } from '@dems/shared/domain'; // VIDEO_TRACK_IDS: row D2C
+import { FaultKind, type SimState } from '@dems/shared/sim';
 
 // THE FIVE TRANSITIONS OF A CAPTURE ARE THE SHARED ONES (fix pass F-M5, review R74-10). Until this
 // pass this file held a copy of each, kept equal by a parity test, with one difference: the failed
@@ -38,11 +35,12 @@ import { FaultKind, applyAudioSourceSwitch, type ActiveSession, type CaptureMicI
 // rule, one file (`packages/shared/src/sim/capture-session.ts`).
 export { CAPTURE_FAULT_KINDS, FAILED_START_REASON_UNKNOWN, captureConnectingTransition, captureDurableOfSessionTransition, clearCaptureFaultsTransition, failedCaptureStartTransition, interruptedCaptureTransition } from '@dems/shared/sim';
 
-const recordingSessionOf = (state: SimState, sessionId: string): ActiveSession | null =>
-  state.session !== null && state.session.id === sessionId && state.session.state === SessionState.RECORDING ? state.session : null;
-
-/** Whether any fragment row of a session is stored: where `captureDurable` comes from after a restart (no column holds it). */
-export const READ_SESSION_HAS_FRAGMENT = 'SELECT 1 AS found FROM public.recording_fragments WHERE session_id = $1 LIMIT 1';
+/**
+ * Whether a CAMERA file's fragment row of a session is stored: where `captureDurable` comes from after a restart (no
+ * column holds it). Row D2C (D150 (2), F-C1D-2): the rows of a channel file (`AUDIO-0N`, row 148 / migration 0044) are
+ * not counted - a session whose only rows are channel rows was never durable (only a camera file's fragment makes it so).
+ */
+export const READ_SESSION_HAS_FRAGMENT = `SELECT 1 AS found FROM public.recording_fragments WHERE session_id = $1 AND track_id IN (${VIDEO_TRACK_IDS.map((id) => `'${id}'`).join(', ')}) LIMIT 1`;
 
 /**
  * After a restart (the engine host's rehydrate, capture mode `real` only): the member is derived
@@ -73,38 +71,4 @@ export function failedStartAtRehydrateTransition(state: SimState): SimState {
   const open = session.state === SessionState.FAULT || session.state === SessionState.RECOVERY;
   const failed = open && session.startedAt === null && session.fault?.kind === FaultKind.CAPTURE_FAULT && session.fault.fromState === SessionState.RECORDING;
   return failed ? { ...state, session: { ...session, captureDurable: false } } : state;
-}
-
-export interface AudioSourceSwitch {
-  readonly sessionId: string;
-  /** The input that becomes the active one: an input of the session's selector snapshot. */
-  readonly toInputId: string;
-  /** Media time (ms, FILE time) at which the worker realised the switch: where the new interval begins. */
-  readonly atMediaMs: number;
-}
-
-/** What the switch moved, for the row the caller writes. Null: nothing changed. */
-export interface AudioSourceSwitched {
-  readonly fromInputId: string;
-  readonly toInputId: string;
-  /** Start of the interval the switch closed, in media ms. */
-  readonly fromMs: number;
-  /** End of that interval = start of the new one, in media ms. */
-  readonly toMs: number;
-}
-
-/**
- * The acknowledged switch (operation 81 in real capture): THE SHARED RULE of a switch
- * (`applyAudioSourceSwitch`, review R74-10 - one function for the simulator's own operation 81 and
- * for this one), given the MEDIA time the capture worker acknowledged. Writes no audit row.
- * Returns the same state, and `switched: null`, when the session is not that RECORDING session,
- * it has no source pair, the input is none of its selector snapshot, or it is active already.
- */
-export function audioSourceSwitchTransition(state: SimState, now: EpochMs, change: AudioSourceSwitch): { readonly state: SimState; readonly switched: AudioSourceSwitched | null } {
-  const session = recordingSessionOf(state, change.sessionId);
-  const source = session?.audioSource ?? null;
-  const mics = session?.captureConfig?.mics ?? state.captureConfig.mics;
-  const mic = mics.find((entry) => entry.inputId === change.toInputId);
-  if (session === null || source === null || mic === undefined) return { state, switched: null };
-  return applyAudioSourceSwitch(state, now, session, mic.inputId as CaptureMicInputId, change.atMediaMs);
 }

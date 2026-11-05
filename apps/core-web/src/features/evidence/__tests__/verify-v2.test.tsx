@@ -17,7 +17,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { EvidenceVerifyResultSchema, VERIFY_REPORT_SKIP_REASONS, VERIFY_REPORT_SOURCE_CLASSES } from '@dems/shared/api'
 import type { DemoCheckId } from '@dems/shared/demo-data'
-import { SOURCES_STATE_REPORT, TRANSCRIPT_STATE_REPORT, VERIFY_V2_CHECKS } from '@dems/shared/evidence-verify'
+import { SOURCES_STATE_REPORT, TRANSCRIPT_STATE_REPORT, VERIFY_NOTICE, VERIFY_V2_CHECKS } from '@dems/shared/evidence-verify'
 import { en } from '@dems/shared/i18n'
 import { DEMO_TAMPERED_EVIDENCE_SEQ, DEMO_TAMPERED_FRAGMENT_SEQ, DEMO_TAMPERED_FRAGMENT_TRACK, DEMO_TAMPERED_TRACK, OPERATOR_IDS, type EvidenceItem, type Sim } from '@dems/shared/sim'
 import { withProviders } from '@/components/composed/__tests__/test-utils'
@@ -36,8 +36,9 @@ import {
   v2Rows,
   verdictOfAnswer,
   type VerifyV2Answer,
+  v2FileLabel,
 } from '../verify-v2'
-import { RECORDED_VERIFY_V2, type RecordedVerifyName } from './fixtures/verify-v2-recorded'
+import { RECORDED_VERIFY_V2, RECORDED_VERIFY_V2_D5, type RecordedVerifyName } from './fixtures/verify-v2-recorded'
 import { createDatasetSim, evidenceIdOf, stopSims } from './harness'
 
 const V2 = en.evidence.verifyV2
@@ -585,5 +586,110 @@ describe("F-M7 R88-07: the signature line of the detail says which key signed, o
     cleanup()
     mount(null)
     expect(screen.queryByTestId('evidence-signature-key')).toBeNull()
+  })
+})
+
+describe('row 159 (D5; D119): pair audio files, the new codes and the missing-microphone statement in the verify view', () => {
+  // RECORDED answers of the real verifier over row 154's D5 builder (fixtures/verify-v2-recorded.ts, RECORDED_VERIFY_V2_D5).
+  //
+  // | Rule | Test |
+  // |------|------|
+  // | Every recorded D5 answer is what the contract carries | 1 |
+  // | 4+4: eight file rows; an AUDIO-0N row reads "AUDIO-0N audio file · in VIDEO-0N", never a camera file; four source lines read (D60 domino) | 2 |
+  // | AUDIO_FILE_MISSING: FAIL, worded "The audio file AUDIO-03 of Pair 3 is missing from the package.", no "fragment not named" line | 3 |
+  // | AUDIO_FILE_UNREADABLE: worded "... could not be read." | 4 |
+  // | AUDIO_TRACKS_MISSING: shown under "Stated in the signed manifest" with the Core's line, NOT under "Not covered by the package signature" | 5 |
+  // | LEGACY: a /2 answer has no audio row, no file finding, no statement; its rows read as before | 6 |
+  const D5 = RECORDED_VERIFY_V2_D5
+  const rowLabel = (id: string) => screen.getByTestId('evidence-v2-rows').querySelector<HTMLElement>(`[data-check="${id}"] .evi-check-label`)?.textContent
+
+  it('1 - the recorded D5 answers are what the contract carries', () => {
+    for (const [name, recorded] of Object.entries(D5)) expect(EvidenceVerifyResultSchema.safeParse(recorded.body).success, name).toBe(true)
+  })
+
+  it('2 - the 4+4 package: PASS, eight file rows, each AUDIO-0N "in VIDEO-0N"; the four source lines read as DEVELOPMENT', () => {
+    const answer = read(D5.d5Pass.body)
+    expect(answer.malformed).toEqual([])
+    expect(answer.sources?.state).toBe('DEVELOPMENT')
+    expect(answer.sources?.tracks.map((track) => track.trackId)).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'])
+    expect(answer.fileFindings).toEqual([])
+    const sim = createDatasetSim()
+    renderCard(sim, rowOf(sim, datasetItem(sim, '0001')), coreState({ verdict: answer.verdict, v2: answer }))
+    expect(chip()).toHaveAttribute('data-verdict', 'PASS')
+    expect(rowPhases().map(([id]) => id).slice(0, 8)).toEqual(['file:VIDEO-01', 'file:VIDEO-02', 'file:VIDEO-03', 'file:VIDEO-04', 'file:AUDIO-01', 'file:AUDIO-02', 'file:AUDIO-03', 'file:AUDIO-04'])
+    expect(rowLabel('file:VIDEO-03')).toBe('VIDEO-03 file')
+    expect(rowLabel('file:AUDIO-02')).toBe('AUDIO-02 audio file · in VIDEO-02')
+    expect(rowLabel('file:AUDIO-04')).toBe('AUDIO-04 audio file · in VIDEO-04')
+    expect(screen.getByTestId('evidence-v2-rows').textContent ?? '').not.toMatch(/AUDIO-0\d file\b/)
+    expect(screen.queryByTestId('evidence-v2-file-findings')).toBeNull()
+    expect(screen.queryByTestId('evidence-v2-statements')).toBeNull()
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('2b - an audio row whose camera file the answer does not list names its pair instead', () => {
+    expect(v2FileLabel({ trackId: 'AUDIO-03' }, { files: [] }, t)).toBe('AUDIO-03 audio file · Pair 3')
+    expect(v2FileLabel({ trackId: 'VIDEO-03' }, { files: [] }, t)).toBe('VIDEO-03 file')
+  })
+
+  it('3 - AUDIO_FILE_MISSING: FAIL, the file named in words, and no "fragment not named" line', () => {
+    const answer = read(D5.d5AudioFileMissing.body)
+    expect(answer.verdict).toBe('FAIL')
+    expect(answer.fileFindings).toEqual([{ code: 'AUDIO_FILE_MISSING', trackId: 'AUDIO-03' }])
+    const sim = createDatasetSim()
+    renderCard(sim, rowOf(sim, datasetItem(sim, '0001')), coreState({ verdict: answer.verdict, v2: answer }))
+    expect(chip()).toHaveAttribute('data-verdict', 'FAIL')
+    expect(rowPhases().find(([id]) => id === 'file:AUDIO-03')).toEqual(['file:AUDIO-03', 'fail'])
+    expect(screen.getByTestId('evidence-v2-file-findings')).toHaveTextContent('The audio file AUDIO-03 of Pair 3 is missing from the package.')
+    expect(screen.queryByTestId('evidence-v2-fragment-not-named')).toBeNull()
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('4 - AUDIO_FILE_UNREADABLE is worded as a file that is there and could not be read', () => {
+    const body = JSON.parse(JSON.stringify(D5.d5AudioFileMissing.body)) as { checks: { id: string; findings: { code: string; failureClass: string }[] }[] }
+    const v04 = body.checks.find((check) => check.id === 'V-04')
+    if (v04 === undefined) throw new Error('no V-04')
+    v04.findings = v04.findings.map((finding) => ({ ...finding, code: 'AUDIO_FILE_UNREADABLE', failureClass: 'UNREADABLE' }))
+    const answer = read(body)
+    expect(answer.fileFindings).toEqual([{ code: 'AUDIO_FILE_UNREADABLE', trackId: 'AUDIO-03' }])
+    const sim = createDatasetSim()
+    renderCard(sim, rowOf(sim, datasetItem(sim, '0001')), coreState({ verdict: answer.verdict, v2: answer }))
+    expect(screen.getByTestId('evidence-v2-file-findings')).toHaveTextContent('The audio file AUDIO-03 of Pair 3 is in the package but could not be read.')
+  })
+
+  it('5 - AUDIO_TRACKS_MISSING: said under "Stated in the signed manifest" with the Core\'s own line; the other notice stays under "Not covered"', () => {
+    const answer = read(D5.d5MicMissing.body)
+    expect(answer.verdict).toBe('PASS')
+    expect(answer.files.map((file) => file.trackId)).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-03', 'AUDIO-04'])
+    const sim = createDatasetSim()
+    renderCard(sim, rowOf(sim, datasetItem(sim, '0001')), coreState({ verdict: answer.verdict, v2: answer }))
+    const statements = screen.getByTestId('evidence-v2-statements')
+    expect(statements).toHaveTextContent(V2.statementsTitle)
+    expect(within(statements).getByTestId('evidence-v2-notice-AUDIO_TRACKS_MISSING').textContent).toBe('Audio: 1 PAIR MICROPHONE NOT RECORDED. AUDIO-02 not assigned, VIDEO-02 silent. Its silent track is no sound of the room.')
+    const notCovered = screen.getByTestId('evidence-v2-notices')
+    expect(within(notCovered).queryByTestId('evidence-v2-notice-AUDIO_TRACKS_MISSING')).toBeNull()
+    expect(within(notCovered).getByTestId('evidence-v2-notice-AUDIT_EXTRACT_NOT_SIGNED')).toBeTruthy()
+    expect(getMissingI18nKeys()).toEqual([])
+  })
+
+  it('6 - LEGACY: a /2 answer has no audio row, no file finding and no statement; its file rows read as before', () => {
+    const answer = read(withPending('pass'))
+    expect(answer.fileFindings).toEqual([])
+    const sim = createDatasetSim()
+    renderCard(sim, rowOf(sim, datasetItem(sim, '0001')), coreState({ verdict: answer.verdict, v2: answer }))
+    expect(rowLabel('file:VIDEO-01')).toBe('VIDEO-01 file')
+    expect(rowLabel('file:VIDEO-02')).toBe('VIDEO-02 file')
+    expect(screen.queryByTestId('evidence-v2-statements')).toBeNull()
+    expect(screen.queryByTestId('evidence-v2-file-findings')).toBeNull()
+    expect(screen.getByTestId('evidence-v2-rows').textContent ?? '').not.toMatch(/AUDIO-0/)
+  })
+
+  it('7 - row 160 (D133): an answer with all 10 notice codes is read whole; an eleventh entry is named malformed', () => {
+    const codes = Object.values(VERIFY_NOTICE)
+    expect(codes).toHaveLength(10)
+    const all = codes.map((code) => ({ code, report: `The ${code} line.` }))
+    const whole = read({ ...D5.d5MicMissing.body, notices: all })
+    expect(whole.malformed).not.toContain('notices')
+    expect(whole.notices.map((notice) => notice.code)).toEqual(codes)
+    expect(read({ ...D5.d5MicMissing.body, notices: [...all, all[0]] }).malformed).toContain('notices')
   })
 })

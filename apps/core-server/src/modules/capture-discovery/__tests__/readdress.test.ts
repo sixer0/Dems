@@ -11,11 +11,12 @@
 // (the engine has no door for a re-address yet: request of row 97), and a real camera that moved
 // (`9A/H-12`).
 import { CAPTURE_READDRESS_ADDRESS_NOT_ALLOWED_SENTENCE, CAPTURE_READDRESS_REFUSAL_SENTENCES, CaptureReaddressReason } from '@dems/shared/api';
-import { AuditType, type CaptureDeviceStatus } from '@dems/shared/sim';
+import { AuditType, createManualClock, createSim, type CaptureDeviceStatus } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
 import { DestinationPurpose, decideDestination, type DestinationContext } from '../../../capture/destination-rule';
 import { detailRulesOf, type AuditEntry } from '../../../core';
 import type { EngineOutcome, EngineUnit } from '../../../engine';
+import { bindInternalActions, captureDeviceReachTransition, type InternalActions } from '../../../engine/internal-actions'; // audit row M97 cycle 2
 import {
   READDRESS_AUDIT_REASON,
   READDRESS_UNIT_LABEL,
@@ -487,5 +488,37 @@ describe('the two address helpers', () => {
     expect(storedHostLiteral('192.168.50.64')).toBe('192.168.50.64');
     expect(storedHostLiteral('192.168.50.64:8080')).toBe('192.168.50.64');
     for (const text of ['camera-one.local', 'http://192.168.50.64/', 'admin:secret@192.168.50.64', '']) expect(storedHostLiteral(text), text).toBeNull();
+  });
+});
+
+// ── Audit row M97 cycle 2 (D123, RD-M97-3): op 100 clears the camera's reach in its own unit ─────
+describe('audit row M97 cycle 2: a confirmed re-address clears the reach taken at the old address', () => {
+  it('the door re-addresses, then clears reach (null, null) for that camera in the same unit - never REACHABLE; CONTROL: an unbuilt scope is still refused before anything', async () => {
+    const calls: Array<[string, unknown]> = [];
+    const scope = {} as EngineUnit;
+    bindInternalActions(scope, {
+      async readdressCaptureDevice(change: unknown) {
+        calls.push(['readdress', change]);
+        return { id: 'CAM-01' } as never;
+      },
+      async noteCaptureDeviceReach(reading: unknown) {
+        calls.push(['reach', reading]);
+        return true;
+      },
+    } as unknown as InternalActions);
+    await engineDeviceReaddresser(scope, { deviceId: 'CAM-01', address: '192.168.50.77', at: 1 });
+    expect(calls).toEqual([
+      ['readdress', { deviceId: 'CAM-01', address: '192.168.50.77' }],
+      ['reach', { deviceId: 'CAM-01', reach: null, checkedAt: null }],
+    ]);
+    await expect(engineDeviceReaddresser({} as EngineUnit, { deviceId: 'CAM-01', address: '192.168.50.77', at: 1 })).rejects.toMatchObject({ code: 'ENGINE_ACTION_NOT_HOSTED' });
+  });
+
+  it('the cleared camera: a stale NOT_REACHABLE becomes "not checked", host, online and every other device as they were (row 127 transition)', () => {
+    const sim = createSim({ clock: createManualClock(1), storage: null, authStorage: null });
+    const stale = captureDeviceReachTransition(sim.store.getState(), { deviceId: 'CAM-01', reach: 'NOT_REACHABLE', checkedAt: 5 });
+    const cleared = captureDeviceReachTransition(stale, { deviceId: 'CAM-01', reach: null, checkedAt: null });
+    expect(cleared.captureDevices.devices.find((device) => device.id === 'CAM-01')).toMatchObject({ reach: null, checkedAt: null });
+    expect(cleared.captureDevices.devices.map((device) => [device.id, device.host, device.online])).toEqual(stale.captureDevices.devices.map((device) => [device.id, device.host, device.online]));
   });
 });

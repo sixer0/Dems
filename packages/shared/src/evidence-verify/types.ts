@@ -78,6 +78,9 @@ export const VERIFY_FAILURES = {
   // V-04
   CAMERA_FILE_MISSING: { check: 'V-04', failureClass: 'MISSING' },
   CAMERA_FILE_UNREADABLE: { check: 'V-04', failureClass: 'UNREADABLE' },
+  /** D5 (row 154): the sealed audio file of a pair (`fragments/AUDIO-0N.m4a`, manifest `audioTracks`) is not there / cannot be read. The finding names its `trackId`. */
+  AUDIO_FILE_MISSING: { check: 'V-04', failureClass: 'MISSING' },
+  AUDIO_FILE_UNREADABLE: { check: 'V-04', failureClass: 'UNREADABLE' },
   FILE_SIZE_MISMATCH: { check: 'V-04', failureClass: 'TAMPERED' },
   FILE_HASH_MISMATCH: { check: 'V-04', failureClass: 'TAMPERED' },
   FRAGMENT_HASH_MISMATCH: { check: 'V-04', failureClass: 'TAMPERED' },
@@ -423,6 +426,8 @@ export const VERIFY_NOTICE = {
   AUDIO_SAMPLES_NOT_RECEIVED: 'AUDIO_SAMPLES_NOT_RECEIVED',
   /** Task 4 row N2 (decisions C110 (4), C112 (4)): see `AUDIO_ONE_CAPTURE_GROUP_REPORT`. */
   AUDIO_ONE_CAPTURE_GROUP: 'AUDIO_ONE_CAPTURE_GROUP',
+  /** Audit 2026-11-05 row 154 (D5, decision D30 K-3): see `audioTracksMissingReport`. */
+  AUDIO_TRACKS_MISSING: 'AUDIO_TRACKS_MISSING',
 } as const;
 export type VerifyNoticeCode = (typeof VERIFY_NOTICE)[keyof typeof VERIFY_NOTICE];
 export interface VerifyNotice {
@@ -569,6 +574,47 @@ export function audioAbsentOnRestartReport(gaps: readonly AudioRestartGapStated[
   const said = `Audio: ABSENT ACROSS A RESTART OF THE CAPTURE. ${String(count)} time${count === 1 ? '' : 's'}, at least ${sumOf(gaps.map((gap) => gap.absentAtLeastMs))}, at most ${sumOf(gaps.map((gap) => gap.absentAtMostMs))}.`;
   const line = `${said} No sound was recorded in that time.`;
   // The closing sentence is the first thing given up for the contract's bound; the numbers never are, short of the bound itself.
+  return line.length <= VIDEO_ABSENT_REPORT_MAX ? line : said.slice(0, VIDEO_ABSENT_REPORT_MAX);
+}
+
+/**
+ * `AUDIO_TRACKS_MISSING` (audit 2026-11-05 row 154; D5, decision D30 K-3, D45 R145-2). A D5
+ * manifest (`dems.evidence-manifest/2.1`) carries the optional signed member `audioTracksMissing`
+ * (fields 175-179): the paired microphone of a camera-microphone pair did not record - none was
+ * assigned to its channel (`NOT_ASSIGNED`) or it could not be opened at the start (`NOT_OPENED`) -
+ * the recording went on, and the camera file of that pair holds a SILENT audio track. A verifier
+ * SAYS it, so that the silence is read as a stated fact and never as a quiet room.
+ *
+ * IT FAILS NOTHING AND CHANGES NO VERDICT: the statement is part of the signed manifest (V-01 holds
+ * its rules), and there is no audio file of such a pair to check. A package without the member -
+ * every package sealed before D5 - gets no line and reads as before. It is raised from the manifest
+ * the verifier READ - also when another check of the same package fails.
+ *
+ * ONE LINE for the whole package: per stated pair its audio track id, the reason word and the
+ * camera that holds the silence. Ids are printed only in the form of the closed list.
+ */
+export interface AudioTrackMissingStated {
+  readonly trackId: string;
+  readonly silentIn: readonly string[];
+  readonly reason: string;
+}
+/** An audio / camera id that may be PRINTED in the line: the form of the closed lists. Any other is stated as "a pair" / not named. */
+export const AUDIO_TRACK_MISSING_TRACK_ID = /^AUDIO-0[1-4]$/;
+const AUDIO_TRACK_MISSING_CAMERA_ID = /^VIDEO-0[1-4]$/;
+const AUDIO_TRACK_MISSING_REASON_WORDS: Readonly<Record<string, string>> = Object.freeze({ NOT_ASSIGNED: 'not assigned', NOT_OPENED: 'not opened' });
+/** THE WORDING SOURCE of the notice: the report line both clients and the receiver's command draw. Empty input: the empty string (no notice). */
+export function audioTracksMissingReport(records: readonly AudioTrackMissingStated[]): string {
+  if (records.length === 0) return '';
+  const parts = records.slice(0, 4).map((record) => {
+    const named = AUDIO_TRACK_MISSING_TRACK_ID.test(record.trackId) ? record.trackId : 'a pair';
+    const word = Object.hasOwn(AUDIO_TRACK_MISSING_REASON_WORDS, record.reason) ? AUDIO_TRACK_MISSING_REASON_WORDS[record.reason] : 'not recorded';
+    const camera = record.silentIn.find((trackId) => AUDIO_TRACK_MISSING_CAMERA_ID.test(trackId));
+    return `${named} ${String(word)}${camera === undefined ? '' : `, ${camera} silent`}`;
+  });
+  const count = records.length;
+  const said = `Audio: ${String(count)} PAIR MICROPHONE${count === 1 ? '' : 'S'} NOT RECORDED. ${parts.join('; ')}.`;
+  const line = `${said} ${count === 1 ? 'Its silent track is' : 'Their silent tracks are'} no sound of the room.`;
+  // The closing sentence is the first thing given up for the contract's bound; the ids never are, short of the bound itself.
   return line.length <= VIDEO_ABSENT_REPORT_MAX ? line : said.slice(0, VIDEO_ABSENT_REPORT_MAX);
 }
 

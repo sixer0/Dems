@@ -13,7 +13,6 @@ import {
   type SimState,
   FaultKind,
   recordEvidenceVerificationTransition,
-  SIM_CONSOLE_DEVICE_ID,
   DEMO_OPERATOR_PASSWORD,
   OPERATORS,
   setCaptureConfigTransition,
@@ -406,28 +405,17 @@ describe('the microphone switch of a simulator inside a device app', () => {
     return { sim, run, lastSwitch, sessionId: sim.store.getState().session?.id ?? '' };
   }
 
-  describe('the sending device of a microphone switch in the simulator', () => {
-    it('a device console: the row and its details name the paired device, by the action and by operation 81', () => {
-      const h = recording(true);
-      h.sim.actions.switchAudioSource('MIC-02');
-      expect(h.lastSwitch()).toMatchObject({ deviceId: SIM_CONSOLE_DEVICE_ID, details: { fromInput: 'MIC-01', toInput: 'MIC-02', sendingDeviceId: SIM_CONSOLE_DEVICE_ID } });
+  // Audit row 150 (D28 DQ-2; register N-29, N-36): operation 81 is retired, so neither a device console nor a web console
+  // session writes a switch row any more - by the action or by the route. The rule `sendingDeviceOf` names the device on
+  // the rows of the other session actions (below), unchanged.
+  describe('the sending device of a microphone switch in the simulator (op 81 retired: no row from any console)', () => {
+    it.each([true, false])('device console %s: the action and operation 81 are refused AUDIO_SOURCE_FIXED_BY_PAIRING, and no switch row is written', (deviceConsole) => {
+      const h = recording(deviceConsole);
+      expect(() => h.sim.actions.switchAudioSource('MIC-02')).toThrow(expect.objectContaining({ code: 'AUDIO_SOURCE_FIXED_BY_PAIRING' }));
       h.run(1_000);
       const answer = h.sim.request({ method: 'POST', path: `/api/v1/session/${h.sessionId}/audio-source`, body: { inputId: 'MIC-01' } });
-      expect(answer.status).toBe(200);
-      expect(h.lastSwitch()).toMatchObject({ deviceId: SIM_CONSOLE_DEVICE_ID, details: { fromInput: 'MIC-02', toInput: 'MIC-01', sendingDeviceId: SIM_CONSOLE_DEVICE_ID } });
-    });
-
-    it('CONTROL - a web console session: no device on the row and no `sendingDeviceId` key at all', () => {
-      const h = recording(false);
-      h.sim.actions.switchAudioSource('MIC-02');
-      h.run(1_000);
-      expect(h.sim.request({ method: 'POST', path: `/api/v1/session/${h.sessionId}/audio-source`, body: { inputId: 'MIC-01' } }).status).toBe(200);
-      const rows = h.sim.store.getState().audit.rows.filter((row) => row.type === 'AUDIO_SOURCE_SWITCHED');
-      expect(rows).toHaveLength(2);
-      for (const row of rows) {
-        expect(row.deviceId).toBeNull();
-        expect(Object.keys(row.details)).toEqual(['fromInput', 'toInput', 'fromMs', 'toMs']);
-      }
+      expect(answer).toMatchObject({ status: 409, body: { error: { code: 'AUDIO_SOURCE_FIXED_BY_PAIRING' } } });
+      expect(h.lastSwitch()).toBeUndefined();
     });
   });
 });
@@ -454,16 +442,17 @@ describe('a selector edit', () => {
   const CHANGES: readonly (readonly [string, CaptureConfigChange, number])[] = [
     ['operation 80, the primary microphone', { kind: 'PRIMARY_MIC', inputId: 'MIC-02' }, 1],
     ['operation 79, a camera source', { kind: 'UPDATE', cameras: [{ trackId: 'VIDEO-01', deviceId: 'CAM-02' }, { trackId: 'VIDEO-02', deviceId: 'CAM-01' }] }, 2],
-    // D61 (2026-11-04): the by-role pair became the by-channel set; a pure trade of channels 1 and 2
-    // changes both lines, so it writes one SOURCE row per channel.
-    ['operation 78, the microphone pair', { kind: 'UPDATE', mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', channel: 'MIC-02' }, { inputId: 'MIC-02', deviceId: 'MIC-02', channel: 'MIC-01' }] }, 2],
+    // D61 (2026-11-04): the by-role pair became the by-channel set; D30 K-6 (row 155): a pure trade of
+    // channels 1 and 2 is a swap and writes ONE channel-swap row (was one SOURCE row per channel).
+    ['operation 78, the microphone pair', { kind: 'UPDATE', mics: [{ inputId: 'MIC-01', deviceId: 'MIC-01', channel: 'MIC-02' }, { inputId: 'MIC-02', deviceId: 'MIC-02', channel: 'MIC-01' }] }, 1],
   ];
 
   describe('G70-05: a selector edit names the device that sent it', () => {
     it.each(CHANGES)('%s from a paired device: every row of the edit carries that device', (_label, change, atLeast) => {
       const next = setCaptureConfigTransition(fromDevice(signedIn(), PAIRED), NOW + 1_000, change);
       const rows = changedRows(next);
-      expect(rows.length).toBeGreaterThanOrEqual(atLeast);
+      // D125 (row 155): the count is EXACT - op 80 one row, op 79's camera trade two, op 78's mic swap ONE (D30 K-6).
+      expect(rows).toHaveLength(atLeast);
       expect(rows.map((row) => row.deviceId)).toEqual(rows.map(() => PAIRED));
       // The details are unchanged: their `deviceId` is the capture device of the line, never the sender.
       for (const row of rows) expect(Object.keys(row.details)).not.toContain('sendingDeviceId');
@@ -474,6 +463,18 @@ describe('a selector edit', () => {
       const rows = changedRows(setCaptureConfigTransition(signedIn(), NOW + 1_000, change));
       expect(rows.length).toBeGreaterThan(0);
       expect(rows.map((row) => row.deviceId ?? null)).toEqual(rows.map(() => null));
+    });
+
+    it('D30 K-6 (row 155, D125): the two-line operation-78 mic swap from a paired device is EXACTLY ONE channel-swap row; a single line keeps its one SOURCE row', () => {
+      const swap = changedRows(setCaptureConfigTransition(fromDevice(signedIn(), PAIRED), NOW + 1_000, { kind: 'UPDATE', mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', channel: 'MIC-01' }, { inputId: 'MIC-01', deviceId: 'MIC-01', channel: 'MIC-02' }] }));
+      expect(swap.map((row) => [row.deviceId, row.details])).toEqual([
+        [PAIRED, { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'CHANNEL', inputId: 'MIC-02', deviceId: 'MIC-02', from: 'MIC-02', to: 'MIC-01', permission: 'CAPTURE_CONFIG' }],
+      ]);
+      // CONTROL - a single line by channel onto an empty channel is one SOURCE row, as before.
+      const cleared = setCaptureConfigTransition(signedIn(), NOW + 1_000, { kind: 'UPDATE', unassign: ['MIC-03'] });
+      const before = changedRows(cleared).length;
+      const single = changedRows(setCaptureConfigTransition(fromDevice(cleared, PAIRED), NOW + 2_000, { kind: 'UPDATE', mics: [{ inputId: 'MIC-03', deviceId: 'MIC-03', channel: 'MIC-03' }] })).slice(before);
+      expect(single.map((row) => [row.details['field'], row.details['channel'], row.details['to']])).toEqual([['SOURCE', 'MIC-03', 'MIC-03']]);
     });
 
     it('a value that is no device id is never written as one', () => {
@@ -488,25 +489,17 @@ describe('a selector edit', () => {
 describe('the microphone switch sent as a hosted command', () => {
   const { harness } = sessionFaultBed;
 
-  describe('G75-02: the switch row names the device that sent the command', () => {
+  // Audit row 150 (D28 DQ-2): the switch is retired, so a hosted command of a paired device session writes no switch row;
+  // it is refused with the pairing code like a web console's.
+  describe('G75-02 after D5: no switch row from a paired device session either', () => {
     const lastSwitch = (h: ReturnType<typeof harness>) => h.rows('AUDIO_SOURCE_SWITCHED').at(-1);
 
-    it('a hosted command of a paired device session (a Core in simulated capture): the row and its details carry that device ID, phone or tablet', () => {
+    it.each([['a paired device session', 'DEV-0002'], ['a web console session', null]] as const)('%s: the hosted command is refused AUDIO_SOURCE_FIXED_BY_PAIRING and no row is written', (_label, deviceId) => {
       const h = harness();
       h.toRecording();
-      // What the Core's actor scope sets for ONE command: the operator and the paired device of the request.
-      h.apply({ ...h.state(), auth: { ...h.state().auth, deviceId: 'DEV-0002' } });
-      h.sim.actions.switchAudioSource('MIC-02');
-      expect(lastSwitch(h)).toMatchObject({ deviceId: 'DEV-0002', details: { fromInput: 'MIC-01', toInput: 'MIC-02', sendingDeviceId: 'DEV-0002' } });
-    });
-
-    it('CONTROL - a web console session (no device): no device on the row and no `sendingDeviceId` key', () => {
-      const h = harness();
-      h.toRecording();
-      h.sim.actions.switchAudioSource('MIC-02');
-      const row = lastSwitch(h);
-      expect(row?.deviceId).toBeNull();
-      expect(Object.keys(row?.details ?? {})).toEqual(['fromInput', 'toInput', 'fromMs', 'toMs']);
+      if (deviceId !== null) h.apply({ ...h.state(), auth: { ...h.state().auth, deviceId } });
+      expect(() => h.sim.actions.switchAudioSource('MIC-02')).toThrow(expect.objectContaining({ code: 'AUDIO_SOURCE_FIXED_BY_PAIRING' }));
+      expect(lastSwitch(h)).toBeUndefined();
     });
   });
 });

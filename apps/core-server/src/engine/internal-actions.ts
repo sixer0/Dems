@@ -19,7 +19,6 @@
  * A scope the host did not build - a test double - has no binding, and the call says so.
  */
 import type { CaptureDeviceStatus, ReaddressCaptureDeviceInput, RegisterCaptureDeviceInput, RegisterCaptureMicrophoneInput, SimState, StoreCaptureDeviceProfilesInput } from '@dems/shared/sim';
-import type { AudioSourceSwitch, AudioSourceSwitched } from './capture-session';
 import { EngineError } from './errors';
 import type { EngineUnit } from './types';
 
@@ -33,8 +32,6 @@ export interface InternalActions {
   storeCaptureDeviceProfiles(change: StoreCaptureDeviceProfilesInput): Promise<CaptureDeviceStatus>;
   /** Blueprint row 71 (capture session): see `markCaptureConnectingIn`. */
   markCaptureConnecting(sessionId: string): Promise<boolean>;
-  /** Blueprint row 71 (capture session): see `switchCaptureAudioSourceIn`. */
-  switchCaptureAudioSource(change: AudioSourceSwitch): Promise<AudioSourceSwitched | null>;
   /** Audit row 127 (DF-12; decisions D19, D24, D90): see `noteCaptureDeviceReachIn`. */
   noteCaptureDeviceReach(reading: CaptureDeviceReachReading): Promise<boolean>;
 }
@@ -43,11 +40,15 @@ export interface InternalActions {
  * Audit row 127 (DF-12; decisions D19, D24, D90; contract of row 125): one reach reading of a capture device - the
  * outcome of a live preview. `REACHABLE`: its first picture arrived; `NOT_REACHABLE`: it failed. `checkedAt` is the
  * server clock of the reading (epoch ms).
+ *
+ * Audit row M97 (D104, D116): `reach: null` with `checkedAt: null` CLEARS the reading ("not checked") - what a path
+ * states when it learns that an earlier reading no longer holds but proves no answer itself (a microphone listed again
+ * by operation 97, re-enabled by operation 99: a listing opens nothing, so it never states REACHABLE).
  */
 export interface CaptureDeviceReachReading {
   readonly deviceId: string;
-  readonly reach: 'REACHABLE' | 'NOT_REACHABLE';
-  readonly checkedAt: number;
+  readonly reach: 'REACHABLE' | 'NOT_REACHABLE' | null;
+  readonly checkedAt: number | null;
 }
 
 /**
@@ -63,7 +64,8 @@ export function captureDeviceReachTransition(state: SimState, reading: CaptureDe
   const index = devices.findIndex((device) => device.id === reading.deviceId);
   if (index < 0) return state;
   const device = devices[index] as CaptureDeviceStatus;
-  if (device.reach === reading.reach && device.checkedAt === reading.checkedAt) return state;
+  // Row M97: absent and null both read "not checked", so a clear of an entry that states nothing is no change.
+  if ((device.reach ?? null) === reading.reach && (device.checkedAt ?? null) === reading.checkedAt) return state;
   const next = devices.slice();
   next[index] = { ...device, reach: reading.reach, checkedAt: reading.checkedAt };
   return { ...state, captureDevices: { ...state.captureDevices, devices: next } };
@@ -165,20 +167,6 @@ export function markCaptureConnectingIn(unit: EngineUnit, sessionId: string): Pr
   const actions = bound.get(unit);
   if (actions === undefined) return Promise.reject(new EngineError('ENGINE_ACTION_NOT_HOSTED', NOT_A_HOST_UNIT));
   return actions.markCaptureConnecting(sessionId);
-}
-
-/**
- * Blueprint row 71 (operation 81 in capture mode `real`): the switch the worker ACKNOWLEDGED becomes
- * the state of the open session - the active / standby pair on the worker's two-role lane (D61,
- * 2026-11-04: the selector plane records four numbered channels; op 81 trades the transcription pair,
- * channels 1 and 2), the media time of the boundary, the
- * timeline item - in the unit in which the caller writes the interval rows and the
- * `AUDIO_SOURCE_SWITCHED` row. Writes no audit row itself. Resolves null when nothing changed.
- */
-export function switchCaptureAudioSourceIn(unit: EngineUnit, change: AudioSourceSwitch): Promise<AudioSourceSwitched | null> {
-  const actions = bound.get(unit);
-  if (actions === undefined) return Promise.reject(new EngineError('ENGINE_ACTION_NOT_HOSTED', NOT_A_HOST_UNIT));
-  return actions.switchCaptureAudioSource(change);
 }
 
 /**

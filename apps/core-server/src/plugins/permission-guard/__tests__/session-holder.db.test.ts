@@ -7,7 +7,6 @@
 // WHAT STANDS IN: the second INVESTIGATOR. The seed holds one operator per role, so a second one is
 // planted by `dems_owner` BEFORE the boot, as a copy of the seeded investigator's row and
 // credential row under another ID and user name (a throw-away database; no secret is read or printed).
-import { AudioSourceStateSchema } from '@dems/shared/api';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -85,26 +84,28 @@ describe('SESSION_HOLDER on operation 81 (C3 §2.2): the creator of the open ses
     expect(denied.map((row) => [row.type, row.actorId, row.details])).toEqual([['ACCESS_DENIED', SECOND.id, { operationId: 'switchAudioSource', permission: 'SESSION_START', role: 'INVESTIGATOR', reason: 'SESSION_HOLDER' }]]);
     expect(server.engine.slice('session')?.audioSource?.activeInputId).toBe('MIC-01');
 
-    // The creator.
-    const switched = await server.post(creator, on(id, 'audio-source'), { inputId: 'MIC-02' });
-    expect(switched.statusCode).toBe(200);
-    expect(AudioSourceStateSchema.parse(switched.json()).activeInputId).toBe('MIC-02');
-    // A SUPERVISOR who did not create it.
-    const back = await server.post(supervisor, on(id, 'audio-source'), { inputId: 'MIC-01' });
-    expect(back.statusCode).toBe(200);
-    expect(AudioSourceStateSchema.parse(back.json()).activeInputId).toBe('MIC-01');
+    // The creator passes the guard - and the retired operation then refuses (audit row 149; N-29, N-36): 409, no row.
+    const passed = await server.written(async () => {
+      const switched = await server.post(creator, on(id, 'audio-source'), { inputId: 'MIC-02' });
+      expect([switched.statusCode, errorOf(switched).code]).toEqual([409, 'AUDIO_SOURCE_FIXED_BY_PAIRING']);
+      // A SUPERVISOR who did not create it: the same.
+      const back = await server.post(supervisor, on(id, 'audio-source'), { inputId: 'MIC-01' });
+      expect([back.statusCode, errorOf(back).code]).toEqual([409, 'AUDIO_SOURCE_FIXED_BY_PAIRING']);
+    });
+    expect(passed).toEqual([]);
+    expect(server.engine.slice('session')?.audioSource?.activeInputId).toBe('MIC-01');
   });
 
-  it('F-D4-4: a well-formed input that is no input of the session is 409 AUDIO_SOURCE_CONFLICT (not 404); nothing is written and the source stays', async () => {
+  it('F-D4-4 after D5 (audit row 149; D116): a well-formed input that is no input of the session is 409 AUDIO_SOURCE_FIXED_BY_PAIRING; nothing is written and the source stays', async () => {
     const { server, creator, id } = await recordingCore('d6holder_409');
     const written = await server.written(async () => {
       const refused = await server.post(creator, on(id, 'audio-source'), { inputId: 'MIC-09' });
-      expect([refused.statusCode, errorOf(refused).code, errorOf(refused).details?.['reason']]).toEqual([409, 'AUDIO_SOURCE_CONFLICT', 'NO_SUCH_INPUT']);
+      expect([refused.statusCode, errorOf(refused).code]).toEqual([409, 'AUDIO_SOURCE_FIXED_BY_PAIRING']);
     });
-    expect(written.filter((row) => row.type === 'AUDIO_SOURCE_SWITCHED')).toEqual([]);
+    expect(written).toEqual([]);
     expect(server.engine.slice('session')?.audioSource?.activeInputId).toBe('MIC-01');
-    // The orders before it stand: another form is 422, another session 404.
+    // Before it stands only the body schema (Core only): another form is 422. No lookup is made: another session ID is the same 409, not 404.
     expect((await server.post(creator, on(id, 'audio-source'), { inputId: 'MIC-9' })).statusCode).toBe(422);
-    expect((await server.post(creator, on('SES-20200101-0001', 'audio-source'), { inputId: 'MIC-09' })).statusCode).toBe(404);
+    expect((await server.post(creator, on('SES-20200101-0001', 'audio-source'), { inputId: 'MIC-09' })).statusCode).toBe(409);
   });
 });

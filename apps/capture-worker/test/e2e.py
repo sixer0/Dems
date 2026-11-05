@@ -63,8 +63,13 @@ def series(runs):
     A check on a FINISHED run names that run instead of taking a name of its own (`@<check>`)."""
     S = []
 
-    def add(name, argv, expect="PASS", sensitive=True, on=None, kind="harness", script=HARNESS):
-        S.append({"name": name, "argv": argv, "expect": expect, "sensitive": sensitive, "on": on, "kind": kind, "script": script})
+    # Audit row W3F (D142; ENV-W3TW-1 option (a)): `camera` is the camera kind of the check (m3worker.CAMERA_KIND, passed as
+    # M3_CAMERA): "c" = the C camera build/fake_cam (default), "sr" = the program camera test-fixtures/fake_cam_sr.py with the
+    # test ffmpeg (D131). Only the D5 cases that accept it run on "sr": av1_zero_tap (and so the checks on its files:
+    # continuity and its two controls, chain replay, h4/gop controls), m5_tap_one_interval (and its control) and
+    # n3_gapped_measured (and its control).
+    def add(name, argv, expect="PASS", sensitive=True, on=None, kind="harness", script=HARNESS, camera="c"):
+        S.append({"name": name, "argv": argv, "expect": expect, "sensitive": sensitive, "on": on, "kind": kind, "script": script, "camera": camera})
 
     add("static_rules", ["check", "selftest"], sensitive=False, kind="make")
     for r in range(1, runs + 1):
@@ -73,14 +78,22 @@ def series(runs):
         add("proto_r%d" % r, ["proto"])
         add("plan4_d60_r%d" % r, ["plan4"], sensitive=False)          # D60 (2026-11-04): the four-camera plan of the widened reader
         add("plan4mics_d61_r%d" % r, ["plan4mics"], sensitive=False)  # D61 (2026-11-04): the four-channel audio plan, one file and encoder per channel
-        # M3-AV-1: 0 / +80 / -80 ms through the worker, incl. across a mic switch; M3-AV-2 (a): the same +-80 on
-        # separate-process cameras with their own clocks; (b): +-200 ppm keeps the injected slope.
-        add("av1_zero_switch_tap_r%d" % r, ["session", "--case", "zero", "--switch", "--tap"])
+        # Row 152 (D5 pairs, DF-06; AC-4.7; D30 K-3; R151-1 / D131): VIDEO-0N carries MIC-0N's packets (4+4), a missing paired
+        # mic gives a silent track, a plan without MIC-01 records (no tap, no interval record); the re-encoded control
+        # must FAIL the pair equality. The cameras of these cases encode with the test ffmpeg (D131), the worker is the ruled build.
+        add("pairs_4x4_r%d" % r, ["pairs", "--mode", "4x4"])
+        add("pairs_missing_mic02_r%d" % r, ["pairs", "--mode", "missing2"])
+        add("pairs_no_mic01_r%d" % r, ["pairs", "--mode", "nomic1"])
+        add("neg_pairs_reencoded_r%d" % r, ["h4neg"], "FAIL", False, on="pairs_4x4_r%d" % r)
+        # M3-AV-1: 0 / +80 / -80 ms through the worker, each camera against its own paired microphone (D5 pairs; audit row
+        # 152b: the mic switch is retired - was `av1_zero_switch_tap`); M3-AV-2 (a): the same +-80 on separate-process
+        # cameras with their own clocks; (b): +-200 ppm keeps the injected slope.
+        add("av1_zero_tap_r%d" % r, ["session", "--case", "zero", "--tap"], camera="sr")
         add("av1_av2a_pm80_r%d" % r, ["session", "--case", "pm80"])
         add("av2b_drift_200ppm_r%d" % r, ["session", "--case", "drift"])
         # M3-AV-2 (c), row 62: +-200 ppm on the media clock, expressed in hand-written sender reports -> slope near 0.
         add("av2c_srdrift_200ppm_r%d" % r, ["srcam", "--mode", "drift"])
-        add("continuity_r%d" % r, ["continuity"], sensitive=False, on="av1_zero_switch_tap_r%d" % r)
+        add("continuity_r%d" % r, ["continuity"], sensitive=False, on="av1_zero_tap_r%d" % r)
         add("wi1_camstop_r%d" % r, ["camstop"])
         add("wi1_fatal_rmdir_r%d" % r, ["fatal", "--mode", "rmdir"])
         add("optc_planted_r%d" % r, ["fatal", "--mode", "planted"])
@@ -106,13 +119,13 @@ def series(runs):
         add("kc2_sigkill_tail_validation_r%d" % r, ["kc2"])
         add("kc4_longgop_loss_reported_r%d" % r, ["kc4", "--gop", "250"])
         add("writer_short_write_truncates_r%d" % r, ["writefault", "--variant", "writefault"])
-        add("chain_replay_same_bytes_r%d" % r, ["replay", "--other", "sibling"], sensitive=False, on="av1_zero_switch_tap_r%d" % r)
+        add("chain_replay_same_bytes_r%d" % r, ["replay", "--other", "sibling"], sensitive=False, on="av1_zero_tap_r%d" % r)
         # ---- negative controls: each must FAIL, on the criteria named
         add("neg_kc2_file_not_cut_r%d" % r, ["kc2", "--control", "nocut", "--expect-fail", "--must-fail-on", "tail_validation_flags_the_cut,drop_fragment_rule_recovers_the_previous_prefix"], "FAIL")
         add("neg_kc4_camera_inside_the_bound_r%d" % r, ["kc4", "--gop", "50", "--expect-fail", "--must-fail-on", "gop_warning_raised_before_the_kill,keyframe_interval_record_names_the_camera_gop"], "FAIL")
         add("neg_writer_no_truncation_r%d" % r, ["writefault", "--variant", "writefault-notrunc", "--expect-fail", "--must-fail-on", "file1_is_at_its_last_good_length,tail_validation_clean"], "FAIL")
-        add("neg_chain_replay_one_byte_changed_r%d" % r, ["replay", "--control", "flip", "--expect-fail", "--must-fail-on", "replay_gives_the_same_checkpoints,replayed_file_is_byte_identical"], "FAIL", False, on="av1_zero_switch_tap_r%d" % r)
-        add("neg_h4_reencoded_r%d" % r, ["h4neg"], "FAIL", False, on="av1_zero_switch_tap_r%d" % r)
+        add("neg_chain_replay_one_byte_changed_r%d" % r, ["replay", "--control", "flip", "--expect-fail", "--must-fail-on", "replay_gives_the_same_checkpoints,replayed_file_is_byte_identical"], "FAIL", False, on="av1_zero_tap_r%d" % r)
+        add("neg_h4_reencoded_r%d" % r, ["h4neg"], "FAIL", False, on="av1_zero_tap_r%d" % r)
         add("neg_av_forbidden_mux_option_r%d" % r, ["session", "--case", "pm80", "--variant", "negctl", "--expect-fail", "--must-fail-on", AV], "FAIL")
         add("neg_av_mic_latency_5ms_r%d" % r, ["session", "--case", "zero", "--mic-late-us", "5000", "--expect-fail", "--must-fail-on", "av_regression_2ms"], "FAIL")
         add("neg_av2b_drift_judged_as_none_r%d" % r, ["avcheck", "--assume-drift-ppm", "0", "--expect-fail", "--must-fail-on", "av_regression_2ms"], "FAIL", False, on="av2b_drift_200ppm_r%d" % r)
@@ -140,24 +153,22 @@ def series(runs):
         add("neg_sup_av_judged_as_no_offset_r%d" % r, ["avcheck", "--assume-inject-ms", "0,0", "--expect-fail", "--must-fail-on", AV], "FAIL", False, on="sup_av2_pm80_r%d" % r)
         add("neg_mic_no_compensation_r%d" % r, ["mic", "--mode", "slow", "--variant", "nocomp", "--expect-fail", "--must-fail-on", "av_within_mic_bound_5ms", "--may-fail-on", "av_product_40ms"], "FAIL")
         add("neg_kc3_no_restart_allowed_r%d" % r, ["sup", "--mode", "kc3", "--limits", '{"maxRestarts":0}', "--expect-fail", "--must-fail-on", "restarted_after_a_kill_before_any_fragment"], "FAIL")
-        add("neg_continuity_cut_r%d" % r, ["continuity", "--control", "cut", "--expect-fail", "--must-fail-on", "spacing,position", "--may-fail-on", "count"], "FAIL", False, on="av1_zero_switch_tap_r%d" % r)
-        add("neg_continuity_toneslip_r%d" % r, ["continuity", "--control", "toneslip", "--expect-fail", "--must-fail-on", "tone"], "FAIL", False, on="av1_zero_switch_tap_r%d" % r)
-        add("neg_gop50_judged_as_250_r%d" % r, ["gopcheck", "--gop", "250", "--expect-fail", "--must-fail-on", "file_keyframe_interval_equals_camera_gop"], "FAIL", False, on="av1_zero_switch_tap_r%d" % r)
+        add("neg_continuity_cut_r%d" % r, ["continuity", "--control", "cut", "--expect-fail", "--must-fail-on", "spacing,position", "--may-fail-on", "count,tone"], "FAIL", False, on="av1_zero_tap_r%d" % r)
+        add("neg_continuity_toneslip_r%d" % r, ["continuity", "--control", "toneslip", "--expect-fail", "--must-fail-on", "tone"], "FAIL", False, on="av1_zero_tap_r%d" % r)
+        add("neg_gop50_judged_as_250_r%d" % r, ["gopcheck", "--gop", "250", "--expect-fail", "--must-fail-on", "file_keyframe_interval_equals_camera_gop"], "FAIL", False, on="av1_zero_tap_r%d" % r)
     # ---- the mux-flag evaluation of row 58 part P4, kept as a regression (once)
     add("p4_delay_pm80", ["session", "--case", "pm80", "--variant", "delaymoov"])
     add("p4_shape_pinned", ["shape"], sensitive=False, on="av1_av2a_pm80_r1")
     add("p4_shape_delay", ["shape"], sensitive=False, on="p4_delay_pm80")
     add("p4_stall_pinned", ["session", "--case", "pm80", "--stall"])
     add("neg_p4_stall_delay_moov", ["session", "--case", "pm80", "--stall", "--variant", "delaymoov", "--expect-fail", "--must-fail-on", AV], "FAIL")
-    # Row 71 (worker half), once each (decision D122): the operator's switch - its bound, its interval records against
-    # the pre-encode tap, never a switch nobody commanded; the gap analyser M5-GAP-1 with its must-FAIL vector (1,000
-    # samples removed AT the switch); the mutation of the interval record; silence / disconnect / rate-limit warnings
-    # by device ID that never switch (the raiser itself, M5-WARN-1, is in `make unit`: test/micwatch_test.c).
-    add("m5_switch_bound_intervals", ["m5switch"])
-    add("m5_gap_analyser", ["m5gap"], sensitive=False, on="m5_switch_bound_intervals")
-    add("neg_m5_gap_1000_removed_at_the_switch", ["m5gap", "--control", "cut1000", "--expect-fail", "--must-fail-on", "spacing,position,tone_window_is_the_interval", "--may-fail-on", "count"], "FAIL", False, on="m5_switch_bound_intervals")
-    add("neg_m5_switch_bound_judged_at_1us", ["m5bound", "--bound-us", "1", "--expect-fail", "--must-fail-on", "switch_applied_within_the_bound"], "FAIL", False, on="m5_switch_bound_intervals")
-    add("neg_m5_interval_record_skewed", ["m5switch", "--variant", "intervalskew", "--expect-fail", "--must-fail-on", "interval_record_is_the_tap_boundary"], "FAIL")
+    # Row 71 (worker half), once each (decision D122): silence / disconnect / rate-limit warnings by device ID that never
+    # switch (the raiser itself, M5-WARN-1, is in `make unit`: test/micwatch_test.c). Audit row 152b (N-31; D135, D136):
+    # the operator's switch is retired - its bound, its records against the tap, M5-GAP-1 at a switch and the skewed-record
+    # proof build judged the removed switch and are gone; what stands is the D5 statement: ONE start interval (MIC-01, sample
+    # 0) and the tap on channel 1 for the whole session, with its control (the same tap judged as channel 2 must FAIL).
+    add("m5_tap_one_interval", ["m5tap"], camera="sr")
+    add("neg_m5_tap_judged_as_channel_2", ["m5tapjudge", "--channel", "2", "--expect-fail", "--must-fail-on", "tap_carries_channel_2"], "FAIL", False, on="m5_tap_one_interval")
     add("m5_warn_silent_disconnect_never_switch", ["m5warn"])
     add("m5_rate_limit_reported", ["m5rate", "--ppm", "-8000"])
     add("neg_m5_rate_inside_the_range", ["m5rate", "--ppm", "-2000", "--expect-fail", "--must-fail-on", "rate_limit_warning_raised_and_named"], "FAIL")
@@ -165,7 +176,7 @@ def series(runs):
     # (test/n3gapped.py, test/gapped_mic.c) - the account to the sample against the tap and the writer, the runs, no stretch;
     # its must-FAIL vector is one tap sample removed (every reconciliation with the tap must refuse it).
     for mode in ("measured", "whole", "late4", "trim", "stop3", "nan", "killbefore", "killbetween", "killafter", "runs1025"):
-        add("n3_gapped_%s" % mode, ["n3gap", "--mode", mode])
+        add("n3_gapped_%s" % mode, ["n3gap", "--mode", mode], camera="sr" if mode == "measured" else "c")
     add("neg_n3_one_tap_sample_removed", ["n3judge", "--control", "dropone", "--expect-fail", "--must-fail-on",
                                           "account_closes_on_the_timeline_end,tap_zeros_are_the_inserted_ones", "--may-fail-on", "copy_is_exact,tap_runs_are_the_listed_runs"],
         "FAIL", False, on="n3_gapped_measured")
@@ -381,7 +392,8 @@ def main():
         S = [c for c in S if re.search(a.only, c["name"])]
     if a.list:
         for c in S:
-            print("%-40s expect %-4s %s%s" % (c["name"], c["expect"], " ".join(c["argv"]), ("   [on the files of %s]" % c["on"]) if c["on"] else ""))
+            print("%-40s expect %-4s %s%s%s" % (c["name"], c["expect"], " ".join(c["argv"]), ("   [on the files of %s]" % c["on"]) if c["on"] else "",
+                                                ("   [camera %s]" % c["camera"]) if c["camera"] != "c" else ""))
         print("%d checks" % len(S))
         return
     if not S:
@@ -433,7 +445,7 @@ def main():
         c["load_at_start"], c["heavy_at_start"], c["waited_s"] = wait_for_quiet(a.max_load, a.load_wait) if c["sensitive"] else (round(os.getloadavg()[0], 2), [], 0)
         t = time.monotonic()
         try:
-            p = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=a.timeout, cwd=REPO)
+            p = subprocess.run(cmd, capture_output=True, text=True, env=dict(env, M3_CAMERA=c["camera"]), timeout=a.timeout, cwd=REPO)
             c["rc"], text = p.returncode, p.stdout + ("\n--- stderr ---\n" + p.stderr if p.stderr.strip() else "")
             res = last_json(p.stdout) if c["kind"] != "make" else None
         except subprocess.TimeoutExpired as e:

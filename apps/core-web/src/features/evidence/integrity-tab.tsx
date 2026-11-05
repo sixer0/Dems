@@ -13,6 +13,8 @@ import { CheckList } from './check-list'
 import { VerdictChip, type VerdictState } from './chips'
 import { copyText } from './clipboard'
 import { readItemFacts } from './item-facts'
+import { readItemV2 } from './item-v2'
+import { PairAudio } from './pair-audio'
 import { custodyActionWords, custodyDetailWords } from '@/lib/event-words'
 import { NotSealedStatement } from './item-marks'
 import { formatWibClockSeconds, formatWibDate, formatWibDateTime, shortHash, storedVerification, type EvidenceRow } from './model'
@@ -91,6 +93,7 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
   // certificate, and never an AUDIO row. A v1 / simulated demo item and Simulated mode keep what they had.
   const fromItem = live && isV2Item(row)
   const facts = useMemo(() => readItemFacts(row.item), [row.item])
+  const pairAudio = useMemo(() => readItemV2(row.item), [row.item])
   const pkg = fromItem ? null : row.pkg
 
   const sealed = hasSealedValues(row.item)
@@ -401,6 +404,8 @@ export function IntegrityTab({ row, verification }: IntegrityTabProps) {
               </li>
             ) : null}
           </ul>
+          {/* Row 159 (D5): the audio file of each camera-microphone pair and the missing-microphone statement - the item's own; a legacy item draws nothing here. */}
+          {fromItem ? <PairAudio item={pairAudio} onCopy={copy} /> : null}
         </Card>
           </>
         )}

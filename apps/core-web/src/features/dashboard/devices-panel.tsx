@@ -6,10 +6,10 @@ import { Activity, Cpu, EllipsisVertical, Info, Mic, RotateCw } from 'lucide-rea
 import { useTranslation } from 'react-i18next'
 import { AUDIO_TRACK_IDS, VIDEO_TRACK_IDS, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain' // D61 (2026-11-04): four audio tracks
 import { CoreMode, settle, useCoreActions, useCoreMode } from '@dems/shared/live'
-import { audioPairInForce, captureMicLines, DeviceCommand, meterInputOfChannel, micChannelOfTrack, noLiveLevelsOf, PRIMARY_MIC_CHANNEL, useSim, type SimState } from '@dems/shared/sim' // D61: the transcribed channel
+import { captureMicLines, DeviceCommand, meterInputOfChannel, micChannelOfTrack, noLiveLevelsOf, useSim, type SimState } from '@dems/shared/sim'
 import { motion as tokens, type StatusTone } from '@dems/shared/tokens'
 import { DbfsMeter } from '@/components/composed'
-import { micTrackChannelChip } from '@/features/devices/capture-selector' // Row 108 (DF-17): the channel chip words of a meter track
+import { micPairLabel } from '@/features/devices/capture-selector' // Row W3T (R157-1; N-40): the pair label of a meter track, "Mic N (Camera N)"
 import { CameraPreview } from '@/features/devices/camera-preview'
 import { useTrackReach } from '@/features/devices/track-reach'
 import { trackStatus, type DeviceStatusCode } from '@/features/devices/model' // Row 129 (U-05): the one track status of both pages
@@ -58,16 +58,11 @@ const selectMic = (id: AudioTrackId) => (s: SimState) => {
   // carried MIC-03, the input of channel 1, so MIC 3 read "Channel 1 (transcribed)").
   const inputId = meterInputOfChannel(captureMicLines(s), id)
   const channel = inputId === null ? null : micChannelOfTrack(id)
-  // Task 3 M5 (blueprint row 72; WB-02; ux §3.6): while a session records, the tile says which input
-  // is inside the session audio track now (operation 81 moves it) — the Core's pair, never a guess.
-  const activeInputId = s.session?.state === 'RECORDING' ? (audioPairInForce(s).activeInputId ?? s.audio.activeInputId) : null
-  // D61 (2026-11-04): the pair words belong to the transcription pair alone — a channel-3/4 tile records, it is not "standby".
-  const standbyInputId = s.session?.state === 'RECORDING' ? (audioPairInForce(s).standbyInputId ?? null) : null
-  // Row 108: the pair is compared with the input behind the tile's channel, not with the snapshot's device id.
-  const source = activeInputId === null || inputId === null ? null : activeInputId === inputId ? ('ACTIVE' as const) : standbyInputId === inputId ? ('STANDBY' as const) : null
+  // Audit row W3T (R157-1; D5, S5 §6, N-40): the Active / Standby role words are gone. Operation 81 is retired and the
+  // microphone of each track is fixed by its camera-microphone pair, so the tile names its pair slot (`MicTile`).
   // Row 129 (U-05): the status is the Devices page's (`trackStatus`: the channel's row, then the input it holds and
   // its reach), and the marks follow that input - not the snapshot's device id.
-  return { deviceId: mic.deviceId, inputId, status: trackStatus(s, id), channel, source }
+  return { deviceId: mic.deviceId, inputId, status: trackStatus(s, id), channel }
 }
 
 /**
@@ -374,23 +369,26 @@ function MicTile({ channel, index, beatMs }: { channel: AudioTrackId; index: num
   const tone: StatusTone = MIC_TILE_TONE[mic.status] ?? 'warning'
   const state = mic.status === 'READY' || mic.status === 'NO_SIGNAL' || mic.status === 'CLIP' ? t(`common.enums.micState.${mic.status}`) : t(`devices.status.${mic.status}`)
   const name = t(MIC_NAME_KEY[channel])
-  const channelChip = mic.channel ? micTrackChannelChip(mic.channel) : null
+  // Row W3T (R157-1; N-40): the pair slot of the tile - fixed by number, so it is named with or without an input (as the
+  // Session Monitor halves, row 157). Only Pair 1 is transcribed.
+  const pairLabel = micPairLabel(micChannelOfTrack(channel))
+  const transcribed = pairLabel.values.n === 1
   return (
     <Tile index={index} beatMs={beatMs} testId={`device-tile-${channel}`}>
       <TileHead tone={tone} name={name} state={state} status={mic.status} deviceId={mic.deviceId} />
       {/* Pass D2 (ux §8f.2, WB-02): the one badge of the microphone behind this tile. */}
       {mic.inputId === null ? null : <MicSourceMarks inputId={mic.inputId} place={`dashboard-${channel}`} />}
       <div className="dems-mic-body" data-channel={mic.channel ?? undefined}>
-        {mic.source ? (
-          <Chip size="sm" variant="soft" color={mic.source === 'ACTIVE' ? 'accent' : 'default'} className="dems-mic-role" data-testid={`device-tile-source-${channel}`} data-source={mic.source}>
-            <Chip.Label>{t(`session.audioSource.role.${mic.source}`)}</Chip.Label>
+        <span className="flex flex-col items-start gap-1">
+          <Chip size="sm" variant="soft" color="default" className="dems-mic-role" data-testid={`device-tile-pair-${channel}`} data-channel={micChannelOfTrack(channel)} data-pair={pairLabel.values.n}>
+            <Chip.Label>{t(pairLabel.key, pairLabel.values)}</Chip.Label>
           </Chip>
-        ) : channelChip ? (
-          /* D61 (2026-11-04): the tile names the selector CHANNEL it feeds (channels 1 and 2 keep the transcription-pair words). */
-          <Chip size="sm" variant="soft" color={mic.channel === PRIMARY_MIC_CHANNEL ? 'accent' : 'default'} className="dems-mic-role" data-testid={`device-tile-channel-${channel}`} data-channel={mic.channel}>
-            <Chip.Label>{'values' in channelChip ? t(channelChip.key, channelChip.values) : t(channelChip.key)}</Chip.Label>
-          </Chip>
-        ) : null}
+          {transcribed ? (
+            <Chip size="sm" variant="soft" color="accent" className="dems-mic-role" data-testid={`device-tile-transcribed-${channel}`}>
+              <Chip.Label>{t('devices.pairs.transcribed')}</Chip.Label>
+            </Chip>
+          ) : null}
+        </span>
         <span className="dems-mic-ring" aria-hidden="true">
           <Mic strokeWidth={1.6} />
         </span>

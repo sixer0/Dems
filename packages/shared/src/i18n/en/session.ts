@@ -172,7 +172,8 @@ export const session = {
     },
     silent: {
       title: '{{mic}} is silent',
-      body: 'Below {{dbfs}} dBFS for {{seconds}} s. Recording continues. The microphone is never switched automatically.',
+      // Audit row W3T (R157-3, D5): each pair's microphone is fixed by setup, so the warning says where to look, not that nothing switches.
+      body: 'Below {{dbfs}} dBFS for {{seconds}} s. Recording continues. The microphone of each pair is fixed by setup: check its cable or the device.',
       action: 'Switch to channel 2', // D61 (2026-11-04): the standby word became the second channel
     },
     band: {

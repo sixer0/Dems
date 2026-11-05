@@ -9,6 +9,7 @@
 // operation the table names, its method, its path parameter, its body schema). A 46th action, a
 // renamed operation or a body the contract refuses fails here.
 import { afterEach, describe, expect, it } from 'vitest';
+import { AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE } from '../src/api/sessions';
 import {
   API_ERROR_CODES,
   ApiErrorCode,
@@ -500,8 +501,18 @@ describe('AC-C-11: error rebuilding (CL-20, CL-21)', () => {
   it('the table read backwards names simulator codes only', () => {
     for (const code of Object.values(ENVELOPE_SIM_CODE)) expect(Object.values(SimErrorCode)).toContain(code);
     expect(Object.keys(ENVELOPE_SIM_CODE).sort()).toEqual(
-      ['COMMAND_UNSUPPORTED', 'INVALID_INPUT', 'INVALID_REASON', 'INVALID_STATE', 'NOT_SEALED', 'PRECHECK_BLOCKED', 'PRECHECK_RUNNING', 'PRECHECK_WARNINGS', 'RECORDING_ACTIVE', 'SESSION_ACTIVE'].sort(),
+      // Audit row 150 (D28 DQ-2): + AUDIO_SOURCE_FIXED_BY_PAIRING, the retired operation 81 read backwards.
+      ['AUDIO_SOURCE_FIXED_BY_PAIRING', 'COMMAND_UNSUPPORTED', 'INVALID_INPUT', 'INVALID_REASON', 'INVALID_STATE', 'NOT_SEALED', 'PRECHECK_BLOCKED', 'PRECHECK_RUNNING', 'PRECHECK_WARNINGS', 'RECORDING_ACTIVE', 'SESSION_ACTIVE'].sort(),
     );
+  });
+
+  it('D136 (row W3T): the retired operation 81 refusal reads the contract sentence, not "Illegal session transition"', () => {
+    const fixed = rebuildRefusal(failure(409, 'AUDIO_SOURCE_FIXED_BY_PAIRING', { details: { from: 'RECORDING' } }), { ...CONTEXT, action: 'switchAudioSource', operationId: 'switchAudioSource' });
+    expect(fixed).toBeInstanceOf(LiveSimTransitionError);
+    expect(fixed).toMatchObject({ code: 'AUDIO_SOURCE_FIXED_BY_PAIRING', event: 'switchAudioSource', from: 'RECORDING', message: AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE });
+    expect(fixed.message).not.toMatch(/Illegal session transition/);
+    // CONTROL: every other code read backwards keeps the class's own text.
+    expect(rebuildRefusal(failure(409, 'INVALID_STATE'), CONTEXT).message).toMatch(/^Illegal session transition: /);
   });
 
   it.each([
@@ -604,13 +615,18 @@ describe('every command and read binding, called on a Live source over the fake 
   it('sends exactly the planned request and resolves with what the simulator\'s action returns for that answer', async () => {
     const { source, reports } = await signedIn();
     fake.answerAllFromExamples();
+    // Audit row 149 (D130; N-29, N-36): operation 81 documents no success - its answer is the contract's 409 example.
+    fake.answerFromExample('switchAudioSource', 409);
     const actions = source.actions as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
     const results: Record<string, unknown> = {};
 
     for (const name of COMMANDS) {
       const plan = planOf(name) as CallPlan;
       const before = fake.log.requestsOf(plan.operationId).length;
-      results[name] = await actions[name]?.(...ARGS[name]);
+      const call = actions[name]?.(...ARGS[name]);
+      // The retired switch is sent as planned and rejects with the pairing refusal, as the simulator's action does.
+      if (name === 'switchAudioSource') await expect(call).rejects.toMatchObject({ code: 'AUDIO_SOURCE_FIXED_BY_PAIRING' });
+      else results[name] = await call;
       const calls = fake.log.requestsOf(plan.operationId);
       expect(calls, `${name} sent one ${plan.operationId}`).toHaveLength(before + 1);
       const sent = calls.at(-1);
@@ -622,7 +638,8 @@ describe('every command and read binding, called on a Live source over the fake 
       expect(sent?.query, name).toEqual({});
     }
     expect(COMMANDS).toHaveLength(36);
-    expect(reports).toEqual([]);
+    // Audit row 149: the one report is the refusal of the retired switch (a 409 is reported at `warn`, as every refusal is).
+    expect(reports.map((report) => [report.level, report.source, report.context?.['status'], report.context?.['code']])).toEqual([['warn', 'live.action.switchAudioSource', 409, 'AUDIO_SOURCE_FIXED_BY_PAIRING']]);
 
     // The values: the answer mapped to the simulator's return type.
     const lowest = (operationId: string): unknown => {

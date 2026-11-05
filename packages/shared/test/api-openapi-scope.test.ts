@@ -143,7 +143,8 @@ const OFFLINE_SCHEMA_NAMES = [
   'VideoStatusResponse', 'AudioStatusResponse', 'StorageStatusResponse', 'DeviceHealthResponse', 'EvidenceExportRequest',
   'EvidenceExportAccepted', 'EvidenceExportCompositeOptions', 'ApiError', 'Heartbeat', 'CaptureConfigSlice',
   'CaptureDevicesSlice', 'PageQuery', 'CaptureConfigCameraUpdate', 'CaptureConfigMicUpdate', 'CaptureConfigUpdateRequest',
-  'CaptureCameraSourceRequest', 'CaptureCredentialWriteRequest', 'AudioSourceSwitchRequest', 'AudioSourceState',
+  // Audit row 149 (D130): `AudioSourceState` (the 200 of operation 81) left with that success - operation 81 is retired (71 -> 70).
+  'CaptureCameraSourceRequest', 'CaptureCredentialWriteRequest', 'AudioSourceSwitchRequest',
   'AudioSourceIntervalEntry', 'AudioSourceIntervalPage', 'SealingProgressStep', 'SealingProgress', 'TranscriptSegment',
   'TranscriptDocument', 'TranscriptRevisionRequest', 'TranscriptRevision', 'TranscriptRevisionPage', 'EvidenceExportJob',
   // Task 3 M6 (row 113; C3 §2.5): the six STT configuration schemas (39 -> 45 components).
@@ -242,7 +243,7 @@ describe('scope offline: the default, and the document of the baseline', () => {
     }
   });
 
-  it('holds the 71 offline components (39 of OD-17, 6 of STT 90-92, 9 of the camera search 93-97, 3 of the sound cards 98-99, 1 of the re-address 100, 8 of the commissioning functions 101-107, none of the stored-credential connection test 108 since row V4, 3 of the installation acceptance 109-110 and 2 of the retirement 111); the eight untouched baseline schemas stay byte-equal to acaff20 and the rest legitimately diverge', () => {
+  it('holds the 70 offline components (38 of OD-17 since audit row 149 retired the answer of operation 81, 6 of STT 90-92, 9 of the camera search 93-97, 3 of the sound cards 98-99, 1 of the re-address 100, 8 of the commissioning functions 101-107, none of the stored-credential connection test 108 since row V4, 3 of the installation acceptance 109-110 and 2 of the retirement 111); the eight untouched baseline schemas stay byte-equal to acaff20 and the rest legitimately diverge', () => {
     expect(Object.keys(offline.components.schemas)).toEqual(OFFLINE_SCHEMA_NAMES);
     for (const [name, hash] of Object.entries(BASELINE.schemas)) {
       const now = sha256(offline.components.schemas[name]);

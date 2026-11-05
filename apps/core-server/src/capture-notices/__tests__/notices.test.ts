@@ -787,8 +787,9 @@ describe('row 128b: the pre-check run re-states reach from its probe', () => {
     expect(entry(h, 'CAM-01')).toMatchObject({ online: true, reach: 'REACHABLE', checkedAt: runAt });
     expect(entry(h, 'CAM-02')).toMatchObject({ online: false, reach: 'NOT_REACHABLE', checkedAt: runAt });
     const configured = new Set([...h.state().captureConfig.cameras.map((line) => line.deviceId), ...h.state().captureConfig.mics.map((line) => line.deviceId)]);
-    for (const id of configured) expect(entry(h, id)?.checkedAt, id).toBe(runAt);
-    for (const line of h.state().captureConfig.mics) expect(entry(h, line.deviceId)?.reach, line.deviceId).toBe('REACHABLE');
+    for (const line of h.state().captureConfig.cameras) expect(entry(h, line.deviceId)?.checkedAt, line.deviceId).toBe(runAt);
+    // Row M97 cycle 2 (D123): a microphone LISTED present is never stated REACHABLE (a listing proves presence, not reach).
+    for (const line of h.state().captureConfig.mics) expect([entry(h, line.deviceId)?.reach ?? null, entry(h, line.deviceId)?.checkedAt ?? null], line.deviceId).toEqual([null, null]);
     // A device the selector does not name is not stated.
     for (const device of h.state().captureDevices.devices.filter((candidate) => !configured.has(candidate.id))) expect(device.checkedAt ?? null, device.id).toBeNull();
     h.sim.actions.beginPrecheck();
@@ -796,6 +797,31 @@ describe('row 128b: the pre-check run re-states reach from its probe', () => {
     await outcome.settled;
     expect(h.state().session?.precheck.items.find((item) => item.id === 'LENS_1')).toMatchObject({ status: 'PASS' });
     expect(h.reports.filter((report) => report.code === PrecheckReportCode.REACH_NOT_WRITTEN)).toEqual([]);
+  });
+
+  // Row M97 cycle 2 (D123, RD-M97-1): ONE rule for microphones - the pre-check's mic reading is a card LISTING.
+  it('row M97 cycle 2: a listed mic with a stale NOT_REACHABLE is cleared (never REACHABLE), an unlisted mic is NOT_REACHABLE at the run clock, the start rule is untouched; CONTROL: cameras keep REACHABLE from their probe', async () => {
+    const h = harness({ stateReach: true });
+    const stale = START - 60_000;
+    h.sim.store.setState({ captureDevices: { ...h.state().captureDevices, devices: h.state().captureDevices.devices.map((device) => (device.id === 'MIC-01' ? { ...device, reach: 'NOT_REACHABLE', checkedAt: stale } : device)) } });
+    h.fakes.mics[1]?.setPresent(false, AudioInputErrorCode.DEVICE_NOT_FOUND);
+    h.sim.actions.createSession(INPUT);
+    const sessionId = h.state().session?.id ?? '';
+    const runAt = h.clock.now();
+    const outcome = await h.gate.beforePrecheck({ sessionId, owner: SUPERVISOR, kind: 'BEGIN' });
+    expect(outcome.unreachable).toContain('MIC-02');
+    expect(entry(h, 'MIC-01')).toMatchObject({ online: true, reach: null, checkedAt: null });
+    expect(entry(h, 'MIC-02')).toMatchObject({ online: false, reach: 'NOT_REACHABLE', checkedAt: runAt });
+    expect(h.state().captureDevices.devices.filter((device) => device.kind === 'MIC').some((device) => device.reach === 'REACHABLE')).toBe(false);
+    // CONTROL: the cameras' adapter read is an answer - REACHABLE with the run clock.
+    expect(entry(h, 'CAM-01')).toMatchObject({ reach: 'REACHABLE', checkedAt: runAt });
+    // The start rule reads `online`, as before: the unlisted standby channel is the run's WARN, the cleared MIC-01 PASS.
+    h.sim.actions.beginPrecheck();
+    h.run(5_000);
+    await outcome.settled;
+    const items = h.state().session?.precheck.items ?? [];
+    expect(items.find((item) => item.id === 'MIC_PRIMARY')).toMatchObject({ status: 'PASS' });
+    expect(items.find((item) => item.id === 'MIC_STANDBY')).toMatchObject({ status: 'WARN' });
   });
 
   it('a reach seam that fails is reported by code with ids only and the run goes on; CONTROL: without the seam no reach is stated; a probe SOURCE that throws (V98-13) states none', async () => {

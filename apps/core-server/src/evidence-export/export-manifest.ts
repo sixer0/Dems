@@ -26,10 +26,12 @@
  * Pure: no file, no clock, no key. The signer comes in through the `Signer` interface.
  */
 import {
+  AUDIO_FILE_TRACK_IDS,
   ManifestSignatureAlgorithm,
   ManifestV2ExportBlockSchema,
   PackageFile,
   VIDEO_TRACK_IDS,
+  isSealedAudioTrackList,
   isSealedTrackList,
   canonicalJson,
   canonicalJsonBytes,
@@ -69,6 +71,17 @@ export const ExportManifestSchema = z.strictObject({
       .min(1)
       .max(VIDEO_TRACK_IDS.length)
       .refine((files) => isSealedTrackList(files.map((file) => file.trackId)), 'the camera files of a sealed package: one to four (D60), each once, in file order'),
+    /**
+     * Audit row 153 (D5; D30 K-8): the DECRYPTED pair audio files of a `/2.1` package (`fragments/AUDIO-0N.m4a`), each with
+     * the plaintext hash its SEALED `audioTracks[]` record states, after the camera files. ABSENT for a package without
+     * audio files: the export manifest of before, byte for byte. A receiver older than the member refuses it (strict).
+     */
+    audioFiles: z
+      .array(z.strictObject({ trackId: z.enum(AUDIO_FILE_TRACK_IDS), path: entryPath, bytes: count, sha256Plain: hex64 }))
+      .min(1)
+      .max(AUDIO_FILE_TRACK_IDS.length)
+      .refine((files) => isSealedAudioTrackList(files.map((file) => file.trackId)), 'the pair audio files of a sealed package: one to four, each once, in AUDIO order')
+      .optional(),
   }),
   /** §19.2 item 2: the sealed manifest, carried byte for byte (§G.2). */
   sessionManifest: z.strictObject({

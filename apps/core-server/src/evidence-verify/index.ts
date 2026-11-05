@@ -29,7 +29,7 @@
  * what is recorded and what is answered. A verdict that could not be recorded is not answered.
  */
 import { createHash } from 'node:crypto';
-import type { VideoTrackId } from '@dems/shared/domain';
+import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
 import { sep } from 'node:path';
 import { VERIFY_REPORT_MAX_FINDINGS, VERIFY_REPORT_MAX_FRAGMENTS, type EvidenceVerifyResultBody } from '@dems/shared/api';
 import { PackageFile, packageFolderName, parseManifestV2 } from '@dems/shared/evidence-package';
@@ -273,7 +273,7 @@ export function contractBodyOf(evidenceId: string, at: number, report: PackageVe
       const plainOk = file.plainOk === true;
       return {
         fileId: file.file,
-        trackId: file.trackId as VideoTrackId, // D60 (2026-11-04)
+        trackId: file.trackId as VideoTrackId | AudioTrackId, // D60 (2026-11-04); row 154 (D5): the audio file of a pair answers its AUDIO-0N after the camera files
         storedOk: file.storedOk,
         plainOk,
         // Fix wave K (G89b-06): the plaintext check did not run for this file (`null` in the report,
@@ -300,7 +300,8 @@ export function contractBodyOf(evidenceId: string, at: number, report: PackageVe
       ...(check.findings.length > VERIFY_REPORT_MAX_FINDINGS ? { findingCount: check.findings.length } : {}),
     })),
     // D60 (2026-11-04): a failed fragment names the track of the package's own list - up to four (a legacy package never yields a third).
-    fragments: report.fragments.slice(0, VERIFY_REPORT_MAX_FRAGMENTS).map((fragment) => ({ ...fragment, trackId: fragment.trackId as VideoTrackId })),
+    // Row 154 (D5): a failed fragment of a pair's audio file names its AUDIO-0N.
+    fragments: report.fragments.slice(0, VERIFY_REPORT_MAX_FRAGMENTS).map((fragment) => ({ ...fragment, trackId: fragment.trackId as VideoTrackId | AudioTrackId })),
     failedFragmentCount: report.fragments.length,
     transcriptState: { ...report.transcriptState },
     // Decision D160: the model of the sealed transcript, when a document is sealed and the manifest is the signed one.

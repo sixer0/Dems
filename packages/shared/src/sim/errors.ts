@@ -36,6 +36,12 @@ export const SimErrorCode = {
   NOT_PERMITTED: 'NOT_PERMITTED',
   /** Session input the shared schema rejects (D62). */
   INVALID_INPUT: 'INVALID_INPUT',
+  /**
+   * Audit row 150 (D5; D28 DQ-2; register N-29, N-36): operation 81 is retired in behaviour. The audio of each
+   * track is fixed by its camera-microphone pair, so the in-session switch is refused for every session, before
+   * any other check, with nothing written. The Core answers `409 AUDIO_SOURCE_FIXED_BY_PAIRING`.
+   */
+  AUDIO_SOURCE_FIXED_BY_PAIRING: 'AUDIO_SOURCE_FIXED_BY_PAIRING',
   /** Deprecated: no action throws it any more. */
   NOT_IMPLEMENTED: 'NOT_IMPLEMENTED',
 } as const;
@@ -70,9 +76,11 @@ export class SimTransitionError extends Error {
    */
   readonly reason: string | null;
 
-  constructor(from: string | null, event: string, detail?: string, code: SimErrorCode = SimErrorCode.ILLEGAL_STATE, reason: string | null = null) {
+  constructor(from: string | null, event: string, detail?: string, code: SimErrorCode = SimErrorCode.ILLEGAL_STATE, reason: string | null = null, sentence?: string) {
     super(
-      `Illegal session transition: ${event} from ${from ?? 'IDLE'}${detail ? ` (${detail})` : ''}.`,
+      // Audit row W3T (D136): a refusal that has one fixed contract sentence (op 81's AUDIO_SOURCE_FIXED_BY_PAIRING) reads
+      // that sentence, not the generic "Illegal session transition" text. Class, code, from, event and reason are unchanged.
+      sentence ?? `Illegal session transition: ${event} from ${from ?? 'IDLE'}${detail ? ` (${detail})` : ''}.`,
     );
     this.name = 'SimTransitionError';
     this.from = from;

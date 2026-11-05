@@ -10,6 +10,9 @@ import { describe, expect, it, afterAll } from 'vitest';
 import { READ_SEAL_AUDIO_INTERVALS, READ_SEAL_AUDIT_ROWS, READ_SEAL_SOURCE_ROWS, STAND_INS, createSealSessionReader, type SealCaptureFacts, type SealStateView } from '../../sealing-host/session-reader';
 import { parseSessionCaptureFacts, SESSION_CAPTURE_FACTS_FOLDER, readSessionCaptureFacts, removeSessionCaptureFacts, sessionCaptureFactsPath, withCameraEnded, writeSessionCaptureFacts, type SessionCaptureFacts } from '../facts';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { capturePlan } from '../../../test/support/capture'; // row 148
+import { channelFilesOf, fragmentTracksOf, isCameraFile, isCameraFragmentRecord, pairedMicMissingOf } from '../index'; // row 148; isCameraFragmentRecord: row D2C
+import { READ_SESSION_HAS_FRAGMENT } from '../../engine/capture-session'; // row D2C
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -73,6 +76,21 @@ describe('manifest field 40 comes from the worker\'s measurement, the adapter\'s
   it('a measured offset of 0 is a measurement (not "none"); facts of before this pass read as before; neither source: the stand-in', async () => {
     expect(await field40([{ trackId: 'VIDEO-01', deviceId: 'CAM-01', clockOffsetMs: -7, measuredClockOffsetMs: 0, firstVideo: null }, { trackId: 'VIDEO-02', deviceId: 'CAM-02', clockOffsetMs: 12, firstVideo: null }])).toEqual([0, 12]);
     expect(await field40([{ trackId: 'VIDEO-01', deviceId: 'CAM-01', clockOffsetMs: null, measuredClockOffsetMs: null, firstVideo: null }])).toEqual([STAND_INS.clockOffsetMs, STAND_INS.clockOffsetMs]);
+  });
+
+  // Row 148 (D128, R153-1): the seal takes a session as a D5 one when its reader says `pairedAudio` - from the capture facts
+  // of THIS session - so a protocol-6 session in which every microphone failed (no AUDIO-0N row) still states its pairs.
+  it('row 148: the facts of a protocol-6 start (`pairedAudio: true`) make the reader say `pairedAudio`; facts without it, or no facts, say nothing (the /2 path of before)', async () => {
+    const readWith = async (captureFacts: SealCaptureFacts | null) => {
+      const reader = createSealSessionReader({ state: () => view, db: () => ({ query: async (text: string) => ({ rows: (rows[text] ?? []) as never[] }) }) as never, begin: async () => {}, sttSnapshot: async () => null, captureFacts: async () => captureFacts, notice: 'N', timezone: '+07:00' });
+      return reader.read(SESSION);
+    };
+    const cameras: SealCaptureFacts['cameras'] = [{ trackId: 'VIDEO-01', deviceId: 'CAM-01', clockOffsetMs: null, firstVideo: null }];
+    expect((await readWith({ sessionId: SESSION, startRecordedAt: RECORDED_AT, pairedAudio: true, cameras }))?.pairedAudio).toBe(true);
+    expect(await readWith({ sessionId: SESSION, startRecordedAt: RECORDED_AT, cameras })).not.toHaveProperty('pairedAudio');
+    expect(await readWith(null)).not.toHaveProperty('pairedAudio');
+    // CONTROL: facts of ANOTHER start of the same ID (a reset reuses IDs) are not this session's - no member.
+    expect(await readWith({ sessionId: SESSION, startRecordedAt: RECORDED_AT + 1, pairedAudio: true, cameras })).not.toHaveProperty('pairedAudio');
   });
 });
 
@@ -143,5 +161,83 @@ describe('G89-07 and gate 89 C3: the capture facts file of a sealed session, and
       expect(parseSessionCaptureFacts(bad({ reason: 'CAMERA_STREAM_ENDED', at: -1 }))).toBeNull();
       expect(parseSessionCaptureFacts(bad('CAMERA_STREAM_ENDED'))).toBeNull();
     });
+  });
+});
+
+// Row 148 (D5; S5 §2.3; AC-4.8; D30 K-3): the session's file list and the recorder's map take the CHANNEL FILES of
+// the plan, and a camera whose paired microphone is not recorded carries the silent-track statement to the seal.
+describe('row 148: the channel files of a session and the missing-mic statement', () => {
+  const full = capturePlan('SES-20261106-0148');
+  // Channel 2 did not open: no MIC-02 row; its camera VIDEO-02 states NOT_OPENED (the builder's word, row 147).
+  const short = { ...full, mics: full.mics.filter((mic) => mic.channel !== 'MIC-02'), cameras: full.cameras.map((camera) => (camera.trackId === 'VIDEO-02' ? { ...camera, micMissing: 'NOT_OPENED' as const } : camera)) };
+
+  it('every microphone of the plan has its channel file under AUDIO-0N at the path the plan names; the recorder maps cameras to VIDEO-0N and microphones to AUDIO-0N', () => {
+    expect(channelFilesOf(full).map((file) => [file.trackId, file.deviceId, file.path.slice(file.path.lastIndexOf('/') + 1)])).toEqual([
+      ['AUDIO-01', 'MIC-01', 'MIC-01.m4a'],
+      ['AUDIO-02', 'MIC-02', 'MIC-02.m4a'],
+      ['AUDIO-03', 'MIC-03', 'MIC-03.m4a'],
+      ['AUDIO-04', 'MIC-04', 'MIC-04.m4a'],
+    ]);
+    expect([...fragmentTracksOf(full)]).toEqual([['CAM-01', 'VIDEO-01'], ['CAM-02', 'VIDEO-02'], ['MIC-01', 'AUDIO-01'], ['MIC-02', 'AUDIO-02'], ['MIC-03', 'AUDIO-03'], ['MIC-04', 'AUDIO-04']]);
+    // The track follows the CHANNEL, not the device: a device on channel 3 is AUDIO-03 whatever its name.
+    const moved = { ...full, mics: full.mics.map((mic) => (mic.channel === 'MIC-03' ? { ...mic, deviceId: 'MIC-07' } : mic)) };
+    expect(fragmentTracksOf(moved).get('MIC-07')).toBe('AUDIO-03');
+    expect(channelFilesOf(full).map(isCameraFile)).toEqual([false, false, false, false]);
+    expect(isCameraFile({ trackId: 'VIDEO-04' })).toBe(true);
+    expect(pairedMicMissingOf(full)).toEqual(new Map());
+  });
+
+  it('a missing paired microphone: NO AUDIO-02 file and no AUDIO-02 track, and VIDEO-02 carries the silent-track flag (NOT_OPENED), written to and read back from the facts file', () => {
+    expect(channelFilesOf(short).map((file) => file.trackId)).toEqual(['AUDIO-01', 'AUDIO-03', 'AUDIO-04']);
+    expect([...fragmentTracksOf(short).values()]).not.toContain('AUDIO-02');
+    expect(pairedMicMissingOf(short)).toEqual(new Map([['CAM-02', 'NOT_OPENED']]));
+    const facts = file([camera(), camera({ trackId: 'VIDEO-02', deviceId: 'CAM-02', micMissing: 'NOT_OPENED' })]);
+    expect(parseSessionCaptureFacts(facts)?.cameras.map((entry) => entry.micMissing ?? null)).toEqual([null, 'NOT_OPENED']);
+    expect(parseSessionCaptureFacts(file([camera({ micMissing: 'NOT_ASSIGNED' })]))?.cameras[0]?.micMissing).toBe('NOT_ASSIGNED');
+  });
+
+  it('CONTROL: a file written before row 148 has no member and reads as recorded; a member that is no word of the protocol makes the file unreadable; an AUDIO track is no camera of the facts file', () => {
+    expect(parseSessionCaptureFacts(file([camera()]))?.cameras[0]).not.toHaveProperty('micMissing');
+    expect(parseSessionCaptureFacts(file([camera({ micMissing: null })]))?.cameras[0]).not.toHaveProperty('micMissing');
+    expect(parseSessionCaptureFacts(file([camera({ micMissing: 'MISSING' })]))).toBeNull();
+    expect(parseSessionCaptureFacts(file([camera({ micMissing: 2 })]))).toBeNull();
+    expect(parseSessionCaptureFacts(file([camera({ trackId: 'AUDIO-01', deviceId: 'MIC-01' })]))).toBeNull();
+    // D128: the session member `pairedAudio` is read when it is `true`, absent before row 148, and refused as anything else.
+    const withPaired = (value: unknown): string => JSON.stringify({ version: 1, sessionId: SESSION, startRecordedAt: RECORDED_AT, pairedAudio: value, cameras: [camera()] });
+    expect(parseSessionCaptureFacts(withPaired(true))?.pairedAudio).toBe(true);
+    expect(parseSessionCaptureFacts(file([camera()]))).not.toHaveProperty('pairedAudio');
+    expect(parseSessionCaptureFacts(withPaired(false))).toBeNull();
+    expect(parseSessionCaptureFacts(withPaired('yes'))).toBeNull();
+  });
+});
+
+describe('row D2C (D150 (2), finding F-C1D-2): only a CAMERA file makes the session durable', () => {
+  const plan = capturePlan('SES-20261106-0150');
+  const files = [
+    { trackId: 'VIDEO-01' as const, deviceId: 'CAM-01', path: '/media/VIDEO-01.mp4' },
+    { trackId: 'VIDEO-02' as const, deviceId: 'CAM-02', path: '/media/VIDEO-02.mp4' },
+    ...channelFilesOf(plan),
+  ];
+  const checkpointOf = (deviceId: string) => ({ kind: 'FRAGMENT_CHECKPOINT', deviceId });
+
+  it('a channel-file checkpoint alone is not durable; the first camera checkpoint is; mixed: durable on the camera, not before', () => {
+    // Mic checkpoints only: none of them says the session is recording.
+    expect(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'].map((deviceId) => isCameraFragmentRecord(files, checkpointOf(deviceId)))).toEqual([false, false, false, false]);
+    // The first camera checkpoint (and the camera-only FIRST_DURABLE_FRAGMENT) does.
+    expect(isCameraFragmentRecord(files, checkpointOf('CAM-01'))).toBe(true);
+    expect(isCameraFragmentRecord(files, { kind: 'FIRST_DURABLE_FRAGMENT', deviceId: 'CAM-02' })).toBe(true);
+    // Mixed, in the order a 4+4 worker may say them: the session becomes durable at the camera's record, not at the mics' before it.
+    const sequence = ['MIC-01', 'MIC-02', 'CAM-02', 'MIC-01'].map(checkpointOf);
+    expect(sequence.map((record) => isCameraFragmentRecord(files, record))).toEqual([false, false, true, false]);
+    // CONTROL: no other kind, and no device outside the list, says it.
+    expect(isCameraFragmentRecord(files, { kind: 'FIRST_VIDEO_SAMPLE', deviceId: 'CAM-01' })).toBe(false);
+    expect(isCameraFragmentRecord(files, { kind: 'AUDIO_TIMELINE_END' })).toBe(false);
+    expect(isCameraFragmentRecord(files, checkpointOf('CAM-09'))).toBe(false);
+    expect(isCameraFragmentRecord([], checkpointOf('CAM-01'))).toBe(false);
+  });
+
+  it('after a restart the durable member is derived from CAMERA fragment rows only (an AUDIO-0N row is no recording)', () => {
+    expect(READ_SESSION_HAS_FRAGMENT).toContain("track_id IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04')");
+    expect(READ_SESSION_HAS_FRAGMENT).not.toMatch(/AUDIO/);
   });
 });

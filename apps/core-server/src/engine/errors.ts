@@ -16,6 +16,7 @@
  *
  * A message of this file is a fixed text. It never quotes a state, a row or an input (SR-48).
  */
+import { AUDIO_SOURCE_FIXED_BY_PAIRING_CODE, AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE } from '@dems/shared/api';
 import { SimErrorCode, SimPermissionError, SimTransitionError, simErrorCode } from '@dems/shared/sim';
 import { ApiFailure, NOT_SIGNED_IN_TEXT, notReady, type ErrorDetails } from '../plugins/error-envelope';
 
@@ -84,6 +85,8 @@ export const SIM_REFUSAL_RULES = {
   [SimErrorCode.RECORDING_ACTIVE]: { status: 409, code: 'RECORDING_ACTIVE', message: 'A recording is running.' },
   [SimErrorCode.COMMAND_UNSUPPORTED]: { status: 409, code: 'COMMAND_UNSUPPORTED', message: 'The device does not support this command.' },
   [SimErrorCode.UNSEALED_EVIDENCE]: { status: 409, code: 'NOT_SEALED', message: 'The evidence item is not sealed.' },
+  // Audit row 150 (D28 DQ-2; register N-29, N-36): operation 81 retired - the one sentence of the contract.
+  [SimErrorCode.AUDIO_SOURCE_FIXED_BY_PAIRING]: { status: 409, code: AUDIO_SOURCE_FIXED_BY_PAIRING_CODE, message: AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE },
   [SimErrorCode.REASON_TOO_SHORT]: { status: 422, code: 'INVALID_REASON', message: 'A reason of at least 5 characters is required.' },
   [SimErrorCode.NOTE_INVALID]: { status: 422, code: 'INVALID_INPUT', message: 'The request does not match the expected input.' },
   [SimErrorCode.POLICY_RANGE]: { status: 422, code: 'INVALID_INPUT', message: 'The request does not match the expected input.' },

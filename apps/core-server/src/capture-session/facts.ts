@@ -26,7 +26,14 @@
  *   firstVideo      per camera file: the worker's `FIRST_VIDEO_SAMPLE` record of the LAST worker of
  *                   the session - `pts` and `timescale` (fields 127 / 128), and what arrived before
  *                   the first written sample (`heldMs`, `skipped`, `skippedSpanMs`: the manifest
- *                   has NO field for these three; they are kept here and in the log).
+ *                   has NO field for these three; they are kept here and in the log);
+ *   micMissing      per camera file (row 148; D5 pairs, D30 K-3; protocol 6 `CapturePlanCamera.micMissing`):
+ *                   THE PAIRED CHANNEL OF THIS CAMERA WAS NOT RECORDED - `NOT_ASSIGNED` (the slot was
+ *                   empty) or `NOT_OPENED` (it could not be opened), as the plan of the LAST worker of
+ *                   the session stated it; the camera file then carries a silent audio track. Absent:
+ *                   its channel was recorded (a file written before row 148 reads so). The hand-off of
+ *                   the missing-mic statement to the seal (row 153: `audioTracksMissing[].reason`).
+ *                   ONLY camera files are listed here: a channel file (`MIC-0N.m4a`) has no entry.
  *
  * WHY A FILE. The seal reads the session record once per run and a resumed seal must build the
  * manifest of the run it resumes, byte for byte (`MANIFEST_NOT_REPRODUCIBLE` otherwise). Values
@@ -52,7 +59,7 @@
 import { constants as FS } from 'node:fs';
 import { lstat, open, readFile, rename, rm, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
-import { CaptureSyncLevel } from '@dems/capture-protocol';
+import { CAPTURE_PAIRED_MIC_MISSING_REASONS, CaptureSyncLevel, type CapturePairedMicMissingReason } from '@dems/capture-protocol';
 import { cameraFileName, cameraFilePath, VIDEO_TRACK_IDS, type PackageVideoTrackId } from '@dems/shared/evidence-package'; // VIDEO_TRACK_IDS: D60 (2026-11-04)
 import { videoSampleEntryOf, videoStreamFormatOf, type VideoSampleEntryRead, type VideoStreamFormat } from '../capture';
 
@@ -80,6 +87,8 @@ export interface SessionCameraFacts {
    * where its file ends (the last durable fragment; null: none was durable). Absent or null: it was not.
    */
   readonly ended?: SessionCameraEnd | null;
+  /** Row 148 (D30 K-3): why the paired channel of this camera was not recorded (its file has a silent audio track). Absent or null: it was recorded. */
+  readonly micMissing?: CapturePairedMicMissingReason | null;
   /** The worker's `FIRST_VIDEO_SAMPLE` of this camera file; null: no such record arrived. */
   readonly firstVideo: {
     readonly pts: number;
@@ -119,6 +128,12 @@ export interface SessionCaptureFacts {
   readonly sessionId: string;
   /** `recorded_at` of the session's `session_capture_sources` rows (epoch ms). */
   readonly startRecordedAt: number;
+  /**
+   * Row 148 (D128, R153-1): the session was recorded under the camera-microphone pairing (capture protocol 6, D5):
+   * the seal then states every pair, also when NO microphone recorded (no `AUDIO-0N` row exists). Written `true` by
+   * every start of a protocol-6 Core; absent in a file written before (read as "not stated").
+   */
+  readonly pairedAudio?: true;
   readonly cameras: readonly SessionCameraFacts[];
 }
 
@@ -162,6 +177,9 @@ export function parseSessionCaptureFacts(text: string): SessionCaptureFacts | nu
     const syncLevel = camera['syncLevel'] ?? null;
     if (measured !== null && !(typeof measured === 'number' && Number.isSafeInteger(measured))) return null;
     if (syncLevel !== null && !SYNC_LEVELS.includes(syncLevel as CaptureSyncLevel)) return null;
+    // Row 148: absent in a file written before it (read as "its channel was recorded"). Present, one of the protocol's words.
+    const micMissing = camera['micMissing'] ?? null;
+    if (micMissing !== null && !(CAPTURE_PAIRED_MIC_MISSING_REASONS as readonly unknown[]).includes(micMissing)) return null;
     if (typeof trackId !== 'string' || !TRACK_IDS.includes(trackId) || typeof deviceId !== 'string' || !DEVICE_ID.test(deviceId)) return null;
     if (clockOffsetMs !== null && !(typeof clockOffsetMs === 'number' && Number.isSafeInteger(clockOffsetMs))) return null;
     // The member of fix wave H (C3) is absent in a file written before it: read as "not given up". Present, it must be of its form.
@@ -188,9 +206,12 @@ export function parseSessionCaptureFacts(text: string): SessionCaptureFacts | nu
       }
       first = { pts: video['pts'], timescale: video['timescale'], heldMs: video['heldMs'], skipped: counts, skippedSpanMs: video['skippedSpanMs'] };
     }
-    cameras.push({ trackId, deviceId, clockOffsetMs: clockOffsetMs as number | null, measuredClockOffsetMs: measured as number | null, syncLevel: syncLevel as CaptureSyncLevel | null, ...(ended === null ? {} : { ended }), firstVideo: first });
+    cameras.push({ trackId, deviceId, clockOffsetMs: clockOffsetMs as number | null, measuredClockOffsetMs: measured as number | null, syncLevel: syncLevel as CaptureSyncLevel | null, ...(ended === null ? {} : { ended }), ...(micMissing === null ? {} : { micMissing: micMissing as CapturePairedMicMissingReason }), firstVideo: first });
   }
-  return { version: SESSION_CAPTURE_FACTS_VERSION, sessionId: file['sessionId'], startRecordedAt: file['startRecordedAt'], cameras };
+  // Row 148 (D128): absent in a file written before it. Present, it is `true` and nothing else.
+  const pairedAudio = file['pairedAudio'] ?? null;
+  if (pairedAudio !== null && pairedAudio !== true) return null;
+  return { version: SESSION_CAPTURE_FACTS_VERSION, sessionId: file['sessionId'], startRecordedAt: file['startRecordedAt'], ...(pairedAudio === true ? { pairedAudio: true as const } : {}), cameras };
 }
 
 /**

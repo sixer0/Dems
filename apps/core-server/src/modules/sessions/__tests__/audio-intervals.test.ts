@@ -78,28 +78,19 @@ describe('operation 82: the intervals of the open session', () => {
     expect(session?.audioSource).toMatchObject({ activeInputId: 'MIC-01', standbyInputId: 'MIC-02' });
   });
 
-  it('after a switch (operation 81): two intervals, newest first; the first is closed at the switch, the second names who switched; paged by the interval number', async () => {
+  it('operation 81 is retired (audit row 149; D5, N-29, N-30): a refused switch opens no interval - the session keeps the one of its start; paged by the interval number', async () => {
     const { unit, id } = await recording();
-    // The hosted action of operation 81 (its route and its holder rule are `src/capture-session`'s tests).
     unit.memory.host.drive(3_000);
-    unit.memory.act('INVESTIGATOR', (actions) => actions.switchAudioSource('MIC-02'));
-    const investigator = unit.memory.host.operator('INVESTIGATOR').id;
+    // The hosted action of operation 81 refuses for the pairing (row 150); its route answers 409 itself (`routes.ts`).
+    expect(() => unit.memory.act('INVESTIGATOR', (actions) => actions.switchAudioSource('MIC-02'))).toThrow(expect.objectContaining({ code: 'AUDIO_SOURCE_FIXED_BY_PAIRING' }));
     const all = pageOf(await unit.get(on(id, 'audio-source')));
     expect(all.nextCursor).toBeNull();
-    expect(all.items.map((item) => [item.seq, item.inputId, item.reason, item.switchedBy, item.toMs === null])).toEqual([
-      // Pass D6: numbered from 1, as the manifest and the table.
-      [2, 'MIC-02', 'MANUAL', investigator, true],
-      [1, 'MIC-01', 'START', null, false],
-    ]);
-    expect(all.items[0]?.fromMs).toBe(unit.memory.session?.audioSource?.intervalFromMs);
-    expect(all.items[1]?.toAt).toBe(unit.memory.session?.audioSource?.switchedAt);
+    expect(all.items.map((item) => [item.seq, item.inputId, item.reason, item.switchedBy, item.toMs === null])).toEqual([[1, 'MIC-01', 'START', null, true]]);
+    expect(unit.memory.session?.audioSource).toMatchObject({ activeInputId: 'MIC-01', standbyInputId: 'MIC-02' });
 
     const first = pageOf(await unit.get(`${on(id, 'audio-source')}?limit=1`));
-    expect(first.items.map((item) => item.seq)).toEqual([2]);
-    expect(first.nextCursor).toBe('2');
-    const second = pageOf(await unit.get(`${on(id, 'audio-source')}?limit=1&cursor=${first.nextCursor}`));
-    expect(second.items.map((item) => item.seq)).toEqual([1]);
-    expect(second.nextCursor).toBeNull();
+    expect(first.items.map((item) => item.seq)).toEqual([1]);
+    expect(first.nextCursor).toBeNull();
     expect(pageOf(await unit.get(`${on(id, 'audio-source')}?cursor=0`))).toEqual({ items: [], nextCursor: null });
   });
 

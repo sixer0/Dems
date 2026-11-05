@@ -72,7 +72,7 @@ export { CameraLinkState, createCameraLinkSource, type CameraLinkReading, type C
 // Audit 2026-11-05 row 102: the stored camera interface (the boot's own one-row read) for the sweep's link watch. Read only.
 export { storedCameraInterface } from './boot';
 export { createProcessLauncher, unconfiguredLauncher, type ProcessLauncherOptions } from './ipc';
-export { MAX_SESSION_ID_CHARS, OUTPUT_EXISTS, captureDownReasonOf, createCaptureSupervisor } from './supervisor';
+export { MAX_SESSION_ID_CHARS, OUTPUT_EXISTS, captureDownReasonOf, createCaptureSupervisor, restatePairedMics } from './supervisor'; // restatePairedMics: row W3I (the capture-session unit reads it through this index)
 // The arguments of a worker process: one set for a session start and for the boot probe (wave H driver F; gate 64 C7).
 export { CAPTURE_WORKER_PROCESS_SETTINGS, CAPTURE_WORKER_PRODUCTION_SETTINGS, PRODUCTION_INGEST_OPEN_WINDOW_MS, captureWorkerArguments } from './worker-arguments';
 // Where a camera track pushes to (task 4 row 47; integration pass I-3): one function, in a file that imports nothing.

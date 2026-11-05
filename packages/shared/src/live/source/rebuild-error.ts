@@ -32,6 +32,7 @@
  * Pure. It reads the operation registry for the access rule; it calls nothing.
  */
 import { ApiErrorCode, coreApiAccessPermissions, findCoreApiOperation, permissionsOfDenialLabel } from '../../api/core-api';
+import { AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE } from '../../api/sessions';
 import type { CoreCallFailure } from '../../client/core-client';
 import { SimErrorCode, SimNotFoundError, SimPermissionError, SimTransitionError } from '../../sim/errors';
 import { CoreRefusalError, LiveTransportError } from '../errors';
@@ -61,6 +62,18 @@ export const ENVELOPE_SIM_CODE: Readonly<Partial<Record<ApiErrorCode, SimErrorCo
   [ApiErrorCode.RECORDING_ACTIVE]: SimErrorCode.RECORDING_ACTIVE,
   [ApiErrorCode.COMMAND_UNSUPPORTED]: SimErrorCode.COMMAND_UNSUPPORTED,
   [ApiErrorCode.INVALID_INPUT]: SimErrorCode.INVALID_INPUT,
+  // Audit row 150 (D28 DQ-2): operation 81 retired - the Core's refusal reads back as the simulator's own.
+  [ApiErrorCode.AUDIO_SOURCE_FIXED_BY_PAIRING]: SimErrorCode.AUDIO_SOURCE_FIXED_BY_PAIRING,
+};
+
+/**
+ * Audit row W3T (D136): the simulator codes whose refusal has ONE fixed contract sentence. The rebuilt
+ * `SimTransitionError` reads that sentence instead of the generic "Illegal session transition" text, so a
+ * report of the refused action says what the contract says. It is the contract's constant, never the
+ * envelope's `message` (the rule above holds).
+ */
+export const SIM_CODE_SENTENCE: Readonly<Partial<Record<SimErrorCode, string>>> = {
+  [SimErrorCode.AUDIO_SOURCE_FIXED_BY_PAIRING]: AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE,
 };
 
 /** The simulator code an envelope code stands for. Own keys of the table only: a code that happens to name an inherited member stands for nothing. */
@@ -155,7 +168,7 @@ export function rebuildRefusal(failure: CoreCallFailure, context: RefusalContext
           : null
         : context.sessionState;
       // Pass D6 (D156): the Core's `details.reason` travels on the rebuilt error (a code, never a value of the request).
-      return new SimTransitionError(from, detailText(failure, 'event') ?? context.action, undefined, simCode, detailText(failure, 'reason'));
+      return new SimTransitionError(from, detailText(failure, 'event') ?? context.action, undefined, simCode, detailText(failure, 'reason'), SIM_CODE_SENTENCE[simCode]);
     }
   }
   return new CoreRefusalError(code, { status, requestId: failure.requestId });

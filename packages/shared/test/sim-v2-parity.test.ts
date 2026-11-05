@@ -5,6 +5,7 @@
 // sealing-driver timing constants) and SH-25/E-02 (the meters re-key contract at the seam).
 // Every assertion is falsifiable: it names the exact value schema v2 must produce.
 import { describe, expect, it } from 'vitest';
+import { AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE } from '../src/api/sessions';
 import {
   passCaptureStart,
   buildEvidenceFilesV2,
@@ -19,6 +20,9 @@ import {
   SEALING_FIRST_ATTEMPT,
   SEALING_PROGRESS_TICK_MS,
   SIM_SNAPSHOT_VERSION,
+  SimErrorCode,
+  SimPermissionError,
+  SimTransitionError,
   switchAudioSourceTransition,
   transcriptSha256,
   type SessionCreateInput,
@@ -122,39 +126,60 @@ describe('SH-06 session machine (register SH-05/SH-06)', () => {
   });
 });
 
-describe('SH-06/SH-08 mic switch (register SH-06/SH-08; op 81; OD-09)', () => {
-  it('switchAudioSourceTransition moves the active input, records the interval, audits with the device id', () => {
+// Audit row 150 (D5; D28 DQ-2; register N-29, N-36; masterplan/01_specs_d5.md G-3, RK-6): operation 81 is RETIRED in
+// behaviour. The audio of each track is fixed by its camera-microphone pair, so the shared transition refuses every call
+// after the access check - every state, every input - with AUDIO_SOURCE_FIXED_BY_PAIRING and writes nothing. These cases
+// replace the switch cases of SH-06/SH-08 (RK-6: "sim switch tests are rewritten in the same row").
+describe('op 81 retired (audit row 150; D28 DQ-2): the shared switch refuses, writing nothing', () => {
+  const refusalOf = (run: () => unknown): unknown => {
+    try {
+      run();
+    } catch (error) {
+      return error;
+    }
+    return null;
+  };
+
+  it.each(['MIC-02', 'MIC-01', 'MIC-09'])('while RECORDING, a switch to %s is refused AUDIO_SOURCE_FIXED_BY_PAIRING: no state, no timeline item, no audit row', (inputId) => {
     const h = harness();
     h.toRecording();
     const before = h.state();
-    const now = START + 30_000;
-    const next = switchAudioSourceTransition(before, now, 'MIC-02');
-    expect(next.audio.activeInputId).toBe('MIC-02');
-    expect(next.session?.audioSource).toMatchObject({ activeInputId: 'MIC-02', standbyInputId: 'MIC-01' });
-    // The interval opens at the media-pts boundary (now minus the recording start), never the wall clock.
-    const startedAt = before.session?.startedAt ?? now;
-    expect(next.session?.audioSource?.intervalFromMs).toBe(Math.max(0, now - startedAt));
-    // One timeline AUDIO_SWITCH item naming the channel and both inputs.
-    const switchItem = next.session?.timeline.find((item) => item.kind === 'AUDIO_SWITCH');
-    expect(switchItem).toBeDefined();
-    expect(switchItem?.params).toMatchObject({ from: 'MIC-01', to: 'MIC-02', deviceId: 'MIC-02' });
-    // One AUDIO_SOURCE_SWITCHED audit row carrying the sending device id (E-30).
-    const audit = next.audit.rows.at(-1);
-    expect(audit?.type).toBe('AUDIO_SOURCE_SWITCHED');
-    // Fix pass F-M5 (review R74-05): the keys of contract C3 §5.2 (it pinned the simulator's own `fromInputId` / `toInputId` / `deviceId`).
-    expect(audit?.details).toMatchObject({ fromInput: 'MIC-01', toInput: 'MIC-02', fromMs: 0 });
-    expect(Object.keys(audit?.details ?? {}).sort()).toEqual(['fromInput', 'fromMs', 'toInput', 'toMs']);
-    // It never touches the interview-role copy of the mics (only the capture role / active input).
-    expect(next.mics).toBe(before.mics);
+    const refused = refusalOf(() => switchAudioSourceTransition(before, START + 30_000, inputId as 'MIC-02', 'TABLET'));
+    expect(refused).toBeInstanceOf(SimTransitionError);
+    expect(refused).toMatchObject({ code: SimErrorCode.AUDIO_SOURCE_FIXED_BY_PAIRING, event: 'switchAudioSource', from: 'RECORDING' });
+    // Through the action as well: the store is not touched.
+    expect(refusalOf(() => h.sim.actions.switchAudioSource(inputId))).toMatchObject({ code: SimErrorCode.AUDIO_SOURCE_FIXED_BY_PAIRING });
+    expect(h.state()).toBe(before);
+    expect(h.state().audit.rows.some((row) => row.type === 'AUDIO_SOURCE_SWITCHED')).toBe(false);
+    expect(h.state().session?.timeline.some((item) => item.kind === 'AUDIO_SWITCH')).toBe(false);
+    // CONTROL: the session keeps the pair it started with (Pair 1 transcribed on channel 1).
+    expect(h.state().session?.audioSource).toMatchObject({ activeInputId: 'MIC-01', standbyInputId: 'MIC-02' });
   });
 
-  it('is idempotent when the input is already active', () => {
+  it('refused in every state, not only while recording (no INVALID_STATE any more): no session, CREATE', () => {
+    const h = harness();
+    expect(refusalOf(() => h.sim.actions.switchAudioSource('MIC-02'))).toMatchObject({ code: SimErrorCode.AUDIO_SOURCE_FIXED_BY_PAIRING, from: null });
+    h.sim.actions.createSession(INPUT);
+    expect(refusalOf(() => h.sim.actions.switchAudioSource('MIC-02'))).toMatchObject({ code: SimErrorCode.AUDIO_SOURCE_FIXED_BY_PAIRING, from: 'CREATE' });
+  });
+
+  it('the access check stays first: a signed-out caller is refused NOT_SIGNED_IN (401), not the pairing answer', () => {
     const h = harness();
     h.toRecording();
-    const now = START + 30_000;
-    const once = switchAudioSourceTransition(h.state(), now, 'MIC-02');
-    const twice = switchAudioSourceTransition(once, now + 1_000, 'MIC-02');
-    expect(twice).toBe(once);
+    h.sim.actions.signOut();
+    const refused = refusalOf(() => h.sim.actions.switchAudioSource('MIC-02'));
+    expect(refused).toBeInstanceOf(SimPermissionError);
+    expect(refused).toMatchObject({ code: SimErrorCode.NOT_SIGNED_IN });
+  });
+
+  it('D136 (row W3T): the refusal reads the contract sentence, not the generic "Illegal session transition" text', () => {
+    const h = harness();
+    h.toRecording();
+    const refused = refusalOf(() => h.sim.actions.switchAudioSource('MIC-02'));
+    expect(refused).toBeInstanceOf(SimTransitionError);
+    expect((refused as Error).message).toBe(AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE);
+    // CONTROL: another refusal of the machine keeps its own text.
+    expect((refusalOf(() => h.sim.actions.cancel()) as Error).message).toMatch(/^Illegal session transition: cancel from RECORDING/);
   });
 });
 

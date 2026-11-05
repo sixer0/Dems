@@ -18,7 +18,6 @@ import {
   NO_CAMERA_CONNECTED_REASON,
   SimTransitionError,
   CAPTURE_SOURCE_NOT_ASSIGNED_REASON,
-  applyAudioSourceSwitch,
   audioSourceAtStart,
   advanceCaptureStart,
   captureDurableOf,
@@ -671,7 +670,7 @@ describe('the start on an incomplete selector (task 4 row 163)', () => {
     expect(pair({ cameras: [], mics: [mic('MIC-01', 'MIC-02'), mic('MIC-02', 'MIC-02')] })).toBeNull();
   });
 
-  it('a switch of the audio source needs an input to switch FROM: a session without a pair and without an active line refuses it, writing nothing', () => {
+  it('op 81 is retired (row 150; row W3T): a session without a pair, and one with its pair, are refused with the pairing code, writing nothing', () => {
     // Simulated, a lone channel-4 line (category 3; D61 renamed the slot from the STANDBY role):
     // the session started and states no pair.
     const h = armedOn('simulated', CATEGORIES['3. some U, the rest P (VIDEO-01 and a lone MIC-04 held)']!);
@@ -689,18 +688,17 @@ describe('the start on an incomplete selector (task 4 row 163)', () => {
       refused = error;
     }
     expect(refused).toBeInstanceOf(SimTransitionError);
-    expect(refused).toMatchObject({ code: 'ILLEGAL_STATE', event: 'switchAudioSource' });
+    // Audit row 150 (D28 DQ-2): operation 81 is retired - the refusal is the pairing answer for every session now.
+    expect(refused).toMatchObject({ code: 'AUDIO_SOURCE_FIXED_BY_PAIRING', event: 'switchAudioSource' });
     expect(h.state()).toBe(before);
-    // The same for meters whose active input is NOT a line of this session (a state put in place
-    // otherwise): an input the session does not hold is nothing to switch from either.
-    const session = before.session;
-    if (session === null) throw new Error('no session');
-    const strayActive: SimState = { ...before, audio: { ...before.audio, activeInputId: 'MIC-01' } };
-    expect(() => applyAudioSourceSwitch(strayActive, START, session, 'MIC-04', 1_000)).toThrow(SimTransitionError);
-    // CONTROL: a session with its pair switches as before.
+    // Audit row W3T (D136): the engine's switch (`applyAudioSourceSwitch`) is removed with its last caller (row 149).
+    // CONTROL: a session with its pair states it, and the retired op 81 leaves it as it is.
     const complete = armedOn('simulated', seeded);
     expect(start(complete)).toBeNull();
-    complete.sim.actions.switchAudioSource('MIC-02');
-    expect(complete.state().session?.audioSource).toMatchObject({ activeInputId: 'MIC-02', standbyInputId: 'MIC-01' });
+    const pairSession = complete.state().session;
+    if (pairSession === null) throw new Error('no session');
+    expect(pairSession.audioSource).toMatchObject({ activeInputId: 'MIC-01', standbyInputId: 'MIC-02' });
+    expect(() => complete.sim.actions.switchAudioSource('MIC-02')).toThrow(expect.objectContaining({ code: 'AUDIO_SOURCE_FIXED_BY_PAIRING' }));
+    expect(complete.state().session?.audioSource).toMatchObject({ activeInputId: 'MIC-01', standbyInputId: 'MIC-02' });
   });
 });

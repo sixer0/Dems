@@ -914,7 +914,7 @@ export const EvidenceItemSchema = z
     files: z
       .array(
         z.strictObject({
-          trackId: z.enum(TrackId).describe('The track the file carries (VIDEO-01, VIDEO-02, AUDIO-01).'),
+          trackId: z.enum(TrackId).describe('The track the file carries: a camera file `VIDEO-0N`, or (a D5 package, schema `dems.evidence-manifest/2.1`) the audio file `AUDIO-0N` of camera-microphone pair N, listed after the camera files. The camera file of the same pair holds that audio exactly when `VIDEO-0N` is also listed.'),
           fileName: text().describe('Relative path inside the package; never absolute or credential-bearing.'),
           sizeBytes: count(),
           sha256: sha256().describe('SHA-256 of the whole file\'s stored bytes.'),
@@ -933,6 +933,20 @@ export const EvidenceItemSchema = z
       )
       .optional()
       .describe('Schema v2: one whole file per camera (D224/D225) with its hashes; mirrors the simulator\'s `EvidenceFileEntry` (SH-07).'),
+    // Audit 2026-11-05 row 159 (D5; decisions D30 K-3, D45 R145-2): the missing-microphone statement of the SIGNED manifest, on the item.
+    audioTracksMissing: z
+      .array(
+        z.strictObject({
+          trackId: audioTrackId().describe('The audio track of the pair whose microphone did not record (manifest field 175).'),
+          micDeviceId: z.string().regex(MIC_INPUT_ID_PATTERN).nullable().describe('The microphone that could not be opened (field 177); null exactly for `NOT_ASSIGNED`.'),
+          silentIn: z.array(videoTrackId()).max(1).describe('`[VIDEO-0N]` of the same pair when that camera file is in the package: it holds a SILENT audio track (field 178); empty when it is not.'),
+          reason: z.enum(['NOT_ASSIGNED', 'NOT_OPENED']).describe('NOT_ASSIGNED: no microphone was assigned to the channel of the pair. NOT_OPENED: the assigned microphone could not be opened at the start (field 179).'),
+        }),
+      )
+      .min(1)
+      .max(AUDIO_TRACK_IDS.length)
+      .optional()
+      .describe('Core server only, with `sealedPackage: PRESENT`: the manifest member `audioTracksMissing` (schema `dems.evidence-manifest/2.1`) - the paired microphone of a camera-microphone pair did not record and the recording went on; the camera file of that pair holds a silent audio track. Absent: the manifest states no such pair (every package sealed before D5, or a D5 package whose microphones all recorded). A client says it; the silence is never read as a quiet room.'),
     fragmentChainHead: sha256().nullable().optional().describe('Schema v2 item-level chain head (SH-07 preview shape): the chain the fragments of this item continue.'),
     transcriptSha256: sha256().nullable().optional().describe('Schema v2 item-level transcript hash (SH-07 preview; `evidence_items.transcript_sha256`, dbc-3 §B.11).'),
     manifestVersion: z.union([z.literal(1), z.literal(2)]).optional().describe('Manifest version of the seal (`evidence_items.manifest_version`, dbc-3 §B.11): 2 for every v2 seal, also one without a transcript hash. Absent: derived as before.'),

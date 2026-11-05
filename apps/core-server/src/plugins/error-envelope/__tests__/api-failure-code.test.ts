@@ -21,7 +21,7 @@ describe('CPB1-9: the code of an ApiFailure is the contract\'s vocabulary', () =
   });
 
   it('every code of the contract can be thrown, and arrives as it was given', () => {
-    expect(API_ERROR_CODES).toHaveLength(40);
+    expect(API_ERROR_CODES).toHaveLength(41); // audit row 143 (D5): + AUDIO_SOURCE_FIXED_BY_PAIRING
     for (const code of API_ERROR_CODES) expect(new ApiFailure(400, code, 'A refusal.').code).toBe(code);
   });
 

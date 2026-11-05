@@ -78,6 +78,12 @@ export const CAPTURE_FAULT_SENTENCES = {
   MIC_SILENCE_RUN_INSERTED: 'Silence of {{ms}} ms was inserted into the recording in one piece: no audio arrived from the microphone in that time.',
   /** Information, on the STANDBY microphone of a pair that resolves to one device. */
   STANDBY_ON_PRIMARY_DEVICE: "The standby microphone is another channel of the primary's device and is recorded by the same capture program. It guards a microphone and its cable, nothing else.",
+  /**
+   * WARNING, at the start of a capture (audit row 149; D5, D30 K-3, decision D132): the camera records without the
+   * microphone of its pair - the channel was not assigned or did not open - so its audio track is silent. Resolved when
+   * the capture ends. Pair 1 adds `PAIRED_MIC_MISSING_UNTRANSCRIBED_SENTENCE` (`params.transcribed`).
+   */
+  PAIRED_MIC_MISSING: '{{device}} is recording without the microphone of its pair: the audio track of this camera is silent. The recording continues.',
   // ── Codes the capture of a session ends with ────────────────────────────────────────────────
   /** The worker's final crash code: no camera connected within the ingest-open window (D72(k)). */
   NO_CAMERA_CONNECTED: 'No camera connected. Nothing was recorded.',
@@ -157,6 +163,9 @@ export const CAPTURE_FAULT_SENTENCES = {
 
 export type CaptureFaultReason = keyof typeof CAPTURE_FAULT_SENTENCES;
 
+/** Audit row 149: the second sentence of `PAIRED_MIC_MISSING` when the camera is Pair 1 (`params.transcribed: true`). */
+export const PAIRED_MIC_MISSING_UNTRANSCRIBED_SENTENCE = 'This is Pair 1, the transcribed pair: the session has no transcript.';
+
 /** A reason without a sentence: the code is shown, nothing is claimed about the cause. */
 export const CAPTURE_FAULT_UNKNOWN_SENTENCES = {
   device: 'Capture reported a problem on {{device}} ({{reason}}).',
@@ -186,6 +195,8 @@ export const CAPTURE_ADVISORY_REASONS: readonly CaptureFaultReason[] = [
   'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL',
   'MIC_SILENCE_RUN_INSERTED',
   'STANDBY_ON_PRIMARY_DEVICE',
+  // Audit row 149 (D132): a camera that records without the microphone of its pair.
+  'PAIRED_MIC_MISSING',
 ];
 
 /**
@@ -196,7 +207,7 @@ export const CAPTURE_ADVISORY_REASONS: readonly CaptureFaultReason[] = [
  * audio than its path may, more than at the start of its session, or a silence of 100 ms or more
  * inserted in one piece, is not a line an operator may read past.
  */
-export const CAPTURE_ADVISORY_WARNING_REASONS: readonly CaptureFaultReason[] = ['MIC_SAMPLES_SHORT_ABOVE_BOUND', 'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', 'MIC_SILENCE_RUN_INSERTED'];
+export const CAPTURE_ADVISORY_WARNING_REASONS: readonly CaptureFaultReason[] = ['MIC_SAMPLES_SHORT_ABOVE_BOUND', 'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', 'MIC_SILENCE_RUN_INSERTED', 'PAIRED_MIC_MISSING']; // PAIRED_MIC_MISSING: audit row 149 (D132)
 
 /**
  * The severity the operator is shown a reason with (ux §8e.2 situation C, §8g.3): a degraded start
@@ -222,6 +233,7 @@ export const CAPTURE_REASON_SEVERITY: Readonly<Record<CaptureFaultReason, Captur
   MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL: 'WARNING',
   MIC_SILENCE_RUN_INSERTED: 'WARNING',
   STANDBY_ON_PRIMARY_DEVICE: 'INFO',
+  PAIRED_MIC_MISSING: 'WARNING', // audit row 149 (D132): advice with the level WARNING
   NO_CAMERA_CONNECTED: 'CRITICAL',
   CAPTURE_START_FAILED: 'CRITICAL',
   SESSION_LEFT_RECORDING: 'CRITICAL',

@@ -267,6 +267,23 @@ export const evidence = {
     waiting: 'Waiting for the verdict of the Core server…',
     resultTitle: 'Result of this run',
     file: '{{track}} file',
+    /**
+     * Audit 2026-11-05 row 159 (D5; D119): an audio file row of a `/2.1` package is the audio file of
+     * camera-microphone pair N - never a "camera file". "in VIDEO-0N" only when the answer also lists
+     * that camera file (it then holds this audio); else the pair is named.
+     */
+    audioFile: '{{track}} audio file · in {{camera}}',
+    audioFileNoCamera: '{{track}} audio file · Pair {{pair}}',
+    /** Row 159 (D119): the file-level findings of V-04 for an audio file (the codes AUDIO_FILE_MISSING / AUDIO_FILE_UNREADABLE). */
+    fileFinding: {
+      AUDIO_FILE_MISSING: 'The audio file {{track}} of Pair {{pair}} is missing from the package.',
+      AUDIO_FILE_UNREADABLE: 'The audio file {{track}} of Pair {{pair}} is in the package but could not be read.',
+    },
+    /**
+     * Row 159 (D119; D30 K-3): the notice AUDIO_TRACKS_MISSING is a statement OF the signed manifest,
+     * so it is not listed under "Not covered by the package signature"; its line is the Core's own.
+     */
+    statementsTitle: 'Stated in the signed manifest',
     fileParts: 'Stored bytes {{stored}} · decrypted bytes {{plain}} · fragment chain {{chain}}',
     fragments_one: '{{count}} fragment',
     fragments_other: '{{count}} fragments',
@@ -698,6 +715,22 @@ export const evidence = {
       manifestHash: 'Manifest hash',
       manifestVersion: 'Manifest version',
       noFiles: 'Sealed files: not reported',
+      /**
+       * Audit 2026-11-05 row 159 (D5; S5 §6, F-5-11): the audio file of each camera-microphone pair
+       * of a `/2.1` package, with its own hash, and the signed statement of a pair whose microphone
+       * did not record (D30 K-3). A legacy item states neither and shows neither.
+       */
+      audioTitle: 'Audio files of the camera-microphone pairs',
+      audioFile: '{{track}} · audio of Pair {{pair}}, in {{camera}}',
+      audioFileNoCamera: '{{track}} · audio of Pair {{pair}} (camera file {{camera}} is not in the package)',
+      missingTitle: 'Pair microphones that did not record',
+      missing: {
+        NOT_ASSIGNED: '{{track}} (Pair {{pair}}): no microphone was assigned to {{channel}}.',
+        NOT_OPENED: '{{track}} (Pair {{pair}}): microphone {{device}} on {{channel}} could not be opened at the start.',
+      },
+      missingSilent: '{{camera}} holds a silent audio track: that silence is not the sound of the room.',
+      missingNoCamera: 'The camera file {{camera}} of this pair is not in the package.',
+      missingNote: 'Stated in the signed manifest. The recording went on without this microphone.',
     },
     /** G81-01 and the no-speech note of gate 81 (ruling D198). */
     transcript: {

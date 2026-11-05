@@ -142,10 +142,11 @@ static int parent_is_directory(const char *path) {
 static const char *take_plan(Session *s, const JNode *plan) {
     if (!plan || plan->t != J_OBJ || plan->n != 5) return "PLAN_INVALID";
     const JNode *cams = jget(plan, "cameras"), *mics = jget(plan, "mics"), *active = jget(plan, "activeMic"), *tap = jget(plan, "pcmTapPath"), *k = jget(plan, "constants");
-    /* D61 (2026-11-04): EXACTLY FOUR microphone lines, one per numbered channel (was 1..2 keyed by role): the
-     * shape rule is the server's (`assertRecordableSelector` names all four once) and the protocol's
-     * (min = max = 4), mirrored here as D60 mirrored the camera rule. */
-    if (!cams || cams->t != J_ARR || cams->n < 1 || cams->n > NCAM || !mics || mics->t != J_ARR || mics->n != NMIC) return "PLAN_INVALID";
+    /* PROTOCOL 6 (D30 K-3, finding F-1; row 151): 0 to 4 microphone lines, one per numbered channel at most (was
+     * EXACTLY FOUR, D61): a channel that is not there is stated on its camera (`micMissing`) or belongs to no camera
+     * of the plan - the protocol's `mics.min(0).max(4)`, mirrored here as D60 mirrored the camera rule. Which
+     * channels must be there is the pair rule further down. */
+    if (!cams || cams->t != J_ARR || cams->n < 1 || cams->n > NCAM || !mics || mics->t != J_ARR || mics->n > NMIC) return "PLAN_INVALID";
     /* D60 (2026-11-04): the shape rule is the server's, mirrored: AT LEAST ONE camera, every track named ONCE,
      * NO DUPLICATE DEVICE - and one RTSP port and one output file per camera (was: exactly two, checked pairwise). */
     s->ncam = cams->n;
@@ -164,9 +165,25 @@ static const char *take_plan(Session *s, const JNode *plan) {
     int i = 0;
     for (const JNode *c = cams->child; c; c = c->next, i++) {
         Cam *cam = &s->cam[i];
-        const JNode *id = jget(c, "deviceId"), *track = jget(c, "trackId"), *profile = jget(c, "profile"), *url = jget(c, "ingestUrl"), *out = jget(c, "outputPath");
-        if (c->t != J_OBJ || c->n != 5 || !id_ok(id, ID_CHARS) || !id_ok(track, ID_CHARS) || !profile || (profile->t != J_NULL && (profile->t != J_STR || !profile->str[0] || strlen(profile->str) > 64))) return "PLAN_INVALID";
+        const JNode *id = jget(c, "deviceId"), *track = jget(c, "trackId"), *profile = jget(c, "profile"), *url = jget(c, "ingestUrl"), *out = jget(c, "outputPath"),
+                    *pair = jget(c, "micChannel"), *missing = jget(c, "micMissing");
+        /* PROTOCOL 6 (D5 N-12, D30 K-3; row 151): SEVEN members (was five) - the two new ones are the camera's paired
+         * microphone channel and, when the plan does not hold that channel's row, why not. A five- or six-member row
+         * (a protocol-5 Core, or a row that lost one of the two) is PLAN_INVALID, as the protocol's strict object is. */
+        if (c->t != J_OBJ || c->n != 7 || !id_ok(id, ID_CHARS) || !id_ok(track, ID_CHARS) || !profile || (profile->t != J_NULL && (profile->t != J_STR || !profile->str[0] || strlen(profile->str) > 64))) return "PLAN_INVALID";
         if (!url || url->t != J_STR || parse_listen_url(url->str, &cam->port) || !is_path(out)) return "PLAN_INVALID";
+        /* (a) A camera carries the microphone of ITS OWN pair, fixed by number: VIDEO-0N -> MIC-0N
+         * (`captureMicChannelOfVideoTrack`). A track that is no VIDEO-0N has no pair, so no channel is its own; any other
+         * channel word - another pair's, MIC-05, the role words, an empty or non-string member - is FOREIGN: refused. */
+        int own = (!strncmp(track->str, "VIDEO-0", 7) && track->str[7] >= '1' && track->str[7] <= '0' + NMIC && track->str[8] == 0) ? track->str[7] - '1' : -1;
+        int named = (pair && pair->t == J_STR && !strncmp(pair->str, "MIC-0", 5) && pair->str[5] >= '1' && pair->str[5] <= '0' + NMIC && pair->str[6] == 0) ? pair->str[5] - '1' : -1;
+        if (named < 0) return "PLAN_INVALID";               /* no channel word of the plan (MIC-01..MIC-04) */
+        if (own < 0 || named != own) return "PLAN_INVALID"; /* rule (a): another pair's channel */
+        /* `micMissing`: null, or one of the two words of the manifest's missing-mic statement (D30 K-3, R145-2). Present
+         * and null-able, never absent (the member count above holds that); any other value or type is PLAN_INVALID. */
+        if (!missing || (missing->t != J_NULL && (missing->t != J_STR || (strcmp(missing->str, "NOT_ASSIGNED") && strcmp(missing->str, "NOT_OPENED"))))) return "PLAN_INVALID";
+        cam->mic_idx = named;                               /* the channel the row NAMES (rule (c) below is checked on it) */
+        snprintf(cam->mic_missing, sizeof cam->mic_missing, "%s", missing->t == J_STR ? missing->str : "");
         cam->idx = i;
         cam->present = 1;
         snprintf(cam->device_id, sizeof cam->device_id, "%s", id->str);
@@ -186,24 +203,35 @@ static const char *take_plan(Session *s, const JNode *plan) {
                 (!strcmp(s->cam[a].device_id, s->cam[b].device_id) && !strcmp(s->cam[a].profile, s->cam[b].profile))) return "PLAN_INVALID";
 
     /* D61 (2026-11-04): the microphone row is keyed by its numbered CHANNEL ("MIC-0n" -> index n-1; was the
-     * two-role lane's `role` member), and may name its OWN audio file (`outputPath`, optional until the session
-     * start wires the four outputs): a channel with one is recorded on it simultaneously with the others. */
+     * two-role lane's `role` member). PROTOCOL 6 (N-13; row 151): it MUST name its OWN audio file (`outputPath`, was
+     * optional): every channel of the plan is recorded on its own file, simultaneously with the others. A row of
+     * three members (no outputPath) is PLAN_INVALID. */
     for (const JNode *m = mics->child; m; m = m->next) {
         const JNode *id = jget(m, "deviceId"), *chan = jget(m, "channel"), *input = jget(m, "input"), *out = jget(m, "outputPath");
-        if (m->t != J_OBJ || m->n < 3 || m->n > 4 || !id_ok(id, ID_CHARS) || !chan || chan->t != J_STR || !input || input->t != J_OBJ || input->n != 2) return "PLAN_INVALID";
+        if (m->t != J_OBJ || m->n != 4 || !id_ok(id, ID_CHARS) || !chan || chan->t != J_STR || !input || input->t != J_OBJ || input->n != 2) return "PLAN_INVALID";
         int at = -1;
         if (!strncmp(chan->str, "MIC-0", 5) && chan->str[5] >= '1' && chan->str[5] <= '0' + NMIC && chan->str[6] == 0) at = chan->str[5] - '1';
         const JNode *kind = jget(input, "kind"), *path = jget(input, "path");
         /* Protocol version 5: two words, any other is PLAN_INVALID. PCM_FIFO_GAPPED is the same bytes from a writer that
          * does not promise every sample (design 06 s7.2a): the ONE place that sets the predicate the audio thread reads. */
         if (at < 0 || s->mic[at].present || !kind || kind->t != J_STR || (strcmp(kind->str, "PCM_FIFO") && strcmp(kind->str, "PCM_FIFO_GAPPED")) || !is_path(path)) return "PLAN_INVALID";
-        if ((m->n == 4 && !out) || (out && !is_path(out))) return "PLAN_INVALID";   /* a fourth member that is no outputPath: strict */
+        if (!is_path(out)) return "PLAN_INVALID";   /* the fourth member is the channel's own file (protocol 6: required) */
         s->mic[at].gapped = !strcmp(kind->str, "PCM_FIFO_GAPPED");
         s->mic[at].present = 1;
         snprintf(s->mic[at].device_id, sizeof s->mic[at].device_id, "%s", id->str);
         snprintf(s->mic[at].channel, sizeof s->mic[at].channel, "%s", chan->str);
         snprintf(s->mic[at].path, sizeof s->mic[at].path, "%s", path->str);
-        if (out) snprintf(s->mic[at].out_path, sizeof s->mic[at].out_path, "%s", out->str);
+        snprintf(s->mic[at].out_path, sizeof s->mic[at].out_path, "%s", out->str);
+    }
+    /* PROTOCOL 6 (D5, D27, D30 K-3; row 151) - the pair rules of `CapturePlanSchema`, mirrored (the Core refused such a
+     * plan already: this is defence in depth). (a) is held per camera above. (b) The paired channel's row is in the
+     * plan EXACTLY when the camera states no reason for its absence: a row AND a reason, or neither, is PLAN_INVALID.
+     * (c) No two cameras name one channel - a DUPLICATE channel; (c) follows from (a) and unique tracks today and
+     * stays explicit as the guard of any later pairing rule. */
+    for (int a = 0; a < s->ncam; a++) {
+        if ((s->cam[a].mic_missing[0] == 0) != (s->mic[s->cam[a].mic_idx].present != 0)) return "PLAN_INVALID";
+        for (int b = a + 1; b < s->ncam; b++)
+            if (s->cam[a].mic_idx == s->cam[b].mic_idx) return "PLAN_INVALID";
     }
     /* D61 (2026-11-04): pairwise over the FOUR channels (was the one check of the role pair): one device, one
      * input pipe and one output file each - the same rules `CapturePlanSchema` holds on the wire. */
@@ -223,8 +251,16 @@ static const char *take_plan(Session *s, const JNode *plan) {
     /* D61 (2026-11-04): `activeMic` is the TRANSCRIBED CHANNEL of AUDIO-01 (was the failover pair's start role):
      * the plan starts on MIC-01; the legacy two-role lane may restart the worker on MIC-02 (the supervisor maps
      * the role word). Any other word - the old role names among them - refuses the plan. */
+    /* Row 152 (R151-1 LIFTED, D131; protocol 6 R144-4, D30 K-3): a plan WITHOUT the MIC-01 row records - with no tap
+     * (rule below), its camera stating the channel missing (pair rule (b) above), and NO start interval record (the
+     * record names the device of the transcribed track; there is none: audio.c). The camera files no longer take the
+     * lane's audio (each takes its pair's), so nothing else needs the row. The legacy word MIC-02 (a restart of the
+     * two-role lane) still needs ITS row: the selector cannot start on an input the plan does not hold (row 152b: nothing
+     * moves the selector after START any more). */
     s->active_mic = !strcmp(active->str, "MIC-01") ? 0 : !strcmp(active->str, "MIC-02") ? 1 : -1;
-    if (s->active_mic < 0 || !s->mic[s->active_mic].present) return "PLAN_INVALID";
+    if (s->active_mic < 0 || (s->active_mic == 1 && !s->mic[1].present)) return "PLAN_INVALID";
+    /* PROTOCOL 6 (R-T1): the PCM tap carries the samples of channel 1, so a plan with a tap holds the MIC-01 row. */
+    if (tap->t == J_STR && !s->mic[0].present) return "PLAN_INVALID";
     if (tap->t == J_STR) snprintf(s->tap_path, sizeof s->tap_path, "%s", tap->str);
 
     /* What is on the disk. The file is the truth (D67, option C): a path that holds anything is
@@ -275,7 +311,7 @@ static const char *session_start(const JNode *msg) {
     S.attempt = (int)attempt->num;
     const char *refusal = take_plan(&S, jget(msg, "plan"));
     if (refusal) return refusal;
-    int r = open_encoder(&S);
+    int r = audio_open_encoders(&S);         /* row 152: one encoder per channel row, plus the silent one when a camera states its channel missing */
     if (r < 0) { fatal("main", "ENCODER_OPEN_FAILED", r); return "ENCODER_OPEN_FAILED"; }
     /* `sync_wanted` is what the build asks for; the level a file really got is said with its first durable fragment
      * (R63-09). `gop_frames_target` is the plan's target for streams DEMS encodes itself: nothing is enforced from
@@ -348,7 +384,7 @@ static void session_close(void) {
              (long long)atomic_load(&c->v_dropped_prearm), (long long)atomic_load(&c->v_dropped_prestart), (long long)atomic_load(&c->v_dropped_unanchored), (long long)(c->started ? c->first_pts : -1),
              (long long)atomic_load(&c->v_retimed), (long long)c->size_cuts, (long long)c->realign_cuts, sink_sync_level(&c->sink));
     }
-    if (S.enc) avcodec_free_context(&S.enc);
+    audio_free_encoders();                   /* row 152: after every camera file is closed (each read its audio parameters from one) */
     session_running = 0;
     if (stuck) fatal("main", "INGEST_THREAD_STUCK", AVERROR(ETIMEDOUT));
 }
@@ -383,20 +419,10 @@ static int on_line(char *line) {
         atomic_store(&g_stop, 1);
         return 0;
     }
-    if (!strcmp(type->str, "SWITCH_AUDIO_SOURCE")) {
-        /* LEGACY two-role lane (D61, 2026-11-04): the command still names the TRANSCRIPTION PAIR by role word -
-         * PRIMARY is channel 1, STANDBY channel 2. Channels 3 and 4 are recorded at once and never selectable
-         * here (the failover concept died with the decision; retiring this command is a later wave). */
-        const JNode *to = jget(msg, "to");
-        int at = to && to->t == J_STR ? (!strcmp(to->str, "PRIMARY") ? 0 : !strcmp(to->str, "STANDBY") ? 1 : -1) : -1;
-        if (msg->n != 5 || at < 0) return -1;
-        if (!session_running || atomic_load(&g_stop)) ack(corr->str, "NOT_RECORDING");
-        else if (strcmp(sid->str, S.id)) ack(corr->str, "SESSION_MISMATCH");
-        else if (!S.mic[at].present) ack(corr->str, "NO_SUCH_MIC");
-        else if (audio_request_switch(at, corr->str)) ack(corr->str, "SWITCH_PENDING");
-        /* else: the filtering thread acknowledges it when the switch is real. */
-        return 0;
-    }
+    /* Audit row 152b (N-31; D135, D136): the operator's switch command is RETIRED with operation 81 (row 149: the
+     * protocol and the supervisor no longer have it). The audio of each camera file is its pair's channel, fixed by
+     * number (row 152), and the selector lane feeds only the MIC-01 transcription tap, set once at START. Such a line
+     * is no command of the protocol any more: like any other unknown type, the worker ends on it (PROTOCOL_VIOLATION). */
     return -1;
 }
 
@@ -505,7 +531,10 @@ int main(int argc, char **argv) {
                 connected += atomic_load(&c->ever_connected);
             }
             /* Decision D72(k): a session in which NO camera connected within the ingest window is not
-             * left running audio-only with nothing durable. It ends here, loudly; no file was created. */
+             * left running audio-only with nothing durable. It ends here, loudly; no CAMERA file was created.
+             * Since row 152 the channel files (MIC-0N.m4a) of the plan's microphones may exist by now, with
+             * their FRAGMENT_CHECKPOINT records sent; row D2C (D150 (2)): the Core does not count those as a
+             * durable session (audio alone makes no package, row 153), so this end stays the failed start of D84. */
             if (!connected && !waiting && !fatal_pending()) fatal("main", "NO_CAMERA_CONNECTED", AVERROR(ETIMEDOUT));
             /* Once a second: the process owns no datagram socket and no socket off 127.0.0.1 (finding F-11). */
             if (mono_us() - socket_check_at >= US) {

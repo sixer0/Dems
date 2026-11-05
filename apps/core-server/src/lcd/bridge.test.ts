@@ -4,9 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createIdleState, buildScenarioState } from '@dems/shared/sim';
 import { pickDurable } from '../db/mapping';
 import { parseLcdBackendUrl } from '../config';
+import { LcdIntegrationStatusSchema } from '@dems/shared/api';
 import { createLcdBridge, lcdChannelsOf } from './bridge';
 
-const stateOf = () => pickDurable(buildScenarioState('recording', createIdleState({ now: Date.now(), seed: 123 })));
+// Row L3: a deep copy. `pickDurable` hands on objects the scenario builder shares between builds, so a case that edits a line (streamState, reach) leaked it into every later case.
+const stateOf = () => structuredClone(pickDurable(buildScenarioState('recording', createIdleState({ now: Date.now(), seed: 123 }))));
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); });
 
@@ -46,6 +48,55 @@ describe('LCD configuration and truth', () => {
     expect(lcdChannelsOf(state, 2, true)[0]?.recording).toBe(false);
     state.captureConfig.cameras = [];
     expect(lcdChannelsOf(state, 2, true).some((c) => c.cameraConnected)).toBe(false);
+  });
+
+  describe('row L3 (D104): the camera lamp reads the assigned device plus its reach, as operations 44 / 46 do', () => {
+    /** The registry entry of the device assigned to `track` (the scenario holds one per assigned camera). */
+    const deviceOf = (state: ReturnType<typeof stateOf>, track: string) => {
+      const id = state.captureConfig.cameras.find((line) => line.trackId === track)!.deviceId;
+      return state.captureDevices.devices.find((entry) => entry.id === id && entry.kind === 'CAMERA')!;
+    };
+
+    it('CONTROL: stored READY, assigned, online, no reach reading or REACHABLE -> connected on every lane', () => {
+      const state = stateOf();
+      expect(lcdChannelsOf(state, 4, true).map((c) => c.cameraConnected)).toEqual([true, true, true, true]);
+      deviceOf(state, 'VIDEO-01').reach = 'REACHABLE';
+      expect(lcdChannelsOf(state, 4, true)[0]?.cameraConnected).toBe(true);
+    });
+
+    it('stored READY + NOT_REACHABLE -> not connected on the panel (real capture); the other channels and the REC lamp keep their own facts', () => {
+      const state = stateOf();
+      state.session!.captureDurable = true;
+      expect(state.cameras[0]).toMatchObject({ online: true, lens: 'READY' }); // the stored row still says READY
+      deviceOf(state, 'VIDEO-01').reach = 'NOT_REACHABLE';
+      const channels = lcdChannelsOf(state, 4, true);
+      expect(channels.map((c) => c.cameraConnected)).toEqual([false, true, true, true]);
+      expect(channels[0]?.recording).toBe(true); // a reach reading never stops the REC lamp of a stream the Core records
+    });
+
+    it('assigned device offline in the registry, or absent from it -> not connected (real capture)', () => {
+      const state = stateOf();
+      deviceOf(state, 'VIDEO-02').online = false;
+      expect(lcdChannelsOf(state, 4, true).map((c) => c.cameraConnected)).toEqual([true, false, true, true]);
+      state.captureDevices.devices = state.captureDevices.devices.filter((entry) => entry.kind !== 'CAMERA');
+      expect(lcdChannelsOf(state, 4, true).some((c) => c.cameraConnected)).toBe(false);
+    });
+
+    it('CONTROL simulated lane: unchanged, a reach reading is not read', () => {
+      const state = stateOf();
+      deviceOf(state, 'VIDEO-01').reach = 'NOT_REACHABLE';
+      deviceOf(state, 'VIDEO-02').online = false;
+      expect(lcdChannelsOf(state, 4, false).map((c) => c.cameraConnected)).toEqual([true, true, true, true]);
+    });
+
+    it('the channel payload keeps its shape (no protocol change)', () => {
+      const state = stateOf();
+      deviceOf(state, 'VIDEO-01').reach = 'NOT_REACHABLE';
+      for (const channel of lcdChannelsOf(state, 4, true)) {
+        expect(Object.keys(channel)).toEqual(['channel', 'track', 'deviceId', 'cameraConnected', 'recording']);
+      }
+      expect(LcdIntegrationStatusSchema.shape.channels.safeParse(lcdChannelsOf(state, 4, true)).success).toBe(true);
+    });
   });
 });
 
@@ -90,6 +141,19 @@ describe('LCD bridge HTTP integration', () => {
     expect(r.posts).toHaveLength(12);
     await bridge.tick();
     expect(r.posts).toHaveLength(12);
+  });
+
+  it('row L3: a real-capture bridge posts cam false for a channel whose assigned camera is NOT_REACHABLE (same body members)', async () => {
+    const r = await rig();
+    const state = stateOf();
+    const id = state.captureConfig.cameras.find((line) => line.trackId === 'VIDEO-01')!.deviceId;
+    state.captureDevices.devices.find((entry) => entry.id === id && entry.kind === 'CAMERA')!.reach = 'NOT_REACHABLE';
+    const bridge = createLcdBridge({ url: r.url, real: true, readState: () => state });
+    await bridge.tick();
+    expect(r.posts.map((p) => p.body['cam'])).toEqual([false, true, true, true]);
+    expect(Object.keys(r.posts[0]!.body).sort()).toEqual(['cam', 'clear_file', 'dev', 'lease', 'rec']);
+    expect(r.posts[0]?.body['dev']).toBe(id);
+    await bridge.close();
   });
 
   it('drops stale success when the backend fails', async () => {

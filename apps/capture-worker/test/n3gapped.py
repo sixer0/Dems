@@ -48,8 +48,10 @@ LONG_IDS = ["MIC-" + "L" * 121 + "-0%d" % (i + 1) for i in range(4)]
 # kinds: the microphone input kinds, CYCLED over the plan's FOUR rows (D61, 2026-11-04; was the pair). args: the stand-in's pattern (seconds of its own clock). frames: the cameras' length
 # (50 per second, after a 5 s lead). outlive: the writer runs until the worker is gone (a whole pipe to the end).
 MODES = {
-    "measured": {"kinds": (G, G), "args": ["--skip-every", "10"], "frames": 750, "switch": True,
-                 "what": "the measured pattern, both microphones gapped, a switch to the standby and back"},
+    # Audit row 152b (N-31; D135): the operator's switch is retired - the measured pattern runs on channel 1 for the whole
+    # session (the tap's input is fixed at START; camera N's file carries its pair's channel, row 152).
+    "measured": {"kinds": (G, G), "args": ["--skip-every", "10"], "frames": 750,
+                 "what": "the measured pattern, every microphone gapped, the tap on MIC-01 for the whole session (no switch: D5 pairs)"},
     "whole": {"kinds": (G, F), "args": ["--skip-every", "0"], "frames": 650, "outlive": True,
               "what": "a whole pipe on a gapped PRIMARY beside a PCM_FIFO STANDBY: nothing inserted, nothing discarded but the rest"},
     "late4": {"kinds": (G, G), "args": ["--skip-every", "10", "--start1-after", "4"], "frames": 650,
@@ -90,15 +92,14 @@ def sources_with(M, mode, d):
         # the mode lets it outlive the worker (a whole pipe to the end).
         cams_end_s = truth["epoch_us"] / 1e6 - time.time() + max(c["frames"] for c in truth["cams"]) / M.FPS
         seconds = cams_end_s + 30 if mode.get("outlive") else cams_end_s - 1.0
+        M.camera_kind_check(truth)                          # audit row W3F (D142): M3_CAMERA=sr stands in for the C camera, or stops here
         mic = M.spawn([os.path.join(M.BUILD, "gapped_mic")] + M.mic_out_args(plan) +      # D61 (2026-11-04): all FOUR channels are fed
                       ["--manifest", os.path.join(d_, "gapped.jsonl"), "--seconds", "%.3f" % seconds] + list(mode["args"]),
                       stdin=subprocess.DEVNULL, stderr=open(os.path.join(d_, "mic.err"), "w"))
         procs.append(mic)
         cps = []
         for c, pc in zip(truth["cams"], plan["cameras"]):
-            cp = M.spawn([M.CAM, "--url", pc["ingestUrl"], "--epoch-us", str(truth["epoch_us"]), "--claimed-epoch-us", str(c["claimed_epoch_us"]), "--drift-ppm", str(c["drift_ppm"]),
-                          "--frames", str(c["frames"]), "--flash-first", str(c["flash_first"]), "--flash-every", str(c["flash_every"]), "--gop", str(truth.get("gop", M.FPS))],
-                         stdin=subprocess.DEVNULL, stderr=open(os.path.join(d_, "cam%d.err" % c["cam"]), "w"))
+            cp = M.camera_spawn(d_, truth, c, pc)            # audit row W3F: m3worker's camera of the run (C camera, or M3_CAMERA=sr)
             procs.append(cp)
             cps.append(cp)
         return mic, cps
@@ -106,16 +107,11 @@ def sources_with(M, mode, d):
 
 
 def during(mode, marks):
-    """What the harness does while the session runs: switches, kills, and waiting out a long session (the harness waits
-    for a camera at most 120 s)."""
+    """What the harness does while the session runs: kills, and waiting out a long session (the harness waits for a camera
+    at most 120 s). Audit row 152b: no switch any more (the command is retired with operation 81)."""
     def mid(w, plan, sid, info, cps, truth):
         epoch = truth["epoch_us"] / 1e6
         cams_end = epoch + max(c["frames"] for c in truth["cams"]) / 50.0
-        if mode.get("switch"):
-            for to, at in (("STANDBY", 3.0), ("PRIMARY", 6.0)):
-                time.sleep(max(0.0, epoch + at - time.time()))
-                c = w.command(sid, "SWITCH_AUDIO_SOURCE", to=to)
-                marks.setdefault("switches", []).append({"to": to, "ack": w.ack(c)[1]})
         kill = mode.get("kill")
         if kill == "before":
             time.sleep(max(0.0, epoch + 3.0 - time.time()))
@@ -211,7 +207,7 @@ def judge(a, M, run_dir):
     # --- every frame decodes, records gapless; nothing left
     fc = s["frames_check"]
     res["frames_check"] = {k: fc.get(k) for k in ("lines", "decoded", "refused", "records", "recordSequenceGapless", "protocolVersion")}
-    v("every_frame_decodes", fc.get("lines", 0) > 0 and fc.get("decoded") == fc.get("lines") and fc.get("recordSequenceGapless") is True and fc.get("protocolVersion") == 5 and not s["not_frames"])
+    v("every_frame_decodes", fc.get("lines", 0) > 0 and fc.get("decoded") == fc.get("lines") and fc.get("recordSequenceGapless") is True and fc.get("protocolVersion") == 6 and not s["not_frames"])
     v("no_leftover", not s["leftovers"]["processes"] and not s["leftovers"]["listeners"])
 
     # --- telemetry: the four members in every level, the list never empty, never going back; ratePpm null when gapped
@@ -351,7 +347,8 @@ def judge(a, M, run_dir):
     if m == "measured":
         wrote_until = (e0 + (wend["packets"] * 512 / SR) * 1e6 - T0) * SR / 1e6 if wend and T0 else 0
         v("ordinary_running_lists_no_run", not [r for r in runs if r["fromSample"] + r["samples"] < wrote_until - Q])
-        v("the_switches_were_realised", [r["reason"] for r in iv] == ["SESSION_START", "OPERATOR_SWITCH", "OPERATOR_SWITCH"])
+        # D5 pairs (row 152b): the one interval of the session is the start's, MIC-01 from sample 0; nothing moved the tap.
+        v("one_start_interval_mic01", [(r["reason"], r["deviceId"], r["fromSample"]) for r in iv] == [("SESSION_START", ids[0], 0)])
         res["writer_ended_at_timeline_sample"] = round(wrote_until)
     if m == "whole":
         c = closing.get(ids[0], {})

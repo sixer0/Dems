@@ -25,7 +25,8 @@ import { Controller, useWatch, type Control, type FieldError as RhfFieldError } 
 import { useTranslation } from 'react-i18next'
 import { SESSION_INPUT_LIMITS, type SessionCreateFormValues } from '@dems/shared/api'
 import {
-  evaluatePrecheck,
+  evaluateLiveReadiness,
+  isSourceNotCheckedEvaluation,
   Permission,
   PRECHECK_ORDER,
   RECORDING_PROFILES,
@@ -469,15 +470,25 @@ function SubjectToggle({ type }: { type: SubjectType }) {
   )
 }
 
-/** Readiness glance: primitive statuses only (R1), re-rendering when one changes. */
-function selectReadiness(s: Parameters<typeof evaluatePrecheck>[0]): PrecheckEvaluation['status'][] {
-  return PRECHECK_ORDER.map((id) => evaluatePrecheck(s, id).status)
+/** One row of the readiness glance: the check's status, or NOT_CHECKED (audit row 150; D113, O-138-1 (c)). */
+type LiveReadiness = PrecheckEvaluation['status'] | 'NOT_CHECKED'
+
+/**
+ * Readiness glance: primitive statuses only (R1), re-rendering when one changes. Audit row 150 (D113): read through the
+ * shared live reader (`evaluateLiveReadiness`), so on a Core in its own capture a source with no reach reading since the
+ * Core started reads "Not checked", never PASS. The gate on step 2 still runs `evaluatePrecheck` (unchanged).
+ */
+function selectReadiness(s: Parameters<typeof evaluateLiveReadiness>[0]): LiveReadiness[] {
+  return PRECHECK_ORDER.map((id) => {
+    const evaluation = evaluateLiveReadiness(s, id)
+    return isSourceNotCheckedEvaluation(evaluation) ? 'NOT_CHECKED' : evaluation.status
+  })
 }
 
 /**
  * Step 1 side column: the session as typed so far, and the live state of every gate check in `PRECHECK_ORDER`
  * (twelve since audit fix rows 83/89, DF-03: 4 lenses + 4 mics; the list and the count derive from the order, no fixed count)
- * (`evaluatePrecheck`, exported by the sim for live previews, 13_sim_engine §2.3).
+ * (`evaluateLiveReadiness` over `evaluatePrecheck`, exported by the sim for live previews, 13_sim_engine §2.3).
  */
 function InfoAside({ control, investigators }: { control: Control<SessionCreateFormValues>; investigators: SimOperator[] }) {
   const { t } = useTranslation()
@@ -491,7 +502,7 @@ function InfoAside({ control, investigators }: { control: Control<SessionCreateF
   const platformNotReported = usePlatformNotReported()
   // The TIME row of a Core on its host clock is a NOTE (the gate counts it as no warning): it read "WARN" here.
   const hostClock = useOwnCaptureCore()
-  const readiness: (PrecheckEvaluation['status'] | 'NOT_REPORTED' | 'NOTE')[] = stated.map((status, index) =>
+  const readiness: (LiveReadiness | 'NOT_REPORTED' | 'NOTE')[] = stated.map((status, index) =>
     PRECHECK_ORDER[index] === 'SECURITY' && status !== 'BLOCK' && platformNotReported ? 'NOT_REPORTED' : PRECHECK_ORDER[index] === 'TIME' && status === 'WARN' && hostClock ? 'NOTE' : status,
   )
   // Audit row CS2 (F-5-02c, D74): the header counts over EVERY listed check (twelve, as the footer says) and states the items it
@@ -500,8 +511,11 @@ function InfoAside({ control, investigators }: { control: Control<SessionCreateF
   const ready = readiness.filter((status) => status === 'PASS').length
   const notReportedCount = readiness.filter((status) => status === 'NOT_REPORTED').length
   const noteCount = readiness.filter((status) => status === 'NOTE').length
+  // Audit row 150 (D113): the sources the Core has not checked since it started, stated beside the count as the others are.
+  const notCheckedCount = readiness.filter((status) => status === 'NOT_CHECKED').length
   const readyCountText = [
     t('sessionNew.preview.readyCount', { ready, total: readiness.length }),
+    ...(notCheckedCount > 0 ? [t('sessionNew.preview.notCheckedCount', { count: notCheckedCount })] : []),
     ...(notReportedCount > 0 ? [t('sessionNew.preview.notReportedCount', { count: notReportedCount })] : []),
     ...(noteCount > 0 ? [t('sessionNew.preview.informationalCount', { count: noteCount })] : []),
   ].join(' · ')
@@ -560,6 +574,8 @@ function InfoAside({ control, investigators }: { control: Control<SessionCreateF
               <span className="sn-readiness-label">{t(`sessionNew.devices.checks.${id}`)}</span>
               {readiness[index] === 'NOTE' ? (
                 <span className="sn-readiness-note" data-testid="sn-readiness-host-clock">{t('web.ownCore.time.value')}</span>
+              ) : readiness[index] === 'NOT_CHECKED' ? (
+                <span className="sn-readiness-note" data-testid="sn-readiness-not-checked">{t('web.source.notChecked')}</span>
               ) : readiness[index] === 'NOT_REPORTED' ? (
                 <span className="sn-readiness-note" data-testid="sn-readiness-not-reported">{t('common.platformNotReported.value')}</span>
               ) : (

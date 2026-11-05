@@ -138,6 +138,10 @@ export const SecurityStateLabel = { READY: 'READY', FAULT: 'FAULT' } as const sa
  * - D61 (2026-11-04) supersedes the OD-01 'one session audio track' premise: a v2 session seals
  *   FOUR audio tracks, `AUDIO-01`..`AUDIO-04`, one per microphone channel. `AUDIO-01` keeps the
  *   transcription duty (the STT lane reads the primary channel until a separate ruling).
+ * - D5 (camera-microphone pairing; D27, D28): Pair N = `VIDEO-0N` <-> channel `MIC-0N` <->
+ *   `AUDIO-0N`, fixed by number (`CAPTURE_PAIRS`, `sim/audio.ts`). The camera file `VIDEO-0N`
+ *   carries the audio of its own channel, and the channel is also sealed as `AUDIO-0N`. The
+ *   transcription stays on Pair 1 (`AUDIO-01`; D28 DQ-3).
  * - `AUDIO-02` was **legacy v1 only** until D61; it is a normal channel from D61 on, and packages
  *   sealed under the older shapes stay valid — a manifest names its own track list (prefix rule).
  */
@@ -158,9 +162,19 @@ export const VIDEO_TRACK_IDS = [TrackId.VIDEO_01, TrackId.VIDEO_02, TrackId.VIDE
 export type AudioTrackId = typeof TrackId.AUDIO_01 | typeof TrackId.AUDIO_02 | typeof TrackId.AUDIO_03 | typeof TrackId.AUDIO_04; // D61
 /** The four audio tracks in their order (D61): the one source every enum, slot list and check derives from. */
 export const AUDIO_TRACK_IDS = [TrackId.AUDIO_01, TrackId.AUDIO_02, TrackId.AUDIO_03, TrackId.AUDIO_04] as const satisfies readonly AudioTrackId[];
-/** The one session audio track of a v2 recording (OD-01 T1). */
+/**
+ * The TRANSCRIBED audio track: `AUDIO-01` = Pair 1 (camera `VIDEO-01` with channel `MIC-01`; D5,
+ * D27, D28 DQ-3 - transcription stays on Pair 1 only). It is no longer "the one session audio
+ * track": a D5 session seals one audio track per microphone channel, `AUDIO-01`..`AUDIO-04`
+ * (`CAPTURE_PAIRS` of `sim/audio.ts`). The name is kept (OD-01 T1) for its readers.
+ */
 export const SESSION_AUDIO_TRACK_ID: AudioTrackId = TrackId.AUDIO_01;
-/** Audio tracks that exist on legacy v1 items only and are never written by v2 (OD-01/OD-02). */
+/**
+ * Audio tracks of the legacy v1 items (OD-01/OD-02), kept for v1 readers only. Since D61/D5 a v2
+ * package may ALSO seal `AUDIO-02` (Pair 2), so membership here never means "not a v2 track": a
+ * reader decides v1 by the manifest version, not by this list (audit row 143, K-11 - no consumer
+ * reads the list at the time of writing).
+ */
 export const LEGACY_AUDIO_TRACK_IDS = [TrackId.AUDIO_02] as const satisfies readonly AudioTrackId[];
 
 /**

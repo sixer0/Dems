@@ -5,9 +5,18 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AudioTrackId } from '../src/domain';
+import { AUDIO_TRACK_IDS, SESSION_AUDIO_TRACK_ID, VIDEO_TRACK_IDS, type AudioTrackId } from '../src/domain';
 import {
   AUDIO_FRAME_MS,
+  CAPTURE_PAIRS,
+  MIC_CHANNEL_IDS,
+  PRIMARY_MIC_CHANNEL,
+  audioTrackOfMicChannel,
+  capturePairOfMicChannel,
+  capturePairOfVideoTrack,
+  micChannelOfTrack,
+  micChannelOfVideoTrack,
+  videoTrackOfMicChannel,
   AUDIO_PEAK_HOLD_MS,
   DEFAULT_MIC_INPUT_OF_CHANNEL,
   activeMeterChannel,
@@ -452,5 +461,53 @@ describe('the positional microphone lookup stays deleted (static; task 4 row 172
       `const right = ${LOOKUP_NAME}(lines, 'MIC-01');`,
     ].join('\n');
     expect(namesIn('planted.ts', planted)).toEqual(['planted.ts:1']);
+  });
+});
+
+// Audit row 143 (D5; D27; register N-04..N-07 of masterplan/01_specs_d5.md; AC-4.1): the four
+// camera-microphone pairs, fixed by number, and both lookups.
+describe('the camera-microphone pairs (D5; AC-4.1)', () => {
+  it('CAPTURE_PAIRS has four frozen entries, Pair N = VIDEO-0N <-> MIC-0N <-> AUDIO-0N (snapshot pinned)', () => {
+    expect(CAPTURE_PAIRS).toEqual([
+      { pair: 1, videoTrackId: 'VIDEO-01', micChannel: 'MIC-01', audioTrackId: 'AUDIO-01' },
+      { pair: 2, videoTrackId: 'VIDEO-02', micChannel: 'MIC-02', audioTrackId: 'AUDIO-02' },
+      { pair: 3, videoTrackId: 'VIDEO-03', micChannel: 'MIC-03', audioTrackId: 'AUDIO-03' },
+      { pair: 4, videoTrackId: 'VIDEO-04', micChannel: 'MIC-04', audioTrackId: 'AUDIO-04' },
+    ]);
+    expect(Object.isFrozen(CAPTURE_PAIRS)).toBe(true);
+    for (const entry of CAPTURE_PAIRS) expect(Object.isFrozen(entry)).toBe(true);
+    // The table is the slot lists in order, not a second spelling of them.
+    expect(CAPTURE_PAIRS.map((entry) => entry.videoTrackId)).toEqual([...VIDEO_TRACK_IDS]);
+    expect(CAPTURE_PAIRS.map((entry) => entry.micChannel)).toEqual([...MIC_CHANNEL_IDS]);
+    expect(CAPTURE_PAIRS.map((entry) => entry.audioTrackId)).toEqual([...AUDIO_TRACK_IDS]);
+  });
+
+  it('both lookups round-trip for all four pairs and agree with the channel <-> audio-track rule', () => {
+    for (const entry of CAPTURE_PAIRS) {
+      expect(micChannelOfVideoTrack(entry.videoTrackId)).toBe(entry.micChannel);
+      expect(videoTrackOfMicChannel(entry.micChannel)).toBe(entry.videoTrackId);
+      expect(videoTrackOfMicChannel(micChannelOfVideoTrack(entry.videoTrackId))).toBe(entry.videoTrackId);
+      expect(micChannelOfVideoTrack(videoTrackOfMicChannel(entry.micChannel))).toBe(entry.micChannel);
+      expect(capturePairOfVideoTrack(entry.videoTrackId)).toBe(entry);
+      expect(capturePairOfMicChannel(entry.micChannel)).toBe(entry);
+      expect(audioTrackOfMicChannel(entry.micChannel)).toBe(entry.audioTrackId);
+      expect(micChannelOfTrack(entry.audioTrackId)).toBe(entry.micChannel);
+    }
+  });
+
+  it('Pair 1 is the transcribed pair (D28 DQ-3): its channel is PRIMARY_MIC_CHANNEL and its audio track SESSION_AUDIO_TRACK_ID', () => {
+    expect(CAPTURE_PAIRS[0]!.micChannel).toBe(PRIMARY_MIC_CHANNEL);
+    expect(CAPTURE_PAIRS[0]!.audioTrackId).toBe(SESSION_AUDIO_TRACK_ID);
+  });
+
+  it('a value outside the four is refused, never mapped by string arithmetic', () => {
+    expect(() => micChannelOfVideoTrack('VIDEO-05' as never)).toThrow(RangeError);
+    expect(() => videoTrackOfMicChannel('MIC-05' as never)).toThrow(RangeError);
+  });
+
+  it('the shared sim barrel exports the pair table and its lookups', async () => {
+    const sim: Record<string, unknown> = await import('../src/sim');
+    expect(sim['CAPTURE_PAIRS']).toBe(CAPTURE_PAIRS);
+    for (const name of ['micChannelOfVideoTrack', 'videoTrackOfMicChannel', 'capturePairOfVideoTrack', 'capturePairOfMicChannel']) expect(typeof sim[name], name).toBe('function');
   });
 });

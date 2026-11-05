@@ -19,7 +19,13 @@
  *   durable  the first `FIRST_DURABLE_FRAGMENT` (or checkpoint) -> `captureDurable: true`: from
  *            then on, and only from then on, the clients present 'recording'. Every
  *            `FRAGMENT_CHECKPOINT` becomes a `recording_fragments` row (the recorder of row 59,
- *            MOUNTED HERE: one per session, fed from `app.capture.on('record')`);
+ *            MOUNTED HERE: one per session, fed from `app.capture.on('record')`). Row 148 (D5,
+ *            protocol 6 N-32; S5 §2.3): a checkpoint of a microphone's CHANNEL FILE
+ *            (`MIC-0N.m4a`) is stored under the sealed track of its channel, `AUDIO-0N`, and that
+ *            file joins the session's file list beside the camera files. Row D2C (D150 (2),
+ *            F-C1D-2): only a CAMERA file's fragment makes the session durable ('recording'); a
+ *            channel file is stored and sealed with its pair, but audio alone is no recording
+ *            (row 153: an audio file alone makes no package; `isCameraFragmentRecord`);
  *   end      the supervisor's `FAULTED`, or a start it refused: `durable: false` (no camera
  *            connected among them) is a FAILED START - the session FAULTS, nothing claims to have
  *            recorded, no evidence item is ever made of it; `durable: true` is an INTERRUPTED
@@ -29,13 +35,12 @@
  *            a session is a failed start only when the supervisor says so, the payload agrees and
  *            no camera file of the plan exists (THE FILE IS THE TRUTH);
  *   stop     `afterStopCommitted`: `app.capture.stop`, the recorder's last rows, `STOPPED`;
- *   switch   operation 81 (`switchAudioSource`): the command to the worker; its acknowledgement
- *            carries the interval record (media time from the capture side); ONE unit then holds
- *            the session's new active / standby pair on the worker's two-role lane (D61, 2026-11-04:
- *            the selector plane records four numbered channels; the toggle trades channels 1 and 2,
- *            the transcription pair), the closed and the opened
- *            `session_audio_intervals` rows and the `AUDIO_SOURCE_SWITCHED` row with the keys of
- *            C3 §5.2 and the sending device ID. Never automatic (OD-11).
+ *   switch   NONE since D5 (audit row 149; N-29, N-31, N-36; D28 DQ-2): operation 81 is retired. The
+ *            audio of each track is fixed by its camera-microphone pair, the sessions route answers
+ *            `409 AUDIO_SOURCE_FIXED_BY_PAIRING` before any lookup and writes no audit row, and
+ *            protocol 6 has no `SWITCH_AUDIO_SOURCE`. The one audio-source interval of a worker is the
+ *            interval of its start (`writeInterval`); stored `AUDIO_SOURCE_SWITCHED` rows of earlier
+ *            sessions stay readable.
  *
  * THE TRANSCRIPT OF THE SESSION (row 71c, decision D153; transcript spec §B.7; dbc-6 MR-T1):
  *   snapshot    the STT configuration of the session is written INSIDE the unit of the start
@@ -71,19 +76,9 @@
  * handle is closed. Nothing is told and no state is written: the session stays as stored and the
  * next boot resumes it.
  *
- * A SWITCH THE WORKER REALISED IS ALWAYS RECORDED (review R74-06). The interval rows and the
- * `AUDIO_SOURCE_SWITCHED` row are written from the worker's record: when the session left
- * RECORDING meanwhile, when the acknowledgement came after the limit (the record nobody waited
- * for is applied when it arrives), and after one retry of a unit that failed.
- *
- * THE TIMES OF A SWITCH, AS STORED (review R74-13; a correction of the sentence of D142 (1) /
- * D144 (5) "both times are in the audit row"). The audit row `AUDIO_SOURCE_SWITCHED` holds the
- * MEDIA times `fromMs` / `toMs` (contract C3 §5.2 names no member for a wall instant) and its own
- * `at`, which is the instant of THE UNIT THAT RECORDED THE SWITCH - after the worker's
- * acknowledgement, not the arrival of the command. The wall instant of the boundary is the
- * worker's `capturedAtMs`: `session_audio_intervals.from_at` of the opened row and `to_at` of the
- * closed one. The arrival instant of the command is not a stored member (erratum proposal in
- * `implementation/112_fix_m5_review.md`).
+ * THE SWITCH RECORDS OF REVIEW R74-06 / R74-13 (the `AUDIO_SOURCE_SWITCHED` row and the two interval
+ * rows of a realised switch) are gone with operation 81 (audit row 149). The supervisor refuses an
+ * interval of a switch (`SWITCH_NOT_COMMANDED`: none is commanded), so none reaches this unit.
  *
  * THE CAMERAS OF A START (task 4 row 47; design addendum sections 2.3, 3 and 5.3; security checks
  * AD-05 (1), AD-11 and BR-07 (1), (3), (4)):
@@ -155,20 +150,21 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir, stat } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { AudioSourceIntervalReason, CaptureIngestState, CaptureMicRole, CaptureRecordKind, CaptureStopReason, CaptureSyncLevel, CaptureWarningState, type AudioSourceIntervalRecord, type CapturePlan, type FirstVideoSampleRecord } from '@dems/capture-protocol'; // CaptureMicRole: D61 (2026-11-04) - the worker's two-role lane, traded by op 81
+import { AudioSourceIntervalReason, CaptureIngestState, CaptureRecordKind, CaptureStopReason, CaptureSyncLevel, CaptureWarningState, type AudioSourceIntervalRecord, type CapturePairedMicMissingReason, type CapturePlan, type FirstVideoSampleRecord } from '@dems/capture-protocol'; // CaptureMicRole: D61 (2026-11-04) - the worker's two-role lane, traded by op 81
 import { INGEST_PAIRING_BOUND_MS, createIngestPairing, type IngestPairing, type IngestPairingFailure, type RelayIngestReport, type RelayIngestReports } from './ingest-pairing';
 export { INGEST_PAIRING_BOUND_MS, IngestPairingFault, type IngestPairingFailure, type RelayIngestReport, type RelayIngestReports } from './ingest-pairing';
-import { ApiErrorCode, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES, type AudioSourceStateBody } from '@dems/shared/api';
+import { ApiErrorCode, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES } from '@dems/shared/api';
 import { SessionState, VIDEO_TRACK_IDS } from '@dems/shared/domain'; // VIDEO_TRACK_IDS: D60 (2026-11-04)
-import { CaptureAdvisoryReason, CaptureNoticeReason, PRIMARY_MIC_CHANNEL, type ActiveSession, type CaptureAdvisoryNotice, type CaptureVolumeSyncNotice } from '@dems/shared/sim'; // PRIMARY_MIC_CHANNEL: D61 (2026-11-04)
+import { CaptureAdvisoryReason, CaptureNoticeReason, PRIMARY_MIC_CHANNEL, audioTrackOfMicChannel, type CaptureAdvisoryNotice, type CaptureVolumeSyncNotice } from '@dems/shared/sim'; // PRIMARY_MIC_CHANNEL: D61 (2026-11-04); audioTrackOfMicChannel: row 148 (MIC-0N -> AUDIO-0N)
 import type { FastifyInstance } from 'fastify';
 import { CapturePhase, CaptureSupervisorError, captureIngestAddress, isCameraAbsentReason, isCameraIntegrityReason, type CaptureCameraEnd, type CaptureEventOf, type CaptureStopOutcome, type CaptureSupervisor } from '../capture';
 import { CaptureAdapterError, CaptureAdapterKind, CaptureOperation, type AudioStreamHandle, type CameraSourceTarget, type CaptureDeviceRegistry, type SourceHandle } from '../capture/adapters';
 import { NO_SOURCE_FACTS, assertSessionSourcesOfOperation, audioCardStatementOf, buildSessionCaptureSources, captureFenceControl, captureOperationOf, micSourceFactsOf, type CaptureSourceSlot, type SessionCaptureSource, type SessionSourceFacts } from '../capture/fence';
-import { captureCheckpointDoorsOf, captureDoorsOf, markCaptureConnectingIn, switchCaptureAudioSourceIn, type EngineUnit, type HostedActionArguments } from '../engine';
+import { captureCheckpointDoorsOf, captureDoorsOf, markCaptureConnectingIn, type EngineUnit } from '../engine';
 import { CapturePlanError, MIC_CHANNEL_IDS, assertRecordableSelector, buildCapturePlan, type CapturePlanMicSource, type CapturePlanSelector, type MicChannelId, type RecordableSelector } from '../modules/capture-config'; // MIC_CHANNEL_IDS / MicChannelId / CapturePlanMicSource: D61 (2026-11-04) — the per-channel audio file of the plan
-import { createFragmentRecorder, createRecordingFragmentStore, type FragmentRecorder, type VideoTrackId } from '../modules/recording-fragments';
-import type { Principal } from '../plugins/authenticate';
+import { createFragmentRecorder, createRecordingFragmentStore, type FragmentRecorder, type FragmentTrackId, type VideoTrackId } from '../modules/recording-fragments';
+import { restatePairedMics } from '../capture'; // row 148: the one rule of a later worker's missing-mic statement
+import { capturePlanPairWarnings } from '../modules/capture-config'; // row 148 (row 147 H1): the pair warnings
 import { ApiFailure } from '../plugins/error-envelope';
 import { transcriptionControl } from '../transcription';
 import { describeError } from '../plugins/logger';
@@ -270,12 +266,7 @@ const TEXT = Object.freeze({
   NOT_RECORDABLE: 'This capture configuration cannot be recorded: an assigned source cannot be opened in the running capture operation.',
   HELPERS_LEFT: 'Capture sources of an earlier run are still running. Try again when they have ended.',
   SNAPSHOT_NOT_STORED: 'The session could not be started: its transcription settings could not be recorded. Try again.',
-  NOT_RECORDING: 'The session is not recording.',
   NOT_DURABLE: 'Nothing is recorded yet: the cameras are still connecting. The session ends by itself when no camera connects.',
-  NOT_OPEN: 'This session is not the open session.',
-  NO_SUCH_INPUT: 'The requested microphone is not one of the four inputs of this session.', // D61 (2026-11-04): four numbered channels (was two)
-  SWITCH_REFUSED: 'The requested microphone cannot become the active source now.',
-  SWITCH_NOT_RECORDED: 'The microphone was switched, but the switch could not be recorded. It is in the error log.',
 });
 
 /** What this unit tells its listeners about the capture of a session. Identifiers and codes only. */
@@ -315,7 +306,7 @@ export type SessionCaptureEvent =
    * reason) and where their file ends. Absent when none ended. The same facts are in the session's
    * capture facts file before the event is told: the seal reads them there (`facts.ts`, `ended`).
    */
-  | { readonly type: 'STOPPED'; readonly sessionId: string; readonly files: readonly SessionCameraFile[]; readonly fragmentRowsBehind: readonly VideoTrackId[]; readonly firstVideo: readonly SessionFirstVideo[]; readonly cameraEnds?: readonly CaptureCameraEnd[] };
+  | { readonly type: 'STOPPED'; readonly sessionId: string; readonly files: readonly SessionCameraFile[]; readonly fragmentRowsBehind: readonly FragmentTrackId[]; readonly firstVideo: readonly SessionFirstVideo[]; readonly cameraEnds?: readonly CaptureCameraEnd[] };
 
 /**
  * The start-up of one camera file as the worker reported it (protocol 4, `FIRST_VIDEO_SAMPLE`): a
@@ -337,11 +328,63 @@ export interface SessionFirstVideo {
   readonly skippedSpanMs: number;
 }
 
-/** One camera file of a session's plan. `path` is for the unit that opens the file; it is never logged. */
+/**
+ * One recorded file of a session's plan. `path` is for the unit that opens the file; it is never logged.
+ * A camera file (`VIDEO-0N`, `VIDEO-0N.mp4`) or, row 148 (D5; S5 §2.3, N-20/N-24), the CHANNEL FILE of a
+ * microphone of the plan, under the sealed track of its channel (`AUDIO-0N`, file `MIC-0N.m4a`). The name
+ * is kept for its readers; `isCameraFile` tells the two apart.
+ */
 export interface SessionCameraFile {
-  readonly trackId: VideoTrackId;
+  readonly trackId: FragmentTrackId;
   readonly deviceId: string;
   readonly path: string;
+}
+
+/** Row 148: true for a CAMERA file of the list (a video track); false for a channel file (`AUDIO-0N`). */
+export function isCameraFile(file: Pick<SessionCameraFile, 'trackId'>): file is SessionCameraFile & { readonly trackId: VideoTrackId } {
+  return (VIDEO_TRACK_IDS as readonly string[]).includes(file.trackId);
+}
+
+/**
+ * Row D2C (D150 (2), finding F-C1D-2): whether a durable-fragment record makes the SESSION durable. Only a camera
+ * file's fragment does: `FIRST_DURABLE_FRAGMENT` (a camera-only kind of the protocol, `CAMERA_RECORD_KINDS`; the
+ * supervisor refuses it for any other subject) or the `FRAGMENT_CHECKPOINT` of a camera file of the session's list.
+ * The checkpoint of a channel file (`AUDIO-0N`, row 148) is stored and sealed with its pair, but it never says the
+ * session is recording: the sealer makes no package of audio alone (row 153), so a session whose only files are
+ * channel files ends as a failed start (D72(k), D84), never as a durable recording that seals `NOTHING_DURABLE`.
+ */
+export function isCameraFragmentRecord(files: readonly Pick<SessionCameraFile, 'trackId' | 'deviceId'>[], record: { readonly kind: string; readonly deviceId?: string }): boolean {
+  if (record.kind === CaptureRecordKind.FIRST_DURABLE_FRAGMENT) return true;
+  return record.kind === CaptureRecordKind.FRAGMENT_CHECKPOINT && files.some((file) => isCameraFile(file) && file.deviceId === record.deviceId);
+}
+
+/**
+ * Row 148 (D5; S5 §2.3; protocol 6 N-13): the CHANNEL FILES of a plan - one per microphone row, each under the
+ * sealed track of its channel (`MIC-0N` -> `AUDIO-0N`) at the path the plan names (`MIC-0N.m4a`). A channel that
+ * is not in the plan (not assigned, or not opened: its camera states `micMissing`) has NO file here; its camera
+ * file carries a silent audio track instead (D30 K-3). In plan order.
+ */
+export function channelFilesOf(source: Pick<CapturePlan, 'mics'>): SessionCameraFile[] {
+  return source.mics.map((mic) => ({ trackId: audioTrackOfMicChannel(mic.channel), deviceId: mic.deviceId, path: mic.outputPath }));
+}
+
+/**
+ * Row 148: the recorder's map, device -> track of its file: each camera of the plan to its video track, each
+ * microphone of the plan to the sealed track of its channel file. Protocol 6 (N-32) lets a `FRAGMENT_CHECKPOINT`
+ * name either; a device that is in neither list is no file of the session.
+ */
+export function fragmentTracksOf(source: Pick<CapturePlan, 'cameras' | 'mics'>): ReadonlyMap<string, FragmentTrackId> {
+  const tracks = new Map<string, FragmentTrackId>();
+  for (const camera of source.cameras) tracks.set(camera.deviceId, camera.trackId as VideoTrackId);
+  for (const file of channelFilesOf(source)) tracks.set(file.deviceId, file.trackId);
+  return tracks;
+}
+
+/** Row 148 (D30 K-3): the cameras of a plan whose paired channel is not recorded, by camera device, with the plan's word. */
+export function pairedMicMissingOf(source: Pick<CapturePlan, 'cameras'>): Map<string, CapturePairedMicMissingReason> {
+  const missing = new Map<string, CapturePairedMicMissingReason>();
+  for (const camera of source.cameras) if (camera.micMissing !== null) missing.set(camera.deviceId, camera.micMissing);
+  return missing;
 }
 
 export type SessionCaptureListener = (event: SessionCaptureEvent) => void | Promise<void>;
@@ -423,8 +466,6 @@ export interface SessionCapture {
   startAbandoned(sessionId: string): void;
   /** AFTER the unit of a stop committed. Returns at once; the worker is stopped in the background. */
   afterStopCommitted(sessionId: string): void;
-  /** Operation 81. Resolves with the answer of the contract; rejects with an `ApiFailure`. */
-  switchAudioSource(principal: Principal, sessionId: string, inputId: string): Promise<AudioSourceStateBody>;
   /** Returns the function that removes the listener. */
   on(listener: SessionCaptureListener): () => void;
   /** Resolves when nothing of this unit runs in the background. For a test and for a shutdown. */
@@ -455,7 +496,12 @@ interface Live {
   readonly abort: AbortController;
   readonly handles: SourceHandle[];
   readonly offs: Array<() => void>;
+  /** The camera files of the selector, then (row 148) the channel files of the plan once it is built. */
   readonly files: SessionCameraFile[];
+  /** Row 148: the plan of the first worker (its cameras and microphone rows), for a later worker's missing-mic statement. Null until built. */
+  planOfStart: CapturePlan | null;
+  /** Row 148 (D30 K-3): by camera, why its paired channel is not recorded, as the plan of the newest worker states it. */
+  readonly micMissing: Map<string, CapturePairedMicMissingReason>;
   /** By camera: what the newest worker said about the start of its file. */
   readonly firstVideo: Map<string, SessionFirstVideo>;
   recorder: FragmentRecorder | null;
@@ -566,14 +612,6 @@ interface Live {
   factsWritten: Promise<void>;
   /** C3: the cameras the worker gave up while the session went on, by camera. The FIRST end of a camera stands. */
   readonly cameraEnds: Map<string, CaptureCameraEnd>;
-  /** Operation 81 calls that wait for the worker's acknowledgement now. */
-  switchesWaiting: number;
-  /** By microphone: who last asked for it to become the source (the actor of the row its record writes). */
-  readonly switchAskedBy: Map<string, SwitchActor>;
-  /** Switch records that arrived while a call waited: taken by that call, or applied when it was refused for a late acknowledgement. */
-  readonly switchRecordsSeen: Map<number, AudioSourceIntervalRecord>;
-  /** The `index` of every switch record that was recorded (or is being recorded): a record is applied once. */
-  readonly switchesRecorded: Set<number>;
   /**
    * Closing pass Z1 (driver A decision 3): by camera, what the worker reported durable so far - the
    * number of `FRAGMENT_CHECKPOINT` records and the end of the newest one's byte range - and the Core
@@ -620,12 +658,6 @@ function newCameraRound(): CameraRound {
 
 /** The session payload hears the checkpoint figures at most this often (one engine unit per window, never one per fragment). */
 export const CHECKPOINT_FACTS_INTERVAL_MS = 5_000;
-
-/** Who a switch is recorded for: the operator, and the paired device the command came from (E-30 / SEC35-17). */
-interface SwitchActor {
-  readonly operatorId: string | null;
-  readonly sendingDeviceId: string | null;
-}
 
 /**
  * Row 191b: what a worker restart cost the audio of a session, as the session measured it on the
@@ -818,7 +850,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         persist('error', 'CAPTURE_SOURCE_NOT_CLOSED', 'a capture source could not be closed', err, { sessionId: of.sessionId, deviceId: handle.deviceId });
       }
     }
-    // What this capture told the operator about a camera clock or the evidence volume ends with it.
+    // What this capture told the operator about a camera clock, a missing paired microphone (audit row 149) or the evidence volume ends with it.
     const notices = [...of.noticesRaised.values()];
     of.noticesRaised.clear();
     for (const notice of notices) {
@@ -856,9 +888,13 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       version: SESSION_CAPTURE_FACTS_VERSION,
       sessionId: of.sessionId,
       startRecordedAt: of.startRecordedAt,
-      cameras: of.files.map((file) => {
+      // Row 148 (D128, R153-1): this Core records under the pairing (protocol 6): the seal states every pair, even with no audio row.
+      pairedAudio: true,
+      // Camera files only (row 148): a channel file has no camera facts; the facts file's track domain is the video tracks.
+      cameras: of.files.filter(isCameraFile).map((file) => {
         const first = of.firstVideo.get(file.deviceId) ?? null;
         const ended = of.cameraEnds.get(file.deviceId) ?? null;
+        const micMissing = of.micMissing.get(file.deviceId) ?? null;
         return {
           trackId: file.trackId,
           deviceId: file.deviceId,
@@ -866,6 +902,7 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
           measuredClockOffsetMs: of.measuredOffsets.get(file.deviceId)?.offsetMs ?? null,
           syncLevel: of.syncLevels.get(file.deviceId) ?? null,
           ...(ended === null ? {} : { ended: { reason: ended.reason, at: ended.at, lastDurableFragmentIndex: ended.lastDurableFragmentIndex, lastDurableMediaEndMs: ended.lastDurableMediaEndMs } }),
+          ...(micMissing === null ? {} : { micMissing }), // row 148 (D30 K-3): the silent-track statement for the seal
           firstVideo: first === null ? null : { pts: first.pts, timescale: first.timescale, heldMs: first.heldMs, skipped: first.skipped, skippedSpanMs: first.skippedSpanMs },
         };
       }),
@@ -1189,13 +1226,19 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
     const { record } = event;
     if (record.kind === CaptureRecordKind.FIRST_DURABLE_FRAGMENT) onSyncLevel(of, record.deviceId, record.syncLevel ?? null);
     if (record.kind === CaptureRecordKind.FIRST_DURABLE_FRAGMENT || record.kind === CaptureRecordKind.FRAGMENT_CHECKPOINT) {
-      // The FIRST of them makes the session 'recording'; asked again while it was not said.
-      if (!of.durableSaid) track(markDurable(of));
+      // The FIRST of a CAMERA file makes the session 'recording'; asked again while it was not said.
+      const cameraFragment = isCameraFragmentRecord(of.files, record);
+      if (cameraFragment && !of.durableSaid) track(markDurable(of));
+      // Row 148: the recorder takes the checkpoints of camera files AND channel files (`AUDIO-0N` rows): a channel file's
+      // fragments are stored and sealed with its pair. Row D2C (D150 (2), F-C1D-2): but a channel file's fragment does NOT
+      // say the session is recording - the sealer makes no package of audio alone (row 153) - so the session is durable
+      // only from a CAMERA file's fragment, as the supervisor counts it. The session payload's figures stay per CAMERA file
+      // (`captureCheckpoints`: "durable fragment checkpoints of all camera files"), so only those are counted there.
       of.recorder?.take(event);
-      if (record.kind === CaptureRecordKind.FRAGMENT_CHECKPOINT) noteCheckpoint(of, record.deviceId, record.start, record.len);
+      if (record.kind === CaptureRecordKind.FRAGMENT_CHECKPOINT && cameraFragment) noteCheckpoint(of, record.deviceId, record.start, record.len);
       return;
     }
-    // The interval of the start is this unit's to store; the interval of a switch is stored by the unit of operation 81.
+    // The interval of the start is this unit's to store. Audit row 149 (N-29, N-31): there is no interval of a switch any more.
     if (record.kind === CaptureRecordKind.AUDIO_SOURCE_INTERVAL && record.reason === AudioSourceIntervalReason.SESSION_START) {
       // Row 191b: the first record of a LATER worker closes the earlier worker's interval, opens its own by a new row and writes the audit row of the gap.
       const gap = sayAudioGap(of, event.attempt, record);
@@ -1203,11 +1246,10 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       return;
     }
     if (record.kind === CaptureRecordKind.AUDIO_SOURCE_INTERVAL) {
-      // The record of a switch. A call of operation 81 that waits takes it with its acknowledgement;
-      // a record NOBODY waits for (its acknowledgement came after the limit and the call was refused,
-      // review R74-06 (b)) is applied here, so the Core never says another microphone than the worker feeds.
-      if (of.switchesWaiting > 0) of.switchRecordsSeen.set(record.index, record);
-      else inBackground(of.sessionId, 'lateSwitchRecord', () => recordSwitch(of, record, of.switchAskedBy.get(record.deviceId) ?? { operatorId: null, sendingDeviceId: null }).then(() => undefined, () => undefined));
+      // The record of a switch (audit row 149): the supervisor ends a worker that writes one (`SWITCH_NOT_COMMANDED` - since
+      // protocol 6 no switch is ever commanded), so none should arrive here. If one does, it is said and nothing is stored:
+      // the audio of each track is fixed by its pair, and no interval row or `AUDIO_SOURCE_SWITCHED` row is written for it.
+      persist('error', 'AUDIO_SWITCH_RECORD_DROPPED', 'the capture worker reported a microphone switch, which no longer exists: it is not stored', null, { sessionId: of.sessionId, deviceId: record.deviceId, index: record.index });
       return;
     }
     if (record.kind === CaptureRecordKind.FIRST_VIDEO_SAMPLE) {
@@ -1582,9 +1624,10 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
   async function captureEnded(of: Live, cause: string | null, supervisorDurable: boolean): Promise<void> {
     if (of.ended) return;
     of.ended = true;
-    // THE FILE IS THE TRUTH (D67): a camera file of the plan on the disk is durable media, whatever a frame said.
+    // THE FILE IS THE TRUTH (D67): a camera file of the plan on the disk is durable media, whatever a frame said. Row D2C
+    // (D150 (2)): a CAMERA file - a channel file on the disk (row 148) is no recording on its own (row 153 seals no audio alone).
     let onDisk = false;
-    for (const file of of.files) onDisk = onDisk || (await ports.fileExists(file.path));
+    for (const file of of.files.filter(isCameraFile)) onDisk = onDisk || (await ports.fileExists(file.path));
     const durable = supervisorDurable || of.durableSaid || onDisk;
     let outcome: 'FAILED_START' | 'INTERRUPTED' | 'IGNORED' = 'IGNORED';
     // The engine's door is asked twice before its failure stands (review R74-07): the end of a capture is said once by the worker.
@@ -1654,8 +1697,9 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       await noteCameraEnds(of, endsAtEnd);
       if (!(err instanceof CaptureSupervisorError)) persist('error', 'CAPTURE_WORKER_NOT_STOPPED', 'the capture worker of a session that left RECORDING could not be stopped', err, { sessionId: of.sessionId });
     }
+    // Row D2C (D150 (2)): the camera files only, as at every other end (a channel file alone is no recording).
     let onDisk = false;
-    for (const file of of.files) onDisk = onDisk || (await ports.fileExists(file.path));
+    for (const file of of.files.filter(isCameraFile)) onDisk = onDisk || (await ports.fileExists(file.path));
     const durable = of.durableSaid || onDisk;
     await of.recorder?.idle();
     await sayCheckpoints(of);
@@ -1800,11 +1844,13 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       }
       // 2. Opened again, in the order of the selector.
       const inputs = new Map<string, AudioStreamHandle['input']>();
+      // Row 148: true when the plan of the start writes a PCM tap from channel 1 - then the later worker needs channel 1.
+      const tapFromChannelOne = current.planOfStart !== null && current.planOfStart.pcmTapPath !== null;
       for (const mic of ready.selector.mics) {
         if (!earlier.some((handle) => handle.deviceId === mic.deviceId)) continue;
         if (current.ended || current.leaving || current.abort.signal.aborted) break;
         const failed = (err: unknown, cause: string | null): void =>
-          persist(mic.channel === PRIMARY_MIC_CHANNEL ? 'error' : 'warn', 'CAPTURE_MIC_NOT_OPENED', 'a microphone of the session could not be opened again for a later capture worker', err, { sessionId, deviceId: mic.deviceId, channel: mic.channel, attempt, ...(cause === null ? {} : { cause }) }); // D61 (2026-11-04): the transcription channel (1) is the error; a later channel warns
+          persist(mic.channel === PRIMARY_MIC_CHANNEL && tapFromChannelOne ? 'error' : 'warn', 'CAPTURE_MIC_NOT_OPENED', 'a microphone of the session could not be opened again for a later capture worker', err, { sessionId, deviceId: mic.deviceId, channel: mic.channel, attempt, ...(cause === null ? {} : { cause }) }); // row 148: an error only when it stops the later worker (channel 1 with a PCM tap); otherwise its camera states NOT_OPENED and records - a warning
         let asked: Promise<AudioStreamHandle>;
         try {
           asked = Promise.resolve(registry.resolve('MIC', mic.deviceId).open(mic.deviceId, { sessionId, signal: current.abort.signal }));
@@ -1830,7 +1876,19 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       }
       const transcription = ready.selector.mics.find((mic) => mic.channel === PRIMARY_MIC_CHANNEL); // D61 (2026-11-04): channel 1 feeds `AUDIO-01`, the transcribed track (was the PRIMARY role)
       // Said above with the microphone and its channel; the supervisor reads only that the sources are not ready.
-      if (transcription === undefined || !inputs.has(transcription.deviceId)) throw new Error('the channel-1 microphone of the session is not open for the later capture worker');
+      // Row 148 (R147-1, D30 K-3): channel 1 is required again only when the plan of the start writes a PCM tap from it
+      // (protocol 6: a tap needs the MIC-01 row; the transcriber already reads it). A session that started without
+      // channel 1, or without a tap, has a later worker without it too: its camera states NOT_OPENED (below).
+      if (tapFromChannelOne && (transcription === undefined || !inputs.has(transcription.deviceId))) throw new Error('the channel-1 microphone of the session is not open for the later capture worker');
+      // Row 148 (D30 K-3): the later worker's plan states the camera of a channel that did not open again (the
+      // supervisor's renewal reads the same rule, `restatePairedMics`); the facts file follows it, since that worker writes the files.
+      if (current.planOfStart !== null) {
+        const start = current.planOfStart;
+        const micsNow = start.mics.filter((mic) => inputs.has(mic.deviceId));
+        current.micMissing.clear();
+        for (const [deviceId, reason] of pairedMicMissingOf({ cameras: restatePairedMics(start.cameras, start.mics, micsNow) })) current.micMissing.set(deviceId, reason);
+        track(writeFacts(current));
+      }
       return inputs as ReadonlyMap<string, AudioStreamHandle['input']>;
     });
     // Asked for by the supervisor a back-off later: a rejection is not unhandled meanwhile.
@@ -2014,6 +2072,8 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       handles: [],
       offs: [],
       files: [],
+      planOfStart: null,
+      micMissing: new Map(),
       firstVideo: new Map(),
       recorder: null,
       durableSaid: false,
@@ -2068,10 +2128,6 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       checkpointsSaidAt: null,
       checkpointsSaid: 0,
       checkpointsSaying: Promise.resolve(),
-      switchesWaiting: 0,
-      switchAskedBy: new Map(),
-      switchRecordsSeen: new Map(),
-      switchesRecorded: new Set(),
     };
     live = current;
     tell({ type: 'CONNECTING', sessionId, sources: ready.sources });
@@ -2092,8 +2148,11 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
           if (current.abort.signal.aborted) await release(current);
           mics[mic.channel] = { input: handle.input, outputPath: `${folder}/${micFileName(mic.channel)}` }; // D61 (2026-11-04): opened, so its file is named
         } catch (err) {
-          // A later channel may be missing (D80(6) generalized by D61, 2026-11-04); without channel 1 - the transcription channel - the plan builder refuses below.
-          persist(mic.channel === PRIMARY_MIC_CHANNEL ? 'error' : 'warn', 'CAPTURE_MIC_NOT_OPENED', 'a microphone of the session could not be opened', err, { sessionId, deviceId: mic.deviceId, channel: mic.channel });
+          // F-1 (S5 §2.3, row 148; D30 K-3): a channel that does not open is NOT in the plan, and the plan states it on
+          // the camera of its pair (`micMissing: NOT_OPENED`, a silent audio track) - the recording starts anyway. The
+          // protocol (v6) takes 0 to 4 microphone rows, and channel 1 is no exception (row 147, R147-1): without it the
+          // plan has no tap and the session is not transcribed. Every channel is therefore a WARNING here, channel 1 included.
+          persist('warn', 'CAPTURE_MIC_NOT_OPENED', 'a microphone of the session could not be opened', err, { sessionId, deviceId: mic.deviceId, channel: mic.channel });
         }
       }
       const cameras: Partial<Record<VideoTrackId, { ingestUrl: string; outputPath: string }>> = {};
@@ -2114,6 +2173,23 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         persist('warn', 'CAPTURE_TAP_PATH_UNKNOWN', 'the PCM tap of the session is not known: the session records without one', err, { sessionId });
       }
       const plan: CapturePlan = buildCapturePlan({ selector: ready.selector, registry, cameras, mics, pcmTapPath });
+      // Row 148 (row 147 H2; protocol 6: the tap is written from channel 1): the builder drops the tap of a plan without
+      // the MIC-01 row, so the PLAN's tap is the one in force - no transcriber is begun below for a tap that is never written.
+      current.planOfStart = plan;
+      pcmTapPath = current.planOfStart.pcmTapPath;
+      // Row 148 (row 147 H1; D30 K-3): each camera that records without its paired microphone (a silent audio track) is a
+      // warning of the session: device, track and channel words only. Pair 1 also means the session is not transcribed.
+      for (const warning of capturePlanPairWarnings(current.planOfStart)) {
+        // Audit row 149 (D132): and the operator is told - one advisory notice per camera, resolved when the capture ends.
+        raiseNotice(current, `${CaptureAdvisoryReason.PAIRED_MIC_MISSING}|${warning.deviceId}`, { code: CaptureAdvisoryReason.PAIRED_MIC_MISSING, subject: warning.deviceId, trackId: warning.trackId, micChannel: warning.micChannel, micMissing: warning.reason, transcribed: warning.transcribed });
+        persist('warn', 'CAPTURE_PAIRED_MIC_MISSING', warning.transcribed ? 'a camera records without the microphone of its pair (a silent audio track); without channel 1 the session is not transcribed' : 'a camera records without the microphone of its pair (a silent audio track)', null, { sessionId, deviceId: warning.deviceId, trackId: warning.trackId, channel: warning.micChannel, reason: warning.reason });
+      }
+      // Row 148 (D5; S5 §2.3): the channel file of every microphone of the plan joins the session's file list (it is handed
+      // to the seal with the camera files; row D2C (D150 (2)): it never makes a session durable, nor turns a failed start
+      // into an interrupted recording - only a camera file does, `isCameraFragmentRecord` / `captureEnded`), and the
+      // statement of a camera whose paired channel is not recorded is kept for the seal (facts file, D30 K-3).
+      current.files.push(...channelFilesOf(current.planOfStart));
+      for (const [deviceId, reason] of pairedMicMissingOf(current.planOfStart)) current.micMissing.set(deviceId, reason);
       // Row 179: the addresses of the FIRST worker are the plan's; the supervisor replaces them, all at once, for every later worker.
       const addressesInForce = (addresses: ReadonlyMap<string, string>): void => {
         current.ingest.clear();
@@ -2121,10 +2197,11 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
       };
       addressesInForce(new Map(plan.cameras.map((camera) => [camera.deviceId, camera.ingestUrl])));
 
-      // The recorder of row 59, one per recording session, fed from the supervisor's records.
+      // The recorder of row 59, one per recording session, fed from the supervisor's records. Row 148: cameras to
+      // VIDEO-0N and the plan's microphones to the AUDIO-0N track of their channel file (protocol 6 N-32).
       current.recorder = createFragmentRecorder({
         sessionId,
-        tracks: new Map(plan.cameras.map((camera) => [camera.deviceId, camera.trackId as VideoTrackId])),
+        tracks: fragmentTracksOf(current.planOfStart),
         store: createRecordingFragmentStore(app.db.pool),
         report: (failure) => persist('error', failure.code, 'a fragment row of the recording could not be stored', failure.err, { sessionId, trackId: failure.trackId, seq: failure.seq }),
       });
@@ -2295,139 +2372,9 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
   }
 
   // ── Operation 81 ─────────────────────────────────────────────────────────────────────────────
-
-  const stateOf = (session: ActiveSession): AudioSourceStateBody | null => {
-    const source = session.audioSource ?? null;
-    return source === null ? null : { sessionId: session.id, activeInputId: source.activeInputId, standbyInputId: source.standbyInputId, switchedAt: source.switchedAt ?? app.clock.now(), intervalFromMs: source.intervalFromMs };
-  };
-
-  const notOpen = (): ApiFailure => new ApiFailure(404, ApiErrorCode.NOT_FOUND, TEXT.NOT_OPEN);
-  const conflict = (reason: string, cause?: unknown): ApiFailure => refusal(409, ApiErrorCode.AUDIO_SOURCE_CONFLICT, reason === 'NO_SUCH_INPUT' ? TEXT.NO_SUCH_INPUT : TEXT.SWITCH_REFUSED, { reason }, cause);
-
-  /** Mode `simulated`: the simulator's own hosted action, in one unit, on the session the path names. */
-  async function switchSimulated(principal: Principal, sessionId: string, inputId: string): Promise<AudioSourceStateBody> {
-    await app.engine.run('captureSession.switchAudioSource', async (scope) => {
-      const session = scope.pending().session;
-      if (session === null || session.id !== sessionId) throw notOpen();
-      // C3 §4 (request of pass D4): a well-formed input that is no input of the session is 409 AUDIO_SOURCE_CONFLICT, as in real capture - never the 404 of the hosted action.
-      if (!(session.captureConfig?.mics ?? scope.pending().captureConfig.mics).some((mic) => mic.inputId === inputId)) throw conflict('NO_SUCH_INPUT');
-      await scope.command(principal, 'switchAudioSource', ...([inputId] as HostedActionArguments<'switchAudioSource'>));
-    });
-    const session = app.engine.slice('session');
-    const answer = session === null || session.id !== sessionId ? null : stateOf(session);
-    if (answer === null) throw conflict('NO_AUDIO_SOURCE');
-    return answer;
-  }
-
-  async function switchReal(principal: Principal, sessionId: string, inputId: string): Promise<AudioSourceStateBody> {
-    const session = app.engine.slice('session');
-    if (session === null || session.id !== sessionId) throw notOpen();
-    if (session.state !== SessionState.RECORDING) throw new ApiFailure(409, ApiErrorCode.INVALID_STATE, TEXT.NOT_RECORDING, { details: { from: session.state, event: 'switchAudioSource' } });
-    const mic = (session.captureConfig?.mics ?? []).find((entry) => entry.inputId === inputId);
-    const current = stateOf(session);
-    if (mic === undefined || current === null) throw conflict('NO_SUCH_INPUT');
-    // The input that already feeds the track: nothing changes and nothing is written.
-    if (current.activeInputId === inputId) return current;
-    const of = live;
-    if (of === null || of.sessionId !== sessionId || of.ended) throw conflict('CAPTURE_NOT_RUNNING');
-
-    const actor: SwitchActor = {
-      operatorId: principal.kind === 'OPERATOR' ? principal.operatorId : null,
-      // E-30 / SEC35-17: the paired device a command came from is named; a web console session has none.
-      sendingDeviceId: principal.kind === 'OPERATOR' ? principal.deviceId : null,
-    };
-    of.switchAskedBy.set(mic.deviceId, actor);
-    // D61 (2026-11-04): the worker's two-role lane trades the transcription pair - channel 1 is `PRIMARY`, channel 2 `STANDBY`
-    // (`sim/types.ts`); a later channel has no role on that lane until the worker's own D61 wave, and cannot be switched to.
-    const workerRole = mic.channel === 'MIC-01' ? CaptureMicRole.PRIMARY : mic.channel === 'MIC-02' ? CaptureMicRole.STANDBY : null;
-    if (workerRole === null) throw conflict('SWITCH_REFUSED');
-    let record: AudioSourceIntervalRecord | null;
-    of.switchesWaiting += 1;
-    try {
-      record = await of.supervisor.switchAudioSource(sessionId, workerRole);
-    } catch (cause) {
-      if (!(cause instanceof CaptureSupervisorError)) throw cause;
-      // The command was not acknowledged in time or was refused. A record of THAT microphone that
-      // arrived while this call waited says the worker did switch: it is recorded, never dropped (R74-06 (b)).
-      const seen = [...of.switchRecordsSeen.values()].find((entry) => entry.deviceId === mic.deviceId && !of.switchesRecorded.has(of.intervalSeqBase + entry.index));
-      if (seen === undefined) throw conflict(cause.detail ?? cause.code, cause);
-      record = seen;
-    } finally {
-      of.switchesWaiting -= 1;
-      if (of.switchesWaiting === 0) of.switchRecordsSeen.clear();
-    }
-    // The worker says that role already feeds the track: the Core's state says another. Said, never guessed.
-    if (record === null || record.deviceId !== mic.deviceId) {
-      persist('error', 'AUDIO_SWITCH_WITHOUT_RECORD', 'the capture worker acknowledged a switch without the interval record of that microphone', null, { sessionId, deviceId: mic.deviceId });
-      throw conflict('SWITCH_NOT_REALISED');
-    }
-    const realised = await recordSwitch(of, record, actor);
-    const after = app.engine.slice('session');
-    const answer = after === null || after.id !== sessionId ? null : stateOf(after);
-    // The session's pair was not moved (it left RECORDING while the worker switched): the answer is what the record says feeds the track.
-    if (answer === null || answer.activeInputId !== inputId) return { sessionId, activeInputId: inputId, standbyInputId: realised.fromInputId, switchedAt: app.clock.now(), intervalFromMs: realised.toMs };
-    return answer;
-  }
-
-  /**
-   * RECORDS A SWITCH THE WORKER REALISED, from its interval record (review R74-06). ONE unit holds
-   * the session's new pair (when the session still records), the closed and the opened
-   * `session_audio_intervals` rows and the `AUDIO_SOURCE_SWITCHED` row with the keys of C3 §5.2.
-   * The rows are written WHATEVER the engine's transition says: the worker has switched, and the
-   * interval is evidence metadata. A unit that fails is run once more; then the two interval rows
-   * are written apart and the failure is said (503). A record is recorded once.
-   */
-  async function recordSwitch(of: Live, record: AudioSourceIntervalRecord, actor: SwitchActor): Promise<{ readonly fromInputId: string; readonly toMs: number }> {
-    const { sessionId } = of;
-    const atMediaMs = mediaMsOfSample(record.fromSample, record.sampleRateHz);
-    const lines = app.engine.slice('session')?.captureConfig?.mics ?? [];
-    const toInputId = lines.find((line) => line.deviceId === record.deviceId)?.inputId ?? record.deviceId;
-    const otherInputId = lines.find((line) => line.deviceId !== record.deviceId)?.inputId ?? toInputId;
-    // Row 191b: the stored number, not the worker's own (a later worker counts from 1 again); a record is applied once under it.
-    const seq = intervalSeqOf(of, record);
-    if (of.switchesRecorded.has(seq)) return { fromInputId: otherInputId, toMs: atMediaMs };
-    of.switchesRecorded.add(seq);
-    const intervalValues = [sessionId, seq, record.deviceId, record.role, atMediaMs, record.capturedAtMs, actor.operatorId, AudioIntervalRowReason.MANUAL] as const;
-    let fromInputId = otherInputId;
-    const unit = (): Promise<unknown> =>
-      app.engine.run('captureSession.switchAudioSource', async (scope) => {
-        const switched = await switchCaptureAudioSourceIn(scope, { sessionId, toInputId, atMediaMs });
-        // Where the closed interval began is the stored row's (the capture side's media time), not a wall clock.
-        const closed = (await scope.unit.query<{ from_media_ms: string | number }>(CLOSE_OPEN_AUDIO_INTERVAL, [sessionId, atMediaMs, record.capturedAtMs])).rows[0];
-        const fromMs = closed === undefined ? (switched?.fromMs ?? atMediaMs) : Number(closed.from_media_ms);
-        fromInputId = switched?.fromInputId ?? otherInputId;
-        await scope.unit.query(INSERT_AUDIO_INTERVAL, [...intervalValues]);
-        // `at` of this row is the instant of THIS unit (after the worker's acknowledgement); the wall instant of the boundary is the interval row's `from_at` (see the header).
-        await scope.unit.audit.append({
-          type: 'AUDIO_SOURCE_SWITCHED',
-          message: `Audio source switched to ${toInputId}`,
-          actorId: actor.operatorId,
-          deviceId: actor.sendingDeviceId,
-          sessionId,
-          details: { fromInput: fromInputId, toInput: toInputId, fromMs, toMs: switched?.toMs ?? atMediaMs, ...(actor.sendingDeviceId === null ? {} : { sendingDeviceId: actor.sendingDeviceId }) },
-        });
-        if (switched === null) persist('warn', 'AUDIO_SWITCH_OUTSIDE_RECORDING', 'a realised microphone switch was recorded for a session that is no longer recording: its rows are written, its state is not moved', null, { sessionId, seq, deviceId: record.deviceId, atMediaMs });
-      });
-    try {
-      try {
-        await unit();
-      } catch (first) {
-        persist('warn', 'AUDIO_SWITCH_UNIT_RETRIED', 'the unit of a realised microphone switch failed and is run once more', first, { sessionId, seq, deviceId: record.deviceId });
-        await unit();
-      }
-    } catch (err) {
-      // The worker HAS switched. The interval is evidence metadata: it is stored by itself when the unit could not be.
-      persist('error', 'AUDIO_SWITCH_NOT_RECORDED', 'a realised microphone switch could not be recorded in its unit; the interval rows are written apart', err, { sessionId, seq, deviceId: record.deviceId, atMediaMs });
-      try {
-        await app.db.pool.query(CLOSE_OPEN_AUDIO_INTERVAL, [sessionId, atMediaMs, record.capturedAtMs]);
-        await app.db.pool.query(INSERT_AUDIO_INTERVAL, [...intervalValues]);
-      } catch (again) {
-        persist('error', 'AUDIO_INTERVAL_NOT_STORED', 'an audio-source interval could not be stored', again, { sessionId, seq, deviceId: record.deviceId });
-      }
-      throw refusal(503, ApiErrorCode.NOT_READY, TEXT.SWITCH_NOT_RECORDED, { reason: 'AUDIO_SWITCH_NOT_RECORDED' }, err);
-    }
-    return { fromInputId, toMs: atMediaMs };
-  }
+  // Retired (audit row 149; N-29, N-31, N-36; D28 DQ-2): the audio of each track is fixed by its camera-microphone pair.
+  // The sessions route answers `409 AUDIO_SOURCE_FIXED_BY_PAIRING` itself, before any lookup, and writes no audit row;
+  // this unit has no switch to command and no switch rows to write.
 
   // ── The unit ─────────────────────────────────────────────────────────────────────────────────
 
@@ -2516,8 +2463,6 @@ function createSessionCapture(app: FastifyInstance): SessionCapture {
         tell({ type: 'INTERRUPTED', sessionId, cause: notClean, files: Object.freeze([...of.files]), firstVideo: Object.freeze([...of.firstVideo.values()]), ...cameraEndsOf(of) });
       });
     },
-
-    switchAudioSource: (principal, sessionId, inputId) => (real ? switchReal(principal, sessionId, inputId) : switchSimulated(principal, sessionId, inputId)),
 
     on(listener) {
       listeners.add(listener);

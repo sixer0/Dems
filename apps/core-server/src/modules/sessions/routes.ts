@@ -18,8 +18,8 @@
  *   36  takeSessionSnapshot          snapshot                      none                 204
  *   37  acknowledgeSessionSummary    acknowledgeSummary            the `{id}` of the path  204
  *   38  listSessionHistory           (a read of PostgreSQL)                             200
- *   81  switchAudioSource            switchAudioSource (simulated)  body.inputId        200
- *                                    or the capture worker (real): `src/capture-session`
+ *   81  switchAudioSource            none: retired (audit row 149;  body.inputId        none: 409
+ *                                    N-29/N-36), refused by the route  AUDIO_SOURCE_FIXED_BY_PAIRING, no audit row
  *   82  listAudioSourceIntervals     (a read: PostgreSQL in capture mode real,          200
  *                                    the state's derivation in simulated)
  *
@@ -74,7 +74,7 @@
 import {
   ApiErrorCode,
   AudioSourceIntervalPageSchema,
-  AudioSourceStateSchema,
+  AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE,
   AudioSourceSwitchRequestSchema,
   CaseNumberScanSchema,
   CurrentSessionResponseSchema,
@@ -87,7 +87,6 @@ import {
   SessionStopRequestSchema,
   sessionCreateSchema,
   type AudioSourceIntervalPage,
-  type AudioSourceStateBody,
   type CaseNumberScan,
   type CurrentSessionResponse,
   type SessionCommandResponse,
@@ -430,19 +429,19 @@ export function registerSessionRoutes(app: FastifyInstance): void {
     handler: async (request): Promise<SessionHistoryPage> => listSessionHistory(app, request, request.query),
   });
 
-  // 81 switchAudioSource (task 3 row 71): the command, its unit and its rows are `src/capture-session`'s.
+  // 81 switchAudioSource - RETIRED IN BEHAVIOUR (audit row 149; D28 DQ-2; register N-29, N-36). The audio of each track is
+  // fixed by its camera-microphone pair, so the route answers `409 AUDIO_SOURCE_FIXED_BY_PAIRING` with the contract's
+  // sentence for EVERY call, in both capture modes, before any lookup of the session or the input: no unit is opened, no
+  // state moves, no audit row is written. What runs before it is the request's own: the access rule (401 / 403, the
+  // `SESSION_HOLDER` condition with its ACCESS_DENIED row) and the body schema (400 / 422, Core only). Same answer as the
+  // simulator's REST layer (row 150); the route stays registered so older clients get the refusal, not a 404.
   {
-    const [switched] = successesOf('switchAudioSource', [200]);
+    successesOf('switchAudioSource', []);
     routes.route({
       ...route('switchAudioSource'),
-      schema: { params: sessionParams('switchAudioSource'), body: AudioSourceSwitchRequestSchema, response: { 200: AudioSourceStateSchema } },
-      handler: async (request, reply): Promise<AudioSourceStateBody> => {
-        // Pass D6 (F-D4-4; C3 §4): in simulated capture a well-formed input that is no input of the RECORDING open session is 409, as the simulator's REST layer answers it (the hosted action alone would say 404).
-        const open = app.engine.slice('session');
-        if (!capture().real && open !== null && open.id === request.params.id && open.state === SessionState.RECORDING && !(open.captureConfig?.mics ?? app.engine.slice('captureConfig').mics).some((mic) => mic.inputId === request.body.inputId)) throw new ApiFailure(409, ApiErrorCode.AUDIO_SOURCE_CONFLICT, 'The requested microphone is not one of the two inputs of this session.', { details: { reason: 'NO_SUCH_INPUT' } });
-        const answer = await capture().switchAudioSource(request.principal, request.params.id, request.body.inputId);
-        void reply.code(switched);
-        return answer;
+      schema: { params: sessionParams('switchAudioSource'), body: AudioSourceSwitchRequestSchema },
+      handler: async (): Promise<never> => {
+        throw new ApiFailure(409, ApiErrorCode.AUDIO_SOURCE_FIXED_BY_PAIRING, AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE);
       },
     });
   }

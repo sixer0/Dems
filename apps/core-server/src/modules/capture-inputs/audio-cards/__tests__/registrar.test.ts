@@ -36,3 +36,42 @@ describe('D50: a new microphone is minted above the ids of the registry table', 
     expect(empty.asked).toEqual([{ deviceId: null, model: 'X', takenIds: [] }]);
   });
 });
+
+// Audit row M97 (D104, D116): a re-enabled microphone (operation 99) is back; a stated NOT_REACHABLE no longer holds.
+// The card was only listed: the reach is CLEARED (not REACHABLE), in the same unit, through row 127's door.
+describe('audit row M97: re-enable clears a stale NOT_REACHABLE', () => {
+  function reenableBed(reach: 'REACHABLE' | 'NOT_REACHABLE' | undefined) {
+    const noted: unknown[] = [];
+    const statements: string[] = [];
+    const scope = { pending: () => ({ captureDevices: { devices: [{ id: 'MIC-03', kind: 'MIC', ...(reach === undefined ? {} : { reach, checkedAt: 7 }) }] } }) } as unknown as Parameters<typeof bindInternalActions>[0];
+    bindInternalActions(scope, {
+      async registerCaptureMicrophone() {
+        return { id: 'MIC-03' } as never;
+      },
+      async noteCaptureDeviceReach(reading: unknown) {
+        noted.push(reading);
+        return true;
+      },
+    } as unknown as InternalActions);
+    const db = {
+      async query(text: string) {
+        statements.push(text);
+        return { rows: [], rowCount: 1 };
+      },
+    };
+    return { unit: { scope, db } as never, noted, statements };
+  }
+
+  it('NOT_REACHABLE -> one clear (reach null, checkedAt null) before the columns are set; CONTROL: REACHABLE or no reading -> nothing is noted', async () => {
+    const stale = reenableBed('NOT_REACHABLE');
+    await createEngineMicrophoneRegistrar().reenable(stale.unit, { deviceId: 'MIC-03', model: 'X', at: 1 });
+    expect(stale.noted).toEqual([{ deviceId: 'MIC-03', reach: null, checkedAt: null }]);
+    expect(stale.statements).toEqual([SET_REGISTERED_MICROPHONE_COLUMNS]);
+
+    for (const reach of ['REACHABLE', undefined] as const) {
+      const control = reenableBed(reach);
+      await createEngineMicrophoneRegistrar().reenable(control.unit, { deviceId: 'MIC-03', model: 'X', at: 1 });
+      expect(control.noted, String(reach)).toEqual([]);
+    }
+  });
+});

@@ -8,7 +8,9 @@
 // package, turns a test red. Real bytes on disk, real SHA-256, real AES-256-GCM, real Ed25519.
 import { appendFileSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PackageFile, cameraFilePath, serializeFragmentsJson, type ManifestFile } from '@dems/shared/evidence-package';
+import { createHash } from 'node:crypto';
+import { EvidenceVerifyResultSchema } from '@dems/shared/api';
+import { MANIFEST_V2_1_SCHEMA_ID, MANIFEST_V2_SCHEMA_ID, PackageFile, audioFilePath, cameraFilePath, serializeFragmentsJson, type ManifestAudioTrackMissing, type ManifestFile } from '@dems/shared/evidence-package';
 import {
   VERIFY_FAILURES,
   VERIFY_V2_CHECKS,
@@ -22,7 +24,7 @@ import {
 } from '@dems/shared/evidence-verify';
 import { afterAll, describe, expect, it } from 'vitest';
 import { verifyEd25519, verifyManifestSeal } from '../../capture';
-import { corePorts } from '../index';
+import { contractBodyOf, corePorts } from '../index';
 import {
   NOW,
   buildPackage,
@@ -36,6 +38,7 @@ import {
   testOpener,
   throwAwaySigner,
   writeRevisions,
+  d5SourceRows,
   type BuildOptions,
   type BuiltPackage,
 } from './support';
@@ -988,5 +991,179 @@ describe('what a result may hold', () => {
     expect(text).not.toContain(built.key.toString('base64'));
     expect(text).not.toContain(built.dir);
     expect(text).not.toContain('edited');
+  });
+});
+
+// Audit 2026-11-05 row 154 (D5; spec S5 §5.4; AC-4.13, AC-4.14; decisions D30 K-2/K-3, D45). A
+// `dems.evidence-manifest/2.1` package seals the audio file of each camera-microphone pair
+// (`fragments/AUDIO-0N.m4a`) and may state a pair microphone that did not record. The audio files
+// go through the camera files' checks; a `/2` package takes exactly the path of before.
+describe('row 154 (D5): the audio file of each pair is verified like a camera file; a legacy package is read as before', () => {
+  const AUDIO = ['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04'] as const;
+  const MEDIA_4X4 = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', ...AUDIO];
+  const MISSING_03: ManifestAudioTrackMissing = { trackId: 'AUDIO-03', micChannel: 'MIC-03', micDeviceId: 'MIC-05', silentIn: ['VIDEO-03'], reason: 'NOT_OPENED' };
+  const noticeCodes = (result: PackageVerifyResult): string[] => result.notices.map((notice) => notice.code);
+  const tracksOf = (result: PackageVerifyResult, id: VerifyCheckId): (string | undefined)[] => [...new Set(check(result, id).findings.map((finding) => finding.trackId))];
+
+  it('AC-4.13: the 4+4 package (AC-4.10 shape) passes every check; the eight files are each verified, the audio fragments opened under the session key, and op 41 answers the AUDIO lines', async () => {
+    const built = await buildPackage({ d5: {} });
+    expect(built.manifest.schema).toBe(MANIFEST_V2_1_SCHEMA_ID);
+    expect(built.manifest.audioTracks?.map((record) => [record.trackId, record.containsIn])).toEqual(AUDIO.map((trackId, index) => [trackId, [`VIDEO-0${String(index + 1)}`]]));
+    const result = await verifyAnchored(built);
+    expect(failing(result)).toEqual([]);
+    expect(skipped(result)).toEqual([]);
+    expect(result).toMatchObject({ ok: true, overall: 'PASS', plaintextChecked: true, fragments: [] });
+    for (const id of ['V-02', 'V-03', 'V-04', 'V-05', 'V-06', 'V-07', 'V-08', 'V-14'] as const) expect(check(result, id).findings, id).toEqual([]);
+    expect(result.files.map((file) => [file.trackId, file.file, file.storedOk, file.plainOk, file.chainOk, file.sequenceOk, file.fragmentCount])).toEqual(
+      MEDIA_4X4.map((trackId) => [trackId, trackId.startsWith('AUDIO') ? audioFilePath(trackId as (typeof AUDIO)[number]) : cameraFilePath(trackId as 'VIDEO-01'), true, true, true, true, 5]),
+    );
+    // V-05 ran on real ciphertext of the audio files too, under the same key id.
+    expect(built.opener.opened.filter((record) => record.trackId.startsWith('AUDIO')).map((record) => `${record.trackId}#${record.seq}`)).toEqual(AUDIO.flatMap((trackId) => [1, 2, 3, 4, 5].map((seq) => `${trackId}#${seq}`)));
+    expect(new Set(built.opener.opened.map((record) => record.keyId))).toEqual(new Set([built.keyId]));
+    expect(noticeCodes(result)).toEqual(['AUDIT_EXTRACT_NOT_SIGNED']);
+    // Operation 41 answers the audio lines after the camera lines; the contract accepts them.
+    const body = EvidenceVerifyResultSchema.parse(contractBodyOf(built.manifest.evidenceId, NOW, result));
+    expect(body.files?.map((file) => [file.trackId, file.fileId, file.ok])).toEqual(MEDIA_4X4.map((trackId) => [trackId, result.files.find((file) => file.trackId === trackId)?.file, true]));
+    expect(body.manifestOk).toBe(true);
+  });
+
+  it('THE MISSING-MICROPHONE STATEMENT (D30 K-3): three audio files and one statement verify; the statement is SAID and fails nothing', async () => {
+    const built = await buildPackage({ d5: { audio: ['AUDIO-01', 'AUDIO-02', 'AUDIO-04'], missing: [MISSING_03] } });
+    const result = await verifyAnchored(built);
+    expect(failing(result)).toEqual([]);
+    expect(result.ok).toBe(true);
+    expect(result.files.map((file) => file.trackId)).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-02', 'AUDIO-04']);
+    expect(result.notices.at(-1)).toEqual({ code: 'AUDIO_TRACKS_MISSING', report: 'Audio: 1 PAIR MICROPHONE NOT RECORDED. AUDIO-03 not opened, VIDEO-03 silent. Its silent track is no sound of the room.' });
+    // No microphone on channel 2, and the transcribed microphone did not open: two statements, one line, within the contract's bound.
+    const two = await verifyAnchored(
+      await buildPackage({
+        d5: {
+          audio: ['AUDIO-03', 'AUDIO-04'],
+          missing: [
+            { trackId: 'AUDIO-01', micChannel: 'MIC-01', micDeviceId: 'MIC-03', silentIn: ['VIDEO-01'], reason: 'NOT_OPENED' },
+            { trackId: 'AUDIO-02', micChannel: 'MIC-02', micDeviceId: null, silentIn: ['VIDEO-02'], reason: 'NOT_ASSIGNED' },
+          ],
+        },
+      }),
+    );
+    expect(two.ok).toBe(true);
+    expect(two.notices.at(-1)?.report).toBe('Audio: 2 PAIR MICROPHONES NOT RECORDED. AUDIO-01 not opened, VIDEO-01 silent; AUDIO-02 not assigned, VIDEO-02 silent. Their silent tracks are no sound of the room.');
+    for (const notice of two.notices) expect(notice.report.length).toBeLessThanOrEqual(256);
+    // The op 41 answer carries the notice.
+    expect(EvidenceVerifyResultSchema.parse(contractBodyOf('EV-20261009-0001', NOW, two)).notices?.map((notice) => notice.code)).toContain('AUDIO_TRACKS_MISSING');
+  });
+
+  it('AC-4.14: one byte flipped in fragments/AUDIO-03.m4a fails V-04/V-08 (and the chain, V-06) naming AUDIO-03 - the checks a camera tamper fails, and no other track', async () => {
+    const built = await buildPackage({ d5: {} });
+    flipByte(built.path(audioFilePath('AUDIO-03')), built.fragment('AUDIO-03', 2).byteOffset + 5);
+    const result = await verifyAnchored(built);
+    // Exactly as a camera tamper: V-04/V-06/V-08 fail and V-05 is SKIPPED (the altered bytes cannot form the plaintext), never PASS.
+    expectFailed(result, ['V-04', 'V-06', 'V-08']);
+    expect(skipped(result)).toEqual(['V-05']);
+    expect(result.overall).toBe('TAMPERED');
+    for (const id of ['V-04', 'V-06', 'V-08'] as const) expect(tracksOf(result, id), id).toEqual(['AUDIO-03']);
+    expect(check(result, 'V-08').findings).toEqual([{ code: 'FRAGMENT_TAMPERED', failureClass: 'TAMPERED', trackId: 'AUDIO-03', seq: 2 }]);
+    expect(named(result)).toEqual(['AUDIO-03#2']);
+    expect(result.files.filter((file) => !file.storedOk).map((file) => file.trackId)).toEqual(['AUDIO-03']);
+    // Operation 41: the failed fragment and the failed file name AUDIO-03, and the contract accepts it.
+    const body = EvidenceVerifyResultSchema.parse(contractBodyOf(built.manifest.evidenceId, NOW, result));
+    expect(body.fragments?.map((fragment) => `${fragment.trackId}#${fragment.seq}`)).toEqual(['AUDIO-03#2']);
+    expect(body.files?.filter((file) => !file.ok).map((file) => file.trackId)).toEqual(['AUDIO-03']);
+  });
+
+  it('AC-4.14: fragments/AUDIO-03.m4a deleted fails V-14 (DECLARED_FILE_MISSING) and V-04 (AUDIO_FILE_MISSING)', async () => {
+    const built = await buildPackage({ d5: {} });
+    rmSync(built.path(audioFilePath('AUDIO-03')));
+    const result = await verifyAnchored(built);
+    expectFailed(result, ['V-04', 'V-14']);
+    expect(skipped(result)).toEqual(['V-05']);
+    expect(check(result, 'V-14').findings).toEqual([{ code: 'DECLARED_FILE_MISSING', failureClass: 'MISSING', file: 'fragments/AUDIO-03.m4a' }]);
+    expect(check(result, 'V-04').findings).toEqual([{ code: 'AUDIO_FILE_MISSING', failureClass: 'MISSING', trackId: 'AUDIO-03', file: 'fragments/AUDIO-03.m4a' }]);
+    expect(VERIFY_FAILURES.AUDIO_FILE_MISSING).toEqual({ check: 'V-04', failureClass: 'MISSING' });
+  });
+
+  it('AC-4.14: an AUDIO-02.m4a added to a legacy package is UNEXPECTED_FILE (V-14 alone); a D5 package does not declare an audio file it does not name', async () => {
+    const legacy = await buildPackage();
+    writeFileSync(legacy.path('fragments/AUDIO-02.m4a'), 'x');
+    const result = await verifyAnchored(legacy);
+    expectFailed(result, ['V-14']);
+    expect(check(result, 'V-14').findings).toEqual([{ code: 'UNEXPECTED_FILE', failureClass: 'TAMPERED', file: 'fragments/AUDIO-02.m4a' }]);
+    const d5 = await buildPackage({ d5: { audio: ['AUDIO-01', 'AUDIO-02', 'AUDIO-04'], missing: [MISSING_03] } });
+    writeFileSync(d5.path(audioFilePath('AUDIO-03')), 'x');
+    expect(check(await verifyAnchored(d5), 'V-14').findings).toEqual([{ code: 'UNEXPECTED_FILE', failureClass: 'TAMPERED', file: 'fragments/AUDIO-03.m4a' }]);
+  });
+
+  it('AC-4.14: a manifest with audioTracks but no audioFiles fails V-01 (hash recomputed: an editor without the key)', async () => {
+    const built = await buildPackage({ d5: {} });
+    editManifest(built, (manifest) => delete manifest.audioFiles, { recomputeHash: true });
+    const result = await verifyAnchored(built);
+    expect(failing(result)).toContain('V-01');
+    expect(check(result, 'V-01').findings.map((finding) => [finding.code, finding.member])).toEqual([['MANIFEST_FIELD_MISSING', 'audioFiles']]);
+    expect(result.ok).toBe(false);
+  });
+
+  it('V-02 over the audio files: fragments.json without the audio entries, and an audio record count sealed wrong', async () => {
+    const stale = await buildPackage({ d5: {} });
+    writeFileSync(stale.path(PackageFile.FRAGMENTS_JSON), serializeFragmentsJson(stale.manifest.files));
+    const result = await verifyAnchored(stale);
+    expectFailed(result, ['V-02']);
+    expect(codes(result, 'V-02')).toEqual(['FRAGMENTS_JSON_MISMATCH']);
+    const wrong = await buildPackage({ d5: {}, beforeSeal: (input) => void Object.assign((input.audioTracks ?? [])[1] ?? {}, { fragmentCount: 4 }) });
+    const counted = await verifyAnchored(wrong);
+    expectFailed(counted, ['V-02']);
+    expect(check(counted, 'V-02').findings).toEqual([{ code: 'FRAGMENT_COUNT_MISMATCH', failureClass: 'CORRUPT', trackId: 'AUDIO-02', member: 'audioTracks.1.fragmentCount' }]);
+  });
+
+  it('V-05: the audio files need the session key like the camera files; V-12: an interrupted D5 package whose audio prefix does not verify fails V-12 naming it', async () => {
+    const built = await buildPackage({ d5: { cameras: ['VIDEO-01'], audio: ['AUDIO-01'] } });
+    const keyless = await verify(built, { plaintext: 'REQUIRED' }, null);
+    expect(check(keyless, 'V-05').findings.map((finding) => finding.trackId)).toEqual(['VIDEO-01', 'AUDIO-01']);
+    expect((await verify(built, { plaintext: 'WHEN_KEY_AVAILABLE' }, null)).ok).toBe(true);
+    const interrupted = await buildPackage({ d5: {}, beforeSeal: (input) => void Object.assign(input.timeline, { interrupted: true, stoppedAt: null }) });
+    expect((await verifyAnchored(interrupted)).ok).toBe(true);
+    flipByte(interrupted.path(audioFilePath('AUDIO-04')), interrupted.fragment('AUDIO-04', 1).byteOffset);
+    const result = await verifyAnchored(interrupted);
+    expectFailed(result, ['V-04', 'V-06', 'V-08', 'V-12']);
+    expect(check(result, 'V-12').findings).toEqual([{ code: 'INTERRUPTED_PREFIX_NOT_VERIFIED', failureClass: 'TAMPERED', trackId: 'AUDIO-04' }]);
+  });
+
+  it('V-15 reads field 172 of a /2.1 manifest: a development microphone on pair 2 makes the package DEVELOPMENT, and its class edited away is caught', async () => {
+    const rows = d5SourceRows().map((row) => ({ ...row, adapterKind: row.slot === 'MIC-02' ? 'FAKE' : row.slot.startsWith('MIC') ? 'USB_AUDIO' : 'ONVIF_RTSP' }));
+    const built = await buildPackage({ d5: {}, sourceRows: rows, beforeSeal: (input) => void Object.assign(input, { demo: false, integrity: 'REAL' }) });
+    expect(built.manifest.audioTracks?.map((record) => record.sourceClass)).toEqual(['PRODUCTION', 'FAKE', 'PRODUCTION', 'PRODUCTION']);
+    // Only field 172 is not PRODUCTION: the cameras and the one MIC-01 interval are.
+    expect([...built.manifest.tracks.map((track) => track.sourceClass), ...built.manifest.audio.sourceIntervals.map((interval) => interval.sourceClass)].every((value) => value === 'PRODUCTION')).toBe(true);
+    const result = await verifyAnchored(built);
+    expect(result.ok).toBe(true);
+    expect(result.sources).toMatchObject({ ok: true, code: 'DEVELOPMENT', development: true });
+    expect(result.sources.lines).toContain('AUDIO-02 file: MIC-04, fake source (FAKE).');
+    editManifest(built, (manifest) => (manifest.audioTracks[1].sourceClass = 'PRODUCTION'), { recomputeHash: true });
+    const edited = await verifyAnchored(built);
+    expect(codes(edited, 'V-15')).toEqual(['DEVELOPMENT_FLAG_INCONSISTENT']);
+    expect(edited.sources.development).toBe(null);
+  });
+
+  it('A LEGACY PACKAGE TAKES THE PATH OF BEFORE: schema /2, and the whole result of each variant is byte for byte the one measured before row 154', async () => {
+    const digest = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+    // Measured on the worktree at e5dea409 + row 145 BEFORE row 154's edit (scratch script /tmp/r154_baseline.mts, two runs identical).
+    const BEFORE = {
+      untouched: '12c38487ebbd406b37b4e3988122e529b7d03a8d9d71f07e4c51e53f7b76bb92',
+      flip: '2593f8f9e893f1a8567725c728fa1b59dead289602bb0cb631f3ccabae55070a',
+      cameraGone: '60c65b17482732c9bcecd1f261ce724fed8afd3393c150ba4b831f24e995d9a4',
+      strayAudio: '6e438c529d0f88b97b082edb4db1149c8442d33359817c9725bd663b9686e0cc',
+    };
+    let built = await buildPackage({ revisions: 2 });
+    expect(built.manifest.schema).toBe(MANIFEST_V2_SCHEMA_ID);
+    for (const key of ['audioTracks', 'audioFiles', 'audioTracksMissing']) expect(key in built.manifest, key).toBe(false);
+    expect(digest(await verifyAnchored(built))).toBe(BEFORE.untouched);
+    built = await buildPackage();
+    flipByte(built.path('fragments/VIDEO-02.mp4'), built.fragment('VIDEO-02', 3).byteOffset + 5);
+    expect(digest(await verifyAnchored(built))).toBe(BEFORE.flip);
+    built = await buildPackage();
+    rmSync(built.path('fragments/VIDEO-01.mp4'));
+    expect(digest(await verifyAnchored(built))).toBe(BEFORE.cameraGone);
+    built = await buildPackage();
+    writeFileSync(built.path('fragments/AUDIO-02.m4a'), 'x');
+    expect(digest(await verifyAnchored(built))).toBe(BEFORE.strayAudio);
   });
 });

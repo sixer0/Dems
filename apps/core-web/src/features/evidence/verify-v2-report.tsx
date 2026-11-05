@@ -1,7 +1,7 @@
 import { Alert, Chip } from '@heroui/react'
 import { CircleCheck, CircleMinus, CircleX, FileText, FlaskConical, ShieldQuestion } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { V2_SIGNING_KEY_LINE, V2_SOURCES_LINE, v2CheckName, v2FilePartOutcome, v2FragmentLine, v2Rows, type V2Check, type V2FilePart, type V2Notice, type V2Row, type V2SigningKey, type V2Sources, type VerifyV2Answer } from './verify-v2'
+import { V2_SIGNING_KEY_LINE, V2_SOURCES_LINE, V2_STATEMENT_NOTICES, v2CheckName, v2FileFindingLine, v2FileLabel, v2FilePartOutcome, v2FragmentLine, v2Rows, type V2Check, type V2FilePart, type V2Notice, type V2Row, type V2SigningKey, type V2Sources, type VerifyV2Answer } from './verify-v2'
 
 export interface VerifyV2ReportProps {
   answer: VerifyV2Answer
@@ -20,13 +20,23 @@ export interface VerifyV2ReportProps {
  * fragment the answer names ("VIDEO-02 fragment 3 tampered (…)"); then the per-check list V-01 to
  * V-15, when the answer carries the report. The source line never changes the verdict. Every value drawn is the answer's: a part the answer does not carry is
  * not drawn, and nothing here is animated, paced or counted (the result appears whole).
+ *
+ * D5 (row 159; D119): an AUDIO-0N row reads "AUDIO-02 audio file · in VIDEO-02" (`v2FileLabel`);
+ * a missing or unreadable pair audio file is named in words under "Where it failed"; the notice
+ * AUDIO_TRACKS_MISSING is shown under "Stated in the signed manifest" with the Core's own line, and
+ * every other notice stays under "Not covered by the package signature". A legacy answer has no
+ * AUDIO row, no such finding and no such notice: it draws exactly as before.
  */
 export function VerifyV2Report({ answer }: VerifyV2ReportProps) {
   const { t } = useTranslation()
   const rows = v2Rows(answer)
   const failed = answer.verdict === 'FAIL'
   const namesPlace = answer.failedFragments.length > 0 || answer.chainBreaks.length > 0
-  const fileFailed = answer.files.some((file) => !file.ok)
+  // Row 159 (D119): a failed file row that a file-level finding explains (a missing / unreadable pair audio file) needs no "fragment not named" line.
+  const explained = new Set<string>(answer.fileFindings.map((finding) => finding.trackId))
+  const fileFailed = answer.files.some((file) => !file.ok && !explained.has(file.trackId))
+  const statements = answer.notices.filter((notice) => V2_STATEMENT_NOTICES.includes(notice.code))
+  const notCovered = answer.notices.filter((notice) => !V2_STATEMENT_NOTICES.includes(notice.code))
 
   return (
     <div className="flex flex-col gap-3" data-testid="evidence-verify-v2" data-verdict={answer.verdict} data-overall={answer.overall ?? undefined}>
@@ -46,7 +56,7 @@ export function VerifyV2Report({ answer }: VerifyV2ReportProps) {
 
       <ol className="evi-checks evi-checks-full" data-testid="evidence-v2-rows" aria-label={t('evidence.verifyV2.resultTitle')}>
         {rows.map((row) => (
-          <ResultRow key={row.id} row={row} checks={answer.checks} />
+          <ResultRow key={row.id} row={row} checks={answer.checks} label={row.file ? v2FileLabel(row.file, answer, t) : undefined} />
         ))}
       </ol>
 
@@ -75,6 +85,23 @@ export function VerifyV2Report({ answer }: VerifyV2ReportProps) {
           </Alert.Content>
         </Alert>
       ) : null}
+      {answer.fileFindings.length > 0 ? (
+        <Alert status="danger" data-testid="evidence-v2-file-findings">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{t('evidence.verifyV2.fragment.title')}</Alert.Title>
+            <Alert.Description>
+              <ul className="m-0 list-none p-0">
+                {answer.fileFindings.map((finding) => (
+                  <li key={`${finding.trackId}#${finding.code}`} data-file-finding={finding.trackId} data-code={finding.code}>
+                    {v2FileFindingLine(finding, t)}
+                  </li>
+                ))}
+              </ul>
+            </Alert.Description>
+          </Alert.Content>
+        </Alert>
+      ) : null}
       {failed && !namesPlace && fileFailed ? (
         <p className="evi-caption" data-testid="evidence-v2-fragment-not-named">
           {t('evidence.verifyV2.fragment.notNamed')}
@@ -82,7 +109,8 @@ export function VerifyV2Report({ answer }: VerifyV2ReportProps) {
       ) : null}
 
       {answer.checks !== null ? <CheckReport checks={answer.checks} /> : null}
-      {answer.notices.length > 0 ? <Notices notices={answer.notices} /> : null}
+      {statements.length > 0 ? <Statements notices={statements} /> : null}
+      {notCovered.length > 0 ? <Notices notices={notCovered} /> : null}
     </div>
   )
 }
@@ -124,6 +152,25 @@ function Notices({ notices }: { notices: readonly V2Notice[] }) {
       <p className="evi-caption evi-strong">{t('evidence.verifyV2Key.noticesTitle')}</p>
       {notices.map((notice) => (
         <p key={notice.code} className="evi-caption" role="note" data-testid={`evidence-v2-notice-${notice.code}`}>
+          {notice.report}
+        </p>
+      ))}
+    </section>
+  )
+}
+
+/**
+ * WHAT THE SIGNED MANIFEST STATES (row 159; D119, D30 K-3): the notice AUDIO_TRACKS_MISSING - the
+ * microphone of a pair did not record and its camera file holds a silent track. It fails nothing; it
+ * is said, with the Core's own line, so that the silence is never read as a quiet room.
+ */
+function Statements({ notices }: { notices: readonly V2Notice[] }) {
+  const { t } = useTranslation()
+  return (
+    <section className="flex flex-col gap-1" role="status" data-testid="evidence-v2-statements" aria-label={t('evidence.verifyV2.statementsTitle')}>
+      <p className="evi-caption evi-strong">{t('evidence.verifyV2.statementsTitle')}</p>
+      {notices.map((notice) => (
+        <p key={notice.code} className="evi-caption" data-testid={`evidence-v2-notice-${notice.code}`}>
           {notice.report}
         </p>
       ))}
@@ -174,7 +221,7 @@ function SourcesLine({ sources }: { sources: V2Sources }) {
   )
 }
 
-export function ResultRow({ row, checks }: { row: V2Row; checks: readonly V2Check[] | null }) {
+export function ResultRow({ row, checks, label: fileLabel }: { row: V2Row; checks: readonly V2Check[] | null; label?: string }) {
   const { t } = useTranslation()
   const Icon = row.ok ? CircleCheck : CircleX
   const part = (ok: boolean) => t(`evidence.verifyV2.outcome.${ok ? 'PASS' : 'FAIL'}`)
@@ -186,8 +233,9 @@ export function ResultRow({ row, checks }: { row: V2Row; checks: readonly V2Chec
     const outcome = v2FilePartOutcome(row.file, name, checks)
     return outcome === 'NOT_RUN' ? t('evidence.verifyV2.outcome.SKIPPED') : t(`evidence.verifyV2.outcome.${outcome}`)
   }
+  // Row 159 (D119): the caller words an AUDIO-0N row as the audio file of its pair; without a label, the row's own words as before.
   const label = row.file
-    ? t('evidence.verifyV2.file', { track: row.file.trackId })
+    ? (fileLabel ?? t('evidence.verifyV2.file', { track: row.file.trackId }))
     : t(`evidence.verifyV2.rows.${row.id as 'transcript' | 'manifest' | 'signature'}`)
   return (
     <li className="evi-check" data-check={row.id} data-phase={row.ok ? 'pass' : 'fail'} data-source="core">

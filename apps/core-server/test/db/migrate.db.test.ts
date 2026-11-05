@@ -40,8 +40,10 @@ describe('AC-B-01: the migration set on an empty database', () => {
   // (the idempotent repair of the selector key names that an edit of applied 0039/0040 left behind).
   // REVISED 2026-11-05 (DF-28, D22(4), D38 DR-1, D43, row 95): 43 -> 44 — `0043_operator_purge_scope`
   // (the purge keeps the evidence-chain audit types, and the account row, disabled, while they name it).
-  it('the set is the forty-four files of dbc-3 §A.1, §B.13, dbc-4 §N.8, errata PE-129a-01, PE-129b-01, PE-0013-01, task 4 schema sets A, B and C, task 4 package X-C, the profile-code CHECK, the alias removal reasons (two steps), the allowed ONVIF ports, the retirement of a capture device, the supervisor revocation (0034), the RB-9 add-user privileges (0035), the audit purge amendment (0036), the credential creation (0037), the purge reseal correction (0038), the four video tracks (0039, D60), the four audio channels (0040, D61), the widening privileges (0041), the KD-46 constraint repair (0042) and the purge scope (0043), in order, with rising journal times', () => {
-    expect(INITIAL_MIGRATION_TAGS).toHaveLength(44);
+  // REVISED 2026-11-05 (D28 DQ-1 = S1, row 146): 44 -> 45 — `0044_recording_fragments_audio_tracks`
+  // (recording_fragments takes the microphone channel files AUDIO-01..04 beside the camera files).
+  it('the set is the forty-five files of dbc-3 §A.1, §B.13, dbc-4 §N.8, errata PE-129a-01, PE-129b-01, PE-0013-01, task 4 schema sets A, B and C, task 4 package X-C, the profile-code CHECK, the alias removal reasons (two steps), the allowed ONVIF ports, the retirement of a capture device, the supervisor revocation (0034), the RB-9 add-user privileges (0035), the audit purge amendment (0036), the credential creation (0037), the purge reseal correction (0038), the four video tracks (0039, D60), the four audio channels (0040, D61), the widening privileges (0041), the KD-46 constraint repair (0042), the purge scope (0043) and the audio fragment tracks (0044, D28), in order, with rising journal times', () => {
+    expect(INITIAL_MIGRATION_TAGS).toHaveLength(45);
     const files = readMigrationSet();
     expect(files.map((file) => file.tag)).toEqual([...INITIAL_MIGRATION_TAGS]);
     expect(files.map((file) => file.idx)).toEqual(Array.from({ length: INITIAL_MIGRATION_TAGS.length }, (_, index) => index));
@@ -64,7 +66,7 @@ describe('AC-B-01: the migration set on an empty database', () => {
     expect(ledger.ok).toBe(true);
   });
 
-  it('first run, as dems_owner: applies the forty-four files and sets schema version 15 (dbc-16)', async () => { // D60/D61 (2026-11-04/05): 39 -> 42 files (0039, 0040, 0041); KD-46 (2026-11-05): 42 -> 43 (0042, no version step); DF-28 (2026-11-05, row 95): 43 -> 44 (0043, no version step)
+  it('first run, as dems_owner: applies the forty-five files and sets schema version 15 (dbc-16)', async () => { // D60/D61 (2026-11-04/05): 39 -> 42 files (0039, 0040, 0041); KD-46 (2026-11-05): 42 -> 43 (0042, no version step); DF-28 (2026-11-05, row 95): 43 -> 44 (0043, no version step); D28 (2026-11-05, row 146): 44 -> 45 (0044, no version step)
     const who = await db.ownerPool().query<{ role: string; superuser: boolean }>(
       'SELECT current_user::text AS role, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS superuser',
     );
@@ -190,11 +192,13 @@ describe('AC-B-01: the migration set on an empty database', () => {
     expect(broken).toEqual(expect.arrayContaining(['capture_config_mic_primary_id_fkey', 'capture_config_mic_standby_id_fkey']));
     expect(broken).not.toContain('capture_config_video_03_device_id_fkey');
     expect(broken).not.toContain('capture_config_video_04_device_id_fkey');
-    expect((await inspectLedger(pool)).pending).toEqual(['0042_capture_config_constraint_repair', '0043_operator_purge_scope']);
+    // REVISED 2026-11-05 (row 146): 0044 is above 0042 too, so its ledger row goes with them and it is pending as well.
+    expect((await inspectLedger(pool)).pending).toEqual(['0042_capture_config_constraint_repair', '0043_operator_purge_scope', '0044_recording_fragments_audio_tracks']);
 
     const result = await applyMigrations(pool);
     // 0043 applied a second time over its own function replaces it with the same body: a no-op.
-    expect(result.applied).toEqual(['0042_capture_config_constraint_repair', '0043_operator_purge_scope']);
+    // 0044 applied a second time drops and re-adds the same wide CHECK: a no-op (D22(1)).
+    expect(result.applied).toEqual(['0042_capture_config_constraint_repair', '0043_operator_purge_scope', '0044_recording_fragments_audio_tracks']);
     expect(result.versionAfter).toEqual({ schemaVersion: 15, contractRevision: 'dbc-16' });
     expect(await keysOf()).toEqual(fresh);
 
@@ -203,5 +207,63 @@ describe('AC-B-01: the migration set on an empty database', () => {
     expect(await keysOf()).toEqual(fresh);
     expect((await applyMigrations(pool)).applied).toEqual([]);
     console.info(`[kd46] repaired keys: ${fresh.map((key) => key.name).join(', ')}`);
+  });
+
+  // D28 (DQ-1 = S1, 2026-11-05, row 146; R-DB-2): production stands at ledger 44 (0043 applied) with
+  // the video-only fragment track CHECK of 0039. This case rebuilds that shape on the migrated clone
+  // (the 0044 ledger row removed, the CHECK put back to the 0039 text, camera rows stored), proves
+  // 0044 alone is pending and widens the CHECK to the fresh-install definition, keeps the stored rows,
+  // the table owner and the grants, accepts AUDIO-01..04 and still refuses any other name, and that
+  // the file's own text over the widened table changes nothing.
+  it('0044: a database at ledger 44 takes the microphone channel fragment tracks, owner and grants unchanged, and 0044 is idempotent', async () => {
+    const pool = db.ownerPool();
+    const checkOf = async (): Promise<{ definition: string; validated: boolean }[]> =>
+      (
+        await pool.query<{ definition: string; validated: boolean }>(
+          `SELECT pg_get_constraintdef(oid) AS definition, convalidated AS validated FROM pg_constraint
+            WHERE conrelid = 'public.recording_fragments'::regclass AND conname = 'recording_fragments_track_check'`,
+        )
+      ).rows;
+    const accessOf = async (): Promise<{ owner: string; acl: string | null }[]> =>
+      (await pool.query<{ owner: string; acl: string | null }>("SELECT pg_get_userbyid(relowner)::text AS owner, relacl::text AS acl FROM pg_class WHERE oid = 'public.recording_fragments'::regclass")).rows;
+    const fragment = (trackId: string, seq: number): unknown[] => ['SES-20261105-0044', trackId, seq, 0, 1, 0, 1, 'a'.repeat(64), 'b'.repeat(64), 1];
+    const insert = 'INSERT INTO public.recording_fragments (session_id, track_id, seq, byte_offset, byte_length, media_start_ms, media_duration_ms, sha256, chain_hash, durable_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)';
+
+    const fresh = await checkOf();
+    const access = await accessOf();
+    expect(fresh).toHaveLength(1);
+    expect(fresh[0]?.validated).toBe(true);
+    for (const track of ['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04']) expect(fresh[0]?.definition).toContain(`'${track}'::text`);
+
+    const widening = readMigrationSet().find((file) => file.tag === '0044_recording_fragments_audio_tracks');
+    if (widening === undefined) throw new Error('0044_recording_fragments_audio_tracks is not in the migration set');
+    // The production shape: ledger at 0043, the video-only CHECK of 0039, camera rows stored.
+    await pool.query('DELETE FROM drizzle.__drizzle_migrations WHERE created_at >= $1', [String(widening.when)]);
+    await pool.query('ALTER TABLE recording_fragments DROP CONSTRAINT recording_fragments_track_check');
+    await pool.query(`ALTER TABLE recording_fragments ADD CONSTRAINT recording_fragments_track_check CHECK (track_id IN ('VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'))`);
+    await pool.query(insert, fragment('VIDEO-01', 1));
+    await pool.query(insert, fragment('VIDEO-02', 1));
+    await expect(pool.query(insert, fragment('AUDIO-01', 1))).rejects.toMatchObject({ code: '23514', constraint: 'recording_fragments_track_check' });
+    expect((await inspectLedger(pool)).pending).toEqual(['0044_recording_fragments_audio_tracks']);
+
+    const result = await applyMigrations(pool);
+    expect(result.applied).toEqual(['0044_recording_fragments_audio_tracks']);
+    expect(result.versionAfter).toEqual({ schemaVersion: 15, contractRevision: 'dbc-16' });
+    expect(await checkOf()).toEqual(fresh);
+    expect(await accessOf()).toEqual(access);
+    const kept = await pool.query<{ track_id: string }>("SELECT track_id FROM recording_fragments WHERE session_id = 'SES-20261105-0044' ORDER BY track_id");
+    expect(kept.rows.map((row) => row.track_id)).toEqual(['VIDEO-01', 'VIDEO-02']);
+    for (const track of ['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04']) await pool.query(insert, fragment(track, 1));
+    for (const track of ['AUDIO-05', 'MIC-01', 'VIDEO-05']) {
+      await expect(pool.query(insert, fragment(track, 1))).rejects.toMatchObject({ code: '23514', constraint: 'recording_fragments_track_check' });
+    }
+
+    // Idempotent: the file's own text over the widened table is a no-op, and the ledger is current.
+    await pool.query(readFileSync(widening.file, 'utf8'));
+    expect(await checkOf()).toEqual(fresh);
+    expect(await accessOf()).toEqual(access);
+    expect((await applyMigrations(pool)).applied).toEqual([]);
+    await pool.query("DELETE FROM recording_fragments WHERE session_id = 'SES-20261105-0044'");
+    console.info(`[0044] fragment track check: ${fresh[0]?.definition}; owner/acl ${JSON.stringify(access)}`);
   });
 });

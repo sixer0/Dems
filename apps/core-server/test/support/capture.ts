@@ -131,8 +131,6 @@ export interface FakeWorkerBehaviour {
   workerVersion: string;
   /** `true`: acknowledges `START`; a code: refuses it with that code; `false`: never answers. */
   ackStart: boolean | string;
-  /** The same for `SWITCH_AUDIO_SOURCE`. */
-  ackSwitch: boolean | string;
   /** Acknowledges `STOP` and exits with code 0. Default true. `false`: ignores `STOP` (a hung worker). */
   exitOnStop: boolean;
   /**
@@ -154,7 +152,6 @@ const DEFAULT_BEHAVIOUR: FakeWorkerBehaviour = {
   protocolVersion: CAPTURE_PROTOCOL_VERSION,
   workerVersion: CAPTURE_WORKER_VERSION,
   ackStart: true,
-  ackSwitch: true,
   exitOnStop: true,
   timelineEndOnStop: true,
   exitOnKill: true,
@@ -357,8 +354,6 @@ export class FakeWorkerProcess implements WorkerChannel {
       // One session per process: the ingest refuses a second push (S1 G-1).
       if (this.startsServed > 1) this.ack(false, 'SESSION_ALREADY_SERVED', message);
       else answer(this.behaviour.ackStart);
-    } else if (message.type === SupervisorMessageType.SWITCH_AUDIO_SOURCE) {
-      answer(this.behaviour.ackSwitch);
     } else if (this.behaviour.exitOnStop) {
       this.ack(true, undefined, message);
       // The real worker joins its filtering thread on STOP: the end of the audio timeline leaves before the process does.
@@ -427,8 +422,9 @@ export function capturePlan(sessionId = 'S-TEST-0001', overrides: Partial<Captur
   const root = `/nonexistent/dems-unit-test-data/media/sessions/${sessionId}`;
   return {
     cameras: [
-      { deviceId: 'CAM-01', trackId: 'VIDEO-01', profile: null, ingestUrl: 'rtsp://127.0.0.1:8554/video01', outputPath: `${root}/VIDEO-01.mp4` },
-      { deviceId: 'CAM-02', trackId: 'VIDEO-02', profile: null, ingestUrl: 'rtsp://127.0.0.1:8555/video02', outputPath: `${root}/VIDEO-02.mp4` },
+      // Protocol version 6 (audit 2026-11-05 row 144; D5 pairs): each camera names the channel of its pair, which the plan holds.
+      { deviceId: 'CAM-01', trackId: 'VIDEO-01', profile: null, ingestUrl: 'rtsp://127.0.0.1:8554/video01', outputPath: `${root}/VIDEO-01.mp4`, micChannel: 'MIC-01', micMissing: null },
+      { deviceId: 'CAM-02', trackId: 'VIDEO-02', profile: null, ingestUrl: 'rtsp://127.0.0.1:8555/video02', outputPath: `${root}/VIDEO-02.mp4`, micChannel: 'MIC-02', micMissing: null },
     ],
     // D61 (2026-11-04): the four numbered channels, each with its own file (the twin of a camera's outputPath).
     mics: CAPTURE_MIC_CHANNELS.map((channel, index) => ({ deviceId: channel, channel, input: { kind: 'PCM_FIFO' as const, path: `${root}/MIC-0${index + 1}.pcm` }, outputPath: `${root}/MIC-0${index + 1}.m4a` })),

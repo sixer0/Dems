@@ -2,32 +2,33 @@
 E, E.1; errata AU2-05, AU2-07; decisions D84 R-1, R-2, D85 R-3, OD-11). Run through m3worker.py,
 which hands this module itself (`M`): its Worker, its sessions, its fixtures and its analysers.
 
-    python3 apps/capture-worker/test/m3worker.py m5switch <run>            the operator's switch (a session, about 20 s)
-    python3 apps/capture-worker/test/m3worker.py m5gap <run of m5switch>   M5-GAP-1 on that session's files
-    python3 apps/capture-worker/test/m3worker.py m5bound <run of m5switch> the switch bound, judged again
+    python3 apps/capture-worker/test/m3worker.py m5tap <run>               the start interval and the tap (a session, about 20 s)
+    python3 apps/capture-worker/test/m3worker.py m5tapjudge <run of m5tap> [--channel 2]   the tap of that session, judged again
     python3 apps/capture-worker/test/m3worker.py m5warn <run>              silence / disconnect warnings, never a switch
     python3 apps/capture-worker/test/m3worker.py m5rate <run> --ppm -8000  the rate controller at its limit (D85)
 
 A check that starts the worker binds two loopback ports of 8554-8564 and is timing-sensitive: run
 it outside the command sandbox under the heavy-host lock,
-    /usr/bin/lockf -k -t 1800 .locks/heavy-host.lock python3 apps/capture-worker/test/m3worker.py m5switch NAME
+    /usr/bin/lockf -k -t 1800 .locks/heavy-host.lock python3 apps/capture-worker/test/m3worker.py m5tap NAME
 or through the e2e target (`make -C apps/capture-worker e2e E2E_ARGS="--only m5_ --runs 1"`).
 
-WHAT IS JUDGED ON WHAT. The interval record of a switch is held against the PRE-ENCODE PCM tap
-(sample n of the tap is sample n of the encoder's input): the first sample of the standby's tone
-in the tap is the record's `fromSample`, within the 6 samples a zero crossing of the tone can hide.
-Gaplessness (M5-GAP-1) is judged on DECODED samples - their count against the encoder's input, the
-reference beeps against the microphone's own manifest, the standby tone's phase - and never on the
-packet grid, which is printed beside the verdict and reads the same for a file with samples removed.
+WHAT IS JUDGED ON WHAT (audit row 152b; N-31, D5 pairs; D135, D136). The operator's switch is RETIRED: operation 81 is
+refused at the Core, the protocol and the supervisor have no such command, and the worker ends on such a line (the proto
+check of m3worker.py). Camera N's file carries its pair's channel MIC-0N (row 152), and the selector lane feeds only the
+PCM tap, on MIC-01, for the whole session. So the one interval record of a session is the start's (MIC-01 from sample 0),
+and the PRE-ENCODE PCM tap (sample n of the tap is sample n of the timeline) carries channel 1 from its first sample to
+its last. What the switch checks judged - its bound, its records against the tap, the gap AT a switch (M5-GAP-1), the
+skewed-record proof build - judged the removed switch and is gone with it; the gaplessness of every pair's file is
+judged by `continuity` of m3worker.py (per pair, with its two controls).
 """
 import json, math, os, struct, subprocess, sys, time
 
-TONE_DETECT = 1000          # |s16| above this is the standby tone (0.1 = 3,277) or a beep; the primary's noise stays below 400
-BOUNDARY_TOLERANCE = 6      # samples: an 880 Hz tone at 0.1 is below TONE_DETECT for at most 5.4 samples around a zero crossing
-SEARCH = 2400               # 50 ms on each side of the sample the record names
-DECODED_TOLERANCE = 256     # samples: the edge of the tone in DECODED audio (the codec smears a hard cut)
-SWITCH_BOUND_US = 21333     # CAPTURE_SWITCH_BOUND_US: one 1,024-sample frame at 48 kHz (spec E)
-LATENCY_MS, QUANTUM_MS = 40.0, 10.0   # audio.c LATENCY_US, QUANTUM: a quantum is consumed 40 ms after it was captured
+# The reference signal of each channel of test-fixtures/fake_mic.c: channel 1 is quiet noise with the 1 kHz beeps, 2..4
+# a steady tone at 0.1. The tap is judged by which of the three tones it holds (none for channel 1).
+CHANNEL_TONE_HZ = {2: 880.0, 3: 660.0, 4: 440.0}
+TONE_WIN = 600              # samples per window: 11 whole cycles of 880 Hz, 8.25 of 660 Hz, 5.5 of 440 Hz (amplitude read per window)
+TONE_PRESENT = 0.05         # amplitude (of 1.0) at or above which a window holds a channel's tone (the tones are at 0.1)
+TONE_HOLDS = 0.9            # the share of windows (beeps left out) that must hold the tone of the channel the tap carries
 
 
 def frames_check(M, w, d):
@@ -51,175 +52,84 @@ def intervals_of(records):
     return [r["record"] for r in records if r["record"]["kind"] == "AUDIO_SOURCE_INTERVAL"]
 
 
-def tone_edges(x, lo, hi):
-    """(first, last + 1) of the samples above TONE_DETECT inside x[lo:hi], or (None, None)."""
-    loud = [i for i in range(max(0, lo), min(len(x), hi)) if abs(x[i]) > TONE_DETECT]
-    return (loud[0], loud[-1] + 1) if loud else (None, None)
+def tone_amplitude(x, start, freq):
+    """The amplitude of `freq` in x[start:start + TONE_WIN] (x: s16 samples), as a fraction of full scale."""
+    w = 2 * math.pi * freq / 48000
+    c = sn = 0.0
+    for n in range(start, start + TONE_WIN):
+        c += x[n] * math.cos(w * n)
+        sn += x[n] * math.sin(w * n)
+    return 2 * math.hypot(c, sn) / TONE_WIN / 32768.0
 
 
-# ------------------------------------------------------------------------------------------ the switch
-def cmd_switch(a, M):
-    """One session on the NM-14 fixtures with the PCM tap: to the standby 2.6 s after the cameras' epoch, back 0.5 s
-    later, and a third command to the source that already feeds the track. Criteria:
-      switch_acknowledged              three ACK ok; the worker exits 0, both cameras recorded
-      interval_records_complete        exactly three AUDIO_SOURCE_INTERVAL records - the start (MIC-01, PRIMARY, sample 0),
-                                       MIC-02 / STANDBY, MIC-01 / PRIMARY - index 1, 2, 3; each switch names its command;
-                                       the command that changed nothing wrote none; AUDIO_TIMELINE_END counts 3 and the
-                                       encoder's input
-      record_precedes_its_ack          the record of a switch is on the wire before the ACK of its command
-      never_switched_without_a_command every interval beyond the start names a command this harness sent
-      switch_applied_within_the_bound  appliedDelayUs (worker-measured: command read -> selector switched) <= 21,333 us
-      switch_at_a_chunk_boundary       fromSample is a multiple of 480
-      interval_record_is_the_tap_boundary   in the pre-encode tap the standby's tone begins at the record's fromSample
-                                       and ends at the next record's, within 6 samples (the mutation check: the proof
-                                       build `intervalskew` reports one chunk late and must FAIL exactly here)
-      boundary_in_capture_time         the capture instant of the boundary (capturedAtMs) lies between one latency plus
-                                       one chunk before the command was sent and the bound after it
-      every_frame_decodes              every output line is a version-4 message of the product decoder; records 1, 2, 3 ...
+def judge_tap(x, channel):
+    """Which channel the tap carries, window by window (beeps left out: a window whose peak is above 0.3 holds one).
+    Channel 1: no window holds any of the tones of 2..4. Channel k >= 2: at least TONE_HOLDS of the windows hold tone k
+    and none holds another channel's tone. Returns (holds, detail)."""
+    wins = [s0 for s0 in range(0, len(x) - TONE_WIN + 1, TONE_WIN) if max(abs(v) for v in x[s0:s0 + TONE_WIN]) <= 0.3 * 32768]
+    held = {k: sum(1 for s0 in wins if tone_amplitude(x, s0, hz) >= TONE_PRESENT) for k, hz in CHANNEL_TONE_HZ.items()}
+    if channel == 1:
+        ok = bool(wins) and all(n == 0 for n in held.values())
+    else:
+        ok = bool(wins) and held.get(channel, 0) >= TONE_HOLDS * len(wins) and all(n == 0 for k, n in held.items() if k != channel)
+    return ok, {"judged_as_channel": channel, "windows_judged": len(wins), "windows_holding_the_tone_of_channel": held, "tone_present_at": TONE_PRESENT, "share_required": TONE_HOLDS}
+
+
+# ------------------------------------------------------------------------------------------ the start interval and the tap (row 152b)
+def cmd_tap(a, M):
+    """One session on the NM-14 fixtures with the PCM tap (D5 pairs; audit row 152b replaces the switch check of row 71).
+    Criteria:
+      worker_and_cameras_exit_0       the worker exits 0, both cameras recorded, no CRASH
+      one_start_interval              exactly ONE AUDIO_SOURCE_INTERVAL: index 1, MIC-01, PRIMARY, SESSION_START, sample 0,
+                                      no correlation ID, no applied delay; AUDIO_TIMELINE_END counts 1 interval and the
+                                      timeline's samples (the manifest's `samples_in`)
+      never_switched                  no OPERATOR_SWITCH record and no `selector_switched` line in the worker's log
+      tap_is_the_timeline             the tap holds exactly the timeline's samples (sample n of the tap is sample n of it)
+      tap_carries_channel_1           the tap holds channel 1 for the whole session: none of the tones of channels 2..4 in
+                                      any window (fake_mic.c: channel 2 is 880 Hz at 0.1 and carries the beeps too); its
+                                      control is m5tapjudge --channel 2 on the same run, which must FAIL here
+      every_frame_decodes             every output line is a version-6 message of the product decoder; records gapless
     """
     binary = M.VARIANTS[a.variant]
     d = M.rundir(a.name, fresh=True)
     truth = M.build_truth("zero")
     a.tap = True
-    marks = {"switches": []}
-
-    def mid(w, plan, sid, info, cps, truth_):
-        time.sleep(max(0.0, truth_["epoch_us"] / 1e6 - time.time()) + 2.6)
-        for to, pause in (("STANDBY", 0.5), ("PRIMARY", 0.5), ("PRIMARY", 0.0)):
-            wall, t = time.time(), time.monotonic()
-            c = w.command(sid, "SWITCH_AUDIO_SOURCE", to=to)
-            t2, f = w.ack(c)
-            marks["switches"].append({"to": to, "correlationId": c, "sent_at_ms": round(wall * 1000, 3), "ack": f, "ack_round_trip_ms": round((t2 - t) * 1000, 2)})
-            time.sleep(pause)
-
-    w, plan, info, _ = M.run_session(a, d, binary, truth, after_start=mid)
+    w, plan, info, _ = M.run_session(a, d, binary, truth)
     M.frame_stats(w, info)
-    info.update(marks)
-    res = {"check": "M5 switch: bound, interval records, never automatic (row 71a)", "run": a.name, "variant": a.variant, "info": info}
+    res = {"check": "M5 the start interval and the tap: no switch, channel 1 throughout (row 71a; audit row 152b, D5 pairs)", "run": a.name, "variant": a.variant, "info": info}
     paths = [c["outputPath"] for c in plan["cameras"]]
     v = M.Crit()
-    sw = marks["switches"]
-    v("switch_acknowledged", info.get("rc") == {"cam1": 0, "cam2": 0, "worker": 0} and len(sw) == 3 and all(s["ack"]["ok"] is True for s in sw) and all(os.path.exists(p) for p in paths) and not info["crash"])
+    v("worker_and_cameras_exit_0", info.get("rc") == {"cam1": 0, "cam2": 0, "worker": 0} and all(os.path.exists(p) for p in paths) and not info["crash"])
     recs = info.get("records", [])
     iv = intervals_of(recs)
     end = [r["record"] for r in recs if r["record"]["kind"] == "AUDIO_TIMELINE_END"]
     manifest_end = [json.loads(l) for l in open(os.path.join(d, "manifest.jsonl")) if '"end"' in l]
     samples_in = manifest_end[0]["samples_in"] if manifest_end else None
     res["intervals"], res["timeline_end"], res["encoder_input_samples"] = iv, end, samples_in
-    shape = [(r["index"], r["deviceId"], r["role"], r["reason"]) for r in iv]
-    ok_shape = shape == [(1, "MIC-01", "PRIMARY", "SESSION_START"), (2, "MIC-02", "STANDBY", "OPERATOR_SWITCH"), (3, "MIC-01", "PRIMARY", "OPERATOR_SWITCH")]
-    v("interval_records_complete", ok_shape and len(sw) == 3 and iv[0]["fromSample"] == 0 and iv[0]["correlationId"] is None and iv[0]["appliedDelayUs"] is None
-      and [r["correlationId"] for r in iv[1:]] == [sw[0]["correlationId"], sw[1]["correlationId"]] and 0 < iv[1]["fromSample"] < iv[2]["fromSample"]
-      and len(end) == 1 and end[0]["intervals"] == 3 and end[0]["samples"] == samples_in and end[0]["sampleRateHz"] == 48000 and iv[2]["fromSample"] < end[0]["samples"])
-    sent = {s["correlationId"] for s in sw}
-    v("never_switched_without_a_command", bool(iv) and all(r["correlationId"] in sent for r in iv[1:]) and sum(1 for r in iv if r["reason"] == "SESSION_START") == 1
-      and sum(1 for l in M.worker_log(d) if l["message"] == "selector_switched") == len(iv) - 1)
-    with w.lock:
-        order = [f for _, f in w.frames if f]
-    def at(pred):
-        hit = [i for i, f in enumerate(order) if pred(f)]
-        return hit[0] if hit else None
-    before = []
-    for r, s in zip(iv[1:], sw):
-        i_rec = at(lambda f: f.get("type") == "RECORD" and f["record"].get("correlationId") == s["correlationId"])
-        i_ack = at(lambda f: f.get("type") == "ACK" and f.get("correlationId") == s["correlationId"])
-        before.append(i_rec is not None and i_ack is not None and i_rec < i_ack)
-    v("record_precedes_its_ack", len(before) == 2 and all(before))
-    judge_bound(v, res, iv, sw, SWITCH_BOUND_US)
-    v("switch_at_a_chunk_boundary", len(iv) == 3 and all(r["fromSample"] % 480 == 0 for r in iv))
-    if v.ok or len(iv) == 3:
-        x = tap_samples(d)
-        b1, b2 = iv[1]["fromSample"], iv[2]["fromSample"]
-        # The tone window, found WITHOUT the record's exact value: everything above the detection level between
-        # 50 ms before the first named sample and 50 ms after the second (no beep of the primary lies there).
-        first, last = tone_edges(x, b1 - SEARCH, b2 + SEARCH)
-        quiet_before = max((abs(s) for s in x[max(0, b1 - SEARCH):max(0, (first or b1) - 1)]), default=0)
-        res["tap"] = {"samples": len(x), "tone_first_sample": first, "tone_end_sample": last, "record_from_samples": [b1, b2],
-                      "error_samples": [None if first is None else first - b1, None if last is None else last - b2],
-                      "tolerance_samples": BOUNDARY_TOLERANCE, "loudest_before_the_tone_s16": quiet_before, "tap_equals_encoder_input": len(x) == samples_in}
-        v("interval_record_is_the_tap_boundary", first is not None and abs(first - b1) <= BOUNDARY_TOLERANCE and abs(last - b2) <= BOUNDARY_TOLERANCE and len(x) == samples_in)
-        # Capture time: sample n was captured at T0 + n / 48000. A quantum is consumed LATENCY (40 ms) after it was
-        # captured, so the boundary lies up to one latency plus one chunk BEFORE the command, never later than the bound.
-        cap = [round(r["capturedAtMs"] - s["sent_at_ms"], 2) for r, s in zip(iv[1:], sw)]
-        res["boundary_capture_time_minus_command_ms"] = cap
-        v("boundary_in_capture_time", len(cap) == 2 and all(-(LATENCY_MS + QUANTUM_MS + 15.0) <= c <= SWITCH_BOUND_US / 1000.0 for c in cap))
+    v("one_start_interval", [(r["index"], r["deviceId"], r["role"], r["reason"], r["fromSample"], r["correlationId"], r["appliedDelayUs"]) for r in iv] == [(1, "MIC-01", "PRIMARY", "SESSION_START", 0, None, None)]
+      and len(end) == 1 and end[0]["intervals"] == 1 and end[0]["samples"] == samples_in and end[0]["sampleRateHz"] == 48000)
+    v("never_switched", not [r for r in iv if r["reason"] != "SESSION_START"] and not [l for l in M.worker_log(d) if l.get("message") == "selector_switched"])
+    x = tap_samples(d) if os.path.exists(os.path.join(d, "tap.s16")) else ()
+    res["tap_samples"] = len(x)
+    v("tap_is_the_timeline", bool(x) and len(x) == samples_in)
+    ok, res["tap"] = judge_tap(x, 1) if x else (False, None)
+    v("tap_carries_channel_1", ok)
     fc = frames_check(M, w, d)
     res["frames_check"] = fc
     v("every_frame_decodes", fc.get("lines", 0) > 0 and fc.get("decoded") == fc.get("lines") and fc.get("recordSequenceGapless") is True and not info["lines_that_are_no_frame"])
-    # Carried finding (a) of the row: what the worker says of the video before the first written sample (reported, judged for its shape only).
     res["first_video_sample_records"] = [r["record"] for r in recs if r["record"]["kind"] == "FIRST_VIDEO_SAMPLE"]
     v("no_leftover", not info["leftovers"]["processes"] and not info["leftovers"]["listeners"])
     M.finish(res, True, a.expect_fail, d, v)
 
 
-def judge_bound(v, res, iv, sw, bound_us):
-    delays = [r["appliedDelayUs"] for r in iv[1:]]
-    res["switch_bound"] = {"applied_delay_us": delays, "bound_us": bound_us, "ack_round_trip_ms_not_judged": [s["ack_round_trip_ms"] for s in sw]}
-    v("switch_applied_within_the_bound", len(delays) == 2 and all(isinstance(x, int) and 0 <= x <= bound_us for x in delays))
-
-
-def cmd_bound(a, M):
-    """The switch bound of a finished m5switch run, judged again against --bound-us (default 21,333). The control
-    judges it against 1 us and must FAIL: the criterion reads the worker's number, not a constant."""
+def cmd_tapjudge(a, M):
+    """The tap of a finished m5tap run, judged again as channel --channel (default 1). The control judges it as channel 2
+    and must FAIL on `tap_carries_channel_2`: the criterion reads the tap's samples, not the plan."""
     d = M.rundir(a.name)
-    info = json.load(open(os.path.join(d, "result.json")))["info"]
-    v, res = M.Crit(), {"check": "M5 switch bound, judged again", "run": a.name, "bound_us": a.bound_us}
-    judge_bound(v, res, intervals_of(info["records"]), info["switches"], a.bound_us)
-    M.finish(res, True, a.expect_fail, None, v)
-
-
-# ------------------------------------------------------------------------------------------ M5-GAP-1
-def tone_window(x, expect_from, expect_to):
-    """The run of the standby's tone in DECODED samples: first and last + 1 of the 1 ms blocks whose RMS is above half
-    the tone's (0.035; the primary's noise is 0.006), looked for from 100 ms before to 100 ms after the expected window."""
-    lo, hi, block = max(0, expect_from - 4800), min(len(x), expect_to + 4800), 48
-    loud = []
-    for s0 in range(lo, hi - block + 1, block):
-        if math.sqrt(sum(s * s for s in x[s0:s0 + block]) / block) > 0.035:
-            loud.append(s0)
-    # The reference beeps of the primary are louder than the tone: only the blocks that join the expected window count.
-    run = [s0 for s0 in loud if expect_from - 4800 <= s0 <= expect_to + 4800]
-    return (run[0], run[-1] + block) if run else (None, None)
-
-
-def cmd_gap(a, M):
-    """M5-GAP-1 (test strategy; erratum AU2-05): the switch-gap analyser on the files of a finished m5switch session.
-    The S2 acceptance set - exactly one audio stream, strictly rising packet times - and what replaced S2's blind
-    packet-grid metric: decoded sample count against the encoder's input, the primary's reference beeps against the
-    microphone's own manifest (spacing and position), the standby tone's phase, and the tone's window against the
-    interval records. The packet grid is printed and never judged.
-       --control cut1000   1,000 decoded samples removed AT the switch (in memory): must FAIL on spacing, position and
-                           the tone window. The packet grid of the same file still reads {1024}."""
-    P = M.P111
-    d, truth, paths = M.finished(a)
-    info = json.load(open(os.path.join(d, "result.json")))["info"]
-    iv = intervals_of(info["records"])
-    mic, beeps = P.mic_truth(os.path.join(d, "mic.jsonl"))
-    samples_in = [json.loads(l) for l in open(os.path.join(d, "manifest.jsonl")) if '"end"' in l][0]["samples_in"]
-    v, res = M.Crit(), {"check": "M5-GAP-1 gap analyser (AU2-05)", "run": a.name, "control": a.control, "intervals": iv, "files": {}}
-    if len(iv) != 3:
-        v("intervals_present", False)
-        M.finish(res, True, a.expect_fail, None, v)
-    b1, b2 = iv[1]["fromSample"] + M.PRIMING, iv[2]["fromSample"] + M.PRIMING      # where the decoded audio holds the two boundaries
-    for p in paths:
-        st = [s for s in P.streams(p) if s["codec_type"] == "audio"]
-        pts = [int(k["pts"]) for k in P.probe_packets(p, "a:0")]
-        x, _, _ = P.audio_pcm(p)
-        want_from, want_to = b1, b2
-        if a.control == "cut1000":
-            x = x[:b1] + x[b1 + 1000:]              # the negative vector of AU2-05, placed at the switch itself
-        ok, r = P.continuity(x, mic, beeps, samples_in, expect_tone=True)
-        first, last = tone_window(x, want_from, want_to)
-        r["one_audio_stream"], r["packet_pts_strictly_rising"] = len(st) == 1, all(y > z for z, y in zip(pts, pts[1:]))
-        r["tone_window_decoded"] = [first, last]
-        r["tone_window_expected"] = [want_from, want_to]
-        r["tone_window_error_samples"] = [None if first is None else first - want_from, None if last is None else last - want_to]
-        r["packet_grid_deltas_not_judged"] = P.packet_grid(p)
-        res["files"][os.path.basename(p)] = r
-        for k, val in r["criteria"].items():
-            v(k, val == "PASS")
-        v("one_audio_stream_rising_pts", r["one_audio_stream"] and r["packet_pts_strictly_rising"])
-        v("tone_window_is_the_interval", first is not None and abs(first - want_from) <= DECODED_TOLERANCE and abs(last - want_to) <= DECODED_TOLERANCE)
+    v, res = M.Crit(), {"check": "M5 the tap of a finished run, judged again", "run": a.name, "channel": a.channel}
+    x = tap_samples(d)
+    ok, res["tap"] = judge_tap(x, a.channel)
+    v("tap_carries_channel_%d" % a.channel, ok)
     M.finish(res, True, a.expect_fail, None, v)
 
 

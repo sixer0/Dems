@@ -442,6 +442,40 @@ describe("the integrity rows of an item: signature line, file / hash / key rows,
       expect(screen.queryByTestId('evidence-bundled-differs')).toBeNull()
       expect(screen.getByTestId('evidence-hashes')).toHaveAttribute('data-source', 'item')
     })
+
+    // Audit 2026-11-05 row 159 (D5; S5 §6, F-5-11; D30 K-3): a /2.1 item states the audio file of each pair and the missing-microphone statement.
+    const d5Files = (cameras: number[], audios: number[]) => [
+      ...cameras.map((n) => ({ trackId: `VIDEO-0${n}`, fileName: `fragments/VIDEO-0${n}.mp4`, sizeBytes: 3_500, sha256: H(String(n)), fragmentCount: 5 })),
+      ...audios.map((n) => ({ trackId: `AUDIO-0${n}`, fileName: `fragments/AUDIO-0${n}.m4a`, sizeBytes: 900, sha256: H(String.fromCharCode(96 + n)), fragmentCount: 5 })),
+    ]
+
+    it('row 159: a D5 item with four audio files lists each AUDIO-0N "in VIDEO-0N" with its own hash, after the camera files', async () => {
+      opened = await openItem(`/evidence/${EV.sealed}?tab=integrity`, EV.sealed, { change: asReal({ files: d5Files([1, 2, 3, 4], [1, 2, 3, 4]) }), media: NONE })
+      await findDetailBody()
+      const card = await hashes()
+      expect(card).toHaveAttribute('data-source', 'item')
+      expect(hashRows(card)).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'manifest', 'manifestVersion', 'signature', 'AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04'])
+      const audio = within(card).getByTestId('evidence-pair-audio')
+      expect(audio).toHaveTextContent(F.sealed.audioTitle)
+      expect(audio.querySelector('[data-hash="AUDIO-02"]')).toHaveTextContent('AUDIO-02 · audio of Pair 2, in VIDEO-02')
+      expect(audio.querySelector('[data-hash="AUDIO-02"]')).toHaveTextContent(H('b').slice(0, 16))
+      // The camera rows stay camera rows: no AUDIO id is worded as a "sealed file" of a camera.
+      expect(card.textContent ?? '').not.toMatch(/AUDIO-0\d · sealed file/)
+      expect(within(card).queryByTestId('evidence-audio-missing')).toBeNull()
+      expect(getMissingI18nKeys()).toEqual([])
+    })
+
+    it('row 159: a D5 item whose MIC-02 was not assigned says so - the silent track of VIDEO-02 is not the sound of the room', async () => {
+      const audioTracksMissing = [{ trackId: 'AUDIO-02', micDeviceId: null, silentIn: ['VIDEO-02'], reason: 'NOT_ASSIGNED' }]
+      opened = await openItem(`/evidence/${EV.sealed}?tab=integrity`, EV.sealed, { change: asReal({ files: d5Files([1, 2, 3, 4], [1, 3, 4]), audioTracksMissing }), media: NONE })
+      await findDetailBody()
+      const card = await hashes()
+      expect(hashRows(card).filter((id) => id?.startsWith('AUDIO'))).toEqual(['AUDIO-01', 'AUDIO-03', 'AUDIO-04'])
+      const missing = within(card).getByTestId('evidence-audio-missing')
+      expect(missing).toHaveTextContent('AUDIO-02 (Pair 2): no microphone was assigned to MIC-02. VIDEO-02 holds a silent audio track: that silence is not the sound of the room.')
+      expect(missing).toHaveAttribute('role', 'status')
+      expect(getMissingI18nKeys()).toEqual([])
+    })
   })
 
   describe('G89-05: the sources line of a v1 item', () => {

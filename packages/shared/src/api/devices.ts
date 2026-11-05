@@ -144,7 +144,7 @@ export const CaptureConfigMicUpdateSchema = z
     channel: z
       .enum(MIC_CHANNEL_IDS)
       .optional()
-      .describe('BY CHANNEL (D133 (1) generalized by D61, 2026-11-04: a channel is assignable alone): when every line carries `channel`, each line puts its input on the slot of its channel - one to four lines, no channel twice, each with `deviceId` equal to `inputId`, any registered `MIC-NN`; the slot of a channel the body does not name keeps what it holds, and the named channels are the replacing set. Absent on every line: the line edits the input it names (the earlier form).'),
+      .describe('BY CHANNEL (D133 (1) generalized by D61, 2026-11-04: a channel is assignable alone): when every line carries `channel`, each line puts its input on the slot of its channel - one to four lines, no channel twice, each with `deviceId` equal to `inputId`, any registered `MIC-NN`; the slot of a channel the body does not name keeps what it holds, and the named channels are the replacing set. Channel `MIC-0N` is the microphone of camera track `VIDEO-0N` (Pair N, fixed by number; D5, D27), so a line by channel places a microphone in a pair; two lines that trade two inputs between their channels are a swap. Absent on every line: the line edits the input it names (the earlier form).'),
   })
   .describe('One mic line of `CaptureConfigUpdate`: which capture device stands behind which input; with `channel`, the input that takes the slot of that channel (D61: four numbered channels).');
 export type CaptureConfigMicUpdate = z.output<typeof CaptureConfigMicUpdateSchema>;
@@ -572,6 +572,7 @@ export const CAPTURE_CONFIG_OPERATIONS = [
       'Writes the whole selector at once (the camera lines and the mic lines over the eight-slot selector are optional members of the body; D61, 2026-11-04: four channels per medium). Needs CAPTURE_CONFIG (TECHNICIAN holds it since the 0034 revocation, and the vendor `root` account holds it by identity too (D55); OD-10 before the revocation) — and is **editable only while idle**: with a session open it refuses `409 CAPTURE_CONFIG_LOCKED` with no state change and **no audit row at all** (SEC35-19: neither CAPTURE_CONFIG_CHANGED nor ACCESS_DENIED — the lock is a state refusal, not an access one).',
       'On success writes one CAPTURE_CONFIG_CHANGED row whose details are exactly the keys of `C3 §5.2` (operationId, scope, field, the optional track/input/device/from/to/permission members) — names and previous/new values, never a credential.',
       'A selector slot may be unassigned. The optional member `unassign` names the slots to clear (a video track `VIDEO-01`..`VIDEO-04`, a microphone channel `MIC-01`..`MIC-04`; D61, 2026-11-04): a cleared slot has no line in the answer, and it is the only way a slot becomes empty. It needs the same permission and is refused by the same lock; each cleared slot writes one CAPTURE_CONFIG_CHANGED row that carries `from` (the device that held the slot) and no `to`, and clearing an empty slot writes none. A body that clears a slot and assigns the same slot is `422 INVALID_INPUT`. A mic line with `channel` fills the slot of that channel, also alone. A Core in its own capture refuses a session start while a slot is unassigned.',
+      'Camera-microphone pairs (D5; D27): Pair N is video track `VIDEO-0N` with microphone channel `MIC-0N`, fixed by number and not configurable - the camera file of `VIDEO-0N` carries the audio of channel `MIC-0N`, and that channel is also sealed on its own as track `AUDIO-0N`; Pair 1 is the transcribed pair. This operation configures WHICH device sits in each slot. To move a microphone into another pair, send a SWAP: two mic lines by channel that trade the two inputs (`{ "mics": [ { "channel": "MIC-01", "inputId": "MIC-02", "deviceId": "MIC-02" }, { "channel": "MIC-02", "inputId": "MIC-01", "deviceId": "MIC-01" } ] }`), so no pair is left without a microphone; a swap writes ONE CAPTURE_CONFIG_CHANGED row of the channel-swap form of operation 80 (`scope: MIC`, `field: CHANNEL`; D30 K-6). A single line that names a microphone held on another channel is still refused (`422 INVALID_INPUT`, `details.reason: MIC_ON_BOTH_INPUTS`). Clearing a slot with `unassign` leaves its pair incomplete, and a Core in its own capture refuses the next start until the pair is complete.',
       'Publishes the `captureConfig` slice. 503 NOT_READY carries `details.reason: CAPTURE_NOT_READY` when the capture stack is not ready (CS-22).',
       SIM_V2_NOTE,
     ].join('\n\n'),
@@ -624,11 +625,11 @@ export const CAPTURE_CONFIG_OPERATIONS = [
     path: `${CAPTURE_PATH}/mics/{id}/primary`,
     tag: CoreApiTag.DEVICE,
     mode: CoreApiMode.SIMULATED,
-    summary: 'Make a mic input the transcribed channel',
+    summary: 'Make a microphone the mic of Pair 1 (Camera 1, transcribed)',
     description: [
-      'Makes the mic input named in the path the input of channel `MIC-01` — the channel that feeds the transcribed track `AUDIO-01` (D61 of 2026-11-04: the operation keeps its path and its name; what it moves is the transcription channel, and the input that held channel 1 takes the moved input\'s old channel. The earlier wording made it PRIMARY inside one `AUDIO-01` with the other STANDBY, OD-01 T1 / OD-09; all four channels now record simultaneously). No body.',
+      'Makes the mic input named in the path the input of channel `MIC-01` — the microphone of Pair 1: the audio of camera track `VIDEO-01` and of the transcribed track `AUDIO-01` (D5, D27, D30 K-4: the pairing is fixed by number, so moving a microphone onto channel 1 also moves it onto Camera 1). It is a swap: the input that held channel 1 takes the moved input\'s old channel, and with it the pair of that channel, so no pair is left without a microphone. The operation keeps its path and its name (D61 of 2026-11-04; the earlier wording made it PRIMARY inside one `AUDIO-01` with the other STANDBY, OD-01 T1 / OD-09; all four channels record simultaneously). No body.',
       'Needs CAPTURE_CONFIG and is idle-only (`409 CAPTURE_CONFIG_LOCKED`, no audit row — SEC35-19). An unknown `{id}` answers 404. Writes CAPTURE_CONFIG_CHANGED with `scope: MIC`, `field: CHANNEL`, `inputId` and the previous/new channel in `from`/`to`.',
-      'Publishes the `captureConfig` slice. The in-session toggle is a different operation (`switchAudioSource`, op 81) with different access.',
+      'Publishes the `captureConfig` slice. To transcribe another microphone, put it in Pair 1 with this operation before the session (D28 DQ-3); the in-session toggle (`switchAudioSource`, op 81) is retired and answers `409 AUDIO_SOURCE_FIXED_BY_PAIRING` (D28 DQ-2).',
       SIM_V2_NOTE,
     ].join('\n\n'),
     source: 'Task 3 M2-W7; C3 §2.2 operation 80; register SH-03/SH-12/NM-09 (not in the design book)',
@@ -904,6 +905,17 @@ export const DEVICE_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
         // D61 (2026-11-04): the standby role is channel MIC-02.
         summary: 'Clear the second microphone channel',
         value: { unassign: ['MIC-02'] } satisfies CaptureConfigUpdateRequest,
+      },
+      // Audit row 143 (D5; D22(3); D27): moving a microphone into another pair is a swap - two
+      // lines by channel that trade the two inputs, so no pair is left without a microphone.
+      swap: {
+        summary: 'Swap the microphones of Pair 1 and Pair 2 (Camera 1 <-> Mic 1, Camera 2 <-> Mic 2)',
+        value: {
+          mics: [
+            { channel: 'MIC-01', inputId: 'MIC-02', deviceId: 'MIC-02' },
+            { channel: 'MIC-02', inputId: 'MIC-01', deviceId: 'MIC-01' },
+          ],
+        } satisfies CaptureConfigUpdateRequest,
       },
     },
     responses: {

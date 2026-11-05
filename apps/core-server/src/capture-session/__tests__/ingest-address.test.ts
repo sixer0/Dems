@@ -56,7 +56,8 @@ describe('row 47, BR-07 (1) and (3): the one function that builds the ingest add
       expect(address.length).toBeLessThanOrEqual(256);
       expect(/[?#%@]|\/$/.test(address)).toBe(false);
       // The plan of the protocol takes it as it is (the worker compares THIS string with what the client announces).
-      expect(CapturePlanCameraSchema.safeParse({ deviceId: 'CAM-01', trackId, profile: null, ingestUrl: address, outputPath: '/media/x.mp4' }).success).toBe(true);
+      // Protocol version 6 (audit row 144): the camera row also names the channel of its pair (VIDEO-0N -> MIC-0N) and no missing microphone.
+      expect(CapturePlanCameraSchema.safeParse({ deviceId: 'CAM-01', trackId, profile: null, ingestUrl: address, outputPath: '/media/x.mp4', micChannel: trackId === 'VIDEO-01' ? 'MIC-01' : 'MIC-02', micMissing: null }).success).toBe(true);
       // The form the secret scan counts (request of row 5): one path element of 22 URL-safe characters that is no UUID.
       expect(/^[A-Za-z0-9_-]{22}$/.test(element)).toBe(true);
       expect(UUID.test(element)).toBe(false);
@@ -239,6 +240,8 @@ describe('row 47, AD-05 (1) and BR-07 (4): where an ingest address is built, and
       'function cameraRoundAgain(current: Live, registry: CaptureDeviceRegistry, plan: CapturePlan): void {',
       'track(round.closing.then(() => openCameras(current, registry, plan, round)).then(round.settle));',
       'const plan: CapturePlan = buildCapturePlan({ selector: ready.selector, registry, cameras, mics, pcmTapPath });',
+      // Row 148: the plan of the start is kept on the session (the channel files, the recorder's map, the pair warnings and a later worker's missing-mic statement are read from it; no sink takes it).
+      'current.planOfStart = plan;',
       'addressesInForce(new Map(plan.cameras.map((camera) => [camera.deviceId, camera.ingestUrl])));',
       'if (event.phase === CapturePhase.RECORDING && event.previous === CapturePhase.RESTARTING) cameraRoundAgain(current, registry, plan);',
       'await supervisor.start(sessionId, plan, { chance: randomBytes, renewed: (_attempt, addresses) => addressesInForce(addresses), sources: (attempt) => microphonesAgain(current, registry, ready, attempt) });',

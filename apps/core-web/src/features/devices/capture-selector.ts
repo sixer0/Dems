@@ -10,9 +10,11 @@
  * | `selectorEditGate` | G1-G3 (ux §2.4): Checking → allowed, or refused with its reason (role, open session) |
  * | `poeCycleGate` | G9 (ux §2.4): offered only for a LOST stream; the role and recording rules are the one gate of `lib/device-command-gate.ts` |
  * | `useCaptureSelector` | The read in both data modes |
- * | `useCaptureSelectorCommands` | Operations 78 (the microphone lines by CHANNEL, D61; `unassign`), 79, 81 and the camera PoE cycle (48) in both data modes |
+ * | `useCaptureSelectorCommands` | Operations 78 (the microphone lines by CHANNEL, D61; `unassign`; the two-line swap, D22(3)), 79, 80 and the camera PoE cycle (48) in both data modes |
  * | `micLineFor` | D61 (2026-11-04): the line of operation 78 for "this microphone on this channel" - ONE line by channel (a line assigns its channel ALONE; the slots it does not name keep what they hold) |
+ * | `micMoveFor` | Audit row 156 (D5; D22(3); S5 §6): a microphone another pair holds is SWAPPED in (two lines by channel), or moved to an empty pair |
  * | `selectorSlotRows` | Task 4 row 31 (decision C18 (3)): one row per SLOT of the selector - an absent line is a row too |
+ * | `selectorPairRows` | Audit row 156 (D27, D28 DQ-5; register N-04/N-40): the four "Camera N <-> Mic N" pair rows, in pair order |
  *
  * **Two data modes, one shape.** In Live mode the read is operations 76 and 77 through the two
  * query factories of `lib/core-queries.ts` (WB-11, E-17), kept current by the republished slices
@@ -29,13 +31,14 @@ import type { CoreCallFailure } from '@dems/shared/client'
 import { VIDEO_TRACK_IDS, type VideoTrackId } from '@dems/shared/domain' // D61 (2026-11-04): MicRole superseded — the roles became the numbered channels
 import { useCoreActions, useCorePermission } from '@dems/shared/live'
 import {
+  CAPTURE_PAIRS,
+  capturePairOfMicChannel,
   DeviceCommand,
   hasActiveSession,
   MIC_CHANNEL_IDS,
   OperatorRole,
   Permission,
   PRIMARY_MIC_CHANNEL,
-  SECOND_MIC_CHANNEL,
   ROLE_PERMISSIONS,
   selectCan,
   selectIsRecording,
@@ -234,23 +237,69 @@ export function micLineFor(channel: MicChannel, deviceId: string): readonly MicC
 }
 
 /**
- * R-FLEX row 133 (88 D-A4.6, T-14; D16 Q96-02 (B); generalized by D61 of 2026-11-04): a microphone
- * MOVED from the channel that holds it to the channel of `channel`. The old channel is cleared, so
- * one microphone is never on two channels: ONE operation 78 edit `{ unassign: [from], mics: [line] }`
- * (row 132, T-13, judges it on the selector as the edit leaves it - `unassign` first).
+ * A microphone another pair holds, chosen for the pair of `channel` (audit row 156; D5; D22(3);
+ * S5 §6 and §2.2; supersedes R-FLEX row 133's `{ unassign, line }` move wherever a swap exists).
+ *
+ * - `SWAP`: the target pair holds microphone `other`. The two microphones trade channels in ONE
+ *   operation 78 edit of TWO lines by channel `{ mics: [to-line, from-line] }` - no `unassign`, so
+ *   no camera is left without its paired microphone (D22(3)). Both channels are named, so the
+ *   "held by another assigned channel" refusal does not fire (`assignMicsByChannel`); row 155 makes
+ *   the Core write ONE channel-swap audit row for it (D30 K-6).
+ * - `MOVE`: the target pair holds no microphone, so there is nothing to give back: the microphone
+ *   moves and the pair it leaves is incomplete (`{ unassign: [from], mics: [line] }`, the one form the
+ *   Core accepts for it). The panel confirms it with the incomplete-pair sentence.
+ *
+ * `from` / `to` are the channels (`MIC-0N`); `fromPair` / `toPair` their pair numbers (N-04).
  */
-export interface MicMove {
-  /** The channel the microphone leaves: that slot is cleared (`unassign`). */
-  readonly from: MicChannel
-  /** The one line by channel the microphone takes. */
-  readonly line: MicChannelLine
+export type MicMove =
+  | {
+      readonly kind: 'SWAP'
+      readonly from: MicChannel
+      readonly to: MicChannel
+      readonly fromPair: number
+      readonly toPair: number
+      /** The microphone chosen for `to`. */
+      readonly deviceId: string
+      /** The microphone `to` held; it goes to `from`. */
+      readonly other: string
+      /** `[the line on to, the line on from]`. */
+      readonly lines: readonly [MicChannelLine, MicChannelLine]
+    }
+  | {
+      readonly kind: 'MOVE'
+      readonly from: MicChannel
+      readonly to: MicChannel
+      readonly fromPair: number
+      readonly toPair: number
+      readonly deviceId: string
+      /** The one line by channel the microphone takes; `from` is cleared (`unassign`). */
+      readonly line: MicChannelLine
+    }
+
+/** The swap (or, onto an empty pair, the move) of `deviceId` to the channel `channel`; `null` when `deviceId` holds no other assigned channel (then a bare `micLineFor` applies). */
+export function micMoveFor(mics: readonly CaptureMicLine[], channel: MicChannel, deviceId: string): MicMove | null {
+  const source = mics.find((line) => line.channel !== channel && line.deviceId === deviceId)
+  if (source === undefined) return null
+  const from = source.channel
+  const pairs = { fromPair: capturePairOfMicChannel(from).pair, toPair: capturePairOfMicChannel(channel).pair }
+  const line: MicChannelLine = { inputId: deviceId, deviceId, channel }
+  const target = mics.find((entry) => entry.channel === channel)
+  if (target === undefined) return { kind: 'MOVE', from, to: channel, ...pairs, deviceId, line }
+  return {
+    kind: 'SWAP',
+    from,
+    to: channel,
+    ...pairs,
+    deviceId,
+    other: target.deviceId,
+    lines: [line, { inputId: target.deviceId, deviceId: target.deviceId, channel: from }],
+  }
 }
 
-/** The move of `deviceId` to the channel `channel`, or `null` when `deviceId` holds no other assigned channel (then a bare `micLineFor` applies). */
-export function micMoveFor(mics: readonly CaptureMicLine[], channel: MicChannel, deviceId: string): MicMove | null {
-  const other = mics.find((line) => line.channel !== channel && line.deviceId === deviceId)
-  if (other === undefined) return null
-  return { from: other.channel, line: { inputId: deviceId, deviceId, channel } }
+/** The body of operation 78 for a `MicMove` (D61: by channel). */
+export function micMoveBody(move: MicMove): { unassign?: MicChannel[]; mics: MicChannelLine[] } {
+  const asLine = (line: MicChannelLine): MicChannelLine => ({ inputId: line.inputId, deviceId: line.deviceId, channel: line.channel })
+  return move.kind === 'SWAP' ? { mics: move.lines.map(asLine) } : { unassign: [move.from], mics: [asLine(move.line)] }
 }
 
 // ── One row per slot (task 4 row 31; site W1; decision C18 (3)) ──────────────────────────
@@ -288,31 +337,40 @@ export function selectorSlotRows(config: Pick<CaptureConfig, 'cameras' | 'mics'>
   return { cameras: asHeld(cameras, config.cameras), mics: asHeld(mics, config.mics) }
 }
 
-/**
- * D61 (2026-11-04): the chip of a microphone channel. Channels 1 and 2 keep the two role words of
- * the shared catalog (`devices.selector.role.*`, the transcription pair operation 81 trades);
- * channels 3 and 4 are named by the shared slot list.
- */
-export function micChannelChipKey(channel: MicChannel): 'devices.selector.role.PRIMARY' | 'devices.selector.role.STANDBY' | 'common.captureSlot.MIC-03' | 'common.captureSlot.MIC-04' {
-  if (channel === PRIMARY_MIC_CHANNEL) return 'devices.selector.role.PRIMARY'
-  if (channel === SECOND_MIC_CHANNEL) return 'devices.selector.role.STANDBY'
-  return channel === 'MIC-03' ? 'common.captureSlot.MIC-03' : 'common.captureSlot.MIC-04'
+/** Audit row 156: one camera-microphone pair of the selector - Pair N = `VIDEO-0N` <-> `MIC-0N` (N-04, fixed by number, D27). */
+export interface SelectorPairRow {
+  readonly pair: number
+  readonly camera: CameraSlotRow
+  readonly mic: MicSlotRow
+  /** Pair 1 is the transcribed pair (N-09, D28 DQ-3). */
+  readonly transcribed: boolean
+  /** A side holds no source: recording needs a camera and a microphone (S5 §6 "incomplete" warning). */
+  readonly incomplete: boolean
 }
 
 /**
- * Row 108 (DF-17; D38 DR-7, 2026-11-05): the channel chip of a meter TRACK - the dashboard microphone
- * tile and the Session Monitor audio half. The channel is the one of the track (D61: `MIC-0N` feeds
- * `AUDIO-0N`), never looked up by a device id. Channels 1 and 2 keep the transcription-pair words of
- * `micChannelChipKey`; channels 3 and 4 read "Channel 3" / "Channel 4" (the existing
- * `devices.drawer.value.channel`), not the selector's slot name "Microphone 3", which sits beside the
- * tile name "MIC 3". The selector's own slot chip (`micChannelChipKey`) is unchanged.
+ * Audit row 156 (D27; D28 DQ-5; S5 §6; AC-4.5): the four pair rows of the selector, ALWAYS in pair
+ * order 1..4 (`CAPTURE_PAIRS`) - the pairing is by number, so the Core's line order does not reorder
+ * them. Each slot is found by track and by CHANNEL, never by position (decision C18 (2), (3)).
  */
-export function micTrackChannelChip(
-  channel: MicChannel,
-): { readonly key: 'devices.selector.role.PRIMARY' | 'devices.selector.role.STANDBY' } | { readonly key: 'devices.drawer.value.channel'; readonly values: { readonly channel: number } } {
-  if (channel === PRIMARY_MIC_CHANNEL) return { key: 'devices.selector.role.PRIMARY' }
-  if (channel === SECOND_MIC_CHANNEL) return { key: 'devices.selector.role.STANDBY' }
-  return { key: 'devices.drawer.value.channel', values: { channel: Number(channel.slice(-2)) } }
+export function selectorPairRows(config: Pick<CaptureConfig, 'cameras' | 'mics'>): readonly SelectorPairRow[] {
+  return CAPTURE_PAIRS.map((entry): SelectorPairRow => {
+    const camera: CameraSlotRow = { slot: entry.videoTrackId, line: config.cameras.find((line) => line.trackId === entry.videoTrackId) ?? null }
+    const mic: MicSlotRow = { slot: entry.micChannel, line: config.mics.find((line) => line.channel === entry.micChannel) ?? null }
+    return { pair: entry.pair, camera, mic, transcribed: entry.micChannel === PRIMARY_MIC_CHANNEL, incomplete: camera.line === null || mic.line === null }
+  })
+}
+
+/**
+ * Audit row 156 (U-13 of D74; N-40): the one label of a microphone slot on the selector, "Mic N
+ * (Camera N)" for all four channels - not "Channel 1 (transcribed)" / "Channel 2" / "Microphone 3" /
+ * "Microphone 4" (the transcription is said once, on the Pair 1 row). It is the one microphone label of
+ * every page: the selector, `/session/new` (row 158), the Session Monitor (row 157) and the Dashboard
+ * tiles (row W3T). Audit row W3T (D129): the old chip words `micChannelChipKey` and `micTrackChannelChip`
+ * ("Channel 1 (transcribed)" / "Channel 2" / "Channel 3") lost their last readers and are removed.
+ */
+export function micPairLabel(channel: MicChannel): { readonly key: 'devices.pairs.micOfCamera'; readonly values: { readonly n: number } } {
+  return { key: 'devices.pairs.micOfCamera', values: { n: capturePairOfMicChannel(channel).pair } }
 }
 
 /** A command that was refused or not answered: the status and the code, never the answer's text. */
@@ -391,13 +449,13 @@ export interface CaptureSelectorCommands {
    * profile - operation 79's body has no profile member, and a production camera is assigned with one.
    */
   readonly setCameraSource: (deviceId: string, trackId: VideoTrackId, profile?: string) => Promise<SelectorAnswer>
-  /** Operation 81 (D61): the named input takes the transcribed channel 1; the input that held it takes the named input's old channel. */
+  /** Operation 80 `setPrimaryMic` (D61; D30 K-4): the named input becomes the Mic of Camera 1 (Pair 1, transcribed); the input that held it takes the named input's old channel. */
   readonly setPrimaryMic: (inputId: string) => Promise<SelectorAnswer>
   /** Operation 78 by channel (D61, 2026-11-04): `lines` (of `micLineFor`) are microphone lines each naming its channel; a line assigns its channel alone. */
   readonly setMicLine: (lines: readonly MicChannelLine[]) => Promise<SelectorAnswer>
   /** Operation 78, member `unassign` (task 4 row 31; names register N1): the slot holds no source afterwards. */
   readonly unassign: (slot: CaptureSelectorSlot) => Promise<SelectorAnswer>
-  /** Operation 78, ONE edit (R-FLEX row 133, T-14; D61): `unassign` of the channel the microphone leaves and its one line by channel (`micMoveFor`). */
+  /** Operation 78, ONE edit (`micMoveFor`, `micMoveBody`; audit row 156, D22(3)): a SWAP is two lines by channel; a MOVE onto an empty pair is `unassign` of the channel left and its one line. */
   readonly moveMic: (move: MicMove) => Promise<SelectorAnswer>
   /** Operation 48 for a camera: the confirmed PoE cycle (`{ confirm: true }`, OD-22). */
   readonly poeCycle: (deviceId: string) => Promise<SelectorAnswer>
@@ -473,7 +531,7 @@ export function useCaptureSelectorCommands(): CaptureSelectorCommands {
         }),
       moveMic: (move) =>
         guarded('updateCaptureConfig', () => {
-          const body = { unassign: [move.from], mics: [{ inputId: move.line.inputId, deviceId: move.line.deviceId, channel: move.line.channel }] } // D61: by channel
+          const body = micMoveBody(move) // D61: by channel; row 156: the swap is two lines and no `unassign`
           return live === null
             ? simAnswer('updateCaptureConfig', sim.request({ method: 'POST', path: '/api/v1/capture/config', body }))
             : callLive(live, queryClient, 'updateCaptureConfig', () => live.client.call('updateCaptureConfig', { body }))

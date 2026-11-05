@@ -30,6 +30,7 @@ import { createFakeRegistry, type CameraAdapter, type FakeRegistry } from '../..
 import type { AuditEntry } from '../../../core';
 import { pickDurable, type DurableSlices } from '../../../db/mapping';
 import { engineControl, type EngineControl, type EngineHost, type EngineStateChange, type EngineUnit } from '../../../engine';
+import { bindInternalActions, captureDeviceReachTransition, type InternalActions } from '../../../engine/internal-actions'; // audit row M97: row 127's reach door on the stand-in
 import type { Principal } from '../../../plugins/authenticate';
 import { notReady } from '../../../plugins/error-envelope';
 import type { Publication } from '../../../realtime';
@@ -138,6 +139,15 @@ export async function inputsUnitApp(options: { captureMode?: 'simulated' | 'real
         pending: committed,
         command: unused('command') as unknown as EngineUnit['command'],
       };
+      // Audit row M97: the one internal action op 97 runs in a unit - row 127's pure transition on the real simulator.
+      bindInternalActions(scope, {
+        async noteCaptureDeviceReach(reading) {
+          const before = sim.store.getState();
+          const next = captureDeviceReachTransition(before, reading);
+          if (next !== before) sim.store.setState(next);
+          return next !== before;
+        },
+      } as Partial<InternalActions> as InternalActions);
       return { value: await work(scope), epoch: 7, revision: 41 };
     },
     setTabletLink: unused('setTabletLink'),

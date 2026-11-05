@@ -1,42 +1,31 @@
 /**
- * The mic switch of the Session Monitor: its view, its gate, its refusals and the read of the
- * audio-source intervals (task 3 M5, blueprint row 72; `masterplan/08_client_ux_spec.md` §3 flow 2;
- * `masterplan/03_api_contract.md` §2.2-§2.4 operations 81 and 82; `masterplan/01_specs.md` R-3;
- * decisions D4 OD-09 and OD-11). Kept in a `.ts` module so the panel files export only components.
+ * The audio source of the Session Monitor: the transcribed input, the silence warning and the read
+ * of the audio-source intervals (task 3 M5, blueprint row 72; `masterplan/03_api_contract.md` §2.4
+ * operation 82; `masterplan/01_specs.md` R-3; decision OD-11).
+ * Kept in a `.ts` module so the panel files export only components.
+ *
+ * Audit row 157 (D5, S5 §6; AC-4.6; decisions D4, D30, D130): operation 81 is retired - the
+ * microphones are fixed by the camera-microphone pairing (Pair N = `VIDEO-0N` <-> `MIC-0N`,
+ * `CAPTURE_PAIRS`; Pair 1 is transcribed). The confirmed manual switch, its gate (G4 / G5) and its
+ * refusal classes are REMOVED from the console; the simulator (row 150) and the Core (row 149)
+ * refuse the operation with `409 AUDIO_SOURCE_FIXED_BY_PAIRING`. Nothing in this module sends
+ * operation 81.
  *
  * | Export | What it is |
  * |--------|------------|
- * | `audioSourceToggleGate` | G4 / G5 (ux §3.4): Checking → allowed, or refused with its reason (not recording, the role, not the session holder) |
- * | `switchRefusal` | What a refused switch means to the panel (ux §3.5): conflict, not recording, not the open session |
+ * | `selectActiveInputId`, `selectStandbyInputId` | The pair as the Core states it; each `null` when absent (task 4 row 168) |
  * | `silentInputOf` | The input an active `MIC_SILENT` warning names (ux §3.2 step 8) |
- * | `useAudioSource` | The active/standby pair, the gate and the warning, in both data modes |
- * | `useAudioSourceSwitch` | The confirmed switch: the dialog's state, the one `settle` site of operation 81, the refusal that stays on the panel |
+ * | `useAudioSource` | The transcribed input and the warning, in both data modes |
  * | `useAudioSourceIntervals` | Operation 82 in both data modes, for the audio-source band (WB-10) |
- *
- * **One active microphone, switched by hand.** The pair on screen is what the Core holds
- * (`session.audioSource`, with the meters' `activeInputId` behind it): nothing here flips it. A
- * press sends operation 81 through `useCoreActions()` (the panel's `settle` site) and the pair moves
- * when the Core's state does. A `MIC_SILENT` warning only offers the switch; nothing in this module
- * or in the panel calls the action by itself (OD-11).
  */
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { toast } from '@heroui/react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useTranslation } from 'react-i18next'
-import { ApiErrorCode, type AudioSourceIntervalEntry } from '@dems/shared/api'
+import type { AudioSourceIntervalEntry } from '@dems/shared/api'
 import { AUDIO_TRACK_IDS, SessionState, type AudioTrackId } from '@dems/shared/domain' // D61 (2026-11-04): the four meter channels
-import { useCoreActions, useCorePermission } from '@dems/shared/live'
 import {
   captureMicLines,
   meterInputOfChannel,
-  OperatorRole,
-  Permission,
-  ROLE_PERMISSIONS,
-  selectCan,
   selectOperator,
-  selectRole,
-  SimNotFoundError,
-  SimTransitionError,
   useSim,
   useSimInstance,
   type ChannelMicLine, // D61 (2026-11-04): the role alias became the channel line
@@ -46,7 +35,6 @@ import {
   selectorInForce,
   sessionIsOpen,
 } from '@dems/shared/sim'
-import { useMicInputName } from '@/features/devices/source-class'
 import { isMicInputId, otherMicInput } from '@/lib/capture-notices'
 import { useCoreErrorPresenter } from '@/lib/core-errors'
 import {
@@ -57,77 +45,7 @@ import {
   useAudioSourceReadGate,
   useQueryFailure,
 } from '@/lib/core-queries'
-import { usePendingControl } from '@/lib/pending-control'
 import { logSessionMonitorError } from './log'
-
-// ── The gate (G4, G5) ────────────────────────────────────────────────────────────────────
-
-/** Why the mic toggle is not offered now; `null` when it is. */
-export type AudioSourceToggleBlock =
-  /** The role, the link or the session holder is not resolved: "Checking your permissions…" (E-16). */
-  | { readonly kind: 'CHECKING' }
-  /** No session is recording (`409 INVALID_STATE`): the toggle is not drawn, its reason is. */
-  | { readonly kind: 'NOT_RECORDING' }
-  /** `SESSION_START` is not held: the roles that hold it are named. */
-  | { readonly kind: 'ROLE'; readonly roles: readonly OperatorRole[] }
-  /** `SESSION_START` is held, but the operator neither opened this session nor is a SUPERVISOR (OD-09). */
-  | { readonly kind: 'HOLDER' }
-
-/** The roles that hold `SESSION_START`, in the order of the role set. */
-export function sessionStartRoles(): readonly OperatorRole[] {
-  return Object.values(OperatorRole).filter((role) => (ROLE_PERMISSIONS[role] as readonly Permission[]).includes(Permission.SESSION_START))
-}
-
-/** OD-09: the operator who opened the session, or a SUPERVISOR. Pure. */
-export function isSessionHolder(input: { readonly operatorId: string | null; readonly role: OperatorRole | null; readonly createdBy: string | null }): boolean {
-  if (input.role === OperatorRole.SUPERVISOR) return true
-  return input.operatorId !== null && input.operatorId === input.createdBy
-}
-
-/**
- * G4 / G5 (ux §3.4): `Checking → allowed` or `Checking → refused with its reason`; pure. The state
- * of the session is said before the role: without a recording there is nothing to switch.
- */
-export function audioSourceToggleGate(input: {
-  readonly resolved: boolean
-  readonly recording: boolean
-  /** `SESSION_START` is held. */
-  readonly canStart: boolean
-  /** `isSessionHolder`. */
-  readonly holder: boolean
-}): AudioSourceToggleBlock | null {
-  if (!input.resolved) return { kind: 'CHECKING' }
-  if (!input.recording) return { kind: 'NOT_RECORDING' }
-  if (!input.canStart) return { kind: 'ROLE', roles: sessionStartRoles() }
-  if (!input.holder) return { kind: 'HOLDER' }
-  return null
-}
-
-// ── Refusals of operation 81 ─────────────────────────────────────────────────────────────
-
-/** What the panel does with a refusal the presenter left to the page; pure (ux §3.2 steps 6-7, §3.5). */
-export type SwitchRefusal = 'CONFLICT' | 'NOT_RECORDING' | 'NOT_OPEN' | 'OTHER'
-
-/** The class of a refused switch: the Live rejection (code, status) or what the simulator threw. Never its text. */
-export function switchRefusal(error: unknown): SwitchRefusal {
-  const facts = (typeof error === 'object' && error !== null ? error : {}) as { code?: unknown; status?: unknown }
-  const code = typeof facts.code === 'string' ? facts.code : null
-  const status = typeof facts.status === 'number' ? facts.status : null
-  if (code === ApiErrorCode.AUDIO_SOURCE_CONFLICT) return 'CONFLICT'
-  if (code === ApiErrorCode.NOT_FOUND || status === 404 || error instanceof SimNotFoundError) return 'NOT_OPEN'
-  if (code === ApiErrorCode.INVALID_STATE || error instanceof SimTransitionError) return 'NOT_RECORDING'
-  return 'OTHER'
-}
-
-/** The facts of a failed switch for the page's own record: the class, the code and the status. */
-export function switchFailureFacts(error: unknown): Record<string, unknown> {
-  const facts = (typeof error === 'object' && error !== null ? error : {}) as { code?: unknown; status?: unknown }
-  return {
-    refusal: switchRefusal(error),
-    code: typeof facts.code === 'string' ? facts.code : null,
-    status: typeof facts.status === 'number' ? facts.status : null,
-  }
-}
 
 // ── The view ─────────────────────────────────────────────────────────────────────────────
 
@@ -201,117 +119,27 @@ export function silentInputOf(faults: SimState['faults']['active'], activeInputI
 export interface AudioSourceView {
   readonly sessionId: string | null
   readonly recording: boolean
-  /** The pair as the Core holds it; `null`: no input is active / no standby is held (task 4 row 168). */
+  /** The input inside `AUDIO-01` (the transcribed Pair 1 microphone) as the Core states it; `null`: none (task 4 row 168). */
   readonly activeInputId: string | null
-  readonly standbyInputId: string | null
-  /** Core instant of the last switch; `null` before the first. */
+  /** Core instant of the last stated change of the pair (a legacy session's switch); `null` before any. */
   readonly switchedAt: number | null
-  /** G4 / G5: why the toggle is not offered; `null` when it is. */
-  readonly block: AudioSourceToggleBlock | null
   /** The input of an active `MIC_SILENT` warning, or `null`. */
   readonly silentInputId: string | null
 }
 
-/** The active/standby pair, the gate of the toggle and the silence warning, in both data modes. */
+/**
+ * The transcribed input and the silence warning, in both data modes. Row 157: the toggle's gate
+ * (role, session holder, Checking) is gone with operation 81 - there is nothing to switch.
+ */
 export function useAudioSource(): AudioSourceView {
-  const gate = useAudioSourceReadGate()
-  const live = gate.live !== null
   const sessionId = useSim((s) => s.session?.id ?? null)
   const recording = useSim((s) => s.session?.state === SessionState.RECORDING)
-  const createdBy = useSim((s) => s.session?.createdBy ?? null)
   const activeInputId = useSim(selectActiveInputId)
-  const standbyInputId = useSim(selectStandbyInputId)
   const switchedAt = useSim((s) => openSessionAudioSource(s.session)?.switchedAt ?? null)
-  const operatorId = useSim((s) => selectOperator(s)?.id ?? null)
-  const role = useSim(selectRole)
-  const corePermission = useCorePermission(Permission.SESSION_START)
-  const simPermission = useSim((s) => selectCan(s, Permission.SESSION_START))
   const faults = useSim((s) => s.faults.active)
-
-  // Live mode: signed in and the link up (the Core's permission list and its session are the ones
-  // on screen). Simulated mode: the simulator's operator is known in the same turn.
-  const resolved = (live ? gate.enabled : true) && operatorId !== null
-  const block = audioSourceToggleGate({
-    resolved,
-    recording,
-    canStart: live ? corePermission : simPermission,
-    holder: isSessionHolder({ operatorId, role, createdBy }),
-  })
   const micLines = useSim(captureMicLines)
   const silentInputId = useMemo(() => (recording ? silentInputOf(faults, activeInputId, micLines) : null), [recording, faults, activeInputId, micLines])
-
-  return { sessionId, recording, activeInputId, standbyInputId, switchedAt, block, silentInputId }
-}
-
-// ── The confirmed switch (operation 81) ──────────────────────────────────────────────────
-
-export interface AudioSourceSwitchControl {
-  /** The confirmation dialog is open. */
-  readonly confirmOpen: boolean
-  /** Opens the confirmation; does nothing while the gate blocks the toggle. */
-  readonly ask: () => void
-  readonly cancel: () => void
-  /** The operator confirmed: sends operation 81 for the standby input. One command at a time. */
-  readonly confirm: () => void
-  /** LB-1: the command is out. */
-  readonly busy: boolean
-  /** LB-1: out for longer than the reveal time. */
-  readonly pending: boolean
-  /** For the confirm button: carries `aria-busy` while the command is out. */
-  readonly ref: RefObject<HTMLButtonElement | null>
-  /** A refusal that stays on the panel (ux §3.5) until the next press. */
-  readonly refusal: Exclude<SwitchRefusal, 'OTHER'> | null
-}
-
-/**
- * The explicit, confirmed switch (ux §3.2 steps 2-7). The ONLY place of the console that calls
- * `actions.switchAudioSource`, and only from the operator's confirm. Nothing is flipped here: the
- * pair on screen follows the Core's state, and the success toast names the input the store holds
- * when the command settled.
- */
-export function useAudioSourceSwitch(view: AudioSourceView): AudioSourceSwitchControl {
-  const { t } = useTranslation()
-  const actions = useCoreActions()
-  const sim = useSimInstance()
-  const presentCoreError = useCoreErrorPresenter()
-  const micName = useMicInputName()
-  const press = usePendingControl()
-  const [confirmOpen, setConfirmOpen] = useState(false)
-  const [refusal, setRefusal] = useState<Exclude<SwitchRefusal, 'OTHER'> | null>(null)
-  const { block, activeInputId, standbyInputId } = view
-
-  const ask = () => {
-    // Without a standby input there is nothing to switch to (task 4 row 168).
-    if (block !== null || standbyInputId === null) return
-    setRefusal(null)
-    setConfirmOpen(true)
-  }
-  const cancel = () => {
-    if (!press.busy) setConfirmOpen(false)
-  }
-  const confirm = () => {
-    if (block !== null || standbyInputId === null) return
-    const from = activeInputId
-    const to = standbyInputId
-    // The id is the Core's own text (`MIC-NN`); the cast holds before and after the contract's id is widened.
-    press.settle(() => actions.switchAudioSource(to as Parameters<typeof actions.switchAudioSource>[0]), {
-      ok: () => {
-        setConfirmOpen(false)
-        // Read on the settle: the input the Core's state names, not the one that was asked for.
-        const active = selectActiveInputId(sim.store.getState()) ?? to
-        toast.success(t('session.audioSource.switched', { mic: micName(active) }))
-      },
-      fail: (error) => {
-        setConfirmOpen(false)
-        logSessionMonitorError('AudioPanel.switchAudioSource', error, { from, to, ...switchFailureFacts(error) })
-        if (presentCoreError(error) !== null) return
-        const kind = switchRefusal(error)
-        if (kind === 'OTHER') toast.danger(t('session.audioSource.failed'))
-        else setRefusal(kind)
-      },
-    })
-  }
-  return { confirmOpen, ask, cancel, confirm, busy: press.busy, pending: press.pending, ref: press.ref, refusal }
+  return { sessionId, recording, activeInputId, switchedAt, silentInputId }
 }
 
 // ── Operation 82: the audio-source intervals ─────────────────────────────────────────────
@@ -336,7 +164,7 @@ const INTERVALS_READ_FAILED = 'listAudioSourceIntervals'
  * The intervals of the open session (operation 82). Live mode: the query factory of
  * `lib/core-queries.ts`, asked again each time the Core reports a switch (`switchedAt` of the
  * session's pair). Simulated mode: the simulator's own answer to the same operation.
- * A failed read is one record of the page and a Retry on the band; it never blocks the toggle.
+ * A failed read is one record of the page and a Retry on the band.
  */
 export function useAudioSourceIntervals(view: Pick<AudioSourceView, 'sessionId' | 'switchedAt' | 'recording'>): AudioSourceIntervalsView {
   const gate = useAudioSourceReadGate()
@@ -354,7 +182,7 @@ export function useAudioSourceIntervals(view: Pick<AudioSourceView, 'sessionId' 
     logSessionMonitorError(INTERVALS_READ_FAILED, error, { operationId: 'listAudioSourceIntervals', status: failure?.status ?? null, code: failure?.error.code ?? null })
   })
 
-  // The Core reported a switch (or the recording ended): the list has a new interval. The value of
+  // The Core reported a change of the pair (or the recording ended): the list has a new interval. The value of
   // the mount is not a change: the read of the mount is at least as new.
   const seen = useRef({ switchedAt, recording })
   useEffect(() => {

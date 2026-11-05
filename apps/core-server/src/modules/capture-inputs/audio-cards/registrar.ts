@@ -21,7 +21,7 @@
  * SEC35-41 (c)): the row comes from the engine's typed writer. Nothing is logged here, and the
  * product name goes to the action as the listing returned it and to nothing else.
  */
-import { registerCaptureMicrophoneIn } from '../../../engine';
+import { noteCaptureDeviceReachIn, registerCaptureMicrophoneIn } from '../../../engine';
 import type { MicrophoneRegistrar } from './service';
 
 /** The stored transport of a registered sound-card input (the transport of the built-in pair, `dbc-3` §B.2). A literal of the statement. */
@@ -70,6 +70,11 @@ export function createEngineMicrophoneRegistrar(): MicrophoneRegistrar {
     },
     async reenable(unit, device) {
       await registerCaptureMicrophoneIn(unit.scope, { deviceId: device.deviceId, model: device.model });
+      // Audit row M97 (D104, D116): the microphone is back, so a stated NOT_REACHABLE no longer holds. The card was only
+      // LISTED (opened by nothing here): the reach is cleared to "not checked", never stated REACHABLE. Same unit, through
+      // row 127's door; a stated REACHABLE or no reading is left as it is.
+      const entry = unit.scope.pending().captureDevices.devices.find((candidate) => candidate.id === device.deviceId);
+      if (entry?.reach === 'NOT_REACHABLE') await noteCaptureDeviceReachIn(unit.scope, { deviceId: device.deviceId, reach: null, checkedAt: null });
       await settle(unit, device.deviceId, device.at);
     },
   };

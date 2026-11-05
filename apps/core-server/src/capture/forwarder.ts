@@ -42,7 +42,7 @@
  * `reason` and `evidenceFiles` WHEN IT IS RAISED - and this forwarder raises it. The supervisor
  * says `workerDown` before its own `CAPTURE_FAULT`: when that down is the END of the session (no
  * restart follows), the worker's `CRASH` code is one of the protocol's final codes
- * (`FINAL_CRASH_CODES`: `NO_CAMERA_CONNECTED`) and NO durable-fragment record of the session was
+ * (`FINAL_CRASH_CODES`: `NO_CAMERA_CONNECTED`) and NO camera file's durable-fragment record (row D2C) of the session was
  * seen, the raise carries `reason: <that code>` and `evidenceFiles: 0`. Both are facts of the
  * worker's own frames: an enumerated code and the count of a session without a durable fragment.
  * Any other end of a worker raises the fault without the keys, as before. The shared raise
@@ -128,7 +128,7 @@
  *
  * This file names no process, no file, no timer and no clock, and it logs nothing itself.
  */
-import { ADVISORY_WARNING_REASONS, CaptureRecordKind, CaptureWarningCode, CaptureWarningReason, CaptureWarningState, DURABLE_RECORD_KINDS, FINAL_CRASH_CODES } from '@dems/capture-protocol';
+import { ADVISORY_WARNING_REASONS, CaptureRecordKind, CaptureWarningCode, CaptureWarningReason, CaptureWarningState, FINAL_CRASH_CODES } from '@dems/capture-protocol';
 import { CaptureAdvisoryReason, type CaptureAdvisoryNotice, type CaptureFaultWarningInput, type CaptureTelemetryInput } from '@dems/shared/sim';
 import { SupervisorRefusal, isCameraAbsentReason, type CaptureReport, type CaptureSupervisor } from './types';
 
@@ -255,7 +255,7 @@ export function forwardCaptureEvents(options: CaptureForwarderOptions): () => vo
   const adviceKey = (reason: CaptureAdvisoryReason, subject: string): string => `${reason}|${subject}`;
   /** `code|correlationId|deviceId` of the level notices whose condition holds now: one notice per episode. */
   const noticed = new Set<string>();
-  /** The session (by correlation ID) of which a durable-fragment record was seen: it holds evidence. */
+  /** The session (by correlation ID) of which a CAMERA file's first durable fragment was seen (row D2C): it holds evidence. */
   let durable: string | null = null;
   /** The session whose worker ended for good with a final crash code while nothing was durable, and that code. */
   let failedStart: { readonly correlationId: string; readonly reason: string } | null = null;
@@ -469,7 +469,10 @@ export function forwardCaptureEvents(options: CaptureForwarderOptions): () => vo
 
   const offRecord = capture.on('record', (event) => {
     const { record } = event;
-    if ((DURABLE_RECORD_KINDS as readonly string[]).includes(record.kind)) durable = event.correlationId;
+    // Row D2C (D150 (2), F-C1D-2): a session holds evidence from its first CAMERA file fragment. `FIRST_DURABLE_FRAGMENT` is a
+    // camera-only record of the protocol, and the worker says it before any checkpoint of that camera's file (ingest.c
+    // `cam_fragment_durable`); a channel file's checkpoint (row 148) names a microphone and is no evidence of its own.
+    if (record.kind === CaptureRecordKind.FIRST_DURABLE_FRAGMENT) durable = event.correlationId;
     if (record.kind !== CaptureRecordKind.KEYFRAME_INTERVAL || !record.aboveBound) return;
     notice({ code: CaptureNoticeCode.KEYFRAME_INTERVAL_ABOVE_BOUND, sessionId: event.sessionId, correlationId: event.correlationId, deviceId: record.deviceId, value: record.observedMs, bound: record.boundMs });
     // R63-03: the record of an interval that completed above the bound raises the same advice when no warning did.

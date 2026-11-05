@@ -35,7 +35,7 @@ afterEach(async () => {
 
 async function rig() {
   const clock = manualCaptureTimers();
-  const fake = fakeLauncher({ ackSwitch: false });
+  const fake = fakeLauncher();
   const raised: Array<Record<string, unknown>> = [];
   const events: CaptureEvent[] = [];
   const supervisor = createCaptureSupervisor({ now: clock.now, timers: clock.timers, launcher: fake.launcher, limits: {} });

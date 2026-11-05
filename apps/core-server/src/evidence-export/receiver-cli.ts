@@ -124,6 +124,8 @@ export function receiverReportLines(result: ReceiverVerifyResult): string[] {
   // Row R1b (decision C99): the sealed manifest's signed member `tracks[].absentInSession` is SAID, in the one wording of
   // the shared verifier. Only when a track carries it; it fails nothing and stands before the verdict.
   if (result.videoAbsentInSession !== undefined) lines.push(videoAbsentInSessionReport(result.videoAbsentInSession));
+  // Row 153 (D5; D30 K-3, D119): the signed missing-microphone statement is SAID (AUDIO_TRACKS_MISSING), never read as a quiet room.
+  if (result.audioTracksMissing !== undefined) lines.push(result.audioTracksMissing.report);
   lines.push(receiverVerdictOf(result).line);
   return lines;
 }

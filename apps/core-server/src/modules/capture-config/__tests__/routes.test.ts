@@ -260,6 +260,45 @@ describe('operations 78, 79, 80: an edit is one unit of the engine with the host
     expect(selectorOf(await get(built, CONFIG))).toEqual(selectorOf(back));
   });
 
+  it('D30 K-6 (row 155): a two-line mic swap by operation 78 writes exactly ONE CHANNEL row - the row operation 80 writes on the same selector; the transports stay with their inputs; a single line keeps its SOURCE row', async () => {
+    const built = await build();
+    built.actAs(operatorOf('TECHNICIAN'));
+    const before = built.engine.state().captureConfig.mics;
+    const transportOf = (mics: typeof before, inputId: string) => mics.find((mic) => mic.inputId === inputId)?.transport;
+    // The contract's `swap` example: channels MIC-01 and MIC-02 trade their two microphones.
+    const swapped = await post(built, CONFIG, { mics: [{ channel: 'MIC-01', inputId: 'MIC-02', deviceId: 'MIC-02' }, { channel: 'MIC-02', inputId: 'MIC-01', deviceId: 'MIC-01' }] });
+    expect(swapped.statusCode, swapped.body).toBe(200);
+    expect(validateCoreApiResponse('updateCaptureConfig', 200, bodyOf(swapped))).toEqual({ ok: true });
+    expect(selectorOf(swapped).mics.map((mic) => [mic.inputId, mic.channel])).toEqual([
+      ['MIC-01', 'MIC-02'],
+      ['MIC-02', 'MIC-01'],
+      ['MIC-03', 'MIC-03'],
+      ['MIC-04', 'MIC-04'],
+    ]);
+    const after = built.engine.state().captureConfig.mics;
+    for (const inputId of ['MIC-01', 'MIC-02']) expect(transportOf(after, inputId), inputId).toBe(transportOf(before, inputId));
+    expect(changes(built).map((row) => row.details)).toEqual([
+      { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'CHANNEL', inputId: 'MIC-02', deviceId: 'MIC-02', from: 'MIC-02', to: 'MIC-01', permission: 'CAPTURE_CONFIG' },
+    ]);
+    // PARITY with operation 80 on a fresh Core: the same selector, the same details but the operation id.
+    const primary = await build();
+    primary.actAs(operatorOf('TECHNICIAN'));
+    expect((await post(primary, primaryMic('MIC-02'))).statusCode).toBe(200);
+    expect(primary.engine.state().captureConfig.mics).toEqual(after);
+    const { operationId: primaryOperation, ...primaryDetails } = changes(primary)[0]?.details ?? {};
+    const { operationId: swapOperation, ...swapDetails } = changes(built)[0]?.details ?? {};
+    expect([primaryOperation, swapOperation]).toEqual(['setPrimaryMic', 'updateCaptureConfig']);
+    expect(swapDetails).toEqual(primaryDetails);
+    // CONTROL - swapping back is again one CHANNEL row; a single line by channel is still refused when it names a held microphone, and nothing is written.
+    expect((await post(built, CONFIG, { mics: [{ channel: 'MIC-01', inputId: 'MIC-01', deviceId: 'MIC-01' }, { channel: 'MIC-02', inputId: 'MIC-02', deviceId: 'MIC-02' }] })).statusCode).toBe(200);
+    expect(changes(built).map((row) => [row.details?.['field'], row.details?.['inputId'], row.details?.['from'], row.details?.['to']])).toEqual([
+      ['CHANNEL', 'MIC-02', 'MIC-02', 'MIC-01'],
+      ['CHANNEL', 'MIC-01', 'MIC-02', 'MIC-01'],
+    ]);
+    expect(outcome(await post(built, CONFIG, { mics: [{ channel: 'MIC-01', inputId: 'MIC-02', deviceId: 'MIC-02' }] }))).toEqual([422, 'INVALID_INPUT']);
+    expect(changes(built)).toHaveLength(2);
+  });
+
   it('an edit that changes nothing answers 200 with the selector as it is and writes no row', async () => {
     const built = await build();
     built.actAs(operatorOf('TECHNICIAN'));

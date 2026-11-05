@@ -29,7 +29,7 @@
  * nothing about it. A call that changes nothing returns the SAME state and sends no statement.
  */
 import type { EvidenceItem, SimState } from '@dems/shared/sim';
-import type { VideoTrackId } from '@dems/shared/domain';
+import type { AudioTrackId, VideoTrackId } from '@dems/shared/domain';
 import { EngineError } from './errors';
 import type { EngineHost, EngineOutcome } from './types';
 
@@ -44,9 +44,9 @@ export interface SealedAudioInterval {
   readonly sourceClass?: 'PRODUCTION' | 'LOCAL_DEVICE' | 'FAKE';
 }
 
-/** One camera file as the sealed manifest records it (`EvidenceItemSchema.files`). */
+/** One sealed file as the manifest records it (`EvidenceItemSchema.files`): a camera file, or (row 159, D5 `/2.1`) the audio file of a pair, after the camera files. */
 export interface SealedFileFact {
-  readonly trackId: VideoTrackId; // D60
+  readonly trackId: VideoTrackId | AudioTrackId; // D60; row 159: + AUDIO-0N of a D5 package
   readonly fileName: string;
   readonly sizeBytes: number;
   /** SHA-256 of the STORED bytes of the whole file. */
@@ -56,6 +56,16 @@ export interface SealedFileFact {
   readonly fragmentChainHead?: string | null;
   /** Fix wave L (G89c-04): the SIGNED manifest's `tracks[].profile` of the file (field 36). */
   readonly profile?: string;
+}
+
+/** Row 159 (D5; D30 K-3): one pair whose microphone did not record, as the signed manifest states it (`EvidenceItemSchema.audioTracksMissing`). */
+export interface SealedAudioTrackMissing {
+  readonly trackId: AudioTrackId;
+  /** null exactly for NOT_ASSIGNED. */
+  readonly micDeviceId: string | null;
+  /** `[VIDEO-0N]` when that camera file is in the package (it holds the silent track), else empty. */
+  readonly silentIn: readonly VideoTrackId[];
+  readonly reason: 'NOT_ASSIGNED' | 'NOT_OPENED';
 }
 
 /** The model of a sealed transcript as the item carries it (`EvidenceItemSchema.transcriptModel`; operation 41's shape). */
@@ -86,6 +96,8 @@ export type SealedItemFacts =
        * stated - no document sealed, or the signature did not hold. Never a default.
        */
       readonly transcriptModel?: SealedTranscriptModel | null;
+      /** Row 159 (D5): the manifest's missing-microphone statement; absent or empty: the manifest states none (every legacy package). */
+      readonly audioTracksMissing?: readonly SealedAudioTrackMissing[];
     }
   | {
       readonly evidenceId: string;
@@ -101,6 +113,7 @@ export interface SealedItemMembers {
   interruptedCause?: string | null;
   audioSourceIntervals?: SealedAudioInterval[];
   transcriptModel?: SealedTranscriptModel;
+  audioTracksMissing?: SealedAudioTrackMissing[];
 }
 export type ItemWithSealedFacts = EvidenceItem & SealedItemMembers & { signature: EvidenceItem['signature'] & { developmentKey?: boolean | null } };
 
@@ -126,7 +139,7 @@ export function itemWithSealedFacts(item: EvidenceItem, facts: SealedItemFacts):
   if (facts.sealedPackage === 'NOT_READABLE') {
     // Nothing that was read: only the state itself. Members an earlier reading put there are not kept as if they were read now.
     if (held.sealedPackage === 'NOT_READABLE') return item;
-    const { interrupted: _interrupted, interruptedCause: _cause, audioSourceIntervals: _intervals, transcriptModel: _model, ...rest } = held;
+    const { interrupted: _interrupted, interruptedCause: _cause, audioSourceIntervals: _intervals, transcriptModel: _model, audioTracksMissing: _missing, ...rest } = held;
     const { developmentKey: _key, ...signature } = held.signature;
     return { ...rest, signature, sealedPackage: 'NOT_READABLE' } as EvidenceItem;
   }
@@ -143,6 +156,9 @@ export function itemWithSealedFacts(item: EvidenceItem, facts: SealedItemFacts):
   // The model of THIS reading or none: a reading that states no model leaves no model of an earlier one.
   if (facts.transcriptModel !== undefined && facts.transcriptModel !== null) next.transcriptModel = { ...facts.transcriptModel };
   else delete next.transcriptModel;
+  // Row 159 (D5): the statement of THIS reading or none - a legacy reading leaves no statement of an earlier one.
+  if (facts.audioTracksMissing !== undefined && facts.audioTracksMissing.length > 0) next.audioTracksMissing = facts.audioTracksMissing.map((entry) => ({ ...entry, silentIn: [...entry.silentIn] }));
+  else delete next.audioTracksMissing;
   const unchanged =
     held.sealedPackage === next.sealedPackage &&
     held.interrupted === next.interrupted &&
@@ -150,6 +166,7 @@ export function itemWithSealedFacts(item: EvidenceItem, facts: SealedItemFacts):
     held.signature.developmentKey === next.signature.developmentKey &&
     same(held.audioSourceIntervals, next.audioSourceIntervals) &&
     same(held.transcriptModel ?? null, next.transcriptModel ?? null) &&
+    same(held.audioTracksMissing ?? null, next.audioTracksMissing ?? null) &&
     same(held.files, next.files);
   return unchanged ? item : (next as EvidenceItem);
 }

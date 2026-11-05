@@ -56,7 +56,18 @@ const alertPublications = () => server.stateChanges().filter((change) => change.
 async function expectStoredEqualsCommitted(): Promise<void> {
   await server.app.pipeline.drain();
   const stored = await storedSlices(server.owner);
-  const committed = withoutNegativeZeros(server.engine.state());
+  // Audit row W3F (F-W3TW-D3, D142): `reach` and `checkedAt` of a device are the Core's live reach reading, held in memory
+  // only (row 125; row 127 §7; state-slices.ts: "never part of a stored snapshot"). Since row 128b a pre-check run with a
+  // probe states them in the engine, so the committed state carries them and the tables cannot. They are taken out of the
+  // COMMITTED side only, and nothing else is: a stored reach, or any other difference, still fails the equality.
+  const committedState = withoutNegativeZeros(server.engine.state());
+  const memoryOnlyOut = <Device extends { reach?: unknown; checkedAt?: unknown }>(device: Device): Device => {
+    const copy = { ...device };
+    delete copy.reach;
+    delete copy.checkedAt;
+    return copy;
+  };
+  const committed = { ...committedState, captureDevices: { ...committedState.captureDevices, devices: committedState.captureDevices.devices.map(memoryOnlyOut) } };
   const byInput = <Mic extends { inputId: string }>(mics: readonly Mic[]): Mic[] => [...mics].sort((left, right) => (left.inputId < right.inputId ? -1 : left.inputId > right.inputId ? 1 : 0));
   expect({ ...stored, captureConfig: { ...stored.captureConfig, mics: byInput(stored.captureConfig.mics) } }).toStrictEqual({ ...committed, captureConfig: { ...committed.captureConfig, mics: byInput(committed.captureConfig.mics) } });
   const rows = await readTrail(server.owner);

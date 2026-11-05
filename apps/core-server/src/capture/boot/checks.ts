@@ -404,7 +404,9 @@ export const RELEASE_WORKER_VERSION = /^capture-worker\/\d{1,4}\.\d{1,4}\.\d{1,4
  * an additive member, so a worker of an earlier tree (no fragment size bound, no stated sync level)
  * speaks the same protocol and has the release FORM - only its version tells it apart.
  */
-export const CAPTURE_WORKER_VERSION = 'capture-worker/0.7.0';
+// Audit 2026-11-05 row 144 (C-P0-2a; D28 DQ-4, D25 N5): 0.8.0 with protocol 6 - the lockstep pair of worker.h. A 0.7.0 worker
+// (protocol 5) is refused at boot by its protocol, a 0.7.0 word under protocol 6 by its version.
+export const CAPTURE_WORKER_VERSION = 'capture-worker/0.8.0';
 
 /** True when a worker version carries the proof-build mark, in any case and at any place. */
 export function isProofWorkerVersion(workerVersion: string): boolean {

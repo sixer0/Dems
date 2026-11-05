@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, linkSync, lstatSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { FRAGMENT_CHAIN_GENESIS, PackageFile, declaredPackageFiles, fragmentsJsonMatchesManifest, nextFragmentChainHash, parseManifestV2, type ManifestV2 } from '@dems/shared/evidence-package';
+import { FRAGMENT_CHAIN_GENESIS, MANIFEST_V2_1_SCHEMA_ID, MANIFEST_V2_SCHEMA_ID, PackageFile, declaredPackageFiles, fragmentsJsonFilesOf, fragmentsJsonMatchesManifest, nextFragmentChainHash, parseManifestV2, serializeFragmentsJson, type ManifestV2 } from '@dems/shared/evidence-package';
 import { VERIFY_MAX_OPEN_FRAGMENT_BYTES, VERIFY_V2_CHECKS, verifyPackageV2, type PackageVerifyResult } from '@dems/shared/evidence-verify';
 import { DEMO_TAMPERED_FRAGMENT_SEQ, DEMO_TAMPERED_FRAGMENT_TRACK } from '@dems/shared/sim';
 import { createMemoryChunkMirror } from '@dems/transcriber';
@@ -23,7 +23,7 @@ import { corePorts } from '../../evidence-verify';
 import { SEALING_HOOK_PHASES, SEALING_MAX_FRAGMENT_BYTES, SEALING_STEP_ORDER, SealingStop, createSealingController, createSealingPipeline, durableMediaOnDisk, sealEngineOf, sealOnCaptureHandOff, sealingFailureReason, type SealOutcome, type SealSessionFacts, type SealingHookPoint, type SealingStepId } from '../index';
 import { listPackageFiles } from '../pipeline/camera-files';
 import { removePackages, throwAwaySigner } from './package-support';
-import { CLOCK_START, TRACKS, harnessOf, recordSession, removeRecordings, sessionFacts, sha256Hex, type Harness, type Recording } from './pipeline-support';
+import { AUDIO_TRACKS, CLOCK_START, FOUR_TRACKS, TRACKS, harnessOf, pairedSessionFacts, recordSession, removeRecordings, sessionFacts, sha256Hex, type Harness, type Recording } from './pipeline-support';
 import { manualClock, snapshotOf, transcribedSession } from './support';
 
 afterAll(() => {
@@ -1244,5 +1244,163 @@ describe('a Core that ended after the commit of the item is FINISHED at the next
     expect(rowOf(h, 'STORE_SEALED_PACKAGE')).toMatchObject({ status: 'DONE', attempt: 2, checkpoint: { committed: 'ALREADY_SEALED', recordingsRemoved: 0, recordingsKept: 0 } });
     expect(h.engine.completeCalls).toBe(1);
     expect((await verify(h)).ok).toBe(true);
+  });
+});
+
+// ── Audit row 153 (D5; decisions D28, D30 K-3, D45, D118 H-2): the pair audio files `AUDIO-0N` ───────────────────────
+// A D5 session records each pair microphone on its own channel file `MIC-0N.m4a` with `AUDIO-0N` fragment rows (0044).
+// The seal holds each against its own rows (S1), seals it as `fragments/AUDIO-0N.m4a`, states a microphone that did not
+// record (`audioTracksMissing`), and signs the `/2.1` manifest. A session WITHOUT such rows seals the `/2` manifest of before.
+describe('row 153 (D5): the pair audio files are sealed, stated and declared', () => {
+  const MICS = ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const;
+  const quarantined = (h: Harness): string => join(h.recording.mediaDir, '.quarantine', h.recording.sessionId);
+  const paired = (options: { cameras: readonly (typeof FOUR_TRACKS)[number][]; audio: readonly (typeof AUDIO_TRACKS)[number][]; mics: readonly (typeof MICS)[number][] }) => {
+    const recording = recordSession({ cameras: options.cameras, audio: options.audio });
+    const h = harnessOf(recording, { facts: pairedSessionFacts(recording.sessionId, { cameras: options.cameras, mics: options.mics }) });
+    return { recording, h };
+  };
+
+  it('AC-4.10: a 4+4 session seals DONE - the package lists VIDEO-01..04 and AUDIO-01..04, the `/2.1` manifest has four audio records in their pair camera, the engine gets eight files in order, and the Core verifies all 15 checks', async () => {
+    const { recording, h } = paired({ cameras: FOUR_TRACKS, audio: AUDIO_TRACKS, mics: MICS });
+    const recorded = Object.fromEntries(AUDIO_TRACKS.map((trackId) => [trackId, readFileSync(recording.micRecordingFile(trackId))]));
+    const outcome = sealedOf(await h.pipeline.run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
+    expect(outcome.interrupted).toBe(false);
+    const manifest = manifestOf(recording);
+    expect(manifest.schema).toBe(MANIFEST_V2_1_SCHEMA_ID);
+    expect(manifest.tracks.map((track) => track.trackId)).toEqual([...FOUR_TRACKS]);
+    expect(manifest.audioTracks?.map((record) => [record.trackId, record.micChannel, record.micDeviceId, record.containsIn, record.file, record.mediaType, record.sourceClass])).toEqual(
+      AUDIO_TRACKS.map((trackId, index) => [trackId, MICS[index], MICS[index], [FOUR_TRACKS[index]], `${trackId}.m4a`, 'audio/mp4', 'FAKE']),
+    );
+    expect(manifest.audioFiles?.map((file) => [file.trackId, file.fragments.length])).toEqual(AUDIO_TRACKS.map((trackId) => [trackId, 5]));
+    expect(manifest.audioTracksMissing).toBeUndefined();
+    expect(manifest.audio.containsIn).toEqual(['VIDEO-01']);
+    // The sealed audio file opens to the worker's bytes: field 169 is the digest of MIC-0N.m4a as recorded.
+    for (const [index, trackId] of AUDIO_TRACKS.entries()) expect(manifest.audioTracks?.[index]?.sha256Plain).toBe(sha256Hex(recorded[trackId]!));
+    // The folder holds exactly what the package declares (no PACKAGE_NOT_CLEAN, no MIC recording left beside it).
+    expect(await listPackageFiles(recording.packageDir)).toEqual([...declaredPackageFiles({ transcript: false, tracks: FOUR_TRACKS, audioTracks: AUDIO_TRACKS })].sort());
+    expect(fragmentsJsonMatchesManifest(readFileSync(recording.path(PackageFile.FRAGMENTS_JSON), 'utf8'), fragmentsJsonFilesOf(manifest))).toBe(true);
+    // N-22: the item's tracks (the `evidence_tracks` rows, position = place + 1) are the eight files, cameras first.
+    expect(h.engine.sealed[0]?.input.tracks.map((track) => track.trackId)).toEqual([...FOUR_TRACKS, ...AUDIO_TRACKS]);
+    expect(rowOf(h, 'CLOSE_TRACKS')?.checkpoint).toMatchObject({ audio: { missing: [], omitted: [] } });
+    expect(manifest.sealing.steps[0]?.checkpoint).toMatchObject({ tracks: 4, audioFiles: 4, interrupted: false });
+    const result = await verify(h);
+    expect([result.ok, result.overall, passing(result)]).toEqual([true, 'PASS', ALL]);
+    expect(result.files.map((file) => file.trackId)).toEqual([...FOUR_TRACKS, ...AUDIO_TRACKS]);
+  });
+
+  it('D30 K-3: MIC-02 NOT ASSIGNED - the session seals (no SOURCE_RECORD_MISSING for the absent MIC-02 start row), the pair is stated missing with no device and VIDEO-02 holds the silence; the verifier SAYS it', async () => {
+    const { recording, h } = paired({ cameras: TRACKS, audio: ['AUDIO-01'], mics: ['MIC-01'] });
+    sealedOf(await h.pipeline.run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
+    const manifest = manifestOf(recording);
+    expect(manifest.schema).toBe(MANIFEST_V2_1_SCHEMA_ID);
+    expect(manifest.audioTracks?.map((record) => record.trackId)).toEqual(['AUDIO-01']);
+    expect(manifest.audioTracksMissing).toEqual([{ trackId: 'AUDIO-02', micChannel: 'MIC-02', micDeviceId: null, silentIn: ['VIDEO-02'], reason: 'NOT_ASSIGNED' }]);
+    expect(manifest.audio.containsIn).toEqual(['VIDEO-01']);
+    expect(manifest.timeline.interrupted).toBe(false);
+    const result = await verify(h);
+    expect([result.ok, passing(result)]).toEqual([true, ALL]);
+    expect(result.notices.map((notice) => notice.code)).toContain('AUDIO_TRACKS_MISSING');
+  });
+
+  it('D30 K-3: a microphone that recorded NOTHING (start row, no file, no row) is stated NOT_OPENED with its device; MIC-01 NOT_OPENED leaves `audio.containsIn` empty (rule 4); neither is an interruption', async () => {
+    const { recording, h } = paired({ cameras: TRACKS, audio: ['AUDIO-02'], mics: ['MIC-01', 'MIC-02'] });
+    sealedOf(await h.pipeline.run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
+    const manifest = manifestOf(recording);
+    expect(manifest.audioTracks?.map((record) => record.trackId)).toEqual(['AUDIO-02']);
+    expect(manifest.audioTracksMissing).toEqual([{ trackId: 'AUDIO-01', micChannel: 'MIC-01', micDeviceId: 'MIC-01', silentIn: ['VIDEO-01'], reason: 'NOT_OPENED' }]);
+    expect(manifest.audio.containsIn).toEqual([]);
+    expect(manifest.timeline.interrupted).toBe(false);
+    expect(h.log.entries.map((entry) => entry.code)).toContain('SEALING_AUDIO_NOT_RECORDED');
+    expect((await verify(h)).ok).toBe(true);
+  });
+
+  // Row 148 (D128, R153-1): EVERY microphone of a protocol-6 session failed - no channel file, no AUDIO-0N row. The reader
+  // says `pairedAudio` (from the capture facts the start wrote), so the session still seals as a D5 one and states all four.
+  it('row 148 (D128): a protocol-6 session with ZERO audio rows seals the /2.1 manifest with all four microphones stated NOT_OPENED, each silent in its camera; neither is an interruption', async () => {
+    const recording = recordSession({ cameras: FOUR_TRACKS, audio: [] });
+    const h = harnessOf(recording, { facts: pairedSessionFacts(recording.sessionId, { cameras: FOUR_TRACKS, mics: MICS }, { pairedAudio: true }) });
+    sealedOf(await h.pipeline.run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
+    const manifest = manifestOf(recording);
+    expect(manifest.schema).toBe(MANIFEST_V2_1_SCHEMA_ID);
+    expect(manifest.audioTracks ?? []).toEqual([]);
+    expect(manifest.audioTracksMissing).toEqual(AUDIO_TRACKS.map((trackId, index) => ({ trackId, micChannel: MICS[index], micDeviceId: MICS[index], silentIn: [FOUR_TRACKS[index]], reason: 'NOT_OPENED' })));
+    expect(manifest.audio.containsIn).toEqual([]);
+    expect(manifest.timeline.interrupted).toBe(false);
+    expect((await verify(h)).ok).toBe(true);
+  });
+
+  it('a TAMPERED channel recording is refused: its first fragment is not what its row recorded - THAT audio file is left out (never sealed), the seal is INTERRUPTED and says which, the recording goes to the quarantine; the rest verifies', async () => {
+    const { recording, h } = paired({ cameras: FOUR_TRACKS, audio: AUDIO_TRACKS, mics: MICS });
+    const row = recording.audio['AUDIO-03']!.rows[0]!;
+    const bytes = readFileSync(recording.micRecordingFile('AUDIO-03'));
+    bytes[row.byteOffset + row.byteLength - 10] = (bytes[row.byteOffset + row.byteLength - 10] ?? 0) ^ 0x01;
+    writeFileSync(recording.micRecordingFile('AUDIO-03'), bytes);
+    const outcome = sealedOf(await h.pipeline.run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
+    expect(outcome.interrupted).toBe(true);
+    const manifest = manifestOf(recording);
+    expect(manifest.audioTracks?.map((record) => record.trackId)).toEqual(['AUDIO-01', 'AUDIO-02', 'AUDIO-04']);
+    expect(manifest.audioTracksMissing).toBeUndefined();
+    expect(manifest.sealing.steps[0]?.checkpoint).toMatchObject({ interrupted: true, audioFiles: 3, absentAudioTracks: 'AUDIO-03' });
+    expect(existsSync(recording.audioFile('AUDIO-03'))).toBe(false);
+    expect(h.log.entries.find((entry) => entry.code === 'SEALING_AUDIO_LEFT_OUT')?.context).toMatchObject({ trackId: 'AUDIO-03', failure: 'FRAGMENT_MISMATCH' });
+    expect(existsSync(join(quarantined(h), 'MIC-03.m4a'))).toBe(true);
+    expect(existsSync(recording.micRecordingFile('AUDIO-03'))).toBe(false);
+    expect((await verify(h)).ok).toBe(true);
+  });
+
+  it('CONTROL: one byte of a SEALED audio file changed after the seal is TAMPERED and named by its audio track', async () => {
+    const { recording, h } = paired({ cameras: FOUR_TRACKS, audio: AUDIO_TRACKS, mics: MICS });
+    sealedOf(await h.pipeline.run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
+    const record = manifestOf(recording).audioFiles?.find((file) => file.trackId === 'AUDIO-03')?.fragments[1];
+    const file = recording.audioFile('AUDIO-03');
+    const bytes = readFileSync(file);
+    bytes[record!.byteOffset + 40] = (bytes[record!.byteOffset + 40] ?? 0) ^ 0x01;
+    writeFileSync(file, bytes);
+    const result = await verify(h);
+    expect([result.ok, result.overall]).toEqual([false, 'TAMPERED']);
+    expect(result.fragments.map((fragment) => [fragment.trackId, fragment.seq])).toEqual([['AUDIO-03', 2]]);
+  });
+
+  it('AC-4.11: a stray file beside a 4+4 package is still PACKAGE_NOT_CLEAN (the channel recordings are not what trips it), and nothing is committed', async () => {
+    const { recording, h } = paired({ cameras: FOUR_TRACKS, audio: AUDIO_TRACKS, mics: MICS });
+    writeFileSync(recording.path('extra.bin'), 'left behind');
+    expect(failedOf(await h.pipeline.run({ sessionId: recording.sessionId, cause: 'STOPPED' }))).toMatchObject({ step: 'STORE_SEALED_PACKAGE', code: 'PACKAGE_NOT_CLEAN', detail: { undeclared: 1 } });
+    expect(h.engine.completeCalls).toBe(0);
+  });
+
+  it('a run stopped after BUILD_MANIFEST resumes to the SAME digest: the audio members are frozen with the build, the audio fragment records read again', async () => {
+    const { recording, h } = paired({ cameras: TRACKS, audio: ['AUDIO-01'], mics: ['MIC-01', 'MIC-02'] });
+    h.hook = stopAt('BUILD_MANIFEST', 'AFTER_CHECKPOINT');
+    await expect(h.again().run({ sessionId: recording.sessionId, cause: 'STOPPED' })).rejects.toBeInstanceOf(SealingStop);
+    h.hook = null;
+    const outcome = sealedOf(await h.again().run({ sessionId: recording.sessionId, cause: 'STOPPED' }));
+    expect(outcome.manifestSha256).toBe((rowOf(h, 'BUILD_MANIFEST')!.checkpoint as unknown as { manifestSha256: string }).manifestSha256);
+    expect(manifestOf(recording).audioTracksMissing?.map((record) => [record.trackId, record.reason])).toEqual([['AUDIO-02', 'NOT_OPENED']]);
+    expect((await verify(h)).ok).toBe(true);
+  });
+
+  it('LEGACY PIN: a session without an AUDIO-0N row seals the `/2` manifest of before - no D5 member, the CLOSE_TRACKS record and fragments.json of before - and the SAME digest whether or not channel recordings lie beside it; those (never sealed) go to the quarantine, never into the package (the P0-1 risk)', async () => {
+    const original = recordSession();
+    const twin = original.clone();
+    for (const channel of ['MIC-01', 'MIC-02']) writeFileSync(join(twin.packageDir, `${channel}.m4a`), Buffer.from(`a ${channel} recording of the two-role lane`));
+    const signer = throwAwaySigner();
+    const plain = harnessOf(original, { signer });
+    const beside = harnessOf(twin, { signer });
+    const a = sealedOf(await plain.pipeline.run({ sessionId: original.sessionId, cause: 'STOPPED' }));
+    const b = sealedOf(await beside.pipeline.run({ sessionId: twin.sessionId, cause: 'STOPPED' }));
+    expect(b.manifestSha256).toBe(a.manifestSha256);
+    expect(readFileSync(twin.path(PackageFile.MANIFEST)).equals(readFileSync(original.path(PackageFile.MANIFEST)))).toBe(true);
+    const manifest = manifestOf(twin);
+    expect(manifest.schema).toBe(MANIFEST_V2_SCHEMA_ID);
+    expect(Object.keys(manifest).filter((key) => key.startsWith('audioTracks') || key === 'audioFiles')).toEqual([]);
+    expect(manifest.audio.containsIn).toEqual([...TRACKS]);
+    expect(Object.keys(manifest.sealing.steps[0]?.checkpoint ?? {}).sort()).toEqual(['interrupted', 'tracks', 'truncatedTails']);
+    expect(Object.keys((rowOf(beside, 'CLOSE_TRACKS')?.checkpoint ?? {}) as object).sort()).toEqual(['interrupted', 'omitted', 'tracks']);
+    expect(Buffer.from(readFileSync(twin.path(PackageFile.FRAGMENTS_JSON))).equals(Buffer.from(serializeFragmentsJson(manifest.files)))).toBe(true);
+    expect(await listPackageFiles(twin.packageDir)).toEqual([...declaredPackageFiles({ transcript: false, tracks: TRACKS })].sort());
+    expect(['MIC-01.m4a', 'MIC-02.m4a'].map((name) => existsSync(join(quarantined(beside), name)))).toEqual([true, true]);
+    expect(beside.log.entries.filter((entry) => entry.code === 'SEALING_MIC_RECORDING_QUARANTINED')).toHaveLength(2);
+    expect(beside.engine.sealed[0]?.input.tracks.map((track) => track.trackId)).toEqual([...TRACKS]);
+    expect((await verify(beside)).ok).toBe(true);
   });
 });

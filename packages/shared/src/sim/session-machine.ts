@@ -15,10 +15,11 @@
  */
 import { AUDIO_TRACK_IDS, AuditEventKind, FINALIZATION_STEPS_V2, SessionState, VIDEO_TRACK_IDS, type FinalizationStep, type TimeSource, type TrackId } from '../domain'; // VIDEO_TRACK_IDS: D60 (2026-11-04); AUDIO_TRACK_IDS, TrackId: D61 (2026-11-04), the four-channel seal; D61: the unused `VideoTrackId` type import dropped (core-web tsc noUnusedLocals)
 import { DEFAULT_SESSION_ROOM, sessionCreateSchema } from '../api/session-schema';
+import { AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE } from '../api/sessions'; // Audit row W3T (D136): the refusal reads the contract sentence
 import { findOperatorById, requirePermission, roleHas } from './auth';
 import { captureMicLines, channelOfMicLine, micInputOfChannel } from './audio';
 import { MicChannel, PRIMARY_MIC_CHANNEL, SECOND_MIC_CHANNEL } from './vocabulary'; // D61 (2026-11-04): the transcription pair is channels 1 and 2; audit fix row 83: channels 3 and 4
-import { selectorInForce, selectorOfSession } from './selector-in-force';
+import { selectorInForce } from './selector-in-force';
 import {
   CAPTURE_SOURCE_NOT_ASSIGNED_REASON,
   CAPTURE_START_REQUIRED_SLOTS,
@@ -542,8 +543,63 @@ function lastCheckUnreachableSource(state: SimState, slot: CaptureSelectorSlot, 
     value: 'UNREACHABLE',
     reason: `${source.deviceId} was not reachable at the last check`,
     reasonCode: null,
-    params: { deviceId: source.deviceId, deviceKind, rule: deviceKind === 'CAMERA' ? CaptureStartRule.ONE_CAMERA : CaptureStartRule.NO_STANDBY },
+    // Audit row 150 (D104, RD-128b-1): `slot` and `reading` say this is the LAST-CHECK reading of that slot, so a client
+    // can word channel 1 (Pair 1, the transcribed audio) with a sentence of its own; `rule` is kept for older clients.
+    params: { deviceId: source.deviceId, deviceKind, rule: deviceKind === 'CAMERA' ? CaptureStartRule.ONE_CAMERA : CaptureStartRule.NO_STANDBY, slot, reading: LAST_CHECK_READING },
   };
+}
+
+/** `params.reading` of a pre-check item read from the Core's LAST reach reading (`lastCheckUnreachableSource`; audit row 150, D104). */
+export const LAST_CHECK_READING = 'LAST_CHECK';
+
+/** `value` of a live-view item whose source the Core has not checked since it started (audit row 150; D113, O-138-1 (c)). */
+export const SOURCE_NOT_CHECKED_PRECHECK_VALUE = 'NOT_CHECKED';
+/** `params.rule` of that item. */
+export const SOURCE_NOT_CHECKED_PRECHECK_RULE = 'SOURCE_NOT_CHECKED';
+
+/** The selector slot a lens or microphone check reads (the same mapping as `evaluatePrecheck`). */
+const SLOT_OF_CHECK: Partial<Record<PrecheckCheckId, CaptureSelectorSlot>> = {
+  LENS_1: 'VIDEO-01',
+  LENS_2: 'VIDEO-02',
+  LENS_3: 'VIDEO-03',
+  LENS_4: 'VIDEO-04',
+  MIC_PRIMARY: PRIMARY_MIC_CHANNEL,
+  MIC_STANDBY: SECOND_MIC_CHANNEL,
+  MIC_3: MicChannel.MIC_03,
+  MIC_4: MicChannel.MIC_04,
+};
+
+/**
+ * THE LIVE READINESS OF ONE CHECK, for the step-1 view (audit row 150; decision D113, O-138-1 option (c); test/138 §6).
+ *
+ * Reach is held in memory (D29 Q1): after a restart, until a preview (row 127) or a pre-check run (row 128b) states a
+ * reading, an assigned and online source is NOT_CHECKED and `evaluatePrecheck` says PASS READY for it - a camera on a
+ * dead LAN read PASS on the step-1 view. On a Core in its OWN capture this reader turns exactly that PASS into
+ * "Not checked": `{ status: 'WARN', value: 'NOT_CHECKED', reasonCode: null, params { rule: 'SOURCE_NOT_CHECKED',
+ * deviceId, deviceKind, slot } }` (`isSourceNotCheckedEvaluation`). Every other answer is `evaluatePrecheck`'s own.
+ *
+ * LIVE VIEW ONLY. The pre-check RUN keeps `evaluatePrecheck` (it re-states reach before it judges, row 128b), so the
+ * gate, the stored items, the acknowledgement and the start rule are unchanged: a source never checked can neither
+ * block nor be counted as a warning. In Simulated mode and in the in-app simulator the answer is `evaluatePrecheck`'s.
+ */
+export function evaluateLiveReadiness(state: SimState, id: PrecheckCheckId): PrecheckEvaluation {
+  const evaluation = evaluatePrecheck(state, id);
+  const slot = SLOT_OF_CHECK[id];
+  if (evaluation.status !== 'PASS' || slot === undefined || !isOwnCaptureCoreState(state)) return evaluation;
+  const source = slotSourceOf(selectorInForce(state), state.captureDevices.devices, slot);
+  if (source.state !== SlotSourceState.NOT_CHECKED || source.deviceId === null) return evaluation;
+  return {
+    status: 'WARN',
+    value: SOURCE_NOT_CHECKED_PRECHECK_VALUE,
+    reason: `${source.deviceId} has not been checked since the Core started`,
+    reasonCode: null,
+    params: { rule: SOURCE_NOT_CHECKED_PRECHECK_RULE, deviceId: source.deviceId, deviceKind: slot.startsWith('VIDEO-') ? 'CAMERA' : 'MIC', slot },
+  };
+}
+
+/** True for the "Not checked" answer of `evaluateLiveReadiness` (never an item of a pre-check run). */
+export function isSourceNotCheckedEvaluation(item: Pick<PrecheckEvaluation, 'value' | 'params'>): boolean {
+  return item.value === SOURCE_NOT_CHECKED_PRECHECK_VALUE && item.params['rule'] === SOURCE_NOT_CHECKED_PRECHECK_RULE;
 }
 
 /**
@@ -839,7 +895,7 @@ export function captureConfigSnapshot(state: SimState): ActiveSession['captureCo
  * The active/standby pair at recording start (SH-05/SH-06; OD-09). The PRIMARY input feeds
  * `AUDIO-01`; the second channel stands beside it (D61 of 2026-11-04: the hot-standby premise is
  * superseded — ALL FOUR channels record at once; this pair is the TRANSCRIPTION pair, channels 1
- * and 2, the one op 81 trades). `intervalFromMs` is the media-pts origin of the first interval
+ * and 2, the one op 81 traded before D5 - audit row 150 retired that switch). `intervalFromMs` is the media-pts origin of the first interval
  * (0 at the start of the recording — never an operator wall clock, S2 §6).
  *
  * BY CHANNEL, WITH NO STAND-IN (task 4 row 163; decisions C18 (2), AD-04 (2); names register 5.3;
@@ -898,8 +954,8 @@ export function startRecordingTransition(state: SimState, now: EpochMs, capture:
   // Schema v2 (register SH-06; OD-10): the selector is copied into the session the instant
   // recording starts, so a later edit never changes a running session. `audioSource` records which
   // mic input feeds `AUDIO-01` (channel 1) and which stands on channel 2 (D61: the transcription
-  // pair; all four channels record); op 81 moves the
-  // active one through `switchAudioSourceTransition`. `null`: the selector names no pair (a channel
+  // pair; all four channels record). Audit row 150 (D28 DQ-2): op 81 no longer moves the active one - each
+  // track's audio is fixed by its camera-microphone pair. `null`: the selector names no pair (a channel
   // without a line; Simulated mode only) and the session states no audio source.
   const audioSource = audioSourceAtStart(state, session.id);
   // The input whose level is inside `AUDIO-01` from the first sample on is the session's primary.
@@ -989,13 +1045,9 @@ export function stopRecordingTransition(state: SimState, now: EpochMs, reason: s
 }
 
 /**
- * Switches the active mic input inside `AUDIO-01` while recording (schema v2; register SH-06/SH-08;
- * op 81; OD-09 hot standby). The Core never switches on its own — this transition is driven by the
- * operator's toggle (the session holder or a SUPERVISOR), never by a silence warning (OD-11). It
- * moves `audio.activeInputId`, records the new active/standby pair with the media-pts boundary of
- * the interval it opens, and writes one timeline `AUDIO_SWITCH` plus one `AUDIO_SOURCE_SWITCHED`
- * audit row carrying the sending device id (E-30). Idempotent when the input is already active; a
- * recording session is required.
+ * The paired device of a simulator that runs inside a tablet or phone app (closing pass F-X).
+ * Audit row 150: operation 81, its first user, is retired (`switchAudioSourceTransition` below); the
+ * rows of the other session actions name the device through `sendingDeviceOf`.
  *
  * `sendingDeviceId` (closing pass F-X): the paired device the command came from, where the caller
  * knows one - a simulator that runs inside a tablet or phone app passes `SIM_CONSOLE_DEVICE_ID`.
@@ -1038,87 +1090,22 @@ function precheckSentFrom(deviceId: string | null): { sendingDeviceId?: string }
   return deviceId === null ? {} : { sendingDeviceId: deviceId };
 }
 
-export function switchAudioSourceTransition(state: SimState, now: EpochMs, inputId: CaptureMicInputId, sendingDeviceId: string | null = null): SimState {
-  const actorId = requireSessionOperator(state, 'switchAudioSource');
-  const session = requireSession(state, 'switchAudioSource', [SessionState.RECORDING]);
-  // The inputs of a session are those of its selector snapshot (OD-10); the selector when it has none.
-  const mic = selectorOfSession(session, state.captureConfig).mics.find((entry) => entry.inputId === inputId);
-  if (!mic) throw new SimNotFoundError('captureMic', inputId);
-  // Media-pts start of the interval this switch opens (never the operator wall clock, S2 §6).
-  const applied = applyAudioSourceSwitch(state, now, session, inputId, Math.max(0, now - (session.startedAt ?? now)));
-  if (applied.switched === null) return state;
-  const { fromInputId, toInputId, fromMs, toMs } = applied.switched;
-  return record(applied.state, now, {
-    audit: {
-      type: 'AUDIO_SOURCE_SWITCHED',
-      message: `Audio source switched to ${inputId}`,
-      actorId,
-      sessionId: session.id,
-      ...(sendingDeviceId === null ? {} : { deviceId: sendingDeviceId }),
-      // Contract C3 §5.2 (review R74-05): the keys of the row, with the MEDIA times of the interval the
-      // switch closed. `sendingDeviceId` only when a paired device sent the command (E-30).
-      details: { fromInput: fromInputId, toInput: toInputId, fromMs, toMs, ...(sendingDeviceId === null ? {} : { sendingDeviceId }) },
-    },
-    // No operational event row: `SimEventType` is the book's closed 46-value set and does not name a
-    // mic switch; the switch is carried by the `AUDIO_SWITCH` timeline item and this audit row.
-  });
-}
-
-/** What a switch moved: the two inputs and the interval it closed, in media ms. */
-export interface AudioSourceSwitchFacts {
-  readonly fromInputId: CaptureMicInputId;
-  readonly toInputId: CaptureMicInputId;
-  /** Start of the interval the switch closed. */
-  readonly fromMs: number;
-  /** End of that interval = start of the one it opens. */
-  readonly toMs: number;
-}
-
 /**
- * THE STATE OF A SWITCH, for both of its callers (review R74-10: one rule, not two copies): the
- * simulator's own operation 81 above, with the media time of its clock, and the Core's engine in
- * real capture, with the media time the capture worker acknowledged. Moves `audio.activeInputId`,
- * records the new active / standby pair with the media time of the boundary, and adds the timeline
- * item `AUDIO_SWITCH` whose `params` hold the boundary (`atMs`) - the interval list of operation 82
- * in simulated capture is read from those items. Writes no audit row.
- * `switched: null` and the same state when `toInputId` is active already. The boundary never lies
- * before the start of the interval it closes.
+ * OPERATION 81 IS RETIRED IN BEHAVIOUR (audit row 150; D5; D28 DQ-2; register N-29, N-36; masterplan/01_specs_d5.md
+ * G-3, RK-6). The audio of each track is fixed by its camera-microphone pair (`CAPTURE_PAIRS`: Pair N is `VIDEO-0N`
+ * with channel `MIC-0N`, Pair 1 transcribed), so there is no source to switch. After the access check (signed in,
+ * SESSION_START: the same 401 / 403 the route answers first) the action is REFUSED for every session, in every state,
+ * for every input: `SimErrorCode.AUDIO_SOURCE_FIXED_BY_PAIRING`, which the Core answers as
+ * `409 AUDIO_SOURCE_FIXED_BY_PAIRING` with the contract's sentence (`AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE`). Nothing is
+ * written: no state, no timeline `AUDIO_SWITCH`, no `AUDIO_SOURCE_SWITCHED` audit row. The Core refuses the same way
+ * at the top of its route (row 149). The signature is kept so the hosted action and older callers still compile.
+ *
+ * Stored `AUDIO_SOURCE_SWITCHED` rows and `AUDIO_SWITCH` items of sessions recorded before D5 stay readable: the
+ * interval reader of operation 82 is unchanged.
  */
-export function applyAudioSourceSwitch(state: SimState, now: EpochMs, session: ActiveSession, toInputId: CaptureMicInputId, atMediaMs: number): { readonly state: SimState; readonly switched: AudioSourceSwitchFacts | null } {
-  const source = session.audioSource ?? null;
-  const lines = selectorOfSession(session, state.captureConfig).mics;
-  // THE INPUT THE SWITCH LEAVES (task 4 row 163; seam readers 3 and 4 of row 28). The session's own
-  // pair says which input is active. Where the session states none (it was started in Simulated
-  // mode on a selector without a complete pair), the meters' active input stands - but only while
-  // it is a line of the session: an input the session does not hold is nothing to switch from.
-  // `held` is `null` when the selector holds no PRIMARY (the meters slice, task 4 row 149).
-  const held = state.audio.activeInputId;
-  const fromInputId: CaptureMicInputId | null = source !== null ? source.activeInputId : held !== null && lines.some((entry) => entry.inputId === held) ? held : null;
-  if (fromInputId === toInputId) return { state, switched: null };
-  // NO ACTIVE INPUT, NO SWITCH. A switch moves the source FROM one input TO another: its interval,
-  // its audit row (`fromInput`) and the new standby all name the input it leaves. No input is
-  // invented for the three. Refused as a refusal of the state; nothing is written.
-  if (fromInputId === null) {
-    throw new SimTransitionError(session.state, 'switchAudioSource', 'the session states no active microphone input', SimErrorCode.ILLEGAL_STATE);
-  }
-  const fromMs = source?.intervalFromMs ?? 0;
-  const toMs = Math.max(fromMs, Math.round(atMediaMs));
-  const switched: ActiveSession = {
-    ...session,
-    audioSource: { sessionId: session.id, activeInputId: toInputId, standbyInputId: fromInputId, switchedAt: now, intervalFromMs: toMs },
-  };
-  const next = addTimelineItem(
-    { ...state, session: switched, audio: { inputs: state.audio.inputs, activeInputId: toInputId } },
-    {
-      at: now,
-      kind: 'AUDIO_SWITCH',
-      label: `Active microphone switched to ${toInputId}`,
-      detail: null,
-      channel: channelOfMicLine(lines, toInputId) ?? 'AUDIO-01',
-      params: { from: fromInputId, to: toInputId, deviceId: lines.find((entry) => entry.inputId === toInputId)?.deviceId ?? null, atMs: toMs },
-    },
-  );
-  return { state: next, switched: { fromInputId, toInputId, fromMs, toMs } };
+export function switchAudioSourceTransition(state: SimState, _now: EpochMs, _inputId: CaptureMicInputId, _sendingDeviceId: string | null = null): SimState {
+  requireSessionOperator(state, 'switchAudioSource');
+  throw new SimTransitionError(state.session?.state ?? null, 'switchAudioSource', 'the audio of each track is fixed by its camera-microphone pair', SimErrorCode.AUDIO_SOURCE_FIXED_BY_PAIRING, null, AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE);
 }
 
 /** CREATE, PRECHECK or ARMED → no session. Audit SESSION_CANCELLED. */

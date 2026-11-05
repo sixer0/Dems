@@ -4,10 +4,11 @@
 // of six pairs were compared and the sixth, the switch, had drifted. Now:
 //   - the five transitions ARE the shared ones (the engine file re-exports them): held by identity,
 //     and still run on every kind of input so that a copy that comes back is seen;
-//   - the SIXTH pair is compared: the engine's switch is the simulator's own switch without its
-//     audit row, given a media time (one shared function, `applyAudioSourceSwitch`);
+//   - the SIXTH pair, the switch (op 81), is retired on both sides: the shared action refuses it
+//     (row 150) and the engine's switch door is removed (row W3T, D136);
 //   - D84 R-3 in the failed start, and the rehydrate of a failed start in simulated capture.
 import { describe, expect, it } from 'vitest';
+import { AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE } from '@dems/shared/api';
 import {
   captureConnectingTransition as sharedConnecting,
   captureDurableOfSessionTransition as sharedDurable,
@@ -18,6 +19,7 @@ import {
   interruptedCaptureTransition as sharedInterrupted,
   raiseCaptureWarningTransition,
   switchAudioSourceTransition as sharedSwitch,
+  SimErrorCode,
   CAPTURE_FAULT_KINDS as SHARED_KINDS,
   FAILED_START_REASON_UNKNOWN as SHARED_UNKNOWN,
   type CaptureWarningInput,
@@ -27,7 +29,6 @@ import {
 import {
   CAPTURE_FAULT_KINDS,
   FAILED_START_REASON_UNKNOWN,
-  audioSourceSwitchTransition,
   captureConnectingTransition,
   captureDurableOfSessionTransition,
   clearCaptureFaultsTransition,
@@ -180,43 +181,18 @@ describe('the capture transitions of the engine and of the shared simulator are 
     expect(own.audit.rows.slice((raisedFirst as SimState).audit.rows.length).map((row) => row.type)).toEqual([]);
   });
 
-  // Review R74-10: THE SIXTH PAIR. The engine's switch is the simulator's own switch without its audit
-  // row, given a media time. With the media time of the simulator's clock the two states are equal.
-  it.each(['MIC-02', 'MIC-01', 'MIC-09'])('switch to %s: the engine state is the shared state without the AUDIO_SOURCE_SWITCHED row', (inputId) => {
+  // Review R74-10: THE SIXTH PAIR. Audit row 150 (D28 DQ-2; N-29, N-36): the simulator's own operation 81 is retired - it
+  // REFUSES every input in every state with AUDIO_SOURCE_FIXED_BY_PAIRING and writes nothing. Audit row W3T (D136): the
+  // engine's door (`audioSourceSwitchTransition` over the shared `applyAudioSourceSwitch`) lost its last caller with row
+  // 149 and is removed, so there is no engine switch left to hold equal.
+  it.each(['MIC-02', 'MIC-01', 'MIC-09'])('switch to %s: the shared op 81 refuses (pairing code, contract sentence, nothing written)', (inputId) => {
     const all = states();
     for (const name of ['armed', 'recording', 'durable'] as const) {
       const state = all[name] as SimState;
-      const session = state.session;
-      if (session === null) throw new Error('no session');
-      const atMediaMs = Math.max(0, NOW - (session.startedAt ?? NOW));
-      const engine = audioSourceSwitchTransition(state, NOW, { sessionId: session.id, toInputId: inputId, atMediaMs });
-      let shared: SimState | null = null;
-      try {
-        shared = sharedSwitch(state, NOW, inputId as Parameters<typeof sharedSwitch>[2]);
-      } catch {
-        // The simulator's operation REFUSES what the engine's door ignores (not RECORDING, no such input).
-      }
-      if (shared === null || shared === state) {
-        expect(engine.switched, `${name} ${inputId}`).toBeNull();
-        expect(engine.state, `${name} ${inputId}`).toBe(state);
-        continue;
-      }
-      const row = shared.audit.rows.at(-1);
-      expect(row?.type).toBe('AUDIO_SOURCE_SWITCHED');
-      // The row of the simulator holds exactly what the engine hands its caller for the Core's row (C3 §5.2).
-      expect(row?.details).toEqual({ fromInput: engine.switched?.fromInputId, toInput: engine.switched?.toInputId, fromMs: engine.switched?.fromMs, toMs: engine.switched?.toMs });
-      expect({ ...shared, audit: state.audit, meta: null }).toEqual({ ...engine.state, meta: null });
-      expect(engine.state.session?.timeline.at(-1)).toEqual(shared.session?.timeline.at(-1));
-      expect(engine.state.session?.audioSource).toMatchObject({ activeInputId: inputId, intervalFromMs: atMediaMs });
+      expect(() => sharedSwitch(state, NOW, inputId as Parameters<typeof sharedSwitch>[2]), `${name} ${inputId}`).toThrow(
+        expect.objectContaining({ code: SimErrorCode.AUDIO_SOURCE_FIXED_BY_PAIRING, event: 'switchAudioSource', message: AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE }),
+      );
     }
-    // A second switch back: both number from the boundary the first one set.
-    const recording = all['recording'] as SimState;
-    const id = SESSION(recording);
-    const first = audioSourceSwitchTransition(recording, NOW, { sessionId: id, toInputId: 'MIC-02', atMediaMs: 5_000 });
-    const second = audioSourceSwitchTransition(first.state, NOW + 1, { sessionId: id, toInputId: 'MIC-01', atMediaMs: 9_000 });
-    expect(second.switched).toEqual({ fromInputId: 'MIC-02', toInputId: 'MIC-01', fromMs: 5_000, toMs: 9_000 });
-    // CONTROL: the comparison can fail - another media time is another state.
-    expect(audioSourceSwitchTransition(recording, NOW, { sessionId: id, toInputId: 'MIC-02', atMediaMs: 5_001 }).state).not.toEqual(first.state);
   });
   // Review R74-14 (1): a Core in SIMULATED capture stores no `captureDurable`. After a restart a failed
   // start that is still open read as durable, and both clients presented a recovery of evidence.

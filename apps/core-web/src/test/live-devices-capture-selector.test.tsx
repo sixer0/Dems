@@ -36,6 +36,8 @@ configure({ asyncUtilTimeout: 8_000 })
 vi.setConfig({ testTimeout: 25_000 })
 
 const S = en.devices.selector
+/** Audit row 156 (U-13; N-40): the selector names every microphone slot by its pair, "Mic N (Camera N)". */
+const PAIR_MIC = (n: number) => en.devices.pairs.micOfCamera.replaceAll('{{n}}', String(n))
 const sessionOf = (operatorId: string): Pick<AuthSessionInfo, 'operator' | 'permissions'> => {
   const operator = OPERATORS.find((entry) => entry.id === operatorId)!
   return {
@@ -131,7 +133,7 @@ describe('the read (WB-11, E-17; ux §2.5, §2.7)', () => {
     expect(requests('getCaptureDevices')).toHaveLength(1)
     expect(requests('getCaptureConfig')[0]).toMatchObject({ method: 'GET', path: '/api/v1/capture/config' })
     expect(within(panel).getByTestId('selector-camera-VIDEO-01')).toHaveAttribute('data-device', 'CAM-01')
-    expect(within(panel).getByTestId('selector-role-MIC-01')).toHaveTextContent(S.role.PRIMARY)
+    expect(within(panel).getByTestId('selector-role-MIC-01')).toHaveTextContent(PAIR_MIC(1))
     expect(within(panel).queryByTestId('selector-checking')).not.toBeInTheDocument()
     expect(within(panel).getByTestId('selector-primary-MIC-02')).toBeEnabled()
     expect(getMissingI18nKeys()).toEqual([])
@@ -186,7 +188,7 @@ describe('the read (WB-11, E-17; ux §2.5, §2.7)', () => {
     await act(async () => {
       page.sockets.at(-1)!.delta([{ op: 'replace', slice: 'captureConfig', value: next }] as FakeCommandOptions['ops'])
     })
-    await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(S.role.PRIMARY))
+    await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(PAIR_MIC(1)))
     expect(within(panel).getByTestId('selector-locked')).toHaveTextContent(S.locked)
     expect(within(panel).getByTestId('selector-primary-MIC-01')).toBeDisabled()
     expect(within(panel).getByTestId('selector-reason-MIC-01')).toHaveAttribute('data-block', 'LOCKED')
@@ -248,7 +250,7 @@ describe('an edit (C3 §2.3 ops 79, 80; ux §2.2 steps 4-5; PE-127-07)', () => {
     await waitFor(() => expect(toastTexts().join(' ')).toContain(S.saved))
   })
 
-  it('Make transcribed channel 1: one POST of operation 81 to the input\'s path, without a body (D61)', async () => {
+  it('Make Mic of Camera 1 (transcribed): one POST of operation 80 to the input\'s path, without a body (D61; D30 K-4)', async () => {
     const { bed, panel } = await liveSelector()
     await within(panel).findByTestId('selector-ready')
     const served = clone(bed.core.served.captureConfig)
@@ -260,7 +262,7 @@ describe('an edit (C3 §2.3 ops 79, 80; ux §2.2 steps 4-5; PE-127-07)', () => {
       answer: { status: 200, body: next },
     })
     fireEvent.click(within(panel).getByTestId('selector-primary-MIC-02'))
-    await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(S.role.PRIMARY))
+    await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(PAIR_MIC(1)))
     expect(requests('setPrimaryMic')).toHaveLength(1)
     expect(requests('setPrimaryMic')[0]).toMatchObject({ method: 'POST', path: '/api/v1/capture/mics/MIC-02/primary', params: { id: 'MIC-02' } })
     expect(requests('setPrimaryMic')[0]!.body ?? null).toBeNull()
@@ -274,7 +276,7 @@ describe('refusals (ux §2.2 step 6, §2.4; C3 §4)', () => {
     bed.fake.answer('setPrimaryMic', bed.fake.example('setPrimaryMic', 409, 'locked'))
     fireEvent.click(within(panel).getByTestId('selector-primary-MIC-02'))
     expect(await within(panel).findByTestId('selector-message-MIC-02')).toHaveTextContent(S.locked)
-    expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(S.role.STANDBY)
+    expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(PAIR_MIC(2))
     expect(toastTexts()).toEqual([])
     await waitFor(() => expect(requests('getCaptureConfig')).toHaveLength(2))
     expect(requests('setPrimaryMic')).toHaveLength(1)

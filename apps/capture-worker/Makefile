@@ -17,8 +17,6 @@
 #                                                            fails (row 59: the file must be back at its last good length)
 #                     build/capture-worker-writefault-notrunc the same without the truncation: the negative control
 #                                                            (the torn tail stays; the tail validation must flag it)
-#                     build/capture-worker-intervalskew      the AUDIO_SOURCE_INTERVAL record of a switch names a sample one
-#                                                            input chunk late (row 71: the mutation the interval check must catch)
 #                     build/capture-worker-nofloor           the clock floor is judged and logged but NOT acted on (fix pass F-M3,
 #                                                            review R63-12: the negative control of the floor's wiring in the ingest)
 #                     build/capture-worker-nobound           no fragment size bound: neither the cut nor the writer's refusal
@@ -228,7 +226,6 @@ proof: check
 	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DMIC_MAX_PPM=0 -o $(BUILD)/capture-worker-nocomp $(SRC) $(LDLIBS)
 	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_WRITE_FAULT=3 -o $(BUILD)/capture-worker-writefault $(SRC) $(LDLIBS)
 	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_WRITE_FAULT=3 -DDEMS_PROOF_KEEP_TORN_TAIL -o $(BUILD)/capture-worker-writefault-notrunc $(SRC) $(LDLIBS)
-	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_INTERVAL_SKEW=480 -o $(BUILD)/capture-worker-intervalskew $(SRC) $(LDLIBS)
 	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_NO_CLOCK_FLOOR -o $(BUILD)/capture-worker-nofloor $(SRC) $(LDLIBS)
 	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_NO_FRAGMENT_BOUND -o $(BUILD)/capture-worker-nobound $(SRC) $(LDLIBS)
 	$(CC) $(CFLAGS) -DDEMS_PROOF_MUX_EXTRA='""' -DDEMS_PROOF_ANNOUNCE_UNSEEN -o $(BUILD)/capture-worker-noannounce $(SRC) $(LDLIBS)

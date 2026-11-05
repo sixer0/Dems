@@ -29,7 +29,11 @@
  *
  * THE RESTART RULE (blueprint row 58; decision D67, option C per OD-08; spec §B.2). A worker is
  * restarted inside a session ONLY while the session holds no durable fragment. The first record
- * of a fragment (`FIRST_DURABLE_FRAGMENT`, `FRAGMENT_CHECKPOINT`) sets `durable`; from then on a worker that goes down is not replaced: the session
+ * of a fragment (`FIRST_DURABLE_FRAGMENT`, `FRAGMENT_CHECKPOINT`) sets `held` - of a camera file or, row 148, of a
+ * channel file, which is never written again either (D61). Row D2C (D150 (2), F-C1D-2): `durable` - what `status()`
+ * says and what the reason of a crash is judged with - is set by a CAMERA file's fragment only: the sealer makes no
+ * package of audio alone (row 153), so a session whose only files are channel files is no durable recording (its end
+ * is the failed start of D72(k) / D84). From the first `held` record on, a worker that goes down is not replaced: the session
  * goes to `FAULTED` with one `CAPTURE_FAULT` and stays open, so that the durable prefix can be
  * sealed as interrupted. No restarted worker ever writes into an existing evidence file. The
  * record is a hint and can be missing (a worker killed between its write and its frame), so the
@@ -100,10 +104,10 @@
  * the worker's. It is `status().cameraEnds` while the session is open and a member of the outcome of
  * its stop, for a clean stop as well: the unit that seals marks the track from it.
  *
- * THE SWITCH (protocol 4). `switchAudioSource` resolves with the `AUDIO_SOURCE_INTERVAL` record
- * the worker wrote for that command (it writes the record BEFORE the `ACK`), or with null when the
- * role already fed the track: the caller gets the media time of the boundary from the capture
- * side, never from a wall clock.
+ * NO SWITCH (protocol 6, N-31; audit row 149, D28 DQ-2). The operator's audio-source switch of
+ * operation 81 is retired with its command `SWITCH_AUDIO_SOURCE`: the audio of each track is fixed by
+ * its camera-microphone pair. The supervisor sends `START` and `STOP` only, and the one audio-source
+ * interval of a worker is the interval of its start.
  *
  * RECORDS (spec §B.2 R-1 to R-3). A `RECORD` is handled the moment its line arrives, beside
  * `ACK`: its sequence number must be exactly one more than the last of the session (a gap or a
@@ -172,8 +176,13 @@
  * WHAT A FRAME NAMES BELONGS TO THE SESSION (review R63-05, carried question 8). The schema holds
  * every ID to a closed form; the supervisor holds what a schema cannot know: every device a
  * `TELEMETRY` frame names is a microphone (levels) or a camera (ingest, fragments, clocks) of the
- * plan, and an `OPERATOR_SWITCH` interval names a `SWITCH_AUDIO_SOURCE` that still awaits its
- * `ACK`. Anything else ends the worker (`PROTOCOL_VIOLATION`) and is handed to nobody.
+ * plan, and an interval of a switch (a correlation ID) names a command this worker still awaits the
+ * `ACK` of - since protocol 6 none can (no switch is commanded), so every such interval is refused
+ * `SWITCH_NOT_COMMANDED`. Anything else ends the worker (`PROTOCOL_VIOLATION`) and is handed to nobody.
+ * Row 148 (D5, protocol 6 N-32): the device of a RECORD is read by the protocol's own kind lists -
+ * a camera of the plan for `CAMERA_RECORD_KINDS`, a microphone of the plan for `MIC_RECORD_KINDS`,
+ * and either for `CAMERA_OR_MIC_RECORD_KINDS` (`FRAGMENT_CHECKPOINT`: a camera file or a channel
+ * file). The `fragments` of a telemetry frame stay per CAMERA file (the protocol's own words).
  *
  * COMMANDS. A command is written to the worker's input at once (the channel resolves when the
  * pipe took it; the supervisor does not wait for that before the next command). The bound is the
@@ -185,7 +194,7 @@ import {
   CAPTURE_INTERNAL_ACTION,
   CAPTURE_IPC_DEFAULTS,
   CAPTURE_PROTOCOL_VERSION,
-  CaptureMicRole,
+  CAMERA_OR_MIC_RECORD_KINDS,
   CapturePlanSchema,
   CaptureRecordKind,
   CaptureStopReason,
@@ -195,12 +204,12 @@ import {
   FINAL_CRASH_CODES,
   FINAL_START_REFUSALS,
   LIBAVFORMAT_VERSION_MISMATCH,
+  MIC_RECORD_KINDS,
   ONCE_PER_CAMERA_RECORD_KINDS,
   SupervisorMessageType,
   WorkerMessageType,
   backoffDelayMs,
   type AckMessage,
-  type AudioSourceIntervalRecord,
   type CaptureIpcLimits,
   type CapturePlan,
   type RecordMessage,
@@ -279,7 +288,9 @@ interface Session {
   attempt: number;
   restarts: number;
   commandSeq: number;
-  /** True once the session may hold a fragment on the disk: no worker is started for it again. */
+  /** True once a file of the plan (a camera file or, row 148, a channel file) may hold a fragment on the disk: no worker is started for it again. */
+  held: boolean;
+  /** Row D2C (D150 (2)): true once a CAMERA file of the plan may hold a fragment - the session is durable (`status().durable`). A channel file alone never sets it. */
   durable: boolean;
   /** The sequence number of the last record of the session's worker; 0 before the first. */
   recordSeq: number;
@@ -287,10 +298,8 @@ interface Session {
   readonly subjects: ReadonlySet<string>;
   /** The cameras of its plan: what a fragment record may be about. */
   readonly cameras: ReadonlySet<string>;
-  /** The microphones of its plan, by device ID: what an audio-source interval may be about. */
+  /** The microphones of its plan, by device ID: what a microphone record may be about, and (row 148, protocol 6) a checkpoint of a channel file. */
   readonly mics: ReadonlySet<string>;
-  /** The interval record of a switch that is not acknowledged yet, by the command's correlation ID (protocol 4: the record precedes its `ACK`). */
-  readonly switchRecords: Map<string, AudioSourceIntervalRecord>;
   startWaiter: { resolve(): void; reject(error: CaptureSupervisorError): void } | null;
   stopping: CaptureStopReason | null;
   readonly stopWaiters: Array<(outcome: CaptureStopOutcome) => void>;
@@ -300,7 +309,7 @@ interface Session {
   lastDown: WorkerDown | null;
   /** How the stop of this session ended, once it is known. */
   stopOutcome: CaptureStopOutcome | null;
-  /** The last fragment of each camera file the worker reported durable (`FRAGMENT_CHECKPOINT`), by camera. */
+  /** The last fragment of each file the worker reported durable (`FRAGMENT_CHECKPOINT`), by device: a camera's (what its end is dated with) and, row 148, a channel file's (read by nobody yet). */
   readonly lastFragment: Map<string, { readonly index: number; readonly mediaEndMs: number }>;
   /** The cameras the worker gave up while the session went on, by camera, in the order it said so. */
   readonly cameraEnds: Map<string, CaptureCameraEnd>;
@@ -310,15 +319,6 @@ interface Session {
   readonly ingestElements: Set<string>;
   /** Row 191: the microphones of the plan the session was started with. A later worker's plan holds those of them that are open for it. */
   readonly micsOfStart: CapturePlan['mics'];
-  /**
-   * D61 (2026-11-04): the microphone the OPERATOR chose on the legacy two-role lane, as long as the
-   * session holds that choice. It no longer travels on the plan: `activeMic` is the TRANSCRIBED CHANNEL
-   * of `AUDIO-01` and the protocol validates `MIC-01` (the failover concept died with the decision), so
-   * a later worker of the session is told the choice by a `SWITCH_AUDIO_SOURCE` of its own after its
-   * `START` - which keeps row 179's rule ("a worker that restarts later starts with the source the
-   * operator chose") without putting a word on the wire that the protocol refuses.
-   */
-  micRole: CaptureMicRole;
 }
 
 interface DownCause {
@@ -359,6 +359,26 @@ export type IngestRenewalFailure = (typeof IngestRenewalFailure)[keyof typeof In
  * no plan of the protocol), of the list above.
  */
 export const CAPTURE_SOURCES_NOT_READY = 'CAPTURE_SOURCES_NOT_READY';
+
+/**
+ * Row 148 (D5 pairs, D30 K-3; protocol 6): the camera rows of a LATER worker's plan, restated for the channels that
+ * opened again. A camera whose paired channel was in the plan of the start but is not in `micsNow` states
+ * `NOT_OPENED` (its file gets a silent audio track; the recording is not refused); a channel that is there again
+ * clears the statement (`micMissing` is null exactly when the plan holds the row); a camera whose channel was not
+ * in the plan of the start keeps the word it was given then. Pure. The supervisor's renewal and the session's facts
+ * read the same rule, so the seal states what the later worker wrote.
+ */
+export function restatePairedMics(
+  cameras: readonly CapturePlan['cameras'][number][],
+  micsOfStart: readonly Pick<CapturePlan['mics'][number], 'channel'>[],
+  micsNow: readonly Pick<CapturePlan['mics'][number], 'channel'>[],
+): CapturePlan['cameras'][number][] {
+  return cameras.map((camera) => {
+    const heldAtStart = micsOfStart.some((mic) => mic.channel === camera.micChannel);
+    const there = micsNow.some((mic) => mic.channel === camera.micChannel);
+    return { ...camera, micMissing: there ? null : heldAtStart ? 'NOT_OPENED' : camera.micMissing };
+  });
+}
 /** The last path element of an ingest address: what a pusher must announce beyond what anyone can know. Read to compare, never to rebuild. */
 const ingestElementOf = (address: string): string => address.slice(address.lastIndexOf('/') + 1);
 const isIngestTrack = (trackId: string): trackId is CaptureIngestTrackId => Object.hasOwn(CAPTURE_INGEST_PORT, trackId);
@@ -368,6 +388,11 @@ const VERSION_UNKNOWN_DETAIL = 'VERSION_UNKNOWN';
 const SUPERVISOR_REFUSALS: ReadonlySet<string> = new Set(Object.values(SupervisorRefusal));
 const DOWN_REASONS: ReadonlySet<string> = new Set(Object.values(CaptureDownReason));
 const CAMERA_ENDS: ReadonlySet<string> = new Set(CAMERA_END_REASONS);
+
+/** Row D2C (D150 (2), F-C1D-2): a durable-fragment record of a CAMERA of the plan (a channel file's checkpoint names a microphone). */
+function cameraFileRecord(current: Pick<Session, 'cameras'>, record: RecordMessage['record']): boolean {
+  return 'deviceId' in record && current.cameras.has(record.deviceId);
+}
 
 /**
  * WHY a worker is down, as ONE member of the closed enumeration (see the header). Pure: the code,
@@ -753,8 +778,8 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
     lastCrash = crash;
     current.lastDown = crash;
     const base = { sessionId: current.id, correlationId: current.correlationId };
-    // Option C (D67): a session that may hold a fragment on the disk gets no further worker.
-    if (cause.retryable === false || current.durable || current.restarts >= limits.maxRestarts) {
+    // Option C (D67): a session that may hold a fragment on the disk (any file of its plan, `held`) gets no further worker.
+    if (cause.retryable === false || current.held || current.restarts >= limits.maxRestarts) {
       emit({ name: 'workerDown', ...base, down: crash, restartInMs: null });
       // WHY, with the fault (wave H driver F): the reason of the down that raised it.
       emit({ name: 'warning', ...base, action: CAPTURE_INTERNAL_ACTION.WARNING, code: CaptureWarningCode.CAPTURE_FAULT, reason: null, state: CaptureWarningState.ACTIVE, subject: null, source: 'supervisor', ...(crash.reason === undefined ? {} : { cause: crash.reason }) });
@@ -803,15 +828,19 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
    */
   function onLateMessage(from: Worker, message: WorkerMessage): void {
     const current = session;
-    if (current === null || from.of !== current || !from.started || current.durable || current.stopping !== null) return;
+    if (current === null || from.of !== current || !from.started || current.stopping !== null) return;
     if (message.type !== WorkerMessageType.RECORD || !DURABLE_RECORD_KINDS.includes(message.record.kind)) return;
-    current.durable = true;
+    // Row D2C (D150 (2)): a CAMERA file's record makes the session durable; any file's (a channel file too) calls the restart off.
+    if (cameraFileRecord(current, message.record)) current.durable = true;
+    if (current.held) return;
+    current.held = true;
     if (worker !== null || phase !== CapturePhase.RESTARTING) return;
     cancelBackoff();
     cancelBackoff = nothing;
     const base = { sessionId: current.id, correlationId: current.correlationId };
-    // The cause is the down that began the back-off this record calls off - judged again for a session that IS durable now.
-    const cause = current.lastDown === null ? undefined : captureDownReasonOf(current.lastDown, true);
+    // The cause is the down that began the back-off this record calls off - judged again with what the session holds now
+    // (row D2C: a late channel-file record alone does not make it durable).
+    const cause = current.lastDown === null ? undefined : captureDownReasonOf(current.lastDown, current.durable);
     emit({ name: 'warning', ...base, action: CAPTURE_INTERNAL_ACTION.WARNING, code: CaptureWarningCode.CAPTURE_FAULT, reason: null, state: CaptureWarningState.ACTIVE, subject: null, source: 'supervisor', ...(cause === undefined ? {} : { cause }) });
     ownFault = base;
     setPhase(CapturePhase.FAULTED);
@@ -860,7 +889,11 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
           if (!result.ack.ok) {
             // A file is already where this worker would write: evidence may be on the disk, whatever
             // the frames said. Another worker would find the same file (the file is the truth).
-            if (result.ack.code === OUTPUT_EXISTS) current.durable = true;
+            // Row D2C: the refusal does not say whose file it found (a camera's or a channel's), so it stays durable as before.
+            if (result.ack.code === OUTPUT_EXISTS) {
+              current.held = true;
+              current.durable = true;
+            }
             // The same plan on the same disk gets the same answer: not asked again (finding A-7).
             const final = result.ack.code !== undefined && FINAL_START_REFUSALS.includes(result.ack.code);
             down(from, { code: WorkerDownCode.START_REFUSED, detail: result.ack.code ?? null, ...(final ? { retryable: false } : {}) });
@@ -880,30 +913,6 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
           const waiter = current.startWaiter;
           current.startWaiter = null;
           waiter?.resolve();
-          // D61 (2026-11-04): THE OPERATOR'S CHOICE ON THE LEGACY TWO-ROLE LANE IS RE-Said TO A LATER
-          // WORKER. The choice cannot travel on the plan - `activeMic` is the transcribed channel of
-          // `AUDIO-01` and the protocol validates `MIC-01` - so row 179's rule ("a worker that restarts
-          // later starts with the source the operator chose") is carried by the lane's own command.
-          // Nothing waits on its acknowledgement: the worker's interval record says what it realised.
-          if (current.attempt > 1 && current.micRole !== CaptureMicRole.PRIMARY) {
-            const role = current.micRole;
-            let resaid = '';
-            sendCommand(
-              current,
-              from,
-              (envelope) => {
-                resaid = envelope.correlationId;
-                return { ...envelope, type: SupervisorMessageType.SWITCH_AUDIO_SOURCE, to: role };
-              },
-              (result) => {
-                // The record the worker wrote before this ACK reached the listeners with the `RECORD` frame; nothing waits on it here.
-                current.switchRecords.delete(resaid);
-                if ('ack' in result && result.ack.ok) return;
-                // Refused or timed out: the worker keeps the channel its plan named. Said, never guessed.
-                report({ source: 'capture.supervisor.switch', code: 'CAPTURE_SWITCH_NOT_RESAID', sessionId: current.id, correlationId: current.correlationId, err: new CaptureSupervisorError(CaptureRefusal.COMMAND_REFUSED, 'the audio source the operator chose could be re-said to the later capture worker', 'refusal' in result ? result.refusal.detail : (result.ack.code ?? null)) });
-              },
-            );
-          }
         },
       );
       return;
@@ -986,16 +995,30 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
     );
   }
 
+  /** The devices of the plan a record of this kind may name (row 148; the protocol's kind lists, see the header). */
+  function recordSubjectsOf(current: Session, kind: CaptureRecordKind): ReadonlySet<string> {
+    if (CAMERA_OR_MIC_RECORD_KINDS.includes(kind)) return current.subjects;
+    return MIC_RECORD_KINDS.includes(kind) ? current.mics : current.cameras;
+  }
+
   /** A record: checked and handed on at once, never through the queue of levels (spec §B.2 R-1, R-2). */
   function onRecord(from: Worker, current: Session, message: RecordMessage): void {
     const refuse = (detail: SupervisorRefusal): void => down(from, { code: WorkerDownCode.PROTOCOL_VIOLATION, detail });
     if (!from.started) return refuse(SupervisorRefusal.RECORD_BEFORE_START);
     const { record } = message;
-    // Whose device a record names (protocol 4): a camera of the plan, a microphone of the plan, or none.
-    if ('deviceId' in record && !(record.kind === CaptureRecordKind.AUDIO_SOURCE_INTERVAL ? current.mics : current.cameras).has(record.deviceId)) return refuse(SupervisorRefusal.RECORD_SUBJECT_UNKNOWN);
-    // A worker that reports a fragment has written: the session is durable BEFORE the sequence is
+    // Whose device a record names (protocol 4; protocol 6 N-32, row 148): read by the protocol's kind lists - a microphone
+    // of the plan for a microphone record, a camera OR a microphone of the plan for a checkpoint (its camera file or its
+    // channel file), a camera of the plan for the rest. Before row 148 every kind but the interval was held to the cameras,
+    // which also refused the microphone records MIC_SAMPLE_ACCOUNT and AUDIO_INSERTED_RUN (finding F-148-1).
+    if ('deviceId' in record && !recordSubjectsOf(current, record.kind).has(record.deviceId)) return refuse(SupervisorRefusal.RECORD_SUBJECT_UNKNOWN);
+    // A worker that reports a fragment has written: the session is held BEFORE the sequence is
     // judged, so that a worker ended for a gap is not replaced either.
-    if (DURABLE_RECORD_KINDS.includes(record.kind)) current.durable = true;
+    if (DURABLE_RECORD_KINDS.includes(record.kind)) {
+      current.held = true;
+      // Row D2C (D150 (2), F-C1D-2): only a CAMERA file's fragment makes the session durable. A channel file's checkpoint
+      // (row 148) is handed on and stored, and holds the restart off (its file is never written again), but no more.
+      if (cameraFileRecord(current, record)) current.durable = true;
+    }
     if (message.seq !== current.recordSeq + 1) return refuse(SupervisorRefusal.RECORD_SEQUENCE_GAP);
     // Content (finding A-10): once-only records are said once per camera, and nothing follows the seal.
     if (from.sealed) return refuse(SupervisorRefusal.RECORD_AFTER_SEAL);
@@ -1009,8 +1032,9 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
     const at = now();
     while (from.recordTimes.length > 0 && at - (from.recordTimes[0] ?? at) >= limits.recordWindowMs) from.recordTimes.shift();
     if (from.recordTimes.length >= limits.recordBurstLimit) return refuse(SupervisorRefusal.RECORD_RATE_EXCEEDED);
-    // A switch nobody commanded (review R63-05): the worker never switches by itself (OD-11), so the
-    // interval of a switch names a `SWITCH_AUDIO_SOURCE` of this worker that still awaits its `ACK`.
+    // A switch nobody commanded (review R63-05): the worker never switches by itself (OD-11), so the interval of a
+    // switch must name a command of this worker that awaits its `ACK`. Protocol 6 (N-31; audit row 149): no switch
+    // is ever commanded, so every interval with a correlation ID ends here.
     if (record.kind === CaptureRecordKind.AUDIO_SOURCE_INTERVAL && record.correlationId !== null && !from.pending.has(record.correlationId)) return refuse(SupervisorRefusal.SWITCH_NOT_COMMANDED);
     from.recordTimes.push(at);
     if (record.kind === CaptureRecordKind.SEAL_COMPLETE) from.sealed = true;
@@ -1018,10 +1042,9 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
     if (record.kind === CaptureRecordKind.AUDIO_SOURCE_INTERVAL) from.timelineOpen = true;
     if (record.kind === CaptureRecordKind.AUDIO_TIMELINE_END) from.timelineEnded = true;
     current.recordSeq = message.seq;
-    // The newest durable fragment of each camera file: what an end of that camera is dated with (gate 89 C3).
+    // The newest durable fragment of each file: what an end of that camera is dated with (gate 89 C3). A channel file's
+    // (row 148) is kept under its microphone's ID, which no camera end reads (`noteCameraEnd` holds the cameras).
     if (record.kind === CaptureRecordKind.FRAGMENT_CHECKPOINT) current.lastFragment.set(record.deviceId, { index: record.index, mediaEndMs: record.mediaStartMs + record.mediaDurationMs });
-    // The record of a switch waits for the `ACK` of its command, which follows it (at most one per waiting command).
-    if (record.kind === CaptureRecordKind.AUDIO_SOURCE_INTERVAL && record.correlationId !== null) current.switchRecords.set(record.correlationId, record);
     emit({ name: 'record', sessionId: current.id, correlationId: current.correlationId, attempt: from.attempt, seq: message.seq, record });
   }
 
@@ -1101,8 +1124,8 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
     }
     const settle = (given: ReadonlyMap<string, CapturePlan['mics'][number]['input']> | null): void =>
       step(() => {
-        // Stopped, ended, durable or served meanwhile: this attempt starts no worker (what ended it has said so).
-        if (session !== current || current.stopping !== null || worker !== null || current.attempt !== attempt || current.durable) return;
+        // Stopped, ended, held (a file on the disk) or served meanwhile: this attempt starts no worker (what ended it has said so).
+        if (session !== current || current.stopping !== null || worker !== null || current.attempt !== attempt || current.held) return;
         if (phase !== CapturePhase.RESTARTING && phase !== CapturePhase.STARTING) return;
         let failure: IngestRenewalFailure | null = given === null ? IngestRenewalFailure.RECEIVER_FAILED : null;
         if (given !== null) {
@@ -1110,8 +1133,13 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
             const input = given.get(mic.deviceId);
             return input === undefined ? [] : [{ ...mic, input }];
           });
-          // The same schema as the plan of the start: FOUR channels (D61, 2026-11-04), each with its renewed input.
-          const next = CapturePlanSchema.safeParse({ ...current.plan, mics });
+          // The same schema as the plan of the start (protocol 6, row 148; finding F-1): 0 to 4 channels, each with its
+          // renewed input and the file the start named. A channel that did not open again is NOT a refusal (D30 K-3: the
+          // recording starts anyway): the camera of its pair STATES it (`micMissing: NOT_OPENED`) and gets a silent track;
+          // a channel back again clears the statement; a camera that had no channel at the start keeps its own word. A
+          // plan with a PCM tap still needs channel 1 (the protocol's rule): without it the later plan is PLAN_INVALID.
+          const cameras = restatePairedMics(current.plan.cameras, current.micsOfStart, mics);
+          const next = CapturePlanSchema.safeParse({ ...current.plan, cameras, mics });
           if (next.success) current.plan = next.data;
           else failure = IngestRenewalFailure.PLAN_INVALID;
         }
@@ -1214,10 +1242,6 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
       return step(() => stopSession(sessionId, reason));
     },
 
-    switchAudioSource(sessionId, to) {
-      return step(() => switchSource(sessionId, to));
-    },
-
     status(): CaptureStatus {
       const live = worker;
       return {
@@ -1275,12 +1299,12 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
         attempt: 0,
         restarts: 0,
         commandSeq: 0,
+        held: false,
         durable: false,
         recordSeq: 0,
         subjects: new Set([...parsed.data.cameras.map((camera) => camera.deviceId), ...parsed.data.mics.map((mic) => mic.deviceId)]),
         cameras: new Set(parsed.data.cameras.map((camera) => camera.deviceId)),
         mics: new Set(parsed.data.mics.map((mic) => mic.deviceId)),
-        switchRecords: new Map(),
         startWaiter: { resolve, reject },
         stopping: null,
         stopWaiters: [],
@@ -1292,7 +1316,6 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
         ingest,
         ingestElements: new Set(parsed.data.cameras.map((camera) => ingestElementOf(camera.ingestUrl))),
         micsOfStart: parsed.data.mics,
-        micRole: CaptureMicRole.PRIMARY, // D61 (2026-11-04): the plan starts on the transcribed channel; the operator may move the legacy lane
       };
       setPhase(CapturePhase.STARTING);
       launch();
@@ -1351,57 +1374,5 @@ export function createCaptureSupervisor(options: CaptureSupervisorOptions): Capt
       channel.kill('SIGTERM');
     }
     return done;
-  }
-
-  function switchSource(sessionId: string, to: CaptureMicRole): Promise<AudioSourceIntervalRecord | null> {
-    let current: Session;
-    try {
-      current = openSession(sessionId);
-    } catch (error) {
-      return Promise.reject(error);
-    }
-    if (to !== CaptureMicRole.PRIMARY && to !== CaptureMicRole.STANDBY) {
-      return Promise.reject(new CaptureSupervisorError(CaptureRefusal.PLAN_INVALID, 'the audio source is not a mic role'));
-    }
-    // D61 (2026-11-04): the plan keys microphones by numbered channel; the switch is the legacy two-role lane's
-    // command and names the TRANSCRIPTION PAIR - PRIMARY is channel MIC-01, STANDBY channel MIC-02. Channels 3
-    // and 4 are recorded at once and are not selectable on this lane (the failover concept died with D61).
-    const CHANNEL_OF_ROLE: Readonly<Record<CaptureMicRole, 'MIC-01' | 'MIC-02'>> = { PRIMARY: 'MIC-01', STANDBY: 'MIC-02' };
-    if (!current.plan.mics.some((mic) => mic.channel === CHANNEL_OF_ROLE[to])) {
-      return Promise.reject(new CaptureSupervisorError(CaptureRefusal.PLAN_INVALID, 'no mic of this session holds that role'));
-    }
-    const live = worker;
-    if (phase === CapturePhase.RESTARTING || phase === CapturePhase.FAULTED) {
-      return Promise.reject(new CaptureSupervisorError(CaptureRefusal.WORKER_DOWN, 'the capture worker is not running'));
-    }
-    if (phase !== CapturePhase.RECORDING || live === null || !live.started) {
-      return Promise.reject(new CaptureSupervisorError(CaptureRefusal.NOT_RECORDING, 'the capture session is not recording'));
-    }
-    return new Promise<AudioSourceIntervalRecord | null>((resolve, reject) => {
-      let command = '';
-      sendCommand(
-        current,
-        live,
-        (envelope) => {
-          command = envelope.correlationId;
-          return { ...envelope, type: SupervisorMessageType.SWITCH_AUDIO_SOURCE, to };
-        },
-        (result) => {
-          const interval = current.switchRecords.get(command) ?? null;
-          current.switchRecords.delete(command);
-          if ('refusal' in result) {
-            reject(result.refusal);
-          } else if (!result.ack.ok) {
-            reject(new CaptureSupervisorError(CaptureRefusal.COMMAND_REFUSED, 'the capture worker refused the switch', result.ack.code ?? null));
-          } else {
-            // A worker that restarts later starts with the source the operator chose. D61 (2026-11-04): the choice
-            // is NOT put into the plan - `activeMic` is the transcribed channel of `AUDIO-01` and the protocol
-            // validates `MIC-01` - it is held on the session and RE-Said to the later worker by the command below.
-            current.micRole = to;
-            resolve(interval);
-          }
-        },
-      );
-    });
   }
 }

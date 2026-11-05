@@ -2,54 +2,49 @@
  * THE FILTERING THREAD (blueprint row 58; register NM-02; capture spec A.2, E, F; errata AU2-07,
  * PE-111-05, PE-111-06).
  *
- * D61 (2026-11-04): the plan carries FOUR numbered microphone channels recorded SIMULTANEOUSLY (was two
- * roles with a failover selector). The thread keeps the legacy two-role lane below (channels 1 and 2 ->
- * selector -> ONE AAC encoder -> every camera file: the audio track of the video files and the transcribed
- * plane of `AUDIO-01`) and ADDS, for every channel whose plan row names an `outputPath`, a recording of
- * its own: that channel's quantum -> ITS OWN AAC encoder -> its own fMP4 file (one encoder instance per
- * file - four channels are four different streams, nothing can be shared; the lane's encoder plus up to
- * four channel encoders is the honest count, stated in the `audio_started` log). Channels without an
- * outputPath are read, metered, warned for and accounted - but not yet written anywhere (the Core wires
- * the four outputs in its own D61 wave).
+ * D5 PAIRS (protocol 6; audit 2026-11-05 row 152, DF-06; spec S5 section 4; decisions D27, D30 K-3, D131): pair N
+ * is VIDEO-0N <-> MIC-0N, fixed by number. Every channel of the plan has ITS OWN AAC encoder, and the packets of
+ * that ONE encoder go, byte for byte (cloned, never encoded twice), to its own channel file `MIC-0N.m4a` AND to the
+ * audio track of the camera of its pair, VIDEO-0N, when that camera is in the plan. A camera whose paired channel
+ * is not in the plan (`micMissing` NOT_ASSIGNED | NOT_OPENED, D30 K-3) gets a SILENT audio track: the packets of
+ * one more encoder fed with zeros from sample 0 (one silent encoder, whatever the number of such cameras: silence
+ * is one stream). The honest count, stated in the `audio_started` log: one encoder per channel file, plus one when
+ * a camera states its channel missing (4 for a 4+4 plan). The legacy lane's encoder that fed EVERY camera file
+ * (the DF-06 root, `fanout`) is gone. Each channel file's durable fragments are FRAGMENT_CHECKPOINT records that
+ * name the MICROPHONE (role-free, `keyframe` false; N-32) - the Core stores them as AUDIO-0N.
+ *
+ *   mic MIC-0N -- quantum -- ENCODER N --+-- MIC-0N.m4a (own fMP4 file, checkpoints by the mic's device ID)
+ *                                        +-- VIDEO-0N.mp4 audio track (when camera N is in the plan)
+ *   zeros ------------------ SILENT -----+-- VIDEO-0K.mp4 audio track of every camera stating its channel missing
  *
  *   mic MIC-01 --\
- *                 >-- astreamselect -- aformat -- ONE AAC encoder --+-- camera file 1 .. N (D60)
- *   mic MIC-02 --/                                    |             +-- PCM tap (lane samples -> encoder)
- *                                                     +
- *   mic MIC-03 ---------- own encoder -------------------------------- own fMP4 file   \
- *   mic MIC-04 ---------- own encoder -------------------------------- own fMP4 file   / D61, per outputPath
+ *                 >-- astreamselect -- aformat -- PCM tap (transcription, R-T1: channel 1's samples)
+ *   mic MIC-02 --/
+ *
+ * The two-input selector lane is KEPT for the PCM tap only (R152-1; risk K-5 of research/13): it feeds no encoder and
+ * no file. The plan starts it on MIC-01, so the tap carries channel 1, and NOTHING moves it after START: the
+ * operator's switch is retired (audit row 152b; N-31, D135, D136 - operation 81 is refused at the Core, the protocol
+ * and the supervisor no longer carry the command, and the worker ends on such a line as on any unknown one). A plan
+ * WITHOUT the MIC-01 row (protocol 6, R144-4; row 147's plan when MIC-01 did not open) records with no tap, and
+ * the interval record of the start is NOT written: that record names the device that feeds the transcribed track,
+ * and there is none - the camera of pair 1 states why (`micMissing`), and the manifest carries that statement.
  *
  * This is the only translation unit that names libavfilter, and audio_main() is the only thread
- * that runs its functions: the graph pointer is private to this file (pair-111 N-10), and the one
- * call of avfilter_graph_send_command aborts when it is not on the filtering thread (AU2-07).
- * Another thread asks for a switch with audio_request_switch(); it is applied before the next
- * input quantum (10 ms) and acknowledged from here, once it is real.
+ * that runs its functions: the graph pointer is private to this file (pair-111 N-10). The graph is
+ * NEVER commanded (AU2-07, row 152b): the selector's input is the one filter_build() is given at
+ * START, and no call of the filter library can change it afterwards (`make check` holds the count
+ * of graph commands at zero).
  *
- * THE SWITCH (blueprint row 71; capture spec E; OD-09, OD-11; errata AU2-05, AU2-07).
- *   - WHO: the operator's command, and nothing else. `cur_map` is written in filter_build() and
- *     in filter_apply_commands(); the warning raiser (micwatch.c) has no way to reach either.
- *   - WHEN: at the next input quantum after the command was read. Every frame the graph was given
- *     before the command is already through the selector (the graph is drained after every
- *     quantum, and the selector emits a frame as soon as both inputs hold it), so the first sample
- *     of the new source is EXACTLY the first sample of that quantum: `fromSample` of the record.
- *     The bound is one quantum (10 ms) plus the time the command waited in the pipe; the record
- *     states what it was (`appliedDelayUs`) and a check holds it to 21,333 us.
- *   - HOW: a HARD CUT (gate answer Q-CLICK, the default): no crossfade, no sample inserted and
- *     none dropped - both inputs run on the same sample counter, and the selector passes one of
- *     them. The cut is audible as a click when the two signals differ at that sample (AU2-07:
- *     a step of 0.42 to 0.71 against 0.02 to 0.03 per sample); a crossfade would mix both
- *     microphones for its length, which "one active microphone" (OD-09) does not allow without
- *     a decision.
- *   - THE RECORD: one AUDIO_SOURCE_INTERVAL when T0 is taken and one per realised switch, written
- *     BEFORE the ACK of that switch; AUDIO_TIMELINE_END when the thread ends. Media time, counted
- *     here from the sample counter of the encoder's input; never from the operator's clock.
- *   A switch that arrives before T0 is refused (NOT_RECORDING): there is no timeline to place it on.
+ * THE RECORD (blueprint row 71; capture spec E; row 152b). One AUDIO_SOURCE_INTERVAL when T0 is
+ * taken - the microphone that feeds the transcribed track (the tap) from sample 0, reason
+ * SESSION_START - and AUDIO_TIMELINE_END when the thread ends. Media time, counted here from the
+ * sample counter of the timeline. There is no other interval: nothing changes the source.
  *
  * WARNINGS, NEVER A SWITCH (spec E.1; micwatch.h). Per microphone, by its DEVICE ID: MIC_SILENT
  * (delivered samples at or below the silence level for the silence duration), CAPTURE_FAULT /
  * MIC_DISCONNECTED (no sample for the debounce) and CAPTURE_FAULT / MIC_RATE_AT_LIMIT (the rate
  * controller held at +-MIC_MAX_PPM: D85 R-3 - such a microphone was degrading without a word).
- * Each is raised and cleared; the source that feeds the encoder stays what the operator chose.
+ * Each is raised and cleared; nothing changes which microphone feeds which file or the tap.
  *
  * MIC INPUT. Each mic is a named pipe written by ANOTHER PROCESS (a fixture, later an adapter
  * process): 32-bit float PCM, 48 kHz, mono. The worker generates no audio itself, so nothing in
@@ -155,122 +150,62 @@ typedef struct MicIn {
     int64_t fed, fed_inserted;          /* track samples while it fed the encoder; of those, inserted */
     int64_t fed_runs, fed_longest;      /* runs of inserted track samples that BEGAN while it fed; the longest (closed) */
     int64_t listed, not_listed, not_listed_samples;   /* of the long ones: written; not written (the bound), their sum */
-    /* D61 (2026-11-04): the channel's OWN audio file (the plan row's `outputPath`): its own AAC encoder and its
-     * own fMP4 writer over the same sink.c durability machine. ONE ENCODER INSTANCE PER FILE is the honest count:
-     * the four channels are four different streams (a shared encoder cannot encode four signals), and every file
-     * needs the packets of its own stream. The filtering thread is the only writer; the sink's sync thread reports. */
-    struct AVCodecContext *enc;
+    /* D61 (2026-11-04): the channel's OWN audio file (the plan row's `outputPath`): an fMP4 writer over the same
+     * sink.c durability machine. Row 152: the packets come from the channel's encoder (`encs`, below), which also
+     * feeds the camera of its pair. The filtering thread is the only writer; the sink's sync thread reports. */
     AVFormatContext *out;
     AVIOContext *pb;
     Sink sink;
     int recording;                      /* 1 once the file's muxer header is written */
     int64_t rec_pkts;                   /* encoder packets muxed into the channel file */
-    AVFrame *conv;                      /* the encoder frame as FLTP: the AAC encoder's input format (mono: ONE plane; the lane's graph reaches that form through aformat) */
-    float stage[AAC_FRAME];             /* D61: the channel file's encoder takes WHOLE 1024-sample frames (the lane's graph sizes them so with av_buffersink_set_frame_size); the quanta are staged here */
-    int staged;                         /* samples in `stage` now (0..AAC_FRAME-1) */
-    int64_t rec_pts;                    /* the sample index the next encoder frame starts at */
     int64_t cut_mono;                   /* D61: the instant the channel file's open fragment began (the cut rule of W-3, applied per min_frag_duration - the muxer cuts no audio-only fragment of its own) */
 } MicIn;
+
+/* ROW 152 (D5 pairs, DF-06): ONE AAC ENCODER PER CHANNEL OF THE PLAN, plus the SILENT one (index NMIC) when a camera
+ * states its paired channel missing. Opened by the main thread at START (before any camera can open its file, whose
+ * audio stream takes its parameters from here), fed and flushed by the filtering thread only, freed at the session's
+ * close (after every camera file is closed). Every encoder is AAC-LC 48 kHz mono 96 kb/s: the parameters of the
+ * camera files' audio track did not change (spec S5 section 4 item 7), only the source of its samples did. */
+typedef struct ChanEnc {
+    struct AVCodecContext *enc;         /* NULL: not in the plan */
+    AVFrame *conv;                      /* the encoder frame as FLTP (mono: ONE plane) */
+    float stage[AAC_FRAME];             /* the encoder takes WHOLE 1024-sample frames; the 480-sample quanta are staged here */
+    int staged;                         /* samples in `stage` now (0..AAC_FRAME-1) */
+    int64_t pts;                        /* the sample index the next encoder frame starts at (sample 0 = T0) */
+    int64_t pkts;                       /* packets it produced (each went to its file and its camera) */
+    int chan;                           /* 1..NMIC: the channel MIC-0N; 0: the silent track */
+    int flushed;
+} ChanEnc;
+static ChanEnc encs[NMIC + 1];
 
 /* Private to the filtering thread. */
 static AVFilterGraph *graph;
 static AVFilterContext *src[NMIC], *sink;
-static pthread_t filter_tid;
 static MicIn mics[NMIC];
-static int cur_map;                     /* the input the selector passes: written by filter_build and filter_apply_commands only */
+static int cur_map;                     /* the input the selector passes: written by filter_build only (row 152b: never moved) */
 static int intervals;                   /* AUDIO_SOURCE_INTERVAL records written */
 static FILE *manifest;
 static int tap_fd = -1, tap_is_fifo;
-static int64_t a_pkts, tap_samples;
+static int64_t tap_samples;
 /* Version 5: the run of inserted samples on the TRACK that is open now (first sample, length; -1: none), the
  * microphone that fed at its first sample, and the AUDIO_INSERTED_RUN records written so far (the last index). */
 static int64_t run_from = -1, run_len;
 static int run_owner, runs_listed;
 
-/* The switch another thread asked for. */
-static pthread_mutex_t sw_mx = PTHREAD_MUTEX_INITIALIZER;
-static int sw_pending, sw_map;
-static int64_t sw_asked_mono;
-static char sw_corr[ID_CHARS + 1];
-
-int audio_request_switch(int mic_index, const char *correlation_id) {
-    int r = -1;
-    pthread_mutex_lock(&sw_mx);
-    if (!sw_pending) {
-        sw_pending = 1;
-        sw_map = mic_index;
-        sw_asked_mono = mono_us();
-        snprintf(sw_corr, sizeof sw_corr, "%s", correlation_id);
-        r = 0;
-    }
-    pthread_mutex_unlock(&sw_mx);
-    return r;
-}
-
 int audio_set_manifest(const char *path) { return (manifest = fopen(path, "w")) ? 0 : -1; }
 
-/* ---------------------------------------------------------------- selector (AU2-07) */
-/* The ONE call site of avfilter_graph_send_command. Any other thread only fills the request;
- * this function refuses to run anywhere but on the filtering thread. */
+/* ---------------------------------------------------------------- the selector of the tap (AU2-07) */
 /* D61 (2026-11-04): the LEGACY two-role lane's word for a channel: PRIMARY names channel 1, STANDBY every other
  * row. The wire's `role` member survives on the telemetry level and the interval / account / inserted-run records
  * (the plan itself keys its rows by `channel` now); retiring this lane is a later wave. */
 static const char *role_word(int i) { return i == 0 ? "PRIMARY" : "STANDBY"; }
 
-/* One AUDIO_SOURCE_INTERVAL record: the microphone `cur_map` feeds the encoder from `from_sample` on.
- * `corr` NULL: the interval of the start. */
-static void interval_record(Session *s, int64_t from_sample, int64_t t0_real, const char *corr, int64_t delay_us) {
-    int64_t at_ms = (t0_real + from_sample * US / SR) / 1000;
+/* The AUDIO_SOURCE_INTERVAL record of the start: the microphone `cur_map` feeds the transcribed track (the tap) from
+ * sample 0. Row 152b: the only interval a worker writes (no command can move the selector). */
+static void interval_record(Session *s, int64_t t0_real) {
     intervals++;
-    if (corr)
-        send_record("\"kind\":\"AUDIO_SOURCE_INTERVAL\",\"deviceId\":\"%s\",\"role\":\"%s\",\"index\":%d,\"fromSample\":%lld,\"sampleRateHz\":%d,\"capturedAtMs\":%lld,\"reason\":\"OPERATOR_SWITCH\",\"correlationId\":\"%s\",\"appliedDelayUs\":%lld",
-                    s->mic[cur_map].device_id, role_word(cur_map), intervals, (long long)from_sample, SR, (long long)at_ms, corr, (long long)(delay_us < 0 ? 0 : delay_us));
-    else
-        send_record("\"kind\":\"AUDIO_SOURCE_INTERVAL\",\"deviceId\":\"%s\",\"role\":\"%s\",\"index\":%d,\"fromSample\":%lld,\"sampleRateHz\":%d,\"capturedAtMs\":%lld,\"reason\":\"SESSION_START\",\"correlationId\":null,\"appliedDelayUs\":null",
-                    s->mic[cur_map].device_id, role_word(cur_map), intervals, (long long)from_sample, SR, (long long)at_ms);
-}
-
-/* `next_sample`: the first sample of the quantum that is pushed next, or -1 before T0 (no timeline
- * yet: a switch is refused). `t0_real`: the wall clock of sample 0. */
-static void filter_apply_commands(Session *s, int64_t next_sample, int64_t t0_real) {
-    if (!pthread_equal(pthread_self(), filter_tid)) {
-        logj("error", "filter", "send_command_off_filter_thread", "%s", "");
-        abort();
-    }
-    char corr[ID_CHARS + 1];
-    pthread_mutex_lock(&sw_mx);
-    int pending = sw_pending, want = sw_map;
-    int64_t asked = sw_asked_mono;
-    memcpy(corr, sw_corr, sizeof corr);
-    sw_pending = 0;
-    pthread_mutex_unlock(&sw_mx);
-    if (!pending) return;
-    if (next_sample < 0) {
-        ipc_send("\"type\":\"ACK\",\"correlationId\":\"%s\",\"ok\":false,\"code\":\"NOT_RECORDING\"", corr);
-        logj("warn", "filter", "switch_refused_before_t0", "\"map\":%d", want);
-        return;
-    }
-    if (want != cur_map) {
-        char m[4];
-        snprintf(m, sizeof m, "%d", want);
-        int r = avfilter_graph_send_command(graph, "astreamselect@asel", "map", m, NULL, 0, 0);
-        int64_t delay = mono_us() - asked;
-        if (r < 0) {
-            ipc_send("\"type\":\"ACK\",\"correlationId\":\"%s\",\"ok\":false,\"code\":\"SELECTOR_COMMAND_FAILED\"", corr);
-            fatal("filter", "SELECTOR_COMMAND_FAILED", r);
-            return;
-        }
-        cur_map = want;
-        logj("info", "filter", "selector_switched", "\"map\":%d,\"applied_before_sample\":%lld,\"applied_delay_us\":%lld,\"edge\":\"hard_cut\"", want, (long long)next_sample, (long long)delay);
-        /* The record first, then the acknowledgement: who waits for the ACK has the interval already. */
-#ifdef DEMS_PROOF_INTERVAL_SKEW             /* PROOF BUILD ONLY: the record names another sample than the one the selector switched at */
-        interval_record(s, next_sample + DEMS_PROOF_INTERVAL_SKEW, t0_real, corr, delay);
-#else
-        interval_record(s, next_sample, t0_real, corr, delay);
-#endif
-    }
-    /* A switch to the source that already feeds the encoder changed nothing: acknowledged, no record. */
-    ipc_send("\"type\":\"ACK\",\"correlationId\":\"%s\",\"ok\":true", corr);
+    send_record("\"kind\":\"AUDIO_SOURCE_INTERVAL\",\"deviceId\":\"%s\",\"role\":\"%s\",\"index\":%d,\"fromSample\":%lld,\"sampleRateHz\":%d,\"capturedAtMs\":%lld,\"reason\":\"SESSION_START\",\"correlationId\":null,\"appliedDelayUs\":null",
+                s->mic[cur_map].device_id, role_word(cur_map), intervals, 0LL, SR, (long long)(t0_real / 1000));
 }
 
 /* What the raiser saw begin or end on one microphone, as warnings by its device ID. */
@@ -290,8 +225,9 @@ static void mic_warn(Session *s, int i, int events) {
 }
 
 static int filter_build(int initial_map) {
-    /* D61 (2026-11-04): the graph stays the legacy two-role lane's (NLANE inputs): it feeds the camera files'
-     * audio track and the transcribed plane. Channels 3 and 4 are recorded outside the graph (mic_rec_*). */
+    /* D61 (2026-11-04): the graph stays the legacy two-role lane's (NLANE inputs). Row 152 / 152b: it feeds the PCM
+     * tap only, on the input `initial_map` names for the whole session (R152-1); every channel's file and its pair's
+     * camera track take that channel's own encoder (enc_*). */
     char desc[512];
     const char *a = "sample_rate=48000:sample_fmt=flt:channel_layout=mono:time_base=1/48000";
     snprintf(desc, sizeof desc,
@@ -315,10 +251,61 @@ static int filter_build(int initial_map) {
     return 0;
 }
 
-/* ---------------------------------------------------------------- encoder fan-out (H-4) */
-/* Every packet of the one encoder goes, byte for byte, into EVERY camera file (the packet is
- * cloned, which shares its buffer; nothing is encoded twice). */
-static void fanout(Session *s, AVPacket *pkt) {
+/* ---------------------------------------------------------------- the encoders of the pairs (row 152, DF-06) */
+/* Opens one AAC-LC 48 kHz mono encoder and its FLTP input frame: the ONE place that finds and opens an encoder
+ * (check.sh H-4/D61). 0 or an AVERROR. */
+static int enc_open(ChanEnc *e, int chan) {
+    memset(e, 0, sizeof *e);
+    e->chan = chan;
+    const AVCodec *codec = avcodec_find_encoder_by_name("aac");
+    if (!codec) return AVERROR_ENCODER_NOT_FOUND;
+    e->enc = avcodec_alloc_context3(codec);
+    if (!e->enc) return AVERROR(ENOMEM);
+    e->enc->sample_fmt = AV_SAMPLE_FMT_FLTP;
+    e->enc->sample_rate = SR;
+    e->enc->bit_rate = 96000;
+    e->enc->time_base = (AVRational){ 1, SR };
+    e->enc->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+    av_channel_layout_default(&e->enc->ch_layout, 1);
+    int r = avcodec_open2(e->enc, codec, NULL);
+    if (r < 0) return r;
+    e->conv = av_frame_alloc();
+    if (!e->conv) return AVERROR(ENOMEM);
+    e->conv->format = AV_SAMPLE_FMT_FLTP;
+    e->conv->sample_rate = SR;
+    e->conv->nb_samples = AAC_FRAME;
+    av_channel_layout_default(&e->conv->ch_layout, 1);
+    return av_frame_get_buffer(e->conv, 0);
+}
+
+/* At START, on the main thread, before any thread runs: one encoder per channel row of the plan, and the silent
+ * one when a camera of the plan states its paired channel missing. 0 or an AVERROR. */
+int audio_open_encoders(Session *s) {
+    int r, silent = 0;
+    for (int i = 0; i < NMIC; i++)
+        if (s->mic[i].present && (r = enc_open(&encs[i], i + 1)) < 0) return r;
+    for (int i = 0; i < s->ncam; i++) silent |= s->cam[i].present && s->cam[i].mic_missing[0];
+    if (silent && (r = enc_open(&encs[NMIC], 0)) < 0) return r;
+    return 0;
+}
+
+/* The encoder whose packets are camera `c`'s audio track: its pair's channel, or the silent one. take_plan holds that
+ * a camera without a stated reason has its channel's row (pair rule (b)), so the result is never NULL for a plan it took. */
+const struct AVCodecContext *audio_encoder_of(const Cam *c) { return c->mic_missing[0] ? encs[NMIC].enc : encs[c->mic_idx].enc; }
+
+/* At the session's close, after every camera file is closed (a camera opening late still read its parameters). */
+void audio_free_encoders(void) {
+    for (int i = 0; i <= NMIC; i++) {
+        av_frame_free(&encs[i].conv);
+        avcodec_free_context(&encs[i].enc);
+    }
+}
+
+/* One packet of encoder `e`: byte for byte (cloned, which shares its buffer; nothing is encoded twice) into the audio
+ * track of EVERY camera fed by it - the camera of its pair (VIDEO-0N for MIC-0N), or, for the silent encoder, every
+ * camera stating its channel missing - and then into its own channel file. The diagnostic manifest states the
+ * packet with `enc` = the channel number (0: the silent track), the hash the pair check reads (AC-4.7). */
+static void enc_packet(Session *s, ChanEnc *e, AVPacket *pkt) {
     if (manifest) {
         uint8_t dg[32];
         char hex[65];
@@ -329,63 +316,105 @@ static void fanout(Session *s, AVPacket *pkt) {
             av_sha_final(sha, dg);
             av_free(sha);
             for (int i = 0; i < 32; i++) snprintf(hex + 2 * i, 3, "%02x", dg[i]);
-            fprintf(manifest, "{\"type\":\"apkt\",\"enc\":0,\"index\":%lld,\"pts\":%lld,\"duration\":%lld,\"size\":%d,\"sha256\":\"%s\"}\n",
-                    (long long)a_pkts, (long long)pkt->pts, (long long)pkt->duration, pkt->size, hex);
+            fprintf(manifest, "{\"type\":\"apkt\",\"enc\":%d,\"index\":%lld,\"pts\":%lld,\"duration\":%lld,\"size\":%d,\"sha256\":\"%s\"}\n",
+                    e->chan, (long long)e->pkts, (long long)pkt->pts, (long long)pkt->duration, pkt->size, hex);
         }
     }
-    a_pkts++;
-    for (int i = 0; i < s->ncam; i++) {      /* D60 (2026-11-04): the ONE encoder feeds every camera file of the plan */
-        if (!s->cam[i].present) continue;
-        int r = cam_mux_audio(&s->cam[i], pkt);
+    e->pkts++;
+    for (int i = 0; i < s->ncam; i++) {      /* the pair, fixed by number (D27): never another camera's file */
+        Cam *c = &s->cam[i];
+        if (!c->present || (c->mic_missing[0] ? e->chan != 0 : e->chan != c->mic_idx + 1)) continue;
+        int r = cam_mux_audio(c, pkt);                                 /* in the encoder's time base, 1/48000 */
         if (r < 0) { fatal("fanout", "AUDIO_MUX_WRITE_FAILED", r); return; }
     }
+    MicIn *m = e->chan ? &mics[e->chan - 1] : NULL;
+    if (!m || !m->recording) return;
+    pkt->stream_index = 0;
+    av_packet_rescale_ts(pkt, e->enc->time_base, m->out->streams[0]->time_base);
+    int r = av_write_frame(m->out, pkt);
+    if (r < 0) { fatal("micfile", "AUDIO_MUX_WRITE_FAILED", r); return; }
+    m->rec_pkts++;
 }
 
-static void encode(Session *s, AVFrame *f, AVPacket *pkt) {
-    int r = avcodec_send_frame(s->enc, f);
+/* One whole frame (n == AAC_FRAME, or padded at the flush) from the stage into the encoder, and its packets on. */
+static void enc_send(Session *s, ChanEnc *e, int n) {
+    e->conv->nb_samples = n;
+    e->conv->pts = e->pts;
+    memcpy(e->conv->extended_data[0], e->stage, (size_t)n * sizeof(float));
+    e->pts += n;
+    int r = avcodec_send_frame(e->enc, e->conv);
     if (r < 0 && r != AVERROR_EOF) { fatal("encode", "ENCODER_SEND_FAILED", r); return; }
-    while ((r = avcodec_receive_packet(s->enc, pkt)) >= 0) {
-        fanout(s, pkt);
+    AVPacket *pkt = av_packet_alloc();
+    if (!pkt) { fatal("encode", "FRAME_ALLOC_FAILED", AVERROR(ENOMEM)); return; }
+    while ((r = avcodec_receive_packet(e->enc, pkt)) >= 0) {
+        enc_packet(s, e, pkt);
         av_packet_unref(pkt);
     }
+    av_packet_free(&pkt);
     if (r != AVERROR(EAGAIN) && r != AVERROR_EOF) fatal("encode", "ENCODER_RECEIVE_FAILED", r);
 }
 
+/* One quantum of the timeline into encoder `e`: FFmpeg 9's AAC encoder refuses a short frame (EINVAL), so the quanta
+ * are STAGED and handed on in whole 1024-sample frames - 480 does not divide 1024, a frame spans three quanta. No
+ * sample is dropped and the encoder's timeline is the session's: sample 0 is T0. */
+static void enc_write(Session *s, ChanEnc *e, const float *x, int n) {
+    while (n > 0 && !e->flushed) {
+        int take = AAC_FRAME - e->staged;
+        if (take > n) take = n;
+        memcpy(e->stage + e->staged, x, (size_t)take * sizeof(float));
+        e->staged += take;
+        x += take;
+        n -= take;
+        if (e->staged == AAC_FRAME) { enc_send(s, e, AAC_FRAME); e->staged = 0; }
+    }
+}
+
+/* The end: the closing rest zero-padded to one frame (at most 21 ms of tail silence, SAID by the padding rule), then
+ * the encoder's own tail. Its packets still reach the camera files (closed after this thread) and the channel file. */
+static void enc_flush(Session *s, ChanEnc *e) {
+    if (!e->enc || e->flushed) return;
+    if (e->staged) {
+        memset(e->stage + e->staged, 0, (size_t)(AAC_FRAME - e->staged) * sizeof(float));
+        enc_send(s, e, AAC_FRAME);
+        e->staged = 0;
+    }
+    e->flushed = 1;
+    int r = avcodec_send_frame(e->enc, NULL);
+    if (r < 0 && r != AVERROR_EOF) { fatal("encode", "ENCODER_SEND_FAILED", r); return; }
+    AVPacket *pkt = av_packet_alloc();
+    while (pkt && avcodec_receive_packet(e->enc, pkt) >= 0) {
+        enc_packet(s, e, pkt);
+        av_packet_unref(pkt);
+    }
+    av_packet_free(&pkt);
+}
+
 /* ---------------------------------------------------------------- the channel files (D61, 2026-11-04) */
-/* ONE fMP4 AUDIO FILE PER MICROPHONE CHANNEL that names an `outputPath`: the microphone twin of a camera
- * file. Each file gets ITS OWN AAC encoder instance - four channels are four different signals, and one
- * encoder encodes one stream - so a session with four recorded channels runs five encoders in total
- * (the legacy lane's `S->enc` for the camera files' audio track plus four). The writer is the same
- * sink.c machine: created only with its init segment plus one whole fragment, never over an existing
- * file (take_plan refused that path), append-only, synced per fragment.
- *   FRAGMENT RECORDS: none on the wire yet. FRAGMENT_CHECKPOINT names a CAMERA of the plan and the Core
- * validates its subject against the plan's cameras; a mic-keyed checkpoint is a later wave (decision D61
- * task list). The file itself carries both hash chains (sink.c), and the box walk of spec §C.5 re-derives
- * them at RECOVERY: the absence of a record says nothing, as ever. */
+/* ONE fMP4 AUDIO FILE PER MICROPHONE CHANNEL of the plan (protocol 6: every row names its `outputPath`): the
+ * microphone twin of a camera file, written from the packets of the channel's encoder (above). The writer is the
+ * same sink.c machine: created only with its init segment plus one whole fragment, never over an existing file
+ * (take_plan refused that path), append-only, synced per fragment.
+ *   FRAGMENT RECORDS (row 152; N-32, R144-4, D132): every durable fragment of a channel file is a FRAGMENT_CHECKPOINT
+ * that names the MICROPHONE by its device ID (never a role) with `keyframe` false - the same record, chains and
+ * cipher members as a camera file's (ingest.c send_fragment_checkpoint). The Core stores it as AUDIO-0N. No
+ * FIRST_DURABLE_FRAGMENT and no telemetry `fragments` entry for a channel file: both stay per CAMERA (D132). */
 #define MIC_AIO_BUFFER 65536                  /* the muxer's AVIO buffer, as ingest.c sizes the camera files' */
 
 static void mic_fragment_durable(void *opaque, const Checkpoint *cp) {
     MicIn *m = opaque;
     logj("info", "micfile", "fragment_durable", "\"mic\":%d,\"index\":%u,\"bytes\":%lld,\"sync\":\"%s\"", (int)(m - mics) + 1, cp->index,
          (long long)(cp->start + cp->len), sink_sync_level(&m->sink));
+    send_fragment_checkpoint(m->plan->device_id, &m->sink, cp, 0);
 }
 
 static void mic_sync_failed(void *opaque, const char *code, int averror) { (void)opaque; fatal("micfile", code, averror); }
 
-/* Open channel `m`'s encoder, sink and muxer, and write the init segment. 0 or an AVERROR. */
+/* Open channel `m`'s sink and muxer, and write the init segment (its stream takes the channel encoder's
+ * parameters). 0 or an AVERROR. */
 static int mic_rec_open(MicIn *m, Session *s) {
-    const AVCodec *codec = avcodec_find_encoder_by_name("aac");
-    if (!codec) return AVERROR_ENCODER_NOT_FOUND;
-    m->enc = avcodec_alloc_context3(codec);
-    if (!m->enc) return AVERROR(ENOMEM);
-    m->enc->sample_fmt = AV_SAMPLE_FMT_FLTP;
-    m->enc->sample_rate = SR;
-    m->enc->bit_rate = 96000;
-    m->enc->time_base = (AVRational){ 1, SR };
-    m->enc->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-    av_channel_layout_default(&m->enc->ch_layout, 1);
-    int r = avcodec_open2(m->enc, codec, NULL);
-    if (r < 0) return r;
+    const ChanEnc *e = &encs[m - mics];
+    if (!e->enc) return AVERROR(EINVAL);
+    int r;
     sink_init(&m->sink, s->mic[m - mics].out_path);
     m->sink.max_fragment_bytes = (size_t)g_max_fragment_bytes;
     m->sink.on_durable = mic_fragment_durable;
@@ -401,7 +430,7 @@ static int mic_rec_open(MicIn *m, Session *s) {
     m->out->flags |= AVFMT_FLAG_CUSTOM_IO;
     AVStream *st = avformat_new_stream(m->out, NULL);
     if (!st) return AVERROR(ENOMEM);
-    if ((r = avcodec_parameters_from_context(st->codecpar, m->enc)) < 0) return r;
+    if ((r = avcodec_parameters_from_context(st->codecpar, e->enc)) < 0) return r;
     st->time_base = (AVRational){ 1, SR };
     AVDictionary *o = NULL;
     av_dict_set(&o, "movflags", MUX_MOVFLAGS, 0);
@@ -413,82 +442,19 @@ static int mic_rec_open(MicIn *m, Session *s) {
     if (r >= 0 && leftover) return AVERROR_OPTION_NOT_FOUND;
     if (r < 0) return r;
     m->cut_mono = mono_us();
-    m->conv = av_frame_alloc();
-    if (!m->conv) return AVERROR(ENOMEM);
-    m->conv->format = AV_SAMPLE_FMT_FLTP;
-    m->conv->sample_rate = SR;
-    m->conv->nb_samples = AAC_FRAME;
-    av_channel_layout_default(&m->conv->ch_layout, 1);
-    if ((r = av_frame_get_buffer(m->conv, 0)) < 0) return r;
     m->recording = 1;
     return 0;
 }
 
-/* One quantum frame of the channel: packed FLT becomes planar FLTP (mono: one plane), and the AAC encoder
- * takes WHOLE 1024-sample frames (the lane's graph sizes them so with av_buffersink_set_frame_size; FFmpeg 9
- * refuses a short one with EINVAL). The quanta are therefore STAGED and handed on in whole frames; the rest
- * waits for the next quantum - no sample is dropped and the timeline is the encoder's own. */
-static void mic_rec_send(MicIn *m, int n) {                                      /* n == AAC_FRAME, or padded at the flush */
-    m->conv->nb_samples = n;
-    m->conv->pts = m->rec_pts;
-    memcpy(m->conv->extended_data[0], m->stage, (size_t)n * sizeof(float));
-    m->rec_pts += n;
-    int r = avcodec_send_frame(m->enc, m->conv);
-    if (r < 0 && r != AVERROR_EOF) { fatal("micfile", "ENCODER_SEND_FAILED", r); return; }
-    AVPacket *pkt = av_packet_alloc();
-    if (!pkt) { fatal("micfile", "FRAME_ALLOC_FAILED", AVERROR(ENOMEM)); return; }
-    while ((r = avcodec_receive_packet(m->enc, pkt)) >= 0) {
-        pkt->stream_index = 0;
-        av_packet_rescale_ts(pkt, m->enc->time_base, m->out->streams[0]->time_base);
-        if ((r = av_write_frame(m->out, pkt)) < 0) { fatal("micfile", "AUDIO_MUX_WRITE_FAILED", r); break; }
-        m->rec_pkts++;
-        av_packet_unref(pkt);
-    }
-    av_packet_free(&pkt);
-}
-
-static void mic_rec_write(MicIn *m, AVFrame *f) {
-    /* Fill to a whole frame, send, continue with the rest: 480 does not divide 1024, so a frame spans three quanta. */
-    const float *x = (const float *)f->extended_data[0];
-    int n = f->nb_samples;
-    while (n > 0) {
-        int take = AAC_FRAME - m->staged;
-        if (take > n) take = n;
-        memcpy(m->stage + m->staged, x, (size_t)take * sizeof(float));
-        m->staged += take;
-        x += take;
-        n -= take;
-        if (m->staged == AAC_FRAME) { mic_rec_send(m, AAC_FRAME); m->staged = 0; }
-    }
-}
-
-/* Flush the encoder, end the file, wait for the last sync. Returns 0 or an AVERROR. */
+/* End the file (its encoder was flushed before, enc_flush), wait for the last sync. Returns 0 or an AVERROR. */
 static int mic_rec_close(MicIn *m) {
-    if (!m->recording) return 0;
+    int r, t = 0;
+    if (m->recording) t = av_write_trailer(m->out);                 /* flushes the open fragment (skip_trailer: the fragments are the file) */
     m->recording = 0;
-    if (m->staged) {                                                            /* the closing rest: zero-padded to one frame (at most 21 ms of tail silence, SAID by the padding rule) */
-        memset(m->stage + m->staged, 0, (size_t)(AAC_FRAME - m->staged) * sizeof(float));
-        mic_rec_send(m, AAC_FRAME);
-        m->staged = 0;
-    }
-    int r = avcodec_send_frame(m->enc, NULL);
-    if (r < 0 && r != AVERROR_EOF) return r;
-    AVPacket *pkt = av_packet_alloc();
-    while (pkt && avcodec_receive_packet(m->enc, pkt) >= 0) {
-        pkt->stream_index = 0;
-        av_packet_rescale_ts(pkt, m->enc->time_base, m->out->streams[0]->time_base);
-        if ((r = av_write_frame(m->out, pkt)) < 0) { av_packet_free(&pkt); return r; }
-        m->rec_pkts++;
-        av_packet_unref(pkt);
-    }
-    av_packet_free(&pkt);
-    av_frame_free(&m->conv);
-    int t = av_write_trailer(m->out);                              /* flushes the open fragment (skip_trailer: the fragments are the file) */
-    if (t >= 0) avio_flush(m->pb);
+    if (t >= 0 && m->pb) avio_flush(m->pb);
     r = sink_close(&m->sink);                                      /* waits for the last sync; its log line left before */
     if (m->pb) { av_freep(&m->pb->buffer); avio_context_free(&m->pb); }   /* the camera files' close order: trailer, flush, sink, then the muxer */
     avformat_free_context(m->out); m->out = NULL;
-    avcodec_free_context(&m->enc);
     return r < 0 ? r : t;
 }
 
@@ -537,10 +503,10 @@ static void tap_write(Session *s, const AVFrame *f) {
     tap_samples += n;
 }
 
-static void filter_drain(Session *s, AVFrame *o, AVPacket *pkt, int flush) {
+/* Row 152: the lane's output feeds the PCM tap ONLY (K-5); the camera files' audio comes from the pairs' encoders. */
+static void filter_drain(Session *s, AVFrame *o, int flush) {
     while ((flush || !fatal_pending()) && av_buffersink_get_frame(sink, o) >= 0) {
         tap_write(s, o);
-        encode(s, o, pkt);
         av_frame_unref(o);
     }
 }
@@ -772,8 +738,8 @@ static void telemetry(Session *s, int64_t timeline) {
 
 /* ---------------------------------------------------------------- the sample account (protocol version 5) */
 /* THE RUNS (design 06 section 8.2, "what a run is"). A run is a maximal row of consecutive TRACK samples that are
- * zeros inserted for a gapped microphone that fed the encoder. It may cross a quantum's edge and a switch from one
- * gapped microphone to the other; it belongs to the microphone that fed at its first sample. A sample fed by a
+ * zeros inserted for a gapped microphone that fed the encoder. It may cross a quantum's edge; it belongs to the
+ * microphone that fed at its first sample (row 152b: with no switch, that is always the tap's input `cur_map`). A sample fed by a
  * PCM_FIFO microphone ends a run, and so does a received sample (a non-finite one too: it is no inserted zero).
  * These functions are handed what audio_main knows; none of them reads the input kind. */
 static void run_end(Session *s) {
@@ -855,30 +821,33 @@ static void nap(int64_t us) {
 
 void *audio_main(void *arg) {
     Session *s = arg;
-    filter_tid = pthread_self();
     int r = filter_build(s->active_mic);
     if (r < 0) { fatal("filter", "GRAPH_BUILD_FAILED", r); return NULL; }
     for (int i = 0; i < NMIC; i++)
         if ((r = mic_open(&mics[i], &s->mic[i])) < 0) { fatal("filter", "MIC_INPUT_OPEN_FAILED", r); return NULL; }
-    /* D61 (2026-11-04): every channel whose plan row names an outputPath gets its own file: one encoder
-     * instance per file (the honest count - four channels are four streams), opened before T0 so the file
-     * holds audio from sample 0 like a camera file does. A channel without one records nothing of its own. */
-    int n_enc = 1;                                            /* the legacy lane's S->enc (camera files' audio track) */
+    /* D61 (2026-11-04): every channel of the plan gets its own file (protocol 6: every row names one), opened before
+     * T0 so the file holds audio from sample 0 like a camera file does. Row 152: the honest count is the encoders the
+     * START opened (audio_open_encoders): one per channel file, plus the silent one when a camera states its channel
+     * missing - 4 for a 4+4 plan (spec S5 section 4 item 4); the pairing is logged once per camera. */
+    int n_enc = 0;
+    for (int i = 0; i <= NMIC; i++) n_enc += encs[i].enc != NULL;
     for (int i = 0; i < NMIC; i++) {
         if (!s->mic[i].present || !s->mic[i].out_path[0]) continue;
         if ((r = mic_rec_open(&mics[i], s)) < 0) { fatal("filter", "MIC_OUTPUT_OPEN_FAILED", r); return NULL; }
-        n_enc++;
     }
+    for (int i = 0; i < s->ncam; i++)
+        if (s->cam[i].present)
+            logj("info", "filter", "camera_audio_source", "\"cam\":%d,\"track\":\"%s\",\"mic_channel\":%d,\"source\":\"%s\",\"mic_missing\":\"%s\"", i + 1, s->cam[i].track_id, s->cam[i].mic_idx + 1,
+                 s->cam[i].mic_missing[0] ? "SILENT" : "CHANNEL", s->cam[i].mic_missing);
     tap_open(s);
     AVFrame *o = av_frame_alloc();
-    AVPacket *pkt = av_packet_alloc();
-    if (!o || !pkt) { fatal("filter", "FRAME_ALLOC_FAILED", AVERROR(ENOMEM)); return NULL; }
+    if (!o) { fatal("filter", "FRAME_ALLOC_FAILED", AVERROR(ENOMEM)); return NULL; }
+    static const float zeros[QUANTUM];                        /* the silent track's quantum */
 
     /* T0: wait for the first samples, then for the estimation window. */
     int64_t began = mono_us(), first_data = 0;
     while (!atomic_load(&g_stop)) {
         for (int i = 0; i < NMIC; i++) mic_read(&mics[i]);
-        filter_apply_commands(s, -1, 0);                    /* no timeline yet: a switch is refused */
         int64_t now = mono_us();
         /* D61 (2026-11-04): any of the FOUR channels says "a device is delivering" (was the role pair). */
         if (!first_data) for (int i = 0; i < NMIC; i++) if (mics[i].has_data) { first_data = now; break; }
@@ -903,9 +872,14 @@ void *audio_main(void *arg) {
     }
     for (int i = 0; i < NMIC; i++) micwatch_init(&mics[i].watch, (double)g_mic_silence_dbfs, g_mic_silence_ms, g_mic_disconnect_ms, SR);
     atomic_store(&s->t0_real_us, t0_real);
-    /* The interval of the start: which microphone feeds the one audio track from sample 0. Written before T0 is
-     * published, so it precedes every record of a camera (no video is placed before `armed`). */
-    if (!atomic_load(&g_stop)) interval_record(s, 0, t0_real, NULL, 0);
+    /* The interval of the start: which microphone feeds the transcribed track (channel 1, the tap) from sample 0.
+     * Written before T0 is published, so it precedes every record of a camera (no video is placed before `armed`).
+     * Row 152 (R151-1 lifted, D131): a plan without that channel's row has NO such device - no record is written (the
+     * record names a device or is not a record), so no AUDIO_TIMELINE_END either; the camera of pair 1 states the
+     * reason (`micMissing`), and that statement is what the manifest carries. `timeline`: T0 was taken. */
+    int timeline = !atomic_load(&g_stop);
+    if (timeline && s->mic[cur_map].present) interval_record(s, t0_real);
+    else if (timeline) logj("warn", "filter", "no_interval_without_channel_row", "\"channel\":%d", cur_map + 1);
     atomic_store(&s->armed, 1);
     if (manifest) fprintf(manifest, "{\"type\":\"t0\",\"t0_real_us\":%lld,\"master_mic\":%d}\n", (long long)t0_real, master);
     logj("info", "filter", "audio_started", "\"t0_real_us\":%lld,\"encoders\":%d,\"quantum_samples\":%d,\"master_mic\":%d,\"movflags\":\"%s\"",
@@ -925,9 +899,6 @@ void *audio_main(void *arg) {
             nap(due - now);
         }
         if (atomic_load(&g_stop)) break;
-        /* The operator's switch, at this quantum's boundary. Sample 0 belongs to the interval of the start: a
-         * command that is already waiting then is applied one quantum later. */
-        if (n > 0) filter_apply_commands(s, n, t0_real);
         for (int i = 0; i < NMIC && !fatal_pending(); i++) {
             AVFrame *f = av_frame_alloc();
             if (!f) { fatal("filter", "FRAME_ALLOC_FAILED", AVERROR(ENOMEM)); break; }
@@ -939,9 +910,10 @@ void *audio_main(void *arg) {
             if ((r = av_frame_get_buffer(f, 0)) < 0) { fatal("filter", "FRAME_ALLOC_FAILED", r); av_frame_free(&f); break; }
             /* `waited`: this quantum was taken on time, so the buffer level is a measurement (not the catch-up after T0). */
             int events = mic_take(&mics[i], (float *)(void *)f->data[0], now, waited);
-            /* D61 (2026-11-04): the channel's own file takes EVERY quantum of its channel from sample 0 -
-             * silence included - exactly as the lane's inputs do (a gap would be a lost timeline). */
-            if (mics[i].recording) mic_rec_write(&mics[i], f);
+            /* D61 (2026-11-04): the channel's encoder takes EVERY quantum of its channel from sample 0 - silence
+             * included - exactly as the lane's inputs do (a gap would be a lost timeline). Row 152: its packets go to
+             * the channel's own file AND to the camera of its pair. */
+            if (encs[i].enc) enc_write(s, &encs[i], (const float *)(const void *)f->data[0], QUANTUM);
             /* The selector graph spans the legacy two-role lane only (channels 1 and 2; D61): a third or
              * fourth channel is read, metered, warned for and recorded - it joins no graph. */
             if (i < NLANE) {
@@ -953,12 +925,15 @@ void *audio_main(void *arg) {
              * It says; it never switches (OD-11). */
             if (s->mic[i].present) mic_warn(s, i, events | micwatch_chunk(&mics[i].watch, QUANTUM, mics[i].taken, mics[i].taken_sumsq));
         }
+        /* Row 152 (D30 K-3): the silent track of every camera whose paired channel is not in the plan, on the same
+         * timeline - one quantum of zeros per quantum, from sample 0. */
+        if (encs[NMIC].enc && !fatal_pending()) enc_write(s, &encs[NMIC], zeros, QUANTUM);
         /* Version 5: the runs of inserted samples on the TRACK - this quantum is what `cur_map` fed. A PCM_FIFO
          * microphone feeding ends a run and starts none. */
         if (s->mic[cur_map].gapped) run_feed(s, cur_map, n);
         else run_end(s);
         n += QUANTUM;
-        filter_drain(s, o, pkt, 0);
+        filter_drain(s, o, 0);
         /* Version 5: a periodic account of every gapped microphone, so that a worker that is killed leaves a statement. */
         if (n % CAPTURE_MIC_ACCOUNT_PERIOD_SAMPLES == 0)
             for (int i = 0; i < NMIC; i++)
@@ -984,18 +959,23 @@ void *audio_main(void *arg) {
      * (as far as it goes: a file whose write failed keeps what is durable, sink.c truncation rules unchanged). */
     for (int i = 0; i < NLANE; i++)
         if ((r = av_buffersrc_add_frame_flags(src[i], NULL, 0)) < 0 && !fatal_pending()) fatal("filter", "GRAPH_EOF_FAILED", r);
-    if (!fatal_pending()) {
-        filter_drain(s, o, pkt, 1);
-        encode(s, NULL, pkt);
-    }
-    for (int i = 0; i < NMIC; i++)
+    if (!fatal_pending()) filter_drain(s, o, 1);
+    /* Row 152: every pair's encoder is flushed (its tail reaches its camera file, still open, and its channel file),
+     * then its channel file is ended; then the silent one. Also after a fatal error, as far as it goes. */
+    int64_t pkts_total = 0;
+    for (int i = 0; i < NMIC; i++) {
+        if (!fatal_pending()) enc_flush(s, &encs[i]);
         if (mics[i].recording || mics[i].out) {
             int cr = mic_rec_close(&mics[i]);
             if (cr < 0) logj("error", "micfile", "channel_file_close_failed", "\"mic\":%d,\"av_code\":%d", i + 1, cr);
         }
+    }
+    if (!fatal_pending()) enc_flush(s, &encs[NMIC]);
+    for (int i = 0; i <= NMIC; i++) pkts_total += encs[i].pkts;
     if (manifest) {
-        fprintf(manifest, "{\"type\":\"end\",\"samples_in\":%lld,\"t0_real_us\":%lld,\"encoders\":%d,\"apkts0\":%lld,\"missing0\":%lld,\"missing1\":%lld}\n",
-                (long long)n, (long long)t0_real, n_enc, (long long)a_pkts, (long long)mics[0].missing, (long long)mics[1].missing);   /* D61: the honest count - the lane's encoder plus one per channel file */
+        fprintf(manifest, "{\"type\":\"end\",\"samples_in\":%lld,\"t0_real_us\":%lld,\"encoders\":%d,\"apkts\":[%lld,%lld,%lld,%lld],\"apkts_silent\":%lld,\"missing0\":%lld,\"missing1\":%lld}\n",
+                (long long)n, (long long)t0_real, n_enc, (long long)encs[0].pkts, (long long)encs[1].pkts, (long long)encs[2].pkts, (long long)encs[3].pkts, (long long)encs[NMIC].pkts,
+                (long long)mics[0].missing, (long long)mics[1].missing);   /* row 152: the honest count - one encoder per channel file, plus the silent one */
         fclose(manifest);
         manifest = NULL;
     }
@@ -1004,10 +984,11 @@ void *audio_main(void *arg) {
         logj("info", "filter", "mic_summary", "\"mic\":%d,\"received\":%lld,\"missing\":%lld,\"dropped\":%lld,\"restarts\":%lld,\"last_ppm\":%.1f",
              i + 1, (long long)mics[i].received, (long long)mics[i].missing, (long long)mics[i].dropped, (long long)mics[i].restarts, mics[i].ppm);
     }
-    logj("info", "filter", "audio_finished", "\"samples_in\":%lld,\"encoder_packets\":%lld,\"tap_samples\":%lld,\"intervals\":%d", (long long)n, (long long)a_pkts, (long long)tap_samples, intervals);
+    logj("info", "filter", "audio_finished", "\"samples_in\":%lld,\"encoder_packets\":%lld,\"tap_samples\":%lld,\"intervals\":%d", (long long)n, (long long)pkts_total, (long long)tap_samples, intervals);
     /* Version 5, 7.2a place 12: the timeline ends - a run still open ends with it; what a gapped microphone's buffer
-     * still holds was received and never put on the timeline (discarded); then its CLOSING account, before the end. */
-    if (intervals) {
+     * still holds was received and never put on the timeline (discarded); then its CLOSING account, before the end.
+     * Row 152: on every timeline that began (`timeline`), also one without the start interval (no MIC-01 row). */
+    if (timeline) {
         run_end(s);
         for (int i = 0; i < NMIC; i++) {
             if (!s->mic[i].present || !s->mic[i].gapped) continue;
@@ -1021,12 +1002,6 @@ void *audio_main(void *arg) {
     tap_fd = -1;
     for (int i = 0; i < NMIC; i++) mic_close(&mics[i]);
     av_frame_free(&o);
-    av_packet_free(&pkt);
     avfilter_graph_free(&graph);
-    /* A switch that was still waiting is answered: no command is left without its acknowledgement. */
-    pthread_mutex_lock(&sw_mx);
-    if (sw_pending) ipc_send("\"type\":\"ACK\",\"correlationId\":\"%s\",\"ok\":false,\"code\":\"NOT_RECORDING\"", sw_corr);
-    sw_pending = 0;
-    pthread_mutex_unlock(&sw_mx);
     return NULL;
 }

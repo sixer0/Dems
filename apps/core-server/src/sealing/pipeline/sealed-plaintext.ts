@@ -37,13 +37,13 @@
  */
 import { lstat, readFile, readdir, rmdir } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
-import { FRAGMENT_CHAIN_GENESIS, PackageFile, cameraFileName, cameraFilePath, nextFragmentChainHash, parseManifestV2, type ManifestV2 } from '@dems/shared/evidence-package';
+import { FRAGMENT_CHAIN_GENESIS, PackageFile, audioFilePath, cameraFileName, cameraFilePath, nextFragmentChainHash, parseManifestV2, type ManifestFragment, type ManifestV2 } from '@dems/shared/evidence-package';
 import type { FragmentOpener } from '@dems/shared/evidence-verify';
-import { VIDEO_TRACK_IDS, type VideoTrackId } from '../../modules/recording-fragments';
+import { VIDEO_TRACK_IDS, type FragmentTrackId, type VideoTrackId } from '../../modules/recording-fragments';
 import { describeError, type ErrorLog } from '../../plugins/logger';
 import type { SealingStepJournal, SealingStepRecord, StepCheckpoint } from '../step-journal';
 import { moveToQuarantine, nodeSha256, openCameraFile, removeIfThere, syncDirectory } from './camera-files';
-import { SEALING_STEP_ORDER, SealingError, SealingFailure, type FragmentRows } from './contract';
+import { MIC_RECORDING_FILE_NAMES, SEALING_STEP_ORDER, SealingError, SealingFailure, micRecordingFileName, type FragmentRows } from './contract';
 
 const SOURCE = 'sealing.plaintext';
 const DEFAULT_CHUNK_BYTES = 1024 * 1024;
@@ -73,6 +73,49 @@ export interface KeptPlaintextNote {
 export interface SealedTrackRecord {
   readonly tracks: readonly { readonly trackId: VideoTrackId; readonly partial?: { readonly reason: string; readonly firstBadSeq: number } }[];
   readonly omitted?: readonly { readonly trackId: VideoTrackId; readonly code: string | null; readonly reason: string }[];
+  /** Audit row 153 (D5): the pair audio files of the seal (`ClosedAudio` of the CLOSE_TRACKS record). Absent for a `/2` seal. */
+  readonly audio?: {
+    readonly tracks: readonly { readonly trackId: string; readonly partial?: { readonly reason: string; readonly firstBadSeq: number } }[];
+    readonly omitted: readonly { readonly trackId: string; readonly code: string | null; readonly reason: string }[];
+  };
+}
+
+/**
+ * ONE RECORDING the signed manifest accounts for (row 153): the worker's file beside the package and the sealed file of
+ * `fragments/` with the members that state it - a camera file (`VIDEO-0N.mp4` -> `fragments/VIDEO-0N.mp4`, `tracks[]`)
+ * or, since D5, a pair audio file (`MIC-0N.m4a` -> `fragments/AUDIO-0N.m4a`, `audioTracks[]`).
+ */
+interface AccountedRecording {
+  readonly trackId: FragmentTrackId;
+  readonly recordingName: string;
+  readonly sealedPath: string;
+  readonly record: { readonly bytes: number; readonly sha256: string; readonly sha256Plain: string | null; readonly fragmentChainHead: string | null };
+  readonly fragments: readonly ManifestFragment[] | undefined;
+}
+
+/** The recordings of a committed manifest: its camera files, then (D5) its pair audio files. */
+function accountedRecordings(manifest: ManifestV2): AccountedRecording[] {
+  const cameras = manifest.tracks.flatMap((track): AccountedRecording[] => {
+    const trackId = VIDEO_TRACK_IDS.find((id) => id === track.trackId);
+    // Not a name this pipeline ever gave a recording: nothing under it is touched.
+    if (trackId === undefined || track.file !== cameraFileName(trackId)) return [];
+    return [{ trackId, recordingName: track.file, sealedPath: cameraFilePath(trackId), record: track, fragments: manifest.files.find((entry) => entry.trackId === trackId)?.fragments }];
+  });
+  const audio = (manifest.audioTracks ?? []).map((track): AccountedRecording => ({
+    trackId: track.trackId as FragmentTrackId,
+    recordingName: micRecordingFileName(track.micChannel),
+    sealedPath: audioFilePath(track.trackId),
+    record: track,
+    fragments: manifest.audioFiles?.find((entry) => entry.trackId === track.trackId)?.fragments,
+  }));
+  return [...cameras, ...audio];
+}
+
+/** The worker's recording name of a sealed track id: `VIDEO-0N.mp4`, or for `AUDIO-0N` the channel recording `MIC-0N.m4a` (N-04, N-20). */
+function recordingNameOf(trackId: string): string | null {
+  if ((VIDEO_TRACK_IDS as readonly string[]).includes(trackId)) return cameraFileName(trackId as VideoTrackId);
+  const pair = /^AUDIO-0([1-4])$/.exec(trackId)?.[1];
+  return pair === undefined ? null : micRecordingFileName(`MIC-0${pair}` as 'MIC-01');
 }
 
 export interface FinishPlaintextInput {
@@ -124,15 +167,14 @@ async function committedManifest(packageDir: string, sessionId: string, manifest
  * must not go. Throws `FRAGMENT_NOT_OPENABLE` when the Core cannot open at all (no key): a cause
  * that may heal, nothing is decided.
  */
-async function sealedFileProven(input: { packageDir: string; sessionId: string; manifest: ManifestV2; trackId: VideoTrackId; opener: FragmentOpener | null; fragments: Pick<FragmentRows, 'read'>; chunkBytes: number }): Promise<boolean> {
-  const { manifest, trackId, opener, chunkBytes } = input;
-  const track = manifest.tracks.find((entry) => entry.trackId === trackId);
-  const records = manifest.files.find((entry) => entry.trackId === trackId)?.fragments;
-  if (track === undefined || records === undefined || records.length === 0) return false;
+async function sealedFileProven(input: { packageDir: string; sessionId: string; recording: AccountedRecording; opener: FragmentOpener | null; fragments: Pick<FragmentRows, 'read'>; chunkBytes: number }): Promise<boolean> {
+  const { opener, chunkBytes } = input;
+  const { trackId, record: track, fragments: records } = input.recording;
+  if (records === undefined || records.length === 0) return false;
   const keyId = records[0]?.keyId ?? '';
   if (opener === null || !(await opener.hasKey(keyId))) throw new SealingError(SealingFailure.FRAGMENT_NOT_OPENABLE, 'the session key is not in the credential store: the sealed file cannot be proven, no recording is removed', { trackId });
   const rows = new Map((await input.fragments.read(input.sessionId, trackId)).map((row) => [row.seq, row] as const));
-  const file = await openCameraFile(join(input.packageDir, ...cameraFilePath(trackId).split('/')));
+  const file = await openCameraFile(join(input.packageDir, ...input.recording.sealedPath.split('/')));
   if (file === null) return false;
   try {
     if (file.source.size !== track.bytes) return false;
@@ -192,11 +234,11 @@ async function judgeRecordings(input: FinishPlaintextInput, manifest: ManifestV2
   const home = resolve(input.packageDir);
   const removable: string[] = [];
   const kept: KeptPlaintextFile[] = [];
-  for (const track of manifest.tracks) {
-    const name = track.file;
-    const trackId = VIDEO_TRACK_IDS.find((id) => id === track.trackId);
-    // Not a name this pipeline ever gave a recording: nothing under it is touched.
-    if (trackId === undefined || name !== cameraFileName(trackId) || basename(name) !== name) continue;
+  // Row 153 (D5): the camera files and the pair audio files of the manifest, by one rule.
+  for (const recording of accountedRecordings(manifest)) {
+    const { trackId, record: track } = recording;
+    const name = recording.recordingName;
+    if (basename(name) !== name) continue;
     const path = join(input.packageDir, name);
     if (dirname(resolve(path)) !== home) continue;
     let facts;
@@ -213,13 +255,13 @@ async function judgeRecordings(input: FinishPlaintextInput, manifest: ManifestV2
     }
     let sealedFacts;
     try {
-      sealedFacts = await lstat(join(input.packageDir, ...cameraFilePath(trackId).split('/')));
+      sealedFacts = await lstat(join(input.packageDir, ...recording.sealedPath.split('/')));
     } catch (error) {
       if (errnoOf(error) !== 'ENOENT') throw error;
       sealedFacts = null;
     }
     if (sealedFacts === null || !sealedFacts.isFile() || sealedFacts.size !== track.bytes) {
-      throw new SealingError(SealingFailure.STORAGE_FAILED, 'the sealed camera file of the committed package is not as its manifest states: no recording is removed', { trackId });
+      throw new SealingError(SealingFailure.STORAGE_FAILED, 'the sealed media file of the committed package is not as its manifest states: no recording is removed', { trackId });
     }
     if (track.sha256Plain === null || facts.size < track.bytes) {
       keep(track.sha256Plain === null ? 'NO_PLAINTEXT_HASH' : 'SHORTER_THAN_SEALED');
@@ -244,7 +286,7 @@ async function judgeRecordings(input: FinishPlaintextInput, manifest: ManifestV2
       continue;
     }
     // R88-15: in a later attempt the sealed file is proven AGAIN before its only other copy goes.
-    if (input.recheck !== null && !(await sealedFileProven({ packageDir: input.packageDir, sessionId: input.sessionId, manifest, trackId, opener: input.recheck.opener, fragments: input.recheck.fragments, chunkBytes }))) {
+    if (input.recheck !== null && !(await sealedFileProven({ packageDir: input.packageDir, sessionId: input.sessionId, recording, opener: input.recheck.opener, fragments: input.recheck.fragments, chunkBytes }))) {
       keep('SEALED_FILE_NOT_PROVEN');
       continue;
     }
@@ -301,9 +343,10 @@ export async function removeSealedOrphans(stagingDir: string, log: ErrorLog, ses
 
 /** True when the session folder or its staging folder holds something this file deals with. Cheap: names only. */
 export async function sealedSessionHoldsPlaintext(packageDir: string, stagingDir: string): Promise<boolean> {
-  for (const trackId of VIDEO_TRACK_IDS) {
+  // Row 153 (D5): a microphone channel recording `MIC-0N.m4a` is plaintext of the session too.
+  for (const name of [...VIDEO_TRACK_IDS.map((trackId) => cameraFileName(trackId)), ...MIC_RECORDING_FILE_NAMES]) {
     try {
-      await lstat(join(packageDir, cameraFileName(trackId)));
+      await lstat(join(packageDir, name));
       return true;
     } catch (error) {
       if (errnoOf(error) !== 'ENOENT' && errnoOf(error) !== 'ENOTDIR') throw error;
@@ -327,10 +370,11 @@ export async function finishSealedPlaintext(input: FinishPlaintextInput): Promis
   const manifest = await committedManifest(packageDir, sessionId, input.manifestSha256);
   const sealedIds = manifest.tracks.map((track) => track.trackId);
   // DECIDED BEFORE ANYTHING IS TOUCHED: a cause that may heal throws here and leaves every file where it is.
-  const partial = input.closed.tracks.filter((track) => track.partial !== undefined);
+  // Row 153 (D5): a pair audio file of which only the durable prefix is sealed is held like a camera file's.
+  const partial = [...input.closed.tracks, ...(input.closed.audio?.tracks ?? [])].filter((track) => track.partial !== undefined);
   const judged = await judgeRecordings(input, manifest);
   const kept = judged.kept.filter((entry) => !partial.some((track) => track.trackId === entry.trackId));
-  const removable = judged.removable.filter((name) => !partial.some((track) => cameraFileName(track.trackId) === name));
+  const removable = judged.removable.filter((name) => !partial.some((track) => recordingNameOf(track.trackId) === name));
   // TOLD FIRST (R88-05 (c)): one alert + one audit row for the session. A rejection moves nothing.
   if (kept.length > 0) {
     if (input.noteKeptPlaintext === undefined) throw new SealingError(SealingFailure.ENGINE_REFUSED, 'a plaintext file of a sealed session must be kept and the engine cannot be told: nothing is moved', { reason: 'NOTICE_NOT_WRITTEN' });
@@ -344,7 +388,8 @@ export async function finishSealedPlaintext(input: FinishPlaintextInput): Promis
   // A camera file of which only the DURABLE PREFIX is sealed (ruling D183): the WHOLE original is
   // moved first - its first bytes are the sealed prefix, and the unsealed remainder must not be lost.
   for (const track of partial) {
-    if (await moveToQuarantine(packageDir, cameraFileName(track.trackId), quarantineDir)) {
+    const name = recordingNameOf(track.trackId);
+    if (name !== null && (await moveToQuarantine(packageDir, name, quarantineDir))) {
       recordingsQuarantined += 1;
       log.append({ level: 'error', source: SOURCE, message: 'the original recording file of a camera whose prefix was sealed was moved to the quarantine folder', code: 'SEALING_RECORDING_QUARANTINED', context: { sessionId, trackId: track.trackId, reason: track.partial?.reason ?? null, firstBadSeq: track.partial?.firstBadSeq ?? null } });
     }
@@ -358,11 +403,22 @@ export async function finishSealedPlaintext(input: FinishPlaintextInput): Promis
     }
   }
   // A camera file that was LEFT OUT of the seal (R88-02 (b)) is no part of the package: moved, never deleted.
-  for (const entry of input.closed.omitted ?? []) {
-    if (sealedIds.includes(entry.trackId)) continue;
-    if (await moveToQuarantine(packageDir, cameraFileName(entry.trackId), quarantineDir)) {
+  const sealedAudioIds: readonly string[] = (manifest.audioTracks ?? []).map((track) => track.trackId);
+  for (const entry of [...(input.closed.omitted ?? []), ...(input.closed.audio?.omitted ?? [])]) {
+    if (sealedIds.includes(entry.trackId as VideoTrackId) || sealedAudioIds.includes(entry.trackId)) continue;
+    const name = recordingNameOf(entry.trackId);
+    if (name !== null && (await moveToQuarantine(packageDir, name, quarantineDir))) {
       recordingsQuarantined += 1;
       log.append({ level: 'error', source: SOURCE, message: 'a recording file that could not be sealed was moved to the quarantine folder', code: 'SEALING_RECORDING_QUARANTINED', context: { sessionId, trackId: entry.trackId, reason: entry.reason } });
+    }
+  }
+  // Row 153 (S5 §5.3 item 5; the P0-1 risk): a microphone channel recording that the signed manifest does not account for
+  // - every one of a session sealed under the `/2` manifest, whose channel files were never sealed - is no part of the
+  // package and never evidence of it: moved to the quarantine with the rest, never deleted, never left beside the package.
+  for (const name of MIC_RECORDING_FILE_NAMES) {
+    if (await moveToQuarantine(packageDir, name, quarantineDir)) {
+      recordingsQuarantined += 1;
+      log.append({ level: 'warn', source: SOURCE, message: 'a microphone channel recording the sealed package does not account for was moved to the quarantine folder', code: 'SEALING_MIC_RECORDING_QUARANTINED', context: { sessionId, file: name } });
     }
   }
   await syncDirectory(packageDir);

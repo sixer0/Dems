@@ -20,6 +20,7 @@ import { readTranscriptRevision, readTranscriptRevisions, revisionReasons } from
 import { RevisionList, TranscriptModelFacts } from '../transcript-pane'
 import { readVerifyV2, v2FilePartOutcome, type V2Check, type V2Row } from '../verify-v2'
 import { ResultRow } from '../verify-v2-report'
+import { PairAudio } from '../pair-audio'
 import * as sharedRules from '@dems/shared/evidence-rules'
 
 const H = (char: string) => char.repeat(64)
@@ -308,5 +309,112 @@ describe("members of the item a later contract added: the transcript model, the 
       show(<ol><ResultRow row={row} checks={null} /></ol>)
       expect(document.querySelector('[data-part="stored"]')).toHaveTextContent('decrypted bytes FAIL')
     })
+  })
+})
+
+describe('row 159 (D5): the pair audio files and the missing-microphone statement of an item (S5 §6, F-5-11; D30 K-3, D45)', () => {
+  // | Rule | Test |
+  // |------|------|
+  // | A D5 item (4 cameras + 4 audio files, contract shape): each AUDIO-0N is the audio of pair N, "in VIDEO-0N" | 1 |
+  // | MIC-02 not assigned: three audio files + one statement (silent VIDEO-02) | 2 |
+  // | An audio file whose camera file is not in the item is not said to be "in" it | 3 |
+  // | A statement that cannot be read whole is no statement (never guessed) | 4 |
+  // | LEGACY: a /2 item and a v1 item state neither; the camera reader is unchanged | 5 |
+  // | The block draws the rows with their own hashes and the statement in words; a legacy item draws nothing | 6, 7 |
+  const i18n = createI18n()
+  const show = (node: React.ReactNode) => render(<I18nextProvider i18n={i18n}>{node}</I18nextProvider>)
+  afterEach(cleanup)
+  const S = en.evidence.itemFacts.sealed
+  const camera = (n: number) => ({ trackId: `VIDEO-0${n}`, fileName: `fragments/VIDEO-0${n}.mp4`, sizeBytes: 4_000 + n, sha256: H(String(n)), sha256Plain: H('b'), fragmentCount: 5, fragmentChainHead: H('c') })
+  const audio = (n: number) => ({ trackId: `AUDIO-0${n}`, fileName: `fragments/AUDIO-0${n}.m4a`, sizeBytes: 900 + n, sha256: H(String.fromCharCode(96 + n)), sha256Plain: H('e'), fragmentCount: 5, fragmentChainHead: H('f') })
+  const d5Item = (cameras: number[], audios: number[], audioTracksMissing?: unknown) => ({
+    ...datasetItem(),
+    ...V2_MEMBERS,
+    sealedPackage: 'PRESENT',
+    files: [...cameras.map(camera), ...audios.map(audio)],
+    ...(audioTracksMissing === undefined ? {} : { audioTracksMissing }),
+  })
+  const MIC_02_NOT_ASSIGNED = [{ trackId: 'AUDIO-02', micDeviceId: null, silentIn: ['VIDEO-02'], reason: 'NOT_ASSIGNED' }]
+
+  it('1 - a D5 item with four audio files: each AUDIO-0N is the audio of pair N, in VIDEO-0N; the camera reader still names four cameras', () => {
+    const item = d5Item([1, 2, 3, 4], [1, 2, 3, 4])
+    expect(EvidenceItemSchema.safeParse(item).success).toBe(true)
+    const v2 = readItemV2(item)
+    expect(v2.files).toHaveLength(8)
+    expect(v2.pairAudioFiles.map((entry) => [entry.trackId, entry.pair, entry.camera, entry.inCamera, entry.file.sha256])).toEqual([
+      ['AUDIO-01', 1, 'VIDEO-01', 'VIDEO-01', H('a')],
+      ['AUDIO-02', 2, 'VIDEO-02', 'VIDEO-02', H('b')],
+      ['AUDIO-03', 3, 'VIDEO-03', 'VIDEO-03', H('c')],
+      ['AUDIO-04', 4, 'VIDEO-04', 'VIDEO-04', H('d')],
+    ])
+    expect(v2.audioTracksMissing).toEqual([])
+    expect((['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const).map((id) => cameraFileOf(v2, id)?.sha256)).toEqual([H('1'), H('2'), H('3'), H('4')])
+  })
+
+  it('2 - MIC-02 not assigned: three audio files and ONE statement, the silent track in VIDEO-02', () => {
+    const item = d5Item([1, 2, 3, 4], [1, 3, 4], MIC_02_NOT_ASSIGNED)
+    expect(EvidenceItemSchema.safeParse(item).success).toBe(true)
+    const v2 = readItemV2(item)
+    expect(v2.pairAudioFiles.map((entry) => entry.trackId)).toEqual(['AUDIO-01', 'AUDIO-03', 'AUDIO-04'])
+    expect(v2.audioTracksMissing).toEqual([{ trackId: 'AUDIO-02', pair: 2, camera: 'VIDEO-02', micDeviceId: null, silentIn: 'VIDEO-02', reason: 'NOT_ASSIGNED' }])
+  })
+
+  it('3 - an audio file whose camera file is not in the item (VIDEO-03 omitted at the seal) is not said to be in it', () => {
+    const v2 = readItemV2(d5Item([1, 2, 4], [1, 2, 3, 4]))
+    expect(v2.pairAudioFiles.find((entry) => entry.trackId === 'AUDIO-03')).toMatchObject({ camera: 'VIDEO-03', inCamera: null })
+  })
+
+  it('4 - a statement that cannot be read whole is no statement', () => {
+    const bad: unknown[] = [
+      [{ trackId: 'AUDIO-02', micDeviceId: null, silentIn: ['VIDEO-03'], reason: 'NOT_ASSIGNED' }],
+      [{ trackId: 'AUDIO-02', micDeviceId: 'MIC-04', silentIn: ['VIDEO-02'], reason: 'NOT_ASSIGNED' }],
+      [{ trackId: 'AUDIO-02', micDeviceId: null, silentIn: ['VIDEO-02'], reason: 'NOT_OPENED' }],
+      [{ trackId: 'AUDIO-02', micDeviceId: null, silentIn: ['VIDEO-02'], reason: 'FAILED' }],
+      [{ trackId: 'VIDEO-02', micDeviceId: null, silentIn: [], reason: 'NOT_ASSIGNED' }],
+      [...MIC_02_NOT_ASSIGNED, ...MIC_02_NOT_ASSIGNED],
+      [...MIC_02_NOT_ASSIGNED, 'AUDIO-03'],
+      'AUDIO-02',
+    ]
+    for (const value of bad) expect(readItemV2({ audioTracksMissing: value }).audioTracksMissing).toEqual([])
+    // CONTROL: the good one is read.
+    expect(readItemV2({ audioTracksMissing: [{ trackId: 'AUDIO-03', micDeviceId: 'MIC-05', silentIn: [], reason: 'NOT_OPENED' }] }).audioTracksMissing).toEqual([
+      { trackId: 'AUDIO-03', pair: 3, camera: 'VIDEO-03', micDeviceId: 'MIC-05', silentIn: null, reason: 'NOT_OPENED' },
+    ])
+  })
+
+  it('5 - LEGACY: a /2 item and a v1 item state no pair audio and no statement; the camera files are read as before', () => {
+    const legacy = readItemV2({ ...datasetItem(), ...V2_MEMBERS })
+    expect([legacy.pairAudioFiles, legacy.audioTracksMissing]).toEqual([[], []])
+    expect(legacy.files.map((file) => file.trackId)).toEqual(['VIDEO-01', 'VIDEO-02'])
+    const v1 = readItemV2(datasetItem())
+    expect([v1.pairAudioFiles, v1.audioTracksMissing, v1.files]).toEqual([[], [], []])
+  })
+
+  it('6 - the block: one row per audio file "AUDIO-0N · audio of Pair N, in VIDEO-0N" with its own hash, and the MIC-02 statement in words', () => {
+    const v2 = readItemV2(d5Item([1, 2, 3, 4], [1, 3, 4], MIC_02_NOT_ASSIGNED))
+    show(<PairAudio item={v2} onCopy={() => undefined} />)
+    const block = screen.getByTestId('evidence-pair-audio')
+    const rows = Array.from(block.querySelectorAll<HTMLElement>('[data-hash]'))
+    expect(rows.map((row) => row.dataset.hash)).toEqual(['AUDIO-01', 'AUDIO-03', 'AUDIO-04'])
+    expect(rows[1]).toHaveTextContent('AUDIO-03 · audio of Pair 3, in VIDEO-03')
+    expect(rows[1]).toHaveTextContent(H('c').slice(0, 16))
+    const missing = screen.getByTestId('evidence-audio-missing')
+    expect(missing).toHaveTextContent(S.missingTitle)
+    expect(missing).toHaveTextContent('AUDIO-02 (Pair 2): no microphone was assigned to MIC-02. VIDEO-02 holds a silent audio track: that silence is not the sound of the room.')
+    expect(missing).toHaveTextContent(S.missingNote)
+    expect(missing.querySelector('[data-missing="AUDIO-02"]')).toHaveAttribute('data-reason', 'NOT_ASSIGNED')
+  })
+
+  it('6b - a microphone that did not open is named; an audio file without its camera file says so', () => {
+    const v2 = readItemV2(d5Item([1, 2, 4], [1, 3], [{ trackId: 'AUDIO-02', micDeviceId: 'MIC-04', silentIn: ['VIDEO-02'], reason: 'NOT_OPENED' }]))
+    show(<PairAudio item={v2} onCopy={() => undefined} />)
+    expect(screen.getByTestId('evidence-audio-missing')).toHaveTextContent('AUDIO-02 (Pair 2): microphone MIC-04 on MIC-02 could not be opened at the start.')
+    expect(screen.getByTestId('evidence-pair-audio').querySelector('[data-hash="AUDIO-03"]')).toHaveTextContent('AUDIO-03 · audio of Pair 3 (camera file VIDEO-03 is not in the package)')
+  })
+
+  it('7 - LEGACY: the block draws nothing for a /2 item', () => {
+    const { container } = show(<PairAudio item={readItemV2({ ...datasetItem(), ...V2_MEMBERS })} onCopy={() => undefined} />)
+    expect(container.innerHTML).toBe('')
+    expect(screen.queryByTestId('evidence-pair-audio')).toBeNull()
   })
 })

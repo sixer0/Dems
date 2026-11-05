@@ -20,6 +20,10 @@ import {
   slotSourceOf,
   createSim,
   evaluatePrecheck,
+  evaluateLiveReadiness,
+  isSourceNotCheckedEvaluation,
+  LAST_CHECK_READING,
+  SOURCE_NOT_CHECKED_PRECHECK_RULE,
   isCaptureNotice,
   type CaptureWarningInput,
   type SessionCreateInput,
@@ -31,7 +35,8 @@ import {
   unassignedSlotOfPrecheckItem,
   unassignedSlotsOf,
 } from '../src/sim';
-import { CAPTURE_SELECTOR_SLOTS, PrecheckItemSchema } from '../src/api';
+import { CAPTURE_SELECTOR_SLOTS, PrecheckItemSchema, REPLICATED_SLICE_SCHEMAS } from '../src/api';
+import { CAPTURE_ADVISORY_DEVICE_KIND, CAPTURE_ADVISORY_REASONS, CAPTURE_ADVISORY_SEVERITY, CAPTURE_REASON_SEVERITY, PAIRED_MIC_MISSING_UNTRANSCRIBED_SENTENCE, captureFaultSentence } from '../src/sim'; // audit row 149
 import { en } from '../src/i18n';
 import * as ownCaptureBed from './support/own-capture-bed';
 import * as selectorBed from './support/selector-category-bed';
@@ -708,7 +713,8 @@ describe('row 128b: the pre-check live view reads reach (WARN on NOT_REACHABLE);
       value: 'UNREACHABLE',
       reason: `${cam} was not reachable at the last check`,
       reasonCode: null,
-      params: { deviceId: cam, deviceKind: 'CAMERA', rule: CaptureStartRule.ONE_CAMERA },
+      // Audit row 150 (D104): `slot` and `reading` mark the last-check reading of the slot.
+      params: { deviceId: cam, deviceKind: 'CAMERA', rule: CaptureStartRule.ONE_CAMERA, slot: 'VIDEO-02', reading: LAST_CHECK_READING },
     });
     // The other tracks are not touched.
     expect(evaluatePrecheck(h.state(), 'LENS_1')).toMatchObject({ status: 'PASS' });
@@ -720,7 +726,9 @@ describe('row 128b: the pre-check live view reads reach (WARN on NOT_REACHABLE);
     expect(evaluatePrecheck(h.state(), 'LENS_2')).toMatchObject({ status: 'PASS', value: 'READY' });
 
     h.sim.store.setState(withReach(h.state(), primary, 'NOT_REACHABLE'));
-    expect(evaluatePrecheck(h.state(), 'MIC_PRIMARY')).toMatchObject({ status: 'WARN', value: 'UNREACHABLE', reasonCode: null, params: { deviceId: primary, deviceKind: 'MIC', rule: CaptureStartRule.NO_STANDBY } });
+    // Audit row 150 (D104, RD-128b-1): channel 1 carries slot MIC-01 + reading LAST_CHECK, so the clients word it as Pair 1 (transcribed).
+    expect(evaluatePrecheck(h.state(), 'MIC_PRIMARY')).toMatchObject({ status: 'WARN', value: 'UNREACHABLE', reasonCode: null, params: { deviceId: primary, deviceKind: 'MIC', rule: CaptureStartRule.NO_STANDBY, slot: 'MIC-01', reading: LAST_CHECK_READING } });
+    expect(en.sessionNew.precheckLastCheck.transcribedMic).toContain('{{device}}');
     if (second !== primary) {
       h.sim.store.setState(withReach(h.state(), second, 'NOT_REACHABLE'));
       expect(evaluatePrecheck(h.state(), 'MIC_STANDBY')).toMatchObject({ status: 'WARN', value: 'UNREACHABLE', params: { deviceId: second, deviceKind: 'MIC', rule: CaptureStartRule.NO_STANDBY } });
@@ -751,5 +759,108 @@ describe('row 128b: the pre-check live view reads reach (WARN on NOT_REACHABLE);
     const cam = sourceOf(h.state(), 'VIDEO-02');
     h.sim.store.setState(withReach(h.state(), cam, 'NOT_REACHABLE'));
     expect(evaluatePrecheck(h.state(), 'LENS_2')).toMatchObject({ status: 'PASS', value: 'READY' });
+  });
+});
+
+// Audit row 150 (decision D113, O-138-1 option (c); test/138 §6): reach is memory-only, so after a restart and before any
+// preview or pre-check run an assigned, online source is NOT_CHECKED. The step-1 LIVE view (`evaluateLiveReadiness`) then
+// reads "Not checked" instead of PASS READY; the gate (`evaluatePrecheck`, a run) is unchanged.
+describe('row 150: the live readiness says Not checked when no reach reading exists since boot (D113)', () => {
+  const lensAndMics = ['LENS_1', 'LENS_2', 'LENS_3', 'LENS_4', 'MIC_PRIMARY', 'MIC_STANDBY', 'MIC_3', 'MIC_4'] as const;
+  const withReach = (state: SimState, reach: 'REACHABLE' | 'NOT_REACHABLE' | null): Pick<SimState, 'captureDevices'> => ({
+    captureDevices: { ...state.captureDevices, devices: state.captureDevices.devices.map((device) => ({ ...device, reach, checkedAt: reach === null ? null : START })) },
+  });
+
+  it('REAL capture, no reading: every lens and mic that evaluatePrecheck passes reads NOT_CHECKED live; the gate item stays PASS READY', () => {
+    const h = ownCaptureBed.bed({ capture: 'external' });
+    h.sim.store.setState(withReach(h.state(), null));
+    for (const id of lensAndMics) {
+      const gate = evaluatePrecheck(h.state(), id);
+      const live = evaluateLiveReadiness(h.state(), id);
+      if (gate.status !== 'PASS') {
+        expect(live, id).toEqual(gate);
+        continue;
+      }
+      expect(isSourceNotCheckedEvaluation(live), id).toBe(true);
+      expect(live).toMatchObject({ status: 'WARN', value: 'NOT_CHECKED', reasonCode: null, params: { rule: SOURCE_NOT_CHECKED_PRECHECK_RULE, deviceKind: id.startsWith('LENS') ? 'CAMERA' : 'MIC' } });
+    }
+    expect(lensAndMics.some((id) => isSourceNotCheckedEvaluation(evaluateLiveReadiness(h.state(), id)))).toBe(true);
+    // The other checks are evaluatePrecheck's own answer.
+    for (const id of PRECHECK_ORDER.filter((check) => !(lensAndMics as readonly string[]).includes(check))) expect(evaluateLiveReadiness(h.state(), id), id).toEqual(evaluatePrecheck(h.state(), id));
+  });
+
+  it('a reading clears it: REACHABLE reads PASS, NOT_REACHABLE reads the row 128b WARN (never Not checked)', () => {
+    const h = ownCaptureBed.bed({ capture: 'external' });
+    h.sim.store.setState(withReach(h.state(), 'REACHABLE'));
+    expect(evaluateLiveReadiness(h.state(), 'LENS_1')).toEqual(evaluatePrecheck(h.state(), 'LENS_1'));
+    expect(evaluateLiveReadiness(h.state(), 'LENS_1').status).toBe('PASS');
+    h.sim.store.setState(withReach(h.state(), 'NOT_REACHABLE'));
+    expect(evaluateLiveReadiness(h.state(), 'LENS_1')).toMatchObject({ status: 'WARN', value: 'UNREACHABLE' });
+  });
+
+  it('CONTROL: the simulated lane is unchanged (no Not checked), and a pre-check run never stores a NOT_CHECKED item', () => {
+    const sim = ownCaptureBed.bed({ capture: 'simulated' });
+    sim.sim.store.setState(withReach(sim.state(), null));
+    for (const id of lensAndMics) expect(evaluateLiveReadiness(sim.state(), id), id).toEqual(evaluatePrecheck(sim.state(), id));
+    const real = ownCaptureBed.bed({ capture: 'external' });
+    real.sim.store.setState(withReach(real.state(), null));
+    real.armed();
+    expect(real.state().session?.precheck.items.some((item) => item.value === 'NOT_CHECKED')).toBe(false);
+  });
+});
+
+// Audit row 149 (D5; D30 K-3; decision D132, the operator half of row 147 H1): a camera that records without the microphone
+// of its pair (a silent audio track) is told to the operator as the advisory notice PAIRED_MIC_MISSING - a WARNING on the
+// camera, no fault, no audit row, resolved by its clear (the Core clears it when the capture ends).
+describe('row 149: the advisory notice PAIRED_MIC_MISSING (a camera without the microphone of its pair)', () => {
+  const PAIR_2 = { code: 'PAIRED_MIC_MISSING', subject: 'CAM-02', trackId: 'VIDEO-02', micChannel: 'MIC-02', micMissing: 'NOT_OPENED' } as const;
+
+  it('is an advisory reason of a camera with the level WARNING, and its words are the one wording table (i18n reads the same sentence)', () => {
+    expect(CAPTURE_ADVISORY_DEVICE_KIND.PAIRED_MIC_MISSING).toBe('CAMERA');
+    expect(CAPTURE_ADVISORY_SEVERITY.PAIRED_MIC_MISSING).toBe('WARNING');
+    expect(CAPTURE_REASON_SEVERITY.PAIRED_MIC_MISSING).toBe('WARNING');
+    expect(CAPTURE_ADVISORY_REASONS).toContain('PAIRED_MIC_MISSING');
+    expect(isCaptureNotice({ code: 'PAIRED_MIC_MISSING' })).toBe(true);
+    expect(captureFaultSentence('PAIRED_MIC_MISSING', 'CAM-02')).toBe('CAM-02 is recording without the microphone of its pair: the audio track of this camera is silent. The recording continues.');
+    expect(en.common.captureFault.reason.PAIRED_MIC_MISSING).toBe('{{device}} is recording without the microphone of its pair: the audio track of this camera is silent. The recording continues.');
+  });
+
+  it('one WARNING alert on the camera with track, channel and reason words; no fault, no audit row, no device state; a second raise writes nothing; the clear resolves it', () => {
+    const h = harness();
+    const before = h.state();
+    h.sim.actions.raiseCaptureWarning(PAIR_2);
+    const raised = h.state();
+    const alerts = h.notices('PAIRED_MIC_MISSING');
+    expect(alerts.map((alert) => [alert.severity, alert.target, alert.message, alert.params, alert.active])).toEqual([
+      ['WARNING', 'CAM-02', captureFaultSentence('PAIRED_MIC_MISSING', 'CAM-02'), { reason: 'PAIRED_MIC_MISSING', deviceId: 'CAM-02', deviceKind: 'CAMERA', trackId: 'VIDEO-02', micChannel: 'MIC-02', micMissing: 'NOT_OPENED' }, true],
+    ]);
+    expect(REPLICATED_SLICE_SCHEMAS.alerts.safeParse(raised.alerts).success).toBe(true);
+    expect(raised.faults).toBe(before.faults);
+    expect(raised.audit.rows).toHaveLength(before.audit.rows.length);
+    expect(raised.captureDevices).toBe(before.captureDevices);
+    h.sim.actions.raiseCaptureWarning(PAIR_2);
+    expect(h.state().alerts).toBe(raised.alerts);
+    // CONTROL: another camera is another alert.
+    h.sim.actions.raiseCaptureWarning({ ...PAIR_2, subject: 'CAM-03', trackId: 'VIDEO-03', micChannel: 'MIC-03', micMissing: 'NOT_ASSIGNED' });
+    expect(h.notices('PAIRED_MIC_MISSING').filter((alert) => alert.active)).toHaveLength(2);
+    h.sim.actions.clearCaptureWarning({ code: 'PAIRED_MIC_MISSING', subject: 'CAM-02' });
+    expect(activeCaptureNotice(h.state(), 'PAIRED_MIC_MISSING', 'CAM-02')).toBeUndefined();
+    expect(activeCaptureNotice(h.state(), 'PAIRED_MIC_MISSING', 'CAM-03')).toBeDefined();
+    expect(h.state().audit.rows).toHaveLength(before.audit.rows.length);
+  });
+
+  it('Pair 1 says the session has no transcript; words outside their closed set are left out; a microphone is no subject of it', () => {
+    const h = harness();
+    h.sim.actions.raiseCaptureWarning({ code: 'PAIRED_MIC_MISSING', subject: 'CAM-01', trackId: 'VIDEO-01', micChannel: 'MIC-01', micMissing: 'NOT_ASSIGNED', transcribed: true });
+    const [pair1] = h.notices('PAIRED_MIC_MISSING');
+    expect(pair1?.message).toBe(`${captureFaultSentence('PAIRED_MIC_MISSING', 'CAM-01')} ${PAIRED_MIC_MISSING_UNTRANSCRIBED_SENTENCE}`);
+    expect(pair1?.params).toEqual({ reason: 'PAIRED_MIC_MISSING', deviceId: 'CAM-01', deviceKind: 'CAMERA', trackId: 'VIDEO-01', micChannel: 'MIC-01', micMissing: 'NOT_ASSIGNED', transcribed: true });
+    expect(REPLICATED_SLICE_SCHEMAS.alerts.safeParse(h.state().alerts).success).toBe(true);
+    // No device text and no unknown word reaches the alert.
+    h.sim.actions.raiseCaptureWarning({ code: 'PAIRED_MIC_MISSING', subject: 'CAM-04', trackId: 'rtsp://10.0.0.9/x', micChannel: 'MIC-9', micMissing: 'GONE' });
+    expect(activeCaptureNotice(h.state(), 'PAIRED_MIC_MISSING', 'CAM-04')?.params).toEqual({ reason: 'PAIRED_MIC_MISSING', deviceId: 'CAM-04', deviceKind: 'CAMERA' });
+    const held = h.state().alerts;
+    expect(() => h.sim.actions.raiseCaptureWarning({ code: 'PAIRED_MIC_MISSING', subject: 'MIC-02' })).toThrow(SimNotFoundError);
+    expect(h.state().alerts).toBe(held);
   });
 });

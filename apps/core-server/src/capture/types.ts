@@ -7,9 +7,7 @@
  * through it and through nothing else.
  */
 import type {
-  AudioSourceIntervalRecord,
   CaptureIpcLimits,
-  CaptureMicRole,
   CapturePlan,
   CapturePlanMic,
   CaptureRecord,
@@ -395,12 +393,8 @@ export interface CaptureSupervisor {
    * read `clean` - a stop that is not clean is an interrupted recording, never a normal one.
    */
   stop(sessionId: string, reason: CaptureStopReason): Promise<CaptureStopOutcome>;
-  /**
-   * The operator's switch (never automatic, OD-11). Resolves when the worker acknowledged it, with
-   * the `AUDIO_SOURCE_INTERVAL` record of that switch (the interval it opened: microphone, first
-   * sample, capture instant), or with null when that role already fed the track (nothing changed).
-   */
-  switchAudioSource(sessionId: string, to: CaptureMicRole): Promise<AudioSourceIntervalRecord | null>;
+  // Audit row 149 (N-29, N-31; D28 DQ-2): the operator's switch (`switchAudioSource`) is retired with operation 81 -
+  // the audio of each track is fixed by its camera-microphone pair, and protocol 6 has no `SWITCH_AUDIO_SOURCE`.
   status(): CaptureStatus;
   /** Returns the function that removes the listener. */
   on<Name extends CaptureEventName>(event: Name, listener: CaptureListener<Name>): () => void;

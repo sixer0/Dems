@@ -87,6 +87,38 @@
     list-style: none;
   }
 
+  /* Audit row 156 (D27; S5 §6): the four "Camera N <-> Mic N" pairs; each pair holds its camera row and its mic row side by side. */
+  .dev-sel-pairs {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 0 0 8px;
+    padding: 0;
+    list-style: none;
+  }
+
+  .dev-sel-pair {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .dev-sel-pair-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dev-sel-pair-label {
+    font-weight: 600;
+  }
+
+  .dev-sel-pair-warning {
+    margin: 0;
+    font-size: var(--text-caption, 12px);
+    color: var(--warning);
+  }
+
   .dems-shell[data-shell-tier='sm'] .dev-sel-list,
   .dems-shell[data-shell-tier='xs'] .dev-sel-list {
     grid-template-columns: minmax(0, 1fr);

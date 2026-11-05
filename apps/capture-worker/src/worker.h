@@ -11,11 +11,12 @@
  *                     checkpoint per durable fragment.
  *   ingest.c          one RTSP/TCP listen ingest per camera, video stream copy, PRFT anchoring,
  *                     the fMP4 muxer of the camera file.
- *   audio.c           THE filtering thread: FOUR mic inputs (D61, 2026-11-04; was two): the legacy
- *                     two-role lane still runs two inputs through one selector into ONE AAC encoder
- *                     into every camera file, and every channel that names an outputPath is ALSO
- *                     recorded on its own file through an encoder of its own. Meters, PCM tap, the
- *                     operator's switch and its interval records. The only unit that names libavfilter.
+ *   audio.c           THE filtering thread: FOUR mic inputs (D61, 2026-11-04; was two). Row 152 (D5
+ *                     pairs): one AAC encoder per channel, its packets to the channel's own file AND to
+ *                     the audio track of its pair's camera (VIDEO-0N <-> MIC-0N), a silent one for a
+ *                     camera whose channel is missing; the legacy two-input selector feeds only the
+ *                     PCM tap (MIC-01), set at START and never moved (row 152b: the operator's switch
+ *                     is retired). Meters, the start interval record. The only unit that names libavfilter.
  *   micwatch.c        the microphone warning raiser (silence, disconnect, rate limit): pure.
  *   anchor.c          video anchoring arithmetic and the camera-clock rules: pure.
  *   announce.c        the announced address of an ingest: the expected message and its whole-message
@@ -47,14 +48,17 @@
 
 /* The protocol this worker speaks: packages/capture-protocol/src/index.ts. A test of the Core
  * server holds these three numbers equal to the package's. */
-#define CAPTURE_PROTOCOL_VERSION 5
+#define CAPTURE_PROTOCOL_VERSION 6
 #define CAPTURE_MEDIA_PORT_MIN 8554
 #define CAPTURE_MEDIA_PORT_MAX 8564
 #define MAX_FRAME_CHARS 65536
 /* 0.7.0 (audit 2026-11-05 row 87, DF-02): raised so that a worker built before the 4+4 plan change (D60/D61) cannot
- * pass for this one; the protocol stays 5 (D29 Q7). Every release build writes build/capture-worker.stamp beside the
- * program (stamp.sh; the Core checks it at boot). The Core's CAPTURE_WORKER_VERSION moves with this word. */
-#define WORKER_VERSION "capture-worker/0.7.0"
+ * pass for this one; the protocol stayed 5 (D29 Q7). Every release build writes build/capture-worker.stamp beside the
+ * program (stamp.sh; the Core checks it at boot). The Core's CAPTURE_WORKER_VERSION moves with this word.
+ * 0.8.0 (audit 2026-11-05 row 144, C-P0-2a; D28 DQ-4, D25 N5): the camera-microphone pairs (D5) change the plan,
+ * so the protocol above is 6 and this word moves with it, IN THE SAME CHANGE SET as the package and the Core's
+ * checks.ts. Deploy rule: a 0.8.0 / protocol 6 worker and its stamp go in together with a Core that expects them. */
+#define WORKER_VERSION "capture-worker/0.8.0"
 
 /* A PROOF BUILD IS ANY BUILD WITH ONE OF ITS SWITCHES (review R63-06; pair-58 F-10). Until fix pass
  * F-M3 the mark of HELLO hung on ONE macro (DEMS_PROOF_MUX_EXTRA): a build with any of the other
@@ -66,7 +70,7 @@
  * test below sees only what the build line defined (the defaults of MIC_MAX_PPM, DEMS_MOVFLAGS and
  * DEMS_VERIFIED_LAVF_VERSION_INT are defined later, in their units). */
 #if defined(DEMS_PROOF_MUX_EXTRA) || defined(DEMS_PROOF_KEEP_TORN_TAIL) || defined(DEMS_PROOF_NO_REFUSAL_EXIT) || defined(DEMS_PROOF_WRITE_FAULT) || \
-    defined(DEMS_PROOF_INTERVAL_SKEW) || defined(DEMS_PROOF_NO_CLOCK_FLOOR) || defined(DEMS_PROOF_NO_FRAGMENT_BOUND) || defined(DEMS_PROOF_SILENT_SYNC_FALLBACK) || \
+    defined(DEMS_PROOF_NO_CLOCK_FLOOR) || defined(DEMS_PROOF_NO_FRAGMENT_BOUND) || defined(DEMS_PROOF_SILENT_SYNC_FALLBACK) || \
     defined(DEMS_PROOF_RUNTIME_LAVF_VERSION_INT) || defined(MIC_MAX_PPM) || defined(DEMS_MOVFLAGS) || defined(DEMS_VERIFIED_LAVF_VERSION_INT) || \
     defined(DEMS_PROOF_ANNOUNCE_UNSEEN)
 #define DEMS_PROOF_BUILD 1
@@ -102,10 +106,10 @@
 /* D61 (2026-11-04): the plan carries FOUR numbered microphone channels at once (MIC-01..MIC-04), was the
  * two-role PRIMARY/STANDBY pair; the failover concept died with the decision. A mic's INDEX is its channel
  * number minus one (channel "MIC-0n" -> index n-1); NMIC is both cap and the plan's count (the protocol
- * holds min = max = 4, mirroring `assertRecordableSelector`). The legacy two-role lane (the camera files'
- * audio track, `SWITCH_AUDIO_SOURCE`) still spans indices 0 and 1 only. */
+ * holds min = max = 4, mirroring `assertRecordableSelector`). The legacy two-role lane (since row 152 the PCM
+ * tap only; row 152b: no command moves it) still spans indices 0 and 1 only. */
 #define NMIC 4
-#define NLANE 2               /* D61 (2026-11-04): the two-role lane's width: channels MIC-01 and MIC-02 feed the selector */
+#define NLANE 2               /* D61 (2026-11-04): the two-role lane's width: channels MIC-01 and MIC-02 feed the selector (row 152: it feeds the PCM tap only, K-5; the camera files' audio is the pairs') */
 #define US 1000000LL
 #define ID_CHARS 128
 #define PATH_CHARS 1024
@@ -257,6 +261,13 @@ typedef struct Cam {
     char device_id[ID_CHARS + 1];     /* the capture device (CAM-0x): what every frame names */
     char track_id[ID_CHARS + 1];      /* the output track (VIDEO-0x): a name of the plan only */
     char profile[65];                 /* the dual-lens profile of the plan, "" when null (D60: one device may feed two tracks with DISTINCT profiles, OD-05) */
+    /* PROTOCOL 6 (D5, N-12; row 151): the camera's PAIRED microphone channel - `micChannel` of the plan, always the
+     * channel of the same number as `track_id` (VIDEO-0N -> MIC-0N), as the index into Session.mic (0..NMIC-1).
+     * `mic_missing` is the plan's `micMissing`: "" when the plan holds that channel's row, else why it does not
+     * ("NOT_ASSIGNED" | "NOT_OPENED", D30 K-3) - the camera file then gets a silent audio track (the mux, row 152).
+     * Set ONLY by the plan reader (capture_worker.c, take_plan). */
+    int mic_idx;
+    char mic_missing[16];
     char url[257];
     Sink sink;
     AVFormatContext *in, *out;
@@ -333,8 +344,9 @@ typedef struct Session {
     int active_mic;                 /* D61 (2026-11-04): the TRANSCRIBED CHANNEL's index (the plan sends MIC-01 -> 0; the legacy lane may restart on MIC-02 -> 1). Was the failover pair's start role. */
     char tap_path[PATH_CHARS + 1];  /* "" when the plan has no tap */
     int fragment_target_ms, min_frag_duration_ms, gop_frames, meter_rate_hz;
-    AVCodecContext *enc;            /* the ONE AAC encoder (H-4) */
-    atomic_int armed;               /* T0 is taken: video may be placed on the timeline */
+    /* Row 152 (DF-06): the ONE lane encoder that fed every camera file is gone; the encoders of the pairs are private
+     * to audio.c (audio_open_encoders, audio_encoder_of, audio_free_encoders). */
+    atomic_int armed;              /* T0 is taken: video may be placed on the timeline */
     _Atomic int64_t t0_real_us;
     _Atomic uint64_t record_seq;
     pthread_mutex_t record_mx;
@@ -361,6 +373,9 @@ void send_warning(const char *code, const char *reason, int active, const char *
 /* The writer's callbacks of one camera file (sync thread): the records of a durable fragment. */
 void cam_fragment_durable(void *cam, const Checkpoint *cp);
 void cam_sync_failed(void *cam, const char *code, int averror);
+/* Row 152 (N-32): the ONE FRAGMENT_CHECKPOINT record of a durable fragment of any file - a camera file (the camera's
+ * device ID) or a channel file (the microphone's device ID, `keyframe` 0). Called on that file's sync thread (ingest.c). */
+void send_fragment_checkpoint(const char *device_id, const Sink *sink, const Checkpoint *cp, int keyframe);
 
 /* ---------------------------------------------------------------- ingest.c */
 void ingest_init(void);
@@ -369,8 +384,7 @@ int sockets_violation(const char **what);
 /* An ingest that is still opening long after its listen timeout: that camera is given up, the session goes on. */
 void ingest_give_up(Cam *c);
 void *ingest_main(void *arg);
-int open_encoder(Session *s);
-/* One encoder packet into one camera file (waits in memory until the camera's muxer exists). */
+/* One encoder packet (time base 1/48000) into one camera file (waits in memory until the camera's muxer exists). */
 int cam_mux_audio(Cam *c, const AVPacket *pkt);
 /* Cuts the open fragment of a camera whose video stalled (W-3). */
 int cam_cut_if_stalled(Cam *c, int64_t now, int64_t stall_us);
@@ -386,10 +400,14 @@ int lavf_runtime_mismatch(unsigned *running, unsigned *verified);
 
 /* ---------------------------------------------------------------- audio.c */
 void *audio_main(void *arg);
-/* The operator's switch: asked by the command thread, applied by the filtering thread at its next
- * input chunk, which writes the interval record and then acknowledges it. Returns 0 when it was
- * taken, -1 when another one is still waiting. NOTHING ELSE changes the audio source (OD-11). */
-int audio_request_switch(int mic_index, const char *correlation_id);
+/* Row 152 (D5 pairs, DF-06; spec S5 section 4): one AAC encoder per channel row of the plan, plus ONE silent encoder when
+ * a camera states its paired channel missing (D30 K-3). Opened at START on the main thread (0 or an AVERROR); the
+ * encoder of camera `c`'s audio track (its pair's channel, or the silent one); freed after every camera file closed. */
+int audio_open_encoders(Session *s);
+const struct AVCodecContext *audio_encoder_of(const Cam *c);
+void audio_free_encoders(void);
+/* Row 152b (N-31; D135, D136): the operator's switch (`audio_request_switch`) is RETIRED - nothing changes the audio
+ * source of a file or of the tap after START (OD-11 holds without exception). */
 int audio_set_manifest(const char *path);
 
 #endif

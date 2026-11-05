@@ -333,15 +333,17 @@ export type CaptureDeviceKind = ValueOf<typeof CaptureDeviceKind>;
  * set (`CAPTURE_SOURCE_SLOTS` of `evidence-package/source-class.ts`) and the columns
  * the four `mic_0N_id` columns of `capture_config`. Channel `MIC-0N` feeds track `AUDIO-0N`;
  * `AUDIO-01` keeps the transcription duty (the STT lane reads channel 1 until a separate ruling).
+ * D5 (D27): channel `MIC-0N` is also the microphone of camera track `VIDEO-0N` - Pair N of
+ * `CAPTURE_PAIRS` (`sim/audio.ts`), fixed by number; D28 DQ-3 keeps the transcription on Pair 1.
  * Held equal to that prefix by a test; this file is a leaf so both `api/` and `sim/` import it.
  */
 export const MicChannel = { MIC_01: 'MIC-01', MIC_02: 'MIC-02', MIC_03: 'MIC-03', MIC_04: 'MIC-04' } as const;
 export type MicChannel = ValueOf<typeof MicChannel>;
 /** The four channels in their order (D61): the one source every slot list and check derives from. */
 export const MIC_CHANNEL_IDS = [MicChannel.MIC_01, MicChannel.MIC_02, MicChannel.MIC_03, MicChannel.MIC_04] as const satisfies readonly MicChannel[];
-/** The transcribed channel: what the old PRIMARY role became (D61; AUDIO-01 keeps the STT lane). */
+/** The transcribed channel: what the old PRIMARY role became (D61; AUDIO-01 keeps the STT lane); D5: the microphone of Pair 1 (camera VIDEO-01), D28 DQ-3. */
 export const PRIMARY_MIC_CHANNEL: MicChannel = MicChannel.MIC_01;
-/** The second channel: what the old STANDBY role became; the in-session toggle (op 81) trades these two. */
+/** The second channel: what the old STANDBY role became; D5: the microphone of Pair 2 (camera VIDEO-02). The in-session toggle (op 81) that traded these two is retired by D28 DQ-2 (`409 AUDIO_SOURCE_FIXED_BY_PAIRING`). */
 export const SECOND_MIC_CHANNEL: MicChannel = MicChannel.MIC_02;
 
 /**

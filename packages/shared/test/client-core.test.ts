@@ -121,6 +121,7 @@ describe('AC-C-01: every registry operation is callable', () => {
   });
 
   it('calls each operation and returns every documented example as a typed success or a typed error envelope', async () => {
+    const RETIRED = ['switchAudioSource'];
     let exchanges = 0;
     for (const operation of CORE_API_OPERATIONS) {
       const examples = CORE_API_EXAMPLES[operation.operationId];
@@ -131,7 +132,10 @@ describe('AC-C-01: every registry operation is callable', () => {
         ...(requestExample !== undefined ? { body: requestExample } : {}),
       };
       const statuses = Object.keys(operation.responses).map(Number);
-      expect(statuses.some((status) => status >= 200 && status <= 299)).toBe(true);
+      // Audit row 149 (D130, R149-2): op 81 is retired in behaviour and documents no success (the same RETIRED
+      // exception as api-registry.test.ts); its refusals are still called below. Every other operation has a 2xx.
+      if (RETIRED.includes(operation.operationId)) expect(statuses.filter((status) => status >= 200 && status <= 299), operation.operationId).toEqual([]);
+      else expect(statuses.some((status) => status >= 200 && status <= 299), operation.operationId).toBe(true);
 
       for (const status of statuses) {
         // A success without a body (204) has no schema and no example: the answer is empty.

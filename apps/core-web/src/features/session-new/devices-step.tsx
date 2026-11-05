@@ -21,7 +21,9 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
+  CAPTURE_PAIRS,
   CaptureStartRule,
+  micChannelOfTrack,
   meterInputOfChannel,
   selectorInForce,
   unassignedSlotOfPrecheckItem,
@@ -31,8 +33,7 @@ import {
   type SimState,
 } from '@dems/shared/sim'
 import { VIDEO_TRACK_IDS, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain' // D60 (2026-11-04)
-import type { MicChannel } from '@dems/shared/sim' // D61 (2026-11-04): the four microphone channels
-import { micChannelChipKey } from '@/features/devices/capture-selector' // D61: the channel chip words of the selector
+import { micPairLabel } from '@/features/devices/capture-selector' // W3 row 158 cycle 2 (D125): the selector's pair words, "Mic N (Camera N)"
 import { ReachGatedCameraPreview } from '@/features/devices/reach-gated-preview'
 import { PrecheckSearchActions } from '@/features/devices/precheck-search'
 import { isGeneratedSource } from '@/features/devices/own-core-words'
@@ -286,8 +287,9 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry,
             </span>
           </header>
           <div className="sn-meters">
-            {(['AUDIO-01', 'AUDIO-02'] as const).map((channel) => (
-              <MicMeter key={channel} channel={channel} />
+            {/* W3 row 158 (D55, R89-F1; S5 §6): one meter per pair - AUDIO-01..04, was AUDIO-01/02 only. */}
+            {CAPTURE_PAIRS.map((pair) => (
+              <MicMeter key={pair.audioTrackId} channel={pair.audioTrackId} />
             ))}
           </div>
         </Card>
@@ -331,9 +333,20 @@ export function DevicesStep({ gate, acknowledged, onAcknowledgedChange, onRetry,
  * Task 4 row 167 (site W3; decision C18 (2)): the input of a meter channel is `meterInputOfChannel`
  * - the selector's line, never a default. A channel with no input (no complete microphone pair)
  * names none: on a Core in its own capture the meter reads "Not assigned".
+ *
+ * W3 row 158 (D5, register N-40; S5 §6): every meter leads with its pair, "Mic N (Camera N)"
+ * (`devices.pairs.micOfCamera`), on both lanes - the pair is fixed by number (`CAPTURE_PAIRS`), so
+ * it holds also for a channel with no line. The line's own words follow it, as before.
+ * Cycle 2 (D125, R156-2): the words come from the selector's `micPairLabel`, and the old channel chip
+ * ("Channel 1 (transcribed)" / "Channel 2" / "Microphone 3" / "Microphone 4") is gone from the line's
+ * words - the pair says it; only Pair 1 adds "Transcribed", as the selector's Pair 1 row does.
  */
 function MicMeter({ channel }: { channel: AudioTrackId }) {
   const { t } = useTranslation()
+  const pairWords = micPairLabel(micChannelOfTrack(channel))
+  const pair = pairWords.values.n
+  const pairText = t(pairWords.key, pairWords.values)
+  const pairLabel = pair === 1 ? `${pairText} · ${t('devices.pairs.transcribed')}` : pairText
   const ownCore = useSelfCaptureCore()
   const micName = useMicInputName()
   // One flat string (input | device | channel | generated): the selector's result compares by value.
@@ -349,16 +362,17 @@ function MicMeter({ channel }: { channel: AudioTrackId }) {
     return [inputId, deviceId, channelCode, generated ? 'G' : ''].join('|')
   })
   const [inputId = '', deviceId = '', channelCode = '', generated = ''] = line.split('|')
-  const label = !ownCore
+  const lineLabel = !ownCore
     ? t(`common.tracks.${channel}`)
     : inputId === ''
       ? t('common.captureSlot.notAssigned')
-      // D61: channels 1 and 2 keep the transcription-pair words; 3 and 4 are named by the shared slot list.
-      : [micName(inputId), deviceId === '' || deviceId === inputId ? inputId : deviceId, channelCode !== '' ? t(micChannelChipKey(channelCode as MicChannel)) : null, generated === 'G' ? t('web.waveL.source.generatedMic') : null]
+      // Row 158 cycle 2 (D125): the channel is named by the pair words in front; the line states its input, source and kind.
+      : [micName(inputId), deviceId === '' || deviceId === inputId ? inputId : deviceId, generated === 'G' ? t('web.waveL.source.generatedMic') : null]
           .filter((part): part is string => part !== null && part !== '')
           .join(' · ')
+  const label = `${pairLabel} · ${lineLabel}`
   return (
-    <div className="sn-meter" data-testid={`sn-meter-${channel}`} data-input={ownCore && inputId !== '' ? inputId : undefined} data-channel={ownCore && channelCode !== '' ? channelCode : undefined}>
+    <div className="sn-meter" data-testid={`sn-meter-${channel}`} data-pair={pair} data-input={ownCore && inputId !== '' ? inputId : undefined} data-channel={ownCore && channelCode !== '' ? channelCode : undefined}>
       <span className="sn-meter-label">{label}</span>
       <DbfsMeter channel={channel} variant="panel" label={label} />
     </div>

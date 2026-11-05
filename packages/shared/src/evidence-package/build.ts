@@ -28,6 +28,7 @@ import {
   type ManifestV2,
   type UnsignedManifestV2,
 } from './manifest';
+import { MANIFEST_V2_1_SCHEMA_ID } from './layout';
 import { deriveDevelopmentSources, sessionSourceClasses, type ManifestSourceClass, type SessionCaptureSourceRow } from './source-class';
 
 export type ManifestTrackInput = Omit<ManifestTrack, 'sourceClass'>;
@@ -48,7 +49,8 @@ function members(error: z.ZodError): string[] {
 
 /** `BUILD_MANIFEST`: deterministic for the same input and the same source rows. */
 export function buildUnsignedManifest(input: ManifestV2Input, sourceRows: readonly SessionCaptureSourceRow[]): UnsignedManifestV2 {
-  const classes = sessionSourceClasses(sourceRows);
+  // D5 (row 153): a `/2.1` build holds the start rows to the plan of one microphone per camera (no mic slot required).
+  const classes = sessionSourceClasses(sourceRows, { pairedAudio: input.schema === MANIFEST_V2_1_SCHEMA_ID });
   // Fields 134-138 (row R1b): the third optional member, by the rule of the two below - a track handed
   // without an absence, or with `undefined`, has NO such key (`undefined` has no canonical form).
   const tracks = input.tracks.map(({ absentInSession, ...track }) => ({ ...track, sourceClass: classes.video[track.trackId], ...(absentInSession === undefined ? {} : { absentInSession }) }));

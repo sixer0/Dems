@@ -50,13 +50,20 @@
 //
 // It uses the Core's two ingest ports 127.0.0.1:8554 and 8556: NOT while another real-capture Core
 // (a lane) is up. No duration, speed or rate of the engine is measured, printed or written (D230).
+//
+// AUDIT ROW W3G (2026-11-06; D146, F-W3TW3-T1): the GENERATED and SPEECH runs follow the seed's EIGHT slots (D61, migration
+// 0040: four cameras, four numbered microphone channels) and the protocol-6 worker (D5: one AUDIO-0N file per pair). The
+// ATTENDED LOCAL run is NOT re-pinned by that row: it is the user's, never an agent's, and its setup (the role columns
+// `mic_primary_id` / `mic_standby_id`, a local device inserted as `CAM-03` / `MIC-03`) predates D61 - see the W3G record.
 import { execFileSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { MANIFEST_V2_1_SCHEMA_ID, PackageFile, parseManifestV2 } from '@dems/shared/evidence-package';
 import { OPERATORS } from '@dems/shared/sim';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { useTestDatabase } from '../../../../../test/helpers/db';
+import { ingestReachOfThisProcess, openFailuresOf } from '../../../../../test/support/capture-open-causes';
 import { captureLog, unitTestConfig } from '../../../../../test/support/config';
 import { WEB_ORIGIN, cookieValue, webSignIn } from '../../../../../test/support/identity';
 import { buildApp } from '../../../../app';
@@ -64,6 +71,7 @@ import { sessionCapture, type SessionCaptureEvent } from '../../../../capture-se
 import { sessionPackageDir } from '../../../../evidence-verify';
 import { provisionDevelopmentSigningKey } from '../../../../sealing';
 import { realBootFixture } from '../../../boot/__tests__/support';
+import { CAPTURE_INGEST_PORT } from '../../../ingest-address';
 import { captureFenceControl } from '../../index';
 
 const ASKED = process.env.DEMS_DEV_SESSION_E2E === '1';
@@ -73,7 +81,16 @@ const REPOSITORY = resolve(import.meta.dirname, '../../../../../../..');
 const WORKER = resolve(REPOSITORY, 'apps/capture-worker/build/capture-worker');
 // The private helper copy of `npm run capture:dev-setup` (the fence refuses a package manager's FFmpeg).
 const HELPER = process.env.DEMS_CAPTURE_HELPER_FFMPEG ?? resolve(REPOSITORY, '.data/helpers/ffmpeg');
-const TEST_SOURCES = ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02'];
+// Audit row W3G (D146; F-W3TW3-T1): the seed's selector assigns EIGHT built-in test sources since the team's D61
+// (migration 0040): four cameras on VIDEO-01..04 and four numbered microphone channels MIC-01..04. The source rows name
+// the channels (`MIC-01`..`MIC-04`), no longer the two roles.
+const TEST_SOURCES = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'];
+const TEST_KINDS = ['FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE', 'FAKE'];
+const TEST_ROWS = [['MIC-01', 'MIC-01', 'FAKE'], ['MIC-02', 'MIC-02', 'FAKE'], ['MIC-03', 'MIC-03', 'FAKE'], ['MIC-04', 'MIC-04', 'FAKE'], ['VIDEO-01', 'CAM-01', 'FAKE'], ['VIDEO-02', 'CAM-02', 'FAKE'], ['VIDEO-03', 'CAM-03', 'FAKE'], ['VIDEO-04', 'CAM-04', 'FAKE']];
+const TEST_CAMERAS = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04'];
+const TEST_TRACKS = ['CAM-01 FAKE', 'CAM-02 FAKE', 'CAM-03 FAKE', 'CAM-04 FAKE'];
+/** The loopback ingest port of each camera track, from the product's constant (D60: VIDEO-03/04 on 8560/8562). */
+const INGEST_PORTS = Object.values(CAPTURE_INGEST_PORT);
 /** The speech run (fix wave H). No agent run of a lane-holding host: see the header. */
 const SPEECH_ASKED = process.env.DEMS_DEV_SPEECH_SESSION_E2E === '1';
 /** What `npm run capture:dev-setup` writes: synthetic speech and its reference text. */
@@ -95,11 +112,11 @@ const MODES = {
     slug: 'r140_e2e',
     seconds: 6,
     assigned: TEST_SOURCES,
-    kinds: ['FAKE', 'FAKE', 'FAKE', 'FAKE'],
-    rows: [['MIC-PRIMARY', 'MIC-01', 'FAKE'], ['MIC-STANDBY', 'MIC-02', 'FAKE'], ['VIDEO-01', 'CAM-01', 'FAKE'], ['VIDEO-02', 'CAM-02', 'FAKE']],
-    cameras: ['CAM-01', 'CAM-02'],
+    kinds: TEST_KINDS,
+    rows: TEST_ROWS,
+    cameras: TEST_CAMERAS,
     onWhileRecording: [] as string[],
-    tracks: ['CAM-01 FAKE', 'CAM-02 FAKE'],
+    tracks: TEST_TRACKS,
     audioClasses: ['FAKE'],
   },
   // The GENERATED run with the speech microphone and STT enabled (fix wave H): long enough for several sentences of the fixture.
@@ -108,11 +125,11 @@ const MODES = {
     slug: 'wave_h_speech_e2e',
     seconds: 30,
     assigned: TEST_SOURCES,
-    kinds: ['FAKE', 'FAKE', 'FAKE', 'FAKE'],
-    rows: [['MIC-PRIMARY', 'MIC-01', 'FAKE'], ['MIC-STANDBY', 'MIC-02', 'FAKE'], ['VIDEO-01', 'CAM-01', 'FAKE'], ['VIDEO-02', 'CAM-02', 'FAKE']],
-    cameras: ['CAM-01', 'CAM-02'],
+    kinds: TEST_KINDS,
+    rows: TEST_ROWS,
+    cameras: TEST_CAMERAS,
     onWhileRecording: [] as string[],
-    tracks: ['CAM-01 FAKE', 'CAM-02 FAKE'],
+    tracks: TEST_TRACKS,
     audioClasses: ['FAKE'],
   },
   LOCAL: {
@@ -227,6 +244,11 @@ async function developmentSession(mode: Mode): Promise<void> {
     const events: SessionCaptureEvent[] = [];
     sessionCapture(app).on((event) => void events.push(event));
     const codes = (): string[] => log.lines().map((line) => String((line as { code?: unknown }).code ?? '')).filter((code) => code !== '');
+    // Row C1D (D149): what a failure prints besides the codes - the RECORDED cause of every source that did not open (this run's
+    // error log, removed with the data directory) and whether this process, so every helper it starts, may reach the ingest
+    // ports on the loopback at all (read before the session starts; nothing is asserted on it).
+    const ingestReach = await ingestReachOfThisProcess();
+    const opens = () => openFailuresOf(app.errorLog.file);
 
     // GENERATED: NEVER A REAL DEVICE - the selector must name the four built-in test sources, and the registry must say they are kind FAKE.
     // LOCAL (attended): exactly this Mac's camera and microphone in slot 1, the test sources in slot 2.
@@ -281,7 +303,7 @@ async function developmentSession(mode: Mode): Promise<void> {
     }
 
     // DURABLE: the built worker wrote its first fragment from the generated picture.
-    await until('the first durable fragment', 40_000, () => (sessionOf()?.captureDurable === true ? true : sessionOf()?.state !== 'RECORDING' ? Promise.reject(new Error(`the session left RECORDING: ${sessionOf()?.state} ${JSON.stringify(codes().slice(-12))}`)) : null), () => codes().slice(-12));
+    await until('the first durable fragment', 40_000, () => (sessionOf()?.captureDurable === true ? true : sessionOf()?.state !== 'RECORDING' ? Promise.reject(new Error(`the session left RECORDING: ${sessionOf()?.state} ${JSON.stringify({ codes: codes().slice(-12), opens: opens(), ingestReach })}`)) : null), () => ({ codes: codes().slice(-12), opens: opens(), ingestReach }));
     /** The speech run: the audio source of every chunk the transcriber planned, as its checkpoint named it while it existed (the scratch is removed at the seal). */
     const chunkSources = new Map<number, string | null>();
     /** Whether a chunk was being decoded, or had been, while the session still RECORDED (the engine beside the capture: `M6-DF-1`). A fact, not asserted: a short recording may end first. */
@@ -302,9 +324,10 @@ async function developmentSession(mode: Mode): Promise<void> {
     // `STARTED` is said when every source was opened (each helper has a settle time), `DURABLE` at the first fragment: either may come first.
     expect(events[0]?.type).toBe('CONNECTING');
     expect(events.map((event) => event.type).sort()).toEqual(['CONNECTING', 'DURABLE', 'STARTED']);
-    expect(events.find((event) => event.type === 'STARTED')).toMatchObject({ cameras: expected.cameras, camerasNotOpened: [] });
-    // Two camera helpers push to this session's two loopback listeners. GENERATED: no local source is on. LOCAL: exactly this Mac's two.
-    expect(processesWith(`rtsp://127.0.0.1:8554/${sessionId}/`) + processesWith(`rtsp://127.0.0.1:8556/${sessionId}/`)).toBe(2);
+    expect(events.find((event) => event.type === 'STARTED'), JSON.stringify({ opens: opens(), ingestReach })).toMatchObject({ cameras: expected.cameras, camerasNotOpened: [] });
+    // One camera helper per assigned camera pushes to this session's loopback listener of its track (four since D61, row W3G;
+    // the attended LOCAL run still names two). GENERATED: no local source is on. LOCAL: exactly this Mac's two.
+    expect(INGEST_PORTS.reduce((sum, port) => sum + processesWith(`rtsp://127.0.0.1:${port}/${sessionId}/`), 0)).toBe(expected.cameras.length);
     expect([...fence.openSources()].sort()).toEqual(expected.onWhileRecording);
     seen = {
       micHelpersWhileRecording: processesWith(`${fixture.dataDir}/run/capture/${sessionId}/`),
@@ -320,7 +343,10 @@ async function developmentSession(mode: Mode): Promise<void> {
       await sessionCapture(app).idle();
       return;
     }
-    expect(fragments).toHaveLength(2);
+    // D61 + D5 (row W3G): one fragment track per camera file and per pair audio file (AUDIO-0N rows, row 148): eight in the
+    // generated runs. The attended LOCAL run (two cameras, the user's) keeps its own count.
+    if (mode === 'LOCAL') expect(fragments.filter((entry) => entry.startsWith('VIDEO-'))).toHaveLength(2);
+    else expect(fragments.map((entry) => entry.split(':')[0])).toEqual(['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04', 'VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04']);
 
     // STOP: the worker first, then the helpers; no CAPTURE process is left.
     const stopped = await post(`/api/v1/session/${sessionId}/stop`, { reason: 'Interview complete' });
@@ -362,6 +388,24 @@ async function developmentSession(mode: Mode): Promise<void> {
     expect(body.sources.tracks.map((track) => `${track.deviceId} ${track.sourceClass}`)).toEqual(expected.tracks);
     expect(body.sources.audioIntervals.length).toBeGreaterThanOrEqual(1);
     expect(body.sources.audioIntervals.every((interval) => (expected.audioClasses as readonly string[]).includes(interval.sourceClass))).toBe(true);
+    if (mode !== 'LOCAL') {
+      // D5 (rows 145/148/153; row W3G): the four pair audio files were RECORDED (their AUDIO-0N rows, above) and SEALED -
+      // a /2.1 manifest with one `audioTracks` record and one `audioFiles` record per pair, no missing-microphone statement,
+      // `fragments/AUDIO-0N.m4a` in the package, no plaintext channel file beside it, and one evidence_tracks row per file
+      // (cameras at positions 1-4, then the audio files) with the sealed hash the manifest signs.
+      const packageDir = sessionPackageDir(app.config.mediaStoreDir, sessionId);
+      const manifest = parseManifestV2(JSON.parse(readFileSync(`${packageDir}/${PackageFile.MANIFEST}`, 'utf8')));
+      const pairs = ['01', '02', '03', '04'];
+      expect(manifest.schema).toBe(MANIFEST_V2_1_SCHEMA_ID);
+      expect(manifest.tracks.map((track) => `${track.trackId} ${track.deviceId} ${track.sourceClass}`)).toEqual(pairs.map((n) => `VIDEO-${n} CAM-${n} FAKE`));
+      expect((manifest.audioTracks ?? []).map((track) => `${track.trackId} ${track.micChannel} ${track.micDeviceId} ${track.containsIn.join(',')} ${track.sourceClass}`)).toEqual(pairs.map((n) => `AUDIO-${n} MIC-${n} MIC-${n} VIDEO-${n} FAKE`));
+      expect((manifest.audioFiles ?? []).map((file) => `${file.trackId} ${file.fragments.length > 0}`)).toEqual(pairs.map((n) => `AUDIO-${n} true`));
+      expect(manifest.audioTracksMissing).toBeUndefined();
+      expect(readdirSync(`${packageDir}/${PackageFile.FRAGMENTS_DIR}`).filter((name) => name.endsWith('.m4a')).sort()).toEqual(pairs.map((n) => `AUDIO-${n}.m4a`));
+      expect(readdirSync(packageDir).filter((name) => /^MIC-0[1-4]\.m4a$/.test(name))).toEqual([]);
+      const stored = (await owner.query<{ track_id: string; position: number; sha256: string }>('SELECT track_id, position, sha256 FROM public.evidence_tracks WHERE evidence_id = $1 ORDER BY position', [evidenceId])).rows;
+      expect(stored.map((row) => `${Number(row.position)} ${row.track_id} ${row.sha256}`)).toEqual([...manifest.tracks, ...(manifest.audioTracks ?? [])].map((track, index) => `${index + 1} ${track.trackId} ${track.sha256}`));
+    }
     if (mode === 'SPEECH') {
       // THE TRANSCRIPT OF A PRODUCT SESSION WITH SPEECH (gate 81 condition C1; `M6-TF-1` on `cpu-local`).
       const document = JSON.parse(readFileSync(`${sessionPackageDir(app.config.mediaStoreDir, sessionId)}/transcript/transcript.json`, 'utf8')) as {
@@ -420,14 +464,15 @@ async function developmentSession(mode: Mode): Promise<void> {
 }
 
 describe.skipIf(!ASKED)('row 140 end to end with the BUILT worker and GENERATED sources (no device; skipped unless DEMS_DEV_SESSION_E2E=1: it needs the built worker and the heavy-host lock)', () => {
-  it('a development session starts, reaches durable, stops and is sealed; four FAKE source rows; no local source is ever on; the item and its verification say DEVELOPMENT', () => developmentSession('GENERATED'), 300_000);
+  it('a development session starts, reaches durable, stops and is sealed; eight FAKE source rows (D61); the four pair audio files recorded and sealed under /2.1 (D5); no local source is ever on; the item and its verification say DEVELOPMENT', () => developmentSession('GENERATED'), 300_000);
 
   // Found by this row, fixed by row 71c (request of 16:28:30Z): before its line no production code started
   // a microphone helper and the built worker logged `no_mic_delivers_samples` + two `MIC_DISCONNECTED`
   // (measured in this file's first run, when this case was `it.fails`).
-  it('both generated microphone helpers run while the session records, and no microphone fault is raised', () => {
+  // Row W3G (D61): four generated microphone helpers, one per numbered channel.
+  it('every generated microphone helper (four, D61) runs while the session records, and no microphone fault is raised', () => {
     expect(seen).not.toBeNull();
-    expect(seen?.micHelpersWhileRecording).toBe(2);
+    expect(seen?.micHelpersWhileRecording).toBe(4);
     expect(seen?.micFaults).toEqual([]);
   });
 });

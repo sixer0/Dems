@@ -5,17 +5,21 @@
 // seam `engine`, a stand-in on a real shared simulator (`support.ts`). What is STORED is the
 // database test's (`no-device.db.test.ts`). Each `it` holds its negative control.
 import { CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS, CAPTURE_SEARCH_ID_PATTERN, CORE_API_OPERATIONS, CoreApiAccessKind, validateCoreApiResponse } from '@dems/shared/api';
-import { Permission } from '@dems/shared/sim'; // the capture-lane driver turned TECHNICIAN: REVOKED 2026-10-29 (0034), re-pinned 2026-11-04
+import { Permission, createManualClock, createSim } from '@dems/shared/sim'; // the capture-lane driver turned TECHNICIAN: REVOKED 2026-10-29 (0034), re-pinned 2026-11-04
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import { captureNotices } from '../../../capture-notices';
 import { AudioInputErrorCode } from '../../../capture/adapters';
+import { captureDeviceReachTransition } from '../../../engine/internal-actions'; // audit row M97: row 127's pure transition
 import { routePatternOf } from '../../../plugins/permission-guard';
 import { bodyOf, errorOf, operatorOf, outcome } from '../../devices/__tests__/support';
 import { CAPTURE_INPUTS_MODULE_OPERATIONS, CAPTURE_INPUTS_UNIT_LABEL, captureInputsOperation, rescanSearchId } from '../index';
+import { CAPTURE_INPUTS_REACH_NOT_WRITTEN, CAPTURE_INPUTS_REACH_UNIT_LABEL, micReachReadingsOf } from '../routes'; // audit row M97
 import { RESCAN, inputsUnitApp, stoppableFakes, type InputsUnitApp, type StoppableFakes } from './support';
 
 const apps: FastifyInstance[] = [];
+/** Audit row M97: the clock of an earlier (stale) reach reading. */
+const FIXED_STALE = 1_000;
 afterEach(async () => {
   for (const app of apps.splice(0)) await app.close();
 });
@@ -238,5 +242,116 @@ describe('who may call, and when it is not ready', () => {
     expect(built.adapters.fakes.mics.map((mic) => mic.calls.enumerate)).toEqual([0, 0, 0, 0]); // D61 (2026-11-04)
     built.running = true;
     expect((await built.post()).statusCode).toBe(200);
+  });
+});
+
+// ── Audit row M97 (decisions D104, D116; the engine door of row 127) ─────────────────────────────
+// A re-read LISTS the inputs and opens none: it clears a stale NOT_REACHABLE of a microphone it finds again, states
+// NOT_REACHABLE for one it misses, and never states REACHABLE. Each case holds its control.
+describe('audit row M97: a re-read restates or clears the reach of the listed microphones', () => {
+  const reachOf = (built: InputsUnitApp) =>
+    built.sim.store
+      .getState()
+      .captureDevices.devices.filter((device) => device.kind === 'MIC')
+      .map((device) => [device.id, device.reach ?? null, device.checkedAt ?? null]);
+  const stateReach = (built: InputsUnitApp, deviceId: string, reach: 'REACHABLE' | 'NOT_REACHABLE', checkedAt: number) =>
+    built.sim.store.setState(captureDeviceReachTransition(built.sim.store.getState(), { deviceId, reach, checkedAt }));
+
+  it('micReachReadingsOf: present clears a stated NOT_REACHABLE only, absent states NOT_REACHABLE at the clock, never REACHABLE', () => {
+    const registered = [{ id: 'MIC-01', reach: 'NOT_REACHABLE' as const }, { id: 'MIC-02', reach: 'REACHABLE' as const }, { id: 'MIC-03' }, { id: 'MIC-04', reach: null }];
+    const inputs = [
+      { deviceId: 'MIC-01', present: true },
+      { deviceId: 'MIC-02', present: true },
+      { deviceId: 'MIC-03', present: true },
+      { deviceId: 'MIC-04', present: false },
+    ];
+    const readings = micReachReadingsOf(registered, inputs, 1_000);
+    expect(readings).toEqual([
+      { deviceId: 'MIC-01', reach: null, checkedAt: null },
+      { deviceId: 'MIC-04', reach: 'NOT_REACHABLE', checkedAt: 1_000 },
+    ]);
+    expect(readings.some((reading) => reading.reach === 'REACHABLE')).toBe(false);
+    // Control: every input present and nothing stated -> nothing to write.
+    expect(micReachReadingsOf([{ id: 'MIC-01' }], [{ deviceId: 'MIC-01', present: true }], 1_000)).toEqual([]);
+  });
+
+  it('the door clears: reach/checkedAt null, published once; a clear of an entry that states nothing is the SAME state', () => {
+    const sim = createSim({ clock: createManualClock(1), storage: null, authStorage: null });
+    const start = sim.store.getState();
+    const stale = captureDeviceReachTransition(start, { deviceId: 'MIC-02', reach: 'NOT_REACHABLE', checkedAt: 5 });
+    const cleared = captureDeviceReachTransition(stale, { deviceId: 'MIC-02', reach: null, checkedAt: null });
+    expect(cleared.captureDevices.devices.find((device) => device.id === 'MIC-02')).toMatchObject({ reach: null, checkedAt: null });
+    // online, streamState and every other device untouched.
+    expect(cleared.captureDevices.devices.map((device) => [device.id, device.online, device.streamState])).toEqual(stale.captureDevices.devices.map((device) => [device.id, device.online, device.streamState]));
+    expect(captureDeviceReachTransition(cleared, { deviceId: 'MIC-02', reach: null, checkedAt: null })).toBe(cleared);
+    // Control: absent members read "not checked" too.
+    expect(captureDeviceReachTransition(start, { deviceId: 'MIC-01', reach: null, checkedAt: null })).toBe(start);
+  });
+
+  it('THE DEFECT: a stale NOT_REACHABLE on a microphone that op 97 lists present is cleared (not REACHABLE); a stated REACHABLE and no reading stay as they are', async () => {
+    const built = await build({ captureMode: 'real' });
+    built.actAs(operatorOf('TECHNICIAN'));
+    stateReach(built, 'MIC-02', 'NOT_REACHABLE', FIXED_STALE);
+    stateReach(built, 'MIC-01', 'REACHABLE', FIXED_STALE);
+    const response = await built.post();
+    expect(response.statusCode).toBe(200);
+    expect(reachOf(built)).toEqual([
+      ['MIC-01', 'REACHABLE', FIXED_STALE],
+      ['MIC-02', null, null],
+      ['MIC-03', null, null],
+      ['MIC-04', null, null],
+    ]);
+    // Its own unit, before the search row; the search row is unchanged (one row).
+    expect(built.units).toEqual([CAPTURE_INPUTS_REACH_UNIT_LABEL, CAPTURE_INPUTS_UNIT_LABEL]);
+    expect(built.appended).toHaveLength(1);
+    // A listing opened nothing.
+    expect(built.adapters.fakes.mics.flatMap((mic) => mic.calls.opened)).toEqual([]);
+  });
+
+  it('remove -> NOT_REACHABLE at the re-read clock (online false); plug back -> cleared (online true), never REACHABLE', async () => {
+    const built = await build({ captureMode: 'real' });
+    built.actAs(operatorOf('TECHNICIAN'));
+    built.adapters.fakes.mics[1]?.setPresent(false, AudioInputErrorCode.DEVICE_NOT_FOUND);
+    expect((await built.post()).statusCode).toBe(200);
+    const removedAt = built.clock.now();
+    expect(built.sim.store.getState().captureDevices.devices.find((device) => device.id === 'MIC-02')).toMatchObject({ online: false, reach: 'NOT_REACHABLE', checkedAt: removedAt });
+
+    built.adapters.fakes.mics[1]?.setPresent(true);
+    built.clock.advance(CAPTURE_INPUT_RESCAN_MIN_INTERVAL_MS);
+    expect((await built.post()).statusCode).toBe(200);
+    expect(built.sim.store.getState().captureDevices.devices.find((device) => device.id === 'MIC-02')).toMatchObject({ online: true, reach: null, checkedAt: null });
+    expect(reachOf(built).some(([, reach]) => reach === 'REACHABLE')).toBe(false);
+  });
+
+  it('CONTROL: every microphone present and nothing stated -> no reach unit; simulated capture without a probe states nothing', async () => {
+    const real = await build({ captureMode: 'real' });
+    real.actAs(operatorOf('TECHNICIAN'));
+    expect((await real.post()).statusCode).toBe(200);
+    expect(real.units).toEqual([CAPTURE_INPUTS_UNIT_LABEL]);
+
+    const simulated = await build({}, false);
+    simulated.actAs(operatorOf('TECHNICIAN'));
+    stateReach(simulated, 'MIC-02', 'NOT_REACHABLE', FIXED_STALE);
+    expect((await simulated.post()).statusCode).toBe(200);
+    // Nothing was read, so nothing is restated: the reading stays the last one.
+    expect(simulated.sim.store.getState().captureDevices.devices.find((device) => device.id === 'MIC-02')).toMatchObject({ reach: 'NOT_REACHABLE', checkedAt: FIXED_STALE });
+    expect(simulated.units).toEqual([CAPTURE_INPUTS_UNIT_LABEL]);
+  });
+
+  it('a reach unit that fails is logged (warn, code, IDs only) and the re-read still answers 200 with its one search row', async () => {
+    const built = await build({ captureMode: 'real' });
+    built.actAs(operatorOf('TECHNICIAN'));
+    stateReach(built, 'MIC-02', 'NOT_REACHABLE', FIXED_STALE);
+    const engine = built.app.engine as unknown as { run: (label: string, work: unknown) => Promise<unknown> };
+    const run = engine.run.bind(engine);
+    engine.run = (label, work) => (label === CAPTURE_INPUTS_REACH_UNIT_LABEL ? Promise.reject(new Error('reach unit refused')) : run(label, work));
+    const response = await built.post();
+    expect(response.statusCode).toBe(200);
+    expect(built.appended).toHaveLength(1);
+    const lines = built.log.lines().filter((line) => line['code'] === CAPTURE_INPUTS_REACH_NOT_WRITTEN);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ level: 40, deviceIds: ['MIC-02'] });
+    // Control: the stale reading stays (nothing was written).
+    expect(built.sim.store.getState().captureDevices.devices.find((device) => device.id === 'MIC-02')).toMatchObject({ reach: 'NOT_REACHABLE' });
   });
 });

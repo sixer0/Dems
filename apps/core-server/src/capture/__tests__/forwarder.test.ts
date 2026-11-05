@@ -8,7 +8,7 @@
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CAPTURE_IPC_DEFAULTS, CaptureWarningCode, CaptureWarningReason, captureWorkerSettingArguments } from '@dems/capture-protocol';
+import { CAPTURE_IPC_DEFAULTS, CaptureWarningCode, CaptureWarningReason, captureWorkerSettingArguments, type CaptureRecord } from '@dems/capture-protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../app';
 import { ConfigError, createConfig, parseCaptureMode, parseCapturePath, Secret } from '../../config';
@@ -372,6 +372,17 @@ describe('the two keys of a failed start are on the RAISE of its fault (integrat
     await flush();
     // Pin by delta (wave H driver F): the fault says the worker crashed - NOT "no camera connected, nothing was recorded".
     expect(calls.warnings).toEqual([{ code: 'CAPTURE_FAULT', subject: null, reason: 'WORKER_CRASHED' }]);
+  });
+
+  it('row D2C (D150 (2), F-C1D-2): a session whose only durable fragments are of CHANNEL files (row 148) is still a failed start - reason NO_CAMERA_CONNECTED, evidenceFiles 0', async () => {
+    const { fake, calls, clock } = await forwarding(recordingEngine);
+    const sha = (digit: string): string => digit.repeat(64);
+    fake.last().record({ kind: 'FRAGMENT_CHECKPOINT', deviceId: 'MIC-01', index: 1, start: 700, len: 1_000, fragSha256: sha('a'), chainSha256: sha('b'), prefixSha256: sha('c'), plaintextSha256: sha('a'), plaintextChainSha256: sha('b'), mediaStartMs: 0, mediaDurationMs: 2_000, keyframe: false, durableAt: 1_791_529_000_001, gcmIv: null, gcmTag: null, keyId: null } as CaptureRecord);
+    await flush();
+    fake.last().say(crash('NO_CAMERA_CONNECTED'));
+    clock.advance(1);
+    await flush();
+    expect(calls.warnings).toEqual([{ code: 'CAPTURE_FAULT', subject: null, reason: 'NO_CAMERA_CONNECTED', evidenceFiles: 0 }]);
   });
 });
 

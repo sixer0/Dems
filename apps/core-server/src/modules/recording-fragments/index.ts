@@ -21,6 +21,11 @@
  *                                  for) and it BOUNDS ITS OWN BACKLOG, as the protocol asks of a
  *                                  record consumer: beyond `backlogLimit` waiting rows a
  *                                  checkpoint is not queued, and that camera file is `behind`.
+ *                                  D5 / row 148 (protocol 6, N-32): the plan's map also takes each
+ *                                  MICROPHONE of the plan to the sealed track of its channel file
+ *                                  (`MIC-0N` -> `AUDIO-0N`), so a channel file's checkpoints become
+ *                                  `AUDIO-0N` rows by the same rules; `behind` and the reports name
+ *                                  either kind of track.
  *
  * THE FILE IS THE TRUTH (decision D67). A checkpoint that was not written - the database was away,
  * the backlog was full, the Core was down - is not lost evidence: the fragment is in the camera
@@ -44,17 +49,34 @@ import {
   READ_RECORDING_FRAGMENT,
   READ_RECORDING_FRAGMENTS,
   READ_RECORDING_FRAGMENT_HEAD,
-  VIDEO_TRACK_IDS,
+  FRAGMENT_TRACK_IDS,
+  type FragmentTrackId,
   type Queryable,
   type VideoTrackId,
 } from './statements';
 
-export { CHAIN_GENESIS_SHA256, VIDEO_TRACK_IDS, type Queryable, type VideoTrackId } from './statements';
+export {
+  AUDIO_FRAGMENT_TRACK_IDS,
+  CHAIN_GENESIS_SHA256,
+  FRAGMENT_TRACK_IDS,
+  VIDEO_TRACK_IDS,
+  type AudioFragmentTrackId,
+  type FragmentTrackId,
+  type Queryable,
+  type VideoTrackId,
+} from './statements';
 
-/** One row of `recording_fragments`: the member names of the typed schema (`db/schema/recording.ts`). */
-export interface RecordingFragment {
+/**
+ * One row of `recording_fragments`: the member names of the typed schema (`db/schema/recording.ts`).
+ * D28 / migration 0044 (row 146): the table also takes the microphone channel files `AUDIO-0N`. The
+ * row type names its track set: `RecordingFragment` alone is a camera-file row (every reader before
+ * D28 reads camera files, and keeps compiling as it did); `RecordingFragment<FragmentTrackId>` is
+ * any row; the store writes any row and reads back rows of the track it was asked for.
+ */
+export interface RecordingFragment<Track extends FragmentTrackId = VideoTrackId> {
   readonly sessionId: string;
-  readonly trackId: VideoTrackId;
+  /** A camera file (`VIDEO-0N`) or, since D28 / migration 0044 (row 146), a microphone channel file (`AUDIO-0N`). */
+  readonly trackId: Track;
   /** `mfhd.sequence_number`: 1, 2, 3 ... of this camera file. */
   readonly seq: number;
   readonly byteOffset: number;
@@ -103,17 +125,21 @@ export type FragmentInsertOutcome = (typeof FragmentInsertOutcome)[keyof typeof 
 
 export interface RecordingFragmentStore {
   /** One fragment row under the zero-gap rule. Resolves `INSERTED` or `ALREADY_STORED` (the same row again); rejects otherwise. */
-  insert(row: RecordingFragment): Promise<FragmentInsertOutcome>;
+  insert(row: AnyRecordingFragment): Promise<FragmentInsertOutcome>;
   /**
    * Brings the table in line with a list of fragments of ONE camera file, in order (what the file
    * walk of RECOVERY rebuilt, or a replay of records): rows that are stored are left, the others
    * are inserted. Stops at the first refusal and rejects with it.
    */
-  insertMissing(rows: readonly RecordingFragment[]): Promise<{ readonly inserted: number; readonly alreadyStored: number }>;
-  read(sessionId: string, trackId: VideoTrackId): Promise<RecordingFragment[]>;
-  /** The last stored fragment of a camera file, or null. */
-  head(sessionId: string, trackId: VideoTrackId): Promise<RecordingFragment | null>;
+  insertMissing(rows: readonly AnyRecordingFragment[]): Promise<{ readonly inserted: number; readonly alreadyStored: number }>;
+  /** The rows of one track file, in order; they carry the track they were read for. */
+  read<Track extends FragmentTrackId>(sessionId: string, trackId: Track): Promise<RecordingFragment<Track>[]>;
+  /** The last stored fragment of a camera file (or microphone channel file), or null. */
+  head<Track extends FragmentTrackId>(sessionId: string, trackId: Track): Promise<RecordingFragment<Track> | null>;
 }
+
+/** A row of any fragment track: a camera file or (D28 / 0044, row 146) a microphone channel file. */
+export type AnyRecordingFragment = RecordingFragment<FragmentTrackId>;
 
 interface StoredRow {
   session_id: string;
@@ -128,9 +154,9 @@ interface StoredRow {
   durable_at: string | number;
 }
 
-const toFragment = (row: StoredRow): RecordingFragment => ({
+const toFragment = (row: StoredRow): AnyRecordingFragment => ({
   sessionId: row.session_id,
-  trackId: row.track_id as VideoTrackId,
+  trackId: row.track_id as FragmentTrackId,
   seq: Number(row.seq),
   byteOffset: Number(row.byte_offset),
   byteLength: Number(row.byte_length),
@@ -145,9 +171,9 @@ const HEX64 = /^[0-9a-f]{64}$/;
 const whole = (value: unknown, least: number): boolean => typeof value === 'number' && Number.isSafeInteger(value) && value >= least;
 
 /** The member of `row` that makes it no fragment row, or null. The table's CHECKs say the same; this answers before a statement is sent. */
-export function invalidMember(row: RecordingFragment): keyof RecordingFragment | null {
+export function invalidMember(row: AnyRecordingFragment): keyof AnyRecordingFragment | null {
   if (typeof row.sessionId !== 'string' || row.sessionId.length === 0) return 'sessionId';
-  if (!(VIDEO_TRACK_IDS as readonly string[]).includes(row.trackId)) return 'trackId';
+  if (!(FRAGMENT_TRACK_IDS as readonly string[]).includes(row.trackId)) return 'trackId'; // D28 / 0044 (row 146): camera and microphone channel files
   if (!whole(row.seq, 1) || row.seq > 2_147_483_647) return 'seq';
   if (!whole(row.byteOffset, 0)) return 'byteOffset';
   if (!whole(row.byteLength, 1)) return 'byteLength';
@@ -160,13 +186,13 @@ export function invalidMember(row: RecordingFragment): keyof RecordingFragment |
 }
 
 /** The first member in which a stored row differs from the row given again, or null when they are the same fragment. `durableAt` is not compared: a replay may carry a later instant. */
-function differsIn(stored: RecordingFragment, given: RecordingFragment): keyof RecordingFragment | null {
+function differsIn(stored: AnyRecordingFragment, given: AnyRecordingFragment): keyof AnyRecordingFragment | null {
   const members = ['byteOffset', 'byteLength', 'mediaStartMs', 'mediaDurationMs', 'sha256', 'chainHash'] as const;
   return members.find((member) => stored[member] !== given[member]) ?? null;
 }
 
 export function createRecordingFragmentStore(connection: Queryable): RecordingFragmentStore {
-  const readOne = async (row: RecordingFragment): Promise<RecordingFragment | null> => {
+  const readOne = async (row: AnyRecordingFragment): Promise<AnyRecordingFragment | null> => {
     try {
       const found = (await connection.query<StoredRow>(READ_RECORDING_FRAGMENT, [row.sessionId, row.trackId, row.seq])).rows[0];
       return found === undefined ? null : toFragment(found);
@@ -175,7 +201,7 @@ export function createRecordingFragmentStore(connection: Queryable): RecordingFr
     }
   };
 
-  const insert = async (row: RecordingFragment): Promise<FragmentInsertOutcome> => {
+  const insert = async (row: AnyRecordingFragment): Promise<FragmentInsertOutcome> => {
     const member = invalidMember(row);
     if (member !== null) throw new RecordingFragmentStoreError('ROW_INVALID', 'the value is no fragment row', { member });
     let inserted: number | null;
@@ -198,7 +224,7 @@ export function createRecordingFragmentStore(connection: Queryable): RecordingFr
   return Object.freeze({
     insert,
 
-    async insertMissing(rows: readonly RecordingFragment[]): Promise<{ readonly inserted: number; readonly alreadyStored: number }> {
+    async insertMissing(rows: readonly AnyRecordingFragment[]): Promise<{ readonly inserted: number; readonly alreadyStored: number }> {
       let inserted = 0;
       let alreadyStored = 0;
       for (const row of rows) {
@@ -208,18 +234,19 @@ export function createRecordingFragmentStore(connection: Queryable): RecordingFr
       return { inserted, alreadyStored };
     },
 
-    async read(sessionId: string, trackId: VideoTrackId): Promise<RecordingFragment[]> {
+    async read<Track extends FragmentTrackId>(sessionId: string, trackId: Track): Promise<RecordingFragment<Track>[]> {
       try {
-        return (await connection.query<StoredRow>(READ_RECORDING_FRAGMENTS, [sessionId, trackId])).rows.map(toFragment);
+        // The statement selects `track_id = $2`, so every row read carries the track asked for.
+        return (await connection.query<StoredRow>(READ_RECORDING_FRAGMENTS, [sessionId, trackId])).rows.map(toFragment) as RecordingFragment<Track>[];
       } catch (error) {
         throw new RecordingFragmentStoreError('READ_FAILED', 'the fragment rows could not be read', { cause: error });
       }
     },
 
-    async head(sessionId: string, trackId: VideoTrackId): Promise<RecordingFragment | null> {
+    async head<Track extends FragmentTrackId>(sessionId: string, trackId: Track): Promise<RecordingFragment<Track> | null> {
       try {
         const found = (await connection.query<StoredRow>(READ_RECORDING_FRAGMENT_HEAD, [sessionId, trackId])).rows[0];
-        return found === undefined ? null : toFragment(found);
+        return found === undefined ? null : (toFragment(found) as RecordingFragment<Track>);
       } catch (error) {
         throw new RecordingFragmentStoreError('READ_FAILED', 'the last fragment row could not be read', { cause: error });
       }
@@ -242,7 +269,7 @@ export interface CheckpointFacts {
 }
 
 /** The row of one checkpoint: `index` is the row's `seq`, `start`/`len` its byte range, the stored-bytes digest and chain its two hashes. */
-export function fragmentRowOf(sessionId: string, trackId: VideoTrackId, checkpoint: CheckpointFacts): RecordingFragment {
+export function fragmentRowOf<Track extends FragmentTrackId>(sessionId: string, trackId: Track, checkpoint: CheckpointFacts): RecordingFragment<Track> {
   return {
     sessionId,
     trackId,
@@ -262,7 +289,8 @@ export interface FragmentRecorderReport {
   readonly source: 'recording-fragments.recorder';
   readonly code: 'FRAGMENT_ROW_NOT_STORED' | 'FRAGMENT_BACKLOG_FULL' | 'FRAGMENT_CAMERA_UNKNOWN';
   readonly sessionId: string;
-  readonly trackId: VideoTrackId | null;
+  /** Row 148 (D5): a camera file's `VIDEO-0N` or a channel file's `AUDIO-0N`; null when the record named no device of the plan. */
+  readonly trackId: FragmentTrackId | null;
   /** The fragment number the report is about, or null. */
   readonly seq: number | null;
   readonly err: unknown;
@@ -277,8 +305,12 @@ export interface FragmentRecordEvent {
 export interface FragmentRecorderOptions {
   /** The recording session this recorder belongs to: events of another session are not its own and are ignored. */
   readonly sessionId: string;
-  /** Camera device -> output track, from the session's capture plan (`CAM-01` -> `VIDEO-01`). */
-  readonly tracks: ReadonlyMap<string, VideoTrackId>;
+  /**
+   * Device -> track of its file, from the session's capture plan: a camera to its video track
+   * (`CAM-01` -> `VIDEO-01`) and, row 148 (D5, protocol 6 N-32), a microphone of the plan to the
+   * sealed track of its channel file (`MIC-03` on channel `MIC-02` -> `AUDIO-02`).
+   */
+  readonly tracks: ReadonlyMap<string, FragmentTrackId>;
   readonly store: Pick<RecordingFragmentStore, 'insert'>;
   /** Where a failure goes: the caller writes it to the persistent error log. Must not throw. */
   readonly report: (report: FragmentRecorderReport) => void;
@@ -293,8 +325,8 @@ export interface FragmentRecorderStatus {
   readonly alreadyStored: number;
   /** Checkpoints that were not written: the first failure of a camera file, every one after it, and those the full backlog turned away. */
   readonly notStored: number;
-  /** The camera files whose rows are behind their checkpoints: `insertMissing` from the file brings them up. */
-  readonly behind: readonly VideoTrackId[];
+  /** The files (camera `VIDEO-0N` or channel `AUDIO-0N`, row 148) whose rows are behind their checkpoints: `insertMissing` from the file brings them up. */
+  readonly behind: readonly FragmentTrackId[];
 }
 
 export interface FragmentRecorder {
@@ -309,7 +341,7 @@ const DEFAULT_BACKLOG_LIMIT = 256;
 
 export function createFragmentRecorder(options: FragmentRecorderOptions): FragmentRecorder {
   const limit = options.backlogLimit ?? DEFAULT_BACKLOG_LIMIT;
-  const behind = new Set<VideoTrackId>();
+  const behind = new Set<FragmentTrackId>();
   let chain: Promise<void> = Promise.resolve();
   let pending = 0;
   let inserted = 0;
@@ -330,8 +362,9 @@ export function createFragmentRecorder(options: FragmentRecorderOptions): Fragme
       const trackId = event.record.deviceId === undefined ? undefined : options.tracks.get(event.record.deviceId);
       if (trackId === undefined) {
         notStored += 1;
-        // A camera the plan does not have: the supervisor refuses such a record; said once if it ever arrives.
-        if (!unknownSaid) report({ code: 'FRAGMENT_CAMERA_UNKNOWN', trackId: null, seq: event.record.index ?? null, err: new RecordingFragmentStoreError('ROW_INVALID', 'the checkpoint names a camera that is not in the plan', { member: 'trackId' }) });
+        // A device the plan does not have (neither a camera nor, row 148, a microphone of a channel file): the supervisor
+        // refuses such a record; said once if it ever arrives. The code keeps its stored name (error-log readers key on it).
+        if (!unknownSaid) report({ code: 'FRAGMENT_CAMERA_UNKNOWN', trackId: null, seq: event.record.index ?? null, err: new RecordingFragmentStoreError('ROW_INVALID', 'the checkpoint names a device that is not in the plan (no camera file and no channel file of it)', { member: 'trackId' }) });
         unknownSaid = true;
         return false;
       }

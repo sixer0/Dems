@@ -14,13 +14,22 @@
  *          1 kHz bursts of 100 ms at 0.5 whose first sample is the first sample at or after each
  *          absolute instant of --beep-at-us, counted from e0 = this process's own read of the
  *          wall clock when it starts. Nothing the worker knows enters that placement.
- *   mic 2  880 Hz at 0.1 (the hot standby of the legacy two-role lane, audibly different).
+ *   mic 2  880 Hz at 0.1 (audibly different from mic 1).
  *   mic 3  660 Hz at 0.1, mic 4  440 Hz at 0.1 (D61, 2026-11-04: the two further channels, each
  *          audibly different from every other row; the --stop2-after / --start2-after rule stays the
  *          lane's channel-2 rule).
  *
  * The manifest (JSON lines) states e0 and the onset sample of every beep: the truth an analyser
  * compares the recorded file against.
+ *
+ * THE BEEPS OF A PAIR (audit row 152b; D5 pairs, row 152, D135): a camera file carries its OWN pair's channel
+ * (VIDEO-0N <-> MIC-0N), no longer one shared track, so the flash-to-beep check of camera N needs the beeps on
+ * channel N. `--beep-on 1,2` puts the same bursts (same onset samples, the same manifest lines) on each named
+ * channel: on channel 2 a burst REPLACES the 880 Hz tone for its 100 ms, as it replaces the noise on channel 1, and
+ * the tone is held at zero for the 50 ms before the burst (the onset rule of av_analyse.py wants 50 ms below its
+ * threshold, and the encoder's pre-echo of the burst then sits on near-silence, as on channel 1). The tone keeps its
+ * phase across the gap (its samples are computed from the sample index). Default `1`: channel 1 only, as before (the
+ * tone checks of channels 2..4 stay pure).
  *
  *   --ppm P             both mics' sample clock against the host (-2000 = 2,000 ppm slow, 100 = 100 ppm fast)
  *   --stop-at S --resume-at S    the device delivers nothing in between and then goes on (stop and return)
@@ -62,7 +71,7 @@ int main(int argc, char **argv) {
     double seconds = 10, stop2_after = -1, start2_after = 0, ppm = 0, stop_at = -1, resume_at = -1;
     long long late_us = 0;
     int64_t beep_at[MAX_BEEPS], onset[MAX_BEEPS];
-    int n_beeps = 0;
+    int n_beeps = 0, beep_on[4] = { 1, 0, 0, 0 };          /* row 152b: the channels that carry the beeps */
     for (int i = 1; i + 1 < argc; i += 2) {
         const char *k = argv[i], *v = argv[i + 1];
         if (!strcmp(k, "--out1")) out[0] = v;
@@ -77,6 +86,13 @@ int main(int argc, char **argv) {
         else if (!strcmp(k, "--stop-at")) stop_at = atof(v);                /* both mics deliver nothing from this second ... */
         else if (!strcmp(k, "--resume-at")) resume_at = atof(v);            /* ... to this one (the device stopped and came back) */
         else if (!strcmp(k, "--deliver-late-us")) late_us = atoll(v);        /* constant delivery delay of every chunk */
+        else if (!strcmp(k, "--beep-on")) {                                 /* row 152b: e.g. "1,2" - each a channel 1..4 */
+            beep_on[0] = beep_on[1] = beep_on[2] = beep_on[3] = 0;
+            for (const char *c = v; *c; c++) {
+                if (*c >= '1' && *c <= '4' && (c[1] == ',' || c[1] == 0)) beep_on[*c - '1'] = 1;
+                else if (*c != ',') { fprintf(stderr, "FAKE_MIC bad --beep-on\n"); return 2; }
+            }
+        }
         else if (!strcmp(k, "--beep-at-us")) {
             for (const char *s = v; *s && n_beeps < MAX_BEEPS;) {
                 char *end;
@@ -87,7 +103,7 @@ int main(int argc, char **argv) {
         } else { fprintf(stderr, "FAKE_MIC unknown argument %s\n", k); return 2; }
     }
     if (!out[0] || !manifest_path || seconds <= 0) {
-        fprintf(stderr, "usage: fake_mic --out1 <fifo> [--out2 <fifo>] [--out3 <fifo>] [--out4 <fifo>] --manifest <file.jsonl> [--seconds S] [--beep-at-us t1,t2,...] [--stop2-after S] [--start2-after S] [--ppm P] [--stop-at S --resume-at S] [--deliver-late-us D]\n");
+        fprintf(stderr, "usage: fake_mic --out1 <fifo> [--out2 <fifo>] [--out3 <fifo>] [--out4 <fifo>] --manifest <file.jsonl> [--seconds S] [--beep-at-us t1,t2,...] [--stop2-after S] [--start2-after S] [--ppm P] [--stop-at S --resume-at S] [--deliver-late-us D] [--beep-on 1,2,...]\n");
         return 2;
     }
     signal(SIGPIPE, SIG_IGN);
@@ -119,15 +135,17 @@ int main(int argc, char **argv) {
         for (int i = 0; i < CHUNK; i++) {
             int64_t k = n + i;
             lcg = lcg * 6364136223846793005ULL + 1442695040888963407ULL;
-            float v = (float)(0.01 * ((double)(lcg >> 40) / 8388608.0 - 1.0));
+            float v = (float)(0.01 * ((double)(lcg >> 40) / 8388608.0 - 1.0)), beep = 0;
+            int in_beep = 0;                                    /* 1: inside a burst; -1: in the 50 ms before one */
             for (int b = 0; b < n_beeps; b++) {
                 int64_t d = k - onset[b];
-                if (onset[b] >= 0 && d >= 0 && d < SR / 10) { v = (float)(0.5 * cos(2 * M_PI * 1000.0 * (double)d / SR)); break; }
+                if (onset[b] >= 0 && d >= 0 && d < SR / 10) { beep = (float)(0.5 * cos(2 * M_PI * 1000.0 * (double)d / SR)); in_beep = 1; break; }
+                if (onset[b] >= 0 && d < 0 && d >= -(SR / 20)) in_beep = -1;
             }
-            a[i] = v;
-            s[i] = (float)(0.1 * sin(2 * M_PI * 880.0 * (double)k / SR));
-            x[i] = (float)(0.1 * sin(2 * M_PI * 660.0 * (double)k / SR));           /* D61: channel 3 */
-            y[i] = (float)(0.1 * sin(2 * M_PI * 440.0 * (double)k / SR));           /* D61: channel 4 */
+            a[i] = in_beep > 0 && beep_on[0] ? beep : v;
+            s[i] = in_beep && beep_on[1] ? beep : (float)(0.1 * sin(2 * M_PI * 880.0 * (double)k / SR));
+            x[i] = in_beep && beep_on[2] ? beep : (float)(0.1 * sin(2 * M_PI * 660.0 * (double)k / SR));           /* D61: channel 3 */
+            y[i] = in_beep && beep_on[3] ? beep : (float)(0.1 * sin(2 * M_PI * 440.0 * (double)k / SR));           /* D61: channel 4 */
         }
         /* Hand the chunk over ON its instant: sleep to 1.5 ms before it, then watch the clock (a
          * plain sleep overshoots by most of a millisecond on this host, which would be a constant

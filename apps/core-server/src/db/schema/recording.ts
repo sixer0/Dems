@@ -23,14 +23,14 @@ import {
   CAPTURE_SOURCE_SLOT,
   MIC_ROLE,
   SEALING_JOB_STATUS,
-  VIDEO_TRACK_ID,
+  TRACK_ID,
   type AudioIntervalReasonValue,
   type CaptureAdapterKindValue,
   type CaptureSourceSlotValue,
   type FlatJson,
   type MicRoleValue,
   type SealingJobStatusValue,
-  type VideoTrackIdValue,
+  type TrackIdValue,
 } from './value-sets';
 
 /**
@@ -98,12 +98,14 @@ export const sessionAudioIntervals = pgTable(
  * one-fragment tamper demo are locatable writer-independently (S1 §3.1 SP-7, §5.4). Append-only:
  * the runtime role has INSERT and nothing else (map §6). `chain_hash` of the first row is
  * `SHA-256("")`, recomputed by the mapping, never stored as a zero-length value (row 31).
+ * D28 (DQ-1 = S1, migration 0044, row 146): the four microphone channel files `AUDIO-01..04` take
+ * rows too, so the track list is the eight of `TRACK_ID` (was `VIDEO_TRACK_ID`).
  */
 export const recordingFragments = pgTable(
   'recording_fragments',
   {
     sessionId: text('session_id').notNull(),
-    trackId: text('track_id').$type<VideoTrackIdValue>().notNull(),
+    trackId: text('track_id').$type<TrackIdValue>().notNull(),
     seq: integer('seq').notNull(),
     byteOffset: bigint('byte_offset', { mode: 'number' }).notNull(),
     byteLength: bigint('byte_length', { mode: 'number' }).notNull(),
@@ -116,7 +118,7 @@ export const recordingFragments = pgTable(
   (t) => [
     primaryKey({ name: 'recording_fragments_pkey', columns: [t.sessionId, t.trackId, t.seq] }),
     check('recording_fragments_session_check', sessionId(t.sessionId)),
-    check('recording_fragments_track_check', oneOf(t.trackId, VIDEO_TRACK_ID)),
+    check('recording_fragments_track_check', oneOf(t.trackId, TRACK_ID)), // D28 / 0044 (row 146): video and audio channel files
     check('recording_fragments_seq_check', sql`${t.seq} >= 1`),
     check(
       'recording_fragments_bytes_check',

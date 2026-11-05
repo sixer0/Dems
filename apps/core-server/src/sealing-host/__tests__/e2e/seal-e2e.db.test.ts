@@ -17,21 +17,31 @@
 // data directory, verify v2. The clock and the timers are the system's: the recording takes real
 // seconds. WHAT IS NOT: the sources (generated), the tablet link (set through the engine, no
 // tablet), and in case (b) the death of the Core (see there).
+//
+// AUDIT ROW W3G (2026-11-06; D146, F-W3TW3-T1): the seed's selector holds EIGHT FAKE slots since the team's D61 (migration
+// 0040) and the built worker speaks protocol 6 (D5): every case records four camera files and four pair audio files. The
+// D5 assertions (AUDIO-0N rows recorded and sealed, the /2.1 manifest with audioTracks/audioFiles, the evidence_tracks rows,
+// export + receiver verify with the audio files) are in `sealedAndVerified` / `exportedAndReceived`; case (d) is the
+// session with a paired microphone that fails to open (the signed NOT_OPENED statement).
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, truncateSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { PackageFile, parseManifestV2 } from '@dems/shared/evidence-package';
+import { MANIFEST_V2_1_SCHEMA_ID, PackageFile, parseManifestV2 } from '@dems/shared/evidence-package';
 import { HOST_CLOCK_TIME, OPERATORS } from '@dems/shared/sim';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { useTestDatabase } from '../../../../test/helpers/db';
+import { ingestReachOfThisProcess, openFailuresOf, type IngestReach } from '../../../../test/support/capture-open-causes';
 import { captureLog, unitTestConfig } from '../../../../test/support/config';
 import { WEB_ORIGIN, cookieValue, webSignIn } from '../../../../test/support/identity';
 import { buildApp } from '../../../app';
 import { realBootFixture } from '../../../capture/boot/__tests__/support';
+import { captureFenceControl } from '../../../capture/fence';
 import { sessionCapture } from '../../../capture-session';
-import { provisionDevelopmentSigningKey } from '../../../sealing';
+import { parseExportManifest, verifyExportAtDestination } from '../../../evidence-export';
+import { loadSealingSigner, provisionDevelopmentSigningKey } from '../../../sealing';
 import { CORE_SERVER_VERSION } from '../../../version';
 import { sealingHost } from '../../index';
 import { CORE_TIME_SOURCE, NOT_CONFIGURED } from '../../session-reader';
@@ -41,7 +51,20 @@ const REPOSITORY = resolve(import.meta.dirname, '../../../../../..');
 const WORKER = resolve(REPOSITORY, 'apps/capture-worker/build/capture-worker');
 // The private helper copy of `npm run capture:dev-setup` (the fence refuses a package manager's FFmpeg).
 const HELPER = process.env.DEMS_CAPTURE_HELPER_FFMPEG ?? resolve(REPOSITORY, '.data/helpers/ffmpeg');
-const FAKE_DEVICES = ['CAM-01', 'CAM-02', 'MIC-01', 'MIC-02'];
+// Audit row W3G (D146; F-W3TW3-T1): the seed's selector assigns EIGHT slots since the team's D61 (migration 0040):
+// four cameras on VIDEO-01..04 and four numbered microphone channels MIC-01..04, all built-in FAKE devices.
+const FAKE_DEVICES = ['CAM-01', 'CAM-02', 'CAM-03', 'CAM-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'];
+const CAMERA_TRACKS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const;
+const AUDIO_TRACKS = ['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04'] as const;
+type AudioTrack = (typeof AUDIO_TRACKS)[number];
+/** The pair of an audio file, by number (D5; N-14): AUDIO-0N <-> MIC-0N <-> VIDEO-0N; the seed puts device MIC-0N on channel MIC-0N. */
+const pairOf = (trackId: AudioTrack): { channel: string; camera: string } => ({ channel: trackId.replace('AUDIO', 'MIC'), camera: trackId.replace('AUDIO', 'VIDEO') });
+/** The D5 expectation of one sealed session: the audio files sealed, and the pairs stated missing (D30 K-3). */
+interface PairedAudioExpected {
+  readonly sealed: readonly AudioTrack[];
+  readonly missing: readonly { readonly trackId: AudioTrack; readonly reason: 'NOT_OPENED' | 'NOT_ASSIGNED' }[];
+}
+const ALL_PAIRS: PairedAudioExpected = { sealed: AUDIO_TRACKS, missing: [] };
 
 const db = useTestDatabase({ template: 'seed' });
 const sleep = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));
@@ -108,16 +131,28 @@ async function until<Value>(what: string, limitMs: number, read: () => Promise<V
 
 const sessionOf = (c: Core) => c.app.engine.state().session;
 const codes = (c: Core): string[] => c.log.lines().map((line) => String((line as { code?: unknown }).code ?? '')).filter((code) => code !== '');
+// Row C1D (D149): a failure dump also prints the RECORDED cause of every source that did not open (the Core's error log of this
+// throw-away data directory, removed at the end), and whether this process - and so every helper it starts - may reach the
+// camera ingest ports on the loopback at all (read once, before the first session). Reads only: nothing is asserted on them.
+const opens = (c: Core) => openFailuresOf(c.app.errorLog.file);
+let ingestReach: IngestReach | null = null;
 /** The last coded log lines with what they say of a failure: codes and identifiers only. */
 const tail = (c: Core): string => JSON.stringify(c.log.lines().filter((line) => typeof line.code === 'string').slice(-8).map((line) => ({ code: line.code, msg: line.msg, cause: line.cause, detail: line.detail, step: line.step, deviceId: line.deviceId, err: (line.err as { message?: string; code?: string } | undefined)?.code ?? (line.err as { message?: string } | undefined)?.message })));
 
-/** From nothing to a RECORDING session with durable media, through the HTTP routes. Resolves with the session ID. */
-async function record(c: Core, cookie: string, seconds: number): Promise<string> {
-  // NEVER A REAL DEVICE: the selector of this throw-away database must name the four built-in FAKE devices only.
+/**
+ * From nothing to a RECORDING session with durable media, through the HTTP routes. Resolves with the session ID.
+ * `failMicOpen` (row W3G, D146; D30 K-3): the microphone of that id FAILS TO OPEN at the start - the one stand-in of
+ * this file: the open of that device through the registry the session start reads rejects, before any helper of it
+ * is started. Installed after the pre-check (which reads no opener), removed once the start answered. Every other part
+ * (plan builder, worker, recorder, seal) is the product's: the plan states the pair `NOT_OPENED` and the session records.
+ */
+async function record(c: Core, cookie: string, seconds: number, options: { readonly failMicOpen?: string } = {}): Promise<string> {
+  ingestReach ??= await ingestReachOfThisProcess();
+  // NEVER A REAL DEVICE: the selector of this throw-away database must name the eight built-in FAKE devices only (D61).
   const state = c.app.engine.state();
   const assigned = [...state.captureConfig.cameras.map((camera) => camera.deviceId), ...state.captureConfig.mics.map((mic) => mic.deviceId)];
   expect(assigned.sort()).toEqual(FAKE_DEVICES);
-  expect(state.captureDevices.devices.filter((device) => assigned.includes(device.id)).map((device) => device.adapter ?? 'FAKE')).toEqual(['FAKE', 'FAKE', 'FAKE', 'FAKE']);
+  expect(state.captureDevices.devices.filter((device) => assigned.includes(device.id)).map((device) => device.adapter ?? 'FAKE')).toEqual(FAKE_DEVICES.map(() => 'FAKE'));
 
   await c.app.engine.setTabletLink('CONNECTED');
   const investigator = OPERATORS.find((operator) => operator.role === 'INVESTIGATOR')!;
@@ -130,19 +165,46 @@ async function record(c: Core, cookie: string, seconds: number): Promise<string>
     const acknowledged = await c.post(`/api/v1/session/${sessionId}/precheck/acknowledge`, cookie);
     expect(acknowledged.statusCode, acknowledged.body).toBe(200);
   }
-  const started = await c.post(`/api/v1/session/${sessionId}/start`, cookie);
-  expect(started.statusCode, started.body).toBe(200);
-  expect(sessionOf(c)).toMatchObject({ state: 'RECORDING', captureDurable: false });
-  await until('the first durable fragment', 40_000, () => (sessionOf(c)?.captureDurable === true ? true : sessionOf(c)?.state !== 'RECORDING' ? Promise.reject(new Error(`the session left RECORDING: ${sessionOf(c)?.state} ${tail(c)}`)) : null), () => codes(c).slice(-12));
+  const registry = captureFenceControl(c.app).registry();
+  if (options.failMicOpen !== undefined && registry === null) throw new Error('the development registry is not built');
+  const resolveOfRegistry = registry?.resolve.bind(registry);
+  const failing =
+    options.failMicOpen === undefined || registry === null || resolveOfRegistry === undefined
+      ? null
+      : vi.spyOn(registry, 'resolve').mockImplementation(((deviceClass: Parameters<typeof registry.resolve>[0], deviceId: string) => {
+          const adapter = resolveOfRegistry(deviceClass, deviceId);
+          if (deviceClass !== 'MIC' || deviceId !== options.failMicOpen) return adapter;
+          return { ...adapter, open: async () => Promise.reject(new Error('row W3G: this microphone is made to fail its open')) };
+        }) as typeof registry.resolve);
+  let standInAsked = false;
+  try {
+    const started = await c.post(`/api/v1/session/${sessionId}/start`, cookie);
+    expect(started.statusCode, started.body).toBe(200);
+    expect(sessionOf(c)).toMatchObject({ state: 'RECORDING', captureDurable: false });
+    // The sources are opened by the capture unit after the answer: the stand-in stays until the first durable fragment (the plan was built before it).
+    await until('the first durable fragment', 40_000, () => (sessionOf(c)?.captureDurable === true ? true : sessionOf(c)?.state !== 'RECORDING' ? Promise.reject(new Error(`the session left RECORDING: ${sessionOf(c)?.state} ${tail(c)}`)) : null), () => ({ codes: codes(c).slice(-12), opens: opens(c), ingestReach }));
+  } finally {
+    // Read before the restore (a restore clears the calls).
+    standInAsked = failing?.mock.calls.some(([deviceClass, deviceId]) => deviceClass === 'MIC' && deviceId === options.failMicOpen) ?? false;
+    failing?.mockRestore();
+  }
+  if (options.failMicOpen !== undefined) {
+    // D30 K-3 at the start: the open failure is a WARNING, the pair is stated, the recording goes on.
+    expect(standInAsked).toBe(true);
+    expect(codes(c)).toContain('CAPTURE_MIC_NOT_OPENED');
+    expect(codes(c)).toContain('CAPTURE_PAIRED_MIC_MISSING');
+  }
   await sleep(seconds * 1_000);
   return sessionId;
 }
 
-const fragmentRows = async (c: Core, sessionId: string): Promise<number[]> =>
-  (await c.owner.query<{ track_id: string; n: string }>('SELECT track_id, count(*)::text AS n FROM public.recording_fragments WHERE session_id = $1 GROUP BY track_id ORDER BY track_id', [sessionId])).rows.map((row) => Number(row.n));
+/** The fragment rows per track (D5: the camera files VIDEO-0N and, since row 148, the channel files AUDIO-0N), in track order. */
+const fragmentRowsByTrack = async (c: Core, sessionId: string): Promise<Record<string, number>> =>
+  Object.fromEntries((await c.owner.query<{ track_id: string; n: string }>('SELECT track_id, count(*)::text AS n FROM public.recording_fragments WHERE session_id = $1 GROUP BY track_id ORDER BY track_id', [sessionId])).rows.map((row) => [row.track_id, Number(row.n)]));
+const fragmentRows = async (c: Core, sessionId: string): Promise<number[]> => Object.values(await fragmentRowsByTrack(c, sessionId));
 
 /** What a sealed session must be, in the database, on the disk and through operation 41. */
-async function sealedAndVerified(c: Core, cookie: string, sessionId: string, fixture: Fixture, interrupted: boolean): Promise<void> {
+async function sealedAndVerified(c: Core, cookie: string, sessionId: string, fixture: Fixture, interrupted: boolean, audio: PairedAudioExpected | 'SOME' = ALL_PAIRS): Promise<D5Sealed> {
   const evidenceId = sessionOf(c)?.evidenceId ?? '';
   const item = c.app.engine.state().evidence.find((entry) => entry.id === evidenceId);
   expect(item).toMatchObject({ sessionId, status: 'SEALED', integritySource: 'REAL', manifestVersion: 2, developmentSources: true, signature: { algorithm: 'Ed25519', simulated: false } });
@@ -152,12 +214,48 @@ async function sealedAndVerified(c: Core, cookie: string, sessionId: string, fix
   // The package folder: the sealed camera files are there, the plaintext recordings are gone.
   const folder = `${fixture.mediaStoreDir}/SESSION-${sessionId}`;
   expect(readdirSync(folder).sort()).toEqual([PackageFile.AUDIT_EXTRACT, PackageFile.CERTIFICATE, PackageFile.FRAGMENTS_DIR, PackageFile.MANIFEST, PackageFile.SIGNATURE].sort());
-  expect(readdirSync(`${folder}/${PackageFile.FRAGMENTS_DIR}`).sort()).toEqual(['VIDEO-01.mp4', 'VIDEO-02.mp4', 'fragments.json']);
-  expect(existsSync(`${folder}/VIDEO-01.mp4`) || existsSync(`${folder}/VIDEO-02.mp4`)).toBe(false);
   const manifest = parseManifestV2(JSON.parse(readFileSync(`${folder}/${PackageFile.MANIFEST}`, 'utf8')));
+  // D5 (rows 145/153; register N-14): the audio files this package seals - all four pairs, the expected ones, or (an
+  // interrupted recovery, case (b)) the ones the manifest declares, at least one.
+  const sealedAudio: readonly AudioTrack[] = audio === 'SOME' ? (manifest.audioTracks ?? []).map((track) => track.trackId as AudioTrack) : audio.sealed;
+  expect(sealedAudio.length).toBeGreaterThanOrEqual(1);
+  expect(readdirSync(`${folder}/${PackageFile.FRAGMENTS_DIR}`).sort()).toEqual([...CAMERA_TRACKS.map((track) => `${track}.mp4`), ...sealedAudio.map((track) => `${track}.m4a`), 'fragments.json'].sort());
+  // The plaintext recordings are gone: the camera files AND the channel files `MIC-0N.m4a` (row 153: sealed or quarantined, never left beside the package).
+  expect(readdirSync(folder).filter((name) => /^(VIDEO|MIC)-0[1-4]\.(mp4|m4a)$/.test(name))).toEqual([]);
   expect(manifest).toMatchObject({ evidenceId, sessionId, integrity: 'REAL', developmentSources: true, timeline: { interrupted }, transcript: { state: 'DISABLED' } });
   // The class of every source is the START record's kind (generated sources: FAKE), never PRODUCTION.
-  expect(manifest.tracks.map((track) => [track.trackId, track.sourceClass])).toEqual([['VIDEO-01', 'FAKE'], ['VIDEO-02', 'FAKE']]);
+  expect(manifest.tracks.map((track) => [track.trackId, track.sourceClass])).toEqual(CAMERA_TRACKS.map((track) => [track, 'FAKE']));
+  // D5: THE /2.1 MANIFEST with the pair audio files (fields 159-174) and, for a pair whose microphone recorded nothing,
+  // the signed missing-microphone statement (fields 175-179; D30 K-3) - inside the digest and under the signature.
+  expect(manifest.schema).toBe(MANIFEST_V2_1_SCHEMA_ID);
+  expect((manifest.audioTracks ?? []).map((track) => [track.trackId, track.micChannel, track.micDeviceId, track.containsIn, track.file, track.sourceClass])).toEqual(
+    sealedAudio.map((track) => [track, pairOf(track).channel, pairOf(track).channel, [pairOf(track).camera], `${track}.m4a`, 'FAKE']),
+  );
+  expect((manifest.audioFiles ?? []).map((file) => file.trackId)).toEqual([...sealedAudio]);
+  expect((manifest.audioFiles ?? []).every((file) => file.fragments.length >= 1 && file.fragments.every((fragment) => fragment.keyId === `KID-${sessionId}` && fragment.interrupted === interrupted))).toBe(true);
+  if (audio !== 'SOME') {
+    if (audio.missing.length === 0) expect(manifest.audioTracksMissing).toBeUndefined();
+    else
+      expect(manifest.audioTracksMissing).toEqual(
+        audio.missing.map((entry) => ({ trackId: entry.trackId, micChannel: pairOf(entry.trackId).channel, micDeviceId: entry.reason === 'NOT_ASSIGNED' ? null : pairOf(entry.trackId).channel, silentIn: [pairOf(entry.trackId).camera], reason: entry.reason })),
+      );
+  }
+  // Rule 4 (R153-4): the session's audio is in VIDEO-01 exactly when pair 1 recorded its microphone.
+  expect(manifest.audio.containsIn).toEqual(sealedAudio.includes('AUDIO-01') ? ['VIDEO-01'] : []);
+  // The sealed audio bytes are not an MP4 fragment in the clear either (the same encryption as a camera file).
+  for (const file of manifest.audioFiles ?? []) {
+    const stored = readFileSync(`${folder}/${PackageFile.FRAGMENTS_DIR}/${file.trackId}.m4a`);
+    expect(file.fragments.map((fragment) => stored.subarray(fragment.byteOffset + 4, fragment.byteOffset + 8).toString('ascii')).includes('moof')).toBe(false);
+  }
+  // Each sealed pair audio file was RECORDED: its AUDIO-0N fragment rows exist (row 148: a mic checkpoint is an AUDIO-0N row).
+  const rowsByTrack = await fragmentRowsByTrack(c, sessionId);
+  for (const track of sealedAudio) expect(rowsByTrack[track] ?? 0, track).toBeGreaterThanOrEqual(1);
+  if (audio !== 'SOME') for (const entry of audio.missing) expect(rowsByTrack[entry.trackId], entry.trackId).toBeUndefined();
+  // evidence_tracks (N-22; R153-8): one row per sealed file - the cameras at positions 1-4, then the audio files in AUDIO order -
+  // each with the size and the sealed hash the signed manifest states.
+  const stored = (await c.owner.query<{ track_id: string; position: number; size_bytes: string; sha256: string }>('SELECT track_id, position, size_bytes::text AS size_bytes, sha256 FROM public.evidence_tracks WHERE evidence_id = $1 ORDER BY position', [evidenceId])).rows;
+  const declared = [...manifest.tracks.map((track) => ({ trackId: track.trackId, bytes: track.bytes, sha256: track.sha256 })), ...(manifest.audioTracks ?? []).map((track) => ({ trackId: track.trackId, bytes: track.bytes, sha256: track.sha256 }))];
+  expect(stored.map((row) => [row.track_id, Number(row.position), Number(row.size_bytes), row.sha256])).toEqual(declared.map((track, index) => [track.trackId, index + 1, track.bytes, track.sha256]));
   expect(manifest.audio.sourceIntervals.length).toBeGreaterThanOrEqual(1);
   expect(manifest.audio.sourceIntervals.every((interval) => interval.sourceClass === 'FAKE')).toBe(true);
   expect(manifest.files.every((file) => file.fragments.length >= 1 && file.fragments.every((fragment) => fragment.keyId === `KID-${sessionId}` && fragment.interrupted === interrupted))).toBe(true);
@@ -227,12 +325,73 @@ async function sealedAndVerified(c: Core, cookie: string, sessionId: string, fix
   expect([manifest.device.serialNumber, manifest.device.hardwareUuid]).toEqual([NOT_CONFIGURED, NOT_CONFIGURED]);
   expect(c.app.config.installationDeviceId).not.toBeNull();
   expect([manifest.device.deviceId, manifest.device.name]).toEqual([c.app.config.installationDeviceId, c.app.config.installationName]);
-  expect(manifest.tracks).toHaveLength(2);
+  expect(manifest.tracks).toHaveLength(4);
   // A generated-source package is signed with the development key, and the verifier says so of its certificate.
   expect(developmentKey).toBe(true);
   expect(body.checks).toHaveLength(15);
   expect((body.checks as { id: string; status: string }[]).filter((check) => check.status === 'FAIL')).toEqual([]);
   expect(c.app.engine.state().evidence.find((entry) => entry.id === evidenceId)?.verification.status).toBe('PASS');
+  // D5 (row 154): operation 41 SAYS a missing microphone (notice AUDIO_TRACKS_MISSING, which fails nothing), and says nothing when every pair recorded.
+  const notices = ((body as { notices?: { code: string }[] }).notices ?? []).map((notice) => notice.code);
+  if (audio !== 'SOME') expect(notices.includes('AUDIO_TRACKS_MISSING')).toBe(audio.missing.length > 0);
+  return { evidenceId, folder, manifest };
+}
+
+/** What `sealedAndVerified` hands on to the export of the same package. */
+interface D5Sealed {
+  readonly evidenceId: string;
+  readonly folder: string;
+  readonly manifest: ReturnType<typeof parseManifestV2>;
+}
+
+/**
+ * D5 EXPORT AND RECEIVER-VERIFY (row 153; D30 K-8, D119): a PACKAGE export of the sealed item by a job, downloaded through
+ * its signed path, unpacked at a destination below the fixture, and verified there WITHOUT the Core (`verifyExportAtDestination`,
+ * the receiver's code), trusting the certificate of this fixture's development key only. The archive holds the camera files
+ * AND the pair audio files DECRYPTED, each with the plaintext hash its sealed `audioTracks[]` record states; a missing pair is
+ * said by the receiver (`audioTracksMissing`), and fails nothing.
+ */
+async function exportedAndReceived(c: Core, sealed: D5Sealed, fixture: Fixture, audio: PairedAudioExpected): Promise<void> {
+  const supervisor = await webSignIn(c.app, 'andi.pratama');
+  const token = cookieValue(supervisor, c.app.config.sessionCookieName);
+  if (supervisor.statusCode !== 200 || token === null) throw new Error(`the supervisor's sign-in answered ${supervisor.statusCode}`);
+  const cookie = `${c.app.config.sessionCookieName}=${token}`;
+  const accepted = await c.post(`/api/v1/evidence/${sealed.evidenceId}/export`, cookie, { reason: 'Prosecutor request', destination: 'Case file transfer' });
+  expect(accepted.statusCode, accepted.body).toBe(202);
+  const { exportId, jobId } = accepted.json() as { exportId: string; jobId: string };
+  const done = await until('the export job is COMPLETE', 120_000, async () => {
+    const answer = await c.get(`/api/v1/evidence/exports/${jobId}`, cookie);
+    expect(answer.statusCode, answer.body).toBe(200);
+    const job = answer.json() as { status: string; download?: { path: string }; archive?: { sha256: string } };
+    if (job.status === 'FAILED') throw new Error(`the export job FAILED: ${answer.body}`);
+    return job.status === 'COMPLETE' ? job : null;
+  });
+  const exportManifest = parseExportManifest(readFileSync(`${sealed.folder}/export/${exportId}.manifest.json`, 'utf8'));
+  expect(exportManifest.payload.files.map((file) => file.trackId)).toEqual([...CAMERA_TRACKS]);
+  expect((exportManifest.payload.audioFiles ?? []).map((file) => file.trackId)).toEqual([...audio.sealed]);
+  // The plaintext hash of each exported audio file is the one the SEALED manifest signed.
+  expect((exportManifest.payload.audioFiles ?? []).map((file) => file.sha256Plain)).toEqual((sealed.manifest.audioTracks ?? []).map((track) => track.sha256Plain));
+
+  const download = await c.get(done.download?.path ?? '', cookie);
+  expect(download.statusCode).toBe(200);
+  expect(createHash('sha256').update(download.rawPayload).digest('hex')).toBe(done.archive?.sha256);
+  const destination = `${fixture.dataDir}/w3g-destination-${exportId}`;
+  mkdirSync(`${destination}/unpacked`, { recursive: true, mode: 0o700 });
+  const archiveFile = `${destination}/${exportId}.zip`;
+  writeFileSync(archiveFile, download.rawPayload, { mode: 0o600 });
+  execFileSync('/usr/bin/unzip', ['-q', archiveFile, '-d', `${destination}/unpacked`]);
+  // Each decrypted audio file is in the archive, and its bytes hash to the sealed plaintext hash.
+  for (const file of exportManifest.payload.audioFiles ?? []) {
+    const bytes = readFileSync(`${destination}/unpacked/${file.path}`);
+    expect([bytes.byteLength, createHash('sha256').update(bytes).digest('hex')], file.trackId).toEqual([file.bytes, file.sha256Plain]);
+  }
+  const trusted = loadSealingSigner({ dataDir: fixture.dataDir, now: Date.now() }).certificate.sha256;
+  const received = await verifyExportAtDestination({ unpackedDir: `${destination}/unpacked`, archiveFile, trustedCertificateSha256: [trusted] });
+  expect(received.checks.filter((check) => !check.ok).map((check) => check.id)).toEqual([]);
+  expect(received.ok).toBe(true);
+  if (audio.missing.length === 0) expect(received.audioTracksMissing).toBeUndefined();
+  else expect(received.audioTracksMissing).toMatchObject({ code: 'AUDIO_TRACKS_MISSING', records: audio.missing.map((entry) => ({ trackId: entry.trackId, silentIn: [pairOf(entry.trackId).camera], reason: entry.reason })) });
+  if (process.env.DEMS_SEAL_E2E_OUT !== undefined) writeFileSync(`${process.env.DEMS_SEAL_E2E_OUT}/export-${sealed.evidenceId}-${Date.now()}.json`, `${JSON.stringify({ exportId, audioFiles: (exportManifest.payload.audioFiles ?? []).map((file) => file.trackId), receiverOk: received.ok, checks: received.checks.map((check) => [check.id, check.ok]), audioTracksMissing: received.audioTracksMissing?.records ?? null }, null, 1)}\n`);
 }
 
 describe.skipIf(!ASKED)('row 82b end to end: recorded by the built worker, sealed by the composition, verified by operation 41 (skipped unless DEMS_SEAL_E2E=1: it needs the built worker and the heavy-host lock)', () => {
@@ -265,16 +424,19 @@ describe.skipIf(!ASKED)('row 82b end to end: recorded by the built worker, seale
       const answer = await c.get(`/api/v1/session/${sessionId}/sealing`, cookie);
       if (answer.statusCode === 200) seen.push(answer.json().progressPct as number);
       return sessionOf(c)?.state === 'SEALED' ? true : null;
-    }, () => ({ state: sessionOf(c)?.state, steps: sessionOf(c)?.finalization.steps.map((step) => [step.id, step.status, step.detail]), outcome: sealingHost(c.app).lastOutcome(), codes: codes(c).slice(-15) }));
+    }, () => ({ state: sessionOf(c)?.state, steps: sessionOf(c)?.finalization.steps.map((step) => [step.id, step.status, step.detail]), outcome: sealingHost(c.app).lastOutcome(), codes: codes(c).slice(-15), opens: opens(c), ingestReach }));
     await sealingHost(c.app).settled();
     expect(sealingHost(c.app).lastOutcome()).toMatchObject({ status: 'SEALED', sessionId, interrupted: false, attempt: 1 });
     expect(seen.length).toBeGreaterThan(0);
     expect([...seen].sort((left, right) => left - right)).toEqual(seen);
-    const rows = await fragmentRows(c, sessionId);
-    expect(rows).toHaveLength(2);
+    // D61 + D5 (row W3G): eight recorded files - the four camera files and the four pair audio files (AUDIO-0N rows, row 148).
+    const byTrack = await fragmentRowsByTrack(c, sessionId);
+    expect(Object.keys(byTrack)).toEqual([...AUDIO_TRACKS, ...CAMERA_TRACKS]);
+    const rows = CAMERA_TRACKS.map((track) => byTrack[track] ?? 0);
     expect(Math.min(...rows)).toBeGreaterThanOrEqual(2);
-    await sealedAndVerified(c, cookie, sessionId, fixture, false);
-    console.info(`[row82b e2e a] session ${sessionId}: fragments per file ${rows.join(' / ')}, op 83 percents seen ${seen.join(',')}`);
+    const sealed = await sealedAndVerified(c, cookie, sessionId, fixture, false, ALL_PAIRS);
+    await exportedAndReceived(c, sealed, fixture, ALL_PAIRS);
+    console.info(`[row82b e2e a] session ${sessionId}: fragments per file ${JSON.stringify(byTrack)}, op 83 percents seen ${seen.join(',')}`);
   }, 300_000);
 
   it('(b) the worker is KILLED mid-recording and the Core goes down before it records anything of it -> a new Core on the same database and media -> RECOVERY seals the durable prefix as interrupted -> verify PASS with the interrupted flag', async () => {
@@ -295,14 +457,15 @@ describe.skipIf(!ASKED)('row 82b end to end: recorded by the built worker, seale
     const left = (await target.ownerPool().query<{ state: string }>('SELECT state FROM public.active_session')).rows;
     expect(left.map((row) => row.state)).toEqual(['RECORDING']);
     expect((await target.ownerPool().query('SELECT 1 FROM public.sealing_jobs WHERE session_id = $1', [sessionId])).rowCount).toBe(0);
-    expect(existsSync(`${fixture.mediaStoreDir}/SESSION-${sessionId}/VIDEO-01.mp4`)).toBe(true);
+    expect(existsSync(`${fixture.mediaStoreDir}/SESSION-${sessionId}/VIDEO-01.mp4`), JSON.stringify({ opens: opens(first), ingestReach })).toBe(true);
 
     const second = await core(target, fixture);
     await until('RECOVERY sealed the session', 120_000, () => (second.app.engine.state().session?.state === 'SEALED' ? true : null), () => ({ state: second.app.engine.state().session?.state, steps: second.app.engine.state().session?.finalization.steps.map((step) => [step.id, step.status, step.detail]), outcome: sealingHost(second.app).lastOutcome(), codes: codes(second).slice(-15) }));
     await sealingHost(second.app).settled();
     expect(sealingHost(second.app).lastOutcome()).toMatchObject({ status: 'SEALED', sessionId, interrupted: true });
     const cookie = await second.cookie();
-    await sealedAndVerified(second, cookie, sessionId, fixture, true);
+    // D5 after a crash: the durable prefixes of the pair audio files are sealed as the cameras' are (at least one; which ones depends on where the kill fell).
+    await sealedAndVerified(second, cookie, sessionId, fixture, true, 'SOME');
     console.info(`[row82b e2e b] session ${sessionId}: fragments per file ${(await fragmentRows(second, sessionId)).join(' / ')}`);
   }, 300_000);
 
@@ -318,12 +481,16 @@ describe.skipIf(!ASKED)('row 82b end to end: recorded by the built worker, seale
     await first.app.close();
     await sessionCapture(first.app).idle().catch(() => {});
     expect((await target.ownerPool().query('SELECT 1 FROM public.recording_fragments WHERE session_id = $1', [sessionId])).rowCount).toBeGreaterThan(0);
-    // BOTH recordings lose everything after their first 64 bytes: no file holds a whole fragment any more, while the rows say they recorded.
+    // EVERY camera recording (four since D61, row W3G) loses everything after its first 64 bytes: no camera file holds a whole
+    // fragment any more, while the rows say they recorded. The channel files `MIC-0N.m4a` are left whole: an audio file alone
+    // makes no package (row 153: NOTHING_SEALABLE still means "no camera file").
     const folder = `${fixture.mediaStoreDir}/SESSION-${sessionId}`;
-    for (const name of ['VIDEO-01.mp4', 'VIDEO-02.mp4']) {
-      expect(existsSync(`${folder}/${name}`)).toBe(true);
+    const cameraNames = CAMERA_TRACKS.map((track) => `${track}.mp4`);
+    for (const name of cameraNames) {
+      expect(existsSync(`${folder}/${name}`), JSON.stringify({ opens: opens(first), ingestReach })).toBe(true);
       truncateSync(`${folder}/${name}`, 64);
     }
+    const channelNames = readdirSync(folder).filter((name) => /^MIC-0[1-4]\.m4a$/.test(name)).sort();
 
     const second = await core(target, fixture);
     await until('the session is ended', 60_000, () => (second.app.engine.state().session === null ? true : null), () => ({ state: second.app.engine.state().session?.state, steps: second.app.engine.state().session?.finalization.steps.map((step) => [step.id, step.status, step.detail]), outcome: sealingHost(second.app).lastOutcome(), codes: codes(second).slice(-15) }));
@@ -335,12 +502,13 @@ describe.skipIf(!ASKED)('row 82b end to end: recorded by the built worker, seale
     expect(state.alerts.filter((alert) => alert.params?.reason === 'UNSEALABLE')).toMatchObject([{ kind: 'SYSTEM', severity: 'CRITICAL', active: true, target: sessionId, params: { cause: 'NOTHING_SEALABLE', sessionId } }]);
     const audit = (await second.owner.query<{ type: string; severity: string; details: Record<string, unknown> }>("SELECT type, severity, details FROM public.audit_log WHERE session_id = $1 AND type = 'SESSION_INCOMPLETE'", [sessionId])).rows;
     expect(audit).toMatchObject([{ severity: 'CRITICAL', details: { reason: 'UNSEALABLE', cause: 'NOTHING_SEALABLE' } }]);
-    // MOVED, never deleted: both files, owner-only, in the quarantine; nothing of the session in its folder.
+    // MOVED, never deleted: every camera file and every channel file, owner-only, in the quarantine; nothing of the session in its folder.
     const kept = `${fixture.mediaStoreDir}/.quarantine/${sessionId}`;
-    for (const name of ['VIDEO-01.mp4', 'VIDEO-02.mp4']) {
+    for (const name of cameraNames) {
       expect(statSync(`${kept}/${name}`).size).toBe(64);
       expect(statSync(`${kept}/${name}`).mode & 0o077).toBe(0);
     }
+    for (const name of channelNames) expect(statSync(`${kept}/${name}`).mode & 0o077, name).toBe(0);
     expect(statSync(kept).mode & 0o077).toBe(0);
     expect(existsSync(folder)).toBe(false);
     expect((await second.owner.query<{ error_code: string | null }>("SELECT error_code FROM public.sealing_jobs WHERE session_id = $1 AND status = 'FAILED'", [sessionId])).rows).toEqual([{ error_code: 'UNSEALABLE' }]);
@@ -362,5 +530,39 @@ describe.skipIf(!ASKED)('row 82b end to end: recorded by the built worker, seale
     expect(sealingHost(third.app).lastOutcome()).toBeNull();
     expect(third.app.engine.state().session).toBeNull();
     console.info(`[fm7b e2e c] session ${sessionId}: ended UNSEALABLE, quarantine ${kept}`);
+  }, 300_000);
+
+  // Audit row W3G (D146; D5 rows 147/148/153/154; D30 K-3). A paired microphone that FAILS TO OPEN at the start: the
+  // recording starts anyway (a WARN, never a refusal), camera VIDEO-02 records with a silent track, there is no AUDIO-02
+  // file and no AUDIO-02 row, and the package states it under the signature: `audioTracksMissing` [AUDIO-02, MIC-02,
+  // silentIn VIDEO-02, NOT_OPENED]. NOT_OPENED and not NOT_ASSIGNED: an unassigned slot BLOCKS at the pre-check
+  // (D124 R147-3; D62/R90-D2), so a session can only reach the statement through an open failure.
+  it('(d) MIC-02 fails to open at the start -> the session records the other seven files -> sealed /2.1 with VIDEO-02 sealed and the signed NOT_OPENED statement for AUDIO-02 -> verify PASS with the notice -> export verifies at the destination and says it', async () => {
+    const fixture = fresh('w3g-d');
+    const target = await db.another({ template: 'seed', slug: 'w3g_e2e_d' });
+    const c = await core(target, fixture);
+    const cookie = await c.cookie();
+    const sessionId = await record(c, cookie, 7, { failMicOpen: 'MIC-02' });
+    // The start row of the slot is written from the selector: MIC-02 is the microphone that did not open (R153-2).
+    expect((await c.owner.query<{ slot: string; device_id: string }>('SELECT slot, device_id FROM public.session_capture_sources WHERE session_id = $1 ORDER BY slot', [sessionId])).rows.map((row) => `${row.slot} ${row.device_id}`)).toEqual([
+      'MIC-01 MIC-01', 'MIC-02 MIC-02', 'MIC-03 MIC-03', 'MIC-04 MIC-04', 'VIDEO-01 CAM-01', 'VIDEO-02 CAM-02', 'VIDEO-03 CAM-03', 'VIDEO-04 CAM-04',
+    ]);
+    expect(existsSync(`${fixture.mediaStoreDir}/SESSION-${sessionId}/MIC-02.m4a`)).toBe(false);
+
+    const stopped = await c.post(`/api/v1/session/${sessionId}/stop`, cookie, { reason: 'Interview complete' });
+    expect(stopped.statusCode, stopped.body).toBe(202);
+    await until('the session is SEALED', 120_000, () => (sessionOf(c)?.state === 'SEALED' ? true : null), () => ({ state: sessionOf(c)?.state, steps: sessionOf(c)?.finalization.steps.map((step) => [step.id, step.status, step.detail]), outcome: sealingHost(c.app).lastOutcome(), codes: codes(c).slice(-15), opens: opens(c), ingestReach }));
+    await sealingHost(c.app).settled();
+    // A missing microphone is a statement, not an interruption.
+    expect(sealingHost(c.app).lastOutcome()).toMatchObject({ status: 'SEALED', sessionId, interrupted: false, attempt: 1 });
+    const byTrack = await fragmentRowsByTrack(c, sessionId);
+    expect(Object.keys(byTrack)).toEqual(['AUDIO-01', 'AUDIO-03', 'AUDIO-04', ...CAMERA_TRACKS]);
+    const expected: PairedAudioExpected = { sealed: ['AUDIO-01', 'AUDIO-03', 'AUDIO-04'], missing: [{ trackId: 'AUDIO-02', reason: 'NOT_OPENED' }] };
+    const sealed = await sealedAndVerified(c, cookie, sessionId, fixture, false, expected);
+    // VIDEO-02, whose microphone did not open, is sealed like every other camera file.
+    expect(sealed.manifest.tracks.find((track) => track.trackId === 'VIDEO-02')).toMatchObject({ deviceId: 'CAM-02', sourceClass: 'FAKE' });
+    expect(sealed.manifest.files.find((file) => file.trackId === 'VIDEO-02')?.fragments.length ?? 0).toBeGreaterThanOrEqual(1);
+    await exportedAndReceived(c, sealed, fixture, expected);
+    console.info(`[w3g e2e d] session ${sessionId}: fragments per file ${JSON.stringify(byTrack)}, audioTracksMissing ${JSON.stringify(sealed.manifest.audioTracksMissing)}`);
   }, 300_000);
 });

@@ -209,7 +209,8 @@ const REFUSED_BY_CHECK: ReadonlyArray<readonly [string, string, Row]> = [
   ['session_audio_intervals_media_check', 'session_audio_intervals', audioInterval(1, { from_media_ms: 10, to_media_ms: 5, to_at: T + 5 })],
   ['session_audio_intervals_open_check', 'session_audio_intervals', audioInterval(1, { to_at: T + 5 })],
   ['recording_fragments_session_check', 'recording_fragments', recordingFragment('SES-1', 'VIDEO-01', 1)],
-  ['recording_fragments_track_check', 'recording_fragments', recordingFragment(SESSION_ID, 'AUDIO-01' as 'VIDEO-01', 1)],
+  // D28 / 0044 (row 146): AUDIO-01..04 are fragment tracks now; a fifth channel breaks the check.
+  ['recording_fragments_track_check', 'recording_fragments', recordingFragment(SESSION_ID, 'AUDIO-05' as 'VIDEO-01', 1)],
   ['recording_fragments_seq_check', 'recording_fragments', recordingFragment(SESSION_ID, 'VIDEO-01', 0)],
   ['recording_fragments_bytes_check', 'recording_fragments', recordingFragment(SESSION_ID, 'VIDEO-01', 1, { byte_length: 0 })],
   ['recording_fragments_media_check', 'recording_fragments', recordingFragment(SESSION_ID, 'VIDEO-01', 1, { media_duration_ms: 0 })],
@@ -449,6 +450,8 @@ describe('the valid rows are accepted: no CHECK is stricter than the contract', 
     for (const slot of ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']) await insertRow(owner, 'session_capture_sources', captureSource(slot));
     await insertRow(owner, 'session_audio_intervals', audioInterval(1));
     await insertRow(owner, 'recording_fragments', recordingFragment(SESSION_ID, 'VIDEO-01', 1));
+    // D28 / 0044 (row 146): the first fragment of each microphone channel file is a valid row too.
+    for (const track of ['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04']) await insertRow(owner, 'recording_fragments', recordingFragment(SESSION_ID, track as 'VIDEO-01', 1));
     await insertRow(owner, 'transcript_chunks', transcriptChunk(1, { status: 'DONE', segments: json([]), computed_at: T + 60_000 }));
     await insertRow(owner, 'transcripts', transcript());
     await insertRow(owner, 'transcript_revisions', transcriptRevision(1));

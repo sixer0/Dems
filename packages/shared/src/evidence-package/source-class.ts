@@ -86,7 +86,7 @@ const MIC_PREFIX_SLOTS = ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const satis
  * with different kinds are refused as well (the same-class union rule is UNCHANGED by D60). Anything
  * the plan lacks is `SOURCE_RECORD_MISSING` (MR-S4: the step fails and nothing is signed).
  */
-export function sessionSourceClasses(rows: readonly SessionCaptureSourceRow[]): SessionSourceClasses {
+export function sessionSourceClasses(rows: readonly SessionCaptureSourceRow[], options: { readonly pairedAudio?: boolean } = {}): SessionSourceClasses {
   const bySlot = new Map<string, SessionCaptureSourceRow>();
   for (const row of rows) {
     if (!(CAPTURE_SOURCE_SLOTS as readonly string[]).includes(row.slot)) throw new EvidencePackageError(EvidencePackageRefusal.SOURCE_RECORD_MISSING, [row.slot]);
@@ -101,7 +101,10 @@ export function sessionSourceClasses(rows: readonly SessionCaptureSourceRow[]): 
       throw new EvidencePackageError(EvidencePackageRefusal.SOURCE_RECORD_MISSING, [VIDEO_TRACK_IDS[index] ?? 'video']);
     }
   }
-  const missing = MIC_SOURCE_SLOTS.filter((slot) => !bySlot.has(slot));
+  // D5 (audit row 153; D30 K-3, D45 hand-off): a `/2.1` package's plan is ONE microphone per camera, by number, and a
+  // channel may be unassigned at the start (its pair is stated missing, NOT_ASSIGNED): the plan requires no mic slot. A
+  // `/2` package keeps the rule of both eras exactly: MIC-01 and MIC-02 are always there.
+  const missing = options.pairedAudio === true ? [] : MIC_SOURCE_SLOTS.filter((slot) => !bySlot.has(slot));
   if (missing.length > 0) {
     throw new EvidencePackageError(EvidencePackageRefusal.SOURCE_RECORD_MISSING, [...missing]);
   }

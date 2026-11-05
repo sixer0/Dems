@@ -35,6 +35,17 @@
  * find. It therefore reads the RAW JSON object too: when V-01 failed, V-15 says whether the mark is
  * what is wrong (MISSING / CORRUPT), and is SKIPPED - never PASS - when the mark looks right in a
  * manifest that is not a readable v2 manifest. A class other than PRODUCTION is never a finding.
+ *
+ * D5 (audit 2026-11-05 row 154; spec S5 §5.4; decisions D30 K-2/K-3, D45). A manifest of schema
+ * `dems.evidence-manifest/2.1` may seal the audio file of each camera-microphone pair
+ * (`audioTracks` + `audioFiles`, `fragments/AUDIO-0N.m4a`) and state a pair microphone that did not
+ * record (`audioTracksMissing`). The audio files go through the SAME media-file checks as the
+ * camera files, after them: V-02 (records; `fragments.json` = `files` then `audioFiles`), V-04 to
+ * V-08 (whole-file and fragment hashes, plaintext under the same session key ids, chain, sequence,
+ * tampering - no keyframe rule), V-12 (durable prefix) and V-14 (declared). The statement is SAID
+ * (`AUDIO_TRACKS_MISSING`) and fails nothing. A `/2` manifest - every package sealed before D5 -
+ * has none of these members and takes exactly the path of before: same checks, same findings,
+ * same order (pinned by the legacy outputs of row 154).
  */
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, concatBytes, hexToBytes } from '@noble/hashes/utils.js';
@@ -43,14 +54,17 @@ import {
   FRAGMENT_CHAIN_GENESIS,
   MANIFEST_SOURCE_CLASSES,
   MANIFEST_V1_SCHEMA_ID,
-  MANIFEST_V2_SCHEMA_ID,
+  MANIFEST_V2_1_SCHEMA_ID,
+  MANIFEST_V2_SCHEMA_IDS,
   ManifestSourceClass,
   PackageFile,
+  audioFilePath,
   cameraFilePath,
   canonicalJson,
   canonicalJsonBytes,
   declaredPackageFiles,
   detachedSignatureOf,
+  fragmentsJsonFilesOf,
   fragmentsJsonMatchesManifest,
   manifestDeclaresTranscript,
   manifestHashMatches,
@@ -61,8 +75,8 @@ import {
   isServerSttBackend,
   transcriptModelFaults,
   type ManifestFragment,
-  type ManifestTrack,
   type ManifestV2,
+  type PackageAudioTrackId,
   type PackageVideoTrackId,
 } from '../evidence-package';
 import { isDevelopmentKeySubject } from './report';
@@ -77,6 +91,7 @@ import {
   REVISION_APPEND_PENDING_REPORT,
   exportFolderNoticeReport,
   audioAbsentOnRestartReport,
+  audioTracksMissingReport,
   audioOneCaptureGroup,
   audioSamplesNotReceivedReport,
   AUDIO_ONE_CAPTURE_GROUP_REPORT,
@@ -344,8 +359,34 @@ interface Geometry {
   readonly walkable: boolean;
 }
 
-/** V-07 and the manifest-only part of V-02, for one camera file. */
-function checkRecords(track: ManifestTrack, index: number, fragments: readonly ManifestFragment[], verdict: Verdict): Geometry {
+/**
+ * ONE SEALED MEDIA FILE as V-02 and V-04 to V-08 read it (spec S5 §5.4, row 154): a camera file
+ * (`tracks[]` + `files[]`) or, since D5, the audio file of a pair (`audioTracks[]` + `audioFiles[]`).
+ * Both carry the same members (fields 41-49 and 166-171) and the same fragment records; the audio
+ * file is encrypted under the same session key ids (V-05). Keyframes are checked for neither.
+ */
+interface MediaFileRecord {
+  readonly trackId: string;
+  readonly bytes: number;
+  readonly sha256: string;
+  readonly sha256Plain: string | null;
+  readonly fragmentChainHead: string | null;
+  readonly fragmentCount: number | null;
+}
+
+/** Where a media file lies, which manifest list names it, and the V-04 codes of its absence. */
+interface MediaFileKind {
+  readonly list: 'tracks' | 'audioTracks';
+  readonly path: string;
+  readonly missing: 'CAMERA_FILE_MISSING' | 'AUDIO_FILE_MISSING';
+  readonly unreadable: 'CAMERA_FILE_UNREADABLE' | 'AUDIO_FILE_UNREADABLE';
+}
+
+const cameraFileKind = (trackId: PackageVideoTrackId): MediaFileKind => ({ list: 'tracks', path: cameraFilePath(trackId), missing: 'CAMERA_FILE_MISSING', unreadable: 'CAMERA_FILE_UNREADABLE' });
+const audioFileKind = (trackId: PackageAudioTrackId): MediaFileKind => ({ list: 'audioTracks', path: audioFilePath(trackId), missing: 'AUDIO_FILE_MISSING', unreadable: 'AUDIO_FILE_UNREADABLE' });
+
+/** V-07 and the manifest-only part of V-02, for one media file (`list`: the manifest list that names it, for the member path). */
+function checkRecords(track: MediaFileRecord, index: number, fragments: readonly ManifestFragment[], verdict: Verdict, list: MediaFileKind['list'] = 'tracks'): Geometry {
   const trackId = track.trackId;
   let walkable = true;
 
@@ -360,11 +401,11 @@ function checkRecords(track: ManifestTrack, index: number, fragments: readonly M
     walkable = false;
   }
 
-  if (track.fragmentCount !== fragments.length) verdict.add('FRAGMENT_COUNT_MISMATCH', { trackId, member: `tracks.${index}.fragmentCount` });
+  if (track.fragmentCount !== fragments.length) verdict.add('FRAGMENT_COUNT_MISMATCH', { trackId, member: `${list}.${index}.fragmentCount` });
   const last = fragments.at(-1);
   const head = last === undefined ? FRAGMENT_CHAIN_GENESIS : last.chainHash;
   if (track.fragmentChainHead !== head && !(last === undefined && track.fragmentChainHead === null)) {
-    verdict.add('CHAIN_HEAD_MISMATCH', { trackId, member: `tracks.${index}.fragmentChainHead` });
+    verdict.add('CHAIN_HEAD_MISMATCH', { trackId, member: `${list}.${index}.fragmentChainHead` });
   }
   let previousEnd = 0;
   for (const fragment of fragments) {
@@ -383,7 +424,8 @@ interface FileContext {
   readonly ports: VerifyPorts;
   readonly newHash: HashFactory;
   readonly verdict: Verdict;
-  readonly track: ManifestTrack;
+  readonly track: MediaFileRecord;
+  readonly kind: MediaFileKind;
   readonly fragments: readonly ManifestFragment[];
   readonly geometry: Geometry;
   /** A session key is there for every fragment of the file. */
@@ -407,17 +449,17 @@ function recordedChainBreak(fragments: readonly ManifestFragment[]): number | nu
   return null;
 }
 
-/** V-04, V-05, V-06, V-08 and the keyed part of V-02, for one camera file. */
-async function checkCameraFile(context: FileContext): Promise<FileOutcome> {
-  const { ports, newHash, verdict, track, fragments, geometry, keyReady } = context;
+/** V-04, V-05, V-06, V-08 and the keyed part of V-02, for one media file (a camera file, or since D5 the audio file of a pair). */
+async function checkMediaFile(context: FileContext): Promise<FileOutcome> {
+  const { ports, newHash, verdict, track, kind, fragments, geometry, keyReady } = context;
   const trackId = track.trackId;
-  const path = cameraFilePath(trackId);
+  const path = kind.path;
   const failed: FragmentVerifyResult[] = [];
   const inconsistentAt = recordedChainBreak(fragments);
   if (inconsistentAt !== null) verdict.add('CHAIN_RECORD_INCONSISTENT', { trackId, seq: inconsistentAt });
 
   const base = { trackId, file: path, fragmentCount: fragments.length, sequenceOk: !verdict.findings('V-07').some((finding) => finding.trackId === trackId) };
-  const unread = (code: 'CAMERA_FILE_MISSING' | 'CAMERA_FILE_UNREADABLE'): FileOutcome => {
+  const unread = (code: MediaFileKind['missing'] | MediaFileKind['unreadable']): FileOutcome => {
     verdict.add(code, { trackId, file: path });
     return {
       result: Object.freeze({ ...base, storedOk: false, plainOk: null, chainOk: inconsistentAt === null, chainBrokenFromSeq: null, fragments: Object.freeze([]) }),
@@ -426,8 +468,8 @@ async function checkCameraFile(context: FileContext): Promise<FileOutcome> {
   };
 
   const entry = await ports.reader.entry(path);
-  if (entry.kind === 'ABSENT') return unread('CAMERA_FILE_MISSING');
-  if (entry.kind !== 'FILE') return unread('CAMERA_FILE_UNREADABLE');
+  if (entry.kind === 'ABSENT') return unread(kind.missing);
+  if (entry.kind !== 'FILE') return unread(kind.unreadable);
   if (entry.size !== track.bytes) verdict.add('FILE_SIZE_MISMATCH', { trackId, file: path });
 
   // The plaintext of the whole file is formed only on a walk in file order with a key.
@@ -515,7 +557,7 @@ async function checkCameraFile(context: FileContext): Promise<FileOutcome> {
     }
     if (geometry.walkable && entry.size > cursor) await ports.reader.readRange(path, cursor, entry.size - cursor, clear);
   } catch {
-    return unread('CAMERA_FILE_UNREADABLE');
+    return unread(kind.unreadable);
   }
 
   const fileStoredOk = fileHash.digestHex() === track.sha256;
@@ -751,10 +793,13 @@ async function checkRevisions(ports: VerifyPorts, manifest: ManifestV2, certific
 /**
  * V-14. `transcript`: whether the transcript files are declared; null when the manifest could not
  * say. `tracks`: the camera files the manifest's own track list names (one to four since D60 of 2026-11-04, F-M7 R88-01);
- * null with an unreadable manifest, where both are held as declared.
+ * null with an unreadable manifest, where both are held as declared. `audioTracks` (D5, row 154):
+ * the audio files of the pairs the manifest's `audioTracks` names, declared after the camera files;
+ * none for a manifest without the member (every package sealed before D5), so a
+ * `fragments/AUDIO-0N.m4a` in such a package is a file nobody sealed (`UNEXPECTED_FILE`).
  */
-async function checkCompleteness(reader: PackageReader, transcript: boolean | null, tracks: readonly PackageVideoTrackId[] | null, verdict: Verdict, unexpectedExports: string[] = [], pending: { revisionAppend: boolean } = { revisionAppend: false }): Promise<void> {
-  const declared = declaredPackageFiles({ transcript: transcript === true, ...(tracks === null ? {} : { tracks }) });
+async function checkCompleteness(reader: PackageReader, transcript: boolean | null, tracks: readonly PackageVideoTrackId[] | null, verdict: Verdict, unexpectedExports: string[] = [], pending: { revisionAppend: boolean } = { revisionAppend: false }, audioTracks: readonly PackageAudioTrackId[] = []): Promise<void> {
+  const declared = declaredPackageFiles({ transcript: transcript === true, ...(tracks === null ? {} : { tracks }), ...(audioTracks.length === 0 ? {} : { audioTracks }) });
   for (const file of declared) {
     const entry = await reader.entry(file);
     if (entry.kind === 'ABSENT') verdict.add('DECLARED_FILE_MISSING', { file });
@@ -834,14 +879,16 @@ const isSourceClass = (value: unknown): value is ManifestSourceClass => typeof v
  * manifest object at all: there is no mark to speak of and the check is blocked.
  *
  *   (a) well-formed, else MISSING: every `tracks[]` record and every `audio.sourceIntervals[]`
- *       record has a `sourceClass` out of the three values; `developmentSources` is a boolean.
+ *       record - and in a `/2.1` manifest every `audioTracks[]` record (D5) - has a `sourceClass`
+ *       out of the three values; `developmentSources` is a boolean.
  *       A manifest without a single camera record states no class and is refused the same way:
  *       "no source" is never read as "all production".
  *   (b) consistent, else CORRUPT: the flag equals "some source is not PRODUCTION"; one
  *       `micDeviceId` has one class.
  */
 function checkSourceMark(raw: unknown, verdict: Verdict): boolean {
-  if (!isRecord(raw) || raw.schema !== MANIFEST_V2_SCHEMA_ID) return false;
+  // D5 (row 154; D45 R145-1): both v2 schema ids carry the mark; `/2.1` adds field 172 below.
+  if (!isRecord(raw) || !(MANIFEST_V2_SCHEMA_IDS as readonly unknown[]).includes(raw.schema)) return false;
   const classes: ManifestSourceClass[] = [];
   let wellFormed = true;
   const classAt = (record: unknown, member: string): ManifestSourceClass | null => {
@@ -882,6 +929,28 @@ function checkSourceMark(raw: unknown, verdict: Verdict): boolean {
     }
   }
 
+  // D5 (row 154; D45 R145-5): in a `/2.1` manifest the audio file of each pair states its own class
+  // (field 172), which counts toward the flag and toward "one microphone has one class". Read ONLY
+  // under `/2.1`: a `/2` manifest is read exactly as before (the member is not looked at).
+  if (raw.schema === MANIFEST_V2_1_SCHEMA_ID && Object.hasOwn(raw, 'audioTracks')) {
+    if (!Array.isArray(raw.audioTracks)) {
+      verdict.add('SOURCE_CLASS_MISSING', { member: 'audioTracks' });
+      wellFormed = false;
+    } else {
+      for (const [index, record] of raw.audioTracks.entries()) {
+        const member = `audioTracks.${index}.sourceClass`;
+        const sourceClass = classAt(record, member);
+        if (sourceClass === null) continue;
+        classes.push(sourceClass);
+        const mic: unknown = isRecord(record) ? record.micDeviceId : undefined;
+        if (typeof mic !== 'string') continue;
+        const seen = classOfMic.get(mic);
+        if (seen !== undefined && seen !== sourceClass) micClash.push(member);
+        else classOfMic.set(mic, sourceClass);
+      }
+    }
+  }
+
   if (!Object.hasOwn(raw, 'developmentSources')) {
     verdict.add('DEVELOPMENT_FLAG_MISSING', { member: 'developmentSources' });
     wellFormed = false;
@@ -916,7 +985,9 @@ function sourcesReport(manifest: ManifestV2 | null, readable: boolean, trusted: 
   }
   const tracks = manifest.tracks.map((track) => Object.freeze({ trackId: track.trackId, deviceId: track.deviceId, sourceClass: track.sourceClass }));
   const audioIntervals = manifest.audio.sourceIntervals.map((interval) => Object.freeze({ seq: interval.seq, micDeviceId: interval.micDeviceId, sourceClass: interval.sourceClass }));
-  const development = [...tracks, ...audioIntervals].some((source) => source.sourceClass !== ManifestSourceClass.PRODUCTION);
+  // D5 (row 154; D45 R145-5): the pair audio files' classes (field 172) count as the manifest's flag counts them. None in a package sealed before D5.
+  const pairAudio = manifest.audioTracks ?? [];
+  const development = [...tracks, ...audioIntervals, ...pairAudio].some((source) => source.sourceClass !== ManifestSourceClass.PRODUCTION);
   const code = development ? VerifiedSourcesState.DEVELOPMENT : VerifiedSourcesState.DECLARED_PRODUCTION;
   const lines: string[] = [];
   if (development) {
@@ -925,6 +996,7 @@ function sourcesReport(manifest: ManifestV2 | null, readable: boolean, trusted: 
       const parts = audioIntervals.map((interval) => `interval ${interval.seq} ${interval.micDeviceId}, ${SOURCE_WORDS[interval.sourceClass].microphone} (${interval.sourceClass})`);
       lines.push(`${manifest.audio.trackId}: ${parts.join('; ')}.`);
     }
+    for (const record of pairAudio) lines.push(`${record.trackId} file: ${record.micDeviceId}, ${SOURCE_WORDS[record.sourceClass].microphone} (${record.sourceClass}).`);
   }
   return Object.freeze({ ok, code, development, report: SOURCES_STATE_REPORT[code], lines: Object.freeze(lines), tracks: Object.freeze(tracks), audioIntervals: Object.freeze(audioIntervals) });
 }
@@ -1006,20 +1078,26 @@ export async function verifyPackageV2(ports: VerifyPorts, options: VerifyOptions
       else {
         let same = false;
         try {
-          same = fragmentsJsonMatchesManifest(await ports.reader.readText(PackageFile.FRAGMENTS_JSON, VERIFY_MAX_MANIFEST_BYTES), manifest.files);
+          // D5 (row 154): `files` then `audioFiles`; for a manifest without audio files this is `files`, as before.
+          same = fragmentsJsonMatchesManifest(await ports.reader.readText(PackageFile.FRAGMENTS_JSON, VERIFY_MAX_MANIFEST_BYTES), fragmentsJsonFilesOf(manifest));
         } catch {
           same = false;
         }
         if (!same) verdict.add('FRAGMENTS_JSON_MISMATCH', { file: PackageFile.FRAGMENTS_JSON });
       }
 
-      // V-02, V-04 to V-08, per camera file
+      // V-02, V-04 to V-08, per media file: the camera files, then (D5, row 154) the audio file of
+      // each pair the manifest names. A package sealed before D5 has no audio file: the walk is the
+      // camera walk of before, in the same order.
       const mode = options.plaintext ?? 'REQUIRED';
       let anyKeyMissing = false;
       let anyPlainBlocked = false;
-      for (const [index, track] of manifest.tracks.entries()) {
-        const fragments = manifest.files[index]?.fragments ?? [];
-        const geometry = checkRecords(track, index, fragments, verdict);
+      const media: readonly { readonly track: MediaFileRecord; readonly index: number; readonly fragments: readonly ManifestFragment[]; readonly kind: MediaFileKind }[] = [
+        ...manifest.tracks.map((track, index) => ({ track, index, fragments: manifest.files[index]?.fragments ?? [], kind: cameraFileKind(track.trackId) })),
+        ...(manifest.audioTracks ?? []).map((track, index) => ({ track, index, fragments: manifest.audioFiles?.[index]?.fragments ?? [], kind: audioFileKind(track.trackId) })),
+      ];
+      for (const { track, index, fragments, kind } of media) {
+        const geometry = checkRecords(track, index, fragments, verdict, kind.list);
         let keyReady = ports.opener !== null;
         if (ports.opener !== null) {
           try {
@@ -1032,11 +1110,12 @@ export async function verifyPackageV2(ports: VerifyPorts, options: VerifyOptions
           anyKeyMissing = true;
           if (mode === 'REQUIRED') verdict.add('SESSION_KEY_UNAVAILABLE', { trackId: track.trackId });
         }
-        const outcome = await checkCameraFile({
+        const outcome = await checkMediaFile({
           ports,
           newHash,
           verdict,
           track,
+          kind,
           fragments,
           geometry,
           keyReady,
@@ -1053,7 +1132,8 @@ export async function verifyPackageV2(ports: VerifyPorts, options: VerifyOptions
       await checkTranscript(ports, newHash, manifest, options, verdict);
       revisions = await checkRevisions(ports, manifest, certificate, options, verdict);
 
-      // V-12: an interrupted package is verifiable and marked; its durable prefix must verify.
+      // V-12: an interrupted package is verifiable and marked; its durable prefix must verify -
+      // the audio files of the pairs too (D5, row 154): their findings are in V-04/V-06/V-07 like a camera's.
       if (manifest.timeline.interrupted) {
         const broken = (['V-04', 'V-06', 'V-07'] as const).flatMap((id) => verdict.findings(id));
         const first = broken[0];
@@ -1063,7 +1143,16 @@ export async function verifyPackageV2(ports: VerifyPorts, options: VerifyOptions
       // V-14
       // V-14: a transcript file is declared exactly when the manifest names a document. One that
       // lies in a package whose manifest declares none is a file nobody sealed (`UNEXPECTED_FILE`).
-      await checkCompleteness(ports.reader, manifestDeclaresTranscript(manifest.transcript), manifest.tracks.map((track) => track.trackId), verdict, unexpectedExports, pending);
+      // D5 (row 154): the audio files of the pairs the manifest names are declared too; none without the member.
+      await checkCompleteness(
+        ports.reader,
+        manifestDeclaresTranscript(manifest.transcript),
+        manifest.tracks.map((track) => track.trackId),
+        verdict,
+        unexpectedExports,
+        pending,
+        (manifest.audioTracks ?? []).map((track) => track.trackId),
+      );
     }
   }
 
@@ -1092,6 +1181,8 @@ export async function verifyPackageV2(ports: VerifyPorts, options: VerifyOptions
   // Row N2 (C110 (8), C112 (4)): the two lines of an audio path that is not sample-continuous, from the manifest as READ; '' / false = none stated.
   const audioShortfall = audioSamplesNotReceivedReport(manifest?.audio.samplesNotReceived ?? []);
   const audioOneGroup = audioOneCaptureGroup(manifest?.audio.samplesNotReceived ?? []);
+  // Row 154 (D5, D30 K-3): the one line of the pair microphones that did not record, from the manifest as READ; '' = none stated.
+  const missingPairAudio = audioTracksMissingReport(manifest?.audioTracksMissing ?? []);
   const toldOfMarks = expected.compromisedCertificateSha256 !== undefined;
   const underMarkedKey = toldOfMarks && checks.some((check) => check.findings.some((finding) => finding.code === 'CERTIFICATE_KEY_COMPROMISED' || finding.code === 'REVISION_CERTIFICATE_KEY_COMPROMISED'));
   const keyMark: VerifiedSigningKeyMark = underMarkedKey ? VerifiedSigningKeyMark.COMPROMISED : trusted ? VerifiedSigningKeyMark.NOT_MARKED : VerifiedSigningKeyMark.NOT_ESTABLISHED;
@@ -1135,6 +1226,8 @@ export async function verifyPackageV2(ports: VerifyPorts, options: VerifyOptions
       // Row N2: the manifest's optional member `audio.samplesNotReceived` is SAID in the verdict, in TWO lines. They fail nothing.
       ...(audioShortfall === '' ? [] : [Object.freeze({ code: VERIFY_NOTICE.AUDIO_SAMPLES_NOT_RECEIVED, report: audioShortfall })]),
       ...(audioOneGroup ? [Object.freeze({ code: VERIFY_NOTICE.AUDIO_ONE_CAPTURE_GROUP, report: AUDIO_ONE_CAPTURE_GROUP_REPORT })] : []),
+      // Row 154 (D5, D30 K-3): the manifest's optional member `audioTracksMissing` is SAID in the verdict - a silent camera track is a stated fact. It fails nothing.
+      ...(missingPairAudio === '' ? [] : [Object.freeze({ code: VERIFY_NOTICE.AUDIO_TRACKS_MISSING, report: missingPairAudio })]),
     ]),
   });
 }

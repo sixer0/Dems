@@ -10,7 +10,7 @@
 // `MIC-01`..`MIC-04` (the PRIMARY/STANDBY roles are superseded, and the caller now names each
 // channel's OWN audio file - the `outputPath` of the protocol's D61 wave).
 import { CAPTURE_MIC_CHANNELS, CapturePlanSchema, LOOPBACK_RTSP_URL, StartMessageSchema, CAPTURE_PROTOCOL_VERSION } from '@dems/capture-protocol';
-import { CAPTURE_START_REQUIRED_SLOTS, DEFAULT_CAPTURE_CONFIG, DEFAULT_SEED, PRECHECK_ORDER, createIdleState, evaluatePrecheck, unassignedSlotOfPrecheckItem, unassignedSlotsOf, type SimState } from '@dems/shared/sim';
+import { CAPTURE_PAIRS, CAPTURE_START_REQUIRED_SLOTS, DEFAULT_CAPTURE_CONFIG, DEFAULT_SEED, PRECHECK_ORDER, createIdleState, evaluatePrecheck, micChannelOfVideoTrack, unassignedSlotOfPrecheckItem, unassignedSlotsOf, type SimState } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
 import {
   CaptureAdapterKind,
@@ -30,6 +30,7 @@ import {
   assertRecordableSelector,
   buildCapturePlan,
   capturePlanConstants,
+  capturePlanPairWarnings,
   capturePlanSubjects,
   type CapturePlanInput,
   type CapturePlanMicSource,
@@ -196,22 +197,138 @@ describe('the plan of the seeded configuration', () => {
     ]);
   });
 
-  it("one camera of four is the caller's decision (D72(k)); a source set that leaves the transcribed channel out is no plan (D61, 2026-11-04)", async () => {
+  it("one camera of four is the caller's decision (D72(k)); a source set that leaves a channel out - the transcribed one included - is a plan with the absence STATED (row 147, D30 K-3)", async () => {
     const base = await seededInput();
     const oneCamera = buildCapturePlan({ ...base, cameras: { 'VIDEO-02': CAMERA_SOURCES['VIDEO-02']! } });
     expect(oneCamera.cameras.map((camera) => camera.deviceId)).toEqual(['CAM-02']);
-    // D61 (2026-11-04): the microphone plane has no "caller leaves a channel out" case any more - the protocol
-    // holds FOUR rows (min = max = 4), so a source set that leaves a numbered channel out is refused as a plan
-    // of no protocol, and the rule that still guards the start is the TRANSCRIBED channel: without channel 1
-    // (the input of `AUDIO-01`) there is no plan (D83's rule carried onto the numbered plane).
-    expect(refusalOf(() => buildCapturePlan({ ...base, mics: { 'MIC-01': base.mics['MIC-01']! } }))).toEqual({ code: 'CAPTURE_PLAN_INVALID', reason: 'PROTOCOL_SHAPE', deviceId: null });
-    // No camera at all, and no transcribed channel, are no plan.
-    expect(refusalOf(() => buildCapturePlan({ ...base, cameras: {} }))).toEqual({ code: 'CAPTURE_PLAN_INVALID', reason: 'SOURCE_MISSING', deviceId: null });
+    // Row 147 (D30 K-3 beats S5 N-37; D117 R144-1). Until row 147 a source set that left a numbered channel out was refused
+    // (PROTOCOL_SHAPE under v5's four rows, then the v6 bridge), and one without channel 1 was SOURCE_MISSING (D83 carried by D61).
+    // Now: the plan records, each camera whose paired channel is absent says NOT_OPENED, and the caller is handed the WARN.
+    const onlyChannelOne = buildCapturePlan({ ...base, mics: { 'MIC-01': base.mics['MIC-01']! } });
+    expect(onlyChannelOne.cameras.map((camera) => [camera.trackId, camera.micChannel, camera.micMissing])).toEqual([
+      ['VIDEO-01', 'MIC-01', null],
+      ['VIDEO-02', 'MIC-02', 'NOT_OPENED'],
+      ['VIDEO-03', 'MIC-03', 'NOT_OPENED'],
+      ['VIDEO-04', 'MIC-04', 'NOT_OPENED'],
+    ]);
+    expect(capturePlanPairWarnings(onlyChannelOne).map((warning) => [warning.code, warning.trackId, warning.micChannel, warning.reason])).toEqual([
+      ['PAIRED_MIC_MISSING', 'VIDEO-02', 'MIC-02', 'NOT_OPENED'],
+      ['PAIRED_MIC_MISSING', 'VIDEO-03', 'MIC-03', 'NOT_OPENED'],
+      ['PAIRED_MIC_MISSING', 'VIDEO-04', 'MIC-04', 'NOT_OPENED'],
+    ]);
     const noTranscribedChannel: MicSources = { ...base.mics } as MicSources;
     delete noTranscribedChannel['MIC-01'];
-    expect(refusalOf(() => buildCapturePlan({ ...base, mics: noTranscribedChannel }))).toEqual({ code: 'CAPTURE_PLAN_INVALID', reason: 'SOURCE_MISSING', deviceId: null });
+    const untranscribed = buildCapturePlan({ ...base, mics: noTranscribedChannel });
+    expect(untranscribed.cameras[0]).toMatchObject({ trackId: 'VIDEO-01', micChannel: 'MIC-01', micMissing: 'NOT_OPENED' });
+    expect(untranscribed.activeMic).toBe('MIC-01'); // DF-09 R-T1: the transcribed channel does not move to another microphone
+    expect(untranscribed.pcmTapPath).toBeNull(); // nothing to transcribe: the tap the caller asked for is dropped, not refused
+    expect(capturePlanPairWarnings(untranscribed)).toEqual([{ code: 'PAIRED_MIC_MISSING', trackId: 'VIDEO-01', deviceId: 'CAM-01', micChannel: 'MIC-01', reason: 'NOT_OPENED', transcribed: true }]);
+    // No camera at all is still no plan.
+    expect(refusalOf(() => buildCapturePlan({ ...base, cameras: {} }))).toEqual({ code: 'CAPTURE_PLAN_INVALID', reason: 'SOURCE_MISSING', deviceId: null });
     // A source keyed by an inherited name is no source.
     expect(refusalOf(() => buildCapturePlan({ ...base, cameras: Object.create({ 'VIDEO-01': CAMERA_SOURCES['VIDEO-01'] }) as CapturePlanInput['cameras'] }))).toMatchObject({ reason: 'SOURCE_MISSING' });
+    const inheritedMic = buildCapturePlan({ ...base, mics: Object.create({ 'MIC-01': base.mics['MIC-01'] }) as CapturePlanInput['mics'] });
+    expect(inheritedMic.mics).toEqual([]);
+    expect(inheritedMic.cameras.every((camera) => camera.micMissing === 'NOT_OPENED')).toBe(true);
+  });
+});
+
+describe('camera-microphone pairs (row 147; D5 S5 §2.3-2.4, D27, D30 K-3, DF-09)', () => {
+  it('the seeded plan: each camera line carries its same-number channel, the shared pair table agrees, nothing is missing and there is no WARN', async () => {
+    const plan = buildCapturePlan(await seededInput());
+    expect(plan.cameras.map((camera) => [camera.trackId, camera.micChannel, camera.micMissing])).toEqual([
+      ['VIDEO-01', 'MIC-01', null],
+      ['VIDEO-02', 'MIC-02', null],
+      ['VIDEO-03', 'MIC-03', null],
+      ['VIDEO-04', 'MIC-04', null],
+    ]);
+    // Row 143's shared contract (N-05, N-06) and the protocol's restatement name the same pair for every camera line.
+    for (const camera of plan.cameras) {
+      expect(camera.micChannel).toBe(micChannelOfVideoTrack(camera.trackId as (typeof CAPTURE_PAIRS)[number]['videoTrackId']));
+      expect(camera.micChannel).toBe(CAPTURE_PAIRS.find((pair) => pair.videoTrackId === camera.trackId)?.micChannel);
+    }
+    expect(capturePlanPairWarnings(plan)).toEqual([]);
+  });
+
+  it('all 256 source sets (which of the 4 cameras and 4 channels the start could open): paired channel per camera; a missing paired mic -> micMissing NOT_OPENED + one WARN, never a refusal; activeMic MIC-01; tap only with channel 1', async () => {
+    const base = await seededInput();
+    const TRACKS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const;
+    const TAP = `${RUN_DIR}/${SESSION}/tap.pcm`;
+    let plans = 0;
+    let refusals = 0;
+    let warnings = 0;
+    for (let bits = 0; bits < 256; bits += 1) {
+      const cameraGiven = TRACKS.filter((_track, index) => (bits & (1 << index)) !== 0);
+      const micGiven = CAPTURE_MIC_CHANNELS.filter((_channel, index) => (bits & (1 << (index + 4))) !== 0);
+      const cameras: Partial<Record<(typeof TRACKS)[number], NonNullable<CapturePlanInput['cameras']['VIDEO-01']>>> = {};
+      for (const track of cameraGiven) cameras[track] = CAMERA_SOURCES[track]!;
+      const mics: MicSources = {};
+      for (const channel of micGiven) mics[channel] = base.mics[channel]!;
+      const label = `cameras ${cameraGiven.join('+') || '-'} mics ${micGiven.join('+') || '-'}`;
+      const refusal = refusalOf(() => buildCapturePlan({ ...base, cameras, mics, pcmTapPath: TAP }));
+      if (cameraGiven.length === 0) {
+        expect(refusal, label).toEqual({ code: 'CAPTURE_PLAN_INVALID', reason: 'SOURCE_MISSING', deviceId: null });
+        refusals += 1;
+        continue;
+      }
+      expect(refusal, label).toBe('no refusal');
+      const plan = buildCapturePlan({ ...base, cameras, mics, pcmTapPath: TAP });
+      plans += 1;
+      expect(CapturePlanSchema.safeParse(plan).success, label).toBe(true);
+      expect(StartMessageSchema.safeParse({ v: CAPTURE_PROTOCOL_VERSION, type: 'START', sessionId: SESSION, correlationId: 'c-1', attempt: 1, plan }).success, label).toBe(true);
+      expect(plan.cameras.map((camera) => camera.trackId), label).toEqual(cameraGiven);
+      expect(plan.mics.map((mic) => mic.channel), label).toEqual(micGiven); // a channel without a camera of the plan is still recorded
+      for (const camera of plan.cameras) {
+        const paired = micChannelOfVideoTrack(camera.trackId as (typeof TRACKS)[number]);
+        expect(camera.micChannel, label).toBe(paired);
+        expect(camera.micMissing, label).toBe(micGiven.includes(paired) ? null : 'NOT_OPENED');
+      }
+      const expected = plan.cameras.filter((camera) => camera.micMissing !== null).map((camera) => ({ code: 'PAIRED_MIC_MISSING', trackId: camera.trackId, deviceId: camera.deviceId, micChannel: camera.micChannel, reason: 'NOT_OPENED', transcribed: camera.trackId === 'VIDEO-01' }));
+      expect(capturePlanPairWarnings(plan), label).toEqual(expected);
+      warnings += expected.length;
+      // DF-09 R-T1 pin: the transcribed channel is MIC-01 in every plan; the tap exists exactly when MIC-01 is recorded.
+      expect(plan.activeMic, label).toBe('MIC-01');
+      expect(plan.pcmTapPath, label).toBe(micGiven.includes('MIC-01') ? TAP : null);
+    }
+    expect([plans, refusals]).toEqual([240, 16]);
+    // Each of the four pairs has its camera given and its channel absent in a quarter of the 256 sets: 4 x 64 WARNs.
+    expect(warnings).toBe(256);
+  });
+
+  it('NOT_ASSIGNED: the start still refuses an unassigned slot (SELECTOR_SHAPE, AD-10 (4)), so the builder only ever states NOT_OPENED; the protocol and the WARN carry the other word unchanged', async () => {
+    const plan = buildCapturePlan({ ...(await seededInput()), mics: {} });
+    expect(plan.cameras.map((camera) => camera.micMissing)).toEqual(['NOT_OPENED', 'NOT_OPENED', 'NOT_OPENED', 'NOT_OPENED']);
+    expect(plan.pcmTapPath).toBeNull();
+    const unassigned = CapturePlanSchema.parse({ ...plan, cameras: plan.cameras.map((camera) => ({ ...camera, micMissing: 'NOT_ASSIGNED' })) });
+    expect(capturePlanPairWarnings(unassigned).map((warning) => warning.reason)).toEqual(['NOT_ASSIGNED', 'NOT_ASSIGNED', 'NOT_ASSIGNED', 'NOT_ASSIGNED']);
+    // Controls: a camera that states no absence while its channel is missing, or names another pair's channel, is no plan of the protocol.
+    expect(CapturePlanSchema.safeParse({ ...plan, cameras: plan.cameras.map((camera) => ({ ...camera, micMissing: null })) }).success).toBe(false);
+    expect(CapturePlanSchema.safeParse({ ...plan, cameras: [{ ...plan.cameras[0]!, micChannel: 'MIC-02' }] }).success).toBe(false);
+    expect(CapturePlanSchema.safeParse({ ...plan, activeMic: 'MIC-02' }).success).toBe(false); // DF-09: no other transcribed channel
+  });
+
+  it('the swap pins (D22(3), op 78/80 swap): the pair follows the CHANNEL, not the device - Camera 1 records the microphone that now sits on MIC-01, and a swapped-in microphone that fails to open is stated on Camera 1', async () => {
+    // The selector after a two-line swap of the devices on channels 1 and 2 (AC-4.4's body form, on the seeded devices).
+    const swapped: CapturePlanSelector = { ...SEEDED, mics: [{ channel: 'MIC-01', deviceId: 'MIC-02' }, { channel: 'MIC-02', deviceId: 'MIC-01' }, SEEDED.mics[2]!, SEEDED.mics[3]!] };
+    const base = await seededInput({ selector: swapped });
+    const plan = buildCapturePlan(base);
+    const deviceOnChannel = new Map(plan.mics.map((mic) => [mic.channel, mic.deviceId]));
+    expect(plan.cameras.map((camera) => [camera.trackId, camera.micChannel, deviceOnChannel.get(camera.micChannel), camera.micMissing])).toEqual([
+      ['VIDEO-01', 'MIC-01', 'MIC-02', null],
+      ['VIDEO-02', 'MIC-02', 'MIC-01', null],
+      ['VIDEO-03', 'MIC-03', 'MIC-03', null],
+      ['VIDEO-04', 'MIC-04', 'MIC-04', null],
+    ]);
+    expect(plan.activeMic).toBe('MIC-01'); // the transcribed CHANNEL stays; the device MIC-02 is now the transcribed microphone
+    expect(plan.pcmTapPath).toBe(`${RUN_DIR}/${SESSION}/tap.pcm`);
+    // The swapped-in device on channel 1 could not be opened: Camera 1 records silence and the session has no tap; Camera 2 keeps MIC-01.
+    const withoutChannelOne: MicSources = { ...base.mics } as MicSources;
+    delete withoutChannelOne['MIC-01'];
+    const failed = buildCapturePlan({ ...base, mics: withoutChannelOne });
+    expect(failed.cameras.map((camera) => camera.micMissing)).toEqual(['NOT_OPENED', null, null, null]);
+    expect(failed.mics.find((mic) => mic.channel === 'MIC-02')?.deviceId).toBe('MIC-01');
+    expect(failed.pcmTapPath).toBeNull();
+    expect(capturePlanPairWarnings(failed)).toEqual([{ code: 'PAIRED_MIC_MISSING', trackId: 'VIDEO-01', deviceId: 'CAM-01', micChannel: 'MIC-01', reason: 'NOT_OPENED', transcribed: true }]);
   });
 });
 

@@ -698,7 +698,8 @@
   margin-left: auto;
 }
 
-.sm-audio-half[data-source='ACTIVE'] { border-color: rgb(255 200 107 / 0.38); }
+/* Row 157: the transcribed half (Pair 1), fixed by pairing - no switchable ACTIVE source any more. */
+.sm-audio-half[data-transcribed='true'] { border-color: rgb(255 200 107 / 0.38); }
 
 .sm-audio-warning { flex: none; }
 

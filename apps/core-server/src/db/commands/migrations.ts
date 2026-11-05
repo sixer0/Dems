@@ -104,6 +104,7 @@ export const INITIAL_MIGRATION_TAGS = [
   '0041_capture_widening_privileges', // D60/D61 follow-up (2026-11-05): the column UPDATE of the six new selector columns, missing from the widening
   '0042_capture_config_constraint_repair', // KD-46 / DF-30 (2026-11-05, D22(1)): idempotent repair of the selector key names an edit of applied 0039/0040 left behind
   '0043_operator_purge_scope', // DF-28 (2026-11-05, D22(4), D38 DR-1, D43; row 95): the purge keeps the evidence-chain audit types and a disabled account row when they name it
+  '0044_recording_fragments_audio_tracks', // D28 DQ-1 = S1 (2026-11-05, row 146): recording_fragments takes the AUDIO-01..04 channel files, same fragment-hash protection as the camera files
 ] as const;
 
 export interface MigrationFile {

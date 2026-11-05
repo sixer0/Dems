@@ -184,7 +184,8 @@ describe('fix round after CP-C1: the contract\'s codes, and the markers of the l
     // A table keyed by envelope codes is keyed by the contract's members, never by a text.
     const table = code('rebuild-error.ts').slice(code('rebuild-error.ts').indexOf('export const ENVELOPE_SIM_CODE'));
     const entries = table.slice(0, table.indexOf('};')).split('\n').filter((line) => line.includes(': SimErrorCode.'));
-    expect(entries.length).toBe(10);
+    // Audit row 150 (D28 DQ-2) added AUDIO_SOURCE_FIXED_BY_PAIRING (op 81 read backwards): 10 -> 11 (pin moved by row W3T).
+    expect(entries.length).toBe(11);
     for (const line of entries) expect(line.trim(), line).toMatch(/^\[ApiErrorCode\.[A-Z_]+\]: SimErrorCode\.[A-Z_]+,$/);
   });
 

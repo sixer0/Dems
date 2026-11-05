@@ -258,36 +258,15 @@ describe('protocol 4 in the supervisor: whose device a record names, and the rec
     }
   });
 
-  it('switchAudioSource resolves with the interval record the worker wrote for THAT command; a switch that changed nothing resolves null', async () => {
-    const { fake, supervisor } = await rig({}, { ackSwitch: false });
+  // Audit row 149 (N-29, N-31): `switchAudioSource` and its command are retired. What is left of review R63-05 is its
+  // refusal: an interval of a switch (a correlation ID) names no command of this worker, so it ends the worker.
+  it('a switch nobody commanded ends the worker (review R63-05; protocol 6 commands none)', async () => {
+    const { fake, supervisor } = await rig();
     await supervisor.start(FIRST, capturePlan(FIRST));
     const worker = fake.last();
-    const switching = supervisor.switchAudioSource(FIRST, CaptureMicRole.STANDBY);
-    await flush();
-    const command = worker.commands('SWITCH_AUDIO_SOURCE')[0];
-    expect(command).toMatchObject({ v: CAPTURE_PROTOCOL_VERSION, to: 'STANDBY' });
-    // The worker writes the record BEFORE the acknowledgement.
-    const written = interval({ deviceId: 'MIC-02', role: 'STANDBY', index: 2, fromSample: 96_000, reason: 'OPERATOR_SWITCH', correlationId: command?.correlationId ?? null, appliedDelayUs: 9_800 });
-    worker.record(written);
-    worker.ack(true, undefined, command);
-    await expect(switching).resolves.toEqual(written);
-
-    // The role that already feeds the track: acknowledged, no record.
-    const again = supervisor.switchAudioSource(FIRST, CaptureMicRole.STANDBY);
-    await flush();
-    worker.ack(true, undefined, worker.commands('SWITCH_AUDIO_SOURCE')[1]);
-    await expect(again).resolves.toBeNull();
-  });
-
-  it('a record of ANOTHER command is not handed to this switch: a switch nobody commanded ends the worker (review R63-05)', async () => {
-    const { fake, supervisor } = await rig({}, { ackSwitch: false });
-    await supervisor.start(FIRST, capturePlan(FIRST));
-    const worker = fake.last();
-    const switching = supervisor.switchAudioSource(FIRST, CaptureMicRole.STANDBY);
-    await flush();
+    expect('switchAudioSource' in supervisor).toBe(false);
     worker.record(interval({ deviceId: 'MIC-02', role: 'STANDBY', index: 2, fromSample: 480, reason: 'OPERATOR_SWITCH', correlationId: 'cap:somebody-else:9', appliedDelayUs: 1 }));
-    // Never resolved with that record: the command is refused because its worker went down for the violation.
-    await expect(switching).rejects.toMatchObject({ code: 'CAPTURE_WORKER_DOWN' });
+    await flush();
     expect(supervisor.status().lastCrash).toMatchObject({ code: 'PROTOCOL_VIOLATION', detail: 'SWITCH_NOT_COMMANDED' });
   });
 });
@@ -412,7 +391,7 @@ describe('gates 64 / 75 / 89 (D194, D199, D200): the worker version, the reason 
     });
 
     it('a NEWER release word is refused the same way; CONTROL: the built version records', async () => {
-      // Audit 2026-11-05 row 88 (D38 DR-5; register W5): 0.7.0 became THE version; the newer example is 9.0.0 (0.8.0 is reserved, D28 DQ-4).
+      // Audit 2026-11-05 row 88 (D38 DR-5; register W5): 0.7.0 became THE version; the newer example is 9.0.0 (D38 DR-5). Row 144: THE version is 0.8.0 (D28 DQ-4); 9.0.0 stays the newer example.
       const newer = await rig({ workerVersion: 'capture-worker/9.0.0' });
       await expect(newer.supervisor.start(SESSION, capturePlan(SESSION))).rejects.toMatchObject({ detail: 'CAPTURE_WORKER_VERSION_MISMATCH' });
       const built = await rig({ workerVersion: CAPTURE_WORKER_VERSION });
@@ -605,6 +584,8 @@ describe('gates 64 / 75 / 89 (D194, D199, D200): the worker version, the reason 
         'MIC_SAMPLES_SHORT_ABOVE_BOUND',
         'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL',
         'MIC_SILENCE_RUN_INSERTED',
+        // Audit row 149 (D132): a camera without the microphone of its pair - a notice of a capture, so a boot resolves a stale one (11 -> 12).
+        'PAIRED_MIC_MISSING',
         'STANDBY_ON_PRIMARY_DEVICE',
       ]);
       expect(

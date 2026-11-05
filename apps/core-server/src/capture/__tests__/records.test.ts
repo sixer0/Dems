@@ -129,6 +129,77 @@ describe('M3-REC-1 (a): every record carries the next sequence number of its ses
     fake.last().firstDurableFragment('CAM-01');
     expect(supervisor.status().lastCrash).toMatchObject({ code: WorkerDownCode.PROTOCOL_VIOLATION, detail: 'RECORD_BEFORE_START' });
   });
+
+  // Row 148 (D5; protocol 6 N-32; AC-4.8): the device of a record is read by the protocol's kind lists. A checkpoint
+  // names the device of its FILE - a camera of the plan or a MICROPHONE of the plan (its channel file `MIC-0N.m4a`).
+  // Row D2C (D150 (2), F-C1D-2) reverses row 148's "and makes the session durable": only the CAMERA file's checkpoint does.
+  it('row 148: a FRAGMENT_CHECKPOINT of a microphone of the plan (its channel file) is handed on; one of a microphone outside the plan is RECORD_SUBJECT_UNKNOWN; row D2C: only the camera file makes the session durable', async () => {
+    const { supervisor, fake } = await recording();
+    const seen: Array<[string, string]> = [];
+    supervisor.on('record', (event) => void seen.push([event.record.kind, 'deviceId' in event.record ? event.record.deviceId : '']));
+    fake.last().record({ ...checkpoint(1, 'MIC-03'), keyframe: false } as CaptureRecord, 1);
+    expect(supervisor.status()).toMatchObject({ lastCrash: null, lastRecordSeq: 1, durable: false });
+    fake.last().record(checkpoint(1, 'CAM-01'), 2);
+    expect(supervisor.status()).toMatchObject({ lastCrash: null, lastRecordSeq: 2, durable: true });
+    expect(seen).toEqual([['FRAGMENT_CHECKPOINT', 'MIC-03'], ['FRAGMENT_CHECKPOINT', 'CAM-01']]);
+
+    const stranger = await recording();
+    stranger.fake.last().record({ ...checkpoint(1, 'MIC-09'), keyframe: false } as CaptureRecord, 1);
+    expect(stranger.supervisor.status().lastCrash).toMatchObject({ code: WorkerDownCode.PROTOCOL_VIOLATION, detail: 'RECORD_SUBJECT_UNKNOWN' });
+  });
+
+  // Row D2C (D150 (2), finding F-C1D-2): a channel file's checkpoint holds the restart off (its file is never written again,
+  // D61) but does not make the session durable - the sealer makes no package of audio alone (row 153).
+  it('row D2C: channel-file checkpoints only -> not durable, and a worker that goes down is not replaced (FAULTED, durable false); mixed -> durable from the first CAMERA checkpoint', async () => {
+    const { supervisor, fake, clock } = await recording();
+    fake.last().record({ ...checkpoint(1, 'MIC-01'), keyframe: false } as CaptureRecord, 1);
+    fake.last().record({ ...checkpoint(2, 'MIC-01'), keyframe: false } as CaptureRecord, 2);
+    fake.last().record({ ...checkpoint(1, 'MIC-02'), keyframe: false } as CaptureRecord, 3);
+    expect(supervisor.status()).toMatchObject({ lastCrash: null, lastRecordSeq: 3, durable: false });
+    fake.last().exit(null, 'SIGKILL');
+    clock.advance(LIMITS.backoffMaxMs * 10);
+    await flush();
+    expect(fake.calls()).toBe(1);
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.FAULTED, durable: false });
+
+    const mixed = await recording();
+    mixed.fake.last().record({ ...checkpoint(1, 'MIC-01'), keyframe: false } as CaptureRecord, 1);
+    expect(mixed.supervisor.status()).toMatchObject({ lastRecordSeq: 1, durable: false });
+    mixed.fake.last().record(checkpoint(1, 'CAM-02'), 2);
+    expect(mixed.supervisor.status()).toMatchObject({ lastCrash: null, lastRecordSeq: 2, durable: true });
+    mixed.fake.last().record({ ...checkpoint(2, 'MIC-01'), keyframe: false } as CaptureRecord, 3);
+    expect(mixed.supervisor.status()).toMatchObject({ lastCrash: null, lastRecordSeq: 3, durable: true });
+  });
+
+  it('row D2C: a session whose only files are channel files ends with NO_CAMERA_CONNECTED as its reason (the failed start of D84), not as a recording whose worker crashed', async () => {
+    const { supervisor, fake, clock } = await recording();
+    const causes: Array<string | undefined> = [];
+    supervisor.on('warning', (event) => void causes.push(event.cause));
+    fake.last().record({ ...checkpoint(1, 'MIC-01'), keyframe: false } as CaptureRecord, 1);
+    fake.last().say({ type: 'CRASH', code: 'NO_CAMERA_CONNECTED', signal: null, exitCode: 70 });
+    clock.advance(LIMITS.backoffMaxMs * 10);
+    await flush();
+    expect(fake.calls()).toBe(1);
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.FAULTED, durable: false, lastCrash: { code: WorkerDownCode.EXITED, detail: 'NO_CAMERA_CONNECTED', reason: 'NO_CAMERA_CONNECTED' } });
+    expect(causes).toEqual(['NO_CAMERA_CONNECTED']);
+  });
+
+  // Finding F-148-1: before row 148 every kind but the interval was held to the CAMERAS, so the microphone records of
+  // protocol 5 (MIC_SAMPLE_ACCOUNT, AUDIO_INSERTED_RUN) naming a microphone of the plan ended the worker.
+  it('row 148: a microphone record (AUDIO_INSERTED_RUN) names a microphone of the plan; the same record naming a camera is RECORD_SUBJECT_UNKNOWN, and a camera record naming a microphone stays refused', async () => {
+    const run = (deviceId: string): CaptureRecord => ({ kind: 'AUDIO_INSERTED_RUN', deviceId, role: 'STANDBY', index: 1, fromSample: 96_000, samples: 4_800, sampleRateHz: 48_000 });
+    const mic = await recording();
+    mic.fake.last().record(run('MIC-02'), 1);
+    expect(mic.supervisor.status()).toMatchObject({ lastCrash: null, lastRecordSeq: 1 });
+
+    const camera = await recording();
+    camera.fake.last().record(run('CAM-01'), 1);
+    expect(camera.supervisor.status().lastCrash).toMatchObject({ code: WorkerDownCode.PROTOCOL_VIOLATION, detail: 'RECORD_SUBJECT_UNKNOWN' });
+
+    const keyframe = await recording();
+    keyframe.fake.last().record({ kind: 'KEYFRAME_INTERVAL', deviceId: 'MIC-01', observedMs: 1_000, boundMs: 2_000, intervals: 3, complete: true, aboveBound: false }, 1);
+    expect(keyframe.supervisor.status().lastCrash).toMatchObject({ code: WorkerDownCode.PROTOCOL_VIOLATION, detail: 'RECORD_SUBJECT_UNKNOWN' });
+  });
 });
 
 describe('M3-REC-1 (b): no record is dropped or reordered under a flooded queue of levels', () => {
@@ -526,6 +597,16 @@ describe('A-8: the lines of a worker the supervisor ended', () => {
     expect(seen).toEqual(['warning supervisor ACTIVE']);
   });
 
+  it('row D2C: a late CHANNEL-file checkpoint calls the restart off too (its file is never written again) but does not make the session durable', async () => {
+    const { fake, supervisor, clock } = await ended();
+    fake.last().record({ ...checkpoint(1, 'MIC-01'), keyframe: false } as CaptureRecord, 1);
+    expect(supervisor.status()).toMatchObject({ phase: CapturePhase.FAULTED, durable: false, lastRecordSeq: 0 });
+    fake.last().exit(null, 'SIGKILL');
+    clock.advance(LIMITS.backoffMaxMs * 10);
+    await flush();
+    expect(fake.calls()).toBe(1);
+  });
+
   it('CONTROL: without that late record the same session IS given a second worker once the first has exited', async () => {
     const { fake, supervisor, clock } = await ended();
     fake.last().exit(null, 'SIGKILL');
@@ -558,7 +639,7 @@ describe('D72 (A-2): the supervisor\'s own CAPTURE_FAULT ends when a later sessi
 
 describe('row 59: protocol version 5 is a gate at HELLO (decision D84 R-7)', () => {
   it('the supervisor speaks version 5, and a worker that says 3 (the worker before the checkpoint content) is refused at HELLO and not started again', async () => {
-    expect(CAPTURE_PROTOCOL_VERSION).toBe(5);
+    expect(CAPTURE_PROTOCOL_VERSION).toBe(6); // audit 2026-11-05 row 144: version 6 (the camera-microphone pairs); the gate below is the same
     const clock = manualCaptureTimers();
     const fake = fakeLauncher({ protocolVersion: 2 });
     const supervisor = createCaptureSupervisor({ now: clock.now, timers: clock.timers, launcher: fake.launcher });
@@ -572,10 +653,10 @@ describe('row 59: protocol version 5 is a gate at HELLO (decision D84 R-7)', () 
     expect(supervisor.status()).toMatchObject({ phase: CapturePhase.IDLE, lastCrash: { code: WorkerDownCode.PROTOCOL_MISMATCH, detail: 'V2' } });
   });
 
-  it('CONTROL: the same start with a worker that says 5 records, and its START carries version 5', async () => {
+  it('CONTROL: the same start with a worker that says the version in force records, and its START carries that version (6 since audit row 144)', async () => {
     const { supervisor, fake } = await recording();
     expect(supervisor.status()).toMatchObject({ phase: CapturePhase.RECORDING, lastCrash: null });
-    expect(fake.last().commands('START')[0]).toMatchObject({ v: 5, attempt: 1 });
+    expect(fake.last().commands('START')[0]).toMatchObject({ v: 6, attempt: 1 });
   });
 });
 

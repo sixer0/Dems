@@ -258,18 +258,17 @@ describe('fix 157 - Session Monitor: the pair of the audio panel after a sealed 
     const page = await livePage('/session', 'page-session-monitor', served)
     const audio = await within(page).findByTestId('panel-O')
     await waitFor(() => expect(audio.querySelector('.sm-audio-body')).toHaveAttribute('data-active-input', 'MIC-05'))
-    expect(within(audio).getByTestId('sm-audio-role-MIC-05')).toHaveAttribute('data-role', 'ACTIVE')
-    expect(within(audio).getByTestId('sm-audio-role-MIC-02')).toHaveAttribute('data-role', 'STANDBY')
-    // The input that left the selector has no chip any more.
-    expect(within(audio).queryByTestId('sm-audio-role-MIC-01')).not.toBeInTheDocument()
+    // Audit row 157 (D130): the Active / Standby role chips are gone with op 81 - the pair is read from the panel's
+    // active input (above) and the selectors (below); no half carries a role chip for any input.
+    expect(audio.querySelector('[data-testid^="sm-audio-role-"]')).toBeNull()
   })
 
   it('CONTROL - the same pair while that session is still OPEN: the session\'s own pair (MIC-02 active, MIC-01 standby)', async () => {
     const page = await livePage('/session', 'page-session-monitor', withPair(afterSelectorChange('OPEN')))
     const audio = await within(page).findByTestId('panel-O')
     await waitFor(() => expect(audio.querySelector('.sm-audio-body')).toHaveAttribute('data-active-input', 'MIC-02'))
-    expect(within(audio).getByTestId('sm-audio-role-MIC-02')).toHaveAttribute('data-role', 'ACTIVE')
-    expect(within(audio).getByTestId('sm-audio-role-MIC-01')).toHaveAttribute('data-role', 'STANDBY')
+    // Audit row 157: no role chips (op 81 retired).
+    expect(audio.querySelector('[data-testid^="sm-audio-role-"]')).toBeNull()
   })
 
   it('the selectors of the pair, both ways', () => {
@@ -410,25 +409,34 @@ describe('row 108 - the four microphone channels are labelled on the dashboard a
     expect(served.mics.map((entry) => entry.deviceId)).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'])
   })
 
-  it('/dashboard: MIC 1..4 read Channel 1 (transcribed), Channel 2, Channel 3, Channel 4 (U-03 read MIC 3 "Channel 1 (transcribed)", MIC 4 "Channel 2")', async () => {
+  it('/dashboard: MIC 1..4 read their pair "Mic N (Camera N)", Pair 1 "Transcribed", by CHANNEL whatever input it holds (row W3T, R157-1; U-03 read MIC 3 "Channel 1 (transcribed)")', async () => {
     const page = await livePage('/', 'page-dashboard', benchShape())
-    const chip = (track: string) => within(page).findByTestId(`device-tile-channel-${track}`)
-    await waitFor(async () => expect(await chip('AUDIO-03')).toHaveTextContent('Channel 3'))
-    expect(await chip('AUDIO-01')).toHaveTextContent('Channel 1 (transcribed)')
-    expect(await chip('AUDIO-02')).toHaveTextContent(/^Channel 2$/)
-    expect(await chip('AUDIO-04')).toHaveTextContent('Channel 4')
-    expect((await chip('AUDIO-03')).dataset.channel).toBe('MIC-03')
+    const chip = (track: string) => within(page).findByTestId(`device-tile-pair-${track}`)
+    await waitFor(async () => expect(await chip('AUDIO-03')).toHaveTextContent('Mic 3 (Camera 3)'))
+    expect(await chip('AUDIO-01')).toHaveTextContent('Mic 1 (Camera 1)')
+    expect(await chip('AUDIO-02')).toHaveTextContent('Mic 2 (Camera 2)')
+    expect(await chip('AUDIO-04')).toHaveTextContent('Mic 4 (Camera 4)')
+    // The label is the CHANNEL's (channel 1 holds MIC-03 on the bench shape), and only Pair 1 is transcribed.
+    expect((await chip('AUDIO-01')).dataset.channel).toBe('MIC-01')
+    expect(within(page).getByTestId('device-tile-transcribed-AUDIO-01')).toHaveTextContent('Transcribed')
+    expect(page.querySelectorAll('[data-testid^="device-tile-transcribed-"]')).toHaveLength(1)
+    expect(page.querySelector('[data-testid^="device-tile-channel-"], [data-testid^="device-tile-source-"]')).toBeNull()
+    expect(page.textContent ?? '').not.toContain('Channel 1 (transcribed)')
   })
 
-  it('/session: MIC 3 and MIC 4 carry "Channel 3" / "Channel 4" beside the pair chips of MIC 1 / MIC 2 (U-20 read no label for 3/4)', async () => {
+  it('/session: every half carries its pair label "Mic N (Camera N)", Pair 1 "Transcribed", whatever input the channel holds (audit row 157; U-20 read no label for 3/4)', async () => {
     const page = await livePage('/session', 'page-session-monitor', benchShape())
     const audio = await within(page).findByTestId('panel-O')
-    await waitFor(() => expect(within(audio).getByTestId('sm-audio-channel-AUDIO-03')).toHaveTextContent('Channel 3'))
-    expect(within(audio).getByTestId('sm-audio-channel-AUDIO-04')).toHaveTextContent('Channel 4')
-    expect(within(audio).getByTestId('sm-audio-role-MIC-03')).toHaveTextContent('Channel 1 (transcribed)')
-    expect(within(audio).getByTestId('sm-audio-role-MIC-04')).toHaveTextContent('Channel 2 (recorded)')
-    // One chip per half: a pair half has no second (channel) chip.
-    expect(within(audio).queryByTestId('sm-audio-channel-AUDIO-01')).not.toBeInTheDocument()
-    expect(within(audio).queryByTestId('sm-audio-channel-AUDIO-02')).not.toBeInTheDocument()
+    await waitFor(() => expect(within(audio).getByTestId('sm-audio-pair-AUDIO-03')).toHaveTextContent('Mic 3 (Camera 3)'))
+    expect(within(audio).getByTestId('sm-audio-pair-AUDIO-01')).toHaveTextContent('Mic 1 (Camera 1)')
+    expect(within(audio).getByTestId('sm-audio-pair-AUDIO-02')).toHaveTextContent('Mic 2 (Camera 2)')
+    expect(within(audio).getByTestId('sm-audio-pair-AUDIO-04')).toHaveTextContent('Mic 4 (Camera 4)')
+    // The label is the CHANNEL's (channel 1 holds MIC-03 here), and only Pair 1 is transcribed.
+    expect(within(audio).getByTestId('sm-audio-pair-AUDIO-01')).toHaveAttribute('data-channel', 'MIC-01')
+    expect(within(audio).getByTestId('sm-audio-transcribed-AUDIO-01')).toHaveTextContent('Transcribed')
+    expect(audio.querySelectorAll('[data-testid^="sm-audio-transcribed-"]')).toHaveLength(1)
+    // The retired chips: no role chip, no channel chip ("Channel 3" stays only in the dataset NAME "MIC 3 – Channel 3"), no "Channel 1 (transcribed)".
+    expect(audio.querySelector('[data-testid^="sm-audio-role-"], [data-testid^="sm-audio-channel-"]')).toBeNull()
+    expect(audio.textContent ?? '').not.toContain('(transcribed)')
   })
 })

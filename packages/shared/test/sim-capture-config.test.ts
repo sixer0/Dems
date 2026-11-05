@@ -20,6 +20,7 @@ import {
   AudioSliceSchema,
   AudioSourceIntervalEntrySchema,
   AudioSourceStateSchema,
+  AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE,
   AudioSourceSwitchRequestSchema,
   CaptureConfigUpdateRequestSchema,
   SessionResourceSchema,
@@ -307,20 +308,22 @@ describe('setCaptureConfig: the refusals change nothing', () => {
   });
 });
 
-describe('switchAudioSource: the action of operation 81', () => {
-  it('moves the active input while RECORDING, writes AUDIO_SOURCE_SWITCHED once, and is refused outside a recording', () => {
+describe('switchAudioSource: the action of operation 81 (retired by D5; audit row 149, N-29 / N-36)', () => {
+  it('is refused AUDIO_SOURCE_FIXED_BY_PAIRING while RECORDING and outside a recording, writes nothing, and keeps the access check first', () => {
     const h = harness('SUPERVISOR', 'recording');
     expect(h.state().audio.activeInputId).toBe('MIC-01');
     const rows = () => h.state().audit.rows.filter((row) => row.type === 'AUDIO_SOURCE_SWITCHED');
     h.clock.advance(2_000);
-    h.sim.actions.switchAudioSource('MIC-02');
-    expect(h.state().audio.activeInputId).toBe('MIC-02');
-    expect(h.state().session?.audioSource).toMatchObject({ activeInputId: 'MIC-02', standbyInputId: 'MIC-01' });
-    expect(rows()).toHaveLength(1);
-    // The same input again: nothing.
     const held = h.state();
-    h.sim.actions.switchAudioSource('MIC-02');
+    // Every input, the active one included: the audio of each track is fixed by its camera-microphone pair.
+    for (const input of ['MIC-02', 'MIC-01', 'MIC-03'] as const) {
+      expect(() => h.sim.actions.switchAudioSource(input), input).toThrow(expect.objectContaining({ code: 'AUDIO_SOURCE_FIXED_BY_PAIRING', event: 'switchAudioSource' }));
+    }
+    // Nothing is written: no state, no meter, no audit row.
     expect(h.state()).toBe(held);
+    expect(h.state().audio.activeInputId).toBe('MIC-01');
+    expect(h.state().session?.audioSource).toMatchObject({ activeInputId: 'MIC-01' });
+    expect(rows()).toEqual([]);
     // It never touches the selector: the channel assignment is the idle edit's (D61: the seeded four).
     expect(h.state().captureConfig.mics.map((mic) => [mic.inputId, mic.channel])).toEqual([
       ['MIC-01', 'MIC-01'],
@@ -331,6 +334,8 @@ describe('switchAudioSource: the action of operation 81', () => {
 
     const idle = harness('SUPERVISOR', 'idle');
     expect(() => idle.sim.actions.switchAudioSource('MIC-02')).toThrow(SimTransitionError);
+    expect(() => idle.sim.actions.switchAudioSource('MIC-02')).toThrow(expect.objectContaining({ code: 'AUDIO_SOURCE_FIXED_BY_PAIRING' }));
+    // The access check stays first: a role without SESSION_START is refused for its permission, not for the pairing.
     const technician = harness('TECHNICIAN', 'recording');
     expect(() => technician.sim.actions.switchAudioSource('MIC-02')).toThrow(SimPermissionError);
   });
@@ -374,6 +379,8 @@ describe('slice `captureConfig` is replicated: what the action changed reaches a
 //   R74-02  operation 82 lists every interval of the session: 1-based, the input that is the source,
 //           its role from the selector line
 //   R74-05  the AUDIO_SOURCE_SWITCHED row holds the keys of contract C3 §5.2
+// Audit row 149 (D5; N-29, N-30): operation 81 is retired, so a session lists the ONE interval of its start; a switch
+// stored before D5 (timeline item + AUDIO_SOURCE_SWITCHED row) stays readable by operation 82.
 describe('the intervals of operation 82 and the keys of the switch row', () => {
   const { harness } = failedStartBed;
 
@@ -393,49 +400,42 @@ describe('the intervals of operation 82 and the keys of the switch row', () => {
       return audioSourceIntervalsOf(state, session).map((entry) => `${entry.seq}:${entry.inputId}:${entry.role}:${entry.fromMs}-${entry.toMs}:${entry.reason}`);
     };
 
-    it('three switches, both directions: four intervals, newest first, each with the input that was the source and its role', () => {
+    it('D5 (audit row 149): three refused switches, both directions - the session keeps the one interval of its start, the input of Pair 1', () => {
       const { h, startedAt } = recording();
       expect(list(h.state())).toEqual(['1:MIC-01:PRIMARY:0-null:START']);
-      const at: number[] = [];
       for (const input of ['MIC-02', 'MIC-01', 'MIC-02'] as const) {
         h.run(3_000);
-        h.sim.actions.switchAudioSource(input);
-        at.push(h.clock.now() - startedAt);
+        expect(() => h.sim.actions.switchAudioSource(input), input).toThrow(expect.objectContaining({ code: 'AUDIO_SOURCE_FIXED_BY_PAIRING' }));
       }
-      expect(list(h.state())).toEqual([
-        `4:MIC-02:STANDBY:${at[2]}-null:MANUAL`,
-        `3:MIC-01:PRIMARY:${at[1]}-${at[2]}:MANUAL`,
-        `2:MIC-02:STANDBY:${at[0]}-${at[1]}:MANUAL`,
-        `1:MIC-01:PRIMARY:0-${at[0]}:START`,
-      ]);
-      // The wall instants follow the same boundaries, and the last interval is the session's active input.
+      expect(list(h.state())).toEqual(['1:MIC-01:PRIMARY:0-null:START']);
       const session = h.state().session;
       if (session === null) throw new Error('no session');
       const entries = audioSourceIntervalsOf(h.state(), session);
       expect(entries[0]?.inputId).toBe(session.audioSource?.activeInputId);
-      expect(entries.map((entry) => entry.fromAt)).toEqual([startedAt + (at[2] ?? 0), startedAt + (at[1] ?? 0), startedAt + (at[0] ?? 0), startedAt]);
-      expect(entries.map((entry) => entry.toAt)).toEqual([null, startedAt + (at[2] ?? 0), startedAt + (at[1] ?? 0), startedAt + (at[0] ?? 0)]);
-      expect(entries.map((entry) => entry.switchedBy)).toEqual(['OPR-001', 'OPR-001', 'OPR-001', null]);
+      expect(entries.map((entry) => [entry.fromAt, entry.toAt, entry.switchedBy])).toEqual([[startedAt, null, null]]);
+      expect(session.timeline.filter((item) => item.kind === 'AUDIO_SWITCH')).toEqual([]);
     });
 
-    it('CONTROL: a request for the input that is active already opens no interval', () => {
+    it('CONTROL: a request for the input that is active already is refused the same way and opens no interval', () => {
       const { h } = recording();
       h.run(2_000);
-      h.sim.actions.switchAudioSource('MIC-01');
+      expect(() => h.sim.actions.switchAudioSource('MIC-01')).toThrow(expect.objectContaining({ code: 'AUDIO_SOURCE_FIXED_BY_PAIRING' }));
       expect(list(h.state())).toHaveLength(1);
     });
 
-    it('the answer of the simulated REST layer is the same list', () => {
+    it('the simulated REST layer refuses operation 81 with 409 AUDIO_SOURCE_FIXED_BY_PAIRING and the list stays the one of the start', () => {
       const { h } = recording();
-      for (const input of ['MIC-02', 'MIC-01'] as const) {
-        h.run(2_000);
-        h.sim.actions.switchAudioSource(input);
-      }
       const session = h.state().session;
       if (session === null) throw new Error('no session');
+      h.run(2_000);
+      const before = h.state();
+      for (const input of ['MIC-02', 'MIC-01'] as const) {
+        const answer = h.sim.request({ method: 'POST', path: `/api/v1/session/${session.id}/audio-source`, body: { inputId: input } });
+        expect([answer.status, (answer.body as { error: { code: string; message: string } }).error]).toEqual([409, expect.objectContaining({ code: 'AUDIO_SOURCE_FIXED_BY_PAIRING', message: AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE })]);
+      }
+      expect(h.state().audit.rows).toHaveLength(before.audit.rows.length);
       const expected = audioSourceIntervalsOf(h.state(), session);
-      expect(expected).toHaveLength(3);
-      expect(expected.map((entry) => entry.inputId)).toEqual(['MIC-01', 'MIC-02', 'MIC-01']);
+      expect(expected.map((entry) => entry.inputId)).toEqual(['MIC-01']);
     });
 
     it('decision C36 (2), task 4 row 149: a session in which NO input is in force answers no interval - no built-in input is invented', () => {
@@ -461,24 +461,26 @@ describe('the intervals of operation 82 and the keys of the switch row', () => {
     });
   });
 
-  describe('R74-05: the AUDIO_SOURCE_SWITCHED row of the simulator', () => {
-    it('holds fromInput, toInput, fromMs, toMs (contract C3 §5.2) and none of the old keys', () => {
+  describe('R74-05 after D5 (audit row 149): the simulator writes no AUDIO_SOURCE_SWITCHED row; a stored one stays readable', () => {
+    it('a refused switch writes no row, and a switch stored before D5 (its timeline item and its C3 §5.2 row) is still listed by operation 82 with its actor', () => {
       const h = harness();
       h.toArmed();
       h.sim.actions.startRecording();
       h.run(CAPTURE_CONNECT_MS);
       const startedAt = h.state().session?.startedAt ?? 0;
       h.run(4_000);
-      h.sim.actions.switchAudioSource('MIC-02');
-      const first = h.clock.now() - startedAt;
-      h.run(2_000);
-      h.sim.actions.switchAudioSource('MIC-01');
-      const second = h.clock.now() - startedAt;
-      const rows = h.state().audit.rows.filter((row) => row.type === 'AUDIO_SOURCE_SWITCHED').slice(-2);
-      expect(rows.map((row) => row.details)).toEqual([
-        { fromInput: 'MIC-01', toInput: 'MIC-02', fromMs: 0, toMs: first },
-        { fromInput: 'MIC-02', toInput: 'MIC-01', fromMs: first, toMs: second },
-      ]);
+      expect(() => h.sim.actions.switchAudioSource('MIC-02')).toThrow(expect.objectContaining({ code: 'AUDIO_SOURCE_FIXED_BY_PAIRING' }));
+      expect(h.state().audit.rows.filter((row) => row.type === 'AUDIO_SOURCE_SWITCHED')).toEqual([]);
+      // A session recorded before D5: one stored switch at media 4,000 ms, by OPR-001 (hand-built from the stored shapes).
+      const state = h.state();
+      const session = state.session;
+      if (session === null) throw new Error('no session');
+      const at = startedAt + 4_000;
+      const item = { ...session.timeline[0]!, id: 'TL-PRE-D5', at, kind: 'AUDIO_SWITCH', params: { from: 'MIC-01', to: 'MIC-02', atMs: 4_000 } } as (typeof session.timeline)[number];
+      const row = { ...state.audit.rows.at(-1)!, type: 'AUDIO_SOURCE_SWITCHED', sessionId: session.id, actorId: 'OPR-001', details: { fromInput: 'MIC-01', toInput: 'MIC-02', fromMs: 0, toMs: 4_000 } } as (typeof state.audit.rows)[number];
+      const stored = { ...session, timeline: [...session.timeline, item] };
+      const intervals = audioSourceIntervalsOf({ audio: state.audio, audit: { ...state.audit, rows: [...state.audit.rows, row] } }, stored);
+      expect(intervals.map((entry) => `${entry.seq}:${entry.inputId}:${entry.fromMs}-${entry.toMs}:${entry.reason}:${entry.switchedBy}`)).toEqual(['2:MIC-02:4000-null:MANUAL:OPR-001', '1:MIC-01:0-4000:START:null']);
     });
   });
 });
@@ -653,7 +655,7 @@ describe('the microphone pair: assignment, the session audio source, the meter c
       ]);
     });
 
-    it('a line may name the transport; the same two inputs trading channels is two SOURCE rows (D61: the ROLE-row special case is gone)', () => {
+    it('a line may name the transport; the same two inputs trading channels is ONE channel-swap row (D30 K-6, row 155; was two SOURCE rows under D61)', () => {
       const h = harness();
       registerLocalMic(h);
       expect(h.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: pair('MIC-05', 'MIC-02', { transport: 'AVFOUNDATION' }) }).status).toBe(200);
@@ -664,9 +666,61 @@ describe('the microphone pair: assignment, the session audio source, the meter c
         ['MIC-02', 'MIC-02', 'MIC-01', 'USB'],
         ['MIC-05', 'MIC-05', 'MIC-02', 'AVFOUNDATION'],
       ]);
+      // D30 K-6 (row 155): each input kept its transport and took the other's channel - a swap, ONE
+      // row of the operation-80 form naming the microphone that landed on the lower channel.
       expect(changedRows(h.state()).slice(before).map((row) => row.details)).toEqual([
-        { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', channel: 'MIC-01', inputId: 'MIC-02', deviceId: 'MIC-02', from: 'MIC-05', to: 'MIC-02', permission: 'CAPTURE_CONFIG' },
-        { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', channel: 'MIC-02', inputId: 'MIC-05', deviceId: 'MIC-05', from: 'MIC-02', to: 'MIC-05', permission: 'CAPTURE_CONFIG' },
+        { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'CHANNEL', inputId: 'MIC-02', deviceId: 'MIC-02', from: 'MIC-02', to: 'MIC-01', permission: 'CAPTURE_CONFIG' },
+      ]);
+    });
+
+    it('D30 K-6 (row 155): a two-line swap writes exactly ONE CHANNEL row - the row operation 80 writes for the same move; a single line, a new device and a changed transport keep their SOURCE rows', () => {
+      // The swap of the contract example (op 78 `swap`): channels 1 and 2 trade MIC-01 and MIC-02.
+      const swap = harness();
+      const swapBefore = changedRows(swap.state()).length;
+      expect(swap.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: pair('MIC-02', 'MIC-01') }).status).toBe(200);
+      expect(micsOf(swap.state()).map(([inputId, , channel]) => [inputId, channel])).toEqual([['MIC-02', 'MIC-01'], ['MIC-01', 'MIC-02'], ['MIC-03', 'MIC-03'], ['MIC-04', 'MIC-04']]);
+      const swapRows = changedRows(swap.state()).slice(swapBefore);
+      expect(swapRows).toHaveLength(1);
+      expect(swapRows[0]?.details).toEqual({ operationId: 'updateCaptureConfig', scope: 'MIC', field: 'CHANNEL', inputId: 'MIC-02', deviceId: 'MIC-02', from: 'MIC-02', to: 'MIC-01', permission: 'CAPTURE_CONFIG' });
+      // PARITY with operation 80 on the same state: the same selector, the same details but the operation id.
+      const primary = harness();
+      const primaryBefore = changedRows(primary.state()).length;
+      primary.sim.actions.setCaptureConfig({ kind: 'PRIMARY_MIC', inputId: 'MIC-02' });
+      expect(primary.state().captureConfig.mics).toEqual(swap.state().captureConfig.mics);
+      const { operationId: primaryOperation, ...primaryDetails } = changedRows(primary.state()).slice(primaryBefore)[0]?.details ?? {};
+      const { operationId: swapOperation, ...swapDetails } = swapRows[0]?.details ?? {};
+      expect([primaryOperation, swapOperation]).toEqual(['setPrimaryMic', 'updateCaptureConfig']);
+      expect(swapDetails).toEqual(primaryDetails);
+      // The line order does not matter, and a swap away from channel 1 names the mic that landed on the LOWER channel.
+      const far = harness();
+      const farBefore = changedRows(far.state()).length;
+      expect(far.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: { mics: [{ inputId: 'MIC-03', deviceId: 'MIC-03', channel: 'MIC-04' }, { inputId: 'MIC-04', deviceId: 'MIC-04', channel: 'MIC-03' }] } }).status).toBe(200);
+      expect(changedRows(far.state()).slice(farBefore).map((row) => row.details)).toEqual([
+        { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'CHANNEL', inputId: 'MIC-04', deviceId: 'MIC-04', from: 'MIC-04', to: 'MIC-03', permission: 'CAPTURE_CONFIG' },
+      ]);
+      // Two swaps in one four-line body: one row per swap, in channel order.
+      const both = harness();
+      const bothBefore = changedRows(both.state()).length;
+      expect(both.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: { mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', channel: 'MIC-01' }, { inputId: 'MIC-01', deviceId: 'MIC-01', channel: 'MIC-02' }, { inputId: 'MIC-04', deviceId: 'MIC-04', channel: 'MIC-03' }, { inputId: 'MIC-03', deviceId: 'MIC-03', channel: 'MIC-04' }] } }).status).toBe(200);
+      expect(changedRows(both.state()).slice(bothBefore).map((row) => [row.details?.['field'], row.details?.['inputId'], row.details?.['from'], row.details?.['to']])).toEqual([
+        ['CHANNEL', 'MIC-02', 'MIC-02', 'MIC-01'],
+        ['CHANNEL', 'MIC-04', 'MIC-04', 'MIC-03'],
+      ]);
+      // CONTROL - not a swap, SOURCE rows unchanged: a single line with a new device (channel 1 -> MIC-05) ...
+      const single = harness();
+      registerLocalMic(single);
+      const singleBefore = changedRows(single.state()).length;
+      expect(single.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: { mics: [{ inputId: 'MIC-05', deviceId: 'MIC-05', channel: 'MIC-01' }] } }).status).toBe(200);
+      expect(changedRows(single.state()).slice(singleBefore).map((row) => row.details)).toEqual([
+        { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', channel: 'MIC-01', inputId: 'MIC-05', deviceId: 'MIC-05', from: 'MIC-01', to: 'MIC-05', permission: 'CAPTURE_CONFIG' },
+      ]);
+      // ... and a trade that changes a transport is a source change on that channel, not a pure swap.
+      const transport = harness();
+      const transportBefore = changedRows(transport.state()).length;
+      expect(transport.sim.request({ method: 'POST', path: CAPTURE_CONFIG_PATH, body: { mics: [{ inputId: 'MIC-02', deviceId: 'MIC-02', channel: 'MIC-01', transport: 'AVFOUNDATION' }, { inputId: 'MIC-01', deviceId: 'MIC-01', channel: 'MIC-02' }] } }).status).toBe(200);
+      expect(changedRows(transport.state()).slice(transportBefore).map((row) => [row.details?.['field'], row.details?.['channel']])).toEqual([
+        ['SOURCE', 'MIC-01'],
+        ['SOURCE', 'MIC-02'],
       ]);
     });
 
@@ -789,23 +843,21 @@ describe('the microphone pair: assignment, the session audio source, the meter c
       for (const bad of BAD_IDS) expect(AudioChannelStatusSchema.safeParse({ ...entry, inputId: bad }).success, bad).toBe(false);
     });
 
-    it('the simulated operation 81: any MIC-NN is well formed, only an input of the session can become active', () => {
+    it('the simulated operation 81 (retired, audit row 149): every body - well formed, another form, an input of the session - answers 409 AUDIO_SOURCE_FIXED_BY_PAIRING and changes nothing', () => {
       const h = harness('recording', 'INVESTIGATOR');
       const session = h.state().session;
       if (session === null) throw new Error('the recording scenario holds no session');
       const path = `/api/v1/session/${session.id}/audio-source`;
       const before = h.state();
-      for (const bad of ['MIC-3', 'AUDIO-01', 7]) expect(h.sim.request({ method: 'POST', path, body: { inputId: bad } }).status, String(bad)).toBe(422);
-      const other = h.sim.request({ method: 'POST', path, body: { inputId: 'MIC-07' } });
-      expect([other.status, (other.body as { error: { code: string } }).error.code]).toEqual([409, 'AUDIO_SOURCE_CONFLICT']);
-      expect(h.state().session).toBe(before.session);
-      expect(h.state().audit.rows).toHaveLength(before.audit.rows.length);
-      // CONTROL: the standby input of the session is accepted and becomes the active one.
       const standby = before.session?.audioSource?.standbyInputId;
-      const switched = h.sim.request({ method: 'POST', path, body: { inputId: standby } });
-      expect(switched.status).toBe(200);
-      expect(AudioSourceStateSchema.safeParse(switched.body).success).toBe(true);
-      expect(h.state().audio.activeInputId).toBe(standby);
+      // The simulator checks the access and nothing else (row 150): no lookup of the session or the input, no body check.
+      for (const inputId of ['MIC-3', 'AUDIO-01', 7, 'MIC-07', standby, before.session?.audioSource?.activeInputId]) {
+        const answer = h.sim.request({ method: 'POST', path, body: { inputId } });
+        expect([answer.status, (answer.body as { error: { code: string } }).error.code], String(inputId)).toEqual([409, 'AUDIO_SOURCE_FIXED_BY_PAIRING']);
+      }
+      expect(h.state().session).toBe(before.session);
+      expect(h.state().audio.activeInputId).toBe(before.audio.activeInputId);
+      expect(h.state().audit.rows).toHaveLength(before.audit.rows.length);
     });
   });
 

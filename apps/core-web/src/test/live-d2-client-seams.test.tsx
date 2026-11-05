@@ -14,7 +14,7 @@
 // | Item 2: the Session Monitor camera on screen and the mic meters carry it too | "Session Monitor" |
 // | Item 4 (WB-07): System has the entry link to the camera search of Devices & Inputs | "System" |
 // | Item 5: the microphones of the Monitor are named by the id the Core sends; a third microphone (`MIC-03`) is the active input, named "MIC 3" or "This Mac's microphone" | "a third microphone" |
-import { cleanup, configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, configure, screen, waitFor, within } from '@testing-library/react'
 import { toast } from '@heroui/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { en } from '@dems/shared/i18n'
@@ -179,28 +179,32 @@ describe('a third microphone (`MIC-03`) on the Session Monitor: named by the id 
     }
   }
 
-  it('the pair is the Core`s: active MIC-03, the toggle offers MIC 1, the confirmation names "MIC 3"', async () => {
-    await livePage('/session', 'recording', withThirdMic(false))
+  // Audit row 157 (D130): op 81 is retired, so the toggle and its confirmation are gone. The input the Core names
+  // is still read by its own id where the panel names an input: the silence warning (a MIC_SILENT on MIC-03).
+  const silentOnThird = (local: boolean) => (state: SimState): SimState => {
+    const shaped = withThirdMic(local)(state)
+    return { ...shaped, faults: { ...shaped.faults, active: [...shaped.faults.active, { kind: 'MIC_SILENT', since: shaped.clock.now, target: 'MIC-03' }] } } as SimState
+  }
+
+  it('the pair is the Core`s: active MIC-03, no switch control (row 157), the silence warning names "MIC 3"', async () => {
+    await livePage('/session', 'recording', silentOnThird(false))
     await screen.findByTestId('page-session-monitor', {}, { timeout: 15_000 })
     const audio = screen.getByTestId('panel-O')
     await waitFor(() => expect(audio.querySelector('.sm-audio-body')).toHaveAttribute('data-active-input', 'MIC-03'))
-    const toggle = within(audio).getByTestId('sm-audio-switch')
-    expect(toggle).toHaveTextContent(en.session.audioSource.switchTo.replace('{{mic}}', 'MIC 1'))
-    await waitFor(() => expect(toggle).not.toBeDisabled())
-    fireEvent.click(toggle)
-    const dialog = await screen.findByTestId('sm-audio-switch-dialog')
-    expect(dialog).toHaveTextContent(en.session.audioSource.confirm.body.replace('{{from}}', 'MIC 3'))
+    expect(within(audio).queryByTestId('sm-audio-switch')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('sm-audio-switch-dialog')).not.toBeInTheDocument()
+    const warning = await within(audio).findByTestId('sm-audio-silent')
+    expect(warning).toHaveAttribute('data-input', 'MIC-03')
+    expect(warning).toHaveTextContent(en.session.audioSource.silent.title.replace('{{mic}}', 'MIC 3'))
     expect(getMissingI18nKeys()).toEqual([])
   })
 
-  it('when the Core says MIC-03 is its local microphone, the confirmation says "This Mac`s microphone" (D83)', async () => {
-    await livePage('/session', 'recording', withThirdMic(true))
+  it('when the Core says MIC-03 is its local microphone, the silence warning says "This Mac`s microphone" (D83)', async () => {
+    await livePage('/session', 'recording', silentOnThird(true))
     await screen.findByTestId('page-session-monitor', {}, { timeout: 15_000 })
     const audio = screen.getByTestId('panel-O')
-    const toggle = within(audio).getByTestId('sm-audio-switch')
-    await waitFor(() => expect(toggle).not.toBeDisabled())
-    fireEvent.click(toggle)
-    const dialog = await screen.findByTestId('sm-audio-switch-dialog')
-    expect(dialog).toHaveTextContent(en.session.audioSource.confirm.body.replace('{{from}}', KIND.localMicrophone))
+    const warning = await within(audio).findByTestId('sm-audio-silent')
+    expect(warning).toHaveTextContent(en.session.audioSource.silent.title.replace('{{mic}}', KIND.localMicrophone))
+    expect(within(audio).queryByTestId('sm-audio-switch')).not.toBeInTheDocument()
   })
 })

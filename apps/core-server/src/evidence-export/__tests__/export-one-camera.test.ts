@@ -5,14 +5,15 @@
 // A composite is made of two camera files: for a one-camera package it is refused BEFORE anything
 // is written (stated: `COMPOSITE_FAILED`), and the PACKAGE export of it is whole.
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { verifyPackageV2, verifyReportLines } from '@dems/shared/evidence-verify';
 import { removeScratch, scratch } from '../../evidence-verify/__tests__/support';
 import { corePorts, type RealEvidenceItem } from '../../evidence-verify';
 import { removePackages } from '../../sealing/__tests__/package-support';
-import { harnessOf, recordSession, removeRecordings, sessionFacts, type Harness } from '../../sealing/__tests__/pipeline-support';
+import { AUDIO_TRACKS, FOUR_TRACKS, harnessOf, pairedSessionFacts, recordSession, removeRecordings, sessionFacts, type Harness } from '../../sealing/__tests__/pipeline-support';
 import { ExportFailure, exportPackage } from '../package-export';
 import { receiverReportLines } from '../receiver-cli';
 import { verifyExportAtDestination } from '../receiver-verify';
@@ -204,5 +205,74 @@ describe('task 4 row 191c: a package whose signed manifest states audio absent a
     const withoutMember = { ...received } as Record<string, unknown>;
     delete withoutMember['videoAbsentInSession'];
     expect(receiverReportLines(withoutMember as never)).toEqual(lines.filter((line) => line !== said));
+  });
+});
+
+// Audit row 153 (D5; decisions D30 K-8, D119): a `/2.1` package exports COMPLETE - its pair audio files decrypted beside
+// the camera files, named in the export manifest - and the receiver verifies them by the same rule (X-06), with the
+// codes of verify V-04 (AUDIO_FILE_MISSING / AUDIO_FILE_UNREADABLE) and the notice AUDIO_TRACKS_MISSING. A `/2` package
+// exports exactly as before (the payload has no audio member; the cases above are its pin).
+describe('row 153 (D5): the export and the receiver of a package with pair audio files', () => {
+  const MICS = ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as const;
+  async function sealedPaired(options: { cameras: readonly (typeof FOUR_TRACKS)[number][]; audio: readonly (typeof AUDIO_TRACKS)[number][]; mics: readonly (typeof MICS)[number][] }): Promise<{ h: Harness; item: RealEvidenceItem }> {
+    const recording = recordSession({ cameras: options.cameras, audio: options.audio });
+    const h = harnessOf(recording, { facts: pairedSessionFacts(recording.sessionId, { cameras: options.cameras, mics: options.mics }) });
+    const outcome = await h.pipeline.run({ sessionId: recording.sessionId, cause: 'STOPPED' });
+    if (outcome.status !== 'SEALED') throw new Error(`not sealed: ${JSON.stringify(outcome)}`);
+    const anchors = h.anchors();
+    return { h, item: { evidenceId: anchors.evidenceId ?? '', sessionId: recording.sessionId, manifestSha256: anchors.manifestSha256 ?? '', transcriptSha256: anchors.transcriptSha256 ?? null, revisionCount: anchors.revisionCount ?? 0 } };
+  }
+  async function unpack(h: Harness, item: RealEvidenceItem, label: string) {
+    const dir = h.recording.packageDir;
+    const outcome = await exportPackage(dir, item, requestFacts(), portsOf(h));
+    const destination = scratch(label);
+    const archive = join(destination, `${outcome.exportId}.zip`);
+    copyFileSync(join(dir, ...outcome.files.archive.split('/')), archive);
+    const unpacked = join(destination, 'unpacked');
+    mkdirSync(unpacked);
+    execFileSync(UNZIP, ['-q', archive, '-d', unpacked]);
+    const receive = () => verifyExportAtDestination({ unpackedDir: unpacked, archiveFile: archive, expectedArchiveSha256: outcome.archive.sha256, trustedCertificateSha256: [h.signer.certificate.sha256], chunkBytes: 512 });
+    return { outcome, unpacked, receive };
+  }
+
+  it('a 4+4 package: the archive holds the eight DECRYPTED files, the export manifest names the four audio files with their sealed plaintext hashes, and the receiver passes every check', async () => {
+    const { h, item } = await sealedPaired({ cameras: FOUR_TRACKS, audio: AUDIO_TRACKS, mics: MICS });
+    const { outcome, unpacked, receive } = await unpack(h, item, 'paired-destination');
+    const sealed = JSON.parse(readFileSync(join(h.recording.packageDir, 'session-manifest.json'), 'utf8')) as { audioTracks: { trackId: string; sha256Plain: string; bytes: number }[] };
+    expect(outcome.manifest.payload.files.map((file) => file.trackId)).toEqual([...FOUR_TRACKS]);
+    expect(outcome.manifest.payload.audioFiles?.map((file) => [file.trackId, file.path, file.sha256Plain, file.bytes])).toEqual(sealed.audioTracks.map((record) => [record.trackId, `fragments/${record.trackId}.m4a`, record.sha256Plain, record.bytes]));
+    // The decrypted audio file is the worker's channel recording, byte for byte (its hash is the sealed field 169).
+    for (const record of sealed.audioTracks) expect(createHash('sha256').update(readFileSync(join(unpacked, 'fragments', `${record.trackId}.m4a`))).digest('hex')).toBe(record.sha256Plain);
+    const received = await receive();
+    expect(received.checks.filter((check) => !check.ok).map((check) => [check.id, check.findings])).toEqual([]);
+    expect(received.ok).toBe(true);
+    expect(received.audioTracksMissing).toBeUndefined();
+  });
+
+  it('a stated missing microphone is SAID at the destination (AUDIO_TRACKS_MISSING, one line before the verdict) and fails nothing', async () => {
+    const { h, item } = await sealedPaired({ cameras: ['VIDEO-01', 'VIDEO-02'], audio: ['AUDIO-01'], mics: ['MIC-01'] });
+    const { receive } = await unpack(h, item, 'missing-mic-destination');
+    const received = await receive();
+    expect(received.ok).toBe(true);
+    expect(received.audioTracksMissing).toMatchObject({ code: 'AUDIO_TRACKS_MISSING', records: [{ trackId: 'AUDIO-02', silentIn: ['VIDEO-02'], reason: 'NOT_ASSIGNED' }] });
+    const lines = receiverReportLines(received);
+    expect(lines.at(-2)).toBe(received.audioTracksMissing?.report);
+    expect(lines.at(-1)).toBe('RESULT: PASS');
+  });
+
+  it('CONTROL: a decrypted audio file changed at the destination fails X-04 and X-06 by name; removed, it is AUDIO_FILE_MISSING', async () => {
+    const { h, item } = await sealedPaired({ cameras: FOUR_TRACKS, audio: AUDIO_TRACKS, mics: MICS });
+    const { unpacked, receive } = await unpack(h, item, 'tampered-audio-destination');
+    const file = join(unpacked, 'fragments', 'AUDIO-03.m4a');
+    const bytes = readFileSync(file);
+    bytes[bytes.length - 5] = (bytes[bytes.length - 5] ?? 0) ^ 0x01;
+    writeFileSync(file, bytes);
+    const changed = await receive();
+    expect(changed.ok).toBe(false);
+    expect(changed.checks.find((check) => check.id === 'X-06')?.findings).toContain('PLAINTEXT_HASH_MISMATCH:AUDIO-03');
+    expect(changed.checks.find((check) => check.id === 'X-04')?.findings).toContain('ENTRY_HASH_MISMATCH:fragments/AUDIO-03.m4a');
+    rmSync(file);
+    const removed = await receive();
+    expect(removed.checks.find((check) => check.id === 'X-06')?.findings).toContain('AUDIO_FILE_MISSING:AUDIO-03');
   });
 });

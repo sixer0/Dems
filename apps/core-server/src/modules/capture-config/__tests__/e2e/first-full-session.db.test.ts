@@ -58,6 +58,13 @@
 //   (ulimit -c 0; DEMS_FIRST_FULL_SESSION=1 /usr/bin/lockf -k -t 1800 .locks/db-migrate.lock /usr/bin/lockf -k -t 1800 .locks/heavy-host.lock \
 //     npx vitest run --root apps/core-server --project db --maxWorkers=2 src/modules/capture-config/__tests__/e2e/first-full-session.db.test.ts)
 //
+// AUDIT ROW W3G (2026-11-06; D146, F-W3TW3-T2). Block 3 assigns ALL EIGHT slots (D61): four ONVIF doubles CAM-11..14
+// (CAM-11 HEVC, the rest H.264; test cameras on 8572, 8573, 8574 and a port the system hands out) and the four inputs of
+// a four-input card double MIC-11..14. With slots 3/4 unassigned the pre-check of a Core in its own capture ends in BLOCK
+// (LENS_3, LENS_4, MIC_3, MIC_4 "source not assigned"; D62/R90-D2, D124 R147-3) and its acknowledge is 409 NO_WARNINGS -
+// reproduced on the simulator for that exact selector (record implementation/w3g_gated_e2e.md). The source rows name the
+// numbered channels; the recording has eight fragment tracks (D5: AUDIO-0N), and the manifest is /2.1.
+//
 // MUTANTS (each must turn this file RED; none is a configuration of the product): `DEMS_ROW89_MUTANT=reveal` - the
 // camera reader handed in reads the credential once more per open (a third and a fourth reveal carry the session);
 // `DEMS_ROW89_MUTANT=h264` - the HEVC test camera sends H.264. The mutant "a boot-check seam injected" is a temporary
@@ -76,6 +83,7 @@ import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
 import { afterAll, describe, expect, it } from 'vitest';
 import { useTestDatabase } from '../../../../../test/helpers/db';
+import { ingestReachOfThisProcess, openFailuresOf } from '../../../../../test/support/capture-open-causes';
 import { captureLog, unitTestConfig, type CapturedLog } from '../../../../../test/support/config';
 import { readTrail } from '../../../../../test/support/core';
 import { WEB_ORIGIN, cookieValue, webSignIn } from '../../../../../test/support/identity';
@@ -118,10 +126,20 @@ const CAMERA_SCRIPT = resolve(REPOSITORY, 'apps/capture-worker/test-fixtures/rts
 const ENTRY = join(WORKSPACE, 'src/index.ts');
 const ENTRY_HOOKS = join(WORKSPACE, 'test/support/entry-start/register.mjs');
 const HOST = '127.0.0.1';
-/** C33: test cameras bind 8565-8574; 8570 (`camera-adapter-open`) and 8571 (`adopted-camera-test`) are named elsewhere. */
-const CAMERA_PORTS = { 'CAM-11': 8572, 'CAM-12': 8573 } as const;
-/** Ports that must be free inside the locks before a session starts (decision C123): the ingest constants, the Core lanes, the consoles. */
-const MUST_BE_FREE = [8554, 8556, 4420, 4421, 4422, 4423, 5173, 5174, 5175, 5176, 5177, 5178];
+/**
+ * C33: test cameras bind 8565-8574; 8570 (`camera-adapter-open`) and 8571 (`adopted-camera-test`) are named elsewhere.
+ * Audit row W3G (D146, F-W3TW3-T2): a session needs all EIGHT slots since D61 (the pre-check BLOCKS an unassigned slot,
+ * D62/R90-D2), so four production cameras: CAM-13 takes 8574, the last free port of the range (8565-8569 are named by
+ * `stream-test`, `minted-code` and `adopted-camera-test`), and CAM-14 a port the system hands out (`--port 0`; the
+ * camera's ready line names it, and the locator is built from that line).
+ */
+const CAMERA_PORTS = { 'CAM-11': 8572, 'CAM-12': 8573, 'CAM-13': 8574, 'CAM-14': 0 } as const;
+/** The four production cameras and the four inputs of the card (row W3G, D61: four pairs). CAM-11 is the HEVC camera. */
+const PRODUCTION_CAMERAS = ['CAM-11', 'CAM-12', 'CAM-13', 'CAM-14'] as const;
+type ProductionCamera = (typeof PRODUCTION_CAMERAS)[number];
+const PRODUCTION_MICS = ['MIC-11', 'MIC-12', 'MIC-13', 'MIC-14'] as const;
+/** Ports that must be free inside the locks before a session starts (decision C123): the ingest constants (D60: 8560 and 8562 for VIDEO-03/04), the Core lanes, the consoles. */
+const MUST_BE_FREE = [8554, 8556, 8560, 8562, 4420, 4421, 4422, 4423, 5173, 5174, 5175, 5176, 5177, 5178];
 /** Synthetic installation ids of this file: not reserved, so a production Core takes them (row 228b). */
 const INSTALLATION = 'DEMS-ROW89-01';
 const ENTRY_INSTALLATION = 'DEMS-ROW89-02';
@@ -387,8 +405,8 @@ function linuxHostFacts(relayProgram: string): { readonly facts: CaptureBootHost
   return { facts: { platform, coreFileLimit, startArguments, nodeOptionsSet, run }, asked: host.asked };
 }
 
-/** One USB sound card of two inputs, in the forms of a Linux host (`/proc/asound`, `arecord -l`, the device tree). */
-const CARD = { index: 1, id: 'Duo', product: 'DEMS Row89 Duo', usbId: '1a2b:0089', port: '0000:00:14.0-2', serial: 'R89SERIAL0001', channels: 2 } as const;
+/** One USB sound card of FOUR inputs (row W3G, D61: one per microphone channel; was two), in the forms of a Linux host (`/proc/asound`, `arecord -l`, the device tree). The id keeps its earlier word. */
+const CARD = { index: 1, id: 'Duo', product: 'DEMS Row89 Duo', usbId: '1a2b:0089', port: '0000:00:14.0-2', serial: 'R89SERIAL0001', channels: 4 } as const;
 function cardListingDouble(): { readonly enumerator: CardEnumerator; readonly lists: () => number } {
   let lists = 0;
   const source: CardListingSource = {
@@ -431,24 +449,26 @@ function writeMicHelperStandIn(directory: string, ffmpeg: string): string {
 }
 
 /** The production rows of the clone, as an adoption, a stream test and a microphone registration leave them. Written by the owner. */
-async function productionRows(owner: Pool, onvifPorts: Readonly<Record<'CAM-11' | 'CAM-12', number>>): Promise<void> {
+async function productionRows(owner: Pool, onvifPorts: Readonly<Record<ProductionCamera, number>>): Promise<void> {
   const at = Date.now();
   await owner.query(
-    "INSERT INTO public.capture_devices (id, kind, transport, model, enabled, adapter_kind, address, profiles) VALUES ('CAM-11', 'CAMERA', 'RTSP', 'Row89 camera HEVC', true, 'ONVIF_RTSP', $1, '[\"HEVC_1080P25\"]'), ('CAM-12', 'CAMERA', 'RTSP', 'Row89 camera H264', true, 'ONVIF_RTSP', $2, '[\"H264_1080P25\"]'), ('MIC-11', 'MIC', 'USB', 'Row89 input 1', true, 'USB_AUDIO', NULL, '[]'), ('MIC-12', 'MIC', 'USB', 'Row89 input 2', true, 'USB_AUDIO', NULL, '[]')",
-    [`${HOST}:${onvifPorts['CAM-11']}`, `${HOST}:${onvifPorts['CAM-12']}`],
+    "INSERT INTO public.capture_devices (id, kind, transport, model, enabled, adapter_kind, address, profiles) VALUES ('CAM-11', 'CAMERA', 'RTSP', 'Row89 camera HEVC', true, 'ONVIF_RTSP', $1, '[\"HEVC_1080P25\"]'), ('CAM-12', 'CAMERA', 'RTSP', 'Row89 camera H264', true, 'ONVIF_RTSP', $2, '[\"H264_1080P25\"]'), ('CAM-13', 'CAMERA', 'RTSP', 'Row89 camera H264 3', true, 'ONVIF_RTSP', $3, '[\"H264_1080P25\"]'), ('CAM-14', 'CAMERA', 'RTSP', 'Row89 camera H264 4', true, 'ONVIF_RTSP', $4, '[\"H264_1080P25\"]'), ('MIC-11', 'MIC', 'USB', 'Row89 input 1', true, 'USB_AUDIO', NULL, '[]'), ('MIC-12', 'MIC', 'USB', 'Row89 input 2', true, 'USB_AUDIO', NULL, '[]'), ('MIC-13', 'MIC', 'USB', 'Row89 input 3', true, 'USB_AUDIO', NULL, '[]'), ('MIC-14', 'MIC', 'USB', 'Row89 input 4', true, 'USB_AUDIO', NULL, '[]')",
+    [`${HOST}:${onvifPorts['CAM-11']}`, `${HOST}:${onvifPorts['CAM-12']}`, `${HOST}:${onvifPorts['CAM-13']}`, `${HOST}:${onvifPorts['CAM-14']}`],
   );
   await owner.query(
-    "INSERT INTO public.capture_device_streams (device_id, profile, onvif_profile_token, stream_role, codec, width, height, read_at) VALUES ('CAM-11', 'HEVC_1080P25', 'main.stream:0-a', 'MAIN', 'HEVC', 1920, 1080, $1), ('CAM-12', 'H264_1080P25', 'main.stream:0-a', 'MAIN', 'H264', 1920, 1080, $1)",
+    "INSERT INTO public.capture_device_streams (device_id, profile, onvif_profile_token, stream_role, codec, width, height, read_at) VALUES ('CAM-11', 'HEVC_1080P25', 'main.stream:0-a', 'MAIN', 'HEVC', 1920, 1080, $1), ('CAM-12', 'H264_1080P25', 'main.stream:0-a', 'MAIN', 'H264', 1920, 1080, $1), ('CAM-13', 'H264_1080P25', 'main.stream:0-a', 'MAIN', 'H264', 1920, 1080, $1), ('CAM-14', 'H264_1080P25', 'main.stream:0-a', 'MAIN', 'H264', 1920, 1080, $1)",
     [at],
   );
   await owner.query(
-    'INSERT INTO public.capture_audio_inputs (device_id, usb_id, card_id, card_device, input_number, native_channels, updated_at, usb_serial, usb_port) VALUES ($1, $3, $4, 0, 1, $5, $2, $6, $7), ($8, $3, $4, 0, 2, $5, $2, $6, $7)',
-    ['MIC-11', at, CARD.usbId, CARD.id, CARD.channels, CARD.serial, CARD.port, 'MIC-12'],
+    'INSERT INTO public.capture_audio_inputs (device_id, usb_id, card_id, card_device, input_number, native_channels, updated_at, usb_serial, usb_port) VALUES ($1, $3, $4, 0, 1, $5, $2, $6, $7), ($8, $3, $4, 0, 2, $5, $2, $6, $7), ($9, $3, $4, 0, 3, $5, $2, $6, $7), ($10, $3, $4, 0, 4, $5, $2, $6, $7)',
+    ['MIC-11', at, CARD.usbId, CARD.id, CARD.channels, CARD.serial, CARD.port, 'MIC-12', 'MIC-13', 'MIC-14'],
   );
-  // D60 / D61 (2026-11-04): the selector names EIGHT slots. The two production cameras and the two
-  // production microphones take the first tracks and the first channels; the remaining slots are
-  // left UNASSIGNED (category 1 of the fence), never the seed's development built-ins.
-  await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-11', video_01_profile = 'HEVC_1080P25', video_02_device_id = 'CAM-12', video_02_profile = 'H264_1080P25', video_03_device_id = NULL, video_03_profile = NULL, video_04_device_id = NULL, video_04_profile = NULL, mic_01_id = 'MIC-11', mic_02_id = 'MIC-12', mic_03_id = NULL, mic_04_id = NULL");
+  // D60 / D61 (2026-11-04): the selector names EIGHT slots. Row W3G (D146, F-W3TW3-T2): ALL EIGHT are assigned to
+  // production sources - the four cameras on VIDEO-01..04 and the card's four inputs on MIC-01..04 - because a Core in
+  // its own capture BLOCKS the pre-check on an unassigned slot (LENS_3/LENS_4/MIC_3/MIC_4 NOT_ASSIGNED; D62/R90-D2,
+  // D124 R147-3), so the 2+2 selector of before ended the pre-check in BLOCK and its acknowledge in 409 NO_WARNINGS.
+  // Never the seed's development built-ins (one class per session).
+  await owner.query("UPDATE public.capture_config SET video_01_device_id = 'CAM-11', video_01_profile = 'HEVC_1080P25', video_02_device_id = 'CAM-12', video_02_profile = 'H264_1080P25', video_03_device_id = 'CAM-13', video_03_profile = 'H264_1080P25', video_04_device_id = 'CAM-14', video_04_profile = 'H264_1080P25', mic_01_id = 'MIC-11', mic_02_id = 'MIC-12', mic_03_id = 'MIC-13', mic_04_id = 'MIC-14'");
   await owner.query('UPDATE public.stt_config SET enabled = false');
 }
 
@@ -556,7 +576,7 @@ async function composedCore(
   return { app, log, parts, close, refused: null, hostAsked: host.asked };
 }
 
-describe.skipIf(!ASKED)('row 89 / AD-08: the first full session on doubles - REAL_PRODUCTION on linux facts, four production sources, one HEVC, sealed and verified, no seam', () => {
+describe.skipIf(!ASKED)('row 89 / AD-08: the first full session on doubles - REAL_PRODUCTION on linux facts, eight production sources (D61), one HEVC, sealed and verified, no seam', () => {
   /** What the gate condition counts; filled by the cases in order. */
   const facts: Record<string, unknown> = {};
   const cleanups: (() => Promise<void> | void)[] = [];
@@ -575,10 +595,10 @@ describe.skipIf(!ASKED)('row 89 / AD-08: the first full session on doubles - REA
   let target: Clone;
   let owner: Pool;
   let core: (ComposedCore & { readonly refused: readonly [string, unknown, unknown] | null }) | null = null;
-  const onvif: Partial<Record<'CAM-11' | 'CAM-12', OddOnvifDevice>> = {};
+  const onvif: Partial<Record<ProductionCamera, OddOnvifDevice>> = {};
   const cameras: ChildProcessWithoutNullStreams[] = [];
   const cameraLogs: string[] = [];
-  const locator: Partial<Record<'CAM-11' | 'CAM-12', string>> = {};
+  const locator: Partial<Record<ProductionCamera, string>> = {};
   const cards = cardListingDouble();
 
   it('the real boot checks BITE on the same clone (the seed\'s operators refused; a development key refused), then pass by real means with the made production key and the operators\' own passwords, on linux facts', async () => {
@@ -598,8 +618,8 @@ describe.skipIf(!ASKED)('row 89 / AD-08: the first full session on doubles - REA
     const helper = writeMicHelperStandIn(key.programsDir, realpathSync(ffmpeg));
     const programs: Partial<ConfigInput> = { captureWorkerPath: WORKER, captureRelayPath: RELAY, captureGuardPath: GUARD, captureAudioHelperPath: helper };
 
-    // The doubles of the two cameras: ONVIF devices on ports the system hands out, test cameras on 8572 / 8573.
-    for (const deviceId of ['CAM-11', 'CAM-12'] as const) {
+    // The doubles of the four cameras (row W3G: was two): ONVIF devices on ports the system hands out, test cameras on 8572 / 8573 / 8574 and one the system hands out.
+    for (const deviceId of PRODUCTION_CAMERAS) {
       const port = await freeOddDevicePort();
       const device = createOddOnvifDevice(port, (request) => {
         if (request.operation === 'GetSystemDateAndTime') return dateAnswer();
@@ -611,7 +631,7 @@ describe.skipIf(!ASKED)('row 89 / AD-08: the first full session on doubles - REA
       onvif[deviceId] = device;
       cleanups.push(() => device.stop());
     }
-    for (const deviceId of ['CAM-11', 'CAM-12'] as const) {
+    for (const deviceId of PRODUCTION_CAMERAS) {
       const codec = deviceId === 'CAM-11' && MUTANT !== 'h264' ? 'hevc' : 'h264';
       const eventLog = join(fixture.dataDir, `${deviceId}.camera.jsonl`);
       cameraLogs.push(eventLog);
@@ -641,14 +661,18 @@ describe.skipIf(!ASKED)('row 89 / AD-08: the first full session on doubles - REA
           }
         });
       });
-      locator[deviceId] = `${SCHEME}://${HOST}:${CAMERA_PORTS[deviceId]}${String(ready['path'])}`;
+      // Row W3G: the port the camera BOUND, from its ready line (CAM-14 asks for port 0); the fixed ones are checked to be the asked ones.
+      const boundPort = Number(ready['port']);
+      if (CAMERA_PORTS[deviceId] !== 0) expect(boundPort).toBe(CAMERA_PORTS[deviceId]);
+      expect(MUST_BE_FREE).not.toContain(boundPort);
+      locator[deviceId] = `${SCHEME}://${HOST}:${boundPort}${String(ready['path'])}`;
     }
 
     target = await db.another({ template: 'seed', slug: 'r89_session' });
     owner = target.ownerPool();
     expect(target.runtime.database).not.toBe('dems_demo');
     expect(target.runtime.database).toMatch(/^dems_test_/);
-    await productionRows(owner, { 'CAM-11': onvif['CAM-11']?.port ?? 0, 'CAM-12': onvif['CAM-12']?.port ?? 0 });
+    await productionRows(owner, { 'CAM-11': onvif['CAM-11']?.port ?? 0, 'CAM-12': onvif['CAM-12']?.port ?? 0, 'CAM-13': onvif['CAM-13']?.port ?? 0, 'CAM-14': onvif['CAM-14']?.port ?? 0 });
 
     // (i) THE SEED'S OPERATORS (the published demonstration password): REFUSED by check 4c, from the stored hashes - no seam answers it.
     const seeded = await composedCore(target, fixture, programs, { cards: cards.enumerator });
@@ -678,24 +702,31 @@ describe.skipIf(!ASKED)('row 89 / AD-08: the first full session on doubles - REA
     // The registry of the lift: both production kinds with an opener; the four selected sources are of them.
     const registry = captureFenceControl(app).registry();
     expect(registry?.openerKinds()).toEqual(expect.arrayContaining(['ONVIF_RTSP', 'USB_AUDIO']));
-    expect(['CAM-11', 'CAM-12', 'MIC-11', 'MIC-12'].map((id) => `${id} ${registry?.describe(id).adapterKind} ${registry?.describe(id).sourceClass}`)).toEqual(['CAM-11 ONVIF_RTSP PRODUCTION', 'CAM-12 ONVIF_RTSP PRODUCTION', 'MIC-11 USB_AUDIO PRODUCTION', 'MIC-12 USB_AUDIO PRODUCTION']);
+    expect([...PRODUCTION_CAMERAS, ...PRODUCTION_MICS].map((id) => `${id} ${registry?.describe(id).adapterKind} ${registry?.describe(id).sourceClass}`)).toEqual([
+      ...PRODUCTION_CAMERAS.map((id) => `${id} ONVIF_RTSP PRODUCTION`),
+      ...PRODUCTION_MICS.map((id) => `${id} USB_AUDIO PRODUCTION`),
+    ]);
     expect(booted.parts).toHaveLength(1);
     expect(booted.parts[0]?.platform).toBe('linux');
     // The credentials of the two cameras: the test camera's synthetic account, sealed into THIS Core's store (the fixture's temporary directory).
     const opened = coreCredentialStore(app);
     if (opened.status !== 'READY') throw new Error(`the credential store is ${opened.status}`);
-    for (const deviceId of ['CAM-11', 'CAM-12']) {
+    for (const deviceId of PRODUCTION_CAMERAS) {
       const sealed = await opened.store.capture.seal(deviceId, ACCOUNT.secret);
       await app.db.pool.query(INSERT_CAPTURE_CREDENTIAL, [deviceId, ACCOUNT.username, Buffer.from(sealed.ciphertext), Buffer.from(sealed.nonce), sealed.keyRef, Date.now()]);
     }
     facts['bootChecks'] = { seededOperators: 'REFUSED', developmentKey: 'REFUSED', productionKey: 'PASSED', seamInjected: false, hostPlatform: 'linux' };
   }, 420_000);
 
-  it('ONE session through the product: started, durable, stopped, SEALED and VERIFIED; four PRODUCTION source rows; ONE HEVC track; 2 reveals carry the session; 1 authenticated GetStreamUri per camera', async () => {
+  it('ONE session through the product: started, durable, stopped, SEALED and VERIFIED; eight PRODUCTION source rows (D61); /2.1 with four pair audio files (D5); ONE HEVC track; 4 reveals carry the session; 1 authenticated GetStreamUri per camera', async () => {
     if (core === null) throw new Error('the Core of the previous case did not boot');
     const app = core.app;
     const log = core.log;
     const codes = (): string[] => log.lines().map((line) => String(line['code'] ?? '')).filter((code) => code !== '');
+    // Row C1D (D149): a failure of the opens also prints the RECORDED cause of every source that did not open (this run's error log)
+    // and whether this process - so every relay and helper it starts - may reach the camera ingest ports on the loopback at all
+    // (read before the session; nothing is asserted on it).
+    const ingestReach = await ingestReachOfThisProcess();
     const events: SessionCaptureEvent[] = [];
     sessionCapture(app).on((event) => void events.push(event));
     const sealedBefore = Number((await owner.query<{ n: string }>("SELECT count(*)::text AS n FROM public.evidence_items WHERE status = 'SEALED'")).rows[0]?.n);
@@ -724,15 +755,20 @@ describe.skipIf(!ASKED)('row 89 / AD-08: the first full session on doubles - REA
     const started = await post(`/api/v1/session/${sessionId}/start`);
     expect(started.statusCode, started.body).toBe(200);
     expect(sessionOf()).toMatchObject({ state: 'RECORDING' });
+    // D61 (row W3G): eight rows, the channels by number (the role slots MIC-PRIMARY / MIC-STANDBY became MIC-01 / MIC-02 in 0040).
     expect((await owner.query<{ slot: string; device_id: string; adapter_kind: string }>('SELECT slot, device_id, adapter_kind FROM public.session_capture_sources WHERE session_id = $1 ORDER BY slot', [sessionId])).rows.map((row) => [row.slot, row.device_id, row.adapter_kind])).toEqual([
-      ['MIC-PRIMARY', 'MIC-11', 'USB_AUDIO'],
-      ['MIC-STANDBY', 'MIC-12', 'USB_AUDIO'],
+      ['MIC-01', 'MIC-11', 'USB_AUDIO'],
+      ['MIC-02', 'MIC-12', 'USB_AUDIO'],
+      ['MIC-03', 'MIC-13', 'USB_AUDIO'],
+      ['MIC-04', 'MIC-14', 'USB_AUDIO'],
       ['VIDEO-01', 'CAM-11', 'ONVIF_RTSP'],
       ['VIDEO-02', 'CAM-12', 'ONVIF_RTSP'],
+      ['VIDEO-03', 'CAM-13', 'ONVIF_RTSP'],
+      ['VIDEO-04', 'CAM-14', 'ONVIF_RTSP'],
     ]);
     await until('the first durable fragment', 60_000, () => (sessionOf()?.captureDurable === true ? true : sessionOf()?.state !== 'RECORDING' ? Promise.reject(new Error(`the session left RECORDING: ${sessionOf()?.state} ${JSON.stringify(codes().slice(-15))}`)) : null), () => codes().slice(-15));
     await until('the capture said every source opened', 30_000, () => (events.some((event) => event.type === 'STARTED' || event.type === 'FAILED_START') ? true : null), () => codes().slice(-15));
-    expect(events.find((event) => event.type === 'STARTED'), JSON.stringify(events)).toMatchObject({ camerasNotOpened: [] });
+    expect(events.find((event) => event.type === 'STARTED'), JSON.stringify({ events, opens: openFailuresOf(app.errorLog.file), ingestReach })).toMatchObject({ camerasNotOpened: [] });
     await sleep(RECORD_SECONDS * 1_000);
     const whileRecording = {
       relays: commandLinesWith(RELAY).length,
@@ -741,7 +777,8 @@ describe.skipIf(!ASKED)('row 89 / AD-08: the first full session on doubles - REA
       faults: app.engine.state().faults.active.map((fault) => `${fault.kind}@${String(fault.target)}`),
     };
     const fragments = (await owner.query<{ track_id: string; n: string }>('SELECT track_id, count(*)::text AS n FROM public.recording_fragments WHERE session_id = $1 GROUP BY track_id ORDER BY track_id', [sessionId])).rows.map((row) => `${row.track_id}:${row.n}`);
-    expect(fragments, JSON.stringify(whileRecording)).toHaveLength(2);
+    // D61 + D5 (row W3G): the four camera files and the four pair audio files (AUDIO-0N rows, row 148).
+    expect(fragments.map((entry) => entry.split(':')[0]), JSON.stringify(whileRecording)).toEqual(['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04', 'VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04']);
 
     const stopped = await post(`/api/v1/session/${sessionId}/stop`, { reason: 'Interview complete' });
     expect(stopped.statusCode, stopped.body).toBe(202);
@@ -758,18 +795,22 @@ describe.skipIf(!ASKED)('row 89 / AD-08: the first full session on doubles - REA
     const body = verified.json() as { ok: boolean; overall: string; sources: { code: string; development: boolean | null; tracks: { deviceId: string; sourceClass: string }[]; audioIntervals: { micDeviceId: string; sourceClass: string }[] } };
     expect(body).toMatchObject({ ok: true, overall: 'PASS' });
     expect(body.sources.development).not.toBe(true);
-    expect(body.sources.tracks.map((track) => `${track.deviceId} ${track.sourceClass}`)).toEqual(['CAM-11 PRODUCTION', 'CAM-12 PRODUCTION']);
+    expect(body.sources.tracks.map((track) => `${track.deviceId} ${track.sourceClass}`)).toEqual(PRODUCTION_CAMERAS.map((id) => `${id} PRODUCTION`));
     expect(body.sources.audioIntervals.length).toBeGreaterThanOrEqual(1);
     expect(body.sources.audioIntervals.every((interval) => interval.sourceClass === 'PRODUCTION')).toBe(true);
     // The codec of each camera file, as the SIGNED manifest states it (field 43: read from the file's own init segment).
-    const manifest = JSON.parse(readFileSync(join(sessionPackageDir(app.config.mediaStoreDir, sessionId), 'session-manifest.json'), 'utf8')) as { tracks: { deviceId: string; codec: string | null; sourceClass: string }[] };
+    const manifest = JSON.parse(readFileSync(join(sessionPackageDir(app.config.mediaStoreDir, sessionId), 'session-manifest.json'), 'utf8')) as { schema: string; tracks: { deviceId: string; codec: string | null; sourceClass: string }[]; audioTracks?: { trackId: string; micDeviceId: string; sourceClass: string }[]; audioTracksMissing?: unknown[] };
     const codecs = manifest.tracks.map((track) => `${track.deviceId} ${String(track.codec)}`);
+    // D5 (row W3G): a production session of four pairs seals /2.1 with the four pair audio files, all PRODUCTION, nothing stated missing.
+    expect(manifest.schema).toBe('dems.evidence-manifest/2.1');
+    expect((manifest.audioTracks ?? []).map((track) => `${track.trackId} ${track.micDeviceId} ${track.sourceClass}`)).toEqual(PRODUCTION_MICS.map((id, index) => `AUDIO-0${index + 1} ${id} PRODUCTION`));
+    expect(manifest.audioTracksMissing).toBeUndefined();
 
     // THE GATE COUNTS (AD-08): sessions sealed and verified, HEVC tracks, reveals carrying the session, authenticated GetStreamUri per camera.
     const sealedAfter = Number((await owner.query<{ n: string }>("SELECT count(*)::text AS n FROM public.evidence_items WHERE status = 'SEALED'")).rows[0]?.n);
     const reveals = (await readTrail(owner)).filter((row: AuditRow) => row.type === 'CAPTURE_CREDENTIAL_REVEALED');
     const revealsOfSession = reveals.filter((row) => row.sessionId === sessionId);
-    const streamUris = Object.fromEntries((['CAM-11', 'CAM-12'] as const).map((deviceId) => [deviceId, (onvif[deviceId]?.requests() ?? []).filter((request) => request.operation === 'GetStreamUri' && (request.token || request.authorization !== '')).length]));
+    const streamUris = Object.fromEntries(PRODUCTION_CAMERAS.map((deviceId) => [deviceId, (onvif[deviceId]?.requests() ?? []).filter((request) => request.operation === 'GetStreamUri' && (request.token || request.authorization !== '')).length]));
     Object.assign(facts, {
       sessionId,
       sealedAndVerified: (sealedAfter - sealedBefore === 1 && body.ok && body.overall === 'PASS' ? 1 : 0),
@@ -785,11 +826,12 @@ describe.skipIf(!ASKED)('row 89 / AD-08: the first full session on doubles - REA
     });
     console.info(`[row89] ${JSON.stringify(facts)}`);
     expect(sealedAfter - sealedBefore).toBe(1);
-    expect(codecs.sort()).toEqual(['CAM-11 HEVC', 'CAM-12 H264']);
+    // Row W3G (D61): four cameras - still ONE HEVC (CAM-11), one reveal and one authenticated GetStreamUri per camera.
+    expect(codecs.sort()).toEqual(['CAM-11 HEVC', 'CAM-12 H264', 'CAM-13 H264', 'CAM-14 H264']);
     expect(manifest.tracks.filter((track) => track.codec === 'HEVC')).toHaveLength(1);
-    expect(revealsOfSession.map((row) => `${String(row.deviceId)} ${String((row.details as { reason?: unknown } | null)?.reason)}`).sort()).toEqual(['CAM-11 SESSION_OPEN', 'CAM-12 SESSION_OPEN']);
-    expect(revealsOfSession).toHaveLength(2);
-    expect(streamUris).toEqual({ 'CAM-11': 1, 'CAM-12': 1 });
+    expect(revealsOfSession.map((row) => `${String(row.deviceId)} ${String((row.details as { reason?: unknown } | null)?.reason)}`).sort()).toEqual(PRODUCTION_CAMERAS.map((id) => `${id} SESSION_OPEN`));
+    expect(revealsOfSession).toHaveLength(PRODUCTION_CAMERAS.length);
+    expect(streamUris).toEqual({ 'CAM-11': 1, 'CAM-12': 1, 'CAM-13': 1, 'CAM-14': 1 });
   }, 600_000);
 
   it('NOTHING IS LEFT BEHIND: no relay, guard, helper, worker or camera of this file runs; the key and the data directory do not exist; the clone is not the demo database', async () => {

@@ -66,7 +66,7 @@ import { isSessionActive } from '@dems/shared/sim';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { storedCameraAddressRuleOf, type CaptureNetworkFactsReader } from '../../capture/fence';
-import { readdressCaptureDeviceIn } from '../../engine';
+import { noteCaptureDeviceReachIn, readdressCaptureDeviceIn } from '../../engine';
 import { notSignedIn } from '../../plugins/authenticate';
 import { ApiFailure } from '../../plugins/error-envelope';
 import { routeOfOperation } from '../../plugins/permission-guard';
@@ -214,6 +214,11 @@ export interface CaptureReaddressRouteSeams {
 /** THE ENGINE'S DOOR (row 196), as the seam of `readdress.ts` takes it. The instant is not stored: no member of the registry holds one. */
 export const engineDeviceReaddresser: DeviceReaddresser = async (scope, change) => {
   await readdressCaptureDeviceIn(scope, { deviceId: change.deviceId, address: change.address });
+  // Audit row M97 cycle 2 (D123, RD-M97-3): a reach reading was taken at the OLD address and must not gate the automatic
+  // preview at the new one. Nothing is sent to the new address, so the reach is CLEARED ("not checked"), never stated
+  // REACHABLE - in this same unit, through row 127's door. The door is reached only on a real change (ADDRESS_UNCHANGED
+  // is refused before it, `readdress.ts`); an entry that states no reach gives the same state (nothing published).
+  await noteCaptureDeviceReachIn(scope, { deviceId: change.deviceId, reach: null, checkedAt: null });
 };
 
 /** Registers operation 100 on the app. Called once, by the module's plugin. */

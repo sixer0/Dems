@@ -18,12 +18,12 @@ import { createHash } from 'node:crypto';
 import { appendFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EXAMPLE_SOURCE_ROWS, FRAGMENT_CHAIN_GENESIS, cameraFilePath, exampleManifestInput, nextFragmentChainHash, packageFolderName, type SessionCaptureSourceRow } from '@dems/shared/evidence-package';
+import { EXAMPLE_SOURCE_ROWS, FRAGMENT_CHAIN_GENESIS, audioFilePath, cameraFilePath, exampleManifestInput, nextFragmentChainHash, packageFolderName, type SessionCaptureSourceRow } from '@dems/shared/evidence-package';
 import type { FragmentOpener, VerifyExpectations } from '@dems/shared/evidence-verify';
 import type { CompleteSealInput, SealingProgressInput } from '@dems/shared/sim';
 import { createMemoryChunkMirror } from '@dems/transcriber';
 import { createCredentialStore, createFragmentSealer, openFragment, type CoreCredentialStore } from '../../credential-store';
-import type { RecordingFragment, VideoTrackId } from '../../modules/recording-fragments';
+import type { AnyRecordingFragment, AudioFragmentTrackId, RecordingFragment, VideoTrackId } from '../../modules/recording-fragments';
 import {
   createSealingPipeline,
   createTranscriptFileReader,
@@ -42,6 +42,9 @@ import { throwAwaySigner } from './package-support';
 import { manualClock, memoryErrorLog, memoryJournal, snapshotOf, type ManualClock } from './support';
 
 export const TRACKS = ['VIDEO-01', 'VIDEO-02'] as const satisfies readonly VideoTrackId[];
+/** Audit row 153 (D5): the four camera tracks and the four pair audio tracks of a 4+4 session. */
+export const FOUR_TRACKS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const satisfies readonly VideoTrackId[];
+export const AUDIO_TRACKS = ['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04'] as const satisfies readonly AudioFragmentTrackId[];
 export const sha256Hex = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
 export const CLOCK_START = 1_791_529_000_000;
 
@@ -63,6 +66,12 @@ const trak = (id: number, timescale: number, handler: string): Buffer =>
 const INIT = Buffer.concat([box('ftyp', Buffer.from('isom', 'ascii'), u32(512), Buffer.from('isomiso6mp41', 'ascii')), box('moov', box('mvhd', zeros(100)), trak(1, 90_000, 'vide'), box('mvex', box('trex', u32(0), u32(1), u32(1), u32(1_800), u32(0), u32(0x0101_0000))))]);
 /** 100 frames of 1,800 ticks from `(seq - 1) * 2 s`, first sample a sync sample: 2 s of video per fragment. */
 const videoTraf = (seq: number): Buffer => box('traf', box('tfhd', u32(0x02_0000), u32(1)), box('tfdt', u32(0x0100_0000), u64((seq - 1) * 180_000)), box('trun', u32(0x00_0205), u32(100), u32(0), u32(0x0200_0000), ...Array.from({ length: 100 }, () => u32(30))));
+/** Row 153 (D5): the init segment of a microphone channel file `MIC-0N.m4a`: one SOUND track at 48 kHz, 960 ticks a sample. */
+const AUDIO_INIT = Buffer.concat([box('ftyp', Buffer.from('M4A ', 'ascii'), u32(512), Buffer.from('isomiso6mp41', 'ascii')), box('moov', box('mvhd', zeros(100)), trak(1, 48_000, 'soun'), box('mvex', box('trex', u32(0), u32(1), u32(1), u32(960), u32(0), u32(0))))]);
+/** 100 audio samples of 960 ticks from `(seq - 1) * 2 s`: 2 s of sound per fragment, no keyframe (no video). */
+const audioTraf = (seq: number): Buffer => box('traf', box('tfhd', u32(0x02_0000), u32(1)), box('tfdt', u32(0x0100_0000), u64((seq - 1) * 96_000)), box('trun', u32(0x00_0205), u32(100), u32(0), u32(0), ...Array.from({ length: 100 }, () => u32(12))));
+/** One fragment of a channel file BEFORE the cipher. */
+export const plainAudioFragment = (channel: number, seq: number): Buffer => Buffer.concat([box('moof', box('mfhd', u32(0), u32(seq)), audioTraf(seq)), box('mdat', fill(1_200 + seq * 53 + channel * 7, seq * 5 + channel))]);
 /** One fragment BEFORE the cipher: a `moof` with its `mfhd` and its video run, and its `mdat`. */
 export const plainFragment = (track: number, seq: number): Buffer => Buffer.concat([box('moof', box('mfhd', u32(0), u32(seq)), videoTraf(seq)), box('mdat', fill(3_000 + seq * 137 + track * 11, seq * 3 + track))]);
 
@@ -80,6 +89,17 @@ export interface RecordingOptions {
   readonly sessionId?: string;
   /** Fragments per camera file (default 5). */
   readonly fragments?: number;
+  /** Row 153 (D5): the camera tracks recorded (default the two of `TRACKS`). */
+  readonly cameras?: readonly VideoTrackId[];
+  /** Row 153 (D5): the pair microphones that recorded their channel file `MIC-0N.m4a` with its `AUDIO-0N` rows (default none). */
+  readonly audio?: readonly AudioFragmentTrackId[];
+}
+
+/** Row 153 (D5): one recorded microphone channel file and its `AUDIO-0N` fragment rows. */
+export interface AudioOnDisk {
+  readonly trackId: AudioFragmentTrackId;
+  readonly plain: readonly Buffer[];
+  readonly rows: RecordingFragment<AudioFragmentTrackId>[];
 }
 
 export interface TrackOnDisk {
@@ -99,6 +119,13 @@ export interface Recording {
   readonly opener: FragmentOpener;
   readonly sealer: SessionFragmentSealer;
   readonly tracks: Record<VideoTrackId, TrackOnDisk>;
+  /** Row 153 (D5): the pair audio files recorded, by `AUDIO-0N`. */
+  readonly audio: Partial<Record<AudioFragmentTrackId, AudioOnDisk>>;
+  /** Row 153: the SEALED pair audio file (`fragments/AUDIO-0N.m4a`) and the worker's channel recording (`MIC-0N.m4a`). */
+  readonly audioFile: (trackId: AudioFragmentTrackId) => string;
+  readonly micRecordingFile: (trackId: AudioFragmentTrackId) => string;
+  /** Row 153: the rows the fake store holds for any of the eight tracks (none for a track the session lacks). */
+  rowsOf(trackId: string): AnyRecordingFragment[] | undefined;
   readonly path: (relative: string) => string;
   readonly cameraFile: (trackId: VideoTrackId) => string;
   readonly recordingFile: (trackId: VideoTrackId) => string;
@@ -110,7 +137,7 @@ export interface Recording {
 
 let sessions = 0;
 
-function recordingOver(sessionId: string, mediaDir: string, store: CoreCredentialStore, tracks: Record<VideoTrackId, TrackOnDisk>): Recording {
+function recordingOver(sessionId: string, mediaDir: string, store: CoreCredentialStore, tracks: Record<VideoTrackId, TrackOnDisk>, audio: Partial<Record<AudioFragmentTrackId, AudioOnDisk>> = {}): Recording {
   const packageDir = join(mediaDir, packageFolderName(sessionId));
   // The SEALED camera file of the package (`fragments/VIDEO-0n.mp4`), and the worker's RECORDING
   // file beside the package (`VIDEO-0n.mp4`), which the last step removes.
@@ -149,6 +176,10 @@ function recordingOver(sessionId: string, mediaDir: string, store: CoreCredentia
     opener,
     sealer,
     tracks,
+    audio,
+    audioFile: (trackId) => join(packageDir, ...audioFilePath(trackId).split('/')),
+    micRecordingFile: (trackId) => join(packageDir, `MIC-0${trackId.slice(-1)}.m4a`),
+    rowsOf: (trackId) => (tracks as Partial<Record<string, TrackOnDisk>>)[trackId]?.rows ?? (audio as Partial<Record<string, AudioOnDisk>>)[trackId]?.rows,
     path: (relative) => join(packageDir, ...relative.split('/')),
     cameraFile,
     recordingFile,
@@ -156,8 +187,9 @@ function recordingOver(sessionId: string, mediaDir: string, store: CoreCredentia
     clone() {
       const copy = join(scratch('clone'), 'media');
       cpSync(mediaDir, copy, { recursive: true });
-      const copied = Object.fromEntries(TRACKS.map((trackId) => [trackId, { ...tracks[trackId], rows: tracks[trackId].rows.map((row) => ({ ...row })) }])) as Record<VideoTrackId, TrackOnDisk>;
-      return recordingOver(sessionId, copy, store, copied);
+      const copied = Object.fromEntries(Object.entries(tracks).map(([trackId, track]) => [trackId, { ...track, rows: track.rows.map((row) => ({ ...row })) }])) as Record<VideoTrackId, TrackOnDisk>;
+      const copiedAudio = Object.fromEntries(Object.entries(audio).map(([trackId, track]) => [trackId, { ...track, rows: track.rows.map((row) => ({ ...row })) }])) as Partial<Record<AudioFragmentTrackId, AudioOnDisk>>;
+      return recordingOver(sessionId, copy, store, copied, copiedAudio);
     },
   };
 }
@@ -169,7 +201,7 @@ export function recordSession(options: RecordingOptions = {}): Recording {
   const mediaDir = join(root, 'media');
   const store = createCredentialStore({ root: join(root, 'credential-store') });
   const tracks = {} as Record<VideoTrackId, TrackOnDisk>;
-  for (const [index, trackId] of TRACKS.entries()) {
+  for (const [index, trackId] of (options.cameras ?? TRACKS).entries()) {
     const stored: Buffer[] = [INIT];
     const plain: Buffer[] = [];
     const rows: RecordingFragment[] = [];
@@ -189,7 +221,30 @@ export function recordSession(options: RecordingOptions = {}): Recording {
     mkdirSync(join(file, '..'), { recursive: true });
     writeFileSync(file, Buffer.concat(stored));
   }
-  return recordingOver(sessionId, mediaDir, store, tracks);
+  // Row 153 (D5): each recorded pair microphone writes `MIC-0N.m4a` beside the package, with its `AUDIO-0N` rows (0044).
+  const audio: Partial<Record<AudioFragmentTrackId, AudioOnDisk>> = {};
+  for (const trackId of options.audio ?? []) {
+    const channel = Number(trackId.slice(-1));
+    const stored: Buffer[] = [AUDIO_INIT];
+    const plain: Buffer[] = [];
+    const rows: RecordingFragment<AudioFragmentTrackId>[] = [];
+    let offset = AUDIO_INIT.length;
+    let chain = FRAGMENT_CHAIN_GENESIS;
+    for (let seq = 1; seq <= (options.fragments ?? 5); seq += 1) {
+      const fragment = plainAudioFragment(channel, seq);
+      const sha256 = sha256Hex(fragment);
+      chain = nextFragmentChainHash(chain, sha256);
+      rows.push({ sessionId, trackId, seq, byteOffset: offset, byteLength: fragment.length, mediaStartMs: (seq - 1) * 2_000, mediaDurationMs: 2_000, sha256, chainHash: chain, durableAt: CLOCK_START - 60_000 + seq * 2_000 });
+      stored.push(fragment);
+      plain.push(fragment);
+      offset += fragment.length;
+    }
+    audio[trackId] = { trackId, plain, rows };
+    const file = join(mediaDir, packageFolderName(sessionId), `MIC-0${String(channel)}.m4a`);
+    mkdirSync(join(file, '..'), { recursive: true });
+    writeFileSync(file, Buffer.concat(stored));
+  }
+  return recordingOver(sessionId, mediaDir, store, tracks, audio);
 }
 
 /** The session record of the example manifest, for that session: every source is FAKE. */
@@ -222,6 +277,28 @@ export function sessionFacts(sessionId: string, overrides: Partial<SealSessionFa
     sourceRows: EXAMPLE_SOURCE_ROWS as readonly SessionCaptureSourceRow[],
     sttSnapshot: snapshotOf({ enabled: false }),
     auditExtract: Buffer.from(`{"type":"SESSION_CREATED","sessionId":"${sessionId}"}\n{"type":"RECORDING_STARTED","sessionId":"${sessionId}"}\n`, 'utf8'),
+    ...overrides,
+  };
+}
+
+/**
+ * Row 153 (D5): the session record of a PAIRED session - `cameras` camera tracks (VIDEO-01..0N, FAKE CAM-0N), the
+ * microphone start rows of `mics` (MIC-0N on channel MIC-0N, FAKE), one MIC-01 START interval (S5 rule 5).
+ */
+export function pairedSessionFacts(sessionId: string, options: { readonly cameras: readonly VideoTrackId[]; readonly mics: readonly ('MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04')[] }, overrides: Partial<SealSessionFacts> = {}): SealSessionFacts {
+  const base = sessionFacts(sessionId);
+  const template = base.tracks[0]!;
+  const tracks = options.cameras.map((trackId, index) => ({ ...(base.tracks[index] ?? template), trackId, deviceId: `CAM-0${String(index + 1)}` }));
+  const sourceRows: SessionCaptureSourceRow[] = [
+    ...options.cameras.map((trackId, index) => ({ slot: trackId, deviceId: `CAM-0${String(index + 1)}`, adapterKind: 'FAKE' })),
+    ...options.mics.map((slot) => ({ slot, deviceId: slot, adapterKind: 'FAKE' })),
+  ];
+  const first = options.mics.includes('MIC-01') ? 'MIC-01' : null;
+  return {
+    ...base,
+    tracks,
+    sourceRows,
+    audioIntervals: first === null ? [] : [{ seq: 1, micDeviceId: first, role: 'PRIMARY', fromMs: 21, toMs: null, reason: 'START', switchedBy: null }],
     ...overrides,
   };
 }
@@ -308,11 +385,12 @@ export function harnessOf(recording: Recording, options: HarnessOptions = {}): H
     journal,
     fragments: {
       // D60 (2026-11-04): the pipeline's first-run probe (D84) reads every possible track - VIDEO-01..04 - and the row store answers NONE for a track the session does not hold; the fake says the same for a track this two-file fixture lacks.
-      read: async (_sessionId, trackId) => (recording.tracks[trackId]?.rows ?? []).map((row) => ({ ...row })),
+      // Row 153 (D118 H-2): the eight tracks of 0044 - a camera file's rows or a pair audio file's.
+      read: async (_sessionId, trackId) => (recording.rowsOf(trackId) ?? []).map((row) => ({ ...row })),
       async insertMissing(rows) {
         let inserted = 0;
         for (const row of rows) {
-          const stored = recording.tracks[row.trackId]?.rows;
+          const stored = recording.rowsOf(row.trackId);
           if (stored === undefined) throw new Error(`the fixture holds no track ${row.trackId}`);
           if (stored.some((existing) => existing.seq === row.seq)) continue;
           stored.push({ ...row });

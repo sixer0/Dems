@@ -302,6 +302,8 @@ export interface SealVideoSampleEntry {
 export interface SealCaptureFacts {
   readonly sessionId: string;
   readonly startRecordedAt: number;
+  /** Row 148 (D128, R153-1): the session was recorded under the camera-microphone pairing (protocol 6); absent: not stated. */
+  readonly pairedAudio?: boolean;
   readonly cameras: readonly {
     readonly trackId: string;
     readonly deviceId: string;
@@ -664,6 +666,10 @@ export function createSealSessionReader(options: SealSessionReaderOptions): Seal
         auditExtract,
         // C3: by TRACK and joined on the device of the START record, as every capture fact is (a report of another camera is not this file's).
         ...(cameraEnds.length === 0 ? {} : { cameraEnds }),
+        // Row 148 (D128, R153-1): a session the capture side recorded under the pairing (protocol 6) is a D5 one even when
+        // no microphone recorded (no AUDIO-0N row): the seal then states every pair. Only THIS session's facts count (above).
+        // No member otherwise: a session of before seals as before, byte for byte.
+        ...(captureFacts?.pairedAudio === true ? { pairedAudio: true } : {}),
       };
     },
   };

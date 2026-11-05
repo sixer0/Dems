@@ -39,7 +39,7 @@ import type { ManifestAudioIntervalInput, ManifestAudioRestartGap, ManifestHostP
 import { VERIFY_MAX_OPEN_FRAGMENT_BYTES, type FragmentOpener } from '@dems/shared/evidence-verify';
 import type { CompleteSealInput, SealBlockedDetail, SealingProgressInput } from '@dems/shared/sim';
 import type { Signer, SigningCertificate } from '../../capture';
-import type { RecordingFragment, VideoTrackId } from '../../modules/recording-fragments';
+import type { AnyRecordingFragment, AudioFragmentTrackId, FragmentTrackId, VideoTrackId } from '../../modules/recording-fragments';
 import type { ErrorLog } from '../../plugins/logger';
 import type { FinalizeTranscriptResult, FinalizedTranscript, SttConfigSnapshot } from '../finalize-transcript/contract';
 import type { StepTimer } from '../finalize-transcript/bounds';
@@ -358,13 +358,17 @@ export interface SealedFragmentBytes {
   readonly keyId: string;
 }
 export interface SessionFragmentSealer {
-  seal(sessionId: string, position: { readonly trackId: VideoTrackId; readonly seq: number; readonly byteOffset: number }, plaintext: Uint8Array): Promise<SealedFragmentBytes> | SealedFragmentBytes;
+  seal(sessionId: string, position: { readonly trackId: FragmentTrackId; readonly seq: number; readonly byteOffset: number }, plaintext: Uint8Array): Promise<SealedFragmentBytes> | SealedFragmentBytes;
 }
 
-/** The two calls the pipeline makes on `recording_fragments` (`createRecordingFragmentStore`). */
+/**
+ * The two calls the pipeline makes on `recording_fragments` (`createRecordingFragmentStore`). Audit row 153 (D28, D118 H-2):
+ * over the EIGHT tracks of migration 0044 - the camera files `VIDEO-0N` and the pair audio files `AUDIO-0N` (the S1
+ * cross-check of a microphone's own file). A store answers NO rows for a track the session does not hold.
+ */
 export interface FragmentRows {
-  read(sessionId: string, trackId: VideoTrackId): Promise<RecordingFragment[]>;
-  insertMissing(rows: readonly RecordingFragment[]): Promise<{ readonly inserted: number; readonly alreadyStored: number }>;
+  read(sessionId: string, trackId: FragmentTrackId): Promise<AnyRecordingFragment[]>;
+  insertMissing(rows: readonly AnyRecordingFragment[]): Promise<{ readonly inserted: number; readonly alreadyStored: number }>;
 }
 
 /**
@@ -451,6 +455,14 @@ export interface SealSessionFacts {
    * says how the SESSION ended): the other camera recorded to the stop. Absent / empty: none.
    */
   readonly cameraEnds?: readonly SealCameraEnd[];
+  /**
+   * Audit row 153 (D5; decisions D28, D30 K-3): TRUE when the reader KNOWS the session recorded under the
+   * camera-microphone pairing (capture protocol 6) even without a single `AUDIO-0N` fragment row (every
+   * microphone failed to open). Absent: the pipeline takes the session as a D5 one exactly when a
+   * fragment row of an `AUDIO-0N` track exists; a session without such a row seals the `/2` manifest of
+   * before, byte for byte.
+   */
+  readonly pairedAudio?: boolean;
 }
 
 export interface SealCameraEnd {
@@ -528,8 +540,8 @@ export interface SealingPorts {
 }
 
 /** One camera file as CLOSE_TRACKS sealed it (the checkpoint of the step). */
-export interface ClosedTrack {
-  readonly trackId: VideoTrackId;
+export interface ClosedTrack<Track extends FragmentTrackId = VideoTrackId> {
+  readonly trackId: Track;
   /** Length of the SEALED file: the durable prefix of the recording. */
   readonly bytes: number;
   readonly fragments: number;
@@ -543,7 +555,7 @@ export interface ClosedTrack {
   readonly partNamesRemoved: number;
   readonly orphansMoved: number;
   /** What the step computed while it sealed; FINALIZE_HASHES must find the same from the sealed file. */
-  readonly hashes: HashedTrack;
+  readonly hashes: HashedTrack<Track>;
   /**
    * THE FILE FAILED VALIDATION PART-WAY AND ONLY ITS DURABLE PREFIX IS SEALED (fix pass F-M7b;
    * ruling D183): the failure that ended the prefix and the number of the first fragment that is
@@ -561,16 +573,45 @@ export interface ClosedTrack {
  * that file (`CONFINED_TO_ONE_CAMERA_FILE`): the seal is INTERRUPTED and the file, when one is
  * there, goes to the quarantine after the item is committed.
  */
-export interface OmittedTrack {
-  readonly trackId: VideoTrackId;
+export interface OmittedTrack<Track extends FragmentTrackId = VideoTrackId> {
+  readonly trackId: Track;
   /** The failure code, or null for `NOT_RECORDED`. */
   readonly code: SealingFailure | null;
   readonly reason: string;
 }
 
+/**
+ * N-20 (D61, kept by D5): the worker's RECORDING of one microphone channel beside the package,
+ * `MIC-0N.m4a` (the twin of `capture-session`'s `micFileName`). It is sealed as `fragments/AUDIO-0N.m4a`
+ * of the pair of the same number (D27) and is never itself declared by the package.
+ */
+export const MIC_RECORDING_FILE_NAMES = ['MIC-01.m4a', 'MIC-02.m4a', 'MIC-03.m4a', 'MIC-04.m4a'] as const;
+export const micRecordingFileName = (channel: 'MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04'): string => `${channel}.m4a`;
+
+/** A pair whose microphone recorded NO file (D30 K-3): stated under the signature as `audioTracksMissing`. */
+export interface ClosedAudioMissing {
+  readonly trackId: AudioFragmentTrackId;
+  /** The registry id of the start row of the channel; null exactly for `NOT_ASSIGNED`. */
+  readonly micDeviceId: string | null;
+  readonly reason: 'NOT_ASSIGNED' | 'NOT_OPENED';
+}
+
+/**
+ * THE PAIR AUDIO FILES of a D5 session as CLOSE_TRACKS left them (audit row 153; spec S5 §5.3). Absent in
+ * the checkpoint of a session sealed under the `/2` manifest (every session before D5): then nothing of
+ * the seal names an audio file. `tracks`: the sealed `AUDIO-0N` files (the S1 cross-check of each
+ * against its own fragment rows, as a camera file); `omitted`: a file that failed a check confined to it
+ * (the seal is then INTERRUPTED and the recording goes to the quarantine); `missing`: the statement.
+ */
+export interface ClosedAudio {
+  readonly tracks: readonly ClosedTrack<AudioFragmentTrackId>[];
+  readonly omitted: readonly OmittedTrack<AudioFragmentTrackId>[];
+  readonly missing: readonly ClosedAudioMissing[];
+}
+
 /** One camera file as FINALIZE_HASHES found it (the checkpoint of the step; manifest fields 44-50). */
-export interface HashedTrack {
-  readonly trackId: VideoTrackId;
+export interface HashedTrack<Track extends FragmentTrackId = VideoTrackId> {
+  readonly trackId: Track;
   readonly bytes: number;
   readonly sha256: string;
   readonly sha256Plain: string;

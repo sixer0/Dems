@@ -1651,6 +1651,22 @@ describe("the Core's own fact, \"Not reported\", or nothing: hashes, verify rows
       if (notes > 0) expect(count).toContain(`${notes} for information`)
       else expect(count).not.toContain('for information')
     })
+    // Audit row 150 (D113, O-138-1 (c)): reach is memory-only; with no reading since boot an assigned, online source is
+    // "Not checked" on step 1 - never PASS - and counted beside the count. A reading (REACHABLE) makes it ready again.
+    it('row 150: /session/new step 1 says "Not checked" for every source with no reach reading since boot, and counts it', async () => {
+      const reachOf = (reach: 'REACHABLE' | null) => (sim: Sim) => sim.store.setState({ captureDevices: { ...sim.store.getState().captureDevices, devices: sim.store.getState().captureDevices.devices.map((device) => ({ ...device, reach, checkedAt: reach === null ? null : DEMO_NOW })) } })
+      mount('/session/new', 'idle', (sim) => { realCore(sim); reachOf(null)(sim) })
+      const card = await page('sn-readiness')
+      const notChecked = within(card).queryAllByTestId('sn-readiness-not-checked')
+      expect(notChecked.length).toBeGreaterThan(0)
+      for (const row of notChecked) expect(row).toHaveTextContent(enWeb.web.source.notChecked)
+      expect(within(card).getByTestId('sn-readiness-count').textContent ?? '').toContain(`${notChecked.length} not checked`)
+      cleanup()
+      mount('/session/new', 'idle', (sim) => { realCore(sim); reachOf('REACHABLE')(sim) })
+      const checked = await page('sn-readiness')
+      expect(within(checked).queryAllByTestId('sn-readiness-not-checked')).toHaveLength(0)
+      expect(within(checked).getByTestId('sn-readiness-count').textContent ?? '').not.toContain('not checked')
+    })
     it('CONTROL - the simulated lane reads "N of 12 ready" and nothing beside it', async () => {
       mount('/session/new', 'idle')
       const card = await page('sn-readiness')

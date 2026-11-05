@@ -240,50 +240,46 @@ static const char *announce_refusal_reason(const AnnounceGate *g) {
 }
 
 /* ---------------------------------------------------------------- the camera file */
-int open_encoder(Session *s) {
-    const AVCodec *codec = avcodec_find_encoder_by_name("aac");
-    if (!codec) return AVERROR_ENCODER_NOT_FOUND;
-    AVCodecContext *x = avcodec_alloc_context3(codec);
-    if (!x) return AVERROR(ENOMEM);
-    x->sample_fmt = AV_SAMPLE_FMT_FLTP;
-    x->sample_rate = SR;
-    x->bit_rate = 96000;
-    x->time_base = (AVRational){ 1, SR };
-    x->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-    av_channel_layout_default(&x->ch_layout, 1);
-    s->enc = x;
-    return avcodec_open2(x, codec, NULL);
-}
+/* Row 152 (DF-06): the camera files' audio encoder of the legacy lane (`open_encoder`, one encoder feeding EVERY camera
+ * file) is gone. A camera file's audio track is its PAIR's channel encoder or the silent one (audio.c,
+ * audio_encoder_of); the encoders are opened at START (audio_open_encoders) and freed at the session's close. */
 
 /* The writer's sync thread, once per fragment, in fragment order, AFTER the sync that covers the
  * fragment returned (sink.c, "the durability point"). The first fragment of a file also says that
  * the session holds evidence. Takes no lock of the camera. */
 void cam_fragment_durable(void *cam, const Checkpoint *cp) {
     Cam *c = cam;
-    char frag[65], chain[65], prefix[65], plain[65], plain_chain[65], seal[256];
     if (cp->first && !atomic_exchange(&c->first_reported, 1)) {
         /* The level the sync of THIS file achieved (R63-09), never the one the build would like: a volume without the full sync says FSYNC. */
         const char *level = sink_sync_level(&c->sink);
         logj(strcmp(level, sink_sync_wanted()) ? "warn" : "info", "sink", "first_durable_fragment", "\"cam\":%d,\"bytes\":%lld,\"sync\":\"%s\",\"sync_wanted\":\"%s\"", c->idx + 1, (long long)(cp->start + cp->len), level, sink_sync_wanted());
         send_record("\"kind\":\"FIRST_DURABLE_FRAGMENT\",\"deviceId\":\"%s\",\"bytes\":%lld,\"syncLevel\":\"%s\"", c->device_id, (long long)(cp->start + cp->len), level);
     }
+    send_fragment_checkpoint(c->device_id, &c->sink, cp, cp->keyframe);
+}
+
+/* THE ONE FRAGMENT_CHECKPOINT record (spec A.5; protocol 6 N-32): of a camera file (its camera's device ID, `keyframe`
+ * as the writer saw it) or of a channel file (row 152: the MICROPHONE's device ID, `keyframe` false - audio.c). The
+ * chain rule, the numbering and the cipher members are per FILE (`sink`). Called on that file's sync thread. */
+void send_fragment_checkpoint(const char *device_id, const Sink *sink, const Checkpoint *cp, int keyframe) {
+    char frag[65], chain[65], prefix[65], plain[65], plain_chain[65], seal[256];
     sha256_hex(cp->frag, frag);
     sha256_hex(cp->chain, chain);
     sha256_hex(cp->prefix, prefix);
     sha256_hex(cp->plain, plain);
     sha256_hex(cp->plain_chain, plain_chain);
-    if (cp->sealed && c->sink.cipher) {
+    if (cp->sealed && sink->cipher) {
         char iv[25], tag[33];
         static const char hex[] = "0123456789abcdef";
         for (int i = 0; i < 12; i++) { iv[2 * i] = hex[cp->iv[i] >> 4]; iv[2 * i + 1] = hex[cp->iv[i] & 15]; }
         for (int i = 0; i < 16; i++) { tag[2 * i] = hex[cp->tag[i] >> 4]; tag[2 * i + 1] = hex[cp->tag[i] & 15]; }
         iv[24] = tag[32] = 0;
-        snprintf(seal, sizeof seal, "\"gcmIv\":\"%s\",\"gcmTag\":\"%s\",\"keyId\":\"%s\"", iv, tag, c->sink.cipher->key_id);
+        snprintf(seal, sizeof seal, "\"gcmIv\":\"%s\",\"gcmTag\":\"%s\",\"keyId\":\"%s\"", iv, tag, sink->cipher->key_id);
     } else snprintf(seal, sizeof seal, "\"gcmIv\":null,\"gcmTag\":null,\"keyId\":null");
     send_record("\"kind\":\"FRAGMENT_CHECKPOINT\",\"deviceId\":\"%s\",\"index\":%u,\"start\":%lld,\"len\":%lld,\"fragSha256\":\"%s\",\"chainSha256\":\"%s\",\"prefixSha256\":\"%s\","
                 "\"plaintextSha256\":\"%s\",\"plaintextChainSha256\":\"%s\",\"mediaStartMs\":%lld,\"mediaDurationMs\":%lld,\"keyframe\":%s,\"durableAt\":%lld,%s",
-                c->device_id, cp->index, (long long)cp->start, (long long)cp->len, frag, chain, prefix, plain, plain_chain, (long long)cp->media_start_ms, (long long)cp->media_duration_ms,
-                cp->keyframe ? "true" : "false", (long long)cp->durable_at_ms, seal);
+                device_id, cp->index, (long long)cp->start, (long long)cp->len, frag, chain, prefix, plain, plain_chain, (long long)cp->media_start_ms, (long long)cp->media_duration_ms,
+                keyframe ? "true" : "false", (long long)cp->durable_at_ms, seal);
 }
 
 /* A sync, the link to the final name or the directory sync failed: nothing more of this file is claimed durable. */
@@ -442,7 +438,11 @@ static int open_output(Cam *c) {
     if ((r = avcodec_parameters_copy(c->ov->codecpar, is->codecpar)) < 0) return r;   /* stream copy */
     c->ov->codecpar->codec_tag = 0;
     c->ov->time_base = is->time_base;
-    if ((r = avcodec_parameters_from_context(c->oa->codecpar, S.enc)) < 0) return r;
+    /* Row 152 (DF-06): the audio track is the PAIR's - its channel's encoder, or the silent one when the plan states the
+     * channel missing (D30 K-3). Same AAC-LC 48 kHz mono parameters as before; only the source of the samples changed. */
+    const AVCodecContext *aenc = audio_encoder_of(c);
+    if (!aenc) return AVERROR(EINVAL);
+    if ((r = avcodec_parameters_from_context(c->oa->codecpar, aenc)) < 0) return r;
     c->oa->time_base = (AVRational){ 1, SR };
     AVDictionary *o = NULL;
     av_dict_set(&o, "movflags", MUX_MOVFLAGS, 0);
@@ -458,7 +458,7 @@ static int open_output(Cam *c) {
 
 static int mux_audio_locked(Cam *c, AVPacket *q) {
     q->stream_index = c->oa->index;
-    av_packet_rescale_ts(q, S.enc->time_base, c->oa->time_base);
+    av_packet_rescale_ts(q, (AVRational){ 1, SR }, c->oa->time_base);     /* every pair's encoder runs at 1/48000 (audio.c enc_open) */
     int r = write_bounded_locked(c, q);
     if (r >= 0) atomic_fetch_add(&c->a_written, 1);
     return r;

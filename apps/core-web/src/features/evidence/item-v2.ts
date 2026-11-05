@@ -14,9 +14,11 @@
  * | `audioSourceIntervals[]` | Media-pts spans of the microphone that fed the session audio track; kept only when every entry reads |
  * | `transcript` | The summary inside the item; the body travels through operation 84 |
  * | `developmentSources` | `true` / `false` exactly as sent; anything else, also absent, is `null` = NOT RECORDED, which is never read as production (R-11) |
+ * | `files[]` AUDIO-0N (D5, row 159) | The audio file of camera-microphone pair N (`/2.1` package), listed after the camera files; read into `pairAudioFiles` with the camera of its pair and whether that camera file is in the item (the manifest's `containsIn` rule, S5 §5.2 rule 3) |
+ * | `audioTracksMissing[]` (D5, row 159) | The signed statement that the microphone of a pair did not record (`NOT_ASSIGNED` / `NOT_OPENED`); kept only when every entry reads - a statement with a hole could hide the silent pair |
  */
 import { readTranscriptModel, type ItemTranscriptModel } from '@dems/shared/evidence-rules'
-import { VIDEO_TRACK_IDS } from '@dems/shared/domain'
+import { AUDIO_TRACK_IDS, VIDEO_TRACK_IDS, type AudioTrackId, type VideoTrackId } from '@dems/shared/domain'
 
 // D60 (2026-11-04): the sealed camera files are the four video tracks, derived from the shared truth.
 export const CAMERA_FILE_IDS = VIDEO_TRACK_IDS
@@ -32,6 +34,35 @@ export interface ItemFileV2 {
   readonly sha256Plain: string | null
   readonly fragmentCount: number
   readonly fragmentChainHead: string | null
+}
+
+/**
+ * Row 159 (D5; S5 §6, F-5-11): the sealed audio file of one camera-microphone pair. Pair N is
+ * `VIDEO-0N` <-> `MIC-0N` <-> `AUDIO-0N`, fixed by number (D27, `CAPTURE_PAIRS`). The camera file of
+ * the pair holds this audio exactly when that camera file is in the package (the manifest's
+ * `containsIn` rule); `inCamera` is null when it is not - the audio file is still sealed and hashed.
+ */
+export interface ItemPairAudioFile {
+  readonly file: ItemFileV2
+  readonly trackId: AudioTrackId
+  readonly pair: number
+  readonly camera: VideoTrackId
+  /** The camera file that holds this audio (`VIDEO-0N`); null: that camera file is not in the item. */
+  readonly inCamera: VideoTrackId | null
+}
+
+export type ItemAudioMissingReason = 'NOT_ASSIGNED' | 'NOT_OPENED'
+
+/** Row 159 (D30 K-3): one pair whose microphone did not record, as the signed manifest states it. */
+export interface ItemAudioTrackMissing {
+  readonly trackId: AudioTrackId
+  readonly pair: number
+  readonly camera: VideoTrackId
+  /** The microphone that could not be opened; null for NOT_ASSIGNED. */
+  readonly micDeviceId: string | null
+  /** The camera file that holds the SILENT audio track; null: that camera file is not in the item. */
+  readonly silentIn: VideoTrackId | null
+  readonly reason: ItemAudioMissingReason
 }
 
 export type AudioIntervalReason = 'START' | 'MANUAL' | 'STOP'
@@ -91,6 +122,10 @@ export interface ItemV2 {
   readonly signature: ItemSignatureV2 | null
   /** Fix wave K (G81b-06): the transcript model the item states; null: not stated. */
   readonly transcriptModel: ItemTranscriptModel | null
+  /** Row 159 (D5): the AUDIO-0N files of `files`, in pair order; empty for every legacy item. */
+  readonly pairAudioFiles: readonly ItemPairAudioFile[]
+  /** Row 159 (D5): the missing-microphone statement; empty when the item states none (every legacy item). */
+  readonly audioTracksMissing: readonly ItemAudioTrackMissing[]
 }
 
 const SHA256 = /^[0-9a-f]{64}$/
@@ -174,6 +209,47 @@ function readSignature(value: unknown): ItemSignatureV2 | null {
  */
 export { readTranscriptModel }
 
+const isAudioTrack = (value: unknown): value is AudioTrackId => (AUDIO_TRACK_IDS as readonly unknown[]).includes(value)
+const isVideoTrack = (value: unknown): value is VideoTrackId => (VIDEO_TRACK_IDS as readonly unknown[]).includes(value)
+/** Pair N of an audio track: its number and its camera, by number (`CAPTURE_PAIRS`, D27). */
+export function pairOfAudioTrack(trackId: AudioTrackId): { readonly pair: number; readonly camera: VideoTrackId } {
+  const index = AUDIO_TRACK_IDS.indexOf(trackId)
+  return { pair: index + 1, camera: VIDEO_TRACK_IDS[index] as VideoTrackId }
+}
+
+function readPairAudioFiles(files: readonly ItemFileV2[]): readonly ItemPairAudioFile[] {
+  const named = new Set(files.map((file) => file.trackId))
+  return AUDIO_TRACK_IDS.flatMap((trackId) => {
+    const file = files.find((entry) => entry.trackId === trackId)
+    if (file === undefined) return []
+    const { pair, camera } = pairOfAudioTrack(trackId)
+    return [{ file, trackId, pair, camera, inCamera: named.has(camera) ? camera : null }]
+  })
+}
+
+const MISSING_REASONS: readonly string[] = ['NOT_ASSIGNED', 'NOT_OPENED']
+
+/** The statement, or none at all: an entry that cannot be read could be the one pair that was silent. */
+function readAudioTracksMissing(value: unknown): readonly ItemAudioTrackMissing[] {
+  if (!Array.isArray(value) || value.length > AUDIO_TRACK_IDS.length) return []
+  const stated: ItemAudioTrackMissing[] = []
+  for (const entry of value) {
+    if (!isRecord(entry) || !isAudioTrack(entry.trackId) || typeof entry.reason !== 'string' || !MISSING_REASONS.includes(entry.reason)) return []
+    const trackId = entry.trackId
+    const { pair, camera } = pairOfAudioTrack(trackId)
+    const micDeviceId = entry.micDeviceId === null ? null : text(entry.micDeviceId, 16)
+    if (entry.micDeviceId !== null && (micDeviceId === null || !MIC_INPUT.test(micDeviceId))) return []
+    // The contract: a microphone is named exactly when it was assigned and did not open.
+    if ((micDeviceId === null) !== (entry.reason === 'NOT_ASSIGNED')) return []
+    const silentIn: unknown = entry.silentIn
+    // The silent track is in the camera of ITS pair, or in no camera file: anything else is not this statement.
+    if (!Array.isArray(silentIn) || silentIn.length > 1 || !silentIn.every(isVideoTrack) || (silentIn.length === 1 && silentIn[0] !== camera)) return []
+    if (stated.some((held) => held.trackId === trackId)) return []
+    stated.push({ trackId, pair, camera, micDeviceId, silentIn: silentIn.length === 1 ? camera : null, reason: entry.reason as ItemAudioMissingReason })
+  }
+  return stated.sort((a, b) => a.pair - b.pair)
+}
+
 /** Reads the v2 members of an evidence item. Never throws; a member it cannot read is "not stated". */
 export function readItemV2(item: unknown): ItemV2 {
   const source = isRecord(item) ? item : {}
@@ -195,6 +271,8 @@ export function readItemV2(item: unknown): ItemV2 {
     developmentSources: typeof source.developmentSources === 'boolean' ? source.developmentSources : null,
     signature: readSignature(source.signature),
     transcriptModel: readTranscriptModel(source.transcriptModel),
+    pairAudioFiles: readPairAudioFiles(files),
+    audioTracksMissing: readAudioTracksMissing(source.audioTracksMissing),
   }
 }
 

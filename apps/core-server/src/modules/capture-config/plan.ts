@@ -29,10 +29,20 @@
  * A refusal carries a code, a reason and at most a device ID. Its text is one of the fixed
  * sentences below: no path and no address is ever put into a message (a path of the plan is never
  * logged, `packages/capture-protocol`).
+ *
+ * CAMERA-MICROPHONE PAIRS (audit 2026-11-05 row 147, C-P0-2b; D5 spec S5 §2.3-2.4; decisions D27, D30
+ * K-3, D117 R144-1; protocol version 6). Pair N = `VIDEO-0N` <-> `MIC-0N`, fixed by number: every camera
+ * line names the channel of its pair (`micChannel`). A camera whose paired channel has NO opened source is
+ * NOT refused (D30 K-3 beats S5 N-37's refusal: an interview is never lost because one microphone failed):
+ * its line states why (`micMissing`: `NOT_OPENED` when a device sits on the channel but the caller gave no
+ * opened source for it, `NOT_ASSIGNED` when no device sits there), the worker writes a silent audio track,
+ * and `capturePlanPairWarnings` gives the caller the WARN to raise. Channel 1 is the transcribed channel
+ * (`activeMic` is always `MIC-01`, DF-09 R-T1): the PCM tap carries its samples, so a plan without the
+ * `MIC-01` row records WITHOUT a tap (`pcmTapPath: null`) instead of being refused.
  */
 import { VIDEO_TRACK_IDS, type VideoTrackId } from '@dems/shared/domain';
 import { MIC_CHANNEL_IDS as SHARED_MIC_CHANNEL_IDS, PRIMARY_MIC_CHANNEL, type MicChannel } from '@dems/shared/sim'; // D61 (2026-11-04): the four numbered microphone channels
-import { CapturePlanSchema, type CapturePlan, type CapturePlanCamera, type CapturePlanConstants, type CapturePlanMic } from '@dems/capture-protocol';
+import { CapturePlanSchema, captureMicChannelOfVideoTrack, type CapturePairedMicMissingReason, type CapturePlan, type CapturePlanCamera, type CapturePlanConstants, type CapturePlanMic } from '@dems/capture-protocol';
 import {
   CAPTURE_AUDIO_CHANNELS,
   CAPTURE_AUDIO_SAMPLE_RATE_HZ,
@@ -63,7 +73,10 @@ export const CapturePlanReason = {
   CLASS_NOT_OF_OPERATION: 'CLASS_NOT_OF_OPERATION',
   /** The selector is not four video tracks (D60) and four numbered microphone channels (D61, 2026-11-04). */
   SELECTOR_SHAPE: 'SELECTOR_SHAPE',
-  /** The caller gave no source for any camera, or none for the first microphone channel (D61: the transcription channel). */
+  /**
+   * The caller gave no source for any camera. Row 147 (D30 K-3): a missing microphone channel - channel 1, the
+   * transcription channel, included - is no longer a refusal; its camera states it (`micMissing`) and records silence.
+   */
   SOURCE_MISSING: 'SOURCE_MISSING',
   /** The assembled plan is not a `CapturePlan` of the protocol (a path or an address used twice, a camera named twice). */
   PROTOCOL_SHAPE: 'PROTOCOL_SHAPE',
@@ -78,7 +91,7 @@ const TEXT: Readonly<Record<CapturePlanReason, string>> = Object.freeze({
   // D60 (2026-11-04): the Core records FOUR video tracks at once - the shape text names four tracks (was two).
   // D61 (2026-11-04): and FOUR numbered microphone channels (was a primary and a standby role).
   SELECTOR_SHAPE: 'the selector does not name four video tracks and four numbered microphones',
-  SOURCE_MISSING: 'no source was given for a camera, or for the first microphone channel',
+  SOURCE_MISSING: 'no source was given for any camera',
   PROTOCOL_SHAPE: 'the plan is not a capture plan of the protocol',
 });
 
@@ -219,8 +232,8 @@ export type CapturePlanCameraSource = Pick<CapturePlanCamera, 'ingestUrl' | 'out
 /**
  * Where one microphone channel of the session takes its samples and — D61 (2026-11-04) — where its
  * OWN audio file goes: the microphone twin of `CapturePlanCameraSource`, chosen by the caller per
- * session. `outputPath` stays optional on the member: a channel without one is read, metered and
- * warned for but not recorded on a file of its own (the protocol's D61 wave keeps the member optional).
+ * session. Protocol version 6 (audit 2026-11-05 row 144, N-13): `outputPath` is REQUIRED - every
+ * channel of the plan is recorded on its own file.
  */
 export type CapturePlanMicSource = Pick<CapturePlanMic, 'input' | 'outputPath'>;
 
@@ -237,13 +250,17 @@ export interface CapturePlanInput {
    * Per microphone CHANNEL (D61, 2026-11-04: the four numbered channels, was per device with the
    * PRIMARY rule), the source of its opened stream: the input of `AudioStreamHandle.input` (taken
    * unchanged: D72(e)) and the channel's OWN audio file (`outputPath`, D61: the microphone twin of a
-   * camera's, named per channel by the caller). A channel WITHOUT an entry is left out; channel 1
-   * must have one - it feeds the transcription track `AUDIO-01` (D83's rule, carried onto the numbered
-   * plane: an unreachable transcription channel blocks the start; a later channel no longer guards
-   * anything, the failover concept dying with D61).
+   * camera's, named per channel by the caller). A channel WITHOUT an entry is left out of the plan:
+   * the camera of its pair states it (`micMissing`) and records a silent audio track (row 147, D30 K-3;
+   * was: channel 1 had to have one, D83's rule - superseded, an interview is never lost because one
+   * microphone failed). Without channel 1 the plan has nothing to transcribe and carries no tap.
    */
   readonly mics: Readonly<Partial<Record<MicChannelId, CapturePlanMicSource>>>;
-  /** The PCM tap of the transcriber, or null. */
+  /**
+   * The PCM tap of the transcriber, or null. The tap carries channel 1 (`MIC-01`, R-T1): when the plan holds
+   * no `MIC-01` row the builder drops it (the plan's `pcmTapPath` is then null) - the caller reads the plan's
+   * value, not its own, to know whether there is anything to transcribe (row 147).
+   */
   readonly pcmTapPath: string | null;
   /** Default: the contract's constants. */
   readonly constants?: CapturePlanConstants;
@@ -256,37 +273,48 @@ export interface CapturePlanInput {
  */
 export function buildCapturePlan(input: CapturePlanInput): CapturePlan {
   assertRecordableSelector(input.selector, input.registry);
+  // The microphones first (row 147): which channels the plan holds decides what each camera line states.
+  const mics: CapturePlanMic[] = [];
+  /** The channels a device sits on in the selector (assigned), and those the plan holds (assigned AND given an opened source). */
+  const assignedChannels = new Set<string>();
+  const planChannels = new Set<string>();
+  for (const mic of input.selector.mics) {
+    // D61 (2026-11-04): the sources arrive keyed by CHANNEL; the row names its own.
+    const channel = mic.channel as MicChannelId | undefined;
+    if (channel === undefined || !(MIC_CHANNEL_IDS as readonly string[]).includes(channel)) continue; // unreachable: `assertRecordableSelector` above refused such a selector
+    if (mic.deviceId) assignedChannels.add(channel);
+    const source = Object.hasOwn(input.mics, channel) ? input.mics[channel] : undefined;
+    if (source === undefined) continue;
+    planChannels.add(channel);
+    // D61 (2026-11-04): the wire names the CHANNEL (protocol wave of the same date): the row is keyed like a camera row,
+    // and carries the channel's own audio file - required since protocol version 6 (row 144, N-13).
+    mics.push({ deviceId: mic.deviceId, channel, input: source.input, outputPath: source.outputPath });
+  }
   const cameras: CapturePlanCamera[] = [];
   for (const camera of input.selector.cameras) {
     const source = Object.hasOwn(input.cameras, camera.trackId) ? input.cameras[camera.trackId] : undefined;
     if (source === undefined) continue;
     // `deviceId` is the wire subject; `trackId` is the output name and nothing else (D72(g)).
-    cameras.push({ deviceId: camera.deviceId, trackId: camera.trackId, profile: camera.profile, ingestUrl: source.ingestUrl, outputPath: source.outputPath });
+    // Protocol version 6 (row 147; D27, S5 §2.3, N-12): the camera names the channel of its pair, by number (a track word
+    // without a pair fails the protocol below as PROTOCOL_SHAPE). D30 K-3 (D117 R144-1): a paired channel that is not in the
+    // plan is STATED, not refused - `NOT_OPENED` when a device sits on it but no opened source was given, `NOT_ASSIGNED` when
+    // none sits there - and the worker writes a silent audio track into this camera file. The caller warns (`capturePlanPairWarnings`).
+    const micChannel = captureMicChannelOfVideoTrack(camera.trackId) as CapturePlanCamera['micChannel'];
+    const micMissing: CapturePairedMicMissingReason | null = planChannels.has(micChannel) ? null : assignedChannels.has(micChannel) ? 'NOT_OPENED' : 'NOT_ASSIGNED';
+    cameras.push({ deviceId: camera.deviceId, trackId: camera.trackId, profile: camera.profile, ingestUrl: source.ingestUrl, outputPath: source.outputPath, micChannel, micMissing });
   }
-  const mics: CapturePlanMic[] = [];
-  let channelOneGiven = false;
-  for (const mic of input.selector.mics) {
-    // D61 (2026-11-04): the sources arrive keyed by CHANNEL; the row names its own.
-    const channel = mic.channel as MicChannelId | undefined;
-    if (channel === undefined || !(MIC_CHANNEL_IDS as readonly string[]).includes(channel)) continue; // unreachable: `assertRecordableSelector` above refused such a selector
-    const source = Object.hasOwn(input.mics, channel) ? input.mics[channel] : undefined;
-    if (source === undefined) continue;
-    if (channel === PRIMARY_MIC_CHANNEL) channelOneGiven = true;
-    // D61 (2026-11-04): the wire names the CHANNEL (protocol wave of the same date): the row is keyed like a camera row,
-    // and carries the channel's own audio file when the caller named one (optional on the protocol member, so a channel
-    // without one is put on the wire without the member rather than with an empty path).
-    mics.push({ deviceId: mic.deviceId, channel, input: source.input, ...(source.outputPath === undefined ? {} : { outputPath: source.outputPath }) });
-  }
-  // D61 (2026-11-04): channel 1 is the transcription channel of `AUDIO-01`; without it the plan has no audio to transcribe.
-  if (cameras.length === 0 || !channelOneGiven) {
+  // A plan records at least one camera. Row 147 (D30 K-3): a missing channel - channel 1 included - is no refusal any more.
+  if (cameras.length === 0) {
     throw new CapturePlanError(CapturePlanRefusal.PLAN_INVALID, CapturePlanReason.SOURCE_MISSING);
   }
   const parsed = CapturePlanSchema.safeParse({
     cameras,
     mics,
-    // D61 (2026-11-04): `activeMic` is the TRANSCRIBED CHANNEL of `AUDIO-01` - always channel 1 now (the failover concept died with the decision; the protocol validates the value). The operator switches (operation 81), never the Core (OD-11).
+    // D61 (2026-11-04), DF-09 R-T1 (row 147 pin): `activeMic` is the TRANSCRIBED CHANNEL of `AUDIO-01` = Pair 1 - always
+    // `MIC-01` (the protocol validates the value). To transcribe another microphone the operator puts it in Pair 1 (op 80).
     activeMic: PRIMARY_MIC_CHANNEL,
-    pcmTapPath: input.pcmTapPath,
+    // R-T1: the tap carries channel 1's samples, so it exists only when the plan holds that row (the protocol's tap rule).
+    pcmTapPath: planChannels.has(PRIMARY_MIC_CHANNEL) ? input.pcmTapPath : null,
     constants: input.constants ?? capturePlanConstants(),
   });
   if (!parsed.success) throw new CapturePlanError(CapturePlanRefusal.PLAN_INVALID, CapturePlanReason.PROTOCOL_SHAPE);
@@ -296,4 +324,39 @@ export function buildCapturePlan(input: CapturePlanInput): CapturePlan {
 /** Every subject the worker may name about this plan: its device IDs (D61, 2026-11-04: the microphone rows are keyed by their numbered channel; the two-role lane's words are no longer plan members and are never warning subjects). */
 export function capturePlanSubjects(plan: CapturePlan): string[] {
   return [...plan.cameras.map((camera) => camera.deviceId), ...plan.mics.map((mic) => mic.deviceId), ...plan.mics.map((mic) => mic.channel)];
+}
+
+/**
+ * Row 147 (D30 K-3; S5 N-37 re-ruled from a refusal into a warning): the code of the WARN a plan whose camera
+ * records without its paired microphone gives the operator. Never a refusal: the recording starts.
+ */
+export const CapturePlanWarningCode = {
+  PAIRED_MIC_MISSING: 'PAIRED_MIC_MISSING',
+} as const;
+export type CapturePlanWarningCode = (typeof CapturePlanWarningCode)[keyof typeof CapturePlanWarningCode];
+
+/** One warning of a plan. Device IDs, track and channel words only - never an address or a path. */
+export interface CapturePlanPairWarning {
+  readonly code: CapturePlanWarningCode;
+  /** The camera line that records a silent audio track. */
+  readonly trackId: string;
+  readonly deviceId: string;
+  /** The channel of its pair that is not in the plan, and why (the words of the manifest's missing-mic statement). */
+  readonly micChannel: CapturePlanCamera['micChannel'];
+  readonly reason: CapturePairedMicMissingReason;
+  /** True for Pair 1: the session also has nothing to transcribe (the plan carries no PCM tap). */
+  readonly transcribed: boolean;
+}
+
+/**
+ * Row 147 (D30 K-3): the WARNs of a plan - one per camera line that states a missing paired microphone, in the
+ * plan's camera order; empty when every camera has its microphone. Pure: the caller (the session start) logs
+ * them at level `warn` and shows them to the operator.
+ */
+export function capturePlanPairWarnings(plan: CapturePlan): CapturePlanPairWarning[] {
+  return plan.cameras.flatMap((camera) =>
+    camera.micMissing === null
+      ? []
+      : [{ code: CapturePlanWarningCode.PAIRED_MIC_MISSING, trackId: camera.trackId, deviceId: camera.deviceId, micChannel: camera.micChannel, reason: camera.micMissing, transcribed: camera.micChannel === PRIMARY_MIC_CHANNEL }],
+  );
 }

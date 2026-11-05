@@ -82,3 +82,5 @@ N3-GAP	audio.c	static void planted_gap_e(MicIn *m) { swr_set_compensation(m->swr
 N3-GAP	audio.c	static int planted_gap_f(MicIn *m, uint8_t **d, const uint8_t **s) { return swr_convert(m->swr, d, 1, s, 1); }
 N3-GAP	audio.c	static int planted_gap_g(MicIn *m) { return swr_inject_silence(m->swr, 480); }
 N3-GAP	audio.c	#define planted_gap_h swr_set_compensation
+# Audit row 152b (N-31; D135, D136): the operator's switch is retired - a graph command in the unit of the filtering thread is refused too (it was the one place it stood).
+AU2-07	audio.c	static void planted_switch(void) { avfilter_graph_send_command(graph, "astreamselect@asel", "map", "1", NULL, 0, 0); }

@@ -18,8 +18,8 @@
  * The generator keeps its speaker-turn and ballistic state in a closure (not persisted); a
  * reload restarts the conversation, which only changes what the meters show.
  */
-import { AUDIO_TRACK_IDS, SessionState, type AudioTrackId, type MicInputId, type MicRole } from '../domain';
-import { PRIMARY_MIC_CHANNEL, SECOND_MIC_CHANNEL, type MicChannel } from './vocabulary'; // D61 (2026-11-04): the four microphone channels
+import { AUDIO_TRACK_IDS, SessionState, VIDEO_TRACK_IDS, type AudioTrackId, type MicInputId, type MicRole, type VideoTrackId } from '../domain';
+import { MIC_CHANNEL_IDS, PRIMARY_MIC_CHANNEL, SECOND_MIC_CHANNEL, type MicChannel } from './vocabulary'; // D61 (2026-11-04): the four microphone channels
 import { micLinesInForce } from './selector-in-force';
 import {
   AUDIO_CLIP_BURST_DBFS,
@@ -64,7 +64,8 @@ export const DEFAULT_MIC_INPUT_OF_CHANNEL: Readonly<Record<AudioTrackId, string>
 
 /**
  * The selector CHANNEL of a meter track and back (D61 of 2026-11-04: channel `MIC-0N` feeds track
- * `AUDIO-0N`; the numbering is the one rule of the four-channel plane).
+ * `AUDIO-0N`; the numbering is the one rule of the four-channel plane; D5: it is Pair N of
+ * `CAPTURE_PAIRS` below).
  */
 export function micChannelOfTrack(trackId: AudioTrackId): MicChannel {
   return `MIC-${trackId.slice(-2)}` as MicChannel;
@@ -72,6 +73,58 @@ export function micChannelOfTrack(trackId: AudioTrackId): MicChannel {
 export function audioTrackOfMicChannel(channel: MicChannel): AudioTrackId {
   return `AUDIO-${channel.slice(-2)}` as AudioTrackId;
 }
+
+/**
+ * One camera-microphone pair (D5; register N-04/N-05 of masterplan/01_specs_d5.md; D27): Pair N is
+ * video track `VIDEO-0N`, microphone channel `MIC-0N` and sealed audio track `AUDIO-0N`.
+ */
+export interface CapturePair {
+  readonly pair: 1 | 2 | 3 | 4;
+  readonly videoTrackId: VideoTrackId;
+  readonly micChannel: MicChannel;
+  readonly audioTrackId: AudioTrackId;
+}
+
+/**
+ * The four camera-microphone pairs, in order (D5; D27: the pairing is BY CHANNEL NUMBER and cannot
+ * be configured - the setup configures WHICH device sits in each slot, through the selector of
+ * operations 78/79/80). The camera file `VIDEO-0N` carries the audio of channel `MIC-0N`, and that
+ * channel is also sealed on its own as `AUDIO-0N`. Pair 1 is the transcribed pair (D28 DQ-3:
+ * `PRIMARY_MIC_CHANNEL`, the worker plan's `activeMic`). Frozen; the plan, the worker, the seal and
+ * the clients derive every pair from this one table (register N-05).
+ */
+export const CAPTURE_PAIRS: readonly CapturePair[] = Object.freeze(
+  ([1, 2, 3, 4] as const).map((pair) =>
+    Object.freeze({
+      pair,
+      videoTrackId: VIDEO_TRACK_IDS[pair - 1]!,
+      micChannel: MIC_CHANNEL_IDS[pair - 1]!,
+      audioTrackId: AUDIO_TRACK_IDS[pair - 1]!,
+    } satisfies CapturePair),
+  ),
+);
+
+/** The pair of a video track (D5). Every video track has exactly one. */
+export function capturePairOfVideoTrack(trackId: VideoTrackId): CapturePair {
+  const found = CAPTURE_PAIRS.find((entry) => entry.videoTrackId === trackId);
+  if (!found) throw new RangeError(`No capture pair for video track ${String(trackId)}`);
+  return found;
+}
+/** The pair of a microphone channel (D5). Every channel has exactly one. */
+export function capturePairOfMicChannel(channel: MicChannel): CapturePair {
+  const found = CAPTURE_PAIRS.find((entry) => entry.micChannel === channel);
+  if (!found) throw new RangeError(`No capture pair for microphone channel ${String(channel)}`);
+  return found;
+}
+/** Register N-06: the microphone channel whose audio a camera track carries, `VIDEO-0N` -> `MIC-0N` (D5). */
+export function micChannelOfVideoTrack(trackId: VideoTrackId): MicChannel {
+  return capturePairOfVideoTrack(trackId).micChannel;
+}
+/** Register N-07: the camera track a microphone channel is paired with, `MIC-0N` -> `VIDEO-0N` (D5). */
+export function videoTrackOfMicChannel(channel: MicChannel): VideoTrackId {
+  return capturePairOfMicChannel(channel).videoTrackId;
+}
+
 /** The worker protocol's two transcription roles as channels (capture-protocol v4; D61 mapping). */
 export function channelOfWorkerMicRole(role: MicRole): MicChannel {
   return role === 'PRIMARY' ? PRIMARY_MIC_CHANNEL : SECOND_MIC_CHANNEL;

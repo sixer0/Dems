@@ -85,7 +85,7 @@ export {
   type HostedActionResult,
 } from './hosted-actions';
 export { createEngineHost, isEngineControl, type EngineControl, type EngineHostDependencies } from './host';
-export { markCaptureConnectingIn, noteCaptureDeviceReachIn, readdressCaptureDeviceIn, registerCaptureDeviceIn, registerCaptureMicrophoneIn, storeCaptureDeviceProfilesIn, switchCaptureAudioSourceIn, type CaptureDeviceReachReading, type InternalActions } from './internal-actions';
+export { markCaptureConnectingIn, noteCaptureDeviceReachIn, readdressCaptureDeviceIn, registerCaptureDeviceIn, registerCaptureMicrophoneIn, storeCaptureDeviceProfilesIn, type CaptureDeviceReachReading, type InternalActions } from './internal-actions';
 // Seal block (blueprint row 82): the three INTERNAL sealing actions, beside the seam.
 export { sealDoorsOf } from './seal-doors';
 export { FACT_DOOR_LABEL, factDoorsOf, type EngineFactDoors } from './fact-doors';
@@ -94,11 +94,11 @@ export { EXPORT_DOOR_LABEL, exportDoorsOf, type EngineExportDoors } from './expo
 // Unsealable block (fix pass F-M7b): the terminal outcome of a session that cannot be sealed, beside the seam.
 export { UNSEALABLE_DOOR_LABEL, unsealableDoorsOf, type EngineUnsealableDoors } from './unsealable-doors';
 export { SEALED_PLAINTEXT_REASON, SEALING_NOTICE_DOOR_LABEL, SEAL_BLOCKED_REASON, SEAL_RETRY_REASON, STREAM_PROFILE_DIFFERS_REASON, sealingNoticeDoorsOf, type EngineSealingNoticeDoors, type SealBlockedInput, type SealRetryNote, type SealedPlaintextKeptInput } from './sealing-notice-doors';
-export { SEALED_FACTS_DOOR_LABEL, applySealedItemFactsTransition, itemWithSealedFacts, sealedFactsDoorsOf, type EngineSealedFactsDoors, type ItemWithSealedFacts, type SealedAudioInterval, type SealedFileFact, type SealedItemFacts, type SealedItemMembers, type SealedTranscriptModel } from './sealed-facts-doors';
+export { SEALED_FACTS_DOOR_LABEL, applySealedItemFactsTransition, itemWithSealedFacts, sealedFactsDoorsOf, type EngineSealedFactsDoors, type ItemWithSealedFacts, type SealedAudioInterval, type SealedAudioTrackMissing, type SealedFileFact, type SealedItemFacts, type SealedItemMembers, type SealedTranscriptModel } from './sealed-facts-doors';
 // Wave H closing pass Z1: the capture-checkpoint door (what the Core holds of a running recording of its own capture).
 export { CAPTURE_CHECKPOINT_DOOR_LABEL, applyCaptureCheckpointsTransition, captureCheckpointDoorsOf, captureCheckpointsOf, type CaptureCheckpointCamera, type CaptureCheckpointFacts, type EngineCaptureCheckpointDoors } from './capture-checkpoint-doors';
 export type { EngineSealDoors } from './types';
-export { CAPTURE_FAULT_KINDS, type AudioSourceSwitch, type AudioSourceSwitched } from './capture-session';
+export { CAPTURE_FAULT_KINDS } from './capture-session';
 export {
   ENGINE_BOOT_STEP,
   ENGINE_TICK_MS,

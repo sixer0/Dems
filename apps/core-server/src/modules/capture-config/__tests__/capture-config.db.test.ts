@@ -713,10 +713,10 @@ describe('D133 (1) (integration D1b): operation 78 replaces the microphone pair'
       expect(traded.statusCode, traded.body).toBe(200);
       await server.app.pipeline.drain();
       expect(await storedSelector(owner)).toEqual({ mic_01_id: 'MIC-02', mic_02_id: 'MIC-01' });
-      // D61 (2026-11-04): trading the pair is TWO channel replacements, in channel order (was ONE row by role).
+      // D30 K-6 (row 155): trading the pair is a SWAP - ONE stored row of the operation-80 channel-swap form
+      // (D61 had written two channel replacements; before D61, one row by role).
       expect((await changedRows(owner)).slice(rowsBefore)).toEqual([
-        { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', channel: 'MIC-01', inputId: 'MIC-02', deviceId: 'MIC-02', from: 'MIC-01', to: 'MIC-02', permission: 'CAPTURE_CONFIG' },
-        { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'SOURCE', channel: 'MIC-02', inputId: 'MIC-01', deviceId: 'MIC-01', from: 'MIC-02', to: 'MIC-01', permission: 'CAPTURE_CONFIG' },
+        { operationId: 'updateCaptureConfig', scope: 'MIC', field: 'CHANNEL', inputId: 'MIC-02', deviceId: 'MIC-02', from: 'MIC-02', to: 'MIC-01', permission: 'CAPTURE_CONFIG' },
       ]);
       expect(await storedSlices(owner)).toStrictEqual(withoutNegativeZeros(server.app.engine.state()));
     });

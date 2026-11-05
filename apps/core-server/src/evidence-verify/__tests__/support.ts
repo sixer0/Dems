@@ -17,24 +17,37 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  AUDIO_FILE_MEDIA_TYPE,
+  AUDIO_FILE_TRACK_IDS,
   EXAMPLE_SOURCE_ROWS,
   FRAGMENT_CHAIN_GENESIS,
   PackageFile,
+  VIDEO_TRACK_IDS,
+  audioFileName,
+  audioFilePath,
   buildUnsignedManifest,
+  cameraFileName,
   cameraFilePath,
   canonicalJsonBytes,
   computeManifestSha256,
   detachedSignatureOf,
   exampleManifestInput,
+  manifestSchemaIdOf,
   nextFragmentChainHash,
+  pairedMicChannelOfAudioTrack,
+  pairedVideoTrackOfAudioTrack,
   serializeDetachedSignature,
   serializeFragmentsJson,
   serializeManifest,
   sessionKeyId,
+  type ManifestAudioFile,
+  type ManifestAudioTrackInput,
+  type ManifestAudioTrackMissing,
   type ManifestFile,
   type ManifestFragment,
   type ManifestV2,
   type ManifestV2Input,
+  type PackageAudioTrackId,
   type PackageVideoTrackId,
   type SessionCaptureSourceRow,
 } from '@dems/shared/evidence-package';
@@ -51,6 +64,16 @@ import type { RealEvidenceItem } from '../index';
 export const NOW = 1_791_500_000_000;
 const SIGNED_AT = NOW + 8_500;
 export const sha256Hex = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
+
+/** Row 154 (D5): the registry microphone on each channel - the production baseline (N-10) puts another number on each. */
+export const D5_MIC_OF_CHANNEL = { 'MIC-01': 'MIC-03', 'MIC-02': 'MIC-04', 'MIC-03': 'MIC-05', 'MIC-04': 'MIC-06' } as const;
+/** Row 154 (D5): the start rows of a D5 session - the cameras recorded and the four microphone channels, all FAKE. */
+export function d5SourceRows(cameras: readonly PackageVideoTrackId[] = VIDEO_TRACK_IDS): readonly SessionCaptureSourceRow[] {
+  return [
+    ...cameras.map((slot, index) => ({ slot, deviceId: `CAM-0${String(index + 1)}`, adapterKind: 'FAKE' })),
+    ...Object.entries(D5_MIC_OF_CHANNEL).map(([slot, deviceId]) => ({ slot, deviceId, adapterKind: 'FAKE' })),
+  ];
+}
 
 const made: string[] = [];
 /** A throw-away folder below the system temporary folder. */
@@ -143,6 +166,13 @@ export interface BuildOptions {
   readonly sourceRows?: readonly SessionCaptureSourceRow[];
   /** Row 141: the manifest folder is `<scratch>/<folderName>` (default: the session ID). */
   readonly folderName?: string;
+  /**
+   * Row 154 (D5, spec S5 §5.2): a `dems.evidence-manifest/2.1` package - the cameras (default all
+   * four), the sealed audio file of each pair in `audio` (default all four, `fragments/AUDIO-0N.m4a`)
+   * and the statements of the pair microphones that did not record (`missing`). The source rows are
+   * the eight of a D5 session (`d5SourceRows`), unless `sourceRows` is given.
+   */
+  readonly d5?: { readonly cameras?: readonly PackageVideoTrackId[]; readonly audio?: readonly PackageAudioTrackId[]; readonly missing?: readonly ManifestAudioTrackMissing[] };
 }
 
 export interface BuiltPackage {
@@ -156,7 +186,7 @@ export interface BuiltPackage {
   readonly opener: ReturnType<typeof testOpener>;
   readonly path: (relative: string) => string;
   /** The record of one fragment. */
-  readonly fragment: (trackId: PackageVideoTrackId, seq: number) => ManifestFragment;
+  readonly fragment: (trackId: PackageVideoTrackId | PackageAudioTrackId, seq: number) => ManifestFragment;
 }
 
 /**
@@ -224,8 +254,11 @@ export async function buildPackage(options: BuildOptions = {}): Promise<BuiltPac
   const header = randomBytes(options.headerBytes ?? 129);
   const tail = randomBytes(options.tailBytes ?? 17);
 
-  const files: ManifestFile[] = [];
-  for (const [index, trackId] of (['VIDEO-01', 'VIDEO-02'] as const).entries()) {
+  /**
+   * Seals ONE media file into the folder (row 154: shared by the camera files and, for a D5
+   * package, the audio file of each pair): real ciphertext per fragment, the chain, the records.
+   */
+  const sealMediaFile = (trackId: string, path: string, keyframe: boolean, sealAs?: (seq: number, byteOffset: number) => { trackId: string; seq: number; byteOffset: number } | null) => {
     const stored: Buffer[] = [header];
     const plain: Buffer[] = [header];
     const fragments: ManifestFragment[] = [];
@@ -233,7 +266,7 @@ export async function buildPackage(options: BuildOptions = {}): Promise<BuiltPac
     let byteOffset = header.byteLength;
     for (let seq = 1; seq <= count; seq += 1) {
       const plaintext = randomBytes(length);
-      const position = options.sealAs?.(trackId, seq, byteOffset) ?? { trackId, seq, byteOffset };
+      const position = sealAs?.(seq, byteOffset) ?? { trackId, seq, byteOffset };
       let sealed: { ciphertext: Buffer; gcmIv: string; gcmTag: string; keyId: string };
       if (options.sealer !== undefined) {
         const made = options.sealer(position, plaintext);
@@ -260,7 +293,7 @@ export async function buildPackage(options: BuildOptions = {}): Promise<BuiltPac
         sha256Plain: sha256Hex(plaintext),
         chainHash: chain,
         prefixSha256: sha256Hex(Buffer.concat(stored)),
-        keyframe: true,
+        keyframe,
         interrupted: false,
         truncated: false,
         gcmIv: sealed.gcmIv,
@@ -273,13 +306,61 @@ export async function buildPackage(options: BuildOptions = {}): Promise<BuiltPac
     stored.push(tail);
     plain.push(tail);
     const file = Buffer.concat(stored);
-    write(dir, cameraFilePath(trackId), file);
-    files.push({ trackId, fragments });
+    write(dir, path, file);
+    return { fragments, values: { bytes: file.byteLength, sha256: sha256Hex(file), sha256Plain: sha256Hex(Buffer.concat(plain)), fragmentChainHead: chain, fragmentCount: count, durationMs: count * 2_000 } };
+  };
+
+  // Row 154 (D5): the cameras of a D5 package (default all four); without `d5` the two of the example, as before.
+  const cameras: readonly PackageVideoTrackId[] = options.d5 === undefined ? (['VIDEO-01', 'VIDEO-02'] as const) : (options.d5.cameras ?? VIDEO_TRACK_IDS);
+  if (options.d5 !== undefined) {
+    const model = input.tracks[0];
+    if (model === undefined) throw new Error('the example has two tracks');
+    Object.assign(input, { tracks: cameras.map((trackId, index) => ({ ...(input.tracks[index] ?? model), trackId, file: cameraFileName(trackId), deviceId: `CAM-0${String(index + 1)}` })) });
+  }
+  const files: ManifestFile[] = [];
+  for (const [index, trackId] of cameras.entries()) {
+    const sealed = sealMediaFile(trackId, cameraFilePath(trackId), true, options.sealAs === undefined ? undefined : (seq, byteOffset) => options.sealAs?.(trackId, seq, byteOffset) ?? null);
+    files.push({ trackId, fragments: sealed.fragments });
     const track = input.tracks[index];
     if (track === undefined) throw new Error('the example has two tracks');
-    Object.assign(track, { bytes: file.byteLength, sha256: sha256Hex(file), sha256Plain: sha256Hex(Buffer.concat(plain)), fragmentChainHead: chain, fragmentCount: count, durationMs: count * 2_000 });
+    Object.assign(track, sealed.values);
   }
   input.files = files;
+
+  // Row 154 (D5, spec S5 §5.2): the audio file of each pair (`fragments/AUDIO-0N.m4a`), sealed like a camera file
+  // without keyframes; the statement of a pair microphone that did not record; the schema step; one MIC-01 interval.
+  if (options.d5 !== undefined) {
+    const audioIds = options.d5.audio ?? AUDIO_FILE_TRACK_IDS;
+    const audioFiles: ManifestAudioFile[] = [];
+    const audioTracks: ManifestAudioTrackInput[] = [];
+    for (const trackId of audioIds) {
+      const sealed = sealMediaFile(trackId, audioFilePath(trackId), false);
+      audioFiles.push({ trackId, fragments: sealed.fragments });
+      const camera = pairedVideoTrackOfAudioTrack(trackId);
+      audioTracks.push({
+        trackId,
+        micChannel: pairedMicChannelOfAudioTrack(trackId),
+        micDeviceId: D5_MIC_OF_CHANNEL[pairedMicChannelOfAudioTrack(trackId)],
+        containsIn: cameras.includes(camera) ? [camera] : [],
+        file: audioFileName(trackId),
+        mediaType: AUDIO_FILE_MEDIA_TYPE,
+        codec: 'AAC-LC mono 48 kHz',
+        ...sealed.values,
+      });
+    }
+    const missing = options.d5.missing ?? [];
+    const members = { ...(audioIds.length === 0 ? {} : { audioTracks, audioFiles }), ...(missing.length === 0 ? {} : { audioTracksMissing: [...missing] }) };
+    const primary = audioTracks.find((record) => record.trackId === 'AUDIO-01');
+    Object.assign(input, {
+      schema: manifestSchemaIdOf(members),
+      ...members,
+      audio: {
+        ...input.audio,
+        containsIn: primary === undefined ? [] : [...primary.containsIn],
+        sourceIntervals: [{ seq: 1, micDeviceId: D5_MIC_OF_CHANNEL['MIC-01'], role: 'PRIMARY', fromMs: 21, toMs: count * 2_000, reason: 'START', switchedBy: null }],
+      },
+    });
+  }
 
   if ((options.transcript ?? 'ASSEMBLED') === 'DISABLED') {
     input.transcript = {
@@ -317,11 +398,11 @@ export async function buildPackage(options: BuildOptions = {}): Promise<BuiltPac
   input.device.certificate = deviceCertificateBlock(signer.certificate);
   options.beforeSeal?.(input);
 
-  const { manifest, detached } = await signManifest(signer.signer, buildUnsignedManifest(input, options.sourceRows ?? EXAMPLE_SOURCE_ROWS), verifyEd25519);
+  const { manifest, detached } = await signManifest(signer.signer, buildUnsignedManifest(input, options.sourceRows ?? (options.d5 === undefined ? EXAMPLE_SOURCE_ROWS : d5SourceRows(cameras))), verifyEd25519);
   write(dir, PackageFile.MANIFEST, serializeManifest(manifest));
   write(dir, PackageFile.SIGNATURE, serializeDetachedSignature(detached));
   write(dir, PackageFile.CERTIFICATE, signer.certificate.pemText);
-  write(dir, PackageFile.FRAGMENTS_JSON, serializeFragmentsJson(manifest.files));
+  write(dir, PackageFile.FRAGMENTS_JSON, serializeFragmentsJson(manifest.files, manifest.audioFiles));
   write(dir, PackageFile.AUDIT_EXTRACT, '{"type":"SESSION_STARTED"}\n');
 
   let revisions = 0;
@@ -347,7 +428,7 @@ export async function buildPackage(options: BuildOptions = {}): Promise<BuiltPac
     item: { evidenceId: manifest.evidenceId, sessionId: manifest.sessionId, manifestSha256: manifest.manifestSha256, transcriptSha256: manifest.transcript.sha256, revisionCount: revisions },
     path: (relative) => join(dir, ...relative.split('/')),
     fragment: (trackId, seq) => {
-      const found = manifest.files.find((file) => file.trackId === trackId)?.fragments.find((fragment) => fragment.seq === seq);
+      const found = [...manifest.files, ...(manifest.audioFiles ?? [])].find((file) => file.trackId === trackId)?.fragments.find((fragment) => fragment.seq === seq);
       if (found === undefined) throw new Error(`no fragment ${trackId} ${seq}`);
       return found;
     },

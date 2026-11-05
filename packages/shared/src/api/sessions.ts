@@ -40,7 +40,7 @@ import {
   type CoreApiRegistryOperation,
 } from './contract-model';
 import type { SessionCommandResponse } from './core-api';
-import { BASIC_403_EXAMPLES, ERROR_EXAMPLES, deniedExamples, simRefusalExample } from './example-parts';
+import { BASIC_403_EXAMPLES, ERROR_EXAMPLES, apiErrorExample, deniedExamples, simRefusalExample } from './example-parts';
 import type { OperationExamples } from './examples';
 import {
   INVALID_INPUT,
@@ -156,10 +156,20 @@ export const START_REFUSED_SESSION_KEY_EXAMPLE = Object.freeze({
 
 // ── Operations 81-83: mic switch and sealing progress (task 3 M2-W7; register SH-13; C3 §2) ────
 
-/** Request body of op 81: the input to make active, with an optional operator reason. */
+/**
+ * Op 81 is retired in behaviour (D5; D28 DQ-2; register N-29/N-36 of masterplan/01_specs_d5.md):
+ * the audio of each track is fixed by its camera-microphone pair (`CAPTURE_PAIRS`), so the route
+ * answers `409` with this code for EVERY session, before any lookup, and writes no audit row.
+ */
+export const AUDIO_SOURCE_FIXED_BY_PAIRING_CODE = 'AUDIO_SOURCE_FIXED_BY_PAIRING';
+/** The sentence of that refusal (register N-36), one text for the Core and the simulator. */
+export const AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE =
+  'The audio of each track is fixed by its camera-microphone pair; there is no source to switch.';
+
+/** Request body of op 81: the input to make active, with an optional operator reason. Still checked by the Core (422) before the retired operation's 409 (D28 DQ-2; audit row 149); the simulator does not check it. */
 export const AudioSourceSwitchRequestSchema = z
   .strictObject({
-    inputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The mic input to move behind AUDIO-01, `MIC-NN`: one of the two inputs of the transcription pair (channels `MIC-01` and `MIC-02`; D61, 2026-11-04: the other returns to channel 2 — the other two channels record untouched).'),
+    inputId: z.string().regex(MIC_INPUT_ID_PATTERN).describe('The mic input the caller asks to move behind AUDIO-01, `MIC-NN`. Since D5 (D28 DQ-2) no input is moved: each track carries the microphone of its own pair (`VIDEO-0N` <-> `MIC-0N`), and the operation answers `409 AUDIO_SOURCE_FIXED_BY_PAIRING`. To transcribe another microphone, put it in Pair 1 with operation 80 before the session.'),
     reason: boundedText(500).optional().describe('Why the operator switched; audited as text, never as a secret.'),
   })
   .describe('Request body of `POST /api/v1/session/{id}/audio-source` (C3 §2.3 op 81).');
@@ -572,31 +582,31 @@ export const AUDIO_SOURCE_OPERATIONS = [
     path: `${SESSION_PATH}/{id}/audio-source`,
     tag: CoreApiTag.SESSION,
     mode: CoreApiMode.SIMULATED,
-    summary: 'Switch the active microphone',
+    summary: 'Switch the active microphone (retired: the audio is fixed by the camera-microphone pair)',
     description: [
-      'The in-session toggle (OD-09; D61 of 2026-11-04: all FOUR channels record at once — the toggle moves only the TRANSCRIBED source behind AUDIO-01) moves the active source behind AUDIO-01 to the named input at the next worker input-chunk boundary — one worker input chunk plus IPC latency, at most 21.333 ms with 1024-sample frames (erratum AU2-07; capture-spec §E). It records one audio-source interval and answers the new active/standby state.',
-      'It **never** auto-switches: sustained silence raises the MIC_SILENT warning and the operator decides (OD-11). Refused when the session is not RECORDING (`409 INVALID_STATE`). Access: SESSION_START **and** the `SESSION_HOLDER` condition — the operator who created the open session, or any SUPERVISOR (D4 OD-09; SEC35-18).',
-      'Writes AUDIO_SOURCE_SWITCHED: fromInput, toInput, the media-pts fromMs/toMs of the closed interval, and `sendingDeviceId` — **required when the caller is a paired mobile device** (B15; SEC35-17), optional only for a web operator session. There is no `trigger` key: every switch is operator-initiated.',
+      '**Retired in behaviour by D5 (D28 DQ-2; audit row 149).** The audio of each track is fixed by its camera-microphone pair: Pair N is camera track `VIDEO-0N` with microphone channel `MIC-0N` (sealed as `AUDIO-0N`), and the transcription stays on Pair 1 (`AUDIO-01`). The route stays and answers `409 AUDIO_SOURCE_FIXED_BY_PAIRING` ("The audio of each track is fixed by its camera-microphone pair; there is no source to switch.") for every session, before any lookup of the session or the input, with no state change and **no audit row**. No call succeeds: the operation documents no success status. To transcribe another microphone, put it in Pair 1 with operation 80 (`setPrimaryMic`) before the session.',
+      'What runs before the refusal is the request\'s own: the access rule — SESSION_START **and** the `SESSION_HOLDER` condition, the operator who created the open session or any SUPERVISOR (D4 OD-09; SEC35-18; a refusal writes its ACCESS_DENIED row) — and, on the Core server only, the request schema (`422 INVALID_INPUT` for an input ID that is not `MIC-NN`).',
+      'Before D5 the in-session toggle moved the transcribed source behind AUDIO-01, recorded an audio-source interval and wrote AUDIO_SOURCE_SWITCHED (fromInput, toInput, the media-pts fromMs/toMs, and `sendingDeviceId` for a paired device). Stored rows of those sessions stay readable; operation 82 still lists the intervals (since D5: the one interval of the start). It never auto-switched (OD-11).',
       SIM_V2_NOTE,
     ].join('\n\n'),
     source: 'Task 3 M2-W7; C3 §2.2 operation 81; register SH-13/CS-07/NM-10 (not in the design book)',
     pathParam: SESSION_PARAM,
     requestBody: { schema: 'AudioSourceSwitchRequest', required: true },
+    // Audit row 149 (D130; N-29, N-31, N-36): no success, no 404 (no lookup is made); 422 is the Core server's schema check only.
     responses: {
-      200: { description: 'The new active/standby state.', schema: 'AudioSourceState' },
       400: INVALID_JSON,
       401: NOT_SIGNED_IN,
       403: notPermitted(Permission.SESSION_START, SESSION_HOLDER_REFUSED),
-      404: NOT_OPEN_SESSION,
       409: {
         description:
-          'The requested microphone cannot become the active source (AUDIO_SOURCE_CONFLICT: e.g. it is offline), or the session is not RECORDING (INVALID_STATE).',
+          'Every call that passes the access rule: the audio of each track is fixed by its camera-microphone pair (AUDIO_SOURCE_FIXED_BY_PAIRING; D5, D28 DQ-2). Nothing changes and no audit row is written.',
         schema: 'ApiError',
       },
-      422: INVALID_INPUT,
+      422: { ...INVALID_INPUT, services: CORE_SERVER_ONLY },
     },
     access: SESSION_HOLDER_ACCESS,
-    audit: { success: AuditType.AUDIO_SOURCE_SWITCHED, ...DENIED },
+    // Audit row 149: no call succeeds and the refusal writes no row (N-29); `NONE-P` - the simulator writes none either.
+    audit: { success: CoreApiAuditNone.PARITY, ...DENIED },
     services: CORE_SERVER_ONLY,
   },
   {
@@ -855,31 +865,17 @@ export const SESSION_EXAMPLES: Readonly<Record<string, OperationExamples>> = {
         value: { inputId: 'MIC-02', reason: 'Mic 1 cable suspected loose' } satisfies AudioSourceSwitchRequest,
       },
     },
+    // Audit row 149 (D130): the pre-D5 200 / 404 examples and the AUDIO_SOURCE_CONFLICT / INVALID_STATE 409s are gone with them.
     responses: {
-      200: {
-        switched: {
-          summary: 'MIC-02 is active from media-pts 5324 ms',
-          value: {
-            sessionId: STATE_EXAMPLE_IDS.openSessionId,
-            activeInputId: 'MIC-02',
-            standbyInputId: 'MIC-01',
-            switchedAt: 1_790_823_600_000,
-            intervalFromMs: 5_324,
-          } satisfies AudioSourceStateBody,
-        },
-      },
       400: { invalidJson: ERROR_EXAMPLES.invalidJson },
       401: SIGNED_OUT,
       403: deniedExamples('switchAudioSource', 'SESSION_START', 'TECHNICIAN'),
-      404: NOT_OPEN,
       409: {
-        conflict: simRefusalExample(
-          'MIC-02 is offline',
-          'AUDIO_SOURCE_CONFLICT',
-          'The requested microphone cannot become the active source.',
-          'AUDIO_SOURCE_CONFLICT',
-        ),
-        ...wrongState('ARMED', 'switchAudioSource'),
+        // Audit row 143 (D5; D28 DQ-2; register N-36): the answer of every call since the pairing.
+        fixedByPairing: {
+          summary: 'Retired: the audio of each track is fixed by its camera-microphone pair (no audit row)',
+          value: apiErrorExample(AUDIO_SOURCE_FIXED_BY_PAIRING_CODE, AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE),
+        },
       },
       422: { invalidInput: ERROR_EXAMPLES.invalidInput },
     },

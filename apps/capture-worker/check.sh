@@ -48,10 +48,10 @@ rules() {
     done | sort | tr '\n' ' ' | sed 's/ $//'
   }
 
-  # AU2-07: one call site of the graph command, in the unit of the filtering thread, behind the thread guard.
-  [ "$(count 'avfilter_graph_send_comman[d](')" = "1" ] || say "AU2-07: expected exactly 1 call site of the graph command, found $(count 'avfilter_graph_send_comman[d](')"
-  [ "$(files 'avfilter_graph_send_comman[d](')" = "audio.c" ] || say "AU2-07: the graph command is called outside audio.c: $(files 'avfilter_graph_send_comman[d](')"
-  grep -q 'pthread_equal(pthread_self(), filter_tid)' "$dir/audio.c" 2>/dev/null || say "AU2-07: the filtering-thread guard is missing"
+  # AU2-07: the graph is never commanded. Until row 152b the operator's switch was its ONE call site (in audio.c, behind
+  # the filtering-thread guard); the switch is retired (N-31; D135, D136): the selector of the tap keeps the input
+  # filter_build() gave it at START, so a call of the graph command anywhere is a way to move it, and is refused.
+  [ "$(count 'avfilter_graph_send_comman[d](')" = "0" ] || say "AU2-07: expected no call of the graph command (the switch is retired), found $(count 'avfilter_graph_send_comman[d](') in $(files 'avfilter_graph_send_comman[d](')"
   # Pair-111 N-10: no other unit can reach the graph at all, by any function of the filter library.
   [ "$(files 'avfilter_\|av_buffersrc_\|av_buffersink_\|libavfilter/')" = "audio.c" ] || say "N-10: libavfilter is named outside audio.c: $(files 'avfilter_\|av_buffersrc_\|av_buffersink_\|libavfilter/')"
   for other in av_opt_set avfilter_graph_queue_comman[d] avfilter_process_comman[d]; do
@@ -72,11 +72,12 @@ rules() {
   [ "$(count '#define DEMS_MOVFLAGS "+frag_keyframe+empty_moov+default_base_moof+skip_trailer"')" = "1" ] || say "C.4: the default movflags are not the decided set"
   [ "$(count '"flush_packets", "1"')" = "2" ] || say "C.2 (W-2): flush_packets=1 is not set on the camera output and the D61 channel output"
 
-  # H-4 was ONE audio encoder (row 58). D61 (2026-11-04) replaces the rule: ONE ENCODER INSTANCE PER FILE - the
-  # legacy lane's encoder (ingest.c open_encoder, feeding every camera file) plus one per microphone channel that
-  # names an outputPath (audio.c mic_rec_open): two places find the encoder and open a codec; a third is a bug.
-  [ "$(count 'avcodec_find_encoder')" = "2" ] || say "H-4/D61: expected exactly 2 encoder lookups (lane + channel files), found $(count 'avcodec_find_encoder')"
-  [ "$(count 'avcodec_open2(')" = "2" ] || say "H-4/D61: expected exactly 2 codec opens (lane + channel files), found $(count 'avcodec_open2(')"
+  # H-4 was ONE audio encoder (row 58); D61 (2026-11-04) made it one encoder instance per file. Row 152 (D5 pairs,
+  # DF-06): the legacy lane's encoder that fed EVERY camera file is gone. ONE place finds and opens an encoder
+  # (audio.c enc_open): one per microphone channel of the plan, whose packets go to its own file AND to the camera of
+  # its pair, plus the silent one of a camera that states its channel missing. A second place is a bug.
+  [ "$(count 'avcodec_find_encoder')" = "1" ] || say "H-4/D61: expected exactly 1 encoder lookup (audio.c enc_open: the pairs' encoders), found $(count 'avcodec_find_encoder')"
+  [ "$(count 'avcodec_open2(')" = "1" ] || say "H-4/D61: expected exactly 1 codec open (audio.c enc_open: the pairs' encoders), found $(count 'avcodec_open2(')"
 
   # W-1 / SEC35-23: TCP only on the ingest, and no wildcard address anywhere.
   [ "$(count '"protocol_whitelist", "tcp"')" = "1" ] || say "W-1: the ingest does not restrict its protocols to tcp"

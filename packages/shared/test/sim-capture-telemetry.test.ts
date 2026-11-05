@@ -472,6 +472,9 @@ describe('the advisory notices', () => {
         ['MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL', 'MIC-02', 'MIC'],
         ['MIC_SILENCE_RUN_INSERTED', 'MIC-02', 'MIC'],
         ['STANDBY_ON_PRIMARY_DEVICE', 'MIC-02', 'MIC'],
+        // Audit row 149 (D132): a camera that records without the microphone of its pair. Raised here WITHOUT its words (the
+        // block in sim-capture-notices.test.ts has them): the alert then holds none. WARNING, advice all the same.
+        ['PAIRED_MIC_MISSING', 'CAM-03', 'CAMERA'],
       ] as const;
       expect(cases.map(([code]) => code).sort()).toEqual(Object.values(CaptureAdvisoryReason).sort());
       for (const [code, subject] of cases) h.sim.actions.raiseCaptureWarning({ code, subject });
@@ -480,8 +483,9 @@ describe('the advisory notices', () => {
       expect(alerts.map((alert) => [alert.severity, alert.target, alert.params])).toEqual(
         cases.map(([code, subject, deviceKind]) => [CAPTURE_ADVISORY_SEVERITY[code], subject, { reason: code, deviceId: subject, deviceKind, sessionId: before.session?.id }]),
       );
-      // The level: information for seven, WARNING for the three of a microphone that loses more audio than it should (row N2); the five earlier ones did not move.
-      expect(cases.map(([code]) => CAPTURE_ADVISORY_SEVERITY[code])).toEqual(['INFO', 'INFO', 'INFO', 'INFO', 'INFO', 'INFO', 'WARNING', 'WARNING', 'WARNING', 'INFO']);
+      // The level: information for seven, WARNING for the three of a microphone that loses more audio than it should (row N2) and for
+      // a camera without its paired microphone (audit row 149); the earlier ones did not move.
+      expect(cases.map(([code]) => CAPTURE_ADVISORY_SEVERITY[code])).toEqual(['INFO', 'INFO', 'INFO', 'INFO', 'INFO', 'INFO', 'WARNING', 'WARNING', 'WARNING', 'INFO', 'WARNING']);
       expect(REPLICATED_SLICE_SCHEMAS.alerts.safeParse(raised.alerts).success).toBe(true);
       // Advice only: nothing else of the state moved.
       expect(raised.faults).toBe(before.faults);

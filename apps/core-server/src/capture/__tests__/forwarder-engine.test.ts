@@ -322,7 +322,7 @@ describe('pass D9: MIC_RATE_AT_LIMIT is raised as the named advisory notice of t
     expect(h.state().audio.activeInputId).toBe(before.audio.activeInputId);
     expect(h.state().session?.audioSource).toEqual(before.session?.audioSource);
     expect(h.state().audit.rows.filter((row) => row.type === 'AUDIO_SOURCE_SWITCHED')).toEqual([]);
-    expect(h.worker.commands('SWITCH_AUDIO_SOURCE')).toEqual([]);
+    expect(h.worker.received.map((message) => message.type as string)).not.toContain('SWITCH_AUDIO_SOURCE'); // audit row 149: no such command since protocol 6
     expect(h.reports).toEqual([]);
   });
 

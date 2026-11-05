@@ -1727,7 +1727,8 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     for (const [operationId, payload] of [['addSessionMarker', { label: 'Key statement' }], ['addSessionNote', { text: 'A note' }], ['takeSessionSnapshot', undefined]] as const) {
       await expectCall(main, operationId, investigator, 'a session that does not record', { id: blockedId, ...(payload === undefined ? {} : { payload }) }, 409, 'INVALID_STATE');
     }
-    await expectCall(main, 'switchAudioSource', supervisor, 'a switch in a session that does not record', { id: blockedId, payload: { inputId: 'MIC-02' } }, 409, 'INVALID_STATE');
+    // Audit row 149 (N-29, N-36): operation 81 is retired - refused before any lookup of the session, whatever its state.
+    await expectCall(main, 'switchAudioSource', supervisor, 'a switch in a session that does not record (retired: fixed by the pairing)', { id: blockedId, payload: { inputId: 'MIC-02' } }, 409, 'AUDIO_SOURCE_FIXED_BY_PAIRING');
     await expectCall(main, 'cancelSession', supervisor, 'the armed session is cancelled', { id: blockedId }, 204);
 
     // ── A microphone without a signal: the pre-check ends with a warning.
@@ -1751,18 +1752,23 @@ describe('AC-B-10: every operation answers what the contract documents', () => {
     await expectCall(main, 'addSessionNote', supervisor, 'a note from the web console', { id: sessionId, payload: { text: 'Subject asked for a break' } }, 204);
     await expectCall(main, 'addSessionNote', supervisor, 'a note that is no text', { id: sessionId, payload: { text: 5 } }, 422, 'INVALID_INPUT');
     await expectCall(main, 'takeSessionSnapshot', investigator, 'a snapshot', { id: sessionId }, 204);
-    // Operations 81 and 82 (C3 §2.4 "Mic switch"; integration pass D4): the intervals before and after a switch.
+    // Operations 81 and 82 (C3 §2.4 "Mic switch"; integration pass D4). Audit row 149 (D5; N-29, N-30, N-36; D116): operation 81
+    // is retired - every call that passes the access rule is 409 AUDIO_SOURCE_FIXED_BY_PAIRING with no audit row, so the session
+    // keeps the one interval of its start.
     const oneInterval = await expectCall(main, 'listAudioSourceIntervals', tabletSession, 'the interval of the start, read on the tablet', { id: sessionId }, 200);
     expect(bodyOf<{ items: Array<{ inputId: string; reason: string }> }>(oneInterval).items.map((item) => [item.inputId, item.reason])).toEqual([['MIC-01', 'START']]);
-    // C3 §2.2: the creator of the session or any SUPERVISOR. The CREATOR switches (pass D6: the guard's
-    // holder fact reads the creator now); the SUPERVISOR switches back below.
-    await expectCall(main, 'switchAudioSource', investigator, 'the standby microphone becomes the source, switched by the creator of the session', { id: sessionId, payload: { inputId: 'MIC-02' } }, 200);
-    await expectCall(main, 'switchAudioSource', investigator, 'a well-formed input that is no input of the session', { id: sessionId, payload: { inputId: 'MIC-09' } }, 409, 'AUDIO_SOURCE_CONFLICT');
-    const twoIntervals = await expectCall(main, 'listAudioSourceIntervals', technician, 'two intervals, newest first, one a page', { id: sessionId, query: '?limit=1' }, 200);
-    expect(bodyOf<{ items: Array<{ inputId: string; reason: string }>; nextCursor: string | null }>(twoIntervals)).toMatchObject({ items: [{ inputId: 'MIC-02', reason: 'MANUAL' }], nextCursor: '2' });
+    // C3 §2.2: the creator of the session or any SUPERVISOR passes the access rule (pass D6: the guard's holder fact reads the
+    // creator) - and is then refused for the pairing, as the SUPERVISOR is below.
+    const auditBefore = (await main.app.db.pool.query<{ count: string }>("SELECT count(*) FROM audit_log WHERE type = 'AUDIO_SOURCE_SWITCHED'")).rows[0]?.count;
+    await expectCall(main, 'switchAudioSource', investigator, 'the creator of the session asks for the standby microphone (retired: fixed by the pairing)', { id: sessionId, payload: { inputId: 'MIC-02' } }, 409, 'AUDIO_SOURCE_FIXED_BY_PAIRING');
+    await expectCall(main, 'switchAudioSource', investigator, 'a well-formed input that is no input of the session (D116: fixed by the pairing, not a conflict)', { id: sessionId, payload: { inputId: 'MIC-09' } }, 409, 'AUDIO_SOURCE_FIXED_BY_PAIRING');
+    const stillOne = await expectCall(main, 'listAudioSourceIntervals', technician, 'still the one interval of the start, one a page', { id: sessionId, query: '?limit=1' }, 200);
+    expect(bodyOf<{ items: Array<{ inputId: string; reason: string }>; nextCursor: string | null }>(stillOne)).toMatchObject({ items: [{ inputId: 'MIC-01', reason: 'START' }], nextCursor: null });
     await expectCall(main, 'listAudioSourceIntervals', supervisor, 'a limit outside 1 to 200', { id: sessionId, query: '?limit=0' }, 422, 'INVALID_INPUT');
     await expectCall(main, 'switchAudioSource', supervisor, 'an input ID of another form', { id: sessionId, payload: { inputId: 'MIC-2' } }, 422, 'INVALID_INPUT');
-    await expectCall(main, 'switchAudioSource', supervisor, 'back to the first microphone', { id: sessionId, payload: { inputId: 'MIC-01' } }, 200);
+    await expectCall(main, 'switchAudioSource', supervisor, 'a SUPERVISOR asks for the first microphone (retired: fixed by the pairing)', { id: sessionId, payload: { inputId: 'MIC-01' } }, 409, 'AUDIO_SOURCE_FIXED_BY_PAIRING');
+    // No audit row for any of the refused calls (N-29).
+    expect((await main.app.db.pool.query<{ count: string }>("SELECT count(*) FROM audit_log WHERE type = 'AUDIO_SOURCE_SWITCHED'")).rows[0]?.count).toBe(auditBefore);
     // Operation 83 (row 82b; the walk is pass D4's): no sealing has started while the session records.
     await expectCall(main, 'getSealingProgress', investigator, 'the sealing progress of a session that still records', { id: sessionId }, 409, 'INVALID_STATE');
     await expectCall(main, 'cancelSession', supervisor, 'a recording cannot be cancelled', { id: sessionId }, 409, 'INVALID_STATE');
@@ -2963,8 +2969,18 @@ describe('SC6: what the whole file received', () => {
     expect(Object.keys(LANDED_UNANSWERED)).toEqual(deferred);
     expect(UNROUTED_OPERATIONS.filter((operation) => deferred.some((entry) => entry.startsWith(`${operation.operationId} `))).map((operation) => operation.operationId)).toEqual([]);
     // The primary success status of each of the 97 routed operations (99 less the two of LANDED_UNROUTED).
-    const withoutSuccess = ROUTED_OPERATIONS.filter((operation) => ![...ledger.produced(operation.operationId).keys()].some((status) => status >= 200 && status < 300)).map((operation) => operation.operationId);
+    // Audit row W3F (F-W3TW-D1, D142): less the one operation retired in behaviour - the same RETIRED exception as
+    // packages/shared/test/api-registry.test.ts (audit row 149, D130; N-29, N-36). Operation 81 stays routed, but every
+    // call that passes the access rule is refused 409 AUDIO_SOURCE_FIXED_BY_PAIRING, so it can produce no success. For it
+    // the pin is turned round: it produced NO 2xx, and it produced that refusal (the refusal cases of block 6 stay as they are).
+    const RETIRED = ['switchAudioSource'];
+    const withoutSuccess = ROUTED_OPERATIONS.filter((operation) => !RETIRED.includes(operation.operationId) && ![...ledger.produced(operation.operationId).keys()].some((status) => status >= 200 && status < 300)).map((operation) => operation.operationId);
     expect(withoutSuccess).toEqual([]);
+    expect(RETIRED.filter((operationId) => !ROUTED_OPERATIONS.some((operation) => operation.operationId === operationId))).toEqual([]);
+    for (const operationId of RETIRED) {
+      expect([...ledger.produced(operationId).keys()].filter((status) => status >= 200 && status < 300), operationId).toEqual([]);
+      expect([...(ledger.produced(operationId).get(409) ?? new Set<string>())], operationId).toContain('AUDIO_SOURCE_FIXED_BY_PAIRING');
+    }
     console.info(`[w52] duration of the file up to its last block: ${Math.round(performance.now() - FILE_STARTED)} ms`);
   });
 });

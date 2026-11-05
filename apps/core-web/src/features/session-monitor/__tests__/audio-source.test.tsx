@@ -3,15 +3,18 @@
 // (masterplan/08_client_ux_spec.md §3 flow 2; masterplan/03_api_contract.md §2.4 operations 81, 82;
 // masterplan/01_specs.md R-3; checks M5-WARN-1 client half and M4-PC-1 for G4/G5).
 //
+// Audit row 157 (D5, S5 §6; AC-4.6 UI; D4, D30, D130): operation 81 is retired - the microphones are fixed by the
+// camera-microphone pairing. The switch tests of row 72 (gate, confirmed switch, who may switch, refusal classes,
+// the silence warning's offer) are REPLACED by the cases below: the control is gone and each half carries its pair label.
+//
 // | Rule | Where it is proven here |
 // |------|-------------------------|
-// | G4: Checking → allowed, or refused with its reason; the session holder or a SUPERVISOR only (OD-09) | "the gate", "who may switch" |
-// | A switch is explicit and confirmed; one `AUDIO_SOURCE_SWITCHED` audit row; the pair on screen is the store's | "a confirmed switch" |
-// | `MIC_SILENT` warns and offers; it never switches (OD-11) | "the silence warning" |
-// | Refusals of operation 81 by class, never by text | "refusals" |
+// | No switch control for any role or state; the simulator refuses op 81 and writes nothing | "row 157: no switch control" |
+// | Each half reads "Mic N (Camera N)"; Pair 1 alone says "Transcribed"; the old role / channel chips are gone | "row 157: the pair labels" |
+// | `MIC_SILENT` warns and names the input; it offers nothing and changes nothing (OD-11) | "the silence warning" |
 // | "Connecting cameras…" until the first durable fragment (D84, D91) | "before the first durable fragment" |
 // | The band's layout from media-pts intervals | "the audio-source band" |
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -22,9 +25,6 @@ import {
   createMemoryAuthStorage,
   createSim,
   OPERATOR_IDS,
-  OperatorRole,
-  SimNotFoundError,
-  SimTransitionError,
   type ScenarioName,
   type Sim,
   type SimState,
@@ -32,13 +32,49 @@ import {
 import { audioSourceBandSegments, formatMediaMs } from '@/components/composed'
 import { getMissingI18nKeys, resetMissingI18nKeys } from '@/i18n'
 import { createAppRouter } from '@/router'
-import { audioSourceToggleGate, isSessionHolder, selectActiveInputId, selectStandbyInputId, sessionStartRoles, silentInputOf, switchRefusal } from '../audio-source'
+import { selectActiveInputId, selectStandbyInputId, silentInputOf } from '../audio-source'
 import { captureDurableOf, selectBanner, selectFeed } from '../model'
 
 vi.setConfig({ testTimeout: 30_000 })
 
 const A = en.session.audioSource
 const SWITCHED = 'AUDIO_SOURCE_SWITCHED'
+const PAIRS = en.devices.pairs
+/** Row 156 `micPairLabel` words: "Mic N (Camera N)". */
+const pairWords = (n: number) => PAIRS.micOfCamera.replaceAll('{{n}}', String(n))
+const TRACKS = ['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04'] as const
+/** Row 157: none of the retired switch surfaces is in the panel or on the page. */
+function expectNoSwitchControl(audio: HTMLElement) {
+  for (const id of ['sm-audio-switch', 'sm-audio-switch-reason', 'sm-audio-refusal', 'sm-audio-silent-switch', 'sm-audio-silent-reason']) {
+    expect(within(audio).queryByTestId(id)).not.toBeInTheDocument()
+  }
+  expect(screen.queryByTestId('sm-audio-switch-dialog')).not.toBeInTheDocument()
+  expect(audio.querySelector('[data-testid^="sm-audio-role-"], [data-testid^="sm-audio-channel-"]')).toBeNull()
+  expect(within(audio).queryByRole('button', { name: /switch/i })).not.toBeInTheDocument()
+}
+/** Row 157: the four halves carry their pair label; Pair 1 alone is marked transcribed. */
+function expectPairLabels(audio: HTMLElement) {
+  TRACKS.forEach((track, index) => {
+    const half = audio.querySelector(`[data-channel="${track}"].sm-audio-half`)!
+    expect(half).toHaveAttribute('data-pair', String(index + 1))
+    expect(within(audio).getByTestId(`sm-audio-pair-${track}`)).toHaveTextContent(pairWords(index + 1))
+    if (index === 0) {
+      expect(half).toHaveAttribute('data-transcribed', 'true')
+      expect(within(audio).getByTestId(`sm-audio-transcribed-${track}`)).toHaveTextContent(PAIRS.transcribed)
+    } else {
+      expect(half).not.toHaveAttribute('data-transcribed')
+      expect(within(audio).queryByTestId(`sm-audio-transcribed-${track}`)).not.toBeInTheDocument()
+    }
+  })
+  // The words of the retired chips are gone from the panel.
+  const text = audio.textContent ?? ''
+  expect(text).not.toContain(A.role.ACTIVE)
+  expect(text).not.toContain(A.role.STANDBY)
+}
+/** The simulator's refusal of operation 81 (row 150): its code, and nothing written. */
+function expectOp81Refused(sim: Sim) {
+  expect(() => sim.actions.switchAudioSource('MIC-02')).toThrow(expect.objectContaining({ code: 'AUDIO_SOURCE_FIXED_BY_PAIRING' }))
+}
 
 class SilentSocket implements SocketLike {
   readyState = 0
@@ -79,7 +115,6 @@ const SEEDED_LINES = [
 
 const switchRows = (sim: Sim) => sim.store.getState().audit.rows.filter((row) => row.type === SWITCHED)
 const activeOf = (sim: Sim) => sim.store.getState().audio.activeInputId
-const role = (inputId: string) => screen.getByTestId(`sm-audio-role-${inputId}`)
 const panel = () => screen.findByTestId('panel-O', {}, { timeout: 15_000 })
 
 const originalPlay = HTMLMediaElement.prototype.play
@@ -109,46 +144,6 @@ afterEach(() => {
   cleanup()
   for (const sim of sims.splice(0)) sim.stop()
   vi.unstubAllGlobals()
-})
-
-describe('the gate (G4, G5; ux §3.4)', () => {
-  const allowed = { resolved: true, recording: true, canStart: true, holder: true }
-
-  it('is Checking while the role or the link is unresolved, whatever else is true', () => {
-    expect(audioSourceToggleGate({ ...allowed, resolved: false })).toEqual({ kind: 'CHECKING' })
-    expect(audioSourceToggleGate({ resolved: false, recording: false, canStart: false, holder: false })).toEqual({ kind: 'CHECKING' })
-  })
-
-  it('then refuses with its reason: no recording, the role, the session holder; and allows only when all hold', () => {
-    expect(audioSourceToggleGate({ ...allowed, recording: false })).toEqual({ kind: 'NOT_RECORDING' })
-    expect(audioSourceToggleGate({ ...allowed, canStart: false })).toEqual({ kind: 'ROLE', roles: [OperatorRole.INVESTIGATOR, OperatorRole.SUPERVISOR] })
-    expect(audioSourceToggleGate({ ...allowed, holder: false })).toEqual({ kind: 'HOLDER' })
-    expect(audioSourceToggleGate(allowed)).toBeNull()
-  })
-
-  it('names the roles that hold SESSION_START from the role table', () => {
-    expect(sessionStartRoles()).toEqual([OperatorRole.INVESTIGATOR, OperatorRole.SUPERVISOR])
-  })
-
-  it('OD-09: the holder is the operator who opened the session, or a SUPERVISOR', () => {
-    expect(isSessionHolder({ operatorId: 'OPR-001', role: OperatorRole.INVESTIGATOR, createdBy: 'OPR-001' })).toBe(true)
-    expect(isSessionHolder({ operatorId: 'OPR-009', role: OperatorRole.INVESTIGATOR, createdBy: 'OPR-001' })).toBe(false)
-    expect(isSessionHolder({ operatorId: 'OPR-002', role: OperatorRole.SUPERVISOR, createdBy: 'OPR-001' })).toBe(true)
-    expect(isSessionHolder({ operatorId: 'OPR-003', role: OperatorRole.TECHNICIAN, createdBy: 'OPR-001' })).toBe(false)
-    expect(isSessionHolder({ operatorId: null, role: null, createdBy: null })).toBe(false)
-  })
-})
-
-describe('refusals of operation 81 (ux §3.5)', () => {
-  it('are classed by code and status, never by text', () => {
-    expect(switchRefusal({ code: 'AUDIO_SOURCE_CONFLICT', status: 409 })).toBe('CONFLICT')
-    expect(switchRefusal({ code: 'INVALID_STATE', status: 409 })).toBe('NOT_RECORDING')
-    expect(switchRefusal({ code: 'NOT_FOUND', status: 404 })).toBe('NOT_OPEN')
-    expect(switchRefusal(new SimTransitionError('ARMED', 'switchAudioSource'))).toBe('NOT_RECORDING')
-    expect(switchRefusal(new SimNotFoundError('captureMic', 'MIC-02'))).toBe('NOT_OPEN')
-    expect(switchRefusal(new Error('AUDIO_SOURCE_CONFLICT in the text only'))).toBe('OTHER')
-    expect(switchRefusal(null)).toBe('OTHER')
-  })
 })
 
 describe('the silence warning: which input it names', () => {
@@ -251,117 +246,56 @@ describe('before the first durable fragment (D84, D91)', () => {
   })
 })
 
-describe('a confirmed switch (ux §3.2 steps 1-4; operation 81)', () => {
-  it('the session holder sees the active and the standby input, confirms, and the Core writes exactly one audit row; the pair on screen is the store\'s', async () => {
+describe('row 157: no switch control (AC-4.6 UI; op 81 retired, D130)', () => {
+  it('the session holder sees no toggle, no confirmation and no reason line; the simulator refuses op 81 and nothing changes', async () => {
     const sim = mount(OPERATOR_IDS.BUDI)
     const audio = await panel()
-    expect(activeOf(sim)).toBe('MIC-01')
-    expect(role('MIC-01')).toHaveAttribute('data-role', 'ACTIVE')
-    expect(role('MIC-01')).toHaveTextContent(A.role.ACTIVE)
-    expect(role('MIC-02')).toHaveAttribute('data-role', 'STANDBY')
-    // D61 (2026-11-04): all four channels record; an input outside the transcription pair (channel 3 or 4) carries no chip.
-    expect(screen.queryByTestId('sm-audio-role-MIC-03')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('sm-audio-role-MIC-04')).not.toBeInTheDocument()
-    // Allowed: no reason line, the toggle names the standby input.
-    const toggle = within(audio).getByTestId('sm-audio-switch')
-    expect(toggle).not.toBeDisabled()
-    expect(toggle).toHaveTextContent('Switch to MIC 2')
-    expect(within(audio).queryByTestId('sm-audio-switch-reason')).not.toBeInTheDocument()
+    expectNoSwitchControl(audio)
+    expect(audio.querySelector('.sm-audio-body')).toHaveAttribute('data-active-input', 'MIC-01')
+    // The band of operation 82 stays: one interval, the input of the start.
     expect(within(audio).getByTestId('audio-source-band')).toHaveAttribute('data-segments', '1')
-
-    // The press only asks: nothing is sent, nothing is flipped.
-    fireEvent.click(toggle)
-    const dialog = await screen.findByTestId('sm-audio-switch-dialog')
-    expect(dialog).toHaveTextContent('Switch the active microphone to MIC 2?')
-    expect(switchRows(sim)).toHaveLength(0)
-    expect(activeOf(sim)).toBe('MIC-01')
-    expect(role('MIC-01')).toHaveAttribute('data-role', 'ACTIVE')
-
-    fireEvent.click(within(dialog).getByTestId('sm-audio-switch-confirm'))
-    await waitFor(() => expect(role('MIC-02')).toHaveAttribute('data-role', 'ACTIVE'))
-    expect(role('MIC-01')).toHaveAttribute('data-role', 'STANDBY')
-    expect(activeOf(sim)).toBe('MIC-02')
-    const rows = switchRows(sim)
-    expect(rows).toHaveLength(1)
-    // Fix pass F-M5 (review R74-05): the keys of contract C3 §5.2 (it pinned the simulator's own `fromInputId` / `toInputId` / `deviceId`).
-    expect(rows[0]).toMatchObject({ actorId: OPERATOR_IDS.BUDI, details: { fromInput: 'MIC-01', toInput: 'MIC-02' } })
-    // The toggle now names the other input; the band has the interval the switch opened; the timeline names both inputs.
-    await waitFor(() => expect(within(audio).getByTestId('sm-audio-switch')).toHaveTextContent('Switch to MIC 1'))
-    await waitFor(() => expect(within(audio).getByTestId('audio-source-band')).toHaveAttribute('data-segments', '2'))
-    // Pass D6 (item 9, D159): intervals are numbered from 1 (the manifest's rule; the simulator counted from 0).
-    // The segment's test id is its `seq`: 1 = the interval of the start, 2 = the interval the switch opened.
     expect(within(audio).getByTestId('audio-source-band-segment-1')).toHaveAttribute('data-input', 'MIC-01')
-    expect(within(audio).getByTestId('audio-source-band-segment-2')).toHaveAttribute('data-input', 'MIC-02')
-    const item = document.querySelector('[data-kind="AUDIO_SWITCH"]')
-    expect(item).toHaveTextContent(en.session.timeline.kind.AUDIO_SWITCH)
-    expect(item).toHaveTextContent('MIC 1 to MIC 2')
+    await act(async () => {
+      expectOp81Refused(sim)
+    })
+    expect(activeOf(sim)).toBe('MIC-01')
+    expect(switchRows(sim)).toHaveLength(0)
+    expect(document.querySelector('[data-kind="AUDIO_SWITCH"]')).toBeNull()
+    expect(within(audio).getByTestId('audio-source-band')).toHaveAttribute('data-segments', '1')
+    expectNoSwitchControl(audio)
     expect(getMissingI18nKeys()).toEqual([])
   })
 
-  it('cancelling the confirmation sends nothing', async () => {
-    const sim = mount(OPERATOR_IDS.BUDI)
+  it.each([
+    ['a SUPERVISOR who did not open the session', OPERATOR_IDS.ANDI, 'recording'],
+    ['a TECHNICIAN', OPERATOR_IDS.RINA, 'recording'],
+    ['the holder without a recording', OPERATOR_IDS.BUDI, 'idle'],
+  ] as const)('%s sees no switch control either', async (_name, operatorId, scenario) => {
+    mount(operatorId, { scenario: scenario as ScenarioName })
     const audio = await panel()
-    fireEvent.click(within(audio).getByTestId('sm-audio-switch'))
-    const dialog = await screen.findByTestId('sm-audio-switch-dialog')
-    fireEvent.click(within(dialog).getByTestId('sm-audio-switch-cancel'))
-    await waitFor(() => expect(screen.queryByTestId('sm-audio-switch-dialog')).not.toBeInTheDocument())
-    expect(switchRows(sim)).toHaveLength(0)
-    expect(activeOf(sim)).toBe('MIC-01')
+    expectNoSwitchControl(audio)
   })
 })
 
-describe('who may switch (OD-09; G4)', () => {
-  it('a SUPERVISOR who did not open the session may', async () => {
-    const sim = mount(OPERATOR_IDS.ANDI)
+describe('row 157: the pair labels (S5 §6; N-40; row 156 micPairLabel)', () => {
+  it('each half reads "Mic N (Camera N)" and Pair 1 alone says Transcribed; the names of the halves stay', async () => {
+    mount(OPERATOR_IDS.BUDI)
     const audio = await panel()
-    expect(sim.store.getState().session!.createdBy).toBe(OPERATOR_IDS.BUDI)
-    expect(within(audio).getByTestId('sm-audio-switch')).not.toBeDisabled()
-    expect(within(audio).queryByTestId('sm-audio-switch-reason')).not.toBeInTheDocument()
+    expectPairLabels(audio)
+    expect(within(audio).getByTestId('sm-audio-pair-AUDIO-01')).toHaveAttribute('data-channel', 'MIC-01')
+    expect(within(audio).getByTestId('sm-audio-pair-AUDIO-04')).toHaveAttribute('data-channel', 'MIC-04')
+    expect(screen.getByTestId('sm-track-label-AUDIO-01')).toHaveTextContent('MIC 1')
+    expect(getMissingI18nKeys()).toEqual([])
   })
 
-  it('a TECHNICIAN sees the toggle disabled with the roles that may; a press sends nothing', async () => {
-    const sim = mount(OPERATOR_IDS.RINA)
-    const audio = await panel()
-    const toggle = within(audio).getByTestId('sm-audio-switch')
-    expect(toggle).toBeDisabled()
-    expect(toggle).toHaveAttribute('data-block', 'ROLE')
-    expect(within(audio).getByTestId('sm-audio-switch-reason')).toHaveTextContent('Requires the INVESTIGATOR or SUPERVISOR role')
-    fireEvent.click(toggle)
-    expect(screen.queryByTestId('sm-audio-switch-dialog')).not.toBeInTheDocument()
-    expect(switchRows(sim)).toHaveLength(0)
-    // The pair is still shown to every role.
-    expect(role('MIC-01')).toHaveAttribute('data-role', 'ACTIVE')
-  })
-
-  it('an INVESTIGATOR who did not open the session sees it disabled with the holder sentence', async () => {
-    const sim = mount(OPERATOR_IDS.BUDI, {
-      prepare: (created) => {
-        const session = created.store.getState().session!
-        created.store.setState({ session: { ...session, createdBy: 'OPR-009' } })
-      },
-    })
-    const audio = await panel()
-    const toggle = within(audio).getByTestId('sm-audio-switch')
-    expect(toggle).toBeDisabled()
-    expect(toggle).toHaveAttribute('data-block', 'HOLDER')
-    expect(within(audio).getByTestId('sm-audio-switch-reason')).toHaveTextContent(A.block.HOLDER)
-    fireEvent.click(toggle)
-    expect(screen.queryByTestId('sm-audio-switch-dialog')).not.toBeInTheDocument()
-    expect(switchRows(sim)).toHaveLength(0)
-  })
-
-  it('without a recording the toggle is not drawn and its reason is', async () => {
+  it('the labels hold without a recording too (the pairs are fixed by setup, not by the session)', async () => {
     mount(OPERATOR_IDS.BUDI, { scenario: 'idle' })
-    const audio = await panel()
-    expect(within(audio).queryByTestId('sm-audio-switch')).not.toBeInTheDocument()
-    const reason = within(audio).getByTestId('sm-audio-switch-reason')
-    expect(reason).toHaveAttribute('data-block', 'NOT_RECORDING')
-    expect(reason).toHaveTextContent(A.block.NOT_RECORDING)
+    expectPairLabels(await panel())
   })
 })
 
 describe('the silence warning (OD-11; M5-WARN-1, client half)', () => {
-  it('warns, names the input, offers the switch and never makes it: the active input and the audit log do not change', async () => {
+  it('warns and names the input; it offers nothing and changes nothing (row 157: no switch offer)', async () => {
     const sim = mount(OPERATOR_IDS.BUDI)
     const audio = await panel()
     expect(within(audio).queryByTestId('sm-audio-silent')).not.toBeInTheDocument()
@@ -372,53 +306,51 @@ describe('the silence warning (OD-11; M5-WARN-1, client half)', () => {
     const warning = await within(audio).findByTestId('sm-audio-silent')
     expect(warning).toHaveAttribute('data-input', 'MIC-01')
     expect(warning).toHaveTextContent('MIC 1 is silent')
-    expect(warning).toHaveTextContent('never switched automatically')
+    // Row W3T (R157-3, D5): the pair's microphone is fixed by setup - the body points at the cable or the device.
+    expect(warning).toHaveTextContent('The microphone of each pair is fixed by setup: check its cable or the device.')
+    expect(warning).not.toHaveTextContent('never switched automatically')
+    expect(within(warning).queryByRole('button')).not.toBeInTheDocument()
     // Time passes with the warning up: still nothing switched.
     await act(async () => {
       sim.tick?.()
       await new Promise((resolve) => setTimeout(resolve, 50))
     })
     expect(activeOf(sim)).toBe('MIC-01')
-    expect(role('MIC-01')).toHaveAttribute('data-role', 'ACTIVE')
     expect(switchRows(sim)).toHaveLength(0)
-
-    // G5: the offered action only opens the same confirmation.
-    fireEvent.click(within(warning).getByTestId('sm-audio-silent-switch'))
-    const dialog = await screen.findByTestId('sm-audio-switch-dialog')
-    expect(switchRows(sim)).toHaveLength(0)
-    fireEvent.click(within(dialog).getByTestId('sm-audio-switch-confirm'))
-    await waitFor(() => expect(role('MIC-02')).toHaveAttribute('data-role', 'ACTIVE'))
-    expect(switchRows(sim)).toHaveLength(1)
+    expectNoSwitchControl(audio)
     expect(getMissingI18nKeys()).toEqual([])
   })
 
-  it('G5 follows the same gate: a TECHNICIAN sees the offer disabled with its reason', async () => {
+  it('a TECHNICIAN sees the same warning, with no offer and no reason line', async () => {
     const sim = mount(OPERATOR_IDS.RINA, { prepare: (created) => created.actions.inject('MIC_SILENT') })
     const audio = await panel()
     const warning = await within(audio).findByTestId('sm-audio-silent')
-    expect(within(warning).getByTestId('sm-audio-silent-switch')).toBeDisabled()
-    expect(within(warning).getByTestId('sm-audio-silent-reason')).toHaveAttribute('data-block', 'ROLE')
+    expect(within(warning).queryByRole('button')).not.toBeInTheDocument()
+    expectNoSwitchControl(audio)
     expect(switchRows(sim)).toHaveLength(0)
   })
 })
 
 describe('the Dashboard mic tiles (WB-02)', () => {
-  it('say Active and Standby from the session\'s transcription pair while a session records; D61: the tiles of channels 3 and 4 record without a pair word', async () => {
+  it('row W3T (R157-1): name their pair "Mic N (Camera N)", Pair 1 "Transcribed", while a session records; no Active / Standby, no channel chip', async () => {
     const sim = mount(OPERATOR_IDS.BUDI, { path: '/' })
-    const active = await screen.findByTestId('device-tile-source-AUDIO-01', {}, { timeout: 15_000 })
-    expect(active).toHaveAttribute('data-source', 'ACTIVE')
-    expect(screen.getByTestId('device-tile-source-AUDIO-02')).toHaveAttribute('data-source', 'STANDBY')
-    // D61 (2026-11-04): four simultaneous channels - the third and fourth tiles name their channel, never ACTIVE / STANDBY.
-    expect(screen.queryByTestId('device-tile-source-AUDIO-03')).not.toBeInTheDocument()
-    expect(screen.getByTestId('device-tile-channel-AUDIO-03')).toHaveAttribute('data-channel', 'MIC-03')
-    expect(screen.getByTestId('device-tile-channel-AUDIO-04')).toHaveAttribute('data-channel', 'MIC-04')
+    const first = await screen.findByTestId('device-tile-pair-AUDIO-01', {}, { timeout: 15_000 })
+    expect(first).toHaveTextContent('Mic 1 (Camera 1)')
+    expect(first).toHaveAttribute('data-channel', 'MIC-01')
+    expect(screen.getByTestId('device-tile-pair-AUDIO-02')).toHaveTextContent('Mic 2 (Camera 2)')
+    expect(screen.getByTestId('device-tile-pair-AUDIO-03')).toHaveTextContent('Mic 3 (Camera 3)')
+    expect(screen.getByTestId('device-tile-pair-AUDIO-04')).toHaveTextContent('Mic 4 (Camera 4)')
+    expect(screen.getByTestId('device-tile-transcribed-AUDIO-01')).toHaveTextContent('Transcribed')
+    expect(document.querySelectorAll('[data-testid^="device-tile-transcribed-"]')).toHaveLength(1)
+    // The retired words: no role chip, no channel chip.
+    expect(document.querySelector('[data-testid^="device-tile-source-"], [data-testid^="device-tile-channel-"]')).toBeNull()
+    // Row 157 (D130): op 81 is refused by the simulator (row 150) - the tiles keep their pair labels.
     await act(async () => {
-      sim.actions.switchAudioSource('MIC-02')
+      expectOp81Refused(sim)
     })
-    await waitFor(() => expect(screen.getByTestId('device-tile-source-AUDIO-02')).toHaveAttribute('data-source', 'ACTIVE'))
-    expect(screen.getByTestId('device-tile-source-AUDIO-01')).toHaveAttribute('data-source', 'STANDBY')
-    // D61: the switch moves the transcription pair alone - channels 3 and 4 keep their channel chips.
-    expect(screen.queryByTestId('device-tile-source-AUDIO-03')).not.toBeInTheDocument()
+    expect(screen.getByTestId('device-tile-pair-AUDIO-01')).toHaveTextContent('Mic 1 (Camera 1)')
+    expect(screen.getByTestId('device-tile-pair-AUDIO-02')).toHaveTextContent('Mic 2 (Camera 2)')
+    expect(switchRows(sim)).toHaveLength(0)
   })
 })
 
@@ -427,7 +359,7 @@ describe('the Dashboard mic tiles (WB-02)', () => {
 // D61 (2026-11-04): the rule survives on the transcription pair; the selector now holds FOUR lines, so the
 // replacement permutes all of them - no input appears on two lines and channels 3 / 4 name their own inputs.
 describe('a replaced transcription pair, MIC-03 / MIC-01 (ruling D137, kept by D61)', () => {
-  it('the second meter reads the second line (MIC-01), and the Active / Standby chips name MIC-03 and MIC-01', async () => {
+  it('the second meter reads the second line (MIC-01); the halves keep their pair labels (row 157: no Active / Standby chips)', async () => {
     mount(OPERATOR_IDS.BUDI, {
       prepare: (sim) => {
         const state = sim.store.getState()
@@ -453,13 +385,9 @@ describe('a replaced transcription pair, MIC-03 / MIC-01 (ruling D137, kept by D
       },
     })
     const audio = await panel()
-    expect(role('MIC-03')).toHaveAttribute('data-role', 'ACTIVE')
-    expect(role('MIC-01')).toHaveAttribute('data-role', 'STANDBY')
-    expect(screen.queryByTestId('sm-audio-role-MIC-02')).not.toBeInTheDocument()
-    // D61 (2026-11-04): the inputs of channels 3 / 4 record beside the pair and carry no chip.
-    expect(screen.queryByTestId('sm-audio-role-MIC-04')).not.toBeInTheDocument()
-    expect(audio.querySelector('[data-channel="AUDIO-01"].sm-audio-half')).toHaveAttribute('data-source', 'ACTIVE')
-    expect(audio.querySelector('[data-channel="AUDIO-02"].sm-audio-half')).toHaveAttribute('data-source', 'STANDBY')
+    expect(audio.querySelector('.sm-audio-body')).toHaveAttribute('data-active-input', 'MIC-03')
+    expectPairLabels(audio)
+    expectNoSwitchControl(audio)
     const second = audio.querySelector('[data-testid="dbfs-meter"][data-channel="AUDIO-02"]')
     expect(second).not.toBeNull()
     expect(second).not.toHaveAttribute('data-no-signal')
@@ -476,10 +404,10 @@ describe('a replaced transcription pair, MIC-03 / MIC-01 (ruling D137, kept by D
 //
 // | Rule | Case |
 // |------|------|
-// | The audio panel: a meter channel without its line is neither ACTIVE nor STANDBY, has no role chip and no source mark, and its meter draws no level | "the audio panel" |
+// | The audio panel: a meter channel without its line has no source mark and its meter draws no level; its pair label stays (row 157) | "the audio panel" |
 // | The audio source: with no channel-1 line no input is active; with no channel-2 line there is no standby - no built-in input stands in | "the audio panel", "the pair (pure)" |
-// | Without a standby the toggle is not drawn and the footer says why | "the audio panel" |
-// | CONTROL: the seeded four-channel selector reads as before; channels 3 / 4 record without a pair word | "the audio panel" (last blocks), every case above this describe |
+// | Row 157: no switch control and no switch reason line in any case | "the audio panel" |
+// | CONTROL: the seeded four-channel selector reads as before | "the audio panel" (last blocks), every case above this describe |
 describe('task 4 row 168 (D61): the audio panel and the audio source when a channel line is absent', () => {
   // D61 (2026-11-04): the selector plane is keyed by CHANNEL - the roles are gone.
   type Channel = 'MIC-01' | 'MIC-02' | 'MIC-03' | 'MIC-04'
@@ -502,7 +430,7 @@ describe('task 4 row 168 (D61): the audio panel and the audio source when a chan
     ['channel 2 alone', ['MIC-02'] as readonly Channel[], null],
     ['channels 3 and 4 alone (no transcription channel)', ['MIC-03', 'MIC-04'] as readonly Channel[], null],
     ['every channel but 1', ['MIC-02', 'MIC-03', 'MIC-04'] as readonly Channel[], null],
-  ])('the audio panel with %s: no channel names an active input, no built-in input is named, and there is no toggle', async (_name, channels, active) => {
+  ])('the audio panel with %s: no channel names an active input, no built-in input is named, and there is no switch control', async (_name, channels, active) => {
     mount(OPERATOR_IDS.BUDI, { prepare: recordingWith(channels) })
     const audio = await panel()
     for (const channel of ALL_CHANNELS) {
@@ -510,65 +438,44 @@ describe('task 4 row 168 (D61): the audio panel and the audio source when a chan
       // A held line gives its own channel an input (D61); an absent line leaves the half empty.
       if (channels.includes(channel)) {
         expect(half).not.toHaveAttribute('data-no-input')
-        // D61: without an active input no half carries a pair word.
-        expect(half).not.toHaveAttribute('data-source')
       } else {
         expect(half).toHaveAttribute('data-no-input', 'true')
-        expect(half).not.toHaveAttribute('data-source')
         // The meter of a channel without an input draws no level, although the slice still holds frames of the built-in inputs.
         const meter = half.querySelector('[data-testid="dbfs-meter"]')!
         expect(meter).toHaveAttribute('data-no-signal', 'true')
       }
     }
-    expect(audio.querySelector('[data-testid^="sm-audio-role-"]')).toBeNull()
     const body = audio.querySelector('.sm-audio-body')!
     if (active === null) expect(body).not.toHaveAttribute('data-active-input')
     else expect(body).toHaveAttribute('data-active-input', active)
-    // No standby: nothing to switch to. The toggle is not drawn and the footer says why.
-    expect(screen.queryByTestId('sm-audio-switch')).not.toBeInTheDocument()
-    const reason = within(audio).getByTestId('sm-audio-switch-reason')
-    expect(reason).toHaveAttribute('data-block', 'NO_STANDBY')
-    // D61 (2026-11-04): the missing standby is the SECOND CHANNEL - the sentence names Microphone 2.
-    expect(reason).toHaveTextContent(en.common.captureNotice.start.sourceNotAssigned.replace('{{slot}}', en.common.captureSlot['MIC-02']))
+    // Row 157: the pair slots are named whatever lines are held; nothing to switch, no reason line.
+    expectPairLabels(audio)
+    expectNoSwitchControl(audio)
     expect(audio.textContent ?? '').not.toMatch(/MIC-01|MIC-02/)
     expect(getMissingI18nKeys()).toEqual([])
   })
 
-  it('the audio panel with the channel-1 line alone: the half is ACTIVE, there is no standby and the footer says why (D61)', async () => {
+  it('the audio panel with the channel-1 line alone: MIC-01 is the transcribed input, the other halves are empty, no switch control (D61; row 157)', async () => {
     mount(OPERATOR_IDS.BUDI, { prepare: recordingWith(['MIC-01']) })
     const audio = await panel()
     const first = audio.querySelector('[data-channel="AUDIO-01"].sm-audio-half')!
     expect(first).not.toHaveAttribute('data-no-input')
-    expect(first).toHaveAttribute('data-source', 'ACTIVE')
-    expect(role('MIC-01')).toHaveAttribute('data-role', 'ACTIVE')
+    expect(first).toHaveAttribute('data-transcribed', 'true')
     for (const channel of ALL_CHANNELS.slice(1)) {
       expect(audio.querySelector(`[data-channel="${trackOf(channel)}"].sm-audio-half`)).toHaveAttribute('data-no-input', 'true')
     }
     expect(audio.querySelector('.sm-audio-body')).toHaveAttribute('data-active-input', 'MIC-01')
-    expect(screen.queryByTestId('sm-audio-switch')).not.toBeInTheDocument()
-    const reason = within(audio).getByTestId('sm-audio-switch-reason')
-    expect(reason).toHaveAttribute('data-block', 'NO_STANDBY')
-    expect(reason).toHaveTextContent(en.common.captureNotice.start.sourceNotAssigned.replace('{{slot}}', en.common.captureSlot['MIC-02']))
+    expectNoSwitchControl(audio)
     expect(getMissingI18nKeys()).toEqual([])
   })
 
-  it('CONTROL - the seeded four-channel selector on a session that states none yet: the pair reads as before and channels 3 / 4 record without a pair word', async () => {
+  it('CONTROL - the seeded four-channel selector on a session that states none yet: every half has its input and its pair label; no switch control', async () => {
     mount(OPERATOR_IDS.BUDI, { prepare: recordingWith(ALL_CHANNELS) })
     const audio = await panel()
-    expect(audio.querySelector('[data-channel="AUDIO-01"].sm-audio-half')).toHaveAttribute('data-source', 'ACTIVE')
-    expect(audio.querySelector('[data-channel="AUDIO-02"].sm-audio-half')).toHaveAttribute('data-source', 'STANDBY')
-    // D61 (2026-11-04): the third and fourth halves have their input - they record - but belong to no pair.
-    for (const channel of ['MIC-03', 'MIC-04'] as const) {
-      const half = audio.querySelector(`[data-channel="${trackOf(channel)}"].sm-audio-half`)!
-      expect(half).not.toHaveAttribute('data-no-input')
-      expect(half).not.toHaveAttribute('data-source')
-    }
+    expect(audio.querySelector('.sm-audio-body')).toHaveAttribute('data-active-input', 'MIC-01')
     expect(audio.querySelector('[data-no-input]')).toBeNull()
-    expect(role('MIC-01')).toHaveAttribute('data-role', 'ACTIVE')
-    expect(role('MIC-02')).toHaveAttribute('data-role', 'STANDBY')
-    expect(screen.queryByTestId('sm-audio-role-MIC-03')).not.toBeInTheDocument()
-    expect(screen.getByTestId('sm-audio-switch')).toBeEnabled()
-    expect(within(audio).queryByTestId('sm-audio-switch-reason')).not.toBeInTheDocument()
+    expectPairLabels(audio)
+    expectNoSwitchControl(audio)
   })
 
   it('the pair (pure): by channel, with `null` for an absent input - never the meters\' stale member, never the built-in pair', () => {

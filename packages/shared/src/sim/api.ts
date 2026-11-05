@@ -90,7 +90,7 @@ import {
   type CaptureRetireRefusal,
 } from '../api/capture-retire';
 import { EXPORT_JOB_ID_PATTERN, HARDWARE_DEVICE_ID_PATTERN, MIC_INPUT_ID_PATTERN, exportJobIdOf } from '../api/patterns';
-import { CAPTURE_NOT_DURABLE_REASON } from '../api/sessions';
+import { AUDIO_SOURCE_FIXED_BY_PAIRING_CODE, AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE, CAPTURE_NOT_DURABLE_REASON } from '../api/sessions';
 import {
   STT_CONFIG_CHANGED_MESSAGE,
   STT_CONFIG_DEFAULT,
@@ -109,10 +109,9 @@ import {
   type SttCredentialKind,
   type SttLastTest,
 } from '../api/transcription';
-import { FINALIZATION_STEPS_V2, MicRole, SessionState, TrackId, VIDEO_TRACK_IDS, type VideoTrackId, type MicInputId } from '../domain';
+import { FINALIZATION_STEPS_V2, MicRole, SessionState, TrackId, VIDEO_TRACK_IDS, type VideoTrackId } from '../domain';
 import { MIC_CHANNEL_IDS, PRIMARY_MIC_CHANNEL, type MicChannel } from './vocabulary'; // D61 (2026-11-04): the four microphone channels
 import { captureMicLines, meterInputOfChannel } from './audio';
-import { selectorOfSession } from './selector-in-force';
 import { SEALING_ETA_STEP_MS, SEALING_FIRST_ATTEMPT } from './constants';
 import { toWibIso } from './clock';
 import { findOperatorById, operatorHas, roleHas } from './auth';
@@ -122,7 +121,7 @@ import { describeError, SimErrorCode, SimNotFoundError, SimPermissionError, SimT
 import { canonicalJSON, recordActivity, sha256Hex } from './events';
 import { SIMULATED_SIGNING_KEY_ID } from './evidence';
 import { noSignalFrame } from './initial-state';
-import { isSessionActive, sendingDeviceOf, signedInOperatorId, switchAudioSourceTransition, validateSessionInput } from './session-machine';
+import { isSessionActive, sendingDeviceOf, signedInOperatorId, validateSessionInput } from './session-machine';
 import { selectElapsedMs, selectSystemState, storageSummary } from './selectors';
 import type { SimStore } from './store';
 import type {
@@ -145,7 +144,7 @@ import type {
   TranscriptRevisionChange,
   TranscriptRevisionRecord,
 } from './types';
-import { AuditType, CaptureStreamState, OperatorRole, Permission, StepStatus, type SystemState } from './vocabulary';
+import { AuditType, CaptureStreamState, Permission, StepStatus, type SystemState } from './vocabulary';
 
 export const SIM_API_HEADERS = {
   'content-type': 'application/json',
@@ -2069,42 +2068,15 @@ const CAPTURE_ROUTES: readonly Route[] = [
   {
     method: 'POST',
     pattern: /^\/api\/v1\/session\/([^/]+)\/audio-source$/,
-    handle: ({ store, clock, deviceConsole }, [id = ''], body) => {
-      const state = store.getState();
-      const denied = sessionAccess(state);
+    // Audit row 150 (D5; D28 DQ-2; register N-29, N-36; masterplan/01_specs_d5.md G-3, RK-6): operation 81 is RETIRED
+    // in behaviour, the same way as the Core (row 149). The audio of each track is fixed by its camera-microphone pair,
+    // so after the access check (401 / 403 SESSION_START) the route answers 409 AUDIO_SOURCE_FIXED_BY_PAIRING for every
+    // session - before any lookup of the session, the holder or the input - and writes nothing: no state, no audit row.
+    // The route stays so older clients get the contract's answer, not a 404.
+    handle: ({ store }) => {
+      const denied = sessionAccess(store.getState());
       if (denied) return denied;
-      const session = currentSession(state, id);
-      if (!session) return fail(404, 'NOT_FOUND', NOT_OPEN);
-      const operator = operatorOf(state);
-      // C3 §2.2 op 81: SESSION_START plus the SESSION_HOLDER condition (SEC35-18).
-      if (operator && operator.role !== OperatorRole.SUPERVISOR && session.createdBy !== operator.id) {
-        return fail(403, 'NOT_PERMITTED', 'Only the operator who opened this session or a supervisor may switch the microphone (RBAC).');
-      }
-      if (session.state !== SessionState.RECORDING) return fail(409, 'INVALID_STATE', `Session ${id} is ${session.state}.`);
-      const extra = Object.keys(body).find((key) => key !== 'inputId' && key !== 'reason');
-      const inputId = body.inputId;
-      if (extra !== undefined || typeof inputId !== 'string' || !MIC_INPUT_ID_PATTERN.test(inputId)) {
-        return fail(422, 'INVALID_INPUT', 'inputId: Expected a mic input id, e.g. MIC-01.');
-      }
-      if (body.reason !== undefined && !isCode(body.reason, 500)) return fail(422, 'INVALID_INPUT', 'reason: At most 500 characters.');
-      // D133 (1): any `MIC-NN` is a well-formed input; only one of the two inputs of this session's
-      // selector can become the active source (C3 §4 `AUDIO_SOURCE_CONFLICT`).
-      const selectorInputs = selectorOfSession(session, state.captureConfig).mics;
-      if (!selectorInputs.some((mic) => mic.inputId === inputId)) {
-        return fail(409, 'AUDIO_SOURCE_CONFLICT', 'The requested microphone cannot become the active source.');
-      }
-      // The transition's parameter type still names the built-in pair (`session-machine.ts`); it reads the selector.
-      const next = switchAudioSourceTransition(state, clock.now(), inputId as MicInputId, sendingDeviceOf(state, deviceConsole === true));
-      if (next !== state) store.setState(next);
-      const source = next.session?.audioSource;
-      if (!source) return fail(409, 'AUDIO_SOURCE_CONFLICT', 'The requested microphone cannot become the active source.');
-      return respond(200, {
-        sessionId: session.id,
-        activeInputId: source.activeInputId,
-        standbyInputId: source.standbyInputId,
-        switchedAt: source.switchedAt ?? clock.now(),
-        intervalFromMs: source.intervalFromMs,
-      } satisfies ApiAudioSourceState);
+      return fail(409, AUDIO_SOURCE_FIXED_BY_PAIRING_CODE, AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE);
     },
   },
   {

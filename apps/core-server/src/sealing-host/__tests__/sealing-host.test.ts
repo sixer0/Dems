@@ -90,7 +90,7 @@ describe('the session record the seal reads', () => {
   const tables = (overrides: Record<string, unknown[]> = {}) => {
     const asked: string[] = [];
     const rows: Record<string, unknown[]> = {
-      [READ_SEAL_SOURCE_ROWS]: [{ slot: 'MIC-PRIMARY', device_id: 'MIC-01', adapter_kind: 'FAKE' }, { slot: 'MIC-STANDBY', device_id: 'MIC-02', adapter_kind: 'FAKE' }, { slot: 'VIDEO-01', device_id: 'CAM-01', adapter_kind: 'FAKE' }, { slot: 'VIDEO-02', device_id: 'CAM-09', adapter_kind: 'FAKE' }],
+      [READ_SEAL_SOURCE_ROWS]: [{ slot: 'MIC-01', device_id: 'MIC-01', adapter_kind: 'FAKE' }, { slot: 'MIC-02', device_id: 'MIC-02', adapter_kind: 'FAKE' }, { slot: 'VIDEO-01', device_id: 'CAM-01', adapter_kind: 'FAKE' }, { slot: 'VIDEO-02', device_id: 'CAM-09', adapter_kind: 'FAKE' }],
       [READ_SEAL_AUDIO_INTERVALS]: [{ seq: 1, mic_device_id: 'MIC-01', role: 'PRIMARY', from_media_ms: '21', to_media_ms: '4021', reason: 'START', switched_by: null }, { seq: 2, mic_device_id: 'MIC-02', role: 'STANDBY', from_media_ms: '4021', to_media_ms: null, reason: 'MANUAL', switched_by: 'OPR-001' }],
       [READ_SEAL_AUDIT_ROWS]: [{ seq: '7', id: 'AUD-000007', at: '2000', type: 'RECORDING_STARTED', category: 'SESSION', severity: 'INFO', actor_id: 'OPR-001', message: 'Recording started', session_id: SESSION, evidence_id: null, device_id: null, details: { a: 1 }, prev_hash: 'p', hash: 'h' }],
       ...overrides,
@@ -144,7 +144,7 @@ describe('the session record the seal reads', () => {
     // G89-01: both slots are generated sources (adapter FAKE in the START rows): neither the registry's label ('FAKE-CAM') nor the simulator camera's model / firmware ('sim-model', 'sim-fw') is a fact of the source.
     expect(facts?.tracks.every((track) => track.codec === null && track.avOffsetMs === null && track.firstVideoSamplePts === null && track.firstVideoSampleTimescale === null)).toBe(true);
     // The four rows of the session start go to the builder as they are stored: the classes are its to compute.
-    expect(facts?.sourceRows).toEqual([{ slot: 'MIC-PRIMARY', deviceId: 'MIC-01', adapterKind: 'FAKE' }, { slot: 'MIC-STANDBY', deviceId: 'MIC-02', adapterKind: 'FAKE' }, { slot: 'VIDEO-01', deviceId: 'CAM-01', adapterKind: 'FAKE' }, { slot: 'VIDEO-02', deviceId: 'CAM-09', adapterKind: 'FAKE' }]);
+    expect(facts?.sourceRows).toEqual([{ slot: 'MIC-01', deviceId: 'MIC-01', adapterKind: 'FAKE' }, { slot: 'MIC-02', deviceId: 'MIC-02', adapterKind: 'FAKE' }, { slot: 'VIDEO-01', deviceId: 'CAM-01', adapterKind: 'FAKE' }, { slot: 'VIDEO-02', deviceId: 'CAM-09', adapterKind: 'FAKE' }]);
     expect(Buffer.from(facts!.auditExtract).toString('utf8')).toBe('{"seq":7,"id":"AUD-000007","at":2000,"type":"RECORDING_STARTED","category":"SESSION","severity":"INFO","actorId":"OPR-001","message":"Recording started","sessionId":"SES-20261009-8202","evidenceId":null,"deviceId":null,"details":{"a":1},"prevHash":"p","hash":"h"}\n');
     // No STT snapshot (row 71c): the manifest's field 123 says that NONE WAS RECORDED, never "disabled by configuration", and that is told.
     expect(facts?.sttSnapshot).toEqual(NO_STT_SNAPSHOT_RECORDED);
@@ -154,6 +154,21 @@ describe('the session record the seal reads', () => {
     // No capture facts were asked for: the stand-in of field 40 is written and said (`STAND_INS`).
     expect(facts?.tracks.map((track) => track.clockOffsetMs)).toEqual([STAND_INS.clockOffsetMs, STAND_INS.clockOffsetMs]);
     expect(t.asked).toEqual([`public.session_capture_sources:${SESSION}`, `public.session_audio_intervals:${SESSION}`, `public.audit_log:${SESSION}`]);
+  });
+
+  // KD-37 (audit row 153; S5 §5.3 item 7): the fixtures name the D61 slots MIC-01..04 (0040 renamed the two roles); a 4+4
+  // session's eight start rows reach the builder as stored, so the pipeline can pair each AUDIO-0N with the device of MIC-0N.
+  it('KD-37: a 4+4 session - four cameras and four pair microphones on MIC-01..04 - hands its EIGHT start rows on as stored, and one track per camera', async () => {
+    const eight = [
+      ...['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'].map((slot, index) => ({ slot, device_id: `CAM-0${String(index + 3)}`, adapter_kind: 'FAKE' })),
+      ...['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'].map((slot, index) => ({ slot, device_id: `MIC-0${String(index + 3)}`, adapter_kind: 'FAKE' })),
+    ];
+    const t = tables({ [READ_SEAL_SOURCE_ROWS]: eight, [READ_SEAL_AUDIO_INTERVALS]: [{ seq: 1, mic_device_id: 'MIC-03', role: 'PRIMARY', from_media_ms: '21', to_media_ms: null, reason: 'START', switched_by: null }] });
+    const reader = createSealSessionReader({ state: () => view({ ...baseSession, state: 'FINALIZING', evidenceId: 'EV-20261009-0004' }), db: () => t.db, begin: async () => undefined, sttSnapshot: async () => null, notice: 'N', timezone: '+07:00' });
+    const facts = await reader.read(SESSION);
+    expect(facts?.sourceRows).toEqual(eight.map((row) => ({ slot: row.slot, deviceId: row.device_id, adapterKind: row.adapter_kind })));
+    expect(facts?.tracks.map((track) => [track.trackId, track.deviceId])).toEqual([['VIDEO-01', 'CAM-03'], ['VIDEO-02', 'CAM-04'], ['VIDEO-03', 'CAM-05'], ['VIDEO-04', 'CAM-06']]);
+    expect(facts?.audioIntervals).toEqual([{ seq: 1, micDeviceId: 'MIC-03', role: 'PRIMARY', fromMs: 21, toMs: null, reason: 'START', switchedBy: null }]);
   });
 
   it('a session that has its evidence ID is not moved again, and its own STT snapshot is the one that is sealed', async () => {
@@ -169,8 +184,8 @@ describe('the session record the seal reads', () => {
   it('row 71c: what the capture side reported reaches fields 40, 127 and 128 - joined on the track AND the device of the start record; facts of another session of that ID are not used', async () => {
     const sources = (recordedAt: string) => ({
       [READ_SEAL_SOURCE_ROWS]: [
-        { slot: 'MIC-PRIMARY', device_id: 'MIC-01', adapter_kind: 'FAKE', recorded_at: recordedAt },
-        { slot: 'MIC-STANDBY', device_id: 'MIC-02', adapter_kind: 'FAKE', recorded_at: recordedAt },
+        { slot: 'MIC-01', device_id: 'MIC-01', adapter_kind: 'FAKE', recorded_at: recordedAt },
+        { slot: 'MIC-02', device_id: 'MIC-02', adapter_kind: 'FAKE', recorded_at: recordedAt },
         { slot: 'VIDEO-01', device_id: 'CAM-01', adapter_kind: 'FAKE', recorded_at: recordedAt },
         { slot: 'VIDEO-02', device_id: 'CAM-09', adapter_kind: 'FAKE', recorded_at: recordedAt },
       ],
@@ -461,7 +476,7 @@ describe('gate 89 C3: the camera end in the package and in the reader (wave H, d
     };
     const read = async (cameras: SealCaptureFacts['cameras']) => {
       const rows: Record<string, unknown[]> = {
-        [READ_SEAL_SOURCE_ROWS]: [{ slot: 'MIC-PRIMARY', device_id: 'MIC-01', adapter_kind: 'FAKE', recorded_at: '5000' }, { slot: 'MIC-STANDBY', device_id: 'MIC-02', adapter_kind: 'FAKE', recorded_at: '5000' }, { slot: 'VIDEO-01', device_id: 'CAM-01', adapter_kind: 'FAKE', recorded_at: '5000' }, { slot: 'VIDEO-02', device_id: 'CAM-02', adapter_kind: 'FAKE', recorded_at: '5000' }],
+        [READ_SEAL_SOURCE_ROWS]: [{ slot: 'MIC-01', device_id: 'MIC-01', adapter_kind: 'FAKE', recorded_at: '5000' }, { slot: 'MIC-02', device_id: 'MIC-02', adapter_kind: 'FAKE', recorded_at: '5000' }, { slot: 'VIDEO-01', device_id: 'CAM-01', adapter_kind: 'FAKE', recorded_at: '5000' }, { slot: 'VIDEO-02', device_id: 'CAM-02', adapter_kind: 'FAKE', recorded_at: '5000' }],
         [READ_SEAL_AUDIO_INTERVALS]: [],
         [READ_SEAL_AUDIT_ROWS]: [],
       };
@@ -531,8 +546,8 @@ describe('G89-01: the manifest of a real session states only facts (wave H, driv
   }
 
   const sources = (video1: string, video2: string) => [
-    { slot: 'MIC-PRIMARY', device_id: 'MIC-01', adapter_kind: 'FAKE' },
-    { slot: 'MIC-STANDBY', device_id: 'MIC-02', adapter_kind: 'FAKE' },
+    { slot: 'MIC-01', device_id: 'MIC-01', adapter_kind: 'FAKE' },
+    { slot: 'MIC-02', device_id: 'MIC-02', adapter_kind: 'FAKE' },
     { slot: 'VIDEO-01', device_id: 'CAM-01', adapter_kind: video1 },
     { slot: 'VIDEO-02', device_id: 'CAM-02', adapter_kind: video2 },
   ];

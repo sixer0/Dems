@@ -1736,4 +1736,20 @@ describe('row 145 (D5): the audio file of each pair, the missing-microphone stat
     ];
     for (const [name, value, members] of cases) expect(refused(value), name).toEqual(members);
   });
+
+  // Row 153 (D45 hand-off; D30 K-3): a `/2.1` build holds the start rows to the plan of one microphone per camera - a session
+  // whose MIC-02 was NOT ASSIGNED (no start row) builds and states the pair missing; a `/2` build keeps the rule of both eras.
+  it('row 153: a D5 session with MIC-02 unassigned builds (no SOURCE_RECORD_MISSING); the same rows under the `/2` id are still refused for MIC-02', () => {
+    const rows = ROWS_4X4.filter((row) => row.slot !== 'MIC-02');
+    const missing: ManifestAudioTrackMissing = { trackId: 'AUDIO-02', micChannel: 'MIC-02', micDeviceId: null, silentIn: ['VIDEO-02'], reason: 'NOT_ASSIGNED' };
+    const built = buildUnsignedManifest(d5Input(ALL_VIDEO, ['AUDIO-01', 'AUDIO-03', 'AUDIO-04'], [missing]), rows);
+    expect(built.schema).toBe('dems.evidence-manifest/2.1');
+    expect(built.audioTracksMissing).toEqual([missing]);
+    expect(sessionSourceClasses(rows, { pairedAudio: true }).micByDeviceId.has('MIC-04')).toBe(false);
+    // CONTROL: the `/2` rule is unchanged - MIC-01 and MIC-02 are required.
+    expect(() => sessionSourceClasses(rows)).toThrow(/SOURCE_RECORD_MISSING: MIC-02/);
+    expect(() => buildUnsignedManifest(exampleManifestInput(), EXAMPLE_SOURCE_ROWS.filter((row) => row.slot !== 'MIC-02'))).toThrow(/SOURCE_RECORD_MISSING: MIC-02/);
+    // A pair microphone the session did not record is still refused (MR-S2) under `/2.1`.
+    expect(() => buildUnsignedManifest(d5Input(ALL_VIDEO, ['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04']), rows)).toThrow(/SOURCE_NOT_RECORDED/);
+  });
 });

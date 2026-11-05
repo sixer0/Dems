@@ -41,7 +41,7 @@
  *   - every `TELEMETRY` level names its microphone by device ID and states the rate correction.
  * A worker of version 3 is refused at `HELLO`, and none of its frames decodes.
  *
- *   supervisor -> worker   START, STOP, SWITCH_AUDIO_SOURCE
+ *   supervisor -> worker   START, STOP (version 6: `SWITCH_AUDIO_SOURCE` is retired, N-31)
  *   worker -> supervisor   HELLO, ACK, TELEMETRY, PROGRESS, HEARTBEAT, WARNING, CRASH, RECORD
  *
  * LEVELS AND RECORDS. `TELEMETRY` and `PROGRESS` are LEVELS: the supervisor hands them on through
@@ -78,7 +78,8 @@
  * engine (`CAM-01`, `CAM-02`, `MIC-01`, `MIC-02`). `VIDEO-01` to `VIDEO-04` are names of output
  * TRACKS (D60, 2026-11-04: four): a plan carries one per camera as `trackId`, and no frame carries it. A MIC ROLE IS NOT
  * AN IDENTITY (version 4, D84 R-2): a role says which place of the plan a microphone holds; it is
- * the argument of `SWITCH_AUDIO_SOURCE` and a member beside the device ID, never a subject. A
+ * a member beside the device ID (it was also the argument of the switch command retired in version 6,
+ * N-31), never a subject. A
  * plan whose device is named like a role is refused, so the two can never be confused. D61
  * (2026-11-04): the plan keys its four microphone rows by the numbered CHANNEL instead; the role
  * words live on only on the legacy two-role lane named above.
@@ -96,12 +97,11 @@
  *     (`SESSION_ALREADY_SERVED`). The RTSP listen ingest exits on the client's TEARDOWN and
  *     refuses a re-push, so the supervisor starts a fresh process per session (S1 G-1, D10(b));
  *   - it exits when its standard input ends: a worker whose supervisor died is never an orphan;
- *   - it never switches the audio source by itself (OD-11): `MIC_SILENT` is a warning. The only
- *     `AUDIO_SOURCE_INTERVAL` records it writes are the one of the start and one per
- *     `SWITCH_AUDIO_SOURCE` it acknowledged with `ok`, each naming that command's correlation ID;
- *   - a switch is realised at the next input chunk of the filtering thread
- *     (`CAPTURE_AUDIO_INPUT_QUANTUM_SAMPLES`, 10 ms): a hard cut, no crossfade (gate answer
- *     Q-CLICK, default). The record states the first sample of the new source; the `ACK` follows it;
+ *   - it never switches the audio source (OD-11): `MIC_SILENT` is a warning. Since version 6 nothing
+ *     switches it at all (N-31: the operator's switch is retired; audit rows 149 and 152b): the only
+ *     `AUDIO_SOURCE_INTERVAL` record it writes is the one of the start, and a worker that writes
+ *     another (an `OPERATOR_SWITCH` names a correlation ID no command of the supervisor carries) is
+ *     ended by the supervisor (`SWITCH_NOT_COMMANDED`);
  *   - it NEVER truncates or overwrites an output file that already exists (OD-08: the bytes
  *     already written are evidence). Decided by D67, option C: a worker creates a camera file
  *     only when its first fragment is complete, and only if nothing is at that path. A `START`
@@ -173,11 +173,41 @@
  * TRANSCRIBED CHANNEL of `AUDIO-01` and must equal `MIC-01`. The role words survive only on the
  * worker's legacy two-role lane: `SWITCH_AUDIO_SOURCE.to`, and the `role` member of a telemetry level
  * and of the interval / account / inserted-run records. A `TELEMETRY.levels` list holds FOUR entries.
+ *
+ * VERSION 6 (audit 2026-11-05 row 144, C-P0-2a; D5 camera-microphone pairing; decisions D25 N5, D27,
+ * D28 DQ-4, D30 K-3; register N-12, N-13, N-31 to N-34). The plan shape changed, so the number moved
+ * (rule "a plan-shape change bumps the protocol in the same change set"), together with the worker's
+ * version word (`capture-worker/0.8.0`, `worker.h`) and the Core's expected word (`checks.ts`):
+ *   - PAIR N = `VIDEO-0N` <-> `MIC-0N`, fixed by number (D27). Every camera row names the channel of
+ *     its pair (`micChannel`, always `captureMicChannelOfVideoTrack(trackId)`): that channel's encoder
+ *     is the audio of the camera file. No two cameras name one channel.
+ *   - A camera whose paired channel is NOT in the plan says why (`micMissing`: `NOT_ASSIGNED` or
+ *     `NOT_OPENED`, the words of the manifest's missing-mic statement) and gets a SILENT audio track:
+ *     the recording starts anyway (D30 K-3). `micMissing` is null exactly when the plan holds the row.
+ *   - The plan carries 0 to 4 microphone rows (was exactly four; finding F-1): a channel that is not
+ *     there is either stated on its camera or belongs to no camera of the plan. A channel without a
+ *     camera of the plan is still recorded on its own file.
+ *   - Every microphone row names its own file (`outputPath` required, N-13).
+ *   - `activeMic` stays `MIC-01`, the transcribed channel of `AUDIO-01` = Pair 1 (R-T1). A PCM tap is
+ *     written from channel 1, so a plan with a tap holds the `MIC-01` row.
+ *   - `FRAGMENT_CHECKPOINT` may also name a MICROPHONE of the plan: the fragments of its channel file
+ *     (N-32; `keyframe` is false for an audio fragment). See `CAMERA_OR_MIC_RECORD_KINDS`.
+ *   - `SWITCH_AUDIO_SOURCE` (N-31) is RETIRED: the op-81 retirement (audit row 149; D28 DQ-2) removed it
+ *     from `SupervisorMessageType` and the union together with the supervisor's switch path, so a line
+ *     of that type no longer decodes. With no command a worker writes no `OPERATOR_SWITCH` interval: the
+ *     audio of each track is fixed by its pair, and the one interval of a session is its start. Audit row
+ *     152b (D135, D136) removed the switch from the C worker too (it ends on such a line, as on any
+ *     unknown type) and with it `SWITCH_REFUSAL_CODES` (the ACK codes of a switch). KEPT on purpose:
+ *     `AudioSourceIntervalReason.OPERATOR_SWITCH` stays decodable, so that an interval a worker writes
+ *     without a command reaches the supervisor's `SWITCH_NOT_COMMANDED` refusal (and pre-D5 stored
+ *     rows keep their word); `CaptureMicRole` stays, the `role` member of the records and levels.
+ * A worker of version 5 is refused at `HELLO`, and none of its frames decodes; a Core of version 5
+ * refuses a worker of version 6 the same way.
  */
 import { z } from 'zod';
 
 /** Version of this protocol. The worker names it in `HELLO`; a mismatch ends the worker. */
-export const CAPTURE_PROTOCOL_VERSION = 5;
+export const CAPTURE_PROTOCOL_VERSION = 6;
 
 /**
  * The loopback media ports (spec §A.8: fixture readers and the worker ingest listen only on
@@ -190,7 +220,6 @@ export const CAPTURE_MEDIA_PORT_MAX = 8564;
 export const SupervisorMessageType = {
   START: 'START',
   STOP: 'STOP',
-  SWITCH_AUDIO_SOURCE: 'SWITCH_AUDIO_SOURCE',
 } as const;
 export type SupervisorMessageType = (typeof SupervisorMessageType)[keyof typeof SupervisorMessageType];
 
@@ -214,8 +243,9 @@ export type CaptureStopReason = (typeof CaptureStopReason)[keyof typeof CaptureS
  * The two mic roles of the LEGACY TWO-ROLE LANE (the values of `MicRole` in `@dems/shared/domain`).
  * D61 (2026-11-04): the plan no longer carries roles - its microphone rows are keyed by the numbered
  * CHANNEL below; the failover concept dies with the decision. The role member survives only on the
- * worker's two-role lane: the argument of `SWITCH_AUDIO_SOURCE`, and the `role` member beside the
- * device ID of a telemetry level and of the interval / account / inserted-run records.
+ * worker's two-role lane: the `role` member beside the device ID of a telemetry level and of the
+ * interval / account / inserted-run records (version 6: no longer the argument of a switch command,
+ * which is retired - N-31).
  */
 export const CaptureMicRole = { PRIMARY: 'PRIMARY', STANDBY: 'STANDBY' } as const;
 export type CaptureMicRole = (typeof CaptureMicRole)[keyof typeof CaptureMicRole];
@@ -231,6 +261,26 @@ export const CAPTURE_MIC_CHANNELS = ['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04'] as 
 export type CaptureMicChannel = (typeof CAPTURE_MIC_CHANNELS)[number];
 /** The transcribed channel of `AUDIO-01` (D61, 2026-11-04): the only value a plan may start active on. */
 export const PRIMARY_MIC_CHANNEL: CaptureMicChannel = 'MIC-01';
+
+/**
+ * VERSION 6 (D5, D27; register N-04, N-06): the microphone channel of a video track's pair - `VIDEO-0N` ->
+ * `MIC-0N`, fixed by number - or undefined for a word that is no video track. The shared vocabulary states
+ * the same rule (`micChannelOfVideoTrack`, `@dems/shared/sim`); the protocol restates it so that it imports
+ * nothing, and `protocol-pins.test.ts` of the Core holds the two equal.
+ */
+export function captureMicChannelOfVideoTrack(trackId: string): CaptureMicChannel | undefined {
+  const number = /^VIDEO-0([1-4])$/.exec(trackId)?.[1];
+  return CAPTURE_MIC_CHANNELS.find((channel) => channel === `MIC-0${number}`);
+}
+
+/**
+ * VERSION 6 (D30 K-3): why the paired channel of a camera of the plan is not in the plan - the words of
+ * the manifest's missing-mic statement (`MANIFEST_AUDIO_TRACK_MISSING_REASONS`, `@dems/shared/evidence-package`;
+ * held equal by `protocol-pins.test.ts`). `NOT_ASSIGNED`: no microphone sits on the channel; `NOT_OPENED`: the
+ * one that sits there could not be opened at the start.
+ */
+export const CAPTURE_PAIRED_MIC_MISSING_REASONS = ['NOT_ASSIGNED', 'NOT_OPENED'] as const;
+export type CapturePairedMicMissingReason = (typeof CAPTURE_PAIRED_MIC_MISSING_REASONS)[number];
 
 /**
  * The warnings a worker raises (spec §B.2). Never an automatic switch (OD-11).
@@ -432,22 +482,17 @@ export const CAPTURE_INTERNAL_ACTION = {
   WARNING: 'raiseCaptureWarning',
 } as const satisfies Partial<Record<WorkerMessageType, string>>;
 
-/** Why an audio-source interval began. There is no third value: the worker never switches by itself (OD-11). */
+/**
+ * Why an audio-source interval began. There is no third value: the worker never switches by itself (OD-11).
+ * Version 6 (N-31; audit rows 149, 152b): a worker writes `SESSION_START` only. `OPERATOR_SWITCH` stays a
+ * decodable word so that such a record, which no command of the supervisor can have caused any more, is
+ * refused by the supervisor by name (`SWITCH_NOT_COMMANDED`) instead of as an unreadable frame.
+ */
 export const AudioSourceIntervalReason = { SESSION_START: 'SESSION_START', OPERATOR_SWITCH: 'OPERATOR_SWITCH' } as const;
 export type AudioSourceIntervalReason = (typeof AudioSourceIntervalReason)[keyof typeof AudioSourceIntervalReason];
 
-/**
- * What a worker refuses a `SWITCH_AUDIO_SOURCE` with (`ACK ok=false`). None of them changed the
- * audio source, and none wrote a record.
- *   NOT_RECORDING            no session runs, or it is stopping (also the answer to a switch that still waited at the stop)
- *   SESSION_MISMATCH         the command names another session
- *   NO_SUCH_MIC              the plan has no microphone in that role
- *   SWITCH_PENDING           the switch before it is not realised yet (at most one input chunk): ask again
- *   SELECTOR_COMMAND_FAILED  the filter graph refused the command: the worker ends with `CRASH`
- * A switch to the role that already feeds the track is acknowledged `ok` and writes NO record:
- * nothing changed.
- */
-export const SWITCH_REFUSAL_CODES: readonly string[] = ['NOT_RECORDING', 'SESSION_MISMATCH', 'NO_SUCH_MIC', 'SWITCH_PENDING', 'SELECTOR_COMMAND_FAILED'];
+// Audit row 152b (N-31; D135, D136): `SWITCH_REFUSAL_CODES` (the ACK codes of the operator's switch) is removed with
+// the worker's switch; no worker writes them and no reader is left.
 
 /**
  * The input chunk of the worker's filtering thread, in samples (10 ms at 48 kHz). A switch is
@@ -638,6 +683,18 @@ export const CapturePlanCameraSchema = z.strictObject({
    * creates it when its first fragment is complete and refuses a path that already holds a file.
    */
   outputPath: absolutePath,
+  /**
+   * VERSION 6 (D5, N-12): the microphone channel of this camera's pair - ALWAYS the channel of the same
+   * number as `trackId` (`captureMicChannelOfVideoTrack`). The packets of that channel's encoder are the
+   * audio of this camera file, byte for byte the packets of the channel's own file.
+   */
+  micChannel: z.enum(CAPTURE_MIC_CHANNELS),
+  /**
+   * VERSION 6 (D30 K-3): null when the plan holds the row of `micChannel`; otherwise WHY it does not, and
+   * the worker writes a SILENT audio track into this camera file (an interview is never lost because one
+   * microphone failed). The Core warns the operator and the seal states the missing channel.
+   */
+  micMissing: z.enum(CAPTURE_PAIRED_MIC_MISSING_REASONS).nullable(),
 });
 export type CapturePlanCamera = z.infer<typeof CapturePlanCameraSchema>;
 
@@ -657,11 +714,11 @@ export const CapturePlanMicSchema = z.strictObject({
   ]),
   /**
    * D61 (2026-11-04): the standalone audio file of THIS channel, an absolute path under the media
-   * root - the microphone twin of a camera's `outputPath`, named per channel by the caller. Optional
-   * until the session start wires the four outputs (a channel without one is metered and warned for,
-   * but not recorded on its own file). The worker creates it by the same never-overwrite rule.
+   * root - the microphone twin of a camera's `outputPath`, named per channel by the caller. The worker
+   * creates it by the same never-overwrite rule. VERSION 6 (N-13): REQUIRED - every channel of the plan
+   * is recorded on its own file (was optional: a channel without one was metered but not recorded).
    */
-  outputPath: absolutePath.optional(),
+  outputPath: absolutePath,
 });
 export type CapturePlanMic = z.infer<typeof CapturePlanMicSchema>;
 
@@ -685,15 +742,15 @@ export const CapturePlanSchema = z
   .strictObject({
     // D60 (2026-11-04): the Core records FOUR video tracks at once - a plan carries up to four camera lines (was two).
     cameras: z.array(CapturePlanCameraSchema).min(1).max(4),
-    // D61 (2026-11-04): a v2 session records audio from FOUR channels at once - exactly four mic lines, one per
-    // numbered channel (was 1..2 keyed by the PRIMARY/STANDBY roles; `assertRecordableSelector` on the Core side
-    // requires all four named exactly once, so min = max = 4 matches the server rule).
-    mics: z.array(CapturePlanMicSchema).min(4).max(4),
+    // D61 (2026-11-04): a v2 session records audio from up to FOUR channels at once, one line per numbered channel
+    // (was 1..2 keyed by the PRIMARY/STANDBY roles). VERSION 6 (D30 K-3, finding F-1): 0 to 4 lines (was exactly
+    // four) - a channel that is not there is stated on its camera (`micMissing`) or belongs to no camera of the plan.
+    mics: z.array(CapturePlanMicSchema).min(0).max(4),
     /**
      * The TRANSCRIBED CHANNEL (D61, 2026-11-04): the field stays on the wire for compatibility, but its
      * semantics changed with the decision - it is the channel of `AUDIO-01`, not the start of a failover
-     * pair. The Core sends `MIC-01` and the schema validates exactly that; the operator's switch of the
-     * legacy two-role lane (`SWITCH_AUDIO_SOURCE`) is a separate, legacy surface.
+     * pair. The Core sends `MIC-01` and the schema validates exactly that; nothing moves it during the
+     * session (version 6: the operator's switch is retired, N-31).
      */
     activeMic: z.enum(CAPTURE_MIC_CHANNELS),
     /**
@@ -716,17 +773,28 @@ export const CapturePlanSchema = z
     if (!unique(plan.cameras.map((camera) => camera.outputPath))) context.addIssue({ code: 'custom', message: 'two cameras share an output file', path: ['cameras'] });
     if (!unique(plan.mics.map((mic) => mic.deviceId))) context.addIssue({ code: 'custom', message: 'a mic is named twice', path: ['mics'] });
     // D61 (2026-11-04): the channel is the identity of a microphone row (was the role): one channel, one device,
-    // one input path and one output file each. With exactly four rows over four channel words this also ENFORCES
-    // that every channel is named exactly once - the rule `assertRecordableSelector` states on the Core side.
+    // one input path and one output file each. Version 6: a channel is named at most once; which channels must be
+    // there is the pair rule below (a camera's channel, or its stated absence), no longer "all four".
     if (!unique(plan.mics.map((mic) => mic.channel))) context.addIssue({ code: 'custom', message: 'a mic channel is named twice', path: ['mics'] });
-    const micOutputs = plan.mics.map((mic) => mic.outputPath).filter((path): path is string => path !== undefined);
+    const micOutputs = plan.mics.map((mic) => mic.outputPath);
     if (!unique(micOutputs)) context.addIssue({ code: 'custom', message: 'two mic channels share an output file', path: ['mics'] });
+    // VERSION 6 (D5, D27, D30 K-3): the pair rules. (a) a camera carries the microphone of its own pair; (b) the paired
+    // row is in the plan exactly when the camera states no reason for its absence; (c) no two cameras name one
+    // channel - (c) follows from (a) and unique tracks, and stays explicit as the guard of any later pairing rule.
+    const planChannels = new Set<string>(plan.mics.map((mic) => mic.channel));
+    for (const [index, camera] of plan.cameras.entries()) {
+      if (camera.micChannel !== captureMicChannelOfVideoTrack(camera.trackId)) context.addIssue({ code: 'custom', message: 'a camera carries the microphone of its own pair (D5)', path: ['cameras', index, 'micChannel'] });
+      if ((camera.micMissing === null) !== planChannels.has(camera.micChannel)) context.addIssue({ code: 'custom', message: 'a camera states a missing paired microphone exactly when its channel is not in the plan (D30)', path: ['cameras', index, 'micMissing'] });
+    }
+    if (!unique(plan.cameras.map((camera) => camera.micChannel))) context.addIssue({ code: 'custom', message: 'two cameras name one microphone channel', path: ['cameras'] });
     const paths = [...plan.cameras.map((camera) => camera.outputPath), ...micOutputs, ...plan.mics.map((mic) => mic.input.path), ...(plan.pcmTapPath === null ? [] : [plan.pcmTapPath])];
     if (!unique(paths)) context.addIssue({ code: 'custom', message: 'one path is used twice', path: ['cameras'] });
     // D61 (2026-11-04): `activeMic` is the transcribed channel of `AUDIO-01`; the failover concept died with the
     // decision, so the only value that states a truth about the session is `MIC-01`.
     if (plan.activeMic !== PRIMARY_MIC_CHANNEL) context.addIssue({ code: 'custom', message: 'the transcribed channel is MIC-01 (D61)', path: ['activeMic'] });
-    if (!plan.mics.some((mic) => mic.channel === plan.activeMic)) context.addIssue({ code: 'custom', message: 'no mic holds the transcribed channel', path: ['activeMic'] });
+    // VERSION 6 (R-T1, D30 K-3): the PCM tap carries the samples of channel 1, so a plan with a tap holds that row. A plan
+    // without the row may still record (its cameras state the channel as missing); it has nothing to transcribe.
+    if (plan.pcmTapPath !== null && !planChannels.has(plan.activeMic)) context.addIssue({ code: 'custom', message: 'a PCM tap needs the transcribed channel in the plan', path: ['pcmTapPath'] });
     // Version 4 (D84 R-2): a role is never an identity, so no device may be named like one, and a
     // camera and a microphone never share an ID (a warning names ONE device of the plan).
     const devices = [...plan.cameras.map((camera) => camera.deviceId), ...plan.mics.map((mic) => mic.deviceId)];
@@ -750,13 +818,12 @@ export const StartMessageSchema = z.strictObject({
   plan: CapturePlanSchema,
 });
 export const StopMessageSchema = z.strictObject({ ...command, type: z.literal(SupervisorMessageType.STOP), reason: z.enum(CaptureStopReason) });
-export const SwitchAudioSourceMessageSchema = z.strictObject({ ...command, type: z.literal(SupervisorMessageType.SWITCH_AUDIO_SOURCE), to: z.enum(CaptureMicRole) }); // LEGACY two-role lane (D61, 2026-11-04): the plan keys mics by channel; the switch still names the transcription pair by its role word until that lane retires.
-
-export const SupervisorMessageSchema = z.discriminatedUnion('type', [StartMessageSchema, StopMessageSchema, SwitchAudioSourceMessageSchema]);
+// Version 6 (N-31; audit row 149, D28 DQ-2): `SWITCH_AUDIO_SOURCE` (the legacy two-role lane's operator switch) is retired
+// with operation 81 - the audio of each track is fixed by its camera-microphone pair, so the supervisor sends two commands.
+export const SupervisorMessageSchema = z.discriminatedUnion('type', [StartMessageSchema, StopMessageSchema]);
 export type SupervisorMessage = z.infer<typeof SupervisorMessageSchema>;
 export type StartMessage = z.infer<typeof StartMessageSchema>;
 export type StopMessage = z.infer<typeof StopMessageSchema>;
-export type SwitchAudioSourceMessage = z.infer<typeof SwitchAudioSourceMessageSchema>;
 
 /** A short machine code: capitals, digits and underscores. Never free text. */
 const code = z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/);
@@ -940,11 +1007,16 @@ export const FirstDurableFragmentRecordSchema = z.strictObject({
  * and the same for the plaintext (`plaintextSha256`, `plaintextChainSha256`) over the fragment
  * before the cipher seam. While no cipher is set (`keyId` null) stored bytes and plaintext are the
  * same bytes, so `plaintextSha256` equals `fragSha256` and the two chains are equal.
+ *
+ * VERSION 6 (D5, N-32): `deviceId` names a camera of the plan (its camera file) OR a microphone of the
+ * plan (its channel file `MIC-0N.m4a`); the chain rule and the numbering are per FILE. `keyframe` is
+ * false for every fragment of a channel file (it has no video).
  */
 export const FragmentCheckpointRecordSchema = z
   .strictObject({
     kind: z.literal(CaptureRecordKind.FRAGMENT_CHECKPOINT),
-    deviceId: id,
+    /** Version 6 (N-32): the device of the FILE - a camera, or a microphone (its channel file); never a mic role (D84 R-2). */
+    deviceId: deviceIdOnWire,
     /** `mfhd.sequence_number` of the fragment: 1, 2, 3 ... of this camera file, without a gap. */
     index: wholeNumber.positive(),
     /** The stored-byte range `[start, start + len)`. `start` of fragment 1 is the length of the init segment. */
@@ -1021,7 +1093,7 @@ export const AudioSourceIntervalRecordSchema = z
     /** Epoch ms of the capture instant of `fromSample` on the host clock (T0 + fromSample / rate). */
     capturedAtMs: wholeNumber.positive(),
     reason: z.enum(AudioSourceIntervalReason),
-    /** The correlation ID of the `SWITCH_AUDIO_SOURCE` this realises; null for the interval of the start. */
+    /** Null for the interval of the start - the only interval a version-6 worker writes. Before version 6: the correlation ID of the switch command this realised. */
     correlationId: id.nullable(),
     /**
      * Microseconds from the moment the worker read the command to the moment the selector was
@@ -1139,8 +1211,10 @@ export const CAPTURE_CHAIN_GENESIS_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427a
 export const ONCE_PER_CAMERA_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.FIRST_VIDEO_SAMPLE, CaptureRecordKind.FIRST_DURABLE_FRAGMENT, CaptureRecordKind.KEYFRAME_INTERVAL];
 /** The record kinds that say a fragment is on the disk: from the first of them a session is durable. */
 export const DURABLE_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.FIRST_DURABLE_FRAGMENT, CaptureRecordKind.FRAGMENT_CHECKPOINT];
-/** Whose device ID a record carries (version 4): a camera's, a microphone's, or none (a record of the session). */
-export const CAMERA_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.FIRST_VIDEO_SAMPLE, CaptureRecordKind.FIRST_DURABLE_FRAGMENT, CaptureRecordKind.FRAGMENT_CHECKPOINT, CaptureRecordKind.KEYFRAME_INTERVAL];
+/** Whose device ID a record carries (version 4): a camera's, a microphone's, either (version 6), or none (a record of the session). */
+export const CAMERA_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.FIRST_VIDEO_SAMPLE, CaptureRecordKind.FIRST_DURABLE_FRAGMENT, CaptureRecordKind.KEYFRAME_INTERVAL];
+/** Version 6 (D5, N-32): the checkpoint of a fragment names the device of its FILE - a camera's file or a channel file. */
+export const CAMERA_OR_MIC_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.FRAGMENT_CHECKPOINT];
 export const MIC_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.AUDIO_SOURCE_INTERVAL, CaptureRecordKind.MIC_SAMPLE_ACCOUNT, CaptureRecordKind.AUDIO_INSERTED_RUN];
 export const SESSION_RECORD_KINDS: readonly CaptureRecordKind[] = [CaptureRecordKind.AUDIO_TIMELINE_END, CaptureRecordKind.SEAL_COMPLETE];
 export type CaptureRecord = z.infer<typeof CaptureRecordSchema>;

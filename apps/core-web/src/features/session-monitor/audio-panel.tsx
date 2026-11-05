@@ -6,11 +6,11 @@ import { useSelfCaptureCore } from '@/lib/own-capture'
 import { useTranslation } from 'react-i18next'
 import { captureMicLines, meterInputOfChannel, micChannelOfTrack, noLiveLevelsOf, useSim } from '@dems/shared/sim'
 import { DbfsMeter } from '@/components/composed'
-import { micTrackChannelChip } from '@/features/devices/capture-selector'
+import { micPairLabel } from '@/features/devices/capture-selector'
 import { MicSourceMarks } from '@/features/devices/source-badge'
 import { cn } from '@/lib/utils'
-import { useAudioSource, useAudioSourceIntervals, useAudioSourceSwitch } from './audio-source'
-import { AudioSilentWarning, AudioSourceConfirm, AudioSourceFooter, AudioSourceRoleChip, AudioSourceToggle } from './audio-source-controls'
+import { useAudioSource, useAudioSourceIntervals } from './audio-source'
+import { AudioSilentWarning, AudioSourceFooter } from './audio-source-controls'
 import { micTiles, micTone, selectConnectingCameras } from './model'
 import { Panel } from './panel'
 
@@ -24,11 +24,15 @@ const MIC_OWN_CORE_KEY = { 'AUDIO-01': 'common.devices.mic1', 'AUDIO-02': 'commo
  * frame, peak hold, CLIP latch. The meters are functional, not ambient (§9.4). Monitoring paused
  * dims them (M-C-20); recording continues.
  *
- * Task 3 M5 (blueprint row 72; ux §3 flow 2; WB-01): each half says whether its input is the active
- * source of the one session audio track or the hot standby, as the Core holds the pair; the header
- * carries the confirmed manual switch (operation 81; the session holder or a SUPERVISOR, OD-09);
- * a `MIC_SILENT` warning offers the switch and never makes it (OD-11); the footer draws the
- * audio-source band (operation 82, WB-10) and the reason of a blocked toggle.
+ * Task 3 M5 (blueprint row 72; WB-01): a `MIC_SILENT` warning names the silent input (OD-11); the
+ * footer draws the audio-source band (operation 82, WB-10).
+ *
+ * Audit row 157 (D5, S5 §6; AC-4.6; D4, D30, D130): the microphones are fixed by the camera-microphone
+ * pairing, so operation 81 is retired and the panel has NO switch control (no header toggle, no
+ * confirmation, no "switch" offer on the silence warning). Each half names its pair slot "Mic N
+ * (Camera N)" (row 156 `micPairLabel`, register N-40; the meter TRACK `AUDIO-0N` is fed by channel
+ * `MIC-0N` of Pair N, D61) and Pair 1 says "Transcribed" - in place of the Active / Standby role chip
+ * and the "Channel 1 (transcribed)" / "Channel 3" chips (row W3T removed `micTrackChannelChip`; the Dashboard tiles read `micPairLabel` too).
  */
 export function AudioPanel({ paused }: { paused: boolean }) {
   const { t } = useTranslation()
@@ -44,7 +48,6 @@ export function AudioPanel({ paused }: { paused: boolean }) {
   // Wave H driver B (G75-04): a failed start recorded nothing - its cards draw no level either.
   const failedStart = useSim((s) => noLiveLevelsOf(s.session) === 'FAILED_START')
   const source = useAudioSource()
-  const control = useAudioSourceSwitch(source)
   const intervals = useAudioSourceIntervals(source)
   const ownCore = useSelfCaptureCore()
   return (
@@ -54,42 +57,41 @@ export function AudioPanel({ paused }: { paused: boolean }) {
       title={t('session.audio.title')}
       className="sm-area-audio"
       bodyClassName="sm-audio-wrap"
-      action={<AudioSourceToggle view={source} control={control} />}
-      actionBusy={control.busy}
     >
-      <AudioSilentWarning view={source} control={control} />
+      <AudioSilentWarning view={source} />
       <div className="sm-audio-body" data-active-input={source.activeInputId ?? undefined}>
       {mics.map((mic) => {
         // Fix wave L (G75d-06): "Interviewer" / "Subject" are roles of the dataset's microphones; a Core in its own capture names the line only.
         // D61 (2026-11-04): any of the four channels; the names come from the shared catalog.
         const name = ownCore ? t(MIC_OWN_CORE_KEY[mic.id]) : mic.name
         // Task 4 row 168 (site W4; decision C18 (2)): the input behind this meter channel, or `null` when the
-        // selector holds no complete microphone pair. An absent input is the half's empty state: it is neither
-        // the active source nor the standby, and it carries no role chip and no source marks.
+        // selector holds no line for its channel. An absent input is the half's empty state: no source marks, no level.
         const inputId = meterInputOfChannel(micLines, mic.id)
-        // Row 108 (DF-17, U-20): a half with an input that is neither the active source nor the standby (channels 3
-        // and 4 always, D61) still names its channel; the role chip, when it applies, says the same channel in the pair words.
-        const role = inputId !== null && (source.activeInputId === inputId || source.standbyInputId === inputId)
-        const chip = inputId === null || role ? null : micTrackChannelChip(micChannelOfTrack(mic.id))
+        // Row 157 (S5 §6, N-40): the pair slot of the half - fixed by number, so it is named with or without an input.
+        const channel = micChannelOfTrack(mic.id)
+        const pairLabel = micPairLabel(channel)
+        const transcribed = pairLabel.values.n === 1
         return (
           <div
             key={mic.id}
             className="sm-audio-half"
             data-channel={mic.id}
             data-state={mic.state}
-            /* D61 (2026-11-04): all four channels record; ACTIVE/STANDBY belong to the transcription pair alone. */
-            data-source={inputId === null ? undefined : source.activeInputId === inputId ? 'ACTIVE' : source.standbyInputId === inputId ? 'STANDBY' : undefined}
+            data-pair={pairLabel.values.n}
+            data-transcribed={transcribed ? 'true' : undefined}
             data-no-input={inputId === null ? 'true' : undefined}
           >
             <p className="sm-audio-name" title={name}>
               <span className={cn('sm-dot', `sm-dot-${micTone(mic)}`)} aria-hidden="true" />
               <span className="sm-audio-name-text" data-testid={`sm-track-label-${mic.id}`}>{name}</span>
-              {inputId === null ? null : <AudioSourceRoleChip inputId={inputId} view={source} />}
-              {chip === null ? null : (
-                <Chip size="sm" variant="soft" color="default" className="sm-audio-role" data-testid={`sm-audio-channel-${mic.id}`} data-channel={micChannelOfTrack(mic.id)}>
-                  <Chip.Label>{'values' in chip ? t(chip.key, chip.values) : t(chip.key)}</Chip.Label>
+              <Chip size="sm" variant="soft" color="default" className="sm-audio-role" data-testid={`sm-audio-pair-${mic.id}`} data-channel={channel}>
+                <Chip.Label>{t(pairLabel.key, pairLabel.values)}</Chip.Label>
+              </Chip>
+              {transcribed ? (
+                <Chip size="sm" variant="soft" color="accent" className="flex-none" data-testid={`sm-audio-transcribed-${mic.id}`}>
+                  <Chip.Label>{t('devices.pairs.transcribed')}</Chip.Label>
                 </Chip>
-              )}
+              ) : null}
               {/* Pass D2 (ux §8f.2, WB-01): the one badge of the microphone behind this meter; nothing unless the Core sent the development class. */}
               {inputId === null ? null : <MicSourceMarks inputId={inputId} place={`monitor-${mic.id}`} />}
             </p>
@@ -118,8 +120,7 @@ export function AudioPanel({ paused }: { paused: boolean }) {
         )
       })}
       </div>
-      <AudioSourceFooter view={source} control={control} intervals={intervals} />
-      <AudioSourceConfirm view={source} control={control} />
+      <AudioSourceFooter intervals={intervals} />
     </Panel>
   )
 }

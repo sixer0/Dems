@@ -17743,7 +17743,7 @@
                           "version": "0.2.0"
                         },
                         "captureWorker": {
-                          "version": "capture-worker/0.7.0"
+                          "version": "capture-worker/0.8.0"
                         },
                         "apiContract": {
                           "version": "0.3.0"
@@ -20251,7 +20251,7 @@
           "Device"
         ],
         "summary": "Replace the capture configuration",
-        "description": "Writes the whole selector at once (the camera lines and the mic lines over the eight-slot selector are optional members of the body; D61, 2026-11-04: four channels per medium). Needs CAPTURE_CONFIG (TECHNICIAN holds it since the 0034 revocation, and the vendor `root` account holds it by identity too (D55); OD-10 before the revocation) — and is **editable only while idle**: with a session open it refuses `409 CAPTURE_CONFIG_LOCKED` with no state change and **no audit row at all** (SEC35-19: neither CAPTURE_CONFIG_CHANGED nor ACCESS_DENIED — the lock is a state refusal, not an access one).\n\nOn success writes one CAPTURE_CONFIG_CHANGED row whose details are exactly the keys of `C3 §5.2` (operationId, scope, field, the optional track/input/device/from/to/permission members) — names and previous/new values, never a credential.\n\nA selector slot may be unassigned. The optional member `unassign` names the slots to clear (a video track `VIDEO-01`..`VIDEO-04`, a microphone channel `MIC-01`..`MIC-04`; D61, 2026-11-04): a cleared slot has no line in the answer, and it is the only way a slot becomes empty. It needs the same permission and is refused by the same lock; each cleared slot writes one CAPTURE_CONFIG_CHANGED row that carries `from` (the device that held the slot) and no `to`, and clearing an empty slot writes none. A body that clears a slot and assigns the same slot is `422 INVALID_INPUT`. A mic line with `channel` fills the slot of that channel, also alone. A Core in its own capture refuses a session start while a slot is unassigned.\n\nPublishes the `captureConfig` slice. 503 NOT_READY carries `details.reason: CAPTURE_NOT_READY` when the capture stack is not ready (CS-22).\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "description": "Writes the whole selector at once (the camera lines and the mic lines over the eight-slot selector are optional members of the body; D61, 2026-11-04: four channels per medium). Needs CAPTURE_CONFIG (TECHNICIAN holds it since the 0034 revocation, and the vendor `root` account holds it by identity too (D55); OD-10 before the revocation) — and is **editable only while idle**: with a session open it refuses `409 CAPTURE_CONFIG_LOCKED` with no state change and **no audit row at all** (SEC35-19: neither CAPTURE_CONFIG_CHANGED nor ACCESS_DENIED — the lock is a state refusal, not an access one).\n\nOn success writes one CAPTURE_CONFIG_CHANGED row whose details are exactly the keys of `C3 §5.2` (operationId, scope, field, the optional track/input/device/from/to/permission members) — names and previous/new values, never a credential.\n\nA selector slot may be unassigned. The optional member `unassign` names the slots to clear (a video track `VIDEO-01`..`VIDEO-04`, a microphone channel `MIC-01`..`MIC-04`; D61, 2026-11-04): a cleared slot has no line in the answer, and it is the only way a slot becomes empty. It needs the same permission and is refused by the same lock; each cleared slot writes one CAPTURE_CONFIG_CHANGED row that carries `from` (the device that held the slot) and no `to`, and clearing an empty slot writes none. A body that clears a slot and assigns the same slot is `422 INVALID_INPUT`. A mic line with `channel` fills the slot of that channel, also alone. A Core in its own capture refuses a session start while a slot is unassigned.\n\nCamera-microphone pairs (D5; D27): Pair N is video track `VIDEO-0N` with microphone channel `MIC-0N`, fixed by number and not configurable - the camera file of `VIDEO-0N` carries the audio of channel `MIC-0N`, and that channel is also sealed on its own as track `AUDIO-0N`; Pair 1 is the transcribed pair. This operation configures WHICH device sits in each slot. To move a microphone into another pair, send a SWAP: two mic lines by channel that trade the two inputs (`{ \"mics\": [ { \"channel\": \"MIC-01\", \"inputId\": \"MIC-02\", \"deviceId\": \"MIC-02\" }, { \"channel\": \"MIC-02\", \"inputId\": \"MIC-01\", \"deviceId\": \"MIC-01\" } ] }`), so no pair is left without a microphone; a swap writes ONE CAPTURE_CONFIG_CHANGED row of the channel-swap form of operation 80 (`scope: MIC`, `field: CHANNEL`; D30 K-6). A single line that names a microphone held on another channel is still refused (`422 INVALID_INPUT`, `details.reason: MIC_ON_BOTH_INPUTS`). Clearing a slot with `unassign` leaves its pair incomplete, and a Core in its own capture refuses the next start until the pair is complete.\n\nPublishes the `captureConfig` slice. 503 NOT_READY carries `details.reason: CAPTURE_NOT_READY` when the capture stack is not ready (CS-22).\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
         "responses": {
           "200": {
             "description": "The new capture-config slice.",
@@ -20550,6 +20550,23 @@
                   "value": {
                     "unassign": [
                       "MIC-02"
+                    ]
+                  }
+                },
+                "swap": {
+                  "summary": "Swap the microphones of Pair 1 and Pair 2 (Camera 1 <-> Mic 1, Camera 2 <-> Mic 2)",
+                  "value": {
+                    "mics": [
+                      {
+                        "channel": "MIC-01",
+                        "inputId": "MIC-02",
+                        "deviceId": "MIC-02"
+                      },
+                      {
+                        "channel": "MIC-02",
+                        "inputId": "MIC-01",
+                        "deviceId": "MIC-01"
+                      }
                     ]
                   }
                 }
@@ -21207,8 +21224,8 @@
         "tags": [
           "Device"
         ],
-        "summary": "Make a mic input the transcribed channel",
-        "description": "Makes the mic input named in the path the input of channel `MIC-01` — the channel that feeds the transcribed track `AUDIO-01` (D61 of 2026-11-04: the operation keeps its path and its name; what it moves is the transcription channel, and the input that held channel 1 takes the moved input's old channel. The earlier wording made it PRIMARY inside one `AUDIO-01` with the other STANDBY, OD-01 T1 / OD-09; all four channels now record simultaneously). No body.\n\nNeeds CAPTURE_CONFIG and is idle-only (`409 CAPTURE_CONFIG_LOCKED`, no audit row — SEC35-19). An unknown `{id}` answers 404. Writes CAPTURE_CONFIG_CHANGED with `scope: MIC`, `field: CHANNEL`, `inputId` and the previous/new channel in `from`/`to`.\n\nPublishes the `captureConfig` slice. The in-session toggle is a different operation (`switchAudioSource`, op 81) with different access.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "summary": "Make a microphone the mic of Pair 1 (Camera 1, transcribed)",
+        "description": "Makes the mic input named in the path the input of channel `MIC-01` — the microphone of Pair 1: the audio of camera track `VIDEO-01` and of the transcribed track `AUDIO-01` (D5, D27, D30 K-4: the pairing is fixed by number, so moving a microphone onto channel 1 also moves it onto Camera 1). It is a swap: the input that held channel 1 takes the moved input's old channel, and with it the pair of that channel, so no pair is left without a microphone. The operation keeps its path and its name (D61 of 2026-11-04; the earlier wording made it PRIMARY inside one `AUDIO-01` with the other STANDBY, OD-01 T1 / OD-09; all four channels record simultaneously). No body.\n\nNeeds CAPTURE_CONFIG and is idle-only (`409 CAPTURE_CONFIG_LOCKED`, no audit row — SEC35-19). An unknown `{id}` answers 404. Writes CAPTURE_CONFIG_CHANGED with `scope: MIC`, `field: CHANNEL`, `inputId` and the previous/new channel in `from`/`to`.\n\nPublishes the `captureConfig` slice. To transcribe another microphone, put it in Pair 1 with this operation before the session (D28 DQ-3); the in-session toggle (`switchAudioSource`, op 81) is retired and answers `409 AUDIO_SOURCE_FIXED_BY_PAIRING` (D28 DQ-2).\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
         "responses": {
           "200": {
             "description": "The new capture-config slice.",
@@ -21526,42 +21543,9 @@
         "tags": [
           "Session"
         ],
-        "summary": "Switch the active microphone",
-        "description": "The in-session toggle (OD-09; D61 of 2026-11-04: all FOUR channels record at once — the toggle moves only the TRANSCRIBED source behind AUDIO-01) moves the active source behind AUDIO-01 to the named input at the next worker input-chunk boundary — one worker input chunk plus IPC latency, at most 21.333 ms with 1024-sample frames (erratum AU2-07; capture-spec §E). It records one audio-source interval and answers the new active/standby state.\n\nIt **never** auto-switches: sustained silence raises the MIC_SILENT warning and the operator decides (OD-11). Refused when the session is not RECORDING (`409 INVALID_STATE`). Access: SESSION_START **and** the `SESSION_HOLDER` condition — the operator who created the open session, or any SUPERVISOR (D4 OD-09; SEC35-18).\n\nWrites AUDIO_SOURCE_SWITCHED: fromInput, toInput, the media-pts fromMs/toMs of the closed interval, and `sendingDeviceId` — **required when the caller is a paired mobile device** (B15; SEC35-17), optional only for a web operator session. There is no `trigger` key: every switch is operator-initiated.\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
+        "summary": "Switch the active microphone (retired: the audio is fixed by the camera-microphone pair)",
+        "description": "**Retired in behaviour by D5 (D28 DQ-2; audit row 149).** The audio of each track is fixed by its camera-microphone pair: Pair N is camera track `VIDEO-0N` with microphone channel `MIC-0N` (sealed as `AUDIO-0N`), and the transcription stays on Pair 1 (`AUDIO-01`). The route stays and answers `409 AUDIO_SOURCE_FIXED_BY_PAIRING` (\"The audio of each track is fixed by its camera-microphone pair; there is no source to switch.\") for every session, before any lookup of the session or the input, with no state change and **no audit row**. No call succeeds: the operation documents no success status. To transcribe another microphone, put it in Pair 1 with operation 80 (`setPrimaryMic`) before the session.\n\nWhat runs before the refusal is the request's own: the access rule — SESSION_START **and** the `SESSION_HOLDER` condition, the operator who created the open session or any SUPERVISOR (D4 OD-09; SEC35-18; a refusal writes its ACCESS_DENIED row) — and, on the Core server only, the request schema (`422 INVALID_INPUT` for an input ID that is not `MIC-NN`).\n\nBefore D5 the in-session toggle moved the transcribed source behind AUDIO-01, recorded an audio-source interval and wrote AUDIO_SOURCE_SWITCHED (fromInput, toInput, the media-pts fromMs/toMs, and `sendingDeviceId` for a paired device). Stored rows of those sessions stay readable; operation 82 still lists the intervals (since D5: the one interval of the start). It never auto-switched (OD-11).\n\nSimulated: the in-app simulator emulates this operation (OD-17 supersedes the old \"simulator untouched\" rule, OD-23); in Simulated mode a client calls it inside its own simulator.",
         "responses": {
-          "200": {
-            "description": "The new active/standby state.",
-            "headers": {
-              "x-request-id": {
-                "$ref": "#/components/headers/XRequestId"
-              },
-              "x-dems-epoch": {
-                "$ref": "#/components/headers/XDemsEpoch"
-              },
-              "x-dems-revision": {
-                "$ref": "#/components/headers/XDemsRevision"
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AudioSourceState"
-                },
-                "examples": {
-                  "switched": {
-                    "summary": "MIC-02 is active from media-pts 5324 ms",
-                    "value": {
-                      "sessionId": "SES-20261001-0024",
-                      "activeInputId": "MIC-02",
-                      "standbyInputId": "MIC-01",
-                      "switchedAt": 1790823600000,
-                      "intervalFromMs": 5324
-                    }
-                  }
-                }
-              }
-            }
-          },
           "400": {
             "description": "The body is not a JSON object (INVALID_JSON).",
             "headers": {
@@ -21671,38 +21655,8 @@
               }
             }
           },
-          "404": {
-            "description": "This ID is not the open session (NOT_FOUND).",
-            "headers": {
-              "x-request-id": {
-                "$ref": "#/components/headers/XRequestId"
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiError"
-                },
-                "examples": {
-                  "notFound": {
-                    "summary": "Not the open session",
-                    "value": {
-                      "error": {
-                        "code": "NOT_FOUND",
-                        "message": "This session is not the open session.",
-                        "details": {
-                          "simCode": "NOT_FOUND"
-                        },
-                        "requestId": "00000000-0000-4000-8000-000000000000"
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
           "409": {
-            "description": "The requested microphone cannot become the active source (AUDIO_SOURCE_CONFLICT: e.g. it is offline), or the session is not RECORDING (INVALID_STATE).",
+            "description": "Every call that passes the access rule: the audio of each track is fixed by its camera-microphone pair (AUDIO_SOURCE_FIXED_BY_PAIRING; D5, D28 DQ-2). Nothing changes and no audit row is written.",
             "headers": {
               "x-request-id": {
                 "$ref": "#/components/headers/XRequestId"
@@ -21714,30 +21668,12 @@
                   "$ref": "#/components/schemas/ApiError"
                 },
                 "examples": {
-                  "conflict": {
-                    "summary": "MIC-02 is offline",
+                  "fixedByPairing": {
+                    "summary": "Retired: the audio of each track is fixed by its camera-microphone pair (no audit row)",
                     "value": {
                       "error": {
-                        "code": "AUDIO_SOURCE_CONFLICT",
-                        "message": "The requested microphone cannot become the active source.",
-                        "details": {
-                          "simCode": "AUDIO_SOURCE_CONFLICT"
-                        },
-                        "requestId": "00000000-0000-4000-8000-000000000000"
-                      }
-                    }
-                  },
-                  "invalidState": {
-                    "summary": "The session is ARMED",
-                    "value": {
-                      "error": {
-                        "code": "INVALID_STATE",
-                        "message": "The action is not allowed in the current state.",
-                        "details": {
-                          "simCode": "ILLEGAL_STATE",
-                          "from": "ARMED",
-                          "event": "switchAudioSource"
-                        },
+                        "code": "AUDIO_SOURCE_FIXED_BY_PAIRING",
+                        "message": "The audio of each track is fixed by its camera-microphone pair; there is no source to switch.",
                         "requestId": "00000000-0000-4000-8000-000000000000"
                       }
                     }
@@ -21836,7 +21772,7 @@
           ]
         },
         "x-dems-audit": {
-          "success": "AUDIO_SOURCE_SWITCHED",
+          "success": "NONE-P",
           "denial": "ACCESS_DENIED",
           "also": []
         },
@@ -33196,7 +33132,7 @@
             "additionalProperties": false
           },
           "audioSource": {
-            "description": "The transcription pair of this session: the inputs of channels `MIC-01` and `MIC-02` (D61, 2026-11-04: all four channels record; op 81 moves the transcribed one).",
+            "description": "The inputs of channels `MIC-01` and `MIC-02` of this session: `activeInputId` is the microphone of Pair 1 (camera `VIDEO-01`), whose audio is transcribed on `AUDIO-01` (D61, 2026-11-04: all four channels record; D5, D28: each channel is the microphone of its own camera, and op 81 no longer moves the transcribed one - it answers `409 AUDIO_SOURCE_FIXED_BY_PAIRING`).",
             "anyOf": [
               {
                 "type": "object",
@@ -33707,14 +33643,14 @@
                 "type": "null"
               }
             ],
-            "description": "The input whose audio is transcribed on AUDIO-01 right now (op 81 moves it; SH-15; D61: the input of channel `MIC-01` - all four channels record at once). Null: the selector holds no channel-1 microphone."
+            "description": "The input whose audio is transcribed on AUDIO-01 right now: the microphone of Pair 1, the input of channel `MIC-01` (SH-15; D61: all four channels record at once; D5, D28: op 80 places it before the session, op 81 no longer moves it). Null: the selector holds no channel-1 microphone."
           }
         },
         "required": [
           "channels",
           "activeInputId"
         ],
-        "description": "Per-input audio snapshot with the transcription pair (D61: four simultaneous channels; op 81 trades channels 1 and 2). Meters use it as their initial value; live levels run at 20 Hz in-process."
+        "description": "Per-input audio snapshot with the transcribed input (D61: four simultaneous channels; D5: channel `MIC-0N` is the microphone of camera `VIDEO-0N`, and the transcription stays on Pair 1). Meters use it as their initial value; live levels run at 20 Hz in-process."
       },
       "StorageStatusResponse": {
         "type": "object",
@@ -34264,7 +34200,7 @@
               "code": {
                 "type": "string",
                 "pattern": "^[A-Z][A-Z0-9_]*$",
-                "description": "Machine-readable code: INVALID_JSON, NOT_SIGNED_IN, NOT_PERMITTED, FORBIDDEN, NOT_FOUND, METHOD_NOT_ALLOWED, SESSION_ACTIVE, INVALID_INPUT, INVALID_STATE, PRECHECK_RUNNING, PRECHECK_WARNINGS, PRECHECK_BLOCKED, INVALID_REASON, NOT_SEALED, SECURITY_FAULT, SIMULATOR_ERROR, INVALID_PATH, INVALID_CREDENTIALS, INVALID_CODE, ORIGIN_NOT_ALLOWED, DEVICE_NOT_PAIRED, DEVICE_REVOKED, DEMO_DISABLED, RECORDING_ACTIVE, COMMAND_UNSUPPORTED, LAST_ADMIN, PAYLOAD_TOO_LARGE, LOCKED, RATE_LIMITED, INTERNAL_ERROR, NOT_READY, CAPTURE_CONFIG_LOCKED, AUDIO_SOURCE_CONFLICT, CAMERA_NOT_LOST, TRANSCRIPT_NOT_READY, TRANSCRIPT_REVISION_CONFLICT, EXPORT_IN_PROGRESS, MEDIA_NOT_AVAILABLE, RESET_BLOCKED_REAL_EVIDENCE, TRANSCRIPT_AUDIO_UNAVAILABLE."
+                "description": "Machine-readable code: INVALID_JSON, NOT_SIGNED_IN, NOT_PERMITTED, FORBIDDEN, NOT_FOUND, METHOD_NOT_ALLOWED, SESSION_ACTIVE, INVALID_INPUT, INVALID_STATE, PRECHECK_RUNNING, PRECHECK_WARNINGS, PRECHECK_BLOCKED, INVALID_REASON, NOT_SEALED, SECURITY_FAULT, SIMULATOR_ERROR, INVALID_PATH, INVALID_CREDENTIALS, INVALID_CODE, ORIGIN_NOT_ALLOWED, DEVICE_NOT_PAIRED, DEVICE_REVOKED, DEMO_DISABLED, RECORDING_ACTIVE, COMMAND_UNSUPPORTED, LAST_ADMIN, PAYLOAD_TOO_LARGE, LOCKED, RATE_LIMITED, INTERNAL_ERROR, NOT_READY, CAPTURE_CONFIG_LOCKED, AUDIO_SOURCE_CONFLICT, CAMERA_NOT_LOST, TRANSCRIPT_NOT_READY, TRANSCRIPT_REVISION_CONFLICT, EXPORT_IN_PROGRESS, MEDIA_NOT_AVAILABLE, RESET_BLOCKED_REAL_EVIDENCE, TRANSCRIPT_AUDIO_UNAVAILABLE, AUDIO_SOURCE_FIXED_BY_PAIRING."
               },
               "message": {
                 "type": "string",
@@ -39547,7 +39483,7 @@
                     "AUDIO-03",
                     "AUDIO-04"
                   ],
-                  "description": "The track the file carries (VIDEO-01, VIDEO-02, AUDIO-01)."
+                  "description": "The track the file carries: a camera file `VIDEO-0N`, or (a D5 package, schema `dems.evidence-manifest/2.1`) the audio file `AUDIO-0N` of camera-microphone pair N, listed after the camera files. The camera file of the same pair holds that audio exactly when `VIDEO-0N` is also listed."
                 },
                 "fileName": {
                   "type": "string",
@@ -39596,6 +39532,68 @@
                 "sizeBytes",
                 "sha256",
                 "fragmentCount"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "audioTracksMissing": {
+            "description": "Core server only, with `sealedPackage: PRESENT`: the manifest member `audioTracksMissing` (schema `dems.evidence-manifest/2.1`) - the paired microphone of a camera-microphone pair did not record and the recording went on; the camera file of that pair holds a silent audio track. Absent: the manifest states no such pair (every package sealed before D5, or a D5 package whose microphones all recorded). A client says it; the silence is never read as a quiet room.",
+            "minItems": 1,
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "trackId": {
+                  "type": "string",
+                  "enum": [
+                    "AUDIO-01",
+                    "AUDIO-02",
+                    "AUDIO-03",
+                    "AUDIO-04"
+                  ],
+                  "description": "The audio track of the pair whose microphone did not record (manifest field 175)."
+                },
+                "micDeviceId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^MIC-\\d{2,}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The microphone that could not be opened (field 177); null exactly for `NOT_ASSIGNED`."
+                },
+                "silentIn": {
+                  "maxItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "VIDEO-01",
+                      "VIDEO-02",
+                      "VIDEO-03",
+                      "VIDEO-04"
+                    ]
+                  },
+                  "description": "`[VIDEO-0N]` of the same pair when that camera file is in the package: it holds a SILENT audio track (field 178); empty when it is not."
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "NOT_ASSIGNED",
+                    "NOT_OPENED"
+                  ],
+                  "description": "NOT_ASSIGNED: no microphone was assigned to the channel of the pair. NOT_OPENED: the assigned microphone could not be opened at the start (field 179)."
+                }
+              },
+              "required": [
+                "trackId",
+                "micDeviceId",
+                "silentIn",
+                "reason"
               ],
               "additionalProperties": false
             }
@@ -42028,7 +42026,7 @@
             "description": "One result per v1 track; a schema-v2 item answers `files` instead (C3 §3 op 41)."
           },
           "files": {
-            "description": "Schema v2: one result per camera file, both hashes and the fragment chain.",
+            "description": "Schema v2: one result per camera file, both hashes and the fragment chain; for a D5 package (manifest schema `dems.evidence-manifest/2.1`) followed by one result per sealed audio file of a camera-microphone pair (`trackId` AUDIO-0N, `fileId` `fragments/AUDIO-0N.m4a`).",
             "type": "array",
             "items": {
               "type": "object",
@@ -42044,7 +42042,11 @@
                     "VIDEO-01",
                     "VIDEO-02",
                     "VIDEO-03",
-                    "VIDEO-04"
+                    "VIDEO-04",
+                    "AUDIO-01",
+                    "AUDIO-02",
+                    "AUDIO-03",
+                    "AUDIO-04"
                   ]
                 },
                 "storedOk": {
@@ -42264,7 +42266,11 @@
                     "VIDEO-01",
                     "VIDEO-02",
                     "VIDEO-03",
-                    "VIDEO-04"
+                    "VIDEO-04",
+                    "AUDIO-01",
+                    "AUDIO-02",
+                    "AUDIO-03",
+                    "AUDIO-04"
                   ]
                 },
                 "seq": {
@@ -42599,7 +42605,7 @@
           },
           "notices": {
             "description": "Schema v2 (decision D178): what the package format does NOT cover. Named statements that fail nothing; a client shows each one and never collapses it. Absent for a v1 item.",
-            "maxItems": 9,
+            "maxItems": 10,
             "type": "array",
             "items": {
               "type": "object",
@@ -42607,7 +42613,7 @@
                 "code": {
                   "type": "string",
                   "pattern": "^[A-Z][A-Z0-9_]{2,63}$",
-                  "description": "`AUDIT_EXTRACT_NOT_SIGNED` (every v2 result): `audit-session-extract.jsonl` is in the package and its content is covered by no hash and no signature. `EXPORT_FOLDER_UNEXPECTED_FILE` (only when there is such a file): the `export/` folder of the package holds a file that is no finished export - a `.partial` a stopped export left, a name no export writes, or anything in a sub-folder; the sealed set is not affected. `REVISION_APPEND_PENDING` (only while there is such a file): a transcript revision is being written - `transcript/transcript-revisions.json.next` lies in the package; it fails nothing; verify again shortly. `SIGNED_BY_COMPROMISED_KEY` (only for a package under such a key): the manifest or a transcript revision is signed by a key that was later MARKED COMPROMISED, so the signature alone proves nothing any more. **This notice is not \"fails nothing\"**: it stands beside a verdict that took the mark into account and its `report` says which - the answer is a pass ONLY when the package is the one this Core recorded when it sealed the item (its manifest digest and the head of its revisions equal what the Core stored), and a failure otherwise. An answer with this code is never a plain pass: a client shows it as a state of the signing key, not among what the signature does not cover. `HOST_PROFILE_NOT_ASKED` (only for a package whose manifest carries the member `hostProfileNotAsked`): the package was sealed by a production Core on a platform where the checks of the host profile are not run; it fails nothing and changes no verdict. `VIDEO_ABSENT_IN_SESSION` (only for a package whose manifest carries the member `absentInSession` on a track): a camera stopped delivering pictures inside the session; the line states per track how often, the two measured bounds of the time in ms, and whether the last absence ended; it fails nothing and changes no verdict. `AUDIO_ABSENT_ON_RESTART` (only for a package whose manifest carries the member `audio.absentOnRestart`): the capture was restarted inside the session and no sound was recorded across the restart; the line states how often and the two measured bounds of the time in ms; it fails nothing and changes no verdict. `AUDIO_SAMPLES_NOT_RECEIVED` (only for a package whose manifest carries the member `audio.samplesNotReceived`): the audio was captured on a path that does not deliver every sample (bench capture path of a Mac); the line states, in whole samples of the highest capture attempt, how many samples of the track arrived, how many are silence the recorder inserted, and the runs of 100 ms or more (listed, not listed, the longest) - or that the amount was measured up to a sample only, or not measured; sound that did not arrive is not in the recording, and the places of the inserted silence are not the places of the missing sound; it fails nothing and changes no verdict - a package can be untouched and its audio incomplete. `AUDIO_ONE_CAPTURE_GROUP` (only beside the previous one, when two of its records state the same capture group): PRIMARY and STANDBY were channels of one device recorded by one capture program, so a switch between them was not a switch to an independent source; it fails nothing and changes no verdict."
+                  "description": "`AUDIT_EXTRACT_NOT_SIGNED` (every v2 result): `audit-session-extract.jsonl` is in the package and its content is covered by no hash and no signature. `EXPORT_FOLDER_UNEXPECTED_FILE` (only when there is such a file): the `export/` folder of the package holds a file that is no finished export - a `.partial` a stopped export left, a name no export writes, or anything in a sub-folder; the sealed set is not affected. `REVISION_APPEND_PENDING` (only while there is such a file): a transcript revision is being written - `transcript/transcript-revisions.json.next` lies in the package; it fails nothing; verify again shortly. `SIGNED_BY_COMPROMISED_KEY` (only for a package under such a key): the manifest or a transcript revision is signed by a key that was later MARKED COMPROMISED, so the signature alone proves nothing any more. **This notice is not \"fails nothing\"**: it stands beside a verdict that took the mark into account and its `report` says which - the answer is a pass ONLY when the package is the one this Core recorded when it sealed the item (its manifest digest and the head of its revisions equal what the Core stored), and a failure otherwise. An answer with this code is never a plain pass: a client shows it as a state of the signing key, not among what the signature does not cover. `HOST_PROFILE_NOT_ASKED` (only for a package whose manifest carries the member `hostProfileNotAsked`): the package was sealed by a production Core on a platform where the checks of the host profile are not run; it fails nothing and changes no verdict. `VIDEO_ABSENT_IN_SESSION` (only for a package whose manifest carries the member `absentInSession` on a track): a camera stopped delivering pictures inside the session; the line states per track how often, the two measured bounds of the time in ms, and whether the last absence ended; it fails nothing and changes no verdict. `AUDIO_ABSENT_ON_RESTART` (only for a package whose manifest carries the member `audio.absentOnRestart`): the capture was restarted inside the session and no sound was recorded across the restart; the line states how often and the two measured bounds of the time in ms; it fails nothing and changes no verdict. `AUDIO_SAMPLES_NOT_RECEIVED` (only for a package whose manifest carries the member `audio.samplesNotReceived`): the audio was captured on a path that does not deliver every sample (bench capture path of a Mac); the line states, in whole samples of the highest capture attempt, how many samples of the track arrived, how many are silence the recorder inserted, and the runs of 100 ms or more (listed, not listed, the longest) - or that the amount was measured up to a sample only, or not measured; sound that did not arrive is not in the recording, and the places of the inserted silence are not the places of the missing sound; it fails nothing and changes no verdict - a package can be untouched and its audio incomplete. `AUDIO_ONE_CAPTURE_GROUP` (only beside the previous one, when two of its records state the same capture group): PRIMARY and STANDBY were channels of one device recorded by one capture program, so a switch between them was not a switch to an independent source; it fails nothing and changes no verdict. `AUDIO_TRACKS_MISSING` (only for a package whose manifest carries the member `audioTracksMissing`, schema `dems.evidence-manifest/2.1`): the microphone of a camera-microphone pair did not record - none was assigned to its channel (`NOT_ASSIGNED`) or it could not be opened at the start (`NOT_OPENED`); the camera file of that pair holds a silent audio track, and the line names per pair its audio track, the reason and the camera; it fails nothing and changes no verdict."
                 },
                 "report": {
                   "type": "string",
@@ -43677,7 +43683,7 @@
             "maxLength": 32
           },
           "channel": {
-            "description": "BY CHANNEL (D133 (1) generalized by D61, 2026-11-04: a channel is assignable alone): when every line carries `channel`, each line puts its input on the slot of its channel - one to four lines, no channel twice, each with `deviceId` equal to `inputId`, any registered `MIC-NN`; the slot of a channel the body does not name keeps what it holds, and the named channels are the replacing set. Absent on every line: the line edits the input it names (the earlier form).",
+            "description": "BY CHANNEL (D133 (1) generalized by D61, 2026-11-04: a channel is assignable alone): when every line carries `channel`, each line puts its input on the slot of its channel - one to four lines, no channel twice, each with `deviceId` equal to `inputId`, any registered `MIC-NN`; the slot of a channel the body does not name keeps what it holds, and the named channels are the replacing set. Channel `MIC-0N` is the microphone of camera track `VIDEO-0N` (Pair N, fixed by number; D5, D27), so a line by channel places a microphone in a pair; two lines that trade two inputs between their channels are a swap. Absent on every line: the line edits the input it names (the earlier form).",
             "type": "string",
             "enum": [
               "MIC-01",
@@ -43787,7 +43793,7 @@
           "inputId": {
             "type": "string",
             "pattern": "^MIC-\\d{2,}$",
-            "description": "The mic input to move behind AUDIO-01, `MIC-NN`: one of the two inputs of the transcription pair (channels `MIC-01` and `MIC-02`; D61, 2026-11-04: the other returns to channel 2 — the other two channels record untouched)."
+            "description": "The mic input the caller asks to move behind AUDIO-01, `MIC-NN`. Since D5 (D28 DQ-2) no input is moved: each track carries the microphone of its own pair (`VIDEO-0N` <-> `MIC-0N`), and the operation answers `409 AUDIO_SOURCE_FIXED_BY_PAIRING`. To transcribe another microphone, put it in Pair 1 with operation 80 before the session."
           },
           "reason": {
             "description": "Why the operator switched; audited as text, never as a secret.",

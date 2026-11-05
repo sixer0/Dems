@@ -37,6 +37,14 @@
  *
  * ERRORS. A probe that fails is an unexpected failure: it reaches the error envelope, which
  * writes it to the log and to the persistent error log; the spacing slot it took stays taken.
+ *
+ * THE REACH OF A LISTED MICROPHONE (audit row M97; decisions D104, D116; the engine door of row 127). A re-read
+ * LISTS the inputs and opens none, so it proves no answer and never states `REACHABLE`. What it does prove is
+ * restated in a unit of its own, after the presence writes and before the search row (`micReachReadingsOf`):
+ * a microphone listed PRESENT that carries a stated `NOT_REACHABLE` (an earlier pre-check's) is CLEARED to
+ * "not checked" - it is there again, and the old reading no longer holds; a microphone listed ABSENT is stated
+ * `NOT_REACHABLE` with the re-read's clock. Memory only, no audit row (row 127). A failure to state it is written
+ * to the log and the persistent error log (`CAPTURE_INPUTS_REACH_NOT_WRITTEN`, IDs only) and the re-read goes on.
  */
 import {
   ApiErrorCode,
@@ -55,7 +63,9 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { CaptureNotices, InputReading } from '../../capture-notices';
 import { captureOperationOf } from '../../capture/fence';
+import { noteCaptureDeviceReachIn, type CaptureDeviceReachReading } from '../../engine'; // audit row M97: row 127's reach door
 import { ApiFailure } from '../../plugins/error-envelope';
+import { describeError } from '../../plugins/logger';
 import { routeOfOperation } from '../../plugins/permission-guard';
 
 export const CAPTURE_INPUTS_MODULE_OPERATIONS = ['rescanCaptureInputs'] as const;
@@ -63,6 +73,29 @@ export type CaptureInputsModuleOperation = (typeof CAPTURE_INPUTS_MODULE_OPERATI
 
 /** Label of the unit that writes the search row. It appears in the pipeline's log lines. */
 export const CAPTURE_INPUTS_UNIT_LABEL = 'captureInputs.rescanCaptureInputs';
+
+/** Audit row M97: label of the unit in which a re-read restates or clears the reach of the listed microphones. */
+export const CAPTURE_INPUTS_REACH_UNIT_LABEL = 'captureInputs.micReach';
+
+/** Audit row M97: the reach of the listed microphones could not be stated (the re-read itself goes on). */
+export const CAPTURE_INPUTS_REACH_NOT_WRITTEN = 'CAPTURE_INPUTS_REACH_NOT_WRITTEN';
+const REACH_NOT_WRITTEN_TEXT = 'the reach of the re-read microphones could not be stated';
+
+/**
+ * Audit row M97 (D104, D116): what one re-read proves of the REACH of the registered microphones it listed, as readings
+ * for row 127's door. A listing opens nothing: PRESENT clears a stated `NOT_REACHABLE` (and states nothing for any other
+ * entry - a stated `REACHABLE` stands with its own time); ABSENT states `NOT_REACHABLE` at `now`. Never `REACHABLE`.
+ */
+export function micReachReadingsOf(
+  registered: readonly { readonly id: string; readonly reach?: 'REACHABLE' | 'NOT_REACHABLE' | null }[],
+  inputs: readonly { readonly deviceId: string; readonly present: boolean }[],
+  now: number,
+): CaptureDeviceReachReading[] {
+  return inputs.flatMap((input): CaptureDeviceReachReading[] => {
+    if (!input.present) return [{ deviceId: input.deviceId, reach: 'NOT_REACHABLE', checkedAt: now }];
+    return registered.find((device) => device.id === input.deviceId)?.reach === 'NOT_REACHABLE' ? [{ deviceId: input.deviceId, reach: null, checkedAt: null }] : [];
+  });
+}
 
 /** The capture operation in which the Core states no adapter and no source class (decision D196, G70-01). */
 const SIMULATED = 'SIMULATED';
@@ -139,6 +172,20 @@ export function registerCaptureInputsRoutes(app: FastifyInstance, seams: Capture
         // `online` of the microphones: one unit per microphone whose state differs, none otherwise.
         for (const input of inputs) {
           if (registered.find((device) => device.id === input.deviceId)?.online !== input.present) await notifier.devicePresence(input.deviceId, input.present);
+        }
+        // Audit row M97 (D104): the reach this listing proves, in a unit of its own (see the head of this file).
+        const reach = micReachReadingsOf(registered, inputs, now);
+        if (reach.length > 0) {
+          try {
+            await app.engine.run(CAPTURE_INPUTS_REACH_UNIT_LABEL, async (scope) => {
+              for (const reading of reach) await noteCaptureDeviceReachIn(scope, reading);
+              return undefined;
+            });
+          } catch (err) {
+            // The app log line names the device IDs; the persistent row takes the flat context it allows: a count (D121).
+            request.log.warn({ err, code: CAPTURE_INPUTS_REACH_NOT_WRITTEN, source: SOURCE, deviceIds: reach.map((reading) => reading.deviceId) }, REACH_NOT_WRITTEN_TEXT);
+            app.errorLog.append({ level: 'warn', source: SOURCE, message: REACH_NOT_WRITTEN_TEXT, ...describeError(err), code: CAPTURE_INPUTS_REACH_NOT_WRITTEN, context: { deviceCount: reach.length } });
+          }
         }
       }
 

@@ -27,6 +27,8 @@ import { CORE_QUERY_KEYS } from '@/runtime'
 import { poeCycleGate, rolesHolding, selectorEditGate, selectorRead, selectorRefusal, type CaptureConfig, type CaptureDevices, type SelectorFailure } from '../capture-selector'
 
 const S = en.devices.selector
+/** Audit row 156 (U-13; N-40): the selector names every microphone slot by its pair, "Mic N (Camera N)". */
+const PAIR_MIC = (n: number) => en.devices.pairs.micOfCamera.replaceAll('{{n}}', String(n))
 const CONFIG: CaptureConfig = {
   cameras: [
     { trackId: 'VIDEO-01', deviceId: 'CAM-01', profile: 'H264_1080P25', online: true, streamState: 'LIVE' },
@@ -192,8 +194,8 @@ describe('Simulated mode: an edit (R-1 AC-1 in the simulator; PE-127-07)', { tim
     expect(ready).toHaveAttribute('data-locked', 'false')
     expect(within(panel).getByTestId('selector-camera-VIDEO-01')).toHaveAttribute('data-device', 'CAM-01')
     expect(within(panel).getByTestId('selector-camera-VIDEO-02')).toHaveAttribute('data-device', 'CAM-02')
-    expect(within(panel).getByTestId('selector-role-MIC-01')).toHaveTextContent(S.role.PRIMARY)
-    expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(S.role.STANDBY)
+    expect(within(panel).getByTestId('selector-role-MIC-01')).toHaveTextContent(PAIR_MIC(1))
+    expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(PAIR_MIC(2))
     // OD-12: state as text, no picture of a camera inside the selector.
     expect(within(panel).getByTestId('selector-camera-VIDEO-01')).toHaveTextContent(S.stream.LIVE)
     expect(panel.querySelector('video, canvas, img')).toBeNull()
@@ -204,6 +206,12 @@ describe('Simulated mode: an edit (R-1 AC-1 in the simulator; PE-127-07)', { tim
     expect(within(panel).queryByTestId('selector-reason-VIDEO-01')).not.toBeInTheDocument()
     expect(within(panel).getByTestId('selector-save-VIDEO-01')).toBeDisabled()
     expect(within(panel).getByTestId('selector-primary-MIC-02')).toBeEnabled()
+    // Audit row 156 (AC-4.5; D30 K-4): four "Camera N <-> Mic N" pair rows; the op 80 control is worded for Pair 1.
+    expect(within(panel).getAllByTestId(/^selector-pair-[1-4]$/)).toHaveLength(4)
+    expect(within(panel).getByTestId('selector-pair-label-3').textContent).toBe('Camera 3 <-> Mic 3')
+    expect(within(panel).getByTestId('selector-primary-MIC-02').textContent).toBe('Make Mic of Camera 1 (transcribed)')
+    expect(within(panel).getByTestId('selector-primary-MIC-02')).toHaveTextContent(S.makePrimary)
+    expect(panel.textContent ?? '').not.toMatch(/Microphone [34]\b|Channel [1-4]/)
     expect(getMissingI18nKeys()).toEqual([])
   })
 
@@ -234,8 +242,8 @@ describe('Simulated mode: an edit (R-1 AC-1 in the simulator; PE-127-07)', { tim
   it('"Make primary" on the standby input swaps the roles in one republish and writes one row', async () => {
     const { sim, panel } = await mountDevices('idle', OPERATOR_IDS.RINA)
     fireEvent.click(within(panel).getByTestId('selector-primary-MIC-02'))
-    await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(S.role.PRIMARY))
-    expect(within(panel).getByTestId('selector-role-MIC-01')).toHaveTextContent(S.role.STANDBY)
+    await waitFor(() => expect(within(panel).getByTestId('selector-role-MIC-02')).toHaveTextContent(PAIR_MIC(1)))
+    expect(within(panel).getByTestId('selector-role-MIC-01')).toHaveTextContent(PAIR_MIC(2))
     expect(within(panel).queryByTestId('selector-primary-MIC-02')).not.toBeInTheDocument()
     expect(within(panel).getByTestId('selector-primary-MIC-01')).toBeEnabled()
     const rows = captureAudit(sim)

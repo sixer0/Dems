@@ -44,7 +44,7 @@ WORKER = os.path.join(BUILD, "capture-worker")
 VARIANTS = {"worker": WORKER, "negctl": os.path.join(BUILD, "capture-worker-negctl"), "delaymoov": os.path.join(BUILD, "capture-worker-delaymoov"),
             "skeleton": os.path.join(BUILD, "capture-worker-skeleton111"), "norefusal": os.path.join(BUILD, "capture-worker-norefusal"), "nocomp": os.path.join(BUILD, "capture-worker-nocomp")}
 CAM, MIC = os.path.join(BUILD, "fake_cam"), os.path.join(BUILD, "fake_mic")
-VARIANTS["intervalskew"] = os.path.join(BUILD, "capture-worker-intervalskew")     # row 71: the interval record of a switch names a sample one chunk late
+# Audit row 152b (N-31; D135): the proof build `intervalskew` (the interval record of a switch one chunk late) is gone with the switch.
 # Fix pass F-M3 (review 16): the clock floor judged but not acted on (R63-12), and no fragment size bound (R63-02).
 # Both are PROOF builds: they say so in HELLO and are driven by THIS script only - the supervisor refuses them.
 VARIANTS.update({"nofloor": os.path.join(BUILD, "capture-worker-nofloor"), "nobound": os.path.join(BUILD, "capture-worker-nobound")})
@@ -60,7 +60,7 @@ if not 2 <= len(PORTS) <= 4 or len(set(PORTS)) != len(PORTS) or any(p < PORT_MIN
 # Ports of other systems on this host that no process of a run may ever hold or reach (the SMART WMS stack and the
 # DEMS dev servers): checked on every socket snapshot.
 FOREIGN_PORTS = frozenset((5173, 5174, 5175, 5176, 5177, 5178, 8000, 5432, 4421, 4422, 4423, 4432, 8081))
-V = 5                           # CAPTURE_PROTOCOL_VERSION (row 59: 3 since the checkpoint content; row 71: 4 since the microphone rows; task 4 row N3: 5 since the sample account)
+V = 6                           # CAPTURE_PROTOCOL_VERSION (row 59: 3 since the checkpoint content; row 71: 4 since the microphone rows; task 4 row N3: 5 since the sample account; W3 rows 144/151: 6 since the paired channel - camera rows of 7 members)
 FPS, FRAME_US, SR = 50, 20000, 48000
 REGRESSION_MS, PRODUCT_MS = 2.0, 40.0      # two different tolerances (AU2-04): never merged
 PRIMING = 1024
@@ -346,7 +346,7 @@ class Worker:
             return [r for r, (_, f) in zip(self.raw, self.frames) if f is None or f.get("v") != V or "type" not in f]
 
 
-def make_plan(d, sid, cams=2, mics=4, tap=None, names=None, mic_out=False):      # D61 (2026-11-04): FOUR numbered channels by default - the worker mirrors the protocol's min(4).max(4); `mic_out` gives every channel its own audio file. D60 (2026-11-04): up to NCAM=4 camera entries
+def make_plan(d, sid, cams=2, mics=4, tap=None, names=None, mic_out=True):       # D61 (2026-11-04): FOUR numbered channels by default; protocol 6 (row 151): 0..4 lines, each with its OWN audio file (`mic_out=False` builds the refused protocol-5 row). D60 (2026-11-04): up to NCAM=4 camera entries
     os.makedirs(os.path.join(d, "media"), exist_ok=True)
     names = tuple(names or ["cam%d" % (i + 1) for i in range(cams)])      # the ingest path of camera i (default: cam1..cam4)
     ports = list(PORTS) + [p for p in range(PORT_MIN + 1, PORT_MAX + 1) if p not in PORTS and p not in RESERVED_PORTS]   # a 4-camera plan takes four distinct ports
@@ -358,9 +358,12 @@ def make_plan(d, sid, cams=2, mics=4, tap=None, names=None, mic_out=False):     
         fifos.append(p)
     return {
         "cameras": [{"deviceId": "CAM-0%d" % (i + 1), "trackId": "VIDEO-0%d" % (i + 1), "profile": None, "ingestUrl": "rtsp://127.0.0.1:%d/%s" % (ports[i], names[i]),
-                     "outputPath": os.path.join(d, "media", "VIDEO-0%d.mp4" % (i + 1))} for i in range(cams)],
+                     "outputPath": os.path.join(d, "media", "VIDEO-0%d.mp4" % (i + 1)),
+                     # Protocol 6 (D5 N-12, D30 K-3; rows 144/151): the camera's paired channel (VIDEO-0N -> MIC-0N) and, when the
+                     # plan holds no row of it, why not - the plan builder states NOT_ASSIGNED for a channel it leaves out.
+                     "micChannel": "MIC-0%d" % (i + 1), "micMissing": None if i < mics else "NOT_ASSIGNED"} for i in range(cams)],
         # D61 (2026-11-04): the microphone row is keyed by its numbered CHANNEL (was the two-role lane's `role`);
-        # `outputPath` is the channel's own audio file, named only when the caller asks (the Core wires it in its wave).
+        # `outputPath` is the channel's own audio file - REQUIRED since protocol 6 (N-13, row 151).
         "mics": [dict({"deviceId": "MIC-0%d" % (i + 1), "channel": "MIC-0%d" % (i + 1), "input": {"kind": "PCM_FIFO", "path": fifos[i]}},
                       **({"outputPath": os.path.join(d, "media", "MIC-0%d.m4a" % (i + 1))} if mic_out else {})) for i in range(mics)],
         "activeMic": "MIC-01",      # D61: the transcribed channel of AUDIO-01 (was the failover pair's start role, "PRIMARY")
@@ -394,18 +397,59 @@ def mic_out_args(plan):
     return sum([["--out%d" % (i + 1), m["input"]["path"]] for i, m in enumerate(plan["mics"])], [])
 
 
+def beep_on_args(plan):
+    """THE BEEPS OF A PAIR (audit row 152b; D5 pairs, row 152, D135): camera N's file carries its pair's channel MIC-0N,
+    so the flash-to-beep check of camera N needs the beeps on channel N. The reference beeps go on every channel that
+    is the pair of a camera of the plan (fake_mic.c `--beep-on`; same onsets, one manifest). Until row 152 every camera
+    file carried channel 1 (or the switched channel 2), and channel 1 alone carried the beeps."""
+    chans = [c["micChannel"][-1] for c in plan["cameras"] if not c.get("micMissing") and any(m["channel"] == c["micChannel"] for m in plan["mics"])]
+    return ["--beep-on", ",".join(sorted(set(chans)))] if chans else []
+
+
+# Audit row W3F (D142; ENV-W3TW-1 option (a)): THE CAMERA OF A RUN. `c` (the default) is the C camera build/fake_cam: it
+# pushes through libavformat and needs an H.264 encoder in the FFmpeg it links, which the ruled /opt/dems/ffmpeg-9.0.2 lacks
+# (`FAKE_CAM FATAL libx264 missing`). `sr` is the program camera test-fixtures/fake_cam_sr.py: the same picture, flashes and
+# GOP, encoded with the test ffmpeg CAMERA_FFMPEG (D131), with true sender reports. e2e.py sets M3_CAMERA for every check:
+# `sr` only for the D5 cases that accept it (av1_zero_tap and the checks on its files, m5_tap_one_interval,
+# n3_gapped_measured), `c` for every other check. A claimed epoch becomes the `sr` camera's wall-clock offset (the same
+# report pairs as the C camera's at 0 ppm); a drifting media clock under libavformat's linear reports, and extra C-camera
+# arguments (--noise), have no `sr` counterpart: such a case refuses to run with `sr` instead of measuring something else.
+CAMERA_KIND = os.environ.get("M3_CAMERA") or "c"
+if CAMERA_KIND not in ("c", "sr"):
+    sys.exit("M3_CAMERA must be c or sr, not %r" % CAMERA_KIND)
+
+
+def camera_kind_check(truth):
+    """Called before any source starts: a case the `sr` camera cannot stand in for stops here, not mid-run."""
+    if CAMERA_KIND == "sr" and (any(c["drift_ppm"] for c in truth["cams"]) or truth.get("cam_extra")):
+        sys.exit("M3_CAMERA=sr: case %r needs the C camera (drift %r ppm, extra %r): ENV-W3TW-1, BLOCKED-ENV on a host without libx264"
+                 % (truth.get("case"), [c["drift_ppm"] for c in truth["cams"]], list(truth.get("cam_extra", ()))))
+
+
+def camera_spawn(d, truth, c, pc):
+    """ONE camera of the plan (`pc`) for the camera truth `c`, of this run's CAMERA_KIND; its stderr is cam<N>.err."""
+    err = open(os.path.join(d, "cam%d.err" % c["cam"]), "w")
+    if CAMERA_KIND == "sr":
+        return spawn([sys.executable, "-B", CAM_SR, "--url", pc["ingestUrl"], "--epoch-us", str(truth["epoch_us"]), "--work", d, "--frames", str(c["frames"]),
+                      "--flash-first", str(c["flash_first"]), "--flash-every", str(c["flash_every"]), "--gop", str(truth.get("gop", FPS)),
+                      "--clock-offset-ms", repr((c["claimed_epoch_us"] - truth["epoch_us"]) / 1000.0)],
+                     stdin=subprocess.DEVNULL, stderr=err, env=dict(os.environ, DEMS_FFMPEG=CAMERA_FFMPEG or ""))
+    return spawn([CAM, "--url", pc["ingestUrl"], "--epoch-us", str(truth["epoch_us"]), "--claimed-epoch-us", str(c["claimed_epoch_us"]),
+                  "--drift-ppm", str(c["drift_ppm"]), "--frames", str(c["frames"]), "--flash-first", str(c["flash_first"]), "--flash-every", str(c["flash_every"]),
+                  "--gop", str(truth.get("gop", FPS))] + list(truth.get("cam_extra", ())),
+                 stdin=subprocess.DEVNULL, stderr=err)
+
+
 def start_sources(d, truth, plan, procs, mic_seconds, mic_extra=()):
     """The fake mics first (they define T0), then the cameras. Each is a process of its own."""
+    camera_kind_check(truth)
     mic = spawn([MIC] + mic_out_args(plan) +
-                ["--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "%.3f" % mic_seconds, "--beep-at-us", ",".join(str(b) for b in truth["beeps"])] + list(mic_extra),
+                ["--manifest", os.path.join(d, "mic.jsonl"), "--seconds", "%.3f" % mic_seconds, "--beep-at-us", ",".join(str(b) for b in truth["beeps"])] + beep_on_args(plan) + list(mic_extra),
                 stdin=subprocess.DEVNULL, stderr=open(os.path.join(d, "mic.err"), "w"))
     procs.append(mic)
     cps = []
     for c, pc in zip(truth["cams"], plan["cameras"]):
-        cp = spawn([CAM, "--url", pc["ingestUrl"], "--epoch-us", str(truth["epoch_us"]), "--claimed-epoch-us", str(c["claimed_epoch_us"]),
-                    "--drift-ppm", str(c["drift_ppm"]), "--frames", str(c["frames"]), "--flash-first", str(c["flash_first"]), "--flash-every", str(c["flash_every"]),
-                    "--gop", str(truth.get("gop", FPS))] + list(truth.get("cam_extra", ())),
-                   stdin=subprocess.DEVNULL, stderr=open(os.path.join(d, "cam%d.err" % c["cam"]), "w"))
+        cp = camera_spawn(d, truth, c, pc)                   # audit row W3F: the C camera, or with M3_CAMERA=sr the program camera
         procs.append(cp)
         cps.append(cp)
     return mic, cps
@@ -488,20 +532,54 @@ def playable(path):
                 "top_level": {k: bw["kinds"].count(k) for k in sorted(set(bw["kinds"]))}, "first_boxes": bw["kinds"][:4], "tiles_exactly": bw["tiles_exactly"], "playable": ok}
 
 
-def h4(d, paths):
-    """The row-111 packet-equality assertion, kept as a regression: ONE encoder's packets, byte for byte, in every file."""
+def apkt_hashes(d):
+    """The diagnostic manifest of the run: the sha256 of every encoder packet, per encoder (`enc` = the channel number,
+    0 = the silent track; row 152), and the `end` line."""
     rows = [json.loads(l) for l in open(os.path.join(d, "manifest.jsonl"))]
-    apk = [r for r in rows if r["type"] == "apkt"]
+    by = {}
+    for r in rows:
+        if r["type"] == "apkt":
+            by.setdefault(r["enc"], []).append(r["sha256"])
     end = [r for r in rows if r["type"] == "end"]
-    lists = [P111.probe_packets(p, "a:0") for p in paths]
-    key = lambda x: (x["pts"], x["dts"], x["duration"], x["size"], x["data_hash"])
-    A, B = lists[0], lists[-1]
-    mism = [i for i in range(min(len(A), len(B))) if key(A[i]) != key(B[i])]
-    vs = [sum(1 for i in range(min(len(L), len(apk))) if L[i]["data_hash"].split(":")[-1].lower() != apk[i]["sha256"]) for L in lists]
-    distinct = len(set(x["data_hash"] for x in A))
-    res = {"audio_packets": [len(L) for L in lists], "encoder_packets_in_manifest": len(apk), "packets_differing_between_files": len(mism),
-           "payload_mismatches_vs_encoder": vs, "distinct_payloads_in_file1": distinct, "worker_encoders": end[0]["encoders"] if end else None}
-    ok = len(A) == len(B) == len(apk) > 0 and not mism and vs == [0] * len(lists) and res["worker_encoders"] == 1 and distinct > len(A) * 0.9      # nearly every packet is unique: the equality bites on every one (pair-111 N-9)
+    return by, (end[0] if end else None)
+
+
+def packet_hashes(path):
+    return [x["data_hash"].split(":")[-1].lower() for x in P111.probe_packets(path, "a:0")]
+
+
+def h4(d, paths):
+    """THE PAIRS (row 152, DF-06; AC-4.7; replaces the row-111 "one encoder's packets in every file"). For every camera
+    file VIDEO-0N: its audio packets are, byte for byte and in order, the LEADING packets of its own channel file
+    MIC-0N.m4a (the same encoder's packets, cloned) and of that encoder's manifest lines (`enc` N) - or, when the run
+    has no MIC-0N.m4a, of the silent encoder's (`enc` 0). The camera file holds at least 90 % of them (it may close a
+    little before the channel file). No camera file equals ANOTHER channel's packets (the pairing bites). The worker's
+    encoder count is one per channel file, plus one when a camera's track is silent. A camera file whose audio was
+    encoded once more (h4neg) fails."""
+    by, end = apkt_hashes(d)
+    media = os.path.join(d, "media")
+    chan = {n: packet_hashes(os.path.join(media, "MIC-0%d.m4a" % n)) for n in range(1, 5) if os.path.exists(os.path.join(media, "MIC-0%d.m4a" % n))}
+    res, ok, silent_used = {"channel_files": sorted(chan), "cameras": {}}, bool(paths), False
+    for p in paths:
+        n = int(os.path.basename(p)[7])                         # VIDEO-0N[...].mp4
+        cam = packet_hashes(p)
+        src = chan.get(n)
+        enc = n if src is not None else 0
+        silent_used |= src is None
+        ref = src if src is not None else by.get(0, [])
+        man = by.get(enc, [])
+        r = {"pair_source": "MIC-0%d.m4a" % n if src is not None else "silent (enc 0)", "camera_audio_packets": len(cam), "source_packets": len(ref), "manifest_packets": len(man),
+             "leading_packets_equal": len(cam) > 0 and cam == ref[:len(cam)],
+             "manifest_equals_source": len(ref) > 0 and ref == man[:len(ref)] and (src is None or len(man) == len(ref)),
+             "covers_90pct": len(ref) > 0 and len(cam) >= 0.9 * len(ref),
+             "equals_another_channel": sorted(k for k, h in chan.items() if k != n and len(cam) > 0 and cam == h[:len(cam)]),
+             "distinct_payloads": len(set(cam))}
+        r["holds"] = r["leading_packets_equal"] and r["manifest_equals_source"] and r["covers_90pct"] and not r["equals_another_channel"]
+        res["cameras"][os.path.basename(p)] = r
+        ok &= r["holds"]
+    res["worker_encoders"] = end["encoders"] if end else None
+    res["expected_encoders"] = len(chan) + (1 if silent_used else 0)
+    ok &= res["worker_encoders"] == res["expected_encoders"]
     return ok, res
 
 
@@ -664,15 +742,8 @@ def cmd_session(a):
             time.sleep(4.0)
             for cp in cps:
                 os.kill(cp.pid, signal.SIGCONT)
-        if a.switch:
-            # The operator's switch to the standby mic and back, in the gap between two beeps.
-            time.sleep(max(0.0, truth_["epoch_us"] / 1e6 - time.time()) + 2.6)
-            for to in ("STANDBY", "PRIMARY"):
-                t = time.monotonic()
-                c = w.command(sid, "SWITCH_AUDIO_SOURCE", to=to)
-                t2, f = w.ack(c)
-                marks.setdefault("switch_ack_ms", []).append([to, f["ok"], round((t2 - t) * 1000, 2)])
-                time.sleep(0.5)
+        # Audit row 152b (N-31; D135): the operator's switch (`--switch`) is retired - camera N's audio is its pair's
+        # channel for the whole session; the proto check holds that the command is no command of the protocol any more.
 
     mic_extra = ("--deliver-late-us", str(a.mic_late_us)) if a.mic_late_us else ()
     w, plan, info, _ = run_session(a, d, binary, truth, after_start=mid, mic_extra=mic_extra)
@@ -730,8 +801,10 @@ def cmd_session(a):
         v("fixture_and_worker_sockets_loopback_only", bool(own) and sockets_clean(own) and bool(own["rows"]) and all(any(("127.0.0.1", str(p)) in endpoints(l) for l in own["rows"]) for p in PORTS))
         lis = info.get("own_sockets_listening")
         v("listeners_are_the_two_loopback_ports", bool(lis) and sockets_clean(lis) and lis["listeners"] == sorted("127.0.0.1:%d" % p for p in PORTS))
-        if a.switch:
-            v("mic_switch_acknowledged", all(m[1] for m in marks.get("switch_ack_ms", [])) and len(marks.get("switch_ack_ms", [])) == 2)
+        # D5 pairs (row 152b): the one interval record of the start names MIC-01 from sample 0, and no other exists.
+        iv = [r["record"] for r in recs if r["record"]["kind"] == "AUDIO_SOURCE_INTERVAL"]
+        res["intervals"] = iv
+        v("one_start_interval_mic01", [(r["index"], r["deviceId"], r["reason"], r["fromSample"]) for r in iv] == [(1, "MIC-01", "SESSION_START", 0)])
         if getattr(a, "tap", False):
             tap = os.path.join(d, "tap.s16")
             x, a0, _ = P111.audio_pcm(paths[0])
@@ -784,36 +857,41 @@ def cmd_gopcheck(a):
 
 
 def cmd_continuity(a):
-    """AU2-05 on the files of a finished session whose mics ran on the host clock: decoded sample count against
-    the encoder's input count, spacing and position of the reference beeps against the mic manifest, and (when the
-    session switched to the standby) the phase of the standby's 880 Hz reference tone. Judged on decoded samples;
-    the packet grid is printed and never judged.
+    """AU2-05 on the files of a finished session whose mics ran on the host clock, PER PAIR (audit row 152b; D5 pairs,
+    D135): VIDEO-0N carries its own channel MIC-0N for the whole session. Per camera file: decoded sample count against
+    the encoder's input count, spacing and position of the reference beeps (on every paired channel: fake_mic.c
+    --beep-on) against the mic manifest, and - for the file whose channel carries a reference tone (MIC-02, 880 Hz) - the
+    phase of that tone over its whole run. Judged on decoded samples; the packet grid is printed and never judged.
+    (Until row 152b the tone was judged only inside the window of an operator's switch to the standby.)
        --control cut      1,000 samples removed between two beeps (of the decoded samples, in memory): must FAIL
-       --control toneslip 100 samples removed inside the standby's window and 100 repeated later in it: count,
-                          spacing and position still hold - only the tone's phase can see it: must FAIL on `tone`"""
+       --control toneslip 100 samples removed inside the tone's run of the file that carries it and 100 repeated later
+                          in it: count, spacing and position still hold - only the tone's phase can see it: must FAIL on
+                          `tone`"""
     d, truth, paths = finished(a)
     mic, beeps = P111.mic_truth(os.path.join(d, "mic.jsonl"))
     end = [json.loads(l) for l in open(os.path.join(d, "manifest.jsonl")) if '"end"' in l]
     samples_in = [r for r in end if r["type"] == "end"][0]["samples_in"]
-    switched = bool(json.load(open(os.path.join(d, "result.json")))["info"].get("switch_ack_ms"))
-    v, res = Crit(), {"check": "continuity (AU2-05)", "run": a.name, "control": a.control, "switch_in_session": switched, "files": {}}
+    v, res = Crit(), {"check": "continuity (AU2-05), per pair", "run": a.name, "control": a.control, "files": {}}
     for p in paths:
+        n = int(os.path.basename(p)[7])                       # VIDEO-0N.mp4: its pair is MIC-0N
+        tone = n == 2                                         # fake_mic.c: channel 2 is the 880 Hz reference tone (av_analyse TONE_HZ)
         x, _, _ = P111.audio_pcm(p)
-        if a.control:
+        if a.control == "cut":
             on = P111.onsets(x)
-            if a.control == "cut":
-                at = (on[1] + on[2]) // 2
-                x = x[:at] + x[at + 1000:]
-            else:
-                t = P111.tone_phase(x)
-                third = (t["last_sample"] - t["first_sample"]) // 3
-                c1, c2 = t["first_sample"] + third, t["first_sample"] + 2 * third
-                x = x[:c1] + x[c1 + 100:c2] + x[c2 - 100:c2] + x[c2:]          # 100 lost, 100 repeated: the length is unchanged
-        ok, r = P111.continuity(x, mic, beeps, samples_in, expect_tone=switched)
+            at = (on[1] + on[2]) // 2
+            x = x[:at] + x[at + 1000:]
+        elif a.control == "toneslip" and tone:
+            t = P111.tone_phase(x)
+            third = (t["last_sample"] - t["first_sample"]) // 3
+            c1, c2 = t["first_sample"] + third, t["first_sample"] + 2 * third
+            x = x[:c1] + x[c1 + 100:c2] + x[c2 - 100:c2] + x[c2:]          # 100 lost, 100 repeated: the length is unchanged
+        ok, r = P111.continuity(x, mic, beeps, samples_in, expect_tone=tone)
+        r["pair"] = "VIDEO-0%d <- MIC-0%d" % (n, n)
         r["packet_grid_deltas_not_judged"] = P111.packet_grid(p)
         res["files"][os.path.basename(p)] = r
         for k, val in r["criteria"].items():
             v(k, val == "PASS")
+    v("the_tone_file_was_judged", any(int(os.path.basename(p)[7]) == 2 for p in paths))
     finish(res, True, a.expect_fail, None, v)
 
 
@@ -883,7 +961,9 @@ def cmd_proto(a):
                               ("unknown member", lambda p: p.update(password="x")),
                               ("44.1 kHz", lambda p: p["constants"].update(audioSampleRateHz=44100)),
                               ("relative output", lambda p: p["cameras"][0].update(outputPath="media/x.mp4")),
-                              ("mic input is a regular file", lambda p: p["mics"][0]["input"].update(path=os.path.join(d, "worker.jsonl")))):
+                              ("mic input is a regular file", lambda p: p["mics"][0]["input"].update(path=os.path.join(d, "worker.jsonl"))),
+                              # Protocol 6 (row 151): the camera row of a protocol-5 Core (five members) is refused by shape.
+                              ("camera row of protocol 5", lambda p: [p["cameras"][0].pop(k) for k in ("micChannel", "micMissing")])):
             wb = Worker(rundir(a.name + "/bad"), manifest=False)
             try:
                 wb.wait(lambda f: f.get("type") == "HELLO", 5, "HELLO")
@@ -894,7 +974,7 @@ def cmd_proto(a):
             finally:
                 wb.kill()
         res["refused_plans"] = bad
-        ok &= all(v[0] is False for v in bad.values()) and bad["44.1 kHz"][1] == "PLAN_UNSUPPORTED" and bad["mic input is a regular file"][1] == "MIC_INPUT_NOT_FIFO" and bad["port 9000"][1] == "PLAN_INVALID"
+        ok &= all(v[0] is False for v in bad.values()) and bad["44.1 kHz"][1] == "PLAN_UNSUPPORTED" and bad["mic input is a regular file"][1] == "MIC_INPUT_NOT_FIFO" and bad["port 9000"][1] == "PLAN_INVALID" and bad["camera row of protocol 5"][1] == "PLAN_INVALID"
         # 3. START is taken from the frame (nothing of the session is an argument), a second START is refused.
         _, f1 = w.ack(w.command(sid, "START", attempt=1, plan=plan))
         _, f2 = w.ack(w.command(sid, "START", attempt=2, plan=plan))
@@ -902,7 +982,7 @@ def cmd_proto(a):
         res["start"] = [f1, f2]
         res["argv_names_no_session"] = sid not in argv and "rtsp" not in argv and "media" not in argv
         ok &= f1["ok"] is True and f2 == {"v": V, "type": "ACK", "correlationId": f2["correlationId"], "ok": False, "code": "SESSION_ALREADY_SERVED"} and res["argv_names_no_session"]
-        # 4. The listeners are up on loopback only; a switch to a role the plan holds is acknowledged.
+        # 4. The listeners are up on loopback only.
         t = time.monotonic()
         while len(tcp_listeners()) < 2 and time.monotonic() - t < 5:
             time.sleep(0.05)
@@ -929,6 +1009,8 @@ def cmd_proto(a):
     viol = {}
     for label, line in (("not json", "switch 1"), ("unknown type", json.dumps({"v": V, "sessionId": "S", "correlationId": "c", "type": "PING"})),
                         ("another version", json.dumps({"v": 1, "sessionId": "S", "correlationId": "c", "type": "STOP", "reason": "STOPPED"})),
+                        # Audit row 152b (N-31; D135, D136): the operator's switch is retired - the protocol has no such command.
+                        ("retired switch command", json.dumps({"v": V, "sessionId": "S", "correlationId": "c", "type": "SWITCH_AUDIO_SOURCE", "to": "STANDBY"})),
                         ("too long", "x" * (4 * 65536 + 10))):
         w3 = Worker(rundir(a.name + "/viol"), manifest=False)
         try:
@@ -986,7 +1068,7 @@ def cmd_plan4(a):
     allp = list(PORTS) + sorted(extra)
     names = ("cam1", "cam2", "cam3", "cam4")
 
-    def plan4(cams=None, mics=4):      # D61 (2026-11-04): the worker now takes exactly FOUR microphone lines
+    def plan4(cams=None, mics=4):      # D61 (2026-11-04): FOUR microphone lines; protocol 6 (row 151): each camera names its pair (make_plan)
         p = make_plan(d, sid, cams=4, mics=mics, names=names)
         for c, port, nm in zip(p["cameras"], allp, names):
             c.update(ingestUrl="rtsp://127.0.0.1:%d/%s" % (port, nm))
@@ -1080,7 +1162,7 @@ def cmd_plan4mics(a):
     res, ok = {"check": "D61 four-channel audio plan", "run": a.name}, True
     sid = "S-M3W-PLAN4M"
     ports_free_or_exit()
-    # 1. The four-channel plan is taken: ACK ok, FIVE encoders (the legacy lane's plus one per channel), the
+    # 1. The four-channel plan is taken: ACK ok, FOUR encoders (row 152: one per channel, each also feeding its pair's camera), the
     #    four channel files land, TELEMETRY carries one level per channel, and the end is clean.
     plan = make_plan(d, sid, mic_out=True)
     procs = []
@@ -1112,7 +1194,7 @@ def cmd_plan4mics(a):
         res["session_starting_mics"] = starting[0].get("mics") if starting else None
         res["channel_files"] = {os.path.basename(p): (os.path.getsize(p) if os.path.exists(p) else None) for p in files}
         res["telemetry_levels"] = [(lv.get("deviceId"), lv.get("role")) for lv in levels]
-        ok &= bool(started) and started[0].get("encoders") == 5 and bool(starting) and starting[0].get("mics") == 4 \
+        ok &= bool(started) and started[0].get("encoders") == 4 and bool(starting) and starting[0].get("mics") == 4 \
             and all(os.path.exists(p) and os.path.getsize(p) > 0 for p in files) \
             and [lv.get("deviceId") for lv in levels] == ["MIC-01", "MIC-02", "MIC-03", "MIC-04"] \
             and [lv.get("role") for lv in levels] == ["PRIMARY", "STANDBY", "STANDBY", "STANDBY"]     # the legacy two-role lane's words (D61)
@@ -1122,13 +1204,24 @@ def cmd_plan4mics(a):
     finally:
         killall(procs)
         w.kill()
-    # 2. Refusals of the channel-keyed reader: doubled channel, doubled device, THREE lines, FIVE lines, and the
-    #    old role member. Each is PLAN_INVALID at the START; nothing is created.
+    # 2. Refusals of the channel-keyed reader: doubled channel, doubled device, FIVE lines, and the old role member.
+    #    Protocol 6 (row 151; D30 K-3): THREE lines are a plan when the line left out is the paired channel of no camera
+    #    (part 2b) - refused is a line left out that a camera names without a reason, and a reason beside a line that is
+    #    there. A line without its own file (the protocol-5 form) and a camera row of the protocol-5 form (5 members) or
+    #    with a foreign / duplicate channel or a bad micMissing are refused too. Each is PLAN_INVALID at the START.
     bad = {}
     for label, change in (
             ("doubled channel", lambda p: p["mics"][2].update(channel="MIC-01")),
             ("doubled device", lambda p: p["mics"][1].update(deviceId="MIC-01")),
-            ("three mics", lambda p: p["mics"].pop()),
+            ("paired line left out without a reason", lambda p: p["mics"].pop(1)),
+            ("a reason beside the paired line", lambda p: p["cameras"][1].update(micMissing="NOT_OPENED")),
+            ("a line without its own file", lambda p: p["mics"][2].pop("outputPath")),
+            ("camera row of protocol 5", lambda p: [c.pop(k) for c in p["cameras"] for k in ("micChannel", "micMissing")]),
+            ("camera row without micMissing", lambda p: p["cameras"][0].pop("micMissing")),
+            ("foreign channel", lambda p: p["cameras"][0].update(micChannel="MIC-03")),
+            ("duplicate channel", lambda p: p["cameras"][1].update(micChannel="MIC-01")),
+            ("bad micMissing word", lambda p: (p["mics"].pop(1), p["cameras"][1].update(micMissing="LOST"))),
+            ("micMissing not a word", lambda p: (p["mics"].pop(1), p["cameras"][1].update(micMissing=0))),
             ("five mics", lambda p: p["mics"].append(dict(p["mics"][3], deviceId="MIC-09",
                                                           input=dict(p["mics"][3]["input"], path=os.path.join(d, "mic9.pcm")),
                                                           outputPath=os.path.join(d, "media", "MIC-09.m4a")))),
@@ -1144,6 +1237,26 @@ def cmd_plan4mics(a):
             wb.kill()
     res["refused_plans"] = bad
     ok &= all(v == [False, "PLAN_INVALID"] for v in bad.values())
+    # 2b. CONTROLS of protocol 6 (row 151; D30 K-3): each differs from a refusal of 2 by the member it tests and is TAKEN -
+    #     a channel of no camera left out (THREE lines), a paired line left out WITH its reason (both words). A fresh folder
+    #     per plan (part 1's channel files are evidence: OUTPUT_EXISTS would hide the verdict).
+    good = {}
+    for label, change in (
+            ("three lines, MIC-04 of no camera", lambda p: p["mics"].pop(3)),
+            ("paired line left out, NOT_OPENED", lambda p: (p["mics"].pop(1), p["cameras"][1].update(micMissing="NOT_OPENED"))),
+            ("paired line left out, NOT_ASSIGNED", lambda p: (p["mics"].pop(1), p["cameras"][1].update(micMissing="NOT_ASSIGNED")))):
+        dg = rundir(a.name + "/good", fresh=True)
+        wb = Worker(dg, manifest=False)
+        try:
+            wb.wait(lambda f3: f3.get("type") == "HELLO", 5, "HELLO")
+            p2 = make_plan(dg, sid)
+            change(p2)
+            _, f3 = wb.ack(wb.command(sid, "START", attempt=1, plan=p2))
+            good[label] = [f3["ok"], f3.get("code")]
+        finally:
+            wb.kill()
+    res["accepted_plans"] = good
+    ok &= all(v[0] is True for v in good.values())
     # 3. CONTROL of the never-overwrite rule on the new files: the SAME plan again is OUTPUT_EXISTS (the four
     #    channel files of part 1 are evidence; a restarted worker never writes into them).
     wb = Worker(rundir(a.name + "/replay"), manifest=False)
@@ -1158,6 +1271,186 @@ def cmd_plan4mics(a):
     res["leftovers"] = leftovers()
     ok &= not res["leftovers"]["processes"] and not res["leftovers"]["listeners"]
     finish(res, ok, a.expect_fail, d)
+
+
+# ------------------------------------------------------------------------------------------ the pairs (row 152, DF-06)
+# The cameras of this case push video with the camera fixture that encodes through the ffmpeg PROGRAM
+# (test-fixtures/fake_cam_sr.py): the ruled FFmpeg of the worker (/opt/dems/ffmpeg-9.0.2) has no H.264 encoder, so the
+# CAMERA side alone uses the test ffmpeg (D131, extending D69 ENV-2). The worker under test stays built and run
+# against the ruled FFmpeg; nothing of the camera's ffmpeg reaches it but RTSP over loopback.
+CAMERA_FFMPEG = os.environ.get("M3_CAMERA_FFMPEG") or next((p for p in (os.path.expanduser("~/.hermes/tools/ffmpeg-9.0.1-linux-x64/bin/ffmpeg"),) if os.path.exists(p)), None) \
+    or os.environ.get("DEMS_FFMPEG") or shutil.which("ffmpeg")
+PAIR_TONES = {1: 1000.0, 2: 880.0, 3: 660.0, 4: 440.0}     # fake_mic.c: channel 1 its 1 kHz beeps (over quiet noise), 2-4 steady tones
+PAIRS_MODES = {
+    # AC-4.7: four cameras, four channels - each VIDEO-0N carries MIC-0N's packets, four encoders, the tap from channel 1.
+    "4x4": {"leave_out": None, "tap": True},
+    # D30 K-3: MIC-02 did not open - VIDEO-02 carries a SILENT track, no MIC-02 file, MIC-03/04 still paired.
+    "missing2": {"leave_out": 2, "tap": True},
+    # R151-1 lifted (D131): no MIC-01 row - accepted, no tap, no interval record, VIDEO-01 silent.
+    "nomic1": {"leave_out": 1, "tap": False},
+}
+
+
+def decoded_f32(path):
+    raw = subprocess.run([FF, "-v", "error", "-i", path, "-map", "0:a:0", "-ac", "1", "-ar", "48000", "-f", "f32le", "-"], capture_output=True, check=True).stdout
+    return struct.unpack("<%df" % (len(raw) // 4), raw[: len(raw) // 4 * 4])
+
+
+def tone_power(x, freq):
+    """Goertzel power of one frequency over the whole signal (no numpy on the host)."""
+    import math
+    k = 2.0 * math.cos(2.0 * math.pi * freq / SR)
+    s1 = s2 = 0.0
+    for v in x:
+        s0 = v + k * s1 - s2
+        s2, s1 = s1, s0
+    return s1 * s1 + s2 * s2 - k * s1 * s2
+
+
+def dominant_tone(path):
+    x = decoded_f32(path)
+    pw = {f: tone_power(x, f) for f in PAIR_TONES.values()}
+    best = max(pw, key=pw.get)
+    rest = max([v for f, v in pw.items() if f != best] or [0.0])
+    return {"samples": len(x), "peak_abs": round(max((abs(v) for v in x), default=0.0), 6), "dominant_hz": best, "margin": round(pw[best] / rest, 1) if rest > 0 else None}
+
+
+def durations(path):
+    j = json.loads(P111.out([FP, "-v", "error", "-show_entries", "stream=codec_type,codec_name,sample_rate,channels,duration:format=duration", "-of", "json", path]))
+    return {"format_s": float(j["format"]["duration"]), "streams": [(s["codec_type"], s["codec_name"], s.get("sample_rate"), s.get("channels"), s.get("duration")) for s in j["streams"]]}
+
+
+def cmd_pairs(a):
+    """ROW 152 (D5 pairs, DF-06; AC-4.7; D30 K-3; R151-1 / D131). Four fake cameras (VIDEO-01..04) and the fake mics on
+    the channels the mode keeps; the session runs ~10 s and stops. Judged on the FILES (ffprobe / decode) and the frames:
+      worker_and_sources_exit_0     the worker and every camera exit 0, no CRASH, every line a frame
+      encoders_one_per_channel_file `audio_started.encoders` = channel files + 1 when a track is silent (4 in each mode)
+      camera_files_shape            every VIDEO-0N: one aac 48 kHz mono stream and one h264 stream, decodable
+      channel_files_exist_as_planned  MIC-0N.m4a exists exactly for the channels of the plan
+      pairs_packet_equality         h4(): VIDEO-0N audio = the leading packets of MIC-0N (or of the silent encoder)
+      tone_per_file                 the dominant tone of MIC-0N and of VIDEO-0N's audio is channel N's (fake_mic.c)
+      silent_track                  a camera whose channel is missing has an audio track whose decoded samples are 0
+      channel_checkpoints           every channel file: FRAGMENT_CHECKPOINT by the MIC's device ID, keyframe false,
+                                    index 1..n without gap, last prefixSha256 = sha256 of the whole file; none for an
+                                    absent channel; telemetry `fragments` lists cameras only (D132)
+      interval_records              MIC-01 in the plan: one SESSION_START interval naming MIC-01 + AUDIO_TIMELINE_END;
+                                    no MIC-01: neither (the record names a device or is not written)
+      tap                           tap in the plan: a file with samples; no MIC-01: no tap file"""
+    global make_plan, start_sources
+    mode = PAIRS_MODES[a.mode]
+    d = rundir(a.name, fresh=True)
+    truth = build_truth("zero")
+    for k in (2, 3):                                        # two more cameras (the CASES are two-camera): same clock, own flashes
+        c = dict(truth["cams"][k - 2], cam=k + 1, flash_first=truth["cams"][k - 2]["flash_first"] + 50)
+        c["events"] = []
+        truth["cams"].append(c)
+    gone = mode["leave_out"]
+    plain_plan, plain_sources = make_plan, start_sources
+
+    def plan_of(d_, sid, tap=None, **_):
+        p = plain_plan(d_, sid, cams=4, mics=4, tap=os.path.join(d_, "tap.s16") if mode["tap"] else None)
+        if gone:
+            p["mics"] = [m for m in p["mics"] if m["channel"] != "MIC-0%d" % gone]
+            p["cameras"][gone - 1]["micMissing"] = "NOT_OPENED"
+        return p
+
+    def sources(d_, truth_, plan, procs, mic_seconds, mic_extra=()):
+        outs = sum([["--out%s" % m["channel"][-1], m["input"]["path"]] for m in plan["mics"]], [])
+        if "--out1" not in outs:                            # fake_mic.c always writes channel 1: into a plain file nobody reads
+            stray = os.path.join(d_, "unplanned_mic1.f32")
+            open(stray, "wb").close()
+            outs = ["--out1", stray] + outs
+        mic = spawn([MIC] + outs + ["--manifest", os.path.join(d_, "mic.jsonl"), "--seconds", "%.3f" % mic_seconds,
+                                    "--beep-at-us", ",".join(str(b) for b in truth_["beeps"])], stdin=subprocess.DEVNULL, stderr=open(os.path.join(d_, "mic.err"), "w"))
+        procs.append(mic)
+        cps = []
+        env = dict(os.environ, DEMS_FFMPEG=CAMERA_FFMPEG or "")
+        for c, pc in zip(truth_["cams"], plan["cameras"]):
+            cp = spawn([sys.executable, "-B", CAM_SR, "--url", pc["ingestUrl"], "--epoch-us", str(truth_["epoch_us"]), "--work", d_, "--frames", str(c["frames"]),
+                        "--flash-first", str(c["flash_first"]), "--flash-every", str(c["flash_every"])],
+                       stdin=subprocess.DEVNULL, stderr=open(os.path.join(d_, "cam%d.err" % c["cam"]), "w"), env=env)
+            procs.append(cp)
+            cps.append(cp)
+        return mic, cps
+
+    make_plan, start_sources = plan_of, sources
+    try:
+        w, plan, info, _ = run_session(a, d, VARIANTS[a.variant], truth)
+    finally:
+        make_plan, start_sources = plain_plan, plain_sources
+    frame_stats(w, info)
+    res = {"check": "row 152 pairs (%s)" % a.mode, "run": a.name, "mode": a.mode, "camera_ffmpeg": CAMERA_FFMPEG, "start_ack": info.get("start_ack"), "rc": info.get("rc")}
+    v = Crit()
+    rc = info.get("rc") or {}
+    v("worker_and_sources_exit_0", rc.get("worker") == 0 and all(rc.get("cam%d" % i) == 0 for i in range(1, 5)) and not info.get("crash") and not info.get("lines_that_are_no_frame"))
+    log = worker_log(d)
+    started = [l for l in log if l["message"] == "audio_started"]
+    planned = sorted(int(m["channel"][-1]) for m in plan["mics"])
+    res["audio_started_encoders"] = started[0]["encoders"] if started else None
+    res["camera_audio_source_log"] = [{k: l.get(k) for k in ("cam", "track", "mic_channel", "source", "mic_missing")} for l in log if l["message"] == "camera_audio_source"]
+    v("encoders_one_per_channel_file", res["audio_started_encoders"] == len(planned) + (1 if gone else 0) == 4)
+    cams = [c["outputPath"] for c in plan["cameras"]]
+    media = os.path.join(d, "media")
+    shapes = {}
+    for p in cams:
+        if os.path.exists(p):
+            okp, rep = playable(p)
+            shapes[os.path.basename(p)] = {"playable": okp, "streams": rep["streams"], "durations": durations(p)}
+        else:
+            shapes[os.path.basename(p)] = None
+    res["camera_files"] = shapes
+    v("camera_files_shape", all(x and x["playable"] and sorted(s[:4] for s in x["streams"]) == [("audio", "aac", "48000", 1), ("video", "h264", None, None)] for x in shapes.values()))
+    have = sorted(n for n in range(1, 5) if os.path.exists(os.path.join(media, "MIC-0%d.m4a" % n)))
+    res["channel_files"] = {"MIC-0%d.m4a" % n: durations(os.path.join(media, "MIC-0%d.m4a" % n)) for n in have}
+    v("channel_files_exist_as_planned", have == planned)
+    if v.ok:
+        o4, res["pairs"] = h4(d, cams)
+        v("pairs_packet_equality", o4)
+        tones = {}
+        for n in range(1, 5):
+            if n in have:
+                tones["MIC-0%d.m4a" % n] = dominant_tone(os.path.join(media, "MIC-0%d.m4a" % n))
+            tones["VIDEO-0%d.mp4" % n] = dominant_tone(cams[n - 1])
+        res["tones"] = tones
+        # Audit row W3F (F-W3TW-M1, D142): the pair number of a key is its last digit before the extension, for both
+        # VIDEO-0N.mp4 and MIC-0N.m4a (k[7] was that digit only for VIDEO-0N; for MIC-0N.m4a it is 'm').
+        pair_no = lambda k: int(k.split(".")[0][-1])
+        v("tone_per_file", all(tones[k]["dominant_hz"] == PAIR_TONES[pair_no(k)] and (tones[k]["margin"] or 0) >= 10 for k in tones if not (k.startswith("VIDEO") and pair_no(k) == gone)))
+        if gone:
+            sil = tones["VIDEO-0%d.mp4" % gone]
+            v("silent_track", sil["samples"] > SR * 5 and sil["peak_abs"] == 0.0 and res["pairs"]["cameras"]["VIDEO-0%d.mp4" % gone]["pair_source"].startswith("silent"))
+    recs = info.get("records") or []
+    cps_ok, cps_res = True, {}
+    for m in plan["mics"]:
+        cp = checkpoints_of(recs, m["deviceId"])
+        path = m["outputPath"]
+        whole = hashlib.sha256(open(path, "rb").read()).hexdigest() if os.path.exists(path) else None
+        r = {"count": len(cp), "indices_gapless": [c["index"] for c in cp] == list(range(1, len(cp) + 1)), "keyframe_false": all(c["keyframe"] is False for c in cp),
+             "last_prefix_is_the_file": bool(cp) and cp[-1]["prefixSha256"] == whole, "last_end_is_the_size": bool(cp) and cp[-1]["start"] + cp[-1]["len"] == os.path.getsize(path)}
+        cps_res[m["deviceId"]] = r
+        cps_ok &= r["count"] >= 2 and r["indices_gapless"] and r["keyframe_false"] and r["last_prefix_is_the_file"] and r["last_end_is_the_size"]
+    if gone:
+        cps_res["MIC-0%d (absent)" % gone] = {"count": len(checkpoints_of(recs, "MIC-0%d" % gone))}
+        cps_ok &= cps_res["MIC-0%d (absent)" % gone]["count"] == 0
+    cam_ids = {c["deviceId"] for c in plan["cameras"]}
+    tel_devices = sorted({e["deviceId"] for _, f in w.of("TELEMETRY") for e in f.get("fragments", [])})
+    cps_res["telemetry_fragments_devices"] = tel_devices
+    cps_res["camera_checkpoints"] = {c: len(checkpoints_of(recs, c)) for c in sorted(cam_ids)}
+    cps_ok &= set(tel_devices) <= cam_ids and all(n > 0 for n in cps_res["camera_checkpoints"].values())
+    res["checkpoints"] = cps_res
+    v("channel_checkpoints", cps_ok)
+    iv = [r["record"] for r in recs if r["record"]["kind"] == "AUDIO_SOURCE_INTERVAL"]
+    te = [r["record"] for r in recs if r["record"]["kind"] == "AUDIO_TIMELINE_END"]
+    res["intervals"] = {"records": iv, "timeline_end": te}
+    if gone == 1:
+        v("interval_records", not iv and not te and any(l["message"] == "no_interval_without_channel_row" for l in log))
+    else:
+        v("interval_records", len(iv) == 1 and iv[0]["deviceId"] == "MIC-01" and iv[0]["reason"] == "SESSION_START" and len(te) == 1)
+    tap = os.path.join(d, "tap.s16")
+    res["tap_bytes"] = os.path.getsize(tap) if os.path.exists(tap) else None
+    v("tap", (res["tap_bytes"] or 0) > SR if mode["tap"] else res["tap_bytes"] is None)
+    v("no_leftover", not info["leftovers"]["processes"] and not info["leftovers"]["listeners"])
+    finish(res, True, a.expect_fail, d, v)
 
 
 # ------------------------------------------------------------------------------------------ camera stops (W-3)
@@ -1879,7 +2172,7 @@ def cmd_srcam(a):
 
     def sources(d_, truth_, plan, procs, mic_seconds, mic_extra=()):
         mic = spawn([MIC] + mic_out_args(plan) + ["--manifest", os.path.join(d_, "mic.jsonl"),
-                     "--seconds", "%.3f" % mic_seconds, "--beep-at-us", ",".join(str(b) for b in truth_["beeps"])] + list(mic_extra),
+                     "--seconds", "%.3f" % mic_seconds, "--beep-at-us", ",".join(str(b) for b in truth_["beeps"])] + beep_on_args(plan) + list(mic_extra),
                     stdin=subprocess.DEVNULL, stderr=open(os.path.join(d_, "mic.err"), "w"))
         procs.append(mic)
         cps = []
@@ -2504,7 +2797,7 @@ def main():
             p.add_argument("--" + k, **v)
         p.set_defaults(fn=fn)
 
-    case("session", cmd_session, case={"choices": list(CASES), "default": "zero"}, switch={"action": "store_true"}, tap={"action": "store_true"}, stall={"action": "store_true"},
+    case("session", cmd_session, case={"choices": list(CASES), "default": "zero"}, tap={"action": "store_true"}, stall={"action": "store_true"},
          gop={"type": int, "default": FPS, "help": "the fake cameras' GOP in frames (250 = the long-GOP camera, a keyframe every 5 s)"},
          **{"mic-late-us": {"type": int, "default": 0, "help": "the fake mics hand every chunk over this late (a device latency the worker cannot know)"}})
     case("avcheck", cmd_avcheck, **{"assume-drift-ppm": {"type": float, "default": None},
@@ -2516,6 +2809,7 @@ def main():
     case("proto", cmd_proto)
     case("plan4", cmd_plan4)          # D60 (2026-11-04): the four-camera plan of the widened reader
     case("plan4mics", cmd_plan4mics)  # D61 (2026-11-04): the four-channel audio plan, one file and encoder each
+    case("pairs", cmd_pairs, mode={"choices": list(PAIRS_MODES), "required": True})   # row 152 (D5 pairs, DF-06): AC-4.7, silent track, no MIC-01
     case("camstop", cmd_camstop)
     case("fatal", cmd_fatal, mode={"choices": ["rmdir", "planted", "exists", "clean"], "required": True})
     case("udp", cmd_udp)
@@ -2535,10 +2829,11 @@ def main():
     case("mg1", cmd_mg1)
     # Fix pass F-M3 (review R63-02): the fragment size bound on an oversized GOP; control: --variant nobound.
     case("fragbound", cmd_fragbound, bound={"type": int, "default": 2 * 1024 * 1024, "help": "the bound the worker is started with, in bytes (the product passes 64 MiB)"})
-    # Row 71 (worker half): the microphone switch, its interval records and the warnings (test/m5mic.py).
-    case("m5switch", m5("cmd_switch"))
-    case("m5gap", m5("cmd_gap"), control={"choices": ["cut1000"], "default": None})
-    case("m5bound", m5("cmd_bound"), **{"bound-us": {"type": int, "default": 21333}})
+    # Row 71 (worker half): the interval record, the tap and the warnings (test/m5mic.py). Audit row 152b (N-31; D135): the
+    # operator's switch is retired - m5switch became m5tap (D5 pairs: one start interval, the tap is channel 1 for the
+    # whole session); m5gap and m5bound judged the switch itself and are gone.
+    case("m5tap", m5("cmd_tap"))
+    case("m5tapjudge", m5("cmd_tapjudge"), channel={"type": int, "default": 1, "help": "the channel the tap must carry (the control judges it as channel 2)"})
     case("m5warn", m5("cmd_warn"))
     case("m5rate", m5("cmd_rate"), ppm={"type": int, "default": -8000})
     # Task 4 row N3 (protocol version 5): the gapped microphone kind on the stand-in of the macOS path (test/n3gapped.py).

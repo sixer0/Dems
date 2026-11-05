@@ -10,6 +10,7 @@ import {
   SIGNED_BY_COMPROMISED_KEY_REPORT,
   VERIFY_FAILURES,
   VERIFY_NOTICE,
+  audioTracksMissingReport,
   hostProfileNotAskedReport,
   VERIFY_V2_CHECKS,
   VerifiedSigningKeyMark,
@@ -96,7 +97,17 @@ describe('row V4: `SIGNED_BY_COMPROMISED_KEY`, the notice and the state of the s
       'AUDIO_ABSENT_ON_RESTART',
       'AUDIO_SAMPLES_NOT_RECEIVED',
       'AUDIO_ONE_CAPTURE_GROUP',
+      // Audit 2026-11-05 row 154 (D5, D30 K-3): `AUDIO_TRACKS_MISSING` ADDED after it, 9 -> 10; the nine earlier codes did not move.
+      'AUDIO_TRACKS_MISSING',
     ]);
+    // Row 154: the line of the missing-microphone statement - ids only of the closed form, the reason word, the camera; within the bound.
+    expect(audioTracksMissingReport([])).toBe('');
+    expect(audioTracksMissingReport([{ trackId: 'AUDIO-03', silentIn: ['VIDEO-03'], reason: 'NOT_OPENED' }])).toBe('Audio: 1 PAIR MICROPHONE NOT RECORDED. AUDIO-03 not opened, VIDEO-03 silent. Its silent track is no sound of the room.');
+    expect(audioTracksMissingReport([{ trackId: 'AUDIO-04', silentIn: [], reason: 'NOT_ASSIGNED' }])).toBe('Audio: 1 PAIR MICROPHONE NOT RECORDED. AUDIO-04 not assigned. Its silent track is no sound of the room.');
+    expect(audioTracksMissingReport([{ trackId: '<b>x</b>', silentIn: ['<i>'], reason: 'UNPLUGGED' }])).toBe('Audio: 1 PAIR MICROPHONE NOT RECORDED. a pair not recorded. Its silent track is no sound of the room.');
+    const four = (['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04'] as const).map((trackId, index) => ({ trackId, silentIn: [`VIDEO-0${String(index + 1)}`], reason: 'NOT_ASSIGNED' }));
+    expect(audioTracksMissingReport(four).length).toBeLessThanOrEqual(256);
+    expect(audioTracksMissingReport(four)).toMatch(/^Audio: 4 PAIR MICROPHONES NOT RECORDED\. AUDIO-01 not assigned, VIDEO-01 silent; .*AUDIO-04 not assigned, VIDEO-04 silent\./);
     // Its line: the manifest's platform word only when it is one lower-case word; anything else is stated without a name.
     expect(hostProfileNotAskedReport('darwin')).toBe('Host profile: NOT ASKED. This package was sealed by a production Core on darwin, where the checks of the host profile are not run.');
     for (const platform of ['<b>darwin</b>', 'Darwin', 'darwin linux', '', 'x'.repeat(17), null, undefined, 7]) {

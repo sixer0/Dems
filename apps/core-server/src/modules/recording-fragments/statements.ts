@@ -45,6 +45,18 @@ export interface Queryable {
 export const VIDEO_TRACK_IDS = ['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'] as const;
 export type VideoTrackId = (typeof VIDEO_TRACK_IDS)[number];
 
+/**
+ * D28 (DQ-1 = S1, migration 0044, row 146): the files of the four microphone channels get the same
+ * fragment-hash protection as the camera files, so `recording_fragments_track_check` names these
+ * four beside the camera tracks. Pair N = VIDEO-0N <-> MIC-0N <-> AUDIO-0N (N-04).
+ */
+export const AUDIO_FRAGMENT_TRACK_IDS = ['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04'] as const;
+export type AudioFragmentTrackId = (typeof AUDIO_FRAGMENT_TRACK_IDS)[number];
+
+/** Every track a fragment row may name: the camera files, then the microphone channel files (the order of the CHECK of 0044). */
+export const FRAGMENT_TRACK_IDS = [...VIDEO_TRACK_IDS, ...AUDIO_FRAGMENT_TRACK_IDS] as const;
+export type FragmentTrackId = (typeof FRAGMENT_TRACK_IDS)[number];
+
 /** `chain_0`: SHA-256 of nothing (spec §C.3; S1 §3.1). The fifth test of this folder holds it to the protocol's constant. */
 export const CHAIN_GENESIS_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 

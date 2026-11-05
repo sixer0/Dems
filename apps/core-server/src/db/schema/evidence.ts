@@ -237,7 +237,7 @@ export const evidenceTracks = pgTable(
       .onDelete('restrict')
       .onUpdate('no action'),
     // :353 stays exactly as v1 wrote it (D-DB-05); the v2 two-row shape is a mapping rule (CS-18).
-    check('evidence_tracks_track_check', sql`${oneOf(t.trackId, TRACK_ID)} AND ${t.position} BETWEEN 1 AND 6`), // D60 (2026-11-04): up to four camera files plus the two microphone tracks (was 1 AND 4)
+    check('evidence_tracks_track_check', sql`${oneOf(t.trackId, TRACK_ID)} AND ${t.position} BETWEEN 1 AND 8`), // D60 (2026-11-04): was 1 AND 4. F-2 (row 146, R-DB-4): 1 AND 8 as migration 0040 wrote it (four camera files plus four microphone tracks); the 6 here was stale
     check('evidence_tracks_kind_check', oneOf(t.kind, TRACK_KIND)),
     // R-4: both camera files carry the single session audio track, so a row without it is a bug.
     check('evidence_tracks_audio_check', sql`${t.containsAudio}`),

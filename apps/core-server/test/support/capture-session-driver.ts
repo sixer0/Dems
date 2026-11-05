@@ -7,9 +7,10 @@
  *
  *   {"cmd":"start","sessionId":"...","plan":{...}}   supervisor.start
  *   {"cmd":"stop","sessionId":"...","reason":"STOPPED"}
- *   {"cmd":"switch","sessionId":"...","to":"STANDBY"}
  *   {"cmd":"status"}
  *   {"cmd":"exit"}                                     supervisor.shutdown, then the process ends
+ *
+ * (Audit row 149, N-31: the `switch` command is gone with operation 81 and `SWITCH_AUDIO_SOURCE`.)
  *
  * Every event of the supervisor leaves as one JSON line on standard output. The supervisor is the
  * production one: `createCaptureSupervisor` with the process launcher of `ipc.ts` (empty
@@ -112,7 +113,7 @@ const failure = (error: unknown): Record<string, unknown> =>
   error instanceof Error ? { error: error.message, code: (error as { code?: unknown }).code ?? null, detail: (error as { detail?: unknown }).detail ?? null } : { error: String(error) };
 
 async function run(line: string): Promise<void> {
-  const command = JSON.parse(line) as { cmd: string; sessionId?: string; plan?: unknown; reason?: 'STOPPED' | 'CRASH' | 'SHUTDOWN'; to?: 'PRIMARY' | 'STANDBY' };
+  const command = JSON.parse(line) as { cmd: string; sessionId?: string; plan?: unknown; reason?: 'STOPPED' | 'CRASH' | 'SHUTDOWN' };
   const sessionId = command.sessionId ?? '';
   switch (command.cmd) {
     case 'start':
@@ -125,12 +126,6 @@ async function run(line: string): Promise<void> {
       await supervisor.stop(sessionId, command.reason ?? 'STOPPED').then(
         () => say('stopped', { sessionId, telemetryFrames }),
         (error: unknown) => say('stopFailed', { sessionId, ...failure(error) }),
-      );
-      return;
-    case 'switch':
-      await supervisor.switchAudioSource(sessionId, command.to ?? 'STANDBY').then(
-        () => say('switched', { sessionId, to: command.to }),
-        (error: unknown) => say('switchFailed', { sessionId, ...failure(error) }),
       );
       return;
     case 'status':

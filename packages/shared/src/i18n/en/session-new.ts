@@ -77,6 +77,8 @@ export const sessionNew = {
     // Audit row CS2 (F-5-02c, D74): the items the header counts but cannot rate, stated beside the count.
     notReportedCount: '{{count}} not reported',
     informationalCount: '{{count}} for information',
+    // Audit row 150 (D113, O-138-1 (c)): sources the Core has not checked since it started (`evaluateLiveReadiness`).
+    notCheckedCount: '{{count}} not checked',
   },
 
   /** Step 2: the §5.3 pre-recording gate. Checks keyed by sim `PrecheckCheckId`. */
@@ -85,18 +87,20 @@ export const sessionNew = {
     intro: 'Every device is checked before recording can start.',
     checks: {
       CORE: 'Core Machine',
-      LENS_1: 'Video Lens 1',
-      LENS_2: 'Video Lens 2',
-      LENS_3: 'Video Lens 3', // audit fix row 83 (DF-03)
-      LENS_4: 'Video Lens 4', // audit fix row 83
+      // Audit row 143 (D5; S5 §2.5): each lens item names its pair, "Camera N (Mic N)"; no new check id.
+      LENS_1: 'Camera 1 (Mic 1)',
+      LENS_2: 'Camera 2 (Mic 2)',
+      LENS_3: 'Camera 3 (Mic 3)', // audit fix row 83 (DF-03)
+      LENS_4: 'Camera 4 (Mic 4)', // audit fix row 83
       MIC_1: 'MIC 1',
       MIC_2: 'MIC 2',
       // Schema v2 (SH-03): the stored check IDs of the transcription pair — D61 of 2026-11-04:
       // the roles became the numbered channels; these checks read channels 1 and 2.
-      MIC_PRIMARY: 'MIC (channel 1, transcribed)',
-      MIC_STANDBY: 'MIC (channel 2)',
-      MIC_3: 'MIC (channel 3)', // audit fix row 83 (DF-03)
-      MIC_4: 'MIC (channel 4)', // audit fix row 83
+      // Audit row 143 (D5; S5 §2.5): each mic item names its pair, "Mic N (Camera N)"; Pair 1 is transcribed.
+      MIC_PRIMARY: 'Mic 1 (Camera 1, transcribed)',
+      MIC_STANDBY: 'Mic 2 (Camera 2)',
+      MIC_3: 'Mic 3 (Camera 3)', // audit fix row 83 (DF-03)
+      MIC_4: 'Mic 4 (Camera 4)', // audit fix row 83
       STORAGE: 'Storage',
       TIME: 'Time Sync',
       SECURITY: 'Security',
@@ -218,5 +222,14 @@ export const sessionNew = {
   precheckNote: {
     chip: 'NOTE',
     timeHostClock: 'Time source: host system clock (no GNSS)',
+  },
+
+  /**
+   * Audit row 150 (D104, RD-128b-1): a pre-check item read from the Core's LAST reach reading (`params.reading`
+   * LAST_CHECK). Channel 1 is Pair 1, the transcribed audio: when the checks run, an unreachable channel 1 blocks the
+   * start (it is no "record without that channel" case, which is the sentence of the other channels).
+   */
+  precheckLastCheck: {
+    transcribedMic: '{{device}} was not reachable at the last check. It records Pair 1, the transcribed audio: if it is still not reachable when the checks run, the session cannot start.',
   },
 } as const satisfies ResourceTree;

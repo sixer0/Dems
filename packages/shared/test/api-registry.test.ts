@@ -161,7 +161,7 @@ const M2_OPERATIONS: readonly [number, string, 'get' | 'post', string, string, s
   [78, 'updateCaptureConfig', 'post', '/api/v1/capture/config', 'CAPTURE_CONFIG', 'CAPTURE_CONFIG_CHANGED', 'ACCESS_DENIED', 'simulated'],
   [79, 'setCaptureCameraSource', 'post', '/api/v1/capture/cameras/{id}/source', 'CAPTURE_CONFIG', 'CAPTURE_CONFIG_CHANGED', 'ACCESS_DENIED', 'simulated'],
   [80, 'setPrimaryMic', 'post', '/api/v1/capture/mics/{id}/primary', 'CAPTURE_CONFIG', 'CAPTURE_CONFIG_CHANGED', 'ACCESS_DENIED', 'simulated'],
-  [81, 'switchAudioSource', 'post', '/api/v1/session/{id}/audio-source', 'SESSION_START', 'AUDIO_SOURCE_SWITCHED', 'ACCESS_DENIED', 'simulated'],
+  [81, 'switchAudioSource', 'post', '/api/v1/session/{id}/audio-source', 'SESSION_START', 'NONE-P', 'ACCESS_DENIED', 'simulated'], // audit row 149 (N-29): retired, no call writes a row
   [82, 'listAudioSourceIntervals', 'get', '/api/v1/session/{id}/audio-source', 'AUTHENTICATED', 'NONE-R', 'ACCESS_DENIED', 'simulated'],
   [83, 'getSealingProgress', 'get', '/api/v1/session/{id}/sealing', 'AUTHENTICATED', 'NONE-R', 'ACCESS_DENIED', 'simulated'],
   [84, 'getTranscript', 'get', '/api/v1/evidence/{id}/transcript', 'EVIDENCE_VIEW', 'NONE-R', 'ACCESS_DENIED', 'simulated'],
@@ -846,12 +846,14 @@ describe('RB-1, API-8: every entry carries exactly one access rule and one audit
     expect(withAlso).toEqual(['recoverSession', 'verifyEvidence', 'restartDevice', 'acknowledgeAlert']);
   });
 
-  it('NONE-P marks the nine commands whose simulator action writes no audit row: touchSession, seven of areas 4 to 11 and testSttConnection', () => {
+  it('NONE-P marks the commands whose simulator action writes no audit row: touchSession, seven of areas 4 to 11, the retired switchAudioSource and testSttConnection', () => {
     const parity = CONTRACT_C_OPERATIONS.filter(([, , , , , success]) => success === CoreApiAuditNone.PARITY).map(([, id]) => id);
     expect(parity).toEqual(['beginPrecheck', 'retryPrecheck', 'scanCaseNumber', 'setActiveCamera', 'resetMicClip', 'updateSettings', 'acknowledgeAlert']);
     expect(CORE_API_OPERATIONS.filter((operation) => operation.audit.success === CoreApiAuditNone.PARITY).map((operation) => operation.operationId)).toEqual([
       'touchSession',
       ...parity,
+      // Audit row 149 (D5; N-29, N-36): operation 81 is retired - every call is refused 409 AUDIO_SOURCE_FIXED_BY_PAIRING and writes no row.
+      'switchAudioSource',
       // M6 row 113 (C3 §2.5 op 92): a test of the stored configuration changes no state, so no row.
       'testSttConnection',
       // Task 4 row D53: the lease of the idle meters is a POST that changes no stored state and writes no row.
@@ -1049,6 +1051,9 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
       'InstallationAcceptanceStep', 'InstallationAcceptanceDiagnostics',
     ];
     for (const name of nested) used.add(name);
+    // Audit row 149 (D130; N-29): operation 81 answers no success since D5, so its old answer is no operation's any more. It is
+    // KEPT in the registry (and the `all` document): older clients still parse it, and stored pre-D5 answers stay readable.
+    used.add('AudioSourceState');
     // Changed by design (W22, contract B): the registry also holds the Core state on the wire (the
     // 37 schemas of `state-slices.ts`) and the messages of the socket (the 11 of
     // `realtime-messages.ts`). The socket uses them, and test/api-state-slices.test.ts and
@@ -1126,9 +1131,12 @@ describe('structure of every entry (API-2, API-3, 01_specs §7.3)', () => {
   it('a success has a schema unless it is 204 or the 202 of the software update; every refusal is the error envelope', () => {
     // Changed by design (W27): 01_specs §7.14 gives `startSoftwareUpdate` a 202 without a body.
     const BODILESS_202 = ['startSoftwareUpdate'];
+    // Audit row 149 (D130; N-29, N-36): the one operation retired in behaviour - every call is refused, so it documents no success.
+    const RETIRED = ['switchAudioSource'];
     for (const operation of CORE_API_OPERATIONS) {
       const statuses = Object.keys(operation.responses).map(Number);
-      expect(statuses.filter((status) => status >= 200 && status <= 299).length, operation.operationId).toBeGreaterThan(0);
+      if (RETIRED.includes(operation.operationId)) expect(statuses.filter((status) => status >= 200 && status <= 299), operation.operationId).toEqual([]);
+      else expect(statuses.filter((status) => status >= 200 && status <= 299).length, operation.operationId).toBeGreaterThan(0);
       for (const status of statuses) {
         const spec = operation.responses[status];
         expect(spec?.description.length, `${operation.operationId} ${status}`).toBeGreaterThan(0);

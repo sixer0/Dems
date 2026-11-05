@@ -32,6 +32,8 @@ import {
 } from '../index';
 
 const RUN_DIR = '/nonexistent/dems-run/capture';
+/** The channel file a session names on the plan line (row W3I; capture-session `micFileName`): an absolute path, never opened here. */
+const PLAN_MIC_FILE = '/nonexistent/dems-media/SES-000123/MIC-01.m4a';
 const INGEST = { ingestUrl: ['rtsp:', '', '127.0.0.1:8554', 'cam'].join('/') };
 const live = (): AbortSignal => new AbortController().signal;
 const aborted = (): AbortSignal => AbortSignal.abort();
@@ -110,7 +112,10 @@ async function audioContract(adapter: AudioInputAdapter): Promise<string[]> {
     const handle = await adapter.open(device.id, { sessionId: 'SES-000123', signal: live() });
     if (handle.deviceId !== device.id) wrong.push(`${device.id}: the handle names another device`);
     // The input goes into the plan unchanged: the protocol's own schema must take it.
-    if (!CapturePlanMicSchema.safeParse({ deviceId: handle.deviceId, channel: 'MIC-01', input: handle.input }).success) wrong.push(`${device.id}: the plan refuses the input`); // D61 (2026-11-04): the plan line names its numbered channel
+    // Protocol v6 (audit row 144, N-13): the plan line also names the channel's own file. That path is the SESSION's
+    // (capture-session `${folder}/${micFileName(channel)}`), never the adapter's: the handle carries `input` only, so the
+    // line is built here as the session builds it, and the contract still checks that the plan takes `handle.input` unchanged.
+    if (!CapturePlanMicSchema.safeParse({ deviceId: handle.deviceId, channel: 'MIC-01', input: handle.input, outputPath: PLAN_MIC_FILE }).success) wrong.push(`${device.id}: the plan refuses the input`); // D61 (2026-11-04): the plan line names its numbered channel
     if (handle.transport.kind !== handle.input.kind) wrong.push(`${device.id}: the statement is of another transport`);
     if (handle.transport.clockCompensationPpm !== MIC_CLOCK_COMPENSATION_PPM) wrong.push(`${device.id}: the clock range is not stated`);
     if (!(handle.transport.latenessBeyondRangeMs > 0)) wrong.push(`${device.id}: no lateness bound stated`);

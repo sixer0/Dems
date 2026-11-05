@@ -710,7 +710,7 @@ describe('task 4 row 33: the 21-state table on PostgreSQL - seven selector categ
     if (operation === 'SIMULATED') return { host, owner, failure, steps, fake: null };
 
     // THE WORKER STANDS IN: every start of a worker from here on is a call of this launcher.
-    const fake = fakeLauncher({ ackSwitch: false });
+    const fake = fakeLauncher();
     const supervisor = createCaptureSupervisor({ now: () => host.app.clock.now(), timers: createSystemTimers(), launcher: fake.launcher });
     await supervisor.boot();
     host.app.seams.replace('capture', supervisor);

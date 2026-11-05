@@ -130,20 +130,23 @@ describe('G75e-02: the microphone meters of step 2 are named from the selector i
     return sim
   }
   const W = enWeb.web
-  // D61 (2026-11-04): the meter names the CHANNEL - the chip words are the selector's (devices.selector.role).
-  const CH1 = en.devices.selector.role.PRIMARY
-  const CH2 = en.devices.selector.role.STANDBY
+  // W3 row 158 cycle 2 (D125): the meter names its PAIR in front, "Mic N (Camera N)" (+ "Transcribed" on Pair 1);
+  // the old channel chip (devices.selector.role.*) is gone from the meter.
+  const CH1 = `${en.devices.pairs.micOfCamera.replaceAll('{{n}}', '1')} · ${en.devices.pairs.transcribed}`
+  const CH2 = en.devices.pairs.micOfCamera.replaceAll('{{n}}', '2')
+  const OLD_CHIPS = [en.devices.selector.role.PRIMARY, en.devices.selector.role.STANDBY]
 
   it('a Core in its own capture: the input, the source on it, its channel and "Generated test source" - no dataset role', () => {
     step(ownCore('MIC-01'))
     const first = screen.getByTestId('sn-meter-AUDIO-01')
     const second = screen.getByTestId('sn-meter-AUDIO-02')
-    expect(first).toHaveTextContent(`MIC 1 · MIC-01 · ${CH1} · ${W.waveL.source.generatedMic}`)
-    expect(second).toHaveTextContent(`MIC 2 · MIC-02 · ${CH2} · ${W.waveL.source.generatedMic}`)
+    expect(first).toHaveTextContent(`${CH1} · MIC 1 · MIC-01 · ${W.waveL.source.generatedMic}`)
+    expect(second).toHaveTextContent(`${CH2} · MIC 2 · MIC-02 · ${W.waveL.source.generatedMic}`)
     expect(first).toHaveAttribute('data-channel', 'MIC-01')
     for (const meter of [first, second]) {
       expect(meter).not.toHaveTextContent('Interviewer')
       expect(meter).not.toHaveTextContent('Subject')
+      for (const chip of OLD_CHIPS) expect(meter).not.toHaveTextContent(chip)
     }
     expect(getMissingI18nKeys()).toEqual([])
   })
@@ -151,8 +154,8 @@ describe('G75e-02: the microphone meters of step 2 are named from the selector i
   it('with MIC-02 made the transcribed channel the two labels say which line holds channel 1 (D61)', () => {
     step(ownCore('MIC-02'))
     // D61: each meter names the LINE inside its channel - the labels trade with the lines.
-    expect(screen.getByTestId('sn-meter-AUDIO-01')).toHaveTextContent(`MIC 2 · MIC-02 · ${CH1}`)
-    expect(screen.getByTestId('sn-meter-AUDIO-02')).toHaveTextContent(`MIC 1 · MIC-01 · ${CH2}`)
+    expect(screen.getByTestId('sn-meter-AUDIO-01')).toHaveTextContent(`${CH1} · MIC 2 · MIC-02`)
+    expect(screen.getByTestId('sn-meter-AUDIO-02')).toHaveTextContent(`${CH2} · MIC 1 · MIC-01`)
     expect(screen.getByTestId('sn-meter-AUDIO-01')).toHaveAttribute('data-channel', 'MIC-01')
     expect(screen.getByTestId('sn-meter-AUDIO-02')).toHaveAttribute('data-channel', 'MIC-02')
   })

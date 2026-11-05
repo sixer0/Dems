@@ -270,7 +270,8 @@ describe('the examples of all 99 operations', () => {
       // in details.simCode for parity; every one is a 409. These are the codes that actually appear
       // in an example (CAMERA_NOT_LOST and EXPORT_IN_PROGRESS have no example row, so they stay out).
       CAPTURE_CONFIG_LOCKED: [409, 'CAPTURE_CONFIG_LOCKED'],
-      AUDIO_SOURCE_CONFLICT: [409, 'AUDIO_SOURCE_CONFLICT'],
+      // Audit row 149 (D130, R149-2): AUDIO_SOURCE_CONFLICT left with op 81's `conflict` example - op 81 answers only
+      // 409 AUDIO_SOURCE_FIXED_BY_PAIRING (no simCode), so no example carries the code any more.
       TRANSCRIPT_NOT_READY: [409, 'TRANSCRIPT_NOT_READY'],
       TRANSCRIPT_REVISION_CONFLICT: [409, 'TRANSCRIPT_REVISION_CONFLICT'],
       MEDIA_NOT_AVAILABLE: [409, 'MEDIA_NOT_AVAILABLE'],

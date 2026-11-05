@@ -114,7 +114,7 @@ async function rig(slug: string): Promise<Rig> {
   expect(outcome?.local).toEqual({ cameraId: 'CAM-05', micId: 'MIC-05' }); // D60/D61 (2026-11-04): the next free ids beside the seeded built-ins
   if (outcome === null || outcome.local === null) throw new Error('the fence did not pass');
 
-  const fake = fakeLauncher({ ackSwitch: false });
+  const fake = fakeLauncher();
   const supervisor = createCaptureSupervisor({ now: () => app.clock.now(), timers: createSystemTimers(), launcher: fake.launcher });
   await supervisor.boot();
   app.seams.replace('capture', supervisor);
@@ -343,7 +343,15 @@ describe('M5-LOCAL-E2E-1 (Core half, scripted helpers): a development session on
     await of.stop(id);
     expect(worker.commands('STOP')).toHaveLength(1);
     expect(of.events.at(-1)).toMatchObject({ type: 'STOPPED', sessionId: id });
-    expect(of.events.at(-1)).toMatchObject({ files: [{ trackId: 'VIDEO-01', deviceId: 'CAM-05' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }, { trackId: 'VIDEO-03', deviceId: 'CAM-03' }, { trackId: 'VIDEO-04', deviceId: 'CAM-04' }] }); // D60 (2026-11-04): four files
+    // D60 (2026-11-04): four camera files. Audit row W3F (F-W3TW-D2; D132, row 148): then the four channel files in plan
+    // order - the local microphone MIC-05 is channel 1, so its file is MIC-01.m4a under AUDIO-01.
+    expect(of.events.at(-1)).toMatchObject({
+      files: [
+        { trackId: 'VIDEO-01', deviceId: 'CAM-05' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }, { trackId: 'VIDEO-03', deviceId: 'CAM-03' }, { trackId: 'VIDEO-04', deviceId: 'CAM-04' },
+        { trackId: 'AUDIO-01', deviceId: 'MIC-05', path: expect.stringMatching(/\/MIC-01\.m4a$/) }, { trackId: 'AUDIO-02', deviceId: 'MIC-02', path: expect.stringMatching(/\/MIC-02\.m4a$/) },
+        { trackId: 'AUDIO-03', deviceId: 'MIC-03', path: expect.stringMatching(/\/MIC-03\.m4a$/) }, { trackId: 'AUDIO-04', deviceId: 'MIC-04', path: expect.stringMatching(/\/MIC-04\.m4a$/) },
+      ],
+    });
     expect(of.built.openSources()).toEqual([]);
     expect(of.on.at(-1)).toEqual([]);
     // Pass D11: the stop cleared the member in the slice; the class of every source is still said.
@@ -431,7 +439,7 @@ describe('known state (a), D128: the local microphone at the limit of the rate c
     expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', captureDurable: true });
     expect(of.app.engine.slice('session')?.audioSource).toEqual(sourceBefore);
     expect(of.app.engine.slice('session')?.audioSource?.activeInputId).toBe('MIC-05');
-    expect(worker.commands('SWITCH_AUDIO_SOURCE')).toEqual([]);
+    expect(worker.received.map((message) => message.type as string)).not.toContain('SWITCH_AUDIO_SOURCE'); // audit row 149: no such command since protocol 6
     // Said again while it holds: still ONE alert.
     worker.warning('CAPTURE_FAULT', 'MIC-05', 'ACTIVE', 'MIC_RATE_AT_LIMIT');
     await written();

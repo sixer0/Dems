@@ -20,9 +20,9 @@
  * It never throws.
  */
 import { MIC_INPUT_ID_PATTERN } from '@dems/shared/api';
-import { PackageFile, cameraFilePath, manifestHashMatches, parseManifestV2 } from '@dems/shared/evidence-package';
+import { PackageFile, audioFilePath, cameraFilePath, manifestHashMatches, parseManifestV2 } from '@dems/shared/evidence-package';
 import { VERIFY_MAX_MANIFEST_BYTES, verifyPackageV2 } from '@dems/shared/evidence-verify';
-import type { SealedAudioInterval, SealedFileFact, SealedItemFacts, SealedTranscriptModel } from '../engine';
+import type { SealedAudioInterval, SealedAudioTrackMissing, SealedFileFact, SealedItemFacts, SealedTranscriptModel } from '../engine'; // SealedAudioTrackMissing: row W3I, through the unit index
 import { corePorts } from '../evidence-verify';
 
 /** A track profile as the item's contract admits it (`EvidenceItemSchema.files[].profile`). */
@@ -63,6 +63,25 @@ export async function readSealedItemFacts(packageDir: string, item: SealedFactsA
       // Fix wave L (G89c-04; D229 (3)): the format as the manifest of record states it (field 36). A value outside the item's own pattern is not restated.
       ...(SEALED_PROFILE.test(track.profile) ? { profile: track.profile } : {}),
     }));
+    // Row 159 (D5, schema /2.1; S5 §6 "each AUDIO-0N file with its own hash"): the audio file of each pair, AFTER the camera
+    // files, with the same members a camera file has (no profile: an audio file declares none). Absent in every legacy manifest.
+    for (const audio of manifest.audioTracks ?? []) {
+      files.push({
+        trackId: audio.trackId,
+        fileName: audioFilePath(audio.trackId),
+        sizeBytes: audio.bytes,
+        sha256: audio.sha256,
+        fragmentCount: audio.fragmentCount ?? manifest.audioFiles?.find((file) => file.trackId === audio.trackId)?.fragments.length ?? 0,
+        ...(audio.sha256Plain === null ? {} : { sha256Plain: audio.sha256Plain }),
+        fragmentChainHead: audio.fragmentChainHead,
+      });
+    }
+    // Row 159 (D30 K-3): the missing-microphone statement, restated as signed. A microphone id the item cannot carry is not restated as one.
+    const audioTracksMissing: SealedAudioTrackMissing[] = [];
+    for (const missing of manifest.audioTracksMissing ?? []) {
+      if (missing.micDeviceId !== null && !MIC_INPUT_ID_PATTERN.test(missing.micDeviceId)) return notReadable;
+      audioTracksMissing.push({ trackId: missing.trackId, micDeviceId: missing.micDeviceId, silentIn: [...missing.silentIn], reason: missing.reason });
+    }
 
     let developmentKey: boolean | null = null;
     // Fix wave K, driver S2 (G81b-06; D160): the verifier's own statement of the transcript model - it makes one only for
@@ -76,7 +95,7 @@ export async function readSealedItemFacts(packageDir: string, item: SealedFactsA
       developmentKey = null;
       transcriptModel = null;
     }
-    return { evidenceId: item.id, manifestHash: item.manifestHash, sealedPackage: 'PRESENT', interrupted: manifest.timeline.interrupted, audioSourceIntervals, files, developmentKey, transcriptModel };
+    return { evidenceId: item.id, manifestHash: item.manifestHash, sealedPackage: 'PRESENT', interrupted: manifest.timeline.interrupted, audioSourceIntervals, files, developmentKey, transcriptModel, ...(audioTracksMissing.length === 0 ? {} : { audioTracksMissing }) };
   } catch {
     return notReadable;
   }

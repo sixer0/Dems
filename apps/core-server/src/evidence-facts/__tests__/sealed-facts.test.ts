@@ -282,3 +282,93 @@ describe('G89c-04: the format of each camera file as the manifest states it (wav
     });
   });
 });
+
+describe('row 159 (D5): the pair audio files and the missing-microphone statement of a /2.1 manifest, on the item', () => {
+  // Audit 2026-11-05 row 159 (S5 §6, F-5-11; decisions D30 K-3, D45 R145-2, D119). Before this row the reading
+  // took `manifest.tracks` only: a D5 item carried no AUDIO-0N file and no statement, so no client could show either.
+  //
+  // | Rule | Test |
+  // |------|------|
+  // | The audio file of each pair is a file of the item, AFTER the camera files, with the manifest's own hashes | 1 |
+  // | The statement is restated as signed (track, microphone, silentIn, reason); a filed pair is never stated | 2 |
+  // | A legacy (/2) package: the files are its camera files and no statement member exists (byte-for-byte the old answer) | 3 |
+  // | The door sets the statement, keeps an equal reading the SAME item, removes it on a reading without one and on NOT_READABLE | 4 |
+  // | The item schema takes the restated members and refuses a statement outside the shape | 5 |
+  afterAll(() => removeScratch());
+  type FileRow = { trackId: string; fileName: string; sizeBytes: number; sha256: string; sha256Plain?: string; fragmentCount: number; fragmentChainHead?: string | null; profile?: string };
+  const filesOf = (facts: SealedItemFacts): FileRow[] => (facts as unknown as { files: FileRow[] }).files;
+
+  it('1 - the 4+4 package: eight files, the four AUDIO-0N after the four cameras, each with the hashes the manifest signed', async () => {
+    const built = await buildPackage({ evidenceId: 'EV-20261106-1591', sessionId: 'SES-20261106-1591', d5: {} });
+    const facts = await readSealedItemFacts(built.dir, anchorsOf(built));
+    expect(facts.sealedPackage).toBe('PRESENT');
+    const files = filesOf(facts);
+    expect(files.map((file) => [file.trackId, file.fileName])).toEqual([
+      ['VIDEO-01', 'fragments/VIDEO-01.mp4'],
+      ['VIDEO-02', 'fragments/VIDEO-02.mp4'],
+      ['VIDEO-03', 'fragments/VIDEO-03.mp4'],
+      ['VIDEO-04', 'fragments/VIDEO-04.mp4'],
+      ['AUDIO-01', 'fragments/AUDIO-01.m4a'],
+      ['AUDIO-02', 'fragments/AUDIO-02.m4a'],
+      ['AUDIO-03', 'fragments/AUDIO-03.m4a'],
+      ['AUDIO-04', 'fragments/AUDIO-04.m4a'],
+    ]);
+    for (const record of built.manifest.audioTracks ?? []) {
+      const file = files.find((entry) => entry.trackId === record.trackId);
+      expect(file).toMatchObject({ sizeBytes: record.bytes, sha256: record.sha256, fragmentChainHead: record.fragmentChainHead, fragmentCount: record.fragmentCount ?? 5 });
+      expect('profile' in (file ?? {})).toBe(false);
+    }
+    expect('audioTracksMissing' in facts).toBe(false);
+  });
+
+  it('2 - MIC-02 not assigned: three audio files and ONE statement, as signed', async () => {
+    const built = await buildPackage({
+      evidenceId: 'EV-20261106-1592',
+      sessionId: 'SES-20261106-1592',
+      d5: { audio: ['AUDIO-01', 'AUDIO-03', 'AUDIO-04'], missing: [{ trackId: 'AUDIO-02', micChannel: 'MIC-02', micDeviceId: null, silentIn: ['VIDEO-02'], reason: 'NOT_ASSIGNED' }] },
+    });
+    const facts = await readSealedItemFacts(built.dir, anchorsOf(built));
+    expect(filesOf(facts).map((file) => file.trackId)).toEqual(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04', 'AUDIO-01', 'AUDIO-03', 'AUDIO-04']);
+    expect((facts as { audioTracksMissing?: unknown }).audioTracksMissing).toEqual([{ trackId: 'AUDIO-02', micDeviceId: null, silentIn: ['VIDEO-02'], reason: 'NOT_ASSIGNED' }]);
+  });
+
+  it('3 - LEGACY: a /2 package states its two camera files and no statement - the answer of before', async () => {
+    const built = await buildPackage({ evidenceId: 'EV-20261106-1593', sessionId: 'SES-20261106-1593' });
+    expect(built.manifest.schema).toBe('dems.evidence-manifest/2');
+    const facts = await readSealedItemFacts(built.dir, anchorsOf(built));
+    expect(filesOf(facts).map((file) => file.trackId)).toEqual(['VIDEO-01', 'VIDEO-02']);
+    expect('audioTracksMissing' in facts).toBe(false);
+  });
+
+  it('4 - the door: set, an equal reading is the SAME item, removed by a reading without one and by NOT_READABLE', () => {
+    const item = { ...EXAMPLE_EVIDENCE_ITEM, manifestHash: 'cd'.repeat(32) } as unknown as EvidenceItem;
+    const missing = [{ trackId: 'AUDIO-02', micDeviceId: 'MIC-04', silentIn: ['VIDEO-02'], reason: 'NOT_OPENED' }] as const;
+    const present = (audioTracksMissing?: unknown): SealedItemFacts =>
+      ({ evidenceId: item.id, manifestHash: item.manifestHash, sealedPackage: 'PRESENT', interrupted: false, audioSourceIntervals: [], files: [], developmentKey: false, ...(audioTracksMissing === undefined ? {} : { audioTracksMissing }) }) as SealedItemFacts;
+    const held = itemWithSealedFacts(item, present(missing)) as ItemWithSealedFacts;
+    expect(held.audioTracksMissing).toEqual(missing);
+    expect(itemWithSealedFacts(held, present(missing.map((entry) => ({ ...entry, silentIn: [...entry.silentIn] }))))).toBe(held);
+    const without = itemWithSealedFacts(held, present()) as ItemWithSealedFacts;
+    expect(without).not.toBe(held);
+    expect('audioTracksMissing' in without).toBe(false);
+    expect('audioTracksMissing' in (itemWithSealedFacts(held, { evidenceId: item.id, manifestHash: item.manifestHash, sealedPackage: 'NOT_READABLE' }) as object)).toBe(false);
+  });
+
+  it('5 - the item schema: AUDIO-0N files after the cameras and the statement parse; a statement outside the shape is refused', () => {
+    const H = (char: string) => char.repeat(64);
+    const d5 = {
+      ...EXAMPLE_EVIDENCE_ITEM,
+      sealedPackage: 'PRESENT',
+      files: [
+        { trackId: 'VIDEO-01', fileName: 'fragments/VIDEO-01.mp4', sizeBytes: 10, sha256: H('a'), fragmentCount: 5 },
+        { trackId: 'AUDIO-01', fileName: 'fragments/AUDIO-01.m4a', sizeBytes: 4, sha256: H('b'), fragmentCount: 5, sha256Plain: H('c'), fragmentChainHead: H('d') },
+      ],
+      audioTracksMissing: [{ trackId: 'AUDIO-02', micDeviceId: null, silentIn: [], reason: 'NOT_ASSIGNED' }],
+    };
+    expect(EvidenceItemSchema.safeParse(d5).success).toBe(true);
+    expect(EvidenceItemSchema.safeParse({ ...d5, audioTracksMissing: [] }).success).toBe(false);
+    expect(EvidenceItemSchema.safeParse({ ...d5, audioTracksMissing: [{ trackId: 'VIDEO-02', micDeviceId: null, silentIn: [], reason: 'NOT_ASSIGNED' }] }).success).toBe(false);
+    expect(EvidenceItemSchema.safeParse({ ...d5, audioTracksMissing: [{ trackId: 'AUDIO-02', micDeviceId: null, silentIn: [], reason: 'FAILED' }] }).success).toBe(false);
+    expect(EvidenceItemSchema.safeParse({ ...d5, audioTracksMissing: [{ trackId: 'AUDIO-02', micDeviceId: null, silentIn: ['AUDIO-02'], reason: 'NOT_ASSIGNED' }] }).success).toBe(false);
+  });
+});

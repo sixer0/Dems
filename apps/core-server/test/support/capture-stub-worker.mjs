@@ -10,12 +10,10 @@
 //                          reason SESSION_START) for the microphone that holds the plan's transcribed
 //                          CHANNEL (D61, 2026-11-04: `activeMic` names a channel; the record lane still
 //                          names the role of that channel - MIC-01 is PRIMARY, MIC-02 is STANDBY)
-//   SWITCH_AUDIO_SOURCE    to another role (the LEGACY two-role lane survives on this command): the record
-//                          AUDIO_SOURCE_INTERVAL (reason OPERATOR_SWITCH, the command's correlation ID)
-//                          BEFORE the ACK; to the role whose channel feeds the track already: the ACK
-//                          alone, no record; a role no microphone of the plan holds: ACK ok=false NO_SUCH_MIC
 //   STOP                   the record AUDIO_TIMELINE_END, then the ACK
-// So an operation 81 through this stub runs the real path. `fromSample` is the wall time since the
+// Audit row 152b (N-31; D135, D136): `SWITCH_AUDIO_SOURCE` is retired with operation 81 - the supervisor never
+// sends it (row 149), and the real worker ends on such a line as on any unknown one. This stub answers nothing
+// to it (it ignores every line it does not know). `samples` of the timeline end is the wall time since the
 // start in samples, on the 480-sample input grid: the stub has no audio, only the clock.
 //
 // Plain JavaScript with no import of the workspace: it is the protocol written by hand, as the C
@@ -40,8 +38,9 @@
 import { createInterface } from 'node:readline';
 
 // A plain .mjs run by node cannot import the TypeScript package; the literal is the protocol version of
-// `@dems/capture-protocol` (5 since row N13), held equal to `CAPTURE_PROTOCOL_VERSION` by `tidy-fy.test.ts`.
-const PROTOCOL_VERSION = 5;
+// `@dems/capture-protocol` (5 since row N13; 6 since audit row 144, the camera-microphone pairs), held equal to
+// `CAPTURE_PROTOCOL_VERSION` by `tidy-fy.test.ts`.
+const PROTOCOL_VERSION = 6;
 const args = process.argv.slice(2);
 const option = (name, fallback) => {
   const found = args.find((arg) => arg.startsWith(`--${name}=`));
@@ -64,16 +63,15 @@ const SAMPLE_RATE_HZ = 48_000;
 const QUANTUM_SAMPLES = 480;
 let recordSeq = 0;
 let mics = [];
-// D61 (2026-11-04): the plan keys its microphone rows by NUMBERED CHANNEL; the switch command and the
-// interval record still speak the two-role lane. The two words of the transcription pair:
+// D61 (2026-11-04): the plan keys its microphone rows by NUMBERED CHANNEL; the interval record still speaks the
+// two-role lane (its `role` member). The two words of the transcription pair:
 const CHANNEL_OF_ROLE = { PRIMARY: 'MIC-01', STANDBY: 'MIC-02' };
 const ROLE_OF_CHANNEL = { 'MIC-01': 'PRIMARY', 'MIC-02': 'STANDBY' };
 let activeRole = null;
 let intervals = 0;
 let startedAtMs = 0;
-let lastFromSample = 0;
 const record = (sessionId, body) => write({ type: 'RECORD', sessionId, seq: (recordSeq += 1), record: body });
-const sampleNow = () => Math.max(lastFromSample, Math.floor(((Date.now() - startedAtMs) * SAMPLE_RATE_HZ) / 1000 / QUANTUM_SAMPLES) * QUANTUM_SAMPLES);
+const sampleNow = () => Math.floor(((Date.now() - startedAtMs) * SAMPLE_RATE_HZ) / 1000 / QUANTUM_SAMPLES) * QUANTUM_SAMPLES;
 
 if (args.includes('--lavf-mismatch')) {
   write({ type: 'CRASH', sessionId: null, code: 'LIBAVFORMAT_VERSION_MISMATCH', signal: null, exitCode: 70 });
@@ -82,7 +80,7 @@ if (args.includes('--lavf-mismatch')) {
   // The release word of the worker of this tree (`apps/capture-worker/src/worker.h`), as the fake worker of
   // `capture.ts` says it: the supervisor holds EVERY HELLO to the version rule of the boot check since fix
   // pass F-M3 (review R63-04) and ends a worker that says another. `tidy-fy.test.ts` holds the word equal.
-  write({ type: 'HELLO', protocolVersion: PROTOCOL_VERSION, workerVersion: 'capture-worker/0.7.0' });
+  write({ type: 'HELLO', protocolVersion: PROTOCOL_VERSION, workerVersion: 'capture-worker/0.8.0' });
   if (args.includes('--garbage')) process.stdout.write('this line is no frame\n');
   timer = setInterval(() => write({ type: 'HEARTBEAT', counter: (counter += 1) }), heartbeatMs);
 }
@@ -129,18 +127,6 @@ lines.on('line', (line) => {
       }
       const flood = Number(option('flood', '0'));
       for (let step = 0; step < flood; step += 1) write({ type: 'PROGRESS', sessionId: command.sessionId, step: `S${step}`, progress: 0, etaMs: null });
-    }
-  } else if (command.type === 'SWITCH_AUDIO_SOURCE') {
-    const to = mics.find((mic) => mic.channel === CHANNEL_OF_ROLE[command.to]); // D61 (2026-11-04): the role of the legacy lane names a CHANNEL of the plan
-    if (to === undefined) ack(false, 'NO_SUCH_MIC');
-    else if (command.to === activeRole) ack(true);
-    else {
-      // The record of the switch is written BEFORE its ACK, as the worker writes it.
-      activeRole = command.to;
-      intervals += 1;
-      lastFromSample = sampleNow();
-      record(command.sessionId, { kind: 'AUDIO_SOURCE_INTERVAL', deviceId: to.deviceId, role: command.to, index: intervals, fromSample: lastFromSample, sampleRateHz: SAMPLE_RATE_HZ, capturedAtMs: startedAtMs + Math.floor((lastFromSample * 1000) / SAMPLE_RATE_HZ), reason: 'OPERATOR_SWITCH', correlationId: command.correlationId, appliedDelayUs: 0 }); // D61 (2026-11-04): the row names its CHANNEL; the record of this lane names the ROLE
-      ack(true);
     }
   } else if (command.type === 'STOP') {
     if (intervals > 0) record(command.sessionId, { kind: 'AUDIO_TIMELINE_END', samples: sampleNow(), sampleRateHz: SAMPLE_RATE_HZ, intervals });

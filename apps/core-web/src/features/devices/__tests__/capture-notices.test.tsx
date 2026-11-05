@@ -100,6 +100,20 @@ describe('the pre-check (ux §8g.3; D83, D114)', () => {
       'MIC 1 (MIC-01) is the microphone of the transcribed channel 1 and is not reachable. Cancel this session, assign another microphone to channel 1 on Devices, then start again.',
     )
   })
+
+  // Audit row 150 (D104, RD-128b-1): the LAST-CHECK reading of channel 1 (Pair 1, transcribed) has its own sentence; the
+  // other channels keep `noStandby`'s, and an item without `reading` is drawn as before.
+  it('the last-check reading of channel 1 says Pair 1 is the transcribed audio and blocks at the run; channel 2 keeps noStandby', () => {
+    const lastCheck = (deviceId: string, slot: string) => ({ ...item('noStandby', 'WARN', deviceId, 'MIC'), params: { ...item('noStandby', 'WARN', deviceId, 'MIC').params, slot, reading: 'LAST_CHECK' } })
+    const one = unreachablePrecheckOf(lastCheck('MIC-01', 'MIC-01'))!
+    expect(one).toMatchObject({ rule: 'noStandby', transcribedLastCheck: true })
+    expect(unreachablePrecheckText(t, one)).toBe(
+      'MIC 1 (MIC-01) was not reachable at the last check. It records Pair 1, the transcribed audio: if it is still not reachable when the checks run, the session cannot start.',
+    )
+    expect(unreachablePrecheckText(t, unreachablePrecheckOf(lastCheck('MIC-02', 'MIC-02'))!)).toBe('MIC 2 (MIC-02) is not reachable. The session will record without that microphone channel.')
+    // CONTROL: the same item without `reading` (an older Core) keeps the noStandby sentence.
+    expect(unreachablePrecheckOf(item('noStandby', 'WARN', 'MIC-01', 'MIC'))).not.toHaveProperty('transcribedLastCheck')
+  })
 })
 
 describe('local-device states (M4-DEVSRC-LOCAL; ux §8f.3) and the badge rule (R-11)', () => {

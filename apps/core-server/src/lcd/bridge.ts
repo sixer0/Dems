@@ -1,5 +1,6 @@
 import type { LcdIntegrationStatus } from '@dems/shared/api';
 import { SessionState, TrackRecState, VIDEO_TRACK_IDS } from '@dems/shared/domain'; // VIDEO_TRACK_IDS: D60 (2026-11-04)
+import { isSlotSourceUp, slotSourceOf } from '@dems/shared/sim'; // audit fix row L3 (D104): row 128's one source rule
 import { z } from 'zod';
 import type { EngineHost } from '../engine';
 
@@ -23,6 +24,16 @@ const TRACKS = VIDEO_TRACK_IDS; // D60 (2026-11-04): the panel's channels follow
  * (`deviceId`), because one dual-lens camera fills two of its tracks (OD-05) and a panel may
  * want one output per physical camera, not per lens.
  * Grouping is the panel's choice: the bridge keeps reporting per track, truthfully.
+ *
+ * Audit fix row L3 (D104, D116; F-6-14): in a real capture operation the panel's camera lamp
+ * (`cameraConnected`, sent as `cam`) also asks the ONE source rule of operations 44 / 46
+ * (`slotSourceOf` + `isSlotSourceUp`, row 128): the device ASSIGNED to the track must be in the
+ * registry with `online` set, and the Core's last reach reading must not say NOT_REACHABLE. Before,
+ * the lamp read only the stored hardware row (`online`, `lens` READY: seeded and never re-stated at
+ * rest), so the panel said "camera there" for a camera the console showed FAULT / not reachable.
+ * `recording` keeps its own facts (durable session, assigned LIVE stream, REC / DEGRADED): a reach
+ * reading never stops a REC lamp of a stream the Core still records - the console likewise shows
+ * the track's REC state beside a FAULT lens. A SIMULATED Core is unchanged (no reach rule).
  */
 export function lcdChannelsOf(state: CommittedState | null, count: number, real: boolean): LcdIntegrationStatus['channels'] {
   const session = state?.session;
@@ -32,12 +43,15 @@ export function lcdChannelsOf(state: CommittedState | null, count: number, real:
     const track = TRACKS[index] ?? null;
     const camera = track === null ? undefined : state?.cameras.find((item) => item.id === track);
     const slot = state?.captureConfig?.cameras.find((item) => item.trackId === track);
-    const cameraConnected = camera?.online === true && camera.lens === 'READY' &&
+    const streamReady = camera?.online === true && camera.lens === 'READY' &&
       (!real || (slot !== undefined && slot.deviceId !== '' && slot.online));
+    // Audit fix row L3: the assigned device plus its reach, as operations 44 / 46 read it (real capture only).
+    const cameraConnected = streamReady &&
+      (!real || (state !== null && track !== null && isSlotSourceUp(slotSourceOf(state.captureConfig, state.captureDevices.devices, track))));
     return {
       channel: index + 1, track, deviceId: slot?.deviceId ?? null,
       cameraConnected,
-      recording: recording && cameraConnected && (!real || slot?.streamState === 'LIVE') &&
+      recording: recording && streamReady && (!real || slot?.streamState === 'LIVE') &&
         (camera?.recState === TrackRecState.REC || camera?.recState === TrackRecState.DEGRADED),
     };
   });

@@ -215,33 +215,20 @@ describe('a real worker process under the supervisor', () => {
   }, TEST_TIMEOUT_MS);
 });
 
-// Fix pass F-M5 (review R74-17, carried question 1): the process stub answers a switch AS THE REAL
-// WORKER DOES - the `AUDIO_SOURCE_INTERVAL` record of the switch BEFORE its `ACK` - so a test through
-// it exercises the real path of operation 81 (it used to acknowledge with no record: `SWITCH_NOT_REALISED`).
-describe('the stub speaks the switch of protocol 4 as the worker does', () => {
-  it('the interval of the start at T0; a switch resolves with the record of the microphone that now feeds the track; the role that feeds it already: no record; the end of the timeline at STOP', async () => {
+// Fix pass F-M5 (review R74-17, carried question 1): the process stub writes the records AS THE REAL WORKER DOES.
+// Audit row 149 (N-29, N-31): protocol 6 has no switch, so a session's audio timeline is the interval of the start
+// and its end at STOP - nothing between.
+describe('the stub speaks the audio timeline of protocol 6 as the worker does', () => {
+  it('the interval of the start at T0, no switch, the end of the timeline at STOP', async () => {
     const { supervisor } = await realSupervisor();
     const records: CaptureEvent[] = [];
     supervisor.on('record', (event) => void records.push(event));
-    const plan = capturePlan(SESSION);
-    await supervisor.start(SESSION, plan);
-    // D61 (2026-11-04): the plan rows are keyed by numbered CHANNEL; the legacy two-role lane names the
-    // transcription pair - PRIMARY is channel MIC-01, STANDBY channel MIC-02 (the switch below is that lane).
-    const standby = plan.mics.find((mic) => mic.channel === 'MIC-02');
-    const primary = plan.mics.find((mic) => mic.channel === 'MIC-01');
+    await supervisor.start(SESSION, capturePlan(SESSION));
     const kinds = () => records.map((event) => (event.name === 'record' ? `${event.record.kind}${'reason' in event.record ? `:${String(event.record.reason)}` : ''}` : ''));
     await vi.waitFor(() => expect(kinds()).toEqual(['AUDIO_SOURCE_INTERVAL:SESSION_START']), WAIT);
-    const first = await supervisor.switchAudioSource(SESSION, 'STANDBY');
-    expect(first).toMatchObject({ kind: 'AUDIO_SOURCE_INTERVAL', deviceId: standby?.deviceId, role: 'STANDBY', index: 2, reason: 'OPERATOR_SWITCH', sampleRateHz: 48_000 });
-    expect((first?.fromSample ?? 1) % 480).toBe(0);
-    expect(first?.correlationId).not.toBeNull();
-    // The role that feeds the track already: acknowledged, NO record (the worker's rule, `audio.c`).
-    await expect(supervisor.switchAudioSource(SESSION, 'STANDBY')).resolves.toBeNull();
-    const back = await supervisor.switchAudioSource(SESSION, 'PRIMARY');
-    expect(back).toMatchObject({ deviceId: primary?.deviceId, role: 'PRIMARY', index: 3 });
-    expect(back?.fromSample ?? 0).toBeGreaterThanOrEqual(first?.fromSample ?? 0);
+    expect('switchAudioSource' in supervisor).toBe(false);
     await supervisor.stop(SESSION, 'STOPPED');
-    expect(kinds()).toEqual(['AUDIO_SOURCE_INTERVAL:SESSION_START', 'AUDIO_SOURCE_INTERVAL:OPERATOR_SWITCH', 'AUDIO_SOURCE_INTERVAL:OPERATOR_SWITCH', 'AUDIO_TIMELINE_END']);
+    expect(kinds()).toEqual(['AUDIO_SOURCE_INTERVAL:SESSION_START', 'AUDIO_TIMELINE_END']);
     expect(supervisor.status()).toMatchObject({ phase: CapturePhase.IDLE, lastCrash: null });
   }, TEST_TIMEOUT_MS);
 });
@@ -259,7 +246,6 @@ describe('a listener that never returns, on a real process (navigator findings F
     expect(downs()).toEqual([]);
     expect(supervisor.status().queuedEvents).toBeLessThanOrEqual(8);
     expect(supervisor.status().heartbeatAgeMs).toBeLessThan(600);
-    await expect(supervisor.switchAudioSource(SESSION, 'STANDBY')).resolves.toMatchObject({ kind: 'AUDIO_SOURCE_INTERVAL', role: 'STANDBY', reason: 'OPERATOR_SWITCH' }); // F-M5: the stub writes the record of a switch before its ACK (it was `null`)
     await supervisor.stop(SESSION, 'STOPPED');
     expect(supervisor.status()).toMatchObject({ phase: CapturePhase.IDLE, lastCrash: null });
   }, TEST_TIMEOUT_MS);
@@ -311,7 +297,7 @@ describe('no orphan', () => {
 
   it('a worker ends by itself when its input ends', async () => {
     const { channel, messages, exit } = rawChannel();
-    await vi.waitFor(() => expect(messages[0]).toMatchObject({ type: 'HELLO', protocolVersion: 5 }), WAIT);
+    await vi.waitFor(() => expect(messages[0]).toMatchObject({ type: 'HELLO', protocolVersion: 6 }), WAIT);
     const pid = channel.pid ?? -1;
     expect(alive(pid)).toBe(true);
     channel.closeInput();

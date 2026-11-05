@@ -27,6 +27,11 @@
 // sides): four numbered CHANNELS keyed by `channel` (was the two roles), exactly four rows, an optional
 // per-channel `outputPath`, `activeMic` as the transcribed channel (must be MIC-01), and a FOUR-entry
 // telemetry level list. The role words survive only on the legacy two-role lane.
+//
+// Audit 2026-11-05 row 144 (C-P0-2a; D5 pairing; D25 N5, D27, D28 DQ-4, D30 K-3; register N-12, N-13, N-31..34) adds:
+// protocol version 6 - every camera row names the channel of its pair (`micChannel`) and states a missing paired
+// microphone (`micMissing`), 0..4 microphone rows each with a REQUIRED `outputPath`, a tap only with channel 1 in the
+// plan, and a FRAGMENT_CHECKPOINT that may name a microphone (its channel file).
 import { describe, expect, it } from 'vitest';
 import {
   ADVISORY_WARNING_REASONS,
@@ -38,6 +43,9 @@ import {
   CAPTURE_MIC_CHANNELS,
   CaptureMicInputKind,
   CAMERA_RECORD_KINDS,
+  CAMERA_OR_MIC_RECORD_KINDS,
+  CAPTURE_PAIRED_MIC_MISSING_REASONS,
+  captureMicChannelOfVideoTrack,
   CAPTURE_AUDIO_INPUT_QUANTUM_SAMPLES,
   CAPTURE_IPC_DEFAULTS,
   CAPTURE_SWITCH_BOUND_US,
@@ -48,7 +56,6 @@ import {
   MIC_RECORD_KINDS,
   MIC_WARNING_REASONS,
   SESSION_RECORD_KINDS,
-  SWITCH_REFUSAL_CODES,
   WARNING_REASONS_OF,
   captureWorkerSettingArguments,
   CAPTURE_MEDIA_PORT_MAX,
@@ -72,19 +79,21 @@ import {
   type SupervisorMessage,
   type WorkerMessage,
 } from '../src/index';
+import * as protocol from '../src/index';
 
 const plan: CapturePlan = {
   cameras: [
-    { deviceId: 'CAM-01', trackId: 'VIDEO-01', profile: null, ingestUrl: 'rtsp://127.0.0.1:8554/video01', outputPath: '/data/media/sessions/S-1/VIDEO-01.mp4' },
-    { deviceId: 'CAM-02', trackId: 'VIDEO-02', profile: 'wide', ingestUrl: 'rtsp://127.0.0.1:8555/video02', outputPath: '/data/media/sessions/S-1/VIDEO-02.mp4' },
+    // Version 6 (D5): each camera names the channel of its pair, and the plan holds that row (`micMissing` null).
+    { deviceId: 'CAM-01', trackId: 'VIDEO-01', profile: null, ingestUrl: 'rtsp://127.0.0.1:8554/video01', outputPath: '/data/media/sessions/S-1/VIDEO-01.mp4', micChannel: 'MIC-01', micMissing: null },
+    { deviceId: 'CAM-02', trackId: 'VIDEO-02', profile: 'wide', ingestUrl: 'rtsp://127.0.0.1:8555/video02', outputPath: '/data/media/sessions/S-1/VIDEO-02.mp4', micChannel: 'MIC-02', micMissing: null },
   ],
   mics: [
     // D61 (2026-11-04): FOUR numbered channels, recorded at once (was the two-role PRIMARY/STANDBY pair).
     { deviceId: 'MIC-01', channel: 'MIC-01', input: { kind: 'PCM_FIFO', path: '/data/run/S-1/MIC-01.pcm' }, outputPath: '/data/media/sessions/S-1/MIC-01.m4a' },
     { deviceId: 'MIC-02', channel: 'MIC-02', input: { kind: 'PCM_FIFO', path: '/data/run/S-1/MIC-02.pcm' }, outputPath: '/data/media/sessions/S-1/MIC-02.m4a' },
     { deviceId: 'MIC-03', channel: 'MIC-03', input: { kind: 'PCM_FIFO', path: '/data/run/S-1/MIC-03.pcm' }, outputPath: '/data/media/sessions/S-1/MIC-03.m4a' },
-    // The per-channel outputPath is optional (D61): a channel without one is metered and warned for, not recorded on its own file.
-    { deviceId: 'MIC-04', channel: 'MIC-04', input: { kind: 'PCM_FIFO', path: '/data/run/S-1/MIC-04.pcm' } },
+    // Version 6 (N-13): every channel names its own file (the member was optional under D61).
+    { deviceId: 'MIC-04', channel: 'MIC-04', input: { kind: 'PCM_FIFO', path: '/data/run/S-1/MIC-04.pcm' }, outputPath: '/data/media/sessions/S-1/MIC-04.m4a' },
   ],
   // D61 (2026-11-04): the transcribed channel of AUDIO-01 (was the failover pair's start role, 'PRIMARY').
   activeMic: 'MIC-01',
@@ -146,13 +155,16 @@ const periodicAccount = {
 const insertedRun = { kind: 'AUDIO_INSERTED_RUN', deviceId: 'MIC-01', role: 'PRIMARY', index: 1, fromSample: 0, samples: 192_000, sampleRateHz: 48_000 } as const;
 
 describe('the messages', () => {
-  it('the protocol has the three commands and the eight worker messages of spec §B.2 (the eight of its table, HELLO, ACK and, since version 2, RECORD); version 3 since the checkpoint content, version 4 since the microphone rows, version 5 since the sample account', () => {
-    expect(CAPTURE_PROTOCOL_VERSION).toBe(5);
-    expect(Object.values(SupervisorMessageType)).toEqual(['START', 'STOP', 'SWITCH_AUDIO_SOURCE']);
+  it('the protocol has the two commands (version 6: SWITCH_AUDIO_SOURCE retired, row 149 N-31) and the eight worker messages of spec §B.2 (the eight of its table, HELLO, ACK and, since version 2, RECORD); version 3 since the checkpoint content, version 4 since the microphone rows, version 5 since the sample account, version 6 since the camera-microphone pairs (row 144)', () => {
+    expect(CAPTURE_PROTOCOL_VERSION).toBe(6);
+    expect(Object.values(SupervisorMessageType)).toEqual(['START', 'STOP']);
     expect(Object.values(WorkerMessageType)).toEqual(['HELLO', 'ACK', 'TELEMETRY', 'PROGRESS', 'HEARTBEAT', 'WARNING', 'CRASH', 'RECORD']);
     expect(Object.values(CaptureRecordKind)).toEqual(['FIRST_VIDEO_SAMPLE', 'FIRST_DURABLE_FRAGMENT', 'FRAGMENT_CHECKPOINT', 'KEYFRAME_INTERVAL', 'AUDIO_SOURCE_INTERVAL', 'AUDIO_TIMELINE_END', 'SEAL_COMPLETE', 'MIC_SAMPLE_ACCOUNT', 'AUDIO_INSERTED_RUN']);
     // Every kind says whose device ID it carries: a camera's, a microphone's, or none.
-    expect([...CAMERA_RECORD_KINDS, ...MIC_RECORD_KINDS, ...SESSION_RECORD_KINDS].sort()).toEqual(Object.values(CaptureRecordKind).sort());
+    expect([...CAMERA_RECORD_KINDS, ...CAMERA_OR_MIC_RECORD_KINDS, ...MIC_RECORD_KINDS, ...SESSION_RECORD_KINDS].sort()).toEqual(Object.values(CaptureRecordKind).sort());
+    // Version 6 (N-32): a checkpoint names the device of its FILE - a camera's, or a microphone's channel file.
+    expect(CAMERA_RECORD_KINDS).toEqual(['FIRST_VIDEO_SAMPLE', 'FIRST_DURABLE_FRAGMENT', 'KEYFRAME_INTERVAL']);
+    expect(CAMERA_OR_MIC_RECORD_KINDS).toEqual(['FRAGMENT_CHECKPOINT']);
     expect(MIC_RECORD_KINDS).toEqual(['AUDIO_SOURCE_INTERVAL', 'MIC_SAMPLE_ACCOUNT', 'AUDIO_INSERTED_RUN']);
     expect(SESSION_RECORD_KINDS).toEqual(['AUDIO_TIMELINE_END', 'SEAL_COMPLETE']);
     expect(DURABLE_RECORD_KINDS).toEqual(['FIRST_DURABLE_FRAGMENT', 'FRAGMENT_CHECKPOINT']);
@@ -164,7 +176,6 @@ describe('the messages', () => {
     const commands: SupervisorMessage[] = [
       { v, type: 'START', sessionId: 'S-1', correlationId: 'cap:S-1:1:1', attempt: 1, plan },
       { v, type: 'STOP', sessionId: 'S-1', correlationId: 'cap:S-1:1:2', reason: 'STOPPED' },
-      { v, type: 'SWITCH_AUDIO_SOURCE', sessionId: 'S-1', correlationId: 'cap:S-1:1:3', to: 'STANDBY' },
     ];
     const messages: WorkerMessage[] = [
       { v, type: 'HELLO', protocolVersion: 1, workerVersion: '0.1.0' },
@@ -253,10 +264,12 @@ describe('the messages', () => {
     ];
     for (const frame of version3Shapes) expect(decodeWorkerLine(JSON.stringify({ v, ...frame })).ok, frame.type).toBe(false);
     expect(decodeSupervisorLine(JSON.stringify({ v: 3, type: 'SWITCH_AUDIO_SOURCE', sessionId: 'S-1', correlationId: 'c', to: 'STANDBY' })).ok).toBe(false);
-    expect(decodeSupervisorLine(JSON.stringify({ v, type: 'SWITCH_AUDIO_SOURCE', sessionId: 'S-1', correlationId: 'c', to: 'STANDBY' })).ok).toBe(true);
-    // The switch names a ROLE of the plan and nothing else: a device ID or a third value is no command.
-    expect(decodeSupervisorLine(JSON.stringify({ v, type: 'SWITCH_AUDIO_SOURCE', sessionId: 'S-1', correlationId: 'c', to: 'MIC-02' })).ok).toBe(false);
-    expect(SWITCH_REFUSAL_CODES).toEqual(['NOT_RECORDING', 'SESSION_MISMATCH', 'NO_SUCH_MIC', 'SWITCH_PENDING', 'SELECTOR_COMMAND_FAILED']);
+    // Version 6 (N-31; audit row 149): the switch is retired - under the version of this package it is no command either.
+    expect(decodeSupervisorLine(JSON.stringify({ v, type: 'SWITCH_AUDIO_SOURCE', sessionId: 'S-1', correlationId: 'c', to: 'STANDBY' })).ok).toBe(false);
+    // CONTROL: a STOP of the same envelope under this version is a command.
+    expect(decodeSupervisorLine(JSON.stringify({ v, type: 'STOP', sessionId: 'S-1', correlationId: 'c', reason: 'STOPPED' })).ok).toBe(true);
+    // Audit row 152b (N-31; D135, D136): the switch's ACK codes left the package with the worker's switch.
+    expect(Object.keys(protocol)).not.toContain('SWITCH_REFUSAL_CODES');
   });
 
   it('a warning names ONE device by its ID and says which cause it is: never a null subject, never a role (D84 R-1, R-2)', () => {
@@ -292,7 +305,7 @@ describe('the messages', () => {
     // inside version 4. Each is a fault of a CAMERA under the existing code - no microphone reason, no advice - and
     // a fixed word: a member-like word that is not of the list (a path, a lower-case form, a suffix) is no message.
     const added = ['CAMERA_ANNOUNCE_NOT_MATCHED', 'CAMERA_ANNOUNCE_NOT_SEEN', 'CAMERA_NO_PICTURE'] as const;
-    expect(v).toBe(5);
+    expect(v).toBe(6);
     expect(Object.values(CaptureWarningReason)).toHaveLength(11);
     for (const reason of added) {
       expect(CaptureWarningReason[reason], reason).toBe(reason);
@@ -390,11 +403,11 @@ describe('the messages', () => {
     ];
     for (const frame of today) {
       expect(decodeWorkerLine(JSON.stringify({ v: 4, ...frame })), frame.type).toEqual({ ok: false, violation: FrameViolation.NOT_A_MESSAGE });
-      // CONTROL: the same frame under version 5 is a message (the version is what refuses it).
-      expect(decodeWorkerLine(JSON.stringify({ v: 5, ...frame })).ok, frame.type).toBe(true);
+      // CONTROL: the same frame under the version in force is a message (the version is what refuses it). Row 144: `v` (6).
+      expect(decodeWorkerLine(JSON.stringify({ v, ...frame })).ok, frame.type).toBe(true);
     }
     const version4Level = { deviceId: 'MIC-01', role: 'PRIMARY', dbfs: -20, clipped: false, ratePpm: 0 };
-    const telemetry = (level: unknown) => decodeWorkerLine(JSON.stringify({ v: 5, type: 'TELEMETRY', sessionId: 'S-1', levels: [level], ingest: [], fragments: [], clocks: [], tapActive: false })).ok;
+    const telemetry = (level: unknown) => decodeWorkerLine(JSON.stringify({ v, type: 'TELEMETRY', sessionId: 'S-1', levels: [level], ingest: [], fragments: [], clocks: [], tapActive: false })).ok;
     expect(telemetry(version4Level)).toBe(false);
     expect(telemetry({ ...version4Level, ...accountOfALevel })).toBe(true);
     expect(decodeSupervisorLine(JSON.stringify({ v: 4, type: 'STOP', sessionId: 'S-1', correlationId: 'c', reason: 'STOPPED' })).ok).toBe(false);
@@ -715,20 +728,87 @@ describe('the plan', () => {
     expect(bad.map((value) => CapturePlanSchema.safeParse(value).success)).toEqual(bad.map(() => false));
   });
 
-  it('D61 (2026-11-04): the plan carries FOUR numbered microphone channels exactly once each - three or five are no plan', () => {
+  it('D61 (2026-11-04) and version 6 (row 144, F-1): each numbered microphone channel at most once, every row with its own file - a fifth channel or a row without a file is no plan', () => {
     expect(CAPTURE_MIC_CHANNELS).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']);
     expect(CapturePlanSchema.safeParse(plan).success).toBe(true);
-    // CONTROL beside the refusals: every row without an outputPath is still a plan (the member is optional).
-    expect(CapturePlanSchema.safeParse({ ...plan, mics: plan.mics.map(({ outputPath: _out, ...mic }) => mic) }).success).toBe(true);
-    // Three channels: the fourth is missing (the server rule names all four exactly once).
-    expect(CapturePlanSchema.safeParse({ ...plan, mics: plan.mics.slice(0, 3) }).success).toBe(false);
+    // Version 6 (N-13): the per-channel file is REQUIRED - a row without it is no plan (CONTROL: the plan above has it on every row).
+    expect(CapturePlanSchema.safeParse({ ...plan, mics: plan.mics.map(({ outputPath: _out, ...mic }) => mic) }).success).toBe(false);
+    expect(CapturePlanSchema.safeParse({ ...plan, mics: [...plan.mics.slice(0, 3), { ...plan.mics[3]!, outputPath: undefined }] }).success).toBe(false);
+    // Version 6 (F-1): three rows are a plan when the missing channel belongs to no camera of the plan (MIC-04: the plan records VIDEO-01 and VIDEO-02 only).
+    expect(CapturePlanSchema.safeParse({ ...plan, mics: plan.mics.slice(0, 3) }).success).toBe(true);
+    // ... and no plan when a camera's own channel is missing and the camera does not say so (pair rule (b)).
     expect(CapturePlanSchema.safeParse({ ...plan, mics: plan.mics.slice(1) }).success).toBe(false);
     expect(CapturePlanSchema.safeParse({ ...plan, mics: [] }).success).toBe(false);
-    // Five rows: no fifth channel word exists, whatever the device.
-    expect(CapturePlanSchema.safeParse({ ...plan, mics: [...plan.mics, { deviceId: 'MIC-09', channel: 'MIC-05' as CapturePlan['mics'][number]['channel'], input: { kind: 'PCM_FIFO', path: '/data/run/S-1/MIC-09.pcm' } }] }).success).toBe(false);
+    // Five rows: no fifth channel word exists, whatever the device; a channel named twice is no plan.
+    expect(CapturePlanSchema.safeParse({ ...plan, mics: [...plan.mics, { deviceId: 'MIC-09', channel: 'MIC-05' as CapturePlan['mics'][number]['channel'], input: { kind: 'PCM_FIFO', path: '/data/run/S-1/MIC-09.pcm' }, outputPath: '/data/media/sessions/S-1/MIC-09.m4a' }] }).success).toBe(false);
     expect(CapturePlanSchema.safeParse({ ...plan, mics: [...plan.mics, { ...plan.mics[3]!, deviceId: 'MIC-09', input: { kind: 'PCM_FIFO', path: '/data/run/S-1/MIC-09.pcm' }, outputPath: '/data/media/sessions/S-1/MIC-09.m4a' }] }).success).toBe(false);
     // An unknown channel word is no row.
     expect(CapturePlanSchema.safeParse({ ...plan, mics: [{ ...plan.mics[0]!, channel: 'MIC-0A' }, ...plan.mics.slice(1)] }).success).toBe(false);
+  });
+
+  // ── Version 6 (audit 2026-11-05 row 144, C-P0-2a; D5 pairing; D27, D30 K-3; register N-12, N-13, N-32, N-33) ────
+  it('version 6: Pair N = VIDEO-0N <-> MIC-0N by number - the protocol restates the rule, and the missing-mic words are the manifest\'s two', () => {
+    expect(['VIDEO-01', 'VIDEO-02', 'VIDEO-03', 'VIDEO-04'].map(captureMicChannelOfVideoTrack)).toEqual(['MIC-01', 'MIC-02', 'MIC-03', 'MIC-04']);
+    // Near misses of a video track word have no pair.
+    for (const word of ['VIDEO-05', 'VIDEO-00', 'VIDEO-1', 'video-01', 'AUDIO-01', 'MIC-01', 'VIDEO-01 ', '']) expect(captureMicChannelOfVideoTrack(word), word).toBeUndefined();
+    expect(CAPTURE_PAIRED_MIC_MISSING_REASONS).toEqual(['NOT_ASSIGNED', 'NOT_OPENED']);
+  });
+
+  it('version 6: every camera row names the channel of its own pair - another channel, no member (the v5 five-member row) or a doubled channel is no plan', () => {
+    const [first, second] = [plan.cameras[0]!, plan.cameras[1]!];
+    const withCameras = (...cameras: unknown[]): unknown => ({ ...plan, cameras });
+    expect(CapturePlanSchema.safeParse(withCameras(first, second)).success).toBe(true);
+    // (a) a camera carries the microphone of its OWN pair: the next channel, a crossed pair, a channel word that is no channel.
+    expect(CapturePlanSchema.safeParse(withCameras({ ...first, micChannel: 'MIC-02' }, second)).success).toBe(false);
+    expect(CapturePlanSchema.safeParse(withCameras({ ...first, micChannel: 'MIC-02' }, { ...second, micChannel: 'MIC-01' })).success).toBe(false);
+    expect(CapturePlanSchema.safeParse(withCameras({ ...first, micChannel: 'MIC-05' }, second)).success).toBe(false);
+    expect(CapturePlanSchema.safeParse(withCameras({ ...first, micChannel: null }, second)).success).toBe(false);
+    // The v5 camera row (five members: no micChannel, no micMissing) is no row of version 6.
+    const { micChannel: _channel, micMissing: _missing, ...fiveMembers } = first;
+    expect(Object.keys(fiveMembers)).toHaveLength(5);
+    expect(CapturePlanSchema.safeParse(withCameras(fiveMembers, second)).success).toBe(false);
+    expect(CapturePlanSchema.safeParse(withCameras({ ...fiveMembers, micChannel: 'MIC-01' }, second)).success).toBe(false);
+    // A track that is no video track has no pair, whatever channel the row names.
+    expect(CapturePlanSchema.safeParse(withCameras({ ...first, trackId: 'VIDEO-05' }, second)).success).toBe(false);
+    // (c) two cameras on one channel: never a plan - two rows of one track, or a second track on the first track's channel.
+    expect(CapturePlanSchema.safeParse(withCameras(first, { ...second, trackId: 'VIDEO-01', micChannel: 'MIC-01' })).success).toBe(false);
+    expect(CapturePlanSchema.safeParse(withCameras(first, { ...second, micChannel: 'MIC-01' })).success).toBe(false);
+  });
+
+  it('version 6 (D30 K-3): a camera whose paired channel is not in the plan says why, and only then - the recording starts with a silent track', () => {
+    const [first, second] = [plan.cameras[0]!, plan.cameras[1]!];
+    const withoutChannel = (channel: string): CapturePlan['mics'] => plan.mics.filter((mic) => mic.channel !== channel);
+    for (const reason of CAPTURE_PAIRED_MIC_MISSING_REASONS) {
+      // Channel 2 could not be opened (or sits empty): VIDEO-02 states it and the plan is taken.
+      expect(CapturePlanSchema.safeParse({ ...plan, cameras: [first, { ...second, micMissing: reason }], mics: withoutChannel('MIC-02') }).success, reason).toBe(true);
+      // A reason while the row IS in the plan is no plan (the silent track would hide a recorded channel).
+      expect(CapturePlanSchema.safeParse({ ...plan, cameras: [first, { ...second, micMissing: reason }] }).success, reason).toBe(false);
+    }
+    // Near misses of the two words.
+    for (const word of ['NOT_OPEN', 'not_opened', 'MISSING', '', 'NOT_ASSIGNED ']) expect(CapturePlanSchema.safeParse({ ...plan, cameras: [first, { ...second, micMissing: word }], mics: withoutChannel('MIC-02') }).success, word).toBe(false);
+    // The member is required: absent is not null.
+    const { micMissing: _missing, ...noStatement } = second;
+    expect(CapturePlanSchema.safeParse({ ...plan, cameras: [first, noStatement] }).success).toBe(false);
+    // Every microphone gone: each camera states it and the cameras still record (D30: an interview is never lost to a microphone).
+    const silent = { ...plan, cameras: [{ ...first, micMissing: 'NOT_OPENED' }, { ...second, micMissing: 'NOT_ASSIGNED' }], mics: [] };
+    expect(CapturePlanSchema.safeParse(silent).success).toBe(true);
+    // ... but without channel 1 there is nothing to transcribe: a PCM tap needs the MIC-01 row (R-T1). CONTROL: with the row, the tap is taken.
+    expect(CapturePlanSchema.safeParse({ ...silent, pcmTapPath: '/data/run/S-1/tap.pcm' }).success).toBe(false);
+    expect(CapturePlanSchema.safeParse({ ...plan, pcmTapPath: '/data/run/S-1/tap.pcm' }).success).toBe(true);
+    expect(CapturePlanSchema.safeParse({ ...plan, cameras: [{ ...first, micMissing: 'NOT_OPENED' }, second], mics: withoutChannel('MIC-01'), pcmTapPath: '/data/run/S-1/tap.pcm' }).success).toBe(false);
+    expect(CapturePlanSchema.safeParse({ ...plan, cameras: [{ ...first, micMissing: 'NOT_OPENED' }, second], mics: withoutChannel('MIC-01') }).success).toBe(true);
+    // `activeMic` stays MIC-01 (R-T1) even when the row is not there.
+    expect(CapturePlanSchema.safeParse({ ...silent, activeMic: 'MIC-02' }).success).toBe(false);
+  });
+
+  it('version 6 (N-32): a FRAGMENT_CHECKPOINT may name a microphone (its channel file), with keyframe false; a version-5 START is no command', () => {
+    const ok = (record: unknown): boolean => decodeWorkerLine(JSON.stringify({ v, type: 'RECORD', sessionId: 'S-1', seq: 1, record })).ok;
+    expect(ok({ ...checkpointRecord, deviceId: 'MIC-03', keyframe: false })).toBe(true);
+    expect(ok({ ...checkpointRecord, deviceId: 'PRIMARY', keyframe: false })).toBe(false);
+    const start = { type: 'START', sessionId: 'S-1', correlationId: 'cap:S-1:1:1', attempt: 1, plan };
+    expect(decodeSupervisorLine(JSON.stringify({ v, ...start })).ok).toBe(true);
+    expect(decodeSupervisorLine(JSON.stringify({ v: 5, ...start })).ok).toBe(false);
+    expect(decodeWorkerLine(JSON.stringify({ v: 5, type: 'HEARTBEAT', counter: 1 })).ok).toBe(false);
   });
 });
 

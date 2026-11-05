@@ -101,13 +101,13 @@ describe('rule M3: who may call is stage 6, only', () => {
   it('the principal is only ever handed on, as it is, to the engine: every use of it is an argument of a hosted command', () => {
     const uses = places(/\brequest\s*\.\s*principal\b/g);
     expect(files(/\brequest\s*\.\s*principal\b/g)).toEqual(['src/modules/sessions/routes.ts']);
-    // Task 3 row 71: operation 81 hands it on, as it is, to the capture-session unit (which names the actor and the sending device of the switch).
-    const handedOn = places(/\.\s*(?:command|switchAudioSource)\s*\(\s*request\s*\.\s*principal\s*,/g);
+    // Audit row 149 (N-29): operation 81 is retired - its route refuses before anything, so it hands the principal to nobody.
+    const handedOn = places(/\.\s*command\s*\(\s*request\s*\.\s*principal\s*,/g);
     expect(handedOn).toEqual(uses);
-    expect(places(/\.\s*switchAudioSource\s*\(\s*request\s*\.\s*principal\s*,/g)).toHaveLength(1);
+    expect(places(/\.\s*switchAudioSource\s*\(/g)).toEqual([]);
     // Thirteen call sites: the three steps of the composite start, the shared handler of the
     // three transitions, and one for each of the other nine commands.
-    expect(uses).toHaveLength(14);
+    expect(uses).toHaveLength(13);
   });
 
   it('the module writes no denial row and takes no place in the denial budget: both are the guard\'s', () => {
@@ -136,9 +136,9 @@ describe('rules M4 and M5: a command is the engine host\'s', () => {
     expect(routes.match(/\bapp\s*\.\s*engine\s*\.\s*command\s*\(/g)).toHaveLength(3);
     expect(routes.match(/\bapp\s*\.\s*engine\s*\.\s*run\s*\(/g)).toHaveLength(1);
     // The three reads of the committed state: the open session after a create, the monitor, and
-    // the open session of operation 82 (integration pass D4). Pass D6 (F-D4-4): + 2 in operation 81's
-    // one line - the open session and the selector, for `409 AUDIO_SOURCE_CONFLICT` in simulated capture.
-    expect(routes.match(/\bapp\s*\.\s*engine\s*\.\s*(?:state|slice)\s*\(/g)).toHaveLength(5);
+    // the open session of operation 82 (integration pass D4). Audit row 149: operation 81's two reads (pass D6) are gone -
+    // the retired route reads nothing.
+    expect(routes.match(/\bapp\s*\.\s*engine\s*\.\s*(?:state|slice)\s*\(/g)).toHaveLength(3);
     expect(routes.match(/\bapp\s*\.\s*engine\s*\.\s*\w+/g)?.every((call) => /\.(?:command|run|state|slice)$/.test(call))).toBe(true);
   });
 
@@ -207,9 +207,8 @@ describe('decision D94: one error precedence for the two texts the hosted action
     expect(routes()).toMatch(/const reason = body\.kind === 'VALID' \? body\.value\.reason : NO_TEXT;/);
     expect(routes()).toMatch(/const text = body\.kind === 'VALID' \? body\.value\.text : NO_TEXT;/);
     // In those two handlers nothing else of the body is read: the action gets `reason` or `text`.
-    // (the sixth read is operation 81's `inputId`, validated by the route's body schema; the seventh
-    // is the same `inputId` in the 409 rule of pass D6)
-    expect(routes().match(/\brequest\s*\.\s*body\b/g)).toHaveLength(7);
+    // (audit row 149: operation 81's two reads of `inputId` are gone - its retired route reads no body; the schema still checks it)
+    expect(routes().match(/\brequest\s*\.\s*body\b/g)).toHaveLength(5);
     expect(places(/\brequest\s*\.\s*body\b/g).every((place) => place.startsWith('src/modules/sessions/routes.ts'))).toBe(true);
   });
 

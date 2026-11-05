@@ -144,6 +144,7 @@ function replicatedMembers(row: EvidenceItem, replicated: EvidenceItem | undefin
   if (held.audioSourceIntervals !== undefined) next.audioSourceIntervals = held.audioSourceIntervals;
   if (held.files !== undefined) next.files = held.files;
   if (held.transcriptModel !== undefined) next.transcriptModel = held.transcriptModel;
+  if (held.audioTracksMissing !== undefined) next.audioTracksMissing = held.audioTracksMissing; // row 159 (D5)
   if (held.signature.developmentKey !== undefined) next.signature = { ...next.signature, developmentKey: held.signature.developmentKey };
   return next as EvidenceItem;
 }

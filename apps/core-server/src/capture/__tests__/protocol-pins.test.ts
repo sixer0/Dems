@@ -13,6 +13,7 @@ import {
   CAPTURE_MEDIA_PORT_MAX,
   CAPTURE_MEDIA_PORT_MIN,
   CAPTURE_MIC_ACCOUNT_PERIOD_SAMPLES,
+  CAPTURE_PAIRED_MIC_MISSING_REASONS,
   CAPTURE_PROTOCOL_VERSION,
   CAPTURE_SWITCH_BOUND_US,
   CAPTURE_WORKER_SETTINGS,
@@ -24,22 +25,26 @@ import {
   CaptureWarningCode,
   CaptureWarningReason,
   LIBAVFORMAT_VERSION_MISMATCH,
-  SWITCH_REFUSAL_CODES,
   WARNING_REASONS_OF,
   WorkerMessageType,
 } from '@dems/capture-protocol';
 import { CAPTURE_AAC_FRAME_SAMPLES, CAPTURE_AUDIO_CHANNELS, CAPTURE_AUDIO_SAMPLE_RATE_HZ, CAPTURE_MEDIA_TIME_ORIGIN_SAMPLES, MIC_DISCONNECT_DEBOUNCE_MS, MIC_SILENCE_DBFS, MIC_SILENCE_DURATION_MS } from '@dems/shared/api';
 import { MicRole } from '@dems/shared/domain';
+import { MANIFEST_AUDIO_TRACK_MISSING_REASONS } from '@dems/shared/evidence-package';
 import { VERIFY_MAX_OPEN_FRAGMENT_BYTES } from '@dems/shared/evidence-verify';
 import { FaultKind } from '@dems/shared/sim';
 import { describe, expect, it } from 'vitest';
-import { RELEASE_WORKER_VERSION } from '../boot/checks';
+import { CAPTURE_WORKER_VERSION, RELEASE_WORKER_VERSION } from '../boot/checks';
 import { CAPTURE_WORKER_PROCESS_SETTINGS } from '../index';
 import { SEALING_MAX_FRAGMENT_BYTES } from '../../sealing';
 
 describe('what the capture protocol restates from the shared vocabulary', () => {
   it('the mic roles are exactly the shared MicRole, name by name', () => {
     expect(CaptureMicRole).toEqual(MicRole);
+  });
+
+  it('version 6 (row 144, D30 K-3): the words of a missing paired microphone are the manifest\'s missing-mic statement words, in order', () => {
+    expect(CAPTURE_PAIRED_MIC_MISSING_REASONS).toEqual(MANIFEST_AUDIO_TRACK_MISSING_REASONS);
   });
 
   it('every warning code is a shared fault kind of the same name, and they are the two capture faults of schema v2', () => {
@@ -95,8 +100,9 @@ describe('what the C capture worker restates from the protocol package and the c
   });
 
   // Blueprint row 71 (worker half): protocol version 4; row N13: version 5. What the worker restates of it is held here.
-  it('version 5: every warning reason, interval reason and switch refusal the worker writes is one of the package, and each reason is written', () => {
-    expect(CAPTURE_PROTOCOL_VERSION).toBe(5);
+  it('version 5: every warning reason and interval reason the worker writes is one of the package, and each warning reason is written (version 6, row 152b: the switch and its refusals are gone)', () => {
+    // Audit 2026-11-05 row 144 (C-P0-2a; D25 N5, D28 DQ-4): version 6 - the plan shape of the camera-microphone pairs.
+    expect(CAPTURE_PROTOCOL_VERSION).toBe(6);
     const reasons = Object.values(CaptureWarningReason) as string[];
     // Every reason the package names is a literal of the worker's sources, and the mic warnings name their code.
     for (const reason of reasons) expect(all, reason).toContain(`"${reason}"`);
@@ -107,11 +113,17 @@ describe('what the C capture worker restates from the protocol package and the c
     // The frame itself: reason before state, a subject that is always a string, and no way to write a null one.
     expect(all).toContain('\\"code\\":\\"%s\\",\\"reason\\":\\"%s\\",\\"state\\":\\"%s\\",\\"subject\\":\\"%s\\"');
     expect(all).not.toContain('\\"subject\\":null');
-    // Interval reasons: the start and the operator, nothing else.
+    // Interval reasons: version 6 (N-31; audit rows 149 and 152b, D135, D136) - the start only. The operator's switch is
+    // retired in the worker as in the supervisor: the worker writes no OPERATOR_SWITCH interval, and the package keeps
+    // that word only so that the supervisor refuses such a record by name (SWITCH_NOT_COMMANDED).
     const intervalReasons = [...new Set([...all.matchAll(/\\"reason\\":\\"([A-Z_]+)\\",\\"correlationId\\"/g)].map((match) => match[1] ?? ''))].sort();
-    expect(intervalReasons).toEqual(Object.values(AudioSourceIntervalReason).sort());
-    // Switch refusals the worker acknowledges with are the package's list.
-    for (const code of SWITCH_REFUSAL_CODES) expect(all, code).toContain(`"${code}`);
+    expect(intervalReasons).toEqual([AudioSourceIntervalReason.SESSION_START]);
+    expect(Object.values(AudioSourceIntervalReason)).toContain(AudioSourceIntervalReason.OPERATOR_SWITCH);
+    // The worker reads no switch command and acknowledges with none of the switch's refusal codes (they left the package).
+    for (const word of ['SWITCH_AUDIO_SOURCE', 'OPERATOR_SWITCH', 'NO_SUCH_MIC', 'SWITCH_PENDING', 'SELECTOR_COMMAND_FAILED']) expect(all, word).not.toContain(`"${word}`);
+    // CONTROL: the same reader finds the literals the worker does write.
+    expect(all).toContain('"START"');
+    expect(all).toContain('\\"reason\\":\\"SESSION_START\\"');
     // The input chunk and the switch bound.
     expect(define('QUANTUM')).toBe(String(CAPTURE_AUDIO_INPUT_QUANTUM_SAMPLES));
     expect(CAPTURE_SWITCH_BOUND_US).toBe(Math.floor((CAPTURE_AAC_FRAME_SAMPLES * 1_000_000) / CAPTURE_AUDIO_SAMPLE_RATE_HZ));
@@ -154,6 +166,9 @@ describe('what the C capture worker restates from the protocol package and the c
   it('R63-04 / R63-06: the release worker names itself with a word of the allowlist, and a build with any proof switch does not', () => {
     const version = /^#define WORKER_VERSION "([^"]+)"/m.exec(header)?.[1] ?? '';
     expect(version).toMatch(RELEASE_WORKER_VERSION);
+    // Audit 2026-11-05 row 144 (LOCKSTEP, D25 N5, D28 DQ-4): worker.h and the Core move together - 0.8.0 with protocol 6.
+    expect([version, define('CAPTURE_PROTOCOL_VERSION')]).toEqual([CAPTURE_WORKER_VERSION, String(CAPTURE_PROTOCOL_VERSION)]);
+    expect([CAPTURE_WORKER_VERSION, CAPTURE_PROTOCOL_VERSION]).toEqual(['capture-worker/0.8.0', 6]);
     expect(`${version}-PROOF`).not.toMatch(RELEASE_WORKER_VERSION);
     expect(source('ipc.c')).toContain('#define HELLO_WORKER_VERSION WORKER_VERSION "-PROOF"');
   });

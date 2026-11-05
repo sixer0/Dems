@@ -5,9 +5,11 @@
 import { createHash } from 'node:crypto';
 import { CAPTURE_CHAIN_GENESIS_SHA256, CaptureRecordSchema, type CaptureRecord } from '@dems/capture-protocol';
 import { describe, expect, it } from 'vitest';
-import { VIDEO_TRACK_ID } from '../../../db/schema/value-sets';
+import { TRACK_ID, VIDEO_TRACK_ID } from '../../../db/schema/value-sets';
 import {
+  AUDIO_FRAGMENT_TRACK_IDS,
   CHAIN_GENESIS_SHA256,
+  FRAGMENT_TRACK_IDS,
   FragmentInsertOutcome,
   RecordingFragmentStoreError,
   VIDEO_TRACK_IDS,
@@ -16,6 +18,7 @@ import {
   fragmentRowOf,
   invalidMember,
   type FragmentRecorderReport,
+  type FragmentTrackId,
   type Queryable,
   type RecordingFragment,
   type VideoTrackId,
@@ -88,6 +91,9 @@ describe('recording_fragments store: the statements', () => {
 
   it("the module's own lists ARE the schema's track set and the protocol's chain anchor (the module imports neither)", () => {
     expect([...VIDEO_TRACK_IDS]).toEqual([...VIDEO_TRACK_ID]);
+    // D28 / migration 0044 (row 146): the fragment track list is the schema's eight tracks, camera files first.
+    expect([...FRAGMENT_TRACK_IDS]).toEqual([...TRACK_ID]);
+    expect([...AUDIO_FRAGMENT_TRACK_IDS]).toEqual(['AUDIO-01', 'AUDIO-02', 'AUDIO-03', 'AUDIO-04']);
     expect(CHAIN_GENESIS_SHA256).toBe(CAPTURE_CHAIN_GENESIS_SHA256);
     expect(CHAIN_GENESIS_SHA256).toBe(createHash('sha256').update('').digest('hex'));
   });
@@ -124,6 +130,14 @@ describe('recording_fragments store: what it sends and how it answers', () => {
     expect(calls).toEqual([{ text: INSERT_RECORDING_FRAGMENT, values: [SESSION, 'VIDEO-01', 1, row.byteOffset, row.byteLength, 0, 2_000, row.sha256, row.chainHash, row.durableAt, CHAIN_GENESIS_SHA256] }]);
   });
 
+  it.each([...AUDIO_FRAGMENT_TRACK_IDS])('D28 (row 146): a fragment of the microphone channel file %s is a fragment row and is sent like a camera fragment', async (trackId) => {
+    const audio = fragmentRowOf(SESSION, trackId, checkpoints('MIC-01', 1)[0]!);
+    expect(invalidMember(audio)).toBeNull();
+    const { connection: pool, calls } = connection([{ rows: [{ seq: 1 }], rowCount: 1 }]);
+    expect(await createRecordingFragmentStore(pool).insert(audio)).toBe('INSERTED');
+    expect(calls).toEqual([{ text: INSERT_RECORDING_FRAGMENT, values: [SESSION, trackId, 1, audio.byteOffset, audio.byteLength, 0, 2_000, audio.sha256, audio.chainHash, audio.durableAt, CHAIN_GENESIS_SHA256] }]);
+  });
+
   it('nothing inserted and the SAME fragment stored: ALREADY_STORED (a later durable instant of the replay is no difference)', async () => {
     const { connection: pool } = connection([{ rows: [], rowCount: 0 }, { rows: [stored], rowCount: 1 }]);
     expect(await createRecordingFragmentStore(pool).insert({ ...row, durableAt: row.durableAt + 5_000 })).toBe('ALREADY_STORED');
@@ -152,7 +166,10 @@ describe('recording_fragments store: what it sends and how it answers', () => {
   });
 
   it.each([
-    ['trackId', { trackId: 'AUDIO-01' as VideoTrackId }],
+    // D28 / 0044 (row 146): AUDIO-01..04 are fragment tracks now; a fifth channel and a mic slot name are not.
+    ['trackId', { trackId: 'AUDIO-05' as VideoTrackId }],
+    ['trackId', { trackId: 'MIC-01' as VideoTrackId }],
+    ['trackId', { trackId: 'VIDEO-05' as VideoTrackId }],
     ['seq', { seq: 0 }],
     ['seq', { seq: 1.5 }],
     ['byteOffset', { byteOffset: -1 }],
@@ -291,5 +308,51 @@ describe('the recorder: checkpoint records in, rows out, in order', () => {
     await recorder.idle();
     expect(reports).toEqual(['FRAGMENT_CAMERA_UNKNOWN', 'FRAGMENT_ROW_NOT_STORED']);
     expect(recorder.status()).toMatchObject({ pending: 0, notStored: 3, behind: ['VIDEO-01'] });
+  });
+
+  // Row 148 (D5; S5 §2.3, AC-4.8; hand-off H-1 of row 146): protocol 6 lets a FRAGMENT_CHECKPOINT name a
+  // MICROPHONE of the plan (its channel file). The session hands the recorder the plan's map with each
+  // microphone on the sealed track of its CHANNEL (`AUDIO-0N`), so its checkpoints are `AUDIO-0N` rows
+  // under the same zero-gap rule, and `behind` / the reports name that track.
+  it('row 148: the checkpoints of a channel file become AUDIO-0N rows beside the camera rows, each file in its own order; a mic outside the map is still not written', async () => {
+    const store = memoryStore();
+    const reports: FragmentRecorderReport[] = [];
+    // The device is the microphone, the track is its channel's: MIC-07 sits on channel MIC-02 -> AUDIO-02.
+    const tracks = new Map<string, FragmentTrackId>([['CAM-01', 'VIDEO-01'], ['MIC-05', 'AUDIO-01'], ['MIC-07', 'AUDIO-02']]);
+    const recorder = createFragmentRecorder({ sessionId: SESSION, tracks, store, report: (entry) => void reports.push(entry) });
+    const audio = (deviceId: string, count: number) => checkpoints(deviceId, count).map((record) => ({ ...record, keyframe: false }));
+    const video = checkpoints('CAM-01', 2);
+    const one = audio('MIC-05', 2);
+    const two = audio('MIC-07', 2);
+    // Each record is one the protocol accepts (an audio fragment is no keyframe).
+    for (const record of [...one, ...two]) expect(CaptureRecordSchema.safeParse(record).success).toBe(true);
+    for (let n = 0; n < 2; n += 1) {
+      expect(recorder.take(event(video[n]!))).toBe(true);
+      expect(recorder.take(event(one[n]!))).toBe(true);
+      expect(recorder.take(event(two[n]!))).toBe(true);
+    }
+    await recorder.idle();
+    expect(store.rows.map((row) => `${row.trackId}:${row.seq}`)).toEqual(['VIDEO-01:1', 'AUDIO-01:1', 'AUDIO-02:1', 'VIDEO-01:2', 'AUDIO-01:2', 'AUDIO-02:2']);
+    expect(store.rows[4]).toEqual(fragmentRowOf(SESSION, 'AUDIO-01', one[1]!));
+    expect(recorder.status()).toEqual({ pending: 0, inserted: 6, alreadyStored: 0, notStored: 0, behind: [] });
+    // CONTROL: a microphone the plan does not name (MIC-09) is turned away and said once, like a stranger camera.
+    expect(recorder.take(event(audio('MIC-09', 1)[0]!))).toBe(false);
+    expect(reports.map((entry) => [entry.code, entry.trackId])).toEqual([['FRAGMENT_CAMERA_UNKNOWN', null]]);
+  });
+
+  it('row 148: a channel file whose write fails is behind under its AUDIO-0N track, and the camera file goes on', async () => {
+    const store = memoryStore({ failAt: 2 }); // the second attempt: AUDIO-03 fragment 1
+    const reports: FragmentRecorderReport[] = [];
+    const recorder = createFragmentRecorder({ sessionId: SESSION, tracks: new Map<string, FragmentTrackId>([['CAM-01', 'VIDEO-01'], ['MIC-03', 'AUDIO-03']]), store, report: (entry) => void reports.push(entry) });
+    const video = checkpoints('CAM-01', 2);
+    const mic = checkpoints('MIC-03', 2).map((record) => ({ ...record, keyframe: false }));
+    for (let n = 0; n < 2; n += 1) {
+      recorder.take(event(video[n]!));
+      recorder.take(event(mic[n]!));
+    }
+    await recorder.idle();
+    expect(store.rows.map((row) => `${row.trackId}:${row.seq}`)).toEqual(['VIDEO-01:1', 'VIDEO-01:2']);
+    expect(recorder.status()).toEqual({ pending: 0, inserted: 2, alreadyStored: 0, notStored: 2, behind: ['AUDIO-03'] });
+    expect(reports.map((entry) => [entry.code, entry.trackId, entry.seq])).toEqual([['FRAGMENT_ROW_NOT_STORED', 'AUDIO-03', 1]]);
   });
 });

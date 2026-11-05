@@ -6,15 +6,16 @@
 # word as the new one; the Core could not tell them apart. The version word now moves with a release, and every
 # release build of build/capture-worker gets a stamp file BESIDE it: <program>.stamp. The Core reads the stamp at
 # boot (row 88) and refuses a program whose stamp is missing, names another version or protocol, or names another
-# program file than the one in place. The stamp travels outside HELLO on purpose: the capture protocol stays 5 (D29 Q7).
+# program file than the one in place. The stamp travels outside HELLO on purpose: the protocol did not move for it (D29 Q7;
+# it moved to 6 with the camera-microphone pairs, row 144, and the stamp states whatever worker.h defines).
 #
 #   sh stamp.sh <program> <source file>...   writes <program>.stamp (run by the Makefile after every link of
 #                                            build/capture-worker; run from apps/capture-worker)
 #   sh stamp.sh --selftest                   the format and the refusals of this script, on scratch files
 #
 # THE FORMAT (W8): ASCII, LF line ends, exactly four key=value lines in this order:
-#   workerVersion=<WORKER_VERSION of src/worker.h>          e.g. capture-worker/0.7.0
-#   protocolVersion=<CAPTURE_PROTOCOL_VERSION of src/worker.h> e.g. 5
+#   workerVersion=<WORKER_VERSION of src/worker.h>          e.g. capture-worker/0.8.0
+#   protocolVersion=<CAPTURE_PROTOCOL_VERSION of src/worker.h> e.g. 6
 #   sourceSha256=<64 lowercase hex>   the sha256 of the LISTING `sha256sum <source file>...` (one line
 #                                     "<64 hex><two spaces><path>\n" per file, in the order given, paths as given,
 #                                     relative to apps/capture-worker). The Makefile gives $(SRC) $(HDR) Makefile.

@@ -20,6 +20,7 @@ import {
   SOURCES_STATE_REPORT,
   TRANSCRIPT_STATE_REPORT,
   VERIFY_FAILURES,
+  VERIFY_NOTICE,
   VERIFY_V2_CHECKS,
   VerifiedSourcesState,
   VerifiedTranscriptState,
@@ -56,6 +57,15 @@ describe('the value sets of the answer are the verifier\'s', () => {
     for (const line of Object.values(TRANSCRIPT_STATE_REPORT)) expect(state.safeParse(line).success, line).toBe(true);
     const sources = EvidenceVerifyResultSchema.shape.sources.unwrap().shape.report;
     for (const line of Object.values(SOURCES_STATE_REPORT)) expect(sources.safeParse(line).success, line).toBe(true);
+  });
+
+  it('row 160 (D133): the notices bound is one entry per notice code - all 10 codes fit, an eleventh entry does not', () => {
+    const codes = Object.values(VERIFY_NOTICE);
+    expect(codes).toHaveLength(10);
+    const notices = EvidenceVerifyResultSchema.shape.notices.unwrap();
+    const all = codes.map((code) => ({ code, report: `The ${code} line.` }));
+    expect(notices.safeParse(all).success).toBe(true);
+    expect(notices.safeParse([...all, all[0]]).success).toBe(false);
   });
 });
 

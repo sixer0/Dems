@@ -47,7 +47,7 @@ import { PackageFile, cameraFileName, cameraFilePath, parseManifestV2, type Mani
 import { verifyPackageV2, type FragmentOpener, type PackageVerifyResult } from '@dems/shared/evidence-verify';
 import { DEMO_TAMPERED_EVIDENCE_SEQ, DEMO_TAMPERED_FRAGMENT_SEQ, DEMO_TAMPERED_FRAGMENT_TRACK, type CompleteSealInput } from '@dems/shared/sim';
 import { corePorts, sessionPackageDir } from '../../evidence-verify';
-import { VIDEO_TRACK_IDS, type RecordingFragment, type VideoTrackId } from '../../modules/recording-fragments';
+import { VIDEO_TRACK_IDS, type AnyRecordingFragment, type FragmentTrackId, type VideoTrackId } from '../../modules/recording-fragments';
 
 /** D60 (2026-11-04): the camera files the demonstration corpus records - the pre-D60 built-in pair, the list THIS corpus names at its start (a manifest names its own list and stays valid). */
 const DEMO_SEAL_TRACKS: readonly VideoTrackId[] = [VIDEO_TRACK_IDS[0]!, VIDEO_TRACK_IDS[1]!];
@@ -364,7 +364,8 @@ export async function sealDemoPackages(options: DemoSealOptions, items: readonly
       }
 
       // 2. The product pipeline, with the journal, the rows and the engine of this one run in memory.
-      const rows = new Map<VideoTrackId, RecordingFragment[]>(DEMO_SEAL_TRACKS.map((trackId) => [trackId, []])); // D60 (2026-11-04): the session's own two tracks
+      // Row 153 (D118 H-2): the fake of the pipeline's port is keyed by the eight tracks of 0044; the demo seals only its two cameras.
+      const rows = new Map<FragmentTrackId, AnyRecordingFragment[]>(DEMO_SEAL_TRACKS.map((trackId) => [trackId, []])); // D60 (2026-11-04): the session's own two tracks
       const commits: CompleteSealInput[] = [];
       const journal = memoryJournal();
       const facts = factsOf(item, seconds);

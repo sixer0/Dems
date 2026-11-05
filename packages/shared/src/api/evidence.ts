@@ -24,7 +24,7 @@
  * to the item or a live session can play it.
  */
 import { z } from 'zod';
-import { TrackId, VIDEO_TRACK_IDS } from '../domain/enums'; // VIDEO_TRACK_IDS: D60 (2026-11-04)
+import { AUDIO_TRACK_IDS, TrackId, VIDEO_TRACK_IDS } from '../domain/enums'; // VIDEO_TRACK_IDS: D60 (2026-11-04); AUDIO_TRACK_IDS: row 154 (D5)
 import { AuditType, CaseType, EvidenceStatus, Permission } from '../sim/vocabulary';
 import { API_BASE_PATH, API_PAGE_LIMIT_DEFAULT } from './constants';
 import {
@@ -211,6 +211,9 @@ const verifySourceClass = () => z.enum(VERIFY_REPORT_SOURCE_CLASSES);
 // D60 (2026-11-04): the track domain widened to four. The enum is a SUPERSET, so a v2 package whose manifest names
 // its own two-track list still parses and verifies unchanged - the verifier reads that list as a prefix of the order.
 const cameraTrackId = () => z.enum(VIDEO_TRACK_IDS);
+// Audit 2026-11-05 row 154 (D5, spec S5 §5.4): a sealed MEDIA file of a `/2.1` package is a camera file or the audio file of a
+// pair (`fragments/AUDIO-0N.m4a`), checked by the same checks. A SUPERSET of the camera domain: every earlier answer still parses.
+const mediaFileTrackId = () => z.enum([...VIDEO_TRACK_IDS, ...AUDIO_TRACK_IDS] as const);
 
 const VerifyFindingSchema = z.strictObject({
   code: z.string().regex(/^[A-Z][A-Z0-9_]{2,63}$/).describe('What was found, e.g. `FRAGMENT_TAMPERED`, `SOURCE_CLASS_MISSING`.'),
@@ -233,7 +236,7 @@ const VerifyCheckSchema = z.strictObject({
 });
 
 const VerifyFragmentSchema = z.strictObject({
-  trackId: cameraTrackId(),
+  trackId: mediaFileTrackId(), // row 154 (D5): a fragment of a pair's audio file names its AUDIO-0N
   seq: count(),
   ok: z.literal(false),
   reason: verifyFailureClass(),
@@ -295,7 +298,7 @@ export const EvidenceVerifyResultSchema = z
       .array(
         z.strictObject({
           fileId: trimmedText(64),
-          trackId: cameraTrackId(), // D60 (2026-11-04): the four-track domain; a two-file legacy package answers its own two lines
+          trackId: mediaFileTrackId(), // D60 (2026-11-04): the four-track domain; a two-file legacy package answers its own two lines. Row 154 (D5): + AUDIO-01..04, the audio file of a pair
           storedOk: z.boolean().describe('Hash of the stored bytes matches the sealed value.'),
           plainOk: z.boolean().describe('Hash of the plaintext bytes matches the sealed value.'),
           plainChecked: z
@@ -308,7 +311,7 @@ export const EvidenceVerifyResultSchema = z
         }),
       )
       .optional()
-      .describe('Schema v2: one result per camera file, both hashes and the fragment chain.'),
+      .describe('Schema v2: one result per camera file, both hashes and the fragment chain; for a D5 package (manifest schema `dems.evidence-manifest/2.1`) followed by one result per sealed audio file of a camera-microphone pair (`trackId` AUDIO-0N, `fileId` `fragments/AUDIO-0N.m4a`).'),
     transcriptOk: z
       .boolean()
       .optional()
@@ -373,12 +376,13 @@ export const EvidenceVerifyResultSchema = z
             .string()
             .regex(/^[A-Z][A-Z0-9_]{2,63}$/)
             .describe(
-              '`AUDIT_EXTRACT_NOT_SIGNED` (every v2 result): `audit-session-extract.jsonl` is in the package and its content is covered by no hash and no signature. `EXPORT_FOLDER_UNEXPECTED_FILE` (only when there is such a file): the `export/` folder of the package holds a file that is no finished export - a `.partial` a stopped export left, a name no export writes, or anything in a sub-folder; the sealed set is not affected. `REVISION_APPEND_PENDING` (only while there is such a file): a transcript revision is being written - `transcript/transcript-revisions.json.next` lies in the package; it fails nothing; verify again shortly. `SIGNED_BY_COMPROMISED_KEY` (only for a package under such a key): the manifest or a transcript revision is signed by a key that was later MARKED COMPROMISED, so the signature alone proves nothing any more. **This notice is not "fails nothing"**: it stands beside a verdict that took the mark into account and its `report` says which - the answer is a pass ONLY when the package is the one this Core recorded when it sealed the item (its manifest digest and the head of its revisions equal what the Core stored), and a failure otherwise. An answer with this code is never a plain pass: a client shows it as a state of the signing key, not among what the signature does not cover. `HOST_PROFILE_NOT_ASKED` (only for a package whose manifest carries the member `hostProfileNotAsked`): the package was sealed by a production Core on a platform where the checks of the host profile are not run; it fails nothing and changes no verdict. `VIDEO_ABSENT_IN_SESSION` (only for a package whose manifest carries the member `absentInSession` on a track): a camera stopped delivering pictures inside the session; the line states per track how often, the two measured bounds of the time in ms, and whether the last absence ended; it fails nothing and changes no verdict. `AUDIO_ABSENT_ON_RESTART` (only for a package whose manifest carries the member `audio.absentOnRestart`): the capture was restarted inside the session and no sound was recorded across the restart; the line states how often and the two measured bounds of the time in ms; it fails nothing and changes no verdict. `AUDIO_SAMPLES_NOT_RECEIVED` (only for a package whose manifest carries the member `audio.samplesNotReceived`): the audio was captured on a path that does not deliver every sample (bench capture path of a Mac); the line states, in whole samples of the highest capture attempt, how many samples of the track arrived, how many are silence the recorder inserted, and the runs of 100 ms or more (listed, not listed, the longest) - or that the amount was measured up to a sample only, or not measured; sound that did not arrive is not in the recording, and the places of the inserted silence are not the places of the missing sound; it fails nothing and changes no verdict - a package can be untouched and its audio incomplete. `AUDIO_ONE_CAPTURE_GROUP` (only beside the previous one, when two of its records state the same capture group): PRIMARY and STANDBY were channels of one device recorded by one capture program, so a switch between them was not a switch to an independent source; it fails nothing and changes no verdict.',
+              '`AUDIT_EXTRACT_NOT_SIGNED` (every v2 result): `audit-session-extract.jsonl` is in the package and its content is covered by no hash and no signature. `EXPORT_FOLDER_UNEXPECTED_FILE` (only when there is such a file): the `export/` folder of the package holds a file that is no finished export - a `.partial` a stopped export left, a name no export writes, or anything in a sub-folder; the sealed set is not affected. `REVISION_APPEND_PENDING` (only while there is such a file): a transcript revision is being written - `transcript/transcript-revisions.json.next` lies in the package; it fails nothing; verify again shortly. `SIGNED_BY_COMPROMISED_KEY` (only for a package under such a key): the manifest or a transcript revision is signed by a key that was later MARKED COMPROMISED, so the signature alone proves nothing any more. **This notice is not "fails nothing"**: it stands beside a verdict that took the mark into account and its `report` says which - the answer is a pass ONLY when the package is the one this Core recorded when it sealed the item (its manifest digest and the head of its revisions equal what the Core stored), and a failure otherwise. An answer with this code is never a plain pass: a client shows it as a state of the signing key, not among what the signature does not cover. `HOST_PROFILE_NOT_ASKED` (only for a package whose manifest carries the member `hostProfileNotAsked`): the package was sealed by a production Core on a platform where the checks of the host profile are not run; it fails nothing and changes no verdict. `VIDEO_ABSENT_IN_SESSION` (only for a package whose manifest carries the member `absentInSession` on a track): a camera stopped delivering pictures inside the session; the line states per track how often, the two measured bounds of the time in ms, and whether the last absence ended; it fails nothing and changes no verdict. `AUDIO_ABSENT_ON_RESTART` (only for a package whose manifest carries the member `audio.absentOnRestart`): the capture was restarted inside the session and no sound was recorded across the restart; the line states how often and the two measured bounds of the time in ms; it fails nothing and changes no verdict. `AUDIO_SAMPLES_NOT_RECEIVED` (only for a package whose manifest carries the member `audio.samplesNotReceived`): the audio was captured on a path that does not deliver every sample (bench capture path of a Mac); the line states, in whole samples of the highest capture attempt, how many samples of the track arrived, how many are silence the recorder inserted, and the runs of 100 ms or more (listed, not listed, the longest) - or that the amount was measured up to a sample only, or not measured; sound that did not arrive is not in the recording, and the places of the inserted silence are not the places of the missing sound; it fails nothing and changes no verdict - a package can be untouched and its audio incomplete. `AUDIO_ONE_CAPTURE_GROUP` (only beside the previous one, when two of its records state the same capture group): PRIMARY and STANDBY were channels of one device recorded by one capture program, so a switch between them was not a switch to an independent source; it fails nothing and changes no verdict. `AUDIO_TRACKS_MISSING` (only for a package whose manifest carries the member `audioTracksMissing`, schema `dems.evidence-manifest/2.1`): the microphone of a camera-microphone pair did not record - none was assigned to its channel (`NOT_ASSIGNED`) or it could not be opened at the start (`NOT_OPENED`); the camera file of that pair holds a silent audio track, and the line names per pair its audio track, the reason and the camera; it fails nothing and changes no verdict.',
             ),
           report: trimmedText(256).describe('The report line of the notice.'),
         }),
       )
-      .max(9)
+      // One entry per notice code at most: 10 codes since row 154 (AUDIO_TRACKS_MISSING); D133 raised the bound 9 -> 10.
+      .max(10)
       .optional()
       .describe('Schema v2 (decision D178): what the package format does NOT cover. Named statements that fail nothing; a client shows each one and never collapses it. Absent for a v1 item.'),
   })

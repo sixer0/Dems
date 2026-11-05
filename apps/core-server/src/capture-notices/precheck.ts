@@ -78,11 +78,14 @@ export interface PrecheckGateOptions {
   readonly now?: () => number;
 }
 
-/** Audit fix row 128b: one reach reading of a pre-check run (the form of the engine's `CaptureDeviceReachReading`, row 127). */
+/**
+ * Audit fix row 128b: one reach reading of a pre-check run (the form of the engine's `CaptureDeviceReachReading`, row 127).
+ * Row M97 cycle 2 (D123): `reach: null` + `checkedAt: null` CLEARS a stated reading (a microphone listed present).
+ */
 export interface PrecheckReachReading {
   readonly deviceId: string;
-  readonly reach: 'REACHABLE' | 'NOT_REACHABLE';
-  readonly checkedAt: number;
+  readonly reach: 'REACHABLE' | 'NOT_REACHABLE' | null;
+  readonly checkedAt: number | null;
 }
 
 export interface PrecheckRun {
@@ -228,9 +231,20 @@ export function createPrecheckGate(options: PrecheckGateOptions): PrecheckGate {
       // (V98-13): nothing was asked, so nothing was reached or missed - those sources already read not online.
       if (options.noteReach !== undefined && sourceFailure === null) {
         const checkedAt = (options.now ?? Date.now)();
-        const reach: PrecheckReachReading[] = [...cameraIds, ...micIds].map((deviceId) => ({ deviceId, reach: readings.get(deviceId)?.reachable === true ? 'REACHABLE' : 'NOT_REACHABLE', checkedAt }));
+        // Row M97 cycle 2 (D123, RD-M97-1): ONE rule for microphones - a card LISTING (`enumerate()`, opens nothing) proves
+        // PRESENCE, not reach. Listed present: a stated NOT_REACHABLE is cleared to "not checked", nothing else is stated;
+        // not listed (or the listing failed): NOT_REACHABLE. Never REACHABLE for a microphone. A camera keeps its probe's
+        // verdict (its adapter READ is an answer). `online` and the start rule read the same readings as before.
+        const storedReach = (deviceId: string) => before.captureDevices.devices.find((device) => device.id === deviceId)?.reach ?? null;
+        const reach: PrecheckReachReading[] = [
+          ...cameraIds.map((deviceId): PrecheckReachReading => ({ deviceId, reach: readings.get(deviceId)?.reachable === true ? 'REACHABLE' : 'NOT_REACHABLE', checkedAt })),
+          ...micIds.flatMap((deviceId): PrecheckReachReading[] => {
+            if (readings.get(deviceId)?.reachable !== true) return [{ deviceId, reach: 'NOT_REACHABLE', checkedAt }];
+            return storedReach(deviceId) === 'NOT_REACHABLE' ? [{ deviceId, reach: null, checkedAt: null }] : [];
+          }),
+        ];
         try {
-          await options.noteReach(reach);
+          if (reach.length > 0) await options.noteReach(reach);
         } catch (err) {
           report({ source: SOURCE, code: PrecheckReportCode.REACH_NOT_WRITTEN, deviceId: null, ...ids, err });
         }

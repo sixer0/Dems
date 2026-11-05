@@ -131,8 +131,8 @@ async function rig(
   expect(captureFenceControl(app).operation).toBe(CaptureOperation.REAL_DEVELOPMENT);
 
   // The worker seam: the real supervisor on the fake worker, forwarded to the real engine as the capture unit does.
-  // A switch is acknowledged by the test, after the record the worker writes for it.
-  const fake = fakeLauncher({ ackSwitch: false, ...options.worker });
+  // Audit row 149 (N-31): the supervisor sends no switch any more, so the fake has no switch answer to set.
+  const fake = fakeLauncher({ ...options.worker });
   const order: string[] = [];
   const handles: SourceHandle[] = [];
   const supervisor = createCaptureSupervisor({ now: () => app.clock.now(), timers: createSystemTimers(), launcher: fake.launcher, ...(options.limits === undefined ? {} : { limits: options.limits }) });
@@ -362,30 +362,17 @@ describe('a real recording: start, the first durable fragment, the switch, the s
     await of.settled();
     expect(await of.rows('SELECT track_id, seq, byte_offset::int AS byte_offset FROM public.recording_fragments WHERE session_id = $1', [id])).toEqual([{ track_id: 'VIDEO-01', seq: 1, byte_offset: 1_231 }]);
 
-    // Operation 81: the command, then the record, then the acknowledgement; one unit holds the state, the rows and the audit row.
-    const switching = sessionCapture(of.app).switchAudioSource(of.investigator, id, 'MIC-02');
-    await flush();
-    const command = worker.commands('SWITCH_AUDIO_SOURCE')[0];
-    expect(command).toMatchObject({ to: 'STANDBY' });
-    worker.record({ ...startInterval, deviceId: 'MIC-02', role: 'STANDBY', index: 2, fromSample: 240_000, capturedAtMs: FIXED_NOW + 5_000, reason: 'OPERATOR_SWITCH', correlationId: command?.correlationId ?? null, appliedDelayUs: 9_000 });
-    worker.ack(true, undefined, command);
-    // file time = (240,000 + 1,024) samples = 5,021 ms
-    await expect(switching).resolves.toMatchObject({ sessionId: id, activeInputId: 'MIC-02', standbyInputId: 'MIC-01', intervalFromMs: 5_021 });
-    expect(await of.rows('SELECT seq, mic_device_id, role, from_media_ms::int AS from_ms, to_media_ms::int AS to_ms, switched_by, reason FROM public.session_audio_intervals WHERE session_id = $1 ORDER BY seq', [id])).toEqual([
-      { seq: 1, mic_device_id: 'MIC-01', role: 'PRIMARY', from_ms: 21, to_ms: 5_021, switched_by: null, reason: 'START' },
-      { seq: 2, mic_device_id: 'MIC-02', role: 'STANDBY', from_ms: 5_021, to_ms: null, switched_by: of.investigator.operatorId, reason: 'MANUAL' },
+    // Operation 81 is retired (audit row 149; N-29, N-31): the capture unit has no switch, the worker is sent none, and no
+    // interval row or AUDIO_SOURCE_SWITCHED row is written - the session keeps the one interval of its start.
+    expect('switchAudioSource' in sessionCapture(of.app)).toBe(false);
+    expect(worker.received.map((message) => message.type as string)).not.toContain('SWITCH_AUDIO_SOURCE');
+    expect(await of.rows('SELECT seq, mic_device_id, role, to_media_ms::int AS to_ms, reason FROM public.session_audio_intervals WHERE session_id = $1 ORDER BY seq', [id])).toEqual([
+      { seq: 1, mic_device_id: 'MIC-01', role: 'PRIMARY', to_ms: null, reason: 'START' },
     ]);
-    const switched = await of.rows<{ actor_id: string; device_id: string | null; details: Record<string, unknown> }>("SELECT actor_id, device_id, details FROM public.audit_log WHERE type = 'AUDIO_SOURCE_SWITCHED'");
-    expect(switched).toHaveLength(1);
-    // C3 §5.2: exactly these keys (a web console session names no sending device).
-    expect(Object.keys(switched[0]?.details ?? {}).sort()).toEqual(['fromInput', 'fromMs', 'toInput', 'toMs']);
-    expect(switched[0]).toMatchObject({ actor_id: of.investigator.operatorId, device_id: null, details: { fromInput: 'MIC-01', toInput: 'MIC-02', fromMs: 21, toMs: 5_021 } });
-    // Asking for the input that is active already changes and writes nothing.
-    await expect(sessionCapture(of.app).switchAudioSource(of.investigator, id, 'MIC-02')).resolves.toMatchObject({ activeInputId: 'MIC-02' });
-    expect(worker.commands('SWITCH_AUDIO_SOURCE')).toHaveLength(1);
+    expect(await of.rows("SELECT seq FROM public.audit_log WHERE type = 'AUDIO_SOURCE_SWITCHED'")).toEqual([]);
 
     // The stop: the worker is told FIRST; the sources are closed only after it has exited.
-    worker.record({ kind: 'AUDIO_TIMELINE_END', samples: 480_000, sampleRateHz: 48_000, intervals: 2 });
+    worker.record({ kind: 'AUDIO_TIMELINE_END', samples: 480_000, sampleRateHz: 48_000, intervals: 1 });
     await of.app.engine.run('sessions.stopSession', async (scope) => {
       sessionCapture(of.app).stopRequestedIn(scope, id);
       await scope.command(of.investigator, 'stopRecording', 'End of the interview');
@@ -402,8 +389,8 @@ describe('a real recording: start, the first durable fragment, the switch, the s
     await new Promise((resolve) => setTimeout(resolve, 500));
     expect(await faultRows(of)).toEqual([]);
     expect(of.app.engine.slice('faults').active.filter((fault) => fault.kind === 'CAPTURE_FAULT')).toEqual([]);
-    // The last interval is closed at the end of the audio timeline: (480,000 + 1,024) samples = 10,021 ms.
-    expect(await of.rows('SELECT to_media_ms::int AS to_ms FROM public.session_audio_intervals WHERE session_id = $1 AND seq = 2', [id])).toEqual([{ to_ms: 10_021 }]);
+    // The last (the one) interval is closed at the end of the audio timeline: (480,000 + 1,024) samples = 10,021 ms.
+    expect(await of.rows('SELECT to_media_ms::int AS to_ms FROM public.session_audio_intervals WHERE session_id = $1 AND seq = 1', [id])).toEqual([{ to_ms: 10_021 }]);
   });
 
   it('CONTROL of the stop order: a camera source closed BEFORE the worker was told to stop is a lost camera - one CAPTURE_FAULT and its audit row', async () => {
@@ -590,8 +577,17 @@ describe('D84: nothing durable is a failed start, something durable is an interr
     const session = of.app.engine.slice('session');
     expect(session).toMatchObject({ id, state: 'FAULT', captureDurable: true, fault: { kind: 'CAPTURE_FAULT', fromState: 'RECORDING' } });
     expect(session?.startedAt).not.toBeNull();
-    // D60 (2026-11-04): the interrupted hand-off names the FOUR camera files of the plan.
-    expect(of.events.at(-1)).toMatchObject({ type: 'INTERRUPTED', sessionId: id, files: [{ trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }, { trackId: 'VIDEO-03', deviceId: 'CAM-03' }, { trackId: 'VIDEO-04', deviceId: 'CAM-04' }] });
+    // D60 (2026-11-04): the interrupted hand-off names the FOUR camera files of the plan. Audit row W3F (F-W3TW-D2; D132, row 148):
+    // and after them, in plan order, the four CHANNEL files - MIC-0N.m4a under the sealed track of its channel, AUDIO-0N.
+    expect(of.events.at(-1)).toMatchObject({
+      type: 'INTERRUPTED',
+      sessionId: id,
+      files: [
+        { trackId: 'VIDEO-01', deviceId: 'CAM-01' }, { trackId: 'VIDEO-02', deviceId: 'CAM-02' }, { trackId: 'VIDEO-03', deviceId: 'CAM-03' }, { trackId: 'VIDEO-04', deviceId: 'CAM-04' },
+        { trackId: 'AUDIO-01', deviceId: 'MIC-01', path: expect.stringMatching(/\/MIC-01\.m4a$/) }, { trackId: 'AUDIO-02', deviceId: 'MIC-02', path: expect.stringMatching(/\/MIC-02\.m4a$/) },
+        { trackId: 'AUDIO-03', deviceId: 'MIC-03', path: expect.stringMatching(/\/MIC-03\.m4a$/) }, { trackId: 'AUDIO-04', deviceId: 'MIC-04', path: expect.stringMatching(/\/MIC-04\.m4a$/) },
+      ],
+    });
     expect(of.order.filter((entry) => entry.startsWith('close'))).toHaveLength(8);
   });
 
@@ -618,6 +614,14 @@ describe('D84: nothing durable is a failed start, something durable is an interr
       });
     await expect(stop()).rejects.toMatchObject({ statusCode: 409, code: 'INVALID_STATE', details: { reason: CAPTURE_NOT_DURABLE } });
     expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING' });
+    // Row D2C (D150 (2), F-C1D-2; edit-only under D32, run in the DB window): a CHANNEL file's checkpoint alone (row 148) is
+    // stored but makes nothing durable - the payload still says not durable, no DURABLE event, and the stop is still refused.
+    const micChain = (await of.rows<{ chain: string }>("SELECT encode(sha256(decode($1, 'hex') || decode($2, 'hex')), 'hex') AS chain", [GENESIS, SHA('a')]))[0]?.chain ?? '';
+    of.fake.last().record({ ...checkpoint(1, 700, micChain, SHA('a')), deviceId: 'MIC-01', keyframe: false } as CaptureRecord);
+    await of.settled();
+    expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', captureDurable: false });
+    expect(of.events.map((event) => event.type)).not.toContain('DURABLE');
+    await expect(stop()).rejects.toMatchObject({ statusCode: 409, code: 'INVALID_STATE', details: { reason: CAPTURE_NOT_DURABLE } });
     of.fake.last().firstDurableFragment('CAM-02');
     await of.settled();
     await expect(stop()).resolves.toBeDefined();
@@ -825,6 +829,7 @@ describe('row 71c: what the capture side reports is kept for the seal while the 
       version: 1,
       sessionId: id,
       startRecordedAt: recordedAt,
+      pairedAudio: true, // row 148 (D128, R153-1): written by every protocol-6 start
       cameras: [
         // Tidy pass F-Y: the fake worker states the full sync with its first durable fragment, as the real worker does; no clock was measured here.
         { trackId: 'VIDEO-01', deviceId: 'CAM-01', clockOffsetMs: -7, measuredClockOffsetMs: null, syncLevel: 'F_FULLFSYNC', firstVideo: { pts: 3_600, timescale: 90_000, heldMs: 40, skipped: { noTimestamp: 0, beforeAudioStart: 2, noCameraClock: 0, beforeKeyframe: 5 }, skippedSpanMs: 40 } },
@@ -962,7 +967,7 @@ describe('pass D9: the microphone helpers of a session are started together (cap
     expect(appended.mock.calls.map(([entry]) => entry).filter((entry) => entry.code === 'CAPTURE_MIC_NOT_STARTED').map((entry) => [entry.level, entry.context?.['deviceId'], entry.context?.['channel'], entry.context?.['cause']])).toEqual([['warn', 'MIC-02', 'MIC-02', 'MIC_START_FAILED']]); // D61: `channel`, not `role`
     expect(of.events.map((event) => event.type)).toEqual(['CONNECTING', 'STARTED']);
     expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', audioSource: { activeInputId: 'MIC-01', standbyInputId: 'MIC-02' } });
-    expect(of.fake.last().commands('SWITCH_AUDIO_SOURCE')).toEqual([]);
+    expect(of.fake.last().received.map((message) => message.type as string)).not.toContain('SWITCH_AUDIO_SOURCE'); // audit row 149: no such command
   });
 
   it('channel 1 whose start never answers is given up at the bound and said as an error; the other three channels and the cameras did not wait for it, and it is never replaced', async () => { // D61: the numbered channel replaces the PRIMARY role word
@@ -981,7 +986,7 @@ describe('pass D9: the microphone helpers of a session are started together (cap
     expect(appended.mock.calls.map(([entry]) => entry).filter((entry) => entry.code === 'CAPTURE_MIC_NOT_STARTED').map((entry) => [entry.level, entry.context?.['deviceId'], entry.context?.['channel'], entry.context?.['cause']])).toEqual([['error', 'MIC-01', 'MIC-01', 'MIC_START_BOUND']]); // D61: `channel`, not `role`
     expect(of.events.map((event) => event.type)).toEqual(['CONNECTING', 'STARTED']);
     expect(of.app.engine.slice('session')).toMatchObject({ state: 'RECORDING', audioSource: { activeInputId: 'MIC-01' } });
-    expect(of.fake.last().commands('SWITCH_AUDIO_SOURCE')).toEqual([]);
+    expect(of.fake.last().received.map((message) => message.type as string)).not.toContain('SWITCH_AUDIO_SOURCE'); // audit row 149: no such command
   });
 
   // Closing pass F-X (review row 74, finding R74-08 (2)): `begin`, the stop and the end run on ONE chain, so a stop
@@ -1050,20 +1055,6 @@ describe('pass D9: the microphone helpers of a session are started together (cap
 
 // ── Fix pass F-M5 (code review row 74) ──────────────────────────────────────────────────────────
 
-const switchRecord = (command: { correlationId?: string } | undefined, patch: Partial<AudioSourceIntervalRecord> = {}): AudioSourceIntervalRecord => ({
-  ...startInterval,
-  deviceId: 'MIC-02',
-  role: 'STANDBY',
-  index: 2,
-  fromSample: 240_000,
-  capturedAtMs: FIXED_NOW + 5_000,
-  reason: 'OPERATOR_SWITCH',
-  correlationId: command?.correlationId ?? null,
-  appliedDelayUs: 9_000,
-  ...patch,
-});
-const intervalsOf = (of: Rig, id: string) => of.rows('SELECT seq, mic_device_id, from_media_ms::int AS from_ms, to_media_ms::int AS to_ms, reason FROM public.session_audio_intervals WHERE session_id = $1 ORDER BY seq', [id]);
-const switchRows = (of: Rig) => of.rows<{ actor_id: string | null; details: Record<string, unknown> }>("SELECT actor_id, details FROM public.audit_log WHERE type = 'AUDIO_SOURCE_SWITCHED' ORDER BY seq");
 
 /**
  * EVERY rig is CLOSED AFTER ITS CASE (the app, its pools, the supervisor). Until closing pass J of
@@ -1102,67 +1093,9 @@ async function durableSession(slug: string, options: Parameters<typeof rig>[1] =
   return { of, id };
 }
 
-describe('review R74-06: a switch the worker realised is recorded whatever happens around it', () => {
-  it('(a) the session left RECORDING between the command and its acknowledgement: the interval rows and the audit row are written from the record; the answer names the input that feeds the track', async () => {
-    const { of, id } = await durableSession('fm5_switch_left');
-    const worker = of.fake.last();
-    const switching = sessionCapture(of.app).switchAudioSource(of.investigator, id, 'MIC-02');
-    await flush();
-    const command = worker.commands('SWITCH_AUDIO_SOURCE')[0];
-    // The stop commits while the worker realises the switch.
-    await of.app.engine.run('sessions.stopSession', async (scope) => {
-      await scope.command(of.investigator, 'stopRecording', 'End of the interview');
-    });
-    expect(of.app.engine.slice('session')?.state).toBe('STOPPING');
-    worker.record(switchRecord(command));
-    worker.ack(true, undefined, command);
-    await expect(switching).resolves.toMatchObject({ sessionId: id, activeInputId: 'MIC-02', standbyInputId: 'MIC-01', intervalFromMs: 5_021 });
-    expect(await intervalsOf(of, id)).toEqual([
-      { seq: 1, mic_device_id: 'MIC-01', from_ms: 21, to_ms: 5_021, reason: 'START' },
-      { seq: 2, mic_device_id: 'MIC-02', from_ms: 5_021, to_ms: null, reason: 'MANUAL' },
-    ]);
-    const rows = await switchRows(of);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ actor_id: of.investigator.operatorId, details: { fromInput: 'MIC-01', toInput: 'MIC-02', fromMs: 21, toMs: 5_021 } });
-  });
-
-  it('(b) the record of the switch arrived but its acknowledgement did not come within the limit: the switch is RECORDED from the record (state, rows, audit row), not refused - the Core never says another microphone than the worker feeds; a switch back then works', async () => {
-    const { of, id } = await durableSession('fm5_switch_late', { limits: { ackTimeoutMs: 300 } });
-    const worker = of.fake.last();
-    const switching = sessionCapture(of.app).switchAudioSource(of.investigator, id, 'MIC-02');
-    await flush();
-    const command = worker.commands('SWITCH_AUDIO_SOURCE')[0];
-    // The worker switched and wrote its record; the acknowledgement is never read in time.
-    worker.record(switchRecord(command));
-    await expect(switching).resolves.toMatchObject({ sessionId: id, activeInputId: 'MIC-02', standbyInputId: 'MIC-01', intervalFromMs: 5_021 });
-    expect(of.app.engine.slice('session')?.audioSource).toMatchObject({ activeInputId: 'MIC-02', standbyInputId: 'MIC-01', intervalFromMs: 5_021 });
-    expect(await intervalsOf(of, id)).toEqual([
-      { seq: 1, mic_device_id: 'MIC-01', from_ms: 21, to_ms: 5_021, reason: 'START' },
-      { seq: 2, mic_device_id: 'MIC-02', from_ms: 5_021, to_ms: null, reason: 'MANUAL' },
-    ]);
-    const rows = await switchRows(of);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ actor_id: of.investigator.operatorId, details: { fromInput: 'MIC-01', toInput: 'MIC-02', fromMs: 21, toMs: 5_021 } });
-    // No dead end: the way back is a normal switch.
-    const back = sessionCapture(of.app).switchAudioSource(of.investigator, id, 'MIC-01');
-    await flush();
-    const second = worker.commands('SWITCH_AUDIO_SOURCE')[1];
-    expect(second).toMatchObject({ to: 'PRIMARY' });
-    worker.record(switchRecord(second, { deviceId: 'MIC-01', role: 'PRIMARY', index: 3, fromSample: 480_000, capturedAtMs: FIXED_NOW + 10_000 }));
-    worker.ack(true, undefined, second);
-    await expect(back).resolves.toMatchObject({ activeInputId: 'MIC-01', intervalFromMs: 10_021 });
-    expect(await switchRows(of)).toHaveLength(2);
-  });
-
-  it('CONTROL of (b): no record and no acknowledgement within the limit - the call is refused 409 and nothing is written', async () => {
-    const { of, id } = await durableSession('fm5_switch_silent', { limits: { ackTimeoutMs: 300 } });
-    const switching = sessionCapture(of.app).switchAudioSource(of.investigator, id, 'MIC-02');
-    await expect(switching).rejects.toMatchObject({ statusCode: 409, code: 'AUDIO_SOURCE_CONFLICT' });
-    expect(await intervalsOf(of, id)).toHaveLength(1);
-    expect(await switchRows(of)).toEqual([]);
-    expect(of.app.engine.slice('session')?.audioSource).toMatchObject({ activeInputId: 'MIC-01' });
-  });
-});
+// Review R74-06 (a switch the worker realised is recorded whatever happens around it): its three cases are gone with
+// operation 81 and `SWITCH_AUDIO_SOURCE` (audit row 149; N-29, N-31). The supervisor refuses any switch record
+// (`SWITCH_NOT_COMMANDED`, supervisor.test.ts), so nothing reaches this unit to record.
 
 describe('review R74-07: the end of a capture that holds durable media is always handed over', () => {
   it('the worker ends for good while the session is STOPPING (the engine ignores the end): the listeners are told INTERRUPTED, so the seal is not left waiting for a restart', async () => {
@@ -1619,6 +1552,12 @@ describe('Z1: what the Core holds of a running recording reaches the session pay
       cameras: [{ deviceId: 'CAM-01', fragments: 2, bytes: 3_231 }, { deviceId: 'CAM-02', fragments: 1, bytes: 1_900 }],
     });
 
+    // Row 148 (AC-4.8, protocol 6 N-32): a checkpoint of the channel file of MIC-03 (a microphone of the plan) is an
+    // AUDIO-03 row; it is no CAMERA figure of the session payload (`captureCheckpoints` counts camera files only).
+    worker.record({ ...checkpoint(1, 700, chain1, sha), deviceId: 'MIC-03', keyframe: false } as CaptureRecord);
+    await of.settled();
+    expect(held(of)?.fragments).toBe(3);
+
     // One more inside the window, then the stop: the end of the capture says the final figure.
     worker.record(checkpoint(3, 3_231, chain3, sha));
     await of.settled();
@@ -1628,7 +1567,7 @@ describe('Z1: what the Core holds of a running recording reaches the session pay
     expect(of.events.at(-1)).toMatchObject({ type: 'STOPPED', sessionId: id });
     expect(held(of)).toMatchObject({ fragments: 4, bytes: 4_231 + 1_900 });
     // The figures agree with the rows the recorder stored, and the door itself wrote nothing.
-    expect(await of.rows('SELECT track_id, count(*)::int AS n FROM public.recording_fragments WHERE session_id = $1 GROUP BY track_id ORDER BY track_id', [id])).toEqual([{ track_id: 'VIDEO-01', n: 3 }, { track_id: 'VIDEO-02', n: 1 }]);
+    expect(await of.rows('SELECT track_id, count(*)::int AS n FROM public.recording_fragments WHERE session_id = $1 GROUP BY track_id ORDER BY track_id', [id])).toEqual([{ track_id: 'AUDIO-03', n: 1 }, { track_id: 'VIDEO-01', n: 3 }, { track_id: 'VIDEO-02', n: 1 }]);
     expect(await of.rows("SELECT type FROM public.audit_log WHERE type ILIKE '%CHECKPOINT%'")).toEqual([]);
   });
 
@@ -2732,13 +2671,13 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
     expect(mics.log.filter((entry) => entry.startsWith('close MIC-')).sort()).toEqual(['close MIC-01#1', 'close MIC-01#2', 'close MIC-02#1', 'close MIC-02#2', 'close MIC-03#1', 'close MIC-03#2', 'close MIC-04#1', 'close MIC-04#2']); // D61: four channels
   });
 
-  // D61 (2026-11-04) CHANGED THE SHAPE OF THIS RULE, not only its words: the protocol holds the plan
-  // at EXACTLY FOUR microphone lines (`CapturePlanSchema.mics.min(4).max(4)`), so a channel that cannot
-  // be opened for the later worker can no longer be dropped — the plan of the later worker cannot be
-  // built at all and NO later worker comes up (D80(6)'s "the later worker records with the rest" is
-  // superseded by the four-channel ruling). What survives per channel is the LEVEL of the row: channel 1
-  // (the transcription channel of `AUDIO-01`) is an error, a later channel warns. Neither replaces the other.
-  it('a microphone that cannot be OPENED again, as at a first start (D80(6) as D61 narrows it): the row names its channel and attempt - an error on channel 1, a warning on a later channel - and NO later worker comes up, the capture ending as a failed start', async () => {
+  // Row 148 (D5 pairs, D30 K-3; rows 144 + 147; edit-only under D32, run in the DB window): the rule changed shape
+  // AGAIN. Protocol 6 takes 0 to 4 microphone rows, and a channel that cannot be opened for the later worker is
+  // STATED on the camera of its pair (`micMissing: NOT_OPENED`, a silent audio track): the later worker comes up and
+  // records (D61's "no later worker" is superseded). Channel 1 is no exception when the plan of the start has no PCM
+  // tap (this rig: STT off); with a tap the later worker still needs it (the supervisor test pins that control).
+  // The level of the row: a warning, since the recording goes on.
+  it('a microphone that cannot be OPENED again (row 148, D30 K-3): the row names its channel and attempt at warn, and the later worker comes up with the camera of its pair stating NOT_OPENED', async () => {
     const standby = microphones({ open: (deviceId, nth) => (deviceId === 'MIC-02' && nth === 2 ? 'FAIL' : 'OK') });
     const withPrimary = await rig('r191_standby_not_opened', { registry: standby.registry, limits: FAST_RESTART });
     standby.follow(withPrimary);
@@ -2746,17 +2685,17 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
     const id = await withPrimary.arm();
     await withPrimary.start(id);
     withPrimary.fake.last().exit(1);
-    await vi.waitFor(() => expect(withPrimary.events.at(-1)?.type).toBe('FAILED_START'), { timeout: 5_000 });
+    await vi.waitFor(() => expect(withPrimary.fake.workers).toHaveLength(2), { timeout: 5_000 });
     await withPrimary.settled();
-    expect(micEntries(appended, 'CAPTURE_MIC_NOT_OPENED')).toEqual([['warn', 'MIC-02', 'MIC-02', 2, null]]); // D61: the channel, not the role; a later channel warns
-    // D61: a plan of THREE channels is refused by the protocol, so the later worker is never started.
-    expect(withPrimary.fake.workers).toHaveLength(1);
-    expect(standby.log.filter((entry) => entry.startsWith('start') && entry.includes('#2'))).toEqual([]);
-    expect(withPrimary.fake.last().commands('SWITCH_AUDIO_SOURCE')).toEqual([]);
-    // Everything that WAS opened again is closed with the capture: nothing is left open (D61: three channels reached #2).
-    expect(standby.log.filter((entry) => entry.startsWith('close MIC-')).sort()).toEqual(['close MIC-01#1', 'close MIC-01#2', 'close MIC-02#1', 'close MIC-03#1', 'close MIC-03#2', 'close MIC-04#1', 'close MIC-04#2']);
-    expect(sessionCapture(withPrimary.app).liveSessionId()).toBeNull();
+    expect(micEntries(appended, 'CAPTURE_MIC_NOT_OPENED')).toEqual([['warn', 'MIC-02', 'MIC-02', 2, null]]);
+    const later = withPrimary.fake.last().commands('START')[0] as { plan: { cameras: Array<{ trackId: string; micMissing: string | null }>; mics: Array<{ channel: string }> } } | undefined;
+    expect(later?.plan.mics.map((mic) => mic.channel)).toEqual(['MIC-01', 'MIC-03', 'MIC-04']);
+    expect(later?.plan.cameras.map((camera) => [camera.trackId, camera.micMissing])).toEqual([['VIDEO-01', null], ['VIDEO-02', 'NOT_OPENED'], ['VIDEO-03', null], ['VIDEO-04', null]]);
+    expect(withPrimary.fake.last().received.map((message) => message.type as string)).not.toContain('SWITCH_AUDIO_SOURCE'); // audit row 149: no such command
+    expect(sessionCapture(withPrimary.app).liveSessionId()).toBe(id);
     await sessionCapture(withPrimary.app).shutdown();
+    // Everything that WAS opened again is closed with the capture: nothing is left open (three channels reached #2).
+    expect(standby.log.filter((entry) => entry.startsWith('close MIC-')).sort()).toEqual(['close MIC-01#1', 'close MIC-01#2', 'close MIC-02#1', 'close MIC-03#1', 'close MIC-03#2', 'close MIC-04#1', 'close MIC-04#2']);
 
     const primary = microphones({ open: (deviceId, nth) => (deviceId === 'MIC-01' && nth === 2 ? 'FAIL' : 'OK') });
     const without = await rig('r191_primary_not_opened', { registry: primary.registry, limits: FAST_RESTART });
@@ -2765,14 +2704,16 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
     const second = await without.arm();
     await without.start(second);
     without.fake.last().exit(1);
-    await vi.waitFor(() => expect(without.events.at(-1)?.type).toBe('FAILED_START'), { timeout: 5_000 });
+    await vi.waitFor(() => expect(without.fake.workers).toHaveLength(2), { timeout: 5_000 });
     await without.settled();
-    expect(micEntries(said, 'CAPTURE_MIC_NOT_OPENED')).toEqual([['error', 'MIC-01', 'MIC-01', 2, null]]); // D61: channel 1 is the error
-    expect(without.fake.workers).toHaveLength(1);
-    expect(primary.log.filter((entry) => entry.startsWith('start') && entry.includes('#2'))).toEqual([]);
-    // The channels that WERE opened again are closed with the capture: nothing is left open (D61: three of them).
+    // No tap in this plan: channel 1 lost is a warning and VIDEO-01 states NOT_OPENED (R147-1).
+    expect(micEntries(said, 'CAPTURE_MIC_NOT_OPENED')).toEqual([['warn', 'MIC-01', 'MIC-01', 2, null]]);
+    const laterOne = without.fake.last().commands('START')[0] as { plan: { cameras: Array<{ trackId: string; micMissing: string | null }>; pcmTapPath: string | null } } | undefined;
+    expect(laterOne?.plan.cameras.map((camera) => camera.micMissing)).toEqual(['NOT_OPENED', null, null, null]);
+    expect(laterOne?.plan.pcmTapPath).toBeNull();
+    expect(sessionCapture(without.app).liveSessionId()).toBe(second);
+    await sessionCapture(without.app).shutdown();
     expect(primary.log.filter((entry) => entry.startsWith('close MIC-')).sort()).toEqual(['close MIC-01#1', 'close MIC-02#1', 'close MIC-02#2', 'close MIC-03#1', 'close MIC-03#2', 'close MIC-04#1', 'close MIC-04#2']);
-    expect(sessionCapture(without.app).liveSessionId()).toBeNull();
   });
 
   it('a microphone that cannot be STARTED again is said with its channel, as at a first start (D61): channel 1 an error, the three later channels a warning; the capture goes on and nothing is switched', async () => {
@@ -2790,7 +2731,7 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
       ['warn', 'MIC-03', 'MIC-03', null, 'MIC_START_FAILED'],
       ['warn', 'MIC-04', 'MIC-04', null, 'MIC_START_FAILED'],
     ]);
-    expect(of.fake.last().commands('SWITCH_AUDIO_SOURCE')).toEqual([]);
+    expect(of.fake.last().received.map((message) => message.type as string)).not.toContain('SWITCH_AUDIO_SOURCE'); // audit row 149: no such command
     expect(sessionCapture(of.app).liveSessionId()).toBe(id);
     await sessionCapture(of.app).shutdown();
   });
@@ -2880,35 +2821,8 @@ describe('task 4 row 191: the microphones of a session are closed, opened and st
     await sessionCapture(of.app).shutdown();
   });
 
-  it('row 191b, A SWITCH AFTER THE RESTART: the later worker numbers its records from 1 again - its switch record 2 is stored as row 3, closes the later worker\'s row (never the earlier one\'s) and its audit row states the later worker\'s media times; still ONE gap row. CONTROL in the same database: before the restart there is no gap row and one open interval', async () => {
-    const of = await rig('r191b_switch_after', { limits: FAST_RESTART });
-    const id = await of.arm();
-    await of.start(id);
-    of.fake.last().record({ ...startInterval, capturedAtMs: of.app.clock.now() - 400, fromSample: 1_008 });
-    await of.settled();
-    expect(await gapRows(of, id)).toEqual([]);
-    expect((await restartIntervals(of, id)).map((row) => [row.seq, row.to_at])).toEqual([[1, null]]);
-    of.fake.last().exit(1);
-    await secondRecords(of);
-    const downAt = of.supervisor.status().lastCrash?.at ?? Number.NaN;
-    const worker = of.fake.last();
-    worker.record({ ...startInterval, capturedAtMs: downAt + 5, fromSample: 480 });
-    await of.settled();
-    const switching = sessionCapture(of.app).switchAudioSource(of.investigator, id, 'MIC-02');
-    await flush();
-    const command = worker.commands('SWITCH_AUDIO_SOURCE')[0];
-    worker.record({ ...startInterval, deviceId: 'MIC-02', role: 'STANDBY', index: 2, fromSample: 240_000, capturedAtMs: downAt + 5_000, reason: 'OPERATOR_SWITCH', correlationId: command?.correlationId ?? null, appliedDelayUs: 9_000 });
-    worker.ack(true, undefined, command);
-    await expect(switching).resolves.toMatchObject({ activeInputId: 'MIC-02', intervalFromMs: 5_021 });
-    expect((await restartIntervals(of, id)).map((row) => [row.seq, row.mic_device_id, row.reason, row.from_media_ms, row.to_media_ms])).toEqual([
-      [1, 'MIC-01', 'START', '42', '42'],
-      [2, 'MIC-01', 'START', '31', '5021'],
-      [3, 'MIC-02', 'MANUAL', '5021', null],
-    ]);
-    expect((await switchRows(of)).map((row) => row.details)).toEqual([{ fromInput: 'MIC-01', toInput: 'MIC-02', fromMs: 31, toMs: 5_021 }]);
-    expect(await gapRows(of, id)).toHaveLength(1);
-    await sessionCapture(of.app).shutdown();
-  });
+  // Row 191b, A SWITCH AFTER THE RESTART: gone with operation 81 (audit row 149; N-29, N-31) - no switch record exists to
+  // number after a restart. The numbering of the start intervals across a restart stays covered by the cases around it.
 
   it('row 191b, THE EARLIER WORKER NEVER REPORTED AUDIO: the later worker\'s interval is row 1, nothing is closed, and the gap row is still written - from the instant the earlier worker went down, with both bounds', async () => {
     const of = await rig('r191b_no_earlier_audio', { limits: FAST_RESTART });

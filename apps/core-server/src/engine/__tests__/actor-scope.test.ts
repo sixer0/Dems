@@ -113,32 +113,37 @@ describe('withActorScope', () => {
   // Wave H driver B, finding G75-02 (gate 75 `M5-SW-P`): on a Core in SIMULATED capture the switch of
   // the active microphone is the hosted action. The row must name the paired device the command came
   // from - the tablet's or the phone's device session - exactly as the real path does (SEC35-17).
-  it('G75-02: the paired device of the principal reaches the hosted action - the switch row names it; a web console session names none', async () => {
+  // Audit row 150 (D28 DQ-2; N-29, N-36): the hosted switch is RETIRED - it refuses with AUDIO_SOURCE_FIXED_BY_PAIRING and
+  // writes no row, from a paired device session or a web console session alike. The scope still carries the device to
+  // the action and still leaves with it, also when the action throws.
+  it('G75-02 after D5: the paired device reaches the hosted action, which refuses (pairing code) and writes no switch row; the scope is cleared after the throw', async () => {
     const host = await createHost({ scenario: 'recording' });
     const investigator = host.operator('INVESTIGATOR');
-    const lastSwitch = () => host.state().audit.rows.filter((row) => row.type === 'AUDIO_SOURCE_SWITCHED').at(-1);
+    const switchRows = () => host.state().audit.rows.filter((row) => row.type === 'AUDIO_SOURCE_SWITCHED');
     const standby = host.state().session?.audioSource?.standbyInputId ?? 'MIC-02';
-    const active = host.state().session?.audioSource?.activeInputId ?? 'MIC-01';
+    const before = switchRows().length;
 
     let during: AuthSlice | null = null;
-    withActorScope(
-      host.sim.store,
-      investigator.id,
-      AT,
-      () => {
-        during = host.state().auth;
-        host.sim.actions.switchAudioSource(standby);
-      },
-      'DEV-0002',
-    );
+    expect(() =>
+      withActorScope(
+        host.sim.store,
+        investigator.id,
+        AT,
+        () => {
+          during = host.state().auth;
+          host.sim.actions.switchAudioSource(standby);
+        },
+        'DEV-0002',
+      ),
+    ).toThrow(expect.objectContaining({ code: 'AUDIO_SOURCE_FIXED_BY_PAIRING' }));
     expect(during).toMatchObject({ operatorId: investigator.id, deviceId: 'DEV-0002' });
-    expect(lastSwitch()).toMatchObject({ actorId: investigator.id, deviceId: 'DEV-0002', details: { toInput: standby, sendingDeviceId: 'DEV-0002' } });
-    // The device leaves with the scope.
+    // The device leaves with the scope, after the refusal too.
     expect(host.state().auth).toEqual(signedOutAuth());
 
-    // CONTROL - a web console session has no device: no device on the row, no key in its details.
-    withActorScope(host.sim.store, investigator.id, AT + 1_000, () => host.sim.actions.switchAudioSource(active), null);
-    expect(lastSwitch()?.deviceId).toBeNull();
-    expect(Object.keys(lastSwitch()?.details ?? {})).not.toContain('sendingDeviceId');
+    // CONTROL - a web console session: the same refusal.
+    expect(() => withActorScope(host.sim.store, investigator.id, AT + 1_000, () => host.sim.actions.switchAudioSource(standby), null)).toThrow(
+      expect.objectContaining({ code: 'AUDIO_SOURCE_FIXED_BY_PAIRING' }),
+    );
+    expect(switchRows()).toHaveLength(before);
   });
 });

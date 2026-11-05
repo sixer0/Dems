@@ -33,7 +33,10 @@
  *         the manifest is the one the export manifest names
  *   X-06  every DECRYPTED camera file has the sealed length and hashes to the sealed
  *         `tracks[].sha256Plain`, and every fragment range to its `sha256Plain` (spec §G.2
- *         "Plaintext file hash")
+ *         "Plaintext file hash"); since D5 (audit row 153, D30 K-8, D119) the same for every
+ *         decrypted pair audio file of a `/2.1` package against `audioTracks[]` / `audioFiles[]`
+ *         (`AUDIO_FILE_MISSING`, `AUDIO_FILE_UNREADABLE` - the codes of verify V-04, row 154).
+ *         A `/2` package has no audio file and is judged exactly as before
  *   X-07  the composite, when included: the recorded hash and the derived mark
  *
  * NOT CHECKABLE on a decrypted copy (spec §G.2): the stored-bytes hashes and the stored-bytes
@@ -48,8 +51,8 @@
 import { createHash } from 'node:crypto';
 import { open, readFile, readdir } from 'node:fs/promises';
 import { sep } from 'node:path';
-import { PackageFile, cameraFilePath, manifestSignedMessage, parseManifestV2, type ManifestV2 } from '@dems/shared/evidence-package';
-import { pemCertificateSha256, retainedCertificatePath, verifyPackageV2, type VerifyCheckId, type VideoAbsenceOfTrack } from '@dems/shared/evidence-verify';
+import { PackageFile, audioFilePath, cameraFilePath, manifestSignedMessage, parseManifestV2, type ManifestV2 } from '@dems/shared/evidence-package';
+import { VERIFY_NOTICE, audioTracksMissingReport, pemCertificateSha256, retainedCertificatePath, verifyPackageV2, type AudioTrackMissingStated, type VerifyCheckId, type VideoAbsenceOfTrack } from '@dems/shared/evidence-verify';
 import { readSigningCertificate, verifyEd25519 } from '../capture';
 import { corePorts, createPackageReader } from '../evidence-verify';
 import { COMPOSITE_ENTRY, EXPORT_MANIFEST_FILE, EXPORT_SIGNATURE_FILE, compositeMarkingHolds, computeExportManifestSha256, isSelfContainedExport, parseExportManifest, parseExportSignature, type ExportManifest } from './export-manifest';
@@ -100,6 +103,13 @@ export interface ReceiverVerifyResult {
    * member. It fails nothing and changes no verdict.
    */
   readonly videoAbsentInSession?: readonly VideoAbsenceOfTrack[];
+  /**
+   * Audit row 153 (D5; D30 K-3, D119): the notice `AUDIO_TRACKS_MISSING` of verify (row 154) - the SIGNED member
+   * `audioTracksMissing` of a `/2.1` sealed manifest: a pair microphone recorded nothing and its camera file holds a
+   * silent track. PRESENT ONLY when the sealed manifest carries the member AND could be relied on (X-05 passed); every
+   * other result is the result of before, member for member. It fails nothing and changes no verdict.
+   */
+  readonly audioTracksMissing?: { readonly code: typeof VERIFY_NOTICE.AUDIO_TRACKS_MISSING; readonly records: readonly AudioTrackMissingStated[]; readonly report: string };
   /** True when the signing certificates were held against anchors the caller gave. */
   readonly anchored: boolean;
   /**
@@ -198,6 +208,8 @@ export async function verifyExportAtDestination(input: ReceiverVerifyInput): Pro
   let hostProfileNotAsked: string | null = null;
   /** Row R1b: the tracks of the sealed manifest that carry `absentInSession`, with their records; empty: none does. */
   let videoAbsent: readonly VideoAbsenceOfTrack[] = [];
+  /** Row 153: the sealed manifest's `audioTracksMissing` records; empty: it carries none. */
+  let audioMissing: readonly AudioTrackMissingStated[] = [];
   let archiveReport: ReceiverVerifyResult['archive'] = null;
   let selfContained: boolean | null = null;
 
@@ -247,6 +259,8 @@ export async function verifyExportAtDestination(input: ReceiverVerifyInput): Pro
       ...(hostProfileNotAsked !== null && findings.get('X-05')?.length === 0 ? { hostProfileNotAsked: Object.freeze({ platform: hostProfileNotAsked }) } : {}),
       // Row R1b: by the same rule - only from a sealed manifest the run relied on, and only when a track carries the member.
       ...(videoAbsent.length > 0 && findings.get('X-05')?.length === 0 ? { videoAbsentInSession: videoAbsent } : {}),
+      // Row 153 (D119): by the same rule - only from a sealed manifest the run relied on, and only when it states a missing microphone.
+      ...(audioMissing.length > 0 && findings.get('X-05')?.length === 0 ? { audioTracksMissing: Object.freeze({ code: VERIFY_NOTICE.AUDIO_TRACKS_MISSING, records: audioMissing, report: audioTracksMissingReport(audioMissing) }) } : {}),
     });
   };
 
@@ -392,6 +406,7 @@ export async function verifyExportAtDestination(input: ReceiverVerifyInput): Pro
         .filter((track) => track.absentInSession !== undefined)
         .map((track) => Object.freeze({ trackId: track.trackId, absences: Object.freeze((track.absentInSession ?? []).map((absence) => Object.freeze({ absentAtLeastMs: absence.absentAtLeastMs, absentAtMostMs: absence.absentAtMostMs, ended: absence.ended }))) })),
     );
+    audioMissing = Object.freeze((sealed.audioTracksMissing ?? []).map((record) => Object.freeze({ trackId: record.trackId, silentIn: Object.freeze([...record.silentIn]), reason: record.reason })));
   } catch {
     add('X-05', 'SESSION_MANIFEST_UNREADABLE');
   }
@@ -414,6 +429,29 @@ export async function verifyExportAtDestination(input: ReceiverVerifyInput): Pro
         }
       }
     }
+    // Row 153 (D5; D30 K-8, D119): the pair audio files of a `/2.1` package, by the same rule; none in a `/2` package.
+    const audioTracks = sealed.audioTracks ?? [];
+    for (const track of audioTracks) {
+      const path = audioFilePath(track.trackId);
+      const recorded = manifest.payload.audioFiles?.find((candidate) => candidate.trackId === track.trackId);
+      if (recorded === undefined || recorded.sha256Plain !== track.sha256Plain || recorded.bytes !== track.bytes || recorded.path !== path) add('X-06', `PAYLOAD_RECORD_MISMATCH:${track.trackId}`);
+      if (listed !== null && !listed.includes(path)) {
+        add('X-06', `AUDIO_FILE_MISSING:${track.trackId}`);
+        continue;
+      }
+      const file = inUnpacked(path);
+      const whole = await hashRange(file, 0, null, chunkBytes);
+      if (whole === null) add('X-06', `AUDIO_FILE_UNREADABLE:${track.trackId}`);
+      else {
+        if (whole.bytes !== track.bytes || whole.sha256 !== track.sha256Plain) add('X-06', `PLAINTEXT_HASH_MISMATCH:${track.trackId}`);
+        for (const fragment of sealed.audioFiles?.find((entry) => entry.trackId === track.trackId)?.fragments ?? []) {
+          const range = await hashRange(file, fragment.byteOffset, fragment.byteLength, chunkBytes);
+          if (range === null || range.bytes !== fragment.byteLength || range.sha256 !== fragment.sha256Plain) add('X-06', `FRAGMENT_PLAINTEXT_MISMATCH:${track.trackId}:${fragment.seq}`);
+        }
+      }
+    }
+    // An audio record of the export that the sealed manifest does not state is no file of this package.
+    for (const record of manifest.payload.audioFiles ?? []) if (!audioTracks.some((track) => track.trackId === record.trackId)) add('X-06', `PAYLOAD_RECORD_UNEXPECTED:${record.trackId}`);
   }
 
   // X-07

@@ -13,6 +13,7 @@ import {
   type ScenarioName,
 } from '../src/sim';
 import {
+  AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE,
   AudioStatusResponseSchema,
   CAPTURE_SELECTOR_SLOTS,
   CaptureConfigSliceSchema,
@@ -380,35 +381,42 @@ describe('POST+GET /session/{id}/audio-source and GET /session/{id}/sealing (ops
     return { h, id };
   }
 
-  it('switches the active input, records the interval, and locks the capture selector (OD-09/OD-10)', () => {
+  // Audit row 150 (D5; D28 DQ-2; register N-29, N-36): operation 81 is retired. After the access check the route answers
+  // 409 AUDIO_SOURCE_FIXED_BY_PAIRING for every session and every body - before any lookup - and writes nothing.
+  it('op 81 retired: every call answers 409 AUDIO_SOURCE_FIXED_BY_PAIRING and writes nothing; op 82 lists the START interval; the selector stays locked (OD-10)', () => {
     const { h, id } = recording();
+    const before = h.state();
+    for (const [path, body] of [
+      [`/api/v1/session/${id}/audio-source`, { inputId: 'MIC-02', reason: 'Subject answers' }],
+      [`/api/v1/session/${id}/audio-source`, { inputId: 'MIC-01' }],
+      [`/api/v1/session/${id}/audio-source`, { inputId: 'MIC-09' }],
+      [`/api/v1/session/${id}/audio-source`, { inputId: 'MIC-9' }],
+      ['/api/v1/session/SES-20261001-9999/audio-source', { inputId: 'MIC-02' }],
+    ] as const) {
+      expect(h.sim.request({ method: 'POST', path, body }), `${path} ${JSON.stringify(body)}`).toMatchObject({
+        status: 409,
+        body: { error: { code: 'AUDIO_SOURCE_FIXED_BY_PAIRING', message: AUDIO_SOURCE_FIXED_BY_PAIRING_MESSAGE } },
+      });
+    }
+    // A body that is no JSON object is refused by the request envelope (400), before any route - as the Core's body parser does.
     expect(h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/audio-source`, body: '[1]' }).status).toBe(400);
-    // D133 (1): an input is any `MIC-NN`; a malformed id is 422, a well-formed one that is no input of the session is 409.
-    expect(h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/audio-source`, body: { inputId: 'MIC-9' } }).status).toBe(422);
-    expect(h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/audio-source`, body: { inputId: 'MIC-09' } }).status).toBe(409);
-    expect(h.sim.request({ method: 'POST', path: '/api/v1/session/SES-20261001-9999/audio-source', body: { inputId: 'MIC-02' } }).status).toBe(404);
-
-    const switched = h.sim.request({
-      method: 'POST',
-      path: `/api/v1/session/${id}/audio-source`,
-      body: { inputId: 'MIC-02', reason: 'Subject answers' },
-    });
-    expect(switched).toMatchObject({ status: 200, body: { sessionId: id, activeInputId: 'MIC-02', standbyInputId: 'MIC-01' } });
-    expect(h.state().audio.activeInputId).toBe('MIC-02');
-    expect(h.state().audit.rows.at(-1)).toMatchObject({ type: 'AUDIO_SOURCE_SWITCHED', actorId: 'OPR-001', sessionId: id });
+    expect(h.state()).toBe(before);
+    expect(h.state().audio.activeInputId).toBe('MIC-01');
+    expect(h.state().audit.rows.some((row) => row.type === 'AUDIO_SOURCE_SWITCHED')).toBe(false);
 
     const intervals = h.sim.request({ method: 'GET', path: `/api/v1/session/${id}/audio-source` }).body as {
       items: { seq: number; inputId: string; reason: string; toMs: number | null }[];
       nextCursor: string | null;
     };
     expect(intervals.nextCursor).toBeNull();
-    expect(intervals.items.map((item) => [item.seq, item.inputId, item.reason])).toEqual([
-      // Pass D6: intervals are numbered from 1 (the manifest's rule).
-      [2, 'MIC-02', 'MANUAL'],
-      [1, 'MIC-01', 'START'],
-    ]);
+    // Pass D6: intervals are numbered from 1. Only the START interval: no switch opens another one.
+    expect(intervals.items.map((item) => [item.seq, item.inputId, item.reason])).toEqual([[1, 'MIC-01', 'START']]);
     expect(intervals.items[0]?.toMs).toBeNull();
-    expect(intervals.items[1]?.toMs).not.toBeNull();
+
+    // The access check stays first: signed out is 401, not the pairing answer.
+    h.sim.actions.signOut();
+    expect(h.sim.request({ method: 'POST', path: `/api/v1/session/${id}/audio-source`, body: { inputId: 'MIC-02' } }).status).toBe(401);
+    h.sim.actions.signIn('budi.santoso', 'demo-2026');
 
     // RBAC before the lock: an INVESTIGATOR cannot edit the selector even while it is unlocked.
     expect(
@@ -644,11 +652,11 @@ describe('the simulator answers for an unassigned selector slot (task 4 row 165)
     expect(audioOf(h).channels.map((entry) => [entry.inputId, entry.deviceId, entry.channel])).toEqual([['MIC-01', 'MIC-01', 'MIC-01'], ['MIC-02', 'MIC-02', 'MIC-02'], ['MIC-03', 'MIC-03', 'MIC-03'], ['MIC-04', 'MIC-04', 'MIC-04']]); // D61: four channels
     expect(audioOf(h).activeInputId).toBe('MIC-01');
     expect(healthOf(h).activeInputId).toBe('MIC-01');
-    // During a recording after a switch the active input is the session's line, as before.
+    // During a recording the active input is the session's channel-1 line; audit row 150: op 81 moves nothing (409).
     const recording = on(null, 'recording', 'budi.santoso');
     const id = recording.state().session?.id;
-    expect(recording.sim.request({ method: 'POST', path: `/api/v1/session/${id}/audio-source`, body: { inputId: 'MIC-02' } }).status).toBe(200);
-    expect(audioOf(recording).activeInputId).toBe('MIC-02');
+    expect(recording.sim.request({ method: 'POST', path: `/api/v1/session/${id}/audio-source`, body: { inputId: 'MIC-02' } }).status).toBe(409);
+    expect(audioOf(recording).activeInputId).toBe('MIC-01');
   });
 
   it('operation 78: the in-app body check accepts `unassign`, the slot is cleared with its audit row, and it can be assigned again', () => {

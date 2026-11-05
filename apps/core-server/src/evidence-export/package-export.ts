@@ -52,7 +52,7 @@ import { createHash } from 'node:crypto';
 import { lstat, mkdir, open, readFile, readdir, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { sep } from 'node:path';
 import { EXPORT_ID_PATTERN } from '@dems/shared/api';
-import { PackageFile, cameraFilePath, exportArchivePath, parseManifestV2, sha256Hex, type ManifestFragment, type ManifestTrack, type ManifestV2 } from '@dems/shared/evidence-package';
+import { PackageFile, audioFilePath, cameraFilePath, exportArchivePath, parseManifestV2, sha256Hex, type ManifestFragment, type ManifestTrack, type ManifestV2 } from '@dems/shared/evidence-package';
 import { VERIFY_MAX_LISTED_FILES, VERIFY_MAX_MANIFEST_BYTES, VERIFY_MAX_OPEN_FRAGMENT_BYTES, retainedCertificatePath, type FragmentOpener, type PackageReader } from '@dems/shared/evidence-verify';
 import { verifyEd25519, type LoadedSigner } from '../capture';
 import { SigningKeyVerdict, createPackageReader, markedCertificatesOfPackage, verifySealedPackageUnderCoreTrust, type RealEvidenceItem } from '../evidence-verify';
@@ -243,7 +243,18 @@ async function* decryptedCameraFile(
   fragments: readonly ManifestFragment[],
   chunkBytes: number,
 ): AsyncGenerator<Uint8Array> {
-  const path = cameraFilePath(track.trackId);
+  yield* decryptedMediaFile(reader, opener, { trackId: track.trackId, bytes: track.bytes, path: cameraFilePath(track.trackId) }, fragments, chunkBytes);
+}
+
+/** Row 153 (D5): the same for any sealed media file - a camera file or a pair audio file (`fragments/AUDIO-0N.m4a`). */
+async function* decryptedMediaFile(
+  reader: PackageReader,
+  opener: FragmentOpener,
+  track: { readonly trackId: string; readonly bytes: number; readonly path: string },
+  fragments: readonly ManifestFragment[],
+  chunkBytes: number,
+): AsyncGenerator<Uint8Array> {
+  const path = track.path;
   async function* clear(from: number, to: number): AsyncGenerator<Uint8Array> {
     for (let at = from; at < to; at += chunkBytes) yield await readExact(reader, path, at, Math.min(chunkBytes, to - at));
   }
@@ -417,7 +428,8 @@ export async function exportPackage(
     if (manifest.manifestSha256 !== item.manifestSha256 || manifest.evidenceId !== item.evidenceId) throw new ExportFailure(ExportFailureCode.SOURCE_VERIFY_FAILED);
     const listed = await reader.list(VERIFY_MAX_LISTED_FILES);
     if (listed === null) throw new ExportFailure(ExportFailureCode.SOURCE_UNREADABLE);
-    const cameraPaths = new Set<string>(manifest.tracks.map((track) => cameraFilePath(track.trackId)));
+    // Row 153 (D5; D30 K-8): the pair audio files are sealed media like the camera files - decrypted, never copied as clear files.
+    const cameraPaths = new Set<string>([...manifest.tracks.map((track) => cameraFilePath(track.trackId)), ...(manifest.audioTracks ?? []).map((track) => audioFilePath(track.trackId))]);
     const clearPaths = listed
       .filter((path) => !path.startsWith(`${PackageFile.EXPORT_DIR}/`) && !path.startsWith(`${PackageFile.COMPOSITE_DIR}/`) && !cameraPaths.has(path))
       .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
@@ -441,7 +453,7 @@ export async function exportPackage(
     archive = await createArchive(archivePartial);
     created.push(archivePartial);
 
-    const totalBytes = Math.max(1, manifest.tracks.reduce((sum, track) => sum + track.bytes, 0));
+    const totalBytes = Math.max(1, [...manifest.tracks, ...(manifest.audioTracks ?? [])].reduce((sum, track) => sum + track.bytes, 0));
     let copied = 0;
     const copyShare = withComposite ? 30 : 55;
     const counted = (count: number): void => {
@@ -466,6 +478,16 @@ export async function exportPackage(
       if (archived.sha256 !== track.sha256Plain || archived.bytes !== track.bytes) throw new ExportFailure(ExportFailureCode.PLAINTEXT_HASH_MISMATCH);
       entries.push(archived);
       payload.push({ trackId: track.trackId, path, bytes: archived.bytes, sha256Plain: archived.sha256 });
+    }
+    // Row 153 (D5): then each pair audio file, by the same rule (its plaintext must be the SEALED `audioTracks[].sha256Plain`).
+    const audioPayload: NonNullable<ExportManifest['payload']['audioFiles']>[number][] = [];
+    for (const track of manifest.audioTracks ?? []) {
+      const path = audioFilePath(track.trackId);
+      const records = manifest.audioFiles?.find((entry) => entry.trackId === track.trackId)?.fragments ?? [];
+      const archived = await addEntry(archive, path, decryptedMediaFile(reader, opener, { trackId: track.trackId, bytes: track.bytes, path }, records, chunkBytes), counted, signal);
+      if (archived.sha256 !== track.sha256Plain || archived.bytes !== track.bytes) throw new ExportFailure(ExportFailureCode.PLAINTEXT_HASH_MISMATCH);
+      entries.push(archived);
+      audioPayload.push({ trackId: track.trackId, path, bytes: archived.bytes, sha256Plain: archived.sha256 });
     }
 
     // The certificate of the export signature, when it is not one the package already carries.
@@ -505,7 +527,7 @@ export async function exportPackage(
     // 5. The export manifest and its signature. The archive is still open: the two files go INTO it
     // (G94-03, ruling D200), so the manifest covers every other entry and names no hash of the archive.
     const exportManifest = buildExportManifest({
-      payload: { representation: EXPORT_REPRESENTATION, files: payload },
+      payload: { representation: EXPORT_REPRESENTATION, files: payload, ...(audioPayload.length === 0 ? {} : { audioFiles: audioPayload }) },
       sessionManifest: {
         path: PackageFile.MANIFEST,
         sha256: sha256Hex(Buffer.from(manifestText, 'utf8')),

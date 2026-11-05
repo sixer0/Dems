@@ -17,7 +17,8 @@ import type { Pool } from 'pg';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { expectRefused, SQLSTATE } from '../../../../test/db/support';
 import { useTestDatabase } from '../../../../test/helpers/db';
-import { RecordingFragmentStoreError, createFragmentRecorder, createRecordingFragmentStore, fragmentRowOf, type FragmentRecorderReport, type Queryable, type RecordingFragment, type RecordingFragmentStore, type VideoTrackId } from '../index';
+import { AUDIO_FRAGMENT_TRACK_IDS, CHAIN_GENESIS_SHA256, RecordingFragmentStoreError, createFragmentRecorder, createRecordingFragmentStore, fragmentRowOf, type FragmentRecorderReport, type FragmentTrackId, type Queryable, type RecordingFragment, type RecordingFragmentStore, type VideoTrackId } from '../index';
+import { INSERT_RECORDING_FRAGMENT } from '../statements';
 
 const db = useTestDatabase({ template: 'seed', slug: 'row59' });
 let app: Pool;
@@ -45,12 +46,12 @@ function checkpoints(deviceId: string, count: number, salt = ''): Checkpoint[] {
   }
   return out;
 }
-const rowsOf = (trackId: VideoTrackId, deviceId: string, count: number, sessionId = SESSION, salt = ''): RecordingFragment[] => checkpoints(deviceId, count, salt).map((record) => fragmentRowOf(sessionId, trackId, record));
+const rowsOf = <Track extends FragmentTrackId>(trackId: Track, deviceId: string, count: number, sessionId = SESSION, salt = ''): RecordingFragment<Track>[] => checkpoints(deviceId, count, salt).map((record) => fragmentRowOf(sessionId, trackId, record));
 const stored = async (sessionId = SESSION): Promise<string[]> =>
   (await owner.query('SELECT track_id, seq, byte_offset::text AS byte_offset, byte_length::text AS byte_length, sha256, chain_hash, durable_at::text AS durable_at FROM public.recording_fragments WHERE session_id = $1 ORDER BY track_id, seq', [sessionId])).rows.map(
     (row: Record<string, string | number>) => `${row.track_id}:${row.seq}:${row.byte_offset}+${row.byte_length}:${String(row.sha256).slice(0, 8)}:${String(row.chain_hash).slice(0, 8)}:${row.durable_at}`,
   );
-const line = (row: RecordingFragment): string => `${row.trackId}:${row.seq}:${row.byteOffset}+${row.byteLength}:${row.sha256.slice(0, 8)}:${row.chainHash.slice(0, 8)}:${row.durableAt}`;
+const line = (row: RecordingFragment<FragmentTrackId>): string => `${row.trackId}:${row.seq}:${row.byteOffset}+${row.byteLength}:${row.sha256.slice(0, 8)}:${row.chainHash.slice(0, 8)}:${row.durableAt}`;
 const codeOf = async (work: Promise<unknown>): Promise<string> => {
   try {
     await work;
@@ -106,6 +107,44 @@ describe('recording_fragments as dems_app: one row per fragment per camera, in o
     expect(await store.insertMissing(other)).toEqual({ inserted: 2, alreadyStored: 0 });
     expect(await stored()).toEqual([...one, ...two].map(line));
     expect(await stored(OTHER)).toEqual(other.map(line));
+  });
+});
+
+// D28 (DQ-1 = S1; migration 0044, row 146; AC-4.8 db half): the files of the four microphone
+// channels take fragment rows like the camera files, under the same zero-gap rule; every other
+// track name is still refused by the database itself (recording_fragments_track_check).
+describe('D28: the microphone channel files AUDIO-01..04 are fragment tracks (migration 0044)', () => {
+  it('three fragments of each AUDIO-0N are stored as dems_app beside a camera file, each its own chain, and read back equal', async () => {
+    const video = rowsOf('VIDEO-01', 'CAM-01', 3);
+    const audio = AUDIO_FRAGMENT_TRACK_IDS.map((trackId, index) => rowsOf(trackId, `MIC-0${index + 1}`, 3));
+    for (let n = 0; n < 3; n += 1) {
+      expect(await store.insert(video[n]!)).toBe('INSERTED');
+      for (const rows of audio) expect(await store.insert(rows[n]!)).toBe('INSERTED');
+    }
+    for (const [index, trackId] of AUDIO_FRAGMENT_TRACK_IDS.entries()) {
+      expect(await store.read(SESSION, trackId)).toEqual(audio[index]);
+      expect(await store.head(SESSION, trackId)).toEqual(audio[index]![2]);
+    }
+    expect(await store.read(SESSION, 'VIDEO-01')).toEqual(video);
+    expect(await stored()).toEqual([...audio.flat(), ...video].map(line));
+  });
+
+  it('the zero-gap rule holds on a channel file: fragment 2 of AUDIO-03 with no fragment 1 is FRAGMENT_GAP and nothing is stored', async () => {
+    const rows = rowsOf('AUDIO-03', 'MIC-03', 2);
+    expect(await codeOf(store.insert(rows[1]!))).toBe('FRAGMENT_GAP');
+    expect(await stored()).toEqual([]);
+  });
+
+  it.each(['AUDIO-05', 'AUDIO-00', 'MIC-01', 'VIDEO-05', 'audio-01'])('the database refuses the track %s (the module guard bypassed): check violation of recording_fragments_track_check', async (trackId) => {
+    const row = rowsOf('AUDIO-01', 'MIC-01', 1)[0]!;
+    await expectRefused(
+      () => app.query(INSERT_RECORDING_FRAGMENT, [row.sessionId, trackId, row.seq, row.byteOffset, row.byteLength, row.mediaStartMs, row.mediaDurationMs, row.sha256, row.chainHash, row.durableAt, CHAIN_GENESIS_SHA256]),
+      SQLSTATE.checkViolation,
+      'recording_fragments_track_check',
+    );
+    expect(await stored()).toEqual([]);
+    // CONTROL: the same statement with AUDIO-01 stores the row.
+    expect((await app.query(INSERT_RECORDING_FRAGMENT, [row.sessionId, row.trackId, row.seq, row.byteOffset, row.byteLength, row.mediaStartMs, row.mediaDurationMs, row.sha256, row.chainHash, row.durableAt, CHAIN_GENESIS_SHA256])).rowCount).toBe(1);
   });
 });
 

@@ -121,7 +121,6 @@ import { bindInternalActions, captureDeviceReachTransition } from './internal-ac
 import {
   CAPTURE_FAULT_KINDS,
   READ_SESSION_HAS_FRAGMENT,
-  audioSourceSwitchTransition,
   captureConnectingTransition,
   captureDurableAtRehydrateTransition,
   captureDurableOfSessionTransition,
@@ -129,8 +128,6 @@ import {
   failedCaptureStartTransition,
   failedStartAtRehydrateTransition,
   interruptedCaptureTransition,
-  type AudioSourceSwitch,
-  type AudioSourceSwitched,
 } from './capture-session';
 import { createHeadlessSim, engineClock } from './headless-sim';
 import {
@@ -877,9 +874,8 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
         registerCaptureMicrophone: (microphone) => registerCaptureMicrophoneInScope(scope, microphone),
         readdressCaptureDevice: (change) => readdressCaptureDeviceInScope(scope, change),
         storeCaptureDeviceProfiles: (change) => storeCaptureDeviceProfilesInScope(scope, change),
-        // Capture block (blueprint row 71): the two in-unit doors of the session wiring.
+        // Capture block (blueprint row 71): the in-unit door of the session wiring (audit row W3T: the op 81 switch door is retired, D136).
         markCaptureConnecting: (sessionId) => markCaptureConnectingInScope(scope, sessionId),
-        switchCaptureAudioSource: (change) => switchCaptureAudioSourceInScope(scope, change),
         // Audit row 127 (DF-12; D19, D24): a preview's outcome as the device's reach; published, no row written.
         noteCaptureDeviceReach: (reading) => applyCaptureTransition(scope, (state) => captureDeviceReachTransition(state, reading)),
       },
@@ -906,17 +902,6 @@ export function createEngineHost(dependencies: EngineHostDependencies): EngineHo
   /** `markCaptureConnectingIn`: `captureDurable: false` beside the RECORDING this unit persists. */
   function markCaptureConnectingInScope(scope: Scope, sessionId: string): Promise<boolean> {
     return applyCaptureTransition(scope, (state) => captureConnectingTransition(state, sessionId));
-  }
-
-  /** `switchCaptureAudioSourceIn`: the acknowledged switch as state, without an audit row of the engine. */
-  async function switchCaptureAudioSourceInScope(scope: Scope, change: AudioSourceSwitch): Promise<AudioSourceSwitched | null> {
-    let switched: AudioSourceSwitched | null = null;
-    await applyCaptureTransition(scope, (state, now) => {
-      const result = audioSourceSwitchTransition(state, now, change);
-      switched = result.switched;
-      return result.state;
-    });
-    return switched;
   }
 
   // ── Seal block (blueprint row 82) ────────────────────────────────────────────────────────────

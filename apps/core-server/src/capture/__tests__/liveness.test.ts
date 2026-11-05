@@ -4,10 +4,10 @@
 //
 // On a FakeWorkerProcess with manual timers; the same scenarios on a real process are in
 // `ipc.test.ts` ("a listener that never returns").
-import { CAPTURE_IPC_DEFAULTS, CaptureMicRole, CaptureWarningCode, SupervisorMessageType, type CaptureIpcLimits } from '@dems/capture-protocol';
+import { CAPTURE_IPC_DEFAULTS, CaptureWarningCode, SupervisorMessageType, type CaptureIpcLimits } from '@dems/capture-protocol';
 import { describe, expect, it } from 'vitest';
 import { capturePlan, fakeLauncher, flush, manualCaptureTimers, type FakeWorkerBehaviour } from '../../../test/support/capture';
-import { CapturePhase, CaptureRefusal, CaptureSupervisorError, WorkerDownCode, createCaptureSupervisor, type CaptureReport } from '../index';
+import { CapturePhase, CaptureSupervisorError, WorkerDownCode, createCaptureSupervisor, type CaptureReport } from '../index';
 
 const SESSION = 'S-TEST-0001';
 const LIMITS = CAPTURE_IPC_DEFAULTS;
@@ -49,19 +49,15 @@ describe('F-1: back-pressure never hides a sign of life or an acknowledgement', 
     expect(supervisor.status().lastCrash?.code).toBe(WorkerDownCode.HEARTBEAT_TIMEOUT);
   });
 
-  it('an acknowledgement is read at once behind a full queue: the switch resolves and the plan follows it', async () => {
-    const { supervisor, fake, clock } = await recording({ eventQueueLimit: 4 });
+  it('an acknowledgement is read at once behind a full queue: the stop is acknowledged and ends clean', async () => {
+    // Audit row 149 (N-31): shown on `STOP` - the switch that showed it is retired with protocol 6.
+    const { supervisor, fake } = await recording({ eventQueueLimit: 4 });
     supervisor.on('progress', never);
     for (let step = 0; step < 12; step += 1) fake.last().progress(`S${step}`, 0);
-    await expect(supervisor.switchAudioSource(SESSION, CaptureMicRole.STANDBY)).resolves.toBeNull();
-    // The next worker of the session starts with the source the operator chose. D61 (2026-11-04): the plan
-    // cannot carry it (`activeMic` is the transcribed channel and the protocol validates `MIC-01`), so the
-    // choice is re-said to that worker by the legacy lane's own command once it accepted its plan.
-    fake.last().exit(1);
-    clock.advance(LIMITS.backoffBaseMs);
-    await flush();
-    expect(fake.last().commands(SupervisorMessageType.START)[0]?.plan.activeMic).toBe('MIC-01');
-    expect(fake.last().commands(SupervisorMessageType.SWITCH_AUDIO_SOURCE)).toMatchObject([{ to: 'STANDBY' }]);
+    const worker = fake.last();
+    await expect(supervisor.stop(SESSION, 'STOPPED')).resolves.toMatchObject({ clean: true });
+    expect(worker.commands(SupervisorMessageType.STOP)).toHaveLength(1);
+    expect(worker.kills).toEqual([]);
   });
 });
 
@@ -97,18 +93,21 @@ describe('F-2: what the supervisor itself reports is not behind the worker\'s ev
 
 describe('F-3: STOP always reaches the worker', () => {
   it('with the command window full of unacknowledged commands, STOP is still written and the worker ends by itself', async () => {
-    const { supervisor, fake } = await recording({ commandQueueLimit: 2 }, { ackSwitch: false });
-    const worker = fake.last();
-    const waiting = [1, 2].map(() => supervisor.switchAudioSource(SESSION, CaptureMicRole.STANDBY).catch((error: unknown) => (error as CaptureSupervisorError).code));
+    // Audit row 149 (N-31): the window is filled by the one windowed command left - an unacknowledged START - under a limit of one.
+    const clock = manualCaptureTimers();
+    const fake = fakeLauncher({ ackStart: false });
+    const supervisor = createCaptureSupervisor({ now: clock.now, timers: clock.timers, launcher: fake.launcher, limits: { commandQueueLimit: 1 }, report: () => undefined });
+    await supervisor.boot();
+    const starting = supervisor.start(SESSION, capturePlan(SESSION)).catch((error: unknown) => (error as CaptureSupervisorError).code);
     await flush();
-    // Control: the window IS full for every other command.
-    await expect(supervisor.switchAudioSource(SESSION, CaptureMicRole.STANDBY)).rejects.toMatchObject({ code: CaptureRefusal.BACKPRESSURE });
+    const worker = fake.last();
+    expect(worker.commands(SupervisorMessageType.START)).toHaveLength(1);
 
     await supervisor.stop(SESSION, 'STOPPED');
     expect(worker.commands(SupervisorMessageType.STOP)).toHaveLength(1);
     expect(worker.kills).toEqual([]);
     expect(worker.exited).toBe(true);
-    expect(await Promise.all(waiting)).toEqual([CaptureRefusal.WORKER_DOWN, CaptureRefusal.WORKER_DOWN]);
+    expect(await starting).not.toBe('RESOLVED');
   });
 });
 

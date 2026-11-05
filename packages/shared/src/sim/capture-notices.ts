@@ -35,15 +35,15 @@
  *    "Reachable" is `online` of the device in `captureDevices`: the Core server writes it from its
  *    adapters before each pre-check run; the in-app simulator never changes it, so its checks pass.
  */
-import type { VideoTrackId } from '../domain';
+import { VIDEO_TRACK_IDS, type VideoTrackId } from '../domain'; // VIDEO_TRACK_IDS: audit row 149, the track word of PAIRED_MIC_MISSING
 import type { CaptureMicChannel } from './types'; // D61 (2026-11-04): the mic rows are keyed by channel
-import { PRIMARY_MIC_CHANNEL } from './vocabulary';
+import { MIC_CHANNEL_IDS, PRIMARY_MIC_CHANNEL } from './vocabulary'; // MIC_CHANNEL_IDS: audit row 149, the channel word of PAIRED_MIC_MISSING
 import { SimNotFoundError } from './errors';
 import { nextItemId, pushRing, recordActivity } from './events';
 import { ALERT_RING_SIZE } from './constants';
 import { selectorInForce } from './selector-in-force';
 import { MIC_SILENCE_RUN_MAX_MS } from './audio-not-continuous';
-import { cameraClockOffsetSentence, captureFaultSentence, isMicShortfallReason, micShortfallSentence } from './capture-fault-wording';
+import { PAIRED_MIC_MISSING_UNTRANSCRIBED_SENTENCE, cameraClockOffsetSentence, captureFaultSentence, isMicShortfallReason, micShortfallSentence } from './capture-fault-wording';
 import type { CaptureConfigCamera, CaptureConfigMic, CaptureDeviceStatus, CaptureSelectorSlot, EpochMs, PrecheckItem, SimAlert, SimState } from './types';
 import { AuditType, CaptureStreamState } from './vocabulary';
 import { cameraNotReadAtRest, cameraStreamFaultActive } from './camera-stream-fault';
@@ -76,6 +76,7 @@ export type CaptureNoticeReason = (typeof CaptureNoticeReason)[keyof typeof Capt
  * | `AV_OFFSET_NEAR_BOUND` | a camera | the camera's clock is near the bound of the audio/video offset (`nearBound`) |
  * | `MIC_RATE_AT_LIMIT` | a microphone | the microphone's rate correction is held at its limit (±5,000 ppm) |
  * | `FRAGMENT_SIZE_BOUND_REACHED` | a camera | a fragment of the camera's file reached the size bound and was closed there, not at a keyframe; nothing is lost (ruling D179; closing pass F-X) |
+ * | `PAIRED_MIC_MISSING` | a camera | (audit row 149; D30 K-3, D132) the camera records without the microphone of its pair - the channel was not assigned or did not open at the start - so its audio track is silent; for Pair 1 the session also has no transcript. Severity WARNING. Raised once per camera at the start of a capture, resolved when the capture ends. `params` carry `trackId`, `micChannel`, `micMissing` (`NOT_ASSIGNED` / `NOT_OPENED`) and, for Pair 1 only, `transcribed: true` |
  * | `CAMERA_CLOCK_OFFSET` | a camera | the offset the capture worker measured between the camera's clock and the Core's is above the advisory threshold and inside the bound: the recording keeps the camera's own timeline and the offset is recorded (manifest field 40), not corrected (ruling D179; tidy pass F-Y). The ONE advisory notice that carries a number: `offsetMs` (camera minus Core, whole ms) in the alert's text and `params` |
  *
  * Like the other notices they have NO fault life cycle (nothing in `faults.active`, no demo
@@ -107,6 +108,9 @@ export const CaptureAdvisoryReason = {
   MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL: 'MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL',
   MIC_SILENCE_RUN_INSERTED: 'MIC_SILENCE_RUN_INSERTED',
   STANDBY_ON_PRIMARY_DEVICE: 'STANDBY_ON_PRIMARY_DEVICE',
+  // Audit row 149 (D5; D30 K-3; decision D132, the operator half of row 147 H1): a camera of the session records without
+  // the microphone of its pair (a silent audio track). Raised by the Core's capture side only; the simulator raises none.
+  PAIRED_MIC_MISSING: 'PAIRED_MIC_MISSING',
 } as const;
 export type CaptureAdvisoryReason = (typeof CaptureAdvisoryReason)[keyof typeof CaptureAdvisoryReason];
 
@@ -122,6 +126,7 @@ export const CAPTURE_ADVISORY_DEVICE_KIND = {
   MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL: 'MIC',
   MIC_SILENCE_RUN_INSERTED: 'MIC',
   STANDBY_ON_PRIMARY_DEVICE: 'MIC',
+  PAIRED_MIC_MISSING: 'CAMERA',
 } as const satisfies Record<CaptureAdvisoryReason, 'CAMERA' | 'MIC'>;
 
 /**
@@ -142,6 +147,7 @@ export const CAPTURE_ADVISORY_SEVERITY = {
   MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL: 'WARNING',
   MIC_SILENCE_RUN_INSERTED: 'WARNING',
   STANDBY_ON_PRIMARY_DEVICE: 'INFO',
+  PAIRED_MIC_MISSING: 'WARNING',
 } as const satisfies Record<CaptureAdvisoryReason, 'INFO' | 'WARNING'>;
 
 const ADVISORY_TEXT = {
@@ -157,6 +163,8 @@ const ADVISORY_TEXT = {
   MIC_SAMPLES_SHORT_ABOVE_SESSION_LEVEL: 'is losing more audio than at the start of the session',
   MIC_SILENCE_RUN_INSERTED: 'silence was inserted in one piece',
   STANDBY_ON_PRIMARY_DEVICE: "is another channel of the primary's device",
+  // Not shown as it stands: this notice says the sentence of the wording table (`raiseCaptureNoticeTransition`).
+  PAIRED_MIC_MISSING: 'records without the microphone of its pair',
 } as const satisfies Record<CaptureAdvisoryReason, string>;
 
 /** The five advisory notices of row N2: their alert says the whole sentence of the wording table (the fixed sentence must not be shortened). */
@@ -243,7 +251,20 @@ export interface CaptureAdvisoryNotice {
   referencePer100k?: number;
   /** `MIC_SILENCE_RUN_INSERTED` only, read at a raise only: the length of the inserted run in whole ms. */
   runMs?: number;
+  /**
+   * `PAIRED_MIC_MISSING` only, read at a raise only (audit row 149): the camera line's track (`VIDEO-0N`), the channel
+   * of its pair (`MIC-0N`), why that channel is not recorded (`NOT_ASSIGNED` / `NOT_OPENED`, the words of the
+   * manifest's missing-mic statement) and whether it is Pair 1 (the transcribed pair). Words of a closed set only: a
+   * value outside it is left out of `params`.
+   */
+  trackId?: string;
+  micChannel?: string;
+  micMissing?: string;
+  transcribed?: boolean;
 }
+
+/** The two words of a missing paired microphone (the manifest's `audioTracksMissing[].reason`; protocol 6 `micMissing`). */
+export const PAIRED_MIC_MISSING_REASONS = ['NOT_ASSIGNED', 'NOT_OPENED'] as const;
 
 /** The evidence volume did not confirm the full sync for the session's recording (decision D189). */
 export interface CaptureVolumeSyncNotice {
@@ -374,6 +395,32 @@ export function raiseCaptureNoticeTransition(state: SimState, now: EpochMs, noti
         about.id,
         { reason: notice.code, deviceId: about.id, deviceKind: about.kind, ...(session === null ? {} : { sessionId: session }), ...(offsetMs === null ? {} : { offsetMs }) },
         'INFO',
+      );
+    }
+    // Audit row 149 (D132): a camera that records without the microphone of its pair says the sentence of the wording
+    // table; Pair 1 adds that the session has no transcript. Track, channel and reason are closed words; anything else is left out.
+    if (notice.code === CaptureAdvisoryReason.PAIRED_MIC_MISSING) {
+      const trackId = typeof notice.trackId === 'string' && (VIDEO_TRACK_IDS as readonly string[]).includes(notice.trackId) ? notice.trackId : null;
+      const micChannel = typeof notice.micChannel === 'string' && (MIC_CHANNEL_IDS as readonly string[]).includes(notice.micChannel) ? notice.micChannel : null;
+      const micMissing = typeof notice.micMissing === 'string' && (PAIRED_MIC_MISSING_REASONS as readonly string[]).includes(notice.micMissing) ? notice.micMissing : null;
+      const transcribed = notice.transcribed === true;
+      return raiseNoticeAlert(
+        state,
+        now,
+        transcribed ? `${captureFaultSentence(notice.code, about.id)} ${PAIRED_MIC_MISSING_UNTRANSCRIBED_SENTENCE}` : captureFaultSentence(notice.code, about.id),
+        about.id,
+        {
+          reason: notice.code,
+          deviceId: about.id,
+          deviceKind: about.kind,
+          ...(session === null ? {} : { sessionId: session }),
+          ...(trackId === null ? {} : { trackId }),
+          ...(micChannel === null ? {} : { micChannel }),
+          ...(micMissing === null ? {} : { micMissing }),
+          // Only Pair 1 says it: absent means another pair.
+          ...(transcribed ? { transcribed: true } : {}),
+        },
+        CAPTURE_ADVISORY_SEVERITY[notice.code],
       );
     }
     // Row N2: the five notices of a microphone path that is not sample-continuous say the sentence of the

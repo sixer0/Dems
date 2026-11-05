@@ -92,7 +92,7 @@ const OFFLINE_SCHEMA_NAMES = [
   'CaptureCameraSourceRequest',
   'CaptureCredentialWriteRequest',
   'AudioSourceSwitchRequest',
-  'AudioSourceState',
+  // Audit row 149 (D130): `AudioSourceState` (the 200 of operation 81) left the offline document with that success.
   'AudioSourceIntervalEntry',
   'AudioSourceIntervalPage',
   'SealingProgressStep',
@@ -602,20 +602,21 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     f.sim.actions.signIn('budi.santoso', DEMO_OPERATOR_PASSWORD);
     f.sim.request({ method: 'POST', path: SBASE, body: RECORDING_INPUT });
     const fid = EXAMPLE_IDS.recordingSessionId;
-    expect(f.call('switchAudioSource', 'POST', `${SBASE}/${fid}/audio-source`, micBody).status).toBe(409); // CREATE, not RECORDING
-    expect(f.call('switchAudioSource', 'POST', `${SBASE}/SES-20261001-9999/audio-source`, micBody).status).toBe(404);
+    // Audit row 150 (D28 DQ-2; N-29, N-36): op 81 is retired - 409 AUDIO_SOURCE_FIXED_BY_PAIRING for every session, before any lookup.
+    expect(f.call('switchAudioSource', 'POST', `${SBASE}/${fid}/audio-source`, micBody).status).toBe(409);
+    expect(f.call('switchAudioSource', 'POST', `${SBASE}/SES-20261001-9999/audio-source`, micBody).status).toBe(409);
     expect(f.call('listAudioSourceIntervals', 'GET', `${SBASE}/SES-20261001-9999/audio-source`).status).toBe(404);
     expect(f.call('getSealingProgress', 'GET', `${SBASE}/SES-20261001-9999/sealing`).status).toBe(404);
     f.sim.request({ method: 'POST', path: `${SBASE}/${fid}/start` });
     f.advance(6_000);
     f.sim.request({ method: 'POST', path: `${SBASE}/${fid}/start` });
     f.advance(2_000); // RECORDING
+    // Audit row 150: no check of the input comes before the pairing answer; a body that is no JSON object is the envelope's 400.
     expect(f.call('switchAudioSource', 'POST', `${SBASE}/${fid}/audio-source`, '[1]').status).toBe(400);
-    // D133 (1): an input is any `MIC-NN`; a malformed id is 422, a well-formed one that is no input of the session is 409 AUDIO_SOURCE_CONFLICT.
-    expect(f.call('switchAudioSource', 'POST', `${SBASE}/${fid}/audio-source`, { inputId: 'MIC-9' }).status).toBe(422);
+    expect(f.call('switchAudioSource', 'POST', `${SBASE}/${fid}/audio-source`, { inputId: 'MIC-9' }).status).toBe(409);
     expect(f.call('switchAudioSource', 'POST', `${SBASE}/${fid}/audio-source`, { inputId: 'MIC-09' }).status).toBe(409);
     expect(f.call('getSealingProgress', 'GET', `${SBASE}/${fid}/sealing`).status).toBe(409); // sealing not started
-    expect(f.call('switchAudioSource', 'POST', `${SBASE}/${fid}/audio-source`, micBody).status).toBe(200);
+    expect(f.call('switchAudioSource', 'POST', `${SBASE}/${fid}/audio-source`, micBody).status).toBe(409);
     expect(f.call('listAudioSourceIntervals', 'GET', `${SBASE}/${fid}/audio-source`).status).toBe(200);
     f.sim.request({ method: 'POST', path: `${SBASE}/${fid}/stop`, body: { reason: 'Interview completed' } });
     f.advance(20_000);
@@ -1054,7 +1055,9 @@ describe('the contract matches the simulated handlers (sim/api.ts)', () => {
     // simulator keeps no installation record = 2. Total 36.
     // Task 4 row V4 (op 108; decision C75 (2)): the 200 of an outcome and the 404 of an unknown camera -
     // the simulator asks no camera and answers the envelope's 503 before a device is looked up = 2. Total 38.
-    expect(coreServerOnly).toBe(38);
+    // Audit row 149 (D130; N-29): the 422 of operation 81 - the Core server checks the body before its 409; the simulator refuses
+    // every call 409 without reading the body = 1. Total 39.
+    expect(coreServerOnly).toBe(39);
   });
 });
 

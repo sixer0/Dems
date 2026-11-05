@@ -57,7 +57,7 @@ import { SEAL_BLOCKED_REASON, sealDoorsOf, sealingNoticeDoorsOf, unsealableDoors
 import { provideCoreEvidenceExport } from '../evidence-export';
 import { coreFragmentOpener, createRealEvidenceVerification, hasSealedPackageHere, sessionPackageDir } from '../evidence-verify';
 import { evidenceVerification } from '../modules/evidence';
-import { VIDEO_TRACK_IDS, createRecordingFragmentStore } from '../modules/recording-fragments';
+import { FRAGMENT_TRACK_IDS, createRecordingFragmentStore } from '../modules/recording-fragments';
 import { createTranscriptChunkStore } from '../modules/transcript-chunks';
 import { createTranscriptStore, provideRevisionSigner } from '../modules/transcripts';
 import type { Principal } from '../plugins/authenticate';
@@ -512,7 +512,8 @@ export function mountSealingHost(app: FastifyInstance): SealingHost {
       pipeline: createSealingPipeline(ports),
       engine,
       hasDurableMedia: async (sessionId) => {
-        for (const trackId of VIDEO_TRACK_IDS) if ((await fragments.read(sessionId, trackId)).length > 0) return true;
+        // Row 153 (D118 H-2): a fragment row of any of the eight tracks of 0044 - a camera file or a pair audio file - is durable media.
+        for (const trackId of FRAGMENT_TRACK_IDS) if ((await fragments.read(sessionId, trackId)).length > 0) return true;
         return durableMediaOnDisk(packageDir(sessionId));
       },
       hasSealingRows: async (sessionId) => {

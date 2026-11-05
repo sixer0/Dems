@@ -5,7 +5,6 @@
 # R-6 / F-10, test/static/pinned_calls.py). A new row is a DECISION about an evidence file, not a habit: regenerate
 # with `python3 test/static/pinned_calls.py --print src`, read the difference, and say in the commit why it is safe.
 # For av_dict_set the text is `"key" = value` (value `*` when it is computed); `*` alone: pinned by count and place.
-audio.c	avfilter_graph_send_command	call	*
 audio.c	fopen	call	path, "w"
 audio.c	open	call	plan->path, O_RDONLY|O_NONBLOCK|O_CLOEXEC
 audio.c	open	call	s->tap_path, O_WRONLY|O_CREAT|O_EXCL|O_APPEND|O_CLOEXEC, 0600

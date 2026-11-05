@@ -47,7 +47,6 @@ import {
   TRANSCRIPT_CHUNK_STATUS,
   TRANSCRIPT_SIGNATURE_ALGORITHM,
   VERIFICATION,
-  VIDEO_TRACK_ID,
 } from '../schema';
 import { BULK_MIX } from './minimums';
 import { BUILT_IN_CAPTURE_DEVICE_IDS } from './pipeline';
@@ -274,7 +273,7 @@ export function validateBulkFixture(rows: BulkFixtureRows, updates: BulkFixtureU
   const tracksOf = new Map<string, number[]>();
   for (const row of rows.evidenceTracks) {
     must(fixtureEvidence.has(row.evidenceId), 'evidence_tracks', 'evidence_tracks_evidence_id_fkey');
-    must(isIn(TRACK_ID, row.trackId) && row.position >= 1 && row.position <= 4, 'evidence_tracks', 'evidence_tracks_track_check');
+    must(isIn(TRACK_ID, row.trackId) && row.position >= 1 && row.position <= 8, 'evidence_tracks', 'evidence_tracks_track_check'); // F-2 (row 146): the bound of 0040, was a stale 4
     must(row.sizeBytes >= 0 && HEX64.test(row.sha256), 'evidence_tracks', 'evidence_tracks_values_check');
     tracksOf.set(row.evidenceId, [...(tracksOf.get(row.evidenceId) ?? []), row.position]);
   }
@@ -518,7 +517,7 @@ export function validateBulkFixture(rows: BulkFixtureRows, updates: BulkFixtureU
   const fragmentByTrack = new Map<string, { seq: number; head: string }>();
   for (const row of rows.recordingFragments) {
     must(SESSION_ID.test(row.sessionId), 'recording_fragments', 'recording_fragments_session_check');
-    must(isIn(VIDEO_TRACK_ID, row.trackId), 'recording_fragments', 'recording_fragments_track_check');
+    must(isIn(TRACK_ID, row.trackId), 'recording_fragments', 'recording_fragments_track_check'); // D28 / 0044 (row 146): video and audio channel files
     must(row.byteOffset >= 0 && row.byteLength >= 1, 'recording_fragments', 'recording_fragments_bytes_check');
     must(row.mediaStartMs >= 0 && row.mediaDurationMs >= 1, 'recording_fragments', 'recording_fragments_media_check');
     must(HEX64.test(row.sha256) && HEX64.test(row.chainHash), 'recording_fragments', 'recording_fragments_hashes_check');

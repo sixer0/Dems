@@ -236,6 +236,9 @@ export const ApiErrorCode = {
   MEDIA_NOT_AVAILABLE: 'MEDIA_NOT_AVAILABLE',
   RESET_BLOCKED_REAL_EVIDENCE: 'RESET_BLOCKED_REAL_EVIDENCE',
   TRANSCRIPT_AUDIO_UNAVAILABLE: 'TRANSCRIPT_AUDIO_UNAVAILABLE',
+  // Audit row 143 (D5; D28 DQ-2; register N-36 of masterplan/01_specs_d5.md): op 81 is retired - the
+  // audio of each track is fixed by its camera-microphone pair. 40 -> 41.
+  AUDIO_SOURCE_FIXED_BY_PAIRING: 'AUDIO_SOURCE_FIXED_BY_PAIRING',
 } as const;
 export type ApiErrorCode = (typeof ApiErrorCode)[keyof typeof ApiErrorCode];
 /** The codes in document order. */
@@ -364,7 +367,7 @@ export const SessionResourceSchema = z
       })
       .nullable()
       .optional()
-      .describe('The transcription pair of this session: the inputs of channels `MIC-01` and `MIC-02` (D61, 2026-11-04: all four channels record; op 81 moves the transcribed one).'),
+      .describe('The inputs of channels `MIC-01` and `MIC-02` of this session: `activeInputId` is the microphone of Pair 1 (camera `VIDEO-01`), whose audio is transcribed on `AUDIO-01` (D61, 2026-11-04: all four channels record; D5, D28: each channel is the microphone of its own camera, and op 81 no longer moves the transcribed one - it answers `409 AUDIO_SOURCE_FIXED_BY_PAIRING`).'),
     captureDurable: z
       .boolean()
       .optional()
@@ -504,9 +507,9 @@ export const AudioStatusResponseSchema = z
       .string()
       .regex(MIC_INPUT_ID_PATTERN)
       .nullable()
-      .describe('The input whose audio is transcribed on AUDIO-01 right now (op 81 moves it; SH-15; D61: the input of channel `MIC-01` - all four channels record at once). Null: the selector holds no channel-1 microphone.'),
+      .describe('The input whose audio is transcribed on AUDIO-01 right now: the microphone of Pair 1, the input of channel `MIC-01` (SH-15; D61: all four channels record at once; D5, D28: op 80 places it before the session, op 81 no longer moves it). Null: the selector holds no channel-1 microphone.'),
   })
-  .describe('Per-input audio snapshot with the transcription pair (D61: four simultaneous channels; op 81 trades channels 1 and 2). Meters use it as their initial value; live levels run at 20 Hz in-process.');
+  .describe('Per-input audio snapshot with the transcribed input (D61: four simultaneous channels; D5: channel `MIC-0N` is the microphone of camera `VIDEO-0N`, and the transcription stays on Pair 1). Meters use it as their initial value; live levels run at 20 Hz in-process.');
 export type AudioStatusResponse = z.output<typeof AudioStatusResponseSchema>;
 
 export const StorageStatusResponseSchema = z

@@ -956,7 +956,7 @@ describe('row NB: a production boot on darwin holds the two system programs of t
 // ── Audit 2026-11-05 row 88 (C-P0-1b, DF-02; D15(b), D38 DR-5/DR-6; register W3, W5, W9-W14): the worker version
 // moves to 0.7.0 with worker.h, and check 5b - the build stamp beside the program - refuses a stale stamp. The reader
 // of the stamp file is judged on real files in `boot.test.ts`; here it is a seam that answers a word.
-describe('row 88: THE version is capture-worker/0.7.0; an older worker is refused by its version; check 5b refuses a stale build stamp in REAL_PRODUCTION only', () => {
+describe('row 88 (version word moved to 0.8.0 by row 144): THE version is CAPTURE_WORKER_VERSION; an older worker is refused by its version; check 5b refuses a stale build stamp in REAL_PRODUCTION only', () => {
   const OLDER = 'capture-worker/0.6.0';
   const NEWER = 'capture-worker/9.0.0';
   const STAMP_WORDS = ['STAMP_MISSING', 'STAMP_UNREADABLE', 'STAMP_VERSION_MISMATCH', 'STAMP_PROTOCOL_MISMATCH', 'STAMP_BINARY_MISMATCH'] as const;
@@ -967,7 +967,7 @@ describe('row 88: THE version is capture-worker/0.7.0; an older worker is refuse
   };
 
   it('W3 pin: the constant is the new word; the version rule takes it and refuses the older (0.6.0) and a newer (9.0.0) release word by name', () => {
-    expect(CAPTURE_WORKER_VERSION).toBe('capture-worker/0.7.0');
+    expect(CAPTURE_WORKER_VERSION).toBe('capture-worker/0.8.0'); // row 144 (D28 DQ-4): was 0.7.0 (row 88)
     expect(workerVersionRefusalOf({ protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion: CAPTURE_WORKER_VERSION })).toBeNull();
     expect(workerVersionRefusalOf({ protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion: OLDER })).toBe(CaptureBootRefusal.WORKER_VERSION_MISMATCH);
     expect(workerVersionRefusalOf({ protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion: NEWER })).toBe(CaptureBootRefusal.WORKER_VERSION_MISMATCH);
@@ -977,7 +977,7 @@ describe('row 88: THE version is capture-worker/0.7.0; an older worker is refuse
   it('an OLDER worker (0.6.0, the build before the 4+4 plan) is refused at HELLO by CAPTURE_WORKER_VERSION_MISMATCH with expected and found - the stamp is not asked (W14)', async () => {
     const { deps, calls } = stamped(null, { hello: { outcome: 'HELLO', protocolVersion: CAPTURE_PROTOCOL_VERSION, workerVersion: OLDER } });
     const failure = await refusalOf(deps);
-    expect([failure.code, failure.reason]).toEqual(['CAPTURE_WORKER_VERSION_MISMATCH', `expected capture-worker/0.7.0, found ${OLDER}`]);
+    expect([failure.code, failure.reason]).toEqual(['CAPTURE_WORKER_VERSION_MISMATCH', `expected capture-worker/0.8.0, found ${OLDER}`]);
     expect(calls).toEqual(['inspect', 'volume', 'key', 'handshake']);
   });
 
@@ -1025,5 +1025,36 @@ describe('row 88: THE version is capture-worker/0.7.0; an older worker is refuse
       expect((await refusalOf(deps)).code).not.toBe(CaptureBootRefusal.WORKER_BUILD_STAMP_STALE);
       expect(calls).not.toContain('stamp');
     }
+  });
+});
+
+// ── Audit 2026-11-05 row 144 (C-P0-2a; AC-4.12; D25 N5, D28 DQ-4): the LOCKSTEP pair. The Core of protocol 6 drives
+// capture-worker/0.8.0 only: the worker of W1/W2 (0.7.0, protocol 5) is refused at boot by its protocol, and a 0.7.0
+// word that claims protocol 6 by its version. The newer example stays 9.0.0 (D38 DR-5).
+describe('row 144 (AC-4.12): a protocol-5 worker and a 0.7.0 worker are refused at boot; THE pair is 0.8.0 with protocol 6', () => {
+  const PREVIOUS = 'capture-worker/0.7.0';
+
+  it('the pair: protocol 6 and capture-worker/0.8.0', () => {
+    expect([CAPTURE_PROTOCOL_VERSION, CAPTURE_WORKER_VERSION]).toEqual([6, 'capture-worker/0.8.0']);
+  });
+
+  it('the deployed W2 worker (0.7.0 speaking protocol 5) is refused by its PROTOCOL, before its version and its stamp', async () => {
+    expect(workerVersionRefusalOf({ protocolVersion: 5, workerVersion: PREVIOUS })).toBe(CaptureBootRefusal.WORKER_PROTOCOL_MISMATCH);
+    const made: Scene = scene({ workerBuildStampProblem: () => (made.calls.push('stamp'), null), hello: { outcome: 'HELLO', protocolVersion: 5, workerVersion: PREVIOUS } });
+    expect((await refusalOf(made.deps)).code).toBe(CaptureBootRefusal.WORKER_PROTOCOL_MISMATCH);
+    expect(made.calls).toEqual(['inspect', 'volume', 'key', 'handshake']);
+  });
+
+  it('a protocol-5 worker that names THE version is refused by its protocol too (the version word alone never admits a worker)', async () => {
+    expect(workerVersionRefusalOf({ protocolVersion: 5, workerVersion: CAPTURE_WORKER_VERSION })).toBe(CaptureBootRefusal.WORKER_PROTOCOL_MISMATCH);
+    expect((await refusalOf(scene({ hello: { outcome: 'HELLO', protocolVersion: 5, workerVersion: CAPTURE_WORKER_VERSION } }).deps)).code).toBe(CaptureBootRefusal.WORKER_PROTOCOL_MISMATCH);
+  });
+
+  it('a 0.7.0 word under protocol 6 is refused by its VERSION, with expected and found; CONTROL: THE pair passes', async () => {
+    expect(workerVersionRefusalOf({ protocolVersion: 6, workerVersion: PREVIOUS })).toBe(CaptureBootRefusal.WORKER_VERSION_MISMATCH);
+    const failure = await refusalOf(scene({ hello: { outcome: 'HELLO', protocolVersion: 6, workerVersion: PREVIOUS } }).deps);
+    expect([failure.code, failure.reason]).toEqual(['CAPTURE_WORKER_VERSION_MISMATCH', `expected capture-worker/0.8.0, found ${PREVIOUS}`]);
+    expect(workerVersionRefusalOf({ protocolVersion: 6, workerVersion: 'capture-worker/9.0.0' })).toBe(CaptureBootRefusal.WORKER_VERSION_MISMATCH);
+    expect(workerVersionRefusalOf({ protocolVersion: 6, workerVersion: 'capture-worker/0.8.0' })).toBeNull();
   });
 });

@@ -42,14 +42,16 @@ const CAPTURE_CODES = [
   'CAPTURE_CONFIG_LOCKED', 'AUDIO_SOURCE_CONFLICT', 'CAMERA_NOT_LOST', 'TRANSCRIPT_NOT_READY', 'TRANSCRIPT_REVISION_CONFLICT',
   'EXPORT_IN_PROGRESS', 'MEDIA_NOT_AVAILABLE', 'RESET_BLOCKED_REAL_EVIDENCE', 'TRANSCRIPT_AUDIO_UNAVAILABLE',
 ];
+/** Audit row 143 (D5; D28 DQ-2; register N-36): op 81 retired, 40 -> 41. */
+const PAIRING_CODES = ['AUDIO_SOURCE_FIXED_BY_PAIRING'];
 
 const envelope = (code: string, extra: Partial<ApiError['error']> = {}): ApiError => ({ error: { code, message: 'refused', ...extra } });
 
-describe('the code list grows from 16 to 40', () => {
-  it('the 16 baseline codes come first and unchanged, then the 15 of the Core server, then the 9 of task 3', () => {
-    expect(API_ERROR_CODES).toEqual([...BASELINE_CODES, ...NEW_CODES, ...CAPTURE_CODES]);
-    expect(API_ERROR_CODES).toHaveLength(40);
-    expect(new Set(API_ERROR_CODES).size).toBe(40);
+describe('the code list grows from 16 to 41', () => {
+  it('the 16 baseline codes come first and unchanged, then the 15 of the Core server, then the 9 of task 3, then the 1 of D5', () => {
+    expect(API_ERROR_CODES).toEqual([...BASELINE_CODES, ...NEW_CODES, ...CAPTURE_CODES, ...PAIRING_CODES]);
+    expect(API_ERROR_CODES).toHaveLength(41);
+    expect(new Set(API_ERROR_CODES).size).toBe(41);
     for (const [key, code] of Object.entries(ApiErrorCode)) {
       expect(key).toBe(code);
       expect(code).toMatch(API_ERROR_CODE_PATTERN);

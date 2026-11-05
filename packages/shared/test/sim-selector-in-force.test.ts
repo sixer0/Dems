@@ -259,11 +259,11 @@ describe('no second spelling in packages/shared/src (static; L-Z item 1)', () =>
 
   /**
    * Fix 157. Readers of `session.audioSource` that are NOT under the rule, each with its reason:
-   * the interval list is a fact OF the given session (also a sealed one); the switch transition and the
-   * answer of operation 81 run under a RECORDING session only (the transition requires it) and read the
-   * pair they are about to move / have just moved.
+   * the interval list is a fact OF the given session (also a sealed one). The switch transition and the
+   * answer of operation 81 were the other two readers; op 81 is retired (audit rows 149/150, D130; W3T
+   * removed the switch state function), so both readers are gone and the list holds the interval reader only.
    */
-  const AUDIO_PAIR_OF_A_GIVEN_SESSION = ['const source = session.audioSource ?? null;', 'const source = next.session?.audioSource;'];
+  const AUDIO_PAIR_OF_A_GIVEN_SESSION = ['const source = session.audioSource ?? null;'];
   const PAIR_SPELLING = /(?<!['"`])\bsession\??\.audioSource\b/;
 
   it('fix 157: no file reads `session.audioSource` itself, except the readers of a fact OF a given session', () => {
@@ -278,12 +278,9 @@ describe('no second spelling in packages/shared/src (static; L-Z item 1)', () =>
       }
     }
     expect(offenders).toEqual([]);
-    // Exactly the three known readers: the intervals (api.ts), the switch (session-machine.ts), the answer of operation 81 (api.ts).
-    expect(left.sort()).toEqual([
-      'sim/api.ts: const source = next.session?.audioSource;',
-      'sim/api.ts: const source = session.audioSource ?? null;',
-      'sim/session-machine.ts: const source = session.audioSource ?? null;',
-    ]);
+    // Exactly the one known reader left: the intervals (api.ts). Rows 149/150 + W3T retired op 81, which took the
+    // switch (session-machine.ts) and the answer of operation 81 (api.ts) with it.
+    expect(left.sort()).toEqual(['sim/api.ts: const source = session.audioSource ?? null;']);
   });
 
   it('fix 157 CONTROL: the pattern finds the expression of the defect', () => {

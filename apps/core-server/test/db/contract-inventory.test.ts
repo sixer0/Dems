@@ -29,7 +29,7 @@ import { join } from 'node:path';
 import { AuthMethod, AuditCategory, AuditType, CaptureDeviceKind, EvidenceStatus, FaultKind, IntegritySource, OperatorRole, Permission, RecordingProfileId, ROLE_PERMISSIONS, RetentionPolicyId, ScenarioName, SessionOutcome, Severity, SimEventCategory, SimEventType, SubjectType, VerificationStatus } from '@dems/shared/sim';
 import { EvidenceLifecycleStage, MicRole, SecurityState, SessionState, StorageState, TimeSource, TrackId } from '@dems/shared/domain';
 import { getTableColumns, getTableName, is } from 'drizzle-orm';
-import { PgTable, getTableConfig } from 'drizzle-orm/pg-core';
+import { PgDialect, PgTable, getTableConfig } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 import { INITIAL_MIGRATION_TAGS, MIGRATIONS_FOLDER, readMigrationSet } from '../../src/db/commands/migrations';
 import { SCHEMA_TABLE_NAMES } from '../../src/db/commands/status';
@@ -499,12 +499,12 @@ describe('the hand-written migration files are the statements of the contract', 
     // and the privilege migration of set 4, row 129, and of set 5, row 129a (0004, 0006 and 0008 are drizzle-generated
     // and legitimately carry the marker as lines).
     // D56/D56b (2026-11-03): 0037 and 0038 land, 37 -> 39. D60 (2026-11-04): 0039 lands, 39 -> 40. D61 (2026-11-04): 0040 lands, 40 -> 41.
-    expect(readMigrationSet()).toHaveLength(44); // D61 (2026-11-05): 0041_capture_widening_privileges lands, set 41 -> 42. KD-46 (2026-11-05, row 91): 0042_capture_config_constraint_repair lands, set 42 -> 43. DF-28 (2026-11-05, row 95): 0043_operator_purge_scope lands, set 43 -> 44
+    expect(readMigrationSet()).toHaveLength(45); // D28 (2026-11-05, row 146): 0044_recording_fragments_audio_tracks lands, set 44 -> 45. D61 (2026-11-05): 0041_capture_widening_privileges lands, set 41 -> 42. KD-46 (2026-11-05, row 91): 0042_capture_config_constraint_repair lands, set 42 -> 43. DF-28 (2026-11-05, row 95): 0043_operator_purge_scope lands, set 43 -> 44
     // REVISED 2026-11-02 (principal): 0034 and 0036 join the scanned list. 0035 is NOT added yet: its
     // comment block holds three non-ASCII lines (an em dash and a section sign), and the plain-ASCII
     // rule below exists because the migrator hashes the decoded text — so the file has to be corrected
     // by its own row first, and this test refuses to look away from that. Reported, not waived.
-    for (const tag of ['0000_prelude', '0002_audit_guards', '0003_privileges', '0005_capture_privileges', '0007_stt_config_privileges', '0009_capture_sources_privileges', '0010_credential_replace_privileges', '0012_session_stt_config_privileges', '0014_key_id_fault_reason_media_root_privileges', '0016_capture_streams_audio_inputs_privileges', '0018_network_commissioning_privileges', '0020_credential_replaced_reason_privileges', '0021_profile_codes_data', '0023_profile_codes_privileges', '0025_installation_acceptance_privileges', '0027_alias_removal_reasons_privileges', '0029_alias_removal_reason_unconfirmed_privileges', '0031_network_config_onvif_ports_privileges', '0033_capture_device_retirement_privileges', '0034_capture_config_supervisor_revocation', '0036_operator_purge', '0037_operator_credential_creation', '0038_operator_purge_reseal_correction', '0042_capture_config_constraint_repair', '0043_operator_purge_scope']) {
+    for (const tag of ['0000_prelude', '0002_audit_guards', '0003_privileges', '0005_capture_privileges', '0007_stt_config_privileges', '0009_capture_sources_privileges', '0010_credential_replace_privileges', '0012_session_stt_config_privileges', '0014_key_id_fault_reason_media_root_privileges', '0016_capture_streams_audio_inputs_privileges', '0018_network_commissioning_privileges', '0020_credential_replaced_reason_privileges', '0021_profile_codes_data', '0023_profile_codes_privileges', '0025_installation_acceptance_privileges', '0027_alias_removal_reasons_privileges', '0029_alias_removal_reason_unconfirmed_privileges', '0031_network_config_onvif_ports_privileges', '0033_capture_device_retirement_privileges', '0034_capture_config_supervisor_revocation', '0036_operator_purge', '0037_operator_credential_creation', '0038_operator_purge_reseal_correction', '0042_capture_config_constraint_repair', '0043_operator_purge_scope', '0044_recording_fragments_audio_tracks']) {
       for (const line of file(tag).split('\n')) {
         if (line.includes(marker)) expect(line, `${tag}: the marker must be a line of its own`).toBe(marker);
       }
@@ -512,6 +512,48 @@ describe('the hand-written migration files are the statements of the contract', 
       // eslint-disable-next-line no-control-regex
       expect(/^[\x09\x0a\x20-\x7e]*$/.test(file(tag)), tag).toBe(true);
     }
+  });
+});
+
+// AC-4.16 / F-2 and R-DB-2 (2026-11-05, row 146): the typed schema's two track CHECKs say what the
+// migrations say. The inventory is what the catalog test holds the live pg_constraint definition
+// to (catalog.db.test.ts: string literals and numbers), so typed = inventory = migration text here
+// closes the drift without a database; a future `drizzle-kit generate` then emits no narrowing.
+describe('AC-4.16: the typed track CHECKs equal the inventory and the migration text', () => {
+  const dialect = new PgDialect();
+  const typedCheck = (table: PgTable, name: string): string => {
+    const found = getTableConfig(table).checks.find((check) => check.name === name);
+    if (found === undefined) throw new Error(`the typed schema declares no CHECK ${name}`);
+    const query = dialect.sqlToQuery(found.value);
+    expect(query.params, name).toEqual([]);
+    return query.sql;
+  };
+  const wanted = (table: string, name: string): string => {
+    const found = inventory.tables.find((entry) => entry.name === table)?.constraints.find((constraint) => constraint.name === name);
+    if (found === undefined) throw new Error(`the inventory has no ${table}.${name}`);
+    return found.definition;
+  };
+  const literals = (text: string): string[] => [...text.matchAll(/'([^']*)'/g)].map((match) => match[1] ?? '');
+  const numbers = (text: string): string[] => text.replace(/'[^']*'/g, '').match(/\b\d+\b/g) ?? [];
+  const migration = (tag: string): string => readFileSync(join(MIGRATIONS_FOLDER, `${tag}.sql`), 'utf8');
+
+  it('evidence_tracks_track_check: the eight tracks and BETWEEN 1 AND 8, as 0040 wrote it (was a stale 1 AND 6)', () => {
+    const typed = typedCheck(schema.evidenceTracks, 'evidence_tracks_track_check');
+    expect(typed).toContain('BETWEEN 1 AND 8');
+    expect(literals(typed)).toEqual([...schema.TRACK_ID]);
+    expect(literals(typed)).toEqual(literals(wanted('evidence_tracks', 'evidence_tracks_track_check')));
+    expect(numbers(typed)).toEqual(['1', '8']);
+    expect(numbers(typed)).toEqual(numbers(wanted('evidence_tracks', 'evidence_tracks_track_check')));
+    expect(migration('0040_four_audio_channels')).toContain(`"evidence_tracks"."position" BETWEEN 1 AND 8`);
+  });
+
+  it('recording_fragments_track_check: the camera files and the microphone channel files AUDIO-01..04, as 0044 adds it (D28)', () => {
+    const typed = typedCheck(schema.recordingFragments, 'recording_fragments_track_check');
+    expect(literals(typed)).toEqual([...schema.TRACK_ID]);
+    expect(literals(typed)).toEqual(literals(wanted('recording_fragments', 'recording_fragments_track_check')));
+    const added = /ADD CONSTRAINT "recording_fragments_track_check" CHECK \((.*)\);$/m.exec(migration('0044_recording_fragments_audio_tracks'))?.[1] ?? '';
+    expect(literals(added)).toEqual([...schema.TRACK_ID]);
+    expect(migration('0044_recording_fragments_audio_tracks')).toContain('DROP CONSTRAINT IF EXISTS "recording_fragments_track_check"');
   });
 });
 

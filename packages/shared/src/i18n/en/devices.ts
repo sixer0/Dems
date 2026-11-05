@@ -363,7 +363,8 @@ export const devices = {
       STANDBY: 'Channel 2',
     },
     save: 'Save',
-    makePrimary: 'Make transcribed channel 1',
+    // Audit row 143 (D5; D30 K-4; S5 §6): op 80 moves the microphone into Pair 1, the transcribed pair.
+    makePrimary: 'Make Mic of Camera 1 (transcribed)',
     saved: 'Capture configuration saved',
     noPreview: 'Device state only here: the live preview of a camera is shown in its tile.',
     locked: 'The capture configuration cannot be changed while a session is open.',
@@ -389,6 +390,36 @@ export const devices = {
       requested: 'Power-cycle of {{name}} requested',
       notLost: 'The stream of this camera is not lost. Nothing was changed.',
     },
+  },
+
+  /**
+   * Audit row 143 (D5; D27; register N-40 of masterplan/01_specs_d5.md; S5 §2.5, §6): the four
+   * camera-microphone pairs. Pair N = camera `VIDEO-0N` <-> microphone channel `MIC-0N`, fixed by
+   * number (`CAPTURE_PAIRS`); Pair 1 is transcribed. `n`, `to` and `from` are pair numbers 1..4;
+   * `deviceId` and `other` are microphone ids. `micOfCamera` / `cameraOfMic` are the read-only
+   * labels of the meters, the monitor audio panel and the precheck items; the /devices selector
+   * (row 156) names every microphone slot by `micOfCamera` too (U-13: one label, not
+   * "Microphone 3" here and "Channel 3" elsewhere).
+   */
+  pairs: {
+    title: 'Camera and microphone pairs',
+    rowLabel: 'Camera {{n}} <-> Mic {{n}}',
+    transcribed: 'Transcribed',
+    incomplete: 'Pair {{n}} is incomplete: recording needs a camera and a microphone',
+    // Row 156 (D116, the final UI call): a device id already reads "MIC-0N", so the sentence says
+    // "Microphone MIC-03", not "Mic MIC-03". One confirmed op 78 edit of two lines by channel (D22(3)).
+    swapConfirm: 'Microphone {{deviceId}} moves to Pair {{to}}; microphone {{other}} moves to Pair {{from}}.',
+    swapTitle: 'Swap the microphones of Pair {{from}} and Pair {{to}}?',
+    swap: 'Swap',
+    // Row 156: the target pair holds no microphone, so nothing comes back - the pair it leaves is incomplete.
+    moveConfirm: 'Microphone {{deviceId}} moves to Pair {{to}}; Pair {{from}} is left without a microphone.',
+    moveTitle: 'Move the microphone of Pair {{from}} to Pair {{to}}?',
+    move: 'Move',
+    // Row 156: an option of a mic select that another pair holds.
+    onOtherPair: 'in Pair {{n}} - choosing it swaps the microphones',
+    audioOf: 'Audio of Camera {{n}}',
+    micOfCamera: 'Mic {{n}} (Camera {{n}})',
+    cameraOfMic: 'Camera {{n}} (Mic {{n}})',
   },
 
   /**

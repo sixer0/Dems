@@ -253,7 +253,7 @@ describe('Start New Session: step 2 gate (§5.3, fake timers)', () => {
     expect(m.sim.store.getState().session?.precheck.outcome).toBe('WARN')
     expect(m.sim.store.getState().session?.state).toBe('PRECHECK')
     expect(screen.getByTestId('sn-check-MIC_PRIMARY')).toHaveAttribute('data-status', 'WARN')
-    expect(screen.getByTestId('sn-check-MIC_PRIMARY')).toHaveTextContent('MIC (channel 1, transcribed): no signal') // D61 (2026-11-04): the label reads by channel
+    expect(screen.getByTestId('sn-check-MIC_PRIMARY')).toHaveTextContent('Mic 1 (Camera 1, transcribed): no signal') // D61 (2026-11-04): the label reads by channel; audit row 143 (D5): and names its pair
     const warn = screen.getByTestId('sn-gate-warn')
     expect(isDisabled(nextButton())).toBe(true)
 
