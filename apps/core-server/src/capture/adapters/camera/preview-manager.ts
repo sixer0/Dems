@@ -3,7 +3,9 @@
  * D51 / D53). RECORDING ALWAYS HAS PRIORITY.
  *
  * ONE PIPELINE PER CAMERA, shared by its viewers. The bounds (`CAMERA_PREVIEW_LIMITS` of the shared
- * contract): one pipeline per camera and two in all; four viewers per camera and eight in all. A
+ * contract): one pipeline per camera and four in all (widened 2026-11-05, the principal: the preview
+ * is a MUST, so every video track of D60 gets its pipeline); four viewers per camera and sixteen in
+ * all. A
  * viewer over a bound is refused with `PREVIEW_LIMIT` (the route answers 429) and changes nothing.
  * A pipeline that has no viewer left LINGERS `PREVIEW_LINGER_MS` (5 s): a viewer that comes back in
  * that time (a reload of the page) gets the running stream. A lingering pipeline is the first to
@@ -62,7 +64,7 @@ export interface PreviewLimits {
   readonly viewersPerCamera: number;
   readonly viewers: number;
 }
-export const PREVIEW_LIMITS: PreviewLimits = Object.freeze({ pipelinesPerCamera: 1, pipelines: 2, viewersPerCamera: 4, viewers: 8 });
+export const PREVIEW_LIMITS: PreviewLimits = Object.freeze({ pipelinesPerCamera: 1, pipelines: 4, viewersPerCamera: 4, viewers: 16 });
 
 export const PreviewState = {
   CONNECTING: 'CONNECTING',

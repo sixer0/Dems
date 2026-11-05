@@ -276,8 +276,8 @@ export const CAMERA_PREVIEW_LIMIT_REASON = 'PREVIEW_LIMIT';
 export const CAMERA_PREVIEW_NOT_AVAILABLE_REASON = 'PREVIEW_NOT_AVAILABLE';
 /** `details.reason` of the `409 INVALID_STATE` of operation 113: this Core has no idle meters. */
 export const IDLE_METERS_NOT_AVAILABLE_REASON = 'IDLE_METERS_NOT_AVAILABLE';
-/** The bounds of the live preview (decision D53): pipelines per camera and in all, viewers per camera and in all. */
-export const CAMERA_PREVIEW_LIMITS = Object.freeze({ pipelinesPerCamera: 1, pipelines: 2, viewersPerCamera: 4, viewers: 8 });
+/** The bounds of the live preview (decision D53; widened by the principal 2026-11-05: preview is a MUST, so every video track of D60 gets its own pipeline): pipelines per camera and in all, viewers per camera and in all. */
+export const CAMERA_PREVIEW_LIMITS = Object.freeze({ pipelinesPerCamera: 1, pipelines: 4, viewersPerCamera: 4, viewers: 16 });
 /** What the stream of a preview is: motion JPEG of about this rate and size (decision D53). */
 export const CAMERA_PREVIEW_PICTURE = Object.freeze({ fps: 8, width: 640, height: 360 });
 

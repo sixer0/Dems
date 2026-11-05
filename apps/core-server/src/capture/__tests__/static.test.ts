@@ -21,7 +21,12 @@
 // capture keys of config.ts (row 58).
 import { createHash } from 'node:crypto';
 import { DEMO_OPERATOR_PASSWORD } from '@dems/shared/sim';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+// The whole-tree scans below cross the default 5 s under the parallel suite on the bench
+// (measured idle 2026-11-05: three full runs timed them out at 5-13 s while every one passes
+// isolated); the file lifts the ceiling, not any assertion.
+vi.setConfig({ testTimeout: 30_000 });
+
 import { logCalls } from '../../../test/static/log-calls';
 import { SCAN_COVERS, WORKSPACE, codeOnly, isProductionSource, occurrences, readTree, scanCoverage, under, type SourceFile } from '../../../test/static/scan';
 import { CAMERA_HELPER_TABLE, CameraHelperEncoder, LOCAL_CAMERA_DEVICE_NAME, LOCAL_MIC_DEVICE_NAME, MIC_HELPER_TABLE, MicGeneratedTone, cameraPrecheckArguments, cameraPushArguments, deviceListArguments, micPrecheckArguments, micPushArguments } from '../adapters/local';

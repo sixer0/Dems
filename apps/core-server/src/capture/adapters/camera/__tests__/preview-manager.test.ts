@@ -203,10 +203,10 @@ describe('the mpjpeg parser: pictures by their Content-length', () => {
 
 // ── The bounds ───────────────────────────────────────────────────────────────────────────────────
 
-describe('the bounds: one pipeline per camera, two in all; four viewers per camera, eight in all', () => {
+describe('the bounds: one pipeline per camera, four in all (the D60 tracks); four viewers per camera, sixteen in all', () => {
   it('viewers of one camera share ONE pipeline; the fifth viewer of a camera is refused PREVIEW_LIMIT', async () => {
     const { manager, opener } = rig();
-    expect(PREVIEW_LIMITS).toEqual({ pipelinesPerCamera: 1, pipelines: 2, viewersPerCamera: 4, viewers: 8 });
+    expect(PREVIEW_LIMITS).toEqual({ pipelinesPerCamera: 1, pipelines: 4, viewersPerCamera: 4, viewers: 16 });
     for (let index = 0; index < 4; index += 1) joined(manager.join('CAM-03', 'OPR-001', sink().value));
     await settle();
     expect(opener.opened).toHaveLength(1);
@@ -215,24 +215,25 @@ describe('the bounds: one pipeline per camera, two in all; four viewers per came
     expect(manager.counts()).toEqual({ pipelines: 1, viewers: 4 });
   });
 
-  it('a third camera is refused while two pipelines have viewers; eight viewers in all is the bound', async () => {
+  it('a fifth camera is refused while four pipelines have viewers; sixteen viewers in all is the bound (widened 2026-11-05: the preview is a MUST, every video track of D60 gets its pipeline)', async () => {
     const { manager } = rig();
-    for (let index = 0; index < 4; index += 1) joined(manager.join('CAM-03', 'OPR-001', sink().value));
-    for (let index = 0; index < 4; index += 1) joined(manager.join('CAM-04', 'OPR-001', sink().value));
+    for (const camera of ['CAM-03', 'CAM-04', 'CAM-05', 'CAM-06']) {
+      for (let index = 0; index < 4; index += 1) joined(manager.join(camera, 'OPR-001', sink().value));
+    }
     await settle();
-    expect(manager.join('CAM-05', 'OPR-001', sink().value)).toEqual({ joined: false, reason: PreviewEndReason.LIMIT });
-    expect(manager.counts()).toEqual({ pipelines: 2, viewers: 8 });
+    expect(manager.join('CAM-07', 'OPR-001', sink().value)).toEqual({ joined: false, reason: PreviewEndReason.LIMIT });
+    expect(manager.counts()).toEqual({ pipelines: 4, viewers: 16 });
   });
 
-  it('a lingering pipeline gives its place to a third camera: stopped and reaped first, then the new one opens', async () => {
+  it('a lingering pipeline gives its place to a camera over the bound: stopped and reaped first, then the new one opens', async () => {
     const { manager, opener, timers } = rig();
-    joined(manager.join('CAM-03', 'OPR-001', sink().value)).leave();
-    joined(manager.join('CAM-04', 'OPR-001', sink().value));
+    for (const camera of ['CAM-03', 'CAM-04', 'CAM-05']) joined(manager.join(camera, 'OPR-001', sink().value));
+    joined(manager.join('CAM-06', 'OPR-001', sink().value)).leave();
     await settle();
-    expect(manager.wouldRefuse('CAM-05')).toBeNull();
-    joined(manager.join('CAM-05', 'OPR-001', sink().value));
+    expect(manager.wouldRefuse('CAM-07')).toBeNull();
+    joined(manager.join('CAM-07', 'OPR-001', sink().value));
     await timers.advance(0);
-    expect(opener.events).toEqual(['open CAM-03', 'open CAM-04', 'stop CAM-03', 'reaped CAM-03', 'open CAM-05']);
+    expect(opener.events).toEqual(['open CAM-03', 'open CAM-04', 'open CAM-05', 'open CAM-06', 'stop CAM-06', 'reaped CAM-06', 'open CAM-07']);
   });
 });
 

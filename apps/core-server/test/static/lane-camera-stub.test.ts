@@ -17,7 +17,12 @@
 // Every rule has a control: the same reader, on a planted text, reads the other value.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+// The whole-tree scans below cross the default 5 s under the parallel suite on the bench
+// (measured idle 2026-11-05: three full runs timed them out at 5-13 s while every one passes
+// isolated); the file lifts the ceiling, not any assertion.
+vi.setConfig({ testTimeout: 30_000 });
+
 import { REPOSITORY, WORKSPACE, codeOnly, isProductionSource, readTree, type SourceFile } from './scan';
 
 const LAUNCHER = 'test/support/lane-camera-stub-cli.ts';
